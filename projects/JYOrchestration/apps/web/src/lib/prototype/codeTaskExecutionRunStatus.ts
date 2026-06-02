@@ -12,6 +12,7 @@ const TERMINAL = new Set<CodeTaskExecutionRunStatus>([
   "completed",
   "no_code_change_completed",
   "rework_required",
+  "status_check_stopped",
   "failed",
 ]);
 
@@ -27,11 +28,20 @@ export function isTerminalCodeTaskExecutionRunStatus(
   return TERMINAL.has(status);
 }
 
+export function isQueueIssueRunStatus(status: CodeTaskExecutionRunStatus): boolean {
+  return (
+    status === "rework_required" ||
+    status === "failed" ||
+    status === "status_check_stopped"
+  );
+}
+
 export function isQueueContinueAfterRunStatus(status: CodeTaskExecutionRunStatus): boolean {
   return (
     status === "completed" ||
     status === "no_code_change_completed" ||
     status === "rework_required" ||
+    status === "status_check_stopped" ||
     status === "failed"
   );
 }

@@ -37,10 +37,8 @@ import {
   parseImplementationExecutionJobsV1,
   syncImplementationExecutionJobFromTaskCursor,
 } from "@/lib/prototype/implementationExecutionJob";
-import {
-  parseCodeTaskExecutionRunsV1,
-  syncCodeTaskExecutionRunsFromTaskCursor,
-} from "@/lib/prototype/codeTaskExecutionRun";
+import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { syncCodeTaskExecutionRunsFromTaskCursor } from "@/lib/prototype/codeTaskExecutionRunTaskCursorAdapter";
 
 export function buildTaskCursorExecutionRequest(input: {
   readonly projectId: string;

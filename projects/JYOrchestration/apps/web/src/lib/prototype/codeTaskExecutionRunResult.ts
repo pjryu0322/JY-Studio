@@ -46,7 +46,7 @@ export function classifyCodeTaskExecutionRunFromTaskCursor(
 ): ClassifiedCodeTaskExecutionRunResult {
   if (isTaskCursorStatusCheckStopped(execution)) {
     return {
-      status: "failed",
+      status: "status_check_stopped",
       failureReason: "status_check_stopped",
       errorMessage: execution.errorMessage ?? "상태 확인이 중단되었습니다.",
     };

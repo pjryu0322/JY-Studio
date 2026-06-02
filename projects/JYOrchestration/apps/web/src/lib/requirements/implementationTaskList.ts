@@ -186,9 +186,10 @@ export function buildImplementationTaskListFromSeed(input: {
     });
   }
 
-  // REVIEW/SECURITY depend on developer tasks (mock is not a global gate for all DEV tasks).
-  const devTaskIds = tasks
+  // REVIEW/SECURITY depend on implementation developer tasks (mock-only is not a global gate).
+  const implementationDevTaskIds = tasks
     .filter((t) => t.ownerRole === "developer")
+    .filter((t) => t.taskType !== "mock")
     .map((t) => t.taskId);
 
   tasks.push({
@@ -198,7 +199,7 @@ export function buildImplementationTaskListFromSeed(input: {
     taskType: "validation",
     ownerRole: "reviewer",
     priority: "high",
-    dependencies: devTaskIds,
+    dependencies: implementationDevTaskIds,
     acceptanceCriteria: ["핵심 사용자 흐름이 단계별로 동작한다.", "핵심 성공/실패 케이스가 확인된다."],
     status: "ready",
   });
@@ -221,7 +222,7 @@ export function buildImplementationTaskListFromSeed(input: {
     taskType: "security",
     ownerRole: "security",
     priority: "high",
-    dependencies: devTaskIds,
+    dependencies: implementationDevTaskIds,
     acceptanceCriteria: securityCriteria,
     status: "ready",
   });

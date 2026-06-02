@@ -150,6 +150,11 @@ export function buildTaskCursorWorkBranch(taskId: string): string {
   return `wip/cursor/${slug || "task"}`;
 }
 
+/** CodeTask 단위 work branch (실행·PR 추적 기준) */
+export function buildCodeTaskWorkBranch(codeTaskId: string): string {
+  return buildTaskCursorWorkBranch(codeTaskId);
+}
+
 export function buildTaskCursorRunId(nowIso?: string): string {
   const stamp = (nowIso ?? new Date().toISOString()).replace(/[:.]/g, "");
   return `task-cursor-${stamp}`;

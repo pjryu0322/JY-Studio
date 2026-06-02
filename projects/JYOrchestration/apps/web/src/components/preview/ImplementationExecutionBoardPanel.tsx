@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
-import { formatCodeTaskExecutionQueueSummary } from "@/lib/prototype/codeTaskExecutionRunUi";
+import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import {
+  formatCodeTaskExecutionQueueSummary,
+  summarizeCodeTaskExecutionQueueRuns,
+} from "@/lib/prototype/codeTaskExecutionRunUi";
 import {
   buildImplementationIntegratedPipelineLines,
   PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE,
@@ -69,6 +73,7 @@ export function ImplementationExecutionBoardPanel({
   implementationCodeTaskPlanV1,
   cursorWorkItemsV1,
   codeTaskExecutionQueueV1,
+  codeTaskExecutionRunsV1,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -92,6 +97,7 @@ export function ImplementationExecutionBoardPanel({
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly codeTaskExecutionQueueV1?: unknown;
+  readonly codeTaskExecutionRunsV1?: unknown;
 }) {
   const feedbackSummary = useMemo(
     () => buildImplementationCodeTaskFeedbackSummary(codeTaskExecutionFeedbackV1),
@@ -231,12 +237,17 @@ export function ImplementationExecutionBoardPanel({
 
   const queueSummaryLine = useMemo(() => {
     if (!codeTaskQueue || codeTaskQueue.status === "idle") return null;
+    const runSummary = summarizeCodeTaskExecutionQueueRuns({
+      runs: parseCodeTaskExecutionRunsV1(codeTaskExecutionRunsV1) ?? [],
+      selectedCodeTaskIds: codeTaskQueue.selectedCodeTaskIds,
+    });
     return formatCodeTaskExecutionQueueSummary({
       currentIndex: codeTaskQueue.currentIndex,
       total: codeTaskQueue.selectedCodeTaskIds.length,
       status: codeTaskQueue.status,
+      runSummary,
     });
-  }, [codeTaskQueue]);
+  }, [codeTaskExecutionRunsV1, codeTaskQueue]);
 
   return (
     <section

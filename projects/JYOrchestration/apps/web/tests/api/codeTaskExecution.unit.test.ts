@@ -4,11 +4,15 @@ import {
   advanceCodeTaskExecutionQueue,
   expandProcessTaskIdsToCodeTaskIds,
   getCurrentQueueCodeTaskId,
+  resolveQueueFinalStatusFromRunStatuses,
   resolveSelectedCodeTaskIdsForQueue,
   startCodeTaskExecutionQueue,
 } from "@/lib/prototype/codeTaskExecutionQueue";
 import { classifyCodeTaskExecutionRunFromTaskCursor } from "@/lib/prototype/codeTaskExecutionRunResult";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
+import { buildImplementationTaskListFromSeed } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 
 const NOW = "2026-06-01T12:00:00.000Z";
@@ -77,6 +81,50 @@ function baseExecution(overrides: Partial<TaskCursorExecutionV1> = {}): TaskCurs
   };
 }
 
+function makeSeed(): ImplementationSeedV1 {
+  return {
+    version: "implementation_seed_v1",
+    projectId: "p1",
+    createdAt: NOW,
+    updatedAt: NOW,
+    source: "planning_slots_and_artifacts",
+    lifecycleStatus: "confirmed",
+    readiness: { ready: true, score: 1, missing: [], warnings: [] },
+    processImplementationItems: [
+      {
+        id: "proc-1",
+        processName: "회원가입",
+        actors: ["user"],
+        screens: ["회원가입"],
+        actions: ["submit"],
+        dataTouched: ["user"],
+        exceptions: [],
+      },
+    ],
+    screenImplementationItems: [
+      {
+        id: "screen-1",
+        screenName: "회의록 업로드",
+        accessibleActors: ["user"],
+        actions: ["upload"],
+        visibleData: ["title"],
+        editableData: ["file"],
+        states: ["idle"],
+      },
+    ],
+    actorCapabilityMatrix: [],
+    commonDetailFeatures: [],
+    dataModelSeed: {
+      entities: ["MeetingNote"],
+      fieldsByEntity: { MeetingNote: ["id"] },
+      relationships: [],
+      mockDataNotes: [],
+    },
+    assumptions: [],
+    gaps: [],
+  };
+}
+
 describe("code task execution queue", () => {
   it("starts queue at index 0 with running status", () => {
     const queue = startCodeTaskExecutionQueue({
@@ -115,6 +163,37 @@ describe("code task execution queue", () => {
     expect(advanced.queue.currentIndex).toBe(1);
   });
 
+  it("continues to next code task after status_check_stopped", () => {
+    const queue = startCodeTaskExecutionQueue({
+      projectId: "p1",
+      selectedCodeTaskIds: ["CT-1", "CT-2"],
+      nowIso: NOW,
+    })!;
+    const advanced = advanceCodeTaskExecutionQueue({
+      queue,
+      lastRunStatus: "status_check_stopped",
+      nowIso: NOW,
+    });
+    expect(advanced.finished).toBe(false);
+    expect(advanced.nextCodeTaskId).toBe("CT-2");
+  });
+
+  it("finishes with completed_with_issues when some runs have issues", () => {
+    const queue = startCodeTaskExecutionQueue({
+      projectId: "p1",
+      selectedCodeTaskIds: ["CT-1", "CT-2", "CT-3"],
+      nowIso: NOW,
+    })!;
+    const advanced = advanceCodeTaskExecutionQueue({
+      queue: { ...queue, currentIndex: 2 },
+      lastRunStatus: "completed",
+      processedRunStatuses: ["completed", "rework_required", "completed"],
+      nowIso: NOW,
+    });
+    expect(advanced.finished).toBe(true);
+    expect(advanced.queue.status).toBe("completed_with_issues");
+  });
+
   it("stops queue on failure when stopOnFailure is set", () => {
     const queue = startCodeTaskExecutionQueue({
       projectId: "p1",
@@ -139,6 +218,29 @@ describe("code task execution queue", () => {
       explicitCodeTaskIds: ["CT-2"],
     });
     expect(ids).toEqual(["CT-2"]);
+  });
+
+  it("returns empty when no explicit or process selection", () => {
+    const ids = resolveSelectedCodeTaskIdsForQueue({
+      codeTaskPlan: samplePlan(),
+      processTaskIds: [],
+      explicitCodeTaskIds: [],
+    });
+    expect(ids).toEqual([]);
+  });
+
+  it("does not auto-select fallback code task", () => {
+    const ids = resolveSelectedCodeTaskIdsForQueue({
+      codeTaskPlan: samplePlan(),
+      processTaskIds: [],
+    });
+    expect(ids).toEqual([]);
+  });
+
+  it("resolves completed when all runs succeeded", () => {
+    expect(
+      resolveQueueFinalStatusFromRunStatuses(["completed", "no_code_change_completed"]),
+    ).toBe("completed");
   });
 });
 
@@ -168,6 +270,15 @@ describe("buildCodeTaskDeveloperPrompt", () => {
     expect(prompt).toContain("목록 조회 API 동작");
     expect(prompt).toMatch(/commit.*push.*PR/i);
     expect(prompt).toContain("noCodeChange");
+    expect(prompt).toContain("CT-1");
+  });
+});
+
+describe("buildCodeTaskWorkBranch", () => {
+  it("uses code task id for branch naming", () => {
+    const branch = buildCodeTaskWorkBranch("CT-DEV-COMMON-001-01");
+    expect(branch).toContain("ct-dev-common-001-01");
+    expect(branch).not.toBe("wip/cursor/dev-common-001");
   });
 });
 
@@ -175,6 +286,17 @@ describe("classifyCodeTaskExecutionRunFromTaskCursor", () => {
   it("requires github evidence when cursor says completed", () => {
     const result = classifyCodeTaskExecutionRunFromTaskCursor(baseExecution());
     expect(result.status).toBe("rework_required");
+  });
+
+  it("marks status_check_stopped separately from failed", () => {
+    const result = classifyCodeTaskExecutionRunFromTaskCursor(
+      baseExecution({
+        status: "status_check_stopped",
+        errorMessage: "상태 확인이 중단되었습니다.",
+      }),
+    );
+    expect(result.status).toBe("status_check_stopped");
+    expect(result.status).not.toBe("failed");
   });
 
   it("marks completed when branch head commit exists", () => {
@@ -197,5 +319,20 @@ describe("classifyCodeTaskExecutionRunFromTaskCursor", () => {
       } as TaskCursorExecutionV1),
     );
     expect(result.status).toBe("no_code_change_completed");
+  });
+});
+
+describe("implementation task list review/security dependencies", () => {
+  it("excludes mock-only developer tasks from REVIEW/SECURITY dependencies", () => {
+    const list = buildImplementationTaskListFromSeed({
+      projectId: "p1",
+      seed: makeSeed(),
+      nowIso: NOW,
+    });
+    const review = list.tasks.find((t) => t.taskId === "REVIEW-001");
+    const security = list.tasks.find((t) => t.taskId === "SECURITY-001");
+    expect(review?.dependencies).not.toContain("DEV-MOCK-001");
+    expect(security?.dependencies).not.toContain("DEV-MOCK-001");
+    expect(review?.dependencies.length).toBeGreaterThan(0);
   });
 });

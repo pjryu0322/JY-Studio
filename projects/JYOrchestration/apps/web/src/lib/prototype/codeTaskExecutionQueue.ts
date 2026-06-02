@@ -1,9 +1,10 @@
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
   isQueueContinueAfterRunStatus,
+  isQueueIssueRunStatus,
   isTerminalCodeTaskExecutionRunStatus,
 } from "@/lib/prototype/codeTaskExecutionRunStatus";
-import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import type { CodeTaskExecutionRunStatus, CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 
 export const CODE_TASK_EXECUTION_QUEUE_VERSION = "code_task_execution_queue_v1" as const;
 
@@ -12,6 +13,7 @@ export type CodeTaskExecutionQueueStatus =
   | "running"
   | "paused"
   | "completed"
+  | "completed_with_issues"
   | "failed";
 
 export type CodeTaskExecutionQueueV1 = Readonly<{
@@ -30,6 +32,7 @@ const QUEUE_STATUSES = new Set<CodeTaskExecutionQueueStatus>([
   "running",
   "paused",
   "completed",
+  "completed_with_issues",
   "failed",
 ]);
 
@@ -77,7 +80,6 @@ export function resolveSelectedCodeTaskIdsForQueue(input: {
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
   readonly explicitCodeTaskIds?: readonly string[] | null;
   readonly processTaskIds?: readonly string[] | null;
-  readonly fallbackCodeTaskId?: string | null;
 }): readonly string[] {
   const explicit = (input.explicitCodeTaskIds ?? [])
     .map((id) => id.trim())
@@ -93,8 +95,14 @@ export function resolveSelectedCodeTaskIdsForQueue(input: {
     if (expanded.length) return expanded;
   }
 
-  const fallback = String(input.fallbackCodeTaskId ?? "").trim();
-  return fallback ? [fallback] : [];
+  return [];
+}
+
+export function resolveQueueFinalStatusFromRunStatuses(
+  statuses: readonly CodeTaskExecutionRunStatus[],
+): Extract<CodeTaskExecutionQueueStatus, "completed" | "completed_with_issues"> {
+  const hasIssue = statuses.some((status) => isQueueIssueRunStatus(status));
+  return hasIssue ? "completed_with_issues" : "completed";
 }
 
 export function startCodeTaskExecutionQueue(input: {
@@ -134,6 +142,7 @@ export type AdvanceCodeTaskExecutionQueueResult = Readonly<{
 export function advanceCodeTaskExecutionQueue(input: {
   readonly queue: CodeTaskExecutionQueueV1;
   readonly lastRunStatus: CodeTaskExecutionRunV1["status"];
+  readonly processedRunStatuses?: readonly CodeTaskExecutionRunV1["status"];
   readonly nowIso?: string;
 }): AdvanceCodeTaskExecutionQueueResult {
   const now = input.nowIso ?? new Date().toISOString();
@@ -153,10 +162,11 @@ export function advanceCodeTaskExecutionQueue(input: {
 
   const nextIndex = queue.currentIndex + 1;
   if (nextIndex >= queue.selectedCodeTaskIds.length) {
-    const finalStatus =
-      input.lastRunStatus === "failed" || input.lastRunStatus === "rework_required"
-        ? "failed"
-        : "completed";
+    const statuses =
+      input.processedRunStatuses?.length
+        ? input.processedRunStatuses
+        : [input.lastRunStatus];
+    const finalStatus = resolveQueueFinalStatusFromRunStatuses(statuses);
     return {
       queue: { ...queue, currentIndex: nextIndex, status: finalStatus, updatedAt: now },
       nextCodeTaskId: null,

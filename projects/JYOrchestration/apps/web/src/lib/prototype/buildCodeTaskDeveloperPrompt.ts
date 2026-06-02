@@ -1,7 +1,7 @@
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
-import { buildTaskCursorWorkBranch } from "@/lib/prototype/taskCursorExecution";
+import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
 
 export function buildCodeTaskDeveloperPrompt(input: {
   readonly codeTask: ImplementationCodeTaskV1;
@@ -10,7 +10,7 @@ export function buildCodeTaskDeveloperPrompt(input: {
   readonly baseBranch: string;
   readonly allowedPathGlobs?: readonly string[];
 }): string {
-  const workBranch = buildTaskCursorWorkBranch(input.codeTask.parentTaskId);
+  const workBranch = buildCodeTaskWorkBranch(input.codeTask.codeTaskId);
   const parentTitle = input.parentTask?.title?.trim() || input.codeTask.parentTaskId;
   const candidateFiles = [
     ...(input.codeTask.candidateFiles ?? []),
@@ -32,6 +32,7 @@ export function buildCodeTaskDeveloperPrompt(input: {
     "",
     "## CodeTask",
     `- ID: ${input.codeTask.codeTaskId}`,
+    `- 제목: ${input.codeTask.title}`,
     `- 설명: ${input.codeTask.description.trim()}`,
     `- 변경 유형: ${input.codeTask.changeType}`,
     "",
@@ -65,6 +66,7 @@ export function buildCodeTaskDeveloperPrompt(input: {
     `- base branch: ${input.baseBranch}`,
     `- work branch: ${workBranch}`,
     "- 작업 완료 후 위 work branch에 commit·push하고 PR을 생성할 것",
+    `- PR 제목/본문에 CodeTask ID(${input.codeTask.codeTaskId})와 제목(${input.codeTask.title})을 명확히 포함할 것`,
     ...(input.allowedPathGlobs?.length
       ? ["", "## 허용 경로", ...input.allowedPathGlobs.map((g) => `- ${g}`)]
       : []),

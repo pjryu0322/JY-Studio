@@ -311,37 +311,17 @@ import {
 } from "@/lib/prototype/implementationAutoQualityGateClient";
 import {
   buildPromptTimelineOrchestrationPatch,
-  buildTaskCursorAutoChainTimelineEntry,
 } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { mergeImplementationExecutionLogTimeline } from "@/lib/prototype/implementationOrchestrationExecutionLog";
 import { pickPersistentExecutionLogTimelineEntries } from "@/lib/prototype/promptTimelineExecutionLogTabs";
-import {
-  buildTaskCursorAutoChainTriggerKey,
-  formatTaskCursorAutoChainNotice,
-  planImmediateTaskCursorAutoChainAfterFailure,
-  resolveTaskCursorAutoChainDecision,
-} from "@/lib/prototype/implementationTaskCursorAutoChain";
-import {
-  buildTaskCursorAutoChainIdempotencyKey,
-  hasTaskCursorAutoChainIdempotencyKey,
-  rememberTaskCursorAutoChainIdempotencyKey,
-  resolveTaskCursorAutoChainTriggerDedupeKey,
-} from "@/lib/prototype/taskCursorAutoChainIdempotency";
-import {
-  appendImplementationExecutionJob,
-  createImplementationExecutionJob,
-  parseImplementationExecutionJobsV1,
-} from "@/lib/prototype/implementationExecutionJob";
-import { resolveImplementationExecutionJobAutoChainDecision } from "@/lib/prototype/implementationExecutionJobAutoChain";
-import { pickNextRunnableProcessTaskIdForQuickRun } from "@/lib/prototype/implementationExecutionJobSelection";
 import { buildCodeTaskDeveloperPrompt } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
 import {
   appendCodeTaskExecutionRun,
   createCodeTaskExecutionRun,
   findLatestRunForCodeTask,
   parseCodeTaskExecutionRunsV1,
-  syncCodeTaskExecutionRunsFromTaskCursor,
 } from "@/lib/prototype/codeTaskExecutionRun";
+import { syncCodeTaskExecutionRunsFromTaskCursor } from "@/lib/prototype/codeTaskExecutionRunTaskCursorAdapter";
 import {
   advanceCodeTaskExecutionQueue,
   getCurrentQueueCodeTaskId,
@@ -357,7 +337,6 @@ import {
   buildImplementationQuickRunTimelineEntry,
   parseImplementationQuickRunV1,
   resolveQuickRunAllowedTaskIds,
-  shouldAllowTaskCursorAutoChain,
 } from "@/lib/prototype/implementationQuickRun";
 import { normalizeSelectedTaskIds } from "@/lib/prototype/implementationTaskTreeSelection";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
@@ -1567,9 +1546,7 @@ export function PrototypePreviewPanel({
   const taskCursorPollTokenRef = useRef(0);
   const taskCursorPollActiveRunIdRef = useRef<string | null>(null);
   const autoQualityGateInFlightRef = useRef<string | null>(null);
-  const taskCursorAutoChainRef = useRef<string | null>(null);
-  const taskCursorAutoChainPreferredTaskIdRef = useRef<string | null>(null);
-  const taskCursorAutoChainExecutedKeysRef = useRef<Set<string>>(new Set());
+  const codeTaskDispatchPreferredTaskIdRef = useRef<string | null>(null);
   const codeTaskQueueDispatchRef = useRef<{
     readonly codeTaskId: string;
     readonly parentTaskId: string;
@@ -2348,8 +2325,7 @@ export function PrototypePreviewPanel({
   const releaseAllTaskCursorPolling = useCallback(() => {
     taskCursorPollTokenRef.current += 1;
     taskCursorPollActiveRunIdRef.current = null;
-    taskCursorAutoChainRef.current = null;
-    taskCursorAutoChainPreferredTaskIdRef.current = null;
+    codeTaskDispatchPreferredTaskIdRef.current = null;
 
     const state = requirementsStateJsonRef.current;
     const parsed = parseRequirementsStateJson(state);
@@ -2372,7 +2348,6 @@ export function PrototypePreviewPanel({
   const cancelTaskCursorClientPoll = useCallback(() => {
     taskCursorPollTokenRef.current += 1;
     taskCursorPollActiveRunIdRef.current = null;
-    taskCursorAutoChainRef.current = null;
 
     const state = requirementsStateJsonRef.current;
     const execution = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
@@ -2585,150 +2560,6 @@ export function PrototypePreviewPanel({
     triggerImplementationAutoQualityGate,
   ]);
 
-  const triggerTaskCursorAutoChain = useCallback(() => {
-    const board = implementationStageBoardGateContext?.board;
-    const orchestration = orchestrationAwareRequirementsState;
-    const queue = parseCodeTaskExecutionQueueV1(orchestration.codeTaskExecutionQueueV1);
-    if (queue?.status === "running") return;
-    const execution = parseTaskCursorExecutionV1(orchestration.taskCursorExecutionV1);
-    const quickRun = parseImplementationQuickRunV1(orchestration.implementationQuickRunV1);
-    const jobs =
-      parseImplementationExecutionJobsV1(orchestration.implementationExecutionJobsV1) ?? [];
-    if (
-      !shouldAllowTaskCursorAutoChain({
-        quickRun,
-        taskCursorExecution: execution,
-      })
-    ) {
-      return;
-    }
-    const pid = projectId.trim();
-    const jobAutoDecision = board
-      ? resolveImplementationExecutionJobAutoChainDecision({
-          board,
-          jobs,
-          projectId: pid,
-          allowedTaskIds: resolveQuickRunAllowedTaskIds(quickRun),
-        })
-      : { kind: "none" as const };
-    if (jobAutoDecision.kind === "start") {
-      if (hasTaskCursorAutoChainIdempotencyKey(taskCursorAutoChainExecutedKeysRef.current, jobAutoDecision.idempotencyKey)) {
-        return;
-      }
-      if (taskCursorAutoChainRef.current === jobAutoDecision.idempotencyKey) return;
-      if (isInFlightTaskCursorExecution(execution)) return;
-      taskCursorAutoChainRef.current = jobAutoDecision.idempotencyKey;
-      rememberTaskCursorAutoChainIdempotencyKey(
-        taskCursorAutoChainExecutedKeysRef.current,
-        jobAutoDecision.idempotencyKey,
-      );
-      const notice = `다음 작업 ${jobAutoDecision.taskId}을(를) 자동으로 시작합니다.`;
-      showToast(notice);
-      executionSingleChat.appendAiNotice(notice);
-      taskCursorAutoChainPreferredTaskIdRef.current = jobAutoDecision.taskId;
-      const nowIso = new Date().toISOString();
-      let implementationExecutionJobsV1 = jobs;
-      try {
-        const job = createImplementationExecutionJob({
-          projectId: pid,
-          processTaskId: jobAutoDecision.taskId,
-          jobs: implementationExecutionJobsV1,
-          nowIso,
-        });
-        implementationExecutionJobsV1 = appendImplementationExecutionJob(
-          implementationExecutionJobsV1,
-          job,
-        );
-        applyImplementationOrchestrationResult({
-          messages: executionSingleChat.chatMessages,
-          orchestrationPatch: { implementationExecutionJobsV1 },
-        });
-      } catch {
-        return;
-      }
-      void runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
-      return;
-    }
-    const autoGate = parseImplementationAutoQualityGateV1(orchestration.implementationAutoQualityGateV1);
-    const decision = resolveTaskCursorAutoChainDecision({
-      board,
-      taskCursorExecution: execution,
-      autoGate,
-      autoQualityGateInFlight: isImplementationAutoQualityGateClientInFlight(autoGate),
-      allowedTaskIds: resolveQuickRunAllowedTaskIds(quickRun),
-    });
-    if (decision.kind === "none") return;
-    const idempotencyKey = buildTaskCursorAutoChainIdempotencyKey({
-      projectId: pid,
-      decision,
-      activeRunId: execution?.cursorRunId,
-    });
-    if (hasTaskCursorAutoChainIdempotencyKey(taskCursorAutoChainExecutedKeysRef.current, idempotencyKey)) {
-      return;
-    }
-    const dedupeKey = resolveTaskCursorAutoChainTriggerDedupeKey({
-      projectId: pid,
-      decision,
-      activeRunId: execution?.cursorRunId,
-    });
-    if (taskCursorAutoChainRef.current === dedupeKey) return;
-    if (isInFlightTaskCursorExecution(execution)) return;
-    taskCursorAutoChainRef.current = dedupeKey;
-    rememberTaskCursorAutoChainIdempotencyKey(
-      taskCursorAutoChainExecutedKeysRef.current,
-      idempotencyKey,
-    );
-    const notice = formatTaskCursorAutoChainNotice(decision, board);
-    showToast(notice);
-    executionSingleChat.appendAiNotice(notice);
-    taskCursorAutoChainPreferredTaskIdRef.current =
-      decision.kind === "continue" || decision.kind === "continue_after_failure"
-        ? decision.toTaskId
-        : decision.taskId;
-    const result = runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
-    applyImplementationOrchestrationResult({
-      messages: executionSingleChat.chatMessages,
-      orchestrationPatch: buildPromptTimelineOrchestrationPatch(
-        requirementsStateJsonRef.current.promptTimeline,
-        buildTaskCursorAutoChainTimelineEntry({
-          decision,
-          notice,
-          triggerActionOutcome:
-            result.outcome === "blocked" || result.outcome === "no_op"
-              ? result.outcome
-              : "executed",
-          message:
-            result.outcome === "blocked" || result.outcome === "no_op"
-              ? result.message
-              : undefined,
-        }),
-      ),
-    });
-    if (result.outcome === "blocked" || result.outcome === "no_op") {
-      taskCursorAutoChainRef.current = null;
-    }
-  }, [
-    applyImplementationOrchestrationResult,
-    implementationStageBoardGateContext?.board,
-    orchestrationAwareRequirementsState,
-    showToast,
-    executionSingleChat,
-    projectId,
-  ]);
-
-  useEffect(() => {
-    triggerTaskCursorAutoChain();
-  }, [
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.taskId,
-    orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
-    orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
-    implementationStageBoardGateContext?.board?.summary?.completedTasks,
-    implementationStageBoardGateContext?.board?.summary?.totalTasks,
-    orchestrationAwareRequirementsState.implementationExecutionJobsV1,
-    triggerTaskCursorAutoChain,
-  ]);
-
   useEffect(() => {
     const queue = parseCodeTaskExecutionQueueV1(
       orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
@@ -2753,9 +2584,14 @@ export function PrototypePreviewPanel({
 
     const pid = projectId.trim();
     const nowIso = new Date().toISOString();
+    const processedRunStatuses = queue.selectedCodeTaskIds
+      .slice(0, queue.currentIndex + 1)
+      .map((id) => findLatestRunForCodeTask(runs, id)?.status)
+      .filter((status): status is NonNullable<typeof status> => Boolean(status));
     const { queue: nextQueue, nextCodeTaskId, finished } = advanceCodeTaskExecutionQueue({
       queue,
       lastRunStatus: run!.status,
+      processedRunStatuses,
       nowIso,
     });
 
@@ -2771,7 +2607,9 @@ export function PrototypePreviewPanel({
         showToast(
           nextQueue.status === "completed"
             ? "선택 CodeTask 실행을 모두 완료했습니다."
-            : "선택 CodeTask 실행이 종료되었습니다.",
+            : nextQueue.status === "completed_with_issues"
+              ? "선택 CodeTask 실행 완료 · 일부 재작업/실패/중단 항목이 있습니다."
+              : "선택 CodeTask 실행이 중단되었습니다.",
         );
       }
       return;
@@ -2821,7 +2659,7 @@ export function PrototypePreviewPanel({
       parentTaskId: dispatchTarget.parentTaskId,
       workItemId: dispatchTarget.workItem.id,
     };
-    taskCursorAutoChainPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
+    codeTaskDispatchPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
     applyImplementationOrchestrationResult({
       messages: executionSingleChat.chatMessages,
       orchestrationPatch: { codeTaskExecutionRunsV1 },
@@ -2845,26 +2683,6 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
     projectId,
     showToast,
-  ]);
-
-  useEffect(() => {
-    const execution = parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1);
-    if (execution && isInFlightTaskCursorExecution(execution)) {
-      taskCursorAutoChainRef.current = null;
-    } else if (execution && !isInFlightTaskCursorExecution(execution)) {
-      taskCursorAutoChainExecutedKeysRef.current.clear();
-    }
-    if (
-      execution &&
-      execution.status === "cursor_failed" &&
-      isTransientTaskCursorLaunchError(execution.errorMessage)
-    ) {
-      taskCursorAutoChainRef.current = null;
-    }
-  }, [
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.errorMessage,
   ]);
 
   const implementationCursorGate = useMemo(
@@ -4496,8 +4314,8 @@ export function PrototypePreviewPanel({
             showToast(message);
             return { outcome: "blocked", message };
           }
-          const preferredTaskId = taskCursorAutoChainPreferredTaskIdRef.current?.trim() || null;
-          taskCursorAutoChainPreferredTaskIdRef.current = null;
+          const preferredTaskId = codeTaskDispatchPreferredTaskIdRef.current?.trim() || null;
+          codeTaskDispatchPreferredTaskIdRef.current = null;
           const manualTaskId = boardManualPickTaskIdRef.current?.trim() || null;
           boardManualPickTaskIdRef.current = null;
           const explicitTaskId = manualTaskId ?? preferredTaskId;
@@ -6535,8 +6353,7 @@ export function PrototypePreviewPanel({
         parsedRequirementsState.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
     });
     if (!selectedCodeTaskIds.length) {
-      const message =
-        "실행할 CodeTask를 선택해 주세요. Process Task를 체크하면 하위 CodeTask가 실행 큐에 포함됩니다.";
+      const message = "실행할 CodeTask를 선택해 주세요.";
       showToast(message);
       return { outcome: "blocked", message };
     }
@@ -6621,8 +6438,7 @@ export function PrototypePreviewPanel({
     showToast(
       `선택 CodeTask ${selectedCodeTaskIds.length}개를 순차 실행합니다. (${dispatchTarget.codeTask.codeTaskId})`,
     );
-    taskCursorAutoChainRef.current = null;
-    taskCursorAutoChainPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
+    codeTaskDispatchPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
     const cursorDispatchResult = runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
     const dispatchNowIso = new Date().toISOString();
     void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
@@ -6814,8 +6630,6 @@ export function PrototypePreviewPanel({
     try {
       taskCursorPollTokenRef.current += 1;
       taskCursorPollActiveRunIdRef.current = null;
-      taskCursorAutoChainRef.current = null;
-      taskCursorAutoChainExecutedKeysRef.current.clear();
       codeTaskQueueDispatchRef.current = null;
       codeTaskQueueAdvanceInFlightRef.current = false;
       setActiveTaskCursorJob(null);
@@ -7117,6 +6931,7 @@ export function PrototypePreviewPanel({
             implementationAutoQualityGateV1={orchestrationAwareRequirementsState.implementationAutoQualityGateV1}
             implementationQuickRunV1={orchestrationAwareRequirementsState.implementationQuickRunV1}
             codeTaskExecutionQueueV1={orchestrationAwareRequirementsState.codeTaskExecutionQueueV1}
+            codeTaskExecutionRunsV1={orchestrationAwareRequirementsState.codeTaskExecutionRunsV1}
             qualityGateResults={orchestrationAwareRequirementsState.implementationQualityGateResultsV1}
             boardState={orchestrationAwareRequirementsState.implementationExecutionBoardStateV1}
             previewReady={prototypeRunSyncSnapshot.previewReady}
