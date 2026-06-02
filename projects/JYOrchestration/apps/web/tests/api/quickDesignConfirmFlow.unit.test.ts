@@ -164,7 +164,7 @@ describe("quickDesignConfirmFlow", () => {
       existingImplementationTaskListV1: existingList,
       nowIso,
     });
-    expect(patch).not.toHaveProperty("implementationTaskListV1");
+    expect(patch).toHaveProperty("implementationTaskListV1");
     expect(patch.implementationSeedV1).toBeTruthy();
   });
 

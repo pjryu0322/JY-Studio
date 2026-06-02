@@ -54,7 +54,7 @@ function sampleList(): ImplementationTaskListV1 {
 }
 
 describe("implementationTaskPipelinePolicy", () => {
-  it("marks task complete after developer and reviewer are done", () => {
+  it("marks task complete after developer is done (review is integrated)", () => {
     expect(
       isPerTaskPipelineComplete({
         developerStatus: "done",
@@ -66,7 +66,7 @@ describe("implementationTaskPipelinePolicy", () => {
         developerStatus: "done",
         reviewerStatus: "ready",
       }),
-    ).toBe("reviewer");
+    ).toBe("completed");
   });
 
   it("task tree nests code tasks under process tasks", () => {

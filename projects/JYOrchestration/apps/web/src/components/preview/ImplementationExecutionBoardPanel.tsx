@@ -372,8 +372,28 @@ export function ImplementationExecutionBoardPanel({
           onCancelTaskCursorPolling={onCancelTaskCursorPolling}
           allChecked={allCodeTasksChecked}
           selectedCodeTaskCount={checkedCodeTaskIds.length}
-          onSelectTask={setSelectedTaskId}
-          onSelectCodeTask={(_parentTaskId, codeTaskId) => setSelectedCodeTaskId(codeTaskId)}
+          onSelectTask={(taskId) => {
+            setSelectedTaskId(taskId);
+            updateCheckedCodeTaskIds(
+              resolveProcessTaskCodeTaskSelectionToggle({
+                parentTaskId: taskId,
+                checked: true,
+                selectedCodeTaskIds: checkedCodeTaskIds,
+                codeTaskPlan: implementationCodeTaskPlanV1,
+              }),
+            );
+          }}
+          onSelectCodeTask={(_parentTaskId, codeTaskId) => {
+            setSelectedCodeTaskId(codeTaskId);
+            updateCheckedCodeTaskIds(
+              resolveCodeTaskTreeSelectionToggle({
+                codeTaskId,
+                checked: true,
+                selectedCodeTaskIds: checkedCodeTaskIds,
+                codeTaskPlan: implementationCodeTaskPlanV1,
+              }),
+            );
+          }}
           onToggleTaskChecked={(taskId, checked) => {
             updateCheckedCodeTaskIds(
               resolveProcessTaskCodeTaskSelectionToggle({

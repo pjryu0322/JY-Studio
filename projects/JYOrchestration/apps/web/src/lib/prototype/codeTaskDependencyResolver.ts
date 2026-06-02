@@ -171,6 +171,11 @@ export function checkCodeTaskDependencyReady(input: {
 
   if (incompleteCodeTaskIds.size) {
     const blockerId = [...incompleteCodeTaskIds][0] ?? "";
+    const blockerTitle = blockerId
+      ? input.codeTaskPlan.tasks.find((t) => t.codeTaskId === blockerId)?.title ??
+        input.codeTaskPlan.tasks.find((t) => t.parentTaskId === blockerId)?.title ??
+        blockerId
+      : "";
     return {
       codeTaskId,
       status: "blocked",
@@ -178,7 +183,7 @@ export function checkCodeTaskDependencyReady(input: {
       incompleteCodeTaskIds: [...incompleteCodeTaskIds],
       unknownDependencyIds: [],
       message: blockerId
-        ? `선행 CodeTask ${blockerId} 완료 필요`
+        ? `선행 작업 필요: ${blockerTitle}`
         : "선행 CodeTask가 완료되지 않았습니다.",
     };
   }
@@ -258,11 +263,19 @@ export function formatCodeTaskDependencyQueueStartMessage(input: {
 
 export function formatCodeTaskDependencyTreeHint(
   check: CodeTaskDependencyCheckResult,
+  codeTaskPlan?: ImplementationCodeTaskPlanV1 | null,
 ): string | undefined {
   if (check.status === "ready") return undefined;
   if (check.status === "unknown_dependency") {
     return `알 수 없는 dependency: ${check.unknownDependencyIds.join(", ")}`;
   }
   const blocker = check.incompleteCodeTaskIds[0];
-  return blocker ? `${blocker} 완료 후 실행 가능` : check.message;
+  if (!blocker) return check.message;
+
+  const depTitle = codeTaskPlan
+    ? codeTaskPlan.tasks.find((t) => t.codeTaskId === blocker)?.title ??
+      codeTaskPlan.tasks.find((t) => t.parentTaskId === blocker)?.title ??
+      blocker
+    : blocker;
+  return `${depTitle} 완료 후 실행 가능`;
 }

@@ -50,7 +50,7 @@ export function computeTaskTreeDependencyViews(
     );
     const parentLabels = parentTaskIds.map((parentId) => {
       const parent = byId.get(parentId);
-      return parent ? `${parentId} ${parent.title}` : parentId;
+      return parent ? parent.title : parentId;
     });
     const depth =
       parentTaskIds.length === 0

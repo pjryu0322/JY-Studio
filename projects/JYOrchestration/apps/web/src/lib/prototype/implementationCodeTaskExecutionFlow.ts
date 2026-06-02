@@ -10,12 +10,6 @@ export type CodeTaskExecutionFlowPhase =
   | "github_verifying"
   | "github_verified"
   | "lightweight_checking"
-  | "review_policy_checked"
-  | "ai_review_running"
-  | "ai_review_passed"
-  | "security_policy_checked"
-  | "ai_security_running"
-  | "ai_security_passed"
   | "completed"
   | "failed"
   | "blocked_by_dependency";
@@ -33,8 +27,6 @@ const FLOW_STEP_DEFS: readonly Readonly<{ readonly id: string; readonly label: s
   { id: "cursor_running", label: "Cursor 실행" },
   { id: "github_verifying", label: "GitHub commit 확인" },
   { id: "lightweight_checking", label: "경량 자동검사" },
-  { id: "review_policy_checked", label: "검수 필요 여부" },
-  { id: "security_policy_checked", label: "보안 필요 여부" },
   { id: "completed", label: "완료" },
 ];
 
@@ -52,18 +44,6 @@ export function formatCodeTaskExecutionFlowPhaseKo(phase: CodeTaskExecutionFlowP
       return "GitHub 확인 완료";
     case "lightweight_checking":
       return "경량 자동검사 중";
-    case "review_policy_checked":
-      return "AI검수 필요 여부 확인 완료";
-    case "ai_review_running":
-      return "AI검수 진행 중";
-    case "ai_review_passed":
-      return "AI검수 완료";
-    case "security_policy_checked":
-      return "AI보안 필요 여부 확인 완료";
-    case "ai_security_running":
-      return "AI보안 진행 중";
-    case "ai_security_passed":
-      return "AI보안 완료";
     case "completed":
       return "완료";
     case "failed":
@@ -84,10 +64,6 @@ export function formatCodeTaskExecutionProgressLine(phase: CodeTaskExecutionFlow
     case "github_verified":
     case "lightweight_checking":
       return "GitHub 확인 완료, 경량검사 진행";
-    case "ai_review_running":
-      return "AI검수 진행 중";
-    case "ai_security_running":
-      return "AI보안 진행 중";
     case "completed":
       return "실행 완료";
     case "failed":
@@ -119,13 +95,7 @@ function mapCursorStatusToPhase(input: {
   if (s === "cursor_failed" || s === "github_verify_failed") return "failed";
   if (s === "status_check_stopped") return "cursor_running";
   if (s === "scm_pending") return "completed";
-  const gate = input.autoGate;
-  const gateForTask = gate && gate.taskId === execution.taskId ? gate : null;
-  if (gateForTask?.status === "review_running") return "ai_review_running";
-  if (gateForTask?.status === "passed") {
-    if (s === "security_pending") return "ai_review_passed";
-    return "review_policy_checked";
-  }
+  // Reviewer/Security are handled in integrated stage, not per CodeTask.
   if (s === "review_pending" || s === "security_pending") return "lightweight_checking";
   if (s === "github_verified") return "github_verified";
   if (s === "github_verifying" || s === "cursor_completed") return "github_verifying";
@@ -142,12 +112,6 @@ function phaseIndex(phase: CodeTaskExecutionFlowPhase): number {
     "github_verifying",
     "github_verified",
     "lightweight_checking",
-    "review_policy_checked",
-    "ai_review_running",
-    "ai_review_passed",
-    "security_policy_checked",
-    "ai_security_running",
-    "ai_security_passed",
     "completed",
     "failed",
   ];
@@ -160,13 +124,9 @@ export function buildCodeTaskExecutionFlowSteps(input: {
   readonly policy: CodeTaskReviewSecurityPolicyResult;
 }): readonly CodeTaskExecutionFlowStepVm[] {
   const current = phaseIndex(input.phase);
-  const reviewSkipped = input.policy.reviewPolicy === "skip";
-  const securitySkipped = input.policy.securityPolicy === "skip";
 
   return FLOW_STEP_DEFS.map((def, index) => {
     let label = def.label;
-    if (def.id === "review_policy_checked" && reviewSkipped) label = "검수 필요 여부 (생략)";
-    if (def.id === "security_policy_checked" && securitySkipped) label = "보안 필요 여부 (생략)";
 
     const stepPhase = def.id as CodeTaskExecutionFlowPhase;
     const stepIdx = phaseIndex(stepPhase === "completed" ? "completed" : stepPhase);
@@ -179,24 +139,14 @@ export function buildCodeTaskExecutionFlowSteps(input: {
     } else if (input.phase === "blocked_by_dependency") {
       state = "pending";
     } else if (stepIdx < current) {
-      state = def.id === "review_policy_checked" && reviewSkipped ? "skipped" : def.id === "security_policy_checked" && securitySkipped ? "skipped" : "done";
+      state = "done";
     } else if (stepIdx === current || (def.id === "cursor_running" && input.phase === "cursor_running")) {
-      state = def.id === "review_policy_checked" && reviewSkipped ? "skipped" : def.id === "security_policy_checked" && securitySkipped ? "skipped" : "active";
-    } else if (
-      (def.id === "review_policy_checked" && reviewSkipped && current > stepIdx) ||
-      (def.id === "security_policy_checked" && securitySkipped && current > stepIdx)
-    ) {
-      state = "skipped";
+      state = "active";
     }
 
     if (input.phase === "completed" && def.id === "completed") state = "done";
     if (input.phase === "completed" && stepIdx < phaseIndex("completed")) {
-      state =
-        def.id === "review_policy_checked" && reviewSkipped
-          ? "skipped"
-          : def.id === "security_policy_checked" && securitySkipped
-            ? "skipped"
-            : "done";
+      state = "done";
     }
 
     return { id: def.id, label, state };

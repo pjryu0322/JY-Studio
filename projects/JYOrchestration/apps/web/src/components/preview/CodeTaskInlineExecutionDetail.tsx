@@ -62,8 +62,6 @@ export function CodeTaskInlineExecutionDetailBlock({
   readonly onCancelPolling?: () => void;
   readonly onResumeStatusCheck?: () => void;
 }) {
-  const hasFlowDetails =
-    Boolean(detail.executionFlowSteps?.length) || Boolean(detail.pipelineSteps?.length);
   const hasTechnicalDetails = Boolean(detail.technicalProgress);
 
   return (
@@ -107,33 +105,14 @@ export function CodeTaskInlineExecutionDetailBlock({
           ) : null}
         </div>
       ) : null}
-      {hasFlowDetails || hasTechnicalDetails ? (
-        <details className={styles.progressDetails} data-testid="implementation-code-task-flow-details">
-          <summary className={styles.disclosureSummary}>실행 흐름 보기</summary>
+      {hasTechnicalDetails ? (
+        <details
+          className={styles.progressDetailsNested}
+          data-testid="implementation-code-task-progress-details"
+        >
+          <summary className={styles.disclosureSummary}>기술 상세 보기</summary>
           <div className={styles.progressDetailsBody}>
-            {detail.executionFlowSteps?.length ? (
-              <ExecutionFlowSteps steps={detail.executionFlowSteps} />
-            ) : null}
-            {detail.pipelineSteps?.length ? (
-              <div className={styles.compactProgressSteps} aria-label="파이프라인 진행">
-                {detail.pipelineSteps.map((step) => (
-                  <div key={step.id} className={pipelineStepClass(step.state)}>
-                    <span>{step.label}</span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-            {hasTechnicalDetails ? (
-              <details
-                className={styles.progressDetailsNested}
-                data-testid="implementation-code-task-progress-details"
-              >
-                <summary className={styles.disclosureSummary}>기술 상세 보기</summary>
-                <div className={styles.progressDetailsBody}>
-                  <ProgressTechnicalDetails progress={detail.technicalProgress!} />
-                </div>
-              </details>
-            ) : null}
+            <ProgressTechnicalDetails progress={detail.technicalProgress!} />
           </div>
         </details>
       ) : null}

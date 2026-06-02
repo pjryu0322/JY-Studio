@@ -17,29 +17,28 @@ function isRoleStepFailed(status: ImplementationBoardStepStatus): boolean {
   return status === "failed";
 }
 
-/** Quick Run Task 단위 파이프라인: AI 개발 + GitHub + 검수까지만. 보안·SCM은 통합 단계에서 수행. */
+/** CodeTask 단위 파이프라인: AI 개발 + GitHub 결과 확인까지만. 검수·보안·SCM은 통합 단계에서 수행. */
 export function derivePerTaskPipelineRole(input: {
   readonly developerStatus: ImplementationBoardStepStatus;
-  readonly reviewerStatus: ImplementationBoardStepStatus;
-}): ImplementationBoardRoleStep | "completed" {
+  /** @deprecated per-task reviewer 단계는 사용하지 않음 */
+  readonly reviewerStatus?: ImplementationBoardStepStatus;
+}): "developer" | "completed" {
   if (isRoleStepFailed(input.developerStatus) || !isRoleStepComplete(input.developerStatus)) {
     return "developer";
-  }
-  if (isRoleStepFailed(input.reviewerStatus) || !isRoleStepComplete(input.reviewerStatus)) {
-    return "reviewer";
   }
   return "completed";
 }
 
 export function isPerTaskPipelineComplete(input: {
   readonly developerStatus: ImplementationBoardStepStatus;
-  readonly reviewerStatus: ImplementationBoardStepStatus;
+  /** @deprecated per-task reviewer 단계는 사용하지 않음 */
+  readonly reviewerStatus?: ImplementationBoardStepStatus;
 }): boolean {
   return derivePerTaskPipelineRole(input) === "completed";
 }
 
 export const PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE =
-  "보안 점검·SCM merge는 모든 Task 완료 후 통합 단계에서 진행합니다." as const;
+  "AI 검수·AI 보안·SCM merge는 모든 CodeTask 완료 후 통합 단계에서 진행합니다." as const;
 
 export type ImplementationIntegratedPipelineLine = Readonly<{
   readonly stepId: string;

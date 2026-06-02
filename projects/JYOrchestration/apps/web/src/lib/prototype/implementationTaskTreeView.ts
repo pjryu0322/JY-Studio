@@ -225,7 +225,7 @@ function buildCodeTaskNode(input: {
   if (phase === "blocked_by_dependency") collapsedSummary = "선행 작업 필요";
 
   const dependencyHint = dependencyCheck
-    ? formatCodeTaskDependencyTreeHint(dependencyCheck)
+    ? formatCodeTaskDependencyTreeHint(dependencyCheck, input.codeTaskPlan)
     : undefined;
   const statusLabel = rowView.statusLabel;
   const progressLabel = rowView.progressLabel;

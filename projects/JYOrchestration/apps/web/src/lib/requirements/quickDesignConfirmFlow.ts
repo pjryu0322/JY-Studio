@@ -60,6 +60,8 @@ export type QuickDesignConfirmFlowInput = Readonly<
     /** Injected by server API routes with latest ExecutionSetup. */
     readonly refinementSettings?: ProjectCodeTaskRefinementSettings | null;
     readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
+    /** Optional template selection made by user. */
+    readonly userSelectedTemplateId?: import("@/lib/templates/prototypeTemplates").PrototypeTemplateType | null;
     /** When set, skips `resolveProjectExecutionEnvOk` (unit tests). */
     readonly envOkOverride?: boolean;
   }
@@ -135,9 +137,14 @@ export function buildQuickDesignConfirmStatePatch(input: {
     }),
     ...planningArtifacts,
   };
-  if (input.existingImplementationTaskListV1 != null) {
-    return base;
-  }
+  const nextTaskList = input.prep.implementationTaskListV1;
+  const nextHasFrame = Boolean(nextTaskList?.tasks?.some((t) => t.taskId === "DEV-FRAME-001"));
+  const existingHasFrame = Boolean(
+    input.existingImplementationTaskListV1?.tasks?.some((t) => t.taskId === "DEV-FRAME-001"),
+  );
+  const shouldPatchTaskList =
+    input.existingImplementationTaskListV1 == null || (nextHasFrame && !existingHasFrame);
+  if (!shouldPatchTaskList) return base;
   return {
     ...base,
     implementationTaskListV1: input.prep.implementationTaskListV1 ?? undefined,
@@ -192,6 +199,8 @@ export async function runQuickDesignConfirmFlowWithPrep(input: {
   const prep = await runQuickDesignConfirmImplementationPrepWithLlm({
     projectId: flow.projectId,
     projectName: flow.projectName,
+    projectDescription: flow.projectDescription,
+    userSelectedTemplateId: flow.userSelectedTemplateId,
     orchestration: confirm.orchestration,
     definitions: flow.slotDefinitions,
     nowIso: flow.nowIso,

@@ -30,10 +30,15 @@ export function normalizeSelectedCodeTaskIds(input: {
   const validIds = new Set(listCodeTaskIdsFromPlan(input.codeTaskPlan));
   if (!validIds.size) return [];
 
-  const explicit = (input.selectedCodeTaskIds ?? [])
-    .map((id) => id.trim())
-    .filter((id) => validIds.has(id));
-  if (explicit.length) return [...new Set(explicit)].sort((a, b) => a.localeCompare(b));
+  // IMPORTANT:
+  // - `undefined/null` means "not set yet" → fall back to legacy / default selection.
+  // - `[]` means "explicitly empty selection" → keep empty (do NOT default to all).
+  if (input.selectedCodeTaskIds !== undefined && input.selectedCodeTaskIds !== null) {
+    const explicit = input.selectedCodeTaskIds
+      .map((id) => id.trim())
+      .filter((id) => validIds.has(id));
+    return [...new Set(explicit)].sort((a, b) => a.localeCompare(b));
+  }
 
   const legacy = expandProcessTaskIdsToCodeTaskIds({
     codeTaskPlan: input.codeTaskPlan!,
@@ -41,7 +46,8 @@ export function normalizeSelectedCodeTaskIds(input: {
   }).filter((id) => validIds.has(id));
   if (legacy.length) return [...new Set(legacy)].sort((a, b) => a.localeCompare(b));
 
-  return listCodeTaskIdsFromPlan(input.codeTaskPlan);
+  // If there is no explicit selection and no legacy selection, do not auto-select everything.
+  return [];
 }
 
 export function resolveProcessTaskCodeTaskSelectionToggle(input: {

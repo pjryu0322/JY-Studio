@@ -61,7 +61,6 @@ export function formatImplementationExecutionOverviewLines(
     `CodeTask 진행: ${progressDone} / ${overview.codeTaskCount}`,
     `실패: ${overview.failedCount}`,
     `차단: ${overview.blockedCount}`,
-    `Process Task: ${overview.processTaskCount}개 그룹`,
     ...(typeof input?.selectedCodeTaskCount === "number"
       ? [`선택됨: ${input.selectedCodeTaskCount}개`]
       : []),
