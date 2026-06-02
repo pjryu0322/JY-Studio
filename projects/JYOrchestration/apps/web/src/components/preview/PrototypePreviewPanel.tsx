@@ -317,6 +317,7 @@ import { pickPersistentExecutionLogTimelineEntries } from "@/lib/prototype/promp
 import { buildCodeTaskDeveloperPrompt } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
 import {
   appendCodeTaskExecutionRun,
+  createBlockedByDependencyCodeTaskRun,
   createCodeTaskExecutionRun,
   findActiveCodeTaskExecutionRun,
   findLatestRunForCodeTask,
@@ -331,8 +332,13 @@ import {
   parseCodeTaskExecutionQueueV1,
   resolveSelectedCodeTaskIdsForQueue,
   shouldAdvanceQueueAfterRun,
+  skipBlockedQueueCodeTasks,
   startCodeTaskExecutionQueue,
 } from "@/lib/prototype/codeTaskExecutionQueue";
+import {
+  formatCodeTaskDependencyQueueStartMessage,
+  partitionCodeTaskIdsByDependencyReadiness,
+} from "@/lib/prototype/codeTaskDependencyResolver";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import { prepareSelectedCodeTaskCursorExecution } from "@/lib/prototype/selectedCodeTaskCursorExecution";
 import {
@@ -2602,16 +2608,67 @@ export function PrototypePreviewPanel({
       .slice(0, queue.currentIndex + 1)
       .map((id) => findLatestRunForCodeTask(runs, id)?.status)
       .filter((status): status is NonNullable<typeof status> => Boolean(status));
-    const { queue: nextQueue, nextCodeTaskId, finished } = advanceCodeTaskExecutionQueue({
-      queue,
-      lastRunStatus: run!.status,
-      processedRunStatuses,
-      nowIso,
-    });
+    const { queue: advancedQueue, nextCodeTaskId: initialNextId, finished: initialFinished } =
+      advanceCodeTaskExecutionQueue({
+        queue,
+        lastRunStatus: run!.status,
+        processedRunStatuses,
+        nowIso,
+      });
+
+    const codeTaskPlan = orchestrationAwareRequirementsState.implementationCodeTaskPlanV1;
+    let nextQueue = advancedQueue;
+    let nextRuns = runs;
+    let nextCodeTaskId = initialNextId;
+    let finished = initialFinished;
+
+    if (codeTaskPlan && initialNextId && !initialFinished) {
+      const skipped = skipBlockedQueueCodeTasks({
+        queue: advancedQueue,
+        nextCodeTaskId: initialNextId,
+        processedRunStatuses,
+        codeTaskPlan,
+        runs: nextRuns,
+        recordBlockedRun: (blockedCodeTaskId, check, currentRuns) => {
+          const target = resolveCodeTaskDispatchTarget({
+            codeTaskId: blockedCodeTaskId,
+            codeTaskPlan,
+            taskList: orchestrationAwareRequirementsState.implementationTaskListV1,
+            cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1,
+          });
+          if (!target) return currentRuns;
+          return appendCodeTaskExecutionRun(
+            currentRuns,
+            createBlockedByDependencyCodeTaskRun({
+              projectId: pid,
+              processTaskId: target.parentTaskId,
+              workItemId: target.workItem.id,
+              codeTaskId: blockedCodeTaskId,
+              runs: currentRuns,
+              check,
+              nowIso,
+            }),
+          );
+        },
+        nowIso,
+      });
+      nextQueue = skipped.queue;
+      nextRuns = skipped.runs;
+      nextCodeTaskId = skipped.nextCodeTaskId;
+      finished = skipped.finished;
+      if (skipped.skippedCodeTaskIds.length) {
+        showToast(
+          `선행 작업 미완료로 ${skipped.skippedCodeTaskIds.length}개 CodeTask를 건너뜁니다.`,
+        );
+      }
+    }
 
     applyImplementationOrchestrationResult({
       messages: executionSingleChat.chatMessages,
-      orchestrationPatch: { codeTaskExecutionQueueV1: nextQueue },
+      orchestrationPatch: {
+        codeTaskExecutionQueueV1: nextQueue,
+        ...(nextRuns !== runs ? { codeTaskExecutionRunsV1: nextRuns } : {}),
+      },
     });
 
     if (finished || !nextCodeTaskId) {
@@ -2619,13 +2676,13 @@ export function PrototypePreviewPanel({
       codeTaskQueueAdvanceInFlightRef.current = false;
       if (finished) {
         const runSummary = summarizeCodeTaskExecutionQueueRuns({
-          runs,
+          runs: nextRuns,
           selectedCodeTaskIds: queue.selectedCodeTaskIds,
         });
         const completionDetail = formatCodeTaskExecutionQueueCompletionDetail({
           runSummary,
           codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-          runs,
+          runs: nextRuns,
           selectedCodeTaskIds: queue.selectedCodeTaskIds,
         });
         showToast(
@@ -2669,7 +2726,7 @@ export function PrototypePreviewPanel({
         })
       : undefined;
     const codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(
-      runs,
+      nextRuns,
       createCodeTaskExecutionRun({
         projectId: pid,
         processTaskId: dispatchTarget.parentTaskId,
@@ -6564,9 +6621,77 @@ export function PrototypePreviewPanel({
       return { outcome: "blocked", message };
     }
     const nowIso = new Date().toISOString();
+    const existingRuns =
+      parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
+      [];
+    const codeTaskPlan = parsedRequirementsState.implementationCodeTaskPlanV1;
+    const dependencyPartition = codeTaskPlan
+      ? partitionCodeTaskIdsByDependencyReadiness({
+          codeTaskIds: selectedCodeTaskIds,
+          codeTaskPlan,
+          runs: existingRuns,
+        })
+      : { readyIds: selectedCodeTaskIds, blocked: [], unknown: [] };
+    const dependencyNotice = codeTaskPlan
+      ? formatCodeTaskDependencyQueueStartMessage({
+          selectedCount: selectedCodeTaskIds.length,
+          partition: dependencyPartition,
+          codeTaskPlan,
+        })
+      : "";
+    let codeTaskExecutionRunsV1 = existingRuns;
+    for (const check of [...dependencyPartition.blocked, ...dependencyPartition.unknown]) {
+      const blockedTarget = resolveCodeTaskDispatchTarget({
+        codeTaskId: check.codeTaskId,
+        codeTaskPlan,
+        taskList: parsedRequirementsState.implementationTaskListV1,
+        cursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
+      });
+      if (!blockedTarget) continue;
+      codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(
+        codeTaskExecutionRunsV1,
+        createBlockedByDependencyCodeTaskRun({
+          projectId: pid,
+          processTaskId: blockedTarget.parentTaskId,
+          workItemId: blockedTarget.workItem.id,
+          codeTaskId: check.codeTaskId,
+          runs: codeTaskExecutionRunsV1,
+          check,
+          nowIso,
+        }),
+      );
+    }
+    if (!dependencyPartition.readyIds.length) {
+      const message =
+        dependencyNotice.trim() ||
+        "선택한 CodeTask 중 실행 가능한 항목이 없습니다. 선행 작업을 먼저 완료해 주세요.";
+      if (dependencyNotice.trim()) {
+        executionSingleChat.appendAiNotice(dependencyNotice);
+      }
+      showToast(message.split("\n")[0] ?? message);
+      void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+        codeTaskExecutionRunsV1,
+        promptTimeline: appendPromptTimeline(
+          parsedRequirementsState.promptTimeline,
+          buildImplementationQuickRunTimelineEntry({
+            action: "implementation_quick_run_started",
+            projectId: pid,
+            taskId: selectedTaskIds[0] ?? "",
+            nowIso,
+          }),
+        ),
+      });
+      return { outcome: "blocked", message };
+    }
+    if (dependencyNotice.trim()) {
+      executionSingleChat.appendAiNotice(dependencyNotice);
+      showToast(
+        `실행 가능 ${dependencyPartition.readyIds.length}개 · 차단 ${dependencyPartition.blocked.length + dependencyPartition.unknown.length}개`,
+      );
+    }
     const codeTaskExecutionQueueV1 = startCodeTaskExecutionQueue({
       projectId: pid,
-      selectedCodeTaskIds,
+      selectedCodeTaskIds: dependencyPartition.readyIds,
       nowIso,
     });
     if (!codeTaskExecutionQueueV1) {
@@ -6603,10 +6728,8 @@ export function PrototypePreviewPanel({
           allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
         })
       : undefined;
-    let codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(
-      parseCodeTaskExecutionRunsV1(
-        orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-      ) ?? [],
+    codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(
+      codeTaskExecutionRunsV1,
       createCodeTaskExecutionRun({
         projectId: pid,
         processTaskId: dispatchTarget.parentTaskId,
@@ -6642,7 +6765,7 @@ export function PrototypePreviewPanel({
       ),
     });
     showToast(
-      `선택 CodeTask ${selectedCodeTaskIds.length}개를 순차 실행합니다. (${dispatchTarget.codeTask.codeTaskId})`,
+      `선택 CodeTask ${dependencyPartition.readyIds.length}개를 순차 실행합니다. (${dispatchTarget.codeTask.codeTaskId})`,
     );
     codeTaskDispatchPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
     const cursorDispatchResult = runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
@@ -6667,12 +6790,21 @@ export function PrototypePreviewPanel({
     projectId,
     implementationStageBoardGateContext?.board,
     parsedRequirementsState.implementationExecutionBoardStateV1?.selectedTaskIds,
+    parsedRequirementsState.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
+    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
     persistChatToDb,
     requirementsStateJson,
     parsedRequirementsState.promptTimeline,
     parsedRequirementsState.implementationCodeTaskPlanV1,
+    parsedRequirementsState.implementationTaskListV1,
     parsedRequirementsState.cursorWorkItemsV1,
     parsedRequirementsState.implementationWorkItemPreflightSummaryV1,
+    executionSetupRow?.allowedPathGlobs,
+    executionSetupRow?.baseBranch,
+    executionSetupRow?.gitRepoName,
+    executionSetupRow?.gitRepoProvider,
+    executionSetupRow?.gitRepoUrl,
+    executionSingleChat,
     showToast,
   ]);
 

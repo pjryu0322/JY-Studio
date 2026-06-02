@@ -145,6 +145,57 @@ describe("prepareSelectedCodeTaskCursorExecution", () => {
     expect(result.message).toBe(CODE_TASK_IN_FLIGHT_USER_MESSAGE);
     expect(result.message).not.toMatch(/runId/i);
   });
+
+  it("blocks cursor dispatch when codeTask dependency is not ready", () => {
+    const plan = samplePlan();
+    const blockedPlan = {
+      ...plan,
+      tasks: [
+        ...plan.tasks,
+        {
+          codeTaskId: "CT-2",
+          parentTaskId: "DEV-A",
+          title: "Second",
+          description: "",
+          changeType: "feature" as const,
+          acceptanceCriteria: [],
+          verificationHints: [],
+          forbiddenPaths: [],
+          candidateFiles: [],
+          codeTaskDependencies: ["CT-1"],
+        },
+      ],
+    };
+    const result = prepareSelectedCodeTaskCursorExecution({
+      projectId: "p1",
+      queueDispatch: { codeTaskId: "CT-2", parentTaskId: "DEV-A", workItemId: "wi-2" },
+      runs: [
+        sampleRun({ codeTaskId: "CT-2", status: "queued" }),
+      ],
+      codeTaskPlan: blockedPlan,
+      cursorWorkItems: [
+        {
+          id: "wi-2",
+          taskId: "DEV-A",
+          codeTaskId: "CT-2",
+          role: "developer",
+          title: "t",
+          status: "ready",
+        },
+      ],
+      targetRepository: {
+        repoFullName: "org/repo",
+        defaultBranch: "main",
+        provider: "github",
+      },
+      baseBranch: "main",
+      allowedPathGlobs: [],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.outcome).toBe("blocked");
+    expect(result.message).toContain("CT-1");
+  });
 });
 
 describe("queue completion summary", () => {

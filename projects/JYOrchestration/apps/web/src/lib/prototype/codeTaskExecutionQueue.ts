@@ -1,5 +1,9 @@
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
+  checkCodeTaskDependencyReady,
+  type CodeTaskDependencyCheckResult,
+} from "@/lib/prototype/codeTaskDependencyResolver";
+import {
   isQueueContinueAfterRunStatus,
   isQueueIssueRunStatus,
   isTerminalCodeTaskExecutionRunStatus,
@@ -185,4 +189,97 @@ export function shouldAdvanceQueueAfterRun(
   run: CodeTaskExecutionRunV1 | null | undefined,
 ): boolean {
   return Boolean(run && isTerminalCodeTaskExecutionRunStatus(run.status));
+}
+
+export type SkipBlockedQueueCodeTasksResult = Readonly<{
+  readonly queue: CodeTaskExecutionQueueV1;
+  readonly nextCodeTaskId: string | null;
+  readonly finished: boolean;
+  readonly processedRunStatuses: readonly CodeTaskExecutionRunV1["status"][];
+  readonly runs: readonly CodeTaskExecutionRunV1[];
+  readonly skippedCodeTaskIds: readonly string[];
+}>;
+
+/** queue advance 직후 다음 CodeTask가 dependency 미충족이면 blocked_by_dependency로 건너뛴다. */
+export function skipBlockedQueueCodeTasks(input: {
+  readonly queue: CodeTaskExecutionQueueV1;
+  readonly nextCodeTaskId: string | null;
+  readonly processedRunStatuses: readonly CodeTaskExecutionRunV1["status"];
+  readonly codeTaskPlan: ImplementationCodeTaskPlanV1;
+  readonly runs: readonly CodeTaskExecutionRunV1[];
+  readonly recordBlockedRun?: (
+    codeTaskId: string,
+    check: CodeTaskDependencyCheckResult,
+    runs: readonly CodeTaskExecutionRunV1[],
+  ) => readonly CodeTaskExecutionRunV1[];
+  readonly nowIso?: string;
+}): SkipBlockedQueueCodeTasksResult {
+  const now = input.nowIso ?? new Date().toISOString();
+  let queue = input.queue;
+  let nextId = input.nextCodeTaskId;
+  let processed = [...input.processedRunStatuses];
+  let runs = input.runs;
+  const skippedCodeTaskIds: string[] = [];
+
+  while (nextId) {
+    const check = checkCodeTaskDependencyReady({
+      codeTaskId: nextId,
+      codeTaskPlan: input.codeTaskPlan,
+      runs,
+    });
+    if (check.status === "ready") {
+      return {
+        queue,
+        nextCodeTaskId: nextId,
+        finished: false,
+        processedRunStatuses: processed,
+        runs,
+        skippedCodeTaskIds,
+      };
+    }
+    skippedCodeTaskIds.push(nextId);
+    if (input.recordBlockedRun) {
+      runs = input.recordBlockedRun(nextId, check, runs);
+    }
+    processed = [...processed, "blocked_by_dependency"];
+    const advanced = advanceCodeTaskExecutionQueue({
+      queue,
+      lastRunStatus: "blocked_by_dependency",
+      processedRunStatuses: processed,
+      nowIso: now,
+    });
+    queue = advanced.queue;
+    if (advanced.finished) {
+      return {
+        queue,
+        nextCodeTaskId: null,
+        finished: true,
+        processedRunStatuses: processed,
+        runs,
+        skippedCodeTaskIds,
+      };
+    }
+    nextId = advanced.nextCodeTaskId;
+  }
+
+  return {
+    queue,
+    nextCodeTaskId: null,
+    finished: true,
+    processedRunStatuses: processed,
+    runs,
+    skippedCodeTaskIds,
+  };
+}
+
+export function isQueueCodeTaskDependencyReady(input: {
+  readonly codeTaskId: string;
+  readonly codeTaskPlan: ImplementationCodeTaskPlanV1;
+  readonly runs: readonly CodeTaskExecutionRunV1[];
+}): CodeTaskDependencyCheckResult {
+  return checkCodeTaskDependencyReady({
+    codeTaskId: input.codeTaskId,
+    codeTaskPlan: input.codeTaskPlan,
+    runs: input.runs,
+  });
 }

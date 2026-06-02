@@ -44,6 +44,12 @@ export function buildCodeTaskRunUserStatus(
         detail: run.errorMessage ?? "상태 확인이 중단되었습니다. [상태 확인]으로 재개할 수 있습니다.",
         tone: "warning",
       };
+    case "blocked_by_dependency":
+      return {
+        label,
+        detail: run.errorMessage ?? "선행 CodeTask가 완료되지 않아 실행하지 않았습니다.",
+        tone: "warning",
+      };
     case "failed":
       return {
         label,

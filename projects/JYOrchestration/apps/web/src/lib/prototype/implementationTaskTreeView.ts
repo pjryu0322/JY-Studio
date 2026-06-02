@@ -1,5 +1,15 @@
 import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
+  checkCodeTaskDependencyReady,
+  formatCodeTaskDependencyTreeHint,
+} from "@/lib/prototype/codeTaskDependencyResolver";
+import {
+  findLatestRunForCodeTask,
+  type CodeTaskExecutionRunV1,
+} from "@/lib/prototype/codeTaskExecutionRun";
+import { isInFlightCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
+import { formatCodeTaskExecutionRunStatusKo } from "@/lib/prototype/codeTaskExecutionRunUi";
+import {
   buildCodeTaskExecutionFlowSteps,
   deriveCodeTaskExecutionFlowPhase,
   formatCodeTaskExecutionFlowPhaseKo,
@@ -138,6 +148,8 @@ function buildCodeTaskNode(input: {
   readonly workItem?: CursorWorkItem | null;
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly autoGate?: ImplementationAutoQualityGateV1 | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly codeTaskExecutionRuns?: readonly CodeTaskExecutionRunV1[] | null;
   readonly isActive: boolean;
   readonly isSelected: boolean;
 }): ImplementationCodeTaskTreeNode {
@@ -145,13 +157,47 @@ function buildCodeTaskNode(input: {
     codeTask: input.codeTask,
     workItem: input.workItem ?? null,
   });
-  const phase = deriveCodeTaskExecutionFlowPhase({
+  const latestRun = findLatestRunForCodeTask(
+    input.codeTaskExecutionRuns,
+    input.codeTask.codeTaskId,
+  );
+  const dependencyCheck = input.codeTaskPlan
+    ? checkCodeTaskDependencyReady({
+        codeTaskId: input.codeTask.codeTaskId,
+        codeTaskPlan: input.codeTaskPlan,
+        runs: input.codeTaskExecutionRuns ?? [],
+      })
+    : null;
+  const dependencyBlocked =
+    latestRun?.status === "blocked_by_dependency" ||
+    (dependencyCheck &&
+      dependencyCheck.status !== "ready" &&
+      (!latestRun || !isInFlightCodeTaskExecutionRunStatus(latestRun.status)));
+  let phase = deriveCodeTaskExecutionFlowPhase({
     parentTaskId: input.row.taskId,
     taskCursorExecution: input.taskCursorExecution,
     autoGate: input.autoGate,
     developerStatus: input.row.developerStatus,
-    failureReason: input.row.failureReason,
+    failureReason: dependencyBlocked
+      ? "blocked_by_dependency"
+      : latestRun?.status === "rework_required" ||
+          latestRun?.status === "failed" ||
+          latestRun?.status === "status_check_stopped"
+        ? latestRun.failureReason ?? "commit_not_created"
+        : input.row.failureReason,
   });
+  if (latestRun?.status === "completed" || latestRun?.status === "no_code_change_completed") {
+    phase = "completed";
+  } else if (latestRun && isInFlightCodeTaskExecutionRunStatus(latestRun.status)) {
+    phase =
+      latestRun.status === "github_verifying"
+        ? "github_verifying"
+        : latestRun.status === "cursor_running" || latestRun.status === "cursor_requested"
+          ? "cursor_running"
+          : "prompt_ready";
+  } else if (dependencyBlocked) {
+    phase = "blocked_by_dependency";
+  }
   const executionFlowSteps = buildCodeTaskExecutionFlowSteps({ phase, policy });
   const title = stripLeadingTaskIdFromTitle(input.codeTask.codeTaskId, input.codeTask.title);
 
@@ -159,19 +205,37 @@ function buildCodeTaskNode(input: {
   if (phase === "prompt_ready") collapsedSummary = "대기";
   if (phase === "completed") collapsedSummary = "완료";
   if (phase === "failed") collapsedSummary = "재작업 필요";
+  if (phase === "blocked_by_dependency") collapsedSummary = "선행 작업 필요";
+
+  const dependencyHint = dependencyCheck
+    ? formatCodeTaskDependencyTreeHint(dependencyCheck)
+    : undefined;
+  const statusLabel =
+    latestRun && !dependencyBlocked
+      ? formatCodeTaskExecutionRunStatusKo(latestRun.status)
+      : formatCodeTaskExecutionFlowPhaseKo(phase);
+  const progressLabel =
+    phase === "blocked_by_dependency"
+      ? dependencyHint ?? "선행 작업 필요"
+      : latestRun && isInFlightCodeTaskExecutionRunStatus(latestRun.status)
+        ? formatCodeTaskExecutionRunStatusKo(latestRun.status)
+        : phase === "prompt_ready"
+          ? "Quick 실행 대기"
+          : formatCodeTaskExecutionProgressLine(phase);
 
   const metaLines: ImplementationTaskTreeMetaLine[] = [
-    formatMetaLine("상태", formatCodeTaskExecutionFlowPhaseKo(phase)),
-    formatMetaLine(
-      "진행",
-      phase === "prompt_ready" ? "Quick 실행 대기" : formatCodeTaskExecutionProgressLine(phase),
-    ),
+    formatMetaLine("상태", statusLabel),
+    formatMetaLine("진행", progressLabel),
     formatMetaLine("역할", "AI 개발자"),
     formatMetaLine("ID", input.codeTask.codeTaskId),
   ];
 
   const failureReason =
-    phase === "failed" ? input.taskCursorExecution?.failureReason ?? "commit_not_created" : undefined;
+    phase === "failed"
+      ? latestRun?.failureReason ??
+        input.taskCursorExecution?.failureReason ??
+        "commit_not_created"
+      : undefined;
 
   return {
     codeTaskId: input.codeTask.codeTaskId,
@@ -183,12 +247,14 @@ function buildCodeTaskNode(input: {
     isActive: input.isActive,
     isSelected: input.isSelected,
     ...(failureReason ? { failureReason } : {}),
-    ...(failureReason
+    ...(phase === "failed"
       ? { nextActionHint: "다음 처리: Cursor 재실행 대기" }
-      : {
-          nextActionHint:
-            "다음 처리: AI 개발자 실행 → GitHub commit 확인 → 경량검사 → 필요 시 검수/보안",
-        }),
+      : phase === "blocked_by_dependency"
+        ? { nextActionHint: dependencyHint ?? "선행 CodeTask 완료 후 실행 가능" }
+        : {
+            nextActionHint:
+              "다음 처리: AI 개발자 실행 → GitHub commit 확인 → 경량검사 → 필요 시 검수/보안",
+          }),
   };
 }
 
@@ -220,6 +286,7 @@ export function buildImplementationProcessTaskTreeNodes(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
+  readonly codeTaskExecutionRuns?: readonly CodeTaskExecutionRunV1[] | null;
   readonly activeTaskId?: string | null;
   readonly selectedTaskId?: string | null;
   readonly selectedCodeTaskId?: string | null;
@@ -259,6 +326,8 @@ export function buildImplementationProcessTaskTreeNodes(input: {
         workItem: findWorkItemForCodeTask(input.cursorWorkItems ?? undefined, codeTask.codeTaskId),
         taskCursorExecution,
         autoGate: input.implementationAutoQualityGateV1,
+        codeTaskPlan: input.codeTaskPlan,
+        codeTaskExecutionRuns: input.codeTaskExecutionRuns,
         isActive: isActive && (selectedCodeTaskId === codeTask.codeTaskId || (!selectedCodeTaskId && codeTasksForParent[0]?.codeTaskId === codeTask.codeTaskId)),
         isSelected: selectedCodeTaskId === codeTask.codeTaskId,
       }),

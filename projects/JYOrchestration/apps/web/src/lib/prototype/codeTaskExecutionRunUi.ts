@@ -13,6 +13,7 @@ const RUN_LABELS: Record<CodeTaskExecutionRunStatus, string> = {
   no_code_change_completed: "변경 없음",
   rework_required: "재작업 필요",
   status_check_stopped: "상태 확인 중단",
+  blocked_by_dependency: "선행 작업 필요",
   failed: "실패",
 };
 
@@ -40,6 +41,7 @@ export type CodeTaskExecutionQueueRunBreakdown = Readonly<{
   readonly noCodeChange: number;
   readonly reworkRequired: number;
   readonly statusCheckStopped: number;
+  readonly blockedByDependency: number;
   readonly failed: number;
   readonly issues: number;
 }>;
@@ -52,6 +54,7 @@ export function summarizeCodeTaskExecutionQueueRuns(input: {
   let noCodeChange = 0;
   let reworkRequired = 0;
   let statusCheckStopped = 0;
+  let blockedByDependency = 0;
   let failed = 0;
   for (const codeTaskId of input.selectedCodeTaskIds) {
     const run = findLatestRunForCodeTask(input.runs, codeTaskId);
@@ -69,6 +72,9 @@ export function summarizeCodeTaskExecutionQueueRuns(input: {
       case "status_check_stopped":
         statusCheckStopped += 1;
         break;
+      case "blocked_by_dependency":
+        blockedByDependency += 1;
+        break;
       case "failed":
         failed += 1;
         break;
@@ -76,8 +82,16 @@ export function summarizeCodeTaskExecutionQueueRuns(input: {
         break;
     }
   }
-  const issues = reworkRequired + statusCheckStopped + failed;
-  return { completed, noCodeChange, reworkRequired, statusCheckStopped, failed, issues };
+  const issues = reworkRequired + statusCheckStopped + blockedByDependency + failed;
+  return {
+    completed,
+    noCodeChange,
+    reworkRequired,
+    statusCheckStopped,
+    blockedByDependency,
+    failed,
+    issues,
+  };
 }
 
 export function formatCodeTaskExecutionQueueSummary(input: {
@@ -115,6 +129,9 @@ export function formatCodeTaskExecutionQueueCompletionDetail(input: {
     input.runSummary.noCodeChange ? `- 변경 없음: ${input.runSummary.noCodeChange}개` : null,
     input.runSummary.reworkRequired ? `- 재작업 필요: ${input.runSummary.reworkRequired}개` : null,
     input.runSummary.statusCheckStopped ? `- 상태 확인 중단: ${input.runSummary.statusCheckStopped}개` : null,
+    input.runSummary.blockedByDependency
+      ? `- 선행 작업 필요: ${input.runSummary.blockedByDependency}개`
+      : null,
     input.runSummary.failed ? `- 실패: ${input.runSummary.failed}개` : null,
   ].filter(Boolean);
   lines.push(...counts);
@@ -124,6 +141,7 @@ export function formatCodeTaskExecutionQueueCompletionDetail(input: {
       run &&
       (run.status === "rework_required" ||
         run.status === "status_check_stopped" ||
+        run.status === "blocked_by_dependency" ||
         run.status === "failed")
     );
   });

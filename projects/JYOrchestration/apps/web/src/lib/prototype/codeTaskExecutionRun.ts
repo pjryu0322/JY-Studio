@@ -1,4 +1,4 @@
-import { isInFlightCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
+import { isInFlightCodeTaskExecutionRunStatus, isTerminalCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
 import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import { getCurrentQueueCodeTaskId } from "@/lib/prototype/codeTaskExecutionQueue";
 
@@ -14,6 +14,7 @@ export type CodeTaskExecutionRunStatus =
   | "no_code_change_completed"
   | "rework_required"
   | "status_check_stopped"
+  | "blocked_by_dependency"
   | "failed";
 
 export type CodeTaskExecutionRunV1 = Readonly<{
@@ -56,6 +57,7 @@ const RUN_STATUSES = new Set<CodeTaskExecutionRunStatus>([
   "no_code_change_completed",
   "rework_required",
   "status_check_stopped",
+  "blocked_by_dependency",
   "failed",
 ]);
 
@@ -227,4 +229,45 @@ export function updateCodeTaskExecutionRun(
       ...(terminal && !patch.completedAt ? { completedAt: now } : {}),
     };
   });
+}
+
+export function createBlockedByDependencyCodeTaskRun(input: {
+  readonly projectId: string;
+  readonly processTaskId: string;
+  readonly workItemId: string;
+  readonly codeTaskId: string;
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+  readonly check: Readonly<{
+    readonly message?: string;
+    readonly incompleteCodeTaskIds: readonly string[];
+    readonly unknownDependencyIds: readonly string[];
+    readonly status: string;
+  }>;
+  readonly nowIso?: string;
+}): CodeTaskExecutionRunV1 {
+  const now = input.nowIso ?? new Date().toISOString();
+  const existing = findLatestRunForCodeTask(input.runs, input.codeTaskId);
+  if (existing && isTerminalCodeTaskExecutionRunStatus(existing.status)) {
+    return existing;
+  }
+  const base =
+    existing ??
+    createCodeTaskExecutionRun({
+      projectId: input.projectId,
+      processTaskId: input.processTaskId,
+      workItemId: input.workItemId,
+      codeTaskId: input.codeTaskId,
+      runs: input.runs ?? [],
+      nowIso: now,
+    });
+  let runs = existing ? [...(input.runs ?? [])] : appendCodeTaskExecutionRun(input.runs ?? [], base);
+  runs = updateCodeTaskExecutionRun(runs, base.runId, {
+    status: "blocked_by_dependency",
+    failureReason:
+      input.check.status === "unknown_dependency" ? "unknown_dependency" : "blocked_by_dependency",
+    errorMessage: input.check.message,
+    updatedAt: now,
+    completedAt: now,
+  });
+  return runs.find((r) => r.runId === base.runId)!;
 }

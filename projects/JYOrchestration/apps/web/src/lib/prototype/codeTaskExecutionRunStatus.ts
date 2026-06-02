@@ -13,6 +13,7 @@ const TERMINAL = new Set<CodeTaskExecutionRunStatus>([
   "no_code_change_completed",
   "rework_required",
   "status_check_stopped",
+  "blocked_by_dependency",
   "failed",
 ]);
 
@@ -32,7 +33,8 @@ export function isQueueIssueRunStatus(status: CodeTaskExecutionRunStatus): boole
   return (
     status === "rework_required" ||
     status === "failed" ||
-    status === "status_check_stopped"
+    status === "status_check_stopped" ||
+    status === "blocked_by_dependency"
   );
 }
 
@@ -42,6 +44,7 @@ export function isQueueContinueAfterRunStatus(status: CodeTaskExecutionRunStatus
     status === "no_code_change_completed" ||
     status === "rework_required" ||
     status === "status_check_stopped" ||
+    status === "blocked_by_dependency" ||
     status === "failed"
   );
 }

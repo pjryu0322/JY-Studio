@@ -7,6 +7,7 @@ import {
 } from "@/lib/prototype/codeTaskExecutionRun";
 import { isInFlightCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
 import { CODE_TASK_IN_FLIGHT_USER_MESSAGE } from "@/lib/prototype/codeTaskExecutionRunView";
+import { checkCodeTaskDependencyReady } from "@/lib/prototype/codeTaskDependencyResolver";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import { refineCursorWorkItemsForImplementation } from "@/lib/prototype/implementationWorkItemRefinement";
@@ -65,6 +66,20 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
   const run = findLatestRunForCodeTask(input.runs, input.queueDispatch.codeTaskId);
   if (!run) {
     return { ok: false, outcome: "blocked", message: "CodeTask 실행 기록을 찾을 수 없습니다." };
+  }
+  if (input.codeTaskPlan) {
+    const dependencyCheck = checkCodeTaskDependencyReady({
+      codeTaskId: input.queueDispatch.codeTaskId,
+      codeTaskPlan: input.codeTaskPlan,
+      runs: input.runs ?? [],
+    });
+    if (dependencyCheck.status !== "ready") {
+      return {
+        ok: false,
+        outcome: "blocked",
+        message: dependencyCheck.message ?? "선행 CodeTask가 완료되지 않아 실행할 수 없습니다.",
+      };
+    }
   }
   if (isSelectedCodeTaskRunInFlight(run)) {
     return { ok: false, outcome: "no_op", message: CODE_TASK_IN_FLIGHT_USER_MESSAGE };

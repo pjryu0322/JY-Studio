@@ -51,6 +51,7 @@ import {
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import {
@@ -446,6 +447,7 @@ export function buildImplementationTaskTreeNodes(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
+  readonly codeTaskExecutionRuns?: readonly CodeTaskExecutionRunV1[] | null;
   readonly activeTaskId?: string | null;
   readonly selectedTaskId?: string | null;
   readonly selectedCodeTaskId?: string | null;
@@ -460,6 +462,7 @@ export function buildImplementationTaskTreeNodes(input: {
     board: input.board,
     codeTaskPlan: input.codeTaskPlan,
     cursorWorkItems: input.cursorWorkItems,
+    codeTaskExecutionRuns: input.codeTaskExecutionRuns,
     activeTaskId: input.activeTaskId,
     selectedTaskId: input.selectedTaskId,
     selectedCodeTaskId: input.selectedCodeTaskId,
