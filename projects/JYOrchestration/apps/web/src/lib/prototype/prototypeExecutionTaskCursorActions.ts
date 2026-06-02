@@ -37,6 +37,10 @@ import {
   parseImplementationExecutionJobsV1,
   syncImplementationExecutionJobFromTaskCursor,
 } from "@/lib/prototype/implementationExecutionJob";
+import {
+  parseCodeTaskExecutionRunsV1,
+  syncCodeTaskExecutionRunsFromTaskCursor,
+} from "@/lib/prototype/codeTaskExecutionRun";
 
 export function buildTaskCursorExecutionRequest(input: {
   readonly projectId: string;
@@ -198,6 +202,9 @@ export function buildTaskCursorOrchestrationPatch(input: {
   readonly existingCodeTaskExecutionFeedback?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly codeTaskQualityGate?: ImplementationCodeTaskQualityGateV1 | null;
   readonly implementationExecutionJobsV1?: unknown;
+  readonly codeTaskExecutionRunsV1?: unknown;
+  readonly activeCodeTaskId?: string | null;
+  readonly activeWorkItemId?: string | null;
 }): Readonly<{
   readonly taskCursorExecutionV1: TaskCursorExecutionV1;
   readonly taskCursorExecutionHistoryV1: readonly TaskCursorExecutionV1[];
@@ -272,6 +279,18 @@ export function buildTaskCursorOrchestrationPatch(input: {
     execution: input.execution,
   });
 
+  let codeTaskExecutionRunsV1: ReturnType<typeof syncCodeTaskExecutionRunsFromTaskCursor> | undefined;
+  const codeTaskId = String(input.activeCodeTaskId ?? "").trim();
+  const workItemId = String(input.activeWorkItemId ?? "").trim();
+  if (codeTaskId && workItemId) {
+    codeTaskExecutionRunsV1 = syncCodeTaskExecutionRunsFromTaskCursor({
+      runs: parseCodeTaskExecutionRunsV1(input.codeTaskExecutionRunsV1) ?? [],
+      execution: input.execution,
+      codeTaskId,
+      workItemId,
+    });
+  }
+
   return {
     taskCursorExecutionV1: input.execution,
     taskCursorExecutionHistoryV1: appendTaskCursorExecutionHistory(
@@ -280,6 +299,7 @@ export function buildTaskCursorOrchestrationPatch(input: {
     ),
     promptTimeline: timeline,
     implementationExecutionJobsV1: jobs,
+    ...(codeTaskExecutionRunsV1 ? { codeTaskExecutionRunsV1 } : {}),
     ...(executionState ? { implementationTaskExecutionStateV1: executionState } : {}),
     ...(implementationCodeTaskExecutionFeedbackV1
       ? { implementationCodeTaskExecutionFeedbackV1 }

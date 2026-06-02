@@ -376,7 +376,7 @@ describe("implementationExecutionBoardPanelView", () => {
       promptTimeline: timeline,
       developerStatus: "in_progress",
     });
-    expect(label).toContain("Cloud Agent 폴링");
+    expect(label).toContain("Cloud Agent 결과 확인 중");
     expect(label).toContain("4회");
     expect(label).toContain("RUNNING");
   });

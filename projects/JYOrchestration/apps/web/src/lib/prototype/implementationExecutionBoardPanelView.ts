@@ -391,33 +391,20 @@ export function buildTaskCursorPollStatusLabel(input: {
     return undefined;
   }
   if (isServerTaskCursorPolling() && input.serverJob?.taskId === input.taskId) {
-    const summaryVm = buildTaskCursorExecutionJobSummaryVm({
-      serverPolling: true,
-      serverJob: input.serverJob,
-    });
-    const summaryLabel = formatTaskCursorExecutionJobBoardLabel(summaryVm);
-    if (summaryLabel) return summaryLabel;
-
-    const observability = evaluateTaskCursorJobObservability({
-      serverPolling: true,
-      serverJob: input.serverJob,
-    });
-    if (observability.statusLabel) return observability.statusLabel;
-    const parts = ["서버 Worker", input.serverJob.status];
-    if (input.serverJob.pollCount > 0) parts.push(`${input.serverJob.pollCount}회`);
-    if (input.serverJob.lastPollAt) {
-      parts.push(`last ${input.serverJob.lastPollAt.slice(11, 19)}`);
-    }
-    if (input.serverJob.nextPollAt) {
-      parts.push(`next ${input.serverJob.nextPollAt.slice(11, 19)}`);
-    }
-    if (input.serverJob.failureReason) parts.push(input.serverJob.failureReason);
-    if (input.serverJob.cursorRunId) parts.push(`run ${input.serverJob.cursorRunId.slice(0, 8)}`);
     const elapsed = formatTaskCursorElapsedMinutes(
       input.serverJob.lastPollAt ?? execution.updatedAt ?? execution.createdAt,
     );
-    if (elapsed != null) parts.push(`${elapsed}분 경과`);
-    return parts.join(" · ");
+    if (execution.status === "github_verifying") {
+      return elapsed != null
+        ? `GitHub 결과 확인 중 · ${elapsed}분 경과`
+        : "GitHub 결과 확인 중";
+    }
+    if (execution.status === "cursor_running" || execution.status === "cursor_requested") {
+      return elapsed != null
+        ? `Cursor 작업 중 · ${elapsed}분 경과`
+        : "Cursor 작업 중";
+    }
+    return "실행 중";
   }
   const tick = findLatestTaskCursorPollTickForTask(input.promptTimeline, input.taskId);
   const parts = ["Cloud Agent 결과 확인 중"];

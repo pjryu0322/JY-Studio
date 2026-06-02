@@ -30,6 +30,7 @@ export type ImplementationExecutionBoardStateV1 = Readonly<{
   userConfirmations: readonly ImplementationTaskUserConfirmationV1[];
   reworkRequests: readonly ImplementationTaskReworkRequestV1[];
   selectedTaskIds?: readonly string[];
+  selectedCodeTaskIds?: readonly string[];
 }>;
 
 const CONFIRMATION_STATUSES = new Set<ImplementationUserConfirmationStatus>([
@@ -121,6 +122,9 @@ export function parseImplementationExecutionBoardStateV1(
   const selectedTaskIds = Array.isArray(o.selectedTaskIds)
     ? o.selectedTaskIds.map((id) => readString(id)).filter(Boolean)
     : undefined;
+  const selectedCodeTaskIds = Array.isArray(o.selectedCodeTaskIds)
+    ? o.selectedCodeTaskIds.map((id) => readString(id)).filter(Boolean)
+    : undefined;
 
   return {
     version: IMPLEMENTATION_EXECUTION_BOARD_STATE_VERSION,
@@ -130,6 +134,7 @@ export function parseImplementationExecutionBoardStateV1(
     userConfirmations,
     reworkRequests,
     ...(selectedTaskIds?.length ? { selectedTaskIds } : {}),
+    ...(selectedCodeTaskIds?.length ? { selectedCodeTaskIds } : {}),
   };
 }
 

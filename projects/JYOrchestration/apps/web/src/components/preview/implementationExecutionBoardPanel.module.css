@@ -73,6 +73,16 @@
   color: #64748b;
 }
 
+.queueSummaryBanner {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-muted, rgba(59, 130, 246, 0.08));
+  border: 1px solid var(--border-subtle, rgba(59, 130, 246, 0.25));
+  font-size: 13px;
+  color: var(--text-secondary, #334155);
+}
+
 .workerStallBanner {
   margin-top: 10px;
   padding: 10px 12px;

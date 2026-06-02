@@ -53,6 +53,10 @@ import type { ImplementationQuickRunV1 } from "@/lib/prototype/implementationQui
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { parseImplementationExecutionJobsV1 } from "@/lib/prototype/implementationExecutionJob";
 import type { ImplementationExecutionJobV1 } from "@/lib/prototype/implementationExecutionJob";
+import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
+import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import { parseImplementationQualityGateResultsV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -632,6 +636,10 @@ export type RequirementsStateJson = {
   implementationQuickRunV1?: ImplementationQuickRunV1 | null;
   /** 구현단계 ExecutionJob 런타임(프로세스 Task 단위 실행 상태 SoT) */
   implementationExecutionJobsV1?: readonly ImplementationExecutionJobV1[] | null;
+  /** CodeTask 단위 실행 Run(구현단계 단순 실행 SoT) */
+  codeTaskExecutionRunsV1?: readonly CodeTaskExecutionRunV1[] | null;
+  /** 사용자 선택 CodeTask 순차 실행 큐 */
+  codeTaskExecutionQueueV1?: CodeTaskExecutionQueueV1 | null;
   /**
    * 프로토타입 타임라인에 남길 작업계획·WorkUnit 완료·배포 완료 카드(영구 저장).
    * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
@@ -1107,6 +1115,15 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationQuickRunV1 = parseImplementationQuickRunV1(
     "implementationQuickRunV1" in o ? o.implementationQuickRunV1 : undefined,
   );
+  const implementationExecutionJobsV1 = parseImplementationExecutionJobsV1(
+    "implementationExecutionJobsV1" in o ? o.implementationExecutionJobsV1 : undefined,
+  );
+  const codeTaskExecutionRunsV1 = parseCodeTaskExecutionRunsV1(
+    "codeTaskExecutionRunsV1" in o ? o.codeTaskExecutionRunsV1 : undefined,
+  );
+  const codeTaskExecutionQueueV1 = parseCodeTaskExecutionQueueV1(
+    "codeTaskExecutionQueueV1" in o ? o.codeTaskExecutionQueueV1 : undefined,
+  );
 
   const featurePlanningRaw = "featurePlanningSlotsV1" in o ? (o.featurePlanningSlotsV1 as unknown) : undefined;
   let featurePlanningSlotsV1: FeaturePlanningSlotsArtifactV1 | null | undefined;
@@ -1282,6 +1299,8 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationAutoQualityGateV1 !== undefined ? { implementationAutoQualityGateV1 } : {}),
     ...(implementationQuickRunV1 !== undefined ? { implementationQuickRunV1 } : {}),
     ...(implementationExecutionJobsV1 !== undefined ? { implementationExecutionJobsV1 } : {}),
+    ...(codeTaskExecutionRunsV1 !== undefined ? { codeTaskExecutionRunsV1 } : {}),
+    ...(codeTaskExecutionQueueV1 !== undefined ? { codeTaskExecutionQueueV1 } : {}),
     ...(implementationAutoQualityGateHistoryV1 !== undefined
       ? { implementationAutoQualityGateHistoryV1 }
       : {}),

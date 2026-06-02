@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
-import { evaluateTaskCursorWorkerStallWarning } from "@/lib/prototype/taskCursorWorkerStallWatch";
+import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
+import { formatCodeTaskExecutionQueueSummary } from "@/lib/prototype/codeTaskExecutionRunUi";
 import {
   buildImplementationIntegratedPipelineLines,
   PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE,
@@ -28,7 +28,6 @@ import {
   resolveImplementationExecutionBoardSelectedTaskId,
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import { deriveImplementationQuickRunStatus, type ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
-import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { ImplementationStageNextActionsBoardInput } from "@/lib/prototype/implementationStageNextActions";
 import {
   buildImplementationExecutionOverview,
@@ -69,6 +68,7 @@ export function ImplementationExecutionBoardPanel({
   codeTaskExecutionFeedbackV1,
   implementationCodeTaskPlanV1,
   cursorWorkItemsV1,
+  codeTaskExecutionQueueV1,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -91,6 +91,7 @@ export function ImplementationExecutionBoardPanel({
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
+  readonly codeTaskExecutionQueueV1?: unknown;
 }) {
   const feedbackSummary = useMemo(
     () => buildImplementationCodeTaskFeedbackSummary(codeTaskExecutionFeedbackV1),
@@ -222,30 +223,20 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const [reworkOpen, setReworkOpen] = useState(false);
-  const [stallTick, setStallTick] = useState(0);
 
-  const workerStallWarning = useMemo(
-    () =>
-      evaluateTaskCursorWorkerStallWarning({
-        serverPolling: isServerTaskCursorPolling(),
-        execution: taskCursorExecutionV1,
-        activeJob: activeTaskCursorJob,
-        quickRun: implementationQuickRunV1,
-      }),
-    [taskCursorExecutionV1, activeTaskCursorJob, implementationQuickRunV1, stallTick],
+  const codeTaskQueue = useMemo(
+    () => parseCodeTaskExecutionQueueV1(codeTaskExecutionQueueV1) ?? null,
+    [codeTaskExecutionQueueV1],
   );
 
-  useEffect(() => {
-    if (!isServerTaskCursorPolling()) return;
-    const inFlight =
-      taskCursorExecutionV1 &&
-      (taskCursorExecutionV1.status === "cursor_requested" ||
-        taskCursorExecutionV1.status === "cursor_running" ||
-        taskCursorExecutionV1.status === "github_verifying");
-    if (!inFlight && !activeTaskCursorJob) return;
-    const interval = window.setInterval(() => setStallTick((t) => t + 1), 30_000);
-    return () => window.clearInterval(interval);
-  }, [taskCursorExecutionV1, activeTaskCursorJob]);
+  const queueSummaryLine = useMemo(() => {
+    if (!codeTaskQueue || codeTaskQueue.status === "idle") return null;
+    return formatCodeTaskExecutionQueueSummary({
+      currentIndex: codeTaskQueue.currentIndex,
+      total: codeTaskQueue.selectedCodeTaskIds.length,
+      status: codeTaskQueue.status,
+    });
+  }, [codeTaskQueue]);
 
   return (
     <section
@@ -270,12 +261,7 @@ export function ImplementationExecutionBoardPanel({
             : quickRunStatus === "blocked" || quickRunStatus === "failed"
               ? "자동실행이 중단되었습니다."
               : quickRunStatus === "running"
-                ? taskCursorExecutionV1 &&
-                    isInFlightTaskCursorExecution(taskCursorExecutionV1) &&
-                    (taskCursorExecutionV1.status === "cursor_running" ||
-                      taskCursorExecutionV1.status === "cursor_requested")
-                  ? "Quick 자동실행 진행 중 · Cursor Cloud Agent 응답 대기"
-                  : "Quick 자동실행 진행 중"
+                ? queueSummaryLine ?? "선택 CodeTask 순차 실행 중"
                 : buildCompactBoardSecondarySummaryLine({
                     board,
                     previewReady: summaryView.previewReady,
@@ -284,15 +270,9 @@ export function ImplementationExecutionBoardPanel({
                     reworkVm,
                   })}
         </div>
-        {workerStallWarning ? (
-          <div
-            className={styles.workerStallBanner}
-            role="alert"
-            data-testid="task-cursor-worker-stall-warning"
-          >
-            <div className={styles.workerStallTitle}>서버 Worker 미동작 가능</div>
-            <div className={styles.workerStallMessage}>{workerStallWarning.message}</div>
-            <div className={styles.workerStallHint}>{workerStallWarning.hint}</div>
+        {queueSummaryLine ? (
+          <div className={styles.queueSummaryBanner} data-testid="code-task-execution-queue-summary">
+            {queueSummaryLine}
           </div>
         ) : null}
         {reworkVm?.candidateCount ? (

@@ -334,6 +334,23 @@ import {
 } from "@/lib/prototype/implementationExecutionJob";
 import { resolveImplementationExecutionJobAutoChainDecision } from "@/lib/prototype/implementationExecutionJobAutoChain";
 import { pickNextRunnableProcessTaskIdForQuickRun } from "@/lib/prototype/implementationExecutionJobSelection";
+import { buildCodeTaskDeveloperPrompt } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
+import {
+  appendCodeTaskExecutionRun,
+  createCodeTaskExecutionRun,
+  findLatestRunForCodeTask,
+  parseCodeTaskExecutionRunsV1,
+  syncCodeTaskExecutionRunsFromTaskCursor,
+} from "@/lib/prototype/codeTaskExecutionRun";
+import {
+  advanceCodeTaskExecutionQueue,
+  getCurrentQueueCodeTaskId,
+  parseCodeTaskExecutionQueueV1,
+  resolveSelectedCodeTaskIdsForQueue,
+  shouldAdvanceQueueAfterRun,
+  startCodeTaskExecutionQueue,
+} from "@/lib/prototype/codeTaskExecutionQueue";
+import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import {
   buildImplementationQuickRunStartedPatch,
   buildImplementationQuickRunCursorDispatchTimelineEntry,
@@ -1553,6 +1570,32 @@ export function PrototypePreviewPanel({
   const taskCursorAutoChainRef = useRef<string | null>(null);
   const taskCursorAutoChainPreferredTaskIdRef = useRef<string | null>(null);
   const taskCursorAutoChainExecutedKeysRef = useRef<Set<string>>(new Set());
+  const codeTaskQueueDispatchRef = useRef<{
+    readonly codeTaskId: string;
+    readonly parentTaskId: string;
+    readonly workItemId: string;
+  } | null>(null);
+  const codeTaskQueueAdvanceInFlightRef = useRef(false);
+
+  const enrichCodeTaskRunOrchestrationPatch = useCallback(
+    (patch: PrototypeExecutionOrchestrationPersistInput): PrototypeExecutionOrchestrationPersistInput => {
+      const dispatch = codeTaskQueueDispatchRef.current;
+      const execution = parseTaskCursorExecutionV1(patch.taskCursorExecutionV1);
+      if (!dispatch || !execution) return patch;
+      const runs = syncCodeTaskExecutionRunsFromTaskCursor({
+        runs:
+          parseCodeTaskExecutionRunsV1(
+            patch.codeTaskExecutionRunsV1 ??
+              parseRequirementsStateJson(requirementsStateJsonRef.current).codeTaskExecutionRunsV1,
+          ) ?? [],
+        execution,
+        codeTaskId: dispatch.codeTaskId,
+        workItemId: dispatch.workItemId,
+      });
+      return { ...patch, codeTaskExecutionRunsV1: runs };
+    },
+    [],
+  );
   const [activeTaskCursorJob, setActiveTaskCursorJob] = useState<TaskCursorJobSummary | null>(null);
   const activeTaskCursorJobRef = useRef<TaskCursorJobSummary | null>(null);
   activeTaskCursorJobRef.current = activeTaskCursorJob;
@@ -2285,7 +2328,7 @@ export function PrototypePreviewPanel({
         onPatch: (orchestrationPatch) => {
           applyImplementationOrchestrationResult({
             messages: executionSingleChat.chatMessages,
-            orchestrationPatch,
+            orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(orchestrationPatch),
           });
         },
         onTerminal: (notice) => {
@@ -2299,7 +2342,7 @@ export function PrototypePreviewPanel({
         }
       });
     },
-    [projectId, applyImplementationOrchestrationResult, executionSingleChat, showToast],
+    [projectId, applyImplementationOrchestrationResult, executionSingleChat, showToast, enrichCodeTaskRunOrchestrationPatch],
   );
 
   const releaseAllTaskCursorPolling = useCallback(() => {
@@ -2459,7 +2502,7 @@ export function PrototypePreviewPanel({
           lastServerTaskCursorJobSyncFingerprintRef.current = syncFingerprint;
           applyImplementationOrchestrationResultRef.current({
             messages: executionSingleChatMessagesRef.current,
-            orchestrationPatch: json.orchestrationPatch,
+            orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
           });
         }
       } catch {
@@ -2545,6 +2588,8 @@ export function PrototypePreviewPanel({
   const triggerTaskCursorAutoChain = useCallback(() => {
     const board = implementationStageBoardGateContext?.board;
     const orchestration = orchestrationAwareRequirementsState;
+    const queue = parseCodeTaskExecutionQueueV1(orchestration.codeTaskExecutionQueueV1);
+    if (queue?.status === "running") return;
     const execution = parseTaskCursorExecutionV1(orchestration.taskCursorExecutionV1);
     const quickRun = parseImplementationQuickRunV1(orchestration.implementationQuickRunV1);
     const jobs =
@@ -2613,7 +2658,6 @@ export function PrototypePreviewPanel({
       allowedTaskIds: resolveQuickRunAllowedTaskIds(quickRun),
     });
     if (decision.kind === "none") return;
-    const pid = projectId.trim();
     const idempotencyKey = buildTaskCursorAutoChainIdempotencyKey({
       projectId: pid,
       decision,
@@ -2683,6 +2727,124 @@ export function PrototypePreviewPanel({
     implementationStageBoardGateContext?.board?.summary?.totalTasks,
     orchestrationAwareRequirementsState.implementationExecutionJobsV1,
     triggerTaskCursorAutoChain,
+  ]);
+
+  useEffect(() => {
+    const queue = parseCodeTaskExecutionQueueV1(
+      orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+    );
+    if (!queue || queue.status !== "running") return;
+    const codeTaskId = getCurrentQueueCodeTaskId(queue);
+    if (!codeTaskId) return;
+    if (
+      isInFlightTaskCursorExecution(
+        parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1),
+      )
+    ) {
+      return;
+    }
+    const runs =
+      parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
+      [];
+    const run = findLatestRunForCodeTask(runs, codeTaskId);
+    if (!shouldAdvanceQueueAfterRun(run)) return;
+    if (codeTaskQueueAdvanceInFlightRef.current) return;
+    codeTaskQueueAdvanceInFlightRef.current = true;
+
+    const pid = projectId.trim();
+    const nowIso = new Date().toISOString();
+    const { queue: nextQueue, nextCodeTaskId, finished } = advanceCodeTaskExecutionQueue({
+      queue,
+      lastRunStatus: run!.status,
+      nowIso,
+    });
+
+    applyImplementationOrchestrationResult({
+      messages: executionSingleChat.chatMessages,
+      orchestrationPatch: { codeTaskExecutionQueueV1: nextQueue },
+    });
+
+    if (finished || !nextCodeTaskId) {
+      codeTaskQueueDispatchRef.current = null;
+      codeTaskQueueAdvanceInFlightRef.current = false;
+      if (finished) {
+        showToast(
+          nextQueue.status === "completed"
+            ? "선택 CodeTask 실행을 모두 완료했습니다."
+            : "선택 CodeTask 실행이 종료되었습니다.",
+        );
+      }
+      return;
+    }
+
+    const dispatchTarget = resolveCodeTaskDispatchTarget({
+      codeTaskId: nextCodeTaskId,
+      codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
+      taskList: orchestrationAwareRequirementsState.implementationTaskListV1,
+      cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1,
+    });
+    if (!dispatchTarget) {
+      codeTaskQueueDispatchRef.current = null;
+      codeTaskQueueAdvanceInFlightRef.current = false;
+      showToast(`다음 CodeTask ${nextCodeTaskId} WorkItem을 찾을 수 없습니다.`);
+      return;
+    }
+
+    const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+      gitRepoUrl: executionSetupRow?.gitRepoUrl,
+      gitRepoName: executionSetupRow?.gitRepoName,
+      gitRepoProvider: executionSetupRow?.gitRepoProvider,
+      baseBranch: executionSetupRow?.baseBranch,
+    });
+    const developerPrompt = targetRepository
+      ? buildCodeTaskDeveloperPrompt({
+          codeTask: dispatchTarget.codeTask,
+          parentTask: dispatchTarget.parentTask,
+          targetRepository,
+          baseBranch: executionSetupRow?.baseBranch ?? "main",
+          allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
+        })
+      : undefined;
+    const codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(
+      runs,
+      createCodeTaskExecutionRun({
+        projectId: pid,
+        processTaskId: dispatchTarget.parentTaskId,
+        workItemId: dispatchTarget.workItem.id,
+        codeTaskId: dispatchTarget.codeTask.codeTaskId,
+        developerPrompt,
+        nowIso,
+      }),
+    );
+    codeTaskQueueDispatchRef.current = {
+      codeTaskId: dispatchTarget.codeTask.codeTaskId,
+      parentTaskId: dispatchTarget.parentTaskId,
+      workItemId: dispatchTarget.workItem.id,
+    };
+    taskCursorAutoChainPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
+    applyImplementationOrchestrationResult({
+      messages: executionSingleChat.chatMessages,
+      orchestrationPatch: { codeTaskExecutionRunsV1 },
+    });
+    codeTaskQueueAdvanceInFlightRef.current = false;
+    showToast(`다음 CodeTask 실행 · ${dispatchTarget.codeTask.codeTaskId}`);
+    void runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
+  }, [
+    applyImplementationOrchestrationResult,
+    executionSetupRow?.allowedPathGlobs,
+    executionSetupRow?.baseBranch,
+    executionSetupRow?.gitRepoName,
+    executionSetupRow?.gitRepoProvider,
+    executionSetupRow?.gitRepoUrl,
+    executionSingleChat.chatMessages,
+    orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+    orchestrationAwareRequirementsState.cursorWorkItemsV1,
+    orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
+    orchestrationAwareRequirementsState.implementationTaskListV1,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+    projectId,
+    showToast,
   ]);
 
   useEffect(() => {
@@ -4359,6 +4521,19 @@ export function PrototypePreviewPanel({
               };
             }
           }
+          const queueDispatch = codeTaskQueueDispatchRef.current;
+          if (queueDispatch) {
+            const dispatchWorkItems = workItems.filter(
+              (item) =>
+                item.codeTaskId === queueDispatch.codeTaskId || item.id === queueDispatch.workItemId,
+            );
+            if (dispatchWorkItems.length) {
+              scoped = {
+                selectedTaskId: queueDispatch.parentTaskId,
+                selectedWorkItems: dispatchWorkItems,
+              };
+            }
+          }
           if (!scoped.selectedTaskId || !scoped.selectedWorkItems.length) {
             const message = scoped.blockedReason ?? "실행 가능한 Task를 찾을 수 없습니다.";
             executionSingleChat.appendAiNotice(message);
@@ -4519,6 +4694,10 @@ export function PrototypePreviewPanel({
                     orchestrationAwareRequirementsState.implementationCodeTaskQualityGateV1,
                   implementationExecutionJobsV1:
                     orchestrationAwareRequirementsState.implementationExecutionJobsV1,
+                  codeTaskExecutionRunsV1:
+                    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+                  activeCodeTaskId: codeTaskQueueDispatchRef.current?.codeTaskId ?? null,
+                  activeWorkItemId: codeTaskQueueDispatchRef.current?.workItemId ?? null,
                 }),
                 cursorWorkItemsV1: mergeCursorWorkItemsByTask({
                   existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
@@ -4529,7 +4708,7 @@ export function PrototypePreviewPanel({
             },
             { persist: false },
           );
-          showToast(`AI 개발자 실행 시작 · ${scoped.selectedTaskId} · ${isServerTaskCursorPolling() ? "서버 Worker 추적 중" : "Cloud Agent 폴링 중..."}`);
+          showToast(`AI 개발자 실행 시작 · ${scoped.selectedTaskId}`);
           const pollHistory = orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1;
           const pollTimeline = orchestrationAwareRequirementsState.promptTimeline;
           const pollWorkItems = scoped.selectedWorkItems;
@@ -4558,7 +4737,7 @@ export function PrototypePreviewPanel({
               if (json.orchestrationPatch) {
                 applyImplementationOrchestrationResult({
                   messages: executionSingleChat.chatMessages,
-                  orchestrationPatch: json.orchestrationPatch,
+                  orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
                 });
               }
               const launchedExecution =
@@ -4567,12 +4746,12 @@ export function PrototypePreviewPanel({
                 pendingExecution;
 
               if (json.serverPolling && launchedExecution.status === "cursor_running") {
-                showToast(`${scoped.selectedTaskId} · 서버 Worker가 Cloud Agent 상태를 추적합니다`);
+                showToast(`${scoped.selectedTaskId} · Cursor 작업 중`);
                 return;
               }
 
               if (json.pollRequired && launchedExecution.status === "cursor_running") {
-                showToast(`${scoped.selectedTaskId} · Cloud Agent 실행 중 · 폴링 시작`);
+                showToast(`${scoped.selectedTaskId} · Cursor 작업 중`);
                 startTaskCursorClientPollLoop({
                   execution: launchedExecution,
                   workItems: pollWorkItems,
@@ -4646,7 +4825,7 @@ export function PrototypePreviewPanel({
           executionSingleChat.appendAiNotice(message);
           showToast(`Task Cursor 상태: ${execution.status}`);
           if (isServerTaskCursorPolling()) {
-            executionSingleChat.appendAiNotice("서버 Worker Job 상태는 자동 새로고침됩니다.");
+            executionSingleChat.appendAiNotice("Cursor 작업 상태는 자동으로 갱신됩니다.");
             return { outcome: "executed" };
           }
           if (isInFlightTaskCursorExecution(execution)) {
@@ -4695,7 +4874,7 @@ export function PrototypePreviewPanel({
               if (json.orchestrationPatch) {
                 applyImplementationOrchestrationResult({
                   messages: executionSingleChat.chatMessages,
-                  orchestrationPatch: json.orchestrationPatch,
+                  orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
                 });
               }
               const notice =
@@ -6349,61 +6528,101 @@ export function PrototypePreviewPanel({
           taskRows: board.taskRows,
         })
       : [];
-    if (board && !selectedTaskIds.length) {
-      const message = "실행할 Task를 하나 이상 선택해 주세요.";
-      showToast(message);
-      return { outcome: "blocked", message };
-    }
-    const nextTaskId = board ? pickFirstExecutableDeveloperTaskId(board, selectedTaskIds) : null;
-    const resolvedTaskId = nextTaskId ?? board?.taskRows[0]?.taskId ?? null;
-    if (board && selectedTaskIds.length && !nextTaskId) {
-      const message = "선택한 Task 중 지금 실행 가능한 작업이 없습니다.";
+    const selectedCodeTaskIds = resolveSelectedCodeTaskIdsForQueue({
+      codeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
+      processTaskIds: selectedTaskIds,
+      explicitCodeTaskIds:
+        parsedRequirementsState.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
+    });
+    if (!selectedCodeTaskIds.length) {
+      const message =
+        "실행할 CodeTask를 선택해 주세요. Process Task를 체크하면 하위 CodeTask가 실행 큐에 포함됩니다.";
       showToast(message);
       return { outcome: "blocked", message };
     }
     const nowIso = new Date().toISOString();
+    const codeTaskExecutionQueueV1 = startCodeTaskExecutionQueue({
+      projectId: pid,
+      selectedCodeTaskIds,
+      nowIso,
+    });
+    if (!codeTaskExecutionQueueV1) {
+      const message = "CodeTask 실행 큐를 만들 수 없습니다.";
+      showToast(message);
+      return { outcome: "blocked", message };
+    }
+    const firstCodeTaskId = getCurrentQueueCodeTaskId(codeTaskExecutionQueueV1);
+    const dispatchTarget = firstCodeTaskId
+      ? resolveCodeTaskDispatchTarget({
+          codeTaskId: firstCodeTaskId,
+          codeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
+          taskList: parsedRequirementsState.implementationTaskListV1,
+          cursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
+        })
+      : null;
+    if (!dispatchTarget) {
+      const message = `CodeTask ${firstCodeTaskId ?? ""}에 연결된 WorkItem을 찾을 수 없습니다.`;
+      showToast(message);
+      return { outcome: "blocked", message };
+    }
+    const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+      gitRepoUrl: executionSetupRow?.gitRepoUrl,
+      gitRepoName: executionSetupRow?.gitRepoName,
+      gitRepoProvider: executionSetupRow?.gitRepoProvider,
+      baseBranch: executionSetupRow?.baseBranch,
+    });
+    const developerPrompt = targetRepository
+      ? buildCodeTaskDeveloperPrompt({
+          codeTask: dispatchTarget.codeTask,
+          parentTask: dispatchTarget.parentTask,
+          targetRepository,
+          baseBranch: executionSetupRow?.baseBranch ?? "main",
+          allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
+        })
+      : undefined;
+    let codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(
+      parseCodeTaskExecutionRunsV1(
+        orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+      ) ?? [],
+      createCodeTaskExecutionRun({
+        projectId: pid,
+        processTaskId: dispatchTarget.parentTaskId,
+        workItemId: dispatchTarget.workItem.id,
+        codeTaskId: dispatchTarget.codeTask.codeTaskId,
+        developerPrompt,
+        nowIso,
+      }),
+    );
+    codeTaskQueueDispatchRef.current = {
+      codeTaskId: dispatchTarget.codeTask.codeTaskId,
+      parentTaskId: dispatchTarget.parentTaskId,
+      workItemId: dispatchTarget.workItem.id,
+    };
     const quickRun = buildImplementationQuickRunStartedPatch({
       projectId: pid,
-      currentTaskId: resolvedTaskId,
+      currentTaskId: dispatchTarget.parentTaskId,
       selectedTaskIds,
       nowIso,
     });
-    let implementationExecutionJobsV1 = existingJobs;
-    if (resolvedTaskId) {
-      try {
-        const job = createImplementationExecutionJob({
-          projectId: pid,
-          processTaskId: resolvedTaskId,
-          jobs: implementationExecutionJobsV1,
-          nowIso,
-        });
-        implementationExecutionJobsV1 = appendImplementationExecutionJob(
-          implementationExecutionJobsV1,
-          job,
-        );
-      } catch {
-        // active job already exists for this process task
-      }
-    }
     void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
       implementationQuickRunV1: quickRun,
-      implementationExecutionJobsV1,
+      codeTaskExecutionQueueV1,
+      codeTaskExecutionRunsV1,
       promptTimeline: appendPromptTimeline(
         parsedRequirementsState.promptTimeline,
         buildImplementationQuickRunTimelineEntry({
           action: "implementation_quick_run_started",
           projectId: pid,
-          taskId: resolvedTaskId,
+          taskId: dispatchTarget.parentTaskId,
           nowIso,
         }),
       ),
     });
     showToast(
-      selectedTaskIds.length
-        ? `Quick 실행을 시작합니다. 선택한 ${selectedTaskIds.length}개 Task를 우선순위대로 진행합니다.`
-        : "Quick 실행을 시작합니다. 작업목록을 우선순위대로 자동 진행합니다.",
+      `선택 CodeTask ${selectedCodeTaskIds.length}개를 순차 실행합니다. (${dispatchTarget.codeTask.codeTaskId})`,
     );
     taskCursorAutoChainRef.current = null;
+    taskCursorAutoChainPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
     const cursorDispatchResult = runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
     const dispatchNowIso = new Date().toISOString();
     void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
@@ -6411,7 +6630,7 @@ export function PrototypePreviewPanel({
         parsedRequirementsState.promptTimeline,
         buildImplementationQuickRunCursorDispatchTimelineEntry({
           projectId: pid,
-          taskId: resolvedTaskId,
+          taskId: dispatchTarget.parentTaskId,
           outcome: cursorDispatchResult.outcome,
           message:
             cursorDispatchResult.outcome === "blocked" || cursorDispatchResult.outcome === "no_op"
@@ -6597,6 +6816,8 @@ export function PrototypePreviewPanel({
       taskCursorPollActiveRunIdRef.current = null;
       taskCursorAutoChainRef.current = null;
       taskCursorAutoChainExecutedKeysRef.current.clear();
+      codeTaskQueueDispatchRef.current = null;
+      codeTaskQueueAdvanceInFlightRef.current = false;
       setActiveTaskCursorJob(null);
       lastServerTaskCursorJobSyncFingerprintRef.current = "";
 
@@ -6895,6 +7116,7 @@ export function PrototypePreviewPanel({
             taskCursorExecutionHistoryV1={orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1}
             implementationAutoQualityGateV1={orchestrationAwareRequirementsState.implementationAutoQualityGateV1}
             implementationQuickRunV1={orchestrationAwareRequirementsState.implementationQuickRunV1}
+            codeTaskExecutionQueueV1={orchestrationAwareRequirementsState.codeTaskExecutionQueueV1}
             qualityGateResults={orchestrationAwareRequirementsState.implementationQualityGateResultsV1}
             boardState={orchestrationAwareRequirementsState.implementationExecutionBoardStateV1}
             previewReady={prototypeRunSyncSnapshot.previewReady}

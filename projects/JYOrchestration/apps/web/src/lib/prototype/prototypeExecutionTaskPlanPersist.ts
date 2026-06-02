@@ -9,6 +9,8 @@ import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementati
 import type { ImplementationUserFeedbackPatchV1 } from "@/lib/prototype/implementationUserFeedback";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { ImplementationExecutionJobV1 } from "@/lib/prototype/implementationExecutionJob";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
@@ -103,6 +105,8 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly reviewStageUserFeedbackListV1?: ReviewStageUserFeedbackListV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
   readonly implementationExecutionJobsV1?: readonly ImplementationExecutionJobV1[] | null;
+  readonly codeTaskExecutionRunsV1?: readonly CodeTaskExecutionRunV1[] | null;
+  readonly codeTaskExecutionQueueV1?: CodeTaskExecutionQueueV1 | null;
 }>;
 
 export function buildPrototypeExecutionOrchestrationPersistPatch(
@@ -198,6 +202,15 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
               ? null
               : [...input.implementationExecutionJobsV1],
         }
+      : {}),
+    ...(input.codeTaskExecutionRunsV1 !== undefined
+      ? {
+          codeTaskExecutionRunsV1:
+            input.codeTaskExecutionRunsV1 === null ? null : [...input.codeTaskExecutionRunsV1],
+        }
+      : {}),
+    ...(input.codeTaskExecutionQueueV1 !== undefined
+      ? { codeTaskExecutionQueueV1: input.codeTaskExecutionQueueV1 }
       : {}),
     lastSavedAt: new Date().toISOString(),
   });

@@ -132,6 +132,8 @@ export type PendingImplementationPatch = Readonly<{
   implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
   promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   implementationExecutionJobsV1?: readonly import("@/lib/prototype/implementationExecutionJob").ImplementationExecutionJobV1[] | null;
+  codeTaskExecutionRunsV1?: readonly import("@/lib/prototype/codeTaskExecutionRun").CodeTaskExecutionRunV1[] | null;
+  codeTaskExecutionQueueV1?: import("@/lib/prototype/codeTaskExecutionQueue").CodeTaskExecutionQueueV1 | null;
 }>;
 
 export function resolveOrchestrationAwareRequirementsState(input: {
@@ -320,6 +322,12 @@ export function mergePendingImplementationPatchFromOrchestration(
   if (patch.implementationExecutionJobsV1 !== undefined) {
     next.implementationExecutionJobsV1 = patch.implementationExecutionJobsV1;
   }
+  if (patch.codeTaskExecutionRunsV1 !== undefined) {
+    next.codeTaskExecutionRunsV1 = patch.codeTaskExecutionRunsV1;
+  }
+  if (patch.codeTaskExecutionQueueV1 !== undefined) {
+    next.codeTaskExecutionQueueV1 = patch.codeTaskExecutionQueueV1;
+  }
   return Object.keys(next).length > 0 ? next : null;
 }
 
@@ -369,6 +377,12 @@ export function mergePendingImplementationPatch(
     ...(incoming.promptTimeline !== undefined ? { promptTimeline: incoming.promptTimeline } : {}),
     ...(incoming.implementationExecutionJobsV1 !== undefined
       ? { implementationExecutionJobsV1: incoming.implementationExecutionJobsV1 }
+      : {}),
+    ...(incoming.codeTaskExecutionRunsV1 !== undefined
+      ? { codeTaskExecutionRunsV1: incoming.codeTaskExecutionRunsV1 }
+      : {}),
+    ...(incoming.codeTaskExecutionQueueV1 !== undefined
+      ? { codeTaskExecutionQueueV1: incoming.codeTaskExecutionQueueV1 }
       : {}),
   };
 }

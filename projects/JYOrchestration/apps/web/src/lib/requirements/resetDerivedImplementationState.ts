@@ -118,6 +118,8 @@ export const IMPLEMENTATION_SESSION_RESET_NULL_PATCH = {
   implementationAutoQualityGateHistoryV1: null,
   implementationQuickRunV1: null,
   implementationExecutionJobsV1: null,
+  codeTaskExecutionRunsV1: null,
+  codeTaskExecutionQueueV1: null,
 } as const;
 
 export function isImplementationSingleChatMessage(message: RequirementsMessage): boolean {
