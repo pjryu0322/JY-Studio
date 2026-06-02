@@ -67,4 +67,26 @@ describe("requirementsConversationReset", () => {
     ];
     expect(resolveWorkspaceProjectArtifacts({ localState: local, persisted })).toEqual([]);
   });
+
+  it("planning reset state includes explicit null runtime keys for local override", () => {
+    const reset = buildRequirementsConversationResetStateJson(
+      {
+        codeTaskExecutionRunsV1: [{ version: "code_task_execution_run_v1" } as never],
+        taskCursorExecutionV1: { version: "task_cursor_execution_v1" } as never,
+      },
+      nowIso,
+    );
+    expect(Object.prototype.hasOwnProperty.call(reset, "codeTaskExecutionRunsV1")).toBe(true);
+    expect(reset.codeTaskExecutionRunsV1).toBeNull();
+    expect(Object.prototype.hasOwnProperty.call(reset, "taskCursorExecutionV1")).toBe(true);
+    expect(reset.taskCursorExecutionV1).toBeNull();
+
+    const persisted: RequirementsStateJson = {
+      codeTaskExecutionRunsV1: [{ version: "code_task_execution_run_v1" } as never],
+      taskCursorExecutionV1: { version: "task_cursor_execution_v1" } as never,
+    };
+    const merged: RequirementsStateJson = { ...persisted, ...reset };
+    expect(merged.codeTaskExecutionRunsV1).toBeNull();
+    expect(merged.taskCursorExecutionV1).toBeNull();
+  });
 });

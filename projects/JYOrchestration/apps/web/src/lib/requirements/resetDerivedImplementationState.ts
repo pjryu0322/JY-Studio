@@ -16,11 +16,11 @@ import {
   isPersistentExecutionLogTimelineEntry,
 } from "@/lib/prototype/promptTimelineExecutionLogTabs";
 
-/** 기획 단계 대화 초기화 확인 메시지(구현 파생 데이터 동시 삭제 안내). */
+/** 기획 단계 대화 초기화 확인 메시지(구현 파생·실행 기록 동시 삭제 안내). */
 export const PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE =
   "대화 내역을 모두 삭제하고 서비스 기획을 다시 시작할까요?\n\n" +
-  "기획단계를 초기화하면, 기존 기획 산출물을 기반으로 만들어진 구현 준비 데이터도 함께 초기화됩니다.\n" +
-  "구현 작업안, 구현 Seed, Code Agent 작업 지시도 함께 삭제됩니다.\n" +
+  "기획단계를 초기화하면 기존 기획 산출물을 기반으로 만들어진 구현 준비 데이터와 구현 실행 기록이 함께 초기화됩니다.\n" +
+  "구현 Seed, Task/WorkItem/CodeTask, Cursor 실행 상태, GitHub 확인 기록, 실행 큐, 구현 로그가 삭제됩니다.\n" +
   "환경설정과 Git/Code Agent 연결 정보는 유지됩니다.\n\n" +
   "이 작업은 되돌릴 수 없습니다.";
 
@@ -214,7 +214,7 @@ export function appendPlanningResetClearedImplementationTrace(
     responseText: [
       "type=planning_reset_cleared_implementation_derivatives",
       "mode=planning",
-      "cleared=[implementationSeedV1,implementationWorkPlanDraftV1,implementationTaskPlanV1,implementationCodeTaskPlanV1,implementationSlotsV1,cursorWorkItemsV1,implementationWorkItemPreflightSummaryV1,codeAgentWipExecutionV1,implementationMessages,implementationTimeline]",
+      "cleared=[implementationSeedV1,implementationWorkPlanDraftV1,implementationTaskListV1,implementationTaskPlanV1,implementationCodeTaskPlanV1,cursorWorkItemsV1,implementationWorkItemPreflightSummaryV1,codeAgentWipExecutionV1,codeTaskExecutionRunsV1,codeTaskExecutionQueueV1,taskCursorExecutionV1,taskCursorExecutionHistoryV1,implementationQuickRunV1,implementationExecutionJobsV1,implementationStageActionRunLogV1,implementationQualityGateResultsV1,implementationMessages,implementationTimeline]",
     ].join(" "),
     createdAt: nowIso,
   };
@@ -232,6 +232,8 @@ export type ClearDerivedImplementationStateOptions = Readonly<{
   readonly nullSingleChat?: boolean;
   /** true면 promptTimeline의 실행 로그 항목도 제거(구현 단계 초기화) */
   readonly clearExecutionLog?: boolean;
+  /** true면 구현 실행 기록·런타임 상태까지 IMPLEMENTATION_SESSION_RESET_NULL_PATCH 적용 */
+  readonly clearRuntimeState?: boolean;
 }>;
 
 /**
@@ -257,9 +259,13 @@ export function clearDerivedImplementationStateFromRequirementsJson(
     ? null
     : resetImplementationSingleChatMessages(state.prototypeExecutionSingleChatV1);
 
+  const implementationPatch = options.clearRuntimeState
+    ? IMPLEMENTATION_SESSION_RESET_NULL_PATCH
+    : DERIVED_IMPLEMENTATION_STATE_NULL_PATCH;
+
   return {
     ...state,
-    ...DERIVED_IMPLEMENTATION_STATE_NULL_PATCH,
+    ...implementationPatch,
     ...LEGACY_DERIVED_IMPLEMENTATION_NULL_FIELDS,
     prototypeExecutionSingleChatV1,
     projectArtifacts: filteredArtifacts,

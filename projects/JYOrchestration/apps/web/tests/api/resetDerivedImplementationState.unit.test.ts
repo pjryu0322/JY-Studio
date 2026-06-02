@@ -84,6 +84,124 @@ describe("resetDerivedImplementationState", () => {
     ).toBe(false);
   });
 
+  it("clears implementation runtime state when planning is reset", () => {
+    const base: RequirementsStateJson = {
+      implementationTaskListV1: { version: "implementation_task_list_v1" } as never,
+      implementationTaskExecutionStateV1: { version: "implementation_task_execution_state_v1" } as never,
+      implementationIntegratedExecutionStateV1: {
+        version: "implementation_integrated_execution_state_v1",
+      } as never,
+      implementationExecutionBoardStateV1: {
+        version: "implementation_execution_board_state_v1",
+      } as never,
+      implementationReviewStageReadyV1: { version: "implementation_review_stage_ready_v1" } as never,
+      implementationUserFeedbackPatchesV1: [{ id: "p1" } as never],
+      implementationStageActionRunLogV1: [{ action: "run" } as never],
+      implementationCodeTaskQualityGateV1: { version: "implementation_code_task_quality_gate_v1" } as never,
+      implementationCodeTaskExecutionFeedbackV1: {
+        version: "implementation_code_task_execution_feedback_v1",
+      } as never,
+      implementationQualityGateResultsV1: [{ id: "g1" } as never],
+      taskCursorExecutionV1: { version: "task_cursor_execution_v1" } as never,
+      taskCursorExecutionHistoryV1: [{ version: "task_cursor_execution_v1" } as never],
+      implementationAutoQualityGateV1: { version: "implementation_auto_quality_gate_v1" } as never,
+      implementationAutoQualityGateHistoryV1: [{ version: "implementation_auto_quality_gate_v1" } as never],
+      implementationQuickRunV1: { version: "implementation_quick_run_v1" } as never,
+      implementationExecutionJobsV1: [{ jobId: "j1" } as never],
+      codeTaskExecutionRunsV1: [{ version: "code_task_execution_run_v1" } as never],
+      codeTaskExecutionQueueV1: { version: "code_task_execution_queue_v1" } as never,
+    };
+
+    const reset = buildRequirementsConversationResetStateJson(base, nowIso);
+
+    expect(reset.implementationTaskListV1).toBeNull();
+    expect(reset.implementationTaskExecutionStateV1).toBeNull();
+    expect(reset.implementationIntegratedExecutionStateV1).toBeNull();
+    expect(reset.implementationExecutionBoardStateV1).toBeNull();
+    expect(reset.implementationReviewStageReadyV1).toBeNull();
+    expect(reset.implementationUserFeedbackPatchesV1).toBeNull();
+    expect(reset.implementationStageActionRunLogV1).toBeNull();
+    expect(reset.implementationCodeTaskQualityGateV1).toBeNull();
+    expect(reset.implementationCodeTaskExecutionFeedbackV1).toBeNull();
+    expect(reset.implementationQualityGateResultsV1).toBeNull();
+    expect(reset.taskCursorExecutionV1).toBeNull();
+    expect(reset.taskCursorExecutionHistoryV1).toBeNull();
+    expect(reset.implementationAutoQualityGateV1).toBeNull();
+    expect(reset.implementationAutoQualityGateHistoryV1).toBeNull();
+    expect(reset.implementationQuickRunV1).toBeNull();
+    expect(reset.implementationExecutionJobsV1).toBeNull();
+    expect(reset.codeTaskExecutionRunsV1).toBeNull();
+    expect(reset.codeTaskExecutionQueueV1).toBeNull();
+  });
+
+  it("planning reset keeps only planning reset trace in promptTimeline", () => {
+    const reset = buildRequirementsConversationResetStateJson(
+      {
+        promptTimeline: [
+          {
+            stage: "requirements",
+            stageGroup: "기획",
+            workspaceScreenKey: "requirements",
+            action: "quick_design_confirmed",
+            source: "system",
+            responseText: "planning",
+            createdAt: nowIso,
+          },
+          {
+            stage: "implementation",
+            stageGroup: "구현",
+            workspaceScreenKey: "prototype_execution",
+            action: "task_cursor_api_started",
+            source: "platform",
+            orchestrationTraceGroup: "task_cursor_execution",
+            responseText: "taskId=DEV-1",
+            createdAt: nowIso,
+          },
+          {
+            stage: "implementation",
+            stageGroup: "구현",
+            workspaceScreenKey: "prototype_execution",
+            action: "implementation_stage_action_run",
+            source: "platform",
+            responseText: "action=REQUEST_TASK_CURSOR_EXECUTION",
+            createdAt: nowIso,
+          },
+        ],
+      },
+      nowIso,
+    );
+
+    expect(reset.promptTimeline).toHaveLength(1);
+    expect(reset.promptTimeline?.[0]?.action).toBe(PLANNING_RESET_CLEARED_IMPLEMENTATION_TRACE_ACTION);
+  });
+
+  it("clearRuntimeState applies IMPLEMENTATION_SESSION_RESET_NULL_PATCH", () => {
+    const cleared = clearDerivedImplementationStateFromRequirementsJson(
+      {
+        implementationSeedV1: { version: "implementation_seed_v1" } as never,
+        codeTaskExecutionRunsV1: [{ version: "code_task_execution_run_v1" } as never],
+        taskCursorExecutionV1: { version: "task_cursor_execution_v1" } as never,
+      },
+      { clearRuntimeState: true },
+    );
+    expect(cleared.implementationSeedV1).toBeNull();
+    expect(cleared.codeTaskExecutionRunsV1).toBeNull();
+    expect(cleared.taskCursorExecutionV1).toBeNull();
+  });
+
+  it("default clearDerivedImplementationState keeps runtime fields unless clearRuntimeState", () => {
+    const cleared = clearDerivedImplementationStateFromRequirementsJson({
+      implementationSeedV1: { version: "implementation_seed_v1" } as never,
+      codeTaskExecutionRunsV1: [{ version: "code_task_execution_run_v1" } as never],
+      taskCursorExecutionV1: { version: "task_cursor_execution_v1" } as never,
+    });
+    expect(cleared.implementationSeedV1).toBeNull();
+    expect(cleared.codeTaskExecutionRunsV1).toEqual([
+      { version: "code_task_execution_run_v1" },
+    ]);
+    expect(cleared.taskCursorExecutionV1).toEqual({ version: "task_cursor_execution_v1" });
+  });
+
   it("clears implementation single chat messages when planning is reset", () => {
     const bootstrap = msg({
       id: "impl-boot",
@@ -314,11 +432,11 @@ describe("resetDerivedImplementationState", () => {
     expect(timeline.map((entry) => entry.action)).toEqual(["quick_design_confirmed"]);
   });
 
-  it("shows reset warning that implementation derived data will be cleared but environment settings remain", () => {
+  it("shows reset warning that implementation derived and runtime data will be cleared but environment settings remain", () => {
     expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("구현 준비 데이터");
-    expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("구현 작업안");
+    expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("구현 실행 기록");
     expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("구현 Seed");
-    expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("Code Agent");
+    expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("실행 큐");
     expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("환경설정");
     expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("Git/Code Agent");
   });

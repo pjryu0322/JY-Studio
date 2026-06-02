@@ -212,6 +212,8 @@ export function buildRequirementsConversationResetStateJson(
     nowIso,
     appendPlanningResetTrace: true,
     nullSingleChat: true,
+    clearExecutionLog: true,
+    clearRuntimeState: true,
   });
 }
 
@@ -229,7 +231,7 @@ export function buildImplementationConversationResetStateJson(
         promptTimeline: [],
         lastSavedAt: nowIso,
       },
-      { nullSingleChat: true, clearExecutionLog: true },
+      { nullSingleChat: true, clearExecutionLog: true, clearRuntimeState: true },
     ),
     ...IMPLEMENTATION_SESSION_RESET_NULL_PATCH,
     promptTimeline: [],
