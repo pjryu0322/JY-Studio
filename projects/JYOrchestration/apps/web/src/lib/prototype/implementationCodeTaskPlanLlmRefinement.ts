@@ -25,6 +25,7 @@ import {
 } from "@/lib/prototype/implementationExecutionHints";
 import {
   IMPLEMENTATION_CODE_TASK_CHANGE_TYPES,
+  IMPLEMENTATION_CODE_TASK_CONSOLIDATION_LLM_GUIDELINES,
   type ImplementationCodeTaskChangeType,
   type ImplementationCodeTaskPlanV1,
   type ImplementationCodeTaskPlanLlmRefinementSummaryV1,
@@ -147,6 +148,8 @@ export function buildCodeTaskLlmRefinementUserPrompt(input: {
     "Tech stack hints:",
     "- Next.js / TypeScript / pnpm monorepo",
     "- Scope: projects/JYOrchestration only",
+    "",
+    ...IMPLEMENTATION_CODE_TASK_CONSOLIDATION_LLM_GUIDELINES,
     "",
     "Forbidden:",
     "- Do not modify Stage1/ENV_TEST/GitHub/Cursor pipeline",

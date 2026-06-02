@@ -1,8 +1,15 @@
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import {
+  DEV_FRAME_TASK_ID,
+  isUiOrientedCommonFeature,
+  shouldCreateDevFrameTask,
+  type SelectedPrototypeTemplateV1,
+} from "@/lib/requirements/implementationPrototypeTemplateContext";
 
 export const IMPLEMENTATION_TASK_LIST_VERSION = "implementation_task_list_v1" as const;
 
 export type ImplementationTaskType =
+  | "frame"
   | "screen"
   | "feature"
   | "data"
@@ -75,6 +82,44 @@ function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function buildDevFrameTask(template: SelectedPrototypeTemplateV1): ImplementationTaskV1 {
+  return {
+    taskId: DEV_FRAME_TASK_ID,
+    title: "화면 프레임/앱 Shell 구성",
+    description: [
+      "선택된 프로토타입 템플릿을 기준으로 앱 전체 화면 프레임과 공통 레이아웃을 구성합니다.",
+      "",
+      "템플릿:",
+      `${template.templateNameKo} (${template.templateNameEn})`,
+      "",
+      "템플릿 레이아웃 계약:",
+      template.layoutContract,
+      "",
+      "하위 작업:",
+      "- 공통 app shell/page shell 구성",
+      "- 모바일 기준 viewport/container 구성",
+      "- 주요 화면 route/page 구조 준비",
+      "- 공통 navigation/header/body/footer 영역 정의",
+      "- loading/error/empty 상태 프레임 준비",
+      "- 화면별 구현 Task가 동일한 shell/container 기준을 사용하도록 정리",
+    ].join("\n"),
+    taskType: "frame",
+    ownerRole: "developer",
+    priority: "high",
+    dependencies: [],
+    sourceRef: { type: "artifact", title: "selected_template_frame" },
+    acceptanceCriteria: [
+      "선택된 템플릿의 navigationItems가 화면 프레임에 반영된다.",
+      "선택된 템플릿의 summaryCards 또는 주요 상태 카드 영역이 반영된다.",
+      "선택된 템플릿의 primarySections가 공통 layout 기준에 반영된다.",
+      "모바일 기준 공통 viewport/container가 준비된다.",
+      "각 화면 구현 Task가 동일한 shell/page 구조를 사용할 수 있다.",
+      "기본 loading/error/empty 상태 프레임이 준비된다.",
+    ],
+    status: "ready",
+  };
+}
+
 export function buildImplementationTaskListFromSeed(input: {
   readonly projectId: string;
   readonly seed: ImplementationSeedV1;
@@ -89,6 +134,13 @@ export function buildImplementationTaskListFromSeed(input: {
   const processItems = input.seed.processImplementationItems ?? [];
   const commonFeatures = input.seed.commonDetailFeatures ?? [];
   const dataEntities = input.seed.dataModelSeed?.entities ?? [];
+  const templateContext = input.seed.templateContext;
+  const createFrameTask = shouldCreateDevFrameTask(input.seed) && templateContext;
+  const frameDependencies = createFrameTask ? [DEV_FRAME_TASK_ID] : [];
+
+  if (createFrameTask && templateContext) {
+    tasks.push(buildDevFrameTask(templateContext));
+  }
 
   let devScreenIndex = 0;
   for (const s of screenItems) {
@@ -100,7 +152,7 @@ export function buildImplementationTaskListFromSeed(input: {
       taskType: "screen",
       ownerRole: "developer",
       priority: screenItems.length <= 3 ? "high" : "medium",
-      dependencies: [],
+      dependencies: [...frameDependencies],
       sourceRef: { type: "screen", id: s.id, title: screenName },
       acceptanceCriteria: [
         "주요 UI 영역이 표시된다.",
@@ -143,6 +195,7 @@ export function buildImplementationTaskListFromSeed(input: {
   let commonIndex = 0;
   for (const f of commonFeatures) {
     const name = normalizeText(f.name) || "공통 기능";
+    const uiOriented = isUiOrientedCommonFeature({ name, description: f.description });
     tasks.push({
       taskId: makeId("DEV-COMMON", commonIndex++),
       title: `${name} 공통 기능 구현`,
@@ -152,7 +205,7 @@ export function buildImplementationTaskListFromSeed(input: {
       taskType: "feature",
       ownerRole: "developer",
       priority: f.required ? "high" : "medium",
-      dependencies: [],
+      dependencies: uiOriented ? [...frameDependencies] : [],
       sourceRef: { type: "common_feature", title: name },
       acceptanceCriteria: ["기획 산출물 기준으로 공통 동작이 적용된다."],
       status: "ready",
@@ -383,6 +436,7 @@ export function parseImplementationTaskListV1(
     if (!taskId || !title || !description) continue;
     if (
       ![
+        "frame",
         "screen",
         "feature",
         "data",

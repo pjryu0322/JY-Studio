@@ -179,8 +179,8 @@ export function ImplementationExecutionBoardPanel({
     setSelectedTaskId((current) => current ?? activeTaskId);
   }, [activeTaskId]);
 
-  const updateCheckedTaskIds = (nextSelectedTaskIds: readonly string[]) => {
-    onSelectedTaskIdsChange?.(nextSelectedTaskIds);
+  const updateCheckedCodeTaskIds = (nextSelectedCodeTaskIds: readonly string[]) => {
+    onSelectedCodeTaskIdsChange?.(nextSelectedCodeTaskIds);
   };
 
   const executionOverview = useMemo(

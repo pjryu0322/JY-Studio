@@ -122,6 +122,15 @@ export type ImplementationCodeTaskPlanV1 = Readonly<{
   llmRefinementSummary?: ImplementationCodeTaskPlanLlmRefinementSummaryV1;
 }>;
 
+export const IMPLEMENTATION_CODE_TASK_CONSOLIDATION_LLM_GUIDELINES = [
+  "Consolidation policy:",
+  "- CodeTask를 너무 작게 쪼개지 말 것",
+  "- UI/state/integration/tests는 기본적으로 하나의 CodeTask 내부 하위 작업으로 통합",
+  "- 사용자가 선택할 수 있는 단위로 작성",
+  "- Cursor가 한 번에 작업 가능한 범위로 유지",
+  "- 명확히 독립적인 구현 단위일 때만 분리",
+] as const;
+
 export const IMPLEMENTATION_CODE_TASK_CHANGE_TYPES: readonly ImplementationCodeTaskChangeType[] = [
   "component",
   "state",
@@ -162,90 +171,71 @@ function mapTaskPriorityToCodePriority(
 
 function blueprintsForTaskType(taskType: ImplementationTaskType): readonly CodeTaskBlueprint[] {
   switch (taskType) {
+    case "frame":
+      return [
+        {
+          changeType: "component",
+          titleSuffix: "앱 Shell/공통 화면 프레임",
+          descriptionSuffix: [
+            "선택 템플릿의 layoutContract를 기준으로 앱 전체 화면 프레임과 공통 레이아웃을 구현합니다.",
+            "navigationItems, summaryCards, primarySections를 공통 frame에 반영합니다.",
+            "모바일 viewport/container, page shell, loading/error/empty frame을 준비합니다.",
+          ].join("\n"),
+          targetHint: "app shell / layout",
+          verificationHint: "주요 화면이 동일한 공통 frame/container 안에서 렌더링되는지 확인",
+        },
+      ];
     case "screen":
       return [
         {
           changeType: "component",
-          titleSuffix: "UI component",
-          descriptionSuffix: "화면 UI 컴포넌트와 레이아웃을 구현합니다.",
+          titleSuffix: "화면 구현",
+          descriptionSuffix: [
+            "화면 UI, 상태 흐름, 연동, 레이아웃을 하나의 실행 단위로 구현합니다.",
+            "",
+            "하위 작업:",
+            "- UI 컴포넌트 및 레이아웃 구현",
+            "- 상태/이벤트 핸들러 및 데이터 바인딩",
+            "- 필요한 화면 연동",
+            "- 기본 동작 및 렌더링 검증",
+          ].join("\n"),
           targetHint: "components",
-          verificationHint: "화면 렌더링 및 주요 UI 요소 표시 확인",
-        },
-        {
-          changeType: "style",
-          titleSuffix: "style/layout",
-          descriptionSuffix: "스타일과 레이아웃을 기획 산출물에 맞게 정리합니다.",
-          targetHint: "styles",
-          verificationHint: "반응형/간격/타이포 일관성 확인",
-        },
-        {
-          changeType: "state",
-          titleSuffix: "state/handlers",
-          descriptionSuffix: "화면 상태, 이벤트 핸들러, 데이터 바인딩을 구현합니다.",
-          targetHint: "state",
-          verificationHint: "상태 전이 및 사용자 인터랙션 확인",
-        },
-        {
-          changeType: "test",
-          titleSuffix: "tests",
-          descriptionSuffix: "화면 관련 단위/컴포넌트 테스트를 보강합니다.",
-          targetHint: "tests",
-          verificationHint: "관련 테스트 실행",
+          verificationHint: "화면 렌더링, 상태 전환, 주요 사용자 흐름 확인",
         },
       ];
     case "feature":
       return [
         {
           changeType: "component",
-          titleSuffix: "UI/logic component",
-          descriptionSuffix: "기능 UI 및 핵심 로직 컴포넌트를 구현합니다.",
+          titleSuffix: "기능 구현",
+          descriptionSuffix: [
+            "기능 UI, 상태 흐름, 연동을 하나의 실행 단위로 구현합니다.",
+            "",
+            "하위 작업:",
+            "- UI/logic component 구현",
+            "- 상태 흐름 및 예외 처리",
+            "- 기존 화면/모듈 연동",
+            "- 기본 동작 검증",
+          ].join("\n"),
           targetHint: "components",
-          verificationHint: "기능 진입점 및 UI 동작 확인",
-        },
-        {
-          changeType: "state",
-          titleSuffix: "state flow",
-          descriptionSuffix: "기능 상태 흐름과 예외 처리를 구현합니다.",
-          targetHint: "state",
-          verificationHint: "정상/예외/빈 상태 시나리오 확인",
-        },
-        {
-          changeType: "integration",
-          titleSuffix: "integration",
-          descriptionSuffix: "기존 화면/모듈과의 연동을 구현합니다.",
-          targetHint: "integration",
-          verificationHint: "연동 지점 및 데이터 흐름 확인",
-        },
-        {
-          changeType: "test",
-          titleSuffix: "tests",
-          descriptionSuffix: "기능 관련 테스트를 보강합니다.",
-          targetHint: "tests",
-          verificationHint: "관련 테스트 실행",
+          verificationHint: "기능 진입점, 상태 전환, 연동 지점 확인",
         },
       ];
     case "api":
       return [
         {
           changeType: "api",
-          titleSuffix: "API handler",
-          descriptionSuffix: "API route/handler 및 요청·응답 스키마를 구현합니다.",
+          titleSuffix: "API 구현",
+          descriptionSuffix: [
+            "API handler, 연동, 기본 검증을 하나의 실행 단위로 구현합니다.",
+            "",
+            "하위 작업:",
+            "- API route/handler 및 스키마 구현",
+            "- 클라이언트/서비스 연동",
+            "- 요청/응답 및 오류 처리 검증",
+          ].join("\n"),
           targetHint: "api",
-          verificationHint: "API 요청/응답 및 오류 처리 확인",
-        },
-        {
-          changeType: "integration",
-          titleSuffix: "integration",
-          descriptionSuffix: "클라이언트/서비스 연동 지점을 구현합니다.",
-          targetHint: "integration",
-          verificationHint: "연동 호출 및 타입 일치 확인",
-        },
-        {
-          changeType: "test",
-          titleSuffix: "tests",
-          descriptionSuffix: "API 관련 테스트를 보강합니다.",
-          targetHint: "tests",
-          verificationHint: "API 테스트 실행",
+          verificationHint: "API 요청/응답, 연동 호출, 오류 처리 확인",
         },
       ];
     case "mock":
@@ -253,41 +243,29 @@ function blueprintsForTaskType(taskType: ImplementationTaskType): readonly CodeT
       return [
         {
           changeType: "data",
-          titleSuffix: "data model",
-          descriptionSuffix: "Mock/데이터 구조와 샘플 데이터를 정의합니다.",
+          titleSuffix: "데이터/Mock 구현",
+          descriptionSuffix: [
+            "Mock/데이터 구조, 상태 연결, 기본 검증을 하나의 실행 단위로 구현합니다.",
+            "",
+            "하위 작업:",
+            "- Mock/데이터 구조와 샘플 데이터 정의",
+            "- 화면/기능 상태에 데이터 연결",
+            "- 샘플 데이터로 화면/기능 재현 검증",
+          ].join("\n"),
           targetHint: "data",
           verificationHint: "샘플 데이터로 화면/기능 재현 확인",
-        },
-        {
-          changeType: "state",
-          titleSuffix: "state wiring",
-          descriptionSuffix: "데이터를 화면/기능 상태에 연결합니다.",
-          targetHint: "state",
-          verificationHint: "데이터 로딩/바인딩 확인",
-        },
-        {
-          changeType: "test",
-          titleSuffix: "tests",
-          descriptionSuffix: "데이터 관련 테스트를 보강합니다.",
-          targetHint: "tests",
-          verificationHint: "데이터 fixture 테스트 실행",
         },
       ];
     case "state":
       return [
         {
           changeType: "state",
-          titleSuffix: "state module",
-          descriptionSuffix: "상태 모듈과 selector/action을 구현합니다.",
+          titleSuffix: "상태 모듈 구현",
+          descriptionSuffix: [
+            "상태 모듈, selector/action, 기본 검증을 하나의 실행 단위로 구현합니다.",
+          ].join("\n"),
           targetHint: "state",
-          verificationHint: "상태 변경 및 파생 값 확인",
-        },
-        {
-          changeType: "test",
-          titleSuffix: "tests",
-          descriptionSuffix: "상태 관련 테스트를 보강합니다.",
-          targetHint: "tests",
-          verificationHint: "상태 테스트 실행",
+          verificationHint: "상태 변경, 파생 값, 기본 동작 확인",
         },
       ];
     default:

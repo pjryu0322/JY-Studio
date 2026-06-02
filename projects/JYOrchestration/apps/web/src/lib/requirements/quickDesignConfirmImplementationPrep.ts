@@ -3,6 +3,10 @@ import {
   resolveImplementationCandidateGapKeys,
 } from "@/lib/requirements/implementationCandidateLabels";
 import {
+  attachTemplateContextToSeed,
+  resolveSelectedPrototypeTemplateForPlanning,
+} from "@/lib/requirements/implementationPrototypeTemplateContext";
+import {
   buildImplementationSeedCandidateSlotPatches,
   buildImplementationSeedFromPlanning,
   evaluateImplementationSeedAutoConfirmEligibility,
@@ -231,6 +235,8 @@ export function resolveQuickDesignSeedLifecycleStatus(input: {
 export function runQuickDesignConfirmImplementationPrep(input: {
   readonly projectId: string;
   readonly projectName?: string;
+  readonly projectDescription?: string;
+  readonly userSelectedTemplateId?: import("@/lib/templates/prototypeTemplates").PrototypeTemplateType | null;
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
@@ -290,12 +296,21 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     readinessReady: readiness.ready,
   });
 
-  const implementationSeedV1 = buildImplementationSeedFromPlanning({
+  const baseSeed = buildImplementationSeedFromPlanning({
     projectId: input.projectId,
     orchestration,
     definitions: input.definitions,
     lifecycleStatus,
     nowIso: now,
+  });
+  const implementationSeedV1 = attachTemplateContextToSeed({
+    seed: baseSeed,
+    templateContext: resolveSelectedPrototypeTemplateForPlanning({
+      projectName: input.projectName,
+      projectDescription: input.projectDescription,
+      seed: baseSeed,
+      userSelectedTemplateId: input.userSelectedTemplateId,
+    }),
   });
 
   const prepComplete = readiness.ready && lifecycleStatus === "confirmed";
@@ -498,6 +513,37 @@ const QUICK_DESIGN_IMPLEMENTATION_PREP_INFO_LINES: readonly string[] = [
   "- 데이터/Mock 처리 기준",
 ] as const;
 
+export function formatImplementationPrepCompleteSummaryLines(input: {
+  readonly templateContext?: import("@/lib/requirements/implementationPrototypeTemplateContext").SelectedPrototypeTemplateV1 | null;
+  readonly taskList?: ImplementationTaskListV1 | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly workItemCount?: number;
+  readonly usedHeuristicFallback?: boolean;
+}): readonly string[] {
+  const frameCount = input.taskList?.tasks.filter((t) => t.taskType === "frame").length ?? 0;
+  const processTaskCount = input.taskList?.tasks.filter((t) => t.ownerRole === "developer").length ?? 0;
+  const codeTaskCount = input.codeTaskPlan?.codeTaskCount ?? input.codeTaskPlan?.tasks.length ?? 0;
+  const workItemCount = input.workItemCount ?? codeTaskCount;
+  const lines = [
+    "구현준비 완료",
+    "",
+    "확정 템플릿:",
+    `- ${input.templateContext?.templateNameKo ?? "대시보드"}`,
+    "",
+    "생성 항목:",
+    `- 화면 프레임/앱 Shell: ${frameCount}개`,
+    `- Process Task: ${processTaskCount}개`,
+    `- WorkItem: ${workItemCount}개`,
+    `- CodeTask: ${codeTaskCount}개`,
+    "",
+    "구현단계에서는 실행할 CodeTask를 선택해서 진행합니다.",
+  ];
+  if (input.usedHeuristicFallback) {
+    lines.push("", "일부 CodeTask는 기본 규칙으로 생성되었습니다.");
+  }
+  return lines;
+}
+
 export function formatQuickDesignImplementationPrepSummaryLines(input: {
   readonly prepComplete: boolean;
   readonly readiness: ImplementationSeedReadiness;
@@ -505,8 +551,22 @@ export function formatQuickDesignImplementationPrepSummaryLines(input: {
   readonly touchedGapKeys?: readonly ImplementationSeedGapKey[];
   readonly orchestration?: RequirementsSingleChatOrchestrationStateV1 | null;
   readonly definitions?: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly templateContext?: import("@/lib/requirements/implementationPrototypeTemplateContext").SelectedPrototypeTemplateV1 | null;
+  readonly taskList?: ImplementationTaskListV1 | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly workItemCount?: number;
+  readonly usedHeuristicFallback?: boolean;
 }): readonly string[] {
   if (input.prepComplete) {
+    if (input.templateContext || input.taskList || input.codeTaskPlan) {
+      return formatImplementationPrepCompleteSummaryLines({
+        templateContext: input.templateContext,
+        taskList: input.taskList,
+        codeTaskPlan: input.codeTaskPlan,
+        workItemCount: input.workItemCount,
+        usedHeuristicFallback: input.usedHeuristicFallback,
+      });
+    }
     return [...QUICK_DESIGN_IMPLEMENTATION_PREP_INFO_LINES];
   }
 

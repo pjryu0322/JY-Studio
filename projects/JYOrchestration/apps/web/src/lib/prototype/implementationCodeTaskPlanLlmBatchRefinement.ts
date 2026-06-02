@@ -1,4 +1,8 @@
-import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import {
+  IMPLEMENTATION_CODE_TASK_CONSOLIDATION_LLM_GUIDELINES,
+  type ImplementationCodeTaskPlanV1,
+  type ImplementationCodeTaskV1,
+} from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 
 /** Max CodeTasks per LLM batch (inclusive). */
@@ -134,6 +138,8 @@ export function buildCodeTaskLlmRefinementBatchUserPrompt(input: {
     "Tech stack hints:",
     "- Next.js / TypeScript / pnpm monorepo",
     "- Scope: projects/JYOrchestration only",
+    "",
+    ...IMPLEMENTATION_CODE_TASK_CONSOLIDATION_LLM_GUIDELINES,
     "",
     "Output requirements:",
     "- Output JSON only with root object { \"tasks\": [...] }.",

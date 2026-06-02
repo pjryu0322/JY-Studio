@@ -290,8 +290,9 @@ describe("quickDesignConfirmImplementationPrep", () => {
         expect(message.content).toContain(QUICK_DESIGN_PLANNING_SEED_READY_HEADING);
         expect(message.content).not.toContain("구현 작업안 초안을 생성할 수 있습니다");
       }
-      expect(message.content).toContain("프로세스별 구현 항목");
-      expect(message.content).toContain("데이터/Mock 처리 기준");
+      expect(message.content).toContain("확정 템플릿:");
+      expect(message.content).toContain("CodeTask:");
+      expect(message.content).toContain("구현단계에서는 실행할 CodeTask를 선택해서 진행합니다.");
     } else {
       expect(message.content).toContain("보완이 필요한 항목:");
       expect(message.content).not.toContain("일부 항목은 후보 상태로 보완되었습니다");

@@ -225,6 +225,13 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     touchedGapKeys: input.prep.touchedGapKeys,
     orchestration: input.prep.orchestration,
     definitions: input.definitions,
+    templateContext: input.prep.implementationSeedV1.templateContext,
+    taskList: input.prep.implementationTaskListV1,
+    codeTaskPlan: input.prep.implementationCodeTaskPlanV1,
+    workItemCount: input.prep.cursorWorkItemsV1?.length,
+    usedHeuristicFallback:
+      input.prep.implementationCodeTaskPlanV1?.refinementSource === "heuristic" ||
+      input.prep.implementationCodeTaskPlanV1?.refinementStatus === "heuristic_only",
   });
 
   const qualityWarningCount =

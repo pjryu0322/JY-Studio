@@ -170,14 +170,9 @@ describe("ImplementationCodeTaskPlanV1", () => {
       nowIso: NOW,
     });
     const screenTasks = plan.tasks.filter((task) => task.parentTaskId === "DEV-SCREEN-001");
+    expect(screenTasks).toHaveLength(1);
     expect(screenTasks[0]?.parentTaskDependencies).toContain("DEV-MOCK-001");
-    expect(screenTasks[1]?.codeTaskDependencies).toContain("CODE-DEV-SCREEN-001-001");
-    expect(screenTasks[0]?.dependencies).toEqual(
-      expect.arrayContaining(["DEV-MOCK-001"]),
-    );
-    expect(screenTasks[1]?.dependencies).toEqual(
-      expect.arrayContaining(["CODE-DEV-SCREEN-001-001"]),
-    );
+    expect(screenTasks[0]?.dependencies).toEqual(expect.arrayContaining(["DEV-MOCK-001"]));
   });
 
   it("includes dependency context in CodeTask-based WorkItem prompt", () => {

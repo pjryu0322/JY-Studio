@@ -104,8 +104,8 @@ describe("buildQuickDesignImplementationReadyChatMessage readiness summary", () 
     expect(msg.content).toContain("상세 내용은 로그 탭의 실행 로그에서 확인할 수 있습니다.");
     expect(msg.content).toContain("CodeTask LLM 정제:");
     expect(msg.content).toContain("전체 CodeTask: 55개");
-    expect(msg.content).not.toContain("Process Task");
-    expect(msg.content).not.toContain("WorkItem:");
+    expect(msg.content).toContain("확정 템플릿:");
+    expect(msg.content).toContain("CodeTask:");
     expect(msg.content).not.toContain("Validation");
     expect(msg.content).not.toContain("Preflight");
     expect(msg.content).not.toContain("LLM Refinement");

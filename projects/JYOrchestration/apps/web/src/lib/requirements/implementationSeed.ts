@@ -1,3 +1,4 @@
+import type { SelectedPrototypeTemplateV1 } from "@/lib/requirements/implementationPrototypeTemplateContext";
 import { findOrchestrationSlotKeysBySuffix, findSlotRow } from "@/lib/requirements/singleChatSlotNextAction";
 import { normalizeSlotStatus } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -146,6 +147,7 @@ export type ImplementationSeedV1 = Readonly<{
   readonly dataModelSeed: DataModelSeed;
   readonly assumptions: readonly string[];
   readonly gaps: readonly ImplementationSeedGap[];
+  readonly templateContext?: SelectedPrototypeTemplateV1;
 }>;
 
 export type BuildImplementationSeedInput = Readonly<{
@@ -944,6 +946,42 @@ export function parseImplementationSeedV1(raw: unknown): ImplementationSeedV1 | 
     dataModelSeed,
     assumptions: strList("assumptions"),
     gaps: (Array.isArray(o.gaps) ? o.gaps : []) as ImplementationSeedGap[],
+    ...(parseSelectedPrototypeTemplateV1(o.templateContext)
+      ? { templateContext: parseSelectedPrototypeTemplateV1(o.templateContext) }
+      : {}),
+  };
+}
+
+function parseSelectedPrototypeTemplateV1(raw: unknown): SelectedPrototypeTemplateV1 | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const templateId = String(o.templateId ?? "").trim();
+  const validIds = new Set(["dashboard", "booking", "marketplace", "landing", "meeting-workspace"]);
+  if (!validIds.has(templateId)) return undefined;
+  const templateNameKo = String(o.templateNameKo ?? "").trim();
+  const templateNameEn = String(o.templateNameEn ?? "").trim() || templateNameKo;
+  const description = String(o.description ?? "").trim();
+  const layoutContract = String(o.layoutContract ?? "").trim();
+  if (!templateNameKo || !layoutContract) return undefined;
+  const sourceRaw = String(o.source ?? "recommended").trim();
+  const source =
+    sourceRaw === "user_selected" || sourceRaw === "fallback" || sourceRaw === "recommended"
+      ? sourceRaw
+      : "recommended";
+  const strList = (key: string) =>
+    (Array.isArray(o[key]) ? o[key] : []).map(String).map((s) => s.trim()).filter(Boolean);
+  return {
+    templateId: templateId as SelectedPrototypeTemplateV1["templateId"],
+    templateNameKo,
+    templateNameEn: templateNameEn || templateNameKo,
+    description,
+    navigationItems: strList("navigationItems"),
+    summaryCards: strList("summaryCards"),
+    primarySections: strList("primarySections"),
+    layoutContract,
+    source,
+    ...(strList("matchedKeywords").length ? { matchedKeywords: strList("matchedKeywords") } : {}),
+    ...(typeof o.score === "number" ? { score: o.score } : {}),
   };
 }
 
