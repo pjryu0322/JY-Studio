@@ -34,8 +34,7 @@ export {
   TASK_CURSOR_STATUS_CHECK_RESUME_HINT as CODE_TASK_INLINE_STATUS_CHECK_RESUME_HINT,
 } from "@/lib/prototype/taskCursorExecution";
 
-const DEFAULT_NEXT_HINT =
-  "다음 처리: AI 개발자 실행 → GitHub commit 확인 → 경량검사 → 필요 시 검수/보안" as const;
+const DEFAULT_NEXT_HINT = "다음 처리: AI 개발자 실행 → GitHub 결과 확인" as const;
 
 function buildCompactLine(input: {
   readonly statusLabel: string;

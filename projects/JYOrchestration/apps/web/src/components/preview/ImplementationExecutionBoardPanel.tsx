@@ -10,7 +10,6 @@ import {
 } from "@/lib/prototype/codeTaskExecutionRunUi";
 import {
   buildImplementationIntegratedPipelineLines,
-  PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE,
 } from "@/lib/prototype/implementationTaskPipelinePolicy";
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
@@ -435,9 +434,6 @@ export function ImplementationExecutionBoardPanel({
           data-testid="implementation-integrated-pipeline-section"
         >
           <div className={styles.taskTreeSectionTitle}>통합 단계 (전체 Task 완료 후)</div>
-          <p className={styles.summarySecondary}>
-            {PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE} 모든 작업 완료 후 통합 검수/보안을 진행합니다.
-          </p>
           <div className={styles.taskTreeList}>
             {integratedPipelineLines.map((line) => (
               <div key={line.stepId} className={styles.taskTreeChildLine}>

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import type {
   ImplementationCodeTaskTreeNode,
   ImplementationProcessTaskTreeNode,
-  ImplementationTaskTreeMetaLine,
 } from "@/lib/prototype/implementationTaskTreeView";
 import type { CodeTaskExecutionFlowStepVm } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
 import type { CodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
@@ -12,25 +11,10 @@ import { buildCodeTaskInlineExecutionDetail } from "@/lib/prototype/implementati
 import { CodeTaskInlineExecutionDetailBlock } from "@/components/preview/CodeTaskInlineExecutionDetail";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
-function TaskTreeMetaBlock({ lines }: { readonly lines: readonly ImplementationTaskTreeMetaLine[] }) {
-  if (!lines.length) return null;
-  return (
-    <div className={styles.taskTreeMetaBlock} data-testid="implementation-task-tree-meta">
-      {lines.map((line) => (
-        <div key={`${line.label}-${line.value}`} className={styles.taskTreeMetaLine}>
-          <span className={styles.taskTreeMetaKey}>{line.label}</span>
-          <span className={styles.taskTreeMetaValue}>{line.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function ExecutionFlowSteps({ steps }: { readonly steps: readonly CodeTaskExecutionFlowStepVm[] }) {
   if (!steps.length) return null;
   return (
     <div className={styles.taskTreeFlowBlock} data-testid="implementation-code-task-flow">
-      <div className={styles.taskTreeFlowTitle}>실행 흐름</div>
       <ol className={styles.taskTreeFlowList}>
         {steps.map((step) => {
           const marker =
@@ -68,6 +52,73 @@ function ExecutionFlowSteps({ steps }: { readonly steps: readonly CodeTaskExecut
   );
 }
 
+function CodeTaskSelectedDetail({
+  node,
+  codeAgentProgress,
+  onCancelTaskCursorPolling,
+  onResumeStatusCheck,
+  onRunSingle,
+}: {
+  readonly node: ImplementationCodeTaskTreeNode;
+  readonly codeAgentProgress?: CodeAgentExecutionProgressView;
+  readonly onCancelTaskCursorPolling?: () => void;
+  readonly onResumeStatusCheck?: () => void;
+  readonly onRunSingle?: (codeTaskId: string) => void;
+}) {
+  const inlineExecution = codeAgentProgress
+    ? buildCodeTaskInlineExecutionDetail({
+        progress: codeAgentProgress,
+        parentTaskId: node.parentTaskId,
+        isSelected: node.isSelected,
+        executionFlowSteps: node.executionFlowSteps,
+      })
+    : undefined;
+  const showInlineActions =
+    inlineExecution?.canCancelCloudAgentPolling || inlineExecution?.canResumeStatusCheck;
+
+  return (
+    <div
+      className={styles.taskTreeCodeTaskDetail}
+      data-testid={`implementation-code-task-detail-${node.codeTaskId}`}
+    >
+      {node.failureReason ? (
+        <div className={styles.taskTreeFailureBlock}>
+          <div className={styles.taskTreeMetaLine}>
+            <span className={styles.taskTreeMetaKey}>사유</span>
+            <span className={styles.taskTreeMetaValue}>{node.failureReason}</span>
+          </div>
+          {node.nextActionHint ? (
+            <div className={styles.taskTreeMetaLine}>
+              <span className={styles.taskTreeMetaKey}>다음 처리</span>
+              <span className={styles.taskTreeMetaValue}>{node.nextActionHint}</span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <ExecutionFlowSteps steps={node.executionFlowSteps} />
+      {showInlineActions && inlineExecution ? (
+        <CodeTaskInlineExecutionDetailBlock
+          detail={inlineExecution}
+          onCancelPolling={onCancelTaskCursorPolling}
+          onResumeStatusCheck={onResumeStatusCheck}
+        />
+      ) : null}
+      {node.canRunSingle && onRunSingle ? (
+        <div className={styles.taskTreeActionRow}>
+          <button
+            type="button"
+            className={styles.taskTreeRestartButton}
+            data-testid={`implementation-code-task-run-${node.codeTaskId}`}
+            onClick={() => onRunSingle(node.codeTaskId)}
+          >
+            이 CodeTask 실행
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function CodeTaskTreeItem({
   node,
   depth,
@@ -87,16 +138,6 @@ function CodeTaskTreeItem({
   readonly onToggleChecked?: (codeTaskId: string, checked: boolean) => void;
   readonly onRunSingle?: (codeTaskId: string) => void;
 }) {
-  const inlineExecution = codeAgentProgress
-    ? buildCodeTaskInlineExecutionDetail({
-        progress: codeAgentProgress,
-        parentTaskId: node.parentTaskId,
-        isSelected: node.isSelected,
-        executionFlowSteps: node.executionFlowSteps,
-      })
-    : undefined;
-  const showInlineActions =
-    inlineExecution?.canCancelCloudAgentPolling || inlineExecution?.canResumeStatusCheck;
   const itemClass = [
     styles.taskTreeCodeTaskItem,
     node.isActive ? styles.taskTreeItemActive : "",
@@ -143,43 +184,13 @@ function CodeTaskTreeItem({
         </button>
       </div>
       {node.isSelected ? (
-        <div className={styles.taskTreeCodeTaskDetail}>
-          <TaskTreeMetaBlock lines={node.metaLines} />
-          {node.failureReason ? (
-            <div className={styles.taskTreeFailureBlock}>
-              <div className={styles.taskTreeMetaLine}>
-                <span className={styles.taskTreeMetaKey}>사유</span>
-                <span className={styles.taskTreeMetaValue}>{node.failureReason}</span>
-              </div>
-              {node.nextActionHint ? (
-                <div className={styles.taskTreeMetaLine}>
-                  <span className={styles.taskTreeMetaKey}>다음 처리</span>
-                  <span className={styles.taskTreeMetaValue}>{node.nextActionHint}</span>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          <ExecutionFlowSteps steps={node.executionFlowSteps} />
-          {showInlineActions && inlineExecution ? (
-            <CodeTaskInlineExecutionDetailBlock
-              detail={inlineExecution}
-              onCancelPolling={onCancelTaskCursorPolling}
-              onResumeStatusCheck={onResumeStatusCheck}
-            />
-          ) : null}
-          {node.canRunSingle && onRunSingle ? (
-            <div className={styles.taskTreeActionRow}>
-              <button
-                type="button"
-                className={styles.taskTreeRestartButton}
-                data-testid={`implementation-code-task-run-${node.codeTaskId}`}
-                onClick={() => onRunSingle(node.codeTaskId)}
-              >
-                이 CodeTask 실행
-              </button>
-            </div>
-          ) : null}
-        </div>
+        <CodeTaskSelectedDetail
+          node={node}
+          codeAgentProgress={codeAgentProgress}
+          onCancelTaskCursorPolling={onCancelTaskCursorPolling}
+          onResumeStatusCheck={onResumeStatusCheck}
+          onRunSingle={onRunSingle}
+        />
       ) : null}
     </div>
   );
@@ -262,7 +273,7 @@ export function ImplementationExecutionBoardTaskTree({
           <span>전체 선택</span>
         </label>
         <span className={styles.taskTreeSelectAllMeta}>
-          Process Task {processCount}개 · CodeTask {codeTaskCount}개 · 선택됨{" "}
+          CodeTask {codeTaskCount}개 · 선택됨{" "}
           {selectedCodeTaskCount ?? nodes.reduce((n, node) => n + node.codeTasks.filter((ct) => ct.isChecked).length, 0)}개
         </span>
       </div>
@@ -316,12 +327,29 @@ export function ImplementationExecutionBoardTaskTree({
                 {!isOpen ? <span className={styles.taskTreeCollapsedMeta}>{node.collapsedSummary}</span> : null}
               </button>
             </div>
-            {node.dependencyLabel ? (
-              <div className={styles.taskTreeDependencyLine}>{node.dependencyLabel}</div>
-            ) : null}
             {isOpen ? (
               <div className={styles.taskTreeChildren}>
-                {node.codeTasks.length ? (
+                {node.codeTasks.length === 1 ? (
+                  (() => {
+                    const codeTask = node.codeTasks[0]!;
+                    const codeTaskSelected =
+                      selectedCodeTaskId === codeTask.codeTaskId ||
+                      (isSelected && !selectedCodeTaskId);
+                    const selectedNode: ImplementationCodeTaskTreeNode = {
+                      ...codeTask,
+                      isSelected: codeTaskSelected,
+                    };
+                    return codeTaskSelected ? (
+                      <CodeTaskSelectedDetail
+                        node={selectedNode}
+                        codeAgentProgress={codeAgentProgress}
+                        onCancelTaskCursorPolling={onCancelTaskCursorPolling}
+                        onResumeStatusCheck={onResumeStatusCheck}
+                        onRunSingle={onRunSingleCodeTask}
+                      />
+                    ) : null;
+                  })()
+                ) : node.codeTasks.length > 1 ? (
                   <div className={styles.taskTreeCodeTaskList}>
                     {node.codeTasks.map((codeTask) => (
                       <CodeTaskTreeItem

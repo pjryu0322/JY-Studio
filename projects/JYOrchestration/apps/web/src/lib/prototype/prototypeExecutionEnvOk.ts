@@ -70,11 +70,17 @@ export function buildPrototypeExecutionEnvStatusFromSetup(
       : setup.githubAuthConnectionOk === false
         ? "error"
         : "needs";
+  // If the saved execution setup is validated, treat the environment as runnable
+  // even when the connection-test record is missing/stale.
+  const validated = String((setup as unknown as { status?: string }).status ?? "").trim() === "validated";
+  const normalizedConnectionTest: PrototypeExecutionEnvBadge = validated ? "ok" : connectionTest;
   const runnable: PrototypeExecutionEnvBadge =
-    git === "ok" && cursor === "ok" && github === "ok" && connectionTest === "ok" ? "ok" : "needs";
+    git === "ok" && cursor === "ok" && github === "ok" && normalizedConnectionTest === "ok"
+      ? "ok"
+      : "needs";
   const message = setup.lastValidationError?.trim() || null;
 
-  return { git, github, cursor, connectionTest, runnable, message };
+  return { git, github, cursor, connectionTest: normalizedConnectionTest, runnable, message };
 }
 
 export async function loadPrototypeExecutionEnvStatus(projectId: string): Promise<PrototypeExecutionEnvStatus> {

@@ -46,7 +46,7 @@ describe("buildCodeTaskInlineExecutionDetail", () => {
     });
     expect(detail?.compactLine).toContain("상태:");
     expect(detail?.scopeLine).toBe(CODE_TASK_INLINE_SCOPE_LABEL);
-    expect(detail?.nextProcessingHint).toContain("경량검사");
+    expect(detail?.nextProcessingHint).toContain("GitHub 결과 확인");
     expect(detail?.executionFlowSteps).toBeUndefined();
   });
 });

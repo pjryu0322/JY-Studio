@@ -425,7 +425,7 @@ describe("codeAgentExecutionProgressView", () => {
       taskCursorExecutionHistoryV1: [historyEntry],
     });
     expect(progress?.tone).toBe("done");
-    expect(progress?.text).toContain("GitHub commit 확인됨");
+    expect(progress?.text).toContain("GitHub 결과 확인됨");
   });
 
   it("uses compact main presentation after github verify with auto gate", () => {

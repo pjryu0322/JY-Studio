@@ -66,6 +66,41 @@ function buildConfirmedQuickDesignFixture() {
 }
 
 describe("quickDesignConfirmFlow", () => {
+  it("sync flow passes template selection into seed templateContext", () => {
+    const { definitions, fastPlanDraftV1, orchestrationForConfirm } = buildConfirmedQuickDesignFixture();
+    const result = runQuickDesignConfirmFlowSync({
+      envOk: true,
+      flow: {
+        projectId: "p-flow",
+        projectName: "회의록",
+        projectDescription: "회의록, STT, 화자분리 기반 회의 분석 서비스",
+        userSelectedTemplateId: "meeting-workspace",
+        conversationMessages: [],
+        serviceFlow: null,
+        problemInterview: null,
+        sourceStage: "IDEATION",
+        nowIso,
+        fastPlanDraftV1,
+        orchestrationForConfirm,
+        slotDefinitions: definitions,
+        planningState: {
+          featurePlanningSlotsV1: null,
+          serviceFlowV1: null,
+          projectArtifacts: [],
+          deliverableAssets: [],
+          requirementsOrchestrationStageV1: null,
+          implementationTaskListV1: null,
+        },
+      },
+    });
+
+    expect(result.kind).toBe("success");
+    if (result.kind !== "success") return;
+
+    expect(result.statePatch.implementationSeedV1.templateContext?.templateId).toBe("meeting-workspace");
+    expect(result.statePatch.implementationSeedV1.templateContext?.source).toBe("user_selected");
+  });
+
   it("produces seed + task list state patch without work plan draft", () => {
     const { definitions, fastPlanDraftV1, orchestrationForConfirm } = buildConfirmedQuickDesignFixture();
     const result = runQuickDesignConfirmFlowSync({

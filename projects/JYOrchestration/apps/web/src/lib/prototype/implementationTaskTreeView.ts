@@ -35,7 +35,6 @@ import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementa
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
   computeTaskTreeDependencyViews,
-  formatTaskTreeDependencyLabel,
   orderTaskRowsForTreeDisplay,
 } from "@/lib/prototype/implementationTaskTreeSelection";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -70,7 +69,6 @@ export type ImplementationProcessTaskTreeNode = Readonly<{
   readonly isSelected: boolean;
   readonly isChecked: boolean;
   readonly treeDepth: number;
-  readonly dependencyLabel?: string;
   readonly defaultExpanded: boolean;
   readonly codeTasks: readonly ImplementationCodeTaskTreeNode[];
   /** @deprecated Process Task는 직접 실행하지 않음 — CodeTask 버튼 사용 */
@@ -260,7 +258,7 @@ function buildCodeTaskNode(input: {
         ? { nextActionHint: dependencyHint ?? "선행 CodeTask 완료 후 실행 가능" }
         : {
             nextActionHint:
-              "다음 처리: AI 개발자 실행 → GitHub commit 확인 → 경량검사 → 필요 시 검수/보안",
+              "다음 처리: AI 개발자 실행 → GitHub 결과 확인",
           }),
   };
 }
@@ -375,9 +373,6 @@ export function buildImplementationProcessTaskTreeNodes(input: {
       isSelected,
       isChecked,
       treeDepth: dependencyView?.depth ?? 0,
-      ...(formatTaskTreeDependencyLabel(dependencyView)
-        ? { dependencyLabel: formatTaskTreeDependencyLabel(dependencyView) }
-        : {}),
       defaultExpanded: isActive || isSelected || codeTasks.some((ct) => ct.isSelected),
       codeTasks,
       canRestart: false,

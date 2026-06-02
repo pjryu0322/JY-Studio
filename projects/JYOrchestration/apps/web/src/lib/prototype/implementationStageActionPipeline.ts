@@ -576,7 +576,10 @@ export function evaluateImplementationStageActionGate(
       const activeRun = evaluateActiveImplementationExecutionGate(actionId, boardContext);
       if (activeRun) return activeRun;
       if (!state.envOk) {
-        return { ok: false, message: "환경 준비가 완료된 뒤 AI 개발자 실행을 요청할 수 있습니다." };
+        return {
+          ok: false,
+          message: "환경설정에서 [연결 테스트]를 완료한 뒤 AI 개발자 실행을 요청할 수 있습니다.",
+        };
       }
       if (!isTaskListReadyForImplementationStageActions(state)) {
         return { ok: false, message: "구현 작업목록이 준비된 뒤 AI 개발자 실행을 요청할 수 있습니다." };
@@ -596,7 +599,10 @@ export function evaluateImplementationStageActionGate(
       const activeRun = evaluateActiveImplementationExecutionGate(actionId, boardContext);
       if (activeRun) return activeRun;
       if (!state.envOk) {
-        return { ok: false, message: "환경 준비가 완료된 뒤 Quick 실행을 시작할 수 있습니다." };
+        return {
+          ok: false,
+          message: "환경설정에서 [연결 테스트]를 완료한 뒤 Quick 실행을 시작할 수 있습니다.",
+        };
       }
       if (!isTaskListReadyForImplementationStageActions(state)) {
         return { ok: false, message: "구현 작업목록이 준비된 뒤 Quick 실행을 시작할 수 있습니다." };

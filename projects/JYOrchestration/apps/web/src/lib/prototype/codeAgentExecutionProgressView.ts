@@ -164,7 +164,7 @@ const TIMELINE_ACTION_LABELS: Record<string, string> = {
   task_cursor_api_completed: "Cursor 작업 완료",
   task_cursor_api_failed: "Cursor 실행 실패",
   task_cursor_github_verify_requested: "GitHub 확인 요청",
-  task_cursor_github_verified: "GitHub commit 확인됨",
+  task_cursor_github_verified: "GitHub 결과 확인됨",
   task_cursor_github_verify_failed: "GitHub 확인 실패",
   cursor_api_availability_checked: "Cursor API 환경 점검",
 };
@@ -523,12 +523,12 @@ function taskCursorStatusLabel(execution: TaskCursorExecutionV1): string {
     case "cursor_completed":
       return "Cursor 작업 완료 — GitHub 확인 대기";
     case "github_verifying":
-      return "GitHub commit 확인 중";
+      return "GitHub 결과 확인 중";
     case "github_verified":
     case "review_pending":
-      return "GitHub commit 확인됨";
+      return "GitHub 결과 확인됨";
     case "security_pending":
-      return "검수 완료";
+      return "GitHub 결과 확인됨";
     case "scm_pending":
       return "Task 완료 — 다음 작업 대기";
     case "status_check_stopped":
@@ -587,16 +587,20 @@ function taskCursorNextProcessingHint(execution: TaskCursorExecutionV1): string 
   if (execution.status === "scm_pending") {
     return "다음 처리: 우선순위 기준 다음 작업 자동 실행";
   }
-  if (execution.status === "github_verified" || execution.status === "review_pending" || execution.status === "security_pending") {
-    return "다음 처리: 경량검사 → 필요 시 검수/보안 → 다음 Task";
+  if (
+    execution.status === "github_verified" ||
+    execution.status === "review_pending" ||
+    execution.status === "security_pending"
+  ) {
+    return "다음 처리: 다음 CodeTask 자동 실행";
   }
   if (execution.status === "cursor_completed" || execution.status === "github_verifying") {
-    return "다음 처리: GitHub commit 확인 → 경량검사";
+    return "다음 처리: GitHub 결과 확인";
   }
   if (execution.status === "cursor_running" || execution.status === "cursor_requested") {
     return "진행: Cloud Agent 작업 결과 확인 중";
   }
-  return "다음 처리: AI 개발자 실행 → GitHub 확인 → 경량검사 → (전체 완료 후) 통합 검수/보안";
+  return "다음 처리: AI 개발자 실행 → GitHub 결과 확인";
 }
 
 function buildTaskCursorProgressSteps(execution: TaskCursorExecutionV1): readonly CodeAgentExecutionProgressStep[] {
@@ -921,9 +925,7 @@ export function buildCodeAgentExecutionProgressView(input: {
       isStubResult: false,
       compactMainPresentation: true,
       compactSteps: buildCompactDashboardProgressSteps(null, null),
-      nextProcessingHint: activeTaskId
-        ? "다음 처리: AI 개발자 실행 → GitHub commit 확인 → 경량검사 → 필요 시 검수/보안"
-        : "모든 작업 완료 후 통합 검수/보안을 진행합니다.",
+      nextProcessingHint: activeTaskId ? "다음 처리: AI 개발자 실행 → GitHub 결과 확인" : undefined,
       steps: buildCompactDashboardProgressSteps(null, null).map((step) => ({
         id: step.id,
         label: step.label,
@@ -1048,7 +1050,7 @@ function taskRowProgressFromTaskCursorExecution(
       };
     case "github_verifying":
       return {
-        text: `${devLabel} · GitHub commit 확인 중${runHint}`,
+        text: `${devLabel} · GitHub 결과 확인 중${runHint}`,
         tone: "verifying",
         isPolling: true,
         shortLabel: "GitHub 확인",
@@ -1058,7 +1060,7 @@ function taskRowProgressFromTaskCursorExecution(
     case "security_pending":
     case "scm_pending":
       return {
-        text: `${devLabel} · GitHub commit 확인됨 · 검수 대기`,
+        text: `${devLabel} · GitHub 결과 확인됨`,
         tone: "done",
         isPolling: false,
         shortLabel: "확인됨",

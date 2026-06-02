@@ -153,10 +153,3 @@ export function isTaskTreeFullySelected(input: {
   const selected = new Set(input.selectedTaskIds);
   return input.taskRows.every((row) => selected.has(row.taskId));
 }
-
-export function formatTaskTreeDependencyLabel(
-  view: ImplementationTaskTreeDependencyView | null | undefined,
-): string | undefined {
-  if (!view?.parentLabels.length) return undefined;
-  return `선행: ${view.parentLabels.join(", ")}`;
-}

@@ -297,6 +297,8 @@ export function runQuickDesignConfirmFlowSync(input: {
   const prep = runQuickDesignConfirmImplementationPrep({
     projectId: flow.projectId,
     projectName: flow.projectName,
+    projectDescription: flow.projectDescription,
+    userSelectedTemplateId: flow.userSelectedTemplateId,
     orchestration: confirm.orchestration,
     definitions: flow.slotDefinitions,
     nowIso: flow.nowIso,

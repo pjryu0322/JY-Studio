@@ -3,7 +3,6 @@ import type { ImplementationExecutionBoardTaskRowV1 } from "@/lib/prototype/impl
 import {
   collectAncestorTaskIds,
   computeTaskTreeDependencyViews,
-  formatTaskTreeDependencyLabel,
   isTaskTreeFullySelected,
   orderTaskRowsForTreeDisplay,
   resolveTaskTreeSelectionToggle,
@@ -66,9 +65,8 @@ describe("implementationTaskTreeSelection", () => {
     expect(views.get("DEV-3")).toEqual({
       depth: 2,
       parentTaskIds: ["DEV-2"],
-      parentLabels: ["DEV-2 DEV-2"],
+      parentLabels: ["DEV-2"],
     });
-    expect(formatTaskTreeDependencyLabel(views.get("DEV-3"))).toBe("선행: DEV-2 DEV-2");
     expect(collectAncestorTaskIds("DEV-3", taskRows)).toEqual(["DEV-1", "DEV-2"]);
   });
 

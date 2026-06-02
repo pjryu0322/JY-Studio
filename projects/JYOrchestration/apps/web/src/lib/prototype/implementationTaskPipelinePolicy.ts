@@ -37,9 +37,6 @@ export function isPerTaskPipelineComplete(input: {
   return derivePerTaskPipelineRole(input) === "completed";
 }
 
-export const PER_TASK_PIPELINE_INTEGRATED_FOOTNOTE =
-  "AI 검수·AI 보안·SCM merge는 모든 CodeTask 완료 후 통합 단계에서 진행합니다." as const;
-
 export type ImplementationIntegratedPipelineLine = Readonly<{
   readonly stepId: string;
   readonly label: string;
