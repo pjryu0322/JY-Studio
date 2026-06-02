@@ -124,6 +124,33 @@ describe("implementationOrchestrationExecutionLog", () => {
     ]);
   });
 
+  it("mergeImplementationExecutionLogTimeline does not restore prior logs when patch clears execution log", () => {
+    const priorLog = {
+      stage: "implementation",
+      action: "task_cursor_execution_requested",
+      source: "platform",
+      orchestrationTraceGroup: "task_cursor_execution",
+      responseText: "taskId=DEV-SCREEN-002 status=requested",
+      createdAt: "2026-05-31T09:08:27.821Z",
+    };
+    const planningOnly = {
+      stage: "requirements",
+      stageGroup: "기획",
+      workspaceScreenKey: "requirements",
+      action: "quick_design_confirmed",
+      source: "system",
+      responseText: "planning",
+      createdAt: NOW,
+    };
+    const timeline = mergeImplementationExecutionLogTimeline({
+      prior: { promptTimeline: [priorLog] },
+      next: { promptTimeline: [planningOnly] },
+      patch: { promptTimeline: [planningOnly] },
+      nowIso: NOW,
+    });
+    expect(timeline.map((entry) => entry.action)).toEqual(["quick_design_confirmed"]);
+  });
+
   it("mergeImplementationExecutionLogTimeline does not re-merge when patch already has full execution log history", () => {
     const priorLog = {
       stage: "implementation",

@@ -11,7 +11,10 @@ import type {
 } from "@/lib/requirements/requirementsStateJson";
 import type { PrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import { isImplementationTimelineResetAction } from "@/lib/requirements/promptTimelineActionCatalog";
-import { isPersistentExecutionLogTimelineEntry } from "@/lib/prototype/promptTimelineExecutionLogTabs";
+import {
+  isExecutionLogTimelineEntry,
+  isPersistentExecutionLogTimelineEntry,
+} from "@/lib/prototype/promptTimelineExecutionLogTabs";
 
 /** 기획 단계 대화 초기화 확인 메시지(구현 파생 데이터 동시 삭제 안내). */
 export const PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE =
@@ -96,6 +99,26 @@ const LEGACY_DERIVED_IMPLEMENTATION_NULL_FIELDS = {
   implementationRoleCheckShownV1: null,
 } as const;
 
+/** 구현 단계 대화 초기화 — 실행 로그·런타임 실행 상태까지 비움(기획 초기화와 분리) */
+export const IMPLEMENTATION_SESSION_RESET_NULL_PATCH = {
+  ...DERIVED_IMPLEMENTATION_STATE_NULL_PATCH,
+  implementationTaskListV1: null,
+  implementationTaskExecutionStateV1: null,
+  implementationIntegratedExecutionStateV1: null,
+  implementationExecutionBoardStateV1: null,
+  implementationReviewStageReadyV1: null,
+  implementationUserFeedbackPatchesV1: null,
+  implementationStageActionRunLogV1: null,
+  implementationCodeTaskQualityGateV1: null,
+  implementationCodeTaskExecutionFeedbackV1: null,
+  implementationQualityGateResultsV1: null,
+  taskCursorExecutionV1: null,
+  taskCursorExecutionHistoryV1: null,
+  implementationAutoQualityGateV1: null,
+  implementationAutoQualityGateHistoryV1: null,
+  implementationQuickRunV1: null,
+} as const;
+
 export function isImplementationSingleChatMessage(message: RequirementsMessage): boolean {
   const internalType = String(message.meta.internalType ?? "");
   if (internalType === IMPLEMENTATION_BLOCKED_MISSING_PLANNING_ARTIFACTS_INTERNAL_TYPE) return true;
@@ -138,10 +161,20 @@ export function isImplementationPromptTimelineEntry(
   return false;
 }
 
+export type FilterImplementationPromptTimelineOptions = Readonly<{
+  /** 구현 단계 초기화 시 런타임 실행 로그(task_cursor_* 등)도 제거 */
+  readonly clearExecutionLog?: boolean;
+}>;
+
 export function filterImplementationPromptTimeline(
   entries: readonly RequirementsPromptTimelineEntry[],
+  options?: FilterImplementationPromptTimelineOptions,
 ): RequirementsPromptTimelineEntry[] {
   return (entries ?? []).filter((entry) => {
+    if (options?.clearExecutionLog) {
+      if (isExecutionLogTimelineEntry(entry)) return false;
+      return !isImplementationPromptTimelineEntry(entry);
+    }
     if (isPersistentExecutionLogTimelineEntry(entry)) return true;
     return !isImplementationPromptTimelineEntry(entry);
   });
@@ -194,6 +227,8 @@ export type ClearDerivedImplementationStateOptions = Readonly<{
    * false면 implementation 메시지만 필터(부분 보존).
    */
   readonly nullSingleChat?: boolean;
+  /** true면 promptTimeline의 실행 로그 항목도 제거(구현 단계 초기화) */
+  readonly clearExecutionLog?: boolean;
 }>;
 
 /**
@@ -205,7 +240,9 @@ export function clearDerivedImplementationStateFromRequirementsJson(
   options: ClearDerivedImplementationStateOptions = {},
 ): RequirementsStateJson {
   const nullSingleChat = options.nullSingleChat !== false;
-  const filteredTimeline = filterImplementationPromptTimeline(state.promptTimeline ?? []);
+  const filteredTimeline = filterImplementationPromptTimeline(state.promptTimeline ?? [], {
+    clearExecutionLog: options.clearExecutionLog,
+  });
   const filteredArtifacts = filterImplementationProjectArtifacts(state.projectArtifacts);
 
   let promptTimeline = filteredTimeline;

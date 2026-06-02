@@ -243,6 +243,36 @@ export async function markTaskCursorJobCancelled(input: {
   });
 }
 
+/** 구현 세션 초기화 등 — 프로젝트의 미완료 Task Cursor job을 모두 종료 */
+export async function cancelActiveTaskCursorJobsForProject(input: {
+  readonly projectId: string;
+  readonly failureReason?: string;
+  readonly errorMessage?: string;
+  readonly now?: Date;
+}): Promise<number> {
+  const projectId = input.projectId.trim();
+  if (!projectId) return 0;
+  const now = input.now ?? new Date();
+  const result = await prisma.taskCursorExecutionJob.updateMany({
+    where: {
+      projectId,
+      completedAt: null,
+      status: { in: [...ACTIVE_JOB_STATUS_FILTER] },
+    },
+    data: {
+      status: "cancelled",
+      failureReason: input.failureReason ?? "implementation_session_reset",
+      errorMessage: input.errorMessage ?? "구현 세션 초기화로 실행 job을 종료했습니다.",
+      completedAt: now,
+      nextPollAt: null,
+      lockedBy: null,
+      lockedAt: null,
+      lockExpiresAt: null,
+    },
+  });
+  return result.count;
+}
+
 export async function markTaskCursorJobTimeout(input: {
   readonly jobId: string;
   readonly execution: TaskCursorExecutionV1;

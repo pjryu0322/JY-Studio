@@ -61,6 +61,24 @@ describe("evaluateTaskCursorWorkerStallWarning", () => {
     expect(warning?.pollCount).toBe(0);
   });
 
+  it("returns null for orphan active job without local execution or quick run", () => {
+    expect(
+      evaluateTaskCursorWorkerStallWarning({
+        serverPolling: true,
+        activeJob: {
+          id: "job-1",
+          projectId: "p1",
+          taskId: "DEV-MOCK-001",
+          status: "cursor_running",
+          pollCount: 0,
+          lastPollAt: null,
+          nextPollAt: null,
+        },
+        nowMs: NOW,
+      }),
+    ).toBeNull();
+  });
+
   it("returns null when pollCount advanced", () => {
     expect(
       evaluateTaskCursorWorkerStallWarning({

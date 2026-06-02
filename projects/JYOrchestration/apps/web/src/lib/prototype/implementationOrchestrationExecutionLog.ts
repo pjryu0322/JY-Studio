@@ -268,7 +268,10 @@ function mergeTimelinePreservingExecutionLogs(
 ): RequirementsPromptTimelineEntry[] {
   const priorLogs = pickPersistentExecutionLogTimelineEntries(prior);
   const nextTimeline = sanitizeTimeline(next);
+  const nextLogs = pickPersistentExecutionLogTimelineEntries(nextTimeline);
   if (!priorLogs.length) return nextTimeline;
+  // 구현 초기화 등: 새 타임라인에 실행 로그가 없으면 이전 로그를 복원하지 않음
+  if (nextLogs.length === 0) return nextTimeline;
 
   const nextFingerprints = new Set(
     pickPersistentExecutionLogTimelineEntries(nextTimeline).map((entry) =>

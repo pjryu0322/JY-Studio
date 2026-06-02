@@ -175,11 +175,17 @@ export function usePrototypeExecutionSingleChat({
   useEffect(() => {
     slotsBootstrapRef.current = false;
     implementationBootstrapRef.current = false;
+    if (conversationResetNonce > 0) {
+      setConversationMessages([]);
+      setReplyTo(null);
+      setInput("");
+    }
   }, [conversationResetNonce]);
 
   useEffect(() => {
     const pid = projectId.trim();
     if (!pid || conversationStatus !== "loaded" || envLoading) return;
+    if (!implementationBootstrapInput?.implementationSeedV1) return;
     if (implementationBootstrapRef.current || !implementationBootstrapInput) return;
     const bootstrap = buildImplementationBootstrapBundle(implementationBootstrapInput);
     setConversationMessages((prev) => {
@@ -487,6 +493,7 @@ export function usePrototypeExecutionSingleChat({
 
   return {
     conversationStatus,
+    persistedConversationMessages: conversationMessages,
     chatMessages,
     input,
     setInput,

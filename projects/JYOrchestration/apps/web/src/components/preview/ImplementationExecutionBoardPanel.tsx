@@ -230,8 +230,9 @@ export function ImplementationExecutionBoardPanel({
         serverPolling: isServerTaskCursorPolling(),
         execution: taskCursorExecutionV1,
         activeJob: activeTaskCursorJob,
+        quickRun: implementationQuickRunV1,
       }),
-    [taskCursorExecutionV1, activeTaskCursorJob, stallTick],
+    [taskCursorExecutionV1, activeTaskCursorJob, implementationQuickRunV1, stallTick],
   );
 
   useEffect(() => {

@@ -12,7 +12,7 @@ import { emptyProblemInterviewState } from "@/lib/requirements/problemInterview"
 import { mergeRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   clearDerivedImplementationStateFromRequirementsJson,
-  filterImplementationPromptTimeline,
+  IMPLEMENTATION_SESSION_RESET_NULL_PATCH,
 } from "@/lib/requirements/resetDerivedImplementationState";
 import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDeliverables";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
@@ -222,14 +222,18 @@ export function buildImplementationConversationResetStateJson(
   base: RequirementsStateJson,
   nowIso: string,
 ): RequirementsStateJson {
-  return clearDerivedImplementationStateFromRequirementsJson(
-    {
-      ...base,
-      promptTimeline: filterImplementationPromptTimeline(base.promptTimeline ?? []),
-      lastSavedAt: nowIso,
-    },
-    { nullSingleChat: true },
-  );
+  return {
+    ...clearDerivedImplementationStateFromRequirementsJson(
+      {
+        ...base,
+        promptTimeline: [],
+        lastSavedAt: nowIso,
+      },
+      { nullSingleChat: true, clearExecutionLog: true },
+    ),
+    ...IMPLEMENTATION_SESSION_RESET_NULL_PATCH,
+    promptTimeline: [],
+  };
 }
 
 /** `stateJsonRef`에 키가 있으면(빈 배열 포함) 로컬 값을 우선 — 대화 초기화 직후 서버 JSON 폴백 방지 */

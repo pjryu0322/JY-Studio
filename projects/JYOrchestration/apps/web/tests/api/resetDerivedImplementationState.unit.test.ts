@@ -251,11 +251,10 @@ describe("resetDerivedImplementationState", () => {
     expect(reset.projectArtifacts?.length).toBe(1);
     expect(reset.singleChatOrchestrationV1).toBeTruthy();
     expect(reset.implementationSeedV1).toBeNull();
-    expect(reset.promptTimeline?.some((e) => e.action === "implementation_seed_evaluated")).toBe(false);
-    expect(reset.promptTimeline?.some((e) => e.action === "quick_design_confirmed")).toBe(true);
+    expect(reset.promptTimeline ?? []).toHaveLength(0);
   });
 
-  it("keeps execution log timeline when only implementation is reset", () => {
+  it("clears execution log timeline when only implementation is reset", () => {
     const base: RequirementsStateJson = {
       implementationSeedV1: { version: "implementation_seed_v1" } as never,
       promptTimeline: [
@@ -284,7 +283,35 @@ describe("resetDerivedImplementationState", () => {
     const reset = buildImplementationConversationResetStateJson(base, nowIso);
 
     expect(reset.promptTimeline?.some((e) => e.action === "implementation_seed_evaluated")).toBe(false);
-    expect(reset.promptTimeline?.some((e) => e.action === "task_cursor_api_started")).toBe(true);
+    expect(reset.promptTimeline?.some((e) => e.action === "task_cursor_api_started")).toBe(false);
+  });
+
+  it("filterImplementationPromptTimeline clears execution log when requested", () => {
+    const timeline = filterImplementationPromptTimeline(
+      [
+        {
+          stage: "requirements",
+          stageGroup: "기획",
+          workspaceScreenKey: "requirements",
+          action: "quick_design_confirmed",
+          source: "system",
+          responseText: "planning",
+          createdAt: nowIso,
+        },
+        {
+          stage: "implementation",
+          stageGroup: "구현",
+          workspaceScreenKey: "prototype_execution",
+          action: "task_cursor_poll_tick",
+          source: "platform",
+          orchestrationTraceGroup: "task_cursor_execution",
+          responseText: "taskId=DEV-1 round=3",
+          createdAt: nowIso,
+        },
+      ],
+      { clearExecutionLog: true },
+    );
+    expect(timeline.map((entry) => entry.action)).toEqual(["quick_design_confirmed"]);
   });
 
   it("shows reset warning that implementation derived data will be cleared but environment settings remain", () => {

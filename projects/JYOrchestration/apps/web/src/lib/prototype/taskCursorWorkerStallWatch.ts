@@ -3,6 +3,7 @@ import { isActiveTaskCursorJobStatus } from "@/lib/prototype/taskCursorExecution
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import type { ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 
 /** Warn when server worker polling shows no job progress for this long. */
 export const TASK_CURSOR_SERVER_WORKER_STALL_WARN_MS = 120_000;
@@ -20,6 +21,7 @@ export function evaluateTaskCursorWorkerStallWarning(input: {
   readonly serverPolling?: boolean;
   readonly execution?: TaskCursorExecutionV1 | null;
   readonly activeJob?: TaskCursorJobSummary | null;
+  readonly quickRun?: ImplementationQuickRunV1 | null;
   readonly nowMs?: number;
 }): TaskCursorWorkerStallWarning | null {
   const serverPolling = input.serverPolling ?? isServerTaskCursorPolling();
@@ -27,7 +29,13 @@ export function evaluateTaskCursorWorkerStallWarning(input: {
 
   const execution = input.execution ?? null;
   const activeJob = input.activeJob ?? null;
+  const quickRun = input.quickRun ?? null;
   const inFlightExecution = execution && isInFlightTaskCursorExecution(execution);
+  const quickRunTracksExecution =
+    quickRun?.status === "running" || quickRun?.status === "paused";
+  // DB에만 남은 고아 job(세션 초기화 직후)은 경고하지 않음
+  if (!inFlightExecution && !quickRunTracksExecution) return null;
+
   const inFlightJob =
     activeJob &&
     isActiveTaskCursorJobStatus(activeJob.status) &&

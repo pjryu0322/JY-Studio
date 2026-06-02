@@ -359,6 +359,7 @@ import {
 } from "@/lib/prototype/taskCursorClientPollLoop";
 import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
 import { buildTaskCursorJobOrchestrationSyncFingerprint } from "@/lib/prototype/taskCursorJobStateSync";
+import { shouldSyncTaskCursorServerJobPollState } from "@/lib/prototype/taskCursorServerJobSync";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { parseTaskCursorExecutionV1, patchTaskCursorExecution, type TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
@@ -721,6 +722,7 @@ export function PrototypePreviewPanel({
 
   const lastPersistedChatFingerprintRef = useRef<string>("");
   const orchestrationPersistSeqRef = useRef(0);
+  const implementationResetInFlightRef = useRef(false);
   const applyPendingFromOrchestrationPatchRef = useRef<
     (patch: PrototypeExecutionOrchestrationPersistInput | undefined) => void
   >(() => {});
@@ -1553,7 +1555,12 @@ export function PrototypePreviewPanel({
     const current = parseRequirementsStateJson(requirementsStateJsonRef.current);
     const incomingLogCount = pickPersistentExecutionLogTimelineEntries(incoming.promptTimeline).length;
     const currentLogCount = pickPersistentExecutionLogTimelineEntries(current.promptTimeline).length;
-    if (incomingLogCount >= currentLogCount) {
+    const incomingTimelineLen = (incoming.promptTimeline ?? []).length;
+    const currentTimelineLen = (current.promptTimeline ?? []).length;
+    if (
+      incomingLogCount >= currentLogCount ||
+      incomingTimelineLen <= currentTimelineLen
+    ) {
       requirementsStateJsonRef.current = requirementsStateJson;
     }
   }, [requirementsStateJson]);
@@ -1733,7 +1740,8 @@ export function PrototypePreviewPanel({
   useEffect(() => {
     const pid = projectId.trim();
     const taskList = parsedRequirementsState.implementationTaskListV1;
-    if (!pid || !hasImplementationTaskListReady(taskList)) return;
+    if (!pid || !parsedRequirementsState.implementationSeedV1) return;
+    if (!hasImplementationTaskListReady(taskList)) return;
     if ((parsedRequirementsState.cursorWorkItemsV1?.length ?? 0) > 0) return;
 
     const recovery = buildImplementationEntryCursorWorkItemsRecovery({
@@ -2413,16 +2421,14 @@ export function PrototypePreviewPanel({
     if (!isServerTaskCursorPolling()) return;
     const pid = projectId.trim();
     if (!pid) return;
-    const execution = parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1);
-    const inFlight =
-      execution &&
-      (execution.status === "cursor_requested" ||
-        execution.status === "cursor_running" ||
-        execution.status === "github_verifying");
-    if (!inFlight && !activeTaskCursorJobRef.current) return;
+    if (!shouldSyncTaskCursorServerJobPollState(requirementsStateJsonRef.current)) {
+      if (activeTaskCursorJobRef.current) setActiveTaskCursorJob(null);
+      return;
+    }
 
     let cancelled = false;
     const refresh = async () => {
+      if (implementationResetInFlightRef.current) return;
       try {
         const res = await credentialsIncludeFetch(
           `/api/prototype/task-cursor/jobs?projectId=${encodeURIComponent(pid)}`,
@@ -2432,7 +2438,11 @@ export function PrototypePreviewPanel({
           activeJob?: TaskCursorJobSummary | null;
           orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
         };
-        if (cancelled || !json.success) return;
+        if (cancelled || !json.success || implementationResetInFlightRef.current) return;
+        if (!shouldSyncTaskCursorServerJobPollState(requirementsStateJsonRef.current)) {
+          setActiveTaskCursorJob(null);
+          return;
+        }
         setActiveTaskCursorJob(json.activeJob ?? null);
         if (json.orchestrationPatch) {
           const syncFingerprint = buildTaskCursorJobOrchestrationSyncFingerprint(json.orchestrationPatch);
@@ -6496,13 +6506,30 @@ export function PrototypePreviewPanel({
     if (
       !confirmResetConversation({
         message:
-          "구현 대화·작업안·Seed·WIP 진행 상태를 모두 삭제하고 구현 단계를 다시 시작할까요? 기획 산출물과 슬롯은 유지됩니다. 이 작업은 되돌릴 수 없습니다.",
+          "구현 대화·작업안·Seed·WIP·실행 로그를 모두 삭제하고 구현 단계를 다시 시작할까요? 기획 산출물과 슬롯은 유지됩니다. 이 작업은 되돌릴 수 없습니다.",
       })
     ) {
       return;
     }
     setImplementationResetBusy(true);
+    implementationResetInFlightRef.current = true;
     try {
+      taskCursorPollTokenRef.current += 1;
+      taskCursorPollActiveRunIdRef.current = null;
+      taskCursorAutoChainRef.current = null;
+      taskCursorAutoChainExecutedKeysRef.current.clear();
+      setActiveTaskCursorJob(null);
+      lastServerTaskCursorJobSyncFingerprintRef.current = "";
+
+      try {
+        await credentialsIncludeFetch(
+          `/api/prototype/task-cursor/jobs/cancel-active?projectId=${encodeURIComponent(pid)}`,
+          { method: "POST" },
+        );
+      } catch {
+        // job 취소 실패해도 로컬·DB state 초기화는 계속
+      }
+
       const nowIso = new Date().toISOString();
       const resetState = buildImplementationConversationResetStateJson(
         parseRequirementsStateJson(requirementsStateJson),
@@ -6515,6 +6542,9 @@ export function PrototypePreviewPanel({
       setPlannerCreatePending(false);
       setPlannerProgressStep(1);
       setImplementationConversationResetNonce((n) => n + 1);
+      requirementsStateJsonRef.current = resetState;
+      setPendingImplementationPatch(null);
+      orchestrationPersistSeqRef.current += 1;
       onRequirementsStateJsonChange?.(resetState);
 
       const { res, json: raw } = await patchSpecWorkspaceRequest(pid, { requirementsStateJson: resetState });
@@ -6523,11 +6553,16 @@ export function PrototypePreviewPanel({
         showToast(json.message ?? "구현 대화 초기화에 실패했습니다.");
         return;
       }
-      onRequirementsStateJsonChange?.(json.data.project.requirementsStateJson ?? resetState);
+      const persistedReset = parseRequirementsStateJson(
+        json.data.project.requirementsStateJson ?? resetState,
+      );
+      requirementsStateJsonRef.current = persistedReset;
+      onRequirementsStateJsonChange?.(persistedReset);
       showToast("구현 세션을 초기화했습니다. AI개발자 진입 안내를 다시 표시합니다.");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "구현 대화 초기화 중 오류가 발생했습니다.");
     } finally {
+      implementationResetInFlightRef.current = false;
       setImplementationResetBusy(false);
     }
   }, [
@@ -6907,7 +6942,7 @@ export function PrototypePreviewPanel({
         onClose={() => setImplementationPromptDrawerOpen(false)}
         view={null}
         promptTimeline={orchestrationAwareRequirementsState.promptTimeline}
-        conversationMessages={executionSingleChat.chatMessages}
+        conversationMessages={executionSingleChat.persistedConversationMessages}
         exportBaseName={projectName || "project"}
         initialTab={implementationPromptDrawerTab}
       />

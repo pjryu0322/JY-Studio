@@ -66,6 +66,38 @@ describe("buildImplementationConversationResetStateJson", () => {
     expect(reset.promptTimeline?.some((e) => e.action === "implementation_work_plan_draft_generated")).toBe(
       false,
     );
-    expect(reset.promptTimeline?.some((e) => e.action === "quick_design_confirmed")).toBe(true);
+    expect(reset.promptTimeline ?? []).toHaveLength(0);
+    expect(reset.implementationTaskListV1).toBeNull();
+    expect(reset.taskCursorExecutionV1).toBeNull();
+  });
+
+  it("clears promptTimeline and runtime execution state for drawer logs", () => {
+    const base: RequirementsStateJson = {
+      promptTimeline: [
+        {
+          stage: "requirements",
+          stageGroup: "기획",
+          workspaceScreenKey: "requirements",
+          action: "quick_design_confirmed",
+          source: "system",
+          responseText: "planning",
+          createdAt: nowIso,
+        },
+        {
+          stage: "implementation",
+          stageGroup: "구현",
+          workspaceScreenKey: "prototype_execution",
+          action: "task_cursor_api_started",
+          source: "platform",
+          orchestrationTraceGroup: "task_cursor_execution",
+          responseText: "taskId=DEV-1 status=cursor_running",
+          createdAt: nowIso,
+        },
+      ],
+    };
+
+    const reset = buildImplementationConversationResetStateJson(base, nowIso);
+
+    expect(reset.promptTimeline ?? []).toHaveLength(0);
   });
 });
