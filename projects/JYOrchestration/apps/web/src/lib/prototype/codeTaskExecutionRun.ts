@@ -142,6 +142,7 @@ export function findActiveCodeTaskExecutionRun(
   runs: readonly CodeTaskExecutionRunV1[] | null | undefined,
 ): CodeTaskExecutionRunV1 | null {
   for (const run of runs ?? []) {
+    if (run.status === "queued") continue;
     if (isInFlightCodeTaskExecutionRunStatus(run.status)) return run;
   }
   return null;

@@ -1,4 +1,4 @@
-import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
+import { isActiveTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { ImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import type { ImplementationStageActionGateResult } from "@/lib/prototype/effectiveImplementationState";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -84,7 +84,7 @@ export function evaluateActiveImplementationExecutionGate(
   }
 
   const execution = parseTaskCursorExecutionV1(boardContext?.taskCursorExecutionV1);
-  if (execution && isInFlightTaskCursorExecution(execution)) {
+  if (execution && isActiveTaskCursorExecution(execution)) {
     return blockForInFlightExecution(execution);
   }
 

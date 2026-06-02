@@ -72,6 +72,7 @@ export function ImplementationExecutionBoardPanel({
   onSelectedTaskIdsChange,
   onSelectedCodeTaskIdsChange,
   onRunSingleCodeTask,
+  onForceReleaseExecution,
   codeTaskExecutionFeedbackV1,
   implementationCodeTaskPlanV1,
   cursorWorkItemsV1,
@@ -98,6 +99,7 @@ export function ImplementationExecutionBoardPanel({
   readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
   readonly onSelectedCodeTaskIdsChange?: (selectedCodeTaskIds: readonly string[]) => void;
   readonly onRunSingleCodeTask?: (codeTaskId: string) => void;
+  readonly onForceReleaseExecution?: () => void;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
@@ -316,6 +318,16 @@ export function ImplementationExecutionBoardPanel({
           <div className={styles.queueSummaryBanner} data-testid="code-task-execution-queue-summary">
             {queueSummaryLine}
           </div>
+        ) : null}
+        {executionOverview.isRunning && onForceReleaseExecution ? (
+          <button
+            type="button"
+            className={styles.forceReleaseButton}
+            data-testid="implementation-force-release-execution"
+            onClick={onForceReleaseExecution}
+          >
+            실행 잠금 해제
+          </button>
         ) : null}
         {reworkVm?.candidateCount ? (
           <div className={styles.reworkSummary}>

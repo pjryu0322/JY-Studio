@@ -326,6 +326,7 @@ import {
   getCurrentCodeTaskRunForQueue,
   parseCodeTaskExecutionRunsV1,
   updateCodeTaskExecutionRun,
+  type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
 import { syncCodeTaskExecutionRunsFromTaskCursor } from "@/lib/prototype/codeTaskExecutionRunTaskCursorAdapter";
 import {
@@ -343,6 +344,7 @@ import {
 } from "@/lib/prototype/codeTaskDependencyResolver";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import { prepareSelectedCodeTaskCursorExecution } from "@/lib/prototype/selectedCodeTaskCursorExecution";
+import { recoverImplementationExecutionDeadlock } from "@/lib/prototype/implementationExecutionDeadlockRecovery";
 import {
   buildCodeTaskRunLaunchToastMessage,
   buildCodeTaskRunUserStatus,
@@ -1574,7 +1576,10 @@ export function PrototypePreviewPanel({
     readonly parentTaskId: string;
     readonly workItemId: string;
   } | null>(null);
+  /** Runs created by Quick Run before React state catches up — read in REQUEST_TASK_CURSOR_EXECUTION. */
+  const codeTaskPendingExecutionRunsRef = useRef<readonly CodeTaskExecutionRunV1[] | null>(null);
   const codeTaskQueueAdvanceInFlightRef = useRef(false);
+  const implementationRecoveryKeyRef = useRef("");
 
   const enrichCodeTaskRunOrchestrationPatch = useCallback(
     (patch: PrototypeExecutionOrchestrationPersistInput): PrototypeExecutionOrchestrationPersistInput => {
@@ -2769,6 +2774,83 @@ export function PrototypePreviewPanel({
     showToast,
   ]);
 
+  useEffect(() => {
+    if (codeTaskQueueDispatchRef.current) return;
+    const queue = parseCodeTaskExecutionQueueV1(
+      orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+    );
+    if (!queue || queue.status !== "running") return;
+    const execution = parseTaskCursorExecutionV1(
+      orchestrationAwareRequirementsState.taskCursorExecutionV1,
+    );
+    if (isInFlightTaskCursorExecution(execution)) return;
+    const runs =
+      parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
+      [];
+    const headRun = getCurrentCodeTaskRunForQueue(queue, runs);
+    if (headRun?.status !== "queued") return;
+    const codeTaskId = getCurrentQueueCodeTaskId(queue);
+    if (!codeTaskId) return;
+    const target = resolveCodeTaskDispatchTarget({
+      codeTaskId,
+      codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
+      taskList: orchestrationAwareRequirementsState.implementationTaskListV1,
+      cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1,
+    });
+    if (!target) return;
+    codeTaskQueueDispatchRef.current = {
+      codeTaskId: target.codeTask.codeTaskId,
+      parentTaskId: target.parentTaskId,
+      workItemId: target.workItem.id,
+    };
+    codeTaskPendingExecutionRunsRef.current = runs;
+    void runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
+  }, [
+    orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+    orchestrationAwareRequirementsState.cursorWorkItemsV1,
+    orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
+    orchestrationAwareRequirementsState.implementationTaskListV1,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+  ]);
+
+  useEffect(() => {
+    const recovery = recoverImplementationExecutionDeadlock({
+      rawRequirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
+      codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
+      taskList: orchestrationAwareRequirementsState.implementationTaskListV1,
+      cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1,
+    });
+    if (!recovery.issues.length) return;
+    const queue = parseCodeTaskExecutionQueueV1(
+      orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+    );
+    const headRun = getCurrentCodeTaskRunForQueue(
+      queue,
+      parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
+        [],
+    );
+    const recoveryKey = `${recovery.issues.join("|")}:${headRun?.runId ?? ""}:${queue?.currentIndex ?? ""}`;
+    if (recoveryKey === implementationRecoveryKeyRef.current) return;
+    implementationRecoveryKeyRef.current = recoveryKey;
+
+    if (recovery.patch) {
+      applyImplementationOrchestrationResult({
+        messages: executionSingleChat.chatMessages,
+        orchestrationPatch: recovery.patch,
+      });
+      if (recovery.userMessage) {
+        executionSingleChat.appendAiNotice(recovery.userMessage);
+        showToast(recovery.userMessage);
+      }
+    }
+  }, [
+    applyImplementationOrchestrationResult,
+    executionSingleChat,
+    orchestrationAwareRequirementsState,
+    showToast,
+  ]);
+
   const implementationCursorGate = useMemo(
     () =>
       buildImplementationCursorGateContext(
@@ -3949,6 +4031,29 @@ export function PrototypePreviewPanel({
           return createImplementationSeedFromQuickDesignDraft();
         case "START_IMPLEMENTATION_QUICK_RUN":
           return startImplementationQuickRunRef.current();
+        case "RELEASE_IMPLEMENTATION_EXECUTION_LOCK": {
+          cancelTaskCursorClientPoll();
+          codeTaskQueueDispatchRef.current = null;
+          codeTaskPendingExecutionRunsRef.current = null;
+          implementationRecoveryKeyRef.current = "";
+          const release = recoverImplementationExecutionDeadlock({
+            rawRequirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
+            forceRelease: true,
+            codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
+            taskList: orchestrationAwareRequirementsState.implementationTaskListV1,
+            cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1,
+          });
+          if (release.patch) {
+            applyImplementationOrchestrationResult({
+              messages: executionSingleChat.chatMessages,
+              orchestrationPatch: release.patch,
+            });
+          }
+          const message = release.userMessage ?? "실행 잠금을 해제했습니다.";
+          executionSingleChat.appendAiNotice(message);
+          showToast(message);
+          return { outcome: "executed", message };
+        }
         case "RETURN_TO_PLANNING_STAGE":
         case "START_QUICK_DESIGN_FROM_IMPLEMENTATION": {
           const pid = projectId.trim();
@@ -4417,7 +4522,8 @@ export function PrototypePreviewPanel({
               projectId: pid,
               queueDispatch,
               runs: parseCodeTaskExecutionRunsV1(
-                orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+                codeTaskPendingExecutionRunsRef.current ??
+                  orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
               ),
               codeTaskPlan,
               taskList,
@@ -6783,6 +6889,7 @@ export function PrototypePreviewPanel({
       selectedTaskIds: quickRunParentTaskIds,
       nowIso,
     });
+    codeTaskPendingExecutionRunsRef.current = codeTaskExecutionRunsV1;
     void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
       implementationQuickRunV1: quickRun,
       codeTaskExecutionQueueV1,
@@ -6802,6 +6909,7 @@ export function PrototypePreviewPanel({
     );
     codeTaskDispatchPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
     const cursorDispatchResult = runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
+    codeTaskPendingExecutionRunsRef.current = null;
     const dispatchNowIso = new Date().toISOString();
     void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
       promptTimeline: appendPromptTimeline(
@@ -7344,6 +7452,9 @@ export function PrototypePreviewPanel({
             onSelectedTaskIdsChange={handleBoardSelectedTaskIdsChange}
             onSelectedCodeTaskIdsChange={handleBoardSelectedCodeTaskIdsChange}
             onRunSingleCodeTask={handleRunSingleCodeTask}
+            onForceReleaseExecution={() => {
+              void runImplementationStageActionRef.current("RELEASE_IMPLEMENTATION_EXECUTION_LOCK");
+            }}
             codeTaskExecutionFeedbackV1={
               orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1
             }

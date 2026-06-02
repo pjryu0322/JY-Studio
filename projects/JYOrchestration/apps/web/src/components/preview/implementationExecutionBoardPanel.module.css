@@ -83,6 +83,23 @@
   color: var(--text-secondary, #334155);
 }
 
+.forceReleaseButton {
+  margin-top: 8px;
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.forceReleaseButton:hover {
+  background: #fee2e2;
+}
+
 .workerStallBanner {
   margin-top: 10px;
   padding: 10px 12px;

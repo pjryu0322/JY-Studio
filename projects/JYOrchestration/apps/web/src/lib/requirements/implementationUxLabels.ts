@@ -52,6 +52,7 @@ export const IMPLEMENTATION_RETURN_TO_PLANNING_CHIP = "기획단계로 이동" a
 export const IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP = "프로토타입 미리보기" as const;
 export const IMPLEMENTATION_QUICK_RUN_CHIP = "선택한 CodeTask 실행" as const;
 export const IMPLEMENTATION_QUICK_RUN_REFRESH_CHIP = "상태 새로고침" as const;
+export const IMPLEMENTATION_FORCE_RELEASE_EXECUTION_CHIP = "실행 잠금 해제" as const;
 export const IMPLEMENTATION_PREVIEW_OPEN_CHIP = "Preview 열기" as const;
 export const IMPLEMENTATION_ADD_INSTRUCTION_CHIP = "추가 지시 입력" as const;
 export const IMPLEMENTATION_ROLE_CHECK_VIEW_CHIP = "역할별 점검 보기" as const;

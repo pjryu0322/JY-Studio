@@ -38,6 +38,7 @@ import {
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   IMPLEMENTATION_QUICK_RUN_CHIP,
   IMPLEMENTATION_QUICK_RUN_REFRESH_CHIP,
+  IMPLEMENTATION_FORCE_RELEASE_EXECUTION_CHIP,
   IMPLEMENTATION_PREVIEW_OPEN_CHIP,
   IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
   REVIEWER_CHECK_CHIP,
@@ -590,6 +591,12 @@ function deriveNextActionsFromTaskCursorExecution(
         label: IMPLEMENTATION_QUICK_RUN_REFRESH_CHIP,
         priority: "primary",
         reason: "Cursor API 실행 상태 확인",
+      },
+      {
+        actionId: "RELEASE_IMPLEMENTATION_EXECUTION_LOCK",
+        label: IMPLEMENTATION_FORCE_RELEASE_EXECUTION_CHIP,
+        priority: "secondary",
+        reason: "1시간 이상 교착 시 실행 잠금·큐·Cursor 상태를 초기화",
       },
     ];
   }

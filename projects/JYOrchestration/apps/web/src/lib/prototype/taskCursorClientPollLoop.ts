@@ -81,7 +81,7 @@ export function releaseAllInFlightTaskCursorPollingFromRequirementsState(
 /** 폴링이 끊긴 채 persisted state만 in-flight로 남은 실행 */
 export function isStaleAbandonedTaskCursorExecution(
   execution: TaskCursorExecutionV1 | null | undefined,
-  input?: { readonly developerStatus?: string | null },
+  input?: { readonly developerStatus?: string | null; readonly staleMinutes?: number },
 ): boolean {
   if (!execution || !isInFlightTaskCursorExecution(execution)) return false;
   if (input?.developerStatus === "failed") return true;
@@ -91,6 +91,13 @@ export function isStaleAbandonedTaskCursorExecution(
   }
   if (execution.status === "cursor_requested" && !String(execution.cursorRunId ?? "").trim()) {
     return true;
+  }
+  const staleMinutes = input?.staleMinutes;
+  if (staleMinutes != null && staleMinutes > 0) {
+    const elapsed = formatTaskCursorElapsedMinutes(
+      execution.updatedAt ?? execution.createdAt,
+    );
+    if (elapsed != null && elapsed >= staleMinutes) return true;
   }
   return false;
 }
