@@ -1,3 +1,4 @@
+import { randomUuid } from "@/lib/platform-orchestration/platformIds";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { isInFlightTaskCursorExecution, isTaskCursorStatusCheckStopped } from "@/lib/prototype/taskCursorClientPollLoop";
 import { classifyImplementationExecutionJobFromTaskCursor } from "@/lib/prototype/implementationExecutionJobResult";
@@ -245,7 +246,7 @@ export function createImplementationExecutionJob(input: {
   const attemptNo = getNextImplementationExecutionJobAttemptNo(prior, processTaskId);
   return {
     version: IMPLEMENTATION_EXECUTION_JOB_VERSION,
-    jobId: input.jobId?.trim() || crypto.randomUUID(),
+    jobId: input.jobId?.trim() || randomUuid(),
     projectId: input.projectId.trim(),
     processTaskId,
     codeTaskIds: [...(input.codeTaskIds ?? [])],

@@ -1,3 +1,4 @@
+import { randomUuid } from "@/lib/platform-orchestration/platformIds";
 import { isInFlightCodeTaskExecutionRunStatus, isTerminalCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
 import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import { getCurrentQueueCodeTaskId } from "@/lib/prototype/codeTaskExecutionQueue";
@@ -187,7 +188,7 @@ export function createCodeTaskExecutionRun(input: {
   const now = input.nowIso ?? new Date().toISOString();
   return {
     version: CODE_TASK_EXECUTION_RUN_VERSION,
-    runId: crypto.randomUUID(),
+    runId: randomUuid(),
     projectId: input.projectId.trim(),
     processTaskId: input.processTaskId.trim(),
     workItemId: input.workItemId.trim(),

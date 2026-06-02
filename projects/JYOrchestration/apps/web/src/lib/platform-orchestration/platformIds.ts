@@ -1,5 +1,5 @@
 /** Browser-safe UUID for client + server (do not import node:crypto here). */
-function randomUuid(): string {
+export function randomUuid(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }

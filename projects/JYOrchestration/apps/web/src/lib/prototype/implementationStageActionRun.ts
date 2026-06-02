@@ -1,3 +1,4 @@
+import { randomUuid } from "@/lib/platform-orchestration/platformIds";
 import type {
   ImplementationStageActionGateResult,
   ImplementationStageActionId,
@@ -58,10 +59,7 @@ export function createImplementationStageActionRunId(input?: {
   readonly actionId?: ImplementationStageActionId;
 }): string {
   const now = input?.nowIso ?? new Date().toISOString();
-  const random =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2, 10);
+  const random = randomUuid().replace(/-/g, "").slice(0, 10);
   return `impl-run-${now.replace(/[^0-9]/g, "").slice(0, 14)}-${random}`;
 }
 

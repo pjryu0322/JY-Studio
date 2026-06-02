@@ -6643,6 +6643,7 @@ export function PrototypePreviewPanel({
       showToast(message);
       return { outcome: "blocked", message };
     }
+    const codeTaskPlan = parsedRequirementsState.implementationCodeTaskPlanV1;
     const nowIso = new Date().toISOString();
     const existingRuns =
       parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
