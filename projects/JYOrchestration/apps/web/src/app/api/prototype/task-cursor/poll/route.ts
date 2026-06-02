@@ -11,6 +11,7 @@ import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/impleme
 import { pollTaskCursorExecutionOnce } from "@/lib/prototype/taskCursorPollService";
 import { isCursorCloudAgentRunId, parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { prisma } from "@/lib/prisma";
+import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
 
 export const maxDuration = 120;
 
@@ -116,6 +117,11 @@ export async function POST(request: NextRequest) {
         baseBranch: context.baseBranch,
         allowedPathGlobs: context.allowedPathGlobs,
       },
+    });
+
+    await syncImplementationRuntimeFromTaskCursor({
+      projectId,
+      execution: pollResult.execution,
     });
 
     return NextResponse.json({

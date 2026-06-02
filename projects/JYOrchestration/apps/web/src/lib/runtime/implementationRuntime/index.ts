@@ -6,3 +6,4 @@ export * from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery
 export * from "@/lib/runtime/implementationRuntime/implementationRuntimeCursorService";
 export * from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
 export * from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
+export * from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";

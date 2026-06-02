@@ -20,6 +20,7 @@ import {
 } from "@/lib/prototype/taskCursorExecution";
 import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import { prisma } from "@/lib/prisma";
+import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
 
 type Body = {
   readonly projectId?: string;
@@ -157,6 +158,11 @@ export async function POST(request: NextRequest) {
             ),
           }
         : {}),
+    });
+
+    await syncImplementationRuntimeFromTaskCursor({
+      projectId,
+      execution: nextExecution,
     });
 
     return NextResponse.json({

@@ -24,7 +24,7 @@ export async function fetchImplementationRuntime(
   const pid = projectId.trim();
   if (!pid) return { success: false, message: "projectId가 필요합니다." };
   const res = await credentialsIncludeFetch(
-    `/api/projects/${encodeURIComponent(pid)}/implementation-runtime`,
+    `/api/projects/${encodeURIComponent(pid)}/implementation-runtime?recover=1`,
   );
   const data = (await res.json().catch(() => ({}))) as ImplementationRuntimeFetchResult;
   if (!res.ok) {

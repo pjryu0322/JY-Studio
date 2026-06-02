@@ -37,6 +37,7 @@ import { prisma } from "@/lib/prisma";
 import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
 import { upsertTaskCursorExecutionJobFromLaunch } from "@/lib/prototype/taskCursorExecutionJobRepository";
 import { buildTaskCursorJobLifecycleTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
 
 type Body = {
   readonly projectId?: string;
@@ -346,6 +347,13 @@ export async function POST(request: NextRequest) {
       cursorWorkItems: scopedWorkItems,
     });
 
+    const finalExecution = parseTaskCursorExecutionV1(patch.taskCursorExecutionV1);
+    await syncImplementationRuntimeFromTaskCursor({
+      projectId,
+      codeTaskId: body.codeTaskId,
+      taskId,
+      execution: finalExecution,
+    });
     return NextResponse.json({
       success: apiResult.ok,
       status: execution.status,

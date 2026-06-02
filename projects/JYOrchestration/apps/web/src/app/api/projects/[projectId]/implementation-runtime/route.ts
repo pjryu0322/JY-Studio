@@ -6,6 +6,10 @@ import {
   getImplementationRuntimeBundle,
   listImplementationRuntimeEvents,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
+import {
+  ensureQueuedRunForRedispatch,
+  recoverImplementationRuntimeDb,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
 import { buildImplementationRuntimeUiSnapshot } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
 import { formatRuntimeStateKo } from "@/lib/prototype/implementationRuntimeState";
 
@@ -28,6 +32,21 @@ export async function GET(request: NextRequest, context: RouteContext) {
       const denied = rbacErrorResponse(error);
       if (denied) return denied;
       throw error;
+    }
+
+    const recoverOnLoad = request.nextUrl.searchParams.get("recover") === "1";
+    if (recoverOnLoad) {
+      const recovery = await recoverImplementationRuntimeDb({ projectId: pid });
+      if (recovery.shouldRedispatch && recovery.redispatchCodeTaskId) {
+        const pre = await getImplementationRuntimeBundle(pid);
+        if (pre.job) {
+          await ensureQueuedRunForRedispatch({
+            projectId: pid,
+            jobId: pre.job.id,
+            codeTaskId: recovery.redispatchCodeTaskId,
+          });
+        }
+      }
     }
 
     const bundle = await getImplementationRuntimeBundle(pid);
