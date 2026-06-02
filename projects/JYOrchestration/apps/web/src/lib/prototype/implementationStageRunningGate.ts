@@ -1,8 +1,6 @@
 import { isActiveTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
-import {
-  isRuntimeInFlight,
-  parseImplementationRuntimeStateV1,
-} from "@/lib/prototype/implementationRuntimeState";
+import { isRuntimeInFlight } from "@/lib/prototype/implementationRuntimeState";
+import { resolveImplementationRuntimeStateForRead } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";
 import type { ImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import type { ImplementationStageActionGateResult } from "@/lib/prototype/effectiveImplementationState";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -87,10 +85,13 @@ export function evaluateActiveImplementationExecutionGate(
     return blockForActiveJob(job);
   }
 
-  const runtime = parseImplementationRuntimeStateV1(
-    (boardContext as { implementationRuntimeStateV1?: unknown } | null | undefined)
-      ?.implementationRuntimeStateV1,
-  );
+  const projectId = boardContext?.board.projectId?.trim() ?? "";
+  const runtime = projectId
+    ? resolveImplementationRuntimeStateForRead({
+        raw: (boardContext ?? {}) as Record<string, unknown>,
+        projectId,
+      })
+    : null;
   if (isRuntimeInFlight(runtime?.runtimeState)) {
     const execution = parseTaskCursorExecutionV1(boardContext?.taskCursorExecutionV1);
     if (execution) {

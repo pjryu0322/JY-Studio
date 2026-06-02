@@ -61,6 +61,11 @@ import {
   parseImplementationRuntimeStateV1,
   type ImplementationRuntimeStateV1,
 } from "@/lib/prototype/implementationRuntimeState";
+import {
+  legacyRuntimeStateToUiSnapshot,
+  parseImplementationRuntimeUiSnapshotV1,
+  type ImplementationRuntimeUiSnapshotV1,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import { parseImplementationQualityGateResultsV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
@@ -644,8 +649,10 @@ export type RequirementsStateJson = {
   codeTaskExecutionRunsV1?: readonly CodeTaskExecutionRunV1[] | null;
   /** 사용자 선택 CodeTask 순차 실행 큐 */
   codeTaskExecutionQueueV1?: CodeTaskExecutionQueueV1 | null;
-  /** CodeTask 구현 Runtime 상태머신 SoT */
+  /** @deprecated DB Runtime Engine SoT — 읽기 호환만, 저장 시 제거 */
   implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
+  /** 구현 Runtime UI 스냅샷(DB mirror, 표시·activeDispatch 힌트) */
+  implementationRuntimeUiSnapshotV1?: ImplementationRuntimeUiSnapshotV1 | null;
   /**
    * 프로토타입 타임라인에 남길 작업계획·WorkUnit 완료·배포 완료 카드(영구 저장).
    * `buildPrototypeChatMessages`의 현재 상태만으로는 사라지는 구간을 보존한다.
@@ -1133,6 +1140,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationRuntimeStateV1 = parseImplementationRuntimeStateV1(
     "implementationRuntimeStateV1" in o ? o.implementationRuntimeStateV1 : undefined,
   );
+  let implementationRuntimeUiSnapshotV1 = parseImplementationRuntimeUiSnapshotV1(
+    "implementationRuntimeUiSnapshotV1" in o ? o.implementationRuntimeUiSnapshotV1 : undefined,
+  );
+  if (!implementationRuntimeUiSnapshotV1 && implementationRuntimeStateV1) {
+    implementationRuntimeUiSnapshotV1 = legacyRuntimeStateToUiSnapshot(implementationRuntimeStateV1);
+  }
 
   const featurePlanningRaw = "featurePlanningSlotsV1" in o ? (o.featurePlanningSlotsV1 as unknown) : undefined;
   let featurePlanningSlotsV1: FeaturePlanningSlotsArtifactV1 | null | undefined;
@@ -1310,7 +1323,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationExecutionJobsV1 !== undefined ? { implementationExecutionJobsV1 } : {}),
     ...(codeTaskExecutionRunsV1 !== undefined ? { codeTaskExecutionRunsV1 } : {}),
     ...(codeTaskExecutionQueueV1 !== undefined ? { codeTaskExecutionQueueV1 } : {}),
-    ...(implementationRuntimeStateV1 !== undefined ? { implementationRuntimeStateV1 } : {}),
+    ...(implementationRuntimeUiSnapshotV1 !== undefined
+      ? { implementationRuntimeUiSnapshotV1 }
+      : {}),
+    ...(implementationRuntimeStateV1 !== undefined && !implementationRuntimeUiSnapshotV1
+      ? { implementationRuntimeStateV1 }
+      : {}),
     ...(implementationAutoQualityGateHistoryV1 !== undefined
       ? { implementationAutoQualityGateHistoryV1 }
       : {}),
@@ -1332,7 +1350,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
 }
 
 export function mergeRequirementsStateJson(base: RequirementsStateJson, patch: Partial<RequirementsStateJson>): RequirementsStateJson {
-  return { ...base, ...patch };
+  const merged = { ...base, ...patch };
+  if (patch.implementationRuntimeUiSnapshotV1 !== undefined) {
+    const { implementationRuntimeStateV1: _legacy, ...withoutLegacy } = merged;
+    return withoutLegacy as RequirementsStateJson;
+  }
+  return merged;
 }
 
 function parsePlatformMemberRunRow(raw: unknown): PlatformMemberRun | null {

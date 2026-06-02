@@ -34,6 +34,12 @@ import { buildTaskCursorFailedOrchestrationPatch } from "@/lib/prototype/prototy
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
+import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
+import {
+  ensureQueuedRunForRedispatch,
+  recoverImplementationRuntimeDb,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
+import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 
 const EXECUTION_SETUP_SELECT = {
   gitRepoUrl: true,
@@ -197,6 +203,22 @@ async function processQueuedTaskCursorJob(
       nowIso,
     });
   }
+  await syncImplementationRuntimeFromTaskCursor({
+    projectId: job.projectId,
+    taskId: job.taskId,
+    execution,
+  });
+  const launchRecovery = await recoverImplementationRuntimeDb({ projectId: job.projectId, now });
+  if (launchRecovery.shouldRedispatch && launchRecovery.redispatchCodeTaskId) {
+    const bundle = await getImplementationRuntimeBundle(job.projectId);
+    if (bundle.job) {
+      await ensureQueuedRunForRedispatch({
+        projectId: job.projectId,
+        jobId: bundle.job.id,
+        codeTaskId: launchRecovery.redispatchCodeTaskId,
+      });
+    }
+  }
   return {
     jobId: job.id,
     projectId: job.projectId,
@@ -335,6 +357,13 @@ async function processPollingTaskCursorJob(
     message: pollResult.message,
     nowIso,
   });
+
+  await syncImplementationRuntimeFromTaskCursor({
+    projectId: job.projectId,
+    taskId: job.taskId,
+    execution: pollResult.execution,
+  });
+  await recoverImplementationRuntimeDb({ projectId: job.projectId, now });
 
   if (terminal) {
     const followUp = await enqueueNextTaskCursorJobAfterTerminal({

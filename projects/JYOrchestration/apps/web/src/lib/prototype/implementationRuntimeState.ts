@@ -20,6 +20,10 @@ import {
   parseTaskCursorExecutionV1,
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
+import {
+  parseImplementationRuntimeUiSnapshotV1,
+  synthesizeRuntimeStateFromUiSnapshot,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";
 
 export const IMPLEMENTATION_RUNTIME_STATE_VERSION = "implementation_runtime_state_v1" as const;
 
@@ -302,7 +306,10 @@ export function deriveImplementationRuntimeFromRequirementsState(input: {
   const queue = parseCodeTaskExecutionQueueV1(input.raw.codeTaskExecutionQueueV1);
   const runs = parseCodeTaskExecutionRunsV1(input.raw.codeTaskExecutionRunsV1);
   const taskCursor = parseTaskCursorExecutionV1(input.raw.taskCursorExecutionV1);
-  const existing = parseImplementationRuntimeStateV1(input.raw.implementationRuntimeStateV1);
+  const snapshot = parseImplementationRuntimeUiSnapshotV1(input.raw.implementationRuntimeUiSnapshotV1);
+  const existing = snapshot
+    ? synthesizeRuntimeStateFromUiSnapshot(snapshot, input.projectId)
+    : parseImplementationRuntimeStateV1(input.raw.implementationRuntimeStateV1);
   return deriveImplementationRuntimeState({
     projectId: input.projectId,
     queue,

@@ -16,13 +16,13 @@ import {
 } from "@/lib/prototype/implementationExecutionDeadlockRecovery";
 import {
   buildActiveDispatchForQueueHead,
-  clearRuntimeActiveDispatch,
   deriveImplementationRuntimeFromRequirementsState,
   evaluateRuntimeRecovery,
-  patchRuntimeState,
   type ImplementationRuntimeActiveDispatchV1,
 } from "@/lib/prototype/implementationRuntimeState";
 import { mergeRequirementsStateWithRuntime } from "@/lib/prototype/implementationRuntimeSync";
+import { buildPersistedActiveDispatchSnapshotPatch } from "@/lib/prototype/implementationRuntimePanelBridge";
+import { stripLegacyImplementationRuntimeStateFromRecord } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";
 import {
   isInFlightTaskCursorExecution,
   releaseAllInFlightTaskCursorPollingFromRequirementsState,
@@ -99,18 +99,12 @@ export function recoverImplementationRuntimeState(input: {
         },
       };
     }
-    const runtime = clearRuntimeActiveDispatch(
-      patchRuntimeState(
-        deriveImplementationRuntimeFromRequirementsState({
-          raw: next,
-          projectId: input.projectId,
-          nowIso,
-        }),
-        { runtimeState: "idle", nowIso },
-      ),
+    next = stripLegacyImplementationRuntimeStateFromRecord(next);
+    next = mergeRequirementsStateWithRuntime({
+      projectId: input.projectId,
+      state: next,
       nowIso,
-    );
-    next = { ...next, implementationRuntimeStateV1: runtime };
+    });
     return {
       patch: next,
       userMessage: EXECUTION_FORCE_RELEASE_USER_MESSAGE,
@@ -210,20 +204,15 @@ export function recoverImplementationRuntimeState(input: {
       nowIso,
     });
     if (redispatch) {
-      const derived = deriveImplementationRuntimeFromRequirementsState({
-        raw: next,
-        projectId: input.projectId,
-        nowIso,
-      });
-      next = {
+      next = stripLegacyImplementationRuntimeStateFromRecord({
         ...next,
-        implementationRuntimeStateV1: {
-          ...derived,
-          activeDispatch: redispatch,
-          runtimeState: "queued",
-          updatedAt: nowIso,
-        },
-      };
+        implementationRuntimeUiSnapshotV1: buildPersistedActiveDispatchSnapshotPatch({
+          projectId: input.projectId,
+          dispatch: redispatch,
+          baseState: next,
+          nowIso,
+        }),
+      });
     }
   }
 

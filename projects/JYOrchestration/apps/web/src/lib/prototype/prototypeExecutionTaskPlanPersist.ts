@@ -109,6 +109,7 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly codeTaskExecutionRunsV1?: readonly CodeTaskExecutionRunV1[] | null;
   readonly codeTaskExecutionQueueV1?: CodeTaskExecutionQueueV1 | null;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
+  readonly implementationRuntimeUiSnapshotV1?: import("@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot").ImplementationRuntimeUiSnapshotV1 | null;
 }>;
 
 export function buildPrototypeExecutionOrchestrationPersistPatch(
@@ -214,7 +215,11 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
     ...(input.codeTaskExecutionQueueV1 !== undefined
       ? { codeTaskExecutionQueueV1: input.codeTaskExecutionQueueV1 }
       : {}),
-    ...(input.implementationRuntimeStateV1 !== undefined
+    ...(input.implementationRuntimeUiSnapshotV1 !== undefined
+      ? { implementationRuntimeUiSnapshotV1: input.implementationRuntimeUiSnapshotV1 }
+      : {}),
+    ...(input.implementationRuntimeStateV1 !== undefined &&
+    input.implementationRuntimeUiSnapshotV1 === undefined
       ? { implementationRuntimeStateV1: input.implementationRuntimeStateV1 }
       : {}),
     lastSavedAt: new Date().toISOString(),

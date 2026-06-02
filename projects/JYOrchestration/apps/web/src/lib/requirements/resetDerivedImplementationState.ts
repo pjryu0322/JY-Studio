@@ -121,6 +121,7 @@ export const IMPLEMENTATION_SESSION_RESET_NULL_PATCH = {
   codeTaskExecutionRunsV1: null,
   codeTaskExecutionQueueV1: null,
   implementationRuntimeStateV1: null,
+  implementationRuntimeUiSnapshotV1: null,
 } as const;
 
 export function isImplementationSingleChatMessage(message: RequirementsMessage): boolean {

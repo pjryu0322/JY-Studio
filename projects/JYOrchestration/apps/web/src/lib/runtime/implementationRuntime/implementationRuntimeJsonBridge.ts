@@ -154,21 +154,4 @@ export async function syncImplementationRuntimeFromRequirementsJson(input: {
   return { synced: true, bundle: await getImplementationRuntimeBundle(pid) };
 }
 
-/** UI 스냅샷용 요약 (requirementsStateJson에 넣을 lightweight view) */
-export function buildImplementationRuntimeUiSnapshot(bundle: Awaited<ReturnType<typeof getImplementationRuntimeBundle>>) {
-  return {
-    version: "implementation_runtime_ui_snapshot_v1",
-    jobId: bundle.job?.id ?? null,
-    jobStatus: bundle.job?.status ?? "idle",
-    currentCodeTaskId: bundle.job?.currentCodeTaskId ?? null,
-    currentRuntimeState: bundle.currentRun?.runtimeState ?? "idle",
-    runs: bundle.runs.map((r) => ({
-      codeTaskId: r.codeTaskId,
-      runtimeState: r.runtimeState,
-      cursorAgentId: r.cursorAgentId,
-      lastHeartbeatAt: r.lastHeartbeatAt,
-      updatedAt: r.updatedAt,
-    })),
-    updatedAt: bundle.job?.updatedAt ?? new Date().toISOString(),
-  };
-}
+export { buildImplementationRuntimeUiSnapshotFromBundle as buildImplementationRuntimeUiSnapshot } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";

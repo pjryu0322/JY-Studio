@@ -348,9 +348,10 @@ import { recoverImplementationExecutionDeadlock } from "@/lib/prototype/implemen
 import { recoverImplementationRuntimeState } from "@/lib/prototype/implementationRuntimeRecovery";
 import { mergeRequirementsStateWithRuntime } from "@/lib/prototype/implementationRuntimeSync";
 import {
-  buildPersistedActiveDispatchPatch,
+  buildPersistedActiveDispatchSnapshotPatch,
   resolvePersistedQueueDispatch,
 } from "@/lib/prototype/implementationRuntimePanelBridge";
+import { resolveImplementationRuntimeStateForRead } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";
 import { readActiveRuntimeDispatchFromState } from "@/lib/prototype/implementationRuntimeSync";
 import { ImplementationRuntimeDiagnosticsPanel } from "@/components/preview/ImplementationRuntimeDiagnosticsPanel";
 import {
@@ -1650,7 +1651,10 @@ export function PrototypePreviewPanel({
 
   const persistedQueueDispatch = useMemo(
     () => resolvePersistedQueueDispatch(orchestrationAwareRequirementsState),
-    [orchestrationAwareRequirementsState.implementationRuntimeStateV1],
+    [
+      orchestrationAwareRequirementsState.implementationRuntimeUiSnapshotV1,
+      orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+    ],
   );
 
   const syncImplementationRuntimeDb = useCallback(async () => {
@@ -1671,7 +1675,10 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
     orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
     orchestrationAwareRequirementsState.taskCursorExecutionV1,
-    orchestrationAwareRequirementsState.implementationRuntimeStateV1,
+    orchestrationAwareRequirementsState.implementationRuntimeUiSnapshotV1,
+    orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1,
   ]);
 
   useEffect(() => {
@@ -2804,7 +2811,7 @@ export function PrototypePreviewPanel({
       messages: executionSingleChat.chatMessages,
       orchestrationPatch: {
         codeTaskExecutionRunsV1,
-        implementationRuntimeStateV1: buildPersistedActiveDispatchPatch({
+        implementationRuntimeUiSnapshotV1: buildPersistedActiveDispatchSnapshotPatch({
           projectId: pid,
           dispatch: activeDispatch,
           baseState: {
@@ -2874,7 +2881,7 @@ export function PrototypePreviewPanel({
       applyImplementationOrchestrationResult({
         messages: executionSingleChat.chatMessages,
         orchestrationPatch: {
-          implementationRuntimeStateV1: buildPersistedActiveDispatchPatch({
+          implementationRuntimeUiSnapshotV1: buildPersistedActiveDispatchSnapshotPatch({
             projectId: pid,
             dispatch: recovery.redispatch,
             baseState: orchestrationAwareRequirementsState as Record<string, unknown>,
@@ -4105,7 +4112,7 @@ export function PrototypePreviewPanel({
           applyImplementationOrchestrationResult({
             messages: executionSingleChat.chatMessages,
             orchestrationPatch: {
-              implementationRuntimeStateV1: buildPersistedActiveDispatchPatch({
+              implementationRuntimeUiSnapshotV1: buildPersistedActiveDispatchSnapshotPatch({
                 projectId: pid,
                 dispatch: redispatch,
                 baseState: orchestrationAwareRequirementsState as Record<string, unknown>,
@@ -6984,7 +6991,7 @@ export function PrototypePreviewPanel({
       implementationQuickRunV1: quickRun,
       codeTaskExecutionQueueV1,
       codeTaskExecutionRunsV1,
-      implementationRuntimeStateV1: buildPersistedActiveDispatchPatch({
+      implementationRuntimeUiSnapshotV1: buildPersistedActiveDispatchSnapshotPatch({
         projectId: pid,
         dispatch: quickRunActiveDispatch,
         baseState: {
@@ -7568,9 +7575,11 @@ export function PrototypePreviewPanel({
             onShowRuntimeDiagnostics={() => {
               void runImplementationStageActionRef.current("SHOW_IMPLEMENTATION_RUNTIME_DIAGNOSTICS");
             }}
-            implementationRuntimeStateV1={
-              orchestrationAwareRequirementsState.implementationRuntimeStateV1
-            }
+            implementationRuntimeStateV1={resolveImplementationRuntimeStateForRead({
+              raw: orchestrationAwareRequirementsState as Record<string, unknown>,
+              projectId: projectId.trim(),
+              dbBundle: implementationRuntimeDbBundle,
+            })}
             implementationRuntimeDbBundle={implementationRuntimeDbBundle}
             codeTaskExecutionFeedbackV1={
               orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1

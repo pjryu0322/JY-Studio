@@ -141,6 +141,7 @@ export type PendingImplementationPatch = Readonly<{
   codeTaskExecutionRunsV1?: readonly import("@/lib/prototype/codeTaskExecutionRun").CodeTaskExecutionRunV1[] | null;
   codeTaskExecutionQueueV1?: import("@/lib/prototype/codeTaskExecutionQueue").CodeTaskExecutionQueueV1 | null;
   implementationRuntimeStateV1?: import("@/lib/prototype/implementationRuntimeState").ImplementationRuntimeStateV1 | null;
+  implementationRuntimeUiSnapshotV1?: import("@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot").ImplementationRuntimeUiSnapshotV1 | null;
 }>;
 
 export function resolveOrchestrationAwareRequirementsState(input: {
@@ -206,7 +207,11 @@ export function resolveOrchestrationAwareRequirementsState(input: {
     ...(pending.codeTaskExecutionQueueV1 !== undefined
       ? { codeTaskExecutionQueueV1: pending.codeTaskExecutionQueueV1 }
       : {}),
-    ...(pending.implementationRuntimeStateV1 !== undefined
+    ...(pending.implementationRuntimeUiSnapshotV1 !== undefined
+      ? { implementationRuntimeUiSnapshotV1: pending.implementationRuntimeUiSnapshotV1 }
+      : {}),
+    ...(pending.implementationRuntimeStateV1 !== undefined &&
+    pending.implementationRuntimeUiSnapshotV1 === undefined
       ? { implementationRuntimeStateV1: pending.implementationRuntimeStateV1 }
       : {}),
   });
@@ -348,7 +353,14 @@ export function mergePendingImplementationPatchFromOrchestration(
   if (patch.codeTaskExecutionQueueV1 !== undefined) {
     next.codeTaskExecutionQueueV1 = patch.codeTaskExecutionQueueV1;
   }
-  if (patch.implementationRuntimeStateV1 !== undefined) {
+  if (patch.implementationRuntimeUiSnapshotV1 !== undefined) {
+    next.implementationRuntimeUiSnapshotV1 = patch.implementationRuntimeUiSnapshotV1;
+    delete next.implementationRuntimeStateV1;
+  }
+  if (
+    patch.implementationRuntimeStateV1 !== undefined &&
+    patch.implementationRuntimeUiSnapshotV1 === undefined
+  ) {
     next.implementationRuntimeStateV1 = patch.implementationRuntimeStateV1;
   }
   return Object.keys(next).length > 0 ? next : null;
