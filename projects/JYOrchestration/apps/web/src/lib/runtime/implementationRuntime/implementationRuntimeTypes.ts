@@ -35,7 +35,8 @@ export type ImplementationRuntimeEventType =
   | "watchdog_poll"
   | "cursor_dispatched"
   | "cursor_completed"
-  | "github_verified";
+  | "github_verified"
+  | "planning_reset_cascade";
 
 export type ImplementationRuntimeJobView = Readonly<{
   readonly id: string;

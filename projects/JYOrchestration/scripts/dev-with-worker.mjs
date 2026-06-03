@@ -28,9 +28,23 @@ function spawnProc(label, command, args, cwd) {
 
 const nextDev = spawnProc("next", "pnpm", ["exec", "next", "dev"], webDir);
 
-setTimeout(() => {
-  spawnProc("worker", "node", ["scripts/run-task-cursor-worker.mjs"], webDir);
-}, 3000);
+const taskCursorDevWorker = String(process.env.TASK_CURSOR_DEV_WORKER ?? "")
+  .trim()
+  .toLowerCase();
+const startTaskCursorWorker =
+  taskCursorDevWorker === "1" ||
+  taskCursorDevWorker === "true" ||
+  taskCursorDevWorker === "yes";
+
+if (startTaskCursorWorker) {
+  setTimeout(() => {
+    spawnProc("worker", "node", ["scripts/run-task-cursor-worker.mjs"], webDir);
+  }, 3000);
+} else {
+  console.log(
+    "[dev-with-worker] Task Cursor tick worker는 기본 비활성입니다. 필요 시 TASK_CURSOR_DEV_WORKER=1 pnpm dev 또는 pnpm dev:worker",
+  );
+}
 
 process.on("SIGINT", () => {
   nextDev.kill("SIGINT");

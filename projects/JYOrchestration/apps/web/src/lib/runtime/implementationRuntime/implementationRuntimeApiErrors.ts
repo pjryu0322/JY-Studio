@@ -9,11 +9,16 @@ export function formatImplementationRuntimeApiError(error: unknown): string {
     /column.*does not exist/i.test(message) ||
     /selectedCodeTaskIdsJson/i.test(message) ||
     /implementation_code_task_runs/i.test(message) ||
-    /implementation_runtime_events/i.test(message)
+    /implementation_runtime_events/i.test(message) ||
+    /implementation_runtime_code_task_queue_items/i.test(message) ||
+    /PRISMA_RUNTIME_QUEUE_DELEGATE_MISSING/i.test(message) ||
+    (/implementationRuntimeCodeTaskQueueItem/i.test(message) &&
+      /findMany/i.test(message) &&
+      /undefined/i.test(message))
   ) {
     return [
-      "Implementation Runtime DB 스키마가 최신이 아닙니다.",
-      "JYOrchestration에서 `pnpm db:migrate` 실행 후 dev 서버를 재시작해 주세요.",
+      "Implementation Runtime DB 스키마/Prisma 클라이언트가 최신이 아닙니다.",
+      "dev 서버를 중지한 뒤 JYOrchestration에서 `pnpm db:generate` 및 `pnpm db:migrate` 실행 후 dev 서버를 재시작해 주세요.",
     ].join(" ");
   }
   return message;
@@ -21,5 +26,8 @@ export function formatImplementationRuntimeApiError(error: unknown): string {
 
 export function isImplementationRuntimeSchemaError(error: unknown): boolean {
   const formatted = formatImplementationRuntimeApiError(error);
-  return formatted.includes("DB 스키마가 최신이 아닙니다");
+  return (
+    formatted.includes("DB 스키마/Prisma 클라이언트가 최신이 아닙니다") ||
+    formatted.includes("DB 스키마가 최신이 아닙니다")
+  );
 }

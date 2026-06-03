@@ -352,6 +352,7 @@ import {
   postImplementationRuntimeAction,
   type ImplementationRuntimeDiagnosticsRow,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
+import { postPlanningResetCascade } from "@/lib/requirements/planningResetCascadeClient";
 import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import { shouldPollImplementationRuntime } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiFlow";
@@ -7022,14 +7023,12 @@ export function PrototypePreviewPanel({
       setActiveTaskCursorJob(null);
       lastServerTaskCursorJobSyncFingerprintRef.current = "";
 
-      try {
-        await credentialsIncludeFetch(
-          `/api/prototype/task-cursor/jobs/cancel-active?projectId=${encodeURIComponent(pid)}`,
-          { method: "POST" },
-        );
-      } catch {
-        // job 취소 실패해도 로컬·DB state 초기화는 계속
+      const cascade = await postPlanningResetCascade({ projectId: pid, reason: "manual" });
+      if (!cascade.success) {
+        throw new Error(cascade.message ?? "구현 Runtime DB 정리에 실패했습니다.");
       }
+      setImplementationRuntimeDbBundle(null);
+      setImplementationRuntimeDbQueueSnapshot(null);
 
       const nowIso = new Date().toISOString();
       const resetState = buildImplementationConversationResetStateJson(

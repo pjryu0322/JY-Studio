@@ -12,6 +12,17 @@ import {
   type ImplementationRuntimeCodeTaskQueueItemStatus,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueTypes";
 
+/** Stale Prisma client (model added but `pnpm db:generate` not run). */
+function codeTaskQueueItemDelegate() {
+  const delegate = (
+    prisma as { implementationRuntimeCodeTaskQueueItem?: typeof prisma.project }
+  ).implementationRuntimeCodeTaskQueueItem;
+  if (!delegate?.findMany) {
+    throw new Error("PRISMA_RUNTIME_QUEUE_DELEGATE_MISSING");
+  }
+  return delegate;
+}
+
 function mapRow(row: {
   id: string;
   projectId: string;
@@ -70,7 +81,7 @@ export async function createImplementationRuntimeCodeTaskQueue(input: {
   }));
   if (!items.length) throw new Error("queue items are required");
 
-  const existing = await prisma.implementationRuntimeCodeTaskQueueItem.count({
+  const existing = await codeTaskQueueItemDelegate().count({
     where: { jobId },
   });
   if (existing > 0) {
@@ -113,7 +124,7 @@ export async function createImplementationRuntimeCodeTaskQueue(input: {
 export async function getImplementationRuntimeCodeTaskQueue(
   jobId: string,
 ): Promise<readonly ImplementationRuntimeCodeTaskQueueItemView[]> {
-  const rows = await prisma.implementationRuntimeCodeTaskQueueItem.findMany({
+  const rows = await codeTaskQueueItemDelegate().findMany({
     where: { jobId: jobId.trim() },
     orderBy: { queueOrder: "asc" },
   });
@@ -162,7 +173,7 @@ async function updateQueueItemStatus(input: {
   readonly now?: Date;
 }): Promise<ImplementationRuntimeCodeTaskQueueItemView> {
   const now = input.now ?? new Date();
-  const row = await prisma.implementationRuntimeCodeTaskQueueItem.update({
+  const row = await codeTaskQueueItemDelegate().update({
     where: { id: input.itemId.trim() },
     data: {
       status: input.status,
@@ -204,17 +215,17 @@ export async function markImplementationRuntimeCodeTaskQueueItemDispatching(inpu
   const jobId = input.jobId.trim();
   const codeTaskId = input.codeTaskId.trim();
   const now = input.now ?? new Date();
-  const updated = await prisma.implementationRuntimeCodeTaskQueueItem.updateMany({
+  const updated = await codeTaskQueueItemDelegate().updateMany({
     where: { jobId, codeTaskId, status: "queued" },
     data: { status: "dispatching", dispatchedAt: now, updatedAt: now },
   });
   if (updated.count === 1) {
-    const row = await prisma.implementationRuntimeCodeTaskQueueItem.findFirst({
+    const row = await codeTaskQueueItemDelegate().findFirst({
       where: { jobId, codeTaskId },
     });
     return row ? mapRow(row) : null;
   }
-  const item = await prisma.implementationRuntimeCodeTaskQueueItem.findFirst({
+  const item = await codeTaskQueueItemDelegate().findFirst({
     where: { jobId, codeTaskId },
   });
   if (!item) {
@@ -241,7 +252,7 @@ export async function markImplementationRuntimeCodeTaskQueueItemCursorRequested(
   readonly workBranch?: string | null;
   readonly now?: Date;
 }): Promise<ImplementationRuntimeCodeTaskQueueItemView | null> {
-  const item = await prisma.implementationRuntimeCodeTaskQueueItem.findFirst({
+  const item = await codeTaskQueueItemDelegate().findFirst({
     where: { jobId: input.jobId.trim(), codeTaskId: input.codeTaskId.trim() },
   });
   if (!item) {
@@ -269,7 +280,7 @@ export async function applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem(
   readonly verify: TaskCursorGithubVerifyResult;
   readonly now?: Date;
 }): Promise<ImplementationRuntimeCodeTaskQueueItemView | null> {
-  const item = await prisma.implementationRuntimeCodeTaskQueueItem.findFirst({
+  const item = await codeTaskQueueItemDelegate().findFirst({
     where: { jobId: input.jobId.trim(), codeTaskId: input.codeTaskId.trim() },
   });
   if (!item) return null;
@@ -399,7 +410,7 @@ export async function assertQueueItemDispatchAllowed(input: {
   readonly jobId: string;
   readonly codeTaskId: string;
 }): Promise<void> {
-  const item = await prisma.implementationRuntimeCodeTaskQueueItem.findFirst({
+  const item = await codeTaskQueueItemDelegate().findFirst({
     where: { jobId: input.jobId.trim(), codeTaskId: input.codeTaskId.trim() },
   });
   if (!item) {

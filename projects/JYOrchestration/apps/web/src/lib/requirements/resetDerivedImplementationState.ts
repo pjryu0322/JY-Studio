@@ -216,7 +216,7 @@ export function appendPlanningResetClearedImplementationTrace(
     responseText: [
       "type=planning_reset_cleared_implementation_derivatives",
       "mode=planning",
-      "cleared=[implementationSeedV1,implementationWorkPlanDraftV1,implementationTaskListV1,implementationTaskPlanV1,implementationCodeTaskPlanV1,cursorWorkItemsV1,implementationWorkItemPreflightSummaryV1,codeAgentWipExecutionV1,codeTaskExecutionRunsV1,codeTaskExecutionQueueV1,taskCursorExecutionV1,taskCursorExecutionHistoryV1,implementationQuickRunV1,implementationExecutionJobsV1,implementationStageActionRunLogV1,implementationQualityGateResultsV1,implementationMessages,implementationTimeline]",
+      "cleared=[requirementsStateJson downstream keys,implementation_runtime_db_jobs_queue_runs_task_cursor_jobs,github_remote_not_deleted]",
     ].join(" "),
     createdAt: nowIso,
   };

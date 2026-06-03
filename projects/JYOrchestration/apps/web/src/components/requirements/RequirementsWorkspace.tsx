@@ -132,6 +132,7 @@ import { buildConversationContentHtmlForWorkNoteSummary } from "@/lib/worknote/b
 import { postWorkNoteSummarize } from "@/lib/worknote/workNotesSummarizeApi";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
+import { postPlanningResetCascade } from "@/lib/requirements/planningResetCascadeClient";
 import { PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE } from "@/lib/requirements/resetDerivedImplementationState";
 import {
   buildRequirementsConversationResetStateJson,
@@ -1735,6 +1736,13 @@ export function RequirementsWorkspace({
       ideationBootstrapFlightRef.current = null;
       consumedResetSeedNonceRef.current = null;
       setConversationResetNonce((n) => n + 1);
+      const cascade = await postPlanningResetCascade({
+        projectId: pid,
+        reason: "planning_reset",
+      });
+      if (!cascade.success) {
+        throw new Error(cascade.message ?? "기획 초기화 시 구현 Runtime 정리에 실패했습니다.");
+      }
       const resetState = buildRequirementsConversationResetStateJson(stateJsonRef.current, nowIso);
       stateJsonRef.current = resetState;
       setServiceFlow(null);
