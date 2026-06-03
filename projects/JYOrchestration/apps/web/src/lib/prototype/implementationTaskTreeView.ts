@@ -251,6 +251,7 @@ function buildCodeTaskNode(input: {
     executionFlowSteps,
     isActive: input.isActive,
     isSelected: input.isSelected,
+    isChecked: input.isChecked,
     ...(failureReason ? { failureReason } : {}),
     ...(phase === "failed"
       ? { nextActionHint: "다음 처리: Cursor 재실행 대기" }

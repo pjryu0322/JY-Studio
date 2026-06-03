@@ -1,5 +1,8 @@
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
+import { summarizeCodeTaskExecutionQueueRuns } from "@/lib/prototype/codeTaskExecutionRunUi";
 import {
   formatRuntimeStateKo,
   isRuntimeInFlight,
@@ -19,6 +22,45 @@ export type ImplementationExecutionOverview = Readonly<{
   readonly runtimeState?: RuntimeState;
   readonly runtimeStateLabel?: string;
 }>;
+
+export type SelectedCodeTaskExecutionProgress = Readonly<{
+  readonly done: number;
+  readonly total: number;
+}>;
+
+export function resolveSelectedCodeTaskExecutionProgress(input: {
+  readonly selectedCodeTaskIds: readonly string[];
+  readonly queue?: CodeTaskExecutionQueueV1 | null;
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+}): SelectedCodeTaskExecutionProgress | null {
+  const total = input.selectedCodeTaskIds.length;
+  if (!total) return null;
+  const queue = input.queue;
+  if (!queue || queue.status === "idle") return null;
+
+  const summary = summarizeCodeTaskExecutionQueueRuns({
+    runs: input.runs ?? [],
+    selectedCodeTaskIds: input.selectedCodeTaskIds,
+  });
+  const terminalDone = summary.completed + summary.noCodeChange;
+
+  if (queue.status === "running") {
+    const position = Math.min(queue.currentIndex + 1, total);
+    const done = Math.max(terminalDone, position);
+    return { done: Math.min(done, total), total };
+  }
+
+  if (
+    queue.status === "completed" ||
+    queue.status === "completed_with_issues" ||
+    queue.status === "failed" ||
+    queue.status === "paused"
+  ) {
+    return { done: Math.min(terminalDone, total), total };
+  }
+
+  return null;
+}
 
 export function buildImplementationExecutionOverview(input: {
   readonly board: ImplementationExecutionBoardV1;
@@ -67,22 +109,45 @@ export function formatImplementationExecutionOverviewLines(
   overview: ImplementationExecutionOverview,
   input?: {
     readonly selectedCodeTaskCount?: number;
+    readonly selectedExecutionProgress?: SelectedCodeTaskExecutionProgress | null;
+    readonly queueRunning?: boolean;
   },
 ): readonly string[] {
-  const progressDone = overview.completedCount + overview.inProgressCount;
-  const lines = [
-    `CodeTask 진행: ${progressDone} / ${overview.codeTaskCount}`,
-    `실패: ${overview.failedCount}`,
-    `차단: ${overview.blockedCount}`,
-    ...(typeof input?.selectedCodeTaskCount === "number"
-      ? [`선택됨: ${input.selectedCodeTaskCount}개`]
-      : []),
-    overview.currentTitle
-      ? [`현재 CodeTask: ${overview.currentTitle}`]
-      : overview.isRunning
-        ? []
-        : ["현재 CodeTask: 없음"],
-    overview.runtimeStateLabel ? [`상태: ${overview.runtimeStateLabel}`] : [],
-  ];
+  const lines: string[] = [`전체 CodeTask: ${overview.codeTaskCount}개`];
+
+  if (typeof input?.selectedCodeTaskCount === "number") {
+    lines.push(`선택 CodeTask: ${input.selectedCodeTaskCount}개`);
+  }
+
+  const progress = input?.selectedExecutionProgress;
+  const showSelectedProgress =
+    progress && progress.total > 0 && (input?.queueRunning || overview.isRunning);
+  if (showSelectedProgress) {
+    lines.push(`선택 실행 진행: ${progress.done} / ${progress.total}`);
+  }
+
+  if (overview.currentTitle) {
+    lines.push(`현재 CodeTask: ${overview.currentTitle}`);
+  }
+
+  if (overview.isRunning && overview.runtimeStateLabel) {
+    lines.push(`상태: ${overview.runtimeStateLabel}`);
+  } else if (
+    typeof input?.selectedCodeTaskCount === "number" &&
+    input.selectedCodeTaskCount > 0 &&
+    !showSelectedProgress
+  ) {
+    lines.push("상태: 선택한 CodeTask 실행 대기");
+  } else if (!overview.isRunning) {
+    lines.push("상태: 대기");
+  }
+
+  if (overview.failedCount > 0) {
+    lines.push(`실패: ${overview.failedCount}`);
+  }
+  if (overview.blockedCount > 0) {
+    lines.push(`차단: ${overview.blockedCount}`);
+  }
+
   return lines;
 }

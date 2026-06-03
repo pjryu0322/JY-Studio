@@ -57,19 +57,25 @@ export function buildCodeTaskDeveloperPrompt(input: {
       : ["- 무관한 대규모 리팩터링 금지"]),
     "",
     "## 완료 기준",
+    "- 이 CodeTask 범위만 수정하고 허용 경로 안에서만 변경할 것",
     "- 요구사항을 충족하는 코드 변경",
-    "- GitHub에 commit / push / PR 생성",
+    "- 변경 후 commit을 생성하고 원격 work branch에 push할 것",
+    "- push 후 branch head(또는 commit SHA)가 GitHub에서 확인 가능해야 함",
     "- 코드 변경이 불필요하면 noCodeChange 근거(검토한 파일·검증 요약)를 명확히 기록",
     "",
     "## GitHub 정책",
     `- 저장소: ${input.targetRepository.repoFullName}`,
     `- base branch: ${input.baseBranch}`,
     `- work branch: ${workBranch}`,
-    "- 작업 완료 후 위 work branch에 commit·push하고 PR을 생성할 것",
-    `- PR 제목/본문에 CodeTask ID(${input.codeTask.codeTaskId})와 제목(${input.codeTask.title})을 명확히 포함할 것`,
+    "- 작업 완료 후 위 work branch에 commit·push만 수행할 것 (PR 생성·merge는 플랫폼이 담당하므로 금지)",
     ...(input.allowedPathGlobs?.length
-      ? ["", "## 허용 경로", ...input.allowedPathGlobs.map((g) => `- ${g}`)]
-      : []),
+      ? [
+          "",
+          "## 허용 경로",
+          ...input.allowedPathGlobs.map((g) => `- ${g}`),
+          "- 위 경로 밖 파일은 수정하지 말 것",
+        ]
+      : ["", "## 허용 경로", "- (플랫폼 허용 경로 미지정 — 관련 최소 범위만 수정)"]),
   ];
 
   return sections.filter((line) => line !== undefined).join("\n").trim();

@@ -14,27 +14,9 @@ import {
 import { syncImplementationRuntimeFromRequirementsJson } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
+import { formatImplementationRuntimeApiError } from "@/lib/runtime/implementationRuntime/implementationRuntimeApiErrors";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
-
-function formatImplementationRuntimeActionError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  const code =
-    error && typeof error === "object" && "code" in error
-      ? String((error as { code?: unknown }).code ?? "")
-      : "";
-  if (
-    code === "P2022" ||
-    /column.*does not exist/i.test(message) ||
-    /selectedCodeTaskIdsJson/i.test(message)
-  ) {
-    return [
-      "Implementation Runtime DB 스키마가 최신이 아닙니다.",
-      "JYOrchestration에서 `pnpm db:migrate` 실행 후 다시 「빠른 실행」을 시도해 주세요.",
-    ].join(" ");
-  }
-  return message;
-}
 type ActionBody = {
   readonly action?: string;
   readonly selectedCodeTaskIds?: readonly string[];
@@ -172,7 +154,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ success: false, message: `Unknown action: ${action}` }, { status: 400 });
   } catch (error) {
-    const message = formatImplementationRuntimeActionError(error);
+    const message = formatImplementationRuntimeApiError(error);
     return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

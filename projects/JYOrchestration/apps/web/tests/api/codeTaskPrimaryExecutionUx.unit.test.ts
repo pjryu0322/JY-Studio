@@ -12,6 +12,7 @@ import { buildImplementationProcessTaskTreeNodes } from "@/lib/prototype/impleme
 import {
   isProcessTaskCodeTasksFullySelected,
   normalizeSelectedCodeTaskIds,
+  resolveParentTaskIdForCodeTask,
   resolveProcessTaskCodeTaskSelectionToggle,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import {
@@ -205,7 +206,7 @@ describe("codeTask primary execution UX", () => {
     expect(IMPLEMENTATION_QUICK_RUN_CHIP).toBe("선택한 CodeTask 실행");
   });
 
-  it("formats overview with code task progress lines", () => {
+  it("formats overview with selected-code-task-first lines", () => {
     const board = buildImplementationExecutionBoardFromRequirementsState({
       projectId: "p1",
       orchestration: { implementationTaskListV1: sampleList() },
@@ -216,12 +217,38 @@ describe("codeTask primary execution UX", () => {
       activeCodeTaskTitle: "UI component",
     });
     const text = formatImplementationExecutionOverviewLines(overview, {
-      selectedCodeTaskCount: 2,
+      selectedCodeTaskCount: 4,
+      selectedExecutionProgress: { done: 1, total: 4 },
+      queueRunning: true,
     }).join("\n");
-    expect(text).toContain("CodeTask 진행:");
+    expect(text).toContain("전체 CodeTask:");
+    expect(text).toContain("선택 CodeTask: 4개");
+    expect(text).toContain("선택 실행 진행: 1 / 4");
     expect(text).toContain("현재 CodeTask:");
-    expect(text).toContain("선택됨: 2개");
-    expect(text).not.toMatch(/^현재: /m);
+    expect(text).not.toContain("CodeTask 진행: 15");
+    expect(text).not.toContain("선택됨:");
+  });
+
+  it("resolves parent task id for a code task and marks parent selected in tree", () => {
+    const plan = samplePlan();
+    const childId = plan.tasks[0]!.codeTaskId;
+    const parentId = plan.tasks[0]!.parentTaskId;
+    expect(resolveParentTaskIdForCodeTask({ codeTaskId: childId, codeTaskPlan: plan })).toBe(parentId);
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: sampleList() },
+    })!;
+    const nodes = buildImplementationProcessTaskTreeNodes({
+      board,
+      codeTaskPlan: plan,
+      selectedTaskId: parentId,
+      selectedCodeTaskId: childId,
+      checkedCodeTaskIds: [childId],
+    });
+    expect(nodes[0]?.taskId).toBe(parentId);
+    expect(nodes[0]?.isSelected).toBe(true);
+    expect(nodes[0]?.codeTasks.length).toBeGreaterThan(0);
+    expect(nodes[0]?.codeTasks[0]?.isChecked).toBe(true);
   });
 
   it("aggregates process task summary from child code task rows", () => {

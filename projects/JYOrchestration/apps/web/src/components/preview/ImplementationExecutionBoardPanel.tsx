@@ -40,6 +40,7 @@ import type { ImplementationStageNextActionsBoardInput } from "@/lib/prototype/i
 import {
   buildImplementationExecutionOverview,
   formatImplementationExecutionOverviewLines,
+  resolveSelectedCodeTaskExecutionProgress,
 } from "@/lib/prototype/implementationExecutionOverview";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { ImplementationExecutionBoardTaskTree } from "@/components/preview/ImplementationExecutionBoardTaskTree";
@@ -51,6 +52,7 @@ import {
   normalizeSelectedCodeTaskIds,
   resolveCodeTaskTreeSelectAll,
   resolveCodeTaskTreeSelectionToggle,
+  resolveParentTaskIdForCodeTask,
   resolveProcessTaskCodeTaskSelectionToggle,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
@@ -76,10 +78,6 @@ export function ImplementationExecutionBoardPanel({
   onSelectedTaskIdsChange,
   onSelectedCodeTaskIdsChange,
   onRunSingleCodeTask,
-  onForceReleaseExecution,
-  onRedispatchRuntime,
-  onShowRuntimeDiagnostics,
-  onRecoverLegacyRuntimeFromJson,
   implementationRuntimeStateV1,
   implementationRuntimeDbBundle,
   codeTaskExecutionFeedbackV1,
@@ -108,10 +106,6 @@ export function ImplementationExecutionBoardPanel({
   readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
   readonly onSelectedCodeTaskIdsChange?: (selectedCodeTaskIds: readonly string[]) => void;
   readonly onRunSingleCodeTask?: (codeTaskId: string) => void;
-  readonly onForceReleaseExecution?: () => void;
-  readonly onRedispatchRuntime?: () => void;
-  readonly onShowRuntimeDiagnostics?: () => void;
-  readonly onRecoverLegacyRuntimeFromJson?: () => void;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
@@ -302,6 +296,16 @@ export function ImplementationExecutionBoardPanel({
     });
   }, [codeTaskExecutionRunsV1, codeTaskQueue, implementationCodeTaskPlanV1]);
 
+  const selectedExecutionProgress = useMemo(
+    () =>
+      resolveSelectedCodeTaskExecutionProgress({
+        selectedCodeTaskIds: checkedCodeTaskIds,
+        queue: codeTaskQueue,
+        runs: parseCodeTaskExecutionRunsV1(codeTaskExecutionRunsV1) ?? [],
+      }),
+    [checkedCodeTaskIds, codeTaskQueue, codeTaskExecutionRunsV1],
+  );
+
   return (
     <section
       className={styles.root}
@@ -316,6 +320,8 @@ export function ImplementationExecutionBoardPanel({
           <ul className={styles.overviewCardLines}>
             {formatImplementationExecutionOverviewLines(executionOverview, {
               selectedCodeTaskCount: checkedCodeTaskIds.length,
+              selectedExecutionProgress,
+              queueRunning: codeTaskQueue?.status === "running",
             }).map((line) => (
               <li key={line}>{line}</li>
             ))}
@@ -339,52 +345,6 @@ export function ImplementationExecutionBoardPanel({
         {queueSummaryLine ? (
           <div className={styles.queueSummaryBanner} data-testid="code-task-execution-queue-summary">
             {queueSummaryLine}
-          </div>
-        ) : null}
-        {executionOverview.isRunning ? (
-          <div className={styles.runtimeAdminActions}>
-            {onShowRuntimeDiagnostics ? (
-              <button
-                type="button"
-                className={styles.runtimeDiagnosticsButton}
-                data-testid="implementation-runtime-diagnostics"
-                onClick={onShowRuntimeDiagnostics}
-              >
-                Runtime 상태 보기
-              </button>
-            ) : null}
-            {onRedispatchRuntime ? (
-              <button
-                type="button"
-                className={styles.runtimeRedispatchButton}
-                data-testid="implementation-runtime-redispatch"
-                onClick={onRedispatchRuntime}
-              >
-                재디스패치
-              </button>
-            ) : null}
-            {onForceReleaseExecution ? (
-              <button
-                type="button"
-                className={styles.forceReleaseButton}
-                data-testid="implementation-force-release-execution"
-                onClick={onForceReleaseExecution}
-              >
-                실행 잠금 해제
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-        {onRecoverLegacyRuntimeFromJson ? (
-          <div className={styles.runtimeRecoveryRow}>
-            <button
-              type="button"
-              className={styles.runtimeRecoveryButton}
-              data-testid="implementation-runtime-sync-from-json-recovery"
-              onClick={onRecoverLegacyRuntimeFromJson}
-            >
-              기존 JSON 실행 상태를 DB Runtime으로 복구
-            </button>
           </div>
         ) : null}
         {reworkVm?.candidateCount ? (
@@ -443,25 +403,10 @@ export function ImplementationExecutionBoardPanel({
           selectedCodeTaskCount={checkedCodeTaskIds.length}
           onSelectTask={(taskId) => {
             setSelectedTaskId(taskId);
-            updateCheckedCodeTaskIds(
-              resolveProcessTaskCodeTaskSelectionToggle({
-                parentTaskId: taskId,
-                checked: true,
-                selectedCodeTaskIds: checkedCodeTaskIds,
-                codeTaskPlan: implementationCodeTaskPlanV1,
-              }),
-            );
           }}
-          onSelectCodeTask={(_parentTaskId, codeTaskId) => {
+          onSelectCodeTask={(parentTaskId, codeTaskId) => {
+            setSelectedTaskId(parentTaskId);
             setSelectedCodeTaskId(codeTaskId);
-            updateCheckedCodeTaskIds(
-              resolveCodeTaskTreeSelectionToggle({
-                codeTaskId,
-                checked: true,
-                selectedCodeTaskIds: checkedCodeTaskIds,
-                codeTaskPlan: implementationCodeTaskPlanV1,
-              }),
-            );
           }}
           onToggleTaskChecked={(taskId, checked) => {
             updateCheckedCodeTaskIds(
@@ -474,6 +419,16 @@ export function ImplementationExecutionBoardPanel({
             );
           }}
           onToggleCodeTaskChecked={(codeTaskId, checked) => {
+            const parentTaskId = resolveParentTaskIdForCodeTask({
+              codeTaskId,
+              codeTaskPlan: implementationCodeTaskPlanV1,
+            });
+            if (parentTaskId) {
+              setSelectedTaskId(parentTaskId);
+            }
+            if (checked) {
+              setSelectedCodeTaskId(codeTaskId);
+            }
             updateCheckedCodeTaskIds(
               resolveCodeTaskTreeSelectionToggle({
                 codeTaskId,

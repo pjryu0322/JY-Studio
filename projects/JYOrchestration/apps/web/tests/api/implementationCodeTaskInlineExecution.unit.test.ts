@@ -60,6 +60,6 @@ describe("formatImplementationExecutionOverviewLines", () => {
     const overview = buildImplementationExecutionOverview({ board });
     const text = formatImplementationExecutionOverviewLines(overview).join("\n");
     expect(text).not.toContain("Quick 실행으로 선택한");
-    expect(text).toContain("CodeTask 진행:");
+    expect(text).toContain("전체 CodeTask:");
   });
 });

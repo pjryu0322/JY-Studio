@@ -13,6 +13,10 @@ import {
 import { pollDueImplementationRuntimeForProject } from "@/lib/runtime/implementationRuntime/implementationRuntimePollService";
 import { buildImplementationRuntimeUiSnapshot } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
 import { formatRuntimeStateKoForUser } from "@/lib/runtime/implementationRuntime/implementationRuntimeGithubCentricModel";
+import {
+  formatImplementationRuntimeApiError,
+  isImplementationRuntimeSchemaError,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeApiErrors";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
 
@@ -36,19 +40,30 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const recoverOnLoad = request.nextUrl.searchParams.get("recover") === "1";
+    let recoveryWarning: string | null = null;
     if (recoverOnLoad) {
-      const recovery = await recoverImplementationRuntimeDb({ projectId: pid });
-      if (recovery.shouldRedispatch && recovery.redispatchCodeTaskId) {
-        const pre = await getImplementationRuntimeBundle(pid);
-        if (pre.job) {
-          await ensureQueuedRunForRedispatch({
-            projectId: pid,
-            jobId: pre.job.id,
-            codeTaskId: recovery.redispatchCodeTaskId,
-          });
+      try {
+        const recovery = await recoverImplementationRuntimeDb({ projectId: pid });
+        if (recovery.shouldRedispatch && recovery.redispatchCodeTaskId) {
+          const pre = await getImplementationRuntimeBundle(pid);
+          if (pre.job) {
+            await ensureQueuedRunForRedispatch({
+              projectId: pid,
+              jobId: pre.job.id,
+              codeTaskId: recovery.redispatchCodeTaskId,
+            });
+          }
         }
+        try {
+          await pollDueImplementationRuntimeForProject(pid);
+        } catch (pollError) {
+          recoveryWarning = formatImplementationRuntimeApiError(pollError);
+          console.warn("[implementation-runtime] recover poll skipped:", recoveryWarning);
+        }
+      } catch (recoverError) {
+        recoveryWarning = formatImplementationRuntimeApiError(recoverError);
+        console.warn("[implementation-runtime] recover skipped:", recoveryWarning);
       }
-      await pollDueImplementationRuntimeForProject(pid);
     }
 
     const bundle = await getImplementationRuntimeBundle(pid);
@@ -83,9 +98,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       uiSnapshot: buildImplementationRuntimeUiSnapshot(bundle),
       diagnostics,
       events,
+      ...(recoveryWarning ? { recoveryWarning } : {}),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ success: false, message }, { status: 500 });
+    const message = formatImplementationRuntimeApiError(error);
+    console.error("[implementation-runtime] GET failed:", error);
+    const status = isImplementationRuntimeSchemaError(error) ? 503 : 500;
+    return NextResponse.json({ success: false, message }, { status });
   }
 }

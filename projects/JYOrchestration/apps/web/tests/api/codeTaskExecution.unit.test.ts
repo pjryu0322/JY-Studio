@@ -245,7 +245,7 @@ describe("code task execution queue", () => {
 });
 
 describe("buildCodeTaskDeveloperPrompt", () => {
-  it("includes acceptance criteria and github pr requirements", () => {
+  it("includes acceptance criteria and github push requirements without pr creation", () => {
     const prompt = buildCodeTaskDeveloperPrompt({
       codeTask: samplePlan().tasks[0]!,
       parentTask: {
@@ -268,7 +268,8 @@ describe("buildCodeTaskDeveloperPrompt", () => {
     });
     expect(prompt).toContain("목록 API");
     expect(prompt).toContain("목록 조회 API 동작");
-    expect(prompt).toMatch(/commit.*push.*PR/i);
+    expect(prompt).toMatch(/commit.*push/i);
+    expect(prompt).toContain("PR 생성·merge는 플랫폼");
     expect(prompt).toContain("noCodeChange");
     expect(prompt).toContain("CT-1");
   });

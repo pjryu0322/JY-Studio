@@ -9,6 +9,17 @@ export function listCodeTaskIdsFromPlan(
   );
 }
 
+export function resolveParentTaskIdForCodeTask(input: {
+  readonly codeTaskId: string;
+  readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
+}): string | null {
+  const codeTaskId = input.codeTaskId.trim();
+  if (!codeTaskId || !input.codeTaskPlan) return null;
+  const task = input.codeTaskPlan.tasks.find((t) => t.codeTaskId.trim() === codeTaskId);
+  const parentId = task?.parentTaskId?.trim() ?? "";
+  return parentId || null;
+}
+
 export function resolveCodeTaskIdsForParentTask(input: {
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
   readonly parentTaskId: string;

@@ -352,7 +352,6 @@ import {
 } from "@/lib/prototype/implementationRuntimePanelBridge";
 import { resolveImplementationRuntimeStateForRead } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";
 import { readActiveRuntimeDispatchFromState } from "@/lib/prototype/implementationRuntimeSync";
-import { ImplementationRuntimeDiagnosticsPanel } from "@/components/preview/ImplementationRuntimeDiagnosticsPanel";
 import {
   fetchImplementationRuntime,
   postImplementationRuntimeAction,
@@ -1593,7 +1592,7 @@ export function PrototypePreviewPanel({
   const codeTaskDispatchPreferredTaskIdRef = useRef<string | null>(null);
   const codeTaskQueueAdvanceInFlightRef = useRef(false);
   const implementationRecoveryKeyRef = useRef("");
-  const [runtimeDiagnosticsOpen, setRuntimeDiagnosticsOpen] = useState(false);
+  const implementationRuntimePollSuspendedRef = useRef(false);
   const [implementationRuntimeDbBundle, setImplementationRuntimeDbBundle] =
     useState<ImplementationRuntimeBundleView | null>(null);
   const [implementationRuntimeDbDiagnostics, setImplementationRuntimeDbDiagnostics] = useState<
@@ -1671,10 +1670,22 @@ export function PrototypePreviewPanel({
     async (options?: { readonly recover?: boolean }) => {
       const pid = projectId.trim();
       if (!pid) return;
+      if (implementationRuntimePollSuspendedRef.current && options?.recover !== true) {
+        return;
+      }
       const fetched = await fetchImplementationRuntime(pid, options);
+      if (!fetched.success) {
+        const message = fetched.message ?? "";
+        if (message.includes("DB 스키마가 최신") || message.includes("pnpm db:migrate")) {
+          implementationRuntimePollSuspendedRef.current = true;
+          showToast(message.split(". ")[0] ?? message);
+        }
+        return;
+      }
+      implementationRuntimePollSuspendedRef.current = false;
       applyImplementationRuntimeFetch(fetched);
     },
-    [applyImplementationRuntimeFetch, projectId],
+    [applyImplementationRuntimeFetch, projectId, showToast],
   );
 
   const recoverLegacyRuntimeFromJson = useCallback(async () => {
@@ -1703,6 +1714,9 @@ export function PrototypePreviewPanel({
     const legacyCursor = parseTaskCursorExecutionV1(
       orchestrationAwareRequirementsState.taskCursorExecutionV1,
     );
+    if (implementationRuntimePollSuspendedRef.current) {
+      return;
+    }
     if (
       !shouldPollImplementationRuntime({
         bundle: implementationRuntimeDbBundle,
@@ -4172,7 +4186,6 @@ export function PrototypePreviewPanel({
           return { outcome: "executed" };
         }
         case "SHOW_IMPLEMENTATION_RUNTIME_DIAGNOSTICS": {
-          setRuntimeDiagnosticsOpen(true);
           void loadImplementationRuntimeDb({ recover: false });
           return { outcome: "executed" };
         }
@@ -7595,15 +7608,6 @@ export function PrototypePreviewPanel({
           {toast}
         </div>
       ) : null}
-      {runtimeDiagnosticsOpen ? (
-        <ImplementationRuntimeDiagnosticsPanel
-          requirementsState={orchestrationAwareRequirementsState as Record<string, unknown>}
-          dbBundle={implementationRuntimeDbBundle}
-          dbDiagnostics={implementationRuntimeDbDiagnostics}
-          onClose={() => setRuntimeDiagnosticsOpen(false)}
-        />
-      ) : null}
-
       <div className="jyo-prototype-stage-shell" style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", flexDirection: "column" }}>
         <ImplementationStageGlobalToolbar>{executionConversationIconToolbar}</ImplementationStageGlobalToolbar>
         {implementationBoard && implementationStageBoardInput ? (
@@ -7630,18 +7634,6 @@ export function PrototypePreviewPanel({
             onSelectedTaskIdsChange={handleBoardSelectedTaskIdsChange}
             onSelectedCodeTaskIdsChange={handleBoardSelectedCodeTaskIdsChange}
             onRunSingleCodeTask={handleRunSingleCodeTask}
-            onForceReleaseExecution={() => {
-              void runImplementationStageActionRef.current("RELEASE_IMPLEMENTATION_EXECUTION_LOCK");
-            }}
-            onRedispatchRuntime={() => {
-              void runImplementationStageActionRef.current("REDISPATCH_IMPLEMENTATION_RUNTIME");
-            }}
-            onShowRuntimeDiagnostics={() => {
-              void runImplementationStageActionRef.current("SHOW_IMPLEMENTATION_RUNTIME_DIAGNOSTICS");
-            }}
-            onRecoverLegacyRuntimeFromJson={() => {
-              void recoverLegacyRuntimeFromJson();
-            }}
             implementationRuntimeStateV1={resolveImplementationRuntimeStateForRead({
               raw: orchestrationAwareRequirementsState as Record<string, unknown>,
               projectId: projectId.trim(),

@@ -58,6 +58,11 @@ describe("ImplementationExecutionBoardPanel", () => {
     expect(html).not.toContain("더보기");
     expect(html).not.toContain("툴바 [빠른 실행]");
     expect(html).not.toContain("implementation-env-details");
+    expect(html).not.toContain("Runtime 상태 보기");
+    expect(html).not.toContain("재디스패치");
+    expect(html).not.toContain("실행 잠금 해제");
+    expect(html).not.toContain("기존 JSON 실행 상태를 DB Runtime으로 복구");
+    expect(html).not.toContain("implementation-runtime-diagnostics");
   });
 
   it("shows Cloud Agent poll cancel button while polling", () => {
