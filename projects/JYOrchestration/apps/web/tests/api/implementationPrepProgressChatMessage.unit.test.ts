@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildPseudoImplementationPrepProgress } from "@/lib/requirements/implementationPrepProgress";
+import {
+  buildImplementationPrepCompletedSnapshot,
+  buildPseudoImplementationPrepProgress,
+} from "@/lib/requirements/implementationPrepProgress";
 import {
   buildImplementationPrepProgressChatContent,
   findImplementationPrepProgressMessageIndex,
@@ -57,7 +60,16 @@ describe("implementationPrepProgressChatMessage", () => {
     expect(content).not.toMatch(/llm_partial_refined/i);
   });
 
-  it("throttles refresh until phase changes or 10 percent delta", () => {
+  it("completed chat content includes 100 percent progress", () => {
+    const content = buildImplementationPrepProgressChatContent({
+      snapshot: buildImplementationPrepCompletedSnapshot(),
+      progressStatus: "completed",
+    });
+    expect(content).toContain("진행률: 100%");
+    expect(content).toContain("구현준비 완료");
+  });
+
+  it("throttles refresh until phase changes or 5 percent delta", () => {
     const first = buildPseudoImplementationPrepProgress(5_000);
     const second = buildPseudoImplementationPrepProgress(8_000);
     const third = buildPseudoImplementationPrepProgress(90_000);

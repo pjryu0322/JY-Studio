@@ -93,7 +93,7 @@ export function buildPseudoImplementationPrepProgress(
 ): ImplementationPrepProgressSnapshot {
   const elapsed = Math.max(0, elapsedMs);
   const rampMs = 150_000;
-  const rawPercent = Math.min(95, 10 + Math.floor((elapsed / rampMs) * 85));
+  const rawPercent = Math.min(99, 10 + Math.floor((elapsed / rampMs) * 89));
   const phase = resolvePhase(rawPercent);
   const concurrency = options?.batchConcurrency ?? IMPLEMENTATION_PREP_DEFAULT_BATCH_CONCURRENCY;
   const steps = buildSteps(phase === "confirming" ? "seed_building" : phase);
@@ -128,6 +128,26 @@ export function buildPseudoImplementationPrepProgress(
     description,
     detailLine,
     metaLines,
+    steps,
+  };
+}
+
+/** API 성공 직후 대화에 표시할 최종 스냅샷 (진행 중 pseudo는 99%까지, 100%는 완료 시에만). */
+export function buildImplementationPrepCompletedSnapshot(): ImplementationPrepProgressSnapshot {
+  const steps = STEP_DEFINITIONS.map((step) => ({
+    label: step.label,
+    status: "done" as const,
+  }));
+  return {
+    phase: "ready",
+    percent: 100,
+    headline: "구현준비 산출물 생성이 완료되었습니다.",
+    description: "이제 구현단계에서 실행할 CodeTask를 선택할 수 있습니다.",
+    metaLines: [
+      "전체 CodeTask: 준비 완료",
+      "구현준비: 완료",
+      "상세 로그: 로그 탭",
+    ],
     steps,
   };
 }

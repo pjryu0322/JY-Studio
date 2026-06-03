@@ -56,7 +56,7 @@ export function shouldRefreshImplementationPrepProgressMessage(input: {
 }): boolean {
   if (input.previousPercent == null || input.previousPhase == null) return true;
   if (input.previousPhase !== input.next.phase) return true;
-  return Math.abs(input.next.percent - input.previousPercent) >= 10;
+  return Math.abs(input.next.percent - input.previousPercent) >= 5;
 }
 
 export function buildImplementationPrepProgressChatContent(input: {
@@ -87,8 +87,12 @@ export function buildImplementationPrepProgressChatContent(input: {
   }
 
   if (input.progressStatus === "completed") {
+    const stepLabel = formatImplementationPrepProgressUserStepLabel(input.snapshot.phase);
     return [
       "구현 준비 산출물 생성이 완료되었습니다.",
+      "",
+      `진행률: ${input.snapshot.percent}%`,
+      `현재 단계: ${stepLabel}`,
       "",
       "이제 구현단계에서 실행할 CodeTask를 선택할 수 있습니다.",
       "",

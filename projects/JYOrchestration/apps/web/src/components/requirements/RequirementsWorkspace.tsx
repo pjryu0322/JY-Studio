@@ -206,6 +206,7 @@ import {
 import {
   buildPseudoImplementationPrepProgress,
   type ImplementationPrepProgressPhase,
+  buildImplementationPrepCompletedSnapshot,
 } from "@/lib/requirements/implementationPrepProgress";
 import {
   IMPLEMENTATION_PREP_LOG_VIEW_CHIP_LABEL,
@@ -2429,12 +2430,15 @@ export function RequirementsWorkspace({
     phase: ImplementationPrepProgressPhase;
   } | null>(null);
   const implementationPrepProgressStartedAtRef = useRef<number | null>(null);
+  /** true면 pseudo-progress interval이 running 메시지로 덮어쓰지 않음 */
+  const implementationPrepProgressFrozenRef = useRef(false);
 
   const applyLocalConversationMessages = useCallback(
     (messages: readonly RequirementsMessage[]) => {
       const pid = resolvedProjectId.trim();
       if (!pid) return;
       const nextRoom = patchRequirementsRoomConversationMessages(roomRef.current, pid, [...messages]);
+      roomRef.current = nextRoom;
       setRoom(nextRoom);
     },
     [resolvedProjectId],
@@ -2467,6 +2471,7 @@ export function RequirementsWorkspace({
     setDeliverableGenerateBusy(true);
     const prepStartIso = new Date().toISOString();
     const initialPrepSnapshot = buildPseudoImplementationPrepProgress(0);
+    implementationPrepProgressFrozenRef.current = false;
     implementationPrepProgressStartedAtRef.current = Date.now();
     implementationPrepProgressTrackRef.current = {
       percent: initialPrepSnapshot.percent,
@@ -2496,6 +2501,8 @@ export function RequirementsWorkspace({
       });
       if (!res.ok || !json.success || !json.data || json.data.mode !== "planning") {
         const failureMessage = json.message || "Quick Design 확정에 실패했습니다.";
+        implementationPrepProgressFrozenRef.current = true;
+        implementationPrepProgressStartedAtRef.current = null;
         applyLocalConversationMessages(
           upsertImplementationPrepProgressMessage({
             messages: removeImplementationPrepProgressMessages(
@@ -2512,6 +2519,8 @@ export function RequirementsWorkspace({
       const flowResult = json.data;
       if (!flowResult.statePatch) {
         const failureMessage = "Quick Design 확정 결과를 적용할 수 없습니다.";
+        implementationPrepProgressFrozenRef.current = true;
+        implementationPrepProgressStartedAtRef.current = null;
         applyLocalConversationMessages(
           upsertImplementationPrepProgressMessage({
             messages: removeImplementationPrepProgressMessages(
@@ -2537,6 +2546,8 @@ export function RequirementsWorkspace({
       const persisted = await persistStateJsonOnly(statePatchWithTimeline);
       if (!persisted) {
         const failureMessage = "Quick Design 확정 결과 저장에 실패했습니다. 다시 시도해 주세요.";
+        implementationPrepProgressFrozenRef.current = true;
+        implementationPrepProgressStartedAtRef.current = null;
         applyLocalConversationMessages(
           upsertImplementationPrepProgressMessage({
             messages: removeImplementationPrepProgressMessages(
@@ -2551,15 +2562,35 @@ export function RequirementsWorkspace({
         return;
       }
       lastFastPlanArtifactIdRef.current = flowResult.primaryArtifactId ?? null;
+      implementationPrepProgressFrozenRef.current = true;
+      implementationPrepProgressStartedAtRef.current = null;
+      implementationPrepProgressTrackRef.current = null;
+      const completedAtIso = new Date().toISOString();
       applyLocalConversationMessages(
-        removeImplementationPrepProgressMessages(roomRef.current.requirementsConversation.messages),
+        upsertImplementationPrepProgressMessage({
+          messages: roomRef.current.requirementsConversation.messages,
+          progressStatus: "completed",
+          snapshot: buildImplementationPrepCompletedSnapshot(),
+          nowIso: completedAtIso,
+        }),
       );
       if (flowResult.messages?.[0]) {
-        await appendServiceFlowWorkshopMessages([flowResult.messages[0]]);
+        const seedMessage = flowResult.messages[0];
+        const seedCreatedAt = new Date(
+          Math.max(
+            Date.parse(completedAtIso) + 1,
+            Date.parse(String(seedMessage.createdAt ?? completedAtIso)) || 0,
+          ),
+        ).toISOString();
+        await appendServiceFlowWorkshopMessages([
+          { ...seedMessage, createdAt: seedCreatedAt },
+        ]);
       }
       showSuccessToast(flowResult.userFacingSummary ?? json.message ?? "Quick Design을 확정했습니다.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";
+      implementationPrepProgressFrozenRef.current = true;
+      implementationPrepProgressStartedAtRef.current = null;
       applyLocalConversationMessages(
         upsertImplementationPrepProgressMessage({
           messages: removeImplementationPrepProgressMessages(
@@ -2572,6 +2603,7 @@ export function RequirementsWorkspace({
       );
       showErrorToast(msg);
     } finally {
+      implementationPrepProgressFrozenRef.current = false;
       implementationPrepProgressTrackRef.current = null;
       implementationPrepProgressStartedAtRef.current = null;
       setDeliverableGenerateBusy(false);
@@ -2601,6 +2633,7 @@ export function RequirementsWorkspace({
   useEffect(() => {
     if (!deliverableGenerateBusy) return;
     const timer = window.setInterval(() => {
+      if (implementationPrepProgressFrozenRef.current) return;
       const startedAt = implementationPrepProgressStartedAtRef.current;
       if (startedAt == null) return;
       const snapshot = buildPseudoImplementationPrepProgress(Date.now() - startedAt);

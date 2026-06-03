@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildImplementationPrepCompletedSnapshot,
   buildPseudoImplementationPrepProgress,
   IMPLEMENTATION_PREP_DEFAULT_BATCH_CONCURRENCY,
 } from "@/lib/requirements/implementationPrepProgress";
@@ -11,7 +12,14 @@ describe("buildPseudoImplementationPrepProgress", () => {
     expect(snap.detailLine).toContain("Batch 기준");
     expect(snap.detailLine).not.toMatch(/\d+\/\d+/);
     expect(snap.percent).toBeGreaterThanOrEqual(40);
-    expect(snap.percent).toBeLessThanOrEqual(95);
+    expect(snap.percent).toBeLessThanOrEqual(99);
+  });
+
+  it("completed snapshot shows 100 percent and all steps done", () => {
+    const snap = buildImplementationPrepCompletedSnapshot();
+    expect(snap.percent).toBe(100);
+    expect(snap.phase).toBe("ready");
+    expect(snap.steps.every((s) => s.status === "done")).toBe(true);
   });
 
   it("shows 준비 중 meta and default concurrency", () => {
