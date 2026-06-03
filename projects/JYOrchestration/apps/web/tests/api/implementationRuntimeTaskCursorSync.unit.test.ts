@@ -5,6 +5,7 @@ const getBundleMock = vi.fn();
 const markCursorCompletedMock = vi.fn();
 const completeRecordedMock = vi.fn();
 const verifyOnGithubMock = vi.fn();
+const applyPrecomputedMock = vi.fn();
 const advanceMock = vi.fn();
 
 vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeRepository", () => ({
@@ -29,6 +30,8 @@ vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeExecutionServi
 
 vi.mock("@/lib/runtime/implementationRuntime/implementationGithubVerificationService", () => ({
   verifyImplementationRuntimeRunOnGithub: (...args: unknown[]) => verifyOnGithubMock(...args),
+  applyImplementationRuntimeGithubVerifyResult: (...args: unknown[]) =>
+    applyPrecomputedMock(...args),
   completeImplementationRuntimeFromRecordedGithubOutcome: (...args: unknown[]) =>
     completeRecordedMock(...args),
 }));
@@ -81,10 +84,12 @@ describe("implementationRuntimeTaskCursorSync", () => {
     markCursorCompletedMock.mockReset();
     completeRecordedMock.mockReset();
     verifyOnGithubMock.mockReset();
+    applyPrecomputedMock.mockReset();
     advanceMock.mockReset();
     markCursorCompletedMock.mockResolvedValue(undefined);
     completeRecordedMock.mockResolvedValue({ ok: true, outcomeType: "github_verified", bundle: {} });
     verifyOnGithubMock.mockResolvedValue({ ok: true, outcomeType: "github_verified", bundle: {} });
+    applyPrecomputedMock.mockResolvedValue({ ok: true, outcomeType: "github_verified", bundle: {} });
   });
 
   it("maps cursor statuses to runtime states (never completed from cursor alone)", () => {
@@ -175,6 +180,34 @@ describe("implementationRuntimeTaskCursorSync", () => {
     });
 
     expect(completeRecordedMock).not.toHaveBeenCalled();
+    expect(verifyOnGithubMock).not.toHaveBeenCalled();
+  });
+
+  it("prefers precomputed githubVerifyResult over REST verify input", async () => {
+    getBundleMock.mockResolvedValue({
+      job: { id: "job-1", status: "running", currentCodeTaskId: "CT-1" },
+      currentRun: { ...baseRun, runtimeState: "github_verifying" },
+      runs: [{ ...baseRun, runtimeState: "github_verifying" }],
+    });
+
+    await syncImplementationRuntimeFromTaskCursor({
+      projectId: "p1",
+      codeTaskId: "CT-1",
+      execution: sampleExecution({ status: "github_verifying" }),
+      githubVerifyResult: { ok: true, verifiedCommitSha: "pre-sha" },
+      githubVerify: {
+        execution: sampleExecution({ status: "github_verifying" }),
+        targetRepository: { owner: "o", repo: "r", defaultBranch: "main" },
+        githubToken: "ghp_x",
+        allowedPathGlobs: [],
+      },
+    });
+
+    expect(applyPrecomputedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        verifyResult: expect.objectContaining({ ok: true, verifiedCommitSha: "pre-sha" }),
+      }),
+    );
     expect(verifyOnGithubMock).not.toHaveBeenCalled();
   });
 

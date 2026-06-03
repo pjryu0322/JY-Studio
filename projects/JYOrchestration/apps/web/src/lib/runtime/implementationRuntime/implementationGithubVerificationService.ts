@@ -31,17 +31,15 @@ function resolveOutcomeType(
   return missing ? "github_missing" : "github_failed";
 }
 
-/**
- * GitHub REST를 Runtime 완료의 Source of Truth로 사용한다.
- * Cursor terminal 상태를 참조하지 않으며 verify 결과만으로 completed/failed를 결정한다.
- */
-export async function verifyImplementationRuntimeRunOnGithub(input: {
+/** Precomputed GitHub verify 결과만으로 Runtime completed/failed를 결정한다 (REST 재호출 없음). */
+export async function applyImplementationRuntimeGithubVerifyResult(input: {
   readonly projectId: string;
   readonly jobId: string;
   readonly runId: string;
-  readonly verify: TaskCursorGithubVerifyInput;
+  readonly verifyResult: TaskCursorGithubVerifyResult;
+  readonly pullRequestUrl?: string | null;
 }): Promise<ImplementationGithubVerificationOutcome> {
-  const verify = await verifyTaskCursorGithubResult(input.verify);
+  const verify = input.verifyResult;
   if (!verify.ok) {
     const outcomeType = resolveOutcomeType(verify);
     const bundle = await failImplementationRuntimeGithubVerify({
@@ -58,7 +56,7 @@ export async function verifyImplementationRuntimeRunOnGithub(input: {
     jobId: input.jobId,
     runId: input.runId,
     commitSha: verify.verifiedCommitSha ?? null,
-    pullRequestUrl: null,
+    pullRequestUrl: input.pullRequestUrl ?? null,
   });
   return {
     ok: true,
@@ -66,6 +64,26 @@ export async function verifyImplementationRuntimeRunOnGithub(input: {
     bundle,
     verifiedCommitSha: verify.verifiedCommitSha,
   };
+}
+
+/**
+ * GitHub REST를 Runtime 완료의 Source of Truth로 사용한다.
+ * Cursor terminal 상태를 참조하지 않으며 verify 결과만으로 completed/failed를 결정한다.
+ */
+export async function verifyImplementationRuntimeRunOnGithub(input: {
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly runId: string;
+  readonly verify: TaskCursorGithubVerifyInput;
+}): Promise<ImplementationGithubVerificationOutcome> {
+  const verifyResult = await verifyTaskCursorGithubResult(input.verify);
+  return applyImplementationRuntimeGithubVerifyResult({
+    projectId: input.projectId,
+    jobId: input.jobId,
+    runId: input.runId,
+    verifyResult,
+    pullRequestUrl: null,
+  });
 }
 
 /** Task Cursor poll에서 이미 검증된 GitHub outcome(commit)만으로 Runtime을 완료한다. */

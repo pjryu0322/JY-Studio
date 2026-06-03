@@ -160,16 +160,10 @@ export async function POST(request: NextRequest) {
         : {}),
     });
 
-    // TODO(P3-M3): pass precomputed verify result to avoid duplicate GitHub REST verification.
     await syncImplementationRuntimeFromTaskCursor({
       projectId,
       execution: nextExecution,
-      githubVerify: {
-        execution: nextExecution,
-        targetRepository: readiness.targetRepository,
-        githubToken,
-        allowedPathGlobs: readiness.allowedPathGlobs,
-      },
+      githubVerifyResult: verify,
     });
 
     return NextResponse.json({

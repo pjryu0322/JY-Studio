@@ -1,5 +1,8 @@
 import type { TaskCursorExecutionStatus, TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
-import type { TaskCursorGithubVerifyInput } from "@/lib/prototype/taskCursorGithubVerify";
+import type {
+  TaskCursorGithubVerifyInput,
+  TaskCursorGithubVerifyResult,
+} from "@/lib/prototype/taskCursorGithubVerify";
 import {
   canTransitionRuntimeState,
   type RuntimeState,
@@ -20,6 +23,7 @@ import {
   failImplementationRuntimeGithubVerify,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
 import {
+  applyImplementationRuntimeGithubVerifyResult,
   completeImplementationRuntimeFromRecordedGithubOutcome,
   verifyImplementationRuntimeRunOnGithub,
 } from "@/lib/runtime/implementationRuntime/implementationGithubVerificationService";
@@ -190,17 +194,28 @@ async function applyGithubOutcomeIfReady(input: {
   readonly jobId: string;
   readonly run: ImplementationRuntimeRunView;
   readonly execution: TaskCursorExecutionV1;
+  readonly githubVerifyResult?: TaskCursorGithubVerifyResult | null;
   readonly githubVerify?: TaskCursorGithubVerifyInput | null;
 }): Promise<void> {
   if (input.run.runtimeState === "completed") return;
 
+  if (input.githubVerifyResult) {
+    await applyImplementationRuntimeGithubVerifyResult({
+      projectId: input.projectId,
+      jobId: input.jobId,
+      runId: input.run.id,
+      verifyResult: input.githubVerifyResult,
+      pullRequestUrl: null,
+    });
+    return;
+  }
+
   if (shouldApplyRuntimeGithubVerifyInput(input.execution, input.githubVerify)) {
-    // TODO(P3-M3): pass precomputed verify result to avoid duplicate GitHub REST verification.
     await verifyImplementationRuntimeRunOnGithub({
       projectId: input.projectId,
       jobId: input.jobId,
       runId: input.run.id,
-      verify: input.githubVerify,
+      verify: input.githubVerify!,
     });
     return;
   }
@@ -226,6 +241,7 @@ export async function syncImplementationRuntimeFromTaskCursor(input: {
   readonly taskId?: string | null;
   readonly execution?: TaskCursorExecutionV1 | null;
   readonly githubVerify?: TaskCursorGithubVerifyInput | null;
+  readonly githubVerifyResult?: TaskCursorGithubVerifyResult | null;
   readonly now?: Date;
 }): Promise<void> {
   try {
@@ -250,6 +266,17 @@ export async function syncImplementationRuntimeFromTaskCursor(input: {
     const jobId = bundle.job.id;
 
     if (run.runtimeState === target) {
+      if (input.githubVerifyResult) {
+        await applyGithubOutcomeIfReady({
+          projectId,
+          jobId,
+          run,
+          execution,
+          githubVerifyResult: input.githubVerifyResult,
+          githubVerify: input.githubVerify,
+        });
+        return;
+      }
       if (
         target === "failed" &&
         execution.status === "github_verify_failed" &&
@@ -277,6 +304,7 @@ export async function syncImplementationRuntimeFromTaskCursor(input: {
           jobId,
           run,
           execution,
+          githubVerifyResult: input.githubVerifyResult,
           githubVerify: input.githubVerify,
         });
       }
@@ -318,6 +346,7 @@ export async function syncImplementationRuntimeFromTaskCursor(input: {
           jobId,
           run: current,
           execution,
+          githubVerifyResult: input.githubVerifyResult,
           githubVerify: input.githubVerify,
         });
       }
