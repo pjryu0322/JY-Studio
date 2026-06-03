@@ -43,6 +43,9 @@ next-env.d.ts
 # prototype run file store (no DB migration yet)
 /.data/
 
+# local runtime clones / generated workspace artifacts
+/.artifacts/
+
 # 업로드된 프로필 사진(로컬 저장)
 /public/user-avatars/*
 !/public/user-avatars/.gitkeep

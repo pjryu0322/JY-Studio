@@ -3,11 +3,7 @@ import {
   deriveImplementationRuntimeFromRequirementsState,
   parseImplementationRuntimeStateV1,
   type ImplementationRuntimeActiveDispatchV1,
-  type ImplementationRuntimeStateV1,
 } from "@/lib/prototype/implementationRuntimeState";
-import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
-import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import {
   buildImplementationRuntimeUiSnapshotFromRuntimeState,
   stripLegacyImplementationRuntimeStateFromRecord,
@@ -70,12 +66,6 @@ export function readActiveRuntimeDispatchFromState(
   return runtime?.activeDispatch ?? null;
 }
 
-export function readImplementationRuntimeFromState(
-  raw: Record<string, unknown>,
-): ImplementationRuntimeStateV1 | null {
-  return parseImplementationRuntimeStateV1(raw.implementationRuntimeStateV1);
-}
-
 export function mergeRequirementsStateWithRuntime(input: {
   readonly projectId: string;
   readonly state: Record<string, unknown>;
@@ -90,15 +80,5 @@ export function mergeRequirementsStateWithRuntime(input: {
   return {
     ...withoutLegacy,
     implementationRuntimeUiSnapshotV1: snapshot,
-  };
-}
-
-export function snapshotRuntimeContext(raw: Record<string, unknown>) {
-  return {
-    queue: parseCodeTaskExecutionQueueV1(raw.codeTaskExecutionQueueV1),
-    runs: parseCodeTaskExecutionRunsV1(raw.codeTaskExecutionRunsV1),
-    taskCursor: parseTaskCursorExecutionV1(raw.taskCursorExecutionV1),
-    uiSnapshot: raw.implementationRuntimeUiSnapshotV1,
-    runtime: parseImplementationRuntimeStateV1(raw.implementationRuntimeStateV1),
   };
 }

@@ -344,7 +344,6 @@ import {
 } from "@/lib/prototype/codeTaskDependencyResolver";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import { prepareSelectedCodeTaskCursorExecution } from "@/lib/prototype/selectedCodeTaskCursorExecution";
-import { recoverImplementationExecutionDeadlock } from "@/lib/prototype/implementationExecutionDeadlockRecovery";
 import { recoverImplementationRuntimeState } from "@/lib/prototype/implementationRuntimeRecovery";
 import { mergeRequirementsStateWithRuntime } from "@/lib/prototype/implementationRuntimeSync";
 import {

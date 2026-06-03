@@ -12,7 +12,6 @@ import {
 } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { resolveTaskCursorPollWorkItems } from "@/lib/prototype/taskCursorClientPollLoop";
 import {
-  claimDueTaskCursorJobs,
   clearTaskCursorJobLock,
   isJobPollTimedOut,
   markTaskCursorJobTimeout,
@@ -477,52 +476,5 @@ export async function runTaskCursorWorkerTick(input: {
     }
   }
 
-  const remaining = Math.max(0, (input.limit ?? 1) - results.length);
-  if (remaining > 0 && !input.projectId?.trim()) {
-    const jobs = await claimDueTaskCursorJobs({
-      workerId: input.workerId,
-      limit: remaining,
-      now,
-    });
-    for (const job of jobs) {
-      try {
-        await appendJobTimelinePatch({
-          projectId: job.projectId,
-          taskId: job.taskId,
-          jobId: job.id,
-          action: "task_cursor_job_claimed",
-          status: job.status,
-          nowIso: now.toISOString(),
-        });
-        const result =
-          job.status === "queued"
-            ? await processQueuedTaskCursorJob(job, now)
-            : await processPollingTaskCursorJob(job, now);
-        results.push(result);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        results.push({
-          jobId: job.id,
-          projectId: job.projectId,
-          taskId: job.taskId,
-          status: job.status,
-          terminal: false,
-          message,
-        });
-      } finally {
-        await clearTaskCursorJobLock(job.id);
-      }
-    }
-  }
-
   return results;
-}
-
-export async function claimTaskCursorJobsForWorker(input: {
-  readonly workerId: string;
-  readonly limit?: number;
-  readonly now?: Date;
-}): Promise<readonly TaskCursorExecutionJobRow[]> {
-  await releaseStaleTaskCursorJobLocks(input.now ?? new Date());
-  return claimDueTaskCursorJobs(input);
 }

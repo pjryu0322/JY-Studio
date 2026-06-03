@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   EXECUTION_FORCE_RELEASE_FAILURE_REASON,
-  EXECUTION_STALE_FAILURE_REASON,
   IMPLEMENTATION_EXECUTION_STALE_MINUTES,
-  recoverImplementationExecutionDeadlock,
 } from "@/lib/prototype/implementationExecutionDeadlockRecovery";
+import { recoverImplementationRuntimeState } from "@/lib/prototype/implementationRuntimeRecovery";
 import { isStaleAbandonedTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
@@ -46,9 +45,9 @@ function sampleCursor(overrides: Partial<TaskCursorExecutionV1> = {}): TaskCurso
   };
 }
 
-describe("recoverImplementationExecutionDeadlock", () => {
+describe("recoverImplementationRuntimeState", () => {
   it("marks stale task cursor and run after 30 minutes", () => {
-    const result = recoverImplementationExecutionDeadlock({
+    const result = recoverImplementationRuntimeState({
       projectId: "p1",
       rawRequirementsState: {
         taskCursorExecutionV1: sampleCursor(),
@@ -64,7 +63,6 @@ describe("recoverImplementationExecutionDeadlock", () => {
         },
       },
       nowIso: STALE_NOW,
-      staleMinutes: IMPLEMENTATION_EXECUTION_STALE_MINUTES,
     });
     expect(result.issues.some((i) => i.includes("cursor") || i.includes("stale"))).toBe(true);
     const runs = result.patch?.codeTaskExecutionRunsV1 as CodeTaskExecutionRunV1[];
@@ -73,7 +71,7 @@ describe("recoverImplementationExecutionDeadlock", () => {
   });
 
   it("force release stops in-flight runs and pauses queue", () => {
-    const result = recoverImplementationExecutionDeadlock({
+    const result = recoverImplementationRuntimeState({
       projectId: "p1",
       rawRequirementsState: {
         taskCursorExecutionV1: sampleCursor({ status: "cursor_requested", cursorRunId: undefined }),
@@ -102,21 +100,6 @@ describe("recoverImplementationExecutionDeadlock", () => {
     expect(runs[0]?.failureReason).toBe(EXECUTION_FORCE_RELEASE_FAILURE_REASON);
     expect(result.patch?.codeTaskExecutionQueueV1).toMatchObject({ status: "paused" });
     expect(result.patch?.implementationQuickRunV1).toMatchObject({ status: "paused" });
-  });
-
-  it("plans watchdog poll for in-flight cursor without queue run", () => {
-    const result = recoverImplementationExecutionDeadlock({
-      projectId: "p1",
-      rawRequirementsState: {
-        taskCursorExecutionV1: sampleCursor({
-          createdAt: NOW,
-          updatedAt: NOW,
-        }),
-      },
-      nowIso: NOW,
-      staleMinutes: IMPLEMENTATION_EXECUTION_STALE_MINUTES,
-    });
-    expect(result.issues.length).toBeGreaterThan(0);
   });
 });
 

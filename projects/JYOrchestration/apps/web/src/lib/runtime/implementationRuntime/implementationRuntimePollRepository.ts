@@ -169,11 +169,6 @@ export async function linkTaskCursorJobToImplementationRun(input: {
     },
   });
 
-  await prisma.taskCursorExecutionJob.update({
-    where: { id: jobId },
-    data: { nextPollAt: now, updatedAt: now },
-  });
-
   return run.id;
 }
 

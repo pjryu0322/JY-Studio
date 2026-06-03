@@ -1,8 +1,6 @@
 import {
   buildRuntimeStateWithActiveDispatch,
-  parseImplementationRuntimeStateV1,
   type ImplementationRuntimeActiveDispatchV1,
-  type ImplementationRuntimeStateV1,
 } from "@/lib/prototype/implementationRuntimeState";
 import type { CodeTaskQueueDispatchRef } from "@/lib/prototype/selectedCodeTaskCursorExecution";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
@@ -27,22 +25,7 @@ export function resolvePersistedQueueDispatch(
   };
 }
 
-/** @deprecated JSON Runtime SoT 제거 — UI snapshot patch 사용 */
-export function buildPersistedActiveDispatchPatch(input: {
-  readonly projectId: string;
-  readonly dispatch: ImplementationRuntimeActiveDispatchV1;
-  readonly baseState: Record<string, unknown>;
-  readonly nowIso?: string;
-}): ImplementationRuntimeStateV1 {
-  return buildRuntimeStateWithActiveDispatch({
-    projectId: input.projectId,
-    dispatch: input.dispatch,
-    baseState: input.baseState,
-    nowIso: input.nowIso,
-  });
-}
-
-/** 3차: activeDispatch를 UI snapshot에만 기록 */
+/** activeDispatch를 UI snapshot에만 기록 */
 export function buildPersistedActiveDispatchSnapshotPatch(input: {
   readonly projectId: string;
   readonly dispatch: ImplementationRuntimeActiveDispatchV1;
