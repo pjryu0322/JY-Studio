@@ -90,6 +90,22 @@ describe("syncDbRuntimeAfterTaskCursorServerPoll", () => {
       }),
     );
   });
+
+  it("forwards githubVerifyResult to syncImplementationRuntimeFromTaskCursor", async () => {
+    const execution = exec("review_pending");
+    const githubVerifyResult = { ok: true, verifiedCommitSha: "sha-poll" };
+    await syncDbRuntimeAfterTaskCursorServerPoll({
+      projectId: "p1",
+      taskId: "CT-1",
+      execution,
+      githubVerifyResult,
+    });
+    expect(syncRuntimeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        githubVerifyResult,
+      }),
+    );
+  });
 });
 
 describe("shouldSyncTaskCursorServerJobPollState", () => {

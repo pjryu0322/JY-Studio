@@ -403,6 +403,7 @@ async function processPollingTaskCursorJob(
     projectId: job.projectId,
     taskId: job.taskId,
     execution: pollResult.execution,
+    githubVerifyResult: pollResult.githubVerifyResult ?? null,
     githubVerify,
   });
   await recoverImplementationRuntimeDb({ projectId: job.projectId, now });

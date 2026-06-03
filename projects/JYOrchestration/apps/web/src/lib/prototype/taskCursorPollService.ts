@@ -12,7 +12,10 @@ import {
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { pollTaskCursorCloudAgentStep } from "@/lib/prototype/taskCursorCloudAgentClient";
 import { isTerminalTaskCursorPollResultStatus } from "@/lib/prototype/taskCursorExecutionJobTypes";
-import { verifyTaskCursorGithubResult } from "@/lib/prototype/taskCursorGithubVerify";
+import {
+  verifyTaskCursorGithubResult,
+  type TaskCursorGithubVerifyResult,
+} from "@/lib/prototype/taskCursorGithubVerify";
 import {
   buildTaskCursorTimelineEntry,
   isCursorCloudAgentRunId,
@@ -31,6 +34,7 @@ export type TaskCursorPollOnceResult = Readonly<{
   readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
   readonly terminal: boolean;
   readonly nextPollDelayMs?: number;
+  readonly githubVerifyResult?: TaskCursorGithubVerifyResult | null;
 }>;
 
 export type TaskCursorPollRuntimeContext = Readonly<{
@@ -163,6 +167,7 @@ export async function pollTaskCursorExecutionOnce(input: {
   });
   timeline.push(buildTaskCursorApiCompletedTimeline({ execution: nextExecution, nowIso }));
 
+  let githubVerifyResult: TaskCursorGithubVerifyResult | null = null;
   const verifyGithub = input.verifyGithub !== false;
   if (nextExecution.status === "cursor_completed" && verifyGithub && input.context.githubToken) {
     nextExecution = patchTaskCursorExecution(nextExecution, { status: "github_verifying", nowIso });
@@ -186,6 +191,7 @@ export async function pollTaskCursorExecutionOnce(input: {
       githubToken: input.context.githubToken,
       allowedPathGlobs: input.context.allowedPathGlobs,
     });
+    githubVerifyResult = verify;
     nextExecution = applyTaskCursorGithubVerifyResult({
       execution: nextExecution,
       ok: verify.ok,
@@ -216,5 +222,6 @@ export async function pollTaskCursorExecutionOnce(input: {
     orchestrationPatch: buildPatch(nextExecution, timeline),
     terminal: isTerminalTaskCursorPollResultStatus(status),
     nextPollDelayMs: isTerminalTaskCursorPollResultStatus(status) ? undefined : 10_000,
+    ...(githubVerifyResult ? { githubVerifyResult } : {}),
   };
 }

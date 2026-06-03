@@ -6,7 +6,10 @@ import {
   parseTaskCursorExecutionV1,
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
-import type { TaskCursorGithubVerifyInput } from "@/lib/prototype/taskCursorGithubVerify";
+import type {
+  TaskCursorGithubVerifyInput,
+  TaskCursorGithubVerifyResult,
+} from "@/lib/prototype/taskCursorGithubVerify";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
 
@@ -37,6 +40,7 @@ export async function syncDbRuntimeAfterTaskCursorServerPoll(input: {
   readonly codeTaskId?: string | null;
   readonly execution: ReturnType<typeof parseTaskCursorExecutionV1>;
   readonly githubVerify?: TaskCursorGithubVerifyInput | null;
+  readonly githubVerifyResult?: TaskCursorGithubVerifyResult | null;
 }): Promise<void> {
   if (!input.execution) return;
   await syncImplementationRuntimeFromTaskCursor({
@@ -44,6 +48,7 @@ export async function syncDbRuntimeAfterTaskCursorServerPoll(input: {
     taskId: input.taskId,
     codeTaskId: input.codeTaskId,
     execution: input.execution,
+    githubVerifyResult: input.githubVerifyResult ?? null,
     githubVerify: input.githubVerify ?? null,
   });
 }
