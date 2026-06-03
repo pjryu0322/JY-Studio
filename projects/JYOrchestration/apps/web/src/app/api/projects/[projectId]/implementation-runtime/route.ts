@@ -6,8 +6,6 @@ import {
   getImplementationRuntimeBundle,
   listImplementationRuntimeEvents,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
-import { recoverImplementationRuntimeDb } from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
-import { pollDueImplementationRuntimeForProject } from "@/lib/runtime/implementationRuntime/implementationRuntimePollService";
 import { buildImplementationRuntimeUiSnapshot } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
 import { buildCodeTaskExecutionQueueSnapshotFromDbJob } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import { formatRuntimeStateKoForUser } from "@/lib/runtime/implementationRuntime/implementationRuntimeGithubCentricModel";
@@ -35,23 +33,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
       const denied = rbacErrorResponse(error);
       if (denied) return denied;
       throw error;
-    }
-
-    const recoverOnLoad = request.nextUrl.searchParams.get("recover") === "1";
-    let recoveryWarning: string | null = null;
-    if (recoverOnLoad) {
-      try {
-        await recoverImplementationRuntimeDb({ projectId: pid });
-        try {
-          await pollDueImplementationRuntimeForProject(pid);
-        } catch (pollError) {
-          recoveryWarning = formatImplementationRuntimeApiError(pollError);
-          console.warn("[implementation-runtime] recover poll skipped:", recoveryWarning);
-        }
-      } catch (recoverError) {
-        recoveryWarning = formatImplementationRuntimeApiError(recoverError);
-        console.warn("[implementation-runtime] recover skipped:", recoveryWarning);
-      }
     }
 
     const bundle = await getImplementationRuntimeBundle(pid);
@@ -88,7 +69,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
       ...(codeTaskQueueSnapshot ? { codeTaskQueueSnapshot } : {}),
       diagnostics,
       events,
-      ...(recoveryWarning ? { recoveryWarning } : {}),
     });
   } catch (error) {
     const message = formatImplementationRuntimeApiError(error);

@@ -244,7 +244,11 @@ export async function markImplementationRuntimeCodeTaskQueueItemCursorRequested(
   const item = await prisma.implementationRuntimeCodeTaskQueueItem.findFirst({
     where: { jobId: input.jobId.trim(), codeTaskId: input.codeTaskId.trim() },
   });
-  if (!item) return null;
+  if (!item) {
+    throw new Error(
+      `DB Queue item not found for cursor requested: jobId=${input.jobId.trim()}, codeTaskId=${input.codeTaskId.trim()}`,
+    );
+  }
   return updateQueueItemStatus({
     itemId: item.id,
     status: "cursor_running",

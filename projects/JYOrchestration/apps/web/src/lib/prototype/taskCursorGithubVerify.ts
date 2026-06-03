@@ -33,6 +33,8 @@ export type TaskCursorGithubVerifyResult = Readonly<{
   readonly message?: string;
   readonly verifiedChangedFiles?: readonly string[];
   readonly verifiedCommitSha?: string;
+  /** Set only by explicit manual no-code-change verification; never inferred from GitHub API. */
+  readonly noCodeChangeEvidence?: string;
 }>;
 
 type GithubCommitResponse = Readonly<{

@@ -234,7 +234,7 @@ export async function dispatchNextQueuedImplementationRuntimeRun(input: {
       cursorAgentId: agentId,
       branchName: cursor.branchName ?? null,
     });
-    await markImplementationRuntimeCodeTaskQueueItemCursorRequested({
+    const requestedItem = await markImplementationRuntimeCodeTaskQueueItemCursorRequested({
       jobId,
       codeTaskId: currentCodeTaskId,
       cursorRequestId: agentId,
@@ -243,6 +243,11 @@ export async function dispatchNextQueuedImplementationRuntimeRun(input: {
       baseBranch: cursor.baseBranch ?? null,
       workBranch: cursor.branchName ?? null,
     });
+    if (!requestedItem) {
+      throw new Error(
+        `DB Queue cursor requested save failed: jobId=${jobId}, codeTaskId=${currentCodeTaskId}`,
+      );
+    }
   } catch (error) {
     const failureReason = error instanceof Error ? error.message : String(error);
     await markImplementationRuntimeFailed({

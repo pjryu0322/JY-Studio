@@ -61,6 +61,24 @@ describe("implementationRuntimeCodeTaskQueueService policy", () => {
     ).toBe(false);
   });
 
+  it("allows no_code_change_completed only with explicit noCodeChangeEvidence", () => {
+    expect(
+      resolveQueueItemStatusAfterGithubVerify({
+        verify: {
+          ok: false,
+          noCodeChangeEvidence: "manual_review_no_change",
+          reason: "no_code_change",
+        },
+      }),
+    ).toBe("no_code_change_completed");
+    expect(
+      canCompleteQueueItemFromGithubVerify({
+        ok: false,
+        noCodeChangeEvidence: "manual_review_no_change",
+      }),
+    ).toBe(true);
+  });
+
   it("maps changed_files_empty to rework_required", () => {
     expect(resolveNoCodeChangeEvidence({
       ok: false,

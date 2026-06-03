@@ -3893,18 +3893,10 @@ export function PrototypePreviewPanel({
           return { outcome: "executed" };
         }
         case "RELEASE_IMPLEMENTATION_EXECUTION_LOCK": {
-          cancelTaskCursorClientPoll();
-          void postImplementationRuntimeAction({
-            projectId: projectId.trim(),
-            action: "force_release",
-          }).then((res) => {
-            if (res.bundle) setImplementationRuntimeDbBundle(res.bundle);
-            void loadImplementationRuntimeDb({ recover: false });
-            const message = res.recovery?.userMessage ?? "실행 잠금을 해제했습니다.";
-            executionSingleChat.appendAiNotice(message);
-            showToast(message);
-          });
-          return { outcome: "executed" };
+          const message =
+            "실행 잠금 해제는 비활성화되었습니다. 필요 시 선택 CodeTask 실행을 다시 시작하세요.";
+          showToast(message);
+          return { outcome: "blocked", message };
         }
         case "RETURN_TO_PLANNING_STAGE":
         case "START_QUICK_DESIGN_FROM_IMPLEMENTATION": {

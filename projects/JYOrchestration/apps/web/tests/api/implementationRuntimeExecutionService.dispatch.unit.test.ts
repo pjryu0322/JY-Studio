@@ -140,6 +140,22 @@ describe("dispatchNextQueuedImplementationRuntimeRun", () => {
     expect(markCursorRunningMock).not.toHaveBeenCalled();
   });
 
+  it("does not call Cursor when cursor requested queue save returns null", async () => {
+    markQueueCursorRequestedMock.mockResolvedValue(null);
+    const buildCursor = vi.fn().mockResolvedValue({ agentId: "agent-9", branchName: "wip/x" });
+
+    await expect(
+      dispatchNextQueuedImplementationRuntimeRun({
+        projectId: "p1",
+        jobId: "job-1",
+        buildCursorRequest: buildCursor,
+      }),
+    ).rejects.toThrow(/cursor requested save failed/);
+
+    expect(markFailedMock).toHaveBeenCalled();
+    expect(pauseJobMock).toHaveBeenCalled();
+  });
+
   it("does not call Cursor when assertQueueItemDispatchAllowed throws", async () => {
     assertQueueMock.mockRejectedValue(new Error("DB Queue item not found"));
     const buildCursor = vi.fn();

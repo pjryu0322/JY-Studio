@@ -7,7 +7,10 @@ import {
   dispatchNextQueuedImplementationRuntimeRun,
   startImplementationRuntimeJobFromCodeTasks,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
-import { recoverImplementationRuntimeDb } from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
+import {
+  DISABLED_IMPLEMENTATION_RUNTIME_USER_ACTION_MESSAGE,
+  isDisabledImplementationRuntimeUserAction,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeAdminActions";
 import { syncImplementationRuntimeFromRequirementsJson } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
@@ -51,6 +54,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const body = (await request.json().catch(() => ({}))) as ActionBody;
     const action = String(body.action ?? "").trim();
+
+    if (isDisabledImplementationRuntimeUserAction(action)) {
+      return NextResponse.json(
+        { success: false, message: DISABLED_IMPLEMENTATION_RUNTIME_USER_ACTION_MESSAGE },
+        { status: 400 },
+      );
+    }
 
     if (action === "sync_from_json") {
       const project = await prisma.project.findUnique({
@@ -132,35 +142,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }),
       });
       return NextResponse.json({ success: true, bundle });
-    }
-
-    if (action === "recover") {
-      const recovery = await recoverImplementationRuntimeDb({ projectId: pid });
-      return NextResponse.json({
-        success: true,
-        recovery,
-        bundle: await getImplementationRuntimeBundle(pid),
-      });
-    }
-
-    if (action === "force_release") {
-      const recovery = await recoverImplementationRuntimeDb({ projectId: pid, forceRelease: true });
-      return NextResponse.json({
-        success: true,
-        recovery,
-        bundle: await getImplementationRuntimeBundle(pid),
-      });
-    }
-
-    if (action === "redispatch") {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "재디스패치는 비활성화되었습니다. 선택 CodeTask 실행(start_job)과 DB Queue dispatch를 사용하세요.",
-        },
-        { status: 400 },
-      );
     }
 
     return NextResponse.json({ success: false, message: `Unknown action: ${action}` }, { status: 400 });

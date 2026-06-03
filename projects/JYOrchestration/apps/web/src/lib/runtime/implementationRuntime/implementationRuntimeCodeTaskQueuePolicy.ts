@@ -1,18 +1,20 @@
 import type { TaskCursorGithubVerifyResult } from "@/lib/prototype/taskCursorGithubVerify";
 import type { ImplementationRuntimeCodeTaskQueueItemStatus } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueTypes";
 
-/** No structured no-code-change field on verify result — do not infer from reason strings. */
 export function resolveNoCodeChangeEvidence(
-  _verify: TaskCursorGithubVerifyResult,
+  verify: TaskCursorGithubVerifyResult,
 ): string | null {
-  const evidence = (_verify as { noCodeChangeEvidence?: string }).noCodeChangeEvidence?.trim();
+  const evidence = verify.noCodeChangeEvidence?.trim();
   return evidence || null;
 }
 
 export function canCompleteQueueItemFromGithubVerify(
   verify: TaskCursorGithubVerifyResult,
 ): boolean {
-  return Boolean(verify.ok && String(verify.verifiedCommitSha ?? "").trim());
+  if (verify.ok && String(verify.verifiedCommitSha ?? "").trim()) {
+    return true;
+  }
+  return resolveNoCodeChangeEvidence(verify) !== null;
 }
 
 export function resolveQueueItemStatusAfterGithubVerify(input: {
@@ -21,6 +23,10 @@ export function resolveQueueItemStatusAfterGithubVerify(input: {
   const verify = input.verify;
   if (verify.ok && verify.verifiedCommitSha?.trim()) {
     return "completed";
+  }
+  const noCodeEvidence = resolveNoCodeChangeEvidence(verify);
+  if (noCodeEvidence) {
+    return "no_code_change_completed";
   }
   if (
     verify.detailReason === "path_guard_failed" ||
