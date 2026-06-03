@@ -8,6 +8,8 @@ import {
   completeImplementationRuntimeGithubVerifyAndAdvance,
   failImplementationRuntimeGithubVerify,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
+import { applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueService";
+import { getImplementationRuntimeJobWithRuns } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 
 export type ImplementationGithubVerificationOutcomeType =
   | "github_verified"
@@ -40,6 +42,18 @@ export async function applyImplementationRuntimeGithubVerifyResult(input: {
   readonly pullRequestUrl?: string | null;
 }): Promise<ImplementationGithubVerificationOutcome> {
   const verify = input.verifyResult;
+  const job = await getImplementationRuntimeJobWithRuns({
+    projectId: input.projectId.trim(),
+    jobId: input.jobId.trim(),
+  });
+  const run = job?.runs.find((r) => r.id === input.runId.trim());
+  if (run?.codeTaskId) {
+    await applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem({
+      jobId: input.jobId.trim(),
+      codeTaskId: run.codeTaskId,
+      verify,
+    });
+  }
   if (!verify.ok) {
     const outcomeType = resolveOutcomeType(verify);
     const bundle = await failImplementationRuntimeGithubVerify({

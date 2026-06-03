@@ -12,6 +12,7 @@ import {
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
 import { pollDueImplementationRuntimeForProject } from "@/lib/runtime/implementationRuntime/implementationRuntimePollService";
 import { buildImplementationRuntimeUiSnapshot } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
+import { buildCodeTaskExecutionQueueSnapshotFromDbJob } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import { formatRuntimeStateKoForUser } from "@/lib/runtime/implementationRuntime/implementationRuntimeGithubCentricModel";
 import {
   formatImplementationRuntimeApiError,
@@ -67,6 +68,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const bundle = await getImplementationRuntimeBundle(pid);
+    const codeTaskQueueSnapshot = await buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle });
     const events = await listImplementationRuntimeEvents({ projectId: pid, limit: 30 });
     const diagnostics = bundle.runs.map((run) => ({
       codeTaskId: run.codeTaskId,
@@ -96,6 +98,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       success: true,
       bundle,
       uiSnapshot: buildImplementationRuntimeUiSnapshot(bundle),
+      ...(codeTaskQueueSnapshot ? { codeTaskQueueSnapshot } : {}),
       diagnostics,
       events,
       ...(recoveryWarning ? { recoveryWarning } : {}),

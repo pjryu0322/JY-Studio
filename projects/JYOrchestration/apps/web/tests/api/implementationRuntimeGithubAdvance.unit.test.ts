@@ -7,6 +7,15 @@ const getJobMock = vi.fn();
 const createRunMock = vi.fn();
 const getBundleByJobMock = vi.fn();
 
+vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueService", () => ({
+  getImplementationRuntimeCodeTaskQueue: vi.fn().mockResolvedValue([]),
+  advanceImplementationRuntimeCodeTaskQueue: vi.fn(),
+  applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem: vi.fn(),
+  assertQueueItemDispatchAllowed: vi.fn(),
+  markImplementationRuntimeCodeTaskQueueItemDispatching: vi.fn(),
+  markImplementationRuntimeCodeTaskQueueItemCursorRequested: vi.fn(),
+}));
+
 vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeCursorService", () => ({
   markImplementationRuntimeCompleted: (...args: unknown[]) => markCompletedMock(...args),
   markImplementationRuntimeCursorCompleted: vi.fn(),

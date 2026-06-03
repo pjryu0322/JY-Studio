@@ -1595,6 +1595,8 @@ export function PrototypePreviewPanel({
   const implementationRuntimePollSuspendedRef = useRef(false);
   const [implementationRuntimeDbBundle, setImplementationRuntimeDbBundle] =
     useState<ImplementationRuntimeBundleView | null>(null);
+  const [implementationRuntimeDbQueueSnapshot, setImplementationRuntimeDbQueueSnapshot] =
+    useState<ReturnType<typeof parseCodeTaskExecutionQueueV1>>(null);
   const [implementationRuntimeDbDiagnostics, setImplementationRuntimeDbDiagnostics] = useState<
     readonly ImplementationRuntimeDiagnosticsRow[]
   >([]);
@@ -1659,6 +1661,9 @@ export function PrototypePreviewPanel({
   const applyImplementationRuntimeFetch = useCallback(
     (fetched: Awaited<ReturnType<typeof fetchImplementationRuntime>>) => {
       if (fetched.bundle) setImplementationRuntimeDbBundle(fetched.bundle);
+      if (fetched.codeTaskQueueSnapshot) {
+        setImplementationRuntimeDbQueueSnapshot(fetched.codeTaskQueueSnapshot);
+      }
       if (fetched.diagnostics?.length) {
         setImplementationRuntimeDbDiagnostics(fetched.diagnostics);
       }
@@ -6980,10 +6985,24 @@ export function PrototypePreviewPanel({
         `실행 가능 ${dependencyPartition.readyIds.length}개 · 차단 ${dependencyPartition.blocked.length + dependencyPartition.unknown.length}개`,
       );
     }
+    const queueItems = dependencyPartition.readyIds.map((codeTaskId) => {
+      const target = resolveCodeTaskDispatchTarget({
+        codeTaskId,
+        codeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
+        taskList: parsedRequirementsState.implementationTaskListV1,
+        cursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
+      });
+      return {
+        codeTaskId,
+        parentTaskId: target?.parentTaskId ?? codeTaskId,
+        workItemId: target?.workItem.id ?? null,
+      };
+    });
     const startJobRes = await postImplementationRuntimeAction({
       projectId: pid,
       action: "start_job",
       selectedCodeTaskIds: dependencyPartition.readyIds,
+      queueItems,
     });
     if (!startJobRes.success) {
       const message = startJobRes.message ?? "DB Runtime Job 시작에 실패했습니다.";
@@ -6993,12 +7012,17 @@ export function PrototypePreviewPanel({
     if (startJobRes.bundle) {
       setImplementationRuntimeDbBundle(startJobRes.bundle);
     }
+    if (startJobRes.codeTaskQueueSnapshot) {
+      setImplementationRuntimeDbQueueSnapshot(startJobRes.codeTaskQueueSnapshot);
+    }
 
-    const codeTaskExecutionQueueV1 = startCodeTaskExecutionQueue({
-      projectId: pid,
-      selectedCodeTaskIds: dependencyPartition.readyIds,
-      nowIso,
-    });
+    const codeTaskExecutionQueueV1 =
+      startJobRes.codeTaskQueueSnapshot ??
+      startCodeTaskExecutionQueue({
+        projectId: pid,
+        selectedCodeTaskIds: dependencyPartition.readyIds,
+        nowIso,
+      });
     if (!codeTaskExecutionQueueV1) {
       const message = "CodeTask 실행 큐를 만들 수 없습니다.";
       showToast(message);
@@ -7620,7 +7644,10 @@ export function PrototypePreviewPanel({
             taskCursorExecutionHistoryV1={orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1}
             implementationAutoQualityGateV1={orchestrationAwareRequirementsState.implementationAutoQualityGateV1}
             implementationQuickRunV1={orchestrationAwareRequirementsState.implementationQuickRunV1}
-            codeTaskExecutionQueueV1={orchestrationAwareRequirementsState.codeTaskExecutionQueueV1}
+            codeTaskExecutionQueueV1={
+              implementationRuntimeDbQueueSnapshot ??
+              orchestrationAwareRequirementsState.codeTaskExecutionQueueV1
+            }
             codeTaskExecutionRunsV1={orchestrationAwareRequirementsState.codeTaskExecutionRunsV1}
             qualityGateResults={orchestrationAwareRequirementsState.implementationQualityGateResultsV1}
             boardState={orchestrationAwareRequirementsState.implementationExecutionBoardStateV1}

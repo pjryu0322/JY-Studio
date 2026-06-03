@@ -1,4 +1,5 @@
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 
 export type ImplementationRuntimeDiagnosticsRow = Readonly<{
@@ -14,6 +15,7 @@ export type ImplementationRuntimeDiagnosticsRow = Readonly<{
 export type ImplementationRuntimeFetchResult = Readonly<{
   readonly success: boolean;
   readonly bundle?: ImplementationRuntimeBundleView;
+  readonly codeTaskQueueSnapshot?: CodeTaskExecutionQueueV1;
   readonly diagnostics?: readonly ImplementationRuntimeDiagnosticsRow[];
   readonly message?: string;
 }>;
@@ -41,6 +43,11 @@ export async function postImplementationRuntimeAction(input: {
   readonly action: string;
   readonly requirementsState?: Record<string, unknown>;
   readonly selectedCodeTaskIds?: readonly string[];
+  readonly queueItems?: readonly {
+    readonly codeTaskId: string;
+    readonly parentTaskId: string;
+    readonly workItemId?: string | null;
+  }[];
 }): Promise<ImplementationRuntimeFetchResult & { readonly recovery?: unknown }> {
   const pid = input.projectId.trim();
   if (!pid) return { success: false, message: "projectId가 필요합니다." };
@@ -53,6 +60,7 @@ export async function postImplementationRuntimeAction(input: {
         action: input.action,
         ...(input.requirementsState ? { requirementsState: input.requirementsState } : {}),
         ...(input.selectedCodeTaskIds ? { selectedCodeTaskIds: input.selectedCodeTaskIds } : {}),
+        ...(input.queueItems?.length ? { queueItems: input.queueItems } : {}),
       }),
     },
   );

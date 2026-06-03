@@ -292,6 +292,7 @@ export async function createImplementationRuntimeJobWithFirstRun(input: {
 
   const jobView = mapJob(result.job);
   const runView = mapRun(result.run);
+
   return {
     job: jobView,
     runs: [runView],

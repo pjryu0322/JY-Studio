@@ -14,6 +14,14 @@ import {
   markImplementationRuntimeCompleted,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeCursorService";
 import { isTerminalRuntimeState } from "@/lib/runtime/implementationRuntime/implementationRuntimeStateMachine";
+import {
+  advanceImplementationRuntimeCodeTaskQueue,
+  applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem,
+  assertQueueItemDispatchAllowed,
+  getImplementationRuntimeCodeTaskQueue,
+  markImplementationRuntimeCodeTaskQueueItemCursorRequested,
+  markImplementationRuntimeCodeTaskQueueItemDispatching,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueService";
 import type {
   ImplementationRuntimeBundleView,
   ImplementationRuntimeRunView,
@@ -81,6 +89,15 @@ export async function advanceImplementationRuntimeJob(input: {
 }): Promise<ImplementationRuntimeBundleView> {
   const pid = input.projectId.trim();
   const jobId = input.jobId.trim();
+  const queueItems = await getImplementationRuntimeCodeTaskQueue(jobId);
+  if (queueItems.length) {
+    await advanceImplementationRuntimeCodeTaskQueue({
+      projectId: pid,
+      jobId,
+      stopOnFailure: true,
+    });
+    return getImplementationRuntimeBundleByJobId({ projectId: pid, jobId });
+  }
   const job = await getImplementationRuntimeJobWithRuns({ projectId: pid, jobId });
   if (!job) {
     throw new Error(`ImplementationExecutionJob not found: ${jobId}`);
@@ -185,6 +202,12 @@ export async function dispatchNextQueuedImplementationRuntimeRun(input: {
     );
   }
 
+  await assertQueueItemDispatchAllowed({ jobId, codeTaskId: currentCodeTaskId });
+  await markImplementationRuntimeCodeTaskQueueItemDispatching({
+    jobId,
+    codeTaskId: currentCodeTaskId,
+  });
+
   await markImplementationRuntimeDispatching({
     projectId: pid,
     jobId,
@@ -203,6 +226,12 @@ export async function dispatchNextQueuedImplementationRuntimeRun(input: {
       runId: currentRun.id,
       cursorAgentId: agentId,
       branchName: cursor.branchName ?? null,
+    });
+    await markImplementationRuntimeCodeTaskQueueItemCursorRequested({
+      jobId,
+      codeTaskId: currentCodeTaskId,
+      cursorRunId: agentId,
+      workBranch: cursor.branchName ?? null,
     });
   } catch (error) {
     const failureReason = error instanceof Error ? error.message : String(error);
@@ -227,10 +256,24 @@ export async function completeImplementationRuntimeGithubVerifyAndAdvance(input:
   readonly pullRequestUrl?: string | null;
   readonly now?: Date;
 }): Promise<ImplementationRuntimeBundleView> {
+  const pid = input.projectId.trim();
+  const jobId = input.jobId.trim();
+  const runId = input.runId.trim();
+  const job = await getImplementationRuntimeJobWithRuns({ projectId: pid, jobId });
+  const run = job?.runs.find((r) => r.id === runId);
+  const commitSha = input.commitSha?.trim() ?? "";
+  if (run?.codeTaskId && commitSha) {
+    await applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem({
+      jobId,
+      codeTaskId: run.codeTaskId,
+      verify: { ok: true, verifiedCommitSha: commitSha, reason: "github_verified" },
+      now: input.now,
+    });
+  }
   await markImplementationRuntimeCompleted({
-    projectId: input.projectId.trim(),
-    jobId: input.jobId.trim(),
-    runId: input.runId.trim(),
+    projectId: pid,
+    jobId,
+    runId,
     commitSha: input.commitSha ?? null,
     pullRequestUrl: input.pullRequestUrl ?? null,
     now: input.now,
@@ -249,6 +292,19 @@ export async function failImplementationRuntimeGithubVerify(input: {
   readonly now?: Date;
 }): Promise<ImplementationRuntimeBundleView> {
   const reason = input.failureReason?.trim() || "github_verify_failed";
+  const pid = input.projectId.trim();
+  const jobId = input.jobId.trim();
+  const runId = input.runId.trim();
+  const job = await getImplementationRuntimeJobWithRuns({ projectId: pid, jobId });
+  const run = job?.runs.find((r) => r.id === runId);
+  if (run?.codeTaskId) {
+    await applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem({
+      jobId,
+      codeTaskId: run.codeTaskId,
+      verify: { ok: false, reason, message: reason },
+      now: input.now,
+    });
+  }
   await markImplementationRuntimeFailed({
     projectId: input.projectId.trim(),
     jobId: input.jobId.trim(),
