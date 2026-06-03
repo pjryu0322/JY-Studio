@@ -45,8 +45,9 @@ describe("implementationRuntimeGithubAdvance", () => {
     pauseJobMock.mockResolvedValue(undefined);
   });
 
-  it("maps cursor_completed to github_verifying", () => {
+  it("maps cursor_completed to github_verifying and github_verified stays verifying until outcome", () => {
     expect(mapTaskCursorStatusToRuntimeState("cursor_completed")).toBe("github_verifying");
+    expect(mapTaskCursorStatusToRuntimeState("github_verified")).toBe("github_verifying");
   });
 
   it("completeImplementationRuntimeGithubVerifyAndAdvance stores commitSha and creates next queued run", async () => {

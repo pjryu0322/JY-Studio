@@ -1,4 +1,5 @@
 import type { TaskCursorExecutionStatus, TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import type { TaskCursorGithubVerifyInput } from "@/lib/prototype/taskCursorGithubVerify";
 import {
   canTransitionRuntimeState,
   type RuntimeState,
@@ -8,18 +9,20 @@ import {
   type ImplementationRuntimeRunView,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import {
-  markImplementationRuntimeCursorRunning,
   markImplementationRuntimeCursorCompleted,
+  markImplementationRuntimeCursorRunning,
   markImplementationRuntimeDispatching,
   markImplementationRuntimeFailed,
   markImplementationRuntimeGithubVerifying,
   recordImplementationRuntimeCursorHeartbeat,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeCursorService";
 import {
-  advanceImplementationRuntimeJob,
-  completeImplementationRuntimeGithubVerifyAndAdvance,
   failImplementationRuntimeGithubVerify,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
+import {
+  completeImplementationRuntimeFromRecordedGithubOutcome,
+  verifyImplementationRuntimeRunOnGithub,
+} from "@/lib/runtime/implementationRuntime/implementationGithubVerificationService";
 import { transitionImplementationCodeTaskRun } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 
 const RUNTIME_GRAPH: Readonly<Record<RuntimeState, readonly RuntimeState[]>> = {
@@ -54,6 +57,9 @@ export function findRuntimeTransitionPath(
   return [];
 }
 
+/**
+ * Cursor status → DB runtimeState (completed 제외; 완료는 GitHub outcome 전용).
+ */
 export function mapTaskCursorStatusToRuntimeState(
   status: TaskCursorExecutionStatus,
 ): RuntimeState | null {
@@ -68,7 +74,7 @@ export function mapTaskCursorStatusToRuntimeState(
       return "github_verifying";
     case "github_verified":
     case "review_pending":
-      return "completed";
+      return "github_verifying";
     case "cursor_failed":
     case "github_verify_failed":
       return "failed";
@@ -77,6 +83,10 @@ export function mapTaskCursorStatusToRuntimeState(
     default:
       return null;
   }
+}
+
+export function hasRecordedGithubVerifyOutcome(execution: TaskCursorExecutionV1): boolean {
+  return execution.status === "github_verified" && Boolean(String(execution.commitSha ?? "").trim());
 }
 
 function resolveCodeTaskId(input: {
@@ -103,7 +113,6 @@ async function applyRuntimeStep(input: {
   const { projectId, jobId, run, step, execution, now } = input;
   const cursorAgentId = String(execution.cursorRunId ?? "").trim() || null;
   const branchName = execution.workBranch ?? null;
-  const commitSha = execution.commitSha ?? null;
 
   switch (step) {
     case "dispatching":
@@ -129,17 +138,6 @@ async function applyRuntimeStep(input: {
         await markImplementationRuntimeGithubVerifying({ projectId, jobId, runId: run.id, now });
       }
       break;
-    case "completed": {
-      const bundle = await completeImplementationRuntimeGithubVerifyAndAdvance({
-        projectId,
-        jobId,
-        runId: run.id,
-        commitSha,
-        pullRequestUrl: null,
-        now,
-      });
-      return bundle.currentRun ?? bundle.runs.find((r) => r.id === run.id) ?? run;
-    }
     case "failed":
       if (execution.status === "github_verify_failed") {
         await failImplementationRuntimeGithubVerify({
@@ -173,14 +171,46 @@ async function applyRuntimeStep(input: {
   return bundle.runs.find((r) => r.id === run.id) ?? run;
 }
 
+async function applyGithubOutcomeIfReady(input: {
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly run: ImplementationRuntimeRunView;
+  readonly execution: TaskCursorExecutionV1;
+  readonly githubVerify?: TaskCursorGithubVerifyInput | null;
+}): Promise<void> {
+  if (input.run.runtimeState === "completed") return;
+
+  if (input.githubVerify) {
+    await verifyImplementationRuntimeRunOnGithub({
+      projectId: input.projectId,
+      jobId: input.jobId,
+      runId: input.run.id,
+      verify: input.githubVerify,
+    });
+    return;
+  }
+
+  if (!hasRecordedGithubVerifyOutcome(input.execution)) return;
+
+  await completeImplementationRuntimeFromRecordedGithubOutcome({
+    projectId: input.projectId,
+    jobId: input.jobId,
+    runId: input.run.id,
+    commitSha: String(input.execution.commitSha ?? "").trim(),
+    pullRequestUrl: null,
+  });
+}
+
 /**
  * Task Cursor API 결과 → DB Runtime (best-effort; Job/Run 없으면 no-op).
+ * Runtime completed는 GitHub verify outcome으로만 확정한다.
  */
 export async function syncImplementationRuntimeFromTaskCursor(input: {
   readonly projectId: string;
   readonly codeTaskId?: string | null;
   readonly taskId?: string | null;
   readonly execution?: TaskCursorExecutionV1 | null;
+  readonly githubVerify?: TaskCursorGithubVerifyInput | null;
   readonly now?: Date;
 }): Promise<void> {
   try {
@@ -205,13 +235,6 @@ export async function syncImplementationRuntimeFromTaskCursor(input: {
     const jobId = bundle.job.id;
 
     if (run.runtimeState === target) {
-      if (target === "completed" && bundle.job.status === "running") {
-        try {
-          await advanceImplementationRuntimeJob({ projectId, jobId });
-        } catch {
-          // already advanced or job finished
-        }
-      }
       if (
         target === "failed" &&
         execution.status === "github_verify_failed" &&
@@ -233,6 +256,15 @@ export async function syncImplementationRuntimeFromTaskCursor(input: {
           now: input.now,
         });
       }
+      if (target === "github_verifying") {
+        await applyGithubOutcomeIfReady({
+          projectId,
+          jobId,
+          run,
+          execution,
+          githubVerify: input.githubVerify,
+        });
+      }
       return;
     }
 
@@ -249,17 +281,32 @@ export async function syncImplementationRuntimeFromTaskCursor(input: {
           now: input.now,
         });
       }
-      return;
+    } else {
+      run = await applyRuntimeStep({
+        projectId,
+        jobId,
+        run,
+        step: target,
+        execution,
+        now: input.now,
+      });
     }
 
-    await applyRuntimeStep({
-      projectId,
-      jobId,
-      run,
-      step: target,
-      execution,
-      now: input.now,
-    });
+    if (target === "github_verifying" || execution.status === "github_verified") {
+      const refreshed = await getImplementationRuntimeBundle(projectId);
+      const current =
+        refreshed.runs.find((r) => r.id === run.id) ??
+        refreshed.runs.find((r) => r.codeTaskId === codeTaskId);
+      if (current) {
+        await applyGithubOutcomeIfReady({
+          projectId,
+          jobId,
+          run: current,
+          execution,
+          githubVerify: input.githubVerify,
+        });
+      }
+    }
   } catch {
     // DB runtime is supplementary; never fail the cursor API response.
   }

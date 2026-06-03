@@ -14,6 +14,7 @@ describe("implementationRuntimeGithubCentricModel", () => {
   });
 
   it("formats user labels without cursor enum names", () => {
+    expect(formatRuntimeStateKoForUser("dispatching")).toBe("CodeTask 실행 요청 중");
     expect(formatRuntimeStateKoForUser("cursor_running")).toBe("CodeTask 실행 중");
     expect(formatRuntimeStateKoForUser("github_verifying")).toBe("GitHub 결과 확인 중");
     expect(

@@ -72,5 +72,7 @@ export function formatRuntimeStateKoForUser(
   state: RuntimeState,
   detail?: ImplementationRuntimeUserPhaseDetail,
 ): string {
+  if (state === "dispatching") return "CodeTask 실행 요청 중";
+  if (state === "cursor_running") return "CodeTask 실행 중";
   return formatImplementationRuntimeUserPhaseKo(mapRuntimeStateToUserPhase(state), detail);
 }
