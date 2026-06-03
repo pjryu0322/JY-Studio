@@ -1,6 +1,96 @@
-import { describe, expect, it } from "vitest";
-import { shouldSyncTaskCursorServerJobPollState } from "@/lib/prototype/taskCursorServerJobSync";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
+
+const syncRuntimeMock = vi.fn();
+
+vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync", () => ({
+  syncImplementationRuntimeFromTaskCursor: (...args: unknown[]) => syncRuntimeMock(...args),
+}));
+
+import {
+  buildGithubVerifyInputForRuntimeSync,
+  shouldSyncTaskCursorServerJobPollState,
+  syncDbRuntimeAfterTaskCursorServerPoll,
+} from "@/lib/prototype/taskCursorServerJobSync";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+
+const targetRepo: ProjectTargetRepository = {
+  owner: "o",
+  repo: "r",
+  defaultBranch: "main",
+};
+
+function exec(status: TaskCursorExecutionV1["status"]): TaskCursorExecutionV1 {
+  return {
+    version: "task_cursor_execution_v1",
+    projectId: "p1",
+    taskId: "CT-1",
+    status,
+    createdAt: "2026-06-03T00:00:00.000Z",
+    updatedAt: "2026-06-03T00:00:00.000Z",
+  } as TaskCursorExecutionV1;
+}
+
+describe("buildGithubVerifyInputForRuntimeSync", () => {
+  it("returns null without githubToken or targetRepository", () => {
+    expect(
+      buildGithubVerifyInputForRuntimeSync({
+        execution: exec("github_verifying"),
+        githubToken: "",
+        targetRepository: targetRepo,
+      }),
+    ).toBeNull();
+    expect(
+      buildGithubVerifyInputForRuntimeSync({
+        execution: exec("github_verifying"),
+        githubToken: "ghp_x",
+        targetRepository: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("builds verify input when token and repository exist", () => {
+    const input = buildGithubVerifyInputForRuntimeSync({
+      execution: exec("cursor_completed"),
+      githubToken: "ghp_test",
+      targetRepository: targetRepo,
+      allowedPathGlobs: ["src/**"],
+    });
+    expect(input?.githubToken).toBe("ghp_test");
+    expect(input?.targetRepository).toEqual(targetRepo);
+    expect(input?.execution.status).toBe("cursor_completed");
+  });
+});
+
+describe("syncDbRuntimeAfterTaskCursorServerPoll", () => {
+  beforeEach(() => {
+    syncRuntimeMock.mockReset();
+    syncRuntimeMock.mockResolvedValue(undefined);
+  });
+
+  it("forwards githubVerify to syncImplementationRuntimeFromTaskCursor", async () => {
+    const execution = exec("github_verifying");
+    const githubVerify = {
+      execution,
+      targetRepository: targetRepo,
+      githubToken: "ghp_x",
+      allowedPathGlobs: [],
+    };
+    await syncDbRuntimeAfterTaskCursorServerPoll({
+      projectId: "p1",
+      taskId: "CT-1",
+      execution,
+      githubVerify,
+    });
+    expect(syncRuntimeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "p1",
+        githubVerify,
+      }),
+    );
+  });
+});
 
 describe("shouldSyncTaskCursorServerJobPollState", () => {
   it("returns false when execution and quick run are cleared", () => {

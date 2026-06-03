@@ -89,6 +89,20 @@ export function hasRecordedGithubVerifyOutcome(execution: TaskCursorExecutionV1)
   return execution.status === "github_verified" && Boolean(String(execution.commitSha ?? "").trim());
 }
 
+export function shouldApplyRuntimeGithubVerifyInput(
+  execution: TaskCursorExecutionV1,
+  githubVerify?: TaskCursorGithubVerifyInput | null,
+): boolean {
+  if (!githubVerify) return false;
+  const status = execution.status;
+  return (
+    status === "cursor_completed" ||
+    status === "github_verifying" ||
+    status === "github_verified" ||
+    status === "review_pending"
+  );
+}
+
 function resolveCodeTaskId(input: {
   readonly codeTaskId?: string | null;
   readonly taskId?: string | null;
@@ -180,7 +194,8 @@ async function applyGithubOutcomeIfReady(input: {
 }): Promise<void> {
   if (input.run.runtimeState === "completed") return;
 
-  if (input.githubVerify) {
+  if (shouldApplyRuntimeGithubVerifyInput(input.execution, input.githubVerify)) {
+    // TODO(P3-M3): pass precomputed verify result to avoid duplicate GitHub REST verification.
     await verifyImplementationRuntimeRunOnGithub({
       projectId: input.projectId,
       jobId: input.jobId,

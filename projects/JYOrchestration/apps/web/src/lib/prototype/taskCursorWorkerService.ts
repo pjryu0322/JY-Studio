@@ -33,7 +33,10 @@ import { buildTaskCursorFailedOrchestrationPatch } from "@/lib/prototype/prototy
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
-import { syncDbRuntimeAfterTaskCursorServerPoll } from "@/lib/prototype/taskCursorServerJobSync";
+import {
+  buildGithubVerifyInputForRuntimeSync,
+  syncDbRuntimeAfterTaskCursorServerPoll,
+} from "@/lib/prototype/taskCursorServerJobSync";
 import {
   ensureQueuedRunForRedispatch,
   recoverImplementationRuntimeDb,
@@ -390,10 +393,17 @@ async function processPollingTaskCursorJob(
     nowIso,
   });
 
+  const githubVerify = buildGithubVerifyInputForRuntimeSync({
+    execution: pollResult.execution,
+    githubToken: runtime.context.githubToken,
+    targetRepository: runtime.context.targetRepository,
+    allowedPathGlobs: runtime.context.allowedPathGlobs,
+  });
   await syncDbRuntimeAfterTaskCursorServerPoll({
     projectId: job.projectId,
     taskId: job.taskId,
     execution: pollResult.execution,
+    githubVerify,
   });
   await recoverImplementationRuntimeDb({ projectId: job.projectId, now });
 
