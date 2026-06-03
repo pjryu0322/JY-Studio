@@ -39,6 +39,7 @@ import { upsertTaskCursorExecutionJobFromLaunch } from "@/lib/prototype/taskCurs
 import { buildTaskCursorJobLifecycleTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
 import { linkTaskCursorJobToImplementationRun } from "@/lib/runtime/implementationRuntime/implementationRuntimePollRepository";
+import { dispatchQueuedImplementationRuntimeRunWithCursor } from "@/lib/prototype/selectedCodeTaskCursorExecution";
 
 type Body = {
   readonly projectId?: string;
@@ -232,27 +233,71 @@ export async function POST(request: NextRequest) {
       launchOnly && shouldUseTaskCursorCloudAgentApi(readiness.context.cursorApiUrl!);
 
     if (useCloudAgentLaunch) {
-      const launch = await launchTaskCursorCloudAgent(apiRequest);
-      if (!launch.ok) {
+      const codeTaskIdForRuntime = String(body.codeTaskId ?? taskId).trim();
+      let launchOk = false;
+      let launchMessage: string | undefined;
+
+      try {
+        const dbDispatched = await dispatchQueuedImplementationRuntimeRunWithCursor({
+          projectId,
+          codeTaskId: codeTaskIdForRuntime,
+          launch: async () => {
+            const launch = await launchTaskCursorCloudAgent(apiRequest);
+            if (!launch.ok) {
+              throw new Error(launch.message ?? TASK_CURSOR_FAILURE_MESSAGES.unknown);
+            }
+            return { agentId: launch.agentId, branchName: execution.workBranch ?? null };
+          },
+        });
+
+        if (dbDispatched) {
+          launchOk = true;
+          execution = patchTaskCursorExecution(execution, {
+            status: "cursor_running",
+            cursorRunId: dbDispatched.currentRun?.cursorAgentId ?? undefined,
+            nowIso,
+          });
+        } else {
+          const launch = await launchTaskCursorCloudAgent(apiRequest);
+          launchOk = launch.ok;
+          launchMessage = launch.ok ? undefined : launch.message;
+          if (!launch.ok) {
+            execution = patchTaskCursorExecution(execution, {
+              status: "cursor_failed",
+              failureReason: launch.reason,
+              errorMessage: launch.message,
+              nowIso,
+            });
+            timeline.push(buildTaskCursorApiFailedTimeline({ execution, nowIso }));
+          } else {
+            execution = patchTaskCursorExecution(execution, {
+              status: "cursor_running",
+              cursorRunId: launch.agentId,
+              nowIso,
+            });
+          }
+          await syncImplementationRuntimeFromTaskCursor({
+            projectId,
+            codeTaskId: body.codeTaskId,
+            taskId,
+            execution,
+          });
+        }
+      } catch (error) {
+        launchMessage = error instanceof Error ? error.message : String(error);
         execution = patchTaskCursorExecution(execution, {
           status: "cursor_failed",
-          failureReason: launch.reason,
-          errorMessage: launch.message,
+          failureReason: "unknown",
+          errorMessage: launchMessage,
           nowIso,
         });
         timeline.push(buildTaskCursorApiFailedTimeline({ execution, nowIso }));
-      } else {
-        execution = patchTaskCursorExecution(execution, {
-          status: "cursor_running",
-          cursorRunId: launch.agentId,
-          nowIso,
-        });
       }
       const patch = buildTaskCursorOrchestrationPatch({
         execution,
         timelineEntries: [
           ...timeline,
-          ...(launch.ok && isServerTaskCursorPolling()
+          ...(launchOk && isServerTaskCursorPolling()
             ? [
                 buildTaskCursorJobLifecycleTimelineEntry({
                   action: "task_cursor_job_created",
@@ -268,7 +313,7 @@ export async function POST(request: NextRequest) {
         cursorWorkItems: scopedWorkItems,
       });
       let jobId: string | undefined;
-      if (launch.ok && isServerTaskCursorPolling()) {
+      if (launchOk && isServerTaskCursorPolling()) {
         const job = await upsertTaskCursorExecutionJobFromLaunch({
           projectId,
           execution,
@@ -283,13 +328,14 @@ export async function POST(request: NextRequest) {
         });
       }
       return NextResponse.json({
-        success: launch.ok,
+        success: launchOk,
+        message: launchMessage,
         status: execution.status,
         execution: patch.taskCursorExecutionV1,
         orchestrationPatch: patch,
         executionMode: "task_cursor_job",
-        pollRequired: launch.ok && !isServerTaskCursorPolling(),
-        serverPolling: launch.ok && isServerTaskCursorPolling(),
+        pollRequired: launchOk && !isServerTaskCursorPolling(),
+        serverPolling: launchOk && isServerTaskCursorPolling(),
         jobId,
       });
     }

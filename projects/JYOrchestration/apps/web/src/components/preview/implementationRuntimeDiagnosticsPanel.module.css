@@ -44,6 +44,24 @@
   color: #334155;
 }
 
+.summaryGrid {
+  display: grid;
+  grid-template-columns: minmax(140px, auto) 1fr;
+  gap: 6px 12px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.summaryGrid dt {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.summaryGrid dd {
+  margin: 0;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;

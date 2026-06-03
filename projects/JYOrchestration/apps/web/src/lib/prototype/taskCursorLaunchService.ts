@@ -143,6 +143,10 @@ export async function launchTaskCursorForProject(input: {
   }
 
   const launch = await launchTaskCursorCloudAgent(apiRequest);
+  const { syncDbImplementationRuntimeAfterTaskCursorChange } = await import(
+    "@/lib/prototype/prototypeExecutionTaskCursorActions"
+  );
+
   if (!launch.ok) {
     execution = patchTaskCursorExecution(execution, {
       status: "cursor_failed",
@@ -151,10 +155,22 @@ export async function launchTaskCursorForProject(input: {
       nowIso,
     });
     timeline.push(buildTaskCursorApiFailedTimeline({ execution, nowIso }));
+    await syncDbImplementationRuntimeAfterTaskCursorChange({
+      projectId,
+      taskId,
+      execution,
+      nowIso,
+    });
   } else {
     execution = patchTaskCursorExecution(execution, {
       status: "cursor_running",
       cursorRunId: launch.agentId,
+      nowIso,
+    });
+    await syncDbImplementationRuntimeAfterTaskCursorChange({
+      projectId,
+      taskId,
+      execution,
       nowIso,
     });
   }

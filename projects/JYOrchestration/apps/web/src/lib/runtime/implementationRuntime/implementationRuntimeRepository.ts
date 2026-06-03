@@ -13,6 +13,21 @@ import type {
 
 const ACTIVE_JOB_STATUSES = ["running"] as const;
 
+export function parseSelectedCodeTaskIdsJson(raw: unknown): readonly string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter(Boolean);
+}
+
+function normalizeSelectedCodeTaskIds(ids: readonly string[]): readonly string[] {
+  const normalized = ids.map((id) => id.trim()).filter(Boolean);
+  if (!normalized.length) {
+    throw new Error("selectedCodeTaskIds is required");
+  }
+  return normalized;
+}
+
 function toIso(d: Date | null | undefined): string | null {
   if (!d) return null;
   return d.toISOString();
@@ -65,6 +80,7 @@ function mapJob(row: {
   projectId: string;
   status: string;
   currentCodeTaskId: string | null;
+  selectedCodeTaskIdsJson?: unknown;
   failureReason: string | null;
   startedAt: Date | null;
   completedAt: Date | null;
@@ -75,6 +91,7 @@ function mapJob(row: {
     projectId: row.projectId,
     status: row.status as ImplementationRuntimeJobView["status"],
     currentCodeTaskId: row.currentCodeTaskId,
+    selectedCodeTaskIds: parseSelectedCodeTaskIdsJson(row.selectedCodeTaskIdsJson),
     failureReason: row.failureReason,
     startedAt: toIso(row.startedAt),
     completedAt: toIso(row.completedAt),
@@ -122,6 +139,38 @@ export async function findActiveImplementationRuntimeJob(
   };
 }
 
+export function buildImplementationRuntimeBundleFromJob(input: {
+  readonly job: ImplementationRuntimeJobView;
+  readonly runs: readonly ImplementationRuntimeRunView[];
+}): ImplementationRuntimeBundleView {
+  const currentRun =
+    input.runs.find((r) => r.codeTaskId === input.job.currentCodeTaskId) ??
+    input.runs[input.runs.length - 1] ??
+    null;
+  return {
+    job: input.job,
+    runs: input.runs,
+    currentRun,
+  };
+}
+
+export async function getImplementationRuntimeJobWithRuns(input: {
+  readonly projectId: string;
+  readonly jobId: string;
+}): Promise<(ImplementationRuntimeJobView & { runs: ImplementationRuntimeRunView[] }) | null> {
+  const pid = input.projectId.trim();
+  const jobId = input.jobId.trim();
+  const job = await prisma.implementationExecutionJob.findFirst({
+    where: { id: jobId, projectId: pid },
+    include: { runs: { orderBy: { createdAt: "asc" } } },
+  });
+  if (!job) return null;
+  return {
+    ...mapJob(job),
+    runs: job.runs.map(mapRun),
+  };
+}
+
 export async function getImplementationRuntimeBundle(
   projectId: string,
 ): Promise<ImplementationRuntimeBundleView> {
@@ -129,15 +178,18 @@ export async function getImplementationRuntimeBundle(
   if (!active) {
     return { job: null, runs: [], currentRun: null };
   }
-  const currentRun =
-    active.runs.find((r) => r.codeTaskId === active.currentCodeTaskId) ??
-    active.runs[active.runs.length - 1] ??
-    null;
-  return {
-    job: active,
-    runs: active.runs,
-    currentRun,
-  };
+  return buildImplementationRuntimeBundleFromJob(active);
+}
+
+export async function getImplementationRuntimeBundleByJobId(input: {
+  readonly projectId: string;
+  readonly jobId: string;
+}): Promise<ImplementationRuntimeBundleView> {
+  const job = await getImplementationRuntimeJobWithRuns(input);
+  if (!job) {
+    return { job: null, runs: [], currentRun: null };
+  }
+  return buildImplementationRuntimeBundleFromJob(job);
 }
 
 export async function createImplementationRuntimeJob(input: {
@@ -147,13 +199,15 @@ export async function createImplementationRuntimeJob(input: {
 }): Promise<ImplementationRuntimeBundleView> {
   const now = input.now ?? new Date();
   const pid = input.projectId.trim();
-  const firstCodeTaskId = input.selectedCodeTaskIds[0]?.trim() ?? null;
+  const selectedCodeTaskIds = normalizeSelectedCodeTaskIds(input.selectedCodeTaskIds);
+  const firstCodeTaskId = selectedCodeTaskIds[0] ?? null;
 
   const job = await prisma.implementationExecutionJob.create({
     data: {
       projectId: pid,
       status: "running",
       currentCodeTaskId: firstCodeTaskId,
+      selectedCodeTaskIdsJson: selectedCodeTaskIds as Prisma.InputJsonValue,
       startedAt: now,
     },
   });
@@ -162,10 +216,87 @@ export async function createImplementationRuntimeJob(input: {
     projectId: pid,
     jobId: job.id,
     eventType: "job_created",
-    payload: { selectedCodeTaskIds: input.selectedCodeTaskIds },
+    payload: { selectedCodeTaskIds },
   });
 
   return { job: mapJob(job), runs: [], currentRun: null };
+}
+
+/** Job + 첫 Run(queued)을 transaction으로 생성. active running job이 있으면 신규 Job을 만들지 않는다. */
+export async function createImplementationRuntimeJobWithFirstRun(input: {
+  readonly projectId: string;
+  readonly selectedCodeTaskIds: readonly string[];
+  readonly now?: Date;
+}): Promise<ImplementationRuntimeBundleView> {
+  const pid = input.projectId.trim();
+  const selectedCodeTaskIds = normalizeSelectedCodeTaskIds(input.selectedCodeTaskIds);
+  const firstCodeTaskId = selectedCodeTaskIds[0]!;
+
+  const existing = await findActiveImplementationRuntimeJob(pid);
+  if (existing) {
+    const currentRun =
+      existing.runs.find((r) => r.codeTaskId === existing.currentCodeTaskId) ??
+      existing.runs[existing.runs.length - 1] ??
+      null;
+    return { job: existing, runs: existing.runs, currentRun };
+  }
+
+  const now = input.now ?? new Date();
+
+  const result = await prisma.$transaction(async (tx) => {
+    const job = await tx.implementationExecutionJob.create({
+      data: {
+        projectId: pid,
+        status: "running",
+        currentCodeTaskId: firstCodeTaskId,
+        selectedCodeTaskIdsJson: selectedCodeTaskIds as Prisma.InputJsonValue,
+        startedAt: now,
+      },
+    });
+
+    const run = await tx.implementationCodeTaskRun.create({
+      data: {
+        projectId: pid,
+        jobId: job.id,
+        codeTaskId: firstCodeTaskId,
+        runtimeState: "queued",
+        startedAt: now,
+        lastHeartbeatAt: now,
+      },
+    });
+
+    await tx.implementationRuntimeEvent.create({
+      data: {
+        projectId: pid,
+        jobId: job.id,
+        eventType: "job_created",
+        payloadJson: { selectedCodeTaskIds } as Prisma.InputJsonValue,
+      },
+    });
+
+    await tx.implementationRuntimeEvent.create({
+      data: {
+        projectId: pid,
+        jobId: job.id,
+        runId: run.id,
+        eventType: "run_created",
+        payloadJson: {
+          codeTaskId: firstCodeTaskId,
+          runtimeState: "queued",
+        } as Prisma.InputJsonValue,
+      },
+    });
+
+    return { job, run };
+  });
+
+  const jobView = mapJob(result.job);
+  const runView = mapRun(result.run);
+  return {
+    job: jobView,
+    runs: [runView],
+    currentRun: runView,
+  };
 }
 
 export async function createImplementationCodeTaskRun(input: {

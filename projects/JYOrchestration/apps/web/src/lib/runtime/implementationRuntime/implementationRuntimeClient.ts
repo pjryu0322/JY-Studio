@@ -20,11 +20,14 @@ export type ImplementationRuntimeFetchResult = Readonly<{
 
 export async function fetchImplementationRuntime(
   projectId: string,
+  options?: { readonly recover?: boolean },
 ): Promise<ImplementationRuntimeFetchResult> {
   const pid = projectId.trim();
   if (!pid) return { success: false, message: "projectId가 필요합니다." };
+  const recover = options?.recover === true;
+  const qs = recover ? "?recover=1" : "";
   const res = await credentialsIncludeFetch(
-    `/api/projects/${encodeURIComponent(pid)}/implementation-runtime?recover=1`,
+    `/api/projects/${encodeURIComponent(pid)}/implementation-runtime${qs}`,
   );
   const data = (await res.json().catch(() => ({}))) as ImplementationRuntimeFetchResult;
   if (!res.ok) {

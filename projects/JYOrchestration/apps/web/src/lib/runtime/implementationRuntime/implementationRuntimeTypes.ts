@@ -42,6 +42,7 @@ export type ImplementationRuntimeJobView = Readonly<{
   readonly projectId: string;
   readonly status: ImplementationJobStatus;
   readonly currentCodeTaskId: string | null;
+  readonly selectedCodeTaskIds: readonly string[];
   readonly failureReason: string | null;
   readonly startedAt: string | null;
   readonly completedAt: string | null;

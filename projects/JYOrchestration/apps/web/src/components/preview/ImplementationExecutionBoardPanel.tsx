@@ -79,6 +79,7 @@ export function ImplementationExecutionBoardPanel({
   onForceReleaseExecution,
   onRedispatchRuntime,
   onShowRuntimeDiagnostics,
+  onRecoverLegacyRuntimeFromJson,
   implementationRuntimeStateV1,
   implementationRuntimeDbBundle,
   codeTaskExecutionFeedbackV1,
@@ -110,6 +111,7 @@ export function ImplementationExecutionBoardPanel({
   readonly onForceReleaseExecution?: () => void;
   readonly onRedispatchRuntime?: () => void;
   readonly onShowRuntimeDiagnostics?: () => void;
+  readonly onRecoverLegacyRuntimeFromJson?: () => void;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
@@ -371,6 +373,18 @@ export function ImplementationExecutionBoardPanel({
                 실행 잠금 해제
               </button>
             ) : null}
+          </div>
+        ) : null}
+        {onRecoverLegacyRuntimeFromJson ? (
+          <div className={styles.runtimeRecoveryRow}>
+            <button
+              type="button"
+              className={styles.runtimeRecoveryButton}
+              data-testid="implementation-runtime-sync-from-json-recovery"
+              onClick={onRecoverLegacyRuntimeFromJson}
+            >
+              기존 JSON 실행 상태를 DB Runtime으로 복구
+            </button>
           </div>
         ) : null}
         {reworkVm?.candidateCount ? (

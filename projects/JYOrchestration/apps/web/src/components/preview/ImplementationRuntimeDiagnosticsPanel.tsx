@@ -10,6 +10,7 @@ import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionR
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { ImplementationRuntimeDiagnosticsRow } from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
+import { hasDbImplementationRuntimeJob } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiFlow";
 import styles from "@/components/preview/implementationRuntimeDiagnosticsPanel.module.css";
 
 export function ImplementationRuntimeDiagnosticsPanel({
@@ -23,6 +24,7 @@ export function ImplementationRuntimeDiagnosticsPanel({
   readonly dbDiagnostics?: readonly ImplementationRuntimeDiagnosticsRow[] | null;
   readonly onClose: () => void;
 }) {
+  const useDbPrimary = hasDbImplementationRuntimeJob(dbBundle);
   const runtime = parseImplementationRuntimeStateV1(requirementsState.implementationRuntimeStateV1);
   const jsonRows = buildRuntimeDiagnosticRows({
     runtime,
@@ -32,8 +34,9 @@ export function ImplementationRuntimeDiagnosticsPanel({
   });
 
   const dbCurrent = dbBundle?.currentRun;
+  const dbJob = dbBundle?.job;
   const rows =
-    dbDiagnostics && dbDiagnostics.length
+    useDbPrimary && dbDiagnostics?.length
       ? dbDiagnostics.map((row) => ({
           codeTaskId: row.codeTaskId,
           runtimeState: row.runtimeState,
@@ -65,34 +68,56 @@ export function ImplementationRuntimeDiagnosticsPanel({
             닫기
           </button>
         </header>
-        {dbBundle?.job ? (
-          <p className={styles.summary}>
-            Job <strong>{dbBundle.job.id}</strong> · {dbBundle.job.status}
-            {dbBundle.job.currentCodeTaskId ? ` · CodeTask ${dbBundle.job.currentCodeTaskId}` : ""}
-          </p>
-        ) : null}
-        {summaryLabel ? (
-          <p className={styles.summary}>
-            현재 Runtime: <strong>{summaryLabel}</strong>
-            {dbCurrent?.codeTaskId ?? runtime?.activeCodeTaskId
-              ? ` · CodeTask ${dbCurrent?.codeTaskId ?? runtime?.activeCodeTaskId}`
-              : ""}
-            {dbCurrent?.lastHeartbeatAt
-              ? ` · Heartbeat ${dbCurrent.lastHeartbeatAt}`
-              : runtime?.lastStateChangeAt
-                ? ` · 갱신 ${runtime.lastStateChangeAt}`
-                : ""}
-          </p>
+        {useDbPrimary ? (
+          <dl className={styles.summaryGrid}>
+            <dt>Job 상태</dt>
+            <dd>
+              {dbJob ? (
+                <>
+                  <strong>{dbJob.status}</strong>
+                  {dbJob.id ? ` · ${dbJob.id}` : ""}
+                </>
+              ) : (
+                "—"
+              )}
+            </dd>
+            <dt>Current CodeTask</dt>
+            <dd>{dbJob?.currentCodeTaskId ?? dbCurrent?.codeTaskId ?? "—"}</dd>
+            <dt>Run 상태</dt>
+            <dd>{summaryLabel ?? "—"}</dd>
+            <dt>Cursor Agent</dt>
+            <dd>{dbCurrent?.cursorAgentId ?? "—"}</dd>
+            <dt>GitHub 상태</dt>
+            <dd>
+              {dbCurrent?.runtimeState === "github_verifying"
+                ? "pending"
+                : dbCurrent?.commitSha
+                  ? "verified"
+                  : "none"}
+            </dd>
+            <dt>Heartbeat</dt>
+            <dd>{dbCurrent?.lastHeartbeatAt ?? "—"}</dd>
+          </dl>
         ) : (
-          <p className={styles.summary}>Runtime 상태가 아직 기록되지 않았습니다.</p>
+          <>
+            {summaryLabel ? (
+              <p className={styles.summary}>
+                현재 Runtime (legacy): <strong>{summaryLabel}</strong>
+                {runtime?.activeCodeTaskId ? ` · CodeTask ${runtime.activeCodeTaskId}` : ""}
+                {runtime?.lastStateChangeAt ? ` · 갱신 ${runtime.lastStateChangeAt}` : ""}
+              </p>
+            ) : (
+              <p className={styles.summary}>Runtime 상태가 아직 기록되지 않았습니다.</p>
+            )}
+          </>
         )}
         <table className={styles.table}>
           <thead>
             <tr>
               <th>CodeTask</th>
-              <th>Runtime State</th>
-              <th>Cursor State</th>
-              <th>GitHub State</th>
+              <th>Run 상태</th>
+              <th>Cursor Agent</th>
+              <th>GitHub 상태</th>
               <th>Heartbeat</th>
               <th>Last Update</th>
             </tr>

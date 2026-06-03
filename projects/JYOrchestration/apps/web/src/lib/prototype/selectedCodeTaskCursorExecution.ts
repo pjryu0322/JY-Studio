@@ -18,6 +18,9 @@ import {
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { patchTaskCursorExecution } from "@/lib/prototype/taskCursorExecution";
+import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
+import { dispatchNextQueuedImplementationRuntimeRun } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
+import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 
 export type CodeTaskQueueDispatchRef = Readonly<{
   readonly codeTaskId: string;
@@ -161,4 +164,39 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
       selectedWorkItems,
     },
   };
+}
+
+/** DB Runtime queued Run → Cursor launch → cursor_running (없으면 null) */
+export async function dispatchQueuedImplementationRuntimeRunWithCursor(input: {
+  readonly projectId: string;
+  readonly codeTaskId: string;
+  readonly launch: () => Promise<{
+    readonly agentId: string;
+    readonly branchName?: string | null;
+  }>;
+}): Promise<ImplementationRuntimeBundleView | null> {
+  const pid = input.projectId.trim();
+  const codeTaskId = input.codeTaskId.trim();
+  if (!pid || !codeTaskId) return null;
+
+  const bundle = await getImplementationRuntimeBundle(pid);
+  const job = bundle.job;
+  const run = bundle.currentRun;
+  if (!job || job.status !== "running" || !run || run.codeTaskId !== codeTaskId) {
+    return null;
+  }
+  if (run.runtimeState !== "queued") {
+    return null;
+  }
+
+  return dispatchNextQueuedImplementationRuntimeRun({
+    projectId: pid,
+    jobId: job.id,
+    buildCursorRequest: async (ctx) => {
+      if (ctx.codeTaskId !== codeTaskId) {
+        throw new Error(`codeTaskId mismatch: ${ctx.codeTaskId}`);
+      }
+      return input.launch();
+    },
+  });
 }

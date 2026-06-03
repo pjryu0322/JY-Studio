@@ -359,6 +359,7 @@ import {
   type ImplementationRuntimeDiagnosticsRow,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
+import { shouldPollImplementationRuntime } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiFlow";
 import {
   buildActiveDispatchForQueueHead,
   parseImplementationRuntimeStateV1,
@@ -1656,33 +1657,75 @@ export function PrototypePreviewPanel({
     ],
   );
 
-  const syncImplementationRuntimeDb = useCallback(async () => {
+  const applyImplementationRuntimeFetch = useCallback(
+    (fetched: Awaited<ReturnType<typeof fetchImplementationRuntime>>) => {
+      if (fetched.bundle) setImplementationRuntimeDbBundle(fetched.bundle);
+      if (fetched.diagnostics?.length) {
+        setImplementationRuntimeDbDiagnostics(fetched.diagnostics);
+      }
+    },
+    [],
+  );
+
+  const loadImplementationRuntimeDb = useCallback(
+    async (options?: { readonly recover?: boolean }) => {
+      const pid = projectId.trim();
+      if (!pid) return;
+      const fetched = await fetchImplementationRuntime(pid, options);
+      applyImplementationRuntimeFetch(fetched);
+    },
+    [applyImplementationRuntimeFetch, projectId],
+  );
+
+  const recoverLegacyRuntimeFromJson = useCallback(async () => {
     const pid = projectId.trim();
     if (!pid) return;
-    await postImplementationRuntimeAction({
+    const synced = await postImplementationRuntimeAction({
       projectId: pid,
       action: "sync_from_json",
       requirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
     });
-    const fetched = await fetchImplementationRuntime(pid);
-    if (fetched.bundle) setImplementationRuntimeDbBundle(fetched.bundle);
-    if (fetched.diagnostics?.length) {
-      setImplementationRuntimeDbDiagnostics(fetched.diagnostics);
-    }
-  }, [
-    projectId,
-    orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
-    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1,
-    orchestrationAwareRequirementsState.implementationRuntimeUiSnapshotV1,
-    orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
-    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1,
-  ]);
+    if (synced.bundle) setImplementationRuntimeDbBundle(synced.bundle);
+    await loadImplementationRuntimeDb({ recover: false });
+    showToast("기존 JSON 실행 상태를 DB Runtime으로 복구했습니다.");
+  }, [loadImplementationRuntimeDb, orchestrationAwareRequirementsState, projectId, showToast]);
 
   useEffect(() => {
-    void syncImplementationRuntimeDb();
-  }, [syncImplementationRuntimeDb]);
+    void loadImplementationRuntimeDb({ recover: true });
+  }, [loadImplementationRuntimeDb]);
+
+  useEffect(() => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    const legacyQueue = parseCodeTaskExecutionQueueV1(
+      orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+    );
+    const legacyCursor = parseTaskCursorExecutionV1(
+      orchestrationAwareRequirementsState.taskCursorExecutionV1,
+    );
+    if (
+      !shouldPollImplementationRuntime({
+        bundle: implementationRuntimeDbBundle,
+        legacyQueueRunning: legacyQueue?.status === "running",
+        legacyCursorInFlight: Boolean(
+          legacyCursor && isInFlightTaskCursorExecution(legacyCursor),
+        ),
+      })
+    ) {
+      return;
+    }
+    const timer = setInterval(() => {
+      void loadImplementationRuntimeDb({ recover: false });
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [
+    implementationRuntimeDbBundle?.currentRun?.runtimeState,
+    implementationRuntimeDbBundle?.job?.status,
+    loadImplementationRuntimeDb,
+    orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1,
+    projectId,
+  ]);
 
   const prototypeRunSyncSnapshot = useMemo(
     () =>
@@ -1983,7 +2026,9 @@ export function PrototypePreviewPanel({
   const runImplementationStageActionRef = useRef<
     (actionId: ImplementationStageActionId) => ImplementationStageActionRunResult
   >(() => ({ outcome: "blocked", message: "구현단계 action을 준비하는 중입니다." }));
-  const startImplementationQuickRunRef = useRef<() => ImplementationStageActionRunResult>(() => ({
+  const startImplementationQuickRunRef = useRef<
+    () => Promise<ImplementationStageActionRunResult>
+  >(async () => ({
     outcome: "blocked",
     message: "Quick 실행을 준비하는 중입니다.",
   }));
@@ -2892,7 +2937,7 @@ export function PrototypePreviewPanel({
     }
     void postImplementationRuntimeAction({ projectId: pid, action: "recover" }).then((dbRecovery) => {
       if (dbRecovery.bundle) setImplementationRuntimeDbBundle(dbRecovery.bundle);
-      void syncImplementationRuntimeDb();
+      void loadImplementationRuntimeDb({ recover: false });
     });
   }, [
     applyImplementationOrchestrationResult,
@@ -2900,7 +2945,7 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState,
     projectId,
     showToast,
-    syncImplementationRuntimeDb,
+    loadImplementationRuntimeDb,
     implementationRuntimeDbBundle?.currentRun?.pollCount,
   ]);
 
@@ -4083,11 +4128,13 @@ export function PrototypePreviewPanel({
         case "CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT":
           return createImplementationSeedFromQuickDesignDraft();
         case "START_IMPLEMENTATION_QUICK_RUN":
-          return startImplementationQuickRunRef.current();
+          void startImplementationQuickRunRef.current();
+          return { outcome: "executed" };
         case "REDISPATCH_IMPLEMENTATION_RUNTIME": {
           const pid = projectId.trim();
-          void postImplementationRuntimeAction({ projectId: pid, action: "redispatch" }).then(() => {
-            void syncImplementationRuntimeDb();
+          void postImplementationRuntimeAction({ projectId: pid, action: "redispatch" }).then((res) => {
+            if (res.bundle) setImplementationRuntimeDbBundle(res.bundle);
+            void loadImplementationRuntimeDb({ recover: false });
           });
           const queue = parseCodeTaskExecutionQueueV1(
             orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
@@ -4126,6 +4173,7 @@ export function PrototypePreviewPanel({
         }
         case "SHOW_IMPLEMENTATION_RUNTIME_DIAGNOSTICS": {
           setRuntimeDiagnosticsOpen(true);
+          void loadImplementationRuntimeDb({ recover: false });
           return { outcome: "executed" };
         }
         case "RELEASE_IMPLEMENTATION_EXECUTION_LOCK": {
@@ -4134,8 +4182,9 @@ export function PrototypePreviewPanel({
           void postImplementationRuntimeAction({
             projectId: projectId.trim(),
             action: "force_release",
-          }).then(() => {
-            void syncImplementationRuntimeDb();
+          }).then((res) => {
+            if (res.bundle) setImplementationRuntimeDbBundle(res.bundle);
+            void loadImplementationRuntimeDb({ recover: false });
           });
           const release = recoverImplementationRuntimeState({
             rawRequirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
@@ -6810,9 +6859,9 @@ export function PrototypePreviewPanel({
     ],
   );
 
-  const startImplementationQuickRun = useCallback((options?: {
+  const startImplementationQuickRun = useCallback(async (options?: {
     readonly selectedCodeTaskIds?: readonly string[];
-  }): ImplementationStageActionRunResult => {
+  }): Promise<ImplementationStageActionRunResult> => {
     const pid = projectId.trim();
     if (!pid) return { outcome: "blocked", message: "프로젝트 ID가 없습니다." };
     const planningGate = evaluateImplementationPlanningExecutionGate({
@@ -6918,6 +6967,20 @@ export function PrototypePreviewPanel({
         `실행 가능 ${dependencyPartition.readyIds.length}개 · 차단 ${dependencyPartition.blocked.length + dependencyPartition.unknown.length}개`,
       );
     }
+    const startJobRes = await postImplementationRuntimeAction({
+      projectId: pid,
+      action: "start_job",
+      selectedCodeTaskIds: dependencyPartition.readyIds,
+    });
+    if (!startJobRes.success) {
+      const message = startJobRes.message ?? "DB Runtime Job 시작에 실패했습니다.";
+      showToast(message);
+      return { outcome: "blocked", message };
+    }
+    if (startJobRes.bundle) {
+      setImplementationRuntimeDbBundle(startJobRes.bundle);
+    }
+
     const codeTaskExecutionQueueV1 = startCodeTaskExecutionQueue({
       projectId: pid,
       selectedCodeTaskIds: dependencyPartition.readyIds,
@@ -7079,7 +7142,7 @@ export function PrototypePreviewPanel({
           implementationExecutionBoardStateV1: nextBoardState,
         },
       });
-      startImplementationQuickRun({ selectedCodeTaskIds: [id] });
+      void startImplementationQuickRun({ selectedCodeTaskIds: [id] });
     },
     [
       projectId,
@@ -7144,7 +7207,7 @@ export function PrototypePreviewPanel({
       }
       const gate = evaluateImplementationCursorGate(implementationCursorGate);
       if (gate.allowed) {
-        startImplementationQuickRun();
+        void startImplementationQuickRun();
         return;
       }
       executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
@@ -7575,6 +7638,9 @@ export function PrototypePreviewPanel({
             }}
             onShowRuntimeDiagnostics={() => {
               void runImplementationStageActionRef.current("SHOW_IMPLEMENTATION_RUNTIME_DIAGNOSTICS");
+            }}
+            onRecoverLegacyRuntimeFromJson={() => {
+              void recoverLegacyRuntimeFromJson();
             }}
             implementationRuntimeStateV1={resolveImplementationRuntimeStateForRead({
               raw: orchestrationAwareRequirementsState as Record<string, unknown>,

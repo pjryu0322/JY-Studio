@@ -8,13 +8,18 @@ import {
   type ImplementationRuntimeRunView,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import {
-  markImplementationRuntimeCompleted,
   markImplementationRuntimeCursorRunning,
+  markImplementationRuntimeCursorCompleted,
   markImplementationRuntimeDispatching,
   markImplementationRuntimeFailed,
   markImplementationRuntimeGithubVerifying,
   recordImplementationRuntimeCursorHeartbeat,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeCursorService";
+import {
+  advanceImplementationRuntimeJob,
+  completeImplementationRuntimeGithubVerifyAndAdvance,
+  failImplementationRuntimeGithubVerify,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
 import { transitionImplementationCodeTaskRun } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 
 const RUNTIME_GRAPH: Readonly<Record<RuntimeState, readonly RuntimeState[]>> = {
@@ -57,6 +62,8 @@ export function mapTaskCursorStatusToRuntimeState(
       return "dispatching";
     case "cursor_running":
       return "cursor_running";
+    case "cursor_completed":
+      return "github_verifying";
     case "github_verifying":
       return "github_verifying";
     case "github_verified":
@@ -113,25 +120,44 @@ async function applyRuntimeStep(input: {
       });
       break;
     case "github_verifying":
-      await markImplementationRuntimeGithubVerifying({ projectId, jobId, runId: run.id, now });
+      if (
+        execution.status === "cursor_completed" ||
+        run.runtimeState === "cursor_running"
+      ) {
+        await markImplementationRuntimeCursorCompleted({ projectId, jobId, runId: run.id, now });
+      } else {
+        await markImplementationRuntimeGithubVerifying({ projectId, jobId, runId: run.id, now });
+      }
       break;
-    case "completed":
-      await markImplementationRuntimeCompleted({
+    case "completed": {
+      const bundle = await completeImplementationRuntimeGithubVerifyAndAdvance({
         projectId,
         jobId,
         runId: run.id,
         commitSha,
+        pullRequestUrl: null,
         now,
       });
-      break;
+      return bundle.currentRun ?? bundle.runs.find((r) => r.id === run.id) ?? run;
+    }
     case "failed":
-      await markImplementationRuntimeFailed({
-        projectId,
-        jobId,
-        runId: run.id,
-        failureReason: execution.failureReason ?? execution.errorMessage ?? "cursor_failed",
-        now,
-      });
+      if (execution.status === "github_verify_failed") {
+        await failImplementationRuntimeGithubVerify({
+          projectId,
+          jobId,
+          runId: run.id,
+          failureReason: "github_verify_failed",
+          now,
+        });
+      } else {
+        await markImplementationRuntimeFailed({
+          projectId,
+          jobId,
+          runId: run.id,
+          failureReason: execution.failureReason ?? execution.errorMessage ?? "cursor_failed",
+          now,
+        });
+      }
       break;
     case "stale":
       return transitionImplementationCodeTaskRun({
@@ -179,6 +205,26 @@ export async function syncImplementationRuntimeFromTaskCursor(input: {
     const jobId = bundle.job.id;
 
     if (run.runtimeState === target) {
+      if (target === "completed" && bundle.job.status === "running") {
+        try {
+          await advanceImplementationRuntimeJob({ projectId, jobId });
+        } catch {
+          // already advanced or job finished
+        }
+      }
+      if (
+        target === "failed" &&
+        execution.status === "github_verify_failed" &&
+        bundle.job.status === "running"
+      ) {
+        await failImplementationRuntimeGithubVerify({
+          projectId,
+          jobId,
+          runId: run.id,
+          failureReason: "github_verify_failed",
+          now: input.now,
+        });
+      }
       if (target === "cursor_running" || target === "dispatching" || target === "github_verifying") {
         await recordImplementationRuntimeCursorHeartbeat({
           runId: run.id,

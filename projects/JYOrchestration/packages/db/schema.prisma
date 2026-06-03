@@ -1793,15 +1793,16 @@ model KpAgentCategoryMapping {
 
 /// 구현단계 순차 CodeTask 실행 Job (Runtime Engine SoT)
 model ImplementationExecutionJob {
-  id                String    @id @default(cuid())
-  projectId         String
-  status            String
-  currentCodeTaskId String?
-  failureReason     String?
-  startedAt         DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                      String    @id @default(cuid())
+  projectId               String
+  status                  String
+  currentCodeTaskId       String?
+  selectedCodeTaskIdsJson Json?
+  failureReason           String?
+  startedAt               DateTime?
+  completedAt             DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   project Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   runs    ImplementationCodeTaskRun[]
@@ -1842,6 +1843,7 @@ model ImplementationCodeTaskRun {
   taskCursorJob TaskCursorExecutionJob?    @relation(fields: [taskCursorJobId], references: [id], onDelete: SetNull)
 
   @@index([projectId, codeTaskId])
+  @@index([jobId, codeTaskId])
   @@index([jobId, runtimeState])
   @@index([nextPollAt, runtimeState])
   @@index([pollLockExpiresAt])

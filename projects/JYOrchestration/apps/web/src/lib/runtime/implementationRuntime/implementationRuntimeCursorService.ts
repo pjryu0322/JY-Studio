@@ -64,6 +64,30 @@ export async function markImplementationRuntimeGithubVerifying(input: {
   });
 }
 
+/** Cursor agent 완료 → github_verifying + cursor_completed 이벤트 */
+export async function markImplementationRuntimeCursorCompleted(input: {
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly runId: string;
+  readonly now?: Date;
+}): Promise<void> {
+  try {
+    await transitionImplementationCodeTaskRun({
+      runId: input.runId,
+      toState: "github_verifying",
+      now: input.now,
+    });
+  } catch {
+    // 이미 github_verifying 등 동일 단계면 이벤트만 기록
+  }
+  await recordImplementationRuntimeEvent({
+    projectId: input.projectId,
+    jobId: input.jobId,
+    runId: input.runId,
+    eventType: "cursor_completed",
+  });
+}
+
 export async function markImplementationRuntimeCompleted(input: {
   readonly projectId: string;
   readonly jobId: string;

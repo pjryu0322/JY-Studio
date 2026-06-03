@@ -33,7 +33,7 @@ import { buildTaskCursorFailedOrchestrationPatch } from "@/lib/prototype/prototy
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
-import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
+import { syncDbRuntimeAfterTaskCursorServerPoll } from "@/lib/prototype/taskCursorServerJobSync";
 import {
   ensureQueuedRunForRedispatch,
   recoverImplementationRuntimeDb,
@@ -225,7 +225,7 @@ async function processQueuedTaskCursorJob(
       nowIso,
     });
   }
-  await syncImplementationRuntimeFromTaskCursor({
+  await syncDbRuntimeAfterTaskCursorServerPoll({
     projectId: job.projectId,
     taskId: job.taskId,
     execution,
@@ -390,7 +390,7 @@ async function processPollingTaskCursorJob(
     nowIso,
   });
 
-  await syncImplementationRuntimeFromTaskCursor({
+  await syncDbRuntimeAfterTaskCursorServerPoll({
     projectId: job.projectId,
     taskId: job.taskId,
     execution: pollResult.execution,

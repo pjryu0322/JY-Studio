@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import {
-  createImplementationCodeTaskRun,
-  createImplementationRuntimeJob,
-  getImplementationRuntimeBundle,
-} from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
+  dispatchNextQueuedImplementationRuntimeRun,
+  startImplementationRuntimeJobFromCodeTasks,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
 import {
   ensureQueuedRunForRedispatch,
   recoverImplementationRuntimeDb,
@@ -20,6 +20,9 @@ type ActionBody = {
   readonly action?: string;
   readonly selectedCodeTaskIds?: readonly string[];
   readonly requirementsState?: Record<string, unknown>;
+  readonly jobId?: string;
+  readonly cursorAgentId?: string;
+  readonly branchName?: string | null;
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -65,21 +68,46 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (!ids.length) {
         return NextResponse.json({ success: false, message: "selectedCodeTaskIds가 필요합니다." }, { status: 400 });
       }
-      const started = await createImplementationRuntimeJob({ projectId: pid, selectedCodeTaskIds: ids });
-      const jobId = started.job?.id;
-      if (!jobId) {
+      const bundle = await startImplementationRuntimeJobFromCodeTasks({
+        projectId: pid,
+        selectedCodeTaskIds: ids,
+      });
+      if (!bundle.job?.id) {
         return NextResponse.json({ success: false, message: "Job 생성에 실패했습니다." }, { status: 500 });
       }
-      const first = await createImplementationCodeTaskRun({
-        projectId: pid,
-        jobId,
-        codeTaskId: ids[0]!,
-      });
       return NextResponse.json({
         success: true,
-        bundle: await getImplementationRuntimeBundle(pid),
-        firstRun: first,
+        bundle,
+        firstRun: bundle.currentRun,
       });
+    }
+
+    if (action === "dispatch_next") {
+      const jobId =
+        String(body.jobId ?? "").trim() || (await getImplementationRuntimeBundle(pid)).job?.id;
+      if (!jobId) {
+        return NextResponse.json({ success: false, message: "active job이 없습니다." }, { status: 400 });
+      }
+      const agentId = String(body.cursorAgentId ?? "").trim();
+      if (!agentId) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "Cursor dispatch는 POST /api/prototype/task-cursor/execute(launchOnly)를 사용하세요. 테스트용으로 cursorAgentId를 전달하면 dispatch_next가 동작합니다.",
+          },
+          { status: 400 },
+        );
+      }
+      const bundle = await dispatchNextQueuedImplementationRuntimeRun({
+        projectId: pid,
+        jobId,
+        buildCursorRequest: async () => ({
+          agentId,
+          branchName: body.branchName ?? null,
+        }),
+      });
+      return NextResponse.json({ success: true, bundle });
     }
 
     if (action === "recover") {
