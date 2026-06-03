@@ -83,7 +83,7 @@ describe("implementationRuntimeState", () => {
   });
 
   it("formats runtime labels for UI", () => {
-    expect(formatRuntimeStateKo("github_verifying")).toBe("github_verifying");
-    expect(formatRuntimeStateKo("stale")).toBe("stale");
+    expect(formatRuntimeStateKo("github_verifying")).toBe("GitHub 결과 확인 중");
+    expect(formatRuntimeStateKo("stale")).toBe("중단(재시도 가능)");
   });
 });

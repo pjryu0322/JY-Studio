@@ -29,6 +29,7 @@ import {
   parseImplementationRuntimeUiSnapshotV1,
   synthesizeRuntimeStateFromUiSnapshot,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";
+import { formatRuntimeStateKoForUser } from "@/lib/runtime/implementationRuntime/implementationRuntimeGithubCentricModel";
 
 export const IMPLEMENTATION_RUNTIME_STATE_VERSION = "implementation_runtime_state_v1" as const;
 
@@ -101,26 +102,7 @@ export function isRuntimeInFlight(state: RuntimeState | null | undefined): boole
 }
 
 export function formatRuntimeStateKo(state: RuntimeState): string {
-  switch (state) {
-    case "idle":
-      return "대기";
-    case "queued":
-      return "queued";
-    case "dispatching":
-      return "dispatching";
-    case "cursor_running":
-      return "cursor_running";
-    case "github_verifying":
-      return "github_verifying";
-    case "completed":
-      return "completed";
-    case "failed":
-      return "failed";
-    case "stale":
-      return "stale";
-    default:
-      return state;
-  }
+  return formatRuntimeStateKoForUser(state);
 }
 
 export function parseImplementationRuntimeStateV1(raw: unknown): ImplementationRuntimeStateV1 | null {

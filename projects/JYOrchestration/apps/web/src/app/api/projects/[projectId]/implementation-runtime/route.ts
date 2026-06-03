@@ -12,7 +12,7 @@ import {
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
 import { pollDueImplementationRuntimeForProject } from "@/lib/runtime/implementationRuntime/implementationRuntimePollService";
 import { buildImplementationRuntimeUiSnapshot } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
-import { formatRuntimeStateKo } from "@/lib/prototype/implementationRuntimeState";
+import { formatRuntimeStateKoForUser } from "@/lib/runtime/implementationRuntime/implementationRuntimeGithubCentricModel";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
 
@@ -56,7 +56,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const diagnostics = bundle.runs.map((run) => ({
       codeTaskId: run.codeTaskId,
       runtimeState: run.runtimeState,
-      runtimeStateLabel: formatRuntimeStateKo(run.runtimeState),
+      runtimeStateLabel: formatRuntimeStateKoForUser(run.runtimeState, {
+        commitSha: run.commitSha,
+        pullRequestUrl: run.pullRequestUrl,
+        githubState:
+          run.runtimeState === "github_verifying"
+            ? "pending"
+            : run.commitSha
+              ? "verified"
+              : "none",
+      }),
       cursorState: run.cursorAgentId ?? "—",
       githubState:
         run.runtimeState === "github_verifying"

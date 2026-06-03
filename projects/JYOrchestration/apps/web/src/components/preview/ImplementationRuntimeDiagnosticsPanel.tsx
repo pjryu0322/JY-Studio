@@ -1,8 +1,8 @@
 "use client";
 
+import { formatRuntimeStateKoForUser } from "@/lib/runtime/implementationRuntime/implementationRuntimeGithubCentricModel";
 import {
   buildRuntimeDiagnosticRows,
-  formatRuntimeStateKo,
   parseImplementationRuntimeStateV1,
 } from "@/lib/prototype/implementationRuntimeState";
 import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
@@ -49,7 +49,7 @@ export function ImplementationRuntimeDiagnosticsPanel({
       : jsonRows.map((row) => ({
           codeTaskId: row.codeTaskId,
           runtimeState: row.runtimeState,
-          runtimeStateLabel: formatRuntimeStateKo(row.runtimeState),
+          runtimeStateLabel: formatRuntimeStateKoForUser(row.runtimeState),
           cursorState: row.cursorState,
           githubState: row.githubState,
           lastUpdate: row.lastUpdate,
@@ -57,7 +57,18 @@ export function ImplementationRuntimeDiagnosticsPanel({
         }));
 
   const summaryState = dbCurrent?.runtimeState ?? runtime?.runtimeState;
-  const summaryLabel = summaryState ? formatRuntimeStateKo(summaryState) : null;
+  const summaryLabel = summaryState
+    ? formatRuntimeStateKoForUser(summaryState, {
+        commitSha: dbCurrent?.commitSha,
+        pullRequestUrl: dbCurrent?.pullRequestUrl,
+        githubState:
+          dbCurrent?.runtimeState === "github_verifying"
+            ? "pending"
+            : dbCurrent?.commitSha
+              ? "verified"
+              : "none",
+      })
+    : null;
 
   return (
     <div className={styles.overlay} role="dialog" aria-label="Runtime 상태">
@@ -85,7 +96,7 @@ export function ImplementationRuntimeDiagnosticsPanel({
             <dd>{dbJob?.currentCodeTaskId ?? dbCurrent?.codeTaskId ?? "—"}</dd>
             <dt>Run 상태</dt>
             <dd>{summaryLabel ?? "—"}</dd>
-            <dt>Cursor Agent</dt>
+            <dt>Cursor Agent (진단)</dt>
             <dd>{dbCurrent?.cursorAgentId ?? "—"}</dd>
             <dt>GitHub 상태</dt>
             <dd>
