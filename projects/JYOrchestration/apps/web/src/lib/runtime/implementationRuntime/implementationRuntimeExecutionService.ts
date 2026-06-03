@@ -175,6 +175,8 @@ export async function dispatchNextQueuedImplementationRuntimeRun(input: {
   }) => Promise<{
     readonly agentId: string;
     readonly branchName?: string | null;
+    readonly targetRepository?: string | null;
+    readonly baseBranch?: string | null;
   }>;
 }): Promise<ImplementationRuntimeBundleView> {
   const pid = input.projectId.trim();
@@ -203,10 +205,15 @@ export async function dispatchNextQueuedImplementationRuntimeRun(input: {
   }
 
   await assertQueueItemDispatchAllowed({ jobId, codeTaskId: currentCodeTaskId });
-  await markImplementationRuntimeCodeTaskQueueItemDispatching({
+  const queueItem = await markImplementationRuntimeCodeTaskQueueItemDispatching({
     jobId,
     codeTaskId: currentCodeTaskId,
   });
+  if (!queueItem) {
+    throw new Error(
+      `DB Queue dispatching transition failed: jobId=${jobId}, codeTaskId=${currentCodeTaskId}`,
+    );
+  }
 
   await markImplementationRuntimeDispatching({
     projectId: pid,
@@ -230,7 +237,10 @@ export async function dispatchNextQueuedImplementationRuntimeRun(input: {
     await markImplementationRuntimeCodeTaskQueueItemCursorRequested({
       jobId,
       codeTaskId: currentCodeTaskId,
+      cursorRequestId: agentId,
       cursorRunId: agentId,
+      targetRepository: cursor.targetRepository ?? null,
+      baseBranch: cursor.baseBranch ?? null,
       workBranch: cursor.branchName ?? null,
     });
   } catch (error) {

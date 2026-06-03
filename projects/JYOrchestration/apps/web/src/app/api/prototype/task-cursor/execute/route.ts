@@ -246,7 +246,12 @@ export async function POST(request: NextRequest) {
             if (!launch.ok) {
               throw new Error(launch.message ?? TASK_CURSOR_FAILURE_MESSAGES.unknown);
             }
-            return { agentId: launch.agentId, branchName: execution.workBranch ?? null };
+            return {
+              agentId: launch.agentId,
+              branchName: execution.workBranch ?? null,
+              targetRepository: context.targetRepository,
+              baseBranch: context.baseBranch,
+            };
           },
         });
 

@@ -61,14 +61,12 @@ describe("implementationRuntimeCodeTaskQueueService policy", () => {
     ).toBe(false);
   });
 
-  it("allows no_code_change_completed only with structured evidence", () => {
-    expect(
-      resolveNoCodeChangeEvidence({
-        ok: false,
-        detailReason: "changed_files_empty",
-        message: "no files",
-      }),
-    ).toBe("no files");
+  it("maps changed_files_empty to rework_required", () => {
+    expect(resolveNoCodeChangeEvidence({
+      ok: false,
+      detailReason: "changed_files_empty",
+      message: "no files",
+    })).toBeNull();
     expect(
       resolveQueueItemStatusAfterGithubVerify({
         verify: {
@@ -77,7 +75,7 @@ describe("implementationRuntimeCodeTaskQueueService policy", () => {
           message: "no files",
         },
       }),
-    ).toBe("no_code_change_completed");
+    ).toBe("rework_required");
   });
 
   it("rejects reason-string-only no_code_change for completed path", () => {

@@ -1,25 +1,18 @@
 import type { TaskCursorGithubVerifyResult } from "@/lib/prototype/taskCursorGithubVerify";
 import type { ImplementationRuntimeCodeTaskQueueItemStatus } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueTypes";
 
-/** Structured no-code-change evidence only — reason substring alone is not enough. */
+/** No structured no-code-change field on verify result — do not infer from reason strings. */
 export function resolveNoCodeChangeEvidence(
-  verify: TaskCursorGithubVerifyResult,
+  _verify: TaskCursorGithubVerifyResult,
 ): string | null {
-  if (verify.ok) return null;
-  if (verify.detailReason === "changed_files_empty") {
-    const message = verify.message?.trim();
-    return message || "changed_files_empty";
-  }
-  return null;
+  const evidence = (_verify as { noCodeChangeEvidence?: string }).noCodeChangeEvidence?.trim();
+  return evidence || null;
 }
 
 export function canCompleteQueueItemFromGithubVerify(
   verify: TaskCursorGithubVerifyResult,
 ): boolean {
-  if (verify.ok) {
-    return Boolean(String(verify.verifiedCommitSha ?? "").trim());
-  }
-  return resolveNoCodeChangeEvidence(verify) !== null;
+  return Boolean(verify.ok && String(verify.verifiedCommitSha ?? "").trim());
 }
 
 export function resolveQueueItemStatusAfterGithubVerify(input: {
@@ -28,10 +21,6 @@ export function resolveQueueItemStatusAfterGithubVerify(input: {
   const verify = input.verify;
   if (verify.ok && verify.verifiedCommitSha?.trim()) {
     return "completed";
-  }
-  const noCodeEvidence = resolveNoCodeChangeEvidence(verify);
-  if (noCodeEvidence) {
-    return "no_code_change_completed";
   }
   if (
     verify.detailReason === "path_guard_failed" ||

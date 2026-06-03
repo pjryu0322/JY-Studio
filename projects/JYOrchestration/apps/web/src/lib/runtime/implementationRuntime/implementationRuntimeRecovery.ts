@@ -85,25 +85,25 @@ export async function recoverImplementationRuntimeDb(input: {
 
   if (!current) {
     issues.push("orphan_queued");
-    shouldRedispatch = true;
     return {
       issues,
-      shouldRedispatch,
+      shouldRedispatch: false,
       shouldWatchdogPoll: false,
-      redispatchCodeTaskId: bundle.job.currentCodeTaskId,
-      userMessage: null,
+      redispatchCodeTaskId: null,
+      userMessage:
+        "DB Runtime에 현재 Run이 없습니다. [선택한 CodeTask 실행]으로 다시 시작해 주세요.",
     };
   }
 
   if (current.runtimeState === "queued" && !current.cursorAgentId) {
     issues.push("orphan_queued");
-    shouldRedispatch = true;
     return {
       issues,
-      shouldRedispatch,
+      shouldRedispatch: false,
       shouldWatchdogPoll: false,
-      redispatchCodeTaskId: current.codeTaskId,
-      userMessage: null,
+      redispatchCodeTaskId: null,
+      userMessage:
+        "대기 중인 CodeTask가 있습니다. Cursor 실행은 DB Queue 기준 dispatch API로만 진행됩니다.",
     };
   }
 

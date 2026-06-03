@@ -330,13 +330,9 @@ import {
 } from "@/lib/prototype/codeTaskExecutionRun";
 import { syncCodeTaskExecutionRunsFromTaskCursor } from "@/lib/prototype/codeTaskExecutionRunTaskCursorAdapter";
 import {
-  advanceCodeTaskExecutionQueue,
   getCurrentQueueCodeTaskId,
   parseCodeTaskExecutionQueueV1,
   resolveSelectedCodeTaskIdsForQueue,
-  shouldAdvanceQueueAfterRun,
-  skipBlockedQueueCodeTasks,
-  startCodeTaskExecutionQueue,
 } from "@/lib/prototype/codeTaskExecutionQueue";
 import {
   formatCodeTaskDependencyQueueStartMessage,
@@ -344,7 +340,6 @@ import {
 } from "@/lib/prototype/codeTaskDependencyResolver";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import { prepareSelectedCodeTaskCursorExecution } from "@/lib/prototype/selectedCodeTaskCursorExecution";
-import { recoverImplementationRuntimeState } from "@/lib/prototype/implementationRuntimeRecovery";
 import { mergeRequirementsStateWithRuntime } from "@/lib/prototype/implementationRuntimeSync";
 import {
   buildPersistedActiveDispatchSnapshotPatch,
@@ -361,7 +356,6 @@ import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementa
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import { shouldPollImplementationRuntime } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiFlow";
 import {
-  buildActiveDispatchForQueueHead,
   parseImplementationRuntimeStateV1,
   patchRuntimeWatchdogPoll,
 } from "@/lib/prototype/implementationRuntimeState";
@@ -371,10 +365,6 @@ import {
   buildCodeTaskStatusCheckUserMessage,
   CODE_TASK_IN_FLIGHT_USER_MESSAGE,
 } from "@/lib/prototype/codeTaskExecutionRunView";
-import {
-  formatCodeTaskExecutionQueueCompletionDetail,
-  summarizeCodeTaskExecutionQueueRuns,
-} from "@/lib/prototype/codeTaskExecutionRunUi";
 import {
   buildImplementationQuickRunStartedPatch,
   buildImplementationQuickRunCursorDispatchTimelineEntry,
@@ -1591,8 +1581,6 @@ export function PrototypePreviewPanel({
   const taskCursorPollActiveRunIdRef = useRef<string | null>(null);
   const autoQualityGateInFlightRef = useRef<string | null>(null);
   const codeTaskDispatchPreferredTaskIdRef = useRef<string | null>(null);
-  const codeTaskQueueAdvanceInFlightRef = useRef(false);
-  const implementationRecoveryKeyRef = useRef("");
   const implementationRuntimePollSuspendedRef = useRef(false);
   const [implementationRuntimeDbBundle, setImplementationRuntimeDbBundle] =
     useState<ImplementationRuntimeBundleView | null>(null);
@@ -1708,21 +1696,8 @@ export function PrototypePreviewPanel({
     [applyImplementationRuntimeFetch, projectId, showToast],
   );
 
-  const recoverLegacyRuntimeFromJson = useCallback(async () => {
-    const pid = projectId.trim();
-    if (!pid) return;
-    const synced = await postImplementationRuntimeAction({
-      projectId: pid,
-      action: "sync_from_json",
-      requirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
-    });
-    if (synced.bundle) setImplementationRuntimeDbBundle(synced.bundle);
-    await loadImplementationRuntimeDb({ recover: false });
-    showToast("기존 JSON 실행 상태를 DB Runtime으로 복구했습니다.");
-  }, [loadImplementationRuntimeDb, orchestrationAwareRequirementsState, projectId, showToast]);
-
   useEffect(() => {
-    void loadImplementationRuntimeDb({ recover: true });
+    void loadImplementationRuntimeDb({ recover: false });
   }, [loadImplementationRuntimeDb]);
 
   useEffect(() => {
@@ -2724,265 +2699,6 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState.taskCursorExecutionV1?.commitSha,
     orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
     triggerImplementationAutoQualityGate,
-  ]);
-
-  useEffect(() => {
-    if (implementationRuntimeDbQueueSnapshot) return;
-    const queue = parseCodeTaskExecutionQueueV1(
-      orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
-    );
-    if (!queue || queue.status !== "running") return;
-    const codeTaskId = getCurrentQueueCodeTaskId(queue);
-    if (!codeTaskId) return;
-    if (
-      isInFlightTaskCursorExecution(
-        parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1),
-      )
-    ) {
-      return;
-    }
-    const runs =
-      parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
-      [];
-    const run = findLatestRunForCodeTask(runs, codeTaskId);
-    if (!shouldAdvanceQueueAfterRun(run)) return;
-    if (codeTaskQueueAdvanceInFlightRef.current) return;
-    codeTaskQueueAdvanceInFlightRef.current = true;
-
-    const pid = projectId.trim();
-    const nowIso = new Date().toISOString();
-    const processedRunStatuses = queue.selectedCodeTaskIds
-      .slice(0, queue.currentIndex + 1)
-      .map((id) => findLatestRunForCodeTask(runs, id)?.status)
-      .filter((status): status is NonNullable<typeof status> => Boolean(status));
-    const { queue: advancedQueue, nextCodeTaskId: initialNextId, finished: initialFinished } =
-      advanceCodeTaskExecutionQueue({
-        queue,
-        lastRunStatus: run!.status,
-        processedRunStatuses,
-        nowIso,
-      });
-
-    const codeTaskPlan = orchestrationAwareRequirementsState.implementationCodeTaskPlanV1;
-    let nextQueue = advancedQueue;
-    let nextRuns = runs;
-    let nextCodeTaskId = initialNextId;
-    let finished = initialFinished;
-
-    if (codeTaskPlan && initialNextId && !initialFinished) {
-      const skipped = skipBlockedQueueCodeTasks({
-        queue: advancedQueue,
-        nextCodeTaskId: initialNextId,
-        processedRunStatuses,
-        codeTaskPlan,
-        runs: nextRuns,
-        recordBlockedRun: (blockedCodeTaskId, check, currentRuns) => {
-          const target = resolveCodeTaskDispatchTarget({
-            codeTaskId: blockedCodeTaskId,
-            codeTaskPlan,
-            taskList: orchestrationAwareRequirementsState.implementationTaskListV1,
-            cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1,
-          });
-          if (!target) return currentRuns;
-          return appendCodeTaskExecutionRun(
-            currentRuns,
-            createBlockedByDependencyCodeTaskRun({
-              projectId: pid,
-              processTaskId: target.parentTaskId,
-              workItemId: target.workItem.id,
-              codeTaskId: blockedCodeTaskId,
-              runs: currentRuns,
-              check,
-              nowIso,
-            }),
-          );
-        },
-        nowIso,
-      });
-      nextQueue = skipped.queue;
-      nextRuns = skipped.runs;
-      nextCodeTaskId = skipped.nextCodeTaskId;
-      finished = skipped.finished;
-      if (skipped.skippedCodeTaskIds.length) {
-        showToast(
-          `선행 작업 미완료로 ${skipped.skippedCodeTaskIds.length}개 CodeTask를 건너뜁니다.`,
-        );
-      }
-    }
-
-    applyImplementationOrchestrationResult({
-      messages: executionSingleChat.chatMessages,
-      orchestrationPatch: {
-        codeTaskExecutionQueueV1: nextQueue,
-        ...(nextRuns !== runs ? { codeTaskExecutionRunsV1: nextRuns } : {}),
-      },
-    });
-
-    if (finished || !nextCodeTaskId) {
-      codeTaskQueueAdvanceInFlightRef.current = false;
-      if (finished) {
-        const runSummary = summarizeCodeTaskExecutionQueueRuns({
-          runs: nextRuns,
-          selectedCodeTaskIds: queue.selectedCodeTaskIds,
-        });
-        const completionDetail = formatCodeTaskExecutionQueueCompletionDetail({
-          runSummary,
-          codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-          runs: nextRuns,
-          selectedCodeTaskIds: queue.selectedCodeTaskIds,
-        });
-        showToast(
-          nextQueue.status === "completed"
-            ? "선택 CodeTask 실행을 모두 완료했습니다."
-            : nextQueue.status === "completed_with_issues"
-              ? "선택 CodeTask 실행 완료 · 일부 이슈가 있습니다."
-              : "선택 CodeTask 실행이 중단되었습니다.",
-        );
-        executionSingleChat.appendAiNotice(completionDetail);
-      }
-      return;
-    }
-
-    const dispatchTarget = resolveCodeTaskDispatchTarget({
-      codeTaskId: nextCodeTaskId,
-      codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-      taskList: orchestrationAwareRequirementsState.implementationTaskListV1,
-      cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1,
-    });
-    if (!dispatchTarget) {
-      codeTaskQueueAdvanceInFlightRef.current = false;
-      showToast(`다음 CodeTask ${nextCodeTaskId} WorkItem을 찾을 수 없습니다.`);
-      return;
-    }
-
-    const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
-      gitRepoUrl: executionSetupRow?.gitRepoUrl,
-      gitRepoName: executionSetupRow?.gitRepoName,
-      gitRepoProvider: executionSetupRow?.gitRepoProvider,
-      baseBranch: executionSetupRow?.baseBranch,
-    });
-    const developerPrompt = targetRepository
-      ? buildCodeTaskDeveloperPrompt({
-          codeTask: dispatchTarget.codeTask,
-          parentTask: dispatchTarget.parentTask,
-          targetRepository,
-          baseBranch: executionSetupRow?.baseBranch ?? "main",
-          allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
-        })
-      : undefined;
-    const nextRun = createCodeTaskExecutionRun({
-      projectId: pid,
-      processTaskId: dispatchTarget.parentTaskId,
-      workItemId: dispatchTarget.workItem.id,
-      codeTaskId: dispatchTarget.codeTask.codeTaskId,
-      developerPrompt,
-      nowIso,
-    });
-    const codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(nextRuns, nextRun);
-    const activeDispatch = {
-      codeTaskId: dispatchTarget.codeTask.codeTaskId,
-      parentTaskId: dispatchTarget.parentTaskId,
-      workItemId: dispatchTarget.workItem.id,
-      runId: nextRun.runId,
-    };
-    codeTaskDispatchPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
-    applyImplementationOrchestrationResult({
-      messages: executionSingleChat.chatMessages,
-      orchestrationPatch: {
-        codeTaskExecutionRunsV1,
-        implementationRuntimeUiSnapshotV1: buildPersistedActiveDispatchSnapshotPatch({
-          projectId: pid,
-          dispatch: activeDispatch,
-          baseState: {
-            ...(parseRequirementsStateJson(requirementsStateJsonRef.current) as Record<string, unknown>),
-            codeTaskExecutionQueueV1: nextQueue,
-            codeTaskExecutionRunsV1,
-          },
-          nowIso,
-        }),
-      },
-    });
-    codeTaskQueueAdvanceInFlightRef.current = false;
-    showToast(`다음 CodeTask 실행 · ${dispatchTarget.codeTask.codeTaskId}`);
-    void runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
-  }, [
-    applyImplementationOrchestrationResult,
-    executionSetupRow?.allowedPathGlobs,
-    executionSetupRow?.baseBranch,
-    executionSetupRow?.gitRepoName,
-    executionSetupRow?.gitRepoProvider,
-    executionSetupRow?.gitRepoUrl,
-    executionSingleChat.chatMessages,
-    implementationRuntimeDbQueueSnapshot,
-    orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
-    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-    orchestrationAwareRequirementsState.cursorWorkItemsV1,
-    orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-    orchestrationAwareRequirementsState.implementationTaskListV1,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
-    projectId,
-    showToast,
-  ]);
-
-  useEffect(() => {
-    const pid = projectId.trim();
-    if (!pid) return;
-    const recovery = recoverImplementationRuntimeState({
-      rawRequirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
-      projectId: pid,
-      pollCount: implementationRuntimeDbBundle?.currentRun?.pollCount ?? 0,
-    });
-    if (!recovery.issues.length) return;
-    const queue = parseCodeTaskExecutionQueueV1(
-      orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
-    );
-    const headRun = getCurrentCodeTaskRunForQueue(
-      queue,
-      parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
-        [],
-    );
-    const recoveryKey = `${recovery.issues.join("|")}:${headRun?.runId ?? ""}:${queue?.currentIndex ?? ""}`;
-    if (recoveryKey === implementationRecoveryKeyRef.current) return;
-    implementationRecoveryKeyRef.current = recoveryKey;
-
-    if (recovery.patch) {
-      applyImplementationOrchestrationResult({
-        messages: executionSingleChat.chatMessages,
-        orchestrationPatch: recovery.patch,
-      });
-      if (recovery.userMessage) {
-        executionSingleChat.appendAiNotice(recovery.userMessage);
-        showToast(recovery.userMessage);
-      }
-    }
-    if (recovery.shouldWatchdogPoll) {
-      void runImplementationStageActionRef.current("CHECK_TASK_CURSOR_STATUS");
-    }
-    if (recovery.redispatch) {
-      applyImplementationOrchestrationResult({
-        messages: executionSingleChat.chatMessages,
-        orchestrationPatch: {
-          implementationRuntimeUiSnapshotV1: buildPersistedActiveDispatchSnapshotPatch({
-            projectId: pid,
-            dispatch: recovery.redispatch,
-            baseState: orchestrationAwareRequirementsState as Record<string, unknown>,
-          }),
-        },
-      });
-      void runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
-    }
-    void postImplementationRuntimeAction({ projectId: pid, action: "recover" }).then((dbRecovery) => {
-      if (dbRecovery.bundle) setImplementationRuntimeDbBundle(dbRecovery.bundle);
-      void loadImplementationRuntimeDb({ recover: false });
-    });
-  }, [
-    applyImplementationOrchestrationResult,
-    executionSingleChat,
-    orchestrationAwareRequirementsState,
-    projectId,
-    showToast,
-    loadImplementationRuntimeDb,
-    implementationRuntimeDbBundle?.currentRun?.pollCount,
   ]);
 
   const implementationCursorGate = useMemo(
@@ -4167,45 +3883,10 @@ export function PrototypePreviewPanel({
           void startImplementationQuickRunRef.current();
           return { outcome: "executed" };
         case "REDISPATCH_IMPLEMENTATION_RUNTIME": {
-          const pid = projectId.trim();
-          void postImplementationRuntimeAction({ projectId: pid, action: "redispatch" }).then((res) => {
-            if (res.bundle) setImplementationRuntimeDbBundle(res.bundle);
-            void loadImplementationRuntimeDb({ recover: false });
-          });
-          const queue = parseCodeTaskExecutionQueueV1(
-            orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
-          );
-          const runs =
-            parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
-            [];
-          if (!queue || queue.status !== "running") {
-            const message = "실행 중인 CodeTask 큐가 없습니다.";
-            showToast(message);
-            return { outcome: "blocked", message };
-          }
-          const redispatch = buildActiveDispatchForQueueHead({
-            projectId: pid,
-            queue,
-            runs,
-          });
-          if (!redispatch) {
-            const message = "재디스패치할 queued CodeTask가 없습니다.";
-            showToast(message);
-            return { outcome: "blocked", message };
-          }
-          applyImplementationOrchestrationResult({
-            messages: executionSingleChat.chatMessages,
-            orchestrationPatch: {
-              implementationRuntimeUiSnapshotV1: buildPersistedActiveDispatchSnapshotPatch({
-                projectId: pid,
-                dispatch: redispatch,
-                baseState: orchestrationAwareRequirementsState as Record<string, unknown>,
-              }),
-            },
-          });
-          void runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
-          showToast(`CodeTask ${redispatch.codeTaskId} 재디스패치`);
-          return { outcome: "executed" };
+          const message =
+            "재디스패치는 비활성화되었습니다. 선택 CodeTask 실행으로 DB Queue를 다시 시작하세요.";
+          showToast(message);
+          return { outcome: "blocked", message };
         }
         case "SHOW_IMPLEMENTATION_RUNTIME_DIAGNOSTICS": {
           void loadImplementationRuntimeDb({ recover: false });
@@ -4213,29 +3894,17 @@ export function PrototypePreviewPanel({
         }
         case "RELEASE_IMPLEMENTATION_EXECUTION_LOCK": {
           cancelTaskCursorClientPoll();
-          implementationRecoveryKeyRef.current = "";
           void postImplementationRuntimeAction({
             projectId: projectId.trim(),
             action: "force_release",
           }).then((res) => {
             if (res.bundle) setImplementationRuntimeDbBundle(res.bundle);
             void loadImplementationRuntimeDb({ recover: false });
+            const message = res.recovery?.userMessage ?? "실행 잠금을 해제했습니다.";
+            executionSingleChat.appendAiNotice(message);
+            showToast(message);
           });
-          const release = recoverImplementationRuntimeState({
-            rawRequirementsState: orchestrationAwareRequirementsState as Record<string, unknown>,
-            projectId: projectId.trim(),
-            forceRelease: true,
-          });
-          if (release.patch) {
-            applyImplementationOrchestrationResult({
-              messages: executionSingleChat.chatMessages,
-              orchestrationPatch: release.patch,
-            });
-          }
-          const message = release.userMessage ?? "실행 잠금을 해제했습니다.";
-          executionSingleChat.appendAiNotice(message);
-          showToast(message);
-          return { outcome: "executed", message };
+          return { outcome: "executed" };
         }
         case "RETURN_TO_PLANNING_STAGE":
         case "START_QUICK_DESIGN_FROM_IMPLEMENTATION": {
@@ -7358,7 +7027,6 @@ export function PrototypePreviewPanel({
     try {
       taskCursorPollTokenRef.current += 1;
       taskCursorPollActiveRunIdRef.current = null;
-      codeTaskQueueAdvanceInFlightRef.current = false;
       setActiveTaskCursorJob(null);
       lastServerTaskCursorJobSyncFingerprintRef.current = "";
 

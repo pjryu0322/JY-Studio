@@ -6,10 +6,7 @@ import {
   getImplementationRuntimeBundle,
   listImplementationRuntimeEvents,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
-import {
-  ensureQueuedRunForRedispatch,
-  recoverImplementationRuntimeDb,
-} from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
+import { recoverImplementationRuntimeDb } from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
 import { pollDueImplementationRuntimeForProject } from "@/lib/runtime/implementationRuntime/implementationRuntimePollService";
 import { buildImplementationRuntimeUiSnapshot } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
 import { buildCodeTaskExecutionQueueSnapshotFromDbJob } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
@@ -44,17 +41,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     let recoveryWarning: string | null = null;
     if (recoverOnLoad) {
       try {
-        const recovery = await recoverImplementationRuntimeDb({ projectId: pid });
-        if (recovery.shouldRedispatch && recovery.redispatchCodeTaskId) {
-          const pre = await getImplementationRuntimeBundle(pid);
-          if (pre.job) {
-            await ensureQueuedRunForRedispatch({
-              projectId: pid,
-              jobId: pre.job.id,
-              codeTaskId: recovery.redispatchCodeTaskId,
-            });
-          }
-        }
+        await recoverImplementationRuntimeDb({ projectId: pid });
         try {
           await pollDueImplementationRuntimeForProject(pid);
         } catch (pollError) {

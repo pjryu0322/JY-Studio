@@ -217,7 +217,11 @@ export async function markImplementationRuntimeCodeTaskQueueItemDispatching(inpu
   const item = await prisma.implementationRuntimeCodeTaskQueueItem.findFirst({
     where: { jobId, codeTaskId },
   });
-  if (!item) return null;
+  if (!item) {
+    throw new Error(
+      `DB Queue item not found for dispatch: jobId=${jobId}, codeTaskId=${codeTaskId}`,
+    );
+  }
   if (isImplementationRuntimeQueueItemInFlight(item.status)) {
     throw new Error(`Duplicate dispatch blocked: queue item ${item.status}`);
   }
@@ -394,7 +398,11 @@ export async function assertQueueItemDispatchAllowed(input: {
   const item = await prisma.implementationRuntimeCodeTaskQueueItem.findFirst({
     where: { jobId: input.jobId.trim(), codeTaskId: input.codeTaskId.trim() },
   });
-  if (!item) return;
+  if (!item) {
+    throw new Error(
+      `DB Queue item not found for dispatch: jobId=${input.jobId.trim()}, codeTaskId=${input.codeTaskId.trim()}`,
+    );
+  }
   if (isImplementationRuntimeQueueItemInFlight(item.status)) {
     throw new Error(`Duplicate dispatch blocked: queue item ${item.status}`);
   }

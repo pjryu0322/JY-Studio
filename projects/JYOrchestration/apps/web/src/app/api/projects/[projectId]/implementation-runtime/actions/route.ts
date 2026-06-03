@@ -7,10 +7,7 @@ import {
   dispatchNextQueuedImplementationRuntimeRun,
   startImplementationRuntimeJobFromCodeTasks,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
-import {
-  ensureQueuedRunForRedispatch,
-  recoverImplementationRuntimeDb,
-} from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
+import { recoverImplementationRuntimeDb } from "@/lib/runtime/implementationRuntime/implementationRuntimeRecovery";
 import { syncImplementationRuntimeFromRequirementsJson } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
@@ -139,16 +136,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (action === "recover") {
       const recovery = await recoverImplementationRuntimeDb({ projectId: pid });
-      if (recovery.shouldRedispatch && recovery.redispatchCodeTaskId) {
-        const bundle = await getImplementationRuntimeBundle(pid);
-        if (bundle.job) {
-          await ensureQueuedRunForRedispatch({
-            projectId: pid,
-            jobId: bundle.job.id,
-            codeTaskId: recovery.redispatchCodeTaskId,
-          });
-        }
-      }
       return NextResponse.json({
         success: true,
         recovery,
@@ -166,16 +153,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (action === "redispatch") {
-      const bundle = await getImplementationRuntimeBundle(pid);
-      if (!bundle.job?.currentCodeTaskId) {
-        return NextResponse.json({ success: false, message: "재디스패치할 CodeTask가 없습니다." }, { status: 400 });
-      }
-      await ensureQueuedRunForRedispatch({
-        projectId: pid,
-        jobId: bundle.job.id,
-        codeTaskId: bundle.job.currentCodeTaskId,
-      });
-      return NextResponse.json({ success: true, bundle: await getImplementationRuntimeBundle(pid) });
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "재디스패치는 비활성화되었습니다. 선택 CodeTask 실행(start_job)과 DB Queue dispatch를 사용하세요.",
+        },
+        { status: 400 },
+      );
     }
 
     return NextResponse.json({ success: false, message: `Unknown action: ${action}` }, { status: 400 });
