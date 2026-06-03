@@ -1,5 +1,6 @@
 import {
   CODE_TASK_EXECUTION_QUEUE_VERSION,
+  parseCodeTaskExecutionQueueV1,
   type CodeTaskExecutionQueueStatus,
   type CodeTaskExecutionQueueV1,
 } from "@/lib/prototype/codeTaskExecutionQueue";
@@ -39,6 +40,20 @@ function resolveCurrentIndexFromQueueItems(
   const firstOpen = items.findIndex((i) => !isImplementationRuntimeQueueItemTerminal(i.status));
   if (firstOpen >= 0) return firstOpen;
   return Math.max(0, items.length - 1);
+}
+
+/** DB snapshot wins; JSON only before job / idle UI. No JSON advance when DB job is active. */
+export function resolveEffectiveCodeTaskExecutionQueue(input: {
+  readonly dbQueueSnapshot: CodeTaskExecutionQueueV1 | null | undefined;
+  readonly jsonQueue: unknown;
+  readonly dbJobStatus?: string | null;
+}): CodeTaskExecutionQueueV1 | null {
+  if (input.dbQueueSnapshot) return input.dbQueueSnapshot;
+  const jobStatus = input.dbJobStatus?.trim() ?? "";
+  if (jobStatus === "running" || jobStatus === "paused") {
+    return null;
+  }
+  return parseCodeTaskExecutionQueueV1(input.jsonQueue) ?? null;
 }
 
 /** DB Runtime Queue → legacy JSON snapshot for UI (cache only, not SoT). */

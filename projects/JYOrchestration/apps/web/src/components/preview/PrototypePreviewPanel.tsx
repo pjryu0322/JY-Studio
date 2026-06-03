@@ -357,6 +357,7 @@ import {
   postImplementationRuntimeAction,
   type ImplementationRuntimeDiagnosticsRow,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
+import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import { shouldPollImplementationRuntime } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiFlow";
 import {
@@ -1650,6 +1651,20 @@ export function PrototypePreviewPanel({
     [parsedRequirementsState, pendingImplementationPatch],
   );
 
+  const effectiveCodeTaskExecutionQueueV1 = useMemo(
+    () =>
+      resolveEffectiveCodeTaskExecutionQueue({
+        dbQueueSnapshot: implementationRuntimeDbQueueSnapshot,
+        jsonQueue: orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+        dbJobStatus: implementationRuntimeDbBundle?.job?.status ?? null,
+      }),
+    [
+      implementationRuntimeDbQueueSnapshot,
+      orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
+      implementationRuntimeDbBundle?.job?.status,
+    ],
+  );
+
   const persistedQueueDispatch = useMemo(
     () => resolvePersistedQueueDispatch(orchestrationAwareRequirementsState),
     [
@@ -2712,6 +2727,7 @@ export function PrototypePreviewPanel({
   ]);
 
   useEffect(() => {
+    if (implementationRuntimeDbQueueSnapshot) return;
     const queue = parseCodeTaskExecutionQueueV1(
       orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
     );
@@ -2897,6 +2913,7 @@ export function PrototypePreviewPanel({
     executionSetupRow?.gitRepoProvider,
     executionSetupRow?.gitRepoUrl,
     executionSingleChat.chatMessages,
+    implementationRuntimeDbQueueSnapshot,
     orchestrationAwareRequirementsState.codeTaskExecutionQueueV1,
     orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
     orchestrationAwareRequirementsState.cursorWorkItemsV1,
@@ -7016,15 +7033,10 @@ export function PrototypePreviewPanel({
       setImplementationRuntimeDbQueueSnapshot(startJobRes.codeTaskQueueSnapshot);
     }
 
-    const codeTaskExecutionQueueV1 =
-      startJobRes.codeTaskQueueSnapshot ??
-      startCodeTaskExecutionQueue({
-        projectId: pid,
-        selectedCodeTaskIds: dependencyPartition.readyIds,
-        nowIso,
-      });
+    const codeTaskExecutionQueueV1 = startJobRes.codeTaskQueueSnapshot ?? null;
     if (!codeTaskExecutionQueueV1) {
-      const message = "CodeTask 실행 큐를 만들 수 없습니다.";
+      const message =
+        "DB Runtime 실행 큐 스냅샷이 없습니다. 마이그레이션 적용 후 다시 시도하거나 Runtime을 새로고침하세요.";
       showToast(message);
       return { outcome: "blocked", message };
     }
@@ -7644,10 +7656,7 @@ export function PrototypePreviewPanel({
             taskCursorExecutionHistoryV1={orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1}
             implementationAutoQualityGateV1={orchestrationAwareRequirementsState.implementationAutoQualityGateV1}
             implementationQuickRunV1={orchestrationAwareRequirementsState.implementationQuickRunV1}
-            codeTaskExecutionQueueV1={
-              implementationRuntimeDbQueueSnapshot ??
-              orchestrationAwareRequirementsState.codeTaskExecutionQueueV1
-            }
+            codeTaskExecutionQueueV1={effectiveCodeTaskExecutionQueueV1}
             codeTaskExecutionRunsV1={orchestrationAwareRequirementsState.codeTaskExecutionRunsV1}
             qualityGateResults={orchestrationAwareRequirementsState.implementationQualityGateResultsV1}
             boardState={orchestrationAwareRequirementsState.implementationExecutionBoardStateV1}

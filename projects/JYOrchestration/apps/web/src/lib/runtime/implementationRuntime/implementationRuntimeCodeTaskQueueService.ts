@@ -3,6 +3,10 @@ import type { TaskCursorGithubVerifyResult } from "@/lib/prototype/taskCursorGit
 import { prisma } from "@/lib/prisma";
 import type { ImplementationRuntimeCodeTaskQueueItemView } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueTypes";
 import {
+  resolveNoCodeChangeEvidence,
+  resolveQueueItemStatusAfterGithubVerify,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueuePolicy";
+import {
   isImplementationRuntimeQueueItemInFlight,
   isImplementationRuntimeQueueItemTerminal,
   type ImplementationRuntimeCodeTaskQueueItemStatus,
@@ -38,24 +42,11 @@ function mapRow(row: {
   };
 }
 
-export function canCompleteQueueItemFromGithubVerify(
-  verify: TaskCursorGithubVerifyResult,
-): boolean {
-  if (verify.ok && String(verify.verifiedCommitSha ?? "").trim()) return true;
-  const reason = String(verify.reason ?? verify.detailReason ?? "").toLowerCase();
-  if (reason.includes("no_code_change") || reason.includes("no code change")) return true;
-  return false;
-}
-
-export function resolveQueueItemStatusAfterGithubVerify(input: {
-  readonly verify: TaskCursorGithubVerifyResult;
-}): ImplementationRuntimeCodeTaskQueueItemStatus {
-  if (canCompleteQueueItemFromGithubVerify(input.verify)) {
-    if (input.verify.ok && input.verify.verifiedCommitSha?.trim()) return "completed";
-    return "no_code_change_completed";
-  }
-  return "failed";
-}
+export {
+  canCompleteQueueItemFromGithubVerify,
+  resolveNoCodeChangeEvidence,
+  resolveQueueItemStatusAfterGithubVerify,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueuePolicy";
 
 export async function createImplementationRuntimeCodeTaskQueue(input: {
   readonly projectId: string;
@@ -153,10 +144,17 @@ async function updateQueueItemStatus(input: {
   readonly itemId: string;
   readonly status: ImplementationRuntimeCodeTaskQueueItemStatus;
   readonly patch?: Partial<{
+    readonly cursorRequestId: string | null;
     readonly cursorRunId: string | null;
+    readonly targetRepository: string | null;
+    readonly baseBranch: string | null;
     readonly workBranch: string | null;
     readonly commitSha: string | null;
+    readonly branchHeadCommitSha: string | null;
+    readonly changedFilesJson: Prisma.InputJsonValue;
+    readonly noCodeChangeEvidence: string | null;
     readonly failureReason: string | null;
+    readonly errorMessage: string | null;
     readonly dispatchedAt: Date;
     readonly githubVerifiedAt: Date;
     readonly completedAt: Date;
@@ -169,10 +167,27 @@ async function updateQueueItemStatus(input: {
     data: {
       status: input.status,
       updatedAt: now,
+      ...(input.patch?.cursorRequestId !== undefined
+        ? { cursorRequestId: input.patch.cursorRequestId }
+        : {}),
       ...(input.patch?.cursorRunId !== undefined ? { cursorRunId: input.patch.cursorRunId } : {}),
+      ...(input.patch?.targetRepository !== undefined
+        ? { targetRepository: input.patch.targetRepository }
+        : {}),
+      ...(input.patch?.baseBranch !== undefined ? { baseBranch: input.patch.baseBranch } : {}),
       ...(input.patch?.workBranch !== undefined ? { workBranch: input.patch.workBranch } : {}),
       ...(input.patch?.commitSha !== undefined ? { commitSha: input.patch.commitSha } : {}),
+      ...(input.patch?.branchHeadCommitSha !== undefined
+        ? { branchHeadCommitSha: input.patch.branchHeadCommitSha }
+        : {}),
+      ...(input.patch?.changedFilesJson !== undefined
+        ? { changedFilesJson: input.patch.changedFilesJson }
+        : {}),
+      ...(input.patch?.noCodeChangeEvidence !== undefined
+        ? { noCodeChangeEvidence: input.patch.noCodeChangeEvidence }
+        : {}),
       ...(input.patch?.failureReason !== undefined ? { failureReason: input.patch.failureReason } : {}),
+      ...(input.patch?.errorMessage !== undefined ? { errorMessage: input.patch.errorMessage } : {}),
       ...(input.patch?.dispatchedAt ? { dispatchedAt: input.patch.dispatchedAt } : {}),
       ...(input.patch?.githubVerifiedAt ? { githubVerifiedAt: input.patch.githubVerifiedAt } : {}),
       ...(input.patch?.completedAt ? { completedAt: input.patch.completedAt } : {}),
@@ -186,29 +201,39 @@ export async function markImplementationRuntimeCodeTaskQueueItemDispatching(inpu
   readonly codeTaskId: string;
   readonly now?: Date;
 }): Promise<ImplementationRuntimeCodeTaskQueueItemView | null> {
+  const jobId = input.jobId.trim();
+  const codeTaskId = input.codeTaskId.trim();
+  const now = input.now ?? new Date();
+  const updated = await prisma.implementationRuntimeCodeTaskQueueItem.updateMany({
+    where: { jobId, codeTaskId, status: "queued" },
+    data: { status: "dispatching", dispatchedAt: now, updatedAt: now },
+  });
+  if (updated.count === 1) {
+    const row = await prisma.implementationRuntimeCodeTaskQueueItem.findFirst({
+      where: { jobId, codeTaskId },
+    });
+    return row ? mapRow(row) : null;
+  }
   const item = await prisma.implementationRuntimeCodeTaskQueueItem.findFirst({
-    where: { jobId: input.jobId.trim(), codeTaskId: input.codeTaskId.trim() },
+    where: { jobId, codeTaskId },
   });
   if (!item) return null;
-  if (item.status !== "queued") {
-    if (isImplementationRuntimeQueueItemInFlight(item.status)) {
-      throw new Error(`Queue item already in flight (status=${item.status})`);
-    }
-    return mapRow(item);
+  if (isImplementationRuntimeQueueItemInFlight(item.status)) {
+    throw new Error(`Duplicate dispatch blocked: queue item ${item.status}`);
   }
-  const now = input.now ?? new Date();
-  return updateQueueItemStatus({
-    itemId: item.id,
-    status: "dispatching",
-    patch: { dispatchedAt: now },
-    now,
-  });
+  if (isImplementationRuntimeQueueItemTerminal(item.status)) {
+    throw new Error(`Dispatch blocked: queue item terminal (${item.status})`);
+  }
+  throw new Error(`Dispatch only allowed from queued (status=${item.status})`);
 }
 
 export async function markImplementationRuntimeCodeTaskQueueItemCursorRequested(input: {
   readonly jobId: string;
   readonly codeTaskId: string;
+  readonly cursorRequestId?: string | null;
   readonly cursorRunId?: string | null;
+  readonly targetRepository?: string | null;
+  readonly baseBranch?: string | null;
   readonly workBranch?: string | null;
   readonly now?: Date;
 }): Promise<ImplementationRuntimeCodeTaskQueueItemView | null> {
@@ -220,7 +245,10 @@ export async function markImplementationRuntimeCodeTaskQueueItemCursorRequested(
     itemId: item.id,
     status: "cursor_running",
     patch: {
+      cursorRequestId: input.cursorRequestId ?? input.cursorRunId ?? null,
       cursorRunId: input.cursorRunId ?? null,
+      targetRepository: input.targetRepository ?? null,
+      baseBranch: input.baseBranch ?? null,
       workBranch: input.workBranch ?? null,
     },
     now: input.now,
@@ -239,12 +267,22 @@ export async function applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem(
   if (!item) return null;
   const now = input.now ?? new Date();
   const status = resolveQueueItemStatusAfterGithubVerify({ verify: input.verify });
+  const noCodeEvidence = resolveNoCodeChangeEvidence(input.verify);
+  const changedFiles = input.verify.verifiedChangedFiles ?? [];
   return updateQueueItemStatus({
     itemId: item.id,
     status,
     patch: {
       commitSha: input.verify.verifiedCommitSha ?? null,
-      failureReason: status === "failed" ? input.verify.message ?? input.verify.reason ?? "github_verify_failed" : null,
+      branchHeadCommitSha: input.verify.verifiedCommitSha ?? null,
+      changedFilesJson: changedFiles.length ? (changedFiles as Prisma.InputJsonValue) : undefined,
+      noCodeChangeEvidence: noCodeEvidence,
+      failureReason:
+        status === "failed" || status === "rework_required"
+          ? input.verify.message ?? input.verify.reason ?? "github_verify_failed"
+          : null,
+      errorMessage:
+        status === "failed" ? input.verify.message ?? input.verify.reason ?? null : null,
       githubVerifiedAt: now,
       completedAt: isImplementationRuntimeQueueItemTerminal(status) ? now : undefined,
     },
@@ -359,6 +397,9 @@ export async function assertQueueItemDispatchAllowed(input: {
   if (!item) return;
   if (isImplementationRuntimeQueueItemInFlight(item.status)) {
     throw new Error(`Duplicate dispatch blocked: queue item ${item.status}`);
+  }
+  if (isImplementationRuntimeQueueItemTerminal(item.status)) {
+    throw new Error(`Dispatch blocked: queue item terminal (${item.status})`);
   }
   if (item.status !== "queued") {
     throw new Error(`Dispatch only allowed from queued (status=${item.status})`);

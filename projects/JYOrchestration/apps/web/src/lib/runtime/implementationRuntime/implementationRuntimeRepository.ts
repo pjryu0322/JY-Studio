@@ -139,6 +139,16 @@ export async function findActiveImplementationRuntimeJob(
   };
 }
 
+export function splitJobWithRuns(
+  row: ImplementationRuntimeJobView & { runs: readonly ImplementationRuntimeRunView[] },
+): {
+  readonly job: ImplementationRuntimeJobView;
+  readonly runs: readonly ImplementationRuntimeRunView[];
+} {
+  const { runs, ...job } = row;
+  return { job, runs };
+}
+
 export function buildImplementationRuntimeBundleFromJob(input: {
   readonly job: ImplementationRuntimeJobView;
   readonly runs: readonly ImplementationRuntimeRunView[];
@@ -178,7 +188,7 @@ export async function getImplementationRuntimeBundle(
   if (!active) {
     return { job: null, runs: [], currentRun: null };
   }
-  return buildImplementationRuntimeBundleFromJob(active);
+  return buildImplementationRuntimeBundleFromJob(splitJobWithRuns(active));
 }
 
 export async function getImplementationRuntimeBundleByJobId(input: {
@@ -189,7 +199,7 @@ export async function getImplementationRuntimeBundleByJobId(input: {
   if (!job) {
     return { job: null, runs: [], currentRun: null };
   }
-  return buildImplementationRuntimeBundleFromJob(job);
+  return buildImplementationRuntimeBundleFromJob(splitJobWithRuns(job));
 }
 
 export async function createImplementationRuntimeJob(input: {
@@ -234,11 +244,7 @@ export async function createImplementationRuntimeJobWithFirstRun(input: {
 
   const existing = await findActiveImplementationRuntimeJob(pid);
   if (existing) {
-    const currentRun =
-      existing.runs.find((r) => r.codeTaskId === existing.currentCodeTaskId) ??
-      existing.runs[existing.runs.length - 1] ??
-      null;
-    return { job: existing, runs: existing.runs, currentRun };
+    return buildImplementationRuntimeBundleFromJob(splitJobWithRuns(existing));
   }
 
   const now = input.now ?? new Date();
