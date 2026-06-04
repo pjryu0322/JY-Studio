@@ -27,6 +27,9 @@ import { useWorkspaceScrollToEnd } from "@/components/workspace/useWorkspaceScro
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsAiMessageMarkdown";
+import { RequirementsAiMessageWithOptionalCodeTaskCopy } from "@/components/requirements/CodeTaskLlmRefinementChatSection";
+import { splitMessageContentForCodeTaskLlmRefinementBlock } from "@/lib/requirements/codeTaskLlmRefinementChatBlock";
+import { QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE } from "@/lib/requirements/quickDesignConfirmArtifacts";
 import { RequirementsMessageExplainability } from "@/components/requirements/RequirementsMessageExplainability";
 import { WorkspaceAiHeaderWithAvatar } from "@/components/ai-member/WorkspaceAiHeaderWithAvatar";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
@@ -127,6 +130,7 @@ export function RequirementsChatPanel({
   sessionUserDisplayName = "나",
   promptTimeline,
   onOpenPromptTimeline,
+  onCopyAllCodeTaskPrompts,
 }: {
   readonly messages: readonly RequirementsMessage[] | null;
   readonly composer: ReactNode;
@@ -165,6 +169,8 @@ export function RequirementsChatPanel({
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   /** H7.5: 프롬프트 이력 드로어 열기(워크스페이스에서 주입) */
   readonly onOpenPromptTimeline?: () => void;
+  /** Quick Design 구현준비 메시지: 전체 CodeTask Cursor 프롬프트 일괄 복사 */
+  readonly onCopyAllCodeTaskPrompts?: () => Promise<boolean>;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const endRef = useWorkspaceScrollToEnd(`${(messages?.length ?? 0)}-${typingIndicator ? 1 : 0}`);
@@ -633,9 +639,14 @@ export function RequirementsChatPanel({
                 interviewSuggestions.length > 0 &&
                 !deliverPayload &&
                 !isErr;
+              const codeTaskLlmRefinementBlockParts = onCopyAllCodeTaskPrompts
+                ? splitMessageContentForCodeTaskLlmRefinementBlock(text)
+                : null;
               const showBootstrapProposalPlain =
+                !codeTaskLlmRefinementBlockParts &&
                 !deliverPayload &&
                 !isErr &&
+                m.meta?.internalType !== QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE &&
                 (m.meta?.internalType === IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE ||
                   hasProposalFirstStructure(text));
               const aiBody = deliverPayload ? (
@@ -647,10 +658,15 @@ export function RequirementsChatPanel({
                   onRegenerate={(types) => onRegenerateDeliverables?.(types)}
                   onConfirm={(ids) => onConfirmDeliverables?.(ids)}
                 />
-              ) : showBootstrapProposalPlain ? (
-                <div style={{ ...WORKSPACE_STANDARD_CHAT_BODY_STYLE, whiteSpace: "pre-wrap" }}>{text}</div>
+              ) : codeTaskLlmRefinementBlockParts || !showBootstrapProposalPlain ? (
+                <RequirementsAiMessageWithOptionalCodeTaskCopy
+                  text={text}
+                  variant={isErr ? "error" : "default"}
+                  enableCodeTaskPromptBulkCopy={Boolean(onCopyAllCodeTaskPrompts)}
+                  onCopyAllCodeTaskPrompts={onCopyAllCodeTaskPrompts}
+                />
               ) : (
-                <RequirementsAiMessageMarkdown text={text} variant={isErr ? "error" : "default"} />
+                <div style={{ ...WORKSPACE_STANDARD_CHAT_BODY_STYLE, whiteSpace: "pre-wrap" }}>{text}</div>
               );
 
               const defaultAiTitle = displayedWorkspaceAiTitle(screenAiMemberId);

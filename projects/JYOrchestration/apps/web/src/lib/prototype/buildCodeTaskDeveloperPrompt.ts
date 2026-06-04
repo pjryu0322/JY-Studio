@@ -1,6 +1,9 @@
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
-import { resolveCodeTaskFeaturePromptTemplate } from "@/lib/prototype/codeTaskPromptFeatureTemplates";
 import type { CodeTaskPromptContextV1 } from "@/lib/prototype/codeTaskPromptContext";
+import {
+  buildCodeTaskRuntimePromptContextView,
+  shouldPreferRuntimeContextView,
+} from "@/lib/prototype/codeTaskRuntimePromptContextView";
 import type { ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import {
@@ -59,39 +62,51 @@ function dedupeBulletLines(lines: readonly string[]): string[] {
   return out;
 }
 
-function buildPlanningContextSections(promptContext?: CodeTaskPromptContextV1 | null): string[] {
-  if (!promptContext) return [];
+function resolveGeneratedProjectProbePathLines(safeCandidatePaths: readonly string[]): string[] {
+  const globs = [...GENERATED_PROJECT_PROBE_PATHS];
+  const candidates = safeCandidatePaths.map((p) => p.trim()).filter(Boolean);
+  const narrowOnly =
+    candidates.length > 0 &&
+    candidates.length <= 2 &&
+    candidates.every((p) => !p.includes("*"));
+  if (narrowOnly || candidates.length === 0) {
+    return globs.map((p) => `- ${p}`);
+  }
+  const merged = [...new Set([...globs, ...candidates])];
+  return merged.map((p) => `- ${p}`);
+}
+
+function buildPlanningContextSectionsFromView(
+  view: ReturnType<typeof buildCodeTaskRuntimePromptContextView>,
+): string[] {
   const lines: string[] = [];
-  const pc = promptContext.planningContext;
   const planningBullets: string[] = [];
+  const pc = view.planningContext;
   if (pc.serviceGoal) planningBullets.push(`서비스 목적: ${pc.serviceGoal}`);
   if (pc.targetUsers.length) planningBullets.push(`핵심 사용자: ${pc.targetUsers.join(", ")}`);
   if (pc.problemToSolve) planningBullets.push(`해결하려는 문제: ${pc.problemToSolve}`);
-  const flows = promptContext.flowContext.relatedUserFlows.slice(0, 4);
-  if (flows.length) planningBullets.push(`관련 사용자 흐름: ${flows.join(", ")}`);
-
+  if (pc.relatedUserFlows.length) {
+    planningBullets.push(`관련 사용자 흐름: ${pc.relatedUserFlows.join(", ")}`);
+  }
   if (planningBullets.length) {
     lines.push("## 기획 맥락", ...planningBullets.map((b) => `- ${b}`), "");
   }
 
-  const roleBullets: string[] = [];
-  const feat = [
-    ...promptContext.featureContext.relatedFeatures,
-    ...promptContext.featureContext.relatedScreens,
-    ...promptContext.featureContext.relatedStates,
-  ].slice(0, 4);
-  if (feat.length) roleBullets.push(`이 CodeTask가 담당하는 기능/상태: ${feat.join(", ")}`);
-  if (promptContext.implementationContext.intent) {
-    roleBullets.push(promptContext.implementationContext.intent);
+  const roleBullets: string[] = [`역할: ${view.role}`];
+  const rc = view.relatedContext;
+  if (rc.screens.length) roleBullets.push(`관련 화면: ${rc.screens.join(", ")}`);
+  if (rc.states.length) roleBullets.push(`관련 상태: ${rc.states.join(", ")}`);
+  if (rc.data.length) roleBullets.push(`관련 데이터: ${rc.data.join(", ")}`);
+  if (rc.templateAreas.length) {
+    roleBullets.push(`관련 템플릿 영역: ${rc.templateAreas.slice(0, 3).join(" · ")}`);
   }
-  const expected = promptContext.implementationContext.expectedBehavior.slice(0, 2);
-  if (expected.length) roleBullets.push(`기대 동작: ${expected.join(" / ")}`);
-  const screens = promptContext.featureContext.relatedScreens.slice(0, 3);
-  if (screens.length) roleBullets.push(`연결되어야 하는 화면/흐름: ${screens.join(", ")}`);
+  if (view.implementation.intent.length) {
+    for (const item of view.implementation.intent.slice(0, 2)) {
+      if (item !== view.role) roleBullets.push(item);
+    }
+  }
 
-  if (roleBullets.length) {
-    lines.push("## 이번 CodeTask의 역할", ...roleBullets.map((b) => `- ${b}`), "");
-  }
+  lines.push("## 이번 CodeTask의 역할", ...roleBullets.map((b) => `- ${b}`), "");
   return lines;
 }
 
@@ -101,38 +116,37 @@ function buildGeneratedProjectPrompt(input: {
   readonly promptContext?: CodeTaskPromptContextV1 | null;
   readonly target: ReturnType<typeof buildCodeTaskPromptTargetContext>;
   readonly sanitizedCandidates: ReturnType<typeof sanitizeCandidatePathsForTargetRepo>;
+  readonly templateId?: string;
 }): string {
   const { codeTask, target, sanitizedCandidates } = input;
-  const template = resolveCodeTaskFeaturePromptTemplate({
-    title: codeTask.title,
-    description: codeTask.description,
-    requirements: codeTask.acceptanceCriteria,
-    changeType: codeTask.changeType,
+  const view = buildCodeTaskRuntimePromptContextView({
+    codeTask,
+    parentTask: input.parentTask,
+    promptContext: input.promptContext,
+    templateId: input.templateId,
   });
 
-  const extraAcceptance = sanitizeLinesForGeneratedProject(codeTask.acceptanceCriteria).filter(
-    (line) =>
-      !template.implementationRequirements.some(
-        (req) => req.toLowerCase() === line.replace(/^-\s*/, "").toLowerCase(),
-      ),
+  const preferContext = shouldPreferRuntimeContextView(view);
+
+  const implementationScope = dedupeBulletLines(
+    sanitizeLinesForGeneratedProject(view.implementation.scope),
   );
 
-  const implementationRequirements = dedupeBulletLines([
-    ...template.implementationRequirements.map((r) => `- ${r}`),
-    ...extraAcceptance.map((c) => (c.startsWith("- ") ? c : `- ${c}`)),
-  ]);
+  const implementationRequirements = dedupeBulletLines(
+    sanitizeLinesForGeneratedProject(view.implementation.requirements),
+  );
 
-  const verificationChecklist = dedupeBulletLines([
-    ...template.verificationChecklist.map((v) => `- ${v}`),
-    "- 대상 저장소 루트에서 package.json scripts를 확인한다.",
-    "- 가능한 경우 build/test/lint 중 존재하는 명령을 실행한다.",
-    "- 명령이 없으면 수정 파일과 화면 동작 기준으로 자체 검증한다.",
-  ]);
+  const verificationChecklist = dedupeBulletLines(
+    sanitizeLinesForGeneratedProject(view.verification.checks),
+  );
 
-  const probePaths =
-    sanitizedCandidates.safeCandidatePaths.length > 0
-      ? sanitizedCandidates.safeCandidatePaths.map((p) => `- ${p}`)
-      : GENERATED_PROJECT_PROBE_PATHS.map((p) => `- ${p}`);
+  if (!preferContext && implementationRequirements.length < 3) {
+    // view builder already applied template fallback; keep as-is
+  }
+
+  const probePaths = resolveGeneratedProjectProbePathLines(
+    sanitizedCandidates.safeCandidatePaths,
+  );
 
   const sections = [
     "# CodeTask 개발 요청",
@@ -147,9 +161,11 @@ function buildGeneratedProjectPrompt(input: {
     "## 작업 목표",
     codeTask.title.trim(),
     "",
-    ...buildPlanningContextSections(input.promptContext),
+    ...buildPlanningContextSectionsFromView(view),
     "## 구현 범위",
-    ...template.implementationGoal.map((g) => `- ${g}`),
+    ...(implementationScope.length
+      ? implementationScope
+      : [`- ${view.role}`]),
     "",
     "## 구현 요구사항",
     ...implementationRequirements,
@@ -256,6 +272,7 @@ export function buildCodeTaskDeveloperPromptDetailed(input: {
   readonly baseBranch: string;
   readonly allowedPathGlobs?: readonly string[];
   readonly targetRepoKind?: CodeTaskPromptTargetRepoKind;
+  readonly templateId?: string;
 }): BuildCodeTaskDeveloperPromptResult {
   const repoKind = input.targetRepoKind ?? "generated_project";
   const repoFullName = input.targetRepository.repoFullName.trim();
@@ -288,6 +305,7 @@ export function buildCodeTaskDeveloperPromptDetailed(input: {
           promptContext: input.promptContext,
           target,
           sanitizedCandidates: sanitized,
+          templateId: input.templateId,
         })
       : buildPlatformProjectPrompt({
           codeTask: input.codeTask,

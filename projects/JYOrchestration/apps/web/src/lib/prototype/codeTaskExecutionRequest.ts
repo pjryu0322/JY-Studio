@@ -10,6 +10,7 @@ import {
   validateCodeTaskDeveloperPromptSafety,
 } from "@/lib/prototype/codeTaskDeveloperPromptSafety";
 import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
+import { resolveCodeTaskSpecificRole } from "@/lib/prototype/codeTaskPromptRoleResolver";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { updateCodeTaskExecutionRun } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
@@ -124,11 +125,22 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     targetRepoKind: "generated_project",
   });
 
+  const roleKind = resolveCodeTaskSpecificRole({
+    codeTaskTitle: input.codeTask.title,
+    codeTaskDescription: input.codeTask.description,
+    parentTaskTitle: input.parentTask?.title,
+    parentTaskDescription: input.parentTask?.description,
+    requirements: input.codeTask.acceptanceCriteria,
+    changeType: input.codeTask.changeType,
+  }).roleKind;
   const safety = validateCodeTaskDeveloperPromptSafety({
     prompt: promptResult.prompt,
     targetRepoFullName: input.targetRepository.repoFullName,
     targetRepoKind: "generated_project",
     allowedPathGlobs,
+    codeTaskId: input.codeTask.codeTaskId,
+    workBranch: buildCodeTaskWorkBranch(input.codeTask.codeTaskId),
+    roleKind,
   });
 
   if (!safety.ok) {

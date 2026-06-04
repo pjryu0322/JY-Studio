@@ -133,6 +133,9 @@ describe("resetDerivedImplementationState", () => {
     expect(reset.implementationExecutionJobsV1).toBeNull();
     expect(reset.codeTaskExecutionRunsV1).toBeNull();
     expect(reset.codeTaskExecutionQueueV1).toBeNull();
+    expect(reset.codeTaskPromptContextMapV1).toBeNull();
+    expect(reset.reviewStageUserTestSessionV1).toBeNull();
+    expect(reset.reviewStageUserFeedbackListV1).toBeNull();
   });
 
   it("planning reset keeps only planning reset trace in promptTimeline", () => {

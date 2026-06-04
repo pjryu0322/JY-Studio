@@ -113,6 +113,15 @@ describe("shouldClearPendingImplementationPatch", () => {
       }),
     ).toBe(true);
   });
+
+  it("clears when implementation execution session is wiped (e.g. planning reset)", () => {
+    expect(
+      shouldClearPendingImplementationPatch({
+        prevImplementationSessionActive: true,
+        nextImplementationSessionActive: false,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("canConfirmImplementationWorkPlanFromEffectiveState", () => {

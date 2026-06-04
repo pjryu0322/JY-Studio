@@ -11,6 +11,7 @@ import {
 } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import { fetchProjectById } from "@/components/project-spec/api";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT } from "@/lib/workflow/flow-state";
 
 export function ExecutionPageClient() {
   const search = useSearchParams();
@@ -26,9 +27,10 @@ export function ExecutionPageClient() {
   useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    void (async () => {
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
       try {
         const r = await fetchProjectById(projectId);
         if (cancelled) return;
@@ -42,9 +44,17 @@ export function ExecutionPageClient() {
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    };
+
+    void load();
+
+    const onContextRefresh = () => {
+      void load();
+    };
+    window.addEventListener(APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT, onContextRefresh);
     return () => {
       cancelled = true;
+      window.removeEventListener(APP_FLOW_PROJECT_CONTEXT_REFRESH_EVENT, onContextRefresh);
     };
   }, [projectId]);
 

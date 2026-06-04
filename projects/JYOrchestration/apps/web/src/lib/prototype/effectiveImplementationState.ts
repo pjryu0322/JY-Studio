@@ -251,11 +251,17 @@ export function shouldClearPendingImplementationPatch(input: {
   readonly nextPersistedDraftUpdatedAt?: string | null;
   readonly prevPersistedTaskPlanCreatedAt?: string | null;
   readonly nextPersistedTaskPlanCreatedAt?: string | null;
+  readonly prevImplementationSessionActive?: boolean;
+  readonly nextImplementationSessionActive?: boolean;
 }): boolean {
   const isInitial =
     input.prevPersistedDraftUpdatedAt === undefined &&
-    input.prevPersistedTaskPlanCreatedAt === undefined;
+    input.prevPersistedTaskPlanCreatedAt === undefined &&
+    input.prevImplementationSessionActive === undefined;
   if (isInitial) return false;
+  if (input.prevImplementationSessionActive && input.nextImplementationSessionActive === false) {
+    return true;
+  }
   if (input.prevPersistedDraftUpdatedAt !== input.nextPersistedDraftUpdatedAt) return true;
   if (input.prevPersistedTaskPlanCreatedAt !== input.nextPersistedTaskPlanCreatedAt) return true;
   return false;

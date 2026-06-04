@@ -263,6 +263,8 @@ export async function POST(request: NextRequest) {
         targetRepoFullName: context.targetRepository.repoFullName,
         targetRepoKind: "generated_project",
         allowedPathGlobs: allowedForSafety,
+        codeTaskId: codeTaskIdForPromptGate,
+        workBranch: execution.workBranch,
       });
       if (!promptSafety.ok) {
         execution = patchTaskCursorExecution(execution, {

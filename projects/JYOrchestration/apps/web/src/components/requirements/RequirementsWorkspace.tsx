@@ -115,6 +115,13 @@ import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDe
 import { pickWorkspaceAiHandoffMember } from "@/components/requirements/workspace/pickWorkspaceAiHandoffMember";
 import { useRequirementsStageRouteRedirect } from "@/components/requirements/workspace/useRequirementsStageRouteRedirect";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
+import {
+  CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE,
+  resolveCodeTaskPromptDraftForCopy,
+} from "@/lib/prototype/resolveCodeTaskPromptDraftForCopy";
+import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { parseCodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
+import { writeClipboardText } from "@/lib/clipboard/writeClipboardText";
 import type { SpecWorkspaceProjectPatchResponseBody } from "@/lib/types/specWorkspaceProjectPatch";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import { formatDialogueExcerpt } from "@/lib/requirements/requirementsWorkspaceHelpers";
@@ -3495,6 +3502,33 @@ export function RequirementsWorkspace({
   const serviceFlowChatPending =
     activeStage === "service-flow" && serviceFlowAlternativeCanvas.replying;
 
+  const handleCopyAllCodeTaskPrompts = useCallback(async () => {
+    const pid = resolvedProjectId.trim();
+    if (!pid) {
+      showErrorToast("프로젝트가 연결되지 않았습니다.");
+      return false;
+    }
+    const state = stateJsonRef.current;
+    const built = resolveCodeTaskPromptDraftForCopy({
+      projectId: pid,
+      codeTaskPlan: parseImplementationCodeTaskPlanV1(state.implementationCodeTaskPlanV1),
+      taskList: state.implementationTaskListV1 ?? null,
+      codeTaskPromptContextMapV1: parseCodeTaskPromptContextMapV1(state.codeTaskPromptContextMapV1),
+      mode: "all",
+    });
+    if (!built.ok || !built.prompt) {
+      showErrorToast(built.reason ?? CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE);
+      return false;
+    }
+    const ok = await writeClipboardText(built.prompt);
+    if (ok) {
+      showSuccessToast("CodeTask 1단계 프롬프트 초안을 복사했습니다.");
+    } else {
+      showErrorToast("클립보드 복사에 실패했습니다.");
+    }
+    return ok;
+  }, [resolvedProjectId, showErrorToast, showSuccessToast]);
+
   const ideationStage = (
     <div key="ideation" style={{ display: "contents" }}>
       <RequirementsIdeationChatPanel
@@ -3528,6 +3562,7 @@ export function RequirementsWorkspace({
         composerPlaceholder={composerPlaceholder}
         targetPickerItems={targetPickerItems}
         onOrganizeRequirements={() => void onOrganizeRequirements()}
+        onCopyAllCodeTaskPrompts={handleCopyAllCodeTaskPrompts}
         organizeDisabled={busy || remoteLocked}
         draftDocTruthy={Boolean(draftDoc)}
         onOpenDraftView={() => setDraftDrawerOpen(true)}

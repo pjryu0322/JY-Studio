@@ -124,7 +124,36 @@ export const IMPLEMENTATION_SESSION_RESET_NULL_PATCH = {
   codeTaskExecutionQueueV1: null,
   implementationRuntimeStateV1: null,
   implementationRuntimeUiSnapshotV1: null,
+  reviewStageUserTestSessionV1: null,
+  reviewStageUserFeedbackListV1: null,
 } as const;
+
+/** persisted requirementsStateJson에 구현 실행·준비 세션이 남아 있는지 */
+export function hasActiveImplementationExecutionSession(
+  state: Pick<
+    RequirementsStateJson,
+    | "implementationSeedV1"
+    | "implementationTaskListV1"
+    | "implementationCodeTaskPlanV1"
+    | "codeTaskExecutionRunsV1"
+    | "codeTaskExecutionQueueV1"
+    | "taskCursorExecutionV1"
+    | "implementationRuntimeUiSnapshotV1"
+    | "implementationExecutionJobsV1"
+    | "implementationQuickRunV1"
+  >,
+): boolean {
+  if (state.implementationSeedV1) return true;
+  if ((state.implementationTaskListV1?.tasks?.length ?? 0) > 0) return true;
+  if ((state.implementationCodeTaskPlanV1?.tasks?.length ?? 0) > 0) return true;
+  if ((state.codeTaskExecutionRunsV1?.length ?? 0) > 0) return true;
+  if (state.codeTaskExecutionQueueV1) return true;
+  if (state.taskCursorExecutionV1) return true;
+  if (state.implementationRuntimeUiSnapshotV1) return true;
+  if ((state.implementationExecutionJobsV1?.length ?? 0) > 0) return true;
+  if (state.implementationQuickRunV1) return true;
+  return false;
+}
 
 export function isImplementationSingleChatMessage(message: RequirementsMessage): boolean {
   const internalType = String(message.meta.internalType ?? "");

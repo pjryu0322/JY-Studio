@@ -34,7 +34,9 @@ export const GENERATED_PROJECT_PROBE_PATHS: readonly string[] = [
   "lib/**",
   "hooks/**",
   "styles/**",
+  "public/**",
   "tests/**",
+  "__tests__/**",
 ];
 
 export function buildGeneratedProjectForbiddenRules(repoFullName: string): readonly string[] {

@@ -14,6 +14,8 @@ import {
   type CodeTaskPromptContextMapV1,
 } from "@/lib/prototype/codeTaskPromptContext";
 import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
+import { resolveCodeTaskSpecificRole } from "@/lib/prototype/codeTaskPromptRoleResolver";
+import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
@@ -61,6 +63,16 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
     input.codeTaskPromptContextMapV1,
     codeTaskId,
   );
+  const roleKind = resolveCodeTaskSpecificRole({
+    codeTaskTitle: target.codeTask.title,
+    codeTaskDescription: target.codeTask.description,
+    parentTaskTitle: target.parentTask?.title,
+    parentTaskDescription: target.parentTask?.description,
+    requirements: target.codeTask.acceptanceCriteria,
+    changeType: target.codeTask.changeType,
+  }).roleKind;
+  const workBranch = buildCodeTaskWorkBranch(codeTaskId);
+
   const run = findLatestRunForCodeTask(input.runs, codeTaskId);
   if (
     run &&
@@ -72,7 +84,20 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
       allowedPathGlobs: input.allowedPathGlobs,
     })
   ) {
-    return { ok: true, prompt: run.developerPrompt!.trim() };
+    const stored = run.developerPrompt!.trim();
+    const storedSafety = validateCodeTaskDeveloperPromptSafety({
+      prompt: stored,
+      targetRepoFullName: input.targetRepository.repoFullName,
+      targetRepoKind: TARGET_REPO_KIND,
+      allowedPathGlobs,
+      codeTaskId,
+      workBranch,
+      roleKind,
+    });
+    if (!storedSafety.ok) {
+      return { ok: false, reason: CODE_TASK_PROMPT_COPY_BLOCK_MESSAGE };
+    }
+    return { ok: true, prompt: stored };
   }
 
   const built = buildCodeTaskDeveloperPromptDetailed({
@@ -94,6 +119,9 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
     targetRepoFullName: input.targetRepository.repoFullName,
     targetRepoKind: TARGET_REPO_KIND,
     allowedPathGlobs,
+    codeTaskId,
+    workBranch,
+    roleKind,
   });
   if (!safety.ok) {
     return { ok: false, reason: CODE_TASK_PROMPT_COPY_BLOCK_MESSAGE };

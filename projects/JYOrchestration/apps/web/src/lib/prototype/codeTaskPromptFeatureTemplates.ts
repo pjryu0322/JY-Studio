@@ -1,3 +1,5 @@
+import type { CodeTaskRoleKind } from "@/lib/prototype/codeTaskPromptRoleResolver";
+
 export type CodeTaskFeaturePromptKind =
   | "loading_state"
   | "error_message"
@@ -5,10 +7,41 @@ export type CodeTaskFeaturePromptKind =
   | "retry"
   | "permission_denied"
   | "draft_save"
+  | "screen_input"
+  | "screen_result"
+  | "screen_admin"
+  | "feature_start"
+  | "feature_input"
+  | "feature_processing"
+  | "feature_result"
   | "screen"
+  | "app_shell"
   | "api"
   | "mock_data"
   | "generic_component";
+
+export function featurePromptKindFromRoleKind(
+  roleKind: CodeTaskRoleKind,
+): CodeTaskFeaturePromptKind | null {
+  const map: Partial<Record<CodeTaskRoleKind, CodeTaskFeaturePromptKind>> = {
+    screen_input: "screen_input",
+    screen_result: "screen_result",
+    screen_admin: "screen_admin",
+    feature_start: "feature_start",
+    feature_input: "feature_input",
+    feature_processing: "feature_processing",
+    feature_result: "feature_result",
+    common_loading: "loading_state",
+    common_error: "error_message",
+    common_empty: "empty_state",
+    common_retry: "retry",
+    common_permission: "permission_denied",
+    common_draft: "draft_save",
+    mock_data: "mock_data",
+    app_shell: "app_shell",
+  };
+  return map[roleKind] ?? null;
+}
 
 export type CodeTaskFeaturePromptTemplate = Readonly<{
   readonly kind: CodeTaskFeaturePromptKind;
@@ -25,23 +58,44 @@ function haystack(input: {
   return [input.title, input.description, ...input.requirements].join(" ").toLowerCase();
 }
 
+export function matchCodeTaskFeaturePromptKind(input: {
+  readonly title: string;
+  readonly description: string;
+  readonly requirements: readonly string[];
+  readonly changeType: string;
+  readonly parentTitle?: string;
+}): CodeTaskFeaturePromptKind {
+  const text = haystack({
+    title: [input.title, input.parentTitle ?? ""].join(" "),
+    description: input.description,
+    requirements: input.requirements,
+  });
+  if (/입력\s*화면/i.test(text)) return "screen_input";
+  if (/결과\s*화면/i.test(text)) return "screen_result";
+  if (/관리\s*화면/i.test(text)) return "screen_admin";
+  if (/시작\s*기능|^시작\b|분석\s*시작\s*기능/i.test(text)) return "feature_start";
+  if (/업무\s*입력/i.test(text)) return "feature_input";
+  if (/처리\s*중/i.test(text)) return "feature_processing";
+  if (/결과\s*확인/i.test(text)) return "feature_result";
+  if (/로딩|loading|스피너|skeleton/i.test(text)) return "loading_state";
+  if (/재시도|retry/i.test(text)) return "retry";
+  if (/오류|error|에러|실패.*메시지|오류\s*메시지/i.test(text)) return "error_message";
+  if (/빈\s*결과|empty|no\s*result|결과\s*없/i.test(text)) return "empty_state";
+  if (/권한|permission|access\s*denied|접근\s*제한/i.test(text)) return "permission_denied";
+  if (/임시\s*저장|draft|autosave|자동\s*저장/i.test(text)) return "draft_save";
+  if (input.changeType === "api" || /api|endpoint|route/i.test(text)) return "api";
+  if (/mock\s*데이터|mock\s*data\s*구조|데이터\/mock|fixture\s*helper/i.test(text)) return "mock_data";
+  if (input.changeType === "screen" || /화면\s*구현|화면/i.test(text)) return "screen";
+  return "generic_component";
+}
+
 function matchKind(input: {
   readonly title: string;
   readonly description: string;
   readonly requirements: readonly string[];
   readonly changeType: string;
 }): CodeTaskFeaturePromptKind {
-  const text = haystack(input);
-  if (/로딩|loading|스피너|skeleton/i.test(text)) return "loading_state";
-  if (/재시도|retry/i.test(text)) return "retry";
-  if (/오류|error|에러|실패.*메시지/i.test(text)) return "error_message";
-  if (/빈\s*결과|empty|no\s*result|결과\s*없/i.test(text)) return "empty_state";
-  if (/권한|permission|access\s*denied|접근\s*제한/i.test(text)) return "permission_denied";
-  if (/임시\s*저장|draft|autosave|자동\s*저장/i.test(text)) return "draft_save";
-  if (input.changeType === "api" || /api|endpoint|route/i.test(text)) return "api";
-  if (/mock|더미|fixture|샘플\s*데이터/i.test(text)) return "mock_data";
-  if (input.changeType === "screen" || /화면|screen|page/i.test(text)) return "screen";
-  return "generic_component";
+  return matchCodeTaskFeaturePromptKind(input);
 }
 
 const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTemplate, "kind">> = {
@@ -169,6 +223,134 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
     ],
     verificationChecklist: ["mock 데이터로 화면/흐름 동작 확인", "정상 데이터 전환 시 회귀 없음 확인"],
   },
+  feature_start: {
+    implementationGoal: [
+      "사용자가 회의 분석 작업을 시작하는 진입 액션과 상태 전환을 제공한다.",
+    ],
+    implementationRequirements: [
+      "시작/분석 실행 버튼 또는 진입 액션을 제공한다.",
+      "입력 준비 상태에서 처리 중 상태로 전환될 수 있어야 한다.",
+      "파일 미선택/입력 부족 등 예외 상태를 처리한다.",
+      "기존 입력 화면 또는 작업 공간 흐름과 연결한다.",
+    ],
+    verificationChecklist: [
+      "시작 액션 표시 및 동작 확인",
+      "입력 부족/미선택 예외 상태 확인",
+      "처리 중 상태 전환 확인",
+      "기존 레이아웃 회귀 없음 확인",
+    ],
+  },
+  feature_input: {
+    implementationGoal: ["회의 분석에 필요한 입력 정보를 수집하고 작업 공간 상태와 연결한다."],
+    implementationRequirements: [
+      "회의 파일, 참여자, 분석 옵션 등 입력 정보를 수집한다.",
+      "입력값을 화면 상태 또는 mock data state와 연결한다.",
+      "입력 부족/잘못된 입력 상태를 표시할 수 있어야 한다.",
+      "분석 시작 흐름에서 사용할 수 있는 구조로 정리한다.",
+    ],
+    verificationChecklist: [
+      "입력 필드/선택 UI 표시 확인",
+      "입력 부족/오류 상태 표시 확인",
+      "분석 시작 흐름 연결 확인",
+      "기존 레이아웃 회귀 없음 확인",
+    ],
+  },
+  feature_processing: {
+    implementationGoal: ["비동기 변환·분석 처리 진행 상태를 사용자에게 표시한다."],
+    implementationRequirements: [
+      "업로드/STT/화자 분리/초안 생성의 진행 단계를 표시한다.",
+      "진행률 또는 단계 상태를 칩, 메시지, 타임라인 중 적절한 UI로 표현한다.",
+      "처리 중에는 사용자가 현재 상태를 이해할 수 있어야 한다.",
+      "완료/실패 상태로 전환될 수 있어야 한다.",
+    ],
+    verificationChecklist: [
+      "진행 단계/진행률 UI 표시 확인",
+      "완료/실패 상태 전환 확인",
+      "기존 정상 화면 회귀 없음 확인",
+    ],
+  },
+  feature_result: {
+    implementationGoal: ["생성된 요약·스크립트를 확인하고 후속 행동을 판단할 수 있는 흐름을 제공한다."],
+    implementationRequirements: [
+      "요약본, 결정사항, 할 일, 화자별 스크립트를 확인할 수 있어야 한다.",
+      "요약본/스크립트 탭 또는 결과 패널 흐름과 연결한다.",
+      "결과 없음/로딩/오류 상태를 처리할 수 있어야 한다.",
+      "사용자가 결과를 검토하거나 다음 행동을 판단할 수 있어야 한다.",
+    ],
+    verificationChecklist: [
+      "요약/스크립트 확인 UI 표시 확인",
+      "결과 없음/로딩/오류 상태 연동 확인",
+      "기존 레이아웃 회귀 없음 확인",
+    ],
+  },
+  app_shell: {
+    implementationGoal: [
+      "선택된 템플릿의 전체 IA, 공통 레이아웃, 컨테이너, 주요 패널 구조를 제공한다.",
+    ],
+    implementationRequirements: [
+      "반응형 3열 workspace shell/container를 구현한다.",
+      "좌열, 중앙, 우열 패널을 명확한 컴포넌트 단위로 분리한다.",
+      "좌열에는 회의 파일/참여자 영역을 배치한다.",
+      "중앙에는 작업 공간과 하단 입력줄을 배치한다.",
+      "우열에는 결과 패널, 요약본/스크립트 탭, 초안 생성 타임라인을 배치한다.",
+      "프레임 상단에는 변환 단계 칩 또는 진행 상태 영역을 배치한다.",
+      "모바일에서는 주요 패널이 세로 스택 또는 탭 구조로 전환될 수 있어야 한다.",
+      "공통 frame 안에서 입력/결과/상태 컴포넌트를 렌더링할 수 있게 한다.",
+    ],
+    verificationChecklist: [
+      "좌열/중앙/우열 패널이 렌더링된다.",
+      "입력 화면과 결과 화면이 동일한 shell/container 안에서 배치될 수 있다.",
+      "모바일 또는 좁은 화면에서 주요 패널이 깨지지 않는다.",
+      "변환 단계 칩 또는 진행 상태 영역이 표시된다.",
+    ],
+  },
+  screen_input: {
+    implementationGoal: ["사용자가 파일을 선택·업로드하고 분석을 시작할 수 있는 입력 화면을 구현한다."],
+    implementationRequirements: [
+      "회의 파일 업로드/선택 진입점을 제공한다.",
+      "파일명, 재생 길이, 변환 상태 등 선택 파일 정보를 확인할 수 있어야 한다.",
+      "분석 시작 또는 작업 추가 흐름과 연결된다.",
+      "중앙 작업 공간의 입력줄 또는 + 버튼 흐름과 자연스럽게 연결된다.",
+      "모바일에서도 주요 입력 동작이 가능해야 한다.",
+    ],
+    verificationChecklist: [
+      "파일 업로드/선택 진입점이 표시된다.",
+      "선택 파일 정보 또는 대기 상태가 표시된다.",
+      "분석 시작 또는 작업 추가 동작으로 이어질 수 있다.",
+      "기존 레이아웃 회귀가 없다.",
+    ],
+  },
+  screen_result: {
+    implementationGoal: ["요약·스크립트 등 분석 결과를 확인하는 결과 화면을 구현한다."],
+    implementationRequirements: [
+      "요약본/스크립트 결과 확인 영역을 제공한다.",
+      "핵심 안건, 결정사항, 할 일 카드 구조를 제공한다.",
+      "화자별 스크립트 표시 구조를 제공한다.",
+      "결과 없음/로딩/오류 상태와 연결 가능해야 한다.",
+      "초안 생성 타임라인 또는 결과 상태와 연결된다.",
+    ],
+    verificationChecklist: [
+      "요약본/스크립트 탭 또는 결과 영역이 표시된다.",
+      "핵심 안건/결정사항/할 일/스크립트 샘플이 표시된다.",
+      "결과 없음/로딩/오류 상태와 연결 가능하다.",
+      "기존 레이아웃 회귀가 없다.",
+    ],
+  },
+  screen_admin: {
+    implementationGoal: ["분석 결과·처리 상태를 관리·확인할 수 있는 관리 화면을 구현한다."],
+    implementationRequirements: [
+      "회의 분석 결과 또는 처리 상태를 관리/확인할 수 있는 영역을 제공한다.",
+      "파일/처리 상태/결과 상태를 목록 또는 카드 형태로 확인할 수 있어야 한다.",
+      "필요한 경우 재처리, 확인, 상태 변경 같은 보조 행동을 연결할 수 있는 구조를 둔다.",
+      "기존 작업 공간/결과 패널 흐름을 깨지 않아야 한다.",
+    ],
+    verificationChecklist: [
+      "관리/상태 확인 영역이 표시된다.",
+      "처리 상태 또는 결과 상태를 확인할 수 있다.",
+      "보조 행동이 있다면 기존 흐름을 깨지 않는다.",
+      "기존 레이아웃 회귀가 없다.",
+    ],
+  },
   screen: {
     implementationGoal: ["기획 범위에 맞는 화면 UI와 상태 흐름을 구현한다."],
     implementationRequirements: [
@@ -199,8 +381,11 @@ export function resolveCodeTaskFeaturePromptTemplate(input: {
   readonly description: string;
   readonly requirements: readonly string[];
   readonly changeType: string;
+  readonly parentTitle?: string;
+  readonly roleKind?: CodeTaskRoleKind;
 }): CodeTaskFeaturePromptTemplate {
-  const kind = matchKind(input);
+  const fromRole = input.roleKind ? featurePromptKindFromRoleKind(input.roleKind) : null;
+  const kind = fromRole ?? matchCodeTaskFeaturePromptKind(input);
   const base = TEMPLATES[kind];
   return { kind, ...base };
 }

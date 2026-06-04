@@ -141,6 +141,7 @@ import {
   type ImplementationStageActionId,
   type PendingImplementationPatch,
 } from "@/lib/prototype/effectiveImplementationState";
+import { hasActiveImplementationExecutionSession } from "@/lib/requirements/resetDerivedImplementationState";
 import {
   buildImplementationStageActionFocusComposerResult,
   buildImplementationStageActionOpenArtifactsResult,
@@ -297,6 +298,8 @@ import {
   buildImplementationStatusToastDedupeKey,
   shouldSuppressImplementationStatusMessage,
 } from "@/lib/prototype/implementationStatusChatPolicy";
+import { resolveCodeTaskPromptDraftForCopyFromState } from "@/lib/prototype/resolveCodeTaskPromptDraftForCopy";
+import { CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE } from "@/lib/prototype/resolveCodeTaskPromptDraftForCopy";
 import { resolveCodeTaskDeveloperPromptForCopy } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 import {
@@ -1809,27 +1812,41 @@ export function PrototypePreviewPanel({
 
   const persistedDraftUpdatedAtRef = useRef<string | null | undefined>(undefined);
   const persistedTaskPlanCreatedAtRef = useRef<string | null | undefined>(undefined);
+  const implementationSessionActiveRef = useRef<boolean | undefined>(undefined);
 
   useEffect(() => {
     setPendingImplementationPatch({});
+    implementationSessionActiveRef.current = undefined;
   }, [projectId]);
 
   useEffect(() => {
     const nextDraftAt = parsedRequirementsState.implementationWorkPlanDraftV1?.updatedAt ?? null;
     const nextTaskAt = parsedRequirementsState.implementationTaskPlanV1?.createdAt ?? null;
+    const nextSessionActive = hasActiveImplementationExecutionSession(parsedRequirementsState);
+    const prevSessionActive = implementationSessionActiveRef.current;
     if (
       shouldClearPendingImplementationPatch({
         prevPersistedDraftUpdatedAt: persistedDraftUpdatedAtRef.current,
         nextPersistedDraftUpdatedAt: nextDraftAt,
         prevPersistedTaskPlanCreatedAt: persistedTaskPlanCreatedAtRef.current,
         nextPersistedTaskPlanCreatedAt: nextTaskAt,
+        prevImplementationSessionActive: prevSessionActive,
+        nextImplementationSessionActive: nextSessionActive,
       })
     ) {
-      setPendingImplementationPatch({});
+      setPendingImplementationPatch(null);
+      setImplementationRuntimeDbBundle(null);
+      setImplementationRuntimeDbQueueSnapshot(null);
+      taskCursorPollTokenRef.current += 1;
+      taskCursorPollActiveRunIdRef.current = null;
+      setActiveTaskCursorJob(null);
+      lastServerTaskCursorJobSyncFingerprintRef.current = "";
     }
     persistedDraftUpdatedAtRef.current = nextDraftAt;
     persistedTaskPlanCreatedAtRef.current = nextTaskAt;
+    implementationSessionActiveRef.current = nextSessionActive;
   }, [
+    parsedRequirementsState,
     parsedRequirementsState.implementationWorkPlanDraftV1?.updatedAt,
     parsedRequirementsState.implementationTaskPlanV1?.createdAt,
   ]);
@@ -7179,7 +7196,9 @@ export function PrototypePreviewPanel({
       }
       void writeClipboardText(result.prompt).then((ok) => {
         showToast(
-          ok ? "Cursor 전달 프롬프트를 복사했습니다." : "클립보드 복사에 실패했습니다.",
+          ok
+            ? "선택 CodeTask의 Cursor 전달 프롬프트를 복사했습니다."
+            : "클립보드 복사에 실패했습니다.",
         );
       });
     },
@@ -7194,6 +7213,24 @@ export function PrototypePreviewPanel({
       showToast,
     ],
   );
+
+  const handleCopyAllCodeTaskCursorPrompts = useCallback(() => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    const built = resolveCodeTaskPromptDraftForCopyFromState({
+      requirementsStateJson: orchestrationAwareRequirementsState,
+      mode: "all",
+    });
+    if (!built.ok || !built.prompt) {
+      showToast(built.reason ?? CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE);
+      return;
+    }
+    void writeClipboardText(built.prompt).then((ok) => {
+      showToast(
+        ok ? "CodeTask 1단계 프롬프트 초안을 복사했습니다." : "클립보드 복사에 실패했습니다.",
+      );
+    });
+  }, [projectId, orchestrationAwareRequirementsState, showToast]);
 
   const onImplementationQuickExecution = useCallback(() => {
     const pid = projectId.trim();
@@ -7661,6 +7698,7 @@ export function PrototypePreviewPanel({
             onSelectedCodeTaskIdsChange={handleBoardSelectedCodeTaskIdsChange}
             onRunSingleCodeTask={handleRunSingleCodeTask}
             onCopyCodeTaskCursorPrompt={handleCopyCodeTaskCursorPrompt}
+            onCopyAllCodeTaskCursorPrompts={handleCopyAllCodeTaskCursorPrompts}
             implementationRuntimeStateV1={resolveImplementationRuntimeStateForRead({
               raw: orchestrationAwareRequirementsState as Record<string, unknown>,
               projectId: projectId.trim(),

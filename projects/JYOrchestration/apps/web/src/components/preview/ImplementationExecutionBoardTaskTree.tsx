@@ -73,8 +73,8 @@ function ExecutionFlowSteps({
                 <button
                   type="button"
                   className={styles.taskTreeCopyPromptButton}
-                  aria-label="Cursor 전달 프롬프트 복사"
-                  title="Cursor 프롬프트 복사"
+                  aria-label="선택 CodeTask Cursor 전달 프롬프트 복사"
+                  title="선택 CodeTask Cursor 전달 프롬프트 복사"
                   onClick={(event) => {
                     event.stopPropagation();
                     onCopyCursorPrompt();
@@ -257,6 +257,7 @@ export function ImplementationExecutionBoardTaskTree({
   onToggleCodeTaskChecked,
   onRunSingleCodeTask,
   onCopyCodeTaskCursorPrompt,
+  onCopyAllCodeTaskCursorPrompts,
   selectedCodeTaskCount,
   onRestartTask,
   onStopTask,
@@ -278,6 +279,7 @@ export function ImplementationExecutionBoardTaskTree({
   readonly onToggleCodeTaskChecked?: (codeTaskId: string, checked: boolean) => void;
   readonly onRunSingleCodeTask?: (codeTaskId: string) => void;
   readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
+  readonly onCopyAllCodeTaskCursorPrompts?: () => void;
   readonly selectedCodeTaskCount?: number;
   readonly onRestartTask?: (taskId: string) => void;
   readonly onStopTask?: (taskId: string) => void;
@@ -322,6 +324,22 @@ export function ImplementationExecutionBoardTaskTree({
             onChange={(event) => onToggleSelectAll?.(event.target.checked)}
           />
           <span>전체 선택</span>
+          {onCopyAllCodeTaskCursorPrompts && codeTaskCount > 0 ? (
+            <button
+              type="button"
+              className={styles.taskTreeCopyPromptButton}
+              aria-label="CodeTask 1단계 프롬프트 초안 복사"
+              title="CodeTask 1단계 프롬프트 초안 복사"
+              data-testid="implementation-copy-all-planning-draft-prompts"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onCopyAllCodeTaskCursorPrompts();
+              }}
+            >
+              <CodeTaskCursorPromptCopyIcon size={13} />
+            </button>
+          ) : null}
         </label>
         <span className={styles.taskTreeSelectAllMeta}>
           CodeTask {codeTaskCount}개 · 선택됨{" "}

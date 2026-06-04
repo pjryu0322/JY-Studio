@@ -63,6 +63,8 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   onOpenPromptTimeline?: () => void;
   /** 기획단계 구현준비 확인 카드 */
   chatHeaderLeading?: ReactNode;
+  /** CodeTask LLM 정제 요약 옆: 전체 프롬프트 클립보드 복사 */
+  onCopyAllCodeTaskPrompts?: () => Promise<boolean>;
 }>;
 
 export function RequirementsIdeationChatPanel({
@@ -104,6 +106,7 @@ export function RequirementsIdeationChatPanel({
   promptTimeline,
   onOpenPromptTimeline,
   chatHeaderLeading,
+  onCopyAllCodeTaskPrompts,
 }: RequirementsIdeationChatPanelProps) {
   const showTypingIndicator = useMemo(() => {
     if (quickDesignConfirmPending) return false;
@@ -203,6 +206,7 @@ export function RequirementsIdeationChatPanel({
         memberControls={memberControls}
         promptTimeline={promptTimeline}
         onOpenPromptTimeline={onOpenPromptTimeline}
+        onCopyAllCodeTaskPrompts={onCopyAllCodeTaskPrompts}
         onInsertComposerPrompt={onInsertComposerPrompt}
         onInterviewSuggestionPick={onInterviewSuggestionPick}
         onSetReplyTo={(messageId, preview) => {

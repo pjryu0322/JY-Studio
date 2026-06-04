@@ -5,6 +5,19 @@ import {
   type CodeTaskPromptContextMapV1,
   type CodeTaskPromptContextV1,
 } from "@/lib/prototype/codeTaskPromptContext";
+import { resolveCodeTaskFeaturePromptTemplate } from "@/lib/prototype/codeTaskPromptFeatureTemplates";
+import { sanitizePlanningPromptText } from "@/lib/prototype/codeTaskPromptPlanningSanitize";
+import {
+  resolveCodeTaskSpecificRole,
+  roleKindToDefaultRelated,
+  type CodeTaskRoleKind,
+} from "@/lib/prototype/codeTaskPromptRoleResolver";
+import {
+  filterPerTaskRequirementLines,
+  filterPerTaskVerificationLines,
+} from "@/lib/prototype/codeTaskPlanningDraftPolish";
+import { refineTargetUsersForRuntime, refineProblemToSolveForRuntime } from "@/lib/prototype/codeTaskRuntimePromptContextView";
+import { formatTemplateLayoutSnippetForRole } from "@/lib/prototype/codeTaskTemplateLayoutDraft";
 import { parseImplementationSeedV1, type ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import {
   parseImplementationTaskListV1,
@@ -16,7 +29,7 @@ function uniq(items: readonly string[]): string[] {
   return [
     ...new Set(
       items
-        .map((x) => String(x ?? "").trim())
+        .map((x) => sanitizePlanningPromptText(String(x ?? "").trim()))
         .filter(Boolean),
     ),
   ];
@@ -36,19 +49,27 @@ function extractPlanningSummary(state: Record<string, unknown>): {
   readonly serviceGoal?: string;
   readonly problemToSolve?: string;
   readonly targetUsers: readonly string[];
+  readonly templateId?: string;
 } {
   const seed = parseImplementationSeedV1(state.implementationSeedV1);
   const organize = state.organizeContext;
   let serviceGoal: string | undefined;
   let problemToSolve: string | undefined;
   const targetUsers: string[] = [];
+  let templateId: string | undefined;
 
   if (seed?.templateContext) {
     const tc = seed.templateContext;
-    serviceGoal = tc.description?.trim() || tc.templateNameKo?.trim() || undefined;
+    templateId = tc.templateId?.trim() || undefined;
+    serviceGoal = sanitizePlanningPromptText(
+      tc.description?.trim() || tc.templateNameKo?.trim() || "",
+    );
     problemToSolve =
-      tc.layoutContract?.trim().slice(0, 200) ||
-      (tc.primarySections?.[0] ? String(tc.primarySections[0]).trim() : undefined);
+      templateId === "meeting-workspace"
+        ? "녹취 업로드·변환·화자 분리·회의록 초안/요약·스크립트 확인을 한 화면에서 처리"
+        : sanitizePlanningPromptText(
+            tc.primarySections?.[0] ? String(tc.primarySections[0]).trim() : tc.templateNameKo?.trim() || "",
+          );
     if (tc.navigationItems?.length) {
       targetUsers.push(...tc.navigationItems.slice(0, 3).map((x) => String(x).trim()).filter(Boolean));
     }
@@ -57,10 +78,14 @@ function extractPlanningSummary(state: Record<string, unknown>): {
   if (organize && typeof organize === "object") {
     const o = organize as Record<string, unknown>;
     if (!serviceGoal) {
-      serviceGoal = String(o.serviceSummary ?? o.productSummary ?? o.summary ?? "").trim() || undefined;
+      serviceGoal = sanitizePlanningPromptText(
+        String(o.serviceSummary ?? o.productSummary ?? o.summary ?? "").trim(),
+      );
     }
     if (!problemToSolve) {
-      problemToSolve = String(o.problemToSolve ?? o.userProblem ?? "").trim() || undefined;
+      problemToSolve = sanitizePlanningPromptText(
+        String(o.problemToSolve ?? o.userProblem ?? "").trim(),
+      );
     }
   }
 
@@ -69,17 +94,22 @@ function extractPlanningSummary(state: Record<string, unknown>): {
     : [];
   const featureSpec = artifacts.find((a) => a.type === "feature-spec");
   if (!serviceGoal && featureSpec?.title) {
-    serviceGoal = featureSpec.title.trim();
+    serviceGoal = sanitizePlanningPromptText(featureSpec.title.trim());
   }
   if (!problemToSolve && featureSpec?.content) {
     const first = featureSpec.content.split("\n").map((l) => l.trim()).find(Boolean);
-    if (first) problemToSolve = first.slice(0, 240);
+    if (first) problemToSolve = sanitizePlanningPromptText(first.slice(0, 240));
   }
 
-  return { serviceGoal, problemToSolve, targetUsers: uniq(targetUsers) };
+  return {
+    serviceGoal: serviceGoal || undefined,
+    problemToSolve: problemToSolve || undefined,
+    targetUsers: uniq(targetUsers),
+    templateId,
+  };
 }
 
-function seedFlowContext(seed: ImplementationSeedV1): CodeTaskPromptContextV1["flowContext"] {
+function seedFlowContext(seed: ImplementationSeedV1, matchedFlows: readonly string[]): CodeTaskPromptContextV1["flowContext"] {
   const actors = uniq(seed.actorCapabilityMatrix.map((r) => r.actor));
   const flows = uniq(
     seed.processImplementationItems.flatMap((p) => [
@@ -89,28 +119,15 @@ function seedFlowContext(seed: ImplementationSeedV1): CodeTaskPromptContextV1["f
   );
   const steps = uniq(seed.processImplementationItems.map((p) => p.processName));
   return {
-    relatedActors: actors.slice(0, 8),
-    relatedUserFlows: flows.slice(0, 8),
-    relatedServiceSteps: steps.slice(0, 8),
-  };
-}
-
-function seedFeatureContext(seed: ImplementationSeedV1): CodeTaskPromptContextV1["featureContext"] {
-  return {
-    relatedFeatures: uniq(seed.commonDetailFeatures.map((f) => f.name)).slice(0, 12),
-    relatedScreens: uniq(seed.screenImplementationItems.map((s) => s.screenName)).slice(0, 12),
-    relatedStates: uniq(
-      seed.screenImplementationItems.flatMap((s) =>
-        Array.isArray(s.states) ? s.states : [],
-      ),
-    ).slice(0, 12),
-    inputs: [],
-    outputs: [],
+    relatedActors: actors.slice(0, 6),
+    relatedUserFlows: uniq([...matchedFlows, ...flows]).slice(0, 6),
+    relatedServiceSteps: steps.slice(0, 6),
   };
 }
 
 function matchCodeTaskToSeed(input: {
   readonly codeTask: ImplementationCodeTaskV1;
+  readonly parentTitle?: string;
   readonly seed: ImplementationSeedV1;
 }): {
   readonly features: readonly string[];
@@ -118,17 +135,26 @@ function matchCodeTaskToSeed(input: {
   readonly states: readonly string[];
   readonly flows: readonly string[];
 } {
-  const text = haystack(`${input.codeTask.title} ${input.codeTask.description}`);
+  const text = haystack(
+    `${input.codeTask.title} ${input.codeTask.description} ${input.parentTitle ?? ""}`,
+  );
   const features: string[] = [];
   const screens: string[] = [];
   const states: string[] = [];
   const flows: string[] = [];
 
   for (const f of input.seed.commonDetailFeatures) {
-    if (matchesToken(text, f.name)) features.push(f.name);
+    const name = f.name.trim();
+    if (!name) continue;
+    if (matchesToken(text, name) || matchesToken(name, input.codeTask.title)) {
+      features.push(name);
+    }
   }
   for (const s of input.seed.screenImplementationItems) {
-    if (matchesToken(text, s.screenName)) screens.push(s.screenName);
+    const screenName = s.screenName.trim();
+    if (matchesToken(text, screenName) || matchesToken(screenName, input.parentTitle ?? "")) {
+      screens.push(screenName);
+    }
     const screenStates = Array.isArray(s.states) ? s.states : [];
     for (const st of screenStates) {
       if (matchesToken(text, st)) states.push(st);
@@ -146,6 +172,120 @@ function matchCodeTaskToSeed(input: {
   };
 }
 
+function isCommonStateRole(roleKind: CodeTaskRoleKind): boolean {
+  return (
+    roleKind === "common_loading" ||
+    roleKind === "common_error" ||
+    roleKind === "common_empty" ||
+    roleKind === "common_retry" ||
+    roleKind === "common_permission" ||
+    roleKind === "common_draft"
+  );
+}
+
+function isScreenRole(roleKind: CodeTaskRoleKind): boolean {
+  return roleKind === "screen_input" || roleKind === "screen_result" || roleKind === "screen_admin";
+}
+
+function isFeatureFlowRole(roleKind: CodeTaskRoleKind): boolean {
+  return (
+    roleKind === "feature_start" ||
+    roleKind === "feature_input" ||
+    roleKind === "feature_processing" ||
+    roleKind === "feature_result"
+  );
+}
+
+function isGenericRoleText(role: string): boolean {
+  return /에 맞는 UI·상태·연동을 제공|기획 범위에 맞는 기능을 구현/.test(role);
+}
+
+function evaluateContextQuality(input: {
+  readonly roleKind: CodeTaskRoleKind;
+  readonly roleWarnings: readonly string[];
+  readonly implementationContext: CodeTaskPromptContextV1["implementationContext"];
+  readonly verificationContext: CodeTaskPromptContextV1["verificationContext"];
+  readonly featureContext: CodeTaskPromptContextV1["featureContext"];
+  readonly hasTemplateSnippet: boolean;
+}): CodeTaskPromptContextV1["quality"] {
+  const missing: string[] = [];
+  const warnings = [...input.roleWarnings];
+
+  const reqCount = input.implementationContext.requirements.length;
+  const verCount =
+    input.verificationContext.acceptanceCriteria.length +
+    input.verificationContext.manualChecks.length;
+
+  if (input.roleKind === "generic") warnings.push("generic_role");
+  if (reqCount < 3) warnings.push("insufficient_requirements");
+  if (verCount < 2) warnings.push("insufficient_verification_criteria");
+
+  if (isCommonStateRole(input.roleKind)) {
+    if (input.featureContext.relatedStates.length < 2) {
+      missing.push("relatedStates");
+      warnings.push("missing_related_state");
+    }
+    if (!input.implementationContext.expectedBehavior.length) {
+      missing.push("expectedBehavior");
+    }
+  }
+
+  if (input.roleKind === "mock_data") {
+    const richness =
+      input.featureContext.inputs.length +
+      input.featureContext.outputs.length +
+      input.featureContext.relatedFeatures.length;
+    if (richness < 2) warnings.push("insufficient_mock_context");
+  }
+
+  const needsLinkage =
+    isScreenRole(input.roleKind) ||
+    isFeatureFlowRole(input.roleKind) ||
+    isCommonStateRole(input.roleKind);
+
+  if (needsLinkage && !input.featureContext.relatedFeatures.length) {
+    missing.push("relatedData");
+    warnings.push("missing_related_data");
+  }
+
+  if (needsLinkage && !input.featureContext.relatedScreens.length) {
+    missing.push("relatedScreens");
+    warnings.push("missing_related_screen");
+  }
+
+  if (needsLinkage && !input.featureContext.relatedStates.length) {
+    missing.push("relatedStates");
+    warnings.push("missing_related_state");
+  }
+
+  if (input.roleKind === "common_permission" && !input.featureContext.relatedScreens.length) {
+    warnings.push("missing_related_screen");
+  }
+
+  if (!input.hasTemplateSnippet && input.roleKind !== "generic" && input.roleKind !== "mock_data") {
+    warnings.push("empty_template_context");
+  }
+
+  if (isGenericRoleText(input.implementationContext.intent)) {
+    warnings.push("generic_role");
+    missing.push("specificRole");
+  }
+
+  const ready =
+    input.roleKind !== "generic" &&
+    !isGenericRoleText(input.implementationContext.intent) &&
+    Boolean(input.implementationContext.intent.trim()) &&
+    reqCount >= 3 &&
+    verCount >= 2 &&
+    !missing.length;
+
+  return {
+    ready,
+    missing: uniq(missing),
+    warnings: uniq(warnings),
+  };
+}
+
 function buildContextForCodeTask(input: {
   readonly projectId: string;
   readonly codeTask: ImplementationCodeTaskV1;
@@ -154,98 +294,131 @@ function buildContextForCodeTask(input: {
   readonly planningSummary: ReturnType<typeof extractPlanningSummary>;
   readonly nowIso: string;
 }): CodeTaskPromptContextV1 {
-  const missing: string[] = [];
-  const warnings: string[] = [];
   const parent = input.parentTask;
   const seed = input.seed;
-  const matched = seed ? matchCodeTaskToSeed({ codeTask: input.codeTask, seed }) : null;
+  const parentTitle = parent?.title?.trim();
+  const parentDescription = parent?.description?.trim();
+
+  const roleResolved = resolveCodeTaskSpecificRole({
+    codeTaskTitle: input.codeTask.title,
+    codeTaskDescription: input.codeTask.description,
+    parentTaskTitle: parentTitle,
+    parentTaskDescription: parentDescription,
+    requirements: input.codeTask.acceptanceCriteria,
+    changeType: input.codeTask.changeType,
+    templateContext: seed?.templateContext
+      ? { templateId: seed.templateContext.templateId, templateNameKo: seed.templateContext.templateNameKo }
+      : null,
+  });
+
+  const roleDefaults = roleKindToDefaultRelated({ roleKind: roleResolved.roleKind });
+  const matched = seed
+    ? matchCodeTaskToSeed({ codeTask: input.codeTask, parentTitle, seed })
+    : { features: [], screens: [], states: [], flows: [] };
 
   let source: CodeTaskPromptContextV1["source"] = "heuristic_fallback";
   if (seed) source = "planning_artifacts";
 
+  const rawTargetUsers = input.planningSummary.targetUsers.length
+    ? input.planningSummary.targetUsers
+    : seed
+      ? uniq(seed.actorCapabilityMatrix.map((r) => r.actor)).slice(0, 4)
+      : [];
+
+  const flowContext = seed
+    ? seedFlowContext(seed, matched.flows)
+    : { relatedActors: [], relatedUserFlows: [], relatedServiceSteps: [] };
+
+  const featureContext = {
+    relatedFeatures: uniq([...roleDefaults.features, ...matched.features]).slice(0, 8),
+    relatedScreens: uniq([...roleDefaults.screens, ...matched.screens]).slice(0, 8),
+    relatedStates: uniq([...roleDefaults.states, ...matched.states]).slice(0, 10),
+    inputs:
+      roleResolved.roleKind === "mock_data"
+        ? uniq(["회의 파일", "참여자", ...matched.features]).slice(0, 6)
+        : [],
+    outputs:
+      roleResolved.roleKind === "mock_data"
+        ? uniq(["스크립트", "요약", "진행 상태"]).slice(0, 6)
+        : [],
+  };
+
   const planningContext = {
     serviceGoal:
       input.planningSummary.serviceGoal ??
-      (parent?.description?.trim() ? parent.description.trim().slice(0, 200) : undefined),
-    targetUsers: input.planningSummary.targetUsers.length
-      ? input.planningSummary.targetUsers
-      : seed
-        ? uniq(seed.actorCapabilityMatrix.map((r) => r.actor)).slice(0, 4)
-        : [],
-    problemToSolve: input.planningSummary.problemToSolve ?? parent?.title?.trim(),
-    businessGoal: parent?.title?.trim() || undefined,
+      (parentDescription ? sanitizePlanningPromptText(parentDescription.slice(0, 200)) : undefined),
+    targetUsers: refineTargetUsersForRuntime({
+      targetUsers: rawTargetUsers,
+      relatedScreens: featureContext.relatedScreens,
+    }),
+    problemToSolve: refineProblemToSolveForRuntime({
+      serviceGoal: input.planningSummary.serviceGoal,
+      problemToSolve:
+        input.planningSummary.problemToSolve ??
+        (parentTitle ? sanitizePlanningPromptText(parentTitle) : undefined),
+    }),
+    businessGoal: parentTitle ? sanitizePlanningPromptText(parentTitle) : undefined,
   };
 
-  const flowContext = seed
-    ? {
-        relatedActors: uniq([
-          ...seedFlowContext(seed).relatedActors,
-          ...(matched?.flows.length ? seed.actorCapabilityMatrix.map((r) => r.actor) : []),
-        ]).slice(0, 8),
-        relatedUserFlows: uniq([...seedFlowContext(seed).relatedUserFlows, ...(matched?.flows ?? [])]).slice(
-          0,
-          8,
-        ),
-        relatedServiceSteps: seedFlowContext(seed).relatedServiceSteps,
-      }
-    : { relatedActors: [], relatedUserFlows: [], relatedServiceSteps: [] };
+  const featureTemplate = resolveCodeTaskFeaturePromptTemplate({
+    title: input.codeTask.title,
+    description: input.codeTask.description,
+    requirements: input.codeTask.acceptanceCriteria,
+    changeType: input.codeTask.changeType,
+    parentTitle,
+    roleKind: roleResolved.roleKind,
+  });
 
-  const featureContext = seed
-    ? {
-        relatedFeatures: uniq([
-          ...seedFeatureContext(seed).relatedFeatures,
-          ...(matched?.features ?? []),
-        ]).slice(0, 10),
-        relatedScreens: uniq([...seedFeatureContext(seed).relatedScreens, ...(matched?.screens ?? [])]).slice(
-          0,
-          10,
-        ),
-        relatedStates: uniq([...seedFeatureContext(seed).relatedStates, ...(matched?.states ?? [])]).slice(
-          0,
-          10,
-        ),
-        inputs: [],
-        outputs: [],
-      }
-    : { relatedFeatures: [], relatedScreens: [], relatedStates: [], inputs: [], outputs: [] };
+  const layoutSnippet = formatTemplateLayoutSnippetForRole({
+    roleKind: roleResolved.roleKind,
+    templateId: input.planningSummary.templateId ?? seed?.templateContext?.templateId,
+  });
 
-  const intent =
-    input.codeTask.description.trim() ||
-    input.codeTask.title.trim() ||
-    parent?.description?.trim() ||
-    "기획 범위에 맞는 기능을 구현한다.";
+  const uniqueCriteria = filterPerTaskRequirementLines(
+    uniq(
+      input.codeTask.acceptanceCriteria.filter((c) => {
+        const line = c.trim();
+        if (!line) return false;
+        if (/기획 산출물|공통 동작|기능 진입점|상태 전환|연동 지점/i.test(line)) return false;
+        return true;
+      }),
+    ),
+    roleResolved.roleKind,
+  );
 
   const implementationContext = {
-    intent,
-    requirements: uniq([
-      ...input.codeTask.acceptanceCriteria,
-      input.codeTask.title,
-    ]).slice(0, 12),
+    intent: sanitizePlanningPromptText(roleResolved.role),
+    requirements: filterPerTaskRequirementLines(
+      uniq([...featureTemplate.implementationRequirements, ...uniqueCriteria]),
+      roleResolved.roleKind,
+    ).slice(0, 7),
     constraints: uniq(input.codeTask.forbiddenPaths ?? []).slice(0, 8),
-    expectedBehavior: parent?.acceptanceCriteria?.length
-      ? [...parent.acceptanceCriteria].slice(0, 6)
-      : [],
+    expectedBehavior: uniq([
+      ...featureTemplate.implementationGoal,
+      ...(isCommonStateRole(roleResolved.roleKind)
+        ? [`${roleResolved.role} 연동 시 정상 화면으로 복귀 가능해야 한다.`]
+        : []),
+    ]).slice(0, 6),
     edgeCases: [],
   };
 
   const verificationContext = {
-    acceptanceCriteria: [...input.codeTask.acceptanceCriteria],
+    acceptanceCriteria: filterPerTaskVerificationLines(
+      uniq([...featureTemplate.verificationChecklist, ...uniqueCriteria]),
+    ).slice(0, 5),
     manualChecks: uniq(input.codeTask.verificationHints ?? []).slice(0, 6),
-    regressionChecks: ["동일 기능 회귀 없음", "관련 화면·상태 흐름 회귀 없음"],
+    regressionChecks: [],
   };
 
-  if (!planningContext.serviceGoal) missing.push("serviceGoal");
-  if (!planningContext.problemToSolve) missing.push("problemToSolve");
-  if (!flowContext.relatedUserFlows.length) warnings.push("relatedUserFlows");
-  if (!featureContext.relatedFeatures.length && !featureContext.relatedScreens.length) {
-    warnings.push("relatedFeaturesOrScreens");
-  }
-  if (!seed) warnings.push("implementationSeedV1");
-
-  const ready =
-    Boolean(planningContext.serviceGoal || planningContext.problemToSolve) &&
-    Boolean(implementationContext.intent) &&
-    implementationContext.requirements.length > 0;
+  const seedWarnings = seed ? [] : ["implementationSeedV1"];
+  const quality = evaluateContextQuality({
+    roleKind: roleResolved.roleKind,
+    roleWarnings: [...roleResolved.warnings, ...seedWarnings],
+    implementationContext,
+    verificationContext,
+    featureContext,
+    hasTemplateSnippet: Boolean(layoutSnippet),
+  });
 
   return {
     version: CODE_TASK_PROMPT_CONTEXT_VERSION,
@@ -260,7 +433,7 @@ function buildContextForCodeTask(input: {
     featureContext,
     implementationContext,
     verificationContext,
-    quality: { ready, missing, warnings },
+    quality,
   };
 }
 
@@ -281,8 +454,7 @@ export function buildCodeTaskPromptContextMap(input: {
   for (const codeTask of input.codeTaskPlan.tasks) {
     const id = codeTask.codeTaskId.trim();
     if (!id) continue;
-    const parentTask =
-      taskList?.tasks.find((t) => t.taskId === codeTask.parentTaskId) ?? null;
+    const parentTask = taskList?.tasks.find((t) => t.taskId === codeTask.parentTaskId) ?? null;
     contexts[id] = buildContextForCodeTask({
       projectId: pid,
       codeTask,

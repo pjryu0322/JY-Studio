@@ -140,6 +140,40 @@ describe("buildCodeTaskPromptContextMap", () => {
     expect(ctx.flowContext.relatedActors).toContain("운영자");
     expect(ctx.flowContext.relatedUserFlows.join(" ")).toMatch(/로그인/i);
     expect(ctx.featureContext.relatedScreens.join(" ")).toMatch(/로그인/i);
+    expect(ctx.featureContext.relatedFeatures.length).toBeLessThanOrEqual(8);
+  });
+
+  it("scopes retry task related features to retry not full catalog", () => {
+    const list = taskList();
+    const richSeed = {
+      ...seed(),
+      commonDetailFeatures: [
+        { name: "재시도", appliesTo: ["로그인"], description: "재시도", required: true },
+        { name: "로딩 상태", appliesTo: ["로그인"], description: "로딩", required: true },
+        { name: "오류 메시지", appliesTo: ["로그인"], description: "오류", required: true },
+      ],
+    };
+    const plan = buildImplementationCodeTaskPlanFromTaskList({
+      projectId: PROJECT_ID,
+      taskList: list,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+    });
+    const map = buildCodeTaskPromptContextMap({
+      projectId: PROJECT_ID,
+      codeTaskPlan: plan,
+      requirementsStateJson: { implementationSeedV1: richSeed, implementationTaskListV1: list },
+      nowIso: NOW,
+    });
+    const retryCtx = Object.values(map.contexts).find((c) =>
+      /재시도/i.test(plan.tasks.find((t) => t.codeTaskId === c.codeTaskId)?.title ?? ""),
+    );
+    if (retryCtx) {
+      expect(retryCtx.featureContext.relatedFeatures).toContain("재시도");
+      expect(retryCtx.featureContext.relatedFeatures).not.toContain("로딩 상태");
+      expect(retryCtx.featureContext.relatedStates.join(" ")).toMatch(/error|retry/i);
+    }
   });
 
   it("records heuristic_fallback warnings when seed is missing", () => {
