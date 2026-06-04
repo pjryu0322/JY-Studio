@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
       execution: outcome.execution,
       orchestrationPatch: outcome.orchestrationPatch,
       nextQuickRunDispatch: outcome.advance.nextDispatch,
+      continuationDispatchedOnServer: outcome.continuationDispatchedOnServer === true,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

@@ -8,6 +8,7 @@ export const CODE_TASK_EXECUTION_RUN_VERSION = "code_task_execution_run_v1" as c
 export type CodeTaskExecutionRunStatus =
   | "queued"
   | "prompt_building"
+  | "prompt_ready"
   | "cursor_requested"
   | "cursor_running"
   | "github_verifying"
@@ -51,6 +52,7 @@ export type CodeTaskExecutionRunV1 = Readonly<{
 const RUN_STATUSES = new Set<CodeTaskExecutionRunStatus>([
   "queued",
   "prompt_building",
+  "prompt_ready",
   "cursor_requested",
   "cursor_running",
   "github_verifying",
@@ -194,7 +196,7 @@ export function createCodeTaskExecutionRun(input: {
     processTaskId: input.processTaskId.trim(),
     workItemId: input.workItemId.trim(),
     codeTaskId: input.codeTaskId.trim(),
-    status: "queued",
+    status: input.developerPrompt?.trim() ? "prompt_ready" : "queued",
     attemptNo: getNextCodeTaskRunAttemptNo(input.runs ?? [], input.codeTaskId),
     createdAt: now,
     updatedAt: now,

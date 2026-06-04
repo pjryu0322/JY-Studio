@@ -87,6 +87,7 @@ export function ImplementationExecutionBoardPanel({
   onSelectedTaskIdsChange,
   onSelectedCodeTaskIdsChange,
   onRunSingleCodeTask,
+  onCopyCodeTaskCursorPrompt,
   implementationRuntimeStateV1,
   implementationRuntimeDbBundle,
   codeTaskExecutionFeedbackV1,
@@ -115,6 +116,7 @@ export function ImplementationExecutionBoardPanel({
   readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
   readonly onSelectedCodeTaskIdsChange?: (selectedCodeTaskIds: readonly string[]) => void;
   readonly onRunSingleCodeTask?: (codeTaskId: string) => void;
+  readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
@@ -542,6 +544,7 @@ export function ImplementationExecutionBoardPanel({
             );
           }}
           onRunSingleCodeTask={onRunSingleCodeTask}
+          onCopyCodeTaskCursorPrompt={onCopyCodeTaskCursorPrompt}
           onRestartTask={onRestartTask}
           onStopTask={() => onCancelTaskCursorPolling?.()}
           onResumeStatusCheck={() => onResumeTaskCursorStatusCheck?.()}

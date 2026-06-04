@@ -98,6 +98,7 @@ function mapCodeTaskRunStatusToFlowPhase(
     case "cursor_requested":
       return "cursor_running";
     case "prompt_building":
+    case "prompt_ready":
     case "queued":
       return "prompt_ready";
     case "status_check_stopped":

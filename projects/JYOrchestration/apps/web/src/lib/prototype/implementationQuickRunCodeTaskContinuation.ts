@@ -7,6 +7,7 @@ import {
   appendCodeTaskExecutionRun,
   createCodeTaskExecutionRun,
   findLatestRunForCodeTask,
+  updateCodeTaskExecutionRun,
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
 import { syncCodeTaskExecutionRunsFromTaskCursor } from "@/lib/prototype/codeTaskExecutionRunTaskCursorAdapter";
@@ -247,6 +248,16 @@ export function planQuickRunCodeTaskContinuationAfterAutoGate(input: {
       nowIso,
     });
     runs = appendCodeTaskExecutionRun(runs, nextRun);
+  }
+
+  const promptText = input.developerPrompt?.trim();
+  if (promptText && nextRun.status !== "prompt_ready") {
+    runs = updateCodeTaskExecutionRun(runs, nextRun.runId, {
+      developerPrompt: promptText,
+      status: "prompt_ready",
+      updatedAt: nowIso,
+    });
+    nextRun = findLatestRunForCodeTask(runs, nextCodeTaskId)!;
   }
 
   const dispatch: CodeTaskQueueDispatchRef = {

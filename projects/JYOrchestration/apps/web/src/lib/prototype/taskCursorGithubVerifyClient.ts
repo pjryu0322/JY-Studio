@@ -69,7 +69,11 @@ export function applyTaskCursorGithubVerifyApiResult(
     return false;
   }
   const next = json.nextQuickRunDispatch;
-  if (next && (input.shouldApplyNextDispatch?.(next) ?? true)) {
+  if (
+    next &&
+    !json.continuationDispatchedOnServer &&
+    (input.shouldApplyNextDispatch?.(next) ?? true)
+  ) {
     input.onNextQuickRunDispatch?.(next);
   }
   return true;

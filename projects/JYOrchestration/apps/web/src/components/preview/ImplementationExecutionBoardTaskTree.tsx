@@ -11,7 +11,13 @@ import { buildCodeTaskInlineExecutionDetail } from "@/lib/prototype/implementati
 import { CodeTaskInlineExecutionDetailBlock } from "@/components/preview/CodeTaskInlineExecutionDetail";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
-function ExecutionFlowSteps({ steps }: { readonly steps: readonly CodeTaskExecutionFlowStepVm[] }) {
+function ExecutionFlowSteps({
+  steps,
+  onCopyCursorPrompt,
+}: {
+  readonly steps: readonly CodeTaskExecutionFlowStepVm[];
+  readonly onCopyCursorPrompt?: () => void;
+}) {
   if (!steps.length) return null;
   return (
     <div className={styles.taskTreeFlowBlock} data-testid="implementation-code-task-flow">
@@ -44,6 +50,20 @@ function ExecutionFlowSteps({ steps }: { readonly steps: readonly CodeTaskExecut
                 {marker}
               </span>
               <span>{step.label}</span>
+              {step.id === "prompt_ready" && onCopyCursorPrompt ? (
+                <button
+                  type="button"
+                  className={styles.taskTreeCopyPromptButton}
+                  aria-label="Cursor 전달 프롬프트 복사"
+                  title="Cursor 프롬프트 복사"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCopyCursorPrompt();
+                  }}
+                >
+                  ⎘
+                </button>
+              ) : null}
             </li>
           );
         })}
@@ -58,12 +78,14 @@ function CodeTaskSelectedDetail({
   onCancelTaskCursorPolling,
   onResumeStatusCheck,
   onRunSingle,
+  onCopyCursorPrompt,
 }: {
   readonly node: ImplementationCodeTaskTreeNode;
   readonly codeAgentProgress?: CodeAgentExecutionProgressView;
   readonly onCancelTaskCursorPolling?: () => void;
   readonly onResumeStatusCheck?: () => void;
   readonly onRunSingle?: (codeTaskId: string) => void;
+  readonly onCopyCursorPrompt?: (codeTaskId: string) => void;
 }) {
   const inlineExecution = codeAgentProgress
     ? buildCodeTaskInlineExecutionDetail({
@@ -95,7 +117,12 @@ function CodeTaskSelectedDetail({
           ) : null}
         </div>
       ) : null}
-      <ExecutionFlowSteps steps={node.executionFlowSteps} />
+      <ExecutionFlowSteps
+        steps={node.executionFlowSteps}
+        onCopyCursorPrompt={
+          onCopyCursorPrompt ? () => onCopyCursorPrompt(node.codeTaskId) : undefined
+        }
+      />
       {showInlineActions && inlineExecution ? (
         <CodeTaskInlineExecutionDetailBlock
           detail={inlineExecution}
@@ -128,6 +155,7 @@ function CodeTaskTreeItem({
   onSelect,
   onToggleChecked,
   onRunSingle,
+  onCopyCursorPrompt,
 }: {
   readonly node: ImplementationCodeTaskTreeNode;
   readonly depth: number;
@@ -137,6 +165,7 @@ function CodeTaskTreeItem({
   readonly onSelect: (parentTaskId: string, codeTaskId: string) => void;
   readonly onToggleChecked?: (codeTaskId: string, checked: boolean) => void;
   readonly onRunSingle?: (codeTaskId: string) => void;
+  readonly onCopyCursorPrompt?: (codeTaskId: string) => void;
 }) {
   const itemClass = [
     styles.taskTreeCodeTaskItem,
@@ -190,6 +219,7 @@ function CodeTaskTreeItem({
           onCancelTaskCursorPolling={onCancelTaskCursorPolling}
           onResumeStatusCheck={onResumeStatusCheck}
           onRunSingle={onRunSingle}
+          onCopyCursorPrompt={onCopyCursorPrompt}
         />
       ) : null}
     </div>
@@ -207,6 +237,7 @@ export function ImplementationExecutionBoardTaskTree({
   onToggleSelectAll,
   onToggleCodeTaskChecked,
   onRunSingleCodeTask,
+  onCopyCodeTaskCursorPrompt,
   selectedCodeTaskCount,
   onRestartTask,
   onStopTask,
@@ -227,6 +258,7 @@ export function ImplementationExecutionBoardTaskTree({
   readonly onToggleSelectAll?: (checked: boolean) => void;
   readonly onToggleCodeTaskChecked?: (codeTaskId: string, checked: boolean) => void;
   readonly onRunSingleCodeTask?: (codeTaskId: string) => void;
+  readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
   readonly selectedCodeTaskCount?: number;
   readonly onRestartTask?: (taskId: string) => void;
   readonly onStopTask?: (taskId: string) => void;
@@ -346,6 +378,7 @@ export function ImplementationExecutionBoardTaskTree({
                         onCancelTaskCursorPolling={onCancelTaskCursorPolling}
                         onResumeStatusCheck={onResumeStatusCheck}
                         onRunSingle={onRunSingleCodeTask}
+                        onCopyCursorPrompt={onCopyCodeTaskCursorPrompt}
                       />
                     ) : null;
                   })()
@@ -370,6 +403,7 @@ export function ImplementationExecutionBoardTaskTree({
                         }}
                         onToggleChecked={onToggleCodeTaskChecked}
                         onRunSingle={onRunSingleCodeTask}
+                        onCopyCursorPrompt={onCopyCodeTaskCursorPrompt}
                       />
                     ))}
                   </div>

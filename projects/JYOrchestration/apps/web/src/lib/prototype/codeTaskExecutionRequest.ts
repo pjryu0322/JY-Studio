@@ -78,7 +78,7 @@ export function buildCodeTaskCursorExecutionRequest(input: {
     workBranch,
     repository: input.targetRepository.repoFullName,
     baseBranch: input.baseBranch,
-    status: "prompt_building",
+    status: "prompt_ready",
     updatedAt: now,
   })[0]!;
   return {

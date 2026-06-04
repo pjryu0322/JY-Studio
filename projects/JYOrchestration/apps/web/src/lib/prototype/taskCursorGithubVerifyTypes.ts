@@ -30,4 +30,5 @@ export type TaskCursorGithubVerifyApiResponse = Readonly<{
   readonly execution?: TaskCursorExecutionV1;
   readonly orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
   readonly nextQuickRunDispatch?: QuickRunGithubAdvanceDispatch | null;
+  readonly continuationDispatchedOnServer?: boolean;
 }>;

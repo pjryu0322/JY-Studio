@@ -32,6 +32,7 @@ import {
   type ImplementationUserTestReadiness,
 } from "@/lib/prototype/implementationUserTestReadiness";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import { isRoutineImplementationStatusChatContent } from "@/lib/prototype/implementationStatusChatPolicy";
 import type { ImplementationStageNextAction } from "@/lib/prototype/implementationStageNextActions";
 import { parseExecutionLogResponseFields } from "@/lib/prototype/promptTimelineExecutionLogTabs";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
@@ -728,10 +729,12 @@ export function shouldShowImplementationDashboardChatMessage(message: Requiremen
   }
 
   if (internalType === "PROTOTYPE_EXECUTION_NOTICE") {
+    if (isRoutineImplementationStatusChatContent(message.content)) return false;
     return isImplementationDashboardInterventionMessage(message.content);
   }
 
   if (message.role === "ai") {
+    if (isRoutineImplementationStatusChatContent(message.content)) return false;
     return isImplementationDashboardInterventionMessage(message.content);
   }
 

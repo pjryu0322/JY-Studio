@@ -6,6 +6,7 @@ import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 const RUN_LABELS: Record<CodeTaskExecutionRunStatus, string> = {
   queued: "대기",
   prompt_building: "프롬프트 생성 중",
+  prompt_ready: "프롬프트 준비됨",
   cursor_requested: "Cursor 작업 요청 중",
   cursor_running: "Cursor 작업 중",
   github_verifying: "GitHub 결과 확인 중",

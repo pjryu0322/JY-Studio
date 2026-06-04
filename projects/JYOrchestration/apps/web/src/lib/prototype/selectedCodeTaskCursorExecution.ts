@@ -50,8 +50,7 @@ export function isSelectedCodeTaskRunInFlight(
   run: CodeTaskExecutionRunV1 | null | undefined,
 ): boolean {
   if (!run) return false;
-  // Queued runs are not yet dispatched to Cursor; allow (re)dispatch after a failed handoff.
-  if (run.status === "queued") return false;
+  if (run.status === "queued" || run.status === "prompt_ready") return false;
   return isInFlightCodeTaskExecutionRunStatus(run.status);
 }
 

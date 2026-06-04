@@ -31,6 +31,7 @@ function mapLegacyRunStatusToRuntimeState(
   }
   switch (status) {
     case "queued":
+    case "prompt_ready":
       return "queued";
     case "prompt_building":
     case "cursor_requested":

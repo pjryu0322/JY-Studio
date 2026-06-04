@@ -292,7 +292,17 @@ import {
   prepareWipRequestRuntime,
 } from "@/lib/prototype/implementationTaskListWipPrep";
 import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
+import {
+  buildImplementationStatusToastDedupeKey,
+  shouldSuppressImplementationStatusMessage,
+} from "@/lib/prototype/implementationStatusChatPolicy";
+import { resolveCodeTaskDeveloperPromptForCopy } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
+import {
+  buildImplementationStatusToastDedupeKey,
+  shouldSuppressImplementationStatusMessage,
+} from "@/lib/prototype/implementationStatusChatPolicy";
+import { resolveCodeTaskDeveloperPromptForCopy } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
 import {
   buildTaskCursorApiStartedTimeline,
   buildTaskCursorExecutionRequest,
@@ -1600,6 +1610,7 @@ export function PrototypePreviewPanel({
   const quickRunStuckGithubVerifyRef = useRef<string | null>(null);
   const codeTaskDispatchPreferredTaskIdRef = useRef<string | null>(null);
   const pendingQuickRunQueueDispatchRef = useRef<CodeTaskQueueDispatchRef | null>(null);
+  const implementationStatusToastSeenRef = useRef(new Set<string>());
   const implementationRuntimePollSuspendedRef = useRef(false);
   const [implementationRuntimeDbBundle, setImplementationRuntimeDbBundle] =
     useState<ImplementationRuntimeBundleView | null>(null);
@@ -2330,7 +2341,27 @@ export function PrototypePreviewPanel({
     },
   });
 
-  appendExecutionNoticeRef.current = executionSingleChat.appendAiNotice;
+  const appendImplementationExecutionNotice = useCallback(
+    (content: string) => {
+      if (shouldSuppressImplementationStatusMessage({ content })) return;
+      executionSingleChat.appendAiNotice(content);
+    },
+    [executionSingleChat],
+  );
+
+  const showImplementationToast = useCallback(
+    (msg: string, displayMs = 3200) => {
+      const key = buildImplementationStatusToastDedupeKey(msg);
+      if (key) {
+        if (implementationStatusToastSeenRef.current.has(key)) return;
+        implementationStatusToastSeenRef.current.add(key);
+      }
+      showToast(msg, displayMs);
+    },
+    [showToast],
+  );
+
+  appendExecutionNoticeRef.current = appendImplementationExecutionNotice;
 
   const prioritizedChatMessages = useMemo(() => {
     const prioritized = executionSingleChat.chatMessages.map((m) => {
@@ -2470,8 +2501,8 @@ export function PrototypePreviewPanel({
         },
         onTerminal: (notice) => {
           taskCursorPollActiveRunIdRef.current = null;
-          executionSingleChat.appendAiNotice(notice);
-          showToast(notice);
+          appendImplementationExecutionNotice(notice);
+          showImplementationToast(notice);
         },
       }).finally(() => {
         if (taskCursorPollActiveRunIdRef.current === runId) {
@@ -2479,7 +2510,7 @@ export function PrototypePreviewPanel({
         }
       });
     },
-    [projectId, applyImplementationOrchestrationResult, executionSingleChat, showToast, enrichCodeTaskRunOrchestrationPatch],
+    [projectId, applyImplementationOrchestrationResult, executionSingleChat, showImplementationToast, enrichCodeTaskRunOrchestrationPatch, appendImplementationExecutionNotice],
   );
 
   const releaseAllTaskCursorPolling = useCallback(() => {
@@ -2777,7 +2808,7 @@ export function PrototypePreviewPanel({
         plan.timelineEntry,
       ),
     });
-    showToast(`다음 CodeTask(${plan.nextCodeTaskId}) Cursor 실행을 시작합니다.`);
+    showImplementationToast(`다음 CodeTask(${plan.nextCodeTaskId}) Cursor 실행을 시작합니다.`);
     runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
   }, [
     projectId,
@@ -2792,7 +2823,7 @@ export function PrototypePreviewPanel({
     executionSingleChat.chatMessages,
     persistChatToDb,
     requirementsStateJson,
-    showToast,
+    showImplementationToast,
   ]);
 
   const triggerImplementationAutoQualityGate = useCallback(async () => {
@@ -2825,8 +2856,8 @@ export function PrototypePreviewPanel({
         });
       }
       if (outcome.message) {
-        executionSingleChat.appendAiNotice(outcome.message);
-        showToast(outcome.message);
+        appendImplementationExecutionNotice(outcome.message);
+        showImplementationToast(outcome.message);
       }
       if (outcome.ok && outcome.status === "passed") {
         await continueImplementationQuickRunAfterAutoGate();
@@ -2878,10 +2909,10 @@ export function PrototypePreviewPanel({
         workItemId: next.workItemId,
       };
       codeTaskDispatchPreferredTaskIdRef.current = next.parentTaskId;
-      showToast(`다음 CodeTask(${next.codeTaskId}) Cursor 실행을 시작합니다.`);
+      showImplementationToast(`다음 CodeTask(${next.codeTaskId}) Cursor 실행을 시작합니다.`);
       runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
     },
-    [showToast],
+    [showImplementationToast],
   );
 
   const recoverQuickRunStuckGithubVerify = useCallback(async () => {
@@ -2903,7 +2934,7 @@ export function PrototypePreviewPanel({
       },
       onNextQuickRunDispatch: dispatchNextQuickRunFromGithubVerify,
       showToast,
-      onFailureNotice: (message) => executionSingleChat.appendAiNotice(message),
+      onFailureNotice: (message) => appendImplementationExecutionNotice(message),
       refreshRuntime: async () => {
         const fetched = await fetchImplementationRuntime(pid);
         if (fetched.success) applyImplementationRuntimeFetch(fetched);
@@ -5092,8 +5123,8 @@ export function PrototypePreviewPanel({
             run,
             elapsedMinutes: elapsed,
           });
-          executionSingleChat.appendAiNotice(message);
-          showToast(buildCodeTaskRunUserStatus(run).label);
+          appendImplementationExecutionNotice(message);
+          showImplementationToast(buildCodeTaskRunUserStatus(run).label);
           if (isServerTaskCursorPolling()) {
             return { outcome: "executed" };
           }
@@ -5152,8 +5183,7 @@ export function PrototypePreviewPanel({
                 },
               });
               const notice = resolveTaskCursorGithubVerifyUserNotice(json);
-              executionSingleChat.appendAiNotice(notice);
-              showToast(notice);
+              showImplementationToast(notice);
               void fetchImplementationRuntime(pid).then((fetched) => {
                 if (fetched.success) applyImplementationRuntimeFetch(fetched);
               });
@@ -7118,6 +7148,51 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const handleCopyCodeTaskCursorPrompt = useCallback(
+    (codeTaskId: string) => {
+      const pid = projectId.trim();
+      const id = codeTaskId.trim();
+      if (!pid || !id) return;
+      const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+        gitRepoUrl: executionSetupRow?.gitRepoUrl,
+        gitRepoName: executionSetupRow?.gitRepoName,
+        gitRepoProvider: executionSetupRow?.gitRepoProvider,
+        baseBranch: executionSetupRow?.baseBranch,
+      });
+      const runs =
+        parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
+        [];
+      const result = resolveCodeTaskDeveloperPromptForCopy({
+        projectId: pid,
+        codeTaskId: id,
+        codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1 ?? null,
+        taskList: orchestrationAwareRequirementsState.implementationTaskListV1 ?? null,
+        cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+        runs,
+        targetRepository,
+        baseBranch: executionSetupRow?.baseBranch ?? targetRepository?.defaultBranch ?? "main",
+        allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
+      });
+      if (!result.ok || !result.prompt) {
+        showToast(result.reason ?? "프롬프트 생성 정보가 아직 없습니다.");
+        return;
+      }
+      void navigator.clipboard.writeText(result.prompt).then(
+        () => showToast("Cursor 전달 프롬프트를 복사했습니다."),
+        () => showToast("클립보드 복사에 실패했습니다."),
+      );
+    },
+    [
+      projectId,
+      executionSetupRow,
+      orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+      orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
+      orchestrationAwareRequirementsState.implementationTaskListV1,
+      orchestrationAwareRequirementsState.cursorWorkItemsV1,
+      showToast,
+    ],
+  );
+
   const onImplementationQuickExecution = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) return;
@@ -7583,6 +7658,7 @@ export function PrototypePreviewPanel({
             onSelectedTaskIdsChange={handleBoardSelectedTaskIdsChange}
             onSelectedCodeTaskIdsChange={handleBoardSelectedCodeTaskIdsChange}
             onRunSingleCodeTask={handleRunSingleCodeTask}
+            onCopyCodeTaskCursorPrompt={handleCopyCodeTaskCursorPrompt}
             implementationRuntimeStateV1={resolveImplementationRuntimeStateForRead({
               raw: orchestrationAwareRequirementsState as Record<string, unknown>,
               projectId: projectId.trim(),

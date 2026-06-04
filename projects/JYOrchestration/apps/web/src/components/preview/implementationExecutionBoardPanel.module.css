@@ -697,6 +697,21 @@
   text-decoration: line-through;
 }
 
+.taskTreeCopyPromptButton {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.taskTreeCopyPromptButton:hover {
+  color: #1d4ed8;
+}
+
 .taskTreeFlowMarker {
   display: inline-block;
   width: 1rem;

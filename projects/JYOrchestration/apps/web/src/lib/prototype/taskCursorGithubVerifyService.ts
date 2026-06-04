@@ -9,7 +9,10 @@ import {
   buildTaskCursorGithubVerifyTimeline,
   buildTaskCursorOrchestrationPatch,
 } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
-import { mapExecutionSetupPrismaRowToSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
+import {
+  evaluateExecutionSetupSourceGenerationReadiness,
+  mapExecutionSetupPrismaRowToSourceGenerationRow,
+} from "@/lib/prototype/executionSetupSourceGeneration";
 import type { TaskCursorGithubVerifyRequestBody } from "@/lib/prototype/taskCursorGithubVerifyTypes";
 import {
   evaluateTaskCursorGithubVerifyReadiness,
@@ -29,6 +32,8 @@ import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRunt
 import { buildCodeTaskExecutionQueueSnapshotFromDbJob } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import { dispatchQuickRunContinuationOnServer } from "@/lib/prototype/implementationQuickRunContinuationDispatchService";
+import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 const EXECUTION_SETUP_SELECT = {
   gitRepoUrl: true,
@@ -51,6 +56,7 @@ export type TaskCursorGithubVerifySuccess = Readonly<{
   readonly execution: TaskCursorExecutionV1;
   readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
   readonly advance: QuickRunGithubAdvanceResult;
+  readonly continuationDispatchedOnServer?: boolean;
 }>;
 
 export type TaskCursorGithubVerifyOutcome = TaskCursorGithubVerifyBlocked | TaskCursorGithubVerifySuccess;
@@ -226,11 +232,47 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     nowIso,
   });
 
+  let orchestrationPatch = advance.orchestrationPatch;
+  const cursorApiToken = String(setupRow?.cursorApiToken ?? "").trim();
+  let continuationDispatchedOnServer = false;
+
+  const execReadiness = evaluateExecutionSetupSourceGenerationReadiness({
+    setup,
+    env: process.env as Record<string, string | undefined>,
+  });
+
+  if (verify.ok && advance.nextDispatch && cursorApiToken && execReadiness.ok) {
+    const dispatchOutcome = await dispatchQuickRunContinuationOnServer({
+      projectId,
+      dispatch: advance.nextDispatch,
+      baseOrchestrationPatch: orchestrationPatch,
+      requirementsSlice: mergeRequirementsStateJson(
+        {
+          promptTimeline: body.promptTimeline ?? [],
+          implementationQuickRunV1: body.implementationQuickRunV1,
+          implementationTaskListV1: body.implementationTaskListV1,
+          implementationCodeTaskPlanV1: body.implementationCodeTaskPlanV1,
+          codeTaskExecutionRunsV1: body.codeTaskExecutionRunsV1,
+          codeTaskExecutionQueueV1: body.codeTaskExecutionQueueV1 ?? dbQueueSnapshot,
+          cursorWorkItemsV1: workItems,
+          taskCursorExecutionV1: nextExecution,
+        },
+        orchestrationPatch as Record<string, unknown>,
+      ),
+      context: execReadiness.context,
+      cursorApiToken,
+      nowIso,
+    });
+    orchestrationPatch = dispatchOutcome.orchestrationPatch;
+    continuationDispatchedOnServer = dispatchOutcome.dispatched;
+  }
+
   return {
     kind: "ok",
     verify,
     execution: nextExecution,
-    orchestrationPatch: advance.orchestrationPatch,
-    advance,
+    orchestrationPatch,
+    advance: { ...advance, orchestrationPatch },
+    continuationDispatchedOnServer,
   };
 }
