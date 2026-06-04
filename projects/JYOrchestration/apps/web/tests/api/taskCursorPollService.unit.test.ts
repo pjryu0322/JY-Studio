@@ -109,10 +109,11 @@ describe("pollTaskCursorExecutionOnce githubVerifyResult", () => {
 
   it("does not verify while agent is still running", async () => {
     pollStepMock.mockResolvedValue({ kind: "running", statusUpper: "RUNNING" });
+    const freshIso = new Date().toISOString();
 
     const result = await pollTaskCursorExecutionOnce({
       projectId: "p1",
-      execution: execution(),
+      execution: execution({ createdAt: freshIso, updatedAt: freshIso }),
       workItems: [],
       verifyGithub: true,
       context,

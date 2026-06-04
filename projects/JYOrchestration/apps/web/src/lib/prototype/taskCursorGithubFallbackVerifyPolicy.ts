@@ -4,7 +4,7 @@ export const TASK_CURSOR_GITHUB_FALLBACK_AFTER_MS = 3 * 60 * 1000;
 export const TASK_CURSOR_LONG_RUNNING_LABEL_AFTER_MS = 15 * 60 * 1000;
 export const TASK_CURSOR_STALE_OR_REWORK_AFTER_MS = 30 * 60 * 1000;
 
-const REPEATING_AGENT_STATUSES = new Set(["CREATING", "RUNNING", "PENDING"]);
+const REPEATING_AGENT_STATUSES = new Set(["CREATING", "PENDING"]);
 
 export function resolveCursorLaunchElapsedMs(
   execution: TaskCursorExecutionV1,

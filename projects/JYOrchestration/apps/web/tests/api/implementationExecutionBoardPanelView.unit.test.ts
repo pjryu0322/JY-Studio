@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildImplementationExecutionBoardFromRequirementsState,
   pickFirstExecutableDeveloperTaskId,
@@ -382,6 +382,7 @@ describe("implementationExecutionBoardPanelView", () => {
   });
 
   it("shows poll status and stop capability on active task tree node", () => {
+    vi.stubEnv("NEXT_PUBLIC_TASK_CURSOR_POLLING_MODE", "client");
     const board = buildImplementationExecutionBoardFromRequirementsState({
       projectId: "p1",
       orchestration: { implementationTaskListV1: sampleTaskList() },

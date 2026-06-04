@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
-import { resolveFirstIncompleteSelectedCodeTaskId } from "@/lib/prototype/codeTaskExecutionQueue";
+import {
+  getCurrentQueueCodeTaskId,
+  parseCodeTaskExecutionQueueV1,
+  resolveFirstIncompleteSelectedCodeTaskId,
+} from "@/lib/prototype/codeTaskExecutionQueue";
 import {
   findLatestRunForCodeTask,
   parseCodeTaskExecutionRunsV1,
