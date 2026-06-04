@@ -93,6 +93,14 @@ export function classifyCodeTaskExecutionRunFromTaskCursor(
     };
   }
 
+  if (execution.failureReason === "prompt_preflight_failed") {
+    return {
+      status: "failed",
+      failureReason: "prompt_preflight_failed",
+      errorMessage: execution.errorMessage,
+    };
+  }
+
   if (
     execution.status === "cursor_failed" ||
     execution.status === "github_verify_failed"

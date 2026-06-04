@@ -63,6 +63,11 @@ import {
 import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
 import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
 import { resolveCodeTaskSpecificRole } from "@/lib/prototype/codeTaskPromptRoleResolver";
+import {
+  buildRuntimePromptQualityGateTimelineEntry,
+  patchTaskCursorExecutionForPromptPreflightFailure,
+  PROMPT_PREFLIGHT_FAILED_PHASE,
+} from "@/lib/prototype/codeTaskPromptPreflightFailure";
 
 type Body = {
   readonly projectId?: string;
@@ -226,13 +231,6 @@ export async function POST(request: NextRequest) {
       allowedPathGlobs: context.allowedPathGlobs,
       nowIso,
     });
-    execution = patchTaskCursorExecution(execution, { status: "cursor_requested", nowIso });
-
-    const timeline = [
-      ...buildTaskCursorRequestedTimeline({ execution, nowIso }),
-      buildTaskCursorApiStartedTimeline({ execution, nowIso }),
-    ];
-    execution = patchTaskCursorExecution(execution, { status: "cursor_running", nowIso });
 
     const commitMessage = buildProviderWipCommitMessage("cursor", `task ${taskId}`, false, taskId);
     const apiRequest = {
@@ -301,25 +299,48 @@ export async function POST(request: NextRequest) {
             warnings: promptSafety.warnings,
           }),
         );
-        execution = patchTaskCursorExecution(execution, {
-          status: "cursor_failed",
-          failureReason: "prompt_preflight_failed",
+        const diagnostics = buildRuntimePromptQualityGateDiagnostics({
+          codeTaskId: codeTaskIdForPromptGate,
+          workBranch: expectedWorkBranch,
+          errors: promptSafety.errors,
+          warnings: promptSafety.warnings,
+        });
+        execution = patchTaskCursorExecutionForPromptPreflightFailure({
+          execution,
           errorMessage: CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
           nowIso,
         });
-        timeline.push(buildTaskCursorApiFailedTimeline({ execution, nowIso }));
+        const preflightTimelineEntry = buildRuntimePromptQualityGateTimelineEntry({
+          projectId,
+          codeTaskId: codeTaskIdForPromptGate,
+          diagnostics,
+          nowIso,
+        });
+        const orchestrationPatch = buildTaskCursorOrchestrationPatch({
+          execution,
+          timelineEntries: [preflightTimelineEntry],
+        });
         return NextResponse.json(
           {
             success: false,
             status: "blocked",
             message: CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
+            phase: PROMPT_PREFLIGHT_FAILED_PHASE,
             errors: promptSafety.errors,
             warnings: promptSafety.warnings,
+            ...orchestrationPatch,
           },
           { status: 200 },
         );
       }
     }
+
+    execution = patchTaskCursorExecution(execution, { status: "cursor_requested", nowIso });
+    const timeline = [
+      ...buildTaskCursorRequestedTimeline({ execution, nowIso }),
+      buildTaskCursorApiStartedTimeline({ execution, nowIso }),
+    ];
+    execution = patchTaskCursorExecution(execution, { status: "cursor_running", nowIso });
 
     if (useCloudAgentLaunch) {
       const bundleForDispatch = await getImplementationRuntimeBundle(projectId);

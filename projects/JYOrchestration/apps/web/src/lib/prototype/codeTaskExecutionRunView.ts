@@ -57,6 +57,15 @@ export function buildCodeTaskRunUserStatus(
         tone: "warning",
       };
     case "failed":
+      if (run.failureReason === "prompt_preflight_failed") {
+        return {
+          label: "프롬프트 품질 검사 실패",
+          detail:
+            run.errorMessage ??
+            "프롬프트 품질 검사 실패로 Cursor 실행 전 차단되었습니다.",
+          tone: "danger",
+        };
+      }
       return {
         label,
         detail: run.errorMessage ?? "실행에 실패했습니다.",

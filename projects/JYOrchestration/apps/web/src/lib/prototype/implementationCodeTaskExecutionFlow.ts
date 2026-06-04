@@ -13,6 +13,7 @@ import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution"
 
 export type CodeTaskExecutionFlowPhase =
   | "prompt_ready"
+  | "prompt_preflight_failed"
   | "cursor_running"
   | "cursor_completed"
   | "github_verifying"
@@ -42,6 +43,8 @@ export function formatCodeTaskExecutionFlowPhaseKo(phase: CodeTaskExecutionFlowP
   switch (phase) {
     case "prompt_ready":
       return "개발 프롬프트 준비";
+    case "prompt_preflight_failed":
+      return "프롬프트 품질 검사 실패";
     case "cursor_running":
       return "Cursor 실행 중";
     case "cursor_completed":
@@ -78,6 +81,8 @@ export function formatCodeTaskExecutionProgressLine(phase: CodeTaskExecutionFlow
       return "commit 확인 실패";
     case "blocked_by_dependency":
       return "선행 작업 대기";
+    case "prompt_preflight_failed":
+      return "프롬프트 품질 검사 실패로 Cursor 실행 전 차단";
     case "prompt_ready":
       return "Quick 실행 대기";
     default:
@@ -231,6 +236,7 @@ function mapCursorStatusToPhase(input: {
   readonly failureReason?: string;
 }): CodeTaskExecutionFlowPhase {
   if (input.failureReason === "blocked_by_dependency") return "blocked_by_dependency";
+  if (input.failureReason === "prompt_preflight_failed") return "prompt_preflight_failed";
   const execution = input.execution;
   if (!execution || execution.taskId !== input.parentTaskId) {
     if (input.developerStatus === "done") return "completed";
@@ -238,6 +244,7 @@ function mapCursorStatusToPhase(input: {
     return "prompt_ready";
   }
   const s = execution.status;
+  if (execution.failureReason === "prompt_preflight_failed") return "prompt_preflight_failed";
   if (s === "cursor_failed" || s === "github_verify_failed") return "failed";
   if (s === "status_check_stopped") return "cursor_running";
   if (s === "scm_pending") return "completed";
@@ -273,6 +280,7 @@ function phaseIndex(phase: CodeTaskExecutionFlowPhase): number {
   const order: CodeTaskExecutionFlowPhase[] = [
     "blocked_by_dependency",
     "prompt_ready",
+    "prompt_preflight_failed",
     "cursor_running",
     "cursor_completed",
     "github_verifying",
@@ -298,7 +306,15 @@ export function buildCodeTaskExecutionFlowSteps(input: {
     const stepIdx = phaseIndex(stepPhase === "completed" ? "completed" : stepPhase);
 
     let state: CodeTaskExecutionFlowStepState = "pending";
-    if (input.phase === "failed") {
+    if (input.phase === "prompt_preflight_failed") {
+      if (def.id === "prompt_ready") state = "done";
+      else if (def.id === "cursor_running") {
+        state = "failed";
+        label = "Cursor 실행 전 차단";
+      } else {
+        state = "pending";
+      }
+    } else if (input.phase === "failed") {
       if (stepIdx < phaseIndex("github_verifying")) state = stepIdx < current ? "done" : "pending";
       else if (def.id === "github_verifying") state = "failed";
       else state = "pending";
@@ -337,6 +353,12 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
   if (input.failureReason === "blocked_by_dependency") {
     return "blocked_by_dependency";
   }
+  if (
+    run?.failureReason === "prompt_preflight_failed" ||
+    execution?.failureReason === "prompt_preflight_failed"
+  ) {
+    return "prompt_preflight_failed";
+  }
 
   if (execution) {
     const fromCursor = mapCursorStatusToPhase({
@@ -369,6 +391,9 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
       run.status === "rework_required" ||
       run.status === "status_check_stopped"
     ) {
+      if (run.failureReason === "prompt_preflight_failed") {
+        return "prompt_preflight_failed";
+      }
       if (run.status === "status_check_stopped") return finish("cursor_running");
       if (runHasCursorOrGithubEvidence(run)) {
         return String(run.commitSha ?? run.branchHeadCommitSha ?? "").trim()

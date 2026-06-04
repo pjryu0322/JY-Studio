@@ -490,7 +490,9 @@ function mapTaskCursorToProgressStatus(
   switch (execution.status) {
     case "pending":
     case "prompt_ready":
-      return "cursor_request_ready";
+      return execution.failureReason === "prompt_preflight_failed"
+        ? "cursor_failed"
+        : "cursor_request_ready";
     case "cursor_requested":
       return "cursor_requested";
     case "cursor_running":
@@ -515,7 +517,9 @@ function taskCursorStatusLabel(execution: TaskCursorExecutionV1): string {
   switch (execution.status) {
     case "pending":
     case "prompt_ready":
-      return "AI 개발자 실행 대기";
+      return execution.failureReason === "prompt_preflight_failed"
+        ? "프롬프트 품질 검사 실패"
+        : "AI 개발자 실행 대기";
     case "cursor_requested":
       return "Cursor 실행 요청됨";
     case "cursor_running":
@@ -547,6 +551,12 @@ function taskCursorSummaryLine(execution: TaskCursorExecutionV1): string {
       execution.errorMessage ?? TASK_CURSOR_FAILURE_MESSAGES.poll_cancelled,
       TASK_CURSOR_STATUS_CHECK_RESUME_HINT,
     ].join("\n");
+  }
+  if (execution.failureReason === "prompt_preflight_failed") {
+    return (
+      execution.errorMessage ??
+      TASK_CURSOR_FAILURE_MESSAGES.prompt_preflight_failed
+    );
   }
   if (execution.status === "cursor_failed" || execution.status === "github_verify_failed") {
     return (
@@ -580,6 +590,9 @@ function taskCursorSummaryLine(execution: TaskCursorExecutionV1): string {
 function taskCursorNextProcessingHint(execution: TaskCursorExecutionV1): string {
   if (execution.status === "status_check_stopped") {
     return "진행: [상태 다시 확인]으로 Cloud Agent 결과 확인 재개";
+  }
+  if (execution.failureReason === "prompt_preflight_failed") {
+    return "프롬프트를 수정하거나 개발 프롬프트를 다시 생성한 뒤 실행해 주세요.";
   }
   if (execution.status === "cursor_failed" || execution.status === "github_verify_failed") {
     return "실패 원인을 확인한 뒤 재작업 요청을 진행해 주세요.";

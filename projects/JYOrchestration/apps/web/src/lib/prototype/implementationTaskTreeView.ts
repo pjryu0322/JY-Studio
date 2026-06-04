@@ -17,6 +17,7 @@ import {
   isProcessTaskCodeTasksFullySelected,
   normalizeSelectedCodeTaskIds,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
+import { PROMPT_PREFLIGHT_USER_BLOCK_MESSAGE } from "@/lib/prototype/codeTaskPromptPreflightFailure";
 import {
   buildCodeTaskExecutionFlowSteps,
   deriveCodeTaskExecutionFlowPhase,
@@ -210,7 +211,9 @@ function buildCodeTaskNode(input: {
           latestRun?.status === "failed" ||
           latestRun?.status === "status_check_stopped"
         ? latestRun.failureReason ?? "commit_not_created"
-        : input.row.failureReason,
+        : latestRun?.failureReason === "prompt_preflight_failed"
+          ? "prompt_preflight_failed"
+          : input.row.failureReason,
   });
   const executionFlowSteps = buildCodeTaskExecutionFlowSteps({ phase, policy });
   const title = stripLeadingTaskIdFromTitle(input.codeTask.codeTaskId, input.codeTask.title);
@@ -225,6 +228,7 @@ function buildCodeTaskNode(input: {
   if (phase === "prompt_ready") collapsedSummary = "대기";
   if (phase === "completed") collapsedSummary = "완료";
   if (phase === "failed") collapsedSummary = "재작업 필요";
+  if (phase === "prompt_preflight_failed") collapsedSummary = "프롬프트 품질 검사 실패";
   if (phase === "blocked_by_dependency") collapsedSummary = "선행 작업 필요";
 
   const dependencyHint = dependencyCheck
@@ -241,11 +245,13 @@ function buildCodeTaskNode(input: {
   ];
 
   const failureReason =
-    phase === "failed"
-      ? latestRun?.failureReason ??
-        executionForParent?.failureReason ??
-        "commit_not_created"
-      : undefined;
+    phase === "prompt_preflight_failed"
+      ? PROMPT_PREFLIGHT_USER_BLOCK_MESSAGE
+      : phase === "failed"
+        ? latestRun?.failureReason ??
+          executionForParent?.failureReason ??
+          "commit_not_created"
+        : undefined;
 
   return {
     codeTaskId: input.codeTask.codeTaskId,
@@ -258,7 +264,12 @@ function buildCodeTaskNode(input: {
     isSelected: input.isSelected,
     isChecked: input.isChecked,
     ...(failureReason ? { failureReason } : {}),
-    ...(phase === "failed"
+    ...(phase === "prompt_preflight_failed"
+      ? {
+          nextActionHint:
+            "프롬프트를 수정하거나 개발 프롬프트를 다시 생성한 뒤 실행해 주세요.",
+        }
+      : phase === "failed"
       ? { nextActionHint: "다음 처리: Cursor 재실행 대기" }
       : phase === "blocked_by_dependency"
         ? { nextActionHint: dependencyHint ?? "선행 CodeTask 완료 후 실행 가능" }
