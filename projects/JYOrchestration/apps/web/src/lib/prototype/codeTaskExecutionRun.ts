@@ -2,6 +2,7 @@ import { randomUuid } from "@/lib/platform-orchestration/platformIds";
 import { isInFlightCodeTaskExecutionRunStatus, isTerminalCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
 import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import { getCurrentQueueCodeTaskId } from "@/lib/prototype/codeTaskExecutionQueue";
+import { parseCodeTaskDeveloperPromptMeta, type CodeTaskDeveloperPromptMeta } from "@/lib/prototype/codeTaskDeveloperPromptCache";
 
 export const CODE_TASK_EXECUTION_RUN_VERSION = "code_task_execution_run_v1" as const;
 
@@ -29,6 +30,7 @@ export type CodeTaskExecutionRunV1 = Readonly<{
   status: CodeTaskExecutionRunStatus;
   attemptNo: number;
   developerPrompt?: string;
+  developerPromptMeta?: CodeTaskDeveloperPromptMeta;
   cursorRequestId?: string;
   cursorRunId?: string;
   repository?: string;
@@ -96,6 +98,9 @@ export function parseCodeTaskExecutionRunV1(raw: unknown): CodeTaskExecutionRunV
     updatedAt,
     ...(typeof o.developerPrompt === "string" && o.developerPrompt.trim()
       ? { developerPrompt: o.developerPrompt.trim() }
+      : {}),
+    ...(parseCodeTaskDeveloperPromptMeta(o.developerPromptMeta)
+      ? { developerPromptMeta: parseCodeTaskDeveloperPromptMeta(o.developerPromptMeta) }
       : {}),
     ...(typeof o.cursorRunId === "string" && o.cursorRunId.trim() ? { cursorRunId: o.cursorRunId.trim() } : {}),
     ...(typeof o.repository === "string" && o.repository.trim() ? { repository: o.repository.trim() } : {}),

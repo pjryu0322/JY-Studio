@@ -218,6 +218,21 @@ describe("ImplementationCodeTaskPlanV1", () => {
     );
   });
 
+  it("buildImplementationPlanningReadinessPatch includes codeTaskPromptContextMapV1", () => {
+    const list = sampleTaskList();
+    const readiness = buildImplementationPlanningReadinessPatch({
+      projectId: PROJECT_ID,
+      taskList: list,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+    });
+    expect(readiness.codeTaskPromptContextMapV1.projectId).toBe(PROJECT_ID);
+    expect(Object.keys(readiness.codeTaskPromptContextMapV1.contexts).length).toBe(
+      readiness.implementationCodeTaskPlanV1.tasks.length,
+    );
+  });
+
   it("blocks Quick Run and Task Cursor when code task validation failed", () => {
     const readiness = buildImplementationPlanningReadinessPatch({
       projectId: PROJECT_ID,

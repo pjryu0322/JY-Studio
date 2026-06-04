@@ -57,6 +57,7 @@ export type QuickDesignConfirmImplementationPrepResult = Readonly<{
   readonly cursorWorkItemsV1: readonly CursorWorkItem[] | null;
   readonly implementationWorkItemPreflightSummaryV1: ImplementationWorkItemPreflightSummaryV1 | null;
   readonly implementationCodeTaskQualityGateV1: ImplementationCodeTaskQualityGateV1 | null;
+  readonly codeTaskPromptContextMapV1: import("@/lib/prototype/codeTaskPromptContext").CodeTaskPromptContextMapV1 | null;
   readonly readiness: ImplementationSeedReadiness;
   readonly lifecycleStatus: ImplementationSeedLifecycleStatus;
   readonly autoCandidateGenerated: boolean;
@@ -336,6 +337,8 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   let cursorWorkItemsV1: readonly CursorWorkItem[] | null = null;
   let implementationWorkItemPreflightSummaryV1: ImplementationWorkItemPreflightSummaryV1 | null = null;
   let implementationCodeTaskQualityGateV1: ImplementationCodeTaskQualityGateV1 | null = null;
+  let codeTaskPromptContextMapV1: import("@/lib/prototype/codeTaskPromptContext").CodeTaskPromptContextMapV1 | null =
+    null;
   let planningReadinessTimeline: RequirementsPromptTimelineEntry[] = [];
 
   if (prepComplete && taskListForReadiness?.tasks?.length) {
@@ -343,6 +346,12 @@ export function runQuickDesignConfirmImplementationPrep(input: {
       projectId: input.projectId,
       taskList: taskListForReadiness,
       projectArtifacts: input.projectArtifacts ?? [],
+      requirementsStateJson: {
+        implementationSeedV1,
+        implementationTaskListV1: taskListForReadiness,
+        ...(input.projectArtifacts?.length ? { projectArtifacts: input.projectArtifacts } : {}),
+        ...(input.artifactOrchestrationV1 ? { artifactOrchestrationV1: input.artifactOrchestrationV1 } : {}),
+      },
       envOk: input.envOk === true,
       designOk: postConfirmState.designOk,
       priorTimeline: input.promptTimeline,
@@ -354,6 +363,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     cursorWorkItemsV1 = readinessPatch.cursorWorkItemsV1;
     implementationWorkItemPreflightSummaryV1 = readinessPatch.implementationWorkItemPreflightSummaryV1;
     implementationCodeTaskQualityGateV1 = readinessPatch.implementationCodeTaskQualityGateV1;
+    codeTaskPromptContextMapV1 = readinessPatch.codeTaskPromptContextMapV1;
     planningReadinessTimeline = [...readinessPatch.promptTimeline];
   }
 
@@ -425,6 +435,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     cursorWorkItemsV1,
     implementationWorkItemPreflightSummaryV1,
     implementationCodeTaskQualityGateV1,
+    codeTaskPromptContextMapV1,
     readiness,
     lifecycleStatus,
     autoCandidateGenerated,
@@ -473,6 +484,12 @@ export async function runQuickDesignConfirmImplementationPrepWithLlm(input: {
     taskList: taskListForReadiness,
     projectArtifacts: input.projectArtifacts ?? [],
     implementationSeedV1: syncResult.implementationSeedV1,
+    requirementsStateJson: {
+      implementationSeedV1: syncResult.implementationSeedV1,
+      implementationTaskListV1: taskListForReadiness,
+      ...(input.projectArtifacts?.length ? { projectArtifacts: input.projectArtifacts } : {}),
+      ...(input.artifactOrchestrationV1 ? { artifactOrchestrationV1: input.artifactOrchestrationV1 } : {}),
+    },
     envOk: input.envOk === true,
     designOk: syncResult.postConfirmState.designOk,
     priorTimeline: input.promptTimeline,
@@ -498,6 +515,7 @@ export async function runQuickDesignConfirmImplementationPrepWithLlm(input: {
     cursorWorkItemsV1: readinessPatch.cursorWorkItemsV1,
     implementationWorkItemPreflightSummaryV1: readinessPatch.implementationWorkItemPreflightSummaryV1,
     implementationCodeTaskQualityGateV1: readinessPatch.implementationCodeTaskQualityGateV1,
+    codeTaskPromptContextMapV1: readinessPatch.codeTaskPromptContextMapV1,
     timelineEntries: [...nonPlanningTimeline, ...planningTimeline],
   };
 }

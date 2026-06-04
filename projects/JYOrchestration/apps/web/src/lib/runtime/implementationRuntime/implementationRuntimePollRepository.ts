@@ -157,16 +157,34 @@ export async function linkTaskCursorJobToImplementationRun(input: {
     null;
   if (!run) return null;
 
-  await prisma.implementationCodeTaskRun.update({
-    where: { id: run.id },
-    data: {
-      taskCursorJobId: jobId,
-      nextPollAt: now,
-      pollCount: run.pollCount ?? 0,
-      pollLockedBy: null,
-      pollLockExpiresAt: null,
-      updatedAt: now,
-    },
+  await prisma.$transaction(async (tx) => {
+    const priorHolder = await tx.implementationCodeTaskRun.findFirst({
+      where: {
+        taskCursorJobId: jobId,
+        id: { not: run.id },
+      },
+    });
+    if (priorHolder) {
+      await tx.implementationCodeTaskRun.update({
+        where: { id: priorHolder.id },
+        data: {
+          taskCursorJobId: null,
+          updatedAt: now,
+        },
+      });
+    }
+
+    await tx.implementationCodeTaskRun.update({
+      where: { id: run.id },
+      data: {
+        taskCursorJobId: jobId,
+        nextPollAt: now,
+        pollCount: run.pollCount ?? 0,
+        pollLockedBy: null,
+        pollLockExpiresAt: null,
+        updatedAt: now,
+      },
+    });
   });
 
   return run.id;

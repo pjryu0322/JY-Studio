@@ -69,7 +69,9 @@ describe("buildImplementationTaskExecutionHints", () => {
     });
     expect(hints.candidateDirectories.every((d) => !d.includes("JYOrchestration"))).toBe(true);
     expect(hints.candidateFiles).toEqual([]);
-    expect(hints.forbiddenPaths.some((p) => p.includes("projects/JYOrchestration"))).toBe(true);
+    expect(hints.forbiddenPaths.some((p) => p.includes("package.json"))).toBe(true);
+    expect(hints.forbiddenPaths.every((p) => !p.includes("JYOrchestration"))).toBe(true);
+    expect(hints.testCommands.every((c) => !c.includes("cd projects"))).toBe(true);
   });
 });
 

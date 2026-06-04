@@ -1,6 +1,17 @@
 export type CodeTaskPromptTargetRepoKind = "generated_project" | "platform";
 
 export type CodeTaskPromptTargetContext = Readonly<{
+  readonly repoFullName: string;
+  readonly baseBranch: string;
+  readonly workBranch: string;
+  readonly repoKind: CodeTaskPromptTargetRepoKind;
+  readonly allowedPathGlobs: readonly string[];
+  readonly forbiddenRules: readonly string[];
+  readonly projectStack?: "next" | "vite" | "react" | "unknown";
+}>;
+
+/** @deprecated Use CodeTaskPromptTargetContext.repoKind */
+export type LegacyCodeTaskPromptTargetContext = Readonly<{
   targetRepoFullName: string;
   baseBranch: string;
   workBranch: string;
@@ -8,6 +19,59 @@ export type CodeTaskPromptTargetContext = Readonly<{
   allowedPathGlobs: readonly string[];
   forbiddenPathGlobs: readonly string[];
 }>;
+
+export const GENERATED_PROJECT_FORBIDDEN_RULES: readonly string[] = [
+  "package.json, lockfile 수정 금지",
+  "main branch 직접 push 금지",
+  "PR 생성·merge 금지",
+  "무관한 대규모 리팩터링 금지",
+];
+
+export const GENERATED_PROJECT_PROBE_PATHS: readonly string[] = [
+  "src/**",
+  "app/**",
+  "components/**",
+  "lib/**",
+  "hooks/**",
+  "styles/**",
+  "tests/**",
+];
+
+export function buildGeneratedProjectForbiddenRules(repoFullName: string): readonly string[] {
+  return [
+    `\`${repoFullName}\` 저장소 밖의 파일 수정 금지`,
+    ...GENERATED_PROJECT_FORBIDDEN_RULES,
+  ];
+}
+
+export function buildCodeTaskPromptTargetContext(input: {
+  readonly repoFullName: string;
+  readonly baseBranch: string;
+  readonly workBranch: string;
+  readonly repoKind?: CodeTaskPromptTargetRepoKind;
+  readonly allowedPathGlobs?: readonly string[];
+}): CodeTaskPromptTargetContext {
+  const repoKind = input.repoKind ?? "generated_project";
+  const repoFullName = input.repoFullName.trim();
+  const allowedPathGlobs = resolveEffectiveAllowedPathGlobs({
+    allowedPathGlobs: input.allowedPathGlobs,
+    targetRepoFullName: repoFullName,
+    targetRepoKind: repoKind,
+  });
+  const forbiddenRules =
+    repoKind === "platform"
+      ? resolveForbiddenPathGlobsForTargetRepo({ targetRepoKind: repoKind })
+      : buildGeneratedProjectForbiddenRules(repoFullName);
+  return {
+    repoFullName,
+    baseBranch: input.baseBranch.trim() || "main",
+    workBranch: input.workBranch.trim(),
+    repoKind,
+    allowedPathGlobs,
+    forbiddenRules,
+    projectStack: "unknown",
+  };
+}
 
 const PLATFORM_PATH_PREFIXES = [
   "projects/jyorchestration/",

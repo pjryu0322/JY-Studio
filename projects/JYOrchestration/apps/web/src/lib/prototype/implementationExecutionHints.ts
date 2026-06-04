@@ -198,12 +198,7 @@ function buildGeneratedProjectImplementationTaskExecutionHints(
       ? ["src/app/api", "app/api", "pages/api", "src/lib"]
       : kind === "ui"
         ? ["src/components", "src/app", "app", "components", "pages"]
-        : ["src/components", "src/app", "src/lib", "app", "lib"];
-
-  const manualVerification = [
-    `${input.taskTitle}: 정상 플로우에서 기대 동작이 재현되는지 확인`,
-    "예외·빈 입력·부분 실패 시 사용자 피드백과 복구 경로 확인",
-  ];
+        : ["src/components", "src/app", "src/lib", "app", "lib", "hooks", "styles"];
 
   return {
     candidateDirectories: uniq(candidateDirectories),
@@ -211,27 +206,33 @@ function buildGeneratedProjectImplementationTaskExecutionHints(
     candidateApiRoutes: kind === "api" ? ["src/app/api/**", "app/api/**"] : [],
     candidateComponents: kind === "ui" ? ["src/components/**", "components/**"] : [],
     candidateTests: ["tests/**", "__tests__/**", "src/**/*.test.ts", "src/**/*.test.tsx"],
-    forbiddenPaths: uniq([
-      "../",
-      "../../",
-      "projects/JYOrchestration/**",
-      "projects/JYGallery/**",
-      "projects/JYAccount/**",
-      "projects/Chunk Studio/**",
-      "projects/chunk-studio/**",
-      ...COMMON_FORBIDDEN_PATHS,
-    ]),
-    testCommands: [
-      "대상 저장소 package.json scripts 확인 후 npm test / npm run build / pnpm test / pnpm build 중 가능한 검증 실행",
+    forbiddenPaths: [
+      "작업 대상 저장소 밖의 파일 수정 금지",
+      "package.json, lockfile 수정 금지",
+      "main branch 직접 push 금지",
+      "PR 생성·merge 금지",
+      "무관한 대규모 리팩터링 금지",
     ],
-    manualVerification,
+    testCommands: [
+      "대상 저장소 루트에서 package.json scripts를 확인한다.",
+      "가능한 경우 build/test/lint 중 존재하는 명령을 실행한다.",
+      "명령이 없으면 수정 파일과 화면 동작 기준으로 자체 검증한다.",
+    ],
+    manualVerification: [
+      "구현한 기능이 화면 또는 상태 흐름에서 재현되는지 확인",
+      "정상/오류/빈/로딩 등 관련 상태 회귀 없음 확인",
+    ],
     expectedBehavior: [
       `대상 저장소 내부에서 ${input.taskTitle} 요구사항이 충족된다.`,
       "오류/로딩 상태가 사용자에게 명확히 전달된다.",
     ],
-    regressionScope: ["동일 기능 회귀 없음", "허용 경로 밖 파일 변경 없음"],
+    regressionScope: ["동일 기능 회귀 없음", "작업 대상 저장소 밖 파일 변경 없음"],
   };
 }
+
+export const buildGeneratedProjectExecutionHints = buildGeneratedProjectImplementationTaskExecutionHints;
+
+export { buildPlatformImplementationTaskExecutionHints };
 
 export function buildImplementationTaskExecutionHints(
   input: BuildImplementationTaskExecutionHintsInput,

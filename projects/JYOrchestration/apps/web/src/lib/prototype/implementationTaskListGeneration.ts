@@ -120,6 +120,22 @@ function buildPlanningReadinessReuseTimelineEntry(input: {
   });
 }
 
+function planningReadinessRequirementsStateJson(input: {
+  readonly patch: Partial<RequirementsStateJson>;
+  readonly taskList: ImplementationTaskListV1;
+  readonly projectArtifacts?: readonly ProjectArtifact[];
+  readonly implementationSeedV1?: ImplementationSeedV1 | null;
+}): Record<string, unknown> {
+  return {
+    ...input.patch,
+    ...(input.implementationSeedV1 !== undefined
+      ? { implementationSeedV1: input.implementationSeedV1 }
+      : {}),
+    implementationTaskListV1: input.taskList,
+    ...(input.projectArtifacts?.length ? { projectArtifacts: input.projectArtifacts } : {}),
+  };
+}
+
 async function appendPlanningReadinessToPatchWithLlm(input: {
   readonly projectId: string;
   readonly taskList: ImplementationTaskListV1;
@@ -150,6 +166,7 @@ async function appendPlanningReadinessToPatchWithLlm(input: {
     taskList: input.taskList,
     projectArtifacts: input.projectArtifacts,
     implementationSeedV1: input.implementationSeedV1,
+    requirementsStateJson: planningReadinessRequirementsStateJson(input),
     envOk: input.envOk,
     designOk: input.designOk,
     priorTimeline: input.priorTimeline,
@@ -167,6 +184,7 @@ async function appendPlanningReadinessToPatchWithLlm(input: {
     implementationCodeTaskQualityGateV1: readiness.implementationCodeTaskQualityGateV1,
     cursorWorkItemsV1: [...readiness.cursorWorkItemsV1],
     implementationWorkItemPreflightSummaryV1: readiness.implementationWorkItemPreflightSummaryV1,
+    codeTaskPromptContextMapV1: readiness.codeTaskPromptContextMapV1,
     promptTimeline: readiness.promptTimeline,
   };
 }
@@ -176,6 +194,7 @@ function appendPlanningReadinessToPatch(input: {
   readonly taskList: ImplementationTaskListV1;
   readonly patch: Partial<RequirementsStateJson>;
   readonly projectArtifacts?: readonly ProjectArtifact[];
+  readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly envOk: boolean;
   readonly designOk: boolean;
   readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[];
@@ -187,6 +206,7 @@ function appendPlanningReadinessToPatch(input: {
     projectId: input.projectId,
     taskList: input.taskList,
     projectArtifacts: input.projectArtifacts,
+    requirementsStateJson: planningReadinessRequirementsStateJson(input),
     envOk: input.envOk,
     designOk: input.designOk,
     priorTimeline: input.priorTimeline,
@@ -200,6 +220,7 @@ function appendPlanningReadinessToPatch(input: {
     implementationCodeTaskQualityGateV1: readiness.implementationCodeTaskQualityGateV1,
     cursorWorkItemsV1: [...readiness.cursorWorkItemsV1],
     implementationWorkItemPreflightSummaryV1: readiness.implementationWorkItemPreflightSummaryV1,
+    codeTaskPromptContextMapV1: readiness.codeTaskPromptContextMapV1,
     promptTimeline: readiness.promptTimeline,
   };
 }
@@ -253,6 +274,7 @@ export function buildGenerateImplementationTaskListFromSeedResult(input: {
         taskList,
         patch,
         projectArtifacts: input.projectArtifacts,
+        implementationSeedV1: input.seed,
         envOk: input.envOk,
         designOk: input.designOk,
         priorTimeline: input.priorTimeline,
@@ -345,6 +367,7 @@ export function buildGenerateImplementationTaskListFromSeedResult(input: {
     taskList,
     patch,
     projectArtifacts: input.projectArtifacts,
+    implementationSeedV1: input.seed,
     envOk: input.envOk,
     designOk: input.designOk,
     priorTimeline: input.priorTimeline,

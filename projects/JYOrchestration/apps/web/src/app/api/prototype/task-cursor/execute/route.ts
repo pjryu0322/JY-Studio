@@ -386,12 +386,13 @@ export async function POST(request: NextRequest) {
           projectId,
           execution,
           workItems: scopedWorkItems,
+          codeTaskId: codeTaskIdForRuntime,
         });
         jobId = job.id;
         await linkTaskCursorJobToImplementationRun({
           projectId,
           taskCursorJobId: job.id,
-          codeTaskId: body.codeTaskId,
+          codeTaskId: codeTaskIdForRuntime,
           now: new Date(nowIso),
         });
         await syncImplementationRuntimeFromTaskCursor({

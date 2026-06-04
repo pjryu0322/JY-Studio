@@ -59,6 +59,7 @@ function prepBase(overrides: Partial<QuickDesignConfirmImplementationPrepResult>
       failedWorkItemIds: [],
       failedReasons: [],
     } as never,
+    codeTaskPromptContextMapV1: null,
     implementationCodeTaskQualityGateV1: {
       version: "implementation_code_task_quality_gate_v1",
       projectId: "p1",

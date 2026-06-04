@@ -77,20 +77,43 @@ export async function upsertTaskCursorExecutionJobFromLaunch(input: {
   readonly execution: TaskCursorExecutionV1;
   readonly workItems: readonly CursorWorkItem[];
   readonly history?: readonly TaskCursorExecutionV1[] | null;
+  readonly codeTaskId?: string | null;
   readonly now?: Date;
 }): Promise<TaskCursorExecutionJobRow> {
+  const codeTaskId = input.codeTaskId?.trim() ?? "";
+
+  const reuseIfCompatible = async (
+    row: TaskCursorExecutionJobRow,
+  ): Promise<TaskCursorExecutionJobRow | null> => {
+    if (!codeTaskId) return row;
+    const linkedRun = await prisma.implementationCodeTaskRun.findFirst({
+      where: { taskCursorJobId: row.id },
+      select: { codeTaskId: true },
+    });
+    if (linkedRun && linkedRun.codeTaskId !== codeTaskId) {
+      return null;
+    }
+    return row;
+  };
+
   const existing = await findActiveTaskCursorJob({
     projectId: input.projectId,
     taskId: input.execution.taskId,
     cursorRunId: input.execution.cursorRunId ?? null,
   });
-  if (existing) return existing;
+  if (existing) {
+    const ok = await reuseIfCompatible(existing);
+    if (ok) return ok;
+  }
 
   const sameTaskActive = await findActiveTaskCursorJob({
     projectId: input.projectId,
     taskId: input.execution.taskId,
   });
-  if (sameTaskActive) return sameTaskActive;
+  if (sameTaskActive) {
+    const ok = await reuseIfCompatible(sameTaskActive);
+    if (ok) return ok;
+  }
 
   return prisma.taskCursorExecutionJob.create({
     data: buildTaskCursorJobCreateInput(input),

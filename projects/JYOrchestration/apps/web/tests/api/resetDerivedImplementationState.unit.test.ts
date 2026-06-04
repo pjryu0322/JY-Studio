@@ -72,6 +72,7 @@ describe("resetDerivedImplementationState", () => {
     expect(reset.implementationTaskPlanV1).toBeNull();
     expect(reset.implementationSlotsV1).toBeNull();
     expect(reset.cursorWorkItemsV1).toBeNull();
+    expect(reset.codeTaskPromptContextMapV1).toBeNull();
     expect(reset.codeAgentWipExecutionV1).toBeNull();
     expect(reset.prototypeExecutionSingleChatV1).toBeNull();
     expect(reset.originalProjectDescription).toBe("원문 설명");

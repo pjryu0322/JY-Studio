@@ -4638,6 +4638,8 @@ export function PrototypePreviewPanel({
               targetRepository,
               baseBranch: executionSetupRow?.baseBranch ?? targetRepository.defaultBranch,
               allowedPathGlobs,
+              codeTaskPromptContextMapV1:
+                orchestrationAwareRequirementsState.codeTaskPromptContextMapV1 ?? null,
               existingTaskCursor:
                 parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1) ??
                 null,
@@ -7168,6 +7170,8 @@ export function PrototypePreviewPanel({
         targetRepository,
         baseBranch: executionSetupRow?.baseBranch ?? targetRepository?.defaultBranch ?? "main",
         allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
+        codeTaskPromptContextMapV1:
+          orchestrationAwareRequirementsState.codeTaskPromptContextMapV1 ?? null,
       });
       if (!result.ok || !result.prompt) {
         showToast(result.reason ?? "프롬프트 생성 정보가 아직 없습니다.");
@@ -7186,6 +7190,7 @@ export function PrototypePreviewPanel({
       orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
       orchestrationAwareRequirementsState.implementationTaskListV1,
       orchestrationAwareRequirementsState.cursorWorkItemsV1,
+      orchestrationAwareRequirementsState.codeTaskPromptContextMapV1,
       showToast,
     ],
   );

@@ -57,6 +57,7 @@ import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionR
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
+import { parseCodeTaskPromptContextMapV1, type CodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 import {
   parseImplementationRuntimeStateV1,
   type ImplementationRuntimeStateV1,
@@ -605,6 +606,8 @@ export type RequirementsStateJson = {
   implementationTaskListV1?: ImplementationTaskListV1 | null;
   /** TaskList developer Task → 코드 변경 단위 분해(CodeTaskPlan) */
   implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
+  /** CodeTask별 기획 맥락 프롬프트 재료(실행 직전 최종 prompt 조합용) */
+  codeTaskPromptContextMapV1?: CodeTaskPromptContextMapV1 | null;
   /** 기획단계 1차 WorkItem preflight 요약 */
   implementationWorkItemPreflightSummaryV1?: ImplementationWorkItemPreflightSummaryV1 | null;
   /** CodeTask 실행 적합성 품질 게이트 */
@@ -1069,6 +1072,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationCodeTaskPlanV1 = parseImplementationCodeTaskPlanV1(
     "implementationCodeTaskPlanV1" in o ? o.implementationCodeTaskPlanV1 : undefined,
   );
+  const codeTaskPromptContextMapV1 = parseCodeTaskPromptContextMapV1(
+    "codeTaskPromptContextMapV1" in o ? o.codeTaskPromptContextMapV1 : undefined,
+  );
   const implementationWorkItemPreflightSummaryV1 = parseImplementationWorkItemPreflightSummaryV1(
     "implementationWorkItemPreflightSummaryV1" in o ? o.implementationWorkItemPreflightSummaryV1 : undefined,
   );
@@ -1285,6 +1291,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationSeedV1 !== undefined ? { implementationSeedV1 } : {}),
     ...(implementationTaskListV1 !== undefined ? { implementationTaskListV1 } : {}),
     ...(implementationCodeTaskPlanV1 !== undefined ? { implementationCodeTaskPlanV1 } : {}),
+    ...(codeTaskPromptContextMapV1 !== undefined ? { codeTaskPromptContextMapV1 } : {}),
     ...(implementationWorkItemPreflightSummaryV1 !== undefined
       ? { implementationWorkItemPreflightSummaryV1 }
       : {}),

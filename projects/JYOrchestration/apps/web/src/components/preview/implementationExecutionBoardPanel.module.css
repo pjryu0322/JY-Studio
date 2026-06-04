@@ -676,6 +676,10 @@
 
 .taskTreeFlowItem {
   margin-bottom: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
 }
 
 .taskTreeFlowItemActive {
@@ -698,18 +702,38 @@
 }
 
 .taskTreeCopyPromptButton {
-  margin-left: 6px;
-  padding: 0 4px;
-  border: none;
-  background: transparent;
-  color: #475569;
+  margin-left: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  min-height: 22px;
+  padding: 3px 5px;
+  border: 1px solid #64748b;
+  border-radius: 5px;
+  background: #fff;
+  color: #334155;
   cursor: pointer;
-  font-size: 12px;
-  line-height: 1;
+  line-height: 0;
+  flex-shrink: 0;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
 }
 
 .taskTreeCopyPromptButton:hover {
   color: #1d4ed8;
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.taskTreeCopyPromptButton:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.taskTreeFlowItemDone .taskTreeCopyPromptButton {
+  color: #334155;
+  border-color: #64748b;
+  background: #f8fafc;
 }
 
 .taskTreeFlowMarker {

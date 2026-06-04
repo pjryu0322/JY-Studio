@@ -2,6 +2,7 @@ import { buildProviderWipCommitMessage } from "@/lib/prototype/codeAgentProvider
 import type { ExecutionSetupSourceGenerationContext } from "@/lib/prototype/executionSetupSourceGeneration";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { parseCodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 import type { QuickRunGithubAdvanceDispatch } from "@/lib/prototype/implementationQuickRunGithubAdvanceService";
 import { mergeOrchestrationPersistPatches } from "@/lib/prototype/orchestrationPatchMerge";
 import {
@@ -67,6 +68,7 @@ export async function dispatchQuickRunContinuationOnServer(input: {
     targetRepository: context.targetRepository,
     baseBranch: context.baseBranch,
     allowedPathGlobs: context.allowedPathGlobs,
+    codeTaskPromptContextMapV1: parseCodeTaskPromptContextMapV1(state.codeTaskPromptContextMapV1),
     existingTaskCursor: null,
     nowIso,
   });

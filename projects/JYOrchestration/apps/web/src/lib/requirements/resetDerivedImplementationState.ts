@@ -76,6 +76,7 @@ export const DERIVED_IMPLEMENTATION_STATE_NULL_PATCH: Pick<
   | "implementationWorkPlanDraftV1"
   | "implementationCodeTaskPlanV1"
   | "implementationWorkItemPreflightSummaryV1"
+  | "codeTaskPromptContextMapV1"
   | "codeAgentWipExecutionV1"
 > = {
   prototypeExecutionSingleChatV1: null,
@@ -89,6 +90,7 @@ export const DERIVED_IMPLEMENTATION_STATE_NULL_PATCH: Pick<
   implementationWorkPlanDraftV1: null,
   implementationCodeTaskPlanV1: null,
   implementationWorkItemPreflightSummaryV1: null,
+  codeTaskPromptContextMapV1: null,
   codeAgentWipExecutionV1: null,
 };
 

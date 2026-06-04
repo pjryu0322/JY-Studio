@@ -18,6 +18,10 @@ import {
   formatWorkItemPreflightBlockedMessage,
   runWorkItemPreflightBatch,
 } from "@/lib/prototype/implementationWorkItemPreflight";
+import {
+  getCodeTaskPromptContextFromMap,
+  type CodeTaskPromptContextMapV1,
+} from "@/lib/prototype/codeTaskPromptContext";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { patchTaskCursorExecution } from "@/lib/prototype/taskCursorExecution";
@@ -71,6 +75,7 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
   readonly targetRepository: ProjectTargetRepository;
   readonly baseBranch: string;
   readonly allowedPathGlobs: readonly string[];
+  readonly codeTaskPromptContextMapV1?: CodeTaskPromptContextMapV1 | null;
   readonly existingTaskCursor?: TaskCursorExecutionV1 | null;
   readonly nowIso?: string;
 }): PrepareSelectedCodeTaskCursorExecutionResult {
@@ -140,11 +145,16 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
     ...item,
     refinementStatus: "preflight_passed" as const,
   }));
+  const promptContext = getCodeTaskPromptContextFromMap(
+    input.codeTaskPromptContextMapV1,
+    input.queueDispatch.codeTaskId,
+  );
   const builtResult = tryBuildCodeTaskCursorExecutionRequest({
     projectId: input.projectId,
     run,
     codeTask: dispatchTarget.codeTask,
     parentTask: dispatchTarget.parentTask,
+    promptContext,
     workItem: selectedWorkItems[0]!,
     targetRepository: input.targetRepository,
     baseBranch: input.baseBranch,

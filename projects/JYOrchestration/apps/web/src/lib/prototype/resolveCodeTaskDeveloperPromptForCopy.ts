@@ -1,4 +1,5 @@
 import { buildCodeTaskDeveloperPromptDetailed } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
+import { shouldReuseStoredDeveloperPrompt } from "@/lib/prototype/codeTaskDeveloperPromptCache";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import {
   findLatestRunForCodeTask,
@@ -8,6 +9,10 @@ import {
   CODE_TASK_PROMPT_COPY_BLOCK_MESSAGE,
   validateCodeTaskDeveloperPromptSafety,
 } from "@/lib/prototype/codeTaskDeveloperPromptSafety";
+import {
+  getCodeTaskPromptContextFromMap,
+  type CodeTaskPromptContextMapV1,
+} from "@/lib/prototype/codeTaskPromptContext";
 import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
@@ -26,6 +31,7 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
   readonly targetRepository: ProjectTargetRepository | null;
   readonly baseBranch: string;
   readonly allowedPathGlobs?: readonly string[];
+  readonly codeTaskPromptContextMapV1?: CodeTaskPromptContextMapV1 | null;
 }): Readonly<{ readonly ok: boolean; readonly prompt?: string; readonly reason?: string }> {
   const codeTaskId = input.codeTaskId.trim();
   if (!codeTaskId) {
@@ -51,23 +57,28 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
     targetRepoKind: TARGET_REPO_KIND,
   });
 
+  const promptContext = getCodeTaskPromptContextFromMap(
+    input.codeTaskPromptContextMapV1,
+    codeTaskId,
+  );
   const run = findLatestRunForCodeTask(input.runs, codeTaskId);
-  const stored = run?.developerPrompt?.trim();
-  if (stored) {
-    const storedSafety = validateCodeTaskDeveloperPromptSafety({
-      prompt: stored,
+  if (
+    run &&
+    shouldReuseStoredDeveloperPrompt({
+      run,
+      promptContext,
       targetRepoFullName: input.targetRepository.repoFullName,
-      targetRepoKind: TARGET_REPO_KIND,
-      allowedPathGlobs,
-    });
-    if (storedSafety.ok) {
-      return { ok: true, prompt: stored };
-    }
+      baseBranch: input.baseBranch,
+      allowedPathGlobs: input.allowedPathGlobs,
+    })
+  ) {
+    return { ok: true, prompt: run.developerPrompt!.trim() };
   }
 
   const built = buildCodeTaskDeveloperPromptDetailed({
     codeTask: target.codeTask,
     parentTask: target.parentTask,
+    promptContext,
     targetRepository: input.targetRepository,
     baseBranch: input.baseBranch,
     allowedPathGlobs: input.allowedPathGlobs,

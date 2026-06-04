@@ -1,9 +1,12 @@
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { resolveCodeTaskFeaturePromptTemplate } from "@/lib/prototype/codeTaskPromptFeatureTemplates";
+import type { CodeTaskPromptContextV1 } from "@/lib/prototype/codeTaskPromptContext";
 import type { ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import {
-  resolveEffectiveAllowedPathGlobs,
-  resolveForbiddenPathGlobsForTargetRepo,
+  buildCodeTaskPromptTargetContext,
+  GENERATED_PROJECT_PROBE_PATHS,
+  isPlatformInternalPath,
   sanitizeCandidatePathsForTargetRepo,
   type CodeTaskPromptTargetRepoKind,
 } from "@/lib/prototype/codeTaskPromptPathPolicy";
@@ -15,20 +18,223 @@ export type BuildCodeTaskDeveloperPromptResult = Readonly<{
   readonly warnings: readonly string[];
 }>;
 
-function buildImplementationGoalSection(codeTask: ImplementationCodeTaskV1): readonly string[] {
-  const title = codeTask.title.trim();
-  if (!/오류|error|에러/i.test(title) && !/오류|error|에러/i.test(codeTask.description)) {
-    return [];
+const GENERATED_BANNED_SUBSTRINGS = [
+  "jyorchestration",
+  "jygallery",
+  "jyaccount",
+  "chunk studio",
+  "chunk-studio",
+  "projects/jyorchestration",
+  "stage1/stage2/env_test",
+  "플랫폼 소스",
+  "플랫폼 허용",
+  "모노레포",
+] as const;
+
+function lineContainsGeneratedBannedText(line: string): boolean {
+  const lower = line.toLowerCase();
+  return GENERATED_BANNED_SUBSTRINGS.some((s) => lower.includes(s));
+}
+
+function sanitizeLinesForGeneratedProject(lines: readonly string[]): string[] {
+  return lines
+    .map((l) => String(l ?? "").trim())
+    .filter(Boolean)
+    .filter((line) => !lineContainsGeneratedBannedText(line))
+    .filter((line) => !isPlatformInternalPath(line));
+}
+
+function dedupeBulletLines(lines: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const bullet = line.startsWith("- ") ? line : `- ${line}`;
+    const key = bullet.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(bullet);
   }
-  return [
+  return out;
+}
+
+function buildPlanningContextSections(promptContext?: CodeTaskPromptContextV1 | null): string[] {
+  if (!promptContext) return [];
+  const lines: string[] = [];
+  const pc = promptContext.planningContext;
+  const planningBullets: string[] = [];
+  if (pc.serviceGoal) planningBullets.push(`서비스 목적: ${pc.serviceGoal}`);
+  if (pc.targetUsers.length) planningBullets.push(`핵심 사용자: ${pc.targetUsers.join(", ")}`);
+  if (pc.problemToSolve) planningBullets.push(`해결하려는 문제: ${pc.problemToSolve}`);
+  const flows = promptContext.flowContext.relatedUserFlows.slice(0, 4);
+  if (flows.length) planningBullets.push(`관련 사용자 흐름: ${flows.join(", ")}`);
+
+  if (planningBullets.length) {
+    lines.push("## 기획 맥락", ...planningBullets.map((b) => `- ${b}`), "");
+  }
+
+  const roleBullets: string[] = [];
+  const feat = [
+    ...promptContext.featureContext.relatedFeatures,
+    ...promptContext.featureContext.relatedScreens,
+    ...promptContext.featureContext.relatedStates,
+  ].slice(0, 4);
+  if (feat.length) roleBullets.push(`이 CodeTask가 담당하는 기능/상태: ${feat.join(", ")}`);
+  if (promptContext.implementationContext.intent) {
+    roleBullets.push(promptContext.implementationContext.intent);
+  }
+  const expected = promptContext.implementationContext.expectedBehavior.slice(0, 2);
+  if (expected.length) roleBullets.push(`기대 동작: ${expected.join(" / ")}`);
+  const screens = promptContext.featureContext.relatedScreens.slice(0, 3);
+  if (screens.length) roleBullets.push(`연결되어야 하는 화면/흐름: ${screens.join(", ")}`);
+
+  if (roleBullets.length) {
+    lines.push("## 이번 CodeTask의 역할", ...roleBullets.map((b) => `- ${b}`), "");
+  }
+  return lines;
+}
+
+function buildGeneratedProjectPrompt(input: {
+  readonly codeTask: ImplementationCodeTaskV1;
+  readonly parentTask?: ImplementationTaskV1 | null;
+  readonly promptContext?: CodeTaskPromptContextV1 | null;
+  readonly target: ReturnType<typeof buildCodeTaskPromptTargetContext>;
+  readonly sanitizedCandidates: ReturnType<typeof sanitizeCandidatePathsForTargetRepo>;
+}): string {
+  const { codeTask, target, sanitizedCandidates } = input;
+  const template = resolveCodeTaskFeaturePromptTemplate({
+    title: codeTask.title,
+    description: codeTask.description,
+    requirements: codeTask.acceptanceCriteria,
+    changeType: codeTask.changeType,
+  });
+
+  const extraAcceptance = sanitizeLinesForGeneratedProject(codeTask.acceptanceCriteria).filter(
+    (line) =>
+      !template.implementationRequirements.some(
+        (req) => req.toLowerCase() === line.replace(/^-\s*/, "").toLowerCase(),
+      ),
+  );
+
+  const implementationRequirements = dedupeBulletLines([
+    ...template.implementationRequirements.map((r) => `- ${r}`),
+    ...extraAcceptance.map((c) => (c.startsWith("- ") ? c : `- ${c}`)),
+  ]);
+
+  const verificationChecklist = dedupeBulletLines([
+    ...template.verificationChecklist.map((v) => `- ${v}`),
+    "- 대상 저장소 루트에서 package.json scripts를 확인한다.",
+    "- 가능한 경우 build/test/lint 중 존재하는 명령을 실행한다.",
+    "- 명령이 없으면 수정 파일과 화면 동작 기준으로 자체 검증한다.",
+  ]);
+
+  const probePaths =
+    sanitizedCandidates.safeCandidatePaths.length > 0
+      ? sanitizedCandidates.safeCandidatePaths.map((p) => `- ${p}`)
+      : GENERATED_PROJECT_PROBE_PATHS.map((p) => `- ${p}`);
+
+  const sections = [
+    "# CodeTask 개발 요청",
     "",
-    "## 구현 목표 (오류/피드백 UI)",
-    "- 대상 프로젝트에 공통 오류 메시지 UI/상태 처리 기능을 구현한다.",
-    "- API 실패, 폼 검증 실패, 데이터 로딩 실패, 권한 오류 등에서 재사용 가능해야 한다.",
-    "- ErrorMessage 또는 ErrorState 공통 컴포넌트 추가 (message, description, variant, retry action).",
-    "- role=\"alert\" 또는 aria-live로 접근성 반영.",
-    "- 기존 화면/상태 흐름 중 최소 1곳에 연동하고 정상/오류/재시도 흐름을 구분한다.",
+    "## 작업 저장소",
+    `- 작업 대상 저장소: \`${target.repoFullName}\``,
+    `- base branch: \`${target.baseBranch}\``,
+    `- work branch: \`${target.workBranch}\``,
+    "- 이 저장소 밖의 파일은 수정하지 않는다.",
+    "- PR 생성·merge는 하지 않는다. commit 후 work branch에 push만 한다.",
+    "",
+    "## 작업 목표",
+    codeTask.title.trim(),
+    "",
+    ...buildPlanningContextSections(input.promptContext),
+    "## 구현 범위",
+    ...template.implementationGoal.map((g) => `- ${g}`),
+    "",
+    "## 구현 요구사항",
+    ...implementationRequirements,
+    "",
+    "## 수정 대상 탐색 기준",
+    "- 대상 저장소 내부에서 관련 화면, 컴포넌트, 상태 모듈을 탐색한다.",
+    "- 우선 탐색 경로:",
+    ...probePaths,
+    "- 실제 저장소 구조에 맞춰 최소 범위만 수정한다.",
+    "",
+    "## 검증 기준",
+    ...verificationChecklist,
+    "",
+    "## 금지사항",
+    ...target.forbiddenRules.map((r) => `- ${r}`),
+    "",
+    "## 완료 기준",
+    "- 요구사항을 충족하는 코드 변경",
+    "- 변경 후 commit 생성",
+    `- \`${target.workBranch}\` branch에 push`,
+    "- push 후 GitHub에서 branch head commit 확인 가능",
+    "- 코드 변경이 불필요한 경우 noCodeChange 근거를 명확히 기록",
+    "",
+    "## 참조 ID",
+    `- Process Task: ${codeTask.parentTaskId}`,
+    `- CodeTask: ${codeTask.codeTaskId}`,
   ];
+
+  return sections.join("\n").trim();
+}
+
+function buildPlatformProjectPrompt(input: {
+  readonly codeTask: ImplementationCodeTaskV1;
+  readonly parentTask?: ImplementationTaskV1 | null;
+  readonly target: ReturnType<typeof buildCodeTaskPromptTargetContext>;
+  readonly sanitizedCandidates: ReturnType<typeof sanitizeCandidatePathsForTargetRepo>;
+}): string {
+  const { codeTask, parentTask, target, sanitizedCandidates } = input;
+  const parentTitle = parentTask?.title?.trim() || codeTask.parentTaskId;
+  const candidateSection =
+    sanitizedCandidates.safeCandidatePaths.length > 0
+      ? sanitizedCandidates.safeCandidatePaths.map((f) => `- ${f}`)
+      : ["- (후보 없음 — 관련 파일을 스스로 탐색)"];
+
+  const sections = [
+    "# CodeTask 개발 요청",
+    "",
+    "## Process Task",
+    `- ID: ${codeTask.parentTaskId}`,
+    `- 제목: ${parentTitle}`,
+    parentTask?.description?.trim() ? `- 설명: ${parentTask.description.trim()}` : "",
+    "",
+    "## CodeTask",
+    `- ID: ${codeTask.codeTaskId}`,
+    `- 제목: ${codeTask.title}`,
+    `- 설명: ${codeTask.description.trim()}`,
+    `- 변경 유형: ${codeTask.changeType}`,
+    "",
+    "## 수정 대상 파일 후보",
+    ...candidateSection,
+    "",
+    "## 구현 요구사항",
+    ...(codeTask.acceptanceCriteria.length
+      ? codeTask.acceptanceCriteria.map((c) => `- ${c}`)
+      : ["- acceptance criteria를 충족할 것"]),
+    "",
+    "## 검증 힌트",
+    ...(codeTask.verificationHints.length
+      ? codeTask.verificationHints.map((h) => `- ${h}`)
+      : ["- 로컬 build/test 후 동작 확인"]),
+    "",
+    "## 금지사항",
+    ...target.forbiddenRules.map((p) => `- ${p}`),
+    "- 무관한 대규모 리팩터링 금지",
+    "",
+    "## GitHub 정책",
+    `- 저장소: ${target.repoFullName}`,
+    `- base branch: ${target.baseBranch}`,
+    `- work branch: ${target.workBranch}`,
+    "",
+    "## 허용 경로",
+    ...target.allowedPathGlobs.map((g) => `- ${g}`),
+  ];
+
+  return sections.filter((line) => line !== undefined).join("\n").trim();
 }
 
 export function buildCodeTaskDeveloperPrompt(input: {
@@ -45,15 +251,15 @@ export function buildCodeTaskDeveloperPrompt(input: {
 export function buildCodeTaskDeveloperPromptDetailed(input: {
   readonly codeTask: ImplementationCodeTaskV1;
   readonly parentTask?: ImplementationTaskV1 | null;
+  readonly promptContext?: CodeTaskPromptContextV1 | null;
   readonly targetRepository: ProjectTargetRepository;
   readonly baseBranch: string;
   readonly allowedPathGlobs?: readonly string[];
   readonly targetRepoKind?: CodeTaskPromptTargetRepoKind;
 }): BuildCodeTaskDeveloperPromptResult {
-  const targetRepoKind = input.targetRepoKind ?? "generated_project";
+  const repoKind = input.targetRepoKind ?? "generated_project";
   const repoFullName = input.targetRepository.repoFullName.trim();
   const workBranch = buildCodeTaskWorkBranch(input.codeTask.codeTaskId);
-  const parentTitle = input.parentTask?.title?.trim() || input.codeTask.parentTaskId;
 
   const rawCandidates = [
     ...(input.codeTask.candidateFiles ?? []),
@@ -63,103 +269,35 @@ export function buildCodeTaskDeveloperPromptDetailed(input: {
   const sanitized = sanitizeCandidatePathsForTargetRepo({
     candidatePaths: rawCandidates,
     targetRepoFullName: repoFullName,
-    targetRepoKind,
+    targetRepoKind: repoKind,
   });
 
-  const allowedPathGlobs = resolveEffectiveAllowedPathGlobs({
+  const target = buildCodeTaskPromptTargetContext({
+    repoFullName,
+    baseBranch: input.baseBranch,
+    workBranch,
+    repoKind,
     allowedPathGlobs: input.allowedPathGlobs,
-    targetRepoFullName: repoFullName,
-    targetRepoKind,
   });
 
-  const defaultForbidden = resolveForbiddenPathGlobsForTargetRepo({ targetRepoKind });
-  const forbiddenFromTask = (input.codeTask.forbiddenPaths ?? [])
-    .map((p) => String(p).trim())
-    .filter(Boolean);
-  const forbiddenPaths = [...new Set([...defaultForbidden, ...forbiddenFromTask])];
-
-  const candidateSection =
-    sanitized.safeCandidatePaths.length > 0
-      ? sanitized.safeCandidatePaths.map((f) => `- ${f}`)
-      : targetRepoKind === "generated_project"
-        ? [
-            "- 대상 저장소 내부에서 관련 컴포넌트/화면/상태 모듈을 탐색해 최소 범위로 수정",
-            "- 저장소 package.json scripts를 확인한 뒤 실제 구조에 맞게 경로를 좁혀 수정",
-          ]
-        : ["- (후보 없음 — 관련 파일을 스스로 탐색)"];
-
-  const repoScopeLines =
-    targetRepoKind === "generated_project"
-      ? [
-          "## 작업 저장소 기준",
-          `- 이 작업은 \`${repoFullName}\` 저장소의 work branch에서 수행한다.`,
-          "- JYOrchestration 플랫폼 소스는 수정하지 않는다.",
-          "- 아래 허용 경로는 대상 저장소 내부 경로 기준이다.",
-          "",
-        ]
-      : [];
-
-  const sections = [
-    "# CodeTask 개발 요청",
-    "",
-    ...repoScopeLines,
-    "## 작업 목표",
-    input.codeTask.title,
-    ...buildImplementationGoalSection(input.codeTask),
-    "",
-    "## Process Task",
-    `- ID: ${input.codeTask.parentTaskId}`,
-    `- 제목: ${parentTitle}`,
-    input.parentTask?.description?.trim()
-      ? `- 설명: ${input.parentTask.description.trim()}`
-      : "",
-    "",
-    "## CodeTask",
-    `- ID: ${input.codeTask.codeTaskId}`,
-    `- 제목: ${input.codeTask.title}`,
-    `- 설명: ${input.codeTask.description.trim()}`,
-    `- 변경 유형: ${input.codeTask.changeType}`,
-    "",
-    "## 수정 대상 파일 후보",
-    ...candidateSection,
-    "",
-    "## 구현 요구사항",
-    ...(input.codeTask.acceptanceCriteria.length
-      ? input.codeTask.acceptanceCriteria.map((c) => `- ${c}`)
-      : ["- acceptance criteria를 충족할 것"]),
-    "",
-    "## 검증 힌트",
-    ...(input.codeTask.verificationHints.length
-      ? input.codeTask.verificationHints.map((h) => `- ${h}`)
-      : [
-          "- 오류 상태가 화면에 표시되는지 확인",
-          "- 대상 저장소 package.json scripts 확인 후 가능한 build/test 실행",
-        ]),
-    "",
-    "## 금지사항",
-    ...forbiddenPaths.map((p) => `- ${p}`),
-    "- 무관한 대규모 리팩터링 금지",
-    "",
-    "## 완료 기준",
-    "- 이 CodeTask 범위만 수정하고 허용 경로 안에서만 변경할 것",
-    "- 요구사항을 충족하는 코드 변경",
-    "- 변경 후 commit을 생성하고 원격 work branch에 push할 것",
-    "- push 후 branch head(또는 commit SHA)가 GitHub에서 확인 가능해야 함",
-    "- 코드 변경이 불필요하면 noCodeChange 근거(검토한 파일·검증 요약)를 명확히 기록",
-    "",
-    "## GitHub 정책",
-    `- 저장소: ${repoFullName}`,
-    `- base branch: ${input.baseBranch}`,
-    `- work branch: ${workBranch}`,
-    "- 작업 완료 후 위 work branch에 commit·push만 수행할 것 (PR 생성·merge는 플랫폼이 담당하므로 금지)",
-    "",
-    "## 허용 경로",
-    ...allowedPathGlobs.map((g) => `- ${g}`),
-    "- 위 경로는 대상 저장소 루트 기준이며, 밖의 파일은 수정하지 말 것",
-  ];
+  const prompt =
+    repoKind === "generated_project"
+      ? buildGeneratedProjectPrompt({
+          codeTask: input.codeTask,
+          parentTask: input.parentTask,
+          promptContext: input.promptContext,
+          target,
+          sanitizedCandidates: sanitized,
+        })
+      : buildPlatformProjectPrompt({
+          codeTask: input.codeTask,
+          parentTask: input.parentTask,
+          target,
+          sanitizedCandidates: sanitized,
+        });
 
   return {
-    prompt: sections.filter((line) => line !== undefined).join("\n").trim(),
+    prompt,
     removedCandidatePaths: sanitized.removedCandidatePaths,
     warnings: sanitized.warnings,
   };

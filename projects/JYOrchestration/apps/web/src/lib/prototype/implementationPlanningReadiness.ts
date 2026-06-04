@@ -32,6 +32,8 @@ import {
 } from "@/lib/prototype/resolveProjectCodeTaskRefinementSettingsShared";
 import type { LlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
 import { appendPromptTimeline } from "@/lib/requirements/promptTimelineState";
+import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
+import type { CodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 
 export const IMPLEMENTATION_WORK_ITEM_PREFLIGHT_SUMMARY_VERSION =
   "implementation_work_item_preflight_summary_v1" as const;
@@ -93,6 +95,7 @@ export type ImplementationPlanningReadinessPatch = Readonly<{
   readonly implementationCodeTaskQualityGateV1: ImplementationCodeTaskQualityGateV1;
   readonly cursorWorkItemsV1: readonly CursorWorkItem[];
   readonly implementationWorkItemPreflightSummaryV1: ImplementationWorkItemPreflightSummaryV1;
+  readonly codeTaskPromptContextMapV1: CodeTaskPromptContextMapV1;
   readonly promptTimeline: readonly RequirementsPromptTimelineEntry[];
   readonly syncMode: "created" | "synced";
 }>;
@@ -101,6 +104,7 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
   readonly projectId: string;
   readonly taskList: ImplementationTaskListV1;
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1;
+  readonly requirementsStateJson?: Record<string, unknown>;
   readonly allowedPathGlobs?: readonly string[];
   readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly extraTimeline?: readonly RequirementsPromptTimelineEntry[];
@@ -250,6 +254,12 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
     implementationCodeTaskQualityGateV1: qualityGate,
     cursorWorkItemsV1: cursorWorkItems,
     implementationWorkItemPreflightSummaryV1: preflightSummary,
+    codeTaskPromptContextMapV1: buildCodeTaskPromptContextMap({
+      projectId: pid,
+      codeTaskPlan: input.codeTaskPlan,
+      requirementsStateJson: input.requirementsStateJson ?? {},
+      nowIso: now,
+    }),
     promptTimeline,
     syncMode: input.syncMode ?? "created",
   };
@@ -259,6 +269,7 @@ export function buildImplementationPlanningReadinessPatch(input: {
   readonly projectId: string;
   readonly taskList: ImplementationTaskListV1;
   readonly projectArtifacts?: readonly ProjectArtifact[];
+  readonly requirementsStateJson?: Record<string, unknown>;
   readonly envOk: boolean;
   readonly designOk: boolean;
   readonly allowedPathGlobs?: readonly string[];
@@ -290,6 +301,7 @@ export function buildImplementationPlanningReadinessPatch(input: {
     projectId: pid,
     taskList: input.taskList,
     codeTaskPlan,
+    requirementsStateJson: input.requirementsStateJson,
     allowedPathGlobs: input.allowedPathGlobs,
     priorTimeline: input.priorTimeline,
     extraTimeline: [
@@ -315,6 +327,7 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
   readonly taskList: ImplementationTaskListV1;
   readonly projectArtifacts?: readonly ProjectArtifact[];
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
+  readonly requirementsStateJson?: Record<string, unknown>;
   readonly envOk: boolean;
   readonly designOk: boolean;
   readonly allowedPathGlobs?: readonly string[];
@@ -381,6 +394,12 @@ export async function buildImplementationPlanningReadinessPatchWithLlm(input: {
     projectId: pid,
     taskList: input.taskList,
     codeTaskPlan: resolved.plan,
+    requirementsStateJson: {
+      ...(input.requirementsStateJson ?? {}),
+      implementationSeedV1: input.implementationSeedV1 ?? undefined,
+      implementationTaskListV1: input.taskList,
+      projectArtifacts: input.projectArtifacts,
+    },
     allowedPathGlobs: input.allowedPathGlobs,
     priorTimeline: priorTimelineWithDecision,
     extraTimeline:

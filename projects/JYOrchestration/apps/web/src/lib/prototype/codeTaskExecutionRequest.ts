@@ -1,5 +1,10 @@
 import { buildCodeTaskDeveloperPromptDetailed } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
 import {
+  buildDeveloperPromptMeta,
+  shouldReuseStoredDeveloperPrompt,
+} from "@/lib/prototype/codeTaskDeveloperPromptCache";
+import type { CodeTaskPromptContextV1 } from "@/lib/prototype/codeTaskPromptContext";
+import {
   CODE_TASK_PROMPT_COPY_BLOCK_MESSAGE,
   CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
   validateCodeTaskDeveloperPromptSafety,
@@ -47,32 +52,34 @@ function resolveDeveloperPromptForCodeTask(input: {
   readonly run: CodeTaskExecutionRunV1;
   readonly codeTask: ImplementationCodeTaskV1;
   readonly parentTask?: ImplementationTaskV1 | null;
+  readonly promptContext?: CodeTaskPromptContextV1 | null;
   readonly targetRepository: ProjectTargetRepository;
   readonly baseBranch: string;
   readonly allowedPathGlobs?: readonly string[];
+  readonly nowIso: string;
 }): BuildCodeTaskDeveloperPromptResultLike {
-  const stored = input.run.developerPrompt?.trim();
   const allowedPathGlobs = resolveEffectiveAllowedPathGlobs({
     allowedPathGlobs: input.allowedPathGlobs,
     targetRepoFullName: input.targetRepository.repoFullName,
     targetRepoKind: "generated_project",
   });
 
-  if (stored) {
-    const safety = validateCodeTaskDeveloperPromptSafety({
-      prompt: stored,
+  if (
+    shouldReuseStoredDeveloperPrompt({
+      run: input.run,
+      promptContext: input.promptContext,
       targetRepoFullName: input.targetRepository.repoFullName,
-      targetRepoKind: "generated_project",
+      baseBranch: input.baseBranch,
       allowedPathGlobs,
-    });
-    if (safety.ok) {
-      return { prompt: stored, removedCandidatePaths: [], warnings: [] };
-    }
+    })
+  ) {
+    return { prompt: input.run.developerPrompt!.trim(), removedCandidatePaths: [], warnings: [] };
   }
 
   return buildCodeTaskDeveloperPromptDetailed({
     codeTask: input.codeTask,
     parentTask: input.parentTask,
+    promptContext: input.promptContext,
     targetRepository: input.targetRepository,
     baseBranch: input.baseBranch,
     allowedPathGlobs: input.allowedPathGlobs,
@@ -91,6 +98,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
   readonly run: CodeTaskExecutionRunV1;
   readonly codeTask: ImplementationCodeTaskV1;
   readonly parentTask?: ImplementationTaskV1 | null;
+  readonly promptContext?: CodeTaskPromptContextV1 | null;
   readonly workItem: CursorWorkItem;
   readonly targetRepository: ProjectTargetRepository;
   readonly baseBranch: string;
@@ -103,9 +111,11 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     run: input.run,
     codeTask: input.codeTask,
     parentTask: input.parentTask,
+    promptContext: input.promptContext,
     targetRepository: input.targetRepository,
     baseBranch: input.baseBranch,
     allowedPathGlobs: input.allowedPathGlobs,
+    nowIso: now,
   });
 
   const allowedPathGlobs = resolveEffectiveAllowedPathGlobs({
@@ -130,6 +140,13 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
   }
 
   const developerPrompt = promptResult.prompt;
+  const developerPromptMeta = buildDeveloperPromptMeta({
+    promptContext: input.promptContext,
+    targetRepoFullName: input.targetRepository.repoFullName,
+    baseBranch: input.baseBranch,
+    allowedPathGlobs,
+    generatedAt: now,
+  });
   const workBranch = buildCodeTaskWorkBranch(input.codeTask.codeTaskId);
   const parentTaskId = input.codeTask.parentTaskId;
   const taskCursorBase =
@@ -153,6 +170,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
   });
   const run = updateCodeTaskExecutionRun([input.run], input.run.runId, {
     developerPrompt,
+    developerPromptMeta,
     workBranch,
     repository: input.targetRepository.repoFullName,
     baseBranch: input.baseBranch,
@@ -189,6 +207,7 @@ export function buildCodeTaskCursorExecutionRequest(input: {
   readonly run: CodeTaskExecutionRunV1;
   readonly codeTask: ImplementationCodeTaskV1;
   readonly parentTask?: ImplementationTaskV1 | null;
+  readonly promptContext?: CodeTaskPromptContextV1 | null;
   readonly workItem: CursorWorkItem;
   readonly targetRepository: ProjectTargetRepository;
   readonly baseBranch: string;
