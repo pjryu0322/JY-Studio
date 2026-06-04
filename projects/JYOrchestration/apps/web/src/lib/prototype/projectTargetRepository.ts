@@ -89,6 +89,23 @@ function buildTargetRepository(
   };
 }
 
+/** DB Queue `targetRepository` 컬럼(문자열)용 owner/repo 표기. */
+export function formatTargetRepositoryForQueueField(
+  value: ProjectTargetRepository | string | null | undefined,
+): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  const full = String(value.repoFullName ?? "").trim();
+  if (full) return full;
+  const owner = String(value.owner ?? "").trim();
+  const repo = String(value.repo ?? "").trim();
+  if (owner && repo) return `${owner}/${repo}`;
+  return null;
+}
+
 export function toCodeAgentTargetRepositorySnapshot(
   repo: ProjectTargetRepository,
 ): CodeAgentTargetRepositorySnapshot {

@@ -9,6 +9,7 @@ import {
   isTerminalCodeTaskExecutionRunStatus,
 } from "@/lib/prototype/codeTaskExecutionRunStatus";
 import type { CodeTaskExecutionRunStatus, CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { findLatestRunForCodeTask } from "@/lib/prototype/codeTaskExecutionRun";
 
 export const CODE_TASK_EXECUTION_QUEUE_VERSION = "code_task_execution_queue_v1" as const;
 
@@ -135,6 +136,22 @@ export function getCurrentQueueCodeTaskId(
 ): string | null {
   if (!queue || queue.status !== "running") return null;
   return queue.selectedCodeTaskIds[queue.currentIndex] ?? null;
+}
+
+/** 선택 목록에서 아직 terminal 완료되지 않은 첫 CodeTask (UI·복구 기준). */
+export function resolveFirstIncompleteSelectedCodeTaskId(input: {
+  readonly queue: CodeTaskExecutionQueueV1 | null | undefined;
+  readonly runs: readonly CodeTaskExecutionRunV1[];
+}): string | null {
+  const queue = input.queue;
+  if (!queue || queue.status !== "running") return null;
+  for (const codeTaskId of queue.selectedCodeTaskIds) {
+    const run = findLatestRunForCodeTask(input.runs, codeTaskId);
+    if (!run) return codeTaskId;
+    if (run.status === "completed" || run.status === "no_code_change_completed") continue;
+    return codeTaskId;
+  }
+  return getCurrentQueueCodeTaskId(queue);
 }
 
 export type AdvanceCodeTaskExecutionQueueResult = Readonly<{

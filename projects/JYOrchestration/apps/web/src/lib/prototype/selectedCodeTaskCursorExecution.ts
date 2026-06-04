@@ -192,7 +192,7 @@ export async function dispatchQueuedImplementationRuntimeRunWithCursor(input: {
   readonly launch: () => Promise<{
     readonly agentId: string;
     readonly branchName?: string | null;
-    readonly targetRepository?: string | null;
+    readonly targetRepository?: ProjectTargetRepository | string | null;
     readonly baseBranch?: string | null;
   }>;
 }): Promise<ImplementationRuntimeBundleView | null> {

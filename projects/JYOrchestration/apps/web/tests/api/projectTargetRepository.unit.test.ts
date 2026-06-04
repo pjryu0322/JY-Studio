@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   evaluateCursorBridgeSourceGenerationGate,
+  formatTargetRepositoryForQueueField,
   resolveProjectTargetRepository,
   resolveProjectTargetRepositoryFromExecutionSetup,
 } from "@/lib/prototype/projectTargetRepository";
@@ -11,6 +12,15 @@ import {
 } from "@/lib/prototype/executionSetupSourceGeneration";
 
 describe("resolveProjectTargetRepositoryFromExecutionSetup", () => {
+  it("formatTargetRepositoryForQueueField serializes object to repoFullName", () => {
+    const repo = resolveProjectTargetRepositoryFromExecutionSetup({
+      gitRepoName: "pjryu0322/aiproject",
+    });
+    expect(formatTargetRepositoryForQueueField(repo)).toBe("pjryu0322/aiproject");
+    expect(formatTargetRepositoryForQueueField("pjryu0322/aiproject")).toBe("pjryu0322/aiproject");
+    expect(formatTargetRepositoryForQueueField(null)).toBeNull();
+  });
+
   it('gitRepoName "pjryu0322/aiproject" → owner/repo 파싱', () => {
     const repo = resolveProjectTargetRepositoryFromExecutionSetup({
       gitRepoName: "pjryu0322/aiproject",

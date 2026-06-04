@@ -5,6 +5,7 @@ import type {
 } from "@/lib/prototype/taskCursorGithubVerify";
 import {
   canTransitionRuntimeState,
+  findRuntimeTransitionPath,
   type RuntimeState,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeStateMachine";
 import {
@@ -28,38 +29,7 @@ import {
   verifyImplementationRuntimeRunOnGithub,
 } from "@/lib/runtime/implementationRuntime/implementationGithubVerificationService";
 import { transitionImplementationCodeTaskRun } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
-
-const RUNTIME_GRAPH: Readonly<Record<RuntimeState, readonly RuntimeState[]>> = {
-  idle: ["queued"],
-  queued: ["dispatching", "failed", "stale"],
-  dispatching: ["cursor_running", "failed", "stale"],
-  cursor_running: ["github_verifying", "failed", "stale"],
-  github_verifying: ["completed", "failed"],
-  completed: [],
-  failed: ["queued"],
-  stale: ["queued"],
-};
-
-export function findRuntimeTransitionPath(
-  from: RuntimeState,
-  to: RuntimeState,
-): readonly RuntimeState[] {
-  if (from === to) return [];
-  const queue: RuntimeState[][] = [[from]];
-  const seen = new Set<RuntimeState>([from]);
-  while (queue.length) {
-    const path = queue.shift()!;
-    const head = path[path.length - 1]!;
-    for (const next of RUNTIME_GRAPH[head] ?? []) {
-      if (seen.has(next)) continue;
-      const nextPath = [...path, next];
-      if (next === to) return nextPath.slice(1);
-      seen.add(next);
-      queue.push(nextPath);
-    }
-  }
-  return [];
-}
+import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 
 /**
  * Cursor status → DB runtimeState (completed 제외; 완료는 GitHub outcome 전용).
@@ -111,13 +81,27 @@ function resolveCodeTaskId(input: {
   readonly codeTaskId?: string | null;
   readonly taskId?: string | null;
   readonly execution?: TaskCursorExecutionV1 | null;
+  readonly bundle?: ImplementationRuntimeBundleView | null;
 }): string | null {
-  const fromBody = String(input.codeTaskId ?? "").trim();
-  if (fromBody) return fromBody;
-  const fromTask = String(input.taskId ?? "").trim();
-  if (fromTask) return fromTask;
-  const fromExecution = String(input.execution?.taskId ?? "").trim();
-  return fromExecution || null;
+  const explicit = String(input.codeTaskId ?? "").trim();
+  if (explicit) return explicit;
+
+  const bundle = input.bundle;
+  const cursorRunId = String(input.execution?.cursorRunId ?? "").trim();
+  if (cursorRunId && bundle?.runs?.length) {
+    const byAgent = bundle.runs.find((r) => String(r.cursorAgentId ?? "").trim() === cursorRunId);
+    if (byAgent?.codeTaskId) return byAgent.codeTaskId;
+  }
+
+  const currentRun = bundle?.currentRun;
+  if (currentRun?.codeTaskId) {
+    return currentRun.codeTaskId;
+  }
+
+  const jobCurrent = bundle?.job?.currentCodeTaskId?.trim();
+  if (jobCurrent) return jobCurrent;
+
+  return null;
 }
 
 async function applyRuntimeStep(input: {
@@ -249,21 +233,35 @@ export async function syncImplementationRuntimeFromTaskCursor(input: {
     const execution = input.execution;
     if (!projectId || !execution) return;
 
-    const codeTaskId = resolveCodeTaskId(input);
-    if (!codeTaskId) return;
-
-    const target = mapTaskCursorStatusToRuntimeState(execution.status);
-    if (!target) return;
-
     const bundle = await getImplementationRuntimeBundle(projectId);
     if (!bundle.job) return;
 
+    const codeTaskId = resolveCodeTaskId({ ...input, bundle });
+    if (!codeTaskId) return;
+
+    const target = mapTaskCursorStatusToRuntimeState(execution.status);
+    if (!target && !input.githubVerifyResult) return;
+
     let run =
       bundle.runs.find((r) => r.codeTaskId === codeTaskId) ??
-      (bundle.job.currentCodeTaskId === codeTaskId ? bundle.currentRun : null);
+      (bundle.currentRun?.codeTaskId === codeTaskId ? bundle.currentRun : null);
     if (!run) return;
 
     const jobId = bundle.job.id;
+
+    if (input.githubVerifyResult) {
+      await applyGithubOutcomeIfReady({
+        projectId,
+        jobId,
+        run,
+        execution,
+        githubVerifyResult: input.githubVerifyResult,
+        githubVerify: input.githubVerify,
+      });
+      return;
+    }
+
+    if (!target) return;
 
     if (run.runtimeState === target) {
       if (input.githubVerifyResult) {

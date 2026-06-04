@@ -1,6 +1,14 @@
 import type { ImplementationBoardStepStatus } from "@/lib/prototype/implementationExecutionBoard";
 import type { CodeTaskReviewSecurityPolicyResult } from "@/lib/prototype/implementationReviewSecurityPolicy";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { classifyCodeTaskExecutionRunFromTaskCursor } from "@/lib/prototype/codeTaskExecutionRunResult";
+import { buildTaskCursorWorkBranch } from "@/lib/prototype/taskCursorExecution";
+import {
+  isInFlightCodeTaskExecutionRunStatus,
+  isQueuedCodeTaskExecutionRunStatus,
+} from "@/lib/prototype/codeTaskExecutionRunStatus";
+import type { RuntimeState } from "@/lib/prototype/implementationRuntimeState";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 
 export type CodeTaskExecutionFlowPhase =
@@ -77,6 +85,143 @@ export function formatCodeTaskExecutionProgressLine(phase: CodeTaskExecutionFlow
   }
 }
 
+function mapCodeTaskRunStatusToFlowPhase(
+  status: CodeTaskExecutionRunV1["status"],
+): CodeTaskExecutionFlowPhase | null {
+  switch (status) {
+    case "completed":
+    case "no_code_change_completed":
+      return "completed";
+    case "github_verifying":
+      return "github_verifying";
+    case "cursor_running":
+    case "cursor_requested":
+      return "cursor_running";
+    case "prompt_building":
+    case "queued":
+      return "prompt_ready";
+    case "status_check_stopped":
+      return "cursor_running";
+    case "blocked_by_dependency":
+      return "blocked_by_dependency";
+    case "failed":
+    case "rework_required":
+      return "failed";
+    default:
+      return null;
+  }
+}
+
+function executionHasRecordedCommit(execution: TaskCursorExecutionV1): boolean {
+  return Boolean(String(execution.commitSha ?? execution.branchHeadCommitSha ?? "").trim());
+}
+
+function runHasCursorOrGithubEvidence(run: CodeTaskExecutionRunV1): boolean {
+  return Boolean(
+    String(run.commitSha ?? run.branchHeadCommitSha ?? "").trim() ||
+      String(run.cursorRunId ?? "").trim(),
+  );
+}
+
+function firstRecordedCommitSha(...values: readonly (string | null | undefined)[]): string {
+  for (const value of values) {
+    const trimmed = String(value ?? "").trim();
+    if (trimmed) return trimmed;
+  }
+  return "";
+}
+
+/** JSON Run만으로는 commit/status가 뒤처질 수 있어 TaskCursor·DB 런타임 증거를 합친다. */
+export function enrichCodeTaskRunForFlowPhase(input: {
+  readonly run: CodeTaskExecutionRunV1 | null | undefined;
+  readonly execution?: TaskCursorExecutionV1 | null;
+  readonly dbRun?: Readonly<{
+    readonly commitSha?: string | null;
+    readonly runtimeState?: RuntimeState | null;
+  }> | null;
+}): CodeTaskExecutionRunV1 | null {
+  const base = input.run ?? null;
+  if (!base) return null;
+
+  if (base.status === "completed" || base.status === "no_code_change_completed") {
+    return base;
+  }
+
+  const execution =
+    input.execution?.taskId === base.processTaskId ? input.execution : null;
+  const commit = firstRecordedCommitSha(
+    base.commitSha,
+    base.branchHeadCommitSha,
+    execution?.commitSha,
+    execution?.branchHeadCommitSha,
+    input.dbRun?.commitSha,
+  );
+
+  let status = base.status;
+  if (execution) {
+    if (
+      execution.status === "github_verifying" ||
+      execution.status === "cursor_completed" ||
+      execution.status === "github_verified"
+    ) {
+      const classified = classifyCodeTaskExecutionRunFromTaskCursor(execution);
+      if (classified.status === "github_verifying" || execution.status === "github_verifying") {
+        status = "github_verifying";
+      } else if (
+        classified.status === "completed" ||
+        classified.status === "no_code_change_completed"
+      ) {
+        status = classified.status;
+      }
+    }
+  }
+
+  if (
+    input.dbRun?.runtimeState === "github_verifying" &&
+    (status === "cursor_running" || status === "cursor_requested" || status === "status_check_stopped")
+  ) {
+    status = "github_verifying";
+  }
+
+  if (
+    commit &&
+    (status === "cursor_running" ||
+      status === "cursor_requested" ||
+      status === "status_check_stopped")
+  ) {
+    status = "github_verifying";
+  }
+
+  const workBranch = String(
+    base.workBranch ?? execution?.workBranch ?? buildTaskCursorWorkBranch(base.processTaskId),
+  ).trim();
+  const cursorRunId = String(base.cursorRunId ?? execution?.cursorRunId ?? "").trim();
+  if (
+    !commit &&
+    workBranch &&
+    cursorRunId &&
+    (status === "cursor_running" ||
+      status === "cursor_requested" ||
+      status === "status_check_stopped")
+  ) {
+    status = "github_verifying";
+  }
+
+  if (
+    status === base.status &&
+    !commit &&
+    String(base.workBranch ?? "").trim() === workBranch
+  ) {
+    return base;
+  }
+  return {
+    ...base,
+    status,
+    ...(workBranch && !base.workBranch ? { workBranch } : {}),
+    ...(commit ? { commitSha: commit, branchHeadCommitSha: commit } : {}),
+  };
+}
+
 function mapCursorStatusToPhase(input: {
   readonly execution?: TaskCursorExecutionV1 | null;
   readonly parentTaskId: string;
@@ -99,8 +244,28 @@ function mapCursorStatusToPhase(input: {
   if (s === "review_pending" || s === "security_pending") return "lightweight_checking";
   if (s === "github_verified") return "github_verified";
   if (s === "github_verifying" || s === "cursor_completed") return "github_verifying";
-  if (s === "cursor_running" || s === "cursor_requested") return "cursor_running";
+  if (s === "cursor_running" || s === "cursor_requested") {
+    if (executionHasRecordedCommit(execution)) return "github_verifying";
+    return "cursor_running";
+  }
   return "prompt_ready";
+}
+
+function bumpFlowPhaseWithGithubCommitEvidence(input: {
+  readonly run: CodeTaskExecutionRunV1 | null;
+  readonly execution: TaskCursorExecutionV1 | null;
+  readonly phase: CodeTaskExecutionFlowPhase;
+}): CodeTaskExecutionFlowPhase {
+  const hasCommit = Boolean(
+    (input.run &&
+      String(input.run.commitSha ?? input.run.branchHeadCommitSha ?? "").trim()) ||
+      (input.execution && executionHasRecordedCommit(input.execution)),
+  );
+  if (!hasCommit) return input.phase;
+  if (input.phase === "cursor_running" || input.phase === "prompt_ready") {
+    return "github_verifying";
+  }
+  return input.phase;
 }
 
 function phaseIndex(phase: CodeTaskExecutionFlowPhase): number {
@@ -159,6 +324,82 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
   readonly autoGate?: ImplementationAutoQualityGateV1 | null;
   readonly developerStatus?: ImplementationBoardStepStatus;
   readonly failureReason?: string;
+  readonly latestRun?: CodeTaskExecutionRunV1 | null;
 }): CodeTaskExecutionFlowPhase {
-  return mapCursorStatusToPhase(input);
+  const run = input.latestRun ?? null;
+  const execution =
+    input.taskCursorExecution?.taskId === input.parentTaskId ? input.taskCursorExecution : null;
+
+  const finish = (phase: CodeTaskExecutionFlowPhase): CodeTaskExecutionFlowPhase =>
+    bumpFlowPhaseWithGithubCommitEvidence({ run, execution, phase });
+
+  if (input.failureReason === "blocked_by_dependency") {
+    return "blocked_by_dependency";
+  }
+
+  if (execution) {
+    const fromCursor = mapCursorStatusToPhase({
+      execution,
+      parentTaskId: input.parentTaskId,
+      autoGate: input.autoGate,
+      developerStatus: input.developerStatus,
+      failureReason: input.failureReason,
+    });
+    if (
+      fromCursor === "completed" ||
+      fromCursor === "lightweight_checking" ||
+      fromCursor === "github_verified" ||
+      fromCursor === "github_verifying" ||
+      fromCursor === "cursor_running"
+    ) {
+      return finish(fromCursor);
+    }
+  }
+
+  if (run) {
+    if (run.status === "completed" || run.status === "no_code_change_completed") {
+      return "completed";
+    }
+    if (isInFlightCodeTaskExecutionRunStatus(run.status)) {
+      return finish(mapCodeTaskRunStatusToFlowPhase(run.status) ?? "cursor_running");
+    }
+    if (
+      run.status === "failed" ||
+      run.status === "rework_required" ||
+      run.status === "status_check_stopped"
+    ) {
+      if (run.status === "status_check_stopped") return finish("cursor_running");
+      if (runHasCursorOrGithubEvidence(run)) {
+        return String(run.commitSha ?? run.branchHeadCommitSha ?? "").trim()
+          ? "failed"
+          : finish("cursor_running");
+      }
+      return "failed";
+    }
+    if (isQueuedCodeTaskExecutionRunStatus(run.status)) {
+      if (
+        execution &&
+        (execution.status === "cursor_running" || execution.status === "cursor_requested")
+      ) {
+        return finish("cursor_running");
+      }
+      return "prompt_ready";
+    }
+  }
+
+  if (execution) {
+    return finish(
+      mapCursorStatusToPhase({
+        execution,
+        parentTaskId: input.parentTaskId,
+        autoGate: input.autoGate,
+        developerStatus: input.developerStatus,
+        failureReason: input.failureReason,
+      }),
+    );
+  }
+
+  if (input.developerStatus === "done") return "completed";
+  if (input.developerStatus === "failed") return "failed";
+  return "prompt_ready";
 }

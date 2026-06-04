@@ -12,7 +12,10 @@ import {
   markImplementationRuntimeDispatching,
   markImplementationRuntimeFailed,
   markImplementationRuntimeCompleted,
+  markImplementationRuntimeGithubVerifying,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeCursorService";
+import { findRuntimeTransitionPath } from "@/lib/runtime/implementationRuntime/implementationRuntimeStateMachine";
+import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import { isTerminalRuntimeState } from "@/lib/runtime/implementationRuntime/implementationRuntimeStateMachine";
 import {
   advanceImplementationRuntimeCodeTaskQueue,
@@ -175,7 +178,7 @@ export async function dispatchNextQueuedImplementationRuntimeRun(input: {
   }) => Promise<{
     readonly agentId: string;
     readonly branchName?: string | null;
-    readonly targetRepository?: string | null;
+    readonly targetRepository?: ProjectTargetRepository | string | null;
     readonly baseBranch?: string | null;
   }>;
 }): Promise<ImplementationRuntimeBundleView> {
@@ -263,6 +266,56 @@ export async function dispatchNextQueuedImplementationRuntimeRun(input: {
   return getImplementationRuntimeBundleByJobId({ projectId: pid, jobId });
 }
 
+async function ensureRunAtGithubVerifyingBeforeCompletion(input: {
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly run: ImplementationRuntimeRunView;
+  readonly now?: Date;
+}): Promise<void> {
+  const state = input.run.runtimeState;
+  if (state === "github_verifying" || state === "completed") return;
+
+  const path = findRuntimeTransitionPath(state, "github_verifying");
+  if (!path.length && state !== "github_verifying") {
+    throw new Error(
+      `Cannot reach github_verifying from runtimeState=${state} (runId=${input.run.id})`,
+    );
+  }
+
+  for (const step of path) {
+    switch (step) {
+      case "dispatching":
+        await markImplementationRuntimeDispatching({
+          projectId: input.projectId,
+          jobId: input.jobId,
+          runId: input.run.id,
+          now: input.now,
+        });
+        break;
+      case "cursor_running":
+        await markImplementationRuntimeCursorRunning({
+          projectId: input.projectId,
+          jobId: input.jobId,
+          runId: input.run.id,
+          cursorAgentId: String(input.run.cursorAgentId ?? "github-verify-recover").trim(),
+          branchName: input.run.branchName,
+          now: input.now,
+        });
+        break;
+      case "github_verifying":
+        await markImplementationRuntimeGithubVerifying({
+          projectId: input.projectId,
+          jobId: input.jobId,
+          runId: input.run.id,
+          now: input.now,
+        });
+        break;
+      default:
+        break;
+    }
+  }
+}
+
 export async function completeImplementationRuntimeGithubVerifyAndAdvance(input: {
   readonly projectId: string;
   readonly jobId: string;
@@ -277,6 +330,14 @@ export async function completeImplementationRuntimeGithubVerifyAndAdvance(input:
   const job = await getImplementationRuntimeJobWithRuns({ projectId: pid, jobId });
   const run = job?.runs.find((r) => r.id === runId);
   const commitSha = input.commitSha?.trim() ?? "";
+  if (run) {
+    await ensureRunAtGithubVerifyingBeforeCompletion({
+      projectId: pid,
+      jobId,
+      run,
+      now: input.now,
+    });
+  }
   if (run?.codeTaskId && commitSha) {
     await applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem({
       jobId,

@@ -7,6 +7,7 @@ import {
 } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
 import { resolveTaskCursorAutoChainDecision } from "@/lib/prototype/implementationTaskCursorAutoChain";
 import { parseImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
+import { parseImplementationQuickRunV1, resolveQuickRunAllowedTaskIds } from "@/lib/prototype/implementationQuickRun";
 import { parseRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { buildTaskCursorJobLifecycleTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
@@ -29,11 +30,16 @@ export async function enqueueNextTaskCursorJobAfterTerminal(input: {
   });
   if (!board) return {};
 
+  const autoGate = parseImplementationAutoQualityGateV1(input.requirementsState.implementationAutoQualityGateV1);
+  const quickRun = parseImplementationQuickRunV1(input.requirementsState.implementationQuickRunV1);
+  const allowedTaskIds = resolveQuickRunAllowedTaskIds(quickRun);
+
   const decision = resolveTaskCursorAutoChainDecision({
     board,
     taskCursorExecution: input.execution,
-    autoGate: parseImplementationAutoQualityGateV1(input.requirementsState.implementationAutoQualityGateV1),
+    autoGate,
     autoQualityGateInFlight: false,
+    allowedTaskIds,
   });
   if (decision.kind === "none") return {};
 

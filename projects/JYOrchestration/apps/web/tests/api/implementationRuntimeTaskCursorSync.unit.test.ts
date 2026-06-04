@@ -38,6 +38,8 @@ vi.mock("@/lib/runtime/implementationRuntime/implementationGithubVerificationSer
 
 import {
   findRuntimeTransitionPath,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeStateMachine";
+import {
   hasRecordedGithubVerifyOutcome,
   mapTaskCursorStatusToRuntimeState,
   syncImplementationRuntimeFromTaskCursor,

@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
-import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { resolveFirstIncompleteSelectedCodeTaskId } from "@/lib/prototype/codeTaskExecutionQueue";
+import {
+  findLatestRunForCodeTask,
+  parseCodeTaskExecutionRunsV1,
+} from "@/lib/prototype/codeTaskExecutionRun";
 import {
   formatCodeTaskExecutionQueueCompletionDetail,
   formatCodeTaskExecutionQueueSummary,
@@ -42,6 +46,8 @@ import {
   formatImplementationExecutionOverviewLines,
   resolveSelectedCodeTaskExecutionProgress,
 } from "@/lib/prototype/implementationExecutionOverview";
+import { enrichCodeTaskRunForFlowPhase } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
+import { resolveTaskCursorExecutionForRow } from "@/lib/prototype/codeAgentExecutionProgressView";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { ImplementationExecutionBoardTaskTree } from "@/components/preview/ImplementationExecutionBoardTaskTree";
 import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
@@ -149,14 +155,49 @@ export function ImplementationExecutionBoardPanel({
     [implementationQuickRunV1, board, taskCursorExecutionV1, implementationAutoQualityGateV1, previewReady],
   );
 
+  const codeTaskQueue = useMemo(
+    () => parseCodeTaskExecutionQueueV1(codeTaskExecutionQueueV1) ?? null,
+    [codeTaskExecutionQueueV1],
+  );
+
+  const codeTaskRuns = useMemo(
+    () => parseCodeTaskExecutionRunsV1(codeTaskExecutionRunsV1) ?? [],
+    [codeTaskExecutionRunsV1],
+  );
+
+  const queueCurrentCodeTaskId = useMemo(() => {
+    const runs = codeTaskRuns;
+    const fromRuns = resolveFirstIncompleteSelectedCodeTaskId({
+      queue: codeTaskQueue,
+      runs,
+    });
+    if (fromRuns) return fromRuns;
+    const fromQueue = getCurrentQueueCodeTaskId(codeTaskQueue);
+    if (fromQueue) return fromQueue;
+    return implementationRuntimeDbBundle?.job?.currentCodeTaskId?.trim() ?? null;
+  }, [
+    codeTaskQueue,
+    codeTaskRuns,
+    implementationRuntimeDbBundle?.job?.currentCodeTaskId,
+  ]);
+
+  const queueParentTaskId = useMemo(() => {
+    if (!queueCurrentCodeTaskId) return null;
+    return (
+      implementationCodeTaskPlanV1?.tasks.find((t) => t.codeTaskId === queueCurrentCodeTaskId)
+        ?.parentTaskId ?? null
+    );
+  }, [queueCurrentCodeTaskId, implementationCodeTaskPlanV1]);
+
   const activeTaskId = useMemo(
     () =>
       resolveImplementationExecutionBoardSelectedTaskId({
         board,
         codeAgentWipExecutionV1,
         taskCursorExecutionV1,
+        queueParentTaskId,
       }),
-    [board, codeAgentWipExecutionV1, taskCursorExecutionV1],
+    [board, codeAgentWipExecutionV1, taskCursorExecutionV1, queueParentTaskId],
   );
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(activeTaskId);
@@ -191,6 +232,55 @@ export function ImplementationExecutionBoardPanel({
     onSelectedCodeTaskIdsChange?.(nextSelectedCodeTaskIds);
   };
 
+  const activeCodeTaskRun = useMemo(() => {
+    const codeTaskId =
+      selectedCodeTaskId ??
+      queueCurrentCodeTaskId ??
+      (activeTaskId
+        ? implementationCodeTaskPlanV1?.tasks.find((t) => t.parentTaskId === activeTaskId)?.codeTaskId
+        : null);
+    if (!codeTaskId) return null;
+    const parentTaskId =
+      implementationCodeTaskPlanV1?.tasks.find((t) => t.codeTaskId === codeTaskId)?.parentTaskId ??
+      activeTaskId;
+    const executionForParent = parentTaskId
+      ? resolveTaskCursorExecutionForRow({
+          taskId: parentTaskId,
+          taskCursorExecutionV1: taskCursorExecutionV1 ?? null,
+          taskCursorExecutionHistoryV1: taskCursorExecutionHistoryV1,
+        })
+      : null;
+    const dbRun =
+      implementationRuntimeDbBundle?.currentRun?.codeTaskId === codeTaskId
+        ? implementationRuntimeDbBundle.currentRun
+        : (implementationRuntimeDbBundle?.runs.find((run) => run.codeTaskId === codeTaskId) ??
+          null);
+    const enriched = enrichCodeTaskRunForFlowPhase({
+      run: findLatestRunForCodeTask(codeTaskRuns, codeTaskId),
+      execution: executionForParent,
+      dbRun,
+    });
+    const run = enriched ?? findLatestRunForCodeTask(codeTaskRuns, codeTaskId);
+    const dbCommit = dbRun?.commitSha?.trim() ?? "";
+    return run
+      ? {
+          commitSha: dbCommit || run.commitSha,
+          branchHeadCommitSha: dbCommit || run.branchHeadCommitSha,
+          cursorRunId: run.cursorRunId ?? dbRun?.cursorAgentId ?? undefined,
+          workBranch: run.workBranch ?? dbRun?.branchName ?? undefined,
+        }
+      : null;
+  }, [
+    selectedCodeTaskId,
+    activeTaskId,
+    queueCurrentCodeTaskId,
+    implementationCodeTaskPlanV1,
+    codeTaskRuns,
+    taskCursorExecutionV1,
+    taskCursorExecutionHistoryV1,
+    implementationRuntimeDbBundle,
+  ]);
+
   const executionOverview = useMemo(
     () =>
       buildImplementationExecutionOverview({
@@ -202,6 +292,7 @@ export function ImplementationExecutionBoardPanel({
           board.taskRows.find((row) => row.taskId === activeTaskId)?.title,
         runtime: parseImplementationRuntimeStateV1(implementationRuntimeStateV1),
         dbRuntimeState: implementationRuntimeDbBundle?.currentRun?.runtimeState ?? null,
+        activeCodeTaskRun,
       }),
     [
       board,
@@ -210,6 +301,7 @@ export function ImplementationExecutionBoardPanel({
       selectedCodeTaskId,
       implementationRuntimeStateV1,
       implementationRuntimeDbBundle,
+      activeCodeTaskRun,
     ],
   );
 
@@ -225,6 +317,9 @@ export function ImplementationExecutionBoardPanel({
         selectedCodeTaskId,
         checkedCodeTaskIds,
         taskCursorExecution: taskCursorExecutionV1 ?? null,
+        taskCursorExecutionHistory: taskCursorExecutionHistoryV1 ?? null,
+        dbRuntimeRuns: implementationRuntimeDbBundle?.runs ?? null,
+        dbCurrentRun: implementationRuntimeDbBundle?.currentRun ?? null,
         implementationAutoQualityGateV1,
         promptTimeline,
         serverJob: activeTaskCursorJob ?? null,
@@ -239,6 +334,8 @@ export function ImplementationExecutionBoardPanel({
       selectedCodeTaskId,
       checkedCodeTaskIds,
       taskCursorExecutionV1,
+      taskCursorExecutionHistoryV1,
+      implementationRuntimeDbBundle,
       implementationAutoQualityGateV1,
       promptTimeline,
       activeTaskCursorJob,
@@ -263,11 +360,6 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const [reworkOpen, setReworkOpen] = useState(false);
-
-  const codeTaskQueue = useMemo(
-    () => parseCodeTaskExecutionQueueV1(codeTaskExecutionQueueV1) ?? null,
-    [codeTaskExecutionQueueV1],
-  );
 
   const queueSummaryLine = useMemo(() => {
     if (!codeTaskQueue || codeTaskQueue.status === "idle") return null;

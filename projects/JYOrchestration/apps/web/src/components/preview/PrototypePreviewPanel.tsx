@@ -376,6 +376,18 @@ import {
   parseImplementationQuickRunV1,
   resolveQuickRunAllowedTaskIds,
 } from "@/lib/prototype/implementationQuickRun";
+import {
+  planQuickRunCodeTaskContinuationAfterAutoGate,
+  shouldPlanQuickRunCodeTaskContinuationAfterAutoGate,
+} from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
+import { runQuickRunStuckGithubVerifyRecovery } from "@/lib/prototype/implementationQuickRunGithubVerifyRecovery";
+import {
+  applyTaskCursorGithubVerifyApiResult,
+  buildTaskCursorGithubVerifyRequestBody,
+  postTaskCursorGithubVerify,
+  resolveTaskCursorGithubVerifyUserNotice,
+} from "@/lib/prototype/taskCursorGithubVerifyClient";
+import type { QuickRunGithubAdvanceDispatch } from "@/lib/prototype/implementationQuickRunGithubAdvanceService";
 import { normalizeSelectedTaskIds } from "@/lib/prototype/implementationTaskTreeSelection";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
 import type { PromptTimelineDrawerTab } from "@/lib/prototype/promptTimelineExecutionLogTabs";
@@ -1584,6 +1596,8 @@ export function PrototypePreviewPanel({
   const taskCursorPollTokenRef = useRef(0);
   const taskCursorPollActiveRunIdRef = useRef<string | null>(null);
   const autoQualityGateInFlightRef = useRef<string | null>(null);
+  const quickRunCodeTaskContinuationRef = useRef<string | null>(null);
+  const quickRunStuckGithubVerifyRef = useRef<string | null>(null);
   const codeTaskDispatchPreferredTaskIdRef = useRef<string | null>(null);
   const pendingQuickRunQueueDispatchRef = useRef<CodeTaskQueueDispatchRef | null>(null);
   const implementationRuntimePollSuspendedRef = useRef(false);
@@ -2655,6 +2669,132 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
   ]);
 
+  const continueImplementationQuickRunAfterAutoGate = useCallback(async () => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    const state = parseRequirementsStateJson(requirementsStateJsonRef.current);
+    const execution = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
+    const autoGate = parseImplementationAutoQualityGateV1(state.implementationAutoQualityGateV1);
+    const quickRun = parseImplementationQuickRunV1(state.implementationQuickRunV1);
+    const runs =
+      parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ??
+      parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
+      [];
+    const queue = effectiveCodeTaskExecutionQueueV1;
+    if (
+      !execution ||
+      !autoGate ||
+      !quickRun ||
+      !shouldPlanQuickRunCodeTaskContinuationAfterAutoGate({
+        quickRun,
+        taskCursorExecution: execution,
+        autoGate,
+        queue,
+        runs,
+        codeTaskPlan: state.implementationCodeTaskPlanV1,
+        taskList: state.implementationTaskListV1,
+        cursorWorkItems: state.cursorWorkItemsV1,
+        dbBundle: implementationRuntimeDbBundle,
+      })
+    ) {
+      return;
+    }
+
+    const fetched = await fetchImplementationRuntime(pid);
+    if (fetched.success) {
+      applyImplementationRuntimeFetch(fetched);
+    }
+    const dbBundle = fetched.bundle ?? implementationRuntimeDbBundle;
+    const nowIso = new Date().toISOString();
+    const nextHintId =
+      dbBundle?.job?.currentCodeTaskId?.trim() ??
+      (queue && queue.currentIndex + 1 < queue.selectedCodeTaskIds.length
+        ? queue.selectedCodeTaskIds[queue.currentIndex + 1]
+        : null);
+    const nextTarget = nextHintId
+      ? resolveCodeTaskDispatchTarget({
+          codeTaskId: nextHintId,
+          codeTaskPlan: state.implementationCodeTaskPlanV1,
+          taskList: state.implementationTaskListV1,
+          cursorWorkItems: state.cursorWorkItemsV1,
+        })
+      : null;
+    const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+      gitRepoUrl: executionSetupRow?.gitRepoUrl,
+      gitRepoName: executionSetupRow?.gitRepoName,
+      gitRepoProvider: executionSetupRow?.gitRepoProvider,
+      baseBranch: executionSetupRow?.baseBranch,
+    });
+    const developerPrompt =
+      nextTarget && targetRepository
+        ? buildCodeTaskDeveloperPrompt({
+            codeTask: nextTarget.codeTask,
+            parentTask: nextTarget.parentTask,
+            targetRepository,
+            baseBranch: executionSetupRow?.baseBranch ?? "main",
+            allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
+          })
+        : undefined;
+
+    const plan = planQuickRunCodeTaskContinuationAfterAutoGate({
+      projectId: pid,
+      quickRun,
+      taskCursorExecution: execution,
+      autoGate,
+      queue,
+      runs,
+      codeTaskPlan: state.implementationCodeTaskPlanV1,
+      taskList: state.implementationTaskListV1,
+      cursorWorkItems: state.cursorWorkItemsV1,
+      dbBundle,
+      baseState: state as Record<string, unknown>,
+      developerPrompt,
+      nowIso,
+    });
+    if (!plan) return;
+    if (quickRunCodeTaskContinuationRef.current === plan.triggerKey) return;
+    quickRunCodeTaskContinuationRef.current = plan.triggerKey;
+
+    pendingQuickRunQueueDispatchRef.current = plan.dispatch;
+    codeTaskDispatchPreferredTaskIdRef.current = plan.parentTaskId;
+    applyImplementationOrchestrationResult(
+      {
+        messages: executionSingleChat.chatMessages,
+        orchestrationPatch: {
+          ...plan.orchestrationPatch,
+          promptTimeline: appendPromptTimeline(
+            state.promptTimeline ?? orchestrationAwareRequirementsState.promptTimeline,
+            plan.timelineEntry,
+          ),
+        },
+      },
+      { persist: false },
+    );
+    void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
+      ...plan.orchestrationPatch,
+      promptTimeline: appendPromptTimeline(
+        state.promptTimeline ?? orchestrationAwareRequirementsState.promptTimeline,
+        plan.timelineEntry,
+      ),
+    });
+    showToast(`다음 CodeTask(${plan.nextCodeTaskId}) Cursor 실행을 시작합니다.`);
+    runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
+  }, [
+    projectId,
+    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+    orchestrationAwareRequirementsState.promptTimeline,
+    implementationRuntimeDbBundle,
+    implementationRuntimeDbQueueSnapshot,
+    effectiveCodeTaskExecutionQueueV1,
+    applyImplementationRuntimeFetch,
+    executionSetupRow,
+    applyImplementationOrchestrationResult,
+    executionSingleChat.chatMessages,
+    persistChatToDb,
+    requirementsStateJson,
+    showToast,
+  ]);
+
   const triggerImplementationAutoQualityGate = useCallback(async () => {
     const pid = projectId.trim();
     if (!pid) return;
@@ -2688,6 +2828,9 @@ export function PrototypePreviewPanel({
         executionSingleChat.appendAiNotice(outcome.message);
         showToast(outcome.message);
       }
+      if (outcome.ok && outcome.status === "passed") {
+        await continueImplementationQuickRunAfterAutoGate();
+      }
     } finally {
       if (autoQualityGateInFlightRef.current === triggerKey) {
         autoQualityGateInFlightRef.current = null;
@@ -2699,6 +2842,7 @@ export function PrototypePreviewPanel({
     applyImplementationOrchestrationResult,
     executionSingleChat,
     showToast,
+    continueImplementationQuickRunAfterAutoGate,
   ]);
 
   useEffect(() => {
@@ -2708,6 +2852,86 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState.taskCursorExecutionV1?.commitSha,
     orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
     triggerImplementationAutoQualityGate,
+  ]);
+
+  useEffect(() => {
+    if (orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status !== "passed") {
+      return;
+    }
+    void continueImplementationQuickRunAfterAutoGate();
+  }, [
+    orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
+    orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.taskId,
+    orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.sourceCommitSha,
+    orchestrationAwareRequirementsState.implementationQuickRunV1?.status,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+    effectiveCodeTaskExecutionQueueV1?.currentIndex,
+    implementationRuntimeDbBundle?.job?.currentCodeTaskId,
+    continueImplementationQuickRunAfterAutoGate,
+  ]);
+
+  const dispatchNextQuickRunFromGithubVerify = useCallback(
+    (next: QuickRunGithubAdvanceDispatch) => {
+      pendingQuickRunQueueDispatchRef.current = {
+        codeTaskId: next.codeTaskId,
+        parentTaskId: next.parentTaskId,
+        workItemId: next.workItemId,
+      };
+      codeTaskDispatchPreferredTaskIdRef.current = next.parentTaskId;
+      showToast(`다음 CodeTask(${next.codeTaskId}) Cursor 실행을 시작합니다.`);
+      runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
+    },
+    [showToast],
+  );
+
+  const recoverQuickRunStuckGithubVerify = useCallback(async () => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    const state = parseRequirementsStateJson(requirementsStateJsonRef.current);
+    await runQuickRunStuckGithubVerifyRecovery({
+      projectId: pid,
+      state,
+      effectiveQueue: effectiveCodeTaskExecutionQueueV1,
+      stuckVerifyDedupeRef: quickRunStuckGithubVerifyRef,
+      continuationTriggerRef: quickRunCodeTaskContinuationRef,
+      enrichPatch: enrichCodeTaskRunOrchestrationPatch,
+      applyOrchestrationPatch: (patch) => {
+        applyImplementationOrchestrationResult({
+          messages: executionSingleChat.chatMessages,
+          orchestrationPatch: patch,
+        });
+      },
+      onNextQuickRunDispatch: dispatchNextQuickRunFromGithubVerify,
+      showToast,
+      onFailureNotice: (message) => executionSingleChat.appendAiNotice(message),
+      refreshRuntime: async () => {
+        const fetched = await fetchImplementationRuntime(pid);
+        if (fetched.success) applyImplementationRuntimeFetch(fetched);
+      },
+    });
+  }, [
+    projectId,
+    effectiveCodeTaskExecutionQueueV1,
+    enrichCodeTaskRunOrchestrationPatch,
+    applyImplementationOrchestrationResult,
+    executionSingleChat.chatMessages,
+    executionSingleChat.appendAiNotice,
+    dispatchNextQuickRunFromGithubVerify,
+    showToast,
+    applyImplementationRuntimeFetch,
+  ]);
+
+  useEffect(() => {
+    void recoverQuickRunStuckGithubVerify();
+  }, [
+    recoverQuickRunStuckGithubVerify,
+    orchestrationAwareRequirementsState.implementationQuickRunV1?.status,
+    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+    orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
+    effectiveCodeTaskExecutionQueueV1?.status,
+    effectiveCodeTaskExecutionQueueV1?.currentIndex,
   ]);
 
   const implementationCursorGate = useMemo(
@@ -4893,40 +5117,46 @@ export function PrototypePreviewPanel({
         }
         case "VERIFY_TASK_CURSOR_GITHUB": {
           const pid = projectId.trim();
-          const execution = orchestrationAwareRequirementsState.taskCursorExecutionV1;
+          const execution = parseTaskCursorExecutionV1(
+            orchestrationAwareRequirementsState.taskCursorExecutionV1,
+          );
           if (!execution) {
             return { outcome: "blocked", message: "Task Cursor 실행 상태가 없습니다." };
           }
           showToast("GitHub commit 결과를 확인합니다...");
           void (async () => {
             try {
-              const res = await fetch("/api/prototype/task-cursor/verify-github", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
+              const state = parseRequirementsStateJson(requirementsStateJsonRef.current);
+              const json = await postTaskCursorGithubVerify(
+                buildTaskCursorGithubVerifyRequestBody({
                   projectId: pid,
                   execution,
-                  implementationTaskExecutionStateV1:
-                    orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
-                  workItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+                  state,
+                  effectiveQueue: effectiveCodeTaskExecutionQueueV1,
                 }),
+              );
+              applyTaskCursorGithubVerifyApiResult({
+                json,
+                enrichPatch: enrichCodeTaskRunOrchestrationPatch,
+                applyOrchestrationPatch: (patch) => {
+                  applyImplementationOrchestrationResult({
+                    messages: executionSingleChat.chatMessages,
+                    orchestrationPatch: patch,
+                  });
+                },
+                shouldApplyNextDispatch: (next) =>
+                  quickRunCodeTaskContinuationRef.current !== next.triggerKey,
+                onNextQuickRunDispatch: (next) => {
+                  quickRunCodeTaskContinuationRef.current = next.triggerKey;
+                  dispatchNextQuickRunFromGithubVerify(next);
+                },
               });
-              const json = (await res.json()) as {
-                success?: boolean;
-                message?: string;
-                orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
-              };
-              if (json.orchestrationPatch) {
-                applyImplementationOrchestrationResult({
-                  messages: executionSingleChat.chatMessages,
-                  orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
-                });
-              }
-              const notice =
-                json.message ??
-                (json.success ? "GitHub commit 확인 완료" : "GitHub commit 확인 실패");
+              const notice = resolveTaskCursorGithubVerifyUserNotice(json);
               executionSingleChat.appendAiNotice(notice);
               showToast(notice);
+              void fetchImplementationRuntime(pid).then((fetched) => {
+                if (fetched.success) applyImplementationRuntimeFetch(fetched);
+              });
             } catch (e) {
               const message = e instanceof Error ? e.message : String(e);
               showToast(`GitHub 확인 오류: ${message}`);

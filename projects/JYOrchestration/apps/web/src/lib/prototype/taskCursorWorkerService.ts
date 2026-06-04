@@ -31,7 +31,7 @@ import { pollTaskCursorExecutionOnce } from "@/lib/prototype/taskCursorPollServi
 import { reconcileTaskCursorRuntimePollTargets } from "@/lib/prototype/taskCursorRuntimeReconcile";
 import { enqueueNextTaskCursorJobAfterTerminal } from "@/lib/prototype/taskCursorServerAutoChain";
 import { buildTaskCursorFailedOrchestrationPatch } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
-import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
 import {
@@ -411,17 +411,20 @@ async function processPollingTaskCursorJob(
   await recoverImplementationRuntimeDb({ projectId: job.projectId, now });
 
   if (terminal) {
-    const followUp = await enqueueNextTaskCursorJobAfterTerminal({
-      projectId: job.projectId,
-      execution: pollResult.execution,
-      requirementsState: mergedPatch,
-      now,
-    });
-    if (followUp.orchestrationPatch) {
-      await persistTaskCursorOrchestrationToProject({
+    const quickRun = parseImplementationQuickRunV1(mergedPatch.implementationQuickRunV1);
+    if (quickRun?.status !== "running") {
+      const followUp = await enqueueNextTaskCursorJobAfterTerminal({
         projectId: job.projectId,
-        orchestrationPatch: followUp.orchestrationPatch,
+        execution: pollResult.execution,
+        requirementsState: mergedPatch,
+        now,
       });
+      if (followUp.orchestrationPatch) {
+        await persistTaskCursorOrchestrationToProject({
+          projectId: job.projectId,
+          orchestrationPatch: followUp.orchestrationPatch,
+        });
+      }
     }
   }
 

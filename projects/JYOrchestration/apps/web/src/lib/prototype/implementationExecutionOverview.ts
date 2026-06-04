@@ -62,6 +62,38 @@ export function resolveSelectedCodeTaskExecutionProgress(input: {
   return null;
 }
 
+function formatOverviewRuntimeStateLabel(input: {
+  readonly runtimeState: RuntimeState;
+  readonly activeCodeTaskRun?: Pick<
+    CodeTaskExecutionRunV1,
+    "commitSha" | "branchHeadCommitSha" | "cursorRunId" | "workBranch"
+  > | null;
+}): string {
+  const commit = String(
+    input.activeCodeTaskRun?.commitSha ?? input.activeCodeTaskRun?.branchHeadCommitSha ?? "",
+  ).trim();
+  const cursorRunId = String(input.activeCodeTaskRun?.cursorRunId ?? "").trim();
+  const workBranch = String(input.activeCodeTaskRun?.workBranch ?? "").trim();
+  const githubPending = Boolean(commit || (cursorRunId && workBranch));
+  if (githubPending) {
+    if (
+      input.runtimeState === "failed" ||
+      input.runtimeState === "cursor_running" ||
+      input.runtimeState === "dispatching"
+    ) {
+      return "GitHub commit 확인 중";
+    }
+  }
+  if (
+    input.runtimeState === "failed" &&
+    String(input.activeCodeTaskRun?.cursorRunId ?? "").trim() &&
+    !commit
+  ) {
+    return "Cursor 실행 중";
+  }
+  return formatRuntimeStateKo(input.runtimeState);
+}
+
 export function buildImplementationExecutionOverview(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
@@ -70,6 +102,10 @@ export function buildImplementationExecutionOverview(input: {
   readonly runtime?: ImplementationRuntimeStateV1 | null;
   /** DB Runtime Engine (P2) — JSON보다 우선 */
   readonly dbRuntimeState?: RuntimeState | null;
+  readonly activeCodeTaskRun?: Pick<
+    CodeTaskExecutionRunV1,
+    "commitSha" | "branchHeadCommitSha" | "cursorRunId" | "workBranch"
+  > | null;
 }): ImplementationExecutionOverview {
   const processTaskCount = input.board.taskRows.length;
   const planCount = input.codeTaskPlan?.codeTaskCount ?? input.codeTaskPlan?.tasks.length ?? 0;
@@ -90,7 +126,20 @@ export function buildImplementationExecutionOverview(input: {
     activeRow?.title?.trim() ||
     undefined;
   const runtimeState = input.dbRuntimeState ?? input.runtime?.runtimeState;
-  const isRunning = isRuntimeInFlight(runtimeState) || inProgressCount > 0;
+  const runCommit = String(
+    input.activeCodeTaskRun?.commitSha ?? input.activeCodeTaskRun?.branchHeadCommitSha ?? "",
+  ).trim();
+  const runtimeLooksStaleFailed =
+    runtimeState === "failed" &&
+    Boolean(
+      runCommit ||
+        String(input.activeCodeTaskRun?.cursorRunId ?? "").trim() ||
+        String(input.activeCodeTaskRun?.workBranch ?? "").trim(),
+    );
+  const isRunning =
+    isRuntimeInFlight(runtimeState) ||
+    inProgressCount > 0 ||
+    runtimeLooksStaleFailed;
 
   return {
     processTaskCount,
@@ -101,7 +150,15 @@ export function buildImplementationExecutionOverview(input: {
     blockedCount,
     ...(currentTitle ? { currentTitle } : {}),
     isRunning,
-    ...(runtimeState ? { runtimeState, runtimeStateLabel: formatRuntimeStateKo(runtimeState) } : {}),
+    ...(runtimeState
+      ? {
+          runtimeState,
+          runtimeStateLabel: formatOverviewRuntimeStateLabel({
+            runtimeState,
+            activeCodeTaskRun: input.activeCodeTaskRun,
+          }),
+        }
+      : {}),
   };
 }
 
@@ -131,6 +188,8 @@ export function formatImplementationExecutionOverviewLines(
   }
 
   if (overview.isRunning && overview.runtimeStateLabel) {
+    lines.push(`상태: ${overview.runtimeStateLabel}`);
+  } else if (overview.runtimeState === "failed" && overview.runtimeStateLabel) {
     lines.push(`상태: ${overview.runtimeStateLabel}`);
   } else if (
     typeof input?.selectedCodeTaskCount === "number" &&

@@ -35,6 +35,28 @@ export function assertRuntimeTransition(from: RuntimeState, to: RuntimeState): v
   }
 }
 
+/** Shortest allowed transition path (excluding `from`; including `to`). Empty if unreachable. */
+export function findRuntimeTransitionPath(
+  from: RuntimeState,
+  to: RuntimeState,
+): readonly RuntimeState[] {
+  if (from === to) return [];
+  const queue: RuntimeState[][] = [[from]];
+  const seen = new Set<RuntimeState>([from]);
+  while (queue.length) {
+    const path = queue.shift()!;
+    const head = path[path.length - 1]!;
+    for (const next of ALLOWED[head] ?? []) {
+      if (seen.has(next)) continue;
+      const nextPath = [...path, next];
+      if (next === to) return nextPath.slice(1);
+      seen.add(next);
+      queue.push(nextPath);
+    }
+  }
+  return [];
+}
+
 export function isTerminalRuntimeState(state: RuntimeState): boolean {
   return state === "completed" || state === "failed" || state === "stale";
 }

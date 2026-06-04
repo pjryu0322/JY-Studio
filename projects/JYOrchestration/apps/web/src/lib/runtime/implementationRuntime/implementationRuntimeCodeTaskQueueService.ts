@@ -1,5 +1,9 @@
 import type { Prisma } from "@prisma/client";
 import type { TaskCursorGithubVerifyResult } from "@/lib/prototype/taskCursorGithubVerify";
+import {
+  formatTargetRepositoryForQueueField,
+  type ProjectTargetRepository,
+} from "@/lib/prototype/projectTargetRepository";
 import { prisma } from "@/lib/prisma";
 import type { ImplementationRuntimeCodeTaskQueueItemView } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueTypes";
 import {
@@ -247,11 +251,13 @@ export async function markImplementationRuntimeCodeTaskQueueItemCursorRequested(
   readonly codeTaskId: string;
   readonly cursorRequestId?: string | null;
   readonly cursorRunId?: string | null;
-  readonly targetRepository?: string | null;
+  readonly targetRepository?: ProjectTargetRepository | string | null;
   readonly baseBranch?: string | null;
   readonly workBranch?: string | null;
   readonly now?: Date;
 }): Promise<ImplementationRuntimeCodeTaskQueueItemView | null> {
+  const now = input.now ?? new Date();
+  const targetRepository = formatTargetRepositoryForQueueField(input.targetRepository);
   const item = await codeTaskQueueItemDelegate().findFirst({
     where: { jobId: input.jobId.trim(), codeTaskId: input.codeTaskId.trim() },
   });
@@ -266,12 +272,12 @@ export async function markImplementationRuntimeCodeTaskQueueItemCursorRequested(
     patch: {
       cursorRequestId: input.cursorRequestId ?? input.cursorRunId ?? null,
       cursorRunId: input.cursorRunId ?? null,
-      targetRepository: input.targetRepository ?? null,
+      targetRepository,
       baseBranch: input.baseBranch ?? null,
       workBranch: input.workBranch ?? null,
       dispatchedAt: now,
     },
-    now: input.now,
+    now,
   });
 }
 

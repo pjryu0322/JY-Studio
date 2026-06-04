@@ -54,6 +54,7 @@ import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
+import type { ImplementationRuntimeRunView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import {
   buildImplementationProcessTaskTreeNodes,
   type ImplementationProcessTaskTreeNode,
@@ -80,14 +81,17 @@ export function resolveImplementationExecutionBoardSelectedTaskId(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly taskCursorExecutionV1?: import("@/lib/prototype/taskCursorExecution").TaskCursorExecutionV1 | null;
+  readonly queueParentTaskId?: string | null;
 }): string | null {
+  const fromQueue = input.queueParentTaskId?.trim();
+  if (fromQueue) return fromQueue;
+  const fromBoard = input.board.currentTaskId?.trim();
+  if (fromBoard) return fromBoard;
   const cursorTaskId = input.taskCursorExecutionV1?.taskId?.trim();
   const cursorStatus = input.taskCursorExecutionV1?.status;
   if (cursorTaskId && cursorStatus && cursorStatus !== "scm_pending") {
     return cursorTaskId;
   }
-  const fromBoard = input.board.currentTaskId?.trim();
-  if (fromBoard) return fromBoard;
   const fromWip = input.codeAgentWipExecutionV1?.selectedTaskId?.trim();
   if (fromWip) return fromWip;
   return pickFirstExecutableDeveloperTaskId(input.board) ?? input.board.taskRows[0]?.taskId ?? null;
@@ -461,6 +465,9 @@ export function buildImplementationTaskTreeNodes(input: {
   readonly checkedTaskIds?: readonly string[] | null;
   readonly checkedCodeTaskIds?: readonly string[] | null;
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistory?: readonly TaskCursorExecutionV1[] | null;
+  readonly dbRuntimeRuns?: readonly ImplementationRuntimeRunView[] | null;
+  readonly dbCurrentRun?: ImplementationRuntimeRunView | null;
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly serverJob?: TaskCursorJobSummary | null;
@@ -477,6 +484,9 @@ export function buildImplementationTaskTreeNodes(input: {
     checkedTaskIds: input.checkedTaskIds,
     checkedCodeTaskIds: input.checkedCodeTaskIds ?? input.checkedTaskIds,
     taskCursorExecution,
+    taskCursorExecutionHistory: input.taskCursorExecutionHistory,
+    dbRuntimeRuns: input.dbRuntimeRuns,
+    dbCurrentRun: input.dbCurrentRun,
     implementationAutoQualityGateV1: input.implementationAutoQualityGateV1,
   });
   return nodes.map((node) => {

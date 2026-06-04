@@ -222,6 +222,77 @@ export async function pollTaskCursorExecutionOnce(input: {
   }
 
   if (pollStep.kind === "failed") {
+    const branch = String(execution.workBranch ?? "").trim();
+    const canRecoverViaGithub =
+      pollStep.reason === "commit_not_created" &&
+      branch &&
+      input.verifyGithub !== false &&
+      Boolean(input.context.githubToken);
+
+    if (canRecoverViaGithub) {
+      timeline.push(
+        buildTaskCursorRuntimeSyncTimelineEntry({
+          action: "task_cursor_github_fallback_verify_started",
+          projectId,
+          taskId: execution.taskId,
+          nowIso,
+        }),
+      );
+      const verify = await verifyTaskCursorGithubResult({
+        execution: patchTaskCursorExecution(execution, { status: "cursor_running", workBranch: branch, nowIso }),
+        targetRepository: input.context.targetRepository,
+        githubToken: input.context.githubToken,
+        allowedPathGlobs: input.context.allowedPathGlobs,
+      });
+      timeline.push(
+        buildTaskCursorRuntimeSyncTimelineEntry({
+          action: "task_cursor_github_fallback_verify_completed",
+          projectId,
+          taskId: execution.taskId,
+          message: verify.ok ? "ok" : verify.reason ?? verify.message,
+          nowIso,
+        }),
+      );
+      if (verify.ok) {
+        nextExecution = patchTaskCursorExecution(execution, {
+          status: "github_verifying",
+          commitSha: verify.verifiedCommitSha,
+          nowIso,
+        });
+        nextExecution = applyTaskCursorGithubVerifyResult({
+          execution: nextExecution,
+          ok: true,
+          message: verify.message,
+          reason: verify.reason,
+          verifiedChangedFiles: verify.verifiedChangedFiles,
+          verifiedCommitSha: verify.verifiedCommitSha,
+          nowIso,
+        });
+        if (nextExecution.status === "github_verified") {
+          nextExecution = patchTaskCursorExecution(nextExecution, { status: "review_pending", nowIso });
+        }
+        timeline.push(
+          buildTaskCursorGithubVerifyTimeline({
+            execution: nextExecution,
+            ok: true,
+            reason: verify.reason,
+            nowIso,
+          }),
+        );
+        const status = nextExecution.status;
+        return {
+          success: true,
+          status,
+          message: pollStep.message,
+          execution: nextExecution,
+          orchestrationPatch: buildPatch(nextExecution, timeline),
+          terminal: isTerminalTaskCursorPollResultStatus(status),
+          nextPollDelayMs: isTerminalTaskCursorPollResultStatus(status) ? undefined : 10_000,
+          githubVerifyResult: verify,
+        };
+      }
+    }
+
     nextExecution = patchTaskCursorExecution(execution, {
       status: "cursor_failed",
       failureReason: pollStep.reason,

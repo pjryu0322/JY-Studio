@@ -176,6 +176,7 @@ export function deriveImplementationQuickRunStatus(input: {
   if (input.previewReady) return "preview_ready";
   const execution = input.taskCursorExecution ?? null;
   const autoGate = input.autoGate ?? null;
+  if (isPostCursorPipelineExecution(execution)) return "running";
   if (
     autoGate?.status === "failed" &&
     execution &&
@@ -201,7 +202,6 @@ export function deriveImplementationQuickRunStatus(input: {
   }
   if (input.quickRun?.status === "running") return "running";
   if (execution && isInFlightTaskCursorExecution(execution)) return "running";
-  if (isPostCursorPipelineExecution(execution)) return "running";
   return input.quickRun?.status ?? "idle";
 }
 

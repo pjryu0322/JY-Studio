@@ -66,3 +66,19 @@ describe("formatImplementationExecutionOverviewLines queue alignment", () => {
     expect(text).toContain("선택한 CodeTask 실행 대기");
   });
 });
+
+describe("buildImplementationExecutionOverview stale failed runtime", () => {
+  it("shows GitHub 확인 필요 when DB failed but active run has commit", () => {
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: sampleList() },
+    })!;
+    const overview = buildImplementationExecutionOverview({
+      board,
+      dbRuntimeState: "failed",
+      activeCodeTaskRun: { commitSha: "abc123" },
+    });
+    expect(overview.runtimeStateLabel).toBe("GitHub commit 확인 중");
+    expect(overview.isRunning).toBe(true);
+  });
+});

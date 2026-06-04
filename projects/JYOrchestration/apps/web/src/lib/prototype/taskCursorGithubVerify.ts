@@ -186,7 +186,17 @@ export async function verifyTaskCursorGithubResult(
   }
 
   const commitMessage = String(commitRes.data.commit?.message ?? "");
-  if (!commitMessage.includes(input.execution.taskId)) {
+  const taskSlug = input.execution.taskId
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  const messageMatchesTask =
+    commitMessage.includes(input.execution.taskId) ||
+    (taskSlug &&
+      (commitMessage.toLowerCase().includes(taskSlug) ||
+        branch.toLowerCase().includes(taskSlug)));
+  if (!messageMatchesTask) {
     return {
       ok: false,
       reason: "github_verify_failed",

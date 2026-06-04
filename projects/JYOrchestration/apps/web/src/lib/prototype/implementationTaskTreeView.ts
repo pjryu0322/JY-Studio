@@ -20,6 +20,7 @@ import {
 import {
   buildCodeTaskExecutionFlowSteps,
   deriveCodeTaskExecutionFlowPhase,
+  enrichCodeTaskRunForFlowPhase,
   formatCodeTaskExecutionFlowPhaseKo,
   formatCodeTaskExecutionProgressLine,
   type CodeTaskExecutionFlowStepVm,
@@ -38,6 +39,8 @@ import {
   orderTaskRowsForTreeDisplay,
 } from "@/lib/prototype/implementationTaskTreeSelection";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import { resolveTaskCursorExecutionForRow } from "@/lib/prototype/codeAgentExecutionProgressView";
+import type { ImplementationRuntimeRunView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 
 export type ImplementationTaskTreeMetaLine = Readonly<{
   readonly label: string;
@@ -155,6 +158,9 @@ function buildCodeTaskNode(input: {
   readonly row: ImplementationExecutionBoardTaskRowV1;
   readonly workItem?: CursorWorkItem | null;
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistory?: readonly TaskCursorExecutionV1[] | null;
+  readonly dbRuntimeRuns?: readonly ImplementationRuntimeRunView[] | null;
+  readonly dbCurrentRun?: ImplementationRuntimeRunView | null;
   readonly autoGate?: ImplementationAutoQualityGateV1 | null;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly codeTaskExecutionRuns?: readonly CodeTaskExecutionRunV1[] | null;
@@ -166,10 +172,20 @@ function buildCodeTaskNode(input: {
     codeTask: input.codeTask,
     workItem: input.workItem ?? null,
   });
-  const latestRun = findLatestRunForCodeTask(
-    input.codeTaskExecutionRuns,
-    input.codeTask.codeTaskId,
-  );
+  const executionForParent = resolveTaskCursorExecutionForRow({
+    taskId: input.row.taskId,
+    taskCursorExecutionV1: input.taskCursorExecution,
+    taskCursorExecutionHistoryV1: input.taskCursorExecutionHistory,
+  });
+  const dbRun =
+    input.dbCurrentRun?.codeTaskId === input.codeTask.codeTaskId
+      ? input.dbCurrentRun
+      : (input.dbRuntimeRuns?.find((run) => run.codeTaskId === input.codeTask.codeTaskId) ?? null);
+  const latestRun = enrichCodeTaskRunForFlowPhase({
+    run: findLatestRunForCodeTask(input.codeTaskExecutionRuns, input.codeTask.codeTaskId),
+    execution: executionForParent,
+    dbRun,
+  });
   const dependencyCheck = input.codeTaskPlan
     ? checkCodeTaskDependencyReady({
         codeTaskId: input.codeTask.codeTaskId,
@@ -184,9 +200,10 @@ function buildCodeTaskNode(input: {
       (!latestRun || !isInFlightCodeTaskExecutionRunStatus(latestRun.status)));
   let phase = deriveCodeTaskExecutionFlowPhase({
     parentTaskId: input.row.taskId,
-    taskCursorExecution: input.taskCursorExecution,
+    taskCursorExecution: executionForParent,
     autoGate: input.autoGate,
     developerStatus: input.row.developerStatus,
+    latestRun,
     failureReason: dependencyBlocked
       ? "blocked_by_dependency"
       : latestRun?.status === "rework_required" ||
@@ -195,18 +212,6 @@ function buildCodeTaskNode(input: {
         ? latestRun.failureReason ?? "commit_not_created"
         : input.row.failureReason,
   });
-  if (latestRun?.status === "completed" || latestRun?.status === "no_code_change_completed") {
-    phase = "completed";
-  } else if (latestRun && isInFlightCodeTaskExecutionRunStatus(latestRun.status)) {
-    phase =
-      latestRun.status === "github_verifying"
-        ? "github_verifying"
-        : latestRun.status === "cursor_running" || latestRun.status === "cursor_requested"
-          ? "cursor_running"
-          : "prompt_ready";
-  } else if (dependencyBlocked) {
-    phase = "blocked_by_dependency";
-  }
   const executionFlowSteps = buildCodeTaskExecutionFlowSteps({ phase, policy });
   const title = stripLeadingTaskIdFromTitle(input.codeTask.codeTaskId, input.codeTask.title);
   const rowView = buildCodeTaskRowView({
@@ -238,7 +243,7 @@ function buildCodeTaskNode(input: {
   const failureReason =
     phase === "failed"
       ? latestRun?.failureReason ??
-        input.taskCursorExecution?.failureReason ??
+        executionForParent?.failureReason ??
         "commit_not_created"
       : undefined;
 
@@ -299,6 +304,9 @@ export function buildImplementationProcessTaskTreeNodes(input: {
   readonly checkedTaskIds?: readonly string[] | null;
   readonly checkedCodeTaskIds?: readonly string[] | null;
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistory?: readonly TaskCursorExecutionV1[] | null;
+  readonly dbRuntimeRuns?: readonly ImplementationRuntimeRunView[] | null;
+  readonly dbCurrentRun?: ImplementationRuntimeRunView | null;
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
 }): readonly ImplementationProcessTaskTreeNode[] {
   const activeTaskId = input.activeTaskId?.trim() || null;
@@ -341,6 +349,9 @@ export function buildImplementationProcessTaskTreeNodes(input: {
         row,
         workItem: findWorkItemForCodeTask(input.cursorWorkItems ?? undefined, codeTask.codeTaskId),
         taskCursorExecution,
+        taskCursorExecutionHistory: input.taskCursorExecutionHistory,
+        dbRuntimeRuns: input.dbRuntimeRuns,
+        dbCurrentRun: input.dbCurrentRun,
         autoGate: input.implementationAutoQualityGateV1,
         codeTaskPlan: input.codeTaskPlan,
         codeTaskExecutionRuns: input.codeTaskExecutionRuns,
