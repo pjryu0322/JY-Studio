@@ -94,9 +94,11 @@ export async function dispatchQuickRunContinuationOnServer(input: {
     false,
     prepared.parentTaskId,
   );
+  const body = prepared.requestBody;
   const apiRequest = {
     projectId: pid,
     taskId: prepared.parentTaskId,
+    codeTaskId: body.codeTaskId,
     workItemIds: prepared.selectedWorkItems.map((w) => w.id),
     workItems: [...prepared.selectedWorkItems],
     cursorApiUrl: context.cursorApiUrl!,
@@ -104,9 +106,9 @@ export async function dispatchQuickRunContinuationOnServer(input: {
     targetRepository: context.targetRepository,
     workspacePath: context.workspaceRoot,
     baseBranch: context.baseBranch,
-    workBranch: prepared.pendingExecution.workBranch,
+    workBranch: body.workBranch,
     commitMessage,
-    prompt: prepared.pendingExecution.cursorPrompt ?? "",
+    prompt: body.developerPrompt,
     allowedPathGlobs: context.allowedPathGlobs,
   };
 

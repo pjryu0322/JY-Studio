@@ -84,7 +84,7 @@ export function formatCodeTaskExecutionProgressLine(phase: CodeTaskExecutionFlow
     case "prompt_preflight_failed":
       return "프롬프트 품질 검사 실패로 Cursor 실행 전 차단";
     case "prompt_ready":
-      return "Quick 실행 대기";
+      return "Cursor 실행 대기";
     default:
       return "진행 중";
   }
@@ -320,6 +320,14 @@ export function buildCodeTaskExecutionFlowSteps(input: {
       else state = "pending";
     } else if (input.phase === "blocked_by_dependency") {
       state = "pending";
+    } else if (input.phase === "prompt_ready") {
+      if (def.id === "prompt_ready") state = "done";
+      else if (def.id === "cursor_running") {
+        state = "pending";
+        label = "Cursor 실행 대기";
+      } else {
+        state = "pending";
+      }
     } else if (stepIdx < current) {
       state = "done";
     } else if (stepIdx === current || (def.id === "cursor_running" && input.phase === "cursor_running")) {

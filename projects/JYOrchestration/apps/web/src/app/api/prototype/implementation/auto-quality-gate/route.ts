@@ -18,7 +18,8 @@ import {
 import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
-import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { continueSelectedCodeTaskQueueAfterAutoGate } from "@/lib/prototype/serverQuickRunContinuationService";
+import { appendPromptTimeline, type RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export const maxDuration = 120;
 
@@ -128,12 +129,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let orchestrationPatch = outcome.orchestrationPatch;
+    if (outcome.ok && outcome.autoGate.status === "passed") {
+      const continuation = await continueSelectedCodeTaskQueueAfterAutoGate({
+        projectId,
+        completedTaskId: execution.taskId,
+        sourceCommitSha: execution.commitSha,
+        runId: execution.cursorRunId,
+      });
+      if (continuation.orchestrationPatch) {
+        orchestrationPatch = {
+          ...orchestrationPatch,
+          ...continuation.orchestrationPatch,
+          promptTimeline: appendPromptTimeline(
+            orchestrationPatch?.promptTimeline ?? body.promptTimeline ?? [],
+            ...(continuation.timelineEntries.length
+              ? continuation.timelineEntries
+              : []),
+          ),
+        };
+      } else if (continuation.timelineEntries.length) {
+        orchestrationPatch = {
+          ...orchestrationPatch,
+          promptTimeline: appendPromptTimeline(
+            orchestrationPatch?.promptTimeline ?? body.promptTimeline ?? [],
+            ...continuation.timelineEntries,
+          ),
+        };
+      }
+    }
+
     return NextResponse.json({
       success: outcome.ok,
       status: outcome.autoGate.status,
       message: outcome.message,
       autoGate: outcome.autoGate,
-      orchestrationPatch: outcome.orchestrationPatch,
+      orchestrationPatch,
+      serverContinuation: outcome.ok && outcome.autoGate.status === "passed" ? true : undefined,
       executionMode: "implementation_auto_quality_gate",
     });
   } catch (e) {

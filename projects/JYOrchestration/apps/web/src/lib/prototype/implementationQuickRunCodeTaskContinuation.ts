@@ -46,7 +46,7 @@ export function isAutoGatePassedForExecution(
   return executionCommit.startsWith(gateCommit) || gateCommit.startsWith(executionCommit);
 }
 
-function resolveCompletedCodeTaskId(input: {
+export function resolveCompletedCodeTaskId(input: {
   readonly execution: TaskCursorExecutionV1;
   readonly runs: readonly CodeTaskExecutionRunV1[];
   readonly queue: CodeTaskExecutionQueueV1 | null;

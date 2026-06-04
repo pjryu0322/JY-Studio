@@ -20,6 +20,9 @@ const IMPLEMENTATION_ACTION_PREFIXES = [
 const EXECUTION_LOG_ACTION_LABELS: Record<string, string> = {
   implementation_quick_run_started: "Quick 실행 시작",
   implementation_quick_run_cursor_dispatch: "Quick → Cursor 실행 연결",
+  quick_run_next_dispatch_planned: "다음 CodeTask 실행 예정",
+  quick_run_next_dispatch_executed: "다음 CodeTask Cursor 실행",
+  quick_run_next_dispatch_skipped: "다음 CodeTask 실행 스킵",
   implementation_quick_run_blocked: "자동실행 중단",
   implementation_quick_run_preview_ready: "Preview 준비 완료",
   implementation_auto_quality_gate_requested: "검수·보안 자동 점검 요청",
