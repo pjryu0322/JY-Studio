@@ -269,6 +269,7 @@ export async function markImplementationRuntimeCodeTaskQueueItemCursorRequested(
       targetRepository: input.targetRepository ?? null,
       baseBranch: input.baseBranch ?? null,
       workBranch: input.workBranch ?? null,
+      dispatchedAt: now,
     },
     now: input.now,
   });

@@ -150,6 +150,61 @@ export function buildTaskCursorJobLifecycleTimelineEntry(input: {
   });
 }
 
+export function buildTaskCursorRuntimeSyncTimelineEntry(input: {
+  readonly action:
+    | "task_cursor_runtime_sync_after_launch"
+    | "task_cursor_github_branch_detected"
+    | "task_cursor_github_head_commit_detected"
+    | "task_cursor_github_fallback_verify_started"
+    | "task_cursor_github_fallback_verify_completed"
+    | "implementation_queue_item_completed"
+    | "implementation_queue_advanced";
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly codeTaskId?: string;
+  readonly agentId?: string;
+  readonly idleReason?: string;
+  readonly message?: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: input.action,
+    orchestrationTraceGroup: "task_cursor_execution",
+    routingDecision: input.taskId,
+    fields: {
+      projectId: input.projectId,
+      taskId: input.taskId,
+      ...(input.codeTaskId ? { codeTaskId: input.codeTaskId } : {}),
+      ...(input.agentId ? { agentId: input.agentId } : {}),
+      ...(input.idleReason ? { idleReason: input.idleReason } : {}),
+      ...(input.message ? { message: input.message } : {}),
+    },
+    nowIso: input.nowIso,
+  });
+}
+
+export function buildTaskCursorWorkerSchedulerTimelineEntry(input: {
+  readonly action: "task_cursor_worker_tick_scheduled" | "task_cursor_worker_tick_idle_reason";
+  readonly projectId: string;
+  readonly taskId: string;
+  readonly jobId?: string | null;
+  readonly idleReason?: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: input.action,
+    orchestrationTraceGroup: "task_cursor_execution",
+    routingDecision: input.taskId,
+    fields: {
+      projectId: input.projectId,
+      taskId: input.taskId,
+      ...(input.jobId ? { jobId: input.jobId } : {}),
+      ...(input.idleReason ? { idleReason: input.idleReason } : {}),
+    },
+    nowIso: input.nowIso,
+  });
+}
+
 export function buildTaskCursorPollLifecycleTimelineEntry(input: {
   readonly action:
     | "task_cursor_poll_loop_started"

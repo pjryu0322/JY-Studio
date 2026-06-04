@@ -2488,6 +2488,10 @@ export function PrototypePreviewPanel({
   }, [applyImplementationOrchestrationResult, executionSingleChat, showToast]);
 
   const cancelTaskCursorClientPoll = useCallback(() => {
+    if (isServerTaskCursorPolling()) {
+      showToast("서버에서 AI 개발자 상태를 계속 확인합니다. (화면 갱신만 일시 중지되지 않습니다)");
+      return;
+    }
     taskCursorPollTokenRef.current += 1;
     taskCursorPollActiveRunIdRef.current = null;
 

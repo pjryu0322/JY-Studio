@@ -397,13 +397,19 @@ export function buildTaskCursorPollStatusLabel(input: {
     );
     if (execution.status === "github_verifying") {
       return elapsed != null
-        ? `GitHub 결과 확인 중 · ${elapsed}분 경과`
-        : "GitHub 결과 확인 중";
+        ? `GitHub commit 확인 중 · ${elapsed}분 경과`
+        : "GitHub commit 확인 중";
     }
     if (execution.status === "cursor_running" || execution.status === "cursor_requested") {
+      const branch = String(execution.workBranch ?? input.serverJob.workBranch ?? "").trim();
+      if (branch) {
+        return elapsed != null
+          ? `GitHub 작업 브랜치 확인됨 · commit 검증 중 · ${elapsed}분 경과`
+          : "GitHub 작업 브랜치 확인됨 · commit 검증 중";
+      }
       return elapsed != null
-        ? `Cursor 작업 중 · ${elapsed}분 경과`
-        : "Cursor 작업 중";
+        ? `AI 개발자 작업 중 · GitHub branch 대기 · ${elapsed}분 경과`
+        : "AI 개발자 작업 중 · GitHub branch 대기";
     }
     return "실행 중";
   }
@@ -424,6 +430,7 @@ export function resolveTaskRowStopCapability(input: {
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly developerStatus?: ImplementationBoardStepStatus;
 }): boolean {
+  if (isServerTaskCursorPolling()) return false;
   const execution = input.taskCursorExecution;
   if (!execution || execution.taskId !== input.taskId) return false;
   if (

@@ -42,7 +42,7 @@ if (startTaskCursorWorker) {
   }, 3000);
 } else {
   console.log(
-    "[dev-with-worker] Task Cursor tick worker는 기본 비활성입니다. 필요 시 TASK_CURSOR_DEV_WORKER=1 pnpm dev 또는 pnpm dev:worker",
+    "[dev-with-worker] Task Cursor poll은 Next 서버 내장 scheduler(instrumentation)가 기본 처리합니다. 외부 worker는 pnpm dev:worker (선택).",
   );
 }
 

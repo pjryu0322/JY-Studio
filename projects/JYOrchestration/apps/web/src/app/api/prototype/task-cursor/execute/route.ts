@@ -37,8 +37,22 @@ import { prisma } from "@/lib/prisma";
 import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
 import { upsertTaskCursorExecutionJobFromLaunch } from "@/lib/prototype/taskCursorExecutionJobRepository";
 import { buildTaskCursorJobLifecycleTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import {
+  buildRuntimeSyncAfterLaunchTimelineEntry,
+  syncCursorLaunchToDbRuntime,
+} from "@/lib/prototype/taskCursorRuntimeSyncAfterLaunch";
+import {
+  buildTaskCursorWorkerTickScheduledTimeline,
+  scheduleTaskCursorPollSoon,
+} from "@/lib/prototype/taskCursorEmbeddedWorkerScheduler";
+import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
-import { linkTaskCursorJobToImplementationRun } from "@/lib/runtime/implementationRuntime/implementationRuntimePollRepository";
+import {
+  findImplementationRunByTaskCursorJobId,
+  linkTaskCursorJobToImplementationRun,
+  syncRunPollScheduleFromJob,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimePollRepository";
+import { TASK_CURSOR_JOB_DEFAULT_POLL_DELAY_MS } from "@/lib/prototype/taskCursorExecutionJobRepository";
 import { dispatchQueuedImplementationRuntimeRunWithCursor } from "@/lib/prototype/selectedCodeTaskCursorExecution";
 
 type Body = {
@@ -255,38 +269,52 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        if (dbDispatched) {
-          launchOk = true;
+        if (!dbDispatched) {
+          const bundle = await getImplementationRuntimeBundle(projectId);
+          const message =
+            bundle.job?.status === "running"
+              ? "DB Queue dispatch 없이 Cursor Agent를 실행할 수 없습니다. 구현 Runtime Job/Queue 상태를 확인한 뒤 다시 시도해 주세요."
+              : "구현 Runtime Job이 없습니다. [선택한 CodeTask 실행]으로 다시 시작해 주세요.";
+          launchOk = false;
+          launchMessage = message;
           execution = patchTaskCursorExecution(execution, {
-            status: "cursor_running",
-            cursorRunId: dbDispatched.currentRun?.cursorAgentId ?? undefined,
+            status: "cursor_failed",
+            failureReason: "dispatch_blocked",
+            errorMessage: message,
             nowIso,
           });
+          timeline.push(buildTaskCursorApiFailedTimeline({ execution, nowIso }));
         } else {
-          const launch = await launchTaskCursorCloudAgent(apiRequest);
-          launchOk = launch.ok;
-          launchMessage = launch.ok ? undefined : launch.message;
-          if (!launch.ok) {
-            execution = patchTaskCursorExecution(execution, {
-              status: "cursor_failed",
-              failureReason: launch.reason,
-              errorMessage: launch.message,
-              nowIso,
-            });
-            timeline.push(buildTaskCursorApiFailedTimeline({ execution, nowIso }));
-          } else {
-            execution = patchTaskCursorExecution(execution, {
-              status: "cursor_running",
-              cursorRunId: launch.agentId,
-              nowIso,
-            });
-          }
-          await syncImplementationRuntimeFromTaskCursor({
-            projectId,
-            codeTaskId: body.codeTaskId,
-            taskId,
-            execution,
+          launchOk = true;
+          const agentId =
+            String(dbDispatched.currentRun?.cursorAgentId ?? execution.cursorRunId ?? "").trim();
+          execution = patchTaskCursorExecution(execution, {
+            status: "cursor_running",
+            cursorRunId: agentId || undefined,
+            nowIso,
           });
+          if (agentId) {
+            await syncCursorLaunchToDbRuntime({
+              projectId,
+              codeTaskId: codeTaskIdForRuntime,
+              taskId,
+              execution,
+              agentId,
+              targetRepository: context.targetRepository,
+              baseBranch: context.baseBranch,
+              workBranch: execution.workBranch ?? null,
+              now: new Date(nowIso),
+            });
+            timeline.push(
+              buildRuntimeSyncAfterLaunchTimelineEntry({
+                projectId,
+                taskId,
+                codeTaskId: codeTaskIdForRuntime,
+                agentId,
+                nowIso,
+              }),
+            );
+          }
         }
       } catch (error) {
         launchMessage = error instanceof Error ? error.message : String(error);
@@ -298,25 +326,18 @@ export async function POST(request: NextRequest) {
         });
         timeline.push(buildTaskCursorApiFailedTimeline({ execution, nowIso }));
       }
-      const patch = buildTaskCursorOrchestrationPatch({
-        execution,
-        timelineEntries: [
-          ...timeline,
-          ...(launchOk && isServerTaskCursorPolling()
-            ? [
-                buildTaskCursorJobLifecycleTimelineEntry({
-                  action: "task_cursor_job_created",
-                  projectId,
-                  taskId,
-                  status: execution.status,
-                  message: "server worker polling",
-                  nowIso,
-                }),
-              ]
-            : []),
-        ],
-        cursorWorkItems: scopedWorkItems,
-      });
+      if (launchOk && isServerTaskCursorPolling()) {
+        timeline.push(
+          buildTaskCursorJobLifecycleTimelineEntry({
+            action: "task_cursor_job_created",
+            projectId,
+            taskId,
+            status: execution.status,
+            message: "embedded worker polling",
+            nowIso,
+          }),
+        );
+      }
       let jobId: string | undefined;
       if (launchOk && isServerTaskCursorPolling()) {
         const job = await upsertTaskCursorExecutionJobFromLaunch({
@@ -331,13 +352,44 @@ export async function POST(request: NextRequest) {
           codeTaskId: body.codeTaskId,
           now: new Date(nowIso),
         });
+        await syncImplementationRuntimeFromTaskCursor({
+          projectId,
+          codeTaskId: body.codeTaskId,
+          taskId,
+          execution,
+        });
+        const linkedRun = await findImplementationRunByTaskCursorJobId(job.id);
+        if (linkedRun) {
+          const pollAt = new Date(nowIso);
+          await syncRunPollScheduleFromJob({
+            runId: linkedRun.id,
+            pollCount: job.pollCount ?? 0,
+            lastPollAt: pollAt,
+            nextPollAt: new Date(pollAt.getTime() + TASK_CURSOR_JOB_DEFAULT_POLL_DELAY_MS),
+            terminal: false,
+          });
+        }
+        timeline.push(
+          buildTaskCursorWorkerTickScheduledTimeline({
+            projectId,
+            taskId,
+            jobId: job.id,
+            nowIso,
+          }),
+        );
+        scheduleTaskCursorPollSoon({ projectId, delayMs: 400 });
       }
+      const orchestrationPatch = buildTaskCursorOrchestrationPatch({
+        execution,
+        timelineEntries: timeline,
+        cursorWorkItems: scopedWorkItems,
+      });
       return NextResponse.json({
         success: launchOk,
         message: launchMessage,
         status: execution.status,
-        execution: patch.taskCursorExecutionV1,
-        orchestrationPatch: patch,
+        execution: orchestrationPatch.taskCursorExecutionV1,
+        orchestrationPatch,
         executionMode: "task_cursor_job",
         pollRequired: launchOk && !isServerTaskCursorPolling(),
         serverPolling: launchOk && isServerTaskCursorPolling(),

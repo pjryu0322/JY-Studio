@@ -122,7 +122,14 @@ export async function verifyTaskCursorGithubResult(
   const api = githubRestApiBase();
   const owner = encodeURIComponent(parsed.owner);
   const repo = encodeURIComponent(parsed.repo);
-  const branch = input.execution.workBranch.trim();
+  const branch = String(input.execution.workBranch ?? "").trim();
+  if (!branch) {
+    return {
+      ok: false,
+      reason: "github_verify_failed",
+      message: "WIP branch(workBranch)가 없어 GitHub 검수를 할 수 없습니다.",
+    };
+  }
   const repoFullName = input.targetRepository.repoFullName;
   const refUrl = `${api}/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`;
   const refRes = await githubFetchJson<GithubRefResponse>(refUrl, token, userAgent);

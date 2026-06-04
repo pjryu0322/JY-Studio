@@ -28,6 +28,7 @@ import {
   persistTaskCursorOrchestrationToProject,
 } from "@/lib/prototype/taskCursorJobStateSync";
 import { pollTaskCursorExecutionOnce } from "@/lib/prototype/taskCursorPollService";
+import { reconcileTaskCursorRuntimePollTargets } from "@/lib/prototype/taskCursorRuntimeReconcile";
 import { enqueueNextTaskCursorJobAfterTerminal } from "@/lib/prototype/taskCursorServerAutoChain";
 import { buildTaskCursorFailedOrchestrationPatch } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -402,6 +403,7 @@ async function processPollingTaskCursorJob(
   await syncDbRuntimeAfterTaskCursorServerPoll({
     projectId: job.projectId,
     taskId: job.taskId,
+    codeTaskId: linkedRun?.codeTaskId ?? null,
     execution: pollResult.execution,
     githubVerifyResult: pollResult.githubVerifyResult ?? null,
     githubVerify,
@@ -443,12 +445,29 @@ export async function runTaskCursorWorkerTick(input: {
   await releaseStaleImplementationRuntimePollLocks(now);
   await releaseStaleTaskCursorJobLocks(now);
 
+  await reconcileTaskCursorRuntimePollTargets({ now, limit: 5 });
+
   const runRows = await claimDueImplementationRuntimePollRuns({
     workerId: input.workerId,
     limit: input.limit ?? 1,
     projectId: input.projectId ?? null,
     now,
   });
+
+  if (!runRows.length && input.projectId?.trim()) {
+    const bundleHint = await getImplementationRuntimeBundle(input.projectId.trim());
+    const activeJob = await prisma.taskCursorExecutionJob.findFirst({
+      where: { projectId: input.projectId.trim(), completedAt: null, status: "cursor_running" },
+    });
+    const idleReason =
+      activeJob && bundleHint.currentRun?.runtimeState === "queued"
+        ? "job_running_but_runtime_queued"
+        : "no_claimable_runtime_run";
+    console.info(
+      "[task-cursor-worker-tick-idle]",
+      JSON.stringify({ projectId: input.projectId.trim(), idleReason }),
+    );
+  }
 
   const results: TaskCursorWorkerTickResult[] = [];
   for (const runRow of runRows) {

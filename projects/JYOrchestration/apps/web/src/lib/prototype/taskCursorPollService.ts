@@ -1,4 +1,5 @@
 import type { ImplementationCodeTaskExecutionFeedbackV1 } from "@/lib/prototype/implementationCodeTaskExecutionFeedback";
+import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationCodeTaskQualityGateV1 } from "@/lib/prototype/implementationCodeTaskQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
@@ -22,8 +23,12 @@ import {
   patchTaskCursorExecution,
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
-import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import {
+  shouldRunTaskCursorGithubFallbackVerify,
+} from "@/lib/prototype/taskCursorGithubFallbackVerifyPolicy";
+import { buildTaskCursorRuntimeSyncTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export type TaskCursorPollOnceResult = Readonly<{
   readonly success: boolean;
@@ -131,6 +136,80 @@ export async function pollTaskCursorExecutionOnce(input: {
       cursorAgentStatus: pollStep.statusUpper,
       nowIso,
     });
+
+    const agentStatus = pollStep.statusUpper;
+    const fallback =
+      input.verifyGithub !== false &&
+      input.context.githubToken &&
+      shouldRunTaskCursorGithubFallbackVerify({
+        execution: nextExecution,
+        agentStatus,
+      });
+
+    if (fallback) {
+      timeline.push(
+        buildTaskCursorRuntimeSyncTimelineEntry({
+          action: "task_cursor_github_fallback_verify_started",
+          projectId,
+          taskId: execution.taskId,
+          nowIso,
+        }),
+      );
+      const verify = await verifyTaskCursorGithubResult({
+        execution: nextExecution,
+        targetRepository: input.context.targetRepository,
+        githubToken: input.context.githubToken,
+        allowedPathGlobs: input.context.allowedPathGlobs,
+      });
+      timeline.push(
+        buildTaskCursorRuntimeSyncTimelineEntry({
+          action: "task_cursor_github_fallback_verify_completed",
+          projectId,
+          taskId: execution.taskId,
+          message: verify.ok ? "ok" : verify.reason ?? verify.message,
+          nowIso,
+        }),
+      );
+      if (verify.ok) {
+        nextExecution = patchTaskCursorExecution(nextExecution, {
+          status: "github_verifying",
+          commitSha: verify.verifiedCommitSha,
+          nowIso,
+        });
+        nextExecution = applyTaskCursorGithubVerifyResult({
+          execution: nextExecution,
+          ok: true,
+          message: verify.message,
+          reason: verify.reason,
+          verifiedChangedFiles: verify.verifiedChangedFiles,
+          verifiedCommitSha: verify.verifiedCommitSha,
+          nowIso,
+        });
+        if (nextExecution.status === "github_verified") {
+          nextExecution = patchTaskCursorExecution(nextExecution, { status: "review_pending", nowIso });
+        }
+        timeline.push(
+          buildTaskCursorGithubVerifyTimeline({
+            execution: nextExecution,
+            ok: true,
+            reason: verify.reason,
+            nowIso,
+          }),
+        );
+        const status = nextExecution.status;
+        return {
+          success: true,
+          status,
+          agentStatus,
+          execution: nextExecution,
+          orchestrationPatch: buildPatch(nextExecution, timeline),
+          terminal: isTerminalTaskCursorPollResultStatus(status),
+          nextPollDelayMs: isTerminalTaskCursorPollResultStatus(status) ? undefined : 10_000,
+          githubVerifyResult: verify,
+        };
+      }
+    }
+
     return {
       success: true,
       status: "cursor_running",

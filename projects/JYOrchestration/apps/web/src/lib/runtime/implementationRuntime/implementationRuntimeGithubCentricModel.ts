@@ -15,6 +15,7 @@ export type ImplementationRuntimeUserPhaseDetail = Readonly<{
   readonly commitSha?: string | null;
   readonly pullRequestUrl?: string | null;
   readonly githubState?: RuntimeGithubState | null;
+  readonly suppressQueuedLabel?: boolean;
 }>;
 
 export function mapRuntimeStateToUserPhase(state: RuntimeState): ImplementationRuntimeUserPhase {
@@ -47,7 +48,7 @@ export function formatImplementationRuntimeUserPhaseKo(
     case "idle":
       return "대기";
     case "queued":
-      return "다음 CodeTask 대기";
+      return detail?.suppressQueuedLabel ? "CodeTask 실행 준비 중" : "다음 CodeTask 대기";
     case "requested":
       return "CodeTask 실행 중";
     case "waiting_github": {
