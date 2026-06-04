@@ -68,6 +68,11 @@ import {
   patchTaskCursorExecutionForPromptPreflightFailure,
   PROMPT_PREFLIGHT_FAILED_PHASE,
 } from "@/lib/prototype/codeTaskPromptPreflightFailure";
+import {
+  resolveRuntimeCodeTaskDeveloperPromptForExecute,
+  type RuntimeDeveloperPromptSource,
+} from "@/lib/prototype/resolveRuntimeCodeTaskDeveloperPromptForExecute";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 type Body = {
   readonly projectId?: string;
@@ -77,6 +82,10 @@ type Body = {
   readonly workItems?: readonly CursorWorkItem[];
   readonly verifyGithub?: boolean;
   readonly launchOnly?: boolean;
+  readonly developerPrompt?: string;
+  readonly developerPromptFingerprint?: string;
+  readonly promptSource?: string;
+  readonly workBranch?: string;
 };
 
 export const maxDuration = 120;
@@ -233,7 +242,7 @@ export async function POST(request: NextRequest) {
     });
 
     const commitMessage = buildProviderWipCommitMessage("cursor", `task ${taskId}`, false, taskId);
-    const apiRequest = {
+    let apiRequest = {
       projectId,
       taskId,
       workItemIds: scopedWorkItems.map((w) => w.id),
@@ -254,7 +263,95 @@ export async function POST(request: NextRequest) {
       launchOnly && shouldUseTaskCursorCloudAgentApi(readiness.context.cursorApiUrl!);
 
     const codeTaskIdForPromptGate = String(body.codeTaskId ?? "").trim();
-    if (codeTaskIdForPromptGate && apiRequest.prompt.trim()) {
+    let runtimePromptSource: RuntimeDeveloperPromptSource | null = null;
+    let runtimePromptFingerprint: string | null = null;
+
+    if (codeTaskIdForPromptGate) {
+      const projectRow = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { requirementsStateJson: true },
+      });
+      const requirementsStateJson =
+        parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
+      const codeTaskWorkItemEarly = scopedWorkItems.find(
+        (w) => String(w.codeTaskId ?? "").trim() === codeTaskIdForPromptGate,
+      );
+      const resolved = resolveRuntimeCodeTaskDeveloperPromptForExecute({
+        projectId,
+        codeTaskId: codeTaskIdForPromptGate,
+        taskId,
+        developerPrompt: body.developerPrompt,
+        developerPromptFingerprint: body.developerPromptFingerprint,
+        promptSource: body.promptSource,
+        workBranch: body.workBranch,
+        requirementsStateJson,
+        targetRepository: context.targetRepository,
+        baseBranch: context.baseBranch,
+        allowedPathGlobs: context.allowedPathGlobs,
+        scopedWorkItem: codeTaskWorkItemEarly ?? scopedWorkItems[0] ?? null,
+      });
+      if (!resolved.ok) {
+        const blockMessage =
+          resolved.reason === "prompt_source_mismatch"
+            ? "요청 prompt와 CodeTask 실행 정보가 일치하지 않습니다."
+            : "Runtime developer prompt를 준비할 수 없어 실행을 차단했습니다.";
+        const diagnostics = buildRuntimePromptQualityGateDiagnostics({
+          codeTaskId: codeTaskIdForPromptGate,
+          workBranch: buildCodeTaskWorkBranch(codeTaskIdForPromptGate),
+          errors: resolved.errors,
+          warnings: [],
+        });
+        logRuntimePromptQualityGateFailure(diagnostics);
+        execution = patchTaskCursorExecutionForPromptPreflightFailure({
+          execution: patchTaskCursorExecution(execution, {
+            workBranch: buildCodeTaskWorkBranch(codeTaskIdForPromptGate),
+            cursorPrompt: String(body.developerPrompt ?? "").trim() || undefined,
+            nowIso,
+          }),
+          errorMessage: blockMessage,
+          nowIso,
+        });
+        const orchestrationPatch = buildTaskCursorOrchestrationPatch({
+          execution,
+          timelineEntries: [
+            buildRuntimePromptQualityGateTimelineEntry({
+              projectId,
+              codeTaskId: codeTaskIdForPromptGate,
+              diagnostics,
+              nowIso,
+            }),
+          ],
+        });
+        return NextResponse.json(
+          {
+            success: false,
+            status: "blocked",
+            message: blockMessage,
+            phase: PROMPT_PREFLIGHT_FAILED_PHASE,
+            failureReason: "prompt_preflight_failed",
+            reason: resolved.reason,
+            errors: resolved.errors,
+            warnings: [],
+            ...orchestrationPatch,
+          },
+          { status: 200 },
+        );
+      }
+      runtimePromptSource = resolved.promptSource;
+      runtimePromptFingerprint = resolved.fingerprint;
+      execution = patchTaskCursorExecution(execution, {
+        workBranch: resolved.workBranch,
+        cursorPrompt: resolved.prompt,
+        nowIso,
+      });
+      apiRequest = {
+        ...apiRequest,
+        prompt: resolved.prompt,
+        workBranch: resolved.workBranch,
+      };
+    }
+
+    if (codeTaskIdForPromptGate) {
       const allowedForSafety = resolveEffectiveAllowedPathGlobs({
         allowedPathGlobs: context.allowedPathGlobs,
         targetRepoFullName: context.targetRepository.repoFullName,
@@ -291,20 +388,26 @@ export async function POST(request: NextRequest) {
         );
       }
       if (!promptSafety.ok) {
-        logRuntimePromptQualityGateFailure(
-          buildRuntimePromptQualityGateDiagnostics({
-            codeTaskId: codeTaskIdForPromptGate,
-            workBranch: expectedWorkBranch,
-            errors: promptSafety.errors,
-            warnings: promptSafety.warnings,
-          }),
-        );
         const diagnostics = buildRuntimePromptQualityGateDiagnostics({
           codeTaskId: codeTaskIdForPromptGate,
           workBranch: expectedWorkBranch,
           errors: promptSafety.errors,
           warnings: promptSafety.warnings,
         });
+        logRuntimePromptQualityGateFailure(diagnostics);
+        console.warn(
+          "[runtime_prompt_quality_gate_failed]",
+          JSON.stringify({
+            event: "runtime_prompt_quality_gate_failed",
+            promptSource: runtimePromptSource,
+            promptFingerprint: runtimePromptFingerprint,
+            codeTaskId: codeTaskIdForPromptGate,
+            workBranch: expectedWorkBranch,
+            ok: false,
+            errors: promptSafety.errors,
+            warnings: promptSafety.warnings,
+          }),
+        );
         execution = patchTaskCursorExecutionForPromptPreflightFailure({
           execution,
           errorMessage: CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
@@ -326,6 +429,7 @@ export async function POST(request: NextRequest) {
             status: "blocked",
             message: CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
             phase: PROMPT_PREFLIGHT_FAILED_PHASE,
+            failureReason: "prompt_preflight_failed",
             errors: promptSafety.errors,
             warnings: promptSafety.warnings,
             ...orchestrationPatch,
@@ -333,6 +437,19 @@ export async function POST(request: NextRequest) {
           { status: 200 },
         );
       }
+      console.info(
+        "[runtime_prompt_quality_gate_checked]",
+        JSON.stringify({
+          event: "runtime_prompt_quality_gate_checked",
+          promptSource: runtimePromptSource,
+          promptFingerprint: runtimePromptFingerprint,
+          codeTaskId: codeTaskIdForPromptGate,
+          workBranch: expectedWorkBranch,
+          ok: true,
+          errors: [],
+          warnings: promptSafety.warnings,
+        }),
+      );
     }
 
     execution = patchTaskCursorExecution(execution, { status: "cursor_requested", nowIso });

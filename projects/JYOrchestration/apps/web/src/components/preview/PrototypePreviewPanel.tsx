@@ -303,16 +303,15 @@ import { CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE } from "@/lib/prototype/resolv
 import { resolveCodeTaskDeveloperPromptForCopy } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 import {
-  buildTaskCursorApiStartedTimeline,
   buildTaskCursorExecutionRequest,
   buildTaskCursorFailedOrchestrationPatch,
   buildTaskCursorOrchestrationPatch,
   buildTaskCursorPollCancelledOrchestrationPatch,
   buildTaskCursorPollResumeOrchestrationPatch,
-  buildTaskCursorRequestedTimeline,
   shouldSyncExecutionStateAfterTaskCursorGithubVerify,
   syncTaskExecutionStateAfterGithubVerified,
 } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
+import { isTaskCursorExecutePromptPreflightFailure } from "@/lib/prototype/taskCursorExecutePreflightResponse";
 import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
   buildImplementationAutoQualityGateTriggerKey,
@@ -4678,16 +4677,7 @@ export function PrototypePreviewPanel({
                   ...buildTaskCursorOrchestrationPatch({
                     execution: prepared.pendingExecution,
                     history: orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
-                    timelineEntries: [
-                      ...buildTaskCursorRequestedTimeline({
-                        execution: prepared.pendingExecution,
-                        nowIso,
-                      }),
-                      buildTaskCursorApiStartedTimeline({
-                        execution: prepared.pendingExecution,
-                        nowIso,
-                      }),
-                    ],
+                    timelineEntries: [],
                     existingTimeline: orchestrationAwareRequirementsState.promptTimeline,
                     cursorWorkItems: [...prepared.selectedWorkItems],
                     existingCodeTaskExecutionFeedback:
@@ -4736,8 +4726,11 @@ export function PrototypePreviewPanel({
                   message?: string;
                   pollRequired?: boolean;
                   serverPolling?: boolean;
+                  phase?: string;
+                  failureReason?: string;
                   orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
                 };
+                const preflightFailure = isTaskCursorExecutePromptPreflightFailure(json);
                 if (json.orchestrationPatch) {
                   applyImplementationOrchestrationResult({
                     messages: executionSingleChat.chatMessages,
@@ -4774,7 +4767,7 @@ export function PrototypePreviewPanel({
                 const notice =
                   json.message ??
                   (json.success ? `${userStatus.label} 처리되었습니다.` : "CodeTask 실행에 실패했습니다.");
-                if (!json.success && !json.pollRequired) {
+                if (!json.success && !json.pollRequired && !preflightFailure) {
                   applyImplementationOrchestrationResult({
                     messages: executionSingleChat.chatMessages,
                     orchestrationPatch: buildTaskCursorFailedOrchestrationPatch({
@@ -4787,7 +4780,9 @@ export function PrototypePreviewPanel({
                     }),
                   });
                 }
-                executionSingleChat.appendAiNotice(notice);
+                if (!preflightFailure) {
+                  executionSingleChat.appendAiNotice(notice);
+                }
                 showToast(notice);
               } catch (e) {
                 const friendly = formatTransientTaskCursorLaunchErrorMessage(e);
@@ -4961,7 +4956,7 @@ export function PrototypePreviewPanel({
             selectedWorkItems,
           };
 
-          let pendingExecution = buildTaskCursorExecutionRequest({
+          const pendingExecution = buildTaskCursorExecutionRequest({
             projectId: pid,
             taskId: scoped.selectedTaskId,
             workItemIds: scoped.selectedWorkItems.map((w) => w.id),
@@ -4975,45 +4970,7 @@ export function PrototypePreviewPanel({
                 : null,
             nowIso,
           });
-          pendingExecution = patchTaskCursorExecution(pendingExecution, {
-            status: "cursor_requested",
-            cursorRunId: undefined,
-            nowIso,
-          });
-          applyImplementationOrchestrationResult(
-            {
-              messages: executionSingleChat.chatMessages,
-              orchestrationPatch: {
-                ...buildTaskCursorOrchestrationPatch({
-                  execution: pendingExecution,
-                  history: orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
-                  timelineEntries: [
-                    ...buildTaskCursorRequestedTimeline({ execution: pendingExecution, nowIso }),
-                    buildTaskCursorApiStartedTimeline({ execution: pendingExecution, nowIso }),
-                  ],
-                  existingTimeline: preflightTimeline,
-                  cursorWorkItems: selectedWorkItems,
-                  existingCodeTaskExecutionFeedback:
-                    orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1,
-                  codeTaskQualityGate:
-                    orchestrationAwareRequirementsState.implementationCodeTaskQualityGateV1,
-                  implementationExecutionJobsV1:
-                    orchestrationAwareRequirementsState.implementationExecutionJobsV1,
-                  codeTaskExecutionRunsV1:
-                    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-                  activeCodeTaskId: persistedQueueDispatch?.codeTaskId ?? null,
-                  activeWorkItemId: persistedQueueDispatch?.workItemId ?? null,
-                }),
-                cursorWorkItemsV1: mergeCursorWorkItemsByTask({
-                  existingWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
-                  updatedWorkItems: selectedWorkItems,
-                  taskId: scoped.selectedTaskId,
-                }),
-              },
-            },
-            { persist: false },
-          );
-          showToast(`AI 개발자 실행 시작 · ${scoped.selectedTaskId}`);
+          showToast(`Cursor 실행 요청 중 · ${scoped.selectedTaskId}`);
           const pollHistory = orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1;
           const pollTimeline = orchestrationAwareRequirementsState.promptTimeline;
           const pollWorkItems = scoped.selectedWorkItems;
@@ -5036,9 +4993,12 @@ export function PrototypePreviewPanel({
                 pollRequired?: boolean;
                 serverPolling?: boolean;
                 jobId?: string;
+                phase?: string;
+                failureReason?: string;
                 execution?: { status?: string; errorMessage?: string; failureReason?: string };
                 orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
               };
+              const preflightFailure = isTaskCursorExecutePromptPreflightFailure(json);
               if (json.orchestrationPatch) {
                 applyImplementationOrchestrationResult({
                   messages: executionSingleChat.chatMessages,
@@ -5070,7 +5030,7 @@ export function PrototypePreviewPanel({
                 json.execution?.errorMessage ??
                 json.message ??
                 (json.success ? "Task Cursor 실행이 완료되었습니다." : "Task Cursor 실행에 실패했습니다.");
-              if (!json.success && !json.pollRequired) {
+              if (!json.success && !json.pollRequired && !preflightFailure) {
                 applyImplementationOrchestrationResult({
                   messages: executionSingleChat.chatMessages,
                   orchestrationPatch: buildTaskCursorFailedOrchestrationPatch({
@@ -5083,7 +5043,9 @@ export function PrototypePreviewPanel({
                   }),
                 });
               }
-              executionSingleChat.appendAiNotice(notice);
+              if (!preflightFailure) {
+                executionSingleChat.appendAiNotice(notice);
+              }
               showToast(notice);
             } catch (e) {
               const friendly = formatTransientTaskCursorLaunchErrorMessage(e);

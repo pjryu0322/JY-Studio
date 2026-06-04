@@ -167,8 +167,10 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
   }
   const built = builtResult.built;
   const pendingExecution = patchTaskCursorExecution(built.taskCursorRequest, {
-    status: "cursor_requested",
+    status: "prompt_ready",
     cursorRunId: undefined,
+    failureReason: undefined,
+    errorMessage: undefined,
     nowIso,
   });
   return {

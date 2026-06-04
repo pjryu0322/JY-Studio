@@ -75,7 +75,7 @@ function countRuntimePromptHeadings(prompt: string): number {
   return prompt.split("\n").filter((line) => RUNTIME_PROMPT_HEADING.test(line.trim())).length;
 }
 
-function extractWorkBranchLines(prompt: string): readonly string[] {
+export function extractWorkBranchLines(prompt: string): readonly string[] {
   return prompt
     .split("\n")
     .map((line) => line.trim())

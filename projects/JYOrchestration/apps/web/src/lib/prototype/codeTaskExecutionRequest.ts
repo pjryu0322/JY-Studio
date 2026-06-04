@@ -24,6 +24,7 @@ import {
   patchTaskCursorExecution,
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
+import { fingerprintRuntimeDeveloperPrompt } from "@/lib/prototype/resolveRuntimeCodeTaskDeveloperPromptForExecute";
 import type { ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 
 export type CodeTaskCursorExecuteRequestBody = Readonly<{
@@ -34,6 +35,10 @@ export type CodeTaskCursorExecuteRequestBody = Readonly<{
   readonly workItems: readonly CursorWorkItem[];
   readonly verifyGithub: true;
   readonly launchOnly: true;
+  readonly developerPrompt: string;
+  readonly developerPromptFingerprint: string;
+  readonly promptSource: "runtime_code_task_developer_prompt";
+  readonly workBranch: string;
 }>;
 
 export type BuiltCodeTaskCursorExecutionRequest = Readonly<{
@@ -229,6 +234,10 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
         workItems: [input.workItem],
         verifyGithub: true,
         launchOnly: true,
+        developerPrompt,
+        developerPromptFingerprint: fingerprintRuntimeDeveloperPrompt(developerPrompt),
+        promptSource: "runtime_code_task_developer_prompt",
+        workBranch,
       },
     },
   };
