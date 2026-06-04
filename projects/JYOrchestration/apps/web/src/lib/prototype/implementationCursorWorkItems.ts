@@ -233,6 +233,7 @@ function buildWorkItemDraftsForDeveloperTask(input: {
     taskTitle: task.title,
     sourceArtifactTypes,
     projectArtifacts: input.projectArtifacts,
+    targetRepoKind: "generated_project",
   });
   const acceptanceCriteria = task.acceptanceCriteria?.length
     ? [...task.acceptanceCriteria]

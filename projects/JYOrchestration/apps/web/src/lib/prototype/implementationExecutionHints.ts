@@ -1,4 +1,5 @@
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
+import type { CodeTaskPromptTargetRepoKind } from "@/lib/prototype/codeTaskPromptPathPolicy";
 
 export type ImplementationTaskExecutionHints = Readonly<{
   candidateDirectories: readonly string[];
@@ -18,6 +19,7 @@ export type BuildImplementationTaskExecutionHintsInput = Readonly<{
   sourceArtifactTypes: readonly string[];
   projectArtifacts: readonly ProjectArtifact[];
   featureDraftTitles?: readonly string[];
+  targetRepoKind?: CodeTaskPromptTargetRepoKind;
 }>;
 
 export const COMMON_FORBIDDEN_PATHS: readonly string[] = [
@@ -143,7 +145,7 @@ function candidateFilesFromArtifacts(
     .slice(0, 4);
 }
 
-export function buildImplementationTaskExecutionHints(
+function buildPlatformImplementationTaskExecutionHints(
   input: BuildImplementationTaskExecutionHintsInput,
 ): ImplementationTaskExecutionHints {
   const kind = inferTaskKind(input.taskTitle, input.sourceArtifactTypes);
@@ -185,4 +187,58 @@ export function buildImplementationTaskExecutionHints(
     expectedBehavior,
     regressionScope,
   };
+}
+
+function buildGeneratedProjectImplementationTaskExecutionHints(
+  input: BuildImplementationTaskExecutionHintsInput,
+): ImplementationTaskExecutionHints {
+  const kind = inferTaskKind(input.taskTitle, input.sourceArtifactTypes);
+  const candidateDirectories =
+    kind === "api"
+      ? ["src/app/api", "app/api", "pages/api", "src/lib"]
+      : kind === "ui"
+        ? ["src/components", "src/app", "app", "components", "pages"]
+        : ["src/components", "src/app", "src/lib", "app", "lib"];
+
+  const manualVerification = [
+    `${input.taskTitle}: 정상 플로우에서 기대 동작이 재현되는지 확인`,
+    "예외·빈 입력·부분 실패 시 사용자 피드백과 복구 경로 확인",
+  ];
+
+  return {
+    candidateDirectories: uniq(candidateDirectories),
+    candidateFiles: [],
+    candidateApiRoutes: kind === "api" ? ["src/app/api/**", "app/api/**"] : [],
+    candidateComponents: kind === "ui" ? ["src/components/**", "components/**"] : [],
+    candidateTests: ["tests/**", "__tests__/**", "src/**/*.test.ts", "src/**/*.test.tsx"],
+    forbiddenPaths: uniq([
+      "../",
+      "../../",
+      "projects/JYOrchestration/**",
+      "projects/JYGallery/**",
+      "projects/JYAccount/**",
+      "projects/Chunk Studio/**",
+      "projects/chunk-studio/**",
+      ...COMMON_FORBIDDEN_PATHS,
+    ]),
+    testCommands: [
+      "대상 저장소 package.json scripts 확인 후 npm test / npm run build / pnpm test / pnpm build 중 가능한 검증 실행",
+    ],
+    manualVerification,
+    expectedBehavior: [
+      `대상 저장소 내부에서 ${input.taskTitle} 요구사항이 충족된다.`,
+      "오류/로딩 상태가 사용자에게 명확히 전달된다.",
+    ],
+    regressionScope: ["동일 기능 회귀 없음", "허용 경로 밖 파일 변경 없음"],
+  };
+}
+
+export function buildImplementationTaskExecutionHints(
+  input: BuildImplementationTaskExecutionHintsInput,
+): ImplementationTaskExecutionHints {
+  const targetRepoKind = input.targetRepoKind ?? "generated_project";
+  if (targetRepoKind === "platform") {
+    return buildPlatformImplementationTaskExecutionHints(input);
+  }
+  return buildGeneratedProjectImplementationTaskExecutionHints(input);
 }

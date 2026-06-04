@@ -46,17 +46,30 @@ import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 describe("buildImplementationTaskExecutionHints", () => {
-  it("builds execution hints for implementation task", () => {
+  it("builds platform execution hints for JYOrchestration maintenance", () => {
     const hints = buildImplementationTaskExecutionHints({
       taskTitle: "화면 API 연동",
       sourceArtifactTypes: ["api-spec", "screen-spec"],
       projectArtifacts: [],
+      targetRepoKind: "platform",
     });
     expect(hints.candidateDirectories.length).toBeGreaterThan(0);
     expect(hints.candidateTests.length).toBeGreaterThan(0);
     expect(hints.testCommands.some((c) => c.includes("pnpm test"))).toBe(true);
     expect(hints.forbiddenPaths.some((p) => p.includes("package.json"))).toBe(true);
     expect(hints.forbiddenPaths.some((p) => p.includes("JYGallery"))).toBe(true);
+  });
+
+  it("builds generated-project hints without platform source paths", () => {
+    const hints = buildImplementationTaskExecutionHints({
+      taskTitle: "화면 API 연동",
+      sourceArtifactTypes: ["api-spec", "screen-spec"],
+      projectArtifacts: [],
+      targetRepoKind: "generated_project",
+    });
+    expect(hints.candidateDirectories.every((d) => !d.includes("JYOrchestration"))).toBe(true);
+    expect(hints.candidateFiles).toEqual([]);
+    expect(hints.forbiddenPaths.some((p) => p.includes("projects/JYOrchestration"))).toBe(true);
   });
 });
 
@@ -66,6 +79,7 @@ describe("buildCursorPromptDraft", () => {
       taskTitle: "녹취 업로드",
       sourceArtifactTypes: ["feature-spec"],
       projectArtifacts: [],
+      targetRepoKind: "platform",
     });
     const prompt = buildCursorPromptDraft({
       title: "녹취 업로드",

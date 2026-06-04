@@ -1,4 +1,7 @@
-import { buildCodeTaskCursorExecutionRequest } from "@/lib/prototype/codeTaskExecutionRequest";
+import {
+  tryBuildCodeTaskCursorExecutionRequest,
+  type BuildCodeTaskCursorExecutionRequestResult,
+} from "@/lib/prototype/codeTaskExecutionRequest";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
@@ -34,7 +37,10 @@ export type PreparedSelectedCodeTaskCursorExecution = Readonly<{
   readonly workItem: CursorWorkItem;
   readonly run: CodeTaskExecutionRunV1;
   readonly pendingExecution: TaskCursorExecutionV1;
-  readonly requestBody: ReturnType<typeof buildCodeTaskCursorExecutionRequest>["requestBody"];
+  readonly requestBody: Extract<
+    BuildCodeTaskCursorExecutionRequestResult,
+    { ok: true }
+  >["built"]["requestBody"];
   readonly selectedWorkItems: readonly CursorWorkItem[];
 }>;
 
@@ -134,7 +140,7 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
     ...item,
     refinementStatus: "preflight_passed" as const,
   }));
-  const built = buildCodeTaskCursorExecutionRequest({
+  const builtResult = tryBuildCodeTaskCursorExecutionRequest({
     projectId: input.projectId,
     run,
     codeTask: dispatchTarget.codeTask,
@@ -146,6 +152,10 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
     existingTaskCursor: input.existingTaskCursor,
     nowIso,
   });
+  if (!builtResult.ok) {
+    return { ok: false, outcome: "blocked", message: builtResult.message };
+  }
+  const built = builtResult.built;
   const pendingExecution = patchTaskCursorExecution(built.taskCursorRequest, {
     status: "cursor_requested",
     cursorRunId: undefined,

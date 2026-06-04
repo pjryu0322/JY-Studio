@@ -292,17 +292,13 @@ import {
   prepareWipRequestRuntime,
 } from "@/lib/prototype/implementationTaskListWipPrep";
 import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
+import { writeClipboardText } from "@/lib/clipboard/writeClipboardText";
 import {
   buildImplementationStatusToastDedupeKey,
   shouldSuppressImplementationStatusMessage,
 } from "@/lib/prototype/implementationStatusChatPolicy";
 import { resolveCodeTaskDeveloperPromptForCopy } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
-import {
-  buildImplementationStatusToastDedupeKey,
-  shouldSuppressImplementationStatusMessage,
-} from "@/lib/prototype/implementationStatusChatPolicy";
-import { resolveCodeTaskDeveloperPromptForCopy } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
 import {
   buildTaskCursorApiStartedTimeline,
   buildTaskCursorExecutionRequest,
@@ -7177,10 +7173,11 @@ export function PrototypePreviewPanel({
         showToast(result.reason ?? "프롬프트 생성 정보가 아직 없습니다.");
         return;
       }
-      void navigator.clipboard.writeText(result.prompt).then(
-        () => showToast("Cursor 전달 프롬프트를 복사했습니다."),
-        () => showToast("클립보드 복사에 실패했습니다."),
-      );
+      void writeClipboardText(result.prompt).then((ok) => {
+        showToast(
+          ok ? "Cursor 전달 프롬프트를 복사했습니다." : "클립보드 복사에 실패했습니다.",
+        );
+      });
     },
     [
       projectId,

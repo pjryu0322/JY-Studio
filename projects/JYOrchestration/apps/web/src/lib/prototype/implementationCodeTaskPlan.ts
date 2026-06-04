@@ -331,6 +331,7 @@ function decomposeDeveloperTaskToCodeTasks(input: {
     taskTitle: task.title,
     sourceArtifactTypes: [],
     projectArtifacts: input.projectArtifacts,
+    targetRepoKind: "generated_project",
   });
   const acceptanceBase = task.acceptanceCriteria?.length
     ? [...task.acceptanceCriteria]

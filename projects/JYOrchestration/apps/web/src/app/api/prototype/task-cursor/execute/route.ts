@@ -54,6 +54,11 @@ import {
 } from "@/lib/runtime/implementationRuntime/implementationRuntimePollRepository";
 import { TASK_CURSOR_JOB_DEFAULT_POLL_DELAY_MS } from "@/lib/prototype/taskCursorExecutionJobRepository";
 import { dispatchQueuedImplementationRuntimeRunWithCursor, resolveCodeTaskIdForDbRuntimeDispatch } from "@/lib/prototype/selectedCodeTaskCursorExecution";
+import {
+  CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
+  validateCodeTaskDeveloperPromptSafety,
+} from "@/lib/prototype/codeTaskDeveloperPromptSafety";
+import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
 
 type Body = {
   readonly projectId?: string;
@@ -245,6 +250,39 @@ export async function POST(request: NextRequest) {
     const launchOnly = body.launchOnly !== false;
     const useCloudAgentLaunch =
       launchOnly && shouldUseTaskCursorCloudAgentApi(readiness.context.cursorApiUrl!);
+
+    const codeTaskIdForPromptGate = String(body.codeTaskId ?? "").trim();
+    if (codeTaskIdForPromptGate && apiRequest.prompt.trim()) {
+      const allowedForSafety = resolveEffectiveAllowedPathGlobs({
+        allowedPathGlobs: context.allowedPathGlobs,
+        targetRepoFullName: context.targetRepository.repoFullName,
+        targetRepoKind: "generated_project",
+      });
+      const promptSafety = validateCodeTaskDeveloperPromptSafety({
+        prompt: apiRequest.prompt,
+        targetRepoFullName: context.targetRepository.repoFullName,
+        targetRepoKind: "generated_project",
+        allowedPathGlobs: allowedForSafety,
+      });
+      if (!promptSafety.ok) {
+        execution = patchTaskCursorExecution(execution, {
+          status: "cursor_failed",
+          failureReason: "prompt_preflight_failed",
+          errorMessage: CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
+          nowIso,
+        });
+        timeline.push(buildTaskCursorApiFailedTimeline({ execution, nowIso }));
+        return NextResponse.json(
+          {
+            success: false,
+            status: "blocked",
+            message: CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
+            errors: promptSafety.errors,
+          },
+          { status: 200 },
+        );
+      }
+    }
 
     if (useCloudAgentLaunch) {
       const bundleForDispatch = await getImplementationRuntimeBundle(projectId);
