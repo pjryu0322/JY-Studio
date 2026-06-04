@@ -19,11 +19,50 @@ const GENERATED_FULL_PROMPT_BANNED = [
   "플랫폼 허용 경로",
   "projects/JYOrchestration 외 경로",
   "플랫폼 허용 경로 미지정",
-  "관련 최소 범위만 수정",
   "모노레포",
 ] as const;
 
 const NARROW_PROBE_ONLY = new Set(["src/components", "src/app", "src/lib", "components", "app"]);
+
+const RUNTIME_PROMPT_HEADING = /^# CodeTask 개발 요청\s*$/;
+const WORK_BRANCH_LINE = /^- work branch:\s*`([^`]+)`\s*$/i;
+const CODE_TASK_REF_LINE = /^- CodeTask:\s*(.+?)\s*$/i;
+const CODE_TASK_ID_LINE = /^CodeTask ID:\s*(.+?)\s*$/i;
+
+const APP_SHELL_FORBIDDEN_FEATURE_TERMS = [
+  "LoadingState",
+  "Spinner",
+  "Skeleton",
+  "loading flag 기반 표시/숨김",
+  "loading flag",
+] as const;
+
+export type RuntimePromptQualityGateDiagnostics = Readonly<{
+  readonly event: "runtime_prompt_quality_gate_failed";
+  readonly codeTaskId: string;
+  readonly workBranch: string;
+  readonly errors: readonly string[];
+  readonly warnings: readonly string[];
+}>;
+
+export function buildRuntimePromptQualityGateDiagnostics(input: {
+  readonly codeTaskId: string;
+  readonly workBranch: string;
+  readonly errors: readonly string[];
+  readonly warnings: readonly string[];
+}): RuntimePromptQualityGateDiagnostics {
+  return {
+    event: "runtime_prompt_quality_gate_failed",
+    codeTaskId: input.codeTaskId.trim(),
+    workBranch: input.workBranch.trim(),
+    errors: input.errors,
+    warnings: input.warnings,
+  };
+}
+
+export function logRuntimePromptQualityGateFailure(diagnostics: RuntimePromptQualityGateDiagnostics): void {
+  console.warn("[runtime_prompt_quality_gate]", JSON.stringify(diagnostics));
+}
 
 function sectionBulletCount(prompt: string, heading: string): number {
   const after = prompt.split(heading)[1];
@@ -32,9 +71,30 @@ function sectionBulletCount(prompt: string, heading: string): number {
   return body.split("\n").filter((line) => line.trim().startsWith("- ")).length;
 }
 
-function countMatches(prompt: string, pattern: RegExp): number {
-  const m = prompt.match(pattern);
-  return m?.length ?? 0;
+function countRuntimePromptHeadings(prompt: string): number {
+  return prompt.split("\n").filter((line) => RUNTIME_PROMPT_HEADING.test(line.trim())).length;
+}
+
+function extractWorkBranchLines(prompt: string): readonly string[] {
+  return prompt
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => WORK_BRANCH_LINE.test(line))
+    .map((line) => WORK_BRANCH_LINE.exec(line)?.[1]?.trim() ?? "")
+    .filter(Boolean);
+}
+
+/** 참조 ID 등 명시 라인에서만 CodeTask ID를 추출한다 (work branch slug 오탐 방지). */
+export function extractReferencedCodeTaskIds(prompt: string): readonly string[] {
+  const ids: string[] = [];
+  for (const line of prompt.split("\n")) {
+    const trimmed = line.trim();
+    const ref = CODE_TASK_REF_LINE.exec(trimmed);
+    if (ref?.[1]) ids.push(ref[1].trim().toUpperCase());
+    const explicit = CODE_TASK_ID_LINE.exec(trimmed);
+    if (explicit?.[1]) ids.push(explicit[1].trim().toUpperCase());
+  }
+  return [...new Set(ids)];
 }
 
 export function validateRuntimeCursorPromptProductQuality(input: {
@@ -48,51 +108,71 @@ export function validateRuntimeCursorPromptProductQuality(input: {
   readonly warnings: readonly string[];
 }> {
   const prompt = String(input.prompt ?? "");
-  const codeTaskId = input.codeTaskId.trim();
-  const workBranch = input.workBranch.trim();
+  const codeTaskId = input.codeTaskId.trim().toUpperCase();
+  const expectedWorkBranch = input.workBranch.trim();
   const roleKind = String(input.roleKind ?? "").trim();
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const headingCount = countMatches(prompt, /^# CodeTask 개발 요청$/gm);
-  if (headingCount > 1) {
-    errors.push("multiple_code_task_headings");
+  const headingCount = countRuntimePromptHeadings(prompt);
+  if (headingCount === 0) {
+    errors.push("missing_runtime_prompt_heading");
+  } else if (headingCount > 1) {
+    errors.push("multiple_runtime_prompt_headings");
   }
 
-  const workBranchCount = countMatches(prompt, /work branch:\s*`[^`]+`/gi);
-  if (workBranchCount > 1) {
+  const workBranches = extractWorkBranchLines(prompt);
+  if (workBranches.length === 0) {
+    errors.push("missing_work_branch_line");
+  } else if (workBranches.length > 1) {
     errors.push("multiple_work_branches");
+  } else if (expectedWorkBranch && workBranches[0] !== expectedWorkBranch) {
+    errors.push("unexpected_work_branch");
   }
 
+  const referencedIds = extractReferencedCodeTaskIds(prompt);
   if (codeTaskId) {
-    const uniqueIds = [
-      ...new Set((prompt.match(/\bCODE-[A-Z0-9-]+\b/gi) ?? []).map((id) => id.toUpperCase())),
-    ];
-    if (uniqueIds.length > 1) {
-      errors.push("foreign_code_task_id");
-    } else if (uniqueIds.length === 1 && uniqueIds[0] !== codeTaskId.toUpperCase()) {
-      errors.push("foreign_code_task_id");
+    const uniqueRefs = [...new Set(referencedIds)];
+    if (uniqueRefs.length === 0) {
+      errors.push("missing_code_task_reference_id");
+    } else {
+      const foreignCodeIds = uniqueRefs.filter(
+        (id) => id.startsWith("CODE-") && id !== codeTaskId,
+      );
+      const hasMultipleDistinct = uniqueRefs.length > 1;
+      const mismatchedSingle = uniqueRefs.length === 1 && uniqueRefs[0] !== codeTaskId;
+      if (foreignCodeIds.length > 0 || hasMultipleDistinct || mismatchedSingle) {
+        errors.push("multiple_or_unexpected_code_task_ids");
+      }
     }
   }
 
   if (roleKind === "app_shell") {
-    if (/LoadingState|Spinner|Skeleton|loading flag 기반/i.test(prompt)) {
-      errors.push("app_shell_loading_template_leak");
+    for (const term of APP_SHELL_FORBIDDEN_FEATURE_TERMS) {
+      if (prompt.includes(term)) {
+        errors.push("app_shell_contains_loading_component_template");
+        break;
+      }
     }
   }
 
   const probeSection = prompt.split("## 수정 대상 탐색 기준")[1]?.split(/^## /m)[0] ?? "";
-  const probeBullets = probeSection
+  const pathBullets = probeSection
     .split("\n")
-    .map((l) => l.trim().replace(/^-\s*/, ""))
-    .filter(Boolean);
-  if (!probeBullets.length) {
+    .map((l) => l.trim())
+    .filter((line) => line.startsWith("- "))
+    .map((line) => line.replace(/^-\s*/, ""))
+    .filter((line) => !/^우선\s*탐색\s*경로/.test(line) && !/대상\s*저장소/.test(line) && !/실제\s*저장소/.test(line));
+  if (!pathBullets.length) {
     errors.push("missing_probe_paths");
   } else {
+    const globBullets = pathBullets.filter((p) => p.includes("*"));
     const onlyNarrow =
-      probeBullets.length > 0 &&
-      probeBullets.every((p) => NARROW_PROBE_ONLY.has(p) || (!p.includes("**") && !p.includes("*")));
-    if (onlyNarrow && probeBullets.length <= 2) {
+      globBullets.length === 0 &&
+      pathBullets.length > 0 &&
+      pathBullets.length <= 2 &&
+      pathBullets.every((p) => NARROW_PROBE_ONLY.has(p));
+    if (onlyNarrow) {
       warnings.push("narrow_probe_paths_only");
     }
   }
@@ -103,11 +183,11 @@ export function validateRuntimeCursorPromptProductQuality(input: {
   }
 
   if (sectionBulletCount(prompt, "## 구현 요구사항") < 3) {
-    warnings.push("implementation_requirements_too_short");
+    warnings.push("insufficient_implementation_requirements");
   }
 
   if (sectionBulletCount(prompt, "## 검증 기준") < 2) {
-    warnings.push("verification_checks_too_short");
+    warnings.push("insufficient_verification_checks");
   }
 
   return { ok: errors.length === 0, errors, warnings };
@@ -137,6 +217,9 @@ export function validateCodeTaskDeveloperPromptSafety(input: {
     return { ok: false, errors, warnings };
   }
 
+  const codeTaskId = String(input.codeTaskId ?? "").trim();
+  const expectedWorkBranch = String(input.workBranch ?? "").trim();
+
   if (kind === "generated_project") {
     for (const snippet of GENERATED_FULL_PROMPT_BANNED) {
       if (prompt.includes(snippet)) {
@@ -150,15 +233,11 @@ export function validateCodeTaskDeveloperPromptSafety(input: {
     if (repo && !prompt.includes(repo)) {
       errors.push("missing_target_repo_full_name");
     }
-    const workBranchMatch = prompt.match(/work branch:\s*`([^`]+)`/i);
-    const workBranch = (input.workBranch ?? workBranchMatch?.[1] ?? "").trim();
-    if (!workBranch) {
+    if (!expectedWorkBranch && extractWorkBranchLines(prompt).length === 0) {
       errors.push("missing_work_branch");
     }
     if (!prompt.includes("## 구현 요구사항")) {
       errors.push("missing_implementation_requirements_section");
-    } else if (sectionBulletCount(prompt, "## 구현 요구사항") < 3) {
-      errors.push("implementation_requirements_too_short");
     }
     if (!prompt.includes("## 검증 기준")) {
       errors.push("missing_verification_section");
@@ -173,12 +252,11 @@ export function validateCodeTaskDeveloperPromptSafety(input: {
       errors.push("legacy_process_task_sections");
     }
 
-    const codeTaskId = String(input.codeTaskId ?? "").trim();
-    if (codeTaskId && workBranch) {
+    if (codeTaskId && expectedWorkBranch) {
       const product = validateRuntimeCursorPromptProductQuality({
         prompt,
         codeTaskId,
-        workBranch,
+        workBranch: expectedWorkBranch,
         roleKind: input.roleKind,
       });
       errors.push(...product.errors);

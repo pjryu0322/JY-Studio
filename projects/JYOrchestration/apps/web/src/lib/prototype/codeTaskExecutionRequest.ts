@@ -5,8 +5,10 @@ import {
 } from "@/lib/prototype/codeTaskDeveloperPromptCache";
 import type { CodeTaskPromptContextV1 } from "@/lib/prototype/codeTaskPromptContext";
 import {
+  buildRuntimePromptQualityGateDiagnostics,
   CODE_TASK_PROMPT_COPY_BLOCK_MESSAGE,
   CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
+  logRuntimePromptQualityGateFailure,
   validateCodeTaskDeveloperPromptSafety,
 } from "@/lib/prototype/codeTaskDeveloperPromptSafety";
 import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
@@ -144,11 +146,30 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
   });
 
   if (!safety.ok) {
+    logRuntimePromptQualityGateFailure(
+      buildRuntimePromptQualityGateDiagnostics({
+        codeTaskId: input.codeTask.codeTaskId,
+        workBranch: buildCodeTaskWorkBranch(input.codeTask.codeTaskId),
+        errors: safety.errors,
+        warnings: safety.warnings,
+      }),
+    );
     return {
       ok: false,
       message: CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
       errors: safety.errors,
+      warnings: safety.warnings,
     };
+  }
+  if (safety.warnings.length) {
+    logRuntimePromptQualityGateFailure(
+      buildRuntimePromptQualityGateDiagnostics({
+        codeTaskId: input.codeTask.codeTaskId,
+        workBranch: buildCodeTaskWorkBranch(input.codeTask.codeTaskId),
+        errors: [],
+        warnings: safety.warnings,
+      }),
+    );
   }
 
   const developerPrompt = promptResult.prompt;

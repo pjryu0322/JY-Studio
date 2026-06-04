@@ -42,6 +42,9 @@ export const APP_SHELL_RUNTIME_VERIFICATION: readonly string[] = [
 const APP_SHELL_GENERIC_REQUIREMENT =
   /화면\s*컴포넌트\s*및\s*필요한\s*상태|정상\/예외\/로딩\s*상태\s*처리|기존\s*라우팅·레이아웃과\s*연동/i;
 
+const APP_SHELL_GENERIC_VERIFICATION =
+  /navigationItems|summaryCards|화면\s*진입|주요\s*플로우\s*확인|예외\s*상태\s*확인/i;
+
 const GENERIC_RUNTIME_PHRASES: readonly RegExp[] = [
   /기획\s*산출물\s*기준으로\s*공통\s*동작/i,
   /기능\s*진입점,\s*상태\s*전환,\s*연동\s*지점/i,
@@ -263,8 +266,12 @@ export function buildCodeTaskRuntimePromptContextView(input: {
   if (!useContext || checks.length < 2) {
     checks = fallbackVerification(input.codeTask, input.parentTask, roleResolved.roleKind);
   }
-  if (roleResolved.roleKind === "app_shell" && checks.length < 3) {
-    checks = [...APP_SHELL_RUNTIME_VERIFICATION];
+  if (roleResolved.roleKind === "app_shell") {
+    const weakChecks =
+      checks.length < 3 || checks.some((c) => APP_SHELL_GENERIC_VERIFICATION.test(c));
+    if (weakChecks) {
+      checks = [...APP_SHELL_RUNTIME_VERIFICATION];
+    }
   }
 
   const intent = uniq([
@@ -305,7 +312,7 @@ export function buildCodeTaskRuntimePromptContextView(input: {
     implementation: {
       scope,
       intent: intent.slice(0, 3),
-      requirements: requirements.slice(0, 7),
+      requirements: requirements.slice(0, roleResolved.roleKind === "app_shell" ? 8 : 7),
       expectedBehavior: expectedBehavior.slice(0, 4),
       constraints: uniq(ctx?.implementationContext.constraints ?? input.codeTask.forbiddenPaths ?? []).slice(
         0,

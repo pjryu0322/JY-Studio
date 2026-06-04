@@ -6,7 +6,9 @@ import {
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
 import {
+  buildRuntimePromptQualityGateDiagnostics,
   CODE_TASK_PROMPT_COPY_BLOCK_MESSAGE,
+  logRuntimePromptQualityGateFailure,
   validateCodeTaskDeveloperPromptSafety,
 } from "@/lib/prototype/codeTaskDeveloperPromptSafety";
 import {
@@ -95,7 +97,25 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
       roleKind,
     });
     if (!storedSafety.ok) {
+      logRuntimePromptQualityGateFailure(
+        buildRuntimePromptQualityGateDiagnostics({
+          codeTaskId,
+          workBranch,
+          errors: storedSafety.errors,
+          warnings: storedSafety.warnings,
+        }),
+      );
       return { ok: false, reason: CODE_TASK_PROMPT_COPY_BLOCK_MESSAGE };
+    }
+    if (storedSafety.warnings.length) {
+      logRuntimePromptQualityGateFailure(
+        buildRuntimePromptQualityGateDiagnostics({
+          codeTaskId,
+          workBranch,
+          errors: [],
+          warnings: storedSafety.warnings,
+        }),
+      );
     }
     return { ok: true, prompt: stored };
   }
@@ -124,7 +144,25 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
     roleKind,
   });
   if (!safety.ok) {
+    logRuntimePromptQualityGateFailure(
+      buildRuntimePromptQualityGateDiagnostics({
+        codeTaskId,
+        workBranch,
+        errors: safety.errors,
+        warnings: safety.warnings,
+      }),
+    );
     return { ok: false, reason: CODE_TASK_PROMPT_COPY_BLOCK_MESSAGE };
+  }
+  if (safety.warnings.length) {
+    logRuntimePromptQualityGateFailure(
+      buildRuntimePromptQualityGateDiagnostics({
+        codeTaskId,
+        workBranch,
+        errors: [],
+        warnings: safety.warnings,
+      }),
+    );
   }
 
   return { ok: true, prompt: built };

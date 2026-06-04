@@ -55,10 +55,14 @@ import {
 import { TASK_CURSOR_JOB_DEFAULT_POLL_DELAY_MS } from "@/lib/prototype/taskCursorExecutionJobRepository";
 import { dispatchQueuedImplementationRuntimeRunWithCursor, resolveCodeTaskIdForDbRuntimeDispatch } from "@/lib/prototype/selectedCodeTaskCursorExecution";
 import {
+  buildRuntimePromptQualityGateDiagnostics,
   CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
+  logRuntimePromptQualityGateFailure,
   validateCodeTaskDeveloperPromptSafety,
 } from "@/lib/prototype/codeTaskDeveloperPromptSafety";
 import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
+import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
+import { resolveCodeTaskSpecificRole } from "@/lib/prototype/codeTaskPromptRoleResolver";
 
 type Body = {
   readonly projectId?: string;
@@ -258,15 +262,45 @@ export async function POST(request: NextRequest) {
         targetRepoFullName: context.targetRepository.repoFullName,
         targetRepoKind: "generated_project",
       });
+      const codeTaskWorkItem = scopedWorkItems.find(
+        (w) => String(w.codeTaskId ?? "").trim() === codeTaskIdForPromptGate,
+      );
+      const roleKind = codeTaskWorkItem
+        ? resolveCodeTaskSpecificRole({
+            codeTaskTitle: codeTaskWorkItem.title,
+            codeTaskDescription: "",
+            changeType: "component",
+          }).roleKind
+        : null;
+      const expectedWorkBranch = buildCodeTaskWorkBranch(codeTaskIdForPromptGate);
       const promptSafety = validateCodeTaskDeveloperPromptSafety({
         prompt: apiRequest.prompt,
         targetRepoFullName: context.targetRepository.repoFullName,
         targetRepoKind: "generated_project",
         allowedPathGlobs: allowedForSafety,
         codeTaskId: codeTaskIdForPromptGate,
-        workBranch: execution.workBranch,
+        workBranch: expectedWorkBranch,
+        roleKind,
       });
+      if (promptSafety.warnings.length > 0 && promptSafety.ok) {
+        console.warn(
+          "[runtime_prompt_quality_gate_warnings]",
+          JSON.stringify({
+            codeTaskId: codeTaskIdForPromptGate,
+            workBranch: expectedWorkBranch,
+            warnings: promptSafety.warnings,
+          }),
+        );
+      }
       if (!promptSafety.ok) {
+        logRuntimePromptQualityGateFailure(
+          buildRuntimePromptQualityGateDiagnostics({
+            codeTaskId: codeTaskIdForPromptGate,
+            workBranch: expectedWorkBranch,
+            errors: promptSafety.errors,
+            warnings: promptSafety.warnings,
+          }),
+        );
         execution = patchTaskCursorExecution(execution, {
           status: "cursor_failed",
           failureReason: "prompt_preflight_failed",
@@ -280,6 +314,7 @@ export async function POST(request: NextRequest) {
             status: "blocked",
             message: CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE,
             errors: promptSafety.errors,
+            warnings: promptSafety.warnings,
           },
           { status: 200 },
         );

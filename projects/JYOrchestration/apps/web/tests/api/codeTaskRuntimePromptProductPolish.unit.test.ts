@@ -79,11 +79,11 @@ describe("P3-M24 runtime prompt product polish", () => {
     const bad = [
       "# CodeTask 개발 요청",
       "",
-      `work branch: \`${branch}\``,
+      `- work branch: \`${branch}\``,
       "",
       "# CodeTask 개발 요청",
       "",
-      `work branch: \`${branch}-other\``,
+      `- work branch: \`${branch}-other\``,
     ].join("\n");
     const result = validateRuntimeCursorPromptProductQuality({
       prompt: bad,
@@ -91,7 +91,7 @@ describe("P3-M24 runtime prompt product polish", () => {
       workBranch: branch,
     });
     expect(result.ok).toBe(false);
-    expect(result.errors).toContain("multiple_code_task_headings");
+    expect(result.errors).toContain("multiple_runtime_prompt_headings");
     expect(result.errors).toContain("multiple_work_branches");
   });
 
@@ -139,7 +139,7 @@ describe("P3-M24 runtime prompt product polish", () => {
       roleKind: "app_shell",
     });
     expect(result.ok).toBe(false);
-    expect(result.errors).toContain("app_shell_loading_template_leak");
+    expect(result.errors).toContain("app_shell_contains_loading_component_template");
   });
 
   it("allows planning draft bundle with multiple code tasks", () => {
