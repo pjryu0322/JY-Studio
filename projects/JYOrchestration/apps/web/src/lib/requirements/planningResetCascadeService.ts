@@ -15,7 +15,6 @@ export const PLANNING_RESET_CLEARED_REQUIREMENTS_STATE_KEYS = Object.keys(
 
 export type PlanningResetCascadeResult = Readonly<{
   readonly resetRuntimeJobs: number;
-  readonly resetQueueItems: number;
   readonly resetCodeTaskRuns: number;
   readonly resetTaskCursorJobs: number;
   readonly resetRuntimeEvents: number;
@@ -29,14 +28,10 @@ async function deleteDownstreamRuntimeForProject(
   projectId: string,
 ): Promise<{
   resetRuntimeJobs: number;
-  resetQueueItems: number;
   resetCodeTaskRuns: number;
   resetTaskCursorJobs: number;
   resetRuntimeEvents: number;
 }> {
-  const queue = await tx.implementationRuntimeCodeTaskQueueItem.deleteMany({
-    where: { projectId },
-  });
   const runs = await tx.implementationCodeTaskRun.deleteMany({
     where: { projectId },
   });
@@ -51,7 +46,6 @@ async function deleteDownstreamRuntimeForProject(
   });
   return {
     resetRuntimeJobs: jobs.count,
-    resetQueueItems: queue.count,
     resetCodeTaskRuns: runs.count,
     resetRuntimeEvents: events.count,
     resetTaskCursorJobs: taskCursorJobs.count,

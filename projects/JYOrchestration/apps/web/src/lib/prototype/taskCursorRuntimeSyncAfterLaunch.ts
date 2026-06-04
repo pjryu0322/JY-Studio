@@ -2,9 +2,6 @@ import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution"
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import { buildTaskCursorRuntimeSyncTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
-import {
-  markImplementationRuntimeCodeTaskQueueItemCursorRequested,
-} from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueService";
 import { markImplementationRuntimeCursorRunning } from "@/lib/runtime/implementationRuntime/implementationRuntimeCursorService";
 import { scheduleImplementationRuntimePoll } from "@/lib/runtime/implementationRuntime/implementationRuntimePollRepository";
 import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
@@ -21,7 +18,7 @@ export type SyncCursorLaunchToDbRuntimeInput = Readonly<{
   readonly now?: Date;
 }>;
 
-/** Cursor Agent launch 성공 직후 DB Run/Queue/JSON runtime을 같은 agentId·branch로 맞춘다. */
+/** Cursor Agent launch 성공 직후 DB Run(+ task cursor sync)을 같은 agentId·branch로 맞춘다. */
 export async function syncCursorLaunchToDbRuntime(
   input: SyncCursorLaunchToDbRuntimeInput,
 ): Promise<{ readonly synced: boolean; readonly runId: string | null }> {
@@ -64,17 +61,6 @@ export async function syncCursorLaunchToDbRuntime(
       now,
     });
   }
-
-  await markImplementationRuntimeCodeTaskQueueItemCursorRequested({
-    jobId: job.id,
-    codeTaskId,
-    cursorRequestId: agentId,
-    cursorRunId: agentId,
-    targetRepository: repoFullName,
-    baseBranch,
-    workBranch,
-    now,
-  });
 
   await syncImplementationRuntimeFromTaskCursor({
     projectId: pid,

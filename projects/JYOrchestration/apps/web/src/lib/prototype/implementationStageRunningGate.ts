@@ -37,7 +37,7 @@ function blockForActiveExecutionJob(job: ImplementationExecutionJobV1): Implemen
   const statusLabel = formatImplementationExecutionJobStatusKo(job.status);
   return {
     ok: false,
-    message: `현재 ${job.processTaskId} 작업이 ${statusLabel} 상태입니다${elapsed}. 완료될 때까지 기다리거나 상태 확인을 중단해 주세요.`,
+    message: `현재 ${job.processTaskId} 작업이 ${statusLabel} 상태입니다${elapsed}. 완료될 때까지 기다려 주세요.`,
   };
 }
 
@@ -45,7 +45,7 @@ function blockForActiveJob(job: TaskCursorJobSummary): ImplementationStageAction
   const elapsed = formatElapsedSuffix(job.lastPollAt ?? null);
   return {
     ok: false,
-    message: `현재 AI 개발자가 ${job.taskId} 작업을 실행 중입니다${elapsed}. 완료될 때까지 기다리거나 상태 확인을 중단해 주세요.`,
+    message: `현재 AI 개발자가 ${job.taskId} 작업을 실행 중입니다${elapsed}. 완료될 때까지 기다려 주세요.`,
   };
 }
 
@@ -61,7 +61,7 @@ function blockForInFlightExecution(
   }
   return {
     ok: false,
-    message: `현재 AI 개발자가 ${execution.taskId} 작업을 실행 중입니다${elapsed}. 완료될 때까지 기다리거나 상태 확인을 중단해 주세요.`,
+    message: `현재 AI 개발자가 ${execution.taskId} 작업을 실행 중입니다${elapsed}. 완료될 때까지 기다려 주세요.`,
   };
 }
 

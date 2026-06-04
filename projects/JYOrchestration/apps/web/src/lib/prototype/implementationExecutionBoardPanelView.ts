@@ -45,8 +45,6 @@ import {
 import {
   formatTaskCursorElapsedMinutes,
   isActiveTaskCursorExecution,
-  isTaskCursorCloudAgentPollingCancellable,
-  isTaskCursorStatusCheckResumable,
   isTaskCursorStatusCheckStopped,
 } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -57,8 +55,8 @@ import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkIte
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { ImplementationRuntimeRunView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import {
-  buildImplementationProcessTaskTreeNodes,
-  type ImplementationProcessTaskTreeNode,
+  buildImplementationFlatCodeTaskTreeNodes,
+  type ImplementationCodeTaskTreeNode,
 } from "@/lib/prototype/implementationTaskTreeView";
 
 const IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE = "IMPLEMENTATION_TASK_LIST_READY_V1" as const;
@@ -387,9 +385,7 @@ export function buildTaskCursorPollStatusLabel(input: {
   const execution = input.taskCursorExecution;
   if (!execution || execution.taskId !== input.taskId) return undefined;
   if (isTaskCursorStatusCheckStopped(execution)) {
-    return isTaskCursorStatusCheckResumable(execution)
-      ? "상태 확인 중단됨 · [상태 다시 확인]으로 재개"
-      : "상태 확인 중단됨";
+    return "상태 확인 중단됨";
   }
   if (
     !isActiveTaskCursorExecution(execution, { developerStatus: input.developerStatus ?? null })
@@ -430,31 +426,6 @@ export function buildTaskCursorPollStatusLabel(input: {
   return parts.join(" · ");
 }
 
-export function resolveTaskRowStopCapability(input: {
-  readonly taskId: string;
-  readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
-  readonly developerStatus?: ImplementationBoardStepStatus;
-}): boolean {
-  if (isServerTaskCursorPolling()) return false;
-  const execution = input.taskCursorExecution;
-  if (!execution || execution.taskId !== input.taskId) return false;
-  if (
-    !isActiveTaskCursorExecution(execution, { developerStatus: input.developerStatus ?? null })
-  ) {
-    return false;
-  }
-  return isTaskCursorCloudAgentPollingCancellable(execution);
-}
-
-export function resolveTaskRowResumeStatusCheckCapability(input: {
-  readonly taskId: string;
-  readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
-}): boolean {
-  const execution = input.taskCursorExecution;
-  if (!execution || execution.taskId !== input.taskId) return false;
-  return isTaskCursorStatusCheckResumable(execution);
-}
-
 export function buildImplementationTaskTreeNodes(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
@@ -472,17 +443,19 @@ export function buildImplementationTaskTreeNodes(input: {
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly serverJob?: TaskCursorJobSummary | null;
-}): readonly ImplementationProcessTaskTreeNode[] {
+}): readonly ImplementationCodeTaskTreeNode[] {
   const taskCursorExecution = input.taskCursorExecution ?? null;
-  const nodes = buildImplementationProcessTaskTreeNodes({
+  const activeCodeTaskId =
+    input.selectedCodeTaskId?.trim() ||
+    input.dbCurrentRun?.codeTaskId?.trim() ||
+    null;
+  const flat = buildImplementationFlatCodeTaskTreeNodes({
     board: input.board,
     codeTaskPlan: input.codeTaskPlan,
     cursorWorkItems: input.cursorWorkItems,
     codeTaskExecutionRuns: input.codeTaskExecutionRuns,
-    activeTaskId: input.activeTaskId,
-    selectedTaskId: input.selectedTaskId,
+    activeCodeTaskId,
     selectedCodeTaskId: input.selectedCodeTaskId,
-    checkedTaskIds: input.checkedTaskIds,
     checkedCodeTaskIds: input.checkedCodeTaskIds ?? input.checkedTaskIds,
     taskCursorExecution,
     taskCursorExecutionHistory: input.taskCursorExecutionHistory,
@@ -490,31 +463,25 @@ export function buildImplementationTaskTreeNodes(input: {
     dbCurrentRun: input.dbCurrentRun,
     implementationAutoQualityGateV1: input.implementationAutoQualityGateV1,
   });
-  return nodes.map((node) => {
-    const row = input.board.taskRows.find((r) => r.taskId === node.taskId);
+
+  const activeParentId =
+    input.activeTaskId?.trim() || taskCursorExecution?.taskId?.trim() || null;
+  if (!activeParentId) return flat;
+
+  return flat.map((node) => {
+    if (node.parentTaskId !== activeParentId) return node;
+    const row = input.board.taskRows.find((r) => r.taskId === activeParentId);
     if (!row) return node;
     const pollStatusLabel = buildTaskCursorPollStatusLabel({
-      taskId: node.taskId,
+      taskId: activeParentId,
       taskCursorExecution,
       promptTimeline: input.promptTimeline,
       developerStatus: row.developerStatus,
       serverJob: input.serverJob,
     });
-    const canStop = resolveTaskRowStopCapability({
-      taskId: node.taskId,
-      taskCursorExecution,
-      developerStatus: row.developerStatus,
-    });
-    const canResumeStatusCheck = resolveTaskRowResumeStatusCheckCapability({
-      taskId: node.taskId,
-      taskCursorExecution,
-    });
     return {
       ...node,
-      canStop,
-      canResumeStatusCheck,
       ...(pollStatusLabel ? { pollStatusLabel } : {}),
-      restartBlockedReason: pollStatusLabel ? undefined : node.restartBlockedReason,
     };
   });
 }

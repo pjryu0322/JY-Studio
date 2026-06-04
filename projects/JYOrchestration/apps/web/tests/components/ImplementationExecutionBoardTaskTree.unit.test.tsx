@@ -70,7 +70,7 @@ describe("ImplementationExecutionBoardTaskTree", () => {
     expect(html).toContain("선택됨");
     expect(html).not.toContain("Process Task");
     expect(html).not.toContain("실행 흐름");
-    expect(html).not.toContain("implementation-code-task-tree-item-");
+    expect(html).toContain("implementation-code-task-tree-item-");
     expect(html).not.toContain("implementation-task-tree-meta");
     expect(html).toContain("implementation-code-task-detail-");
     expect(html).toContain("개발 프롬프트 생성");

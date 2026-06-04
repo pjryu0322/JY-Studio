@@ -4,12 +4,13 @@ import {
   type CodeTaskExecutionQueueStatus,
   type CodeTaskExecutionQueueV1,
 } from "@/lib/prototype/codeTaskExecutionQueue";
-import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
-import { getImplementationRuntimeCodeTaskQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueService";
-import {
-  isImplementationRuntimeQueueItemInFlight,
-  isImplementationRuntimeQueueItemTerminal,
-} from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueTypes";
+import { isTerminalRuntimeState } from "@/lib/runtime/implementationRuntime/implementationRuntimeStateMachine";
+import type {
+  ImplementationRuntimeBundleView,
+  ImplementationRuntimeRunView,
+  RuntimeState,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
+import { isRuntimeInFlight } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 
 function mapJobStatusToQueueStatus(jobStatus: string): CodeTaskExecutionQueueStatus {
   switch (jobStatus) {
@@ -28,21 +29,79 @@ function mapJobStatusToQueueStatus(jobStatus: string): CodeTaskExecutionQueueSta
   }
 }
 
-function resolveCurrentIndexFromQueueItems(
-  items: readonly { readonly codeTaskId: string; readonly status: string }[],
-  currentCodeTaskId: string | null,
-): number {
-  if (!items.length) return 0;
-  if (currentCodeTaskId) {
-    const idx = items.findIndex((i) => i.codeTaskId === currentCodeTaskId);
-    if (idx >= 0) return idx;
+function latestRunPerCodeTaskId(
+  runs: readonly ImplementationRuntimeRunView[],
+): ReadonlyMap<string, ImplementationRuntimeRunView> {
+  const map = new Map<string, ImplementationRuntimeRunView>();
+  for (const run of runs) {
+    map.set(run.codeTaskId, run);
   }
-  const firstOpen = items.findIndex((i) => !isImplementationRuntimeQueueItemTerminal(i.status));
-  if (firstOpen >= 0) return firstOpen;
-  return Math.max(0, items.length - 1);
+  return map;
 }
 
-/** DB snapshot wins; JSON only before job / idle UI. No JSON advance when DB job is active. */
+function resolveCurrentIndex(
+  selectedCodeTaskIds: readonly string[],
+  currentCodeTaskId: string | null,
+  runsByTask: ReadonlyMap<string, ImplementationRuntimeRunView>,
+): number {
+  if (!selectedCodeTaskIds.length) return 0;
+  if (currentCodeTaskId) {
+    const idx = selectedCodeTaskIds.indexOf(currentCodeTaskId);
+    if (idx >= 0) return idx;
+  }
+  const firstOpen = selectedCodeTaskIds.findIndex((id) => {
+    const run = runsByTask.get(id);
+    return !run || !isTerminalRuntimeState(run.runtimeState);
+  });
+  if (firstOpen >= 0) return firstOpen;
+  return Math.max(0, selectedCodeTaskIds.length - 1);
+}
+
+function jobHasInFlightRun(
+  selectedCodeTaskIds: readonly string[],
+  runsByTask: ReadonlyMap<string, ImplementationRuntimeRunView>,
+): boolean {
+  for (const codeTaskId of selectedCodeTaskIds) {
+    const state = (runsByTask.get(codeTaskId)?.runtimeState ?? "queued") as RuntimeState;
+    if (isRuntimeInFlight(state) || state === "dispatching") return true;
+  }
+  return false;
+}
+
+/** DB job + runs → legacy JSON queue snapshot (UI cache only). */
+export function buildCodeTaskExecutionQueueSnapshotFromDbJob(input: {
+  readonly bundle: ImplementationRuntimeBundleView;
+  readonly nowIso?: string;
+}): CodeTaskExecutionQueueV1 | null {
+  const job = input.bundle.job;
+  if (!job?.id) return null;
+  const selectedCodeTaskIds = job.selectedCodeTaskIds;
+  if (!selectedCodeTaskIds.length) return null;
+
+  const runsByTask = latestRunPerCodeTaskId(input.bundle.runs);
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  let status = mapJobStatusToQueueStatus(job.status);
+  if (job.status === "running" && jobHasInFlightRun(selectedCodeTaskIds, runsByTask)) {
+    status = "running";
+  }
+
+  return {
+    version: CODE_TASK_EXECUTION_QUEUE_VERSION,
+    projectId: job.projectId,
+    selectedCodeTaskIds,
+    currentIndex: resolveCurrentIndex(
+      selectedCodeTaskIds,
+      job.currentCodeTaskId,
+      runsByTask,
+    ),
+    status,
+    createdAt: nowIso,
+    updatedAt: job.updatedAt ?? nowIso,
+    stopOnFailure: true,
+  };
+}
+
+/** DB snapshot wins; JSON only before job / idle UI. */
 export function resolveEffectiveCodeTaskExecutionQueue(input: {
   readonly dbQueueSnapshot: CodeTaskExecutionQueueV1 | null | undefined;
   readonly jsonQueue: unknown;
@@ -54,48 +113,4 @@ export function resolveEffectiveCodeTaskExecutionQueue(input: {
     return null;
   }
   return parseCodeTaskExecutionQueueV1(input.jsonQueue) ?? null;
-}
-
-/** DB Runtime Queue → legacy JSON snapshot for UI (cache only, not SoT). */
-export async function buildCodeTaskExecutionQueueSnapshotFromDbJob(input: {
-  readonly bundle: ImplementationRuntimeBundleView;
-  readonly nowIso?: string;
-}): Promise<CodeTaskExecutionQueueV1 | null> {
-  const job = input.bundle.job;
-  if (!job?.id) return null;
-  const items = await getImplementationRuntimeCodeTaskQueue(job.id);
-  if (!items.length) {
-    const selected = job.selectedCodeTaskIds;
-    if (!selected.length) return null;
-    const nowIso = input.nowIso ?? new Date().toISOString();
-    return {
-      version: CODE_TASK_EXECUTION_QUEUE_VERSION,
-      projectId: job.projectId,
-      selectedCodeTaskIds: selected,
-      currentIndex: resolveCurrentIndexFromQueueItems(
-        selected.map((id) => ({ codeTaskId: id, status: "queued" })),
-        job.currentCodeTaskId,
-      ),
-      status: mapJobStatusToQueueStatus(job.status),
-      createdAt: nowIso,
-      updatedAt: job.updatedAt ?? nowIso,
-      stopOnFailure: true,
-    };
-  }
-
-  const nowIso = input.nowIso ?? new Date().toISOString();
-  const inFlight = items.some((i) => isImplementationRuntimeQueueItemInFlight(i.status));
-  let status = mapJobStatusToQueueStatus(job.status);
-  if (job.status === "running" && inFlight) status = "running";
-
-  return {
-    version: CODE_TASK_EXECUTION_QUEUE_VERSION,
-    projectId: job.projectId,
-    selectedCodeTaskIds: items.map((i) => i.codeTaskId),
-    currentIndex: resolveCurrentIndexFromQueueItems(items, job.currentCodeTaskId),
-    status,
-    createdAt: nowIso,
-    updatedAt: job.updatedAt ?? nowIso,
-    stopOnFailure: true,
-  };
 }

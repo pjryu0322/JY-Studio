@@ -83,33 +83,7 @@ export function resolveCompletedCodeTaskId(input: {
   return null;
 }
 
-export function resolveNextQuickRunCodeTaskId(input: {
-  readonly queue: CodeTaskExecutionQueueV1 | null;
-  readonly completedCodeTaskId: string | null;
-  readonly dbBundle?: ImplementationRuntimeBundleView | null;
-}): string | null {
-  const job = input.dbBundle?.job;
-  const currentRun = input.dbBundle?.currentRun;
-  if (
-    job?.status === "running" &&
-    currentRun?.runtimeState === "queued" &&
-    !currentRun.cursorAgentId
-  ) {
-    const nextId = String(job.currentCodeTaskId ?? currentRun.codeTaskId ?? "").trim();
-    if (nextId && nextId !== input.completedCodeTaskId) return nextId;
-  }
-
-  const queue = input.queue;
-  if (!queue || queue.status !== "running") return null;
-  const completed = input.completedCodeTaskId?.trim() ?? "";
-  const ids = queue.selectedCodeTaskIds;
-  if (!ids.length) return null;
-
-  const completedIdx = completed ? ids.indexOf(completed) : queue.currentIndex;
-  const fromIdx = completedIdx >= 0 ? completedIdx + 1 : queue.currentIndex + 1;
-  if (fromIdx >= ids.length) return null;
-  return ids[fromIdx] ?? null;
-}
+export { resolveNextQuickRunCodeTaskId } from "@/lib/prototype/implementationSelectedCodeTaskSequence";
 
 export function buildQuickRunCodeTaskContinuationTriggerKey(input: {
   readonly autoGate: ImplementationAutoQualityGateV1;

@@ -10,24 +10,6 @@ const getJobMock = vi.fn();
 const createRunMock = vi.fn();
 const getBundleByJobMock = vi.fn();
 
-vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueService", () => ({
-  getImplementationRuntimeCodeTaskQueue: vi.fn().mockResolvedValue([]),
-  advanceImplementationRuntimeCodeTaskQueue: vi.fn().mockResolvedValue({
-    advanced: true,
-    nextCodeTaskId: "ct-b",
-    jobCompleted: false,
-  }),
-  applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem: vi.fn(),
-  assertQueueItemDispatchAllowed: vi.fn(),
-  markImplementationRuntimeCodeTaskQueueItemDispatching: vi.fn(),
-  markImplementationRuntimeCodeTaskQueueItemCursorRequested: vi.fn(),
-}));
-
-import {
-  advanceImplementationRuntimeCodeTaskQueue,
-  getImplementationRuntimeCodeTaskQueue,
-} from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueService";
-
 vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeCursorService", () => ({
   markImplementationRuntimeCompleted: (...args: unknown[]) => markCompletedMock(...args),
   markImplementationRuntimeCursorCompleted: vi.fn(),
@@ -78,10 +60,7 @@ describe("implementationRuntimeGithubAdvance", () => {
   });
 
   it("completeImplementationRuntimeGithubVerifyAndAdvance transitions cursor_running → github_verifying before completed", async () => {
-    vi.mocked(getImplementationRuntimeCodeTaskQueue).mockResolvedValueOnce([
-      { codeTaskId: "ct-a", status: "completed" } as never,
-    ]);
-    getJobMock.mockResolvedValue({
+    const runningJob = {
       id: "job-1",
       projectId: "p1",
       status: "running",
@@ -109,7 +88,19 @@ describe("implementationRuntimeGithubAdvance", () => {
           updatedAt: "2026-06-03T01:00:00.000Z",
         },
       ],
-    });
+    };
+    const afterCompleteJob = {
+      ...runningJob,
+      runs: [
+        {
+          ...runningJob.runs[0],
+          runtimeState: "completed",
+          commitSha: "sha1",
+          completedAt: "2026-06-03T01:00:00.000Z",
+        },
+      ],
+    };
+    getJobMock.mockResolvedValueOnce(runningJob).mockResolvedValueOnce(afterCompleteJob);
     createRunMock.mockResolvedValue({
       id: "run-b",
       codeTaskId: "ct-b",
@@ -132,7 +123,9 @@ describe("implementationRuntimeGithubAdvance", () => {
       expect.objectContaining({ runId: "run-a" }),
     );
     expect(markCompletedMock).toHaveBeenCalled();
-    expect(advanceImplementationRuntimeCodeTaskQueue).toHaveBeenCalled();
+    expect(createRunMock).toHaveBeenCalledWith(
+      expect.objectContaining({ codeTaskId: "ct-b" }),
+    );
   });
 
   it("completeImplementationRuntimeGithubVerifyAndAdvance stores commitSha and creates next queued run", async () => {

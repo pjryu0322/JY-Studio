@@ -1,13 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   canPollTaskCursorCloudAgent,
   formatTaskCursorElapsedMinutes,
   isActiveTaskCursorExecution,
   isInFlightTaskCursorExecution,
   isStaleAbandonedTaskCursorExecution,
-  isTaskCursorCloudAgentPollingCancellable,
   resolveTaskCursorPollWorkItems,
-  runTaskCursorClientPollLoop,
 } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
@@ -87,53 +85,9 @@ describe("taskCursorClientPollLoop helpers", () => {
     ).toEqual(["w1"]);
   });
 
-  it("isTaskCursorCloudAgentPollingCancellable includes requested and active poll", () => {
-    expect(isTaskCursorCloudAgentPollingCancellable(baseExecution({ status: "cursor_requested" }))).toBe(true);
-    expect(isTaskCursorCloudAgentPollingCancellable(baseExecution())).toBe(true);
-    expect(isTaskCursorCloudAgentPollingCancellable(baseExecution({ status: "cursor_completed" }))).toBe(false);
-  });
-
   it("formatTaskCursorElapsedMinutes returns floored minutes", () => {
     const iso = new Date(Date.now() - 20 * 60_000 - 5_000).toISOString();
     expect(formatTaskCursorElapsedMinutes(iso)).toBe(20);
     expect(formatTaskCursorElapsedMinutes(null)).toBeNull();
-  });
-
-  it("runTaskCursorClientPollLoop detects terminal status on first poll round", async () => {
-    vi.useFakeTimers();
-    const fetchMock = vi.fn().mockResolvedValue({
-      json: async () => ({
-        success: true,
-        status: "github_verified",
-        execution: { status: "github_verified" },
-        orchestrationPatch: {
-          taskCursorExecutionV1: baseExecution({ status: "github_verified" }),
-        },
-      }),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const onTerminal = vi.fn();
-    const onPatch = vi.fn();
-    const execution = baseExecution();
-
-    const loopPromise = runTaskCursorClientPollLoop({
-      projectId: "p1",
-      initialExecution: execution,
-      workItems: [{ id: "w1", taskId: "DEV-MOCK-001", role: "developer", title: "A", status: "ready" }],
-      getLatestExecution: () => execution,
-      isCancelled: () => false,
-      onPatch,
-      onTerminal,
-    });
-
-    await vi.advanceTimersByTimeAsync(2_500);
-    await loopPromise;
-
-    expect(onTerminal).toHaveBeenCalledTimes(1);
-    expect(onPatch).toHaveBeenCalled();
-
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
   });
 });

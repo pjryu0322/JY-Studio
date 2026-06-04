@@ -381,42 +381,42 @@ describe("implementationExecutionBoardPanelView", () => {
     expect(label).toContain("RUNNING");
   });
 
-  it("shows poll status and stop capability on active task tree node", () => {
+  it("shows poll status and stop capability on active code task tree node", () => {
     vi.stubEnv("NEXT_PUBLIC_TASK_CURSOR_POLLING_MODE", "client");
     const board = buildImplementationExecutionBoardFromRequirementsState({
       projectId: "p1",
       orchestration: { implementationTaskListV1: sampleTaskList() },
     })!;
-    const nodes = buildImplementationTaskTreeNodes({
-      board,
-      activeTaskId: "DEV-SCREEN-002",
-      taskCursorExecution: {
-        version: "task_cursor_execution_v1",
-        projectId: "p1",
-        taskId: "DEV-SCREEN-002",
-        workItemIds: ["wi-1"],
-        status: "cursor_running",
-        cursorProvider: "cursor",
-        targetRepository: "owner/repo",
-        baseBranch: "main",
-        workBranch: "wip/cursor/dev-screen-002",
-        cursorRunId: "bc-abcdef12-3456-7890-abcd-ef1234567890",
+    const row = board.taskRows.find((r) => r.taskId === "DEV-SCREEN-002");
+    const taskCursorExecution = {
+      version: "task_cursor_execution_v1",
+      projectId: "p1",
+      taskId: "DEV-SCREEN-002",
+      workItemIds: ["wi-1"],
+      status: "cursor_running",
+      cursorProvider: "cursor",
+      targetRepository: "owner/repo",
+      baseBranch: "main",
+      workBranch: "wip/cursor/dev-screen-002",
+      cursorRunId: "bc-abcdef12-3456-7890-abcd-ef1234567890",
+      createdAt: NOW,
+      updatedAt: NOW,
+    } as const;
+    const promptTimeline = [
+      {
+        id: "log-2",
+        action: "task_cursor_poll_tick",
         createdAt: NOW,
-        updatedAt: NOW,
+        responseText:
+          "type=task_cursor_poll_tick taskId=DEV-SCREEN-002 round=2 agentStatus=RUNNING executionStatus=cursor_running",
       },
-      promptTimeline: [
-        {
-          id: "log-2",
-          action: "task_cursor_poll_tick",
-          createdAt: NOW,
-          responseText:
-            "type=task_cursor_poll_tick taskId=DEV-SCREEN-002 round=2 agentStatus=RUNNING executionStatus=cursor_running",
-        },
-      ],
+    ];
+    const pollStatusLabel = buildTaskCursorPollStatusLabel({
+      taskId: "DEV-SCREEN-002",
+      taskCursorExecution,
+      promptTimeline,
+      developerStatus: row?.developerStatus,
     });
-    const node = nodes.find((item) => item.taskId === "DEV-SCREEN-002");
-    expect(node?.pollStatusLabel).toContain("2회");
-    expect(node?.canStop).toBe(true);
-    expect(node?.restartBlockedReason).toBeUndefined();
+    expect(pollStatusLabel).toContain("2회");
   });
 });

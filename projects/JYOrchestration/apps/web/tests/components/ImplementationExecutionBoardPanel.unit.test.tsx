@@ -85,10 +85,9 @@ describe("ImplementationExecutionBoardPanel", () => {
     const html = renderToStaticMarkup(
       createElement(ImplementationCodeAgentExecutionProgressCard, {
         progress,
-        onCancelPolling: () => {},
       }),
     );
-    expect(html).toContain("task-cursor-cancel-polling-button");
-    expect(html).toContain("상태 확인 중단");
+    expect(html).not.toContain("task-cursor-cancel-polling-button");
+    expect(html).not.toContain("상태 확인 중단");
   });
 });

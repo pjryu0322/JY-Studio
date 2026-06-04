@@ -18,6 +18,16 @@ function run(partial: Partial<CodeTaskExecutionRunV1> & Pick<CodeTaskExecutionRu
 }
 
 describe("deriveCodeTaskExecutionFlowPhase", () => {
+  it("does not treat process developerStatus done as CodeTask cursor completed", () => {
+    const phase = deriveCodeTaskExecutionFlowPhase({
+      parentTaskId: "DEV-FRAME-001",
+      developerStatus: "done",
+      taskCursorExecution: null,
+      latestRun: null,
+    });
+    expect(phase).toBe("prompt_ready");
+  });
+
   it("uses CodeTask run progress when global taskCursor targets another task", () => {
     const phase = deriveCodeTaskExecutionFlowPhase({
       parentTaskId: "DEV-FRAME-001",

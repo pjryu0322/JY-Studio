@@ -18,6 +18,7 @@ import {
   isImplementationReadyForReviewStage,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
+import { resolveIntegrationPipelineUnlocked } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
@@ -37,7 +38,6 @@ import {
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   IMPLEMENTATION_QUICK_RUN_CHIP,
-  IMPLEMENTATION_QUICK_RUN_REFRESH_CHIP,
   IMPLEMENTATION_RUNTIME_DIAGNOSTICS_CHIP,
   IMPLEMENTATION_PREVIEW_OPEN_CHIP,
   IMPLEMENTATION_RETURN_TO_PLANNING_CHIP,
@@ -85,7 +85,6 @@ import {
 import type { ImplementationQuickRunStatus, ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import {
   AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
-  CHECK_TASK_CURSOR_STATUS_CHIP,
   isTaskCursorExecutionFailed,
   VERIFY_TASK_CURSOR_GITHUB_CHIP,
 } from "@/lib/prototype/taskCursorExecution";
@@ -111,6 +110,9 @@ export type ImplementationStageNextActionsBoardInput = Readonly<{
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
+  readonly implementationCodeTaskPlanV1?: import("@/lib/prototype/implementationCodeTaskPlan").ImplementationCodeTaskPlanV1 | null;
+  readonly codeTaskExecutionRunsV1?: readonly import("@/lib/prototype/codeTaskExecutionRun").CodeTaskExecutionRunV1[] | null;
+  readonly taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
   readonly implementationQuickRunV1?: ImplementationQuickRunV1 | null;
   readonly quickRunStatus?: ImplementationQuickRunStatus | null;
   /** false when REVIEWER/VIEWER — hides SCM push/PR/merge CTAs */
@@ -239,10 +241,6 @@ function deriveNextActionsFromIntegratedBoard(
   board: ImplementationExecutionBoardV1,
   previewReady: boolean,
 ): readonly ImplementationStageNextAction[] | null {
-  const allTasksComplete =
-    board.taskRows.length > 0 && board.taskRows.every((row) => row.currentRole === "completed");
-  if (!allTasksComplete) return null;
-
   const stepStatus = (step: ImplementationExecutionBoardV1["integratedRows"][number]["step"]) =>
     board.integratedRows.find((row) => row.step === step)?.status;
 
@@ -252,7 +250,7 @@ function deriveNextActionsFromIntegratedBoard(
         actionId: "RUN_REFACTOR_COMMON",
         label: RUN_REFACTOR_COMMON_CHIP,
         priority: "primary",
-        reason: "모든 개발자 작업 완료 후 리팩토링/공통화 실행",
+        reason: "완료된 CodeTask 기준 통합 및 Preview 생성",
       },
     ];
   }
@@ -585,14 +583,7 @@ function deriveNextActionsFromTaskCursorExecution(
     ];
   }
   if (status === "cursor_requested" || status === "cursor_running" || status === "github_verifying") {
-    return [
-      {
-        actionId: "CHECK_TASK_CURSOR_STATUS",
-        label: IMPLEMENTATION_QUICK_RUN_REFRESH_CHIP,
-        priority: "primary",
-        reason: "Cursor API 실행 상태 확인",
-      },
-    ];
+    return [];
   }
   if (status === "cursor_completed") {
     return [
@@ -986,6 +977,14 @@ function deriveImplementationStageNextActionsCore(
   let reviewGate: { readonly board: ImplementationExecutionBoardV1; readonly previewReady: boolean } | null =
     null;
   if (boardInput) {
+    const integrationPipelineUnlocked = resolveIntegrationPipelineUnlocked({
+      codeTaskPlan: boardInput.implementationCodeTaskPlanV1 ?? null,
+      taskList: boardInput.taskList,
+      codeTaskRuns: boardInput.codeTaskExecutionRunsV1 ?? null,
+      taskCursorExecution: boardInput.taskCursorExecutionV1 ?? null,
+      taskCursorExecutionHistory: boardInput.taskCursorExecutionHistoryV1 ?? null,
+      autoQualityGate: boardInput.implementationAutoQualityGateV1 ?? null,
+    });
     const board = buildImplementationExecutionBoardFromOrchestration({
       projectId: boardInput.projectId,
       taskList: boardInput.taskList,
@@ -993,6 +992,7 @@ function deriveImplementationStageNextActionsCore(
       integratedExecutionState: boardInput.integratedExecutionState,
       boardState: boardInput.boardState,
       qualityGateResults: boardInput.qualityGateResults,
+      integrationPipelineUnlocked,
     });
     reviewGate = { board, previewReady: boardInput.previewReady === true };
 

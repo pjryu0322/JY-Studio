@@ -42,6 +42,17 @@ describe("implementationIntegratedExecutionState", () => {
     expect(state.items.find((i) => i.step === "integrated_review")?.status).toBe("not_started");
   });
 
+  it("sets refactor_common ready when integration pipeline unlocked without all task rows done", () => {
+    const state = deriveIntegratedExecutionStateReadiness({
+      projectId: "p1",
+      state: null,
+      taskRowsCompleted: false,
+      integrationPipelineUnlocked: true,
+      nowIso: NOW,
+    });
+    expect(state.items.find((i) => i.step === "refactor_common")?.status).toBe("ready");
+  });
+
   it("sets integrated_review ready after refactor_common done", () => {
     let state = buildInitialImplementationIntegratedExecutionState({ projectId: "p1", nowIso: NOW });
     state = {

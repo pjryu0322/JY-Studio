@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { buildCodeTaskCursorExecutionRequest } from "@/lib/prototype/codeTaskExecutionRequest";
 import {
   buildCodeTaskRunUserStatus,
-  buildCodeTaskStatusCheckUserMessage,
   CODE_TASK_IN_FLIGHT_USER_MESSAGE,
 } from "@/lib/prototype/codeTaskExecutionRunView";
 import {
@@ -98,23 +97,6 @@ describe("buildCodeTaskRunUserStatus", () => {
     ["failed", "실패"],
   ] as const)("maps %s to %s", (status, label) => {
     expect(buildCodeTaskRunUserStatus(sampleRun({ status })).label).toBe(label);
-  });
-});
-
-describe("buildCodeTaskStatusCheckUserMessage", () => {
-  it("does not expose runId, agent, polling, or TaskCursor", () => {
-    const message = buildCodeTaskStatusCheckUserMessage({
-      codeTaskTitle: "로딩 상태 공통 기능 구현",
-      codeTaskId: "CT-1",
-      run: sampleRun({ status: "cursor_running" }),
-      elapsedMinutes: 12,
-    });
-    expect(message).toContain("CodeTask:");
-    expect(message).toContain("Cursor 작업 중");
-    expect(message).not.toMatch(/runId/i);
-    expect(message).not.toMatch(/agent/i);
-    expect(message).not.toMatch(/polling/i);
-    expect(message).not.toMatch(/TaskCursor/i);
   });
 });
 

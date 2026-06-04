@@ -239,7 +239,6 @@ function mapCursorStatusToPhase(input: {
   if (input.failureReason === "prompt_preflight_failed") return "prompt_preflight_failed";
   const execution = input.execution;
   if (!execution || execution.taskId !== input.parentTaskId) {
-    if (input.developerStatus === "done") return "completed";
     if (input.developerStatus === "failed") return "failed";
     return "prompt_ready";
   }
@@ -433,7 +432,6 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
     );
   }
 
-  if (input.developerStatus === "done") return "completed";
   if (input.developerStatus === "failed") return "failed";
   return "prompt_ready";
 }

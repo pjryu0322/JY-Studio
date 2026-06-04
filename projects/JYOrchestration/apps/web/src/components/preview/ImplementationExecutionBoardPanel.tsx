@@ -62,9 +62,11 @@ import {
   resolveCodeTaskTreeSelectAll,
   resolveCodeTaskTreeSelectionToggle,
   resolveParentTaskIdForCodeTask,
-  resolveProcessTaskCodeTaskSelectionToggle,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
+import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
+import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
+import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 export function ImplementationExecutionBoardPanel({
@@ -81,12 +83,9 @@ export function ImplementationExecutionBoardPanel({
   boardInput,
   promptTimeline,
   activeTaskCursorJob,
-  onCancelTaskCursorPolling,
-  onResumeTaskCursorStatusCheck,
   onRestartTask,
   onSelectedTaskIdsChange,
   onSelectedCodeTaskIdsChange,
-  onRunSingleCodeTask,
   onCopyCodeTaskCursorPrompt,
   onCopyAllCodeTaskCursorPrompts,
   implementationRuntimeStateV1,
@@ -96,6 +95,7 @@ export function ImplementationExecutionBoardPanel({
   cursorWorkItemsV1,
   codeTaskExecutionQueueV1,
   codeTaskExecutionRunsV1,
+  implementationPreviewScopeV1,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -111,12 +111,9 @@ export function ImplementationExecutionBoardPanel({
   readonly boardInput: ImplementationStageNextActionsBoardInput;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly activeTaskCursorJob?: TaskCursorJobSummary | null;
-  readonly onCancelTaskCursorPolling?: () => void;
-  readonly onResumeTaskCursorStatusCheck?: () => void;
   readonly onRestartTask?: (taskId: string) => void;
   readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
   readonly onSelectedCodeTaskIdsChange?: (selectedCodeTaskIds: readonly string[]) => void;
-  readonly onRunSingleCodeTask?: (codeTaskId: string) => void;
   readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
   readonly onCopyAllCodeTaskCursorPrompts?: () => void;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
@@ -125,6 +122,7 @@ export function ImplementationExecutionBoardPanel({
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly codeTaskExecutionQueueV1?: unknown;
   readonly codeTaskExecutionRunsV1?: unknown;
+  readonly implementationPreviewScopeV1?: unknown;
 }) {
   const feedbackSummary = useMemo(
     () => buildImplementationCodeTaskFeedbackSummary(codeTaskExecutionFeedbackV1),
@@ -354,6 +352,32 @@ export function ImplementationExecutionBoardPanel({
     [board.integratedRows],
   );
 
+  const integrationSection = useMemo(
+    () =>
+      buildImplementationIntegrationBoardSection({
+        eligibility: evaluateCodeTaskIntegration({
+          codeTaskPlan: implementationCodeTaskPlanV1 ?? null,
+          taskList,
+          codeTaskRuns,
+          taskCursorExecution: taskCursorExecutionV1 ?? null,
+          taskCursorExecutionHistory: taskCursorExecutionHistoryV1 ?? null,
+          autoQualityGate: implementationAutoQualityGateV1 ?? null,
+        }),
+        integratedPipelineLines,
+        previewScope: parseImplementationPreviewScopeV1(implementationPreviewScopeV1),
+      }),
+    [
+      implementationCodeTaskPlanV1,
+      taskList,
+      codeTaskRuns,
+      taskCursorExecutionV1,
+      taskCursorExecutionHistoryV1,
+      implementationAutoQualityGateV1,
+      integratedPipelineLines,
+      implementationPreviewScopeV1,
+    ],
+  );
+
   const codeAgentProgress = useMemo(
     () =>
       buildCodeAgentExecutionProgressView({
@@ -370,9 +394,8 @@ export function ImplementationExecutionBoardPanel({
 
   const queueSummaryLine = useMemo(() => {
     if (!codeTaskQueue || codeTaskQueue.status === "idle") return null;
-    const runs = parseCodeTaskExecutionRunsV1(codeTaskExecutionRunsV1) ?? [];
     const runSummary = summarizeCodeTaskExecutionQueueRuns({
-      runs,
+      runs: codeTaskRuns,
       selectedCodeTaskIds: codeTaskQueue.selectedCodeTaskIds,
     });
     if (
@@ -383,7 +406,7 @@ export function ImplementationExecutionBoardPanel({
       return formatCodeTaskExecutionQueueCompletionDetail({
         runSummary,
         codeTaskPlan: implementationCodeTaskPlanV1,
-        runs,
+        runs: codeTaskRuns,
         selectedCodeTaskIds: codeTaskQueue.selectedCodeTaskIds,
       });
     }
@@ -393,16 +416,16 @@ export function ImplementationExecutionBoardPanel({
       status: codeTaskQueue.status,
       runSummary,
     });
-  }, [codeTaskExecutionRunsV1, codeTaskQueue, implementationCodeTaskPlanV1]);
+  }, [codeTaskRuns, codeTaskQueue, implementationCodeTaskPlanV1]);
 
   const selectedExecutionProgress = useMemo(
     () =>
       resolveSelectedCodeTaskExecutionProgress({
         selectedCodeTaskIds: checkedCodeTaskIds,
         queue: codeTaskQueue,
-        runs: parseCodeTaskExecutionRunsV1(codeTaskExecutionRunsV1) ?? [],
+        runs: codeTaskRuns,
       }),
-    [checkedCodeTaskIds, codeTaskQueue, codeTaskExecutionRunsV1],
+    [checkedCodeTaskIds, codeTaskQueue, codeTaskRuns],
   );
 
   return (
@@ -494,28 +517,13 @@ export function ImplementationExecutionBoardPanel({
       <section className={styles.taskTreeSection} data-testid="implementation-task-tree-section">
         <ImplementationExecutionBoardTaskTree
           nodes={taskTreeNodes}
-          selectedTaskId={selectedTaskId}
           selectedCodeTaskId={selectedCodeTaskId}
           codeAgentProgress={codeAgentProgress}
-          onCancelTaskCursorPolling={onCancelTaskCursorPolling}
           allChecked={allCodeTasksChecked}
           selectedCodeTaskCount={checkedCodeTaskIds.length}
-          onSelectTask={(taskId) => {
-            setSelectedTaskId(taskId);
-          }}
           onSelectCodeTask={(parentTaskId, codeTaskId) => {
             setSelectedTaskId(parentTaskId);
             setSelectedCodeTaskId(codeTaskId);
-          }}
-          onToggleTaskChecked={(taskId, checked) => {
-            updateCheckedCodeTaskIds(
-              resolveProcessTaskCodeTaskSelectionToggle({
-                parentTaskId: taskId,
-                checked,
-                selectedCodeTaskIds: checkedCodeTaskIds,
-                codeTaskPlan: implementationCodeTaskPlanV1,
-              }),
-            );
           }}
           onToggleCodeTaskChecked={(codeTaskId, checked) => {
             const parentTaskId = resolveParentTaskIdForCodeTask({
@@ -545,27 +553,41 @@ export function ImplementationExecutionBoardPanel({
               }),
             );
           }}
-          onRunSingleCodeTask={onRunSingleCodeTask}
           onCopyCodeTaskCursorPrompt={onCopyCodeTaskCursorPrompt}
           onCopyAllCodeTaskCursorPrompts={onCopyAllCodeTaskCursorPrompts}
-          onRestartTask={onRestartTask}
-          onStopTask={() => onCancelTaskCursorPolling?.()}
-          onResumeStatusCheck={() => onResumeTaskCursorStatusCheck?.()}
         />
       </section>
 
-      {integratedPipelineLines.length ? (
+      {integrationSection.showSection ? (
         <section
           className={styles.taskTreeSection}
           data-testid="implementation-integrated-pipeline-section"
         >
-          <div className={styles.taskTreeSectionTitle}>통합 단계 (전체 Task 완료 후)</div>
+          <div className={styles.taskTreeSectionTitle}>통합 단계 · 완료된 CodeTask 기준</div>
           <div className={styles.taskTreeList}>
-            {integratedPipelineLines.map((line) => (
+            {integrationSection.summaryLines.map((line) => (
+              <div key={line} className={styles.taskTreeChildLine}>
+                {line}
+              </div>
+            ))}
+            {integrationSection.pipelineLines.map((line) => (
               <div key={line.stepId} className={styles.taskTreeChildLine}>
                 {line.label}: {line.statusLabel}
               </div>
             ))}
+            {integrationSection.includedPreviewRows.length ? (
+              <details className={styles.taskTreeChildLine}>
+                <summary>이번 Preview 포함/제외 상세</summary>
+                <div>
+                  {integrationSection.includedPreviewRows.map((row) => (
+                    <div key={row.codeTaskId}>포함 · {row.title}</div>
+                  ))}
+                  {integrationSection.excludedPreviewRows.map((row) => (
+                    <div key={row.codeTaskId}>제외 · {row.label}</div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
           </div>
         </section>
       ) : null}

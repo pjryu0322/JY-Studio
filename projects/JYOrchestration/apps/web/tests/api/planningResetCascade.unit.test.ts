@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const deleteQueueMock = vi.fn();
 const deleteRunsMock = vi.fn();
 const deleteEventsMock = vi.fn();
 const deleteJobsMock = vi.fn();
@@ -13,7 +12,6 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
       fn({
-        implementationRuntimeCodeTaskQueueItem: { deleteMany: deleteQueueMock },
         implementationCodeTaskRun: { deleteMany: deleteRunsMock },
         implementationRuntimeEvent: { deleteMany: deleteEventsMock, create: createEventMock },
         implementationExecutionJob: { deleteMany: deleteJobsMock },
@@ -34,7 +32,6 @@ import { resetProjectDownstreamFromPlanning } from "@/lib/requirements/planningR
 
 describe("resetProjectDownstreamFromPlanning", () => {
   beforeEach(() => {
-    deleteQueueMock.mockReset();
     deleteRunsMock.mockReset();
     deleteEventsMock.mockReset();
     deleteJobsMock.mockReset();
@@ -42,7 +39,6 @@ describe("resetProjectDownstreamFromPlanning", () => {
     createEventMock.mockReset();
     cancelActiveMock.mockReset();
     getBundleMock.mockReset();
-    deleteQueueMock.mockResolvedValue({ count: 3 });
     deleteRunsMock.mockResolvedValue({ count: 2 });
     deleteEventsMock.mockResolvedValue({ count: 5 });
     deleteJobsMock.mockResolvedValue({ count: 1 });
@@ -52,7 +48,7 @@ describe("resetProjectDownstreamFromPlanning", () => {
     getBundleMock.mockResolvedValue({ job: null, runs: [], currentRun: null });
   });
 
-  it("deletes runtime jobs, queue items, runs, and task cursor jobs for project", async () => {
+  it("deletes runtime jobs, runs, and task cursor jobs for project", async () => {
     const result = await resetProjectDownstreamFromPlanning({
       projectId: "p1",
       reason: "planning_reset",
@@ -61,12 +57,10 @@ describe("resetProjectDownstreamFromPlanning", () => {
     expect(cancelActiveMock).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: "p1", failureReason: "cancelled_by_planning_reset" }),
     );
-    expect(deleteQueueMock).toHaveBeenCalledWith({ where: { projectId: "p1" } });
     expect(deleteRunsMock).toHaveBeenCalledWith({ where: { projectId: "p1" } });
     expect(deleteJobsMock).toHaveBeenCalledWith({ where: { projectId: "p1" } });
     expect(deleteTaskCursorMock).toHaveBeenCalledWith({ where: { projectId: "p1" } });
     expect(result.resetRuntimeJobs).toBe(1);
-    expect(result.resetQueueItems).toBe(3);
     expect(result.resetCodeTaskRuns).toBe(2);
     expect(result.resetTaskCursorJobs).toBe(4);
     expect(result.githubResourcesDeleted).toBe(false);

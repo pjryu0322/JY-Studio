@@ -186,7 +186,9 @@ function promoteIntegratedStepToReadyIfNotStarted(
 export function deriveIntegratedExecutionStateReadiness(input: {
   readonly projectId: string;
   readonly state: ImplementationIntegratedExecutionStateV1 | null | undefined;
-  readonly taskRowsCompleted: boolean;
+  /** @deprecated Use integrationPipelineUnlocked — true when at least one CodeTask is integratable for Preview */
+  readonly taskRowsCompleted?: boolean;
+  readonly integrationPipelineUnlocked?: boolean;
   readonly nowIso?: string;
 }): ImplementationIntegratedExecutionStateV1 {
   const now = input.nowIso ?? new Date().toISOString();
@@ -194,7 +196,10 @@ export function deriveIntegratedExecutionStateReadiness(input: {
     input.state ??
     buildInitialImplementationIntegratedExecutionState({ projectId: input.projectId, nowIso: now });
 
-  if (!input.taskRowsCompleted) {
+  const integrationPipelineUnlocked =
+    input.integrationPipelineUnlocked ?? input.taskRowsCompleted ?? false;
+
+  if (!integrationPipelineUnlocked) {
     return {
       ...base,
       updatedAt: now,
@@ -332,7 +337,7 @@ export function markIntegratedStepDone(input: {
   return deriveIntegratedExecutionStateReadiness({
     projectId: input.projectId,
     state: base,
-    taskRowsCompleted: input.taskRowsCompleted ?? true,
+    integrationPipelineUnlocked: input.taskRowsCompleted ?? input.integrationPipelineUnlocked ?? true,
     nowIso: now,
   });
 }

@@ -17,6 +17,7 @@ import {
   isImplementationReadyForReviewStage,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
+import { resolveIntegrationPipelineUnlocked } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import type { ImplementationReviewStageReadyV1 } from "@/lib/prototype/implementationReviewStageReady";
 import { isReviewStageEntryReady } from "@/lib/prototype/reviewStageUserTest";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
@@ -74,9 +75,20 @@ export function buildImplementationStageBoardGateContext(input: {
   readonly implementationWorkItemPreflightSummaryV1?: ImplementationWorkItemPreflightSummaryV1 | null;
   readonly implementationCodeTaskQualityGateV1?: import("@/lib/prototype/implementationCodeTaskQualityGate").ImplementationCodeTaskQualityGateV1 | null;
   readonly activeTaskCursorJob?: TaskCursorJobSummary | null;
+  readonly codeTaskExecutionRunsV1?: readonly import("@/lib/prototype/codeTaskExecutionRun").CodeTaskExecutionRunV1[] | null;
+  readonly taskCursorExecutionHistoryV1?: readonly TaskCursorExecutionV1[] | null;
+  readonly implementationAutoQualityGateV1?: import("@/lib/prototype/implementationAutoQualityGate").ImplementationAutoQualityGateV1 | null;
 }): ImplementationStageBoardGateContext | null {
   if (!input.taskList) return null;
   const previewReady = input.previewReady === true;
+  const integrationPipelineUnlocked = resolveIntegrationPipelineUnlocked({
+    codeTaskPlan: input.implementationCodeTaskPlanV1 ?? null,
+    taskList: input.taskList,
+    codeTaskRuns: input.codeTaskExecutionRunsV1 ?? null,
+    taskCursorExecution: input.taskCursorExecutionV1 ?? null,
+    taskCursorExecutionHistory: input.taskCursorExecutionHistoryV1 ?? null,
+    autoQualityGate: input.implementationAutoQualityGateV1 ?? null,
+  });
   return {
     ...(input.codeAgentWipExecutionV1 !== undefined
       ? { codeAgentWipExecutionV1: input.codeAgentWipExecutionV1 }
@@ -91,6 +103,7 @@ export function buildImplementationStageBoardGateContext(input: {
       integratedExecutionState: input.integratedExecutionState,
       boardState: input.boardState,
       qualityGateResults: input.qualityGateResults,
+      integrationPipelineUnlocked,
     }),
     previewReady,
     reviewStageEntryReady: isReviewStageEntryReady({
@@ -151,12 +164,15 @@ function evaluateIntegratedStageActionGate(
 
   switch (actionId) {
     case "RUN_REFACTOR_COMMON": {
-      if (!board.taskRows.every((row) => row.currentRole === "completed")) {
-        return { ok: false, message: "모든 개발자 작업이 완료된 뒤 리팩토링/공통화를 실행할 수 있습니다." };
-      }
-      const status = integratedStepBoardStatus(board, "refactor_common");
-      if (status !== "ready" && status !== "queued" && status !== "in_progress") {
-        return { ok: false, message: "리팩토링/공통화 단계가 아직 실행 가능한 상태가 아닙니다." };
+      const refactorStatus = integratedStepBoardStatus(board, "refactor_common");
+      if (refactorStatus !== "ready" && refactorStatus !== "queued" && refactorStatus !== "in_progress") {
+        if (refactorStatus === "not_started") {
+          return {
+            ok: false,
+            message: "완료된 CodeTask가 없어 통합할 수 없습니다. CodeTask 실행을 먼저 완료해 주세요.",
+          };
+        }
+        return { ok: false, message: "통합 단계가 아직 실행 가능한 상태가 아닙니다." };
       }
       return { ok: true };
     }
@@ -618,7 +634,6 @@ export function evaluateImplementationStageActionGate(
       }
       return { ok: true };
     }
-    case "CHECK_TASK_CURSOR_STATUS":
     case "VERIFY_TASK_CURSOR_GITHUB": {
       if (!boardContext?.taskCursorExecutionV1) {
         return { ok: false, message: "Task Cursor 실행 상태가 없습니다. [AI 개발자 실행 요청]을 먼저 실행해 주세요." };

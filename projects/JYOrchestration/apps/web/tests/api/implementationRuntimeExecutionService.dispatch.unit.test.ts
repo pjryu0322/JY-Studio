@@ -19,16 +19,12 @@ vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeCursorService"
   markImplementationRuntimeFailed: (...args: unknown[]) => markFailedMock(...args),
 }));
 
-const assertQueueMock = vi.fn();
-const markQueueDispatchingMock = vi.fn();
-const markQueueCursorRequestedMock = vi.fn();
+const assertRunMock = vi.fn();
+const reconcileRunMock = vi.fn();
 
-vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueService", () => ({
-  assertQueueItemDispatchAllowed: (...args: unknown[]) => assertQueueMock(...args),
-  markImplementationRuntimeCodeTaskQueueItemDispatching: (...args: unknown[]) =>
-    markQueueDispatchingMock(...args),
-  markImplementationRuntimeCodeTaskQueueItemCursorRequested: (...args: unknown[]) =>
-    markQueueCursorRequestedMock(...args),
+vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeRunDispatch", () => ({
+  assertRunDispatchAllowed: (...args: unknown[]) => assertRunMock(...args),
+  reconcileImplementationRunBeforeDispatch: (...args: unknown[]) => reconcileRunMock(...args),
 }));
 
 import { dispatchNextQueuedImplementationRuntimeRun } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
@@ -58,12 +54,10 @@ describe("dispatchNextQueuedImplementationRuntimeRun", () => {
     markCursorRunningMock.mockReset();
     markFailedMock.mockReset();
     pauseJobMock.mockReset();
-    assertQueueMock.mockReset();
-    markQueueDispatchingMock.mockReset();
-    markQueueCursorRequestedMock.mockReset();
-    assertQueueMock.mockResolvedValue(undefined);
-    markQueueDispatchingMock.mockResolvedValue({ id: "qi-1", status: "dispatching" });
-    markQueueCursorRequestedMock.mockResolvedValue({ id: "qi-1", status: "cursor_running" });
+    assertRunMock.mockReset();
+    reconcileRunMock.mockReset();
+    assertRunMock.mockResolvedValue(undefined);
+    reconcileRunMock.mockResolvedValue(false);
     markDispatchingMock.mockResolvedValue(undefined);
     markCursorRunningMock.mockResolvedValue(undefined);
     markFailedMock.mockResolvedValue(undefined);
@@ -94,6 +88,7 @@ describe("dispatchNextQueuedImplementationRuntimeRun", () => {
       buildCursorRequest: async () => ({ agentId: "agent-9", branchName: "wip/x" }),
     });
 
+    expect(assertRunMock).toHaveBeenCalled();
     expect(markDispatchingMock).toHaveBeenCalledWith(
       expect.objectContaining({ runId: "run-1", jobId: "job-1" }),
     );
@@ -119,13 +114,14 @@ describe("dispatchNextQueuedImplementationRuntimeRun", () => {
     ).rejects.toThrow(/launch failed/);
 
     expect(markFailedMock).toHaveBeenCalled();
+    expect(reconcileRunMock).toHaveBeenCalled();
     expect(pauseJobMock).toHaveBeenCalledWith(
       expect.objectContaining({ jobId: "job-1", failureReason: "launch failed" }),
     );
   });
 
-  it("does not call Cursor when queue dispatching transition returns null", async () => {
-    markQueueDispatchingMock.mockResolvedValue(null);
+  it("does not call Cursor when assertRunDispatchAllowed throws", async () => {
+    assertRunMock.mockRejectedValue(new Error("DB Run not found"));
     const buildCursor = vi.fn();
 
     await expect(
@@ -134,39 +130,7 @@ describe("dispatchNextQueuedImplementationRuntimeRun", () => {
         jobId: "job-1",
         buildCursorRequest: buildCursor,
       }),
-    ).rejects.toThrow(/dispatching transition failed/);
-
-    expect(buildCursor).not.toHaveBeenCalled();
-    expect(markCursorRunningMock).not.toHaveBeenCalled();
-  });
-
-  it("does not call Cursor when cursor requested queue save returns null", async () => {
-    markQueueCursorRequestedMock.mockResolvedValue(null);
-    const buildCursor = vi.fn().mockResolvedValue({ agentId: "agent-9", branchName: "wip/x" });
-
-    await expect(
-      dispatchNextQueuedImplementationRuntimeRun({
-        projectId: "p1",
-        jobId: "job-1",
-        buildCursorRequest: buildCursor,
-      }),
-    ).rejects.toThrow(/cursor requested save failed/);
-
-    expect(markFailedMock).toHaveBeenCalled();
-    expect(pauseJobMock).toHaveBeenCalled();
-  });
-
-  it("does not call Cursor when assertQueueItemDispatchAllowed throws", async () => {
-    assertQueueMock.mockRejectedValue(new Error("DB Queue item not found"));
-    const buildCursor = vi.fn();
-
-    await expect(
-      dispatchNextQueuedImplementationRuntimeRun({
-        projectId: "p1",
-        jobId: "job-1",
-        buildCursorRequest: buildCursor,
-      }),
-    ).rejects.toThrow(/DB Queue item not found/);
+    ).rejects.toThrow(/DB Run not found/);
 
     expect(buildCursor).not.toHaveBeenCalled();
   });

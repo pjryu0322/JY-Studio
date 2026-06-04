@@ -58,10 +58,9 @@ export type ImplementationCodeTaskTreeNode = Readonly<{
   readonly isActive: boolean;
   readonly isSelected: boolean;
   readonly isChecked: boolean;
-  readonly executable: boolean;
-  readonly canRunSingle: boolean;
   readonly failureReason?: string;
   readonly nextActionHint?: string;
+  readonly pollStatusLabel?: string;
 }>;
 
 export type ImplementationProcessTaskTreeNode = Readonly<{
@@ -78,7 +77,6 @@ export type ImplementationProcessTaskTreeNode = Readonly<{
   /** @deprecated Process Task는 직접 실행하지 않음 — CodeTask 버튼 사용 */
   readonly canRestart: boolean;
   readonly canStop?: boolean;
-  readonly canResumeStatusCheck?: boolean;
   readonly pollStatusLabel?: string;
   readonly restartBlockedReason?: string;
   readonly needsReworkRegistration: boolean;
@@ -199,11 +197,12 @@ function buildCodeTaskNode(input: {
     (dependencyCheck &&
       dependencyCheck.status !== "ready" &&
       (!latestRun || !isInFlightCodeTaskExecutionRunStatus(latestRun.status)));
+  const autoGateForCodeTask =
+    input.autoGate?.taskId === input.codeTask.parentTaskId ? input.autoGate : null;
   let phase = deriveCodeTaskExecutionFlowPhase({
-    parentTaskId: input.row.taskId,
+    parentTaskId: input.codeTask.parentTaskId,
     taskCursorExecution: executionForParent,
-    autoGate: input.autoGate,
-    developerStatus: input.row.developerStatus,
+    autoGate: autoGateForCodeTask,
     latestRun,
     failureReason: dependencyBlocked
       ? "blocked_by_dependency"
@@ -213,7 +212,7 @@ function buildCodeTaskNode(input: {
         ? latestRun.failureReason ?? "commit_not_created"
         : latestRun?.failureReason === "prompt_preflight_failed"
           ? "prompt_preflight_failed"
-          : input.row.failureReason,
+          : undefined,
   });
   const executionFlowSteps = buildCodeTaskExecutionFlowSteps({ phase, policy });
   const title = stripLeadingTaskIdFromTitle(input.codeTask.codeTaskId, input.codeTask.title);
@@ -302,6 +301,67 @@ function findWorkItemForCodeTask(
   return (
     workItems.find((wi) => wi.codeTaskId === codeTaskId || wi.taskId === codeTaskId) ?? null
   );
+}
+
+/** CodeTask만 동일 레벨 평면 목록 (Process Task 그룹/접기 없음). */
+export function buildImplementationFlatCodeTaskTreeNodes(input: {
+  readonly board: ImplementationExecutionBoardV1;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
+  readonly codeTaskExecutionRuns?: readonly CodeTaskExecutionRunV1[] | null;
+  readonly activeCodeTaskId?: string | null;
+  readonly selectedCodeTaskId?: string | null;
+  readonly checkedCodeTaskIds?: readonly string[] | null;
+  readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistory?: readonly TaskCursorExecutionV1[] | null;
+  readonly dbRuntimeRuns?: readonly ImplementationRuntimeRunView[] | null;
+  readonly dbCurrentRun?: ImplementationRuntimeRunView | null;
+  readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
+}): readonly ImplementationCodeTaskTreeNode[] {
+  const plan = input.codeTaskPlan;
+  if (!plan?.tasks.length) return [];
+
+  const rowByParentId = new Map(
+    input.board.taskRows.map((row) => [row.taskId.trim(), row] as const),
+  );
+  const checkedCodeTaskIds = new Set(
+    normalizeSelectedCodeTaskIds({
+      selectedCodeTaskIds: input.checkedCodeTaskIds,
+      codeTaskPlan: plan,
+    }),
+  );
+  const activeCodeTaskId = input.activeCodeTaskId?.trim() || null;
+  const selectedCodeTaskId = input.selectedCodeTaskId?.trim() || null;
+  const taskCursorExecution = input.taskCursorExecution ?? null;
+
+  const nodes: ImplementationCodeTaskTreeNode[] = [];
+  for (const codeTask of plan.tasks) {
+    const parentTaskId = codeTask.parentTaskId.trim();
+    const row = rowByParentId.get(parentTaskId);
+    if (!row) continue;
+
+    const isSelected = selectedCodeTaskId === codeTask.codeTaskId;
+    const isActive = activeCodeTaskId === codeTask.codeTaskId;
+
+    nodes.push(
+      buildCodeTaskNode({
+        codeTask,
+        row,
+        workItem: findWorkItemForCodeTask(input.cursorWorkItems ?? undefined, codeTask.codeTaskId),
+        taskCursorExecution,
+        taskCursorExecutionHistory: input.taskCursorExecutionHistory,
+        dbRuntimeRuns: input.dbRuntimeRuns,
+        dbCurrentRun: input.dbCurrentRun,
+        autoGate: input.implementationAutoQualityGateV1,
+        codeTaskPlan: plan,
+        codeTaskExecutionRuns: input.codeTaskExecutionRuns,
+        isActive,
+        isSelected,
+        isChecked: checkedCodeTaskIds.has(codeTask.codeTaskId),
+      }),
+    );
+  }
+  return nodes;
 }
 
 export function buildImplementationProcessTaskTreeNodes(input: {

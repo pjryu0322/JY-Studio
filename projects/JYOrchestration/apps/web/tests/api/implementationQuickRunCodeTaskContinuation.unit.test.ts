@@ -8,10 +8,8 @@ import {
   buildImplementationQuickRunStartedPatch,
   type ImplementationQuickRunV1,
 } from "@/lib/prototype/implementationQuickRun";
-import {
-  planQuickRunCodeTaskContinuationAfterAutoGate,
-  resolveNextQuickRunCodeTaskId,
-} from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
+import { planQuickRunCodeTaskContinuationAfterAutoGate } from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
+import { resolveNextQuickRunCodeTaskId } from "@/lib/prototype/implementationSelectedCodeTaskSequence";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 
 describe("implementationQuickRunCodeTaskContinuation", () => {
@@ -26,7 +24,7 @@ describe("implementationQuickRunCodeTaskContinuation", () => {
     stopOnFailure: true,
   };
 
-  it("resolveNextQuickRunCodeTaskId prefers DB queued current run", () => {
+  it("resolveNextQuickRunCodeTaskId returns next id in job selection after completion", () => {
     const next = resolveNextQuickRunCodeTaskId({
       queue,
       completedCodeTaskId: "CODE-A",

@@ -57,6 +57,7 @@ import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionR
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
+import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseCodeTaskPromptContextMapV1, type CodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 import {
   parseImplementationRuntimeStateV1,
@@ -650,6 +651,8 @@ export type RequirementsStateJson = {
   implementationExecutionJobsV1?: readonly ImplementationExecutionJobV1[] | null;
   /** CodeTask 단위 실행 Run(구현단계 단순 실행 SoT) */
   codeTaskExecutionRunsV1?: readonly CodeTaskExecutionRunV1[] | null;
+  /** 완료된 CodeTask 기준 Preview 통합 범위 메타데이터 */
+  implementationPreviewScopeV1?: import("@/lib/prototype/implementationPreviewScopeV1").ImplementationPreviewScopeV1 | null;
   /** 사용자 선택 CodeTask 순차 실행 큐 */
   codeTaskExecutionQueueV1?: CodeTaskExecutionQueueV1 | null;
   /** @deprecated DB Runtime Engine SoT — 읽기 호환만, 저장 시 제거 */
@@ -1140,6 +1143,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const codeTaskExecutionRunsV1 = parseCodeTaskExecutionRunsV1(
     "codeTaskExecutionRunsV1" in o ? o.codeTaskExecutionRunsV1 : undefined,
   );
+  const implementationPreviewScopeV1 = parseImplementationPreviewScopeV1(
+    "implementationPreviewScopeV1" in o ? o.implementationPreviewScopeV1 : undefined,
+  );
   const codeTaskExecutionQueueV1 = parseCodeTaskExecutionQueueV1(
     "codeTaskExecutionQueueV1" in o ? o.codeTaskExecutionQueueV1 : undefined,
   );
@@ -1329,6 +1335,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationQuickRunV1 !== undefined ? { implementationQuickRunV1 } : {}),
     ...(implementationExecutionJobsV1 !== undefined ? { implementationExecutionJobsV1 } : {}),
     ...(codeTaskExecutionRunsV1 !== undefined ? { codeTaskExecutionRunsV1 } : {}),
+    ...(implementationPreviewScopeV1 !== undefined ? { implementationPreviewScopeV1 } : {}),
     ...(codeTaskExecutionQueueV1 !== undefined ? { codeTaskExecutionQueueV1 } : {}),
     ...(implementationRuntimeUiSnapshotV1 !== undefined
       ? { implementationRuntimeUiSnapshotV1 }

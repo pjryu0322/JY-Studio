@@ -144,7 +144,7 @@ export async function launchTaskCursorForProject(input: {
 
   const launch = await launchTaskCursorCloudAgent(apiRequest);
   const { syncDbImplementationRuntimeAfterTaskCursorChange } = await import(
-    "@/lib/prototype/prototypeExecutionTaskCursorActions"
+    "@/lib/prototype/prototypeExecutionTaskCursorRuntimeSync.server"
   );
 
   if (!launch.ok) {

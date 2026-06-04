@@ -19,7 +19,8 @@ import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/impleme
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { continueSelectedCodeTaskQueueAfterAutoGate } from "@/lib/prototype/serverQuickRunContinuationService";
-import { appendPromptTimeline, type RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export const maxDuration = 120;
 
@@ -141,19 +142,17 @@ export async function POST(request: NextRequest) {
         orchestrationPatch = {
           ...orchestrationPatch,
           ...continuation.orchestrationPatch,
-          promptTimeline: appendPromptTimeline(
+          promptTimeline: appendPromptTimelineEntries(
             orchestrationPatch?.promptTimeline ?? body.promptTimeline ?? [],
-            ...(continuation.timelineEntries.length
-              ? continuation.timelineEntries
-              : []),
+            continuation.timelineEntries,
           ),
         };
       } else if (continuation.timelineEntries.length) {
         orchestrationPatch = {
           ...orchestrationPatch,
-          promptTimeline: appendPromptTimeline(
+          promptTimeline: appendPromptTimelineEntries(
             orchestrationPatch?.promptTimeline ?? body.promptTimeline ?? [],
-            ...continuation.timelineEntries,
+            continuation.timelineEntries,
           ),
         };
       }

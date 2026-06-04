@@ -47,7 +47,7 @@ export function buildCodeTaskRunUserStatus(
     case "status_check_stopped":
       return {
         label,
-        detail: run.errorMessage ?? "상태 확인이 중단되었습니다. [상태 확인]으로 재개할 수 있습니다.",
+        detail: run.errorMessage ?? "상태 확인이 중단되었습니다.",
         tone: "warning",
       };
     case "blocked_by_dependency":
@@ -98,37 +98,6 @@ export function buildCodeTaskRunGithubEvidenceSummary(
     ...(run.changedFiles?.length ? { changedFileCount: run.changedFiles.length } : {}),
     ...(run.noCodeChangeEvidence?.trim() ? { noCodeChange: run.noCodeChangeEvidence.trim() } : {}),
   };
-}
-
-export function buildCodeTaskStatusCheckUserMessage(input: {
-  readonly codeTaskTitle?: string | null;
-  readonly codeTaskId?: string | null;
-  readonly run: CodeTaskExecutionRunV1 | null | undefined;
-  readonly elapsedMinutes?: number | null;
-}): string {
-  const title =
-    String(input.codeTaskTitle ?? "").trim() ||
-    String(input.codeTaskId ?? input.run?.codeTaskId ?? "").trim() ||
-    "CodeTask";
-  const userStatus = buildCodeTaskRunUserStatus(input.run);
-  const github = buildCodeTaskRunGithubEvidenceSummary(input.run);
-  const lines = [`CodeTask: ${title}`, `상태: ${userStatus.label}`];
-  if (userStatus.detail) lines.push(`진행: ${userStatus.detail}`);
-  if (input.elapsedMinutes != null && input.elapsedMinutes > 0) {
-    lines.push(`경과: ${input.elapsedMinutes}분`);
-  }
-  const githubParts = [
-    github.pr ? `PR ${github.pr}` : null,
-    github.commit ? `commit ${github.commit}` : null,
-    github.branch ? `branch ${github.branch}` : null,
-    github.noCodeChange ? "변경 없음 확인" : null,
-  ].filter(Boolean);
-  if (githubParts.length) {
-    lines.push(`GitHub: ${githubParts.join(" / ")}`);
-  } else if (isInFlightCodeTaskExecutionRunStatus(input.run?.status ?? "queued")) {
-    lines.push("GitHub: 결과 대기 중");
-  }
-  return lines.join("\n");
 }
 
 export type CodeTaskRowView = Readonly<{

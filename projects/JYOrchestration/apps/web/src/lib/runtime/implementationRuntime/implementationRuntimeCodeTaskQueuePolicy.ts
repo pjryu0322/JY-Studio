@@ -1,5 +1,9 @@
 import type { TaskCursorGithubVerifyResult } from "@/lib/prototype/taskCursorGithubVerify";
-import type { ImplementationRuntimeCodeTaskQueueItemStatus } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueTypes";
+export type ImplementationRuntimeGithubTerminalStatus =
+  | "completed"
+  | "no_code_change_completed"
+  | "rework_required"
+  | "failed";
 
 export function resolveNoCodeChangeEvidence(
   verify: TaskCursorGithubVerifyResult,
@@ -19,7 +23,7 @@ export function canCompleteQueueItemFromGithubVerify(
 
 export function resolveQueueItemStatusAfterGithubVerify(input: {
   readonly verify: TaskCursorGithubVerifyResult;
-}): ImplementationRuntimeCodeTaskQueueItemStatus {
+}): ImplementationRuntimeGithubTerminalStatus {
   const verify = input.verify;
   if (verify.ok && verify.verifiedCommitSha?.trim()) {
     return "completed";

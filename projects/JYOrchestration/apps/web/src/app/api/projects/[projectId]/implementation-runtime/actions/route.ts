@@ -11,23 +11,13 @@ import {
   DISABLED_IMPLEMENTATION_RUNTIME_USER_ACTION_MESSAGE,
   isDisabledImplementationRuntimeUserAction,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeAdminActions";
-import { syncImplementationRuntimeFromRequirementsJson } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
-import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import { prisma } from "@/lib/prisma";
 import { formatImplementationRuntimeApiError } from "@/lib/runtime/implementationRuntime/implementationRuntimeApiErrors";
 import { buildCodeTaskExecutionQueueSnapshotFromDbJob } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
-import { syncQueueItemsForJobStart } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueService";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
 type ActionBody = {
   readonly action?: string;
   readonly selectedCodeTaskIds?: readonly string[];
-  readonly queueItems?: readonly {
-    readonly codeTaskId?: string;
-    readonly parentTaskId?: string;
-    readonly workItemId?: string | null;
-  }[];
-  readonly requirementsState?: Record<string, unknown>;
   readonly jobId?: string;
   readonly cursorAgentId?: string;
   readonly branchName?: string | null;
@@ -62,22 +52,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    if (action === "sync_from_json") {
-      const project = await prisma.project.findUnique({
-        where: { id: pid },
-        select: { requirementsStateJson: true },
-      });
-      const raw =
-        body.requirementsState ??
-        (parseRequirementsStateJson(project?.requirementsStateJson) as Record<string, unknown>);
-      const result = await syncImplementationRuntimeFromRequirementsJson({
-        projectId: pid,
-        requirementsState: raw,
-        force: false,
-      });
-      return NextResponse.json({ success: true, ...result });
-    }
-
     if (action === "start_job") {
       const ids = (body.selectedCodeTaskIds ?? []).map(String).map((s) => s.trim()).filter(Boolean);
       if (!ids.length) {
@@ -90,24 +64,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (!bundle.job?.id) {
         return NextResponse.json({ success: false, message: "Job 생성에 실패했습니다." }, { status: 500 });
       }
-      const queueMeta = body.queueItems ?? [];
-      await syncQueueItemsForJobStart({
-        projectId: pid,
-        jobId: bundle.job.id,
-        selectedCodeTaskIds: ids,
-        ...(queueMeta.length
-          ? {
-              resolveMeta: (codeTaskId) => {
-                const row = queueMeta.find((q) => String(q.codeTaskId ?? "").trim() === codeTaskId);
-                return {
-                  parentTaskId: String(row?.parentTaskId ?? codeTaskId).trim(),
-                  workItemId: row?.workItemId ?? null,
-                };
-              },
-            }
-          : {}),
-      });
-      const codeTaskQueueSnapshot = await buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle });
+      const codeTaskQueueSnapshot = buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle });
       return NextResponse.json({
         success: true,
         bundle,

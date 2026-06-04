@@ -69,7 +69,7 @@ export function validateTaskCursorGithubVerifyExecution(
       kind: "blocked",
       status: "blocked",
       message:
-        "Cursor 실행 요청이 아직 처리 중입니다. 잠시 후 다시 시도하거나 [상태 다시 확인]을 사용해 주세요.",
+        "Cursor 실행 요청이 아직 처리 중입니다. 잠시 후 다시 시도하거나 상단 툴바에서 실행 상태를 확인해 주세요.",
     };
   }
   const needsBranch =
@@ -209,7 +209,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
 
   const dbBundleAfter = await getImplementationRuntimeBundle(projectId);
   const dbQueueSnapshot = dbBundleAfter.job
-    ? await buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle: dbBundleAfter })
+    ? buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle: dbBundleAfter })
     : null;
 
   const advance = advanceQuickRunOrchestrationAfterGithubVerify({

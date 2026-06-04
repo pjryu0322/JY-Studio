@@ -4,12 +4,11 @@ import type {
 } from "@/lib/prototype/taskCursorGithubVerify";
 import { verifyTaskCursorGithubResult } from "@/lib/prototype/taskCursorGithubVerify";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
+import { tryDispatchCurrentQueuedQuickRunAfterDbAdvance } from "@/lib/prototype/serverQuickRunContinuationService";
 import {
   completeImplementationRuntimeGithubVerifyAndAdvance,
   failImplementationRuntimeGithubVerify,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
-import { applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueService";
-import { getImplementationRuntimeJobWithRuns } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 
 export type ImplementationGithubVerificationOutcomeType =
   | "github_verified"
@@ -42,18 +41,6 @@ export async function applyImplementationRuntimeGithubVerifyResult(input: {
   readonly pullRequestUrl?: string | null;
 }): Promise<ImplementationGithubVerificationOutcome> {
   const verify = input.verifyResult;
-  const job = await getImplementationRuntimeJobWithRuns({
-    projectId: input.projectId.trim(),
-    jobId: input.jobId.trim(),
-  });
-  const run = job?.runs.find((r) => r.id === input.runId.trim());
-  if (run?.codeTaskId) {
-    await applyGithubVerifyToImplementationRuntimeCodeTaskQueueItem({
-      jobId: input.jobId.trim(),
-      codeTaskId: run.codeTaskId,
-      verify,
-    });
-  }
   if (!verify.ok) {
     const outcomeType = resolveOutcomeType(verify);
     const bundle = await failImplementationRuntimeGithubVerify({
@@ -72,6 +59,9 @@ export async function applyImplementationRuntimeGithubVerifyResult(input: {
     commitSha: verify.verifiedCommitSha ?? null,
     pullRequestUrl: input.pullRequestUrl ?? null,
   });
+  await tryDispatchCurrentQueuedQuickRunAfterDbAdvance({
+    projectId: input.projectId.trim(),
+  }).catch(() => undefined);
   return {
     ok: true,
     outcomeType: "github_verified",
@@ -119,6 +109,9 @@ export async function completeImplementationRuntimeFromRecordedGithubOutcome(inp
     commitSha,
     pullRequestUrl: input.pullRequestUrl ?? null,
   });
+  await tryDispatchCurrentQueuedQuickRunAfterDbAdvance({
+    projectId: input.projectId.trim(),
+  }).catch(() => undefined);
   return {
     ok: true,
     outcomeType: "github_verified",

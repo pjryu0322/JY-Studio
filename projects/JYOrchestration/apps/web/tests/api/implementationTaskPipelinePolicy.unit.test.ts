@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildImplementationExecutionBoardFromRequirementsState,
 } from "@/lib/prototype/implementationExecutionBoard";
-import { buildImplementationTaskTreeNodes } from "@/lib/prototype/implementationExecutionBoardPanelView";
+import { buildImplementationProcessTaskTreeNodes } from "@/lib/prototype/implementationTaskTreeView";
 import {
   derivePerTaskPipelineRole,
   isPerTaskPipelineComplete,
@@ -74,7 +74,7 @@ describe("implementationTaskPipelinePolicy", () => {
       projectId: "p1",
       orchestration: { implementationTaskListV1: sampleList() },
     })!;
-    const nodes = buildImplementationTaskTreeNodes({ board, activeTaskId: "DEV-1" });
+    const nodes = buildImplementationProcessTaskTreeNodes({ board, activeTaskId: "DEV-1" });
     expect(nodes[0]?.metaLines.some((m) => m.label === "역할" && m.value === "AI 개발자")).toBe(true);
     expect(nodes[0]?.title).not.toContain("DEV-1");
   });
@@ -214,7 +214,7 @@ describe("implementationTaskPipelinePolicy", () => {
         ],
       },
     })!;
-    const dev2Node = buildImplementationTaskTreeNodes({
+    const dev2Node = buildImplementationProcessTaskTreeNodes({
       board: failedDevBoard,
       activeTaskId: "DEV-2",
     }).find((node) => node.taskId === "DEV-2");

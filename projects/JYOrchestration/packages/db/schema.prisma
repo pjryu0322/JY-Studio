@@ -1804,52 +1804,13 @@ model ImplementationExecutionJob {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  project     Project                              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     Project                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   runs        ImplementationCodeTaskRun[]
   events      ImplementationRuntimeEvent[]
-  queueItems  ImplementationRuntimeCodeTaskQueueItem[]
 
   @@index([projectId, status])
   @@index([projectId, createdAt])
   @@map("implementation_execution_jobs")
-}
-
-/// DB Runtime 실행 큐 항목 (job = runtime run container)
-model ImplementationRuntimeCodeTaskQueueItem {
-  id                   String    @id @default(cuid())
-  projectId            String
-  jobId                String
-  queueOrder           Int
-  codeTaskId           String
-  parentTaskId         String
-  workItemId           String?
-  status               String
-  attemptNo            Int       @default(1)
-  cursorRequestId      String?
-  cursorRunId          String?
-  targetRepository     String?
-  baseBranch           String?
-  workBranch           String?
-  commitSha            String?
-  branchHeadCommitSha  String?
-  changedFilesJson     Json?
-  noCodeChangeEvidence String?
-  failureReason        String?
-  errorMessage         String?
-  dispatchedAt         DateTime?
-  githubVerifiedAt     DateTime?
-  completedAt          DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-
-  job ImplementationExecutionJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-
-  @@unique([jobId, queueOrder])
-  @@unique([jobId, codeTaskId])
-  @@index([projectId])
-  @@index([jobId])
-  @@index([jobId, status])
-  @@map("implementation_runtime_code_task_queue_items")
 }
 
 /// CodeTask 단위 Runtime Run

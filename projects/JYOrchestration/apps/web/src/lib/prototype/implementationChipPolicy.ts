@@ -131,8 +131,15 @@ export function deriveImplementationBoardInterviewChips(input: {
     chips.push(DESIGNER_REVIEW_CHIP);
   }
 
-  if (allTasksComplete) {
-    chips.push(...deriveIntegratedStageInterviewChips(board));
+  const integrationUnlocked = board.integratedRows.some(
+    (row) => row.step === "refactor_common" && row.status !== "not_started",
+  );
+  if (allTasksComplete || integrationUnlocked) {
+    chips.push(
+      ...deriveIntegratedStageInterviewChips(board, {
+        integrationPipelineUnlocked: allTasksComplete || integrationUnlocked,
+      }),
+    );
     const testReadiness = deriveImplementationUserTestReadiness({
       board,
       previewReady: input.previewReady === true,

@@ -113,13 +113,9 @@ function CompactProgressSteps({
 export function ImplementationCodeAgentExecutionProgressCard({
   progress,
   executionOverview,
-  onCancelPolling,
-  onResumeStatusCheck,
 }: {
   readonly progress: CodeAgentExecutionProgressView;
   readonly executionOverview?: ImplementationExecutionOverview;
-  readonly onCancelPolling?: () => void;
-  readonly onResumeStatusCheck?: () => void;
 }) {
   const compact = progress.compactMainPresentation === true;
   const title = progress.progressCardTitle ?? "구현 실행 현황";
@@ -164,36 +160,6 @@ export function ImplementationCodeAgentExecutionProgressCard({
         </div>
       ) : null}
 
-      {progress.canCancelCloudAgentPolling && onCancelPolling ? (
-        <div className={styles.progressCancelRow}>
-          <button
-            type="button"
-            className={styles.progressCancelButton}
-            data-testid="task-cursor-cancel-polling-button"
-            onClick={onCancelPolling}
-          >
-            상태 확인 중단
-          </button>
-          {progress.pollingCancelHint ? (
-            <div className={styles.taskTreeInlineCancelHint}>{progress.pollingCancelHint}</div>
-          ) : null}
-        </div>
-      ) : null}
-      {progress.canResumeStatusCheck && onResumeStatusCheck ? (
-        <div className={styles.progressCancelRow}>
-          <button
-            type="button"
-            className={styles.progressResumeButton}
-            data-testid="task-cursor-resume-status-check-button"
-            onClick={onResumeStatusCheck}
-          >
-            상태 다시 확인
-          </button>
-          {progress.statusCheckResumeHint ? (
-            <div className={styles.taskTreeInlineCancelHint}>{progress.statusCheckResumeHint}</div>
-          ) : null}
-        </div>
-      ) : null}
 
       {compact && progress.compactSteps?.length ? (
         <CompactProgressSteps steps={progress.compactSteps} />

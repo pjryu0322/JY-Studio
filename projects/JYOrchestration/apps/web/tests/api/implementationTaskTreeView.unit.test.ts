@@ -73,7 +73,7 @@ describe("implementationTaskTreeView", () => {
     );
   });
 
-  it("places id in meta lines not in process task title", () => {
+  it("places code task id in meta lines and title without id prefix", () => {
     const board = buildImplementationExecutionBoardFromRequirementsState({
       projectId: "p1",
       orchestration: { implementationTaskListV1: sampleList() },
@@ -83,9 +83,9 @@ describe("implementationTaskTreeView", () => {
       codeTaskPlan: sampleCodeTaskPlan(),
       selectedCodeTaskId: "DEV-COMMON-001",
     });
-    expect(nodes[0]?.title).toBe("Mock 데이터 구조 정의");
-    expect(nodes[0]?.metaLines.find((m) => m.label === "ID")?.value).toBe("DEV-MOCK-001");
-    expect(nodes[0]?.title).not.toContain("DEV-MOCK-001");
+    expect(nodes[0]?.title).toBe("로딩 상태 공통 기능 구현");
+    expect(nodes[0]?.metaLines.find((m) => m.label === "ID")?.value).toBe("DEV-COMMON-001");
+    expect(nodes[0]?.title).not.toContain("DEV-COMMON-001");
   });
 
   it("shows execution flow steps when code task selected", () => {
@@ -98,17 +98,15 @@ describe("implementationTaskTreeView", () => {
       codeTaskPlan: sampleCodeTaskPlan(),
       selectedCodeTaskId: "DEV-COMMON-001",
     });
-    const codeTask = nodes[0]?.codeTasks[0];
+    const codeTask = nodes[0];
     expect(codeTask?.title).toBe("로딩 상태 공통 기능 구현");
     expect(codeTask?.metaLines.find((m) => m.label === "ID")?.value).toBe("DEV-COMMON-001");
     expect(codeTask?.metaLines.find((m) => m.label === "역할")?.value).toBe("AI 개발자");
     expect(codeTask?.executionFlowSteps.map((s) => s.label)).toEqual([
       "개발 프롬프트 생성",
-      "Cursor 실행",
+      "Cursor 실행 대기",
       "GitHub commit 확인",
       "경량 자동검사",
-      "검수 필요 여부 (생략)",
-      "보안 필요 여부",
       "완료",
     ]);
   });

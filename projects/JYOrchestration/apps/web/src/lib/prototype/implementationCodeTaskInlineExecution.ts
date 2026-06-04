@@ -4,10 +4,6 @@ import type {
 } from "@/lib/prototype/codeAgentExecutionProgressView";
 import { formatTaskCursorElapsedMinutes } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { CodeTaskExecutionFlowStepVm } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
-import {
-  TASK_CURSOR_POLLING_CANCEL_HINT,
-  TASK_CURSOR_STATUS_CHECK_RESUME_HINT,
-} from "@/lib/prototype/taskCursorExecution";
 
 export type CodeTaskInlineExecutionDetail = Readonly<{
   readonly statusLabel: string;
@@ -17,10 +13,6 @@ export type CodeTaskInlineExecutionDetail = Readonly<{
   readonly nextProcessingHint?: string;
   readonly executionFlowSteps?: readonly CodeTaskExecutionFlowStepVm[];
   readonly pipelineSteps?: readonly CodeAgentExecutionProgressStep[];
-  readonly canCancelCloudAgentPolling?: boolean;
-  readonly pollingCancelHint?: string;
-  readonly canResumeStatusCheck?: boolean;
-  readonly statusCheckResumeHint?: string;
   readonly technicalProgress?: CodeAgentExecutionProgressView;
 }>;
 
@@ -29,10 +21,6 @@ export const CODE_TASK_INLINE_SCOPE_LABEL = "이 CodeTask 실행 상태입니다
 /** @deprecated use CODE_TASK_INLINE_SCOPE_LABEL */
 export const CODE_TASK_INLINE_PARENT_SCOPE_LABEL = CODE_TASK_INLINE_SCOPE_LABEL;
 
-export {
-  TASK_CURSOR_POLLING_CANCEL_HINT as CODE_TASK_INLINE_POLLING_CANCEL_HINT,
-  TASK_CURSOR_STATUS_CHECK_RESUME_HINT as CODE_TASK_INLINE_STATUS_CHECK_RESUME_HINT,
-} from "@/lib/prototype/taskCursorExecution";
 
 const DEFAULT_NEXT_HINT = "다음 처리: AI 개발자 실행 → GitHub 결과 확인" as const;
 
@@ -100,18 +88,6 @@ export function buildCodeTaskInlineExecutionDetail(input: {
     ...(input.executionFlowSteps?.length ? { executionFlowSteps: input.executionFlowSteps } : {}),
     ...(input.progress.compactSteps?.length && !isIdle
       ? { pipelineSteps: input.progress.compactSteps }
-      : {}),
-    ...(input.progress.canCancelCloudAgentPolling
-      ? {
-          canCancelCloudAgentPolling: true,
-          pollingCancelHint: TASK_CURSOR_POLLING_CANCEL_HINT,
-        }
-      : {}),
-    ...(input.progress.canResumeStatusCheck
-      ? {
-          canResumeStatusCheck: true,
-          statusCheckResumeHint: TASK_CURSOR_STATUS_CHECK_RESUME_HINT,
-        }
       : {}),
     ...(matchesActiveParent && !isIdle ? { technicalProgress: input.progress } : {}),
   };

@@ -10,7 +10,6 @@ import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/require
 export const TASK_CURSOR_EXECUTION_VERSION = "task_cursor_execution_v1" as const;
 
 export const AI_DEVELOPER_EXECUTION_REQUEST_CHIP = "AI 개발자 실행 요청" as const;
-export const CHECK_TASK_CURSOR_STATUS_CHIP = "Cursor 실행 상태 확인" as const;
 export const VERIFY_TASK_CURSOR_GITHUB_CHIP = "GitHub 결과 확인" as const;
 
 export type TaskCursorExecutionStatus =
@@ -103,7 +102,7 @@ export const TASK_CURSOR_POLLING_CANCEL_HINT =
   "Cloud Agent 작업 자체를 취소하는 것이 아니라 플랫폼의 상태 확인만 중단합니다." as const;
 
 export const TASK_CURSOR_STATUS_CHECK_RESUME_HINT =
-  "Cloud Agent 작업은 계속 진행 중일 수 있습니다. 상태 다시 확인으로 결과 확인을 재개할 수 있습니다." as const;
+  "Cloud Agent 작업은 계속 진행 중일 수 있습니다. 상단 툴바에서 빠른 실행을 다시 시도해 주세요." as const;
 
 const TASK_CURSOR_STATUSES = new Set<TaskCursorExecutionStatus>([
   "pending",

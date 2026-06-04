@@ -55,12 +55,8 @@ function ExecutionFlowSteps({ steps }: { readonly steps: readonly CodeTaskExecut
 
 export function CodeTaskInlineExecutionDetailBlock({
   detail,
-  onCancelPolling,
-  onResumeStatusCheck,
 }: {
   readonly detail: CodeTaskInlineExecutionDetail;
-  readonly onCancelPolling?: () => void;
-  readonly onResumeStatusCheck?: () => void;
 }) {
   const hasTechnicalDetails = Boolean(detail.technicalProgress);
 
@@ -74,36 +70,6 @@ export function CodeTaskInlineExecutionDetailBlock({
       </div>
       {detail.summaryLine && detail.summaryLine !== detail.compactLine ? (
         <div className={styles.taskTreeInlineHint}>{detail.summaryLine}</div>
-      ) : null}
-      {detail.canCancelCloudAgentPolling && onCancelPolling ? (
-        <div className={styles.progressCancelRow}>
-          <button
-            type="button"
-            className={styles.progressCancelButton}
-            data-testid="task-cursor-cancel-polling-button"
-            onClick={onCancelPolling}
-          >
-            상태 확인 중단
-          </button>
-          {detail.pollingCancelHint ? (
-            <div className={styles.taskTreeInlineCancelHint}>{detail.pollingCancelHint}</div>
-          ) : null}
-        </div>
-      ) : null}
-      {detail.canResumeStatusCheck && onResumeStatusCheck ? (
-        <div className={styles.progressCancelRow}>
-          <button
-            type="button"
-            className={styles.progressResumeButton}
-            data-testid="task-cursor-resume-status-check-button"
-            onClick={onResumeStatusCheck}
-          >
-            상태 다시 확인
-          </button>
-          {detail.statusCheckResumeHint ? (
-            <div className={styles.taskTreeInlineCancelHint}>{detail.statusCheckResumeHint}</div>
-          ) : null}
-        </div>
       ) : null}
       {hasTechnicalDetails ? (
         <details

@@ -6,7 +6,7 @@ import {
   getImplementationRuntimeBundle,
   listImplementationRuntimeEvents,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
-import { buildImplementationRuntimeUiSnapshot } from "@/lib/runtime/implementationRuntime/implementationRuntimeJsonBridge";
+import { buildImplementationRuntimeUiSnapshotFromBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";
 import { buildCodeTaskExecutionQueueSnapshotFromDbJob } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import { formatRuntimeStateKoForUser } from "@/lib/runtime/implementationRuntime/implementationRuntimeGithubCentricModel";
 import {
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const bundle = await getImplementationRuntimeBundle(pid);
-    const codeTaskQueueSnapshot = await buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle });
+    const codeTaskQueueSnapshot = buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle });
     const events = await listImplementationRuntimeEvents({ projectId: pid, limit: 30 });
     const diagnostics = bundle.runs.map((run) => ({
       codeTaskId: run.codeTaskId,
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({
       success: true,
       bundle,
-      uiSnapshot: buildImplementationRuntimeUiSnapshot(bundle),
+      uiSnapshot: buildImplementationRuntimeUiSnapshotFromBundle(bundle),
       ...(codeTaskQueueSnapshot ? { codeTaskQueueSnapshot } : {}),
       diagnostics,
       events,

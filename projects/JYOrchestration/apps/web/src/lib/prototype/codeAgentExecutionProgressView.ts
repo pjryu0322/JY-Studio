@@ -17,14 +17,6 @@ import {
   resolveTaskCursorFailurePolicyFromExecution,
 } from "@/lib/prototype/taskCursorFailurePolicy";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
-import {
-  TASK_CURSOR_POLLING_CANCEL_HINT,
-  TASK_CURSOR_STATUS_CHECK_RESUME_HINT,
-} from "@/lib/prototype/taskCursorExecution";
-import {
-  isTaskCursorCloudAgentPollingCancellable,
-  isTaskCursorStatusCheckResumable,
-} from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import {
   AI_DEVELOPER_EXECUTION_REQUEST_CHIP,
@@ -87,10 +79,6 @@ export type CodeAgentExecutionProgressView = Readonly<{
   /** 모바일 메인 화면 단순화 — 기술 상세는 상세 보기로 이동 */
   readonly compactMainPresentation?: boolean;
   readonly progressCardTitle?: string;
-  readonly canCancelCloudAgentPolling?: boolean;
-  readonly canResumeStatusCheck?: boolean;
-  readonly pollingCancelHint?: string;
-  readonly statusCheckResumeHint?: string;
   readonly hideTaskDetailInCompact?: boolean;
 }>;
 
@@ -589,7 +577,7 @@ function taskCursorSummaryLine(execution: TaskCursorExecutionV1): string {
 
 function taskCursorNextProcessingHint(execution: TaskCursorExecutionV1): string {
   if (execution.status === "status_check_stopped") {
-    return "진행: [상태 다시 확인]으로 Cloud Agent 결과 확인 재개";
+    return "진행: Cursor 실행 상태가 중단됨 — 상단 툴바에서 빠른 실행을 사용하세요";
   }
   if (execution.failureReason === "prompt_preflight_failed") {
     return "프롬프트를 수정하거나 개발 프롬프트를 다시 생성한 뒤 실행해 주세요.";
@@ -890,14 +878,6 @@ function buildTaskCursorExecutionProgressView(input: {
     compactMainPresentation,
     progressCardTitle,
     hideTaskDetailInCompact: true,
-    canCancelCloudAgentPolling: isTaskCursorCloudAgentPollingCancellable(execution),
-    canResumeStatusCheck: isTaskCursorStatusCheckResumable(execution),
-    pollingCancelHint: isTaskCursorCloudAgentPollingCancellable(execution)
-      ? TASK_CURSOR_POLLING_CANCEL_HINT
-      : undefined,
-    statusCheckResumeHint: isTaskCursorStatusCheckResumable(execution)
-      ? TASK_CURSOR_STATUS_CHECK_RESUME_HINT
-      : undefined,
   };
 }
 

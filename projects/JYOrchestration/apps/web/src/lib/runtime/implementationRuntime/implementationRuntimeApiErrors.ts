@@ -9,12 +9,7 @@ export function formatImplementationRuntimeApiError(error: unknown): string {
     /column.*does not exist/i.test(message) ||
     /selectedCodeTaskIdsJson/i.test(message) ||
     /implementation_code_task_runs/i.test(message) ||
-    /implementation_runtime_events/i.test(message) ||
-    /implementation_runtime_code_task_queue_items/i.test(message) ||
-    /PRISMA_RUNTIME_QUEUE_DELEGATE_MISSING/i.test(message) ||
-    (/implementationRuntimeCodeTaskQueueItem/i.test(message) &&
-      /findMany/i.test(message) &&
-      /undefined/i.test(message))
+    /implementation_runtime_events/i.test(message)
   ) {
     return [
       "Implementation Runtime DB 스키마/Prisma 클라이언트가 최신이 아닙니다.",

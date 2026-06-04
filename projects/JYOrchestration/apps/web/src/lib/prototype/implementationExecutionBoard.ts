@@ -14,6 +14,7 @@ import {
   type ImplementationIntegratedStep,
   type ImplementationIntegratedStepStatus,
 } from "@/lib/prototype/implementationIntegratedExecutionState";
+import { resolveIntegrationPipelineUnlocked } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import {
   compareImplementationTaskListPriority,
   enrichCursorWorkItemsWithBoardReworkContext,
@@ -632,6 +633,7 @@ export type ImplementationExecutionBoardOrchestrationInput = Readonly<{
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly nowIso?: string;
+  readonly integrationPipelineUnlocked?: boolean;
 }>;
 
 /** Requirements/orchestration slice used to build the execution board. */
@@ -641,7 +643,14 @@ export type ImplementationRequirementsBoardOrchestrationSlice = Readonly<{
   readonly implementationIntegratedExecutionStateV1?: ImplementationIntegratedExecutionStateV1 | null;
   readonly implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
   readonly implementationQualityGateResultsV1?: readonly ImplementationQualityGateResultV1[] | null;
+  readonly implementationCodeTaskPlanV1?: import("@/lib/prototype/implementationCodeTaskPlan").ImplementationCodeTaskPlanV1 | null;
+  readonly codeTaskExecutionRunsV1?: readonly import("@/lib/prototype/codeTaskExecutionRun").CodeTaskExecutionRunV1[] | null;
+  readonly taskCursorExecutionV1?: import("@/lib/prototype/taskCursorExecution").TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistoryV1?: readonly import("@/lib/prototype/taskCursorExecution").TaskCursorExecutionV1[] | null;
+  readonly implementationAutoQualityGateV1?: import("@/lib/prototype/implementationAutoQualityGate").ImplementationAutoQualityGateV1 | null;
 }>;
+
+export { resolveIntegrationPipelineUnlocked } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 
 export function buildImplementationExecutionBoardFromOrchestration(
   input: ImplementationExecutionBoardOrchestrationInput,
@@ -659,6 +668,14 @@ export function buildImplementationExecutionBoardFromRequirementsState(input: {
   const taskList = input.taskList ?? input.orchestration.implementationTaskListV1 ?? null;
   if (!taskList) return null;
   const projectId = input.projectId.trim() || taskList.projectId;
+  const integrationPipelineUnlocked = resolveIntegrationPipelineUnlocked({
+    codeTaskPlan: input.orchestration.implementationCodeTaskPlanV1 ?? null,
+    taskList,
+    codeTaskRuns: input.orchestration.codeTaskExecutionRunsV1 ?? null,
+    taskCursorExecution: input.orchestration.taskCursorExecutionV1 ?? null,
+    taskCursorExecutionHistory: input.orchestration.taskCursorExecutionHistoryV1 ?? null,
+    autoQualityGate: input.orchestration.implementationAutoQualityGateV1 ?? null,
+  });
   return buildImplementationExecutionBoard({
     projectId,
     taskList,
@@ -667,6 +684,7 @@ export function buildImplementationExecutionBoardFromRequirementsState(input: {
       input.integratedExecutionState ?? input.orchestration.implementationIntegratedExecutionStateV1,
     boardState: input.orchestration.implementationExecutionBoardStateV1,
     qualityGateResults: input.orchestration.implementationQualityGateResultsV1,
+    integrationPipelineUnlocked,
     nowIso: input.nowIso,
   });
 }
@@ -1082,6 +1100,7 @@ export function buildImplementationExecutionBoard(input: {
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly nowIso?: string;
+  readonly integrationPipelineUnlocked?: boolean;
 }): ImplementationExecutionBoardV1 {
   const now = input.nowIso ?? new Date().toISOString();
   const reviewerGlobal = aggregateRoleBoardStatus(input.executionState, "reviewer");
@@ -1116,10 +1135,13 @@ export function buildImplementationExecutionBoard(input: {
       }),
     );
 
+  const integrationPipelineUnlocked =
+    input.integrationPipelineUnlocked === true || allTasksCompleted;
+
   const integratedState = deriveIntegratedExecutionStateReadiness({
     projectId: input.projectId.trim(),
     state: input.integratedExecutionState,
-    taskRowsCompleted: allTasksCompleted,
+    integrationPipelineUnlocked,
     nowIso: now,
   });
 
@@ -1218,11 +1240,12 @@ const INTEGRATED_STEP_NEXT_CHIP: Readonly<
 
 export function deriveIntegratedStageInterviewChips(
   board: ImplementationExecutionBoardV1,
+  input?: { readonly integrationPipelineUnlocked?: boolean },
 ): readonly string[] {
-  const allTasksComplete =
-    board.taskRows.length > 0 &&
-    board.taskRows.every((row) => row.currentRole === "completed");
-  if (!allTasksComplete) return [];
+  const integrationUnlocked =
+    input?.integrationPipelineUnlocked === true ||
+    board.integratedRows.some((row) => row.step === "refactor_common" && row.status !== "not_started");
+  if (!integrationUnlocked) return [];
 
   const stepStatus = (step: ImplementationIntegratedStep) =>
     board.integratedRows.find((row) => row.step === step)?.status;
@@ -1244,8 +1267,9 @@ export function deriveIntegratedStageInterviewChips(
 /** Primary integrated-stage chip when tasks are complete; aligns with next action primary label. */
 export function deriveIntegratedStagePrimaryChip(
   board: ImplementationExecutionBoardV1,
+  input?: { readonly integrationPipelineUnlocked?: boolean },
 ): string | null {
-  const chips = deriveIntegratedStageInterviewChips(board);
+  const chips = deriveIntegratedStageInterviewChips(board, input);
   return chips[0] ?? null;
 }
 
