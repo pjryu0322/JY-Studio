@@ -1,4 +1,3 @@
-import { runTaskCursorWorkerTick } from "@/lib/prototype/taskCursorWorkerService";
 import { buildTaskCursorWorkerSchedulerTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 
 const DEFAULT_INTERVAL_MS = 8_000;
@@ -35,7 +34,20 @@ export function resolveTaskCursorEmbeddedWorkerIntervalMs(
   return Number.isFinite(n) && n >= 3_000 ? n : DEFAULT_INTERVAL_MS;
 }
 
-/** Next.js dev hot reload 중복 등록 방지 singleton scheduler */
+async function runEmbeddedWorkerTick(input: {
+  readonly workerId: string;
+  readonly limit: number;
+  readonly projectId?: string | null;
+}): Promise<void> {
+  const { runTaskCursorWorkerTick } = await import("@/lib/prototype/taskCursorWorkerService");
+  await runTaskCursorWorkerTick({
+    workerId: input.workerId,
+    limit: input.limit,
+    projectId: input.projectId ?? null,
+  });
+}
+
+/** Next.js dev hot reload 중복 등록 방지 singleton scheduler (Node server only) */
 export function ensureTaskCursorEmbeddedWorkerStarted(): void {
   if (typeof setInterval !== "function") return;
   if (!resolveTaskCursorEmbeddedWorkerEnabled()) return;
@@ -48,7 +60,7 @@ export function ensureTaskCursorEmbeddedWorkerStarted(): void {
   writeGlobalState(state);
 
   const tick = () => {
-    void runTaskCursorWorkerTick({ workerId, limit: 2 }).catch((error) => {
+    void runEmbeddedWorkerTick({ workerId, limit: 2 }).catch((error) => {
       console.warn(
         "[task-cursor-embedded-worker]",
         error instanceof Error ? error.message : String(error),
@@ -77,11 +89,14 @@ export function scheduleTaskCursorPollSoon(input?: {
   const delayMs = Math.max(0, input?.delayMs ?? 500);
   const projectId = input?.projectId?.trim() || null;
 
-  setTimeout(() => {
-    void runTaskCursorWorkerTick({ workerId, limit: 1, projectId }).catch(() => {
-      // embedded one-shot; periodic scheduler will retry
+  const handle = setTimeout(() => {
+    void runEmbeddedWorkerTick({ workerId, limit: 1, projectId }).catch(() => {
+      // periodic scheduler will retry
     });
-  }, delayMs).unref?.();
+  }, delayMs);
+  if (typeof handle.unref === "function") {
+    handle.unref();
+  }
 }
 
 export function buildTaskCursorWorkerTickScheduledTimeline(input: {

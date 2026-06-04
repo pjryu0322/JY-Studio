@@ -53,7 +53,7 @@ import {
   syncRunPollScheduleFromJob,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimePollRepository";
 import { TASK_CURSOR_JOB_DEFAULT_POLL_DELAY_MS } from "@/lib/prototype/taskCursorExecutionJobRepository";
-import { dispatchQueuedImplementationRuntimeRunWithCursor } from "@/lib/prototype/selectedCodeTaskCursorExecution";
+import { dispatchQueuedImplementationRuntimeRunWithCursor, resolveCodeTaskIdForDbRuntimeDispatch } from "@/lib/prototype/selectedCodeTaskCursorExecution";
 
 type Body = {
   readonly projectId?: string;
@@ -247,7 +247,11 @@ export async function POST(request: NextRequest) {
       launchOnly && shouldUseTaskCursorCloudAgentApi(readiness.context.cursorApiUrl!);
 
     if (useCloudAgentLaunch) {
-      const codeTaskIdForRuntime = String(body.codeTaskId ?? taskId).trim();
+      const bundleForDispatch = await getImplementationRuntimeBundle(projectId);
+      const codeTaskIdForRuntime = resolveCodeTaskIdForDbRuntimeDispatch({
+        requestedCodeTaskId: String(body.codeTaskId ?? taskId).trim(),
+        bundle: bundleForDispatch,
+      });
       let launchOk = false;
       let launchMessage: string | undefined;
 

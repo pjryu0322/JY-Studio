@@ -167,6 +167,25 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
 }
 
 /** DB Runtime queued Run → Cursor launch → cursor_running (없으면 null) */
+export function resolveCodeTaskIdForDbRuntimeDispatch(input: {
+  readonly requestedCodeTaskId: string;
+  readonly bundle: ImplementationRuntimeBundleView;
+}): string {
+  const requested = input.requestedCodeTaskId.trim();
+  const job = input.bundle.job;
+  const run = input.bundle.currentRun;
+  if (!requested || !job || job.status !== "running" || !run) {
+    return requested;
+  }
+  if (run.codeTaskId === requested) {
+    return requested;
+  }
+  if (job.currentCodeTaskId === run.codeTaskId) {
+    return run.codeTaskId;
+  }
+  return requested;
+}
+
 export async function dispatchQueuedImplementationRuntimeRunWithCursor(input: {
   readonly projectId: string;
   readonly codeTaskId: string;
@@ -178,12 +197,17 @@ export async function dispatchQueuedImplementationRuntimeRunWithCursor(input: {
   }>;
 }): Promise<ImplementationRuntimeBundleView | null> {
   const pid = input.projectId.trim();
-  const codeTaskId = input.codeTaskId.trim();
-  if (!pid || !codeTaskId) return null;
+  if (!pid) return null;
 
   const bundle = await getImplementationRuntimeBundle(pid);
   const job = bundle.job;
   const run = bundle.currentRun;
+  const codeTaskId = resolveCodeTaskIdForDbRuntimeDispatch({
+    requestedCodeTaskId: input.codeTaskId.trim(),
+    bundle,
+  });
+  if (!codeTaskId) return null;
+
   if (!job || job.status !== "running" || !run || run.codeTaskId !== codeTaskId) {
     return null;
   }

@@ -339,7 +339,10 @@ import {
   partitionCodeTaskIdsByDependencyReadiness,
 } from "@/lib/prototype/codeTaskDependencyResolver";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
-import { prepareSelectedCodeTaskCursorExecution } from "@/lib/prototype/selectedCodeTaskCursorExecution";
+import {
+  prepareSelectedCodeTaskCursorExecution,
+  type CodeTaskQueueDispatchRef,
+} from "@/lib/prototype/selectedCodeTaskCursorExecution";
 import { mergeRequirementsStateWithRuntime } from "@/lib/prototype/implementationRuntimeSync";
 import {
   buildPersistedActiveDispatchSnapshotPatch,
@@ -1582,6 +1585,7 @@ export function PrototypePreviewPanel({
   const taskCursorPollActiveRunIdRef = useRef<string | null>(null);
   const autoQualityGateInFlightRef = useRef<string | null>(null);
   const codeTaskDispatchPreferredTaskIdRef = useRef<string | null>(null);
+  const pendingQuickRunQueueDispatchRef = useRef<CodeTaskQueueDispatchRef | null>(null);
   const implementationRuntimePollSuspendedRef = useRef(false);
   const [implementationRuntimeDbBundle, setImplementationRuntimeDbBundle] =
     useState<ImplementationRuntimeBundleView | null>(null);
@@ -4352,7 +4356,9 @@ export function PrototypePreviewPanel({
             showToast(message);
             return { outcome: "blocked", message };
           }
-          const queueDispatch = persistedQueueDispatch;
+          const queueDispatch =
+            pendingQuickRunQueueDispatchRef.current ?? persistedQueueDispatch;
+          pendingQuickRunQueueDispatchRef.current = null;
           if (queueDispatch) {
             const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
               gitRepoUrl: executionSetupRow?.gitRepoUrl,
@@ -6766,21 +6772,35 @@ export function PrototypePreviewPanel({
       selectedTaskIds: quickRunParentTaskIds,
       nowIso,
     });
+    const runtimeUiSnapshotPatch = buildPersistedActiveDispatchSnapshotPatch({
+      projectId: pid,
+      dispatch: quickRunActiveDispatch,
+      baseState: {
+        ...(parseRequirementsStateJson(requirementsStateJsonRef.current) as Record<string, unknown>),
+        implementationQuickRunV1: quickRun,
+        codeTaskExecutionQueueV1,
+        codeTaskExecutionRunsV1,
+      },
+      nowIso,
+    });
+    applyImplementationOrchestrationResult(
+      {
+        messages: executionSingleChat.chatMessages,
+        orchestrationPatch: {
+          implementationQuickRunV1: quickRun,
+          codeTaskExecutionQueueV1,
+          codeTaskExecutionRunsV1,
+          implementationRuntimeUiSnapshotV1: runtimeUiSnapshotPatch,
+        },
+      },
+      { persist: false },
+    );
+    pendingQuickRunQueueDispatchRef.current = quickRunActiveDispatch;
     void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
       implementationQuickRunV1: quickRun,
       codeTaskExecutionQueueV1,
       codeTaskExecutionRunsV1,
-      implementationRuntimeUiSnapshotV1: buildPersistedActiveDispatchSnapshotPatch({
-        projectId: pid,
-        dispatch: quickRunActiveDispatch,
-        baseState: {
-          ...(parseRequirementsStateJson(requirementsStateJsonRef.current) as Record<string, unknown>),
-          implementationQuickRunV1: quickRun,
-          codeTaskExecutionQueueV1,
-          codeTaskExecutionRunsV1,
-        },
-        nowIso,
-      }),
+      implementationRuntimeUiSnapshotV1: runtimeUiSnapshotPatch,
       promptTimeline: appendPromptTimeline(
         parsedRequirementsState.promptTimeline,
         buildImplementationQuickRunTimelineEntry({

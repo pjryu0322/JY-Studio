@@ -9,6 +9,8 @@ import {
   TASK_CURSOR_GITHUB_FALLBACK_AFTER_MS,
   TASK_CURSOR_LONG_RUNNING_LABEL_AFTER_MS,
 } from "@/lib/prototype/taskCursorGithubFallbackVerifyPolicy";
+import { resolveCodeTaskIdForDbRuntimeDispatch } from "@/lib/prototype/selectedCodeTaskCursorExecution";
+import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 
 const NOW = "2026-06-04T01:00:00.000Z";
@@ -53,6 +55,30 @@ describe("taskCursorGithubFallbackVerifyPolicy", () => {
     const elapsed = Date.now() - Date.parse(tenMin);
     expect(elapsed).toBeGreaterThan(TASK_CURSOR_GITHUB_FALLBACK_AFTER_MS);
     expect(elapsed).toBeLessThan(TASK_CURSOR_LONG_RUNNING_LABEL_AFTER_MS);
+  });
+});
+
+describe("resolveCodeTaskIdForDbRuntimeDispatch", () => {
+  it("maps parent taskId request to current DB run codeTaskId", () => {
+    const bundle = {
+      job: {
+        id: "j1",
+        status: "running",
+        currentCodeTaskId: "CODE-DEV-FRAME-001-001",
+      },
+      currentRun: {
+        id: "r1",
+        codeTaskId: "CODE-DEV-FRAME-001-001",
+        runtimeState: "queued",
+      },
+      runs: [],
+    } as unknown as ImplementationRuntimeBundleView;
+    expect(
+      resolveCodeTaskIdForDbRuntimeDispatch({
+        requestedCodeTaskId: "DEV-FRAME-001",
+        bundle,
+      }),
+    ).toBe("CODE-DEV-FRAME-001-001");
   });
 });
 
