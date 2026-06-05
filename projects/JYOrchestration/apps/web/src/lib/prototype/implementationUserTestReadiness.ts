@@ -24,8 +24,9 @@ const ACTIVE_REWORK_STATUSES = new Set(["requested", "accepted"]);
 function countActiveReworkRequests(
   boardState: ImplementationExecutionBoardStateV1 | null | undefined,
 ): number {
-  if (!boardState?.reworkRequests.length) return 0;
-  return boardState.reworkRequests.filter((r) => ACTIVE_REWORK_STATUSES.has(r.status)).length;
+  const reworkRequests = boardState?.reworkRequests ?? [];
+  if (!reworkRequests.length) return 0;
+  return reworkRequests.filter((r) => ACTIVE_REWORK_STATUSES.has(r.status)).length;
 }
 
 function countActiveReworkFromBoardRows(board: ImplementationExecutionBoardV1): number {

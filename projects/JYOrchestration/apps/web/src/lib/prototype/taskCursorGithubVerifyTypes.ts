@@ -18,7 +18,6 @@ export type TaskCursorGithubVerifyRequestBody = Readonly<{
   readonly implementationAutoQualityGateV1?: unknown;
   readonly implementationAutoQualityGateHistoryV1?: unknown;
   readonly implementationQualityGateResultsV1?: unknown;
-  readonly codeTaskExecutionQueueV1?: unknown;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
 

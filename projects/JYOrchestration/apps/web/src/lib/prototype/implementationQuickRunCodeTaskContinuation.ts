@@ -1,8 +1,6 @@
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
-import {
-  type CodeTaskExecutionQueueV1,
-} from "@/lib/prototype/codeTaskExecutionQueue";
+import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import {
   appendCodeTaskExecutionRun,
   createCodeTaskExecutionRun,
@@ -14,8 +12,10 @@ import { syncCodeTaskExecutionRunsFromTaskCursor } from "@/lib/prototype/codeTas
 import {
   isInFlightCodeTaskExecutionRunStatus,
   isQueuedCodeTaskExecutionRunStatus,
+  isTerminalCodeTaskExecutionRunStatus,
 } from "@/lib/prototype/codeTaskExecutionRunStatus";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import { isTerminalRuntimeState } from "@/lib/runtime/implementationRuntime/implementationRuntimeStateMachine";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { buildImplementationQuickRunCursorDispatchTimelineEntry } from "@/lib/prototype/implementationQuickRun";
 import {
@@ -28,9 +28,10 @@ import { buildPersistedActiveDispatchSnapshotPatch } from "@/lib/prototype/imple
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { CodeTaskQueueDispatchRef } from "@/lib/prototype/selectedCodeTaskCursorExecution";
-import { type TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import { patchTaskCursorExecution, type TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { resolveNextQuickRunCodeTaskId } from "@/lib/prototype/implementationSelectedCodeTaskSequence";
 
 export function isAutoGatePassedForExecution(
   execution: TaskCursorExecutionV1,
@@ -49,11 +50,12 @@ export function isAutoGatePassedForExecution(
 export function resolveCompletedCodeTaskId(input: {
   readonly execution: TaskCursorExecutionV1;
   readonly runs: readonly CodeTaskExecutionRunV1[];
-  readonly queue: CodeTaskExecutionQueueV1 | null;
+  readonly dbBundle?: ImplementationRuntimeBundleView | null;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly taskList?: ImplementationTaskListV1 | null;
   readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
 }): string | null {
+  const queue = resolveEffectiveCodeTaskExecutionQueue({ dbBundle: input.dbBundle });
   const byCursor = input.runs.find(
     (r) =>
       r.processTaskId === input.execution.taskId &&
@@ -62,9 +64,67 @@ export function resolveCompletedCodeTaskId(input: {
   );
   if (byCursor?.codeTaskId) return byCursor.codeTaskId;
 
-  if (input.queue) {
-    for (let idx = 0; idx <= input.queue.currentIndex; idx += 1) {
-      const codeTaskId = input.queue.selectedCodeTaskIds[idx];
+  const matchParentTask = (codeTaskId: string): boolean => {
+    const fromPlan = input.codeTaskPlan?.tasks.find((t) => t.codeTaskId === codeTaskId);
+    if (fromPlan?.parentTaskId === input.execution.taskId) return true;
+    const target = resolveCodeTaskDispatchTarget({
+      codeTaskId,
+      codeTaskPlan: input.codeTaskPlan,
+      taskList: input.taskList,
+      cursorWorkItems: input.cursorWorkItems,
+    });
+    return target?.parentTaskId === input.execution.taskId;
+  };
+
+  const jobCurrent = input.dbBundle?.job?.currentCodeTaskId?.trim();
+  if (
+    jobCurrent &&
+    matchParentTask(jobCurrent) &&
+    (input.execution.status === "scm_pending" ||
+      input.execution.status === "github_verified" ||
+      input.execution.status === "review_pending" ||
+      input.execution.status === "security_pending")
+  ) {
+    return jobCurrent;
+  }
+
+  const dbCodeTaskCandidates = new Set<string>();
+  const cur = input.dbBundle?.currentRun;
+  if (cur?.codeTaskId?.trim() && isTerminalRuntimeState(cur.runtimeState)) {
+    dbCodeTaskCandidates.add(cur.codeTaskId.trim());
+  }
+  for (const run of input.dbBundle?.runs ?? []) {
+    const id = run.codeTaskId?.trim();
+    if (id && isTerminalRuntimeState(run.runtimeState)) {
+      dbCodeTaskCandidates.add(id);
+    }
+  }
+  if (jobCurrent) dbCodeTaskCandidates.add(jobCurrent);
+
+  for (const codeTaskId of dbCodeTaskCandidates) {
+    if (!matchParentTask(codeTaskId)) continue;
+    const jsonRun = findLatestRunForCodeTask(input.runs, codeTaskId);
+    if (
+      jsonRun?.cursorRunId &&
+      input.execution.cursorRunId &&
+      jsonRun.cursorRunId === input.execution.cursorRunId
+    ) {
+      return codeTaskId;
+    }
+    if (
+      jsonRun &&
+      isTerminalCodeTaskExecutionRunStatus(jsonRun.status) &&
+      (input.execution.status === "scm_pending" ||
+        input.execution.status === "github_verified" ||
+        input.execution.status === "completed")
+    ) {
+      return codeTaskId;
+    }
+  }
+
+  if (queue) {
+    for (let idx = 0; idx <= queue.currentIndex; idx += 1) {
+      const codeTaskId = queue.selectedCodeTaskIds[idx];
       if (!codeTaskId) continue;
       const target = resolveCodeTaskDispatchTarget({
         codeTaskId,
@@ -76,10 +136,21 @@ export function resolveCompletedCodeTaskId(input: {
     }
   }
 
-  for (const codeTaskId of input.queue?.selectedCodeTaskIds ?? []) {
+  for (const codeTaskId of queue?.selectedCodeTaskIds ?? []) {
     const run = findLatestRunForCodeTask(input.runs, codeTaskId);
     if (run?.processTaskId === input.execution.taskId) return codeTaskId;
   }
+
+  const terminalForParent = [...input.runs]
+    .filter(
+      (r) =>
+        r.processTaskId === input.execution.taskId &&
+        r.codeTaskId &&
+        isTerminalCodeTaskExecutionRunStatus(r.status),
+    )
+    .sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
+  if (terminalForParent[0]?.codeTaskId) return terminalForParent[0].codeTaskId;
+
   return null;
 }
 
@@ -96,7 +167,6 @@ export function shouldPlanQuickRunCodeTaskContinuationAfterAutoGate(input: {
   readonly quickRun?: ImplementationQuickRunV1 | null;
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly autoGate?: ImplementationAutoQualityGateV1 | null;
-  readonly queue?: CodeTaskExecutionQueueV1 | null;
   readonly runs?: readonly CodeTaskExecutionRunV1[];
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly taskList?: ImplementationTaskListV1 | null;
@@ -120,13 +190,12 @@ export function shouldPlanQuickRunCodeTaskContinuationAfterAutoGate(input: {
   const completedCodeTaskId = resolveCompletedCodeTaskId({
     execution,
     runs: input.runs ?? [],
-    queue: input.queue ?? null,
+    dbBundle: input.dbBundle,
     codeTaskPlan: input.codeTaskPlan,
     taskList: input.taskList,
     cursorWorkItems: input.cursorWorkItems,
   });
   const nextCodeTaskId = resolveNextQuickRunCodeTaskId({
-    queue: input.queue ?? null,
     completedCodeTaskId,
     dbBundle: input.dbBundle,
   });
@@ -147,7 +216,6 @@ export function planQuickRunCodeTaskContinuationAfterAutoGate(input: {
   readonly quickRun: ImplementationQuickRunV1;
   readonly taskCursorExecution: TaskCursorExecutionV1;
   readonly autoGate: ImplementationAutoQualityGateV1;
-  readonly queue: CodeTaskExecutionQueueV1 | null;
   readonly runs: readonly CodeTaskExecutionRunV1[];
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly taskList?: ImplementationTaskListV1 | null;
@@ -167,14 +235,13 @@ export function planQuickRunCodeTaskContinuationAfterAutoGate(input: {
   const completedCodeTaskId = resolveCompletedCodeTaskId({
     execution,
     runs: input.runs,
-    queue: input.queue,
+    dbBundle: input.dbBundle,
     codeTaskPlan: input.codeTaskPlan,
     taskList: input.taskList,
     cursorWorkItems: input.cursorWorkItems,
   });
 
   const nextCodeTaskId = resolveNextQuickRunCodeTaskId({
-    queue: input.queue,
     completedCodeTaskId,
     dbBundle: input.dbBundle,
   });
@@ -284,5 +351,84 @@ export function planQuickRunCodeTaskContinuationAfterAutoGate(input: {
     dispatch,
     orchestrationPatch,
     timelineEntry,
+  };
+}
+
+/** 선택 CodeTask 큐의 마지막 항목까지 끝났을 때 JSON 실행 상태를 terminal로 맞춘다. */
+export function buildQuickRunQueueExhaustedOrchestrationPatch(input: {
+  readonly projectId: string;
+  readonly taskCursor: TaskCursorExecutionV1;
+  readonly completedCodeTaskId: string;
+  readonly runs: readonly CodeTaskExecutionRunV1[];
+  readonly quickRun?: ImplementationQuickRunV1 | null;
+  readonly autoGate?: ImplementationAutoQualityGateV1 | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly taskList?: ImplementationTaskListV1 | null;
+  readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
+  readonly nowIso?: string;
+}): PrototypeExecutionOrchestrationPersistInput | null {
+  const pid = input.projectId.trim();
+  const completedCodeTaskId = input.completedCodeTaskId.trim();
+  const quickRun = input.quickRun ?? null;
+  if (!pid || !completedCodeTaskId || !quickRun) return null;
+
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const autoGate = input.autoGate ?? null;
+  let execution = input.taskCursor;
+
+  const dispatchTarget = resolveCodeTaskDispatchTarget({
+    codeTaskId: completedCodeTaskId,
+    codeTaskPlan: input.codeTaskPlan,
+    taskList: input.taskList,
+    cursorWorkItems: input.cursorWorkItems,
+  });
+  const workItemId =
+    findLatestRunForCodeTask(input.runs, completedCodeTaskId)?.workItemId ??
+    dispatchTarget?.workItem.id ??
+    "";
+
+  let runs =
+    workItemId && isAutoGatePassedForExecution(execution, autoGate)
+      ? syncCodeTaskExecutionRunsFromTaskCursor({
+          runs: input.runs,
+          execution,
+          codeTaskId: completedCodeTaskId,
+          workItemId,
+          nowIso,
+        })
+      : [...input.runs];
+
+  if (
+    isAutoGatePassedForExecution(execution, autoGate) &&
+    execution.status !== "scm_pending"
+  ) {
+    execution = patchTaskCursorExecution(execution, {
+      status: "scm_pending",
+      errorMessage: undefined,
+      failureReason: undefined,
+      nowIso,
+    });
+    if (workItemId) {
+      runs = syncCodeTaskExecutionRunsFromTaskCursor({
+        runs,
+        execution,
+        codeTaskId: completedCodeTaskId,
+        workItemId,
+        nowIso,
+      });
+    }
+  }
+
+  const syncedQuickRun = syncImplementationQuickRunWithExecution({
+    quickRun,
+    taskCursorExecution: execution,
+    autoGate,
+    nowIso,
+  });
+
+  return {
+    implementationQuickRunV1: syncedQuickRun,
+    codeTaskExecutionRunsV1: runs,
+    taskCursorExecutionV1: execution,
   };
 }

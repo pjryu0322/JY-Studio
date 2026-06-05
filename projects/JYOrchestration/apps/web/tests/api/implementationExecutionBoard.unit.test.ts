@@ -40,7 +40,9 @@ import {
   appendReworkRequest,
   markReworkRequestsDoneForTask,
   parseImplementationExecutionBoardStateV1,
+  type ImplementationExecutionBoardStateV1,
 } from "@/lib/prototype/implementationExecutionBoardState";
+import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import {
   buildInitialImplementationIntegratedExecutionState,
@@ -251,7 +253,7 @@ describe("implementationExecutionBoard", () => {
     expect(board.taskRows[0]?.currentRole).toBe("developer");
   });
 
-  it("currentRole is reviewer when developer done but reviewer not done", () => {
+  it("currentRole is completed when developer done (per-task reviewer is integrated stage)", () => {
     const state = executionStateWithDeveloperDone();
     const board = buildImplementationExecutionBoard({
       projectId: "p-board",
@@ -259,7 +261,8 @@ describe("implementationExecutionBoard", () => {
       executionState: state,
       nowIso: NOW,
     });
-    expect(board.taskRows[0]?.currentRole).toBe("reviewer");
+    expect(board.taskRows[0]?.currentRole).toBe("completed");
+    expect(board.taskRows[0]?.reviewerStatus).not.toBe("done");
   });
 
   it("currentRole is completed when per-task developer and reviewer quality gate are done", () => {
@@ -1285,5 +1288,48 @@ describe("implementationExecutionBoard", () => {
       needsReworkRegistration: false,
       blockedReason: "다른 Task의 Cursor 실행이 진행 중입니다.",
     });
+  });
+
+  it("buildImplementationExecutionBoard tolerates missing tasks/items/reworkRequests/failedTaskIds", () => {
+    const taskList = {
+      ...sampleTaskList(),
+      tasks: undefined,
+    } as unknown as ImplementationTaskListV1;
+    const board = buildImplementationExecutionBoard({
+      projectId: "p-board",
+      taskList,
+      executionState: {
+        version: "implementation_task_execution_state_v1",
+        projectId: "p-board",
+        createdAt: NOW,
+        updatedAt: NOW,
+        items: undefined,
+        summary: { total: 0, ready: 0, queued: 0, inProgress: 0, done: 0, failed: 0, skipped: 0 },
+      } as unknown as ImplementationTaskExecutionStateV1,
+      boardState: {
+        version: "implementation_execution_board_state_v1",
+        projectId: "p-board",
+        createdAt: NOW,
+        updatedAt: NOW,
+        userConfirmations: undefined,
+        reworkRequests: undefined,
+      } as unknown as ImplementationExecutionBoardStateV1,
+      qualityGateResults: [
+        {
+          version: "implementation_quality_gate_result_v1",
+          role: "reviewer",
+          status: "failed",
+          createdAt: NOW,
+          updatedAt: NOW,
+          source: "mock_local_gate",
+          summary: "fail",
+          checks: [],
+          failedTaskIds: undefined,
+        } as ImplementationQualityGateResultV1,
+      ],
+      integrationPipelineUnlocked: true,
+      nowIso: NOW,
+    });
+    expect(board.taskRows).toEqual([]);
   });
 });

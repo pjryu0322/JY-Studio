@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   evaluateTaskCursorGithubVerifyReadiness,
+  isTransientTaskCursorGithubVerifyMiss,
   verifyTaskCursorGithubResult,
 } from "@/lib/prototype/taskCursorGithubVerify";
 import { buildInitialTaskCursorExecution } from "@/lib/prototype/taskCursorExecution";
@@ -86,6 +87,71 @@ describe("verifyTaskCursorGithubResult", () => {
     expect(result.verifiedCommitSha).toBe("abc123def4567890");
   });
 
+  it("accepts an older branch commit when HEAD fails task message validation", async () => {
+    const headSha = "headbad0000000001";
+    const goodSha = "goodcommit000001";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/git/ref/heads/")) {
+          return new Response(JSON.stringify({ object: { sha: headSha } }), { status: 200 });
+        }
+        if (url.includes("/commits?")) {
+          return new Response(
+            JSON.stringify([{ sha: headSha }, { sha: goodSha }]),
+            { status: 200 },
+          );
+        }
+        if (url.includes(`/commits/${headSha}`)) {
+          return new Response(
+            JSON.stringify({
+              sha: headSha,
+              commit: { message: "chore: merge fixup" },
+              files: [{ filename: "src/App.tsx" }],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.includes(`/commits/${goodSha}`)) {
+          return new Response(
+            JSON.stringify({
+              sha: goodSha,
+              commit: { message: "wip(cursor): [DEV-MOCK-001]" },
+              files: [{ filename: "src/App.tsx" }],
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+    const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+      gitRepoUrl: "https://github.com/owner/repo",
+      gitRepoName: "owner/repo",
+      baseBranch: "main",
+    })!;
+    const execution = {
+      ...buildInitialTaskCursorExecution({
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        workItemIds: ["wi-1"],
+        targetRepository: "owner/repo",
+        baseBranch: "main",
+        workBranch: "wip/cursor/run-without-task-slug",
+      }),
+      status: "cursor_completed" as const,
+      pushed: true,
+    };
+    const result = await verifyTaskCursorGithubResult({
+      execution,
+      targetRepository,
+      githubToken: "gh-token",
+      allowedPathGlobs: ["src/**"],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.verifiedCommitSha).toBe(goodSha);
+  });
+
   it("reports missing WIP branch with actionable message", async () => {
     vi.stubGlobal(
       "fetch",
@@ -138,6 +204,23 @@ describe("verifyTaskCursorGithubResult", () => {
     });
     expect(result.ok).toBe(false);
     expect(result.reason).toBe("github_auth_failed");
+  });
+});
+
+describe("isTransientTaskCursorGithubVerifyMiss", () => {
+  it("treats missing branch/commit as transient", () => {
+    expect(
+      isTransientTaskCursorGithubVerifyMiss({ ok: false, detailReason: "branch_not_found" }),
+    ).toBe(true);
+    expect(
+      isTransientTaskCursorGithubVerifyMiss({ ok: false, reason: "commit_not_created" }),
+    ).toBe(true);
+    expect(
+      isTransientTaskCursorGithubVerifyMiss({ ok: false, reason: "github_verify_failed" }),
+    ).toBe(false);
+    expect(
+      isTransientTaskCursorGithubVerifyMiss({ ok: false, detailReason: "changed_files_empty" }),
+    ).toBe(true);
   });
 });
 

@@ -229,8 +229,15 @@ export function deriveImplementationRuntimeState(input: {
   const queue = input.queue ?? null;
   const runs = input.runs ?? [];
   const execution = input.taskCursor ?? null;
-  const headCodeTaskId = queue ? getCurrentQueueCodeTaskId(queue) : null;
-  const headRun = getCurrentCodeTaskRunForQueue(queue, runs);
+  const existing = input.existing ?? null;
+  const headCodeTaskId = queue
+    ? getCurrentQueueCodeTaskId(queue)
+    : existing?.activeCodeTaskId?.trim() ||
+      existing?.activeDispatch?.codeTaskId?.trim() ||
+      null;
+  const headRun = headCodeTaskId
+    ? findLatestRunForCodeTask(runs, headCodeTaskId)
+    : getCurrentCodeTaskRunForQueue(queue, runs);
   const runtimeState = mapRunStatusToRuntimeState(headRun, execution);
   const githubState = mapGithubState(execution, headRun);
 
@@ -290,7 +297,6 @@ export function deriveImplementationRuntimeFromRequirementsState(input: {
   readonly projectId: string;
   readonly nowIso?: string;
 }): ImplementationRuntimeStateV1 {
-  const queue = parseCodeTaskExecutionQueueV1(input.raw.codeTaskExecutionQueueV1);
   const runs = parseCodeTaskExecutionRunsV1(input.raw.codeTaskExecutionRunsV1);
   const taskCursor = parseTaskCursorExecutionV1(input.raw.taskCursorExecutionV1);
   const snapshot = parseImplementationRuntimeUiSnapshotV1(input.raw.implementationRuntimeUiSnapshotV1);
@@ -299,7 +305,7 @@ export function deriveImplementationRuntimeFromRequirementsState(input: {
     : parseImplementationRuntimeStateV1(input.raw.implementationRuntimeStateV1);
   return deriveImplementationRuntimeState({
     projectId: input.projectId,
-    queue,
+    queue: null,
     runs,
     taskCursor,
     existing,
@@ -374,15 +380,14 @@ export type RuntimeRecoveryPlan = Readonly<{
 
 export function evaluateRuntimeRecovery(input: {
   readonly runtime: ImplementationRuntimeStateV1;
-  readonly queue?: CodeTaskExecutionQueueV1 | null;
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
   readonly taskCursor?: TaskCursorExecutionV1 | null;
+  readonly quickRunRunning?: boolean;
   readonly pollCount?: number;
   readonly nowIso?: string;
 }): RuntimeRecoveryPlan {
   const nowMs = Date.parse(input.nowIso ?? new Date().toISOString());
   const issues: RuntimeRecoveryIssue[] = [];
-  const queue = input.queue;
   const runs = input.runs ?? [];
   const execution = input.taskCursor ?? null;
   const serverPolling = isServerTaskCursorPolling();
@@ -393,7 +398,14 @@ export function evaluateRuntimeRecovery(input: {
     serverPolling,
     nowMs,
   });
-  const headRun = getCurrentCodeTaskRunForQueue(queue, runs);
+  const activeCodeTaskId =
+    input.runtime.activeCodeTaskId?.trim() ||
+    input.runtime.activeDispatch?.codeTaskId?.trim() ||
+    "";
+  const headRun = activeCodeTaskId
+    ? findLatestRunForCodeTask(runs, activeCodeTaskId)
+    : null;
+  const quickRunRunning = input.quickRunRunning === true;
 
   let shouldRedispatch = false;
   let shouldWatchdogPoll = false;
@@ -401,7 +413,7 @@ export function evaluateRuntimeRecovery(input: {
   let markFailed = false;
 
   if (
-    queue?.status === "running" &&
+    quickRunRunning &&
     input.runtime.runtimeState === "queued" &&
     !execution &&
     (!headRun || headRun.status === "queued")
@@ -515,6 +527,30 @@ export function buildRuntimeStateWithActiveDispatch(input: {
     activeRunId: input.dispatch.runId,
     lastStateChangeAt: now,
     updatedAt: now,
+  };
+}
+
+export function buildActiveDispatchFromRuntimeHead(input: {
+  readonly runtime: ImplementationRuntimeStateV1;
+  readonly runs: readonly CodeTaskExecutionRunV1[];
+}): ImplementationRuntimeActiveDispatchV1 | null {
+  const dispatch = input.runtime.activeDispatch;
+  if (dispatch) {
+    const run =
+      input.runs.find((r) => r.runId === dispatch.runId) ??
+      findLatestRunForCodeTask(input.runs, dispatch.codeTaskId);
+    if (run?.status === "queued") return dispatch;
+    return null;
+  }
+  const codeTaskId = input.runtime.activeCodeTaskId?.trim();
+  if (!codeTaskId) return null;
+  const run = findLatestRunForCodeTask(input.runs, codeTaskId);
+  if (!run || run.status !== "queued") return null;
+  return {
+    codeTaskId,
+    parentTaskId: run.processTaskId,
+    workItemId: run.workItemId,
+    runId: run.runId,
   };
 }
 

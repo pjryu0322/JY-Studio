@@ -20,7 +20,14 @@ import {
 } from "@/lib/prototype/implementationTaskPipelinePolicy";
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
-import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import {
+  parseTaskCursorExecutionV1,
+  type TaskCursorExecutionV1,
+} from "@/lib/prototype/taskCursorExecution";
+import {
+  MANUAL_GITHUB_VERIFY_RETRY_LABEL,
+  shouldShowManualGithubVerifyRetry,
+} from "@/lib/prototype/implementationCodeTaskGithubVerifyRetryUi";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import type { ImplementationCodeTaskExecutionFeedbackV1 } from "@/lib/prototype/implementationCodeTaskExecutionFeedback";
 import { buildImplementationCodeTaskFeedbackSummary } from "@/lib/prototype/implementationCodeTaskFeedbackUi";
@@ -66,6 +73,7 @@ import {
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
+import { shouldShowIntegrationPipelineButton } from "@/lib/prototype/implementationIntegratedPipelineBatch";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
@@ -88,14 +96,17 @@ export function ImplementationExecutionBoardPanel({
   onSelectedCodeTaskIdsChange,
   onCopyCodeTaskCursorPrompt,
   onCopyAllCodeTaskCursorPrompts,
+  onRetryGithubVerify,
   implementationRuntimeStateV1,
   implementationRuntimeDbBundle,
   codeTaskExecutionFeedbackV1,
   implementationCodeTaskPlanV1,
   cursorWorkItemsV1,
-  codeTaskExecutionQueueV1,
+  runtimeCodeTaskQueueView,
   codeTaskExecutionRunsV1,
   implementationPreviewScopeV1,
+  onRunIntegrationPipeline,
+  integrationPipelineBusy,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -116,13 +127,16 @@ export function ImplementationExecutionBoardPanel({
   readonly onSelectedCodeTaskIdsChange?: (selectedCodeTaskIds: readonly string[]) => void;
   readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
   readonly onCopyAllCodeTaskCursorPrompts?: () => void;
+  readonly onRetryGithubVerify?: () => void;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
-  readonly codeTaskExecutionQueueV1?: unknown;
+  readonly runtimeCodeTaskQueueView?: unknown;
   readonly codeTaskExecutionRunsV1?: unknown;
   readonly implementationPreviewScopeV1?: unknown;
+  readonly onRunIntegrationPipeline?: () => void;
+  readonly integrationPipelineBusy?: boolean;
 }) {
   const feedbackSummary = useMemo(
     () => buildImplementationCodeTaskFeedbackSummary(codeTaskExecutionFeedbackV1),
@@ -161,8 +175,8 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const codeTaskQueue = useMemo(
-    () => parseCodeTaskExecutionQueueV1(codeTaskExecutionQueueV1) ?? null,
-    [codeTaskExecutionQueueV1],
+    () => parseCodeTaskExecutionQueueV1(runtimeCodeTaskQueueView) ?? null,
+    [runtimeCodeTaskQueueView],
   );
 
   const codeTaskRuns = useMemo(
@@ -328,6 +342,10 @@ export function ImplementationExecutionBoardPanel({
         implementationAutoQualityGateV1,
         promptTimeline,
         serverJob: activeTaskCursorJob ?? null,
+        sequentialQuickRunCodeTaskIds:
+          implementationRuntimeDbBundle?.job?.status === "running"
+            ? (implementationRuntimeDbBundle.job.selectedCodeTaskIds ?? [])
+            : null,
       }),
     [
       board,
@@ -378,6 +396,15 @@ export function ImplementationExecutionBoardPanel({
     ],
   );
 
+  const showIntegrationButton = useMemo(
+    () =>
+      shouldShowIntegrationPipelineButton({
+        canIntegrate: integrationSection.canIntegrate,
+        board,
+      }),
+    [integrationSection.canIntegrate, board],
+  );
+
   const codeAgentProgress = useMemo(
     () =>
       buildCodeAgentExecutionProgressView({
@@ -392,11 +419,36 @@ export function ImplementationExecutionBoardPanel({
 
   const [reworkOpen, setReworkOpen] = useState(false);
 
+  const selectedExecutionProgress = useMemo(
+    () =>
+      resolveSelectedCodeTaskExecutionProgress({
+        selectedCodeTaskIds: checkedCodeTaskIds,
+        queue: codeTaskQueue,
+        runs: codeTaskRuns,
+      }),
+    [checkedCodeTaskIds, codeTaskQueue, codeTaskRuns],
+  );
+
+  const showManualGithubVerifyRetry = useMemo(
+    () =>
+      shouldShowManualGithubVerifyRetry({
+        queue: codeTaskQueue,
+        runs: codeTaskRuns,
+        currentCodeTaskId: queueCurrentCodeTaskId,
+        taskCursor: parseTaskCursorExecutionV1(taskCursorExecutionV1),
+      }),
+    [codeTaskQueue, codeTaskRuns, queueCurrentCodeTaskId, taskCursorExecutionV1],
+  );
+
   const queueSummaryLine = useMemo(() => {
     if (!codeTaskQueue || codeTaskQueue.status === "idle") return null;
+    const sequenceIds =
+      checkedCodeTaskIds.length > 0
+        ? checkedCodeTaskIds
+        : codeTaskQueue.selectedCodeTaskIds;
     const runSummary = summarizeCodeTaskExecutionQueueRuns({
       runs: codeTaskRuns,
-      selectedCodeTaskIds: codeTaskQueue.selectedCodeTaskIds,
+      selectedCodeTaskIds: sequenceIds,
     });
     if (
       codeTaskQueue.status === "completed" ||
@@ -407,26 +459,30 @@ export function ImplementationExecutionBoardPanel({
         runSummary,
         codeTaskPlan: implementationCodeTaskPlanV1,
         runs: codeTaskRuns,
-        selectedCodeTaskIds: codeTaskQueue.selectedCodeTaskIds,
+        selectedCodeTaskIds: sequenceIds,
       });
     }
+    const total =
+      selectedExecutionProgress?.total ??
+      sequenceIds.length ??
+      codeTaskQueue.selectedCodeTaskIds.length;
+    const currentIndex =
+      selectedExecutionProgress != null
+        ? Math.max(0, selectedExecutionProgress.done - 1)
+        : codeTaskQueue.currentIndex;
     return formatCodeTaskExecutionQueueSummary({
-      currentIndex: codeTaskQueue.currentIndex,
-      total: codeTaskQueue.selectedCodeTaskIds.length,
+      currentIndex,
+      total,
       status: codeTaskQueue.status,
       runSummary,
     });
-  }, [codeTaskRuns, codeTaskQueue, implementationCodeTaskPlanV1]);
-
-  const selectedExecutionProgress = useMemo(
-    () =>
-      resolveSelectedCodeTaskExecutionProgress({
-        selectedCodeTaskIds: checkedCodeTaskIds,
-        queue: codeTaskQueue,
-        runs: codeTaskRuns,
-      }),
-    [checkedCodeTaskIds, codeTaskQueue, codeTaskRuns],
-  );
+  }, [
+    checkedCodeTaskIds,
+    codeTaskRuns,
+    codeTaskQueue,
+    implementationCodeTaskPlanV1,
+    selectedExecutionProgress,
+  ]);
 
   return (
     <section
@@ -467,6 +523,22 @@ export function ImplementationExecutionBoardPanel({
         {queueSummaryLine ? (
           <div className={styles.queueSummaryBanner} data-testid="code-task-execution-queue-summary">
             {queueSummaryLine}
+          </div>
+        ) : null}
+        {showManualGithubVerifyRetry ? (
+          <div className={styles.runtimeAdminActions} data-testid="code-task-github-verify-auto">
+            <span className={styles.githubVerifyAutoStatus}>
+              GitHub push 여부를 플랫폼이 자동 확인 중입니다. (Cursor 시작 후 60초 뒤 1회, 이후 10초마다)
+            </span>
+            {onRetryGithubVerify ? (
+              <button
+                type="button"
+                className={styles.githubVerifyRetryLink}
+                onClick={onRetryGithubVerify}
+              >
+                {MANUAL_GITHUB_VERIFY_RETRY_LABEL}
+              </button>
+            ) : null}
           </div>
         ) : null}
         {reworkVm?.candidateCount ? (
@@ -563,7 +635,20 @@ export function ImplementationExecutionBoardPanel({
           className={styles.taskTreeSection}
           data-testid="implementation-integrated-pipeline-section"
         >
-          <div className={styles.taskTreeSectionTitle}>통합 단계 · 완료된 CodeTask 기준</div>
+          <div className={styles.integrationSectionHeader}>
+            <div className={styles.taskTreeSectionTitle}>통합 단계 · 완료된 CodeTask 기준</div>
+            {showIntegrationButton && onRunIntegrationPipeline ? (
+              <button
+                type="button"
+                className={styles.integrationPrimaryButton}
+                data-testid="implementation-integration-run-button"
+                disabled={integrationPipelineBusy === true}
+                onClick={onRunIntegrationPipeline}
+              >
+                {integrationPipelineBusy ? "통합 진행 중…" : "통합"}
+              </button>
+            ) : null}
+          </div>
           <div className={styles.taskTreeList}>
             {integrationSection.summaryLines.map((line) => (
               <div key={line} className={styles.taskTreeChildLine}>

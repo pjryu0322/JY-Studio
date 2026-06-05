@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EXECUTION_FORCE_RELEASE_FAILURE_REASON,
+  EXECUTION_STALE_FAILURE_REASON,
   IMPLEMENTATION_EXECUTION_STALE_MINUTES,
 } from "@/lib/prototype/implementationExecutionDeadlockRecovery";
 import { recoverImplementationRuntimeState } from "@/lib/prototype/implementationRuntimeRecovery";
@@ -45,6 +46,21 @@ function sampleCursor(overrides: Partial<TaskCursorExecutionV1> = {}): TaskCurso
   };
 }
 
+const runtimeUiSnapshot = {
+  version: "implementation_runtime_ui_snapshot_v1" as const,
+  projectId: "p1",
+  runtimeState: "cursor_running" as const,
+  activeCodeTaskId: "CT-1",
+  activeDispatch: {
+    codeTaskId: "CT-1",
+    parentTaskId: "DEV-A",
+    workItemId: "wi-1",
+    runId: "run-1",
+  },
+  githubState: "none" as const,
+  updatedAt: NOW,
+};
+
 describe("recoverImplementationRuntimeState", () => {
   it("marks stale task cursor and run after 30 minutes", () => {
     const result = recoverImplementationRuntimeState({
@@ -52,39 +68,22 @@ describe("recoverImplementationRuntimeState", () => {
       rawRequirementsState: {
         taskCursorExecutionV1: sampleCursor(),
         codeTaskExecutionRunsV1: [sampleRun({ status: "cursor_running" })],
-        codeTaskExecutionQueueV1: {
-          version: "code_task_execution_queue_v1",
-          projectId: "p1",
-          selectedCodeTaskIds: ["CT-1"],
-          currentIndex: 0,
-          status: "running",
-          createdAt: NOW,
-          updatedAt: NOW,
-        },
+        implementationRuntimeUiSnapshotV1: runtimeUiSnapshot,
       },
       nowIso: STALE_NOW,
     });
     expect(result.issues.some((i) => i.includes("cursor") || i.includes("stale"))).toBe(true);
     const runs = result.patch?.codeTaskExecutionRunsV1 as CodeTaskExecutionRunV1[];
     expect(runs[0]?.status).toBe("status_check_stopped");
-    expect(runs[0]?.failureReason).toBe("status_check_stopped");
+    expect(runs[0]?.failureReason).toBe(EXECUTION_STALE_FAILURE_REASON);
   });
 
-  it("force release stops in-flight runs and pauses queue", () => {
+  it("force release stops in-flight runs and pauses quick run", () => {
     const result = recoverImplementationRuntimeState({
       projectId: "p1",
       rawRequirementsState: {
         taskCursorExecutionV1: sampleCursor({ status: "cursor_requested", cursorRunId: undefined }),
         codeTaskExecutionRunsV1: [sampleRun({ status: "queued" })],
-        codeTaskExecutionQueueV1: {
-          version: "code_task_execution_queue_v1",
-          projectId: "p1",
-          selectedCodeTaskIds: ["CT-1"],
-          currentIndex: 0,
-          status: "running",
-          createdAt: NOW,
-          updatedAt: NOW,
-        },
         implementationQuickRunV1: {
           version: "implementation_quick_run_v1",
           projectId: "p1",
@@ -98,7 +97,6 @@ describe("recoverImplementationRuntimeState", () => {
     expect(result.issues).toContain("force_release");
     const runs = result.patch?.codeTaskExecutionRunsV1 as CodeTaskExecutionRunV1[];
     expect(runs[0]?.failureReason).toBe(EXECUTION_FORCE_RELEASE_FAILURE_REASON);
-    expect(result.patch?.codeTaskExecutionQueueV1).toMatchObject({ status: "paused" });
     expect(result.patch?.implementationQuickRunV1).toMatchObject({ status: "paused" });
   });
 });

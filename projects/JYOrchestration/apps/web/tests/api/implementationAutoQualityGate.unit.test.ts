@@ -157,7 +157,7 @@ describe("implementationAutoQualityGate", () => {
     ).toBe("done");
   });
 
-  it("review fail skips security and marks gate failed", () => {
+  it("reconciles stale developer failed after github verified and passes auto gate", () => {
     const list = taskList();
     const execution = verifiedExecution();
     let state = executionStateDeveloperDone();
@@ -181,9 +181,25 @@ describe("implementationAutoQualityGate", () => {
     });
     expect("blocked" in outcome).toBe(false);
     if ("blocked" in outcome) return;
-    expect(outcome.ok).toBe(false);
-    expect(outcome.autoGate.status).toBe("failed");
-    expect(outcome.autoGate.securityResultId).toBeUndefined();
+    expect(outcome.ok).toBe(true);
+    expect(outcome.autoGate.status).toBe("passed");
+  });
+
+  it("shouldAutoStart retries after failed gate when github verify still complete", () => {
+    const execution = verifiedExecution();
+    const gate = buildInitialImplementationAutoQualityGate({
+      projectId: "p1",
+      taskId: execution.taskId,
+      sourceCommitSha: execution.commitSha!,
+      nowIso: NOW,
+    });
+    const failedGate = { ...gate, status: "failed" as const, failureReason: "1개 대상 작업 검수 실패" };
+    expect(
+      shouldAutoStartImplementationQualityGate({
+        taskCursorExecution: execution,
+        autoGate: failedGate,
+      }),
+    ).toBe(true);
   });
 
   it("shouldResume when gate is in flight for same commit", () => {

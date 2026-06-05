@@ -211,11 +211,20 @@ function patchExecutionItems(
   items: readonly ImplementationTaskExecutionItemV1[],
   patchByTaskId: ReadonlyMap<string, Partial<ImplementationTaskExecutionItemV1>>,
   nowIso: string,
+  options?: { readonly allowRecoverDoneFromTerminalTaskIds?: ReadonlySet<string> },
 ): ImplementationTaskExecutionItemV1[] {
   return items.map((item) => {
     const patch = patchByTaskId.get(item.taskId);
     if (!patch) return item;
-    if (TERMINAL_STATUSES.has(item.status) && patch.status && patch.status !== item.status) {
+    const allowRecoverDone =
+      patch.status === "done" &&
+      options?.allowRecoverDoneFromTerminalTaskIds?.has(item.taskId) === true;
+    if (
+      TERMINAL_STATUSES.has(item.status) &&
+      patch.status &&
+      patch.status !== item.status &&
+      !allowRecoverDone
+    ) {
       return item;
     }
     return {
@@ -248,13 +257,14 @@ export function applyExecutionStateItemPatches(
   nowIso: string,
 ): ImplementationTaskExecutionStateV1 {
   const patchByTaskId = new Map<string, Partial<ImplementationTaskExecutionItemV1>>();
-  for (const item of state.items) {
+  const baseItems = state.items ?? [];
+  for (const item of baseItems) {
     const patch = patchForItem(item);
     if (patch) patchByTaskId.set(item.taskId, patch);
   }
   if (patchByTaskId.size === 0) return state;
-  const items = patchExecutionItems(state.items, patchByTaskId, nowIso);
-  if (!executionItemsChanged(state.items, items)) return state;
+  const items = patchExecutionItems(baseItems, patchByTaskId, nowIso);
+  if (!executionItemsChanged(baseItems, items)) return state;
   return {
     ...state,
     updatedAt: nowIso,
@@ -328,6 +338,8 @@ export function markDeveloperTasksDoneForWip(input: {
   readonly selectedTaskId?: string;
   readonly nowIso?: string;
   readonly resultSummary?: string;
+  /** GitHub verify 성공 등으로 failed → done 복구 */
+  readonly recoverFromTerminalFailure?: boolean;
 }): ImplementationTaskExecutionStateV1 {
   const now = input.nowIso ?? new Date().toISOString();
   const summary = input.resultSummary?.trim() || "Code Agent WIP 작업 완료";
@@ -340,9 +352,16 @@ export function markDeveloperTasksDoneForWip(input: {
     patchByTaskId.set(taskId, {
       status: "done",
       resultSummary: summary,
+      errorMessage: undefined,
     });
   }
-  const items = patchExecutionItems(input.state.items, patchByTaskId, now);
+  const recoverIds =
+    input.recoverFromTerminalFailure && scopedTaskId
+      ? new Set([scopedTaskId])
+      : undefined;
+  const items = patchExecutionItems(input.state.items, patchByTaskId, now, {
+    allowRecoverDoneFromTerminalTaskIds: recoverIds,
+  });
   return {
     ...input.state,
     updatedAt: now,
@@ -446,7 +465,7 @@ export function areRoleTasksDone(
   executionState: ImplementationTaskExecutionStateV1 | null | undefined,
   ownerRole: ImplementationTaskExecutionRole,
 ): boolean {
-  const roleItems = executionState?.items.filter((item) => item.ownerRole === ownerRole) ?? [];
+  const roleItems = (executionState?.items ?? []).filter((item) => item.ownerRole === ownerRole);
   if (!roleItems.length) return true;
   return roleItems.every((item) => item.status === "done" || item.status === "skipped");
 }

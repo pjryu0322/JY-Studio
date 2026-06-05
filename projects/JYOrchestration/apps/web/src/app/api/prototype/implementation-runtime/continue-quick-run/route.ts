@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { continueSelectedCodeTaskQueueAfterAutoGate } from "@/lib/prototype/serverQuickRunContinuationService";
+import {
+  continueSelectedCodeTaskQueueAfterAutoGate,
+  tryDispatchCurrentQueuedQuickRunAfterDbAdvance,
+} from "@/lib/prototype/serverQuickRunContinuationService";
+import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
@@ -38,6 +42,28 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
+    const mode = String(body.mode ?? "").trim();
+
+    if (mode === "db_queued_auto_dispatch" || mode === "dispatch_current_queued") {
+      const continuation = await tryDispatchCurrentQueuedQuickRunAfterDbAdvance({ projectId });
+      if (continuation.orchestrationPatch) {
+        await persistTaskCursorOrchestrationToProject({
+          projectId,
+          orchestrationPatch: continuation.orchestrationPatch,
+        });
+      }
+      return NextResponse.json({
+        success: continuation.ok,
+        outcome: continuation.outcome,
+        nextTaskId: continuation.nextTaskId,
+        nextCodeTaskId: continuation.nextCodeTaskId,
+        reason: continuation.reason,
+        diagnostics: continuation.diagnostics,
+        orchestrationPatch: continuation.orchestrationPatch,
+        mode,
+      });
+    }
+
     const projectRow = await prisma.project.findUnique({
       where: { id: projectId },
       select: { requirementsStateJson: true },
@@ -61,6 +87,13 @@ export async function POST(request: NextRequest) {
       runId: execution?.cursorRunId,
     });
 
+    if (continuation.orchestrationPatch) {
+      await persistTaskCursorOrchestrationToProject({
+        projectId,
+        orchestrationPatch: continuation.orchestrationPatch,
+      });
+    }
+
     return NextResponse.json({
       success: continuation.ok,
       outcome: continuation.outcome,
@@ -69,7 +102,7 @@ export async function POST(request: NextRequest) {
       reason: continuation.reason,
       diagnostics: continuation.diagnostics,
       orchestrationPatch: continuation.orchestrationPatch,
-      mode: body.mode ?? "recover_missing_server_continuation",
+      mode: mode || "recover_missing_server_continuation",
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

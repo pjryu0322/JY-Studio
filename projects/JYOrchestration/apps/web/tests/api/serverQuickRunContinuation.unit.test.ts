@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { findDispatchableRunForCodeTask } from "@/lib/prototype/codeTaskExecutionRun";
 import {
   buildQuickRunNextDispatchExecutedTimelineEntry,
   buildQuickRunNextDispatchPlannedTimelineEntry,
@@ -25,6 +26,39 @@ function policy() {
     workItem: null,
   });
 }
+
+describe("findDispatchableRunForCodeTask", () => {
+  it("prefers prompt_ready over newer cursor_running attempt", () => {
+    const runs = [
+      {
+        version: "code_task_execution_run_v1" as const,
+        runId: "r1",
+        projectId: "p1",
+        processTaskId: "T1",
+        workItemId: "w1",
+        codeTaskId: "CODE-A",
+        status: "cursor_running" as const,
+        attemptNo: 1,
+        createdAt: "2026-06-05T10:00:00.000Z",
+        updatedAt: "2026-06-05T10:05:00.000Z",
+      },
+      {
+        version: "code_task_execution_run_v1" as const,
+        runId: "r2",
+        projectId: "p1",
+        processTaskId: "T1",
+        workItemId: "w1",
+        codeTaskId: "CODE-A",
+        status: "prompt_ready" as const,
+        attemptNo: 2,
+        createdAt: "2026-06-05T10:01:00.000Z",
+        updatedAt: "2026-06-05T10:01:00.000Z",
+      },
+    ];
+    const picked = findDispatchableRunForCodeTask(runs, "CODE-A");
+    expect(picked?.runId).toBe("r2");
+  });
+});
 
 describe("quickRunNextDispatchTimeline", () => {
   it("builds planned/executed/skipped actions", () => {

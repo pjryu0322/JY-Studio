@@ -18,8 +18,12 @@ const IMPLEMENTATION_ACTION_PREFIXES = [
 ] as const;
 
 const EXECUTION_LOG_ACTION_LABELS: Record<string, string> = {
+  implementation_quick_run_client_blocked: "Quick Run (클라이언트 차단)",
+  implementation_quick_run_client_trace: "Quick Run (클라이언트)",
+  implementation_ui_toast: "UI 알림",
   implementation_quick_run_started: "Quick 실행 시작",
   implementation_quick_run_cursor_dispatch: "Quick → Cursor 실행 연결",
+  quick_run_db_queued_auto_dispatch: "DB queued → Cursor 자동 실행",
   quick_run_next_dispatch_planned: "다음 CodeTask 실행 예정",
   quick_run_next_dispatch_executed: "다음 CodeTask Cursor 실행",
   quick_run_next_dispatch_skipped: "다음 CodeTask 실행 스킵",
@@ -152,6 +156,8 @@ export function isPersistentExecutionLogTimelineEntry(
   const action = String(entry.action ?? "").trim();
   if (!action || NON_PERSISTENT_EXECUTION_LOG_ACTIONS.has(action)) return false;
   if (action.startsWith("planning_implementation_seed_")) return false;
+  if (action === "implementation_ui_toast") return true;
+  if (action.startsWith("quick_run_")) return true;
   if (action.startsWith("task_cursor_")) return true;
   if (action.startsWith("cursor_api_")) return true;
   if (action.startsWith("platform_scm_")) return true;
@@ -207,8 +213,15 @@ export function formatExecutionLogTimelineLabel(
 ): string {
   if (!entry) return "";
   const action = String(entry.action ?? "").trim();
-  const base = EXECUTION_LOG_ACTION_LABELS[action] ?? action;
   const fields = parseExecutionLogResponseFields(entry.responseText);
+  if (action === "implementation_ui_toast" && fields.message) {
+    return fields.message;
+  }
+  if (action === "implementation_quick_run_client_trace" && fields.message) {
+    const phase = fields.phase ? `[${fields.phase}] ` : "";
+    return `${phase}${fields.message}`;
+  }
+  const base = EXECUTION_LOG_ACTION_LABELS[action] ?? action;
   if (action === "task_cursor_api_failed" && fields.reason === "poll_cancelled") {
     return "Cloud Agent 상태 확인 중단(레거시)";
   }

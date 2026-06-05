@@ -12,13 +12,12 @@ export function hasDbImplementationRuntimeJob(
 
 export function shouldPollImplementationRuntime(input: {
   readonly bundle: ImplementationRuntimeBundleView | null | undefined;
-  readonly legacyQueueRunning: boolean;
   readonly legacyCursorInFlight: boolean;
 }): boolean {
   const job = input.bundle?.job;
   if (job?.status === "running" || job?.status === "paused") return true;
   if (isRuntimeInFlight(input.bundle?.currentRun?.runtimeState)) return true;
-  if (input.legacyQueueRunning || input.legacyCursorInFlight) return true;
+  if (input.legacyCursorInFlight) return true;
   return false;
 }
 

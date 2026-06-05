@@ -1,8 +1,6 @@
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
-import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
-import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import {
-  getCurrentCodeTaskRunForQueue,
+  findLatestRunForCodeTask,
   parseCodeTaskExecutionRunsV1,
   updateCodeTaskExecutionRun,
 } from "@/lib/prototype/codeTaskExecutionRun";
@@ -15,7 +13,7 @@ import {
   EXECUTION_STALE_USER_MESSAGE,
 } from "@/lib/prototype/implementationExecutionDeadlockRecovery";
 import {
-  buildActiveDispatchForQueueHead,
+  buildActiveDispatchFromRuntimeHead,
   deriveImplementationRuntimeFromRequirementsState,
   evaluateRuntimeRecovery,
   type ImplementationRuntimeActiveDispatchV1,
@@ -29,7 +27,6 @@ import {
 } from "@/lib/prototype/taskCursorClientPollLoop";
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
-import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 export type ImplementationRuntimeRecoveryResult = Readonly<{
   readonly patch: Record<string, unknown> | null;
@@ -81,13 +78,6 @@ export function recoverImplementationRuntimeState(input: {
       });
     }
     if (runs.length) next = { ...next, codeTaskExecutionRunsV1: runs };
-    const queue = parseCodeTaskExecutionQueueV1(next.codeTaskExecutionQueueV1);
-    if (queue?.status === "running") {
-      next = {
-        ...next,
-        codeTaskExecutionQueueV1: { ...queue, status: "paused", updatedAt: nowIso },
-      };
-    }
     const quickRun = parseImplementationQuickRunV1(next.implementationQuickRunV1);
     if (quickRun?.status === "running") {
       next = {
@@ -115,9 +105,9 @@ export function recoverImplementationRuntimeState(input: {
     };
   }
 
-  const queue = parseCodeTaskExecutionQueueV1(next.codeTaskExecutionQueueV1);
   const runs = parseCodeTaskExecutionRunsV1(next.codeTaskExecutionRunsV1) ?? [];
   let execution = parseTaskCursorExecutionV1(next.taskCursorExecutionV1);
+  const quickRun = parseImplementationQuickRunV1(next.implementationQuickRunV1);
   const runtime = deriveImplementationRuntimeFromRequirementsState({
     raw: next,
     projectId: input.projectId,
@@ -125,9 +115,9 @@ export function recoverImplementationRuntimeState(input: {
   });
   const plan = evaluateRuntimeRecovery({
     runtime,
-    queue,
     runs,
     taskCursor: execution,
+    quickRunRunning: quickRun?.status === "running",
     pollCount: input.pollCount ?? 0,
     nowIso,
   });
@@ -142,21 +132,23 @@ export function recoverImplementationRuntimeState(input: {
     };
   }
 
+  const activeCodeTaskId =
+    runtime.activeCodeTaskId?.trim() || runtime.activeDispatch?.codeTaskId?.trim() || "";
+  const headRun = activeCodeTaskId ? findLatestRunForCodeTask(runs, activeCodeTaskId) : null;
+
   if (plan.markStale && execution && isInFlightTaskCursorExecution(execution)) {
     execution = markTaskCursorStopped(execution, nowIso, EXECUTION_STALE_USER_MESSAGE);
     next = { ...next, taskCursorExecutionV1: execution };
-    const queueRun = getCurrentCodeTaskRunForQueue(queue, runs);
     let nextRuns = runs;
-    if (queueRun) {
+    if (headRun) {
       nextRuns = syncCodeTaskExecutionRunsFromTaskCursor({
         runs: nextRuns,
         execution,
-        codeTaskId: queueRun.codeTaskId,
-        workItemId: queueRun.workItemId,
+        codeTaskId: headRun.codeTaskId,
+        workItemId: headRun.workItemId,
         nowIso,
       });
     }
-    const headRun = getCurrentCodeTaskRunForQueue(queue, nextRuns);
     if (headRun && isRuntimeActiveCodeTaskExecutionRunStatus(headRun.status)) {
       nextRuns = updateCodeTaskExecutionRun(nextRuns, headRun.runId, {
         status: "status_check_stopped",
@@ -170,7 +162,6 @@ export function recoverImplementationRuntimeState(input: {
   }
 
   if (plan.markFailed) {
-    const headRun = getCurrentCodeTaskRunForQueue(queue, runs);
     if (headRun && isRuntimeActiveCodeTaskExecutionRunStatus(headRun.status)) {
       const nextRuns = updateCodeTaskExecutionRun(runs, headRun.runId, {
         status: "failed",
@@ -197,13 +188,16 @@ export function recoverImplementationRuntimeState(input: {
     nowIso,
   });
 
+  const runtimeAfter = deriveImplementationRuntimeFromRequirementsState({
+    raw: next,
+    projectId: input.projectId,
+    nowIso,
+  });
   let redispatch: ImplementationRuntimeActiveDispatchV1 | null = null;
-  if (plan.shouldRedispatch && queue) {
-    redispatch = buildActiveDispatchForQueueHead({
-      projectId: input.projectId,
-      queue,
+  if (plan.shouldRedispatch) {
+    redispatch = buildActiveDispatchFromRuntimeHead({
+      runtime: runtimeAfter,
       runs: parseCodeTaskExecutionRunsV1(next.codeTaskExecutionRunsV1) ?? runs,
-      nowIso,
     });
     if (redispatch) {
       next = stripLegacyImplementationRuntimeStateFromRecord({

@@ -12,12 +12,20 @@ export type ImplementationRuntimeDiagnosticsRow = Readonly<{
   readonly heartbeat: string | null;
 }>;
 
+export type QuickRunDispatchFromStartJob = Readonly<{
+  readonly ok?: boolean;
+  readonly outcome?: string;
+  readonly reason?: string | null;
+  readonly orchestrationPatch?: Record<string, unknown>;
+}>;
+
 export type ImplementationRuntimeFetchResult = Readonly<{
   readonly success: boolean;
   readonly bundle?: ImplementationRuntimeBundleView;
   readonly codeTaskQueueSnapshot?: CodeTaskExecutionQueueV1;
   readonly diagnostics?: readonly ImplementationRuntimeDiagnosticsRow[];
   readonly message?: string;
+  readonly quickRunDispatch?: QuickRunDispatchFromStartJob;
 }>;
 
 export async function fetchImplementationRuntime(
@@ -48,6 +56,11 @@ export async function postImplementationRuntimeAction(input: {
     readonly parentTaskId: string;
     readonly workItemId?: string | null;
   }[];
+  readonly clientTrace?: {
+    readonly phase?: string;
+    readonly detail?: string;
+    readonly selectedCount?: number;
+  };
 }): Promise<ImplementationRuntimeFetchResult & { readonly recovery?: unknown }> {
   const pid = input.projectId.trim();
   if (!pid) return { success: false, message: "projectId가 필요합니다." };
@@ -61,6 +74,7 @@ export async function postImplementationRuntimeAction(input: {
         ...(input.requirementsState ? { requirementsState: input.requirementsState } : {}),
         ...(input.selectedCodeTaskIds ? { selectedCodeTaskIds: input.selectedCodeTaskIds } : {}),
         ...(input.queueItems?.length ? { queueItems: input.queueItems } : {}),
+        ...(input.clientTrace ? { clientTrace: input.clientTrace } : {}),
       }),
     },
   );

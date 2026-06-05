@@ -1,4 +1,3 @@
-import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import type { QuickRunGithubAdvanceDispatch } from "@/lib/prototype/implementationQuickRunGithubAdvanceService";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import {
@@ -16,7 +15,6 @@ export function buildTaskCursorGithubVerifyRequestBody(input: {
   readonly execution: TaskCursorExecutionV1;
   readonly state: RequirementsStateJson;
   readonly codeTaskId?: string;
-  readonly effectiveQueue?: CodeTaskExecutionQueueV1 | null;
 }): TaskCursorGithubVerifyRequestBody {
   const { state } = input;
   return {
@@ -32,7 +30,6 @@ export function buildTaskCursorGithubVerifyRequestBody(input: {
     implementationAutoQualityGateV1: state.implementationAutoQualityGateV1,
     implementationAutoQualityGateHistoryV1: state.implementationAutoQualityGateHistoryV1,
     implementationQualityGateResultsV1: state.implementationQualityGateResultsV1,
-    codeTaskExecutionQueueV1: input.effectiveQueue ?? state.codeTaskExecutionQueueV1,
     promptTimeline: state.promptTimeline,
   };
 }
@@ -82,5 +79,17 @@ export function applyTaskCursorGithubVerifyApiResult(
 export function resolveTaskCursorGithubVerifyUserNotice(
   json: TaskCursorGithubVerifyApiResponse,
 ): string {
-  return json.message ?? (json.success ? "GitHub commit 확인 완료" : "GitHub commit 확인 실패");
+  if (json.success) {
+    return json.message ?? "GitHub commit 확인 완료";
+  }
+  const detail = json.verify?.detailReason;
+  const reason = json.verify?.reason;
+  if (
+    detail === "branch_not_found" ||
+    detail === "commit_not_found" ||
+    reason === "commit_not_created"
+  ) {
+    return "GitHub push 반영 대기 중 · 1분 간격으로 다시 확인합니다";
+  }
+  return json.message ?? "GitHub commit 확인 실패";
 }

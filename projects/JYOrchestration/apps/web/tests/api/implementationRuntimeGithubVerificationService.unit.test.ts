@@ -4,8 +4,16 @@ const verifyRestMock = vi.fn();
 const completeAdvanceMock = vi.fn();
 const failVerifyMock = vi.fn();
 
-vi.mock("@/lib/prototype/taskCursorGithubVerify", () => ({
-  verifyTaskCursorGithubResult: (...args: unknown[]) => verifyRestMock(...args),
+vi.mock("@/lib/prototype/taskCursorGithubVerify", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/prototype/taskCursorGithubVerify")>();
+  return {
+    ...actual,
+    verifyTaskCursorGithubResult: (...args: unknown[]) => verifyRestMock(...args),
+  };
+});
+
+vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeRepository", () => ({
+  getImplementationRuntimeBundle: vi.fn(async () => ({ job: null, runs: [], currentRun: null })),
 }));
 
 vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService", () => ({
@@ -41,6 +49,22 @@ describe("implementationRuntimeGithubVerificationService", () => {
     );
     expect(outcome.ok).toBe(true);
     expect(outcome.outcomeType).toBe("github_verified");
+  });
+
+  it("does not fail DB runtime when branch is not found yet", async () => {
+    const outcome = await applyImplementationRuntimeGithubVerifyResult({
+      projectId: "p1",
+      jobId: "job-1",
+      runId: "run-1",
+      verifyResult: {
+        ok: false,
+        detailReason: "branch_not_found",
+        reason: "github_verify_failed",
+        message: "branch missing",
+      },
+    });
+    expect(failVerifyMock).not.toHaveBeenCalled();
+    expect(outcome.outcomeType).toBe("github_missing");
   });
 
   it("verifyImplementationRuntimeRunOnGithub calls REST once then applies result", async () => {

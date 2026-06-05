@@ -280,7 +280,7 @@ describe("implementation execution e2e scenarios", () => {
     });
     expect(decision.kind).toBe("continue_after_failure");
     if (decision.kind !== "continue_after_failure") return;
-    expect(decision.blockedTaskIds).toContain("DEV-SCREEN-002");
+    expect(decision.blockedTaskIds).toEqual([]);
 
     const rework = buildImplementationCodeTaskReworkVm({
       feedback: patch.implementationCodeTaskExecutionFeedbackV1,

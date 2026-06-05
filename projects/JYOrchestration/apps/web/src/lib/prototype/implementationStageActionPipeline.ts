@@ -614,23 +614,13 @@ export function evaluateImplementationStageActionGate(
     case "START_IMPLEMENTATION_QUICK_RUN": {
       const activeRun = evaluateActiveImplementationExecutionGate(actionId, boardContext);
       if (activeRun) return activeRun;
-      if (!state.envOk) {
-        return {
-          ok: false,
-          message: "환경설정에서 [연결 테스트]를 완료한 뒤 Quick 실행을 시작할 수 있습니다.",
-        };
-      }
-      if (!isTaskListReadyForImplementationStageActions(state)) {
+      if (
+        !isPlanningReadyForImplementationExecution({
+          implementationSeedV1: state.implementationSeedV1,
+          implementationTaskListV1: state.implementationTaskListV1,
+        })
+      ) {
         return { ok: false, message: "구현 작업목록이 준비된 뒤 Quick 실행을 시작할 수 있습니다." };
-      }
-      const planningGate = evaluateImplementationPlanningExecutionGate({
-        codeTaskPlan: boardContext?.implementationCodeTaskPlanV1,
-        cursorWorkItems: boardContext?.cursorWorkItemsV1,
-        preflightSummary: boardContext?.implementationWorkItemPreflightSummaryV1,
-        codeTaskQualityGate: boardContext?.implementationCodeTaskQualityGateV1,
-      });
-      if (!planningGate.ok) {
-        return { ok: false, message: planningGate.message ?? IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE };
       }
       return { ok: true };
     }

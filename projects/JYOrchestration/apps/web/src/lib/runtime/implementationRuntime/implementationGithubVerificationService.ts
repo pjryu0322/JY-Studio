@@ -2,7 +2,11 @@ import type {
   TaskCursorGithubVerifyInput,
   TaskCursorGithubVerifyResult,
 } from "@/lib/prototype/taskCursorGithubVerify";
-import { verifyTaskCursorGithubResult } from "@/lib/prototype/taskCursorGithubVerify";
+import {
+  isTransientTaskCursorGithubVerifyMiss,
+  verifyTaskCursorGithubResult,
+} from "@/lib/prototype/taskCursorGithubVerify";
+import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import { tryDispatchCurrentQueuedQuickRunAfterDbAdvance } from "@/lib/prototype/serverQuickRunContinuationService";
 import {
@@ -43,6 +47,15 @@ export async function applyImplementationRuntimeGithubVerifyResult(input: {
   const verify = input.verifyResult;
   if (!verify.ok) {
     const outcomeType = resolveOutcomeType(verify);
+    if (isTransientTaskCursorGithubVerifyMiss(verify)) {
+      const bundle = await getImplementationRuntimeBundle(input.projectId);
+      return {
+        ok: false,
+        outcomeType: "github_missing",
+        bundle,
+        message: verify.message,
+      };
+    }
     const bundle = await failImplementationRuntimeGithubVerify({
       projectId: input.projectId,
       jobId: input.jobId,

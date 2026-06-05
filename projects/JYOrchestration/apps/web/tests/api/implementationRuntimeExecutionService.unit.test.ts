@@ -6,15 +6,25 @@ const createRunMock = vi.fn();
 const completeJobMock = vi.fn();
 const getBundleByJobMock = vi.fn();
 const transitionRunMock = vi.fn();
+const findActiveJobMock = vi.fn();
+const updateSelectedIdsMock = vi.fn();
 
-vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeRepository", () => ({
-  createImplementationRuntimeJobWithFirstRun: (...args: unknown[]) => createWithFirstRunMock(...args),
-  getImplementationRuntimeJobWithRuns: (...args: unknown[]) => getJobWithRunsMock(...args),
-  createImplementationCodeTaskRun: (...args: unknown[]) => createRunMock(...args),
-  completeImplementationRuntimeJob: (...args: unknown[]) => completeJobMock(...args),
-  getImplementationRuntimeBundleByJobId: (...args: unknown[]) => getBundleByJobMock(...args),
-  transitionImplementationCodeTaskRun: (...args: unknown[]) => transitionRunMock(...args),
-}));
+vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeRepository", async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import("@/lib/runtime/implementationRuntime/implementationRuntimeRepository")
+  >();
+  return {
+    ...actual,
+    createImplementationRuntimeJobWithFirstRun: (...args: unknown[]) => createWithFirstRunMock(...args),
+    getImplementationRuntimeJobWithRuns: (...args: unknown[]) => getJobWithRunsMock(...args),
+    createImplementationCodeTaskRun: (...args: unknown[]) => createRunMock(...args),
+    completeImplementationRuntimeJob: (...args: unknown[]) => completeJobMock(...args),
+    getImplementationRuntimeBundleByJobId: (...args: unknown[]) => getBundleByJobMock(...args),
+    transitionImplementationCodeTaskRun: (...args: unknown[]) => transitionRunMock(...args),
+    findActiveImplementationRuntimeJob: (...args: unknown[]) => findActiveJobMock(...args),
+    updateImplementationRuntimeJobSelectedCodeTaskIds: (...args: unknown[]) => updateSelectedIdsMock(...args),
+  };
+});
 
 import {
   advanceImplementationRuntimeJob,
@@ -75,6 +85,9 @@ describe("implementationRuntimeExecutionService", () => {
     completeJobMock.mockReset();
     getBundleByJobMock.mockReset();
     transitionRunMock.mockReset();
+    findActiveJobMock.mockReset();
+    updateSelectedIdsMock.mockReset();
+    findActiveJobMock.mockResolvedValue(null);
     getBundleByJobMock.mockImplementation(async () => ({
       job: { ...jobBase, status: "running", currentCodeTaskId: "ct-a", selectedCodeTaskIds: ["ct-a", "ct-b"] },
       runs: [run("ct-a", "completed")],
@@ -101,21 +114,55 @@ describe("implementationRuntimeExecutionService", () => {
     expect(bundle.currentRun?.runtimeState).toBe("queued");
   });
 
-  it("does not create duplicate job when active job exists (repository guard)", async () => {
-    const existing = {
-      job: { ...jobBase, status: "running", currentCodeTaskId: "ct-a", selectedCodeTaskIds: ["ct-a"] },
-      runs: [run("ct-a", "cursor_running")],
-      currentRun: run("ct-a", "cursor_running"),
+  it("always completes active job and creates a fresh job on Quick Run start", async () => {
+    const jobRow = {
+      ...jobBase,
+      status: "running" as const,
+      currentCodeTaskId: "ct-a",
+      selectedCodeTaskIds: ["ct-a", "ct-b"],
     };
-    createWithFirstRunMock.mockResolvedValue(existing);
+    findActiveJobMock.mockResolvedValue({
+      ...jobRow,
+      runs: [run("ct-a", "queued")],
+    });
+    createWithFirstRunMock.mockResolvedValue({
+      job: { ...jobBase, id: "job-2", status: "running", currentCodeTaskId: "ct-a", selectedCodeTaskIds: ["ct-a", "ct-b"] },
+      runs: [run("ct-a", "queued")],
+      currentRun: run("ct-a", "queued"),
+    });
+
+    const bundle = await startImplementationRuntimeJobFromCodeTasks({
+      projectId: "p1",
+      selectedCodeTaskIds: ["ct-a", "ct-b"],
+    });
+
+    expect(completeJobMock).toHaveBeenCalledWith({ jobId: "job-1", status: "completed" });
+    expect(createWithFirstRunMock).toHaveBeenCalled();
+    expect(bundle.currentRun?.runtimeState).toBe("queued");
+  });
+
+  it("completes stale active job and creates new job when head does not match", async () => {
+    findActiveJobMock.mockResolvedValue({
+      ...jobBase,
+      status: "running",
+      currentCodeTaskId: "ct-a",
+      selectedCodeTaskIds: ["ct-a"],
+      runs: [run("ct-a", "cursor_running")],
+    });
+    createWithFirstRunMock.mockResolvedValue({
+      job: { ...jobBase, status: "running", currentCodeTaskId: "ct-x", selectedCodeTaskIds: ["ct-x"] },
+      runs: [run("ct-x", "queued")],
+      currentRun: run("ct-x", "queued"),
+    });
 
     const bundle = await startImplementationRuntimeJobFromCodeTasks({
       projectId: "p1",
       selectedCodeTaskIds: ["ct-x"],
     });
 
-    expect(bundle.job?.id).toBe("job-1");
-    expect(bundle.currentRun?.runtimeState).toBe("cursor_running");
+    expect(completeJobMock).toHaveBeenCalledWith({ jobId: "job-1", status: "completed" });
+    expect(createWithFirstRunMock).toHaveBeenCalled();
+    expect(bundle.currentRun?.codeTaskId).toBe("ct-x");
   });
 
   it("rejects empty selectedCodeTaskIds on start", async () => {

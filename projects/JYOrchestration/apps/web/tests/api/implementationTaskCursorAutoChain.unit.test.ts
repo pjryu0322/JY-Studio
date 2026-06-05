@@ -418,7 +418,7 @@ describe("implementationTaskCursorAutoChain", () => {
       kind: "continue_after_failure",
       failedTaskId: "DEV-SCREEN-001",
       toTaskId: "DEV-SCREEN-002",
-      blockedTaskIds: ["DEV-SCREEN-003"],
+      blockedTaskIds: [],
     });
     expect(
       canContinueTaskCursorAutoChainAfterFailure(execution),
@@ -482,7 +482,12 @@ describe("implementationTaskCursorAutoChain", () => {
       taskCursorExecution: execution,
       autoGate: null,
     });
-    expect(decision).toEqual({ kind: "start", taskId: "DEV-MOCK-001" });
+    expect(decision).toEqual({
+      kind: "continue_after_failure",
+      failedTaskId: "DEV-MOCK-001",
+      toTaskId: "DEV-COMMON-001",
+      blockedTaskIds: [],
+    });
   });
 
   it("stops auto chain on github_auth_failed", () => {

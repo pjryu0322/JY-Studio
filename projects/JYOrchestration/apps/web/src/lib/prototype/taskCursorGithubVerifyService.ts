@@ -29,7 +29,6 @@ import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/impleme
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { prisma } from "@/lib/prisma";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
-import { buildCodeTaskExecutionQueueSnapshotFromDbJob } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { dispatchQuickRunContinuationOnServer } from "@/lib/prototype/implementationQuickRunContinuationDispatchService";
@@ -120,7 +119,11 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
   }
 
   const nowIso = new Date().toISOString();
-  let nextExecution = patchTaskCursorExecution(execution, { status: "github_verifying", nowIso });
+  let nextExecution = patchTaskCursorExecution(execution, {
+    status: "github_verifying",
+    githubProgressLastCheckAt: nowIso,
+    nowIso,
+  });
   const timeline = [
     buildTaskCursorTimelineEntry({
       action: "task_cursor_github_verify_requested",
@@ -141,6 +144,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     targetRepository: readiness.targetRepository,
     githubToken,
     allowedPathGlobs: readiness.allowedPathGlobs,
+    codeTaskId: String(body.codeTaskId ?? "").trim() || null,
   });
 
   nextExecution = applyTaskCursorGithubVerifyResult({
@@ -148,6 +152,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     ok: verify.ok,
     message: verify.message,
     reason: verify.reason,
+    detailReason: verify.detailReason,
     verifiedChangedFiles: verify.verifiedChangedFiles,
     verifiedCommitSha: verify.verifiedCommitSha,
     nowIso,
@@ -208,9 +213,6 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
   });
 
   const dbBundleAfter = await getImplementationRuntimeBundle(projectId);
-  const dbQueueSnapshot = dbBundleAfter.job
-    ? buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle: dbBundleAfter })
-    : null;
 
   const advance = advanceQuickRunOrchestrationAfterGithubVerify({
     projectId,
@@ -220,7 +222,6 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     implementationTaskListV1: body.implementationTaskListV1,
     implementationCodeTaskPlanV1: body.implementationCodeTaskPlanV1,
     codeTaskExecutionRunsV1: body.codeTaskExecutionRunsV1,
-    codeTaskExecutionQueueV1: body.codeTaskExecutionQueueV1 ?? dbQueueSnapshot,
     implementationTaskExecutionStateV1: body.implementationTaskExecutionStateV1,
     implementationQualityGateResultsV1: body.implementationQualityGateResultsV1,
     implementationAutoQualityGateV1: body.implementationAutoQualityGateV1,
@@ -228,7 +229,6 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     cursorWorkItemsV1: workItems,
     promptTimeline: body.promptTimeline,
     dbBundle: dbBundleAfter,
-    dbQueueSnapshot,
     nowIso,
   });
 
@@ -253,7 +253,6 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
           implementationTaskListV1: body.implementationTaskListV1,
           implementationCodeTaskPlanV1: body.implementationCodeTaskPlanV1,
           codeTaskExecutionRunsV1: body.codeTaskExecutionRunsV1,
-          codeTaskExecutionQueueV1: body.codeTaskExecutionQueueV1 ?? dbQueueSnapshot,
           cursorWorkItemsV1: workItems,
           taskCursorExecutionV1: nextExecution,
         },

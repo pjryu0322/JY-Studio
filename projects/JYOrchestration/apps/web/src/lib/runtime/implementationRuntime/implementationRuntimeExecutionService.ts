@@ -6,6 +6,8 @@ import {
 
   createImplementationRuntimeJobWithFirstRun,
 
+  findActiveImplementationRuntimeJob,
+
   getImplementationRuntimeBundleByJobId,
 
   getImplementationRuntimeJobWithRuns,
@@ -145,23 +147,21 @@ function resolveJobCompletionStatus(input: {
 
 
 export async function startImplementationRuntimeJobFromCodeTasks(input: {
-
   readonly projectId: string;
-
   readonly selectedCodeTaskIds: readonly string[];
-
 }): Promise<ImplementationRuntimeBundleView> {
-
+  const pid = input.projectId.trim();
   const selectedCodeTaskIds = normalizeSelectedCodeTaskIds(input.selectedCodeTaskIds);
 
+  const existing = await findActiveImplementationRuntimeJob(pid);
+  if (existing) {
+    await completeImplementationRuntimeJob({ jobId: existing.id, status: "completed" });
+  }
+
   return createImplementationRuntimeJobWithFirstRun({
-
-    projectId: input.projectId,
-
+    projectId: pid,
     selectedCodeTaskIds,
-
   });
-
 }
 
 

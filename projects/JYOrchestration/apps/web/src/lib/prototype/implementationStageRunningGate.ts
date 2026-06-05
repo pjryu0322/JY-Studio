@@ -72,6 +72,12 @@ export function evaluateActiveImplementationExecutionGate(
 ): ImplementationStageActionGateResult | null {
   if (!shouldCheckActiveImplementationExecutionGate(actionId)) return null;
 
+  if (actionId === "START_IMPLEMENTATION_QUICK_RUN") {
+    // DB ImplementationExecutionJob + start_job이 SoT. 레거시 JSON job / taskCursor in-flight 표시로
+    // 새 Quick Run 세션을 막지 않는다 (서버가 stale job 정리 후 새 Job 생성).
+    return null;
+  }
+
   const executionJob = findActiveImplementationExecutionJob(
     boardContext?.implementationExecutionJobsV1,
     boardContext?.board.projectId,

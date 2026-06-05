@@ -1,4 +1,3 @@
-import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
 import {
@@ -54,7 +53,6 @@ export type QuickRunGithubAdvanceContext = Readonly<{
   readonly implementationTaskListV1?: unknown;
   readonly implementationCodeTaskPlanV1?: unknown;
   readonly codeTaskExecutionRunsV1?: unknown;
-  readonly codeTaskExecutionQueueV1?: unknown;
   readonly implementationTaskExecutionStateV1?: unknown;
   readonly implementationQualityGateResultsV1?: unknown;
   readonly implementationAutoQualityGateV1?: unknown;
@@ -62,7 +60,6 @@ export type QuickRunGithubAdvanceContext = Readonly<{
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[];
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly dbBundle?: ImplementationRuntimeBundleView | null;
-  readonly dbQueueSnapshot?: unknown;
   readonly nowIso?: string;
 }>;
 
@@ -80,7 +77,6 @@ function buildVirtualState(input: QuickRunGithubAdvanceContext): RequirementsSta
       implementationTaskListV1: input.implementationTaskListV1,
       implementationCodeTaskPlanV1: input.implementationCodeTaskPlanV1,
       codeTaskExecutionRunsV1: input.codeTaskExecutionRunsV1,
-      codeTaskExecutionQueueV1: input.codeTaskExecutionQueueV1,
       implementationTaskExecutionStateV1: input.implementationTaskExecutionStateV1,
       implementationQualityGateResultsV1: input.implementationQualityGateResultsV1,
       implementationAutoQualityGateV1: input.implementationAutoQualityGateV1,
@@ -133,14 +129,18 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
   let patches: PrototypeExecutionOrchestrationPersistInput[] = [input.basePatch, quickRunSync];
   let autoGatePassed = false;
 
+  state = mergeRequirementsStateJson(state, input.basePatch as Partial<RequirementsStateJson>);
+
   const autoGateBefore = parseImplementationAutoQualityGateV1(state.implementationAutoQualityGateV1);
+  const executionForGate =
+    parseTaskCursorExecutionV1(state.taskCursorExecutionV1) ?? execution;
   const shouldRunGate =
     shouldAutoStartImplementationQualityGate({
-      taskCursorExecution: execution,
+      taskCursorExecution: executionForGate,
       autoGate: autoGateBefore,
     }) ||
     shouldResumeImplementationAutoQualityGate({
-      taskCursorExecution: execution,
+      taskCursorExecution: executionForGate,
       autoGate: autoGateBefore,
     });
 
@@ -159,7 +159,7 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
     });
     const outcome = runImplementationAutoQualityGate({
       projectId: pid,
-      taskCursorExecution: execution,
+      taskCursorExecution: executionForGate,
       taskList,
       executionState: parseImplementationTaskExecutionStateV1(state.implementationTaskExecutionStateV1),
       qualityGateResults: parseImplementationQualityGateResultsV1(
@@ -173,10 +173,12 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
         undefined,
       nowIso,
     });
-    if (!("blocked" in outcome) && outcome.ok && outcome.autoGate.status === "passed") {
+    if (!("blocked" in outcome)) {
       patches.push(outcome.orchestrationPatch);
       state = mergeRequirementsStateJson(state, outcome.orchestrationPatch as Partial<RequirementsStateJson>);
-      autoGatePassed = true;
+      if (outcome.ok && outcome.autoGate.status === "passed") {
+        autoGatePassed = true;
+      }
     }
   } else {
     autoGatePassed = isAutoGatePassedForExecution(
@@ -190,11 +192,6 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
   }
 
   const dbBundle = input.dbBundle ?? null;
-  const queue = resolveEffectiveCodeTaskExecutionQueue({
-    dbQueueSnapshot: input.dbQueueSnapshot,
-    jsonQueue: parseCodeTaskExecutionQueueV1(state.codeTaskExecutionQueueV1),
-    dbJobStatus: dbBundle?.job?.status ?? null,
-  });
 
   const postQuickRun = parseImplementationQuickRunV1(state.implementationQuickRunV1);
   const postExecution = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
@@ -209,7 +206,6 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
       quickRun: postQuickRun,
       taskCursorExecution: postExecution,
       autoGate: postAutoGate,
-      queue,
       runs,
       codeTaskPlan: parseImplementationCodeTaskPlanV1(state.implementationCodeTaskPlanV1),
       taskList,
@@ -225,7 +221,6 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
     quickRun: postQuickRun,
     taskCursorExecution: postExecution,
     autoGate: postAutoGate,
-    queue,
     runs,
     codeTaskPlan: parseImplementationCodeTaskPlanV1(state.implementationCodeTaskPlanV1),
     taskList,

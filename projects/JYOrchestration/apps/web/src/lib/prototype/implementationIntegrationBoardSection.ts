@@ -7,6 +7,7 @@ import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementatio
 import type { ImplementationIntegratedPipelineLine } from "@/lib/prototype/implementationTaskPipelinePolicy";
 
 export type ImplementationIntegrationBoardSectionVm = Readonly<{
+  readonly canIntegrate: boolean;
   readonly showSection: boolean;
   readonly summaryLines: readonly string[];
   readonly pipelineLines: readonly ImplementationIntegratedPipelineLine[];
@@ -22,6 +23,7 @@ export function buildImplementationIntegrationBoardSection(input: {
 }): ImplementationIntegrationBoardSectionVm {
   const scope = input.previewScope ?? null;
   return {
+    canIntegrate: input.eligibility.canIntegrate,
     showSection: input.eligibility.canIntegrate || input.integratedPipelineLines.length > 0,
     summaryLines: buildIntegrationEligibilitySummaryLines(input.eligibility),
     pipelineLines: input.integratedPipelineLines,

@@ -143,7 +143,7 @@ export function getUserConfirmationForTask(
   taskId: string,
 ): ImplementationTaskUserConfirmationV1 | null {
   if (!boardState) return null;
-  return boardState.userConfirmations.find((c) => c.taskId === taskId) ?? null;
+  return (boardState.userConfirmations ?? []).find((c) => c.taskId === taskId) ?? null;
 }
 
 export function countActiveReworkRequestsForTask(
@@ -263,7 +263,7 @@ export function appendReworkRequest(input: {
   return {
     ...base,
     updatedAt: now,
-    reworkRequests: [...base.reworkRequests, request],
+    reworkRequests: [...(base.reworkRequests ?? []), request],
   };
 }
 
@@ -312,7 +312,7 @@ export function getActiveReworkRequestsForTask(
   taskId: string,
 ): readonly ImplementationTaskReworkRequestV1[] {
   if (!boardState) return [];
-  return boardState.reworkRequests.filter(
+  return (boardState.reworkRequests ?? []).filter(
     (r) => r.taskId === taskId && r.status !== "cancelled" && r.status !== "done",
   );
 }
@@ -347,7 +347,7 @@ export function markReworkRequestsAcceptedForTask(input: {
   return {
     ...base,
     updatedAt: now,
-    reworkRequests: base.reworkRequests.map((r) =>
+    reworkRequests: (base.reworkRequests ?? []).map((r) =>
       r.taskId === taskId && r.status === "requested"
         ? { ...r, status: "accepted", updatedAt: now }
         : r,
@@ -371,7 +371,7 @@ export function markReworkRequestsDoneForTask(input: {
   return {
     ...base,
     updatedAt: now,
-    reworkRequests: base.reworkRequests.map((r) =>
+    reworkRequests: (base.reworkRequests ?? []).map((r) =>
       r.taskId === taskId && ACTIVE_REWORK_STATUSES.has(r.status)
         ? { ...r, status: "done", updatedAt: now }
         : r,

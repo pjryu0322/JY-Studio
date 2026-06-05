@@ -110,7 +110,6 @@ describe("resetDerivedImplementationState", () => {
       implementationQuickRunV1: { version: "implementation_quick_run_v1" } as never,
       implementationExecutionJobsV1: [{ jobId: "j1" } as never],
       codeTaskExecutionRunsV1: [{ version: "code_task_execution_run_v1" } as never],
-      codeTaskExecutionQueueV1: { version: "code_task_execution_queue_v1" } as never,
     };
 
     const reset = buildRequirementsConversationResetStateJson(base, nowIso);
@@ -132,7 +131,6 @@ describe("resetDerivedImplementationState", () => {
     expect(reset.implementationQuickRunV1).toBeNull();
     expect(reset.implementationExecutionJobsV1).toBeNull();
     expect(reset.codeTaskExecutionRunsV1).toBeNull();
-    expect(reset.codeTaskExecutionQueueV1).toBeNull();
     expect(reset.codeTaskPromptContextMapV1).toBeNull();
     expect(reset.reviewStageUserTestSessionV1).toBeNull();
     expect(reset.reviewStageUserFeedbackListV1).toBeNull();

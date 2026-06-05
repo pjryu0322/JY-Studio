@@ -1,10 +1,5 @@
 import { derivePerTaskPipelineRole, isPerTaskPipelineComplete } from "@/lib/prototype/implementationTaskPipelinePolicy";
 import {
-  collectDependentTaskIds,
-  countTasksBlockedByDependency,
-  isTaskBlockedByFailedDependencies,
-} from "@/lib/prototype/implementationTaskDependencyGraph";
-import {
   countActiveReworkRequestsForTask,
   getUserConfirmationForTask,
 } from "@/lib/prototype/implementationExecutionBoardState";
@@ -78,7 +73,6 @@ export type ImplementationFailureReason =
   | "failed_by_scm"
   | "failed_by_user_rejection"
   | "blocked_by_env"
-  | "blocked_by_dependency"
   | "blocked_by_user_confirmation"
   | "unknown";
 
@@ -120,7 +114,7 @@ export type ImplementationExecutionBoardV1 = Readonly<{
   createdAt: string;
   updatedAt: string;
   source: "implementation_task_list_and_execution_state";
-  mode: "sequential_with_dependency_parallel";
+  mode: "sequential";
   taskRows: readonly ImplementationExecutionBoardTaskRowV1[];
   integratedRows: readonly ImplementationExecutionBoardIntegratedRowV1[];
   currentTaskId?: string;
@@ -131,7 +125,6 @@ export type ImplementationExecutionBoardV1 = Readonly<{
     inProgressTasks: number;
     failedTasks: number;
     reworkRequiredTasks: number;
-    blockedByDependencyTasks: number;
     userConfirmationRequired: number;
     blockingUserConfirmation: number;
     integratedCompleted: number;
@@ -195,7 +188,7 @@ export function deriveQualityGateStatusForTask(input: {
 }): ImplementationQualityGateRowStatus {
   const latest = getLatestImplementationQualityGateResultForRole(input.qualityGateResults, input.role);
   if (!latest) return "none";
-  if (latest.failedTaskIds.includes(input.taskId)) return "failed";
+  if ((latest.failedTaskIds ?? []).includes(input.taskId)) return "failed";
   if (latest.status === "passed") {
     const passedForTask = latest.checks.some(
       (check) =>
@@ -249,11 +242,9 @@ function completedDeveloperTaskIds(board: ImplementationExecutionBoardV1): Set<s
 
 function isDeveloperRowExecutableForWip(
   row: ImplementationExecutionBoardTaskRowV1,
-  completedDeveloperIds: Set<string>,
+  _completedDeveloperIds: Set<string>,
 ): boolean {
   if (row.userConfirmation === "blocking") return false;
-  const dependenciesMet = row.dependencies.every((dep) => completedDeveloperIds.has(dep));
-  if (!dependenciesMet) return false;
 
   const needsRemediation =
     row.reviewerResultStatus === "failed" ||
@@ -334,17 +325,7 @@ export function pickFirstExecutableDeveloperTaskIdAfterFailure(
   let executable = sortDeveloperTaskRowsByPriority(
     board.taskRows.filter((row) => {
       if (row.taskId === failed) return false;
-      if (!isDeveloperRowExecutableForWip(row, completedDeveloperIds)) return false;
-      if (row.dependencies.includes(failed)) return false;
-      if (
-        isTaskBlockedByFailedDependencies({
-          row,
-          failedTaskIds: [failed],
-        })
-      ) {
-        return false;
-      }
-      return true;
+      return isDeveloperRowExecutableForWip(row, completedDeveloperIds);
     }),
   );
   if (allowedTaskIds?.length) {
@@ -491,13 +472,6 @@ export function resolveTaskRowUserRestartCapability(input: {
       blockedReason: "사용자 확인이 필요합니다.",
     };
   }
-  if (input.row.failureReason === "blocked_by_dependency") {
-    return {
-      canRestart: false,
-      needsReworkRegistration: false,
-      blockedReason: "선행 Task가 완료되지 않았습니다.",
-    };
-  }
   if (input.row.developerStatus === "in_progress") {
     const sameTaskStaleExecution =
       execution?.taskId === input.row.taskId &&
@@ -520,19 +494,6 @@ export function resolveTaskRowUserRestartCapability(input: {
       canRestart: false,
       needsReworkRegistration: false,
       blockedReason: "이미 완료된 Task입니다.",
-    };
-  }
-
-  const completedDeveloperIds = new Set(
-    input.board.taskRows
-      .filter((row) => row.developerStatus === "done" || row.developerStatus === "skipped")
-      .map((row) => row.taskId),
-  );
-  if (!input.row.dependencies.every((dep) => completedDeveloperIds.has(dep))) {
-    return {
-      canRestart: false,
-      needsReworkRegistration: false,
-      blockedReason: "선행 Task가 완료되지 않았습니다.",
     };
   }
 
@@ -806,7 +767,7 @@ function collectQualityGateFailedTaskIds(
   const ids = new Set<string>();
   for (const result of qualityGateResults ?? []) {
     if (result.status === "failed") {
-      for (const id of result.failedTaskIds) ids.add(id);
+      for (const id of result.failedTaskIds ?? []) ids.add(id);
     }
   }
   return [...ids];
@@ -827,7 +788,7 @@ function aggregateRoleBoardStatus(
   executionState: ImplementationTaskExecutionStateV1 | null | undefined,
   role: ImplementationBoardRoleStep,
 ): ImplementationBoardStepStatus {
-  const items = executionState?.items.filter((item) => item.ownerRole === role) ?? [];
+  const items = (executionState?.items ?? []).filter((item) => item.ownerRole === role);
   if (!items.length) return "not_started";
 
   let worst: ImplementationBoardStepStatus = "done";
@@ -875,10 +836,8 @@ function deriveFailureReason(input: {
   readonly securityStatus: ImplementationBoardStepStatus;
   readonly scmStatus: ImplementationBoardStepStatus;
   readonly userConfirmation: ImplementationUserConfirmationStatus;
-  readonly blockedByDependency?: boolean;
 }): ImplementationFailureReason {
   if (input.userConfirmation === "blocking") return "blocked_by_user_confirmation";
-  if (input.blockedByDependency) return "blocked_by_dependency";
   if (input.developerStatus === "failed") return "failed_by_cursor";
   if (input.reviewerStatus === "failed") return "failed_by_review";
   if (input.securityStatus === "failed") return "failed_by_security";
@@ -918,33 +877,6 @@ function deriveStatusLabel(input: {
   return "SCM 대기";
 }
 
-function applyDependencyBlockingToTaskRows(
-  taskRows: readonly ImplementationExecutionBoardTaskRowV1[],
-): readonly ImplementationExecutionBoardTaskRowV1[] {
-  const failedTaskIds = taskRows
-    .filter((row) => row.developerStatus === "failed")
-    .map((row) => row.taskId);
-  const blockedIds = new Set(
-    collectDependentTaskIds({ taskRows, failedTaskIds }),
-  );
-  if (!blockedIds.size) return taskRows;
-  return taskRows.map((row) => {
-    if (
-      !blockedIds.has(row.taskId) ||
-      row.developerStatus === "done" ||
-      row.developerStatus === "failed" ||
-      row.developerStatus === "skipped"
-    ) {
-      return row;
-    }
-    return {
-      ...row,
-      failureReason: "blocked_by_dependency" as const,
-      statusLabel: "의존 작업 차단",
-    };
-  });
-}
-
 function buildTaskRow(input: {
   readonly task: ImplementationTaskV1;
   readonly executionState?: ImplementationTaskExecutionStateV1 | null;
@@ -955,7 +887,7 @@ function buildTaskRow(input: {
   readonly scmGlobal: ImplementationBoardStepStatus;
   readonly qualityGateFailedTaskIds: readonly string[];
 }): ImplementationExecutionBoardTaskRowV1 {
-  const devItem = input.executionState?.items.find((item) => item.taskId === input.task.taskId);
+  const devItem = (input.executionState?.items ?? []).find((item) => item.taskId === input.task.taskId);
   const developerStatus = mapExecutionStatus(devItem?.status ?? input.task.status);
 
   const reviewerGate = deriveQualityGateStatusForTask({
@@ -1108,7 +1040,7 @@ export function buildImplementationExecutionBoard(input: {
   const scmGlobal = aggregateRoleBoardStatus(input.executionState, "scm");
   const qualityGateFailedTaskIds = collectQualityGateFailedTaskIds(input.qualityGateResults);
 
-  const developerTasks = input.taskList.tasks
+  const developerTasks = (input.taskList.tasks ?? [])
     .filter((task) => task.ownerRole === "developer")
     .slice()
     .sort((a, b) => compareImplementationTaskListPriority(a.priority, b.priority) || a.taskId.localeCompare(b.taskId));
@@ -1124,7 +1056,7 @@ export function buildImplementationExecutionBoard(input: {
       qualityGateFailedTaskIds,
     }),
   );
-  const taskRows = applyDependencyBlockingToTaskRows(taskRowsRaw);
+  const taskRows = taskRowsRaw;
 
   const allTasksCompleted =
     taskRows.length > 0 &&
@@ -1163,7 +1095,6 @@ export function buildImplementationExecutionBoard(input: {
   }).length;
   const failedTasks = taskRows.filter((row) => row.failureReason !== "none").length;
   const reworkRequiredTasks = taskRows.filter((row) => row.developerStatus === "failed").length;
-  const blockedByDependencyTasks = countTasksBlockedByDependency({ taskRows });
   const userConfirmationRequired = taskRows.filter(
     (row) =>
       row.userConfirmation === "required_non_blocking" || row.userConfirmation === "blocking",
@@ -1177,7 +1108,7 @@ export function buildImplementationExecutionBoard(input: {
     createdAt: now,
     updatedAt: now,
     source: "implementation_task_list_and_execution_state",
-    mode: "sequential_with_dependency_parallel",
+    mode: "sequential",
     taskRows,
     integratedRows,
     ...(currentTaskId ? { currentTaskId } : {}),
@@ -1188,7 +1119,6 @@ export function buildImplementationExecutionBoard(input: {
       inProgressTasks,
       failedTasks,
       reworkRequiredTasks,
-      blockedByDependencyTasks,
       userConfirmationRequired,
       blockingUserConfirmation,
       integratedCompleted,

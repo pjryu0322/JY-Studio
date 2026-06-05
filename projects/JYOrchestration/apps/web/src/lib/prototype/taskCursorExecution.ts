@@ -61,6 +61,8 @@ export type TaskCursorExecutionV1 = Readonly<{
   readonly failureReason?: TaskCursorFailureReason;
   readonly errorMessage?: string;
   readonly cursorAgentStatus?: string;
+  /** 마지막 GitHub progress REST 점검 시각 (60초 후 1회, 이후 10초 간격) */
+  readonly githubProgressLastCheckAt?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
 }>;
@@ -240,6 +242,10 @@ export function parseTaskCursorExecutionV1(raw: unknown): TaskCursorExecutionV1 
     errorMessage: o.errorMessage === undefined ? undefined : String(o.errorMessage),
     cursorAgentStatus:
       o.cursorAgentStatus === undefined ? undefined : String(o.cursorAgentStatus).trim() || undefined,
+    githubProgressLastCheckAt:
+      o.githubProgressLastCheckAt === undefined
+        ? undefined
+        : String(o.githubProgressLastCheckAt).trim() || undefined,
     createdAt: String(o.createdAt ?? new Date().toISOString()),
     updatedAt: String(o.updatedAt ?? new Date().toISOString()),
   };

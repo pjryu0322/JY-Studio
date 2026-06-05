@@ -30,7 +30,7 @@ function taskList(): ImplementationTaskListV1 {
 }
 
 describe("evaluateActiveImplementationExecutionGate", () => {
-  it("blocks Quick run with running message when active server job exists", () => {
+  it("does not block Quick Run when legacy in-flight cursor state exists (DB job SoT)", () => {
     const boardContext = buildImplementationStageBoardGateContext({
       projectId: "p1",
       taskList: taskList(),
@@ -58,13 +58,31 @@ describe("evaluateActiveImplementationExecutionGate", () => {
         nextPollAt: null,
       },
     });
+    expect(
+      evaluateActiveImplementationExecutionGate("START_IMPLEMENTATION_QUICK_RUN", boardContext),
+    ).toBeNull();
+  });
+
+  it("still blocks single task cursor request when active server job exists", () => {
+    const boardContext = buildImplementationStageBoardGateContext({
+      projectId: "p1",
+      taskList: taskList(),
+      activeTaskCursorJob: {
+        id: "job-1",
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        status: "cursor_running",
+        pollCount: 0,
+        lastPollAt: NOW,
+        nextPollAt: null,
+      },
+    });
     const gate = evaluateActiveImplementationExecutionGate(
-      "START_IMPLEMENTATION_QUICK_RUN",
+      "REQUEST_TASK_CURSOR_EXECUTION",
       boardContext,
     );
     expect(gate?.ok).toBe(false);
     expect(gate?.message).toContain("현재 AI 개발자");
-    expect(gate?.message).not.toContain("환경 준비");
   });
 
   it("returns null when no active execution", () => {

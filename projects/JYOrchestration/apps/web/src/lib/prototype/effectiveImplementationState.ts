@@ -136,7 +136,6 @@ export type PendingImplementationPatch = Readonly<{
   promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   implementationExecutionJobsV1?: readonly import("@/lib/prototype/implementationExecutionJob").ImplementationExecutionJobV1[] | null;
   codeTaskExecutionRunsV1?: readonly import("@/lib/prototype/codeTaskExecutionRun").CodeTaskExecutionRunV1[] | null;
-  codeTaskExecutionQueueV1?: import("@/lib/prototype/codeTaskExecutionQueue").CodeTaskExecutionQueueV1 | null;
   implementationRuntimeStateV1?: import("@/lib/prototype/implementationRuntimeState").ImplementationRuntimeStateV1 | null;
   implementationRuntimeUiSnapshotV1?: import("@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot").ImplementationRuntimeUiSnapshotV1 | null;
 }>;
@@ -200,9 +199,6 @@ export function resolveOrchestrationAwareRequirementsState(input: {
             ? [...pending.codeTaskExecutionRunsV1]
             : null,
         }
-      : {}),
-    ...(pending.codeTaskExecutionQueueV1 !== undefined
-      ? { codeTaskExecutionQueueV1: pending.codeTaskExecutionQueueV1 }
       : {}),
     ...(pending.implementationRuntimeUiSnapshotV1 !== undefined
       ? { implementationRuntimeUiSnapshotV1: pending.implementationRuntimeUiSnapshotV1 }
@@ -353,9 +349,6 @@ export function mergePendingImplementationPatchFromOrchestration(
   if (patch.codeTaskExecutionRunsV1 !== undefined) {
     next.codeTaskExecutionRunsV1 = patch.codeTaskExecutionRunsV1;
   }
-  if (patch.codeTaskExecutionQueueV1 !== undefined) {
-    next.codeTaskExecutionQueueV1 = patch.codeTaskExecutionQueueV1;
-  }
   if (patch.implementationRuntimeUiSnapshotV1 !== undefined) {
     next.implementationRuntimeUiSnapshotV1 = patch.implementationRuntimeUiSnapshotV1;
     delete next.implementationRuntimeStateV1;
@@ -418,9 +411,6 @@ export function mergePendingImplementationPatch(
       : {}),
     ...(incoming.codeTaskExecutionRunsV1 !== undefined
       ? { codeTaskExecutionRunsV1: incoming.codeTaskExecutionRunsV1 }
-      : {}),
-    ...(incoming.codeTaskExecutionQueueV1 !== undefined
-      ? { codeTaskExecutionQueueV1: incoming.codeTaskExecutionQueueV1 }
       : {}),
   };
 }

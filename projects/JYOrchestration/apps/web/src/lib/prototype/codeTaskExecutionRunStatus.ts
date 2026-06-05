@@ -48,8 +48,7 @@ export function isQueueIssueRunStatus(status: CodeTaskExecutionRunStatus): boole
   return (
     status === "rework_required" ||
     status === "failed" ||
-    status === "status_check_stopped" ||
-    status === "blocked_by_dependency"
+    status === "status_check_stopped"
   );
 }
 

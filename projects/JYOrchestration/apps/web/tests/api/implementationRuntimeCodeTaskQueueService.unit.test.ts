@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
+import {
+  buildCodeTaskExecutionQueueSnapshotFromDbJob,
+  resolveEffectiveCodeTaskExecutionQueue,
+} from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import {
   canCompleteQueueItemFromGithubVerify,
   resolveNoCodeChangeEvidence,
@@ -126,49 +129,49 @@ describe("implementationRuntimeCodeTaskQueueService policy", () => {
 });
 
 describe("resolveEffectiveCodeTaskExecutionQueue", () => {
-  const dbSnap = {
-    version: "code_task_execution_queue_v1" as const,
-    projectId: "p1",
-    selectedCodeTaskIds: ["a"],
-    currentIndex: 0,
-    status: "running" as const,
-    createdAt: "t",
-    updatedAt: "t",
-    stopOnFailure: true,
+  const bundle = {
+    job: {
+      id: "j1",
+      projectId: "p1",
+      status: "running" as const,
+      currentCodeTaskId: "CODE-A",
+      selectedCodeTaskIds: ["CODE-A", "CODE-B"],
+      failureReason: null,
+      startedAt: null,
+      completedAt: null,
+      updatedAt: "2026-06-04T00:00:00.000Z",
+    },
+    currentRun: {
+      id: "r1",
+      projectId: "p1",
+      jobId: "j1",
+      codeTaskId: "CODE-A",
+      runtimeState: "queued" as const,
+      cursorAgentId: null,
+      branchName: null,
+      commitSha: null,
+      pullRequestUrl: null,
+      failureReason: null,
+      startedAt: null,
+      lastHeartbeatAt: null,
+      completedAt: null,
+    },
+    runs: [],
   };
 
-  it("prefers DB snapshot over JSON", () => {
-    const json = {
-      ...dbSnap,
-      selectedCodeTaskIds: ["b"],
-      currentIndex: 1,
-    };
-    expect(
-      resolveEffectiveCodeTaskExecutionQueue({
-        dbQueueSnapshot: dbSnap,
-        jsonQueue: json,
-        dbJobStatus: "running",
-      }),
-    ).toEqual(dbSnap);
+  it("derives queue view only from DB bundle", () => {
+    const queue = resolveEffectiveCodeTaskExecutionQueue({ dbBundle: bundle });
+    expect(queue?.selectedCodeTaskIds).toEqual(["CODE-A", "CODE-B"]);
+    expect(queue?.status).toBe("running");
   });
 
-  it("returns null for running job without DB snapshot (no JSON fallback)", () => {
-    expect(
-      resolveEffectiveCodeTaskExecutionQueue({
-        dbQueueSnapshot: null,
-        jsonQueue: dbSnap,
-        dbJobStatus: "running",
-      }),
-    ).toBeNull();
+  it("returns null without DB job", () => {
+    expect(resolveEffectiveCodeTaskExecutionQueue({ dbBundle: { job: null, runs: [], currentRun: null } })).toBeNull();
   });
 
-  it("allows JSON when job is not running", () => {
-    expect(
-      resolveEffectiveCodeTaskExecutionQueue({
-        dbQueueSnapshot: undefined,
-        jsonQueue: dbSnap,
-        dbJobStatus: "idle",
-      }),
-    ).toMatchObject({ selectedCodeTaskIds: ["a"] });
+  it("matches buildCodeTaskExecutionQueueSnapshotFromDbJob selected ids", () => {
+    const queue = resolveEffectiveCodeTaskExecutionQueue({ dbBundle: bundle });
+    const built = buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle });
+    expect(queue?.selectedCodeTaskIds).toEqual(built?.selectedCodeTaskIds);
   });
 });

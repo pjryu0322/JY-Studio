@@ -121,7 +121,6 @@ export const IMPLEMENTATION_SESSION_RESET_NULL_PATCH = {
   implementationQuickRunV1: null,
   implementationExecutionJobsV1: null,
   codeTaskExecutionRunsV1: null,
-  codeTaskExecutionQueueV1: null,
   implementationRuntimeStateV1: null,
   implementationRuntimeUiSnapshotV1: null,
   reviewStageUserTestSessionV1: null,
@@ -136,7 +135,6 @@ export function hasActiveImplementationExecutionSession(
     | "implementationTaskListV1"
     | "implementationCodeTaskPlanV1"
     | "codeTaskExecutionRunsV1"
-    | "codeTaskExecutionQueueV1"
     | "taskCursorExecutionV1"
     | "implementationRuntimeUiSnapshotV1"
     | "implementationExecutionJobsV1"
@@ -147,7 +145,6 @@ export function hasActiveImplementationExecutionSession(
   if ((state.implementationTaskListV1?.tasks?.length ?? 0) > 0) return true;
   if ((state.implementationCodeTaskPlanV1?.tasks?.length ?? 0) > 0) return true;
   if ((state.codeTaskExecutionRunsV1?.length ?? 0) > 0) return true;
-  if (state.codeTaskExecutionQueueV1) return true;
   if (state.taskCursorExecutionV1) return true;
   if (state.implementationRuntimeUiSnapshotV1) return true;
   if ((state.implementationExecutionJobsV1?.length ?? 0) > 0) return true;

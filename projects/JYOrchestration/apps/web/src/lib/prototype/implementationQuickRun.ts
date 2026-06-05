@@ -255,3 +255,21 @@ export function syncImplementationQuickRunWithExecution(input: {
       : { blockedReason: undefined }),
   };
 }
+
+export function formatQuickRunContinuationReason(reason: string | null | undefined): string {
+  const r = String(reason ?? "").trim();
+  switch (r) {
+    case "quick_run_not_running":
+      return "Quick Run이 DB에 아직 반영되지 않았습니다. 자동 복구 후 재시도합니다.";
+    case "no_queued_db_run":
+      return "대기(queued) 상태의 Runtime Run이 없습니다.";
+    case "dispatch_target_not_found":
+      return "CodeTask에 연결된 WorkItem을 찾을 수 없습니다.";
+    case "execution_setup_not_ready":
+      return "실행 설정(Cursor 토큰·저장소)이 준비되지 않았습니다.";
+    case "queue_state_mismatch":
+      return "큐 상태가 일치하지 않습니다.";
+    default:
+      return r || "Quick Run 연속 실행을 처리하지 못했습니다.";
+  }
+}

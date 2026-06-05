@@ -40,7 +40,7 @@ describe("implementationTaskTreeSelection", () => {
     row("DEV-3", ["DEV-2"]),
   ];
 
-  it("auto-selects ancestor tasks when checking a child", () => {
+  it("checks only the toggled task (no ancestor auto-select)", () => {
     expect(
       resolveTaskTreeSelectionToggle({
         taskId: "DEV-3",
@@ -48,26 +48,26 @@ describe("implementationTaskTreeSelection", () => {
         selectedTaskIds: [],
         taskRows,
       }),
-    ).toEqual(["DEV-1", "DEV-2", "DEV-3"]);
+    ).toEqual(["DEV-3"]);
   });
 
-  it("orders task rows with parents before children", () => {
+  it("preserves input order for tree display", () => {
     const shuffled = [row("DEV-3", ["DEV-2"]), row("DEV-1"), row("DEV-2", ["DEV-1"])];
     expect(orderTaskRowsForTreeDisplay(shuffled).map((item) => item.taskId)).toEqual([
+      "DEV-3",
       "DEV-1",
       "DEV-2",
-      "DEV-3",
     ]);
   });
 
-  it("builds dependency labels and depth", () => {
+  it("uses flat depth (dependency layout disabled)", () => {
     const views = computeTaskTreeDependencyViews(taskRows);
     expect(views.get("DEV-3")).toEqual({
-      depth: 2,
-      parentTaskIds: ["DEV-2"],
-      parentLabels: ["DEV-2"],
+      depth: 0,
+      parentTaskIds: [],
+      parentLabels: [],
     });
-    expect(collectAncestorTaskIds("DEV-3", taskRows)).toEqual(["DEV-1", "DEV-2"]);
+    expect(collectAncestorTaskIds("DEV-3", taskRows)).toEqual([]);
   });
 
   it("detects full selection", () => {

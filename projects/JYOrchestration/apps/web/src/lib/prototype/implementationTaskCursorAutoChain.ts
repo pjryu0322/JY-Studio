@@ -6,10 +6,6 @@ import {
 } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import {
-  collectDependentTaskIds,
-  shouldStopAutoChainForFoundationFailure,
-} from "@/lib/prototype/implementationTaskDependencyGraph";
-import {
   isInFlightTaskCursorExecution,
   isTaskCursorStatusCheckStopped,
 } from "@/lib/prototype/taskCursorClientPollLoop";
@@ -100,26 +96,12 @@ function resolveFailureAutoChainDecision(input: {
     }
     return { kind: "none" };
   }
-  if (
-    shouldStopAutoChainForFoundationFailure({
-      failedTaskId: execution.taskId,
-      taskRows: board.taskRows,
-      nextTaskId,
-    })
-  ) {
-    return { kind: "none" };
-  }
-
-  const blockedTaskIds = collectDependentTaskIds({
-    taskRows: board.taskRows,
-    failedTaskIds: [execution.taskId],
-  });
 
   return {
     kind: "continue_after_failure",
     failedTaskId: execution.taskId,
     toTaskId: nextTaskId,
-    blockedTaskIds,
+    blockedTaskIds: [],
   };
 }
 
@@ -214,12 +196,9 @@ export function formatTaskCursorAutoChainNotice(
     return `우선순위 기준 다음 작업 ${decision.taskId}${title}을(를) 자동으로 시작합니다.`;
   }
   if (decision.kind === "continue_after_failure") {
-    const blockedCount = decision.blockedTaskIds.length;
-    const blockedNote =
-      blockedCount > 0 ? ` (의존 작업 ${blockedCount}개 차단)` : "";
     return [
       `${decision.failedTaskId} 작업은 재작업 필요로 분류했습니다.`,
-      `독립적인 다음 작업 ${decision.toTaskId}${title}을(를) 계속 진행합니다${blockedNote}.`,
+      `다음 작업 ${decision.toTaskId}${title}을(를) 계속 진행합니다.`,
     ].join("\n");
   }
   return `작업 ${decision.fromTaskId} 통과 — 다음 작업 ${decision.toTaskId}${title}을(를) 자동으로 시작합니다.`;

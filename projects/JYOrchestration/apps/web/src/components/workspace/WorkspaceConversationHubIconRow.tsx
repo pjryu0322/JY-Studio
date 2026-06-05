@@ -524,8 +524,14 @@ export function WorkspaceConversationHubIconRow({
       <WorkspaceHubChromeIconButton
         title={quickTitle}
         ariaLabel={quickAria}
-        disabled={busy || remoteLocked}
-        onClick={() => void slotsUi.onForceGeneratePlanNow()}
+        disabled={remoteLocked}
+        onClick={() => {
+          if (busy) {
+            slotsUi.onForceGeneratePlanNow();
+            return;
+          }
+          void slotsUi.onForceGeneratePlanNow();
+        }}
       >
         <QuickDesignIcon />
       </WorkspaceHubChromeIconButton>

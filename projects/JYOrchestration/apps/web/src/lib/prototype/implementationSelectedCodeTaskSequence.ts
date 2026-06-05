@@ -1,19 +1,40 @@
-import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 
-/** 화면 선택과 동일한 순서: 실행 중 Job DB 필드가 SoT, 없을 때만 JSON 큐 목록. */
+/** Job에 저장된 선택(과거 readyIds만 넣은 버그 등)을 보드 체크박스 선택과 합친다. Job 순서 유지, 보드에만 있는 id는 보드 순서로 뒤에 붙인다. */
+export function reconcileJobSelectedCodeTaskIdsWithBoardSelection(input: {
+  readonly jobSelectedCodeTaskIds: readonly string[];
+  readonly boardSelectedCodeTaskIds: readonly string[];
+}): readonly string[] {
+  const job = input.jobSelectedCodeTaskIds.map((id) => id.trim()).filter(Boolean);
+  const board = input.boardSelectedCodeTaskIds.map((id) => id.trim()).filter(Boolean);
+  if (!board.length) return job;
+  if (!job.length) return board;
+  const seen = new Set(job);
+  const merged = [...job];
+  for (const id of board) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      merged.push(id);
+    }
+  }
+  return merged;
+}
+
+export function jobSelectedCodeTaskIdsNeedBoardReconcile(input: {
+  readonly jobSelectedCodeTaskIds: readonly string[];
+  readonly boardSelectedCodeTaskIds: readonly string[];
+}): boolean {
+  const reconciled = reconcileJobSelectedCodeTaskIdsWithBoardSelection(input);
+  const job = input.jobSelectedCodeTaskIds.map((id) => id.trim()).filter(Boolean);
+  return reconciled.length > job.length;
+}
+
+/** 실행 중 Job DB 필드가 SoT. */
 export function resolveSelectedCodeTaskIdsForContinuation(input: {
   readonly dbBundle?: ImplementationRuntimeBundleView | null;
-  readonly legacyQueue?: CodeTaskExecutionQueueV1 | null;
 }): readonly string[] {
   const jobIds = input.dbBundle?.job?.selectedCodeTaskIds ?? [];
-  if (jobIds.length) {
-    return jobIds.map((id) => id.trim()).filter(Boolean);
-  }
-  if (input.legacyQueue?.status === "running") {
-    return input.legacyQueue.selectedCodeTaskIds.map((id) => id.trim()).filter(Boolean);
-  }
-  return [];
+  return jobIds.map((id) => id.trim()).filter(Boolean);
 }
 
 /** 완료한 CodeTask 다음 항목 (선택 배열 기준, N회 반복의 유일한 규칙). */
@@ -32,11 +53,9 @@ export function resolveNextCodeTaskIdAfterCompletion(input: {
 export function resolveNextQuickRunCodeTaskId(input: {
   readonly completedCodeTaskId: string | null;
   readonly dbBundle?: ImplementationRuntimeBundleView | null;
-  readonly queue?: CodeTaskExecutionQueueV1 | null;
 }): string | null {
   const selectedCodeTaskIds = resolveSelectedCodeTaskIdsForContinuation({
     dbBundle: input.dbBundle,
-    legacyQueue: input.queue ?? null,
   });
   return resolveNextCodeTaskIdAfterCompletion({
     selectedCodeTaskIds,

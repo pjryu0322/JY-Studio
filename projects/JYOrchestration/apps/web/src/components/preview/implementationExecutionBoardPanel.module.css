@@ -87,7 +87,27 @@
   margin-top: 8px;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+.githubVerifyAutoStatus {
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+  line-height: 1.4;
+  max-width: 36rem;
+}
+
+.githubVerifyRetryLink {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .runtimeRecoveryRow {
@@ -471,11 +491,42 @@
   padding: 0 14px 12px;
 }
 
+.integrationSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+
 .taskTreeSectionTitle {
   padding: 12px 0 8px;
   font-size: 12px;
   font-weight: 900;
   color: #334155;
+}
+
+.integrationPrimaryButton {
+  flex-shrink: 0;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.integrationPrimaryButton:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.integrationPrimaryButton:not(:disabled):hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
 }
 
 .taskTreeList {

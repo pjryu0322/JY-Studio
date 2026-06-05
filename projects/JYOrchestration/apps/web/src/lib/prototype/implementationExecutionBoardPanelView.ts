@@ -319,13 +319,9 @@ export function buildDashboardProgressHeadline(board: ImplementationExecutionBoa
   const completed = board.summary.completedTasks;
   const inProgress = board.summary.inProgressTasks;
   const rework = board.summary.reworkRequiredTasks ?? 0;
-  const blocked = board.summary.blockedByDependencyTasks ?? 0;
   if (total <= 0) return "작업 없음";
-  if (rework > 0 || blocked > 0) {
-    const parts = [`${total}개 중 ${completed}개 완료`];
-    if (rework > 0) parts.push(`${rework}개 재작업 필요`);
-    if (blocked > 0) parts.push(`${blocked}개 차단`);
-    return parts.join(" · ");
+  if (rework > 0) {
+    return `${total}개 중 ${completed}개 완료 · ${rework}개 재작업 필요`;
   }
   if (inProgress > 0) {
     const current = Math.min(completed + inProgress, total);
@@ -414,11 +410,14 @@ export function buildTaskCursorPollStatusLabel(input: {
     }
     return "실행 중";
   }
+  const branch = String(execution.workBranch ?? "").trim();
   const tick = findLatestTaskCursorPollTickForTask(input.promptTimeline, input.taskId);
-  const parts = ["Cloud Agent 결과 확인 중"];
+  const parts = [
+    branch ? "GitHub commit 확인 중" : "CodeTask 실행 중 · GitHub branch 대기",
+  ];
   if (tick?.round != null) parts.push(`${tick.round}회`);
-  const agentStatus = tick?.agentStatus?.trim() || execution.status?.trim();
-  if (agentStatus) parts.push(agentStatus);
+  const agentStatus = tick?.agentStatus?.trim();
+  if (agentStatus && agentStatus !== execution.status?.trim()) parts.push(agentStatus);
   const elapsed = formatTaskCursorElapsedMinutes(
     tick?.updatedAt ?? execution.updatedAt ?? execution.createdAt,
   );
@@ -443,6 +442,7 @@ export function buildImplementationTaskTreeNodes(input: {
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly serverJob?: TaskCursorJobSummary | null;
+  readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
 }): readonly ImplementationCodeTaskTreeNode[] {
   const taskCursorExecution = input.taskCursorExecution ?? null;
   const activeCodeTaskId =
@@ -462,6 +462,7 @@ export function buildImplementationTaskTreeNodes(input: {
     dbRuntimeRuns: input.dbRuntimeRuns,
     dbCurrentRun: input.dbCurrentRun,
     implementationAutoQualityGateV1: input.implementationAutoQualityGateV1,
+    sequentialQuickRunCodeTaskIds: input.sequentialQuickRunCodeTaskIds,
   });
 
   const activeParentId =

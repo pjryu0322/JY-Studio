@@ -46,6 +46,28 @@ export function buildQuickRunNextDispatchExecutedTimelineEntry(input: {
   });
 }
 
+export function buildQuickRunDbQueuedAutoDispatchTimelineEntry(input: {
+  readonly projectId: string;
+  readonly codeTaskId?: string | null;
+  readonly outcome: "dispatched" | "skipped" | "failed";
+  readonly reason?: string | null;
+  readonly runState?: string | null;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: "quick_run_db_queued_auto_dispatch",
+    orchestrationTraceGroup: "implementation_orchestration",
+    fields: {
+      projectId: input.projectId,
+      outcome: input.outcome,
+      ...(input.codeTaskId ? { codeTaskId: input.codeTaskId } : {}),
+      ...(input.reason ? { reason: input.reason } : {}),
+      ...(input.runState ? { runState: input.runState } : {}),
+    },
+    nowIso: input.nowIso,
+  });
+}
+
 export function buildQuickRunNextDispatchSkippedTimelineEntry(input: {
   readonly projectId: string;
   readonly completedTaskId: string;

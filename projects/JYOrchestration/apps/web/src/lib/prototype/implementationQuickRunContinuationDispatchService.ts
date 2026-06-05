@@ -17,6 +17,7 @@ import {
   resolveCodeTaskIdForDbRuntimeDispatch,
 } from "@/lib/prototype/selectedCodeTaskCursorExecution";
 import { launchTaskCursorCloudAgent } from "@/lib/prototype/taskCursorCloudAgentClient";
+import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import { patchTaskCursorExecution, TASK_CURSOR_FAILURE_MESSAGES } from "@/lib/prototype/taskCursorExecution";
 import {
   buildRuntimeSyncAfterLaunchTimelineEntry,
@@ -144,7 +145,7 @@ export async function dispatchQuickRunContinuationOnServer(input: {
             ? runs.map((r) => (r.runId === prepared.run.runId ? prepared.run : r))
             : [...runs, prepared.run],
         }),
-        message: "DB Queue dispatch 없이 다음 CodeTask Cursor 실행을 시작할 수 없습니다.",
+        message: "DB Runtime queued run이 없어 Cursor 실행을 시작할 수 없습니다. Runtime 상태를 새로고침한 뒤 다시 시도해 주세요.",
       };
     }
 
@@ -192,9 +193,15 @@ export async function dispatchQuickRunContinuationOnServer(input: {
       activeWorkItemId: prepared.workItem.id,
     });
 
+    const mergedPatch = mergeOrchestrationPersistPatches(input.baseOrchestrationPatch, orchestrationPatch);
+    await persistTaskCursorOrchestrationToProject({
+      projectId: pid,
+      orchestrationPatch: mergedPatch,
+    });
+
     return {
       dispatched: true,
-      orchestrationPatch: mergeOrchestrationPersistPatches(input.baseOrchestrationPatch, orchestrationPatch),
+      orchestrationPatch: mergedPatch,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

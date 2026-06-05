@@ -1,6 +1,5 @@
 import {
   CODE_TASK_EXECUTION_QUEUE_VERSION,
-  parseCodeTaskExecutionQueueV1,
   type CodeTaskExecutionQueueStatus,
   type CodeTaskExecutionQueueV1,
 } from "@/lib/prototype/codeTaskExecutionQueue";
@@ -68,6 +67,10 @@ function jobHasInFlightRun(
   return false;
 }
 
+/**
+ * DB Job이 순차 실행의 유일한 SoT. 아래 JSON 큐는 예전 requirementsState 호환용 뷰일 뿐이다.
+ * 화면 선택 N개 → start_job selectedCodeTaskIds N개 → Job.selectedCodeTaskIdsJson.
+ */
 /** DB job + runs → legacy JSON queue snapshot (UI cache only). */
 export function buildCodeTaskExecutionQueueSnapshotFromDbJob(input: {
   readonly bundle: ImplementationRuntimeBundleView;
@@ -101,16 +104,10 @@ export function buildCodeTaskExecutionQueueSnapshotFromDbJob(input: {
   };
 }
 
-/** DB snapshot wins; JSON only before job / idle UI. */
+/** DB Job만 SoT. requirementsState JSON 큐는 사용하지 않는다. */
 export function resolveEffectiveCodeTaskExecutionQueue(input: {
-  readonly dbQueueSnapshot: CodeTaskExecutionQueueV1 | null | undefined;
-  readonly jsonQueue: unknown;
-  readonly dbJobStatus?: string | null;
+  readonly dbBundle?: ImplementationRuntimeBundleView | null;
 }): CodeTaskExecutionQueueV1 | null {
-  if (input.dbQueueSnapshot) return input.dbQueueSnapshot;
-  const jobStatus = input.dbJobStatus?.trim() ?? "";
-  if (jobStatus === "running" || jobStatus === "paused") {
-    return null;
-  }
-  return parseCodeTaskExecutionQueueV1(input.jsonQueue) ?? null;
+  if (!input.dbBundle?.job?.id) return null;
+  return buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle: input.dbBundle });
 }

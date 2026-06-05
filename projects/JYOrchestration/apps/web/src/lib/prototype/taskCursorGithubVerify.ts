@@ -17,6 +17,8 @@ export type TaskCursorGithubVerifyInput = Readonly<{
   readonly githubToken: string;
   readonly allowedPathGlobs: readonly string[];
   readonly userAgent?: string;
+  /** Quick Run CodeTask — branch/commit message 매칭에 사용 (parent taskId와 다를 수 있음) */
+  readonly codeTaskId?: string | null;
 }>;
 
 export type TaskCursorGithubVerifyDetailReason =
@@ -37,6 +39,18 @@ export type TaskCursorGithubVerifyResult = Readonly<{
   readonly noCodeChangeEvidence?: string;
 }>;
 
+/** branch/commit이 아직 push/reflection 안 된 경우 — failed 처리하지 않고 폴링 계속 */
+export function isTransientTaskCursorGithubVerifyMiss(
+  result: Pick<TaskCursorGithubVerifyResult, "ok" | "reason" | "detailReason">,
+): boolean {
+  if (result.ok) return false;
+  const detail = result.detailReason;
+  if (detail === "branch_not_found" || detail === "commit_not_found") return true;
+  if (detail === "changed_files_empty") return true;
+  if (result.reason === "commit_not_created" || result.reason === "no_changed_files") return true;
+  return false;
+}
+
 type GithubCommitResponse = Readonly<{
   readonly sha?: string;
   readonly commit?: Readonly<{ readonly message?: string }>;
@@ -44,6 +58,184 @@ type GithubCommitResponse = Readonly<{
 }>;
 
 type GithubRefResponse = Readonly<{ readonly object?: Readonly<{ readonly sha?: string }> }>;
+
+type GithubCommitListItem = Readonly<{ readonly sha?: string }>;
+
+type GithubCompareFile = Readonly<{ readonly filename?: string }>;
+
+type GithubCompareResponse = Readonly<{ readonly files?: readonly GithubCompareFile[] }>;
+
+const BRANCH_COMMIT_WALK_LIMIT = 12;
+
+function shouldTryOlderBranchCommits(result: TaskCursorGithubVerifyResult): boolean {
+  if (result.ok) return false;
+  return (
+    result.detailReason === "commit_message_missing_task_id" ||
+    result.detailReason === "changed_files_empty" ||
+    result.detailReason === "path_guard_failed"
+  );
+}
+
+function commitMessageMatchesTask(input: {
+  readonly commitMessage: string;
+  readonly branch: string;
+  readonly taskId: string;
+  readonly codeTaskId?: string | null;
+}): boolean {
+  const commitMessage = input.commitMessage;
+  const branch = input.branch.toLowerCase();
+  const taskSlug = input.taskId
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  const codeTaskId = String(input.codeTaskId ?? "").trim();
+  const codeTaskSlug = codeTaskId
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  return (
+    commitMessage.includes(input.taskId) ||
+    (codeTaskId &&
+      (commitMessage.includes(codeTaskId) || branch.includes(codeTaskId.toLowerCase()))) ||
+    (codeTaskSlug &&
+      (commitMessage.toLowerCase().includes(codeTaskSlug) || branch.includes(codeTaskSlug))) ||
+    (taskSlug &&
+      (commitMessage.toLowerCase().includes(taskSlug) || branch.includes(taskSlug)))
+  );
+}
+
+async function evaluateGithubCommitForTaskCursor(input: {
+  readonly commitSha: string;
+  readonly branch: string;
+  readonly execution: TaskCursorExecutionV1;
+  readonly targetRepository: ProjectTargetRepository;
+  readonly githubToken: string;
+  readonly allowedPathGlobs: readonly string[];
+  readonly codeTaskId?: string | null;
+  readonly userAgent: string;
+  readonly api: string;
+  readonly owner: string;
+  readonly repo: string;
+  readonly repoFullName: string;
+}): Promise<TaskCursorGithubVerifyResult> {
+  const commitUrl = `${input.api}/repos/${input.owner}/${input.repo}/commits/${encodeURIComponent(input.commitSha)}`;
+  const commitRes = await githubFetchJson<GithubCommitResponse>(commitUrl, input.githubToken, input.userAgent);
+  if (!commitRes.ok) {
+    if (commitRes.status === 401 || commitRes.status === 403) {
+      return {
+        ok: false,
+        reason: "github_auth_failed",
+        message: TASK_CURSOR_FAILURE_MESSAGES.github_auth_failed,
+      };
+    }
+    return {
+      ok: false,
+      reason: commitRes.status === 404 ? "commit_not_created" : "github_verify_failed",
+      detailReason: commitRes.status === 404 ? "commit_not_found" : undefined,
+      message: formatTaskCursorGithubCommitFailureMessage({
+        commitSha: input.commitSha,
+        repoFullName: input.repoFullName,
+        httpStatus: commitRes.status,
+      }),
+    };
+  }
+
+  const commitMessage = String(commitRes.data.commit?.message ?? "");
+  if (
+    !commitMessageMatchesTask({
+      commitMessage,
+      branch: input.branch,
+      taskId: input.execution.taskId,
+      codeTaskId: input.codeTaskId,
+    })
+  ) {
+    return {
+      ok: false,
+      reason: "github_verify_failed",
+      detailReason: "commit_message_missing_task_id",
+      message: `GitHub commit message에 taskId \`${input.execution.taskId}\`가 포함되어 있지 않습니다. WIP branch \`${input.branch}\`의 commit \`${input.commitSha.slice(0, 12)}\` message를 확인해 주세요.`,
+    };
+  }
+
+  const apiFiles =
+    commitRes.data.files?.map((f) => String(f.filename ?? "").trim()).filter(Boolean) ?? [];
+  let changedFiles =
+    apiFiles.length > 0 ? apiFiles : [...(input.execution.changedFiles ?? [])];
+  if (!changedFiles.length) {
+    const compareFiles = await listChangedFilesFromBranchCompare({
+      api: input.api,
+      owner: input.owner,
+      repo: input.repo,
+      baseBranch: input.execution.baseBranch,
+      branch: input.branch,
+      githubToken: input.githubToken,
+      userAgent: input.userAgent,
+    });
+    if (compareFiles.length) changedFiles = compareFiles;
+  }
+  if (!changedFiles.length) {
+    return {
+      ok: false,
+      reason: "no_changed_files",
+      detailReason: "changed_files_empty",
+      message: TASK_CURSOR_FAILURE_MESSAGES.no_changed_files,
+    };
+  }
+
+  const pathValidation = validateTargetRepositoryChangedFiles({
+    changedFiles,
+    targetRepository: input.targetRepository,
+    allowedPathGlobs: input.allowedPathGlobs,
+    forbiddenPathGlobs: defaultForbiddenTargetPathGlobs(),
+  });
+  if (!pathValidation.ok) {
+    return {
+      ok: false,
+      reason: "github_verify_failed",
+      detailReason: "path_guard_failed",
+      message: pathValidation.message,
+    };
+  }
+
+  return { ok: true, verifiedChangedFiles: changedFiles, verifiedCommitSha: input.commitSha };
+}
+
+async function listChangedFilesFromBranchCompare(input: {
+  readonly api: string;
+  readonly owner: string;
+  readonly repo: string;
+  readonly baseBranch: string;
+  readonly branch: string;
+  readonly githubToken: string;
+  readonly userAgent: string;
+}): Promise<readonly string[]> {
+  const base = String(input.baseBranch ?? "main").trim() || "main";
+  const head = String(input.branch ?? "").trim();
+  if (!head) return [];
+  const url = `${input.api}/repos/${input.owner}/${input.repo}/compare/${encodeURIComponent(`${base}...${head}`)}`;
+  const res = await githubFetchJson<GithubCompareResponse>(url, input.githubToken, input.userAgent);
+  if (!res.ok) return [];
+  return (res.data.files ?? [])
+    .map((f) => String(f.filename ?? "").trim())
+    .filter(Boolean);
+}
+
+async function listBranchCommitShas(input: {
+  readonly api: string;
+  readonly owner: string;
+  readonly repo: string;
+  readonly branch: string;
+  readonly githubToken: string;
+  readonly userAgent: string;
+}): Promise<readonly string[]> {
+  const url = `${input.api}/repos/${input.owner}/${input.repo}/commits?sha=${encodeURIComponent(input.branch)}&per_page=${BRANCH_COMMIT_WALK_LIMIT}`;
+  const res = await githubFetchJson<readonly GithubCommitListItem[]>(url, input.githubToken, input.userAgent);
+  if (!res.ok) return [];
+  return (res.data ?? [])
+    .map((item) => String(item.sha ?? "").trim())
+    .filter(Boolean);
+}
 
 export function formatTaskCursorGithubRefFailureMessage(input: {
   readonly branch: string;
@@ -163,77 +355,48 @@ export async function verifyTaskCursorGithubResult(
     };
   }
 
-  const commitUrl = `${api}/repos/${owner}/${repo}/commits/${encodeURIComponent(commitSha)}`;
-  const commitRes = await githubFetchJson<GithubCommitResponse>(commitUrl, token, userAgent);
-  if (!commitRes.ok) {
-    if (commitRes.status === 401 || commitRes.status === 403) {
-      return {
-        ok: false,
-        reason: "github_auth_failed",
-        message: TASK_CURSOR_FAILURE_MESSAGES.github_auth_failed,
-      };
-    }
-    return {
-      ok: false,
-      reason: commitRes.status === 404 ? "commit_not_created" : "github_verify_failed",
-      detailReason: commitRes.status === 404 ? "commit_not_found" : undefined,
-      message: formatTaskCursorGithubCommitFailureMessage({
-        commitSha,
-        repoFullName,
-        httpStatus: commitRes.status,
-      }),
-    };
-  }
-
-  const commitMessage = String(commitRes.data.commit?.message ?? "");
-  const taskSlug = input.execution.taskId
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/g, "");
-  const messageMatchesTask =
-    commitMessage.includes(input.execution.taskId) ||
-    (taskSlug &&
-      (commitMessage.toLowerCase().includes(taskSlug) ||
-        branch.toLowerCase().includes(taskSlug)));
-  if (!messageMatchesTask) {
-    return {
-      ok: false,
-      reason: "github_verify_failed",
-      detailReason: "commit_message_missing_task_id",
-      message: `GitHub commit message에 taskId \`${input.execution.taskId}\`가 포함되어 있지 않습니다. WIP branch \`${branch}\`의 최신 commit message를 확인해 주세요.`,
-    };
-  }
-
-  const apiFiles =
-    commitRes.data.files?.map((f) => String(f.filename ?? "").trim()).filter(Boolean) ?? [];
-  const changedFiles =
-    apiFiles.length > 0 ? apiFiles : [...(input.execution.changedFiles ?? [])];
-  if (!changedFiles.length) {
-    return {
-      ok: false,
-      reason: "no_changed_files",
-      detailReason: "changed_files_empty",
-      message: TASK_CURSOR_FAILURE_MESSAGES.no_changed_files,
-    };
-  }
-
-  const pathValidation = validateTargetRepositoryChangedFiles({
-    changedFiles,
+  const evalInput = {
+    branch,
+    execution: input.execution,
     targetRepository: input.targetRepository,
+    githubToken: token,
     allowedPathGlobs: input.allowedPathGlobs,
-    forbiddenPathGlobs: defaultForbiddenTargetPathGlobs(),
+    codeTaskId: input.codeTaskId,
+    userAgent,
+    api,
+    owner,
+    repo,
+    repoFullName,
+  };
+
+  let headResult = await evaluateGithubCommitForTaskCursor({
+    ...evalInput,
+    commitSha,
   });
-  if (!pathValidation.ok) {
-    return {
-      ok: false,
-      reason: "github_verify_failed",
-      detailReason: "path_guard_failed",
-      message: pathValidation.message,
-    };
+  if (headResult.ok) return headResult;
+  if (headResult.reason === "github_auth_failed") return headResult;
+
+  if (shouldTryOlderBranchCommits(headResult)) {
+    const shas = await listBranchCommitShas({
+      api,
+      owner,
+      repo,
+      branch,
+      githubToken: token,
+      userAgent,
+    });
+    for (const olderSha of shas) {
+      if (olderSha === commitSha) continue;
+      const candidate = await evaluateGithubCommitForTaskCursor({
+        ...evalInput,
+        commitSha: olderSha,
+      });
+      if (candidate.ok) return candidate;
+      if (candidate.reason === "github_auth_failed") return candidate;
+    }
   }
 
-  return { ok: true, verifiedChangedFiles: changedFiles, verifiedCommitSha: commitSha };
+  return headResult;
 }
 
 export function evaluateTaskCursorGithubVerifyReadiness(input: {

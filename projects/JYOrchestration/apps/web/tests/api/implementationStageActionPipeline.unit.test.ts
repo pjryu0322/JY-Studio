@@ -419,7 +419,7 @@ describe("evaluateImplementationStageActionGate", () => {
       ).toBe(true);
     });
 
-    it("blocks when planning preflight summary failed", () => {
+    it("allows Quick Run even when planning preflight summary failed (client gate relaxed)", () => {
       const state = baseState({
         envOk: true,
         parsedRequirementsState: {
@@ -444,10 +444,10 @@ describe("evaluateImplementationStageActionGate", () => {
         : null;
       expect(
         evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", state, failedBoard).ok,
-      ).toBe(false);
+      ).toBe(true);
     });
 
-    it("blocks when env is not ready", () => {
+    it("allows Quick Run when prototype envOk is false (server validates execution setup)", () => {
       const state = baseState({
         envOk: false,
         parsedRequirementsState: {
@@ -455,7 +455,13 @@ describe("evaluateImplementationStageActionGate", () => {
           implementationTaskListV1: makeTaskListReady(),
         },
       });
-      expect(evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", state).ok).toBe(false);
+      expect(
+        evaluateImplementationStageActionGate(
+          "START_IMPLEMENTATION_QUICK_RUN",
+          state,
+          planningReadyBoardContext(),
+        ).ok,
+      ).toBe(true);
     });
   });
 
@@ -728,59 +734,135 @@ describe("stageActionRunResultToTimelinePhase", () => {
 });
 
 describe("START_IMPLEMENTATION_QUICK_RUN active execution gate", () => {
-  it("prefers running message over env-not-ready when cursor job is active", () => {
+  const planningBoard = buildImplementationStageBoardGateContext({
+    projectId: "p1",
+    taskList: makeTaskListReady(),
+    implementationCodeTaskPlanV1: {
+      version: "implementation_code_task_plan_v1",
+      projectId: "p1",
+      createdAt: "2026-06-01T21:43:01.504Z",
+      updatedAt: "2026-06-01T21:43:01.504Z",
+      source: "implementation_task_list",
+      parentTaskCount: 1,
+      codeTaskCount: 1,
+      tasks: [
+        {
+          codeTaskId: "CODE-DEV-001-001",
+          parentTaskId: "DEV-MOCK-001",
+          title: "개발",
+          description: "dev",
+          changeType: "component",
+          targetHints: ["components"],
+          dependencies: [],
+          acceptanceCriteria: ["ok"],
+          verificationHints: ["check"],
+          forbiddenPaths: ["package.json"],
+          priority: "P1",
+          status: "ready",
+          blockers: [],
+        },
+      ],
+      readiness: { ready: true, missing: [] },
+      validationReport: {
+        status: "passed",
+        checkedAt: "2026-06-01T21:43:01.504Z",
+        errors: [],
+        warnings: [],
+      },
+    },
+    cursorWorkItemsV1: [
+      {
+        id: "wi-1",
+        taskId: "DEV-MOCK-001",
+        title: "t",
+        prompt: "p",
+        requiredFilesHint: [],
+        expectedOutput: [],
+        testCommands: ["pnpm test"],
+        forbiddenPaths: ["package.json"],
+        blocked: false,
+        blockers: [],
+        qualityGate: { score: 1, promptReady: true, missing: [] },
+      },
+    ],
+    implementationWorkItemPreflightSummaryV1: {
+      version: "implementation_work_item_preflight_summary_v1",
+      projectId: "p1",
+      checkedAt: "2026-06-01T21:43:01.504Z",
+      status: "passed",
+      workItemCount: 1,
+      failedWorkItemIds: [],
+      failedReasons: [],
+    },
+    implementationCodeTaskQualityGateV1: {
+      version: "implementation_code_task_quality_gate_v1",
+      projectId: "p1",
+      checkedAt: "2026-06-01T21:43:01.504Z",
+      status: "passed",
+      issueCount: 0,
+      errorCount: 0,
+      warningCount: 0,
+      issues: [],
+    },
+  });
+
+  it("allows Quick Run when legacy cursor job is active (DB start_job is SoT)", () => {
     const state = baseState({
       envOk: false,
-      parsedRequirementsState: { implementationTaskListV1: makeTaskListReady() },
-    });
-    const boardContext = buildImplementationStageBoardGateContext({
-      projectId: "p1",
-      taskList: makeTaskListReady(),
-      taskCursorExecutionV1: {
-        version: "task_cursor_execution_v1",
-        projectId: "p1",
-        taskId: "DEV-MOCK-001",
-        workItemIds: ["wi-1"],
-        status: "cursor_running",
-        cursorProvider: "cursor",
-        targetRepository: "owner/repo",
-        baseBranch: "main",
-        workBranch: "wip/cursor/dev-mock-001",
-        createdAt: "2026-06-01T21:43:01.504Z",
-        updatedAt: "2026-06-01T21:43:01.504Z",
-      },
-      activeTaskCursorJob: {
-        id: "job-1",
-        projectId: "p1",
-        taskId: "DEV-MOCK-001",
-        status: "cursor_running",
-        pollCount: 0,
-        lastPollAt: "2026-06-01T21:43:01.504Z",
-        nextPollAt: null,
+      parsedRequirementsState: {
+        implementationSeedV1: makeSeed("confirmed", true),
+        implementationTaskListV1: makeTaskListReady(),
       },
     });
+    const boardContext = planningBoard
+      ? {
+          ...planningBoard,
+          taskCursorExecutionV1: {
+            version: "task_cursor_execution_v1",
+            projectId: "p1",
+            taskId: "DEV-MOCK-001",
+            workItemIds: ["wi-1"],
+            status: "cursor_running",
+            cursorProvider: "cursor",
+            targetRepository: "owner/repo",
+            baseBranch: "main",
+            workBranch: "wip/cursor/dev-mock-001",
+            createdAt: "2026-06-01T21:43:01.504Z",
+            updatedAt: "2026-06-01T21:43:01.504Z",
+          },
+          activeTaskCursorJob: {
+            id: "job-1",
+            projectId: "p1",
+            taskId: "DEV-MOCK-001",
+            status: "cursor_running",
+            pollCount: 0,
+            lastPollAt: "2026-06-01T21:43:01.504Z",
+            nextPollAt: null,
+          },
+        }
+      : null;
     const gate = evaluateImplementationStageActionGate(
       "START_IMPLEMENTATION_QUICK_RUN",
       state,
       boardContext,
     );
-    expect(gate.ok).toBe(false);
-    if (!gate.ok) {
-      expect(gate.message).toContain("현재");
-      expect(gate.message).not.toContain("환경 준비");
-    }
+    expect(gate.ok).toBe(true);
   });
 
-  it("shows env message only when no active execution", () => {
+  it("does not require prototype envOk (execution setup checked on server dispatch)", () => {
     const state = baseState({
       envOk: false,
-      parsedRequirementsState: { implementationTaskListV1: makeTaskListReady() },
+      parsedRequirementsState: {
+        implementationSeedV1: makeSeed("confirmed", true),
+        implementationTaskListV1: makeTaskListReady(),
+      },
     });
-    const gate = evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", state);
-    expect(gate.ok).toBe(false);
-    if (!gate.ok) {
-      expect(gate.message).toContain("환경 준비");
-    }
+    const gate = evaluateImplementationStageActionGate(
+      "START_IMPLEMENTATION_QUICK_RUN",
+      state,
+      planningBoard,
+    );
+    expect(gate.ok).toBe(true);
   });
 });
 

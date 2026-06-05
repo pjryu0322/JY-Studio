@@ -1,13 +1,8 @@
 import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
-  checkCodeTaskDependencyReady,
-  formatCodeTaskDependencyTreeHint,
-} from "@/lib/prototype/codeTaskDependencyResolver";
-import {
   findLatestRunForCodeTask,
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
-import { isInFlightCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
 import {
   buildCodeTaskRowView,
   summarizeCodeTaskRowViewsForProcess,
@@ -126,7 +121,6 @@ function formatBoardStepStatusKo(status: ImplementationBoardStepStatus): string 
 }
 
 function resolveProcessProgressLabel(row: ImplementationExecutionBoardTaskRowV1): string {
-  if (row.failureReason === "blocked_by_dependency") return "선행 작업 대기";
   if (row.developerStatus === "in_progress") return "진행 중";
   if (row.developerStatus === "done" && isPerTaskPipelineComplete(row)) return "실행 가능";
   if (row.developerStatus === "done") return "개발 완료";
@@ -136,7 +130,6 @@ function resolveProcessProgressLabel(row: ImplementationExecutionBoardTaskRowV1)
 }
 
 function resolveProcessStatusLabel(row: ImplementationExecutionBoardTaskRowV1): string {
-  if (row.failureReason === "blocked_by_dependency") return "차단";
   if (row.developerStatus === "failed") return "실패";
   if (isPerTaskPipelineComplete(row)) return "완료";
   if (row.developerStatus === "in_progress") return "실행 중";
@@ -166,6 +159,8 @@ function buildCodeTaskNode(input: {
   readonly isActive: boolean;
   readonly isSelected: boolean;
   readonly isChecked: boolean;
+  /** DB Quick Run Job 순서 — 이 목록에 있으면 plan 그래프 선행 검사로 UI/phase를 막지 않는다. */
+  readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
 }): ImplementationCodeTaskTreeNode {
   const policy = evaluateCodeTaskReviewSecurityPolicy({
     codeTask: input.codeTask,
@@ -185,18 +180,6 @@ function buildCodeTaskNode(input: {
     execution: executionForParent,
     dbRun,
   });
-  const dependencyCheck = input.codeTaskPlan
-    ? checkCodeTaskDependencyReady({
-        codeTaskId: input.codeTask.codeTaskId,
-        codeTaskPlan: input.codeTaskPlan,
-        runs: input.codeTaskExecutionRuns ?? [],
-      })
-    : null;
-  const dependencyBlocked =
-    latestRun?.status === "blocked_by_dependency" ||
-    (dependencyCheck &&
-      dependencyCheck.status !== "ready" &&
-      (!latestRun || !isInFlightCodeTaskExecutionRunStatus(latestRun.status)));
   const autoGateForCodeTask =
     input.autoGate?.taskId === input.codeTask.parentTaskId ? input.autoGate : null;
   let phase = deriveCodeTaskExecutionFlowPhase({
@@ -204,11 +187,10 @@ function buildCodeTaskNode(input: {
     taskCursorExecution: executionForParent,
     autoGate: autoGateForCodeTask,
     latestRun,
-    failureReason: dependencyBlocked
-      ? "blocked_by_dependency"
-      : latestRun?.status === "rework_required" ||
-          latestRun?.status === "failed" ||
-          latestRun?.status === "status_check_stopped"
+    failureReason:
+      latestRun?.status === "rework_required" ||
+      latestRun?.status === "failed" ||
+      latestRun?.status === "status_check_stopped"
         ? latestRun.failureReason ?? "commit_not_created"
         : latestRun?.failureReason === "prompt_preflight_failed"
           ? "prompt_preflight_failed"
@@ -220,7 +202,6 @@ function buildCodeTaskNode(input: {
     codeTask: input.codeTask,
     runs: input.codeTaskExecutionRuns,
     codeTaskPlan: input.codeTaskPlan,
-    dependencyCheck: dependencyCheck ?? undefined,
   });
 
   let collapsedSummary = rowView.collapsedSummary || formatCodeTaskExecutionFlowPhaseKo(phase);
@@ -228,11 +209,7 @@ function buildCodeTaskNode(input: {
   if (phase === "completed") collapsedSummary = "완료";
   if (phase === "failed") collapsedSummary = "재작업 필요";
   if (phase === "prompt_preflight_failed") collapsedSummary = "프롬프트 품질 검사 실패";
-  if (phase === "blocked_by_dependency") collapsedSummary = "선행 작업 필요";
 
-  const dependencyHint = dependencyCheck
-    ? formatCodeTaskDependencyTreeHint(dependencyCheck, input.codeTaskPlan)
-    : undefined;
   const statusLabel = rowView.statusLabel;
   const progressLabel = rowView.progressLabel;
 
@@ -270,9 +247,7 @@ function buildCodeTaskNode(input: {
         }
       : phase === "failed"
       ? { nextActionHint: "다음 처리: Cursor 재실행 대기" }
-      : phase === "blocked_by_dependency"
-        ? { nextActionHint: dependencyHint ?? "선행 CodeTask 완료 후 실행 가능" }
-        : {
+      : {
             nextActionHint:
               "다음 처리: AI 개발자 실행 → GitHub 결과 확인",
           }),
@@ -317,6 +292,7 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
   readonly dbRuntimeRuns?: readonly ImplementationRuntimeRunView[] | null;
   readonly dbCurrentRun?: ImplementationRuntimeRunView | null;
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
+  readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
 }): readonly ImplementationCodeTaskTreeNode[] {
   const plan = input.codeTaskPlan;
   if (!plan?.tasks.length) return [];
@@ -358,6 +334,7 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
         isActive,
         isSelected,
         isChecked: checkedCodeTaskIds.has(codeTask.codeTaskId),
+        sequentialQuickRunCodeTaskIds: input.sequentialQuickRunCodeTaskIds,
       }),
     );
   }
@@ -443,9 +420,7 @@ export function buildImplementationProcessTaskTreeNodes(input: {
               ? "Cursor 실행 중"
               : row.developerStatus === "failed"
                 ? "재작업 필요"
-                : row.failureReason === "blocked_by_dependency"
-                  ? "의존 차단"
-                  : "개발 대기";
+                : "개발 대기";
 
     return {
       taskId: row.taskId,

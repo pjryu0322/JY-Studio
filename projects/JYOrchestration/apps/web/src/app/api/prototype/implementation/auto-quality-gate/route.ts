@@ -19,6 +19,12 @@ import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/impleme
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { continueSelectedCodeTaskQueueAfterAutoGate } from "@/lib/prototype/serverQuickRunContinuationService";
+import { resolveCompletedCodeTaskId } from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
+import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
+import { prisma } from "@/lib/prisma";
 import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
@@ -132,9 +138,26 @@ export async function POST(request: NextRequest) {
 
     let orchestrationPatch = outcome.orchestrationPatch;
     if (outcome.ok && outcome.autoGate.status === "passed") {
+      const projectRow = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { requirementsStateJson: true },
+      });
+      const persisted = parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
+      const runs = parseCodeTaskExecutionRunsV1(persisted.codeTaskExecutionRunsV1) ?? [];
+      const bundle = await getImplementationRuntimeBundle(projectId);
+      const codeTaskPlan = parseImplementationCodeTaskPlanV1(persisted.implementationCodeTaskPlanV1);
+      const completedCodeTaskId = resolveCompletedCodeTaskId({
+        execution,
+        runs,
+        dbBundle: bundle,
+        codeTaskPlan,
+        taskList,
+        cursorWorkItems: Array.isArray(body.cursorWorkItemsV1) ? body.cursorWorkItemsV1 : [],
+      });
       const continuation = await continueSelectedCodeTaskQueueAfterAutoGate({
         projectId,
         completedTaskId: execution.taskId,
+        completedCodeTaskId,
         sourceCommitSha: execution.commitSha,
         runId: execution.cursorRunId,
       });

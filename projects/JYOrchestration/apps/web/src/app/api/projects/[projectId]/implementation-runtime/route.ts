@@ -35,8 +35,26 @@ export async function GET(request: NextRequest, context: RouteContext) {
       throw error;
     }
 
-    const bundle = await getImplementationRuntimeBundle(pid);
-    const codeTaskQueueSnapshot = buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle });
+    const recover = request.nextUrl.searchParams.get("recover") === "1";
+    if (recover) {
+      const { pollDueImplementationRuntimeForProject } = await import(
+        "@/lib/runtime/implementationRuntime/implementationRuntimePollService"
+      );
+      const { reconcileTaskCursorRuntimePollTargets } = await import(
+        "@/lib/prototype/taskCursorRuntimeReconcile"
+      );
+      const now = new Date();
+      await reconcileTaskCursorRuntimePollTargets({ now, limit: 5 });
+      const tick = await pollDueImplementationRuntimeForProject(pid);
+      if (!tick.processed) {
+        const { pollOrphanGithubCentricRuntimeForProject } = await import(
+          "@/lib/runtime/implementationRuntime/implementationRuntimeOrphanGithubPollService"
+        );
+        await pollOrphanGithubCentricRuntimeForProject(pid, now);
+      }
+    }
+
+    const bundle = await getImplementationRuntimeBundle(pid);    const codeTaskQueueSnapshot = buildCodeTaskExecutionQueueSnapshotFromDbJob({ bundle });
     const events = await listImplementationRuntimeEvents({ projectId: pid, limit: 30 });
     const diagnostics = bundle.runs.map((run) => ({
       codeTaskId: run.codeTaskId,

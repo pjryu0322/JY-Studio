@@ -1,12 +1,42 @@
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { expandProcessTaskIdsToCodeTaskIds } from "@/lib/prototype/codeTaskExecutionQueue";
 
+/** implementationCodeTaskPlanV1.tasks 문서 순서(트리/기획 순). Quick Run Job SoT. */
+export function sortCodeTaskIdsByImplementationPlanOrder(
+  codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined,
+  codeTaskIds: readonly string[],
+): readonly string[] {
+  const unique = [...new Set(codeTaskIds.map((id) => id.trim()).filter(Boolean))];
+  if (!unique.length) return [];
+  if (!codeTaskPlan?.tasks?.length) {
+    return unique.sort((a, b) => a.localeCompare(b));
+  }
+  const rank = new Map<string, number>();
+  for (let i = 0; i < codeTaskPlan.tasks.length; i += 1) {
+    const id = codeTaskPlan.tasks[i]!.codeTaskId.trim();
+    if (id && !rank.has(id)) rank.set(id, i);
+  }
+  return unique.sort((a, b) => {
+    const ra = rank.get(a) ?? 1_000_000;
+    const rb = rank.get(b) ?? 1_000_000;
+    if (ra !== rb) return ra - rb;
+    return a.localeCompare(b);
+  });
+}
+
 export function listCodeTaskIdsFromPlan(
   codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined,
 ): readonly string[] {
-  return [...new Set((codeTaskPlan?.tasks ?? []).map((t) => t.codeTaskId.trim()).filter(Boolean))].sort(
-    (a, b) => a.localeCompare(b),
-  );
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of codeTaskPlan?.tasks ?? []) {
+    const id = t.codeTaskId.trim();
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
 }
 
 export function resolveParentTaskIdForCodeTask(input: {
@@ -29,8 +59,7 @@ export function resolveCodeTaskIdsForParentTask(input: {
   return input.codeTaskPlan.tasks
     .filter((t) => t.parentTaskId.trim() === parentId)
     .map((t) => t.codeTaskId.trim())
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b));
+    .filter(Boolean);
 }
 
 export function normalizeSelectedCodeTaskIds(input: {
@@ -48,16 +77,17 @@ export function normalizeSelectedCodeTaskIds(input: {
     const explicit = input.selectedCodeTaskIds
       .map((id) => id.trim())
       .filter((id) => validIds.has(id));
-    return [...new Set(explicit)].sort((a, b) => a.localeCompare(b));
+    return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, explicit);
   }
 
   const legacy = expandProcessTaskIdsToCodeTaskIds({
     codeTaskPlan: input.codeTaskPlan!,
     processTaskIds: (input.legacySelectedTaskIds ?? []).map((id) => id.trim()).filter(Boolean),
   }).filter((id) => validIds.has(id));
-  if (legacy.length) return [...new Set(legacy)].sort((a, b) => a.localeCompare(b));
+  if (legacy.length) {
+    return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, legacy);
+  }
 
-  // If there is no explicit selection and no legacy selection, do not auto-select everything.
   return [];
 }
 
@@ -71,10 +101,12 @@ export function resolveProcessTaskCodeTaskSelectionToggle(input: {
     codeTaskPlan: input.codeTaskPlan,
     parentTaskId: input.parentTaskId,
   });
-  if (!childIds.length) return normalizeSelectedCodeTaskIds({
-    selectedCodeTaskIds: input.selectedCodeTaskIds,
-    codeTaskPlan: input.codeTaskPlan,
-  });
+  if (!childIds.length) {
+    return normalizeSelectedCodeTaskIds({
+      selectedCodeTaskIds: input.selectedCodeTaskIds,
+      codeTaskPlan: input.codeTaskPlan,
+    });
+  }
 
   const current = new Set(
     normalizeSelectedCodeTaskIds({
@@ -86,7 +118,7 @@ export function resolveProcessTaskCodeTaskSelectionToggle(input: {
     if (input.checked) current.add(id);
     else current.delete(id);
   }
-  return [...current].sort((a, b) => a.localeCompare(b));
+  return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, [...current]);
 }
 
 export function resolveCodeTaskTreeSelectionToggle(input: {
@@ -104,7 +136,7 @@ export function resolveCodeTaskTreeSelectionToggle(input: {
   );
   if (input.checked) current.add(codeTaskId);
   else current.delete(codeTaskId);
-  return [...current].sort((a, b) => a.localeCompare(b));
+  return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, [...current]);
 }
 
 export function resolveCodeTaskTreeSelectAll(input: {

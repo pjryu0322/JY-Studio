@@ -70,7 +70,7 @@ describe("implementationRuntimeUiFlow", () => {
     expect(state).toBe("cursor_running");
   });
 
-  it("polls when DB job is running or legacy queue is running", () => {
+  it("polls when DB job is running or cursor in flight", () => {
     expect(
       shouldPollImplementationRuntime({
         bundle: bundle({
@@ -86,21 +86,18 @@ describe("implementationRuntimeUiFlow", () => {
             updatedAt: "2026-06-01T00:00:00.000Z",
           },
         }),
-        legacyQueueRunning: false,
         legacyCursorInFlight: false,
       }),
     ).toBe(true);
     expect(
       shouldPollImplementationRuntime({
         bundle: null,
-        legacyQueueRunning: true,
-        legacyCursorInFlight: false,
+        legacyCursorInFlight: true,
       }),
     ).toBe(true);
     expect(
       shouldPollImplementationRuntime({
         bundle: null,
-        legacyQueueRunning: false,
         legacyCursorInFlight: false,
       }),
     ).toBe(false);

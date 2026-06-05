@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  CODE_TASK_EXECUTION_QUEUE_VERSION,
-  type CodeTaskExecutionQueueV1,
-} from "@/lib/prototype/codeTaskExecutionQueue";
-import {
+  jobSelectedCodeTaskIdsNeedBoardReconcile,
+  reconcileJobSelectedCodeTaskIdsWithBoardSelection,
   resolveNextCodeTaskIdAfterCompletion,
   resolveNextQuickRunCodeTaskId,
   resolveSelectedCodeTaskIdsForContinuation,
@@ -55,62 +53,35 @@ describe("implementationSelectedCodeTaskSequence", () => {
     ).toBeNull();
   });
 
-  it("resolveSelectedCodeTaskIdsForContinuation prefers job over partial JSON queue", () => {
-    const partialQueue: CodeTaskExecutionQueueV1 = {
-      version: CODE_TASK_EXECUTION_QUEUE_VERSION,
-      projectId: "p1",
-      selectedCodeTaskIds: ["CODE-A"],
-      currentIndex: 0,
-      status: "running",
-      createdAt: "2026-06-04T00:00:00.000Z",
-      updatedAt: "2026-06-04T00:00:00.000Z",
-      stopOnFailure: true,
-    };
+  it("resolveSelectedCodeTaskIdsForContinuation uses job selection", () => {
     expect(
       resolveSelectedCodeTaskIdsForContinuation({
         dbBundle: jobBundle,
-        legacyQueue: partialQueue,
       }),
     ).toEqual(["CODE-A", "CODE-B", "CODE-C"]);
   });
 
-  it("resolveNextQuickRunCodeTaskId uses job selection only when job exists", () => {
-    const partialQueue: CodeTaskExecutionQueueV1 = {
-      version: CODE_TASK_EXECUTION_QUEUE_VERSION,
-      projectId: "p1",
-      selectedCodeTaskIds: ["CODE-A"],
-      currentIndex: 0,
-      status: "running",
-      createdAt: "2026-06-04T00:00:00.000Z",
-      updatedAt: "2026-06-04T00:00:00.000Z",
-      stopOnFailure: true,
-    };
+  it("resolveNextQuickRunCodeTaskId uses job selection", () => {
     expect(
       resolveNextQuickRunCodeTaskId({
         completedCodeTaskId: "CODE-A",
         dbBundle: jobBundle,
-        queue: partialQueue,
       }),
     ).toBe("CODE-B");
   });
 
-  it("resolveNextQuickRunCodeTaskId uses JSON queue when no job selection", () => {
-    const queue: CodeTaskExecutionQueueV1 = {
-      version: CODE_TASK_EXECUTION_QUEUE_VERSION,
-      projectId: "p1",
-      selectedCodeTaskIds: ["CODE-A", "CODE-B"],
-      currentIndex: 0,
-      status: "running",
-      createdAt: "2026-06-04T00:00:00.000Z",
-      updatedAt: "2026-06-04T00:00:00.000Z",
-      stopOnFailure: true,
-    };
+  it("reconcileJobSelectedCodeTaskIdsWithBoardSelection appends board-only ids", () => {
     expect(
-      resolveNextQuickRunCodeTaskId({
-        completedCodeTaskId: "CODE-A",
-        dbBundle: { job: null, currentRun: null, runs: [] },
-        queue,
+      reconcileJobSelectedCodeTaskIdsWithBoardSelection({
+        jobSelectedCodeTaskIds: ["CODE-A"],
+        boardSelectedCodeTaskIds: ["CODE-A", "CODE-B", "CODE-C"],
       }),
-    ).toBe("CODE-B");
+    ).toEqual(["CODE-A", "CODE-B", "CODE-C"]);
+    expect(
+      jobSelectedCodeTaskIdsNeedBoardReconcile({
+        jobSelectedCodeTaskIds: ["CODE-A"],
+        boardSelectedCodeTaskIds: ["CODE-A", "CODE-B"],
+      }),
+    ).toBe(true);
   });
 });

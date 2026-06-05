@@ -52,6 +52,7 @@ import {
   releaseStaleImplementationRuntimePollLocks,
   syncRunPollScheduleFromJob,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimePollRepository";
+import { processOrphanGithubCentricRuntimeRun } from "@/lib/runtime/implementationRuntime/implementationRuntimeOrphanGithubPollService";
 
 const EXECUTION_SETUP_SELECT = {
   gitRepoUrl: true,
@@ -319,9 +320,11 @@ async function processPollingTaskCursorJob(
   }
 
   const workItems = resolveWorkItemsForJob(job, state.cursorWorkItemsV1 ?? []);
+  const linkedRun = await findImplementationRunByTaskCursorJobId(job.id);
   const pollResult = await pollTaskCursorExecutionOnce({
     projectId: job.projectId,
     execution,
+    codeTaskId: linkedRun?.codeTaskId ?? null,
     workItems,
     implementationTaskExecutionStateV1: parseImplementationTaskExecutionStateV1(
       state.implementationTaskExecutionStateV1,
@@ -373,7 +376,6 @@ async function processPollingTaskCursorJob(
     errorMessage: pollResult.message ?? pollResult.execution.errorMessage ?? null,
     terminal,
   });
-  const linkedRun = await findImplementationRunByTaskCursorJobId(job.id);
   if (linkedRun) {
     await syncRunPollScheduleFromJob({
       runId: linkedRun.id,
@@ -470,25 +472,66 @@ export async function runTaskCursorWorkerTick(input: {
   });
 
   if (!runRows.length && input.projectId?.trim()) {
-    const bundleHint = await getImplementationRuntimeBundle(input.projectId.trim());
+    const pid = input.projectId.trim();
+    const bundleHint = await getImplementationRuntimeBundle(pid);
     const activeJob = await prisma.taskCursorExecutionJob.findFirst({
-      where: { projectId: input.projectId.trim(), completedAt: null, status: "cursor_running" },
+      where: { projectId: pid, completedAt: null, status: "cursor_running" },
+    });
+    const dueOrphanRuns = await prisma.implementationCodeTaskRun.count({
+      where: {
+        projectId: pid,
+        completedAt: null,
+        runtimeState: { in: ["dispatching", "cursor_running", "github_verifying"] },
+        taskCursorJobId: null,
+        branchName: { not: null },
+        cursorAgentId: { not: null },
+        OR: [{ nextPollAt: null }, { nextPollAt: { lte: now } }],
+      },
     });
     const idleReason =
       activeJob && bundleHint.currentRun?.runtimeState === "queued"
         ? "job_running_but_runtime_queued"
-        : "no_claimable_runtime_run";
+        : dueOrphanRuns > 0
+          ? "orphan_runs_due_but_unclaimed"
+          : "no_claimable_runtime_run";
     console.info(
       "[task-cursor-worker-tick-idle]",
-      JSON.stringify({ projectId: input.projectId.trim(), idleReason }),
+      JSON.stringify({
+        projectId: pid,
+        idleReason,
+        dueOrphanRuns,
+        currentRun: bundleHint.currentRun?.codeTaskId,
+        currentState: bundleHint.currentRun?.runtimeState,
+      }),
     );
+    if (dueOrphanRuns > 0) {
+      const { pollOrphanGithubCentricRuntimeForProject } = await import(
+        "@/lib/runtime/implementationRuntime/implementationRuntimeOrphanGithubPollService"
+      );
+      await pollOrphanGithubCentricRuntimeForProject(pid, now);
+    }
   }
 
   const results: TaskCursorWorkerTickResult[] = [];
   for (const runRow of runRows) {
     const job = runRow.taskCursorJob;
     if (!job) {
-      await clearImplementationRuntimePollLock(runRow.id);
+      try {
+        const orphanResult = await processOrphanGithubCentricRuntimeRun({ runRow, now });
+        results.push(orphanResult);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        results.push({
+          jobId: runRow.id,
+          projectId: runRow.projectId,
+          taskId: runRow.codeTaskId,
+          status: runRow.runtimeState,
+          terminal: false,
+          message,
+        });
+      } finally {
+        await clearImplementationRuntimePollLock(runRow.id);
+      }
       continue;
     }
     try {

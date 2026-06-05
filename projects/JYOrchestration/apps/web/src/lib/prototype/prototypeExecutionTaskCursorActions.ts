@@ -30,6 +30,10 @@ import {
   type TaskCursorExecutionV1,
   type TaskCursorFailureReason,
 } from "@/lib/prototype/taskCursorExecution";
+import {
+  isTransientTaskCursorGithubVerifyMiss,
+  type TaskCursorGithubVerifyDetailReason,
+} from "@/lib/prototype/taskCursorGithubVerify";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
@@ -119,12 +123,33 @@ export function applyTaskCursorGithubVerifyResult(input: {
   readonly ok: boolean;
   readonly message?: string;
   readonly reason?: TaskCursorFailureReason;
+  readonly detailReason?: TaskCursorGithubVerifyDetailReason;
   readonly verifiedChangedFiles?: readonly string[];
   readonly verifiedCommitSha?: string;
   readonly nowIso?: string;
 }): TaskCursorExecutionV1 {
   const now = input.nowIso ?? new Date().toISOString();
   if (!input.ok) {
+    if (
+      isTransientTaskCursorGithubVerifyMiss({
+        ok: false,
+        reason: input.reason,
+        detailReason: input.detailReason,
+      })
+    ) {
+      const prior =
+        input.execution.status === "github_verifying" ||
+        input.execution.status === "cursor_running" ||
+        input.execution.status === "cursor_requested"
+          ? input.execution.status
+          : "cursor_running";
+      return patchTaskCursorExecution(input.execution, {
+        status: prior === "cursor_requested" ? "cursor_running" : prior,
+        failureReason: undefined,
+        errorMessage: input.message,
+        nowIso: now,
+      });
+    }
     return patchTaskCursorExecution(input.execution, {
       status: "github_verify_failed",
       failureReason: input.reason ?? "github_verify_failed",
@@ -139,6 +164,7 @@ export function applyTaskCursorGithubVerifyResult(input: {
     pushed: true,
     failureReason: undefined,
     errorMessage: undefined,
+    githubProgressLastCheckAt: undefined,
     nowIso: now,
   });
 }
@@ -157,6 +183,7 @@ export function syncTaskExecutionStateAfterGithubVerified(input: {
     selectedTaskId: input.taskId,
     nowIso: now,
     resultSummary: "Task Cursor GitHub commit 확인됨",
+    recoverFromTerminalFailure: true,
   });
   return markPostDeveloperReviewTasksQueued({
     state: afterDevDone,
@@ -177,6 +204,20 @@ export function syncTaskExecutionStateAfterGithubVerifyFailed(input: {
     nowIso: input.nowIso,
     errorMessage: input.errorMessage,
   });
+}
+
+/** 일시적 verify(브랜치/커밋 미반영)에는 작업 보드를 failed로 두지 않는다 — poll/재시도가 이어진다. */
+export function shouldPersistDeveloperFailureAfterGithubVerify(
+  execution: TaskCursorExecutionV1,
+): boolean {
+  if (execution.status !== "github_verify_failed") return false;
+  const changedCount = execution.changedFiles?.length ?? 0;
+  if (changedCount === 0) return false;
+  const reason = String(execution.failureReason ?? "").trim();
+  if (reason === "commit_not_created" || reason === "branch_not_found" || reason === "commit_not_found") {
+    return false;
+  }
+  return true;
 }
 
 export function shouldSyncExecutionStateAfterTaskCursorGithubVerify(
@@ -254,7 +295,9 @@ export function buildTaskCursorOrchestrationPatch(input: {
           taskId: input.execution.taskId,
           cursorWorkItems: input.cursorWorkItems ?? [],
         })
-      : input.execution.status === "github_verify_failed" && input.executionState
+      : input.execution.status === "github_verify_failed" &&
+          input.executionState &&
+          shouldPersistDeveloperFailureAfterGithubVerify(input.execution)
         ? syncTaskExecutionStateAfterGithubVerifyFailed({
             executionState: input.executionState,
             taskId: input.execution.taskId,

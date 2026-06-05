@@ -9,6 +9,7 @@ export {
   isPlatformScmPushPrCompleted,
   validateFinalScmIntegratedStageReadiness,
 } from "@/lib/prototype/platformScmReadiness";
+export { resolveCodeAgentWipForFinalScmIntegratedStage } from "@/lib/prototype/codeAgentWipFromCodeTaskIntegration";
 
 export function prepareCodeAgentWipForFinalScmIntegratedStage(input: {
   readonly wip: CodeAgentWipExecutionV1;

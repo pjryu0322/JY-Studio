@@ -16,7 +16,6 @@ export type ImplementationExecutionOverview = Readonly<{
   readonly inProgressCount: number;
   readonly completedCount: number;
   readonly failedCount: number;
-  readonly blockedCount: number;
   readonly currentTitle?: string;
   readonly isRunning: boolean;
   readonly runtimeState?: RuntimeState;
@@ -116,7 +115,6 @@ export function buildImplementationExecutionOverview(input: {
   const failedCount =
     (input.board.summary.reworkRequiredTasks ?? 0) +
     input.board.taskRows.filter((row) => row.developerStatus === "failed").length;
-  const blockedCount = input.board.summary.blockedByDependencyTasks ?? 0;
 
   const activeRow = input.activeTaskId
     ? input.board.taskRows.find((row) => row.taskId === input.activeTaskId)
@@ -147,7 +145,6 @@ export function buildImplementationExecutionOverview(input: {
     inProgressCount,
     completedCount,
     failedCount,
-    blockedCount,
     ...(currentTitle ? { currentTitle } : {}),
     isRunning,
     ...(runtimeState
@@ -203,9 +200,6 @@ export function formatImplementationExecutionOverviewLines(
 
   if (overview.failedCount > 0) {
     lines.push(`실패: ${overview.failedCount}`);
-  }
-  if (overview.blockedCount > 0) {
-    lines.push(`차단: ${overview.blockedCount}`);
   }
 
   return lines;

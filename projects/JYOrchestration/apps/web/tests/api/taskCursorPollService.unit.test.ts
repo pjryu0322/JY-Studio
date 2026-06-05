@@ -123,4 +123,26 @@ describe("pollTaskCursorExecutionOnce githubVerifyResult", () => {
     expect(result.githubVerifyResult).toBeUndefined();
     expect(result.status).toBe("cursor_running");
   });
+
+  it("github_verifying polls GitHub only (skips Cloud Agent) when initial wait elapsed", async () => {
+    const launchedAt = new Date(Date.now() - 120_000).toISOString();
+
+    const result = await pollTaskCursorExecutionOnce({
+      projectId: "p1",
+      execution: execution({
+        status: "github_verifying",
+        createdAt: launchedAt,
+        updatedAt: launchedAt,
+      }),
+      workItems: [],
+      verifyGithub: true,
+      context,
+    });
+
+    expect(pollStepMock).not.toHaveBeenCalled();
+    expect(verifyGithubMock).toHaveBeenCalledTimes(1);
+    expect(result.githubVerifyResult).toEqual(
+      expect.objectContaining({ ok: true, verifiedCommitSha: "sha-from-poll" }),
+    );
+  });
 });

@@ -55,8 +55,6 @@ import { parseImplementationExecutionJobsV1 } from "@/lib/prototype/implementati
 import type { ImplementationExecutionJobV1 } from "@/lib/prototype/implementationExecutionJob";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import { parseCodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
-import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseCodeTaskPromptContextMapV1, type CodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 import {
@@ -653,8 +651,6 @@ export type RequirementsStateJson = {
   codeTaskExecutionRunsV1?: readonly CodeTaskExecutionRunV1[] | null;
   /** 완료된 CodeTask 기준 Preview 통합 범위 메타데이터 */
   implementationPreviewScopeV1?: import("@/lib/prototype/implementationPreviewScopeV1").ImplementationPreviewScopeV1 | null;
-  /** 사용자 선택 CodeTask 순차 실행 큐 */
-  codeTaskExecutionQueueV1?: CodeTaskExecutionQueueV1 | null;
   /** @deprecated DB Runtime Engine SoT — 읽기 호환만, 저장 시 제거 */
   implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   /** 구현 Runtime UI 스냅샷(DB mirror, 표시·activeDispatch 힌트) */
@@ -1146,9 +1142,6 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationPreviewScopeV1 = parseImplementationPreviewScopeV1(
     "implementationPreviewScopeV1" in o ? o.implementationPreviewScopeV1 : undefined,
   );
-  const codeTaskExecutionQueueV1 = parseCodeTaskExecutionQueueV1(
-    "codeTaskExecutionQueueV1" in o ? o.codeTaskExecutionQueueV1 : undefined,
-  );
   const implementationRuntimeStateV1 = parseImplementationRuntimeStateV1(
     "implementationRuntimeStateV1" in o ? o.implementationRuntimeStateV1 : undefined,
   );
@@ -1336,7 +1329,6 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationExecutionJobsV1 !== undefined ? { implementationExecutionJobsV1 } : {}),
     ...(codeTaskExecutionRunsV1 !== undefined ? { codeTaskExecutionRunsV1 } : {}),
     ...(implementationPreviewScopeV1 !== undefined ? { implementationPreviewScopeV1 } : {}),
-    ...(codeTaskExecutionQueueV1 !== undefined ? { codeTaskExecutionQueueV1 } : {}),
     ...(implementationRuntimeUiSnapshotV1 !== undefined
       ? { implementationRuntimeUiSnapshotV1 }
       : {}),
@@ -1367,9 +1359,11 @@ export function mergeRequirementsStateJson(base: RequirementsStateJson, patch: P
   const merged = { ...base, ...patch };
   if (patch.implementationRuntimeUiSnapshotV1 !== undefined) {
     const { implementationRuntimeStateV1: _legacy, ...withoutLegacy } = merged;
+    delete (withoutLegacy as Record<string, unknown>).codeTaskExecutionQueueV1;
     return withoutLegacy as RequirementsStateJson;
   }
-  return merged;
+  delete (merged as Record<string, unknown>).codeTaskExecutionQueueV1;
+  return merged as RequirementsStateJson;
 }
 
 function parsePlatformMemberRunRow(raw: unknown): PlatformMemberRun | null {

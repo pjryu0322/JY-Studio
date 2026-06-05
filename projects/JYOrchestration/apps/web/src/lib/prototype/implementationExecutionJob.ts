@@ -414,18 +414,3 @@ export function collectTerminalFailedProcessTaskIds(
   }
   return [...failed];
 }
-
-export function collectDependencySatisfiedProcessTaskIds(
-  jobs: readonly ImplementationExecutionJobV1[] | null | undefined,
-): readonly string[] {
-  const satisfied = new Set<string>();
-  for (const job of jobs ?? []) {
-    if (
-      job.status === "completed" ||
-      job.status === "no_code_change_completed"
-    ) {
-      satisfied.add(job.processTaskId);
-    }
-  }
-  return [...satisfied];
-}

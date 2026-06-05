@@ -12,11 +12,7 @@ import {
   markRoleTasksDone,
   type ImplementationTaskExecutionStateV1,
 } from "@/lib/prototype/implementationTaskExecutionState";
-import {
-  buildImplementationExecutionBoardFromRequirementsState,
-  pickQualityGateTargetTaskIds,
-  type ImplementationExecutionBoardV1,
-} from "@/lib/prototype/implementationExecutionBoard";
+import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
 import {
   patchTaskCursorExecution,
   type TaskCursorExecutionV1,
@@ -226,7 +222,7 @@ export function shouldAutoStartImplementationQualityGate(input: {
     gate.sourceCommitSha === commitSha &&
     gate.status === "failed"
   ) {
-    return false;
+    return shouldSyncExecutionStateAfterTaskCursorGithubVerify(execution.status);
   }
   return true;
 }
@@ -324,25 +320,8 @@ export function runImplementationAutoQualityGate(input: {
     nowIso: now,
   });
 
-  const boardForGate =
-    buildImplementationExecutionBoardFromRequirementsState({
-      projectId: input.projectId,
-      orchestration: {
-        implementationTaskListV1: input.taskList,
-        implementationTaskExecutionStateV1: executionState,
-        implementationQualityGateResultsV1: input.qualityGateResults,
-      },
-    }) ?? input.board ?? null;
-
-  const targetTaskIds =
-    boardForGate != null
-      ? pickQualityGateTargetTaskIds({
-          role: "reviewer",
-          board: boardForGate,
-          taskCursorTaskId: execution.taskId,
-        })
-      : [execution.taskId];
-  const scopedTargetTaskIds = targetTaskIds.length ? targetTaskIds : [execution.taskId];
+  const completedTaskId = execution.taskId.trim();
+  const scopedTargetTaskIds = completedTaskId ? [completedTaskId] : [];
 
   const reviewOutcome = executeImplementationQualityGateCheck({
     role: "reviewer",

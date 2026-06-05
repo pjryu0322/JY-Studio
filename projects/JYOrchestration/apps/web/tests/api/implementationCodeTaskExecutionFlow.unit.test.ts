@@ -71,6 +71,34 @@ describe("deriveCodeTaskExecutionFlowPhase", () => {
     expect(phase).toBe("cursor_running");
   });
 
+  it("shows completed when auto gate passed even if task cursor is still review_pending", () => {
+    const phase = deriveCodeTaskExecutionFlowPhase({
+      parentTaskId: "DEV-SCREEN-002",
+      taskCursorExecution: {
+        projectId: "p1",
+        taskId: "DEV-SCREEN-002",
+        status: "review_pending",
+        commitSha: "abc123",
+      } as TaskCursorExecutionV1,
+      autoGate: {
+        version: "implementation_auto_quality_gate_v1",
+        projectId: "p1",
+        taskId: "DEV-SCREEN-002",
+        status: "passed",
+        sourceCommitSha: "abc123",
+        createdAt: "2026-06-04T00:00:00.000Z",
+        updatedAt: "2026-06-04T00:00:00.000Z",
+      },
+      latestRun: run({
+        status: "github_verifying",
+        cursorRunId: "bc-agent",
+        commitSha: "abc123",
+        processTaskId: "DEV-SCREEN-002",
+      }),
+    });
+    expect(phase).toBe("completed");
+  });
+
   it("advances to github_verifying when run is cursor_running but commit is recorded", () => {
     const phase = deriveCodeTaskExecutionFlowPhase({
       parentTaskId: "DEV-FRAME-001",
@@ -107,6 +135,33 @@ describe("enrichCodeTaskRunForFlowPhase", () => {
     });
     expect(enriched?.status).toBe("github_verifying");
     expect(enriched?.workBranch).toBe("wip/cursor/dev-frame-001");
+  });
+
+  it("promotes run to completed from review_pending task cursor with commit", () => {
+    const enriched = enrichCodeTaskRunForFlowPhase({
+      run: run({
+        status: "github_verifying",
+        processTaskId: "DEV-SCREEN-002",
+        cursorRunId: "bc-agent",
+      }),
+      execution: {
+        projectId: "p1",
+        taskId: "DEV-SCREEN-002",
+        status: "review_pending",
+        commitSha: "abc123",
+      } as TaskCursorExecutionV1,
+    });
+    expect(enriched?.status).toBe("completed");
+  });
+
+  it("promotes run to completed when DB runtime is completed", () => {
+    const enriched = enrichCodeTaskRunForFlowPhase({
+      run: run({ status: "cursor_running", cursorRunId: "bc-agent" }),
+      execution: null,
+      dbRun: { runtimeState: "completed", commitSha: "abc123" },
+    });
+    expect(enriched?.status).toBe("completed");
+    expect(enriched?.commitSha).toBe("abc123");
   });
 
   it("does not rewrite terminal completed runs", () => {

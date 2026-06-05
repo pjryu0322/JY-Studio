@@ -10,7 +10,6 @@ import type { ImplementationUserFeedbackPatchV1 } from "@/lib/prototype/implemen
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { ImplementationExecutionJobV1 } from "@/lib/prototype/implementationExecutionJob";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import type { ImplementationRuntimeStateV1 } from "@/lib/prototype/implementationRuntimeState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
@@ -107,7 +106,6 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
   readonly implementationExecutionJobsV1?: readonly ImplementationExecutionJobV1[] | null;
   readonly codeTaskExecutionRunsV1?: readonly CodeTaskExecutionRunV1[] | null;
-  readonly codeTaskExecutionQueueV1?: CodeTaskExecutionQueueV1 | null;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   readonly implementationRuntimeUiSnapshotV1?: import("@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot").ImplementationRuntimeUiSnapshotV1 | null;
 }>;
@@ -211,9 +209,6 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
           codeTaskExecutionRunsV1:
             input.codeTaskExecutionRunsV1 === null ? null : [...input.codeTaskExecutionRunsV1],
         }
-      : {}),
-    ...(input.codeTaskExecutionQueueV1 !== undefined
-      ? { codeTaskExecutionQueueV1: input.codeTaskExecutionQueueV1 }
       : {}),
     ...(input.implementationRuntimeUiSnapshotV1 !== undefined
       ? { implementationRuntimeUiSnapshotV1: input.implementationRuntimeUiSnapshotV1 }

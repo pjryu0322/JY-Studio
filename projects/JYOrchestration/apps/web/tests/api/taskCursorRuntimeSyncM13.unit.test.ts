@@ -5,8 +5,11 @@ import {
 } from "@/lib/prototype/codeTaskRuntimeProgressLabel";
 import { resolveTaskCursorEmbeddedWorkerEnabled } from "@/lib/prototype/taskCursorEmbeddedWorkerScheduler";
 import {
+  isGithubProgressPollDue,
   shouldRunTaskCursorGithubFallbackVerify,
   TASK_CURSOR_GITHUB_FALLBACK_AFTER_MS,
+  TASK_CURSOR_GITHUB_INITIAL_WAIT_MS,
+  TASK_CURSOR_GITHUB_RETRY_INTERVAL_MS,
   TASK_CURSOR_LONG_RUNNING_LABEL_AFTER_MS,
 } from "@/lib/prototype/taskCursorGithubFallbackVerifyPolicy";
 import { resolveCodeTaskIdForDbRuntimeDispatch } from "@/lib/prototype/selectedCodeTaskCursorExecution";
@@ -40,12 +43,49 @@ describe("taskCursorEmbeddedWorkerScheduler", () => {
   });
 });
 
-describe("taskCursorGithubFallbackVerifyPolicy", () => {
-  it("runs fallback after 3 minutes while cursor_running", () => {
+describe("taskCursorGithubProgressVerifyPolicy", () => {
+  it("does not poll GitHub before launch grace", () => {
+    const created = new Date(Date.now() - 5_000).toISOString();
+    expect(
+      shouldRunTaskCursorGithubFallbackVerify({
+        execution: execution({ createdAt: created, updatedAt: created }),
+      }),
+    ).toBe(false);
+  });
+
+  it("runs GitHub progress verify after 1 minute while cursor_running (uses createdAt, not poll-updated updatedAt)", () => {
+    const created = new Date(Date.now() - TASK_CURSOR_GITHUB_FALLBACK_AFTER_MS - 1_000).toISOString();
+    const recentPoll = new Date().toISOString();
+    expect(
+      shouldRunTaskCursorGithubFallbackVerify({
+        execution: execution({ createdAt: created, updatedAt: recentPoll }),
+      }),
+    ).toBe(true);
+  });
+
+  it("does not run GitHub progress verify within 1 minute of launch", () => {
+    const launched = new Date(Date.now() - 20_000).toISOString();
+    expect(
+      shouldRunTaskCursorGithubFallbackVerify({
+        execution: execution({ createdAt: launched, updatedAt: launched }),
+      }),
+    ).toBe(false);
+  });
+
+  it("first GitHub check after 60s then every 10s", () => {
+    const launchMs = Date.now() - TASK_CURSOR_GITHUB_INITIAL_WAIT_MS - 500;
+    expect(isGithubProgressPollDue({ launchMs, lastCheckMs: null })).toBe(true);
+    const lastCheckMs = Date.now() - 5_000;
+    expect(isGithubProgressPollDue({ launchMs, lastCheckMs })).toBe(false);
+    const lastCheckOld = Date.now() - TASK_CURSOR_GITHUB_RETRY_INTERVAL_MS - 100;
+    expect(isGithubProgressPollDue({ launchMs, lastCheckMs: lastCheckOld })).toBe(true);
+  });
+
+  it("runs fallback when only updatedAt is old (legacy)", () => {
     const started = new Date(Date.now() - TASK_CURSOR_GITHUB_FALLBACK_AFTER_MS - 1_000).toISOString();
     expect(
       shouldRunTaskCursorGithubFallbackVerify({
-        execution: execution({ updatedAt: started }),
+        execution: execution({ createdAt: started, updatedAt: started }),
       }),
     ).toBe(true);
   });

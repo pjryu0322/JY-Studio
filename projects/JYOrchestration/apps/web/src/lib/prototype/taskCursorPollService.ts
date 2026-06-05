@@ -24,8 +24,13 @@ import {
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
 import {
-  shouldRunTaskCursorGithubFallbackVerify,
+  parseGithubProgressLastCheckMs,
+  resolveEffectiveGithubLaunchMs,
+  resolveGithubProgressNextPollDelayMs,
+  shouldRunTaskCursorGithubProgressVerify,
+  TASK_CURSOR_GITHUB_RETRY_INTERVAL_MS,
 } from "@/lib/prototype/taskCursorGithubFallbackVerifyPolicy";
+import { isTransientTaskCursorGithubVerifyMiss } from "@/lib/prototype/taskCursorGithubVerify";
 import { buildTaskCursorRuntimeSyncTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -55,6 +60,7 @@ export type TaskCursorPollRuntimeContext = Readonly<{
 export async function pollTaskCursorExecutionOnce(input: {
   readonly projectId: string;
   readonly execution: TaskCursorExecutionV1;
+  readonly codeTaskId?: string | null;
   readonly workItems: readonly CursorWorkItem[];
   readonly implementationTaskExecutionStateV1?: ImplementationTaskExecutionStateV1 | null;
   readonly existingCodeTaskExecutionFeedback?: ImplementationCodeTaskExecutionFeedbackV1 | null;
@@ -108,6 +114,86 @@ export async function pollTaskCursorExecutionOnce(input: {
     };
   }
 
+  const nowMs = Date.parse(nowIso);
+  const resolveRunningNextPollDelayMs = (exec: TaskCursorExecutionV1) =>
+    resolveGithubProgressNextPollDelayMs({
+      launchMs: resolveEffectiveGithubLaunchMs({ execution: exec }),
+      lastCheckMs: parseGithubProgressLastCheckMs(exec),
+      nowMs: Number.isFinite(nowMs) ? nowMs : Date.now(),
+    });
+
+  if (
+    execution.status === "github_verifying" &&
+    input.verifyGithub !== false &&
+    input.context.githubToken &&
+    shouldRunTaskCursorGithubProgressVerify({ execution })
+  ) {
+    const githubOnlyTimeline: RequirementsPromptTimelineEntry[] = [];
+    let nextExecution = patchTaskCursorExecution(execution, {
+      githubProgressLastCheckAt: nowIso,
+      nowIso,
+    });
+    githubOnlyTimeline.push(
+      buildTaskCursorRuntimeSyncTimelineEntry({
+        action: "task_cursor_github_verify_requested",
+        projectId,
+        taskId: execution.taskId,
+        nowIso,
+      }),
+    );
+    const verify = await verifyTaskCursorGithubResult({
+      execution: nextExecution,
+      targetRepository: input.context.targetRepository,
+      githubToken: input.context.githubToken,
+      allowedPathGlobs: input.context.allowedPathGlobs,
+      codeTaskId: input.codeTaskId,
+    });
+    githubOnlyTimeline.push(
+      buildTaskCursorRuntimeSyncTimelineEntry({
+        action: verify.ok
+          ? "task_cursor_github_verify_completed"
+          : "task_cursor_github_verify_failed",
+        projectId,
+        taskId: execution.taskId,
+        message: verify.ok ? "ok" : verify.reason ?? verify.message,
+        nowIso,
+      }),
+    );
+    nextExecution = applyTaskCursorGithubVerifyResult({
+      execution: nextExecution,
+      ok: verify.ok,
+      message: verify.message,
+      reason: verify.reason,
+      detailReason: verify.detailReason,
+      verifiedChangedFiles: verify.verifiedChangedFiles,
+      verifiedCommitSha: verify.verifiedCommitSha,
+      nowIso,
+    });
+    if (verify.ok && nextExecution.status === "github_verified") {
+      nextExecution = patchTaskCursorExecution(nextExecution, { status: "review_pending", nowIso });
+    }
+    githubOnlyTimeline.push(
+      buildTaskCursorGithubVerifyTimeline({
+        execution: nextExecution,
+        ok: verify.ok,
+        reason: verify.reason,
+        nowIso,
+      }),
+    );
+    const status = nextExecution.status;
+    return {
+      success: verify.ok,
+      status,
+      execution: nextExecution,
+      orchestrationPatch: buildPatch(nextExecution, githubOnlyTimeline),
+      terminal: isTerminalTaskCursorPollResultStatus(status),
+      nextPollDelayMs: isTerminalTaskCursorPollResultStatus(status)
+        ? undefined
+        : resolveRunningNextPollDelayMs(nextExecution),
+      githubVerifyResult: verify,
+    };
+  }
+
   const pollStep = await pollTaskCursorCloudAgentStep({
     request: {
       projectId,
@@ -138,18 +224,21 @@ export async function pollTaskCursorExecutionOnce(input: {
     });
 
     const agentStatus = pollStep.statusUpper;
-    const fallback =
+    const runGithubProgressVerify =
       input.verifyGithub !== false &&
       input.context.githubToken &&
-      shouldRunTaskCursorGithubFallbackVerify({
+      shouldRunTaskCursorGithubProgressVerify({
         execution: nextExecution,
-        agentStatus,
       });
 
-    if (fallback) {
+    if (runGithubProgressVerify) {
+      nextExecution = patchTaskCursorExecution(nextExecution, {
+        githubProgressLastCheckAt: nowIso,
+        nowIso,
+      });
       timeline.push(
         buildTaskCursorRuntimeSyncTimelineEntry({
-          action: "task_cursor_github_fallback_verify_started",
+          action: "task_cursor_github_verify_requested",
           projectId,
           taskId: execution.taskId,
           nowIso,
@@ -160,10 +249,13 @@ export async function pollTaskCursorExecutionOnce(input: {
         targetRepository: input.context.targetRepository,
         githubToken: input.context.githubToken,
         allowedPathGlobs: input.context.allowedPathGlobs,
+        codeTaskId: input.codeTaskId,
       });
       timeline.push(
         buildTaskCursorRuntimeSyncTimelineEntry({
-          action: "task_cursor_github_fallback_verify_completed",
+          action: verify.ok
+            ? "task_cursor_github_verify_completed"
+            : "task_cursor_github_verify_failed",
           projectId,
           taskId: execution.taskId,
           message: verify.ok ? "ok" : verify.reason ?? verify.message,
@@ -204,7 +296,29 @@ export async function pollTaskCursorExecutionOnce(input: {
           execution: nextExecution,
           orchestrationPatch: buildPatch(nextExecution, timeline),
           terminal: isTerminalTaskCursorPollResultStatus(status),
-          nextPollDelayMs: isTerminalTaskCursorPollResultStatus(status) ? undefined : 10_000,
+          nextPollDelayMs: isTerminalTaskCursorPollResultStatus(status)
+            ? undefined
+            : TASK_CURSOR_GITHUB_RETRY_INTERVAL_MS,
+          githubVerifyResult: verify,
+        };
+      }
+      if (isTransientTaskCursorGithubVerifyMiss(verify)) {
+        nextExecution = applyTaskCursorGithubVerifyResult({
+          execution: nextExecution,
+          ok: false,
+          message: verify.message,
+          reason: verify.reason,
+          detailReason: verify.detailReason,
+          nowIso,
+        });
+        return {
+          success: true,
+          status: nextExecution.status,
+          agentStatus,
+          execution: nextExecution,
+          orchestrationPatch: buildPatch(nextExecution, timeline),
+          terminal: false,
+          nextPollDelayMs: resolveRunningNextPollDelayMs(nextExecution),
           githubVerifyResult: verify,
         };
       }
@@ -212,12 +326,12 @@ export async function pollTaskCursorExecutionOnce(input: {
 
     return {
       success: true,
-      status: "cursor_running",
+      status: nextExecution.status,
       agentStatus: pollStep.statusUpper,
       execution: nextExecution,
       orchestrationPatch: buildPatch(nextExecution, timeline),
       terminal: false,
-      nextPollDelayMs: 10_000,
+      nextPollDelayMs: resolveRunningNextPollDelayMs(nextExecution),
     };
   }
 
@@ -243,6 +357,7 @@ export async function pollTaskCursorExecutionOnce(input: {
         targetRepository: input.context.targetRepository,
         githubToken: input.context.githubToken,
         allowedPathGlobs: input.context.allowedPathGlobs,
+        codeTaskId: input.codeTaskId,
       });
       timeline.push(
         buildTaskCursorRuntimeSyncTimelineEntry({
@@ -340,6 +455,7 @@ export async function pollTaskCursorExecutionOnce(input: {
       targetRepository: input.context.targetRepository,
       githubToken: input.context.githubToken,
       allowedPathGlobs: input.context.allowedPathGlobs,
+      codeTaskId: input.codeTaskId,
     });
     githubVerifyResult = verify;
     nextExecution = applyTaskCursorGithubVerifyResult({

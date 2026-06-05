@@ -1,7 +1,3 @@
-import {
-  checkCodeTaskDependencyReady,
-  type CodeTaskDependencyCheckResult,
-} from "@/lib/prototype/codeTaskDependencyResolver";
 import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { formatCodeTaskExecutionRunStatusKo } from "@/lib/prototype/codeTaskExecutionRunUi";
@@ -48,12 +44,6 @@ export function buildCodeTaskRunUserStatus(
       return {
         label,
         detail: run.errorMessage ?? "상태 확인이 중단되었습니다.",
-        tone: "warning",
-      };
-    case "blocked_by_dependency":
-      return {
-        label,
-        detail: run.errorMessage ?? "선행 CodeTask가 완료되지 않아 실행하지 않았습니다.",
         tone: "warning",
       };
     case "failed":
@@ -118,38 +108,19 @@ export function buildCodeTaskRowView(input: {
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly queue?: CodeTaskExecutionQueueV1 | null;
-  readonly dependencyCheck?: CodeTaskDependencyCheckResult | null;
 }): CodeTaskRowView {
-  const dependencyCheck =
-    input.dependencyCheck ??
-    (input.codeTaskPlan
-      ? checkCodeTaskDependencyReady({
-          codeTaskId: input.codeTask.codeTaskId,
-          codeTaskPlan: input.codeTaskPlan,
-          runs: input.runs ?? [],
-        })
-      : null);
   const latestRun = findLatestRunForCodeTask(input.runs, input.codeTask.codeTaskId);
   const userStatus = buildCodeTaskRunUserStatus(latestRun);
-  const executable = dependencyCheck?.status === "ready";
-  const blockedReason =
-    dependencyCheck && dependencyCheck.status !== "ready"
-      ? dependencyCheck.message?.trim() || "선행 작업 필요"
-      : undefined;
+  const executable = true;
   const githubSummary = buildCodeTaskRunGithubEvidenceSummary(latestRun);
 
   let collapsedSummary = userStatus.label;
-  if (!executable && blockedReason) collapsedSummary = "선행 작업 필요";
-  else if (userStatus.tone === "running") collapsedSummary = "실행 중";
+  if (userStatus.tone === "running") collapsedSummary = "실행 중";
   else if (userStatus.tone === "success") collapsedSummary = "완료";
   else if (userStatus.tone === "idle" && !latestRun) collapsedSummary = "대기";
 
   const progressLabel =
-    userStatus.tone === "running"
-      ? userStatus.detail
-      : executable
-        ? "실행 가능"
-        : blockedReason ?? userStatus.detail;
+    userStatus.tone === "running" ? userStatus.detail : "실행 가능";
 
   return {
     codeTaskId: input.codeTask.codeTaskId,
@@ -157,7 +128,6 @@ export function buildCodeTaskRowView(input: {
     statusLabel: userStatus.label,
     statusTone: userStatus.tone,
     executable,
-    ...(blockedReason ? { blockedReason } : {}),
     ...(latestRun ? { latestRun } : {}),
     githubSummary,
     collapsedSummary,
@@ -172,12 +142,10 @@ export function summarizeCodeTaskRowViewsForProcess(
   const total = views.length;
   const completed = views.filter((v) => v.statusTone === "success").length;
   const running = views.filter((v) => v.statusTone === "running").length;
-  const blocked = views.filter((v) => !v.executable && v.statusTone !== "success").length;
-  const waiting = total - completed - running - blocked;
+  const waiting = total - completed - running;
   const parts = [`CodeTask ${total}개`];
   if (completed) parts.push(`완료 ${completed}`);
   if (running) parts.push(`실행 중 ${running}`);
-  if (blocked) parts.push(`차단 ${blocked}`);
   if (waiting > 0) parts.push(`대기 ${waiting}`);
   return parts.join(" · ");
 }

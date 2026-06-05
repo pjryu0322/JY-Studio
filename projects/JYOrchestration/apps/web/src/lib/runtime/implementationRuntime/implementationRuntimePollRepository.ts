@@ -50,18 +50,27 @@ export async function claimDueImplementationRuntimePollRuns(input: {
     const candidate = await prisma.implementationCodeTaskRun.findFirst({
       where: {
         completedAt: null,
-        taskCursorJobId: { not: null },
         runtimeState: { in: [...RUNTIME_POLL_SCHEDULE_STATES] },
         ...(projectId ? { projectId } : {}),
         AND: [
           { OR: [{ nextPollAt: null }, { nextPollAt: { lte: now } }] },
           { OR: [{ pollLockedBy: null }, { pollLockExpiresAt: { lt: now } }] },
+          {
+            OR: [
+              { taskCursorJobId: { not: null } },
+              {
+                taskCursorJobId: null,
+                branchName: { not: null },
+                cursorAgentId: { not: null },
+              },
+            ],
+          },
         ],
       },
       orderBy: [{ nextPollAt: "asc" }, { updatedAt: "asc" }],
       include: { taskCursorJob: true },
     });
-    if (!candidate?.taskCursorJob) break;
+    if (!candidate) break;
 
     const lockExpiresAt = new Date(now.getTime() + IMPLEMENTATION_RUNTIME_POLL_LOCK_MS);
     const updated = await prisma.implementationCodeTaskRun.updateMany({
@@ -81,7 +90,7 @@ export async function claimDueImplementationRuntimePollRuns(input: {
       where: { id: candidate.id },
       include: { taskCursorJob: true },
     });
-    if (locked?.taskCursorJob) claimed.push(locked);
+    if (locked) claimed.push(locked);
   }
 
   return claimed;

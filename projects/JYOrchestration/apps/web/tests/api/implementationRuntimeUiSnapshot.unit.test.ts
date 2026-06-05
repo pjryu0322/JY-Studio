@@ -54,7 +54,6 @@ describe("implementationRuntimeUiSnapshot", () => {
 
   it("strips legacy runtime field from persisted record", () => {
     const next = stripLegacyImplementationRuntimeStateFromRecord({
-      codeTaskExecutionQueueV1: { status: "running" },
       implementationRuntimeStateV1: { runtimeState: "queued" },
       implementationRuntimeUiSnapshotV1: buildImplementationRuntimeUiSnapshotFromRuntimeState({
         runtime: {

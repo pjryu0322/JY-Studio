@@ -232,7 +232,7 @@ export async function createImplementationRuntimeJob(input: {
   return { job: mapJob(job), runs: [], currentRun: null };
 }
 
-/** Job + 첫 Run(queued)을 transaction으로 생성. active running job이 있으면 신규 Job을 만들지 않는다. */
+/** Job + 첫 Run(queued). Quick Run start_job은 항상 선행 active job을 종료한 뒤 호출한다. */
 export async function createImplementationRuntimeJobWithFirstRun(input: {
   readonly projectId: string;
   readonly selectedCodeTaskIds: readonly string[];
@@ -242,9 +242,9 @@ export async function createImplementationRuntimeJobWithFirstRun(input: {
   const selectedCodeTaskIds = normalizeSelectedCodeTaskIds(input.selectedCodeTaskIds);
   const firstCodeTaskId = selectedCodeTaskIds[0]!;
 
-  const existing = await findActiveImplementationRuntimeJob(pid);
-  if (existing) {
-    return buildImplementationRuntimeBundleFromJob(splitJobWithRuns(existing));
+  const staleActive = await findActiveImplementationRuntimeJob(pid);
+  if (staleActive) {
+    await completeImplementationRuntimeJob({ jobId: staleActive.id, status: "completed" });
   }
 
   const now = input.now ?? new Date();
@@ -424,6 +424,52 @@ export async function pauseImplementationRuntimeJob(input: {
     jobId: job.id,
     eventType: "job_paused",
     payload: { failureReason: input.failureReason ?? null },
+  });
+}
+
+export async function updateImplementationRuntimeJobSelectedCodeTaskIds(input: {
+  readonly jobId: string;
+  readonly selectedCodeTaskIds: readonly string[];
+  readonly now?: Date;
+}): Promise<void> {
+  const now = input.now ?? new Date();
+  const selectedCodeTaskIds = normalizeSelectedCodeTaskIds(input.selectedCodeTaskIds);
+  const job = await prisma.implementationExecutionJob.update({
+    where: { id: input.jobId.trim() },
+    data: {
+      selectedCodeTaskIdsJson: selectedCodeTaskIds as Prisma.InputJsonValue,
+      updatedAt: now,
+    },
+  });
+  await recordImplementationRuntimeEvent({
+    projectId: job.projectId,
+    jobId: job.id,
+    eventType: "job_selection_updated",
+    payload: { selectedCodeTaskIds },
+  });
+}
+
+export async function reopenImplementationRuntimeJobForContinuation(input: {
+  readonly jobId: string;
+  readonly currentCodeTaskId: string;
+  readonly now?: Date;
+}): Promise<void> {
+  const now = input.now ?? new Date();
+  const job = await prisma.implementationExecutionJob.update({
+    where: { id: input.jobId.trim() },
+    data: {
+      status: "running",
+      completedAt: null,
+      failureReason: null,
+      currentCodeTaskId: input.currentCodeTaskId.trim(),
+      updatedAt: now,
+    },
+  });
+  await recordImplementationRuntimeEvent({
+    projectId: job.projectId,
+    jobId: job.id,
+    eventType: "job_reopened",
+    payload: { currentCodeTaskId: input.currentCodeTaskId.trim() },
   });
 }
 

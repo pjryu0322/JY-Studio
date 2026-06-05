@@ -20,8 +20,7 @@ export type CodeTaskExecutionFlowPhase =
   | "github_verified"
   | "lightweight_checking"
   | "completed"
-  | "failed"
-  | "blocked_by_dependency";
+  | "failed";
 
 export type CodeTaskExecutionFlowStepState = "pending" | "active" | "done" | "failed" | "skipped";
 
@@ -59,8 +58,6 @@ export function formatCodeTaskExecutionFlowPhaseKo(phase: CodeTaskExecutionFlowP
       return "완료";
     case "failed":
       return "재작업 필요";
-    case "blocked_by_dependency":
-      return "선행 작업 대기";
     default:
       return "대기";
   }
@@ -79,8 +76,6 @@ export function formatCodeTaskExecutionProgressLine(phase: CodeTaskExecutionFlow
       return "실행 완료";
     case "failed":
       return "commit 확인 실패";
-    case "blocked_by_dependency":
-      return "선행 작업 대기";
     case "prompt_preflight_failed":
       return "프롬프트 품질 검사 실패로 Cursor 실행 전 차단";
     case "prompt_ready":
@@ -109,7 +104,7 @@ function mapCodeTaskRunStatusToFlowPhase(
     case "status_check_stopped":
       return "cursor_running";
     case "blocked_by_dependency":
-      return "blocked_by_dependency";
+      return "prompt_ready";
     case "failed":
     case "rework_required":
       return "failed";
@@ -165,11 +160,15 @@ export function enrichCodeTaskRunForFlowPhase(input: {
 
   let status = base.status;
   if (execution) {
-    if (
-      execution.status === "github_verifying" ||
-      execution.status === "cursor_completed" ||
-      execution.status === "github_verified"
-    ) {
+    const syncFromCursorStatuses = new Set<TaskCursorExecutionV1["status"]>([
+      "github_verifying",
+      "cursor_completed",
+      "github_verified",
+      "review_pending",
+      "security_pending",
+      "scm_pending",
+    ]);
+    if (syncFromCursorStatuses.has(execution.status)) {
       const classified = classifyCodeTaskExecutionRunFromTaskCursor(execution);
       if (classified.status === "github_verifying" || execution.status === "github_verifying") {
         status = "github_verifying";
@@ -180,6 +179,14 @@ export function enrichCodeTaskRunForFlowPhase(input: {
         status = classified.status;
       }
     }
+  }
+
+  if (
+    input.dbRun?.runtimeState === "completed" &&
+    status !== "failed" &&
+    status !== "rework_required"
+  ) {
+    status = "completed";
   }
 
   if (
@@ -235,12 +242,17 @@ function mapCursorStatusToPhase(input: {
   readonly developerStatus?: ImplementationBoardStepStatus;
   readonly failureReason?: string;
 }): CodeTaskExecutionFlowPhase {
-  if (input.failureReason === "blocked_by_dependency") return "blocked_by_dependency";
   if (input.failureReason === "prompt_preflight_failed") return "prompt_preflight_failed";
   const execution = input.execution;
   if (!execution || execution.taskId !== input.parentTaskId) {
     if (input.developerStatus === "failed") return "failed";
     return "prompt_ready";
+  }
+  if (
+    input.autoGate?.status === "passed" &&
+    input.autoGate.taskId === input.parentTaskId
+  ) {
+    return "completed";
   }
   const s = execution.status;
   if (execution.failureReason === "prompt_preflight_failed") return "prompt_preflight_failed";
@@ -253,6 +265,9 @@ function mapCursorStatusToPhase(input: {
   if (s === "github_verifying" || s === "cursor_completed") return "github_verifying";
   if (s === "cursor_running" || s === "cursor_requested") {
     if (executionHasRecordedCommit(execution)) return "github_verifying";
+    const workBranch = String(execution.workBranch ?? "").trim();
+    const cursorRunId = String(execution.cursorRunId ?? "").trim();
+    if (workBranch && cursorRunId) return "github_verifying";
     return "cursor_running";
   }
   return "prompt_ready";
@@ -277,7 +292,6 @@ function bumpFlowPhaseWithGithubCommitEvidence(input: {
 
 function phaseIndex(phase: CodeTaskExecutionFlowPhase): number {
   const order: CodeTaskExecutionFlowPhase[] = [
-    "blocked_by_dependency",
     "prompt_ready",
     "prompt_preflight_failed",
     "cursor_running",
@@ -317,8 +331,6 @@ export function buildCodeTaskExecutionFlowSteps(input: {
       if (stepIdx < phaseIndex("github_verifying")) state = stepIdx < current ? "done" : "pending";
       else if (def.id === "github_verifying") state = "failed";
       else state = "pending";
-    } else if (input.phase === "blocked_by_dependency") {
-      state = "pending";
     } else if (input.phase === "prompt_ready") {
       if (def.id === "prompt_ready") state = "done";
       else if (def.id === "cursor_running") {
@@ -357,14 +369,22 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
   const finish = (phase: CodeTaskExecutionFlowPhase): CodeTaskExecutionFlowPhase =>
     bumpFlowPhaseWithGithubCommitEvidence({ run, execution, phase });
 
-  if (input.failureReason === "blocked_by_dependency") {
-    return "blocked_by_dependency";
-  }
   if (
     run?.failureReason === "prompt_preflight_failed" ||
     execution?.failureReason === "prompt_preflight_failed"
   ) {
     return "prompt_preflight_failed";
+  }
+
+  if (run?.status === "completed" || run?.status === "no_code_change_completed") {
+    return "completed";
+  }
+
+  if (
+    input.autoGate?.status === "passed" &&
+    input.autoGate.taskId === input.parentTaskId.trim()
+  ) {
+    return "completed";
   }
 
   if (execution) {
