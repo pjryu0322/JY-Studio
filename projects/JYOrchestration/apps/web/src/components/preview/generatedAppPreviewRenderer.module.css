@@ -1,0 +1,145 @@
+.root {
+  min-height: 100vh;
+  background: #f8fafc;
+  color: #0f172a;
+  display: flex;
+  flex-direction: column;
+}
+
+.appHeader {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.appTitle {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.appSubtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.tabRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tab,
+.tabActive {
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.tabActive {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.stage {
+  flex: 1;
+  padding: 16px;
+}
+
+.shellFrame {
+  max-width: 480px;
+  margin: 0 auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+  min-height: 420px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.shellTopBar {
+  padding: 12px 16px;
+  background: #0f172a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.shellBody {
+  padding: 20px 16px;
+}
+
+.muted {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.sampleCard,
+.formCard,
+.resultCard,
+.genericCard,
+.placeholder {
+  max-width: 480px;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px 16px;
+  min-height: 360px;
+}
+
+.placeholderTitle {
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.field input,
+.field textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.primaryButton {
+  margin-top: 8px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 700;
+  padding: 10px 16px;
+}
+
+.resultOk {
+  color: #047857;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.resultCard dl {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 8px 12px;
+  font-size: 13px;
+}
+
+.resultCard dt {
+  color: #64748b;
+}

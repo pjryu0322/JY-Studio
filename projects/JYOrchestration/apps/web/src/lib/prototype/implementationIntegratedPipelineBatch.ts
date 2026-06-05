@@ -97,6 +97,8 @@ export function applyIntegratedPipelineSyncSteps(input: {
   readonly projectId: string;
   readonly orchestration: ImplementationRequirementsBoardOrchestrationSlice;
   readonly nowIso?: string;
+  readonly externalPreviewUrl?: string | null;
+  readonly targetRepository?: string | null;
 }): ApplyIntegratedPipelineSyncStepsResult {
   const pid = input.projectId.trim();
   if (!pid) return { ok: false, message: "프로젝트를 선택해 주세요." };
@@ -196,6 +198,10 @@ export function applyIntegratedPipelineSyncSteps(input: {
       projectId: pid,
       previewScope: resolvedScope,
       nowIso,
+      externalPreviewUrl: input.externalPreviewUrl,
+      targetRepository:
+        input.targetRepository ??
+        (String(input.orchestration.taskCursorExecutionV1?.targetRepository ?? "").trim() || null),
     });
     previewRuntime = previewBuild.runtime;
     previewBuildOk = previewBuild.ok;

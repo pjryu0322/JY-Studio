@@ -6,7 +6,8 @@ export type CompletedCodeTaskIntegrationTimelineAction =
   | "completed_codetask_integration_completed"
   | "completed_codetask_preview_build_started"
   | "completed_codetask_preview_ready"
-  | "completed_codetask_preview_failed";
+  | "completed_codetask_preview_failed"
+  | "completed_codetask_preview_fallback";
 
 export function buildCompletedCodeTaskIntegrationTimelineEntry(input: {
   readonly action: CompletedCodeTaskIntegrationTimelineAction;
@@ -14,6 +15,9 @@ export function buildCompletedCodeTaskIntegrationTimelineEntry(input: {
   readonly includedCount?: number;
   readonly excludedCount?: number;
   readonly previewUrl?: string | null;
+  readonly appPreviewUrl?: string | null;
+  readonly renderMode?: string | null;
+  readonly reason?: string | null;
   readonly errorMessage?: string | null;
   readonly nowIso?: string;
 }): RequirementsPromptTimelineEntry {
@@ -25,6 +29,9 @@ export function buildCompletedCodeTaskIntegrationTimelineEntry(input: {
       ...(input.includedCount !== undefined ? { includedCount: input.includedCount } : {}),
       ...(input.excludedCount !== undefined ? { excludedCount: input.excludedCount } : {}),
       ...(input.previewUrl ? { previewUrl: input.previewUrl } : {}),
+      ...(input.appPreviewUrl ? { appPreviewUrl: input.appPreviewUrl } : {}),
+      ...(input.renderMode ? { renderMode: input.renderMode } : {}),
+      ...(input.reason ? { reason: input.reason } : {}),
     },
     error: input.errorMessage ?? undefined,
   });

@@ -30,6 +30,8 @@ describe("buildImplementationIntegrationBoardSection", () => {
     status: "ready",
     generatedAt: NOW,
     previewUrl: "/projects/p1/preview?scope=latest",
+    appPreviewUrl: "/projects/p1/preview/app?scope=latest",
+    renderMode: "generated_app_iframe",
     sourceScopeVersion: IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
     includedCodeTaskIds: ["CT-1"],
     excludedCodeTaskIds: ["CT-2"],

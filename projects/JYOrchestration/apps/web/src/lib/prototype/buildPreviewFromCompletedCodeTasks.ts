@@ -7,6 +7,7 @@ import {
   IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
   type ImplementationPreviewScopeV1,
 } from "@/lib/prototype/implementationPreviewScopeV1";
+import { resolveGeneratedAppPreviewUrl } from "@/lib/prototype/generatedAppPreviewUrlResolver";
 
 export type BuildPreviewFromCompletedCodeTasksResult = Readonly<{
   readonly ok: boolean;
@@ -25,6 +26,8 @@ function failedRuntime(input: {
     status: "failed",
     generatedAt: input.nowIso,
     previewUrl: null,
+    appPreviewUrl: null,
+    renderMode: "scope_summary_fallback",
     sourceScopeVersion: IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
     includedCodeTaskIds: input.previewScope.includedCodeTasks.map((row) => row.codeTaskId),
     excludedCodeTaskIds: input.previewScope.excludedCodeTasks.map((row) => row.codeTaskId),
@@ -38,6 +41,9 @@ export function buildPreviewFromCompletedCodeTasks(input: {
   readonly projectId: string;
   readonly previewScope: ImplementationPreviewScopeV1;
   readonly nowIso?: string;
+  readonly targetRepository?: string | null;
+  readonly externalPreviewUrl?: string | null;
+  readonly projectPreviewSettings?: unknown;
 }): BuildPreviewFromCompletedCodeTasksResult {
   const nowIso = input.nowIso ?? new Date().toISOString();
   const pid = input.projectId.trim();
@@ -74,15 +80,26 @@ export function buildPreviewFromCompletedCodeTasks(input: {
   }
 
   const previewUrl = buildPreviewUrlForCompletedCodeTaskScope(pid);
+  const appPreview = resolveGeneratedAppPreviewUrl({
+    projectId: pid,
+    targetRepository: input.targetRepository,
+    previewScope: scope,
+    completedCodeTaskCount: scope.includedCodeTasks.length,
+    projectPreviewSettings: input.projectPreviewSettings,
+    externalPreviewUrl: input.externalPreviewUrl,
+  });
+
   const runtime: ImplementationPreviewRuntimeV1 = {
     version: IMPLEMENTATION_PREVIEW_RUNTIME_VERSION,
     status: "ready",
     generatedAt: nowIso,
     previewUrl,
+    appPreviewUrl: appPreview.appPreviewUrl ?? null,
+    renderMode: appPreview.renderMode,
     sourceScopeVersion: IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
     includedCodeTaskIds: scope.includedCodeTasks.map((row) => row.codeTaskId),
     excludedCodeTaskIds: scope.excludedCodeTasks.map((row) => row.codeTaskId),
-    warnings: [...scope.warnings],
+    warnings: [...appPreview.warnings],
     errorMessage: null,
   };
 

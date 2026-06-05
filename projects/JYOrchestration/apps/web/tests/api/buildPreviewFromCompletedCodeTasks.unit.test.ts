@@ -37,9 +37,37 @@ describe("buildPreviewFromCompletedCodeTasks", () => {
     expect(result.ok).toBe(true);
     expect(result.runtime.status).toBe("ready");
     expect(result.previewUrl).toBe("/projects/p1/preview?scope=latest");
+    expect(result.runtime.appPreviewUrl).toBe("/projects/p1/preview/app?scope=latest");
+    expect(result.runtime.renderMode).toBe("generated_app_iframe");
     expect(result.runtime.includedCodeTaskIds).toEqual(["CT-1"]);
     expect(result.runtime.excludedCodeTaskIds).toEqual(["CT-2"]);
     expect(result.runtime.warnings).toEqual(["shell warning"]);
+  });
+
+  it("uses external preview URL when provided", () => {
+    const previewScope = buildImplementationPreviewScopeV1({
+      generatedAt: NOW,
+      included: [
+        {
+          codeTaskId: "CT-1",
+          taskId: "DEV-A",
+          title: "Shell",
+          commitSha: "sha",
+        },
+      ],
+      excluded: [],
+      warnings: [],
+    });
+
+    const result = buildPreviewFromCompletedCodeTasks({
+      projectId: "p1",
+      previewScope,
+      nowIso: NOW,
+      externalPreviewUrl: "https://demo.example/app",
+    });
+
+    expect(result.runtime.appPreviewUrl).toBe("https://demo.example/app");
+    expect(result.runtime.renderMode).toBe("generated_app_iframe");
   });
 
   it("returns failed when no included tasks", () => {

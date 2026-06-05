@@ -4070,10 +4070,20 @@ export function PrototypePreviewPanel({
           }),
         );
 
+        const externalPreviewUrl =
+          previewUrl ??
+          (latestRun?.previewUrl && isLikelyPreviewUrl(latestRun.previewUrl)
+            ? latestRun.previewUrl.trim()
+            : null) ??
+          (latestRun?.suggestedPreviewUrl && isLikelyPreviewUrl(latestRun.suggestedPreviewUrl)
+            ? latestRun.suggestedPreviewUrl.trim()
+            : null);
+
         const batch = applyIntegratedPipelineSyncSteps({
           projectId: pid,
           orchestration: parsedRequirementsState,
           nowIso: startedAtIso,
+          externalPreviewUrl,
         });
         if (!batch.ok) {
           showToast(`통합 실패: ${batch.message}`);
@@ -4102,9 +4112,25 @@ export function PrototypePreviewPanel({
               includedCount,
               excludedCount,
               previewUrl: batch.previewUrl,
+              appPreviewUrl: batch.previewRuntime?.appPreviewUrl,
+              renderMode: batch.previewRuntime?.renderMode,
               nowIso: startedAtIso,
             }),
           );
+          if (batch.previewRuntime?.renderMode === "scope_summary_fallback") {
+            timeline = appendPromptTimeline(
+              timeline,
+              buildCompletedCodeTaskIntegrationTimelineEntry({
+                action: "completed_codetask_preview_fallback",
+                projectId: pid,
+                includedCount,
+                excludedCount,
+                renderMode: batch.previewRuntime.renderMode,
+                reason: "generated_app_preview_url_unavailable",
+                nowIso: startedAtIso,
+              }),
+            );
+          }
         } else if (batch.previewRuntime?.status === "failed") {
           timeline = appendPromptTimeline(
             timeline,
@@ -4223,6 +4249,9 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
     executionSetupRow,
     runFinalScmIntegratedStageStep,
+    previewUrl,
+    latestRun?.previewUrl,
+    latestRun?.suggestedPreviewUrl,
   ]);
 
   const createImplementationSeedFromQuickDesignDraft = useCallback((): ImplementationStageActionRunResult => {

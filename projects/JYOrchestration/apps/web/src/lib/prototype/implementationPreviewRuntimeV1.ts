@@ -1,3 +1,4 @@
+import { normalizePreviewRenderMode } from "@/lib/prototype/completedCodeTaskPreviewView";
 import {
   IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
   type ImplementationPreviewScopeV1,
@@ -11,12 +12,19 @@ export type ImplementationPreviewRuntimeStatus =
   | "ready"
   | "failed";
 
+export type ImplementationPreviewRenderModeV1 =
+  | "generated_app"
+  | "generated_app_iframe"
+  | "scope_summary_fallback";
+
 export type ImplementationPreviewRuntimeV1 = Readonly<{
   readonly version: typeof IMPLEMENTATION_PREVIEW_RUNTIME_VERSION;
   readonly status: ImplementationPreviewRuntimeStatus;
   readonly generatedAt?: string | null;
   readonly previewUrl?: string | null;
+  readonly appPreviewUrl?: string | null;
   readonly sourceScopeVersion: typeof IMPLEMENTATION_PREVIEW_SCOPE_VERSION;
+  readonly renderMode: ImplementationPreviewRenderModeV1;
   readonly includedCodeTaskIds: readonly string[];
   readonly excludedCodeTaskIds: readonly string[];
   readonly warnings: readonly string[];
@@ -55,15 +63,20 @@ export function parseImplementationPreviewRuntimeV1(
     ? o.warnings.map((w) => readString(w)).filter(Boolean)
     : [];
 
+  const appPreviewUrl = readString(o.appPreviewUrl) || null;
+  const renderMode = normalizePreviewRenderMode(o.renderMode, appPreviewUrl);
+
   return {
     version: IMPLEMENTATION_PREVIEW_RUNTIME_VERSION,
     status,
     sourceScopeVersion: IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
+    renderMode,
     includedCodeTaskIds,
     excludedCodeTaskIds,
     warnings,
     ...(readString(o.generatedAt) ? { generatedAt: readString(o.generatedAt) } : {}),
     ...(readString(o.previewUrl) ? { previewUrl: readString(o.previewUrl) } : {}),
+    ...(appPreviewUrl ? { appPreviewUrl } : {}),
     ...(readString(o.errorMessage) ? { errorMessage: readString(o.errorMessage) } : {}),
   };
 }
