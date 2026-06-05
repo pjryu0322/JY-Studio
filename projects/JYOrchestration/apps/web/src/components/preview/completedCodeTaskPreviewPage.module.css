@@ -108,6 +108,18 @@
   margin: 12px 0 0;
 }
 
+.externalOpenButton {
+  margin-top: 16px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+
 @media (max-width: 640px) {
   .scopeDetails:not([open]) .scopeDetailsSummary {
     margin-bottom: 0;

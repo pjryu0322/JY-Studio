@@ -1,4 +1,11 @@
-import { normalizePreviewRenderMode } from "@/lib/prototype/completedCodeTaskPreviewView";
+import {
+  isExternalPreviewUrl,
+  isInternalPreviewPath,
+} from "@/lib/prototype/previewUrlClassification";
+import {
+  normalizePreviewOpenMode,
+  normalizePreviewRenderMode,
+} from "@/lib/prototype/completedCodeTaskPreviewView";
 import {
   IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
   type ImplementationPreviewScopeV1,
@@ -12,8 +19,15 @@ export type ImplementationPreviewRuntimeStatus =
   | "ready"
   | "failed";
 
+export type ImplementationPreviewOpenModeV1 =
+  | "external_new_window"
+  | "internal_renderer"
+  | "scope_summary_fallback";
+
 export type ImplementationPreviewRenderModeV1 =
+  | "external_preview"
   | "generated_app"
+  | "internal_generated_app"
   | "generated_app_iframe"
   | "scope_summary_fallback";
 
@@ -23,8 +37,11 @@ export type ImplementationPreviewRuntimeV1 = Readonly<{
   readonly generatedAt?: string | null;
   readonly previewUrl?: string | null;
   readonly appPreviewUrl?: string | null;
+  readonly externalPreviewUrl?: string | null;
+  readonly internalAppPreviewUrl?: string | null;
   readonly sourceScopeVersion: typeof IMPLEMENTATION_PREVIEW_SCOPE_VERSION;
   readonly renderMode: ImplementationPreviewRenderModeV1;
+  readonly openMode: ImplementationPreviewOpenModeV1;
   readonly includedCodeTaskIds: readonly string[];
   readonly excludedCodeTaskIds: readonly string[];
   readonly warnings: readonly string[];
@@ -64,19 +81,46 @@ export function parseImplementationPreviewRuntimeV1(
     : [];
 
   const appPreviewUrl = readString(o.appPreviewUrl) || null;
-  const renderMode = normalizePreviewRenderMode(o.renderMode, appPreviewUrl);
+  const externalPreviewUrl = readString(o.externalPreviewUrl) || null;
+  const internalAppPreviewUrl =
+    readString(o.internalAppPreviewUrl) ||
+    (appPreviewUrl && isInternalPreviewPath(appPreviewUrl) ? appPreviewUrl : null) ||
+    null;
+
+  const inferredExternal =
+    externalPreviewUrl ||
+    (appPreviewUrl && isExternalPreviewUrl(appPreviewUrl) ? appPreviewUrl : null) ||
+    null;
+
+  const renderMode = normalizePreviewRenderMode(o.renderMode, {
+    appPreviewUrl,
+    externalPreviewUrl: inferredExternal,
+    internalAppPreviewUrl,
+  });
+  const openMode = normalizePreviewOpenMode(o.openMode, {
+    renderMode,
+    externalPreviewUrl: inferredExternal,
+    internalAppPreviewUrl,
+    previewUrl: readString(o.previewUrl) || null,
+  });
+
+  const compatibilityAppPreviewUrl =
+    inferredExternal ?? internalAppPreviewUrl ?? appPreviewUrl ?? null;
 
   return {
     version: IMPLEMENTATION_PREVIEW_RUNTIME_VERSION,
     status,
     sourceScopeVersion: IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
     renderMode,
+    openMode,
     includedCodeTaskIds,
     excludedCodeTaskIds,
     warnings,
     ...(readString(o.generatedAt) ? { generatedAt: readString(o.generatedAt) } : {}),
     ...(readString(o.previewUrl) ? { previewUrl: readString(o.previewUrl) } : {}),
-    ...(appPreviewUrl ? { appPreviewUrl } : {}),
+    ...(compatibilityAppPreviewUrl ? { appPreviewUrl: compatibilityAppPreviewUrl } : {}),
+    ...(inferredExternal ? { externalPreviewUrl: inferredExternal } : {}),
+    ...(internalAppPreviewUrl ? { internalAppPreviewUrl } : {}),
     ...(readString(o.errorMessage) ? { errorMessage: readString(o.errorMessage) } : {}),
   };
 }

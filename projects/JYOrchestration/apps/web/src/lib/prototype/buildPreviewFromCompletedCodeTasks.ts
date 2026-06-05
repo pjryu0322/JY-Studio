@@ -27,7 +27,10 @@ function failedRuntime(input: {
     generatedAt: input.nowIso,
     previewUrl: null,
     appPreviewUrl: null,
+    externalPreviewUrl: null,
+    internalAppPreviewUrl: null,
     renderMode: "scope_summary_fallback",
+    openMode: "scope_summary_fallback",
     sourceScopeVersion: IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
     includedCodeTaskIds: input.previewScope.includedCodeTasks.map((row) => row.codeTaskId),
     excludedCodeTaskIds: input.previewScope.excludedCodeTasks.map((row) => row.codeTaskId),
@@ -94,8 +97,15 @@ export function buildPreviewFromCompletedCodeTasks(input: {
     status: "ready",
     generatedAt: nowIso,
     previewUrl,
-    appPreviewUrl: appPreview.appPreviewUrl ?? null,
+    appPreviewUrl:
+      appPreview.externalPreviewUrl ??
+      appPreview.internalAppPreviewUrl ??
+      appPreview.appPreviewUrl ??
+      null,
+    externalPreviewUrl: appPreview.externalPreviewUrl ?? null,
+    internalAppPreviewUrl: appPreview.internalAppPreviewUrl ?? null,
     renderMode: appPreview.renderMode,
+    openMode: appPreview.openMode,
     sourceScopeVersion: IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
     includedCodeTaskIds: scope.includedCodeTasks.map((row) => row.codeTaskId),
     excludedCodeTaskIds: scope.excludedCodeTasks.map((row) => row.codeTaskId),

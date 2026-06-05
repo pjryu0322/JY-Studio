@@ -38,7 +38,9 @@ describe("buildPreviewFromCompletedCodeTasks", () => {
     expect(result.runtime.status).toBe("ready");
     expect(result.previewUrl).toBe("/projects/p1/preview?scope=latest");
     expect(result.runtime.appPreviewUrl).toBe("/projects/p1/preview/app?scope=latest");
-    expect(result.runtime.renderMode).toBe("generated_app_iframe");
+    expect(result.runtime.internalAppPreviewUrl).toBe("/projects/p1/preview/app?scope=latest");
+    expect(result.runtime.renderMode).toBe("internal_generated_app");
+    expect(result.runtime.openMode).toBe("internal_renderer");
     expect(result.runtime.includedCodeTaskIds).toEqual(["CT-1"]);
     expect(result.runtime.excludedCodeTaskIds).toEqual(["CT-2"]);
     expect(result.runtime.warnings).toEqual(["shell warning"]);
@@ -67,7 +69,9 @@ describe("buildPreviewFromCompletedCodeTasks", () => {
     });
 
     expect(result.runtime.appPreviewUrl).toBe("https://demo.example/app");
-    expect(result.runtime.renderMode).toBe("generated_app_iframe");
+    expect(result.runtime.externalPreviewUrl).toBe("https://demo.example/app");
+    expect(result.runtime.renderMode).toBe("external_preview");
+    expect(result.runtime.openMode).toBe("external_new_window");
   });
 
   it("returns failed when no included tasks", () => {

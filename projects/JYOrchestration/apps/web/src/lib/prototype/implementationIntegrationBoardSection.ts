@@ -34,6 +34,11 @@ export function buildImplementationIntegrationBoardSection(input: {
   const previewStatusLines: string[] = [];
   if (previewRuntimeReady) {
     previewStatusLines.push("통합 완료", "Preview 준비 완료");
+    if (input.previewRuntime?.openMode === "external_new_window") {
+      previewStatusLines.push("GitHub Pages Preview를 새 창으로 엽니다.");
+    } else if (input.previewRuntime?.openMode === "internal_renderer") {
+      previewStatusLines.push("플랫폼 내부 Preview Renderer로 확인합니다.");
+    }
   } else if (input.previewRuntime?.status === "failed") {
     previewStatusLines.push("통합 완료", "Preview 준비 실패");
     if (input.previewRuntime.errorMessage?.trim()) {

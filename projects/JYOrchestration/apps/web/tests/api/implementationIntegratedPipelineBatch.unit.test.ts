@@ -181,7 +181,8 @@ describe("applyIntegratedPipelineSyncSteps preview wiring", () => {
     if (!batch.ok) return;
     expect(batch.previewBuildOk).toBe(true);
     expect(batch.previewRuntime?.status).toBe("ready");
-    expect(batch.previewRuntime?.renderMode).toBe("generated_app_iframe");
+    expect(batch.previewRuntime?.renderMode).toBe("internal_generated_app");
+    expect(batch.previewRuntime?.openMode).toBe("internal_renderer");
     expect(batch.previewRuntime?.appPreviewUrl).toContain("/preview/app");
     expect(batch.previewUrl).toContain("/preview");
     expect(batch.completedSteps).toEqual([

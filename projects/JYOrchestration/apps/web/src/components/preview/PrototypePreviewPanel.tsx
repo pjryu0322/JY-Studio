@@ -4104,6 +4104,7 @@ export function PrototypePreviewPanel({
           }),
         );
         if (batch.previewBuildOk) {
+          const runtime = batch.previewRuntime;
           timeline = appendPromptTimeline(
             timeline,
             buildCompletedCodeTaskIntegrationTimelineEntry({
@@ -4112,12 +4113,46 @@ export function PrototypePreviewPanel({
               includedCount,
               excludedCount,
               previewUrl: batch.previewUrl,
-              appPreviewUrl: batch.previewRuntime?.appPreviewUrl,
-              renderMode: batch.previewRuntime?.renderMode,
+              appPreviewUrl: runtime?.appPreviewUrl,
+              externalPreviewUrl: runtime?.externalPreviewUrl,
+              internalAppPreviewUrl: runtime?.internalAppPreviewUrl,
+              renderMode: runtime?.renderMode,
+              openMode: runtime?.openMode,
               nowIso: startedAtIso,
             }),
           );
-          if (batch.previewRuntime?.renderMode === "scope_summary_fallback") {
+          if (runtime?.openMode === "external_new_window") {
+            timeline = appendPromptTimeline(
+              timeline,
+              buildCompletedCodeTaskIntegrationTimelineEntry({
+                action: "completed_codetask_external_preview_ready",
+                projectId: pid,
+                includedCount,
+                excludedCount,
+                previewUrl: batch.previewUrl,
+                externalPreviewUrl: runtime.externalPreviewUrl,
+                internalAppPreviewUrl: runtime.internalAppPreviewUrl,
+                renderMode: runtime.renderMode,
+                openMode: runtime.openMode,
+                nowIso: startedAtIso,
+              }),
+            );
+          } else if (runtime?.openMode === "internal_renderer") {
+            timeline = appendPromptTimeline(
+              timeline,
+              buildCompletedCodeTaskIntegrationTimelineEntry({
+                action: "completed_codetask_internal_preview_ready",
+                projectId: pid,
+                includedCount,
+                excludedCount,
+                previewUrl: batch.previewUrl,
+                internalAppPreviewUrl: runtime.internalAppPreviewUrl,
+                renderMode: runtime.renderMode,
+                openMode: runtime.openMode,
+                nowIso: startedAtIso,
+              }),
+            );
+          } else if (runtime?.openMode === "scope_summary_fallback") {
             timeline = appendPromptTimeline(
               timeline,
               buildCompletedCodeTaskIntegrationTimelineEntry({
@@ -4125,7 +4160,8 @@ export function PrototypePreviewPanel({
                 projectId: pid,
                 includedCount,
                 excludedCount,
-                renderMode: batch.previewRuntime.renderMode,
+                renderMode: runtime.renderMode,
+                openMode: runtime.openMode,
                 reason: "generated_app_preview_url_unavailable",
                 nowIso: startedAtIso,
               }),

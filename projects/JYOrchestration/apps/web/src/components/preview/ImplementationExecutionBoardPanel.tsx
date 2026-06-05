@@ -76,6 +76,10 @@ import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/impl
 import { shouldShowIntegrationPipelineButton } from "@/lib/prototype/implementationIntegratedPipelineBatch";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import {
+  getPreviewOpenTarget,
+  getPreviewScopeViewUrl,
+} from "@/lib/prototype/implementationPreviewOpenTarget";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 export function ImplementationExecutionBoardPanel({
@@ -425,6 +429,15 @@ export function ImplementationExecutionBoardPanel({
     [integrationSection.canIntegrate, board],
   );
 
+  const previewOpenTarget = useMemo(
+    () => getPreviewOpenTarget(parsedPreviewRuntime),
+    [parsedPreviewRuntime],
+  );
+  const previewScopeViewUrl = useMemo(
+    () => getPreviewScopeViewUrl(parsedPreviewRuntime),
+    [parsedPreviewRuntime],
+  );
+
   const codeAgentProgress = useMemo(
     () =>
       buildCodeAgentExecutionProgressView({
@@ -669,16 +682,30 @@ export function ImplementationExecutionBoardPanel({
                   {integrationPipelineBusy ? "통합 및 Preview 준비 중…" : "통합"}
                 </button>
               ) : null}
-              {integrationSection.previewRuntimeReady && integrationSection.previewUrl ? (
+              {integrationSection.previewRuntimeReady && previewOpenTarget.url ? (
                 <button
                   type="button"
                   className={styles.integrationPreviewButton}
                   data-testid="implementation-integration-preview-open-button"
                   onClick={() => {
-                    window.open(integrationSection.previewUrl!, "_blank", "noopener,noreferrer");
+                    window.open(previewOpenTarget.url!, "_blank", "noopener,noreferrer");
                   }}
                 >
-                  Preview 보기
+                  {previewOpenTarget.label}
+                </button>
+              ) : null}
+              {integrationSection.previewRuntimeReady &&
+              previewScopeViewUrl &&
+              previewOpenTarget.mode === "new_window" ? (
+                <button
+                  type="button"
+                  className={styles.integrationPreviewScopeButton}
+                  data-testid="implementation-integration-preview-scope-button"
+                  onClick={() => {
+                    window.open(previewScopeViewUrl, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  Preview 범위 보기
                 </button>
               ) : null}
             </div>
@@ -689,6 +716,9 @@ export function ImplementationExecutionBoardPanel({
                 {line}
               </div>
             ))}
+            {previewOpenTarget.hint ? (
+              <div className={styles.taskTreeChildLine}>{previewOpenTarget.hint}</div>
+            ) : null}
             {integrationSection.summaryLines.map((line) => (
               <div key={line} className={styles.taskTreeChildLine}>
                 {line}

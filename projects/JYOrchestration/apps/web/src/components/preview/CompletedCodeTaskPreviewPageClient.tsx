@@ -9,8 +9,10 @@ import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementat
 import { buildIntegrationScopeDetailLines } from "@/lib/prototype/implementationIntegrationScopeUi";
 import {
   resolveCompletedCodeTaskPreviewMainMode,
+  resolveInternalIframeSrc,
   shouldShowPreviewFallbackNotice,
 } from "@/lib/prototype/completedCodeTaskPreviewView";
+import { ExternalPreviewLaunchPanel } from "@/components/preview/ExternalPreviewLaunchPanel";
 import styles from "@/components/preview/completedCodeTaskPreviewPage.module.css";
 
 export function CompletedCodeTaskPreviewScopeDetails(props: {
@@ -85,7 +87,9 @@ export function CompletedCodeTaskPreviewPageClient(props: { readonly projectId: 
   const scope = useMemo(() => parseImplementationPreviewScopeV1(scopeRaw), [scopeRaw]);
   const runtime = useMemo(() => parseImplementationPreviewRuntimeV1(runtimeRaw), [runtimeRaw]);
   const mainMode = useMemo(() => resolveCompletedCodeTaskPreviewMainMode(runtime), [runtime]);
+  const iframeSrc = useMemo(() => resolveInternalIframeSrc(runtime), [runtime]);
   const showFallbackNotice = useMemo(() => shouldShowPreviewFallbackNotice(runtime), [runtime]);
+  const externalPreviewUrl = String(runtime?.externalPreviewUrl ?? "").trim();
 
   if (loading) {
     return <p style={{ padding: 24 }}>Preview를 불러오는 중…</p>;
@@ -106,7 +110,6 @@ export function CompletedCodeTaskPreviewPageClient(props: { readonly projectId: 
   }
 
   const excludedCount = scope.excludedCodeTasks.length;
-  const appPreviewUrl = String(runtime?.appPreviewUrl ?? "").trim();
 
   return (
     <div className={styles.root} data-testid="completed-codetask-preview-page">
@@ -126,7 +129,7 @@ export function CompletedCodeTaskPreviewPageClient(props: { readonly projectId: 
                 {warning}
               </p>
             ))}
-            {runtime?.status === "ready" && mainMode === "iframe" ? (
+            {runtime?.status === "ready" && mainMode === "internal_iframe" ? (
               <p className={styles.noticeOk}>Preview 준비 완료</p>
             ) : null}
             {runtime?.status === "failed" && runtime.errorMessage ? (
@@ -141,9 +144,11 @@ export function CompletedCodeTaskPreviewPageClient(props: { readonly projectId: 
       </header>
 
       <div className={styles.mainArea}>
-        {mainMode === "iframe" && appPreviewUrl ? (
+        {mainMode === "external_launch" && externalPreviewUrl ? (
+          <ExternalPreviewLaunchPanel externalPreviewUrl={externalPreviewUrl} />
+        ) : mainMode === "internal_iframe" && iframeSrc ? (
           <iframe
-            src={appPreviewUrl}
+            src={iframeSrc}
             title={`${projectName || "생성 앱"} Preview`}
             className={styles.iframe}
             data-testid="completed-codetask-preview-iframe"

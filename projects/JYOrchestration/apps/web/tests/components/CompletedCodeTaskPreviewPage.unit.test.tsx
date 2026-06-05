@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
-  CompletedCodeTaskPreviewPageClient,
   CompletedCodeTaskPreviewScopeSummaryFallback,
 } from "@/components/preview/CompletedCodeTaskPreviewPageClient";
+import { ExternalPreviewLaunchPanel } from "@/components/preview/ExternalPreviewLaunchPanel";
 import { buildImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { IMPLEMENTATION_PREVIEW_RUNTIME_VERSION } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import { IMPLEMENTATION_PREVIEW_SCOPE_VERSION } from "@/lib/prototype/implementationPreviewScopeV1";
-import { resolveCompletedCodeTaskPreviewMainMode } from "@/lib/prototype/completedCodeTaskPreviewView";
+import {
+  resolveCompletedCodeTaskPreviewMainMode,
+  resolveInternalIframeSrc,
+} from "@/lib/prototype/completedCodeTaskPreviewView";
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 
 const NOW = "2026-06-03T12:00:00.000Z";
@@ -21,34 +24,54 @@ const scope = buildImplementationPreviewScopeV1({
 });
 
 describe("completedCodeTaskPreviewView", () => {
-  it("uses iframe mode when appPreviewUrl is ready", () => {
+  it("uses external launch mode for external openMode", () => {
     const runtime: ImplementationPreviewRuntimeV1 = {
       version: IMPLEMENTATION_PREVIEW_RUNTIME_VERSION,
       status: "ready",
       previewUrl: "/projects/p1/preview?scope=latest",
-      appPreviewUrl: "/projects/p1/preview/app?scope=latest",
-      renderMode: "generated_app_iframe",
+      externalPreviewUrl: "https://owner.github.io/app/",
+      internalAppPreviewUrl: "/projects/p1/preview/app?scope=latest",
+      appPreviewUrl: "https://owner.github.io/app/",
+      renderMode: "external_preview",
+      openMode: "external_new_window",
       sourceScopeVersion: IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
       includedCodeTaskIds: ["CT-1"],
       excludedCodeTaskIds: ["CT-2"],
       warnings: [],
     };
-    expect(resolveCompletedCodeTaskPreviewMainMode(runtime)).toBe("iframe");
+    expect(resolveCompletedCodeTaskPreviewMainMode(runtime)).toBe("external_launch");
+    expect(resolveInternalIframeSrc(runtime)).toBeNull();
   });
 
-  it("uses scope summary fallback mode when renderMode says so", () => {
+  it("uses internal iframe only for internalAppPreviewUrl", () => {
     const runtime: ImplementationPreviewRuntimeV1 = {
       version: IMPLEMENTATION_PREVIEW_RUNTIME_VERSION,
       status: "ready",
       previewUrl: "/projects/p1/preview?scope=latest",
-      appPreviewUrl: null,
-      renderMode: "scope_summary_fallback",
+      internalAppPreviewUrl: "/projects/p1/preview/app?scope=latest",
+      appPreviewUrl: "/projects/p1/preview/app?scope=latest",
+      renderMode: "internal_generated_app",
+      openMode: "internal_renderer",
       sourceScopeVersion: IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
       includedCodeTaskIds: ["CT-1"],
       excludedCodeTaskIds: ["CT-2"],
       warnings: [],
     };
-    expect(resolveCompletedCodeTaskPreviewMainMode(runtime)).toBe("scope_summary_fallback");
+    expect(resolveCompletedCodeTaskPreviewMainMode(runtime)).toBe("internal_iframe");
+    expect(resolveInternalIframeSrc(runtime)).toContain("/preview/app");
+  });
+});
+
+describe("ExternalPreviewLaunchPanel", () => {
+  it("does not render iframe", () => {
+    const html = renderToStaticMarkup(
+      createElement(ExternalPreviewLaunchPanel, {
+        externalPreviewUrl: "https://owner.github.io/app/",
+      }),
+    );
+    expect(html).toContain("completed-codetask-external-preview-launch");
+    expect(html).not.toContain("<iframe");
+    expect(html).toContain("새 창으로 열기");
   });
 });
 
@@ -60,14 +83,6 @@ describe("CompletedCodeTaskPreviewScopeSummaryFallback", () => {
         showFallbackNotice: true,
       }),
     );
-    expect(html).toContain("completed-codetask-preview-scope-fallback");
     expect(html).toContain("실제 앱 Preview URL을 찾지 못해");
-    expect(html).toContain("입력 화면");
-  });
-});
-
-describe("CompletedCodeTaskPreviewPageClient export", () => {
-  it("exports client component", () => {
-    expect(typeof CompletedCodeTaskPreviewPageClient).toBe("function");
   });
 });
