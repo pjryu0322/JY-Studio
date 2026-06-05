@@ -51,7 +51,7 @@ const GENERIC_RUNTIME_PHRASES: readonly RegExp[] = [
   /프로세스\s*핵심\s*동작이\s*동선에\s*맞게/i,
   /^예외\/빈\s*상태가\s*처리/i,
   /주요\s*UI\s*영역이\s*표시/i,
-  /Mock\s*데이터\s*기준으로\s*화면\s*상태/i,
+  /샘플\s*데이터\s*기준으로\s*화면\s*상태/i,
 ];
 
 export type CodeTaskRuntimePromptContextView = Readonly<{

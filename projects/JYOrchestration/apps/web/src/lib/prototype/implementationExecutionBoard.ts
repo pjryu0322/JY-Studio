@@ -609,6 +609,8 @@ export type ImplementationRequirementsBoardOrchestrationSlice = Readonly<{
   readonly taskCursorExecutionV1?: import("@/lib/prototype/taskCursorExecution").TaskCursorExecutionV1 | null;
   readonly taskCursorExecutionHistoryV1?: readonly import("@/lib/prototype/taskCursorExecution").TaskCursorExecutionV1[] | null;
   readonly implementationAutoQualityGateV1?: import("@/lib/prototype/implementationAutoQualityGate").ImplementationAutoQualityGateV1 | null;
+  readonly implementationPreviewScopeV1?: import("@/lib/prototype/implementationPreviewScopeV1").ImplementationPreviewScopeV1 | null;
+  readonly implementationPreviewRuntimeV1?: import("@/lib/prototype/implementationPreviewRuntimeV1").ImplementationPreviewRuntimeV1 | null;
 }>;
 
 export { resolveIntegrationPipelineUnlocked } from "@/lib/prototype/implementationCodeTaskIntegrationContext";

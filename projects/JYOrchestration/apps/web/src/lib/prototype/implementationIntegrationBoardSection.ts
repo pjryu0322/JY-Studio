@@ -1,6 +1,9 @@
 import type { ImplementationIntegrationEligibility } from "@/lib/prototype/implementationIntegrationEligibility";
+import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import { isImplementationPreviewRuntimeReady } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import {
   buildIntegrationEligibilitySummaryLines,
+  buildIntegrationScopeCountSummaryLines,
   buildIntegrationScopeDetailLines,
 } from "@/lib/prototype/implementationIntegrationScopeUi";
 import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
@@ -14,18 +17,37 @@ export type ImplementationIntegrationBoardSectionVm = Readonly<{
   readonly includedPreviewRows: readonly { readonly codeTaskId: string; readonly title: string }[];
   readonly excludedPreviewRows: readonly { readonly codeTaskId: string; readonly label: string }[];
   readonly scopeDetailLines: readonly string[];
+  readonly previewRuntimeReady: boolean;
+  readonly previewUrl: string | null;
+  readonly previewStatusLines: readonly string[];
 }>;
 
 export function buildImplementationIntegrationBoardSection(input: {
   readonly eligibility: ImplementationIntegrationEligibility;
   readonly integratedPipelineLines: readonly ImplementationIntegratedPipelineLine[];
   readonly previewScope?: ImplementationPreviewScopeV1 | null;
+  readonly previewRuntime?: ImplementationPreviewRuntimeV1 | null;
 }): ImplementationIntegrationBoardSectionVm {
   const scope = input.previewScope ?? null;
+  const previewRuntimeReady = isImplementationPreviewRuntimeReady(input.previewRuntime);
+  const previewUrl = String(input.previewRuntime?.previewUrl ?? "").trim() || null;
+  const previewStatusLines: string[] = [];
+  if (previewRuntimeReady) {
+    previewStatusLines.push("통합 완료", "Preview 준비 완료");
+  } else if (input.previewRuntime?.status === "failed") {
+    previewStatusLines.push("통합 완료", "Preview 준비 실패");
+    if (input.previewRuntime.errorMessage?.trim()) {
+      previewStatusLines.push(`사유: ${input.previewRuntime.errorMessage.trim()}`);
+    }
+  }
+
   return {
     canIntegrate: input.eligibility.canIntegrate,
     showSection: input.eligibility.canIntegrate || input.integratedPipelineLines.length > 0,
-    summaryLines: buildIntegrationEligibilitySummaryLines(input.eligibility),
+    summaryLines: [
+      ...buildIntegrationEligibilitySummaryLines(input.eligibility),
+      ...buildIntegrationScopeCountSummaryLines(scope),
+    ],
     pipelineLines: input.integratedPipelineLines,
     includedPreviewRows:
       scope?.includedCodeTasks.map((row) => ({
@@ -38,5 +60,8 @@ export function buildImplementationIntegrationBoardSection(input: {
         label: `${row.title}: ${row.status.trim() || row.reason}`,
       })) ?? [],
     scopeDetailLines: buildIntegrationScopeDetailLines(scope),
+    previewRuntimeReady,
+    previewUrl,
+    previewStatusLines,
   };
 }

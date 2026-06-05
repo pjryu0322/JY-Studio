@@ -75,6 +75,7 @@ import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeT
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
 import { shouldShowIntegrationPipelineButton } from "@/lib/prototype/implementationIntegratedPipelineBatch";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
+import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 export function ImplementationExecutionBoardPanel({
@@ -105,6 +106,7 @@ export function ImplementationExecutionBoardPanel({
   runtimeCodeTaskQueueView,
   codeTaskExecutionRunsV1,
   implementationPreviewScopeV1,
+  implementationPreviewRuntimeV1,
   onRunIntegrationPipeline,
   integrationPipelineBusy,
 }: {
@@ -135,6 +137,7 @@ export function ImplementationExecutionBoardPanel({
   readonly runtimeCodeTaskQueueView?: unknown;
   readonly codeTaskExecutionRunsV1?: unknown;
   readonly implementationPreviewScopeV1?: unknown;
+  readonly implementationPreviewRuntimeV1?: unknown;
   readonly onRunIntegrationPipeline?: () => void;
   readonly integrationPipelineBusy?: boolean;
 }) {
@@ -370,6 +373,11 @@ export function ImplementationExecutionBoardPanel({
     [board.integratedRows],
   );
 
+  const parsedPreviewRuntime = useMemo(
+    () => parseImplementationPreviewRuntimeV1(implementationPreviewRuntimeV1) ?? null,
+    [implementationPreviewRuntimeV1],
+  );
+
   const integrationSection = useMemo(
     () =>
       buildImplementationIntegrationBoardSection({
@@ -383,6 +391,7 @@ export function ImplementationExecutionBoardPanel({
         }),
         integratedPipelineLines,
         previewScope: parseImplementationPreviewScopeV1(implementationPreviewScopeV1),
+        previewRuntime: parsedPreviewRuntime,
       }),
     [
       implementationCodeTaskPlanV1,
@@ -393,8 +402,19 @@ export function ImplementationExecutionBoardPanel({
       implementationAutoQualityGateV1,
       integratedPipelineLines,
       implementationPreviewScopeV1,
+      parsedPreviewRuntime,
     ],
   );
+
+  const integrationPipelineDisplayLines = useMemo(() => {
+    const lines = [...integrationSection.pipelineLines];
+    if (parsedPreviewRuntime?.status === "ready") {
+      lines.push({ stepId: "preview_ready", label: "Preview 준비", statusLabel: "완료" });
+    } else if (parsedPreviewRuntime?.status === "failed") {
+      lines.push({ stepId: "preview_ready", label: "Preview 준비", statusLabel: "실패" });
+    }
+    return lines;
+  }, [integrationSection.pipelineLines, parsedPreviewRuntime?.status]);
 
   const showIntegrationButton = useMemo(
     () =>
@@ -637,33 +657,52 @@ export function ImplementationExecutionBoardPanel({
         >
           <div className={styles.integrationSectionHeader}>
             <div className={styles.taskTreeSectionTitle}>통합 단계 · 완료된 CodeTask 기준</div>
-            {showIntegrationButton && onRunIntegrationPipeline ? (
-              <button
-                type="button"
-                className={styles.integrationPrimaryButton}
-                data-testid="implementation-integration-run-button"
-                disabled={integrationPipelineBusy === true}
-                onClick={onRunIntegrationPipeline}
-              >
-                {integrationPipelineBusy ? "통합 진행 중…" : "통합"}
-              </button>
-            ) : null}
+            <div className={styles.integrationSectionActions}>
+              {showIntegrationButton && onRunIntegrationPipeline ? (
+                <button
+                  type="button"
+                  className={styles.integrationPrimaryButton}
+                  data-testid="implementation-integration-run-button"
+                  disabled={integrationPipelineBusy === true}
+                  onClick={onRunIntegrationPipeline}
+                >
+                  {integrationPipelineBusy ? "통합 및 Preview 준비 중…" : "통합"}
+                </button>
+              ) : null}
+              {integrationSection.previewRuntimeReady && integrationSection.previewUrl ? (
+                <button
+                  type="button"
+                  className={styles.integrationPreviewButton}
+                  data-testid="implementation-integration-preview-open-button"
+                  onClick={() => {
+                    window.open(integrationSection.previewUrl!, "_blank", "noopener,noreferrer");
+                  }}
+                >
+                  Preview 보기
+                </button>
+              ) : null}
+            </div>
           </div>
           <div className={styles.taskTreeList}>
+            {integrationSection.previewStatusLines.map((line) => (
+              <div key={line} className={styles.taskTreeChildLine}>
+                {line}
+              </div>
+            ))}
             {integrationSection.summaryLines.map((line) => (
               <div key={line} className={styles.taskTreeChildLine}>
                 {line}
               </div>
             ))}
-            {integrationSection.pipelineLines.map((line) => (
+            {integrationPipelineDisplayLines.map((line) => (
               <div key={line.stepId} className={styles.taskTreeChildLine}>
                 {line.label}: {line.statusLabel}
               </div>
             ))}
-            {integrationSection.includedPreviewRows.length ? (
-              <details className={styles.taskTreeChildLine}>
-                <summary>이번 Preview 포함/제외 상세</summary>
-                <div>
+            {integrationSection.includedPreviewRows.length || integrationSection.excludedPreviewRows.length ? (
+              <details className={styles.integrationPreviewDetails}>
+                <summary>포함/제외 CodeTask 상세</summary>
+                <div className={styles.integrationPreviewDetailsBody}>
                   {integrationSection.includedPreviewRows.map((row) => (
                     <div key={row.codeTaskId}>포함 · {row.title}</div>
                   ))}

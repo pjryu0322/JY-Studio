@@ -133,7 +133,7 @@ function labelToGapKey(label: string): ImplementationSeedGapKey | null {
     ["common_detail_features", "공통 상세 기능"],
     ["data_entities", "데이터 항목"],
     ["state_model", "상태 모델"],
-    ["mock_data_strategy", "Mock 데이터 전략"],
+    ["mock_data_strategy", "샘플 데이터 전략"],
   ];
   for (const [key, userLabel] of entries) {
     if (t === userLabel) return key;

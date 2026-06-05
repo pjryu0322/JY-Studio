@@ -38,8 +38,14 @@ describe("resolveCodeTaskSpecificRole", () => {
     expect(r.roleKind).toBe("screen_result");
   });
 
-  it("maps mock data", () => {
+  it("maps mock data from legacy mock title", () => {
     const r = resolveCodeTaskSpecificRole({ codeTaskTitle: "Mock 데이터 구조 정의" });
     expect(r.roleKind).toBe("mock_data");
+  });
+
+  it("maps mock data from sample data title", () => {
+    const r = resolveCodeTaskSpecificRole({ codeTaskTitle: "샘플 데이터 생성" });
+    expect(r.roleKind).toBe("mock_data");
+    expect(r.role).toMatch(/샘플 데이터/);
   });
 });

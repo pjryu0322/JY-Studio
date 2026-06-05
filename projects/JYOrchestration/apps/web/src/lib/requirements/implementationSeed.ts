@@ -72,7 +72,7 @@ export const IMPLEMENTATION_SEED_GAP_LABELS: Readonly<Record<ImplementationSeedG
   common_detail_features: "공통 상세기능",
   data_entities: "데이터 엔티티 후보",
   state_model: "상태 모델",
-  mock_data_strategy: "Mock 데이터 전략",
+  mock_data_strategy: "샘플 데이터 전략",
 };
 
 export type ProcessImplementationItem = Readonly<{

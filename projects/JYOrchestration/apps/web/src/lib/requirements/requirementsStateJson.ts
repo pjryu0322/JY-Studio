@@ -56,6 +56,7 @@ import type { ImplementationExecutionJobV1 } from "@/lib/prototype/implementatio
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
+import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import { parseCodeTaskPromptContextMapV1, type CodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 import {
   parseImplementationRuntimeStateV1,
@@ -651,6 +652,8 @@ export type RequirementsStateJson = {
   codeTaskExecutionRunsV1?: readonly CodeTaskExecutionRunV1[] | null;
   /** 완료된 CodeTask 기준 Preview 통합 범위 메타데이터 */
   implementationPreviewScopeV1?: import("@/lib/prototype/implementationPreviewScopeV1").ImplementationPreviewScopeV1 | null;
+  /** 완료 CodeTask 통합 후 Preview runtime(내부 route URL, final_scm과 분리) */
+  implementationPreviewRuntimeV1?: import("@/lib/prototype/implementationPreviewRuntimeV1").ImplementationPreviewRuntimeV1 | null;
   /** @deprecated DB Runtime Engine SoT — 읽기 호환만, 저장 시 제거 */
   implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   /** 구현 Runtime UI 스냅샷(DB mirror, 표시·activeDispatch 힌트) */
@@ -1142,6 +1145,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationPreviewScopeV1 = parseImplementationPreviewScopeV1(
     "implementationPreviewScopeV1" in o ? o.implementationPreviewScopeV1 : undefined,
   );
+  const implementationPreviewRuntimeV1 = parseImplementationPreviewRuntimeV1(
+    "implementationPreviewRuntimeV1" in o ? o.implementationPreviewRuntimeV1 : undefined,
+  );
   const implementationRuntimeStateV1 = parseImplementationRuntimeStateV1(
     "implementationRuntimeStateV1" in o ? o.implementationRuntimeStateV1 : undefined,
   );
@@ -1329,6 +1335,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationExecutionJobsV1 !== undefined ? { implementationExecutionJobsV1 } : {}),
     ...(codeTaskExecutionRunsV1 !== undefined ? { codeTaskExecutionRunsV1 } : {}),
     ...(implementationPreviewScopeV1 !== undefined ? { implementationPreviewScopeV1 } : {}),
+    ...(implementationPreviewRuntimeV1 !== undefined ? { implementationPreviewRuntimeV1 } : {}),
     ...(implementationRuntimeUiSnapshotV1 !== undefined
       ? { implementationRuntimeUiSnapshotV1 }
       : {}),

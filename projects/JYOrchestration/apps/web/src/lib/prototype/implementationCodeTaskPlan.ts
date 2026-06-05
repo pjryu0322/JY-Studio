@@ -243,13 +243,13 @@ function blueprintsForTaskType(taskType: ImplementationTaskType): readonly CodeT
       return [
         {
           changeType: "data",
-          titleSuffix: "데이터/Mock 구현",
+          titleSuffix: "샘플 데이터 구현",
           descriptionSuffix: [
-            "Mock/데이터 구조, 상태 연결, 기본 검증을 하나의 실행 단위로 구현합니다.",
+            "Preview와 화면 검증에 필요한 샘플 데이터와 상태 데이터를 하나의 실행 단위로 구현합니다.",
             "",
             "하위 작업:",
-            "- Mock/데이터 구조와 샘플 데이터 정의",
-            "- 화면/기능 상태에 데이터 연결",
+            "- 샘플 데이터 구조와 상태 데이터 정의",
+            "- 화면/기능 상태에 샘플 데이터 연결",
             "- 샘플 데이터로 화면/기능 재현 검증",
           ].join("\n"),
           targetHint: "data",
@@ -398,6 +398,24 @@ function decomposeDeveloperTaskToCodeTasks(input: {
   });
 }
 
+/** 표시순서 = 실행순서 — TaskList 순서 보강용 (frame → mock → common → process → screen) */
+export function sortDeveloperTasksForExecution(
+  tasks: readonly ImplementationTaskV1[],
+): readonly ImplementationTaskV1[] {
+  const rank = (task: ImplementationTaskV1): number => {
+    if (task.taskType === "frame") return 10;
+    if (task.taskType === "mock") return 20;
+    if (task.taskType === "screen") return 50;
+    if (task.sourceRef?.type === "common_feature" || task.taskId.startsWith("DEV-COMMON")) return 30;
+    if (task.sourceRef?.type === "process" || task.taskId.startsWith("DEV-FEATURE")) return 40;
+    return 60;
+  };
+  return [...tasks]
+    .map((task, index) => ({ task, index, order: rank(task) }))
+    .sort((a, b) => a.order - b.order || a.index - b.index)
+    .map((row) => row.task);
+}
+
 export function buildImplementationCodeTaskPlanFromTaskList(input: {
   readonly projectId: string;
   readonly taskList: ImplementationTaskListV1;
@@ -407,8 +425,10 @@ export function buildImplementationCodeTaskPlanFromTaskList(input: {
   readonly nowIso?: string;
 }): ImplementationCodeTaskPlanV1 {
   const now = input.nowIso ?? new Date().toISOString();
-  const developerTasks = (input.taskList.tasks ?? []).filter(
-    (task) => task.ownerRole === "developer" && task.status === "ready",
+  const developerTasks = sortDeveloperTasksForExecution(
+    (input.taskList.tasks ?? []).filter(
+      (task) => task.ownerRole === "developer" && task.status === "ready",
+    ),
   );
   const projectArtifacts = input.projectArtifacts ?? [];
   const codeTasks = developerTasks.flatMap((task) =>

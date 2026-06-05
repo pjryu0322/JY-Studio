@@ -84,7 +84,9 @@ export function matchCodeTaskFeaturePromptKind(input: {
   if (/권한|permission|access\s*denied|접근\s*제한/i.test(text)) return "permission_denied";
   if (/임시\s*저장|draft|autosave|자동\s*저장/i.test(text)) return "draft_save";
   if (input.changeType === "api" || /api|endpoint|route/i.test(text)) return "api";
-  if (/mock\s*데이터|mock\s*data\s*구조|데이터\/mock|fixture\s*helper/i.test(text)) return "mock_data";
+  if (/샘플\s*데이터|예시\s*데이터|sample\s*data|mock\s*데이터|mock\s*data\s*구조|데이터\/mock|fixture\s*helper/i.test(text)) {
+    return "mock_data";
+  }
   if (input.changeType === "screen" || /화면\s*구현|화면/i.test(text)) return "screen";
   return "generic_component";
 }
@@ -215,13 +217,20 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
     ],
   },
   mock_data: {
-    implementationGoal: ["개발·검증에 필요한 mock/fixture 데이터 또는 stub을 구현한다."],
+    implementationGoal: [
+      "Preview와 화면 검증에 필요한 샘플 데이터와 상태 데이터를 생성한다.",
+      "회의 파일, 참여자, 스크립트, 요약, 처리 상태 샘플을 준비한다.",
+    ],
     implementationRequirements: [
-      "mock data 또는 fixture helper 구현",
-      "실제 API와 교체 가능한 구조",
+      "화면/기능이 동일한 샘플 데이터 기준으로 렌더링되도록 연결한다.",
+      "실제 API 또는 실제 데이터 연동으로 교체 가능한 구조를 유지한다.",
       "기존 화면/상태 흐름과 연동",
     ],
-    verificationChecklist: ["mock 데이터로 화면/흐름 동작 확인", "정상 데이터 전환 시 회귀 없음 확인"],
+    verificationChecklist: [
+      "샘플 데이터로 주요 화면이 렌더링되는지 확인",
+      "샘플 처리 상태로 로딩/완료/빈 결과 상태를 확인",
+      "실제 데이터 연동 전환 시 회귀가 없도록 구조 확인",
+    ],
   },
   feature_start: {
     implementationGoal: [

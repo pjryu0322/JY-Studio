@@ -1,6 +1,16 @@
 import type { ImplementationIntegrationEligibility } from "@/lib/prototype/implementationIntegrationEligibility";
 import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 
+export function buildIntegrationScopeCountSummaryLines(
+  scope: ImplementationPreviewScopeV1 | null | undefined,
+): readonly string[] {
+  if (!scope) return [];
+  return [
+    `이번 Preview 포함 CodeTask: ${scope.includedCodeTasks.length}개`,
+    `이번 Preview 제외 CodeTask: ${scope.excludedCodeTasks.length}개`,
+  ];
+}
+
 export function buildIntegrationEligibilitySummaryLines(
   eligibility: ImplementationIntegrationEligibility,
 ): readonly string[] {

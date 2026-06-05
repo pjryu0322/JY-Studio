@@ -1,7 +1,6 @@
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import {
   DEV_FRAME_TASK_ID,
-  isUiOrientedCommonFeature,
   shouldCreateDevFrameTask,
   type SelectedPrototypeTemplateV1,
 } from "@/lib/requirements/implementationPrototypeTemplateContext";
@@ -142,35 +141,49 @@ export function buildImplementationTaskListFromSeed(input: {
     tasks.push(buildDevFrameTask(templateContext));
   }
 
-  let devScreenIndex = 0;
-  for (const s of screenItems) {
-    const screenName = normalizeText(s.screenName) || "화면";
+  const sampleDataTaskId = "DEV-MOCK-001";
+  const sampleDataDependencies = [...frameDependencies];
+  const downstreamBaseDependencies = createFrameTask
+    ? [DEV_FRAME_TASK_ID, sampleDataTaskId]
+    : [sampleDataTaskId];
+
+  const sampleAcceptanceCriteria = [
+    "주요 화면이 샘플 데이터로 렌더링된다.",
+    "회의 파일, 참여자, 스크립트, 요약, 처리 상태 중 필요한 샘플 상태가 준비된다.",
+    "화면/기능 흐름을 샘플 데이터 기준으로 확인할 수 있다.",
+  ] as const;
+
+  tasks.push({
+    taskId: sampleDataTaskId,
+    title: "샘플 데이터 생성",
+    description:
+      dataEntities.length > 0
+        ? "화면과 기능 흐름을 확인할 수 있도록 주요 데이터 항목 기준의 샘플 데이터를 생성합니다."
+        : "초기 Preview 검증을 위해 회의 파일, 참여자, 스크립트, 요약, 처리 상태 등의 샘플 데이터를 생성합니다.",
+    taskType: "mock",
+    ownerRole: "developer",
+    priority: "high",
+    dependencies: sampleDataDependencies,
+    sourceRef: { type: "data_model", title: "data_entities" },
+    acceptanceCriteria: [...sampleAcceptanceCriteria],
+    status: "ready",
+  });
+
+  let commonIndex = 0;
+  for (const f of commonFeatures) {
+    const name = normalizeText(f.name) || "공통 기능";
     tasks.push({
-      taskId: makeId("DEV-SCREEN", devScreenIndex++),
-      title: `${screenName} 화면 구현`,
-      description: `화면 정의와 Quick Design 산출물을 기준으로 ${screenName} 화면을 구현합니다.`,
-      taskType: "screen",
+      taskId: makeId("DEV-COMMON", commonIndex++),
+      title: `${name} 공통 기능 구현`,
+      description: f.description?.trim()
+        ? `공통 상세기능 요구에 따라 ${name}을 구현합니다.\n\n- 요구: ${f.description.trim()}`
+        : `공통 상세기능 요구에 따라 ${name}을 구현합니다.`,
+      taskType: "feature",
       ownerRole: "developer",
-      priority: screenItems.length <= 3 ? "high" : "medium",
-      dependencies: [...frameDependencies],
-      sourceRef: { type: "screen", id: s.id, title: screenName },
-      acceptanceCriteria: [
-        "주요 UI 영역이 표시된다.",
-        "Mock 데이터 기준으로 화면 상태를 확인할 수 있다.",
-        "기본 사용자 흐름이 연결된다.",
-      ],
-      status: "ready",
-    });
-    tasks.push({
-      taskId: makeId("DESIGN", devScreenIndex - 1),
-      title: `${screenName} UI/UX 검토`,
-      description: `${screenName} 화면 구성과 상호작용이 기획 산출물과 일치하는지 점검합니다.`,
-      taskType: "validation",
-      ownerRole: "designer",
-      priority: "medium",
-      dependencies: [],
-      sourceRef: { type: "screen", id: s.id, title: screenName },
-      acceptanceCriteria: ["UI 구성과 용어가 기획 산출물과 일치한다.", "주요 인터랙션이 자연스럽다."],
+      priority: f.required ? "high" : "medium",
+      dependencies: [...downstreamBaseDependencies],
+      sourceRef: { type: "common_feature", title: name },
+      acceptanceCriteria: ["기획 산출물 기준으로 공통 동작이 적용된다."],
       status: "ready",
     });
   }
@@ -185,56 +198,42 @@ export function buildImplementationTaskListFromSeed(input: {
       taskType: "feature",
       ownerRole: "developer",
       priority: devFeatureIndex <= 3 ? "high" : "medium",
-      dependencies: [],
+      dependencies: [...downstreamBaseDependencies],
       sourceRef: { type: "process", id: p.id, title: name },
       acceptanceCriteria: ["프로세스 핵심 동작이 동선에 맞게 동작한다.", "예외/빈 상태가 처리된다."],
       status: "ready",
     });
   }
 
-  let commonIndex = 0;
-  for (const f of commonFeatures) {
-    const name = normalizeText(f.name) || "공통 기능";
-    const uiOriented = isUiOrientedCommonFeature({ name, description: f.description });
+  let devScreenIndex = 0;
+  for (const s of screenItems) {
+    const screenName = normalizeText(s.screenName) || "화면";
     tasks.push({
-      taskId: makeId("DEV-COMMON", commonIndex++),
-      title: `${name} 공통 기능 구현`,
-      description: f.description?.trim()
-        ? `공통 상세기능 요구에 따라 ${name}을 구현합니다.\n\n- 요구: ${f.description.trim()}`
-        : `공통 상세기능 요구에 따라 ${name}을 구현합니다.`,
-      taskType: "feature",
+      taskId: makeId("DEV-SCREEN", devScreenIndex++),
+      title: `${screenName} 화면 구현`,
+      description: `화면 정의와 Quick Design 산출물을 기준으로 ${screenName} 화면을 구현합니다.`,
+      taskType: "screen",
       ownerRole: "developer",
-      priority: f.required ? "high" : "medium",
-      dependencies: uiOriented ? [...frameDependencies] : [],
-      sourceRef: { type: "common_feature", title: name },
-      acceptanceCriteria: ["기획 산출물 기준으로 공통 동작이 적용된다."],
+      priority: screenItems.length <= 3 ? "high" : "medium",
+      dependencies: [...downstreamBaseDependencies],
+      sourceRef: { type: "screen", id: s.id, title: screenName },
+      acceptanceCriteria: [
+        "주요 UI 영역이 표시된다.",
+        "샘플 데이터 기준으로 화면 상태를 확인할 수 있다.",
+        "기본 사용자 흐름이 연결된다.",
+      ],
       status: "ready",
     });
-  }
-
-  if (dataEntities.length > 0) {
     tasks.push({
-      taskId: "DEV-MOCK-001",
-      title: "Mock 데이터 구조 정의",
-      description: "화면/기능 검증에 필요한 Mock 데이터 구조를 정의합니다.",
-      taskType: "mock",
-      ownerRole: "developer",
-      priority: "high",
-      dependencies: [],
-      sourceRef: { type: "data_model", title: "data_entities" },
-      acceptanceCriteria: ["주요 엔티티별 예시 데이터가 준비된다.", "화면 상태를 재현할 수 있다."],
-      status: "ready",
-    });
-  } else {
-    tasks.push({
-      taskId: "DEV-MOCK-001",
-      title: "Mock 데이터 기본 세트 준비",
-      description: "초기 검증을 위한 Mock JSON / local state 데이터를 준비합니다.",
-      taskType: "mock",
-      ownerRole: "developer",
+      taskId: makeId("DESIGN", devScreenIndex - 1),
+      title: `${screenName} UI/UX 검토`,
+      description: `${screenName} 화면 구성과 상호작용이 기획 산출물과 일치하는지 점검합니다.`,
+      taskType: "validation",
+      ownerRole: "designer",
       priority: "medium",
       dependencies: [],
-      acceptanceCriteria: ["주요 화면이 최소 데이터로 렌더링된다."],
+      sourceRef: { type: "screen", id: s.id, title: screenName },
+      acceptanceCriteria: ["UI 구성과 용어가 기획 산출물과 일치한다.", "주요 인터랙션이 자연스럽다."],
       status: "ready",
     });
   }

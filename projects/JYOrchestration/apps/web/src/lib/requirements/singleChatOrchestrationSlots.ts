@@ -609,7 +609,7 @@ export function buildDynamicServicePlanningSlotDefinitions(input: {
     },
     {
       slotKey: k.mockDataStrategy,
-      label: "Mock 데이터 전략",
+      label: "샘플 데이터 전략",
       ownerAgent: "solution-architect",
       stageGroup: SINGLE_CHAT_SERVICE_PLANNING_GROUP,
       hints: "초기 DB 없는 구현의 샘플·저장 전략.",

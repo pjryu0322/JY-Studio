@@ -4,6 +4,8 @@ import {
   type ImplementationRequirementsBoardOrchestrationSlice,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { integrateCompletedCodeTasksForPreview } from "@/lib/prototype/implementationIntegrationService";
+import { buildPreviewFromCompletedCodeTasks } from "@/lib/prototype/buildPreviewFromCompletedCodeTasks";
+import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import {
   deriveIntegratedExecutionStateReadiness,
   finalizeIntegratedStageStep,
@@ -60,10 +62,36 @@ export type ApplyIntegratedPipelineSyncStepsResult =
       readonly ok: true;
       readonly integratedState: ImplementationIntegratedExecutionStateV1;
       readonly previewScope: ImplementationPreviewScopeV1 | null;
+      readonly previewRuntime: ImplementationPreviewRuntimeV1 | null;
+      readonly previewBuildOk: boolean;
+      readonly previewBuildError: string | null;
+      readonly previewUrl: string | null;
       readonly completedSteps: readonly ImplementationIntegratedStep[];
       readonly noticeLines: readonly string[];
     }>
   | Readonly<{ readonly ok: false; readonly message: string }>;
+
+function resolvePreviewScopeForPipeline(input: {
+  readonly projectId: string;
+  readonly orchestration: ImplementationRequirementsBoardOrchestrationSlice;
+  readonly taskList: NonNullable<ImplementationRequirementsBoardOrchestrationSlice["implementationTaskListV1"]>;
+  readonly existingScope: ImplementationPreviewScopeV1 | null;
+  readonly nowIso: string;
+}): ImplementationPreviewScopeV1 | null {
+  if (input.existingScope) return input.existingScope;
+  const fromState = input.orchestration.implementationPreviewScopeV1 ?? null;
+  if (fromState) return fromState;
+  const integration = integrateCompletedCodeTasksForPreview({
+    codeTaskPlan: input.orchestration.implementationCodeTaskPlanV1 ?? null,
+    taskList: input.taskList,
+    codeTaskRuns: input.orchestration.codeTaskExecutionRunsV1 ?? null,
+    taskCursorExecution: input.orchestration.taskCursorExecutionV1 ?? null,
+    taskCursorExecutionHistory: input.orchestration.taskCursorExecutionHistoryV1 ?? null,
+    autoQualityGate: input.orchestration.implementationAutoQualityGateV1 ?? null,
+    generatedAt: input.nowIso,
+  });
+  return integration.ok ? integration.previewScope : null;
+}
 
 export function applyIntegratedPipelineSyncSteps(input: {
   readonly projectId: string;
@@ -150,10 +178,44 @@ export function applyIntegratedPipelineSyncSteps(input: {
     nowIso,
   });
 
+  const resolvedScope = resolvePreviewScopeForPipeline({
+    projectId: pid,
+    orchestration: input.orchestration,
+    taskList,
+    existingScope: previewScope,
+    nowIso,
+  });
+
+  let previewRuntime: ImplementationPreviewRuntimeV1 | null = null;
+  let previewBuildOk = false;
+  let previewBuildError: string | null = null;
+  let previewUrl: string | null = null;
+
+  if (resolvedScope) {
+    const previewBuild = buildPreviewFromCompletedCodeTasks({
+      projectId: pid,
+      previewScope: resolvedScope,
+      nowIso,
+    });
+    previewRuntime = previewBuild.runtime;
+    previewBuildOk = previewBuild.ok;
+    previewBuildError = previewBuild.errorMessage ?? null;
+    previewUrl = previewBuild.previewUrl ?? null;
+    if (previewBuildOk) {
+      noticeLines.push("Preview 준비 완료");
+    } else if (previewBuildError) {
+      noticeLines.push(`Preview 준비 실패: ${previewBuildError}`);
+    }
+  }
+
   return {
     ok: true,
     integratedState: finalState,
-    previewScope,
+    previewScope: resolvedScope,
+    previewRuntime,
+    previewBuildOk,
+    previewBuildError,
+    previewUrl,
     completedSteps,
     noticeLines,
   };

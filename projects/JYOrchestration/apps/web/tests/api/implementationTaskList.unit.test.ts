@@ -79,8 +79,34 @@ describe("buildImplementationTaskListFromSeed", () => {
     expect(scm?.acceptanceCriteria.length ?? 0).toBeGreaterThanOrEqual(2);
     expect(scm?.acceptanceCriteria.join("\n").toLowerCase()).toContain("pr");
 
-    const devTasks = list.tasks.filter((t) => t.ownerRole === "developer" && t.taskId !== "DEV-MOCK-001");
-    expect(devTasks.every((t) => !t.dependencies.includes("DEV-MOCK-001"))).toBe(true);
+    const titles = list.tasks.map((t) => t.title);
+    expect(titles).not.toContain("Mock 데이터 구조 정의");
+    expect(titles).not.toContain("Mock 데이터 기본 세트 준비");
+    const mock = list.tasks.find((t) => t.taskId === "DEV-MOCK-001");
+    expect(mock?.title).toBe("샘플 데이터 생성");
+  });
+
+  it("orders developer tasks: sample data → common → process → screen", () => {
+    const list = buildImplementationTaskListFromSeed({
+      projectId: "p1",
+      seed: makeSeed(),
+      nowIso: NOW,
+    });
+    const devOrder = list.tasks
+      .filter((t) => t.ownerRole === "developer")
+      .map((t) => t.taskId);
+    const mockIdx = devOrder.indexOf("DEV-MOCK-001");
+    const commonIdx = devOrder.findIndex((id) => id.startsWith("DEV-COMMON"));
+    const featureIdx = devOrder.findIndex((id) => id.startsWith("DEV-FEATURE"));
+    const screenIdx = devOrder.findIndex((id) => id.startsWith("DEV-SCREEN"));
+    expect(mockIdx).toBeGreaterThanOrEqual(0);
+    if (commonIdx >= 0) expect(commonIdx).toBeGreaterThan(mockIdx);
+    if (featureIdx >= 0) expect(featureIdx).toBeGreaterThan(mockIdx);
+    if (screenIdx >= 0) expect(screenIdx).toBeGreaterThan(mockIdx);
+    const screen = list.tasks.find((t) => t.taskId.startsWith("DEV-SCREEN"));
+    expect(screen?.dependencies).toContain("DEV-MOCK-001");
+    const common = list.tasks.find((t) => t.taskId.startsWith("DEV-COMMON"));
+    expect(common?.dependencies).toContain("DEV-MOCK-001");
   });
 
   it("roleSummary counts roles correctly", () => {

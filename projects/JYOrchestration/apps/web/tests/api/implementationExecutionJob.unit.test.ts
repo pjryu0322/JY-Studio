@@ -77,15 +77,18 @@ function baseExecution(overrides: Partial<TaskCursorExecutionV1> = {}): TaskCurs
   };
 }
 
-describe("implementation task list mock dependency", () => {
-  it("does not force DEV-MOCK-001 on all developer tasks", () => {
+describe("implementation task list sample data dependency", () => {
+  it("links downstream developer tasks to DEV-MOCK-001 after sample data task", () => {
     const list = buildImplementationTaskListFromSeed({ projectId: "p1", seed: makeSeed(), nowIso: NOW });
     const mock = list.tasks.find((t) => t.taskId === "DEV-MOCK-001");
-    expect(mock).toBeTruthy();
+    expect(mock?.title).toBe("샘플 데이터 생성");
     const devWithMockDep = list.tasks.filter(
-      (t) => t.ownerRole === "developer" && t.taskId !== "DEV-MOCK-001" && t.dependencies.includes("DEV-MOCK-001"),
+      (t) =>
+        t.ownerRole === "developer" &&
+        t.taskId !== "DEV-MOCK-001" &&
+        t.dependencies.includes("DEV-MOCK-001"),
     );
-    expect(devWithMockDep).toHaveLength(0);
+    expect(devWithMockDep.length).toBeGreaterThan(0);
   });
 });
 

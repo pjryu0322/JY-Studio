@@ -136,7 +136,7 @@ export const IMPLEMENTATION_WORK_PLAN_BLOCKED_NO_PLANNING_ARTIFACTS_MESSAGE =
 function scopeLineForReference(ref: ReferencePlanningArtifactRef): string {
   switch (ref.type) {
     case "fast_prototype_plan":
-      return "Mock 데이터 기반 주요 화면 구성";
+      return "샘플 데이터 기반 주요 화면 구성";
     case "service-flow-doc":
       return "서비스 흐름에 따른 사용자 동선 구현";
     case "feature-spec":
@@ -160,7 +160,7 @@ export function buildImplementationScopeFromReferences(
     return [...fromRefs, "검토용 프로토타입 상태 처리"].slice(0, 8);
   }
   return [
-    "Mock 데이터 기반 주요 화면 구성",
+    "샘플 데이터 기반 주요 화면 구성",
     "핵심 사용자 동선 구현",
     "검토용 프로토타입 상태 처리",
   ];

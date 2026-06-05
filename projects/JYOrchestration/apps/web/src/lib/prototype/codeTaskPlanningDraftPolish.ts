@@ -24,7 +24,7 @@ const COMMON_VERIFICATION_PATTERNS: readonly RegExp[] = [
 
 const GENERIC_REQUIREMENT_PATTERNS: readonly RegExp[] = [
   /^주요\s*UI\s*영역이\s*표시/i,
-  /Mock\s*데이터\s*기준으로\s*화면\s*상태/i,
+  /샘플\s*데이터\s*기준으로\s*화면\s*상태/i,
   /기능\s*진입점,\s*상태\s*전환,\s*연동\s*지점/i,
   /화면\s*진입\s*및\s*주요\s*플로우\s*확인$/i,
   /기획\s*산출물\s*기준으로\s*공통\s*동작/i,
@@ -55,7 +55,7 @@ export function filterPerTaskRequirementLines(
         (roleKind === "screen_input" ||
           roleKind === "screen_result" ||
           roleKind === "screen_admin") &&
-        /Mock\s*데이터\s*기준/i.test(l)
+        /샘플\s*데이터\s*기준/i.test(l)
       ) {
         return false;
       }

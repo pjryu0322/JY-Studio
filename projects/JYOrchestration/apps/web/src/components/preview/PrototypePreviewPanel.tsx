@@ -227,6 +227,7 @@ import {
   applyIntegratedPipelineSyncSteps,
   isFinalScmIntegratedStepReady,
 } from "@/lib/prototype/implementationIntegratedPipelineBatch";
+import { buildCompletedCodeTaskIntegrationTimelineEntry } from "@/lib/prototype/integrationPreviewTimeline";
 import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
 import {
   buildInitialReviewStageUserTestSession,
@@ -4048,18 +4049,81 @@ export function PrototypePreviewPanel({
 
     void (async () => {
       setIntegrationPipelineBusy(true);
-      showToast("통합 단계를 시작합니다.");
+      showToast("통합 및 Preview 준비 중…");
       try {
+        const startedAtIso = new Date().toISOString();
+        let timeline = [...(parsedRequirementsState.promptTimeline ?? [])];
+        timeline = appendPromptTimeline(
+          timeline,
+          buildCompletedCodeTaskIntegrationTimelineEntry({
+            action: "completed_codetask_integration_started",
+            projectId: pid,
+            nowIso: startedAtIso,
+          }),
+        );
+        timeline = appendPromptTimeline(
+          timeline,
+          buildCompletedCodeTaskIntegrationTimelineEntry({
+            action: "completed_codetask_preview_build_started",
+            projectId: pid,
+            nowIso: startedAtIso,
+          }),
+        );
+
         const batch = applyIntegratedPipelineSyncSteps({
           projectId: pid,
           orchestration: parsedRequirementsState,
+          nowIso: startedAtIso,
         });
         if (!batch.ok) {
-          showToast(batch.message);
+          showToast(`통합 실패: ${batch.message}`);
           return;
         }
 
-        if (batch.completedSteps.length > 0 || batch.previewScope) {
+        const includedCount = batch.previewScope?.includedCodeTasks.length ?? 0;
+        const excludedCount = batch.previewScope?.excludedCodeTasks.length ?? 0;
+
+        timeline = appendPromptTimeline(
+          timeline,
+          buildCompletedCodeTaskIntegrationTimelineEntry({
+            action: "completed_codetask_integration_completed",
+            projectId: pid,
+            includedCount,
+            excludedCount,
+            nowIso: startedAtIso,
+          }),
+        );
+        if (batch.previewBuildOk) {
+          timeline = appendPromptTimeline(
+            timeline,
+            buildCompletedCodeTaskIntegrationTimelineEntry({
+              action: "completed_codetask_preview_ready",
+              projectId: pid,
+              includedCount,
+              excludedCount,
+              previewUrl: batch.previewUrl,
+              nowIso: startedAtIso,
+            }),
+          );
+        } else if (batch.previewRuntime?.status === "failed") {
+          timeline = appendPromptTimeline(
+            timeline,
+            buildCompletedCodeTaskIntegrationTimelineEntry({
+              action: "completed_codetask_preview_failed",
+              projectId: pid,
+              includedCount,
+              excludedCount,
+              errorMessage: batch.previewBuildError,
+              nowIso: startedAtIso,
+            }),
+          );
+        }
+
+        if (
+          batch.completedSteps.length > 0 ||
+          batch.previewScope ||
+          batch.previewRuntime
+        ) {
           await persistChatToDb(
             undefined,
             {
@@ -4067,6 +4131,10 @@ export function PrototypePreviewPanel({
               ...(batch.previewScope
                 ? { implementationPreviewScopeV1: batch.previewScope }
                 : {}),
+              ...(batch.previewRuntime
+                ? { implementationPreviewRuntimeV1: batch.previewRuntime }
+                : {}),
+              promptTimeline: timeline,
             },
             undefined,
             { awaitServer: true },
@@ -4088,6 +4156,9 @@ export function PrototypePreviewPanel({
               ...(batch.previewScope
                 ? { implementationPreviewScopeV1: batch.previewScope }
                 : {}),
+              ...(batch.previewRuntime
+                ? { implementationPreviewRuntimeV1: batch.previewRuntime }
+                : {}),
             },
             integratedExecutionState: batch.integratedState,
           });
@@ -4107,17 +4178,32 @@ export function PrototypePreviewPanel({
         const refState = parseRequirementsStateJson(requirementsStateJsonRef.current);
         const boardAfter = buildImplementationExecutionBoardFromRequirementsState({
           projectId: pid,
-          orchestration: refState ?? parsedRequirementsState,
-          integratedExecutionState:
-            batch.integratedState ??
-            refState?.implementationIntegratedExecutionStateV1 ??
-            parsedRequirementsState.implementationIntegratedExecutionStateV1,
+          orchestration: {
+            ...(refState ?? parsedRequirementsState),
+            implementationIntegratedExecutionStateV1: batch.integratedState,
+            ...(batch.previewScope
+              ? { implementationPreviewScopeV1: batch.previewScope }
+              : {}),
+            ...(batch.previewRuntime
+              ? { implementationPreviewRuntimeV1: batch.previewRuntime }
+              : {}),
+          },
+          integratedExecutionState: batch.integratedState,
         });
 
         if (boardAfter && isFinalScmIntegratedStepReady(boardAfter)) {
           runFinalScmIntegratedStageStep();
+        }
+
+        if (batch.previewBuildOk) {
+          showToast("통합 완료 · Preview 준비 완료");
         } else if (batch.completedSteps.length > 0) {
-          showToast("통합 단계(리팩토링·검수·보안)를 완료했습니다.");
+          const previewErr = batch.previewBuildError?.trim();
+          showToast(
+            previewErr
+              ? `통합 완료 · Preview 준비 실패: ${previewErr}`
+              : "통합 완료 · Preview 준비 실패",
+          );
         }
       } catch (error) {
         showToast(error instanceof Error ? error.message : String(error));
@@ -7715,6 +7801,9 @@ export function PrototypePreviewPanel({
             runtimeCodeTaskQueueView={effectiveCodeTaskExecutionQueueV1}
             codeTaskExecutionRunsV1={orchestrationAwareRequirementsState.codeTaskExecutionRunsV1}
             implementationPreviewScopeV1={orchestrationAwareRequirementsState.implementationPreviewScopeV1}
+            implementationPreviewRuntimeV1={
+              orchestrationAwareRequirementsState.implementationPreviewRuntimeV1
+            }
             qualityGateResults={orchestrationAwareRequirementsState.implementationQualityGateResultsV1}
             boardState={orchestrationAwareRequirementsState.implementationExecutionBoardStateV1}
             previewReady={prototypeRunSyncSnapshot.previewReady}

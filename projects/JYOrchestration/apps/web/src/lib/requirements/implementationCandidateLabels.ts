@@ -29,7 +29,7 @@ const IMPLEMENTATION_CANDIDATE_USER_LABELS: Readonly<Record<ImplementationSeedGa
   common_detail_features: "공통 상세 기능",
   data_entities: "데이터 항목",
   state_model: "상태 모델",
-  mock_data_strategy: "Mock 데이터 전략",
+  mock_data_strategy: "샘플 데이터 전략",
 };
 
 const IMPLEMENTATION_CANDIDATE_DESCRIPTIONS: Readonly<Record<ImplementationSeedGapKey, string>> = {
@@ -43,7 +43,7 @@ const IMPLEMENTATION_CANDIDATE_DESCRIPTIONS: Readonly<Record<ImplementationSeedG
   common_detail_features: "여러 화면에서 공통으로 필요한 상세 기능을 확인해야 합니다.",
   data_entities: "서비스에서 다룰 주요 데이터를 확인해야 합니다.",
   state_model: "회의록/TODO/검수 상태 흐름을 확인해야 합니다.",
-  mock_data_strategy: "프로토타입에서 사용할 예시 데이터를 확인해야 합니다.",
+  mock_data_strategy: "프로토타입과 Preview에서 사용할 예시 데이터를 확인해야 합니다.",
 };
 
 export const REFINE_ALL_IMPLEMENTATION_CANDIDATES_PROMPT =

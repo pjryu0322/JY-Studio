@@ -11,6 +11,13 @@ import {
   buildImplementationPreviewScopeV1,
   type ImplementationPreviewScopeV1,
 } from "@/lib/prototype/implementationPreviewScopeV1";
+import {
+  buildPreviewFromCompletedCodeTasks,
+  type BuildPreviewFromCompletedCodeTasksResult,
+} from "@/lib/prototype/buildPreviewFromCompletedCodeTasks";
+import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+
 export type IntegrateCompletedCodeTasksInput = CodeTaskIntegrationSource &
   Readonly<{
     readonly generatedAt?: string;
@@ -65,6 +72,43 @@ export function buildTaskCursorExecutionsForIntegration(input: {
     }
   }
   return rows;
+}
+
+export type IntegrateAndBuildPreviewResult =
+  | Readonly<{
+      readonly ok: true;
+      readonly integration: Extract<IntegrateCompletedCodeTasksResult, { readonly ok: true }>;
+      readonly previewBuild: BuildPreviewFromCompletedCodeTasksResult;
+      readonly previewRuntime: ImplementationPreviewRuntimeV1;
+      readonly previewUrl: string | null;
+    }>
+  | Readonly<{ readonly ok: false; readonly message: string }>;
+
+/** 통합(scope) 성공 후 Preview runtime 준비 — Preview 실패 시에도 integration 결과는 유지한다. */
+export function integrateAndBuildPreviewFromCompletedCodeTasks(input: {
+  readonly projectId: string;
+  readonly source: CodeTaskIntegrationSource;
+  readonly nowIso?: string;
+}): IntegrateAndBuildPreviewResult {
+  const integration = integrateCompletedCodeTasksForPreview({
+    ...input.source,
+    generatedAt: input.nowIso,
+  });
+  if (!integration.ok) {
+    return { ok: false, message: integration.message };
+  }
+  const previewBuild = buildPreviewFromCompletedCodeTasks({
+    projectId: input.projectId,
+    previewScope: integration.previewScope,
+    nowIso: input.nowIso,
+  });
+  return {
+    ok: true,
+    integration,
+    previewBuild,
+    previewRuntime: previewBuild.runtime,
+    previewUrl: previewBuild.previewUrl ?? null,
+  };
 }
 
 /** @deprecated Prefer evaluateImplementationIntegrationEligibility */

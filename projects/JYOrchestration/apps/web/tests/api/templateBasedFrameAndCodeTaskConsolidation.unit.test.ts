@@ -111,8 +111,14 @@ describe("template-based frame and codetask consolidation", () => {
     expect(frame?.dependencies).not.toContain("DEV-MOCK-001");
     const screen = taskList.tasks.find((t) => t.taskId.startsWith("DEV-SCREEN"));
     expect(screen?.dependencies).toContain(DEV_FRAME_TASK_ID);
+    expect(screen?.dependencies).toContain("DEV-MOCK-001");
     const loadingCommon = taskList.tasks.find((t) => t.taskId.startsWith("DEV-COMMON"));
     expect(loadingCommon?.dependencies).toContain(DEV_FRAME_TASK_ID);
+    expect(loadingCommon?.dependencies).toContain("DEV-MOCK-001");
+    const mockIdx = taskList.tasks.findIndex((t) => t.taskId === "DEV-MOCK-001");
+    const commonIdx = taskList.tasks.findIndex((t) => t.taskId.startsWith("DEV-COMMON"));
+    expect(mockIdx).toBeGreaterThan(0);
+    expect(commonIdx).toBeGreaterThan(mockIdx);
   });
 
   it("creates one frame CodeTask for DEV-FRAME-001", () => {

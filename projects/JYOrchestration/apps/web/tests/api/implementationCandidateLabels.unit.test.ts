@@ -59,7 +59,7 @@ describe("implementationCandidateLabels", () => {
   it("builds candidate items with descriptions", () => {
     const items = buildImplementationCandidateItems(["mock_data_strategy"]);
     expect(items).toHaveLength(1);
-    expect(items[0]?.label).toBe("Mock 데이터 전략");
+    expect(items[0]?.label).toBe("샘플 데이터 전략");
     expect(items[0]?.description).toContain("예시 데이터");
   });
 

@@ -14,7 +14,11 @@ import { evaluateImplementationStageActionGate, buildImplementationStageBoardGat
 import { resolveEffectiveImplementationState } from "@/lib/prototype/effectiveImplementationState";
 import { runWorkItemPreflightBatch } from "@/lib/prototype/implementationWorkItemPreflight";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
-import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
+import {
+  buildImplementationTaskListFromSeed,
+  type ImplementationTaskListV1,
+  type ImplementationTaskV1,
+} from "@/lib/requirements/implementationTaskList";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   buildDynamicServicePlanningSlotDefinitions,
@@ -135,6 +139,27 @@ describe("ImplementationCodeTaskPlanV1", () => {
     expect(screenTasks.every((task) => task.status === "ready")).toBe(true);
     expect(plan.readiness.ready).toBe(true);
     expect(new Set(plan.tasks.map((task) => task.codeTaskId)).size).toBe(plan.tasks.length);
+  });
+
+  it("orders CodeTasks from TaskList execution order (sample data before screens)", () => {
+    const taskList = buildImplementationTaskListFromSeed({
+      projectId: PROJECT_ID,
+      seed: confirmedSeed(),
+      nowIso: NOW,
+    });
+    const plan = buildImplementationCodeTaskPlanFromTaskList({
+      projectId: PROJECT_ID,
+      taskList,
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+    });
+    const mockIdx = plan.tasks.findIndex((t) => t.parentTaskId === "DEV-MOCK-001");
+    const screenIdx = plan.tasks.findIndex((t) => t.parentTaskId.startsWith("DEV-SCREEN"));
+    expect(mockIdx).toBeGreaterThanOrEqual(0);
+    expect(screenIdx).toBeGreaterThan(mockIdx);
+    const screenTask = plan.tasks.find((t) => t.parentTaskId.startsWith("DEV-SCREEN"));
+    expect(screenTask?.parentTaskDependencies).toContain("DEV-MOCK-001");
   });
 
   it("marks CodeTask blocked when env or design is not ready", () => {
@@ -276,7 +301,7 @@ describe("ImplementationCodeTaskPlanV1", () => {
     });
     expect(
       evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", effectiveState, boardContext).ok,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       evaluateImplementationStageActionGate("REQUEST_TASK_CURSOR_EXECUTION", effectiveState, boardContext).ok,
     ).toBe(false);
@@ -321,7 +346,7 @@ describe("ImplementationCodeTaskPlanV1", () => {
     });
     expect(
       evaluateImplementationStageActionGate("START_IMPLEMENTATION_QUICK_RUN", effectiveState, boardContext).ok,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       evaluateImplementationStageActionGate("REQUEST_TASK_CURSOR_EXECUTION", effectiveState, boardContext).ok,
     ).toBe(false);

@@ -100,8 +100,11 @@ const ROLE_DEFINITIONS: ReadonlyArray<
   },
   {
     kind: "mock_data",
-    patterns: [/mock\s*데이터\s*구조|mock\s*data\s*구조|데이터\/mock\s*구현/i],
-    role: "화면과 상태 흐름을 검증할 수 있도록 회의 파일, 참여자, 스크립트, 요약, 진행 상태 샘플 데이터를 정의한다.",
+    patterns: [
+      /샘플\s*데이터|예시\s*데이터|sample\s*data/i,
+      /mock\s*데이터\s*구조|mock\s*data\s*구조|데이터\/mock\s*구현/i,
+    ],
+    role: "화면과 기능 흐름을 검증할 수 있도록 회의 파일, 참여자, 스크립트, 요약, 처리 상태 샘플 데이터를 생성한다.",
   },
 ];
 
@@ -248,7 +251,7 @@ export function roleKindToDefaultRelated(input: {
       };
     case "mock_data":
       return {
-        features: ["Mock 데이터", "회의 파일", "스크립트", "요약"],
+        features: ["샘플 데이터", "회의 파일", "참여자", "스크립트", "요약", "처리 상태"],
         screens: ["작업 공간", "결과 패널"],
         states: ["idle", "success"],
       };

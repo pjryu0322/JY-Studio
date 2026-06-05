@@ -29,7 +29,7 @@ function list(): ImplementationTaskListV1 {
         dependencies: [],
         acceptanceCriteria: [
           "주요 UI 영역이 표시된다.",
-          "Mock 데이터 기준으로 화면 상태를 확인할 수 있다.",
+          "샘플 데이터 기준으로 화면 상태를 확인할 수 있다.",
         ],
         sourceRefs: [],
       },
@@ -104,7 +104,7 @@ describe("P3-M22 planning draft output polish", () => {
       promptContextMap: map,
     });
     const section = text.slice(text.indexOf(inputTask.title));
-    expect(section).not.toContain("Mock 데이터 기준으로 화면 상태를 확인할 수 있다.");
+    expect(section).not.toContain("샘플 데이터 기준으로 화면 상태를 확인할 수 있다.");
     expect(section).toContain("회의 파일 업로드/선택 진입점");
   });
 
