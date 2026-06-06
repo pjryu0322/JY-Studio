@@ -17,9 +17,13 @@ import {
 import type { TaskCursorGithubVerifyRequestBody } from "@/lib/prototype/taskCursorGithubVerifyTypes";
 import {
   evaluateTaskCursorGithubVerifyReadiness,
-  verifyTaskCursorGithubResult,
   type TaskCursorGithubVerifyResult,
 } from "@/lib/prototype/taskCursorGithubVerify";
+import {
+  applyGithubVerifyStateSyncGuard,
+  mapManualGithubVerifyApiStatus,
+  runTaskCursorGithubVerifyCandidateFlow,
+} from "@/lib/prototype/taskCursorGithubVerifyCandidateFlow";
 import {
   buildTaskCursorTimelineEntry,
   patchTaskCursorExecution,
@@ -57,6 +61,9 @@ export type TaskCursorGithubVerifySuccess = Readonly<{
   readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
   readonly advance: QuickRunGithubAdvanceResult;
   readonly continuationDispatchedOnServer?: boolean;
+  readonly repaired?: boolean;
+  readonly resolvedBranch?: string | null;
+  readonly manualVerifyStatus?: ReturnType<typeof mapManualGithubVerifyApiStatus>;
 }>;
 
 export type TaskCursorGithubVerifyOutcome = TaskCursorGithubVerifyBlocked | TaskCursorGithubVerifySuccess;
@@ -140,13 +147,29 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     }),
   ];
 
-  const verify = await verifyTaskCursorGithubResult({
+  const dbBundlePre = await getImplementationRuntimeBundle(projectId);
+  const codeTaskIdEarly =
+    String(body.codeTaskId ?? "").trim() ||
+    dbBundlePre.currentRun?.codeTaskId?.trim() ||
+    dbBundlePre.job?.currentCodeTaskId?.trim() ||
+    "";
+  const dbRunEarly = codeTaskIdEarly
+    ? dbBundlePre.runs.find((r) => r.codeTaskId === codeTaskIdEarly) ?? null
+    : dbBundlePre.currentRun;
+
+  const candidateFlow = await runTaskCursorGithubVerifyCandidateFlow({
+    projectId,
     execution: nextExecution,
     targetRepository: readiness.targetRepository,
     githubToken,
     allowedPathGlobs: readiness.allowedPathGlobs,
-    codeTaskId: String(body.codeTaskId ?? "").trim() || null,
+    codeTaskId: codeTaskIdEarly || null,
+    runWorkBranch: dbRunEarly?.workBranch ?? null,
+    nowIso,
   });
+  timeline.push(...candidateFlow.timeline);
+  nextExecution = candidateFlow.execution;
+  let verify = candidateFlow.verify;
 
   nextExecution = applyTaskCursorGithubVerifyResult({
     execution: nextExecution,
@@ -180,9 +203,27 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     }),
   );
 
+  await syncImplementationRuntimeFromTaskCursor({
+    projectId,
+    codeTaskId: codeTaskIdEarly || undefined,
+    taskId: nextExecution.taskId,
+    execution: nextExecution,
+    githubVerifyResult: verify,
+  });
+
+  const stateSync = await applyGithubVerifyStateSyncGuard({
+    projectId,
+    codeTaskId: codeTaskIdEarly || nextExecution.taskId,
+    execution: nextExecution,
+    verify,
+    nowIso,
+  });
+  nextExecution = stateSync.execution;
+  if (stateSync.timeline) timeline.push(stateSync.timeline);
+
   const dbBundle = await getImplementationRuntimeBundle(projectId);
   const codeTaskId =
-    String(body.codeTaskId ?? "").trim() ||
+    codeTaskIdEarly ||
     dbBundle.currentRun?.codeTaskId?.trim() ||
     dbBundle.job?.currentCodeTaskId?.trim() ||
     "";
@@ -213,14 +254,6 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
           ),
         }
       : {}),
-  });
-
-  await syncImplementationRuntimeFromTaskCursor({
-    projectId,
-    codeTaskId: codeTaskId || undefined,
-    taskId: nextExecution.taskId,
-    execution: nextExecution,
-    githubVerifyResult: verify,
   });
 
   const dbBundleAfter = await getImplementationRuntimeBundle(projectId);
@@ -284,5 +317,12 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     orchestrationPatch,
     advance: { ...advance, orchestrationPatch },
     continuationDispatchedOnServer,
+    repaired: candidateFlow.repaired,
+    resolvedBranch: candidateFlow.resolvedBranch,
+    manualVerifyStatus: mapManualGithubVerifyApiStatus({
+      verify,
+      execution: nextExecution,
+      stateSyncFailed: stateSync.stateSyncFailed,
+    }),
   };
 }

@@ -42,7 +42,19 @@ export type TaskCursorFailureReason =
   | "poll_timeout"
   | "github_verify_timeout"
   | "github_branch_missing"
+  | "github_verify_state_sync_failed"
   | "unknown";
+
+export type TaskCursorGithubVerifyDiagnosticsV1 = Readonly<{
+  readonly verifyPhase?: "branch_checking" | "head_commit_checking" | "run_state_syncing";
+  readonly lastUiReason?: string;
+  readonly primaryBranch?: string;
+  readonly resolvedBranch?: string;
+  readonly candidateBranches?: readonly string[];
+  readonly branchStatus?: "checking" | "exists" | "missing";
+  readonly headCommitStatus?: "checking" | "found" | "missing";
+  readonly headCommitShaPreview?: string;
+}>;
 
 export type TaskCursorExecutionV1 = Readonly<{
   readonly version: typeof TASK_CURSOR_EXECUTION_VERSION;
@@ -66,6 +78,7 @@ export type TaskCursorExecutionV1 = Readonly<{
   readonly cursorAgentStatus?: string;
   /** 마지막 GitHub progress REST 점검 시각 (60초 후 1회, 이후 10초 간격) */
   readonly githubProgressLastCheckAt?: string;
+  readonly githubVerifyDiagnosticsV1?: TaskCursorGithubVerifyDiagnosticsV1;
   readonly createdAt: string;
   readonly updatedAt: string;
 }>;
@@ -97,6 +110,8 @@ export const TASK_CURSOR_FAILURE_MESSAGES: Readonly<Record<TaskCursorFailureReas
   prompt_preflight_failed:
     "Cursor Prompt Preflight에 실패했습니다. 실행 로그에서 누락 항목을 확인해 주세요.",
   poll_timeout: "Cloud Agent 폴링 시간 초과입니다. Cursor 대시보드에서 Agent 상태를 확인해 주세요.",
+  github_verify_state_sync_failed:
+    "GitHub commit은 확인했지만 플랫폼 실행 상태 반영에 실패했습니다. 상태 재확인을 다시 시도해 주세요.",
   github_verify_timeout:
     "GitHub commit 확인 시간이 초과되었습니다. 작업 branch가 생성되지 않았거나 Cursor 작업 결과가 push되지 않았습니다.",
   github_branch_missing:
@@ -143,6 +158,7 @@ const TASK_CURSOR_FAILURE_REASONS = new Set<TaskCursorFailureReason>([
   "poll_timeout",
   "github_verify_timeout",
   "github_branch_missing",
+  "github_verify_state_sync_failed",
   "unknown",
 ]);
 
@@ -171,6 +187,59 @@ export function buildCodeTaskWorkBranch(
 export function buildTaskCursorRunId(nowIso?: string): string {
   const stamp = (nowIso ?? new Date().toISOString()).replace(/[:.]/g, "");
   return `task-cursor-${stamp}`;
+}
+
+function parseTaskCursorGithubVerifyDiagnosticsV1(
+  raw: unknown,
+): TaskCursorGithubVerifyDiagnosticsV1 | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const candidateBranches = Array.isArray(o.candidateBranches)
+    ? o.candidateBranches.map((b) => String(b).trim()).filter(Boolean)
+    : undefined;
+  const verifyPhaseRaw = String(o.verifyPhase ?? "").trim();
+  const verifyPhase =
+    verifyPhaseRaw === "branch_checking" ||
+    verifyPhaseRaw === "head_commit_checking" ||
+    verifyPhaseRaw === "run_state_syncing"
+      ? verifyPhaseRaw
+      : undefined;
+  const branchStatusRaw = String(o.branchStatus ?? "").trim();
+  const branchStatus =
+    branchStatusRaw === "checking" || branchStatusRaw === "exists" || branchStatusRaw === "missing"
+      ? branchStatusRaw
+      : undefined;
+  const headCommitStatusRaw = String(o.headCommitStatus ?? "").trim();
+  const headCommitStatus =
+    headCommitStatusRaw === "checking" ||
+    headCommitStatusRaw === "found" ||
+    headCommitStatusRaw === "missing"
+      ? headCommitStatusRaw
+      : undefined;
+  if (
+    !verifyPhase &&
+    !o.lastUiReason &&
+    !o.primaryBranch &&
+    !o.resolvedBranch &&
+    !candidateBranches?.length &&
+    !branchStatus &&
+    !headCommitStatus &&
+    !o.headCommitShaPreview
+  ) {
+    return undefined;
+  }
+  return {
+    ...(verifyPhase ? { verifyPhase } : {}),
+    ...(o.lastUiReason ? { lastUiReason: String(o.lastUiReason).trim() } : {}),
+    ...(o.primaryBranch ? { primaryBranch: String(o.primaryBranch).trim() } : {}),
+    ...(o.resolvedBranch ? { resolvedBranch: String(o.resolvedBranch).trim() } : {}),
+    ...(candidateBranches?.length ? { candidateBranches } : {}),
+    ...(branchStatus ? { branchStatus } : {}),
+    ...(headCommitStatus ? { headCommitStatus } : {}),
+    ...(o.headCommitShaPreview
+      ? { headCommitShaPreview: String(o.headCommitShaPreview).trim() }
+      : {}),
+  };
 }
 
 /** Cursor Cloud Agent API agent id (`bc-<uuid>`). */
@@ -258,6 +327,7 @@ export function parseTaskCursorExecutionV1(raw: unknown): TaskCursorExecutionV1 
       o.githubProgressLastCheckAt === undefined
         ? undefined
         : String(o.githubProgressLastCheckAt).trim() || undefined,
+    githubVerifyDiagnosticsV1: parseTaskCursorGithubVerifyDiagnosticsV1(o.githubVerifyDiagnosticsV1),
     createdAt: String(o.createdAt ?? new Date().toISOString()),
     updatedAt: String(o.updatedAt ?? new Date().toISOString()),
   };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchProjectById } from "@/components/project-spec/api";
+import { fetchProjectWithRetry } from "@/components/project-spec/api";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { GeneratedAppPreviewRenderer } from "@/components/preview/GeneratedAppPreviewRenderer";
@@ -22,7 +22,7 @@ export function GeneratedAppPreviewPageClient(props: { readonly projectId: strin
     let cancelled = false;
     void (async () => {
       try {
-        const { project, errorMessage } = await fetchProjectById(projectId);
+        const { project, errorMessage } = await fetchProjectWithRetry(projectId);
         if (cancelled) return;
         if (!project) {
           setError(errorMessage?.trim() || "프로젝트를 불러올 수 없습니다.");

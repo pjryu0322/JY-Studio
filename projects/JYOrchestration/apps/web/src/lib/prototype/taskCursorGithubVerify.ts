@@ -1,6 +1,7 @@
 import { githubRestApiBase, resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
+import { buildTaskCursorGithubBranchCandidates } from "@/lib/prototype/taskCursorGithubBranchCandidates";
 import {
   defaultForbiddenTargetPathGlobs,
   validateTargetRepositoryChangedFiles,
@@ -19,7 +20,24 @@ export type TaskCursorGithubVerifyInput = Readonly<{
   readonly userAgent?: string;
   /** Quick Run CodeTask — branch/commit message 매칭에 사용 (parent taskId와 다를 수 있음) */
   readonly codeTaskId?: string | null;
+  /** P3-M38: explicit candidates; otherwise built from workBranch + codeTaskId aliases */
+  readonly branchCandidates?: readonly string[];
+  readonly runWorkBranch?: string | null;
+  readonly promptWorkBranch?: string | null;
 }>;
+
+export type TaskCursorGithubVerifyPhase =
+  | "branch_checking"
+  | "head_commit_checking"
+  | "run_state_syncing";
+
+export type TaskCursorGithubVerifyUiReason =
+  | "github_branch_found"
+  | "github_branch_missing"
+  | "github_head_commit_found"
+  | "github_head_commit_missing"
+  | "github_run_state_synced"
+  | "github_verify_state_sync_failed";
 
 export type TaskCursorGithubVerifyDetailReason =
   | "branch_not_found"
@@ -37,6 +55,12 @@ export type TaskCursorGithubVerifyResult = Readonly<{
   readonly verifiedCommitSha?: string;
   /** Set only by explicit manual no-code-change verification; never inferred from GitHub API. */
   readonly noCodeChangeEvidence?: string;
+  readonly resolvedBranch?: string;
+  readonly candidateBranches?: readonly string[];
+  readonly verifyPhase?: TaskCursorGithubVerifyPhase;
+  readonly uiReason?: TaskCursorGithubVerifyUiReason;
+  readonly branchRefFound?: boolean;
+  readonly allBranchesMissing?: boolean;
 }>;
 
 /** branch/commit이 아직 push/reflection 안 된 경우 — failed 처리하지 않고 폴링 계속 */
@@ -306,6 +330,106 @@ export async function verifyTaskCursorGithubResult(
     };
   }
 
+  const candidates =
+    input.branchCandidates?.length
+      ? [...input.branchCandidates]
+      : buildTaskCursorGithubBranchCandidates({
+          codeTaskId: input.codeTaskId,
+          executionWorkBranch: input.execution.workBranch,
+          runWorkBranch: input.runWorkBranch,
+          promptWorkBranch: input.promptWorkBranch,
+        });
+
+  if (!candidates.length) {
+    return {
+      ok: false,
+      reason: "github_verify_failed",
+      message: "WIP branch(workBranch)가 없어 GitHub 검수를 할 수 없습니다.",
+      uiReason: "github_branch_missing",
+      allBranchesMissing: true,
+      candidateBranches: candidates,
+    };
+  }
+
+  let lastMiss: TaskCursorGithubVerifyResult | null = null;
+  let anyBranchFound = false;
+
+  for (const branch of candidates) {
+    const executionForBranch = { ...input.execution, workBranch: branch };
+    const result = await verifyTaskCursorGithubResultOnBranch({
+      ...input,
+      execution: executionForBranch,
+      branch,
+    });
+    if (result.branchRefFound) anyBranchFound = true;
+    if (result.ok) {
+      return {
+        ...result,
+        resolvedBranch: branch,
+        candidateBranches: candidates,
+        uiReason: "github_head_commit_found",
+        verifyPhase: "run_state_syncing",
+      };
+    }
+    if (result.reason === "github_auth_failed") {
+      return { ...result, candidateBranches: candidates, resolvedBranch: branch };
+    }
+    lastMiss = result;
+    if (result.branchRefFound && !isTransientTaskCursorGithubVerifyMiss(result)) {
+      return {
+        ...result,
+        resolvedBranch: branch,
+        candidateBranches: candidates,
+        uiReason:
+          result.detailReason === "commit_not_found"
+            ? "github_head_commit_missing"
+            : "github_head_commit_missing",
+        verifyPhase: "head_commit_checking",
+      };
+    }
+  }
+
+  if (!anyBranchFound) {
+    const miss = lastMiss ?? {
+      ok: false,
+      reason: "github_verify_failed" as const,
+      detailReason: "branch_not_found" as const,
+      message: formatTaskCursorGithubRefFailureMessage({
+        branch: candidates[0] ?? "",
+        repoFullName: input.targetRepository.repoFullName,
+        httpStatus: 404,
+      }),
+    };
+    return {
+      ...miss,
+      candidateBranches: candidates,
+      allBranchesMissing: true,
+      uiReason: "github_branch_missing",
+      verifyPhase: "branch_checking",
+    };
+  }
+
+  const fallback = lastMiss ?? {
+    ok: false,
+    reason: "github_verify_failed" as const,
+    message: TASK_CURSOR_FAILURE_MESSAGES.github_verify_failed,
+  };
+  return {
+    ...fallback,
+    candidateBranches: candidates,
+    branchRefFound: true,
+    uiReason: "github_head_commit_missing",
+    verifyPhase: "head_commit_checking",
+    resolvedBranch: fallback.resolvedBranch,
+  };
+}
+
+async function verifyTaskCursorGithubResultOnBranch(
+  input: TaskCursorGithubVerifyInput & { readonly branch: string },
+): Promise<TaskCursorGithubVerifyResult & { readonly branchRefFound?: boolean }> {
+  const token = input.githubToken.trim();
+  const parsed = resolveGithubOwnerRepoStrict(input.targetRepository.gitRepoUrl)!;
+
   const commitShaFromExecution = String(input.execution.commitSha ?? "").trim();
   const hasStoredCommitSha =
     Boolean(commitShaFromExecution) && !commitShaFromExecution.startsWith("wip-stub");
@@ -314,12 +438,13 @@ export async function verifyTaskCursorGithubResult(
   const api = githubRestApiBase();
   const owner = encodeURIComponent(parsed.owner);
   const repo = encodeURIComponent(parsed.repo);
-  const branch = String(input.execution.workBranch ?? "").trim();
+  const branch = String(input.branch ?? "").trim();
   if (!branch) {
     return {
       ok: false,
       reason: "github_verify_failed",
       message: "WIP branch(workBranch)가 없어 GitHub 검수를 할 수 없습니다.",
+      branchRefFound: false,
     };
   }
   const repoFullName = input.targetRepository.repoFullName;
@@ -331,6 +456,7 @@ export async function verifyTaskCursorGithubResult(
         ok: false,
         reason: "github_auth_failed",
         message: TASK_CURSOR_FAILURE_MESSAGES.github_auth_failed,
+        branchRefFound: false,
       };
     }
     return {
@@ -342,6 +468,8 @@ export async function verifyTaskCursorGithubResult(
         repoFullName,
         httpStatus: refRes.status,
       }),
+      branchRefFound: false,
+      uiReason: refRes.status === 404 ? "github_branch_missing" : undefined,
     };
   }
 
@@ -352,6 +480,8 @@ export async function verifyTaskCursorGithubResult(
       ok: false,
       reason: "commit_not_created",
       message: TASK_CURSOR_FAILURE_MESSAGES.commit_not_created,
+      branchRefFound: true,
+      uiReason: "github_head_commit_missing",
     };
   }
 
@@ -373,8 +503,12 @@ export async function verifyTaskCursorGithubResult(
     ...evalInput,
     commitSha,
   });
-  if (headResult.ok) return headResult;
-  if (headResult.reason === "github_auth_failed") return headResult;
+  if (headResult.ok) {
+    return { ...headResult, branchRefFound: true, uiReason: "github_branch_found" };
+  }
+  if (headResult.reason === "github_auth_failed") {
+    return { ...headResult, branchRefFound: true };
+  }
 
   if (shouldTryOlderBranchCommits(headResult)) {
     const shas = await listBranchCommitShas({
@@ -391,12 +525,16 @@ export async function verifyTaskCursorGithubResult(
         ...evalInput,
         commitSha: olderSha,
       });
-      if (candidate.ok) return candidate;
-      if (candidate.reason === "github_auth_failed") return candidate;
+      if (candidate.ok) {
+        return { ...candidate, branchRefFound: true, uiReason: "github_branch_found" };
+      }
+      if (candidate.reason === "github_auth_failed") {
+        return { ...candidate, branchRefFound: true };
+      }
     }
   }
 
-  return headResult;
+  return { ...headResult, branchRefFound: true };
 }
 
 export function evaluateTaskCursorGithubVerifyReadiness(input: {

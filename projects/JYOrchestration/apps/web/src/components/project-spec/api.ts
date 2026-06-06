@@ -23,10 +23,18 @@ export async function fetchProjectById(projectId: string): Promise<{
   errorMessage: string | null;
 }> {
   const encoded = encodeURIComponent(projectId);
-  const res = await fetch(`/api/projects/${encoded}`, {
-    credentials: "include",
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api/projects/${encoded}`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      project: null,
+      errorMessage: "네트워크 오류로 프로젝트 정보를 불러오지 못했습니다.",
+    };
+  }
   const json = (await res.json()) as ApiResponse<Project>;
 
   if (res.status === 404 || res.status === 403) {

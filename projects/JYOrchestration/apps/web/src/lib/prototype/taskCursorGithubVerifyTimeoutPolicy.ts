@@ -11,8 +11,8 @@ import type { ImplementationRuntimeRunView } from "@/lib/runtime/implementationR
 /** GitHub verify soft timeout — branch missing 등으로 전환 */
 export const TASK_CURSOR_GITHUB_VERIFY_SOFT_TIMEOUT_MS = 10 * 60 * 1000;
 
-/** GitHub verify hard timeout — retryable failure */
-export const TASK_CURSOR_GITHUB_VERIFY_HARD_TIMEOUT_MS = 15 * 60 * 1000;
+/** GitHub verify hard timeout — retryable failure (P3-M38: 10분) */
+export const TASK_CURSOR_GITHUB_VERIFY_HARD_TIMEOUT_MS = 10 * 60 * 1000;
 
 export type GithubVerifyStuckEscalation =
   | "none"
@@ -55,14 +55,21 @@ export function resolveGithubVerifyStuckEscalation(input: {
   const elapsed = resolveGithubVerifyElapsedMs(input);
 
   if (elapsed >= TASK_CURSOR_GITHUB_VERIFY_HARD_TIMEOUT_MS) {
+    if (input.verifyDetailReason === "branch_not_found") {
+      return "github_branch_missing";
+    }
     return "github_verify_timeout";
   }
 
   if (
-    input.verifyDetailReason === "branch_not_found" &&
-    elapsed >= TASK_CURSOR_GITHUB_VERIFY_SOFT_TIMEOUT_MS
+    elapsed >= TASK_CURSOR_GITHUB_VERIFY_SOFT_TIMEOUT_MS &&
+    (input.execution.status === "github_verifying" ||
+      input.execution.status === "cursor_completed")
   ) {
-    return "github_branch_missing";
+    if (input.verifyDetailReason === "branch_not_found") {
+      return "github_branch_missing";
+    }
+    return "github_verify_timeout";
   }
 
   if (
@@ -80,5 +87,5 @@ export function isRetryableGithubVerifyFailureReason(
   reason: string | null | undefined,
 ): boolean {
   const r = String(reason ?? "").trim();
-  return r === "github_verify_timeout" || r === "github_branch_missing";
+  return r === "github_verify_timeout" || r === "github_branch_missing" || r === "github_verify_state_sync_failed";
 }

@@ -131,6 +131,19 @@ function CodeTaskSelectedDetail({
           ) : null}
         </div>
       ) : null}
+      {node.githubVerifyTechnicalLines?.length ? (
+        <div
+          className={styles.taskTreeFailureBlock}
+          data-testid={`code-task-github-verify-detail-${node.codeTaskId}`}
+        >
+          {node.githubVerifyTechnicalLines.map((line) => (
+            <div key={`${line.label}-${line.value}`} className={styles.taskTreeMetaLine}>
+              <span className={styles.taskTreeMetaKey}>{line.label}</span>
+              <span className={styles.taskTreeMetaValue}>{line.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <ExecutionFlowSteps
         steps={node.executionFlowSteps}
         onCopyCursorPrompt={

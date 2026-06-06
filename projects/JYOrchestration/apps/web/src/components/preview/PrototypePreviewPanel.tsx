@@ -796,10 +796,10 @@ export function PrototypePreviewPanel({
       orchestrationPatch?: Omit<PrototypeExecutionOrchestrationPersistInput, "chat">,
       persistSeq?: number,
       persistOptions?: { readonly awaitServer?: boolean; readonly force?: boolean },
-    ) => {
+    ): Promise<{ readonly serverSaved: boolean } | void> => {
       const mySeq = persistSeq ?? ++orchestrationPersistSeqRef.current;
       const pid = projectId.trim();
-      if (!pid) return;
+      if (!pid) return { serverSaved: false };
       const tc = [...timelineCards].slice(-300);
       const fingerprint = JSON.stringify({
         c: chatPatch?.messages?.map((m) => [m.id, m.createdAt]) ?? [],
@@ -830,10 +830,14 @@ export function PrototypePreviewPanel({
               orchestrationPatch.implementationQuickRunV1?.status,
               orchestrationPatch.implementationQuickRunV1?.updatedAt,
               orchestrationPatch.codeTaskExecutionRunsV1?.length,
+              orchestrationPatch.implementationPreviewRuntimeV1?.generatedAt,
+              orchestrationPatch.implementationPreviewScopeV1?.generatedAt,
             ]
           : null,
       });
-      if (!persistOptions?.force && fingerprint === lastPersistedChatFingerprintRef.current) return;
+      if (!persistOptions?.force && fingerprint === lastPersistedChatFingerprintRef.current) {
+        return { serverSaved: true };
+      }
       lastPersistedChatFingerprintRef.current = fingerprint;
 
       const merged =
@@ -847,7 +851,7 @@ export function PrototypePreviewPanel({
               lastSavedAt: new Date().toISOString(),
             });
 
-      if (mySeq !== orchestrationPersistSeqRef.current) return;
+      if (mySeq !== orchestrationPersistSeqRef.current) return { serverSaved: false };
 
       requirementsStateJsonRef.current = merged;
       if (orchestrationPatch) {
@@ -857,11 +861,17 @@ export function PrototypePreviewPanel({
       queueMicrotask(() => {
         onRequirementsStateJsonChange?.(merged);
       });
+      let serverSaved = true;
       if (persistOptions?.awaitServer) {
-        await patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged });
+        const patchResult = await patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged });
+        if (patchResult.networkError) {
+          serverSaved = false;
+          console.warn("[spec-workspace] PATCH network error — local state kept");
+        }
       } else {
-        void patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged }).catch(() => {});
+        void patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged });
       }
+      return { serverSaved };
     },
     [projectId, timelineCards, onRequirementsStateJsonChange],
   );
@@ -1704,17 +1714,21 @@ export function PrototypePreviewPanel({
       if (implementationRuntimePollSuspendedRef.current && options?.recover !== true) {
         return;
       }
-      const fetched = await fetchImplementationRuntime(pid, options);
-      if (!fetched.success) {
-        const message = fetched.message ?? "";
-        if (message.includes("DB 스키마가 최신") || message.includes("pnpm db:migrate")) {
-          implementationRuntimePollSuspendedRef.current = true;
-          showToast(message.split(". ")[0] ?? message);
+      try {
+        const fetched = await fetchImplementationRuntime(pid, options);
+        if (!fetched.success) {
+          const message = fetched.message ?? "";
+          if (message.includes("DB 스키마가 최신") || message.includes("pnpm db:migrate")) {
+            implementationRuntimePollSuspendedRef.current = true;
+            showToast(message.split(". ")[0] ?? message);
+          }
+          return;
         }
-        return;
+        implementationRuntimePollSuspendedRef.current = false;
+        applyImplementationRuntimeFetch(fetched);
+      } catch {
+        // ignore transient poll errors (dev recompile / network)
       }
-      implementationRuntimePollSuspendedRef.current = false;
-      applyImplementationRuntimeFetch(fetched);
     },
     [applyImplementationRuntimeFetch, projectId, showToast],
   );
@@ -4063,6 +4077,7 @@ export function PrototypePreviewPanel({
       showToast("통합 및 Preview 준비 중…");
       try {
         const startedAtIso = new Date().toISOString();
+        let integrationServerSaved = true;
         let timeline = [...(parsedRequirementsState.promptTimeline ?? [])];
         timeline = appendPromptTimeline(
           timeline,
@@ -4197,22 +4212,7 @@ export function PrototypePreviewPanel({
           batch.previewScope ||
           batch.previewRuntime
         ) {
-          await persistChatToDb(
-            undefined,
-            {
-              implementationIntegratedExecutionStateV1: batch.integratedState,
-              ...(batch.previewScope
-                ? { implementationPreviewScopeV1: batch.previewScope }
-                : {}),
-              ...(batch.previewRuntime
-                ? { implementationPreviewRuntimeV1: batch.previewRuntime }
-                : {}),
-              promptTimeline: timeline,
-            },
-            undefined,
-            { awaitServer: true, force: true },
-          );
-          applyPendingFromOrchestrationPatch({
+          const orchestrationPersistPatch = {
             implementationIntegratedExecutionStateV1: batch.integratedState,
             ...(batch.previewScope
               ? { implementationPreviewScopeV1: batch.previewScope }
@@ -4221,7 +4221,17 @@ export function PrototypePreviewPanel({
               ? { implementationPreviewRuntimeV1: batch.previewRuntime }
               : {}),
             promptTimeline: timeline,
-          });
+          };
+          applyPendingFromOrchestrationPatch(orchestrationPersistPatch);
+          const saveResult = await persistChatToDb(
+            undefined,
+            orchestrationPersistPatch,
+            undefined,
+            { awaitServer: true, force: true },
+          );
+          if (saveResult?.serverSaved === false) {
+            integrationServerSaved = false;
+          }
 
           const noticeParts = [...batch.noticeLines];
           if (batch.previewScope) {
@@ -4279,7 +4289,11 @@ export function PrototypePreviewPanel({
         }
 
         if (batch.previewBuildOk) {
-          showToast("통합 완료 · Preview 준비 완료");
+          showToast(
+            integrationServerSaved
+              ? "통합 완료 · Preview 준비 완료"
+              : "통합·Preview는 화면에 반영됐으나 서버 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+          );
         } else if (batch.completedSteps.length > 0) {
           const previewErr = batch.previewBuildError?.trim();
           showToast(

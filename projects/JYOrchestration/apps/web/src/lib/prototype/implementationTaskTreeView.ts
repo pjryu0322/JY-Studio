@@ -37,6 +37,7 @@ import {
 } from "@/lib/prototype/implementationTaskTreeSelection";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { resolveTaskCursorExecutionForRow } from "@/lib/prototype/codeAgentExecutionProgressView";
+import { buildTaskCursorGithubVerifyDiagnosticsView } from "@/lib/prototype/taskCursorGithubVerifyView";
 import type { ImplementationRuntimeRunView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 
 export type ImplementationTaskTreeMetaLine = Readonly<{
@@ -57,6 +58,7 @@ export type ImplementationCodeTaskTreeNode = Readonly<{
   readonly failureReason?: string;
   readonly nextActionHint?: string;
   readonly pollStatusLabel?: string;
+  readonly githubVerifyTechnicalLines?: readonly ImplementationTaskTreeMetaLine[];
 }>;
 
 export type ImplementationProcessTaskTreeNode = Readonly<{
@@ -214,7 +216,21 @@ function buildCodeTaskNode(input: {
   if (phase === "prompt_preflight_failed") collapsedSummary = "프롬프트 품질 검사 실패";
 
   const statusLabel = rowView.statusLabel;
-  const progressLabel = rowView.progressLabel;
+  let progressLabel = rowView.progressLabel;
+
+  const githubVerifyView =
+    phase === "github_verifying" ||
+    executionForParent?.status === "github_verifying" ||
+    executionForParent?.failureReason === "github_verify_state_sync_failed"
+      ? buildTaskCursorGithubVerifyDiagnosticsView({
+          codeTaskId: input.codeTask.codeTaskId,
+          execution: executionForParent,
+          run: latestRun,
+        })
+      : null;
+  if (githubVerifyView) {
+    progressLabel = githubVerifyView.progressLabel;
+  }
 
   const metaLines: ImplementationTaskTreeMetaLine[] = [
     formatMetaLine("상태", statusLabel),
@@ -242,7 +258,20 @@ function buildCodeTaskNode(input: {
     isActive: input.isActive,
     isSelected: input.isSelected,
     isChecked: input.isChecked,
+    ...(githubVerifyView?.technicalLines.length
+      ? {
+          githubVerifyTechnicalLines: githubVerifyView.technicalLines.map((line) =>
+            formatMetaLine(line.label, line.value),
+          ),
+        }
+      : {}),
     ...(failureReason ? { failureReason } : {}),
+    ...(githubVerifyView?.stateSyncFailed
+      ? {
+          failureReason:
+            "GitHub commit은 확인했지만 플랫폼 실행 상태 반영에 실패했습니다. 상태 재확인을 다시 시도해 주세요.",
+        }
+      : {}),
     ...(phase === "prompt_preflight_failed"
       ? {
           nextActionHint:

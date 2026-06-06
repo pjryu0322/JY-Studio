@@ -29,6 +29,15 @@ export function buildCodeTaskRunUserStatus(
           : "Cursor 작업을 진행하는 중입니다.";
     return { label, detail, tone: "running" };
   }
+  if (run.failureReason === "github_verify_state_sync_failed") {
+    return {
+      label: "GitHub 상태 반영 실패",
+      detail:
+        run.errorMessage ??
+        "GitHub commit은 확인했지만 플랫폼 실행 상태 반영에 실패했습니다. 상태 재확인을 다시 시도해 주세요.",
+      tone: "warning",
+    };
+  }
   switch (run.status) {
     case "completed":
       return { label, detail: "GitHub 결과 확인이 완료되었습니다.", tone: "success" };

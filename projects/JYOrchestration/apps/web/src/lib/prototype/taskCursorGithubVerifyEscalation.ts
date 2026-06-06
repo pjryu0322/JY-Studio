@@ -84,5 +84,6 @@ export function mapGithubVerifyFailureReasonCode(
 ): string | null {
   if (failureReason === "github_verify_timeout") return "github_verify_timeout";
   if (failureReason === "github_branch_missing") return "github_branch_missing";
+  if (failureReason === "github_verify_state_sync_failed") return "github_verify_state_sync_failed";
   return null;
 }

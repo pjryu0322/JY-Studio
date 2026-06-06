@@ -3,6 +3,7 @@ import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJo
 import {
   isTaskCursorLongRunningWithoutTerminal,
 } from "@/lib/prototype/taskCursorGithubFallbackVerifyPolicy";
+import { resolveTaskCursorGithubVerifyProgressLabelKo } from "@/lib/prototype/taskCursorGithubVerifyView";
 import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
 import type { RuntimeState } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 
@@ -32,10 +33,16 @@ export function resolveCodeTaskRuntimeProgressLabelKo(input: {
       return "AI 개발자 요청 반영 중";
     }
     if (runtime === "github_verifying" || queue === "github_verifying") {
-      return "GitHub commit 확인 중";
+      const phaseLabel = resolveTaskCursorGithubVerifyProgressLabelKo({
+        execution: execution ?? undefined,
+      });
+      return phaseLabel;
     }
     if (execution?.status === "github_verifying") {
-      return "GitHub commit 확인 중";
+      return resolveTaskCursorGithubVerifyProgressLabelKo({ execution });
+    }
+    if (execution?.failureReason === "github_verify_state_sync_failed") {
+      return "GitHub 상태 반영 실패";
     }
     const branch = String(execution?.workBranch ?? input.serverJob?.workBranch ?? "").trim();
     if (branch && input.githubBranchDetected) {

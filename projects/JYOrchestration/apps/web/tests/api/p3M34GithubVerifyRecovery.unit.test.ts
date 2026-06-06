@@ -47,8 +47,8 @@ describe("P3-M34 github verify timeout", () => {
       codeTaskId: "CODE-DEV-MOCK-001-001",
     });
     expect(applied.execution.status).toBe("github_verify_failed");
-    expect(applied.execution.failureReason).toBe("github_verify_timeout");
-    expect(applied.timelineEntry?.action).toBe("task_cursor_github_verify_timeout");
+    expect(applied.execution.failureReason).toBe("github_branch_missing");
+    expect(applied.timelineEntry).toBeUndefined();
   });
 
   it("branch missing after soft timeout with branch_not_found", () => {

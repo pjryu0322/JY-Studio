@@ -30,12 +30,20 @@ export async function postSpecWorkspaceRequest(
 export async function patchSpecWorkspaceRequest(
   projectId: string,
   body: unknown
-): Promise<{ res: Response; json: unknown }> {
-  const res = await credentialsIncludeFetch(specWorkspaceUrl(projectId), {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  return { res, json };
+): Promise<{ res: Response; json: unknown; networkError?: boolean }> {
+  try {
+    const res = await credentialsIncludeFetch(specWorkspaceUrl(projectId), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    return { res, json };
+  } catch {
+    return {
+      res: new Response(null, { status: 0, statusText: "network_error" }),
+      json: { success: false, message: "네트워크 오류로 저장 요청에 실패했습니다." },
+      networkError: true,
+    };
+  }
 }

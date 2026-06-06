@@ -36,14 +36,19 @@ export async function fetchImplementationRuntime(
   if (!pid) return { success: false, message: "projectId가 필요합니다." };
   const recover = options?.recover === true;
   const qs = recover ? "?recover=1" : "";
-  const res = await credentialsIncludeFetch(
-    `/api/projects/${encodeURIComponent(pid)}/implementation-runtime${qs}`,
-  );
-  const data = (await res.json().catch(() => ({}))) as ImplementationRuntimeFetchResult;
-  if (!res.ok) {
-    return { success: false, message: data.message ?? `HTTP ${res.status}` };
+  try {
+    const res = await credentialsIncludeFetch(
+      `/api/projects/${encodeURIComponent(pid)}/implementation-runtime${qs}`,
+    );
+    const data = (await res.json().catch(() => ({}))) as ImplementationRuntimeFetchResult;
+    if (!res.ok) {
+      return { success: false, message: data.message ?? `HTTP ${res.status}` };
+    }
+    return data;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, message: message.includes("fetch") ? "네트워크 오류로 Runtime을 불러오지 못했습니다." : message };
   }
-  return data;
 }
 
 export async function postImplementationRuntimeAction(input: {
@@ -64,26 +69,31 @@ export async function postImplementationRuntimeAction(input: {
 }): Promise<ImplementationRuntimeFetchResult & { readonly recovery?: unknown }> {
   const pid = input.projectId.trim();
   if (!pid) return { success: false, message: "projectId가 필요합니다." };
-  const res = await credentialsIncludeFetch(
-    `/api/projects/${encodeURIComponent(pid)}/implementation-runtime/actions`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: input.action,
-        ...(input.requirementsState ? { requirementsState: input.requirementsState } : {}),
-        ...(input.selectedCodeTaskIds ? { selectedCodeTaskIds: input.selectedCodeTaskIds } : {}),
-        ...(input.queueItems?.length ? { queueItems: input.queueItems } : {}),
-        ...(input.clientTrace ? { clientTrace: input.clientTrace } : {}),
-      }),
-    },
-  );
-  const data = (await res.json().catch(() => ({}))) as ImplementationRuntimeFetchResult & {
-    readonly recovery?: unknown;
-    readonly bundle?: ImplementationRuntimeBundleView;
-  };
-  if (!res.ok) {
-    return { success: false, message: data.message ?? `HTTP ${res.status}` };
+  try {
+    const res = await credentialsIncludeFetch(
+      `/api/projects/${encodeURIComponent(pid)}/implementation-runtime/actions`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: input.action,
+          ...(input.requirementsState ? { requirementsState: input.requirementsState } : {}),
+          ...(input.selectedCodeTaskIds ? { selectedCodeTaskIds: input.selectedCodeTaskIds } : {}),
+          ...(input.queueItems?.length ? { queueItems: input.queueItems } : {}),
+          ...(input.clientTrace ? { clientTrace: input.clientTrace } : {}),
+        }),
+      },
+    );
+    const data = (await res.json().catch(() => ({}))) as ImplementationRuntimeFetchResult & {
+      readonly recovery?: unknown;
+      readonly bundle?: ImplementationRuntimeBundleView;
+    };
+    if (!res.ok) {
+      return { success: false, message: data.message ?? `HTTP ${res.status}` };
+    }
+    return data;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, message: message.includes("fetch") ? "네트워크 오류로 Runtime 요청에 실패했습니다." : message };
   }
-  return data;
 }

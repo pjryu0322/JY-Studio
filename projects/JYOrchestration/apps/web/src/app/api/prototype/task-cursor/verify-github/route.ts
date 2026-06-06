@@ -60,7 +60,17 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: outcome.verify.ok,
-      status: outcome.execution.status,
+      ok: outcome.verify.ok,
+      status: outcome.manualVerifyStatus ?? outcome.execution.status,
+      codeTaskId: String(body.codeTaskId ?? "").trim() || undefined,
+      workBranch: outcome.execution.workBranch ?? null,
+      resolvedBranch: outcome.resolvedBranch ?? outcome.verify.resolvedBranch ?? null,
+      commitSha: outcome.verify.verifiedCommitSha ?? outcome.execution.commitSha ?? null,
+      repaired: outcome.repaired === true,
+      message:
+        outcome.execution.errorMessage ??
+        outcome.verify.message ??
+        (outcome.verify.ok ? "GitHub verify succeeded" : "GitHub verify failed"),
       verify: outcome.verify,
       execution: outcome.execution,
       orchestrationPatch: outcome.orchestrationPatch,
