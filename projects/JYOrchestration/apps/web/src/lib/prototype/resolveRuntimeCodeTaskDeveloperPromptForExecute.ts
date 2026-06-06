@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { buildCodeTaskDeveloperPromptDetailed } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
 import {
+  assertStageTwoDeveloperPromptAllowed,
+  STAGE_TWO_CURSOR_BLOCK_MESSAGE,
+} from "@/lib/prototype/codeTaskDeveloperPromptQualityGate";
+import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
+import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
+import {
   buildDeveloperPromptMeta,
   shouldReuseStoredDeveloperPrompt,
 } from "@/lib/prototype/codeTaskDeveloperPromptCache";
@@ -24,7 +30,7 @@ import {
 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
-import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
+import { buildCodeTaskWorkBranch, resolveCodeTaskWorkBranchForTask, resolveCodeTaskBaseBranchForTask } from "@/lib/prototype/taskCursorExecution";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   parseImplementationTaskListV1,
@@ -84,7 +90,12 @@ function assertPromptMatchesCodeTask(input: {
     errors.push("body_work_branch_mismatch");
   }
   const branches = extractWorkBranchLines(input.prompt);
-  if (branches.length === 1 && branches[0] !== expectedWorkBranch) {
+  const unique = [...new Set(branches)];
+  if (unique.length === 0) {
+    errors.push("missing_work_branch_in_prompt");
+  } else if (unique.length > 1) {
+    errors.push("multiple_work_branches");
+  } else if (expectedWorkBranch && unique[0] !== expectedWorkBranch) {
     errors.push("prompt_work_branch_mismatch");
   }
   return errors;
@@ -117,9 +128,9 @@ export function resolveRuntimeCodeTaskDeveloperPromptForExecute(
 
   const taskList = parseImplementationTaskListV1(state.implementationTaskListV1);
   const parentTask =
-    taskList?.tasks.find((t) => t.id === codeTask.parentTaskId) ?? null;
+    taskList?.tasks.find((t) => t.taskId === codeTask.parentTaskId) ?? null;
 
-  const expectedWorkBranch = buildCodeTaskWorkBranch(codeTaskId);
+  const expectedWorkBranch = resolveCodeTaskWorkBranchForTask({ codeTask });
   const allowedPathGlobs = resolveEffectiveAllowedPathGlobs({
     allowedPathGlobs: input.allowedPathGlobs,
     targetRepoFullName: input.targetRepository.repoFullName,
@@ -136,6 +147,15 @@ export function resolveRuntimeCodeTaskDeveloperPromptForExecute(
   const bodyFingerprint = String(input.developerPromptFingerprint ?? "").trim();
 
   if (bodyPrompt) {
+    const stageBlock = assertStageTwoDeveloperPromptAllowed({ prompt: bodyPrompt });
+    if (!stageBlock.ok) {
+      return {
+        ok: false,
+        reason: "runtime_developer_prompt_unavailable",
+        message: STAGE_TWO_CURSOR_BLOCK_MESSAGE,
+        errors: stageBlock.errors,
+      };
+    }
     const fingerprint = fingerprintRuntimeDeveloperPrompt(bodyPrompt);
     if (bodyFingerprint && bodyFingerprint !== fingerprint) {
       return {
@@ -182,6 +202,15 @@ export function resolveRuntimeCodeTaskDeveloperPromptForExecute(
     })
   ) {
     const prompt = run.developerPrompt.trim();
+    const stageBlock = assertStageTwoDeveloperPromptAllowed({ prompt });
+    if (!stageBlock.ok) {
+      return {
+        ok: false,
+        reason: "runtime_developer_prompt_unavailable",
+        message: STAGE_TWO_CURSOR_BLOCK_MESSAGE,
+        errors: stageBlock.errors,
+      };
+    }
     const fingerprint = fingerprintRuntimeDeveloperPrompt(prompt);
     const mismatchErrors = assertPromptMatchesCodeTask({
       prompt,
@@ -209,22 +238,36 @@ export function resolveRuntimeCodeTaskDeveloperPromptForExecute(
     };
   }
 
-  const rebuilt = buildCodeTaskDeveloperPromptDetailed({
-    codeTask,
-    parentTask,
-    promptContext,
-    targetRepository: input.targetRepository,
-    baseBranch: input.baseBranch,
-    allowedPathGlobs: input.allowedPathGlobs,
-    targetRepoKind: "generated_project",
-  });
-  const prompt = rebuilt.prompt.trim();
-  if (!prompt) {
+  const branchPlan = parseCodeTaskBranchPlanV1(codeTask.branchPlan);
+  const fileBoundary = parseCodeTaskFileBoundaryV1(codeTask.fileBoundary);
+  if (!promptContext || !branchPlan || !fileBoundary) {
     return {
       ok: false,
       reason: "runtime_developer_prompt_unavailable",
       message: "Runtime developer prompt를 생성할 수 없습니다.",
-      errors: ["empty_rebuilt_prompt"],
+      errors: ["missing_stage_two_inputs"],
+    };
+  }
+
+  const generated = buildStageTwoCodeTaskDeveloperPrompt({
+    projectId: input.projectId,
+    targetRepository: input.targetRepository,
+    codeTask,
+    promptContext,
+    branchPlan,
+    fileBoundary,
+    parentTask,
+    allowedPathGlobs: input.allowedPathGlobs,
+    nowIso: new Date().toISOString(),
+  });
+  const prompt = generated.content.trim();
+  if (!prompt || !generated.quality.ready) {
+    const stageBlock = assertStageTwoDeveloperPromptAllowed({ prompt });
+    return {
+      ok: false,
+      reason: "runtime_developer_prompt_unavailable",
+      message: stageBlock.ok ? "Runtime developer prompt를 생성할 수 없습니다." : STAGE_TWO_CURSOR_BLOCK_MESSAGE,
+      errors: stageBlock.ok ? [...generated.quality.missing] : stageBlock.errors,
     };
   }
 
@@ -233,7 +276,10 @@ export function resolveRuntimeCodeTaskDeveloperPromptForExecute(
     developerPrompt: prompt,
     promptContext,
     targetRepoFullName: input.targetRepository.repoFullName,
-    baseBranch: input.baseBranch,
+    baseBranch: resolveCodeTaskBaseBranchForTask({
+      codeTask,
+      fallbackBaseBranch: input.baseBranch,
+    }),
     allowedPathGlobs,
     generatedAt: new Date().toISOString(),
   });

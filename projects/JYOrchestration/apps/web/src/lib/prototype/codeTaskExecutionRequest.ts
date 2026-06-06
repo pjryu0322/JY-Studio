@@ -1,4 +1,4 @@
-import { buildCodeTaskDeveloperPromptDetailed } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
+import { buildStageTwoCodeTaskDeveloperPrompt } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
 import {
   buildDeveloperPromptMeta,
   shouldReuseStoredDeveloperPrompt,
@@ -30,6 +30,12 @@ import {
   patchTaskCursorExecution,
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
+import {
+  assertStageTwoDeveloperPromptAllowed,
+  STAGE_TWO_CURSOR_BLOCK_MESSAGE,
+} from "@/lib/prototype/codeTaskDeveloperPromptQualityGate";
+import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
+import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import { fingerprintRuntimeDeveloperPrompt } from "@/lib/prototype/resolveRuntimeCodeTaskDeveloperPromptForExecute";
 import type { ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 
@@ -87,18 +93,36 @@ function resolveDeveloperPromptForCodeTask(input: {
       allowedPathGlobs,
     })
   ) {
-    return { prompt: input.run.developerPrompt!.trim(), removedCandidatePaths: [], warnings: [] };
+    const stored = input.run.developerPrompt!.trim();
+    const stageBlock = assertStageTwoDeveloperPromptAllowed({ prompt: stored });
+    if (!stageBlock.ok) {
+      return { prompt: "", removedCandidatePaths: [], warnings: stageBlock.errors };
+    }
+    return { prompt: stored, removedCandidatePaths: [], warnings: [] };
   }
 
-  return buildCodeTaskDeveloperPromptDetailed({
-    codeTask: input.codeTask,
-    parentTask: input.parentTask,
-    promptContext: input.promptContext,
+  const branchPlan = parseCodeTaskBranchPlanV1(input.codeTask.branchPlan);
+  const fileBoundary = parseCodeTaskFileBoundaryV1(input.codeTask.fileBoundary);
+  if (!input.promptContext || !branchPlan || !fileBoundary) {
+    return { prompt: "", removedCandidatePaths: [], warnings: ["missing_stage_two_inputs"] };
+  }
+
+  const generated = buildStageTwoCodeTaskDeveloperPrompt({
+    projectId: input.run.projectId,
     targetRepository: input.targetRepository,
-    baseBranch: input.baseBranch,
+    codeTask: input.codeTask,
+    promptContext: input.promptContext,
+    branchPlan,
+    fileBoundary,
+    parentTask: input.parentTask,
     allowedPathGlobs: input.allowedPathGlobs,
-    targetRepoKind: "generated_project",
+    nowIso: input.nowIso,
   });
+  return {
+    prompt: generated.content,
+    removedCandidatePaths: [],
+    warnings: [...generated.quality.warnings],
+  };
 }
 
 type BuildCodeTaskDeveloperPromptResultLike = Readonly<{
@@ -155,6 +179,24 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     allowedPathGlobs: input.allowedPathGlobs,
     nowIso: now,
   });
+
+  const stageBlock = assertStageTwoDeveloperPromptAllowed({ prompt: promptResult.prompt });
+  if (!stageBlock.ok || !promptResult.prompt.trim()) {
+    logRuntimePromptQualityGateFailure(
+      buildRuntimePromptQualityGateDiagnostics({
+        codeTaskId: input.codeTask.codeTaskId,
+        workBranch: resolveCodeTaskWorkBranchForTask({ codeTask: input.codeTask }),
+        errors: stageBlock.ok ? ["empty_stage_two_prompt"] : stageBlock.errors,
+        warnings: [],
+      }),
+    );
+    return {
+      ok: false,
+      message: stageBlock.ok ? CODE_TASK_PROMPT_SAFETY_BLOCK_MESSAGE : STAGE_TWO_CURSOR_BLOCK_MESSAGE,
+      errors: stageBlock.ok ? ["empty_stage_two_prompt"] : stageBlock.errors,
+      warnings: [],
+    };
+  }
 
   const allowedPathGlobs = resolveEffectiveAllowedPathGlobs({
     allowedPathGlobs: input.allowedPathGlobs,

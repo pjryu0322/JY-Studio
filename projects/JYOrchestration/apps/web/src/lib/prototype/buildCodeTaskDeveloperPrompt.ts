@@ -18,6 +18,14 @@ import {
   inferCodeTaskFileBoundary,
 } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
+import { evaluateStageTwoDeveloperPromptReadiness } from "@/lib/prototype/codeTaskDeveloperPromptQualityGate";
+import {
+  buildGeneratedStageTwoDeveloperPrompt,
+  stageTwoDeveloperPromptInputsPresent,
+  type GeneratedCodeTaskPromptV1,
+} from "@/lib/prototype/generatedCodeTaskPrompt";
+import type { CodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
+import type { CodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { buildCodeTaskWorkBranch, resolveCodeTaskWorkBranchForTask, resolveCodeTaskBaseBranchForTask } from "@/lib/prototype/taskCursorExecution";
 import { buildCodeTaskBranchPlanPromptSections } from "@/lib/prototype/implementationBranchPlan";
 
@@ -172,6 +180,7 @@ function buildGeneratedProjectPrompt(input: {
     "## 작업 목표",
     codeTask.title.trim(),
     "",
+    ...buildCodeTaskBranchPlanPromptSections(codeTask.branchPlan),
     ...buildPlanningContextSectionsFromView(view),
     "## 구현 범위",
     ...(implementationScope.length
@@ -181,6 +190,8 @@ function buildGeneratedProjectPrompt(input: {
     "## 구현 요구사항",
     ...implementationRequirements,
     "",
+    ...boundarySections,
+    "",
     "## 수정 대상 탐색 기준",
     "- 대상 저장소 내부에서 관련 화면, 컴포넌트, 상태 모듈을 탐색한다.",
     "- 우선 탐색 경로:",
@@ -189,8 +200,6 @@ function buildGeneratedProjectPrompt(input: {
     "",
     "## 검증 기준",
     ...verificationChecklist,
-    ...boundarySections,
-    ...buildCodeTaskBranchPlanPromptSections(codeTask.branchPlan),
     "",
     "## 금지사항",
     ...target.forbiddenRules.map((r) => `- ${r}`),
@@ -337,4 +346,71 @@ export function buildCodeTaskDeveloperPromptDetailed(input: {
     removedCandidatePaths: sanitized.removedCandidatePaths,
     warnings: sanitized.warnings,
   };
+}
+
+export function buildStageTwoCodeTaskDeveloperPrompt(input: {
+  readonly projectId: string;
+  readonly targetRepository: ProjectTargetRepository;
+  readonly codeTask: ImplementationCodeTaskV1;
+  readonly promptContext: CodeTaskPromptContextV1;
+  readonly branchPlan: CodeTaskBranchPlanV1;
+  readonly fileBoundary: CodeTaskFileBoundaryV1;
+  readonly parentTask?: ImplementationTaskV1 | null;
+  readonly allowedPathGlobs?: readonly string[];
+  readonly templateId?: string;
+  readonly nowIso: string;
+}): GeneratedCodeTaskPromptV1 {
+  void input.projectId;
+  void input.nowIso;
+
+  const missingInputs = stageTwoDeveloperPromptInputsPresent({
+    branchPlan: input.branchPlan,
+    fileBoundary: input.fileBoundary,
+    promptContext: input.promptContext,
+  });
+  if (missingInputs.length) {
+    return buildGeneratedStageTwoDeveloperPrompt({
+      codeTaskId: input.codeTask.codeTaskId,
+      title: input.codeTask.title,
+      content: "",
+      quality: {
+        ready: false,
+        readiness: "blocked_incomplete_inputs",
+        missing: missingInputs,
+        warnings: [],
+      },
+    });
+  }
+
+  const codeTaskWithPlan = {
+    ...input.codeTask,
+    branchPlan: input.branchPlan,
+    fileBoundary: input.fileBoundary,
+  };
+
+  const built = buildCodeTaskDeveloperPromptDetailed({
+    codeTask: codeTaskWithPlan,
+    parentTask: input.parentTask,
+    promptContext: input.promptContext,
+    targetRepository: input.targetRepository,
+    baseBranch: resolveCodeTaskBaseBranchForTask({ codeTask: codeTaskWithPlan }),
+    allowedPathGlobs: input.allowedPathGlobs,
+    targetRepoKind: "generated_project",
+    templateId: input.templateId,
+  });
+
+  const quality = evaluateStageTwoDeveloperPromptReadiness({
+    prompt: built.prompt,
+    codeTask: codeTaskWithPlan,
+    promptContextPresent: true,
+    targetRepoFullName: input.targetRepository.repoFullName,
+    fallbackBaseBranch: input.targetRepository.defaultBranch,
+  });
+
+  return buildGeneratedStageTwoDeveloperPrompt({
+    codeTaskId: input.codeTask.codeTaskId,
+    title: input.codeTask.title,
+    content: built.prompt,
+    quality,
+  });
 }

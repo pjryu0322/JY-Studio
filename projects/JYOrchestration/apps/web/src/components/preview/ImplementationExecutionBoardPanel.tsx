@@ -38,6 +38,10 @@ import {
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { evaluateStageOnePromptPlanReadiness } from "@/lib/prototype/stageOnePromptReadiness";
+import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
+import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
+import { resolveExecutionTargetCodeTaskId } from "@/lib/prototype/resolveExecutionTargetCodeTaskId";
+import { resolveStageTwoDeveloperPromptPreview } from "@/lib/prototype/resolveStageTwoDeveloperPromptPreview";
 import { summarizeBranchPlanForUi } from "@/lib/prototype/implementationBranchPlan";
 import {
   formatStageOnePromptQualitySummaryLines,
@@ -298,6 +302,53 @@ export function ImplementationExecutionBoardPanel({
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(activeTaskId);
   const [selectedCodeTaskId, setSelectedCodeTaskId] = useState<string | null>(null);
+
+  const targetRepository = useMemo(
+    () =>
+      resolveProjectTargetRepositoryFromExecutionSetup({
+        gitRepoUrl: executionSetup?.gitRepoUrl,
+        gitRepoName: executionSetup?.gitRepoName,
+        gitRepoProvider: executionSetup?.gitRepoProvider,
+        baseBranch: executionSetup?.baseBranch,
+      }),
+    [executionSetup],
+  );
+
+  const executionTargetCodeTaskId = useMemo(
+    () =>
+      resolveExecutionTargetCodeTaskId({
+        selectedCodeTaskId,
+        runtimeCurrentCodeTaskId: queueCurrentCodeTaskId,
+        codeTaskPlan: parsedCodeTaskPlan,
+      }),
+    [selectedCodeTaskId, queueCurrentCodeTaskId, parsedCodeTaskPlan],
+  );
+
+  const stageTwoDeveloperPromptPreview = useMemo(
+    () =>
+      resolveStageTwoDeveloperPromptPreview({
+        projectId: projectId?.trim() ?? board.projectId,
+        codeTaskPlan: parsedCodeTaskPlan,
+        taskList,
+        codeTaskPromptContextMapV1: parsedPromptContextMap,
+        targetRepository,
+        selectedCodeTaskId,
+        runtimeCurrentCodeTaskId: queueCurrentCodeTaskId,
+        allowedPathGlobs: parseStringArrayJson(executionSetup?.allowedPathGlobs),
+      }),
+    [
+      projectId,
+      board.projectId,
+      parsedCodeTaskPlan,
+      taskList,
+      parsedPromptContextMap,
+      targetRepository,
+      selectedCodeTaskId,
+      queueCurrentCodeTaskId,
+      executionSetup?.allowedPathGlobs,
+    ],
+  );
+
   const checkedCodeTaskIds = useMemo(
     () =>
       normalizeSelectedCodeTaskIds({
@@ -839,6 +890,64 @@ export function ImplementationExecutionBoardPanel({
       </div>
 
       {parsedCodeTaskPlan ? (
+        <section className={styles.taskTreeSection} data-testid="implementation-stage-two-developer-prompt">
+          <div className={styles.integrationSectionHeader}>
+            <strong>현재 CodeTask 개발 프롬프트 (2단계 · Cursor 전달용)</strong>
+          </div>
+          {executionTargetCodeTaskId ? (
+            <div className={styles.summarySecondary}>
+              <div>{executionTargetCodeTaskId}</div>
+              {stageTwoDeveloperPromptPreview.title ? (
+                <div>{stageTwoDeveloperPromptPreview.title}</div>
+              ) : null}
+              {stageTwoDeveloperPromptPreview.branchGroup ? (
+                <div>
+                  branch group: {stageTwoDeveloperPromptPreview.branchGroup} · base branch:{" "}
+                  {stageTwoDeveloperPromptPreview.baseBranch} · work branch:{" "}
+                  {stageTwoDeveloperPromptPreview.workBranch}
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className={styles.summarySecondary}>실행 대상 CodeTask를 선택해 주세요.</div>
+          )}
+          <div className={styles.stuckRecoveryActions}>
+            <button
+              type="button"
+              className={styles.githubVerifyRetryLink}
+              data-testid="implementation-copy-stage-one-planning-prompt"
+              disabled={!onCopyAllCodeTaskCursorPrompts}
+              onClick={() => onCopyAllCodeTaskCursorPrompts?.()}
+            >
+              계획 프롬프트 복사
+            </button>
+            <button
+              type="button"
+              className={styles.githubVerifyRetryLink}
+              data-testid="implementation-copy-current-developer-prompt"
+              disabled={!executionTargetCodeTaskId || !stageTwoDeveloperPromptPreview.ready}
+              onClick={() => {
+                if (executionTargetCodeTaskId) {
+                  onCopyCodeTaskCursorPrompt?.(executionTargetCodeTaskId);
+                }
+              }}
+            >
+              현재 CodeTask 개발 프롬프트 복사
+            </button>
+          </div>
+          {stageTwoDeveloperPromptPreview.preview ? (
+            <pre
+              className={styles.summarySecondary}
+              data-testid="implementation-stage-two-developer-prompt-preview"
+              style={{ whiteSpace: "pre-wrap", maxHeight: 240, overflow: "auto" }}
+            >
+              {stageTwoDeveloperPromptPreview.preview.slice(0, 4000)}
+            </pre>
+          ) : null}
+        </section>
+      ) : null}
+
+      {parsedCodeTaskPlan ? (
         <section className={styles.taskTreeSection} data-testid="implementation-branch-plan-section">
           <div className={styles.integrationSectionHeader}>
             <strong>Branch Plan</strong>
@@ -861,6 +970,9 @@ export function ImplementationExecutionBoardPanel({
           ))}
           {stageOneQualityLines.length ? (
             <div className={styles.summarySecondary} data-testid="code-task-stage-one-prompt-quality">
+              <div className={styles.integrationSectionHeader}>
+                <strong>CodeTask 1단계 계획 보기 (진단/검토용)</strong>
+              </div>
               {stageOneQualityLines.map((line, index) => (
                 <div key={`stage-one-quality-${index}`}>{line}</div>
               ))}

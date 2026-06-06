@@ -5,6 +5,7 @@ import {
   CODE_TASK_PROMPT_COPY_BLOCK_MESSAGE,
   validateCodeTaskDeveloperPromptSafety,
 } from "@/lib/prototype/codeTaskDeveloperPromptSafety";
+import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
 import { resolveCodeTaskDeveloperPromptForCopy } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
 import { resolveCodeTaskFeaturePromptTemplate } from "@/lib/prototype/codeTaskPromptFeatureTemplates";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
@@ -236,6 +237,11 @@ describe("resolveCodeTaskDeveloperPromptForCopy", () => {
       createdAt: NOW,
       updatedAt: NOW,
     };
+    const contextMap = buildCodeTaskPromptContextMap({
+      projectId: "p1",
+      codeTaskPlan: plan,
+      requirementsStateJson: {},
+    });
     const result = resolveCodeTaskDeveloperPromptForCopy({
       projectId: "p1",
       codeTaskId: "CT-1",
@@ -265,6 +271,7 @@ describe("resolveCodeTaskDeveloperPromptForCopy", () => {
         repoFullName: "o/r",
       },
       baseBranch: "main",
+      codeTaskPromptContextMapV1: contextMap,
     });
     expect(result.ok).toBe(true);
     expect(result.prompt).toContain("o/r");

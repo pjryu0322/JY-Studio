@@ -317,7 +317,13 @@ import {
 } from "@/lib/prototype/implementationStatusChatPolicy";
 import { resolveCodeTaskPromptDraftForCopyFromState } from "@/lib/prototype/resolveCodeTaskPromptDraftForCopy";
 import { CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE } from "@/lib/prototype/resolveCodeTaskPromptDraftForCopy";
-import { resolveCodeTaskDeveloperPromptForCopy } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
+import {
+  CODE_TASK_STAGE_ONE_PLAN_COPY_SUCCESS_MESSAGE,
+  CODE_TASK_STAGE_TWO_COPY_SUCCESS_MESSAGE,
+  resolveCodeTaskDeveloperPromptForCopy,
+} from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
+import { getCodeTaskPromptContextFromMap } from "@/lib/prototype/codeTaskPromptContext";
+import { buildCodeTaskDeveloperPromptDetailed } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 import {
   buildTaskCursorExecutionRequest,
@@ -7287,13 +7293,34 @@ export function PrototypePreviewPanel({
       baseBranch: executionSetupRow?.baseBranch,
     });
     const developerPrompt = targetRepository
-      ? buildCodeTaskDeveloperPrompt({
-          codeTask: dispatchTarget.codeTask,
-          parentTask: dispatchTarget.parentTask,
-          targetRepository,
-          baseBranch: executionSetupRow?.baseBranch ?? "main",
-          allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
-        })
+      ? (() => {
+          const promptContext = getCodeTaskPromptContextFromMap(
+            imp.codeTaskPromptContextMapV1,
+            dispatchTarget.codeTask.codeTaskId,
+          );
+          const built = buildCodeTaskDeveloperPromptDetailed({
+            codeTask: dispatchTarget.codeTask,
+            parentTask: dispatchTarget.parentTask,
+            promptContext,
+            targetRepository,
+            baseBranch: executionSetupRow?.baseBranch ?? "main",
+            allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
+            targetRepoKind: "generated_project",
+          }).prompt.trim();
+          const copy = resolveCodeTaskDeveloperPromptForCopy({
+            projectId: pid,
+            codeTaskId: dispatchTarget.codeTask.codeTaskId,
+            codeTaskPlan: imp.implementationCodeTaskPlanV1 ?? null,
+            taskList: imp.implementationTaskListV1 ?? null,
+            cursorWorkItems: imp.cursorWorkItemsV1 ?? [],
+            runs: codeTaskExecutionRunsV1,
+            targetRepository,
+            baseBranch: executionSetupRow?.baseBranch ?? targetRepository.defaultBranch ?? "main",
+            allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
+            codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
+          });
+          return copy.ok && copy.prompt ? copy.prompt : built || undefined;
+        })()
       : undefined;
     const quickRunNextRun = createCodeTaskExecutionRun({
       projectId: pid,
@@ -7520,7 +7547,7 @@ export function PrototypePreviewPanel({
       void writeClipboardText(result.prompt).then((ok) => {
         showToast(
           ok
-            ? "선택 CodeTask의 Cursor 전달 프롬프트를 복사했습니다."
+            ? CODE_TASK_STAGE_TWO_COPY_SUCCESS_MESSAGE
             : "클립보드 복사에 실패했습니다.",
         );
       });
@@ -7550,7 +7577,7 @@ export function PrototypePreviewPanel({
     }
     void writeClipboardText(built.prompt).then((ok) => {
       showToast(
-        ok ? "CodeTask 1단계 프롬프트 초안을 복사했습니다." : "클립보드 복사에 실패했습니다.",
+        ok ? CODE_TASK_STAGE_ONE_PLAN_COPY_SUCCESS_MESSAGE : "클립보드 복사에 실패했습니다.",
       );
     });
   }, [projectId, orchestrationAwareRequirementsState, showToast]);

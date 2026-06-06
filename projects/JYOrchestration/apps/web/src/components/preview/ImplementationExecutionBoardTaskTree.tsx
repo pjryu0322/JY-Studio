@@ -69,8 +69,8 @@ function ExecutionFlowSteps({
                 <button
                   type="button"
                   className={styles.taskTreeCopyPromptButton}
-                  aria-label="선택 CodeTask Cursor 전달 프롬프트 복사"
-                  title="선택 CodeTask Cursor 전달 프롬프트 복사"
+                  aria-label="현재 CodeTask 개발 프롬프트 복사"
+                  title="현재 CodeTask 개발 프롬프트 복사 (2단계 · Cursor 전달용)"
                   onClick={(event) => {
                     event.stopPropagation();
                     onCopyCursorPrompt();
@@ -277,8 +277,8 @@ export function ImplementationExecutionBoardTaskTree({
             <button
               type="button"
               className={styles.taskTreeCopyPromptButton}
-              aria-label="CodeTask 1단계 프롬프트 초안 복사"
-              title="CodeTask 1단계 프롬프트 초안 복사"
+              aria-label="계획 프롬프트 복사"
+              title="CodeTask 1단계 계획 프롬프트 복사 (Cursor 실행용 아님)"
               data-testid="implementation-copy-all-planning-draft-prompts"
               onClick={(event) => {
                 event.preventDefault();
