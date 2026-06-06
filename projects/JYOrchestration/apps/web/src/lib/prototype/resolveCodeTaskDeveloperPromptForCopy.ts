@@ -79,6 +79,8 @@ export const CODE_TASK_STAGE_ONE_NOT_READY_MESSAGE =
 export const CODE_TASK_STAGE_TWO_COPY_SUCCESS_MESSAGE =
   "현재 CodeTask 개발 프롬프트를 복사했습니다." as const;
 
+export { formatDeveloperPromptSingleCopySuccessToast } from "@/lib/prototype/codeTaskDeveloperPromptBundle";
+
 export const CODE_TASK_STAGE_ONE_PLAN_COPY_SUCCESS_MESSAGE =
   "CodeTask 1단계 계획 프롬프트를 복사했습니다. 이 프롬프트는 Cursor 실행용이 아닙니다." as const;
 

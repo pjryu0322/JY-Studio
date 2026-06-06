@@ -318,8 +318,13 @@ import {
 import { resolveCodeTaskPromptDraftForCopyFromState } from "@/lib/prototype/resolveCodeTaskPromptDraftForCopy";
 import { CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE } from "@/lib/prototype/resolveCodeTaskPromptDraftForCopy";
 import {
+  formatDeveloperPromptHeaderCopySuccessToast,
+  formatDeveloperPromptSingleCopySuccessToast,
+  resolveDeveloperPromptCopyFromSelection,
+} from "@/lib/prototype/codeTaskDeveloperPromptBundle";
+import { resolveExecutionTargetCodeTaskId } from "@/lib/prototype/resolveExecutionTargetCodeTaskId";
+import {
   CODE_TASK_STAGE_ONE_PLAN_COPY_SUCCESS_MESSAGE,
-  CODE_TASK_STAGE_TWO_COPY_SUCCESS_MESSAGE,
   resolveCodeTaskDeveloperPromptForCopy,
 } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
 import { getCodeTaskPromptContextFromMap } from "@/lib/prototype/codeTaskPromptContext";
@@ -7547,7 +7552,7 @@ export function PrototypePreviewPanel({
       void writeClipboardText(result.prompt).then((ok) => {
         showToast(
           ok
-            ? CODE_TASK_STAGE_TWO_COPY_SUCCESS_MESSAGE
+            ? formatDeveloperPromptSingleCopySuccessToast(id)
             : "클립보드 복사에 실패했습니다.",
         );
       });
@@ -7564,7 +7569,7 @@ export function PrototypePreviewPanel({
     ],
   );
 
-  const handleCopyAllCodeTaskCursorPrompts = useCallback(() => {
+  const handleCopyStageOnePlanningPrompt = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) return;
     const built = resolveCodeTaskPromptDraftForCopyFromState({
@@ -7581,6 +7586,67 @@ export function PrototypePreviewPanel({
       );
     });
   }, [projectId, orchestrationAwareRequirementsState, showToast]);
+
+  const handleCopyDeveloperPromptsFromHeader = useCallback(() => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    const imp = orchestrationAwareRequirementsState;
+    const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+      gitRepoUrl: executionSetupRow?.gitRepoUrl,
+      gitRepoName: executionSetupRow?.gitRepoName,
+      gitRepoProvider: executionSetupRow?.gitRepoProvider,
+      baseBranch: executionSetupRow?.baseBranch,
+    });
+    const selectedCodeTaskIds = normalizeSelectedCodeTaskIds({
+      codeTaskPlan: imp.implementationCodeTaskPlanV1,
+      selectedCodeTaskIds: imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
+      legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
+    });
+    const plan = imp.implementationCodeTaskPlanV1 ?? null;
+    const currentCodeTaskId = resolveExecutionTargetCodeTaskId({
+      selectedCodeTaskId: null,
+      runtimeCurrentCodeTaskId:
+        implementationRuntimeDbBundle?.job?.currentCodeTaskId?.trim() ?? null,
+      codeTaskPlan: plan ?? undefined,
+    });
+    const runs =
+      parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ?? [];
+    const result = resolveDeveloperPromptCopyFromSelection({
+      projectId: pid,
+      selectedCodeTaskIds,
+      currentCodeTaskId,
+      codeTaskPlan: plan,
+      taskList: imp.implementationTaskListV1 ?? null,
+      cursorWorkItems: imp.cursorWorkItemsV1 ?? [],
+      runs,
+      targetRepository,
+      baseBranch: executionSetupRow?.baseBranch ?? targetRepository?.defaultBranch ?? "main",
+      allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
+      codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
+    });
+    if (!result.ok || !result.prompt) {
+      showToast(result.reason ?? "개발 프롬프트를 복사할 수 없습니다.");
+      return;
+    }
+    const totalCodeTaskCount = plan?.tasks?.length ?? 0;
+    void writeClipboardText(result.prompt).then((ok) => {
+      showToast(
+        ok
+          ? formatDeveloperPromptHeaderCopySuccessToast({
+              count: result.count ?? 1,
+              selectedCodeTaskIds,
+              totalCodeTaskCount,
+            })
+          : "클립보드 복사에 실패했습니다.",
+      );
+    });
+  }, [
+    projectId,
+    orchestrationAwareRequirementsState,
+    executionSetupRow,
+    implementationRuntimeDbBundle?.job?.currentCodeTaskId,
+    showToast,
+  ]);
 
   const handleRepairCodeTaskBranchPlan = useCallback(() => {
     const pid = projectId.trim();
@@ -8118,7 +8184,8 @@ export function PrototypePreviewPanel({
             onSelectedTaskIdsChange={handleBoardSelectedTaskIdsChange}
             onSelectedCodeTaskIdsChange={handleBoardSelectedCodeTaskIdsChange}
             onCopyCodeTaskCursorPrompt={handleCopyCodeTaskCursorPrompt}
-            onCopyAllCodeTaskCursorPrompts={handleCopyAllCodeTaskCursorPrompts}
+            onCopyStageOnePlanningPrompt={handleCopyStageOnePlanningPrompt}
+            onCopyDeveloperPromptsFromHeader={handleCopyDeveloperPromptsFromHeader}
             onRetryGithubVerify={() => void handleManualGithubVerifyRetry()}
             projectId={projectId.trim()}
             implementationRuntimeStateV1={resolveImplementationRuntimeStateForRead({

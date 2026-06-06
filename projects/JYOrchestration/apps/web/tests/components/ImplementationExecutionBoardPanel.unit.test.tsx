@@ -5,6 +5,7 @@ import { ImplementationCodeAgentExecutionProgressCard } from "@/components/previ
 import { ImplementationExecutionBoardPanel } from "@/components/preview/ImplementationExecutionBoardPanel";
 import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
+import { buildImplementationCodeTaskPlanFromTaskList } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 function sampleTaskList(): ImplementationTaskListV1 {
   return {
@@ -63,6 +64,36 @@ describe("ImplementationExecutionBoardPanel", () => {
     expect(html).not.toContain("실행 잠금 해제");
     expect(html).not.toContain("기존 JSON 실행 상태를 DB Runtime으로 복구");
     expect(html).not.toContain("implementation-runtime-diagnostics");
+  });
+
+  it("P3-M52: hides stage-two developer prompt preview on main board", () => {
+    const taskList = sampleTaskList();
+    const board = buildImplementationExecutionBoardFromRequirementsState({
+      projectId: "p1",
+      orchestration: { implementationTaskListV1: taskList },
+    })!;
+    const plan = buildImplementationCodeTaskPlanFromTaskList({
+      projectId: "p1",
+      taskList,
+      envOk: true,
+      designOk: true,
+      nowIso: "2026-05-30T12:00:00.000Z",
+    });
+    const html = renderToStaticMarkup(
+      createElement(ImplementationExecutionBoardPanel, {
+        board,
+        taskList,
+        projectId: "p1",
+        implementationCodeTaskPlanV1: plan,
+        boardInput: {
+          projectId: "p1",
+          taskList,
+        },
+      }),
+    );
+    expect(html).not.toContain("현재 CodeTask 개발 프롬프트 (2단계 · Cursor 전달용)");
+    expect(html).not.toContain("implementation-stage-two-developer-prompt-preview");
+    expect(html).not.toContain("implementation-stage-one-planning-prompt-preview");
   });
 
   it("shows Cloud Agent poll cancel button while polling", () => {

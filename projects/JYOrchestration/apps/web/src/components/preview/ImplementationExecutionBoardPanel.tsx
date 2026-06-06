@@ -41,6 +41,7 @@ import { evaluateStageOnePromptPlanReadiness } from "@/lib/prototype/stageOnePro
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
 import { resolveExecutionTargetCodeTaskId } from "@/lib/prototype/resolveExecutionTargetCodeTaskId";
+import { SHOW_STAGE_TWO_DEVELOPER_PROMPT_PREVIEW } from "@/lib/prototype/implementationDeveloperPromptPreviewUi";
 import { resolveStageTwoDeveloperPromptPreview } from "@/lib/prototype/resolveStageTwoDeveloperPromptPreview";
 import { summarizeBranchPlanForUi } from "@/lib/prototype/implementationBranchPlan";
 import {
@@ -120,7 +121,8 @@ export function ImplementationExecutionBoardPanel({
   onSelectedTaskIdsChange,
   onSelectedCodeTaskIdsChange,
   onCopyCodeTaskCursorPrompt,
-  onCopyAllCodeTaskCursorPrompts,
+  onCopyStageOnePlanningPrompt,
+  onCopyDeveloperPromptsFromHeader,
   onRetryGithubVerify,
   projectId,
   implementationRuntimeStateV1,
@@ -159,7 +161,8 @@ export function ImplementationExecutionBoardPanel({
   readonly onSelectedTaskIdsChange?: (selectedTaskIds: readonly string[]) => void;
   readonly onSelectedCodeTaskIdsChange?: (selectedCodeTaskIds: readonly string[]) => void;
   readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
-  readonly onCopyAllCodeTaskCursorPrompts?: () => void;
+  readonly onCopyStageOnePlanningPrompt?: () => void;
+  readonly onCopyDeveloperPromptsFromHeader?: () => void;
   readonly onRetryGithubVerify?: () => void;
   readonly projectId?: string;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
@@ -324,30 +327,39 @@ export function ImplementationExecutionBoardPanel({
     [selectedCodeTaskId, queueCurrentCodeTaskId, parsedCodeTaskPlan],
   );
 
-  const stageTwoDeveloperPromptPreview = useMemo(
-    () =>
-      resolveStageTwoDeveloperPromptPreview({
-        projectId: projectId?.trim() ?? board.projectId,
-        codeTaskPlan: parsedCodeTaskPlan,
-        taskList,
-        codeTaskPromptContextMapV1: parsedPromptContextMap,
-        targetRepository,
-        selectedCodeTaskId,
-        runtimeCurrentCodeTaskId: queueCurrentCodeTaskId,
-        allowedPathGlobs: parseStringArrayJson(executionSetup?.allowedPathGlobs),
-      }),
-    [
-      projectId,
-      board.projectId,
-      parsedCodeTaskPlan,
+  const stageTwoDeveloperPromptPreview = useMemo(() => {
+    if (!SHOW_STAGE_TWO_DEVELOPER_PROMPT_PREVIEW) {
+      return {
+        codeTaskId: null,
+        title: null,
+        branchGroup: null,
+        baseBranch: null,
+        workBranch: null,
+        preview: "",
+        ready: false,
+      };
+    }
+    return resolveStageTwoDeveloperPromptPreview({
+      projectId: projectId?.trim() ?? board.projectId,
+      codeTaskPlan: parsedCodeTaskPlan,
       taskList,
-      parsedPromptContextMap,
+      codeTaskPromptContextMapV1: parsedPromptContextMap,
       targetRepository,
       selectedCodeTaskId,
-      queueCurrentCodeTaskId,
-      executionSetup?.allowedPathGlobs,
-    ],
-  );
+      runtimeCurrentCodeTaskId: queueCurrentCodeTaskId,
+      allowedPathGlobs: parseStringArrayJson(executionSetup?.allowedPathGlobs),
+    });
+  }, [
+    projectId,
+    board.projectId,
+    parsedCodeTaskPlan,
+    taskList,
+    parsedPromptContextMap,
+    targetRepository,
+    selectedCodeTaskId,
+    queueCurrentCodeTaskId,
+    executionSetup?.allowedPathGlobs,
+  ]);
 
   const checkedCodeTaskIds = useMemo(
     () =>
@@ -667,6 +679,7 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const [reworkOpen, setReworkOpen] = useState(false);
+  const [stageOneDiagnosticsOpen, setStageOneDiagnosticsOpen] = useState(false);
 
   const selectedExecutionProgress = useMemo(
     () =>
@@ -889,7 +902,7 @@ export function ImplementationExecutionBoardPanel({
         ) : null}
       </div>
 
-      {parsedCodeTaskPlan ? (
+      {parsedCodeTaskPlan && SHOW_STAGE_TWO_DEVELOPER_PROMPT_PREVIEW ? (
         <section className={styles.taskTreeSection} data-testid="implementation-stage-two-developer-prompt">
           <div className={styles.integrationSectionHeader}>
             <strong>현재 CodeTask 개발 프롬프트 (2단계 · Cursor 전달용)</strong>
@@ -911,30 +924,6 @@ export function ImplementationExecutionBoardPanel({
           ) : (
             <div className={styles.summarySecondary}>실행 대상 CodeTask를 선택해 주세요.</div>
           )}
-          <div className={styles.stuckRecoveryActions}>
-            <button
-              type="button"
-              className={styles.githubVerifyRetryLink}
-              data-testid="implementation-copy-stage-one-planning-prompt"
-              disabled={!onCopyAllCodeTaskCursorPrompts}
-              onClick={() => onCopyAllCodeTaskCursorPrompts?.()}
-            >
-              계획 프롬프트 복사
-            </button>
-            <button
-              type="button"
-              className={styles.githubVerifyRetryLink}
-              data-testid="implementation-copy-current-developer-prompt"
-              disabled={!executionTargetCodeTaskId || !stageTwoDeveloperPromptPreview.ready}
-              onClick={() => {
-                if (executionTargetCodeTaskId) {
-                  onCopyCodeTaskCursorPrompt?.(executionTargetCodeTaskId);
-                }
-              }}
-            >
-              현재 CodeTask 개발 프롬프트 복사
-            </button>
-          </div>
           {stageTwoDeveloperPromptPreview.preview ? (
             <pre
               className={styles.summarySecondary}
@@ -969,13 +958,38 @@ export function ImplementationExecutionBoardPanel({
             </div>
           ))}
           {stageOneQualityLines.length ? (
-            <div className={styles.summarySecondary} data-testid="code-task-stage-one-prompt-quality">
-              <div className={styles.integrationSectionHeader}>
-                <strong>CodeTask 1단계 계획 보기 (진단/검토용)</strong>
-              </div>
-              {stageOneQualityLines.map((line, index) => (
-                <div key={`stage-one-quality-${index}`}>{line}</div>
-              ))}
+            <div className={styles.summarySecondary} data-testid="code-task-stage-one-diagnostics">
+              <button
+                type="button"
+                className={styles.reworkToggle}
+                aria-expanded={stageOneDiagnosticsOpen}
+                data-testid="implementation-stage-one-diagnostics-toggle"
+                onClick={() => setStageOneDiagnosticsOpen((open) => !open)}
+              >
+                {stageOneDiagnosticsOpen
+                  ? "CodeTask 1단계 계획 보기 (진단/검토용) 닫기"
+                  : "CodeTask 1단계 계획 보기 (진단/검토용) 펼치기"}
+              </button>
+              {stageOneDiagnosticsOpen ? (
+                <>
+                  <p className={styles.summarySecondary} style={{ marginTop: 8 }}>
+                    이 프롬프트는 전체 CodeTask 계획/진단용입니다. Cursor 실행용이 아닙니다. Cursor
+                    실행에는 각 CodeTask의 2단계 개발 프롬프트를 사용합니다.
+                  </p>
+                  {stageOneQualityLines.map((line, index) => (
+                    <div key={`stage-one-quality-${index}`}>{line}</div>
+                  ))}
+                  <button
+                    type="button"
+                    className={styles.githubVerifyRetryLink}
+                    data-testid="implementation-copy-stage-one-planning-prompt"
+                    disabled={!onCopyStageOnePlanningPrompt}
+                    onClick={() => onCopyStageOnePlanningPrompt?.()}
+                  >
+                    계획 프롬프트 복사
+                  </button>
+                </>
+              ) : null}
             </div>
           ) : null}
         </section>
@@ -1021,7 +1035,11 @@ export function ImplementationExecutionBoardPanel({
             );
           }}
           onCopyCodeTaskCursorPrompt={onCopyCodeTaskCursorPrompt}
-          onCopyAllCodeTaskCursorPrompts={onCopyAllCodeTaskCursorPrompts}
+          onCopyDeveloperPromptsFromHeader={onCopyDeveloperPromptsFromHeader}
+          developerPromptHeaderCopyDisabled={
+            !executionTargetCodeTaskId &&
+            checkedCodeTaskIds.length === 0
+          }
         />
       </section>
 

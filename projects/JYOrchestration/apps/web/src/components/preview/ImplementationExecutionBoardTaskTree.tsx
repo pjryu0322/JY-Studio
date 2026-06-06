@@ -69,8 +69,8 @@ function ExecutionFlowSteps({
                 <button
                   type="button"
                   className={styles.taskTreeCopyPromptButton}
-                  aria-label="현재 CodeTask 개발 프롬프트 복사"
-                  title="현재 CodeTask 개발 프롬프트 복사 (2단계 · Cursor 전달용)"
+                  aria-label="CodeTask 개발 프롬프트 복사"
+                  title="이 CodeTask 2단계 개발 프롬프트 복사"
                   onClick={(event) => {
                     event.stopPropagation();
                     onCopyCursorPrompt();
@@ -242,7 +242,8 @@ export function ImplementationExecutionBoardTaskTree({
   onToggleSelectAll,
   onToggleCodeTaskChecked,
   onCopyCodeTaskCursorPrompt,
-  onCopyAllCodeTaskCursorPrompts,
+  onCopyDeveloperPromptsFromHeader,
+  developerPromptHeaderCopyDisabled,
   selectedCodeTaskCount,
   codeAgentProgress,
 }: {
@@ -254,7 +255,8 @@ export function ImplementationExecutionBoardTaskTree({
   readonly onToggleSelectAll?: (checked: boolean) => void;
   readonly onToggleCodeTaskChecked?: (codeTaskId: string, checked: boolean) => void;
   readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
-  readonly onCopyAllCodeTaskCursorPrompts?: () => void;
+  readonly onCopyDeveloperPromptsFromHeader?: () => void;
+  readonly developerPromptHeaderCopyDisabled?: boolean;
   readonly selectedCodeTaskCount?: number;
 }) {
   const codeTaskCount = nodes.length;
@@ -273,17 +275,18 @@ export function ImplementationExecutionBoardTaskTree({
             onChange={(event) => onToggleSelectAll?.(event.target.checked)}
           />
           <span>전체 선택</span>
-          {onCopyAllCodeTaskCursorPrompts && codeTaskCount > 0 ? (
+          {onCopyDeveloperPromptsFromHeader && codeTaskCount > 0 ? (
             <button
               type="button"
               className={styles.taskTreeCopyPromptButton}
-              aria-label="계획 프롬프트 복사"
-              title="CodeTask 1단계 계획 프롬프트 복사 (Cursor 실행용 아님)"
-              data-testid="implementation-copy-all-planning-draft-prompts"
+              aria-label="선택 CodeTask 개발 프롬프트 복사"
+              title="선택 CodeTask 2단계 개발 프롬프트 복사"
+              data-testid="implementation-copy-developer-prompts-from-header"
+              disabled={developerPromptHeaderCopyDisabled === true}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                onCopyAllCodeTaskCursorPrompts();
+                onCopyDeveloperPromptsFromHeader();
               }}
             >
               <CodeTaskCursorPromptCopyIcon size={13} />

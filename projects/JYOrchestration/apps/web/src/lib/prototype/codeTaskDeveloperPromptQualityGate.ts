@@ -159,12 +159,23 @@ export function evaluateStageTwoDeveloperPromptReadiness(input: {
   };
 }
 
+export function isDeveloperPromptBundleContent(prompt: string): boolean {
+  return String(prompt ?? "").trimStart().startsWith("# CodeTask Developer Prompt Bundle");
+}
+
 export function assertStageTwoDeveloperPromptAllowed(input: {
   readonly prompt: string;
   readonly stage?: string | null;
 }): Readonly<{ readonly ok: boolean; readonly message: string; readonly errors: readonly string[] }> {
   if (input.stage === "stage_one_planning_summary") {
     return { ok: false, message: STAGE_TWO_CURSOR_BLOCK_MESSAGE, errors: ["stage_one_planning_summary"] };
+  }
+  if (isDeveloperPromptBundleContent(input.prompt)) {
+    return {
+      ok: false,
+      message: STAGE_TWO_CURSOR_BLOCK_MESSAGE,
+      errors: ["developer_prompt_bundle_not_for_cursor_execute"],
+    };
   }
   if (isStageOnePlanningSummaryPromptContent(input.prompt)) {
     return { ok: false, message: STAGE_TWO_CURSOR_BLOCK_MESSAGE, errors: ["stage_one_planning_summary"] };
