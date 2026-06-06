@@ -12,6 +12,16 @@ import {
   isIntegrationWiringCodeTask,
 } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import {
+  mergeFoundationShellOwnedFiles,
+  mergeIntegrationWiringOwnedFiles,
+} from "@/lib/prototype/codeTaskRouteBoundaryPlanner";
+import type { CodeTaskBranchGroupV1 } from "@/lib/prototype/implementationBranchPlan";
+import {
+  buildFileBoundaryPrincipleLines,
+  ROUTE_ENTRY_USAGE_NOTE,
+  shouldIncludeRouteEntryUsageNote,
+} from "@/lib/prototype/codeTaskDeveloperPromptTemplate";
+import {
   resolveCodeTaskCanonicalSlug,
   resolveFeatureFolderForRole,
   resolveScreenComponentFolder,
@@ -126,8 +136,8 @@ export function buildFileBoundaryForRole(
       return finalizeBoundary({
         ...base,
         conflictGroupId: "workspace-shell",
-        expectedFiles: [...WORKSPACE_SHELL_OWNED_PATTERNS],
-        ownedFiles: [...WORKSPACE_SHELL_OWNED_PATTERNS],
+        expectedFiles: mergeFoundationShellOwnedFiles(WORKSPACE_SHELL_OWNED_PATTERNS),
+        ownedFiles: mergeFoundationShellOwnedFiles(WORKSPACE_SHELL_OWNED_PATTERNS),
         forbiddenFiles: ["src/data/sample/*", "src/components/common/*"],
         sharedFiles: [],
       });
@@ -214,6 +224,7 @@ export function buildFileBoundaryForRole(
 
 export function buildCodeTaskFileBoundaryPromptSections(
   boundary: CodeTaskFileBoundaryV1 | null | undefined,
+  branchGroup?: CodeTaskBranchGroupV1 | null,
 ): string[] {
   if (!boundary) return [];
   const allowed = [
@@ -233,6 +244,10 @@ export function buildCodeTaskFileBoundaryPromptSections(
     lines.push("- (ownedFiles 없음 — 작업 범위 최소화)");
   }
 
+  if (shouldIncludeRouteEntryUsageNote(branchGroup)) {
+    lines.push("", ROUTE_ENTRY_USAGE_NOTE);
+  }
+
   lines.push("", "## 수정 금지 파일");
   if (forbidden.length) {
     lines.push(...forbidden.map((p) => `- ${p}`));
@@ -240,15 +255,6 @@ export function buildCodeTaskFileBoundaryPromptSections(
     lines.push("- (명시적 금지 경로 없음 — Shell/global 재작성 금지)");
   }
 
-  lines.push(
-    "",
-    "## 파일 경계 원칙",
-    "- 위 허용 파일 밖의 기존 파일을 재작성하지 않는다.",
-    "- 수정 금지 파일은 생성·수정·삭제하지 않는다.",
-    "- 기존 App Shell 구조를 재작성하지 않는다.",
-    "- 필요한 연결이 수정 금지 파일에 필요한 경우, 직접 수정하지 말고 `integration-required` 메모를 남긴다.",
-    "- 새 파일은 허용 경로 하위에만 생성한다.",
-    "- 이 Task의 목적을 달성하기 위해 forbiddenFiles 수정이 필요하다고 판단되면, 해당 파일을 직접 수정하지 말고 작업 결과에 `requiresIntegrationChange`를 기록한다.",
-  );
+  lines.push("", "## 파일 경계 원칙", ...buildFileBoundaryPrincipleLines(branchGroup).map((l) => l));
   return lines;
 }

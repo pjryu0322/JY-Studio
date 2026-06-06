@@ -74,6 +74,9 @@ export function evaluateStageTwoDeveloperPromptContent(input: {
   if (!prompt.includes("## 수정 허용 파일")) missing.push("missing_allowed_files_section");
   if (!prompt.includes("## 수정 금지 파일")) missing.push("missing_forbidden_files_section");
   if (!prompt.includes("## 완료 기준")) missing.push("missing_completion_section");
+  if (!prompt.includes("## 작업 결과 보고 형식")) {
+    missing.push("missing_work_result_report_section");
+  }
 
   const headingCount = prompt.split("\n").filter((l) => l.trim() === "# CodeTask 개발 요청").length;
   if (headingCount > 1) {
@@ -122,6 +125,37 @@ export function evaluateStageTwoDeveloperPromptReadiness(input: {
     codeTaskId: input.codeTask.codeTaskId,
   });
   missing.push(...contentGate.missing);
+
+  const branchGroup = bp?.branchGroup;
+  if (branchGroup === "foundation") {
+    if (input.prompt.includes("main 기준이 아니라")) {
+      missing.push("developer_prompt_foundation_branch_wording_invalid");
+    }
+    if (!input.prompt.includes("foundation group은 첫 구현 단위")) {
+      warnings.push("developer_prompt_foundation_branch_wording_missing");
+    }
+  }
+  if (!input.prompt.includes("탐색만 허용")) {
+    warnings.push("developer_prompt_search_scope_ambiguous");
+  }
+  if (!input.prompt.includes("실제 코드 변경은 반드시 `수정 허용 파일`")) {
+    warnings.push("developer_prompt_search_scope_ambiguous");
+  }
+  if (!input.prompt.includes("## 작업 결과 보고 형식")) {
+    warnings.push("developer_prompt_requires_integration_change_format_missing");
+  }
+  if (
+    (branchGroup === "foundation" || branchGroup === "integration") &&
+    !input.prompt.includes("app/page.*") &&
+    !input.prompt.includes("src/app/page.*")
+  ) {
+    warnings.push("developer_prompt_route_boundary_missing");
+  }
+  if (!input.prompt.includes("실제 저장소에 존재하는 파일을 우선 사용")) {
+    if (branchGroup === "foundation" || branchGroup === "integration") {
+      warnings.push("developer_prompt_route_boundary_missing");
+    }
+  }
 
   let readiness: DeveloperPromptReadiness = contentGate.readiness;
   if (missing.includes("branchPlan")) readiness = "blocked_missing_branch_plan";

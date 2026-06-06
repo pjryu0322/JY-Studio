@@ -160,6 +160,7 @@ describe("P3-M51 developer prompt bundle copy", () => {
       codeTaskPromptContextMapV1: map,
     });
     expect(result.ok).toBe(true);
+    expect(result.prompt).toMatch(/^# CodeTask 개발 요청/);
     expect(result.content).toMatch(/^# CodeTask 개발 요청/);
     expect(result.content).not.toContain("Developer Prompt Bundle");
     expect(result.content).toContain("wip/data/sample-data");

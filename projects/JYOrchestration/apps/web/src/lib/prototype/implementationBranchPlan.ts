@@ -1,3 +1,5 @@
+import { buildBranchWorkPrincipleLines } from "@/lib/prototype/codeTaskDeveloperPromptTemplate";
+
 export const IMPLEMENTATION_BRANCH_PLAN_VERSION = "implementation_branch_plan_v1" as const;
 
 export type CodeTaskBranchGroupV1 =
@@ -171,11 +173,7 @@ export function buildCodeTaskBranchPlanPromptSections(
     `- execution mode: \`${branchPlan.executionMode}\``,
     "",
     "## Branch 작업 원칙",
-    "- 이 작업은 `main` 기준이 아니라 위 base branch 기준으로 수행한다.",
-    "- base branch에 이미 존재하는 App Shell, 데이터, 공통 구조를 보존한다.",
-    "- 기존 구조를 재생성하거나 재작성하지 않는다.",
-    "- 이 Task의 수정 허용 파일 밖은 수정하지 않는다.",
-    "- 수정 금지 파일 연결이 필요하면 직접 수정하지 말고 `requiresIntegrationChange`에 기록한다.",
+    ...buildBranchWorkPrincipleLines(branchPlan).map((line) => line),
   ];
 }
 

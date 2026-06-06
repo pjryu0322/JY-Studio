@@ -27,7 +27,14 @@ import {
 import type { CodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import type { CodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { buildCodeTaskWorkBranch, resolveCodeTaskWorkBranchForTask, resolveCodeTaskBaseBranchForTask } from "@/lib/prototype/taskCursorExecution";
-import { buildCodeTaskBranchPlanPromptSections } from "@/lib/prototype/implementationBranchPlan";
+import {
+  buildCodeTaskBranchPlanPromptSections,
+  parseCodeTaskBranchPlanV1,
+} from "@/lib/prototype/implementationBranchPlan";
+import {
+  buildDeveloperPromptSearchScopeSections,
+  buildWorkResultReportFormatSections,
+} from "@/lib/prototype/codeTaskDeveloperPromptTemplate";
 
 export type BuildCodeTaskDeveloperPromptResult = Readonly<{
   readonly prompt: string;
@@ -165,7 +172,11 @@ function buildGeneratedProjectPrompt(input: {
   const boundary =
     parseCodeTaskFileBoundaryV1(codeTask.fileBoundary) ??
     inferCodeTaskFileBoundary({ codeTask, parentTask: input.parentTask ?? null });
-  const boundarySections = buildCodeTaskFileBoundaryPromptSections(boundary);
+  const branchPlan = parseCodeTaskBranchPlanV1(codeTask.branchPlan);
+  const boundarySections = buildCodeTaskFileBoundaryPromptSections(
+    boundary,
+    branchPlan?.branchGroup,
+  );
 
   const sections = [
     "# CodeTask 개발 요청",
@@ -191,15 +202,12 @@ function buildGeneratedProjectPrompt(input: {
     ...implementationRequirements,
     "",
     ...boundarySections,
-    "",
-    "## 수정 대상 탐색 기준",
-    "- 대상 저장소 내부에서 관련 화면, 컴포넌트, 상태 모듈을 탐색한다.",
-    "- 우선 탐색 경로:",
-    ...probePaths,
-    "- 실제 저장소 구조에 맞춰 최소 범위만 수정한다.",
+    ...buildDeveloperPromptSearchScopeSections(probePaths),
     "",
     "## 검증 기준",
     ...verificationChecklist,
+    "",
+    ...buildWorkResultReportFormatSections(),
     "",
     "## 금지사항",
     ...target.forbiddenRules.map((r) => `- ${r}`),
@@ -209,7 +217,7 @@ function buildGeneratedProjectPrompt(input: {
     "- 변경 후 commit 생성",
     `- \`${target.workBranch}\` branch에 push`,
     "- push 후 GitHub에서 branch head commit 확인 가능",
-    "- 코드 변경이 불필요한 경우 noCodeChange 근거를 명확히 기록",
+    "- 코드 변경이 불필요한 경우 noCodeChange 근거를 작업 결과 보고 형식에 기록",
   ];
 
   return sections.join("\n").trim();

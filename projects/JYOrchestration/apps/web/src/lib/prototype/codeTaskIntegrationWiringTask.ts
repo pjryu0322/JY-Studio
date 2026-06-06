@@ -1,6 +1,7 @@
 import { CODE_TASK_FILE_BOUNDARY_VERSION } from "@/lib/prototype/codeTaskFileBoundary";
 import type { CodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { normalizeCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundaryNormalize";
+import { mergeIntegrationWiringOwnedFiles } from "@/lib/prototype/codeTaskRouteBoundaryPlanner";
 import { WORKSPACE_SHELL_OWNED_PATTERNS } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import type {
   ImplementationCodeTaskPlanV1,
@@ -22,17 +23,12 @@ const INTEGRATION_FORBIDDEN = [
   "src/components/screens/*",
 ] as const;
 
-const INTEGRATION_OWNED = [
+const INTEGRATION_OWNED = mergeIntegrationWiringOwnedFiles([
   "app/index.html",
+  ...WORKSPACE_SHELL_OWNED_PATTERNS,
   "src/App.*",
   "src/routes/*",
-  "src/components/WorkspaceShell.*",
-  "src/components/LeftPanel.*",
-  "src/components/CenterPanel.*",
-  "src/components/RightPanel.*",
-  "src/styles/workspace.*",
-  "src/styles/global.*",
-] as const;
+]);
 
 export function isIntegrationWiringCodeTask(
   task: Pick<ImplementationCodeTaskV1, "codeTaskId" | "changeType" | "title">,

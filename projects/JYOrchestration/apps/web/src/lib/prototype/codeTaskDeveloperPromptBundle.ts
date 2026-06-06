@@ -146,7 +146,7 @@ export function resolveDeveloperPromptCopyFromSelection(input: {
   readonly baseBranch: string;
   readonly allowedPathGlobs?: readonly string[];
   readonly codeTaskPromptContextMapV1?: CodeTaskPromptContextMapV1 | null;
-}): Readonly<{ readonly ok: boolean; readonly prompt?: string; readonly reason?: string; readonly count?: number }> {
+}): Readonly<{ readonly ok: boolean; readonly prompt?: string; readonly content?: string; readonly reason?: string; readonly count?: number }> {
   if (!input.targetRepository || !input.codeTaskPlan?.tasks.length) {
     return { ok: false, reason: CODE_TASK_DEVELOPER_PROMPT_COPY_FAILED_MESSAGE };
   }
@@ -161,7 +161,7 @@ export function resolveDeveloperPromptCopyFromSelection(input: {
     ids = [current];
   }
 
-  return buildStageTwoDeveloperPromptBundle({
+  const bundle = buildStageTwoDeveloperPromptBundle({
     projectId: input.projectId,
     codeTaskIds: ids,
     codeTaskPlan: input.codeTaskPlan,
@@ -173,6 +173,11 @@ export function resolveDeveloperPromptCopyFromSelection(input: {
     allowedPathGlobs: input.allowedPathGlobs,
     codeTaskPromptContextMapV1: input.codeTaskPromptContextMapV1,
   });
+  if (!bundle.ok || !bundle.content?.trim()) {
+    return { ok: false, reason: bundle.reason ?? CODE_TASK_DEVELOPER_PROMPT_COPY_FAILED_MESSAGE };
+  }
+  const prompt = bundle.content.trim();
+  return { ok: true, prompt, content: prompt, count: bundle.count };
 }
 
 export function formatDeveloperPromptBundleCopySuccessToast(count: number): string {
