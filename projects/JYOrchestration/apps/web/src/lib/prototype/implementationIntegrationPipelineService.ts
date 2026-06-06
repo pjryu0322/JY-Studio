@@ -11,6 +11,8 @@ import { runIntegrationBranchChecks } from "@/lib/prototype/implementationIntegr
 import { canCreateIntegrationPullRequest } from "@/lib/prototype/implementationIntegrationConflict";
 import { createIntegrationPullRequest } from "@/lib/prototype/githubIntegrationPullRequestService";
 import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
+import { runIntegrationConflictPrecheck } from "@/lib/prototype/integrationConflictPrecheck";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
@@ -86,6 +88,50 @@ export async function runIntegrationBranchPipeline(input: {
   for (const row of targets.included) {
     const run = findLatestRunForCodeTask(input.codeTaskRuns ?? [], row.codeTaskId);
     if (run?.runId) runIdByCodeTaskId.set(row.codeTaskId, run.runId);
+  }
+
+  const codeTaskPlanForPrecheck =
+    ensureCodeTaskPlanWithFileBoundaries({
+      plan: input.codeTaskPlan,
+      taskList: input.taskList,
+    }) ?? input.codeTaskPlan;
+  const precheck = runIntegrationConflictPrecheck({
+    included: targets.included,
+    codeTaskPlan: codeTaskPlanForPrecheck,
+    codeTaskRuns: input.codeTaskRuns,
+    conflictPlan: codeTaskPlanForPrecheck?.codeTaskConflictPlanV1 ?? null,
+  });
+  if (precheck.status === "blocking") {
+    const draft = buildCodeTaskIntegrationPlanDraft({
+      projectId: input.projectId,
+      targetRepository: input.repoUrl,
+      baseBranch: input.baseBranch,
+      included: targets.included,
+      excluded: targets.excluded,
+      codeTaskPlan: input.codeTaskPlan,
+      selectedCodeTaskIds: input.selectedCodeTaskIds,
+      runIdByCodeTaskId,
+      nowIso,
+    });
+    pushTimeline("implementation_conflict_precheck_blocked", {
+      overlapCount: precheck.overlapFiles.length,
+      message: precheck.message,
+    });
+    return {
+      ok: false,
+      plan: patchCodeTaskIntegrationPlan(draft, {
+        status: "failed",
+        failureMessage: precheck.message ?? "통합 전 changed files overlap — merge 중단",
+      }),
+      timeline,
+      message: precheck.message ?? "통합 전 changed files overlap으로 merge를 시작하지 않습니다.",
+    };
+  }
+  if (precheck.status === "warning") {
+    pushTimeline("implementation_conflict_precheck_warning", {
+      overlapCount: precheck.overlapFiles.length,
+      message: precheck.message,
+    });
   }
 
   let plan = buildCodeTaskIntegrationPlanDraft({

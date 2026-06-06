@@ -1,4 +1,12 @@
-import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import {
+  summarizeCodeTaskConflictRisk,
+} from "@/lib/prototype/codeTaskFileConflictPlanner";
+import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
+import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
+import type {
+  ImplementationCodeTaskPlanV1,
+  ImplementationCodeTaskV1,
+} from "@/lib/prototype/implementationCodeTaskPlan";
 import {
   findLatestRunForCodeTask,
   type CodeTaskExecutionRunV1,
@@ -274,6 +282,25 @@ function buildCodeTaskNode(input: {
     formatMetaLine("ID", input.codeTask.codeTaskId),
   ];
 
+  const boundary = parseCodeTaskFileBoundaryV1(input.codeTask.fileBoundary) ?? null;
+  const conflictPlan = input.codeTaskPlan?.codeTaskConflictPlanV1 ?? null;
+  const risk = summarizeCodeTaskConflictRisk(
+    boundary,
+    conflictPlan?.issues ?? [],
+    input.codeTask.codeTaskId,
+  );
+  metaLines.push(formatMetaLine("파일 경계", risk.boundaryLabel));
+  if (boundary?.conflictGroupId) {
+    metaLines.push(formatMetaLine("충돌 그룹", boundary.conflictGroupId));
+    metaLines.push(formatMetaLine("실행 정책", risk.policyLabel));
+  }
+  if (risk.riskLabel !== "낮음") {
+    metaLines.push(formatMetaLine("충돌 가능성", risk.riskLabel));
+    for (const file of risk.sharedFileLines.slice(0, 2)) {
+      metaLines.push(formatMetaLine("공유 파일", file));
+    }
+  }
+
   const failureReason =
     phase === "prompt_preflight_failed"
       ? PROMPT_PREFLIGHT_USER_BLOCK_MESSAGE
@@ -362,7 +389,11 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
   readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
   readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
 }): readonly ImplementationCodeTaskTreeNode[] {
-  const plan = input.codeTaskPlan;
+  const plan =
+    ensureCodeTaskPlanWithFileBoundaries({
+      plan: input.codeTaskPlan ?? null,
+      taskList: null,
+    }) ?? input.codeTaskPlan;
   if (!plan?.tasks.length) return [];
 
   const rowByParentId = new Map(

@@ -258,6 +258,27 @@ export function validateCodeTaskDeveloperPromptSafety(input: {
       errors.push("legacy_process_task_sections");
     }
 
+    if (prompt.includes("관련 파일을 찾아 자유롭게")) {
+      errors.push("broad_free_edit_wording");
+    }
+    if (
+      /src\/\*\*/.test(prompt) &&
+      (/수정 허용/.test(prompt.split("## 수정 허용 파일")[1]?.split("##")[0] ?? "") ||
+        /전체\s*자유/.test(prompt) ||
+        /src\/\*\*\s*전체/.test(prompt))
+    ) {
+      errors.push("broad_src_glob_permission");
+    }
+    if (!prompt.includes("## 수정 허용 파일")) {
+      errors.push("missing_allowed_files_section");
+    }
+    if (!prompt.includes("## 수정 금지 파일")) {
+      errors.push("missing_forbidden_files_section");
+    }
+    if (!prompt.includes("requiresIntegrationChange")) {
+      warnings.push("missing_requires_integration_change_hint");
+    }
+
     if (codeTaskId && expectedWorkBranch) {
       const product = validateRuntimeCursorPromptProductQuality({
         prompt,

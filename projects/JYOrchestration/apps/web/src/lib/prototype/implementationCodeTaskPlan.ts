@@ -1,4 +1,10 @@
 import {
+  parseCodeTaskFileBoundaryV1,
+  type CodeTaskFileBoundaryV1,
+} from "@/lib/prototype/codeTaskFileBoundary";
+import type { CodeTaskConflictPlanV1 } from "@/lib/prototype/codeTaskFileConflictPlanner";
+import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
+import {
   buildImplementationTaskExecutionHints,
   COMMON_FORBIDDEN_PATHS,
 } from "@/lib/prototype/implementationExecutionHints";
@@ -52,6 +58,7 @@ export type ImplementationCodeTaskV1 = Readonly<{
   blockers: readonly string[];
   refinementSource?: "heuristic" | "llm";
   llmRationale?: string;
+  fileBoundary?: CodeTaskFileBoundaryV1 | null;
 }>;
 
 export type ImplementationCodeTaskPlanRefinementSource =
@@ -120,6 +127,7 @@ export type ImplementationCodeTaskPlanV1 = Readonly<{
     readonly model?: string;
   }>;
   llmRefinementSummary?: ImplementationCodeTaskPlanLlmRefinementSummaryV1;
+  codeTaskConflictPlanV1?: CodeTaskConflictPlanV1 | null;
 }>;
 
 export const IMPLEMENTATION_CODE_TASK_CONSOLIDATION_LLM_GUIDELINES = [
@@ -382,8 +390,16 @@ function decomposeDeveloperTaskToCodeTasks(input: {
       refinementSource: "heuristic",
     };
     const requiredFieldsMissing = codeTaskRequiredFieldsMissing(draft);
+    const fileBoundary = inferCodeTaskFileBoundary({
+      codeTask: { ...draft, status: "draft" },
+      parentTaskTitle: task.title,
+    });
     return {
       ...draft,
+      fileBoundary,
+      forbiddenPaths: [
+        ...new Set([...forbiddenPaths, ...fileBoundary.forbiddenFiles.slice(0, 6)]),
+      ],
       status: resolveCodeTaskStatus({
         envOk: input.envOk,
         designOk: input.designOk,
@@ -559,6 +575,9 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
         : {}),
       ...(typeof row.llmRationale === "string" && row.llmRationale.trim()
         ? { llmRationale: row.llmRationale.trim() }
+        : {}),
+      ...(parseCodeTaskFileBoundaryV1(row.fileBoundary)
+        ? { fileBoundary: parseCodeTaskFileBoundaryV1(row.fileBoundary)! }
         : {}),
     });
   }

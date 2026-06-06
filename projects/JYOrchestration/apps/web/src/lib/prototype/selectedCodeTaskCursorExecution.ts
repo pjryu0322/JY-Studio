@@ -5,6 +5,7 @@ import {
 import { QUICK_RUN_DISPATCH_REASON } from "@/lib/prototype/quickRunDispatchReasonCodes";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
 import {
   findDispatchableRunForCodeTask,
   type CodeTaskExecutionRunV1,
@@ -139,6 +140,10 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
     input.codeTaskPromptContextMapV1,
     input.queueDispatch.codeTaskId,
   );
+  const planWithBoundaries = ensureCodeTaskPlanWithFileBoundaries({
+    plan: input.codeTaskPlan ?? null,
+    taskList: input.taskList ?? null,
+  });
   const builtResult = tryBuildCodeTaskCursorExecutionRequest({
     projectId: input.projectId,
     run,
@@ -151,6 +156,7 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
     allowedPathGlobs: input.allowedPathGlobs,
     existingTaskCursor: input.existingTaskCursor,
     nowIso,
+    codeTaskConflictPlan: planWithBoundaries?.codeTaskConflictPlanV1 ?? null,
   });
   if (!builtResult.ok) {
     return { ok: false, outcome: "blocked", message: builtResult.message };

@@ -13,6 +13,11 @@ import {
   sanitizeCandidatePathsForTargetRepo,
   type CodeTaskPromptTargetRepoKind,
 } from "@/lib/prototype/codeTaskPromptPathPolicy";
+import {
+  buildCodeTaskFileBoundaryPromptSections,
+  inferCodeTaskFileBoundary,
+} from "@/lib/prototype/codeTaskFileBoundaryPlanner";
+import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
 
 export type BuildCodeTaskDeveloperPromptResult = Readonly<{
@@ -148,6 +153,11 @@ function buildGeneratedProjectPrompt(input: {
     sanitizedCandidates.safeCandidatePaths,
   );
 
+  const boundary =
+    parseCodeTaskFileBoundaryV1(codeTask.fileBoundary) ??
+    inferCodeTaskFileBoundary({ codeTask, parentTask: input.parentTask ?? null });
+  const boundarySections = buildCodeTaskFileBoundaryPromptSections(boundary);
+
   const sections = [
     "# CodeTask 개발 요청",
     "",
@@ -178,6 +188,7 @@ function buildGeneratedProjectPrompt(input: {
     "",
     "## 검증 기준",
     ...verificationChecklist,
+    ...boundarySections,
     "",
     "## 금지사항",
     ...target.forbiddenRules.map((r) => `- ${r}`),
@@ -236,6 +247,10 @@ function buildPlatformProjectPrompt(input: {
     ...(codeTask.verificationHints.length
       ? codeTask.verificationHints.map((h) => `- ${h}`)
       : ["- 로컬 build/test 후 동작 확인"]),
+    ...buildCodeTaskFileBoundaryPromptSections(
+      parseCodeTaskFileBoundaryV1(codeTask.fileBoundary) ??
+        inferCodeTaskFileBoundary({ codeTask, parentTask: input.parentTask ?? null }),
+    ),
     "",
     "## 금지사항",
     ...target.forbiddenRules.map((p) => `- ${p}`),

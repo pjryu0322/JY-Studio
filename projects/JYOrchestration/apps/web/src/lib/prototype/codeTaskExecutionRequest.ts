@@ -17,6 +17,11 @@ import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRu
 import { updateCodeTaskExecutionRun } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CodeTaskConflictPlanV1 } from "@/lib/prototype/codeTaskFileConflictPlanner";
+import {
+  blockingIssuesForCodeTask,
+  formatCodeTaskFileConflictBlockMessage,
+} from "@/lib/prototype/codeTaskFileConflictPlanner";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import {
   buildCodeTaskWorkBranch,
@@ -113,8 +118,32 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
   readonly allowedPathGlobs?: readonly string[];
   readonly existingTaskCursor?: TaskCursorExecutionV1 | null;
   readonly nowIso?: string;
+  readonly codeTaskConflictPlan?: CodeTaskConflictPlanV1 | null;
 }): BuildCodeTaskCursorExecutionRequestResult {
   const now = input.nowIso ?? new Date().toISOString();
+
+  const fileBoundaryBlocking = blockingIssuesForCodeTask(
+    input.codeTaskConflictPlan,
+    input.codeTask.codeTaskId,
+  );
+  if (fileBoundaryBlocking.length) {
+    const message = formatCodeTaskFileConflictBlockMessage(fileBoundaryBlocking);
+    logRuntimePromptQualityGateFailure(
+      buildRuntimePromptQualityGateDiagnostics({
+        codeTaskId: input.codeTask.codeTaskId,
+        workBranch: buildCodeTaskWorkBranch(input.codeTask.codeTaskId),
+        errors: ["file_boundary_conflict"],
+        warnings: [],
+      }),
+    );
+    return {
+      ok: false,
+      message,
+      errors: ["file_boundary_conflict"],
+      warnings: [],
+    };
+  }
+
   const promptResult = resolveDeveloperPromptForCodeTask({
     run: input.run,
     codeTask: input.codeTask,
