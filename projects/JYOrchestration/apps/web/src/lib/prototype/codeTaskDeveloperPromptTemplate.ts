@@ -1,5 +1,10 @@
 import type { CodeTaskBranchGroupV1, CodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
-import { ROUTE_ENTRY_USAGE_NOTE } from "@/lib/prototype/codeTaskRouteBoundaryPlanner";
+import {
+  boundaryIncludesRouteEntryCandidates,
+  requiresRouteEntryGuardInPrompt,
+  ROUTE_ENTRY_DUPLICATE_GUARD_LINE,
+  ROUTE_ENTRY_USAGE_NOTE,
+} from "@/lib/prototype/codeTaskRouteBoundaryPlanner";
 
 export function buildBranchWorkPrincipleLines(branchPlan: CodeTaskBranchPlanV1): readonly string[] {
   const workBranch = branchPlan.workBranch.trim();
@@ -74,31 +79,41 @@ export function buildFileBoundaryPrincipleLines(
 
 export function buildDeveloperPromptSearchScopeSections(
   probePathLines: readonly string[],
+  options?: { readonly includeRouteEntryFrameworkCheck?: boolean },
 ): readonly string[] {
-  return [
+  const lines = [
     "",
     "## 수정 대상 탐색 기준",
     "- 아래 경로는 관련 구조 파악을 위한 탐색만 허용한다.",
     "- 실제 코드 변경은 반드시 `수정 허용 파일` 섹션에 명시된 파일/경로 안에서만 수행한다.",
     "- 수정 금지 파일은 탐색할 수는 있지만 생성·수정·삭제하지 않는다.",
-    "- 우선 탐색 경로:",
-    ...probePathLines,
-    "- 실제 저장소 구조에 맞춰 최소 범위만 수정한다.",
   ];
+  if (options?.includeRouteEntryFrameworkCheck) {
+    lines.push(
+      "- route/app entry 파일을 수정하거나 생성하기 전에 package.json, 기존 app/pages/src 구조, 현재 사용 중인 entry 파일을 확인한다.",
+      "- framework 구조 판단 목적의 package.json 열람은 허용하지만, package.json 수정은 금지한다.",
+    );
+  }
+  lines.push("- 우선 탐색 경로:", ...probePathLines, "- 실제 저장소 구조에 맞춰 최소 범위만 수정한다.");
+  return lines;
 }
 
-export function buildWorkResultReportFormatSections(): readonly string[] {
-  return [
-    "",
-    "## 작업 결과 보고 형식",
-    "",
-    "작업 완료 후 다음 형식으로 결과를 보고한다.",
-    "",
-    "```text",
+export function buildWorkResultReportFormatSections(options?: {
+  readonly requireRouteEntryDecision?: boolean;
+}): readonly string[] {
+  const reportBlock = [
     "commitSha:",
     "workBranch:",
     "changedFiles:",
     "verification:",
+    ...(options?.requireRouteEntryDecision
+      ? [
+          "routeEntryDecision:",
+          "  - 사용한 entry 파일:",
+          "  - 선택 사유:",
+          "  - 생성/수정 여부:",
+        ]
+      : []),
     "requiresIntegrationChange:",
     "  - 필요한 경우에만 작성",
     "  - 연결이 필요한 파일:",
@@ -106,17 +121,45 @@ export function buildWorkResultReportFormatSections(): readonly string[] {
     "  - 예상 연결 위치:",
     "noCodeChange:",
     "  - 코드 변경이 없었던 경우에만 작성",
+  ];
+  return [
+    "",
+    "## 작업 결과 보고 형식",
+    "",
+    "작업 완료 후 다음 형식으로 결과를 보고한다.",
+    "",
+    "```text",
+    ...reportBlock,
     "```",
     "",
     "- 코드 파일에 임의 TODO 주석을 남기지 않는다.",
     "- 작업 결과 보고의 `requiresIntegrationChange` 항목에 필요한 연결 파일, 사유, 예상 연결 위치를 명시한다.",
+    ...(options?.requireRouteEntryDecision
+      ? ["- route/app entry를 사용·생성·수정한 경우 `routeEntryDecision` 항목을 반드시 작성한다."]
+      : []),
+  ];
+}
+
+export function buildRouteEntryForbiddenRuleLines(): readonly string[] {
+  return [
+    `- ${ROUTE_ENTRY_DUPLICATE_GUARD_LINE}`,
+    "- 현재 저장소의 프레임워크 구조와 맞지 않는 entry 파일을 새로 만들지 않는다.",
+    "- 이미 저장소에 여러 entry 파일이 존재하는 경우 기존 파일은 삭제하지 않는다.",
+    "- 현재 사용 중인 entry 흐름을 확인한 뒤 필요한 파일만 최소 수정한다.",
+    "- 사용 여부가 불확실한 entry 파일은 직접 삭제하지 않고 작업 결과 보고에 확인 필요로 기록한다.",
   ];
 }
 
 export function shouldIncludeRouteEntryUsageNote(
   branchGroup: CodeTaskBranchGroupV1 | null | undefined,
+  ownedFiles?: readonly string[],
 ): boolean {
-  return branchGroup === "foundation" || branchGroup === "integration";
+  return requiresRouteEntryGuardInPrompt({ branchGroup, ownedFiles });
 }
 
-export { ROUTE_ENTRY_USAGE_NOTE };
+export {
+  boundaryIncludesRouteEntryCandidates,
+  requiresRouteEntryGuardInPrompt,
+  ROUTE_ENTRY_DUPLICATE_GUARD_LINE,
+  ROUTE_ENTRY_USAGE_NOTE,
+};

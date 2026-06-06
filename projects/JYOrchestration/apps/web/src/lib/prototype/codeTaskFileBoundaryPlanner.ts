@@ -244,7 +244,7 @@ export function buildCodeTaskFileBoundaryPromptSections(
     lines.push("- (ownedFiles 없음 — 작업 범위 최소화)");
   }
 
-  if (shouldIncludeRouteEntryUsageNote(branchGroup)) {
+  if (shouldIncludeRouteEntryUsageNote(branchGroup, allowed)) {
     lines.push("", ROUTE_ENTRY_USAGE_NOTE);
   }
 

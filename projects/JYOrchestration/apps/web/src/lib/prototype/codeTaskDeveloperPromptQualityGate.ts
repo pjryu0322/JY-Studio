@@ -4,6 +4,10 @@ import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCod
 import { validateCodeTaskDeveloperPromptSafety } from "@/lib/prototype/codeTaskDeveloperPromptSafety";
 import type { CodeTaskRoleKind } from "@/lib/prototype/codeTaskPromptRoleResolver";
 import {
+  requiresRouteEntryGuardInPrompt,
+  ROUTE_ENTRY_DUPLICATE_GUARD_LINE,
+} from "@/lib/prototype/codeTaskRouteBoundaryPlanner";
+import {
   resolveCodeTaskWorkBranchForTask,
   resolveCodeTaskBaseBranchForTask,
 } from "@/lib/prototype/taskCursorExecution";
@@ -144,15 +148,25 @@ export function evaluateStageTwoDeveloperPromptReadiness(input: {
   if (!input.prompt.includes("## 작업 결과 보고 형식")) {
     warnings.push("developer_prompt_requires_integration_change_format_missing");
   }
-  if (
-    (branchGroup === "foundation" || branchGroup === "integration") &&
-    !input.prompt.includes("app/page.*") &&
-    !input.prompt.includes("src/app/page.*")
-  ) {
-    warnings.push("developer_prompt_route_boundary_missing");
-  }
-  if (!input.prompt.includes("실제 저장소에 존재하는 파일을 우선 사용")) {
-    if (branchGroup === "foundation" || branchGroup === "integration") {
+
+  const routeEntryGuard = requiresRouteEntryGuardInPrompt({
+    branchGroup,
+    ownedFiles: boundary?.ownedFiles,
+  });
+  if (routeEntryGuard) {
+    if (!input.prompt.includes(ROUTE_ENTRY_DUPLICATE_GUARD_LINE)) {
+      missing.push("developer_prompt_route_entry_duplicate_guard_missing");
+    }
+    if (!input.prompt.includes("package.json과 현재 프레임워크 구조를 확인")) {
+      warnings.push("developer_prompt_framework_structure_check_missing");
+    }
+    if (!input.prompt.includes("마지막 수단으로 수행")) {
+      warnings.push("developer_prompt_route_entry_duplicate_guard_missing");
+    }
+    if (!input.prompt.includes("routeEntryDecision:")) {
+      warnings.push("developer_prompt_route_entry_decision_missing");
+    }
+    if (!input.prompt.includes("실제 저장소에 존재하는 파일을 우선 사용")) {
       warnings.push("developer_prompt_route_boundary_missing");
     }
   }

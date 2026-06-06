@@ -33,7 +33,9 @@ import {
 } from "@/lib/prototype/implementationBranchPlan";
 import {
   buildDeveloperPromptSearchScopeSections,
+  buildRouteEntryForbiddenRuleLines,
   buildWorkResultReportFormatSections,
+  requiresRouteEntryGuardInPrompt,
 } from "@/lib/prototype/codeTaskDeveloperPromptTemplate";
 
 export type BuildCodeTaskDeveloperPromptResult = Readonly<{
@@ -177,6 +179,10 @@ function buildGeneratedProjectPrompt(input: {
     boundary,
     branchPlan?.branchGroup,
   );
+  const routeEntryGuard = requiresRouteEntryGuardInPrompt({
+    branchGroup: branchPlan?.branchGroup,
+    ownedFiles: boundary?.ownedFiles,
+  });
 
   const sections = [
     "# CodeTask 개발 요청",
@@ -202,15 +208,18 @@ function buildGeneratedProjectPrompt(input: {
     ...implementationRequirements,
     "",
     ...boundarySections,
-    ...buildDeveloperPromptSearchScopeSections(probePaths),
+    ...buildDeveloperPromptSearchScopeSections(probePaths, {
+      includeRouteEntryFrameworkCheck: routeEntryGuard,
+    }),
     "",
     "## 검증 기준",
     ...verificationChecklist,
     "",
-    ...buildWorkResultReportFormatSections(),
+    ...buildWorkResultReportFormatSections({ requireRouteEntryDecision: routeEntryGuard }),
     "",
     "## 금지사항",
     ...target.forbiddenRules.map((r) => `- ${r}`),
+    ...(routeEntryGuard ? buildRouteEntryForbiddenRuleLines().map((r) => r) : []),
     "",
     "## 완료 기준",
     "- 요구사항을 충족하는 코드 변경",

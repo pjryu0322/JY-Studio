@@ -105,6 +105,8 @@ describe("P3-M53 stage two developer prompt wording", () => {
     expect(gen.content).toContain("app/page.*");
     expect(gen.content).toContain("src/App.*");
     expect(gen.content).toContain("실제 저장소에 존재하는 파일을 우선 사용");
+    expect(gen.content).toContain("동일 목적의 route/app entry");
+    expect(gen.content).toContain("routeEntryDecision:");
   });
 
   it("common group uses predecessor base branch and shell preservation", () => {
