@@ -10,14 +10,26 @@ import type { ImplementationRuntimeQueue } from "@/lib/prototype/implementationR
 export type ImplementationRuntimeStateIssue = Readonly<{
   readonly code:
     | "cursor_session_stale_after_run_completed"
+    | "cursor_session_stale_after_run_terminal"
     | "queue_current_run_completed"
     | "run_verified_but_missing_commitSha"
     | "run_completed_without_qualityOutcome"
-    | "event_completed_but_run_not_completed";
+    | "event_completed_but_run_not_completed"
+    | "integration_included_without_run_completion";
   readonly runId?: string | null;
   readonly codeTaskId?: string | null;
   readonly message: string;
 }>;
+
+export function logImplementationRuntimeStateDiagnostics(
+  issues: readonly ImplementationRuntimeStateIssue[],
+): void {
+  if (!issues.length) return;
+  console.warn(
+    "[implementation_runtime_state_diagnostics_detected]",
+    JSON.stringify({ count: issues.length, issues }),
+  );
+}
 
 export function diagnoseImplementationRuntimeState(input: {
   readonly runs: readonly CodeTaskRun[];
@@ -45,12 +57,12 @@ export function diagnoseImplementationRuntimeState(input: {
         message: "Completed run still has an active Cursor session view.",
       });
     }
-    if (run && isCursorSessionStaleForRun({ session, run }) && session.status === "running") {
+    if (run && isCursorSessionStaleForRun({ session, run })) {
       issues.push({
-        code: "cursor_session_stale_after_run_completed",
+        code: "cursor_session_stale_after_run_terminal",
         runId: run.runId,
         codeTaskId: run.codeTaskId,
-        message: "cursor_session_stale_state_ignored: run GitHub outcome terminal.",
+        message: "cursor_session_stale_state_ignored: run terminal while session in-flight.",
       });
     }
   }

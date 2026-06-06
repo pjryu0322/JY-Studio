@@ -22,6 +22,10 @@ import { continueSelectedCodeTaskQueueAfterAutoGate } from "@/lib/prototype/serv
 import { resolveCompletedCodeTaskId } from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import {
+  applyAutoGateOutcomeToRunsList,
+  applyQualityGateRunningToRunsList,
+} from "@/lib/prototype/codeTaskQualityOutcome";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { prisma } from "@/lib/prisma";
@@ -109,6 +113,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    let runsForGate = runsFromBody;
+    if (codeTaskRunForGate?.codeTaskId) {
+      runsForGate = applyQualityGateRunningToRunsList({
+        runs: runsForGate,
+        codeTaskId: codeTaskRunForGate.codeTaskId,
+      });
+    }
+
     const executionState = parseImplementationTaskExecutionStateV1(body.implementationTaskExecutionStateV1);
     const qualityGateResults = parseImplementationQualityGateResultsV1(
       body.implementationQualityGateResultsV1,
@@ -145,6 +157,23 @@ export async function POST(request: NextRequest) {
     }
 
     let orchestrationPatch = outcome.orchestrationPatch;
+    if (runsForGate.length && codeTaskRunForGate?.codeTaskId) {
+      orchestrationPatch = {
+        ...orchestrationPatch,
+        codeTaskExecutionRunsV1: runsForGate,
+      };
+    }
+    if (outcome.ok && outcome.autoGate.status === "passed" && codeTaskRunForGate?.codeTaskId) {
+      const runsPassed = applyAutoGateOutcomeToRunsList({
+        runs: runsForGate,
+        codeTaskId: codeTaskRunForGate.codeTaskId,
+        autoGate: outcome.autoGate,
+      });
+      orchestrationPatch = {
+        ...orchestrationPatch,
+        codeTaskExecutionRunsV1: runsPassed,
+      };
+    }
     if (outcome.ok && outcome.autoGate.status === "passed") {
       const projectRow = await prisma.project.findUnique({
         where: { id: projectId },

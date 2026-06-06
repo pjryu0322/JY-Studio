@@ -23,6 +23,7 @@ import {
 } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { runHasQualityGatePassed } from "@/lib/prototype/codeTaskQualityOutcome";
 import { runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
 
 export const IMPLEMENTATION_AUTO_QUALITY_GATE_VERSION = "implementation_auto_quality_gate_v1" as const;
@@ -203,6 +204,10 @@ export function shouldAutoStartImplementationQualityGate(input: {
 }): boolean {
   const execution = input.taskCursorExecution;
   if (!execution) return false;
+
+  if (input.codeTaskRun && runHasQualityGatePassed(input.codeTaskRun)) {
+    return false;
+  }
 
   const runReadyForGate =
     input.codeTaskRun &&

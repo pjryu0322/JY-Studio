@@ -9,6 +9,7 @@ const RUNTIME_ACTIVE = new Set<CodeTaskExecutionRunStatus>([
   "cursor_requested",
   "cursor_running",
   "github_verifying",
+  "quality_gate_running",
 ]);
 
 const IN_FLIGHT = new Set<CodeTaskExecutionRunStatus>([...QUEUED_WAIT, ...RUNTIME_ACTIVE]);
@@ -16,6 +17,7 @@ const IN_FLIGHT = new Set<CodeTaskExecutionRunStatus>([...QUEUED_WAIT, ...RUNTIM
 const TERMINAL = new Set<CodeTaskExecutionRunStatus>([
   "completed",
   "no_code_change_completed",
+  "quality_gate_passed",
   "rework_required",
   "status_check_stopped",
   "blocked_by_dependency",
@@ -57,6 +59,7 @@ export function isQueueContinueAfterRunStatus(status: CodeTaskExecutionRunStatus
   return (
     status === "completed" ||
     status === "no_code_change_completed" ||
+    status === "quality_gate_passed" ||
     status === "rework_required" ||
     status === "status_check_stopped" ||
     status === "blocked_by_dependency" ||

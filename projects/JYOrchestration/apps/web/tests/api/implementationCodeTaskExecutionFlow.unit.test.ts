@@ -95,7 +95,7 @@ describe("deriveCodeTaskExecutionFlowPhase", () => {
     expect(phase).toBe("cursor_running");
   });
 
-  it("shows completed when auto gate passed even if task cursor is still review_pending", () => {
+  it("shows completed when run quality passed even if task cursor is still review_pending", () => {
     const phase = deriveCodeTaskExecutionFlowPhase({
       parentTaskId: "DEV-SCREEN-002",
       taskCursorExecution: {
@@ -114,10 +114,11 @@ describe("deriveCodeTaskExecutionFlowPhase", () => {
         updatedAt: "2026-06-04T00:00:00.000Z",
       },
       latestRun: run({
-        status: "github_verifying",
+        status: "completed",
         cursorRunId: "bc-agent",
         commitSha: "abc123",
         processTaskId: "DEV-SCREEN-002",
+        qualityOutcome: { status: "passed", checkedAt: "2026-06-04T00:00:00.000Z" },
       }),
     });
     expect(phase).toBe("completed");

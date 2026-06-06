@@ -12,6 +12,7 @@ import {
 import {
   normalizeCodeTaskQualityOutcomeFromRun,
   parseCodeTaskQualityOutcomeV1,
+  resolveRunStatusAfterQualityOutcome,
   type CodeTaskQualityOutcomeV1,
 } from "@/lib/prototype/codeTaskQualityOutcome";
 
@@ -25,6 +26,8 @@ export type CodeTaskExecutionRunStatus =
   | "cursor_running"
   | "github_verifying"
   | "github_verified"
+  | "quality_gate_running"
+  | "quality_gate_passed"
   | "completed"
   | "no_code_change_completed"
   | "rework_required"
@@ -74,6 +77,8 @@ const RUN_STATUSES = new Set<CodeTaskExecutionRunStatus>([
   "cursor_running",
   "github_verifying",
   "github_verified",
+  "quality_gate_running",
+  "quality_gate_passed",
   "completed",
   "no_code_change_completed",
   "rework_required",
@@ -163,6 +168,22 @@ export function parseCodeTaskExecutionRunV1(raw: unknown): CodeTaskExecutionRunV
     });
     if (nextStatus !== resolvedRun.status) {
       resolvedRun = { ...resolvedRun, status: nextStatus };
+    }
+  }
+  const qualityOutcome = normalizeCodeTaskQualityOutcomeFromRun(resolvedRun);
+  if (qualityOutcome) {
+    const nextStatus = resolveRunStatusAfterQualityOutcome({
+      currentStatus: resolvedRun.status,
+      qualityOutcome,
+    });
+    if (nextStatus !== resolvedRun.status) {
+      resolvedRun = { ...resolvedRun, status: nextStatus };
+    }
+    if (qualityOutcome.status === "passed" && !resolvedRun.completedAt) {
+      resolvedRun = {
+        ...resolvedRun,
+        completedAt: qualityOutcome.checkedAt || resolvedRun.updatedAt,
+      };
     }
   }
   return resolvedRun;

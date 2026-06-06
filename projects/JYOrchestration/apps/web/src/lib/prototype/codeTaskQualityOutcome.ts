@@ -1,4 +1,7 @@
-import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import type {
+  CodeTaskExecutionRunStatus,
+  CodeTaskExecutionRunV1,
+} from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { findLatestRunForCodeTask, updateCodeTaskExecutionRun } from "@/lib/prototype/codeTaskExecutionRun";
 
@@ -53,6 +56,35 @@ export function normalizeCodeTaskQualityOutcomeFromRun(
   return parsed ?? undefined;
 }
 
+export function runHasQualityGatePassed(
+  run: CodeTaskExecutionRunV1 | null | undefined,
+): boolean {
+  if (!run) return false;
+  const quality = normalizeCodeTaskQualityOutcomeFromRun(run);
+  if (quality?.status === "passed") return true;
+  return run.status === "completed" || run.status === "no_code_change_completed" || run.status === "quality_gate_passed";
+}
+
+export function resolveRunStatusAfterQualityOutcome(input: {
+  readonly currentStatus: CodeTaskExecutionRunStatus | string;
+  readonly qualityOutcome: CodeTaskQualityOutcomeV1 | null | undefined;
+}): CodeTaskExecutionRunStatus {
+  const current = String(input.currentStatus ?? "").trim() as CodeTaskExecutionRunStatus;
+  const outcome = input.qualityOutcome;
+  if (!outcome || outcome.status === "not_run") return current || "queued";
+
+  if (outcome.status === "passed") {
+    if (current === "no_code_change_completed") return "no_code_change_completed";
+    return "completed";
+  }
+
+  if (outcome.status === "failed") {
+    return outcome.retryable ? "failed" : "rework_required";
+  }
+
+  return current || "queued";
+}
+
 export function buildQualityOutcomeFromAutoGate(
   autoGate: ImplementationAutoQualityGateV1,
 ): CodeTaskQualityOutcomeV1 | null {
@@ -84,16 +116,68 @@ export function patchRunWithQualityOutcome(input: {
     qualityOutcome: input.qualityOutcome,
     updatedAt: input.nowIso,
   };
+  const nextStatus = resolveRunStatusAfterQualityOutcome({
+    currentStatus: input.run.status,
+    qualityOutcome: input.qualityOutcome,
+  });
+  if (nextStatus !== input.run.status) {
+    patch.status = nextStatus;
+  }
   if (input.qualityOutcome.status === "passed") {
-    if (
-      input.run.status !== "completed" &&
-      input.run.status !== "no_code_change_completed"
-    ) {
-      patch.status = "completed";
-      patch.completedAt = input.nowIso;
-    }
+    patch.completedAt = input.run.completedAt ?? input.nowIso;
+  }
+  if (input.qualityOutcome.status === "failed") {
+    patch.failureReason = input.qualityOutcome.reason;
+    patch.errorMessage = input.qualityOutcome.summary ?? input.qualityOutcome.reason;
   }
   return patch;
+}
+
+export function applyQualityOutcomeToCodeTaskRun(input: {
+  readonly run: CodeTaskExecutionRunV1;
+  readonly qualityOutcome: CodeTaskQualityOutcomeV1;
+  readonly nowIso?: string;
+}): CodeTaskExecutionRunV1 {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const patch = patchRunWithQualityOutcome({
+    run: input.run,
+    qualityOutcome: input.qualityOutcome,
+    nowIso,
+  });
+  return { ...input.run, ...patch };
+}
+
+export function patchRunForQualityGateRunning(input: {
+  readonly run: CodeTaskExecutionRunV1;
+  readonly nowIso: string;
+}): Partial<CodeTaskExecutionRunV1> {
+  if (
+    input.run.status === "completed" ||
+    input.run.status === "no_code_change_completed" ||
+    input.run.status === "quality_gate_passed"
+  ) {
+    return { updatedAt: input.nowIso };
+  }
+  const quality = normalizeCodeTaskQualityOutcomeFromRun(input.run);
+  if (quality?.status === "passed") {
+    return { updatedAt: input.nowIso };
+  }
+  return {
+    status: "quality_gate_running",
+    updatedAt: input.nowIso,
+  };
+}
+
+export function applyQualityGateRunningToRunsList(input: {
+  readonly runs: readonly CodeTaskExecutionRunV1[];
+  readonly codeTaskId: string;
+  readonly nowIso?: string;
+}): CodeTaskExecutionRunV1[] {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const latest = findLatestRunForCodeTask(input.runs, input.codeTaskId);
+  if (!latest) return [...input.runs];
+  const patch = patchRunForQualityGateRunning({ run: latest, nowIso });
+  return updateCodeTaskExecutionRun(input.runs as CodeTaskExecutionRunV1[], latest.runId, patch);
 }
 
 export function applyAutoGateOutcomeToRunsList(input: {

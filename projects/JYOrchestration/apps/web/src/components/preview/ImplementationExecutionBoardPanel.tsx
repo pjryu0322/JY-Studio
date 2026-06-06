@@ -56,7 +56,9 @@ import {
   formatImplementationExecutionOverviewLines,
   resolveSelectedCodeTaskExecutionProgress,
 } from "@/lib/prototype/implementationExecutionOverview";
-import { enrichCodeTaskRunForFlowPhase, deriveCodeTaskExecutionFlowPhase } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
+import { enrichCodeTaskRunForFlowPhase } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
+import { deriveCodeTaskRunPhase } from "@/lib/prototype/codeTaskRunDerivedView";
+import { resolveCursorSessionForRunPhase } from "@/lib/prototype/cursorSessionModel";
 import {
   resolveCodeTaskStuckRecoveryHint,
   shouldShowCodeTaskStuckRecoveryPanel,
@@ -340,11 +342,25 @@ export function ImplementationExecutionBoardPanel({
       implementationAutoQualityGateV1?.taskId === parentTaskId
         ? implementationAutoQualityGateV1
         : null;
-    return deriveCodeTaskExecutionFlowPhase({
-      parentTaskId,
-      taskCursorExecution: executionForParent,
+    const runForPhase =
+      latestRun ??
+      ({
+        runId: "pending",
+        version: "code_task_execution_run_v1",
+        projectId: board.projectId,
+        processTaskId: parentTaskId,
+        workItemId: "",
+        codeTaskId,
+        status: "queued",
+        attemptNo: 1,
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(0).toISOString(),
+      } as const);
+    return deriveCodeTaskRunPhase({
+      run: runForPhase,
+      cursorSession: resolveCursorSessionForRunPhase(executionForParent, latestRun),
       autoGate: autoGateForParent,
-      latestRun,
+      dbRun,
     });
   }, [
     selectedCodeTaskId,

@@ -14,7 +14,9 @@ import {
 import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import {
   resolveNextQuickRunCodeTaskId,
+  resolveSelectedCodeTaskIdsForContinuation,
 } from "@/lib/prototype/implementationSelectedCodeTaskSequence";
+import { findNextRunnableCodeTaskIdInSelection } from "@/lib/prototype/implementationRuntimeQueueModel";
 import {
   evaluateExecutionSetupSourceGenerationReadiness,
   mapExecutionSetupPrismaRowToSourceGenerationRow,
@@ -496,10 +498,18 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
   }
 
   const bundleAfterAdvance = await getImplementationRuntimeBundle(pid);
-  const nextCodeTaskId = resolveNextQuickRunCodeTaskId({
-    completedCodeTaskId,
-    dbBundle: bundleAfterAdvance,
+  const selectedIds = resolveSelectedCodeTaskIdsForContinuation({ dbBundle: bundleAfterAdvance });
+  const nextFromRuns = findNextRunnableCodeTaskIdInSelection({
+    selectedCodeTaskIds: selectedIds,
+    afterCodeTaskId: completedCodeTaskId,
+    runs,
   });
+  const nextCodeTaskId =
+    nextFromRuns ??
+    resolveNextQuickRunCodeTaskId({
+      completedCodeTaskId,
+      dbBundle: bundleAfterAdvance,
+    });
 
   if (!nextCodeTaskId?.trim()) {
     const quickRun = parseImplementationQuickRunV1(requirementsState.implementationQuickRunV1);
@@ -574,7 +584,8 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
         taskCursor,
         completedTaskId,
         autoGateRaw: requirementsState.implementationAutoQualityGateV1,
-        promptTimeline: requirementsState.promptTimeline,
+        runs,
+        completedCodeTaskId,
         nowIso,
       })
     : null;

@@ -12,6 +12,7 @@ import type { RuntimeState } from "@/lib/prototype/implementationRuntimeState";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { deriveFlowHintFromRunGithubOutcome, runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
+import { normalizeCodeTaskQualityOutcomeFromRun } from "@/lib/prototype/codeTaskQualityOutcome";
 import { isTaskCursorInFlightForRunOutcome } from "@/lib/prototype/taskCursorGithubOutcomeSession";
 import { isImplementationAutoQualityGateInFlight } from "@/lib/prototype/implementationAutoQualityGate";
 
@@ -109,6 +110,10 @@ function mapCodeTaskRunStatusToFlowPhase(
       return "github_verifying";
     case "github_verified":
       return "github_verified";
+    case "quality_gate_running":
+      return "lightweight_checking";
+    case "quality_gate_passed":
+      return "completed";
     case "cursor_running":
     case "cursor_requested":
       return "cursor_running";
@@ -431,17 +436,22 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
     return "prompt_preflight_failed";
   }
 
-  if (run?.status === "completed" || run?.status === "no_code_change_completed") {
+  if (run?.status === "completed" || run?.status === "no_code_change_completed" || run?.status === "quality_gate_passed") {
     return "completed";
+  }
+
+  const runQuality = run ? normalizeCodeTaskQualityOutcomeFromRun(run) : null;
+  if (runQuality?.status === "passed") {
+    return "completed";
+  }
+  if (run?.status === "quality_gate_running") {
+    return "lightweight_checking";
   }
 
   const outcomeHint = deriveFlowHintFromRunGithubOutcome(run);
   if (outcomeHint === "completed") return "completed";
   if (outcomeHint === "github_verified") {
-    if (
-      input.autoGate?.status === "passed" &&
-      input.autoGate.taskId === parentTaskId
-    ) {
+    if (runQuality?.status === "passed") {
       return "completed";
     }
     if (
@@ -460,29 +470,20 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
   if (outcomeHint === "github_verify_timeout") return "github_verify_timeout";
   if (outcomeHint === "failed") return "failed";
   if (outcomeHint === "github_verifying") {
-    const commitSha = String(run?.commitSha ?? run?.branchHeadCommitSha ?? "").trim();
-    if (
-      input.autoGate?.status === "passed" &&
-      input.autoGate.taskId === parentTaskId &&
-      commitSha &&
-      input.autoGate.sourceCommitSha.trim() === commitSha
-    ) {
-      return "completed";
-    }
     return "github_verifying";
   }
 
   const runTerminalGithub = runHasVerifiedGithubOutcome(run);
 
   if (run) {
+    if (run.status === "quality_gate_running") {
+      return "lightweight_checking";
+    }
     if (run.status === "completed" || run.status === "no_code_change_completed") {
       return "completed";
     }
     if (run.status === "github_verified" && runTerminalGithub) {
-      if (
-        input.autoGate?.status === "passed" &&
-        input.autoGate.taskId === parentTaskId
-      ) {
+      if (runQuality?.status === "passed") {
         return "completed";
       }
       if (

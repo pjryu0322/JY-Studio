@@ -8,7 +8,11 @@ export function isCodeTaskRunPreviewIncluded(run: CodeTaskRun | null | undefined
   const commitSha = String(run.commitSha ?? run.branchHeadCommitSha ?? "").trim();
   if (!commitSha) return false;
 
-  if (run.status === "completed" || run.status === "no_code_change_completed") {
+  if (
+    run.status === "completed" ||
+    run.status === "quality_gate_passed" ||
+    run.status === "no_code_change_completed"
+  ) {
     return true;
   }
 

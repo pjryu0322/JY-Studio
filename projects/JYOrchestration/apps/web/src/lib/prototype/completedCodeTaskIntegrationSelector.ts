@@ -1,5 +1,6 @@
 import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { normalizeCodeTaskGithubOutcomeFromRun } from "@/lib/prototype/codeTaskGithubOutcome";
+import { normalizeCodeTaskQualityOutcomeFromRun } from "@/lib/prototype/codeTaskQualityOutcome";
 import {
   isCodeTaskRunPreviewIncluded,
   readCodeTaskRunCommitSha,
@@ -61,6 +62,10 @@ function formatRunStatusLabel(run: CodeTaskExecutionRunV1 | null): string {
       return "GitHub 확인 중";
     case "github_verified":
       return "GitHub commit 확인 완료";
+    case "quality_gate_running":
+      return "경량 자동검사 진행 중";
+    case "quality_gate_passed":
+      return "경량 자동검사 완료";
     case "completed":
       return "완료";
     case "no_code_change_completed":
@@ -133,7 +138,7 @@ function resolveIntegratableFromRun(input: {
     autoGate.sourceCommitSha.trim() === commitSha &&
     (run.status === "completed" || run.status === "no_code_change_completed");
 
-  if (legacyGatePassed) {
+  if (legacyGatePassed && normalizeCodeTaskQualityOutcomeFromRun(run)?.status !== "passed") {
     return {
       codeTaskId: run.codeTaskId,
       taskId: run.processTaskId,

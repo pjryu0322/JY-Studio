@@ -1,5 +1,8 @@
-import { applyAutoGateOutcomeToRunsList } from "@/lib/prototype/codeTaskQualityOutcome";
-import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import {
+  applyAutoGateOutcomeToRunsList,
+  applyQualityGateRunningToRunsList,
+} from "@/lib/prototype/codeTaskQualityOutcome";
+import { findLatestRunForCodeTask, parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
 import {
   parseImplementationAutoQualityGateHistoryV1,
@@ -160,6 +163,17 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
     });
 
   if (shouldRunGate && runForGate && runHasVerifiedGithubOutcome(runForGate)) {
+    const runsRunning = applyQualityGateRunningToRunsList({
+      runs: parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [],
+      codeTaskId: runForGate.codeTaskId,
+      nowIso,
+    });
+    const runningPatch: PrototypeExecutionOrchestrationPersistInput = {
+      codeTaskExecutionRunsV1: runsRunning,
+    };
+    patches.push(runningPatch);
+    state = mergeRequirementsStateJson(state, runningPatch as Partial<RequirementsStateJson>);
+
     const gateRequestTimeline = buildImplementationExecutionLogTimelineEntry({
       action: "code_task_github_verified_auto_gate_requested",
       orchestrationTraceGroup: "implementation_orchestration",
@@ -247,7 +261,8 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
       taskCursor: postExecutionForRepair,
       completedTaskId: postExecutionForRepair.taskId,
       autoGateRaw: state.implementationAutoQualityGateV1,
-      promptTimeline: state.promptTimeline,
+      runs: parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [],
+      completedCodeTaskId: codeTaskIdForGate || runForGate?.codeTaskId,
       nowIso,
     });
     if (repairedCursor) {

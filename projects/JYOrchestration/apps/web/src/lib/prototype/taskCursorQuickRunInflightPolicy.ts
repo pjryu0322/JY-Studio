@@ -1,4 +1,5 @@
 import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { normalizeCodeTaskQualityOutcomeFromRun, runHasQualityGatePassed } from "@/lib/prototype/codeTaskQualityOutcome";
 import { runHasTerminalGithubOutcome, runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { parseImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
@@ -22,19 +23,28 @@ function completedRunBlocksStaleCursor(input: {
 export function hasAutoQualityGatePassedForTask(input: {
   readonly taskId: string;
   readonly autoGate?: ImplementationAutoQualityGateV1 | null;
+  /** @deprecated P3-M42: Run qualityOutcome만 SoT — timeline 미사용 */
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+  readonly codeTaskId?: string | null;
 }): boolean {
   const taskId = input.taskId.trim();
   if (!taskId) return false;
+
+  const codeTaskId = String(input.codeTaskId ?? "").trim();
+  if (input.runs?.length) {
+    const run =
+      (codeTaskId ? findLatestRunForCodeTask(input.runs, codeTaskId) : null) ??
+      input.runs.find((r) => r.processTaskId === taskId) ??
+      null;
+    if (run && runHasQualityGatePassed(run)) return true;
+    const quality = run ? normalizeCodeTaskQualityOutcomeFromRun(run) : null;
+    if (quality?.status === "passed") return true;
+  }
+
   const gate = input.autoGate;
   if (gate?.status === "passed" && gate.taskId.trim() === taskId) return true;
-  const timeline = input.promptTimeline ?? [];
-  return timeline.some((entry) => {
-    if (entry.action !== "implementation_auto_quality_gate_passed") return false;
-    const fields = entry.fields as Record<string, unknown> | undefined;
-    const id = String(fields?.taskId ?? fields?.completedTaskId ?? "").trim();
-    return id === taskId;
-  });
+  return false;
 }
 
 /** completed/passed Task의 stale in-flight가 다음 Quick Run dispatch를 막지 않도록 한다. */
@@ -80,7 +90,8 @@ export function shouldBlockQuickRunDispatchForInFlightTaskCursor(input: {
     hasAutoQualityGatePassedForTask({
       taskId: completedId,
       autoGate: input.autoGate,
-      promptTimeline: input.promptTimeline,
+      runs: input.runs,
+      codeTaskId: input.completedCodeTaskId,
     })
   ) {
     return false;
@@ -95,7 +106,8 @@ export function shouldBlockQuickRunDispatchForInFlightTaskCursor(input: {
       hasAutoQualityGatePassedForTask({
         taskId: completedId,
         autoGate: input.autoGate,
-        promptTimeline: input.promptTimeline,
+        runs: input.runs,
+        codeTaskId: input.completedCodeTaskId,
       })
     ) {
       return false;
@@ -130,7 +142,8 @@ export function resolveStaleTaskCursorAfterQualityGatePassed(input: {
   readonly taskCursor: TaskCursorExecutionV1;
   readonly completedTaskId: string;
   readonly autoGateRaw?: unknown;
-  readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+  readonly completedCodeTaskId?: string | null;
   readonly nowIso?: string;
 }): TaskCursorExecutionV1 | null {
   const autoGate = parseImplementationAutoQualityGateV1(input.autoGateRaw);
@@ -138,7 +151,8 @@ export function resolveStaleTaskCursorAfterQualityGatePassed(input: {
     !hasAutoQualityGatePassedForTask({
       taskId: input.completedTaskId,
       autoGate,
-      promptTimeline: input.promptTimeline,
+      runs: input.runs,
+      codeTaskId: input.completedCodeTaskId,
     })
   ) {
     return null;
