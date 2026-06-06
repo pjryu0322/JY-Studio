@@ -53,7 +53,10 @@ describe("resolveCodeTaskPromptDraftForCopy", () => {
     expect(result.ok).toBe(true);
     expect(result.prompt).toContain("# CodeTask 1단계 프롬프트 초안");
     expect(result.prompt).toContain(`전체 CodeTask: ${plan.tasks.length}개`);
+    expect(result.prompt).toContain("## Branch Plan 요약");
     expect(result.prompt).not.toContain("GitHub");
+    expect(result.prompt).not.toMatch(/- base branch:/i);
+    expect(result.prompt).not.toMatch(/- work branch:/i);
   });
 
   it("fails when code task plan is missing", () => {

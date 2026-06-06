@@ -38,7 +38,7 @@ export function buildBranchPlanSummarySections(
   const lines: string[] = [
     "## Branch Plan 요약",
     "",
-    `- base branch: \`${baseBranch}\``,
+    `- 기준 브랜치: \`${baseBranch}\``,
     "- 실행 정책: 충돌 예방을 위해 branch group 순차 실행",
     "- 실행 순서:",
   ];
@@ -79,8 +79,8 @@ export function buildCodeTaskBranchPlanBlockLines(
   const lines = [
     `${prefix} Branch Plan`,
     `- branch group: \`${bp.branchGroup}\``,
-    `- work branch: \`${bp.workBranch}\``,
-    `- base branch: \`${bp.baseBranch}\``,
+    `- 작업 브랜치: \`${bp.workBranch}\``,
+    `- 기준 브랜치: \`${bp.baseBranch}\``,
     `- execution mode: \`${bp.executionMode}\``,
   ];
   if (bp.dependsOnBranchGroups?.length) {
