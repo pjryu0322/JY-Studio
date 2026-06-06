@@ -20,6 +20,7 @@ export type ImplementationAutoQualityGateClientInput = Readonly<{
   readonly implementationAutoQualityGateHistoryV1?: unknown;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[];
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly codeTaskExecutionRunsV1?: unknown;
 }>;
 
 export function shouldTriggerImplementationAutoQualityGateClient(
@@ -73,6 +74,9 @@ export async function runImplementationAutoQualityGateClient(
       implementationAutoQualityGateV1: input.implementationAutoQualityGateV1,
       cursorWorkItemsV1: input.cursorWorkItemsV1,
       promptTimeline: input.promptTimeline,
+      ...(input.codeTaskExecutionRunsV1 !== undefined
+        ? { codeTaskExecutionRunsV1: input.codeTaskExecutionRunsV1 }
+        : {}),
       mode: "review_then_security",
     }),
   });
@@ -82,6 +86,13 @@ export async function runImplementationAutoQualityGateClient(
     message?: string;
     orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
   };
+  if (!res.ok) {
+    return {
+      ok: false,
+      status: json.status,
+      message: json.message ?? `auto-quality-gate HTTP ${res.status}`,
+    };
+  }
   return {
     ok: json.success === true,
     status: json.status,

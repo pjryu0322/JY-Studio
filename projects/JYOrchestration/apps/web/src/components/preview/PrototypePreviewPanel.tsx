@@ -1620,6 +1620,7 @@ export function PrototypePreviewPanel({
   /** Latest merged requirements JSON — updated synchronously on persist to avoid WIP/timeline race overwrites. */
   const requirementsStateJsonRef = useRef(requirementsStateJson);
   const autoQualityGateInFlightRef = useRef<string | null>(null);
+  const autoQualityGateFailedTriggerRef = useRef<string | null>(null);
   const quickRunCodeTaskContinuationRef = useRef<string | null>(null);
   const quickRunStuckGithubVerifyRef = useRef<string | null>(null);
   const codeTaskDispatchPreferredTaskIdRef = useRef<string | null>(null);
@@ -2701,13 +2702,25 @@ export function PrototypePreviewPanel({
       implementationAutoQualityGateHistoryV1: orchestration.implementationAutoQualityGateHistoryV1,
       cursorWorkItemsV1: orchestration.cursorWorkItemsV1 ?? [],
       promptTimeline: orchestration.promptTimeline,
+      codeTaskExecutionRunsV1:
+        freshState.codeTaskExecutionRunsV1 ?? orchestration.codeTaskExecutionRunsV1,
     };
     if (!shouldTriggerImplementationAutoQualityGateClient(clientInput)) return;
     const triggerKey = buildImplementationAutoQualityGateTriggerKey(execution);
+    if (autoQualityGateFailedTriggerRef.current === triggerKey) return;
     if (autoQualityGateInFlightRef.current === triggerKey) return;
     autoQualityGateInFlightRef.current = triggerKey;
     try {
       const outcome = await runImplementationAutoQualityGateClient(clientInput);
+      if (!outcome.ok) {
+        autoQualityGateFailedTriggerRef.current = triggerKey;
+        if (outcome.message) {
+          appendImplementationExecutionNotice(outcome.message);
+          showImplementationToast(outcome.message);
+        }
+        return;
+      }
+      autoQualityGateFailedTriggerRef.current = null;
       if (outcome.orchestrationPatch) {
         applyImplementationOrchestrationResult({
           messages: executionSingleChat.chatMessages,
@@ -2730,6 +2743,14 @@ export function PrototypePreviewPanel({
     executionSingleChat,
     showImplementationToast,
     appendImplementationExecutionNotice,
+  ]);
+
+  useEffect(() => {
+    autoQualityGateFailedTriggerRef.current = null;
+  }, [
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+    orchestrationAwareRequirementsState.taskCursorExecutionV1?.commitSha,
+    orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
   ]);
 
   useEffect(() => {

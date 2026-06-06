@@ -125,7 +125,11 @@ async function ensureQuickRunJobPointsAtQueuedRun(input: {
     if (!run) return;
     if (run.runtimeState === "queued") return;
     if (!isTerminalRuntimeState(run.runtimeState)) return;
-    await advanceImplementationRuntimeJob({ projectId: pid, jobId });
+    try {
+      await advanceImplementationRuntimeJob({ projectId: pid, jobId });
+    } catch {
+      return;
+    }
   }
 }
 
@@ -139,13 +143,24 @@ async function advanceJobWhenCompletedCodeTaskIsTerminal(input: {
     jobId: input.jobId,
   });
   if (!job || job.status !== "running") return;
-  const completedRun = job.runs.find((r) => r.codeTaskId === input.completedCodeTaskId);
+  const latestRunByCodeTaskId = new Map<string, (typeof job.runs)[number]>();
+  for (const row of job.runs) {
+    latestRunByCodeTaskId.set(row.codeTaskId, row);
+  }
+  const completedRun = latestRunByCodeTaskId.get(input.completedCodeTaskId.trim());
   if (!completedRun || !isTerminalRuntimeState(completedRun.runtimeState)) return;
   if (job.currentCodeTaskId?.trim() !== input.completedCodeTaskId) return;
-  await advanceImplementationRuntimeJob({
-    projectId: input.projectId,
-    jobId: input.jobId,
-  });
+  try {
+    await advanceImplementationRuntimeJob({
+      projectId: input.projectId,
+      jobId: input.jobId,
+    });
+  } catch (error) {
+    console.warn(
+      "[quick-run-continuation] advanceJobWhenCompletedCodeTaskIsTerminal",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
 }
 
 function ensureJsonRunForQueuedCodeTask(input: {

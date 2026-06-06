@@ -175,61 +175,72 @@ export async function POST(request: NextRequest) {
       };
     }
     if (outcome.ok && outcome.autoGate.status === "passed") {
-      const projectRow = await prisma.project.findUnique({
-        where: { id: projectId },
-        select: { requirementsStateJson: true },
-      });
-      const persisted = parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
-      const runs = parseCodeTaskExecutionRunsV1(persisted.codeTaskExecutionRunsV1) ?? [];
-      const bundle = await getImplementationRuntimeBundle(projectId);
-      const codeTaskPlan = parseImplementationCodeTaskPlanV1(persisted.implementationCodeTaskPlanV1);
-      const completedCodeTaskId = resolveCompletedCodeTaskId({
-        execution,
-        runs,
-        dbBundle: bundle,
-        codeTaskPlan,
-        taskList,
-        cursorWorkItems: Array.isArray(body.cursorWorkItemsV1) ? body.cursorWorkItemsV1 : [],
-      });
-      const requirementsOverlay = mergeRequirementsStateJson(
-        {
-          taskCursorExecutionV1: execution,
-          implementationAutoQualityGateV1: outcome.autoGate,
-          promptTimeline: appendPromptTimelineEntries(
-            body.promptTimeline ?? persisted.promptTimeline ?? [],
-            outcome.orchestrationPatch?.promptTimeline ?? [],
-          ),
-          ...(outcome.orchestrationPatch?.codeTaskExecutionRunsV1
-            ? { codeTaskExecutionRunsV1: outcome.orchestrationPatch.codeTaskExecutionRunsV1 }
-            : {}),
-        },
-        outcome.orchestrationPatch as Partial<typeof persisted>,
-      );
-      const continuation = await continueSelectedCodeTaskQueueAfterAutoGate({
-        projectId,
-        completedTaskId: execution.taskId,
-        completedCodeTaskId,
-        sourceCommitSha: execution.commitSha,
-        runId: execution.cursorRunId,
-        requirementsOverlay,
-      });
-      if (continuation.orchestrationPatch) {
-        orchestrationPatch = {
-          ...orchestrationPatch,
-          ...continuation.orchestrationPatch,
-          promptTimeline: appendPromptTimelineEntries(
-            orchestrationPatch?.promptTimeline ?? body.promptTimeline ?? [],
-            continuation.timelineEntries,
-          ),
-        };
-      } else if (continuation.timelineEntries.length) {
-        orchestrationPatch = {
-          ...orchestrationPatch,
-          promptTimeline: appendPromptTimelineEntries(
-            orchestrationPatch?.promptTimeline ?? body.promptTimeline ?? [],
-            continuation.timelineEntries,
-          ),
-        };
+      try {
+        const projectRow = await prisma.project.findUnique({
+          where: { id: projectId },
+          select: { requirementsStateJson: true },
+        });
+        const persisted = parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
+        const runs = parseCodeTaskExecutionRunsV1(persisted.codeTaskExecutionRunsV1) ?? [];
+        const bundle = await getImplementationRuntimeBundle(projectId);
+        const codeTaskPlan = parseImplementationCodeTaskPlanV1(persisted.implementationCodeTaskPlanV1);
+        const completedCodeTaskId = resolveCompletedCodeTaskId({
+          execution,
+          runs,
+          dbBundle: bundle,
+          codeTaskPlan,
+          taskList,
+          cursorWorkItems: Array.isArray(body.cursorWorkItemsV1) ? body.cursorWorkItemsV1 : [],
+        });
+        const requirementsOverlay = mergeRequirementsStateJson(
+          {
+            taskCursorExecutionV1: execution,
+            implementationAutoQualityGateV1: outcome.autoGate,
+            promptTimeline: appendPromptTimelineEntries(
+              body.promptTimeline ?? persisted.promptTimeline ?? [],
+              outcome.orchestrationPatch?.promptTimeline ?? [],
+            ),
+            ...(outcome.orchestrationPatch?.codeTaskExecutionRunsV1
+              ? { codeTaskExecutionRunsV1: outcome.orchestrationPatch.codeTaskExecutionRunsV1 }
+              : {}),
+          },
+          outcome.orchestrationPatch as Partial<typeof persisted>,
+        );
+        const continuation = await continueSelectedCodeTaskQueueAfterAutoGate({
+          projectId,
+          completedTaskId: execution.taskId,
+          completedCodeTaskId,
+          sourceCommitSha: execution.commitSha,
+          runId: execution.cursorRunId,
+          requirementsOverlay,
+        });
+        if (continuation.orchestrationPatch) {
+          orchestrationPatch = {
+            ...orchestrationPatch,
+            ...continuation.orchestrationPatch,
+            promptTimeline: appendPromptTimelineEntries(
+              orchestrationPatch?.promptTimeline ?? body.promptTimeline ?? [],
+              continuation.timelineEntries,
+            ),
+          };
+        } else if (continuation.timelineEntries.length) {
+          orchestrationPatch = {
+            ...orchestrationPatch,
+            promptTimeline: appendPromptTimelineEntries(
+              orchestrationPatch?.promptTimeline ?? body.promptTimeline ?? [],
+              continuation.timelineEntries,
+            ),
+          };
+        }
+      } catch (continuationError) {
+        const continuationMessage =
+          continuationError instanceof Error
+            ? continuationError.message
+            : String(continuationError);
+        console.error(
+          "[auto-quality-gate] server continuation failed",
+          { projectId, taskId: execution.taskId, message: continuationMessage },
+        );
       }
     }
 
@@ -244,6 +255,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    console.error("[auto-quality-gate] unhandled error", message, e);
     return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }
