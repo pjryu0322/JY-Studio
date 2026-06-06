@@ -24,7 +24,8 @@ import {
 } from "@/lib/prototype/codeTaskFileConflictPlanner";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import {
-  buildCodeTaskWorkBranch,
+  resolveCodeTaskWorkBranchForTask,
+  resolveCodeTaskBaseBranchForTask,
   buildInitialTaskCursorExecution,
   patchTaskCursorExecution,
   type TaskCursorExecutionV1,
@@ -131,7 +132,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     logRuntimePromptQualityGateFailure(
       buildRuntimePromptQualityGateDiagnostics({
         codeTaskId: input.codeTask.codeTaskId,
-        workBranch: buildCodeTaskWorkBranch(input.codeTask.codeTaskId),
+        workBranch: resolveCodeTaskWorkBranchForTask({ codeTask: input.codeTask }),
         errors: ["file_boundary_conflict"],
         warnings: [],
       }),
@@ -175,7 +176,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     targetRepoKind: "generated_project",
     allowedPathGlobs,
     codeTaskId: input.codeTask.codeTaskId,
-    workBranch: buildCodeTaskWorkBranch(input.codeTask.codeTaskId),
+    workBranch: resolveCodeTaskWorkBranchForTask({ codeTask: input.codeTask }),
     roleKind,
   });
 
@@ -183,7 +184,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     logRuntimePromptQualityGateFailure(
       buildRuntimePromptQualityGateDiagnostics({
         codeTaskId: input.codeTask.codeTaskId,
-        workBranch: buildCodeTaskWorkBranch(input.codeTask.codeTaskId),
+        workBranch: resolveCodeTaskWorkBranchForTask({ codeTask: input.codeTask }),
         errors: safety.errors,
         warnings: safety.warnings,
       }),
@@ -199,7 +200,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     logRuntimePromptQualityGateFailure(
       buildRuntimePromptQualityGateDiagnostics({
         codeTaskId: input.codeTask.codeTaskId,
-        workBranch: buildCodeTaskWorkBranch(input.codeTask.codeTaskId),
+        workBranch: resolveCodeTaskWorkBranchForTask({ codeTask: input.codeTask }),
         errors: [],
         warnings: safety.warnings,
       }),
@@ -215,7 +216,11 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     allowedPathGlobs,
     generatedAt: now,
   });
-  const workBranch = buildCodeTaskWorkBranch(input.codeTask.codeTaskId);
+  const workBranch = resolveCodeTaskWorkBranchForTask({ codeTask: input.codeTask });
+  const effectiveBaseBranch = resolveCodeTaskBaseBranchForTask({
+    codeTask: input.codeTask,
+    fallbackBaseBranch: input.baseBranch,
+  });
   const parentTaskId = input.codeTask.parentTaskId;
   const taskCursorBase =
     input.existingTaskCursor?.taskId === parentTaskId
@@ -225,7 +230,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
           taskId: parentTaskId,
           workItemIds: [input.workItem.id],
           targetRepository: input.targetRepository.repoFullName,
-          baseBranch: input.baseBranch,
+          baseBranch: effectiveBaseBranch,
           workBranch,
           nowIso: now,
         });
@@ -241,7 +246,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     developerPromptMeta,
     workBranch,
     repository: input.targetRepository.repoFullName,
-    baseBranch: input.baseBranch,
+    baseBranch: effectiveBaseBranch,
     status: "prompt_ready",
     updatedAt: now,
   })[0]!;

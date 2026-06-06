@@ -1,5 +1,6 @@
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
+import { applyBranchPlanToCodeTaskPlan, codeTaskPlanHasBranchPlan } from "@/lib/prototype/implementationBranchPlanBuilder";
 import {
   buildCodeTaskFileConflictPlan,
   type CodeTaskConflictPlanV1,
@@ -102,15 +103,43 @@ export function repairCodeTaskPlanFileBoundaries(input: {
   };
 }
 
+export function repairCodeTaskPlanWithBranchPlan(input: {
+  readonly plan: ImplementationCodeTaskPlanV1;
+  readonly taskList?: ImplementationTaskListV1 | null;
+  readonly baseBranch?: string;
+}): RepairCodeTaskPlanFileBoundariesResult {
+  const fileRepair = repairCodeTaskPlanFileBoundaries(input);
+  const withBranch = applyBranchPlanToCodeTaskPlan({
+    plan: fileRepair.plan,
+    baseBranch: input.baseBranch ?? "main",
+  });
+  const groupSummary = withBranch.implementationBranchPlanV1?.groups.map(
+    (g) => `${g.groupId}: ${g.codeTaskIds.length}개`,
+  );
+  return {
+    plan: withBranch,
+    conflictPlan: fileRepair.conflictPlan,
+    summaryLines: [
+      ...fileRepair.summaryLines,
+      ...(groupSummary?.length
+        ? [`Branch Plan 보정 완료 · ${groupSummary.join(" · ")}`]
+        : []),
+    ],
+  };
+}
+
 export function ensureCodeTaskPlanWithFileBoundaries(input: {
   readonly plan: ImplementationCodeTaskPlanV1 | null;
   readonly taskList?: ImplementationTaskListV1 | null;
+  readonly baseBranch?: string;
 }): ImplementationCodeTaskPlanV1 | null {
   if (!input.plan) return null;
-  const needsRepair = input.plan.tasks.some((t) => !parseCodeTaskFileBoundaryV1(t.fileBoundary));
-  if (!needsRepair && input.plan.codeTaskConflictPlanV1) return input.plan;
-  return repairCodeTaskPlanFileBoundaries({
+  const needsFileRepair = input.plan.tasks.some((t) => !parseCodeTaskFileBoundaryV1(t.fileBoundary));
+  const needsBranch = !codeTaskPlanHasBranchPlan(input.plan);
+  if (!needsFileRepair && !needsBranch && input.plan.codeTaskConflictPlanV1) return input.plan;
+  return repairCodeTaskPlanWithBranchPlan({
     plan: input.plan,
     taskList: input.taskList,
+    baseBranch: input.baseBranch,
   }).plan;
 }

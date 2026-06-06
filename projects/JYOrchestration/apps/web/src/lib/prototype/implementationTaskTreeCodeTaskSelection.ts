@@ -1,4 +1,8 @@
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import {
+  codeTaskPlanHasBranchPlan,
+  sortCodeTaskIdsByBranchPlan,
+} from "@/lib/prototype/implementationBranchPlanBuilder";
 import { expandProcessTaskIdsToCodeTaskIds } from "@/lib/prototype/codeTaskExecutionQueue";
 
 /** implementationCodeTaskPlanV1.tasks 문서 순서(트리/기획 순). Quick Run Job SoT. */
@@ -8,6 +12,9 @@ export function sortCodeTaskIdsByImplementationPlanOrder(
 ): readonly string[] {
   const unique = [...new Set(codeTaskIds.map((id) => id.trim()).filter(Boolean))];
   if (!unique.length) return [];
+  if (codeTaskPlan && codeTaskPlanHasBranchPlan(codeTaskPlan)) {
+    return sortCodeTaskIdsByBranchPlan(codeTaskPlan, unique);
+  }
   if (!codeTaskPlan?.tasks?.length) {
     return unique.sort((a, b) => a.localeCompare(b));
   }

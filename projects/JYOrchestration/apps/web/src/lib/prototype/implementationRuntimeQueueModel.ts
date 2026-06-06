@@ -6,6 +6,8 @@ import { isTerminalCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskEx
 import { runHasQualityGatePassed } from "@/lib/prototype/codeTaskQualityOutcome";
 import type { CursorSession } from "@/lib/prototype/cursorSessionModel";
 import type { CodeTaskRun } from "@/lib/prototype/implementationRuntimeStateModel";
+import { isCodeTaskRunnableByBranchPlan } from "@/lib/prototype/implementationBranchPlanBuilder";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
 export type ImplementationRuntimeQueue = Readonly<{
   readonly selectedRunIds: readonly string[];
@@ -112,13 +114,22 @@ export function findNextRunnableCodeTaskIdInSelection(input: {
   readonly selectedCodeTaskIds: readonly string[];
   readonly afterCodeTaskId: string;
   readonly runs: readonly CodeTaskExecutionRunV1[];
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
 }): string | null {
   const ids = input.selectedCodeTaskIds.map((id) => id.trim()).filter(Boolean);
   const after = input.afterCodeTaskId.trim();
   const start = ids.indexOf(after);
   if (start < 0) return null;
+  const canRun = (codeTaskId: string) =>
+    isCodeTaskRunnableByBranchPlan({
+      codeTaskPlan: input.codeTaskPlan ?? null,
+      selectedCodeTaskIds: ids,
+      codeTaskId,
+      runs: input.runs,
+    });
   for (let i = start + 1; i < ids.length; i++) {
     const codeTaskId = ids[i]!;
+    if (!canRun(codeTaskId)) continue;
     const run = findLatestRunForCodeTask(input.runs, codeTaskId);
     if (!run) return codeTaskId;
     if (isTerminalCodeTaskExecutionRunStatus(run.status) || runHasQualityGatePassed(run)) {

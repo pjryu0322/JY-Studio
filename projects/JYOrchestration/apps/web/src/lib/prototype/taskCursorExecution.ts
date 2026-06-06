@@ -184,6 +184,24 @@ export function buildCodeTaskWorkBranch(
   return resolveCodeTaskWorkBranchForPlan(codeTaskId, existingWorkBranch);
 }
 
+export function resolveCodeTaskWorkBranchForTask(input: {
+  readonly codeTask: import("@/lib/prototype/implementationCodeTaskPlan").ImplementationCodeTaskV1;
+  readonly existingWorkBranch?: string | null;
+}): string {
+  const planned = String(input.codeTask.branchPlan?.workBranch ?? "").trim();
+  if (planned) return planned;
+  return buildCodeTaskWorkBranch(input.codeTask.codeTaskId, input.existingWorkBranch);
+}
+
+export function resolveCodeTaskBaseBranchForTask(input: {
+  readonly codeTask: import("@/lib/prototype/implementationCodeTaskPlan").ImplementationCodeTaskV1;
+  readonly fallbackBaseBranch?: string | null;
+}): string {
+  const planned = String(input.codeTask.branchPlan?.baseBranch ?? "").trim();
+  if (planned) return planned;
+  return String(input.fallbackBaseBranch ?? "main").trim() || "main";
+}
+
 export function buildTaskCursorRunId(nowIso?: string): string {
   const stamp = (nowIso ?? new Date().toISOString()).replace(/[:.]/g, "");
   return `task-cursor-${stamp}`;

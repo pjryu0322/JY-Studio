@@ -2,6 +2,10 @@ import type {
   CompletedCodeTaskIntegrationTarget,
   ExcludedCodeTaskIntegrationTarget,
 } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
+import {
+  codeTaskPlanHasBranchPlan,
+  sortCodeTaskIdsByBranchPlan,
+} from "@/lib/prototype/implementationBranchPlanBuilder";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { IntegrationCheckResultV1 } from "@/lib/prototype/implementationIntegrationCheckService";
 
@@ -122,6 +126,20 @@ export function orderIntegrationTargets(input: {
   readonly runIdByCodeTaskId?: ReadonlyMap<string, string>;
 }): readonly CompletedCodeTaskIntegrationTarget[] {
   const included = [...input.included];
+  const plan = input.codeTaskPlan;
+  if (plan && codeTaskPlanHasBranchPlan(plan)) {
+    const sortedIds = sortCodeTaskIdsByBranchPlan(
+      plan,
+      included.map((row) => row.codeTaskId),
+    );
+    const orderIndex = new Map(sortedIds.map((id, idx) => [id, idx] as const));
+    included.sort((a, b) => {
+      const ai = orderIndex.get(a.codeTaskId) ?? Number.MAX_SAFE_INTEGER;
+      const bi = orderIndex.get(b.codeTaskId) ?? Number.MAX_SAFE_INTEGER;
+      return ai - bi;
+    });
+    return included;
+  }
   const orderIndex = new Map<string, number>();
   const selected = (input.selectedCodeTaskIds ?? [])
     .map((id) => id.trim())

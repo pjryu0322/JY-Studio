@@ -533,6 +533,7 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
     selectedCodeTaskIds: selectedIds,
     afterCodeTaskId: completedCodeTaskId,
     runs,
+    codeTaskPlan,
   });
   const nextCodeTaskId =
     nextFromRuns ??

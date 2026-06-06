@@ -267,6 +267,8 @@ import {
   updateBoardSelectedTaskIds,
 } from "@/lib/prototype/implementationExecutionBoardState";
 import { normalizeSelectedCodeTaskIds } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
+import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { repairCodeTaskPlanWithBranchPlan } from "@/lib/prototype/codeTaskPlanRepairService";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import {
   buildInitialImplementationTaskExecutionStateFromTaskList,
@@ -585,6 +587,7 @@ export function PrototypePreviewPanel({
   const [protoBusy, setProtoBusy] = useState(false);
   const [integrationPipelineBusy, setIntegrationPipelineBusy] = useState(false);
   const [integrationMergeBusy, setIntegrationMergeBusy] = useState(false);
+  const [branchPlanRepairBusy, setBranchPlanRepairBusy] = useState(false);
   const [implementationResetBusy, setImplementationResetBusy] = useState(false);
   const [implementationConversationResetNonce, setImplementationConversationResetNonce] = useState(0);
   /** postCreate 호출 직후~응답 전: 입력 잠금·진행 UI용 */
@@ -7551,6 +7554,38 @@ export function PrototypePreviewPanel({
     });
   }, [projectId, orchestrationAwareRequirementsState, showToast]);
 
+  const handleRepairCodeTaskBranchPlan = useCallback(() => {
+    const pid = projectId.trim();
+    if (!pid || branchPlanRepairBusy) return;
+    const raw = orchestrationAwareRequirementsStateRef.current;
+    const plan = parseImplementationCodeTaskPlanV1(raw.implementationCodeTaskPlanV1);
+    if (!plan) {
+      showToast("CodeTask 계획이 없습니다.");
+      return;
+    }
+    setBranchPlanRepairBusy(true);
+    try {
+      const baseBranch = String(executionSetupRow?.baseBranch ?? "main").trim() || "main";
+      const repaired = repairCodeTaskPlanWithBranchPlan({
+        plan,
+        taskList: raw.implementationTaskListV1 ?? implementationStageBoardInput?.taskList ?? null,
+        baseBranch,
+      });
+      void persistChatToDb(undefined, { implementationCodeTaskPlanV1: repaired.plan }).then(() => {
+        showToast(repaired.summaryLines.at(-1) ?? "Branch Plan 보정 완료");
+      });
+    } finally {
+      setBranchPlanRepairBusy(false);
+    }
+  }, [
+    projectId,
+    branchPlanRepairBusy,
+    executionSetupRow,
+    implementationStageBoardInput?.taskList,
+    persistChatToDb,
+    showToast,
+  ]);
+
   const onImplementationQuickExecution = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) return;
@@ -8070,6 +8105,8 @@ export function PrototypePreviewPanel({
             }
             onMergeIntegrationPullRequest={mergeIntegrationPullRequest}
             integrationMergeBusy={integrationMergeBusy}
+            onRepairCodeTaskBranchPlan={handleRepairCodeTaskBranchPlan}
+            branchPlanRepairBusy={branchPlanRepairBusy}
           />
         ) : null}
         <div className="jyo-prototype-execution-chat-region">

@@ -18,7 +18,8 @@ import {
   inferCodeTaskFileBoundary,
 } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
-import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
+import { buildCodeTaskWorkBranch, resolveCodeTaskWorkBranchForTask, resolveCodeTaskBaseBranchForTask } from "@/lib/prototype/taskCursorExecution";
+import { buildCodeTaskBranchPlanPromptSections } from "@/lib/prototype/implementationBranchPlan";
 
 export type BuildCodeTaskDeveloperPromptResult = Readonly<{
   readonly prompt: string;
@@ -189,6 +190,7 @@ function buildGeneratedProjectPrompt(input: {
     "## 검증 기준",
     ...verificationChecklist,
     ...boundarySections,
+    ...buildCodeTaskBranchPlanPromptSections(codeTask.branchPlan),
     "",
     "## 금지사항",
     ...target.forbiddenRules.map((r) => `- ${r}`),
@@ -251,6 +253,7 @@ function buildPlatformProjectPrompt(input: {
       parseCodeTaskFileBoundaryV1(codeTask.fileBoundary) ??
         inferCodeTaskFileBoundary({ codeTask, parentTask: input.parentTask ?? null }),
     ),
+    ...buildCodeTaskBranchPlanPromptSections(codeTask.branchPlan),
     "",
     "## 금지사항",
     ...target.forbiddenRules.map((p) => `- ${p}`),
@@ -289,7 +292,9 @@ export function buildCodeTaskDeveloperPromptDetailed(input: {
 }): BuildCodeTaskDeveloperPromptResult {
   const repoKind = input.targetRepoKind ?? "generated_project";
   const repoFullName = input.targetRepository.repoFullName.trim();
-  const workBranch = buildCodeTaskWorkBranch(input.codeTask.codeTaskId);
+  const workBranch = resolveCodeTaskWorkBranchForTask({ codeTask: input.codeTask });
+  const baseBranchForPrompt =
+    input.codeTask.branchPlan?.baseBranch?.trim() || input.baseBranch;
 
   const rawCandidates = [
     ...(input.codeTask.candidateFiles ?? []),
@@ -304,7 +309,7 @@ export function buildCodeTaskDeveloperPromptDetailed(input: {
 
   const target = buildCodeTaskPromptTargetContext({
     repoFullName,
-    baseBranch: input.baseBranch,
+    baseBranch: baseBranchForPrompt,
     workBranch,
     repoKind,
     allowedPathGlobs: input.allowedPathGlobs,

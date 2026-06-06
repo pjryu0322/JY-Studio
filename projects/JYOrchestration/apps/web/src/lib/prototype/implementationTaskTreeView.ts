@@ -300,6 +300,15 @@ function buildCodeTaskNode(input: {
       metaLines.push(formatMetaLine("공유 파일", file));
     }
   }
+  const branchPlan = input.codeTask.branchPlan;
+  if (branchPlan) {
+    metaLines.push(formatMetaLine("Branch group", branchPlan.branchGroup));
+    metaLines.push(formatMetaLine("Work branch", branchPlan.workBranch));
+    metaLines.push(formatMetaLine("Base branch", branchPlan.baseBranch));
+    metaLines.push(formatMetaLine("Execution", branchPlan.executionMode));
+  } else {
+    metaLines.push(formatMetaLine("Branch Plan", "보정 필요"));
+  }
 
   const failureReason =
     phase === "prompt_preflight_failed"

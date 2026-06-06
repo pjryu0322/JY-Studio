@@ -3,6 +3,16 @@ import {
   type CodeTaskFileBoundaryV1,
 } from "@/lib/prototype/codeTaskFileBoundary";
 import type { CodeTaskConflictPlanV1 } from "@/lib/prototype/codeTaskFileConflictPlanner";
+import type {
+  CodeTaskBranchPlanV1,
+  ImplementationBranchPlanV1,
+} from "@/lib/prototype/implementationBranchPlan";
+import {
+  parseCodeTaskBranchPlanV1,
+  parseImplementationBranchPlanV1,
+} from "@/lib/prototype/implementationBranchPlan";
+import { repairCodeTaskPlanFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
+import { applyBranchPlanToCodeTaskPlan } from "@/lib/prototype/implementationBranchPlanBuilder";
 import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import {
   buildImplementationTaskExecutionHints,
@@ -59,6 +69,7 @@ export type ImplementationCodeTaskV1 = Readonly<{
   refinementSource?: "heuristic" | "llm";
   llmRationale?: string;
   fileBoundary?: CodeTaskFileBoundaryV1 | null;
+  branchPlan?: CodeTaskBranchPlanV1 | null;
 }>;
 
 export type ImplementationCodeTaskPlanRefinementSource =
@@ -128,6 +139,7 @@ export type ImplementationCodeTaskPlanV1 = Readonly<{
   }>;
   llmRefinementSummary?: ImplementationCodeTaskPlanLlmRefinementSummaryV1;
   codeTaskConflictPlanV1?: CodeTaskConflictPlanV1 | null;
+  implementationBranchPlanV1?: ImplementationBranchPlanV1 | null;
 }>;
 
 export const IMPLEMENTATION_CODE_TASK_CONSOLIDATION_LLM_GUIDELINES = [
@@ -464,7 +476,7 @@ export function buildImplementationCodeTaskPlanFromTaskList(input: {
   if (codeTasks.some((task) => task.status === "blocked")) missing.push("blocked CodeTask 존재");
   if (codeTasks.some((task) => task.status === "draft")) missing.push("draft CodeTask 존재");
 
-  return {
+  let plan: ImplementationCodeTaskPlanV1 = {
     version: IMPLEMENTATION_CODE_TASK_PLAN_VERSION,
     projectId: input.projectId.trim(),
     createdAt: now,
@@ -482,6 +494,10 @@ export function buildImplementationCodeTaskPlanFromTaskList(input: {
     heuristicTaskCount: codeTasks.length,
     refinedTaskCount: codeTasks.length,
   };
+
+  const withBoundaries = repairCodeTaskPlanFileBoundaries({ plan, taskList: input.taskList }).plan;
+  plan = applyBranchPlanToCodeTaskPlan({ plan: withBoundaries, nowIso: now });
+  return plan;
 }
 
 export function parseImplementationCodeTaskPlanValidationReportV1(
@@ -578,6 +594,9 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
         : {}),
       ...(parseCodeTaskFileBoundaryV1(row.fileBoundary)
         ? { fileBoundary: parseCodeTaskFileBoundaryV1(row.fileBoundary)! }
+        : {}),
+      ...(parseCodeTaskBranchPlanV1(row.branchPlan)
+        ? { branchPlan: parseCodeTaskBranchPlanV1(row.branchPlan)! }
         : {}),
     });
   }
@@ -683,6 +702,12 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
             },
           };
         })()
+      : {}),
+    ...(parseImplementationBranchPlanV1(o.implementationBranchPlanV1) !== undefined
+      ? {
+          implementationBranchPlanV1:
+            parseImplementationBranchPlanV1(o.implementationBranchPlanV1) ?? null,
+        }
       : {}),
   };
 }

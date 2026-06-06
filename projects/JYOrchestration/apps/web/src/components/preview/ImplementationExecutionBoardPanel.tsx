@@ -36,6 +36,11 @@ import {
   formatCodeTaskReworkRecommendedActionKo,
 } from "@/lib/prototype/implementationCodeTaskReworkVm";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import {
+  codeTaskPlanHasBranchPlan,
+} from "@/lib/prototype/implementationBranchPlanBuilder";
+import { summarizeBranchPlanForUi } from "@/lib/prototype/implementationBranchPlan";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -124,6 +129,8 @@ export function ImplementationExecutionBoardPanel({
   codeTaskIntegrationPlanV1,
   onMergeIntegrationPullRequest,
   integrationMergeBusy,
+  onRepairCodeTaskBranchPlan,
+  branchPlanRepairBusy,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -159,6 +166,8 @@ export function ImplementationExecutionBoardPanel({
   readonly codeTaskIntegrationPlanV1?: unknown;
   readonly onMergeIntegrationPullRequest?: () => void;
   readonly integrationMergeBusy?: boolean;
+  readonly onRepairCodeTaskBranchPlan?: () => void;
+  readonly branchPlanRepairBusy?: boolean;
 }) {
   const feedbackSummary = useMemo(
     () => buildImplementationCodeTaskFeedbackSummary(codeTaskExecutionFeedbackV1),
@@ -182,6 +191,19 @@ export function ImplementationExecutionBoardPanel({
         boardState,
       }),
     [board, executionSetup, previewReady, boardState],
+  );
+
+  const parsedCodeTaskPlan = useMemo(
+    () => parseImplementationCodeTaskPlanV1(implementationCodeTaskPlanV1) ?? null,
+    [implementationCodeTaskPlanV1],
+  );
+  const branchPlanPanelLines = useMemo(
+    () => summarizeBranchPlanForUi(parsedCodeTaskPlan?.implementationBranchPlanV1 ?? null),
+    [parsedCodeTaskPlan],
+  );
+  const needsBranchPlanRepair = useMemo(
+    () => Boolean(parsedCodeTaskPlan && !codeTaskPlanHasBranchPlan(parsedCodeTaskPlan)),
+    [parsedCodeTaskPlan],
   );
 
   const quickRunStatus = useMemo(
@@ -782,6 +804,30 @@ export function ImplementationExecutionBoardPanel({
           </div>
         ) : null}
       </div>
+
+      {parsedCodeTaskPlan ? (
+        <section className={styles.taskTreeSection} data-testid="implementation-branch-plan-section">
+          <div className={styles.integrationSectionHeader}>
+            <strong>Branch Plan</strong>
+            {needsBranchPlanRepair && onRepairCodeTaskBranchPlan ? (
+              <button
+                type="button"
+                className={styles.githubVerifyRetryLink}
+                data-testid="implementation-branch-plan-repair-button"
+                disabled={branchPlanRepairBusy === true}
+                onClick={() => onRepairCodeTaskBranchPlan()}
+              >
+                {branchPlanRepairBusy ? "보정 중…" : "Branch Plan 보정"}
+              </button>
+            ) : null}
+          </div>
+          {branchPlanPanelLines.map((line) => (
+            <div key={line} className={styles.summarySecondary}>
+              {line}
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       <section className={styles.taskTreeSection} data-testid="implementation-task-tree-section">
         <ImplementationExecutionBoardTaskTree
