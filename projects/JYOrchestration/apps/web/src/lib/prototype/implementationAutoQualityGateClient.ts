@@ -1,5 +1,9 @@
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
+  parseCodeTaskExecutionRunsV1,
+  type CodeTaskExecutionRunV1,
+} from "@/lib/prototype/codeTaskExecutionRun";
+import {
   isImplementationAutoQualityGateInFlight,
   parseImplementationAutoQualityGateV1,
   shouldAutoStartImplementationQualityGate,
@@ -23,16 +27,32 @@ export type ImplementationAutoQualityGateClientInput = Readonly<{
   readonly codeTaskExecutionRunsV1?: unknown;
 }>;
 
+export function resolveCodeTaskRunForAutoQualityGateClient(input: {
+  readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
+  readonly codeTaskExecutionRunsV1?: unknown;
+}): CodeTaskExecutionRunV1 | null {
+  const execution = parseTaskCursorExecutionV1(input.taskCursorExecutionV1);
+  const runs = parseCodeTaskExecutionRunsV1(input.codeTaskExecutionRunsV1) ?? [];
+  if (!execution || runs.length === 0) return null;
+  return (
+    runs.find((r) => r.processTaskId === execution.taskId) ??
+    runs[runs.length - 1] ??
+    null
+  );
+}
+
 export function shouldTriggerImplementationAutoQualityGateClient(
   input: ImplementationAutoQualityGateClientInput,
 ): boolean {
   const execution = parseTaskCursorExecutionV1(input.taskCursorExecutionV1);
   if (!execution) return false;
   const autoGate = parseImplementationAutoQualityGateV1(input.implementationAutoQualityGateV1);
+  const codeTaskRun = resolveCodeTaskRunForAutoQualityGateClient(input);
   return (
     shouldAutoStartImplementationQualityGate({
       taskCursorExecution: execution,
       autoGate,
+      codeTaskRun,
     }) ||
     shouldResumeImplementationAutoQualityGate({
       taskCursorExecution: execution,

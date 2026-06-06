@@ -328,6 +328,7 @@ import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/impleme
 import {
   buildImplementationAutoQualityGateTriggerKey,
   isImplementationAutoQualityGateClientInFlight,
+  resolveCodeTaskRunForAutoQualityGateClient,
   runImplementationAutoQualityGateClient,
   shouldTriggerImplementationAutoQualityGateClient,
 } from "@/lib/prototype/implementationAutoQualityGateClient";
@@ -1627,6 +1628,7 @@ export function PrototypePreviewPanel({
   const requirementsStateJsonRef = useRef(requirementsStateJson);
   const autoQualityGateInFlightRef = useRef<string | null>(null);
   const autoQualityGateFailedTriggerRef = useRef<string | null>(null);
+  const autoQualityGateCompletedTriggerRef = useRef<string | null>(null);
   const quickRunCodeTaskContinuationRef = useRef<string | null>(null);
   const quickRunStuckGithubVerifyRef = useRef<string | null>(null);
   const codeTaskDispatchPreferredTaskIdRef = useRef<string | null>(null);
@@ -2692,27 +2694,27 @@ export function PrototypePreviewPanel({
   const triggerImplementationAutoQualityGate = useCallback(async () => {
     const pid = projectId.trim();
     if (!pid) return;
-    const orchestration = orchestrationAwareRequirementsState;
-    const execution = parseTaskCursorExecutionV1(orchestration.taskCursorExecutionV1);
-    if (!execution) return;
     const freshState = parseRequirementsStateJson(requirementsStateJsonRef.current);
+    const execution = parseTaskCursorExecutionV1(freshState.taskCursorExecutionV1);
+    if (!execution) return;
     const clientInput = {
       projectId: pid,
       taskCursorExecutionV1: execution,
-      implementationTaskListV1: freshState.implementationTaskListV1 ?? orchestration.implementationTaskListV1,
-      implementationTaskExecutionStateV1:
-        freshState.implementationTaskExecutionStateV1 ??
-        orchestration.implementationTaskExecutionStateV1,
-      implementationQualityGateResultsV1: orchestration.implementationQualityGateResultsV1,
-      implementationAutoQualityGateV1: orchestration.implementationAutoQualityGateV1,
-      implementationAutoQualityGateHistoryV1: orchestration.implementationAutoQualityGateHistoryV1,
-      cursorWorkItemsV1: orchestration.cursorWorkItemsV1 ?? [],
-      promptTimeline: orchestration.promptTimeline,
-      codeTaskExecutionRunsV1:
-        freshState.codeTaskExecutionRunsV1 ?? orchestration.codeTaskExecutionRunsV1,
+      implementationTaskListV1: freshState.implementationTaskListV1,
+      implementationTaskExecutionStateV1: freshState.implementationTaskExecutionStateV1,
+      implementationQualityGateResultsV1: freshState.implementationQualityGateResultsV1,
+      implementationAutoQualityGateV1: freshState.implementationAutoQualityGateV1,
+      implementationAutoQualityGateHistoryV1: freshState.implementationAutoQualityGateHistoryV1,
+      cursorWorkItemsV1: freshState.cursorWorkItemsV1 ?? [],
+      promptTimeline: freshState.promptTimeline,
+      codeTaskExecutionRunsV1: freshState.codeTaskExecutionRunsV1,
     };
-    if (!shouldTriggerImplementationAutoQualityGateClient(clientInput)) return;
+    if (!shouldTriggerImplementationAutoQualityGateClient(clientInput)) {
+      autoQualityGateCompletedTriggerRef.current = buildImplementationAutoQualityGateTriggerKey(execution);
+      return;
+    }
     const triggerKey = buildImplementationAutoQualityGateTriggerKey(execution);
+    if (autoQualityGateCompletedTriggerRef.current === triggerKey) return;
     if (autoQualityGateFailedTriggerRef.current === triggerKey) return;
     if (autoQualityGateInFlightRef.current === triggerKey) return;
     autoQualityGateInFlightRef.current = triggerKey;
@@ -2728,10 +2730,23 @@ export function PrototypePreviewPanel({
       }
       autoQualityGateFailedTriggerRef.current = null;
       if (outcome.orchestrationPatch) {
-        applyImplementationOrchestrationResult({
-          messages: executionSingleChat.chatMessages,
+        applyImplementationOrchestrationResultRef.current({
+          messages: executionSingleChatMessagesRef.current,
           orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(outcome.orchestrationPatch),
         });
+      }
+      const afterPatch = parseRequirementsStateJson(requirementsStateJsonRef.current);
+      const afterExecution = parseTaskCursorExecutionV1(afterPatch.taskCursorExecutionV1);
+      const stillNeedsGate =
+        afterExecution &&
+        shouldTriggerImplementationAutoQualityGateClient({
+          projectId: pid,
+          taskCursorExecutionV1: afterExecution,
+          implementationAutoQualityGateV1: afterPatch.implementationAutoQualityGateV1,
+          codeTaskExecutionRunsV1: afterPatch.codeTaskExecutionRunsV1,
+        });
+      if (outcome.status === "skipped" || !stillNeedsGate) {
+        autoQualityGateCompletedTriggerRef.current = triggerKey;
       }
       if (outcome.message) {
         appendImplementationExecutionNotice(outcome.message);
@@ -2744,29 +2759,52 @@ export function PrototypePreviewPanel({
     }
   }, [
     projectId,
-    orchestrationAwareRequirementsState,
-    applyImplementationOrchestrationResult,
-    executionSingleChat,
-    showImplementationToast,
     appendImplementationExecutionNotice,
+    showImplementationToast,
+  ]);
+
+  const triggerImplementationAutoQualityGateRef = useRef(triggerImplementationAutoQualityGate);
+  useEffect(() => {
+    triggerImplementationAutoQualityGateRef.current = triggerImplementationAutoQualityGate;
+  }, [triggerImplementationAutoQualityGate]);
+
+  const autoQualityGateEffectSignal = useMemo(() => {
+    const execution = parseTaskCursorExecutionV1(
+      orchestrationAwareRequirementsState.taskCursorExecutionV1,
+    );
+    const run = resolveCodeTaskRunForAutoQualityGateClient({
+      taskCursorExecutionV1: execution,
+      codeTaskExecutionRunsV1: orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+    });
+    const autoGate = orchestrationAwareRequirementsState.implementationAutoQualityGateV1;
+    const autoGateStatus =
+      autoGate && typeof autoGate === "object" && "status" in autoGate
+        ? String((autoGate as { status?: string }).status ?? "")
+        : "";
+    return [
+      execution?.taskId ?? "",
+      execution?.status ?? "",
+      String(execution?.commitSha ?? "").trim(),
+      run?.status ?? "",
+      autoGateStatus,
+      String(autoGate && typeof autoGate === "object" && "sourceCommitSha" in autoGate
+        ? (autoGate as { sourceCommitSha?: string }).sourceCommitSha ?? ""
+        : "").trim(),
+    ].join("|");
+  }, [
+    orchestrationAwareRequirementsState.taskCursorExecutionV1,
+    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+    orchestrationAwareRequirementsState.implementationAutoQualityGateV1,
   ]);
 
   useEffect(() => {
     autoQualityGateFailedTriggerRef.current = null;
-  }, [
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.commitSha,
-    orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
-  ]);
+    autoQualityGateCompletedTriggerRef.current = null;
+  }, [autoQualityGateEffectSignal]);
 
   useEffect(() => {
-    void triggerImplementationAutoQualityGate();
-  }, [
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.commitSha,
-    orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
-    triggerImplementationAutoQualityGate,
-  ]);
+    void triggerImplementationAutoQualityGateRef.current();
+  }, [autoQualityGateEffectSignal]);
 
   const recoverServerQuickRunContinuationIfNeeded = useCallback(async () => {
     const pid = projectId.trim();
