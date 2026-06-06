@@ -1,7 +1,10 @@
 import { githubRestApiBase, resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
-import { buildTaskCursorGithubBranchCandidates } from "@/lib/prototype/taskCursorGithubBranchCandidates";
+import {
+  branchMatchesCodeTaskIdentity,
+  buildTaskCursorGithubBranchCandidates,
+} from "@/lib/prototype/taskCursorGithubBranchCandidates";
 import {
   defaultForbiddenTargetPathGlobs,
   validateTargetRepositoryChangedFiles,
@@ -126,7 +129,12 @@ function commitMessageMatchesTask(input: {
     (codeTaskSlug &&
       (commitMessage.toLowerCase().includes(codeTaskSlug) || branch.includes(codeTaskSlug))) ||
     (taskSlug &&
-      (commitMessage.toLowerCase().includes(taskSlug) || branch.includes(taskSlug)))
+      (commitMessage.toLowerCase().includes(taskSlug) || branch.includes(taskSlug))) ||
+    branchMatchesCodeTaskIdentity({
+      branch: input.branch,
+      taskId: input.taskId,
+      codeTaskId: input.codeTaskId,
+    })
   );
 }
 

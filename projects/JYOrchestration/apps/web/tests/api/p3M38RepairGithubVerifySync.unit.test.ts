@@ -119,6 +119,58 @@ describe("P3-M38 repair GitHub verify sync", () => {
       expect(result.allBranchesMissing).toBe(true);
       expect(result.uiReason).toBe("github_branch_missing");
     });
+
+    it("verifies sample-data branch when codeTaskId is legacy MOCK and commit message has no task id", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          if (url.includes("code-dev-sample-data-001-001")) {
+            return new Response(JSON.stringify({ object: { sha: "abc123def4567890" } }), {
+              status: 200,
+            });
+          }
+          if (url.includes("/git/ref/heads/")) {
+            return new Response("not found", { status: 404 });
+          }
+          if (url.includes("/commits/")) {
+            return new Response(
+              JSON.stringify({
+                sha: "abc123def4567890",
+                commit: { message: "feat: add sample fixtures" },
+                files: [{ filename: "src/data/sample.json" }],
+              }),
+              { status: 200 },
+            );
+          }
+          return new Response("not found", { status: 404 });
+        }),
+      );
+      const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+        gitRepoUrl: "https://github.com/owner/repo",
+        gitRepoName: "owner/repo",
+        baseBranch: "main",
+      })!;
+      const execution = {
+        ...buildInitialTaskCursorExecution({
+          projectId: "p1",
+          taskId: "DEV-SAMPLE-DATA-001",
+          workItemIds: ["wi-1"],
+          targetRepository: "owner/repo",
+          baseBranch: "main",
+          workBranch: "wip/cursor/code-dev-mock-001-001",
+        }),
+        status: "github_verifying" as const,
+      };
+      const result = await verifyTaskCursorGithubResult({
+        execution,
+        targetRepository,
+        githubToken: "gh-token",
+        allowedPathGlobs: ["src/**"],
+        codeTaskId: "CODE-DEV-MOCK-001-001",
+      });
+      expect(result.ok).toBe(true);
+      expect(result.resolvedBranch).toContain("sample-data");
+    });
   });
 
   describe("timeout policy", () => {

@@ -284,8 +284,17 @@ describe("buildCodeTaskWorkBranch", () => {
 });
 
 describe("classifyCodeTaskExecutionRunFromTaskCursor", () => {
-  it("requires github evidence when cursor says completed", () => {
-    const result = classifyCodeTaskExecutionRunFromTaskCursor(baseExecution());
+  it("keeps github_verifying when cursor completed with branch and agent id but no local commit", () => {
+    const result = classifyCodeTaskExecutionRunFromTaskCursor(
+      baseExecution({ cursorRunId: "agent-1" }),
+    );
+    expect(result.status).toBe("github_verifying");
+  });
+
+  it("requires github evidence when cursor says completed without branch evidence", () => {
+    const result = classifyCodeTaskExecutionRunFromTaskCursor(
+      baseExecution({ workBranch: undefined, cursorRunId: undefined }),
+    );
     expect(result.status).toBe("rework_required");
   });
 

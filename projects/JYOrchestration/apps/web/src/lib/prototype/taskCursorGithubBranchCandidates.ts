@@ -26,6 +26,38 @@ export function buildSampleDataMockBranchAliases(slug: string): readonly string[
   return out;
 }
 
+function slugifyCodeTaskIdForBranchMatch(codeTaskId: string): string {
+  return slugifyCodeTaskId(codeTaskId);
+}
+
+/** WIP branch가 codeTaskId(및 mock↔sample-data alias)와 일치하는지 — commit message에 ID가 없어도 branch SoT로 인정 */
+export function branchMatchesCodeTaskIdentity(input: {
+  readonly branch: string;
+  readonly taskId: string;
+  readonly codeTaskId?: string | null;
+}): boolean {
+  const branchLower = String(input.branch ?? "").trim().toLowerCase();
+  if (!branchLower) return false;
+
+  const taskSlug = slugifyCodeTaskIdForBranchMatch(input.taskId);
+  if (taskSlug && branchLower.includes(taskSlug)) return true;
+
+  const codeTaskId = String(input.codeTaskId ?? "").trim();
+  if (!codeTaskId) return false;
+
+  const codeTaskSlug = slugifyCodeTaskIdForBranchMatch(codeTaskId);
+  if (codeTaskSlug && branchLower.includes(codeTaskSlug)) return true;
+
+  const canonical = resolveCodeTaskWorkBranchForPlan(codeTaskId, null).toLowerCase();
+  if (branchLower === canonical) return true;
+
+  for (const alias of buildSampleDataMockBranchAliases(codeTaskSlug)) {
+    if (branchLower === alias.toLowerCase()) return true;
+  }
+
+  return false;
+}
+
 export function buildTaskCursorGithubBranchCandidates(input: {
   readonly codeTaskId?: string | null;
   readonly executionWorkBranch?: string | null;

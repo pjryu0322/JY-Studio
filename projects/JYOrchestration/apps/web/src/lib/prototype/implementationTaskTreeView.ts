@@ -207,14 +207,7 @@ function buildCodeTaskNode(input: {
         autoGate: autoGateForCodeTask,
       });
 
-  if (
-    latestRun &&
-    (latestRun.status === "rework_required" ||
-      latestRun.status === "failed" ||
-      latestRun.status === "status_check_stopped")
-  ) {
-    phase = "failed";
-  } else if (latestRun?.failureReason === "prompt_preflight_failed") {
+  if (latestRun?.failureReason === "prompt_preflight_failed") {
     phase = "prompt_preflight_failed";
   }
 

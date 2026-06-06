@@ -86,6 +86,11 @@ export function classifyCodeTaskExecutionRunFromTaskCursor(
     if (noCodeChangeEvidence) {
       return { status: "no_code_change_completed", noCodeChangeEvidence };
     }
+    const workBranch = String(execution.workBranch ?? "").trim();
+    const cursorRunId = String(execution.cursorRunId ?? "").trim();
+    if (workBranch && cursorRunId) {
+      return { status: "github_verifying" };
+    }
     return {
       status: "rework_required",
       failureReason: "commit_not_created",
