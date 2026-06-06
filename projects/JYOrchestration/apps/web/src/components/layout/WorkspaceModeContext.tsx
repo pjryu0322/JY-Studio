@@ -24,6 +24,15 @@ export type WorkspaceModeContextValue = Readonly<{
 
 const WorkspaceModeContext = createContext<WorkspaceModeContextValue | null>(null);
 
+/** Provider 트리 밖 SSR(prerender) 구간 — `WorkspaceModeProvider`와 동일한 초기 AUTO/DESKTOP. */
+function createSsrSafeWorkspaceModeFallback(): WorkspaceModeContextValue {
+  return {
+    mode: "AUTO",
+    setMode: () => {},
+    effectiveLayout: "DESKTOP",
+  };
+}
+
 export function WorkspaceModeProvider({ children }: { readonly children: ReactNode }) {
   const layoutMqIsMobile = useLayoutMobileBreakpoint();
   const [mode, setModeState] = useState<WorkspaceMode>("AUTO");
@@ -98,10 +107,11 @@ export function WorkspaceModeProvider({ children }: { readonly children: ReactNo
 
 export function useWorkspaceMode(): WorkspaceModeContextValue {
   const v = useContext(WorkspaceModeContext);
-  if (!v) {
-    throw new Error("useWorkspaceMode must be used within WorkspaceModeProvider");
+  if (v) return v;
+  if (typeof window === "undefined") {
+    return createSsrSafeWorkspaceModeFallback();
   }
-  return v;
+  throw new Error("useWorkspaceMode must be used within WorkspaceModeProvider");
 }
 
 export function useWorkspaceModeOptional(): WorkspaceModeContextValue | null {

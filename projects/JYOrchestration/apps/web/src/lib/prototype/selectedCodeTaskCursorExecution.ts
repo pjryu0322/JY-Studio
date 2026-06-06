@@ -170,6 +170,7 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
     existingTaskCursor: input.existingTaskCursor,
     nowIso,
     codeTaskConflictPlan: planWithBoundaries?.codeTaskConflictPlanV1 ?? null,
+    codeTaskPlan: planWithBoundaries,
   });
   if (!builtResult.ok) {
     return { ok: false, outcome: "blocked", message: builtResult.message };

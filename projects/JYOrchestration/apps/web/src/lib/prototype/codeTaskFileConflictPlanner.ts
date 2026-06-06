@@ -3,7 +3,9 @@ import {
   pathMatchesAnyPattern,
   type CodeTaskFileBoundaryV1,
 } from "@/lib/prototype/codeTaskFileBoundary";
+import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import { WORKSPACE_SHELL_OWNED_PATTERNS } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
+import { boundaryIncludesRouteEntryCandidates } from "@/lib/prototype/codeTaskRouteBoundaryPlanner";
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
 export type CodeTaskFileConflictIssueV1 = Readonly<{
@@ -205,14 +207,114 @@ export function blockingIssuesForCodeTask(
   );
 }
 
+function branchGroupOf(task: ImplementationCodeTaskV1 | undefined): string | null {
+  return parseCodeTaskBranchPlanV1(task?.branchPlan)?.branchGroup ?? null;
+}
+
+function isIntegrationShellPeer(task: ImplementationCodeTaskV1): boolean {
+  const group = branchGroupOf(task);
+  if (group === "integration") return true;
+  if (task.changeType === "integration") return true;
+  if (task.codeTaskId === "CODE-DEV-INTEGRATION-001-001") return true;
+  return /최종 연결|통합\s*wiring/i.test(task.title.trim());
+}
+
+function isFoundationShellPeer(task: ImplementationCodeTaskV1): boolean {
+  const group = branchGroupOf(task);
+  if (group === "foundation") return true;
+  if (isIntegrationShellPeer(task)) return false;
+  if (task.fileBoundary?.conflictGroupId === "workspace-shell") return true;
+  return false;
+}
+
+function isShellOrRouteEntryPath(filePath: string): boolean {
+  const p = String(filePath ?? "").trim();
+  if (!p) return false;
+  if (isShellPattern(p)) return true;
+  return boundaryIncludesRouteEntryCandidates([p]);
+}
+
+/** Shell·route는 foundation/integration만 소유하고, 다른 Task forbidden에는 의도적으로 등록된다. */
+function isExpectedShellForbiddenOverlapForExecute(
+  issue: CodeTaskFileConflictIssueV1,
+  executing: ImplementationCodeTaskV1,
+): boolean {
+  if (issue.reason !== "forbidden_file_violation") return false;
+  if (!isShellOrRouteEntryPath(issue.filePath)) return false;
+  return isFoundationShellPeer(executing) || isIntegrationShellPeer(executing);
+}
+
+/** Branch Plan상 Shell/Integration wiring과 겹치는 후보는 단일 CodeTask Cursor 실행에서 차단하지 않는다. */
+function isPlannedShellRouteOverlapForExecute(
+  issue: CodeTaskFileConflictIssueV1,
+  executing: ImplementationCodeTaskV1,
+  allTasks: readonly ImplementationCodeTaskV1[],
+): boolean {
+  const peerTasks = issue.codeTaskIds
+    .map((id) => allTasks.find((t) => t.codeTaskId === id))
+    .filter((t): t is ImplementationCodeTaskV1 => Boolean(t));
+  if (peerTasks.length < 2) return false;
+
+  const onlyFoundationAndIntegration =
+    peerTasks.every((p) => isFoundationShellPeer(p) || isIntegrationShellPeer(p)) &&
+    peerTasks.some(isFoundationShellPeer) &&
+    peerTasks.some(isIntegrationShellPeer);
+
+  if (
+    onlyFoundationAndIntegration &&
+    (isFoundationShellPeer(executing) || isIntegrationShellPeer(executing)) &&
+    (issue.reason === "shared_shell_file" ||
+      issue.reason === "owned_file_overlap" ||
+      issue.issueId === "shell:multi-owner")
+  ) {
+    return true;
+  }
+
+  if (issue.reason !== "shared_shell_file" && issue.issueId !== "shell:multi-owner") {
+    return false;
+  }
+
+  const execGroup = branchGroupOf(executing);
+  if (execGroup === "foundation" && isFoundationShellPeer(executing)) {
+    return peerTasks.every(
+      (p) => p.codeTaskId === executing.codeTaskId || isIntegrationShellPeer(p),
+    );
+  }
+  if (isIntegrationShellPeer(executing)) {
+    return peerTasks.every(
+      (p) =>
+        p.codeTaskId === executing.codeTaskId ||
+        isFoundationShellPeer(p) ||
+        isIntegrationShellPeer(p),
+    );
+  }
+  return false;
+}
+
+export function blockingIssuesForCodeTaskExecute(input: {
+  readonly plan: CodeTaskConflictPlanV1 | null | undefined;
+  readonly codeTask: ImplementationCodeTaskV1;
+  readonly allTasks: readonly ImplementationCodeTaskV1[];
+}): readonly CodeTaskFileConflictIssueV1[] {
+  const issues = blockingIssuesForCodeTask(input.plan, input.codeTask.codeTaskId);
+  return issues.filter(
+    (issue) =>
+      !isPlannedShellRouteOverlapForExecute(issue, input.codeTask, input.allTasks) &&
+      !isExpectedShellForbiddenOverlapForExecute(issue, input.codeTask),
+  );
+}
+
 export function formatCodeTaskFileConflictBlockMessage(
   issues: readonly CodeTaskFileConflictIssueV1[],
 ): string {
   const files = [...new Set(issues.map((i) => i.filePath))].slice(0, 5);
+  const hasShellOverlap = issues.some((i) => i.reason === "shared_shell_file");
   return [
     "CodeTask 파일 경계가 불명확하여 Cursor 실행을 차단했습니다.",
     files.length ? `충돌 가능 파일: ${files.join(", ")}` : "",
-    "조치: dependency 또는 conflict group을 먼저 정리해야 합니다.",
+    hasShellOverlap
+      ? "조치: App Shell 소유 Task(foundation)와 Integration wiring Task의 겹침이 아니라면, 구현 보드에서 Branch Plan/File Boundary 보정을 실행하세요."
+      : "조치: dependency 또는 conflict group을 먼저 정리하거나 Branch Plan/File Boundary 보정을 실행하세요.",
   ]
     .filter(Boolean)
     .join("\n");

@@ -5,6 +5,7 @@ import {
 } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import {
   buildCodeTaskFileConflictPlan,
+  blockingIssuesForCodeTaskExecute,
 } from "@/lib/prototype/codeTaskFileConflictPlanner";
 import { buildCodeTaskDeveloperPromptDetailed } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
 import { runIntegrationConflictPrecheck } from "@/lib/prototype/integrationConflictPrecheck";
@@ -15,7 +16,7 @@ import { IMPLEMENTATION_CODE_TASK_PLAN_VERSION } from "@/lib/prototype/implement
 function task(partial: Partial<ImplementationCodeTaskV1> & Pick<ImplementationCodeTaskV1, "codeTaskId" | "title">): ImplementationCodeTaskV1 {
   return {
     codeTaskId: partial.codeTaskId,
-    parentTaskId: "DEV-1",
+    parentTaskId: partial.parentTaskId ?? "DEV-1",
     title: partial.title,
     description: partial.description ?? partial.title,
     changeType: partial.changeType ?? "component",
@@ -24,10 +25,10 @@ function task(partial: Partial<ImplementationCodeTaskV1> & Pick<ImplementationCo
     acceptanceCriteria: partial.acceptanceCriteria ?? ["ok"],
     verificationHints: partial.verificationHints ?? ["verify"],
     forbiddenPaths: partial.forbiddenPaths ?? ["forbidden"],
-    priority: "P1",
-    status: "ready",
-    blockers: [],
-    ...(partial.fileBoundary ? { fileBoundary: partial.fileBoundary } : {}),
+    priority: partial.priority ?? "P1",
+    status: partial.status ?? "ready",
+    blockers: partial.blockers ?? [],
+    ...partial,
   };
 }
 
@@ -191,6 +192,84 @@ describe("P3-M45 file ownership", () => {
       ],
     });
     expect(pre.status).toBe("blocking");
+  });
+
+  it("does not block foundation Cursor execute for planned shell overlap with integration", () => {
+    const shell = task({
+      codeTaskId: "CODE-DEV-FRAME-001-001",
+      title: "화면 프레임/앱 Shell 구성",
+      fileBoundary: {
+        ...buildFileBoundaryForRole("app_shell", "화면 프레임/앱 Shell"),
+        conflictGroupId: "workspace-shell",
+      },
+      branchPlan: {
+        branchGroup: "foundation",
+        workBranch: "wip/foundation/app-shell",
+        baseBranch: "main",
+        baseBranchPolicy: "main",
+        executionMode: "sequential",
+      },
+    });
+    const integration = task({
+      codeTaskId: "CODE-DEV-INTEGRATION-001-001",
+      title: "최종 연결/통합 Wiring",
+      changeType: "integration",
+      fileBoundary: buildFileBoundaryForRole("integration_wiring", "최종 연결/통합 Wiring"),
+      branchPlan: {
+        branchGroup: "integration",
+        workBranch: "wip/integration/final-wiring",
+        baseBranch: "wip/screen/workspace",
+        baseBranchPolicy: "integration",
+        executionMode: "integration_only",
+      },
+    });
+    const plan = buildCodeTaskFileConflictPlan([shell, integration]);
+    expect(plan.issues.some((i) => i.severity === "blocking")).toBe(true);
+    expect(
+      blockingIssuesForCodeTaskExecute({
+        plan,
+        codeTask: shell,
+        allTasks: [shell, integration],
+      }),
+    ).toEqual([]);
+  });
+
+  it("allows App Shell Cursor execute when common tasks forbid shell paths (forbidden overlap)", () => {
+    const shell = task({
+      codeTaskId: "CODE-DEV-SHELL-001",
+      title: "화면 프레임/앱 Shell 구성",
+      branchPlan: {
+        branchGroup: "foundation",
+        workBranch: "wip/foundation/app-shell",
+        baseBranch: "main",
+        baseBranchPolicy: "main",
+        executionMode: "sequential",
+      },
+      fileBoundary: {
+        ...buildFileBoundaryForRole("app_shell", "화면 프레임/앱 Shell 구성"),
+        conflictGroupId: "workspace-shell",
+      },
+    });
+    const common = task({
+      codeTaskId: "CODE-DEV-COMMON-001",
+      title: "로딩 상태 공통 기능 구현",
+      fileBoundary: buildFileBoundaryForRole("common_loading", "로딩 상태"),
+    });
+    const integration = task({
+      codeTaskId: "CODE-DEV-INTEGRATION-001-001",
+      title: "최종 연결/통합 Wiring",
+      changeType: "integration",
+      fileBoundary: buildFileBoundaryForRole("integration_wiring", "최종 연결/통합 Wiring"),
+    });
+    const plan = buildCodeTaskFileConflictPlan([shell, common, integration]);
+    expect(plan.issues.some((i) => i.reason === "forbidden_file_violation")).toBe(true);
+    expect(
+      blockingIssuesForCodeTaskExecute({
+        plan,
+        codeTask: shell,
+        allTasks: [shell, common, integration],
+      }),
+    ).toEqual([]);
   });
 
   it("repair plan assigns boundaries and conflict plan", () => {
