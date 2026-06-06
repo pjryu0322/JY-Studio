@@ -12,6 +12,9 @@ export function classifyCodeTaskBranchGroup(input: {
   readonly codeTask: ImplementationCodeTaskV1;
   readonly parentTaskTitle?: string | null;
 }): CodeTaskBranchGroupV1 {
+  if (input.codeTask.changeType === "integration") return "integration";
+  if (/최종 연결|통합\s*wiring/i.test(input.codeTask.title.trim())) return "integration";
+
   const title = input.codeTask.title.trim();
   const boundary = parseCodeTaskFileBoundaryV1(input.codeTask.fileBoundary);
   const role = resolveCodeTaskSpecificRole({

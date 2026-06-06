@@ -21,7 +21,8 @@ import {
 } from "@/lib/prototype/codeTaskPromptContext";
 import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
 import { resolveCodeTaskSpecificRole } from "@/lib/prototype/codeTaskPromptRoleResolver";
-import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
+import { buildCodeTaskWorkBranch, resolveCodeTaskWorkBranchForTask, resolveCodeTaskBaseBranchForTask } from "@/lib/prototype/taskCursorExecution";
+import { isCodeTaskReadyForDeveloperPrompt } from "@/lib/prototype/stageOnePromptReadiness";
 import { fingerprintRuntimeDeveloperPrompt } from "@/lib/prototype/resolveRuntimeCodeTaskDeveloperPromptForExecute";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
@@ -66,6 +67,9 @@ function logCopyExecutePromptHashMismatchIfNeeded(input: {
   });
 }
 
+export const CODE_TASK_STAGE_ONE_NOT_READY_MESSAGE =
+  "CodeTask 1단계 프롬프트가 아직 실행 준비 상태가 아닙니다." as const;
+
 export function resolveCodeTaskDeveloperPromptForCopy(input: {
   readonly projectId: string;
   readonly codeTaskId: string;
@@ -106,6 +110,9 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
     input.codeTaskPromptContextMapV1,
     codeTaskId,
   );
+  if (!isCodeTaskReadyForDeveloperPrompt({ codeTask: target.codeTask, promptContext })) {
+    return { ok: false, reason: CODE_TASK_STAGE_ONE_NOT_READY_MESSAGE };
+  }
   const roleKind = resolveCodeTaskSpecificRole({
     codeTaskTitle: target.codeTask.title,
     codeTaskDescription: target.codeTask.description,
@@ -114,7 +121,7 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
     requirements: target.codeTask.acceptanceCriteria,
     changeType: target.codeTask.changeType,
   }).roleKind;
-  const workBranch = buildCodeTaskWorkBranch(codeTaskId);
+  const workBranch = resolveCodeTaskWorkBranchForTask({ codeTask: target.codeTask });
 
   const run = findLatestRunForCodeTask(input.runs, codeTaskId);
   if (
@@ -146,32 +153,32 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
           warnings: storedSafety.warnings,
         }),
       );
-      return { ok: false, reason: CODE_TASK_PROMPT_COPY_BLOCK_MESSAGE };
+    } else {
+      if (storedSafety.warnings.length) {
+        logRuntimePromptQualityGateFailure(
+          buildRuntimePromptQualityGateDiagnostics({
+            codeTaskId,
+            workBranch,
+            errors: [],
+            warnings: storedSafety.warnings,
+          }),
+        );
+      }
+      logCopyExecutePromptHashMismatchIfNeeded({
+        projectId: input.projectId,
+        processTaskId: target.codeTask.parentTaskId,
+        codeTaskId,
+        runId: run.runId,
+        copyPrompt: stored,
+        codeTask: target.codeTask,
+        parentTask: target.parentTask,
+        promptContext,
+        targetRepository: input.targetRepository,
+        baseBranch: input.baseBranch,
+        allowedPathGlobs: input.allowedPathGlobs,
+      });
+      return { ok: true, prompt: stored };
     }
-    if (storedSafety.warnings.length) {
-      logRuntimePromptQualityGateFailure(
-        buildRuntimePromptQualityGateDiagnostics({
-          codeTaskId,
-          workBranch,
-          errors: [],
-          warnings: storedSafety.warnings,
-        }),
-      );
-    }
-    logCopyExecutePromptHashMismatchIfNeeded({
-      projectId: input.projectId,
-      processTaskId: target.codeTask.parentTaskId,
-      codeTaskId,
-      runId: run.runId,
-      copyPrompt: stored,
-      codeTask: target.codeTask,
-      parentTask: target.parentTask,
-      promptContext,
-      targetRepository: input.targetRepository,
-      baseBranch: input.baseBranch,
-      allowedPathGlobs: input.allowedPathGlobs,
-    });
-    return { ok: true, prompt: stored };
   }
 
   const built = buildCodeTaskDeveloperPromptDetailed({
@@ -179,7 +186,10 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
     parentTask: target.parentTask,
     promptContext,
     targetRepository: input.targetRepository,
-    baseBranch: input.baseBranch,
+    baseBranch: resolveCodeTaskBaseBranchForTask({
+      codeTask: target.codeTask,
+      fallbackBaseBranch: input.baseBranch,
+    }),
     allowedPathGlobs: input.allowedPathGlobs,
     targetRepoKind: TARGET_REPO_KIND,
   }).prompt.trim();

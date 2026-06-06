@@ -194,7 +194,9 @@ describe("ImplementationCodeTaskPlanV1", () => {
       designOk: true,
       nowIso: NOW,
     });
-    const screenTasks = plan.tasks.filter((task) => task.parentTaskId === "DEV-SCREEN-001");
+    const screenTasks = plan.tasks.filter(
+      (task) => task.parentTaskId === "DEV-SCREEN-001" && task.changeType !== "integration",
+    );
     expect(screenTasks).toHaveLength(1);
     expect(screenTasks[0]?.parentTaskDependencies).toContain("DEV-MOCK-001");
     expect(screenTasks[0]?.dependencies).toEqual(expect.arrayContaining(["DEV-MOCK-001"]));

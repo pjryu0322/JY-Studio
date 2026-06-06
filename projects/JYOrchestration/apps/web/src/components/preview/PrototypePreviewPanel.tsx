@@ -269,6 +269,7 @@ import {
 import { normalizeSelectedCodeTaskIds } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { repairCodeTaskPlanWithBranchPlan } from "@/lib/prototype/codeTaskPlanRepairService";
+import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import {
   buildInitialImplementationTaskExecutionStateFromTaskList,
@@ -7571,7 +7572,15 @@ export function PrototypePreviewPanel({
         taskList: raw.implementationTaskListV1 ?? implementationStageBoardInput?.taskList ?? null,
         baseBranch,
       });
-      void persistChatToDb(undefined, { implementationCodeTaskPlanV1: repaired.plan }).then(() => {
+      const codeTaskPromptContextMapV1 = buildCodeTaskPromptContextMap({
+        projectId: pid,
+        codeTaskPlan: repaired.plan,
+        requirementsStateJson: raw as Record<string, unknown>,
+      });
+      void persistChatToDb(undefined, {
+        implementationCodeTaskPlanV1: repaired.plan,
+        codeTaskPromptContextMapV1,
+      }).then(() => {
         showToast(repaired.summaryLines.at(-1) ?? "Branch Plan 보정 완료");
       });
     } finally {

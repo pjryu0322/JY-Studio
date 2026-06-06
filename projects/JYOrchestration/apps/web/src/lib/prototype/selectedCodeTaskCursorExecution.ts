@@ -6,6 +6,7 @@ import { QUICK_RUN_DISPATCH_REASON } from "@/lib/prototype/quickRunDispatchReaso
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
+import { isCodeTaskReadyForDeveloperPrompt } from "@/lib/prototype/stageOnePromptReadiness";
 import {
   findDispatchableRunForCodeTask,
   type CodeTaskExecutionRunV1,
@@ -140,6 +141,18 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
     input.codeTaskPromptContextMapV1,
     input.queueDispatch.codeTaskId,
   );
+  if (
+    !isCodeTaskReadyForDeveloperPrompt({
+      codeTask: dispatchTarget.codeTask,
+      promptContext,
+    })
+  ) {
+    return {
+      ok: false,
+      outcome: "blocked",
+      message: "CodeTask 1단계 프롬프트가 아직 실행 준비 상태가 아닙니다.",
+    };
+  }
   const planWithBoundaries = ensureCodeTaskPlanWithFileBoundaries({
     plan: input.codeTaskPlan ?? null,
     taskList: input.taskList ?? null,

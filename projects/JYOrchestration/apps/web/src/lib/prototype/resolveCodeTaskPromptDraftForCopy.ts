@@ -13,6 +13,7 @@ import {
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import { prepareCodeTaskPlanForStageOnePrompt } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
 
 export const CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE =
   "CodeTask 프롬프트 초안이 아직 준비되지 않았습니다." as const;
@@ -34,12 +35,23 @@ export function resolveCodeTaskPromptDraftForCopy(input: {
   const taskList = parseImplementationTaskListV1(input.taskList ?? undefined);
   const map = parseCodeTaskPromptContextMapV1(input.codeTaskPromptContextMapV1 ?? undefined);
 
+  const prepared = prepareCodeTaskPlanForStageOnePrompt({
+    projectId: input.projectId.trim(),
+    baseBranch: "main",
+    plan: parsedPlan,
+    taskList,
+  });
+  const planForPrompt = prepared.plan;
+  if (!prepared.readiness.ready && prepared.readiness.blocking) {
+    return { ok: false, reason: CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE };
+  }
+
   let draft = "";
   const templateId = String(input.templateId ?? "").trim() || undefined;
 
   if (input.mode === "all") {
     draft = formatCodeTaskPromptDraftBundle({
-      codeTaskPlan: parsedPlan,
+      codeTaskPlan: planForPrompt,
       taskList,
       promptContextMap: map,
       templateId,
@@ -49,7 +61,7 @@ export function resolveCodeTaskPromptDraftForCopy(input: {
     if (!codeTaskId) {
       return { ok: false, reason: CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE };
     }
-    const codeTask = parsedPlan.tasks.find((t) => t.codeTaskId === codeTaskId);
+    const codeTask = planForPrompt.tasks.find((t) => t.codeTaskId === codeTaskId);
     if (!codeTask) {
       return { ok: false, reason: CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE };
     }

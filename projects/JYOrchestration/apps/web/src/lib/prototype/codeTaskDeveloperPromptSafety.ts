@@ -123,11 +123,12 @@ export function validateRuntimeCursorPromptProductQuality(input: {
   }
 
   const workBranches = extractWorkBranchLines(prompt);
+  const uniqueWorkBranches = [...new Set(workBranches)];
   if (workBranches.length === 0) {
     errors.push("missing_work_branch_line");
-  } else if (workBranches.length > 1) {
+  } else if (uniqueWorkBranches.length > 1) {
     errors.push("multiple_work_branches");
-  } else if (expectedWorkBranch && workBranches[0] !== expectedWorkBranch) {
+  } else if (expectedWorkBranch && uniqueWorkBranches[0] !== expectedWorkBranch) {
     errors.push("unexpected_work_branch");
   }
 

@@ -33,6 +33,7 @@ import {
 import type { LlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
 import { appendPromptTimeline } from "@/lib/requirements/promptTimelineState";
 import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
+import { prepareCodeTaskPlanForStageOnePrompt } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
 import type { CodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 
 export const IMPLEMENTATION_WORK_ITEM_PREFLIGHT_SUMMARY_VERSION =
@@ -114,14 +115,27 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
 }): ImplementationPlanningReadinessPatch {
   const now = input.nowIso;
   const pid = input.projectId.trim();
+  const baseBranch =
+    String(
+      (input.requirementsStateJson as { executionSetup?: { baseBranch?: string } } | undefined)
+        ?.executionSetup?.baseBranch ?? "main",
+    ).trim() || "main";
+  const prepared = prepareCodeTaskPlanForStageOnePrompt({
+    projectId: pid,
+    baseBranch,
+    plan: input.codeTaskPlan,
+    taskList: input.taskList,
+    nowIso: now,
+  });
+  const codeTaskPlan = prepared.plan;
   const qualityGate = evaluateImplementationCodeTaskQualityGate({
     projectId: pid,
-    codeTaskPlan: input.codeTaskPlan,
+    codeTaskPlan,
     nowIso: now,
   });
   const cursorWorkItems = buildCursorWorkItemsFromImplementationCodeTaskPlan({
     projectId: pid,
-    codeTaskPlan: input.codeTaskPlan,
+    codeTaskPlan,
     nowIso: now,
     originStage: "planning",
   });
@@ -160,11 +174,11 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
       action: "implementation_code_task_plan_created",
       projectId: pid,
       fields: {
-        parentTaskCount: input.codeTaskPlan.parentTaskCount,
-        codeTaskCount: input.codeTaskPlan.codeTaskCount,
-        refinementSource: input.codeTaskPlan.refinementSource ?? "heuristic",
-        refinementStatus: input.codeTaskPlan.refinementStatus ?? "heuristic_only",
-        validationStatus: input.codeTaskPlan.validationReport?.status ?? "unknown",
+        parentTaskCount: codeTaskPlan.parentTaskCount,
+        codeTaskCount: codeTaskPlan.codeTaskCount,
+        refinementSource: codeTaskPlan.refinementSource ?? input.codeTaskPlan.refinementSource ?? "heuristic",
+        refinementStatus: codeTaskPlan.refinementStatus ?? input.codeTaskPlan.refinementStatus ?? "heuristic_only",
+        validationStatus: codeTaskPlan.validationReport?.status ?? input.codeTaskPlan.validationReport?.status ?? "unknown",
       },
       nowIso: now,
     }),
@@ -187,7 +201,7 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
     promptTimeline,
     buildImplementationWorkItemsDraftCreatedTimelineEntry({
       projectId: pid,
-      taskCount: input.codeTaskPlan.parentTaskCount,
+      taskCount: codeTaskPlan.parentTaskCount,
       workItemCount: cursorWorkItems.length,
       originStage: "planning",
       nowIso: now,
@@ -216,12 +230,12 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
     }),
   );
   const executionGate = evaluateImplementationPlanningExecutionGate({
-    codeTaskPlan: input.codeTaskPlan,
+    codeTaskPlan,
     cursorWorkItems,
     preflightSummary,
     codeTaskQualityGate: qualityGate,
   });
-  const refinementStatus = input.codeTaskPlan.refinementStatus ?? "heuristic_only";
+  const refinementStatus = codeTaskPlan.refinementStatus ?? input.codeTaskPlan.refinementStatus ?? "heuristic_only";
   const fallbackUsed =
     refinementStatus === "llm_parse_failed_fallback" ||
     refinementStatus === "llm_shape_invalid_fallback" ||
@@ -238,9 +252,9 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
       projectId: pid,
       fields: {
         ok: executionGate.ok,
-        codeTaskCount: input.codeTaskPlan.codeTaskCount,
+        codeTaskCount: codeTaskPlan.codeTaskCount,
         qualityStatus: qualityGate.status,
-        validationStatus: input.codeTaskPlan.validationReport?.status ?? "unknown",
+        validationStatus: codeTaskPlan.validationReport?.status ?? input.codeTaskPlan.validationReport?.status ?? "unknown",
         preflightStatus: preflight.status,
         fallbackUsed,
         ...(executionGate.ok ? {} : { blockReason: executionGate.reason }),
@@ -250,13 +264,13 @@ function buildPlanningReadinessPatchFromCodeTaskPlan(input: {
   );
 
   return {
-    implementationCodeTaskPlanV1: input.codeTaskPlan,
+    implementationCodeTaskPlanV1: codeTaskPlan,
     implementationCodeTaskQualityGateV1: qualityGate,
     cursorWorkItemsV1: cursorWorkItems,
     implementationWorkItemPreflightSummaryV1: preflightSummary,
     codeTaskPromptContextMapV1: buildCodeTaskPromptContextMap({
       projectId: pid,
-      codeTaskPlan: input.codeTaskPlan,
+      codeTaskPlan,
       requirementsStateJson: input.requirementsStateJson ?? {},
       nowIso: now,
     }),

@@ -1,5 +1,5 @@
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
-import { inferCodeTaskFileBoundary, WORKSPACE_SHELL_OWNED_PATTERNS } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
+import { WORKSPACE_SHELL_OWNED_PATTERNS } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
 export type CodeTaskPromptCollisionReadiness = Readonly<{
@@ -30,12 +30,11 @@ export function evaluateCodeTaskPromptCollisionReadiness(input: {
     warnings.push("base_branch_required");
   }
 
-  const boundary =
-    parseCodeTaskFileBoundaryV1(input.codeTask.fileBoundary) ??
-    inferCodeTaskFileBoundary({ codeTask: input.codeTask });
-  if (!parseCodeTaskFileBoundaryV1(input.codeTask.fileBoundary)) {
+  const boundary = parseCodeTaskFileBoundaryV1(input.codeTask.fileBoundary);
+  if (!boundary) {
     missing.push("fileBoundary");
     warnings.push("file_boundary_required");
+    return { missing: uniq(missing), warnings: uniq(warnings) };
   }
 
   const allowed = [...boundary.ownedFiles, ...(boundary.allowedGlobs ?? [])].filter(Boolean);

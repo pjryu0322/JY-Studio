@@ -1,7 +1,7 @@
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
-import { applyBranchPlanToCodeTaskPlan, codeTaskPlanHasBranchPlan } from "@/lib/prototype/implementationBranchPlanBuilder";
-import { appendIntegrationWiringCodeTaskToPlan } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import { prepareCodeTaskPlanForStageOnePrompt } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
+import { integrationTaskIsLast } from "@/lib/prototype/stageOnePromptReadiness";
 import {
   buildCodeTaskFileConflictPlan,
   type CodeTaskConflictPlanV1,
@@ -109,23 +109,23 @@ export function repairCodeTaskPlanWithBranchPlan(input: {
   readonly taskList?: ImplementationTaskListV1 | null;
   readonly baseBranch?: string;
 }): RepairCodeTaskPlanFileBoundariesResult {
-  const fileRepair = repairCodeTaskPlanFileBoundaries(input);
-  const withIntegration = appendIntegrationWiringCodeTaskToPlan({
-    plan: fileRepair.plan,
+  const prepared = prepareCodeTaskPlanForStageOnePrompt({
+    projectId: input.plan.projectId,
+    baseBranch: input.baseBranch ?? "main",
+    plan: input.plan,
     taskList: input.taskList ?? null,
   });
-  const withBranch = applyBranchPlanToCodeTaskPlan({
-    plan: withIntegration,
-    baseBranch: input.baseBranch ?? "main",
-  });
-  const groupSummary = withBranch.implementationBranchPlanV1?.groups.map(
+  const groupSummary = prepared.branchPlan?.groups.map(
     (g) => `${g.groupId}: ${g.codeTaskIds.length}개`,
   );
+  const readiness = prepared.readiness;
   return {
-    plan: withBranch,
-    conflictPlan: fileRepair.conflictPlan,
+    plan: prepared.plan,
+    conflictPlan: prepared.conflictPlan ?? input.plan.codeTaskConflictPlanV1 ?? buildCodeTaskFileConflictPlan(prepared.plan.tasks),
     summaryLines: [
-      ...fileRepair.summaryLines,
+      `Branch Plan 생성: ${readiness.branchPlanCount}/${prepared.plan.tasks.length}`,
+      `File Boundary 생성: ${readiness.fileBoundaryCount}/${prepared.plan.tasks.length}`,
+      `ready CodeTask: ${readiness.readyCodeTaskCount}/${prepared.plan.tasks.length}`,
       ...(groupSummary?.length
         ? [`Branch Plan 보정 완료 · ${groupSummary.join(" · ")}`]
         : []),
@@ -140,8 +140,13 @@ export function ensureCodeTaskPlanWithFileBoundaries(input: {
 }): ImplementationCodeTaskPlanV1 | null {
   if (!input.plan) return null;
   const needsFileRepair = input.plan.tasks.some((t) => !parseCodeTaskFileBoundaryV1(t.fileBoundary));
-  const needsBranch = !codeTaskPlanHasBranchPlan(input.plan);
-  if (!needsFileRepair && !needsBranch && input.plan.codeTaskConflictPlanV1) return input.plan;
+  const needsBranch = input.plan.tasks.some((t) => !t.branchPlan?.workBranch?.trim());
+  const needsSort =
+    input.plan.tasks.length > 1 &&
+    !integrationTaskIsLast(input.plan);
+  if (!needsFileRepair && !needsBranch && input.plan.codeTaskConflictPlanV1 && !needsSort) {
+    return input.plan;
+  }
   return repairCodeTaskPlanWithBranchPlan({
     plan: input.plan,
     taskList: input.taskList,

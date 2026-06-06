@@ -11,9 +11,8 @@ import {
   parseCodeTaskBranchPlanV1,
   parseImplementationBranchPlanV1,
 } from "@/lib/prototype/implementationBranchPlan";
-import { repairCodeTaskPlanFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
-import { appendIntegrationWiringCodeTaskToPlan } from "@/lib/prototype/codeTaskIntegrationWiringTask";
-import { applyBranchPlanToCodeTaskPlan } from "@/lib/prototype/implementationBranchPlanBuilder";
+import { repairCodeTaskPlanWithBranchPlan } from "@/lib/prototype/codeTaskPlanRepairService";
+import { prepareCodeTaskPlanForStageOnePrompt } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
 import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import {
   buildImplementationTaskExecutionHints,
@@ -496,15 +495,16 @@ export function buildImplementationCodeTaskPlanFromTaskList(input: {
     refinedTaskCount: codeTasks.length,
   };
 
-  const withBoundaries = repairCodeTaskPlanFileBoundaries({ plan, taskList: input.taskList }).plan;
-  const withIntegration = appendIntegrationWiringCodeTaskToPlan({
-    plan: withBoundaries,
+  const prepared = prepareCodeTaskPlanForStageOnePrompt({
+    projectId: input.projectId.trim(),
+    baseBranch: "main",
+    plan,
     taskList: input.taskList,
     envOk: input.envOk,
     designOk: input.designOk,
+    nowIso: now,
   });
-  plan = applyBranchPlanToCodeTaskPlan({ plan: withIntegration, nowIso: now });
-  return plan;
+  return prepared.plan;
 }
 
 export function parseImplementationCodeTaskPlanValidationReportV1(

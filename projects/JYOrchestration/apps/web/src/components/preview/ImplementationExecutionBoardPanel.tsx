@@ -37,9 +37,7 @@ import {
 } from "@/lib/prototype/implementationCodeTaskReworkVm";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
-import {
-  codeTaskPlanHasBranchPlan,
-} from "@/lib/prototype/implementationBranchPlanBuilder";
+import { evaluateStageOnePromptPlanReadiness } from "@/lib/prototype/stageOnePromptReadiness";
 import { summarizeBranchPlanForUi } from "@/lib/prototype/implementationBranchPlan";
 import {
   formatStageOnePromptQualitySummaryLines,
@@ -209,23 +207,37 @@ export function ImplementationExecutionBoardPanel({
     () => summarizeBranchPlanForUi(parsedCodeTaskPlan?.implementationBranchPlanV1 ?? null),
     [parsedCodeTaskPlan],
   );
-  const needsBranchPlanRepair = useMemo(
-    () => Boolean(parsedCodeTaskPlan && !codeTaskPlanHasBranchPlan(parsedCodeTaskPlan)),
+  const stageOneReadiness = useMemo(
+    () => (parsedCodeTaskPlan ? evaluateStageOnePromptPlanReadiness({ plan: parsedCodeTaskPlan }) : null),
     [parsedCodeTaskPlan],
   );
+  const needsBranchPlanRepair = Boolean(stageOneReadiness?.blocking);
+  const stageOnePromptReady = Boolean(stageOneReadiness?.ready);
   const parsedPromptContextMap = useMemo(
     () => parseCodeTaskPromptContextMapV1(codeTaskPromptContextMapV1) ?? null,
     [codeTaskPromptContextMapV1],
   );
   const stageOneQualityLines = useMemo(() => {
-    if (!parsedCodeTaskPlan) return [];
-    return formatStageOnePromptQualitySummaryLines(
-      summarizeStageOnePromptQuality({
-        codeTaskPlan: parsedCodeTaskPlan,
-        promptContextMap: parsedPromptContextMap,
-      }),
-    );
-  }, [parsedCodeTaskPlan, parsedPromptContextMap]);
+    if (!parsedCodeTaskPlan || !stageOneReadiness) return [];
+    const summary = summarizeStageOnePromptQuality({
+      codeTaskPlan: parsedCodeTaskPlan,
+      promptContextMap: parsedPromptContextMap,
+    });
+    const lines = formatStageOnePromptQualitySummaryLines(summary);
+    const total = parsedCodeTaskPlan.tasks.length;
+    const header = stageOnePromptReady
+      ? ["CodeTask 1단계 프롬프트 준비 완료", ""]
+      : [
+          "CodeTask 1단계 프롬프트가 아직 실행 준비 상태가 아닙니다.",
+          "",
+          `- Branch Plan 생성: ${stageOneReadiness.branchPlanCount}/${total}`,
+          `- File Boundary 생성: ${stageOneReadiness.fileBoundaryCount}/${total}`,
+          `- ready CodeTask: ${stageOneReadiness.readyCodeTaskCount}/${total}`,
+          `- missing: ${summary.warningExamples.length ? stageOneReadiness.diagnostics.length : 0}`,
+          "",
+        ];
+    return [...header, ...lines];
+  }, [parsedCodeTaskPlan, parsedPromptContextMap, stageOneReadiness, stageOnePromptReady]);
 
   const quickRunStatus = useMemo(
     () =>

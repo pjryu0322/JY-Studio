@@ -10,6 +10,7 @@ import { resolveCodeTaskFeaturePromptTemplate } from "@/lib/prototype/codeTaskPr
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { buildFileBoundaryForRole } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import {
   CODE_TASK_PROMPT_CONTEXT_VERSION,
   type CodeTaskPromptContextV1,
@@ -199,7 +200,26 @@ describe("resolveCodeTaskDeveloperPromptForCopy", () => {
     projectId: "p1",
     createdAt: NOW,
     updatedAt: NOW,
-    tasks: [sampleCodeTask({ codeTaskId: "CT-1", parentTaskId: "DEV-1", title: "화면" })],
+    tasks: [
+      sampleCodeTask({
+        codeTaskId: "CT-1",
+        parentTaskId: "DEV-1",
+        title: "화면",
+        verificationHints: [],
+        candidateFiles: [],
+        branchPlan: {
+          branchGroup: "feature",
+          workBranch: "wip/feature/core-flow",
+          baseBranch: "wip/common/components",
+          baseBranchPolicy: "previous_group",
+          executionMode: "sequential",
+        },
+        fileBoundary: buildFileBoundaryForRole("feature_start", {
+          codeTaskId: "CT-1",
+          title: "화면",
+        }),
+      }),
+    ],
   };
 
   it("rebuilds when stored prompt contains platform paths", () => {

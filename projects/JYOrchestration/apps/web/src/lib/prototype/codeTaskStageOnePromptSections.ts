@@ -1,6 +1,9 @@
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import {
-  inferCodeTaskFileBoundary,
+  codeTaskHasPersistedBranchPlan,
+  codeTaskHasPersistedFileBoundary,
+} from "@/lib/prototype/stageOnePromptReadiness";
+import {
   WORKSPACE_SHELL_OWNED_PATTERNS,
 } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import {
@@ -97,9 +100,11 @@ export function buildCodeTaskFileBoundaryStageOneBlockLines(
   codeTask: ImplementationCodeTaskV1,
   headingLevel: 3 | 4 = 4,
 ): string[] {
-  const boundary =
-    parseCodeTaskFileBoundaryV1(codeTask.fileBoundary) ?? inferCodeTaskFileBoundary({ codeTask });
+  const boundary = parseCodeTaskFileBoundaryV1(codeTask.fileBoundary);
   const prefix = "#".repeat(headingLevel);
+  if (!boundary) {
+    return [`${prefix} File Boundary`, "- File Boundary: 보정 필요 (fileBoundary 없음)"];
+  }
   const sub = "#".repeat(headingLevel + 1);
   const allowed = [...boundary.ownedFiles, ...(boundary.allowedGlobs ?? [])].filter(Boolean);
   const forbidden = [...boundary.forbiddenFiles, ...(boundary.forbiddenGlobs ?? [])].filter(Boolean);
@@ -158,8 +163,8 @@ export function summarizeStageOnePromptQuality(input: {
   const warningExamples: string[] = [];
 
   for (const ct of tasks) {
-    if (ct.branchPlan?.workBranch) branchPlanCount += 1;
-    if (parseCodeTaskFileBoundaryV1(ct.fileBoundary)) fileBoundaryCount += 1;
+    if (codeTaskHasPersistedBranchPlan(ct)) branchPlanCount += 1;
+    if (codeTaskHasPersistedFileBoundary(ct)) fileBoundaryCount += 1;
     const ctx = getCodeTaskPromptContextFromMap(input.promptContextMap ?? null, ct.codeTaskId);
     if (ctx?.quality.ready) readyCount += 1;
     if (ctx?.quality.warnings?.length || ctx?.quality.missing?.length) {

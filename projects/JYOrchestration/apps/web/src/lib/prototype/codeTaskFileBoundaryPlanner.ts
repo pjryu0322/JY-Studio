@@ -6,6 +6,11 @@ import {
   type CodeTaskRoleKind,
 } from "@/lib/prototype/codeTaskPromptRoleResolver";
 import type { ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
+import {
+  resolveCodeTaskCanonicalSlug,
+  resolveFeatureFolderForRole,
+  resolveScreenComponentFolder,
+} from "@/lib/prototype/codeTaskSlug";
 
 export const WORKSPACE_SHELL_OWNED_PATTERNS = [
   "app/index.html",
@@ -40,12 +45,6 @@ function shellForbiddenBoundary(): Pick<CodeTaskFileBoundaryV1, "forbiddenFiles"
   };
 }
 
-function screenSlugFromTitle(title: string): string {
-  const t = title.trim();
-  const m = t.match(/(?:화면|screen)[:\s·-]*(.+)/i);
-  const raw = (m?.[1] ?? t).replace(/[^\p{L}\p{N}]+/gu, "");
-  return raw.slice(0, 32) || "Screen";
-}
 
 export function inferCodeTaskFileBoundary(input: {
   readonly codeTask: ImplementationCodeTaskV1;
@@ -60,13 +59,18 @@ export function inferCodeTaskFileBoundary(input: {
     changeType: input.codeTask.changeType,
   }).roleKind;
 
-  return buildFileBoundaryForRole(role, title);
+  return buildFileBoundaryForRole(role, {
+    codeTaskId: input.codeTask.codeTaskId,
+    title,
+  });
 }
 
 export function buildFileBoundaryForRole(
   roleKind: CodeTaskRoleKind,
-  title: string,
+  codeTaskRef: Pick<ImplementationCodeTaskV1, "codeTaskId" | "title"> | string,
 ): CodeTaskFileBoundaryV1 {
+  const title = typeof codeTaskRef === "string" ? codeTaskRef : codeTaskRef.title;
+  const codeTaskId = typeof codeTaskRef === "string" ? "" : codeTaskRef.codeTaskId;
   const base = {
     version: CODE_TASK_FILE_BOUNDARY_VERSION,
     fileBoundaryConfidence: "high" as const,
@@ -117,10 +121,26 @@ export function buildFileBoundaryForRole(
     case "feature_input":
     case "feature_processing":
     case "feature_result": {
-      const slug = screenSlugFromTitle(title);
+      const slug = resolveCodeTaskCanonicalSlug({
+        codeTaskId,
+        title,
+        roleKind,
+      });
+      if (roleKind.startsWith("feature_")) {
+        const folder = resolveFeatureFolderForRole(roleKind);
+        const owned = [`src/features/${folder}/${slug}.*`];
+        return {
+          ...base,
+          expectedFiles: owned,
+          ownedFiles: owned,
+          ...shellForbiddenBoundary(),
+          sharedFiles: ["src/components/WorkspaceShell.*"],
+        };
+      }
+      const screenFolder = resolveScreenComponentFolder(slug);
       const owned = [
         `src/screens/${slug}.*`,
-        `src/components/screens/${slug}/*`,
+        `src/components/screens/${screenFolder}/*`,
       ];
       return {
         ...base,
@@ -131,8 +151,12 @@ export function buildFileBoundaryForRole(
       };
     }
     default: {
-      const slug = screenSlugFromTitle(title);
-      const owned = [`src/components/${slug}.*`, `src/screens/${slug}.*`];
+      const slug = resolveCodeTaskCanonicalSlug({
+        codeTaskId,
+        title,
+        roleKind,
+      });
+      const owned = [`src/components/${slug}.*`];
       return {
         ...base,
         fileBoundaryConfidence: "medium",
