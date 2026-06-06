@@ -32,14 +32,7 @@ function isRunnableIntegratedStatus(status: string): boolean {
   return status === "ready" || status === "queued" || status === "in_progress";
 }
 
-export function shouldShowIntegrationPipelineButton(input: {
-  readonly canIntegrate: boolean;
-  readonly previewRuntimeReady?: boolean;
-}): boolean {
-  if (!input.canIntegrate) return false;
-  if (input.previewRuntimeReady) return false;
-  return true;
-}
+export { shouldShowIntegrationPipelineButton } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 
 export function isFinalScmIntegratedStepReady(board: ImplementationExecutionBoardV1): boolean {
   if (integratedRowStatus(board, "integrated_security") !== "done") return false;
@@ -151,7 +144,7 @@ export function applyIntegratedPipelineSyncSteps(input: {
   let previewBuildError: string | null = null;
   let previewUrl: string | null = null;
 
-  if (resolvedScope) {
+  if (resolvedScope?.includedCodeTasks.length) {
     const previewBuild = buildPreviewFromCompletedCodeTasks({
       projectId: pid,
       previewScope: resolvedScope,
@@ -165,6 +158,31 @@ export function applyIntegratedPipelineSyncSteps(input: {
     previewBuildOk = previewBuild.ok;
     previewBuildError = previewBuild.errorMessage ?? null;
     previewUrl = previewBuild.previewUrl ?? null;
+
+    if (
+      resolvedScope.includedCodeTasks.length > 0 &&
+      (!previewBuildOk || !previewRuntime || previewRuntime.status !== "ready" || !previewUrl)
+    ) {
+      const retry = buildPreviewFromCompletedCodeTasks({
+        projectId: pid,
+        previewScope: resolvedScope,
+        nowIso,
+        externalPreviewUrl: null,
+        targetRepository:
+          input.targetRepository ??
+          (String(input.orchestration.taskCursorExecutionV1?.targetRepository ?? "").trim() || null),
+      });
+      if (retry.ok && retry.runtime.status === "ready" && retry.previewUrl) {
+        previewRuntime = retry.runtime;
+        previewBuildOk = true;
+        previewBuildError = null;
+        previewUrl = retry.previewUrl;
+      } else if (!previewBuildOk) {
+        previewBuildError =
+          previewBuildError ?? retry.errorMessage ?? "Preview URL을 생성하지 못했습니다.";
+      }
+    }
+
     if (previewBuildOk) {
       noticeLines.push("Preview 준비 완료");
     } else if (previewBuildError) {

@@ -29,6 +29,12 @@ describe("getPreviewOpenTarget", () => {
     expect(target.label).toBe("Preview 열기");
   });
 
+  it("uses pre-integration hint when runtime is missing and integration is allowed", () => {
+    const target = getPreviewOpenTarget({ runtime: null, canIntegrate: true });
+    expect(target.url).toBeNull();
+    expect(target.hint).toContain("통합을 실행하면");
+  });
+
   it("opens internal app URL in new window when no external URL", () => {
     const target = getPreviewOpenTarget({
       ...base,

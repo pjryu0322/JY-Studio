@@ -10,7 +10,17 @@ export type PreviewOpenTarget = Readonly<{
   readonly hint: string | null;
 }>;
 
-export function getPreviewOpenTarget(
+export type PreviewOpenTargetInput = Readonly<{
+  readonly runtime: ImplementationPreviewRuntimeV1 | null | undefined;
+  readonly canIntegrate?: boolean;
+}>;
+
+export const PRE_INTEGRATION_PREVIEW_HINT =
+  "통합을 실행하면 완료된 CodeTask 기준 Preview가 준비됩니다." as const;
+
+export const PREVIEW_URL_NOT_READY_HINT = "Preview URL이 아직 준비되지 않았습니다." as const;
+
+function resolvePreviewOpenTargetFromRuntime(
   runtime: ImplementationPreviewRuntimeV1 | null | undefined,
 ): PreviewOpenTarget {
   const wrapperUrl = String(runtime?.previewUrl ?? "").trim() || null;
@@ -47,12 +57,42 @@ export function getPreviewOpenTarget(
     };
   }
 
+  if (runtime?.status === "failed") {
+    const reason = String(runtime.errorMessage ?? "").trim();
+    return {
+      url: null,
+      mode: "internal",
+      label: "Preview 보기",
+      hint: reason ? `Preview 준비 실패: ${reason}` : PREVIEW_URL_NOT_READY_HINT,
+    };
+  }
+
   return {
     url: null,
     mode: "internal",
     label: "Preview 보기",
-    hint: "Preview URL이 아직 준비되지 않았습니다.",
+    hint: PREVIEW_URL_NOT_READY_HINT,
   };
+}
+
+export function getPreviewOpenTarget(
+  runtimeOrInput: ImplementationPreviewRuntimeV1 | null | undefined | PreviewOpenTargetInput,
+  legacyCanIntegrate?: boolean,
+): PreviewOpenTarget {
+  if (runtimeOrInput && typeof runtimeOrInput === "object" && "runtime" in runtimeOrInput) {
+    const input = runtimeOrInput as PreviewOpenTargetInput;
+    const target = resolvePreviewOpenTargetFromRuntime(input.runtime);
+    if (!target.url && input.canIntegrate && input.runtime?.status !== "failed") {
+      return { ...target, hint: PRE_INTEGRATION_PREVIEW_HINT };
+    }
+    return target;
+  }
+  const runtime = runtimeOrInput as ImplementationPreviewRuntimeV1 | null | undefined;
+  const target = resolvePreviewOpenTargetFromRuntime(runtime);
+  if (!target.url && legacyCanIntegrate && runtime?.status !== "failed") {
+    return { ...target, hint: PRE_INTEGRATION_PREVIEW_HINT };
+  }
+  return target;
 }
 
 export function getPreviewScopeViewUrl(

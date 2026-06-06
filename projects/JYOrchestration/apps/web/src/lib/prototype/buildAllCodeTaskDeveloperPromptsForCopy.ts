@@ -72,7 +72,6 @@ export function buildAllCodeTaskDeveloperPromptsForCopy(input: {
     }
     sections.push(
       `# ${codeTask.title.trim() || codeTaskId}`,
-      `CodeTask ID: ${codeTaskId}`,
       "",
       result.prompt.trim(),
     );

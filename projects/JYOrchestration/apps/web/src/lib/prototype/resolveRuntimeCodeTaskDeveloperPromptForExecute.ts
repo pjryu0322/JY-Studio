@@ -5,7 +5,6 @@ import {
   shouldReuseStoredDeveloperPrompt,
 } from "@/lib/prototype/codeTaskDeveloperPromptCache";
 import {
-  extractReferencedCodeTaskIds,
   extractWorkBranchLines,
 } from "@/lib/prototype/codeTaskDeveloperPromptSafety";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
@@ -87,10 +86,6 @@ function assertPromptMatchesCodeTask(input: {
   const branches = extractWorkBranchLines(input.prompt);
   if (branches.length === 1 && branches[0] !== expectedWorkBranch) {
     errors.push("prompt_work_branch_mismatch");
-  }
-  const refs = extractReferencedCodeTaskIds(input.prompt);
-  if (refs.length && !refs.every((id) => id === codeTaskId)) {
-    errors.push("prompt_code_task_id_mismatch");
   }
   return errors;
 }
@@ -235,6 +230,7 @@ export function resolveRuntimeCodeTaskDeveloperPromptForExecute(
 
   const fingerprint = fingerprintRuntimeDeveloperPrompt(prompt);
   void buildDeveloperPromptMeta({
+    developerPrompt: prompt,
     promptContext,
     targetRepoFullName: input.targetRepository.repoFullName,
     baseBranch: input.baseBranch,

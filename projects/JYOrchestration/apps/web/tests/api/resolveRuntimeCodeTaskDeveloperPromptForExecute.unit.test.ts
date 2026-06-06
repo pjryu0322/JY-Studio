@@ -12,10 +12,8 @@ function minimalRuntimePrompt(codeTaskId: string, workBranch: string): string {
   return [
     "# CodeTask 개발 요청",
     "",
-    `- CodeTask: ${codeTaskId}`,
-    `- work branch: \`${workBranch}\``,
-    "",
     "## 작업 저장소",
+    `- work branch: \`${workBranch}\``,
     "- owner/repo",
     "",
     "## 수정 대상 탐색 기준",
@@ -32,6 +30,9 @@ function minimalRuntimePrompt(codeTaskId: string, workBranch: string): string {
     "",
     "## 금지사항",
     "- none",
+    "",
+    "## 완료 기준",
+    "- done",
     "",
     "핵심 사용자: primary end users of the feature",
   ].join("\n");
@@ -118,8 +119,27 @@ describe("resolveRuntimeCodeTaskDeveloperPromptForExecute", () => {
     expect(resolved.reason).toBe("prompt_source_mismatch");
   });
 
-  it("blocks code task id mismatch in prompt", () => {
-    const prompt = minimalRuntimePrompt("CODE-OTHER-002", WORK_BRANCH);
+  it("blocks work branch mismatch in prompt", () => {
+    const prompt = minimalRuntimePrompt(CODE_TASK_ID, "wip/cursor/other-branch");
+    const resolved = resolveRuntimeCodeTaskDeveloperPromptForExecute({
+      projectId: "p1",
+      codeTaskId: CODE_TASK_ID,
+      taskId: "TASK-1",
+      developerPrompt: prompt,
+      developerPromptFingerprint: fingerprintRuntimeDeveloperPrompt(prompt),
+      requirementsStateJson,
+      targetRepository,
+      baseBranch: "main",
+      workBranch: WORK_BRANCH,
+    });
+    expect(resolved.ok).toBe(false);
+    if (resolved.ok) return;
+    expect(resolved.reason).toBe("prompt_source_mismatch");
+    expect(resolved.errors).toContain("prompt_work_branch_mismatch");
+  });
+
+  it("allows prompt without CodeTask reference lines", () => {
+    const prompt = minimalRuntimePrompt(CODE_TASK_ID, WORK_BRANCH);
     const resolved = resolveRuntimeCodeTaskDeveloperPromptForExecute({
       projectId: "p1",
       codeTaskId: CODE_TASK_ID,
@@ -128,9 +148,8 @@ describe("resolveRuntimeCodeTaskDeveloperPromptForExecute", () => {
       requirementsStateJson,
       targetRepository,
       baseBranch: "main",
+      workBranch: WORK_BRANCH,
     });
-    expect(resolved.ok).toBe(false);
-    if (resolved.ok) return;
-    expect(resolved.reason).toBe("prompt_source_mismatch");
+    expect(resolved.ok).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import type { ImplementationIntegrationEligibility } from "@/lib/prototype/implementationIntegrationEligibility";
+import { isIntegrationPreviewRuntimeReady } from "@/lib/prototype/implementationIntegrationButtonPolicy";
+import { PRE_INTEGRATION_PREVIEW_HINT } from "@/lib/prototype/implementationPreviewOpenTarget";
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
-import { isImplementationPreviewRuntimeReady } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import {
   buildIntegrationEligibilitySummaryLines,
   buildIntegrationScopeCountSummaryLines,
@@ -20,6 +21,7 @@ export type ImplementationIntegrationBoardSectionVm = Readonly<{
   readonly previewRuntimeReady: boolean;
   readonly previewUrl: string | null;
   readonly previewStatusLines: readonly string[];
+  readonly preIntegrationPreviewLine: string | null;
 }>;
 
 export function buildImplementationIntegrationBoardSection(input: {
@@ -29,9 +31,14 @@ export function buildImplementationIntegrationBoardSection(input: {
   readonly previewRuntime?: ImplementationPreviewRuntimeV1 | null;
 }): ImplementationIntegrationBoardSectionVm {
   const scope = input.previewScope ?? null;
-  const previewRuntimeReady = isImplementationPreviewRuntimeReady(input.previewRuntime);
+  const previewRuntimeReady = isIntegrationPreviewRuntimeReady(input.previewRuntime);
   const previewUrl = String(input.previewRuntime?.previewUrl ?? "").trim() || null;
   const previewStatusLines: string[] = [];
+  const canIntegrate = input.eligibility.canIntegrate;
+  const preIntegrationPreviewLine =
+    !previewRuntimeReady && canIntegrate && input.previewRuntime?.status !== "failed"
+      ? PRE_INTEGRATION_PREVIEW_HINT
+      : null;
   if (previewRuntimeReady) {
     previewStatusLines.push("통합 완료", "Preview 준비 완료");
     if (input.previewRuntime?.openMode === "external_new_window") {
@@ -42,7 +49,7 @@ export function buildImplementationIntegrationBoardSection(input: {
   } else if (input.previewRuntime?.status === "failed") {
     previewStatusLines.push(
       scope ? "통합 완료" : "통합 실패",
-      scope ? "통합은 완료되었지만 Preview 준비에 실패했습니다." : "Preview 준비 실패",
+      "Preview 준비 실패",
     );
     if (input.previewRuntime.errorMessage?.trim()) {
       previewStatusLines.push(`사유: ${input.previewRuntime.errorMessage.trim()}`);
@@ -71,5 +78,6 @@ export function buildImplementationIntegrationBoardSection(input: {
     previewRuntimeReady,
     previewUrl,
     previewStatusLines,
+    preIntegrationPreviewLine,
   };
 }

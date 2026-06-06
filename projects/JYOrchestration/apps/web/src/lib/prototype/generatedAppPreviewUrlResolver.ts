@@ -81,7 +81,7 @@ export function resolveGeneratedAppPreviewUrl(input: {
     };
   }
 
-  if (input.completedCodeTaskCount > 0 && pid) {
+  if (pid) {
     const internalAppPreviewUrl = buildInternalGeneratedAppPreviewUrl(pid);
     return {
       ok: true,

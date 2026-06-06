@@ -26,6 +26,9 @@ export function buildIntegrationEligibilitySummaryLines(
   for (const warning of eligibility.warnings) {
     lines.push(warning);
   }
+  if (!lines.some((line) => line.includes("통합을 실행하면 Preview"))) {
+    lines.push("통합을 실행하면 Preview가 준비됩니다.");
+  }
   return lines;
 }
 

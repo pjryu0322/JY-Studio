@@ -179,6 +179,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
 
   const developerPrompt = promptResult.prompt;
   const developerPromptMeta = buildDeveloperPromptMeta({
+    developerPrompt,
     promptContext: input.promptContext,
     targetRepoFullName: input.targetRepository.repoFullName,
     baseBranch: input.baseBranch,

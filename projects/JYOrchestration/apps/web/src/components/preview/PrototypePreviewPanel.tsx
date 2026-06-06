@@ -4210,8 +4210,18 @@ export function PrototypePreviewPanel({
               promptTimeline: timeline,
             },
             undefined,
-            { awaitServer: true },
+            { awaitServer: true, force: true },
           );
+          applyPendingFromOrchestrationPatch({
+            implementationIntegratedExecutionStateV1: batch.integratedState,
+            ...(batch.previewScope
+              ? { implementationPreviewScopeV1: batch.previewScope }
+              : {}),
+            ...(batch.previewRuntime
+              ? { implementationPreviewRuntimeV1: batch.previewRuntime }
+              : {}),
+            promptTimeline: timeline,
+          });
 
           const noticeParts = [...batch.noticeLines];
           if (batch.previewScope) {
@@ -4289,6 +4299,7 @@ export function PrototypePreviewPanel({
     implementationBoard,
     parsedRequirementsState,
     persistChatToDb,
+    applyPendingFromOrchestrationPatch,
     executionSingleChat,
     showToast,
     appendImplementationTaskListAiMessage,

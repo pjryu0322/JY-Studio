@@ -188,10 +188,6 @@ function buildGeneratedProjectPrompt(input: {
     `- \`${target.workBranch}\` branch에 push`,
     "- push 후 GitHub에서 branch head commit 확인 가능",
     "- 코드 변경이 불필요한 경우 noCodeChange 근거를 명확히 기록",
-    "",
-    "## 참조 ID",
-    `- Process Task: ${codeTask.parentTaskId}`,
-    `- CodeTask: ${codeTask.codeTaskId}`,
   ];
 
   return sections.join("\n").trim();
@@ -203,8 +199,7 @@ function buildPlatformProjectPrompt(input: {
   readonly target: ReturnType<typeof buildCodeTaskPromptTargetContext>;
   readonly sanitizedCandidates: ReturnType<typeof sanitizeCandidatePathsForTargetRepo>;
 }): string {
-  const { codeTask, parentTask, target, sanitizedCandidates } = input;
-  const parentTitle = parentTask?.title?.trim() || codeTask.parentTaskId;
+  const { codeTask, target, sanitizedCandidates } = input;
   const candidateSection =
     sanitizedCandidates.safeCandidatePaths.length > 0
       ? sanitizedCandidates.safeCandidatePaths.map((f) => `- ${f}`)
@@ -213,18 +208,23 @@ function buildPlatformProjectPrompt(input: {
   const sections = [
     "# CodeTask 개발 요청",
     "",
-    "## Process Task",
-    `- ID: ${codeTask.parentTaskId}`,
-    `- 제목: ${parentTitle}`,
-    parentTask?.description?.trim() ? `- 설명: ${parentTask.description.trim()}` : "",
+    "## 작업 저장소",
+    `- 작업 대상 저장소: \`${target.repoFullName}\``,
+    `- base branch: \`${target.baseBranch}\``,
+    `- work branch: \`${target.workBranch}\``,
+    "- 이 저장소 밖의 파일은 수정하지 않는다.",
+    "- PR 생성·merge는 하지 않는다. commit 후 work branch에 push만 한다.",
     "",
-    "## CodeTask",
-    `- ID: ${codeTask.codeTaskId}`,
-    `- 제목: ${codeTask.title}`,
-    `- 설명: ${codeTask.description.trim()}`,
+    "## 작업 목표",
+    codeTask.title.trim(),
+    ...(codeTask.description.trim() ? ["", codeTask.description.trim()] : []),
+    "",
+    "## 구현 범위",
     `- 변경 유형: ${codeTask.changeType}`,
     "",
-    "## 수정 대상 파일 후보",
+    "## 수정 대상 탐색 기준",
+    "- 대상 저장소 내부에서 관련 파일을 탐색한다.",
+    "- 우선 탐색 경로:",
     ...candidateSection,
     "",
     "## 구현 요구사항",
@@ -232,7 +232,7 @@ function buildPlatformProjectPrompt(input: {
       ? codeTask.acceptanceCriteria.map((c) => `- ${c}`)
       : ["- acceptance criteria를 충족할 것"]),
     "",
-    "## 검증 힌트",
+    "## 검증 기준",
     ...(codeTask.verificationHints.length
       ? codeTask.verificationHints.map((h) => `- ${h}`)
       : ["- 로컬 build/test 후 동작 확인"]),
@@ -241,13 +241,11 @@ function buildPlatformProjectPrompt(input: {
     ...target.forbiddenRules.map((p) => `- ${p}`),
     "- 무관한 대규모 리팩터링 금지",
     "",
-    "## GitHub 정책",
-    `- 저장소: ${target.repoFullName}`,
-    `- base branch: ${target.baseBranch}`,
-    `- work branch: ${target.workBranch}`,
-    "",
-    "## 허용 경로",
-    ...target.allowedPathGlobs.map((g) => `- ${g}`),
+    "## 완료 기준",
+    "- 요구사항을 충족하는 코드 변경",
+    "- 변경 후 commit 생성",
+    `- \`${target.workBranch}\` branch에 push`,
+    "- push 후 GitHub에서 branch head commit 확인 가능",
   ];
 
   return sections.filter((line) => line !== undefined).join("\n").trim();

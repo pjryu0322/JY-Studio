@@ -29,6 +29,8 @@ import {
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
+import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
@@ -138,6 +140,9 @@ export type PendingImplementationPatch = Readonly<{
   codeTaskExecutionRunsV1?: readonly import("@/lib/prototype/codeTaskExecutionRun").CodeTaskExecutionRunV1[] | null;
   implementationRuntimeStateV1?: import("@/lib/prototype/implementationRuntimeState").ImplementationRuntimeStateV1 | null;
   implementationRuntimeUiSnapshotV1?: import("@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot").ImplementationRuntimeUiSnapshotV1 | null;
+  implementationIntegratedExecutionStateV1?: ImplementationIntegratedExecutionStateV1 | null;
+  implementationPreviewScopeV1?: ImplementationPreviewScopeV1 | null;
+  implementationPreviewRuntimeV1?: ImplementationPreviewRuntimeV1 | null;
 }>;
 
 export function resolveOrchestrationAwareRequirementsState(input: {
@@ -206,6 +211,15 @@ export function resolveOrchestrationAwareRequirementsState(input: {
     ...(pending.implementationRuntimeStateV1 !== undefined &&
     pending.implementationRuntimeUiSnapshotV1 === undefined
       ? { implementationRuntimeStateV1: pending.implementationRuntimeStateV1 }
+      : {}),
+    ...(pending.implementationIntegratedExecutionStateV1 !== undefined
+      ? { implementationIntegratedExecutionStateV1: pending.implementationIntegratedExecutionStateV1 }
+      : {}),
+    ...(pending.implementationPreviewScopeV1 !== undefined
+      ? { implementationPreviewScopeV1: pending.implementationPreviewScopeV1 }
+      : {}),
+    ...(pending.implementationPreviewRuntimeV1 !== undefined
+      ? { implementationPreviewRuntimeV1: pending.implementationPreviewRuntimeV1 }
       : {}),
   });
 }
@@ -359,6 +373,15 @@ export function mergePendingImplementationPatchFromOrchestration(
   ) {
     next.implementationRuntimeStateV1 = patch.implementationRuntimeStateV1;
   }
+  if (patch.implementationIntegratedExecutionStateV1 !== undefined) {
+    next.implementationIntegratedExecutionStateV1 = patch.implementationIntegratedExecutionStateV1;
+  }
+  if (patch.implementationPreviewScopeV1 !== undefined) {
+    next.implementationPreviewScopeV1 = patch.implementationPreviewScopeV1;
+  }
+  if (patch.implementationPreviewRuntimeV1 !== undefined) {
+    next.implementationPreviewRuntimeV1 = patch.implementationPreviewRuntimeV1;
+  }
   return Object.keys(next).length > 0 ? next : null;
 }
 
@@ -411,6 +434,21 @@ export function mergePendingImplementationPatch(
       : {}),
     ...(incoming.codeTaskExecutionRunsV1 !== undefined
       ? { codeTaskExecutionRunsV1: incoming.codeTaskExecutionRunsV1 }
+      : {}),
+    ...(incoming.implementationRuntimeUiSnapshotV1 !== undefined
+      ? { implementationRuntimeUiSnapshotV1: incoming.implementationRuntimeUiSnapshotV1 }
+      : {}),
+    ...(incoming.implementationRuntimeStateV1 !== undefined
+      ? { implementationRuntimeStateV1: incoming.implementationRuntimeStateV1 }
+      : {}),
+    ...(incoming.implementationIntegratedExecutionStateV1 !== undefined
+      ? { implementationIntegratedExecutionStateV1: incoming.implementationIntegratedExecutionStateV1 }
+      : {}),
+    ...(incoming.implementationPreviewScopeV1 !== undefined
+      ? { implementationPreviewScopeV1: incoming.implementationPreviewScopeV1 }
+      : {}),
+    ...(incoming.implementationPreviewRuntimeV1 !== undefined
+      ? { implementationPreviewRuntimeV1: incoming.implementationPreviewRuntimeV1 }
       : {}),
   };
 }

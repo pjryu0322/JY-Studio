@@ -129,5 +129,8 @@ export function isImplementationPreviewRuntimeReady(
   runtime: ImplementationPreviewRuntimeV1 | null | undefined,
 ): boolean {
   if (!runtime || runtime.status !== "ready") return false;
-  return Boolean(String(runtime.previewUrl ?? "").trim());
+  const previewUrl = String(runtime.previewUrl ?? "").trim();
+  const internal = String(runtime.internalAppPreviewUrl ?? "").trim();
+  const external = String(runtime.externalPreviewUrl ?? "").trim();
+  return Boolean(previewUrl || internal || external);
 }

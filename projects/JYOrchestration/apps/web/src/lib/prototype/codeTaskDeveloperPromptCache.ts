@@ -1,5 +1,10 @@
 import type { CodeTaskPromptContextV1 } from "@/lib/prototype/codeTaskPromptContext";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import {
+  CODE_TASK_DEVELOPER_PROMPT_VERSION,
+  developerPromptContainsPlatformTrackingSections,
+  formatDeveloperPromptHashSha256,
+} from "@/lib/prototype/codeTaskDeveloperPromptDelivery";
 import { validateCodeTaskDeveloperPromptSafety } from "@/lib/prototype/codeTaskDeveloperPromptSafety";
 import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
 
@@ -9,6 +14,8 @@ export type CodeTaskDeveloperPromptMeta = Readonly<{
   readonly baseBranch?: string;
   readonly allowedPathHash?: string;
   readonly generatedAt: string;
+  readonly developerPromptVersion?: string;
+  readonly developerPromptHash?: string;
 }>;
 
 export function hashAllowedPathGlobs(globs: readonly string[] | undefined): string {
@@ -20,6 +27,7 @@ export function hashAllowedPathGlobs(globs: readonly string[] | undefined): stri
 }
 
 export function buildDeveloperPromptMeta(input: {
+  readonly developerPrompt: string;
   readonly promptContext?: CodeTaskPromptContextV1 | null;
   readonly targetRepoFullName: string;
   readonly baseBranch: string;
@@ -32,6 +40,8 @@ export function buildDeveloperPromptMeta(input: {
     baseBranch: input.baseBranch.trim(),
     allowedPathHash: hashAllowedPathGlobs(input.allowedPathGlobs),
     generatedAt: input.generatedAt,
+    developerPromptVersion: CODE_TASK_DEVELOPER_PROMPT_VERSION,
+    developerPromptHash: formatDeveloperPromptHashSha256(input.developerPrompt),
   };
 }
 
@@ -46,6 +56,8 @@ export function parseCodeTaskDeveloperPromptMeta(raw: unknown): CodeTaskDevelope
     baseBranch: String(o.baseBranch ?? "").trim() || undefined,
     allowedPathHash: String(o.allowedPathHash ?? "").trim() || undefined,
     generatedAt,
+    developerPromptVersion: String(o.developerPromptVersion ?? "").trim() || undefined,
+    developerPromptHash: String(o.developerPromptHash ?? "").trim() || undefined,
   };
 }
 
@@ -58,6 +70,7 @@ export function shouldReuseStoredDeveloperPrompt(input: {
 }): boolean {
   const stored = input.run.developerPrompt?.trim();
   if (!stored) return false;
+  if (developerPromptContainsPlatformTrackingSections(stored)) return false;
 
   const meta = parseCodeTaskDeveloperPromptMeta(
     (input.run as CodeTaskExecutionRunV1 & { developerPromptMeta?: unknown }).developerPromptMeta,

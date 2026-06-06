@@ -1,6 +1,7 @@
 import {
   type CodeTaskPromptTargetRepoKind,
 } from "@/lib/prototype/codeTaskPromptPathPolicy";
+import { developerPromptContainsPlatformTrackingSections } from "@/lib/prototype/codeTaskDeveloperPromptDelivery";
 import type { CodeTaskRoleKind } from "@/lib/prototype/codeTaskPromptRoleResolver";
 
 const GENERATED_FULL_PROMPT_BANNED = [
@@ -131,20 +132,19 @@ export function validateRuntimeCursorPromptProductQuality(input: {
   }
 
   const referencedIds = extractReferencedCodeTaskIds(prompt);
-  if (codeTaskId) {
+  if (referencedIds.length) {
     const uniqueRefs = [...new Set(referencedIds)];
-    if (uniqueRefs.length === 0) {
-      errors.push("missing_code_task_reference_id");
-    } else {
+    if (codeTaskId) {
       const foreignCodeIds = uniqueRefs.filter(
-        (id) => id.startsWith("CODE-") && id !== codeTaskId,
+        (id) => id.startsWith("CODE-") && id !== codeTaskId.trim().toUpperCase(),
       );
-      const hasMultipleDistinct = uniqueRefs.length > 1;
-      const mismatchedSingle = uniqueRefs.length === 1 && uniqueRefs[0] !== codeTaskId;
-      if (foreignCodeIds.length > 0 || hasMultipleDistinct || mismatchedSingle) {
+      if (foreignCodeIds.length > 0 || (uniqueRefs.length === 1 && uniqueRefs[0] !== codeTaskId.trim().toUpperCase())) {
         errors.push("multiple_or_unexpected_code_task_ids");
       }
     }
+    warnings.push("legacy_platform_tracking_in_prompt");
+  } else if (developerPromptContainsPlatformTrackingSections(prompt)) {
+    warnings.push("legacy_platform_tracking_in_prompt");
   }
 
   if (roleKind === "app_shell") {
@@ -247,6 +247,12 @@ export function validateCodeTaskDeveloperPromptSafety(input: {
     }
     if (prompt.includes("## 허용 경로")) {
       errors.push("legacy_allowed_paths_section");
+    }
+    if (!prompt.includes("## 완료 기준")) {
+      errors.push("missing_completion_criteria_section");
+    }
+    if (developerPromptContainsPlatformTrackingSections(prompt)) {
+      warnings.push("legacy_platform_tracking_in_prompt");
     }
     if (prompt.includes("## Process Task") || prompt.includes("## CodeTask\n")) {
       errors.push("legacy_process_task_sections");

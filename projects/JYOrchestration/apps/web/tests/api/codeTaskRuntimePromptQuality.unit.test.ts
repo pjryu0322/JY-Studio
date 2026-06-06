@@ -53,15 +53,14 @@ function buildNormalAppShellPrompt(overrides?: { extra?: string }): string {
     "## 금지사항",
     "- package.json 수정 금지",
     "",
-    "## 참조 ID",
-    "- Process Task: DEV-FRAME-001",
-    `- CodeTask: ${CODE_TASK_ID}`,
+    "## 완료 기준",
+    "- push",
     overrides?.extra ?? "",
   ].join("\n");
 }
 
 describe("codeTaskRuntimePromptQuality (P3-M25)", () => {
-  it("passes normal App Shell prompt including role section and progress wording", () => {
+  it("passes without reference ID section when work branch and sections are present", () => {
     const prompt = buildNormalAppShellPrompt();
     const result = validateCodeTaskDeveloperPromptSafety({
       prompt,
@@ -73,7 +72,7 @@ describe("codeTaskRuntimePromptQuality (P3-M25)", () => {
     });
     expect(result.ok).toBe(true);
     expect(result.errors).toEqual([]);
-    expect(extractReferencedCodeTaskIds(prompt)).toEqual([CODE_TASK_ID]);
+    expect(extractReferencedCodeTaskIds(prompt)).toEqual([]);
   });
 
   it("does not treat work branch slug as a second CodeTask id", () => {

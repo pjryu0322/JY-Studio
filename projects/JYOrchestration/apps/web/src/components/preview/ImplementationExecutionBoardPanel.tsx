@@ -77,7 +77,7 @@ import {
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
-import { shouldShowIntegrationPipelineButton } from "@/lib/prototype/implementationIntegratedPipelineBatch";
+import { shouldShowIntegrationPipelineButton } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import {
@@ -501,8 +501,17 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const previewOpenTarget = useMemo(
-    () => getPreviewOpenTarget(parsedPreviewRuntime),
-    [parsedPreviewRuntime],
+    () =>
+      getPreviewOpenTarget({
+        runtime: parsedPreviewRuntime,
+        canIntegrate:
+          integrationSection.canIntegrate && !integrationSection.previewRuntimeReady,
+      }),
+    [
+      parsedPreviewRuntime,
+      integrationSection.canIntegrate,
+      integrationSection.previewRuntimeReady,
+    ],
   );
   const previewScopeViewUrl = useMemo(
     () => getPreviewScopeViewUrl(parsedPreviewRuntime),
@@ -840,14 +849,24 @@ export function ImplementationExecutionBoardPanel({
                 {line}
               </div>
             ))}
-            {previewOpenTarget.hint ? (
-              <div className={styles.taskTreeChildLine}>{previewOpenTarget.hint}</div>
-            ) : null}
             {integrationSection.summaryLines.map((line) => (
               <div key={line} className={styles.taskTreeChildLine}>
                 {line}
               </div>
             ))}
+            {integrationSection.preIntegrationPreviewLine ? (
+              <div className={styles.taskTreeChildLine}>
+                {integrationSection.preIntegrationPreviewLine}
+              </div>
+            ) : null}
+            {integrationSection.previewRuntimeReady && previewOpenTarget.hint ? (
+              <div className={styles.taskTreeChildLine}>{previewOpenTarget.hint}</div>
+            ) : null}
+            {!integrationSection.previewRuntimeReady &&
+            previewOpenTarget.hint &&
+            previewOpenTarget.hint !== integrationSection.preIntegrationPreviewLine ? (
+              <div className={styles.taskTreeChildLine}>{previewOpenTarget.hint}</div>
+            ) : null}
             {integrationPipelineDisplayLines.map((line) => (
               <div key={line.stepId} className={styles.taskTreeChildLine}>
                 {line.label}: {line.statusLabel}

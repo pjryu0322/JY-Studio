@@ -1,5 +1,9 @@
 import { buildCodeTaskDeveloperPromptDetailed } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
 import { shouldReuseStoredDeveloperPrompt } from "@/lib/prototype/codeTaskDeveloperPromptCache";
+import {
+  formatDeveloperPromptHashSha256,
+  logTaskCursorPromptCopyHashMismatch,
+} from "@/lib/prototype/codeTaskDeveloperPromptDelivery";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import {
   findLatestRunForCodeTask,
@@ -18,12 +22,49 @@ import {
 import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
 import { resolveCodeTaskSpecificRole } from "@/lib/prototype/codeTaskPromptRoleResolver";
 import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
+import { fingerprintRuntimeDeveloperPrompt } from "@/lib/prototype/resolveRuntimeCodeTaskDeveloperPromptForExecute";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
-import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CodeTaskPromptContextV1 } from "@/lib/prototype/codeTaskPromptContext";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
-import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 
 const TARGET_REPO_KIND = "generated_project" as const;
+
+function logCopyExecutePromptHashMismatchIfNeeded(input: {
+  readonly projectId: string;
+  readonly processTaskId: string;
+  readonly codeTaskId: string;
+  readonly runId?: string | null;
+  readonly copyPrompt: string;
+  readonly codeTask: ImplementationCodeTaskV1;
+  readonly parentTask?: ImplementationTaskV1 | null;
+  readonly promptContext?: CodeTaskPromptContextV1 | null;
+  readonly targetRepository: ProjectTargetRepository;
+  readonly baseBranch: string;
+  readonly allowedPathGlobs?: readonly string[];
+}): void {
+  const canonical = buildCodeTaskDeveloperPromptDetailed({
+    codeTask: input.codeTask,
+    parentTask: input.parentTask,
+    promptContext: input.promptContext,
+    targetRepository: input.targetRepository,
+    baseBranch: input.baseBranch,
+    allowedPathGlobs: input.allowedPathGlobs,
+    targetRepoKind: TARGET_REPO_KIND,
+  }).prompt.trim();
+  const copyHash = fingerprintRuntimeDeveloperPrompt(input.copyPrompt);
+  const executeHash = fingerprintRuntimeDeveloperPrompt(canonical);
+  if (copyHash === executeHash) return;
+  logTaskCursorPromptCopyHashMismatch({
+    projectId: input.projectId,
+    processTaskId: input.processTaskId,
+    codeTaskId: input.codeTaskId,
+    runId: input.runId,
+    copyHash: formatDeveloperPromptHashSha256(input.copyPrompt),
+    executeHash: formatDeveloperPromptHashSha256(canonical),
+  });
+}
 
 export function resolveCodeTaskDeveloperPromptForCopy(input: {
   readonly projectId: string;
@@ -117,6 +158,19 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
         }),
       );
     }
+    logCopyExecutePromptHashMismatchIfNeeded({
+      projectId: input.projectId,
+      processTaskId: target.codeTask.parentTaskId,
+      codeTaskId,
+      runId: run.runId,
+      copyPrompt: stored,
+      codeTask: target.codeTask,
+      parentTask: target.parentTask,
+      promptContext,
+      targetRepository: input.targetRepository,
+      baseBranch: input.baseBranch,
+      allowedPathGlobs: input.allowedPathGlobs,
+    });
     return { ok: true, prompt: stored };
   }
 

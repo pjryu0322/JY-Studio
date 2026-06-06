@@ -66,19 +66,26 @@ function sampleContext(updatedAt: string): CodeTaskPromptContextV1 {
 describe("shouldReuseStoredDeveloperPrompt", () => {
   it("reuses when meta matches repo, branch, paths, and context is not newer", () => {
     const safePrompt = [
+      "# CodeTask 개발 요청",
       "## 작업 저장소",
-      `target repo: ${REPO}`,
-      "work branch: `jy/code-task/CT-1`",
+      `- 작업 대상 저장소: \`${REPO}\``,
+      `- work branch: \`wip/cursor/ct-1\``,
       "## 구현 요구사항",
       "- a",
       "- b",
       "- c",
       "## 검증 기준",
       "- pnpm test",
+      "- lint",
       "## 금지사항",
       "- no platform paths",
+      "## 완료 기준",
+      "- push",
+      "## 수정 대상 탐색 기준",
+      "- src/**",
     ].join("\n");
     const meta = buildDeveloperPromptMeta({
+      developerPrompt: safePrompt,
       promptContext: sampleContext("2026-06-01T00:00:00.000Z"),
       targetRepoFullName: REPO,
       baseBranch: "main",
@@ -99,19 +106,26 @@ describe("shouldReuseStoredDeveloperPrompt", () => {
 
   it("regenerates when promptContext updatedAt is newer than stored meta", () => {
     const safePrompt = [
+      "# CodeTask 개발 요청",
       "## 작업 저장소",
-      `target repo: ${REPO}`,
-      "work branch: `jy/code-task/CT-1`",
+      `- 작업 대상 저장소: \`${REPO}\``,
+      `- work branch: \`wip/cursor/ct-1\``,
       "## 구현 요구사항",
       "- a",
       "- b",
       "- c",
       "## 검증 기준",
       "- pnpm test",
+      "- lint",
       "## 금지사항",
       "- no platform paths",
+      "## 완료 기준",
+      "- push",
+      "## 수정 대상 탐색 기준",
+      "- src/**",
     ].join("\n");
     const meta = buildDeveloperPromptMeta({
+      developerPrompt: safePrompt,
       promptContext: sampleContext("2026-06-01T00:00:00.000Z"),
       targetRepoFullName: REPO,
       baseBranch: "main",
@@ -128,12 +142,32 @@ describe("shouldReuseStoredDeveloperPrompt", () => {
     ).toBe(false);
   });
 
-  it("does not reuse unsafe stored prompts", () => {
-    const run = runWithPrompt("edit projects/JYOrchestration/apps/web/foo.ts", {
+  it("does not reuse prompts with legacy platform tracking sections", () => {
+    const legacyPrompt = [
+      "# CodeTask 개발 요청",
+      "## 참조 ID",
+      "- CodeTask: CT-1",
+      "## 작업 저장소",
+      REPO,
+      "## 구현 요구사항",
+      "- a",
+      "- b",
+      "- c",
+      "## 검증 기준",
+      "- v1",
+      "- v2",
+      "## 금지사항",
+      "- x",
+      "## 완료 기준",
+      "- done",
+    ].join("\n");
+    const meta = buildDeveloperPromptMeta({
+      developerPrompt: legacyPrompt,
       targetRepoFullName: REPO,
       baseBranch: "main",
       generatedAt: NOW,
     });
+    const run = runWithPrompt(legacyPrompt, meta);
     expect(
       shouldReuseStoredDeveloperPrompt({
         run,

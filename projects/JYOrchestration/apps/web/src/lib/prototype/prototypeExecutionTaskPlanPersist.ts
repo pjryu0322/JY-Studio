@@ -13,6 +13,8 @@ import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRu
 import type { ImplementationRuntimeStateV1 } from "@/lib/prototype/implementationRuntimeState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
+import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationReviewStageReadyV1 } from "@/lib/prototype/implementationReviewStageReady";
 import type { ReviewStageUserFeedbackListV1 } from "@/lib/prototype/reviewStageUserFeedback";
@@ -99,6 +101,8 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
   readonly implementationAutoQualityGateHistoryV1?: readonly ImplementationAutoQualityGateV1[] | null;
   readonly implementationIntegratedExecutionStateV1?: ImplementationIntegratedExecutionStateV1 | null;
+  readonly implementationPreviewScopeV1?: ImplementationPreviewScopeV1 | null;
+  readonly implementationPreviewRuntimeV1?: ImplementationPreviewRuntimeV1 | null;
   readonly implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
   readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
   readonly reviewStageUserTestSessionV1?: ReviewStageUserTestSessionV1 | null;
@@ -182,6 +186,12 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
       : {}),
     ...(input.implementationIntegratedExecutionStateV1 !== undefined
       ? { implementationIntegratedExecutionStateV1: input.implementationIntegratedExecutionStateV1 }
+      : {}),
+    ...(input.implementationPreviewScopeV1 !== undefined
+      ? { implementationPreviewScopeV1: input.implementationPreviewScopeV1 }
+      : {}),
+    ...(input.implementationPreviewRuntimeV1 !== undefined
+      ? { implementationPreviewRuntimeV1: input.implementationPreviewRuntimeV1 }
       : {}),
     ...(input.implementationExecutionBoardStateV1 !== undefined
       ? { implementationExecutionBoardStateV1: input.implementationExecutionBoardStateV1 }
