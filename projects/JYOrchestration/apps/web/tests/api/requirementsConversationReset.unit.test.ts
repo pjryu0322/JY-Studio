@@ -99,5 +99,6 @@ describe("requirementsConversationReset", () => {
       }),
     ).toBe(true);
     expect(planningWorkspaceHasResettableContent({ messageCount: 0, state: {} })).toBe(false);
+    expect(planningWorkspaceHasResettableContent({ messageCount: 0, state: null })).toBe(false);
   });
 });

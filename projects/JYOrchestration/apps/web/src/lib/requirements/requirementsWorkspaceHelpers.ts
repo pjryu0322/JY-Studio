@@ -175,10 +175,11 @@ export function shouldShowWorkspaceHubNotificationBadges(input: {
 /** 기획 허브 「대화 초기화」— 대화·슬롯·산출물·흐름 등 초기화 대상이 하나라도 있으면 true */
 export function planningWorkspaceHasResettableContent(input: {
   readonly messageCount: number;
-  readonly state: RequirementsStateJson;
+  readonly state: RequirementsStateJson | null | undefined;
 }): boolean {
   if (input.messageCount > 0) return true;
   const s = input.state;
+  if (!s) return false;
   if ((s.deliverableAssets ?? []).length > 0) return true;
   if ((s.projectArtifacts ?? []).length > 0) return true;
   if (s.serviceFlowV1 != null) return true;

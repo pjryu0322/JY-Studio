@@ -953,6 +953,21 @@ export function RequirementsWorkspace({
   const slotDefsForProgress = workspacePlanningView.slotDefs;
   const orchestrationSlotDefsHash = workspacePlanningView.slotDefsHash;
   const orchestrationAlignedState = workspacePlanningView.orchestrationAlignedState;
+  const planningResetEligibilityState = useMemo((): RequirementsStateJson => {
+    return {
+      ...workspaceEvidenceState,
+      deliverableAssets: [...deliverableAssetsFromProject],
+      serviceFlowV1:
+        serviceFlow ?? workspaceEvidenceState.serviceFlowV1 ?? null,
+      singleChatOrchestrationV1:
+        orchestrationAlignedState ?? workspaceEvidenceState.singleChatOrchestrationV1 ?? null,
+    };
+  }, [
+    workspaceEvidenceState,
+    deliverableAssetsFromProject,
+    serviceFlow,
+    orchestrationAlignedState,
+  ]);
   const orchestrationUiState = workspacePlanningView.orchestrationUiState;
   const orchestrationConfirmedMetrics = workspacePlanningView.orchestrationConfirmedMetrics;
   const orchestrationWeightedMetrics = workspacePlanningView.orchestrationWeightedMetrics;
@@ -3819,7 +3834,7 @@ export function RequirementsWorkspace({
           conversationStatus !== "loaded" ||
           !planningWorkspaceHasResettableContent({
             messageCount: room.requirementsConversation.messages.length,
-            state: orchestrationAlignedState,
+            state: planningResetEligibilityState,
           })
         }
         workflowGuidanceBanner={workflowGuidanceBanner}
