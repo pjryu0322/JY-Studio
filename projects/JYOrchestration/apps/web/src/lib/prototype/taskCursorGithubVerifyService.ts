@@ -50,6 +50,8 @@ import {
   parseCodeTaskExecutionRunsV1,
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
+import { dispatchQuickRunContinuationOnServer } from "@/lib/prototype/implementationQuickRunContinuationDispatchService";
+import { mergeCodeTaskRunsWithDbRuntime } from "@/lib/prototype/implementationQuickRunStuckGithubRecovery";
 import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -58,6 +60,8 @@ const EXECUTION_SETUP_SELECT = {
   gitRepoName: true,
   gitRepoProvider: true,
   baseBranch: true,
+  cursorApiUrl: true,
+  cursorApiToken: true,
   allowedPathGlobs: true,
   githubAccessToken: true,
 } as const;
@@ -162,6 +166,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
   ];
 
   const dbBundlePre = await getImplementationRuntimeBundle(projectId);
+  const codeTaskPlanEarly = parseImplementationCodeTaskPlanV1(body.implementationCodeTaskPlanV1);
   const codeTaskIdEarly =
     String(body.codeTaskId ?? "").trim() ||
     dbBundlePre.currentRun?.codeTaskId?.trim() ||
@@ -172,10 +177,14 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     : dbBundlePre.currentRun;
 
   const runsFromBody = parseCodeTaskExecutionRunsV1(body.codeTaskExecutionRunsV1) ?? [];
-  const jsonRun = codeTaskIdEarly ? findLatestRunForCodeTask(runsFromBody, codeTaskIdEarly) : null;
-  const runForVerify = jsonRun ?? (codeTaskIdEarly ? dbRunEarly : null);
+  const mergedRuns = mergeCodeTaskRunsWithDbRuntime({
+    jsonRuns: runsFromBody,
+    dbBundle: dbBundlePre,
+    codeTaskPlan: codeTaskPlanEarly,
+  });
+  const runForVerify = codeTaskIdEarly ? findLatestRunForCodeTask(mergedRuns, codeTaskIdEarly) : null;
 
-  let runsAfterOutcome = runsFromBody.length ? runsFromBody : [...dbBundlePre.runs];
+  let runsAfterOutcome = mergedRuns.length ? mergedRuns : runsFromBody;
   let verify: TaskCursorGithubVerifyResult;
   let verifyRepairMeta: { repaired: boolean; resolvedBranch: string | null } = {
     repaired: false,
@@ -223,7 +232,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
       githubToken,
       allowedPathGlobs: readiness.allowedPathGlobs,
       codeTaskId: codeTaskIdEarly || null,
-      runWorkBranch: dbRunEarly?.workBranch ?? null,
+      runWorkBranch: runForVerify?.workBranch ?? dbRunEarly?.branchName ?? null,
       nowIso,
     });
     timeline.push(...candidateFlow.timeline);
@@ -241,8 +250,8 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     });
     if (verify.ok && verify.verifiedCommitSha && codeTaskIdEarly) {
       const runToPatch =
-        dbRunEarly ??
-        findLatestRunForCodeTask(runsAfterOutcome.length ? runsAfterOutcome : dbBundlePre.runs, codeTaskIdEarly);
+        runForVerify ??
+        findLatestRunForCodeTask(mergedRuns, codeTaskIdEarly);
       if (runToPatch) {
         const outcome = buildGithubOutcomeFromVerifyResult({
           verify,
@@ -255,7 +264,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
           ...patchRunWithGithubOutcome({ run: runToPatch, githubOutcome: outcome, nowIso }),
         };
         runsAfterOutcome = applyGithubOutcomeToRunsList({
-          runs: runsAfterOutcome.length ? runsAfterOutcome : [...dbBundlePre.runs],
+          runs: runsAfterOutcome.length ? runsAfterOutcome : mergedRuns,
           codeTaskId: codeTaskIdEarly,
           updatedRun,
         });
@@ -321,7 +330,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     "";
 
   const workItems = body.workItems ?? [];
-  const codeTaskPlan = parseImplementationCodeTaskPlanV1(body.implementationCodeTaskPlanV1);
+  const codeTaskPlan = codeTaskPlanEarly ?? parseImplementationCodeTaskPlanV1(body.implementationCodeTaskPlanV1);
   const taskList = parseImplementationTaskListV1(body.implementationTaskListV1);
   const dispatchTarget = codeTaskId
     ? resolveCodeTaskDispatchTarget({
