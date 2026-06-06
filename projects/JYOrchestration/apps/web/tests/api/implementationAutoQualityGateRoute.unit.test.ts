@@ -6,6 +6,24 @@ const permissionMock = vi.fn();
 const runAutoGateMock = vi.fn();
 const shouldStartMock = vi.fn();
 const shouldResumeMock = vi.fn();
+const prismaFindUniqueMock = vi.fn();
+const continueAfterAutoGateMock = vi.fn();
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    project: {
+      findUnique: (...args: unknown[]) => prismaFindUniqueMock(...args),
+    },
+  },
+}));
+
+vi.mock("@/lib/prototype/serverQuickRunContinuationService", () => ({
+  continueSelectedCodeTaskQueueAfterAutoGate: (...args: unknown[]) => continueAfterAutoGateMock(...args),
+}));
+
+vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeRepository", () => ({
+  getImplementationRuntimeBundle: vi.fn().mockResolvedValue({ runs: [], job: null, currentRun: null }),
+}));
 
 vi.mock("@/lib/auth/requireSession", () => ({
   requireSessionUserId: (...args: unknown[]) => sessionMock(...args),
@@ -84,10 +102,14 @@ describe("POST /api/prototype/implementation/auto-quality-gate", () => {
     runAutoGateMock.mockReset();
     shouldStartMock.mockReset();
     shouldResumeMock.mockReset();
+    prismaFindUniqueMock.mockReset();
+    continueAfterAutoGateMock.mockReset();
     sessionMock.mockResolvedValue("user-1");
     permissionMock.mockResolvedValue(undefined);
     shouldStartMock.mockReturnValue(true);
     shouldResumeMock.mockReturnValue(false);
+    prismaFindUniqueMock.mockResolvedValue({ requirementsStateJson: {} });
+    continueAfterAutoGateMock.mockResolvedValue({ orchestrationPatch: null, timelineEntries: [] });
   });
 
   it("returns 400 when task cursor execution is missing", async () => {
@@ -140,5 +162,6 @@ describe("POST /api/prototype/implementation/auto-quality-gate", () => {
     expect(body.success).toBe(true);
     expect(body.status).toBe("passed");
     expect(runAutoGateMock).toHaveBeenCalled();
+    expect(prismaFindUniqueMock).toHaveBeenCalled();
   });
 });

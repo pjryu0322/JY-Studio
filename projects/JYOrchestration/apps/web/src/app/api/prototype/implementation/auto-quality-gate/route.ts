@@ -22,7 +22,7 @@ import { continueSelectedCodeTaskQueueAfterAutoGate } from "@/lib/prototype/serv
 import { resolveCompletedCodeTaskId } from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { prisma } from "@/lib/prisma";
 import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
@@ -41,6 +41,7 @@ type Body = {
   readonly implementationAutoQualityGateHistoryV1?: unknown;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[];
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
+  readonly codeTaskExecutionRunsV1?: unknown;
   readonly mode?: "review_then_security";
 };
 
@@ -84,9 +85,16 @@ export async function POST(request: NextRequest) {
     }
 
     const autoGate = parseImplementationAutoQualityGateV1(body.implementationAutoQualityGateV1);
+    const runsFromBody = parseCodeTaskExecutionRunsV1(body.codeTaskExecutionRunsV1) ?? [];
+    const codeTaskRunForGate =
+      runsFromBody.find((r) => r.processTaskId === execution.taskId) ??
+      runsFromBody[runsFromBody.length - 1] ??
+      null;
+
     const shouldStart = shouldAutoStartImplementationQualityGate({
       taskCursorExecution: execution,
       autoGate,
+      codeTaskRun: codeTaskRunForGate,
     });
     const shouldResume = shouldResumeImplementationAutoQualityGate({
       taskCursorExecution: execution,
