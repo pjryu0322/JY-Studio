@@ -43,7 +43,6 @@ import {
   resolveStaleTaskCursorAfterQualityGatePassed,
   buildTaskCursorInflightRepairedTimelineFields,
 } from "@/lib/prototype/taskCursorQuickRunInflightPolicy";
-import { parseImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { appendPromptTimeline } from "@/lib/requirements/promptTimelineState";
 import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
