@@ -592,7 +592,7 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
     completedCodeTaskId,
     nextCodeTaskId,
   });
-  let bundleAfterAdvance = runtimeReady.bundle;
+  bundleAfterAdvance = runtimeReady.bundle;
   if (runtimeReady.repaired) {
     timelineEntries.push(
       buildImplementationExecutionLogTimelineEntry({
