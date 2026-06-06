@@ -1,4 +1,5 @@
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { normalizeCodeTaskGithubOutcomeFromRun } from "@/lib/prototype/codeTaskGithubOutcome";
 import {
   buildTaskCursorGithubBranchCandidates,
 } from "@/lib/prototype/taskCursorGithubBranchCandidates";
@@ -29,7 +30,17 @@ function formatLastCheckKo(iso: string | undefined): string | null {
 export function resolveTaskCursorGithubVerifyProgressLabelKo(input: {
   readonly execution?: TaskCursorExecutionV1 | null;
   readonly diagnostics?: TaskCursorGithubVerifyDiagnosticsV1 | null;
+  readonly run?: CodeTaskExecutionRunV1 | null;
 }): string {
+  const run = input.run ?? null;
+  const runOutcome = run ? normalizeCodeTaskGithubOutcomeFromRun(run) : null;
+  if (runOutcome?.status === "verified") {
+    return "GitHub commit 확인 완료";
+  }
+  if (runOutcome?.status === "failed") {
+    return runOutcome.retryable ? "GitHub 검증 실패" : "GitHub 검증 실패";
+  }
+
   const execution = input.execution;
   const diagnostics = input.diagnostics ?? execution?.githubVerifyDiagnosticsV1 ?? null;
   const phase = diagnostics?.verifyPhase;
@@ -104,7 +115,7 @@ export function buildTaskCursorGithubVerifyDiagnosticsView(input: {
   ];
 
   return {
-    progressLabel: resolveTaskCursorGithubVerifyProgressLabelKo({ execution, diagnostics }),
+    progressLabel: resolveTaskCursorGithubVerifyProgressLabelKo({ execution, diagnostics, run }),
     technicalLines,
     stateSyncFailed,
   };

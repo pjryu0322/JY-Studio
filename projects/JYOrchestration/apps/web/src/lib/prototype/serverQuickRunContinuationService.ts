@@ -51,8 +51,10 @@ import { prisma } from "@/lib/prisma";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
 import {
+  mergeRequirementsStateJson,
   parseRequirementsStateJson,
   type RequirementsPromptTimelineEntry,
+  type RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
 import { advanceImplementationRuntimeJob } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
 import {
@@ -363,6 +365,8 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
   readonly sourceCommitSha?: string | null;
   readonly runId?: string | null;
   readonly nowIso?: string;
+  /** DB persist 전 in-memory orchestration(방금 auto gate/verify patch)을 continuation 판정에 반영 */
+  readonly requirementsOverlay?: Partial<RequirementsStateJson> | null;
 }): Promise<ServerQuickRunContinuationResult> {
   const pid = input.projectId.trim();
   const completedTaskId = input.completedTaskId.trim();
@@ -453,6 +457,9 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
   });
   let requirementsState =
     parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
+  if (input.requirementsOverlay && Object.keys(input.requirementsOverlay).length > 0) {
+    requirementsState = mergeRequirementsStateJson(requirementsState, input.requirementsOverlay);
+  }
   let taskCursor = parseTaskCursorExecutionV1(requirementsState.taskCursorExecutionV1);
   let runs = parseCodeTaskExecutionRunsV1(requirementsState.codeTaskExecutionRunsV1) ?? [];
   const codeTaskPlan = parseImplementationCodeTaskPlanV1(requirementsState.implementationCodeTaskPlanV1);
@@ -599,6 +606,8 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
       taskCursor,
       nextParentTaskId: dispatchTarget.parentTaskId,
       completedTaskId,
+      completedCodeTaskId,
+      runs,
       autoGate,
       promptTimeline: requirementsState.promptTimeline,
     }) &&

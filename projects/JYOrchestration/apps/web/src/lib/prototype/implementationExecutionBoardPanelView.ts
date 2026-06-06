@@ -463,6 +463,7 @@ export function buildImplementationTaskTreeNodes(input: {
     dbCurrentRun: input.dbCurrentRun,
     implementationAutoQualityGateV1: input.implementationAutoQualityGateV1,
     sequentialQuickRunCodeTaskIds: input.sequentialQuickRunCodeTaskIds,
+    promptTimeline: input.promptTimeline,
   });
 
   const activeParentId =

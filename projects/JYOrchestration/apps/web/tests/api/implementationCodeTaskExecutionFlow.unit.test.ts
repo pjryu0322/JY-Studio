@@ -59,6 +59,30 @@ describe("deriveCodeTaskExecutionFlowPhase", () => {
     expect(phase).toBe("failed");
   });
 
+  it("ignores stale taskCursor github_verifying when run githubOutcome is verified", () => {
+    const phase = deriveCodeTaskExecutionFlowPhase({
+      parentTaskId: "DEV-MOCK-001",
+      taskCursorExecution: {
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        status: "github_verifying",
+      } as TaskCursorExecutionV1,
+      latestRun: run({
+        status: "github_verifying",
+        processTaskId: "DEV-MOCK-001",
+        codeTaskId: "CODE-DEV-MOCK-001-001",
+        githubOutcome: {
+          status: "verified",
+          checkedAt: "2026-06-04T00:00:00.000Z",
+          workBranch: "wip/cursor/code-dev-sample-data-001-001",
+          commitSha: "0cd4d65abc12",
+          source: "github_rest",
+        },
+      }),
+    });
+    expect(phase).toBe("github_verified");
+  });
+
   it("shows cursor_running when run failed only has agent id (verify pending)", () => {
     const phase = deriveCodeTaskExecutionFlowPhase({
       parentTaskId: "DEV-FRAME-001",

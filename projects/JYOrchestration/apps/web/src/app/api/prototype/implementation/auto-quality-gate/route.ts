@@ -22,7 +22,7 @@ import { continueSelectedCodeTaskQueueAfterAutoGate } from "@/lib/prototype/serv
 import { resolveCompletedCodeTaskId } from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { prisma } from "@/lib/prisma";
 import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
@@ -154,12 +154,27 @@ export async function POST(request: NextRequest) {
         taskList,
         cursorWorkItems: Array.isArray(body.cursorWorkItemsV1) ? body.cursorWorkItemsV1 : [],
       });
+      const requirementsOverlay = mergeRequirementsStateJson(
+        {
+          taskCursorExecutionV1: execution,
+          implementationAutoQualityGateV1: outcome.autoGate,
+          promptTimeline: appendPromptTimelineEntries(
+            body.promptTimeline ?? persisted.promptTimeline ?? [],
+            outcome.orchestrationPatch?.promptTimeline ?? [],
+          ),
+          ...(outcome.orchestrationPatch?.codeTaskExecutionRunsV1
+            ? { codeTaskExecutionRunsV1: outcome.orchestrationPatch.codeTaskExecutionRunsV1 }
+            : {}),
+        },
+        outcome.orchestrationPatch as Partial<typeof persisted>,
+      );
       const continuation = await continueSelectedCodeTaskQueueAfterAutoGate({
         projectId,
         completedTaskId: execution.taskId,
         completedCodeTaskId,
         sourceCommitSha: execution.commitSha,
         runId: execution.cursorRunId,
+        requirementsOverlay,
       });
       if (continuation.orchestrationPatch) {
         orchestrationPatch = {

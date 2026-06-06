@@ -164,6 +164,7 @@ function buildCodeTaskNode(input: {
   readonly isChecked: boolean;
   /** DB Quick Run Job 순서 — 이 목록에 있으면 plan 그래프 선행 검사로 UI/phase를 막지 않는다. */
   readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
+  readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
 }): ImplementationCodeTaskTreeNode {
   const policy = evaluateCodeTaskReviewSecurityPolicy({
     codeTask: input.codeTask,
@@ -189,6 +190,7 @@ function buildCodeTaskNode(input: {
     parentTaskId: input.codeTask.parentTaskId,
     taskCursorExecution: executionForParent,
     autoGate: autoGateForCodeTask,
+    promptTimeline: input.promptTimeline,
     latestRun,
     failureReason:
       latestRun?.status === "rework_required" ||
@@ -325,6 +327,7 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
   readonly dbCurrentRun?: ImplementationRuntimeRunView | null;
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
   readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
+  readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
 }): readonly ImplementationCodeTaskTreeNode[] {
   const plan = input.codeTaskPlan;
   if (!plan?.tasks.length) return [];
@@ -367,6 +370,7 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
         isSelected,
         isChecked: checkedCodeTaskIds.has(codeTask.codeTaskId),
         sequentialQuickRunCodeTaskIds: input.sequentialQuickRunCodeTaskIds,
+        promptTimeline: input.promptTimeline,
       }),
     );
   }

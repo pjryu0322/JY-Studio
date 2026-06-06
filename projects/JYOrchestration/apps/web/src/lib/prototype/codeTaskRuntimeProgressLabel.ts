@@ -1,3 +1,5 @@
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { normalizeCodeTaskGithubOutcomeFromRun } from "@/lib/prototype/codeTaskGithubOutcome";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import {
@@ -13,7 +15,15 @@ export function resolveCodeTaskRuntimeProgressLabelKo(input: {
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly serverJob?: TaskCursorJobSummary | null;
   readonly githubBranchDetected?: boolean;
+  readonly latestRun?: CodeTaskExecutionRunV1 | null;
 }): string | null {
+  const runOutcome = input.latestRun
+    ? normalizeCodeTaskGithubOutcomeFromRun(input.latestRun)
+    : null;
+  if (runOutcome?.status === "verified") {
+    return "GitHub commit 확인 완료";
+  }
+
   const queue = String(input.dbQueueStatus ?? "").trim().toLowerCase();
   const runtime = input.runtimeState ?? null;
   const execution = input.taskCursorExecution;
@@ -35,11 +45,15 @@ export function resolveCodeTaskRuntimeProgressLabelKo(input: {
     if (runtime === "github_verifying" || queue === "github_verifying") {
       const phaseLabel = resolveTaskCursorGithubVerifyProgressLabelKo({
         execution: execution ?? undefined,
+        run: input.latestRun ?? undefined,
       });
       return phaseLabel;
     }
     if (execution?.status === "github_verifying") {
-      return resolveTaskCursorGithubVerifyProgressLabelKo({ execution });
+      return resolveTaskCursorGithubVerifyProgressLabelKo({
+        execution,
+        run: input.latestRun ?? undefined,
+      });
     }
     if (execution?.failureReason === "github_verify_state_sync_failed") {
       return "GitHub 상태 반영 실패";

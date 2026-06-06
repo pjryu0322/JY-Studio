@@ -10,7 +10,9 @@ import {
 } from "@/lib/prototype/codeTaskExecutionRunStatus";
 import type { RuntimeState } from "@/lib/prototype/implementationRuntimeState";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
-import { resolveGithubVerifyStuckEscalation } from "@/lib/prototype/taskCursorGithubVerifyTimeoutPolicy";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { deriveFlowHintFromRunGithubOutcome, runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
+import { isTaskCursorInFlightForRunOutcome } from "@/lib/prototype/taskCursorGithubOutcomeSession";
 
 export type CodeTaskExecutionFlowPhase =
   | "prompt_ready"
@@ -377,6 +379,7 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
   readonly parentTaskId: string;
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly autoGate?: ImplementationAutoQualityGateV1 | null;
+  readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly developerStatus?: ImplementationBoardStepStatus;
   readonly failureReason?: string;
   readonly latestRun?: CodeTaskExecutionRunV1 | null;
@@ -384,6 +387,7 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
   const run = input.latestRun ?? null;
   const execution =
     input.taskCursorExecution?.taskId === input.parentTaskId ? input.taskCursorExecution : null;
+  const parentTaskId = input.parentTaskId.trim();
 
   const finish = (phase: CodeTaskExecutionFlowPhase): CodeTaskExecutionFlowPhase =>
     bumpFlowPhaseWithGithubCommitEvidence({ run, execution, phase });
@@ -399,31 +403,34 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
     return "completed";
   }
 
-  if (
-    input.autoGate?.status === "passed" &&
-    input.autoGate.taskId === input.parentTaskId.trim()
-  ) {
-    return "completed";
+  const outcomeHint = deriveFlowHintFromRunGithubOutcome(run);
+  if (outcomeHint === "completed") return "completed";
+  if (outcomeHint === "github_verified") {
+    if (
+      input.autoGate?.status === "passed" &&
+      input.autoGate.taskId === parentTaskId
+    ) {
+      return "completed";
+    }
+    return "github_verified";
+  }
+  if (outcomeHint === "github_branch_missing") return "github_branch_missing";
+  if (outcomeHint === "github_verify_timeout") return "github_verify_timeout";
+  if (outcomeHint === "failed") return "failed";
+  if (outcomeHint === "github_verifying") {
+    const commitSha = String(run?.commitSha ?? run?.branchHeadCommitSha ?? "").trim();
+    if (
+      input.autoGate?.status === "passed" &&
+      input.autoGate.taskId === parentTaskId &&
+      commitSha &&
+      input.autoGate.sourceCommitSha.trim() === commitSha
+    ) {
+      return "completed";
+    }
+    return "github_verifying";
   }
 
-  if (execution) {
-    const fromCursor = mapCursorStatusToPhase({
-      execution,
-      parentTaskId: input.parentTaskId,
-      autoGate: input.autoGate,
-      developerStatus: input.developerStatus,
-      failureReason: input.failureReason,
-    });
-    if (
-      fromCursor === "completed" ||
-      fromCursor === "lightweight_checking" ||
-      fromCursor === "github_verified" ||
-      fromCursor === "github_verifying" ||
-      fromCursor === "cursor_running"
-    ) {
-      return finish(fromCursor);
-    }
-  }
+  const runTerminalGithub = runHasVerifiedGithubOutcome(run);
 
   if (run) {
     if (run.status === "completed" || run.status === "no_code_change_completed") {
@@ -451,12 +458,36 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
     if (isQueuedCodeTaskExecutionRunStatus(run.status)) {
       if (
         execution &&
-        (execution.status === "cursor_running" || execution.status === "cursor_requested")
+        isTaskCursorInFlightForRunOutcome({ execution, runHasTerminalGithub: runTerminalGithub })
       ) {
         return finish("cursor_running");
       }
       return "prompt_ready";
     }
+  }
+
+  if (
+    execution &&
+    isTaskCursorInFlightForRunOutcome({ execution, runHasTerminalGithub: runTerminalGithub })
+  ) {
+    const fromCursor = mapCursorStatusToPhase({
+      execution,
+      parentTaskId: input.parentTaskId,
+      autoGate: input.autoGate,
+      developerStatus: input.developerStatus,
+      failureReason: input.failureReason,
+    });
+    if (fromCursor === "cursor_running" || fromCursor === "cursor_completed") {
+      return finish(fromCursor === "cursor_completed" ? "github_verifying" : fromCursor);
+    }
+  }
+
+  if (
+    input.autoGate?.status === "passed" &&
+    input.autoGate.taskId === parentTaskId &&
+    runTerminalGithub
+  ) {
+    return "completed";
   }
 
   if (execution) {

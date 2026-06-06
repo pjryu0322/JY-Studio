@@ -71,6 +71,7 @@ export function isTransientTaskCursorGithubVerifyMiss(
   const detail = result.detailReason;
   if (detail === "branch_not_found" || detail === "commit_not_found") return true;
   if (detail === "changed_files_empty") return true;
+  if (detail === "commit_message_missing_task_id" || detail === "path_guard_failed") return true;
   if (result.reason === "commit_not_created" || result.reason === "no_changed_files") return true;
   return false;
 }

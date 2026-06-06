@@ -1,9 +1,23 @@
-import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
-import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { runHasTerminalGithubOutcome, runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { parseImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import { isRetryableGithubVerifyFailureReason } from "@/lib/prototype/taskCursorGithubVerifyTimeoutPolicy";
+
+function completedRunBlocksStaleCursor(input: {
+  readonly completedTaskId: string;
+  readonly completedCodeTaskId?: string | null;
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+}): boolean {
+  const codeTaskId = String(input.completedCodeTaskId ?? "").trim();
+  if (!codeTaskId || !input.runs?.length) return false;
+  const run = findLatestRunForCodeTask(input.runs, codeTaskId);
+  if (!run || run.processTaskId.trim() !== input.completedTaskId.trim()) return false;
+  return runHasTerminalGithubOutcome(run);
+}
 
 export function hasAutoQualityGatePassedForTask(input: {
   readonly taskId: string;
@@ -28,6 +42,8 @@ export function shouldBlockQuickRunDispatchForInFlightTaskCursor(input: {
   readonly taskCursor: TaskCursorExecutionV1 | null | undefined;
   readonly nextParentTaskId: string;
   readonly completedTaskId: string;
+  readonly completedCodeTaskId?: string | null;
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
   readonly autoGate?: ImplementationAutoQualityGateV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
 }): boolean {
@@ -36,6 +52,27 @@ export function shouldBlockQuickRunDispatchForInFlightTaskCursor(input: {
 
   const completedId = input.completedTaskId.trim();
   const nextParent = input.nextParentTaskId.trim();
+
+  if (
+    completedRunBlocksStaleCursor({
+      completedTaskId: completedId,
+      completedCodeTaskId: input.completedCodeTaskId,
+      runs: input.runs,
+    }) &&
+    cursor.taskId.trim() === completedId
+  ) {
+    return false;
+  }
+
+  if (
+    completedId &&
+    cursor.taskId.trim() === completedId &&
+    runHasVerifiedGithubOutcome(
+      findLatestRunForCodeTask(input.runs, String(input.completedCodeTaskId ?? "").trim()),
+    )
+  ) {
+    return false;
+  }
 
   if (
     completedId &&

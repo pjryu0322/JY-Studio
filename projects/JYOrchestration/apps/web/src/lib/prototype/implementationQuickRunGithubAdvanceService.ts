@@ -13,6 +13,7 @@ import {
   planQuickRunCodeTaskContinuationAfterAutoGate,
   shouldPlanQuickRunCodeTaskContinuationAfterAutoGate,
 } from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
+import { resolveStaleTaskCursorAfterQualityGatePassed } from "@/lib/prototype/taskCursorQuickRunInflightPolicy";
 import {
   parseImplementationQuickRunV1,
   syncImplementationQuickRunWithExecution,
@@ -189,6 +190,24 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
 
   if (!autoGatePassed) {
     return { orchestrationPatch: mergeOrchestrationPatches(...patches), nextDispatch: null };
+  }
+
+  const postExecutionForRepair = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
+  if (postExecutionForRepair) {
+    const repairedCursor = resolveStaleTaskCursorAfterQualityGatePassed({
+      taskCursor: postExecutionForRepair,
+      completedTaskId: postExecutionForRepair.taskId,
+      autoGateRaw: state.implementationAutoQualityGateV1,
+      promptTimeline: state.promptTimeline,
+      nowIso,
+    });
+    if (repairedCursor) {
+      const repairPatch: PrototypeExecutionOrchestrationPersistInput = {
+        taskCursorExecutionV1: repairedCursor,
+      };
+      patches.push(repairPatch);
+      state = mergeRequirementsStateJson(state, repairPatch as Partial<RequirementsStateJson>);
+    }
   }
 
   const dbBundle = input.dbBundle ?? null;

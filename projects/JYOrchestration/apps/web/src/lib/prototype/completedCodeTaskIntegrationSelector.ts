@@ -1,5 +1,10 @@
 import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import {
+  normalizeCodeTaskGithubOutcomeFromRun,
+  runHasTerminalGithubOutcome,
+  runHasVerifiedGithubOutcome,
+} from "@/lib/prototype/codeTaskGithubOutcome";
+import {
   isInFlightCodeTaskExecutionRunStatus,
   isQueuedCodeTaskExecutionRunStatus,
 } from "@/lib/prototype/codeTaskExecutionRunStatus";
@@ -47,6 +52,10 @@ const SCREEN_ROLE_KINDS = new Set<CodeTaskRoleKind>([
 ]);
 
 function readCommitSha(run: CodeTaskExecutionRunV1 | null | undefined): string | null {
+  const outcome = run ? normalizeCodeTaskGithubOutcomeFromRun(run) : null;
+  if (outcome?.status === "verified") {
+    return outcome.commitSha.trim() || null;
+  }
   const sha = String(run?.commitSha ?? run?.branchHeadCommitSha ?? "").trim();
   return sha || null;
 }
@@ -86,6 +95,9 @@ function mapRunToExcludedReason(
   run: CodeTaskExecutionRunV1 | null,
 ): ExcludedCodeTaskIntegrationTarget["reason"] {
   if (!run) return "not_started";
+  const outcome = normalizeCodeTaskGithubOutcomeFromRun(run);
+  if (outcome?.status === "failed") return "failed";
+  if (outcome?.status === "pending") return "github_verifying";
   if (run.status === "blocked_by_dependency") return "blocked_by_dependency";
   if (run.status === "failed" || run.status === "rework_required") return "failed";
   if (run.status === "skipped_by_user") return "cancelled";
@@ -104,6 +116,12 @@ function resolveIntegratableFromRun(input: {
 }): CompletedCodeTaskIntegrationTarget | null {
   const run = input.run;
   if (!run) return null;
+
+  const githubOutcome = normalizeCodeTaskGithubOutcomeFromRun(run);
+  if (githubOutcome?.status === "failed" || githubOutcome?.status === "pending") {
+    return null;
+  }
+
   const commitSha = readCommitSha(run);
   if (!commitSha) return null;
 
@@ -124,6 +142,21 @@ function resolveIntegratableFromRun(input: {
       workBranch: run.workBranch ?? null,
       source: "quality_gate",
     };
+  }
+
+  if (runHasVerifiedGithubOutcome(run)) {
+    if (run.status === "completed" || run.status === "no_code_change_completed") {
+      return {
+        codeTaskId: run.codeTaskId,
+        taskId: run.processTaskId,
+        title: "",
+        status: run.status,
+        commitSha,
+        workBranch: run.workBranch ?? null,
+        source: "runtime_run",
+      };
+    }
+    return null;
   }
 
   if (
@@ -161,6 +194,9 @@ function resolveIntegratableFromCursorHistory(input: {
   readonly taskCursorExecutions: readonly TaskCursorExecutionV1[];
 }): CompletedCodeTaskIntegrationTarget | null {
   const run = findLatestRunForCodeTask(input.runs, input.codeTaskId);
+  if (run && runHasTerminalGithubOutcome(run)) {
+    return null;
+  }
   const commitSha = readCommitSha(run);
   if (!commitSha) return null;
 

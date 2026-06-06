@@ -3,6 +3,11 @@ import { isInFlightCodeTaskExecutionRunStatus, isTerminalCodeTaskExecutionRunSta
 import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import { getCurrentQueueCodeTaskId } from "@/lib/prototype/codeTaskExecutionQueue";
 import { parseCodeTaskDeveloperPromptMeta, type CodeTaskDeveloperPromptMeta } from "@/lib/prototype/codeTaskDeveloperPromptCache";
+import {
+  normalizeCodeTaskGithubOutcomeFromRun,
+  parseCodeTaskGithubOutcomeV1,
+  type CodeTaskGithubOutcomeV1,
+} from "@/lib/prototype/codeTaskGithubOutcome";
 
 export const CODE_TASK_EXECUTION_RUN_VERSION = "code_task_execution_run_v1" as const;
 
@@ -50,6 +55,7 @@ export type CodeTaskExecutionRunV1 = Readonly<{
   startedAt?: string;
   updatedAt: string;
   completedAt?: string;
+  githubOutcome?: CodeTaskGithubOutcomeV1 | null;
 }>;
 
 const RUN_STATUSES = new Set<CodeTaskExecutionRunStatus>([
@@ -87,7 +93,8 @@ export function parseCodeTaskExecutionRunV1(raw: unknown): CodeTaskExecutionRunV
   const changedFiles = Array.isArray(o.changedFiles)
     ? (o.changedFiles as unknown[]).map(String).map((s) => s.trim()).filter(Boolean)
     : undefined;
-  return {
+  const githubOutcomeRaw = parseCodeTaskGithubOutcomeV1(o.githubOutcome);
+  const baseRun = {
     version: CODE_TASK_EXECUTION_RUN_VERSION,
     runId,
     projectId,
@@ -130,7 +137,13 @@ export function parseCodeTaskExecutionRunV1(raw: unknown): CodeTaskExecutionRunV
     ...(changedFiles?.length ? { changedFiles } : {}),
     ...(typeof o.startedAt === "string" && o.startedAt.trim() ? { startedAt: o.startedAt.trim() } : {}),
     ...(typeof o.completedAt === "string" && o.completedAt.trim() ? { completedAt: o.completedAt.trim() } : {}),
-  };
+    ...(githubOutcomeRaw ? { githubOutcome: githubOutcomeRaw } : {}),
+  } satisfies CodeTaskExecutionRunV1;
+  const normalizedOutcome = normalizeCodeTaskGithubOutcomeFromRun(baseRun);
+  if (normalizedOutcome && !githubOutcomeRaw) {
+    return { ...baseRun, githubOutcome: normalizedOutcome };
+  }
+  return baseRun;
 }
 
 export function parseCodeTaskExecutionRunsV1(

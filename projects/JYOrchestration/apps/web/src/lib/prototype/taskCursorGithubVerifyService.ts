@@ -36,7 +36,21 @@ import { prisma } from "@/lib/prisma";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
-import { dispatchQuickRunContinuationOnServer } from "@/lib/prototype/implementationQuickRunContinuationDispatchService";
+import {
+  applyGithubOutcomeToRunsList,
+  verifyGithubForCodeTaskRun,
+} from "@/lib/prototype/codeTaskGithubVerifyForRun";
+import {
+  buildGithubOutcomeFromVerifyResult,
+  patchRunWithGithubOutcome,
+} from "@/lib/prototype/codeTaskGithubOutcome";
+import { clearStaleTaskCursorInflightForVerifiedRun } from "@/lib/prototype/taskCursorGithubOutcomeSession";
+import {
+  findLatestRunForCodeTask,
+  parseCodeTaskExecutionRunsV1,
+  type CodeTaskExecutionRunV1,
+} from "@/lib/prototype/codeTaskExecutionRun";
+import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 const EXECUTION_SETUP_SELECT = {
@@ -157,30 +171,108 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     ? dbBundlePre.runs.find((r) => r.codeTaskId === codeTaskIdEarly) ?? null
     : dbBundlePre.currentRun;
 
-  const candidateFlow = await runTaskCursorGithubVerifyCandidateFlow({
-    projectId,
-    execution: nextExecution,
-    targetRepository: readiness.targetRepository,
-    githubToken,
-    allowedPathGlobs: readiness.allowedPathGlobs,
-    codeTaskId: codeTaskIdEarly || null,
-    runWorkBranch: dbRunEarly?.workBranch ?? null,
-    nowIso,
-  });
-  timeline.push(...candidateFlow.timeline);
-  nextExecution = candidateFlow.execution;
-  let verify = candidateFlow.verify;
+  const runsFromBody = parseCodeTaskExecutionRunsV1(body.codeTaskExecutionRunsV1) ?? [];
+  const jsonRun = codeTaskIdEarly ? findLatestRunForCodeTask(runsFromBody, codeTaskIdEarly) : null;
+  const runForVerify = jsonRun ?? (codeTaskIdEarly ? dbRunEarly : null);
 
-  nextExecution = applyTaskCursorGithubVerifyResult({
-    execution: nextExecution,
-    ok: verify.ok,
-    message: verify.message,
-    reason: verify.reason,
-    detailReason: verify.detailReason,
-    verifiedChangedFiles: verify.verifiedChangedFiles,
-    verifiedCommitSha: verify.verifiedCommitSha,
-    nowIso,
-  });
+  let runsAfterOutcome = runsFromBody.length ? runsFromBody : [...dbBundlePre.runs];
+  let verify: TaskCursorGithubVerifyResult;
+  let verifyRepairMeta: { repaired: boolean; resolvedBranch: string | null } = {
+    repaired: false,
+    resolvedBranch: null,
+  };
+
+  if (runForVerify) {
+    const forRun = await verifyGithubForCodeTaskRun({
+      projectId,
+      run: runForVerify,
+      execution: nextExecution,
+      targetRepository: readiness.targetRepository,
+      githubToken,
+      allowedPathGlobs: readiness.allowedPathGlobs,
+      codeTaskId: codeTaskIdEarly,
+      nowIso,
+    });
+    timeline.push(...forRun.timeline);
+    verify = forRun.verify;
+    runsAfterOutcome = applyGithubOutcomeToRunsList({
+      runs: runsAfterOutcome,
+      codeTaskId: codeTaskIdEarly,
+      updatedRun: forRun.updatedRun,
+    });
+    nextExecution = forRun.taskCursorPatch ?? nextExecution;
+    nextExecution = applyTaskCursorGithubVerifyResult({
+      execution: nextExecution,
+      ok: verify.ok,
+      message: verify.message,
+      reason: verify.reason,
+      detailReason: verify.detailReason,
+      verifiedChangedFiles: verify.verifiedChangedFiles,
+      verifiedCommitSha: verify.verifiedCommitSha,
+      nowIso,
+    });
+    verifyRepairMeta = {
+      repaired: forRun.repaired,
+      resolvedBranch: forRun.verify.resolvedBranch ?? null,
+    };
+  } else {
+    const candidateFlow = await runTaskCursorGithubVerifyCandidateFlow({
+      projectId,
+      execution: nextExecution,
+      targetRepository: readiness.targetRepository,
+      githubToken,
+      allowedPathGlobs: readiness.allowedPathGlobs,
+      codeTaskId: codeTaskIdEarly || null,
+      runWorkBranch: dbRunEarly?.workBranch ?? null,
+      nowIso,
+    });
+    timeline.push(...candidateFlow.timeline);
+    nextExecution = candidateFlow.execution;
+    verify = candidateFlow.verify;
+    nextExecution = applyTaskCursorGithubVerifyResult({
+      execution: nextExecution,
+      ok: verify.ok,
+      message: verify.message,
+      reason: verify.reason,
+      detailReason: verify.detailReason,
+      verifiedChangedFiles: verify.verifiedChangedFiles,
+      verifiedCommitSha: verify.verifiedCommitSha,
+      nowIso,
+    });
+    if (verify.ok && verify.verifiedCommitSha && codeTaskIdEarly) {
+      const runToPatch =
+        dbRunEarly ??
+        findLatestRunForCodeTask(runsAfterOutcome.length ? runsAfterOutcome : dbBundlePre.runs, codeTaskIdEarly);
+      if (runToPatch) {
+        const outcome = buildGithubOutcomeFromVerifyResult({
+          verify,
+          nowIso,
+          previousWorkBranch: runToPatch.workBranch ?? nextExecution.workBranch,
+          resolvedWorkBranch: verify.resolvedBranch ?? null,
+        });
+        const updatedRun: CodeTaskExecutionRunV1 = {
+          ...runToPatch,
+          ...patchRunWithGithubOutcome({ run: runToPatch, githubOutcome: outcome, nowIso }),
+        };
+        runsAfterOutcome = applyGithubOutcomeToRunsList({
+          runs: runsAfterOutcome.length ? runsAfterOutcome : [...dbBundlePre.runs],
+          codeTaskId: codeTaskIdEarly,
+          updatedRun,
+        });
+        const session = clearStaleTaskCursorInflightForVerifiedRun({
+          execution: nextExecution,
+          githubOutcome: outcome,
+          nowIso,
+        });
+        if (session.execution) nextExecution = session.execution;
+      }
+    }
+    verifyRepairMeta = {
+      repaired: candidateFlow.repaired,
+      resolvedBranch: candidateFlow.resolvedBranch ?? verify.resolvedBranch ?? null,
+    };
+  }
+
   const escalation = applyGithubVerifyStuckEscalationIfNeeded({
     execution: nextExecution,
     verifyDetailReason: verify.detailReason,
@@ -240,11 +332,14 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
       })
     : null;
 
+  const runsPayload =
+    runsAfterOutcome.length > 0 ? runsAfterOutcome : body.codeTaskExecutionRunsV1;
+
   const basePatch = buildTaskCursorOrchestrationPatch({
     execution: nextExecution,
     timelineEntries: timeline,
     cursorWorkItems: workItems,
-    codeTaskExecutionRunsV1: body.codeTaskExecutionRunsV1,
+    codeTaskExecutionRunsV1: runsPayload,
     activeCodeTaskId: (dispatchTarget?.codeTask.codeTaskId ?? codeTaskId) || null,
     activeWorkItemId: dispatchTarget?.workItem.id ?? null,
     ...(parseImplementationTaskExecutionStateV1(body.implementationTaskExecutionStateV1)
@@ -265,7 +360,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     quickRun: body.implementationQuickRunV1,
     implementationTaskListV1: body.implementationTaskListV1,
     implementationCodeTaskPlanV1: body.implementationCodeTaskPlanV1,
-    codeTaskExecutionRunsV1: body.codeTaskExecutionRunsV1,
+    codeTaskExecutionRunsV1: runsPayload,
     implementationTaskExecutionStateV1: body.implementationTaskExecutionStateV1,
     implementationQualityGateResultsV1: body.implementationQualityGateResultsV1,
     implementationAutoQualityGateV1: body.implementationAutoQualityGateV1,
@@ -286,6 +381,10 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
   });
 
   if (verify.ok && advance.nextDispatch && cursorApiToken && execReadiness.ok) {
+    await persistTaskCursorOrchestrationToProject({
+      projectId,
+      orchestrationPatch: orchestrationPatch as Record<string, unknown>,
+    });
     const dispatchOutcome = await dispatchQuickRunContinuationOnServer({
       projectId,
       dispatch: advance.nextDispatch,
@@ -296,7 +395,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
           implementationQuickRunV1: body.implementationQuickRunV1,
           implementationTaskListV1: body.implementationTaskListV1,
           implementationCodeTaskPlanV1: body.implementationCodeTaskPlanV1,
-          codeTaskExecutionRunsV1: body.codeTaskExecutionRunsV1,
+          codeTaskExecutionRunsV1: runsPayload,
           cursorWorkItemsV1: workItems,
           taskCursorExecutionV1: nextExecution,
         },
@@ -317,8 +416,8 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     orchestrationPatch,
     advance: { ...advance, orchestrationPatch },
     continuationDispatchedOnServer,
-    repaired: candidateFlow.repaired,
-    resolvedBranch: candidateFlow.resolvedBranch,
+    repaired: verifyRepairMeta.repaired,
+    resolvedBranch: verifyRepairMeta.resolvedBranch,
     manualVerifyStatus: mapManualGithubVerifyApiStatus({
       verify,
       execution: nextExecution,
