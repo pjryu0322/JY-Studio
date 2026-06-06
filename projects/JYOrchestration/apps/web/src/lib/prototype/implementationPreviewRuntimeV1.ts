@@ -46,6 +46,8 @@ export type ImplementationPreviewRuntimeV1 = Readonly<{
   readonly excludedCodeTaskIds: readonly string[];
   readonly warnings: readonly string[];
   readonly errorMessage?: string | null;
+  /** P3-M44: Preview/GitHub 통합 branch SoT */
+  readonly sourceIntegrationBranch?: string | null;
 }>;
 
 function readString(value: unknown): string {
@@ -122,6 +124,9 @@ export function parseImplementationPreviewRuntimeV1(
     ...(inferredExternal ? { externalPreviewUrl: inferredExternal } : {}),
     ...(internalAppPreviewUrl ? { internalAppPreviewUrl } : {}),
     ...(readString(o.errorMessage) ? { errorMessage: readString(o.errorMessage) } : {}),
+    ...(readString(o.sourceIntegrationBranch)
+      ? { sourceIntegrationBranch: readString(o.sourceIntegrationBranch) }
+      : {}),
   };
 }
 

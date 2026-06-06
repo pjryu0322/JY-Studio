@@ -60,4 +60,38 @@ describe("buildImplementationIntegrationBoardSection", () => {
     expect(vm.previewStatusLines).toContain("Preview 준비 완료");
     expect(vm.summaryLines.some((line) => line.includes("완료된 CodeTask"))).toBe(true);
   });
+
+  it("shows integration branch and PR merge affordances from plan", () => {
+    const vm = buildImplementationIntegrationBoardSection({
+      eligibility: {
+        canIntegrate: true,
+        included: [],
+        excluded: [],
+        warnings: [],
+        hasAppShell: true,
+        hasAnyScreenTask: true,
+      },
+      integratedPipelineLines: [],
+      previewScope: scope,
+      previewRuntime: readyRuntime,
+      integrationPlan: {
+        version: "code_task_integration_plan_v1",
+        projectId: "p1",
+        targetRepository: "https://github.com/o/r",
+        baseBranch: "main",
+        integrationBranch: "integration/p1-20260603-1200",
+        createdAt: NOW,
+        included: [],
+        excluded: [],
+        strategy: "merge",
+        status: "pr_ready",
+        pullRequestUrl: "https://github.com/o/r/pull/9",
+        pullRequestNumber: 9,
+        checkResult: { status: "passed", checks: [{ id: "branch_exists", status: "passed" }] },
+      },
+    });
+    expect(vm.integrationPlanLines.some((l) => l.includes("integration/p1"))).toBe(true);
+    expect(vm.integrationPullRequestUrl).toContain("/pull/9");
+    expect(vm.canMergeIntegrationPullRequest).toBe(true);
+  });
 });

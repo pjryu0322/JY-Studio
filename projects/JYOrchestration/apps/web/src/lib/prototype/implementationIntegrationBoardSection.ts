@@ -7,6 +7,8 @@ import {
   buildIntegrationScopeCountSummaryLines,
   buildIntegrationScopeDetailLines,
 } from "@/lib/prototype/implementationIntegrationScopeUi";
+import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
+import { canMergeIntegrationPullRequest } from "@/lib/prototype/implementationIntegrationConflict";
 import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import type { ImplementationIntegratedPipelineLine } from "@/lib/prototype/implementationTaskPipelinePolicy";
 
@@ -22,6 +24,9 @@ export type ImplementationIntegrationBoardSectionVm = Readonly<{
   readonly previewUrl: string | null;
   readonly previewStatusLines: readonly string[];
   readonly preIntegrationPreviewLine: string | null;
+  readonly integrationPlanLines: readonly string[];
+  readonly integrationPullRequestUrl: string | null;
+  readonly canMergeIntegrationPullRequest: boolean;
 }>;
 
 export function buildImplementationIntegrationBoardSection(input: {
@@ -29,6 +34,7 @@ export function buildImplementationIntegrationBoardSection(input: {
   readonly integratedPipelineLines: readonly ImplementationIntegratedPipelineLine[];
   readonly previewScope?: ImplementationPreviewScopeV1 | null;
   readonly previewRuntime?: ImplementationPreviewRuntimeV1 | null;
+  readonly integrationPlan?: CodeTaskIntegrationPlanV1 | null;
 }): ImplementationIntegrationBoardSectionVm {
   const scope = input.previewScope ?? null;
   const previewRuntimeReady = isIntegrationPreviewRuntimeReady(input.previewRuntime);
@@ -56,6 +62,22 @@ export function buildImplementationIntegrationBoardSection(input: {
     }
   }
 
+  const integrationPlanLines: string[] = [];
+  const plan = input.integrationPlan ?? null;
+  if (plan?.integrationBranch) {
+    integrationPlanLines.push(`Integration branch: ${plan.integrationBranch}`);
+    integrationPlanLines.push(`Preview는 통합 branch 기준입니다. 포함 ${plan.included.length}개 · 제외 ${plan.excluded.length}개`);
+  }
+  if (plan?.status === "conflict") {
+    integrationPlanLines.push(
+      `통합 충돌 발생${plan.conflictCodeTaskId ? ` (CodeTask ${plan.conflictCodeTaskId})` : ""}`,
+    );
+    if (plan.failureMessage) integrationPlanLines.push(`사유: ${plan.failureMessage}`);
+  }
+  if (plan?.status === "pr_ready" && plan.pullRequestUrl) {
+    integrationPlanLines.push("통합 PR 준비 완료 · Preview 확인 후 main 반영을 승인할 수 있습니다.");
+  }
+
   return {
     canIntegrate: input.eligibility.canIntegrate,
     showSection: input.eligibility.canIntegrate || input.integratedPipelineLines.length > 0,
@@ -79,5 +101,8 @@ export function buildImplementationIntegrationBoardSection(input: {
     previewUrl,
     previewStatusLines,
     preIntegrationPreviewLine,
+    integrationPlanLines,
+    integrationPullRequestUrl: String(plan?.pullRequestUrl ?? "").trim() || null,
+    canMergeIntegrationPullRequest: canMergeIntegrationPullRequest(plan),
   };
 }

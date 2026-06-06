@@ -47,6 +47,7 @@ export function buildPreviewFromCompletedCodeTasks(input: {
   readonly targetRepository?: string | null;
   readonly externalPreviewUrl?: string | null;
   readonly projectPreviewSettings?: unknown;
+  readonly sourceIntegrationBranch?: string | null;
 }): BuildPreviewFromCompletedCodeTasksResult {
   const nowIso = input.nowIso ?? new Date().toISOString();
   const pid = input.projectId.trim();
@@ -111,6 +112,9 @@ export function buildPreviewFromCompletedCodeTasks(input: {
     excludedCodeTaskIds: scope.excludedCodeTasks.map((row) => row.codeTaskId),
     warnings: [...appPreview.warnings],
     errorMessage: null,
+    ...(String(input.sourceIntegrationBranch ?? "").trim()
+      ? { sourceIntegrationBranch: String(input.sourceIntegrationBranch).trim() }
+      : {}),
   };
 
   return { ok: true, runtime, previewUrl, errorMessage: null };

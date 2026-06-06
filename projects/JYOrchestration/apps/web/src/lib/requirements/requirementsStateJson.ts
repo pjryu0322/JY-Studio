@@ -57,6 +57,7 @@ import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionR
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { parseCodeTaskPromptContextMapV1, type CodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 import {
   parseImplementationRuntimeStateV1,
@@ -654,6 +655,8 @@ export type RequirementsStateJson = {
   implementationPreviewScopeV1?: import("@/lib/prototype/implementationPreviewScopeV1").ImplementationPreviewScopeV1 | null;
   /** 완료 CodeTask 통합 후 Preview runtime(내부 route URL, final_scm과 분리) */
   implementationPreviewRuntimeV1?: import("@/lib/prototype/implementationPreviewRuntimeV1").ImplementationPreviewRuntimeV1 | null;
+  /** P3-M44: completed CodeTask → integration branch → single PR */
+  codeTaskIntegrationPlanV1?: import("@/lib/prototype/implementationIntegrationPlan").CodeTaskIntegrationPlanV1 | null;
   /** @deprecated DB Runtime Engine SoT — 읽기 호환만, 저장 시 제거 */
   implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   /** 구현 Runtime UI 스냅샷(DB mirror, 표시·activeDispatch 힌트) */
@@ -1148,6 +1151,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationPreviewRuntimeV1 = parseImplementationPreviewRuntimeV1(
     "implementationPreviewRuntimeV1" in o ? o.implementationPreviewRuntimeV1 : undefined,
   );
+  const codeTaskIntegrationPlanV1 = parseCodeTaskIntegrationPlanV1(
+    "codeTaskIntegrationPlanV1" in o ? o.codeTaskIntegrationPlanV1 : undefined,
+  );
   const implementationRuntimeStateV1 = parseImplementationRuntimeStateV1(
     "implementationRuntimeStateV1" in o ? o.implementationRuntimeStateV1 : undefined,
   );
@@ -1336,6 +1342,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(codeTaskExecutionRunsV1 !== undefined ? { codeTaskExecutionRunsV1 } : {}),
     ...(implementationPreviewScopeV1 !== undefined ? { implementationPreviewScopeV1 } : {}),
     ...(implementationPreviewRuntimeV1 !== undefined ? { implementationPreviewRuntimeV1 } : {}),
+    ...(codeTaskIntegrationPlanV1 !== undefined ? { codeTaskIntegrationPlanV1 } : {}),
     ...(implementationRuntimeUiSnapshotV1 !== undefined
       ? { implementationRuntimeUiSnapshotV1 }
       : {}),

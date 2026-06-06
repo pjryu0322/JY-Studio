@@ -228,6 +228,11 @@ import {
   applyIntegratedPipelineSyncSteps,
   isFinalScmIntegratedStepReady,
 } from "@/lib/prototype/implementationIntegratedPipelineBatch";
+import {
+  mergeIntegrationPullRequestClient,
+  runIntegrationBranchPipelineClient,
+} from "@/lib/prototype/implementationIntegrationClient";
+import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { buildCompletedCodeTaskIntegrationTimelineEntry } from "@/lib/prototype/integrationPreviewTimeline";
 import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
 import {
@@ -578,6 +583,7 @@ export function PrototypePreviewPanel({
   const [automationBlockReason, setAutomationBlockReason] = useState<PrototypeRunStatusReason>(null);
   const [protoBusy, setProtoBusy] = useState(false);
   const [integrationPipelineBusy, setIntegrationPipelineBusy] = useState(false);
+  const [integrationMergeBusy, setIntegrationMergeBusy] = useState(false);
   const [implementationResetBusy, setImplementationResetBusy] = useState(false);
   const [implementationConversationResetNonce, setImplementationConversationResetNonce] = useState(0);
   /** postCreate 호출 직후~응답 전: 입력 잠금·진행 UI용 */
@@ -4068,6 +4074,29 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const mergeIntegrationPullRequest = useCallback(() => {
+    const pid = projectId.trim();
+    if (!pid) {
+      showToast("프로젝트를 선택해 주세요.");
+      return;
+    }
+    void (async () => {
+      setIntegrationMergeBusy(true);
+      try {
+        const result = await mergeIntegrationPullRequestClient({ projectId: pid });
+        if (result.ok) {
+          showToast("통합 PR을 main에 반영했습니다.");
+        } else {
+          showToast(result.message ?? "main 반영에 실패했습니다.");
+        }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : String(error));
+      } finally {
+        setIntegrationMergeBusy(false);
+      }
+    })();
+  }, [projectId, showToast]);
+
   const runIntegrationPipeline = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) {
@@ -4095,11 +4124,45 @@ export function PrototypePreviewPanel({
 
     void (async () => {
       setIntegrationPipelineBusy(true);
-      showToast("통합 및 Preview 준비 중…");
+      showToast("통합 branch 생성 및 Preview 준비 중…");
       try {
         const startedAtIso = new Date().toISOString();
-        let integrationServerSaved = true;
-        let timeline = [...(parsedRequirementsState.promptTimeline ?? [])];
+
+        const pipelineResult = await runIntegrationBranchPipelineClient({
+          projectId: pid,
+          projectName: projectName.trim() || null,
+          implementationCodeTaskPlanV1: parsedRequirementsState.implementationCodeTaskPlanV1,
+          implementationTaskListV1: parsedRequirementsState.implementationTaskListV1,
+          codeTaskExecutionRunsV1: parsedRequirementsState.codeTaskExecutionRunsV1,
+          implementationQuickRunV1: parsedRequirementsState.implementationQuickRunV1,
+          createPullRequest: true,
+        });
+
+        const integrationPlan =
+          pipelineResult.plan ??
+          parseCodeTaskIntegrationPlanV1(pipelineResult.orchestrationPatch?.codeTaskIntegrationPlanV1) ??
+          null;
+
+        if (pipelineResult.orchestrationPatch) {
+          applyPendingFromOrchestrationPatch(pipelineResult.orchestrationPatch);
+        }
+
+        if (!pipelineResult.ok) {
+          showToast(pipelineResult.message ?? "통합 branch 생성에 실패했습니다.");
+          if (pipelineResult.orchestrationPatch) {
+            await persistChatToDb(undefined, pipelineResult.orchestrationPatch, undefined, {
+              awaitServer: false,
+              force: true,
+            });
+          }
+          return;
+        }
+
+        let timeline = [
+          ...(pipelineResult.orchestrationPatch?.promptTimeline ??
+            parsedRequirementsState.promptTimeline ??
+            []),
+        ];
         timeline = appendPromptTimeline(
           timeline,
           buildCompletedCodeTaskIntegrationTimelineEntry({
@@ -4128,14 +4191,20 @@ export function PrototypePreviewPanel({
 
         const batch = applyIntegratedPipelineSyncSteps({
           projectId: pid,
-          orchestration: parsedRequirementsState,
+          orchestration: {
+            ...parsedRequirementsState,
+            ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
+          },
           nowIso: startedAtIso,
           externalPreviewUrl,
+          sourceIntegrationBranch: integrationPlan?.integrationBranch ?? null,
         });
         if (!batch.ok) {
           showToast(`통합 실패: ${batch.message}`);
           return;
         }
+
+        let integrationServerSaved = true;
 
         const includedCount = batch.previewScope?.includedCodeTasks.length ?? 0;
         const excludedCount = batch.previewScope?.excludedCodeTasks.length ?? 0;
@@ -4235,6 +4304,7 @@ export function PrototypePreviewPanel({
         ) {
           const orchestrationPersistPatch = {
             implementationIntegratedExecutionStateV1: batch.integratedState,
+            ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
             ...(batch.previewScope
               ? { implementationPreviewScopeV1: batch.previewScope }
               : {}),
@@ -4267,6 +4337,7 @@ export function PrototypePreviewPanel({
             orchestration: {
               ...parsedRequirementsState,
               implementationIntegratedExecutionStateV1: batch.integratedState,
+              ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
               ...(batch.previewScope
                 ? { implementationPreviewScopeV1: batch.previewScope }
                 : {}),
@@ -4295,6 +4366,7 @@ export function PrototypePreviewPanel({
           orchestration: {
             ...(refState ?? parsedRequirementsState),
             implementationIntegratedExecutionStateV1: batch.integratedState,
+            ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
             ...(batch.previewScope
               ? { implementationPreviewScopeV1: batch.previewScope }
               : {}),
@@ -4331,6 +4403,7 @@ export function PrototypePreviewPanel({
     })();
   }, [
     projectId,
+    projectName,
     implementationBoard,
     parsedRequirementsState,
     persistChatToDb,
@@ -7954,6 +8027,11 @@ export function PrototypePreviewPanel({
             cursorWorkItemsV1={orchestrationAwareRequirementsState.cursorWorkItemsV1}
             onRunIntegrationPipeline={runIntegrationPipeline}
             integrationPipelineBusy={integrationPipelineBusy}
+            codeTaskIntegrationPlanV1={
+              orchestrationAwareRequirementsState.codeTaskIntegrationPlanV1
+            }
+            onMergeIntegrationPullRequest={mergeIntegrationPullRequest}
+            integrationMergeBusy={integrationMergeBusy}
           />
         ) : null}
         <div className="jyo-prototype-execution-chat-region">

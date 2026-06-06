@@ -59,6 +59,7 @@ export function applyIntegratedPipelineSyncSteps(input: {
   readonly nowIso?: string;
   readonly externalPreviewUrl?: string | null;
   readonly targetRepository?: string | null;
+  readonly sourceIntegrationBranch?: string | null;
 }): ApplyIntegratedPipelineSyncStepsResult {
   const pid = input.projectId.trim();
   if (!pid) return { ok: false, message: "프로젝트를 선택해 주세요." };
@@ -153,6 +154,7 @@ export function applyIntegratedPipelineSyncSteps(input: {
       targetRepository:
         input.targetRepository ??
         (String(input.orchestration.taskCursorExecutionV1?.targetRepository ?? "").trim() || null),
+      sourceIntegrationBranch: input.sourceIntegrationBranch ?? null,
     });
     previewRuntime = previewBuild.runtime;
     previewBuildOk = previewBuild.ok;
@@ -171,6 +173,7 @@ export function applyIntegratedPipelineSyncSteps(input: {
         targetRepository:
           input.targetRepository ??
           (String(input.orchestration.taskCursorExecutionV1?.targetRepository ?? "").trim() || null),
+        sourceIntegrationBranch: input.sourceIntegrationBranch ?? null,
       });
       if (retry.ok && retry.runtime.status === "ready" && retry.previewUrl) {
         previewRuntime = retry.runtime;

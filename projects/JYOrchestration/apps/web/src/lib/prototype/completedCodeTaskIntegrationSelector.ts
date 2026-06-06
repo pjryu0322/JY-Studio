@@ -2,7 +2,7 @@ import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/pro
 import { normalizeCodeTaskGithubOutcomeFromRun } from "@/lib/prototype/codeTaskGithubOutcome";
 import { normalizeCodeTaskQualityOutcomeFromRun } from "@/lib/prototype/codeTaskQualityOutcome";
 import {
-  isCodeTaskRunPreviewIncluded,
+  isCodeTaskRunMergeIncluded,
   readCodeTaskRunCommitSha,
 } from "@/lib/prototype/codeTaskRunPreviewPolicy";
 import {
@@ -38,6 +38,9 @@ export type ExcludedCodeTaskIntegrationTarget = Readonly<{
     | "failed"
     | "blocked_by_dependency"
     | "cancelled"
+    | "quality_not_passed"
+    | "missing_branch"
+    | "missing_commit"
     | "unknown";
 }>;
 
@@ -101,6 +104,12 @@ function mapRunToExcludedReason(
   }
   if (run.status === "github_verifying") return "github_verifying";
   if (isQueuedCodeTaskExecutionRunStatus(run.status)) return "queued";
+  const quality = normalizeCodeTaskQualityOutcomeFromRun(run);
+  if (quality?.status === "failed") return "quality_not_passed";
+  if (!String(run.workBranch ?? "").trim()) return "missing_branch";
+  if (!readCodeTaskRunCommitSha(run) && run.status !== "no_code_change_completed") {
+    return "missing_commit";
+  }
   return "unknown";
 }
 
@@ -117,15 +126,15 @@ function resolveIntegratableFromRun(input: {
   }
 
   const commitSha = readCodeTaskRunCommitSha(run);
-  if (!commitSha) return null;
+  if (!commitSha && run.status !== "no_code_change_completed") return null;
 
-  if (isCodeTaskRunPreviewIncluded(run)) {
+  if (isCodeTaskRunMergeIncluded(run)) {
     return {
       codeTaskId: run.codeTaskId,
       taskId: run.processTaskId,
       title: "",
       status: run.status,
-      commitSha,
+      commitSha: commitSha ?? null,
       workBranch: run.workBranch ?? null,
       source: run.qualityOutcome ? "quality_gate" : "runtime_run",
     };

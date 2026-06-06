@@ -79,6 +79,7 @@ import {
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
+import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { shouldShowIntegrationPipelineButton } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
@@ -120,6 +121,9 @@ export function ImplementationExecutionBoardPanel({
   implementationPreviewRuntimeV1,
   onRunIntegrationPipeline,
   integrationPipelineBusy,
+  codeTaskIntegrationPlanV1,
+  onMergeIntegrationPullRequest,
+  integrationMergeBusy,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -152,6 +156,9 @@ export function ImplementationExecutionBoardPanel({
   readonly implementationPreviewRuntimeV1?: unknown;
   readonly onRunIntegrationPipeline?: () => void;
   readonly integrationPipelineBusy?: boolean;
+  readonly codeTaskIntegrationPlanV1?: unknown;
+  readonly onMergeIntegrationPullRequest?: () => void;
+  readonly integrationMergeBusy?: boolean;
 }) {
   const feedbackSummary = useMemo(
     () => buildImplementationCodeTaskFeedbackSummary(codeTaskExecutionFeedbackV1),
@@ -469,6 +476,11 @@ export function ImplementationExecutionBoardPanel({
     [implementationPreviewRuntimeV1],
   );
 
+  const parsedIntegrationPlan = useMemo(
+    () => parseCodeTaskIntegrationPlanV1(codeTaskIntegrationPlanV1) ?? null,
+    [codeTaskIntegrationPlanV1],
+  );
+
   const integrationSection = useMemo(
     () =>
       buildImplementationIntegrationBoardSection({
@@ -483,6 +495,7 @@ export function ImplementationExecutionBoardPanel({
         integratedPipelineLines,
         previewScope: parseImplementationPreviewScopeV1(implementationPreviewScopeV1),
         previewRuntime: parsedPreviewRuntime,
+        integrationPlan: parsedIntegrationPlan,
       }),
     [
       implementationCodeTaskPlanV1,
@@ -494,6 +507,7 @@ export function ImplementationExecutionBoardPanel({
       integratedPipelineLines,
       implementationPreviewScopeV1,
       parsedPreviewRuntime,
+      parsedIntegrationPlan,
     ],
   );
 
@@ -829,7 +843,37 @@ export function ImplementationExecutionBoardPanel({
                   disabled={integrationPipelineBusy === true}
                   onClick={onRunIntegrationPipeline}
                 >
-                  {integrationPipelineBusy ? "통합 및 Preview 준비 중…" : "통합"}
+                  {integrationPipelineBusy
+                    ? "통합 branch 생성 및 Preview 준비 중…"
+                    : "통합 branch 생성 및 Preview 준비"}
+                </button>
+              ) : null}
+              {integrationSection.integrationPullRequestUrl ? (
+                <button
+                  type="button"
+                  className={styles.integrationPreviewScopeButton}
+                  data-testid="implementation-integration-pr-open-button"
+                  onClick={() => {
+                    window.open(
+                      integrationSection.integrationPullRequestUrl!,
+                      "_blank",
+                      "noopener,noreferrer",
+                    );
+                  }}
+                >
+                  PR 열기
+                </button>
+              ) : null}
+              {integrationSection.canMergeIntegrationPullRequest &&
+              onMergeIntegrationPullRequest ? (
+                <button
+                  type="button"
+                  className={styles.integrationPrimaryButton}
+                  data-testid="implementation-integration-merge-main-button"
+                  disabled={integrationMergeBusy === true}
+                  onClick={onMergeIntegrationPullRequest}
+                >
+                  {integrationMergeBusy ? "main 반영 중…" : "main에 반영"}
                 </button>
               ) : null}
               {integrationSection.previewRuntimeReady && previewOpenTarget.url ? (
@@ -866,6 +910,11 @@ export function ImplementationExecutionBoardPanel({
               </div>
             ))}
             {integrationSection.summaryLines.map((line) => (
+              <div key={line} className={styles.taskTreeChildLine}>
+                {line}
+              </div>
+            ))}
+            {integrationSection.integrationPlanLines.map((line) => (
               <div key={line} className={styles.taskTreeChildLine}>
                 {line}
               </div>
