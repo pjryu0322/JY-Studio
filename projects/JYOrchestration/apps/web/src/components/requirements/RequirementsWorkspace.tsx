@@ -145,6 +145,7 @@ import {
   buildRequirementsConversationResetStateJson,
   ideationDraftGateStatus,
   ideationSendDevLog,
+  planningWorkspaceHasResettableContent,
   resolveWorkspaceDeliverableAssets,
   resolveWorkspaceProjectArtifacts,
   shouldSkipIdeationDuplicateAppend,
@@ -1762,10 +1763,15 @@ export function RequirementsWorkspace({
       setActiveCanvasView(null);
       lastFastPlanArtifactIdRef.current = null;
       await persistRemote(nextRoom, {}, resetState);
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+    } catch (e) {
+      showErrorToast(e instanceof Error ? e.message : "기획 초기화에 실패했습니다.");
     } finally {
       setResetConversationBusy(false);
     }
-  }, [resolvedProjectId, busy, resetConversationBusy, persistRemote, setServiceFlow]);
+  }, [resolvedProjectId, busy, resetConversationBusy, persistRemote, setServiceFlow, showErrorToast]);
 
 
   const handleGenerateProjectArtifact = useCallback(
@@ -3811,7 +3817,10 @@ export function RequirementsWorkspace({
           busy ||
           resetConversationBusy ||
           conversationStatus !== "loaded" ||
-          room.requirementsConversation.messages.length === 0
+          !planningWorkspaceHasResettableContent({
+            messageCount: room.requirementsConversation.messages.length,
+            state: orchestrationAlignedState,
+          })
         }
         workflowGuidanceBanner={workflowGuidanceBanner}
         loadError={loadError}

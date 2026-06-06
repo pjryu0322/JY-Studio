@@ -624,8 +624,8 @@ export function WorkspaceConversationHubIconRow({
   const resetButton =
     onResetConversation ? (
       <WorkspaceHubChromeIconButton
-        title="대화 초기화"
-        ariaLabel="대화 초기화"
+        title="대화 초기화 (전체 초기화 후 새로고침)"
+        ariaLabel="대화 초기화 — 기획·구현 파생 데이터 전체 초기화 후 새로고침"
         disabled={resetConversationDisabled}
         onClick={() => onResetConversation()}
       >
@@ -687,6 +687,14 @@ export function WorkspaceConversationHubIconRow({
         disabled: busy || remoteLocked,
       });
     }
+    if (onResetConversation) {
+      items.push({
+        id: "reset-conversation",
+        label: "전체 초기화",
+        onClick: () => void onResetConversation(),
+        disabled: resetConversationDisabled,
+      });
+    }
     if (artifactHubControls) {
       items.push({
         id: "artifact-hub",
@@ -714,6 +722,8 @@ export function WorkspaceConversationHubIconRow({
     onDownloadConversationMarkdown,
     downloadDisabled,
     onSummarizeConversation,
+    onResetConversation,
+    resetConversationDisabled,
     busy,
     remoteLocked,
   ]);

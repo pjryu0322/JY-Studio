@@ -172,6 +172,27 @@ export function shouldShowWorkspaceHubNotificationBadges(input: {
   return c.confirmed + c.partial + c.candidate > 0;
 }
 
+/** 기획 허브 「대화 초기화」— 대화·슬롯·산출물·흐름 등 초기화 대상이 하나라도 있으면 true */
+export function planningWorkspaceHasResettableContent(input: {
+  readonly messageCount: number;
+  readonly state: RequirementsStateJson;
+}): boolean {
+  if (input.messageCount > 0) return true;
+  const s = input.state;
+  if ((s.deliverableAssets ?? []).length > 0) return true;
+  if ((s.projectArtifacts ?? []).length > 0) return true;
+  if (s.serviceFlowV1 != null) return true;
+  if (s.singleChatOrchestrationV1 != null) return true;
+  if (s.featurePlanningSlotsV1 != null) return true;
+  if (s.featureDetailSlotsV1 != null) return true;
+  if (s.fastPlanDraftV1 != null) return true;
+  if (s.fastPlanGenerationV1 != null) return true;
+  if ((s.promptTimeline ?? []).length > 0) return true;
+  const pi = s.problemInterview;
+  if (pi && problemInterviewStrictFilledCount(pi) > 0) return true;
+  return false;
+}
+
 /**
  * 대화 초기화 — 서비스 기획 세션(산출물·Canvas·슬롯·흐름)을 비우고 프로젝트 메타만 유지.
  */

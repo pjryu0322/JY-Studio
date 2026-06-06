@@ -39,8 +39,8 @@ export function ConversationChromeToolbar(p: {
         <DownloadIcon />
       </WorkspaceHubChromeIconButton>
       <WorkspaceHubChromeIconButton
-        title="대화 초기화"
-        ariaLabel="대화 초기화"
+        title="대화 초기화 (전체 초기화 후 새로고침)"
+        ariaLabel="대화 초기화 — 기획·구현 파생 데이터 전체 초기화 후 새로고침"
         disabled={Boolean(p.resetDisabled)}
         onClick={() => p.onResetConversation()}
       >

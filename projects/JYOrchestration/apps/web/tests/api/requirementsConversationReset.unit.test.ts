@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRequirementsConversationResetStateJson,
+  planningWorkspaceHasResettableContent,
   resolveWorkspaceDeliverableAssets,
   resolveWorkspaceProjectArtifacts,
 } from "@/lib/requirements/requirementsWorkspaceHelpers";
@@ -88,5 +89,15 @@ describe("requirementsConversationReset", () => {
     const merged: RequirementsStateJson = { ...persisted, ...reset };
     expect(merged.codeTaskExecutionRunsV1).toBeNull();
     expect(merged.taskCursorExecutionV1).toBeNull();
+  });
+
+  it("planningWorkspaceHasResettableContent is true when slots exist without chat messages", () => {
+    expect(
+      planningWorkspaceHasResettableContent({
+        messageCount: 0,
+        state: { singleChatOrchestrationV1: { slotDefinitionsHash: "h", slots: {}, updatedAt: nowIso } as never },
+      }),
+    ).toBe(true);
+    expect(planningWorkspaceHasResettableContent({ messageCount: 0, state: {} })).toBe(false);
   });
 });
