@@ -849,8 +849,8 @@ export function ImplementationExecutionBoardPanel({
           ))}
           {stageOneQualityLines.length ? (
             <div className={styles.summarySecondary} data-testid="code-task-stage-one-prompt-quality">
-              {stageOneQualityLines.map((line) => (
-                <div key={line}>{line}</div>
+              {stageOneQualityLines.map((line, index) => (
+                <div key={`stage-one-quality-${index}`}>{line}</div>
               ))}
             </div>
           ) : null}
