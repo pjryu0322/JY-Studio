@@ -35,10 +35,18 @@ import {
   buildQuickRunNextDispatchPlannedTimelineEntry,
   buildQuickRunDbQueuedAutoDispatchTimelineEntry,
   buildQuickRunNextDispatchSkippedTimelineEntry,
+  buildQuickRunNextDispatchFailedTimelineEntry,
 } from "@/lib/prototype/quickRunNextDispatchTimeline";
+import { QUICK_RUN_DISPATCH_REASON } from "@/lib/prototype/quickRunDispatchReasonCodes";
+import {
+  shouldBlockQuickRunDispatchForInFlightTaskCursor,
+  resolveStaleTaskCursorAfterQualityGatePassed,
+  buildTaskCursorInflightRepairedTimelineFields,
+} from "@/lib/prototype/taskCursorQuickRunInflightPolicy";
+import { parseImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
+import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { appendPromptTimeline } from "@/lib/requirements/promptTimelineState";
 import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
-import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { prisma } from "@/lib/prisma";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -399,6 +407,43 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
     };
   };
 
+  const appendDispatchFailed = (
+    reason: string,
+    extra?: {
+      readonly nextTaskId?: string | null;
+      readonly nextCodeTaskId?: string | null;
+      readonly diagnostics?: unknown;
+      readonly resolvedCompletedCodeTaskId?: string | null;
+    },
+  ): ServerQuickRunContinuationResult => {
+    const completedCodeTaskIdForTimeline =
+      extra?.resolvedCompletedCodeTaskId?.trim() ||
+      input.completedCodeTaskId?.trim() ||
+      "unknown";
+    timelineEntries.push(
+      buildQuickRunNextDispatchFailedTimelineEntry({
+        projectId: pid,
+        completedTaskId,
+        completedCodeTaskId: completedCodeTaskIdForTimeline,
+        nextTaskId: extra?.nextTaskId ?? null,
+        nextCodeTaskId: extra?.nextCodeTaskId ?? null,
+        reason,
+        retryable: true,
+        diagnostics: extra?.diagnostics,
+        nowIso,
+      }),
+    );
+    return {
+      ok: false,
+      outcome: "execute_request_failed",
+      nextTaskId: extra?.nextTaskId ?? null,
+      nextCodeTaskId: extra?.nextCodeTaskId ?? null,
+      reason,
+      diagnostics: extra?.diagnostics,
+      timelineEntries,
+    };
+  };
+
   if (!pid || !completedTaskId) {
     return appendSkipped("skipped", "missing_project_or_task");
   }
@@ -407,10 +452,10 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
     where: { id: pid },
     select: { requirementsStateJson: true },
   });
-  const requirementsState =
+  let requirementsState =
     parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
-  const taskCursor = parseTaskCursorExecutionV1(requirementsState.taskCursorExecutionV1);
-  const runs = parseCodeTaskExecutionRunsV1(requirementsState.codeTaskExecutionRunsV1) ?? [];
+  let taskCursor = parseTaskCursorExecutionV1(requirementsState.taskCursorExecutionV1);
+  let runs = parseCodeTaskExecutionRunsV1(requirementsState.codeTaskExecutionRunsV1) ?? [];
   const codeTaskPlan = parseImplementationCodeTaskPlanV1(requirementsState.implementationCodeTaskPlanV1);
   const taskList = parseImplementationTaskListV1(requirementsState.implementationTaskListV1);
   const workItems = requirementsState.cursorWorkItemsV1 ?? [];
@@ -515,13 +560,52 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
     bundleAfterAdvance.currentRun?.codeTaskId === nextCodeTaskId &&
     bundleAfterAdvance.currentRun.runtimeState === "queued";
 
+  const autoGate = parseImplementationAutoQualityGateV1(
+    requirementsState.implementationAutoQualityGateV1,
+  );
+  const repairedCursor = taskCursor
+    ? resolveStaleTaskCursorAfterQualityGatePassed({
+        taskCursor,
+        completedTaskId,
+        autoGateRaw: requirementsState.implementationAutoQualityGateV1,
+        promptTimeline: requirementsState.promptTimeline,
+        nowIso,
+      })
+    : null;
+  if (repairedCursor && taskCursor) {
+    timelineEntries.push(
+      buildImplementationExecutionLogTimelineEntry({
+        action: "task_cursor_inflight_state_repaired",
+        orchestrationTraceGroup: "implementation_orchestration",
+        fields: buildTaskCursorInflightRepairedTimelineFields({
+          projectId: pid,
+          taskId: taskCursor.taskId,
+          priorStatus: taskCursor.status,
+          reason: "auto_quality_gate_passed_stale_inflight",
+        }),
+        nowIso,
+      }),
+    );
+    await persistTaskCursorOrchestrationToProject({
+      projectId: pid,
+      orchestrationPatch: { taskCursorExecutionV1: repairedCursor },
+    });
+    taskCursor = repairedCursor;
+    requirementsState = { ...requirementsState, taskCursorExecutionV1: repairedCursor };
+  }
+
   if (
     taskCursor &&
-    isInFlightTaskCursorExecution(taskCursor) &&
-    taskCursor.taskId !== dispatchTarget.parentTaskId &&
+    shouldBlockQuickRunDispatchForInFlightTaskCursor({
+      taskCursor,
+      nextParentTaskId: dispatchTarget.parentTaskId,
+      completedTaskId,
+      autoGate,
+      promptTimeline: requirementsState.promptTimeline,
+    }) &&
     !dbNextRunQueued
   ) {
-    return appendSkipped("already_in_flight", "already_in_flight", {
+    return appendSkipped("already_in_flight", QUICK_RUN_DISPATCH_REASON.already_in_flight, {
       nextTaskId: dispatchTarget.parentTaskId,
       nextCodeTaskId,
       diagnostics: { cursorStatus: taskCursor.status, cursorTaskId: taskCursor.taskId },
@@ -546,7 +630,35 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
     }
   }
 
-  const workBranch = buildCodeTaskWorkBranch(nextCodeTaskId);
+  runs = ensureJsonRunForQueuedCodeTask({
+    projectId: pid,
+    codeTaskId: nextCodeTaskId,
+    runs,
+    codeTaskPlan,
+    taskList,
+    cursorWorkItems: workItems,
+    nowIso,
+  });
+  if (!findDispatchableRunForCodeTask(runs, nextCodeTaskId)) {
+    return appendDispatchFailed(QUICK_RUN_DISPATCH_REASON.execution_record_upsert_failed, {
+      nextTaskId: dispatchTarget.parentTaskId,
+      nextCodeTaskId,
+    });
+  }
+  const runsBeforeUpsert = parseCodeTaskExecutionRunsV1(requirementsState.codeTaskExecutionRunsV1) ?? [];
+  const hadDispatchableRun = Boolean(findDispatchableRunForCodeTask(runsBeforeUpsert, nextCodeTaskId));
+  if (!hadDispatchableRun) {
+    await persistTaskCursorOrchestrationToProject({
+      projectId: pid,
+      orchestrationPatch: { codeTaskExecutionRunsV1: runs },
+    });
+    requirementsState = { ...requirementsState, codeTaskExecutionRunsV1: runs };
+  }
+
+  const workBranch = buildCodeTaskWorkBranch(
+    nextCodeTaskId,
+    findLatestRunForCodeTask(runs, nextCodeTaskId)?.workBranch,
+  );
   timelineEntries.push(
     buildQuickRunNextDispatchPlannedTimelineEntry({
       projectId: pid,
@@ -585,21 +697,37 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
       workItemId: dispatchTarget.workItem.id,
       triggerKey: `${completedTaskId}:${input.sourceCommitSha ?? ""}:server:${nextCodeTaskId}`,
     },
-    baseOrchestrationPatch: {},
-    requirementsSlice: requirementsState,
+    baseOrchestrationPatch: { codeTaskExecutionRunsV1: runs },
+    requirementsSlice: { ...requirementsState, codeTaskExecutionRunsV1: runs },
     context: readiness.context,
     cursorApiToken,
     nowIso,
   });
 
   if (!dispatchOutcome.dispatched) {
-    const reason = dispatchOutcome.message?.includes("품질")
+    const rawMessage = dispatchOutcome.message ?? "";
+    const reason = rawMessage.includes("품질")
       ? "prompt_gate_failed"
-      : "execute_request_failed";
-    return appendSkipped(reason, dispatchOutcome.message ?? reason, {
+      : rawMessage === QUICK_RUN_DISPATCH_REASON.execution_record_missing
+        ? QUICK_RUN_DISPATCH_REASON.execution_record_missing
+        : rawMessage === QUICK_RUN_DISPATCH_REASON.execution_record_upsert_failed
+          ? QUICK_RUN_DISPATCH_REASON.execution_record_upsert_failed
+          : QUICK_RUN_DISPATCH_REASON.dispatch_failed_retryable;
+    if (
+      reason === QUICK_RUN_DISPATCH_REASON.execution_record_missing ||
+      reason === QUICK_RUN_DISPATCH_REASON.execution_record_upsert_failed ||
+      reason === QUICK_RUN_DISPATCH_REASON.dispatch_failed_retryable
+    ) {
+      return appendDispatchFailed(reason, {
+        nextTaskId: dispatchTarget.parentTaskId,
+        nextCodeTaskId,
+        diagnostics: { message: rawMessage },
+      });
+    }
+    return appendSkipped(reason, rawMessage || reason, {
       nextTaskId: dispatchTarget.parentTaskId,
       nextCodeTaskId,
-      diagnostics: { message: dispatchOutcome.message },
+      diagnostics: { message: rawMessage },
     });
   }
 

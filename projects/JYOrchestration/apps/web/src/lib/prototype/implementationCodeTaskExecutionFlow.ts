@@ -10,6 +10,7 @@ import {
 } from "@/lib/prototype/codeTaskExecutionRunStatus";
 import type { RuntimeState } from "@/lib/prototype/implementationRuntimeState";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import { resolveGithubVerifyStuckEscalation } from "@/lib/prototype/taskCursorGithubVerifyTimeoutPolicy";
 
 export type CodeTaskExecutionFlowPhase =
   | "prompt_ready"
@@ -18,6 +19,9 @@ export type CodeTaskExecutionFlowPhase =
   | "cursor_completed"
   | "github_verifying"
   | "github_verified"
+  | "github_branch_missing"
+  | "github_verify_timeout"
+  | "dispatch_failed_retryable"
   | "lightweight_checking"
   | "completed"
   | "failed";
@@ -50,6 +54,12 @@ export function formatCodeTaskExecutionFlowPhaseKo(phase: CodeTaskExecutionFlowP
       return "Cursor 실행 완료";
     case "github_verifying":
       return "GitHub commit 확인 중";
+    case "github_branch_missing":
+      return "GitHub branch가 생성되지 않음";
+    case "github_verify_timeout":
+      return "GitHub commit 확인 시간 초과";
+    case "dispatch_failed_retryable":
+      return "CodeTask 실행 준비 실패";
     case "github_verified":
       return "GitHub 확인 완료";
     case "lightweight_checking":
@@ -256,13 +266,22 @@ function mapCursorStatusToPhase(input: {
   }
   const s = execution.status;
   if (execution.failureReason === "prompt_preflight_failed") return "prompt_preflight_failed";
-  if (s === "cursor_failed" || s === "github_verify_failed") return "failed";
+  if (s === "cursor_failed" || s === "github_verify_failed") {
+    if (execution.failureReason === "github_branch_missing") return "github_branch_missing";
+    if (execution.failureReason === "github_verify_timeout") return "github_verify_timeout";
+    return "failed";
+  }
   if (s === "status_check_stopped") return "cursor_running";
   if (s === "scm_pending") return "completed";
   // Reviewer/Security are handled in integrated stage, not per CodeTask.
   if (s === "review_pending" || s === "security_pending") return "lightweight_checking";
   if (s === "github_verified") return "github_verified";
-  if (s === "github_verifying" || s === "cursor_completed") return "github_verifying";
+  if (s === "github_verifying" || s === "cursor_completed") {
+    const escalation = resolveGithubVerifyStuckEscalation({ execution });
+    if (escalation === "github_branch_missing") return "github_branch_missing";
+    if (escalation === "github_verify_timeout") return "github_verify_timeout";
+    return "github_verifying";
+  }
   if (s === "cursor_running" || s === "cursor_requested") {
     if (executionHasRecordedCommit(execution)) return "github_verifying";
     const workBranch = String(execution.workBranch ?? "").trim();

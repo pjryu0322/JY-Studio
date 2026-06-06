@@ -17,6 +17,11 @@ import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionR
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  buildImplementationToastDedupeKey,
+  recordImplementationToastDedupe,
+  shouldSuppressDuplicateImplementationToast,
+} from "@/lib/prototype/implementationToastDedupe";
 
 export type QuickRunGithubVerifyRecoveryInput = Readonly<{
   readonly projectId: string;
@@ -35,6 +40,8 @@ export type QuickRunGithubVerifyRecoveryInput = Readonly<{
   readonly refreshRuntime?: () => void | Promise<void>;
   /** 사용자 수동 재확인 — dedupe 무시 */
   readonly force?: boolean;
+  readonly toastDedupeKeyRef?: { current: string | null };
+  readonly toastDedupeAtRef?: { current: number };
 }>;
 
 /** Quick Run stuck 시 GitHub verify + 서버 advance. 대상 없으면 false. */
@@ -71,7 +78,25 @@ export async function runQuickRunStuckGithubVerifyRecovery(
   }
   input.stuckVerifyDedupeRef.current = dedupe;
 
-  input.showToast(`${execution.taskId} · GitHub branch에서 commit 확인 중…`);
+  const checkingToast = `${execution.taskId} · GitHub branch에서 commit 확인 중…`;
+  const toastKey = buildImplementationToastDedupeKey({
+    taskId: execution.taskId,
+    status: execution.status,
+    message: checkingToast,
+  });
+  const keyRef = input.toastDedupeKeyRef ?? { current: null };
+  const atRef = input.toastDedupeAtRef ?? { current: 0 };
+  if (
+    input.force ||
+    !shouldSuppressDuplicateImplementationToast({
+      key: toastKey,
+      lastKeyRef: keyRef,
+      lastAtRef: atRef,
+    })
+  ) {
+    recordImplementationToastDedupe({ key: toastKey, lastKeyRef: keyRef, lastAtRef: atRef });
+    input.showToast(checkingToast);
+  }
   try {
     const json = await postTaskCursorGithubVerify(
       buildTaskCursorGithubVerifyRequestBody({

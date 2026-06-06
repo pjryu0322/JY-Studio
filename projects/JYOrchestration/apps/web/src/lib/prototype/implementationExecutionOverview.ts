@@ -4,6 +4,10 @@ import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRu
 import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
 import { summarizeCodeTaskExecutionQueueRuns } from "@/lib/prototype/codeTaskExecutionRunUi";
 import {
+  formatCodeTaskExecutionFlowPhaseKo,
+  type CodeTaskExecutionFlowPhase,
+} from "@/lib/prototype/implementationCodeTaskExecutionFlow";
+import {
   formatRuntimeStateKo,
   isRuntimeInFlight,
   type ImplementationRuntimeStateV1,
@@ -18,8 +22,11 @@ export type ImplementationExecutionOverview = Readonly<{
   readonly failedCount: number;
   readonly currentTitle?: string;
   readonly isRunning: boolean;
+  readonly needsAttention: boolean;
+  readonly headerTitle: string;
   readonly runtimeState?: RuntimeState;
   readonly runtimeStateLabel?: string;
+  readonly flowPhaseLabel?: string;
 }>;
 
 export type SelectedCodeTaskExecutionProgress = Readonly<{
@@ -105,6 +112,7 @@ export function buildImplementationExecutionOverview(input: {
     CodeTaskExecutionRunV1,
     "commitSha" | "branchHeadCommitSha" | "cursorRunId" | "workBranch"
   > | null;
+  readonly activeFlowPhase?: CodeTaskExecutionFlowPhase | null;
 }): ImplementationExecutionOverview {
   const processTaskCount = input.board.taskRows.length;
   const planCount = input.codeTaskPlan?.codeTaskCount ?? input.codeTaskPlan?.tasks.length ?? 0;
@@ -134,10 +142,39 @@ export function buildImplementationExecutionOverview(input: {
         String(input.activeCodeTaskRun?.cursorRunId ?? "").trim() ||
         String(input.activeCodeTaskRun?.workBranch ?? "").trim(),
     );
+
+  const attentionPhases = new Set<CodeTaskExecutionFlowPhase>([
+    "github_branch_missing",
+    "github_verify_timeout",
+    "dispatch_failed_retryable",
+  ]);
+  const flowPhase = input.activeFlowPhase ?? null;
+  const needsAttention = flowPhase != null && attentionPhases.has(flowPhase);
+  const flowPhaseLabel = flowPhase ? formatCodeTaskExecutionFlowPhaseKo(flowPhase) : undefined;
+
   const isRunning =
-    isRuntimeInFlight(runtimeState) ||
-    inProgressCount > 0 ||
-    runtimeLooksStaleFailed;
+    !needsAttention &&
+    (isRuntimeInFlight(runtimeState) ||
+      inProgressCount > 0 ||
+      runtimeLooksStaleFailed ||
+      flowPhase === "github_verifying" ||
+      flowPhase === "cursor_running" ||
+      flowPhase === "lightweight_checking");
+
+  const headerTitle = needsAttention
+    ? "구현 확인 필요"
+    : isRunning || flowPhase === "github_verifying" || flowPhase === "cursor_running"
+      ? "구현 실행 중"
+      : "구현 실행 대기";
+
+  const runtimeStateLabel =
+    flowPhaseLabel ??
+    (runtimeState
+      ? formatOverviewRuntimeStateLabel({
+          runtimeState,
+          activeCodeTaskRun: input.activeCodeTaskRun,
+        })
+      : undefined);
 
   return {
     processTaskCount,
@@ -146,16 +183,18 @@ export function buildImplementationExecutionOverview(input: {
     completedCount,
     failedCount,
     ...(currentTitle ? { currentTitle } : {}),
-    isRunning,
+    isRunning: isRunning || flowPhase === "github_verifying" || flowPhase === "cursor_running",
+    needsAttention,
+    headerTitle,
     ...(runtimeState
       ? {
           runtimeState,
-          runtimeStateLabel: formatOverviewRuntimeStateLabel({
-            runtimeState,
-            activeCodeTaskRun: input.activeCodeTaskRun,
-          }),
+          runtimeStateLabel,
         }
-      : {}),
+      : flowPhaseLabel
+        ? { runtimeStateLabel: flowPhaseLabel }
+        : {}),
+    ...(flowPhaseLabel ? { flowPhaseLabel } : {}),
   };
 }
 
@@ -184,7 +223,9 @@ export function formatImplementationExecutionOverviewLines(
     lines.push(`현재 CodeTask: ${overview.currentTitle}`);
   }
 
-  if (overview.isRunning && overview.runtimeStateLabel) {
+  if (overview.flowPhaseLabel || overview.runtimeStateLabel) {
+    lines.push(`상태: ${overview.flowPhaseLabel ?? overview.runtimeStateLabel}`);
+  } else if (overview.isRunning && overview.runtimeStateLabel) {
     lines.push(`상태: ${overview.runtimeStateLabel}`);
   } else if (overview.runtimeState === "failed" && overview.runtimeStateLabel) {
     lines.push(`상태: ${overview.runtimeStateLabel}`);

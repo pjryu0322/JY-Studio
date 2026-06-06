@@ -44,23 +44,26 @@ function boardWithIntegrated(
 }
 
 describe("shouldShowIntegrationPipelineButton", () => {
-  it("shows when integration is eligible and a step is ready", () => {
+  it("shows when integration is eligible and preview is not ready", () => {
     const show = shouldShowIntegrationPipelineButton({
       canIntegrate: true,
-      board: boardWithIntegrated([{ step: "refactor_common", status: "ready" }]),
+      previewRuntimeReady: false,
     });
     expect(show).toBe(true);
   });
 
-  it("hides when all integrated steps are done", () => {
+  it("hides when preview runtime is already ready", () => {
     const show = shouldShowIntegrationPipelineButton({
       canIntegrate: true,
-      board: boardWithIntegrated([
-        { step: "refactor_common", status: "done" },
-        { step: "integrated_review", status: "done" },
-        { step: "integrated_security", status: "done" },
-        { step: "final_scm", status: "done" },
-      ]),
+      previewRuntimeReady: true,
+    });
+    expect(show).toBe(false);
+  });
+
+  it("hides when no completed code tasks", () => {
+    const show = shouldShowIntegrationPipelineButton({
+      canIntegrate: false,
+      previewRuntimeReady: false,
     });
     expect(show).toBe(false);
   });
@@ -192,5 +195,34 @@ describe("applyIntegratedPipelineSyncSteps preview wiring", () => {
     ]);
     const finalScm = batch.integratedState.items.find((item) => item.step === "final_scm");
     expect(finalScm?.status).not.toBe("done");
+  });
+
+  it("still builds preview when integrated sync steps are not runnable", () => {
+    const { taskList, codeTaskPlan, codeTaskRuns } = integrationOrchestrationFixture();
+    const batch = applyIntegratedPipelineSyncSteps({
+      projectId: "p1",
+      orchestration: {
+        implementationTaskListV1: taskList,
+        implementationCodeTaskPlanV1: codeTaskPlan,
+        codeTaskExecutionRunsV1: codeTaskRuns,
+        implementationIntegratedExecutionStateV1: {
+          ...buildInitialImplementationIntegratedExecutionState({
+            projectId: "p1",
+            nowIso: NOW,
+          }),
+          items: buildInitialImplementationIntegratedExecutionState({
+            projectId: "p1",
+            nowIso: NOW,
+          }).items.map((item) =>
+            item.step === "refactor_common" ? { ...item, status: "not_started" as const } : item,
+          ),
+        },
+      },
+      nowIso: NOW,
+    });
+    expect(batch.ok).toBe(true);
+    if (!batch.ok) return;
+    expect(batch.previewBuildOk).toBe(true);
+    expect(batch.previewScope?.includedCodeTasks).toHaveLength(1);
   });
 });

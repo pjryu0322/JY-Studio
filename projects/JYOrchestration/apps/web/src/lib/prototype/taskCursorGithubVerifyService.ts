@@ -4,6 +4,7 @@ import {
   advanceQuickRunOrchestrationAfterGithubVerify,
   type QuickRunGithubAdvanceResult,
 } from "@/lib/prototype/implementationQuickRunGithubAdvanceService";
+import { applyGithubVerifyStuckEscalationIfNeeded } from "@/lib/prototype/taskCursorGithubVerifyEscalation";
 import {
   applyTaskCursorGithubVerifyResult,
   buildTaskCursorGithubVerifyTimeline,
@@ -157,6 +158,16 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     verifiedCommitSha: verify.verifiedCommitSha,
     nowIso,
   });
+  const escalation = applyGithubVerifyStuckEscalationIfNeeded({
+    execution: nextExecution,
+    verifyDetailReason: verify.detailReason,
+    codeTaskId: String(body.codeTaskId ?? "").trim() || null,
+    nowIso,
+  });
+  nextExecution = escalation.execution;
+  if (escalation.timelineEntry) {
+    timeline.push(escalation.timelineEntry);
+  }
   if (nextExecution.status === "github_verified") {
     nextExecution = patchTaskCursorExecution(nextExecution, { status: "review_pending", nowIso });
   }

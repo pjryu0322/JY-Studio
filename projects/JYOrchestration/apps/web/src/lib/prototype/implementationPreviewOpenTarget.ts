@@ -15,6 +15,7 @@ export function getPreviewOpenTarget(
 ): PreviewOpenTarget {
   const wrapperUrl = String(runtime?.previewUrl ?? "").trim() || null;
   const external = String(runtime?.externalPreviewUrl ?? "").trim() || null;
+  const internalApp = String(runtime?.internalAppPreviewUrl ?? "").trim() || null;
   const openMode: ImplementationPreviewOpenModeV1 =
     runtime?.openMode ??
     (external ? "external_new_window" : wrapperUrl ? "internal_renderer" : "scope_summary_fallback");
@@ -28,20 +29,29 @@ export function getPreviewOpenTarget(
     };
   }
 
-  if (wrapperUrl && openMode !== "scope_summary_fallback") {
+  if (internalApp) {
     return {
-      url: wrapperUrl,
-      mode: "internal",
+      url: internalApp,
+      mode: "new_window",
       label: "내부 Preview 보기",
       hint: "플랫폼 내부 Preview Renderer로 확인합니다.",
     };
   }
 
+  if (wrapperUrl) {
+    return {
+      url: wrapperUrl,
+      mode: "new_window",
+      label: "Preview 열기",
+      hint: null,
+    };
+  }
+
   return {
-    url: wrapperUrl,
+    url: null,
     mode: "internal",
     label: "Preview 보기",
-    hint: null,
+    hint: "Preview URL이 아직 준비되지 않았습니다.",
   };
 }
 

@@ -15,13 +15,6 @@ import {
 import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { buildIntegratedStageStepActionNotice } from "@/lib/prototype/implementationExecutionBoard";
 
-const INTEGRATED_STEP_LABEL_KO: Readonly<Record<ImplementationIntegratedStep, string>> = {
-  refactor_common: "리팩토링/공통화",
-  integrated_review: "통합 검수",
-  integrated_security: "통합 보안 점검",
-  final_scm: "최종 SCM 반영",
-};
-
 const SYNC_INTEGRATED_STEPS: readonly ImplementationIntegratedStep[] = [
   "refactor_common",
   "integrated_review",
@@ -41,15 +34,11 @@ function isRunnableIntegratedStatus(status: string): boolean {
 
 export function shouldShowIntegrationPipelineButton(input: {
   readonly canIntegrate: boolean;
-  readonly board: ImplementationExecutionBoardV1;
+  readonly previewRuntimeReady?: boolean;
 }): boolean {
   if (!input.canIntegrate) return false;
-  if (
-    input.board.integratedRows.every((row) => row.status === "done" || row.status === "skipped")
-  ) {
-    return false;
-  }
-  return input.board.integratedRows.some((row) => isRunnableIntegratedStatus(row.status));
+  if (input.previewRuntimeReady) return false;
+  return true;
 }
 
 export function isFinalScmIntegratedStepReady(board: ImplementationExecutionBoardV1): boolean {
@@ -71,28 +60,6 @@ export type ApplyIntegratedPipelineSyncStepsResult =
     }>
   | Readonly<{ readonly ok: false; readonly message: string }>;
 
-function resolvePreviewScopeForPipeline(input: {
-  readonly projectId: string;
-  readonly orchestration: ImplementationRequirementsBoardOrchestrationSlice;
-  readonly taskList: NonNullable<ImplementationRequirementsBoardOrchestrationSlice["implementationTaskListV1"]>;
-  readonly existingScope: ImplementationPreviewScopeV1 | null;
-  readonly nowIso: string;
-}): ImplementationPreviewScopeV1 | null {
-  if (input.existingScope) return input.existingScope;
-  const fromState = input.orchestration.implementationPreviewScopeV1 ?? null;
-  if (fromState) return fromState;
-  const integration = integrateCompletedCodeTasksForPreview({
-    codeTaskPlan: input.orchestration.implementationCodeTaskPlanV1 ?? null,
-    taskList: input.taskList,
-    codeTaskRuns: input.orchestration.codeTaskExecutionRunsV1 ?? null,
-    taskCursorExecution: input.orchestration.taskCursorExecutionV1 ?? null,
-    taskCursorExecutionHistory: input.orchestration.taskCursorExecutionHistoryV1 ?? null,
-    autoQualityGate: input.orchestration.implementationAutoQualityGateV1 ?? null,
-    generatedAt: input.nowIso,
-  });
-  return integration.ok ? integration.previewScope : null;
-}
-
 export function applyIntegratedPipelineSyncSteps(input: {
   readonly projectId: string;
   readonly orchestration: ImplementationRequirementsBoardOrchestrationSlice;
@@ -109,10 +76,23 @@ export function applyIntegratedPipelineSyncSteps(input: {
   }
 
   const nowIso = input.nowIso ?? new Date().toISOString();
-  let previewScope: ImplementationPreviewScopeV1 | null = null;
+  const integrationFirst = integrateCompletedCodeTasksForPreview({
+    codeTaskPlan: input.orchestration.implementationCodeTaskPlanV1 ?? null,
+    taskList,
+    codeTaskRuns: input.orchestration.codeTaskExecutionRunsV1 ?? null,
+    taskCursorExecution: input.orchestration.taskCursorExecutionV1 ?? null,
+    taskCursorExecutionHistory: input.orchestration.taskCursorExecutionHistoryV1 ?? null,
+    autoQualityGate: input.orchestration.implementationAutoQualityGateV1 ?? null,
+    generatedAt: nowIso,
+  });
+  if (!integrationFirst.ok) {
+    return { ok: false, message: integrationFirst.message };
+  }
+
+  let previewScope: ImplementationPreviewScopeV1 = integrationFirst.previewScope;
   let integratedState = input.orchestration.implementationIntegratedExecutionStateV1 ?? null;
   const completedSteps: ImplementationIntegratedStep[] = [];
-  const noticeLines: string[] = [];
+  const noticeLines: string[] = [integrationFirst.summary];
 
   for (const step of SYNC_INTEGRATED_STEPS) {
     const stateReady = deriveIntegratedExecutionStateReadiness({
@@ -137,27 +117,11 @@ export function applyIntegratedPipelineSyncSteps(input: {
     const status = integratedRowStatus(board, step);
     if (status === "done" || status === "skipped") continue;
     if (!isRunnableIntegratedStatus(status)) {
-      const label = INTEGRATED_STEP_LABEL_KO[step];
-      return {
-        ok: false,
-        message: `${label} 단계가 아직 실행 가능한 상태가 아닙니다.`,
-      };
+      continue;
     }
 
     if (step === "refactor_common") {
-      const integration = integrateCompletedCodeTasksForPreview({
-        codeTaskPlan: input.orchestration.implementationCodeTaskPlanV1 ?? null,
-        taskList,
-        codeTaskRuns: input.orchestration.codeTaskExecutionRunsV1 ?? null,
-        taskCursorExecution: input.orchestration.taskCursorExecutionV1 ?? null,
-        taskCursorExecutionHistory: input.orchestration.taskCursorExecutionHistoryV1 ?? null,
-        autoQualityGate: input.orchestration.implementationAutoQualityGateV1 ?? null,
-        generatedAt: nowIso,
-      });
-      if (!integration.ok) {
-        return { ok: false, message: integration.message };
-      }
-      previewScope = integration.previewScope;
+      previewScope = integrationFirst.previewScope;
     }
 
     integratedState = finalizeIntegratedStageStep({
@@ -180,13 +144,7 @@ export function applyIntegratedPipelineSyncSteps(input: {
     nowIso,
   });
 
-  const resolvedScope = resolvePreviewScopeForPipeline({
-    projectId: pid,
-    orchestration: input.orchestration,
-    taskList,
-    existingScope: previewScope,
-    nowIso,
-  });
+  const resolvedScope = previewScope;
 
   let previewRuntime: ImplementationPreviewRuntimeV1 | null = null;
   let previewBuildOk = false;

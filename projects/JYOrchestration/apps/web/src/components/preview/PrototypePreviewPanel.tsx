@@ -223,6 +223,7 @@ import {
 } from "@/lib/prototype/implementationExecutionBoard";
 import { buildIntegrationScopeDetailLines } from "@/lib/prototype/implementationIntegrationScopeUi";
 import { integrateCompletedCodeTasksForPreview } from "@/lib/prototype/implementationIntegrationService";
+import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import {
   applyIntegratedPipelineSyncSteps,
   isFinalScmIntegratedStepReady,
@@ -4043,8 +4044,18 @@ export function PrototypePreviewPanel({
       return;
     }
     if (implementationBoard.summary.blockingUserConfirmation > 0) {
-      showToast("사용자 확인이 필요한 작업이 해소된 뒤 통합을 실행할 수 있습니다.");
-      return;
+      const canIntegrateFromCompleted = evaluateCodeTaskIntegration({
+        codeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1 ?? null,
+        taskList: parsedRequirementsState.implementationTaskListV1 ?? null,
+        codeTaskRuns: parseCodeTaskExecutionRunsV1(parsedRequirementsState.codeTaskExecutionRunsV1) ?? [],
+        taskCursorExecution: parsedRequirementsState.taskCursorExecutionV1 ?? null,
+        taskCursorExecutionHistory: parsedRequirementsState.taskCursorExecutionHistoryV1 ?? null,
+        autoQualityGate: parsedRequirementsState.implementationAutoQualityGateV1 ?? null,
+      }).canIntegrate;
+      if (!canIntegrateFromCompleted) {
+        showToast("사용자 확인이 필요한 작업이 해소된 뒤 통합을 실행할 수 있습니다.");
+        return;
+      }
     }
 
     void (async () => {
@@ -7881,6 +7892,7 @@ export function PrototypePreviewPanel({
             onCopyCodeTaskCursorPrompt={handleCopyCodeTaskCursorPrompt}
             onCopyAllCodeTaskCursorPrompts={handleCopyAllCodeTaskCursorPrompts}
             onRetryGithubVerify={() => void handleManualGithubVerifyRetry()}
+            projectId={projectId.trim()}
             implementationRuntimeStateV1={resolveImplementationRuntimeStateForRead({
               raw: orchestrationAwareRequirementsState as Record<string, unknown>,
               projectId: projectId.trim(),

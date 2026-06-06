@@ -18,7 +18,8 @@ export type CodeTaskExecutionRunStatus =
   | "rework_required"
   | "status_check_stopped"
   | "blocked_by_dependency"
-  | "failed";
+  | "failed"
+  | "skipped_by_user";
 
 export type CodeTaskExecutionRunV1 = Readonly<{
   version: typeof CODE_TASK_EXECUTION_RUN_VERSION;
@@ -64,6 +65,7 @@ const RUN_STATUSES = new Set<CodeTaskExecutionRunStatus>([
   "status_check_stopped",
   "blocked_by_dependency",
   "failed",
+  "skipped_by_user",
 ]);
 
 export function parseCodeTaskExecutionRunV1(raw: unknown): CodeTaskExecutionRunV1 | null {

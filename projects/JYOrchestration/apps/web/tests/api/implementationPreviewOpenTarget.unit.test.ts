@@ -29,7 +29,7 @@ describe("getPreviewOpenTarget", () => {
     expect(target.label).toBe("Preview 열기");
   });
 
-  it("opens wrapper route for internal renderer", () => {
+  it("opens internal app URL in new window when no external URL", () => {
     const target = getPreviewOpenTarget({
       ...base,
       internalAppPreviewUrl: "/projects/p1/preview/app?scope=latest",
@@ -37,8 +37,8 @@ describe("getPreviewOpenTarget", () => {
       renderMode: "internal_generated_app",
       openMode: "internal_renderer",
     });
-    expect(target.mode).toBe("internal");
-    expect(target.url).toBe("/projects/p1/preview?scope=latest");
+    expect(target.mode).toBe("new_window");
+    expect(target.url).toBe("/projects/p1/preview/app?scope=latest");
     expect(target.label).toBe("내부 Preview 보기");
   });
 });

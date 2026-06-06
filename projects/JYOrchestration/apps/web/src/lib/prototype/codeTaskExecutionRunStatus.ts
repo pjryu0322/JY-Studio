@@ -20,6 +20,7 @@ const TERMINAL = new Set<CodeTaskExecutionRunStatus>([
   "status_check_stopped",
   "blocked_by_dependency",
   "failed",
+  "skipped_by_user",
 ]);
 
 export function isInFlightCodeTaskExecutionRunStatus(
@@ -59,6 +60,7 @@ export function isQueueContinueAfterRunStatus(status: CodeTaskExecutionRunStatus
     status === "rework_required" ||
     status === "status_check_stopped" ||
     status === "blocked_by_dependency" ||
-    status === "failed"
+    status === "failed" ||
+    status === "skipped_by_user"
   );
 }

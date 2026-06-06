@@ -75,6 +75,8 @@ function formatRunStatusLabel(run: CodeTaskExecutionRunV1 | null): string {
       return "실패";
     case "status_check_stopped":
       return "중단";
+    case "skipped_by_user":
+      return "건너뜀";
     default:
       return run.status;
   }
@@ -86,6 +88,7 @@ function mapRunToExcludedReason(
   if (!run) return "not_started";
   if (run.status === "blocked_by_dependency") return "blocked_by_dependency";
   if (run.status === "failed" || run.status === "rework_required") return "failed";
+  if (run.status === "skipped_by_user") return "cancelled";
   if (run.status === "prompt_ready" || run.status === "prompt_building") return "prompt_ready";
   if (run.status === "cursor_requested" || run.status === "cursor_running" || run.status === "status_check_stopped") {
     return "cursor_running";
@@ -121,6 +124,15 @@ function resolveIntegratableFromRun(input: {
       workBranch: run.workBranch ?? null,
       source: "quality_gate",
     };
+  }
+
+  if (
+    commitSha &&
+    (run.status === "github_verifying" ||
+      run.status === "cursor_running" ||
+      run.status === "cursor_requested")
+  ) {
+    return null;
   }
 
   if (run.status === "completed" || run.status === "no_code_change_completed") {

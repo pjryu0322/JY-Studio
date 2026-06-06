@@ -27,7 +27,10 @@ import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCur
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { sortCodeTaskIdsByImplementationPlanOrder } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
-import { prisma } from "@/lib/prisma";
+import {
+  cancelSelectedQuickRunByUser,
+  skipCodeTaskByUser,
+} from "@/lib/prototype/codeTaskManualRecoveryService";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
 type ActionBody = {
@@ -41,6 +44,7 @@ type ActionBody = {
     readonly detail?: string;
     readonly selectedCount?: number;
   };
+  readonly codeTaskId?: string;
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -207,6 +211,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }),
       });
       return NextResponse.json({ success: true, bundle });
+    }
+
+    if (action === "skip_code_task") {
+      const codeTaskId = String(body.codeTaskId ?? "").trim();
+      if (!codeTaskId) {
+        return NextResponse.json({ success: false, message: "codeTaskId가 필요합니다." }, { status: 400 });
+      }
+      await skipCodeTaskByUser({ projectId: pid, codeTaskId });
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "cancel_selected_quick_run") {
+      await cancelSelectedQuickRunByUser({ projectId: pid });
+      return NextResponse.json({ success: true });
     }
 
     return NextResponse.json({ success: false, message: `Unknown action: ${action}` }, { status: 400 });

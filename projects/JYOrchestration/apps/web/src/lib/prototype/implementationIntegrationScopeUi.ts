@@ -21,7 +21,7 @@ export function buildIntegrationEligibilitySummaryLines(
   }
   const lines = [
     `완료된 CodeTask ${includedCount}개를 기준으로 통합할 수 있습니다.`,
-    `미완료 CodeTask ${excludedCount}개는 이번 Preview에 포함되지 않습니다.`,
+    `실행 중이거나 미완료인 CodeTask ${excludedCount}개는 이번 Preview에 포함되지 않습니다.`,
   ];
   for (const warning of eligibility.warnings) {
     lines.push(warning);

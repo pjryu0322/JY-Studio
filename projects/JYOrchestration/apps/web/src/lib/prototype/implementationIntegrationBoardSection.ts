@@ -40,7 +40,10 @@ export function buildImplementationIntegrationBoardSection(input: {
       previewStatusLines.push("플랫폼 내부 Preview Renderer로 확인합니다.");
     }
   } else if (input.previewRuntime?.status === "failed") {
-    previewStatusLines.push("통합 완료", "Preview 준비 실패");
+    previewStatusLines.push(
+      scope ? "통합 완료" : "통합 실패",
+      scope ? "통합은 완료되었지만 Preview 준비에 실패했습니다." : "Preview 준비 실패",
+    );
     if (input.previewRuntime.errorMessage?.trim()) {
       previewStatusLines.push(`사유: ${input.previewRuntime.errorMessage.trim()}`);
     }

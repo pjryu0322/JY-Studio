@@ -13,6 +13,7 @@ import {
   normalizeSelectedCodeTaskIds,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import { PROMPT_PREFLIGHT_USER_BLOCK_MESSAGE } from "@/lib/prototype/codeTaskPromptPreflightFailure";
+import { normalizeCodeTaskDisplayLabel } from "@/lib/prototype/codeTaskDisplayNameNormalize";
 import {
   buildCodeTaskExecutionFlowSteps,
   deriveCodeTaskExecutionFlowPhase,
@@ -197,7 +198,9 @@ function buildCodeTaskNode(input: {
           : undefined,
   });
   const executionFlowSteps = buildCodeTaskExecutionFlowSteps({ phase, policy });
-  const title = stripLeadingTaskIdFromTitle(input.codeTask.codeTaskId, input.codeTask.title);
+  const title = normalizeCodeTaskDisplayLabel(
+    stripLeadingTaskIdFromTitle(input.codeTask.codeTaskId, input.codeTask.title),
+  );
   const rowView = buildCodeTaskRowView({
     codeTask: input.codeTask,
     runs: input.codeTaskExecutionRuns,

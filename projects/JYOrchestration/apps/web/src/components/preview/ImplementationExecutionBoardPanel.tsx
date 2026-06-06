@@ -56,7 +56,11 @@ import {
   formatImplementationExecutionOverviewLines,
   resolveSelectedCodeTaskExecutionProgress,
 } from "@/lib/prototype/implementationExecutionOverview";
-import { enrichCodeTaskRunForFlowPhase } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
+import { enrichCodeTaskRunForFlowPhase, deriveCodeTaskExecutionFlowPhase } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
+import {
+  resolveCodeTaskStuckRecoveryHint,
+  shouldShowCodeTaskStuckRecoveryPanel,
+} from "@/lib/prototype/codeTaskStuckRecoveryUi";
 import { resolveTaskCursorExecutionForRow } from "@/lib/prototype/codeAgentExecutionProgressView";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { ImplementationExecutionBoardTaskTree } from "@/components/preview/ImplementationExecutionBoardTaskTree";
@@ -102,6 +106,7 @@ export function ImplementationExecutionBoardPanel({
   onCopyCodeTaskCursorPrompt,
   onCopyAllCodeTaskCursorPrompts,
   onRetryGithubVerify,
+  projectId,
   implementationRuntimeStateV1,
   implementationRuntimeDbBundle,
   codeTaskExecutionFeedbackV1,
@@ -134,6 +139,7 @@ export function ImplementationExecutionBoardPanel({
   readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
   readonly onCopyAllCodeTaskCursorPrompts?: () => void;
   readonly onRetryGithubVerify?: () => void;
+  readonly projectId?: string;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
@@ -307,6 +313,69 @@ export function ImplementationExecutionBoardPanel({
     implementationRuntimeDbBundle,
   ]);
 
+  const activeFlowPhase = useMemo(() => {
+    const codeTaskId = selectedCodeTaskId ?? queueCurrentCodeTaskId;
+    if (!codeTaskId) return null;
+    const parentTaskId =
+      implementationCodeTaskPlanV1?.tasks.find((t) => t.codeTaskId === codeTaskId)?.parentTaskId ??
+      queueParentTaskId ??
+      "";
+    if (!parentTaskId.trim()) return null;
+    const executionForParent = resolveTaskCursorExecutionForRow({
+      taskId: parentTaskId,
+      taskCursorExecutionV1: parseTaskCursorExecutionV1(taskCursorExecutionV1),
+      taskCursorExecutionHistoryV1: taskCursorExecutionHistoryV1 ?? null,
+    });
+    const dbRun =
+      implementationRuntimeDbBundle?.currentRun?.codeTaskId === codeTaskId
+        ? implementationRuntimeDbBundle.currentRun
+        : (implementationRuntimeDbBundle?.runs.find((run) => run.codeTaskId === codeTaskId) ??
+          null);
+    const latestRun = enrichCodeTaskRunForFlowPhase({
+      run: findLatestRunForCodeTask(codeTaskRuns, codeTaskId),
+      execution: executionForParent,
+      dbRun,
+    });
+    const autoGateForParent =
+      implementationAutoQualityGateV1?.taskId === parentTaskId
+        ? implementationAutoQualityGateV1
+        : null;
+    return deriveCodeTaskExecutionFlowPhase({
+      parentTaskId,
+      taskCursorExecution: executionForParent,
+      autoGate: autoGateForParent,
+      latestRun,
+    });
+  }, [
+    selectedCodeTaskId,
+    queueCurrentCodeTaskId,
+    queueParentTaskId,
+    implementationCodeTaskPlanV1,
+    codeTaskRuns,
+    taskCursorExecutionV1,
+    taskCursorExecutionHistoryV1,
+    implementationRuntimeDbBundle,
+    implementationAutoQualityGateV1,
+  ]);
+
+  const showStuckRecovery = useMemo(
+    () =>
+      shouldShowCodeTaskStuckRecoveryPanel({
+        flowPhase: activeFlowPhase,
+        taskCursor: parseTaskCursorExecutionV1(taskCursorExecutionV1),
+      }),
+    [activeFlowPhase, taskCursorExecutionV1],
+  );
+
+  const stuckRecoveryHint = useMemo(
+    () =>
+      resolveCodeTaskStuckRecoveryHint({
+        flowPhase: activeFlowPhase,
+        workBranch: activeCodeTaskRun?.workBranch,
+      }),
+    [activeFlowPhase, activeCodeTaskRun?.workBranch],
+  );
+
   const executionOverview = useMemo(
     () =>
       buildImplementationExecutionOverview({
@@ -319,6 +388,7 @@ export function ImplementationExecutionBoardPanel({
         runtime: parseImplementationRuntimeStateV1(implementationRuntimeStateV1),
         dbRuntimeState: implementationRuntimeDbBundle?.currentRun?.runtimeState ?? null,
         activeCodeTaskRun,
+        activeFlowPhase,
       }),
     [
       board,
@@ -328,6 +398,7 @@ export function ImplementationExecutionBoardPanel({
       implementationRuntimeStateV1,
       implementationRuntimeDbBundle,
       activeCodeTaskRun,
+      activeFlowPhase,
     ],
   );
 
@@ -424,9 +495,9 @@ export function ImplementationExecutionBoardPanel({
     () =>
       shouldShowIntegrationPipelineButton({
         canIntegrate: integrationSection.canIntegrate,
-        board,
+        previewRuntimeReady: integrationSection.previewRuntimeReady,
       }),
-    [integrationSection.canIntegrate, board],
+    [integrationSection.canIntegrate, integrationSection.previewRuntimeReady],
   );
 
   const previewOpenTarget = useMemo(
@@ -526,7 +597,7 @@ export function ImplementationExecutionBoardPanel({
       <div className={styles.summaryCard} data-testid="implementation-execution-overview-card">
         <div className={styles.overviewCard}>
           <div className={styles.overviewCardTitle}>
-            {executionOverview.isRunning ? "구현 실행 중" : "구현 실행 대기"}
+            {executionOverview.headerTitle}
           </div>
           <ul className={styles.overviewCardLines}>
             {formatImplementationExecutionOverviewLines(executionOverview, {
@@ -556,6 +627,60 @@ export function ImplementationExecutionBoardPanel({
         {queueSummaryLine ? (
           <div className={styles.queueSummaryBanner} data-testid="code-task-execution-queue-summary">
             {queueSummaryLine}
+          </div>
+        ) : null}
+        {showStuckRecovery ? (
+          <div className={styles.runtimeAdminActions} data-testid="code-task-stuck-recovery">
+            {stuckRecoveryHint ? (
+              <span className={styles.githubVerifyAutoStatus}>{stuckRecoveryHint}</span>
+            ) : null}
+            <div className={styles.stuckRecoveryActions}>
+              {onRetryGithubVerify ? (
+                <button type="button" className={styles.githubVerifyRetryLink} onClick={onRetryGithubVerify}>
+                  상태 재확인
+                </button>
+              ) : null}
+              {onRestartTask && queueParentTaskId ? (
+                <button
+                  type="button"
+                  className={styles.githubVerifyRetryLink}
+                  onClick={() => onRestartTask(queueParentTaskId)}
+                >
+                  이 CodeTask 재실행
+                </button>
+              ) : null}
+              {projectId && (selectedCodeTaskId ?? queueCurrentCodeTaskId) ? (
+                <button
+                  type="button"
+                  className={styles.githubVerifyRetryLink}
+                  onClick={() => {
+                    const codeTaskId = (selectedCodeTaskId ?? queueCurrentCodeTaskId)!.trim();
+                    void fetch(`/api/projects/${projectId.trim()}/implementation-runtime/actions`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "skip_code_task", codeTaskId }),
+                    });
+                  }}
+                >
+                  이 CodeTask 건너뛰기
+                </button>
+              ) : null}
+              {projectId ? (
+                <button
+                  type="button"
+                  className={styles.githubVerifyRetryLink}
+                  onClick={() => {
+                    void fetch(`/api/projects/${projectId.trim()}/implementation-runtime/actions`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "cancel_selected_quick_run" }),
+                    });
+                  }}
+                >
+                  선택 실행 중단
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : null}
         {showManualGithubVerifyRetry ? (
@@ -695,8 +820,7 @@ export function ImplementationExecutionBoardPanel({
                 </button>
               ) : null}
               {integrationSection.previewRuntimeReady &&
-              previewScopeViewUrl &&
-              previewOpenTarget.mode === "new_window" ? (
+              previewScopeViewUrl ? (
                 <button
                   type="button"
                   className={styles.integrationPreviewScopeButton}

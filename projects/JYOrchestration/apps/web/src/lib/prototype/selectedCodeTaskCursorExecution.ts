@@ -2,6 +2,7 @@ import {
   tryBuildCodeTaskCursorExecutionRequest,
   type BuildCodeTaskCursorExecutionRequestResult,
 } from "@/lib/prototype/codeTaskExecutionRequest";
+import { QUICK_RUN_DISPATCH_REASON } from "@/lib/prototype/quickRunDispatchReasonCodes";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
@@ -80,7 +81,11 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
 }): PrepareSelectedCodeTaskCursorExecutionResult {
   const run = findDispatchableRunForCodeTask(input.runs, input.queueDispatch.codeTaskId);
   if (!run) {
-    return { ok: false, outcome: "blocked", message: "CodeTask 실행 기록을 찾을 수 없습니다." };
+    return {
+      ok: false,
+      outcome: "blocked",
+      message: QUICK_RUN_DISPATCH_REASON.execution_record_missing,
+    };
   }
   if (isSelectedCodeTaskRunInFlight(run)) {
     return { ok: false, outcome: "no_op", message: CODE_TASK_IN_FLIGHT_USER_MESSAGE };

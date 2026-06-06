@@ -1,4 +1,5 @@
 import { buildCursorSourceGenerationPrompt } from "@/lib/prototype/cursorBridgeExecution";
+import { resolveCodeTaskWorkBranchForPlan } from "@/lib/prototype/codeTaskDisplayNameNormalize";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import {
@@ -39,6 +40,8 @@ export type TaskCursorFailureReason =
   | "work_item_preflight_failed"
   | "prompt_preflight_failed"
   | "poll_timeout"
+  | "github_verify_timeout"
+  | "github_branch_missing"
   | "unknown";
 
 export type TaskCursorExecutionV1 = Readonly<{
@@ -94,6 +97,10 @@ export const TASK_CURSOR_FAILURE_MESSAGES: Readonly<Record<TaskCursorFailureReas
   prompt_preflight_failed:
     "Cursor Prompt Preflight에 실패했습니다. 실행 로그에서 누락 항목을 확인해 주세요.",
   poll_timeout: "Cloud Agent 폴링 시간 초과입니다. Cursor 대시보드에서 Agent 상태를 확인해 주세요.",
+  github_verify_timeout:
+    "GitHub commit 확인 시간이 초과되었습니다. 작업 branch가 생성되지 않았거나 Cursor 작업 결과가 push되지 않았습니다.",
+  github_branch_missing:
+    "GitHub 작업 branch가 아직 생성되지 않았습니다. Cursor 실행 상태를 확인하거나 이 CodeTask를 재실행해 주세요.",
   unknown: "Task Cursor 실행에 실패했습니다.",
 };
 
@@ -134,6 +141,8 @@ const TASK_CURSOR_FAILURE_REASONS = new Set<TaskCursorFailureReason>([
   "work_item_preflight_failed",
   "prompt_preflight_failed",
   "poll_timeout",
+  "github_verify_timeout",
+  "github_branch_missing",
   "unknown",
 ]);
 
@@ -152,8 +161,11 @@ export function buildTaskCursorWorkBranch(taskId: string): string {
 }
 
 /** CodeTask 단위 work branch (실행·PR 추적 기준) */
-export function buildCodeTaskWorkBranch(codeTaskId: string): string {
-  return buildTaskCursorWorkBranch(codeTaskId);
+export function buildCodeTaskWorkBranch(
+  codeTaskId: string,
+  existingWorkBranch?: string | null,
+): string {
+  return resolveCodeTaskWorkBranchForPlan(codeTaskId, existingWorkBranch);
 }
 
 export function buildTaskCursorRunId(nowIso?: string): string {

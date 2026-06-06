@@ -12,7 +12,7 @@ import {
 } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { pollTaskCursorCloudAgentStep } from "@/lib/prototype/taskCursorCloudAgentClient";
-import { isTerminalTaskCursorPollResultStatus } from "@/lib/prototype/taskCursorExecutionJobTypes";
+import { applyGithubVerifyStuckEscalationIfNeeded } from "@/lib/prototype/taskCursorGithubVerifyEscalation";
 import {
   verifyTaskCursorGithubResult,
   type TaskCursorGithubVerifyResult,
@@ -169,6 +169,16 @@ export async function pollTaskCursorExecutionOnce(input: {
       verifiedCommitSha: verify.verifiedCommitSha,
       nowIso,
     });
+    const escalation = applyGithubVerifyStuckEscalationIfNeeded({
+      execution: nextExecution,
+      verifyDetailReason: verify.detailReason,
+      codeTaskId: input.codeTaskId,
+      nowIso,
+    });
+    nextExecution = escalation.execution;
+    if (escalation.timelineEntry) {
+      githubOnlyTimeline.push(escalation.timelineEntry);
+    }
     if (verify.ok && nextExecution.status === "github_verified") {
       nextExecution = patchTaskCursorExecution(nextExecution, { status: "review_pending", nowIso });
     }
