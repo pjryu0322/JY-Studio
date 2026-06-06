@@ -1,5 +1,11 @@
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
+import { evaluateCommonBoundarySpecificity } from "@/lib/prototype/codeTaskCommonBoundaryValidation";
 import { planHasIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import {
+  INTEGRATION_WIRING_PROCESS_TASK_TITLE,
+  isIntegrationWiringCodeTask,
+} from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import { evaluateIntegrationWiringTaskContent } from "@/lib/prototype/integrationWiringContentValidation";
 import {
   DEFAULT_BRANCH_PLAN_EXECUTION_ORDER,
   type CodeTaskBranchGroupV1,
@@ -70,7 +76,31 @@ export function evaluateStageOnePromptPlanReadiness(input: {
     const hasBoundary = codeTaskHasPersistedFileBoundary(ct);
     if (hasBranch) branchPlanCount += 1;
     if (hasBoundary) fileBoundaryCount += 1;
-    if (hasBranch && hasBoundary) {
+
+    let taskReady = hasBranch && hasBoundary;
+    if (taskReady && isIntegrationWiringCodeTask(ct)) {
+      const content = evaluateIntegrationWiringTaskContent({
+        codeTask: ct,
+        processTaskTitle: INTEGRATION_WIRING_PROCESS_TASK_TITLE,
+      });
+      if (!content.ok) {
+        taskReady = false;
+        for (const issue of content.issues) {
+          diagnostics.push({ code: issue, message: issue, codeTaskId: ct.codeTaskId });
+        }
+      }
+    }
+    if (taskReady) {
+      const common = evaluateCommonBoundarySpecificity({ codeTask: ct });
+      if (common.missing.length) {
+        taskReady = false;
+        for (const issue of common.missing) {
+          diagnostics.push({ code: issue, message: issue, codeTaskId: ct.codeTaskId });
+        }
+      }
+    }
+
+    if (taskReady) {
       readyCodeTaskCount += 1;
     } else {
       warningCodeTaskCount += 1;
@@ -117,6 +147,11 @@ export function evaluateStageOnePromptPlanReadiness(input: {
       "integration_task_not_last",
       "branch_plan_missing",
       "file_boundary_missing",
+      "integration_task_process_title_invalid",
+      "integration_task_role_invalid",
+      "integration_task_requirements_reused_shell_task",
+      "integration_task_not_final_wiring",
+      "common_boundary_not_role_specific",
     ].includes(d.code),
   );
 

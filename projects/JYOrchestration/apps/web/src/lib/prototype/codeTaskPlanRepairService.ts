@@ -1,5 +1,7 @@
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
+import { normalizeCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundaryNormalize";
+import { ensureIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { prepareCodeTaskPlanForStageOnePrompt } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
 import { integrationTaskIsLast } from "@/lib/prototype/stageOnePromptReadiness";
 import {
@@ -30,17 +32,25 @@ export function repairCodeTaskPlanFileBoundaries(input: {
   readonly taskList?: ImplementationTaskListV1 | null;
 }): RepairCodeTaskPlanFileBoundariesResult {
   const tasks: ImplementationCodeTaskV1[] = input.plan.tasks.map((task) => {
-    const existing = parseCodeTaskFileBoundaryV1(task.fileBoundary) ?? null;
-    if (existing) return task;
-    const parentTitle = taskTitleById(input.taskList, task.parentTaskId);
-    const fileBoundary = inferCodeTaskFileBoundary({
-      codeTask: task,
-      parentTaskTitle: parentTitle ?? null,
-    });
+    const normalizedTask = ensureIntegrationWiringCodeTask(task);
+    const existing = parseCodeTaskFileBoundaryV1(normalizedTask.fileBoundary) ?? null;
+    if (existing) {
+      return {
+        ...normalizedTask,
+        fileBoundary: normalizeCodeTaskFileBoundaryV1(existing)!,
+      };
+    }
+    const parentTitle = taskTitleById(input.taskList, normalizedTask.parentTaskId);
+    const fileBoundary = normalizeCodeTaskFileBoundaryV1(
+      inferCodeTaskFileBoundary({
+        codeTask: normalizedTask,
+        parentTaskTitle: parentTitle ?? null,
+      }),
+    )!;
     const forbiddenPaths = [
       ...new Set([...(task.forbiddenPaths ?? []), ...fileBoundary.forbiddenFiles.slice(0, 8)]),
     ];
-    return { ...task, fileBoundary, forbiddenPaths };
+    return { ...normalizedTask, fileBoundary, forbiddenPaths };
   });
 
   let patchedTasks = [...tasks];

@@ -266,13 +266,29 @@ function evaluateContextQuality(input: {
     warnings.push("missing_related_screen");
   }
 
-  if (!input.hasTemplateSnippet && input.roleKind !== "generic" && input.roleKind !== "mock_data") {
+  if (!input.hasTemplateSnippet && input.roleKind !== "generic" && input.roleKind !== "mock_data" && input.roleKind !== "integration_wiring") {
     warnings.push("empty_template_context");
   }
 
   if (isGenericRoleText(input.implementationContext.intent)) {
     warnings.push("generic_role");
     missing.push("specificRole");
+  }
+
+  if (input.roleKind === "integration_wiring") {
+    const reqHay = input.implementationContext.requirements.join("\n");
+    const ready =
+      /import/i.test(reqHay) &&
+      /props|wiring/i.test(reqHay) &&
+      /Preview/i.test(reqHay) &&
+      !/반응형 3열 workspace shell/i.test(reqHay) &&
+      input.implementationContext.requirements.length >= 3 &&
+      input.verificationContext.acceptanceCriteria.length >= 2;
+    return {
+      ready,
+      missing: ready ? uniq(missing) : uniq([...missing, "integration_task_not_final_wiring"]),
+      warnings: uniq(warnings),
+    };
   }
 
   const ready =
@@ -390,29 +406,49 @@ function buildContextForCodeTask(input: {
     roleResolved.roleKind,
   );
 
-  const implementationContext = {
-    intent: sanitizePlanningPromptText(roleResolved.role),
-    requirements: filterPerTaskRequirementLines(
-      uniq([...featureTemplate.implementationRequirements, ...uniqueCriteria]),
-      roleResolved.roleKind,
-    ).slice(0, 7),
-    constraints: uniq(input.codeTask.forbiddenPaths ?? []).slice(0, 8),
-    expectedBehavior: uniq([
-      ...featureTemplate.implementationGoal,
-      ...(isCommonStateRole(roleResolved.roleKind)
-        ? [`${roleResolved.role} 연동 시 정상 화면으로 복귀 가능해야 한다.`]
-        : []),
-    ]).slice(0, 6),
-    edgeCases: [],
-  };
+  const implementationContext =
+    roleResolved.roleKind === "integration_wiring"
+      ? {
+          intent: sanitizePlanningPromptText(roleResolved.role),
+          requirements: filterPerTaskRequirementLines(uniqueCriteria, "integration_wiring").slice(0, 9),
+          constraints: uniq(input.codeTask.forbiddenPaths ?? []).slice(0, 8),
+          expectedBehavior: [
+            "기존 App Shell/Panel 구조를 유지하면서 screen/common/feature/data 결과물만 연결한다.",
+          ],
+          edgeCases: [],
+        }
+      : {
+          intent: sanitizePlanningPromptText(roleResolved.role),
+          requirements: filterPerTaskRequirementLines(
+            uniq([...featureTemplate.implementationRequirements, ...uniqueCriteria]),
+            roleResolved.roleKind,
+          ).slice(0, 7),
+          constraints: uniq(input.codeTask.forbiddenPaths ?? []).slice(0, 8),
+          expectedBehavior: uniq([
+            ...featureTemplate.implementationGoal,
+            ...(isCommonStateRole(roleResolved.roleKind)
+              ? [`${roleResolved.role} 연동 시 정상 화면으로 복귀 가능해야 한다.`]
+              : []),
+          ]).slice(0, 6),
+          edgeCases: [],
+        };
 
-  const verificationContext = {
-    acceptanceCriteria: filterPerTaskVerificationLines(
-      uniq([...featureTemplate.verificationChecklist, ...uniqueCriteria]),
-    ).slice(0, 5),
-    manualChecks: uniq(input.codeTask.verificationHints ?? []).slice(0, 6),
-    regressionChecks: [],
-  };
+  const verificationContext =
+    roleResolved.roleKind === "integration_wiring"
+      ? {
+          acceptanceCriteria: filterPerTaskVerificationLines(
+            uniq(input.codeTask.verificationHints ?? []),
+          ).slice(0, 6),
+          manualChecks: [],
+          regressionChecks: [],
+        }
+      : {
+          acceptanceCriteria: filterPerTaskVerificationLines(
+            uniq([...featureTemplate.verificationChecklist, ...uniqueCriteria]),
+          ).slice(0, 5),
+          manualChecks: uniq(input.codeTask.verificationHints ?? []).slice(0, 6),
+          regressionChecks: [],
+        };
 
   const seedWarnings = seed ? [] : ["implementationSeedV1"];
   const quality = mergePromptContextQualityWithCollisionReadiness({

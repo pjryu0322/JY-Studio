@@ -1,6 +1,12 @@
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { WORKSPACE_SHELL_OWNED_PATTERNS } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { evaluateIntegrationWiringTaskContent } from "@/lib/prototype/integrationWiringContentValidation";
+import { evaluateCommonBoundarySpecificity } from "@/lib/prototype/codeTaskCommonBoundaryValidation";
+import {
+  INTEGRATION_WIRING_PROCESS_TASK_TITLE,
+  isIntegrationWiringCodeTask,
+} from "@/lib/prototype/codeTaskIntegrationWiringTask";
 
 export type CodeTaskPromptCollisionReadiness = Readonly<{
   readonly missing: readonly string[];
@@ -56,6 +62,25 @@ export function evaluateCodeTaskPromptCollisionReadiness(input: {
   if (ownsShell && group !== "foundation" && group !== "integration") {
     warnings.push("shell_global_protection");
     missing.push("shellGlobalPolicy");
+  }
+
+  if (isIntegrationWiringCodeTask(input.codeTask)) {
+    const content = evaluateIntegrationWiringTaskContent({
+      codeTask: input.codeTask,
+      processTaskTitle: INTEGRATION_WIRING_PROCESS_TASK_TITLE,
+    });
+    if (!content.ok) {
+      missing.push(...content.issues);
+      warnings.push("integration_task_not_final_wiring");
+    }
+  }
+
+  const commonBoundary = evaluateCommonBoundarySpecificity({ codeTask: input.codeTask });
+  if (commonBoundary.missing.length) {
+    missing.push(...commonBoundary.missing);
+  }
+  if (commonBoundary.warnings.length) {
+    warnings.push(...commonBoundary.warnings);
   }
 
   return { missing: uniq(missing), warnings: uniq(warnings) };

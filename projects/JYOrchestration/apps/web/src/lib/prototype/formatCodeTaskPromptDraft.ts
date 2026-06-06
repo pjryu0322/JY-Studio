@@ -30,6 +30,18 @@ import {
 } from "@/lib/prototype/codeTaskPlanningDraftPolish";
 import { formatTemplateLayoutSnippetForRole } from "@/lib/prototype/codeTaskTemplateLayoutDraft";
 import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
+import {
+  INTEGRATION_WIRING_PROCESS_TASK_TITLE,
+  isIntegrationWiringCodeTask,
+} from "@/lib/prototype/codeTaskIntegrationWiringTask";
+
+function resolveStageOneProcessTaskLabel(
+  codeTask: ImplementationCodeTaskV1,
+  parentTask: ImplementationTaskV1 | null | undefined,
+): string {
+  if (isIntegrationWiringCodeTask(codeTask)) return INTEGRATION_WIRING_PROCESS_TASK_TITLE;
+  return parentTask?.title?.trim() || codeTask.parentTaskId;
+}
 
 const PLANNING_SERVICE_FLOW_SUMMARY =
   "녹취 업로드·변환·화자 분리·회의록 초안/요약·스크립트 확인을 한 화면에서 처리" as const;
@@ -108,6 +120,12 @@ function requirementBullets(
   parentTask: ImplementationTaskV1 | null | undefined,
   roleKind: CodeTaskRoleKind,
 ): string[] {
+  if (roleKind === "integration_wiring") {
+    const fromTask = filterPerTaskRequirementLines(codeTask.acceptanceCriteria ?? [], roleKind);
+    if (fromTask.length >= 3) {
+      return fromTask.map((r) => sanitizePlanningPromptLine(r)).slice(0, 9);
+    }
+  }
   const fromCtx = filterPerTaskRequirementLines(
     ctx?.implementationContext.requirements ?? [],
     roleKind,
@@ -191,7 +209,7 @@ export function formatCodeTaskPromptDraft(input: {
   readonly templateId?: string;
 }): string {
   const ctx = input.promptContext;
-  const parentTitle = input.parentTask?.title?.trim() || input.codeTask.parentTaskId;
+  const parentTitle = resolveStageOneProcessTaskLabel(input.codeTask, input.parentTask);
   const role = resolveCodeTaskSpecificRole({
     codeTaskTitle: input.codeTask.title,
     codeTaskDescription: input.codeTask.description,
@@ -256,7 +274,7 @@ function formatCodeTaskSectionInBundle(input: {
   readonly templateId?: string;
 }): string {
   const ctx = input.promptContext;
-  const parentTitle = input.parentTask?.title?.trim() || input.codeTask.parentTaskId;
+  const parentTitle = resolveStageOneProcessTaskLabel(input.codeTask, input.parentTask);
   const role = resolveCodeTaskSpecificRole({
     codeTaskTitle: input.codeTask.title,
     codeTaskDescription: input.codeTask.description,

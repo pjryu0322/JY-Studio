@@ -1,5 +1,6 @@
 export type CodeTaskRoleKind =
   | "app_shell"
+  | "integration_wiring"
   | "screen_input"
   | "screen_result"
   | "screen_admin"
@@ -128,6 +129,10 @@ function combinedHaystack(input: {
     .toLowerCase();
 }
 
+import {
+  INTEGRATION_WIRING_ROLE_TEXT,
+} from "@/lib/prototype/codeTaskIntegrationWiringTask";
+
 export function resolveCodeTaskSpecificRole(input: {
   readonly codeTaskTitle: string;
   readonly codeTaskDescription?: string;
@@ -141,6 +146,13 @@ export function resolveCodeTaskSpecificRole(input: {
   readonly roleKind: CodeTaskRoleKind;
   readonly warnings: readonly string[];
 }> {
+  if (
+    input.changeType === "integration" ||
+    /최종 연결|통합\s*wiring/i.test(input.codeTaskTitle.trim())
+  ) {
+    return { role: INTEGRATION_WIRING_ROLE_TEXT, roleKind: "integration_wiring", warnings: [] };
+  }
+
   const hay = combinedHaystack(input);
   const warnings: string[] = [];
 
@@ -254,6 +266,12 @@ export function roleKindToDefaultRelated(input: {
         features: ["샘플 데이터", "회의 파일", "참여자", "스크립트", "요약", "처리 상태"],
         screens: ["작업 공간", "결과 패널"],
         states: ["idle", "success"],
+      };
+    case "integration_wiring":
+      return {
+        features: ["screen", "common", "feature", "data", "App Shell wiring"],
+        screens: ["입력", "처리 중", "결과 확인"],
+        states: ["idle", "loading", "success", "error"],
       };
     default:
       return { features: [], screens: [], states: [] };

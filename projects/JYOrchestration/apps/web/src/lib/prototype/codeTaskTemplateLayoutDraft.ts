@@ -7,6 +7,8 @@ export function formatTemplateLayoutSnippetForRole(input: {
   const isMeeting = input.templateId === "meeting-workspace" || !input.templateId;
 
   switch (input.roleKind) {
+    case "integration_wiring":
+      return null;
     case "app_shell":
       if (!isMeeting) return "선택된 템플릿의 전체 IA·레이아웃·주요 구역 구조를 유지한다.";
       return [

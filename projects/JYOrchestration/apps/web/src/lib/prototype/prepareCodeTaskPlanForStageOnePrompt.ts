@@ -2,6 +2,7 @@ import type { CodeTaskConflictPlanV1 } from "@/lib/prototype/codeTaskFileConflic
 import {
   INTEGRATION_WIRING_CODE_TASK_ID,
   appendIntegrationWiringCodeTaskToPlan,
+  normalizeIntegrationTasksInPlan,
   planHasIntegrationWiringCodeTask,
 } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { repairCodeTaskPlanFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
@@ -92,6 +93,8 @@ export function prepareCodeTaskPlanForStageOnePrompt(input: {
   });
 
   plan = sortCodeTasksByBranchPlanOrder(plan);
+
+  plan = normalizeIntegrationTasksInPlan(plan);
 
   if (!planHasIntegrationWiringCodeTask(plan.tasks)) {
     plan = appendIntegrationWiringCodeTaskToPlan({

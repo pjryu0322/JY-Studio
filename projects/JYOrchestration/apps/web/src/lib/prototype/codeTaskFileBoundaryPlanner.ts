@@ -6,6 +6,11 @@ import {
   type CodeTaskRoleKind,
 } from "@/lib/prototype/codeTaskPromptRoleResolver";
 import type { ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
+import { normalizeCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundaryNormalize";
+import {
+  integrationWiringFileBoundary,
+  isIntegrationWiringCodeTask,
+} from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import {
   resolveCodeTaskCanonicalSlug,
   resolveFeatureFolderForRole,
@@ -38,6 +43,40 @@ export const COMMON_COMPONENT_OWNED_PATTERNS = [
   "src/components/common/RetryAction.*",
 ] as const;
 
+const COMMON_TASK_FORBIDDEN_PATTERNS = [
+  "app/index.html",
+  "src/App.*",
+  "src/routes/*",
+  ...WORKSPACE_SHELL_FORBIDDEN_FOR_OTHERS,
+  "src/data/sample/*",
+  "src/features/*",
+  "src/screens/*",
+  "src/components/screens/*",
+] as const;
+
+function commonOwnedFilesForRole(roleKind: CodeTaskRoleKind): readonly string[] {
+  switch (roleKind) {
+    case "common_loading":
+      return ["src/components/common/LoadingState.*", "src/components/common/Skeleton.*"];
+    case "common_error":
+      return ["src/components/common/ErrorMessage.*", "src/components/common/ErrorState.*"];
+    case "common_empty":
+      return ["src/components/common/EmptyState.*", "src/components/common/NoResultState.*"];
+    case "common_retry":
+      return ["src/components/common/RetryAction.*", "src/components/common/RetryButton.*"];
+    case "common_permission":
+      return ["src/components/common/PermissionDenied.*", "src/components/common/AccessDenied.*"];
+    case "common_draft":
+      return ["src/components/common/DraftSaveStatus.*", "src/components/common/TemporarySaveHelper.*"];
+    default:
+      return [...COMMON_COMPONENT_OWNED_PATTERNS];
+  }
+}
+
+function finalizeBoundary(boundary: CodeTaskFileBoundaryV1): CodeTaskFileBoundaryV1 {
+  return normalizeCodeTaskFileBoundaryV1(boundary)!;
+}
+
 function shellForbiddenBoundary(): Pick<CodeTaskFileBoundaryV1, "forbiddenFiles" | "forbiddenGlobs"> {
   return {
     forbiddenFiles: [...WORKSPACE_SHELL_FORBIDDEN_FOR_OTHERS],
@@ -51,6 +90,9 @@ export function inferCodeTaskFileBoundary(input: {
   readonly parentTask?: ImplementationTaskV1 | null;
   readonly parentTaskTitle?: string | null;
 }): CodeTaskFileBoundaryV1 {
+  if (isIntegrationWiringCodeTask(input.codeTask)) {
+    return integrationWiringFileBoundary();
+  }
   const title = input.codeTask.title.trim();
   const role = resolveCodeTaskSpecificRole({
     codeTaskTitle: title,
@@ -78,17 +120,19 @@ export function buildFileBoundaryForRole(
   };
 
   switch (roleKind) {
+    case "integration_wiring":
+      return integrationWiringFileBoundary();
     case "app_shell":
-      return {
+      return finalizeBoundary({
         ...base,
         conflictGroupId: "workspace-shell",
         expectedFiles: [...WORKSPACE_SHELL_OWNED_PATTERNS],
         ownedFiles: [...WORKSPACE_SHELL_OWNED_PATTERNS],
         forbiddenFiles: ["src/data/sample/*", "src/components/common/*"],
         sharedFiles: [],
-      };
+      });
     case "mock_data":
-      return {
+      return finalizeBoundary({
         ...base,
         expectedFiles: [...SAMPLE_DATA_OWNED_PATTERNS],
         ownedFiles: [...SAMPLE_DATA_OWNED_PATTERNS],
@@ -97,23 +141,23 @@ export function buildFileBoundaryForRole(
           ...shellForbiddenBoundary().forbiddenFiles,
           "src/components/common/*",
         ],
-      };
+      });
     case "common_loading":
     case "common_error":
     case "common_empty":
     case "common_retry":
     case "common_permission":
-    case "common_draft":
-      return {
+    case "common_draft": {
+      const owned = commonOwnedFilesForRole(roleKind);
+      return finalizeBoundary({
         ...base,
         conflictGroupId: "common-components",
-        expectedFiles: [...COMMON_COMPONENT_OWNED_PATTERNS],
-        ownedFiles: [...COMMON_COMPONENT_OWNED_PATTERNS],
-        ...shellForbiddenBoundary(),
-        forbiddenFiles: [
-          ...shellForbiddenBoundary().forbiddenFiles,
-        ],
-      };
+        expectedFiles: owned,
+        ownedFiles: owned,
+        forbiddenFiles: [...COMMON_TASK_FORBIDDEN_PATTERNS],
+        sharedFiles: [],
+      });
+    }
     case "screen_input":
     case "screen_result":
     case "screen_admin":
@@ -129,26 +173,26 @@ export function buildFileBoundaryForRole(
       if (roleKind.startsWith("feature_")) {
         const folder = resolveFeatureFolderForRole(roleKind);
         const owned = [`src/features/${folder}/${slug}.*`];
-        return {
+        return finalizeBoundary({
           ...base,
           expectedFiles: owned,
           ownedFiles: owned,
           ...shellForbiddenBoundary(),
           sharedFiles: ["src/components/WorkspaceShell.*"],
-        };
+        });
       }
       const screenFolder = resolveScreenComponentFolder(slug);
       const owned = [
         `src/screens/${slug}.*`,
         `src/components/screens/${screenFolder}/*`,
       ];
-      return {
+      return finalizeBoundary({
         ...base,
         expectedFiles: owned,
         ownedFiles: owned,
         ...shellForbiddenBoundary(),
         sharedFiles: ["src/components/WorkspaceShell.*"],
-      };
+      });
     }
     default: {
       const slug = resolveCodeTaskCanonicalSlug({
@@ -157,13 +201,13 @@ export function buildFileBoundaryForRole(
         roleKind,
       });
       const owned = [`src/components/${slug}.*`];
-      return {
+      return finalizeBoundary({
         ...base,
         fileBoundaryConfidence: "medium",
         expectedFiles: owned,
         ownedFiles: owned,
         ...shellForbiddenBoundary(),
-      };
+      });
     }
   }
 }
