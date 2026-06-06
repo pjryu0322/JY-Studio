@@ -6,6 +6,7 @@ import { parseCodeTaskDeveloperPromptMeta, type CodeTaskDeveloperPromptMeta } fr
 import {
   normalizeCodeTaskGithubOutcomeFromRun,
   parseCodeTaskGithubOutcomeV1,
+  resolveRunStatusAfterGithubOutcome,
   type CodeTaskGithubOutcomeV1,
 } from "@/lib/prototype/codeTaskGithubOutcome";
 
@@ -18,6 +19,7 @@ export type CodeTaskExecutionRunStatus =
   | "cursor_requested"
   | "cursor_running"
   | "github_verifying"
+  | "github_verified"
   | "completed"
   | "no_code_change_completed"
   | "rework_required"
@@ -65,6 +67,7 @@ const RUN_STATUSES = new Set<CodeTaskExecutionRunStatus>([
   "cursor_requested",
   "cursor_running",
   "github_verifying",
+  "github_verified",
   "completed",
   "no_code_change_completed",
   "rework_required",
@@ -140,10 +143,21 @@ export function parseCodeTaskExecutionRunV1(raw: unknown): CodeTaskExecutionRunV
     ...(githubOutcomeRaw ? { githubOutcome: githubOutcomeRaw } : {}),
   } satisfies CodeTaskExecutionRunV1;
   const normalizedOutcome = normalizeCodeTaskGithubOutcomeFromRun(baseRun);
+  let resolvedRun = baseRun;
   if (normalizedOutcome && !githubOutcomeRaw) {
-    return { ...baseRun, githubOutcome: normalizedOutcome };
+    resolvedRun = { ...baseRun, githubOutcome: normalizedOutcome };
   }
-  return baseRun;
+  const outcomeForStatus = resolvedRun.githubOutcome ?? normalizedOutcome;
+  if (outcomeForStatus?.status === "verified") {
+    const nextStatus = resolveRunStatusAfterGithubOutcome({
+      currentStatus: resolvedRun.status,
+      githubOutcome: outcomeForStatus,
+    });
+    if (nextStatus !== resolvedRun.status) {
+      resolvedRun = { ...resolvedRun, status: nextStatus };
+    }
+  }
+  return resolvedRun;
 }
 
 export function parseCodeTaskExecutionRunsV1(

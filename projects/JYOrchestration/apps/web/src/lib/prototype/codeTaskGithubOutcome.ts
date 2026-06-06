@@ -1,4 +1,4 @@
-import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import type { CodeTaskExecutionRunStatus, CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { TaskCursorGithubVerifyResult } from "@/lib/prototype/taskCursorGithubVerify";
 
 export type CodeTaskGithubOutcomeFailureReason =
@@ -220,6 +220,33 @@ export function buildGithubOutcomeFromVerifyResult(input: {
   });
 }
 
+const RUN_STATUSES_PRESERVED_AFTER_VERIFIED_GITHUB = new Set<string>([
+  "completed",
+  "quality_gate_passed",
+  "quality_gate_running",
+  "no_code_change_completed",
+  "skipped_by_user",
+  "cancelled",
+]);
+
+/** verified githubOutcome 반영 시 run.status를 github_verified 이상으로 승격한다. */
+export function resolveRunStatusAfterGithubOutcome(input: {
+  readonly currentStatus: CodeTaskExecutionRunStatus | string | null | undefined;
+  readonly githubOutcome: CodeTaskGithubOutcomeV1 | null | undefined;
+}): CodeTaskExecutionRunStatus {
+  if (input.githubOutcome?.status !== "verified") {
+    const fallback = String(input.currentStatus ?? "").trim() as CodeTaskExecutionRunStatus;
+    return fallback || "queued";
+  }
+
+  const current = String(input.currentStatus ?? "").trim();
+  if (RUN_STATUSES_PRESERVED_AFTER_VERIFIED_GITHUB.has(current)) {
+    return current as CodeTaskExecutionRunStatus;
+  }
+
+  return "github_verified";
+}
+
 export function patchRunWithGithubOutcome(input: {
   readonly run: CodeTaskExecutionRunV1;
   readonly githubOutcome: CodeTaskGithubOutcomeV1;
@@ -233,9 +260,10 @@ export function patchRunWithGithubOutcome(input: {
     patch.workBranch = input.githubOutcome.workBranch;
     patch.commitSha = input.githubOutcome.commitSha;
     patch.branchHeadCommitSha = input.githubOutcome.commitSha;
-    if (input.run.status === "github_verifying" || input.run.status === "cursor_running") {
-      patch.status = "github_verifying";
-    }
+    patch.status = resolveRunStatusAfterGithubOutcome({
+      currentStatus: input.run.status,
+      githubOutcome: input.githubOutcome,
+    });
   }
   if (input.githubOutcome.status === "failed") {
     patch.failureReason = input.githubOutcome.reason;
@@ -268,6 +296,7 @@ export function deriveFlowHintFromRunGithubOutcome(
   }
   if (outcome.status === "verified") {
     if (run.status === "completed" || run.status === "no_code_change_completed") return "completed";
+    if (run.status === "github_verified") return "github_verified";
     return "github_verified";
   }
   if (outcome.status === "failed") {

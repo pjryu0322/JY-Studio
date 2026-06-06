@@ -1,4 +1,4 @@
-import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { parseCodeTaskExecutionRunsV1, findLatestRunForCodeTask } from "@/lib/prototype/codeTaskExecutionRun";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
 import {
   parseImplementationAutoQualityGateHistoryV1,
@@ -31,7 +31,8 @@ import { parseImplementationTaskListV1 } from "@/lib/requirements/implementation
 import { appendPromptTimeline } from "@/lib/requirements/promptTimelineState";
 import { mergeRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
-import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
+import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import { runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 
 export type QuickRunGithubAdvanceDispatch = Readonly<{
@@ -132,18 +133,50 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
 
   state = mergeRequirementsStateJson(state, input.basePatch as Partial<RequirementsStateJson>);
 
+  const dbBundle = input.dbBundle ?? null;
+
   const autoGateBefore = parseImplementationAutoQualityGateV1(state.implementationAutoQualityGateV1);
   const executionForGate =
     parseTaskCursorExecutionV1(state.taskCursorExecutionV1) ?? execution;
+  const runsForGate = parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [];
+  const codeTaskIdForGate =
+    dbBundle?.currentRun?.codeTaskId?.trim() ||
+    dbBundle?.job?.currentCodeTaskId?.trim() ||
+    "";
+  const runForGate = codeTaskIdForGate
+    ? findLatestRunForCodeTask(runsForGate, codeTaskIdForGate)
+    : runsForGate[runsForGate.length - 1] ?? null;
+
   const shouldRunGate =
     shouldAutoStartImplementationQualityGate({
       taskCursorExecution: executionForGate,
       autoGate: autoGateBefore,
+      codeTaskRun: runForGate,
     }) ||
     shouldResumeImplementationAutoQualityGate({
       taskCursorExecution: executionForGate,
       autoGate: autoGateBefore,
     });
+
+  if (shouldRunGate && runForGate && runHasVerifiedGithubOutcome(runForGate)) {
+    const gateRequestTimeline = buildImplementationExecutionLogTimelineEntry({
+      action: "code_task_github_verified_auto_gate_requested",
+      orchestrationTraceGroup: "implementation_orchestration",
+      routingDecision: runForGate.processTaskId,
+      fields: {
+        runId: runForGate.runId,
+        codeTaskId: runForGate.codeTaskId,
+        workBranch: runForGate.workBranch ?? null,
+        commitSha: String(runForGate.commitSha ?? "").trim().slice(0, 12),
+      },
+      nowIso,
+    });
+    const timelinePatch: PrototypeExecutionOrchestrationPersistInput = {
+      promptTimeline: appendPromptTimeline(state.promptTimeline ?? [], gateRequestTimeline),
+    };
+    patches.push(timelinePatch);
+    state = mergeRequirementsStateJson(state, timelinePatch as Partial<RequirementsStateJson>);
+  }
 
   if (shouldRunGate) {
     const board = buildImplementationExecutionBoardFromRequirementsState({
@@ -209,8 +242,6 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
       state = mergeRequirementsStateJson(state, repairPatch as Partial<RequirementsStateJson>);
     }
   }
-
-  const dbBundle = input.dbBundle ?? null;
 
   const postQuickRun = parseImplementationQuickRunV1(state.implementationQuickRunV1);
   const postExecution = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);

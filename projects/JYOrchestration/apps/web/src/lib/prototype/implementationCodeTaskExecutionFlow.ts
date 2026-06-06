@@ -13,6 +13,7 @@ import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution"
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { deriveFlowHintFromRunGithubOutcome, runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
 import { isTaskCursorInFlightForRunOutcome } from "@/lib/prototype/taskCursorGithubOutcomeSession";
+import { isImplementationAutoQualityGateInFlight } from "@/lib/prototype/implementationAutoQualityGate";
 
 export type CodeTaskExecutionFlowPhase =
   | "prompt_ready"
@@ -63,7 +64,7 @@ export function formatCodeTaskExecutionFlowPhaseKo(phase: CodeTaskExecutionFlowP
     case "dispatch_failed_retryable":
       return "CodeTask 실행 준비 실패";
     case "github_verified":
-      return "GitHub 확인 완료";
+      return "GitHub commit 확인 완료";
     case "lightweight_checking":
       return "경량 자동검사 중";
     case "completed":
@@ -106,6 +107,8 @@ function mapCodeTaskRunStatusToFlowPhase(
       return "completed";
     case "github_verifying":
       return "github_verifying";
+    case "github_verified":
+      return "github_verified";
     case "cursor_running":
     case "cursor_requested":
       return "cursor_running";
@@ -160,6 +163,8 @@ export function enrichCodeTaskRunForFlowPhase(input: {
     return base;
   }
 
+  const verifiedGithubOutcome = runHasVerifiedGithubOutcome(base);
+
   const execution =
     input.execution?.taskId === base.processTaskId ? input.execution : null;
   const commit = firstRecordedCommitSha(
@@ -182,7 +187,14 @@ export function enrichCodeTaskRunForFlowPhase(input: {
     ]);
     if (syncFromCursorStatuses.has(execution.status)) {
       const classified = classifyCodeTaskExecutionRunFromTaskCursor(execution);
-      if (classified.status === "github_verifying" || execution.status === "github_verifying") {
+      if (verifiedGithubOutcome) {
+        if (
+          classified.status === "completed" ||
+          classified.status === "no_code_change_completed"
+        ) {
+          status = classified.status;
+        }
+      } else if (classified.status === "github_verifying" || execution.status === "github_verifying") {
         status = "github_verifying";
       } else if (
         classified.status === "completed" ||
@@ -210,6 +222,7 @@ export function enrichCodeTaskRunForFlowPhase(input: {
 
   if (
     commit &&
+    !verifiedGithubOutcome &&
     (status === "cursor_running" ||
       status === "cursor_requested" ||
       status === "status_check_stopped")
@@ -223,6 +236,7 @@ export function enrichCodeTaskRunForFlowPhase(input: {
   const cursorRunId = String(base.cursorRunId ?? execution?.cursorRunId ?? "").trim();
   if (
     !commit &&
+    !verifiedGithubOutcome &&
     workBranch &&
     cursorRunId &&
     (status === "cursor_running" ||
@@ -230,6 +244,10 @@ export function enrichCodeTaskRunForFlowPhase(input: {
       status === "status_check_stopped")
   ) {
     status = "github_verifying";
+  }
+
+  if (verifiedGithubOutcome && status !== "completed" && status !== "no_code_change_completed") {
+    status = "github_verified";
   }
 
   if (
@@ -299,6 +317,12 @@ function bumpFlowPhaseWithGithubCommitEvidence(input: {
   readonly execution: TaskCursorExecutionV1 | null;
   readonly phase: CodeTaskExecutionFlowPhase;
 }): CodeTaskExecutionFlowPhase {
+  if (runHasVerifiedGithubOutcome(input.run)) {
+    if (input.phase === "cursor_running" || input.phase === "github_verifying" || input.phase === "prompt_ready") {
+      return "github_verified";
+    }
+    return input.phase;
+  }
   const hasCommit = Boolean(
     (input.run &&
       String(input.run.commitSha ?? input.run.branchHeadCommitSha ?? "").trim()) ||
@@ -360,6 +384,14 @@ export function buildCodeTaskExecutionFlowSteps(input: {
       } else {
         state = "pending";
       }
+    } else if (input.phase === "github_verified") {
+      if (def.id === "lightweight_checking") {
+        state = "active";
+      } else if (stepIdx < phaseIndex("lightweight_checking")) {
+        state = "done";
+      } else {
+        state = "pending";
+      }
     } else if (stepIdx < current) {
       state = "done";
     } else if (stepIdx === current || (def.id === "cursor_running" && input.phase === "cursor_running")) {
@@ -412,6 +444,16 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
     ) {
       return "completed";
     }
+    if (
+      input.autoGate &&
+      input.autoGate.taskId === parentTaskId &&
+      isImplementationAutoQualityGateInFlight(input.autoGate)
+    ) {
+      return "lightweight_checking";
+    }
+    if (run?.status === "github_verified") {
+      return "github_verified";
+    }
     return "github_verified";
   }
   if (outcomeHint === "github_branch_missing") return "github_branch_missing";
@@ -435,6 +477,22 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
   if (run) {
     if (run.status === "completed" || run.status === "no_code_change_completed") {
       return "completed";
+    }
+    if (run.status === "github_verified" && runTerminalGithub) {
+      if (
+        input.autoGate?.status === "passed" &&
+        input.autoGate.taskId === parentTaskId
+      ) {
+        return "completed";
+      }
+      if (
+        input.autoGate &&
+        input.autoGate.taskId === parentTaskId &&
+        isImplementationAutoQualityGateInFlight(input.autoGate)
+      ) {
+        return "lightweight_checking";
+      }
+      return "github_verified";
     }
     if (isInFlightCodeTaskExecutionRunStatus(run.status)) {
       return finish(mapCodeTaskRunStatusToFlowPhase(run.status) ?? "cursor_running");

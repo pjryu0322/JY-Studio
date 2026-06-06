@@ -73,6 +73,8 @@ function formatRunStatusLabel(run: CodeTaskExecutionRunV1 | null): string {
       return "Cursor 실행 중";
     case "github_verifying":
       return "GitHub 확인 중";
+    case "github_verified":
+      return "GitHub commit 확인 완료";
     case "completed":
       return "완료";
     case "no_code_change_completed":
@@ -98,6 +100,7 @@ function mapRunToExcludedReason(
   const outcome = normalizeCodeTaskGithubOutcomeFromRun(run);
   if (outcome?.status === "failed") return "failed";
   if (outcome?.status === "pending") return "github_verifying";
+  if (run?.status === "github_verified") return "github_verifying";
   if (run.status === "blocked_by_dependency") return "blocked_by_dependency";
   if (run.status === "failed" || run.status === "rework_required") return "failed";
   if (run.status === "skipped_by_user") return "cancelled";

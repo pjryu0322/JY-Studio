@@ -22,6 +22,8 @@ import {
   syncTaskExecutionStateAfterGithubVerified,
 } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
 
 export const IMPLEMENTATION_AUTO_QUALITY_GATE_VERSION = "implementation_auto_quality_gate_v1" as const;
 
@@ -197,11 +199,24 @@ export function buildImplementationAutoQualityGateTimelineEntry(input: {
 export function shouldAutoStartImplementationQualityGate(input: {
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly autoGate?: ImplementationAutoQualityGateV1 | null;
+  readonly codeTaskRun?: CodeTaskExecutionRunV1 | null;
 }): boolean {
   const execution = input.taskCursorExecution;
   if (!execution) return false;
-  if (!shouldSyncExecutionStateAfterTaskCursorGithubVerify(execution.status)) return false;
-  const commitSha = String(execution.commitSha ?? "").trim();
+
+  const runReadyForGate =
+    input.codeTaskRun &&
+    runHasVerifiedGithubOutcome(input.codeTaskRun) &&
+    String(input.codeTaskRun.commitSha ?? input.codeTaskRun.branchHeadCommitSha ?? "").trim() &&
+    input.codeTaskRun.status === "github_verified";
+
+  if (!shouldSyncExecutionStateAfterTaskCursorGithubVerify(execution.status) && !runReadyForGate) {
+    return false;
+  }
+
+  const commitSha = String(
+    execution.commitSha ?? input.codeTaskRun?.commitSha ?? input.codeTaskRun?.branchHeadCommitSha ?? "",
+  ).trim();
   if (!commitSha || commitSha.startsWith("wip-stub")) return false;
 
   const gate = input.autoGate;
@@ -222,7 +237,9 @@ export function shouldAutoStartImplementationQualityGate(input: {
     gate.sourceCommitSha === commitSha &&
     gate.status === "failed"
   ) {
-    return shouldSyncExecutionStateAfterTaskCursorGithubVerify(execution.status);
+    return (
+      shouldSyncExecutionStateAfterTaskCursorGithubVerify(execution.status) || Boolean(runReadyForGate)
+    );
   }
   return true;
 }
