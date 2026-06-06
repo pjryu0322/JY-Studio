@@ -150,17 +150,7 @@ describe("selectCompletedCodeTasksForIntegration", () => {
     expect(result.excluded[1]?.reason).toBe("cursor_running");
   });
 
-  it("includes when auto quality gate passed with matching commit", () => {
-    const autoGate: ImplementationAutoQualityGateV1 = {
-      version: "implementation_auto_quality_gate_v1",
-      projectId: "p1",
-      taskId: "DEV-A",
-      sourceCommitSha: "sha-gate",
-      changedFiles: ["a.ts"],
-      status: "passed",
-      startedAt: NOW,
-      updatedAt: NOW,
-    };
+  it("includes when run completed with quality outcome on run", () => {
     const result = selectCompletedCodeTasksForIntegration({
       codeTaskPlan: plan([
         {
@@ -177,8 +167,14 @@ describe("selectCompletedCodeTasksForIntegration", () => {
         },
       ]),
       taskList: taskList(),
-      codeTaskRuns: [run({ codeTaskId: "CT-1", status: "github_verifying", commitSha: "sha-gate" })],
-      autoQualityGate: autoGate,
+      codeTaskRuns: [
+        run({
+          codeTaskId: "CT-1",
+          status: "completed",
+          commitSha: "sha-gate",
+          qualityOutcome: { status: "passed", checkedAt: NOW },
+        }),
+      ],
     });
     expect(result.included).toHaveLength(1);
     expect(result.included[0]?.source).toBe("quality_gate");

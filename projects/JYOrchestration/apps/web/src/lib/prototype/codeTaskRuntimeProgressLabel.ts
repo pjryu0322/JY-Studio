@@ -1,5 +1,6 @@
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import { normalizeCodeTaskGithubOutcomeFromRun } from "@/lib/prototype/codeTaskGithubOutcome";
+import { deriveCodeTaskRunStatusLabel } from "@/lib/prototype/codeTaskRunDerivedView";
+import { resolveCursorSessionForRunPhase } from "@/lib/prototype/cursorSessionModel";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import {
@@ -16,12 +17,21 @@ export function resolveCodeTaskRuntimeProgressLabelKo(input: {
   readonly serverJob?: TaskCursorJobSummary | null;
   readonly githubBranchDetected?: boolean;
   readonly latestRun?: CodeTaskExecutionRunV1 | null;
+  readonly autoGate?: import("@/lib/prototype/implementationAutoQualityGate").ImplementationAutoQualityGateV1 | null;
 }): string | null {
-  const runOutcome = input.latestRun
-    ? normalizeCodeTaskGithubOutcomeFromRun(input.latestRun)
-    : null;
-  if (runOutcome?.status === "verified") {
-    return "GitHub commit 확인 완료";
+  if (input.latestRun) {
+    const session = resolveCursorSessionForRunPhase(
+      input.taskCursorExecution ?? null,
+      input.latestRun,
+    );
+    const derived = deriveCodeTaskRunStatusLabel({
+      run: input.latestRun,
+      cursorSession: session,
+      autoGate: input.autoGate ?? null,
+    });
+    if (derived.severity !== "idle") {
+      return derived.detail;
+    }
   }
 
   const queue = String(input.dbQueueStatus ?? "").trim().toLowerCase();

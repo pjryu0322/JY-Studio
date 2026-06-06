@@ -1,9 +1,9 @@
 import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { normalizeCodeTaskGithubOutcomeFromRun } from "@/lib/prototype/codeTaskGithubOutcome";
 import {
-  normalizeCodeTaskGithubOutcomeFromRun,
-  runHasTerminalGithubOutcome,
-  runHasVerifiedGithubOutcome,
-} from "@/lib/prototype/codeTaskGithubOutcome";
+  isCodeTaskRunPreviewIncluded,
+  readCodeTaskRunCommitSha,
+} from "@/lib/prototype/codeTaskRunPreviewPolicy";
 import {
   isInFlightCodeTaskExecutionRunStatus,
   isQueuedCodeTaskExecutionRunStatus,
@@ -11,7 +11,6 @@ import {
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { resolveCodeTaskSpecificRole, type CodeTaskRoleKind } from "@/lib/prototype/codeTaskPromptRoleResolver";
-import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 export type CompletedCodeTaskIntegrationTarget = Readonly<{
@@ -21,11 +20,7 @@ export type CompletedCodeTaskIntegrationTarget = Readonly<{
   readonly status: string;
   readonly commitSha?: string | null;
   readonly workBranch?: string | null;
-  readonly source:
-    | "runtime_run"
-    | "github_verified"
-    | "quality_gate"
-    | "task_cursor_execution";
+  readonly source: "runtime_run" | "quality_gate";
 }>;
 
 export type ExcludedCodeTaskIntegrationTarget = Readonly<{
@@ -50,15 +45,6 @@ const SCREEN_ROLE_KINDS = new Set<CodeTaskRoleKind>([
   "screen_result",
   "screen_admin",
 ]);
-
-function readCommitSha(run: CodeTaskExecutionRunV1 | null | undefined): string | null {
-  const outcome = run ? normalizeCodeTaskGithubOutcomeFromRun(run) : null;
-  if (outcome?.status === "verified") {
-    return outcome.commitSha.trim() || null;
-  }
-  const sha = String(run?.commitSha ?? run?.branchHeadCommitSha ?? "").trim();
-  return sha || null;
-}
 
 function formatRunStatusLabel(run: CodeTaskExecutionRunV1 | null): string {
   if (!run) return "대기";
@@ -125,17 +111,29 @@ function resolveIntegratableFromRun(input: {
     return null;
   }
 
-  const commitSha = readCommitSha(run);
+  const commitSha = readCodeTaskRunCommitSha(run);
   if (!commitSha) return null;
 
+  if (isCodeTaskRunPreviewIncluded(run)) {
+    return {
+      codeTaskId: run.codeTaskId,
+      taskId: run.processTaskId,
+      title: "",
+      status: run.status,
+      commitSha,
+      workBranch: run.workBranch ?? null,
+      source: run.qualityOutcome ? "quality_gate" : "runtime_run",
+    };
+  }
+
   const autoGate = input.autoGate;
-  const autoGatePassed =
+  const legacyGatePassed =
     autoGate?.status === "passed" &&
     autoGate.taskId === run.processTaskId &&
-    Boolean(autoGate.sourceCommitSha.trim()) &&
-    autoGate.sourceCommitSha.trim() === commitSha;
+    autoGate.sourceCommitSha.trim() === commitSha &&
+    (run.status === "completed" || run.status === "no_code_change_completed");
 
-  if (autoGatePassed) {
+  if (legacyGatePassed) {
     return {
       codeTaskId: run.codeTaskId,
       taskId: run.processTaskId,
@@ -147,42 +145,6 @@ function resolveIntegratableFromRun(input: {
     };
   }
 
-  if (runHasVerifiedGithubOutcome(run)) {
-    if (run.status === "completed" || run.status === "no_code_change_completed") {
-      return {
-        codeTaskId: run.codeTaskId,
-        taskId: run.processTaskId,
-        title: "",
-        status: run.status,
-        commitSha,
-        workBranch: run.workBranch ?? null,
-        source: "runtime_run",
-      };
-    }
-    return null;
-  }
-
-  if (
-    commitSha &&
-    (run.status === "github_verifying" ||
-      run.status === "cursor_running" ||
-      run.status === "cursor_requested")
-  ) {
-    return null;
-  }
-
-  if (run.status === "completed" || run.status === "no_code_change_completed") {
-    return {
-      codeTaskId: run.codeTaskId,
-      taskId: run.processTaskId,
-      title: "",
-      status: run.status,
-      commitSha,
-      workBranch: run.workBranch ?? null,
-      source: "runtime_run",
-    };
-  }
-
   if (isInFlightCodeTaskExecutionRunStatus(run.status)) {
     return null;
   }
@@ -190,46 +152,12 @@ function resolveIntegratableFromRun(input: {
   return null;
 }
 
-function resolveIntegratableFromCursorHistory(input: {
-  readonly codeTaskId: string;
-  readonly parentTaskId: string;
-  readonly runs: readonly CodeTaskExecutionRunV1[];
-  readonly taskCursorExecutions: readonly TaskCursorExecutionV1[];
-}): CompletedCodeTaskIntegrationTarget | null {
-  const run = findLatestRunForCodeTask(input.runs, input.codeTaskId);
-  if (run && runHasTerminalGithubOutcome(run)) {
-    return null;
-  }
-  const commitSha = readCommitSha(run);
-  if (!commitSha) return null;
-
-  const verified = input.taskCursorExecutions.find(
-    (execution) =>
-      execution.taskId === input.parentTaskId &&
-      (execution.status === "github_verified" ||
-        execution.status === "review_pending" ||
-        execution.status === "security_pending" ||
-        execution.status === "scm_pending") &&
-      String(execution.commitSha ?? "").trim() === commitSha,
-  );
-  if (!verified) return null;
-
-  return {
-    codeTaskId: input.codeTaskId,
-    taskId: input.parentTaskId,
-    title: "",
-    status: verified.status,
-    commitSha,
-    workBranch: verified.workBranch ?? run?.workBranch ?? null,
-    source: "github_verified",
-  };
-}
-
 export function selectCompletedCodeTasksForIntegration(input: {
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null;
   readonly taskList: ImplementationTaskListV1 | null;
   readonly codeTaskRuns?: readonly CodeTaskExecutionRunV1[] | null;
-  readonly taskCursorExecutions?: readonly TaskCursorExecutionV1[] | null;
+  /** @deprecated P3-M41: integration 판정은 run SoT만 사용 */
+  readonly taskCursorExecutions?: readonly import("@/lib/prototype/taskCursorExecution").TaskCursorExecutionV1[] | null;
   readonly autoQualityGate?: ImplementationAutoQualityGateV1 | null;
 }): Readonly<{
   readonly included: readonly CompletedCodeTaskIntegrationTarget[];
@@ -242,9 +170,6 @@ export function selectCompletedCodeTasksForIntegration(input: {
   const plan = input.codeTaskPlan;
   const tasks = plan?.tasks ?? [];
   const runs = input.codeTaskRuns ?? [];
-  const cursorExecutions = [
-    ...(input.taskCursorExecutions ?? []),
-  ];
   const autoGate = input.autoQualityGate ?? null;
 
   const taskTitleById = new Map(
@@ -267,25 +192,14 @@ export function selectCompletedCodeTasksForIntegration(input: {
       changeType: codeTask.changeType,
     });
 
-    const fromRun = resolveIntegratableFromRun({ run: latestRun, autoGate });
-    const fromCursor =
-      fromRun == null
-        ? resolveIntegratableFromCursorHistory({
-            codeTaskId: codeTask.codeTaskId,
-            parentTaskId,
-            runs,
-            taskCursorExecutions: cursorExecutions,
-          })
-        : null;
-    const target = fromRun ?? fromCursor;
+    const target = resolveIntegratableFromRun({ run: latestRun, autoGate });
 
     if (target) {
-      const merged: CompletedCodeTaskIntegrationTarget = {
+      included.push({
         ...target,
         title,
         taskId: parentTaskId,
-      };
-      included.push(merged);
+      });
       if (role.roleKind === "app_shell") hasAppShell = true;
       if (SCREEN_ROLE_KINDS.has(role.roleKind)) hasAnyScreenTask = true;
       continue;

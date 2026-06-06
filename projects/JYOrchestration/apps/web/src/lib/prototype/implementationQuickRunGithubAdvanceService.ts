@@ -1,4 +1,5 @@
-import { parseCodeTaskExecutionRunsV1, findLatestRunForCodeTask } from "@/lib/prototype/codeTaskExecutionRun";
+import { applyAutoGateOutcomeToRunsList } from "@/lib/prototype/codeTaskQualityOutcome";
+import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
 import {
   parseImplementationAutoQualityGateHistoryV1,
@@ -212,6 +213,21 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
       state = mergeRequirementsStateJson(state, outcome.orchestrationPatch as Partial<RequirementsStateJson>);
       if (outcome.ok && outcome.autoGate.status === "passed") {
         autoGatePassed = true;
+        const runsBefore = parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [];
+        const codeTaskIdForQuality = runForGate?.codeTaskId?.trim() || codeTaskIdForGate.trim();
+        if (codeTaskIdForQuality && runsBefore.length) {
+          const runsWithQuality = applyAutoGateOutcomeToRunsList({
+            runs: runsBefore,
+            codeTaskId: codeTaskIdForQuality,
+            autoGate: outcome.autoGate,
+            nowIso,
+          });
+          const qualityPatch: PrototypeExecutionOrchestrationPersistInput = {
+            codeTaskExecutionRunsV1: runsWithQuality,
+          };
+          patches.push(qualityPatch);
+          state = mergeRequirementsStateJson(state, qualityPatch as Partial<RequirementsStateJson>);
+        }
       }
     }
   } else {

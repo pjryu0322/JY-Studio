@@ -15,20 +15,17 @@ import {
 import { PROMPT_PREFLIGHT_USER_BLOCK_MESSAGE } from "@/lib/prototype/codeTaskPromptPreflightFailure";
 import { normalizeCodeTaskDisplayLabel } from "@/lib/prototype/codeTaskDisplayNameNormalize";
 import {
-  buildCodeTaskExecutionFlowSteps,
-  deriveCodeTaskExecutionFlowPhase,
-  enrichCodeTaskRunForFlowPhase,
-  formatCodeTaskExecutionFlowPhaseKo,
-  formatCodeTaskExecutionProgressLine,
-  type CodeTaskExecutionFlowStepVm,
-} from "@/lib/prototype/implementationCodeTaskExecutionFlow";
+  deriveCodeTaskRunPhase,
+  deriveCodeTaskRunProgressSteps,
+} from "@/lib/prototype/codeTaskRunDerivedView";
+import { resolveCursorSessionForRunPhase } from "@/lib/prototype/cursorSessionModel";
 import type {
   ImplementationBoardStepStatus,
   ImplementationExecutionBoardTaskRowV1,
   ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { isPerTaskPipelineComplete } from "@/lib/prototype/implementationTaskPipelinePolicy";
-import { evaluateCodeTaskReviewSecurityPolicy } from "@/lib/prototype/implementationReviewSecurityPolicy";
+import { formatCodeTaskExecutionFlowPhaseKo } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
@@ -51,7 +48,7 @@ export type ImplementationCodeTaskTreeNode = Readonly<{
   readonly title: string;
   readonly metaLines: readonly ImplementationTaskTreeMetaLine[];
   readonly collapsedSummary: string;
-  readonly executionFlowSteps: readonly CodeTaskExecutionFlowStepVm[];
+  readonly executionFlowSteps: readonly import("@/lib/prototype/implementationCodeTaskExecutionFlow").CodeTaskExecutionFlowStepVm[];
   readonly isActive: boolean;
   readonly isSelected: boolean;
   readonly isChecked: boolean;
@@ -166,42 +163,85 @@ function buildCodeTaskNode(input: {
   readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
   readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
 }): ImplementationCodeTaskTreeNode {
-  const policy = evaluateCodeTaskReviewSecurityPolicy({
-    codeTask: input.codeTask,
-    workItem: input.workItem ?? null,
-  });
   const executionForParent = resolveTaskCursorExecutionForRow({
     taskId: input.row.taskId,
     taskCursorExecutionV1: input.taskCursorExecution,
     taskCursorExecutionHistoryV1: input.taskCursorExecutionHistory,
   });
+  const baseRun = findLatestRunForCodeTask(input.codeTaskExecutionRuns, input.codeTask.codeTaskId);
+  const executionForPhase = resolveCursorSessionForRunPhase(executionForParent, baseRun);
+  const autoGateForCodeTask =
+    input.autoGate?.taskId === input.codeTask.parentTaskId ? input.autoGate : null;
   const dbRun =
     input.dbCurrentRun?.codeTaskId === input.codeTask.codeTaskId
       ? input.dbCurrentRun
       : (input.dbRuntimeRuns?.find((run) => run.codeTaskId === input.codeTask.codeTaskId) ?? null);
-  const latestRun = enrichCodeTaskRunForFlowPhase({
-    run: findLatestRunForCodeTask(input.codeTaskExecutionRuns, input.codeTask.codeTaskId),
-    execution: executionForParent,
-    dbRun,
-  });
-  const autoGateForCodeTask =
-    input.autoGate?.taskId === input.codeTask.parentTaskId ? input.autoGate : null;
-  let phase = deriveCodeTaskExecutionFlowPhase({
-    parentTaskId: input.codeTask.parentTaskId,
-    taskCursorExecution: executionForParent,
-    autoGate: autoGateForCodeTask,
-    promptTimeline: input.promptTimeline,
-    latestRun,
-    failureReason:
-      latestRun?.status === "rework_required" ||
-      latestRun?.status === "failed" ||
-      latestRun?.status === "status_check_stopped"
-        ? latestRun.failureReason ?? "commit_not_created"
-        : latestRun?.failureReason === "prompt_preflight_failed"
-          ? "prompt_preflight_failed"
-          : undefined,
-  });
-  const executionFlowSteps = buildCodeTaskExecutionFlowSteps({ phase, policy });
+  const latestRun = baseRun
+    ? {
+        ...baseRun,
+        ...(dbRun?.commitSha ? { commitSha: dbRun.commitSha, branchHeadCommitSha: dbRun.commitSha } : {}),
+      }
+    : null;
+
+  let phase = latestRun
+    ? deriveCodeTaskRunPhase({
+        run: latestRun,
+        cursorSession: executionForPhase,
+        autoGate: autoGateForCodeTask,
+        dbRun,
+      })
+    : deriveCodeTaskRunPhase({
+        run: {
+          runId: "pending",
+          version: "code_task_execution_run_v1",
+          projectId: input.codeTaskPlan?.projectId ?? "",
+          processTaskId: input.codeTask.parentTaskId,
+          workItemId: "",
+          codeTaskId: input.codeTask.codeTaskId,
+          status: "queued",
+          attemptNo: 1,
+          createdAt: new Date(0).toISOString(),
+          updatedAt: new Date(0).toISOString(),
+        },
+        cursorSession: executionForPhase,
+        autoGate: autoGateForCodeTask,
+      });
+
+  if (
+    latestRun &&
+    (latestRun.status === "rework_required" ||
+      latestRun.status === "failed" ||
+      latestRun.status === "status_check_stopped")
+  ) {
+    phase = "failed";
+  } else if (latestRun?.failureReason === "prompt_preflight_failed") {
+    phase = "prompt_preflight_failed";
+  }
+
+  const executionFlowSteps = latestRun
+    ? deriveCodeTaskRunProgressSteps({
+        run: latestRun,
+        codeTask: input.codeTask,
+        cursorSession: executionForPhase,
+        autoGate: autoGateForCodeTask,
+      })
+    : deriveCodeTaskRunProgressSteps({
+        run: {
+          runId: "pending",
+          version: "code_task_execution_run_v1",
+          projectId: input.codeTaskPlan?.projectId ?? "",
+          processTaskId: input.codeTask.parentTaskId,
+          workItemId: "",
+          codeTaskId: input.codeTask.codeTaskId,
+          status: "queued",
+          attemptNo: 1,
+          createdAt: new Date(0).toISOString(),
+          updatedAt: new Date(0).toISOString(),
+        },
+        codeTask: input.codeTask,
+        cursorSession: executionForPhase,
+        autoGate: autoGateForCodeTask,
+      });
   const title = normalizeCodeTaskDisplayLabel(
     stripLeadingTaskIdFromTitle(input.codeTask.codeTaskId, input.codeTask.title),
   );

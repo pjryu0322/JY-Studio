@@ -9,6 +9,11 @@ import {
   resolveRunStatusAfterGithubOutcome,
   type CodeTaskGithubOutcomeV1,
 } from "@/lib/prototype/codeTaskGithubOutcome";
+import {
+  normalizeCodeTaskQualityOutcomeFromRun,
+  parseCodeTaskQualityOutcomeV1,
+  type CodeTaskQualityOutcomeV1,
+} from "@/lib/prototype/codeTaskQualityOutcome";
 
 export const CODE_TASK_EXECUTION_RUN_VERSION = "code_task_execution_run_v1" as const;
 
@@ -58,6 +63,7 @@ export type CodeTaskExecutionRunV1 = Readonly<{
   updatedAt: string;
   completedAt?: string;
   githubOutcome?: CodeTaskGithubOutcomeV1 | null;
+  qualityOutcome?: CodeTaskQualityOutcomeV1 | null;
 }>;
 
 const RUN_STATUSES = new Set<CodeTaskExecutionRunStatus>([
@@ -97,6 +103,7 @@ export function parseCodeTaskExecutionRunV1(raw: unknown): CodeTaskExecutionRunV
     ? (o.changedFiles as unknown[]).map(String).map((s) => s.trim()).filter(Boolean)
     : undefined;
   const githubOutcomeRaw = parseCodeTaskGithubOutcomeV1(o.githubOutcome);
+  const qualityOutcomeRaw = parseCodeTaskQualityOutcomeV1(o.qualityOutcome);
   const baseRun = {
     version: CODE_TASK_EXECUTION_RUN_VERSION,
     runId,
@@ -141,6 +148,7 @@ export function parseCodeTaskExecutionRunV1(raw: unknown): CodeTaskExecutionRunV
     ...(typeof o.startedAt === "string" && o.startedAt.trim() ? { startedAt: o.startedAt.trim() } : {}),
     ...(typeof o.completedAt === "string" && o.completedAt.trim() ? { completedAt: o.completedAt.trim() } : {}),
     ...(githubOutcomeRaw ? { githubOutcome: githubOutcomeRaw } : {}),
+    ...(qualityOutcomeRaw ? { qualityOutcome: qualityOutcomeRaw } : {}),
   } satisfies CodeTaskExecutionRunV1;
   const normalizedOutcome = normalizeCodeTaskGithubOutcomeFromRun(baseRun);
   let resolvedRun = baseRun;
