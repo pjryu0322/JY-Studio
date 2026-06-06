@@ -31,6 +31,10 @@ import {
   cancelSelectedQuickRunByUser,
   skipCodeTaskByUser,
 } from "@/lib/prototype/codeTaskManualRecoveryService";
+import { prisma } from "@/lib/prisma";
+import { materializeSelectedCodeTaskRuns } from "@/lib/prototype/implementationRuntimeRunMaterialization";
+import { resolveCanonicalCodeTaskRunId } from "@/lib/prototype/codeTaskExecutionRunIdentity";
+import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
 type ActionBody = {
@@ -140,7 +144,30 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
       let codeTaskExecutionRunsV1 =
         parseCodeTaskExecutionRunsV1(requirementsState.codeTaskExecutionRunsV1) ?? [];
-      if (dispatchTarget && !findDispatchableRunForCodeTask(codeTaskExecutionRunsV1, headCodeTaskId)) {
+      const materialized = materializeSelectedCodeTaskRuns({
+        projectId: pid,
+        selectedCodeTaskIds: ids,
+        codeTaskPlan,
+        taskList,
+        cursorWorkItems: workItems,
+        existingRuns: codeTaskExecutionRunsV1,
+        existingRuntimeRuns: bundle.runs,
+        nowIso,
+      });
+      codeTaskExecutionRunsV1 = [...materialized.runs];
+      if (materialized.createdRunIds.length) {
+        console.info("[implementation-runtime] runtime_selected_codetask_runs_materialized", {
+          projectId: pid,
+          selectedCount: ids.length,
+          createdRunCount: materialized.createdRunIds.length,
+          reusedRunCount: materialized.reusedRunIds.length,
+        });
+      }
+      const headDbRun = bundle.runs.find((r) => r.codeTaskId === headCodeTaskId);
+      if (
+        dispatchTarget &&
+        !findDispatchableRunForCodeTask(codeTaskExecutionRunsV1, headCodeTaskId)
+      ) {
         codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(
           codeTaskExecutionRunsV1,
           createCodeTaskExecutionRun({
@@ -150,8 +177,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
             codeTaskId: headCodeTaskId,
             runs: codeTaskExecutionRunsV1,
             nowIso,
+            runId: resolveCanonicalCodeTaskRunId({
+              projectId: pid,
+              codeTaskId: headCodeTaskId,
+              processTaskId: dispatchTarget.parentTaskId,
+              existingRuns: codeTaskExecutionRunsV1,
+              existingRuntimeRuns: bundle.runs,
+            }),
           }),
         );
+      } else if (headDbRun && dispatchTarget) {
+        const headJson = findDispatchableRunForCodeTask(codeTaskExecutionRunsV1, headCodeTaskId);
+        if (headJson && headJson.runId !== headDbRun.id) {
+          codeTaskExecutionRunsV1 = codeTaskExecutionRunsV1.map((r) =>
+            r.codeTaskId === headCodeTaskId ? { ...r, runId: headDbRun.id } : r,
+          );
+        }
       }
       await persistTaskCursorOrchestrationToProject({
         projectId: pid,
@@ -211,6 +252,57 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }),
       });
       return NextResponse.json({ success: true, bundle });
+    }
+
+    if (action === "repair_quick_run") {
+      const bundle = await getImplementationRuntimeBundle(pid);
+      const projectRow = await prisma.project.findUnique({
+        where: { id: pid },
+        select: { requirementsStateJson: true },
+      });
+      const state = parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
+      const codeTaskPlan = parseImplementationCodeTaskPlanV1(state.implementationCodeTaskPlanV1);
+      const taskList = parseImplementationTaskListV1(state.implementationTaskListV1);
+      const workItems = state.cursorWorkItemsV1 ?? [];
+      const selected =
+        bundle.job?.selectedCodeTaskIds?.map((id) => id.trim()).filter(Boolean) ?? [];
+      const nowIso = new Date().toISOString();
+      let runs = parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [];
+      const materialized = materializeSelectedCodeTaskRuns({
+        projectId: pid,
+        selectedCodeTaskIds: selected,
+        codeTaskPlan,
+        taskList,
+        cursorWorkItems: workItems,
+        existingRuns: runs,
+        existingRuntimeRuns: bundle.runs,
+        nowIso,
+      });
+      runs = [...materialized.runs];
+      const timelineEntry = buildImplementationExecutionLogTimelineEntry({
+        action: "runtime_selected_codetask_runs_materialized",
+        orchestrationTraceGroup: "implementation_orchestration",
+        fields: {
+          selectedCount: selected.length,
+          createdRunCount: materialized.createdRunIds.length,
+          reusedRunCount: materialized.reusedRunIds.length,
+        },
+        nowIso,
+      });
+      await persistTaskCursorOrchestrationToProject({
+        projectId: pid,
+        orchestrationPatch: {
+          codeTaskExecutionRunsV1: runs,
+          promptTimeline: [...(state.promptTimeline ?? []), timelineEntry],
+        },
+      });
+      const dispatch = await tryDispatchCurrentQueuedQuickRunAfterDbAdvance({ projectId: pid, nowIso });
+      return NextResponse.json({
+        success: true,
+        message: "다음 CodeTask 실행 준비 정보를 복구했습니다.",
+        materialized,
+        dispatch,
+      });
     }
 
     if (action === "skip_code_task") {

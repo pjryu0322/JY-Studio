@@ -264,12 +264,14 @@ export function createCodeTaskExecutionRun(input: {
   readonly codeTaskId: string;
   readonly runs?: readonly CodeTaskExecutionRunV1[];
   readonly developerPrompt?: string;
+  readonly runId?: string;
   readonly nowIso?: string;
 }): CodeTaskExecutionRunV1 {
   const now = input.nowIso ?? new Date().toISOString();
+  const runId = String(input.runId ?? "").trim() || randomUuid();
   return {
     version: CODE_TASK_EXECUTION_RUN_VERSION,
-    runId: randomUuid(),
+    runId,
     projectId: input.projectId.trim(),
     processTaskId: input.processTaskId.trim(),
     workItemId: input.workItemId.trim(),

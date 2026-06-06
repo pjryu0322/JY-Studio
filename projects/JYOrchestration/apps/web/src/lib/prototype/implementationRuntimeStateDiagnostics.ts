@@ -15,7 +15,12 @@ export type ImplementationRuntimeStateIssue = Readonly<{
     | "run_verified_but_missing_commitSha"
     | "run_completed_without_qualityOutcome"
     | "event_completed_but_run_not_completed"
-    | "integration_included_without_run_completion";
+    | "integration_included_without_run_completion"
+    | "selected_codetask_missing_run"
+    | "queue_execution_order_missing_run"
+    | "queue_current_run_missing"
+    | "run_identity_split_detected"
+    | "next_dispatch_missing_queued_run";
   readonly runId?: string | null;
   readonly codeTaskId?: string | null;
   readonly message: string;

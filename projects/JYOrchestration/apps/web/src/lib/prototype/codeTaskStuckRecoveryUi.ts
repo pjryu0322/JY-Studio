@@ -44,7 +44,7 @@ export function resolveCodeTaskStuckRecoveryHint(input: {
         : "GitHub 작업 branch가 아직 생성되지 않았습니다. Cursor 실행 상태를 확인하거나 이 CodeTask를 재실행해 주세요.";
     }
     case "dispatch_failed_retryable":
-      return "다음 CodeTask 실행 기록을 생성하지 못했습니다. 재실행하거나 선택 실행을 중단해 주세요.";
+      return "다음 CodeTask 실행 준비 정보를 복구하고 있습니다. [실행 상태 복구]를 누르거나 잠시 후 다시 시도해 주세요.";
     default:
       return "";
   }
