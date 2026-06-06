@@ -1,6 +1,7 @@
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import { applyBranchPlanToCodeTaskPlan, codeTaskPlanHasBranchPlan } from "@/lib/prototype/implementationBranchPlanBuilder";
+import { appendIntegrationWiringCodeTaskToPlan } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import {
   buildCodeTaskFileConflictPlan,
   type CodeTaskConflictPlanV1,
@@ -109,8 +110,12 @@ export function repairCodeTaskPlanWithBranchPlan(input: {
   readonly baseBranch?: string;
 }): RepairCodeTaskPlanFileBoundariesResult {
   const fileRepair = repairCodeTaskPlanFileBoundaries(input);
-  const withBranch = applyBranchPlanToCodeTaskPlan({
+  const withIntegration = appendIntegrationWiringCodeTaskToPlan({
     plan: fileRepair.plan,
+    taskList: input.taskList ?? null,
+  });
+  const withBranch = applyBranchPlanToCodeTaskPlan({
+    plan: withIntegration,
     baseBranch: input.baseBranch ?? "main",
   });
   const groupSummary = withBranch.implementationBranchPlanV1?.groups.map(

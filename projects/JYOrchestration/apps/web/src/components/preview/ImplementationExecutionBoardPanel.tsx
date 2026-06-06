@@ -41,6 +41,12 @@ import {
   codeTaskPlanHasBranchPlan,
 } from "@/lib/prototype/implementationBranchPlanBuilder";
 import { summarizeBranchPlanForUi } from "@/lib/prototype/implementationBranchPlan";
+import {
+  formatStageOnePromptQualitySummaryLines,
+  summarizeStageOnePromptQuality,
+} from "@/lib/prototype/codeTaskStageOnePromptSections";
+import type { CodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
+import { parseCodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -119,6 +125,7 @@ export function ImplementationExecutionBoardPanel({
   implementationRuntimeDbBundle,
   codeTaskExecutionFeedbackV1,
   implementationCodeTaskPlanV1,
+  codeTaskPromptContextMapV1,
   cursorWorkItemsV1,
   runtimeCodeTaskQueueView,
   codeTaskExecutionRunsV1,
@@ -156,6 +163,7 @@ export function ImplementationExecutionBoardPanel({
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
+  readonly codeTaskPromptContextMapV1?: CodeTaskPromptContextMapV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly runtimeCodeTaskQueueView?: unknown;
   readonly codeTaskExecutionRunsV1?: unknown;
@@ -205,6 +213,19 @@ export function ImplementationExecutionBoardPanel({
     () => Boolean(parsedCodeTaskPlan && !codeTaskPlanHasBranchPlan(parsedCodeTaskPlan)),
     [parsedCodeTaskPlan],
   );
+  const parsedPromptContextMap = useMemo(
+    () => parseCodeTaskPromptContextMapV1(codeTaskPromptContextMapV1) ?? null,
+    [codeTaskPromptContextMapV1],
+  );
+  const stageOneQualityLines = useMemo(() => {
+    if (!parsedCodeTaskPlan) return [];
+    return formatStageOnePromptQualitySummaryLines(
+      summarizeStageOnePromptQuality({
+        codeTaskPlan: parsedCodeTaskPlan,
+        promptContextMap: parsedPromptContextMap,
+      }),
+    );
+  }, [parsedCodeTaskPlan, parsedPromptContextMap]);
 
   const quickRunStatus = useMemo(
     () =>
@@ -817,7 +838,7 @@ export function ImplementationExecutionBoardPanel({
                 disabled={branchPlanRepairBusy === true}
                 onClick={() => onRepairCodeTaskBranchPlan()}
               >
-                {branchPlanRepairBusy ? "보정 중…" : "Branch Plan 보정"}
+                {branchPlanRepairBusy ? "보정 중…" : "Branch Plan/File Boundary 보정"}
               </button>
             ) : null}
           </div>
@@ -826,6 +847,13 @@ export function ImplementationExecutionBoardPanel({
               {line}
             </div>
           ))}
+          {stageOneQualityLines.length ? (
+            <div className={styles.summarySecondary} data-testid="code-task-stage-one-prompt-quality">
+              {stageOneQualityLines.map((line) => (
+                <div key={line}>{line}</div>
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
 

@@ -15,6 +15,14 @@ import {
   type CodeTaskRoleKind,
 } from "@/lib/prototype/codeTaskPromptRoleResolver";
 import {
+  buildBranchPlanGroupListingSections,
+  buildBranchPlanSummarySections,
+  buildCodeTaskBranchPlanBlockLines,
+  buildCodeTaskFileBoundaryStageOneBlockLines,
+  STAGE_ONE_CONFLICT_PREVENTION_POLICY_LINES,
+  summarizeStageOnePromptQuality,
+} from "@/lib/prototype/codeTaskStageOnePromptSections";
+import {
   appendOptionalScreenMockVerification,
   filterPerTaskRequirementLines,
   filterPerTaskVerificationLines,
@@ -226,6 +234,10 @@ export function formatCodeTaskPromptDraft(input: {
       }),
     ),
     "",
+    ...buildCodeTaskBranchPlanBlockLines(input.codeTask, 3),
+    "",
+    ...buildCodeTaskFileBoundaryStageOneBlockLines(input.codeTask, 3),
+    "",
     ...formatQualityBlock(ctx),
   ];
 
@@ -282,6 +294,10 @@ function formatCodeTaskSectionInBundle(input: {
       }),
     ),
     "",
+    ...buildCodeTaskBranchPlanBlockLines(input.codeTask, 4),
+    "",
+    ...buildCodeTaskFileBoundaryStageOneBlockLines(input.codeTask, 4),
+    "",
     ...formatQualityBlockBundle(ctx),
   ];
   return sanitizePlanningPromptText(lines.join("\n"));
@@ -294,6 +310,10 @@ export function formatCodeTaskPromptDraftBundle(input: {
   readonly templateId?: string;
 }): string {
   const tasks = input.codeTaskPlan.tasks;
+  const qualitySummary = summarizeStageOnePromptQuality({
+    codeTaskPlan: input.codeTaskPlan,
+    promptContextMap: input.promptContextMap ?? null,
+  });
   let contextCount = 0;
   let readyCount = 0;
   let warningTaskCount = 0;
@@ -303,7 +323,7 @@ export function formatCodeTaskPromptDraftBundle(input: {
     const ctx = getCodeTaskPromptContextFromMap(input.promptContextMap ?? null, ct.codeTaskId);
     if (ctx) contextCount += 1;
     if (ctx?.quality.ready) readyCount += 1;
-    if (ctx?.quality.warnings?.length) warningTaskCount += 1;
+    if (ctx?.quality.warnings?.length || ctx?.quality.missing?.length) warningTaskCount += 1;
     missingItemCount += ctx?.quality.missing?.length ?? 0;
   }
 
@@ -315,9 +335,17 @@ export function formatCodeTaskPromptDraftBundle(input: {
     "## 프로젝트 구현 준비 요약",
     `- 전체 CodeTask: ${tasks.length}개`,
     `- PromptContext 생성: ${contextCount}개`,
+    `- Branch Plan 생성: ${qualitySummary.branchPlanCount}개`,
+    `- File Boundary 생성: ${qualitySummary.fileBoundaryCount}개`,
+    `- Integration Task: ${qualitySummary.integrationTaskPresent ? "있음" : "없음"}`,
     `- ready CodeTask: ${readyCount}개`,
     `- warning CodeTask: ${warningTaskCount}개`,
     `- missing 항목 수: ${missingItemCount}개`,
+    "",
+    ...STAGE_ONE_CONFLICT_PREVENTION_POLICY_LINES,
+    "",
+    ...buildBranchPlanSummarySections(input.codeTaskPlan),
+    ...buildBranchPlanGroupListingSections(input.codeTaskPlan),
     "",
     "## 공통 검증 기준",
     ...bulletLines([...PLANNING_DRAFT_COMMON_VERIFICATION_CRITERIA]),

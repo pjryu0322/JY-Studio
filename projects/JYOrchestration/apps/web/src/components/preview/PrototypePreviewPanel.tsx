@@ -8097,6 +8097,9 @@ export function PrototypePreviewPanel({
             implementationCodeTaskPlanV1={
               orchestrationAwareRequirementsState.implementationCodeTaskPlanV1
             }
+            codeTaskPromptContextMapV1={
+              orchestrationAwareRequirementsState.codeTaskPromptContextMapV1
+            }
             cursorWorkItemsV1={orchestrationAwareRequirementsState.cursorWorkItemsV1}
             onRunIntegrationPipeline={runIntegrationPipeline}
             integrationPipelineBusy={integrationPipelineBusy}

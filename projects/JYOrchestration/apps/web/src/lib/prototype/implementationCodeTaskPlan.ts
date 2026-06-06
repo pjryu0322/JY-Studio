@@ -12,6 +12,7 @@ import {
   parseImplementationBranchPlanV1,
 } from "@/lib/prototype/implementationBranchPlan";
 import { repairCodeTaskPlanFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
+import { appendIntegrationWiringCodeTaskToPlan } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { applyBranchPlanToCodeTaskPlan } from "@/lib/prototype/implementationBranchPlanBuilder";
 import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import {
@@ -496,7 +497,13 @@ export function buildImplementationCodeTaskPlanFromTaskList(input: {
   };
 
   const withBoundaries = repairCodeTaskPlanFileBoundaries({ plan, taskList: input.taskList }).plan;
-  plan = applyBranchPlanToCodeTaskPlan({ plan: withBoundaries, nowIso: now });
+  const withIntegration = appendIntegrationWiringCodeTaskToPlan({
+    plan: withBoundaries,
+    taskList: input.taskList,
+    envOk: input.envOk,
+    designOk: input.designOk,
+  });
+  plan = applyBranchPlanToCodeTaskPlan({ plan: withIntegration, nowIso: now });
   return plan;
 }
 

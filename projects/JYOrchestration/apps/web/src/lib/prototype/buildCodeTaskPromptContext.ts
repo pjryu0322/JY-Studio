@@ -16,6 +16,10 @@ import {
   filterPerTaskRequirementLines,
   filterPerTaskVerificationLines,
 } from "@/lib/prototype/codeTaskPlanningDraftPolish";
+import {
+  evaluateCodeTaskPromptCollisionReadiness,
+  mergePromptContextQualityWithCollisionReadiness,
+} from "@/lib/prototype/codeTaskPromptQualityGate";
 import { refineTargetUsersForRuntime, refineProblemToSolveForRuntime } from "@/lib/prototype/codeTaskRuntimePromptContextView";
 import { formatTemplateLayoutSnippetForRole } from "@/lib/prototype/codeTaskTemplateLayoutDraft";
 import { parseImplementationSeedV1, type ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
@@ -411,13 +415,16 @@ function buildContextForCodeTask(input: {
   };
 
   const seedWarnings = seed ? [] : ["implementationSeedV1"];
-  const quality = evaluateContextQuality({
-    roleKind: roleResolved.roleKind,
-    roleWarnings: [...roleResolved.warnings, ...seedWarnings],
-    implementationContext,
-    verificationContext,
-    featureContext,
-    hasTemplateSnippet: Boolean(layoutSnippet),
+  const quality = mergePromptContextQualityWithCollisionReadiness({
+    base: evaluateContextQuality({
+      roleKind: roleResolved.roleKind,
+      roleWarnings: [...roleResolved.warnings, ...seedWarnings],
+      implementationContext,
+      verificationContext,
+      featureContext,
+      hasTemplateSnippet: Boolean(layoutSnippet),
+    }),
+    collision: evaluateCodeTaskPromptCollisionReadiness({ codeTask: input.codeTask }),
   });
 
   return {
