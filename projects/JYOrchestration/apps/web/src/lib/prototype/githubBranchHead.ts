@@ -1,6 +1,9 @@
 import { githubRestApiBase, resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
+import { encodeGithubRefBranchPath } from "@/lib/prototype/githubIntegrationBranchService";
 
 type GithubCompareFile = Readonly<{ readonly filename?: string }>;
+
+type GithubRefResponse = Readonly<{ readonly object?: Readonly<{ readonly sha?: string }> }>;
 
 type GithubCompareCommit = Readonly<{ readonly sha?: string }>;
 
@@ -55,7 +58,9 @@ export async function fetchGithubBranchHeadSha(input: {
   const api = githubRestApiBase();
   const owner = encodeURIComponent(parsed.owner);
   const repo = encodeURIComponent(parsed.repo);
-  const refUrl = `${api}/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`;
+  const refPath = encodeGithubRefBranchPath(branch);
+  if (!refPath) return { ok: false, status: 404 };
+  const refUrl = `${api}/repos/${owner}/${repo}/git/ref/heads/${refPath}`;
   const refRes = await githubFetchJson<GithubRefResponse>(refUrl, input.githubToken.trim(), userAgent);
   if (!refRes.ok) return { ok: false, status: refRes.status };
   const sha = String(refRes.data?.object?.sha ?? "").trim();

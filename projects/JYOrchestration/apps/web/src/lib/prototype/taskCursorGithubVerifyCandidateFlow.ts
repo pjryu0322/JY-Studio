@@ -107,6 +107,23 @@ export async function runTaskCursorGithubVerifyCandidateFlow(input: {
     branchCandidates: candidateBranches,
     runWorkBranch: input.runWorkBranch,
     promptWorkBranch: input.promptWorkBranch,
+    onBranchLookupRetry: (event) => {
+      timeline.push(
+        githubVerifyTimelineEntry({
+          action: "task_cursor_github_branch_lookup_retry",
+          projectId: input.projectId,
+          taskId: execution.taskId,
+          codeTaskId: codeTaskId ?? undefined,
+          fields: {
+            branchName: event.branchName,
+            attempt: event.attempt,
+            ...(event.apiStatus !== undefined ? { apiStatus: event.apiStatus } : {}),
+            reason: event.reason,
+          },
+          nowIso,
+        }),
+      );
+    },
   });
 
   const resolvedBranch = String(verify.resolvedBranch ?? "").trim() || null;
@@ -121,7 +138,33 @@ export async function runTaskCursorGithubVerifyCandidateFlow(input: {
         projectId: input.projectId,
         taskId: execution.taskId,
         codeTaskId: codeTaskId ?? undefined,
-        fields: { workBranch: resolvedBranch },
+        fields: {
+          workBranch: resolvedBranch,
+          ...(verify.lookupSource ? { lookupSource: verify.lookupSource } : {}),
+        },
+        nowIso,
+      }),
+    );
+  }
+
+  if (!verify.ok && verify.allBranchesMissing) {
+    timeline.push(
+      githubVerifyTimelineEntry({
+        action: "task_cursor_github_branch_missing_after_retries",
+        projectId: input.projectId,
+        taskId: execution.taskId,
+        codeTaskId: codeTaskId ?? undefined,
+        fields: {
+          branchName: primaryBranch,
+          candidateBranches: candidateBranches.join(","),
+          attempts: verify.lookupAttempts ?? 0,
+          ...(verify.branchLookupDiagnostics?.apiStatus !== undefined
+            ? { lastApiStatus: verify.branchLookupDiagnostics.apiStatus }
+            : {}),
+          ...(verify.branchLookupDiagnostics?.apiErrorMessage
+            ? { lastErrorMessage: String(verify.branchLookupDiagnostics.apiErrorMessage) }
+            : {}),
+        },
         nowIso,
       }),
     );

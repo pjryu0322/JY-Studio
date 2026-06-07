@@ -36,6 +36,7 @@ import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchP
 import {
   buildQuickRunQueuedTargetBlockedTimelineEntry,
   buildQuickRunQueuedTargetCanonicalizedTimelineEntry,
+  buildQuickRunQueuedFallbackDispatchSkippedTimelineEntry,
 } from "@/lib/prototype/quickRunVerifiedContinuationTimeline";
 import {
   buildQuickRunQueueExhaustedOrchestrationPatch,
@@ -79,6 +80,10 @@ import {
   getImplementationRuntimeJobWithRuns,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { isTerminalRuntimeState } from "@/lib/runtime/implementationRuntime/implementationRuntimeStateMachine";
+
+function isNonQueuedRuntimeDispatchError(message: string): boolean {
+  return /Only queued runs can be dispatched/i.test(String(message ?? ""));
+}
 
 export type ServerQuickRunContinuationOutcome =
   | "dispatched"
@@ -409,6 +414,21 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
     return appendSkipped("execute_request_failed", "execution_setup_not_ready");
   }
 
+  if (run.runtimeState !== "queued") {
+    timelineEntries.push(
+      buildQuickRunQueuedFallbackDispatchSkippedTimelineEntry({
+        projectId: pid,
+        codeTaskId: dispatchCodeTaskId,
+        reason: "run_already_in_flight",
+        nowIso,
+      }),
+    );
+    return appendSkipped("skipped", "run_already_in_flight", {
+      nextCodeTaskId: dispatchCodeTaskId,
+      diagnostics: { runState: run.runtimeState },
+    });
+  }
+
   const dispatchOutcome = await dispatchQuickRunContinuationOnServer({
     projectId: pid,
     dispatch: {
@@ -425,9 +445,24 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
   });
 
   if (!dispatchOutcome.dispatched) {
+    const rawMessage = dispatchOutcome.message ?? "";
+    if (isNonQueuedRuntimeDispatchError(rawMessage)) {
+      timelineEntries.push(
+        buildQuickRunQueuedFallbackDispatchSkippedTimelineEntry({
+          projectId: pid,
+          codeTaskId: dispatchCodeTaskId,
+          reason: "run_already_in_flight",
+          nowIso,
+        }),
+      );
+      return appendSkipped("skipped", "run_already_in_flight", {
+        nextCodeTaskId: dispatchCodeTaskId,
+        diagnostics: { runState: run.runtimeState, message: rawMessage },
+      });
+    }
     return appendSkipped(
       "execute_request_failed",
-      dispatchOutcome.message ?? "dispatch_failed",
+      rawMessage || "dispatch_failed",
       { nextCodeTaskId: dispatchCodeTaskId },
     );
   }

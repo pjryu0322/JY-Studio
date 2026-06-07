@@ -18,6 +18,12 @@ import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution"
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
+  formatGithubVerifyCheckingToast,
+  resolveGithubVerifyToastTaskLabel,
+} from "@/lib/prototype/taskCursorGithubVerifyDisplay";
+import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import {
   buildImplementationToastDedupeKey,
   recordImplementationToastDedupe,
   shouldSuppressDuplicateImplementationToast,
@@ -78,9 +84,15 @@ export async function runQuickRunStuckGithubVerifyRecovery(
   }
   input.stuckVerifyDedupeRef.current = dedupe;
 
-  const checkingToast = `${execution.taskId} · GitHub branch에서 commit 확인 중…`;
+  const codeTaskPlan = parseImplementationCodeTaskPlanV1(input.state.implementationCodeTaskPlanV1);
+  const toastLabel = resolveGithubVerifyToastTaskLabel({
+    executionTaskId: execution.taskId,
+    codeTaskId,
+    codeTaskPlan,
+  });
+  const checkingToast = formatGithubVerifyCheckingToast(toastLabel.label);
   const toastKey = buildImplementationToastDedupeKey({
-    taskId: execution.taskId,
+    taskId: toastLabel.label,
     status: execution.status,
     message: checkingToast,
   });
@@ -96,6 +108,25 @@ export async function runQuickRunStuckGithubVerifyRecovery(
   ) {
     recordImplementationToastDedupe({ key: toastKey, lastKeyRef: keyRef, lastAtRef: atRef });
     input.showToast(checkingToast);
+    if (toastLabel.clearedStaleMock) {
+      input.applyOrchestrationPatch(
+        input.enrichPatch({
+          promptTimeline: [
+            buildImplementationExecutionLogTimelineEntry({
+              action: "task_cursor_stale_mock_polling_cleared",
+              orchestrationTraceGroup: "task_cursor_execution",
+              routingDecision: toastLabel.label,
+              fields: {
+                projectId: pid,
+                fromTaskId: execution.taskId,
+                toTaskId: toastLabel.label,
+                codeTaskId,
+              },
+            }),
+          ],
+        }),
+      );
+    }
   }
   try {
     const json = await postTaskCursorGithubVerify(

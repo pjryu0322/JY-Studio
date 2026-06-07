@@ -1,5 +1,11 @@
 import { githubRestApiBase, resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
 import {
+  buildCanonicalGithubVerifyBranchOrder,
+  fetchGithubBranchByExactName,
+  type GithubBranchLookupRetryEventV1,
+} from "@/lib/prototype/githubBranchLookup";
+import { encodeGithubRefBranchPath } from "@/lib/prototype/githubIntegrationBranchService";
+import {
   fetchGithubBaseBranchHeadSha,
   fetchGithubBranchCompareSummary,
   branchHeadDiffIndicatesNewCommit,
@@ -36,6 +42,7 @@ export type TaskCursorGithubVerifyInput = Readonly<{
   readonly branchCandidates?: readonly string[];
   readonly runWorkBranch?: string | null;
   readonly promptWorkBranch?: string | null;
+  readonly onBranchLookupRetry?: (event: GithubBranchLookupRetryEventV1) => void;
 }>;
 
 export type TaskCursorGithubVerifyPhase =
@@ -85,6 +92,9 @@ export type TaskCursorGithubVerifyResult = Readonly<{
   readonly baseHeadSha?: string;
   readonly branchSource?: TaskCursorGithubBranchSource;
   readonly legacyBranchUsed?: boolean;
+  readonly lookupSource?: "exact_get" | "candidate_search" | "legacy_fallback";
+  readonly lookupAttempts?: number;
+  readonly branchLookupDiagnostics?: Readonly<Record<string, string | number | boolean | undefined>>;
 }>;
 
 /** branch/commit이 아직 push/reflection 안 된 경우 — failed 처리하지 않고 폴링 계속 */
@@ -372,22 +382,38 @@ export async function verifyTaskCursorGithubResult(
           promptWorkBranch: input.promptWorkBranch,
         });
 
-  if (!candidates.length) {
+  const canonicalOrder = buildCanonicalGithubVerifyBranchOrder({
+    runWorkBranch: input.runWorkBranch,
+    branchPlanWorkBranch: input.branchPlanWorkBranch,
+    executionWorkBranch: input.execution.workBranch,
+    candidateBranches: candidates,
+  });
+  const orderedCandidates: string[] = [];
+  const seenCandidate = new Set<string>();
+  for (const branch of [...canonicalOrder, ...candidates]) {
+    const b = String(branch ?? "").trim();
+    if (!b || seenCandidate.has(b)) continue;
+    seenCandidate.add(b);
+    orderedCandidates.push(b);
+  }
+
+  if (!orderedCandidates.length) {
     return {
       ok: false,
       reason: "github_verify_failed",
       message: "WIP branch(workBranch)가 없어 GitHub 검수를 할 수 없습니다.",
       uiReason: "github_branch_missing",
       allBranchesMissing: true,
-      candidateBranches: candidates,
+      candidateBranches: orderedCandidates,
     };
   }
 
   let lastMiss: TaskCursorGithubVerifyResult | null = null;
   let anyBranchFound = false;
+  let lastLookupAttempts = 0;
+  let lastLookupSource: "exact_get" | "candidate_search" | "legacy_fallback" | undefined;
 
-  for (const branch of candidates) {
-    const executionForBranch = { ...input.execution, workBranch: branch };
+  for (const branch of orderedCandidates) {
     const branchSource = resolveBranchSourceForCandidate({
       branch,
       branchPlanWorkBranch: input.branchPlanWorkBranch,
@@ -396,11 +422,69 @@ export async function verifyTaskCursorGithubResult(
       promptWorkBranch: input.promptWorkBranch,
       codeTaskId: input.codeTaskId,
     });
+    const useExactLookupRetry =
+      branchSource === "branch_plan" ||
+      branchSource === "run" ||
+      branchSource === "request" ||
+      branch === canonicalOrder[0];
+
+    let preflightHeadSha: string | null = null;
+    if (useExactLookupRetry) {
+      const lookup = await fetchGithubBranchByExactName({
+        gitRepoUrl: input.targetRepository.gitRepoUrl,
+        branchName: branch,
+        token,
+        userAgent: input.userAgent ?? "JYOrchestration/task-cursor-github-verify",
+        source: branchSource === "legacy_fallback" ? "legacy_fallback" : "exact_get",
+        onRetry: input.onBranchLookupRetry,
+      });
+      lastLookupAttempts = lookup.lookupAttempts;
+      lastLookupSource = lookup.source;
+      if (lookup.status === "failed") {
+        return {
+          ok: false,
+          reason: lookup.apiStatus === 401 || lookup.apiStatus === 403 ? "github_auth_failed" : "github_verify_failed",
+          message:
+            lookup.apiStatus === 401 || lookup.apiStatus === 403
+              ? TASK_CURSOR_FAILURE_MESSAGES.github_auth_failed
+              : lookup.errorMessage,
+          candidateBranches: orderedCandidates,
+          lookupAttempts: lookup.lookupAttempts,
+          lookupSource: lookup.source,
+        };
+      }
+      if (lookup.status === "found") {
+        preflightHeadSha = lookup.headSha;
+        anyBranchFound = true;
+      } else if (branch === canonicalOrder[0]) {
+        lastMiss = {
+          ok: false,
+          reason: "github_verify_failed",
+          detailReason: "branch_not_found",
+          message: formatTaskCursorGithubRefFailureMessage({
+            branch,
+            repoFullName: input.targetRepository.repoFullName,
+            httpStatus: lookup.apiStatus ?? 404,
+          }),
+          branchLookupDiagnostics: {
+            canonicalBranch: branch,
+            lookupSource: lookup.source,
+            lookupAttempts: lookup.lookupAttempts,
+            apiStatus: lookup.apiStatus ?? 404,
+            apiErrorMessage: lookup.errorMessage ?? "",
+          },
+        };
+        continue;
+      }
+    }
+
+    const executionForBranch = { ...input.execution, workBranch: branch };
     const result = await verifyTaskCursorGithubResultOnBranch({
       ...input,
       execution: executionForBranch,
       branch,
       branchSource,
+      preflightHeadSha,
     });
     if (result.branchRefFound) anyBranchFound = true;
     if (result.ok) {
@@ -408,22 +492,24 @@ export async function verifyTaskCursorGithubResult(
       return {
         ...result,
         resolvedBranch: branch,
-        candidateBranches: candidates,
+        candidateBranches: orderedCandidates,
         uiReason: "github_head_commit_found",
         verifyPhase: "run_state_syncing",
         branchSource,
+        lookupSource: lastLookupSource ?? (useExactLookupRetry ? "exact_get" : undefined),
+        lookupAttempts: lastLookupAttempts || undefined,
         ...(legacyBranchUsed ? { legacyBranchUsed: true } : {}),
       };
     }
     if (result.reason === "github_auth_failed") {
-      return { ...result, candidateBranches: candidates, resolvedBranch: branch };
+      return { ...result, candidateBranches: orderedCandidates, resolvedBranch: branch };
     }
     lastMiss = result;
     if (result.branchRefFound && !isTransientTaskCursorGithubVerifyMiss(result)) {
       return {
         ...result,
         resolvedBranch: branch,
-        candidateBranches: candidates,
+        candidateBranches: orderedCandidates,
         uiReason:
           result.detailReason === "commit_not_found"
             ? "github_head_commit_missing"
@@ -446,10 +532,17 @@ export async function verifyTaskCursorGithubResult(
     };
     return {
       ...miss,
-      candidateBranches: candidates,
+      candidateBranches: orderedCandidates,
       allBranchesMissing: true,
       uiReason: "github_branch_missing",
       verifyPhase: "branch_checking",
+      lookupAttempts: lastLookupAttempts || undefined,
+      lookupSource: lastLookupSource,
+      branchLookupDiagnostics: {
+        ...(lastMiss?.branchLookupDiagnostics ?? {}),
+        candidateBranches: orderedCandidates.join(","),
+        lookupAttempts: lastLookupAttempts,
+      },
     };
   }
 
@@ -460,7 +553,7 @@ export async function verifyTaskCursorGithubResult(
   };
   return {
     ...fallback,
-    candidateBranches: candidates,
+    candidateBranches: orderedCandidates,
     branchRefFound: true,
     uiReason: "github_head_commit_missing",
     verifyPhase: "head_commit_checking",
@@ -472,6 +565,7 @@ async function verifyTaskCursorGithubResultOnBranch(
   input: TaskCursorGithubVerifyInput & {
     readonly branch: string;
     readonly branchSource?: TaskCursorGithubBranchSource;
+    readonly preflightHeadSha?: string | null;
   },
 ): Promise<TaskCursorGithubVerifyResult & { readonly branchRefFound?: boolean }> {
   const token = input.githubToken.trim();
@@ -495,32 +589,54 @@ async function verifyTaskCursorGithubResultOnBranch(
     };
   }
   const repoFullName = input.targetRepository.repoFullName;
-  const refUrl = `${api}/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`;
-  const refRes = await githubFetchJson<GithubRefResponse>(refUrl, token, userAgent);
-  if (!refRes.ok) {
-    if (refRes.status === 401 || refRes.status === 403) {
-      return {
-        ok: false,
-        reason: "github_auth_failed",
-        message: TASK_CURSOR_FAILURE_MESSAGES.github_auth_failed,
-        branchRefFound: false,
-      };
+  let branchHeadSha = String(input.preflightHeadSha ?? "").trim();
+  if (!branchHeadSha) {
+    const refPath = encodeGithubRefBranchPath(branch);
+    const refUrl = refPath
+      ? `${api}/repos/${owner}/${repo}/git/ref/heads/${refPath}`
+      : `${api}/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}`;
+    const refRes = await githubFetchJson<GithubRefResponse>(refUrl, token, userAgent);
+    if (!refRes.ok) {
+      if (refRes.status === 401 || refRes.status === 403) {
+        return {
+          ok: false,
+          reason: "github_auth_failed",
+          message: TASK_CURSOR_FAILURE_MESSAGES.github_auth_failed,
+          branchRefFound: false,
+        };
+      }
+      const branchesUrl = `${api}/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}`;
+      const branchRes = await githubFetchJson<GithubRefResponse>(branchesUrl, token, userAgent);
+      if (!branchRes.ok) {
+        if (branchRes.status === 401 || branchRes.status === 403) {
+          return {
+            ok: false,
+            reason: "github_auth_failed",
+            message: TASK_CURSOR_FAILURE_MESSAGES.github_auth_failed,
+            branchRefFound: false,
+          };
+        }
+        return {
+          ok: false,
+          reason: refRes.status === 404 ? "github_verify_failed" : "github_verify_failed",
+          detailReason: refRes.status === 404 ? "branch_not_found" : undefined,
+          message: formatTaskCursorGithubRefFailureMessage({
+            branch,
+            repoFullName,
+            httpStatus: refRes.status,
+          }),
+          branchRefFound: false,
+          uiReason: refRes.status === 404 ? "github_branch_missing" : undefined,
+        };
+      }
+      branchHeadSha = String(
+        (branchRes.data as { commit?: { sha?: string } })?.commit?.sha ?? "",
+      ).trim();
+    } else {
+      branchHeadSha = String(refRes.data?.object?.sha ?? "").trim();
     }
-    return {
-      ok: false,
-      reason: refRes.status === 404 ? "github_verify_failed" : "github_verify_failed",
-      detailReason: refRes.status === 404 ? "branch_not_found" : undefined,
-      message: formatTaskCursorGithubRefFailureMessage({
-        branch,
-        repoFullName,
-        httpStatus: refRes.status,
-      }),
-      branchRefFound: false,
-      uiReason: refRes.status === 404 ? "github_branch_missing" : undefined,
-    };
   }
 
-  const branchHeadSha = String(refRes.data?.object?.sha ?? "").trim();
   if (!branchHeadSha) {
     return {
       ok: false,
