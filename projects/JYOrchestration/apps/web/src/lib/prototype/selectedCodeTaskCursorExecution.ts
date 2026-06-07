@@ -27,6 +27,14 @@ import {
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { patchTaskCursorExecution } from "@/lib/prototype/taskCursorExecution";
+import {
+  patchCodeTaskExecutionRunWithCanonicalTarget,
+  repairLegacyMockProcessTaskId,
+  resolveCanonicalCodeTaskRunTarget,
+} from "@/lib/prototype/codeTaskRunTargetCanonical";
+import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
+import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { dispatchNextQueuedImplementationRuntimeRun } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
@@ -48,6 +56,7 @@ export type PreparedSelectedCodeTaskCursorExecution = Readonly<{
     { ok: true }
   >["built"]["requestBody"];
   readonly selectedWorkItems: readonly CursorWorkItem[];
+  readonly tupleTimeline?: readonly RequirementsPromptTimelineEntry[];
 }>;
 
 export type PrepareSelectedCodeTaskCursorExecutionResult =
@@ -176,8 +185,46 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
     return { ok: false, outcome: "blocked", message: builtResult.message };
   }
   const built = builtResult.built;
+  const canonicalRun = patchCodeTaskExecutionRunWithCanonicalTarget({
+    run: built.run,
+    codeTask: dispatchTarget.codeTask,
+  });
+  const canonicalTarget = resolveCanonicalCodeTaskRunTarget({ codeTask: dispatchTarget.codeTask });
+  const canonicalParentTaskId =
+    canonicalTarget?.processTaskId ??
+    repairLegacyMockProcessTaskId({
+      taskId: dispatchTarget.parentTaskId,
+      codeTaskId: dispatchTarget.codeTask.codeTaskId,
+      branchGroup: canonicalTarget?.branchGroup ?? null,
+    });
+  const tupleTimeline: RequirementsPromptTimelineEntry[] = [];
+  if (
+    canonicalTarget &&
+    (built.run.processTaskId !== canonicalRun.processTaskId ||
+      String(built.run.workBranch ?? "").trim() !== canonicalRun.workBranch)
+  ) {
+    tupleTimeline.push(
+      buildImplementationExecutionLogTimelineEntry({
+        action: "quick_run_queued_target_tuple_canonicalized",
+        orchestrationTraceGroup: "implementation_orchestration",
+        routingDecision: canonicalParentTaskId,
+        fields: {
+          projectId: input.projectId,
+          fromTaskId: built.run.processTaskId,
+          toTaskId: canonicalRun.processTaskId,
+          fromCodeTaskId: dispatchTarget.codeTask.codeTaskId,
+          toCodeTaskId: dispatchTarget.codeTask.codeTaskId,
+          baseBranch: canonicalRun.baseBranch,
+          workBranch: canonicalRun.workBranch,
+          branchGroup: canonicalTarget.branchGroup,
+        },
+        nowIso,
+      }),
+    );
+  }
   const pendingExecution = patchTaskCursorExecution(built.taskCursorRequest, {
     status: "prompt_ready",
+    taskId: canonicalParentTaskId,
     cursorRunId: undefined,
     failureReason: undefined,
     errorMessage: undefined,
@@ -187,12 +234,13 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
     ok: true,
     prepared: {
       codeTaskId: dispatchTarget.codeTask.codeTaskId,
-      parentTaskId: dispatchTarget.parentTaskId,
+      parentTaskId: canonicalParentTaskId,
       workItem: selectedWorkItems[0]!,
-      run: built.run,
+      run: canonicalRun,
       pendingExecution,
       requestBody: built.requestBody,
       selectedWorkItems,
+      tupleTimeline,
     },
   };
 }

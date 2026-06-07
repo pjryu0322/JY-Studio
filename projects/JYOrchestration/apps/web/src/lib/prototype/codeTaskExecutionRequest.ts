@@ -45,6 +45,7 @@ import {
 } from "@/lib/prototype/codeTaskDeveloperPromptQualityGate";
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
+import { repairLegacyMockProcessTaskId } from "@/lib/prototype/codeTaskRunTargetCanonical";
 import { fingerprintRuntimeDeveloperPrompt } from "@/lib/prototype/resolveRuntimeCodeTaskDeveloperPromptForExecute";
 import type { ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 
@@ -321,11 +322,19 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     codeTask: input.codeTask,
     fallbackBaseBranch: input.baseBranch,
   });
-  const parentTaskId = input.codeTask.parentTaskId;
-  const taskCursorBase =
-    input.existingTaskCursor?.taskId === parentTaskId
-      ? input.existingTaskCursor
-      : buildInitialTaskCursorExecution({
+  const branchPlanForParent = parseCodeTaskBranchPlanV1(input.codeTask.branchPlan);
+  const parentTaskId = repairLegacyMockProcessTaskId({
+    taskId: input.codeTask.parentTaskId,
+    codeTaskId: input.codeTask.codeTaskId,
+    branchGroup: branchPlanForParent?.branchGroup ?? null,
+  });
+  const existingCursor = input.existingTaskCursor;
+  const canReuseExistingCursor =
+    existingCursor?.taskId === parentTaskId &&
+    String(existingCursor.workBranch ?? "").trim() === workBranch;
+  const taskCursorBase = canReuseExistingCursor
+    ? existingCursor
+    : buildInitialTaskCursorExecution({
           projectId: input.projectId,
           taskId: parentTaskId,
           workItemIds: [input.workItem.id],
@@ -347,6 +356,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     workBranch,
     repository: input.targetRepository.repoFullName,
     baseBranch: effectiveBaseBranch,
+    processTaskId: parentTaskId,
     status: "prompt_ready",
     updatedAt: now,
   })[0]!;

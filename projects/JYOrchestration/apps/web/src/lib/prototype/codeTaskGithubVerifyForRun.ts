@@ -17,8 +17,16 @@ import {
   type TaskCursorGithubVerifyResult,
 } from "@/lib/prototype/taskCursorGithubVerify";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
+import { patchTaskCursorExecution } from "@/lib/prototype/taskCursorExecution";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { clearStaleTaskCursorInflightForVerifiedRun } from "@/lib/prototype/taskCursorGithubOutcomeSession";
+import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import {
+  isInvalidVerifyBranchContext,
+  repairLegacyMockProcessTaskId,
+  resolveCanonicalCodeTaskRunTarget,
+} from "@/lib/prototype/codeTaskRunTargetCanonical";
+import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 
 export type VerifyGithubForCodeTaskRunResult = Readonly<{
   readonly ok: boolean;
@@ -42,29 +50,119 @@ export async function verifyGithubForCodeTaskRun(input: {
   readonly allowedPathGlobs: readonly string[];
   readonly codeTaskId: string;
   readonly branchPlanWorkBranch?: string | null;
+  readonly codeTask?: ImplementationCodeTaskV1 | null;
   readonly nowIso?: string;
 }): Promise<VerifyGithubForCodeTaskRunResult> {
   const nowIso = input.nowIso ?? new Date().toISOString();
-  const previousWorkBranch = String(input.run.workBranch ?? input.execution.workBranch ?? "").trim() || null;
+  const runCodeTaskId = String(input.run.codeTaskId ?? input.codeTaskId ?? "").trim();
+  if (runCodeTaskId && runCodeTaskId !== String(input.codeTaskId ?? "").trim()) {
+    return {
+      ok: false,
+      githubOutcome: {
+        status: "failed",
+        checkedAt: nowIso,
+        reason: "github_api_error",
+        retryable: false,
+        message: "github_outcome_code_task_mismatch",
+      },
+      runPatch: {},
+      updatedRun: input.run,
+      verify: { ok: false, reason: "github_verify_failed", message: "github_outcome_code_task_mismatch" },
+      timeline: [],
+      nextDispatchAllowed: false,
+      message: "Run CodeTask ID와 verify 대상 CodeTask ID가 일치하지 않습니다.",
+      repaired: false,
+    };
+  }
+
+  const canonicalTarget = input.codeTask ? resolveCanonicalCodeTaskRunTarget({ codeTask: input.codeTask }) : null;
+  const branchPlan = parseCodeTaskBranchPlanV1(input.codeTask?.branchPlan);
   const branchPlanWorkBranch =
-    String(input.branchPlanWorkBranch ?? "").trim() ||
-    String(previousWorkBranch ?? "").trim() ||
+    String(canonicalTarget?.workBranch ?? input.branchPlanWorkBranch ?? "").trim() ||
+    String(input.run.workBranch ?? input.execution.workBranch ?? "").trim() ||
     null;
+  const branchPlanBaseBranch =
+    String(canonicalTarget?.baseBranch ?? branchPlan?.baseBranch ?? input.execution.baseBranch ?? "").trim() ||
+    null;
+
+  const processTaskId =
+    canonicalTarget?.processTaskId ??
+    repairLegacyMockProcessTaskId({
+      taskId: input.run.processTaskId,
+      codeTaskId: input.codeTaskId,
+      branchGroup: branchPlan?.branchGroup ?? null,
+    });
+
+  let execution = patchTaskCursorExecution(input.execution, {
+    taskId: processTaskId,
+    ...(branchPlanBaseBranch ? { baseBranch: branchPlanBaseBranch } : {}),
+    ...(branchPlanWorkBranch ? { workBranch: branchPlanWorkBranch } : {}),
+    nowIso,
+  });
+
+  if (
+    branchPlanBaseBranch &&
+    branchPlanWorkBranch &&
+    isInvalidVerifyBranchContext({ baseBranch: branchPlanBaseBranch, workBranch: branchPlanWorkBranch })
+  ) {
+    const verify: TaskCursorGithubVerifyResult = {
+      ok: false,
+      reason: "github_verify_failed",
+      detailReason: "no_new_commit",
+      message: "GitHub verify context invalid: baseBranch와 workBranch가 동일합니다.",
+    };
+    return {
+      ok: false,
+      githubOutcome: buildGithubOutcomeFromVerifyResult({
+        verify,
+        nowIso,
+        previousWorkBranch: branchPlanWorkBranch,
+        resolvedWorkBranch: branchPlanWorkBranch,
+      }),
+      runPatch: {},
+      updatedRun: input.run,
+      verify,
+      timeline: [
+        buildImplementationExecutionLogTimelineEntry({
+          action: "task_cursor_github_verify_invalid_context",
+          orchestrationTraceGroup: "task_cursor_execution",
+          routingDecision: processTaskId,
+          fields: {
+            projectId: input.projectId,
+            codeTaskId: input.codeTaskId,
+            processTaskId,
+            baseBranch: branchPlanBaseBranch,
+            workBranch: branchPlanWorkBranch,
+          },
+          nowIso,
+        }),
+      ],
+      nextDispatchAllowed: false,
+      message: verify.message ?? "invalid verify context",
+      repaired: false,
+    };
+  }
+
+  const previousWorkBranch = String(input.run.workBranch ?? execution.workBranch ?? "").trim() || null;
   const expectedCanonical = branchPlanWorkBranch ?? resolveCodeTaskWorkBranchForPlan(input.codeTaskId, previousWorkBranch);
 
   const candidateFlow = await runTaskCursorGithubVerifyCandidateFlow({
     projectId: input.projectId,
-    execution: input.execution,
+    execution,
     targetRepository: input.targetRepository,
     githubToken: input.githubToken,
     allowedPathGlobs: input.allowedPathGlobs,
     codeTaskId: input.codeTaskId,
     branchPlanWorkBranch,
-    runWorkBranch: input.run.workBranch ?? null,
+    runWorkBranch: input.run.workBranch ?? branchPlanWorkBranch ?? null,
     promptWorkBranch: expectedCanonical,
     executionRunId: input.run.runId,
+    branchPlanBaseBranch: branchPlanBaseBranch,
+    branchGroup: branchPlan?.branchGroup ?? canonicalTarget?.branchGroup ?? null,
     nowIso,
   });
+
+  execution = candidateFlow.execution;
 
   const resolvedBranch =
     candidateFlow.resolvedBranch ??
@@ -82,6 +180,7 @@ export async function verifyGithubForCodeTaskRun(input: {
     run: input.run,
     githubOutcome,
     nowIso,
+    expectedCodeTaskId: input.codeTaskId,
   });
 
   const updatedRun: CodeTaskExecutionRunV1 = {
@@ -102,12 +201,13 @@ export async function verifyGithubForCodeTaskRun(input: {
     buildImplementationExecutionLogTimelineEntry({
       action: outcomeTimelineAction,
       orchestrationTraceGroup: "task_cursor_execution",
-      routingDecision: input.run.processTaskId,
+      routingDecision: processTaskId,
       fields: {
         projectId: input.projectId,
         runId: input.run.runId,
         codeTaskId: input.codeTaskId,
-        processTaskId: input.run.processTaskId,
+        processTaskId,
+        taskId: processTaskId,
         ...(githubOutcome.status === "verified"
           ? {
               workBranch: githubOutcome.workBranch,
@@ -134,7 +234,7 @@ export async function verifyGithubForCodeTaskRun(input: {
     buildImplementationExecutionLogTimelineEntry({
       action: "code_task_github_outcome_persisted",
       orchestrationTraceGroup: "task_cursor_execution",
-      routingDecision: input.run.processTaskId,
+      routingDecision: processTaskId,
       fields: {
         projectId: input.projectId,
         runId: input.run.runId,
@@ -155,10 +255,10 @@ export async function verifyGithubForCodeTaskRun(input: {
       buildImplementationExecutionLogTimelineEntry({
         action: "task_cursor_stale_inflight_cleared",
         orchestrationTraceGroup: "task_cursor_execution",
-        routingDecision: input.run.processTaskId,
+        routingDecision: processTaskId,
         fields: {
           projectId: input.projectId,
-          taskId: input.run.processTaskId,
+          taskId: processTaskId,
           priorStatus: sessionClear.priorStatus ?? "github_verifying",
           reason: "run_github_outcome_verified",
         },
@@ -174,7 +274,7 @@ export async function verifyGithubForCodeTaskRun(input: {
     updatedRun,
     verify: candidateFlow.verify,
     timeline,
-    ...(sessionClear.execution ? { taskCursorPatch: sessionClear.execution } : {}),
+    ...(sessionClear.execution ? { taskCursorPatch: sessionClear.execution } : { taskCursorPatch: execution }),
     nextDispatchAllowed: githubOutcome.status === "verified",
     message:
       githubOutcome.status === "verified"

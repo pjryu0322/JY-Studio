@@ -102,8 +102,17 @@ export function buildTaskCursorGithubBranchCandidates(input: {
 
   push(input.branchPlanWorkBranch);
   push(input.runWorkBranch);
-  push(input.executionWorkBranch);
-  push(input.promptWorkBranch);
+
+  const planWork = String(input.branchPlanWorkBranch ?? "").trim();
+  const execWork = String(input.executionWorkBranch ?? "").trim();
+  if (!planWork || !execWork || execWork === planWork) {
+    push(input.executionWorkBranch);
+  }
+
+  const promptWork = String(input.promptWorkBranch ?? "").trim();
+  if (!planWork || !promptWork || promptWork === planWork) {
+    push(input.promptWorkBranch);
+  }
 
   const codeTaskId = String(input.codeTaskId ?? "").trim();
   if (codeTaskId) {

@@ -286,7 +286,12 @@ export function patchRunWithGithubOutcome(input: {
   readonly run: CodeTaskExecutionRunV1;
   readonly githubOutcome: CodeTaskGithubOutcomeV1;
   readonly nowIso: string;
+  readonly expectedCodeTaskId?: string | null;
 }): Partial<CodeTaskExecutionRunV1> {
+  const expected = String(input.expectedCodeTaskId ?? "").trim();
+  if (expected && String(input.run.codeTaskId ?? "").trim() !== expected) {
+    return {};
+  }
   const patch: Partial<CodeTaskExecutionRunV1> = {
     githubOutcome: input.githubOutcome,
     updatedAt: input.nowIso,

@@ -115,6 +115,7 @@ export async function dispatchQuickRunContinuationOnServer(input: {
 
   let execution = prepared.pendingExecution;
   const timeline = [
+    ...(prepared.tupleTimeline ?? []),
     ...buildTaskCursorRequestedTimeline({ execution, nowIso }),
     buildTaskCursorApiStartedTimeline({ execution, nowIso }),
   ];

@@ -15,6 +15,7 @@ import {
 } from "@/lib/prototype/taskCursorExecution";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
+import { evaluateWorkBranchRepairForVerify } from "@/lib/prototype/codeTaskRunTargetCanonical";
 
 function githubVerifyTimelineEntry(input: {
   readonly action: string;
@@ -49,6 +50,8 @@ export async function runTaskCursorGithubVerifyCandidateFlow(input: {
   readonly runWorkBranch?: string | null;
   readonly promptWorkBranch?: string | null;
   readonly executionRunId?: string | null;
+  readonly branchPlanBaseBranch?: string | null;
+  readonly branchGroup?: string | null;
   readonly nowIso?: string;
 }): Promise<
   Readonly<{
@@ -107,8 +110,9 @@ export async function runTaskCursorGithubVerifyCandidateFlow(input: {
   });
 
   const resolvedBranch = String(verify.resolvedBranch ?? "").trim() || null;
-  const repaired =
+  const wouldRepair =
     Boolean(resolvedBranch) && resolvedBranch !== String(input.execution.workBranch ?? "").trim();
+  let repaired = false;
 
   if (resolvedBranch && verify.branchRefFound) {
     timeline.push(
@@ -123,22 +127,47 @@ export async function runTaskCursorGithubVerifyCandidateFlow(input: {
     );
   }
 
-  if (repaired && resolvedBranch) {
+  if (wouldRepair && resolvedBranch) {
     const fromBranch = String(input.execution.workBranch ?? "").trim();
-    execution = patchTaskCursorExecution(execution, {
-      workBranch: resolvedBranch,
-      nowIso,
+    const repairEval = evaluateWorkBranchRepairForVerify({
+      fromBranch,
+      toBranch: resolvedBranch,
+      branchPlanWorkBranch: input.branchPlanWorkBranch,
+      branchPlanBaseBranch: input.branchPlanBaseBranch,
+      branchGroup: input.branchGroup,
     });
-    timeline.push(
-      githubVerifyTimelineEntry({
-        action: "task_cursor_github_work_branch_repaired",
-        projectId: input.projectId,
-        taskId: execution.taskId,
-        codeTaskId: codeTaskId ?? undefined,
-        fields: { from: fromBranch, to: resolvedBranch },
+    if (repairEval.allow) {
+      repaired = true;
+      execution = patchTaskCursorExecution(execution, {
+        workBranch: resolvedBranch,
         nowIso,
-      }),
-    );
+      });
+      timeline.push(
+        githubVerifyTimelineEntry({
+          action: "task_cursor_github_work_branch_repaired",
+          projectId: input.projectId,
+          taskId: execution.taskId,
+          codeTaskId: codeTaskId ?? undefined,
+          fields: { from: fromBranch, to: resolvedBranch },
+          nowIso,
+        }),
+      );
+    } else {
+      timeline.push(
+        githubVerifyTimelineEntry({
+          action: "task_cursor_github_work_branch_repair_blocked",
+          projectId: input.projectId,
+          taskId: execution.taskId,
+          codeTaskId: codeTaskId ?? undefined,
+          fields: {
+            from: fromBranch,
+            to: resolvedBranch,
+            reason: repairEval.reason ?? "cross_code_task_branch_repair_forbidden",
+          },
+          nowIso,
+        }),
+      );
+    }
   }
 
   if (verify.verifiedCommitSha) {
