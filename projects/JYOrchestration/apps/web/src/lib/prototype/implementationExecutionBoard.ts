@@ -1143,8 +1143,14 @@ export function isImplementationBoardComplete(input: {
 export function isImplementationReadyForReviewStage(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly previewReady: boolean;
+  /** P3-M66: 검토단계는 Integrated App Preview 준비 시에만 허용 */
+  readonly integratedAppPreviewReady?: boolean;
 }): boolean {
-  return isImplementationBoardComplete(input);
+  const integrated =
+    input.integratedAppPreviewReady === undefined
+      ? input.previewReady
+      : input.integratedAppPreviewReady;
+  return isImplementationBoardComplete({ board: input.board, previewReady: integrated });
 }
 
 const INTEGRATED_STEP_ACTION_LABEL: Readonly<Record<ImplementationIntegratedStep, string>> = {

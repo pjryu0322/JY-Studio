@@ -1,7 +1,10 @@
 import type { ImplementationIntegrationEligibility } from "@/lib/prototype/implementationIntegrationEligibility";
-import { isIntegrationPreviewRuntimeReady } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 import { PRE_INTEGRATION_PREVIEW_HINT } from "@/lib/prototype/implementationPreviewOpenTarget";
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import {
+  evaluateImplementationPreviewReadiness,
+  type ImplementationPreviewReadinessV1,
+} from "@/lib/prototype/implementationPreviewReadiness";
 import {
   buildIntegrationEligibilitySummaryLines,
   buildIntegrationScopeCountSummaryLines,
@@ -11,6 +14,8 @@ import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIn
 import { canMergeIntegrationPullRequest } from "@/lib/prototype/implementationIntegrationConflict";
 import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import type { ImplementationIntegratedPipelineLine } from "@/lib/prototype/implementationTaskPipelinePolicy";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 
 export type ImplementationIntegrationBoardSectionVm = Readonly<{
   readonly canIntegrate: boolean;
@@ -23,6 +28,9 @@ export type ImplementationIntegrationBoardSectionVm = Readonly<{
   readonly previewRuntimeReady: boolean;
   readonly previewUrl: string | null;
   readonly previewStatusLines: readonly string[];
+  readonly previewReadiness: ImplementationPreviewReadinessV1;
+  readonly codeTaskPreviewReady: boolean;
+  readonly integratedAppPreviewReady: boolean;
   readonly preIntegrationPreviewLine: string | null;
   readonly integrationPlanLines: readonly string[];
   readonly integrationPullRequestUrl: string | null;
@@ -30,6 +38,9 @@ export type ImplementationIntegrationBoardSectionVm = Readonly<{
 }>;
 
 export function buildImplementationIntegrationBoardSection(input: {
+  readonly projectId?: string | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly codeTaskRuns?: readonly CodeTaskExecutionRunV1[] | null;
   readonly eligibility: ImplementationIntegrationEligibility;
   readonly integratedPipelineLines: readonly ImplementationIntegratedPipelineLine[];
   readonly previewScope?: ImplementationPreviewScopeV1 | null;
@@ -37,26 +48,34 @@ export function buildImplementationIntegrationBoardSection(input: {
   readonly integrationPlan?: CodeTaskIntegrationPlanV1 | null;
 }): ImplementationIntegrationBoardSectionVm {
   const scope = input.previewScope ?? null;
-  const previewRuntimeReady = isIntegrationPreviewRuntimeReady(input.previewRuntime);
+  const previewReadiness = evaluateImplementationPreviewReadiness({
+    projectId: input.projectId,
+    codeTaskPlan: input.codeTaskPlan ?? null,
+    codeTaskRuns: input.codeTaskRuns,
+    eligibility: input.eligibility,
+    previewRuntime: input.previewRuntime,
+    integrationPlan: input.integrationPlan,
+  });
+  const previewRuntimeReady = previewReadiness.integratedAppPreviewReady;
   const previewUrl = String(input.previewRuntime?.previewUrl ?? "").trim() || null;
-  const previewStatusLines: string[] = [];
+  const previewStatusLines: string[] = [...previewReadiness.statusTitleLines];
   const canIntegrate = input.eligibility.canIntegrate;
   const preIntegrationPreviewLine =
-    !previewRuntimeReady && canIntegrate && input.previewRuntime?.status !== "failed"
+    !previewReadiness.integratedAppPreviewReady &&
+    canIntegrate &&
+    input.previewRuntime?.status !== "failed"
       ? PRE_INTEGRATION_PREVIEW_HINT
       : null;
-  if (previewRuntimeReady) {
-    previewStatusLines.push("통합 완료", "Preview 준비 완료");
-    if (input.previewRuntime?.openMode === "external_new_window") {
-      previewStatusLines.push("GitHub Pages Preview를 새 창으로 엽니다.");
-    } else if (input.previewRuntime?.openMode === "internal_renderer") {
-      previewStatusLines.push("플랫폼 내부 Preview Renderer로 확인합니다.");
-    }
-  } else if (input.previewRuntime?.status === "failed") {
-    previewStatusLines.push(
-      scope ? "통합 완료" : "통합 실패",
-      "Preview 준비 실패",
-    );
+  if (previewReadiness.integratedAppPreviewReady && input.previewRuntime?.openMode === "external_new_window") {
+    previewStatusLines.push("GitHub Pages Preview를 새 창으로 엽니다.");
+  } else if (
+    previewReadiness.integratedAppPreviewReady &&
+    input.previewRuntime?.openMode === "internal_renderer"
+  ) {
+    previewStatusLines.push("실제 app entry Preview를 새 창으로 엽니다.");
+  }
+  if (input.previewRuntime?.status === "failed" && !previewReadiness.integratedAppPreviewReady) {
+    previewStatusLines.push("Preview 준비 실패");
     if (input.previewRuntime.errorMessage?.trim()) {
       previewStatusLines.push(`사유: ${input.previewRuntime.errorMessage.trim()}`);
     }
@@ -96,10 +115,18 @@ export function buildImplementationIntegrationBoardSection(input: {
         codeTaskId: row.codeTaskId,
         label: `${row.title}: ${row.status.trim() || row.reason}`,
       })) ?? [],
-    scopeDetailLines: buildIntegrationScopeDetailLines(scope),
+    scopeDetailLines: [
+      ...(previewReadiness.codeTaskScopeTitleLine ? [previewReadiness.codeTaskScopeTitleLine] : []),
+      ...buildIntegrationScopeDetailLines(scope),
+      ...previewReadiness.integratedAppGateLines,
+      ...(previewReadiness.conclusionLine ? [previewReadiness.conclusionLine] : []),
+    ],
     previewRuntimeReady,
     previewUrl,
     previewStatusLines,
+    previewReadiness,
+    codeTaskPreviewReady: previewReadiness.codeTaskPreviewReady,
+    integratedAppPreviewReady: previewReadiness.integratedAppPreviewReady,
     preIntegrationPreviewLine,
     integrationPlanLines,
     integrationPullRequestUrl: String(plan?.pullRequestUrl ?? "").trim() || null,

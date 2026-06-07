@@ -75,6 +75,61 @@ function resolvePreviewOpenTargetFromRuntime(
   };
 }
 
+export function getIntegratedAppPreviewOpenTarget(input: {
+  readonly runtime: ImplementationPreviewRuntimeV1 | null | undefined;
+  readonly integratedAppPreviewReady: boolean;
+}): PreviewOpenTarget {
+  if (!input.integratedAppPreviewReady) {
+    return {
+      url: null,
+      mode: "internal",
+      label: "실제 앱 Preview 보기",
+      hint: "최종 Wiring·통합 branch·build 검증이 완료된 후에 열 수 있습니다.",
+    };
+  }
+  const target = resolvePreviewOpenTargetFromRuntime(input.runtime);
+  if (target.url && target.label === "내부 Preview 보기") {
+    return { ...target, label: "실제 앱 Preview 보기", hint: "실제 app entry Preview를 새 창으로 엽니다." };
+  }
+  if (target.url) {
+    return { ...target, label: "실제 앱 Preview 보기" };
+  }
+  return {
+    ...target,
+    label: "실제 앱 Preview 보기",
+    hint: target.hint ?? PREVIEW_URL_NOT_READY_HINT,
+  };
+}
+
+export function getCodeTaskDiagnosticPreviewOpenTarget(input: {
+  readonly runtime: ImplementationPreviewRuntimeV1 | null | undefined;
+  readonly codeTaskPreviewReady: boolean;
+}): PreviewOpenTarget {
+  if (!input.codeTaskPreviewReady) {
+    return {
+      url: null,
+      mode: "internal",
+      label: "CodeTask 결과 미리보기",
+      hint: "완료된 CodeTask가 없어 진단용 Preview를 열 수 없습니다.",
+    };
+  }
+  const scopeUrl = String(input.runtime?.previewUrl ?? "").trim();
+  if (scopeUrl) {
+    return {
+      url: scopeUrl,
+      mode: "new_window",
+      label: "CodeTask 결과 미리보기",
+      hint: "완료된 CodeTask 산출물의 진단용 미리보기입니다. 실제 앱 Preview가 아닙니다.",
+    };
+  }
+  return {
+    url: null,
+    mode: "internal",
+    label: "CodeTask 결과 미리보기",
+    hint: PREVIEW_URL_NOT_READY_HINT,
+  };
+}
+
 export function getPreviewOpenTarget(
   runtimeOrInput: ImplementationPreviewRuntimeV1 | null | undefined | PreviewOpenTargetInput,
   legacyCanIntegrate?: boolean,

@@ -2,15 +2,22 @@ import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/pro
 import type { CompletedCodeTaskIntegrationTarget } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
 import type { CodeTaskConflictPlanV1 } from "@/lib/prototype/codeTaskFileConflictPlanner";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import {
+  analyzeImplementationBranchTopology,
+  branchPairOnLinearChain,
+  type ImplementationBranchTopologyV1,
+} from "@/lib/prototype/implementationBranchTopology";
 
 export type IntegrationConflictPrecheckV1 = Readonly<{
-  readonly status: "passed" | "warning" | "blocking";
+  readonly status: "passed" | "warning" | "blocking" | "info";
   readonly overlapFiles: readonly {
     readonly filePath: string;
     readonly codeTaskIds: readonly string[];
     readonly branches: readonly string[];
   }[];
   readonly message?: string;
+  readonly topology?: ImplementationBranchTopologyV1;
+  readonly cumulativeOverlap?: boolean;
 }>;
 
 function taskDependsOn(
@@ -59,16 +66,47 @@ export function runIntegrationConflictPrecheck(input: {
     }));
 
   if (!overlapFiles.length) {
-    return { status: "passed", overlapFiles: [] };
+    return {
+      status: "passed",
+      overlapFiles: [],
+      topology: analyzeImplementationBranchTopology({ codeTaskPlan: input.codeTaskPlan }),
+    };
+  }
+
+  const topology = analyzeImplementationBranchTopology({
+    codeTaskPlan: input.codeTaskPlan,
+    completedCodeTaskIds: input.included.map((i) => i.codeTaskId),
+  });
+
+  if (topology.kind === "linear_chain") {
+    return {
+      status: "info",
+      overlapFiles,
+      topology,
+      cumulativeOverlap: true,
+      message:
+        "선형 Branch Plan의 누적 변경 파일이 감지되었습니다. 중간 브랜치가 이전 브랜치 변경분을 포함하므로 정상이며, 실제 충돌 여부는 merge dry-run으로 확인합니다.",
+    };
   }
 
   let blocking = false;
   for (const overlap of overlapFiles) {
     const ids = overlap.codeTaskIds;
+    const branches = overlap.branches;
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
         const a = ids[i]!;
         const b = ids[j]!;
+        if (topology.kind === "linear_chain") continue;
+        if (
+          branchPairOnLinearChain({
+            topology,
+            branchA: branches[i] ?? "",
+            branchB: branches[j] ?? "",
+          })
+        ) {
+          continue;
+        }
         const ordered =
           taskDependsOn(input.codeTaskPlan, b, a) || taskDependsOn(input.codeTaskPlan, a, b);
         if (!ordered) blocking = true;
@@ -85,13 +123,15 @@ export function runIntegrationConflictPrecheck(input: {
     return {
       status: "blocking",
       overlapFiles,
-      message: `completed branch changed files overlap (${overlapFiles.length} files) — merge 전 충돌 위험`,
+      topology,
+      message: `병렬 브랜치 간 동일 파일 변경이 감지되었습니다(${overlapFiles.length} files). 실제 충돌 여부를 merge dry-run으로 확인합니다.`,
     };
   }
 
   return {
     status: "warning",
     overlapFiles,
+    topology,
     message: "changed files overlap — dependency 순서로 병합합니다.",
   };
 }

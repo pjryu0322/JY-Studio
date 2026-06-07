@@ -1,4 +1,9 @@
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
+import {
+  buildImplementationCodeTaskSummaryCounts,
+  listVisibleImplementationCodeTaskIds,
+  type ImplementationCodeTaskSummaryCountsV1,
+} from "@/lib/prototype/implementationCodeTaskSummary";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecutionQueue";
@@ -27,6 +32,7 @@ export type ImplementationExecutionOverview = Readonly<{
   readonly runtimeState?: RuntimeState;
   readonly runtimeStateLabel?: string;
   readonly flowPhaseLabel?: string;
+  readonly codeTaskSummary?: ImplementationCodeTaskSummaryCountsV1;
 }>;
 
 export type SelectedCodeTaskExecutionProgress = Readonly<{
@@ -113,10 +119,23 @@ export function buildImplementationExecutionOverview(input: {
     "commitSha" | "branchHeadCommitSha" | "cursorRunId" | "workBranch"
   > | null;
   readonly activeFlowPhase?: CodeTaskExecutionFlowPhase | null;
+  readonly selectedCodeTaskIds?: readonly string[] | null;
+  readonly codeTaskRuns?: readonly CodeTaskExecutionRunV1[] | null;
 }): ImplementationExecutionOverview {
   const processTaskCount = input.board.taskRows.length;
-  const planCount = input.codeTaskPlan?.codeTaskCount ?? input.codeTaskPlan?.tasks.length ?? 0;
-  const codeTaskCount = planCount > 0 ? planCount : processTaskCount;
+  const codeTaskSummary = buildImplementationCodeTaskSummaryCounts({
+    codeTaskPlan: input.codeTaskPlan,
+    selectedCodeTaskIds: input.selectedCodeTaskIds,
+    runs: input.codeTaskRuns,
+  });
+  const visibleTotal = codeTaskSummary.totalCodeTaskCount;
+  const planTasksCount = listVisibleImplementationCodeTaskIds(input.codeTaskPlan).length;
+  const codeTaskCount =
+    visibleTotal > 0
+      ? visibleTotal
+      : planTasksCount > 0
+        ? planTasksCount
+        : input.codeTaskPlan?.tasks.length ?? processTaskCount;
 
   const inProgressCount = input.board.summary.inProgressTasks;
   const completedCount = input.board.summary.completedTasks;
@@ -198,6 +217,7 @@ export function buildImplementationExecutionOverview(input: {
         ? { runtimeStateLabel: flowPhaseLabel }
         : {}),
     ...(flowPhaseLabel ? { flowPhaseLabel } : {}),
+    codeTaskSummary,
   };
 }
 
@@ -210,23 +230,32 @@ export function formatImplementationExecutionOverviewLines(
     readonly queueRunning?: boolean;
   },
 ): readonly string[] {
-  const lines: string[] = [`전체 CodeTask: ${overview.codeTaskCount}개`];
+  const summary = overview.codeTaskSummary;
+  const totalForDisplay = summary?.totalCodeTaskCount ?? overview.codeTaskCount;
+  const selectedTotal = summary?.selectedCodeTaskCount ?? input?.selectedCodeTaskCount ?? 0;
+  const completedTotal = summary?.completedCodeTaskCount ?? input?.selectedCompletedCount ?? 0;
 
-  if (typeof input?.selectedCodeTaskCount === "number") {
-    lines.push(`선택 CodeTask: ${input.selectedCodeTaskCount}개`);
+  const lines: string[] = [`전체 CodeTask: ${totalForDisplay}개`];
+
+  if (typeof input?.selectedCodeTaskCount === "number" || summary) {
+    lines.push(`선택 CodeTask: ${selectedTotal || input?.selectedCodeTaskCount || 0}개`);
   }
 
   const progress = input?.selectedExecutionProgress;
+
   const showSelectedProgress =
-    progress && progress.total > 0 && (input?.queueRunning || overview.isRunning);
-  if (showSelectedProgress) {
-    const sequenceIndex = Math.min(progress.done, progress.total);
-    lines.push(`선택 실행 순서: ${sequenceIndex} / ${progress.total}`);
-    const completedCount =
-      typeof input?.selectedCompletedCount === "number"
-        ? input.selectedCompletedCount
-        : Math.max(0, progress.done - 1);
-    lines.push(`완료 CodeTask: ${Math.min(completedCount, progress.total)} / ${progress.total}`);
+    (progress && progress.total > 0 && (input?.queueRunning || overview.isRunning)) ||
+    (summary && selectedTotal > 0);
+
+  if (showSelectedProgress && summary) {
+    const seqTotal = Math.min(selectedTotal || totalForDisplay, totalForDisplay);
+    const sequenceIndex = progress
+      ? Math.min(progress.done, progress.total)
+      : Math.min(completedTotal, seqTotal);
+    lines.push(`선택 실행 순서: ${sequenceIndex} / ${seqTotal}`);
+    lines.push(`완료 CodeTask: ${Math.min(completedTotal, totalForDisplay)} / ${totalForDisplay}`);
+  } else if (summary && totalForDisplay > 0 && selectedTotal > 0) {
+    lines.push(`완료 CodeTask: ${Math.min(completedTotal, totalForDisplay)} / ${totalForDisplay}`);
   }
 
   if (overview.currentTitle) {

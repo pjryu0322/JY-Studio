@@ -59,6 +59,10 @@ export function summarizeCodeTaskExecutionQueueRuns(input: {
   for (const codeTaskId of input.selectedCodeTaskIds) {
     const run = findLatestRunForCodeTask(input.runs, codeTaskId);
     if (!run) continue;
+    if (runHasVerifiedGithubOutcome(run)) {
+      completed += 1;
+      continue;
+    }
     switch (run.status) {
       case "completed":
         completed += 1;
@@ -81,7 +85,6 @@ export function summarizeCodeTaskExecutionQueueRuns(input: {
         completed += 1;
         break;
       default:
-        if (runHasVerifiedGithubOutcome(run)) completed += 1;
         break;
     }
   }

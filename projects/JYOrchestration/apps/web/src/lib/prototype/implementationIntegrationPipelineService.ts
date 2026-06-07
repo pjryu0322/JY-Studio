@@ -127,10 +127,30 @@ export async function runIntegrationBranchPipeline(input: {
       message: precheck.message ?? "통합 전 changed files overlap으로 merge를 시작하지 않습니다.",
     };
   }
+  if (precheck.status === "info" && precheck.cumulativeOverlap) {
+    pushTimeline("implementation_conflict_precheck_cumulative_overlap_detected", {
+      overlapCount: precheck.overlapFiles.length,
+      severity: "info",
+      message: precheck.message,
+      topology: precheck.topology?.kind,
+    });
+  }
   if (precheck.status === "warning") {
     pushTimeline("implementation_conflict_precheck_warning", {
       overlapCount: precheck.overlapFiles.length,
       message: precheck.message,
+    });
+  }
+
+  const topology = precheck.topology;
+  const chainHead =
+    topology?.kind === "linear_chain" ? topology.chainHead : null;
+  if (chainHead) {
+    pushTimeline("implementation_integration_source_resolved", {
+      topology: "linear_chain",
+      sourceBranch: chainHead,
+      baseBranch: input.baseBranch,
+      reason: "final_chain_head_contains_prior_branch_changes",
     });
   }
 
@@ -182,7 +202,12 @@ export async function runIntegrationBranchPipeline(input: {
 
   const mergeResults: CodeTaskIntegrationMergeResultV1[] = [];
 
-  for (const item of plan.included) {
+  const mergeItems =
+    chainHead && plan.included.length > 1
+      ? plan.included.filter((item) => item.workBranch === chainHead).slice(-1)
+      : plan.included;
+
+  for (const item of mergeItems) {
     pushTimeline("implementation_codetask_branch_merge_started", {
       codeTaskId: item.codeTaskId,
       workBranch: item.workBranch,

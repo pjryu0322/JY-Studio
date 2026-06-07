@@ -223,6 +223,7 @@ import {
 } from "@/lib/prototype/implementationExecutionBoard";
 import { buildIntegrationScopeDetailLines } from "@/lib/prototype/implementationIntegrationScopeUi";
 import { integrateCompletedCodeTasksForPreview } from "@/lib/prototype/implementationIntegrationService";
+import { resolveIntegratedAppPreviewReadyFromOrchestration } from "@/lib/prototype/implementationPreviewReadiness";
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import {
   applyIntegratedPipelineSyncSteps,
@@ -4439,9 +4440,21 @@ export function PrototypePreviewPanel({
         }
 
         if (batch.previewBuildOk) {
+          const integratedReady = resolveIntegratedAppPreviewReadyFromOrchestration({
+            projectId: pid,
+            orchestration: {
+              ...parsedRequirementsState,
+              ...(batch.previewRuntime
+                ? { implementationPreviewRuntimeV1: batch.previewRuntime }
+                : {}),
+              ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
+            },
+          });
           showToast(
             integrationServerSaved
-              ? "통합 완료 · Preview 준비 완료"
+              ? integratedReady
+                ? "통합 완료 · 실제 앱 Preview 준비 완료"
+                : "CodeTask Preview 준비 완료 · 실제 앱 Preview는 아직 준비되지 않았습니다."
               : "통합·Preview는 화면에 반영됐으나 서버 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.",
           );
         } else if (batch.completedSteps.length > 0) {
@@ -6054,16 +6067,26 @@ export function PrototypePreviewPanel({
             projectId: pid,
             orchestration: parsedRequirementsState,
           });
-          const previewReady = prototypeRunSyncSnapshot.previewReady;
-          if (!board || !isImplementationReadyForReviewStage({ board, previewReady })) {
-            const message = !previewReady
-              ? "프로토타입 preview가 준비되지 않아 검토단계로 이동할 수 없습니다."
+          const integratedAppPreviewReady = resolveIntegratedAppPreviewReadyFromOrchestration({
+            projectId: pid,
+            orchestration: parsedRequirementsState,
+          });
+          if (
+            !board ||
+            !isImplementationReadyForReviewStage({
+              board,
+              previewReady: integratedAppPreviewReady,
+              integratedAppPreviewReady,
+            })
+          ) {
+            const message = !integratedAppPreviewReady
+              ? "실제 앱 Preview가 준비되지 않아 검토단계로 이동할 수 없습니다. 최종 Wiring·통합·build 검증을 완료해 주세요."
               : "구현 실행 보드가 완료되지 않아 검토단계로 이동할 수 없습니다.";
             showToast(message);
             return { outcome: "blocked", message };
           }
           const reviewMarker = buildImplementationReviewStageReadyMarker({
-            previewReady: true,
+            previewReady: integratedAppPreviewReady,
             nowIso: new Date().toISOString(),
           });
           const previewUrlForReview =
@@ -6082,7 +6105,7 @@ export function PrototypePreviewPanel({
             buildReviewStageEntryMessage({
               entryReady: true,
               implementationReviewStageReadyV1: reviewMarker,
-              previewReady: true,
+              previewReady: integratedAppPreviewReady,
               session,
               feedbackList: parsedRequirementsState.reviewStageUserFeedbackListV1,
               previewUrl: previewUrlForReview,

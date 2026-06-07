@@ -53,11 +53,16 @@ describe("buildImplementationIntegrationBoardSection", () => {
       },
       integratedPipelineLines: [],
       previewScope: scope,
-      previewRuntime: readyRuntime,
+      previewRuntime: {
+        ...readyRuntime,
+        sourceIntegrationBranch: "integration/p1-20260603-1200",
+      },
     });
-    expect(vm.previewRuntimeReady).toBe(true);
+    expect(vm.previewRuntimeReady).toBe(false);
+    expect(vm.codeTaskPreviewReady).toBe(true);
     expect(vm.previewUrl).toContain("/preview");
-    expect(vm.previewStatusLines).toContain("Preview 준비 완료");
+    expect(vm.previewStatusLines.length).toBeGreaterThan(0);
+    expect(vm.previewStatusLines).not.toContain("통합 완료");
     expect(vm.summaryLines.some((line) => line.includes("완료된 CodeTask"))).toBe(true);
   });
 
@@ -73,7 +78,10 @@ describe("buildImplementationIntegrationBoardSection", () => {
       },
       integratedPipelineLines: [],
       previewScope: scope,
-      previewRuntime: readyRuntime,
+      previewRuntime: {
+        ...readyRuntime,
+        sourceIntegrationBranch: "integration/p1-20260603-1200",
+      },
       integrationPlan: {
         version: "code_task_integration_plan_v1",
         projectId: "p1",

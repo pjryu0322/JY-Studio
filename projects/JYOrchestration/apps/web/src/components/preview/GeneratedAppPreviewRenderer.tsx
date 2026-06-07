@@ -25,8 +25,13 @@ export function GeneratedAppPreviewRenderer(props: {
     <div className={styles.root} data-testid="generated-app-preview-renderer">
       <header className={styles.appHeader}>
         <div className={styles.appTitle}>{props.projectName?.trim() || "생성 앱 Preview"}</div>
-        <div className={styles.appSubtitle}>완료 CodeTask {includedCount}개 반영</div>
+        <div className={styles.appSubtitle}>
+          진단용 CodeTask Preview · 완료 {includedCount}개 (실제 앱 Preview가 아닙니다)
+        </div>
       </header>
+      <p className={styles.muted} data-testid="codetask-diagnostic-preview-notice">
+        이 화면은 실제 앱 Preview가 아니라 완료된 CodeTask 산출물의 진단용 미리보기입니다.
+      </p>
       {panels.length > 1 ? (
         <nav className={styles.tabRow} aria-label="화면 전환">
           {panels.map((panel) => (

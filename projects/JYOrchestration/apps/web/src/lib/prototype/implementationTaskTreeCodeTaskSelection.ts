@@ -8,6 +8,7 @@ import {
   isMockCodeTaskId,
   remapSelectedCodeTaskIdFromMockToPlan,
 } from "@/lib/prototype/codeTaskCanonicalId";
+import { listVisibleImplementationCodeTaskIds } from "@/lib/prototype/implementationCodeTaskSummary";
 
 /** implementationCodeTaskPlanV1.tasks 문서 순서(트리/기획 순). Quick Run Job SoT. */
 export function sortCodeTaskIdsByImplementationPlanOrder(
@@ -210,14 +211,14 @@ export function resolveCodeTaskTreeSelectAll(input: {
   readonly selectAll: boolean;
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
 }): readonly string[] {
-  return input.selectAll ? listCodeTaskIdsFromPlan(input.codeTaskPlan) : [];
+  return input.selectAll ? listVisibleImplementationCodeTaskIds(input.codeTaskPlan) : [];
 }
 
 export function isCodeTaskTreeFullySelected(input: {
   readonly selectedCodeTaskIds: readonly string[];
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
 }): boolean {
-  const all = listCodeTaskIdsFromPlan(input.codeTaskPlan);
+  const all = listVisibleImplementationCodeTaskIds(input.codeTaskPlan);
   if (!all.length) return false;
   const selected = new Set(
     normalizeSelectedCodeTaskIds({

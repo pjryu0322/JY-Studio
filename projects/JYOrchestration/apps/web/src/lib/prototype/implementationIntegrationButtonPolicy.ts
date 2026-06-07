@@ -1,5 +1,4 @@
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
-import { isImplementationPreviewRuntimeReady } from "@/lib/prototype/implementationPreviewRuntimeV1";
 
 export function shouldShowIntegrationPipelineButton(input: {
   readonly canIntegrate: boolean;
@@ -24,5 +23,13 @@ export function isPreviewRuntimeOpenReady(
 export function isIntegrationPreviewRuntimeReady(
   runtime: ImplementationPreviewRuntimeV1 | null | undefined,
 ): boolean {
-  return isPreviewRuntimeOpenReady(runtime) || isImplementationPreviewRuntimeReady(runtime);
+  if (!isPreviewRuntimeOpenReady(runtime)) return false;
+  if (
+    runtime!.openMode === "scope_summary_fallback" ||
+    runtime!.renderMode === "scope_summary_fallback"
+  ) {
+    return false;
+  }
+  if (!String(runtime!.sourceIntegrationBranch ?? "").trim()) return false;
+  return runtime!.status === "ready";
 }
