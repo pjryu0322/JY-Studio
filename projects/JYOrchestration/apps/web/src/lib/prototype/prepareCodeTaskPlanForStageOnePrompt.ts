@@ -6,6 +6,7 @@ import {
   planHasIntegrationWiringCodeTask,
 } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { repairCodeTaskPlanFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
+import { normalizeProductionCodeTaskPlan } from "@/lib/prototype/implementationCodeTaskPlanNormalizer";
 import type { ImplementationBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import { applyBranchPlanToCodeTaskPlan } from "@/lib/prototype/implementationBranchPlanBuilder";
 import type {
@@ -84,6 +85,9 @@ export function prepareCodeTaskPlanForStageOnePrompt(input: {
     taskList: input.taskList ?? null,
   });
   plan = fileRepair.plan;
+
+  const normalized = normalizeProductionCodeTaskPlan({ plan, nowIso });
+  plan = normalized.plan;
 
   plan = applyBranchPlanToCodeTaskPlan({
     plan,

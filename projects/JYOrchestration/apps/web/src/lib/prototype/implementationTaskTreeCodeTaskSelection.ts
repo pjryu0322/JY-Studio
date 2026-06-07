@@ -4,6 +4,10 @@ import {
   sortCodeTaskIdsByBranchPlan,
 } from "@/lib/prototype/implementationBranchPlanBuilder";
 import { expandProcessTaskIdsToCodeTaskIds } from "@/lib/prototype/codeTaskExecutionQueue";
+import {
+  isMockCodeTaskId,
+  remapSelectedCodeTaskIdFromMockToPlan,
+} from "@/lib/prototype/codeTaskCanonicalId";
 
 /** implementationCodeTaskPlanV1.tasks 문서 순서(트리/기획 순). Quick Run Job SoT. */
 export function sortCodeTaskIdsByImplementationPlanOrder(
@@ -69,6 +73,61 @@ export function resolveCodeTaskIdsForParentTask(input: {
     .filter(Boolean);
 }
 
+export const QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE =
+  "선택된 CodeTask에 테스트용 mock ID가 포함되어 Quick 실행을 시작할 수 없습니다.";
+
+export type PrepareSelectedCodeTaskIdsForQuickRunResult =
+  | Readonly<{
+      readonly status: "ok";
+      readonly selectedCodeTaskIds: readonly string[];
+      readonly repairs: readonly Readonly<{ readonly fromCodeTaskId: string; readonly toCodeTaskId: string }>[];
+    }>
+  | Readonly<{
+      readonly status: "blocked";
+      readonly codeTaskId: string;
+      readonly message: string;
+    }>;
+
+/** Quick Run 시작 전: mock ID repair 또는 차단 (P3-M60). */
+export function prepareSelectedCodeTaskIdsForQuickRun(input: {
+  readonly selectedCodeTaskIds?: readonly string[] | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly legacySelectedTaskIds?: readonly string[] | null;
+}): PrepareSelectedCodeTaskIdsForQuickRunResult {
+  const codeTasks = input.codeTaskPlan?.tasks ?? [];
+  const repairs: Array<{ fromCodeTaskId: string; toCodeTaskId: string }> = [];
+
+  if (input.selectedCodeTaskIds !== undefined && input.selectedCodeTaskIds !== null) {
+    for (const raw of input.selectedCodeTaskIds) {
+      const id = raw.trim();
+      if (!id || !isMockCodeTaskId(id)) continue;
+      const remapped = remapSelectedCodeTaskIdFromMockToPlan({ codeTaskId: id, codeTasks });
+      if (!remapped || isMockCodeTaskId(remapped)) {
+        return {
+          status: "blocked",
+          codeTaskId: id,
+          message: `${QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE}\ncodeTaskId: ${id}\nCodeTask 계획을 다시 생성하거나 normalization을 실행하세요.`,
+        };
+      }
+      if (remapped !== id) {
+        repairs.push({ fromCodeTaskId: id, toCodeTaskId: remapped });
+      }
+    }
+  }
+
+  const selectedCodeTaskIds = normalizeSelectedCodeTaskIds(input);
+  const mockInSelection = selectedCodeTaskIds.find((id) => isMockCodeTaskId(id));
+  if (mockInSelection) {
+    return {
+      status: "blocked",
+      codeTaskId: mockInSelection,
+      message: `${QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE}\ncodeTaskId: ${mockInSelection}\nCodeTask 계획을 다시 생성하거나 normalization을 실행하세요.`,
+    };
+  }
+
+  return { status: "ok", selectedCodeTaskIds, repairs };
+}
+
 export function normalizeSelectedCodeTaskIds(input: {
   readonly selectedCodeTaskIds?: readonly string[] | null;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
@@ -83,6 +142,7 @@ export function normalizeSelectedCodeTaskIds(input: {
   if (input.selectedCodeTaskIds !== undefined && input.selectedCodeTaskIds !== null) {
     const explicit = input.selectedCodeTaskIds
       .map((id) => id.trim())
+      .map((id) => remapSelectedCodeTaskIdFromMockToPlan({ codeTaskId: id, codeTasks: input.codeTaskPlan?.tasks ?? [] }) ?? id)
       .filter((id) => validIds.has(id));
     return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, explicit);
   }

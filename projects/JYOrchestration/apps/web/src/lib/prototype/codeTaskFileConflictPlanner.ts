@@ -1,8 +1,6 @@
-import {
-  filePathPatternsOverlap,
-  pathMatchesAnyPattern,
-  type CodeTaskFileBoundaryV1,
-} from "@/lib/prototype/codeTaskFileBoundary";
+import { filePathPatternsOverlap, pathMatchesAnyPattern } from "@/lib/prototype/codeTaskFileBoundary";
+import { DATA_BRANCH_OWNED_PATTERNS } from "@/lib/prototype/codeTaskDataBoundaryNormalization";
+import { patternIsShellOrGlobalRestricted } from "@/lib/prototype/codeTaskFileOwnershipPolicy";
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import { WORKSPACE_SHELL_OWNED_PATTERNS } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import { boundaryIncludesRouteEntryCandidates } from "@/lib/prototype/codeTaskRouteBoundaryPlanner";
@@ -291,6 +289,28 @@ function isPlannedShellRouteOverlapForExecute(
   return false;
 }
 
+function isExpectedCrossTaskForbiddenOverlapForExecute(
+  issue: CodeTaskFileConflictIssueV1,
+  executing: ImplementationCodeTaskV1,
+  allTasks: readonly ImplementationCodeTaskV1[],
+): boolean {
+  if (issue.reason !== "forbidden_file_violation") return false;
+  const execGroup = branchGroupOf(executing);
+  const peerIds = issue.codeTaskIds.filter((id) => id !== executing.codeTaskId);
+  if (peerIds.length !== 1) return false;
+  const peer = allTasks.find((t) => t.codeTaskId === peerIds[0]);
+  if (!peer) return false;
+  const peerGroup = branchGroupOf(peer);
+  const path = issue.filePath;
+  if (execGroup === "data" && peerGroup === "foundation") {
+    return pathMatchesAnyPattern(path, DATA_BRANCH_OWNED_PATTERNS);
+  }
+  if (execGroup === "foundation" && peerGroup === "data") {
+    return patternIsShellOrGlobalRestricted(path);
+  }
+  return false;
+}
+
 export function blockingIssuesForCodeTaskExecute(input: {
   readonly plan: CodeTaskConflictPlanV1 | null | undefined;
   readonly codeTask: ImplementationCodeTaskV1;
@@ -300,7 +320,8 @@ export function blockingIssuesForCodeTaskExecute(input: {
   return issues.filter(
     (issue) =>
       !isPlannedShellRouteOverlapForExecute(issue, input.codeTask, input.allTasks) &&
-      !isExpectedShellForbiddenOverlapForExecute(issue, input.codeTask),
+      !isExpectedShellForbiddenOverlapForExecute(issue, input.codeTask) &&
+      !isExpectedCrossTaskForbiddenOverlapForExecute(issue, input.codeTask, input.allTasks),
   );
 }
 

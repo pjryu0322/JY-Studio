@@ -14,6 +14,7 @@ import {
 import { repairCodeTaskPlanWithBranchPlan } from "@/lib/prototype/codeTaskPlanRepairService";
 import { prepareCodeTaskPlanForStageOnePrompt } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
 import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
+import { buildSemanticProductionCodeTaskId } from "@/lib/prototype/codeTaskCanonicalId";
 import {
   buildImplementationTaskExecutionHints,
   COMMON_FORBIDDEN_PATHS,
@@ -301,10 +302,6 @@ function blueprintsForTaskType(taskType: ImplementationTaskType): readonly CodeT
   }
 }
 
-function buildCodeTaskId(parentTaskId: string, sequence: number): string {
-  return `CODE-${parentTaskId}-${String(sequence).padStart(3, "0")}`;
-}
-
 function codeTaskRequiredFieldsMissing(input: {
   readonly codeTaskId: string;
   readonly parentTaskId: string;
@@ -363,7 +360,12 @@ function decomposeDeveloperTaskToCodeTasks(input: {
 
   return blueprints.map((blueprint, index) => {
     const sequence = index + 1;
-    const codeTaskId = buildCodeTaskId(task.taskId, sequence);
+    const codeTaskId = buildSemanticProductionCodeTaskId({
+      parentTaskId: task.taskId,
+      sequence,
+      taskType: task.taskType,
+      title: task.title,
+    });
     const candidateFileHints = [
       ...executionHints.candidateDirectories.slice(0, 2).map((dir) => `dir:${dir}`),
       ...executionHints.candidateFiles.slice(0, 3),
@@ -373,7 +375,14 @@ function decomposeDeveloperTaskToCodeTasks(input: {
         ? executionHints.candidateFiles.slice(0, 2)
         : undefined;
     const parentTaskDependencies = index === 0 ? [...(task.dependencies ?? [])] : [];
-    const codeTaskDependencies = index === 0 ? [] : [buildCodeTaskId(task.taskId, index)];
+    const codeTaskDependencies = index === 0 ? [] : [
+      buildSemanticProductionCodeTaskId({
+        parentTaskId: task.taskId,
+        sequence: index,
+        taskType: task.taskType,
+        title: task.title,
+      }),
+    ];
     const dependencies = [...parentTaskDependencies, ...codeTaskDependencies];
     const draft = {
       codeTaskId,

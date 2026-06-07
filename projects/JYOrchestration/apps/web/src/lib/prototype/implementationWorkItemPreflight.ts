@@ -1,4 +1,5 @@
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import { isMockCodeTaskId } from "@/lib/prototype/codeTaskCanonicalId";
 import { isPathAllowedByGlobs } from "@/lib/prototype/targetRepositoryPathGuard";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
@@ -31,6 +32,13 @@ export function runWorkItemPreflight(input: {
   if (!String(workItem.taskId ?? "").trim()) {
     failedReasons.push("taskId 없음");
     requiredFixes.push("taskId를 지정하세요.");
+  }
+  const codeTaskId = String(workItem.codeTaskId ?? "").trim();
+  if (codeTaskId && isMockCodeTaskId(codeTaskId)) {
+    failedReasons.push("production mock CodeTask ID");
+    requiredFixes.push(
+      `구현 CodeTask 계획에 테스트용 mock ID가 포함되어 WorkItem 생성을 중단했습니다.\ncodeTaskId: ${codeTaskId}\n조치: Planning-to-Implementation CodeTask normalization을 먼저 수행하세요.`,
+    );
   }
   if (!String(workItem.id ?? "").trim()) {
     failedReasons.push("workItem id 없음");

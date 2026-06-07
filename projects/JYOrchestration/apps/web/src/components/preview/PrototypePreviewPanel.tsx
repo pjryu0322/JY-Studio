@@ -266,7 +266,11 @@ import {
   updateBoardSelectedCodeTaskIds,
   updateBoardSelectedTaskIds,
 } from "@/lib/prototype/implementationExecutionBoardState";
-import { normalizeSelectedCodeTaskIds } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
+import {
+  normalizeSelectedCodeTaskIds,
+  prepareSelectedCodeTaskIdsForQuickRun,
+  QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE,
+} from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { repairCodeTaskPlanWithBranchPlan } from "@/lib/prototype/codeTaskPlanRepairService";
 import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
@@ -7199,13 +7203,56 @@ export function PrototypePreviewPanel({
     const pid = projectId.trim();
     if (!pid) return { outcome: "blocked", message: "프로젝트 ID가 없습니다." };
     const imp = orchestrationAwareRequirementsStateRef.current;
-    const selectedCodeTaskIds = normalizeSelectedCodeTaskIds({
+    const prep = prepareSelectedCodeTaskIdsForQuickRun({
       codeTaskPlan: imp.implementationCodeTaskPlanV1,
       selectedCodeTaskIds:
         options?.selectedCodeTaskIds ??
         imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
       legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
     });
+    if (prep.status === "blocked") {
+      const toastMessage =
+        prep.message.split("\n")[0]?.trim() ?? QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE;
+      const nowIso = new Date().toISOString();
+      recordQuickRunClientEvent({
+        phase: "quick_run_selected_mock_id_blocked",
+        detail: prep.message,
+        toastMessage,
+        selectedCount: 0,
+      });
+      const blockedEntry = buildImplementationExecutionLogTimelineEntry({
+        action: "quick_run_selected_mock_id_blocked",
+        orchestrationTraceGroup: "implementation_orchestration",
+        fields: { projectId: pid, codeTaskId: prep.codeTaskId },
+        nowIso,
+      });
+      const blockedTimeline = appendPromptTimeline(imp.promptTimeline, blockedEntry);
+      applyPendingFromOrchestrationPatchRef.current({ promptTimeline: blockedTimeline });
+      void persistChatToDb(undefined, { promptTimeline: blockedTimeline }, undefined, { force: true });
+      return { outcome: "blocked", message: toastMessage };
+    }
+    if (prep.repairs.length) {
+      const nowIso = new Date().toISOString();
+      let repairTimeline = imp.promptTimeline;
+      for (const repair of prep.repairs) {
+        repairTimeline = appendPromptTimeline(
+          repairTimeline,
+          buildImplementationExecutionLogTimelineEntry({
+            action: "quick_run_selected_mock_id_repaired",
+            orchestrationTraceGroup: "implementation_orchestration",
+            fields: {
+              projectId: pid,
+              fromCodeTaskId: repair.fromCodeTaskId,
+              toCodeTaskId: repair.toCodeTaskId,
+            },
+            nowIso,
+          }),
+        );
+      }
+      applyPendingFromOrchestrationPatchRef.current({ promptTimeline: repairTimeline });
+      void persistChatToDb(undefined, { promptTimeline: repairTimeline }, undefined, { force: true });
+    }
+    const selectedCodeTaskIds = prep.selectedCodeTaskIds;
     recordQuickRunClientEvent({
       phase: "start_implementation_quick_run",
       detail: selectedCodeTaskIds.length
@@ -7492,6 +7539,7 @@ export function PrototypePreviewPanel({
     projectId,
     recordQuickRunClientEvent,
     applyImplementationOrchestrationResult,
+    applyPendingFromOrchestrationPatchRef,
     enrichCodeTaskRunOrchestrationPatch,
     loadImplementationRuntimeDb,
     persistChatToDb,
