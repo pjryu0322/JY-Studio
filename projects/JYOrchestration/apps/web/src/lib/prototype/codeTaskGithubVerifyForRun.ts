@@ -125,7 +125,7 @@ export async function verifyGithubForCodeTaskRun(input: {
           ? {
               reason: githubOutcome.reason,
               retryable: githubOutcome.retryable,
-              changedFileCount: input.verify.verifiedChangedFiles?.length ?? 0,
+              changedFileCount: candidateFlow.verify.verifiedChangedFiles?.length ?? 0,
             }
           : {}),
       },

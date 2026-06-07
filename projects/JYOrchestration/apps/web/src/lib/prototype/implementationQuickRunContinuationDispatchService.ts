@@ -67,7 +67,7 @@ export async function dispatchQuickRunContinuationOnServer(input: {
     taskList,
     cursorWorkItems: workItems,
     targetRepository: context.targetRepository,
-    baseBranch: String(body.baseBranch ?? context.baseBranch).trim() || context.baseBranch,
+    baseBranch: context.baseBranch,
     allowedPathGlobs: context.allowedPathGlobs,
     codeTaskPromptContextMapV1: parseCodeTaskPromptContextMapV1(state.codeTaskPromptContextMapV1),
     existingTaskCursor: null,
