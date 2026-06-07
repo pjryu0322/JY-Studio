@@ -24,6 +24,7 @@ import type { CodeTaskConflictPlanV1 } from "@/lib/prototype/codeTaskFileConflic
 import {
   blockingIssuesForCodeTaskExecute,
   listIgnoredCrossForbiddenMirrorsForExecute,
+  resolveCodeTaskConflictPlanForExecution,
 } from "@/lib/prototype/codeTaskFileConflictPlanner";
 import {
   evaluateCodeTaskFileBoundaryGateFromTask,
@@ -175,10 +176,23 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     };
   }
 
-  const fileBoundaryBlocking = blockingIssuesForCodeTaskExecute({
-    plan: input.codeTaskConflictPlan,
+  const allTasks = input.codeTaskPlan?.tasks?.length
+    ? input.codeTaskPlan.tasks
+    : [input.codeTask];
+
+  const resolvedConflict = resolveCodeTaskConflictPlanForExecution({
     codeTask: input.codeTask,
-    allTasks: input.codeTaskPlan?.tasks ?? [input.codeTask],
+    codeTaskPlan: input.codeTaskPlan,
+    storedConflictPlan: input.codeTaskConflictPlan,
+  });
+  if (resolvedConflict.repairMeta && typeof console !== "undefined" && console.info) {
+    console.info("[code_task_conflict_plan_repaired_for_execution]", resolvedConflict.repairMeta);
+  }
+
+  const fileBoundaryBlocking = blockingIssuesForCodeTaskExecute({
+    plan: resolvedConflict.conflictPlan,
+    codeTask: input.codeTask,
+    allTasks,
   });
   if (fileBoundaryBlocking.length) {
     const branchGroup = parseCodeTaskBranchPlanV1(input.codeTask.branchPlan)?.branchGroup ?? null;
@@ -203,9 +217,9 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
   }
 
   const ignoredMirrors = listIgnoredCrossForbiddenMirrorsForExecute({
-    plan: input.codeTaskConflictPlan,
+    plan: input.codeTaskConflictPlan ?? resolvedConflict.conflictPlan,
     codeTask: input.codeTask,
-    allTasks: input.codeTaskPlan?.tasks ?? [input.codeTask],
+    allTasks,
   });
   if (ignoredMirrors.length && typeof console !== "undefined" && console.info) {
     for (const diag of ignoredMirrors) {

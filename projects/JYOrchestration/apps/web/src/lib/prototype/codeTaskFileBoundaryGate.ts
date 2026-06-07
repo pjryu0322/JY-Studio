@@ -188,7 +188,7 @@ export function formatCodeTaskFileConflictCrossTaskBlockMessage(
     const taskIds = [...new Set(ownedOverlap.flatMap((i) => i.codeTaskIds))].slice(0, 6);
     return [
       "CodeTask 파일 소유권이 충돌하여 실행을 차단했습니다.",
-      "동일 파일을 여러 CodeTask가 ownedFiles로 소유합니다.",
+      "위반 유형: owned_file_overlap",
       files.length ? `충돌 파일:\n- ${files.join("\n- ")}` : "",
       taskIds.length ? `관련 CodeTask:\n- ${taskIds.join("\n- ")}` : "",
     ]
@@ -210,7 +210,7 @@ export function formatCodeTaskFileConflictCrossTaskBlockMessage(
   if (shellMixedInData) {
     const dataExamples = DATA_BRANCH_OWNED_PATTERNS.slice(0, 4).join("\n- ");
     return [
-      "Data CodeTask 파일 경계에 App Shell 소유 파일이 ownedFiles/allowedFiles로 포함되어 실행을 차단했습니다.",
+      "CodeTask가 소유할 수 없는 App Shell/global 파일을 ownedFiles에 포함하여 실행을 차단했습니다.",
       groupLine,
       files.length ? `위반 파일:\n- ${files.join("\n- ")}` : "",
       "허용되는 data 파일 예:",
@@ -221,10 +221,11 @@ export function formatCodeTaskFileConflictCrossTaskBlockMessage(
       .join("\n");
   }
   return [
-    "CodeTask 파일 경계가 다른 Task와 충돌하여 Cursor 실행을 차단했습니다.",
+    "CodeTask cross-task 파일 경계 검사에서 실행을 차단했습니다.",
+    "위반 유형: cross_task_boundary_conflict",
     groupLine,
     files.length ? `관련 파일:\n- ${files.join("\n- ")}` : "",
-    "조치: dependency·conflict group을 정리하거나 Branch Plan/File Boundary 보정을 실행하세요.",
+    "조치: true owned overlap 또는 own boundary 위반인지 확인하고 Branch Plan/File Boundary 보정을 실행하세요.",
   ]
     .filter(Boolean)
     .join("\n");

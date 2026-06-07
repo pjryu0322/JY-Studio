@@ -16,6 +16,7 @@ import { integrationTaskIsLast } from "@/lib/prototype/stageOnePromptReadiness";
 import {
   buildCodeTaskFileConflictPlan,
   type CodeTaskConflictPlanV1,
+  storedConflictPlanHasStaleForbiddenBlocking,
 } from "@/lib/prototype/codeTaskFileConflictPlanner";
 import type {
   ImplementationCodeTaskPlanV1,
@@ -168,6 +169,19 @@ export function repairCodeTaskPlanWithBranchPlan(input: {
   };
 }
 
+function withRecomputedConflictPlanIfStale(
+  plan: ImplementationCodeTaskPlanV1,
+): ImplementationCodeTaskPlanV1 {
+  if (!storedConflictPlanHasStaleForbiddenBlocking(plan.codeTaskConflictPlanV1)) {
+    return plan;
+  }
+  return {
+    ...plan,
+    codeTaskConflictPlanV1: buildCodeTaskFileConflictPlan(plan.tasks),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function ensureCodeTaskPlanWithFileBoundaries(input: {
   readonly plan: ImplementationCodeTaskPlanV1 | null;
   readonly taskList?: ImplementationTaskListV1 | null;
@@ -184,15 +198,29 @@ export function ensureCodeTaskPlanWithFileBoundaries(input: {
     return dataBranchFileBoundaryNeedsSanitize(parseCodeTaskFileBoundaryV1(t.fileBoundary));
   });
   const needsMockIdRepair = planContainsLegacyMockCodeTaskId(input.plan.tasks);
+  const needsConflictRecompute = storedConflictPlanHasStaleForbiddenBlocking(
+    input.plan.codeTaskConflictPlanV1,
+  );
   if (
     !needsFileRepair &&
     !needsBranch &&
     input.plan.codeTaskConflictPlanV1 &&
     !needsSort &&
     !needsDataSanitize &&
-    !needsMockIdRepair
+    !needsMockIdRepair &&
+    !needsConflictRecompute
   ) {
     return input.plan;
+  }
+  if (
+    !needsFileRepair &&
+    !needsBranch &&
+    !needsSort &&
+    !needsDataSanitize &&
+    !needsMockIdRepair &&
+    needsConflictRecompute
+  ) {
+    return withRecomputedConflictPlanIfStale(input.plan);
   }
   return repairCodeTaskPlanWithBranchPlan({
     plan: input.plan,

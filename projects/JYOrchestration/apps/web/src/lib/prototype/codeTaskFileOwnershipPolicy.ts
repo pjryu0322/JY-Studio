@@ -9,6 +9,8 @@ import {
 } from "@/lib/prototype/codeTaskRouteBoundaryPlanner";
 import { SAMPLE_DATA_OWNED_PATTERNS } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import type { CodeTaskBranchGroupV1 } from "@/lib/prototype/implementationBranchPlan";
+import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
+import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
 function dedupePaths(paths: readonly string[]): readonly string[] {
   const seen = new Set<string>();
@@ -73,8 +75,36 @@ export function listShellGlobalOwnedViolations(input: {
   return dedupePaths([...input.ownedFiles]).filter((p) => patternIsShellOrGlobalRestricted(p));
 }
 
-/** data/foundation (및 integration wiring) owner↔forbidden mirror는 cross-task blocking이 아니다. */
+function branchGroupOfCodeTask(task: ImplementationCodeTaskV1): CodeTaskBranchGroupV1 | null {
+  return parseCodeTaskBranchPlanV1(task.branchPlan)?.branchGroup ?? null;
+}
+
+function isIntegrationWiringCodeTask(task: ImplementationCodeTaskV1): boolean {
+  const group = branchGroupOfCodeTask(task);
+  if (group === "integration") return true;
+  if (task.changeType === "integration") return true;
+  if (task.codeTaskId === "CODE-DEV-INTEGRATION-001-001") return true;
+  return /최종 연결|통합\s*wiring/i.test(task.title.trim());
+}
+
+/** P3-M61/M62: executing task owned ∩ peer forbidden expected mirror. */
 export function isExpectedOwnerForbiddenMirrorOverlap(input: {
+  readonly executingCodeTask: ImplementationCodeTaskV1;
+  readonly peerCodeTask: ImplementationCodeTaskV1;
+  readonly filePath: string;
+  readonly reason?: string | null;
+}): boolean {
+  void input.reason;
+  return isExpectedOwnerForbiddenMirrorOverlapByBranchGroup({
+    executingBranchGroup: branchGroupOfCodeTask(input.executingCodeTask),
+    peerBranchGroup: branchGroupOfCodeTask(input.peerCodeTask),
+    filePath: input.filePath,
+    executingIsIntegrationWiring: isIntegrationWiringCodeTask(input.executingCodeTask),
+    peerIsIntegrationWiring: isIntegrationWiringCodeTask(input.peerCodeTask),
+  });
+}
+
+export function isExpectedOwnerForbiddenMirrorOverlapByBranchGroup(input: {
   readonly executingBranchGroup: CodeTaskBranchGroupV1 | null;
   readonly peerBranchGroup: CodeTaskBranchGroupV1 | null;
   readonly filePath: string;

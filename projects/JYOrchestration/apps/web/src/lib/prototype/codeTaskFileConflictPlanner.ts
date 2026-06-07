@@ -15,13 +15,16 @@ export type CodeTaskFileConflictIssueV1 = Readonly<{
     | "expected_file_overlap"
     | "forbidden_file_violation"
     | "peer_forbidden_owner_mirror"
+    | "peer_forbidden_owner_overlap"
     | "shared_shell_file"
     | "global_style_overlap";
   readonly recommendation:
     | "merge_into_composite_task"
     | "add_dependency"
     | "restrict_file_boundary"
-    | "create_integration_task";
+    | "create_integration_task"
+    | "no_action_expected_boundary_mirror"
+    | "review_boundary_if_unexpected";
 }>;
 
 export type CodeTaskConflictGroupPolicy = "sequential" | "composite" | "integration_only";
@@ -81,18 +84,15 @@ function isPeerForbiddenOwnerMirrorBetweenTasks(
   b: ImplementationCodeTaskV1,
   filePath: string,
 ): boolean {
-  const ga = branchGroupOf(a);
-  const gb = branchGroupOf(b);
-  if (!ga || !gb) return false;
   return (
     isExpectedOwnerForbiddenMirrorOverlap({
-      executingBranchGroup: ga,
-      peerBranchGroup: gb,
+      executingCodeTask: a,
+      peerCodeTask: b,
       filePath,
     }) ||
     isExpectedOwnerForbiddenMirrorOverlap({
-      executingBranchGroup: gb,
-      peerBranchGroup: ga,
+      executingCodeTask: b,
+      peerCodeTask: a,
       filePath,
     })
   );
@@ -155,17 +155,18 @@ export function buildCodeTaskFileConflictPlan(
       }
 
       for (const owned of aOwned) {
-        if (forbiddenPatterns(b).some((fb) => filePathPatternsOverlap(owned, fb))) {
-          const mirror = isPeerForbiddenOwnerMirrorBetweenTasks(a, b, owned);
-          issues.push({
-            issueId: `forbidden:${a.codeTaskId}:${b.codeTaskId}:${owned}`,
-            severity: mirror ? "warning" : "blocking",
-            filePath: owned,
-            codeTaskIds: [a.codeTaskId, b.codeTaskId],
-            reason: mirror ? "peer_forbidden_owner_mirror" : "forbidden_file_violation",
-            recommendation: "restrict_file_boundary",
-          });
-        }
+        if (!forbiddenPatterns(b).some((fb) => filePathPatternsOverlap(owned, fb))) continue;
+        const mirror = isPeerForbiddenOwnerMirrorBetweenTasks(a, b, owned);
+        issues.push({
+          issueId: `forbidden:${a.codeTaskId}:${b.codeTaskId}:${owned}`,
+          severity: "warning",
+          filePath: owned,
+          codeTaskIds: [a.codeTaskId, b.codeTaskId],
+          reason: mirror ? "peer_forbidden_owner_mirror" : "peer_forbidden_owner_overlap",
+          recommendation: mirror
+            ? "no_action_expected_boundary_mirror"
+            : "review_boundary_if_unexpected",
+        });
       }
     }
   }
@@ -319,7 +320,8 @@ function isExpectedOwnerForbiddenMirrorOverlapForIssue(
 ): boolean {
   if (
     issue.reason !== "forbidden_file_violation" &&
-    issue.reason !== "peer_forbidden_owner_mirror"
+    issue.reason !== "peer_forbidden_owner_mirror" &&
+    issue.reason !== "peer_forbidden_owner_overlap"
   ) {
     return false;
   }
@@ -328,12 +330,23 @@ function isExpectedOwnerForbiddenMirrorOverlapForIssue(
   const peer = allTasks.find((t) => t.codeTaskId === peerIds[0]);
   if (!peer) return false;
   return isExpectedOwnerForbiddenMirrorOverlap({
-    executingBranchGroup: branchGroupOf(executing),
-    peerBranchGroup: branchGroupOf(peer),
+    executingCodeTask: executing,
+    peerCodeTask: peer,
     filePath: issue.filePath,
-    executingIsIntegrationWiring: isIntegrationShellPeer(executing),
-    peerIsIntegrationWiring: isIntegrationShellPeer(peer),
+    reason: issue.reason,
   });
+}
+
+export function isExpectedOwnerForbiddenMirrorOverlapForExecuteIssue(input: {
+  readonly issue: CodeTaskFileConflictIssueV1;
+  readonly executingCodeTask: ImplementationCodeTaskV1;
+  readonly allTasks: readonly ImplementationCodeTaskV1[];
+}): boolean {
+  return isExpectedOwnerForbiddenMirrorOverlapForIssue(
+    input.issue,
+    input.executingCodeTask,
+    input.allTasks,
+  );
 }
 
 function isExpectedCrossTaskForbiddenOverlapForExecute(
@@ -359,19 +372,78 @@ export function listIgnoredCrossForbiddenMirrorsForExecute(input: {
   if (!input.plan) return [];
   const out: IgnoredCrossForbiddenMirrorDiagnosticV1[] = [];
   for (const issue of input.plan.issues) {
-    if (issue.reason !== "peer_forbidden_owner_mirror") continue;
     if (!issue.codeTaskIds.includes(input.codeTask.codeTaskId)) continue;
+    const isMirrorWarning =
+      issue.reason === "peer_forbidden_owner_mirror" && issue.severity === "warning";
+    const isStaleBlockingMirror =
+      issue.severity === "blocking" &&
+      isExpectedOwnerForbiddenMirrorOverlapForIssue(issue, input.codeTask, input.allTasks);
+    if (!isMirrorWarning && !isStaleBlockingMirror) continue;
     const peerId =
       issue.codeTaskIds.find((id) => id !== input.codeTask.codeTaskId)?.trim() ?? "";
     out.push({
       executingCodeTaskId: input.codeTask.codeTaskId,
       peerCodeTaskId: peerId,
       filePath: issue.filePath,
-      reason: issue.reason,
+      reason: isStaleBlockingMirror ? "expected_owner_forbidden_mirror" : issue.reason,
     });
   }
-  void input.allTasks;
   return out;
+}
+
+export type CodeTaskConflictPlanExecutionRepairMetaV1 = Readonly<{
+  readonly codeTaskId: string;
+  readonly removedBlockingIssueCount: number;
+  readonly downgradedWarningCount: number;
+  readonly reason: "expected_owner_forbidden_mirror_reclassified";
+}>;
+
+export function storedConflictPlanHasStaleForbiddenBlocking(
+  plan: CodeTaskConflictPlanV1 | null | undefined,
+): boolean {
+  return (
+    plan?.issues.some(
+      (i) => i.severity === "blocking" && i.reason === "forbidden_file_violation",
+    ) ?? false
+  );
+}
+
+export function resolveCodeTaskConflictPlanForExecution(input: {
+  readonly codeTask: ImplementationCodeTaskV1;
+  readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
+  readonly storedConflictPlan?: CodeTaskConflictPlanV1 | null;
+}): Readonly<{
+  readonly conflictPlan: CodeTaskConflictPlanV1 | null;
+  readonly repairMeta: CodeTaskConflictPlanExecutionRepairMetaV1 | null;
+}> {
+  const tasks = input.codeTaskPlan?.tasks?.length
+    ? input.codeTaskPlan.tasks
+    : [input.codeTask];
+  const stored = input.storedConflictPlan ?? input.codeTaskPlan?.codeTaskConflictPlanV1 ?? null;
+  if (!storedConflictPlanHasStaleForbiddenBlocking(stored)) {
+    return {
+      conflictPlan: stored ?? buildCodeTaskFileConflictPlan(tasks),
+      repairMeta: null,
+    };
+  }
+  const staleBlocking = stored!.issues.filter(
+    (i) =>
+      i.severity === "blocking" &&
+      i.reason === "forbidden_file_violation" &&
+      i.codeTaskIds.includes(input.codeTask.codeTaskId),
+  );
+  const fresh = buildCodeTaskFileConflictPlan(tasks);
+  return {
+    conflictPlan: fresh,
+    repairMeta: {
+      codeTaskId: input.codeTask.codeTaskId,
+      removedBlockingIssueCount: staleBlocking.length,
+      downgradedWarningCount: fresh.issues.filter(
+        (i) => i.reason === "peer_forbidden_owner_mirror",
+      ).length,
+      reason: "expected_owner_forbidden_mirror_reclassified",
+    },
+  };
 }
 
 export function blockingIssuesForCodeTaskExecute(input: {
@@ -382,6 +454,7 @@ export function blockingIssuesForCodeTaskExecute(input: {
   const issues = blockingIssuesForCodeTask(input.plan, input.codeTask.codeTaskId);
   return issues.filter(
     (issue) =>
+      issue.reason !== "peer_forbidden_owner_overlap" &&
       !isPlannedShellRouteOverlapForExecute(issue, input.codeTask, input.allTasks) &&
       !isExpectedShellForbiddenOverlapForExecute(issue, input.codeTask) &&
       !isExpectedCrossTaskForbiddenOverlapForExecute(issue, input.codeTask, input.allTasks),

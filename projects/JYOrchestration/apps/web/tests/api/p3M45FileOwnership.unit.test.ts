@@ -262,7 +262,13 @@ describe("P3-M45 file ownership", () => {
       fileBoundary: buildFileBoundaryForRole("integration_wiring", "최종 연결/통합 Wiring"),
     });
     const plan = buildCodeTaskFileConflictPlan([shell, common, integration]);
-    expect(plan.issues.some((i) => i.reason === "forbidden_file_violation")).toBe(true);
+    expect(
+      plan.issues.some(
+        (i) =>
+          i.reason === "peer_forbidden_owner_mirror" ||
+          i.reason === "peer_forbidden_owner_overlap",
+      ),
+    ).toBe(true);
     expect(
       blockingIssuesForCodeTaskExecute({
         plan,
