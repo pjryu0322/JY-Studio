@@ -1,11 +1,12 @@
-import { parseCodeTaskFileBoundaryV1, pathMatchesAnyPattern } from "@/lib/prototype/codeTaskFileBoundary";
-import { SHELL_GLOBAL_RESTRICTED_PATTERNS } from "@/lib/prototype/codeTaskFileOwnershipPolicy";
+import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { DATA_BRANCH_OWNED_PATTERNS } from "@/lib/prototype/codeTaskDataBoundaryNormalization";
 import type { CodeTaskFileConflictIssueV1 } from "@/lib/prototype/codeTaskFileConflictPlanner";
 import {
   branchGroupLabelKo,
   findOwnedForbiddenInternalOverlaps,
+  isDataBranchOwnedPattern,
   listShellGlobalOwnedViolations,
+  patternIsShellOrGlobalRestricted,
 } from "@/lib/prototype/codeTaskFileOwnershipPolicy";
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
@@ -45,6 +46,7 @@ export function evaluateCodeTaskFileBoundaryForExecution(input: {
   void input.conflictGroupId;
 
   const overlapFiles = findOwnedForbiddenInternalOverlaps({
+    branchGroup: input.branchGroup,
     ownedFiles: input.ownedFiles,
     allowedFiles: input.allowedFiles,
     forbiddenFiles: input.forbiddenFiles,
@@ -63,7 +65,6 @@ export function evaluateCodeTaskFileBoundaryForExecution(input: {
   const shellViolations = listShellGlobalOwnedViolations({
     branchGroup: input.branchGroup,
     ownedFiles: input.ownedFiles,
-    allowedFiles: input.allowedFiles,
   });
   if (shellViolations.length) {
     return {
@@ -145,16 +146,19 @@ export function formatCodeTaskFileBoundaryExecutionBlockMessage(
     }
     case "shell_global_files_owned_by_non_owner_group": {
       const group = result.branchGroup ? branchGroupLabelKo(result.branchGroup) : "unknown";
-      const files = result.violationFiles.slice(0, 8).join("\n- ");
+      const shellOnlyViolations = result.violationFiles.filter((f) =>
+        patternIsShellOrGlobalRestricted(f),
+      );
+      const files = shellOnlyViolations.slice(0, 8).join("\n- ");
       if (result.branchGroup === "data") {
         const dataExamples = DATA_BRANCH_OWNED_PATTERNS.slice(0, 4).join("\n- ");
         return [
-          "Data CodeTask 파일 경계에 App Shell 소유 파일이 포함되어 실행을 차단했습니다.",
+          "Data CodeTask 파일 경계에 App Shell 소유 파일이 ownedFiles/allowedFiles로 포함되어 실행을 차단했습니다.",
           `branch group: ${group}`,
           files ? `위반 파일:\n- ${files}` : "",
           "허용되는 data 파일 예:",
           dataExamples ? `- ${dataExamples}` : "",
-          "조치: Branch Plan/File Boundary 보정을 실행하여 App Shell 파일은 forbiddenFiles로 이동하고 data 파일만 ownedFiles에 남기세요.",
+          "조치: data CodeTask ownedFiles에는 src/data/** 계열만 남기세요. App Shell 파일은 forbiddenFiles에만 두세요.",
         ]
           .filter(Boolean)
           .join("\n");
@@ -178,20 +182,40 @@ export function formatCodeTaskFileConflictCrossTaskBlockMessage(
   issues: readonly CodeTaskFileConflictIssueV1[],
   executingBranchGroup: CodeTaskBranchGroupV1 | null,
 ): string {
-  const files = [...new Set(issues.map((i) => i.filePath))].slice(0, 8);
+  const ownedOverlap = issues.filter((i) => i.reason === "owned_file_overlap" || i.reason === "shared_shell_file");
+  if (ownedOverlap.length) {
+    const files = [...new Set(ownedOverlap.map((i) => i.filePath))].slice(0, 8);
+    const taskIds = [...new Set(ownedOverlap.flatMap((i) => i.codeTaskIds))].slice(0, 6);
+    return [
+      "CodeTask 파일 소유권이 충돌하여 실행을 차단했습니다.",
+      "동일 파일을 여러 CodeTask가 ownedFiles로 소유합니다.",
+      files.length ? `충돌 파일:\n- ${files.join("\n- ")}` : "",
+      taskIds.length ? `관련 CodeTask:\n- ${taskIds.join("\n- ")}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  const files = [
+    ...new Set(
+      issues
+        .map((i) => i.filePath)
+        .filter((f) => !(executingBranchGroup === "data" && isDataBranchOwnedPattern(f))),
+    ),
+  ].slice(0, 8);
   const groupLine = executingBranchGroup ? `branch group: ${executingBranchGroup}` : "";
   const shellMixedInData =
     executingBranchGroup === "data" &&
-    files.some((f) => pathMatchesAnyPattern(f, SHELL_GLOBAL_RESTRICTED_PATTERNS));
+    files.some((f) => patternIsShellOrGlobalRestricted(f));
   if (shellMixedInData) {
     const dataExamples = DATA_BRANCH_OWNED_PATTERNS.slice(0, 4).join("\n- ");
     return [
-      "Data CodeTask 파일 경계에 App Shell 소유 파일이 포함되어 실행을 차단했습니다.",
+      "Data CodeTask 파일 경계에 App Shell 소유 파일이 ownedFiles/allowedFiles로 포함되어 실행을 차단했습니다.",
       groupLine,
       files.length ? `위반 파일:\n- ${files.join("\n- ")}` : "",
       "허용되는 data 파일 예:",
       dataExamples ? `- ${dataExamples}` : "",
-      "조치: Branch Plan/File Boundary 보정을 실행하여 App Shell 파일은 forbiddenFiles로 이동하고 data 파일만 ownedFiles에 남기세요.",
+      "조치: data CodeTask ownedFiles에는 src/data/** 계열만 남기세요.",
     ]
       .filter(Boolean)
       .join("\n");

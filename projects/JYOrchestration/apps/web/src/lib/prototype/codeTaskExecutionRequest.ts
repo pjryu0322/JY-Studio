@@ -23,6 +23,7 @@ import type {
 import type { CodeTaskConflictPlanV1 } from "@/lib/prototype/codeTaskFileConflictPlanner";
 import {
   blockingIssuesForCodeTaskExecute,
+  listIgnoredCrossForbiddenMirrorsForExecute,
 } from "@/lib/prototype/codeTaskFileConflictPlanner";
 import {
   evaluateCodeTaskFileBoundaryGateFromTask,
@@ -199,6 +200,17 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
       errors: ["file_boundary_conflict"],
       warnings: [],
     };
+  }
+
+  const ignoredMirrors = listIgnoredCrossForbiddenMirrorsForExecute({
+    plan: input.codeTaskConflictPlan,
+    codeTask: input.codeTask,
+    allTasks: input.codeTaskPlan?.tasks ?? [input.codeTask],
+  });
+  if (ignoredMirrors.length && typeof console !== "undefined" && console.info) {
+    for (const diag of ignoredMirrors) {
+      console.info("[code_task_cross_forbidden_mirror_ignored]", diag);
+    }
   }
 
   const promptResult = resolveDeveloperPromptForCodeTask({

@@ -7,6 +7,7 @@ import {
   FOUNDATION_ROUTE_APP_ENTRY_CANDIDATES,
   INTEGRATION_ROUTE_WIRING_CANDIDATES,
 } from "@/lib/prototype/codeTaskRouteBoundaryPlanner";
+import { SAMPLE_DATA_OWNED_PATTERNS } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import type { CodeTaskBranchGroupV1 } from "@/lib/prototype/implementationBranchPlan";
 
 function dedupePaths(paths: readonly string[]): readonly string[] {
@@ -20,6 +21,16 @@ function dedupePaths(paths: readonly string[]): readonly string[] {
   }
   return out;
 }
+
+const DATA_BRANCH_OWNED_PATTERN_LIST = dedupePaths([
+  ...SAMPLE_DATA_OWNED_PATTERNS,
+  "src/data/**",
+  "src/data/samples/**",
+  "src/data/mock/**",
+  "src/fixtures/**",
+  "public/sample-data/**",
+  "public/mock-data/**",
+]) as readonly string[];
 
 export const FOUNDATION_OWNED_FILE_PATTERNS = dedupePaths([
   ...FOUNDATION_ROUTE_APP_ENTRY_CANDIDATES,
@@ -43,17 +54,58 @@ export function patternIsShellOrGlobalRestricted(pattern: string): boolean {
   return pathMatchesAnyPattern(pattern, SHELL_GLOBAL_RESTRICTED_PATTERNS);
 }
 
+export function isDataBranchOwnedPattern(pattern: string): boolean {
+  return pathMatchesAnyPattern(pattern, DATA_BRANCH_OWNED_PATTERN_LIST);
+}
+
 export function listShellGlobalOwnedViolations(input: {
   readonly branchGroup: CodeTaskBranchGroupV1;
   readonly ownedFiles: readonly string[];
-  readonly allowedFiles: readonly string[];
+  readonly allowedFiles?: readonly string[];
 }): readonly string[] {
+  if (input.branchGroup === "data") {
+    return dedupePaths([...input.ownedFiles]).filter((p) => patternIsShellOrGlobalRestricted(p));
+  }
+  if (input.branchGroup === "foundation" || input.branchGroup === "integration") {
+    return dedupePaths([...input.ownedFiles]).filter((p) => isDataBranchOwnedPattern(p));
+  }
   if (canOwnShellGlobalFiles(input.branchGroup)) return [];
-  const candidates = dedupePaths([...input.ownedFiles, ...input.allowedFiles]);
-  return candidates.filter((p) => patternIsShellOrGlobalRestricted(p));
+  return dedupePaths([...input.ownedFiles]).filter((p) => patternIsShellOrGlobalRestricted(p));
+}
+
+/** data/foundation (및 integration wiring) owner↔forbidden mirror는 cross-task blocking이 아니다. */
+export function isExpectedOwnerForbiddenMirrorOverlap(input: {
+  readonly executingBranchGroup: CodeTaskBranchGroupV1 | null;
+  readonly peerBranchGroup: CodeTaskBranchGroupV1 | null;
+  readonly filePath: string;
+  readonly peerIsIntegrationWiring?: boolean;
+  readonly executingIsIntegrationWiring?: boolean;
+}): boolean {
+  const execGroup = input.executingBranchGroup;
+  const peerGroup = input.peerBranchGroup;
+  const path = String(input.filePath ?? "").trim();
+  if (!execGroup || !peerGroup || !path) return false;
+
+  if (execGroup === "data" && peerGroup === "foundation") {
+    return (
+      isDataBranchOwnedPattern(path) ||
+      patternIsShellOrGlobalRestricted(path)
+    );
+  }
+  if (execGroup === "foundation" && peerGroup === "data") {
+    return (
+      isDataBranchOwnedPattern(path) ||
+      patternIsShellOrGlobalRestricted(path)
+    );
+  }
+  if (input.executingIsIntegrationWiring && patternIsShellOrGlobalRestricted(path)) {
+    return peerGroup !== "integration";
+  }
+  return false;
 }
 
 export function findOwnedForbiddenInternalOverlaps(input: {
+  readonly branchGroup?: CodeTaskBranchGroupV1 | null;
   readonly ownedFiles: readonly string[];
   readonly allowedFiles: readonly string[];
   readonly forbiddenFiles: readonly string[];
@@ -73,7 +125,24 @@ export function findOwnedForbiddenInternalOverlaps(input: {
   for (const a of allowSide) {
     for (const f of forbidSide) {
       if (!filePathPatternsOverlap(a, f)) continue;
-      hits.push(a.includes("*") ? a : f.includes("*") ? f : a);
+      const hit = a.includes("*") ? a : f.includes("*") ? f : a;
+      if (
+        input.branchGroup === "data" &&
+        isDataBranchOwnedPattern(hit) &&
+        patternIsShellOrGlobalRestricted(f) &&
+        !patternIsShellOrGlobalRestricted(a)
+      ) {
+        continue;
+      }
+      if (
+        input.branchGroup === "data" &&
+        patternIsShellOrGlobalRestricted(a) &&
+        patternIsShellOrGlobalRestricted(f) &&
+        filePathPatternsOverlap(a, f)
+      ) {
+        continue;
+      }
+      hits.push(hit);
     }
   }
   return dedupePaths(hits);
