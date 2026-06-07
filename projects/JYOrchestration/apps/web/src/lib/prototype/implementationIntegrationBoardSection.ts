@@ -37,6 +37,18 @@ export type ImplementationIntegrationBoardSectionVm = Readonly<{
   readonly canMergeIntegrationPullRequest: boolean;
 }>;
 
+function dedupeScopeDetailLines(lines: readonly string[]): readonly string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of lines) {
+    const key = line.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(line);
+  }
+  return out;
+}
+
 export function buildImplementationIntegrationBoardSection(input: {
   readonly projectId?: string | null;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
@@ -115,12 +127,12 @@ export function buildImplementationIntegrationBoardSection(input: {
         codeTaskId: row.codeTaskId,
         label: `${row.title}: ${row.status.trim() || row.reason}`,
       })) ?? [],
-    scopeDetailLines: [
+    scopeDetailLines: dedupeScopeDetailLines([
       ...(previewReadiness.codeTaskScopeTitleLine ? [previewReadiness.codeTaskScopeTitleLine] : []),
       ...buildIntegrationScopeDetailLines(scope),
       ...previewReadiness.integratedAppGateLines,
       ...(previewReadiness.conclusionLine ? [previewReadiness.conclusionLine] : []),
-    ],
+    ]),
     previewRuntimeReady,
     previewUrl,
     previewStatusLines,

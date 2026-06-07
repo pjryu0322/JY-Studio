@@ -1249,8 +1249,8 @@ export function ImplementationExecutionBoardPanel({
             integratedAppPreviewTarget.hint !== integrationSection.preIntegrationPreviewLine ? (
               <div className={styles.taskTreeChildLine}>{integratedAppPreviewTarget.hint}</div>
             ) : null}
-            {integrationSection.scopeDetailLines.map((line) => (
-              <div key={`scope-${line}`} className={styles.taskTreeChildLine}>
+            {integrationSection.scopeDetailLines.map((line, index) => (
+              <div key={`scope-${index}-${line}`} className={styles.taskTreeChildLine}>
                 {line}
               </div>
             ))}
