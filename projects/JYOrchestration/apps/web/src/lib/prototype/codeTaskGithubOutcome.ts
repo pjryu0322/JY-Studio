@@ -4,6 +4,9 @@ import type { TaskCursorGithubVerifyResult } from "@/lib/prototype/taskCursorGit
 export type CodeTaskGithubOutcomeFailureReason =
   | "github_branch_missing"
   | "github_head_commit_missing"
+  | "github_base_head_missing"
+  | "github_no_new_commit"
+  | "github_compare_failed"
   | "github_verify_timeout"
   | "github_api_error"
   | "github_verify_state_sync_failed";
@@ -22,6 +25,10 @@ export type CodeTaskGithubOutcomeV1 =
       readonly source: "github_rest";
       readonly repairedWorkBranch?: boolean;
       readonly previousWorkBranch?: string | null;
+      readonly verifyQuality?: "verified" | "verified_with_empty_file_diff" | "verified_with_compare_warning";
+      readonly headSha?: string;
+      readonly baseHeadSha?: string;
+      readonly legacyBranchUsed?: boolean;
     }>
   | Readonly<{
       readonly status: "failed";
@@ -58,6 +65,15 @@ export function parseCodeTaskGithubOutcomeV1(raw: unknown): CodeTaskGithubOutcom
       ...(o.previousWorkBranch !== undefined
         ? { previousWorkBranch: String(o.previousWorkBranch ?? "").trim() || null }
         : {}),
+      ...(o.verifyQuality === "verified_with_empty_file_diff" ||
+      o.verifyQuality === "verified_with_compare_warning"
+        ? { verifyQuality: o.verifyQuality as "verified_with_empty_file_diff" | "verified_with_compare_warning" }
+        : {}),
+      ...(typeof o.headSha === "string" && o.headSha.trim() ? { headSha: o.headSha.trim() } : {}),
+      ...(typeof o.baseHeadSha === "string" && o.baseHeadSha.trim()
+        ? { baseHeadSha: o.baseHeadSha.trim() }
+        : {}),
+      ...(o.legacyBranchUsed === true ? { legacyBranchUsed: true } : {}),
     };
   }
   if (status === "failed") {
@@ -121,6 +137,10 @@ export function buildVerifiedCodeTaskGithubOutcome(input: {
   readonly commitSha: string;
   readonly repairedWorkBranch?: boolean;
   readonly previousWorkBranch?: string | null;
+  readonly verifyQuality?: "verified" | "verified_with_empty_file_diff" | "verified_with_compare_warning";
+  readonly headSha?: string;
+  readonly baseHeadSha?: string;
+  readonly legacyBranchUsed?: boolean;
 }): CodeTaskGithubOutcomeV1 {
   return {
     status: "verified",
@@ -132,6 +152,12 @@ export function buildVerifiedCodeTaskGithubOutcome(input: {
     ...(input.previousWorkBranch !== undefined
       ? { previousWorkBranch: input.previousWorkBranch }
       : {}),
+    ...(input.verifyQuality && input.verifyQuality !== "verified"
+      ? { verifyQuality: input.verifyQuality }
+      : {}),
+    ...(input.headSha?.trim() ? { headSha: input.headSha.trim() } : {}),
+    ...(input.baseHeadSha?.trim() ? { baseHeadSha: input.baseHeadSha.trim() } : {}),
+    ...(input.legacyBranchUsed ? { legacyBranchUsed: true } : {}),
   };
 }
 
@@ -166,6 +192,8 @@ export function buildPendingCodeTaskGithubOutcome(input: {
 export function mapVerifyResultToGithubOutcomeFailureReason(
   verify: Pick<TaskCursorGithubVerifyResult, "ok" | "uiReason" | "allBranchesMissing" | "detailReason" | "reason">,
 ): CodeTaskGithubOutcomeFailureReason {
+  if (verify.detailReason === "no_new_commit") return "github_no_new_commit";
+  if (verify.detailReason === "base_head_missing") return "github_base_head_missing";
   if (verify.allBranchesMissing || verify.uiReason === "github_branch_missing") {
     return "github_branch_missing";
   }
@@ -202,12 +230,19 @@ export function buildGithubOutcomeFromVerifyResult(input: {
       ...(repaired
         ? { repairedWorkBranch: true, previousWorkBranch: previous || null }
         : {}),
+      ...(input.verify.verifyQuality && input.verify.verifyQuality !== "verified"
+        ? { verifyQuality: input.verify.verifyQuality }
+        : {}),
+      ...(input.verify.headSha ? { headSha: input.verify.headSha } : {}),
+      ...(input.verify.baseHeadSha ? { baseHeadSha: input.verify.baseHeadSha } : {}),
+      ...(input.verify.legacyBranchUsed ? { legacyBranchUsed: true } : {}),
     });
   }
   const reason = mapVerifyResultToGithubOutcomeFailureReason(input.verify);
   const retryable =
     reason === "github_branch_missing" ||
     reason === "github_head_commit_missing" ||
+    reason === "github_base_head_missing" ||
     reason === "github_verify_timeout" ||
     reason === "github_verify_state_sync_failed" ||
     reason === "github_api_error";

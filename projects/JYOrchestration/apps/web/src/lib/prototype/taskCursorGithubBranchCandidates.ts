@@ -58,8 +58,34 @@ export function branchMatchesCodeTaskIdentity(input: {
   return false;
 }
 
+export type TaskCursorGithubBranchSource =
+  | "branch_plan"
+  | "run"
+  | "request"
+  | "legacy_fallback";
+
+export function resolveBranchSourceForCandidate(input: {
+  readonly branch: string;
+  readonly branchPlanWorkBranch?: string | null;
+  readonly runWorkBranch?: string | null;
+  readonly executionWorkBranch?: string | null;
+  readonly promptWorkBranch?: string | null;
+  readonly codeTaskId?: string | null;
+}): TaskCursorGithubBranchSource {
+  const b = String(input.branch ?? "").trim();
+  const plan = String(input.branchPlanWorkBranch ?? "").trim();
+  if (plan && b === plan) return "branch_plan";
+  const run = String(input.runWorkBranch ?? "").trim();
+  if (run && b === run) return "run";
+  const exec = String(input.executionWorkBranch ?? "").trim();
+  const prompt = String(input.promptWorkBranch ?? "").trim();
+  if ((exec && b === exec) || (prompt && b === prompt)) return "request";
+  return "legacy_fallback";
+}
+
 export function buildTaskCursorGithubBranchCandidates(input: {
   readonly codeTaskId?: string | null;
+  readonly branchPlanWorkBranch?: string | null;
   readonly executionWorkBranch?: string | null;
   readonly runWorkBranch?: string | null;
   readonly promptWorkBranch?: string | null;
@@ -74,15 +100,16 @@ export function buildTaskCursorGithubBranchCandidates(input: {
     ordered.push(b);
   };
 
+  push(input.branchPlanWorkBranch);
   push(input.runWorkBranch);
   push(input.executionWorkBranch);
   push(input.promptWorkBranch);
 
   const codeTaskId = String(input.codeTaskId ?? "").trim();
   if (codeTaskId) {
-    push(resolveCodeTaskWorkBranchForPlan(codeTaskId, null));
     const slug = slugifyCodeTaskId(codeTaskId);
     push(wipBranchFromSlug(slug));
+    push(resolveCodeTaskWorkBranchForPlan(codeTaskId, null));
     for (const alias of buildSampleDataMockBranchAliases(slug)) {
       push(alias);
     }

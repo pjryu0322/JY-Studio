@@ -17,14 +17,17 @@ describe("P3-M38 repair GitHub verify sync", () => {
       expect(candidates.some((b) => b.includes("code-dev-mock-001-001"))).toBe(true);
     });
 
-    it("prefers run.workBranch and dedupes", () => {
+    it("prefers branchPlan.workBranch then run.workBranch", () => {
       const primary = "wip/cursor/code-dev-mock-001-001";
+      const planBranch = "wip/foundation/app-shell";
       const candidates = buildTaskCursorGithubBranchCandidates({
         codeTaskId: "CODE-DEV-SAMPLE-DATA-001-001",
+        branchPlanWorkBranch: planBranch,
         runWorkBranch: primary,
         executionWorkBranch: primary,
       });
-      expect(candidates[0]).toBe(primary);
+      expect(candidates[0]).toBe(planBranch);
+      expect(candidates[1]).toBe(primary);
       expect(new Set(candidates).size).toBe(candidates.length);
     });
   });
@@ -34,6 +37,20 @@ describe("P3-M38 repair GitHub verify sync", () => {
       vi.stubGlobal(
         "fetch",
         vi.fn(async (url: string) => {
+          if (url.includes("/git/ref/heads/main")) {
+            return new Response(JSON.stringify({ object: { sha: "base0000000001" } }), { status: 200 });
+          }
+          if (url.includes("/compare/")) {
+            return new Response(
+              JSON.stringify({
+                ahead_by: 1,
+                status: "ahead",
+                files: [{ filename: "src/App.tsx" }],
+                commits: [{ sha: "abc123def4567890" }],
+              }),
+              { status: 200 },
+            );
+          }
           if (url.includes("code-dev-sample-data-001-001")) {
             return new Response(JSON.stringify({ object: { sha: "abc123def4567890" } }), {
               status: 200,
@@ -124,6 +141,20 @@ describe("P3-M38 repair GitHub verify sync", () => {
       vi.stubGlobal(
         "fetch",
         vi.fn(async (url: string) => {
+          if (url.includes("/git/ref/heads/main")) {
+            return new Response(JSON.stringify({ object: { sha: "base0000000001" } }), { status: 200 });
+          }
+          if (url.includes("/compare/")) {
+            return new Response(
+              JSON.stringify({
+                ahead_by: 1,
+                status: "ahead",
+                files: [{ filename: "src/data/sample.json" }],
+                commits: [{ sha: "abc123def4567890" }],
+              }),
+              { status: 200 },
+            );
+          }
           if (url.includes("code-dev-sample-data-001-001")) {
             return new Response(JSON.stringify({ object: { sha: "abc123def4567890" } }), {
               status: 200,

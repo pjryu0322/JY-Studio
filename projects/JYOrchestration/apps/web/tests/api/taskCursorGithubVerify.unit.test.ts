@@ -12,6 +12,20 @@ describe("verifyTaskCursorGithubResult", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
+        if (url.includes("/git/ref/heads/main")) {
+          return new Response(JSON.stringify({ object: { sha: "base0000000001" } }), { status: 200 });
+        }
+        if (url.includes("/compare/")) {
+          return new Response(
+            JSON.stringify({
+              ahead_by: 1,
+              status: "ahead",
+              files: [{ filename: "src/App.tsx" }],
+              commits: [{ sha: "abc123def4567890" }],
+            }),
+            { status: 200 },
+          );
+        }
         if (url.includes("/git/ref/heads/")) {
           return new Response(JSON.stringify({ object: { sha: "abc123def4567890" } }), { status: 200 });
         }
@@ -87,12 +101,31 @@ describe("verifyTaskCursorGithubResult", () => {
     expect(result.verifiedCommitSha).toBe("abc123def4567890");
   });
 
-  it("accepts an older branch commit when HEAD fails task message validation", async () => {
+  it("verifies branch head when HEAD commit message lacks task id but branch is ahead of base", async () => {
     const headSha = "headbad0000000001";
     const goodSha = "goodcommit000001";
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
+        if (url.includes("/git/ref/heads/main")) {
+          return new Response(JSON.stringify({ object: { sha: "base0000000001" } }), { status: 200 });
+        }
+        if (url.includes("/compare/")) {
+          return new Response(
+            JSON.stringify({
+              ahead_by: 1,
+              status: "ahead",
+              files: [{ filename: "src/App.tsx" }],
+              commits: [{ sha: goodSha }],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.includes("code-dev-sample-data-001-001")) {
+          return new Response(JSON.stringify({ object: { sha: "abc123def4567890" } }), {
+            status: 200,
+          });
+        }
         if (url.includes("/git/ref/heads/")) {
           return new Response(JSON.stringify({ object: { sha: headSha } }), { status: 200 });
         }
@@ -149,7 +182,7 @@ describe("verifyTaskCursorGithubResult", () => {
       allowedPathGlobs: ["src/**"],
     });
     expect(result.ok).toBe(true);
-    expect(result.verifiedCommitSha).toBe(goodSha);
+    expect(result.verifiedCommitSha).toBe(headSha);
   });
 
   it("reports missing WIP branch with actionable message", async () => {

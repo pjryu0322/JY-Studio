@@ -150,20 +150,6 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     githubProgressLastCheckAt: nowIso,
     nowIso,
   });
-  const timeline = [
-    buildTaskCursorTimelineEntry({
-      action: "task_cursor_github_verify_requested",
-      projectId,
-      taskId: nextExecution.taskId,
-      status: "github_verifying",
-      targetRepository: nextExecution.targetRepository,
-      baseBranch: nextExecution.baseBranch,
-      workBranch: nextExecution.workBranch,
-      commitSha: nextExecution.commitSha,
-      runId: nextExecution.cursorRunId,
-      nowIso,
-    }),
-  ];
 
   const dbBundlePre = await getImplementationRuntimeBundle(projectId);
   const codeTaskPlanEarly = parseImplementationCodeTaskPlanV1(body.implementationCodeTaskPlanV1);
@@ -172,10 +158,6 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     dbBundlePre.currentRun?.codeTaskId?.trim() ||
     dbBundlePre.job?.currentCodeTaskId?.trim() ||
     "";
-  const dbRunEarly = codeTaskIdEarly
-    ? dbBundlePre.runs.find((r) => r.codeTaskId === codeTaskIdEarly) ?? null
-    : dbBundlePre.currentRun;
-
   const runsFromBody = parseCodeTaskExecutionRunsV1(body.codeTaskExecutionRunsV1) ?? [];
   const mergedRuns = mergeCodeTaskRunsWithDbRuntime({
     jsonRuns: runsFromBody,
@@ -183,6 +165,28 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     codeTaskPlan: codeTaskPlanEarly,
   });
   const runForVerify = codeTaskIdEarly ? findLatestRunForCodeTask(mergedRuns, codeTaskIdEarly) : null;
+  const codeTaskForVerify =
+    codeTaskPlanEarly?.tasks.find((t) => t.codeTaskId === codeTaskIdEarly) ?? null;
+  const branchPlanWorkBranch = String(codeTaskForVerify?.branchPlan?.workBranch ?? "").trim() || null;
+
+  const timeline = [
+    buildTaskCursorTimelineEntry({
+      action: "task_cursor_github_verify_requested",
+      projectId,
+      taskId: nextExecution.taskId,
+      status: "github_verifying",
+      targetRepository: nextExecution.targetRepository,
+      baseBranch: nextExecution.baseBranch,
+      workBranch: branchPlanWorkBranch ?? nextExecution.workBranch,
+      commitSha: nextExecution.commitSha,
+      runId: runForVerify?.runId ?? nextExecution.cursorRunId,
+      nowIso,
+    }),
+  ];
+
+  const dbRunEarly = codeTaskIdEarly
+    ? dbBundlePre.runs.find((r) => r.codeTaskId === codeTaskIdEarly) ?? null
+    : dbBundlePre.currentRun;
 
   let runsAfterOutcome = mergedRuns.length ? mergedRuns : runsFromBody;
   let verify: TaskCursorGithubVerifyResult;
@@ -200,6 +204,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
       githubToken,
       allowedPathGlobs: readiness.allowedPathGlobs,
       codeTaskId: codeTaskIdEarly,
+      branchPlanWorkBranch,
       nowIso,
     });
     timeline.push(...forRun.timeline);
@@ -232,6 +237,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
       githubToken,
       allowedPathGlobs: readiness.allowedPathGlobs,
       codeTaskId: codeTaskIdEarly || null,
+      branchPlanWorkBranch,
       runWorkBranch: runForVerify?.workBranch ?? dbRunEarly?.branchName ?? null,
       nowIso,
     });

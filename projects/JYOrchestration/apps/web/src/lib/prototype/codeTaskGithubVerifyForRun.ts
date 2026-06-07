@@ -41,11 +41,16 @@ export async function verifyGithubForCodeTaskRun(input: {
   readonly githubToken: string;
   readonly allowedPathGlobs: readonly string[];
   readonly codeTaskId: string;
+  readonly branchPlanWorkBranch?: string | null;
   readonly nowIso?: string;
 }): Promise<VerifyGithubForCodeTaskRunResult> {
   const nowIso = input.nowIso ?? new Date().toISOString();
   const previousWorkBranch = String(input.run.workBranch ?? input.execution.workBranch ?? "").trim() || null;
-  const expectedCanonical = resolveCodeTaskWorkBranchForPlan(input.codeTaskId, previousWorkBranch);
+  const branchPlanWorkBranch =
+    String(input.branchPlanWorkBranch ?? "").trim() ||
+    String(previousWorkBranch ?? "").trim() ||
+    null;
+  const expectedCanonical = branchPlanWorkBranch ?? resolveCodeTaskWorkBranchForPlan(input.codeTaskId, previousWorkBranch);
 
   const candidateFlow = await runTaskCursorGithubVerifyCandidateFlow({
     projectId: input.projectId,
@@ -54,8 +59,10 @@ export async function verifyGithubForCodeTaskRun(input: {
     githubToken: input.githubToken,
     allowedPathGlobs: input.allowedPathGlobs,
     codeTaskId: input.codeTaskId,
+    branchPlanWorkBranch,
     runWorkBranch: input.run.workBranch ?? null,
     promptWorkBranch: expectedCanonical,
+    executionRunId: input.run.runId,
     nowIso,
   });
 
@@ -105,6 +112,9 @@ export async function verifyGithubForCodeTaskRun(input: {
           ? {
               workBranch: githubOutcome.workBranch,
               commitSha: githubOutcome.commitSha.slice(0, 12),
+              ...(githubOutcome.headSha ? { headSha: githubOutcome.headSha.slice(0, 12) } : {}),
+              ...(githubOutcome.baseHeadSha ? { baseHeadSha: githubOutcome.baseHeadSha.slice(0, 12) } : {}),
+              ...(githubOutcome.verifyQuality ? { verifyQuality: githubOutcome.verifyQuality } : {}),
               ...(githubOutcome.repairedWorkBranch ? { repairedWorkBranch: true } : {}),
               ...(githubOutcome.previousWorkBranch
                 ? { previousWorkBranch: githubOutcome.previousWorkBranch }
@@ -112,7 +122,11 @@ export async function verifyGithubForCodeTaskRun(input: {
             }
           : {}),
         ...(githubOutcome.status === "failed"
-          ? { reason: githubOutcome.reason, retryable: githubOutcome.retryable }
+          ? {
+              reason: githubOutcome.reason,
+              retryable: githubOutcome.retryable,
+              changedFileCount: input.verify.verifiedChangedFiles?.length ?? 0,
+            }
           : {}),
       },
       nowIso,

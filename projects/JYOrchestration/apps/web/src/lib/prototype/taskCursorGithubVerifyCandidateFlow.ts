@@ -45,8 +45,10 @@ export async function runTaskCursorGithubVerifyCandidateFlow(input: {
   readonly githubToken: string;
   readonly allowedPathGlobs: readonly string[];
   readonly codeTaskId?: string | null;
+  readonly branchPlanWorkBranch?: string | null;
   readonly runWorkBranch?: string | null;
   readonly promptWorkBranch?: string | null;
+  readonly executionRunId?: string | null;
   readonly nowIso?: string;
 }): Promise<
   Readonly<{
@@ -61,6 +63,7 @@ export async function runTaskCursorGithubVerifyCandidateFlow(input: {
   const codeTaskId = String(input.codeTaskId ?? "").trim() || null;
   const candidateBranches = buildTaskCursorGithubBranchCandidates({
     codeTaskId,
+    branchPlanWorkBranch: input.branchPlanWorkBranch,
     executionWorkBranch: input.execution.workBranch,
     runWorkBranch: input.runWorkBranch,
     promptWorkBranch: input.promptWorkBranch,
@@ -97,7 +100,10 @@ export async function runTaskCursorGithubVerifyCandidateFlow(input: {
     githubToken: input.githubToken,
     allowedPathGlobs: input.allowedPathGlobs,
     codeTaskId,
+    branchPlanWorkBranch: input.branchPlanWorkBranch,
     branchCandidates: candidateBranches,
+    runWorkBranch: input.runWorkBranch,
+    promptWorkBranch: input.promptWorkBranch,
   });
 
   const resolvedBranch = String(verify.resolvedBranch ?? "").trim() || null;
@@ -142,7 +148,12 @@ export async function runTaskCursorGithubVerifyCandidateFlow(input: {
         projectId: input.projectId,
         taskId: execution.taskId,
         codeTaskId: codeTaskId ?? undefined,
-        fields: { commitSha: verify.verifiedCommitSha.slice(0, 12) },
+        fields: {
+          commitSha: verify.verifiedCommitSha.slice(0, 12),
+          ...(verify.headSha ? { headSha: verify.headSha.slice(0, 12) } : {}),
+          ...(verify.baseHeadSha ? { baseHeadSha: verify.baseHeadSha.slice(0, 12) } : {}),
+          ...(input.executionRunId ? { runId: input.executionRunId } : {}),
+        },
         nowIso,
       }),
     );

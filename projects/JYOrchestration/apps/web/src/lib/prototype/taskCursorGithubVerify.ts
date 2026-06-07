@@ -1,9 +1,16 @@
 import { githubRestApiBase, resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
+import {
+  fetchGithubBaseBranchHeadSha,
+  fetchGithubBranchCompareSummary,
+  branchHeadDiffIndicatesNewCommit,
+} from "@/lib/prototype/githubBranchHead";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 import {
   branchMatchesCodeTaskIdentity,
   buildTaskCursorGithubBranchCandidates,
+  resolveBranchSourceForCandidate,
+  type TaskCursorGithubBranchSource,
 } from "@/lib/prototype/taskCursorGithubBranchCandidates";
 import {
   defaultForbiddenTargetPathGlobs,
@@ -23,6 +30,8 @@ export type TaskCursorGithubVerifyInput = Readonly<{
   readonly userAgent?: string;
   /** Quick Run CodeTask — branch/commit message 매칭에 사용 (parent taskId와 다를 수 있음) */
   readonly codeTaskId?: string | null;
+  /** P3-M56: Branch Plan canonical work branch */
+  readonly branchPlanWorkBranch?: string | null;
   /** P3-M38: explicit candidates; otherwise built from workBranch + codeTaskId aliases */
   readonly branchCandidates?: readonly string[];
   readonly runWorkBranch?: string | null;
@@ -47,7 +56,14 @@ export type TaskCursorGithubVerifyDetailReason =
   | "commit_not_found"
   | "commit_message_missing_task_id"
   | "changed_files_empty"
-  | "path_guard_failed";
+  | "path_guard_failed"
+  | "no_new_commit"
+  | "base_head_missing";
+
+export type TaskCursorGithubVerifyQuality =
+  | "verified"
+  | "verified_with_empty_file_diff"
+  | "verified_with_compare_warning";
 
 export type TaskCursorGithubVerifyResult = Readonly<{
   readonly ok: boolean;
@@ -64,6 +80,11 @@ export type TaskCursorGithubVerifyResult = Readonly<{
   readonly uiReason?: TaskCursorGithubVerifyUiReason;
   readonly branchRefFound?: boolean;
   readonly allBranchesMissing?: boolean;
+  readonly verifyQuality?: TaskCursorGithubVerifyQuality;
+  readonly headSha?: string;
+  readonly baseHeadSha?: string;
+  readonly branchSource?: TaskCursorGithubBranchSource;
+  readonly legacyBranchUsed?: boolean;
 }>;
 
 /** branch/commit이 아직 push/reflection 안 된 경우 — failed 처리하지 않고 폴링 계속 */
@@ -72,6 +93,7 @@ export function isTransientTaskCursorGithubVerifyMiss(
 ): boolean {
   if (result.ok) return false;
   const detail = result.detailReason;
+  if (detail === "no_new_commit" || detail === "base_head_missing") return false;
   if (detail === "branch_not_found" || detail === "commit_not_found") return true;
   if (detail === "changed_files_empty") return true;
   if (detail === "commit_message_missing_task_id" || detail === "path_guard_failed") return true;
@@ -344,6 +366,7 @@ export async function verifyTaskCursorGithubResult(
       ? [...input.branchCandidates]
       : buildTaskCursorGithubBranchCandidates({
           codeTaskId: input.codeTaskId,
+          branchPlanWorkBranch: input.branchPlanWorkBranch,
           executionWorkBranch: input.execution.workBranch,
           runWorkBranch: input.runWorkBranch,
           promptWorkBranch: input.promptWorkBranch,
@@ -365,19 +388,31 @@ export async function verifyTaskCursorGithubResult(
 
   for (const branch of candidates) {
     const executionForBranch = { ...input.execution, workBranch: branch };
+    const branchSource = resolveBranchSourceForCandidate({
+      branch,
+      branchPlanWorkBranch: input.branchPlanWorkBranch,
+      runWorkBranch: input.runWorkBranch,
+      executionWorkBranch: input.execution.workBranch,
+      promptWorkBranch: input.promptWorkBranch,
+      codeTaskId: input.codeTaskId,
+    });
     const result = await verifyTaskCursorGithubResultOnBranch({
       ...input,
       execution: executionForBranch,
       branch,
+      branchSource,
     });
     if (result.branchRefFound) anyBranchFound = true;
     if (result.ok) {
+      const legacyBranchUsed = branchSource === "legacy_fallback";
       return {
         ...result,
         resolvedBranch: branch,
         candidateBranches: candidates,
         uiReason: "github_head_commit_found",
         verifyPhase: "run_state_syncing",
+        branchSource,
+        ...(legacyBranchUsed ? { legacyBranchUsed: true } : {}),
       };
     }
     if (result.reason === "github_auth_failed") {
@@ -434,7 +469,10 @@ export async function verifyTaskCursorGithubResult(
 }
 
 async function verifyTaskCursorGithubResultOnBranch(
-  input: TaskCursorGithubVerifyInput & { readonly branch: string },
+  input: TaskCursorGithubVerifyInput & {
+    readonly branch: string;
+    readonly branchSource?: TaskCursorGithubBranchSource;
+  },
 ): Promise<TaskCursorGithubVerifyResult & { readonly branchRefFound?: boolean }> {
   const token = input.githubToken.trim();
   const parsed = resolveGithubOwnerRepoStrict(input.targetRepository.gitRepoUrl)!;
@@ -483,6 +521,131 @@ async function verifyTaskCursorGithubResultOnBranch(
   }
 
   const branchHeadSha = String(refRes.data?.object?.sha ?? "").trim();
+  if (!branchHeadSha) {
+    return {
+      ok: false,
+      reason: "commit_not_created",
+      message: TASK_CURSOR_FAILURE_MESSAGES.commit_not_created,
+      branchRefFound: true,
+      uiReason: "github_head_commit_missing",
+      detailReason: "commit_not_found",
+    };
+  }
+
+  const baseBranch = String(input.execution.baseBranch ?? "main").trim() || "main";
+  const baseHeadRes = await fetchGithubBaseBranchHeadSha({
+    gitRepoUrl: input.targetRepository.gitRepoUrl,
+    baseBranch,
+    githubToken: token,
+    userAgent,
+  });
+
+  if (baseHeadRes.ok) {
+    const baseHeadSha = baseHeadRes.sha;
+    if (branchHeadSha === baseHeadSha) {
+      return {
+        ok: false,
+        reason: "commit_not_created",
+        detailReason: "no_new_commit",
+        message:
+          "GitHub commit 확인 실패: work branch가 base branch와 동일한 commit입니다. Cursor가 새 commit을 push하지 않았거나 noCodeChange 근거가 필요합니다.",
+        branchRefFound: true,
+        headSha: branchHeadSha,
+        baseHeadSha,
+        branchSource: input.branchSource,
+      };
+    }
+
+    const compareRes = await fetchGithubBranchCompareSummary({
+      gitRepoUrl: input.targetRepository.gitRepoUrl,
+      baseBranch,
+      headBranch: branch,
+      githubToken: token,
+      userAgent,
+    });
+    const compareSummary = compareRes.ok ? compareRes.summary : null;
+    const hasAdvance = branchHeadDiffIndicatesNewCommit({
+      headSha: branchHeadSha,
+      baseHeadSha,
+      compare: compareSummary,
+    });
+
+    if (hasAdvance) {
+      let changedFiles = compareSummary?.changedFiles ?? [];
+      if (!changedFiles.length) {
+        changedFiles = await listChangedFilesFromBranchCompare({
+          api,
+          owner,
+          repo,
+          baseBranch,
+          branch,
+          githubToken: token,
+          userAgent,
+        });
+      }
+
+      if (changedFiles.length) {
+        const pathValidation = validateTargetRepositoryChangedFiles({
+          changedFiles,
+          targetRepository: input.targetRepository,
+          allowedPathGlobs: input.allowedPathGlobs,
+          forbiddenPathGlobs: defaultForbiddenTargetPathGlobs(),
+        });
+        if (!pathValidation.ok) {
+          return {
+            ok: false,
+            reason: "github_verify_failed",
+            detailReason: "path_guard_failed",
+            message: pathValidation.message,
+            branchRefFound: true,
+            headSha: branchHeadSha,
+            baseHeadSha,
+            branchSource: input.branchSource,
+          };
+        }
+      }
+
+      const verifyQuality: TaskCursorGithubVerifyQuality =
+        changedFiles.length > 0
+          ? "verified"
+          : compareRes.ok
+            ? "verified_with_empty_file_diff"
+            : "verified_with_compare_warning";
+
+      const commitShaForVerify = branchHeadSha;
+
+      return {
+        ok: true,
+        verifiedChangedFiles: changedFiles,
+        verifiedCommitSha: commitShaForVerify,
+        branchRefFound: true,
+        uiReason: "github_branch_found",
+        verifyQuality,
+        headSha: branchHeadSha,
+        baseHeadSha,
+        branchSource: input.branchSource,
+        ...(verifyQuality !== "verified"
+          ? {
+              message:
+                verifyQuality === "verified_with_empty_file_diff"
+                  ? "GitHub commit 확인 완료. branch head commit은 확인됐지만 변경 파일 목록은 비어 있습니다."
+                  : "GitHub commit 확인 완료. compare API가 불완전하지만 branch head가 base보다 앞서 있습니다.",
+            }
+          : {}),
+      };
+    }
+  } else if (baseHeadRes.status === 404) {
+    return {
+      ok: false,
+      reason: "github_verify_failed",
+      detailReason: "base_head_missing",
+      message: `GitHub base branch \`${baseBranch}\` head commit을 찾지 못했습니다.`,
+      branchRefFound: true,
+      headSha: branchHeadSha,
+      branchSource: input.branchSource,
+    };
+  }
+
   const commitSha = hasStoredCommitSha ? commitShaFromExecution : branchHeadSha;
   if (!commitSha) {
     return {
