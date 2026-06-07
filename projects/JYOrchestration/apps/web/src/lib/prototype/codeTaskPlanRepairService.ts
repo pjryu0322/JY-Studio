@@ -1,6 +1,15 @@
+import {
+  dataBranchFileBoundaryNeedsSanitize,
+  sanitizeDataBranchGroupFileBoundary,
+} from "@/lib/prototype/codeTaskDataBoundaryNormalization";
+import {
+  planContainsLegacyMockCodeTaskId,
+  repairLegacyMockCodeTaskIdsInPlan,
+} from "@/lib/prototype/codeTaskCanonicalId";
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import { normalizeCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundaryNormalize";
+import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import { ensureIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { prepareCodeTaskPlanForStageOnePrompt } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
 import { integrationTaskIsLast } from "@/lib/prototype/stageOnePromptReadiness";
@@ -31,7 +40,8 @@ export function repairCodeTaskPlanFileBoundaries(input: {
   readonly plan: ImplementationCodeTaskPlanV1;
   readonly taskList?: ImplementationTaskListV1 | null;
 }): RepairCodeTaskPlanFileBoundariesResult {
-  const tasks: ImplementationCodeTaskV1[] = input.plan.tasks.map((task) => {
+  const mockRepairedTasks = repairLegacyMockCodeTaskIdsInPlan(input.plan.tasks);
+  const tasks: ImplementationCodeTaskV1[] = mockRepairedTasks.map((task) => {
     const normalizedTask = ensureIntegrationWiringCodeTask(task);
     const existing = parseCodeTaskFileBoundaryV1(normalizedTask.fileBoundary) ?? null;
     if (existing) {
@@ -51,6 +61,21 @@ export function repairCodeTaskPlanFileBoundaries(input: {
       ...new Set([...(task.forbiddenPaths ?? []), ...fileBoundary.forbiddenFiles.slice(0, 8)]),
     ];
     return { ...normalizedTask, fileBoundary, forbiddenPaths };
+  }).map((task) => {
+    const branchGroup = parseCodeTaskBranchPlanV1(task.branchPlan)?.branchGroup;
+    if (branchGroup !== "data" || !task.fileBoundary) return task;
+    const boundary = parseCodeTaskFileBoundaryV1(task.fileBoundary);
+    if (!boundary) return task;
+    if (!dataBranchFileBoundaryNeedsSanitize(boundary)) return task;
+    const sanitized = sanitizeDataBranchGroupFileBoundary(boundary);
+    if (sanitized.blocked) return task;
+    return {
+      ...task,
+      fileBoundary: sanitized.boundary,
+      forbiddenPaths: [
+        ...new Set([...(task.forbiddenPaths ?? []), ...sanitized.boundary.forbiddenFiles.slice(0, 12)]),
+      ],
+    };
   });
 
   let patchedTasks = [...tasks];
@@ -154,7 +179,19 @@ export function ensureCodeTaskPlanWithFileBoundaries(input: {
   const needsSort =
     input.plan.tasks.length > 1 &&
     !integrationTaskIsLast(input.plan);
-  if (!needsFileRepair && !needsBranch && input.plan.codeTaskConflictPlanV1 && !needsSort) {
+  const needsDataSanitize = input.plan.tasks.some((t) => {
+    if (parseCodeTaskBranchPlanV1(t.branchPlan)?.branchGroup !== "data") return false;
+    return dataBranchFileBoundaryNeedsSanitize(parseCodeTaskFileBoundaryV1(t.fileBoundary));
+  });
+  const needsMockIdRepair = planContainsLegacyMockCodeTaskId(input.plan.tasks);
+  if (
+    !needsFileRepair &&
+    !needsBranch &&
+    input.plan.codeTaskConflictPlanV1 &&
+    !needsSort &&
+    !needsDataSanitize &&
+    !needsMockIdRepair
+  ) {
     return input.plan;
   }
   return repairCodeTaskPlanWithBranchPlan({

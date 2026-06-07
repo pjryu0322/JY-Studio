@@ -310,6 +310,60 @@ export function buildQuickRunQueuedFallbackDispatchFailedTimelineEntry(input: {
   });
 }
 
+export function buildQuickRunQueuedTargetBlockedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly codeTaskId: string;
+  readonly reason: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: "quick_run_queued_target_blocked",
+    orchestrationTraceGroup: "implementation_orchestration",
+    fields: {
+      projectId: input.projectId,
+      codeTaskId: input.codeTaskId,
+      reason: input.reason,
+      status: "blocked",
+    },
+    nowIso: input.nowIso,
+  });
+}
+
+export function buildQuickRunQueuedTargetCanonicalizedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly fromCodeTaskId: string;
+  readonly toCodeTaskId: string;
+  readonly reason: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: "quick_run_queued_target_canonicalized",
+    orchestrationTraceGroup: "implementation_orchestration",
+    fields: {
+      projectId: input.projectId,
+      fromCodeTaskId: input.fromCodeTaskId,
+      toCodeTaskId: input.toCodeTaskId,
+      reason: input.reason,
+      status: "canonicalized",
+    },
+    nowIso: input.nowIso,
+  });
+}
+
+export function formatQueuedCodeTaskIdBlockedMessage(input: {
+  readonly codeTaskId: string;
+  readonly reason?: string | null;
+}): string {
+  return [
+    "queued run의 CodeTask ID가 현재 계획에 존재하지 않습니다.",
+    `codeTaskId: ${input.codeTaskId}`,
+    input.reason ? `reason: ${input.reason}` : "",
+    "조치: queued run을 canonical CodeTask ID로 repair하거나 해당 run을 폐기하세요.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function buildQuickRunQueuedFallbackTimelineFromServerResult(input: {
   readonly projectId: string;
   readonly serverResult?: import("@/lib/prototype/serverQuickRunContinuationService").ServerQuickRunContinuationResult;

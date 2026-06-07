@@ -30,6 +30,13 @@ import {
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { dispatchQuickRunContinuationOnServer } from "@/lib/prototype/implementationQuickRunContinuationDispatchService";
+import { resolveCanonicalCodeTaskForQueuedRun } from "@/lib/prototype/codeTaskCanonicalId";
+import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
+import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
+import {
+  buildQuickRunQueuedTargetBlockedTimelineEntry,
+  buildQuickRunQueuedTargetCanonicalizedTimelineEntry,
+} from "@/lib/prototype/quickRunVerifiedContinuationTimeline";
 import {
   buildQuickRunQueueExhaustedOrchestrationPatch,
   resolveCompletedCodeTaskId,
@@ -276,14 +283,71 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
     });
   }
 
-  const codeTaskPlan = parseImplementationCodeTaskPlanV1(
+  const codeTaskPlanRaw = parseImplementationCodeTaskPlanV1(
     requirementsState.implementationCodeTaskPlanV1,
   );
   const taskList = parseImplementationTaskListV1(requirementsState.implementationTaskListV1);
+  const codeTaskPlan =
+    ensureCodeTaskPlanWithFileBoundaries({
+      plan: codeTaskPlanRaw,
+      taskList,
+    }) ?? codeTaskPlanRaw;
   const workItems = requirementsState.cursorWorkItemsV1 ?? [];
 
+  const queuedPlanTask =
+    codeTaskPlan?.tasks.find((t) => t.codeTaskId.trim() === run.codeTaskId.trim()) ?? null;
+  const canonicalResolution = resolveCanonicalCodeTaskForQueuedRun({
+    queuedCodeTaskId: run.codeTaskId,
+    codeTasks: codeTaskPlan?.tasks ?? [],
+    currentCodeTaskTitle: queuedPlanTask?.title ?? null,
+    branchGroup: parseCodeTaskBranchPlanV1(queuedPlanTask?.branchPlan)?.branchGroup ?? "data",
+    workBranch: run.branchName ?? queuedPlanTask?.branchPlan?.workBranch ?? null,
+  });
+
+  if (canonicalResolution.status === "blocked_mock_id" || canonicalResolution.status === "not_found") {
+    const blockedEntry = buildQuickRunQueuedTargetBlockedTimelineEntry({
+      projectId: pid,
+      codeTaskId: dispatchCodeTaskId,
+      reason:
+        canonicalResolution.status === "not_found"
+          ? "queued_code_task_id_not_in_current_plan"
+          : canonicalResolution.reason,
+      nowIso,
+    });
+    timelineEntries.push(blockedEntry);
+    const promptTimeline = appendPromptTimeline(latestPromptTimeline, blockedEntry);
+    return {
+      ok: false,
+      outcome: "queue_state_mismatch",
+      reason:
+        canonicalResolution.status === "not_found"
+          ? "queued_code_task_id_not_in_current_plan"
+          : canonicalResolution.reason,
+      nextCodeTaskId: run.codeTaskId,
+      timelineEntries,
+      orchestrationPatch: { promptTimeline },
+    };
+  }
+
+  const dispatchCodeTaskId =
+    canonicalResolution.status === "repaired"
+      ? canonicalResolution.toCodeTaskId
+      : canonicalResolution.codeTask.codeTaskId;
+
+  if (canonicalResolution.status === "repaired") {
+    const canonEntry = buildQuickRunQueuedTargetCanonicalizedTimelineEntry({
+      projectId: pid,
+      fromCodeTaskId: canonicalResolution.fromCodeTaskId,
+      toCodeTaskId: canonicalResolution.toCodeTaskId,
+      reason: canonicalResolution.reason,
+      nowIso,
+    });
+    timelineEntries.push(canonEntry);
+    latestPromptTimeline = appendPromptTimeline(latestPromptTimeline, canonEntry);
+  }
+
   const dispatchTarget = resolveCodeTaskDispatchTarget({
-    codeTaskId: run.codeTaskId,
+    codeTaskId: dispatchCodeTaskId,
     codeTaskPlan,
     taskList,
     cursorWorkItems: workItems,
@@ -323,7 +387,7 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
 
   let runs = ensureJsonRunForQueuedCodeTask({
     projectId: pid,
-    codeTaskId: run.codeTaskId,
+    codeTaskId: dispatchCodeTaskId,
     runs: parseCodeTaskExecutionRunsV1(requirementsState.codeTaskExecutionRunsV1),
     codeTaskPlan,
     taskList,
@@ -348,7 +412,7 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
   const dispatchOutcome = await dispatchQuickRunContinuationOnServer({
     projectId: pid,
     dispatch: {
-      codeTaskId: run.codeTaskId,
+      codeTaskId: dispatchCodeTaskId,
       parentTaskId: dispatchTarget.parentTaskId,
       workItemId: dispatchTarget.workItem.id,
       triggerKey: `db_advance:${run.id}:${nowIso}`,
@@ -364,13 +428,13 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
     return appendSkipped(
       "execute_request_failed",
       dispatchOutcome.message ?? "dispatch_failed",
-      { nextCodeTaskId: run.codeTaskId },
+      { nextCodeTaskId: dispatchCodeTaskId },
     );
   }
 
   const successEntry = buildQuickRunDbQueuedAutoDispatchTimelineEntry({
     projectId: pid,
-    codeTaskId: run.codeTaskId,
+    codeTaskId: dispatchCodeTaskId,
     outcome: "dispatched",
     runState: "cursor_running",
     nowIso,

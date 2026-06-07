@@ -40,6 +40,8 @@ const EXECUTION_LOG_ACTION_LABELS: Record<string, string> = {
   quick_run_queued_fallback_dispatch_dispatched: "queued fallback dispatch 완료",
   quick_run_queued_fallback_dispatch_skipped: "queued fallback dispatch 스킵",
   quick_run_queued_fallback_dispatch_failed: "queued fallback dispatch 실패",
+  quick_run_queued_target_canonicalized: "queued run CodeTask ID 정규화",
+  quick_run_queued_target_blocked: "queued run CodeTask ID 차단",
   implementation_quick_run_blocked: "자동실행 중단",
   implementation_quick_run_preview_ready: "Preview 준비 완료",
   implementation_auto_quality_gate_requested: "검수·보안 자동 점검 요청",

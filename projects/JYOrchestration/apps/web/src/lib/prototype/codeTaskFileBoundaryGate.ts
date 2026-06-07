@@ -1,4 +1,6 @@
-import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
+import { parseCodeTaskFileBoundaryV1, pathMatchesAnyPattern } from "@/lib/prototype/codeTaskFileBoundary";
+import { SHELL_GLOBAL_RESTRICTED_PATTERNS } from "@/lib/prototype/codeTaskFileOwnershipPolicy";
+import { DATA_BRANCH_OWNED_PATTERNS } from "@/lib/prototype/codeTaskDataBoundaryNormalization";
 import type { CodeTaskFileConflictIssueV1 } from "@/lib/prototype/codeTaskFileConflictPlanner";
 import {
   branchGroupLabelKo,
@@ -144,6 +146,19 @@ export function formatCodeTaskFileBoundaryExecutionBlockMessage(
     case "shell_global_files_owned_by_non_owner_group": {
       const group = result.branchGroup ? branchGroupLabelKo(result.branchGroup) : "unknown";
       const files = result.violationFiles.slice(0, 8).join("\n- ");
+      if (result.branchGroup === "data") {
+        const dataExamples = DATA_BRANCH_OWNED_PATTERNS.slice(0, 4).join("\n- ");
+        return [
+          "Data CodeTask 파일 경계에 App Shell 소유 파일이 포함되어 실행을 차단했습니다.",
+          `branch group: ${group}`,
+          files ? `위반 파일:\n- ${files}` : "",
+          "허용되는 data 파일 예:",
+          dataExamples ? `- ${dataExamples}` : "",
+          "조치: Branch Plan/File Boundary 보정을 실행하여 App Shell 파일은 forbiddenFiles로 이동하고 data 파일만 ownedFiles에 남기세요.",
+        ]
+          .filter(Boolean)
+          .join("\n");
+      }
       return [
         "CodeTask 파일 경계 위반으로 Cursor 실행을 차단했습니다.",
         `branch group: ${group}`,
@@ -165,6 +180,22 @@ export function formatCodeTaskFileConflictCrossTaskBlockMessage(
 ): string {
   const files = [...new Set(issues.map((i) => i.filePath))].slice(0, 8);
   const groupLine = executingBranchGroup ? `branch group: ${executingBranchGroup}` : "";
+  const shellMixedInData =
+    executingBranchGroup === "data" &&
+    files.some((f) => pathMatchesAnyPattern(f, SHELL_GLOBAL_RESTRICTED_PATTERNS));
+  if (shellMixedInData) {
+    const dataExamples = DATA_BRANCH_OWNED_PATTERNS.slice(0, 4).join("\n- ");
+    return [
+      "Data CodeTask 파일 경계에 App Shell 소유 파일이 포함되어 실행을 차단했습니다.",
+      groupLine,
+      files.length ? `위반 파일:\n- ${files.join("\n- ")}` : "",
+      "허용되는 data 파일 예:",
+      dataExamples ? `- ${dataExamples}` : "",
+      "조치: Branch Plan/File Boundary 보정을 실행하여 App Shell 파일은 forbiddenFiles로 이동하고 data 파일만 ownedFiles에 남기세요.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
   return [
     "CodeTask 파일 경계가 다른 Task와 충돌하여 Cursor 실행을 차단했습니다.",
     groupLine,

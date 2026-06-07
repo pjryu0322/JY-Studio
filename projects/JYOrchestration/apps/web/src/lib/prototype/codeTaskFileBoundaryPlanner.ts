@@ -41,8 +41,13 @@ export const WORKSPACE_SHELL_FORBIDDEN_FOR_OTHERS = [...WORKSPACE_SHELL_OWNED_PA
 
 export const SAMPLE_DATA_OWNED_PATTERNS = [
   "src/data/sample/*",
+  "src/data/samples/*",
+  "src/data/mock/*",
   "src/data/meetingDataProvider.*",
   "src/data/types.*",
+  "src/fixtures/*",
+  "public/sample-data/*",
+  "public/mock-data/*",
 ] as const;
 
 export const COMMON_COMPONENT_OWNED_PATTERNS = [
