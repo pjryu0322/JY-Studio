@@ -1,4 +1,8 @@
-import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import {
+  findLatestRunForCodeTask,
+  parseCodeTaskExecutionRunsV1,
+  type CodeTaskExecutionRunV1,
+} from "@/lib/prototype/codeTaskExecutionRun";
 import {
   INTEGRATION_WIRING_CODE_TASK_ID,
   isIntegrationWiringCodeTask,
@@ -18,7 +22,6 @@ import {
 import { evaluateImplementationIntegrationEligibility } from "@/lib/prototype/implementationIntegrationEligibility";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
-import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import { isPreviewRuntimeOpenReady } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 
