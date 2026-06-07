@@ -189,3 +189,186 @@ export function buildQuickRunContinuationNoopTimelineEntry(input: {
     nowIso: input.nowIso,
   });
 }
+
+export function buildQuickRunContinuationPatchPersistedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly hasNextDispatch: boolean;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: "quick_run_continuation_patch_persisted",
+    orchestrationTraceGroup: "implementation_orchestration",
+    fields: {
+      projectId: input.projectId,
+      hasNextDispatch: input.hasNextDispatch,
+      status: "persisted",
+    },
+    nowIso: input.nowIso,
+  });
+}
+
+export function buildQuickRunSelectedQueueReconciledTimelineEntry(input: {
+  readonly projectId: string;
+  readonly dbSelectedCount: number;
+  readonly runtimeSelectedCount: number;
+  readonly resolvedSelectedCount: number;
+  readonly source: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: "quick_run_selected_queue_reconciled",
+    orchestrationTraceGroup: "implementation_orchestration",
+    fields: {
+      projectId: input.projectId,
+      dbSelectedCount: input.dbSelectedCount,
+      runtimeSelectedCount: input.runtimeSelectedCount,
+      resolvedSelectedCount: input.resolvedSelectedCount,
+      source: input.source,
+    },
+    nowIso: input.nowIso,
+  });
+}
+
+export function buildQuickRunQueuedFallbackDispatchRequestedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly previousCodeTaskId?: string | null;
+  readonly previousCommitSha?: string | null;
+  readonly reason: string;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: "quick_run_queued_fallback_dispatch_requested",
+    orchestrationTraceGroup: "implementation_orchestration",
+    fields: {
+      projectId: input.projectId,
+      reason: input.reason,
+      ...(input.previousCodeTaskId ? { previousCodeTaskId: input.previousCodeTaskId } : {}),
+      ...(input.previousCommitSha
+        ? { previousCommitSha: input.previousCommitSha.slice(0, 12) }
+        : {}),
+    },
+    nowIso: input.nowIso,
+  });
+}
+
+export function buildQuickRunQueuedFallbackDispatchDispatchedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly codeTaskId: string;
+  readonly reason?: string | null;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: "quick_run_queued_fallback_dispatch_dispatched",
+    orchestrationTraceGroup: "implementation_orchestration",
+    fields: {
+      projectId: input.projectId,
+      codeTaskId: input.codeTaskId,
+      status: "dispatched",
+      ...(input.reason ? { reason: input.reason } : {}),
+    },
+    nowIso: input.nowIso,
+  });
+}
+
+export function buildQuickRunQueuedFallbackDispatchSkippedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly reason: string;
+  readonly codeTaskId?: string | null;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: "quick_run_queued_fallback_dispatch_skipped",
+    orchestrationTraceGroup: "implementation_orchestration",
+    fields: {
+      projectId: input.projectId,
+      reason: input.reason,
+      status: "skipped",
+      ...(input.codeTaskId ? { codeTaskId: input.codeTaskId } : {}),
+    },
+    nowIso: input.nowIso,
+  });
+}
+
+export function buildQuickRunQueuedFallbackDispatchFailedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly reason: string;
+  readonly errorMessage?: string | null;
+  readonly codeTaskId?: string | null;
+  readonly nowIso?: string;
+}): RequirementsPromptTimelineEntry {
+  return buildImplementationExecutionLogTimelineEntry({
+    action: "quick_run_queued_fallback_dispatch_failed",
+    orchestrationTraceGroup: "implementation_orchestration",
+    fields: {
+      projectId: input.projectId,
+      reason: input.reason,
+      status: "failed",
+      ...(input.errorMessage ? { errorMessage: input.errorMessage } : {}),
+      ...(input.codeTaskId ? { codeTaskId: input.codeTaskId } : {}),
+    },
+    nowIso: input.nowIso,
+  });
+}
+
+export function buildQuickRunQueuedFallbackTimelineFromServerResult(input: {
+  readonly projectId: string;
+  readonly serverResult?: import("@/lib/prototype/serverQuickRunContinuationService").ServerQuickRunContinuationResult;
+  readonly outcome?: "dispatched" | "skipped" | "failed";
+  readonly reason: string;
+  readonly codeTaskId?: string | null;
+  readonly nowIso?: string;
+}): readonly RequirementsPromptTimelineEntry[] {
+  const nowIso = input.nowIso;
+  const result = input.serverResult;
+  if (result?.ok && result.outcome === "dispatched") {
+    const codeTaskId = result.nextCodeTaskId ?? result.nextTaskId ?? input.codeTaskId ?? "";
+    return [
+      buildQuickRunQueuedFallbackDispatchDispatchedTimelineEntry({
+        projectId: input.projectId,
+        codeTaskId: String(codeTaskId),
+        reason: input.reason,
+        nowIso,
+      }),
+    ];
+  }
+  if (result) {
+    if (result.outcome === "execute_request_failed") {
+      return [
+        buildQuickRunQueuedFallbackDispatchFailedTimelineEntry({
+          projectId: input.projectId,
+          reason: result.reason ?? input.reason,
+          errorMessage: result.reason,
+          codeTaskId: result.nextCodeTaskId ?? input.codeTaskId,
+          nowIso,
+        }),
+      ];
+    }
+    return [
+      buildQuickRunQueuedFallbackDispatchSkippedTimelineEntry({
+        projectId: input.projectId,
+        reason: result.reason ?? input.reason,
+        codeTaskId: result.nextCodeTaskId ?? input.codeTaskId,
+        nowIso,
+      }),
+    ];
+  }
+  const outcome = input.outcome ?? "skipped";
+  if (outcome === "failed") {
+    return [
+      buildQuickRunQueuedFallbackDispatchFailedTimelineEntry({
+        projectId: input.projectId,
+        reason: input.reason,
+        codeTaskId: input.codeTaskId,
+        nowIso,
+      }),
+    ];
+  }
+  return [
+    buildQuickRunQueuedFallbackDispatchSkippedTimelineEntry({
+      projectId: input.projectId,
+      reason: input.reason,
+      codeTaskId: input.codeTaskId,
+      nowIso,
+    }),
+  ];
+}

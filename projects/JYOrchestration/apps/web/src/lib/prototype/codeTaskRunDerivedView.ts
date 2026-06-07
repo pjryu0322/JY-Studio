@@ -47,6 +47,7 @@ export function deriveCodeTaskRunPhase(input: {
     taskCursorExecution: execution,
     autoGate: input.autoGate ?? null,
     latestRun: enriched ?? input.run,
+    dbRuntimeState: input.dbRun?.runtimeState ?? null,
   });
 }
 
@@ -105,7 +106,9 @@ export function deriveCodeTaskRunStatusLabel(input: {
     phase === "cursor_running" ||
     phase === "github_verifying" ||
     phase === "lightweight_checking" ||
-    phase === "github_verified"
+    phase === "github_verified" ||
+    phase === "next_code_task_dispatch_pending" ||
+    phase === "next_code_task_dispatch_connecting"
   ) {
     severity = "running";
   } else if (phase === "prompt_preflight_failed") severity = "warning";

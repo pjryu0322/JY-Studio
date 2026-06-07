@@ -26,6 +26,9 @@ export type CodeTaskExecutionFlowPhase =
   | "github_branch_missing"
   | "github_verify_timeout"
   | "dispatch_failed_retryable"
+  | "next_code_task_dispatch_pending"
+  | "next_code_task_dispatch_connecting"
+  | "next_code_task_dispatch_failed"
   | "lightweight_checking"
   | "completed"
   | "failed";
@@ -64,6 +67,12 @@ export function formatCodeTaskExecutionFlowPhaseKo(phase: CodeTaskExecutionFlowP
       return "GitHub commit 확인 시간 초과";
     case "dispatch_failed_retryable":
       return "CodeTask 실행 준비 실패";
+    case "next_code_task_dispatch_pending":
+      return "다음 CodeTask 실행 준비 중";
+    case "next_code_task_dispatch_connecting":
+      return "다음 CodeTask 실행 연결 중";
+    case "next_code_task_dispatch_failed":
+      return "다음 CodeTask 실행 실패";
     case "github_verified":
       return "GitHub commit 확인 완료";
     case "lightweight_checking":
@@ -420,6 +429,7 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
   readonly developerStatus?: ImplementationBoardStepStatus;
   readonly failureReason?: string;
   readonly latestRun?: CodeTaskExecutionRunV1 | null;
+  readonly dbRuntimeState?: string | null;
 }): CodeTaskExecutionFlowPhase {
   const run = input.latestRun ?? null;
   const execution =
@@ -495,6 +505,15 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
       }
       return "github_verified";
     }
+    if (isQueuedCodeTaskExecutionRunStatus(run.status)) {
+      const dbState = String(input.dbRuntimeState ?? "").trim();
+      if (dbState === "dispatching") {
+        return "next_code_task_dispatch_connecting";
+      }
+      if (dbState === "queued" || dbState === "pending_dispatch") {
+        return "next_code_task_dispatch_pending";
+      }
+    }
     if (isInFlightCodeTaskExecutionRunStatus(run.status)) {
       return finish(mapCodeTaskRunStatusToFlowPhase(run.status) ?? "cursor_running");
     }
@@ -513,15 +532,6 @@ export function deriveCodeTaskExecutionFlowPhase(input: {
           : finish("cursor_running");
       }
       return "failed";
-    }
-    if (isQueuedCodeTaskExecutionRunStatus(run.status)) {
-      if (
-        execution &&
-        isTaskCursorInFlightForRunOutcome({ execution, runHasTerminalGithub: runTerminalGithub })
-      ) {
-        return finish("cursor_running");
-      }
-      return "prompt_ready";
     }
   }
 

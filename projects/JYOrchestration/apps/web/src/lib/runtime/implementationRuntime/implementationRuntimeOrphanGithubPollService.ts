@@ -58,6 +58,7 @@ function buildVerifyBodyFromState(
     implementationAutoQualityGateHistoryV1: state.implementationAutoQualityGateHistoryV1,
     cursorWorkItemsV1: state.cursorWorkItemsV1,
     promptTimeline: state.promptTimeline,
+    codeTaskExecutionQueueV1: state.codeTaskExecutionQueueV1,
     workItems: state.cursorWorkItemsV1 ?? [],
   };
 }

@@ -50,9 +50,8 @@ import {
   parseCodeTaskExecutionRunsV1,
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
-import { dispatchQuickRunContinuationOnServer } from "@/lib/prototype/implementationQuickRunContinuationDispatchService";
 import { mergeCodeTaskRunsWithDbRuntime } from "@/lib/prototype/implementationQuickRunStuckGithubRecovery";
-import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
+import { applyQuickRunContinuationAfterGithubVerify } from "@/lib/prototype/quickRunContinuationAfterGithubVerify";
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 const EXECUTION_SETUP_SELECT = {
@@ -382,47 +381,45 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     implementationAutoQualityGateHistoryV1: body.implementationAutoQualityGateHistoryV1,
     cursorWorkItemsV1: workItems,
     promptTimeline: body.promptTimeline,
+    codeTaskExecutionQueueV1: body.codeTaskExecutionQueueV1,
     dbBundle: dbBundleAfter,
     nowIso,
   });
-
-  let orchestrationPatch = advance.orchestrationPatch;
-  const cursorApiToken = String(setupRow?.cursorApiToken ?? "").trim();
-  let continuationDispatchedOnServer = false;
 
   const execReadiness = evaluateExecutionSetupSourceGenerationReadiness({
     setup,
     env: process.env as Record<string, string | undefined>,
   });
 
-  if (verify.ok && advance.nextDispatch && cursorApiToken && execReadiness.ok) {
-    await persistTaskCursorOrchestrationToProject({
-      projectId,
-      orchestrationPatch: orchestrationPatch as Record<string, unknown>,
-    });
-    const dispatchOutcome = await dispatchQuickRunContinuationOnServer({
-      projectId,
-      dispatch: advance.nextDispatch,
-      baseOrchestrationPatch: orchestrationPatch,
-      requirementsSlice: mergeRequirementsStateJson(
-        {
-          promptTimeline: body.promptTimeline ?? [],
-          implementationQuickRunV1: body.implementationQuickRunV1,
-          implementationTaskListV1: body.implementationTaskListV1,
-          implementationCodeTaskPlanV1: body.implementationCodeTaskPlanV1,
-          codeTaskExecutionRunsV1: runsPayload,
-          cursorWorkItemsV1: workItems,
-          taskCursorExecutionV1: nextExecution,
-        },
-        orchestrationPatch as Record<string, unknown>,
-      ),
-      context: execReadiness.context,
-      cursorApiToken,
-      nowIso,
-    });
-    orchestrationPatch = dispatchOutcome.orchestrationPatch;
-    continuationDispatchedOnServer = dispatchOutcome.dispatched;
-  }
+  const continuation = await applyQuickRunContinuationAfterGithubVerify({
+    projectId,
+    verify,
+    advance,
+    requirementsSlice: mergeRequirementsStateJson(
+      {
+        promptTimeline: body.promptTimeline ?? [],
+        implementationQuickRunV1: body.implementationQuickRunV1,
+        implementationTaskListV1: body.implementationTaskListV1,
+        implementationCodeTaskPlanV1: body.implementationCodeTaskPlanV1,
+        codeTaskExecutionRunsV1: runsPayload,
+        codeTaskExecutionQueueV1: body.codeTaskExecutionQueueV1,
+        cursorWorkItemsV1: workItems,
+        taskCursorExecutionV1: nextExecution,
+      },
+      basePatch as Record<string, unknown>,
+    ),
+    execution: nextExecution,
+    cursorApiToken: String(setupRow?.cursorApiToken ?? "").trim(),
+    execReadinessOk: execReadiness.ok,
+    execContext: execReadiness.context,
+    previousCodeTaskId: codeTaskIdEarly || runForVerify?.codeTaskId || null,
+    previousCommitSha:
+      runForVerify?.commitSha ?? runForVerify?.branchHeadCommitSha ?? nextExecution.commitSha ?? null,
+    nowIso,
+  });
+
+  const orchestrationPatch = continuation.orchestrationPatch;
+  const continuationDispatchedOnServer = continuation.continuationDispatchedOnServer;
 
   return {
     kind: "ok",

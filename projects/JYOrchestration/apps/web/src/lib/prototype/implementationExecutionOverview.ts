@@ -147,6 +147,7 @@ export function buildImplementationExecutionOverview(input: {
     "github_branch_missing",
     "github_verify_timeout",
     "dispatch_failed_retryable",
+    "next_code_task_dispatch_failed",
   ]);
   const flowPhase = input.activeFlowPhase ?? null;
   const needsAttention = flowPhase != null && attentionPhases.has(flowPhase);
@@ -159,7 +160,9 @@ export function buildImplementationExecutionOverview(input: {
       runtimeLooksStaleFailed ||
       flowPhase === "github_verifying" ||
       flowPhase === "cursor_running" ||
-      flowPhase === "lightweight_checking");
+      flowPhase === "lightweight_checking" ||
+      flowPhase === "next_code_task_dispatch_pending" ||
+      flowPhase === "next_code_task_dispatch_connecting");
 
   const headerTitle = needsAttention
     ? "구현 확인 필요"

@@ -18,13 +18,17 @@ import {
   planQuickRunContinuationAfterVerifiedGithubOutcome,
   shouldPlanQuickRunCodeTaskContinuationAfterAutoGate,
 } from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
-import { resolveSelectedCodeTaskIdsForContinuation } from "@/lib/prototype/implementationSelectedCodeTaskSequence";
+import {
+  resolveNextQuickRunCodeTaskId,
+  resolveSelectedCodeTaskIdsForContinuationContext,
+} from "@/lib/prototype/implementationSelectedCodeTaskSequence";
 import { resolveNextSelectedCodeTaskAfterVerified } from "@/lib/prototype/resolveNextSelectedCodeTaskAfterVerified";
 import { isRunSuccessTerminalForSelectedQueueContinuation } from "@/lib/prototype/codeTaskQuickRunContinuationTerminal";
 import {
   buildQuickRunAllSelectedCodeTasksCompletedTimelineEntry,
   buildQuickRunContinuationNoopTimelineEntry,
   buildQuickRunContinuationRequestedTimelineEntry,
+  buildQuickRunSelectedQueueReconciledTimelineEntry,
   buildQuickRunNextCodeTaskBlockedTimelineEntry,
   buildQuickRunNextCodeTaskDispatchRequestedTimelineEntry,
   buildQuickRunNextCodeTaskResolvedTimelineEntry,
@@ -78,6 +82,7 @@ export type QuickRunGithubAdvanceContext = Readonly<{
   readonly implementationAutoQualityGateHistoryV1?: unknown;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[];
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
+  readonly codeTaskExecutionQueueV1?: unknown;
   readonly dbBundle?: ImplementationRuntimeBundleView | null;
   readonly nowIso?: string;
 }>;
@@ -101,6 +106,7 @@ function buildVirtualState(input: QuickRunGithubAdvanceContext): RequirementsSta
       implementationAutoQualityGateV1: input.implementationAutoQualityGateV1,
       implementationAutoQualityGateHistoryV1: input.implementationAutoQualityGateHistoryV1,
       cursorWorkItemsV1: input.cursorWorkItemsV1,
+      codeTaskExecutionQueueV1: input.codeTaskExecutionQueueV1,
     },
     input.basePatch as Partial<RequirementsStateJson>,
   );
@@ -353,7 +359,11 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
       : null;
     const postQuickRun = parseImplementationQuickRunV1(state.implementationQuickRunV1);
     const postExecution = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
-    const selectedCodeTaskIds = resolveSelectedCodeTaskIdsForContinuation({ dbBundle });
+    const selection = resolveSelectedCodeTaskIdsForContinuationContext({
+      dbBundle,
+      codeTaskExecutionQueueV1: state.codeTaskExecutionQueueV1,
+    });
+    const selectedCodeTaskIds = selection.selectedCodeTaskIds;
     const codeTaskPlanParsed = parseImplementationCodeTaskPlanV1(state.implementationCodeTaskPlanV1);
     const quickRunActive = shouldAllowTaskCursorAutoChain({
       quickRun: postQuickRun,
@@ -374,7 +384,23 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
         if (isRunSuccessTerminalForSelectedQueueContinuation(run)) completedCodeTaskCount += 1;
       }
 
-      const continuationTimeline: RequirementsPromptTimelineEntry[] = [
+      const continuationTimeline: RequirementsPromptTimelineEntry[] = [];
+      if (
+        selection.source === "reconciled" ||
+        (selection.dbSelectedCount === 0 && selection.runtimeSelectedCount > 0)
+      ) {
+        continuationTimeline.push(
+          buildQuickRunSelectedQueueReconciledTimelineEntry({
+            projectId: pid,
+            dbSelectedCount: selection.dbSelectedCount,
+            runtimeSelectedCount: selection.runtimeSelectedCount,
+            resolvedSelectedCount: selection.resolvedSelectedCount,
+            source: selection.source,
+            nowIso,
+          }),
+        );
+      }
+      continuationTimeline.push(
         buildQuickRunContinuationRequestedTimelineEntry({
           projectId: pid,
           currentCodeTaskId: verifiedCodeTaskId,
@@ -386,7 +412,7 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
           previousWorkBranch: verifiedRun.workBranch,
           nowIso,
         }),
-      ];
+      );
 
       const resolved = resolveNextSelectedCodeTaskAfterVerified({
         selectedCodeTaskIds,
