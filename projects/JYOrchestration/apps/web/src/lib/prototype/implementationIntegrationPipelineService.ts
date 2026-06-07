@@ -15,6 +15,20 @@ import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPl
 import { runIntegrationConflictPrecheck } from "@/lib/prototype/integrationConflictPrecheck";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import {
+  asReadonlyArray,
+  normalizeCodeTaskIntegrationPlan,
+  normalizePartialIntegrationPlanArrays,
+} from "@/lib/prototype/implementationIntegrationPlanNormalize";
+import {
+  assertIntegrationMergeTargets,
+  validateCodeTaskIntegrationPlanInvariant,
+} from "@/lib/prototype/implementationIntegrationPlanValidation";
+import {
+  IntegrationPipelineDomainError,
+  buildIntegrationPipelineRuntimeErrorLogFields,
+  toUserSafeIntegrationErrorMessage,
+} from "@/lib/prototype/implementationIntegrationErrors";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
@@ -39,6 +53,7 @@ export async function runIntegrationBranchPipeline(input: {
   readonly previewUrl?: string | null;
   readonly createPullRequest?: boolean;
   readonly nowIso?: string;
+  readonly storedIntegrationPlan?: CodeTaskIntegrationPlanV1 | null;
 }): Promise<RunIntegrationBranchPipelineResult> {
   const nowIso = input.nowIso ?? new Date().toISOString();
   const timeline: RequirementsPromptTimelineEntry[] = [];
@@ -56,13 +71,46 @@ export async function runIntegrationBranchPipeline(input: {
     );
   };
 
-  const targets = selectCompletedCodeTasksForIntegration({
-    codeTaskPlan: input.codeTaskPlan,
-    taskList: input.taskList,
-    codeTaskRuns: input.codeTaskRuns,
-  });
+  let lastPlan: CodeTaskIntegrationPlanV1 | null = null;
+  let chainHeadForLog: string | null = null;
 
-  if (!targets.canIntegrate) {
+  const failPipeline = (inputFail: {
+    readonly plan: CodeTaskIntegrationPlanV1;
+    readonly message: string;
+    readonly failureMessage?: string;
+  }): RunIntegrationBranchPipelineResult => {
+    const plan = patchCodeTaskIntegrationPlan(inputFail.plan, {
+      status: "failed",
+      ...(inputFail.failureMessage ? { failureMessage: inputFail.failureMessage } : {}),
+    });
+    return { ok: false, plan, timeline, message: inputFail.message };
+  };
+
+  try {
+    if (input.storedIntegrationPlan) {
+      const { plan: normalizedStored, audit } = normalizePartialIntegrationPlanArrays(
+        input.storedIntegrationPlan,
+      );
+      if (
+        !audit.includedWasArray ||
+        !audit.excludedWasArray ||
+        !audit.mergeResultsWasArray
+      ) {
+        pushTimeline("implementation_plan_arrays_normalized", {
+          ...audit,
+        });
+      }
+      const invariant = validateCodeTaskIntegrationPlanInvariant(normalizedStored);
+      lastPlan = invariant.plan;
+    }
+
+    const targets = selectCompletedCodeTasksForIntegration({
+      codeTaskPlan: input.codeTaskPlan,
+      taskList: input.taskList,
+      codeTaskRuns: input.codeTaskRuns,
+    });
+
+    if (!targets.canIntegrate) {
     const plan = buildCodeTaskIntegrationPlanDraft({
       projectId: input.projectId,
       targetRepository: input.repoUrl,
@@ -73,18 +121,19 @@ export async function runIntegrationBranchPipeline(input: {
       selectedCodeTaskIds: input.selectedCodeTaskIds,
       nowIso,
     });
-    return {
-      ok: false,
-      plan: patchCodeTaskIntegrationPlan(plan, {
-        status: "failed",
-        failureMessage: "완료된 CodeTask가 없어 integration branch를 만들 수 없습니다.",
-      }),
-      timeline,
-      message: "완료된 CodeTask가 없어 integration branch를 만들 수 없습니다.",
-    };
-  }
+      lastPlan = plan;
+      return {
+        ok: false,
+        plan: patchCodeTaskIntegrationPlan(plan, {
+          status: "failed",
+          failureMessage: "완료된 CodeTask가 없어 integration branch를 만들 수 없습니다.",
+        }),
+        timeline,
+        message: "완료된 CodeTask가 없어 integration branch를 만들 수 없습니다.",
+      };
+    }
 
-  const runIdByCodeTaskId = new Map<string, string>();
+    const runIdByCodeTaskId = new Map<string, string>();
   for (const row of targets.included) {
     const run = findLatestRunForCodeTask(input.codeTaskRuns ?? [], row.codeTaskId);
     if (run?.runId) runIdByCodeTaskId.set(row.codeTaskId, run.runId);
@@ -142,29 +191,31 @@ export async function runIntegrationBranchPipeline(input: {
     });
   }
 
-  const topology = precheck.topology;
-  const chainHead =
-    topology?.kind === "linear_chain" ? topology.chainHead : null;
-  if (chainHead) {
-    pushTimeline("implementation_integration_source_resolved", {
-      topology: "linear_chain",
-      sourceBranch: chainHead,
-      baseBranch: input.baseBranch,
-      reason: "final_chain_head_contains_prior_branch_changes",
-    });
-  }
+    const topology = precheck.topology;
+    const chainHead =
+      topology?.kind === "linear_chain" ? topology.chainHead : null;
+    chainHeadForLog = chainHead;
+    if (chainHead) {
+      pushTimeline("implementation_integration_source_resolved", {
+        topology: "linear_chain",
+        sourceBranch: chainHead,
+        baseBranch: input.baseBranch,
+        reason: "final_chain_head_contains_prior_branch_changes",
+      });
+    }
 
-  let plan = buildCodeTaskIntegrationPlanDraft({
-    projectId: input.projectId,
-    targetRepository: input.repoUrl,
-    baseBranch: input.baseBranch,
-    included: targets.included,
-    excluded: targets.excluded,
-    codeTaskPlan: input.codeTaskPlan,
-    selectedCodeTaskIds: input.selectedCodeTaskIds,
-    runIdByCodeTaskId,
-    nowIso,
-  });
+    let plan = buildCodeTaskIntegrationPlanDraft({
+      projectId: input.projectId,
+      targetRepository: input.repoUrl,
+      baseBranch: input.baseBranch,
+      included: targets.included,
+      excluded: targets.excluded,
+      codeTaskPlan: input.codeTaskPlan,
+      selectedCodeTaskIds: input.selectedCodeTaskIds,
+      runIdByCodeTaskId,
+      nowIso,
+    });
+    lastPlan = plan;
 
   plan = patchCodeTaskIntegrationPlan(plan, { status: "branch_creating" });
   pushTimeline("implementation_integration_branch_create_started", {
@@ -202,10 +253,14 @@ export async function runIntegrationBranchPipeline(input: {
 
   const mergeResults: CodeTaskIntegrationMergeResultV1[] = [];
 
+  plan = normalizeCodeTaskIntegrationPlan(plan);
+  lastPlan = plan;
+  const included = asReadonlyArray(plan.included);
   const mergeItems =
-    chainHead && plan.included.length > 1
-      ? plan.included.filter((item) => item.workBranch === chainHead).slice(-1)
-      : plan.included;
+    chainHead && included.length > 1
+      ? included.filter((item) => item.workBranch === chainHead).slice(-1)
+      : included;
+  assertIntegrationMergeTargets({ plan, chainHead, mergeItems });
 
   for (const item of mergeItems) {
     pushTimeline("implementation_codetask_branch_merge_started", {
@@ -315,4 +370,51 @@ export async function runIntegrationBranchPipeline(input: {
     message: "integration branch 통합 완료",
     createPr: Boolean(plan.pullRequestUrl),
   };
+  } catch (error) {
+    if (error instanceof IntegrationPipelineDomainError) {
+      const safe = toUserSafeIntegrationErrorMessage(error);
+      const basePlan =
+        lastPlan ??
+        buildCodeTaskIntegrationPlanDraft({
+          projectId: input.projectId,
+          targetRepository: input.repoUrl,
+          baseBranch: input.baseBranch,
+          included: [],
+          excluded: [],
+          codeTaskPlan: input.codeTaskPlan,
+          selectedCodeTaskIds: input.selectedCodeTaskIds,
+          nowIso,
+        });
+      return failPipeline({ plan: basePlan, message: safe, failureMessage: safe });
+    }
+
+    const logFields = buildIntegrationPipelineRuntimeErrorLogFields(error);
+    pushTimeline("integration_pipeline_runtime_error", {
+      ...logFields,
+      stage: "implementation",
+      pipelineStep: "runIntegrationBranchPipeline",
+      includedCount: lastPlan ? asReadonlyArray(lastPlan.included).length : null,
+      excludedCount: lastPlan ? asReadonlyArray(lastPlan.excluded).length : null,
+      chainHead: chainHeadForLog,
+      integrationStatus: lastPlan?.status ?? null,
+    });
+
+    const basePlan =
+      lastPlan ??
+      buildCodeTaskIntegrationPlanDraft({
+        projectId: input.projectId,
+        targetRepository: input.repoUrl,
+        baseBranch: input.baseBranch,
+        included: [],
+        excluded: [],
+        codeTaskPlan: input.codeTaskPlan,
+        selectedCodeTaskIds: input.selectedCodeTaskIds,
+        nowIso,
+      });
+    return failPipeline({
+      plan: basePlan,
+      message: logFields.safeMessage,
+      failureMessage: logFields.safeMessage,
+    });
+  }
 }

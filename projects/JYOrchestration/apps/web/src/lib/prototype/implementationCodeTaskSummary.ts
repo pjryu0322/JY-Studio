@@ -3,10 +3,8 @@ import { runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutco
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { isIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegrationWiringTask";
-import {
-  listCodeTaskIdsFromPlan,
-  normalizeSelectedCodeTaskIds,
-} from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
+import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
+import { listCodeTaskIdsFromPlan } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 
 export type ImplementationCodeTaskSummaryCountsV1 = Readonly<{
   readonly totalCodeTaskCount: number;
@@ -40,17 +38,8 @@ export function isCodeTaskCompletedForSummary(
   run: CodeTaskExecutionRunV1 | null | undefined,
 ): boolean {
   if (!run) return false;
-  if (runHasVerifiedGithubOutcome(run)) return true;
-  switch (run.status) {
-    case "completed":
-    case "no_code_change_completed":
-    case "github_verified":
-      return true;
-    case "failed":
-      return false;
-    default:
-      return false;
-  }
+  if (run.status === "skipped_by_user") return true;
+  return runHasVerifiedGithubOutcome(run);
 }
 
 export function countCompletedVisibleCodeTasks(input: {
@@ -70,55 +59,23 @@ export function buildImplementationCodeTaskSummaryCounts(input: {
   readonly selectedCodeTaskIds?: readonly string[] | null;
   readonly legacySelectedTaskIds?: readonly string[] | null;
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+  readonly taskList?: import("@/lib/requirements/implementationTaskList").ImplementationTaskListV1 | null;
+  readonly workItemCount?: number;
 }): ImplementationCodeTaskSummaryCountsV1 {
-  const visibleIds = listVisibleImplementationCodeTaskIds(input.codeTaskPlan);
-  const totalCodeTaskCount = visibleIds.length;
-  const visibleSet = new Set(visibleIds);
-
-  const rawSelected = input.selectedCodeTaskIds ?? [];
-  const removedStaleSelectedIds = rawSelected
-    .map((id) => id.trim())
-    .filter((id) => id && !visibleSet.has(id));
-
-  const reconciledSelectedCodeTaskIds = normalizeSelectedCodeTaskIds({
-    selectedCodeTaskIds: rawSelected,
+  const fromUnits = buildImplementationExecutionSummaryCounts({
     codeTaskPlan: input.codeTaskPlan,
+    taskList: input.taskList,
+    selectedCodeTaskIds: input.selectedCodeTaskIds,
     legacySelectedTaskIds: input.legacySelectedTaskIds,
-  }).filter((id) => visibleSet.has(id));
-
-  let selectedCodeTaskCount = reconciledSelectedCodeTaskIds.length;
-  let summaryCountReconciled = removedStaleSelectedIds.length > 0;
-
-  if (selectedCodeTaskCount > totalCodeTaskCount) {
-    selectedCodeTaskCount = totalCodeTaskCount;
-    summaryCountReconciled = true;
-  }
-
-  const completedInVisible = countCompletedVisibleCodeTasks({
-    visibleCodeTaskIds: visibleIds,
     runs: input.runs,
+    workItemCount: input.workItemCount,
   });
-
-  const completedInSelected = countCompletedVisibleCodeTasks({
-    visibleCodeTaskIds: reconciledSelectedCodeTaskIds.length ? reconciledSelectedCodeTaskIds : visibleIds,
-    runs: input.runs,
-  });
-
-  let completedCodeTaskCount = reconciledSelectedCodeTaskIds.length
-    ? completedInSelected
-    : completedInVisible;
-
-  if (completedCodeTaskCount > totalCodeTaskCount) {
-    completedCodeTaskCount = totalCodeTaskCount;
-    summaryCountReconciled = true;
-  }
-
   return {
-    totalCodeTaskCount,
-    selectedCodeTaskCount,
-    completedCodeTaskCount,
-    reconciledSelectedCodeTaskIds,
-    removedStaleSelectedIds,
-    summaryCountReconciled,
+    totalCodeTaskCount: fromUnits.totalCodeTaskCount,
+    selectedCodeTaskCount: fromUnits.selectedCodeTaskCount,
+    completedCodeTaskCount: fromUnits.completedCodeTaskCount,
+    reconciledSelectedCodeTaskIds: fromUnits.reconciledSelectedCodeTaskIds,
+    removedStaleSelectedIds: fromUnits.removedStaleSelectedIds,
+    summaryCountReconciled: fromUnits.summaryCountReconciled,
   };
 }

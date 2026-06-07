@@ -39,7 +39,7 @@ export function isIntegrationWiringCodeTask(
 ): boolean {
   if (task.codeTaskId === INTEGRATION_WIRING_CODE_TASK_ID) return true;
   if (task.changeType === "integration") return true;
-  return /최종 연결|통합\s*wiring/i.test(task.title.trim());
+  return /최종 연결|통합\s*wiring/i.test(String(task.title ?? "").trim());
 }
 
 export function integrationWiringFileBoundary(): CodeTaskFileBoundaryV1 {

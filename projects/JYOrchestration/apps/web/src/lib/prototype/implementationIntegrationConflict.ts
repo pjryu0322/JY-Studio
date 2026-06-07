@@ -1,10 +1,11 @@
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
+import { asReadonlyArray, mergeResultsSafe } from "@/lib/prototype/implementationIntegrationPlanNormalize";
 import type { IntegrationCheckResultV1 } from "@/lib/prototype/implementationIntegrationCheckService";
 
 export function integrationPlanHasConflict(plan: CodeTaskIntegrationPlanV1 | null | undefined): boolean {
   if (!plan) return false;
   if (plan.status === "conflict") return true;
-  return (plan.mergeResults ?? []).some((r) => r.status === "conflict");
+  return mergeResultsSafe(plan).some((r) => r.status === "conflict");
 }
 
 export function integrationCheckFailed(
@@ -18,9 +19,11 @@ export function canCreateIntegrationPullRequest(plan: CodeTaskIntegrationPlanV1 
   if (integrationPlanHasConflict(plan)) return false;
   if (plan.status === "failed") return false;
   if (integrationCheckFailed(plan.checkResult)) return false;
-  if (!plan.included.length) return false;
-  const allMerged = plan.included.every((item) =>
-    (plan.mergeResults ?? []).some(
+  const included = asReadonlyArray(plan.included);
+  if (!included.length) return false;
+  const mergeResults = mergeResultsSafe(plan);
+  const allMerged = included.every((item) =>
+    mergeResults.some(
       (r) => r.codeTaskId === item.codeTaskId && r.status === "merged",
     ),
   );

@@ -233,6 +233,7 @@ import {
   mergeIntegrationPullRequestClient,
   runIntegrationBranchPipelineClient,
 } from "@/lib/prototype/implementationIntegrationClient";
+import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { buildCompletedCodeTaskIntegrationTimelineEntry } from "@/lib/prototype/integrationPreviewTimeline";
 import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
@@ -4148,7 +4149,7 @@ export function PrototypePreviewPanel({
           showToast(result.message ?? "main 반영에 실패했습니다.");
         }
       } catch (error) {
-        showToast(error instanceof Error ? error.message : String(error));
+        showToast(toUserSafeIntegrationErrorMessage(error));
       } finally {
         setIntegrationMergeBusy(false);
       }
@@ -4466,7 +4467,7 @@ export function PrototypePreviewPanel({
           );
         }
       } catch (error) {
-        showToast(error instanceof Error ? error.message : String(error));
+        showToast(toUserSafeIntegrationErrorMessage(error));
       } finally {
         setIntegrationPipelineBusy(false);
       }

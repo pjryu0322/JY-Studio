@@ -8,14 +8,6 @@ export function isRunSuccessTerminalForSelectedQueueContinuation(
 ): boolean {
   if (!run) return false;
   if (run.status === "skipped_by_user") return true;
-  if (
-    run.status === "completed" ||
-    run.status === "no_code_change_completed" ||
-    run.status === "quality_gate_passed" ||
-    run.status === "github_verified"
-  ) {
-    return true;
-  }
   if (runHasVerifiedGithubOutcome(run)) return true;
   if (runHasQualityGatePassed(run)) return true;
   return false;

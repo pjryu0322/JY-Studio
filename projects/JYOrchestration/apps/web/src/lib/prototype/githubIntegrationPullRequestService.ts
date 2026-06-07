@@ -1,6 +1,7 @@
 import { autoMergePullRequest } from "@/lib/service/githubAutoMergeService";
 import { openOrReuseGithubPullRequest } from "@/lib/service/githubPullRequestOps";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
+import { asReadonlyArray, mergeResultsSafe } from "@/lib/prototype/implementationIntegrationPlanNormalize";
 import type { IntegrationCheckResultV1 } from "@/lib/prototype/implementationIntegrationCheckService";
 
 export function buildIntegrationPullRequestBody(input: {
@@ -10,10 +11,10 @@ export function buildIntegrationPullRequestBody(input: {
   readonly previewUrl?: string | null;
 }): string {
   const name = String(input.projectName ?? input.plan.projectId).trim();
-  const includedLines = input.plan.included.map(
+  const includedLines = asReadonlyArray(input.plan.included).map(
     (row) => `- [x] ${row.title} (\`${row.codeTaskId}\`, \`${row.workBranch}\`)`,
   );
-  const excludedLines = input.plan.excluded.map(
+  const excludedLines = asReadonlyArray(input.plan.excluded).map(
     (row) => `- [ ] ${row.title} — ${row.reason}`,
   );
   const check = input.checkResult ?? input.plan.checkResult;
@@ -36,7 +37,7 @@ export function buildIntegrationPullRequestBody(input: {
     "",
     "## 검증",
     "",
-    `- GitHub branch merge: ${input.plan.mergeResults?.every((r) => r.status === "merged") ? "passed" : "partial/failed"}`,
+    `- GitHub branch merge: ${mergeResultsSafe(input.plan).every((r) => r.status === "merged") ? "passed" : "partial/failed"}`,
     `- Integration check: ${checkLine}`,
     `- Preview: ${preview}`,
     "",

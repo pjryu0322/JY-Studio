@@ -1,4 +1,5 @@
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
@@ -32,11 +33,14 @@ export async function runIntegrationBranchPipelineClient(input: {
     orchestrationPatch?: Record<string, unknown>;
   };
   if (!res.ok) {
-    return { ok: false, message: json.message ?? `HTTP ${res.status}` };
+    return {
+      ok: false,
+      message: toUserSafeIntegrationErrorMessage(new Error(json.message ?? `HTTP ${res.status}`)),
+    };
   }
   return {
     ok: json.success === true,
-    message: json.message,
+    message: json.message ? toUserSafeIntegrationErrorMessage(new Error(json.message)) : json.message,
     plan: json.plan,
     timeline: json.timeline,
     orchestrationPatch: json.orchestrationPatch,

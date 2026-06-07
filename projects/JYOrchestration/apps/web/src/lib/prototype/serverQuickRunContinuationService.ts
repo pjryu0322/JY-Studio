@@ -60,6 +60,11 @@ import {
   buildTaskCursorInflightRepairedTimelineFields,
 } from "@/lib/prototype/taskCursorQuickRunInflightPolicy";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import {
+  resolveNextCodeTaskIdFromExecutionUnits,
+  resolveQuickRunExecutionContext,
+  shouldMarkQuickRunHasNextDispatch,
+} from "@/lib/prototype/implementationQuickRunQueue";
 import { appendPromptTimeline } from "@/lib/requirements/promptTimelineState";
 import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -278,15 +283,74 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
 
   const run = bundle.currentRun;
   const job = bundle.job;
+
   if (!job?.id || job.status !== "running" || !run || run.runtimeState !== "queued") {
-    return appendSkipped("skipped", "no_queued_db_run", {
+    const codeTaskPlanForRecovery =
+      ensureCodeTaskPlanWithFileBoundaries({
+        plan: parseImplementationCodeTaskPlanV1(requirementsState.implementationCodeTaskPlanV1),
+        taskList: parseImplementationTaskListV1(requirementsState.implementationTaskListV1),
+      }) ?? parseImplementationCodeTaskPlanV1(requirementsState.implementationCodeTaskPlanV1);
+    const runsForRecovery = parseCodeTaskExecutionRunsV1(requirementsState.codeTaskExecutionRunsV1) ?? [];
+    const nextUnitId = resolveNextCodeTaskIdFromExecutionUnits({
+      codeTaskPlan: codeTaskPlanForRecovery,
+      taskList: parseImplementationTaskListV1(requirementsState.implementationTaskListV1),
+      runs: runsForRecovery,
+      selectedCodeTaskIds: job?.selectedCodeTaskIds ?? null,
+      dbBundle: bundle,
+    });
+    if (nextUnitId && job?.status === "running" && job.id) {
+      timelineEntries.push(
+        buildImplementationExecutionLogTimelineEntry({
+          action: "implementation_execution_next_unit_missing_db_run_recreated",
+          orchestrationTraceGroup: "implementation_orchestration",
+          fields: {
+            projectId: pid,
+            unitId: nextUnitId,
+            codeTaskId: nextUnitId,
+            processTaskId: null,
+            workBranch: null,
+            reason: "next_execution_unit_without_db_run",
+          },
+          nowIso,
+        }),
+      );
+      await ensureNextQuickRunDispatchRuntimeReady({
+        projectId: pid,
+        completedCodeTaskId: String(job.currentCodeTaskId ?? "").trim() || nextUnitId,
+        nextCodeTaskId: nextUnitId,
+      });
+      bundle = await getImplementationRuntimeBundle(pid);
+    }
+  }
+
+  const runAfterRecovery = bundle.currentRun;
+  const jobAfterRecovery = bundle.job;
+  if (
+    !jobAfterRecovery?.id ||
+    jobAfterRecovery.status !== "running" ||
+    !runAfterRecovery ||
+    runAfterRecovery.runtimeState !== "queued"
+  ) {
+    const skipReason = resolveNextCodeTaskIdFromExecutionUnits({
+      codeTaskPlan: parseImplementationCodeTaskPlanV1(requirementsState.implementationCodeTaskPlanV1),
+      taskList: parseImplementationTaskListV1(requirementsState.implementationTaskListV1),
+      runs: parseCodeTaskExecutionRunsV1(requirementsState.codeTaskExecutionRunsV1) ?? [],
+      selectedCodeTaskIds: jobAfterRecovery?.selectedCodeTaskIds ?? job?.selectedCodeTaskIds ?? null,
+      dbBundle: bundle,
+    })
+      ? "db_run_recreate_pending"
+      : "no_queued_db_run";
+    return appendSkipped("skipped", skipReason, {
       diagnostics: {
-        jobStatus: job?.status ?? null,
-        runState: run?.runtimeState ?? null,
-        codeTaskId: run?.codeTaskId ?? job?.currentCodeTaskId ?? null,
+        jobStatus: jobAfterRecovery?.status ?? job?.status ?? null,
+        runState: runAfterRecovery?.runtimeState ?? run?.runtimeState ?? null,
+        codeTaskId: runAfterRecovery?.codeTaskId ?? jobAfterRecovery?.currentCodeTaskId ?? null,
       },
     });
   }
+
+  const runQueued = runAfterRecovery;
+  const jobRunning = jobAfterRecovery;
 
   const codeTaskPlanRaw = parseImplementationCodeTaskPlanV1(
     requirementsState.implementationCodeTaskPlanV1,
@@ -300,13 +364,13 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
   const workItems = requirementsState.cursorWorkItemsV1 ?? [];
 
   const queuedPlanTask =
-    codeTaskPlan?.tasks.find((t) => t.codeTaskId.trim() === run.codeTaskId.trim()) ?? null;
+    codeTaskPlan?.tasks.find((t) => t.codeTaskId.trim() === runQueued.codeTaskId.trim()) ?? null;
   const canonicalResolution = resolveCanonicalCodeTaskForQueuedRun({
-    queuedCodeTaskId: run.codeTaskId,
+    queuedCodeTaskId: runQueued.codeTaskId,
     codeTasks: codeTaskPlan?.tasks ?? [],
     currentCodeTaskTitle: queuedPlanTask?.title ?? null,
     branchGroup: parseCodeTaskBranchPlanV1(queuedPlanTask?.branchPlan)?.branchGroup ?? "data",
-    workBranch: run.branchName ?? queuedPlanTask?.branchPlan?.workBranch ?? null,
+    workBranch: runQueued.branchName ?? queuedPlanTask?.branchPlan?.workBranch ?? null,
   });
 
   if (canonicalResolution.status === "blocked_mock_id" || canonicalResolution.status === "not_found") {
@@ -328,7 +392,7 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
         canonicalResolution.status === "not_found"
           ? "queued_code_task_id_not_in_current_plan"
           : canonicalResolution.reason,
-      nextCodeTaskId: run.codeTaskId,
+      nextCodeTaskId: runQueued.codeTaskId,
       timelineEntries,
       orchestrationPatch: { promptTimeline },
     };
@@ -359,7 +423,7 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
   });
   if (!dispatchTarget) {
     return appendSkipped("queue_state_mismatch", "dispatch_target_not_found", {
-      nextCodeTaskId: run.codeTaskId,
+      nextCodeTaskId: runQueued.codeTaskId,
     });
   }
 
@@ -369,7 +433,7 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
   if (quickRun?.status !== "running") {
     const parentTaskIds = [
       ...new Set(
-        (job.selectedCodeTaskIds ?? [])
+        (jobRunning.selectedCodeTaskIds ?? [])
           .map((codeTaskId) => {
             const row = codeTaskPlan?.tasks.find((t) => t.codeTaskId === codeTaskId);
             return row?.parentTaskId?.trim() ?? "";
@@ -414,7 +478,7 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
     return appendSkipped("execute_request_failed", "execution_setup_not_ready");
   }
 
-  if (run.runtimeState !== "queued") {
+  if (runQueued.runtimeState !== "queued") {
     timelineEntries.push(
       buildQuickRunQueuedFallbackDispatchSkippedTimelineEntry({
         projectId: pid,
@@ -425,7 +489,7 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
     );
     return appendSkipped("skipped", "run_already_in_flight", {
       nextCodeTaskId: dispatchCodeTaskId,
-      diagnostics: { runState: run.runtimeState },
+      diagnostics: { runState: runQueued.runtimeState },
     });
   }
 
@@ -435,7 +499,7 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
       codeTaskId: dispatchCodeTaskId,
       parentTaskId: dispatchTarget.parentTaskId,
       workItemId: dispatchTarget.workItem.id,
-      triggerKey: `db_advance:${run.id}:${nowIso}`,
+      triggerKey: `db_advance:${runQueued.id}:${nowIso}`,
     },
     baseOrchestrationPatch: { codeTaskExecutionRunsV1: runs },
     requirementsSlice: { ...requirementsState, codeTaskExecutionRunsV1: runs },
@@ -480,7 +544,7 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
     ok: true,
     outcome: "dispatched",
     nextTaskId: dispatchTarget.parentTaskId,
-    nextCodeTaskId: run.codeTaskId,
+    nextCodeTaskId: runQueued.codeTaskId,
     reason: null,
     orchestrationPatch: mergeOrchestrationPersistPatches(dispatchOutcome.orchestrationPatch, {
       promptTimeline,
@@ -628,18 +692,72 @@ export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
 
   let bundleAfterAdvance = await getImplementationRuntimeBundle(pid);
   const selectedIds = resolveSelectedCodeTaskIdsForContinuation({ dbBundle: bundleAfterAdvance });
+  const nextFromUnits = resolveNextCodeTaskIdFromExecutionUnits({
+    codeTaskPlan,
+    taskList,
+    runs,
+    selectedCodeTaskIds: selectedIds,
+    dbBundle: bundleAfterAdvance,
+  });
   const nextFromRuns = findNextRunnableCodeTaskIdInSelection({
     selectedCodeTaskIds: selectedIds,
     afterCodeTaskId: completedCodeTaskId,
     runs,
     codeTaskPlan,
   });
-  const nextCodeTaskId =
+  let nextCodeTaskId =
+    nextFromUnits ??
     nextFromRuns ??
     resolveNextQuickRunCodeTaskId({
       completedCodeTaskId,
       dbBundle: bundleAfterAdvance,
     });
+
+  if (!nextCodeTaskId?.trim()) {
+    const executionCtx = resolveQuickRunExecutionContext({
+      codeTaskPlan,
+      taskList,
+      runs,
+      selectedCodeTaskIds: selectedIds,
+      dbBundle: bundleAfterAdvance,
+    });
+    if (shouldMarkQuickRunHasNextDispatch({
+      codeTaskPlan,
+      taskList,
+      runs,
+      selectedCodeTaskIds: selectedIds,
+      dbBundle: bundleAfterAdvance,
+    })) {
+      timelineEntries.push(
+        buildImplementationExecutionLogTimelineEntry({
+          action: "implementation_execution_next_unit_resolved",
+          orchestrationTraceGroup: "implementation_orchestration",
+          fields: {
+            projectId: pid,
+            status: executionCtx.next.status,
+            selectedCount: executionCtx.selectedUnitIds.length,
+            unitCount: executionCtx.units.length,
+          },
+          nowIso,
+        }),
+      );
+      const retryNextId = resolveNextCodeTaskIdFromExecutionUnits({
+        codeTaskPlan,
+        taskList,
+        runs,
+        selectedCodeTaskIds: selectedIds,
+        dbBundle: bundleAfterAdvance,
+      });
+      if (retryNextId) {
+        await ensureNextQuickRunDispatchRuntimeReady({
+          projectId: pid,
+          completedCodeTaskId,
+          nextCodeTaskId: retryNextId,
+        });
+        nextCodeTaskId = retryNextId;
+      }
+    }
+  }
 
   if (!nextCodeTaskId?.trim()) {
     const quickRun = parseImplementationQuickRunV1(requirementsState.implementationQuickRunV1);

@@ -22,6 +22,10 @@ import {
   tryDispatchCurrentQueuedQuickRunAfterDbAdvance,
   type ServerQuickRunContinuationResult,
 } from "@/lib/prototype/serverQuickRunContinuationService";
+import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
+import { shouldMarkQuickRunHasNextDispatch } from "@/lib/prototype/implementationQuickRunQueue";
 
 export type ApplyQuickRunContinuationAfterGithubVerifyResult = Readonly<{
   readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
@@ -51,9 +55,22 @@ export async function applyQuickRunContinuationAfterGithubVerify(input: {
     return { orchestrationPatch, continuationDispatchedOnServer };
   }
 
+  const mergedSlice = mergeRequirementsStateJson(
+    input.requirementsSlice,
+    orchestrationPatch as Partial<RequirementsStateJson>,
+  );
+
   const patchPersistedEntry = buildQuickRunContinuationPatchPersistedTimelineEntry({
     projectId: input.projectId,
-    hasNextDispatch: Boolean(input.advance.nextDispatch),
+    hasNextDispatch:
+      Boolean(input.advance.nextDispatch) ||
+      shouldMarkQuickRunHasNextDispatch({
+        codeTaskPlan: parseImplementationCodeTaskPlanV1(mergedSlice.implementationCodeTaskPlanV1),
+        runs: parseCodeTaskExecutionRunsV1(mergedSlice.codeTaskExecutionRunsV1),
+        selectedCodeTaskIds:
+          parseImplementationQuickRunV1(mergedSlice.implementationQuickRunV1)?.selectedCodeTaskIds ??
+          null,
+      }),
     nowIso,
   });
   orchestrationPatch = mergeOrchestrationPersistPatches(orchestrationPatch, {

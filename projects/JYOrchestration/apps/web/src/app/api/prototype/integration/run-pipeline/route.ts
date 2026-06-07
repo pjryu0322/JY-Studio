@@ -6,7 +6,9 @@ import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionR
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
+import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { runIntegrationBranchPipeline } from "@/lib/prototype/implementationIntegrationPipelineService";
+import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
@@ -97,6 +99,8 @@ export async function POST(request: NextRequest) {
 
     const bundle = await getImplementationRuntimeBundle(projectId);
     const selectedCodeTaskIds = bundle.job?.selectedCodeTaskIds ?? quickRun?.selectedCodeTaskIds ?? null;
+    const storedIntegrationPlan =
+      parseCodeTaskIntegrationPlanV1(persisted.codeTaskIntegrationPlanV1) ?? null;
 
     const outcome = await runIntegrationBranchPipeline({
       projectId,
@@ -109,6 +113,7 @@ export async function POST(request: NextRequest) {
       codeTaskRuns: runs,
       selectedCodeTaskIds,
       createPullRequest: body.createPullRequest !== false,
+      storedIntegrationPlan,
     });
 
     const timeline = appendPromptTimelineEntries(
@@ -137,8 +142,8 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    console.error("[integration/run-pipeline]", message, e);
+    const message = toUserSafeIntegrationErrorMessage(e);
+    console.error("[integration/run-pipeline]", e instanceof Error ? e.message : e, e);
     return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }

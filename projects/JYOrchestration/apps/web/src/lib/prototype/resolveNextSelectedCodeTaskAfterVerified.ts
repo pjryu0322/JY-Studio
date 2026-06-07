@@ -6,6 +6,11 @@ import {
   isRunBlockingSelectedQueueContinuation,
   isRunSuccessTerminalForSelectedQueueContinuation,
 } from "@/lib/prototype/codeTaskQuickRunContinuationTerminal";
+import {
+  mapSelectedCodeTaskIdsToExecutionUnitIds,
+  resolveNextExecutableUnit,
+} from "@/lib/prototype/implementationExecutionScheduler";
+import { buildExecutionUnitsFromLegacyState } from "@/lib/prototype/implementationExecutionUnitBuilder";
 
 export type ResolveNextSelectedCodeTaskResultV1 =
   | Readonly<{ readonly status: "next_ready"; readonly codeTaskId: string }>
@@ -43,6 +48,29 @@ export function resolveNextSelectedCodeTaskAfterVerified(input: {
 
   const currentRun = findLatestRunForCodeTask(input.executionRuns, current);
   if (!isRunSuccessTerminalForSelectedQueueContinuation(currentRun)) {
+    return { status: "current_not_success_terminal", codeTaskId: current };
+  }
+
+  const { units } = buildExecutionUnitsFromLegacyState({
+    codeTaskPlan: input.codeTaskPlan,
+    runs: input.executionRuns,
+  });
+  const selectedUnitIds = mapSelectedCodeTaskIdsToExecutionUnitIds(ids);
+  const resolved = resolveNextExecutableUnit({ units, selectedUnitIds });
+  if (resolved.status === "next") {
+    return { status: "next_ready", codeTaskId: resolved.unit.codeTaskId };
+  }
+  if (resolved.status === "complete") {
+    return { status: "all_completed" };
+  }
+  if (resolved.status === "blocked") {
+    return {
+      status: "blocked_by_dependency",
+      codeTaskId: resolved.unit.codeTaskId,
+      blockedBy: resolved.unit.dependencies,
+    };
+  }
+  if (resolved.status === "in_flight") {
     return { status: "current_not_success_terminal", codeTaskId: current };
   }
 

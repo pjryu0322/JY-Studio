@@ -8,6 +8,7 @@ import {
 } from "@/lib/prototype/implementationBranchPlanBuilder";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { IntegrationCheckResultV1 } from "@/lib/prototype/implementationIntegrationCheckService";
+import { asReadonlyArray, normalizeCodeTaskIntegrationPlan } from "@/lib/prototype/implementationIntegrationPlanNormalize";
 
 export const CODE_TASK_INTEGRATION_PLAN_VERSION = "code_task_integration_plan_v1" as const;
 
@@ -195,7 +196,7 @@ export function buildCodeTaskIntegrationPlanDraft(input: {
     reason: mapExcludedReason(row.reason),
   }));
 
-  return {
+  return normalizeCodeTaskIntegrationPlan({
     version: CODE_TASK_INTEGRATION_PLAN_VERSION,
     projectId: input.projectId.trim(),
     targetRepository: input.targetRepository.trim(),
@@ -206,7 +207,7 @@ export function buildCodeTaskIntegrationPlanDraft(input: {
     excluded: excludedItems,
     strategy: "merge",
     status: "draft",
-  };
+  });
 }
 
 export function parseCodeTaskIntegrationPlanV1(raw: unknown): CodeTaskIntegrationPlanV1 | null | undefined {
@@ -222,7 +223,7 @@ export function parseCodeTaskIntegrationPlanV1(raw: unknown): CodeTaskIntegratio
 
   const status = String(o.status ?? "draft") as CodeTaskIntegrationPlanStatus;
 
-  return {
+  return normalizeCodeTaskIntegrationPlan({
     version: CODE_TASK_INTEGRATION_PLAN_VERSION,
     projectId,
     targetRepository: String(o.targetRepository ?? "").trim(),
@@ -240,12 +241,13 @@ export function parseCodeTaskIntegrationPlanV1(raw: unknown): CodeTaskIntegratio
     ...(typeof o.pullRequestNumber === "number" ? { pullRequestNumber: o.pullRequestNumber } : {}),
     ...(o.failureMessage ? { failureMessage: String(o.failureMessage).trim() } : {}),
     ...(o.conflictCodeTaskId ? { conflictCodeTaskId: String(o.conflictCodeTaskId).trim() } : {}),
-  };
+  });
 }
 
 export function patchCodeTaskIntegrationPlan(
   plan: CodeTaskIntegrationPlanV1,
   patch: Partial<Omit<CodeTaskIntegrationPlanV1, "version" | "projectId">>,
 ): CodeTaskIntegrationPlanV1 {
-  return { ...plan, ...patch };
+  const merged = { ...plan, ...patch };
+  return normalizeCodeTaskIntegrationPlan(merged);
 }

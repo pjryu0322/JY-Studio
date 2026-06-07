@@ -11,6 +11,7 @@ import {
   buildIntegrationScopeDetailLines,
 } from "@/lib/prototype/implementationIntegrationScopeUi";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
+import { normalizeCodeTaskIntegrationPlan } from "@/lib/prototype/implementationIntegrationPlanNormalize";
 import { canMergeIntegrationPullRequest } from "@/lib/prototype/implementationIntegrationConflict";
 import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import type { ImplementationIntegratedPipelineLine } from "@/lib/prototype/implementationTaskPipelinePolicy";
@@ -94,7 +95,7 @@ export function buildImplementationIntegrationBoardSection(input: {
   }
 
   const integrationPlanLines: string[] = [];
-  const plan = input.integrationPlan ?? null;
+  const plan = input.integrationPlan ? normalizeCodeTaskIntegrationPlan(input.integrationPlan) : null;
   if (plan?.integrationBranch) {
     integrationPlanLines.push(`Integration branch: ${plan.integrationBranch}`);
     integrationPlanLines.push(`Preview는 통합 branch 기준입니다. 포함 ${plan.included.length}개 · 제외 ${plan.excluded.length}개`);
