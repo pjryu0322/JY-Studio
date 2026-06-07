@@ -15,12 +15,25 @@ import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import {
   isAutoGatePassedForExecution,
   planQuickRunCodeTaskContinuationAfterAutoGate,
+  planQuickRunContinuationAfterVerifiedGithubOutcome,
   shouldPlanQuickRunCodeTaskContinuationAfterAutoGate,
 } from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
+import { resolveSelectedCodeTaskIdsForContinuation } from "@/lib/prototype/implementationSelectedCodeTaskSequence";
+import { resolveNextSelectedCodeTaskAfterVerified } from "@/lib/prototype/resolveNextSelectedCodeTaskAfterVerified";
+import { isRunSuccessTerminalForSelectedQueueContinuation } from "@/lib/prototype/codeTaskQuickRunContinuationTerminal";
+import {
+  buildQuickRunAllSelectedCodeTasksCompletedTimelineEntry,
+  buildQuickRunContinuationNoopTimelineEntry,
+  buildQuickRunContinuationRequestedTimelineEntry,
+  buildQuickRunNextCodeTaskBlockedTimelineEntry,
+  buildQuickRunNextCodeTaskDispatchRequestedTimelineEntry,
+  buildQuickRunNextCodeTaskResolvedTimelineEntry,
+} from "@/lib/prototype/quickRunVerifiedContinuationTimeline";
 import { resolveStaleTaskCursorAfterQualityGatePassed } from "@/lib/prototype/taskCursorQuickRunInflightPolicy";
 import {
   parseImplementationQuickRunV1,
   syncImplementationQuickRunWithExecution,
+  shouldAllowTaskCursorAutoChain,
 } from "@/lib/prototype/implementationQuickRun";
 import {
   parseImplementationQualityGateResultsV1,
@@ -124,8 +137,10 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
   };
   state = mergeRequirementsStateJson(state, quickRunSync as Partial<RequirementsStateJson>);
 
-  const taskList = parseImplementationTaskListV1(state.implementationTaskListV1);
-  if (!taskList) {
+  const taskList =
+    parseImplementationTaskListV1(state.implementationTaskListV1) ??
+    parseImplementationTaskListV1(input.implementationTaskListV1);
+  if (!taskList && !input.githubVerifyOk) {
     return {
       orchestrationPatch: mergeOrchestrationPatches(input.basePatch, quickRunSync),
       nextDispatch: null,
@@ -152,15 +167,16 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
     : runsForGate[runsForGate.length - 1] ?? null;
 
   const shouldRunGate =
-    shouldAutoStartImplementationQualityGate({
+    !input.githubVerifyOk &&
+    (shouldAutoStartImplementationQualityGate({
       taskCursorExecution: executionForGate,
       autoGate: autoGateBefore,
       codeTaskRun: runForGate,
     }) ||
-    shouldResumeImplementationAutoQualityGate({
-      taskCursorExecution: executionForGate,
-      autoGate: autoGateBefore,
-    });
+      shouldResumeImplementationAutoQualityGate({
+        taskCursorExecution: executionForGate,
+        autoGate: autoGateBefore,
+      }));
 
   if (shouldRunGate && runForGate && runHasVerifiedGithubOutcome(runForGate)) {
     const runsRunning = applyQualityGateRunningToRunsList({
@@ -251,83 +267,238 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
     );
   }
 
-  if (!autoGatePassed) {
-    return { orchestrationPatch: mergeOrchestrationPatches(...patches), nextDispatch: null };
-  }
+  let nextDispatch: QuickRunGithubAdvanceDispatch | null = null;
 
-  const postExecutionForRepair = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
-  if (postExecutionForRepair) {
-    const repairedCursor = resolveStaleTaskCursorAfterQualityGatePassed({
-      taskCursor: postExecutionForRepair,
-      completedTaskId: postExecutionForRepair.taskId,
-      autoGateRaw: state.implementationAutoQualityGateV1,
-      runs: parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [],
-      completedCodeTaskId: codeTaskIdForGate || runForGate?.codeTaskId,
-      nowIso,
-    });
-    if (repairedCursor) {
-      const repairPatch: PrototypeExecutionOrchestrationPersistInput = {
-        taskCursorExecutionV1: repairedCursor,
-      };
-      patches.push(repairPatch);
-      state = mergeRequirementsStateJson(state, repairPatch as Partial<RequirementsStateJson>);
+  if (autoGatePassed) {
+    const postExecutionForRepair = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
+    if (postExecutionForRepair) {
+      const repairedCursor = resolveStaleTaskCursorAfterQualityGatePassed({
+        taskCursor: postExecutionForRepair,
+        completedTaskId: postExecutionForRepair.taskId,
+        autoGateRaw: state.implementationAutoQualityGateV1,
+        runs: parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [],
+        completedCodeTaskId: codeTaskIdForGate || runForGate?.codeTaskId,
+        nowIso,
+      });
+      if (repairedCursor) {
+        const repairPatch: PrototypeExecutionOrchestrationPersistInput = {
+          taskCursorExecutionV1: repairedCursor,
+        };
+        patches.push(repairPatch);
+        state = mergeRequirementsStateJson(state, repairPatch as Partial<RequirementsStateJson>);
+      }
+    }
+
+    const postQuickRun = parseImplementationQuickRunV1(state.implementationQuickRunV1);
+    const postExecution = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
+    const postAutoGate = parseImplementationAutoQualityGateV1(state.implementationAutoQualityGateV1);
+    const runs = parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [];
+
+    if (
+      postQuickRun &&
+      postExecution &&
+      postAutoGate &&
+      shouldPlanQuickRunCodeTaskContinuationAfterAutoGate({
+        quickRun: postQuickRun,
+        taskCursorExecution: postExecution,
+        autoGate: postAutoGate,
+        runs,
+        codeTaskPlan: parseImplementationCodeTaskPlanV1(state.implementationCodeTaskPlanV1),
+        taskList,
+        cursorWorkItems: state.cursorWorkItemsV1,
+        dbBundle,
+      })
+    ) {
+      const plan = planQuickRunCodeTaskContinuationAfterAutoGate({
+        projectId: pid,
+        quickRun: postQuickRun,
+        taskCursorExecution: postExecution,
+        autoGate: postAutoGate,
+        runs,
+        codeTaskPlan: parseImplementationCodeTaskPlanV1(state.implementationCodeTaskPlanV1),
+        taskList,
+        cursorWorkItems: state.cursorWorkItemsV1,
+        dbBundle,
+        baseState: state as Record<string, unknown>,
+        nowIso,
+      });
+
+      if (plan) {
+        const continuationPatch: PrototypeExecutionOrchestrationPersistInput = {
+          ...plan.orchestrationPatch,
+          promptTimeline: appendPromptTimeline(state.promptTimeline ?? [], plan.timelineEntry),
+        };
+        patches.push(continuationPatch);
+        state = mergeRequirementsStateJson(state, continuationPatch as Partial<RequirementsStateJson>);
+        nextDispatch = {
+          codeTaskId: plan.dispatch.codeTaskId,
+          parentTaskId: plan.dispatch.parentTaskId,
+          workItemId: plan.dispatch.workItemId,
+          triggerKey: plan.triggerKey,
+        };
+      }
     }
   }
 
-  const postQuickRun = parseImplementationQuickRunV1(state.implementationQuickRunV1);
-  const postExecution = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
-  const postAutoGate = parseImplementationAutoQualityGateV1(state.implementationAutoQualityGateV1);
-  const runs = parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [];
-
-  if (
-    !postQuickRun ||
-    !postExecution ||
-    !postAutoGate ||
-    !shouldPlanQuickRunCodeTaskContinuationAfterAutoGate({
+    if (!nextDispatch && input.githubVerifyOk) {
+    const runsNow = parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [];
+    let verifiedCodeTaskId =
+      codeTaskIdForGate.trim() || String(runForGate?.codeTaskId ?? "").trim();
+    if (!verifiedCodeTaskId || !runHasVerifiedGithubOutcome(findLatestRunForCodeTask(runsNow, verifiedCodeTaskId))) {
+      const fromRuns = runsNow.find((r) => runHasVerifiedGithubOutcome(r));
+      verifiedCodeTaskId = fromRuns?.codeTaskId?.trim() ?? verifiedCodeTaskId;
+    }
+    const verifiedRun = verifiedCodeTaskId
+      ? findLatestRunForCodeTask(runsNow, verifiedCodeTaskId)
+      : null;
+    const postQuickRun = parseImplementationQuickRunV1(state.implementationQuickRunV1);
+    const postExecution = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
+    const selectedCodeTaskIds = resolveSelectedCodeTaskIdsForContinuation({ dbBundle });
+    const codeTaskPlanParsed = parseImplementationCodeTaskPlanV1(state.implementationCodeTaskPlanV1);
+    const quickRunActive = shouldAllowTaskCursorAutoChain({
       quickRun: postQuickRun,
       taskCursorExecution: postExecution,
-      autoGate: postAutoGate,
-      runs,
-      codeTaskPlan: parseImplementationCodeTaskPlanV1(state.implementationCodeTaskPlanV1),
-      taskList,
-      cursorWorkItems: state.cursorWorkItemsV1,
-      dbBundle,
-    })
-  ) {
-    return { orchestrationPatch: mergeOrchestrationPatches(...patches), nextDispatch: null };
+    });
+
+    if (
+      verifiedCodeTaskId &&
+      verifiedRun &&
+      runHasVerifiedGithubOutcome(verifiedRun) &&
+      postQuickRun &&
+      postExecution &&
+      quickRunActive
+    ) {
+      let completedCodeTaskCount = 0;
+      for (const id of selectedCodeTaskIds) {
+        const run = findLatestRunForCodeTask(runsNow, id);
+        if (isRunSuccessTerminalForSelectedQueueContinuation(run)) completedCodeTaskCount += 1;
+      }
+
+      const continuationTimeline: RequirementsPromptTimelineEntry[] = [
+        buildQuickRunContinuationRequestedTimelineEntry({
+          projectId: pid,
+          currentCodeTaskId: verifiedCodeTaskId,
+          selectedCodeTaskIds,
+          completedCodeTaskCount,
+          reason: "previous_github_outcome_verified",
+          runId: verifiedRun.runId,
+          previousCommitSha: verifiedRun.commitSha ?? verifiedRun.branchHeadCommitSha,
+          previousWorkBranch: verifiedRun.workBranch,
+          nowIso,
+        }),
+      ];
+
+      const resolved = resolveNextSelectedCodeTaskAfterVerified({
+        selectedCodeTaskIds,
+        currentCodeTaskId: verifiedCodeTaskId,
+        codeTaskPlan: codeTaskPlanParsed,
+        executionRuns: runsNow,
+      });
+
+      continuationTimeline.push(
+        buildQuickRunNextCodeTaskResolvedTimelineEntry({
+          projectId: pid,
+          currentCodeTaskId: verifiedCodeTaskId,
+          selectedCodeTaskIds,
+          completedCodeTaskCount,
+          resolved,
+          nowIso,
+        }),
+      );
+
+      if (resolved.status === "next_ready") {
+        const nextTask = codeTaskPlanParsed?.tasks.find((t) => t.codeTaskId === resolved.codeTaskId);
+      const plan = planQuickRunContinuationAfterVerifiedGithubOutcome({
+        projectId: pid,
+        verifiedCodeTaskId,
+        quickRun: postQuickRun,
+        taskCursorExecution: postExecution,
+        runs: runsNow,
+        codeTaskPlan: codeTaskPlanParsed,
+        taskList: taskList ?? null,
+        cursorWorkItems: state.cursorWorkItemsV1,
+        dbBundle,
+        baseState: state as Record<string, unknown>,
+        nowIso,
+      });
+        if (plan) {
+          continuationTimeline.push(
+            buildQuickRunNextCodeTaskDispatchRequestedTimelineEntry({
+              projectId: pid,
+              currentCodeTaskId: verifiedCodeTaskId,
+              nextCodeTaskId: plan.nextCodeTaskId,
+              selectedCodeTaskIds,
+              completedCodeTaskCount,
+              reason: "previous_github_outcome_verified",
+              nextBaseBranch: nextTask?.branchPlan?.baseBranch ?? null,
+              nextWorkBranch: nextTask?.branchPlan?.workBranch ?? null,
+              nowIso,
+            }),
+          );
+          const continuationPatch: PrototypeExecutionOrchestrationPersistInput = {
+            ...plan.orchestrationPatch,
+            promptTimeline: appendPromptTimeline(state.promptTimeline ?? [], [
+              ...continuationTimeline,
+              plan.timelineEntry,
+            ]),
+          };
+          patches.push(continuationPatch);
+          state = mergeRequirementsStateJson(state, continuationPatch as Partial<RequirementsStateJson>);
+          nextDispatch = {
+            codeTaskId: plan.dispatch.codeTaskId,
+            parentTaskId: plan.dispatch.parentTaskId,
+            workItemId: plan.dispatch.workItemId,
+            triggerKey: plan.triggerKey,
+          };
+        } else {
+          patches.push({
+            promptTimeline: appendPromptTimeline(state.promptTimeline ?? [], continuationTimeline),
+          });
+        }
+      } else if (resolved.status === "all_completed") {
+        continuationTimeline.push(
+          buildQuickRunAllSelectedCodeTasksCompletedTimelineEntry({
+            projectId: pid,
+            currentCodeTaskId: verifiedCodeTaskId,
+            selectedCodeTaskIds,
+            completedCodeTaskCount,
+            nowIso,
+          }),
+        );
+        patches.push({
+          promptTimeline: appendPromptTimeline(state.promptTimeline ?? [], continuationTimeline),
+        });
+      } else {
+        const blocked = buildQuickRunNextCodeTaskBlockedTimelineEntry({
+          projectId: pid,
+          currentCodeTaskId: verifiedCodeTaskId,
+          selectedCodeTaskIds,
+          completedCodeTaskCount,
+          resolved,
+          nowIso,
+        });
+        if (blocked) continuationTimeline.push(blocked);
+        patches.push({
+          promptTimeline: appendPromptTimeline(state.promptTimeline ?? [], continuationTimeline),
+        });
+      }
+    } else if (input.githubVerifyOk && shouldAllowTaskCursorAutoChain({ quickRun: postQuickRun, taskCursorExecution: postExecution })) {
+      patches.push({
+        promptTimeline: appendPromptTimeline(state.promptTimeline ?? [], [
+          buildQuickRunContinuationNoopTimelineEntry({
+            projectId: pid,
+            currentCodeTaskId: verifiedCodeTaskId || null,
+            selectedCodeTaskIds,
+            reason: verifiedCodeTaskId ? "verified_run_not_ready_for_continuation" : "verified_code_task_unresolved",
+            nowIso,
+          }),
+        ]),
+      });
+    }
   }
-
-  const plan = planQuickRunCodeTaskContinuationAfterAutoGate({
-    projectId: pid,
-    quickRun: postQuickRun,
-    taskCursorExecution: postExecution,
-    autoGate: postAutoGate,
-    runs,
-    codeTaskPlan: parseImplementationCodeTaskPlanV1(state.implementationCodeTaskPlanV1),
-    taskList,
-    cursorWorkItems: state.cursorWorkItemsV1,
-    dbBundle,
-    baseState: state as Record<string, unknown>,
-    nowIso,
-  });
-
-  if (!plan) {
-    return { orchestrationPatch: mergeOrchestrationPatches(...patches), nextDispatch: null };
-  }
-
-  const continuationPatch: PrototypeExecutionOrchestrationPersistInput = {
-    ...plan.orchestrationPatch,
-    promptTimeline: appendPromptTimeline(state.promptTimeline ?? [], plan.timelineEntry),
-  };
-  patches.push(continuationPatch);
 
   return {
     orchestrationPatch: mergeOrchestrationPatches(...patches),
-    nextDispatch: {
-      codeTaskId: plan.dispatch.codeTaskId,
-      parentTaskId: plan.dispatch.parentTaskId,
-      workItemId: plan.dispatch.workItemId,
-      triggerKey: plan.triggerKey,
-    },
+    nextDispatch,
   };
 }

@@ -203,6 +203,7 @@ export function formatImplementationExecutionOverviewLines(
   input?: {
     readonly selectedCodeTaskCount?: number;
     readonly selectedExecutionProgress?: SelectedCodeTaskExecutionProgress | null;
+    readonly selectedCompletedCount?: number;
     readonly queueRunning?: boolean;
   },
 ): readonly string[] {
@@ -216,7 +217,13 @@ export function formatImplementationExecutionOverviewLines(
   const showSelectedProgress =
     progress && progress.total > 0 && (input?.queueRunning || overview.isRunning);
   if (showSelectedProgress) {
-    lines.push(`선택 실행 진행: ${progress.done} / ${progress.total}`);
+    const sequenceIndex = Math.min(progress.done, progress.total);
+    lines.push(`선택 실행 순서: ${sequenceIndex} / ${progress.total}`);
+    const completedCount =
+      typeof input?.selectedCompletedCount === "number"
+        ? input.selectedCompletedCount
+        : Math.max(0, progress.done - 1);
+    lines.push(`완료 CodeTask: ${Math.min(completedCount, progress.total)} / ${progress.total}`);
   }
 
   if (overview.currentTitle) {

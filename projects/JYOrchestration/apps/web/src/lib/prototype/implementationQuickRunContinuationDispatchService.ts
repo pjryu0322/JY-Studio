@@ -67,7 +67,7 @@ export async function dispatchQuickRunContinuationOnServer(input: {
     taskList,
     cursorWorkItems: workItems,
     targetRepository: context.targetRepository,
-    baseBranch: context.baseBranch,
+    baseBranch: String(body.baseBranch ?? context.baseBranch).trim() || context.baseBranch,
     allowedPathGlobs: context.allowedPathGlobs,
     codeTaskPromptContextMapV1: parseCodeTaskPromptContextMapV1(state.codeTaskPromptContextMapV1),
     existingTaskCursor: null,
@@ -106,7 +106,7 @@ export async function dispatchQuickRunContinuationOnServer(input: {
     cursorApiToken: input.cursorApiToken,
     targetRepository: context.targetRepository,
     workspacePath: context.workspaceRoot,
-    baseBranch: context.baseBranch,
+    baseBranch: String(body.baseBranch ?? context.baseBranch).trim() || context.baseBranch,
     workBranch: body.workBranch,
     commitMessage,
     prompt: body.developerPrompt,
@@ -132,7 +132,7 @@ export async function dispatchQuickRunContinuationOnServer(input: {
           agentId: launch.agentId,
           branchName: execution.workBranch ?? null,
           targetRepository: context.targetRepository,
-          baseBranch: context.baseBranch,
+          baseBranch: String(body.baseBranch ?? context.baseBranch).trim() || context.baseBranch,
         };
       },
     });
@@ -163,7 +163,7 @@ export async function dispatchQuickRunContinuationOnServer(input: {
         execution,
         agentId,
         targetRepository: context.targetRepository,
-        baseBranch: context.baseBranch,
+        baseBranch: String(body.baseBranch ?? context.baseBranch).trim() || context.baseBranch,
         workBranch: execution.workBranch ?? null,
         now: new Date(nowIso),
       });

@@ -31,7 +31,12 @@ import type { CodeTaskQueueDispatchRef } from "@/lib/prototype/selectedCodeTaskC
 import { patchTaskCursorExecution, type TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
-import { resolveNextQuickRunCodeTaskId } from "@/lib/prototype/implementationSelectedCodeTaskSequence";
+import { resolveNextQuickRunCodeTaskId, resolveSelectedCodeTaskIdsForContinuation } from "@/lib/prototype/implementationSelectedCodeTaskSequence";
+import {
+  resolveNextSelectedCodeTaskAfterVerified,
+  type ResolveNextSelectedCodeTaskResultV1,
+} from "@/lib/prototype/resolveNextSelectedCodeTaskAfterVerified";
+import { runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
 
 export function isAutoGatePassedForExecution(
   execution: TaskCursorExecutionV1,
@@ -353,6 +358,165 @@ export function planQuickRunCodeTaskContinuationAfterAutoGate(input: {
     timelineEntry,
   };
 }
+
+export function buildQuickRunCodeTaskContinuationTriggerKeyFromVerified(input: {
+  readonly verifiedCodeTaskId: string;
+  readonly verifiedCommitSha?: string | null;
+  readonly nextCodeTaskId: string;
+}): string {
+  const sha = String(input.verifiedCommitSha ?? "").trim().slice(0, 12);
+  return `github_verified:${input.verifiedCodeTaskId.trim()}:${sha}:next:${input.nextCodeTaskId.trim()}`;
+}
+
+export function planQuickRunContinuationAfterVerifiedGithubOutcome(input: {
+  readonly projectId: string;
+  readonly verifiedCodeTaskId: string;
+  readonly quickRun: ImplementationQuickRunV1;
+  readonly taskCursorExecution: TaskCursorExecutionV1;
+  readonly runs: readonly CodeTaskExecutionRunV1[];
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly taskList?: ImplementationTaskListV1 | null;
+  readonly cursorWorkItems?: readonly CursorWorkItem[] | null;
+  readonly dbBundle?: ImplementationRuntimeBundleView | null;
+  readonly baseState: Record<string, unknown>;
+  readonly developerPrompt?: string | null;
+  readonly nowIso?: string;
+}): QuickRunCodeTaskContinuationPlan | null {
+  const pid = input.projectId.trim();
+  const verifiedCodeTaskId = input.verifiedCodeTaskId.trim();
+  const execution = input.taskCursorExecution;
+  if (!pid || !verifiedCodeTaskId) return null;
+
+  const verifiedRun = findLatestRunForCodeTask(input.runs, verifiedCodeTaskId);
+  if (!verifiedRun || !runHasVerifiedGithubOutcome(verifiedRun)) return null;
+
+  const selectedCodeTaskIds = resolveSelectedCodeTaskIdsForContinuation({
+    dbBundle: input.dbBundle,
+  });
+  const resolved = resolveNextSelectedCodeTaskAfterVerified({
+    selectedCodeTaskIds,
+    currentCodeTaskId: verifiedCodeTaskId,
+    codeTaskPlan: input.codeTaskPlan,
+    executionRuns: input.runs,
+  });
+  if (resolved.status !== "next_ready") return null;
+
+  const nextCodeTaskId = resolved.codeTaskId;
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const autoGate = null;
+
+  const dispatchTarget = resolveCodeTaskDispatchTarget({
+    codeTaskId: nextCodeTaskId,
+    codeTaskPlan: input.codeTaskPlan,
+    taskList: input.taskList,
+    cursorWorkItems: input.cursorWorkItems,
+  });
+  if (!dispatchTarget) return null;
+
+  const completedWorkItemId =
+    verifiedRun.workItemId ??
+    resolveCodeTaskDispatchTarget({
+      codeTaskId: verifiedCodeTaskId,
+      codeTaskPlan: input.codeTaskPlan,
+      taskList: input.taskList,
+      cursorWorkItems: input.cursorWorkItems,
+    })?.workItem.id ??
+    "";
+
+  let runs = completedWorkItemId
+    ? syncCodeTaskExecutionRunsFromTaskCursor({
+        runs: input.runs,
+        execution,
+        codeTaskId: verifiedCodeTaskId,
+        workItemId: completedWorkItemId,
+        nowIso,
+      })
+    : [...input.runs];
+
+  let nextRun = findLatestRunForCodeTask(runs, nextCodeTaskId);
+  if (nextRun && isInFlightCodeTaskExecutionRunStatus(nextRun.status)) return null;
+  if (!nextRun || !isQueuedCodeTaskExecutionRunStatus(nextRun.status)) {
+    nextRun = createCodeTaskExecutionRun({
+      projectId: pid,
+      processTaskId: dispatchTarget.parentTaskId,
+      workItemId: dispatchTarget.workItem.id,
+      codeTaskId: nextCodeTaskId,
+      developerPrompt: input.developerPrompt ?? undefined,
+      runs,
+      nowIso,
+    });
+    runs = appendCodeTaskExecutionRun(runs, nextRun);
+  }
+
+  const promptText = input.developerPrompt?.trim();
+  if (promptText && nextRun.status !== "prompt_ready") {
+    runs = updateCodeTaskExecutionRun(runs, nextRun.runId, {
+      developerPrompt: promptText,
+      status: "prompt_ready",
+      updatedAt: nowIso,
+    });
+    nextRun = findLatestRunForCodeTask(runs, nextCodeTaskId)!;
+  }
+
+  const dispatch: CodeTaskQueueDispatchRef = {
+    codeTaskId: nextCodeTaskId,
+    parentTaskId: dispatchTarget.parentTaskId,
+    workItemId: dispatchTarget.workItem.id,
+  };
+
+  const quickRun = syncImplementationQuickRunWithExecution({
+    quickRun: input.quickRun,
+    taskCursorExecution: execution,
+    autoGate: autoGate ?? undefined,
+    nowIso,
+  });
+
+  const baseState = {
+    ...input.baseState,
+    implementationQuickRunV1: quickRun,
+    codeTaskExecutionRunsV1: runs,
+  };
+
+  const orchestrationPatch: PrototypeExecutionOrchestrationPersistInput = {
+    implementationQuickRunV1: quickRun,
+    codeTaskExecutionRunsV1: runs,
+    implementationRuntimeUiSnapshotV1: buildPersistedActiveDispatchSnapshotPatch({
+      projectId: pid,
+      dispatch: {
+        codeTaskId: dispatch.codeTaskId,
+        parentTaskId: dispatch.parentTaskId,
+        workItemId: dispatch.workItemId,
+        runId: nextRun.runId,
+      },
+      baseState,
+      nowIso,
+    }),
+  };
+
+  const timelineEntry = buildImplementationQuickRunCursorDispatchTimelineEntry({
+    projectId: pid,
+    taskId: dispatchTarget.parentTaskId,
+    outcome: "executed",
+    message: `quick_run_continue_verified:${nextCodeTaskId}`,
+    nowIso,
+  });
+
+  return {
+    triggerKey: buildQuickRunCodeTaskContinuationTriggerKeyFromVerified({
+      verifiedCodeTaskId,
+      verifiedCommitSha: verifiedRun.commitSha ?? verifiedRun.branchHeadCommitSha,
+      nextCodeTaskId,
+    }),
+    nextCodeTaskId,
+    parentTaskId: dispatchTarget.parentTaskId,
+    dispatch,
+    orchestrationPatch,
+    timelineEntry,
+  };
+}
+
+export { resolveNextSelectedCodeTaskAfterVerified };
+export type { ResolveNextSelectedCodeTaskResultV1 };
 
 /** 선택 CodeTask 큐의 마지막 항목까지 끝났을 때 JSON 실행 상태를 terminal로 맞춘다. */
 export function buildQuickRunQueueExhaustedOrchestrationPatch(input: {

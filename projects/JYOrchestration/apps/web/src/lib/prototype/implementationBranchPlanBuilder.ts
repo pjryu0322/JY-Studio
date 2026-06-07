@@ -1,4 +1,5 @@
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
+import { isRunSuccessTerminalForSelectedQueueContinuation } from "@/lib/prototype/codeTaskQuickRunContinuationTerminal";
 import {
   classifyCodeTaskBranchGroup,
   workBranchForGroup,
@@ -20,7 +21,6 @@ import type {
 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { isInFlightCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
-import { runHasQualityGatePassed } from "@/lib/prototype/codeTaskQualityOutcome";
 
 const GROUP_TITLES: Record<CodeTaskBranchGroupV1, string> = {
   foundation: "Foundation / App Shell",
@@ -211,16 +211,7 @@ export function codeTaskPlanHasBranchPlan(plan: ImplementationCodeTaskPlanV1 | n
 export function isCodeTaskDoneForBranchPlanQueue(
   run: CodeTaskExecutionRunV1 | null | undefined,
 ): boolean {
-  if (!run) return false;
-  if (run.status === "skipped_by_user") return true;
-  if (
-    run.status === "completed" ||
-    run.status === "no_code_change_completed" ||
-    run.status === "quality_gate_passed"
-  ) {
-    return true;
-  }
-  return runHasQualityGatePassed(run);
+  return isRunSuccessTerminalForSelectedQueueContinuation(run);
 }
 
 export function isCodeTaskRunnableByBranchPlan(input: {

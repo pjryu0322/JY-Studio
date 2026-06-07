@@ -746,6 +746,19 @@ export function ImplementationExecutionBoardPanel({
     selectedExecutionProgress,
   ]);
 
+  const selectedCompletedCount = useMemo(() => {
+    const sequenceIds =
+      checkedCodeTaskIds.length > 0
+        ? checkedCodeTaskIds
+        : codeTaskQueue?.selectedCodeTaskIds ?? [];
+    if (!sequenceIds.length) return 0;
+    const summary = summarizeCodeTaskExecutionQueueRuns({
+      runs: codeTaskRuns,
+      selectedCodeTaskIds: sequenceIds,
+    });
+    return summary.completed + summary.noCodeChange;
+  }, [checkedCodeTaskIds, codeTaskQueue?.selectedCodeTaskIds, codeTaskRuns]);
+
   return (
     <section
       className={styles.root}
@@ -761,6 +774,7 @@ export function ImplementationExecutionBoardPanel({
             {formatImplementationExecutionOverviewLines(executionOverview, {
               selectedCodeTaskCount: checkedCodeTaskIds.length,
               selectedExecutionProgress,
+              selectedCompletedCount,
               queueRunning: codeTaskQueue?.status === "running",
             }).map((line) => (
               <li key={line}>{line}</li>

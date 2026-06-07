@@ -1,6 +1,7 @@
 import type { CodeTaskExecutionRunStatus, CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CodeTaskExecutionQueueStatus } from "@/lib/prototype/codeTaskExecutionQueue";
 import { findLatestRunForCodeTask } from "@/lib/prototype/codeTaskExecutionRun";
+import { runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
 const RUN_LABELS: Record<CodeTaskExecutionRunStatus, string> = {
@@ -76,7 +77,11 @@ export function summarizeCodeTaskExecutionQueueRuns(input: {
       case "failed":
         failed += 1;
         break;
+      case "github_verified":
+        completed += 1;
+        break;
       default:
+        if (runHasVerifiedGithubOutcome(run)) completed += 1;
         break;
     }
   }
