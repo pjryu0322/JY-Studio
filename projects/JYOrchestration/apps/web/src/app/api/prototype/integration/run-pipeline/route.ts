@@ -7,7 +7,7 @@ import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
-import { runFinalWiringIntegrationStep } from "@/lib/prototype/implementationFinalWiringService";
+import { runImplementationIntegrationStepPipeline } from "@/lib/prototype/implementationIntegrationStepPipelineService";
 import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     const storedIntegrationPlan =
       parseCodeTaskIntegrationPlanV1(persisted.codeTaskIntegrationPlanV1) ?? null;
 
-    const outcome = await runFinalWiringIntegrationStep({
+    const outcome = await runImplementationIntegrationStepPipeline({
       projectId,
       trigger: "manual_integration_button",
       repoUrl: targetRepository.gitRepoUrl,
@@ -142,6 +142,7 @@ export async function POST(request: NextRequest) {
 
     const orchestrationPatch = mergeRequirementsStateJson(persisted, {
       ...(outcome.orchestrationPatch ?? {}),
+      ...(outcome.previewRuntimePatch ?? {}),
       codeTaskIntegrationPlanV1: plan,
       promptTimeline: timeline,
     });
@@ -157,6 +158,7 @@ export async function POST(request: NextRequest) {
       message: outcome.userSafeMessage ?? (outcome.ok ? "통합 Wiring이 완료되었습니다." : "통합 단계 실행에 실패했습니다."),
       integrationBranch: outcome.integrationBranch ?? plan.integrationBranch,
       previewReady: outcome.previewReady ?? false,
+      previewUrl: outcome.previewUrl ?? null,
       nextRequiredStep: outcome.nextRequiredStep ?? null,
       plan,
       timeline: outcome.timelineEntries,

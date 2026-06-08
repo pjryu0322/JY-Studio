@@ -171,10 +171,3 @@ export async function patchImplementationIntegrationStep(input: {
   });
   return next;
 }
-
-export function findIntegrationStepByKind(
-  steps: readonly ImplementationIntegrationStepV1[],
-  kind: ImplementationIntegrationStepKindV1,
-): ImplementationIntegrationStepV1 | null {
-  return steps.find((s) => s.kind === kind) ?? null;
-}

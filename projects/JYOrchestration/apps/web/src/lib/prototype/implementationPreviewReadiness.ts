@@ -1,15 +1,21 @@
 import {
-  findLatestRunForCodeTask,
   parseCodeTaskExecutionRunsV1,
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
 import { INTEGRATION_WIRING_CODE_TASK_ID } from "@/lib/prototype/codeTaskIntegrationWiringTask";
-import { ensurePersistedImplementationIntegrationSteps } from "@/lib/prototype/implementationIntegrationStepBootstrap";
+import type {
+  ImplementationIntegrationStepKindV1,
+  ImplementationIntegrationStepV1,
+} from "@/lib/prototype/implementationIntegrationStep";
+import { buildDefaultIntegrationStepsFromBranchPlan } from "@/lib/prototype/implementationIntegrationStepBuilder";
 import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
-import { isFinalWiringIntegrationStepCompleted } from "@/lib/prototype/implementationIntegrationStatus";
+import {
+  deriveIntegrationStepPipelinePhase,
+  isFinalWiringIntegrationStepCompleted,
+} from "@/lib/prototype/implementationIntegrationStatus";
+import { isIntegrationStepCompleted } from "@/lib/prototype/implementationIntegrationStepMutations";
 import {
   buildImplementationCodeTaskSummaryCounts,
-  isCodeTaskCompletedForSummary,
 } from "@/lib/prototype/implementationCodeTaskSummary";
 import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
 import { countVerifiedSelectedExecutionUnits } from "@/lib/prototype/implementationExecutionSelectedUnits";
@@ -62,31 +68,12 @@ export type ImplementationPreviewReadinessV1 = Readonly<{
   readonly integrationPrecheckBlocked: boolean;
 }>;
 
-function isFinalWiringCompleted(input: {
-  readonly requirementsState?: import("@/lib/requirements/requirementsStateJson").RequirementsStateJson | null;
+function projectHasIntegrationStepPipeline(input: {
+  readonly integrationSteps: readonly ImplementationIntegrationStepV1[];
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null;
-  readonly runs: readonly CodeTaskExecutionRunV1[] | null | undefined;
-  readonly eligibility: ImplementationIntegrationEligibility;
 }): boolean {
-  const persisted = loadImplementationIntegrationStepsFromState(input.requirementsState);
-  if (persisted.length) {
-    return isFinalWiringIntegrationStepCompleted(persisted);
-  }
-  ensurePersistedImplementationIntegrationSteps({
-    projectId: input.requirementsState?.implementationExecutionUnitsV1?.projectId ?? "",
-    requirementsState: input.requirementsState,
-    codeTaskPlan: input.codeTaskPlan,
-  });
-  const wiringTask = input.codeTaskPlan?.tasks.find((t) =>
-    String(t.branchPlan?.workBranch ?? "").includes("final-wiring"),
-  );
-  if (!wiringTask) {
-    const wiringExcluded = input.eligibility.excluded.some(
-      (row) => row.codeTaskId === INTEGRATION_WIRING_CODE_TASK_ID,
-    );
-    return !wiringExcluded;
-  }
-  return false;
+  if (input.integrationSteps.length > 0) return true;
+  return buildDefaultIntegrationStepsFromBranchPlan({ codeTaskPlan: input.codeTaskPlan }).length > 0;
 }
 
 function isIntegrationPlanPrecheckBlocked(
@@ -140,16 +127,30 @@ export function evaluateImplementationPreviewReadiness(input: {
         String(input.previewRuntime.previewUrl ?? "").trim(),
     );
 
-  const finalWiringCompleted = isFinalWiringCompleted({
-    requirementsState: input.requirementsState,
+  const integrationSteps = loadImplementationIntegrationStepsFromState(input.requirementsState);
+  const hasIntegrationPipeline = projectHasIntegrationStepPipeline({
+    integrationSteps,
     codeTaskPlan: input.codeTaskPlan,
-    runs: input.codeTaskRuns,
-    eligibility: input.eligibility,
   });
+  const stepPhase =
+    integrationSteps.length > 0
+      ? deriveIntegrationStepPipelinePhase(integrationSteps)
+      : null;
+
+  const finalWiringCompleted = hasIntegrationPipeline
+    ? integrationSteps.length > 0
+      ? isFinalWiringIntegrationStepCompleted(integrationSteps)
+      : false
+    : true;
   const wiringExcluded = input.eligibility.excluded.find(
     (row) => row.codeTaskId === INTEGRATION_WIRING_CODE_TASK_ID,
   );
-  const finalWiringPending = !finalWiringCompleted;
+  const finalWiringPending = hasIntegrationPipeline && !finalWiringCompleted;
+  const stepCompleted = (kind: ImplementationIntegrationStepKindV1) =>
+    !hasIntegrationPipeline || isIntegrationStepCompleted(integrationSteps, kind);
+  const integrationBranchStepDone = stepCompleted("integration_branch");
+  const buildStepDone = stepCompleted("build");
+  const appPreviewStepDone = stepCompleted("app_preview_target");
 
   const plan = input.integrationPlan ?? null;
   const integrationBranch =
@@ -168,15 +169,29 @@ export function evaluateImplementationPreviewReadiness(input: {
     mode = "not_ready";
   } else if (precheckBlocked || plan?.status === "conflict") {
     mode = "integration_blocked";
-  } else if (finalWiringPending) {
-    mode = "final_wiring_pending";
-  } else if (!integrationBranch) {
-    mode = "integration_pending";
-  } else if (buildStatus === "failed") {
+  } else if (stepPhase === "build_failed" || buildStatus === "failed") {
     mode = "build_failed";
-  } else if (!integratedRenderOk || buildStatus === "pending") {
+  } else if (finalWiringPending || stepPhase === "final_wiring_pending") {
+    mode = "final_wiring_pending";
+  } else if (!integrationBranchStepDone || stepPhase === "integration_branch_pending" || !integrationBranch) {
+    mode = "integration_pending";
+  } else if (
+    !buildStepDone ||
+    stepPhase === "build_pending" ||
+    stepPhase === "app_preview_pending" ||
+    !integratedRenderOk ||
+    buildStatus === "pending"
+  ) {
     mode = "build_pending";
-  } else if (allVisibleCompleted && integratedRenderOk) {
+  } else if (
+    allVisibleCompleted &&
+    integratedRenderOk &&
+    finalWiringCompleted &&
+    integrationBranchStepDone &&
+    buildStepDone &&
+    appPreviewStepDone &&
+    stepPhase === "all_completed"
+  ) {
     mode = "integrated_app_preview_ready";
   } else if (codeTaskPreviewReady) {
     mode = "code_task_preview_ready";
