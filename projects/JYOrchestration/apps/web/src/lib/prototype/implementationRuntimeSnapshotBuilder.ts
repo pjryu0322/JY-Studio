@@ -20,8 +20,11 @@ import {
   loadImplementationExecutionUnitsFromState,
 } from "@/lib/prototype/implementationExecutionUnitStore";
 import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
+import { buildDefaultIntegrationStepsFromBranchPlan } from "@/lib/prototype/implementationIntegrationStepBuilder";
 import { loadPersistedSelectedExecutionUnitIds } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import { reconcileSelectedExecutionUnitIds } from "@/lib/prototype/implementationExecutionScheduler";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
 function mapOutcomeToRuntimeDisplayStatus(
   status: AuthoritativeCodeTaskOutcomeStatusV1,
@@ -42,6 +45,20 @@ function mapOutcomeToRuntimeDisplayStatus(
     default:
       return "pending";
   }
+}
+
+/** Persisted steps first; otherwise branch-plan bootstrap (snapshot-only, no persist). */
+export function resolveIntegrationStepsForRuntimeSnapshot(input: {
+  readonly requirementsState?: RequirementsStateJson | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+}): readonly ImplementationIntegrationStepV1[] {
+  const persisted = loadImplementationIntegrationStepsFromState(input.requirementsState);
+  if (persisted.length) return persisted;
+  const plan =
+    input.codeTaskPlan ??
+    parseImplementationCodeTaskPlanV1(input.requirementsState?.implementationCodeTaskPlanV1) ??
+    null;
+  return buildDefaultIntegrationStepsFromBranchPlan({ codeTaskPlan: plan });
 }
 
 function stepStatusLabel(status: ImplementationIntegrationStepV1["status"]): string {
@@ -229,7 +246,7 @@ export function buildImplementationRuntimeSnapshot(input: {
   const build = findIntegrationStep(integrationSteps, "build");
   const appPreview = findIntegrationStep(integrationSteps, "app_preview_target");
 
-  const finalWiringStatus = finalWiring?.status ?? "pending";
+  const finalWiringStatus = finalWiring?.status ?? "missing";
   const integrationBranchStatus = integrationBranch?.status ?? "pending";
   const buildStatus = build?.status ?? "pending";
   const appPreviewTargetStatus = appPreview?.status ?? "pending";
@@ -411,7 +428,12 @@ export function buildImplementationRuntimeSnapshotFromRequirementsState(input: {
   readonly branchPlanIntegrationCount?: number | null;
 }): ImplementationRuntimeSnapshotV1 {
   const runs = coalesceCodeTaskExecutionRunsV1(input.requirementsState?.codeTaskExecutionRunsV1);
-  const steps = loadImplementationIntegrationStepsFromState(input.requirementsState);
+  const steps = resolveIntegrationStepsForRuntimeSnapshot({
+    requirementsState: input.requirementsState,
+    codeTaskPlan: parseImplementationCodeTaskPlanV1(
+      input.requirementsState?.implementationCodeTaskPlanV1,
+    ),
+  });
   return buildImplementationRuntimeSnapshot({
     projectId: input.projectId,
     executionUnits: input.executionUnits,
@@ -436,6 +458,11 @@ export function loadPersistedRuntimeSnapshotInputs(
     units: loadImplementationExecutionUnitsFromState(requirementsState),
     selectedExecutionUnitIds: loadPersistedSelectedExecutionUnitIds(requirementsState),
     runs: coalesceCodeTaskExecutionRunsV1(requirementsState?.codeTaskExecutionRunsV1),
-    integrationSteps: loadImplementationIntegrationStepsFromState(requirementsState),
+    integrationSteps: resolveIntegrationStepsForRuntimeSnapshot({
+      requirementsState,
+      codeTaskPlan: parseImplementationCodeTaskPlanV1(
+        requirementsState?.implementationCodeTaskPlanV1,
+      ),
+    }),
   };
 }

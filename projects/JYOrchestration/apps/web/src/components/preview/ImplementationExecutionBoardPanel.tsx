@@ -738,19 +738,12 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const codetasksCompletedIntegrationHint = useMemo(() => {
-    if (runtimeSnapshot.integration.canRunIntegration) {
-      return `개발 CodeTask ${runtimeSnapshot.codeTask.completed}/${runtimeSnapshot.codeTask.selected} 완료\n최종 연결/통합 Wiring을 실행할 수 있습니다.`;
-    }
-    if (
-      runtimeSnapshot.codeTask.selected > 0 &&
-      runtimeSnapshot.codeTask.completed >= runtimeSnapshot.codeTask.selected &&
-      runtimeSnapshot.codeTask.inconsistent === 0 &&
-      integrationSection.previewReadiness.finalWiringPending
-    ) {
-      return "CodeTask는 모두 완료되었습니다. 실제 앱 Preview를 준비하려면 최종 연결/통합 Wiring을 실행해야 합니다.";
+    const button = evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot);
+    if (button.enabled && button.userStatusLines.length) {
+      return button.userStatusLines.join("\n");
     }
     return null;
-  }, [runtimeSnapshot, integrationSection.previewReadiness.finalWiringPending]);
+  }, [runtimeSnapshot]);
 
   const integrationPipelineDisplayLines = useMemo(() => {
     const lines = [...integrationSection.pipelineLines];
@@ -1219,6 +1212,7 @@ export function ImplementationExecutionBoardPanel({
                   className={styles.integrationPrimaryButton}
                   data-testid="implementation-integration-run-button"
                   disabled={integrationPipelineBusy === true || !integrationButtonEnabled}
+                  aria-disabled={integrationPipelineBusy === true || !integrationButtonEnabled}
                   onClick={onRunIntegrationPipeline}
                 >
                   {integrationPipelineBusy
@@ -1300,12 +1294,18 @@ export function ImplementationExecutionBoardPanel({
             </div>
           </div>
           <div className={styles.taskTreeList}>
-            {showIntegrationButton && !integrationButtonEnabled
-              ? integrationButtonState.disabledReasonLines.map((line, index) => (
+            {showIntegrationButton && integrationButtonState.userStatusLines.length
+              ? integrationButtonState.userStatusLines.map((line, index) => (
                   <div
-                    key={`integration-disabled-reason-${index}`}
+                    key={`integration-button-status-${index}`}
                     className={styles.taskTreeChildLine}
-                    data-testid={index === 0 ? "implementation-integration-disabled-reason" : undefined}
+                    data-testid={
+                      index === 0
+                        ? integrationButtonEnabled
+                          ? "implementation-integration-enabled-hint"
+                          : "implementation-integration-disabled-reason"
+                        : undefined
+                    }
                   >
                     {line}
                   </div>

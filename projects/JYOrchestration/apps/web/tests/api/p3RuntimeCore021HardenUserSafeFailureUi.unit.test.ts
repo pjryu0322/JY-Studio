@@ -35,6 +35,29 @@ function unit(
   };
 }
 
+function verifiedRun(codeTaskId: string): CodeTaskExecutionRunV1 {
+  return {
+    version: CODE_TASK_EXECUTION_RUN_VERSION,
+    runId: `run-verified-${codeTaskId}`,
+    projectId: PID,
+    processTaskId: "DEV-FRAME-001",
+    workItemId: "wi",
+    codeTaskId,
+    status: "github_verified",
+    attemptNo: 1,
+    createdAt: NOW,
+    updatedAt: NOW,
+    commitSha: "abc",
+    githubOutcome: {
+      status: "verified",
+      checkedAt: NOW,
+      workBranch: "wip/foundation/app-shell",
+      commitSha: "abc",
+      source: "github_rest",
+    },
+  };
+}
+
 function branchMissingFailedRun(codeTaskId: string): CodeTaskExecutionRunV1 {
   return {
     version: CODE_TASK_EXECUTION_RUN_VERSION,
@@ -112,12 +135,12 @@ describe("P3-Runtime-Core-02-1 integration button visibility", () => {
   });
 
   it("shows disabled button when integration steps are empty", () => {
-    const u1 = unit({ unitId: "u1", codeTaskId: "CT-1", status: "ready" });
+    const u1 = unit({ unitId: "u1", codeTaskId: "CT-1", status: "verified" });
     const snapshot = buildImplementationRuntimeSnapshot({
       projectId: PID,
       executionUnits: [u1],
       selectedExecutionUnitIds: [u1.unitId],
-      codeTaskRuns: [],
+      codeTaskRuns: [verifiedRun("CT-1")],
       integrationSteps: [],
     });
     const button = evaluateIntegrationPipelineButtonFromSnapshot(snapshot);

@@ -20,6 +20,7 @@ import type { ImplementationCodeTaskSummaryCountsV1 } from "@/lib/prototype/impl
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   buildImplementationRuntimeSnapshot,
+  resolveIntegrationStepsForRuntimeSnapshot,
 } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
 import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
@@ -125,7 +126,10 @@ export function buildImplementationExecutionSummaryCounts(input: {
     executionUnits: units,
     selectedExecutionUnitIds: selectedUnitIds,
     codeTaskRuns,
-    integrationSteps: loadImplementationIntegrationStepsFromState(mergedState),
+    integrationSteps: resolveIntegrationStepsForRuntimeSnapshot({
+      requirementsState: mergedState,
+      codeTaskPlan: input.codeTaskPlan,
+    }),
     previewRuntime: input.previewRuntime ?? null,
     codeTaskPlanCount: input.codeTaskPlan?.tasks?.length ?? null,
   });

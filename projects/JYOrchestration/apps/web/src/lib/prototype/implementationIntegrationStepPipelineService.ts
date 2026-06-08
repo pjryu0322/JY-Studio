@@ -175,7 +175,8 @@ export async function runImplementationIntegrationStepPipeline(input: {
       ok: false,
       status: "codetasks_incomplete",
       previewReady: false,
-      userSafeMessage: "선택한 CodeTask가 모두 검증 완료되지 않아 통합 단계를 실행할 수 없습니다.",
+      userSafeMessage:
+        "미완료 또는 검증 대기 중인 CodeTask가 있어 통합을 시작할 수 없습니다.",
       timelineEntries: timeline,
     };
   }

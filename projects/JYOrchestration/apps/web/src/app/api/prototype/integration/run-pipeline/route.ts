@@ -120,10 +120,13 @@ export async function POST(request: NextRequest) {
     });
 
     if (!outcome.ok && !outcome.plan) {
+      const apiStatus =
+        outcome.status === "codetasks_incomplete" ? "codetask_completion_required" : outcome.status;
       return NextResponse.json(
         {
           success: false,
-          status: outcome.status,
+          status: apiStatus,
+          previewReady: false,
           message: outcome.userSafeMessage ?? "통합 단계를 실행할 수 없습니다.",
         },
         { status: 400 },
