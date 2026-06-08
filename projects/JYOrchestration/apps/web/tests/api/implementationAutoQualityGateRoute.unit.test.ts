@@ -17,8 +17,8 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("@/lib/prototype/serverQuickRunContinuationService", () => ({
-  continueSelectedCodeTaskQueueAfterAutoGate: (...args: unknown[]) => continueAfterAutoGateMock(...args),
+vi.mock("@/lib/prototype/implementationExecutionUnitDispatchService", () => ({
+  dispatchNextExecutionUnitOnServer: (...args: unknown[]) => continueAfterAutoGateMock(...args),
 }));
 
 vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeRepository", () => ({

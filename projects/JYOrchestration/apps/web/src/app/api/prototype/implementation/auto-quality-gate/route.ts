@@ -18,7 +18,7 @@ import {
 import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
-import { continueSelectedCodeTaskQueueAfterAutoGate } from "@/lib/prototype/serverQuickRunContinuationService";
+import { dispatchNextExecutionUnitOnServer } from "@/lib/prototype/implementationExecutionUnitDispatchService";
 import { resolveCompletedCodeTaskId } from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
@@ -206,12 +206,11 @@ export async function POST(request: NextRequest) {
           },
           outcome.orchestrationPatch as Partial<typeof persisted>,
         );
-        const continuation = await continueSelectedCodeTaskQueueAfterAutoGate({
+        const continuation = await dispatchNextExecutionUnitOnServer({
           projectId,
           completedTaskId: execution.taskId,
           completedCodeTaskId,
           sourceCommitSha: execution.commitSha,
-          runId: execution.cursorRunId,
           requirementsOverlay,
         });
         if (continuation.orchestrationPatch) {
@@ -220,7 +219,7 @@ export async function POST(request: NextRequest) {
             ...continuation.orchestrationPatch,
             promptTimeline: appendPromptTimelineEntries(
               orchestrationPatch?.promptTimeline ?? body.promptTimeline ?? [],
-              continuation.timelineEntries,
+              [...continuation.timelineEntries],
             ),
           };
         } else if (continuation.timelineEntries.length) {

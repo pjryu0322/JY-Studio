@@ -121,7 +121,7 @@ const EXECUTION_SETUP_SELECT = {
   githubAccessToken: true,
 } as const;
 
-/** Job current run이 terminal인데 advance가 누락된 경우 다음 queued run까지 진행한다. */
+/** @deprecated legacy_runtime_audit_only — job pointer repair; not used for next-unit resolution (P3-M71). */
 async function ensureQuickRunJobPointsAtQueuedRun(input: {
   readonly projectId: string;
   readonly jobId: string;
@@ -146,6 +146,7 @@ async function ensureQuickRunJobPointsAtQueuedRun(input: {
   }
 }
 
+/** @deprecated legacy_runtime_audit_only */
 async function advanceJobWhenCompletedCodeTaskIsTerminal(input: {
   readonly projectId: string;
   readonly jobId: string;
@@ -176,6 +177,7 @@ async function advanceJobWhenCompletedCodeTaskIsTerminal(input: {
   }
 }
 
+/** @deprecated legacy_runtime_audit_only — JSON run upsert for legacy paths */
 function ensureJsonRunForQueuedCodeTask(input: {
   readonly projectId: string;
   readonly codeTaskId: string;
@@ -216,8 +218,8 @@ function ensureJsonRunForQueuedCodeTask(input: {
 }
 
 /**
- * DB job/run이 다음 CodeTask queued로 넘어간 뒤 서버에서 Cursor dispatch (Quick Run 연속 실행).
- * JSON taskCursor가 이전 Task in-flight여도 DB queued면 진행한다.
+ * @deprecated legacy_runtime_deprecated — use dispatchNextExecutionUnitOnServer (P3-M71).
+ * DB queued-run auto dispatch compatibility path only.
  */
 export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
   readonly projectId: string;
@@ -609,6 +611,7 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
   };
 }
 
+/** @deprecated legacy_runtime_deprecated — use dispatchNextExecutionUnitOnServer (P3-M71). */
 export async function continueSelectedCodeTaskQueueAfterAutoGate(input: {
   readonly projectId: string;
   readonly completedTaskId: string;
