@@ -253,9 +253,9 @@ describe("P3-Runtime-Core-03 snapshot / button policy", () => {
 });
 
 describe("P3-Runtime-Core-03 API alignment", () => {
-  it("8. run-pipeline route invokes runImplementationIntegrationStepPipeline", () => {
+  it("8. run-pipeline route invokes project integration pipeline", () => {
     const src = readFileSync(join(appDir, "api/prototype/integration/run-pipeline/route.ts"), "utf8");
-    expect(src).toContain("runImplementationIntegrationStepPipeline");
+    expect(src).toContain("runProjectIntegrationPipeline");
   });
 
   it("9. 15/15 verified gate does not require codetask_completion_required", () => {
@@ -285,7 +285,7 @@ describe("P3-Runtime-Core-03 API alignment", () => {
 
   it("10. pipeline service exposes success status variants", () => {
     const src = readFileSync(
-      join(__dirname, "../../src/lib/prototype/implementationIntegrationStepPipelineService.ts"),
+      join(__dirname, "../../src/lib/prototype/projectIntegrationPipelineService.ts"),
       "utf8",
     );
     expect(src).toContain('"integrated_app_preview_ready"');
@@ -294,7 +294,7 @@ describe("P3-Runtime-Core-03 API alignment", () => {
 
   it("11. final_wiring failure returns user-safe message", () => {
     const src = readFileSync(
-      join(__dirname, "../../src/lib/prototype/implementationIntegrationStepPipelineService.ts"),
+      join(__dirname, "../../src/lib/prototype/projectIntegrationPipelineService.ts"),
       "utf8",
     );
     expect(src).toContain("final_wiring_failed");
@@ -307,11 +307,11 @@ describe("P3-Runtime-Core-03 API alignment", () => {
     const routeSrc = readFileSync(join(appDir, "api/prototype/integration/run-pipeline/route.ts"), "utf8");
     expect(routeSrc).toContain('outcome.status === "codetasks_incomplete"');
     expect(routeSrc).toContain('"codetask_completion_required"');
-    const pipelineSrc = readFileSync(
-      join(__dirname, "../../src/lib/prototype/implementationIntegrationStepPipelineService.ts"),
+    const eligibilitySrc = readFileSync(
+      join(__dirname, "../../src/lib/prototype/projectIntegrationPipelineEligibility.ts"),
       "utf8",
     );
-    expect(pipelineSrc).toContain(
+    expect(eligibilitySrc).toContain(
       "미완료 또는 검증 대기 중인 CodeTask가 있어 통합을 시작할 수 없습니다.",
     );
   });

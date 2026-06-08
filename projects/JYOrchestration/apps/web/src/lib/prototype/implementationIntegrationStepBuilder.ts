@@ -32,6 +32,13 @@ export function buildDefaultIntegrationStepsFromBranchPlan(input: {
     String(bp?.baseBranch ?? input.baseBranchFallback ?? "wip/screen/workspace").trim() ||
     "wip/screen/workspace";
   const workBranch = String(bp?.workBranch ?? INTEGRATION_FINAL_WIRING_WORK_BRANCH).trim();
+  const implementationDefaults = {
+    stage: "implementation" as const,
+    mode: "initial_preview" as const,
+    trigger: "manual_integration_button" as const,
+    sourceBranch: baseBranch,
+    targetBranch: workBranch,
+  };
   return [
     {
       stepId: INTEGRATION_FINAL_WIRING_STEP_ID,
@@ -42,6 +49,7 @@ export function buildDefaultIntegrationStepsFromBranchPlan(input: {
       branchGroup: "integration",
       baseBranch,
       workBranch,
+      ...implementationDefaults,
     },
     {
       stepId: "integration-branch",
@@ -52,6 +60,7 @@ export function buildDefaultIntegrationStepsFromBranchPlan(input: {
       branchGroup: "integration",
       baseBranch,
       workBranch,
+      ...implementationDefaults,
     },
     {
       stepId: "integration-build",
@@ -59,6 +68,8 @@ export function buildDefaultIntegrationStepsFromBranchPlan(input: {
       title: "Build 검증",
       status: "pending",
       order: 2,
+      stage: "implementation" as const,
+      mode: "initial_preview" as const,
     },
     {
       stepId: "integration-app-preview-target",
@@ -66,6 +77,8 @@ export function buildDefaultIntegrationStepsFromBranchPlan(input: {
       title: "실제 앱 Preview",
       status: "pending",
       order: 3,
+      stage: "implementation" as const,
+      mode: "initial_preview" as const,
     },
   ];
 }

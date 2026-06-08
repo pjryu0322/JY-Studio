@@ -7,7 +7,10 @@ import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
-import { runImplementationIntegrationStepPipeline } from "@/lib/prototype/implementationIntegrationStepPipelineService";
+import { buildImplementationIntegrationPipelineContext } from "@/lib/prototype/implementationIntegrationPipelineContextBuilder";
+import { resolveIntegrationStepsForRuntimeSnapshot } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
+import { buildImplementationIntegrationPipelineEligibilityFromSnapshot } from "@/lib/prototype/projectIntegrationPipelineEligibility";
+import { runProjectIntegrationPipeline } from "@/lib/prototype/projectIntegrationPipelineService";
 import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
@@ -105,18 +108,43 @@ export async function POST(request: NextRequest) {
     const storedIntegrationPlan =
       parseCodeTaskIntegrationPlanV1(persisted.codeTaskIntegrationPlanV1) ?? null;
 
-    const outcome = await runImplementationIntegrationStepPipeline({
+    const baseBranch = targetRepository.defaultBranch ?? setupRow?.baseBranch ?? "main";
+    const summary = buildImplementationExecutionSummaryCounts({
+      projectId,
+      requirementsState: persisted,
+      codeTaskPlan,
+      taskList,
+      runs,
+    });
+    const integrationSteps = resolveIntegrationStepsForRuntimeSnapshot({
+      requirementsState: persisted,
+      codeTaskPlan,
+    });
+    const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(
+      summary.runtimeSnapshot,
+    );
+    const pipelineContext = buildImplementationIntegrationPipelineContext({
       projectId,
       trigger: "manual_integration_button",
+      baseBranch,
+      snapshot: summary.runtimeSnapshot,
+      codeTaskPlan,
+      integrationSteps,
+      createPullRequest: body.createPullRequest !== false,
+    });
+
+    const outcome = await runProjectIntegrationPipeline({
+      context: pipelineContext,
+      eligibility,
       repoUrl: targetRepository.gitRepoUrl,
-      baseBranch: targetRepository.defaultBranch ?? setupRow?.baseBranch ?? "main",
       githubToken: token,
       codeTaskPlan,
       taskList,
       codeTaskRuns: runs,
       selectedCodeTaskIds,
-      createPullRequest: body.createPullRequest !== false,
       storedIntegrationPlan,
+      integrationSteps,
+      requirementsState: persisted,
     });
 
     if (!outcome.ok && !outcome.plan) {
@@ -158,7 +186,7 @@ export async function POST(request: NextRequest) {
       data: { requirementsStateJson: orchestrationPatch as object },
     });
 
-    const summary = buildImplementationExecutionSummaryCounts({
+    const postRunSummary = buildImplementationExecutionSummaryCounts({
       projectId,
       requirementsState: orchestrationPatch,
       codeTaskPlan,
@@ -177,7 +205,7 @@ export async function POST(request: NextRequest) {
       nextRequiredStep: outcome.nextRequiredStep ?? null,
       plan,
       timeline: outcome.timelineEntries,
-      snapshot: toImplementationRuntimeSnapshotApiSummary(summary.runtimeSnapshot),
+      snapshot: toImplementationRuntimeSnapshotApiSummary(postRunSummary.runtimeSnapshot),
       orchestrationPatch: {
         ...(outcome.orchestrationPatch ?? {}),
         codeTaskIntegrationPlanV1: plan,
