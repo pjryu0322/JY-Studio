@@ -146,7 +146,10 @@ export function buildImplementationIntegrationBoardSection(input: {
 
   return {
     canIntegrate,
-    showSection: canIntegrate || input.integratedPipelineLines.length > 0,
+    showSection:
+      canIntegrate ||
+      input.integratedPipelineLines.length > 0 ||
+      (snapshot?.codeTask.selected ?? 0) > 0,
     summaryLines: [
       ...(snapshot
         ? buildIntegrationEligibilitySummaryLinesFromSnapshot(snapshot)

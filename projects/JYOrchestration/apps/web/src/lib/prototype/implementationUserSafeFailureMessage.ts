@@ -3,6 +3,8 @@ export function buildUserSafeCodeTaskFailureMessage(input: {
   readonly codeTaskTitle: string;
 }): Readonly<{
   readonly title: string;
+  readonly reasonLine: string;
+  readonly nextActionLine: string;
   readonly message: string;
   readonly actionLabel: string;
 }> {
@@ -10,29 +12,29 @@ export function buildUserSafeCodeTaskFailureMessage(input: {
   const reason = String(input.reason ?? "").trim();
 
   if (reason === "github_branch_missing") {
-    return {
+    return pack(
       title,
-      message: "작업 branch를 확인하지 못했습니다.\n실패 작업을 다시 실행해 주세요.",
-      actionLabel: "실패 작업 다시 실행",
-    };
+      "작업 branch를 확인하지 못했습니다.",
+      "실패 작업을 다시 실행해 주세요.",
+    );
   }
   if (reason === "commit_not_created" || reason === "github_no_new_commit") {
-    return {
+    return pack(
       title,
-      message: "작업 결과 commit을 확인하지 못했습니다.\n실패 작업을 다시 실행해 주세요.",
-      actionLabel: "실패 작업 다시 실행",
-    };
+      "작업 결과 commit을 확인하지 못했습니다.",
+      "실패 작업을 다시 실행해 주세요.",
+    );
   }
   if (
     reason === "cursor_api_launch_failed" ||
     reason === "cursor_request_failed" ||
     reason === "cursor_dispatch_failed"
   ) {
-    return {
+    return pack(
       title,
-      message: "Cursor 실행 요청을 시작하지 못했습니다.\n잠시 후 다시 실행해 주세요.",
-      actionLabel: "실패 작업 다시 실행",
-    };
+      "Cursor 실행 요청을 시작하지 못했습니다.",
+      "잠시 후 실패 작업을 다시 실행해 주세요.",
+    );
   }
   if (
     reason === "github_verify_failed" ||
@@ -40,16 +42,21 @@ export function buildUserSafeCodeTaskFailureMessage(input: {
     reason === "github_verify_timeout" ||
     reason === "github_verify_state_sync_failed"
   ) {
-    return {
+    return pack(
       title,
-      message:
-        "GitHub 작업 결과 확인에 실패했습니다.\n다시 확인하거나 실패 작업을 재실행해 주세요.",
-      actionLabel: "실패 작업 다시 실행",
-    };
+      "GitHub 작업 결과 확인에 실패했습니다.",
+      "다시 확인하거나 실패 작업을 재실행해 주세요.",
+    );
   }
+  return pack(title, "작업 완료 여부를 확인하지 못했습니다.", "실패 작업을 다시 실행해 주세요.");
+}
+
+function pack(title: string, reasonLine: string, nextActionLine: string) {
   return {
     title,
-    message: "작업 완료 여부를 확인하지 못했습니다.\n실패 작업을 다시 실행해 주세요.",
+    reasonLine,
+    nextActionLine,
+    message: `${reasonLine}\n${nextActionLine}`,
     actionLabel: "실패 작업 다시 실행",
   };
 }

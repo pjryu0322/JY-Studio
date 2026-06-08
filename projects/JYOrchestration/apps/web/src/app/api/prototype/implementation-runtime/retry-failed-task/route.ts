@@ -54,9 +54,15 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.ok) {
+      if (result.timeline.length) {
+        await persistTaskCursorOrchestrationToProject({
+          projectId,
+          orchestrationPatch: appendPromptTimelineEntries({}, result.timeline),
+        });
+      }
       return NextResponse.json({
         success: false,
-        message: result.userMessage ?? "재실행을 준비하지 못했습니다.",
+        message: result.userMessage ?? "실패 작업 재실행 준비 중 오류가 발생했습니다.",
       });
     }
 
@@ -73,7 +79,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       codeTaskId,
-      message: "실패 작업 재실행을 준비했습니다. Quick Run으로 이어서 실행할 수 있습니다.",
+      message: result.userMessage ?? "실패 작업 재실행을 준비했습니다.",
     });
   } catch (error) {
     console.error("[implementation-runtime/retry-failed-task] POST failed:", error);

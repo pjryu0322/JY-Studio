@@ -47,6 +47,8 @@ export type ImplementationRuntimeSnapshotV1 = Readonly<{
     readonly progressLabel: string;
     readonly userSafeFailureTitle: string | null;
     readonly userSafeFailureMessage: string | null;
+    readonly userSafeFailureReasonLine: string | null;
+    readonly userSafeFailureNextActionLine: string | null;
     readonly userActionLabel: string | null;
     readonly retryable: boolean;
   }>[];

@@ -3,8 +3,11 @@ import {
   createCodeTaskExecutionRun,
   coalesceCodeTaskExecutionRunsV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
-import { buildCodeTaskRetryBlockedLogEntry } from "@/lib/prototype/implementationExecutionLogger";
-import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import {
+  buildCodeTaskRetryBlockedLogEntry,
+  buildCodeTaskRetryPrepareFailedLogEntry,
+  buildCodeTaskRetryPreparedLogEntry,
+} from "@/lib/prototype/implementationExecutionLogger";
 import { mergeExecutionUnitWithTerminalGuard } from "@/lib/prototype/implementationExecutionUnitTerminalGuard";
 import {
   loadImplementationExecutionUnitsFromState,
@@ -38,7 +41,14 @@ export function prepareFailedExecutionUnitRetry(input: {
     return {
       ok: false,
       userMessage: "재실행할 실패 작업을 찾을 수 없습니다.",
-      timeline: [],
+      timeline: [
+        buildCodeTaskRetryPrepareFailedLogEntry({
+          projectId: pid,
+          codeTaskId,
+          reason: "failed_unit_not_found",
+          nowIso,
+        }),
+      ],
     };
   }
 
@@ -106,22 +116,20 @@ export function prepareFailedExecutionUnitRetry(input: {
   const mergedRuns = appendCodeTaskExecutionRun(runs, newRun);
 
   const timeline: RequirementsPromptTimelineEntry[] = [
-    buildImplementationExecutionLogTimelineEntry({
-      action: "implementation_execution_unit_retry_prepared",
-      orchestrationTraceGroup: "implementation_orchestration",
-      fields: {
-        projectId: pid,
-        unitId: unit.unitId,
-        codeTaskId,
-        runId: newRun.runId,
-        previousRunId: outcome.latestRunId,
-      },
+    buildCodeTaskRetryPreparedLogEntry({
+      projectId: pid,
+      codeTaskId,
+      unitId: unit.unitId,
+      previousOutcomeStatus: outcome.latestOutcomeStatus,
+      previousReason: outcome.failureReason,
+      runId: newRun.runId,
       nowIso,
     }),
   ];
 
   return {
     ok: true,
+    userMessage: "실패 작업 재실행을 준비했습니다.",
     orchestrationPatch: {
       ...unitPatch,
       codeTaskExecutionRunsV1: mergedRuns,

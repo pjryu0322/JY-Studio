@@ -143,19 +143,6 @@ function CodeTaskSelectedDetail({
           {node.retryFailedActionLabel ?? "실패 작업 다시 실행"}
         </button>
       ) : null}
-      {node.githubVerifyTechnicalLines?.length ? (
-        <div
-          className={styles.taskTreeFailureBlock}
-          data-testid={`code-task-github-verify-detail-${node.codeTaskId}`}
-        >
-          {node.githubVerifyTechnicalLines.map((line) => (
-            <div key={`${line.label}-${line.value}`} className={styles.taskTreeMetaLine}>
-              <span className={styles.taskTreeMetaKey}>{line.label}</span>
-              <span className={styles.taskTreeMetaValue}>{line.value}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
       <ExecutionFlowSteps
         steps={node.executionFlowSteps}
         onCopyCursorPrompt={

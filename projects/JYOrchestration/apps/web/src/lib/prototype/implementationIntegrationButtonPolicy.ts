@@ -74,14 +74,30 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
   readonly disabledReasonLines: readonly string[];
 }> {
   const show =
-    !snapshot.preview.integratedAppPreviewReady &&
-    snapshot.integration.steps.length > 0 &&
-    snapshot.codeTask.selected > 0;
-  const enabled = snapshot.integration.canRunIntegration;
+    !snapshot.preview.integratedAppPreviewReady && snapshot.codeTask.selected > 0;
+  const hasFinalWiringStep = snapshot.integration.steps.some((s) => s.kind === "final_wiring");
   const disabledReasonLines: string[] = [];
-  if (snapshot.integration.disabledReason) {
+  let enabled = snapshot.integration.canRunIntegration && hasFinalWiringStep;
+
+  if (snapshot.codeTask.failed > 0) {
+    enabled = false;
+    disabledReasonLines.push(
+      "실패한 CodeTask가 있어 통합을 시작할 수 없습니다.\n먼저 실패 작업을 다시 실행해 주세요.",
+    );
+  } else if (!hasFinalWiringStep) {
+    enabled = false;
+    disabledReasonLines.push(
+      "통합 단계를 준비하지 못했습니다.\n잠시 후 다시 시도해 주세요.",
+    );
+  } else if (!enabled && snapshot.integration.disabledReason) {
     disabledReasonLines.push(...snapshot.integration.disabledReason.split("\n").filter(Boolean));
+  } else if (!enabled) {
+    disabledReasonLines.push(
+      `개발 CodeTask ${snapshot.codeTask.completed}/${snapshot.codeTask.selected} 완료`,
+      "미완료 또는 검증 대기 중인 CodeTask가 있어 통합을 시작할 수 없습니다.",
+    );
   }
+
   return { show, enabled, disabledReasonLines };
 }
 

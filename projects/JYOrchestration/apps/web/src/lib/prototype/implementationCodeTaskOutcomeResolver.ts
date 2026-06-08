@@ -30,6 +30,8 @@ export type AuthoritativeCodeTaskOutcomeV1 = Readonly<{
   failureReason: string | null;
   userSafeTitle: string;
   userSafeMessage: string;
+  userSafeReasonLine: string;
+  userSafeNextActionLine: string;
   userActionLabel: string | null;
   operatorLogRef: string | null;
 }>;
@@ -144,6 +146,8 @@ export function resolveAuthoritativeCodeTaskOutcome(input: {
     failureReason,
     userSafeTitle: userSafe?.title ?? "",
     userSafeMessage: userSafe?.message ?? "",
+    userSafeReasonLine: userSafe?.reasonLine ?? "",
+    userSafeNextActionLine: userSafe?.nextActionLine ?? "",
     userActionLabel: userSafe?.actionLabel ?? null,
     operatorLogRef:
       status === "failed"

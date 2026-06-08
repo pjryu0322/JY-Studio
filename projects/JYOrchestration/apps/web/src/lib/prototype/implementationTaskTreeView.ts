@@ -352,6 +352,7 @@ function buildCodeTaskNode(input: {
   let failureReason: string | undefined;
   if (input.runtimeSnapshotUnit?.displayStatus === "failed") {
     failureReason =
+      input.runtimeSnapshotUnit.userSafeFailureReasonLine?.trim() ||
       input.runtimeSnapshotUnit.userSafeFailureMessage?.split("\n")[0]?.trim() ||
       "작업이 완료되지 않았습니다.";
   } else if (phase === "prompt_preflight_failed") {
@@ -370,14 +371,6 @@ function buildCodeTaskNode(input: {
     isActive: input.isActive,
     isSelected: input.isSelected,
     isChecked: input.isChecked,
-    ...(githubVerifyView?.technicalLines.length &&
-    input.runtimeSnapshotUnit?.displayStatus !== "failed"
-      ? {
-          githubVerifyTechnicalLines: githubVerifyView.technicalLines.map((line) =>
-            formatMetaLine(line.label, line.value),
-          ),
-        }
-      : {}),
     ...(failureReason ? { failureReason } : {}),
     ...(showRetryFailedAction ? { showRetryFailedAction, retryFailedActionLabel } : {}),
     ...(githubVerifyView?.stateSyncFailed
@@ -394,7 +387,7 @@ function buildCodeTaskNode(input: {
       : input.runtimeSnapshotUnit?.displayStatus === "failed"
         ? {
             nextActionHint:
-              input.runtimeSnapshotUnit.userSafeFailureMessage?.split("\n").slice(1).join(" ").trim() ||
+              input.runtimeSnapshotUnit.userSafeFailureNextActionLine?.trim() ||
               "실패 작업을 다시 실행해 주세요.",
           }
         : phase === "failed"

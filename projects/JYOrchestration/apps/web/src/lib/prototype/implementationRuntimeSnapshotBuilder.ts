@@ -154,6 +154,8 @@ export function buildImplementationRuntimeSnapshot(input: {
       progressLabel: card.progressLabel,
       userSafeFailureTitle: outcome.status === "failed" ? outcome.userSafeTitle : null,
       userSafeFailureMessage: outcome.status === "failed" ? outcome.userSafeMessage : null,
+      userSafeFailureReasonLine: outcome.status === "failed" ? outcome.userSafeReasonLine : null,
+      userSafeFailureNextActionLine: outcome.status === "failed" ? outcome.userSafeNextActionLine : null,
       userActionLabel: outcome.userActionLabel,
       retryable: unit.retryable !== false,
     };
@@ -279,9 +281,11 @@ export function buildImplementationRuntimeSnapshot(input: {
       disabledReason =
         "실패한 CodeTask가 있어 통합을 시작할 수 없습니다.\n먼저 실패 작업을 다시 실행해 주세요.";
     } else if (selected > 0 && completed < selected) {
-      disabledReason = `개발 CodeTask ${completed}/${selected} 완료\n검증 대기 CodeTask가 있어 통합을 시작할 수 없습니다.`;
+      disabledReason = `개발 CodeTask ${completed}/${selected} 완료\n미완료 또는 검증 대기 중인 CodeTask가 있어 통합을 시작할 수 없습니다.`;
     } else if (inconsistent > 0) {
-      disabledReason = `개발 CodeTask ${completed}/${selected} 완료\n검증 대기 CodeTask가 있어 통합을 시작할 수 없습니다.`;
+      disabledReason = `개발 CodeTask ${completed}/${selected} 완료\n미완료 또는 검증 대기 중인 CodeTask가 있어 통합을 시작할 수 없습니다.`;
+    } else if (!finalWiring && selected > 0) {
+      disabledReason = "통합 단계를 준비하지 못했습니다.\n잠시 후 다시 시도해 주세요.";
     } else if (codetasksDone && finalWiring) {
       disabledReason = null;
     }

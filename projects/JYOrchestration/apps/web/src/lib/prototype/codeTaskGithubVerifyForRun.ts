@@ -9,6 +9,9 @@ import {
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import { buildUserSafeFailureBuiltLogEntry } from "@/lib/prototype/implementationExecutionLogger";
+import { buildCodeTaskOperatorDiagnosticTimelineEntry } from "@/lib/prototype/implementationOperatorDiagnosticLogger";
+import { executionUnitIdForCodeTask } from "@/lib/prototype/implementationExecutionUnit";
 import { resolveCodeTaskWorkBranchForPlan } from "@/lib/prototype/codeTaskDisplayNameNormalize";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import { runTaskCursorGithubVerifyCandidateFlow } from "@/lib/prototype/taskCursorGithubVerifyCandidateFlow";
@@ -289,6 +292,44 @@ export async function verifyGithubForCodeTaskRun(input: {
       nowIso,
     }),
   ];
+
+  if (githubOutcome.status === "failed") {
+    const verify = candidateFlow.verify;
+    const candidateBranches = verify.candidateBranches ?? [];
+    timeline.push(
+      buildCodeTaskOperatorDiagnosticTimelineEntry({
+        projectId: input.projectId,
+        unitId: executionUnitIdForCodeTask(input.codeTaskId),
+        codeTaskId: input.codeTaskId,
+        processTaskId,
+        runId: input.run.runId,
+        workBranch:
+          githubOutcome.workBranch ??
+          input.run.workBranch ??
+          verify.resolvedBranch ??
+          null,
+        baseBranch: branchPlanBaseBranch,
+        candidateBranches,
+        apiStatus:
+          typeof verify.branchLookupDiagnostics?.apiStatus === "number"
+            ? verify.branchLookupDiagnostics.apiStatus
+            : null,
+        reason: githubOutcome.reason,
+        outcomeStatus: "failed",
+        retryable: githubOutcome.retryable,
+        changedFileCount: verify.verifiedChangedFiles?.length ?? 0,
+        traceGroup: "task_cursor_execution",
+        nowIso,
+      }),
+      buildUserSafeFailureBuiltLogEntry({
+        projectId: input.projectId,
+        codeTaskId: input.codeTaskId,
+        processTaskId,
+        userSafeTitle: input.codeTask?.title?.trim() || input.codeTaskId,
+        nowIso,
+      }),
+    );
+  }
 
   const sessionClear = clearStaleTaskCursorInflightForVerifiedRun({
     execution: candidateFlow.execution,

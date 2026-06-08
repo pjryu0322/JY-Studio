@@ -1300,6 +1300,17 @@ export function ImplementationExecutionBoardPanel({
             </div>
           </div>
           <div className={styles.taskTreeList}>
+            {showIntegrationButton && !integrationButtonEnabled
+              ? integrationButtonState.disabledReasonLines.map((line, index) => (
+                  <div
+                    key={`integration-disabled-reason-${index}`}
+                    className={styles.taskTreeChildLine}
+                    data-testid={index === 0 ? "implementation-integration-disabled-reason" : undefined}
+                  >
+                    {line}
+                  </div>
+                ))
+              : null}
             {integrationSection.previewStatusLines.map((line) => (
               <div key={line} className={styles.taskTreeChildLine}>
                 {line}
