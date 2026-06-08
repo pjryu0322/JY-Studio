@@ -7,24 +7,22 @@ import {
 } from "@/lib/prototype/implementationPreviewReadiness";
 import {
   buildIntegrationEligibilitySummaryLines,
+  buildIntegrationEligibilitySummaryLinesFromSnapshot,
   buildIntegrationScopeCountSummaryLines,
   buildIntegrationScopeDetailLines,
 } from "@/lib/prototype/implementationIntegrationScopeUi";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { normalizeCodeTaskIntegrationPlan } from "@/lib/prototype/implementationIntegrationPlanNormalize";
 import { canMergeIntegrationPullRequest } from "@/lib/prototype/implementationIntegrationConflict";
 import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import type { ImplementationIntegratedPipelineLine } from "@/lib/prototype/implementationTaskPipelinePolicy";
-import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildIntegrationStepStatusLines } from "@/lib/prototype/implementationIntegrationStatus";
 import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
 import { ensurePersistedImplementationIntegrationSteps } from "@/lib/prototype/implementationIntegrationStepBootstrap";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
-import {
-  buildIntegrationEligibilitySummaryLines,
-  buildIntegrationEligibilitySummaryLinesFromSnapshot,
-} from "@/lib/prototype/implementationIntegrationScopeUi";
 
 export type ImplementationIntegrationBoardSectionVm = Readonly<{
   readonly canIntegrate: boolean;

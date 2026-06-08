@@ -203,6 +203,22 @@ export function parseCodeTaskExecutionRunsV1(
   return runs;
 }
 
+/** Prefer parsed persisted rows; fall back to in-memory runs (tests / partial payloads). */
+export function coalesceCodeTaskExecutionRunsV1(raw: unknown): readonly CodeTaskExecutionRunV1[] {
+  const parsed = parseCodeTaskExecutionRunsV1(raw);
+  if (parsed?.length) return parsed;
+  if (!Array.isArray(raw)) return [];
+  const out: CodeTaskExecutionRunV1[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const candidate = row as CodeTaskExecutionRunV1;
+    const codeTaskId = String(candidate.codeTaskId ?? "").trim();
+    const runId = String(candidate.runId ?? "").trim();
+    if (codeTaskId && runId) out.push(candidate);
+  }
+  return out;
+}
+
 export function findActiveCodeTaskExecutionRun(
   runs: readonly CodeTaskExecutionRunV1[] | null | undefined,
 ): CodeTaskExecutionRunV1 | null {

@@ -3,13 +3,9 @@ import {
   mapSelectedCodeTaskIdsToExecutionUnitIds,
   reconcileSelectedExecutionUnitIds,
 } from "@/lib/prototype/implementationExecutionScheduler";
-import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { coalesceCodeTaskExecutionRunsV1, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
-import {
-  isExecutionUnitCompletedForSummary,
-  isExecutionUnitSkippedForSummary,
-  resolveExecutionUnitVerificationDisplayStatus,
-} from "@/lib/prototype/implementationExecutionUnitVerification";
+import { resolveAuthoritativeCodeTaskOutcome } from "@/lib/prototype/implementationCodeTaskOutcomeResolver";
 import {
   loadImplementationExecutionUnitsFromState,
   saveImplementationExecutionUnitsToState,
@@ -143,12 +139,15 @@ export function areSelectedExecutionUnitsCompletedWithPersistedOutcomes(input: {
   readonly selectedCount: number;
   readonly pendingCodeTaskIds: readonly string[];
   readonly inconsistentCodeTaskIds: readonly string[];
+  readonly failedCodeTaskIds: readonly string[];
 }> {
   const selected = input.selectedUnitIds.map((id) => id.trim()).filter(Boolean);
   const byId = new Map(input.units.map((u) => [u.unitId, u]));
+  const runs = coalesceCodeTaskExecutionRunsV1(input.runs);
   let completedCount = 0;
   const pendingCodeTaskIds: string[] = [];
   const inconsistentCodeTaskIds: string[] = [];
+  const failedCodeTaskIds: string[] = [];
 
   for (const id of selected) {
     const unit = byId.get(id);
@@ -156,11 +155,12 @@ export function areSelectedExecutionUnitsCompletedWithPersistedOutcomes(input: {
       pendingCodeTaskIds.push(id);
       continue;
     }
-    const run = findLatestRunForCodeTask(input.runs, unit.codeTaskId);
-    const display = resolveExecutionUnitVerificationDisplayStatus({ unit, run });
-    if (display === "verified" || display === "skipped") {
+    const outcome = resolveAuthoritativeCodeTaskOutcome({ unit, runs });
+    if (outcome.status === "verified" || outcome.status === "skipped") {
       completedCount += 1;
-    } else if (display === "verification_inconsistent") {
+    } else if (outcome.status === "failed") {
+      failedCodeTaskIds.push(unit.codeTaskId);
+    } else if (outcome.status === "inconsistent") {
       inconsistentCodeTaskIds.push(unit.codeTaskId);
     } else {
       pendingCodeTaskIds.push(unit.codeTaskId);
@@ -171,12 +171,14 @@ export function areSelectedExecutionUnitsCompletedWithPersistedOutcomes(input: {
     ok:
       selected.length > 0 &&
       completedCount === selected.length &&
+      failedCodeTaskIds.length === 0 &&
       inconsistentCodeTaskIds.length === 0 &&
       pendingCodeTaskIds.length === 0,
     completedCount,
     selectedCount: selected.length,
     pendingCodeTaskIds,
     inconsistentCodeTaskIds,
+    failedCodeTaskIds,
   };
 }
 
@@ -186,6 +188,7 @@ export type SelectedExecutionUnitsCompletionGateV1 = Readonly<{
   readonly selectedCount: number;
   readonly pendingCodeTaskIds: readonly string[];
   readonly inconsistentCodeTaskIds: readonly string[];
+  readonly failedCodeTaskIds: readonly string[];
 }>;
 
 export function countVerifiedSelectedExecutionUnits(input: {
@@ -198,11 +201,9 @@ export function countVerifiedSelectedExecutionUnits(input: {
   for (const unit of input.units) {
     if (!selected.has(unit.unitId)) continue;
     if (input.runs != null) {
-      const run = findLatestRunForCodeTask(input.runs, unit.codeTaskId);
-      if (
-        isExecutionUnitCompletedForSummary({ unit, run }) ||
-        isExecutionUnitSkippedForSummary({ unit, run })
-      ) {
+      const runs = coalesceCodeTaskExecutionRunsV1(input.runs);
+      const outcome = resolveAuthoritativeCodeTaskOutcome({ unit, runs });
+      if (outcome.status === "verified" || outcome.status === "skipped") {
         n += 1;
       }
       continue;

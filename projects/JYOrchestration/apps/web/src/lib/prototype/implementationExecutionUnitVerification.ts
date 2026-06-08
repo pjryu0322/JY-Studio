@@ -1,7 +1,10 @@
-import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import { isCodeTaskCompletedForSummary } from "@/lib/prototype/implementationCodeTaskSummary";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import {
-  isExecutionUnitInFlight,
+  findAuthoritativeLatestRunForCodeTask,
+  mapAuthoritativeOutcomeToVerificationDisplayStatus,
+  resolveAuthoritativeCodeTaskOutcome,
+} from "@/lib/prototype/implementationCodeTaskOutcomeResolver";
+import {
   type ImplementationExecutionUnitV1,
 } from "@/lib/prototype/implementationExecutionUnit";
 
@@ -20,44 +23,32 @@ export type ExecutionUnitVerificationRowV1 = Readonly<{
   readonly displayStatus: ExecutionUnitVerificationDisplayStatusV1;
 }>;
 
-function unitClaimsVerified(unit: ImplementationExecutionUnitV1): boolean {
-  return unit.status === "verified";
-}
-
-function runHasPersistedVerifiedOutcome(run: CodeTaskExecutionRunV1 | null | undefined): boolean {
-  return isCodeTaskCompletedForSummary(run);
-}
-
 export function resolveExecutionUnitVerificationDisplayStatus(input: {
   readonly unit: ImplementationExecutionUnitV1;
   readonly run: CodeTaskExecutionRunV1 | null | undefined;
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
 }): ExecutionUnitVerificationDisplayStatusV1 {
-  const unit = input.unit;
-  const run = input.run;
-  const unitVerified = unitClaimsVerified(unit);
-  const outcomeVerified = runHasPersistedVerifiedOutcome(run);
-
-  if (unitVerified && outcomeVerified) return "verified";
-  if (unitVerified !== outcomeVerified) return "verification_inconsistent";
-  if (unit.status === "skipped" || run?.status === "skipped_by_user") return "skipped";
-  if (unit.status === "failed") return "failed";
-  if (isExecutionUnitInFlight(unit.status) || unit.status === "verifying") return "in_progress";
-  if (run && !outcomeVerified && (run.status === "github_verifying" || run.status === "cursor_running")) {
-    return "in_progress";
-  }
-  return "pending";
+  const runs =
+    input.runs != null
+      ? input.runs
+      : input.run
+        ? [input.run]
+        : [];
+  const outcome = resolveAuthoritativeCodeTaskOutcome({ unit: input.unit, runs });
+  return mapAuthoritativeOutcomeToVerificationDisplayStatus(outcome.status);
 }
 
 export function buildExecutionUnitVerificationRows(input: {
   readonly units: readonly ImplementationExecutionUnitV1[];
   readonly runs: readonly CodeTaskExecutionRunV1[] | null | undefined;
 }): readonly ExecutionUnitVerificationRowV1[] {
+  const runs = input.runs ?? [];
   return input.units.map((unit) => {
-    const run = findLatestRunForCodeTask(input.runs, unit.codeTaskId);
+    const run = findAuthoritativeLatestRunForCodeTask(runs, unit.codeTaskId);
     return {
       unitId: unit.unitId,
       codeTaskId: unit.codeTaskId,
-      displayStatus: resolveExecutionUnitVerificationDisplayStatus({ unit, run }),
+      displayStatus: resolveExecutionUnitVerificationDisplayStatus({ unit, run, runs }),
     };
   });
 }
@@ -108,12 +99,12 @@ export function formatExecutionUnitVerificationCardLabels(
     case "verification_inconsistent":
       return {
         statusLabel: "검증 완료 대기",
-        progressLabel: "GitHub commit 확인 결과 저장 중",
+        progressLabel: "GitHub 작업 결과 저장 중",
       };
     case "in_progress":
       return { statusLabel: "검증 중", progressLabel: "실행 중 또는 GitHub 확인 중" };
     case "failed":
-      return { statusLabel: "실패", progressLabel: "재실행 또는 확인 필요" };
+      return { statusLabel: "실패", progressLabel: "다시 실행 필요" };
     case "skipped":
       return { statusLabel: "건너뜀", progressLabel: "선택에서 제외됨" };
     default:

@@ -12,6 +12,7 @@ import {
 import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { mergeOrchestrationPersistPatches } from "@/lib/prototype/orchestrationPatchMerge";
+import { buildIntegrationGateBlockedByFailedCodeTaskLogEntry } from "@/lib/prototype/implementationExecutionLogger";
 
 export async function markFinalWiringIntegrationStepReady(input: {
   readonly projectId: string;
@@ -51,23 +52,34 @@ export async function markFinalWiringIntegrationStepReady(input: {
     runs: input.runs,
   });
   if (!completionGate.ok) {
-    return {
-      orchestrationPatch: ensured.orchestrationPatch,
-      timeline: [
-        ...ensured.timeline,
-        buildImplementationExecutionLogTimelineEntry({
-          action: "implementation_integration_final_wiring_ready_blocked",
-          orchestrationTraceGroup: "implementation_integration",
-          fields: {
-            projectId: pid,
-            selectedCount: completionGate.selectedCount,
-            completedCount: completionGate.completedCount,
-            pendingCodeTaskIds: completionGate.pendingCodeTaskIds.join(","),
-            inconsistentCodeTaskIds: completionGate.inconsistentCodeTaskIds.join(","),
-          },
+    const blockedEntries = [
+      buildImplementationExecutionLogTimelineEntry({
+        action: "implementation_integration_final_wiring_ready_blocked",
+        orchestrationTraceGroup: "implementation_integration",
+        fields: {
+          projectId: pid,
+          selectedCount: completionGate.selectedCount,
+          completedCount: completionGate.completedCount,
+          pendingCodeTaskIds: completionGate.pendingCodeTaskIds.join(","),
+          inconsistentCodeTaskIds: completionGate.inconsistentCodeTaskIds.join(","),
+          failedCodeTaskIds: completionGate.failedCodeTaskIds.join(","),
+        },
+        nowIso,
+      }),
+    ];
+    if (completionGate.failedCodeTaskIds.length > 0) {
+      blockedEntries.push(
+        buildIntegrationGateBlockedByFailedCodeTaskLogEntry({
+          projectId: pid,
+          failedCodeTaskIds: completionGate.failedCodeTaskIds,
+          failedCount: completionGate.failedCodeTaskIds.length,
           nowIso,
         }),
-      ],
+      );
+    }
+    return {
+      orchestrationPatch: ensured.orchestrationPatch,
+      timeline: [...ensured.timeline, ...blockedEntries],
     };
   }
   const nextSteps = steps.map((s) =>

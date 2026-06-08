@@ -91,10 +91,12 @@ function CodeTaskSelectedDetail({
   node,
   codeAgentProgress,
   onCopyCursorPrompt,
+  onRetryFailedCodeTask,
 }: {
   readonly node: ImplementationCodeTaskTreeNode;
   readonly codeAgentProgress?: CodeAgentExecutionProgressView;
   readonly onCopyCursorPrompt?: (codeTaskId: string) => void;
+  readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
 }) {
   const cursorMatchesParent =
     codeAgentProgress?.taskId === node.parentTaskId ||
@@ -131,6 +133,16 @@ function CodeTaskSelectedDetail({
           ) : null}
         </div>
       ) : null}
+      {node.showRetryFailedAction && onRetryFailedCodeTask ? (
+        <button
+          type="button"
+          className={styles.integrationPrimaryButton}
+          data-testid={`implementation-retry-failed-code-task-${node.codeTaskId}`}
+          onClick={() => onRetryFailedCodeTask(node.codeTaskId)}
+        >
+          {node.retryFailedActionLabel ?? "실패 작업 다시 실행"}
+        </button>
+      ) : null}
       {node.githubVerifyTechnicalLines?.length ? (
         <div
           className={styles.taskTreeFailureBlock}
@@ -163,12 +175,14 @@ function FlatCodeTaskListItem({
   onSelect,
   onToggleChecked,
   onCopyCursorPrompt,
+  onRetryFailedCodeTask,
 }: {
   readonly node: ImplementationCodeTaskTreeNode;
   readonly codeAgentProgress?: CodeAgentExecutionProgressView;
   readonly onSelect: (parentTaskId: string, codeTaskId: string) => void;
   readonly onToggleChecked?: (codeTaskId: string, checked: boolean) => void;
   readonly onCopyCursorPrompt?: (codeTaskId: string) => void;
+  readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
 }) {
   const itemClass = [
     styles.taskTreeCodeTaskItem,
@@ -228,6 +242,7 @@ function FlatCodeTaskListItem({
           node={node}
           codeAgentProgress={codeAgentProgress}
           onCopyCursorPrompt={onCopyCursorPrompt}
+          onRetryFailedCodeTask={onRetryFailedCodeTask}
         />
       ) : null}
     </div>
@@ -242,6 +257,7 @@ export function ImplementationExecutionBoardTaskTree({
   onToggleSelectAll,
   onToggleCodeTaskChecked,
   onCopyCodeTaskCursorPrompt,
+  onRetryFailedCodeTask,
   onCopyDeveloperPromptsFromHeader,
   developerPromptHeaderCopyDisabled,
   selectedCodeTaskCount,
@@ -255,6 +271,7 @@ export function ImplementationExecutionBoardTaskTree({
   readonly onToggleSelectAll?: (checked: boolean) => void;
   readonly onToggleCodeTaskChecked?: (codeTaskId: string, checked: boolean) => void;
   readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
+  readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
   readonly onCopyDeveloperPromptsFromHeader?: () => void;
   readonly developerPromptHeaderCopyDisabled?: boolean;
   readonly selectedCodeTaskCount?: number;
@@ -308,6 +325,7 @@ export function ImplementationExecutionBoardTaskTree({
           onSelect={(parentTaskId, codeTaskId) => onSelectCodeTask?.(parentTaskId, codeTaskId)}
           onToggleChecked={onToggleCodeTaskChecked}
           onCopyCursorPrompt={onCopyCodeTaskCursorPrompt}
+          onRetryFailedCodeTask={onRetryFailedCodeTask}
         />
       ))}
     </div>

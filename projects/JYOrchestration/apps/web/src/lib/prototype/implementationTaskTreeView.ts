@@ -67,6 +67,8 @@ export type ImplementationCodeTaskTreeNode = Readonly<{
   readonly isChecked: boolean;
   readonly failureReason?: string;
   readonly nextActionHint?: string;
+  readonly retryFailedActionLabel?: string;
+  readonly showRetryFailedAction?: boolean;
   readonly pollStatusLabel?: string;
   readonly githubVerifyTechnicalLines?: readonly ImplementationTaskTreeMetaLine[];
 }>;
@@ -261,20 +263,30 @@ function buildCodeTaskNode(input: {
 
   let collapsedSummary = rowView.collapsedSummary || formatCodeTaskExecutionFlowPhaseKo(phase);
   if (phase === "prompt_ready") collapsedSummary = "대기";
-  if (phase === "completed") collapsedSummary = "완료";
-  if (phase === "failed") collapsedSummary = "재작업 필요";
+  if (phase === "completed" && input.runtimeSnapshotUnit?.displayStatus !== "failed") {
+    collapsedSummary = "완료";
+  }
+  if (phase === "failed" && !input.runtimeSnapshotUnit) collapsedSummary = "재작업 필요";
   if (phase === "prompt_preflight_failed") collapsedSummary = "프롬프트 품질 검사 실패";
 
   let statusLabel = rowView.statusLabel;
   let progressLabel = rowView.progressLabel;
 
+  let showRetryFailedAction = false;
+  let retryFailedActionLabel: string | undefined;
   if (input.runtimeSnapshotUnit) {
     statusLabel = input.runtimeSnapshotUnit.statusLabel;
     progressLabel = input.runtimeSnapshotUnit.progressLabel;
     if (input.runtimeSnapshotUnit.displayStatus === "verified") collapsedSummary = "완료";
+    else if (input.runtimeSnapshotUnit.displayStatus === "failed") collapsedSummary = "실패";
     else if (input.runtimeSnapshotUnit.displayStatus === "verification_inconsistent")
       collapsedSummary = "검증 완료 대기";
     else if (input.runtimeSnapshotUnit.displayStatus === "running") collapsedSummary = "실행 중";
+    if (input.runtimeSnapshotUnit.displayStatus === "failed") {
+      showRetryFailedAction = input.runtimeSnapshotUnit.retryable !== false;
+      retryFailedActionLabel =
+        input.runtimeSnapshotUnit.userActionLabel?.trim() || "실패 작업 다시 실행";
+    }
   } else if (input.executionUnit) {
     const unitRun = findLatestRunForCodeTask(input.codeTaskExecutionRuns, input.codeTask.codeTaskId);
     const display = resolveExecutionUnitVerificationDisplayStatus({
@@ -298,7 +310,7 @@ function buildCodeTaskNode(input: {
           run: latestRun,
         })
       : null;
-  if (githubVerifyView && !input.executionUnit) {
+  if (githubVerifyView && !input.runtimeSnapshotUnit && !input.executionUnit) {
     progressLabel = githubVerifyView.progressLabel;
   }
 
@@ -337,14 +349,16 @@ function buildCodeTaskNode(input: {
     metaLines.push(formatMetaLine("Branch Plan", "보정 필요"));
   }
 
-  const failureReason =
-    phase === "prompt_preflight_failed"
-      ? PROMPT_PREFLIGHT_USER_BLOCK_MESSAGE
-      : phase === "failed"
-        ? latestRun?.failureReason ??
-          executionForParent?.failureReason ??
-          "commit_not_created"
-        : undefined;
+  let failureReason: string | undefined;
+  if (input.runtimeSnapshotUnit?.displayStatus === "failed") {
+    failureReason =
+      input.runtimeSnapshotUnit.userSafeFailureMessage?.split("\n")[0]?.trim() ||
+      "작업이 완료되지 않았습니다.";
+  } else if (phase === "prompt_preflight_failed") {
+    failureReason = PROMPT_PREFLIGHT_USER_BLOCK_MESSAGE;
+  } else if (phase === "failed" && !input.runtimeSnapshotUnit) {
+    failureReason = "작업이 완료되지 않았습니다.";
+  }
 
   return {
     codeTaskId: input.codeTask.codeTaskId,
@@ -356,7 +370,8 @@ function buildCodeTaskNode(input: {
     isActive: input.isActive,
     isSelected: input.isSelected,
     isChecked: input.isChecked,
-    ...(githubVerifyView?.technicalLines.length
+    ...(githubVerifyView?.technicalLines.length &&
+    input.runtimeSnapshotUnit?.displayStatus !== "failed"
       ? {
           githubVerifyTechnicalLines: githubVerifyView.technicalLines.map((line) =>
             formatMetaLine(line.label, line.value),
@@ -364,6 +379,7 @@ function buildCodeTaskNode(input: {
         }
       : {}),
     ...(failureReason ? { failureReason } : {}),
+    ...(showRetryFailedAction ? { showRetryFailedAction, retryFailedActionLabel } : {}),
     ...(githubVerifyView?.stateSyncFailed
       ? {
           failureReason:
@@ -375,8 +391,14 @@ function buildCodeTaskNode(input: {
           nextActionHint:
             "프롬프트를 수정하거나 개발 프롬프트를 다시 생성한 뒤 실행해 주세요.",
         }
-      : phase === "failed"
-      ? { nextActionHint: "다음 처리: Cursor 재실행 대기" }
+      : input.runtimeSnapshotUnit?.displayStatus === "failed"
+        ? {
+            nextActionHint:
+              input.runtimeSnapshotUnit.userSafeFailureMessage?.split("\n").slice(1).join(" ").trim() ||
+              "실패 작업을 다시 실행해 주세요.",
+          }
+        : phase === "failed"
+      ? { nextActionHint: "실패 작업을 다시 실행해 주세요." }
       : {
             nextActionHint:
               "다음 처리: AI 개발자 실행 → GitHub 결과 확인",

@@ -126,6 +126,7 @@ export function ImplementationExecutionBoardPanel({
   onCopyStageOnePlanningPrompt,
   onCopyDeveloperPromptsFromHeader,
   onRetryGithubVerify,
+  onRetryFailedCodeTask,
   projectId,
   implementationRuntimeStateV1,
   implementationRuntimeDbBundle,
@@ -166,6 +167,7 @@ export function ImplementationExecutionBoardPanel({
   readonly onCopyStageOnePlanningPrompt?: () => void;
   readonly onCopyDeveloperPromptsFromHeader?: () => void;
   readonly onRetryGithubVerify?: () => void;
+  readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
   readonly projectId?: string;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
   readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
@@ -1194,6 +1196,7 @@ export function ImplementationExecutionBoardPanel({
             );
           }}
           onCopyCodeTaskCursorPrompt={onCopyCodeTaskCursorPrompt}
+          onRetryFailedCodeTask={onRetryFailedCodeTask}
           onCopyDeveloperPromptsFromHeader={onCopyDeveloperPromptsFromHeader}
           developerPromptHeaderCopyDisabled={
             !executionTargetCodeTaskId &&

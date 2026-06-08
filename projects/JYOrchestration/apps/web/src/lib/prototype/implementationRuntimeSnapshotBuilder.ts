@@ -1,10 +1,11 @@
-import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import { isCodeTaskCompletedForSummary } from "@/lib/prototype/implementationCodeTaskSummary";
-import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import {
-  formatExecutionUnitVerificationCardLabels,
-  resolveExecutionUnitVerificationDisplayStatus,
-} from "@/lib/prototype/implementationExecutionUnitVerification";
+  mapAuthoritativeOutcomeToVerificationDisplayStatus,
+  resolveAuthoritativeCodeTaskOutcome,
+  type AuthoritativeCodeTaskOutcomeStatusV1,
+} from "@/lib/prototype/implementationCodeTaskOutcomeResolver";
+import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+import { formatExecutionUnitVerificationCardLabels } from "@/lib/prototype/implementationExecutionUnitVerification";
 import type { ImplementationIntegrationStepV1 } from "@/lib/prototype/implementationIntegrationStep";
 import { findIntegrationStep } from "@/lib/prototype/implementationIntegrationStepMutations";
 import { isPreviewRuntimeOpenReady } from "@/lib/prototype/implementationIntegrationButtonPolicy";
@@ -14,7 +15,7 @@ import type {
   ImplementationRuntimeUnitDisplayStatusV1,
 } from "@/lib/prototype/implementationRuntimeSnapshot";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { coalesceCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import {
   loadImplementationExecutionUnitsFromState,
 } from "@/lib/prototype/implementationExecutionUnitStore";
@@ -22,17 +23,25 @@ import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/imp
 import { loadPersistedSelectedExecutionUnitIds } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import { reconcileSelectedExecutionUnitIds } from "@/lib/prototype/implementationExecutionScheduler";
 
-function mapToRuntimeDisplayStatus(input: {
-  readonly unit: ImplementationExecutionUnitV1;
-  readonly verification: ReturnType<typeof resolveExecutionUnitVerificationDisplayStatus>;
-}): ImplementationRuntimeUnitDisplayStatusV1 {
-  if (input.verification === "verified") return "verified";
-  if (input.verification === "verification_inconsistent") return "verification_inconsistent";
-  if (input.verification === "skipped") return "skipped";
-  if (input.verification === "failed") return "failed";
-  if (input.unit.status === "running") return "running";
-  if (input.unit.status === "verifying" || input.verification === "in_progress") return "verifying";
-  return "pending";
+function mapOutcomeToRuntimeDisplayStatus(
+  status: AuthoritativeCodeTaskOutcomeStatusV1,
+): ImplementationRuntimeUnitDisplayStatusV1 {
+  switch (status) {
+    case "verified":
+      return "verified";
+    case "failed":
+      return "failed";
+    case "skipped":
+      return "skipped";
+    case "inconsistent":
+      return "verification_inconsistent";
+    case "running":
+      return "running";
+    case "verifying":
+      return "verifying";
+    default:
+      return "pending";
+  }
 }
 
 function stepStatusLabel(status: ImplementationIntegrationStepV1["status"]): string {
@@ -120,10 +129,12 @@ export function buildImplementationRuntimeSnapshot(input: {
   }
 
   const snapshotUnits = units.map((unit) => {
-    const run = findLatestRunForCodeTask(input.codeTaskRuns, unit.codeTaskId);
-    const verification = resolveExecutionUnitVerificationDisplayStatus({ unit, run });
-    const displayStatus = mapToRuntimeDisplayStatus({ unit, verification });
-    const hasPersistedGithubOutcome = isCodeTaskCompletedForSummary(run);
+    const outcome = resolveAuthoritativeCodeTaskOutcome({
+      unit,
+      runs: input.codeTaskRuns,
+    });
+    const displayStatus = mapOutcomeToRuntimeDisplayStatus(outcome.status);
+    const verification = mapAuthoritativeOutcomeToVerificationDisplayStatus(outcome.status);
     const card = formatExecutionUnitVerificationCardLabels(verification);
     return {
       unitId: unit.unitId,
@@ -136,11 +147,15 @@ export function buildImplementationRuntimeSnapshot(input: {
       workBranch: unit.workBranch,
       rawStatus: unit.status,
       displayStatus,
-      hasPersistedGithubOutcome,
-      latestRunId: run?.runId ?? null,
-      latestCommitSha: run?.commitSha ?? run?.branchHeadCommitSha ?? null,
+      hasPersistedGithubOutcome: outcome.hasPersistedGithubOutcome,
+      latestRunId: outcome.latestRunId,
+      latestCommitSha: outcome.commitSha,
       statusLabel: card.statusLabel,
       progressLabel: card.progressLabel,
+      userSafeFailureTitle: outcome.status === "failed" ? outcome.userSafeTitle : null,
+      userSafeFailureMessage: outcome.status === "failed" ? outcome.userSafeMessage : null,
+      userActionLabel: outcome.userActionLabel,
+      retryable: unit.retryable !== false,
     };
   });
 
@@ -220,11 +235,16 @@ export function buildImplementationRuntimeSnapshot(input: {
   const selected = selectedUnits.length;
   const total = units.length;
   const codetasksDone =
-    selected > 0 && completed === selected && inconsistent === 0 && pendingCodeTaskIds.length === 0;
+    selected > 0 &&
+    completed === selected &&
+    failed === 0 &&
+    inconsistent === 0 &&
+    pendingCodeTaskIds.length === 0;
 
   const canRunIntegration =
     selected > 0 &&
     completed === selected &&
+    failed === 0 &&
     inconsistent === 0 &&
     Boolean(finalWiring) &&
     (finalWiringStatus === "pending" ||
@@ -255,7 +275,10 @@ export function buildImplementationRuntimeSnapshot(input: {
 
   let disabledReason: string | null = null;
   if (!canRunIntegration) {
-    if (selected > 0 && completed < selected) {
+    if (failed > 0) {
+      disabledReason =
+        "실패한 CodeTask가 있어 통합을 시작할 수 없습니다.\n먼저 실패 작업을 다시 실행해 주세요.";
+    } else if (selected > 0 && completed < selected) {
       disabledReason = `개발 CodeTask ${completed}/${selected} 완료\n검증 대기 CodeTask가 있어 통합을 시작할 수 없습니다.`;
     } else if (inconsistent > 0) {
       disabledReason = `개발 CodeTask ${completed}/${selected} 완료\n검증 대기 CodeTask가 있어 통합을 시작할 수 없습니다.`;
@@ -263,7 +286,7 @@ export function buildImplementationRuntimeSnapshot(input: {
       disabledReason = null;
     }
   } else if (codetasksDone) {
-    disabledReason = null;
+    disabledReason = `개발 CodeTask ${completed}/${selected} 완료\n최종 연결/통합 Wiring을 실행할 수 있습니다.`;
   }
 
   let readinessStatus: ImplementationRuntimeSnapshotV1["preview"]["readinessStatus"] =
@@ -355,8 +378,12 @@ export function formatImplementationRuntimeSnapshotSummaryLines(
     `선택 CodeTask: ${codeTask.selected}개`,
   ];
   if (codeTask.selected > 0) {
-    lines.push(`선택 실행 순서: ${codeTask.completed} / ${codeTask.selected}`);
+    lines.push(`개발 CodeTask ${codeTask.completed}/${codeTask.selected} 완료`);
     lines.push(`완료 CodeTask: ${codeTask.completed} / ${codeTask.selected}`);
+    if (codeTask.failed > 0) {
+      lines.push(`실패 CodeTask: ${codeTask.failed}개`);
+      lines.push("상태: 실패 작업 재실행 필요");
+    }
   }
   if (codeTask.currentCodeTaskId) {
     const current = snapshot.units.find((u) => u.codeTaskId === codeTask.currentCodeTaskId);
@@ -379,7 +406,7 @@ export function buildImplementationRuntimeSnapshotFromRequirementsState(input: {
   readonly codeTaskPlanCount?: number | null;
   readonly branchPlanIntegrationCount?: number | null;
 }): ImplementationRuntimeSnapshotV1 {
-  const runs = parseCodeTaskExecutionRunsV1(input.requirementsState?.codeTaskExecutionRunsV1) ?? [];
+  const runs = coalesceCodeTaskExecutionRunsV1(input.requirementsState?.codeTaskExecutionRunsV1);
   const steps = loadImplementationIntegrationStepsFromState(input.requirementsState);
   return buildImplementationRuntimeSnapshot({
     projectId: input.projectId,
@@ -404,7 +431,7 @@ export function loadPersistedRuntimeSnapshotInputs(
   return {
     units: loadImplementationExecutionUnitsFromState(requirementsState),
     selectedExecutionUnitIds: loadPersistedSelectedExecutionUnitIds(requirementsState),
-    runs: parseCodeTaskExecutionRunsV1(requirementsState?.codeTaskExecutionRunsV1) ?? [],
+    runs: coalesceCodeTaskExecutionRunsV1(requirementsState?.codeTaskExecutionRunsV1),
     integrationSteps: loadImplementationIntegrationStepsFromState(requirementsState),
   };
 }

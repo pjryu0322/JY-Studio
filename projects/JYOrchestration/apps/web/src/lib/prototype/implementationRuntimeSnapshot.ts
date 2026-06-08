@@ -45,6 +45,10 @@ export type ImplementationRuntimeSnapshotV1 = Readonly<{
     readonly latestCommitSha: string | null;
     readonly statusLabel: string;
     readonly progressLabel: string;
+    readonly userSafeFailureTitle: string | null;
+    readonly userSafeFailureMessage: string | null;
+    readonly userActionLabel: string | null;
+    readonly retryable: boolean;
   }>[];
 
   readonly integration: Readonly<{

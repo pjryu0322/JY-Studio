@@ -1,5 +1,6 @@
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { coalesceCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import {
   buildExecutionUnitVerificationRows,
   type ExecutionUnitVerificationRowV1,
@@ -7,6 +8,7 @@ import {
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { loadImplementationExecutionUnitsFromState } from "@/lib/prototype/implementationExecutionUnitStore";
 import { ensurePersistedImplementationExecutionUnits } from "@/lib/prototype/implementationExecutionRuntime";
+import { buildExecutionUnitsFromLegacyState } from "@/lib/prototype/implementationExecutionUnitBuilder";
 import { reconcileImplementationExecutionSelectedUnits } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import { type ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
 import {
@@ -18,7 +20,6 @@ import type { ImplementationCodeTaskSummaryCountsV1 } from "@/lib/prototype/impl
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   buildImplementationRuntimeSnapshot,
-  buildImplementationRuntimeSnapshotFromRequirementsState,
 } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
 import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
@@ -49,7 +50,12 @@ export function buildImplementationExecutionSummaryCounts(input: {
   readonly workItemCount?: number;
   readonly previewRuntime?: import("@/lib/prototype/implementationPreviewRuntimeV1").ImplementationPreviewRuntimeV1 | null;
 }): ImplementationExecutionSummaryCountsV1 {
-  const pid = String(input.projectId ?? input.requirementsState?.implementationExecutionUnitsV1?.projectId ?? "").trim();
+  const pid = String(
+    input.projectId ??
+      input.requirementsState?.implementationExecutionUnitsV1?.projectId ??
+      input.codeTaskPlan?.projectId ??
+      "",
+  ).trim();
   const ensured = pid
     ? ensurePersistedImplementationExecutionUnits({
         projectId: pid,
@@ -61,7 +67,16 @@ export function buildImplementationExecutionSummaryCounts(input: {
       })
     : null;
   const persistedOnly = loadImplementationExecutionUnitsFromState(input.requirementsState);
-  const units = persistedOnly.length > 0 ? persistedOnly : (ensured?.units ?? []);
+  let units = persistedOnly.length > 0 ? persistedOnly : (ensured?.units ?? []);
+  if (units.length === 0 && input.codeTaskPlan) {
+    units = buildExecutionUnitsFromLegacyState({
+      projectId: pid || input.codeTaskPlan.projectId,
+      codeTaskPlan: input.codeTaskPlan,
+      taskList: input.taskList,
+      runs: input.runs,
+      workItemCount: input.workItemCount,
+    }).units;
+  }
   const audit = ensured?.audit;
   const orchestrationPatch = ensured?.bootstrapped ? ensured.orchestrationPatch : undefined;
 
@@ -98,44 +113,42 @@ export function buildImplementationExecutionSummaryCounts(input: {
       : undefined;
 
   const runsList = input.runs ?? input.requirementsState?.codeTaskExecutionRunsV1 ?? [];
+  const codeTaskRuns = coalesceCodeTaskExecutionRunsV1(runsList);
   const mergedState = {
     ...(input.requirementsState ?? {}),
     ...(mergedOrchestrationPatch ?? {}),
     codeTaskExecutionRunsV1: runsList,
   } as RequirementsStateJson;
 
-  const runtimeSnapshot = pid
-    ? buildImplementationRuntimeSnapshotFromRequirementsState({
-        projectId: pid,
-        requirementsState: mergedState,
-        executionUnits: units,
-        selectedExecutionUnitIds: selectedUnitIds,
-        previewRuntime: input.previewRuntime ?? null,
-        codeTaskPlanCount: input.codeTaskPlan?.tasks?.length ?? null,
-      })
-    : buildImplementationRuntimeSnapshot({
-        projectId: pid || "unknown",
-        executionUnits: units,
-        selectedExecutionUnitIds: selectedUnitIds,
-        codeTaskRuns: Array.isArray(runsList) ? runsList : [],
-        integrationSteps: loadImplementationIntegrationStepsFromState(input.requirementsState),
-        previewRuntime: input.previewRuntime ?? null,
-        codeTaskPlanCount: input.codeTaskPlan?.tasks?.length ?? null,
-      });
+  const runtimeSnapshot = buildImplementationRuntimeSnapshot({
+    projectId: pid || input.codeTaskPlan?.projectId || "unknown",
+    executionUnits: units,
+    selectedExecutionUnitIds: selectedUnitIds,
+    codeTaskRuns,
+    integrationSteps: loadImplementationIntegrationStepsFromState(mergedState),
+    previewRuntime: input.previewRuntime ?? null,
+    codeTaskPlanCount: input.codeTaskPlan?.tasks?.length ?? null,
+  });
 
-  const unitVerificationRows = buildExecutionUnitVerificationRows({ units, runs: runsList });
+  const unitVerificationRows = buildExecutionUnitVerificationRows({ units, runs: codeTaskRuns });
 
   const reconciledCodeTaskIds = selectedUnitIds
     .map((unitId) => units.find((u) => u.unitId === unitId)?.codeTaskId)
     .filter((id): id is string => Boolean(id?.trim()));
+
+  const requestedCodeTaskIds = [...new Set(legacySelected.map((id) => id.trim()).filter(Boolean))];
+  const reconciledCodeTaskIdSet = new Set(reconciledCodeTaskIds);
+  const removedStaleCodeTaskIds = requestedCodeTaskIds.filter((id) => !reconciledCodeTaskIdSet.has(id));
+  const removedStaleSelectedIds = [...new Set([...removedStaleCodeTaskIds, ...removedIds])];
+  const summaryCountReconciled = removedStaleSelectedIds.length > 0;
 
   return {
     totalCodeTaskCount: runtimeSnapshot.codeTask.total,
     selectedCodeTaskCount: runtimeSnapshot.codeTask.selected,
     completedCodeTaskCount: runtimeSnapshot.codeTask.completed,
     reconciledSelectedCodeTaskIds: reconciledCodeTaskIds.length ? reconciledCodeTaskIds : selectedUnitIds,
-    removedStaleSelectedIds: removedIds,
-    summaryCountReconciled: removedIds.length > 0,
+    removedStaleSelectedIds,
+    summaryCountReconciled,
     executionUnits: units,
     selectedExecutionUnitIds: selectedUnitIds,
     unitVerificationRows,

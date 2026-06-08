@@ -2994,6 +2994,28 @@ export function PrototypePreviewPanel({
     }
   }, [recoverQuickRunStuckGithubVerify, loadImplementationRuntimeDb]);
 
+  const handleRetryFailedCodeTask = useCallback(
+    async (codeTaskId: string) => {
+      const pid = projectId.trim();
+      if (!pid || !codeTaskId.trim()) return;
+      const res = await credentialsIncludeFetch(
+        "/api/prototype/implementation-runtime/retry-failed-task",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: pid, codeTaskId: codeTaskId.trim() }),
+        },
+      );
+      const json = (await res.json()) as { success?: boolean; message?: string };
+      if (!json.success) {
+        window.alert(json.message ?? "실패 작업 재실행을 준비하지 못했습니다.");
+        return;
+      }
+      await loadImplementationRuntimeDb({ recover: true });
+    },
+    [projectId, loadImplementationRuntimeDb],
+  );
+
   useEffect(() => {
     void recoverQuickRunStuckGithubVerify();
   }, [
@@ -8259,6 +8281,7 @@ export function PrototypePreviewPanel({
             onCopyStageOnePlanningPrompt={handleCopyStageOnePlanningPrompt}
             onCopyDeveloperPromptsFromHeader={handleCopyDeveloperPromptsFromHeader}
             onRetryGithubVerify={() => void handleManualGithubVerifyRetry()}
+            onRetryFailedCodeTask={(codeTaskId) => void handleRetryFailedCodeTask(codeTaskId)}
             projectId={projectId.trim()}
             implementationRuntimeStateV1={resolveImplementationRuntimeStateForRead({
               raw: orchestrationAwareRequirementsState as Record<string, unknown>,

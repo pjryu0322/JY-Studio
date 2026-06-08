@@ -40,21 +40,23 @@ export function evaluateIntegrationPipelineButtonEnablement(input: {
   if (!input.finalWiringStepExists) {
     disabledReasonLines.push("최종 연결/통합 Wiring 단계가 구성되지 않았습니다.");
   }
-  if (input.verificationInconsistentCount > 0 || input.completionGate.inconsistentCodeTaskIds.length > 0) {
-    for (const codeTaskId of input.completionGate.inconsistentCodeTaskIds) {
-      disabledReasonLines.push(`${codeTaskId}: GitHub outcome 저장 대기`);
-    }
-  }
-  if (
+  if (input.completionGate.failedCodeTaskIds.length > 0) {
+    disabledReasonLines.push(
+      "실패한 CodeTask가 있어 통합을 시작할 수 없습니다.\n먼저 실패 작업을 다시 실행해 주세요.",
+    );
+  } else if (
+    input.verificationInconsistentCount > 0 ||
+    input.completionGate.inconsistentCodeTaskIds.length > 0
+  ) {
+    disabledReasonLines.push("검증 대기 CodeTask가 있어 통합을 시작할 수 없습니다.");
+  } else if (
     input.completionGate.selectedCount > 0 &&
     input.completionGate.completedCount < input.completionGate.selectedCount
   ) {
     disabledReasonLines.push(
-      `CodeTask ${input.completionGate.completedCount}/${input.completionGate.selectedCount} 완료`,
+      `개발 CodeTask ${input.completionGate.completedCount}/${input.completionGate.selectedCount} 완료`,
     );
-    for (const codeTaskId of input.completionGate.pendingCodeTaskIds) {
-      disabledReasonLines.push(`${codeTaskId} 검증 결과 저장 후 통합을 실행할 수 있습니다.`);
-    }
+    disabledReasonLines.push("미완료 CodeTask가 있어 통합을 시작할 수 없습니다.");
   }
   const enabled =
     show &&
