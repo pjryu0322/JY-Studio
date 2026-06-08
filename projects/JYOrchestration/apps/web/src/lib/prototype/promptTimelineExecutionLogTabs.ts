@@ -106,6 +106,7 @@ const EXECUTION_LOG_ACTION_LABELS: Record<string, string> = {
   implementation_execution_unit_run_history_created: "ExecutionUnit run history 생성",
   implementation_execution_unit_run_history_attached: "ExecutionUnit run history 연결",
   implementation_execution_unit_run_identity_mismatch: "ExecutionUnit run identity 불일치",
+  implementation_execution_unit_cursor_launch_requested: "ExecutionUnit Cursor launch 요청",
   implementation_task_cursor_state_changed: "Task Cursor 상태 변경",
   implementation_auto_quality_gate_state_changed: "검수·보안 자동 점검 상태 변경",
   implementation_code_agent_wip_state_changed: "Code Agent WIP 상태 변경",

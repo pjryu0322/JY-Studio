@@ -1,4 +1,3 @@
-import { dispatchQuickRunContinuationOnServer } from "@/lib/prototype/implementationQuickRunContinuationDispatchService";
 import type { QuickRunGithubAdvanceResult } from "@/lib/prototype/implementationQuickRunGithubAdvanceService";
 import type { ExecutionSetupSourceGenerationContext } from "@/lib/prototype/executionSetupSourceGeneration";
 import { mergeOrchestrationPersistPatches } from "@/lib/prototype/orchestrationPatchMerge";
@@ -6,7 +5,6 @@ import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototyp
 import {
   buildQuickRunContinuationNoopTimelineEntry,
   buildQuickRunContinuationPatchPersistedTimelineEntry,
-  buildQuickRunNextCodeTaskDispatchedTimelineEntry,
 } from "@/lib/prototype/quickRunVerifiedContinuationTimeline";
 import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import type { TaskCursorGithubVerifyResult } from "@/lib/prototype/taskCursorGithubVerify";
@@ -57,12 +55,10 @@ export async function applyQuickRunContinuationAfterGithubVerify(input: {
 
   const patchPersistedEntry = buildQuickRunContinuationPatchPersistedTimelineEntry({
     projectId: input.projectId,
-    hasNextDispatch:
-      Boolean(input.advance.nextDispatch) ||
-      shouldMarkQuickRunHasNextDispatch({
-        projectId: input.projectId,
-        requirementsState: mergedSlice,
-      }),
+    hasNextDispatch: shouldMarkQuickRunHasNextDispatch({
+      projectId: input.projectId,
+      requirementsState: mergedSlice,
+    }),
     nowIso,
   });
   orchestrationPatch = mergeOrchestrationPersistPatches(orchestrationPatch, {
@@ -79,70 +75,6 @@ export async function applyQuickRunContinuationAfterGithubVerify(input: {
   });
 
   const canDispatch = Boolean(input.cursorApiToken.trim()) && input.execReadinessOk;
-
-  if (input.advance.nextDispatch && canDispatch) {
-    const dispatchOutcome = await dispatchQuickRunContinuationOnServer({
-      projectId: input.projectId,
-      dispatch: input.advance.nextDispatch,
-      baseOrchestrationPatch: orchestrationPatch,
-      requirementsSlice: mergeRequirementsStateJson(
-        input.requirementsSlice,
-        orchestrationPatch as Record<string, unknown>,
-      ),
-      context: input.execContext,
-      cursorApiToken: input.cursorApiToken,
-      nowIso,
-    });
-    orchestrationPatch = dispatchOutcome.orchestrationPatch;
-    continuationDispatchedOnServer = dispatchOutcome.dispatched;
-    if (dispatchOutcome.dispatched) {
-      const dispatchedEntry = buildQuickRunNextCodeTaskDispatchedTimelineEntry({
-        projectId: input.projectId,
-        currentCodeTaskId: input.previousCodeTaskId ?? input.advance.nextDispatch.codeTaskId,
-        nextCodeTaskId: input.advance.nextDispatch.codeTaskId,
-        selectedCodeTaskIds: [],
-        completedCodeTaskCount: 0,
-        reason: "next_dispatch_on_server",
-        nowIso,
-      });
-      orchestrationPatch = mergeOrchestrationPersistPatches(orchestrationPatch, {
-        promptTimeline: appendPromptTimeline(
-          mergeRequirementsStateJson(input.requirementsSlice, orchestrationPatch as Partial<RequirementsStateJson>)
-            .promptTimeline ?? [],
-          dispatchedEntry,
-        ),
-      });
-      await persistTaskCursorOrchestrationToProject({
-        projectId: input.projectId,
-        orchestrationPatch: orchestrationPatch as Record<string, unknown>,
-      });
-    }
-    return { orchestrationPatch, continuationDispatchedOnServer, fallbackResult };
-  }
-
-  if (input.advance.nextDispatch && !canDispatch) {
-    const reason = !input.cursorApiToken.trim()
-      ? "cursor_api_token_missing"
-      : "execution_setup_not_ready";
-    orchestrationPatch = mergeOrchestrationPersistPatches(orchestrationPatch, {
-      promptTimeline: appendPromptTimeline(
-        mergeRequirementsStateJson(input.requirementsSlice, orchestrationPatch as Partial<RequirementsStateJson>)
-          .promptTimeline ?? [],
-        buildQuickRunContinuationNoopTimelineEntry({
-          projectId: input.projectId,
-          currentCodeTaskId: input.previousCodeTaskId,
-          selectedCodeTaskIds: [],
-          reason,
-          nowIso,
-        }),
-      ),
-    });
-    await persistTaskCursorOrchestrationToProject({
-      projectId: input.projectId,
-      orchestrationPatch: orchestrationPatch as Record<string, unknown>,
-    });
-    return { orchestrationPatch, continuationDispatchedOnServer };
-  }
 
   const completedCodeTaskId =
     input.previousCodeTaskId?.trim() ||

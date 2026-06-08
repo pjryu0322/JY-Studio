@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import {
-  continueSelectedCodeTaskQueueAfterAutoGate,
-  tryDispatchCurrentQueuedQuickRunAfterDbAdvance,
-} from "@/lib/prototype/serverQuickRunContinuationService";
+import { dispatchNextExecutionUnitOnServer } from "@/lib/prototype/implementationExecutionUnitDispatchService";
+import { tryDispatchCurrentQueuedQuickRunAfterDbAdvance } from "@/lib/prototype/serverQuickRunContinuationService";
 import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
@@ -44,7 +42,11 @@ export async function POST(request: NextRequest) {
 
     const mode = String(body.mode ?? "").trim();
 
-    if (mode === "db_queued_auto_dispatch" || mode === "dispatch_current_queued") {
+    if (
+      mode === "legacy_db_queued_auto_dispatch" ||
+      mode === "db_queued_auto_dispatch" ||
+      mode === "dispatch_current_queued"
+    ) {
       const continuation = await tryDispatchCurrentQueuedQuickRunAfterDbAdvance({ projectId });
       if (continuation.orchestrationPatch) {
         await persistTaskCursorOrchestrationToProject({
@@ -60,6 +62,7 @@ export async function POST(request: NextRequest) {
         reason: continuation.reason,
         diagnostics: continuation.diagnostics,
         orchestrationPatch: continuation.orchestrationPatch,
+        scheduler: "legacy_db_queued",
         mode,
       });
     }
@@ -79,12 +82,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const continuation = await continueSelectedCodeTaskQueueAfterAutoGate({
+    const continuation = await dispatchNextExecutionUnitOnServer({
       projectId,
       completedTaskId,
       completedCodeTaskId: body.completedCodeTaskId,
       sourceCommitSha: execution?.commitSha,
-      runId: execution?.cursorRunId,
     });
 
     if (continuation.orchestrationPatch) {
@@ -97,12 +99,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: continuation.ok,
       outcome: continuation.outcome,
-      nextTaskId: continuation.nextTaskId,
       nextCodeTaskId: continuation.nextCodeTaskId,
       reason: continuation.reason,
-      diagnostics: continuation.diagnostics,
       orchestrationPatch: continuation.orchestrationPatch,
-      mode: mode || "recover_missing_server_continuation",
+      scheduler: "execution_unit",
+      mode: mode || "execution_unit",
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

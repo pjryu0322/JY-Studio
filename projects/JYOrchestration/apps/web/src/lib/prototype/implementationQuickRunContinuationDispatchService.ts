@@ -33,7 +33,7 @@ export type QuickRunContinuationServerDispatchResult = Readonly<{
   readonly message?: string;
 }>;
 
-/** verify-github advance 후 DB queued run이 있으면 서버에서 Cursor dispatch까지 수행한다. */
+/** @deprecated legacy_runtime_deprecated — P3-M72: use dispatchExecutionUnitWithCursor() via dispatchNextExecutionUnitOnServer(). Compatibility-only for old DB queued runtime flows. */
 export async function dispatchQuickRunContinuationOnServer(input: {
   readonly projectId: string;
   readonly dispatch: QuickRunGithubAdvanceDispatch;

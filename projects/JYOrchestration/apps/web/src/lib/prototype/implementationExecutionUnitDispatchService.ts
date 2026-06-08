@@ -1,12 +1,11 @@
 import {
   parseCodeTaskExecutionRunsV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
-import { dispatchQuickRunContinuationOnServer } from "@/lib/prototype/implementationQuickRunContinuationDispatchService";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import {
-  buildExecutionUnitStartedPatch,
   resolveQuickRunExecutionContextFromPersisted,
 } from "@/lib/prototype/implementationExecutionRuntime";
+import { dispatchExecutionUnitWithCursor } from "@/lib/prototype/implementationExecutionUnitCursorDispatchService";
 import {
   ensureExecutionUnitDbRunHistory,
   resolveExecutionUnitRunHistory,
@@ -297,13 +296,13 @@ export async function dispatchNextExecutionUnitOnServer(input: {
   if (!dbHistory.ok) {
     timelineEntries.push(
       buildImplementationExecutionLogTimelineEntry({
-        action: "implementation_execution_unit_run_history_created",
+        action: "implementation_execution_unit_run_history_attached",
         orchestrationTraceGroup: "implementation_orchestration",
         fields: {
           projectId: pid,
           codeTaskId: unit.codeTaskId,
           dbRunReady: false,
-          note: "db_run_history_pending",
+          note: "db_run_audit_pending",
         },
         nowIso,
       }),
@@ -330,25 +329,7 @@ export async function dispatchNextExecutionUnitOnServer(input: {
 
   const stateWithRuns = mergeRequirementsStateJson(requirementsState, {
     codeTaskExecutionRunsV1: runs,
-  });
-  const started = buildExecutionUnitStartedPatch({
-    state: stateWithRuns,
-    projectId: pid,
-    unitId: unit.unitId,
-    runId: history.runId,
-    nowIso,
-  });
-  timelineEntries.push(...started.timeline);
-
-  let orchestrationPatch = mergeOrchestrationPersistPatches(
-    ctx.orchestrationPatch,
-    { codeTaskExecutionRunsV1: runs },
-    started.orchestrationPatch,
-  );
-
-  await persistTaskCursorOrchestrationToProject({
-    projectId: pid,
-    orchestrationPatch: orchestrationPatch as Record<string, unknown>,
+    ...ctx.orchestrationPatch,
   });
 
   const setupRow = await prisma.executionSetup.findUnique({
@@ -375,46 +356,43 @@ export async function dispatchNextExecutionUnitOnServer(input: {
     };
   }
 
-  const completedTaskId = input.completedTaskId?.trim() || unit.processTaskId;
-  const dispatchOutcome = await dispatchQuickRunContinuationOnServer({
+  const triggerKey = `execution_unit:${unit.unitId}:${input.sourceCommitSha ?? ""}:${nowIso}`;
+  const dispatch = await dispatchExecutionUnitWithCursor({
     projectId: pid,
-    dispatch: {
-      codeTaskId: unit.codeTaskId,
-      parentTaskId: unit.processTaskId,
-      workItemId: dispatchTarget.workItem.id,
-      triggerKey: `execution_unit:${unit.unitId}:${input.sourceCommitSha ?? ""}:${nowIso}`,
-    },
-    baseOrchestrationPatch: orchestrationPatch,
-    requirementsSlice: mergeRequirementsStateJson(stateWithRuns, orchestrationPatch as Partial<RequirementsStateJson>),
-    context: readiness.context,
+    unit,
+    requirementsState: stateWithRuns,
+    codeTaskPlan,
+    taskList,
+    cursorWorkItems: workItems,
+    executionContext: readiness.context,
     cursorApiToken,
+    runId: history.runId,
+    triggerKey,
     nowIso,
   });
 
-  orchestrationPatch = mergeOrchestrationPersistPatches(orchestrationPatch, dispatchOutcome.orchestrationPatch);
+  timelineEntries.push(...dispatch.timelineEntries);
 
-  timelineEntries.push(
-    buildImplementationExecutionLogTimelineEntry({
-      action: dispatchOutcome.dispatched
-        ? "implementation_execution_next_unit_dispatched"
-        : "implementation_execution_unit_failed",
-      orchestrationTraceGroup: "implementation_orchestration",
-      fields: {
-        projectId: pid,
-        unitId: unit.unitId,
-        codeTaskId: unit.codeTaskId,
-        processTaskId: unit.processTaskId,
-        workBranch: unit.workBranch,
-        order: unit.order,
-        completedTaskId,
-        runId: history.runId,
-        dbRunId: dbHistory.runId,
-        dispatched: dispatchOutcome.dispatched,
-        ...(dispatchOutcome.message ? { message: dispatchOutcome.message.slice(0, 200) } : {}),
-      },
-      nowIso,
-    }),
+  let orchestrationPatch = mergeOrchestrationPersistPatches(
+    ctx.orchestrationPatch,
+    { codeTaskExecutionRunsV1: runs },
+    dispatch.orchestrationPatch ?? {},
   );
+
+  if (dispatch.ok) {
+    await persistTaskCursorOrchestrationToProject({
+      projectId: pid,
+      orchestrationPatch: orchestrationPatch as Record<string, unknown>,
+    });
+  } else if (dispatch.orchestrationPatch) {
+    await persistTaskCursorOrchestrationToProject({
+      projectId: pid,
+      orchestrationPatch: mergeOrchestrationPersistPatches(orchestrationPatch, dispatch.orchestrationPatch) as Record<
+        string,
+        unknown
+      >,
+    });
+  }
 
   const promptTimeline = appendPromptTimelineEntries(
     mergeRequirementsStateJson(requirementsState, orchestrationPatch as Partial<RequirementsStateJson>)
@@ -423,11 +401,11 @@ export async function dispatchNextExecutionUnitOnServer(input: {
   );
 
   return {
-    ok: dispatchOutcome.dispatched,
-    outcome: dispatchOutcome.dispatched ? "dispatched" : "execute_request_failed",
+    ok: dispatch.ok,
+    outcome: dispatch.ok ? "dispatched" : "execute_request_failed",
     nextUnit: unit,
     nextCodeTaskId: unit.codeTaskId,
-    reason: dispatchOutcome.dispatched ? null : dispatchOutcome.message ?? "dispatch_failed",
+    reason: dispatch.ok ? null : dispatch.userSafeMessage,
     orchestrationPatch: { ...orchestrationPatch, promptTimeline },
     timelineEntries,
   };
