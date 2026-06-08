@@ -214,6 +214,14 @@ describe("P3-M73 orchestrationPatch safety", () => {
 });
 
 describe("P3-M73 legacy path guards", () => {
+  it("taskCursorGithubVerifyService imports mergeRequirementsStateJson once", () => {
+    const src = readPrototypeSource("taskCursorGithubVerifyService.ts");
+    const importLines = src
+      .split(/\r?\n/)
+      .filter((line) => line.includes("mergeRequirementsStateJson") && line.trimStart().startsWith("import"));
+    expect(importLines).toHaveLength(1);
+  });
+
   it("implementationExecutionUnitDispatchService does not import legacy dispatch", () => {
     const src = readPrototypeSource("implementationExecutionUnitDispatchService.ts");
     expect(src).not.toContain("dispatchQuickRunContinuationOnServer");
