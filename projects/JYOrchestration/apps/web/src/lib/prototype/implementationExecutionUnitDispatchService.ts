@@ -93,6 +93,15 @@ export function mapDispatchNextExecutionUnitToServerResult(
   };
 }
 
+function patchWithPromptTimeline(
+  base: PrototypeExecutionOrchestrationPersistInput,
+  timelineEntries: readonly RequirementsPromptTimelineEntry[],
+): PrototypeExecutionOrchestrationPersistInput {
+  return mergeOrchestrationPersistPatches(base, {
+    promptTimeline: [...timelineEntries],
+  });
+}
+
 /** P3-M71 — direct ExecutionUnit scheduler (does not call legacy continuation). */
 export async function dispatchNextExecutionUnitOnServer(input: {
   readonly projectId: string;
@@ -164,7 +173,7 @@ export async function dispatchNextExecutionUnitOnServer(input: {
       ok: false,
       outcome: "empty_selection",
       reason: "no_execution_units_selected",
-      orchestrationPatch: { promptTimeline: timelineEntries },
+      orchestrationPatch: patchWithPromptTimeline(ctx.orchestrationPatch, timelineEntries),
       timelineEntries,
     };
   }
@@ -182,7 +191,7 @@ export async function dispatchNextExecutionUnitOnServer(input: {
       ok: true,
       outcome: "no_next_task",
       reason: "all_selected_units_terminal",
-      orchestrationPatch: { promptTimeline: timelineEntries },
+      orchestrationPatch: patchWithPromptTimeline(ctx.orchestrationPatch, timelineEntries),
       timelineEntries,
     };
   }
@@ -207,7 +216,7 @@ export async function dispatchNextExecutionUnitOnServer(input: {
       nextUnit: ctx.next.unit,
       nextCodeTaskId: ctx.next.unit.codeTaskId,
       reason: "execution_unit_in_flight",
-      orchestrationPatch: { promptTimeline: timelineEntries },
+      orchestrationPatch: patchWithPromptTimeline(ctx.orchestrationPatch, timelineEntries),
       timelineEntries,
     };
   }
@@ -271,7 +280,7 @@ export async function dispatchNextExecutionUnitOnServer(input: {
       nextUnit: unit,
       nextCodeTaskId: unit.codeTaskId,
       reason: history.reason,
-      orchestrationPatch: { promptTimeline: timelineEntries },
+      orchestrationPatch: patchWithPromptTimeline(ctx.orchestrationPatch, timelineEntries),
       timelineEntries,
     };
   }
@@ -282,12 +291,15 @@ export async function dispatchNextExecutionUnitOnServer(input: {
       nextUnit: unit,
       nextCodeTaskId: unit.codeTaskId,
       reason: history.reason,
-      orchestrationPatch: { promptTimeline: timelineEntries },
+      orchestrationPatch: patchWithPromptTimeline(ctx.orchestrationPatch, timelineEntries),
       timelineEntries,
     };
   }
 
   runs = [...history.runs];
+  const baseDispatchPatch = mergeOrchestrationPersistPatches(ctx.orchestrationPatch, {
+    codeTaskExecutionRunsV1: runs,
+  });
   const dbHistory = await ensureExecutionUnitDbRunHistory({
     projectId: pid,
     unit,
@@ -322,7 +334,7 @@ export async function dispatchNextExecutionUnitOnServer(input: {
       nextUnit: unit,
       nextCodeTaskId: unit.codeTaskId,
       reason: "dispatch_target_not_found",
-      orchestrationPatch: { promptTimeline: timelineEntries, codeTaskExecutionRunsV1: runs },
+      orchestrationPatch: patchWithPromptTimeline(baseDispatchPatch, timelineEntries),
       timelineEntries,
     };
   }
@@ -349,9 +361,7 @@ export async function dispatchNextExecutionUnitOnServer(input: {
       nextUnit: unit,
       nextCodeTaskId: unit.codeTaskId,
       reason: "execution_setup_not_ready",
-      orchestrationPatch: mergeOrchestrationPersistPatches(orchestrationPatch, {
-        promptTimeline: timelineEntries,
-      }),
+      orchestrationPatch: patchWithPromptTimeline(baseDispatchPatch, timelineEntries),
       timelineEntries,
     };
   }
@@ -374,8 +384,7 @@ export async function dispatchNextExecutionUnitOnServer(input: {
   timelineEntries.push(...dispatch.timelineEntries);
 
   let orchestrationPatch = mergeOrchestrationPersistPatches(
-    ctx.orchestrationPatch,
-    { codeTaskExecutionRunsV1: runs },
+    baseDispatchPatch,
     dispatch.orchestrationPatch ?? {},
   );
 

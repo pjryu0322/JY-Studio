@@ -56,6 +56,52 @@ function validateExecutionUnitDispatchTuple(unit: ImplementationExecutionUnitV1)
   return null;
 }
 
+const USER_SAFE_CURSOR_DISPATCH_FAILED =
+  "Cursor 실행 요청을 시작하지 못했습니다. 실행 설정과 로그를 확인하세요.";
+
+function userSafeMessageForDispatchReason(reason: string, detail?: string): string {
+  switch (reason) {
+    case "execution_unit_tuple_incomplete":
+      return "실행 단위 정보가 불완전해 Cursor 실행을 시작할 수 없습니다.";
+    case "execution_record_missing":
+      return "실행 기록이 없어 Cursor 실행을 시작할 수 없습니다.";
+    case "dispatch_target_not_found":
+      return "CodeTask에 연결된 WorkItem을 찾을 수 없습니다.";
+    case "developer_prompt_missing":
+      return "개발 프롬프트가 준비되지 않아 Cursor 실행을 시작할 수 없습니다.";
+    case "cursor_api_launch_failed":
+    case "unknown_dispatch_error":
+      return USER_SAFE_CURSOR_DISPATCH_FAILED;
+    default:
+      return detail?.trim() || USER_SAFE_CURSOR_DISPATCH_FAILED;
+  }
+}
+
+function patchExecutionUnitFailed(input: {
+  readonly state: RequirementsStateJson;
+  readonly projectId: string;
+  readonly unit: ImplementationExecutionUnitV1;
+  readonly errorCode: string;
+  readonly errorMessage: string;
+  readonly retryable?: boolean;
+  readonly nowIso: string;
+}) {
+  return patchImplementationExecutionUnitInState({
+    state: input.state,
+    projectId: input.projectId,
+    unitId: input.unit.unitId,
+    patch: {
+      status: "failed",
+      failedAt: input.nowIso,
+      retryable: input.retryable !== false,
+      errorCode: input.errorCode,
+      errorMessage: input.errorMessage,
+    },
+    reason: "implementation_execution_unit_failed",
+    nowIso: input.nowIso,
+  });
+}
+
 /** P3-M72 — Cursor launch from ExecutionUnit tuple (no DB queued-run gate). */
 export async function dispatchExecutionUnitWithCursor(input: {
   readonly projectId: string;
@@ -77,15 +123,16 @@ export async function dispatchExecutionUnitWithCursor(input: {
 
   const tupleError = validateExecutionUnitDispatchTuple(unit);
   if (tupleError) {
+    const reason = "execution_unit_tuple_incomplete";
     return {
       ok: false,
-      reason: tupleError,
-      userSafeMessage: "실행 단위 정보가 불완전해 Cursor 실행을 시작할 수 없습니다.",
+      reason,
+      userSafeMessage: userSafeMessageForDispatchReason(reason),
       timelineEntries: [
         buildImplementationExecutionLogTimelineEntry({
           action: "implementation_execution_unit_failed",
           orchestrationTraceGroup: "implementation_orchestration",
-          fields: { projectId: pid, unitId: unit.unitId, reason: tupleError },
+          fields: { projectId: pid, unitId: unit.unitId, reason, detail: tupleError },
           nowIso,
         }),
       ],
@@ -97,10 +144,11 @@ export async function dispatchExecutionUnitWithCursor(input: {
   const run =
     runFromId ?? findLatestRunForCodeTask(runs, unit.codeTaskId);
   if (!run) {
+    const reason = "execution_record_missing";
     return {
       ok: false,
-      reason: "execution_record_missing",
-      userSafeMessage: "실행 기록이 없어 Cursor 실행을 시작할 수 없습니다.",
+      reason,
+      userSafeMessage: userSafeMessageForDispatchReason(reason),
       timelineEntries,
     };
   }
@@ -112,10 +160,11 @@ export async function dispatchExecutionUnitWithCursor(input: {
     cursorWorkItems: input.cursorWorkItems,
   });
   if (!dispatchTarget) {
+    const reason = "dispatch_target_not_found";
     return {
       ok: false,
-      reason: "dispatch_target_not_found",
-      userSafeMessage: "CodeTask에 연결된 WorkItem을 찾을 수 없습니다.",
+      reason,
+      userSafeMessage: userSafeMessageForDispatchReason(reason),
       timelineEntries,
     };
   }
@@ -142,24 +191,24 @@ export async function dispatchExecutionUnitWithCursor(input: {
   });
 
   if (!prep.ok) {
-    const failedPatch = patchImplementationExecutionUnitInState({
+    const reason =
+      prep.message.includes("프롬프트") || prep.message.includes("prompt")
+        ? "developer_prompt_missing"
+        : prep.outcome === "blocked"
+          ? "developer_prompt_missing"
+          : "unknown_dispatch_error";
+    const failedPatch = patchExecutionUnitFailed({
       state: input.requirementsState,
       projectId: pid,
-      unitId: unit.unitId,
-      patch: {
-        status: "failed",
-        failedAt: nowIso,
-        retryable: true,
-        errorCode: prep.outcome,
-        errorMessage: prep.message,
-      },
-      reason: "implementation_execution_unit_failed",
+      unit,
+      errorCode: reason,
+      errorMessage: prep.message,
       nowIso,
     });
     return {
       ok: false,
-      reason: prep.outcome,
-      userSafeMessage: prep.message,
+      reason,
+      userSafeMessage: userSafeMessageForDispatchReason(reason, prep.message),
       orchestrationPatch: failedPatch.orchestrationPatch,
       timelineEntries: [
         buildImplementationExecutionLogTimelineEntry({
@@ -169,7 +218,9 @@ export async function dispatchExecutionUnitWithCursor(input: {
             projectId: pid,
             unitId: unit.unitId,
             codeTaskId: unit.codeTaskId,
-            reason: prep.message.slice(0, 200),
+            processTaskId: unit.processTaskId,
+            workBranch: unit.workBranch,
+            reason,
           },
           nowIso,
         }),
@@ -338,24 +389,19 @@ export async function dispatchExecutionUnitWithCursor(input: {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const reason = "cursor_api_launch_failed";
     execution = patchTaskCursorExecution(execution, {
       status: "cursor_failed",
       failureReason: "unknown",
       errorMessage: message,
       nowIso,
     });
-    const failedPatch = patchImplementationExecutionUnitInState({
+    const failedPatch = patchExecutionUnitFailed({
       state: input.requirementsState,
       projectId: pid,
-      unitId: unit.unitId,
-      patch: {
-        status: "failed",
-        failedAt: nowIso,
-        retryable: true,
-        errorCode: "cursor_launch_failed",
-        errorMessage: message,
-      },
-      reason: "implementation_execution_unit_failed",
+      unit,
+      errorCode: reason,
+      errorMessage: message,
       nowIso,
     });
     timelineEntries.push(
@@ -366,15 +412,17 @@ export async function dispatchExecutionUnitWithCursor(input: {
           projectId: pid,
           unitId: unit.unitId,
           codeTaskId: unit.codeTaskId,
-          reason: message.slice(0, 200),
+          processTaskId: unit.processTaskId,
+          workBranch: unit.workBranch,
+          reason,
         },
         nowIso,
       }),
     );
     return {
       ok: false,
-      reason: "cursor_launch_failed",
-      userSafeMessage: message || "Cursor 실행을 시작하지 못했습니다.",
+      reason,
+      userSafeMessage: userSafeMessageForDispatchReason(reason),
       orchestrationPatch: mergeOrchestrationPersistPatches(failedPatch.orchestrationPatch, {
         taskCursorExecutionV1: execution,
       }),
