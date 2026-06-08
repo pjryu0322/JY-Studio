@@ -20,6 +20,11 @@ import type { RequirementsStateJson } from "@/lib/requirements/requirementsState
 import { buildIntegrationStepStatusLines } from "@/lib/prototype/implementationIntegrationStatus";
 import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
 import { ensurePersistedImplementationIntegrationSteps } from "@/lib/prototype/implementationIntegrationStepBootstrap";
+import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
+import {
+  buildIntegrationEligibilitySummaryLines,
+  buildIntegrationEligibilitySummaryLinesFromSnapshot,
+} from "@/lib/prototype/implementationIntegrationScopeUi";
 
 export type ImplementationIntegrationBoardSectionVm = Readonly<{
   readonly canIntegrate: boolean;
@@ -63,8 +68,10 @@ export function buildImplementationIntegrationBoardSection(input: {
   readonly previewRuntime?: ImplementationPreviewRuntimeV1 | null;
   readonly integrationPlan?: CodeTaskIntegrationPlanV1 | null;
   readonly requirementsState?: RequirementsStateJson | null;
+  readonly runtimeSnapshot?: ImplementationRuntimeSnapshotV1 | null;
 }): ImplementationIntegrationBoardSectionVm {
   const scope = input.previewScope ?? null;
+  const snapshot = input.runtimeSnapshot ?? null;
   const previewReadiness = evaluateImplementationPreviewReadiness({
     projectId: input.projectId,
     codeTaskPlan: input.codeTaskPlan ?? null,
@@ -85,25 +92,38 @@ export function buildImplementationIntegrationBoardSection(input: {
     return ensured.steps;
   })();
   const integrationStepLines = buildIntegrationStepStatusLines(integrationSteps);
-  const previewRuntimeReady = previewReadiness.integratedAppPreviewReady;
-  const previewUrl = String(input.previewRuntime?.previewUrl ?? "").trim() || null;
-  const previewStatusLines: string[] = [...previewReadiness.statusTitleLines];
-  const canIntegrate = input.eligibility.canIntegrate;
+  const integratedAppPreviewReady = snapshot
+    ? snapshot.preview.integratedAppPreviewReady
+    : previewReadiness.integratedAppPreviewReady;
+  const codeTaskPreviewReady = snapshot
+    ? snapshot.preview.codeTaskPreviewReady
+    : previewReadiness.codeTaskPreviewReady;
+  const previewRuntimeReady = integratedAppPreviewReady;
+  const previewUrl =
+    String(input.previewRuntime?.previewUrl ?? "").trim() ||
+    snapshot?.preview.previewUrl ||
+    null;
+  const previewStatusLines: string[] = snapshot
+    ? snapshot.preview.message.split("\n").filter(Boolean)
+    : [...previewReadiness.statusTitleLines];
+  const canIntegrate = snapshot
+    ? snapshot.integration.canRunIntegration || snapshot.codeTask.completed > 0
+    : input.eligibility.canIntegrate;
   const preIntegrationPreviewLine =
-    !previewReadiness.integratedAppPreviewReady &&
+    !integratedAppPreviewReady &&
     canIntegrate &&
     input.previewRuntime?.status !== "failed"
       ? PRE_INTEGRATION_PREVIEW_HINT
       : null;
-  if (previewReadiness.integratedAppPreviewReady && input.previewRuntime?.openMode === "external_new_window") {
+  if (integratedAppPreviewReady && input.previewRuntime?.openMode === "external_new_window") {
     previewStatusLines.push("GitHub Pages Preview를 새 창으로 엽니다.");
   } else if (
-    previewReadiness.integratedAppPreviewReady &&
+    integratedAppPreviewReady &&
     input.previewRuntime?.openMode === "internal_renderer"
   ) {
     previewStatusLines.push("실제 app entry Preview를 새 창으로 엽니다.");
   }
-  if (input.previewRuntime?.status === "failed" && !previewReadiness.integratedAppPreviewReady) {
+  if (input.previewRuntime?.status === "failed" && !integratedAppPreviewReady) {
     previewStatusLines.push("Preview 준비 실패");
     if (input.previewRuntime.errorMessage?.trim()) {
       previewStatusLines.push(`사유: ${input.previewRuntime.errorMessage.trim()}`);
@@ -127,10 +147,12 @@ export function buildImplementationIntegrationBoardSection(input: {
   }
 
   return {
-    canIntegrate: input.eligibility.canIntegrate,
-    showSection: input.eligibility.canIntegrate || input.integratedPipelineLines.length > 0,
+    canIntegrate,
+    showSection: canIntegrate || input.integratedPipelineLines.length > 0,
     summaryLines: [
-      ...buildIntegrationEligibilitySummaryLines(input.eligibility),
+      ...(snapshot
+        ? buildIntegrationEligibilitySummaryLinesFromSnapshot(snapshot)
+        : buildIntegrationEligibilitySummaryLines(input.eligibility)),
       ...buildIntegrationScopeCountSummaryLines(scope),
       ...integrationStepLines,
     ],
@@ -155,8 +177,8 @@ export function buildImplementationIntegrationBoardSection(input: {
     previewUrl,
     previewStatusLines,
     previewReadiness,
-    codeTaskPreviewReady: previewReadiness.codeTaskPreviewReady,
-    integratedAppPreviewReady: previewReadiness.integratedAppPreviewReady,
+    codeTaskPreviewReady,
+    integratedAppPreviewReady,
     preIntegrationPreviewLine,
     integrationPlanLines,
     integrationPullRequestUrl: String(plan?.pullRequestUrl ?? "").trim() || null,

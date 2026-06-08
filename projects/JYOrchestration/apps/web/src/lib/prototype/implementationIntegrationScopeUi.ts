@@ -11,18 +11,40 @@ export function buildIntegrationScopeCountSummaryLines(
   ];
 }
 
+export function buildIntegrationEligibilitySummaryLinesFromSnapshot(
+  snapshot: import("@/lib/prototype/implementationRuntimeSnapshot").ImplementationRuntimeSnapshotV1,
+): readonly string[] {
+  const { codeTask, integration, preview } = snapshot;
+  if (codeTask.selected === 0) {
+    return ["선택된 CodeTask가 없어 통합할 수 없습니다."];
+  }
+  if (codeTask.completed < codeTask.selected || codeTask.inconsistent > 0) {
+    return [
+      `개발 CodeTask ${codeTask.completed}/${codeTask.selected} 완료`,
+      "미완료 또는 검증 대기 중인 CodeTask가 있어 통합을 시작할 수 없습니다.",
+    ];
+  }
+  if (preview.integratedAppPreviewReady) {
+    return ["실제 앱 Preview 준비 완료"];
+  }
+  if (integration.canRunIntegration) {
+    return [
+      `개발 CodeTask ${codeTask.completed}/${codeTask.selected} 완료`,
+      "최종 연결/통합 Wiring을 실행할 수 있습니다.",
+    ];
+  }
+  return [preview.message.split("\n")[0] ?? "통합 대기"];
+}
+
+/** @deprecated Prefer buildIntegrationEligibilitySummaryLinesFromSnapshot(). */
 export function buildIntegrationEligibilitySummaryLines(
   eligibility: ImplementationIntegrationEligibility,
 ): readonly string[] {
   const includedCount = eligibility.included.length;
-  const excludedCount = eligibility.excluded.length;
   if (includedCount === 0) {
     return ["완료된 CodeTask가 없어 통합할 수 없습니다."];
   }
-  const lines = [
-    `완료된 CodeTask ${includedCount}개를 기준으로 통합할 수 있습니다.`,
-    `실행 중이거나 미완료인 CodeTask ${excludedCount}개는 이번 Preview에 포함되지 않습니다.`,
-  ];
+  const lines = [`완료된 CodeTask ${includedCount}개를 기준으로 통합할 수 있습니다.`];
   for (const warning of eligibility.warnings) {
     lines.push(warning);
   }

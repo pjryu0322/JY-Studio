@@ -10,6 +10,9 @@ import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIn
 import { runImplementationIntegrationStepPipeline } from "@/lib/prototype/implementationIntegrationStepPipelineService";
 import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
+import { toImplementationRuntimeSnapshotApiSummary } from "@/lib/prototype/implementationRuntimeSnapshot";
+import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import { prisma } from "@/lib/prisma";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
@@ -152,6 +155,15 @@ export async function POST(request: NextRequest) {
       data: { requirementsStateJson: orchestrationPatch as object },
     });
 
+    const summary = buildImplementationExecutionSummaryCounts({
+      projectId,
+      requirementsState: orchestrationPatch,
+      codeTaskPlan,
+      taskList,
+      runs,
+      previewRuntime: parseImplementationPreviewRuntimeV1(orchestrationPatch.implementationPreviewRuntimeV1) ?? null,
+    });
+
     return NextResponse.json({
       success: outcome.ok,
       status: outcome.status,
@@ -162,6 +174,7 @@ export async function POST(request: NextRequest) {
       nextRequiredStep: outcome.nextRequiredStep ?? null,
       plan,
       timeline: outcome.timelineEntries,
+      snapshot: toImplementationRuntimeSnapshotApiSummary(summary.runtimeSnapshot),
       orchestrationPatch: {
         ...(outcome.orchestrationPatch ?? {}),
         codeTaskIntegrationPlanV1: plan,

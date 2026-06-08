@@ -7,6 +7,11 @@ import { tryDispatchCurrentQueuedQuickRunAfterDbAdvance } from "@/lib/prototype/
 import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
+import { toImplementationRuntimeSnapshotApiSummary } from "@/lib/prototype/implementationRuntimeSnapshot";
+import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import { prisma } from "@/lib/prisma";
 
 type Body = {
@@ -96,6 +101,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const rowAfter = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { requirementsStateJson: true },
+    });
+    const stateAfter = parseRequirementsStateJson(rowAfter?.requirementsStateJson) ?? {};
+    const summary = buildImplementationExecutionSummaryCounts({
+      projectId,
+      requirementsState: stateAfter,
+      codeTaskPlan: parseImplementationCodeTaskPlanV1(stateAfter.implementationCodeTaskPlanV1) ?? null,
+      runs: parseCodeTaskExecutionRunsV1(stateAfter.codeTaskExecutionRunsV1) ?? [],
+      previewRuntime: parseImplementationPreviewRuntimeV1(stateAfter.implementationPreviewRuntimeV1) ?? null,
+    });
+
     return NextResponse.json({
       success: continuation.ok,
       outcome: continuation.outcome,
@@ -104,6 +122,7 @@ export async function POST(request: NextRequest) {
       orchestrationPatch: continuation.orchestrationPatch,
       scheduler: "execution_unit",
       mode: mode || "execution_unit",
+      snapshot: toImplementationRuntimeSnapshotApiSummary(summary.runtimeSnapshot),
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

@@ -67,7 +67,6 @@ import {
 import type { ImplementationStageNextActionsBoardInput } from "@/lib/prototype/implementationStageNextActions";
 import {
   buildImplementationExecutionOverview,
-  formatImplementationExecutionOverviewLines,
   resolveSelectedCodeTaskExecutionProgress,
 } from "@/lib/prototype/implementationExecutionOverview";
 import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
@@ -95,10 +94,8 @@ import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJo
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
-import { evaluateIntegrationPipelineButtonEnablement } from "@/lib/prototype/implementationIntegrationButtonPolicy";
-import { areSelectedExecutionUnitsCompletedWithPersistedOutcomes } from "@/lib/prototype/implementationExecutionSelectedUnits";
-import { findIntegrationStep } from "@/lib/prototype/implementationIntegrationStepMutations";
-import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
+import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
+import { formatImplementationRuntimeSnapshotSummaryLines } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import {
@@ -394,6 +391,7 @@ export function ImplementationExecutionBoardPanel({
         legacySelectedTaskIds: boardState?.selectedTaskIds,
         runs: codeTaskRuns,
         workItemCount: cursorWorkItemsV1?.length ?? 0,
+        previewRuntime: parseImplementationPreviewRuntimeV1(implementationPreviewRuntimeV1) ?? null,
       });
       return summary;
     },
@@ -404,8 +402,11 @@ export function ImplementationExecutionBoardPanel({
       boardState,
       codeTaskRuns,
       cursorWorkItemsV1?.length,
+      implementationPreviewRuntimeV1,
     ],
   );
+
+  const runtimeSnapshot = codeTaskSummaryCounts.runtimeSnapshot;
 
   const executionUnitDebugLines = useMemo(
     () =>
@@ -625,6 +626,7 @@ export function ImplementationExecutionBoardPanel({
             ? (implementationRuntimeDbBundle.job.selectedCodeTaskIds ?? [])
             : null,
         executionUnits: codeTaskSummaryCounts.executionUnits,
+        runtimeSnapshotUnits: runtimeSnapshot.units,
       }),
     [
       board,
@@ -642,6 +644,7 @@ export function ImplementationExecutionBoardPanel({
       promptTimeline,
       activeTaskCursorJob,
       codeTaskSummaryCounts.executionUnits,
+      runtimeSnapshot.units,
     ],
   );
 
@@ -712,6 +715,7 @@ export function ImplementationExecutionBoardPanel({
         previewScope: parseImplementationPreviewScopeV1(implementationPreviewScopeV1),
         previewRuntime: parsedPreviewRuntime,
         integrationPlan: parsedIntegrationPlan,
+        runtimeSnapshot,
       }),
     [
       projectId,
@@ -727,23 +731,24 @@ export function ImplementationExecutionBoardPanel({
       parsedPreviewRuntime,
       parsedIntegrationPlan,
       integrationRequirementsState,
+      runtimeSnapshot,
     ],
   );
 
   const codetasksCompletedIntegrationHint = useMemo(() => {
-    const sel = codeTaskSummaryCounts.selectedCodeTaskCount;
-    const done = codeTaskSummaryCounts.completedCodeTaskCount;
-    const inconsistent = codeTaskSummaryCounts.verificationInconsistentCount;
-    if (sel > 0 && done >= sel && inconsistent === 0 && integrationSection.previewReadiness.finalWiringPending) {
+    if (runtimeSnapshot.integration.canRunIntegration) {
+      return `개발 CodeTask ${runtimeSnapshot.codeTask.completed}/${runtimeSnapshot.codeTask.selected} 완료\n최종 연결/통합 Wiring을 실행할 수 있습니다.`;
+    }
+    if (
+      runtimeSnapshot.codeTask.selected > 0 &&
+      runtimeSnapshot.codeTask.completed >= runtimeSnapshot.codeTask.selected &&
+      runtimeSnapshot.codeTask.inconsistent === 0 &&
+      integrationSection.previewReadiness.finalWiringPending
+    ) {
       return "CodeTask는 모두 완료되었습니다. 실제 앱 Preview를 준비하려면 최종 연결/통합 Wiring을 실행해야 합니다.";
     }
     return null;
-  }, [
-    codeTaskSummaryCounts.selectedCodeTaskCount,
-    codeTaskSummaryCounts.completedCodeTaskCount,
-    codeTaskSummaryCounts.verificationInconsistentCount,
-    integrationSection.previewReadiness.finalWiringPending,
-  ]);
+  }, [runtimeSnapshot, integrationSection.previewReadiness.finalWiringPending]);
 
   const integrationPipelineDisplayLines = useMemo(() => {
     const lines = [...integrationSection.pipelineLines];
@@ -757,28 +762,10 @@ export function ImplementationExecutionBoardPanel({
     return lines;
   }, [integrationSection.pipelineLines, parsedPreviewRuntime?.status]);
 
-  const integrationButtonState = useMemo(() => {
-    const steps = loadImplementationIntegrationStepsFromState(integrationRequirementsState);
-    return evaluateIntegrationPipelineButtonEnablement({
-      canIntegrate: integrationSection.canIntegrate,
-      previewRuntimeReady: integrationSection.previewRuntimeReady,
-      completionGate: areSelectedExecutionUnitsCompletedWithPersistedOutcomes({
-        units: codeTaskSummaryCounts.executionUnits,
-        selectedUnitIds: codeTaskSummaryCounts.selectedExecutionUnitIds,
-        runs: codeTaskRuns,
-      }),
-      verificationInconsistentCount: codeTaskSummaryCounts.verificationInconsistentCount,
-      finalWiringStepExists: Boolean(findIntegrationStep(steps, "final_wiring")),
-    });
-  }, [
-    integrationSection.canIntegrate,
-    integrationSection.previewRuntimeReady,
-    integrationRequirementsState,
-    codeTaskSummaryCounts.executionUnits,
-    codeTaskSummaryCounts.selectedExecutionUnitIds,
-    codeTaskSummaryCounts.verificationInconsistentCount,
-    codeTaskRuns,
-  ]);
+  const integrationButtonState = useMemo(
+    () => evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot),
+    [runtimeSnapshot],
+  );
 
   const showIntegrationButton = integrationButtonState.show;
   const integrationButtonEnabled = integrationButtonState.enabled;
@@ -927,14 +914,13 @@ export function ImplementationExecutionBoardPanel({
             </div>
           ) : null}
           <ul className={styles.overviewCardLines}>
-            {formatImplementationExecutionOverviewLines(executionOverview, {
-              selectedCodeTaskCount: codeTaskSummaryCounts.selectedCodeTaskCount,
-              selectedExecutionProgress,
-              selectedCompletedCount,
-              queueRunning: codeTaskQueue?.status === "running",
-              verificationInconsistentCount: codeTaskSummaryCounts.verificationInconsistentCount,
-              codetasksCompletedMessage: codetasksCompletedIntegrationHint,
-            }).map((line) => (
+            {[
+              ...formatImplementationRuntimeSnapshotSummaryLines(runtimeSnapshot),
+              ...(executionOverview.flowPhaseLabel || executionOverview.runtimeStateLabel
+                ? [`상태: ${executionOverview.flowPhaseLabel ?? executionOverview.runtimeStateLabel}`]
+                : []),
+              ...(codetasksCompletedIntegrationHint ? [codetasksCompletedIntegrationHint] : []),
+            ].map((line) => (
               <li key={line}>{line}</li>
             ))}
           </ul>

@@ -1,20 +1,14 @@
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
-import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import {
   buildExecutionUnitVerificationRows,
-  isExecutionUnitCompletedForSummary,
-  isExecutionUnitSkippedForSummary,
   type ExecutionUnitVerificationRowV1,
 } from "@/lib/prototype/implementationExecutionUnitVerification";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
-import {
-  loadImplementationExecutionUnitsFromState,
-} from "@/lib/prototype/implementationExecutionUnitStore";
+import { loadImplementationExecutionUnitsFromState } from "@/lib/prototype/implementationExecutionUnitStore";
 import { ensurePersistedImplementationExecutionUnits } from "@/lib/prototype/implementationExecutionRuntime";
 import { reconcileImplementationExecutionSelectedUnits } from "@/lib/prototype/implementationExecutionSelectedUnits";
-import {
-  type ImplementationExecutionUnitV1,
-} from "@/lib/prototype/implementationExecutionUnit";
+import { type ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
 import {
   mapSelectedCodeTaskIdsToExecutionUnitIds,
   reconcileSelectedExecutionUnitIds,
@@ -22,6 +16,12 @@ import {
 import type { BuildExecutionUnitsAuditV1 } from "@/lib/prototype/implementationExecutionUnitBuilder";
 import type { ImplementationCodeTaskSummaryCountsV1 } from "@/lib/prototype/implementationCodeTaskSummary";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  buildImplementationRuntimeSnapshot,
+  buildImplementationRuntimeSnapshotFromRequirementsState,
+} from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
+import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
+import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
 
 export type ImplementationExecutionSummaryCountsV1 = ImplementationCodeTaskSummaryCountsV1 &
   Readonly<{
@@ -31,8 +31,13 @@ export type ImplementationExecutionSummaryCountsV1 = ImplementationCodeTaskSumma
     readonly verificationInconsistentCount: number;
     readonly unitBuildAudit?: BuildExecutionUnitsAuditV1;
     readonly orchestrationPatch?: Partial<RequirementsStateJson>;
+    readonly runtimeSnapshot: ImplementationRuntimeSnapshotV1;
   }>;
 
+/**
+ * @deprecated Prefer buildImplementationRuntimeSnapshot() / buildImplementationRuntimeSnapshotFromRequirementsState().
+ * Compatibility adapter: persists/reconciles units, then derives counts from runtime snapshot only.
+ */
 export function buildImplementationExecutionSummaryCounts(input: {
   readonly projectId?: string | null;
   readonly requirementsState?: RequirementsStateJson | null;
@@ -42,6 +47,7 @@ export function buildImplementationExecutionSummaryCounts(input: {
   readonly legacySelectedTaskIds?: readonly string[] | null;
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
   readonly workItemCount?: number;
+  readonly previewRuntime?: import("@/lib/prototype/implementationPreviewRuntimeV1").ImplementationPreviewRuntimeV1 | null;
 }): ImplementationExecutionSummaryCountsV1 {
   const pid = String(input.projectId ?? input.requirementsState?.implementationExecutionUnitsV1?.projectId ?? "").trim();
   const ensured = pid
@@ -55,15 +61,11 @@ export function buildImplementationExecutionSummaryCounts(input: {
       })
     : null;
   const persistedOnly = loadImplementationExecutionUnitsFromState(input.requirementsState);
-  let units =
-    persistedOnly.length > 0
-      ? persistedOnly
-      : (ensured?.units ?? []);
-  let audit = ensured?.audit;
+  const units = persistedOnly.length > 0 ? persistedOnly : (ensured?.units ?? []);
+  const audit = ensured?.audit;
   const orchestrationPatch = ensured?.bootstrapped ? ensured.orchestrationPatch : undefined;
 
-  const legacySelected =
-    input.selectedCodeTaskIds ?? input.legacySelectedTaskIds ?? [];
+  const legacySelected = input.selectedCodeTaskIds ?? input.legacySelectedTaskIds ?? [];
   const selection =
     pid && input.requirementsState
       ? reconcileImplementationExecutionSelectedUnits({
@@ -96,47 +98,50 @@ export function buildImplementationExecutionSummaryCounts(input: {
       : undefined;
 
   const runsList = input.runs ?? input.requirementsState?.codeTaskExecutionRunsV1 ?? [];
+  const mergedState = {
+    ...(input.requirementsState ?? {}),
+    ...(mergedOrchestrationPatch ?? {}),
+    codeTaskExecutionRunsV1: runsList,
+  } as RequirementsStateJson;
+
+  const runtimeSnapshot = pid
+    ? buildImplementationRuntimeSnapshotFromRequirementsState({
+        projectId: pid,
+        requirementsState: mergedState,
+        executionUnits: units,
+        selectedExecutionUnitIds: selectedUnitIds,
+        previewRuntime: input.previewRuntime ?? null,
+        codeTaskPlanCount: input.codeTaskPlan?.tasks?.length ?? null,
+      })
+    : buildImplementationRuntimeSnapshot({
+        projectId: pid || "unknown",
+        executionUnits: units,
+        selectedExecutionUnitIds: selectedUnitIds,
+        codeTaskRuns: Array.isArray(runsList) ? runsList : [],
+        integrationSteps: loadImplementationIntegrationStepsFromState(input.requirementsState),
+        previewRuntime: input.previewRuntime ?? null,
+        codeTaskPlanCount: input.codeTaskPlan?.tasks?.length ?? null,
+      });
+
   const unitVerificationRows = buildExecutionUnitVerificationRows({ units, runs: runsList });
-  const verificationInconsistentCount = unitVerificationRows.filter(
-    (r) => r.displayStatus === "verification_inconsistent",
-  ).length;
 
-  const totalCodeTaskCount = units.length;
-  const selectedCodeTaskCount = selectedUnitIds.length;
-  const selectedSet = new Set(selectedUnitIds);
-
-  let completedCodeTaskCount = 0;
-  for (const unit of units) {
-    if (!selectedSet.has(unit.unitId)) continue;
-    const run = findLatestRunForCodeTask(runsList, unit.codeTaskId);
-    if (isExecutionUnitCompletedForSummary({ unit, run })) completedCodeTaskCount += 1;
-    else if (isExecutionUnitSkippedForSummary({ unit, run })) completedCodeTaskCount += 1;
-  }
-
-  if (!selectedUnitIds.length) {
-    completedCodeTaskCount = units.filter((u) => {
-      const run = findLatestRunForCodeTask(runsList, u.codeTaskId);
-      return (
-        isExecutionUnitCompletedForSummary({ unit: u, run }) ||
-        isExecutionUnitSkippedForSummary({ unit: u, run })
-      );
-    }).length;
-  }
-
-  const summaryCountReconciled = removedIds.length > 0;
+  const reconciledCodeTaskIds = selectedUnitIds
+    .map((unitId) => units.find((u) => u.unitId === unitId)?.codeTaskId)
+    .filter((id): id is string => Boolean(id?.trim()));
 
   return {
-    totalCodeTaskCount,
-    selectedCodeTaskCount,
-    completedCodeTaskCount,
-    reconciledSelectedCodeTaskIds: selectedUnitIds,
+    totalCodeTaskCount: runtimeSnapshot.codeTask.total,
+    selectedCodeTaskCount: runtimeSnapshot.codeTask.selected,
+    completedCodeTaskCount: runtimeSnapshot.codeTask.completed,
+    reconciledSelectedCodeTaskIds: reconciledCodeTaskIds.length ? reconciledCodeTaskIds : selectedUnitIds,
     removedStaleSelectedIds: removedIds,
-    summaryCountReconciled,
+    summaryCountReconciled: removedIds.length > 0,
     executionUnits: units,
     selectedExecutionUnitIds: selectedUnitIds,
     unitVerificationRows,
-    verificationInconsistentCount,
+    verificationInconsistentCount: runtimeSnapshot.codeTask.inconsistent,
     unitBuildAudit: audit,
     orchestrationPatch: mergedOrchestrationPatch,
+    runtimeSnapshot,
   };
 }

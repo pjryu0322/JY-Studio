@@ -176,6 +176,7 @@ function buildCodeTaskNode(input: {
   readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
   readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
   readonly executionUnit?: ImplementationExecutionUnitV1 | null;
+  readonly runtimeSnapshotUnit?: import("@/lib/prototype/implementationRuntimeSnapshot").ImplementationRuntimeSnapshotV1["units"][number] | null;
 }): ImplementationCodeTaskTreeNode {
   const executionForParent = resolveTaskCursorExecutionForRow({
     taskId: input.row.taskId,
@@ -267,7 +268,14 @@ function buildCodeTaskNode(input: {
   let statusLabel = rowView.statusLabel;
   let progressLabel = rowView.progressLabel;
 
-  if (input.executionUnit) {
+  if (input.runtimeSnapshotUnit) {
+    statusLabel = input.runtimeSnapshotUnit.statusLabel;
+    progressLabel = input.runtimeSnapshotUnit.progressLabel;
+    if (input.runtimeSnapshotUnit.displayStatus === "verified") collapsedSummary = "완료";
+    else if (input.runtimeSnapshotUnit.displayStatus === "verification_inconsistent")
+      collapsedSummary = "검증 완료 대기";
+    else if (input.runtimeSnapshotUnit.displayStatus === "running") collapsedSummary = "실행 중";
+  } else if (input.executionUnit) {
     const unitRun = findLatestRunForCodeTask(input.codeTaskExecutionRuns, input.codeTask.codeTaskId);
     const display = resolveExecutionUnitVerificationDisplayStatus({
       unit: input.executionUnit,
@@ -417,6 +425,7 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
   readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
   readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
   readonly executionUnits?: readonly ImplementationExecutionUnitV1[] | null;
+  readonly runtimeSnapshotUnits?: readonly import("@/lib/prototype/implementationRuntimeSnapshot").ImplementationRuntimeSnapshotV1["units"] | null;
 }): readonly ImplementationCodeTaskTreeNode[] {
   const plan =
     ensureCodeTaskPlanWithFileBoundaries({
@@ -439,6 +448,9 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
   const taskCursorExecution = input.taskCursorExecution ?? null;
   const unitByCodeTaskId = new Map(
     (input.executionUnits ?? []).map((u) => [u.codeTaskId, u] as const),
+  );
+  const snapshotByCodeTaskId = new Map(
+    (input.runtimeSnapshotUnits ?? []).map((u) => [u.codeTaskId, u] as const),
   );
 
   const nodes: ImplementationCodeTaskTreeNode[] = [];
@@ -468,6 +480,7 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
         sequentialQuickRunCodeTaskIds: input.sequentialQuickRunCodeTaskIds,
         promptTimeline: input.promptTimeline,
         executionUnit: unitByCodeTaskId.get(codeTask.codeTaskId) ?? null,
+        runtimeSnapshotUnit: snapshotByCodeTaskId.get(codeTask.codeTaskId) ?? null,
       }),
     );
   }

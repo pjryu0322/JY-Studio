@@ -444,6 +444,7 @@ export function buildImplementationTaskTreeNodes(input: {
   readonly serverJob?: TaskCursorJobSummary | null;
   readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
   readonly executionUnits?: readonly import("@/lib/prototype/implementationExecutionUnit").ImplementationExecutionUnitV1[] | null;
+  readonly runtimeSnapshotUnits?: readonly import("@/lib/prototype/implementationRuntimeSnapshot").ImplementationRuntimeSnapshotV1["units"] | null;
 }): readonly ImplementationCodeTaskTreeNode[] {
   const taskCursorExecution = input.taskCursorExecution ?? null;
   const activeCodeTaskId =
@@ -466,6 +467,7 @@ export function buildImplementationTaskTreeNodes(input: {
     sequentialQuickRunCodeTaskIds: input.sequentialQuickRunCodeTaskIds,
     promptTimeline: input.promptTimeline,
     executionUnits: input.executionUnits,
+    runtimeSnapshotUnits: input.runtimeSnapshotUnits,
   });
 
   const activeParentId =

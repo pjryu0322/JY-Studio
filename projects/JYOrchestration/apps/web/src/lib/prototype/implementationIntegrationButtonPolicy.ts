@@ -1,6 +1,7 @@
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { isCodeTaskCompletedForSummary } from "@/lib/prototype/implementationCodeTaskSummary";
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
 import type { SelectedExecutionUnitsCompletionGateV1 } from "@/lib/prototype/implementationExecutionSelectedUnits";
 
 export function runHasPersistedGithubVerifiedOutcomeForAutoGate(
@@ -60,6 +61,25 @@ export function evaluateIntegrationPipelineButtonEnablement(input: {
     input.finalWiringStepExists &&
     input.completionGate.ok &&
     input.verificationInconsistentCount === 0;
+  return { show, enabled, disabledReasonLines };
+}
+
+export function evaluateIntegrationPipelineButtonFromSnapshot(
+  snapshot: ImplementationRuntimeSnapshotV1,
+): Readonly<{
+  readonly show: boolean;
+  readonly enabled: boolean;
+  readonly disabledReasonLines: readonly string[];
+}> {
+  const show =
+    !snapshot.preview.integratedAppPreviewReady &&
+    snapshot.integration.steps.length > 0 &&
+    snapshot.codeTask.selected > 0;
+  const enabled = snapshot.integration.canRunIntegration;
+  const disabledReasonLines: string[] = [];
+  if (snapshot.integration.disabledReason) {
+    disabledReasonLines.push(...snapshot.integration.disabledReason.split("\n").filter(Boolean));
+  }
   return { show, enabled, disabledReasonLines };
 }
 
