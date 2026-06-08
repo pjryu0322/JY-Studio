@@ -51,6 +51,10 @@ import {
 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
+import {
+  parseImplementationExecutionUnitsStateV1,
+  type ImplementationExecutionUnitsStateV1,
+} from "@/lib/prototype/implementationExecutionUnitStore";
 import { parseImplementationExecutionJobsV1 } from "@/lib/prototype/implementationExecutionJob";
 import type { ImplementationExecutionJobV1 } from "@/lib/prototype/implementationExecutionJob";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
@@ -647,6 +651,8 @@ export type RequirementsStateJson = {
   implementationAutoQualityGateHistoryV1?: readonly ImplementationAutoQualityGateV1[] | null;
   /** 구현단계 Quick 자동실행(Preview 준비까지) 상위 상태 */
   implementationQuickRunV1?: ImplementationQuickRunV1 | null;
+  /** Persisted ExecutionUnit runtime (P3-M69) */
+  implementationExecutionUnitsV1?: ImplementationExecutionUnitsStateV1 | null;
   /** 구현단계 ExecutionJob 런타임(프로세스 Task 단위 실행 상태 SoT) */
   implementationExecutionJobsV1?: readonly ImplementationExecutionJobV1[] | null;
   /** CodeTask 단위 실행 Run(구현단계 단순 실행 SoT) */
@@ -1139,6 +1145,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationQuickRunV1 = parseImplementationQuickRunV1(
     "implementationQuickRunV1" in o ? o.implementationQuickRunV1 : undefined,
   );
+  const implementationExecutionUnitsV1 = parseImplementationExecutionUnitsStateV1(
+    "implementationExecutionUnitsV1" in o ? o.implementationExecutionUnitsV1 : undefined,
+  );
   const implementationExecutionJobsV1 = parseImplementationExecutionJobsV1(
     "implementationExecutionJobsV1" in o ? o.implementationExecutionJobsV1 : undefined,
   );
@@ -1338,6 +1347,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(taskCursorExecutionHistoryV1 !== undefined ? { taskCursorExecutionHistoryV1 } : {}),
     ...(implementationAutoQualityGateV1 !== undefined ? { implementationAutoQualityGateV1 } : {}),
     ...(implementationQuickRunV1 !== undefined ? { implementationQuickRunV1 } : {}),
+    ...(implementationExecutionUnitsV1 !== undefined ? { implementationExecutionUnitsV1 } : {}),
     ...(implementationExecutionJobsV1 !== undefined ? { implementationExecutionJobsV1 } : {}),
     ...(codeTaskExecutionRunsV1 !== undefined ? { codeTaskExecutionRunsV1 } : {}),
     ...(implementationPreviewScopeV1 !== undefined ? { implementationPreviewScopeV1 } : {}),

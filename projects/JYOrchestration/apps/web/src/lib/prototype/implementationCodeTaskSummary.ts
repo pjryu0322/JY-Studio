@@ -55,6 +55,8 @@ export function countCompletedVisibleCodeTasks(input: {
 }
 
 export function buildImplementationCodeTaskSummaryCounts(input: {
+  readonly projectId?: string | null;
+  readonly requirementsState?: import("@/lib/requirements/requirementsStateJson").RequirementsStateJson | null;
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
   readonly selectedCodeTaskIds?: readonly string[] | null;
   readonly legacySelectedTaskIds?: readonly string[] | null;
@@ -63,6 +65,8 @@ export function buildImplementationCodeTaskSummaryCounts(input: {
   readonly workItemCount?: number;
 }): ImplementationCodeTaskSummaryCountsV1 {
   const fromUnits = buildImplementationExecutionSummaryCounts({
+    projectId: input.projectId,
+    requirementsState: input.requirementsState,
     codeTaskPlan: input.codeTaskPlan,
     taskList: input.taskList,
     selectedCodeTaskIds: input.selectedCodeTaskIds,

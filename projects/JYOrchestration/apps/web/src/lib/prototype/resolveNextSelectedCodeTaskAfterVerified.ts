@@ -7,10 +7,13 @@ import {
   isRunSuccessTerminalForSelectedQueueContinuation,
 } from "@/lib/prototype/codeTaskQuickRunContinuationTerminal";
 import {
-  mapSelectedCodeTaskIdsToExecutionUnitIds,
   resolveNextExecutableUnit,
+  mapSelectedCodeTaskIdsToExecutionUnitIds,
 } from "@/lib/prototype/implementationExecutionScheduler";
+import { loadImplementationExecutionUnitsFromState } from "@/lib/prototype/implementationExecutionUnitStore";
+import { ensurePersistedImplementationExecutionUnits } from "@/lib/prototype/implementationExecutionRuntime";
 import { buildExecutionUnitsFromLegacyState } from "@/lib/prototype/implementationExecutionUnitBuilder";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 export type ResolveNextSelectedCodeTaskResultV1 =
   | Readonly<{ readonly status: "next_ready"; readonly codeTaskId: string }>
@@ -37,6 +40,8 @@ export function resolveNextSelectedCodeTaskAfterVerified(input: {
   readonly currentCodeTaskId: string;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
   readonly executionRuns: readonly CodeTaskExecutionRunV1[];
+  readonly projectId?: string | null;
+  readonly requirementsState?: RequirementsStateJson | null;
 }): ResolveNextSelectedCodeTaskResultV1 {
   const ids = input.selectedCodeTaskIds.map((id) => id.trim()).filter(Boolean);
   if (!ids.length) return { status: "no_selected_queue" };
@@ -51,10 +56,21 @@ export function resolveNextSelectedCodeTaskAfterVerified(input: {
     return { status: "current_not_success_terminal", codeTaskId: current };
   }
 
-  const { units } = buildExecutionUnitsFromLegacyState({
-    codeTaskPlan: input.codeTaskPlan,
-    runs: input.executionRuns,
-  });
+  const persisted = loadImplementationExecutionUnitsFromState(input.requirementsState);
+  const units =
+    persisted.length > 0
+      ? persisted
+      : input.projectId?.trim()
+        ? ensurePersistedImplementationExecutionUnits({
+            projectId: input.projectId.trim(),
+            requirementsState: input.requirementsState,
+            codeTaskPlan: input.codeTaskPlan,
+            runs: input.executionRuns,
+          }).units
+        : buildExecutionUnitsFromLegacyState({
+            codeTaskPlan: input.codeTaskPlan,
+            runs: input.executionRuns,
+          }).units;
   const selectedUnitIds = mapSelectedCodeTaskIdsToExecutionUnitIds(ids);
   const resolved = resolveNextExecutableUnit({ units, selectedUnitIds });
   if (resolved.status === "next") {

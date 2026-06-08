@@ -32,7 +32,8 @@ import {
 } from "@/lib/prototype/taskCursorExecution";
 import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
-import { prisma } from "@/lib/prisma";
+import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { mergeOrchestrationPersistPatches } from "@/lib/prototype/orchestrationPatchMerge";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
@@ -252,8 +253,20 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
     repaired: false,
     resolvedBranch: null,
   };
+  let executionUnitsOrchestrationPatch: Partial<import("@/lib/requirements/requirementsStateJson").RequirementsStateJson> | undefined;
 
   if (runForVerify) {
+    const githubVerifyRequirementsState = mergeRequirementsStateJson(
+      parseRequirementsStateJson({}) ?? {},
+      {
+        implementationCodeTaskPlanV1: body.implementationCodeTaskPlanV1,
+        implementationTaskListV1: body.implementationTaskListV1,
+        codeTaskExecutionRunsV1: mergedRuns.length ? mergedRuns : runsFromBody,
+        ...(("implementationExecutionUnitsV1" in body
+          ? { implementationExecutionUnitsV1: (body as Record<string, unknown>).implementationExecutionUnitsV1 }
+          : {}) as object),
+      },
+    );
     const forRun = await verifyGithubForCodeTaskRun({
       projectId,
       run: runForVerify,
@@ -264,6 +277,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
       codeTaskId: codeTaskIdEarly,
       branchPlanWorkBranch,
       codeTask: codeTaskForVerify,
+      requirementsState: githubVerifyRequirementsState,
       nowIso,
     });
     timeline.push(...forRun.timeline);
@@ -288,6 +302,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
       repaired: forRun.repaired,
       resolvedBranch: forRun.verify.resolvedBranch ?? null,
     };
+    executionUnitsOrchestrationPatch = forRun.executionUnitsOrchestrationPatch;
   } else {
     const candidateFlow = await runTaskCursorGithubVerifyCandidateFlow({
       projectId,
@@ -411,21 +426,24 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
   const runsPayload =
     runsAfterOutcome.length > 0 ? runsAfterOutcome : body.codeTaskExecutionRunsV1;
 
-  const basePatch = buildTaskCursorOrchestrationPatch({
-    execution: nextExecution,
-    timelineEntries: timeline,
-    cursorWorkItems: workItems,
-    codeTaskExecutionRunsV1: runsPayload,
-    activeCodeTaskId: (dispatchTarget?.codeTask.codeTaskId ?? codeTaskId) || null,
-    activeWorkItemId: dispatchTarget?.workItem.id ?? null,
-    ...(parseImplementationTaskExecutionStateV1(body.implementationTaskExecutionStateV1)
-      ? {
-          executionState: parseImplementationTaskExecutionStateV1(
-            body.implementationTaskExecutionStateV1,
-          ),
-        }
-      : {}),
-  });
+  const basePatch = mergeOrchestrationPersistPatches(
+    buildTaskCursorOrchestrationPatch({
+      execution: nextExecution,
+      timelineEntries: timeline,
+      cursorWorkItems: workItems,
+      codeTaskExecutionRunsV1: runsPayload,
+      activeCodeTaskId: (dispatchTarget?.codeTask.codeTaskId ?? codeTaskId) || null,
+      activeWorkItemId: dispatchTarget?.workItem.id ?? null,
+      ...(parseImplementationTaskExecutionStateV1(body.implementationTaskExecutionStateV1)
+        ? {
+            executionState: parseImplementationTaskExecutionStateV1(
+              body.implementationTaskExecutionStateV1,
+            ),
+          }
+        : {}),
+    }),
+    executionUnitsOrchestrationPatch ?? {},
+  );
 
   const dbBundleAfter = await getImplementationRuntimeBundle(projectId);
 
@@ -467,6 +485,7 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
         codeTaskExecutionQueueV1: body.codeTaskExecutionQueueV1,
         cursorWorkItemsV1: workItems,
         taskCursorExecutionV1: nextExecution,
+        ...(executionUnitsOrchestrationPatch ?? {}),
       },
       basePatch as Record<string, unknown>,
     ),

@@ -19,6 +19,10 @@ import {
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { patchTaskCursorExecution } from "@/lib/prototype/taskCursorExecution";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { clearStaleTaskCursorInflightForVerifiedRun } from "@/lib/prototype/taskCursorGithubOutcomeSession";
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
@@ -27,6 +31,10 @@ import {
   resolveCanonicalCodeTaskRunTarget,
 } from "@/lib/prototype/codeTaskRunTargetCanonical";
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
+import {
+  buildExecutionUnitGithubVerifyPatch,
+  ensurePersistedImplementationExecutionUnits,
+} from "@/lib/prototype/implementationExecutionRuntime";
 
 export type VerifyGithubForCodeTaskRunResult = Readonly<{
   readonly ok: boolean;
@@ -39,6 +47,7 @@ export type VerifyGithubForCodeTaskRunResult = Readonly<{
   readonly nextDispatchAllowed: boolean;
   readonly message: string;
   readonly repaired: boolean;
+  readonly executionUnitsOrchestrationPatch?: Partial<RequirementsStateJson>;
 }>;
 
 export async function verifyGithubForCodeTaskRun(input: {
@@ -51,6 +60,7 @@ export async function verifyGithubForCodeTaskRun(input: {
   readonly codeTaskId: string;
   readonly branchPlanWorkBranch?: string | null;
   readonly codeTask?: ImplementationCodeTaskV1 | null;
+  readonly requirementsState?: RequirementsStateJson | null;
   readonly nowIso?: string;
 }): Promise<VerifyGithubForCodeTaskRunResult> {
   const nowIso = input.nowIso ?? new Date().toISOString();
@@ -267,6 +277,44 @@ export async function verifyGithubForCodeTaskRun(input: {
     );
   }
 
+  let executionUnitsOrchestrationPatch: Partial<RequirementsStateJson> | undefined;
+  if (input.requirementsState) {
+    const codeTaskPlan = parseImplementationCodeTaskPlanV1(
+      input.requirementsState.implementationCodeTaskPlanV1,
+    );
+    const taskList = parseImplementationTaskListV1(input.requirementsState.implementationTaskListV1);
+    const runs = parseCodeTaskExecutionRunsV1(input.requirementsState.codeTaskExecutionRunsV1) ?? [];
+    const ensured = ensurePersistedImplementationExecutionUnits({
+      projectId: input.projectId,
+      requirementsState: input.requirementsState,
+      codeTaskPlan,
+      taskList,
+      runs: applyGithubOutcomeToRunsList({
+        runs,
+        codeTaskId: input.codeTaskId,
+        updatedRun,
+      }),
+      nowIso,
+    });
+    const stateForPatch = {
+      ...input.requirementsState,
+      ...ensured.orchestrationPatch,
+    };
+    const unitPatch = buildExecutionUnitGithubVerifyPatch({
+      state: stateForPatch,
+      projectId: input.projectId,
+      codeTaskId: input.codeTaskId,
+      githubOutcome,
+      run: updatedRun,
+      nowIso,
+    });
+    executionUnitsOrchestrationPatch = {
+      ...ensured.orchestrationPatch,
+      ...unitPatch.orchestrationPatch,
+    };
+    timeline.push(...unitPatch.timeline, ...ensured.timeline);
+  }
+
   return {
     ok: candidateFlow.verify.ok,
     githubOutcome,
@@ -283,6 +331,9 @@ export async function verifyGithubForCodeTaskRun(input: {
           ? String(githubOutcome.message ?? "GitHub verify failed")
           : "GitHub commit 확인 중",
     repaired: candidateFlow.repaired,
+    ...(executionUnitsOrchestrationPatch
+      ? { executionUnitsOrchestrationPatch }
+      : {}),
   };
 }
 

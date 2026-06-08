@@ -65,8 +65,8 @@ export async function applyQuickRunContinuationAfterGithubVerify(input: {
     hasNextDispatch:
       Boolean(input.advance.nextDispatch) ||
       shouldMarkQuickRunHasNextDispatch({
-        codeTaskPlan: parseImplementationCodeTaskPlanV1(mergedSlice.implementationCodeTaskPlanV1),
-        runs: parseCodeTaskExecutionRunsV1(mergedSlice.codeTaskExecutionRunsV1),
+        projectId: input.projectId,
+        requirementsState: mergedSlice,
         selectedCodeTaskIds:
           parseImplementationQuickRunV1(mergedSlice.implementationQuickRunV1)?.selectedCodeTaskIds ??
           null,

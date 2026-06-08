@@ -2,9 +2,9 @@ import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
-  buildExecutionUnitsFromLegacyState,
-  type BuildExecutionUnitsAuditV1,
-} from "@/lib/prototype/implementationExecutionUnitBuilder";
+  ensurePersistedImplementationExecutionUnits,
+  loadImplementationExecutionUnitsFromState,
+} from "@/lib/prototype/implementationExecutionUnitStore";
 import {
   isExecutionUnitTerminalForQueue,
   type ImplementationExecutionUnitV1,
@@ -13,16 +13,25 @@ import {
   mapSelectedCodeTaskIdsToExecutionUnitIds,
   reconcileSelectedExecutionUnitIds,
 } from "@/lib/prototype/implementationExecutionScheduler";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+
+import {
+  buildExecutionUnitsFromLegacyState,
+  type BuildExecutionUnitsAuditV1,
+} from "@/lib/prototype/implementationExecutionUnitBuilder";
 import type { ImplementationCodeTaskSummaryCountsV1 } from "@/lib/prototype/implementationCodeTaskSummary";
 
 export type ImplementationExecutionSummaryCountsV1 = ImplementationCodeTaskSummaryCountsV1 &
   Readonly<{
     readonly executionUnits: readonly ImplementationExecutionUnitV1[];
     readonly selectedExecutionUnitIds: readonly string[];
-    readonly unitBuildAudit: BuildExecutionUnitsAuditV1;
+    readonly unitBuildAudit?: BuildExecutionUnitsAuditV1;
+    readonly orchestrationPatch?: Partial<RequirementsStateJson>;
   }>;
 
 export function buildImplementationExecutionSummaryCounts(input: {
+  readonly projectId?: string | null;
+  readonly requirementsState?: RequirementsStateJson | null;
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
   readonly taskList?: ImplementationTaskListV1 | null;
   readonly selectedCodeTaskIds?: readonly string[] | null;
@@ -30,12 +39,35 @@ export function buildImplementationExecutionSummaryCounts(input: {
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
   readonly workItemCount?: number;
 }): ImplementationExecutionSummaryCountsV1 {
-  const { units, audit } = buildExecutionUnitsFromLegacyState({
-    codeTaskPlan: input.codeTaskPlan,
-    taskList: input.taskList,
-    runs: input.runs,
-    workItemCount: input.workItemCount,
-  });
+  const pid = String(input.projectId ?? input.requirementsState?.implementationExecutionUnitsV1?.projectId ?? "").trim();
+  const ensured = pid
+    ? ensurePersistedImplementationExecutionUnits({
+        projectId: pid,
+        requirementsState: input.requirementsState,
+        codeTaskPlan: input.codeTaskPlan,
+        taskList: input.taskList,
+        runs: input.runs,
+        workItemCount: input.workItemCount,
+      })
+    : null;
+  const persistedOnly = loadImplementationExecutionUnitsFromState(input.requirementsState);
+  let units =
+    persistedOnly.length > 0
+      ? persistedOnly
+      : (ensured?.units ?? []);
+  let audit = ensured?.audit;
+  const orchestrationPatch = ensured?.bootstrapped ? ensured.orchestrationPatch : undefined;
+
+  if (!units.length) {
+    const built = buildExecutionUnitsFromLegacyState({
+      codeTaskPlan: input.codeTaskPlan,
+      taskList: input.taskList,
+      runs: input.runs,
+      workItemCount: input.workItemCount,
+    });
+    units = built.units;
+    audit = built.audit;
+  }
 
   const rawSelected = mapSelectedCodeTaskIdsToExecutionUnitIds(
     input.selectedCodeTaskIds ?? input.legacySelectedTaskIds ?? [],
@@ -71,5 +103,6 @@ export function buildImplementationExecutionSummaryCounts(input: {
     executionUnits: units,
     selectedExecutionUnitIds: selectedUnitIds,
     unitBuildAudit: audit,
+    orchestrationPatch,
   };
 }

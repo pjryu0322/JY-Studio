@@ -70,7 +70,7 @@ import {
   formatImplementationExecutionOverviewLines,
   resolveSelectedCodeTaskExecutionProgress,
 } from "@/lib/prototype/implementationExecutionOverview";
-import { buildImplementationCodeTaskSummaryCounts } from "@/lib/prototype/implementationCodeTaskSummary";
+import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
 import { enrichCodeTaskRunForFlowPhase } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
 import { deriveCodeTaskRunPhase } from "@/lib/prototype/codeTaskRunDerivedView";
 import { resolveCursorSessionForRunPhase } from "@/lib/prototype/cursorSessionModel";
@@ -378,19 +378,42 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const codeTaskSummaryCounts = useMemo(
-    () =>
-      buildImplementationCodeTaskSummaryCounts({
+    () => {
+      const summary = buildImplementationExecutionSummaryCounts({
+        projectId,
+        requirementsState: {
+          implementationCodeTaskPlanV1: implementationCodeTaskPlanV1 ?? undefined,
+          codeTaskExecutionRunsV1: codeTaskRuns,
+          implementationExecutionBoardStateV1: boardState ?? undefined,
+        },
         codeTaskPlan: implementationCodeTaskPlanV1,
         selectedCodeTaskIds: checkedCodeTaskIds,
         legacySelectedTaskIds: boardState?.selectedTaskIds,
         runs: codeTaskRuns,
-      }),
+        workItemCount: cursorWorkItemsV1?.length ?? 0,
+      });
+      return summary;
+    },
     [
+      projectId,
       implementationCodeTaskPlanV1,
       checkedCodeTaskIds,
-      boardState?.selectedTaskIds,
+      boardState,
       codeTaskRuns,
+      cursorWorkItemsV1?.length,
     ],
+  );
+
+  const executionUnitDebugLines = useMemo(
+    () =>
+      codeTaskSummaryCounts.executionUnits
+        .filter((u) => u.status === "running" || u.status === "verifying" || u.status === "ready")
+        .slice(0, 4)
+        .map(
+          (u) =>
+            `${u.codeTaskId} · ${u.status} · ${u.workBranch || "-"} · head ${String(u.beforeHeadSha ?? "-").slice(0, 8)}→${String(u.afterHeadSha ?? "-").slice(0, 8)}`,
+        ),
+    [codeTaskSummaryCounts.executionUnits],
   );
 
   const displaySelectedCodeTaskIds = useMemo(() => {
@@ -836,6 +859,13 @@ export function ImplementationExecutionBoardPanel({
           <div className={styles.overviewCardTitle}>
             {executionOverview.headerTitle}
           </div>
+          {executionUnitDebugLines.length > 0 ? (
+            <div className={styles.overviewCardLines} data-testid="execution-unit-debug-lines">
+              {executionUnitDebugLines.map((line) => (
+                <div key={line}>{line}</div>
+              ))}
+            </div>
+          ) : null}
           <ul className={styles.overviewCardLines}>
             {formatImplementationExecutionOverviewLines(executionOverview, {
               selectedCodeTaskCount: codeTaskSummaryCounts.selectedCodeTaskCount,

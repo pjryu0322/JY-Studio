@@ -171,6 +171,7 @@ function deriveExecutionUnitStatusFromRun(
   };
 }
 
+/** legacy_bootstrap_only — builds units from CodeTask plan; not runtime SoT after persist (P3-M69). */
 export function buildExecutionUnitsFromLegacyState(input: {
   readonly projectId?: string | null;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
