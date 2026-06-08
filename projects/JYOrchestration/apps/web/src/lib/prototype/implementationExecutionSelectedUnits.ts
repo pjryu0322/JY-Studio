@@ -1,0 +1,124 @@
+import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import {
+  mapSelectedCodeTaskIdsToExecutionUnitIds,
+  reconcileSelectedExecutionUnitIds,
+} from "@/lib/prototype/implementationExecutionScheduler";
+import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+import {
+  loadImplementationExecutionUnitsFromState,
+  saveImplementationExecutionUnitsToState,
+} from "@/lib/prototype/implementationExecutionUnitStore";
+import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+
+export function loadPersistedSelectedExecutionUnitIds(
+  state: RequirementsStateJson | null | undefined,
+): readonly string[] {
+  const raw = state?.implementationExecutionUnitsV1?.selectedExecutionUnitIds;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((id) => String(id ?? "").trim()).filter(Boolean);
+}
+
+export function reconcileImplementationExecutionSelectedUnits(input: {
+  readonly projectId: string;
+  readonly state: RequirementsStateJson;
+  readonly units: readonly ImplementationExecutionUnitV1[];
+  /** Legacy UI / job input — migrated once when persisted selection is empty */
+  readonly legacySelectedCodeTaskIds?: readonly string[] | null;
+  readonly nowIso?: string;
+}): Readonly<{
+  readonly selectedUnitIds: readonly string[];
+  readonly orchestrationPatch: Partial<RequirementsStateJson>;
+  readonly timeline: readonly RequirementsPromptTimelineEntry[];
+}> {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const pid = input.projectId.trim();
+  const timeline: RequirementsPromptTimelineEntry[] = [];
+  let orchestrationPatch: Partial<RequirementsStateJson> = {};
+
+  let selected = loadPersistedSelectedExecutionUnitIds(input.state);
+  const legacyIds = (input.legacySelectedCodeTaskIds ?? [])
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (!selected.length && legacyIds.length) {
+    selected = mapSelectedCodeTaskIdsToExecutionUnitIds(legacyIds, input.units);
+    timeline.push(
+      buildImplementationExecutionLogTimelineEntry({
+        action: "legacy_selected_code_task_ids_migrated",
+        orchestrationTraceGroup: "implementation_orchestration",
+        fields: {
+          projectId: pid,
+          legacyCount: legacyIds.length,
+          migratedCount: selected.length,
+        },
+        nowIso,
+      }),
+    );
+  }
+
+  const { selectedUnitIds, removedIds } = reconcileSelectedExecutionUnitIds({
+    selectedUnitIds: selected.length ? selected : input.units.map((u) => u.unitId),
+    units: input.units,
+  });
+
+  const persistedBefore = loadPersistedSelectedExecutionUnitIds(input.state);
+  const changed =
+    removedIds.length > 0 ||
+    persistedBefore.length !== selectedUnitIds.length ||
+    persistedBefore.some((id, i) => id !== selectedUnitIds[i]);
+
+  if (changed) {
+    orchestrationPatch = saveImplementationExecutionUnitsToState({
+      projectId: pid,
+      units: [...input.units],
+      selectedExecutionUnitIds: selectedUnitIds,
+      reason: "implementation_selected_units_persisted",
+      nowIso,
+    });
+    timeline.push(
+      buildImplementationExecutionLogTimelineEntry({
+        action: removedIds.length
+          ? "implementation_selected_units_reconciled"
+          : "implementation_selected_units_persisted",
+        orchestrationTraceGroup: "implementation_orchestration",
+        fields: {
+          projectId: pid,
+          selectedCount: selectedUnitIds.length,
+          removedCount: removedIds.length,
+        },
+        nowIso,
+      }),
+    );
+  }
+
+  return { selectedUnitIds, orchestrationPatch, timeline };
+}
+
+export function areAllSelectedExecutionUnitsVerified(input: {
+  readonly units: readonly ImplementationExecutionUnitV1[];
+  readonly selectedUnitIds: readonly string[];
+}): boolean {
+  const selected = input.selectedUnitIds.map((id) => id.trim()).filter(Boolean);
+  if (!selected.length) return false;
+  const byId = new Map(input.units.map((u) => [u.unitId, u]));
+  for (const id of selected) {
+    const unit = byId.get(id);
+    if (!unit) return false;
+    if (unit.status !== "verified" && unit.status !== "skipped") return false;
+  }
+  return true;
+}
+
+export function countVerifiedSelectedExecutionUnits(input: {
+  readonly units: readonly ImplementationExecutionUnitV1[];
+  readonly selectedUnitIds: readonly string[];
+}): number {
+  const selected = new Set(input.selectedUnitIds.map((id) => id.trim()).filter(Boolean));
+  let n = 0;
+  for (const unit of input.units) {
+    if (!selected.has(unit.unitId)) continue;
+    if (unit.status === "verified" || unit.status === "skipped") n += 1;
+  }
+  return n;
+}

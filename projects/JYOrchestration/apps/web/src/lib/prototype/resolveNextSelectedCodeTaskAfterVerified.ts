@@ -12,6 +12,7 @@ import {
 } from "@/lib/prototype/implementationExecutionScheduler";
 import { loadImplementationExecutionUnitsFromState } from "@/lib/prototype/implementationExecutionUnitStore";
 import { ensurePersistedImplementationExecutionUnits } from "@/lib/prototype/implementationExecutionRuntime";
+import { reconcileImplementationExecutionSelectedUnits } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import { buildExecutionUnitsFromLegacyState } from "@/lib/prototype/implementationExecutionUnitBuilder";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -71,7 +72,17 @@ export function resolveNextSelectedCodeTaskAfterVerified(input: {
             codeTaskPlan: input.codeTaskPlan,
             runs: input.executionRuns,
           }).units;
-  const selectedUnitIds = mapSelectedCodeTaskIdsToExecutionUnitIds(ids);
+
+  const selection = input.projectId?.trim()
+    ? reconcileImplementationExecutionSelectedUnits({
+        projectId: input.projectId.trim(),
+        state: input.requirementsState ?? {},
+        units,
+        legacySelectedCodeTaskIds: ids,
+      })
+    : null;
+  const selectedUnitIds =
+    selection?.selectedUnitIds ?? mapSelectedCodeTaskIdsToExecutionUnitIds(ids, units);
   const resolved = resolveNextExecutableUnit({ units, selectedUnitIds });
   if (resolved.status === "next") {
     return { status: "next_ready", codeTaskId: resolved.unit.codeTaskId };

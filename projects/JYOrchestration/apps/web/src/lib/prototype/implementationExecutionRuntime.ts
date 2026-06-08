@@ -4,8 +4,6 @@ import type { CodeTaskGithubOutcomeV1 } from "@/lib/prototype/codeTaskGithubOutc
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import {
-  mapSelectedCodeTaskIdsToExecutionUnitIds,
-  reconcileSelectedExecutionUnitIds,
   resolveNextExecutableUnit,
   type ResolveNextExecutableUnitResultV1,
 } from "@/lib/prototype/implementationExecutionScheduler";
@@ -21,6 +19,7 @@ import {
   loadImplementationExecutionUnitsFromState,
   saveImplementationExecutionUnitsToState,
 } from "@/lib/prototype/implementationExecutionUnitStore";
+import { reconcileImplementationExecutionSelectedUnits } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -118,21 +117,35 @@ export function resolveQuickRunExecutionContextFromPersisted(input: {
 
   const dbSelected =
     input.dbBundle?.job?.selectedCodeTaskIds?.map((id) => id.trim()).filter(Boolean) ?? [];
-  const rawSelected = mapSelectedCodeTaskIdsToExecutionUnitIds(
-    input.selectedCodeTaskIds?.length ? input.selectedCodeTaskIds : dbSelected,
-  );
-  const { selectedUnitIds } = reconcileSelectedExecutionUnitIds({
-    selectedUnitIds: rawSelected.length ? rawSelected : ensured.units.map((u) => u.unitId),
+  const legacySelected = input.selectedCodeTaskIds?.length ? input.selectedCodeTaskIds : dbSelected;
+
+  const mergedState = {
+    ...(input.requirementsState ?? {}),
+    ...ensured.orchestrationPatch,
+  } as RequirementsStateJson;
+
+  const selection = reconcileImplementationExecutionSelectedUnits({
+    projectId: input.projectId,
+    state: mergedState,
     units: ensured.units,
+    legacySelectedCodeTaskIds: legacySelected,
   });
 
+  const selectedUnitIds = selection.selectedUnitIds;
   const next = resolveNextExecutableUnit({ units: ensured.units, selectedUnitIds });
+
+  const orchestrationPatch = {
+    ...ensured.orchestrationPatch,
+    ...selection.orchestrationPatch,
+  };
+  const timeline = [...ensured.timeline, ...selection.timeline];
+
   return {
     units: ensured.units,
     selectedUnitIds,
     next,
-    orchestrationPatch: ensured.orchestrationPatch,
-    timeline: ensured.timeline,
+    orchestrationPatch,
+    timeline,
   };
 }
 
@@ -172,6 +185,7 @@ export function buildExecutionUnitStartedPatch(input: {
     projectId: input.projectId,
     units: nextUnits,
     reason: "implementation_execution_unit_started",
+    selectedExecutionUnitIds: input.state.implementationExecutionUnitsV1?.selectedExecutionUnitIds ?? [],
     nowIso,
   });
   const timeline = [
@@ -267,6 +281,7 @@ export function buildExecutionUnitGithubVerifyPatch(input: {
       patched.status === "verified"
         ? "implementation_execution_unit_verified"
         : "implementation_execution_unit_failed",
+    selectedExecutionUnitIds: input.state.implementationExecutionUnitsV1?.selectedExecutionUnitIds ?? [],
     nowIso,
   });
 
@@ -296,6 +311,48 @@ export function buildExecutionUnitGithubVerifyPatch(input: {
   ];
 
   return { orchestrationPatch, timeline };
+}
+
+export function buildExecutionUnitVerifyingPatch(input: {
+  readonly state: RequirementsStateJson;
+  readonly projectId: string;
+  readonly codeTaskId: string;
+  readonly nowIso?: string;
+}): Readonly<{
+  readonly orchestrationPatch: Partial<RequirementsStateJson>;
+  readonly timeline: readonly RequirementsPromptTimelineEntry[];
+}> {
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const units = loadImplementationExecutionUnitsFromState(input.state);
+  const unit = findExecutionUnitByCodeTaskId(units, input.codeTaskId);
+  if (!unit || unit.status === "verifying" || unit.status === "verified") {
+    return { orchestrationPatch: {}, timeline: [] };
+  }
+  const idx = units.findIndex((u) => u.unitId === unit.unitId);
+  const nextUnits = [...units];
+  nextUnits[idx] = { ...unit, status: "verifying", verifyingAt: nowIso };
+  const orchestrationPatch = saveImplementationExecutionUnitsToState({
+    projectId: input.projectId,
+    units: nextUnits,
+    selectedExecutionUnitIds: input.state.implementationExecutionUnitsV1?.selectedExecutionUnitIds ?? [],
+    reason: "implementation_execution_unit_verifying",
+    nowIso,
+  });
+  return {
+    orchestrationPatch,
+    timeline: [
+      buildImplementationExecutionLogTimelineEntry({
+        action: "implementation_execution_unit_verifying",
+        orchestrationTraceGroup: "implementation_orchestration",
+        fields: {
+          projectId: input.projectId,
+          unitId: unit.unitId,
+          codeTaskId: unit.codeTaskId,
+        },
+        nowIso,
+      }),
+    ],
+  };
 }
 
 export function shouldPersistHasNextQuickRunDispatch(input: {

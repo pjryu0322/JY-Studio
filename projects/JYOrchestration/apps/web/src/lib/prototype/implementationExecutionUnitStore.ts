@@ -14,6 +14,7 @@ export type ImplementationExecutionUnitsStateV1 = Readonly<{
   readonly projectId: string;
   readonly updatedAt: string;
   readonly units: readonly ImplementationExecutionUnitV1[];
+  readonly selectedExecutionUnitIds?: readonly string[];
 }>;
 
 const UNIT_STATUSES = new Set<ImplementationExecutionUnitV1["status"]>([
@@ -82,7 +83,16 @@ export function parseImplementationExecutionUnitsStateV1(
     const unit = parseUnit(row);
     if (unit) units.push(unit);
   }
-  return { version: IMPLEMENTATION_EXECUTION_UNITS_STATE_VERSION, projectId, updatedAt, units };
+  const selectedExecutionUnitIds = Array.isArray(o.selectedExecutionUnitIds)
+    ? o.selectedExecutionUnitIds.map((id) => readString(id)).filter(Boolean)
+    : undefined;
+  return {
+    version: IMPLEMENTATION_EXECUTION_UNITS_STATE_VERSION,
+    projectId,
+    updatedAt,
+    units,
+    ...(selectedExecutionUnitIds?.length ? { selectedExecutionUnitIds } : {}),
+  };
 }
 
 export function loadImplementationExecutionUnitsFromState(
@@ -95,15 +105,21 @@ export function saveImplementationExecutionUnitsToState(input: {
   readonly projectId: string;
   readonly units: readonly ImplementationExecutionUnitV1[];
   readonly reason: string;
+  readonly selectedExecutionUnitIds?: readonly string[] | null;
   readonly nowIso?: string;
 }): Partial<RequirementsStateJson> {
   const nowIso = input.nowIso ?? new Date().toISOString();
+  const selectedExecutionUnitIds =
+    input.selectedExecutionUnitIds != null
+      ? input.selectedExecutionUnitIds.map((id) => id.trim()).filter(Boolean)
+      : undefined;
   return {
     implementationExecutionUnitsV1: {
       version: IMPLEMENTATION_EXECUTION_UNITS_STATE_VERSION,
       projectId: input.projectId.trim(),
       updatedAt: nowIso,
       units: [...input.units],
+      ...(selectedExecutionUnitIds !== undefined ? { selectedExecutionUnitIds } : {}),
     },
   };
 }
@@ -133,6 +149,7 @@ export function patchImplementationExecutionUnitInState(input: {
     orchestrationPatch: saveImplementationExecutionUnitsToState({
       projectId: input.projectId,
       units,
+      selectedExecutionUnitIds: input.state.implementationExecutionUnitsV1?.selectedExecutionUnitIds ?? [],
       reason: input.reason,
       nowIso,
     }),

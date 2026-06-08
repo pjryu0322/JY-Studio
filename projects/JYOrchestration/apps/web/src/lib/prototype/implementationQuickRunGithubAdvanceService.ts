@@ -419,6 +419,8 @@ export function advanceQuickRunOrchestrationAfterGithubVerify(
         currentCodeTaskId: verifiedCodeTaskId,
         codeTaskPlan: codeTaskPlanParsed,
         executionRuns: runsNow,
+        projectId: pid,
+        requirementsState: state,
       });
 
       continuationTimeline.push(

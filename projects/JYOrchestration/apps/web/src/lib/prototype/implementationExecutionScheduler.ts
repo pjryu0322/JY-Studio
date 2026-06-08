@@ -115,8 +115,22 @@ export function reconcileSelectedExecutionUnitIds(input: {
 
 export function mapSelectedCodeTaskIdsToExecutionUnitIds(
   selectedCodeTaskIds: readonly string[],
+  units?: readonly ImplementationExecutionUnitV1[],
 ): readonly string[] {
-  return selectedCodeTaskIds.map((id) => id.trim()).filter(Boolean);
+  const ids = selectedCodeTaskIds.map((id) => id.trim()).filter(Boolean);
+  if (!units?.length) return ids;
+  const byCodeTaskId = new Map(units.map((u) => [u.codeTaskId, u.unitId]));
+  const unitIds = new Set(units.map((u) => u.unitId));
+  const mapped: string[] = [];
+  for (const id of ids) {
+    if (unitIds.has(id)) {
+      mapped.push(id);
+      continue;
+    }
+    const unitId = byCodeTaskId.get(id);
+    if (unitId) mapped.push(unitId);
+  }
+  return mapped;
 }
 
 export function hasRemainingSelectedExecutionUnits(input: {

@@ -11,6 +11,8 @@ import {
   buildImplementationCodeTaskSummaryCounts,
   isCodeTaskCompletedForSummary,
 } from "@/lib/prototype/implementationCodeTaskSummary";
+import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
+import { countVerifiedSelectedExecutionUnits } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import type { ImplementationIntegrationEligibility } from "@/lib/prototype/implementationIntegrationEligibility";
@@ -92,15 +94,31 @@ export function evaluateImplementationPreviewReadiness(input: {
   readonly eligibility: ImplementationIntegrationEligibility;
   readonly previewRuntime?: ImplementationPreviewRuntimeV1 | null;
   readonly integrationPlan?: CodeTaskIntegrationPlanV1 | null;
+  readonly requirementsState?: import("@/lib/requirements/requirementsStateJson").RequirementsStateJson | null;
 }): ImplementationPreviewReadinessV1 {
-  const summary = buildImplementationCodeTaskSummaryCounts({
-    codeTaskPlan: input.codeTaskPlan,
-    runs: input.codeTaskRuns,
-  });
+  const summary = input.requirementsState
+    ? buildImplementationExecutionSummaryCounts({
+        projectId: input.projectId,
+        requirementsState: input.requirementsState,
+        codeTaskPlan: input.codeTaskPlan,
+        runs: input.codeTaskRuns,
+      })
+    : buildImplementationCodeTaskSummaryCounts({
+        codeTaskPlan: input.codeTaskPlan,
+        runs: input.codeTaskRuns,
+      });
   const visibleTotal = summary.totalCodeTaskCount;
+  const verifiedUnitCount = input.requirementsState
+    ? countVerifiedSelectedExecutionUnits({
+        units: "executionUnits" in summary ? summary.executionUnits : [],
+        selectedUnitIds:
+          "selectedExecutionUnitIds" in summary ? summary.selectedExecutionUnitIds : [],
+      })
+    : 0;
   const allVisibleCompleted =
     visibleTotal > 0 && summary.completedCodeTaskCount >= visibleTotal;
   const codeTaskPreviewReady =
+    verifiedUnitCount > 0 ||
     summary.completedCodeTaskCount > 0 ||
     Boolean(
       input.previewRuntime?.status === "ready" &&

@@ -33,6 +33,7 @@ import {
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import {
   buildExecutionUnitGithubVerifyPatch,
+  buildExecutionUnitVerifyingPatch,
   ensurePersistedImplementationExecutionUnits,
 } from "@/lib/prototype/implementationExecutionRuntime";
 
@@ -156,6 +157,39 @@ export async function verifyGithubForCodeTaskRun(input: {
   const previousWorkBranch = String(input.run.workBranch ?? execution.workBranch ?? "").trim() || null;
   const expectedCanonical = branchPlanWorkBranch ?? resolveCodeTaskWorkBranchForPlan(input.codeTaskId, previousWorkBranch);
 
+  let executionUnitsOrchestrationPatch: Partial<RequirementsStateJson> | undefined;
+  let verifyingTimeline: RequirementsPromptTimelineEntry[] = [];
+  if (input.requirementsState) {
+    const codeTaskPlanBootstrap = parseImplementationCodeTaskPlanV1(
+      input.requirementsState.implementationCodeTaskPlanV1,
+    );
+    const taskListBootstrap = parseImplementationTaskListV1(input.requirementsState.implementationTaskListV1);
+    const runsBootstrap = parseCodeTaskExecutionRunsV1(input.requirementsState.codeTaskExecutionRunsV1) ?? [];
+    const ensuredBootstrap = ensurePersistedImplementationExecutionUnits({
+      projectId: input.projectId,
+      requirementsState: input.requirementsState,
+      codeTaskPlan: codeTaskPlanBootstrap,
+      taskList: taskListBootstrap,
+      runs: runsBootstrap,
+      nowIso,
+    });
+    const stateForVerifying = {
+      ...input.requirementsState,
+      ...ensuredBootstrap.orchestrationPatch,
+    } as RequirementsStateJson;
+    const verifyingPatch = buildExecutionUnitVerifyingPatch({
+      state: stateForVerifying,
+      projectId: input.projectId,
+      codeTaskId: input.codeTaskId,
+      nowIso,
+    });
+    executionUnitsOrchestrationPatch = {
+      ...ensuredBootstrap.orchestrationPatch,
+      ...verifyingPatch.orchestrationPatch,
+    };
+    verifyingTimeline = [...verifyingPatch.timeline];
+  }
+
   const candidateFlow = await runTaskCursorGithubVerifyCandidateFlow({
     projectId: input.projectId,
     execution,
@@ -207,6 +241,7 @@ export async function verifyGithubForCodeTaskRun(input: {
         : "code_task_github_outcome_pending";
 
   const timeline: RequirementsPromptTimelineEntry[] = [
+    ...verifyingTimeline,
     ...candidateFlow.timeline,
     buildImplementationExecutionLogTimelineEntry({
       action: outcomeTimelineAction,
@@ -277,7 +312,8 @@ export async function verifyGithubForCodeTaskRun(input: {
     );
   }
 
-  let executionUnitsOrchestrationPatch: Partial<RequirementsStateJson> | undefined;
+  let executionUnitsOrchestrationPatchAfterVerify: Partial<RequirementsStateJson> | undefined =
+    executionUnitsOrchestrationPatch;
   if (input.requirementsState) {
     const codeTaskPlan = parseImplementationCodeTaskPlanV1(
       input.requirementsState.implementationCodeTaskPlanV1,
@@ -299,6 +335,7 @@ export async function verifyGithubForCodeTaskRun(input: {
     const stateForPatch = {
       ...input.requirementsState,
       ...ensured.orchestrationPatch,
+      ...(executionUnitsOrchestrationPatch ?? {}),
     };
     const unitPatch = buildExecutionUnitGithubVerifyPatch({
       state: stateForPatch,
@@ -308,7 +345,8 @@ export async function verifyGithubForCodeTaskRun(input: {
       run: updatedRun,
       nowIso,
     });
-    executionUnitsOrchestrationPatch = {
+    executionUnitsOrchestrationPatchAfterVerify = {
+      ...executionUnitsOrchestrationPatch,
       ...ensured.orchestrationPatch,
       ...unitPatch.orchestrationPatch,
     };
@@ -331,8 +369,8 @@ export async function verifyGithubForCodeTaskRun(input: {
           ? String(githubOutcome.message ?? "GitHub verify failed")
           : "GitHub commit 확인 중",
     repaired: candidateFlow.repaired,
-    ...(executionUnitsOrchestrationPatch
-      ? { executionUnitsOrchestrationPatch }
+    ...(executionUnitsOrchestrationPatchAfterVerify
+      ? { executionUnitsOrchestrationPatch: executionUnitsOrchestrationPatchAfterVerify }
       : {}),
   };
 }

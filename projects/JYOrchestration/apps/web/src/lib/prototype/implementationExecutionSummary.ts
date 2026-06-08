@@ -2,9 +2,10 @@ import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
-  ensurePersistedImplementationExecutionUnits,
   loadImplementationExecutionUnitsFromState,
 } from "@/lib/prototype/implementationExecutionUnitStore";
+import { ensurePersistedImplementationExecutionUnits } from "@/lib/prototype/implementationExecutionRuntime";
+import { reconcileImplementationExecutionSelectedUnits } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import {
   isExecutionUnitTerminalForQueue,
   type ImplementationExecutionUnitV1,
@@ -63,19 +64,43 @@ export function buildImplementationExecutionSummaryCounts(input: {
       codeTaskPlan: input.codeTaskPlan,
       taskList: input.taskList,
       runs: input.runs,
-      workItemCount: input.workItemCount,
     });
     units = built.units;
     audit = built.audit;
   }
 
-  const rawSelected = mapSelectedCodeTaskIdsToExecutionUnitIds(
-    input.selectedCodeTaskIds ?? input.legacySelectedTaskIds ?? [],
-  );
-  const { selectedUnitIds, removedIds } = reconcileSelectedExecutionUnitIds({
-    selectedUnitIds: rawSelected.length ? rawSelected : units.map((u) => u.unitId),
-    units,
-  });
+  const legacySelected =
+    input.selectedCodeTaskIds ?? input.legacySelectedTaskIds ?? [];
+  const selection =
+    pid && input.requirementsState
+      ? reconcileImplementationExecutionSelectedUnits({
+          projectId: pid,
+          state: {
+            ...input.requirementsState,
+            ...(orchestrationPatch ?? {}),
+          },
+          units,
+          legacySelectedCodeTaskIds: legacySelected,
+        })
+      : null;
+
+  const rawSelected = selection
+    ? selection.selectedUnitIds
+    : mapSelectedCodeTaskIdsToExecutionUnitIds(legacySelected, units);
+  const { selectedUnitIds, removedIds } = selection
+    ? { selectedUnitIds: selection.selectedUnitIds, removedIds: [] as string[] }
+    : reconcileSelectedExecutionUnitIds({
+        selectedUnitIds: rawSelected.length ? rawSelected : units.map((u) => u.unitId),
+        units,
+      });
+
+  const mergedOrchestrationPatch =
+    orchestrationPatch || selection?.orchestrationPatch
+      ? {
+          ...(orchestrationPatch ?? {}),
+          ...(selection?.orchestrationPatch ?? {}),
+        }
+      : undefined;
 
   const totalCodeTaskCount = units.length;
   const selectedCodeTaskCount = selectedUnitIds.length;
@@ -103,6 +128,6 @@ export function buildImplementationExecutionSummaryCounts(input: {
     executionUnits: units,
     selectedExecutionUnitIds: selectedUnitIds,
     unitBuildAudit: audit,
-    orchestrationPatch,
+    orchestrationPatch: mergedOrchestrationPatch,
   };
 }
