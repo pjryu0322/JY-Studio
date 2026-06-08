@@ -1,4 +1,5 @@
 import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+import { mergeExecutionUnitListsWithTerminalGuard, mergeExecutionUnitWithTerminalGuard } from "@/lib/prototype/implementationExecutionUnitTerminalGuard";
 import { prisma } from "@/lib/prisma";
 import {
   mergeRequirementsStateJson,
@@ -107,18 +108,27 @@ export function saveImplementationExecutionUnitsToState(input: {
   readonly reason: string;
   readonly selectedExecutionUnitIds?: readonly string[] | null;
   readonly nowIso?: string;
+  readonly mergeTerminalGuardFrom?: readonly ImplementationExecutionUnitV1[] | null;
 }): Partial<RequirementsStateJson> {
   const nowIso = input.nowIso ?? new Date().toISOString();
   const selectedExecutionUnitIds =
     input.selectedExecutionUnitIds != null
       ? input.selectedExecutionUnitIds.map((id) => id.trim()).filter(Boolean)
       : undefined;
+  let units = input.units;
+  if (input.mergeTerminalGuardFrom?.length) {
+    units = mergeExecutionUnitListsWithTerminalGuard({
+      previous: input.mergeTerminalGuardFrom,
+      next: input.units,
+      reason: input.reason,
+    }).units;
+  }
   return {
     implementationExecutionUnitsV1: {
       version: IMPLEMENTATION_EXECUTION_UNITS_STATE_VERSION,
       projectId: input.projectId.trim(),
       updatedAt: nowIso,
-      units: [...input.units],
+      units: [...units],
       ...(selectedExecutionUnitIds !== undefined ? { selectedExecutionUnitIds } : {}),
     },
   };
@@ -141,7 +151,13 @@ export function patchImplementationExecutionUnitInState(input: {
   if (idx < 0) {
     return { unit: null, orchestrationPatch: {} };
   }
-  const nextUnit: ImplementationExecutionUnitV1 = { ...existing[idx]!, ...input.patch, unitId: existing[idx]!.unitId };
+  const current = existing[idx]!;
+  const guarded = mergeExecutionUnitWithTerminalGuard({
+    current,
+    patch: input.patch,
+    reason: input.reason,
+  });
+  const nextUnit = guarded.unit;
   const units = [...existing];
   units[idx] = nextUnit;
   return {
@@ -152,6 +168,7 @@ export function patchImplementationExecutionUnitInState(input: {
       selectedExecutionUnitIds: input.state.implementationExecutionUnitsV1?.selectedExecutionUnitIds ?? [],
       reason: input.reason,
       nowIso,
+      mergeTerminalGuardFrom: existing,
     }),
   };
 }

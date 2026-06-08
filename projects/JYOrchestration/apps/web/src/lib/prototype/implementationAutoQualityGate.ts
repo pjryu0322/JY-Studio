@@ -25,6 +25,7 @@ import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototyp
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { runHasQualityGatePassed } from "@/lib/prototype/codeTaskQualityOutcome";
 import { runHasVerifiedGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
+import { isCodeTaskCompletedForSummary } from "@/lib/prototype/implementationCodeTaskSummary";
 
 export const IMPLEMENTATION_AUTO_QUALITY_GATE_VERSION = "implementation_auto_quality_gate_v1" as const;
 
@@ -212,10 +213,11 @@ export function shouldAutoStartImplementationQualityGate(input: {
   const runReadyForGate =
     input.codeTaskRun &&
     runHasVerifiedGithubOutcome(input.codeTaskRun) &&
+    isCodeTaskCompletedForSummary(input.codeTaskRun) &&
     String(input.codeTaskRun.commitSha ?? input.codeTaskRun.branchHeadCommitSha ?? "").trim() &&
     input.codeTaskRun.status === "github_verified";
 
-  if (!shouldSyncExecutionStateAfterTaskCursorGithubVerify(execution.status) && !runReadyForGate) {
+  if (!runReadyForGate) {
     return false;
   }
 

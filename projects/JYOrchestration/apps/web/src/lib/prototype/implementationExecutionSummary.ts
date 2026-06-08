@@ -19,13 +19,9 @@ import {
   mapSelectedCodeTaskIdsToExecutionUnitIds,
   reconcileSelectedExecutionUnitIds,
 } from "@/lib/prototype/implementationExecutionScheduler";
-import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-
-import {
-  buildExecutionUnitsFromLegacyState,
-  type BuildExecutionUnitsAuditV1,
-} from "@/lib/prototype/implementationExecutionUnitBuilder";
+import type { BuildExecutionUnitsAuditV1 } from "@/lib/prototype/implementationExecutionUnitBuilder";
 import type { ImplementationCodeTaskSummaryCountsV1 } from "@/lib/prototype/implementationCodeTaskSummary";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 export type ImplementationExecutionSummaryCountsV1 = ImplementationCodeTaskSummaryCountsV1 &
   Readonly<{
@@ -65,16 +61,6 @@ export function buildImplementationExecutionSummaryCounts(input: {
       : (ensured?.units ?? []);
   let audit = ensured?.audit;
   const orchestrationPatch = ensured?.bootstrapped ? ensured.orchestrationPatch : undefined;
-
-  if (!units.length) {
-    const built = buildExecutionUnitsFromLegacyState({
-      codeTaskPlan: input.codeTaskPlan,
-      taskList: input.taskList,
-      runs: input.runs,
-    });
-    units = built.units;
-    audit = built.audit;
-  }
 
   const legacySelected =
     input.selectedCodeTaskIds ?? input.legacySelectedTaskIds ?? [];

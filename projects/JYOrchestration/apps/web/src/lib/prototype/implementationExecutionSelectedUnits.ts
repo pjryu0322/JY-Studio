@@ -8,6 +8,7 @@ import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementati
 import {
   isExecutionUnitCompletedForSummary,
   isExecutionUnitSkippedForSummary,
+  resolveExecutionUnitVerificationDisplayStatus,
 } from "@/lib/prototype/implementationExecutionUnitVerification";
 import {
   loadImplementationExecutionUnitsFromState,
@@ -80,6 +81,7 @@ export function reconcileImplementationExecutionSelectedUnits(input: {
       selectedExecutionUnitIds: selectedUnitIds,
       reason: "implementation_selected_units_persisted",
       nowIso,
+      mergeTerminalGuardFrom: loadImplementationExecutionUnitsFromState(input.state),
     });
     timeline.push(
       buildImplementationExecutionLogTimelineEntry({
@@ -128,22 +130,63 @@ export function areAllSelectedExecutionUnitsVerifiedWithRuns(input: {
   readonly selectedUnitIds: readonly string[];
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
 }): boolean {
+  return areSelectedExecutionUnitsCompletedWithPersistedOutcomes(input).ok;
+}
+
+export function areSelectedExecutionUnitsCompletedWithPersistedOutcomes(input: {
+  readonly units: readonly ImplementationExecutionUnitV1[];
+  readonly selectedUnitIds: readonly string[];
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+}): Readonly<{
+  readonly ok: boolean;
+  readonly completedCount: number;
+  readonly selectedCount: number;
+  readonly pendingCodeTaskIds: readonly string[];
+  readonly inconsistentCodeTaskIds: readonly string[];
+}> {
   const selected = input.selectedUnitIds.map((id) => id.trim()).filter(Boolean);
-  if (!selected.length) return false;
   const byId = new Map(input.units.map((u) => [u.unitId, u]));
+  let completedCount = 0;
+  const pendingCodeTaskIds: string[] = [];
+  const inconsistentCodeTaskIds: string[] = [];
+
   for (const id of selected) {
     const unit = byId.get(id);
-    if (!unit) return false;
+    if (!unit) {
+      pendingCodeTaskIds.push(id);
+      continue;
+    }
     const run = findLatestRunForCodeTask(input.runs, unit.codeTaskId);
-    if (
-      !isExecutionUnitCompletedForSummary({ unit, run }) &&
-      !isExecutionUnitSkippedForSummary({ unit, run })
-    ) {
-      return false;
+    const display = resolveExecutionUnitVerificationDisplayStatus({ unit, run });
+    if (display === "verified" || display === "skipped") {
+      completedCount += 1;
+    } else if (display === "verification_inconsistent") {
+      inconsistentCodeTaskIds.push(unit.codeTaskId);
+    } else {
+      pendingCodeTaskIds.push(unit.codeTaskId);
     }
   }
-  return true;
+
+  return {
+    ok:
+      selected.length > 0 &&
+      completedCount === selected.length &&
+      inconsistentCodeTaskIds.length === 0 &&
+      pendingCodeTaskIds.length === 0,
+    completedCount,
+    selectedCount: selected.length,
+    pendingCodeTaskIds,
+    inconsistentCodeTaskIds,
+  };
 }
+
+export type SelectedExecutionUnitsCompletionGateV1 = Readonly<{
+  readonly ok: boolean;
+  readonly completedCount: number;
+  readonly selectedCount: number;
+  readonly pendingCodeTaskIds: readonly string[];
+  readonly inconsistentCodeTaskIds: readonly string[];
+}>;
 
 export function countVerifiedSelectedExecutionUnits(input: {
   readonly units: readonly ImplementationExecutionUnitV1[];

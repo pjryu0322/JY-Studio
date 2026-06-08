@@ -7,6 +7,7 @@ import {
 } from "@/lib/prototype/implementationExecutionRuntime";
 import { dispatchExecutionUnitWithCursor } from "@/lib/prototype/implementationExecutionUnitCursorDispatchService";
 import { markFinalWiringIntegrationStepReady } from "@/lib/prototype/implementationFinalWiringService";
+import { areSelectedExecutionUnitsCompletedWithPersistedOutcomes } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import {
   ensureExecutionUnitDbRunHistory,
   resolveExecutionUnitRunHistory,
@@ -180,6 +181,36 @@ export async function dispatchNextExecutionUnitOnServer(input: {
   }
 
   if (ctx.next.status === "complete") {
+    const completionGate = areSelectedExecutionUnitsCompletedWithPersistedOutcomes({
+      units: ctx.units,
+      selectedUnitIds: ctx.selectedUnitIds,
+      runs,
+    });
+    if (!completionGate.ok) {
+      timelineEntries.push(
+        buildImplementationExecutionLogTimelineEntry({
+          action: "implementation_execution_completion_gate_blocked",
+          orchestrationTraceGroup: "implementation_orchestration",
+          fields: {
+            projectId: pid,
+            selectedCount: completionGate.selectedCount,
+            completedCount: completionGate.completedCount,
+            pendingCodeTaskIds: completionGate.pendingCodeTaskIds.join(","),
+            inconsistentCodeTaskIds: completionGate.inconsistentCodeTaskIds.join(","),
+            reason: "persisted_github_outcome_required",
+          },
+          nowIso,
+        }),
+      );
+      return {
+        ok: false,
+        outcome: "no_next_task",
+        reason: "persisted_github_outcome_required",
+        orchestrationPatch: patchWithPromptTimeline(ctx.orchestrationPatch, timelineEntries),
+        timelineEntries,
+      };
+    }
+
     const stateForIntegration = mergeRequirementsStateJson(requirementsState, ctx.orchestrationPatch);
     const integrationReady = await markFinalWiringIntegrationStepReady({
       projectId: pid,

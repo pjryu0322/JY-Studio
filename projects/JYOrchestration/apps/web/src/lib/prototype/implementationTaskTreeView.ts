@@ -44,6 +44,11 @@ import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution"
 import { resolveTaskCursorExecutionForRow } from "@/lib/prototype/codeAgentExecutionProgressView";
 import { buildTaskCursorGithubVerifyDiagnosticsView } from "@/lib/prototype/taskCursorGithubVerifyView";
 import type { ImplementationRuntimeRunView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
+import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+import {
+  formatExecutionUnitVerificationCardLabels,
+  resolveExecutionUnitVerificationDisplayStatus,
+} from "@/lib/prototype/implementationExecutionUnitVerification";
 
 export type ImplementationTaskTreeMetaLine = Readonly<{
   readonly label: string;
@@ -170,6 +175,7 @@ function buildCodeTaskNode(input: {
   /** DB Quick Run Job 순서 — 이 목록에 있으면 plan 그래프 선행 검사로 UI/phase를 막지 않는다. */
   readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
   readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
+  readonly executionUnit?: ImplementationExecutionUnitV1 | null;
 }): ImplementationCodeTaskTreeNode {
   const executionForParent = resolveTaskCursorExecutionForRow({
     taskId: input.row.taskId,
@@ -258,8 +264,21 @@ function buildCodeTaskNode(input: {
   if (phase === "failed") collapsedSummary = "재작업 필요";
   if (phase === "prompt_preflight_failed") collapsedSummary = "프롬프트 품질 검사 실패";
 
-  const statusLabel = rowView.statusLabel;
+  let statusLabel = rowView.statusLabel;
   let progressLabel = rowView.progressLabel;
+
+  if (input.executionUnit) {
+    const unitRun = findLatestRunForCodeTask(input.codeTaskExecutionRuns, input.codeTask.codeTaskId);
+    const display = resolveExecutionUnitVerificationDisplayStatus({
+      unit: input.executionUnit,
+      run: unitRun,
+    });
+    const cardLabels = formatExecutionUnitVerificationCardLabels(display);
+    statusLabel = cardLabels.statusLabel;
+    progressLabel = cardLabels.progressLabel;
+    if (display === "verified") collapsedSummary = "완료";
+    else if (display === "verification_inconsistent") collapsedSummary = "검증 완료 대기";
+  }
 
   const githubVerifyView =
     phase === "github_verifying" ||
@@ -271,7 +290,7 @@ function buildCodeTaskNode(input: {
           run: latestRun,
         })
       : null;
-  if (githubVerifyView) {
+  if (githubVerifyView && !input.executionUnit) {
     progressLabel = githubVerifyView.progressLabel;
   }
 
@@ -397,6 +416,7 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
   readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
   readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
+  readonly executionUnits?: readonly ImplementationExecutionUnitV1[] | null;
 }): readonly ImplementationCodeTaskTreeNode[] {
   const plan =
     ensureCodeTaskPlanWithFileBoundaries({
@@ -417,6 +437,9 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
   const activeCodeTaskId = input.activeCodeTaskId?.trim() || null;
   const selectedCodeTaskId = input.selectedCodeTaskId?.trim() || null;
   const taskCursorExecution = input.taskCursorExecution ?? null;
+  const unitByCodeTaskId = new Map(
+    (input.executionUnits ?? []).map((u) => [u.codeTaskId, u] as const),
+  );
 
   const nodes: ImplementationCodeTaskTreeNode[] = [];
   for (const codeTask of plan.tasks) {
@@ -444,6 +467,7 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
         isChecked: checkedCodeTaskIds.has(codeTask.codeTaskId),
         sequentialQuickRunCodeTaskIds: input.sequentialQuickRunCodeTaskIds,
         promptTimeline: input.promptTimeline,
+        executionUnit: unitByCodeTaskId.get(codeTask.codeTaskId) ?? null,
       }),
     );
   }

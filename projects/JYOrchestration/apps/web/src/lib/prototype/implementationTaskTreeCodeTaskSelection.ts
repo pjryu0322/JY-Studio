@@ -210,15 +210,24 @@ export function resolveCodeTaskTreeSelectionToggle(input: {
 export function resolveCodeTaskTreeSelectAll(input: {
   readonly selectAll: boolean;
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
+  /** Tree-visible CodeTask ids — when set, must match task tree nodes (not only listVisible). */
+  readonly visibleCodeTaskIds?: readonly string[] | null;
 }): readonly string[] {
-  return input.selectAll ? listVisibleImplementationCodeTaskIds(input.codeTaskPlan) : [];
+  if (!input.selectAll) return [];
+  const ids =
+    input.visibleCodeTaskIds?.map((id) => id.trim()).filter(Boolean) ??
+    listVisibleImplementationCodeTaskIds(input.codeTaskPlan);
+  return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, ids);
 }
 
 export function isCodeTaskTreeFullySelected(input: {
   readonly selectedCodeTaskIds: readonly string[];
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
+  readonly visibleCodeTaskIds?: readonly string[] | null;
 }): boolean {
-  const all = listVisibleImplementationCodeTaskIds(input.codeTaskPlan);
+  const all =
+    input.visibleCodeTaskIds?.map((id) => id.trim()).filter(Boolean) ??
+    listVisibleImplementationCodeTaskIds(input.codeTaskPlan);
   if (!all.length) return false;
   const selected = new Set(
     normalizeSelectedCodeTaskIds({

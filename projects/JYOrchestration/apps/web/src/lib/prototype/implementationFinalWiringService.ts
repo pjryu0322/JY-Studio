@@ -1,6 +1,6 @@
 import { type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
-import { areAllSelectedExecutionUnitsVerifiedWithRuns } from "@/lib/prototype/implementationExecutionSelectedUnits";
+import { areSelectedExecutionUnitsCompletedWithPersistedOutcomes } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { ensurePersistedImplementationIntegrationSteps } from "@/lib/prototype/implementationIntegrationStepBootstrap";
@@ -45,14 +45,30 @@ export async function markFinalWiringIntegrationStepReady(input: {
     codeTaskPlan: input.codeTaskPlan,
     runs: input.runs,
   });
-  if (
-    !areAllSelectedExecutionUnitsVerifiedWithRuns({
-      units: summary.executionUnits,
-      selectedUnitIds: summary.selectedExecutionUnitIds,
-      runs: input.runs,
-    })
-  ) {
-    return { orchestrationPatch: ensured.orchestrationPatch, timeline: ensured.timeline };
+  const completionGate = areSelectedExecutionUnitsCompletedWithPersistedOutcomes({
+    units: summary.executionUnits,
+    selectedUnitIds: summary.selectedExecutionUnitIds,
+    runs: input.runs,
+  });
+  if (!completionGate.ok) {
+    return {
+      orchestrationPatch: ensured.orchestrationPatch,
+      timeline: [
+        ...ensured.timeline,
+        buildImplementationExecutionLogTimelineEntry({
+          action: "implementation_integration_final_wiring_ready_blocked",
+          orchestrationTraceGroup: "implementation_integration",
+          fields: {
+            projectId: pid,
+            selectedCount: completionGate.selectedCount,
+            completedCount: completionGate.completedCount,
+            pendingCodeTaskIds: completionGate.pendingCodeTaskIds.join(","),
+            inconsistentCodeTaskIds: completionGate.inconsistentCodeTaskIds.join(","),
+          },
+          nowIso,
+        }),
+      ],
+    };
   }
   const nextSteps = steps.map((s) =>
     s.stepId === finalWiring.stepId && s.status === "pending" ? { ...s, status: "ready" as const } : s,

@@ -16,6 +16,9 @@ import {
   evaluateExecutionUnitGithubVerifyOutcome,
 } from "@/lib/prototype/implementationExecutionUnitGitHubVerify";
 import {
+  mergeExecutionUnitWithTerminalGuard,
+} from "@/lib/prototype/implementationExecutionUnitTerminalGuard";
+import {
   loadImplementationExecutionUnitsFromState,
   saveImplementationExecutionUnitsToState,
 } from "@/lib/prototype/implementationExecutionUnitStore";
@@ -43,12 +46,25 @@ export function ensurePersistedImplementationExecutionUnits(input: {
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
   readonly workItemCount?: number;
   readonly nowIso?: string;
+  readonly forceRebuildExecutionUnits?: boolean;
 }): EnsurePersistedExecutionUnitsResultV1 {
   const nowIso = input.nowIso ?? new Date().toISOString();
   const pid = input.projectId.trim();
   const persisted = loadImplementationExecutionUnitsFromState(input.requirementsState);
-  if (persisted.length) {
-    return { units: persisted, bootstrapped: false, orchestrationPatch: {}, timeline: [] };
+  if (persisted.length && !input.forceRebuildExecutionUnits) {
+    const timeline: RequirementsPromptTimelineEntry[] = [
+      buildImplementationExecutionLogTimelineEntry({
+        action: "implementation_execution_units_bootstrap_skipped",
+        orchestrationTraceGroup: "implementation_orchestration",
+        fields: {
+          projectId: pid,
+          reason: "persisted_units_exist",
+          persistedUnitCount: persisted.length,
+        },
+        nowIso,
+      }),
+    ];
+    return { units: persisted, bootstrapped: false, orchestrationPatch: {}, timeline };
   }
 
   const { units, audit } = buildExecutionUnitsFromLegacyState({
@@ -173,20 +189,26 @@ export function buildExecutionUnitStartedPatch(input: {
   const idx = units.findIndex((u) => u.unitId === input.unitId.trim());
   if (idx < 0) return { orchestrationPatch: {}, timeline: [] };
   const unit = units[idx]!;
-  const nextUnits = [...units];
-  nextUnits[idx] = {
-    ...unit,
-    status: "running",
+  const startedPatch = {
+    status: "running" as const,
     runId: input.runId,
     startedAt: nowIso,
     beforeHeadSha: input.beforeHeadSha ?? unit.beforeHeadSha ?? null,
   };
+  const guarded = mergeExecutionUnitWithTerminalGuard({
+    current: unit,
+    patch: startedPatch,
+    reason: "implementation_execution_unit_started",
+  });
+  const nextUnits = [...units];
+  nextUnits[idx] = guarded.unit;
   const orchestrationPatch = saveImplementationExecutionUnitsToState({
     projectId: input.projectId,
     units: nextUnits,
     reason: "implementation_execution_unit_started",
     selectedExecutionUnitIds: input.state.implementationExecutionUnitsV1?.selectedExecutionUnitIds ?? [],
     nowIso,
+    mergeTerminalGuardFrom: units,
   });
   const timeline = [
     buildImplementationExecutionLogTimelineEntry({
@@ -283,6 +305,7 @@ export function buildExecutionUnitGithubVerifyPatch(input: {
         : "implementation_execution_unit_failed",
     selectedExecutionUnitIds: input.state.implementationExecutionUnitsV1?.selectedExecutionUnitIds ?? [],
     nowIso,
+    mergeTerminalGuardFrom: units,
   });
 
   const timeline: RequirementsPromptTimelineEntry[] = [
@@ -330,13 +353,20 @@ export function buildExecutionUnitVerifyingPatch(input: {
   }
   const idx = units.findIndex((u) => u.unitId === unit.unitId);
   const nextUnits = [...units];
-  nextUnits[idx] = { ...unit, status: "verifying", verifyingAt: nowIso };
+  const verifyingPatch = { ...unit, status: "verifying" as const, verifyingAt: nowIso };
+  const guarded = mergeExecutionUnitWithTerminalGuard({
+    current: unit,
+    patch: verifyingPatch,
+    reason: "implementation_execution_unit_verifying",
+  });
+  nextUnits[idx] = guarded.unit;
   const orchestrationPatch = saveImplementationExecutionUnitsToState({
     projectId: input.projectId,
     units: nextUnits,
     selectedExecutionUnitIds: input.state.implementationExecutionUnitsV1?.selectedExecutionUnitIds ?? [],
     reason: "implementation_execution_unit_verifying",
     nowIso,
+    mergeTerminalGuardFrom: units,
   });
   return {
     orchestrationPatch,

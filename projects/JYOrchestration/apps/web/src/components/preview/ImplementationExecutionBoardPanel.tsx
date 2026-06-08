@@ -95,7 +95,10 @@ import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJo
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
-import { shouldShowIntegrationPipelineButton } from "@/lib/prototype/implementationIntegrationButtonPolicy";
+import { evaluateIntegrationPipelineButtonEnablement } from "@/lib/prototype/implementationIntegrationButtonPolicy";
+import { areSelectedExecutionUnitsCompletedWithPersistedOutcomes } from "@/lib/prototype/implementationExecutionSelectedUnits";
+import { findIntegrationStep } from "@/lib/prototype/implementationIntegrationStepMutations";
+import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import {
@@ -416,10 +419,7 @@ export function ImplementationExecutionBoardPanel({
     [codeTaskSummaryCounts.executionUnits],
   );
 
-  const displaySelectedCodeTaskIds = useMemo(() => {
-    const reconciled = codeTaskSummaryCounts.reconciledSelectedCodeTaskIds;
-    return reconciled.length > 0 ? reconciled : checkedCodeTaskIds;
-  }, [codeTaskSummaryCounts.reconciledSelectedCodeTaskIds, checkedCodeTaskIds]);
+  const displaySelectedCodeTaskIds = checkedCodeTaskIds;
 
   useEffect(() => {
     const reconciled = codeTaskSummaryCounts.reconciledSelectedCodeTaskIds;
@@ -437,15 +437,6 @@ export function ImplementationExecutionBoardPanel({
     checkedCodeTaskIds,
     onSelectedCodeTaskIdsChange,
   ]);
-
-  const allCodeTasksChecked = useMemo(
-    () =>
-      isCodeTaskTreeFullySelected({
-        selectedCodeTaskIds: displaySelectedCodeTaskIds,
-        codeTaskPlan: implementationCodeTaskPlanV1,
-      }),
-    [displaySelectedCodeTaskIds, implementationCodeTaskPlanV1],
-  );
 
   useEffect(() => {
     setSelectedTaskId((current) => current ?? activeTaskId);
@@ -633,6 +624,7 @@ export function ImplementationExecutionBoardPanel({
           implementationRuntimeDbBundle?.job?.status === "running"
             ? (implementationRuntimeDbBundle.job.selectedCodeTaskIds ?? [])
             : null,
+        executionUnits: codeTaskSummaryCounts.executionUnits,
       }),
     [
       board,
@@ -649,7 +641,18 @@ export function ImplementationExecutionBoardPanel({
       implementationAutoQualityGateV1,
       promptTimeline,
       activeTaskCursorJob,
+      codeTaskSummaryCounts.executionUnits,
     ],
+  );
+
+  const allCodeTasksChecked = useMemo(
+    () =>
+      isCodeTaskTreeFullySelected({
+        selectedCodeTaskIds: checkedCodeTaskIds,
+        codeTaskPlan: implementationCodeTaskPlanV1,
+        visibleCodeTaskIds: taskTreeNodes.map((node) => node.codeTaskId),
+      }),
+    [checkedCodeTaskIds, implementationCodeTaskPlanV1, taskTreeNodes],
   );
 
   const integratedPipelineLines = useMemo(
@@ -754,14 +757,31 @@ export function ImplementationExecutionBoardPanel({
     return lines;
   }, [integrationSection.pipelineLines, parsedPreviewRuntime?.status]);
 
-  const showIntegrationButton = useMemo(
-    () =>
-      shouldShowIntegrationPipelineButton({
-        canIntegrate: integrationSection.canIntegrate,
-        previewRuntimeReady: integrationSection.previewRuntimeReady,
+  const integrationButtonState = useMemo(() => {
+    const steps = loadImplementationIntegrationStepsFromState(integrationRequirementsState);
+    return evaluateIntegrationPipelineButtonEnablement({
+      canIntegrate: integrationSection.canIntegrate,
+      previewRuntimeReady: integrationSection.previewRuntimeReady,
+      completionGate: areSelectedExecutionUnitsCompletedWithPersistedOutcomes({
+        units: codeTaskSummaryCounts.executionUnits,
+        selectedUnitIds: codeTaskSummaryCounts.selectedExecutionUnitIds,
+        runs: codeTaskRuns,
       }),
-    [integrationSection.canIntegrate, integrationSection.previewRuntimeReady],
-  );
+      verificationInconsistentCount: codeTaskSummaryCounts.verificationInconsistentCount,
+      finalWiringStepExists: Boolean(findIntegrationStep(steps, "final_wiring")),
+    });
+  }, [
+    integrationSection.canIntegrate,
+    integrationSection.previewRuntimeReady,
+    integrationRequirementsState,
+    codeTaskSummaryCounts.executionUnits,
+    codeTaskSummaryCounts.selectedExecutionUnitIds,
+    codeTaskSummaryCounts.verificationInconsistentCount,
+    codeTaskRuns,
+  ]);
+
+  const showIntegrationButton = integrationButtonState.show;
+  const integrationButtonEnabled = integrationButtonState.enabled;
 
   const codeTaskDiagnosticPreviewTarget = useMemo(
     () =>
@@ -1153,7 +1173,7 @@ export function ImplementationExecutionBoardPanel({
           selectedCodeTaskId={selectedCodeTaskId}
           codeAgentProgress={codeAgentProgress}
           allChecked={allCodeTasksChecked}
-          selectedCodeTaskCount={codeTaskSummaryCounts.selectedCodeTaskCount}
+          selectedCodeTaskCount={checkedCodeTaskIds.length}
           onSelectCodeTask={(parentTaskId, codeTaskId) => {
             setSelectedTaskId(parentTaskId);
             setSelectedCodeTaskId(codeTaskId);
@@ -1183,6 +1203,7 @@ export function ImplementationExecutionBoardPanel({
               resolveCodeTaskTreeSelectAll({
                 selectAll: checked,
                 codeTaskPlan: implementationCodeTaskPlanV1,
+                visibleCodeTaskIds: taskTreeNodes.map((node) => node.codeTaskId),
               }),
             );
           }}
@@ -1208,7 +1229,7 @@ export function ImplementationExecutionBoardPanel({
                   type="button"
                   className={styles.integrationPrimaryButton}
                   data-testid="implementation-integration-run-button"
-                  disabled={integrationPipelineBusy === true}
+                  disabled={integrationPipelineBusy === true || !integrationButtonEnabled}
                   onClick={onRunIntegrationPipeline}
                 >
                   {integrationPipelineBusy

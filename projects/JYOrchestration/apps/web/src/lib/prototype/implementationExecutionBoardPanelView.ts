@@ -443,6 +443,7 @@ export function buildImplementationTaskTreeNodes(input: {
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly serverJob?: TaskCursorJobSummary | null;
   readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
+  readonly executionUnits?: readonly import("@/lib/prototype/implementationExecutionUnit").ImplementationExecutionUnitV1[] | null;
 }): readonly ImplementationCodeTaskTreeNode[] {
   const taskCursorExecution = input.taskCursorExecution ?? null;
   const activeCodeTaskId =
@@ -464,6 +465,7 @@ export function buildImplementationTaskTreeNodes(input: {
     implementationAutoQualityGateV1: input.implementationAutoQualityGateV1,
     sequentialQuickRunCodeTaskIds: input.sequentialQuickRunCodeTaskIds,
     promptTimeline: input.promptTimeline,
+    executionUnits: input.executionUnits,
   });
 
   const activeParentId =
