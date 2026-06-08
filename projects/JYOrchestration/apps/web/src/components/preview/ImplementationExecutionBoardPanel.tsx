@@ -667,12 +667,36 @@ export function ImplementationExecutionBoardPanel({
     [codeTaskIntegrationPlanV1],
   );
 
+  const integrationRequirementsState = useMemo(
+    () => ({
+      implementationCodeTaskPlanV1: implementationCodeTaskPlanV1 ?? undefined,
+      codeTaskExecutionRunsV1: codeTaskRuns,
+      implementationExecutionUnitsV1: projectId
+        ? {
+            version: "implementation_execution_units_v1" as const,
+            projectId,
+            updatedAt: new Date().toISOString(),
+            units: codeTaskSummaryCounts.executionUnits,
+            selectedExecutionUnitIds: codeTaskSummaryCounts.selectedExecutionUnitIds,
+          }
+        : undefined,
+    }),
+    [
+      implementationCodeTaskPlanV1,
+      codeTaskRuns,
+      projectId,
+      codeTaskSummaryCounts.executionUnits,
+      codeTaskSummaryCounts.selectedExecutionUnitIds,
+    ],
+  );
+
   const integrationSection = useMemo(
     () =>
       buildImplementationIntegrationBoardSection({
         projectId: projectId ?? board.projectId,
         codeTaskPlan: implementationCodeTaskPlanV1 ?? null,
         codeTaskRuns,
+        requirementsState: integrationRequirementsState,
         eligibility: evaluateCodeTaskIntegration({
           codeTaskPlan: implementationCodeTaskPlanV1 ?? null,
           taskList,
@@ -699,8 +723,24 @@ export function ImplementationExecutionBoardPanel({
       implementationPreviewScopeV1,
       parsedPreviewRuntime,
       parsedIntegrationPlan,
+      integrationRequirementsState,
     ],
   );
+
+  const codetasksCompletedIntegrationHint = useMemo(() => {
+    const sel = codeTaskSummaryCounts.selectedCodeTaskCount;
+    const done = codeTaskSummaryCounts.completedCodeTaskCount;
+    const inconsistent = codeTaskSummaryCounts.verificationInconsistentCount;
+    if (sel > 0 && done >= sel && inconsistent === 0 && integrationSection.previewReadiness.finalWiringPending) {
+      return "CodeTask는 모두 완료되었습니다. 실제 앱 Preview를 준비하려면 최종 연결/통합 Wiring을 실행해야 합니다.";
+    }
+    return null;
+  }, [
+    codeTaskSummaryCounts.selectedCodeTaskCount,
+    codeTaskSummaryCounts.completedCodeTaskCount,
+    codeTaskSummaryCounts.verificationInconsistentCount,
+    integrationSection.previewReadiness.finalWiringPending,
+  ]);
 
   const integrationPipelineDisplayLines = useMemo(() => {
     const lines = [...integrationSection.pipelineLines];
@@ -872,6 +912,8 @@ export function ImplementationExecutionBoardPanel({
               selectedExecutionProgress,
               selectedCompletedCount,
               queueRunning: codeTaskQueue?.status === "running",
+              verificationInconsistentCount: codeTaskSummaryCounts.verificationInconsistentCount,
+              codetasksCompletedMessage: codetasksCompletedIntegrationHint,
             }).map((line) => (
               <li key={line}>{line}</li>
             ))}

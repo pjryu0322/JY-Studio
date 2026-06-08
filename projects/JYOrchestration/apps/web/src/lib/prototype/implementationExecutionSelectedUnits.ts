@@ -3,7 +3,12 @@ import {
   mapSelectedCodeTaskIdsToExecutionUnitIds,
   reconcileSelectedExecutionUnitIds,
 } from "@/lib/prototype/implementationExecutionScheduler";
+import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+import {
+  isExecutionUnitCompletedForSummary,
+  isExecutionUnitSkippedForSummary,
+} from "@/lib/prototype/implementationExecutionUnitVerification";
 import {
   loadImplementationExecutionUnitsFromState,
   saveImplementationExecutionUnitsToState,
@@ -98,7 +103,15 @@ export function reconcileImplementationExecutionSelectedUnits(input: {
 export function areAllSelectedExecutionUnitsVerified(input: {
   readonly units: readonly ImplementationExecutionUnitV1[];
   readonly selectedUnitIds: readonly string[];
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
 }): boolean {
+  if (input.runs != null) {
+    return areAllSelectedExecutionUnitsVerifiedWithRuns({
+      units: input.units,
+      selectedUnitIds: input.selectedUnitIds,
+      runs: input.runs,
+    });
+  }
   const selected = input.selectedUnitIds.map((id) => id.trim()).filter(Boolean);
   if (!selected.length) return false;
   const byId = new Map(input.units.map((u) => [u.unitId, u]));
@@ -110,14 +123,47 @@ export function areAllSelectedExecutionUnitsVerified(input: {
   return true;
 }
 
+export function areAllSelectedExecutionUnitsVerifiedWithRuns(input: {
+  readonly units: readonly ImplementationExecutionUnitV1[];
+  readonly selectedUnitIds: readonly string[];
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+}): boolean {
+  const selected = input.selectedUnitIds.map((id) => id.trim()).filter(Boolean);
+  if (!selected.length) return false;
+  const byId = new Map(input.units.map((u) => [u.unitId, u]));
+  for (const id of selected) {
+    const unit = byId.get(id);
+    if (!unit) return false;
+    const run = findLatestRunForCodeTask(input.runs, unit.codeTaskId);
+    if (
+      !isExecutionUnitCompletedForSummary({ unit, run }) &&
+      !isExecutionUnitSkippedForSummary({ unit, run })
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function countVerifiedSelectedExecutionUnits(input: {
   readonly units: readonly ImplementationExecutionUnitV1[];
   readonly selectedUnitIds: readonly string[];
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
 }): number {
   const selected = new Set(input.selectedUnitIds.map((id) => id.trim()).filter(Boolean));
   let n = 0;
   for (const unit of input.units) {
     if (!selected.has(unit.unitId)) continue;
+    if (input.runs != null) {
+      const run = findLatestRunForCodeTask(input.runs, unit.codeTaskId);
+      if (
+        isExecutionUnitCompletedForSummary({ unit, run }) ||
+        isExecutionUnitSkippedForSummary({ unit, run })
+      ) {
+        n += 1;
+      }
+      continue;
+    }
     if (unit.status === "verified" || unit.status === "skipped") n += 1;
   }
   return n;

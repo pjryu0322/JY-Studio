@@ -7,7 +7,7 @@ import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
-import { runIntegrationBranchPipeline } from "@/lib/prototype/implementationIntegrationPipelineService";
+import { runFinalWiringIntegrationStep } from "@/lib/prototype/implementationFinalWiringService";
 import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
@@ -102,11 +102,11 @@ export async function POST(request: NextRequest) {
     const storedIntegrationPlan =
       parseCodeTaskIntegrationPlanV1(persisted.codeTaskIntegrationPlanV1) ?? null;
 
-    const outcome = await runIntegrationBranchPipeline({
+    const outcome = await runFinalWiringIntegrationStep({
       projectId,
-      projectName: body.projectName ?? projectRow?.name ?? null,
+      trigger: "manual_integration_button",
       repoUrl: targetRepository.gitRepoUrl,
-      baseBranch: targetRepository.baseBranch ?? setupRow?.baseBranch ?? "main",
+      baseBranch: targetRepository.defaultBranch ?? setupRow?.baseBranch ?? "main",
       githubToken: token,
       codeTaskPlan,
       taskList,
@@ -116,13 +116,33 @@ export async function POST(request: NextRequest) {
       storedIntegrationPlan,
     });
 
+    if (!outcome.ok && !outcome.plan) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: outcome.status,
+          message: outcome.userSafeMessage ?? "통합 단계를 실행할 수 없습니다.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const plan = outcome.plan;
+    if (!plan) {
+      return NextResponse.json(
+        { success: false, message: outcome.userSafeMessage ?? "통합 단계 실행에 실패했습니다." },
+        { status: 400 },
+      );
+    }
+
     const timeline = appendPromptTimelineEntries(
       persisted.promptTimeline ?? [],
-      outcome.timeline,
+      outcome.timelineEntries,
     );
 
     const orchestrationPatch = mergeRequirementsStateJson(persisted, {
-      codeTaskIntegrationPlanV1: outcome.plan,
+      ...(outcome.orchestrationPatch ?? {}),
+      codeTaskIntegrationPlanV1: plan,
       promptTimeline: timeline,
     });
 
@@ -133,11 +153,16 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: outcome.ok,
-      message: outcome.message,
-      plan: outcome.plan,
-      timeline: outcome.timeline,
+      status: outcome.status,
+      message: outcome.userSafeMessage ?? (outcome.ok ? "통합 Wiring이 완료되었습니다." : "통합 단계 실행에 실패했습니다."),
+      integrationBranch: outcome.integrationBranch ?? plan.integrationBranch,
+      previewReady: outcome.previewReady ?? false,
+      nextRequiredStep: outcome.nextRequiredStep ?? null,
+      plan,
+      timeline: outcome.timelineEntries,
       orchestrationPatch: {
-        codeTaskIntegrationPlanV1: outcome.plan,
+        ...(outcome.orchestrationPatch ?? {}),
+        codeTaskIntegrationPlanV1: plan,
         promptTimeline: timeline,
       },
     });

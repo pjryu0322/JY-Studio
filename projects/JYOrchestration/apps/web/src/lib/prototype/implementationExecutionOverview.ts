@@ -228,6 +228,8 @@ export function formatImplementationExecutionOverviewLines(
     readonly selectedExecutionProgress?: SelectedCodeTaskExecutionProgress | null;
     readonly selectedCompletedCount?: number;
     readonly queueRunning?: boolean;
+    readonly verificationInconsistentCount?: number;
+    readonly codetasksCompletedMessage?: string | null;
   },
 ): readonly string[] {
   const summary = overview.codeTaskSummary;
@@ -280,6 +282,16 @@ export function formatImplementationExecutionOverviewLines(
 
   if (overview.failedCount > 0) {
     lines.push(`실패: ${overview.failedCount}`);
+  }
+
+  if ((input?.verificationInconsistentCount ?? 0) > 0) {
+    lines.push(
+      `검증 불일치: ${input!.verificationInconsistentCount}개 (ExecutionUnit 상태와 GitHub outcome이 일치하지 않음)`,
+    );
+  }
+
+  if (input?.codetasksCompletedMessage?.trim()) {
+    lines.push(input.codetasksCompletedMessage.trim());
   }
 
   return lines;

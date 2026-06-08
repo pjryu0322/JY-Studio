@@ -16,7 +16,10 @@ import { canMergeIntegrationPullRequest } from "@/lib/prototype/implementationIn
 import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import type { ImplementationIntegratedPipelineLine } from "@/lib/prototype/implementationTaskPipelinePolicy";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
-import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { buildIntegrationStepStatusLines } from "@/lib/prototype/implementationIntegrationStatus";
+import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
+import { ensurePersistedImplementationIntegrationSteps } from "@/lib/prototype/implementationIntegrationStepBootstrap";
 
 export type ImplementationIntegrationBoardSectionVm = Readonly<{
   readonly canIntegrate: boolean;
@@ -59,6 +62,7 @@ export function buildImplementationIntegrationBoardSection(input: {
   readonly previewScope?: ImplementationPreviewScopeV1 | null;
   readonly previewRuntime?: ImplementationPreviewRuntimeV1 | null;
   readonly integrationPlan?: CodeTaskIntegrationPlanV1 | null;
+  readonly requirementsState?: RequirementsStateJson | null;
 }): ImplementationIntegrationBoardSectionVm {
   const scope = input.previewScope ?? null;
   const previewReadiness = evaluateImplementationPreviewReadiness({
@@ -68,7 +72,19 @@ export function buildImplementationIntegrationBoardSection(input: {
     eligibility: input.eligibility,
     previewRuntime: input.previewRuntime,
     integrationPlan: input.integrationPlan,
+    requirementsState: input.requirementsState,
   });
+  const integrationSteps = (() => {
+    const persisted = loadImplementationIntegrationStepsFromState(input.requirementsState);
+    if (persisted.length) return persisted;
+    const ensured = ensurePersistedImplementationIntegrationSteps({
+      projectId: String(input.projectId ?? "").trim(),
+      requirementsState: input.requirementsState,
+      codeTaskPlan: input.codeTaskPlan,
+    });
+    return ensured.steps;
+  })();
+  const integrationStepLines = buildIntegrationStepStatusLines(integrationSteps);
   const previewRuntimeReady = previewReadiness.integratedAppPreviewReady;
   const previewUrl = String(input.previewRuntime?.previewUrl ?? "").trim() || null;
   const previewStatusLines: string[] = [...previewReadiness.statusTitleLines];
@@ -116,6 +132,7 @@ export function buildImplementationIntegrationBoardSection(input: {
     summaryLines: [
       ...buildIntegrationEligibilitySummaryLines(input.eligibility),
       ...buildIntegrationScopeCountSummaryLines(scope),
+      ...integrationStepLines,
     ],
     pipelineLines: input.integratedPipelineLines,
     includedPreviewRows:

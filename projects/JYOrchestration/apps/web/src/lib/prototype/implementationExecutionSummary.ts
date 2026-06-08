@@ -1,5 +1,11 @@
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
-import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import {
+  buildExecutionUnitVerificationRows,
+  isExecutionUnitCompletedForSummary,
+  isExecutionUnitSkippedForSummary,
+  type ExecutionUnitVerificationRowV1,
+} from "@/lib/prototype/implementationExecutionUnitVerification";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
   loadImplementationExecutionUnitsFromState,
@@ -7,7 +13,6 @@ import {
 import { ensurePersistedImplementationExecutionUnits } from "@/lib/prototype/implementationExecutionRuntime";
 import { reconcileImplementationExecutionSelectedUnits } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import {
-  isExecutionUnitTerminalForQueue,
   type ImplementationExecutionUnitV1,
 } from "@/lib/prototype/implementationExecutionUnit";
 import {
@@ -26,6 +31,8 @@ export type ImplementationExecutionSummaryCountsV1 = ImplementationCodeTaskSumma
   Readonly<{
     readonly executionUnits: readonly ImplementationExecutionUnitV1[];
     readonly selectedExecutionUnitIds: readonly string[];
+    readonly unitVerificationRows: readonly ExecutionUnitVerificationRowV1[];
+    readonly verificationInconsistentCount: number;
     readonly unitBuildAudit?: BuildExecutionUnitsAuditV1;
     readonly orchestrationPatch?: Partial<RequirementsStateJson>;
   }>;
@@ -102,6 +109,12 @@ export function buildImplementationExecutionSummaryCounts(input: {
         }
       : undefined;
 
+  const runsList = input.runs ?? input.requirementsState?.codeTaskExecutionRunsV1 ?? [];
+  const unitVerificationRows = buildExecutionUnitVerificationRows({ units, runs: runsList });
+  const verificationInconsistentCount = unitVerificationRows.filter(
+    (r) => r.displayStatus === "verification_inconsistent",
+  ).length;
+
   const totalCodeTaskCount = units.length;
   const selectedCodeTaskCount = selectedUnitIds.length;
   const selectedSet = new Set(selectedUnitIds);
@@ -109,11 +122,19 @@ export function buildImplementationExecutionSummaryCounts(input: {
   let completedCodeTaskCount = 0;
   for (const unit of units) {
     if (!selectedSet.has(unit.unitId)) continue;
-    if (isExecutionUnitTerminalForQueue(unit.status)) completedCodeTaskCount += 1;
+    const run = findLatestRunForCodeTask(runsList, unit.codeTaskId);
+    if (isExecutionUnitCompletedForSummary({ unit, run })) completedCodeTaskCount += 1;
+    else if (isExecutionUnitSkippedForSummary({ unit, run })) completedCodeTaskCount += 1;
   }
 
   if (!selectedUnitIds.length) {
-    completedCodeTaskCount = units.filter((u) => isExecutionUnitTerminalForQueue(u.status)).length;
+    completedCodeTaskCount = units.filter((u) => {
+      const run = findLatestRunForCodeTask(runsList, u.codeTaskId);
+      return (
+        isExecutionUnitCompletedForSummary({ unit: u, run }) ||
+        isExecutionUnitSkippedForSummary({ unit: u, run })
+      );
+    }).length;
   }
 
   const summaryCountReconciled = removedIds.length > 0;
@@ -127,6 +148,8 @@ export function buildImplementationExecutionSummaryCounts(input: {
     summaryCountReconciled,
     executionUnits: units,
     selectedExecutionUnitIds: selectedUnitIds,
+    unitVerificationRows,
+    verificationInconsistentCount,
     unitBuildAudit: audit,
     orchestrationPatch: mergedOrchestrationPatch,
   };

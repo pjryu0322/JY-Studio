@@ -55,6 +55,10 @@ import {
   parseImplementationExecutionUnitsStateV1,
   type ImplementationExecutionUnitsStateV1,
 } from "@/lib/prototype/implementationExecutionUnitStore";
+import {
+  parseImplementationIntegrationStepsStateV1,
+  type ImplementationIntegrationStepsStateV1,
+} from "@/lib/prototype/implementationIntegrationStepStore";
 import { parseImplementationExecutionJobsV1 } from "@/lib/prototype/implementationExecutionJob";
 import type { ImplementationExecutionJobV1 } from "@/lib/prototype/implementationExecutionJob";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
@@ -653,6 +657,8 @@ export type RequirementsStateJson = {
   implementationQuickRunV1?: ImplementationQuickRunV1 | null;
   /** Persisted ExecutionUnit runtime (P3-M69) */
   implementationExecutionUnitsV1?: ImplementationExecutionUnitsStateV1 | null;
+  /** Integration service steps (final wiring, build, preview target) — P3-M74 */
+  implementationIntegrationStepsV1?: ImplementationIntegrationStepsStateV1 | null;
   /** 구현단계 ExecutionJob 런타임(프로세스 Task 단위 실행 상태 SoT) */
   implementationExecutionJobsV1?: readonly ImplementationExecutionJobV1[] | null;
   /** CodeTask 단위 실행 Run(구현단계 단순 실행 SoT) */
@@ -1148,6 +1154,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationExecutionUnitsV1 = parseImplementationExecutionUnitsStateV1(
     "implementationExecutionUnitsV1" in o ? o.implementationExecutionUnitsV1 : undefined,
   );
+  const implementationIntegrationStepsV1 = parseImplementationIntegrationStepsStateV1(
+    "implementationIntegrationStepsV1" in o ? o.implementationIntegrationStepsV1 : undefined,
+  );
   const implementationExecutionJobsV1 = parseImplementationExecutionJobsV1(
     "implementationExecutionJobsV1" in o ? o.implementationExecutionJobsV1 : undefined,
   );
@@ -1348,6 +1357,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationAutoQualityGateV1 !== undefined ? { implementationAutoQualityGateV1 } : {}),
     ...(implementationQuickRunV1 !== undefined ? { implementationQuickRunV1 } : {}),
     ...(implementationExecutionUnitsV1 !== undefined ? { implementationExecutionUnitsV1 } : {}),
+    ...(implementationIntegrationStepsV1 !== undefined ? { implementationIntegrationStepsV1 } : {}),
     ...(implementationExecutionJobsV1 !== undefined ? { implementationExecutionJobsV1 } : {}),
     ...(codeTaskExecutionRunsV1 !== undefined ? { codeTaskExecutionRunsV1 } : {}),
     ...(implementationPreviewScopeV1 !== undefined ? { implementationPreviewScopeV1 } : {}),

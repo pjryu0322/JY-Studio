@@ -3,10 +3,10 @@ import {
   parseCodeTaskExecutionRunsV1,
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
-import {
-  INTEGRATION_WIRING_CODE_TASK_ID,
-  isIntegrationWiringCodeTask,
-} from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import { INTEGRATION_WIRING_CODE_TASK_ID } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import { ensurePersistedImplementationIntegrationSteps } from "@/lib/prototype/implementationIntegrationStepBootstrap";
+import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
+import { isFinalWiringIntegrationStepCompleted } from "@/lib/prototype/implementationIntegrationStatus";
 import {
   buildImplementationCodeTaskSummaryCounts,
   isCodeTaskCompletedForSummary,
@@ -25,6 +25,8 @@ import { evaluateImplementationIntegrationEligibility } from "@/lib/prototype/im
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import { parseImplementationIntegrationStepsStateV1 } from "@/lib/prototype/implementationIntegrationStepStore";
+import { parseImplementationExecutionUnitsStateV1 } from "@/lib/prototype/implementationExecutionUnitStore";
 import { isPreviewRuntimeOpenReady } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 
 type OrchestrationPreviewSlice = Readonly<{
@@ -32,6 +34,8 @@ type OrchestrationPreviewSlice = Readonly<{
   readonly codeTaskExecutionRunsV1?: unknown;
   readonly codeTaskIntegrationPlanV1?: unknown;
   readonly implementationPreviewRuntimeV1?: unknown;
+  readonly implementationIntegrationStepsV1?: unknown;
+  readonly implementationExecutionUnitsV1?: unknown;
   readonly implementationTaskListV1?: import("@/lib/requirements/implementationTaskList").ImplementationTaskListV1 | null;
   readonly implementationAutoQualityGateV1?: import("@/lib/prototype/implementationAutoQualityGate").ImplementationAutoQualityGateV1 | null;
 }>;
@@ -59,20 +63,30 @@ export type ImplementationPreviewReadinessV1 = Readonly<{
 }>;
 
 function isFinalWiringCompleted(input: {
+  readonly requirementsState?: import("@/lib/requirements/requirementsStateJson").RequirementsStateJson | null;
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null;
   readonly runs: readonly CodeTaskExecutionRunV1[] | null | undefined;
   readonly eligibility: ImplementationIntegrationEligibility;
 }): boolean {
-  const wiringTask = input.codeTaskPlan?.tasks.find((t) => isIntegrationWiringCodeTask(t));
-  if (wiringTask) {
-    const run = findLatestRunForCodeTask(input.runs, wiringTask.codeTaskId);
-    return isCodeTaskCompletedForSummary(run);
+  const persisted = loadImplementationIntegrationStepsFromState(input.requirementsState);
+  if (persisted.length) {
+    return isFinalWiringIntegrationStepCompleted(persisted);
   }
-  const wiringExcluded = input.eligibility.excluded.some(
-    (row) => row.codeTaskId === INTEGRATION_WIRING_CODE_TASK_ID,
+  ensurePersistedImplementationIntegrationSteps({
+    projectId: input.requirementsState?.implementationExecutionUnitsV1?.projectId ?? "",
+    requirementsState: input.requirementsState,
+    codeTaskPlan: input.codeTaskPlan,
+  });
+  const wiringTask = input.codeTaskPlan?.tasks.find((t) =>
+    String(t.branchPlan?.workBranch ?? "").includes("final-wiring"),
   );
-  if (wiringExcluded) return false;
-  return true;
+  if (!wiringTask) {
+    const wiringExcluded = input.eligibility.excluded.some(
+      (row) => row.codeTaskId === INTEGRATION_WIRING_CODE_TASK_ID,
+    );
+    return !wiringExcluded;
+  }
+  return false;
 }
 
 function isIntegrationPlanPrecheckBlocked(
@@ -113,6 +127,7 @@ export function evaluateImplementationPreviewReadiness(input: {
         units: "executionUnits" in summary ? summary.executionUnits : [],
         selectedUnitIds:
           "selectedExecutionUnitIds" in summary ? summary.selectedExecutionUnitIds : [],
+        runs: input.codeTaskRuns,
       })
     : 0;
   const allVisibleCompleted =
@@ -126,6 +141,7 @@ export function evaluateImplementationPreviewReadiness(input: {
     );
 
   const finalWiringCompleted = isFinalWiringCompleted({
+    requirementsState: input.requirementsState,
     codeTaskPlan: input.codeTaskPlan,
     runs: input.codeTaskRuns,
     eligibility: input.eligibility,
@@ -302,5 +318,13 @@ export function resolveIntegratedAppPreviewReadyFromOrchestration(input: {
     eligibility,
     previewRuntime,
     integrationPlan,
+    requirementsState: {
+      implementationCodeTaskPlanV1: codeTaskPlan ?? undefined,
+      codeTaskExecutionRunsV1: runs,
+      implementationIntegrationStepsV1:
+        parseImplementationIntegrationStepsStateV1(orch?.implementationIntegrationStepsV1) ?? undefined,
+      implementationExecutionUnitsV1:
+        parseImplementationExecutionUnitsStateV1(orch?.implementationExecutionUnitsV1) ?? undefined,
+    },
   }).integratedAppPreviewReady;
 }

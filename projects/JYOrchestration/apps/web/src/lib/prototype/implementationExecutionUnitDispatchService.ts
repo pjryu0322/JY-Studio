@@ -6,6 +6,7 @@ import {
   resolveQuickRunExecutionContextFromPersisted,
 } from "@/lib/prototype/implementationExecutionRuntime";
 import { dispatchExecutionUnitWithCursor } from "@/lib/prototype/implementationExecutionUnitCursorDispatchService";
+import { markFinalWiringIntegrationStepReady } from "@/lib/prototype/implementationFinalWiringService";
 import {
   ensureExecutionUnitDbRunHistory,
   resolveExecutionUnitRunHistory,
@@ -179,6 +180,15 @@ export async function dispatchNextExecutionUnitOnServer(input: {
   }
 
   if (ctx.next.status === "complete") {
+    const stateForIntegration = mergeRequirementsStateJson(requirementsState, ctx.orchestrationPatch);
+    const integrationReady = await markFinalWiringIntegrationStepReady({
+      projectId: pid,
+      requirementsState: stateForIntegration,
+      codeTaskPlan,
+      runs,
+      nowIso,
+    });
+    timelineEntries.push(...integrationReady.timeline);
     timelineEntries.push(
       buildImplementationExecutionLogTimelineEntry({
         action: "implementation_execution_completed",
@@ -191,7 +201,10 @@ export async function dispatchNextExecutionUnitOnServer(input: {
       ok: true,
       outcome: "no_next_task",
       reason: "all_selected_units_terminal",
-      orchestrationPatch: patchWithPromptTimeline(ctx.orchestrationPatch, timelineEntries),
+      orchestrationPatch: patchWithPromptTimeline(
+        mergeOrchestrationPersistPatches(ctx.orchestrationPatch, integrationReady.orchestrationPatch),
+        timelineEntries,
+      ),
       timelineEntries,
     };
   }
