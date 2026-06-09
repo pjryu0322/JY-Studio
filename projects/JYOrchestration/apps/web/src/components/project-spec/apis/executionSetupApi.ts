@@ -1,5 +1,6 @@
 import type { ApiResponse } from "../types";
 import type { GithubCapabilityValidationSnapshot } from "@/lib/executionSetup/githubPatCapabilityProbes";
+import type { AutoGenerationSettingsConnectionTestResultV1 } from "@/lib/prototype/autoGenerationSettingsConnectionTest";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 
 export type CursorApiValidationStageDto =
@@ -191,6 +192,26 @@ export async function postRevealCursorApiToken(projectId: string) {
     method: "POST",
   });
   const json = (await res.json()) as ApiResponse<{ plaintext: string }>;
+  return { res, json };
+}
+
+export async function postAutoGenerationTestConnection(projectId: string) {
+  const encoded = encodeURIComponent(projectId);
+  const res = await credentialsIncludeFetch(`/api/projects/${encoded}/auto-generation/test-connection`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  const json = (await res.json()) as ApiResponse<AutoGenerationSettingsConnectionTestResultV1> & {
+    ok?: boolean;
+    autoGenerationReady?: boolean;
+    previewDeploymentReady?: boolean;
+    level?: string;
+    basicConnection?: unknown;
+    envcheck?: unknown;
+    previewDeploymentPreflight?: unknown;
+    userSummary?: string;
+  };
   return { res, json };
 }
 

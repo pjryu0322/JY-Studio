@@ -74,6 +74,10 @@ import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeT
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
+import {
+  resolveAutoGenerationReadyFromCapabilityJson,
+  resolvePreviewDeploymentReadyFromCapabilityJson,
+} from "@/lib/prototype/autoGenerationSettingsState";
 import { evaluateImplementationPreviewButtonState } from "@/lib/prototype/implementationPreviewButtonPolicy";
 import { sanitizeIntegratedAppPreviewUrl } from "@/lib/prototype/implementationPreviewEntryPolicy";
 import type { ImplementationPreviewEntryModeV1 } from "@/lib/prototype/implementationPreviewEntryPolicy";
@@ -630,9 +634,23 @@ export function ImplementationExecutionBoardPanel({
     ],
   );
 
+  const autoGenerationReady = useMemo(
+    () => resolveAutoGenerationReadyFromCapabilityJson(executionSetup?.githubCapabilityValidation ?? null),
+    [executionSetup?.githubCapabilityValidation],
+  );
+
+  const previewDeploymentReady = useMemo(
+    () => resolvePreviewDeploymentReadyFromCapabilityJson(executionSetup?.githubCapabilityValidation ?? null),
+    [executionSetup?.githubCapabilityValidation],
+  );
+
   const integrationButtonState = useMemo(
-    () => evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot),
-    [runtimeSnapshot],
+    () =>
+      evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot, {
+        autoGenerationReady,
+        previewDeploymentReady,
+      }),
+    [runtimeSnapshot, autoGenerationReady, previewDeploymentReady],
   );
 
   const showIntegrationButton = integrationButtonState.show;

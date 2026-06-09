@@ -20,7 +20,10 @@ import {
   type ExecutionSetupPanelHandle,
 } from "@/components/project-spec/ExecutionSetupPanel";
 import { ProjectIntegrationOverridesPanel } from "@/components/project/ProjectIntegrationOverridesPanel";
+import { AutoGenerationSplitPreflightPanel } from "@/components/settings/AutoGenerationSplitPreflightPanel";
+import { postAutoGenerationTestConnection } from "@/components/project-spec/api";
 import { PrototypeEnvSettingsModalLayout } from "@/components/project/PrototypeEnvSettingsModalLayout";
+import { resolveAutoGenerationSettingsConnectionState } from "@/lib/prototype/autoGenerationSettingsState";
 import {
   PrototypeEnvSettingsGithubTokenErrorContent,
   PrototypeEnvSettingsGithubTokenStepCard,
@@ -473,6 +476,7 @@ export function ProjectExecutionEnvironmentPanel({
   const [peerHintsWhenNoSetup, setPeerHintsWhenNoSetup] = useState<
     NonNullable<ExecutionSetupDto["peerCredentialHints"]> | null
   >(null);
+  const [connectionTestAttempted, setConnectionTestAttempted] = useState(false);
   const [executionMessage, setExecutionMessage] = useState<string | null>(null);
   const [gitLinkDraft, setGitLinkDraft] = useState<GitLinkDraft>({
     gitRepoUrl: "",
@@ -903,6 +907,19 @@ export function ProjectExecutionEnvironmentPanel({
       setExecutionMessage(
         (typeof json.message === "string" && json.message.trim()) || "연결 테스트를 완료했습니다."
       );
+      if (isPrototypeMvpUi && apiSuccess) {
+        const { json: tcJson } = await postAutoGenerationTestConnection(projectId);
+        setConnectionTestAttempted(true);
+        const setupRes2 = await fetchExecutionSetup(projectId);
+        if (setupRes2.res.ok && setupRes2.json.success && setupRes2.json.data) {
+          setExecutionSetup(setupRes2.json.data);
+          notifyExecutionSetupChanged(setupRes2.json.data);
+        }
+        const summary =
+          tcJson.data?.userSummary ??
+          (typeof tcJson.message === "string" ? tcJson.message : null);
+        if (summary) setExecutionMessage(summary);
+      }
       const setupRes = await fetchExecutionSetup(projectId);
       if (setupRes.res.ok && setupRes.json.success && setupRes.json.data) {
         setExecutionSetup(setupRes.json.data);
@@ -911,7 +928,17 @@ export function ProjectExecutionEnvironmentPanel({
     } finally {
       setBusyEnvTest(false);
     }
-  }, [projectId, loadEnvTestLast, mergeAfterPr, effectivePurpose, executionSetup?.autoPush, executionSetup?.stopOnOutOfScopeChange, notifyExecutionSetupChanged]);
+  }, [
+    projectId,
+    loadEnvTestLast,
+    mergeAfterPr,
+    effectivePurpose,
+    executionSetup,
+    isPrototypeMvpUi,
+    executionSetup?.autoPush,
+    executionSetup?.stopOnOutOfScopeChange,
+    notifyExecutionSetupChanged,
+  ]);
 
   const handleValidateGit = useCallback(async () => {
     if (!projectId.trim()) return;
@@ -980,6 +1007,17 @@ export function ProjectExecutionEnvironmentPanel({
     () => buildPrototypeEnvModalTableRows({ executionSetup }),
     [executionSetup],
   );
+
+  const autoGenConnectionState = useMemo(
+    () => resolveAutoGenerationSettingsConnectionState(executionSetup),
+    [executionSetup],
+  );
+
+  useEffect(() => {
+    if (autoGenConnectionState.connectionTest?.checkedAt) {
+      setConnectionTestAttempted(true);
+    }
+  }, [autoGenConnectionState.connectionTest?.checkedAt]);
 
   if (!projectId.trim()) return null;
 
@@ -2565,6 +2603,15 @@ export function ProjectExecutionEnvironmentPanel({
           rows={modalTableRows}
           selectedRow={selectedModalRow}
           onSelectRow={setSelectedModalRow}
+          belowTable={
+            <AutoGenerationSplitPreflightPanel
+              connectionTest={autoGenConnectionState.connectionTest}
+              connectionTestAttempted={connectionTestAttempted}
+              onFocusGithubToken={() => setSelectedModalRow("token")}
+              onRetestConnection={() => void handleEnvironmentTest()}
+              retestDisabled={!canEdit || busyEnvTest || !envTestStartOk || busyMvpSave}
+            />
+          }
           detail={renderModalDetail()}
           footer={
             <>

@@ -34,6 +34,8 @@ export type ExecutionSetupSourceGenerationRow = Readonly<{
   readonly lastValidatedAt?: string | null;
   readonly lastValidationError?: string | null;
   readonly repoConnectionOk?: boolean | null;
+  readonly githubAuthConnectionOk?: boolean | null;
+  readonly githubCapabilityValidation?: ExecutionSetupDto["githubCapabilityValidation"] | null;
   readonly cursorApiConnectionOk?: boolean | null;
   readonly executorConnectionOk?: boolean | null;
   readonly enableLlmCodeTaskRefinement?: boolean | null;
@@ -60,6 +62,8 @@ export function mapExecutionSetupDtoToSourceGenerationRow(
     lastValidatedAt: data.lastValidatedAt,
     lastValidationError: data.lastValidationError,
     repoConnectionOk: data.repoConnectionOk,
+    githubAuthConnectionOk: data.githubAuthConnectionOk,
+    githubCapabilityValidation: data.githubCapabilityValidation ?? null,
     cursorApiConnectionOk: data.cursorApiConnectionOk,
     executorConnectionOk: data.executorConnectionOk,
     enableLlmCodeTaskRefinement: data.enableLlmCodeTaskRefinement ?? null,

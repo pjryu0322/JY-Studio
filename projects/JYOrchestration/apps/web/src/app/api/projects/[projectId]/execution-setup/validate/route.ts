@@ -33,6 +33,10 @@ import {
   runGithubPatCapabilityProbes,
   type GithubCapabilityValidationSnapshot,
 } from "@/lib/executionSetup/githubPatCapabilityProbes";
+import { mergeGithubCapabilityWithPreflight } from "@/lib/prototype/autoGenerationSettingsState";
+import { mergeCapabilityWithConnectionTest } from "@/lib/prototype/autoGenerationSettingsConnectionTest";
+import { runAutoGenerationTestConnectionForProject } from "@/lib/prototype/autoGenerationTestConnectionService";
+import { runGithubProviderPreflight } from "@/lib/prototype/githubProviderPreflightService";
 
 /** 요청 scope. `cursor` 는 이전 클라이언트 호환용(= cursor_execution). */
 export type ValidateScope = "repository" | "github_auth" | "cursor_api" | "cursor_execution" | "cursor" | "all";
@@ -287,7 +291,42 @@ export async function POST(
               projectId: pid,
             });
             lastGithubCapabilitySnapshot = snapshot;
-            nextGithubCapabilityJson = snapshot as unknown as Prisma.InputJsonValue;
+            const preflight = await runGithubProviderPreflight({
+              ownerRepo: parsed,
+              defaultBranch: row.baseBranch.trim() || "main",
+              githubToken: tok,
+              cursorApiConfigured: Boolean(String(row.cursorApiToken ?? "").trim()),
+              capabilitySnapshot: snapshot,
+              mode: "settings_connection_test",
+            });
+            const withPreflight = mergeGithubCapabilityWithPreflight(
+              snapshot as unknown as Record<string, unknown>,
+              preflight,
+            );
+            const connectionTest = await runAutoGenerationTestConnectionForProject({
+              projectId: pid,
+              viewerUserId: userId,
+              executionSetup: {
+                gitRepoUrl: row.gitRepoUrl,
+                gitRepoName: row.gitRepoName,
+                gitRepoProvider: row.gitRepoProvider,
+                baseBranch: row.baseBranch,
+                githubAccessToken: tok,
+                cursorApiToken: row.cursorApiToken,
+                repoConnectionOk: row.repoConnectionOk,
+                githubAuthConnectionOk: snapshot.githubOperableOk,
+                cursorApiConnectionOk: row.cursorApiConnectionOk,
+                githubCapabilityValidation: withPreflight as never,
+                hasGithubAccessToken: true,
+                hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
+              } as never,
+              capabilitySnapshot: snapshot,
+            });
+            nextGithubCapabilityJson = (
+              connectionTest
+                ? mergeCapabilityWithConnectionTest(withPreflight, connectionTest)
+                : withPreflight
+            ) as Prisma.InputJsonValue;
             nextGithubOk = snapshot.githubOperableOk;
             nextGithubErr = snapshot.githubOperableOk
               ? null

@@ -149,6 +149,7 @@ export function PrototypeEnvSettingsModalLayout(input: {
   readonly selectedRow: PrototypeEnvModalRowKey | null;
   readonly onSelectRow: (key: PrototypeEnvModalRowKey) => void;
   readonly detail: ReactNode;
+  readonly belowTable?: ReactNode;
   readonly footer: ReactNode;
 }) {
   const [openHelpKey, setOpenHelpKey] = useState<PrototypeEnvModalRowKey | null>(null);
@@ -252,6 +253,7 @@ export function PrototypeEnvSettingsModalLayout(input: {
       style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}
     >
       <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", paddingBottom: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 900, color: "#0f172a", marginBottom: 8 }}>기본 연결 상태</div>
         <div style={{ overflowX: "auto" }}>
           <table
             style={{
@@ -355,6 +357,7 @@ export function PrototypeEnvSettingsModalLayout(input: {
             </tbody>
           </table>
         </div>
+        {input.belowTable ?? null}
         {input.detail ? (
           <div
             data-testid="prototype-env-modal-detail"
