@@ -6,6 +6,7 @@ import type {
 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { isExternalPreviewUrl } from "@/lib/prototype/previewUrlClassification";
 
 export function buildIntegratedAppPreviewFallbackUrl(projectId: string): string {
   const pid = projectId.trim();
@@ -56,6 +57,8 @@ function isRuntimeIntegratedAppPreviewReadySignal(
   }
   const external = String(runtime.externalPreviewUrl ?? "").trim();
   if (external) return true;
+  const githubPages = String(runtime.githubPagesUrl ?? "").trim();
+  if (githubPages && isExternalPreviewUrl(githubPages)) return true;
   const local = String(runtime.localPreviewServerUrl ?? "").trim();
   if (local) return true;
   const internal = String(runtime.internalAppPreviewUrl ?? "").trim();
@@ -128,6 +131,8 @@ function resolveIntegratedAppPreviewEntryUrl(input: {
   const runtime = input.previewRuntime ?? null;
   const external = String(runtime?.externalPreviewUrl ?? "").trim();
   if (external) return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: external })!;
+  const githubPages = String(runtime?.githubPagesUrl ?? "").trim();
+  if (githubPages) return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: githubPages })!;
   const internal = String(runtime?.internalAppPreviewUrl ?? "").trim();
   if (internal) return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: internal })!;
   const appPreview = String(runtime?.appPreviewUrl ?? "").trim();

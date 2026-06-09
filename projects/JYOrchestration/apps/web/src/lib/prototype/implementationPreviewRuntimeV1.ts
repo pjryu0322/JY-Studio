@@ -52,6 +52,8 @@ export type ImplementationPreviewRuntimeV1 = Readonly<{
   readonly sourceIntegrationBranch?: string | null;
   readonly runtimeKind?: ImplementationPreviewRuntimeKindV1 | null;
   readonly localPreviewServerUrl?: string | null;
+  readonly githubPagesUrl?: string | null;
+  readonly deployedCommitSha?: string | null;
 }>;
 
 function readString(value: unknown): string {
@@ -137,6 +139,8 @@ export function parseImplementationPreviewRuntimeV1(
     ...(readString(o.runtimeKind)
       ? { runtimeKind: readString(o.runtimeKind) as ImplementationPreviewRuntimeKindV1 }
       : {}),
+    ...(readString(o.githubPagesUrl) ? { githubPagesUrl: readString(o.githubPagesUrl) } : {}),
+    ...(readString(o.deployedCommitSha) ? { deployedCommitSha: readString(o.deployedCommitSha) } : {}),
   };
 }
 

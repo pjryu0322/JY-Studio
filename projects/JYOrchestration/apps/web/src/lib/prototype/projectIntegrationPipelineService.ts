@@ -59,15 +59,22 @@ export type ProjectIntegrationPipelineResultV1 = Readonly<{
     | "build_pending"
     | "build_failed"
     | "app_preview_target_failed"
+    | "static_preview_artifact_missing"
+    | "github_pages_not_configured"
     | "final_wiring_failed"
     | "integration_branch_failed"
     | "codetasks_incomplete"
     | "step_missing"
     | "pipeline_blocked";
+  readonly nextRequiredStep?:
+    | "build"
+    | "app_preview_target"
+    | "configure_github_pages"
+    | "generate_static_artifact"
+    | null;
   readonly integrationBranch?: string | null;
   readonly previewReady: boolean;
   readonly previewUrl?: string | null;
-  readonly nextRequiredStep?: "build" | "app_preview_target" | null;
   readonly userSafeMessage?: string | null;
   readonly plan?: CodeTaskIntegrationPlanV1;
   readonly previewRuntimePatch?: Partial<RequirementsStateJson>;
@@ -624,7 +631,7 @@ export async function runProjectIntegrationPipeline(input: {
     extra: { stepKind: "app_preview_target" },
   });
 
-  const previewResult = runAppPreviewTargetIntegrationStep({
+  const previewResult = await runAppPreviewTargetIntegrationStep({
     projectId: pid,
     steps,
     plan,
@@ -632,6 +639,9 @@ export async function runProjectIntegrationPipeline(input: {
     taskList: input.taskList,
     codeTaskRuns: input.codeTaskRuns,
     nowIso,
+    repoUrl: input.repoUrl,
+    githubToken: input.githubToken,
+    baseBranch: context.baseBranch,
   });
   steps = stampIntegrationStepsWithPipelineContext([...previewResult.steps], context);
   timeline.push(...previewResult.timelineEntries);
@@ -654,11 +664,19 @@ export async function runProjectIntegrationPipeline(input: {
       nowIso,
       extra: { stepKind: "app_preview_target" },
     });
+    const failStatus =
+      previewResult.pipelineStatus ?? "app_preview_target_failed";
+    const nextRequiredStep =
+      failStatus === "github_pages_not_configured"
+        ? "configure_github_pages"
+        : failStatus === "static_preview_artifact_missing"
+          ? "generate_static_artifact"
+          : "app_preview_target";
     return {
       ok: false,
-      status: "app_preview_target_failed",
+      status: failStatus,
       previewReady: false,
-      nextRequiredStep: "app_preview_target",
+      nextRequiredStep,
       userSafeMessage: previewResult.userSafeMessage,
       plan: plan ?? undefined,
       previewRuntimePatch,

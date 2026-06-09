@@ -2,6 +2,7 @@ import {
   buildActualIntegratedAppPreviewRuntime,
   resolveActualIntegratedAppPreviewTarget,
 } from "@/lib/prototype/actualIntegratedAppPreviewResolver";
+import { deployIntegratedPreviewToGitHubPages } from "@/lib/prototype/githubPagesPreviewDeploymentService";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import type { ImplementationIntegrationStepV1 } from "@/lib/prototype/implementationIntegrationStep";
@@ -15,6 +16,12 @@ import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRu
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
+
+export type AppPreviewTargetPipelineStatusV1 =
+  | "app_preview_target_failed"
+  | "static_preview_artifact_missing"
+  | "github_pages_not_configured";
 
 export type RunAppPreviewTargetIntegrationStepResultV1 = Readonly<{
   readonly ok: boolean;
@@ -24,9 +31,46 @@ export type RunAppPreviewTargetIntegrationStepResultV1 = Readonly<{
   readonly previewUrl?: string | null;
   readonly previewRuntimePatch?: Partial<RequirementsStateJson>;
   readonly userSafeMessage?: string | null;
+  readonly pipelineStatus?: AppPreviewTargetPipelineStatusV1;
 }>;
 
-export function runAppPreviewTargetIntegrationStep(input: {
+function completeAppPreviewTargetStep(input: {
+  readonly projectId: string;
+  readonly steps: readonly ImplementationIntegrationStepV1[];
+  readonly runtime: ImplementationPreviewRuntimeV1;
+  readonly nowIso: string;
+  readonly timeline: RequirementsPromptTimelineEntry[];
+}): RunAppPreviewTargetIntegrationStepResultV1 {
+  const steps = mapIntegrationStepByKind(input.steps, "app_preview_target", (s) => ({
+    ...s,
+    status: "completed",
+    completedAt: input.nowIso,
+  }));
+  input.timeline.push(
+    buildImplementationExecutionLogTimelineEntry({
+      action: "implementation_integration_app_preview_target_completed",
+      orchestrationTraceGroup: "implementation_integration",
+      fields: {
+        projectId: input.projectId,
+        previewUrl: input.runtime.previewUrl ?? null,
+        runtimeKind: input.runtime.runtimeKind ?? null,
+      },
+      nowIso: input.nowIso,
+    }),
+  );
+  return {
+    ok: true,
+    steps,
+    timelineEntries: input.timeline,
+    previewRuntime: input.runtime,
+    previewUrl: input.runtime.previewUrl ?? null,
+    previewRuntimePatch: {
+      implementationPreviewRuntimeV1: input.runtime,
+    },
+  };
+}
+
+export async function runAppPreviewTargetIntegrationStep(input: {
   readonly projectId: string;
   readonly steps: readonly ImplementationIntegrationStepV1[];
   readonly plan: CodeTaskIntegrationPlanV1 | null;
@@ -36,7 +80,10 @@ export function runAppPreviewTargetIntegrationStep(input: {
   readonly nowIso: string;
   readonly projectPreviewSettings?: unknown;
   readonly externalPreviewUrl?: string | null;
-}): RunAppPreviewTargetIntegrationStepResultV1 {
+  readonly repoUrl?: string | null;
+  readonly githubToken?: string | null;
+  readonly baseBranch?: string | null;
+}): Promise<RunAppPreviewTargetIntegrationStepResultV1> {
   void input.codeTaskPlan;
   void input.taskList;
   void input.codeTaskRuns;
@@ -55,6 +102,7 @@ export function runAppPreviewTargetIntegrationStep(input: {
       steps: input.steps,
       timelineEntries: timeline,
       userSafeMessage: step.errorMessage ?? "app Preview target을 준비하지 못했습니다.",
+      pipelineStatus: "app_preview_target_failed",
     };
   }
 
@@ -81,16 +129,80 @@ export function runAppPreviewTargetIntegrationStep(input: {
     externalPreviewUrl: input.externalPreviewUrl,
   });
 
+  if (!target.ok && integrationBranch) {
+    const repoUrl = String(input.repoUrl ?? "").trim();
+    const token = String(input.githubToken ?? "").trim();
+    if (repoUrl && token) {
+      const parsed = resolveGithubOwnerRepoStrict(repoUrl);
+      const deploy = await deployIntegratedPreviewToGitHubPages({
+        projectId: input.projectId,
+        repositoryFullName: parsed ? `${parsed.owner}/${parsed.repo}` : repoUrl,
+        repoUrl,
+        githubToken: token,
+        integrationBranch,
+        fallbackBaseBranch: input.baseBranch?.trim() || "main",
+        nowIso: input.nowIso,
+      });
+      timeline.push(...deploy.timelineEntries);
+
+      if (deploy.ok && deploy.previewRuntime) {
+        const runtime = deploy.previewRuntime;
+        if (
+          isActualIntegratedAppPreviewRuntime({
+            projectId: input.projectId,
+            runtime,
+          })
+        ) {
+          return completeAppPreviewTargetStep({
+            projectId: input.projectId,
+            steps,
+            runtime,
+            nowIso: input.nowIso,
+            timeline,
+          });
+        }
+      }
+
+      const message =
+        deploy.deployment.userSafeMessage?.trim() ||
+        "GitHub Pages Preview 배포에 실패했습니다.";
+      const pipelineStatus =
+        (deploy.pipelineStatus as AppPreviewTargetPipelineStatusV1 | undefined) ??
+        "app_preview_target_failed";
+      steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
+        ...s,
+        status: "failed",
+        failedAt: input.nowIso,
+        errorCode: deploy.deployment.errorCode ?? "app_preview_target_failed",
+        errorMessage: message,
+      }));
+      timeline.push(
+        buildImplementationExecutionLogTimelineEntry({
+          action: "implementation_integration_app_preview_target_failed",
+          orchestrationTraceGroup: "implementation_integration",
+          fields: { projectId: input.projectId, reason: message.slice(0, 200) },
+          nowIso: input.nowIso,
+        }),
+      );
+      return {
+        ok: false,
+        steps,
+        timelineEntries: timeline,
+        userSafeMessage: message,
+        pipelineStatus,
+      };
+    }
+  }
+
   if (!target.ok) {
     const message =
       target.reason?.trim() ||
       "앱 진입점은 확인됐지만 실행 가능한 Preview URL은 아직 준비되지 않았습니다.";
     steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
       ...s,
-      status: integrationBranch ? "pending" : "failed",
-      ...(integrationBranch
-        ? {}
-        : { failedAt: input.nowIso, errorCode: "app_preview_target_missing" }),
+      status: integrationBranch ? "failed" : "failed",
+      failedAt: input.nowIso,
+      errorCode: integrationBranch ? "app_preview_target_missing_url" : "app_preview_target_missing",
       errorMessage: message,
     }));
     timeline.push(
@@ -106,6 +218,7 @@ export function runAppPreviewTargetIntegrationStep(input: {
       steps,
       timelineEntries: timeline,
       userSafeMessage: message,
+      pipelineStatus: "app_preview_target_failed",
     };
   }
 
@@ -134,35 +247,15 @@ export function runAppPreviewTargetIntegrationStep(input: {
       steps,
       timelineEntries: timeline,
       userSafeMessage: message,
+      pipelineStatus: "app_preview_target_failed",
     };
   }
 
-  steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
-    ...s,
-    status: "completed",
-    completedAt: input.nowIso,
-  }));
-  timeline.push(
-    buildImplementationExecutionLogTimelineEntry({
-      action: "implementation_integration_app_preview_target_completed",
-      orchestrationTraceGroup: "implementation_integration",
-      fields: {
-        projectId: input.projectId,
-        previewUrl: runtime.previewUrl ?? null,
-        runtimeKind: runtime.runtimeKind ?? null,
-      },
-      nowIso: input.nowIso,
-    }),
-  );
-
-  return {
-    ok: true,
+  return completeAppPreviewTargetStep({
+    projectId: input.projectId,
     steps,
-    timelineEntries: timeline,
-    previewRuntime: runtime,
-    previewUrl: runtime.previewUrl ?? null,
-    previewRuntimePatch: {
-      implementationPreviewRuntimeV1: runtime,
-    },
-  };
+    runtime,
+    nowIso: input.nowIso,
+    timeline,
+  });
 }

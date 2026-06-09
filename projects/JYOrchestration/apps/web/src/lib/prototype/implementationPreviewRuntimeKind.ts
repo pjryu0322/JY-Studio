@@ -55,6 +55,11 @@ export function resolveImplementationPreviewRuntimeKindV1(input: {
     return "actual_integrated_app";
   }
 
+  const githubPages = String(runtime.githubPagesUrl ?? "").trim();
+  if (githubPages && isExternalPreviewUrl(githubPages)) {
+    return "actual_integrated_app";
+  }
+
   const localServer = String(runtime.localPreviewServerUrl ?? "").trim();
   if (localServer && isHttpUrl(localServer)) {
     return "actual_integrated_app";
