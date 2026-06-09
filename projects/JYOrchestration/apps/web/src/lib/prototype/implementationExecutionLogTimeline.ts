@@ -218,6 +218,7 @@ export function buildImplementationUiToastTimelineEntry(input: {
       ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
       message,
     },
+    promptText: message,
     nowIso: input.nowIso,
   });
 }

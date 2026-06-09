@@ -1,5 +1,7 @@
 import { buildInternalGeneratedAppPreviewUrl } from "@/lib/prototype/generatedAppPreviewUrlResolver";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
+import { asReadonlyArray } from "@/lib/prototype/implementationIntegrationPlanNormalize";
+import { integrationPlanHasSuccessfulMerge } from "@/lib/prototype/implementationIntegrationPlanMergeStatus";
 import type {
   ImplementationPreviewRenderModeV1,
   ImplementationPreviewRuntimeV1,
@@ -31,6 +33,7 @@ export function resolveIntegrationPlanBuildStatus(
   if (plan.status === "failed" || plan.status === "conflict") return "failed";
   if (plan.checkResult?.status === "failed") return "failed";
   if (plan.checkResult?.status === "passed") return "passed";
+  if (integrationPlanHasSuccessfulMerge(plan)) return "passed";
   if (plan.status === "preview_ready" || plan.status === "pr_ready") return "passed";
   return "pending";
 }

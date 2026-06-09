@@ -140,7 +140,7 @@ describe("P3-M67 safe integration error messages", () => {
   it("maps TypeError filter message to safe user text", () => {
     const err = new TypeError("Cannot read properties of undefined (reading 'filter')");
     expect(toUserSafeIntegrationErrorMessage(err)).toBe(
-      "통합 준비 중 내부 상태가 불완전합니다. 실행 로그를 확인한 뒤 다시 시도하세요.",
+      "Preview 준비를 계속 진행해야 합니다.\n아래 버튼을 눌러 다음 단계를 실행해 주세요.",
     );
     expect(toUserSafeIntegrationErrorMessage(err)).not.toMatch(/Cannot read properties/);
   });
@@ -149,7 +149,7 @@ describe("P3-M67 safe integration error messages", () => {
     const err = new TypeError("Cannot read properties of undefined (reading 'filter')");
     const fields = buildIntegrationPipelineRuntimeErrorLogFields(err);
     expect(fields.errorName).toBe("TypeError");
-    expect(fields.safeMessage).toContain("통합 준비 중");
+    expect(fields.safeMessage).toContain("Preview 준비를 계속 진행");
   });
 });
 

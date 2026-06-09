@@ -1,3 +1,5 @@
+import type { IntegrationPipelineStepKindV1 } from "@/lib/prototype/integrationPipelineRuntimeDiagnostic";
+
 export type IntegrationPipelineErrorCode =
   | "integration_included_targets_empty"
   | "integration_source_missing"
@@ -6,6 +8,7 @@ export type IntegrationPipelineErrorCode =
   | "integration_precheck_blocked"
   | "integration_branch_creation_failed"
   | "integration_build_failed"
+  | "integration_step_input_invalid"
   | "integration_runtime_error";
 
 export class IntegrationPipelineDomainError extends Error {
@@ -24,6 +27,9 @@ export class IntegrationPipelineDomainError extends Error {
   }
 }
 
+const CONTINUE_PREVIEW_USER_MESSAGE =
+  "Preview 준비를 계속 진행해야 합니다.\n아래 버튼을 눌러 다음 단계를 실행해 주세요.";
+
 const USER_SAFE_BY_CODE: Readonly<Record<IntegrationPipelineErrorCode, string>> = {
   integration_included_targets_empty: "통합 대상 CodeTask가 없습니다.",
   integration_source_missing:
@@ -33,9 +39,10 @@ const USER_SAFE_BY_CODE: Readonly<Record<IntegrationPipelineErrorCode, string>> 
     "최종 연결/통합 Wiring이 완료되지 않아 실제 앱 Preview를 준비할 수 없습니다.",
   integration_precheck_blocked: "통합 사전점검이 차단되었습니다. 차단 사유를 확인하세요.",
   integration_branch_creation_failed: "통합 branch 생성에 실패했습니다.",
-  integration_build_failed: "통합 branch 검증에 실패했습니다.",
-  integration_runtime_error:
-    "통합 준비 중 내부 상태가 불완전합니다. 실행 로그를 확인한 뒤 다시 시도하세요.",
+  integration_build_failed: "Build 검증을 완료하지 못했습니다.\n다시 시도해 주세요.",
+  integration_step_input_invalid:
+    "통합 준비 상태를 다시 계산해야 합니다. 다시 시도해 주세요.",
+  integration_runtime_error: CONTINUE_PREVIEW_USER_MESSAGE,
 };
 
 function isRawRuntimeMessage(message: string): boolean {
@@ -52,6 +59,26 @@ export function toIntegrationPipelineErrorCode(error: unknown): IntegrationPipel
   const message = error instanceof Error ? error.message : String(error);
   if (isRawRuntimeMessage(message)) return "integration_runtime_error";
   return "integration_runtime_error";
+}
+
+export function userSafeMessageForIntegrationPipelineStepFailure(
+  stepKind: IntegrationPipelineStepKindV1,
+  error: unknown,
+): string {
+  if (error instanceof IntegrationPipelineDomainError) {
+    return USER_SAFE_BY_CODE[error.code] ?? error.message;
+  }
+  switch (stepKind) {
+    case "final_wiring":
+    case "integration_branch":
+      return USER_SAFE_BY_CODE.integration_branch_creation_failed;
+    case "build":
+      return USER_SAFE_BY_CODE.integration_build_failed;
+    case "app_preview_target":
+      return "실제 앱 Preview target을 준비하지 못했습니다.\nPreview 준비를 다시 실행해 주세요.";
+    default:
+      return USER_SAFE_BY_CODE.integration_runtime_error;
+  }
 }
 
 export function toUserSafeIntegrationErrorMessage(error: unknown): string {

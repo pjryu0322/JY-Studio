@@ -1,3 +1,5 @@
+import { asReadonlyArray } from "@/lib/prototype/implementationIntegrationPlanNormalize";
+import { integrationPlanHasSuccessfulMerge } from "@/lib/prototype/implementationIntegrationPlanMergeStatus";
 import {
   resolveImplementationAppPreviewTarget,
   resolveIntegrationPlanBuildStatus,
@@ -42,7 +44,7 @@ export function evaluateBuildIntegrationStepCompletion(input: {
     Boolean(target.appEntryPath?.trim()) ||
     Boolean(target.previewUrl?.trim()) ||
     Boolean(target.externalPreviewUrl?.trim()) ||
-    plan.included.length > 0;
+    asReadonlyArray(plan.included).length > 0;
   if (!hasEntryCandidate) {
     return {
       ok: false,
@@ -53,7 +55,14 @@ export function evaluateBuildIntegrationStepCompletion(input: {
   if (buildStatus === "passed" || plan.status === "preview_ready" || plan.status === "pr_ready") {
     return { ok: true };
   }
-  return { ok: true };
+  if (integrationPlanHasSuccessfulMerge(plan)) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    errorCode: "build_check_pending",
+    message: "Build 검증을 완료하지 못했습니다.\n다시 시도해 주세요.",
+  };
 }
 
 export function runBuildIntegrationStep(input: {

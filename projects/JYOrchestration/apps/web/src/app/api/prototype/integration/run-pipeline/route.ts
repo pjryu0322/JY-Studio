@@ -11,6 +11,9 @@ import { buildImplementationIntegrationPipelineContext } from "@/lib/prototype/i
 import { resolveIntegrationStepsForRuntimeSnapshot } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
 import { buildImplementationIntegrationPipelineEligibilityFromSnapshot } from "@/lib/prototype/projectIntegrationPipelineEligibility";
 import { runProjectIntegrationPipeline } from "@/lib/prototype/projectIntegrationPipelineService";
+import { buildProjectIntegrationPipelinePersistState } from "@/lib/prototype/projectIntegrationPipelinePersist";
+import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
 import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
@@ -18,7 +21,6 @@ import { toImplementationRuntimeSnapshotApiSummary } from "@/lib/prototype/imple
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import { prisma } from "@/lib/prisma";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
-import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 
 export const maxDuration = 120;
@@ -169,22 +171,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const timeline = appendPromptTimelineEntries(
-      persisted.promptTimeline ?? [],
-      outcome.timelineEntries,
-    );
-
-    const orchestrationPatch = mergeRequirementsStateJson(persisted, {
-      ...(outcome.orchestrationPatch ?? {}),
-      ...(outcome.previewRuntimePatch ?? {}),
-      codeTaskIntegrationPlanV1: plan,
-      promptTimeline: timeline,
+    const orchestrationPatch = buildProjectIntegrationPipelinePersistState({
+      projectId,
+      persisted,
+      outcome,
+      plan,
     });
 
-    await prisma.project.update({
-      where: { id: projectId },
-      data: { requirementsStateJson: orchestrationPatch as object },
-    });
+    try {
+      await prisma.project.update({
+        where: { id: projectId },
+        data: { requirementsStateJson: orchestrationPatch as object },
+      });
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "통합 결과를 저장하지 못했습니다. 다시 시도해 주세요.",
+        },
+        { status: 500 },
+      );
+    }
 
     const postRunSummary = buildImplementationExecutionSummaryCounts({
       projectId,
@@ -193,6 +200,21 @@ export async function POST(request: NextRequest) {
       taskList,
       runs,
       previewRuntime: parseImplementationPreviewRuntimeV1(orchestrationPatch.implementationPreviewRuntimeV1) ?? null,
+    });
+
+    const snapshotRefreshLog = buildImplementationExecutionLogTimelineEntry({
+      action: "project_integration_pipeline_snapshot_refreshed",
+      orchestrationTraceGroup: "project_integration_pipeline",
+      fields: { projectId },
+    });
+    const orchestrationPatchWithSnapshotLog = mergeRequirementsStateJson(orchestrationPatch, {
+      promptTimeline: appendPromptTimelineEntries(orchestrationPatch.promptTimeline ?? [], [
+        snapshotRefreshLog,
+      ]),
+    }) as typeof orchestrationPatch;
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { requirementsStateJson: orchestrationPatchWithSnapshotLog as object },
     });
 
     return NextResponse.json({
@@ -207,9 +229,8 @@ export async function POST(request: NextRequest) {
       timeline: outcome.timelineEntries,
       snapshot: toImplementationRuntimeSnapshotApiSummary(postRunSummary.runtimeSnapshot),
       orchestrationPatch: {
-        ...(outcome.orchestrationPatch ?? {}),
+        ...orchestrationPatchWithSnapshotLog,
         codeTaskIntegrationPlanV1: plan,
-        promptTimeline: timeline,
       },
     });
   } catch (e) {

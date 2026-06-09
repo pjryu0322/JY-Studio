@@ -73,6 +73,8 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
   readonly enabled: boolean;
   readonly disabledReasonLines: readonly string[];
   readonly userStatusLines: readonly string[];
+  readonly buttonLabel: string;
+  readonly continueBuildPreview: boolean;
 }> {
   const show =
     !snapshot.preview.integratedAppPreviewReady && snapshot.codeTask.selected > 0;
@@ -89,12 +91,26 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
   const finalWiringRunnable =
     fwStatus === "pending" || fwStatus === "ready" || fwStatus === "failed";
 
+  const continueBuildPreview =
+    selectedCompleted &&
+    fwStatus === "completed" &&
+    snapshot.integration.integrationBranchStatus === "completed" &&
+    (snapshot.integration.buildStatus !== "completed" ||
+      snapshot.integration.appPreviewTargetStatus !== "completed");
+
   const enabled =
     show &&
     selectedCompleted &&
-    finalWiringRunnable &&
     !finalWiringRunning &&
-    !finalWiringMissing;
+    !finalWiringMissing &&
+    (continueBuildPreview ||
+      (finalWiringRunnable && fwStatus !== "completed"));
+
+  const buttonLabel = continueBuildPreview
+    ? snapshot.integration.buildStatus !== "completed"
+      ? "Build 검증 및 Preview 준비 계속"
+      : "Preview 준비 계속"
+    : "통합 branch 생성 및 Preview 준비";
 
   const userStatusLines: string[] = [];
 
@@ -121,6 +137,13 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
       "최종 연결/통합 Wiring을 진행 중입니다.",
       "잠시만 기다려 주세요.",
     );
+  } else if (continueBuildPreview && enabled) {
+    userStatusLines.push("통합 branch가 준비되었습니다.");
+    if (snapshot.integration.buildStatus !== "completed") {
+      userStatusLines.push("Build 검증 및 Preview 준비가 필요합니다.");
+    } else {
+      userStatusLines.push("실제 앱 Preview target 준비가 필요합니다.");
+    }
   } else if (enabled) {
     userStatusLines.push(
       `개발 CodeTask ${snapshot.codeTask.completed}/${snapshot.codeTask.selected} 완료`,
@@ -138,6 +161,8 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
     enabled,
     userStatusLines,
     disabledReasonLines: enabled ? [] : userStatusLines,
+    buttonLabel,
+    continueBuildPreview,
   };
 }
 

@@ -115,11 +115,45 @@ export function runAppPreviewTargetIntegrationStep(input: {
     runtime,
     integrationPlan: input.plan,
   });
-  const hasTarget =
-    renderOk ||
-    Boolean(target.previewUrl?.trim()) ||
-    Boolean(target.appEntryPath?.trim()) ||
-    Boolean(target.externalPreviewUrl?.trim());
+  const hasEntryOnly =
+    !renderOk &&
+    (Boolean(target.appEntryPath?.trim()) ||
+      Boolean(target.previewUrl?.trim()) ||
+      Boolean(target.externalPreviewUrl?.trim()));
+
+  if (hasEntryOnly) {
+    const message =
+      "app entry는 확인됐지만 실제 앱 Preview target을 아직 준비하지 못했습니다.\nPreview 준비를 다시 실행해 주세요.";
+    steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
+      ...s,
+      status: "pending",
+      errorCode: "app_preview_target_partial",
+      errorMessage: message,
+    }));
+    timeline.push(
+      buildImplementationExecutionLogTimelineEntry({
+        action: "implementation_integration_app_preview_target_failed",
+        orchestrationTraceGroup: "implementation_integration",
+        fields: { projectId: input.projectId, reason: "app_preview_target_partial" },
+        nowIso: input.nowIso,
+      }),
+    );
+    return {
+      ok: false,
+      steps,
+      timelineEntries: timeline,
+      previewRuntime: runtime,
+      userSafeMessage: message,
+      previewRuntimePatch: previewBuild.ok
+        ? {
+            implementationPreviewScopeV1: integration.previewScope,
+            implementationPreviewRuntimeV1: runtime,
+          }
+        : undefined,
+    };
+  }
+
+  const hasTarget = renderOk;
 
   if (!previewBuild.ok || !hasTarget) {
     const message =

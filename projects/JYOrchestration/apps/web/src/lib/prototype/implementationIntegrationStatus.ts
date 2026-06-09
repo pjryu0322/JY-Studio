@@ -23,13 +23,33 @@ function labelForStatus(status: ImplementationIntegrationStepV1["status"]): stri
   }
 }
 
+const INTEGRATION_BOARD_STEP_KINDS = [
+  "final_wiring",
+  "integration_branch",
+  "build",
+  "app_preview_target",
+] as const;
+
+const INTEGRATION_BOARD_STEP_TITLES: Record<
+  (typeof INTEGRATION_BOARD_STEP_KINDS)[number],
+  string
+> = {
+  final_wiring: "최종 연결/통합 Wiring",
+  integration_branch: "통합 branch",
+  build: "Build 검증",
+  app_preview_target: "실제 앱 Preview",
+};
+
 export function buildIntegrationStepStatusLines(
   steps: readonly ImplementationIntegrationStepV1[],
 ): readonly string[] {
   if (!steps.length) return [];
-  const lines: string[] = ["통합 단계"];
-  for (const step of [...steps].sort((a, b) => a.order - b.order)) {
-    lines.push(`- ${step.title}: ${labelForStatus(step.status)}`);
+  const byKind = new Map(steps.map((s) => [s.kind, s]));
+  const lines: string[] = [];
+  for (const kind of INTEGRATION_BOARD_STEP_KINDS) {
+    const step = byKind.get(kind);
+    if (!step) continue;
+    lines.push(`${INTEGRATION_BOARD_STEP_TITLES[kind]}: ${labelForStatus(step.status)}`);
   }
   return lines;
 }

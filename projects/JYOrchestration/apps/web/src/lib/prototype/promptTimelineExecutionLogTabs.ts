@@ -5,6 +5,7 @@ export type PromptTimelineDrawerTab = "prompt" | "history" | "execution_log";
 const IMPLEMENTATION_TRACE_GROUPS = new Set([
   "task_cursor_execution",
   "implementation_orchestration",
+  "implementation_execution_log",
   "target_repo_e2e",
   "platform_scm",
 ]);
@@ -87,6 +88,13 @@ const EXECUTION_LOG_ACTION_LABELS: Record<string, string> = {
   implementation_integration_source_resolution_started: "통합 source branch 결정 시작",
   implementation_integration_source_resolution_completed: "통합 source branch 결정 완료",
   implementation_integration_source_resolution_failed: "통합 source branch 결정 실패",
+  project_integration_pipeline_result_persist_started: "통합 pipeline 결과 저장 시작",
+  project_integration_pipeline_result_persisted: "통합 pipeline 결과 저장 완료",
+  project_integration_pipeline_result_persist_failed: "통합 pipeline 결과 저장 실패",
+  project_integration_pipeline_runtime_error: "통합 pipeline 런타임 오류",
+  project_integration_pipeline_step_input_invalid: "통합 pipeline step 입력 오류",
+  project_integration_pipeline_step_state_recovered: "통합 pipeline step 상태 복구",
+  project_integration_pipeline_snapshot_refreshed: "통합 pipeline Snapshot 갱신",
   implementation_plan_arrays_normalized: "통합 plan 배열 정규화",
   integration_pipeline_runtime_error: "통합 파이프라인 런타임 오류",
   implementation_execution_next_unit_resolved: "다음 ExecutionUnit 결정",
@@ -166,6 +174,7 @@ const EXECUTION_LOG_ACTION_LABELS: Record<string, string> = {
 
 const PERSISTENT_EXECUTION_LOG_TRACE_GROUPS = new Set([
   "task_cursor_execution",
+  "implementation_execution_log",
   "target_repo_e2e",
   "platform_scm",
 ]);
@@ -195,6 +204,7 @@ export function isExecutionLogTimelineEntry(
   if (!entry) return false;
   const action = String(entry.action ?? "").trim();
   if (!action) return false;
+  if (action === "implementation_ui_toast") return true;
   if (entry.stage === "implementation") return true;
   if (entry.workspaceScreenKey === "prototype_execution") return true;
   const traceGroup = String(entry.orchestrationTraceGroup ?? "").trim();
@@ -268,8 +278,10 @@ export function formatExecutionLogTimelineLabel(
   if (!entry) return "";
   const action = String(entry.action ?? "").trim();
   const fields = parseExecutionLogResponseFields(entry.responseText);
-  if (action === "implementation_ui_toast" && fields.message) {
-    return fields.message;
+  if (action === "implementation_ui_toast") {
+    if (fields.message) return fields.message;
+    const promptText = String(entry.promptText ?? "").trim();
+    if (promptText) return promptText;
   }
   if (action === "implementation_quick_run_client_trace" && fields.message) {
     const phase = fields.phase ? `[${fields.phase}] ` : "";

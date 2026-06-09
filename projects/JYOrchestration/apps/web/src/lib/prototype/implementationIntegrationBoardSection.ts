@@ -20,8 +20,8 @@ import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementatio
 import type { ImplementationIntegratedPipelineLine } from "@/lib/prototype/implementationTaskPipelinePolicy";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildIntegrationStepStatusLines } from "@/lib/prototype/implementationIntegrationStatus";
-import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
-import { ensurePersistedImplementationIntegrationSteps } from "@/lib/prototype/implementationIntegrationStepBootstrap";
+import { resolveIntegrationStepsForRuntimeSnapshot } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
+import { integrationPlanHasSuccessfulMerge } from "@/lib/prototype/implementationIntegrationPlanMergeStatus";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
 
 export type ImplementationIntegrationBoardSectionVm = Readonly<{
@@ -79,16 +79,10 @@ export function buildImplementationIntegrationBoardSection(input: {
     integrationPlan: input.integrationPlan,
     requirementsState: input.requirementsState,
   });
-  const integrationSteps = (() => {
-    const persisted = loadImplementationIntegrationStepsFromState(input.requirementsState);
-    if (persisted.length) return persisted;
-    const ensured = ensurePersistedImplementationIntegrationSteps({
-      projectId: String(input.projectId ?? "").trim(),
-      requirementsState: input.requirementsState,
-      codeTaskPlan: input.codeTaskPlan,
-    });
-    return ensured.steps;
-  })();
+  const integrationSteps = resolveIntegrationStepsForRuntimeSnapshot({
+    requirementsState: input.requirementsState,
+    codeTaskPlan: input.codeTaskPlan,
+  });
   const integrationStepLines = buildIntegrationStepStatusLines(integrationSteps);
   const integratedAppPreviewReady = snapshot
     ? snapshot.preview.integratedAppPreviewReady
@@ -130,15 +124,18 @@ export function buildImplementationIntegrationBoardSection(input: {
 
   const integrationPlanLines: string[] = [];
   const plan = input.integrationPlan ? normalizeCodeTaskIntegrationPlan(input.integrationPlan) : null;
-  if (plan?.integrationBranch) {
-    integrationPlanLines.push(`Integration branch: ${plan.integrationBranch}`);
-    integrationPlanLines.push(`Preview는 통합 branch 기준입니다. 포함 ${plan.included.length}개 · 제외 ${plan.excluded.length}개`);
-  }
   if (plan?.status === "conflict") {
     integrationPlanLines.push(
       `통합 충돌 발생${plan.conflictCodeTaskId ? ` (CodeTask ${plan.conflictCodeTaskId})` : ""}`,
     );
     if (plan.failureMessage) integrationPlanLines.push(`사유: ${plan.failureMessage}`);
+  } else if (plan?.integrationBranch && integrationPlanHasSuccessfulMerge(plan)) {
+    integrationPlanLines.push("통합 branch가 준비되었습니다.");
+    integrationPlanLines.push(
+      `Preview는 통합 branch 기준입니다. 포함 ${plan.included.length}개 · 제외 ${plan.excluded.length}개`,
+    );
+  } else if (plan?.integrationBranch) {
+    integrationPlanLines.push("통합 branch를 준비 중입니다.");
   }
   if (plan?.status === "pr_ready" && plan.pullRequestUrl) {
     integrationPlanLines.push("통합 PR 준비 완료 · Preview 확인 후 main 반영을 승인할 수 있습니다.");

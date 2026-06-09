@@ -9,6 +9,9 @@ import { formatExecutionUnitVerificationCardLabels } from "@/lib/prototype/imple
 import type { ImplementationIntegrationStepV1 } from "@/lib/prototype/implementationIntegrationStep";
 import { findIntegrationStep } from "@/lib/prototype/implementationIntegrationStepMutations";
 import { isPreviewRuntimeOpenReady } from "@/lib/prototype/implementationIntegrationButtonPolicy";
+import { isIntegratedAppRenderTarget } from "@/lib/prototype/implementationAppPreviewTarget";
+import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
+import { reconcileIntegrationStepsWithIntegrationPlan } from "@/lib/prototype/implementationIntegrationStepPlanReconcile";
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import type {
   ImplementationRuntimeSnapshotV1,
@@ -25,6 +28,7 @@ import { loadPersistedSelectedExecutionUnitIds } from "@/lib/prototype/implement
 import { reconcileSelectedExecutionUnitIds } from "@/lib/prototype/implementationExecutionScheduler";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 
 function mapOutcomeToRuntimeDisplayStatus(
   status: AuthoritativeCodeTaskOutcomeStatusV1,
@@ -92,7 +96,7 @@ function buildPreviewMessage(snapshot: Pick<ImplementationRuntimeSnapshotV1, "co
     return `개발 CodeTask ${codeTask.completed}/${codeTask.selected} 완료\n통합 단계: 최종 연결/통합 Wiring 대기`;
   }
   if (integration.buildStatus !== "completed") {
-    return "통합 단계: Build 검증 대기";
+    return `개발 CodeTask ${codeTask.completed}/${codeTask.selected} 완료\nBuild 검증 및 Preview 준비가 필요합니다.`;
   }
   if (integration.appPreviewTargetStatus !== "completed") {
     return "통합 단계: App Preview Target 대기";
@@ -112,6 +116,7 @@ export function buildImplementationRuntimeSnapshot(input: {
   readonly previewRuntime?: ImplementationPreviewRuntimeV1 | null;
   readonly codeTaskPlanCount?: number | null;
   readonly branchPlanIntegrationCount?: number | null;
+  readonly integrationPlan?: CodeTaskIntegrationPlanV1 | null;
 }): ImplementationRuntimeSnapshotV1 {
   const pid = input.projectId.trim();
   const units = [...input.executionUnits];
@@ -232,7 +237,11 @@ export function buildImplementationRuntimeSnapshot(input: {
   });
   const currentUnit = currentRunning ?? currentVerifying ?? currentPending ?? null;
 
-  const integrationSteps = [...input.integrationSteps].sort((a, b) => a.order - b.order);
+  const integrationSteps = reconcileIntegrationStepsWithIntegrationPlan({
+    steps: [...input.integrationSteps].sort((a, b) => a.order - b.order),
+    plan: input.integrationPlan ?? null,
+    nowIso: new Date().toISOString(),
+  });
   const stepRows = integrationSteps.map((step) => ({
     stepId: step.stepId,
     kind: step.kind,
@@ -260,20 +269,22 @@ export function buildImplementationRuntimeSnapshot(input: {
     inconsistent === 0 &&
     pendingCodeTaskIds.length === 0;
 
-  const canRunIntegration =
-    selected > 0 &&
-    completed === selected &&
-    failed === 0 &&
-    inconsistent === 0 &&
-    Boolean(finalWiring) &&
-    (finalWiringStatus === "pending" ||
-      finalWiringStatus === "ready" ||
-      finalWiringStatus === "failed");
+  const canContinueBuildPreview =
+    codetasksDone &&
+    finalWiringStatus === "completed" &&
+    integrationBranchStatus === "completed" &&
+    (buildStatus !== "completed" || appPreviewTargetStatus !== "completed");
 
-  const previewUrl =
-    String(input.previewRuntime?.previewUrl ?? "").trim() ||
-    String(input.previewRuntime?.internalAppPreviewUrl ?? "").trim() ||
-    null;
+  const canRunIntegration =
+    canContinueBuildPreview ||
+    (selected > 0 &&
+      completed === selected &&
+      failed === 0 &&
+      inconsistent === 0 &&
+      Boolean(finalWiring) &&
+      (finalWiringStatus === "pending" ||
+        finalWiringStatus === "ready" ||
+        finalWiringStatus === "failed"));
 
   const integratedAppPreviewReady =
     codetasksDone &&
@@ -281,7 +292,16 @@ export function buildImplementationRuntimeSnapshot(input: {
     integrationBranchStatus === "completed" &&
     buildStatus === "completed" &&
     appPreviewTargetStatus === "completed" &&
-    (isPreviewRuntimeOpenReady(input.previewRuntime) || Boolean(previewUrl));
+    isIntegratedAppRenderTarget({
+      runtime: input.previewRuntime,
+      integrationPlan: input.integrationPlan ?? null,
+      projectId: pid,
+    });
+
+  const previewUrl =
+    String(input.previewRuntime?.previewUrl ?? "").trim() ||
+    String(input.previewRuntime?.internalAppPreviewUrl ?? "").trim() ||
+    null;
 
   const codeTaskPreviewReady = completed > 0 || isPreviewRuntimeOpenReady(input.previewRuntime);
 
@@ -443,6 +463,9 @@ export function buildImplementationRuntimeSnapshotFromRequirementsState(input: {
     previewRuntime: input.previewRuntime,
     codeTaskPlanCount: input.codeTaskPlanCount,
     branchPlanIntegrationCount: input.branchPlanIntegrationCount,
+    integrationPlan: parseCodeTaskIntegrationPlanV1(
+      input.requirementsState?.codeTaskIntegrationPlanV1,
+    ),
   });
 }
 

@@ -1216,8 +1216,12 @@ export function ImplementationExecutionBoardPanel({
                   onClick={onRunIntegrationPipeline}
                 >
                   {integrationPipelineBusy
-                    ? "통합 branch 생성 및 Preview 준비 중…"
-                    : "통합 branch 생성 및 Preview 준비"}
+                    ? integrationButtonState.buttonLabel === "Preview 준비 계속"
+                      ? "Preview 준비 계속 중…"
+                      : integrationButtonState.continueBuildPreview
+                        ? "Build 검증 및 Preview 준비 계속 중…"
+                        : "통합 branch 생성 및 Preview 준비 중…"
+                    : integrationButtonState.buttonLabel}
                 </button>
               ) : null}
               {integrationSection.integrationPullRequestUrl ? (

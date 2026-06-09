@@ -22,7 +22,7 @@ import {
   buildImplementationRuntimeSnapshot,
   resolveIntegrationStepsForRuntimeSnapshot,
 } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
-import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
+import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
 
 export type ImplementationExecutionSummaryCountsV1 = ImplementationCodeTaskSummaryCountsV1 &
@@ -132,6 +132,8 @@ export function buildImplementationExecutionSummaryCounts(input: {
     }),
     previewRuntime: input.previewRuntime ?? null,
     codeTaskPlanCount: input.codeTaskPlan?.tasks?.length ?? null,
+    integrationPlan:
+      parseCodeTaskIntegrationPlanV1(mergedState.codeTaskIntegrationPlanV1) ?? null,
   });
 
   const unitVerificationRows = buildExecutionUnitVerificationRows({ units, runs: codeTaskRuns });

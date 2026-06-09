@@ -354,9 +354,9 @@ import {
 } from "@/lib/prototype/implementationAutoQualityGateClient";
 import {
   buildImplementationExecutionLogTimelineEntry,
-  buildImplementationUiToastTimelineEntry,
   buildPromptTimelineOrchestrationPatch,
 } from "@/lib/prototype/implementationExecutionLogTimeline";
+import { appendImplementationUiToastToPromptTimeline } from "@/lib/prototype/implementationUiToastExecutionLog";
 import { mergeImplementationExecutionLogTimeline } from "@/lib/prototype/implementationOrchestrationExecutionLog";
 import { pickPersistentExecutionLogTimelineEntries } from "@/lib/prototype/promptTimelineExecutionLogTabs";
 import { buildCodeTaskDeveloperPrompt } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
@@ -807,7 +807,6 @@ export function PrototypePreviewPanel({
   }, [reloadExecutionSetupRow]);
 
   const lastPersistedChatFingerprintRef = useRef<string>("");
-  const appendUiToastToExecutionLogRef = useRef<(message: string) => void>(() => {});
   const orchestrationPersistSeqRef = useRef(0);
   const implementationResetInFlightRef = useRef(false);
   const applyPendingFromOrchestrationPatchRef = useRef<
@@ -868,7 +867,8 @@ export function PrototypePreviewPanel({
       }
       lastPersistedChatFingerprintRef.current = fingerprint;
 
-      const merged =
+      const prior = parseRequirementsStateJson(requirementsStateJsonRef.current);
+      const mergedWithoutAutoLog =
         chatPatch || orchestrationPatch
           ? buildPrototypeExecutionOrchestrationPersistPatch(requirementsStateJsonRef.current, {
               ...(chatPatch ? { chat: chatPatch } : {}),
@@ -879,11 +879,36 @@ export function PrototypePreviewPanel({
               lastSavedAt: new Date().toISOString(),
             });
 
+      const promptTimeline =
+        orchestrationPatch !== undefined
+          ? mergeImplementationExecutionLogTimeline({
+              prior,
+              next: mergedWithoutAutoLog,
+              patch: orchestrationPatch,
+            })
+          : (mergedWithoutAutoLog.promptTimeline ?? prior.promptTimeline ?? []);
+
+      const mergedBase =
+        orchestrationPatch !== undefined && promptTimeline.length
+          ? { ...mergedWithoutAutoLog, promptTimeline }
+          : mergedWithoutAutoLog;
+
+      const merged =
+        chatPatch || orchestrationPatch
+          ? (mergeRequirementsStateWithRuntime({
+              projectId: pid,
+              state: mergedBase as Record<string, unknown>,
+            }) as typeof mergedBase)
+          : mergedBase;
+
       if (mySeq !== orchestrationPersistSeqRef.current) return { serverSaved: false };
 
       requirementsStateJsonRef.current = merged;
       if (orchestrationPatch) {
-        applyPendingFromOrchestrationPatchRef.current(orchestrationPatch);
+        applyPendingFromOrchestrationPatchRef.current({
+          ...orchestrationPatch,
+          ...(merged.promptTimeline?.length ? { promptTimeline: merged.promptTimeline } : {}),
+        });
       }
 
       queueMicrotask(() => {
@@ -902,6 +927,26 @@ export function PrototypePreviewPanel({
       return { serverSaved };
     },
     [projectId, timelineCards, onRequirementsStateJsonChange],
+  );
+
+  const appendUiToastToExecutionLog = useCallback(
+    (message: string) => {
+      const pid = projectId.trim();
+      if (!pid || !String(message ?? "").trim()) return;
+      const base = parseRequirementsStateJson(requirementsStateJsonRef.current);
+      const prior = resolveOrchestrationAwareRequirementsState({
+        base,
+        pendingPatch: pendingImplementationPatchRef.current,
+      }).promptTimeline;
+      const promptTimeline = appendImplementationUiToastToPromptTimeline({
+        priorTimeline: prior,
+        projectId: pid,
+        message,
+      });
+      applyPendingFromOrchestrationPatchRef.current({ promptTimeline });
+      void persistChatToDb(undefined, { promptTimeline }, undefined, { force: true });
+    },
+    [persistChatToDb, projectId],
   );
 
   const persistExecutionStateFromPrototypeRun = useCallback(
@@ -1069,16 +1114,19 @@ export function PrototypePreviewPanel({
     return record.previewUrl && isLikelyPreviewUrl(record.previewUrl) ? record.previewUrl.trim() : null;
   }, [latestRun?.previewUrl, record.previewUrl]);
 
-  const showToast = useCallback((msg: string, displayMs = 3200) => {
-    if (toastClearTimerRef.current) clearTimeout(toastClearTimerRef.current);
-    const text = String(msg ?? "").trim() || String(msg ?? "");
-    if (text) appendUiToastToExecutionLogRef.current(text);
-    setToast(text);
-    toastClearTimerRef.current = setTimeout(() => {
-      setToast(null);
-      toastClearTimerRef.current = null;
-    }, displayMs);
-  }, []);
+  const showToast = useCallback(
+    (msg: string, displayMs = 3200) => {
+      if (toastClearTimerRef.current) clearTimeout(toastClearTimerRef.current);
+      const text = String(msg ?? "").trim() || String(msg ?? "");
+      if (text) appendUiToastToExecutionLog(text);
+      setToast(text);
+      toastClearTimerRef.current = setTimeout(() => {
+        setToast(null);
+        toastClearTimerRef.current = null;
+      }, displayMs);
+    },
+    [appendUiToastToExecutionLog],
+  );
 
   const prototypeScreenCatalogIds = useMemo(() => {
     if (!workspaceAiGraph) return undefined;
@@ -1914,29 +1962,17 @@ export function PrototypePreviewPanel({
     (patch: PrototypeExecutionOrchestrationPersistInput | undefined) => {
       const incoming = mergePendingImplementationPatchFromOrchestration(patch);
       if (!incoming) return;
-      setPendingImplementationPatch((prev) => mergePendingImplementationPatch(prev, incoming));
+      setPendingImplementationPatch((prev) => {
+        const merged = mergePendingImplementationPatch(prev, incoming);
+        pendingImplementationPatchRef.current = merged;
+        return merged;
+      });
     },
     [],
   );
   useEffect(() => {
     applyPendingFromOrchestrationPatchRef.current = applyPendingFromOrchestrationPatch;
   }, [applyPendingFromOrchestrationPatch]);
-
-  useEffect(() => {
-    const pid = projectId.trim();
-    appendUiToastToExecutionLogRef.current = (message: string) => {
-      if (!pid || !message.trim()) return;
-      const base = parseRequirementsStateJson(requirementsStateJsonRef.current);
-      const prior = resolveOrchestrationAwareRequirementsState({
-        base,
-        pendingPatch: pendingImplementationPatchRef.current,
-      }).promptTimeline;
-      const entry = buildImplementationUiToastTimelineEntry({ projectId: pid, message });
-      const promptTimeline = appendPromptTimeline(prior, entry);
-      applyPendingFromOrchestrationPatchRef.current({ promptTimeline });
-      void persistChatToDb(undefined, { promptTimeline }, undefined, { force: true });
-    };
-  }, [persistChatToDb, projectId]);
 
   const recordQuickRunClientEvent = useCallback(
     (input: {

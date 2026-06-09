@@ -6,6 +6,8 @@ import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import { runLegacyIntegrationBranchPipelineAsFinalWiringAdapter } from "@/lib/prototype/implementationIntegrationLegacyPipelineAdapter";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
+import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
+import { reconcileIntegrationStepsWithIntegrationPlan } from "@/lib/prototype/implementationIntegrationStepPlanReconcile";
 import { ensurePersistedImplementationIntegrationSteps } from "@/lib/prototype/implementationIntegrationStepBootstrap";
 import type { ImplementationIntegrationStepV1 } from "@/lib/prototype/implementationIntegrationStep";
 import {
@@ -31,6 +33,22 @@ import type { ProjectIntegrationPipelineContextV1 } from "@/lib/prototype/integr
 import { projectIntegrationPipelineContextLogFields } from "@/lib/prototype/integrationPipelineContext";
 import type { ProjectIntegrationPipelineEligibilityV1 } from "@/lib/prototype/projectIntegrationPipelineEligibility";
 import { mapEligibilityReasonToPipelineStatus } from "@/lib/prototype/projectIntegrationPipelineEligibility";
+import { recoverCompletedIntegrationStepsFromPlan } from "@/lib/prototype/implementationIntegrationStepRecovery";
+import {
+  IntegrationPipelineDomainError,
+} from "@/lib/prototype/implementationIntegrationErrors";
+import {
+  buildIntegrationRuntimeErrorDiagnostic,
+  buildProjectIntegrationPipelineRuntimeErrorTimelineEntry,
+  markIntegrationPipelineStepRuntimeFailure,
+  pipelineStatusForStepKind,
+  type IntegrationPipelineStepKindV1,
+} from "@/lib/prototype/integrationPipelineRuntimeDiagnostic";
+import {
+  integrationStepInputInvalidError,
+  validateIntegrationStepInput,
+} from "@/lib/prototype/projectIntegrationPipelineValidation";
+import { buildImplementationExecutionLogTimelineEntry as buildStepInputInvalidLogEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 
 export type ProjectIntegrationPipelineResultV1 = Readonly<{
   readonly ok: boolean;
@@ -144,6 +162,106 @@ function applyWiringAndBranchFromLegacyPipeline(input: {
   };
 }
 
+function pushStepInputInvalidTimeline(
+  timeline: RequirementsPromptTimelineEntry[],
+  input: {
+    readonly context: ProjectIntegrationPipelineContextV1;
+    readonly stepKind: IntegrationPipelineStepKindV1;
+    readonly nowIso: string;
+    readonly diagnostic: Record<string, unknown>;
+  },
+): void {
+  timeline.push(
+    buildStepInputInvalidLogEntry({
+      action: "project_integration_pipeline_step_input_invalid",
+      orchestrationTraceGroup: "project_integration_pipeline",
+      fields: {
+        ...projectIntegrationPipelineContextLogFields(input.context),
+        stepKind: input.stepKind,
+        reason: String(input.diagnostic.reason ?? "invalid"),
+      },
+      nowIso: input.nowIso,
+    }),
+  );
+}
+
+function assertValidStepInput(
+  timeline: RequirementsPromptTimelineEntry[],
+  input: Parameters<typeof validateIntegrationStepInput>[0] & {
+    readonly context: ProjectIntegrationPipelineContextV1;
+    readonly nowIso: string;
+  },
+): void {
+  const validation = validateIntegrationStepInput(input);
+  if (validation.ok) return;
+  pushStepInputInvalidTimeline(timeline, {
+    context: input.context,
+    stepKind: input.stepKind,
+    nowIso: input.nowIso,
+    diagnostic: validation.diagnostic,
+  });
+  const domainError = integrationStepInputInvalidError(validation);
+  if (domainError) throw domainError;
+}
+
+function buildRuntimeErrorPipelineResult(input: {
+  readonly error: unknown;
+  readonly stepKind: IntegrationPipelineStepKindV1;
+  readonly context: ProjectIntegrationPipelineContextV1;
+  readonly pid: string;
+  readonly nowIso: string;
+  readonly steps: readonly ImplementationIntegrationStepV1[];
+  readonly plan: CodeTaskIntegrationPlanV1 | null;
+  readonly orchestrationPatch: Partial<RequirementsStateJson>;
+  readonly previewRuntime?: ImplementationPreviewRuntimeV1 | null;
+  readonly timeline: RequirementsPromptTimelineEntry[];
+}): ProjectIntegrationPipelineResultV1 {
+  const { steps: failedSteps, userSafeMessage } = markIntegrationPipelineStepRuntimeFailure({
+    steps: input.steps,
+    stepKind: input.stepKind,
+    error: input.error,
+    nowIso: input.nowIso,
+  });
+  const diagnostic = buildIntegrationRuntimeErrorDiagnostic({
+    projectId: input.pid,
+    stepKind: input.stepKind,
+    context: input.context,
+    error: input.error,
+    steps: failedSteps,
+    plan: input.plan,
+    previewRuntime: input.previewRuntime,
+    nowIso: input.nowIso,
+  });
+  input.timeline.push(buildProjectIntegrationPipelineRuntimeErrorTimelineEntry({ diagnostic }));
+
+  const orchestrationPatch = persistIntegrationStepsPatch({
+    orchestrationPatch: input.orchestrationPatch,
+    projectId: input.pid,
+    steps: failedSteps,
+    reason: "project_integration_pipeline_runtime_error",
+    nowIso: input.nowIso,
+    extra: input.plan ? { codeTaskIntegrationPlanV1: input.plan } : {},
+  });
+
+  const status = pipelineStatusForStepKind(input.stepKind);
+  return {
+    ok: false,
+    status,
+    previewReady: false,
+    nextRequiredStep:
+      input.stepKind === "build"
+        ? "build"
+        : input.stepKind === "app_preview_target"
+          ? "app_preview_target"
+          : null,
+    userSafeMessage,
+    plan: input.plan ?? undefined,
+    orchestrationPatch,
+    integrationBranch: input.plan?.integrationBranch ?? input.context.integrationBranch ?? null,
+    timelineEntries: input.timeline,
+  };
+}
+
 function pushPipelineTimeline(
   timeline: RequirementsPromptTimelineEntry[],
   input: {
@@ -238,6 +356,36 @@ export async function runProjectIntegrationPipeline(input: {
     [...(input.integrationSteps ?? loadImplementationIntegrationStepsFromState(state))],
     context,
   );
+  let plan =
+    parseCodeTaskIntegrationPlanV1(input.storedIntegrationPlan) ??
+    parseCodeTaskIntegrationPlanV1(state.codeTaskIntegrationPlanV1) ??
+    null;
+
+  const recovery = recoverCompletedIntegrationStepsFromPlan({
+    projectId: pid,
+    steps,
+    plan,
+    nowIso,
+  });
+  steps = stampIntegrationStepsWithPipelineContext([...recovery.steps], context);
+  timeline.push(...recovery.timelineEntries);
+
+  let orchestrationPatch: Partial<RequirementsStateJson> = { ...ensured.orchestrationPatch };
+  if (recovery.recovered) {
+    orchestrationPatch = persistIntegrationStepsPatch({
+      orchestrationPatch,
+      projectId: pid,
+      steps,
+      reason: "project_integration_pipeline_step_state_recovered",
+      nowIso,
+      extra: plan ? { codeTaskIntegrationPlanV1: plan } : {},
+    });
+  }
+
+  steps = stampIntegrationStepsWithPipelineContext(
+    [...reconcileIntegrationStepsWithIntegrationPlan({ steps, plan, nowIso })],
+    context,
+  );
   if (!findIntegrationStep(steps, "final_wiring")) {
     pushPipelineTimeline(timeline, {
       action: "project_integration_pipeline_blocked",
@@ -261,14 +409,27 @@ export async function runProjectIntegrationPipeline(input: {
     nowIso,
   });
 
-  let plan = input.storedIntegrationPlan ?? state.codeTaskIntegrationPlanV1 ?? null;
-  let orchestrationPatch: Partial<RequirementsStateJson> = { ...ensured.orchestrationPatch };
   let previewRuntimePatch: Partial<RequirementsStateJson> | undefined;
+  let activeStepKind: IntegrationPipelineStepKindV1 = "final_wiring";
 
+  try {
   const wiringDone = isIntegrationStepCompleted(steps, "final_wiring");
   const branchDone = isIntegrationStepCompleted(steps, "integration_branch");
 
   if (!wiringDone || !branchDone) {
+    activeStepKind = "final_wiring";
+    assertValidStepInput(timeline, {
+      projectId: pid,
+      stepKind: "final_wiring",
+      steps,
+      plan,
+      codeTaskPlan: input.codeTaskPlan,
+      taskList: input.taskList,
+      codeTaskRuns: input.codeTaskRuns,
+      eligibilityCanRun: input.eligibility.canRun,
+      context,
+      nowIso,
+    });
     steps = mapIntegrationStepByKind(steps, "final_wiring", (s) =>
       s.status === "completed"
         ? s
@@ -374,6 +535,16 @@ export async function runProjectIntegrationPipeline(input: {
     );
   }
 
+  activeStepKind = "build";
+  if (!isIntegrationStepCompleted(steps, "build")) {
+    assertValidStepInput(timeline, {
+      projectId: pid,
+      stepKind: "build",
+      steps,
+      plan,
+      context,
+      nowIso,
+    });
   pushPipelineTimeline(timeline, {
     action: "project_integration_pipeline_step_started",
     context,
@@ -423,7 +594,24 @@ export async function runProjectIntegrationPipeline(input: {
     nowIso,
     extra: { stepKind: "build" },
   });
+  }
 
+  let previewUrlFromRun: string | null = null;
+
+  activeStepKind = "app_preview_target";
+  if (!isIntegrationStepCompleted(steps, "app_preview_target")) {
+    assertValidStepInput(timeline, {
+      projectId: pid,
+      stepKind: "app_preview_target",
+      steps,
+      plan,
+      codeTaskPlan: input.codeTaskPlan,
+      taskList: input.taskList,
+      codeTaskRuns: input.codeTaskRuns,
+      previewRuntime: input.previewRuntime,
+      context,
+      nowIso,
+    });
   pushPipelineTimeline(timeline, {
     action: "project_integration_pipeline_step_started",
     context,
@@ -476,14 +664,24 @@ export async function runProjectIntegrationPipeline(input: {
     };
   }
 
+  previewUrlFromRun = previewResult.previewUrl ?? null;
+
   pushPipelineTimeline(timeline, {
     action: "project_integration_pipeline_step_completed",
     context,
     nowIso,
     extra: { stepKind: "app_preview_target" },
   });
+  } else {
+    previewRuntimePatch = input.previewRuntime
+      ? { implementationPreviewRuntimeV1: input.previewRuntime }
+      : undefined;
+  }
 
-  const runtime = previewResult.previewRuntime ?? null;
+  const runtime =
+    (previewRuntimePatch?.implementationPreviewRuntimeV1 as ImplementationPreviewRuntimeV1 | undefined) ??
+    input.previewRuntime ??
+    null;
   const integratedReady =
     isIntegrationStepCompleted(steps, "final_wiring") &&
     isIntegrationStepCompleted(steps, "integration_branch") &&
@@ -507,7 +705,7 @@ export async function runProjectIntegrationPipeline(input: {
       ok: true,
       status: "integrated_app_preview_ready",
       previewReady: true,
-      previewUrl: previewResult.previewUrl ?? runtime?.previewUrl ?? null,
+      previewUrl: previewUrlFromRun ?? runtime?.previewUrl ?? null,
       nextRequiredStep: null,
       plan: plan ?? undefined,
       previewRuntimePatch,
@@ -526,8 +724,43 @@ export async function runProjectIntegrationPipeline(input: {
     previewRuntimePatch,
     orchestrationPatch,
     integrationBranch: plan?.integrationBranch ?? context.integrationBranch ?? null,
-    previewUrl: previewResult.previewUrl ?? null,
-    userSafeMessage: "통합 단계는 진행됐지만 Integrated App Preview 조건이 아직 충족되지 않았습니다.",
+    previewUrl: previewUrlFromRun ?? runtime?.previewUrl ?? null,
+    userSafeMessage:
+      "Preview 준비를 계속 진행해야 합니다.\n아래 버튼을 눌러 다음 단계를 실행해 주세요.",
     timelineEntries: timeline,
   };
+  } catch (error) {
+    if (error instanceof IntegrationPipelineDomainError) {
+      orchestrationPatch = persistIntegrationStepsPatch({
+        orchestrationPatch,
+        projectId: pid,
+        steps,
+        reason: "project_integration_pipeline_step_input_invalid",
+        nowIso,
+        extra: plan ? { codeTaskIntegrationPlanV1: plan } : {},
+      });
+      return {
+        ok: false,
+        status: "pipeline_blocked",
+        previewReady: false,
+        userSafeMessage: error.message,
+        plan: plan ?? undefined,
+        orchestrationPatch,
+        integrationBranch: plan?.integrationBranch ?? context.integrationBranch ?? null,
+        timelineEntries: timeline,
+      };
+    }
+    return buildRuntimeErrorPipelineResult({
+      error,
+      stepKind: activeStepKind,
+      context,
+      pid,
+      nowIso,
+      steps,
+      plan,
+      orchestrationPatch,
+      previewRuntime: input.previewRuntime,
+      timeline,
+    });
+  }
 }

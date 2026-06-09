@@ -49,6 +49,26 @@ export function buildImplementationIntegrationPipelineEligibilityFromSnapshot(
     };
   }
 
+  const continueBuildPreview =
+    snapshot.codeTask.selected > 0 &&
+    snapshot.codeTask.completed === snapshot.codeTask.selected &&
+    snapshot.codeTask.failed === 0 &&
+    snapshot.codeTask.inconsistent === 0 &&
+    snapshot.integration.finalWiringStatus === "completed" &&
+    snapshot.integration.integrationBranchStatus === "completed" &&
+    (snapshot.integration.buildStatus !== "completed" ||
+      snapshot.integration.appPreviewTargetStatus !== "completed");
+
+  if (continueBuildPreview) {
+    return {
+      canRun: true,
+      reasonCode: "ready",
+      userMessage: "",
+      blockedUnitIds: [],
+      blockedCodeTaskIds: [],
+    };
+  }
+
   if (snapshot.codeTask.failed > 0) {
     return {
       canRun: false,

@@ -89,7 +89,17 @@ describe("buildImplementationIntegrationBoardSection", () => {
         baseBranch: "main",
         integrationBranch: "integration/p1-20260603-1200",
         createdAt: NOW,
-        included: [],
+        included: [
+          {
+            runId: "r1",
+            processTaskId: "DEV-A",
+            codeTaskId: "CT-1",
+            title: "Shell",
+            workBranch: "wip/a",
+            commitSha: "sha",
+            order: 1,
+          },
+        ],
         excluded: [],
         strategy: "merge",
         status: "pr_ready",
@@ -98,7 +108,8 @@ describe("buildImplementationIntegrationBoardSection", () => {
         checkResult: { status: "passed", checks: [{ id: "branch_exists", status: "passed" }] },
       },
     });
-    expect(vm.integrationPlanLines.some((l) => l.includes("integration/p1"))).toBe(true);
+    expect(vm.integrationPlanLines.some((l) => l.includes("통합 branch가 준비되었습니다"))).toBe(true);
+    expect(vm.integrationPlanLines.some((l) => l.includes("integration/p1"))).toBe(false);
     expect(vm.integrationPullRequestUrl).toContain("/pull/9");
     expect(vm.canMergeIntegrationPullRequest).toBe(true);
   });
