@@ -227,9 +227,6 @@ import { integrateCompletedCodeTasksForPreview } from "@/lib/prototype/implement
 import { resolveIntegratedAppPreviewReadyFromOrchestration } from "@/lib/prototype/implementationPreviewReadiness";
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import {
-  isFinalScmIntegratedStepReady,
-} from "@/lib/prototype/implementationIntegratedPipelineBatch";
-import {
   mergeIntegrationPullRequestClient,
 } from "@/lib/prototype/implementationIntegrationClient";
 import { runProjectIntegrationPrepareOnly } from "@/lib/prototype/projectIntegrationPipelineClient";
@@ -4450,30 +4447,8 @@ export function PrototypePreviewPanel({
           createPullRequest: true,
         });
 
-        const integrationPlan =
-          pipelineResult.plan ??
-          parseCodeTaskIntegrationPlanV1(pipelineResult.orchestrationPatch?.codeTaskIntegrationPlanV1) ??
-          null;
-
-        const orchestrationAfterPipeline = {
-          ...parsedRequirementsState,
-          ...(pipelineResult.orchestrationPatch ?? {}),
-          ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
-        };
-
         if (pipelineResult.orchestrationPatch) {
           applyPendingFromOrchestrationPatch(pipelineResult.orchestrationPatch);
-        }
-
-        if (pipelineResult.ok) {
-          const pipelineIntegratedReady =
-            pipelineResult.previewReady === true ||
-            String(pipelineResult.status ?? "").trim() === "integrated_app_preview_ready";
-          setIntegrationPipelineClientResult({
-            status: pipelineIntegratedReady ? "integrated_app_preview_ready" : pipelineResult.status,
-            previewReady: pipelineIntegratedReady ? true : pipelineResult.previewReady,
-            receivedAt: Date.now(),
-          });
         }
 
         if (!pipelineResult.ok) {
@@ -4500,22 +4475,15 @@ export function PrototypePreviewPanel({
           }
         }
 
-        const mergedOrchestrationForReady = orchestrationAfterPipeline;
+        const pipelineIntegratedReady =
+          pipelineResult.previewReady === true ||
+          String(pipelineResult.status ?? "").trim() === "integrated_app_preview_ready";
 
-        const integratedReady = resolveIntegratedAppPreviewReadyFromOrchestration({
-          projectId: pid,
-          orchestration: mergedOrchestrationForReady,
+        setIntegrationPipelineClientResult({
+          status: pipelineIntegratedReady ? "integrated_app_preview_ready" : pipelineResult.status,
+          previewReady: pipelineIntegratedReady ? true : pipelineResult.previewReady,
+          receivedAt: Date.now(),
         });
-
-        const refState = parseRequirementsStateJson(requirementsStateJsonRef.current);
-        const boardAfter = buildImplementationExecutionBoardFromRequirementsState({
-          projectId: pid,
-          orchestration: refState ?? orchestrationAfterPipeline,
-        });
-
-        if (boardAfter && isFinalScmIntegratedStepReady(boardAfter)) {
-          runFinalScmIntegratedStageStep();
-        }
 
         const visibleContinueButton =
           Boolean(String(pipelineResult.nextRequiredStep ?? "").trim()) &&
@@ -4524,7 +4492,7 @@ export function PrototypePreviewPanel({
         const pipelineToast = resolveIntegrationPipelineUserToast({
           status: pipelineResult.status,
           previewReady: pipelineResult.previewReady,
-          integratedAppPreviewReady: integratedReady,
+          integratedAppPreviewReady: pipelineIntegratedReady,
           message: pipelineResult.message?.trim() || null,
           serverSaved: integrationServerSaved,
           nextRequiredStep: pipelineResult.nextRequiredStep,
@@ -4539,7 +4507,7 @@ export function PrototypePreviewPanel({
               projectId: pid,
               status: pipelineResult.status ?? "",
               previewReady: pipelineResult.previewReady === true,
-              integratedAppPreviewReady: integratedReady,
+              integratedAppPreviewReady: pipelineIntegratedReady,
               rawMessage: pipelineResult.message ?? "",
             },
           });
@@ -4567,9 +4535,7 @@ export function PrototypePreviewPanel({
     parsedRequirementsState,
     persistChatToDb,
     applyPendingFromOrchestrationPatch,
-    executionSingleChat,
     showToast,
-    runFinalScmIntegratedStageStep,
   ]);
 
   const createImplementationSeedFromQuickDesignDraft = useCallback((): ImplementationStageActionRunResult => {
