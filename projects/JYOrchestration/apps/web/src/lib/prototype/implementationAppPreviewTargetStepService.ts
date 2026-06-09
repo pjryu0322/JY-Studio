@@ -21,7 +21,8 @@ import { resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon
 export type AppPreviewTargetPipelineStatusV1 =
   | "app_preview_target_failed"
   | "static_preview_artifact_missing"
-  | "github_pages_not_configured";
+  | "github_pages_not_configured"
+  | "github_pages_deploy_pending";
 
 export type RunAppPreviewTargetIntegrationStepResultV1 = Readonly<{
   readonly ok: boolean;
@@ -163,12 +164,39 @@ export async function runAppPreviewTargetIntegrationStep(input: {
         }
       }
 
-      const message =
-        deploy.deployment.userSafeMessage?.trim() ||
-        "GitHub Pages Preview 배포에 실패했습니다.";
       const pipelineStatus =
         (deploy.pipelineStatus as AppPreviewTargetPipelineStatusV1 | undefined) ??
         "app_preview_target_failed";
+
+      if (pipelineStatus === "github_pages_deploy_pending") {
+        const message =
+          deploy.deployment.userSafeMessage?.trim() ||
+          "GitHub Pages Preview 배포가 시작되었습니다. 잠시 후 Preview 상태를 다시 확인해 주세요.";
+        steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
+          ...s,
+          status: "pending",
+          errorMessage: message,
+        }));
+        timeline.push(
+          buildImplementationExecutionLogTimelineEntry({
+            action: "implementation_integration_app_preview_target_pending",
+            orchestrationTraceGroup: "implementation_integration",
+            fields: { projectId: input.projectId, reason: "github_pages_deploy_pending" },
+            nowIso: input.nowIso,
+          }),
+        );
+        return {
+          ok: false,
+          steps,
+          timelineEntries: timeline,
+          userSafeMessage: message,
+          pipelineStatus,
+        };
+      }
+
+      const message =
+        deploy.deployment.userSafeMessage?.trim() ||
+        "GitHub Pages Preview 배포에 실패했습니다.";
       steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
         ...s,
         status: "failed",

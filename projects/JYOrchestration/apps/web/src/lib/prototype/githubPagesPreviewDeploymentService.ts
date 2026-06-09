@@ -19,7 +19,18 @@ import {
   mapArtifactTreePathsToGithubPagesPreview,
   resolveStaticPreviewArtifact,
 } from "@/lib/prototype/staticPreviewArtifactResolver";
+import { getRepoUtf8FileIfExists } from "@/lib/prototype/githubRepoUtf8Contents";
+import {
+  dispatchGithubPagesPreviewWorkflow,
+  ensureJyoPreviewPagesWorkflowOnBranch,
+  JYO_PREVIEW_PAGES_WORKFLOW_FILE,
+  pollGithubPagesPreviewWorkflowResult,
+} from "@/lib/prototype/githubPagesWorkflowService";
+import { resolveStaticAppBuildContract } from "@/lib/prototype/staticAppBuildContractResolver";
+import { ensureStaticAppBuildContractOnIntegrationBranch } from "@/lib/prototype/staticAppBuildContractScaffoldService";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+
+const WORKFLOW_POLL_TIMEOUT_MS = 120_000;
 
 const MAX_DEPLOY_FILES = 200;
 
@@ -50,6 +61,32 @@ async function githubFetchJson<T>(
   } catch {
     return { ok: false, status: res.status, body: txt.slice(0, 500) };
   }
+}
+
+export async function fetchRepositoryFilePathsForBranch(input: {
+  readonly repoUrl: string;
+  readonly githubToken: string;
+  readonly branch: string;
+}): Promise<
+  | Readonly<{ readonly ok: true; readonly filePaths: readonly string[] }>
+  | Readonly<{ readonly ok: false; readonly message: string }>
+> {
+  const head = await fetchBranchHeadCommitSha({
+    repoUrl: input.repoUrl,
+    branch: input.branch,
+    githubToken: input.githubToken,
+  });
+  if (!head.ok) return { ok: false, message: head.message };
+  const tree = await fetchRecursiveTree({
+    repoUrl: input.repoUrl,
+    githubToken: input.githubToken,
+    commitSha: head.sha,
+  });
+  if (!tree.ok) return { ok: false, message: tree.message };
+  const filePaths = tree.entries
+    .filter((e) => e.type === "blob" && e.path)
+    .map((e) => String(e.path));
+  return { ok: true, filePaths };
 }
 
 async function fetchRecursiveTree(input: {
@@ -239,19 +276,184 @@ export async function deployIntegratedPreviewToGitHubPages(input: {
     .map((e) => String(e.path));
   const artifact = resolveStaticPreviewArtifact({ repositoryFiles: filePaths });
   if (!artifact.ok || !artifact.artifactPath) {
+    const pkgBlob =
+      filePaths.some((p) => p === "package.json" || p.endsWith("/package.json"))
+        ? await getRepoUtf8FileIfExists({
+            token,
+            owner: parsed.owner,
+            repo: parsed.repo,
+            path: "package.json",
+            ref: input.integrationBranch,
+          })
+        : null;
+    let packageJson: unknown = null;
+    if (pkgBlob?.contentUtf8) {
+      try {
+        packageJson = JSON.parse(pkgBlob.contentUtf8);
+      } catch {
+        packageJson = null;
+      }
+    }
+    const contract = resolveStaticAppBuildContract({
+      repositoryFiles: filePaths,
+      packageJson,
+    });
+    pushTimeline("static_build_contract_resolved", {
+      status: contract.status,
+      projectType: contract.projectType,
+    });
+
+    if (contract.status === "unsupported_runtime") {
+      deployment = {
+        ...deployment,
+        status: "failed",
+        errorCode: "unsupported_runtime",
+        userSafeMessage: contract.userSafeMessage,
+        updatedAt: input.nowIso,
+      };
+      pushTimeline("github_pages_preview_deploy_failed", { reason: "unsupported_runtime" });
+      return {
+        ok: false,
+        deployment,
+        timelineEntries: timeline,
+        pipelineStatus: "app_preview_target_failed",
+      };
+    }
+
+    pushTimeline("static_build_contract_scaffold_started", { status: contract.status });
+    const scaffold = await ensureStaticAppBuildContractOnIntegrationBranch({
+      projectId: input.projectId,
+      repoUrl: input.repoUrl,
+      githubToken: token,
+      integrationBranch: input.integrationBranch,
+      contract,
+      nowIso: input.nowIso,
+    });
+    if (!scaffold.ok) {
+      deployment = {
+        ...deployment,
+        status: "failed",
+        errorCode: scaffold.errorCode ?? "scaffold_failed",
+        userSafeMessage: scaffold.userSafeMessage,
+        updatedAt: input.nowIso,
+      };
+      pushTimeline("static_build_contract_scaffold_failed", { reason: deployment.errorCode });
+      return {
+        ok: false,
+        deployment,
+        timelineEntries: timeline,
+        pipelineStatus: "app_preview_target_failed",
+      };
+    }
+    if (scaffold.changedFiles.length > 0) {
+      pushTimeline("static_build_contract_scaffold_completed", { files: scaffold.changedFiles.join(",") });
+    }
+
+    const workflowRefBranch = input.fallbackBaseBranch?.trim() || "main";
+    pushTimeline("github_pages_workflow_ensured", { branch: workflowRefBranch });
+    const wfOnBase = await ensureJyoPreviewPagesWorkflowOnBranch({
+      repoUrl: input.repoUrl,
+      githubToken: token,
+      branch: workflowRefBranch,
+    });
+    if (!wfOnBase.ok) {
+      await ensureJyoPreviewPagesWorkflowOnBranch({
+        repoUrl: input.repoUrl,
+        githubToken: token,
+        branch: input.integrationBranch,
+      });
+    }
+
+    const pagesPathForWorkflow = pagesPath.replace(/\/$/, "");
+    pushTimeline("github_pages_workflow_dispatch_started", { sourceBranch: input.integrationBranch });
+    const dispatch = await dispatchGithubPagesPreviewWorkflow({
+      repoUrl: input.repoUrl,
+      githubToken: token,
+      workflowRefBranch: wfOnBase.ok ? workflowRefBranch : input.integrationBranch,
+      repositoryFullName: repositoryFullName,
+      workflowFileName: JYO_PREVIEW_PAGES_WORKFLOW_FILE,
+      sourceBranch: input.integrationBranch,
+      projectId: input.projectId,
+      pagesPath: pagesPathForWorkflow,
+    });
+
+    if (!dispatch.ok) {
+      deployment = {
+        ...deployment,
+        status: "failed",
+        errorCode: dispatch.errorCode ?? "workflow_dispatch_failed",
+        userSafeMessage: dispatch.userSafeMessage,
+        updatedAt: input.nowIso,
+      };
+      pushTimeline("github_pages_workflow_dispatch_failed", { reason: deployment.errorCode });
+      const pipelineStatus =
+        dispatch.status === "workflow_missing"
+          ? "app_preview_target_failed"
+          : dispatch.status === "permission_denied"
+            ? "app_preview_target_failed"
+            : "app_preview_target_failed";
+      return { ok: false, deployment, timelineEntries: timeline, pipelineStatus };
+    }
+
+    pushTimeline("github_pages_workflow_dispatched", { runId: dispatch.runId ?? null });
+
+    if (dispatch.runId) {
+      const polled = await pollGithubPagesPreviewWorkflowResult({
+        repoUrl: input.repoUrl,
+        githubToken: token,
+        repositoryFullName,
+        projectId: input.projectId,
+        runId: dispatch.runId,
+        timeoutMs: WORKFLOW_POLL_TIMEOUT_MS,
+      });
+      if (polled.ok && polled.pagesUrl) {
+        const pagesUrl = polled.pagesUrl;
+        deployment = {
+          ...deployment,
+          status: "deployed",
+          pagesUrl,
+          updatedAt: input.nowIso,
+        };
+        pushTimeline("github_pages_preview_deployed", { pagesUrl, via: "workflow" });
+        const target = resolveActualIntegratedAppPreviewTarget({
+          projectId: input.projectId,
+          integrationBranch: input.integrationBranch,
+          integrationPlan: null,
+          externalPreviewUrl: pagesUrl,
+        });
+        const previewRuntime = buildActualIntegratedAppPreviewRuntime({
+          projectId: input.projectId,
+          target,
+          nowIso: input.nowIso,
+        });
+        return {
+          ok: true,
+          deployment,
+          previewRuntime: {
+            ...previewRuntime,
+            githubPagesUrl: pagesUrl,
+            externalPreviewUrl: pagesUrl,
+            previewUrl: pagesUrl,
+            appPreviewUrl: pagesUrl,
+          },
+          timelineEntries: timeline,
+        };
+      }
+    }
+
     deployment = {
       ...deployment,
-      status: "static_artifact_missing",
-      errorCode: "static_artifact_missing",
-      userSafeMessage: artifact.userSafeMessage,
+      status: "preparing",
+      errorCode: null,
+      userSafeMessage:
+        "GitHub Pages Preview 배포가 시작되었습니다. 잠시 후 Preview 상태를 다시 확인해 주세요.",
       updatedAt: input.nowIso,
     };
-    pushTimeline("github_pages_preview_deploy_failed", { reason: "static_artifact_missing" });
     return {
       ok: false,
       deployment,
       timelineEntries: timeline,
-      pipelineStatus: "static_preview_artifact_missing",
+      pipelineStatus: "github_pages_deploy_pending",
     };
   }
 

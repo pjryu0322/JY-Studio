@@ -84,7 +84,7 @@ describe("P3-M75 legacy pipeline isolation", () => {
 });
 
 describe("P3-M75 build step", () => {
-  it("completes build when integration branch and included tasks exist", () => {
+  it("completes build when integration branch and included tasks exist", async () => {
     const evaluation = evaluateBuildIntegrationStepCompletion({
       projectId: "p-m75",
       plan: {
@@ -113,7 +113,7 @@ describe("P3-M75 build step", () => {
     expect(evaluation.ok).toBe(true);
 
     const steps = buildDefaultIntegrationStepsFromBranchPlan({ codeTaskPlan: planWithIntegration() });
-    const buildRun = runBuildIntegrationStep({
+    const buildRun = await runBuildIntegrationStep({
       projectId: "p-m75",
       steps,
       plan: {

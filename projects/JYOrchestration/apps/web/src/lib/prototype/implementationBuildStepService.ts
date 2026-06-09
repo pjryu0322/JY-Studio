@@ -11,7 +11,7 @@ import {
   findIntegrationStep,
   mapIntegrationStepByKind,
 } from "@/lib/prototype/implementationIntegrationStepMutations";
-import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { isStaticBuildStepSatisfied } from "@/lib/prototype/staticAppBuildContractResolver";
 
 export type RunBuildIntegrationStepResultV1 = Readonly<{
   readonly ok: boolean;
@@ -23,6 +23,9 @@ export type RunBuildIntegrationStepResultV1 = Readonly<{
 export function evaluateBuildIntegrationStepCompletion(input: {
   readonly plan: CodeTaskIntegrationPlanV1 | null;
   readonly projectId: string;
+  readonly repositoryFiles?: readonly string[] | null;
+  readonly packageJson?: unknown;
+  readonly hasExternalOrLocalPreview?: boolean;
 }): Readonly<{ readonly ok: boolean; readonly errorCode?: string; readonly message?: string }> {
   const plan = input.plan;
   if (!plan?.integrationBranch?.trim()) {
@@ -55,6 +58,23 @@ export function evaluateBuildIntegrationStepCompletion(input: {
   if (buildStatus === "passed" || plan.status === "preview_ready" || plan.status === "pr_ready") {
     return { ok: true };
   }
+  if (input.repositoryFiles && input.repositoryFiles.length > 0) {
+    if (
+      isStaticBuildStepSatisfied({
+        repositoryFiles: input.repositoryFiles,
+        packageJson: input.packageJson,
+        hasExternalOrLocalPreview: input.hasExternalOrLocalPreview,
+      })
+    ) {
+      return { ok: true };
+    }
+    return {
+      ok: false,
+      errorCode: "static_build_not_ready",
+      message:
+        "GitHub Pages로 배포할 정적 빌드 산출물 또는 빌드 설정이 아직 준비되지 않았습니다.\n통합 branch에 dist/out/build 또는 Vite 빌드 설정이 필요합니다.",
+    };
+  }
   if (integrationPlanHasSuccessfulMerge(plan)) {
     return { ok: true };
   }
@@ -65,12 +85,15 @@ export function evaluateBuildIntegrationStepCompletion(input: {
   };
 }
 
-export function runBuildIntegrationStep(input: {
+export async function runBuildIntegrationStep(input: {
   readonly projectId: string;
   readonly steps: readonly ImplementationIntegrationStepV1[];
   readonly plan: CodeTaskIntegrationPlanV1 | null;
   readonly nowIso: string;
-}): RunBuildIntegrationStepResultV1 {
+  readonly repositoryFiles?: readonly string[] | null;
+  readonly packageJson?: unknown;
+  readonly hasExternalOrLocalPreview?: boolean;
+}): Promise<RunBuildIntegrationStepResultV1> {
   const buildStep = findIntegrationStep(input.steps, "build");
   const timeline: RequirementsPromptTimelineEntry[] = [];
   if (!buildStep) {
@@ -105,6 +128,9 @@ export function runBuildIntegrationStep(input: {
   const evaluation = evaluateBuildIntegrationStepCompletion({
     plan: input.plan,
     projectId: input.projectId,
+    repositoryFiles: input.repositoryFiles,
+    packageJson: input.packageJson,
+    hasExternalOrLocalPreview: input.hasExternalOrLocalPreview,
   });
   if (evaluation.ok) {
     steps = mapIntegrationStepByKind(steps, "build", (s) => ({

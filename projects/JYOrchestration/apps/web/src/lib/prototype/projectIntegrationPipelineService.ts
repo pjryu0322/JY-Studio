@@ -1,5 +1,8 @@
 import { runAppPreviewTargetIntegrationStep } from "@/lib/prototype/implementationAppPreviewTargetStepService";
 import { runBuildIntegrationStep } from "@/lib/prototype/implementationBuildStepService";
+import { fetchRepositoryFilePathsForBranch } from "@/lib/prototype/githubPagesPreviewDeploymentService";
+import { getRepoUtf8FileIfExists } from "@/lib/prototype/githubRepoUtf8Contents";
+import { resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { isIntegratedAppRenderTarget } from "@/lib/prototype/implementationAppPreviewTarget";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
@@ -61,6 +64,7 @@ export type ProjectIntegrationPipelineResultV1 = Readonly<{
     | "app_preview_target_failed"
     | "static_preview_artifact_missing"
     | "github_pages_not_configured"
+    | "github_pages_deploy_pending"
     | "final_wiring_failed"
     | "integration_branch_failed"
     | "codetasks_incomplete"
@@ -82,6 +86,47 @@ export type ProjectIntegrationPipelineResultV1 = Readonly<{
   readonly timelineEntries: readonly RequirementsPromptTimelineEntry[];
   readonly eligibilityReasonCode?: ProjectIntegrationPipelineEligibilityV1["reasonCode"];
 }>;
+
+async function loadBuildStepRepositoryContext(input: {
+  readonly repoUrl: string;
+  readonly githubToken: string;
+  readonly integrationBranch: string | null;
+}): Promise<{
+  readonly repositoryFiles?: readonly string[];
+  readonly packageJson?: unknown;
+}> {
+  const branch = String(input.integrationBranch ?? "").trim();
+  const token = String(input.githubToken ?? "").trim();
+  const repoUrl = String(input.repoUrl ?? "").trim();
+  if (!branch || !token || !repoUrl) return {};
+  const listed = await fetchRepositoryFilePathsForBranch({
+    repoUrl,
+    githubToken: token,
+    branch,
+  });
+  if (!listed.ok) return {};
+  let packageJson: unknown = undefined;
+  if (listed.filePaths.some((p) => p === "package.json" || p.endsWith("/package.json"))) {
+    const parsed = resolveGithubOwnerRepoStrict(repoUrl);
+    if (parsed) {
+      const pkg = await getRepoUtf8FileIfExists({
+        token,
+        owner: parsed.owner,
+        repo: parsed.repo,
+        path: "package.json",
+        ref: branch,
+      });
+      if (pkg?.contentUtf8) {
+        try {
+          packageJson = JSON.parse(pkg.contentUtf8);
+        } catch {
+          packageJson = undefined;
+        }
+      }
+    }
+  }
+  return { repositoryFiles: listed.filePaths, packageJson };
+}
 
 function persistIntegrationStepsPatch(input: {
   readonly orchestrationPatch: Partial<RequirementsStateJson>;
@@ -564,11 +609,16 @@ export async function runProjectIntegrationPipeline(input: {
     extra: { stepKind: "build" },
   });
 
-  const buildResult = runBuildIntegrationStep({
+  const buildResult = await runBuildIntegrationStep({
     projectId: pid,
     steps,
     plan,
     nowIso,
+    ...(await loadBuildStepRepositoryContext({
+      repoUrl: input.repoUrl,
+      githubToken: input.githubToken,
+      integrationBranch: plan?.integrationBranch ?? context.integrationBranch ?? null,
+    })),
   });
   steps = stampIntegrationStepsWithPipelineContext([...buildResult.steps], context);
   timeline.push(...buildResult.timelineEntries);
@@ -658,14 +708,42 @@ export async function runProjectIntegrationPipeline(input: {
   });
 
   if (!previewResult.ok) {
+    const failStatus =
+      previewResult.pipelineStatus ?? "app_preview_target_failed";
+    if (failStatus === "github_pages_deploy_pending") {
+      pushPipelineTimeline(timeline, {
+        action: "project_integration_pipeline_step_pending",
+        context,
+        nowIso,
+        extra: { stepKind: "app_preview_target" },
+      });
+      orchestrationPatch = persistIntegrationStepsPatch({
+        orchestrationPatch,
+        projectId: pid,
+        steps,
+        reason: "implementation_integration_app_preview_target_pending",
+        nowIso,
+      });
+      return {
+        ok: false,
+        status: failStatus,
+        previewReady: false,
+        nextRequiredStep: "app_preview_target",
+        userSafeMessage: previewResult.userSafeMessage,
+        plan: plan ?? undefined,
+        previewRuntimePatch,
+        orchestrationPatch,
+        integrationBranch: plan?.integrationBranch ?? context.integrationBranch ?? null,
+        previewUrl: previewResult.previewUrl ?? null,
+        timelineEntries: timeline,
+      };
+    }
     pushPipelineTimeline(timeline, {
       action: "project_integration_pipeline_step_failed",
       context,
       nowIso,
       extra: { stepKind: "app_preview_target" },
     });
-    const failStatus =
-      previewResult.pipelineStatus ?? "app_preview_target_failed";
     const nextRequiredStep =
       failStatus === "github_pages_not_configured"
         ? "configure_github_pages"

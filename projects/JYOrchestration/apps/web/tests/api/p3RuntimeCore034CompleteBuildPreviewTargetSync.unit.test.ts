@@ -241,13 +241,13 @@ describe("P3-Runtime-Core-03-4 build/preview target sync", () => {
     expect(summary.runtimeSnapshot.integration.integrationBranchStatus).toBe("completed");
   });
 
-  it("4. build step completes when merge succeeded on integration branch", () => {
+  it("4. build step completes when merge succeeded on integration branch", async () => {
     const evaluation = evaluateBuildIntegrationStepCompletion({
       projectId: PID,
       plan: mergedIntegrationPlan(),
     });
     expect(evaluation.ok).toBe(true);
-    const result = runBuildIntegrationStep({
+    const result = await runBuildIntegrationStep({
       projectId: PID,
       steps: stepsWithStatuses({ build: "pending" }),
       plan: mergedIntegrationPlan(),

@@ -115,9 +115,15 @@ export function buildImplementationIntegrationBoardSection(input: {
         "통합 및 Preview 준비 완료",
         ...integrationStepLines,
         "실제 앱 Preview: 준비 완료",
-        "Preview 버튼을 눌러 실제 앱 화면을 확인할 수 있습니다.",
+        "Preview 버튼을 눌러 GitHub Pages Preview를 확인할 수 있습니다.",
       ]
-    : previewReadiness.mode === "code_task_preview_ready"
+    : String(input.integrationPipelineStatus ?? "").trim() === "github_pages_deploy_pending"
+      ? [
+          "GitHub Pages Preview 배포가 시작되었습니다.",
+          "잠시 후 Preview 상태를 다시 확인해 주세요.",
+          ...integrationStepLines,
+        ]
+      : previewReadiness.mode === "code_task_preview_ready"
       ? [
           "CodeTask 진단 Preview만 사용 가능",
           "실제 앱 Preview는 아직 준비되지 않았습니다.",
