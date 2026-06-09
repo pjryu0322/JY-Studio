@@ -1,9 +1,7 @@
 import { isIntegratedAppRenderTarget } from "@/lib/prototype/implementationAppPreviewTarget";
+import { isActualIntegratedAppPreviewRuntime } from "@/lib/prototype/implementationPreviewRuntimeKind";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
-import { isIntegrationStepCompleted } from "@/lib/prototype/implementationIntegrationStepMutations";
-import { resolveIntegrationStepsForRuntimeSnapshot } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
 import type {
-  ImplementationPreviewRenderModeV1,
   ImplementationPreviewRuntimeV1,
 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
@@ -33,12 +31,6 @@ export type ImplementationPreviewEntryStateV1 = Readonly<{
   readonly suppressNoticeModal: boolean;
 }>;
 
-const INTEGRATED_RENDER_MODES: ReadonlySet<ImplementationPreviewRenderModeV1> = new Set([
-  "internal_generated_app",
-  "generated_app",
-  "external_preview",
-]);
-
 function isCodetaskScopePreviewUrl(url: string | null | undefined): boolean {
   const u = String(url ?? "").trim();
   if (!u) return false;
@@ -48,27 +40,26 @@ function isCodetaskScopePreviewUrl(url: string | null | undefined): boolean {
 
 function isRuntimeIntegratedAppPreviewReadySignal(
   runtime: ImplementationPreviewRuntimeV1 | null | undefined,
+  projectId?: string | null,
 ): boolean {
   if (!runtime || runtime.status !== "ready") return false;
+  if (
+    !isActualIntegratedAppPreviewRuntime({
+      projectId,
+      runtime,
+    })
+  ) {
+    return false;
+  }
   if (runtime.openMode === "scope_summary_fallback" || runtime.renderMode === "scope_summary_fallback") {
     return false;
   }
   const external = String(runtime.externalPreviewUrl ?? "").trim();
   if (external) return true;
+  const local = String(runtime.localPreviewServerUrl ?? "").trim();
+  if (local) return true;
   const internal = String(runtime.internalAppPreviewUrl ?? "").trim();
-  if (internal.includes("/preview/app")) return true;
-  const appPreview = String(runtime.appPreviewUrl ?? "").trim();
-  if (appPreview.includes("/preview/app")) return true;
-  const openMode = runtime.openMode;
-  if (openMode === "internal_renderer" || openMode === "external_new_window") {
-    const renderMode = String(runtime.renderMode ?? "");
-    if (
-      (renderMode && INTEGRATED_RENDER_MODES.has(runtime.renderMode!)) ||
-      renderMode === "internal_app"
-    ) {
-      return true;
-    }
-  }
+  if (internal && !internal.includes("scope=latest")) return true;
   return false;
 }
 
@@ -91,8 +82,9 @@ export function sanitizeIntegratedAppPreviewUrl(input: {
   const pid = input.projectId.trim();
   const raw = String(input.url ?? "").trim();
   if (!pid) return raw || null;
-  if (!raw) return buildIntegratedAppPreviewFallbackUrl(pid);
-  if (isCodetaskScopePreviewUrl(raw)) return buildIntegratedAppPreviewFallbackUrl(pid);
+  if (!raw) return null;
+  if (isCodetaskScopePreviewUrl(raw)) return null;
+  if (raw.includes("/preview/app") && raw.includes("scope=latest")) return null;
   return raw;
 }
 
@@ -112,7 +104,7 @@ export function resolveImplementationPreviewIntegratedReady(input: {
   if (String(input.pipelineStatus ?? "").trim() === "integrated_app_preview_ready") return true;
 
   const runtime = input.previewRuntime ?? null;
-  if (isRuntimeIntegratedAppPreviewReadySignal(runtime)) return true;
+  if (isRuntimeIntegratedAppPreviewReadySignal(runtime, input.projectId)) return true;
   if (
     runtime?.status === "ready" &&
     isIntegratedAppRenderTarget({
@@ -120,21 +112,6 @@ export function resolveImplementationPreviewIntegratedReady(input: {
       runtime,
       integrationPlan: input.integrationPlan ?? null,
     })
-  ) {
-    return true;
-  }
-
-  const steps = resolveIntegrationStepsForRuntimeSnapshot({
-    requirementsState: input.requirementsState,
-    codeTaskPlan: null,
-  });
-  if (
-    steps.length > 0 &&
-    runtime?.status === "ready" &&
-    isIntegrationStepCompleted(steps, "final_wiring") &&
-    isIntegrationStepCompleted(steps, "integration_branch") &&
-    isIntegrationStepCompleted(steps, "build") &&
-    isIntegrationStepCompleted(steps, "app_preview_target")
   ) {
     return true;
   }
@@ -158,10 +135,10 @@ function resolveIntegratedAppPreviewEntryUrl(input: {
     return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: appPreview })!;
   }
   const snapshotUrl = String(input.snapshot.preview.previewUrl ?? "").trim();
-  if (snapshotUrl.includes("/preview/app")) {
+  if (snapshotUrl && sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: snapshotUrl })) {
     return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: snapshotUrl })!;
   }
-  return buildIntegratedAppPreviewFallbackUrl(pid);
+  return null;
 }
 
 export function evaluateImplementationPreviewEntryState(input: {
@@ -198,9 +175,20 @@ export function evaluateImplementationPreviewEntryState(input: {
       snapshot: input.snapshot,
       previewRuntime: input.previewRuntime,
     });
+    if (!url) {
+      return {
+        mode: "disabled",
+        enabled: false,
+        url: null,
+        openMode: "none",
+        userMessage:
+          "실제 앱 Preview target을 아직 준비하지 못했습니다.\n통합 및 Preview 준비를 실행하거나 배포 Preview URL을 설정해 주세요.",
+        suppressNoticeModal: false,
+      };
+    }
     return {
       mode: "integrated_app_preview",
-      enabled: Boolean(url),
+      enabled: true,
       url,
       openMode: "new_window",
       userMessage: "Preview 버튼을 눌러 실제 앱 화면을 확인할 수 있습니다.",

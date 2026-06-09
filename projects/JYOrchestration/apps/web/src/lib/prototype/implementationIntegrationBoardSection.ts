@@ -117,9 +117,15 @@ export function buildImplementationIntegrationBoardSection(input: {
         "실제 앱 Preview: 준비 완료",
         "Preview 버튼을 눌러 실제 앱 화면을 확인할 수 있습니다.",
       ]
-    : snapshot
-      ? snapshot.preview.message.split("\n").filter(Boolean)
-      : [...previewReadiness.statusTitleLines];
+    : previewReadiness.mode === "code_task_preview_ready"
+      ? [
+          "CodeTask 진단 Preview만 사용 가능",
+          "실제 앱 Preview는 아직 준비되지 않았습니다.",
+          ...previewReadiness.statusTitleLines,
+        ]
+      : snapshot
+        ? snapshot.preview.message.split("\n").filter(Boolean)
+        : [...previewReadiness.statusTitleLines];
   const canIntegrate = snapshot
     ? snapshot.integration.canRunIntegration || snapshot.codeTask.completed > 0
     : input.eligibility.canIntegrate;

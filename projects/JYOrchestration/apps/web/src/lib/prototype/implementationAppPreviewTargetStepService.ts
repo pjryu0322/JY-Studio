@@ -1,17 +1,16 @@
 import {
-  isIntegratedAppRenderTarget,
-  resolveImplementationAppPreviewTarget,
-} from "@/lib/prototype/implementationAppPreviewTarget";
-import { buildPreviewFromCompletedCodeTasks } from "@/lib/prototype/buildPreviewFromCompletedCodeTasks";
+  buildActualIntegratedAppPreviewRuntime,
+  resolveActualIntegratedAppPreviewTarget,
+} from "@/lib/prototype/actualIntegratedAppPreviewResolver";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
-import { integrateCompletedCodeTasksForPreview } from "@/lib/prototype/implementationIntegrationService";
 import type { ImplementationIntegrationStepV1 } from "@/lib/prototype/implementationIntegrationStep";
 import {
   findIntegrationStep,
   mapIntegrationStepByKind,
 } from "@/lib/prototype/implementationIntegrationStepMutations";
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import { isActualIntegratedAppPreviewRuntime } from "@/lib/prototype/implementationPreviewRuntimeKind";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -35,7 +34,13 @@ export function runAppPreviewTargetIntegrationStep(input: {
   readonly taskList: ImplementationTaskListV1 | null;
   readonly codeTaskRuns: readonly CodeTaskExecutionRunV1[] | null;
   readonly nowIso: string;
+  readonly projectPreviewSettings?: unknown;
+  readonly externalPreviewUrl?: string | null;
 }): RunAppPreviewTargetIntegrationStepResultV1 {
+  void input.codeTaskPlan;
+  void input.taskList;
+  void input.codeTaskRuns;
+
   const step = findIntegrationStep(input.steps, "app_preview_target");
   const timeline: RequirementsPromptTimelineEntry[] = [];
   if (!step) {
@@ -67,103 +72,25 @@ export function runAppPreviewTargetIntegrationStep(input: {
     }),
   );
 
-  const integration = integrateCompletedCodeTasksForPreview({
-    codeTaskPlan: input.codeTaskPlan,
-    taskList: input.taskList,
-    codeTaskRuns: input.codeTaskRuns,
-    generatedAt: input.nowIso,
-  });
-  if (!integration.ok) {
-    steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
-      ...s,
-      status: "failed",
-      failedAt: input.nowIso,
-      errorCode: "preview_scope_failed",
-      errorMessage: integration.message,
-    }));
-    timeline.push(
-      buildImplementationExecutionLogTimelineEntry({
-        action: "implementation_integration_app_preview_target_failed",
-        orchestrationTraceGroup: "implementation_integration",
-        fields: { projectId: input.projectId, reason: integration.message },
-        nowIso: input.nowIso,
-      }),
-    );
-    return {
-      ok: false,
-      steps,
-      timelineEntries: timeline,
-      userSafeMessage: integration.message,
-    };
-  }
-
-  const previewBuild = buildPreviewFromCompletedCodeTasks({
+  const integrationBranch = input.plan?.integrationBranch ?? null;
+  const target = resolveActualIntegratedAppPreviewTarget({
     projectId: input.projectId,
-    previewScope: integration.previewScope,
-    nowIso: input.nowIso,
-    sourceIntegrationBranch: input.plan?.integrationBranch ?? null,
-  });
-
-  const runtime = previewBuild.runtime;
-  const renderOk = isIntegratedAppRenderTarget({
-    runtime,
+    integrationBranch,
     integrationPlan: input.plan,
-    projectId: input.projectId,
+    projectPreviewSettings: input.projectPreviewSettings,
+    externalPreviewUrl: input.externalPreviewUrl,
   });
-  const target = resolveImplementationAppPreviewTarget({
-    projectId: input.projectId,
-    runtime,
-    integrationPlan: input.plan,
-  });
-  const hasEntryOnly =
-    !renderOk &&
-    (Boolean(target.appEntryPath?.trim()) ||
-      Boolean(target.previewUrl?.trim()) ||
-      Boolean(target.externalPreviewUrl?.trim()));
 
-  if (hasEntryOnly) {
+  if (!target.ok) {
     const message =
-      "app entry는 확인됐지만 실제 앱 Preview target을 아직 준비하지 못했습니다.\nPreview 준비를 다시 실행해 주세요.";
+      target.reason?.trim() ||
+      "앱 진입점은 확인됐지만 실행 가능한 Preview URL은 아직 준비되지 않았습니다.";
     steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
       ...s,
-      status: "pending",
-      errorCode: "app_preview_target_partial",
-      errorMessage: message,
-    }));
-    timeline.push(
-      buildImplementationExecutionLogTimelineEntry({
-        action: "implementation_integration_app_preview_target_failed",
-        orchestrationTraceGroup: "implementation_integration",
-        fields: { projectId: input.projectId, reason: "app_preview_target_partial" },
-        nowIso: input.nowIso,
-      }),
-    );
-    return {
-      ok: false,
-      steps,
-      timelineEntries: timeline,
-      previewRuntime: runtime,
-      userSafeMessage: message,
-      previewRuntimePatch: previewBuild.ok
-        ? {
-            implementationPreviewScopeV1: integration.previewScope,
-            implementationPreviewRuntimeV1: runtime,
-          }
-        : undefined,
-    };
-  }
-
-  const hasTarget = renderOk;
-
-  if (!previewBuild.ok || !hasTarget) {
-    const message =
-      previewBuild.errorMessage?.trim() ||
-      "통합 branch는 준비됐지만 app Preview target을 resolve하지 못했습니다.";
-    steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
-      ...s,
-      status: "failed",
-      failedAt: input.nowIso,
-      errorCode: "app_preview_target_missing",
+      status: integrationBranch ? "pending" : "failed",
+      ...(integrationBranch
+        ? {}
+        : { failedAt: input.nowIso, errorCode: "app_preview_target_missing" }),
       errorMessage: message,
     }));
     timeline.push(
@@ -178,9 +105,35 @@ export function runAppPreviewTargetIntegrationStep(input: {
       ok: false,
       steps,
       timelineEntries: timeline,
-      previewRuntime: runtime,
       userSafeMessage: message,
-      previewRuntimePatch: { implementationPreviewRuntimeV1: runtime },
+    };
+  }
+
+  const runtime = buildActualIntegratedAppPreviewRuntime({
+    projectId: input.projectId,
+    target,
+    nowIso: input.nowIso,
+  });
+
+  if (
+    !isActualIntegratedAppPreviewRuntime({
+      projectId: input.projectId,
+      runtime,
+    })
+  ) {
+    const message = "실제 앱 Preview runtime을 준비하지 못했습니다.";
+    steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
+      ...s,
+      status: "failed",
+      failedAt: input.nowIso,
+      errorCode: "app_preview_target_invalid_runtime",
+      errorMessage: message,
+    }));
+    return {
+      ok: false,
+      steps,
+      timelineEntries: timeline,
+      userSafeMessage: message,
     };
   }
 
@@ -195,7 +148,8 @@ export function runAppPreviewTargetIntegrationStep(input: {
       orchestrationTraceGroup: "implementation_integration",
       fields: {
         projectId: input.projectId,
-        previewUrl: previewBuild.previewUrl ?? null,
+        previewUrl: runtime.previewUrl ?? null,
+        runtimeKind: runtime.runtimeKind ?? null,
       },
       nowIso: input.nowIso,
     }),
@@ -206,9 +160,8 @@ export function runAppPreviewTargetIntegrationStep(input: {
     steps,
     timelineEntries: timeline,
     previewRuntime: runtime,
-    previewUrl: previewBuild.previewUrl ?? null,
+    previewUrl: runtime.previewUrl ?? null,
     previewRuntimePatch: {
-      implementationPreviewScopeV1: integration.previewScope,
       implementationPreviewRuntimeV1: runtime,
     },
   };

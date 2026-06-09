@@ -276,15 +276,21 @@ describe("P3-Runtime-Core-03-4 build/preview target sync", () => {
     expect(reconciled.find((s) => s.kind === "integration_branch")?.status).toBe("completed");
   });
 
-  it("7. integrated render target requires ready runtime on integration branch", () => {
+  it("7. integrated render target requires actual preview runtime on integration branch", () => {
     const plan = mergedIntegrationPlan();
     const runtime = {
       version: "implementation_preview_runtime_v1",
       status: "ready",
-      previewUrl: `/projects/${PID}/preview/app/generated`,
+      previewUrl: "https://deploy.example/app",
+      externalPreviewUrl: "https://deploy.example/app",
       sourceIntegrationBranch: INTEGRATION_BRANCH,
-      openMode: "internal_renderer",
-      renderMode: "internal_app",
+      openMode: "external_new_window",
+      renderMode: "external_preview",
+      runtimeKind: "actual_integrated_app",
+      sourceScopeVersion: "implementation_preview_scope_v1",
+      includedCodeTaskIds: [],
+      excludedCodeTaskIds: [],
+      warnings: [],
     } as ImplementationPreviewRuntimeV1;
     expect(
       isIntegratedAppRenderTarget({ projectId: PID, runtime, integrationPlan: plan }),
@@ -324,15 +330,21 @@ describe("P3-Runtime-Core-03-4 build/preview target sync", () => {
     expect(button.buttonLabel).toBe("Build 검증 및 Preview 준비 계속");
   });
 
-  it("10. all integration steps completed + integrated runtime marks preview ready", () => {
+  it("10. all integration steps completed + actual integrated runtime marks preview ready", () => {
     const plan = mergedIntegrationPlan();
     const runtime = {
       version: "implementation_preview_runtime_v1",
       status: "ready",
-      previewUrl: `/projects/${PID}/preview/app/generated`,
+      previewUrl: "https://deploy.example/app",
+      externalPreviewUrl: "https://deploy.example/app",
       sourceIntegrationBranch: INTEGRATION_BRANCH,
-      openMode: "internal_renderer",
-      renderMode: "internal_app",
+      openMode: "external_new_window",
+      renderMode: "external_preview",
+      runtimeKind: "actual_integrated_app",
+      sourceScopeVersion: "implementation_preview_scope_v1",
+      includedCodeTaskIds: [],
+      excludedCodeTaskIds: [],
+      warnings: [],
     } as ImplementationPreviewRuntimeV1;
     const snapshot = buildImplementationRuntimeSnapshot({
       projectId: PID,

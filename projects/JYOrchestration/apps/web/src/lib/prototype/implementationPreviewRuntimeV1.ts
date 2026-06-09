@@ -10,6 +10,7 @@ import {
   IMPLEMENTATION_PREVIEW_SCOPE_VERSION,
   type ImplementationPreviewScopeV1,
 } from "@/lib/prototype/implementationPreviewScopeV1";
+import type { ImplementationPreviewRuntimeKindV1 } from "@/lib/prototype/implementationPreviewRuntimeKind";
 
 export const IMPLEMENTATION_PREVIEW_RUNTIME_VERSION = "implementation_preview_runtime_v1" as const;
 
@@ -28,6 +29,7 @@ export type ImplementationPreviewRenderModeV1 =
   | "external_preview"
   | "generated_app"
   | "internal_generated_app"
+  | "internal_app"
   | "generated_app_iframe"
   | "scope_summary_fallback";
 
@@ -48,6 +50,8 @@ export type ImplementationPreviewRuntimeV1 = Readonly<{
   readonly errorMessage?: string | null;
   /** P3-M44: Preview/GitHub 통합 branch SoT */
   readonly sourceIntegrationBranch?: string | null;
+  readonly runtimeKind?: ImplementationPreviewRuntimeKindV1 | null;
+  readonly localPreviewServerUrl?: string | null;
 }>;
 
 function readString(value: unknown): string {
@@ -126,6 +130,12 @@ export function parseImplementationPreviewRuntimeV1(
     ...(readString(o.errorMessage) ? { errorMessage: readString(o.errorMessage) } : {}),
     ...(readString(o.sourceIntegrationBranch)
       ? { sourceIntegrationBranch: readString(o.sourceIntegrationBranch) }
+      : {}),
+    ...(readString(o.localPreviewServerUrl)
+      ? { localPreviewServerUrl: readString(o.localPreviewServerUrl) }
+      : {}),
+    ...(readString(o.runtimeKind)
+      ? { runtimeKind: readString(o.runtimeKind) as ImplementationPreviewRuntimeKindV1 }
       : {}),
   };
 }

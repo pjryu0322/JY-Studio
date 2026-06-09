@@ -39,13 +39,16 @@ function integratedRuntime(overrides?: Partial<ImplementationPreviewRuntimeV1>):
     version: IMPLEMENTATION_PREVIEW_RUNTIME_VERSION,
     status: "ready",
     generatedAt: NOW,
-    previewUrl: `/projects/${PID}/preview?scope=latest`,
-    internalAppPreviewUrl: `/projects/${PID}/preview/app/generated`,
+    previewUrl: "https://pages.example.com/integrated-app",
+    appPreviewUrl: "https://pages.example.com/integrated-app",
+    externalPreviewUrl: "https://pages.example.com/integrated-app",
+    internalAppPreviewUrl: null,
     sourceIntegrationBranch: INTEGRATION_BRANCH,
-    openMode: "internal_renderer",
-    renderMode: "internal_app",
+    openMode: "external_new_window",
+    renderMode: "external_preview",
+    runtimeKind: "actual_integrated_app",
     sourceScopeVersion: "implementation_preview_scope_v1",
-    includedCodeTaskIds: ["CODE-1"],
+    includedCodeTaskIds: [],
     excludedCodeTaskIds: [],
     warnings: [],
     errorMessage: null,
@@ -84,7 +87,7 @@ describe("P3-Runtime-Core-03-6B unify preview entry routing", () => {
       previewRuntime: integratedRuntime(),
       integratedAppPreviewReady: true,
     });
-    expect(entry.url).toContain("/preview/app");
+    expect(entry.url).toContain("https://pages.example.com");
   });
 
   it("3. integrated mode never returns codetask scope URL", () => {
@@ -92,15 +95,13 @@ describe("P3-Runtime-Core-03-6B unify preview entry routing", () => {
       projectId: PID,
       snapshot: snapshotIntegratedReady(),
       previewRuntime: integratedRuntime({
-        previewUrl: `/projects/${PID}/preview?scope=latest`,
-        internalAppPreviewUrl: null,
-        externalPreviewUrl: null,
-        appPreviewUrl: null,
+        previewUrl: "https://pages.example.com/integrated-app",
+        externalPreviewUrl: "https://pages.example.com/integrated-app",
       }),
       integratedAppPreviewReady: true,
     });
     expect(entry.url).not.toMatch(/\/preview\?scope=/);
-    expect(entry.url).toContain("/preview/app");
+    expect(String(entry.url)).toContain("https://");
   });
 
   it("4. integrated mode wins over codeTaskPreviewReady", () => {
@@ -137,12 +138,12 @@ describe("P3-Runtime-Core-03-6B unify preview entry routing", () => {
     expect(entry.mode).toBe("disabled");
   });
 
-  it("6. sanitizeIntegratedAppPreviewUrl corrects scope preview URL", () => {
+  it("6. sanitizeIntegratedAppPreviewUrl rejects codetask scope preview URL", () => {
     const fixed = sanitizeIntegratedAppPreviewUrl({
       projectId: PID,
       url: `/projects/${PID}/preview?scope=latest`,
     });
-    expect(fixed).toBe(`/projects/${encodeURIComponent(PID)}/preview/app?scope=latest`);
+    expect(fixed).toBeNull();
   });
 
   it("7. integrated entry suppresses notice modal", () => {
@@ -245,12 +246,12 @@ describe("P3-Runtime-Core-03-6B unify preview entry routing", () => {
     expect(src).toContain("COMPLETED_CODETASK_PREVIEW_NOTICE_SUPPRESSED_LOG_ACTION");
   });
 
-  it("16. runtime internal_app render mode counts as integrated ready signal", () => {
+  it("16. actual integrated runtime counts as integrated ready signal", () => {
     expect(
       resolveImplementationPreviewIntegratedReady({
         projectId: PID,
         snapshot: snapshotIntegratedReady(),
-        previewRuntime: integratedRuntime({ renderMode: "internal_app" }),
+        previewRuntime: integratedRuntime({ runtimeKind: "actual_integrated_app" }),
       }),
     ).toBe(true);
   });

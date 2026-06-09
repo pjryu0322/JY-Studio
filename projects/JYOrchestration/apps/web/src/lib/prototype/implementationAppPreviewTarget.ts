@@ -7,6 +7,7 @@ import type {
   ImplementationPreviewRuntimeV1,
 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import { isInternalPreviewPath } from "@/lib/prototype/previewUrlClassification";
+import { isActualIntegratedAppPreviewRuntime } from "@/lib/prototype/implementationPreviewRuntimeKind";
 
 export type ImplementationAppPreviewBuildStatusV1 =
   | "passed"
@@ -80,6 +81,14 @@ export function isIntegratedAppRenderTarget(input: {
   const runtime = input.runtime ?? null;
   if (!runtime || runtime.status !== "ready") return false;
   if (
+    !isActualIntegratedAppPreviewRuntime({
+      projectId: input.projectId,
+      runtime,
+    })
+  ) {
+    return false;
+  }
+  if (
     runtime.openMode === "scope_summary_fallback" ||
     runtime.renderMode === "scope_summary_fallback"
   ) {
@@ -93,5 +102,6 @@ export function isIntegratedAppRenderTarget(input: {
   if (!target.integrationBranch?.trim()) return false;
   if (target.buildStatus !== "passed") return false;
   if (target.externalPreviewUrl) return true;
-  return Boolean(target.appEntryPath && target.appEntryPath.includes("/preview/app"));
+  if (runtime.localPreviewServerUrl?.trim()) return true;
+  return Boolean(target.appEntryPath && !String(runtime.internalAppPreviewUrl ?? "").includes("scope=latest"));
 }

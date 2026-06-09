@@ -115,6 +115,7 @@ export function buildPreviewFromCompletedCodeTasks(input: {
     ...(String(input.sourceIntegrationBranch ?? "").trim()
       ? { sourceIntegrationBranch: String(input.sourceIntegrationBranch).trim() }
       : {}),
+    runtimeKind: "codetask_diagnostic_preview",
   };
 
   return { ok: true, runtime, previewUrl, errorMessage: null };
