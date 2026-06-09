@@ -29,8 +29,6 @@ export type ImplementationIntegrationBoardSectionVm = Readonly<{
   readonly showSection: boolean;
   readonly summaryLines: readonly string[];
   readonly pipelineLines: readonly ImplementationIntegratedPipelineLine[];
-  readonly includedPreviewRows: readonly { readonly codeTaskId: string; readonly title: string }[];
-  readonly excludedPreviewRows: readonly { readonly codeTaskId: string; readonly label: string }[];
   readonly scopeDetailLines: readonly string[];
   readonly previewRuntimeReady: boolean;
   readonly previewUrl: string | null;
@@ -155,16 +153,6 @@ export function buildImplementationIntegrationBoardSection(input: {
       ...integrationStepLines,
     ],
     pipelineLines: input.integratedPipelineLines,
-    includedPreviewRows:
-      scope?.includedCodeTasks.map((row) => ({
-        codeTaskId: row.codeTaskId,
-        title: row.title,
-      })) ?? [],
-    excludedPreviewRows:
-      scope?.excludedCodeTasks.slice(0, 8).map((row) => ({
-        codeTaskId: row.codeTaskId,
-        label: `${row.title}: ${row.status.trim() || row.reason}`,
-      })) ?? [],
     scopeDetailLines: dedupeScopeDetailLines([
       ...(previewReadiness.codeTaskScopeTitleLine ? [previewReadiness.codeTaskScopeTitleLine] : []),
       ...buildIntegrationScopeDetailLines(scope),

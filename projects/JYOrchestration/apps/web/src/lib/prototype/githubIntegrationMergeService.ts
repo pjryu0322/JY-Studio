@@ -6,6 +6,16 @@ type MergeResponse = Readonly<{
   readonly message?: string;
 }>;
 
+function isMergeAlreadyIntegratedMessage(text: string): boolean {
+  const lower = String(text ?? "").toLowerCase();
+  return (
+    lower.includes("already up to date") ||
+    lower.includes("already up-to-date") ||
+    lower.includes("nothing to merge") ||
+    lower.includes("no changes between")
+  );
+}
+
 export async function mergeWorkBranchIntoIntegrationBranch(input: {
   readonly repoUrl: string;
   readonly integrationBranch: string;
@@ -52,7 +62,23 @@ export async function mergeWorkBranchIntoIntegrationBranch(input: {
       }),
     });
     const text = await res.text();
+    if (res.status === 204 || (res.ok && !text.trim())) {
+      return {
+        ...base,
+        status: "already_integrated",
+        mergeCommitSha: null,
+        message: "already integrated",
+      };
+    }
     if (res.status === 409) {
+      if (isMergeAlreadyIntegratedMessage(text)) {
+        return {
+          ...base,
+          status: "already_integrated",
+          mergeCommitSha: null,
+          message: "already integrated",
+        };
+      }
       return {
         ...base,
         status: "conflict",
@@ -60,6 +86,14 @@ export async function mergeWorkBranchIntoIntegrationBranch(input: {
       };
     }
     if (!res.ok) {
+      if (isMergeAlreadyIntegratedMessage(text)) {
+        return {
+          ...base,
+          status: "already_integrated",
+          mergeCommitSha: null,
+          message: "already integrated",
+        };
+      }
       return {
         ...base,
         status: "failed",

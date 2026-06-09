@@ -52,7 +52,7 @@ export type CodeTaskIntegrationMergeResultV1 = Readonly<{
   readonly codeTaskId: string;
   readonly workBranch: string;
   readonly commitSha: string;
-  readonly status: "merged" | "conflict" | "skipped" | "failed";
+  readonly status: "merged" | "already_integrated" | "conflict" | "skipped" | "failed";
   readonly mergeCommitSha?: string | null;
   readonly conflictFiles?: readonly string[] | null;
   readonly message?: string | null;

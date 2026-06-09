@@ -206,7 +206,7 @@ export function evaluateImplementationPreviewReadiness(input: {
       statusTitleLines.push(
         "최종 연결/통합 Wiring이 아직 완료되지 않아 실제 앱 Preview를 준비할 수 없습니다.",
       );
-      statusTitleLines.push("CodeTask 결과 미리보기만 가능합니다.");
+      statusTitleLines.push("Preview만 가능합니다.");
       break;
     case "integration_blocked":
       statusTitleLines.push("통합 차단");
@@ -218,7 +218,7 @@ export function evaluateImplementationPreviewReadiness(input: {
     case "integration_pending":
       statusTitleLines.push("통합 대기");
       statusTitleLines.push("통합 branch가 아직 준비되지 않았습니다.");
-      statusTitleLines.push("CodeTask 결과 미리보기만 가능합니다.");
+      statusTitleLines.push("Preview만 가능합니다.");
       break;
     case "build_pending":
       statusTitleLines.push("통합 진행 중");
@@ -282,13 +282,13 @@ export function evaluateImplementationPreviewReadiness(input: {
   );
 
   const codeTaskScopeTitleLine = codeTaskPreviewReady
-    ? `CodeTask 결과 미리보기 범위 · 완료 ${summary.completedCodeTaskCount}개`
+    ? `Preview 범위 · 완료 ${summary.completedCodeTaskCount}개`
     : null;
 
   const conclusionLine =
     integratedAppPreviewReady
       ? null
-      : "현재는 실제 앱 Preview가 아니라 CodeTask 결과 미리보기만 가능합니다.";
+      : "현재는 실제 앱 Preview가 아니라 진단용 Preview만 가능합니다.";
 
   return {
     mode,

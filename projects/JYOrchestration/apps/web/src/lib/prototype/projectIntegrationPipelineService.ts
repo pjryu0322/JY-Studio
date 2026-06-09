@@ -36,6 +36,7 @@ import { mapEligibilityReasonToPipelineStatus } from "@/lib/prototype/projectInt
 import { recoverCompletedIntegrationStepsFromPlan } from "@/lib/prototype/implementationIntegrationStepRecovery";
 import {
   IntegrationPipelineDomainError,
+  toUserSafeIntegrationErrorMessage,
 } from "@/lib/prototype/implementationIntegrationErrors";
 import {
   buildIntegrationRuntimeErrorDiagnostic,
@@ -123,9 +124,12 @@ function applyWiringAndBranchFromLegacyPipeline(input: {
   readonly userSafeMessage?: string;
 }> {
   if (!input.ok) {
+    const userSafeMessage = toUserSafeIntegrationErrorMessage(
+      input.message ? new Error(input.message) : new Error("integration failed"),
+    );
     return {
       failed: true,
-      userSafeMessage: input.message,
+      userSafeMessage,
       steps: input.steps.map((s) => {
         if (s.kind !== "final_wiring" && s.kind !== "integration_branch") return s;
         return {
@@ -133,7 +137,7 @@ function applyWiringAndBranchFromLegacyPipeline(input: {
           status: "failed" as const,
           failedAt: input.nowIso,
           errorCode: s.kind === "final_wiring" ? "final_wiring_failed" : "integration_branch_failed",
-          errorMessage: input.message,
+          errorMessage: userSafeMessage,
         };
       }),
     };
@@ -512,7 +516,7 @@ export async function runProjectIntegrationPipeline(input: {
         ok: false,
         status: legacy.ok ? "integration_branch_failed" : "final_wiring_failed",
         previewReady: false,
-        userSafeMessage: applied.userSafeMessage ?? legacy.message,
+        userSafeMessage: applied.userSafeMessage ?? toUserSafeIntegrationErrorMessage(legacy.message),
         plan: legacy.plan,
         orchestrationPatch,
         timelineEntries: timeline,

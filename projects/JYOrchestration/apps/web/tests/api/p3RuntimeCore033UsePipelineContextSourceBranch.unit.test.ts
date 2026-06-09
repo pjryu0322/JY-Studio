@@ -177,9 +177,9 @@ describe("P3-Runtime-Core-03-3 effective source branch", () => {
 });
 
 describe("P3-Runtime-Core-03-3 pipeline ordering and messages", () => {
-  it("10–11. resolves source before createGithubIntegrationBranch", () => {
+  it("10–11. resolves source before ensureGithubIntegrationBranch", () => {
     const src = readFileSync(join(prototypeDir, "implementationIntegrationPipelineService.ts"), "utf8");
-    const createIdx = src.indexOf("await createGithubIntegrationBranch");
+    const createIdx = src.indexOf("await ensureGithubIntegrationBranch");
     const resolutionFailedIdx = src.indexOf("implementation_integration_source_resolution_failed");
     const resolutionStartedIdx = src.indexOf("implementation_integration_source_resolution_started");
     expect(createIdx).toBeGreaterThan(-1);

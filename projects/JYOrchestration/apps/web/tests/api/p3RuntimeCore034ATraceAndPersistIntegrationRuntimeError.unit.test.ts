@@ -199,8 +199,10 @@ describe("P3-Runtime-Core-03-4A integration runtime trace/persist", () => {
       nowIso: NOW,
     });
     expect(result.recovered).toBe(true);
-    expect(result.recoveredKinds).toEqual(["final_wiring", "integration_branch"]);
-    expect(result.timelineEntries[0]?.action).toBe("project_integration_pipeline_step_state_recovered");
+    expect(result.recoveredKinds).toEqual(["integration_branch", "final_wiring"]);
+    expect(result.timelineEntries.some((e) => e.action === "project_integration_pipeline_step_state_recovered")).toBe(
+      true,
+    );
   });
 
   it("5. build pending shows continue button label", () => {

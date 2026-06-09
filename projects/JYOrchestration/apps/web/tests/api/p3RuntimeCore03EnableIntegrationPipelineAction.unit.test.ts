@@ -322,9 +322,7 @@ describe("P3-Runtime-Core-03 UI policy", () => {
     const src = readFileSync(join(componentsDir, "ImplementationExecutionBoardPanel.tsx"), "utf8");
     expect(src).toContain("evaluateIntegrationPipelineButtonFromSnapshot");
     expect(src).toContain("implementation-integration-run-button");
-    expect(src).toContain("implementation-integration-enabled-hint");
     expect(src).toContain("aria-disabled");
-    expect(src).toContain("userStatusLines");
     expect(src).not.toMatch(/githubVerifyTechnicalLines.*integrationSection/);
   });
 

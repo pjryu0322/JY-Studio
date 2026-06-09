@@ -30,6 +30,12 @@ export class IntegrationPipelineDomainError extends Error {
 const CONTINUE_PREVIEW_USER_MESSAGE =
   "Preview 준비를 계속 진행해야 합니다.\n아래 버튼을 눌러 다음 단계를 실행해 주세요.";
 
+export const INTEGRATION_BRANCH_REUSE_USER_MESSAGE =
+  "기존 통합 branch를 이어서 사용해 Preview 준비를 계속합니다.";
+
+export const INTEGRATION_BRANCH_PREPARE_FAILURE_USER_MESSAGE =
+  "통합 branch 준비 중 문제가 발생했습니다.\n다시 시도해 주세요.";
+
 const USER_SAFE_BY_CODE: Readonly<Record<IntegrationPipelineErrorCode, string>> = {
   integration_included_targets_empty: "통합 대상 CodeTask가 없습니다.",
   integration_source_missing:
@@ -38,7 +44,7 @@ const USER_SAFE_BY_CODE: Readonly<Record<IntegrationPipelineErrorCode, string>> 
   integration_final_wiring_pending:
     "최종 연결/통합 Wiring이 완료되지 않아 실제 앱 Preview를 준비할 수 없습니다.",
   integration_precheck_blocked: "통합 사전점검이 차단되었습니다. 차단 사유를 확인하세요.",
-  integration_branch_creation_failed: "통합 branch 생성에 실패했습니다.",
+  integration_branch_creation_failed: INTEGRATION_BRANCH_PREPARE_FAILURE_USER_MESSAGE,
   integration_build_failed: "Build 검증을 완료하지 못했습니다.\n다시 시도해 주세요.",
   integration_step_input_invalid:
     "통합 준비 상태를 다시 계산해야 합니다. 다시 시도해 주세요.",
@@ -51,6 +57,13 @@ function isRawRuntimeMessage(message: string): boolean {
     /TypeError/i.test(message) ||
     /reading 'filter'/i.test(message) ||
     /reading 'map'/i.test(message)
+  );
+}
+
+function isRawGithubHttpIntegrationBranchMessage(message: string): boolean {
+  return (
+    /integration branch 생성 실패 HTTP/i.test(message) ||
+    (/Reference already exists/i.test(message) && /documentation_url/i.test(message))
   );
 }
 
@@ -88,6 +101,9 @@ export function toUserSafeIntegrationErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (isRawRuntimeMessage(message)) {
     return USER_SAFE_BY_CODE.integration_runtime_error;
+  }
+  if (isRawGithubHttpIntegrationBranchMessage(message)) {
+    return USER_SAFE_BY_CODE.integration_branch_creation_failed;
   }
   if (message.trim()) return message;
   return USER_SAFE_BY_CODE.integration_runtime_error;

@@ -1,5 +1,8 @@
 import { selectCompletedCodeTasksForIntegration } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
-import { createGithubIntegrationBranch } from "@/lib/prototype/githubIntegrationBranchService";
+import {
+  ensureGithubIntegrationBranch,
+  isValidProjectIntegrationBranchName,
+} from "@/lib/prototype/githubIntegrationBranchService";
 import { mergeWorkBranchIntoIntegrationBranch } from "@/lib/prototype/githubIntegrationMergeService";
 import {
   buildCodeTaskIntegrationPlanDraft,
@@ -32,6 +35,7 @@ import {
   IntegrationPipelineDomainError,
   buildIntegrationPipelineRuntimeErrorLogFields,
   toUserSafeIntegrationErrorMessage,
+  INTEGRATION_BRANCH_REUSE_USER_MESSAGE,
 } from "@/lib/prototype/implementationIntegrationErrors";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -81,6 +85,7 @@ export async function runIntegrationBranchPipeline(input: {
   let lastPlan: CodeTaskIntegrationPlanV1 | null = null;
   let chainHeadForLog: string | null = null;
   let effectiveSourceBranchForLog: string | null = null;
+  let integrationBranchReused = false;
 
   const SOURCE_RESOLUTION_USER_MESSAGE =
     "최종 통합 기준 branch를 결정하지 못했습니다.\n다시 시도해 주세요.";
@@ -286,6 +291,15 @@ export async function runIntegrationBranchPipeline(input: {
       runIdByCodeTaskId,
       nowIso,
     });
+    const resumeIntegrationBranch = lastPlan?.integrationBranch?.trim();
+    if (
+      resumeIntegrationBranch &&
+      isValidProjectIntegrationBranchName(resumeIntegrationBranch, input.projectId)
+    ) {
+      plan = patchCodeTaskIntegrationPlan(plan, {
+        integrationBranch: resumeIntegrationBranch,
+      });
+    }
     lastPlan = plan;
 
   plan = patchCodeTaskIntegrationPlan(plan, { status: "branch_creating" });
@@ -294,32 +308,58 @@ export async function runIntegrationBranchPipeline(input: {
     integrationBranch: plan.integrationBranch,
   });
 
-  const branchCreate = await createGithubIntegrationBranch({
+  const branchEnsure = await ensureGithubIntegrationBranch({
     repoUrl: input.repoUrl,
     baseBranch: plan.baseBranch,
     projectId: input.projectId,
     githubToken: input.githubToken,
     integrationBranch: plan.integrationBranch,
+    allowExisting: true,
   });
 
-  if (!branchCreate.ok) {
+  if (!branchEnsure.ok || branchEnsure.status === "failed") {
+    if (branchEnsure.rawError) {
+      pushTimeline("implementation_integration_branch_create_failed", {
+        integrationBranch: plan.integrationBranch,
+        baseBranch: plan.baseBranch,
+        sourceBranch: effectiveSource.sourceBranch ?? undefined,
+        rawError: branchEnsure.rawError,
+      });
+    }
     plan = patchCodeTaskIntegrationPlan(plan, {
       status: "failed",
-      failureMessage: branchCreate.message,
+      failureMessage: branchEnsure.message,
     });
-    return { ok: false, plan, timeline, message: branchCreate.message };
+    return { ok: false, plan, timeline, message: branchEnsure.message };
+  }
+
+  if (branchEnsure.status === "already_exists") {
+    integrationBranchReused = true;
+    pushTimeline("implementation_integration_branch_already_exists", {
+      integrationBranch: branchEnsure.integrationBranch,
+      baseBranch: plan.baseBranch,
+      sourceBranch: effectiveSource.sourceBranch ?? undefined,
+      reason: "reference_already_exists",
+      rawStatus: branchEnsure.rawError ? 422 : undefined,
+    });
+    pushTimeline("implementation_integration_branch_reused", {
+      integrationBranch: branchEnsure.integrationBranch,
+      baseBranch: plan.baseBranch,
+      sourceBranch: effectiveSource.sourceBranch ?? undefined,
+    });
+  } else {
+    pushTimeline("implementation_integration_branch_created", {
+      targetRepository: plan.targetRepository,
+      baseBranch: plan.baseBranch,
+      integrationBranch: branchEnsure.integrationBranch,
+      baseCommitSha: branchEnsure.baseCommitSha,
+    });
   }
 
   plan = patchCodeTaskIntegrationPlan(plan, {
-    integrationBranch: branchCreate.integrationBranch,
-    baseCommitSha: branchCreate.baseCommitSha,
+    integrationBranch: branchEnsure.integrationBranch,
+    baseCommitSha: branchEnsure.baseCommitSha ?? plan.baseCommitSha ?? null,
     status: "integrating",
-  });
-  pushTimeline("implementation_integration_branch_created", {
-    targetRepository: plan.targetRepository,
-    baseBranch: plan.baseBranch,
-    integrationBranch: plan.integrationBranch,
-    baseCommitSha: branchCreate.baseCommitSha,
   });
 
   const mergeResults: CodeTaskIntegrationMergeResultV1[] = [];
@@ -364,12 +404,17 @@ export async function runIntegrationBranchPipeline(input: {
     });
     mergeResults.push(mergeResult);
 
-    if (mergeResult.status === "merged") {
-      pushTimeline("implementation_codetask_branch_merged", {
-        codeTaskId: item.codeTaskId,
-        workBranch: item.workBranch,
-        mergeCommitSha: mergeResult.mergeCommitSha,
-      });
+    if (mergeResult.status === "merged" || mergeResult.status === "already_integrated") {
+      pushTimeline(
+        mergeResult.status === "already_integrated"
+          ? "implementation_codetask_branch_already_integrated"
+          : "implementation_codetask_branch_merged",
+        {
+          codeTaskId: item.codeTaskId,
+          workBranch: item.workBranch,
+          mergeCommitSha: mergeResult.mergeCommitSha,
+        },
+      );
       continue;
     }
 
@@ -452,7 +497,9 @@ export async function runIntegrationBranchPipeline(input: {
     ok: true,
     plan,
     timeline,
-    message: "integration branch 통합 완료",
+    message: integrationBranchReused
+      ? INTEGRATION_BRANCH_REUSE_USER_MESSAGE
+      : "integration branch 통합 완료",
     createPr: Boolean(plan.pullRequestUrl),
   };
   } catch (error) {

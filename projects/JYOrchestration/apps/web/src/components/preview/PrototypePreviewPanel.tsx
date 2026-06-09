@@ -16,6 +16,7 @@ import {
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
 } from "@/components/preview/PrototypeExecutionChatPanel";
 import { ImplementationExecutionBoardPanel } from "@/components/preview/ImplementationExecutionBoardPanel";
+import { ImplementationStageNoticeModal } from "@/components/preview/ImplementationStageNoticeModal";
 import { ImplementationStageGlobalToolbar } from "@/components/preview/ImplementationStageGlobalToolbar";
 import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
 import { useImplementationToolbarMobileBreakpoint } from "@/components/ui/breakpoints";
@@ -274,7 +275,6 @@ import {
   QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
-import { repairCodeTaskPlanWithBranchPlan } from "@/lib/prototype/codeTaskPlanRepairService";
 import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import {
@@ -321,8 +321,6 @@ import {
   buildImplementationStatusToastDedupeKey,
   shouldSuppressImplementationStatusMessage,
 } from "@/lib/prototype/implementationStatusChatPolicy";
-import { resolveCodeTaskPromptDraftForCopyFromState } from "@/lib/prototype/resolveCodeTaskPromptDraftForCopy";
-import { CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE } from "@/lib/prototype/resolveCodeTaskPromptDraftForCopy";
 import {
   formatDeveloperPromptHeaderCopySuccessToast,
   formatDeveloperPromptSingleCopySuccessToast,
@@ -330,7 +328,6 @@ import {
 } from "@/lib/prototype/codeTaskDeveloperPromptBundle";
 import { resolveExecutionTargetCodeTaskId } from "@/lib/prototype/resolveExecutionTargetCodeTaskId";
 import {
-  CODE_TASK_STAGE_ONE_PLAN_COPY_SUCCESS_MESSAGE,
   resolveCodeTaskDeveloperPromptForCopy,
 } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
 import { getCodeTaskPromptContextFromMap } from "@/lib/prototype/codeTaskPromptContext";
@@ -605,7 +602,10 @@ export function PrototypePreviewPanel({
   const [protoBusy, setProtoBusy] = useState(false);
   const [integrationPipelineBusy, setIntegrationPipelineBusy] = useState(false);
   const [integrationMergeBusy, setIntegrationMergeBusy] = useState(false);
-  const [branchPlanRepairBusy, setBranchPlanRepairBusy] = useState(false);
+  const [implementationStageNoticeModal, setImplementationStageNoticeModal] = useState<{
+    readonly body: string;
+    readonly actionLabels?: readonly string[];
+  } | null>(null);
   const [implementationResetBusy, setImplementationResetBusy] = useState(false);
   const [implementationConversationResetNonce, setImplementationConversationResetNonce] = useState(0);
   /** postCreate 호출 직후~응답 전: 입력 잠금·진행 UI용 */
@@ -2159,6 +2159,8 @@ export function PrototypePreviewPanel({
 
   const implementationBoard = implementationStageBoardGateContext?.board ?? null;
   const boardPanelVisible = implementationBoard != null;
+  const boardPanelVisibleRef = useRef(boardPanelVisible);
+  boardPanelVisibleRef.current = boardPanelVisible;
 
   const isImplementationToolbarMobileCompact = useImplementationToolbarMobileBreakpoint();
 
@@ -2488,12 +2490,25 @@ export function PrototypePreviewPanel({
     },
   });
 
+  const appendAiNoticeForImplementation = useCallback(
+    (content: string) => {
+      const text = String(content ?? "").trim();
+      if (!text) return;
+      if (boardPanelVisibleRef.current) {
+        setImplementationStageNoticeModal({ body: text });
+        return;
+      }
+      executionSingleChat.appendAiNotice(text);
+    },
+    [executionSingleChat],
+  );
+
   const appendImplementationExecutionNotice = useCallback(
     (content: string) => {
       if (shouldSuppressImplementationStatusMessage({ content })) return;
-      executionSingleChat.appendAiNotice(content);
+      appendAiNoticeForImplementation(content);
     },
-    [executionSingleChat],
+    [appendAiNoticeForImplementation],
   );
 
   const showImplementationToast = useCallback(
@@ -2511,6 +2526,7 @@ export function PrototypePreviewPanel({
   appendExecutionNoticeRef.current = appendImplementationExecutionNotice;
 
   const prioritizedChatMessages = useMemo(() => {
+    if (boardPanelVisible) return [];
     const prioritized = executionSingleChat.chatMessages.map((m) => {
       const suggestions = (m.meta as any)?.interviewSuggestions;
       if (!Array.isArray(suggestions) || suggestions.length < 2) return m;
@@ -2533,6 +2549,7 @@ export function PrototypePreviewPanel({
       implementationBoardVisibleActionLabels,
     );
   }, [
+    boardPanelVisible,
     executionSingleChat.chatMessages,
     effectiveImplementationState,
     orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
@@ -3015,7 +3032,7 @@ export function PrototypePreviewPanel({
     enrichCodeTaskRunOrchestrationPatch,
     applyImplementationOrchestrationResult,
     executionSingleChat.chatMessages,
-    executionSingleChat.appendAiNotice,
+    appendAiNoticeForImplementation,
     dispatchNextQuickRunFromGithubVerify,
     showToast,
     applyImplementationRuntimeFetch,
@@ -3239,6 +3256,19 @@ export function PrototypePreviewPanel({
 
   const appendImplementationTaskListAiMessage = useCallback(
     (message: RequirementsMessage) => {
+      if (boardPanelVisibleRef.current) {
+        const text = String(message.content ?? "").trim();
+        const suggestions = (message.meta as { interviewSuggestions?: readonly string[] } | undefined)
+          ?.interviewSuggestions;
+        const actionLabels = suggestions?.filter((l) => String(l ?? "").trim());
+        if (text || actionLabels?.length) {
+          setImplementationStageNoticeModal({
+            body: text,
+            ...(actionLabels?.length ? { actionLabels: [...actionLabels] } : {}),
+          });
+        }
+        return;
+      }
       const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
       const nextMessages = [...(resolved.messages ?? []), message];
       executionSingleChat.applyPersistedMessages(nextMessages);
@@ -3620,7 +3650,7 @@ export function PrototypePreviewPanel({
         designOk: effectiveImplementationState.designOk,
         cursorApiConfigured: evaluateCursorExecutionAvailability({ setup: executionSetupRow }).ready,
         applyMessages: executionSingleChat.applyPersistedMessages,
-        appendNotice: (text) => executionSingleChat.appendAiNotice(text),
+        appendNotice: (text) => appendAiNoticeForImplementation(text),
         persistOrchestration: (chat, orch) => {
           if (chat && orch) {
             applyImplementationOrchestrationResult({
@@ -3874,7 +3904,7 @@ export function PrototypePreviewPanel({
             }
           : {}),
       });
-      executionSingleChat.appendAiNotice(outcome.aiMessageContent);
+      appendAiNoticeForImplementation(outcome.aiMessageContent);
       return { outcome: "executed" };
     },
     [orchestrationAwareRequirementsState, projectId, persistChatToDb, executionSingleChat, showToast],
@@ -3950,7 +3980,7 @@ export function PrototypePreviewPanel({
         implementationIntegratedExecutionStateV1: done,
       });
       const actionNotice = buildIntegratedStageStepActionNotice({ step: "final_scm", integratedState: done });
-      executionSingleChat.appendAiNotice(actionNotice);
+      appendAiNoticeForImplementation(actionNotice);
       const nowIso = new Date().toISOString();
       const nextBoard = buildImplementationExecutionBoardFromRequirementsState({
         projectId: pid,
@@ -3985,7 +4015,7 @@ export function PrototypePreviewPanel({
     });
 
     showToast("최종 SCM 반영 실행을 시작합니다...");
-    executionSingleChat.appendAiNotice(buildFinalScmIntegratedStageStartedNotice());
+    appendAiNoticeForImplementation(buildFinalScmIntegratedStageStartedNotice());
 
     void (async () => {
       try {
@@ -4020,7 +4050,7 @@ export function PrototypePreviewPanel({
           });
         }
 
-        executionSingleChat.appendAiNotice(notice);
+        appendAiNoticeForImplementation(notice);
 
         if (persistPatch.orchestration.kind === "completed") {
           const updatedWip =
@@ -4050,7 +4080,7 @@ export function PrototypePreviewPanel({
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         showToast(message);
-        executionSingleChat.appendAiNotice(buildFinalScmIntegratedStageFailedNotice(message));
+        appendAiNoticeForImplementation(buildFinalScmIntegratedStageFailedNotice(message));
       }
     })();
 
@@ -4158,7 +4188,7 @@ export function PrototypePreviewPanel({
       if (previewScopePatch) {
         noticeLines.push(...buildIntegrationScopeDetailLines(previewScopePatch.implementationPreviewScopeV1));
       }
-      executionSingleChat.appendAiNotice(noticeLines.join("\n"));
+      appendAiNoticeForImplementation(noticeLines.join("\n"));
 
       const nowIso = new Date().toISOString();
       const nextBoard = buildImplementationExecutionBoardFromRequirementsState({
@@ -4241,7 +4271,7 @@ export function PrototypePreviewPanel({
 
     void (async () => {
       setIntegrationPipelineBusy(true);
-      showToast("통합 branch 생성 및 Preview 준비 중…");
+      showToast("통합 및 Preview 준비 중…");
       try {
         const startedAtIso = new Date().toISOString();
 
@@ -4446,34 +4476,7 @@ export function PrototypePreviewPanel({
             noticeParts.push(...buildIntegrationScopeDetailLines(batch.previewScope));
           }
           if (noticeParts.length) {
-            executionSingleChat.appendAiNotice(noticeParts.join("\n"));
-          }
-
-          const nextBoard = buildImplementationExecutionBoardFromRequirementsState({
-            projectId: pid,
-            orchestration: {
-              ...parsedRequirementsState,
-              implementationIntegratedExecutionStateV1: batch.integratedState,
-              ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
-              ...(batch.previewScope
-                ? { implementationPreviewScopeV1: batch.previewScope }
-                : {}),
-              ...(batch.previewRuntime
-                ? { implementationPreviewRuntimeV1: batch.previewRuntime }
-                : {}),
-            },
-            integratedExecutionState: batch.integratedState,
-          });
-          if (nextBoard) {
-            appendImplementationTaskListAiMessage(
-              buildImplementationExecutionBoardMessage({
-                board: nextBoard,
-                nowIso: new Date().toISOString(),
-                previewReady: prototypeRunSyncSnapshot.previewReady,
-                codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
-                executionSetup: executionSetupRow,
-              }),
-            );
+            appendAiNoticeForImplementation(noticeParts.join("\n"));
           }
         }
 
@@ -4539,10 +4542,6 @@ export function PrototypePreviewPanel({
     applyPendingFromOrchestrationPatch,
     executionSingleChat,
     showToast,
-    appendImplementationTaskListAiMessage,
-    prototypeRunSyncSnapshot.previewReady,
-    orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
-    executionSetupRow,
     runFinalScmIntegratedStageStep,
     previewUrl,
     latestRun?.previewUrl,
@@ -4791,12 +4790,12 @@ export function PrototypePreviewPanel({
           const canUseTaskList = canUseTaskListForWipOrchestration({ taskList, seed });
 
           if (prepared.unconfirmedSlotsNote) {
-            executionSingleChat.appendAiNotice(prepared.unconfirmedSlotsNote);
+            appendAiNoticeForImplementation(prepared.unconfirmedSlotsNote);
           }
 
           if (!runtimeWorkItems.length) {
             const message = "Code Agent WIP 작업 요청을 위해 구현 작업목록 또는 작업 계획이 필요합니다.";
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             return { outcome: "blocked", message };
           }
 
@@ -4867,7 +4866,7 @@ export function PrototypePreviewPanel({
                 implementationTaskExecutionStateV1: failedState,
               });
             }
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             showToast("Code Agent WIP 요청을 시작하지 못했습니다. 개발자 작업 상태를 실패로 기록했습니다.");
             return { outcome: "blocked", message };
           }
@@ -4910,7 +4909,7 @@ export function PrototypePreviewPanel({
                   scoped.blockedReason ??
                   "실행 가능한 개발자 작업이 없어 Code Agent WIP 요청을 시작하지 못했습니다.",
               });
-              executionSingleChat.appendAiNotice(message);
+              appendAiNoticeForImplementation(message);
               return { outcome: "blocked", message };
             }
             if (scopedTaskId) {
@@ -4919,7 +4918,7 @@ export function PrototypePreviewPanel({
                 selectedWorkItems: scoped.selectedWorkItems,
               });
               if (!scopeValidation.ok) {
-                executionSingleChat.appendAiNotice(scopeValidation.message);
+                appendAiNoticeForImplementation(scopeValidation.message);
                 return { outcome: "blocked", message: scopeValidation.message };
               }
             }
@@ -4937,7 +4936,7 @@ export function PrototypePreviewPanel({
               requirementsStateJson,
               parsedState: runtimeState,
               applyMessages: executionSingleChat.applyPersistedMessages,
-              appendNotice: (text) => executionSingleChat.appendAiNotice(text),
+              appendNotice: (text) => appendAiNoticeForImplementation(text),
               persistOrchestration: () => {
                 // Full persist + local merge handled by applyImplementationOrchestrationResult below.
               },
@@ -4959,7 +4958,7 @@ export function PrototypePreviewPanel({
           );
 
           if (wipResult.kind === "blocked") {
-            executionSingleChat.appendAiNotice(wipResult.message);
+            appendAiNoticeForImplementation(wipResult.message);
             return { outcome: "blocked", message: wipResult.message };
           }
           if (wipResult.kind === "already_active") {
@@ -5104,13 +5103,13 @@ export function PrototypePreviewPanel({
           const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
           if (!board) {
             const message = "구현 Execution Board가 준비되지 않았습니다.";
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             return { outcome: "blocked", message };
           }
           const envGate = resolveTaskCursorExecutionEnvGate({ setup: executionSetupRow });
           if (envGate.blocked) {
             const message = envGate.message ?? "환경설정 점검이 필요합니다.";
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             showToast(message);
             return { outcome: "blocked", message };
           }
@@ -5126,7 +5125,7 @@ export function PrototypePreviewPanel({
             })
           ) {
             const message = CODE_TASK_IN_FLIGHT_USER_MESSAGE;
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             showToast(message);
             return { outcome: "no_op", message };
           }
@@ -5152,7 +5151,7 @@ export function PrototypePreviewPanel({
             const message =
               planningGate.message ??
               IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE;
-            executionSingleChat.appendAiNotice(
+            appendAiNoticeForImplementation(
               `${message} [구현 준비 산출물 동기화] 또는 기획단계 보완 후 다시 시도해 주세요.`,
             );
             showToast(message);
@@ -5170,7 +5169,7 @@ export function PrototypePreviewPanel({
             });
             if (!targetRepository) {
               const message = "GitHub 저장소 설정이 없습니다. 환경설정을 확인해 주세요.";
-              executionSingleChat.appendAiNotice(message);
+              appendAiNoticeForImplementation(message);
               return { outcome: "blocked", message };
             }
             const nowIso = new Date().toISOString();
@@ -5197,7 +5196,7 @@ export function PrototypePreviewPanel({
               nowIso,
             });
             if (!prep.ok) {
-              executionSingleChat.appendAiNotice(prep.message);
+              appendAiNoticeForImplementation(prep.message);
               showToast(prep.message);
               return { outcome: prep.outcome, message: prep.message };
             }
@@ -5308,7 +5307,7 @@ export function PrototypePreviewPanel({
                   });
                 }
                 if (!preflightFailure) {
-                  executionSingleChat.appendAiNotice(notice);
+                  appendAiNoticeForImplementation(notice);
                 }
                 showToast(notice);
               } catch (e) {
@@ -5330,7 +5329,7 @@ export function PrototypePreviewPanel({
                   messages: executionSingleChat.chatMessages,
                   orchestrationPatch,
                 });
-                executionSingleChat.appendAiNotice(`CodeTask 실행 오류: ${friendly}`);
+                appendAiNoticeForImplementation(`CodeTask 실행 오류: ${friendly}`);
                 showToast(`CodeTask 실행 오류: ${friendly}`);
               }
             })();
@@ -5363,7 +5362,7 @@ export function PrototypePreviewPanel({
           }
           if (!scoped.selectedTaskId || !scoped.selectedWorkItems.length) {
             const message = scoped.blockedReason ?? "실행 가능한 Task를 찾을 수 없습니다.";
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             return { outcome: "blocked", message };
           }
           const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
@@ -5374,7 +5373,7 @@ export function PrototypePreviewPanel({
           });
           if (!targetRepository) {
             const message = "GitHub 저장소 설정이 없습니다. 환경설정을 확인해 주세요.";
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             return { outcome: "blocked", message };
           }
           const nowIso = new Date().toISOString();
@@ -5383,7 +5382,7 @@ export function PrototypePreviewPanel({
 
           if (!selectedWorkItems.length) {
             const message = scoped.blockedReason ?? "선택 Task에 연결된 WorkItem이 없습니다.";
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             return { outcome: "blocked", message };
           }
 
@@ -5405,7 +5404,7 @@ export function PrototypePreviewPanel({
           selectedWorkItems = [...refinement.workItems];
           if (!selectedWorkItems.length) {
             const message = "WorkItem 보정 후 실행 가능한 항목이 없습니다.";
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             return { outcome: "blocked", message };
           }
 
@@ -5469,7 +5468,7 @@ export function PrototypePreviewPanel({
                 }),
               },
             });
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             showToast("WorkItem 보완 필요 · Cursor 실행을 시작하지 않았습니다.");
             return { outcome: "blocked", message };
           }
@@ -5563,7 +5562,7 @@ export function PrototypePreviewPanel({
                 });
               }
               if (!preflightFailure) {
-                executionSingleChat.appendAiNotice(notice);
+                appendAiNoticeForImplementation(notice);
               }
               showToast(notice);
             } catch (e) {
@@ -5585,7 +5584,7 @@ export function PrototypePreviewPanel({
                 messages: executionSingleChat.chatMessages,
                 orchestrationPatch,
               });
-              executionSingleChat.appendAiNotice(`Task Cursor 실행 오류: ${friendly}`);
+              appendAiNoticeForImplementation(`Task Cursor 실행 오류: ${friendly}`);
               showToast(`Task Cursor 실행 오류: ${friendly}`);
             }
           })();
@@ -5644,7 +5643,7 @@ export function PrototypePreviewPanel({
           if (!wip) {
             const message =
               "WIP 초안 또는 Cursor 실행 결과가 저장되어 있지 않습니다. 먼저 [생성요청]을 실행해 WIP 초안을 생성해 주세요.";
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             return { outcome: "blocked", message };
           }
           const bridgeStatus = wip.bridgeExecutionStatus;
@@ -5654,14 +5653,14 @@ export function PrototypePreviewPanel({
             bridgeStatus !== "failed"
           ) {
             const message = `현재 bridge 상태(${bridgeStatus ?? "unknown"})에서는 Cursor 실행 요청을 할 수 없습니다.`;
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             return { outcome: "blocked", message };
           }
           const selectedTaskId = wip.selectedTaskId?.trim();
           const selectedWorkItemIds = wip.selectedWorkItemIds ?? [];
           if (!selectedTaskId || !selectedWorkItemIds.length) {
             const message = "WIP 실행 대상 taskId 또는 workItem이 없습니다. [생성요청]을 다시 실행해 주세요.";
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             return { outcome: "blocked", message };
           }
           const bridgeWorkItems = orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [];
@@ -5669,7 +5668,7 @@ export function PrototypePreviewPanel({
           const bridgeTaskList = orchestrationAwareRequirementsState.implementationTaskListV1;
           if (!workItems.length) {
             const message = "선택된 Cursor WorkItem을 찾을 수 없습니다.";
-            executionSingleChat.appendAiNotice(message);
+            appendAiNoticeForImplementation(message);
             return { outcome: "blocked", message };
           }
           const stubCommit = wip.commits.find((c) => c.sha?.startsWith("wip-stub"));
@@ -5699,7 +5698,7 @@ export function PrototypePreviewPanel({
                   orchestrationPatch: orchestration.orchestrationPatch,
                 });
               } else {
-                executionSingleChat.appendAiNotice(message);
+                appendAiNoticeForImplementation(message);
               }
               showToast(message);
               if (openEnv) setExecutionEnvironmentModalOpen(true);
@@ -5788,7 +5787,7 @@ export function PrototypePreviewPanel({
                 readiness.context.workspaceRootSource === "env_fallback" ? "not_applicable" : "unchecked",
               wip,
             }).join("\n");
-            executionSingleChat.appendAiNotice(
+            appendAiNoticeForImplementation(
               ["Target Repo 수동 E2E 진단:", "", e2eDiagnostic].join("\n"),
             );
             const readinessTimeline = buildTargetRepoE2eTimelineEntry({
@@ -5956,7 +5955,7 @@ export function PrototypePreviewPanel({
                     },
                   });
                 } else {
-                  executionSingleChat.appendAiNotice(orchestration.message);
+                  appendAiNoticeForImplementation(orchestration.message);
                 }
                 showToast(orchestration.message);
                 return;
@@ -6046,7 +6045,7 @@ export function PrototypePreviewPanel({
             implementationExecutionBoardStateV1: nextBoardState,
           });
           const notice = "사용자 확인 항목을 처리했습니다. 후속 작업을 이어갈 수 있습니다.";
-          executionSingleChat.appendAiNotice(notice);
+          appendAiNoticeForImplementation(notice);
           showToast(notice);
           queueMicrotask(() => chatInputRef.current?.focus());
           return { outcome: "executed" };
@@ -6116,7 +6115,7 @@ export function PrototypePreviewPanel({
             board: nextBoard ?? board,
             taskId,
           });
-          executionSingleChat.appendAiNotice(notice);
+          appendAiNoticeForImplementation(notice);
           showToast(notice.split("\n")[0] ?? notice);
           return { outcome: "executed" };
         }
@@ -6172,7 +6171,7 @@ export function PrototypePreviewPanel({
           );
           const message =
             "검토단계로 이동할 수 있습니다. 좌측 [검토] 메뉴에서 프로토타입 사용자 테스트를 진행하세요.";
-          executionSingleChat.appendAiNotice(message);
+          appendAiNoticeForImplementation(message);
           showToast(message);
           return { outcome: "executed" };
         }
@@ -6206,7 +6205,7 @@ export function PrototypePreviewPanel({
             }),
           );
           const notice = "사용자 테스트를 시작했습니다. Preview에서 화면·흐름·문구를 확인해 주세요.";
-          executionSingleChat.appendAiNotice(notice);
+          appendAiNoticeForImplementation(notice);
           showToast(notice);
           return { outcome: "executed" };
         }
@@ -6300,7 +6299,7 @@ export function PrototypePreviewPanel({
             targetTaskId: converted.targetTaskId,
             reworkRequestId: converted.reworkRequestId,
           });
-          executionSingleChat.appendAiNotice(notice);
+          appendAiNoticeForImplementation(notice);
           showToast(notice);
           return { outcome: "executed" };
         }
@@ -6331,7 +6330,7 @@ export function PrototypePreviewPanel({
             }),
           );
           const notice = "프로토타입 사용자 테스트 검토를 완료했습니다.";
-          executionSingleChat.appendAiNotice(notice);
+          appendAiNoticeForImplementation(notice);
           showToast(notice);
           return { outcome: "executed" };
         }
@@ -6548,7 +6547,7 @@ export function PrototypePreviewPanel({
       const envGate = resolveTaskCursorExecutionEnvGate({ setup: executionSetupRow });
       if (envGate.blocked) {
         showToast(envGate.message ?? "환경설정 점검이 필요합니다.");
-        executionSingleChat.appendAiNotice(envGate.message ?? "환경설정 점검이 필요합니다.");
+        appendAiNoticeForImplementation(envGate.message ?? "환경설정 점검이 필요합니다.");
         return;
       }
 
@@ -6569,7 +6568,7 @@ export function PrototypePreviewPanel({
           },
         });
         const notice = buildReworkRequestRegistrationNotice({ board, taskId });
-        executionSingleChat.appendAiNotice(notice);
+        appendAiNoticeForImplementation(notice);
         showToast(`${taskId} · 재작업 등록 후 실행합니다.`);
       }
 
@@ -6766,7 +6765,7 @@ export function PrototypePreviewPanel({
         canRequestCodeAgentWipWork: () => {
           const gate = evaluateImplementationCursorGate(implementationCursorGate);
           if (!gate.allowed) {
-            executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
+            appendAiNoticeForImplementation(formatImplementationCursorBlockedNotice(implementationCursorGate));
             return false;
           }
           return true;
@@ -7699,24 +7698,6 @@ export function PrototypePreviewPanel({
     ],
   );
 
-  const handleCopyStageOnePlanningPrompt = useCallback(() => {
-    const pid = projectId.trim();
-    if (!pid) return;
-    const built = resolveCodeTaskPromptDraftForCopyFromState({
-      requirementsStateJson: orchestrationAwareRequirementsState,
-      mode: "all",
-    });
-    if (!built.ok || !built.prompt) {
-      showToast(built.reason ?? CODE_TASK_PROMPT_DRAFT_NOT_READY_MESSAGE);
-      return;
-    }
-    void writeClipboardText(built.prompt).then((ok) => {
-      showToast(
-        ok ? CODE_TASK_STAGE_ONE_PLAN_COPY_SUCCESS_MESSAGE : "클립보드 복사에 실패했습니다.",
-      );
-    });
-  }, [projectId, orchestrationAwareRequirementsState, showToast]);
-
   const handleCopyDeveloperPromptsFromHeader = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) return;
@@ -7775,46 +7756,6 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState,
     executionSetupRow,
     implementationRuntimeDbBundle?.job?.currentCodeTaskId,
-    showToast,
-  ]);
-
-  const handleRepairCodeTaskBranchPlan = useCallback(() => {
-    const pid = projectId.trim();
-    if (!pid || branchPlanRepairBusy) return;
-    const raw = orchestrationAwareRequirementsStateRef.current;
-    const plan = parseImplementationCodeTaskPlanV1(raw.implementationCodeTaskPlanV1);
-    if (!plan) {
-      showToast("CodeTask 계획이 없습니다.");
-      return;
-    }
-    setBranchPlanRepairBusy(true);
-    try {
-      const baseBranch = String(executionSetupRow?.baseBranch ?? "main").trim() || "main";
-      const repaired = repairCodeTaskPlanWithBranchPlan({
-        plan,
-        taskList: raw.implementationTaskListV1 ?? implementationStageBoardInput?.taskList ?? null,
-        baseBranch,
-      });
-      const codeTaskPromptContextMapV1 = buildCodeTaskPromptContextMap({
-        projectId: pid,
-        codeTaskPlan: repaired.plan,
-        requirementsStateJson: raw as Record<string, unknown>,
-      });
-      void persistChatToDb(undefined, {
-        implementationCodeTaskPlanV1: repaired.plan,
-        codeTaskPromptContextMapV1,
-      }).then(() => {
-        showToast(repaired.summaryLines.at(-1) ?? "Branch Plan 보정 완료");
-      });
-    } finally {
-      setBranchPlanRepairBusy(false);
-    }
-  }, [
-    projectId,
-    branchPlanRepairBusy,
-    executionSetupRow,
-    implementationStageBoardInput?.taskList,
-    persistChatToDb,
     showToast,
   ]);
 
@@ -7903,7 +7844,7 @@ export function PrototypePreviewPanel({
         void startImplementationQuickRun();
         return;
       }
-      executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
+      appendAiNoticeForImplementation(formatImplementationCursorBlockedNotice(implementationCursorGate));
       return;
     }
 
@@ -7934,7 +7875,7 @@ export function PrototypePreviewPanel({
       effectiveImplementationState.implementationTaskPlanV1,
     );
     if (toast) showToast(toast);
-    else executionSingleChat.appendAiNotice(formatImplementationCursorBlockedNotice(implementationCursorGate));
+    else appendAiNoticeForImplementation(formatImplementationCursorBlockedNotice(implementationCursorGate));
   }, [
     projectId,
     protoBusy,
@@ -8070,7 +8011,7 @@ export function PrototypePreviewPanel({
         maxMessages: 80,
       });
       const wire = await postWorkNoteSummarize({ projectId: pid, scope: "project", contentHtml });
-      executionSingleChat.appendAiNotice(
+      appendAiNoticeForImplementation(
         [
           "AI 요약",
           "",
@@ -8314,7 +8255,6 @@ export function PrototypePreviewPanel({
             onSelectedTaskIdsChange={handleBoardSelectedTaskIdsChange}
             onSelectedCodeTaskIdsChange={handleBoardSelectedCodeTaskIdsChange}
             onCopyCodeTaskCursorPrompt={handleCopyCodeTaskCursorPrompt}
-            onCopyStageOnePlanningPrompt={handleCopyStageOnePlanningPrompt}
             onCopyDeveloperPromptsFromHeader={handleCopyDeveloperPromptsFromHeader}
             onRetryGithubVerify={() => void handleManualGithubVerifyRetry()}
             onRetryFailedCodeTask={(codeTaskId) => void handleRetryFailedCodeTask(codeTaskId)}
@@ -8342,15 +8282,14 @@ export function PrototypePreviewPanel({
             }
             onMergeIntegrationPullRequest={mergeIntegrationPullRequest}
             integrationMergeBusy={integrationMergeBusy}
-            onRepairCodeTaskBranchPlan={handleRepairCodeTaskBranchPlan}
-            branchPlanRepairBusy={branchPlanRepairBusy}
           />
         ) : null}
+        {!boardPanelVisible ? (
         <div className="jyo-prototype-execution-chat-region">
         <PrototypeExecutionChatPanel
           conversationStatus={executionSingleChat.conversationStatus}
           chatMessages={prioritizedChatMessages}
-          dashboardPanelActive={boardPanelVisible}
+          dashboardPanelActive={false}
           memberControls={null}
           input={executionSingleChat.input}
           onInputChange={executionSingleChat.setInput}
@@ -8400,7 +8339,24 @@ export function PrototypePreviewPanel({
           </details>
         ) : null}
         </div>
+        ) : null}
       </div>
+
+      <ImplementationStageNoticeModal
+        open={boardPanelVisible && implementationStageNoticeModal != null}
+        body={implementationStageNoticeModal?.body ?? ""}
+        actionLabels={implementationStageNoticeModal?.actionLabels}
+        onAction={(label) => {
+          if (handleImplementationChip(label)) {
+            setImplementationStageNoticeModal(null);
+            return;
+          }
+          const picked = executionSingleChat.handleInterviewSuggestionPick(label);
+          if (picked.kind === "action") handleChatIntent(picked.action);
+          setImplementationStageNoticeModal(null);
+        }}
+        onClose={() => setImplementationStageNoticeModal(null)}
+      />
 
       <RecommendationEvidenceDrawer
         open={recommendationPanelOpen}

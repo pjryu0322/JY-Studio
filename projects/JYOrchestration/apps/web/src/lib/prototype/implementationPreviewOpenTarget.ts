@@ -109,7 +109,7 @@ export function getCodeTaskDiagnosticPreviewOpenTarget(input: {
     return {
       url: null,
       mode: "internal",
-      label: "CodeTask 결과 미리보기",
+      label: "Preview",
       hint: "완료된 CodeTask가 없어 진단용 Preview를 열 수 없습니다.",
     };
   }
@@ -118,14 +118,14 @@ export function getCodeTaskDiagnosticPreviewOpenTarget(input: {
     return {
       url: scopeUrl,
       mode: "new_window",
-      label: "CodeTask 결과 미리보기",
+      label: "Preview",
       hint: "완료된 CodeTask 산출물의 진단용 미리보기입니다. 실제 앱 Preview가 아닙니다.",
     };
   }
   return {
     url: null,
     mode: "internal",
-    label: "CodeTask 결과 미리보기",
+    label: "Preview",
     hint: PREVIEW_URL_NOT_READY_HINT,
   };
 }
@@ -148,10 +148,4 @@ export function getPreviewOpenTarget(
     return { ...target, hint: PRE_INTEGRATION_PREVIEW_HINT };
   }
   return target;
-}
-
-export function getPreviewScopeViewUrl(
-  runtime: ImplementationPreviewRuntimeV1 | null | undefined,
-): string | null {
-  return String(runtime?.previewUrl ?? "").trim() || null;
 }

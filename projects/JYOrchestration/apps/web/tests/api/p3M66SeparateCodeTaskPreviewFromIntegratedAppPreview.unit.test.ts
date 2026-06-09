@@ -130,7 +130,7 @@ describe("P3-M66 preview readiness separation", () => {
       runtime: diagnosticReadyRuntime,
       codeTaskPreviewReady: true,
     });
-    expect(diagnostic.label).toBe("CodeTask 결과 미리보기");
+    expect(diagnostic.label).toBe("Preview");
     expect(diagnostic.url).toContain("/preview?scope=latest");
     const integrated = getIntegratedAppPreviewOpenTarget({
       runtime: diagnosticReadyRuntime,

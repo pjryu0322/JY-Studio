@@ -51,8 +51,8 @@ describe("ImplementationExecutionBoardPanel", () => {
     expect(html).not.toContain("implementation-next-task-card");
     expect(html).not.toContain("implementation-code-agent-progress-card");
     expect(html).not.toContain("구현 실행 현황");
-    expect(html).toContain("implementation-execution-overview-card");
-    expect(html).toMatch(/구현 실행 (중|대기)/);
+    expect(html).not.toContain("implementation-execution-overview-card");
+    expect(html).not.toContain("전체 CodeTask:");
     expect(html).toContain("implementation-task-tree-section");
     expect(html).not.toContain("implementation-board-primary-cta");
     expect(html).not.toContain("Quick 실행");

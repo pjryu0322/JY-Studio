@@ -110,7 +110,7 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
     ? snapshot.integration.buildStatus !== "completed"
       ? "Build 검증 및 Preview 준비 계속"
       : "Preview 준비 계속"
-    : "통합 branch 생성 및 Preview 준비";
+    : "통합 및 Preview 준비";
 
   const userStatusLines: string[] = [];
 
