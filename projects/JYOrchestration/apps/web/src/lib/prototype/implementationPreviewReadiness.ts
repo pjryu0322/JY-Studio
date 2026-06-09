@@ -184,13 +184,11 @@ export function evaluateImplementationPreviewReadiness(input: {
   ) {
     mode = "build_pending";
   } else if (
-    allVisibleCompleted &&
     integratedRenderOk &&
     finalWiringCompleted &&
     integrationBranchStepDone &&
     buildStepDone &&
-    appPreviewStepDone &&
-    stepPhase === "all_completed"
+    appPreviewStepDone
   ) {
     mode = "integrated_app_preview_ready";
   } else if (codeTaskPreviewReady) {
@@ -234,9 +232,8 @@ export function evaluateImplementationPreviewReadiness(input: {
       statusTitleLines.push("아직 실제 앱 Preview는 준비되지 않았습니다.");
       break;
     case "integrated_app_preview_ready":
-      statusTitleLines.push("통합 완료");
+      statusTitleLines.push("통합 및 Preview 준비 완료");
       statusTitleLines.push("실제 앱 Preview 준비 완료");
-      statusTitleLines.push("최종 Wiring, 통합 branch, build 검증이 완료되었습니다.");
       break;
     default:
       break;

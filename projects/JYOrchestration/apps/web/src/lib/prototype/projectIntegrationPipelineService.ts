@@ -35,6 +35,7 @@ import type { ProjectIntegrationPipelineEligibilityV1 } from "@/lib/prototype/pr
 import { mapEligibilityReasonToPipelineStatus } from "@/lib/prototype/projectIntegrationPipelineEligibility";
 import { recoverCompletedIntegrationStepsFromPlan } from "@/lib/prototype/implementationIntegrationStepRecovery";
 import {
+  INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE,
   IntegrationPipelineDomainError,
   toUserSafeIntegrationErrorMessage,
 } from "@/lib/prototype/implementationIntegrationErrors";
@@ -711,6 +712,7 @@ export async function runProjectIntegrationPipeline(input: {
       previewReady: true,
       previewUrl: previewUrlFromRun ?? runtime?.previewUrl ?? null,
       nextRequiredStep: null,
+      userSafeMessage: INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE,
       plan: plan ?? undefined,
       previewRuntimePatch,
       orchestrationPatch,

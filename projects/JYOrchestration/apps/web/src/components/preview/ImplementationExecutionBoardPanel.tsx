@@ -74,12 +74,9 @@ import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeT
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
+import { evaluateImplementationPreviewButtonState } from "@/lib/prototype/implementationPreviewButtonPolicy";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
-import {
-  getCodeTaskDiagnosticPreviewOpenTarget,
-  getIntegratedAppPreviewOpenTarget,
-} from "@/lib/prototype/implementationPreviewOpenTarget";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 export function ImplementationExecutionBoardPanel({
@@ -117,6 +114,7 @@ export function ImplementationExecutionBoardPanel({
   onRunIntegrationPipeline,
   integrationPipelineBusy,
   codeTaskIntegrationPlanV1,
+  implementationIntegrationStepsV1,
   onMergeIntegrationPullRequest,
   integrationMergeBusy,
 }: {
@@ -154,6 +152,7 @@ export function ImplementationExecutionBoardPanel({
   readonly onRunIntegrationPipeline?: () => void;
   readonly integrationPipelineBusy?: boolean;
   readonly codeTaskIntegrationPlanV1?: unknown;
+  readonly implementationIntegrationStepsV1?: unknown;
   readonly onMergeIntegrationPullRequest?: () => void;
   readonly integrationMergeBusy?: boolean;
 }) {
@@ -300,6 +299,8 @@ export function ImplementationExecutionBoardPanel({
           implementationCodeTaskPlanV1: implementationCodeTaskPlanV1 ?? undefined,
           codeTaskExecutionRunsV1: codeTaskRuns,
           implementationExecutionBoardStateV1: boardState ?? undefined,
+          implementationIntegrationStepsV1: implementationIntegrationStepsV1 ?? undefined,
+          codeTaskIntegrationPlanV1: codeTaskIntegrationPlanV1 ?? undefined,
         },
         codeTaskPlan: implementationCodeTaskPlanV1,
         selectedCodeTaskIds: checkedCodeTaskIds,
@@ -318,6 +319,8 @@ export function ImplementationExecutionBoardPanel({
       codeTaskRuns,
       cursorWorkItemsV1?.length,
       implementationPreviewRuntimeV1,
+      implementationIntegrationStepsV1,
+      codeTaskIntegrationPlanV1,
     ],
   );
 
@@ -550,6 +553,8 @@ export function ImplementationExecutionBoardPanel({
     () => ({
       implementationCodeTaskPlanV1: implementationCodeTaskPlanV1 ?? undefined,
       codeTaskExecutionRunsV1: codeTaskRuns,
+      implementationIntegrationStepsV1: implementationIntegrationStepsV1 ?? undefined,
+      codeTaskIntegrationPlanV1: codeTaskIntegrationPlanV1 ?? undefined,
       implementationExecutionUnitsV1: projectId
         ? {
             version: "implementation_execution_units_v1" as const,
@@ -563,6 +568,8 @@ export function ImplementationExecutionBoardPanel({
     [
       implementationCodeTaskPlanV1,
       codeTaskRuns,
+      implementationIntegrationStepsV1,
+      codeTaskIntegrationPlanV1,
       projectId,
       codeTaskSummaryCounts.executionUnits,
       codeTaskSummaryCounts.selectedExecutionUnitIds,
@@ -616,22 +623,23 @@ export function ImplementationExecutionBoardPanel({
   const showIntegrationButton = integrationButtonState.show;
   const integrationButtonEnabled = integrationButtonState.enabled;
 
-  const codeTaskDiagnosticPreviewTarget = useMemo(
+  const previewButtonState = useMemo(
     () =>
-      getCodeTaskDiagnosticPreviewOpenTarget({
-        runtime: parsedPreviewRuntime,
+      evaluateImplementationPreviewButtonState({
+        projectId: projectId ?? board.projectId,
+        snapshot: runtimeSnapshot,
+        previewRuntime: parsedPreviewRuntime,
         codeTaskPreviewReady: integrationSection.codeTaskPreviewReady,
-      }),
-    [parsedPreviewRuntime, integrationSection.codeTaskPreviewReady],
-  );
-
-  const integratedAppPreviewTarget = useMemo(
-    () =>
-      getIntegratedAppPreviewOpenTarget({
-        runtime: parsedPreviewRuntime,
         integratedAppPreviewReady: integrationSection.integratedAppPreviewReady,
       }),
-    [parsedPreviewRuntime, integrationSection.integratedAppPreviewReady],
+    [
+      projectId,
+      board.projectId,
+      runtimeSnapshot,
+      parsedPreviewRuntime,
+      integrationSection.codeTaskPreviewReady,
+      integrationSection.integratedAppPreviewReady,
+    ],
   );
 
   const codeAgentProgress = useMemo(
@@ -918,34 +926,23 @@ export function ImplementationExecutionBoardPanel({
                   {integrationMergeBusy ? "main 반영 중…" : "main에 반영"}
                 </button>
               ) : null}
-              {integrationSection.codeTaskPreviewReady &&
-              codeTaskDiagnosticPreviewTarget.url ? (
+              {previewButtonState.show ? (
                 <button
                   type="button"
-                  className={styles.integrationPreviewScopeButton}
-                  data-testid="implementation-codetask-diagnostic-preview-open-button"
+                  className={
+                    previewButtonState.mode === "integrated_app_preview"
+                      ? styles.integrationPreviewButton
+                      : styles.integrationPreviewScopeButton
+                  }
+                  data-testid="implementation-preview-open-button"
+                  disabled={!previewButtonState.enabled || !previewButtonState.url}
+                  title={previewButtonState.disabledReason ?? undefined}
                   onClick={() => {
-                    window.open(
-                      codeTaskDiagnosticPreviewTarget.url!,
-                      "_blank",
-                      "noopener,noreferrer",
-                    );
+                    if (!previewButtonState.enabled || !previewButtonState.url) return;
+                    window.open(previewButtonState.url, "_blank", "noopener,noreferrer");
                   }}
                 >
-                  {codeTaskDiagnosticPreviewTarget.label}
-                </button>
-              ) : null}
-              {integrationSection.integratedAppPreviewReady &&
-              integratedAppPreviewTarget.url ? (
-                <button
-                  type="button"
-                  className={styles.integrationPreviewButton}
-                  data-testid="implementation-integrated-app-preview-open-button"
-                  onClick={() => {
-                    window.open(integratedAppPreviewTarget.url!, "_blank", "noopener,noreferrer");
-                  }}
-                >
-                  {integratedAppPreviewTarget.label}
+                  {previewButtonState.label}
                 </button>
               ) : null}
             </div>

@@ -80,11 +80,11 @@ describe("P3-M66 preview readiness separation", () => {
       eligibility,
       previewRuntime: diagnosticReadyRuntime,
     });
-    expect(readiness.mode).toBe("final_wiring_pending");
+    expect(readiness.mode).toBe("integration_pending");
     expect(readiness.codeTaskPreviewReady).toBe(true);
     expect(readiness.integratedAppPreviewReady).toBe(false);
     expect(readiness.statusTitleLines).not.toContain("통합 완료");
-    expect(readiness.statusTitleLines.some((l) => l.includes("Wiring"))).toBe(true);
+    expect(readiness.statusTitleLines.some((l) => l.includes("통합"))).toBe(true);
   });
 
   it("integration precheck blocked mode", () => {

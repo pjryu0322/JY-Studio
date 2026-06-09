@@ -33,6 +33,9 @@ const CONTINUE_PREVIEW_USER_MESSAGE =
 export const INTEGRATION_BRANCH_REUSE_USER_MESSAGE =
   "기존 통합 branch를 이어서 사용해 Preview 준비를 계속합니다.";
 
+export const INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE =
+  "실제 앱 Preview가 준비되었습니다.\nPreview 버튼을 눌러 확인해 주세요.";
+
 export const INTEGRATION_BRANCH_PREPARE_FAILURE_USER_MESSAGE =
   "통합 branch 준비 중 문제가 발생했습니다.\n다시 시도해 주세요.";
 

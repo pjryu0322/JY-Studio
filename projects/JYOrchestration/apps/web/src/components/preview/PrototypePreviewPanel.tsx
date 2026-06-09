@@ -234,7 +234,11 @@ import {
   mergeIntegrationPullRequestClient,
   runIntegrationBranchPipelineClient,
 } from "@/lib/prototype/implementationIntegrationClient";
-import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
+import {
+  INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE,
+  toUserSafeIntegrationErrorMessage,
+} from "@/lib/prototype/implementationIntegrationErrors";
+import { shouldSuppressIntegrationContinueUserMessage } from "@/lib/prototype/implementationPreviewButtonPolicy";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { buildCompletedCodeTaskIntegrationTimelineEntry } from "@/lib/prototype/integrationPreviewTimeline";
 import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
@@ -4290,6 +4294,12 @@ export function PrototypePreviewPanel({
           parseCodeTaskIntegrationPlanV1(pipelineResult.orchestrationPatch?.codeTaskIntegrationPlanV1) ??
           null;
 
+        const orchestrationAfterPipeline = {
+          ...parsedRequirementsState,
+          ...(pipelineResult.orchestrationPatch ?? {}),
+          ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
+        };
+
         if (pipelineResult.orchestrationPatch) {
           applyPendingFromOrchestrationPatch(pipelineResult.orchestrationPatch);
         }
@@ -4338,15 +4348,26 @@ export function PrototypePreviewPanel({
 
         const batch = applyIntegratedPipelineSyncSteps({
           projectId: pid,
-          orchestration: {
-            ...parsedRequirementsState,
-            ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
-          },
+          orchestration: orchestrationAfterPipeline,
           nowIso: startedAtIso,
           externalPreviewUrl,
           sourceIntegrationBranch: integrationPlan?.integrationBranch ?? null,
         });
         if (!batch.ok) {
+          const apiPreviewReady = shouldSuppressIntegrationContinueUserMessage({
+            status: pipelineResult.status,
+            previewReady: pipelineResult.previewReady,
+            integratedAppPreviewReady: resolveIntegratedAppPreviewReadyFromOrchestration({
+              projectId: pid,
+              orchestration: orchestrationAfterPipeline,
+            }),
+          });
+          if (apiPreviewReady) {
+            showToast(
+              pipelineResult.message?.trim() || INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE,
+            );
+            return;
+          }
           showToast(`통합 실패: ${batch.message}`);
           return;
         }
@@ -4480,11 +4501,18 @@ export function PrototypePreviewPanel({
           }
         }
 
+        const mergedOrchestrationForReady = {
+          ...orchestrationAfterPipeline,
+          implementationIntegratedExecutionStateV1: batch.integratedState,
+          ...(batch.previewScope ? { implementationPreviewScopeV1: batch.previewScope } : {}),
+          ...(batch.previewRuntime ? { implementationPreviewRuntimeV1: batch.previewRuntime } : {}),
+        };
+
         const refState = parseRequirementsStateJson(requirementsStateJsonRef.current);
         const boardAfter = buildImplementationExecutionBoardFromRequirementsState({
           projectId: pid,
           orchestration: {
-            ...(refState ?? parsedRequirementsState),
+            ...(refState ?? orchestrationAfterPipeline),
             implementationIntegratedExecutionStateV1: batch.integratedState,
             ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
             ...(batch.previewScope
@@ -4501,17 +4529,23 @@ export function PrototypePreviewPanel({
           runFinalScmIntegratedStageStep();
         }
 
-        if (batch.previewBuildOk) {
-          const integratedReady = resolveIntegratedAppPreviewReadyFromOrchestration({
-            projectId: pid,
-            orchestration: {
-              ...parsedRequirementsState,
-              ...(batch.previewRuntime
-                ? { implementationPreviewRuntimeV1: batch.previewRuntime }
-                : {}),
-              ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
-            },
-          });
+        const integratedReady = resolveIntegratedAppPreviewReadyFromOrchestration({
+          projectId: pid,
+          orchestration: mergedOrchestrationForReady,
+        });
+        const suppressContinueToast = shouldSuppressIntegrationContinueUserMessage({
+          status: pipelineResult.status,
+          previewReady: pipelineResult.previewReady,
+          integratedAppPreviewReady: integratedReady,
+        });
+
+        if (suppressContinueToast) {
+          showToast(
+            integrationServerSaved
+              ? pipelineResult.message?.trim() || INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE
+              : "통합·Preview는 화면에 반영됐으나 서버 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+          );
+        } else if (batch.previewBuildOk) {
           showToast(
             integrationServerSaved
               ? integratedReady
@@ -4519,6 +4553,8 @@ export function PrototypePreviewPanel({
                 : "CodeTask Preview 준비 완료 · 실제 앱 Preview는 아직 준비되지 않았습니다."
               : "통합·Preview는 화면에 반영됐으나 서버 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.",
           );
+        } else if (pipelineResult.message?.trim()) {
+          showToast(pipelineResult.message);
         } else if (batch.completedSteps.length > 0) {
           const previewErr = batch.previewBuildError?.trim();
           showToast(
@@ -8279,6 +8315,9 @@ export function PrototypePreviewPanel({
             integrationPipelineBusy={integrationPipelineBusy}
             codeTaskIntegrationPlanV1={
               orchestrationAwareRequirementsState.codeTaskIntegrationPlanV1
+            }
+            implementationIntegrationStepsV1={
+              orchestrationAwareRequirementsState.implementationIntegrationStepsV1
             }
             onMergeIntegrationPullRequest={mergeIntegrationPullRequest}
             integrationMergeBusy={integrationMergeBusy}

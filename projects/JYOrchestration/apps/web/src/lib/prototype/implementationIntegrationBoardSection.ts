@@ -83,7 +83,7 @@ export function buildImplementationIntegrationBoardSection(input: {
   });
   const integrationStepLines = buildIntegrationStepStatusLines(integrationSteps);
   const integratedAppPreviewReady = snapshot
-    ? snapshot.preview.integratedAppPreviewReady
+    ? snapshot.preview.integratedAppPreviewReady || previewReadiness.integratedAppPreviewReady
     : previewReadiness.integratedAppPreviewReady;
   const codeTaskPreviewReady = snapshot
     ? snapshot.preview.codeTaskPreviewReady
@@ -93,9 +93,15 @@ export function buildImplementationIntegrationBoardSection(input: {
     String(input.previewRuntime?.previewUrl ?? "").trim() ||
     snapshot?.preview.previewUrl ||
     null;
-  const previewStatusLines: string[] = snapshot
-    ? snapshot.preview.message.split("\n").filter(Boolean)
-    : [...previewReadiness.statusTitleLines];
+  const previewStatusLines: string[] = integratedAppPreviewReady
+    ? [
+        "통합 및 Preview 준비 완료",
+        ...integrationStepLines,
+        "Preview 버튼을 눌러 실제 앱 화면을 확인할 수 있습니다.",
+      ]
+    : snapshot
+      ? snapshot.preview.message.split("\n").filter(Boolean)
+      : [...previewReadiness.statusTitleLines];
   const canIntegrate = snapshot
     ? snapshot.integration.canRunIntegration || snapshot.codeTask.completed > 0
     : input.eligibility.canIntegrate;
