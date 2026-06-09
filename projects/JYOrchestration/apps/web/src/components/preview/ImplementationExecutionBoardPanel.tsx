@@ -118,6 +118,8 @@ export function ImplementationExecutionBoardPanel({
   implementationIntegrationStepsV1,
   onMergeIntegrationPullRequest,
   integrationMergeBusy,
+  integrationPipelinePreviewReady,
+  integrationPipelineStatus,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -156,6 +158,8 @@ export function ImplementationExecutionBoardPanel({
   readonly implementationIntegrationStepsV1?: unknown;
   readonly onMergeIntegrationPullRequest?: () => void;
   readonly integrationMergeBusy?: boolean;
+  readonly integrationPipelinePreviewReady?: boolean;
+  readonly integrationPipelineStatus?: string;
 }) {
   const reworkVm = useMemo(
     () =>
@@ -597,6 +601,8 @@ export function ImplementationExecutionBoardPanel({
         previewRuntime: parsedPreviewRuntime,
         integrationPlan: parsedIntegrationPlan,
         runtimeSnapshot,
+        integrationPipelinePreviewReady,
+        integrationPipelineStatus,
       }),
     [
       projectId,
@@ -613,6 +619,8 @@ export function ImplementationExecutionBoardPanel({
       parsedIntegrationPlan,
       integrationRequirementsState,
       runtimeSnapshot,
+      integrationPipelinePreviewReady,
+      integrationPipelineStatus,
     ],
   );
 
@@ -634,6 +642,8 @@ export function ImplementationExecutionBoardPanel({
         integratedAppPreviewReady: integrationSection.integratedAppPreviewReady,
         integrationPlan: parsedIntegrationPlan,
         requirementsState: integrationRequirementsState,
+        pipelinePreviewReady: integrationPipelinePreviewReady,
+        pipelineStatus: integrationPipelineStatus,
       }),
     [
       projectId,
@@ -644,6 +654,8 @@ export function ImplementationExecutionBoardPanel({
       integrationSection.integratedAppPreviewReady,
       parsedIntegrationPlan,
       integrationRequirementsState,
+      integrationPipelinePreviewReady,
+      integrationPipelineStatus,
     ],
   );
 

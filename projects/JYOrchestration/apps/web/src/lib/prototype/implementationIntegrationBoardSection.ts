@@ -23,6 +23,7 @@ import { buildIntegrationStepStatusLines } from "@/lib/prototype/implementationI
 import { resolveIntegrationStepsForRuntimeSnapshot } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
 import { integrationPlanHasSuccessfulMerge } from "@/lib/prototype/implementationIntegrationPlanMergeStatus";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
+import { resolveImplementationPreviewIntegratedReady } from "@/lib/prototype/implementationPreviewEntryPolicy";
 
 export type ImplementationIntegrationBoardSectionVm = Readonly<{
   readonly canIntegrate: boolean;
@@ -65,6 +66,8 @@ export function buildImplementationIntegrationBoardSection(input: {
   readonly integrationPlan?: CodeTaskIntegrationPlanV1 | null;
   readonly requirementsState?: RequirementsStateJson | null;
   readonly runtimeSnapshot?: ImplementationRuntimeSnapshotV1 | null;
+  readonly integrationPipelinePreviewReady?: boolean | null;
+  readonly integrationPipelineStatus?: string | null;
 }): ImplementationIntegrationBoardSectionVm {
   const scope = input.previewScope ?? null;
   const snapshot = input.runtimeSnapshot ?? null;
@@ -82,9 +85,23 @@ export function buildImplementationIntegrationBoardSection(input: {
     codeTaskPlan: input.codeTaskPlan,
   });
   const integrationStepLines = buildIntegrationStepStatusLines(integrationSteps);
-  const integratedAppPreviewReady = snapshot
-    ? snapshot.preview.integratedAppPreviewReady || previewReadiness.integratedAppPreviewReady
-    : previewReadiness.integratedAppPreviewReady;
+  const integratedAppPreviewReadyFromEntry =
+    snapshot && input.projectId
+      ? resolveImplementationPreviewIntegratedReady({
+          projectId: input.projectId,
+          snapshot,
+          previewRuntime: input.previewRuntime,
+          integrationPlan: input.integrationPlan,
+          requirementsState: input.requirementsState,
+          pipelinePreviewReady: input.integrationPipelinePreviewReady,
+          pipelineStatus: input.integrationPipelineStatus,
+        })
+      : false;
+  const integratedAppPreviewReady = integratedAppPreviewReadyFromEntry
+    ? true
+    : snapshot
+      ? snapshot.preview.integratedAppPreviewReady || previewReadiness.integratedAppPreviewReady
+      : previewReadiness.integratedAppPreviewReady;
   const codeTaskPreviewReady = snapshot
     ? snapshot.preview.codeTaskPreviewReady
     : previewReadiness.codeTaskPreviewReady;
@@ -97,6 +114,7 @@ export function buildImplementationIntegrationBoardSection(input: {
     ? [
         "통합 및 Preview 준비 완료",
         ...integrationStepLines,
+        "실제 앱 Preview: 준비 완료",
         "Preview 버튼을 눌러 실제 앱 화면을 확인할 수 있습니다.",
       ]
     : snapshot
@@ -151,13 +169,15 @@ export function buildImplementationIntegrationBoardSection(input: {
       canIntegrate ||
       input.integratedPipelineLines.length > 0 ||
       (snapshot?.codeTask.selected ?? 0) > 0,
-    summaryLines: [
-      ...(snapshot
-        ? buildIntegrationEligibilitySummaryLinesFromSnapshot(snapshot)
-        : buildIntegrationEligibilitySummaryLines(input.eligibility)),
-      ...buildIntegrationScopeCountSummaryLines(scope),
-      ...integrationStepLines,
-    ],
+    summaryLines: integratedAppPreviewReady
+      ? [...integrationStepLines]
+      : [
+          ...(snapshot
+            ? buildIntegrationEligibilitySummaryLinesFromSnapshot(snapshot)
+            : buildIntegrationEligibilitySummaryLines(input.eligibility)),
+          ...buildIntegrationScopeCountSummaryLines(scope),
+          ...integrationStepLines,
+        ],
     pipelineLines: input.integratedPipelineLines,
     scopeDetailLines: integratedAppPreviewReady
       ? [

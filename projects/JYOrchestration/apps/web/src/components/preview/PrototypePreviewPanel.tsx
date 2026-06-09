@@ -239,6 +239,7 @@ import {
   toUserSafeIntegrationErrorMessage,
 } from "@/lib/prototype/implementationIntegrationErrors";
 import { shouldSuppressIntegrationContinueUserMessage } from "@/lib/prototype/implementationPreviewButtonPolicy";
+import { isLegacyCodeTaskPreviewScopeNoticeContent } from "@/lib/prototype/implementationPreviewEntryPolicy";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { buildCompletedCodeTaskIntegrationTimelineEntry } from "@/lib/prototype/integrationPreviewTimeline";
 import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
@@ -605,6 +606,12 @@ export function PrototypePreviewPanel({
   const [automationBlockReason, setAutomationBlockReason] = useState<PrototypeRunStatusReason>(null);
   const [protoBusy, setProtoBusy] = useState(false);
   const [integrationPipelineBusy, setIntegrationPipelineBusy] = useState(false);
+  const [integrationPipelineClientResult, setIntegrationPipelineClientResult] = useState<{
+    readonly status?: string;
+    readonly previewReady?: boolean;
+  } | null>(null);
+  const integrationPipelineClientResultRef = useRef(integrationPipelineClientResult);
+  integrationPipelineClientResultRef.current = integrationPipelineClientResult;
   const [integrationMergeBusy, setIntegrationMergeBusy] = useState(false);
   const [implementationStageNoticeModal, setImplementationStageNoticeModal] = useState<{
     readonly body: string;
@@ -2499,16 +2506,14 @@ export function PrototypePreviewPanel({
       const text = String(content ?? "").trim();
       if (!text) return;
       const pid = projectId.trim();
+      const integratedReady =
+        pid &&
+        resolveIntegratedAppPreviewReadyFromOrchestration({
+          projectId: pid,
+          orchestration: orchestrationAwareRequirementsStateRef.current,
+        });
       if (boardPanelVisibleRef.current) {
-        if (
-          pid &&
-          resolveIntegratedAppPreviewReadyFromOrchestration({
-            projectId: pid,
-            orchestration: orchestrationAwareRequirementsStateRef.current,
-          })
-        ) {
-          return;
-        }
+        if (integratedReady) return;
         setImplementationStageNoticeModal({ body: text });
         return;
       }
@@ -2520,13 +2525,41 @@ export function PrototypePreviewPanel({
   const appendImplementationExecutionNotice = useCallback(
     (content: string) => {
       if (shouldSuppressImplementationStatusMessage({ content })) return;
+      const pid = projectId.trim();
+      if (
+        pid &&
+        isLegacyCodeTaskPreviewScopeNoticeContent(content) &&
+        resolveIntegratedAppPreviewReadyFromOrchestration({
+          projectId: pid,
+          orchestration: orchestrationAwareRequirementsStateRef.current,
+        })
+      ) {
+        return;
+      }
       appendAiNoticeForImplementation(content);
     },
-    [appendAiNoticeForImplementation],
+    [appendAiNoticeForImplementation, projectId],
   );
 
   const showImplementationToast = useCallback(
     (msg: string, displayMs = 3200) => {
+      const pid = projectId.trim();
+      const pipeline = integrationPipelineClientResultRef.current;
+      if (
+        shouldSuppressIntegrationContinueUserMessage({
+          status: pipeline?.status,
+          previewReady: pipeline?.previewReady,
+          integratedAppPreviewReady: pid
+            ? resolveIntegratedAppPreviewReadyFromOrchestration({
+                projectId: pid,
+                orchestration: orchestrationAwareRequirementsStateRef.current,
+              })
+            : false,
+          message: msg,
+        })
+      ) {
+        return;
+      }
       const key = buildImplementationStatusToastDedupeKey(msg);
       if (key) {
         if (implementationStatusToastSeenRef.current.has(key)) return;
@@ -2534,7 +2567,7 @@ export function PrototypePreviewPanel({
       }
       showToast(msg, displayMs);
     },
-    [showToast],
+    [showToast, projectId],
   );
 
   appendExecutionNoticeRef.current = appendImplementationExecutionNotice;
@@ -4324,6 +4357,13 @@ export function PrototypePreviewPanel({
           applyPendingFromOrchestrationPatch(pipelineResult.orchestrationPatch);
         }
 
+        if (pipelineResult.ok) {
+          setIntegrationPipelineClientResult({
+            status: pipelineResult.status,
+            previewReady: pipelineResult.previewReady,
+          });
+        }
+
         if (!pipelineResult.ok) {
           showToast(pipelineResult.message ?? "통합 branch 생성에 실패했습니다.");
           if (pipelineResult.orchestrationPatch) {
@@ -4517,7 +4557,15 @@ export function PrototypePreviewPanel({
             previewReady: pipelineResult.previewReady,
             integratedAppPreviewReady: resolveIntegratedAppPreviewReadyFromOrchestration({
               projectId: pid,
-              orchestration: orchestrationAfterPipeline,
+              orchestration: {
+                ...orchestrationAfterPipeline,
+                ...(batch.previewRuntime
+                  ? { implementationPreviewRuntimeV1: batch.previewRuntime }
+                  : {}),
+                ...(batch.previewScope
+                  ? { implementationPreviewScopeV1: batch.previewScope }
+                  : {}),
+              },
             }),
           });
           if (!integratedReadyForNotice) {
@@ -8351,6 +8399,8 @@ export function PrototypePreviewPanel({
             }
             onMergeIntegrationPullRequest={mergeIntegrationPullRequest}
             integrationMergeBusy={integrationMergeBusy}
+            integrationPipelinePreviewReady={integrationPipelineClientResult?.previewReady}
+            integrationPipelineStatus={integrationPipelineClientResult?.status}
           />
         ) : null}
         {!boardPanelVisible ? (

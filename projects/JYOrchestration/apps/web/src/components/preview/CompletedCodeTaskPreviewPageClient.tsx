@@ -130,11 +130,13 @@ export function CompletedCodeTaskPreviewPageClient(props: { readonly projectId: 
             {pageHeader.subtitle ? (
               <p className={styles.summaryLine}>{pageHeader.subtitle}</p>
             ) : null}
-            {scope.warnings.map((warning) => (
-              <p key={warning} className={styles.noticeWarning}>
-                {warning}
-              </p>
-            ))}
+            {pageHeader.showScopeDetails
+              ? scope.warnings.map((warning) => (
+                  <p key={warning} className={styles.noticeWarning}>
+                    {warning}
+                  </p>
+                ))
+              : null}
             {runtime?.status === "ready" &&
             (mainMode === "internal_iframe" || mainMode === "external_launch") ? (
               <p className={styles.noticeOk}>Preview 준비 완료</p>

@@ -62,5 +62,9 @@ export function shouldSuppressIntegrationContinueUserMessage(input: {
   if (input.previewReady === true) return true;
   if (input.integratedAppPreviewReady === true) return true;
   if (String(input.status ?? "").trim() === "integrated_app_preview_ready") return true;
+  const message = String(input.message ?? "").trim();
+  if (message.includes("Preview 준비를 계속 진행해야 합니다") && input.integratedAppPreviewReady === true) {
+    return true;
+  }
   return false;
 }
