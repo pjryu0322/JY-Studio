@@ -28,6 +28,7 @@ export function shouldRunCompletedCodeTaskPreviewFallbackOnOpen(input: {
   return !hasExistingCodeTaskPreviewArtifact(input);
 }
 
+/** @deprecated use ensureCompletedCodeTaskPreviewForFallback from completedCodeTaskPreviewBuildService */
 export function runCompletedCodeTaskPreviewFallbackSync(input: {
   readonly projectId: string;
   readonly orchestration: ImplementationRequirementsBoardOrchestrationSlice;

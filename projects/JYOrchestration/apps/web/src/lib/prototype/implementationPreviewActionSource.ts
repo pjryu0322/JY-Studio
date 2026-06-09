@@ -1,12 +1,12 @@
-export type PreviewActionSourceV1 =
-  | "integration_prepare_button"
-  | "preview_button"
-  | "diagnostic_preview";
-
-export type CompletedCodeTaskPreviewNoticeActionSourceV1 =
+export type ImplementationPreviewActionSourceV1 =
   | "integration_prepare_button"
   | "preview_button"
   | "diagnostic";
+
+/** @deprecated use ImplementationPreviewActionSourceV1 */
+export type PreviewActionSourceV1 = ImplementationPreviewActionSourceV1 | "diagnostic_preview";
+
+export type CompletedCodeTaskPreviewNoticeActionSourceV1 = ImplementationPreviewActionSourceV1;
 
 const COMPLETED_CODETASK_PREVIEW_TIMELINE_ACTIONS = new Set([
   "completed_codetask_integration_started",
@@ -23,15 +23,12 @@ export function isCompletedCodeTaskPreviewTimelineAction(action: string): boolea
 }
 
 export function shouldSuppressCompletedCodeTaskPreviewUserNotice(input: {
-  readonly actionSource: CompletedCodeTaskPreviewNoticeActionSourceV1;
+  readonly actionSource: ImplementationPreviewActionSourceV1;
   readonly integratedReady: boolean;
   readonly action?: string | null;
 }): boolean {
   if (input.actionSource === "integration_prepare_button") return true;
   if (input.integratedReady) return true;
-  if (input.action && isCompletedCodeTaskPreviewTimelineAction(input.action)) {
-    return input.actionSource === "integration_prepare_button";
-  }
   return false;
 }
 
@@ -41,7 +38,7 @@ export function shouldIgnoreCompletedCodeTaskPreviewNoticeForIntegrationAction(i
   readonly integratedReady: boolean;
   readonly action?: string | null;
 }): boolean {
-  const source: CompletedCodeTaskPreviewNoticeActionSourceV1 =
+  const source: ImplementationPreviewActionSourceV1 =
     input.actionSource === "diagnostic_preview" ? "diagnostic" : input.actionSource;
   return shouldSuppressCompletedCodeTaskPreviewUserNotice({
     actionSource: source,

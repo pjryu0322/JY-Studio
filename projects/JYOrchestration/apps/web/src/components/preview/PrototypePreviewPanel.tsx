@@ -233,8 +233,8 @@ import {
   mergeIntegrationPullRequestClient,
 } from "@/lib/prototype/implementationIntegrationClient";
 import { runProjectIntegrationPrepareOnly } from "@/lib/prototype/projectIntegrationPipelineClient";
+import { ensureCompletedCodeTaskPreviewForFallback } from "@/lib/prototype/completedCodeTaskPreviewBuildService";
 import {
-  runCompletedCodeTaskPreviewFallbackSync,
   shouldRunCompletedCodeTaskPreviewFallbackOnOpen,
 } from "@/lib/prototype/completedCodeTaskPreviewFallback";
 import {
@@ -4376,24 +4376,25 @@ export function PrototypePreviewPanel({
               ? latestRun.suggestedPreviewUrl.trim()
               : null);
 
-          const batch = runCompletedCodeTaskPreviewFallbackSync({
+          const fallback = await ensureCompletedCodeTaskPreviewForFallback({
             projectId: pid,
+            actionSource: "preview_button",
             orchestration,
             externalPreviewUrl,
             sourceIntegrationBranch: integrationPlan?.integrationBranch ?? null,
           });
-          if (!batch.ok) {
-            showToast(batch.message);
+          if (!fallback.ok) {
+            showToast(fallback.message ?? "CodeTask Preview 준비에 실패했습니다.");
             return;
           }
-          const patch = {
-            implementationIntegratedExecutionStateV1: batch.integratedState,
-            ...(batch.previewScope ? { implementationPreviewScopeV1: batch.previewScope } : {}),
-            ...(batch.previewRuntime ? { implementationPreviewRuntimeV1: batch.previewRuntime } : {}),
-          };
-          applyPendingFromOrchestrationPatch(patch);
-          await persistChatToDb(undefined, patch, undefined, { awaitServer: false, force: true });
-          openUrl = batch.previewUrl?.trim() || buildCodeTaskPreviewFallbackUrl(pid);
+          if (fallback.orchestrationPatch) {
+            applyPendingFromOrchestrationPatch(fallback.orchestrationPatch);
+            await persistChatToDb(undefined, fallback.orchestrationPatch, undefined, {
+              awaitServer: false,
+              force: true,
+            });
+          }
+          openUrl = fallback.previewUrl?.trim() || buildCodeTaskPreviewFallbackUrl(pid);
         }
 
         window.open(openUrl, "_blank", "noopener,noreferrer");
@@ -4465,15 +4466,18 @@ export function PrototypePreviewPanel({
         }
 
         if (pipelineResult.ok) {
+          const pipelineIntegratedReady =
+            pipelineResult.previewReady === true ||
+            String(pipelineResult.status ?? "").trim() === "integrated_app_preview_ready";
           setIntegrationPipelineClientResult({
-            status: pipelineResult.status,
-            previewReady: pipelineResult.previewReady,
+            status: pipelineIntegratedReady ? "integrated_app_preview_ready" : pipelineResult.status,
+            previewReady: pipelineIntegratedReady ? true : pipelineResult.previewReady,
             receivedAt: Date.now(),
           });
         }
 
         if (!pipelineResult.ok) {
-          showToast(pipelineResult.message ?? "통합 branch 생성에 실패했습니다.");
+          showToast(pipelineResult.message ?? "통합 및 Preview 준비에 실패했습니다.");
           if (pipelineResult.orchestrationPatch) {
             await persistChatToDb(undefined, pipelineResult.orchestrationPatch, undefined, {
               awaitServer: false,
