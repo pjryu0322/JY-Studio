@@ -242,7 +242,7 @@ describe("P3-Runtime-Core-03-6B unify preview entry routing", () => {
   it("15. PrototypePreviewPanel skips notice modal when integrated ready", () => {
     const src = readFileSync(join(componentsDir, "PrototypePreviewPanel.tsx"), "utf8");
     expect(src).toContain("resolveIntegratedAppPreviewReadyFromOrchestration");
-    expect(src).toContain("integratedReadyForNotice");
+    expect(src).toContain("COMPLETED_CODETASK_PREVIEW_NOTICE_SUPPRESSED_LOG_ACTION");
   });
 
   it("16. runtime internal_app render mode counts as integrated ready signal", () => {

@@ -41,10 +41,12 @@ describe("P3-Runtime-Core-03-7 block legacy continue toast", () => {
     expect(toast.message).toContain("Preview 버튼");
   });
 
-  it("3. not integrated allows continue toast", () => {
+  it("3. not integrated allows continue toast when continue button visible", () => {
     const toast = resolveIntegrationPipelineUserToast({
       previewReady: false,
       message: "Preview 준비를 계속 진행해야 합니다. 아래 버튼을 눌러 다음 단계를 실행해 주세요.",
+      nextRequiredStep: "build",
+      hasVisibleContinueButton: true,
     });
     expect(toast.reason).toBe("continue_next_step");
     expect(toast.message).toContain("Preview 준비를 계속");

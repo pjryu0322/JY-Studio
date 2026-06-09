@@ -227,25 +227,35 @@ import { integrateCompletedCodeTasksForPreview } from "@/lib/prototype/implement
 import { resolveIntegratedAppPreviewReadyFromOrchestration } from "@/lib/prototype/implementationPreviewReadiness";
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import {
-  applyIntegratedPipelineSyncSteps,
   isFinalScmIntegratedStepReady,
 } from "@/lib/prototype/implementationIntegratedPipelineBatch";
 import {
   mergeIntegrationPullRequestClient,
-  runIntegrationBranchPipelineClient,
 } from "@/lib/prototype/implementationIntegrationClient";
+import { runProjectIntegrationPrepareOnly } from "@/lib/prototype/projectIntegrationPipelineClient";
+import {
+  runCompletedCodeTaskPreviewFallbackSync,
+  shouldRunCompletedCodeTaskPreviewFallbackOnOpen,
+} from "@/lib/prototype/completedCodeTaskPreviewFallback";
+import {
+  buildCodeTaskPreviewFallbackUrl,
+  isLegacyCodeTaskPreviewScopeNoticeContent,
+  sanitizeIntegratedAppPreviewUrl,
+  type ImplementationPreviewEntryModeV1,
+} from "@/lib/prototype/implementationPreviewEntryPolicy";
+import {
+  COMPLETED_CODETASK_PREVIEW_NOTICE_SUPPRESSED_LOG_ACTION,
+} from "@/lib/prototype/implementationPreviewActionSource";
 import {
   INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE,
   toUserSafeIntegrationErrorMessage,
 } from "@/lib/prototype/implementationIntegrationErrors";
 import { shouldSuppressIntegrationContinueUserMessage } from "@/lib/prototype/implementationPreviewButtonPolicy";
-import { isLegacyCodeTaskPreviewScopeNoticeContent } from "@/lib/prototype/implementationPreviewEntryPolicy";
 import {
   isLegacyContinuePreviewMessage,
   resolveIntegrationPipelineUserToast,
 } from "@/lib/prototype/implementationIntegrationToastPolicy";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
-import { buildCompletedCodeTaskIntegrationTimelineEntry } from "@/lib/prototype/integrationPreviewTimeline";
 import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
 import {
   buildInitialReviewStageUserTestSession,
@@ -2524,7 +2534,7 @@ export function PrototypePreviewPanel({
         integratedReady &&
         (isLegacyCodeTaskPreviewScopeNoticeContent(text) || isLegacyContinuePreviewMessage(text))
       ) {
-        console.info("[implementation] completed_codetask_preview_notice_suppressed_after_integrated_ready", {
+        console.info(`[implementation] ${COMPLETED_CODETASK_PREVIEW_NOTICE_SUPPRESSED_LOG_ACTION}`, {
           status: pipeline?.status,
           previewReady: pipeline?.previewReady,
         });
@@ -4323,6 +4333,83 @@ export function PrototypePreviewPanel({
     })();
   }, [projectId, showToast]);
 
+  const openImplementationPreview = useCallback(
+    (input: { readonly mode: ImplementationPreviewEntryModeV1; readonly url: string }) => {
+      void (async () => {
+        const pid = projectId.trim();
+        if (!pid || !input.url.trim()) return;
+
+        if (input.mode === "integrated_app_preview") {
+          const url = sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: input.url });
+          if (!url) return;
+          window.open(url, "_blank", "noopener,noreferrer");
+          return;
+        }
+
+        if (input.mode !== "codetask_result_preview") return;
+
+        const orchestration = orchestrationAwareRequirementsStateRef.current;
+        const integratedReady = resolveIntegratedAppPreviewReadyFromOrchestration({
+          projectId: pid,
+          orchestration,
+        });
+        if (integratedReady) return;
+
+        let openUrl = input.url.trim();
+        if (
+          shouldRunCompletedCodeTaskPreviewFallbackOnOpen({
+            mode: input.mode,
+            integratedAppPreviewReady: integratedReady,
+            previewScopeV1: orchestration.implementationPreviewScopeV1,
+            previewRuntimeV1: orchestration.implementationPreviewRuntimeV1,
+          })
+        ) {
+          const integrationPlan = parseCodeTaskIntegrationPlanV1(
+            orchestration.codeTaskIntegrationPlanV1,
+          );
+          const externalPreviewUrl =
+            previewUrl ??
+            (latestRun?.previewUrl && isLikelyPreviewUrl(latestRun.previewUrl)
+              ? latestRun.previewUrl.trim()
+              : null) ??
+            (latestRun?.suggestedPreviewUrl && isLikelyPreviewUrl(latestRun.suggestedPreviewUrl)
+              ? latestRun.suggestedPreviewUrl.trim()
+              : null);
+
+          const batch = runCompletedCodeTaskPreviewFallbackSync({
+            projectId: pid,
+            orchestration,
+            externalPreviewUrl,
+            sourceIntegrationBranch: integrationPlan?.integrationBranch ?? null,
+          });
+          if (!batch.ok) {
+            showToast(batch.message);
+            return;
+          }
+          const patch = {
+            implementationIntegratedExecutionStateV1: batch.integratedState,
+            ...(batch.previewScope ? { implementationPreviewScopeV1: batch.previewScope } : {}),
+            ...(batch.previewRuntime ? { implementationPreviewRuntimeV1: batch.previewRuntime } : {}),
+          };
+          applyPendingFromOrchestrationPatch(patch);
+          await persistChatToDb(undefined, patch, undefined, { awaitServer: false, force: true });
+          openUrl = batch.previewUrl?.trim() || buildCodeTaskPreviewFallbackUrl(pid);
+        }
+
+        window.open(openUrl, "_blank", "noopener,noreferrer");
+      })();
+    },
+    [
+      projectId,
+      showToast,
+      persistChatToDb,
+      applyPendingFromOrchestrationPatch,
+      previewUrl,
+      latestRun?.previewUrl,
+      latestRun?.suggestedPreviewUrl,
+    ],
+  );
+
   const runIntegrationPipeline = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) {
@@ -4352,9 +4439,7 @@ export function PrototypePreviewPanel({
       setIntegrationPipelineBusy(true);
       showToast("통합 및 Preview 준비 중…");
       try {
-        const startedAtIso = new Date().toISOString();
-
-        const pipelineResult = await runIntegrationBranchPipelineClient({
+        const pipelineResult = await runProjectIntegrationPrepareOnly({
           projectId: pid,
           projectName: projectName.trim() || null,
           implementationCodeTaskPlanV1: parsedRequirementsState.implementationCodeTaskPlanV1,
@@ -4398,268 +4483,48 @@ export function PrototypePreviewPanel({
           return;
         }
 
-        let timeline = [
-          ...(pipelineResult.orchestrationPatch?.promptTimeline ??
-            parsedRequirementsState.promptTimeline ??
-            []),
-        ];
-        timeline = appendPromptTimeline(
-          timeline,
-          buildCompletedCodeTaskIntegrationTimelineEntry({
-            action: "completed_codetask_integration_started",
-            projectId: pid,
-            nowIso: startedAtIso,
-          }),
-        );
-        timeline = appendPromptTimeline(
-          timeline,
-          buildCompletedCodeTaskIntegrationTimelineEntry({
-            action: "completed_codetask_preview_build_started",
-            projectId: pid,
-            nowIso: startedAtIso,
-          }),
-        );
-
-        const externalPreviewUrl =
-          previewUrl ??
-          (latestRun?.previewUrl && isLikelyPreviewUrl(latestRun.previewUrl)
-            ? latestRun.previewUrl.trim()
-            : null) ??
-          (latestRun?.suggestedPreviewUrl && isLikelyPreviewUrl(latestRun.suggestedPreviewUrl)
-            ? latestRun.suggestedPreviewUrl.trim()
-            : null);
-
-        const batch = applyIntegratedPipelineSyncSteps({
-          projectId: pid,
-          orchestration: orchestrationAfterPipeline,
-          nowIso: startedAtIso,
-          externalPreviewUrl,
-          sourceIntegrationBranch: integrationPlan?.integrationBranch ?? null,
-        });
-        if (!batch.ok) {
-          const apiPreviewReady = shouldSuppressIntegrationContinueUserMessage({
-            status: pipelineResult.status,
-            previewReady: pipelineResult.previewReady,
-            integratedAppPreviewReady: resolveIntegratedAppPreviewReadyFromOrchestration({
-              projectId: pid,
-              orchestration: orchestrationAfterPipeline,
-            }),
-          });
-          if (apiPreviewReady) {
-            showToast(
-              pipelineResult.message?.trim() || INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE,
-            );
-            return;
-          }
-          showToast(`통합 실패: ${batch.message}`);
-          return;
-        }
-
         let integrationServerSaved = true;
-
-        const includedCount = batch.previewScope?.includedCodeTasks.length ?? 0;
-        const excludedCount = batch.previewScope?.excludedCodeTasks.length ?? 0;
-
-        timeline = appendPromptTimeline(
-          timeline,
-          buildCompletedCodeTaskIntegrationTimelineEntry({
-            action: "completed_codetask_integration_completed",
-            projectId: pid,
-            includedCount,
-            excludedCount,
-            nowIso: startedAtIso,
-          }),
-        );
-        if (batch.previewBuildOk) {
-          const runtime = batch.previewRuntime;
-          timeline = appendPromptTimeline(
-            timeline,
-            buildCompletedCodeTaskIntegrationTimelineEntry({
-              action: "completed_codetask_preview_ready",
-              projectId: pid,
-              includedCount,
-              excludedCount,
-              previewUrl: batch.previewUrl,
-              appPreviewUrl: runtime?.appPreviewUrl,
-              externalPreviewUrl: runtime?.externalPreviewUrl,
-              internalAppPreviewUrl: runtime?.internalAppPreviewUrl,
-              renderMode: runtime?.renderMode,
-              openMode: runtime?.openMode,
-              nowIso: startedAtIso,
-            }),
-          );
-          if (runtime?.openMode === "external_new_window") {
-            timeline = appendPromptTimeline(
-              timeline,
-              buildCompletedCodeTaskIntegrationTimelineEntry({
-                action: "completed_codetask_external_preview_ready",
-                projectId: pid,
-                includedCount,
-                excludedCount,
-                previewUrl: batch.previewUrl,
-                externalPreviewUrl: runtime.externalPreviewUrl,
-                internalAppPreviewUrl: runtime.internalAppPreviewUrl,
-                renderMode: runtime.renderMode,
-                openMode: runtime.openMode,
-                nowIso: startedAtIso,
-              }),
-            );
-          } else if (runtime?.openMode === "internal_renderer") {
-            timeline = appendPromptTimeline(
-              timeline,
-              buildCompletedCodeTaskIntegrationTimelineEntry({
-                action: "completed_codetask_internal_preview_ready",
-                projectId: pid,
-                includedCount,
-                excludedCount,
-                previewUrl: batch.previewUrl,
-                internalAppPreviewUrl: runtime.internalAppPreviewUrl,
-                renderMode: runtime.renderMode,
-                openMode: runtime.openMode,
-                nowIso: startedAtIso,
-              }),
-            );
-          } else if (runtime?.openMode === "scope_summary_fallback") {
-            timeline = appendPromptTimeline(
-              timeline,
-              buildCompletedCodeTaskIntegrationTimelineEntry({
-                action: "completed_codetask_preview_fallback",
-                projectId: pid,
-                includedCount,
-                excludedCount,
-                renderMode: runtime.renderMode,
-                openMode: runtime.openMode,
-                reason: "generated_app_preview_url_unavailable",
-                nowIso: startedAtIso,
-              }),
-            );
-          }
-        } else if (batch.previewRuntime?.status === "failed") {
-          timeline = appendPromptTimeline(
-            timeline,
-            buildCompletedCodeTaskIntegrationTimelineEntry({
-              action: "completed_codetask_preview_failed",
-              projectId: pid,
-              includedCount,
-              excludedCount,
-              errorMessage: batch.previewBuildError,
-              nowIso: startedAtIso,
-            }),
-          );
-        }
-
-        if (
-          batch.completedSteps.length > 0 ||
-          batch.previewScope ||
-          batch.previewRuntime
-        ) {
-          const orchestrationPersistPatch = {
-            implementationIntegratedExecutionStateV1: batch.integratedState,
-            ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
-            ...(batch.previewScope
-              ? { implementationPreviewScopeV1: batch.previewScope }
-              : {}),
-            ...(batch.previewRuntime
-              ? { implementationPreviewRuntimeV1: batch.previewRuntime }
-              : {}),
-            promptTimeline: timeline,
-          };
-          applyPendingFromOrchestrationPatch(orchestrationPersistPatch);
+        if (pipelineResult.orchestrationPatch) {
           const saveResult = await persistChatToDb(
             undefined,
-            orchestrationPersistPatch,
+            pipelineResult.orchestrationPatch,
             undefined,
-            { awaitServer: true, force: true },
+            { awaitServer: false, force: true },
           );
           if (saveResult?.serverSaved === false) {
             integrationServerSaved = false;
           }
-
-          const integratedReadyForNotice = shouldSuppressIntegrationContinueUserMessage({
-            status: pipelineResult.status,
-            previewReady: pipelineResult.previewReady,
-            integratedAppPreviewReady: resolveIntegratedAppPreviewReadyFromOrchestration({
-              projectId: pid,
-              orchestration: {
-                ...orchestrationAfterPipeline,
-                ...(batch.previewRuntime
-                  ? { implementationPreviewRuntimeV1: batch.previewRuntime }
-                  : {}),
-                ...(batch.previewScope
-                  ? { implementationPreviewScopeV1: batch.previewScope }
-                  : {}),
-              },
-            }),
-          });
-          if (!integratedReadyForNotice) {
-            const noticeParts = [...batch.noticeLines];
-            if (batch.previewScope) {
-              noticeParts.push(...buildIntegrationScopeDetailLines(batch.previewScope));
-            }
-            if (noticeParts.length) {
-              appendAiNoticeForImplementation(noticeParts.join("\n"));
-            }
-          }
         }
 
-        const mergedOrchestrationForReady = {
-          ...orchestrationAfterPipeline,
-          implementationIntegratedExecutionStateV1: batch.integratedState,
-          ...(batch.previewScope ? { implementationPreviewScopeV1: batch.previewScope } : {}),
-          ...(batch.previewRuntime ? { implementationPreviewRuntimeV1: batch.previewRuntime } : {}),
-        };
-
-        const refState = parseRequirementsStateJson(requirementsStateJsonRef.current);
-        const boardAfter = buildImplementationExecutionBoardFromRequirementsState({
-          projectId: pid,
-          orchestration: {
-            ...(refState ?? orchestrationAfterPipeline),
-            implementationIntegratedExecutionStateV1: batch.integratedState,
-            ...(integrationPlan ? { codeTaskIntegrationPlanV1: integrationPlan } : {}),
-            ...(batch.previewScope
-              ? { implementationPreviewScopeV1: batch.previewScope }
-              : {}),
-            ...(batch.previewRuntime
-              ? { implementationPreviewRuntimeV1: batch.previewRuntime }
-              : {}),
-          },
-          integratedExecutionState: batch.integratedState,
-        });
-
-        if (boardAfter && isFinalScmIntegratedStepReady(boardAfter)) {
-          runFinalScmIntegratedStageStep();
-        }
+        const mergedOrchestrationForReady = orchestrationAfterPipeline;
 
         const integratedReady = resolveIntegratedAppPreviewReadyFromOrchestration({
           projectId: pid,
           orchestration: mergedOrchestrationForReady,
         });
 
-        let pipelineToastMessage = pipelineResult.message?.trim() || null;
-        if (!integratedReady && batch.previewBuildOk) {
-          pipelineToastMessage =
-            pipelineToastMessage ||
-            "CodeTask Preview 준비 완료 · 실제 앱 Preview는 아직 준비되지 않았습니다.";
-        } else if (
-          !integratedReady &&
-          !pipelineToastMessage &&
-          batch.completedSteps.length > 0 &&
-          !batch.previewBuildOk
-        ) {
-          const previewErr = batch.previewBuildError?.trim();
-          pipelineToastMessage = previewErr
-            ? `통합 완료 · Preview 준비 실패: ${previewErr}`
-            : "통합 완료 · Preview 준비 실패";
-        } else if (integratedReady && batch.previewBuildOk && !pipelineToastMessage) {
-          pipelineToastMessage = pipelineResult.message ?? null;
+        const refState = parseRequirementsStateJson(requirementsStateJsonRef.current);
+        const boardAfter = buildImplementationExecutionBoardFromRequirementsState({
+          projectId: pid,
+          orchestration: refState ?? orchestrationAfterPipeline,
+        });
+
+        if (boardAfter && isFinalScmIntegratedStepReady(boardAfter)) {
+          runFinalScmIntegratedStageStep();
         }
+
+        const visibleContinueButton =
+          Boolean(String(pipelineResult.nextRequiredStep ?? "").trim()) &&
+          pipelineResult.previewReady !== true;
 
         const pipelineToast = resolveIntegrationPipelineUserToast({
           status: pipelineResult.status,
           previewReady: pipelineResult.previewReady,
           integratedAppPreviewReady: integratedReady,
-          message: pipelineToastMessage,
+          message: pipelineResult.message?.trim() || null,
           serverSaved: integrationServerSaved,
+          nextRequiredStep: pipelineResult.nextRequiredStep,
+          visibleContinueButton,
         });
 
         if (pipelineToast.reason === "suppressed_legacy_continue") {
@@ -4701,9 +4566,6 @@ export function PrototypePreviewPanel({
     executionSingleChat,
     showToast,
     runFinalScmIntegratedStageStep,
-    previewUrl,
-    latestRun?.previewUrl,
-    latestRun?.suggestedPreviewUrl,
   ]);
 
   const createImplementationSeedFromQuickDesignDraft = useCallback((): ImplementationStageActionRunResult => {
@@ -8445,6 +8307,7 @@ export function PrototypePreviewPanel({
             integrationMergeBusy={integrationMergeBusy}
             integrationPipelinePreviewReady={integrationPipelineClientResult?.previewReady}
             integrationPipelineStatus={integrationPipelineClientResult?.status}
+            onOpenImplementationPreview={openImplementationPreview}
           />
         ) : null}
         {!boardPanelVisible ? (

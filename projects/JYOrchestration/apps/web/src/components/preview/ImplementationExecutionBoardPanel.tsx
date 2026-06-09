@@ -76,6 +76,7 @@ import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIn
 import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 import { evaluateImplementationPreviewButtonState } from "@/lib/prototype/implementationPreviewButtonPolicy";
 import { sanitizeIntegratedAppPreviewUrl } from "@/lib/prototype/implementationPreviewEntryPolicy";
+import type { ImplementationPreviewEntryModeV1 } from "@/lib/prototype/implementationPreviewEntryPolicy";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
@@ -120,6 +121,7 @@ export function ImplementationExecutionBoardPanel({
   integrationMergeBusy,
   integrationPipelinePreviewReady,
   integrationPipelineStatus,
+  onOpenImplementationPreview,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -160,6 +162,10 @@ export function ImplementationExecutionBoardPanel({
   readonly integrationMergeBusy?: boolean;
   readonly integrationPipelinePreviewReady?: boolean;
   readonly integrationPipelineStatus?: string;
+  readonly onOpenImplementationPreview?: (input: {
+    readonly mode: ImplementationPreviewEntryModeV1;
+    readonly url: string;
+  }) => void;
 }) {
   const reworkVm = useMemo(
     () =>
@@ -957,6 +963,13 @@ export function ImplementationExecutionBoardPanel({
                   onClick={() => {
                     if (!previewButtonState.enabled || !previewButtonState.url) return;
                     const pid = (projectId ?? board.projectId).trim();
+                    if (onOpenImplementationPreview) {
+                      onOpenImplementationPreview({
+                        mode: previewButtonState.mode,
+                        url: previewButtonState.url,
+                      });
+                      return;
+                    }
                     if (previewButtonState.mode === "integrated_app_preview") {
                       const url = sanitizeIntegratedAppPreviewUrl({
                         projectId: pid,

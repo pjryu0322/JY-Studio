@@ -3,8 +3,24 @@ import { INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE } from "@/lib/protot
 export const INTEGRATION_PIPELINE_SUCCESS_USER_TOAST =
   "실제 앱 Preview가 준비되었습니다. Preview 버튼을 눌러 확인해 주세요.";
 
-export const INTEGRATION_PIPELINE_CONTINUE_USER_TOAST =
-  "Preview 준비를 계속 진행해야 합니다. 아래 버튼을 눌러 다음 단계를 실행해 주세요.";
+export const INTEGRATION_PIPELINE_CONTINUE_STATUS_MESSAGE =
+  "Preview 준비 상태를 확인하고 있습니다.\n잠시 후 다시 시도해 주세요.";
+
+export function canShowContinuePreviewActionMessage(input: {
+  readonly previewReady?: boolean | null;
+  readonly status?: string | null;
+  readonly nextRequiredStep?: string | null;
+  readonly visibleContinueButton?: boolean;
+  /** @deprecated use visibleContinueButton */
+  readonly hasVisibleContinueButton?: boolean;
+}): boolean {
+  if (input.previewReady === true) return false;
+  if (String(input.status ?? "").trim() === "integrated_app_preview_ready") return false;
+  if (!String(input.nextRequiredStep ?? "").trim()) return false;
+  const visible =
+    input.visibleContinueButton === true || input.hasVisibleContinueButton === true;
+  return visible;
+}
 
 export type IntegrationPipelineUserToastReasonV1 =
   | "integrated_preview_ready"
@@ -52,6 +68,10 @@ export function resolveIntegrationPipelineUserToast(input: {
   readonly integratedAppPreviewReady?: boolean | null;
   readonly message?: string | null;
   readonly serverSaved?: boolean;
+  readonly nextRequiredStep?: string | null;
+  readonly visibleContinueButton?: boolean;
+  /** @deprecated use visibleContinueButton */
+  readonly hasVisibleContinueButton?: boolean;
 }): IntegrationPipelineUserToastV1 {
   if (input.serverSaved === false) {
     return {
@@ -77,9 +97,24 @@ export function resolveIntegrationPipelineUserToast(input: {
   }
 
   if (isStrictContinuePreviewMessage(rawMessage)) {
+    const canShowContinue = canShowContinuePreviewActionMessage({
+      previewReady: input.previewReady,
+      status: input.status,
+      nextRequiredStep: input.nextRequiredStep,
+      visibleContinueButton:
+        input.visibleContinueButton === true || input.hasVisibleContinueButton === true,
+    });
+    if (!canShowContinue) {
+      return {
+        show: true,
+        message: INTEGRATION_PIPELINE_CONTINUE_STATUS_MESSAGE,
+        reason: "fallback_message",
+      };
+    }
     return {
       show: true,
-      message: INTEGRATION_PIPELINE_CONTINUE_USER_TOAST,
+      message:
+        "Preview 준비를 계속 진행해야 합니다. 아래 버튼을 눌러 다음 단계를 실행해 주세요.",
       reason: "continue_next_step",
     };
   }
