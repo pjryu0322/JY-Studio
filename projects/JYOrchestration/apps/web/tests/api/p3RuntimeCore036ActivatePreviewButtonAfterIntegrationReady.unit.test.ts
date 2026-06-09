@@ -410,8 +410,7 @@ describe("P3-Runtime-Core-03-6 activate Preview after integration ready", () => 
 
   it("16. integration client suppresses continue and maps success message", () => {
     const src = readFileSync(join(prototypeDir, "implementationIntegrationClient.ts"), "utf8");
-    expect(src).toContain("shouldSuppressIntegrationContinueUserMessage");
-    expect(src).toContain("INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE");
+    expect(src).toContain("resolveIntegrationPipelineUserToast");
   });
 
   it("17. PrototypePreviewPanel wires integration steps into execution board", () => {

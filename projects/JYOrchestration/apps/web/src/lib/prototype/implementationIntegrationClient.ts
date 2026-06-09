@@ -1,9 +1,9 @@
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
 import {
-  INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE,
-  toUserSafeIntegrationErrorMessage,
-} from "@/lib/prototype/implementationIntegrationErrors";
-import { shouldSuppressIntegrationContinueUserMessage } from "@/lib/prototype/implementationPreviewButtonPolicy";
+  resolveIntegrationPipelineUserToast,
+  sanitizeIntegrationPipelineApiResponseMessage,
+} from "@/lib/prototype/implementationIntegrationToastPolicy";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
@@ -52,23 +52,19 @@ export async function runIntegrationBranchPipelineClient(input: {
   }
   const previewReady = json.previewReady === true;
   const status = String(json.status ?? "").trim();
-  const suppressContinue = shouldSuppressIntegrationContinueUserMessage({
+  const toast = resolveIntegrationPipelineUserToast({
     status,
     previewReady,
+    integratedAppPreviewReady: previewReady,
     message: json.message,
+    serverSaved: true,
   });
-  let message: string | undefined;
-  if (suppressContinue) {
-    message = INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE;
-  } else if (json.message?.trim()) {
-    message = toUserSafeIntegrationErrorMessage(new Error(json.message));
-  }
   return {
     ok: json.success === true,
     status,
     previewReady,
     nextRequiredStep: json.nextRequiredStep ?? null,
-    message,
+    message: toast.show ? toast.message ?? undefined : undefined,
     plan: json.plan,
     timeline: json.timeline,
     orchestrationPatch: json.orchestrationPatch,

@@ -240,6 +240,10 @@ import {
 } from "@/lib/prototype/implementationIntegrationErrors";
 import { shouldSuppressIntegrationContinueUserMessage } from "@/lib/prototype/implementationPreviewButtonPolicy";
 import { isLegacyCodeTaskPreviewScopeNoticeContent } from "@/lib/prototype/implementationPreviewEntryPolicy";
+import {
+  isLegacyContinuePreviewMessage,
+  resolveIntegrationPipelineUserToast,
+} from "@/lib/prototype/implementationIntegrationToastPolicy";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { buildCompletedCodeTaskIntegrationTimelineEntry } from "@/lib/prototype/integrationPreviewTimeline";
 import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
@@ -609,6 +613,7 @@ export function PrototypePreviewPanel({
   const [integrationPipelineClientResult, setIntegrationPipelineClientResult] = useState<{
     readonly status?: string;
     readonly previewReady?: boolean;
+    readonly receivedAt?: number;
   } | null>(null);
   const integrationPipelineClientResultRef = useRef(integrationPipelineClientResult);
   integrationPipelineClientResultRef.current = integrationPipelineClientResult;
@@ -2506,12 +2511,25 @@ export function PrototypePreviewPanel({
       const text = String(content ?? "").trim();
       if (!text) return;
       const pid = projectId.trim();
+      const pipeline = integrationPipelineClientResultRef.current;
       const integratedReady =
-        pid &&
-        resolveIntegratedAppPreviewReadyFromOrchestration({
-          projectId: pid,
-          orchestration: orchestrationAwareRequirementsStateRef.current,
+        (pid &&
+          resolveIntegratedAppPreviewReadyFromOrchestration({
+            projectId: pid,
+            orchestration: orchestrationAwareRequirementsStateRef.current,
+          })) ||
+        pipeline?.previewReady === true ||
+        pipeline?.status === "integrated_app_preview_ready";
+      if (
+        integratedReady &&
+        (isLegacyCodeTaskPreviewScopeNoticeContent(text) || isLegacyContinuePreviewMessage(text))
+      ) {
+        console.info("[implementation] completed_codetask_preview_notice_suppressed_after_integrated_ready", {
+          status: pipeline?.status,
+          previewReady: pipeline?.previewReady,
         });
+        return;
+      }
       if (boardPanelVisibleRef.current) {
         if (integratedReady) return;
         setImplementationStageNoticeModal({ body: text });
@@ -2529,10 +2547,12 @@ export function PrototypePreviewPanel({
       if (
         pid &&
         isLegacyCodeTaskPreviewScopeNoticeContent(content) &&
-        resolveIntegratedAppPreviewReadyFromOrchestration({
+        (resolveIntegratedAppPreviewReadyFromOrchestration({
           projectId: pid,
           orchestration: orchestrationAwareRequirementsStateRef.current,
-        })
+        }) ||
+          integrationPipelineClientResultRef.current?.previewReady === true ||
+          integrationPipelineClientResultRef.current?.status === "integrated_app_preview_ready")
       ) {
         return;
       }
@@ -2545,27 +2565,29 @@ export function PrototypePreviewPanel({
     (msg: string, displayMs = 3200) => {
       const pid = projectId.trim();
       const pipeline = integrationPipelineClientResultRef.current;
-      if (
-        shouldSuppressIntegrationContinueUserMessage({
-          status: pipeline?.status,
-          previewReady: pipeline?.previewReady,
-          integratedAppPreviewReady: pid
-            ? resolveIntegratedAppPreviewReadyFromOrchestration({
-                projectId: pid,
-                orchestration: orchestrationAwareRequirementsStateRef.current,
-              })
-            : false,
-          message: msg,
-        })
-      ) {
-        return;
-      }
-      const key = buildImplementationStatusToastDedupeKey(msg);
+      const integratedFromOrchestration = pid
+        ? resolveIntegratedAppPreviewReadyFromOrchestration({
+            projectId: pid,
+            orchestration: orchestrationAwareRequirementsStateRef.current,
+          })
+        : false;
+      const toast = resolveIntegrationPipelineUserToast({
+        status: pipeline?.status,
+        previewReady: pipeline?.previewReady,
+        integratedAppPreviewReady:
+          integratedFromOrchestration ||
+          pipeline?.previewReady === true ||
+          pipeline?.status === "integrated_app_preview_ready",
+        message: msg,
+        serverSaved: true,
+      });
+      if (!toast.show || !toast.message) return;
+      const key = buildImplementationStatusToastDedupeKey(toast.message);
       if (key) {
         if (implementationStatusToastSeenRef.current.has(key)) return;
         implementationStatusToastSeenRef.current.add(key);
       }
-      showToast(msg, displayMs);
+      showToast(toast.message, displayMs);
     },
     [showToast, projectId],
   );
@@ -4361,6 +4383,7 @@ export function PrototypePreviewPanel({
           setIntegrationPipelineClientResult({
             status: pipelineResult.status,
             previewReady: pipelineResult.previewReady,
+            receivedAt: Date.now(),
           });
         }
 
@@ -4611,35 +4634,56 @@ export function PrototypePreviewPanel({
           projectId: pid,
           orchestration: mergedOrchestrationForReady,
         });
-        const suppressContinueToast = shouldSuppressIntegrationContinueUserMessage({
+
+        let pipelineToastMessage = pipelineResult.message?.trim() || null;
+        if (!integratedReady && batch.previewBuildOk) {
+          pipelineToastMessage =
+            pipelineToastMessage ||
+            "CodeTask Preview 준비 완료 · 실제 앱 Preview는 아직 준비되지 않았습니다.";
+        } else if (
+          !integratedReady &&
+          !pipelineToastMessage &&
+          batch.completedSteps.length > 0 &&
+          !batch.previewBuildOk
+        ) {
+          const previewErr = batch.previewBuildError?.trim();
+          pipelineToastMessage = previewErr
+            ? `통합 완료 · Preview 준비 실패: ${previewErr}`
+            : "통합 완료 · Preview 준비 실패";
+        } else if (integratedReady && batch.previewBuildOk && !pipelineToastMessage) {
+          pipelineToastMessage = pipelineResult.message ?? null;
+        }
+
+        const pipelineToast = resolveIntegrationPipelineUserToast({
           status: pipelineResult.status,
           previewReady: pipelineResult.previewReady,
           integratedAppPreviewReady: integratedReady,
+          message: pipelineToastMessage,
+          serverSaved: integrationServerSaved,
         });
 
-        if (suppressContinueToast) {
-          showToast(
-            integrationServerSaved
-              ? pipelineResult.message?.trim() || INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE
-              : "통합·Preview는 화면에 반영됐으나 서버 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.",
-          );
-        } else if (batch.previewBuildOk) {
-          showToast(
-            integrationServerSaved
-              ? integratedReady
-                ? "통합 완료 · 실제 앱 Preview 준비 완료"
-                : "CodeTask Preview 준비 완료 · 실제 앱 Preview는 아직 준비되지 않았습니다."
-              : "통합·Preview는 화면에 반영됐으나 서버 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.",
-          );
-        } else if (pipelineResult.message?.trim()) {
-          showToast(pipelineResult.message);
-        } else if (batch.completedSteps.length > 0) {
-          const previewErr = batch.previewBuildError?.trim();
-          showToast(
-            previewErr
-              ? `통합 완료 · Preview 준비 실패: ${previewErr}`
-              : "통합 완료 · Preview 준비 실패",
-          );
+        if (pipelineToast.reason === "suppressed_legacy_continue") {
+          const suppressLog = buildImplementationExecutionLogTimelineEntry({
+            action: "implementation_legacy_continue_toast_suppressed",
+            orchestrationTraceGroup: "project_integration_pipeline",
+            fields: {
+              projectId: pid,
+              status: pipelineResult.status ?? "",
+              previewReady: pipelineResult.previewReady === true,
+              integratedAppPreviewReady: integratedReady,
+              rawMessage: pipelineResult.message ?? "",
+            },
+          });
+          void persistChatToDb(undefined, {
+            promptTimeline: appendPromptTimeline(
+              parseRequirementsStateJson(requirementsStateJsonRef.current).promptTimeline ?? [],
+              suppressLog,
+            ),
+          });
+        }
+
+        if (pipelineToast.show && pipelineToast.message) {
+          showToast(pipelineToast.message);
         }
       } catch (error) {
         showToast(toUserSafeIntegrationErrorMessage(error));

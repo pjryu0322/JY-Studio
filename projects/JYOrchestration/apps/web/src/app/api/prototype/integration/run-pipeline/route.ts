@@ -15,6 +15,7 @@ import { buildProjectIntegrationPipelinePersistState } from "@/lib/prototype/pro
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
 import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
+import { sanitizeIntegrationPipelineApiResponseMessage } from "@/lib/prototype/implementationIntegrationToastPolicy";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
 import { toImplementationRuntimeSnapshotApiSummary } from "@/lib/prototype/implementationRuntimeSnapshot";
@@ -220,7 +221,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: outcome.ok,
       status: outcome.status,
-      message: outcome.userSafeMessage ?? (outcome.ok ? "통합 Wiring이 완료되었습니다." : "통합 단계 실행에 실패했습니다."),
+      message: sanitizeIntegrationPipelineApiResponseMessage({
+        status: outcome.status,
+        previewReady: outcome.previewReady,
+        userSafeMessage: outcome.userSafeMessage,
+        ok: outcome.ok,
+      }),
       integrationBranch: outcome.integrationBranch ?? plan.integrationBranch,
       previewReady: outcome.previewReady ?? false,
       previewUrl: outcome.previewUrl ?? null,
