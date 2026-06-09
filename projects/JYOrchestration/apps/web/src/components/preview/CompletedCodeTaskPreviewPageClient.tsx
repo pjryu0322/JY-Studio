@@ -9,6 +9,7 @@ import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementat
 import { buildIntegrationScopeDetailLines } from "@/lib/prototype/implementationIntegrationScopeUi";
 import {
   resolveCompletedCodeTaskPreviewMainMode,
+  resolveCompletedCodeTaskPreviewPageHeader,
   resolveInternalIframeSrc,
   shouldShowPreviewFallbackNotice,
 } from "@/lib/prototype/completedCodeTaskPreviewView";
@@ -90,6 +91,16 @@ export function CompletedCodeTaskPreviewPageClient(props: { readonly projectId: 
   const iframeSrc = useMemo(() => resolveInternalIframeSrc(runtime), [runtime]);
   const showFallbackNotice = useMemo(() => shouldShowPreviewFallbackNotice(runtime), [runtime]);
   const externalPreviewUrl = String(runtime?.externalPreviewUrl ?? "").trim();
+  const pageHeader = useMemo(
+    () =>
+      resolveCompletedCodeTaskPreviewPageHeader({
+        scopeIncludedCount: scope?.includedCodeTasks.length ?? 0,
+        scopeExcludedCount: scope?.excludedCodeTasks.length ?? 0,
+        runtime,
+        mainMode,
+      }),
+    [scope, runtime, mainMode],
+  );
 
   if (loading) {
     return <p style={{ padding: 24 }}>Preview를 불러오는 중…</p>;
@@ -109,27 +120,23 @@ export function CompletedCodeTaskPreviewPageClient(props: { readonly projectId: 
     );
   }
 
-  const excludedCount = scope.excludedCodeTasks.length;
 
   return (
     <div className={styles.root} data-testid="completed-codetask-preview-page">
       <header className={styles.header}>
         <div className={styles.headerTop}>
           <div>
-            <h1 className={styles.title}>
-              Preview · 완료된 CodeTask {scope.includedCodeTasks.length}개 기준
-            </h1>
-            <p className={styles.summaryLine}>
-              {excludedCount > 0
-                ? `미완료 CodeTask ${excludedCount}개 제외`
-                : "제외된 CodeTask 없음"}
-            </p>
+            <h1 className={styles.title}>{pageHeader.title}</h1>
+            {pageHeader.subtitle ? (
+              <p className={styles.summaryLine}>{pageHeader.subtitle}</p>
+            ) : null}
             {scope.warnings.map((warning) => (
               <p key={warning} className={styles.noticeWarning}>
                 {warning}
               </p>
             ))}
-            {runtime?.status === "ready" && mainMode === "internal_iframe" ? (
+            {runtime?.status === "ready" &&
+            (mainMode === "internal_iframe" || mainMode === "external_launch") ? (
               <p className={styles.noticeOk}>Preview 준비 완료</p>
             ) : null}
             {runtime?.status === "failed" && runtime.errorMessage ? (
@@ -140,7 +147,7 @@ export function CompletedCodeTaskPreviewPageClient(props: { readonly projectId: 
             구현 탭으로 돌아가기
           </Link>
         </div>
-        <CompletedCodeTaskPreviewScopeDetails scope={scope} />
+        {pageHeader.showScopeDetails ? <CompletedCodeTaskPreviewScopeDetails scope={scope} /> : null}
       </header>
 
       <div className={styles.mainArea}>

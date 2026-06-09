@@ -159,12 +159,17 @@ export function buildImplementationIntegrationBoardSection(input: {
       ...integrationStepLines,
     ],
     pipelineLines: input.integratedPipelineLines,
-    scopeDetailLines: dedupeScopeDetailLines([
-      ...(previewReadiness.codeTaskScopeTitleLine ? [previewReadiness.codeTaskScopeTitleLine] : []),
-      ...buildIntegrationScopeDetailLines(scope),
-      ...previewReadiness.integratedAppGateLines,
-      ...(previewReadiness.conclusionLine ? [previewReadiness.conclusionLine] : []),
-    ]),
+    scopeDetailLines: integratedAppPreviewReady
+      ? [
+          "실제 앱 Preview가 준비되었습니다.",
+          "Preview 버튼을 눌러 실제 앱 화면을 확인할 수 있습니다.",
+        ]
+      : dedupeScopeDetailLines([
+          ...(previewReadiness.codeTaskScopeTitleLine ? [previewReadiness.codeTaskScopeTitleLine] : []),
+          ...buildIntegrationScopeDetailLines(scope),
+          ...previewReadiness.integratedAppGateLines,
+          ...(previewReadiness.conclusionLine ? [previewReadiness.conclusionLine] : []),
+        ]),
     previewRuntimeReady,
     previewUrl,
     previewStatusLines,

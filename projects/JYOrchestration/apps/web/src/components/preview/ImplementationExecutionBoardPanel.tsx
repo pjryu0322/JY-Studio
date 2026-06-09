@@ -75,6 +75,7 @@ import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/impl
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 import { evaluateImplementationPreviewButtonState } from "@/lib/prototype/implementationPreviewButtonPolicy";
+import { sanitizeIntegratedAppPreviewUrl } from "@/lib/prototype/implementationPreviewEntryPolicy";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
@@ -631,6 +632,8 @@ export function ImplementationExecutionBoardPanel({
         previewRuntime: parsedPreviewRuntime,
         codeTaskPreviewReady: integrationSection.codeTaskPreviewReady,
         integratedAppPreviewReady: integrationSection.integratedAppPreviewReady,
+        integrationPlan: parsedIntegrationPlan,
+        requirementsState: integrationRequirementsState,
       }),
     [
       projectId,
@@ -639,6 +642,8 @@ export function ImplementationExecutionBoardPanel({
       parsedPreviewRuntime,
       integrationSection.codeTaskPreviewReady,
       integrationSection.integratedAppPreviewReady,
+      parsedIntegrationPlan,
+      integrationRequirementsState,
     ],
   );
 
@@ -939,7 +944,19 @@ export function ImplementationExecutionBoardPanel({
                   title={previewButtonState.disabledReason ?? undefined}
                   onClick={() => {
                     if (!previewButtonState.enabled || !previewButtonState.url) return;
-                    window.open(previewButtonState.url, "_blank", "noopener,noreferrer");
+                    const pid = (projectId ?? board.projectId).trim();
+                    if (previewButtonState.mode === "integrated_app_preview") {
+                      const url = sanitizeIntegratedAppPreviewUrl({
+                        projectId: pid,
+                        url: previewButtonState.url,
+                      });
+                      if (!url) return;
+                      window.open(url, "_blank", "noopener,noreferrer");
+                      return;
+                    }
+                    if (previewButtonState.mode === "codetask_result_preview") {
+                      window.open(previewButtonState.url, "_blank", "noopener,noreferrer");
+                    }
                   }}
                 >
                   {previewButtonState.label}

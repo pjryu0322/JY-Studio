@@ -24,6 +24,13 @@ export function resolveCompletedCodeTaskPreviewMainMode(
     return "scope_summary_fallback";
   }
 
+  const renderMode = String(runtime.renderMode ?? "");
+  const integratedRender =
+    renderMode === "internal_generated_app" ||
+    renderMode === "generated_app" ||
+    renderMode === "external_preview" ||
+    renderMode === "internal_app";
+
   const internalUrl =
     String(runtime.internalAppPreviewUrl ?? "").trim() ||
     (runtime.appPreviewUrl && isInternalPreviewPath(runtime.appPreviewUrl)
@@ -31,9 +38,17 @@ export function resolveCompletedCodeTaskPreviewMainMode(
       : "");
 
   if (
-    runtime.openMode === "internal_renderer" &&
+    (runtime.openMode === "internal_renderer" || integratedRender) &&
     internalUrl &&
     canIframeInternalAppPreviewUrl(internalUrl)
+  ) {
+    return "internal_iframe";
+  }
+
+  if (
+    integratedRender &&
+    String(runtime.sourceIntegrationBranch ?? "").trim() &&
+    internalUrl
   ) {
     return "internal_iframe";
   }
@@ -61,6 +76,50 @@ export function shouldShowPreviewFallbackNotice(
   return (
     runtime.openMode === "scope_summary_fallback" || runtime.renderMode === "scope_summary_fallback"
   );
+}
+
+export function isIntegratedAppPreviewPagePresentation(input: {
+  readonly runtime: ImplementationPreviewRuntimeV1 | null | undefined;
+  readonly mainMode: CompletedCodeTaskPreviewMainMode;
+}): boolean {
+  const runtime = input.runtime;
+  if (!runtime || runtime.status !== "ready") return false;
+  if (input.mainMode === "scope_summary_fallback") return false;
+  if (runtime.renderMode === "scope_summary_fallback") return false;
+  if (runtime.openMode === "scope_summary_fallback") return false;
+  return input.mainMode === "internal_iframe" || input.mainMode === "external_launch";
+}
+
+export function resolveCompletedCodeTaskPreviewPageHeader(input: {
+  readonly scopeIncludedCount: number;
+  readonly scopeExcludedCount: number;
+  readonly runtime: ImplementationPreviewRuntimeV1 | null | undefined;
+  readonly mainMode: CompletedCodeTaskPreviewMainMode;
+}): Readonly<{
+  readonly title: string;
+  readonly subtitle: string | null;
+  readonly showScopeDetails: boolean;
+}> {
+  if (
+    isIntegratedAppPreviewPagePresentation({
+      runtime: input.runtime,
+      mainMode: input.mainMode,
+    })
+  ) {
+    return {
+      title: "실제 앱 Preview",
+      subtitle: null,
+      showScopeDetails: false,
+    };
+  }
+  return {
+    title: `Preview · 완료된 CodeTask ${input.scopeIncludedCount}개 기준`,
+    subtitle:
+      input.scopeExcludedCount > 0
+        ? `미완료 CodeTask ${input.scopeExcludedCount}개 제외`
+        : "제외된 CodeTask 없음",
+    showScopeDetails: true,
+  };
 }
 
 export function normalizePreviewRenderMode(

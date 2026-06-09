@@ -209,8 +209,12 @@ describe("P3-Runtime-Core-03-6 activate Preview after integration ready", () => 
       },
       previewRuntime: integratedRuntime({
         previewUrl: `/projects/${PID}/preview?scope=latest`,
+        internalAppPreviewUrl: null,
+        appPreviewUrl: null,
+        externalPreviewUrl: null,
         sourceIntegrationBranch: null,
         openMode: "scope_summary_fallback",
+        renderMode: "scope_summary_fallback",
       }),
       integratedAppPreviewReady: false,
       codeTaskPreviewReady: true,
@@ -227,7 +231,12 @@ describe("P3-Runtime-Core-03-6 activate Preview after integration ready", () => 
         preview: { ...snapshot.preview, integratedAppPreviewReady: false },
         codeTask: { ...snapshot.codeTask, failed: 1 },
       },
-      previewRuntime: integratedRuntime(),
+      previewRuntime: integratedRuntime({
+        sourceIntegrationBranch: null,
+        internalAppPreviewUrl: null,
+        openMode: "scope_summary_fallback",
+        renderMode: "scope_summary_fallback",
+      }),
       integratedAppPreviewReady: false,
     });
     expect(state.mode).toBe("disabled");

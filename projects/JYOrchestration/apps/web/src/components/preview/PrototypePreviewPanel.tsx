@@ -2498,13 +2498,23 @@ export function PrototypePreviewPanel({
     (content: string) => {
       const text = String(content ?? "").trim();
       if (!text) return;
+      const pid = projectId.trim();
       if (boardPanelVisibleRef.current) {
+        if (
+          pid &&
+          resolveIntegratedAppPreviewReadyFromOrchestration({
+            projectId: pid,
+            orchestration: orchestrationAwareRequirementsStateRef.current,
+          })
+        ) {
+          return;
+        }
         setImplementationStageNoticeModal({ body: text });
         return;
       }
       executionSingleChat.appendAiNotice(text);
     },
-    [executionSingleChat],
+    [executionSingleChat, projectId],
   );
 
   const appendImplementationExecutionNotice = useCallback(
@@ -3261,6 +3271,16 @@ export function PrototypePreviewPanel({
   const appendImplementationTaskListAiMessage = useCallback(
     (message: RequirementsMessage) => {
       if (boardPanelVisibleRef.current) {
+        const pid = projectId.trim();
+        if (
+          pid &&
+          resolveIntegratedAppPreviewReadyFromOrchestration({
+            projectId: pid,
+            orchestration: orchestrationAwareRequirementsStateRef.current,
+          })
+        ) {
+          return;
+        }
         const text = String(message.content ?? "").trim();
         const suggestions = (message.meta as { interviewSuggestions?: readonly string[] } | undefined)
           ?.interviewSuggestions;
@@ -3283,7 +3303,7 @@ export function PrototypePreviewPanel({
         currentSlotKey: resolved.currentSlotKey ?? null,
       });
     },
-    [requirementsStateJson, executionSingleChat, persistChatToDb],
+    [requirementsStateJson, executionSingleChat, persistChatToDb, projectId],
   );
 
   const refreshImplementationBoardWithExecutionSetup = useCallback(
@@ -4492,12 +4512,22 @@ export function PrototypePreviewPanel({
             integrationServerSaved = false;
           }
 
-          const noticeParts = [...batch.noticeLines];
-          if (batch.previewScope) {
-            noticeParts.push(...buildIntegrationScopeDetailLines(batch.previewScope));
-          }
-          if (noticeParts.length) {
-            appendAiNoticeForImplementation(noticeParts.join("\n"));
+          const integratedReadyForNotice = shouldSuppressIntegrationContinueUserMessage({
+            status: pipelineResult.status,
+            previewReady: pipelineResult.previewReady,
+            integratedAppPreviewReady: resolveIntegratedAppPreviewReadyFromOrchestration({
+              projectId: pid,
+              orchestration: orchestrationAfterPipeline,
+            }),
+          });
+          if (!integratedReadyForNotice) {
+            const noticeParts = [...batch.noticeLines];
+            if (batch.previewScope) {
+              noticeParts.push(...buildIntegrationScopeDetailLines(batch.previewScope));
+            }
+            if (noticeParts.length) {
+              appendAiNoticeForImplementation(noticeParts.join("\n"));
+            }
           }
         }
 
