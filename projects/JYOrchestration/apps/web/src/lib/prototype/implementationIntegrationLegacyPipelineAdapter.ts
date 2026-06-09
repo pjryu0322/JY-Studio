@@ -18,6 +18,9 @@ export async function runLegacyIntegrationBranchPipelineAsFinalWiringAdapter(inp
   readonly storedIntegrationPlan?: CodeTaskIntegrationPlanV1 | null;
   readonly createPullRequest?: boolean;
   readonly nowIso?: string;
+  readonly sourceBranch?: string | null;
+  readonly targetBranch?: string | null;
+  readonly integrationBranch?: string | null;
 }): Promise<
   Readonly<{
     readonly ok: boolean;
@@ -39,6 +42,9 @@ export async function runLegacyIntegrationBranchPipelineAsFinalWiringAdapter(inp
     createPullRequest: input.createPullRequest,
     storedIntegrationPlan: input.storedIntegrationPlan,
     nowIso: input.nowIso,
+    sourceBranch: input.sourceBranch,
+    targetBranch: input.targetBranch,
+    integrationBranch: input.integrationBranch,
   });
   const integrationBranch =
     String(outcome.plan.integrationBranch ?? "").trim() || null;

@@ -26,7 +26,8 @@ export class IntegrationPipelineDomainError extends Error {
 
 const USER_SAFE_BY_CODE: Readonly<Record<IntegrationPipelineErrorCode, string>> = {
   integration_included_targets_empty: "통합 대상 CodeTask가 없습니다.",
-  integration_source_missing: "최종 통합 source branch를 찾지 못했습니다.",
+  integration_source_missing:
+    "최종 통합 기준 branch를 결정하지 못했습니다.\n다시 시도해 주세요.",
   integration_plan_invalid: "통합 계획 상태가 올바르지 않습니다. 다시 통합을 실행해 주세요.",
   integration_final_wiring_pending:
     "최종 연결/통합 Wiring이 완료되지 않아 실제 앱 Preview를 준비할 수 없습니다.",

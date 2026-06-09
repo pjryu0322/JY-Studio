@@ -34,17 +34,37 @@ export function validateCodeTaskIntegrationPlanInvariant(
 
 export function assertIntegrationMergeTargets(input: {
   readonly plan: CodeTaskIntegrationPlanV1;
-  readonly chainHead: string | null;
+  readonly effectiveSourceBranch: string | null;
   readonly mergeItems: readonly CodeTaskIntegrationPlanV1["included"][number][];
+  readonly diagnostic?: Record<string, unknown>;
 }): void {
-  const included = asReadonlyArray(input.plan.included);
+  const plan = normalizeCodeTaskIntegrationPlan(input.plan);
+  const included = asReadonlyArray(plan.included);
   if (!included.length) {
     throw new IntegrationPipelineDomainError("integration_included_targets_empty");
   }
-  if (input.chainHead && included.length > 1 && !input.mergeItems.length) {
+  if (!String(input.effectiveSourceBranch ?? "").trim()) {
+    throw new IntegrationPipelineDomainError("integration_source_missing", undefined, input.diagnostic);
+  }
+  if (!input.mergeItems.length) {
     throw new IntegrationPipelineDomainError("integration_source_missing", undefined, {
-      chainHead: input.chainHead,
-      includedWorkBranches: included.map((i) => i.workBranch),
+      ...(input.diagnostic ?? {}),
+      effectiveSourceBranch: input.effectiveSourceBranch,
     });
   }
+}
+
+/** @deprecated Prefer assertIntegrationMergeTargets with effectiveSourceBranch. */
+export function assertIntegrationMergeTargetsWithChainHead(input: {
+  readonly plan: CodeTaskIntegrationPlanV1;
+  readonly chainHead: string | null;
+  readonly mergeItems: readonly CodeTaskIntegrationPlanV1["included"][number][];
+}): void {
+  assertIntegrationMergeTargets({
+    plan: input.plan,
+    effectiveSourceBranch:
+      input.mergeItems[0]?.workBranch?.trim() || input.chainHead?.trim() || null,
+    mergeItems: input.mergeItems,
+    diagnostic: { chainHead: input.chainHead },
+  });
 }

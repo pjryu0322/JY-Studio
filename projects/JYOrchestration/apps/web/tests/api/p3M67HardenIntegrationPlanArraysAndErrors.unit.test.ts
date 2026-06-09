@@ -61,14 +61,14 @@ describe("P3-M67 merge target guards", () => {
     expect(() =>
       assertIntegrationMergeTargets({
         plan: BASE_PLAN,
-        chainHead: null,
+        effectiveSourceBranch: null,
         mergeItems: [],
       }),
     ).toThrow(IntegrationPipelineDomainError);
     try {
       assertIntegrationMergeTargets({
         plan: BASE_PLAN,
-        chainHead: null,
+        effectiveSourceBranch: null,
         mergeItems: [],
       });
     } catch (e) {
@@ -76,7 +76,7 @@ describe("P3-M67 merge target guards", () => {
     }
   });
 
-  it("throws integration_source_missing when chainHead has no matching merge item", () => {
+  it("throws integration_source_missing when effective source has no matching merge item", () => {
     const plan: CodeTaskIntegrationPlanV1 = {
       ...BASE_PLAN,
       included: [
@@ -99,13 +99,13 @@ describe("P3-M67 merge target guards", () => {
     expect(() =>
       assertIntegrationMergeTargets({
         plan,
-        chainHead: "wip/missing",
+        effectiveSourceBranch: "wip/missing",
         mergeItems: [],
       }),
     ).toThrow(IntegrationPipelineDomainError);
   });
 
-  it("allows chainHead matching included workBranch", () => {
+  it("allows effective source matching included workBranch", () => {
     const plan: CodeTaskIntegrationPlanV1 = {
       ...BASE_PLAN,
       included: [
@@ -127,7 +127,11 @@ describe("P3-M67 merge target guards", () => {
     };
     const mergeItems = asReadonlyArray(plan.included).filter((i) => i.workBranch === "wip/head");
     expect(() =>
-      assertIntegrationMergeTargets({ plan, chainHead: "wip/head", mergeItems }),
+      assertIntegrationMergeTargets({
+        plan,
+        effectiveSourceBranch: "wip/head",
+        mergeItems,
+      }),
     ).not.toThrow();
   });
 });

@@ -25,6 +25,10 @@ import {
   validateCodeTaskIntegrationPlanInvariant,
 } from "@/lib/prototype/implementationIntegrationPlanValidation";
 import {
+  resolveEffectiveIntegrationSourceBranch,
+  resolveLatestVerifiedWorkBranchFromIncluded,
+} from "@/lib/prototype/integrationEffectiveSourceBranch";
+import {
   IntegrationPipelineDomainError,
   buildIntegrationPipelineRuntimeErrorLogFields,
   toUserSafeIntegrationErrorMessage,
@@ -54,6 +58,9 @@ export async function runIntegrationBranchPipeline(input: {
   readonly createPullRequest?: boolean;
   readonly nowIso?: string;
   readonly storedIntegrationPlan?: CodeTaskIntegrationPlanV1 | null;
+  readonly sourceBranch?: string | null;
+  readonly targetBranch?: string | null;
+  readonly integrationBranch?: string | null;
 }): Promise<RunIntegrationBranchPipelineResult> {
   const nowIso = input.nowIso ?? new Date().toISOString();
   const timeline: RequirementsPromptTimelineEntry[] = [];
@@ -73,6 +80,10 @@ export async function runIntegrationBranchPipeline(input: {
 
   let lastPlan: CodeTaskIntegrationPlanV1 | null = null;
   let chainHeadForLog: string | null = null;
+  let effectiveSourceBranchForLog: string | null = null;
+
+  const SOURCE_RESOLUTION_USER_MESSAGE =
+    "최종 통합 기준 branch를 결정하지 못했습니다.\n다시 시도해 주세요.";
 
   const failPipeline = (inputFail: {
     readonly plan: CodeTaskIntegrationPlanV1;
@@ -195,14 +206,74 @@ export async function runIntegrationBranchPipeline(input: {
     const chainHead =
       topology?.kind === "linear_chain" ? topology.chainHead : null;
     chainHeadForLog = chainHead;
-    if (chainHead) {
-      pushTimeline("implementation_integration_source_resolved", {
-        topology: "linear_chain",
-        sourceBranch: chainHead,
+
+    const includedWorkBranches = targets.included
+      .map((row) => String(row.workBranch ?? "").trim())
+      .filter(Boolean);
+    const latestVerifiedWorkBranch = resolveLatestVerifiedWorkBranchFromIncluded({
+      included: targets.included,
+      codeTaskPlan: input.codeTaskPlan,
+    });
+
+    pushTimeline("implementation_integration_source_resolution_started", {
+      contextSourceBranch: input.sourceBranch ?? null,
+      contextTargetBranch: input.targetBranch ?? null,
+      contextIntegrationBranch: input.integrationBranch ?? null,
+      topologyChainHead: chainHead,
+      includedWorkBranches: includedWorkBranches.join(","),
+    });
+
+    const effectiveSource = resolveEffectiveIntegrationSourceBranch({
+      contextSourceBranch: input.sourceBranch ?? null,
+      contextTargetBranch: input.targetBranch ?? null,
+      contextIntegrationBranch: input.integrationBranch ?? null,
+      topologyChainHead: chainHead,
+      includedWorkBranches,
+      latestVerifiedWorkBranch,
+    });
+    effectiveSourceBranchForLog = effectiveSource.sourceBranch;
+
+    if (!effectiveSource.ok || !effectiveSource.sourceBranch) {
+      pushTimeline("implementation_integration_source_resolution_failed", {
+        reason: effectiveSource.reason,
+        contextSourceBranch: effectiveSource.diagnostic.contextSourceBranch,
+        contextTargetBranch: effectiveSource.diagnostic.contextTargetBranch,
+        contextIntegrationBranch: effectiveSource.diagnostic.contextIntegrationBranch,
+        topologyChainHead: effectiveSource.diagnostic.topologyChainHead,
+        includedWorkBranches: effectiveSource.diagnostic.includedWorkBranches.join(","),
+      });
+      const draft = buildCodeTaskIntegrationPlanDraft({
+        projectId: input.projectId,
+        targetRepository: input.repoUrl,
         baseBranch: input.baseBranch,
-        reason: "final_chain_head_contains_prior_branch_changes",
+        included: targets.included,
+        excluded: targets.excluded,
+        codeTaskPlan: input.codeTaskPlan,
+        selectedCodeTaskIds: input.selectedCodeTaskIds,
+        runIdByCodeTaskId,
+        nowIso,
+      });
+      lastPlan = draft;
+      return failPipeline({
+        plan: draft,
+        message: SOURCE_RESOLUTION_USER_MESSAGE,
+        failureMessage: SOURCE_RESOLUTION_USER_MESSAGE,
       });
     }
+
+    pushTimeline("implementation_integration_source_resolution_completed", {
+      reason: effectiveSource.reason,
+      contextSourceBranch: effectiveSource.diagnostic.contextSourceBranch,
+      topologyChainHead: effectiveSource.diagnostic.topologyChainHead,
+      effectiveSourceBranch: effectiveSource.sourceBranch,
+      includedWorkBranches: effectiveSource.diagnostic.includedWorkBranches.join(","),
+    });
+    pushTimeline("implementation_integration_source_resolved", {
+      topology: topology?.kind ?? "unknown",
+      sourceBranch: effectiveSource.sourceBranch,
+      baseBranch: input.baseBranch,
+      reason: effectiveSource.reason,
+    });
 
     let plan = buildCodeTaskIntegrationPlanDraft({
       projectId: input.projectId,
@@ -256,11 +327,25 @@ export async function runIntegrationBranchPipeline(input: {
   plan = normalizeCodeTaskIntegrationPlan(plan);
   lastPlan = plan;
   const included = asReadonlyArray(plan.included);
+  const effectiveSourceBranch = effectiveSource.sourceBranch!;
   const mergeItems =
-    chainHead && included.length > 1
-      ? included.filter((item) => item.workBranch === chainHead).slice(-1)
+    included.length > 1
+      ? included.filter((item) => item.workBranch === effectiveSourceBranch).slice(-1)
       : included;
-  assertIntegrationMergeTargets({ plan, chainHead, mergeItems });
+  assertIntegrationMergeTargets({
+    plan,
+    effectiveSourceBranch,
+    mergeItems,
+    diagnostic: {
+      contextSourceBranch: input.sourceBranch ?? null,
+      contextTargetBranch: input.targetBranch ?? null,
+      contextIntegrationBranch: input.integrationBranch ?? null,
+      topologyChainHead: chainHead,
+      includedWorkBranches,
+      effectiveSourceBranch,
+      reason: effectiveSource.reason,
+    },
+  });
 
   for (const item of mergeItems) {
     pushTimeline("implementation_codetask_branch_merge_started", {
@@ -396,6 +481,7 @@ export async function runIntegrationBranchPipeline(input: {
       includedCount: lastPlan ? asReadonlyArray(lastPlan.included).length : null,
       excludedCount: lastPlan ? asReadonlyArray(lastPlan.excluded).length : null,
       chainHead: chainHeadForLog,
+      effectiveSourceBranch: effectiveSourceBranchForLog,
       integrationStatus: lastPlan?.status ?? null,
     });
 
