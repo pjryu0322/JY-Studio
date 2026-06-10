@@ -12,6 +12,7 @@ export function evaluateQuickRunExecutionSelectionGate(input: {
   readonly codeTasks: readonly ImplementationCodeTaskV1[];
   readonly units?: readonly ImplementationExecutionUnitV1[] | null;
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+  readonly progressByCodeTaskId?: ReadonlyMap<string, { readonly statusLabel: string; readonly progressLabel: string }>;
 }): ReturnType<typeof evaluateExecutionSelectionGate> {
   return evaluateExecutionSelectionGate(input);
 }

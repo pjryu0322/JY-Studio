@@ -7331,6 +7331,7 @@ export function PrototypePreviewPanel({
       codeTasks: imp.implementationCodeTaskPlanV1?.tasks ?? [],
       units: loadImplementationExecutionUnitsFromState(imp),
       runs: parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ?? [],
+      progressByCodeTaskId: undefined,
     });
     if (!executionGate.ok) {
       const message =
@@ -8288,6 +8289,24 @@ export function PrototypePreviewPanel({
             integrationPipelinePreviewReady={integrationPipelineClientResult?.previewReady}
             integrationPipelineStatus={integrationPipelineClientResult?.status}
             onOpenImplementationPreview={openImplementationPreview}
+            onExecuteSelectedCodeTasks={() => {
+              const imp = orchestrationAwareRequirementsStateRef.current;
+              const selected = normalizeSelectedCodeTaskIds({
+                codeTaskPlan: imp.implementationCodeTaskPlanV1,
+                selectedCodeTaskIds: imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
+                legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
+              });
+              void startImplementationQuickRun({ selectedCodeTaskIds: selected });
+            }}
+            onReworkSelectedCodeTasks={() => {
+              const imp = orchestrationAwareRequirementsStateRef.current;
+              const selected = normalizeSelectedCodeTaskIds({
+                codeTaskPlan: imp.implementationCodeTaskPlanV1,
+                selectedCodeTaskIds: imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
+                legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
+              });
+              void startImplementationQuickRun({ selectedCodeTaskIds: selected });
+            }}
           />
         ) : null}
         {!boardPanelVisible ? (

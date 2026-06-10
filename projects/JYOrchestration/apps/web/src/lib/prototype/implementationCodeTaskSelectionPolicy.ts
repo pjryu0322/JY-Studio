@@ -62,10 +62,15 @@ function resolveOutcome(input: CodeTaskSelectionContextV1) {
   });
 }
 
+function isSampleDataCodeTaskId(codeTaskId: string): boolean {
+  return /^CODE-DATA-SAMPLE/i.test(codeTaskId.trim());
+}
+
 function isSampleDataTask(input: CodeTaskSelectionContextV1): boolean {
   const branchGroup = parseCodeTaskBranchPlanV1(input.codeTask.branchPlan)?.branchGroup ?? "";
   return (
     branchGroup === "data" ||
+    isSampleDataCodeTaskId(input.codeTask.codeTaskId) ||
     isSampleDataCodeTaskRef({
       codeTaskId: input.codeTask.codeTaskId,
       parentTaskId: input.codeTask.parentTaskId,
@@ -73,6 +78,38 @@ function isSampleDataTask(input: CodeTaskSelectionContextV1): boolean {
       changeType: input.codeTask.changeType,
     })
   );
+}
+
+function isRunnableByUiLabels(input: CodeTaskSelectionContextV1): boolean {
+  return (
+    progressIndicatesRunnable(input.progressLabel) ||
+    statusIndicatesPending(input.statusLabel) ||
+    input.unit?.status === "ready" ||
+    input.unit?.status === "queued" ||
+    input.unit?.status === "failed"
+  );
+}
+
+function trySampleDataExecutionSelection(
+  input: CodeTaskSelectionContextV1,
+  mode: CodeTaskSelectionModeV1,
+): CodeTaskSelectionEligibilityV1 | null {
+  if (mode !== "execution" && mode !== "rework") return null;
+  if (!isSampleDataTask(input)) return null;
+  if (!isRunnableByUiLabels(input)) return null;
+  const blocked = runningBlocked(input);
+  if (blocked) return blocked;
+  console.info(
+    JSON.stringify({
+      action: "sample_data_codetask_selectable_resolved",
+      codeTaskId: input.codeTask.codeTaskId,
+      mode,
+      status: input.statusLabel ?? null,
+      progress: input.progressLabel ?? null,
+      branchGroup: parseCodeTaskBranchPlanV1(input.codeTask.branchPlan)?.branchGroup ?? null,
+    }),
+  );
+  return { selectable: true, reason: "selectable", userMessage: null };
 }
 
 function runningBlocked(input: CodeTaskSelectionContextV1): CodeTaskSelectionEligibilityV1 | null {
@@ -118,11 +155,14 @@ function canSelectForIntegration(input: CodeTaskSelectionContextV1): CodeTaskSel
 }
 
 function canSelectForExecution(input: CodeTaskSelectionContextV1): CodeTaskSelectionEligibilityV1 {
+  const sampleEarly = trySampleDataExecutionSelection(input, "execution");
+  if (sampleEarly) return sampleEarly;
+
   const blocked = runningBlocked(input);
   if (blocked) return blocked;
 
   const outcome = resolveOutcome(input);
-  if (input.unit?.status === "blocked") {
+  if (input.unit?.status === "blocked" && !isSampleDataTask(input)) {
     return {
       selectable: false,
       reason: "blocked_by_dependency",
@@ -141,10 +181,8 @@ function canSelectForExecution(input: CodeTaskSelectionContextV1): CodeTaskSelec
   if (
     outcome.status === "failed" ||
     outcome.status === "pending" ||
-    progressIndicatesRunnable(input.progressLabel) ||
-    statusIndicatesPending(input.statusLabel) ||
-    input.unit?.status === "ready" ||
-    input.unit?.status === "failed"
+    outcome.status === "inconsistent" ||
+    isRunnableByUiLabels(input)
   ) {
     if (isSampleDataTask(input)) {
       console.info(
@@ -165,11 +203,14 @@ function canSelectForExecution(input: CodeTaskSelectionContextV1): CodeTaskSelec
 }
 
 function canSelectForRework(input: CodeTaskSelectionContextV1): CodeTaskSelectionEligibilityV1 {
+  const sampleEarly = trySampleDataExecutionSelection(input, "rework");
+  if (sampleEarly) return sampleEarly;
+
   const blocked = runningBlocked(input);
   if (blocked) return blocked;
 
   const outcome = resolveOutcome(input);
-  if (input.unit?.status === "blocked") {
+  if (input.unit?.status === "blocked" && !isSampleDataTask(input)) {
     return {
       selectable: false,
       reason: "blocked_by_dependency",
@@ -180,10 +221,8 @@ function canSelectForRework(input: CodeTaskSelectionContextV1): CodeTaskSelectio
   if (
     outcome.status === "failed" ||
     outcome.status === "pending" ||
-    progressIndicatesRunnable(input.progressLabel) ||
-    statusIndicatesPending(input.statusLabel) ||
-    input.unit?.status === "ready" ||
-    input.unit?.status === "failed"
+    outcome.status === "inconsistent" ||
+    isRunnableByUiLabels(input)
   ) {
     return { selectable: true, reason: "selectable", userMessage: null };
   }
@@ -340,6 +379,7 @@ export function evaluateExecutionSelectionGate(input: {
   readonly codeTasks: readonly ImplementationCodeTaskV1[];
   readonly units?: readonly ImplementationExecutionUnitV1[] | null;
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+  readonly progressByCodeTaskId?: ReadonlyMap<string, { readonly statusLabel: string; readonly progressLabel: string }>;
 }): Readonly<{ readonly ok: boolean; readonly message: string | null; readonly runnableIds: readonly string[] }> {
   const mode = input.mode ?? "execution";
   const runnableIds = filterCodeTaskIdsForSelectionMode({
@@ -348,6 +388,7 @@ export function evaluateExecutionSelectionGate(input: {
     codeTasks: input.codeTasks,
     units: input.units,
     runs: input.runs,
+    progressByCodeTaskId: input.progressByCodeTaskId,
   });
   if (!input.selectedCodeTaskIds.length) {
     return { ok: false, message: "실행할 CodeTask를 선택해 주세요.", runnableIds: [] };

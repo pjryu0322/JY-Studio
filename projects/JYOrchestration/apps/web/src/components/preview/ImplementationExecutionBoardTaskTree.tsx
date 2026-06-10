@@ -254,6 +254,7 @@ export function ImplementationExecutionBoardTaskTree({
   developerPromptHeaderCopyDisabled,
   selectedCodeTaskCount,
   selectableCodeTaskCount,
+  integrationReadyCount,
   codeAgentProgress,
 }: {
   readonly nodes: readonly ImplementationCodeTaskTreeNode[];
@@ -269,11 +270,13 @@ export function ImplementationExecutionBoardTaskTree({
   readonly developerPromptHeaderCopyDisabled?: boolean;
   readonly selectedCodeTaskCount?: number;
   readonly selectableCodeTaskCount?: number;
+  readonly integrationReadyCount?: number;
 }) {
   const codeTaskCount = nodes.length;
   const selectedCount =
     selectedCodeTaskCount ?? nodes.filter((node) => node.isChecked).length;
-  const selectableCount = selectableCodeTaskCount ?? codeTaskCount;
+  const runnableCount = selectableCodeTaskCount ?? codeTaskCount;
+  const integrationReady = integrationReadyCount ?? 0;
 
   return (
     <div className={styles.taskTreeList} data-testid="implementation-task-tree">
@@ -306,7 +309,8 @@ export function ImplementationExecutionBoardTaskTree({
           ) : null}
         </label>
         <span className={styles.taskTreeSelectAllMeta}>
-          CodeTask {codeTaskCount}개 · 선택 가능 {selectableCount}개 · 선택됨 {selectedCount}개
+          CodeTask {codeTaskCount}개 · 실행 가능 {runnableCount}개 · 선택됨 {selectedCount}개
+          {integrationReady > 0 ? ` · 통합 가능 ${integrationReady}개` : ""}
         </span>
       </div>
       {nodes.map((node) => (

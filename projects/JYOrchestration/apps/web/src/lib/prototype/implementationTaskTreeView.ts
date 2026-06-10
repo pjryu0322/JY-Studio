@@ -369,12 +369,13 @@ function buildCodeTaskNode(input: {
 
   const selectionEligibility = getCodeTaskSelectionEligibility({
     mode: DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
+    quiet: true,
     context: {
       codeTask: input.codeTask,
       unit: input.executionUnit ?? null,
       runs: input.codeTaskExecutionRuns,
-      statusLabel,
-      progressLabel,
+      statusLabel: input.runtimeSnapshotUnit?.statusLabel ?? statusLabel,
+      progressLabel: input.runtimeSnapshotUnit?.progressLabel ?? progressLabel,
     },
   });
   const checkboxDisabled = !selectionEligibility.selectable && !input.isChecked;
