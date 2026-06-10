@@ -65,9 +65,8 @@ export function getIntegrationPreviewRemediationGuide(
       actionLines: [
         "GitHub 저장소로 이동합니다.",
         "Settings → Pages 메뉴를 엽니다.",
-        "Source를 Deploy from a branch로 설정합니다.",
-        "Branch를 gh-pages, Folder를 /(root)로 선택합니다.",
-        "다시 [통합 및 Preview 준비]를 눌러 주세요.",
+        "Build and deployment의 Source를 GitHub Actions로 선택합니다.",
+        "저장 후 플랫폼에서 다시 [통합 및 Preview 준비]를 실행합니다.",
       ],
       showOpenSettings: false,
       showPermissionGuide: false,

@@ -11,6 +11,14 @@ vi.mock("@/lib/prototype/githubPagesPreviewDeploymentService", () => ({
   deployIntegratedPreviewToGitHubPages: vi.fn(),
 }));
 
+vi.mock("@/lib/prototype/integrationPreviewPreflightService", () => ({
+  runIntegrationPreviewPreflight: vi.fn(async () => ({
+    ok: true,
+    checkedAt: "2026-01-01T00:00:00.000Z",
+  })),
+  INTEGRATION_PREVIEW_PREFLIGHT_CONFIRMED_USER_MESSAGE: "confirmed",
+}));
+
 import { deployIntegratedPreviewToGitHubPages } from "@/lib/prototype/githubPagesPreviewDeploymentService";
 import {
   IMPLEMENTATION_PREVIEW_RUNTIME_VERSION,
@@ -101,24 +109,24 @@ describe("app preview target GitHub Pages", () => {
     expect(result.previewUrl).toBe(runtime.previewUrl ?? runtime.externalPreviewUrl);
   });
 
-  it("12. pages_not_configured pipeline status", async () => {
+  it("12. pages setup required pipeline status from deploy failure", async () => {
     vi.mocked(deployIntegratedPreviewToGitHubPages).mockResolvedValueOnce({
       ok: false,
       deployment: {
-        status: "pages_not_configured",
+        status: "failed",
         repositoryFullName: "o/r",
         sourceBranch: "integration/p",
         pagesBranch: "gh-pages",
         pagesPath: "previews/p/",
         pagesUrl: null,
         deployedCommitSha: null,
-        errorCode: "pages_not_configured",
-        userSafeMessage: "GitHub Pages 설정이 필요합니다.",
+        errorCode: "workflow_dispatch_failed",
+        userSafeMessage: "GitHub Pages 설정이 필요합니다. Source를 GitHub Actions로 선택해 주세요.",
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
       },
       timelineEntries: [],
-      pipelineStatus: "github_pages_not_configured",
+      pipelineStatus: "app_preview_target_failed",
     });
 
     const result = await runAppPreviewTargetIntegrationStep({
@@ -134,7 +142,7 @@ describe("app preview target GitHub Pages", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.pipelineStatus).toBe("github_pages_not_configured");
+    expect(result.pipelineStatus).toBe("app_preview_target_failed");
   });
 
   it("14. does not reference buildPreviewFromCompletedCodeTasks", () => {

@@ -1,6 +1,13 @@
 import { githubRestApiBase } from "@/lib/integration/githubRestCommon";
 import { readGithubAcceptedPermissionsHeader } from "@/lib/integration/githubAcceptedPermissionsHeader";
 import type { GithubCapabilityValidationSnapshot } from "@/lib/executionSetup/githubPatCapabilityProbes";
+import {
+  GITHUB_PAGES_ACTIONS_SOURCE_USER_MESSAGE,
+  GITHUB_PAGES_BRANCH_SOURCE_SWITCH_MESSAGE,
+  GITHUB_PAGES_SOURCE_UNKNOWN_MESSAGE,
+  parseGitHubPagesSourceModeFromApiResponse,
+  resolvePagesSourcePreflightForIntegration,
+} from "@/lib/prototype/githubPagesSetupProbeService";
 import { JYO_PREVIEW_PAGES_WORKFLOW_FILE, probeJyoPreviewPagesWorkflowDispatch } from "@/lib/prototype/githubPagesWorkflowService";
 import type { GitHubWorkflowDispatchRemediationCodeV1 } from "@/lib/prototype/githubPreviewDeploymentFailureClassifier";
 import type {
@@ -131,7 +138,6 @@ export function derivePreviewDeploymentReadyFromPreflight(
   const blockers = new Set<GithubPreflightCheckKeyV1>([
     "actions_workflow_dispatch",
     "workflow_file_write",
-    "gh_pages_branch_write",
     "pages_status_read",
   ]);
   for (const c of preflight.checks) {
@@ -326,45 +332,66 @@ export async function runGithubProviderPreflight(input: {
 
   checks.push(check("workflow_run_read", "skipped", { required: false }));
 
-  let ghPagesOk = false;
-  let pagesReadOk = false;
   let pagesOperator: string | null = null;
+  let pagesSourceStatus: GithubPreflightCheckStatusV1 = "unknown";
+  let pagesSourceUserMessage: string | null = null;
+  let pagesSourceRemediation: GithubPreflightRemediationCodeV1 = "set_pages_source_actions";
+
   if (token && ownerRepo.includes("/")) {
     const [owner, repo] = ownerRepo.split("/");
     const api = githubRestApiBase();
-    const ref = await githubFetchStatus(
-      `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/ref/heads/gh-pages`,
-      token,
-    );
-    ghPagesOk = ref.status === 200 || ref.status === 201 || contentsWrite;
-    if (ref.status === 403) {
-      ghPagesOk = false;
-      pagesOperator = `gh-pages ref HTTP ${ref.status}`;
-    }
     const pages = await githubFetchStatus(
       `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pages`,
       token,
     );
-    pagesReadOk = pages.status === 200;
-    if (pages.status === 404) {
-      pagesReadOk = false;
+    pagesOperator = `pages API HTTP ${pages.status}`;
+    let pagesBody: unknown = null;
+    if (pages.body) {
+      try {
+        pagesBody = JSON.parse(pages.body);
+      } catch {
+        pagesBody = null;
+      }
     }
+    const parsed = parseGitHubPagesSourceModeFromApiResponse({
+      httpStatus: pages.status,
+      body: pagesBody,
+    });
+    const integrationPreflight = resolvePagesSourcePreflightForIntegration(parsed.mode, {
+      disabled: GITHUB_PAGES_ACTIONS_SOURCE_USER_MESSAGE,
+      branch: GITHUB_PAGES_BRANCH_SOURCE_SWITCH_MESSAGE,
+      unknown: GITHUB_PAGES_SOURCE_UNKNOWN_MESSAGE,
+    });
+    const useIntegrationStrict = integrationLive;
+    pagesSourceStatus = useIntegrationStrict
+      ? integrationPreflight.status
+      : parsed.preflightStatus === "failed"
+        ? "warning"
+        : parsed.preflightStatus;
+    pagesSourceUserMessage = useIntegrationStrict
+      ? integrationPreflight.userSafeMessage
+      : parsed.mode === "actions"
+        ? null
+        : parsed.userSafeMessage;
+    pagesSourceRemediation = integrationPreflight.remediationCode;
+    pagesOperator = `${pagesOperator}; sourceMode=${parsed.mode}`;
   }
 
   checks.push(
-    check("gh_pages_branch_write", ghPagesOk ? "passed" : "warning", {
-      userSafeMessage: ghPagesOk ? null : "GitHub Pages 배포 branch(gh-pages) 확인이 필요합니다.",
-      remediationCode: "enable_pages",
-      operatorMessage: pagesOperator,
+    check("gh_pages_branch_write", "skipped", {
+      required: false,
+      userSafeMessage: null,
+      remediationCode: "none",
+      operatorMessage: "gh-pages branch not required for Actions Pages deploy",
     }),
   );
 
   checks.push(
-    check("pages_status_read", pagesReadOk ? "passed" : "warning", {
-      userSafeMessage: pagesReadOk
-        ? null
-        : "GitHub Pages 설정이 비활성화되어 있거나 확인할 수 없습니다.",
-      remediationCode: "enable_pages",
+    check("pages_status_read", pagesSourceStatus, {
+      required: integrationLive,
+      userSafeMessage: pagesSourceUserMessage,
+      remediationCode: pagesSourceRemediation,
+      operatorMessage: pagesOperator,
     }),
   );
 

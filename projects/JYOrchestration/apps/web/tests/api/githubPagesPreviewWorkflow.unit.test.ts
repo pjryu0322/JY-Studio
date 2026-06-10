@@ -13,6 +13,9 @@ describe("githubPagesPreviewWorkflow", () => {
     expect(yaml).toContain("source_branch");
     expect(yaml).toContain("pages_path");
     expect(yaml).toContain("npm run build");
+    expect(yaml).toContain("upload-pages-artifact");
+    expect(yaml).toContain("deploy-pages");
+    expect(yaml).not.toContain("git push origin gh-pages");
     expect(yaml).not.toMatch(/ghp_[A-Za-z0-9]+/);
   });
 });

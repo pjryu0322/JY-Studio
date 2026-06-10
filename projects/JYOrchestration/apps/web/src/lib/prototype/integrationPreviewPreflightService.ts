@@ -40,7 +40,7 @@ const PERMISSION_USER_MESSAGE =
   "GitHub Actions 실행 권한이 필요합니다.\nGitHub Token 권한에서 Actions와 Workflows를 Read/Write로 설정한 뒤 다시 통합 및 Preview 준비를 실행해 주세요.";
 
 const PAGES_USER_MESSAGE =
-  "GitHub Pages 설정이 필요합니다.\n저장소 Settings → Pages에서 gh-pages branch를 활성화한 뒤 다시 실행해 주세요.";
+  "GitHub Pages 설정이 필요합니다.\n저장소 Settings → Pages에서 Source를 GitHub Actions로 선택한 뒤 다시 통합 및 Preview 준비를 실행해 주세요.";
 
 export const INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE =
   "Preview 배포 권한을 다시 확인하는 중입니다...";
@@ -122,7 +122,7 @@ function classifyPreviewPreflightFailure(
       ok: false,
       kind: "github_pages_setup_required",
       userSafeMessage: PAGES_USER_MESSAGE,
-      remediationCode: "enable_pages",
+      remediationCode: "set_pages_source_actions",
       checks,
     } as const;
   }

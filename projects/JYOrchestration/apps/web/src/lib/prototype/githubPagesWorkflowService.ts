@@ -17,68 +17,75 @@ on:
   workflow_dispatch:
     inputs:
       project_id:
+        description: "JYO project id"
         required: true
         type: string
       source_branch:
+        description: "Integration branch to build"
         required: true
         type: string
       pages_path:
+        description: "Preview path under GitHub Pages"
         required: true
         type: string
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
+concurrency:
+  group: "jyo-preview-pages-\${{ github.event.inputs.project_id }}"
+  cancel-in-progress: true
+
 jobs:
-  build-preview:
+  build-and-deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: \${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout source branch
+      - name: Checkout integration branch
         uses: actions/checkout@v4
         with:
-          ref: \${{ inputs.source_branch }}
+          ref: \${{ github.event.inputs.source_branch }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "20"
 
       - name: Install dependencies
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-      - name: Build
+      - name: Build static site
         run: npm run build
 
-      - name: Detect artifact
+      - name: Resolve build output
+        id: output
+        shell: bash
         run: |
-          if [ -d dist ]; then echo "ARTIFACT_DIR=dist" >> $GITHUB_ENV; \\
-          elif [ -d out ]; then echo "ARTIFACT_DIR=out" >> $GITHUB_ENV; \\
-          elif [ -d build ]; then echo "ARTIFACT_DIR=build" >> $GITHUB_ENV; \\
-          else echo "No static artifact found" && exit 1; fi
+          if [ -d dist ]; then echo "dir=dist" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ -d out ]; then echo "dir=out" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ -d build ]; then echo "dir=build" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "No static build output found" >&2
+          exit 1
 
-      - name: Deploy to gh-pages preview path
+      - name: Prepare preview path
+        shell: bash
         run: |
-          mkdir -p /tmp/preview-deploy
-          cp -R "$ARTIFACT_DIR"/. /tmp/preview-deploy/
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin gh-pages || true
-          if git rev-parse --verify origin/gh-pages; then
-            git checkout gh-pages
-          else
-            git checkout --orphan gh-pages
-            git rm -rf . || true
-          fi
-          rm -rf "\${{ inputs.pages_path }}"
-          mkdir -p "\${{ inputs.pages_path }}"
-          cp -R /tmp/preview-deploy/. "\${{ inputs.pages_path }}/"
-          touch .nojekyll
-          git add .
-          git commit -m "deploy preview for \${{ inputs.project_id }}" || echo "No changes"
-          git push origin gh-pages
+          mkdir -p "_site/\${{ github.event.inputs.pages_path }}"
+          cp -R "\${{ steps.output.outputs.dir }}/." "_site/\${{ github.event.inputs.pages_path }}/"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 `;
 }
 

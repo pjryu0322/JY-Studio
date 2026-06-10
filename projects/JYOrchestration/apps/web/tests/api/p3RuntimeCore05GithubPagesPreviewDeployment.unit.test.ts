@@ -44,7 +44,7 @@ describe("P3-Runtime-Core-05 GitHub Pages preview deployment", () => {
     expect(src).toContain("deployIntegratedPreviewToGitHubPages");
     expect(src).toContain("github_pages_preview_deploy_started");
     expect(src).toContain("github_pages_preview_deployed");
-    expect(src).toContain("static_preview_artifact_missing");
+    expect(src).toContain("runJyoPreviewPagesWorkflowDeploy");
     expect(src).not.toMatch(/Authorization:\s*`Bearer\s+\$\{input\.githubToken/);
   });
 

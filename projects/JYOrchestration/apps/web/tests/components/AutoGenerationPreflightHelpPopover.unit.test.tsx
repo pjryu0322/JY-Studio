@@ -26,7 +26,7 @@ describe("AutoGenerationPreflightHelpPopover", () => {
     const html = renderToStaticMarkup(createElement(SettingsHelpPopoverContentView, content));
     expect(html).toContain("GitHub Pages 설정 방법");
     expect(html).toContain("Pages");
-    expect(html).toContain("gh-pages");
+    expect(html).toContain("GitHub Actions");
   });
 
   it("does not expose raw API errors or full tokens in help content", () => {

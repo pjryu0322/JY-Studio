@@ -38,6 +38,7 @@ export type AutoGenerationRemediationCodeV1 =
   | "enable_workflow_permission"
   | "enable_actions_permission"
   | "enable_pages"
+  | "set_pages_source_actions"
   | "manual_setup_required"
   | "ensure_workflow_file"
   | "ensure_workflow_dispatch"
@@ -159,7 +160,6 @@ export function derivePreviewDeploymentReadyFromConnectionTest(
   const required: PreviewDeploymentPreflightKeyV1[] = [
     "workflow_file_write",
     "actions_workflow_dispatch",
-    "gh_pages_branch_write",
   ];
   if (!allRequiredPassed(previewRows, required)) return false;
   const pagesOk =

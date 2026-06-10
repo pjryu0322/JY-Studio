@@ -109,27 +109,21 @@ export function getGithubPreflightHelpContent(key: GithubPreflightHelpKeyV1): Se
       ],
     },
     gh_pages_branch_write: {
-      title: "GitHub Pages 배포 branch 확인 방법",
-      description: "Preview 결과는 `gh-pages` branch의 `previews/{projectId}/` 경로에 배포됩니다.",
-      checklist: [
-        "gh-pages branch 생성 또는 수정 권한이 있는지",
-        "previews/{projectId}/ 경로에 파일을 쓸 수 있는지",
-      ],
+      title: "GitHub Pages Actions 배포",
+      description: "Preview는 GitHub Actions가 통합 branch에서 빌드한 뒤 Pages에 배포합니다. 별도 배포 branch 선택은 필요하지 않습니다.",
       actionGuide: [
-        "GitHub Token에 Contents Read/Write 권한을 부여합니다.",
-        "저장소 branch protection이 gh-pages push를 막고 있지 않은지 확인합니다.",
+        "저장소 Settings → Pages에서 Source를 GitHub Actions로 선택합니다.",
+        "다시 통합 및 Preview 준비를 실행합니다.",
       ],
     },
     pages_status_read: {
       title: "GitHub Pages 설정 방법",
-      description: "GitHub Pages가 활성화되어 있어야 Preview URL이 외부에서 열립니다.",
+      description: "GitHub Pages Source를 GitHub Actions로 설정하면 Preview URL이 외부에서 열립니다.",
       actionGuide: [
         "GitHub 저장소로 이동합니다.",
-        "Settings 메뉴를 엽니다.",
-        "Pages 메뉴를 선택합니다.",
-        "Source를 Deploy from a branch로 설정합니다.",
-        "Branch를 gh-pages, Folder를 /root로 선택합니다.",
-        "저장 후 연결 테스트를 다시 실행합니다.",
+        "Settings → Pages 메뉴를 엽니다.",
+        "Build and deployment의 Source를 GitHub Actions로 선택합니다.",
+        "저장 후 통합 및 Preview 준비를 다시 실행합니다.",
       ],
     },
   };

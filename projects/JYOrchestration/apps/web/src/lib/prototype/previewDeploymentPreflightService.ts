@@ -31,16 +31,25 @@ function mapOne(c: GithubPreflightCheckResultV1): AutoGenerationCheckResultV1 {
   if (c.key === "actions_workflow_dispatch" && c.status === "failed") {
     userMsg = userMsg ?? "GitHub Actions 실행 권한이 필요합니다.";
   }
-  if (c.key === "gh_pages_branch_write" && c.status !== "passed") {
-    userMsg = userMsg ?? "GitHub Pages 배포 branch 생성/수정 권한이 필요합니다.";
+  if (c.key === "gh_pages_branch_write") {
+    return {
+      key,
+      status: mapStatus(c.status),
+      required: false,
+      userSafeMessage: null,
+      operatorMessage: c.operatorMessage,
+      remediationCode: "none",
+    };
   }
   if ((c.key === "pages_status_read" || c.key === "pages_configuration_write") && c.status !== "passed") {
-    userMsg = userMsg ?? "GitHub Pages 설정 확인이 필요합니다.";
+    userMsg =
+      userMsg ??
+      "GitHub Pages 설정이 필요합니다. Source를 GitHub Actions로 선택해 주세요.";
   }
   return {
     key,
     status: mapStatus(c.status),
-    required: c.key !== "pages_configuration_write",
+    required: c.key !== "pages_configuration_write" && c.key !== "gh_pages_branch_write",
     userSafeMessage: userMsg,
     operatorMessage: c.operatorMessage,
     remediationCode: c.remediationCode as AutoGenerationCheckResultV1["remediationCode"],
