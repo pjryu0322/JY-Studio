@@ -102,7 +102,7 @@ describe("P3-08C/08D selection summary and actions", () => {
     expect(summary.integrationReadyCount).toBe(2);
   });
 
-  it("primary action is execute_selected when sample data is selected", () => {
+  it("does not show board execute when runnable sample is selected", () => {
     const summary = summarizeImplementationCodeTasksForUserAction({
       codeTasks,
       selectedCodeTaskIds: [sampleId],
@@ -112,14 +112,11 @@ describe("P3-08C/08D selection summary and actions", () => {
       visibleCodeTaskIds: visible,
     });
     const action = resolveImplementationBoardPrimaryAction({
-      selectedCodeTaskIds: [sampleId],
       userActionSummary: summary,
-      runnableCodeTaskIds: [sampleId],
     });
-    expect(action.primaryAction).toBe("execute_selected_runnable_codetasks");
-    expect(action.primaryLabel).toBe("선택 작업 실행");
-    expect(action.showExecuteSelectedButton).toBe(true);
-    expect(action.showIntegrationPrepareButton).toBe(false);
+    expect(action.showExecuteSelectedButton).toBe(false);
+    expect(action.primaryAction).toBeNull();
+    expect(action.showIntegrationPrepareButton).toBe(true);
   });
 
   it("primary action is integration when no runnable tasks remain", () => {
@@ -134,9 +131,7 @@ describe("P3-08C/08D selection summary and actions", () => {
       visibleCodeTaskIds: completedIds,
     });
     const action = resolveImplementationBoardPrimaryAction({
-      selectedCodeTaskIds: [],
       userActionSummary: summary,
-      runnableCodeTaskIds: [],
       integrationPrepareEnabled: true,
     });
     expect(action.primaryAction).toBe("prepare_integration_preview");

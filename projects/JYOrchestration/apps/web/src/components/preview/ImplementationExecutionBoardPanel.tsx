@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getCurrentQueueCodeTaskId,
   parseCodeTaskExecutionQueueV1,
@@ -63,19 +63,20 @@ import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentEx
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
-  isCodeTaskTreeFullySelected,
   normalizeSelectedCodeTaskIds,
   resolveCodeTaskTreeSelectAll,
+  resolveCodeTaskTreeSelectAllHeaderState,
+  resolveCodeTaskTreeSelectAllToggleChecked,
   resolveCodeTaskTreeSelectionToggle,
   resolveParentTaskIdForCodeTask,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import { INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE } from "@/lib/prototype/implementationRunnableCodeTaskSelection";
 import {
   listRunnableCodeTaskIdsFromBoardNodes,
+  listUserCheckboxSelectableCodeTaskIdsFromBoardNodes,
   summarizeCodeTaskBoardRowsFromTreeNodes,
 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { logCodeTaskSelectionSummaryResolved } from "@/lib/prototype/implementationCodeTaskSelectionSummary";
-import { resolveImplementationBoardPrimaryAction } from "@/lib/prototype/implementationActionButtonPolicy";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
@@ -303,19 +304,33 @@ export function ImplementationExecutionBoardPanel({
     executionSetup?.allowedPathGlobs,
   ]);
 
-  const checkedCodeTaskIds = useMemo(
+  const boardSelectedCodeTaskIdsExplicit = useMemo(() => {
+    if (!boardState) return undefined;
+    return Object.prototype.hasOwnProperty.call(boardState, "selectedCodeTaskIds")
+      ? (boardState.selectedCodeTaskIds ?? [])
+      : undefined;
+  }, [boardState]);
+
+  const checkedFromBoard = useMemo(
     () =>
       normalizeSelectedCodeTaskIds({
-        selectedCodeTaskIds: boardState?.selectedCodeTaskIds,
+        selectedCodeTaskIds: boardSelectedCodeTaskIdsExplicit,
         codeTaskPlan: implementationCodeTaskPlanV1,
         legacySelectedTaskIds: boardState?.selectedTaskIds,
       }),
-    [
-      boardState?.selectedCodeTaskIds,
-      boardState?.selectedTaskIds,
-      implementationCodeTaskPlanV1,
-    ],
+    [boardSelectedCodeTaskIdsExplicit, boardState?.selectedTaskIds, implementationCodeTaskPlanV1],
   );
+
+  const [checkedCodeTaskIds, setCheckedCodeTaskIds] = useState<readonly string[]>([]);
+  const selectionHydratedForProjectRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const pid = (projectId ?? board.projectId).trim();
+    if (!pid) return;
+    if (selectionHydratedForProjectRef.current === pid) return;
+    selectionHydratedForProjectRef.current = pid;
+    setCheckedCodeTaskIds(checkedFromBoard);
+  }, [projectId, board.projectId, checkedFromBoard]);
 
   const codeTaskSummaryCounts = useMemo(
     () => {
@@ -329,7 +344,6 @@ export function ImplementationExecutionBoardPanel({
           codeTaskIntegrationPlanV1: codeTaskIntegrationPlanV1 ?? undefined,
         },
         codeTaskPlan: implementationCodeTaskPlanV1,
-        selectedCodeTaskIds: checkedCodeTaskIds,
         legacySelectedTaskIds: boardState?.selectedTaskIds,
         runs: codeTaskRuns,
         workItemCount: cursorWorkItemsV1?.length ?? 0,
@@ -340,7 +354,6 @@ export function ImplementationExecutionBoardPanel({
     [
       projectId,
       implementationCodeTaskPlanV1,
-      checkedCodeTaskIds,
       boardState,
       codeTaskRuns,
       cursorWorkItemsV1?.length,
@@ -353,44 +366,17 @@ export function ImplementationExecutionBoardPanel({
   const runtimeSnapshot = codeTaskSummaryCounts.runtimeSnapshot;
 
   const displaySelectedCodeTaskIds = checkedCodeTaskIds;
-
-  useEffect(() => {
-    const reconciled = codeTaskSummaryCounts.reconciledSelectedCodeTaskIds;
-    if (!codeTaskSummaryCounts.removedStaleSelectedIds.length) return;
-    const removedStaleSet = new Set(
-      codeTaskSummaryCounts.removedStaleSelectedIds.map((id) => id.trim()).filter(Boolean),
-    );
-    const preservedBoardSelection = checkedCodeTaskIds
-      .map((id) => id.trim())
-      .filter((id) => id && !removedStaleSet.has(id));
-    const nextIds =
-      boardState?.selectedCodeTaskIds !== undefined &&
-      boardState?.selectedCodeTaskIds !== null &&
-      preservedBoardSelection.length > 0
-        ? preservedBoardSelection
-        : reconciled;
-    if (
-      nextIds.length === checkedCodeTaskIds.length &&
-      nextIds.every((id, i) => id === checkedCodeTaskIds[i])
-    ) {
-      return;
-    }
-    onSelectedCodeTaskIdsChange?.(nextIds);
-  }, [
-    codeTaskSummaryCounts.reconciledSelectedCodeTaskIds,
-    codeTaskSummaryCounts.removedStaleSelectedIds.length,
-    codeTaskSummaryCounts.removedStaleSelectedIds,
-    checkedCodeTaskIds,
-    boardState?.selectedCodeTaskIds,
-    onSelectedCodeTaskIdsChange,
-  ]);
+  const checkedCodeTaskIdsRef = useRef(checkedCodeTaskIds);
+  checkedCodeTaskIdsRef.current = checkedCodeTaskIds;
 
   useEffect(() => {
     setSelectedTaskId((current) => current ?? activeTaskId);
   }, [activeTaskId]);
 
-  const updateCheckedCodeTaskIds = (nextSelectedCodeTaskIds: readonly string[]) => {
-    onSelectedCodeTaskIdsChange?.(nextSelectedCodeTaskIds);
+  const commitCheckedCodeTaskIds = (nextSelectedCodeTaskIds: readonly string[]) => {
+    const next = [...new Set(nextSelectedCodeTaskIds.map((id) => id.trim()).filter(Boolean))];
+    setCheckedCodeTaskIds(next);
+    onSelectedCodeTaskIdsChange?.(next);
   };
 
   const activeCodeTaskRun = useMemo(() => {
@@ -569,6 +555,11 @@ export function ImplementationExecutionBoardPanel({
     [taskTreeNodes],
   );
 
+  const userSelectableCodeTaskIdsFromBoard = useMemo(
+    () => listUserCheckboxSelectableCodeTaskIdsFromBoardNodes(taskTreeNodes),
+    [taskTreeNodes],
+  );
+
   const codeTaskSelectionSummary = useMemo(
     () =>
       summarizeCodeTaskBoardRowsFromTreeNodes({
@@ -585,14 +576,13 @@ export function ImplementationExecutionBoardPanel({
     });
   }, [projectId, board.projectId, codeTaskSelectionSummary]);
 
-  const allCodeTasksChecked = useMemo(
+  const selectAllHeaderState = useMemo(
     () =>
-      isCodeTaskTreeFullySelected({
+      resolveCodeTaskTreeSelectAllHeaderState({
         selectedCodeTaskIds: checkedCodeTaskIds,
-        codeTaskPlan: implementationCodeTaskPlanV1,
-        runnableCodeTaskIds: runnableCodeTaskIdsFromBoard,
+        userSelectableCodeTaskIds: userSelectableCodeTaskIdsFromBoard,
       }),
-    [checkedCodeTaskIds, implementationCodeTaskPlanV1, runnableCodeTaskIdsFromBoard],
+    [checkedCodeTaskIds, userSelectableCodeTaskIdsFromBoard],
   );
 
   const integratedPipelineLines = useMemo(
@@ -723,28 +713,9 @@ export function ImplementationExecutionBoardPanel({
     ],
   );
 
-  const boardPrimaryAction = useMemo(
-    () =>
-      resolveImplementationBoardPrimaryAction({
-        selectedCodeTaskIds: checkedCodeTaskIds,
-        userActionSummary: codeTaskSelectionSummary,
-        runnableCodeTaskIds: runnableCodeTaskIdsFromBoard,
-        integratedAppPreviewReady: integrationSection.integratedAppPreviewReady,
-        integrationPrepareEnabled: integrationButtonState.enabled,
-      }),
-    [
-      checkedCodeTaskIds,
-      codeTaskSelectionSummary,
-      runnableCodeTaskIdsFromBoard,
-      integrationSection.integratedAppPreviewReady,
-      integrationButtonState.enabled,
-    ],
-  );
+  const showIntegrationFooter = taskTreeNodes.length > 0;
 
-  const showIntegrationButton =
-    integrationButtonState.show &&
-    boardPrimaryAction.showIntegrationPrepareButton &&
-    codeTaskSelectionSummary.runnableCount === 0;
+  const showIntegrationButton = Boolean(onRunIntegrationPipeline);
   const integrationButtonEnabled = integrationButtonState.enabled;
 
   const previewButtonState = useMemo(
@@ -960,10 +931,12 @@ export function ImplementationExecutionBoardPanel({
           nodes={taskTreeNodes}
           selectedCodeTaskId={selectedCodeTaskId}
           codeAgentProgress={codeAgentProgress}
-          allChecked={allCodeTasksChecked}
+          allChecked={selectAllHeaderState.allChecked}
+          selectAllIndeterminate={selectAllHeaderState.indeterminate}
           selectedCodeTaskCount={checkedCodeTaskIds.length}
           selectableCodeTaskCount={codeTaskSelectionSummary.runnableCount}
           integrationReadyCount={codeTaskSelectionSummary.integrationReadyCount}
+          waitingCodeTaskIds={userSelectableCodeTaskIdsFromBoard}
           onSelectCodeTask={(parentTaskId, codeTaskId) => {
             setSelectedTaskId(parentTaskId);
             setSelectedCodeTaskId(codeTaskId);
@@ -976,25 +949,26 @@ export function ImplementationExecutionBoardPanel({
             if (parentTaskId) {
               setSelectedTaskId(parentTaskId);
             }
-            if (checked) {
-              setSelectedCodeTaskId(codeTaskId);
-            }
-            updateCheckedCodeTaskIds(
+            commitCheckedCodeTaskIds(
               resolveCodeTaskTreeSelectionToggle({
                 codeTaskId,
                 checked,
-                selectedCodeTaskIds: displaySelectedCodeTaskIds,
+                selectedCodeTaskIds: checkedCodeTaskIdsRef.current,
                 codeTaskPlan: implementationCodeTaskPlanV1,
-                runnableCodeTaskIds: runnableCodeTaskIdsFromBoard,
+                userSelectableCodeTaskIds: userSelectableCodeTaskIdsFromBoard,
               }),
             );
           }}
           onToggleSelectAll={(checked) => {
-            updateCheckedCodeTaskIds(
+            const selectAll = resolveCodeTaskTreeSelectAllToggleChecked({
+              header: selectAllHeaderState,
+              nextInputChecked: checked,
+            });
+            commitCheckedCodeTaskIds(
               resolveCodeTaskTreeSelectAll({
-                selectAll: checked,
+                selectAll,
                 codeTaskPlan: implementationCodeTaskPlanV1,
-                runnableCodeTaskIds: runnableCodeTaskIdsFromBoard,
+                userSelectableCodeTaskIds: userSelectableCodeTaskIdsFromBoard,
               }),
             );
           }}
@@ -1002,56 +976,19 @@ export function ImplementationExecutionBoardPanel({
           onRetryFailedCodeTask={onRetryFailedCodeTask}
           onCopyDeveloperPromptsFromHeader={onCopyDeveloperPromptsFromHeader}
           developerPromptHeaderCopyDisabled={
-            !executionTargetCodeTaskId &&
-            codeTaskSummaryCounts.selectedCodeTaskCount === 0
+            !executionTargetCodeTaskId && checkedCodeTaskIds.length === 0
           }
         />
       </section>
 
-      {boardPrimaryAction.showExecuteSelectedButton && onExecuteSelectedCodeTasks ? (
+      {showIntegrationFooter ? (
         <section
-          className={styles.taskTreeSection}
-          data-testid="implementation-execution-primary-action-section"
-        >
-          <div className={styles.integrationSectionHeader}>
-            <div className={styles.integrationSectionActions}>
-              {boardPrimaryAction.showExecuteSelectedButton && onExecuteSelectedCodeTasks ? (
-                <button
-                  type="button"
-                  className={styles.integrationPrimaryButton}
-                  data-testid="implementation-execute-selected-button"
-                  disabled={!boardPrimaryAction.primaryEnabled}
-                  title={boardPrimaryAction.primaryDisabledTitle ?? undefined}
-                  onClick={onExecuteSelectedCodeTasks}
-                >
-                  {boardPrimaryAction.primaryLabel ?? "선택 작업 실행"}
-                </button>
-              ) : null}
-              {boardPrimaryAction.showReworkSelectedButton && onReworkSelectedCodeTasks ? (
-                <button
-                  type="button"
-                  className={styles.integrationPrimaryButton}
-                  data-testid="implementation-rework-selected-button"
-                  disabled={!boardPrimaryAction.primaryEnabled}
-                  title={boardPrimaryAction.primaryDisabledTitle ?? undefined}
-                  onClick={onReworkSelectedCodeTasks}
-                >
-                  {boardPrimaryAction.primaryLabel ?? "선택 작업 재작업"}
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {integrationSection.showSection ? (
-        <section
-          className={styles.taskTreeSection}
+          className={[styles.taskTreeSection, styles.integrationFooterSticky].join(" ")}
           data-testid="implementation-integrated-pipeline-section"
         >
           <div className={styles.integrationSectionHeader}>
             <div className={styles.integrationSectionActions}>
-              {showIntegrationButton && onRunIntegrationPipeline ? (
+              {showIntegrationButton ? (
                 <button
                   type="button"
                   className={styles.integrationPrimaryButton}
@@ -1067,7 +1004,7 @@ export function ImplementationExecutionBoardPanel({
                       : integrationButtonState.continueBuildPreview
                         ? "Build 검증 및 Preview 준비 계속 중…"
                         : "통합 및 Preview 준비 중…"
-                    : integrationButtonState.buttonLabel}
+                    : integrationButtonState.buttonLabel || "통합 및 Preview 준비"}
                 </button>
               ) : null}
               {integrationSection.integrationPullRequestUrl ? (
@@ -1098,7 +1035,7 @@ export function ImplementationExecutionBoardPanel({
                   {integrationMergeBusy ? "main 반영 중…" : "main에 반영"}
                 </button>
               ) : null}
-              {previewButtonState.show ? (
+              {previewButtonState.show || integrationSection.integratedAppPreviewReady ? (
                 <button
                   type="button"
                   className={styles.integrationPreviewButton}

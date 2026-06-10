@@ -39,6 +39,7 @@ export function coalesceCodeTaskBoardRowDisplayLabels(input: {
   readonly promptReadyPhase?: boolean;
   readonly rowStatusLabel?: string | null;
   readonly rowProgressLabel?: string | null;
+  readonly rowCollapsedSummary?: string | null;
 }): Readonly<{ readonly statusLabel: string; readonly progressLabel: string }> {
   const pick = (...candidates: readonly (string | null | undefined)[]): string => {
     for (const candidate of candidates) {
@@ -51,6 +52,23 @@ export function coalesceCodeTaskBoardRowDisplayLabels(input: {
   let statusLabel = pick(input.statusLabel, input.rowStatusLabel);
   let progressLabel = pick(input.progressLabel, input.rowProgressLabel);
   const collapsedSummary = String(input.collapsedSummary ?? "").trim();
+  const rowCollapsedSummary = String(input.rowCollapsedSummary ?? "").trim();
+  const rowWaiting =
+    rowCollapsedSummary === "대기" ||
+    String(input.rowStatusLabel ?? "").trim() === "대기" ||
+    collapsedSummary === "대기";
+
+  if (
+    rowWaiting &&
+    labelIndicatesCompleted(statusLabel, progressLabel) &&
+    !progressIndicatesRunnable(progressLabel)
+  ) {
+    statusLabel = "대기";
+    progressLabel = progressIndicatesRunnable(String(input.rowProgressLabel ?? ""))
+      ? String(input.rowProgressLabel).trim()
+      : "실행 가능";
+    return { statusLabel, progressLabel };
+  }
 
   if (!statusLabel && collapsedSummary) {
     if (
@@ -218,6 +236,30 @@ export function listRunnableCodeTaskIdsFromBoardNodes(
   nodes: readonly { readonly codeTaskId: string; readonly boardState: ImplementationCodeTaskBoardStateV1 }[],
 ): readonly string[] {
   return nodes.filter((n) => n.boardState.isRunnableForUser).map((n) => n.codeTaskId.trim()).filter(Boolean);
+}
+
+/** Board checkbox: user may toggle only rows whose displayed status is 대기. */
+export function isCodeTaskWaitingForUserCheckboxSelection(statusLabel: string): boolean {
+  return String(statusLabel ?? "").trim() === "대기";
+}
+
+export function listWaitingCodeTaskIdsFromBoardNodes(
+  nodes: readonly { readonly codeTaskId: string; readonly boardState: ImplementationCodeTaskBoardStateV1 }[],
+): readonly string[] {
+  return nodes
+    .filter((n) => isCodeTaskWaitingForUserCheckboxSelection(n.boardState.statusLabel))
+    .map((n) => n.codeTaskId.trim())
+    .filter(Boolean);
+}
+
+/** Checkbox selection: any row the board marks as user-toggleable (not completed/running/blocked). */
+export function listUserCheckboxSelectableCodeTaskIdsFromBoardNodes(
+  nodes: readonly { readonly codeTaskId: string; readonly boardState: ImplementationCodeTaskBoardStateV1 }[],
+): readonly string[] {
+  return nodes
+    .filter((n) => !n.boardState.checkboxDisabled)
+    .map((n) => n.codeTaskId.trim())
+    .filter(Boolean);
 }
 
 export function evaluateSelectedRunnableCodeTasksGateFromBoard(input: {

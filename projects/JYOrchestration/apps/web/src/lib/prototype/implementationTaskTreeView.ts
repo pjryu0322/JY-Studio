@@ -272,9 +272,15 @@ function buildCodeTaskNode(input: {
     codeTaskPlan: input.codeTaskPlan,
   });
 
+  const rowVisiblyWaiting =
+    rowView.collapsedSummary === "대기" || rowView.statusLabel.trim() === "대기";
   let collapsedSummary = rowView.collapsedSummary || formatCodeTaskExecutionFlowPhaseKo(phase);
   if (phase === "prompt_ready") collapsedSummary = "대기";
-  if (phase === "completed" && input.runtimeSnapshotUnit?.displayStatus !== "failed") {
+  if (
+    phase === "completed" &&
+    input.runtimeSnapshotUnit?.displayStatus !== "failed" &&
+    !rowVisiblyWaiting
+  ) {
     collapsedSummary = "완료";
   }
   if (phase === "failed" && !input.runtimeSnapshotUnit) collapsedSummary = "재작업 필요";
@@ -343,6 +349,7 @@ function buildCodeTaskNode(input: {
     promptReadyPhase: phase === "prompt_ready",
     rowStatusLabel: rowView.statusLabel,
     rowProgressLabel: rowView.progressLabel,
+    rowCollapsedSummary: rowView.collapsedSummary,
   });
   statusLabel = coalescedDisplayLabels.statusLabel;
   progressLabel = coalescedDisplayLabels.progressLabel;
@@ -541,10 +548,12 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
     input.board.taskRows.map((row) => [row.taskId.trim(), row] as const),
   );
   const checkedCodeTaskIds = new Set(
-    normalizeSelectedCodeTaskIds({
-      selectedCodeTaskIds: input.checkedCodeTaskIds,
-      codeTaskPlan: plan,
-    }),
+    input.checkedCodeTaskIds != null
+      ? input.checkedCodeTaskIds.map((id) => id.trim()).filter(Boolean)
+      : normalizeSelectedCodeTaskIds({
+          selectedCodeTaskIds: input.checkedCodeTaskIds,
+          codeTaskPlan: plan,
+        }),
   );
   const activeCodeTaskId = input.activeCodeTaskId?.trim() || null;
   const selectedCodeTaskId = input.selectedCodeTaskId?.trim() || null;

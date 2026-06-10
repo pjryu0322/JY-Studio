@@ -211,24 +211,26 @@ export function resolveCodeTaskTreeSelectionToggle(input: {
   readonly codeTaskId: string;
   readonly checked: boolean;
   readonly selectedCodeTaskIds: readonly string[];
-  readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
-  readonly runnableCodeTaskIds: readonly string[];
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  /** CodeTask ids with status 대기 — only these may be checked by the user. */
+  readonly userSelectableCodeTaskIds: readonly string[];
 }): readonly string[] {
   const codeTaskId = input.codeTaskId.trim();
-  if (input.checked) {
-    const runnableSet = new Set(input.runnableCodeTaskIds.map((id) => id.trim()).filter(Boolean));
-    if (!runnableSet.has(codeTaskId)) {
-      return normalizeSelectedCodeTaskIds({
-        selectedCodeTaskIds: input.selectedCodeTaskIds,
-        codeTaskPlan: input.codeTaskPlan,
-      });
-    }
-  }
-  const current = new Set(
-    normalizeSelectedCodeTaskIds({
+  if (!codeTaskId) {
+    return normalizeSelectedCodeTaskIds({
       selectedCodeTaskIds: input.selectedCodeTaskIds,
       codeTaskPlan: input.codeTaskPlan,
-    }),
+    });
+  }
+  const selectableSet = new Set(input.userSelectableCodeTaskIds.map((id) => id.trim()).filter(Boolean));
+  if (input.checked && !selectableSet.has(codeTaskId)) {
+    return sortCodeTaskIdsByImplementationPlanOrder(
+      input.codeTaskPlan,
+      (input.selectedCodeTaskIds ?? []).map((id) => id.trim()).filter(Boolean),
+    );
+  }
+  const current = new Set(
+    (input.selectedCodeTaskIds ?? []).map((id) => id.trim()).filter(Boolean),
   );
   if (input.checked) current.add(codeTaskId);
   else current.delete(codeTaskId);
@@ -238,26 +240,57 @@ export function resolveCodeTaskTreeSelectionToggle(input: {
 export function resolveCodeTaskTreeSelectAll(input: {
   readonly selectAll: boolean;
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
-  readonly runnableCodeTaskIds: readonly string[];
+  /** All 대기 CodeTask ids on the board (select-all targets these). */
+  readonly userSelectableCodeTaskIds: readonly string[];
 }): readonly string[] {
   if (!input.selectAll) return [];
-  return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, input.runnableCodeTaskIds);
+  return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, input.userSelectableCodeTaskIds);
+}
+
+export function resolveCodeTaskTreeSelectAllHeaderState(input: {
+  readonly selectedCodeTaskIds: readonly string[];
+  readonly userSelectableCodeTaskIds: readonly string[];
+}): Readonly<{
+  readonly allChecked: boolean;
+  readonly indeterminate: boolean;
+  readonly selectedSelectableCount: number;
+  readonly selectableCount: number;
+}> {
+  const selectable = input.userSelectableCodeTaskIds.map((id) => id.trim()).filter(Boolean);
+  const selected = new Set(input.selectedCodeTaskIds.map((id) => id.trim()).filter(Boolean));
+  const selectedSelectableCount = selectable.filter((id) => selected.has(id)).length;
+  const selectableCount = selectable.length;
+  return {
+    allChecked: selectableCount > 0 && selectedSelectableCount === selectableCount,
+    indeterminate: selectedSelectableCount > 0 && selectedSelectableCount < selectableCount,
+    selectedSelectableCount,
+    selectableCount,
+  };
 }
 
 export function isCodeTaskTreeFullySelected(input: {
   readonly selectedCodeTaskIds: readonly string[];
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
-  readonly runnableCodeTaskIds: readonly string[];
+  readonly userSelectableCodeTaskIds: readonly string[];
 }): boolean {
-  const selectable = input.runnableCodeTaskIds.map((id) => id.trim()).filter(Boolean);
-  if (!selectable.length) return false;
-  const selected = new Set(
-    normalizeSelectedCodeTaskIds({
-      selectedCodeTaskIds: input.selectedCodeTaskIds,
-      codeTaskPlan: input.codeTaskPlan,
-    }),
-  );
-  return selectable.every((id) => selected.has(id));
+  return resolveCodeTaskTreeSelectAllHeaderState({
+    selectedCodeTaskIds: input.selectedCodeTaskIds,
+    userSelectableCodeTaskIds: input.userSelectableCodeTaskIds,
+  }).allChecked;
+}
+
+/** Next selection when the user activates the select-all checkbox (supports indeterminate). */
+export function resolveCodeTaskTreeSelectAllToggleChecked(input: {
+  readonly header: Readonly<{
+    readonly allChecked: boolean;
+    readonly indeterminate: boolean;
+  }>;
+  readonly nextInputChecked: boolean;
+}): boolean {
+  if (input.header.allChecked) {
+    return false;
+  }
+  return input.nextInputChecked;
 }
 
 export function isProcessTaskCodeTasksFullySelected(input: {

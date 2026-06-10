@@ -134,7 +134,7 @@ export function parseImplementationExecutionBoardStateV1(
     userConfirmations,
     reworkRequests,
     ...(selectedTaskIds?.length ? { selectedTaskIds } : {}),
-    ...(selectedCodeTaskIds?.length ? { selectedCodeTaskIds } : {}),
+    ...(Array.isArray(o.selectedCodeTaskIds) ? { selectedCodeTaskIds: selectedCodeTaskIds ?? [] } : {}),
   };
 }
 

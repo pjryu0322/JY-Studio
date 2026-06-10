@@ -128,7 +128,7 @@ describe("runnable CodeTask user selection (P3-08D)", () => {
     expect(summary.integrationReadyCount).toBe(2);
   });
 
-  it("select all picks only runnable sample task", () => {
+  it("select all picks only 대기 (user-selectable) sample task", () => {
     const plan = {
       version: "implementation_code_task_plan_v1" as const,
       projectId: "p1",
@@ -139,12 +139,12 @@ describe("runnable CodeTask user selection (P3-08D)", () => {
     const selected = resolveCodeTaskTreeSelectAll({
       selectAll: true,
       codeTaskPlan: plan,
-      runnableCodeTaskIds: [sample],
+      userSelectableCodeTaskIds: [sample],
     });
     expect(selected).toEqual([sample]);
   });
 
-  it("primary action is execute when sample selected", () => {
+  it("does not show board execute when sample selected", () => {
     const summary = summarizeImplementationCodeTasksForUserAction({
       codeTasks,
       selectedCodeTaskIds: [sample],
@@ -153,12 +153,10 @@ describe("runnable CodeTask user selection (P3-08D)", () => {
       progressByCodeTaskId: progress,
     });
     const action = resolveImplementationBoardPrimaryAction({
-      selectedCodeTaskIds: [sample],
       userActionSummary: summary,
-      runnableCodeTaskIds: [sample],
     });
-    expect(action.primaryLabel).toBe("선택 작업 실행");
-    expect(action.showIntegrationPrepareButton).toBe(false);
+    expect(action.showExecuteSelectedButton).toBe(false);
+    expect(action.showIntegrationPrepareButton).toBe(true);
   });
 
   it("primary action is integration when no runnable left", () => {
@@ -173,9 +171,7 @@ describe("runnable CodeTask user selection (P3-08D)", () => {
       ),
     });
     const action = resolveImplementationBoardPrimaryAction({
-      selectedCodeTaskIds: [],
       userActionSummary: summary,
-      runnableCodeTaskIds: [],
       integrationPrepareEnabled: true,
     });
     expect(action.primaryAction).toBe("prepare_integration_preview");

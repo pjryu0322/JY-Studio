@@ -57,7 +57,9 @@ describe("summarizeCodeTaskBoardRowsFromTreeNodes", () => {
         node(`CODE-DONE-${i}`, "완료", "GitHub outcome 저장됨", true),
       ),
     ];
-    const runnableIds = nodes.filter((n) => n.boardState.isRunnableForUser).map((n) => n.codeTaskId);
+    const waitingIds = nodes
+      .filter((n) => n.boardState.statusLabel === "대기")
+      .map((n) => n.codeTaskId);
     const codeTaskPlan = {
       version: "implementation_code_task_plan_v1" as const,
       projectId: "p1",
@@ -72,14 +74,14 @@ describe("summarizeCodeTaskBoardRowsFromTreeNodes", () => {
     const selected = resolveCodeTaskTreeSelectAll({
       selectAll: true,
       codeTaskPlan,
-      runnableCodeTaskIds: runnableIds,
+      userSelectableCodeTaskIds: waitingIds,
     });
     expect(selected).toEqual(["CODE-DATA-SAMPLE-001"]);
     expect(
       isCodeTaskTreeFullySelected({
         selectedCodeTaskIds: selected,
         codeTaskPlan,
-        runnableCodeTaskIds: runnableIds,
+        userSelectableCodeTaskIds: waitingIds,
       }),
     ).toBe(true);
   });
@@ -96,19 +98,17 @@ describe("resolveImplementationBoardPrimaryAction from board summary", () => {
     selectedCodeTaskIds: [],
   });
 
-  it("disables execute when runnable present but none selected", () => {
+  it("does not show board execute when runnable tasks remain (toolbar Quick Run only)", () => {
     const action = resolveImplementationBoardPrimaryAction({
-      selectedCodeTaskIds: [],
       userActionSummary: summary14Plus1,
-      runnableCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
       integrationPrepareEnabled: true,
     });
-    expect(action.primaryLabel).toBe("선택 작업 실행");
-    expect(action.primaryEnabled).toBe(false);
-    expect(action.showIntegrationPrepareButton).toBe(false);
+    expect(action.showExecuteSelectedButton).toBe(false);
+    expect(action.primaryAction).toBeNull();
+    expect(action.showIntegrationPrepareButton).toBe(true);
   });
 
-  it("enables execute when runnable selected", () => {
+  it("does not show board execute when runnable task is selected", () => {
     const summary = summarizeCodeTaskBoardRowsFromTreeNodes({
       nodes: [
         node("CODE-DATA-SAMPLE-001", "대기", "실행 가능", false),
@@ -117,13 +117,11 @@ describe("resolveImplementationBoardPrimaryAction from board summary", () => {
       selectedCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
     });
     const action = resolveImplementationBoardPrimaryAction({
-      selectedCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
       userActionSummary: summary,
-      runnableCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
       integrationPrepareEnabled: true,
     });
-    expect(action.primaryEnabled).toBe(true);
-    expect(action.primaryLabel).toBe("선택 작업 실행");
+    expect(action.showExecuteSelectedButton).toBe(false);
+    expect(action.primaryAction).toBeNull();
   });
 
   it("shows integration primary when no runnable remain", () => {
@@ -132,9 +130,7 @@ describe("resolveImplementationBoardPrimaryAction from board summary", () => {
       selectedCodeTaskIds: [],
     });
     const action = resolveImplementationBoardPrimaryAction({
-      selectedCodeTaskIds: [],
       userActionSummary: summary,
-      runnableCodeTaskIds: [],
       integrationPrepareEnabled: true,
     });
     expect(action.primaryLabel).toBe("통합 및 Preview 준비");

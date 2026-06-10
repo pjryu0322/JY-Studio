@@ -176,7 +176,7 @@ describe("implementationCodeTaskSelectionPolicy", () => {
     expect(eligibility.reason).toBe("already_completed");
   });
 
-  it("execution select-all picks runnable tasks only", () => {
+  it("execution select-all picks 대기 tasks only", () => {
     const plan: ImplementationCodeTaskPlanV1 = {
       version: "implementation_code_task_plan_v1",
       projectId: "p1",
@@ -184,18 +184,18 @@ describe("implementationCodeTaskSelectionPolicy", () => {
       updatedAt: NOW,
       tasks: codeTasks,
     };
-    const runnableIds = [pendingId];
+    const waitingIds = [pendingId];
     const selected = resolveCodeTaskTreeSelectAll({
       selectAll: true,
       codeTaskPlan: plan,
-      runnableCodeTaskIds: runnableIds,
+      userSelectableCodeTaskIds: waitingIds,
     });
     expect(selected).toEqual([pendingId]);
     expect(
       isCodeTaskTreeFullySelected({
         selectedCodeTaskIds: selected,
         codeTaskPlan: plan,
-        runnableCodeTaskIds: runnableIds,
+        userSelectableCodeTaskIds: waitingIds,
       }),
     ).toBe(true);
   });

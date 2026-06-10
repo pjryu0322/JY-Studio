@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { ImplementationCodeTaskTreeNode } from "@/lib/prototype/implementationTaskTreeView";
 import type { CodeTaskExecutionFlowStepVm } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
 import type { CodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
@@ -171,14 +172,7 @@ function FlatCodeTaskListItem({
   readonly onCopyCursorPrompt?: (codeTaskId: string) => void;
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
 }) {
-  const itemClass = [
-    styles.taskTreeCodeTaskItem,
-    styles.taskTreeItem,
-    node.isActive ? styles.taskTreeItemActive : "",
-    node.isSelected ? styles.taskTreeItemSelected : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const itemClass = [styles.taskTreeCodeTaskItem, styles.taskTreeItem].join(" ");
 
   const statusLabel = node.boardState.statusLabel || node.metaLines.find((line) => line.label === "상태")?.value;
   const progressLabel =
@@ -190,6 +184,9 @@ function FlatCodeTaskListItem({
     .filter(Boolean)
     .join(" · ");
 
+  const userCanSelectCheckbox =
+    node.checkboxDisabled !== true && node.boardState.checkboxDisabled !== true;
+
   return (
     <div
       className={itemClass}
@@ -197,30 +194,27 @@ function FlatCodeTaskListItem({
       data-selected={node.isSelected ? "true" : "false"}
     >
       <div className={styles.taskTreeHeaderRow}>
-        <label
-          className={styles.taskTreeCheckboxLabel}
-          onClick={(event) => event.stopPropagation()}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
+        <label className={styles.taskTreeCheckboxLabel}>
           <input
             type="checkbox"
             className={styles.taskTreeCheckbox}
             checked={node.isChecked}
-            disabled={node.boardState.isRunnableForUser !== true}
-            title={node.checkboxDisabledTitle ?? undefined}
+            disabled={!userCanSelectCheckbox}
             aria-label={`${node.title} CodeTask 선택`}
             data-testid={`implementation-code-task-check-${node.codeTaskId}`}
-            data-runnable={node.boardState.isRunnableForUser ? "true" : "false"}
+            data-waiting={userCanSelectCheckbox ? "true" : "false"}
             onChange={(event) => {
-              if (node.boardState.isRunnableForUser !== true && event.target.checked) return;
-              onToggleChecked?.(node.codeTaskId, event.target.checked);
+              event.stopPropagation();
+              const nextChecked = event.target.checked;
+              if (!userCanSelectCheckbox && nextChecked) return;
+              onToggleChecked?.(node.codeTaskId, nextChecked);
             }}
+            onClick={(event) => event.stopPropagation()}
           />
         </label>
         <button
           type="button"
           className={styles.taskTreeCodeTaskHeader}
-          aria-pressed={node.isSelected}
           onClick={() => onSelect(node.parentTaskId, node.codeTaskId)}
         >
           <span className={styles.taskTreeTitle}>{node.title}</span>
@@ -253,6 +247,7 @@ export function ImplementationExecutionBoardTaskTree({
   nodes,
   selectedCodeTaskId,
   allChecked,
+  selectAllIndeterminate,
   onSelectCodeTask,
   onToggleSelectAll,
   onToggleCodeTaskChecked,
@@ -263,12 +258,14 @@ export function ImplementationExecutionBoardTaskTree({
   selectedCodeTaskCount,
   selectableCodeTaskCount,
   integrationReadyCount,
+  waitingCodeTaskIds,
   codeAgentProgress,
 }: {
   readonly nodes: readonly ImplementationCodeTaskTreeNode[];
   readonly selectedCodeTaskId?: string | null;
   readonly codeAgentProgress?: CodeAgentExecutionProgressView;
   readonly allChecked?: boolean;
+  readonly selectAllIndeterminate?: boolean;
   readonly onSelectCodeTask?: (parentTaskId: string, codeTaskId: string) => void;
   readonly onToggleSelectAll?: (checked: boolean) => void;
   readonly onToggleCodeTaskChecked?: (codeTaskId: string, checked: boolean) => void;
@@ -279,23 +276,34 @@ export function ImplementationExecutionBoardTaskTree({
   readonly selectedCodeTaskCount?: number;
   readonly selectableCodeTaskCount?: number;
   readonly integrationReadyCount?: number;
+  readonly waitingCodeTaskIds?: readonly string[] | null;
 }) {
   const codeTaskCount = nodes.length;
+  const waitingCount = waitingCodeTaskIds?.length ?? 0;
   const selectedCount =
     selectedCodeTaskCount ?? nodes.filter((node) => node.isChecked).length;
   const runnableCount = selectableCodeTaskCount ?? codeTaskCount;
   const integrationReady = integrationReadyCount ?? 0;
+  const selectAllInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectAllInputRef.current) {
+      selectAllInputRef.current.indeterminate = Boolean(selectAllIndeterminate);
+    }
+  }, [selectAllIndeterminate, allChecked]);
 
   return (
     <div className={styles.taskTreeList} data-testid="implementation-task-tree">
       <div className={styles.taskTreeSelectAllRow}>
         <label className={styles.taskTreeSelectAllLabel}>
           <input
+            ref={selectAllInputRef}
             type="checkbox"
             className={styles.taskTreeCheckbox}
             checked={Boolean(allChecked)}
-            disabled={runnableCount === 0}
+            disabled={waitingCount === 0}
             data-testid="implementation-task-select-all"
+            data-indeterminate={selectAllIndeterminate ? "true" : "false"}
             onChange={(event) => onToggleSelectAll?.(event.target.checked)}
           />
           <span>전체 선택</span>

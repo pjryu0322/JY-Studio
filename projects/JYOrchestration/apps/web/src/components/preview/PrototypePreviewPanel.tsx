@@ -886,6 +886,8 @@ export function PrototypePreviewPanel({
               orchestrationPatch.codeTaskExecutionRunsV1?.length,
               orchestrationPatch.implementationPreviewRuntimeV1?.generatedAt,
               orchestrationPatch.implementationPreviewScopeV1?.generatedAt,
+              orchestrationPatch.implementationExecutionBoardStateV1?.updatedAt,
+              orchestrationPatch.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
             ]
           : null,
       });
@@ -2646,7 +2648,7 @@ export function PrototypePreviewPanel({
         readonly messages: readonly RequirementsMessage[];
         readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
       },
-      options?: { readonly persist?: boolean },
+      options?: { readonly persist?: boolean; readonly forcePersist?: boolean },
     ) => {
       const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
       const chatPatch = {
@@ -2682,7 +2684,12 @@ export function PrototypePreviewPanel({
       executionSingleChat.applyPersistedMessages(input.messages);
       if (options?.persist !== false) {
         const persistSeq = ++orchestrationPersistSeqRef.current;
-        void persistChatToDb(chatPatch, orchestrationPatchWithTimeline, persistSeq);
+        void persistChatToDb(
+          chatPatch,
+          orchestrationPatchWithTimeline,
+          persistSeq,
+          options?.forcePersist ? { force: true } : undefined,
+        );
       } else {
         queueMicrotask(() => {
           onRequirementsStateJsonChange?.(mergedRequirementsState);
@@ -6627,24 +6634,26 @@ export function PrototypePreviewPanel({
       if (!pid) return;
       const nowIso = new Date().toISOString();
       const nextBoardState = updateBoardSelectedCodeTaskIds({
-        state: parsedRequirementsState.implementationExecutionBoardStateV1,
+        state:
+          orchestrationAwareRequirementsStateRef.current.implementationExecutionBoardStateV1,
         projectId: pid,
         selectedCodeTaskIds,
         nowIso,
       });
-      applyImplementationOrchestrationResult({
-        messages: executionSingleChat.chatMessages,
-        orchestrationPatch: {
-          implementationExecutionBoardStateV1: nextBoardState,
-        },
+      applyPendingFromOrchestrationPatchRef.current({
+        implementationExecutionBoardStateV1: nextBoardState,
       });
+      applyImplementationOrchestrationResult(
+        {
+          messages: executionSingleChat.chatMessages,
+          orchestrationPatch: {
+            implementationExecutionBoardStateV1: nextBoardState,
+          },
+        },
+        { persist: true, forcePersist: true },
+      );
     },
-    [
-      projectId,
-      parsedRequirementsState.implementationExecutionBoardStateV1,
-      applyImplementationOrchestrationResult,
-      executionSingleChat.chatMessages,
-    ],
+    [projectId, applyImplementationOrchestrationResult, executionSingleChat.chatMessages],
   );
 
   const handleImplementationBoardAction = useCallback(

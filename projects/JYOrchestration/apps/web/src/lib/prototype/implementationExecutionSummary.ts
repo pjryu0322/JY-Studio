@@ -163,7 +163,7 @@ export function buildImplementationExecutionSummaryCounts(input: {
     totalCodeTaskCount: runtimeSnapshot.codeTask.total,
     selectedCodeTaskCount: runtimeSnapshot.codeTask.selected,
     completedCodeTaskCount: runtimeSnapshot.codeTask.completed,
-    reconciledSelectedCodeTaskIds: reconciledCodeTaskIds.length ? reconciledCodeTaskIds : selectedUnitIds,
+    reconciledSelectedCodeTaskIds: reconciledCodeTaskIds,
     removedStaleSelectedIds,
     summaryCountReconciled,
     executionUnits: units,

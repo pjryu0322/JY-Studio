@@ -27,6 +27,18 @@ describe("coalesceCodeTaskBoardRowDisplayLabels", () => {
     expect(state.checkboxDisabled).toBe(false);
   });
 
+  it("overrides stale completed labels when row view still shows waiting", () => {
+    const labels = coalesceCodeTaskBoardRowDisplayLabels({
+      statusLabel: "완료",
+      progressLabel: "GitHub outcome 저장됨",
+      collapsedSummary: "완료",
+      rowStatusLabel: "대기",
+      rowProgressLabel: "실행 가능",
+      rowCollapsedSummary: "대기",
+    });
+    expect(labels).toEqual({ statusLabel: "대기", progressLabel: "실행 가능" });
+  });
+
   it("fills 대기/실행 가능 when snapshot labels are empty but collapsed summary is 대기", () => {
     const labels = coalesceCodeTaskBoardRowDisplayLabels({
       statusLabel: "",
