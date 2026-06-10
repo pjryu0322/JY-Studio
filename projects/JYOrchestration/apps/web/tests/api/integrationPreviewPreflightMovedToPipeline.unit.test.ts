@@ -11,6 +11,7 @@ describe("integrationPreviewPreflightMovedToPipeline", () => {
       userSafeMessage: "GitHub Actions 실행 권한이 필요합니다.",
       remediationCode: "enable_actions_permission",
       checks: [],
+      checkedAt: new Date().toISOString(),
     });
     const deploySpy = vi.spyOn(deployModule, "deployIntegratedPreviewToGitHubPages");
 

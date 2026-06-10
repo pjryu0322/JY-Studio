@@ -52,6 +52,7 @@ export function ProjectExecutionEnvironmentModal(p: ProjectExecutionEnvironmentM
           maxHeight: "80vh",
           display: "flex",
           flexDirection: "column",
+          position: "relative",
           background: "#fff",
           borderRadius: 16,
           border: "1px solid #e2e8f0",
@@ -60,21 +61,23 @@ export function ProjectExecutionEnvironmentModal(p: ProjectExecutionEnvironmentM
         }}
         onPointerDown={(e) => e.stopPropagation()}
       >
-        <header
+        <h2
+          id="project-execution-environment-modal-title"
           style={{
-            flexShrink: 0,
-            padding: "14px 18px",
-            borderBottom: "1px solid #e2e8f0",
+            position: "absolute",
+            width: 1,
+            height: 1,
+            padding: 0,
+            margin: -1,
+            overflow: "hidden",
+            clip: "rect(0, 0, 0, 0)",
+            whiteSpace: "nowrap",
+            border: 0,
           }}
         >
-          <h2
-            id="project-execution-environment-modal-title"
-            style={{ margin: 0, fontSize: 17, fontWeight: 900, color: "#0f172a" }}
-          >
-            자동 생성 환경설정
-          </h2>
-        </header>
-        <div style={{ flex: "1 1 auto", minHeight: 0, padding: "16px 18px", display: "flex", flexDirection: "column" }}>
+          자동 생성 환경설정
+        </h2>
+        <div style={{ flex: "1 1 auto", minHeight: 0, padding: "12px 18px 16px", display: "flex", flexDirection: "column" }}>
           <ProjectExecutionEnvironmentPanel
             projectId={p.projectId}
             project={p.project}

@@ -97,7 +97,7 @@ export function IntegrationPreviewRemediationPanel(input: {
         ) : null}
         {guide.showRetry ? (
           <button type="button" style={btnStyle} onClick={() => input.onRetryIntegration?.()}>
-            다시 시도
+            다시 확인하고 Preview 준비
           </button>
         ) : null}
       </div>

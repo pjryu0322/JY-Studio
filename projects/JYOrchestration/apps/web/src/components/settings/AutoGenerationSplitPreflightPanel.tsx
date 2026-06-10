@@ -13,7 +13,9 @@ import { SettingsHelpPopoverContentView } from "@/components/settings/SettingsHe
 import { ConnectionCheckResultTable } from "@/components/settings/ConnectionCheckResultTable";
 import {
   buildEnvcheckTableRows,
-  splitPreflightNeedsRemediation,
+  shouldShowBasicConnectionSummaryCard,
+  shouldShowEnvcheckSummaryCard,
+  shouldShowGithubTokenResetButton,
 } from "@/lib/prototype/autoGenerationSplitPreflightDisplay";
 import type { AutoGenerationSettingsConnectionTestResultV1 } from "@/lib/prototype/autoGenerationSettingsConnectionTest";
 import { getAutoGenerationPreflightHelpContent } from "@/lib/prototype/autoGenerationPreflightHelpContent";
@@ -59,8 +61,6 @@ export function AutoGenerationSplitPreflightPanel(input: {
   readonly connectionTest: AutoGenerationSettingsConnectionTestResultV1 | null;
   readonly connectionTestAttempted?: boolean;
   readonly onFocusGithubToken?: () => void;
-  readonly onRetestConnection?: () => void;
-  readonly retestDisabled?: boolean;
 }) {
   const coerced = (() => {
     if (input.connectionTest) return coerceNormalizedConnectionTestResult(input.connectionTest);
@@ -75,7 +75,10 @@ export function AutoGenerationSplitPreflightPanel(input: {
 
   const showPlaceholder = !input.connectionTestAttempted && !input.connectionTest;
   const envRows = coerced ? buildEnvcheckTableRows(coerced) : [];
-  const showRemediation = splitPreflightNeedsRemediation(coerced);
+  const showBasicSummary = coerced ? shouldShowBasicConnectionSummaryCard(coerced.basicConnection) : false;
+  const showEnvcheckSummary = coerced ? shouldShowEnvcheckSummaryCard(coerced.envcheck) : false;
+  const showSummaryBlock = showBasicSummary || showEnvcheckSummary;
+  const showTokenReset = shouldShowGithubTokenResetButton(coerced);
 
   const [openHelpKey, setOpenHelpKey] = useState<string | null>(null);
   const [helpPlacement, setHelpPlacement] = useState<HelpPopoverPlacement | null>(null);
@@ -174,34 +177,45 @@ export function AutoGenerationSplitPreflightPanel(input: {
         onToggleHelp={(k) => setOpenHelpKey((prev) => (prev === k ? null : k))}
         triggerRefs={triggerRefs}
       />
-      {coerced ? (
+      {coerced && showSummaryBlock ? (
         <div
           data-testid="auto-gen-split-status-messages"
           style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}
         >
-          <div style={summaryCardStyle(!coerced.autoGenerationReady)}>
-            <strong>기본 연결 상태:</strong> {coerced.sectionSummaries.basicConnection}
-          </div>
-          <div style={summaryCardStyle(coerced.envcheck.some((c) => c.required && c.status === "failed"))}>
-            <strong>자동 생성 기본 점검:</strong> {coerced.sectionSummaries.envcheck}
-          </div>
+          {showBasicSummary ? (
+            <div style={summaryCardStyle(coerced.basicConnection.some((c) => c.status === "failed"))}>
+              <strong>기본 연결 상태:</strong> {coerced.sectionSummaries.basicConnection}
+            </div>
+          ) : null}
+          {showEnvcheckSummary ? (
+            <div
+              style={summaryCardStyle(
+                coerced.envcheck.some(
+                  (c) => c.required && (c.status === "failed" || c.status === "warning"),
+                ),
+              )}
+            >
+              <strong>자동 생성 기본 점검:</strong> {coerced.sectionSummaries.envcheck}
+            </div>
+          ) : null}
         </div>
       ) : null}
-      {showRemediation ? (
-        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
+      {showTokenReset ? (
+        <div
+          data-testid="auto-gen-split-remediation-actions"
+          style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}
+        >
           <button type="button" style={btnStyle} onClick={() => input.onFocusGithubToken?.()}>
             GitHub Token 재설정
           </button>
-          <button
-            type="button"
-            style={btnStyle}
-            disabled={input.retestDisabled}
-            onClick={() => input.onRetestConnection?.()}
-          >
-            연결 테스트 다시 실행
-          </button>
         </div>
       ) : null}
+      <p
+        data-testid="auto-gen-preview-integration-notice"
+        style={{ marginTop: 12, fontSize: 12, color: "#64748b", lineHeight: 1.5 }}
+      >
+        Preview 배포 권한은 통합 및 Preview 준비 단계에서 다시 확인됩니다.
+      </p>
       {helpPortal}
     </div>
   );

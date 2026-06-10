@@ -87,6 +87,7 @@ export type ProjectIntegrationPipelineResultV1 = Readonly<{
   readonly orchestrationPatch?: Partial<RequirementsStateJson>;
   readonly timelineEntries: readonly RequirementsPromptTimelineEntry[];
   readonly eligibilityReasonCode?: ProjectIntegrationPipelineEligibilityV1["reasonCode"];
+  readonly executionSetupCapabilityPatch?: Record<string, unknown> | null;
 }>;
 
 async function loadBuildStepRepositoryContext(input: {
@@ -360,6 +361,7 @@ export async function runProjectIntegrationPipeline(input: {
   readonly previewRuntime?: ImplementationPreviewRuntimeV1 | null;
 
   readonly requirementsState?: RequirementsStateJson | null;
+  readonly githubCapabilityValidation?: unknown;
 }): Promise<ProjectIntegrationPipelineResultV1> {
   const context = input.context;
   const nowIso = context.nowIso ?? new Date().toISOString();
@@ -661,6 +663,7 @@ export async function runProjectIntegrationPipeline(input: {
   }
 
   let previewUrlFromRun: string | null = null;
+  let executionSetupCapabilityPatch: Record<string, unknown> | null = null;
 
   activeStepKind = "app_preview_target";
   if (!isIntegrationStepCompleted(steps, "app_preview_target")) {
@@ -694,8 +697,11 @@ export async function runProjectIntegrationPipeline(input: {
     repoUrl: input.repoUrl,
     githubToken: input.githubToken,
     baseBranch: context.baseBranch,
-    capabilitySnapshot: null,
+    capabilitySnapshot: input.githubCapabilityValidation ?? null,
   });
+  if (previewResult.executionSetupCapabilityPatch) {
+    executionSetupCapabilityPatch = previewResult.executionSetupCapabilityPatch;
+  }
   steps = stampIntegrationStepsWithPipelineContext([...previewResult.steps], context);
   timeline.push(...previewResult.timelineEntries);
   previewRuntimePatch = previewResult.previewRuntimePatch;
@@ -743,6 +749,7 @@ export async function runProjectIntegrationPipeline(input: {
         integrationBranch: plan?.integrationBranch ?? context.integrationBranch ?? null,
         previewUrl: previewResult.previewUrl ?? null,
         timelineEntries: timeline,
+        executionSetupCapabilityPatch,
       };
     }
     pushPipelineTimeline(timeline, {
@@ -769,6 +776,7 @@ export async function runProjectIntegrationPipeline(input: {
       integrationBranch: plan?.integrationBranch ?? context.integrationBranch ?? null,
       previewUrl: previewResult.previewUrl ?? null,
       timelineEntries: timeline,
+      executionSetupCapabilityPatch,
     };
   }
 
@@ -821,6 +829,7 @@ export async function runProjectIntegrationPipeline(input: {
       orchestrationPatch,
       integrationBranch: plan?.integrationBranch ?? context.integrationBranch ?? null,
       timelineEntries: timeline,
+      executionSetupCapabilityPatch,
     };
   }
 
@@ -837,6 +846,7 @@ export async function runProjectIntegrationPipeline(input: {
     userSafeMessage:
       "Preview 준비를 계속 진행해야 합니다.\n아래 버튼을 눌러 다음 단계를 실행해 주세요.",
     timelineEntries: timeline,
+    executionSetupCapabilityPatch,
   };
   } catch (error) {
     if (error instanceof IntegrationPipelineDomainError) {

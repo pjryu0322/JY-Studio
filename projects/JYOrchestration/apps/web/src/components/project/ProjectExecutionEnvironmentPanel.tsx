@@ -2671,8 +2671,6 @@ export function ProjectExecutionEnvironmentPanel({
               connectionTest={displayedConnectionTest}
               connectionTestAttempted={connectionTestAttempted}
               onFocusGithubToken={() => setSelectedModalRow("token")}
-              onRetestConnection={() => void handleEnvironmentTest()}
-              retestDisabled={!canEdit || busyEnvTest || !envTestStartOk || busyMvpSave}
             />
           }
           detail={renderModalDetail()}

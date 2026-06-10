@@ -3,7 +3,10 @@ import {
   resolveActualIntegratedAppPreviewTarget,
 } from "@/lib/prototype/actualIntegratedAppPreviewResolver";
 import { deployIntegratedPreviewToGitHubPages } from "@/lib/prototype/githubPagesPreviewDeploymentService";
-import { runIntegrationPreviewPreflight } from "@/lib/prototype/integrationPreviewPreflightService";
+import {
+  INTEGRATION_PREVIEW_PREFLIGHT_CONFIRMED_USER_MESSAGE,
+  runIntegrationPreviewPreflight,
+} from "@/lib/prototype/integrationPreviewPreflightService";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import type { ImplementationIntegrationStepV1 } from "@/lib/prototype/implementationIntegrationStep";
@@ -36,6 +39,8 @@ export type RunAppPreviewTargetIntegrationStepResultV1 = Readonly<{
   readonly previewRuntimePatch?: Partial<RequirementsStateJson>;
   readonly userSafeMessage?: string | null;
   readonly pipelineStatus?: AppPreviewTargetPipelineStatusV1;
+  readonly executionSetupCapabilityPatch?: Record<string, unknown> | null;
+  readonly previewPreflightCheckedAt?: string | null;
 }>;
 
 function completeAppPreviewTargetStep(input: {
@@ -149,6 +154,7 @@ export async function runAppPreviewTargetIntegrationStep(input: {
         capabilitySnapshot: input.capabilitySnapshot as never,
         projectId: input.projectId,
         integrationBranch,
+        integrationRunStartedAt: input.nowIso,
       });
 
       if (!preflight.ok) {
@@ -170,6 +176,7 @@ export async function runAppPreviewTargetIntegrationStep(input: {
               projectId: input.projectId,
               remediationCode: preflight.remediationCode,
               requiredPermission: preflight.kind,
+              previewPreflightCheckedAt: preflight.checkedAt,
             },
             nowIso: input.nowIso,
           }),
@@ -188,8 +195,24 @@ export async function runAppPreviewTargetIntegrationStep(input: {
           timelineEntries: timeline,
           userSafeMessage: message,
           pipelineStatus: preflight.kind,
+          executionSetupCapabilityPatch: preflight.capabilityPatch ?? null,
+          previewPreflightCheckedAt: preflight.checkedAt,
         };
       }
+
+      timeline.push(
+        buildImplementationExecutionLogTimelineEntry({
+          action: "integration_preview_preflight_live_refresh_completed",
+          orchestrationTraceGroup: "implementation_integration",
+          fields: {
+            projectId: input.projectId,
+            previewPreflightCheckedAt: preflight.checkedAt,
+          },
+          nowIso: input.nowIso,
+        }),
+      );
+
+      const deployCapabilityPatch = preflight.capabilityPatch ?? null;
 
       const deploy = await deployIntegratedPreviewToGitHubPages({
         projectId: input.projectId,
@@ -202,6 +225,14 @@ export async function runAppPreviewTargetIntegrationStep(input: {
       });
       timeline.push(...deploy.timelineEntries);
 
+      const attachPreflightPatch = <T extends RunAppPreviewTargetIntegrationStepResultV1>(
+        result: T,
+      ): T => ({
+        ...result,
+        executionSetupCapabilityPatch: deployCapabilityPatch,
+        previewPreflightCheckedAt: preflight.checkedAt,
+      });
+
       if (deploy.ok && deploy.previewRuntime) {
         const runtime = deploy.previewRuntime;
         if (
@@ -210,13 +241,15 @@ export async function runAppPreviewTargetIntegrationStep(input: {
             runtime,
           })
         ) {
-          return completeAppPreviewTargetStep({
-            projectId: input.projectId,
-            steps,
-            runtime,
-            nowIso: input.nowIso,
-            timeline,
-          });
+          return attachPreflightPatch(
+            completeAppPreviewTargetStep({
+              projectId: input.projectId,
+              steps,
+              runtime,
+              nowIso: input.nowIso,
+              timeline,
+            }),
+          );
         }
       }
 
@@ -227,7 +260,7 @@ export async function runAppPreviewTargetIntegrationStep(input: {
       if (pipelineStatus === "github_pages_deploy_pending") {
         const message =
           deploy.deployment.userSafeMessage?.trim() ||
-          "GitHub Pages Preview 배포가 시작되었습니다. 잠시 후 Preview 상태를 다시 확인해 주세요.";
+          INTEGRATION_PREVIEW_PREFLIGHT_CONFIRMED_USER_MESSAGE;
         steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
           ...s,
           status: "pending",
@@ -241,13 +274,13 @@ export async function runAppPreviewTargetIntegrationStep(input: {
             nowIso: input.nowIso,
           }),
         );
-        return {
+        return attachPreflightPatch({
           ok: false,
           steps,
           timelineEntries: timeline,
           userSafeMessage: message,
           pipelineStatus,
-        };
+        });
       }
 
       const message =
@@ -268,13 +301,13 @@ export async function runAppPreviewTargetIntegrationStep(input: {
           nowIso: input.nowIso,
         }),
       );
-      return {
+      return attachPreflightPatch({
         ok: false,
         steps,
         timelineEntries: timeline,
         userSafeMessage: message,
         pipelineStatus,
-      };
+      });
     }
   }
 

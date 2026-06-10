@@ -5,6 +5,7 @@ import type {
   PreviewDeploymentPreflightKeyV1,
 } from "@/lib/prototype/autoGenerationSettingsConnectionTest";
 import type { GithubPreflightCheckResultV1 } from "@/lib/prototype/githubProviderPreflightTypes";
+import type { GithubProviderPreflightResultV1 } from "@/lib/prototype/githubProviderPreflightTypes";
 
 const PREVIEW_KEYS: readonly PreviewDeploymentPreflightKeyV1[] = [
   "workflow_file_write",
@@ -95,13 +96,39 @@ export async function runPreviewDeploymentPreflight(input: {
   readonly defaultBranch: string;
   readonly githubToken: string;
   readonly capabilitySnapshot?: GithubCapabilityValidationSnapshot | null;
+  readonly mode?: "settings_connection_test" | "before_integration_preview";
 }): Promise<readonly AutoGenerationCheckResultV1[]> {
   const preflight = await runGithubProviderPreflight({
     ownerRepo: input.ownerRepo,
     defaultBranch: input.defaultBranch,
     githubToken: input.githubToken,
     capabilitySnapshot: input.capabilitySnapshot ?? null,
-    mode: "settings_connection_test",
+    mode: input.mode === "before_integration_preview" ? "before_integration_preview" : "settings_connection_test",
   });
   return mapPreviewPreflightChecksToAutoGenerationResults(preflight.checks);
+}
+
+export async function runPreviewDeploymentPreflightWithGithubResult(input: {
+  readonly ownerRepo: string;
+  readonly defaultBranch: string;
+  readonly githubToken: string;
+  readonly capabilitySnapshot?: GithubCapabilityValidationSnapshot | null;
+  readonly mode?: "settings_connection_test" | "before_integration_preview";
+}): Promise<
+  Readonly<{
+    readonly checks: readonly AutoGenerationCheckResultV1[];
+    readonly preflight: GithubProviderPreflightResultV1;
+  }>
+> {
+  const preflight = await runGithubProviderPreflight({
+    ownerRepo: input.ownerRepo,
+    defaultBranch: input.defaultBranch,
+    githubToken: input.githubToken,
+    capabilitySnapshot: input.capabilitySnapshot ?? null,
+    mode: input.mode === "before_integration_preview" ? "before_integration_preview" : "settings_connection_test",
+  });
+  return {
+    checks: mapPreviewPreflightChecksToAutoGenerationResults(preflight.checks),
+    preflight,
+  };
 }

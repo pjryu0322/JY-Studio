@@ -27,7 +27,8 @@ describe("AutoGenerationBasicEnvcheckPanel", () => {
       }),
     );
     expect(html).toContain("정상");
-    expect(html).toContain("envcheck branch가 생성되었습니다");
+    expect(html).toContain("생성됨");
+    expect(html).toContain('title="envcheck branch가 생성되었습니다."');
     expect(html).not.toContain("Preview 배포 사전점검");
   });
 });

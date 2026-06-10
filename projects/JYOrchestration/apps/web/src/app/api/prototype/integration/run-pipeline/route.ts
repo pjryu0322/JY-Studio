@@ -163,6 +163,7 @@ export async function POST(request: NextRequest) {
       storedIntegrationPlan,
       integrationSteps,
       requirementsState: persisted,
+      githubCapabilityValidation: capJson,
     });
 
     if (!outcome.ok && !outcome.plan) {
@@ -207,6 +208,19 @@ export async function POST(request: NextRequest) {
         },
         { status: 500 },
       );
+    }
+
+    if (outcome.executionSetupCapabilityPatch) {
+      try {
+        await prisma.executionSetup.update({
+          where: { projectId },
+          data: {
+            githubCapabilityValidation: outcome.executionSetupCapabilityPatch as object,
+          },
+        });
+      } catch {
+        // capability snapshot refresh is best-effort; integration state is already persisted
+      }
     }
 
     const postRunSummary = buildImplementationExecutionSummaryCounts({

@@ -359,7 +359,9 @@ const ENVCHECK_STATUS_RANK: Record<AutoGenerationCheckStatusV1, number> = {
   skipped: 1,
 };
 
-function mergeEnvcheckRow(
+const BASIC_MERGE_KEYS = ["github_repository", "github_token", "cursor_api"] as const;
+
+function mergeCheckRowByRank(
   evidence: AutoGenerationCheckResultV1,
   server: AutoGenerationCheckResultV1,
 ): AutoGenerationCheckResultV1 {
@@ -385,11 +387,28 @@ export function mergeConnectionTestPreservingEnvcheckEvidence(
   const mergedEnvcheck = ENVCHECK_MERGE_KEYS.map((key) => {
     const fromEvidence = evidenceFirst.envcheck.find((c) => c.key === key);
     const fromServer = server.envcheck.find((c) => c.key === key);
-    if (fromEvidence && fromServer) return mergeEnvcheckRow(fromEvidence, fromServer);
+    if (fromEvidence && fromServer) return mergeCheckRowByRank(fromEvidence, fromServer);
     return fromEvidence ?? fromServer ?? check(key, "unknown", { userSafeMessage: "envcheck 결과를 확인하지 못했습니다." });
   });
+  const mergedBasic = BASIC_MERGE_KEYS.map((key) => {
+    const fromEvidence = evidenceFirst.basicConnection.find((c) => c.key === key);
+    const fromServer = server.basicConnection.find((c) => c.key === key);
+    if (fromEvidence && fromServer) return mergeCheckRowByRank(fromEvidence, fromServer);
+    return (
+      fromEvidence ??
+      fromServer ??
+      check(key, "unknown", {
+        userSafeMessage:
+          key === "cursor_api"
+            ? "Cursor API 확인 결과를 가져오지 못했습니다."
+            : key === "github_token"
+              ? "GitHub Token 확인 결과를 가져오지 못했습니다."
+              : "GitHub 저장소 확인 결과를 가져오지 못했습니다.",
+      })
+    );
+  });
   return normalizeAutoGenerationConnectionTestResult({
-    basicConnection: server.basicConnection.length ? server.basicConnection : evidenceFirst.basicConnection,
+    basicConnection: mergedBasic,
     envcheck: mergedEnvcheck,
     previewDeploymentPreflight: server.previewDeploymentPreflight,
     checkedAt: server.checkedAt || evidenceFirst.checkedAt,

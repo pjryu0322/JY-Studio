@@ -158,25 +158,36 @@ function fillPreview(
 export function buildBasicConnectionSectionSummary(
   basic: readonly AutoGenerationCheckResultV1[],
 ): string {
-  const failed = basic.filter((c) => c.status === "failed" || c.status === "unknown");
-  if (!failed.length) return "기본 연결이 정상입니다.";
-  if (failed.some((c) => c.key === "github_repository")) {
+  if (basic.length > 0 && basic.every((c) => c.status === "passed")) {
+    return "기본 연결이 정상입니다.";
+  }
+  const repo = basic.find((c) => c.key === "github_repository");
+  if (repo?.status === "failed" || repo?.status === "unknown" || repo?.status === "warning") {
     return "GitHub 저장소 연결을 확인해 주세요.";
   }
-  if (failed.some((c) => c.key === "github_token")) {
+  const token = basic.find((c) => c.key === "github_token");
+  if (token?.status === "failed" || token?.status === "unknown" || token?.status === "warning") {
     return "GitHub Token 권한을 확인해 주세요.";
+  }
+  const cursor = basic.find((c) => c.key === "cursor_api");
+  if (cursor?.status === "failed" || cursor?.status === "unknown" || cursor?.status === "warning") {
+    return "Cursor API 연결을 확인해 주세요.";
   }
   return "기본 연결 상태를 확인해 주세요.";
 }
 
 export function buildEnvcheckSectionSummary(envcheck: readonly AutoGenerationCheckResultV1[]): string {
-  const failed = envcheck.filter((c) => c.required && (c.status === "failed" || c.status === "unknown"));
+  const actionable = envcheck.filter(
+    (c) =>
+      c.required &&
+      (c.status === "failed" || c.status === "unknown" || c.status === "warning"),
+  );
   const skipped = envcheck.every((c) => c.status === "skipped");
   if (skipped) return "기본 연결 완료 후 자동 생성 기본 점검이 실행됩니다.";
-  if (!failed.length) return "자동 생성 기본 점검이 정상입니다.";
-  const pr = failed.find((c) => c.key === "pull_request_create_or_update");
+  if (!actionable.length) return "자동 생성 기본 점검이 정상입니다.";
+  const pr = actionable.find((c) => c.key === "pull_request_create_or_update");
   if (pr?.userSafeMessage) return pr.userSafeMessage;
-  return failed[0]?.userSafeMessage ?? "자동 생성 기본 점검에 문제가 있습니다.";
+  return actionable[0]?.userSafeMessage ?? "자동 생성 기본 점검에 문제가 있습니다.";
 }
 
 export function buildPreviewSectionSummary(

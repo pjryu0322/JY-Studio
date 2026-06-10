@@ -252,6 +252,7 @@ import {
   isLegacyContinuePreviewMessage,
   resolveIntegrationPipelineUserToast,
 } from "@/lib/prototype/implementationIntegrationToastPolicy";
+import { INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE } from "@/lib/prototype/integrationPreviewPreflightService";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
 import {
@@ -4435,7 +4436,7 @@ export function PrototypePreviewPanel({
 
     void (async () => {
       setIntegrationPipelineBusy(true);
-      showToast("통합 및 Preview 준비 중…");
+      showToast(INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE);
       try {
         const pipelineResult = await runProjectIntegrationPrepareOnly({
           projectId: pid,

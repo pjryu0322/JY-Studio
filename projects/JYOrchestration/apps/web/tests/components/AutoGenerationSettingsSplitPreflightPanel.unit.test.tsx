@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AutoGenerationSplitPreflightPanel } from "@/components/settings/AutoGenerationSplitPreflightPanel";
 import type { AutoGenerationSettingsConnectionTestResultV1 } from "@/lib/prototype/autoGenerationSettingsConnectionTest";
+import { normalizeAutoGenerationConnectionTestResult } from "@/lib/prototype/autoGenerationConnectionTestNormalizer";
 
 function sampleResult(): AutoGenerationSettingsConnectionTestResultV1 {
   return {
@@ -56,23 +57,37 @@ describe("AutoGenerationSettingsSplitPreflightPanel", () => {
     expect(html).toContain("PR 생성/갱신");
   });
 
-  it("shows PR failure only under envcheck summary", () => {
-    const html = renderToStaticMarkup(
-      createElement(AutoGenerationSplitPreflightPanel, { connectionTest: sampleResult() }),
-    );
-    expect(html).toContain("자동 생성 기본 점검:");
-    expect(html).toContain("PR 생성/갱신에 실패했습니다");
-    expect(html).not.toContain("raw");
-  });
-
-  it("shows section summaries without preview preflight card by default", () => {
+  it("shows envcheck summary on PR failure without basic summary when basic passed", () => {
+    const connectionTest = normalizeAutoGenerationConnectionTestResult({
+      settingsConnectionTestOnly: true,
+      checkedAt: "2026-06-01T00:00:00.000Z",
+      basicConnection: [
+        { key: "github_repository", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+        { key: "github_token", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+        { key: "cursor_api", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+      ],
+      envcheck: [
+        {
+          key: "pull_request_create_or_update",
+          status: "failed",
+          required: true,
+          userSafeMessage: "PR 생성/갱신에 실패했습니다. GitHub 저장소 권한 또는 branch 상태를 확인해 주세요.",
+          operatorMessage: "raw",
+          remediationCode: "enable_pull_request_permission",
+        },
+        { key: "branch_create", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+        { key: "file_write", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+      ],
+    });
     const html = renderToStaticMarkup(
       createElement(AutoGenerationSplitPreflightPanel, {
-        connectionTest: sampleResult(),
+        connectionTest,
         connectionTestAttempted: true,
       }),
     );
-    expect(html).toContain("기본 연결 상태:");
-    expect(html).not.toContain("Preview 배포 사전점검:");
+    expect(html).toContain("자동 생성 기본 점검:");
+    expect(html).toContain("PR 생성/갱신에 실패했습니다");
+    expect(html).not.toContain("기본 연결 상태:");
+    expect(html).not.toContain("raw");
   });
 });

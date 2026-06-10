@@ -11,7 +11,35 @@ export type SplitPreflightTableRow = Readonly<{
   readonly status: string;
   readonly statusTone: PrototypeEnvReadinessTone;
   readonly currentValue: string;
+  readonly detailMessage?: string | null;
 }>;
+
+const ENVCHECK_COMPACT_KEYS = new Set([
+  "branch_create",
+  "file_write",
+  "pull_request_create_or_update",
+]);
+
+export function compactEnvcheckDisplayValue(
+  key: string,
+  status: AutoGenerationCheckResultV1["status"],
+): string {
+  switch (status) {
+    case "passed":
+      if (key === "branch_create") return "생성됨";
+      if (key === "file_write") return "완료";
+      if (key === "pull_request_create_or_update") return "생성/갱신됨";
+      return "완료";
+    case "failed":
+      return "실패";
+    case "warning":
+      return "확인 필요";
+    case "skipped":
+      return "건너뜀";
+    default:
+      return "확인 필요";
+  }
+}
 
 const ENVCHECK_LABELS: Record<string, string> = {
   branch_create: "Branch 생성",
@@ -59,6 +87,7 @@ function rowsForChecks(
   checks: readonly AutoGenerationCheckResultV1[],
   labels: Record<string, string>,
   order: readonly string[],
+  options?: Readonly<{ readonly compactEnvcheckValues?: boolean }>,
 ): readonly SplitPreflightTableRow[] {
   const byKey = new Map(checks.map((c) => [c.key, c]));
   return order.map((key) => {
@@ -66,12 +95,16 @@ function rowsForChecks(
     const pres = c
       ? toneForCheck(c)
       : { status: "확인 필요", tone: "neutral" as const, value: "연결 테스트 필요" };
+    const detailMessage = c ? String(c.userSafeMessage ?? "").trim() || null : null;
+    const useCompact = options?.compactEnvcheckValues === true && ENVCHECK_COMPACT_KEYS.has(key) && c;
+    const currentValue = useCompact ? compactEnvcheckDisplayValue(key, c!.status) : pres.value;
     return {
       key,
       label: labels[key] ?? key,
       status: pres.status,
       statusTone: pres.tone,
-      currentValue: pres.value,
+      currentValue,
+      detailMessage: useCompact ? detailMessage ?? pres.value : detailMessage,
     };
   });
 }
@@ -91,7 +124,7 @@ export function buildEnvcheckTableRows(
     "branch_create",
     "file_write",
     "pull_request_create_or_update",
-  ]);
+  ], { compactEnvcheckValues: true });
 }
 
 export function buildEnvcheckFallbackDisplayRows(): readonly SplitPreflightTableRow[] {
@@ -134,6 +167,44 @@ export function buildPreviewFallbackDisplayRows(): readonly SplitPreflightTableR
     checkedAt: new Date().toISOString(),
   });
   return buildPreviewPreflightTableRows(normalized);
+}
+
+const SUMMARY_ACTIONABLE: ReadonlySet<AutoGenerationCheckResultV1["status"]> = new Set([
+  "failed",
+  "unknown",
+  "warning",
+]);
+
+export function shouldShowBasicConnectionSummaryCard(
+  basic: readonly AutoGenerationCheckResultV1[],
+): boolean {
+  return basic.some((row) => SUMMARY_ACTIONABLE.has(row.status));
+}
+
+export function shouldShowEnvcheckSummaryCard(
+  envcheck: readonly AutoGenerationCheckResultV1[],
+): boolean {
+  return envcheck.some((row) => row.required && SUMMARY_ACTIONABLE.has(row.status));
+}
+
+export function shouldShowGithubTokenResetButton(
+  result: AutoGenerationSettingsConnectionTestResultV1 | null,
+): boolean {
+  if (!result) return false;
+  const token = result.basicConnection.find((c) => c.key === "github_token");
+  if (token && SUMMARY_ACTIONABLE.has(token.status)) return true;
+  const repo = result.basicConnection.find((c) => c.key === "github_repository");
+  if (repo && SUMMARY_ACTIONABLE.has(repo.status)) return true;
+  return result.envcheck.some(
+    (c) =>
+      c.required &&
+      (c.status === "failed" || c.status === "warning") &&
+      (c.key === "pull_request_create_or_update" ||
+        c.key === "branch_create" ||
+        c.key === "file_write" ||
+        c.remediationCode === "enable_pull_request_permission" ||
+        c.remediationCode === "enable_contents_permission"),
+  );
 }
 
 export function splitPreflightNeedsRemediation(
