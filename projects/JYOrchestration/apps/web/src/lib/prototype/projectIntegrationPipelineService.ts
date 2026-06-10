@@ -42,6 +42,7 @@ import {
   IntegrationPipelineDomainError,
   toUserSafeIntegrationErrorMessage,
 } from "@/lib/prototype/implementationIntegrationErrors";
+import { isIntegrationPreviewRemediationPipelineStatus } from "@/lib/prototype/integrationPreviewRemediationGuide";
 import {
   buildIntegrationRuntimeErrorDiagnostic,
   buildProjectIntegrationPipelineRuntimeErrorTimelineEntry,
@@ -67,6 +68,11 @@ export type ProjectIntegrationPipelineResultV1 = Readonly<{
     | "github_pages_deploy_pending"
     | "github_preview_permission_required"
     | "github_pages_setup_required"
+    | "github_preview_workflow_setup_required"
+    | "github_preview_workflow_request_invalid"
+    | "github_actions_setup_required"
+    | "github_preview_retry_required"
+    | "github_preview_operator_review_required"
     | "final_wiring_failed"
     | "integration_branch_failed"
     | "codetasks_incomplete"
@@ -721,8 +727,7 @@ export async function runProjectIntegrationPipeline(input: {
       previewResult.pipelineStatus ?? "app_preview_target_failed";
     if (
       failStatus === "github_pages_deploy_pending" ||
-      failStatus === "github_preview_permission_required" ||
-      failStatus === "github_pages_setup_required"
+      isIntegrationPreviewRemediationPipelineStatus(failStatus)
     ) {
       pushPipelineTimeline(timeline, {
         action: "project_integration_pipeline_step_pending",

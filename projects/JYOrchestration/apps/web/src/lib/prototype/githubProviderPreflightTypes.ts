@@ -26,7 +26,14 @@ export type GithubPreflightRemediationCodeV1 =
   | "check_repository"
   | "check_token"
   | "check_cursor_api"
-  | "manual_setup_required";
+  | "manual_setup_required"
+  | "ensure_workflow_file"
+  | "ensure_workflow_dispatch"
+  | "fix_workflow_inputs"
+  | "fix_dispatch_ref"
+  | "enable_repository_actions"
+  | "retry_later"
+  | "operator_review_required";
 
 export type GithubPreflightCheckResultV1 = Readonly<{
   readonly key: GithubPreflightCheckKeyV1;

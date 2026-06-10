@@ -1,7 +1,8 @@
 import { githubRestApiBase } from "@/lib/integration/githubRestCommon";
 import { readGithubAcceptedPermissionsHeader } from "@/lib/integration/githubAcceptedPermissionsHeader";
 import type { GithubCapabilityValidationSnapshot } from "@/lib/executionSetup/githubPatCapabilityProbes";
-import { JYO_PREVIEW_PAGES_WORKFLOW_FILE } from "@/lib/prototype/githubPagesWorkflowService";
+import { JYO_PREVIEW_PAGES_WORKFLOW_FILE, probeJyoPreviewPagesWorkflowDispatch } from "@/lib/prototype/githubPagesWorkflowService";
+import type { GitHubWorkflowDispatchRemediationCodeV1 } from "@/lib/prototype/githubPreviewDeploymentFailureClassifier";
 import type {
   GithubPreflightCheckKeyV1,
   GithubPreflightCheckResultV1,
@@ -38,6 +39,35 @@ function permissionLevel(accepted: string | null | undefined, name: string): "wr
   const m = text.match(re);
   if (!m) return "none";
   return m[1] === "write" ? "write" : "read";
+}
+
+function mapDispatchRemediationToPreflight(
+  code: GitHubWorkflowDispatchRemediationCodeV1,
+): GithubPreflightRemediationCodeV1 {
+  switch (code) {
+    case "none":
+      return "none";
+    case "enable_actions_permission":
+      return "enable_actions_permission";
+    case "enable_workflow_permission":
+      return "enable_workflow_permission";
+    case "ensure_workflow_file":
+      return "ensure_workflow_file";
+    case "ensure_workflow_dispatch":
+      return "ensure_workflow_dispatch";
+    case "fix_workflow_inputs":
+      return "fix_workflow_inputs";
+    case "fix_dispatch_ref":
+      return "fix_dispatch_ref";
+    case "enable_repository_actions":
+      return "enable_repository_actions";
+    case "retry_later":
+      return "retry_later";
+    case "operator_review_required":
+      return "operator_review_required";
+    default:
+      return "manual_setup_required";
+  }
 }
 
 async function githubFetchStatus(
@@ -119,6 +149,8 @@ export async function runGithubProviderPreflight(input: {
   readonly cursorApiConfigured?: boolean;
   readonly capabilitySnapshot?: GithubCapabilityValidationSnapshot | null;
   readonly mode: "settings_connection_test" | "before_quick_run" | "before_integration_preview";
+  readonly projectId?: string | null;
+  readonly integrationBranch?: string | null;
 }): Promise<GithubProviderPreflightResultV1> {
   const nowIso = new Date().toISOString();
   const ownerRepo = input.ownerRepo.trim();
@@ -171,26 +203,68 @@ export async function runGithubProviderPreflight(input: {
 
   let actionsDispatchOk = permissionLevel(accepted, "actions") === "write";
   let actionsOperator: string | null = null;
-  if (token && ownerRepo.includes("/")) {
+  let actionsUserMessage: string | null = null;
+  let actionsRemediation: GithubPreflightRemediationCodeV1 = "enable_actions_permission";
+
+  const defaultBranch = input.defaultBranch.trim() || "main";
+  const integrationBranch = String(input.integrationBranch ?? "").trim();
+  const projectId = String(input.projectId ?? "").trim();
+  const probeProjectId =
+    projectId || (integrationLive ? "integration-preflight-probe" : "settings-preflight-probe");
+  const probeSourceBranch = integrationBranch || defaultBranch;
+
+  if (token && ownerRepo.includes("/") && probeProjectId) {
+    const repoUrl = `https://github.com/${ownerRepo}`;
+    const probe = await probeJyoPreviewPagesWorkflowDispatch({
+      repoUrl,
+      githubToken: token,
+      workflowRefBranch: defaultBranch,
+      projectId: probeProjectId,
+      integrationBranch: probeSourceBranch,
+    });
+    actionsDispatchOk = probe.ok;
+    actionsOperator = probe.operatorMessage;
+    actionsUserMessage = probe.userSafeMessage;
+    actionsRemediation = mapDispatchRemediationToPreflight(probe.remediationCode);
+    if (!probe.ok && probe.failureKind === "permission_denied") {
+      actionsDispatchOk = false;
+    } else if (!probe.ok) {
+      actionsDispatchOk = false;
+    }
+  } else if (token && ownerRepo.includes("/")) {
     const [owner, repo] = ownerRepo.split("/");
     const api = githubRestApiBase();
     const wfUrl = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/${encodeURIComponent(JYO_PREVIEW_PAGES_WORKFLOW_FILE)}/dispatches`;
     const probe = await githubFetchStatus(wfUrl, token, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ref: input.defaultBranch.trim() || "main", inputs: {} }),
+      body: JSON.stringify({
+        ref: defaultBranch,
+        inputs: {
+          project_id: "settings-preflight-probe",
+          source_branch: defaultBranch,
+          pages_path: "previews/settings-preflight-probe",
+        },
+      }),
     });
     if (probe.status === 204 || probe.status === 201) {
       actionsDispatchOk = true;
     } else if (probe.status === 403 || probe.status === 401) {
       actionsDispatchOk = false;
       actionsOperator = `workflow_dispatch HTTP ${probe.status}`;
+      actionsRemediation = "enable_actions_permission";
     } else if (probe.status === 404) {
-      actionsDispatchOk =
-        permissionLevel(accepted, "actions") === "write" ||
-        permissionLevel(accepted, "workflows") === "write" ||
-        contentsWrite;
+      actionsDispatchOk = false;
       actionsOperator = "workflow_dispatch workflow_missing";
+      actionsRemediation = "ensure_workflow_file";
+      actionsUserMessage =
+        "Preview 배포 workflow를 찾지 못했습니다. workflow 파일이 기본 브랜치에 반영되었는지 확인해야 합니다.";
+    } else if (probe.status === 422 || probe.status === 400) {
+      actionsDispatchOk = false;
+      actionsOperator = `workflow_dispatch HTTP ${probe.status}`;
+      actionsRemediation = "fix_workflow_inputs";
+      actionsUserMessage =
+        "Preview 배포 workflow 실행 조건을 확인해야 합니다. workflow 입력값 또는 실행 branch 설정이 맞지 않습니다.";
     }
   }
 
@@ -243,8 +317,9 @@ export async function runGithubProviderPreflight(input: {
     check("actions_workflow_dispatch", actionsDispatchOk ? "passed" : "failed", {
       userSafeMessage: actionsDispatchOk
         ? null
-        : "GitHub Actions 실행 권한이 필요합니다.\nGitHub 연동 권한을 다시 승인한 뒤 연결 테스트를 다시 실행해 주세요.",
-      remediationCode: "enable_actions_permission",
+        : actionsUserMessage ??
+          "GitHub Actions 실행 권한이 필요합니다.\nGitHub 연동 권한을 다시 승인한 뒤 연결 테스트를 다시 실행해 주세요.",
+      remediationCode: actionsRemediation,
       operatorMessage: actionsOperator,
     }),
   );

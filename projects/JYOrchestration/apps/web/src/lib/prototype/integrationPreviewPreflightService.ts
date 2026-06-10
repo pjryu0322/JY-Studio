@@ -7,12 +7,18 @@ import {
   resolvePreviewDeploymentPreflightStaleReason,
 } from "@/lib/prototype/integrationPreviewPreflightState";
 import { derivePreviewDeploymentReadyFromPreflight } from "@/lib/prototype/githubProviderPreflightService";
+import { mapWorkflowDispatchRemediationToIntegrationPipelineStatus } from "@/lib/prototype/githubPreviewDeploymentFailureClassifier";
 import type { GithubProviderPreflightResultV1 } from "@/lib/prototype/githubProviderPreflightTypes";
 import { runPreviewDeploymentPreflightWithGithubResult } from "@/lib/prototype/previewDeploymentPreflightService";
 
 export type IntegrationPreviewPreflightFailureKindV1 =
   | "github_preview_permission_required"
-  | "github_pages_setup_required";
+  | "github_pages_setup_required"
+  | "github_preview_workflow_setup_required"
+  | "github_preview_workflow_request_invalid"
+  | "github_actions_setup_required"
+  | "github_preview_retry_required"
+  | "github_preview_operator_review_required";
 
 export type IntegrationPreviewPreflightOutcomeV1 =
   | Readonly<{
@@ -30,12 +36,6 @@ export type IntegrationPreviewPreflightOutcomeV1 =
       readonly capabilityPatch?: Record<string, unknown>;
     }>;
 
-const PERMISSION_KEYS = new Set([
-  "workflow_file_write",
-  "actions_workflow_dispatch",
-  "gh_pages_branch_write",
-]);
-
 const PERMISSION_USER_MESSAGE =
   "GitHub Actions 실행 권한이 필요합니다.\nGitHub Token 권한에서 Actions와 Workflows를 Read/Write로 설정한 뒤 다시 통합 및 Preview 준비를 실행해 주세요.";
 
@@ -52,19 +52,62 @@ function isFailedOrBlocked(c: AutoGenerationCheckResultV1): boolean {
   return c.status === "failed" || (c.required && c.status === "unknown");
 }
 
+const WORKFLOW_FILE_PERMISSION_KEYS = new Set(["workflow_file_write"]);
+
+function integrationStatusFromCheck(
+  check: AutoGenerationCheckResultV1,
+): IntegrationPreviewPreflightFailureKindV1 {
+  if (check.key === "actions_workflow_dispatch") {
+    return mapWorkflowDispatchRemediationToIntegrationPipelineStatus(
+      check.remediationCode as never,
+    ) as IntegrationPreviewPreflightFailureKindV1;
+  }
+  if (check.remediationCode === "enable_actions_permission") {
+    return "github_preview_permission_required";
+  }
+  if (
+    check.remediationCode === "ensure_workflow_file" ||
+    check.remediationCode === "ensure_workflow_dispatch" ||
+    check.remediationCode === "enable_workflow_permission"
+  ) {
+    return "github_preview_workflow_setup_required";
+  }
+  return "github_preview_operator_review_required";
+}
+
 function classifyPreviewPreflightFailure(
   checks: readonly AutoGenerationCheckResultV1[],
 ): IntegrationPreviewPreflightOutcomeV1 | Readonly<{ readonly ok: true }> {
-  const permissionFailed = checks.filter((c) => PERMISSION_KEYS.has(c.key) && isFailedOrBlocked(c));
-  if (permissionFailed.length > 0) {
-    const remediationCode =
-      permissionFailed.find((c) => c.remediationCode !== "none")?.remediationCode ??
-      "enable_actions_permission";
+  const dispatchFailed = checks.find(
+    (c) => c.key === "actions_workflow_dispatch" && isFailedOrBlocked(c),
+  );
+  if (dispatchFailed) {
+    const kind = integrationStatusFromCheck(dispatchFailed);
+    const userSafeMessage =
+      dispatchFailed.userSafeMessage?.trim() ||
+      (kind === "github_preview_permission_required"
+        ? PERMISSION_USER_MESSAGE
+        : "Preview 배포 workflow 실행 조건을 확인해야 합니다.");
     return {
       ok: false,
-      kind: "github_preview_permission_required",
-      userSafeMessage: PERMISSION_USER_MESSAGE,
-      remediationCode,
+      kind,
+      userSafeMessage,
+      remediationCode: String(dispatchFailed.remediationCode ?? "operator_review_required"),
+      checks,
+    } as const;
+  }
+
+  const workflowFileFailed = checks.filter(
+    (c) => WORKFLOW_FILE_PERMISSION_KEYS.has(c.key) && isFailedOrBlocked(c),
+  );
+  if (workflowFileFailed.length > 0) {
+    const row = workflowFileFailed[0]!;
+    return {
+      ok: false,
+      kind: "github_preview_workflow_setup_required",
+      userSafeMessage:
+        row.userSafeMessage?.trim() ?? "GitHub workflow 파일 생성 권한이 필요합니다.",
+      remediationCode: String(row.remediationCode ?? "enable_workflow_permission"),
       checks,
     } as const;
   }
@@ -86,11 +129,13 @@ function classifyPreviewPreflightFailure(
 
   const anyRequiredFailed = checks.some((c) => c.required && isFailedOrBlocked(c));
   if (anyRequiredFailed) {
+    const row = checks.find((c) => c.required && isFailedOrBlocked(c));
+    if (!row) return { ok: true };
     return {
       ok: false,
-      kind: "github_preview_permission_required",
-      userSafeMessage: PERMISSION_USER_MESSAGE,
-      remediationCode: "enable_actions_permission",
+      kind: integrationStatusFromCheck(row),
+      userSafeMessage: row.userSafeMessage?.trim() ?? PERMISSION_USER_MESSAGE,
+      remediationCode: String(row.remediationCode ?? "operator_review_required"),
       checks,
     } as const;
   }
@@ -178,6 +223,8 @@ export async function runIntegrationPreviewPreflight(input: {
       githubToken: input.githubToken,
       capabilitySnapshot: input.capabilitySnapshot ?? null,
       mode: "before_integration_preview",
+      projectId: input.projectId,
+      integrationBranch: input.integrationBranch,
     });
     checks = live.checks;
     githubPreflight = live.preflight;

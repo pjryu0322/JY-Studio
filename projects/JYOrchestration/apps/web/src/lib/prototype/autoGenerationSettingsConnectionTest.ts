@@ -38,7 +38,14 @@ export type AutoGenerationRemediationCodeV1 =
   | "enable_workflow_permission"
   | "enable_actions_permission"
   | "enable_pages"
-  | "manual_setup_required";
+  | "manual_setup_required"
+  | "ensure_workflow_file"
+  | "ensure_workflow_dispatch"
+  | "fix_workflow_inputs"
+  | "fix_dispatch_ref"
+  | "enable_repository_actions"
+  | "retry_later"
+  | "operator_review_required";
 
 export type AutoGenerationCheckResultV1 = Readonly<{
   readonly key: string;

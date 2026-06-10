@@ -97,6 +97,8 @@ export async function runPreviewDeploymentPreflight(input: {
   readonly githubToken: string;
   readonly capabilitySnapshot?: GithubCapabilityValidationSnapshot | null;
   readonly mode?: "settings_connection_test" | "before_integration_preview";
+  readonly projectId?: string | null;
+  readonly integrationBranch?: string | null;
 }): Promise<readonly AutoGenerationCheckResultV1[]> {
   const preflight = await runGithubProviderPreflight({
     ownerRepo: input.ownerRepo,
@@ -104,6 +106,8 @@ export async function runPreviewDeploymentPreflight(input: {
     githubToken: input.githubToken,
     capabilitySnapshot: input.capabilitySnapshot ?? null,
     mode: input.mode === "before_integration_preview" ? "before_integration_preview" : "settings_connection_test",
+    projectId: input.projectId,
+    integrationBranch: input.integrationBranch,
   });
   return mapPreviewPreflightChecksToAutoGenerationResults(preflight.checks);
 }
@@ -114,6 +118,8 @@ export async function runPreviewDeploymentPreflightWithGithubResult(input: {
   readonly githubToken: string;
   readonly capabilitySnapshot?: GithubCapabilityValidationSnapshot | null;
   readonly mode?: "settings_connection_test" | "before_integration_preview";
+  readonly projectId?: string | null;
+  readonly integrationBranch?: string | null;
 }): Promise<
   Readonly<{
     readonly checks: readonly AutoGenerationCheckResultV1[];
@@ -126,6 +132,8 @@ export async function runPreviewDeploymentPreflightWithGithubResult(input: {
     githubToken: input.githubToken,
     capabilitySnapshot: input.capabilitySnapshot ?? null,
     mode: input.mode === "before_integration_preview" ? "before_integration_preview" : "settings_connection_test",
+    projectId: input.projectId,
+    integrationBranch: input.integrationBranch,
   });
   return {
     checks: mapPreviewPreflightChecksToAutoGenerationResults(preflight.checks),

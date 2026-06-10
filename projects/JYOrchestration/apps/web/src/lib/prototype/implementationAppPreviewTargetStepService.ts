@@ -28,7 +28,12 @@ export type AppPreviewTargetPipelineStatusV1 =
   | "github_pages_not_configured"
   | "github_pages_deploy_pending"
   | "github_preview_permission_required"
-  | "github_pages_setup_required";
+  | "github_pages_setup_required"
+  | "github_preview_workflow_setup_required"
+  | "github_preview_workflow_request_invalid"
+  | "github_actions_setup_required"
+  | "github_preview_retry_required"
+  | "github_preview_operator_review_required";
 
 export type RunAppPreviewTargetIntegrationStepResultV1 = Readonly<{
   readonly ok: boolean;
@@ -167,7 +172,9 @@ export async function runAppPreviewTargetIntegrationStep(input: {
         const timelineAction =
           preflight.kind === "github_pages_setup_required"
             ? "github_pages_setup_required"
-            : "github_actions_permission_required";
+            : preflight.kind === "github_preview_permission_required"
+              ? "github_actions_permission_required"
+              : "integration_preview_preflight_failed";
         timeline.push(
           buildImplementationExecutionLogTimelineEntry({
             action: timelineAction,
