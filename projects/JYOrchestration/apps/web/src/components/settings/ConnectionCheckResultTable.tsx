@@ -1,8 +1,37 @@
 "use client";
 
-import type { MutableRefObject } from "react";
+import type { MutableRefObject, CSSProperties } from "react";
 import { prototypeEnvReadinessToneColors } from "@/lib/project/prototypeEnvSettingsReadiness";
 import type { SplitPreflightTableRow } from "@/lib/prototype/autoGenerationSplitPreflightDisplay";
+
+const statusCellStyle: CSSProperties = {
+  padding: "10px",
+  minWidth: 72,
+  whiteSpace: "nowrap",
+};
+
+const statusHeaderStyle: CSSProperties = {
+  padding: "8px 10px",
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#64748b",
+  minWidth: 72,
+  whiteSpace: "nowrap",
+};
+
+const itemCellStyle: CSSProperties = {
+  padding: "10px",
+  fontWeight: 700,
+  color: "#334155",
+  minWidth: 96,
+  whiteSpace: "nowrap",
+};
+
+const helpCellStyle: CSSProperties = {
+  padding: "10px",
+  width: 56,
+  whiteSpace: "nowrap",
+};
 
 export function ConnectionCheckResultTable(input: {
   readonly title: string;
@@ -26,13 +55,21 @@ export function ConnectionCheckResultTable(input: {
                 {["항목", "상태", "현재 값/결과", "도움말"].map((h) => (
                   <th
                     key={h}
-                    style={{
-                      padding: "8px 10px",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      color: "#64748b",
-                      whiteSpace: "nowrap",
-                    }}
+                    style={
+                      h === "상태"
+                        ? statusHeaderStyle
+                        : h === "항목"
+                          ? { ...statusHeaderStyle, minWidth: 96 }
+                          : h === "도움말"
+                            ? { ...statusHeaderStyle, width: 56, minWidth: 56 }
+                            : {
+                                padding: "8px 10px",
+                                fontSize: 11,
+                                fontWeight: 800,
+                                color: "#64748b",
+                                whiteSpace: "nowrap",
+                              }
+                    }
                   >
                     {h}
                   </th>
@@ -48,8 +85,8 @@ export function ConnectionCheckResultTable(input: {
                     data-testid={`${input.testId}-row-${row.key}`}
                     style={{ borderBottom: "1px solid #f1f5f9" }}
                   >
-                    <td style={{ padding: "10px", fontWeight: 700, color: "#334155" }}>{row.label}</td>
-                    <td style={{ padding: "10px" }}>
+                    <td style={itemCellStyle}>{row.label}</td>
+                    <td style={statusCellStyle}>
                       <span style={{ fontWeight: 800, color: colors.color }}>{row.status}</span>
                     </td>
                     <td
@@ -65,7 +102,7 @@ export function ConnectionCheckResultTable(input: {
                     >
                       {row.currentValue}
                     </td>
-                    <td style={{ padding: "10px" }}>
+                    <td style={helpCellStyle}>
                       <button
                         type="button"
                         ref={(el) => {

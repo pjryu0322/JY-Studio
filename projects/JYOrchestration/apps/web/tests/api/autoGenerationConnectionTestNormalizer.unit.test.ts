@@ -20,8 +20,8 @@ describe("autoGenerationConnectionTestNormalizer", () => {
       ],
       checkedAt: "2026-06-01T00:00:00.000Z",
     });
-    expect(result.envcheck.every((c) => c.status === "skipped")).toBe(true);
-    expect(result.envcheck[0]?.userSafeMessage).toContain("기본 GitHub 연결");
+    expect(result.envcheck.every((c) => c.status === "unknown")).toBe(true);
+    expect(result.envcheck[0]?.userSafeMessage).toContain("연결 테스트 결과를 확인하지 못했습니다");
   });
 
   it("creates preview skipped rows when envcheck failed", () => {

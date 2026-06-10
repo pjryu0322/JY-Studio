@@ -62,6 +62,10 @@ function basicConnectionPassed(basic: readonly AutoGenerationCheckResultV1[]): b
   return basic.every((c) => c.status === "passed");
 }
 
+function basicConnectionHasFailed(basic: readonly AutoGenerationCheckResultV1[]): boolean {
+  return basic.some((c) => c.status === "failed");
+}
+
 function envcheckPassed(envcheck: readonly AutoGenerationCheckResultV1[]): boolean {
   return envcheck.every((c) => c.required && c.status === "passed");
 }
@@ -88,22 +92,32 @@ function fillBasicConnection(
 
 function fillEnvcheck(
   partial: readonly AutoGenerationCheckResultV1[] | null | undefined,
-  basicOk: boolean,
+  basic: readonly AutoGenerationCheckResultV1[],
   envcheckException: boolean,
 ): AutoGenerationCheckResultV1[] {
   const byKey = new Map((partial ?? []).map((c) => [c.key, c]));
   const skippedMsg = "기본 GitHub 연결 실패로 실행되지 않음";
+  const basicUnknownMsg = "연결 테스트 결과를 확인하지 못했습니다.";
+  const envcheckMissingMsg = "envcheck 결과를 확인하지 못했습니다.";
   const pendingMsg = "기본 연결 결과를 확인한 뒤 실행됩니다.";
   const exceptionMsg = "자동 생성 기본 점검 중 오류가 발생했습니다. 연결 테스트를 다시 실행해 주세요.";
+  const basicFailed = basicConnectionHasFailed(basic);
+  const basicOk = basicConnectionPassed(basic);
 
   return ENVCHECK_KEYS.map((key) => {
     const existing = byKey.get(key);
     if (existing) return existing;
-    if (!basicOk) {
+    if (basicFailed) {
       return row(key, "skipped", skippedMsg);
+    }
+    if (!basicOk) {
+      return row(key, "unknown", basicUnknownMsg);
     }
     if (envcheckException) {
       return row(key, "unknown", exceptionMsg, { operatorMessage: "envcheck_exception" });
+    }
+    if (partial?.length) {
+      return row(key, "unknown", envcheckMissingMsg);
     }
     return row(key, "unknown", pendingMsg);
   });
@@ -219,7 +233,7 @@ export function normalizeAutoGenerationConnectionTestResult(input: {
   const basicOk = basicConnectionPassed(basicConnection);
   const envcheck = fillEnvcheck(
     input.envcheck,
-    basicOk,
+    basicConnection,
     input.envcheckException === true || Boolean(input.thrownError && !input.envcheck?.length),
   );
   const envOk = envcheckPassed(envcheck);

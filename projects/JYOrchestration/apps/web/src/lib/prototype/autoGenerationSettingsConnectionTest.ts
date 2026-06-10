@@ -344,3 +344,55 @@ export function connectionTestPreviewFromStoredPreflight(
   if (!preflight) return [];
   return mapPreviewPreflightChecksToAutoGenerationResults(preflight.checks);
 }
+
+const ENVCHECK_MERGE_KEYS: readonly AutoGenerationEnvcheckKeyV1[] = [
+  "branch_create",
+  "file_write",
+  "pull_request_create_or_update",
+];
+
+const ENVCHECK_STATUS_RANK: Record<AutoGenerationCheckStatusV1, number> = {
+  passed: 5,
+  warning: 4,
+  failed: 3,
+  unknown: 2,
+  skipped: 1,
+};
+
+function mergeEnvcheckRow(
+  evidence: AutoGenerationCheckResultV1,
+  server: AutoGenerationCheckResultV1,
+): AutoGenerationCheckResultV1 {
+  const e = ENVCHECK_STATUS_RANK[evidence.status] ?? 0;
+  const s = ENVCHECK_STATUS_RANK[server.status] ?? 0;
+  return e >= s ? evidence : server;
+}
+
+/** Keep envcheck rows from a live environment test when server connection test is stale or skipped. */
+export function mergeConnectionTestPreservingEnvcheckEvidence(
+  evidenceFirst: AutoGenerationSettingsConnectionTestResultV1,
+  server: AutoGenerationSettingsConnectionTestResultV1 | null | undefined,
+): AutoGenerationSettingsConnectionTestResultV1 {
+  if (!server) {
+    return normalizeAutoGenerationConnectionTestResult({
+      basicConnection: evidenceFirst.basicConnection,
+      envcheck: evidenceFirst.envcheck,
+      previewDeploymentPreflight: evidenceFirst.previewDeploymentPreflight,
+      checkedAt: evidenceFirst.checkedAt,
+      settingsConnectionTestOnly: true,
+    });
+  }
+  const mergedEnvcheck = ENVCHECK_MERGE_KEYS.map((key) => {
+    const fromEvidence = evidenceFirst.envcheck.find((c) => c.key === key);
+    const fromServer = server.envcheck.find((c) => c.key === key);
+    if (fromEvidence && fromServer) return mergeEnvcheckRow(fromEvidence, fromServer);
+    return fromEvidence ?? fromServer ?? check(key, "unknown", { userSafeMessage: "envcheck 결과를 확인하지 못했습니다." });
+  });
+  return normalizeAutoGenerationConnectionTestResult({
+    basicConnection: server.basicConnection.length ? server.basicConnection : evidenceFirst.basicConnection,
+    envcheck: mergedEnvcheck,
+    previewDeploymentPreflight: server.previewDeploymentPreflight,
+    checkedAt: server.checkedAt || evidenceFirst.checkedAt,
+    settingsConnectionTestOnly: true,
+  });
+}

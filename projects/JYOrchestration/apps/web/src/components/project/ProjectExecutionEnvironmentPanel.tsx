@@ -25,6 +25,15 @@ import { postAutoGenerationTestConnection } from "@/components/project-spec/api"
 import { PrototypeEnvSettingsModalLayout } from "@/components/project/PrototypeEnvSettingsModalLayout";
 import { resolveAutoGenerationSettingsConnectionState } from "@/lib/prototype/autoGenerationSettingsState";
 import {
+  mergeConnectionTestPreservingEnvcheckEvidence,
+  type AutoGenerationSettingsConnectionTestResultV1,
+} from "@/lib/prototype/autoGenerationSettingsConnectionTest";
+import { normalizeAutoGenerationConnectionTestResult } from "@/lib/prototype/autoGenerationConnectionTestNormalizer";
+import {
+  buildEnvcheckEvidenceExecutionMessage,
+  buildEnvcheckResultsFromEnvironmentTest,
+} from "@/lib/prototype/envcheckConnectionResultMapper";
+import {
   PrototypeEnvSettingsGithubTokenErrorContent,
   PrototypeEnvSettingsGithubTokenStepCard,
   PrototypeEnvSettingsStepCard,
@@ -477,6 +486,8 @@ export function ProjectExecutionEnvironmentPanel({
     NonNullable<ExecutionSetupDto["peerCredentialHints"]> | null
   >(null);
   const [connectionTestAttempted, setConnectionTestAttempted] = useState(false);
+  const [localConnectionTestResult, setLocalConnectionTestResult] =
+    useState<AutoGenerationSettingsConnectionTestResultV1 | null>(null);
   const [executionMessage, setExecutionMessage] = useState<string | null>(null);
   const [gitLinkDraft, setGitLinkDraft] = useState<GitLinkDraft>({
     gitRepoUrl: "",
@@ -894,31 +905,80 @@ export function ProjectExecutionEnvironmentPanel({
           s && s.taskId === "pending" ? { taskId: tid, startMs: s.startMs } : s
         );
       }
+
+      const lastDto = json.data?.last ?? null;
+      let envEvidenceConnectionTest: AutoGenerationSettingsConnectionTestResultV1 | null = null;
+
+      if (isPrototypeMvpUi) {
+        setConnectionTestAttempted(true);
+        const envcheckRows = buildEnvcheckResultsFromEnvironmentTest({
+          responseOk: res.ok,
+          apiSuccess,
+          taskId: tid,
+          last: lastDto,
+          message: typeof json.message === "string" ? json.message : null,
+        });
+        let connectionResult = normalizeAutoGenerationConnectionTestResult({
+          executionSetupForBasic: executionSetup,
+          envcheck: envcheckRows,
+          checkedAt: new Date().toISOString(),
+          settingsConnectionTestOnly: true,
+        });
+
+        try {
+          const { res: tcRes, json: tcJson } = await postAutoGenerationTestConnection(projectId);
+          if (tcJson.data) {
+            connectionResult = mergeConnectionTestPreservingEnvcheckEvidence(connectionResult, tcJson.data);
+          }
+          if (tcRes.ok) {
+            const setupRes2 = await fetchExecutionSetup(projectId);
+            if (setupRes2.res.ok && setupRes2.json.success && setupRes2.json.data) {
+              setExecutionSetup(setupRes2.json.data);
+              notifyExecutionSetupChanged(setupRes2.json.data);
+            }
+          }
+        } catch (connectionTestError) {
+          console.info(
+            JSON.stringify({
+              action: "auto_generation_connection_test_preserve_envcheck_evidence",
+              projectId,
+            }),
+          );
+          void connectionTestError;
+        }
+
+        envEvidenceConnectionTest = connectionResult;
+        setLocalConnectionTestResult(connectionResult);
+        setExecutionMessage(buildEnvcheckEvidenceExecutionMessage(connectionResult.envcheck));
+      }
+
       if (!res.ok || !apiSuccess) {
         setStage1TimerSession(null);
-        setExecutionMessage(
-          (typeof json.message === "string" && json.message.trim()) ||
-            (res.status === 422
-              ? "연결 테스트를 시작하거나 완료하지 못했습니다."
-              : "연결 테스트 요청이 실패했습니다.")
-        );
+        if (!envEvidenceConnectionTest) {
+          setExecutionMessage(
+            (typeof json.message === "string" && json.message.trim()) ||
+              (res.status === 422
+                ? "연결 테스트를 시작하거나 완료하지 못했습니다."
+                : "연결 테스트 요청이 실패했습니다.")
+          );
+        }
+        if (!isPrototypeMvpUi) {
+          const setupRes = await fetchExecutionSetup(projectId);
+          if (setupRes.res.ok && setupRes.json.success && setupRes.json.data) {
+            setExecutionSetup(setupRes.json.data);
+            notifyExecutionSetupChanged(setupRes.json.data);
+          }
+        }
         return;
       }
-      setExecutionMessage(
-        (typeof json.message === "string" && json.message.trim()) || "연결 테스트를 완료했습니다."
-      );
-      if (isPrototypeMvpUi && apiSuccess) {
-        const { json: tcJson } = await postAutoGenerationTestConnection(projectId);
-        setConnectionTestAttempted(true);
-        const setupRes2 = await fetchExecutionSetup(projectId);
-        if (setupRes2.res.ok && setupRes2.json.success && setupRes2.json.data) {
-          setExecutionSetup(setupRes2.json.data);
-          notifyExecutionSetupChanged(setupRes2.json.data);
-        }
-        const summary =
-          tcJson.data?.userSummary ??
-          (typeof tcJson.message === "string" ? tcJson.message : null);
-        if (summary) setExecutionMessage(summary);
+      if (!isPrototypeMvpUi) {
+        setExecutionMessage(
+          (typeof json.message === "string" && json.message.trim()) || "연결 테스트를 완료했습니다."
+        );
+      } else if (!envEvidenceConnectionTest) {
+        setExecutionMessage(
+          (typeof json.message === "string" && json.message.trim()) || "연결 테스트를 완료했습니다."
+        );
       }
       const setupRes = await fetchExecutionSetup(projectId);
       if (setupRes.res.ok && setupRes.json.success && setupRes.json.data) {
@@ -1012,6 +1072,9 @@ export function ProjectExecutionEnvironmentPanel({
     () => resolveAutoGenerationSettingsConnectionState(executionSetup),
     [executionSetup],
   );
+
+  const displayedConnectionTest =
+    localConnectionTestResult ?? autoGenConnectionState.connectionTest;
 
   useEffect(() => {
     if (autoGenConnectionState.connectionTest?.checkedAt) {
@@ -2605,7 +2668,7 @@ export function ProjectExecutionEnvironmentPanel({
           onSelectRow={setSelectedModalRow}
           belowTable={
             <AutoGenerationSplitPreflightPanel
-              connectionTest={autoGenConnectionState.connectionTest}
+              connectionTest={displayedConnectionTest}
               connectionTestAttempted={connectionTestAttempted}
               onFocusGithubToken={() => setSelectedModalRow("token")}
               onRetestConnection={() => void handleEnvironmentTest()}
