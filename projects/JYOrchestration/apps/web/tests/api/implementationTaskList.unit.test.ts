@@ -83,7 +83,7 @@ describe("buildImplementationTaskListFromSeed", () => {
     expect(titles).not.toContain("Mock 데이터 구조 정의");
     expect(titles).not.toContain("Mock 데이터 기본 세트 준비");
     const mock = list.tasks.find((t) => t.taskId === "DEV-MOCK-001");
-    expect(mock?.title).toBe("샘플 데이터 생성");
+    expect(mock?.title).toBe("회의록 자동정리 샘플데이터 구성");
   });
 
   it("orders developer tasks: sample data → common → process → screen", () => {

@@ -10,7 +10,7 @@ import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRu
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 
 const FRAME = "CODE-DEV-FRAME-001-001";
-const SAMPLE = "CODE-DEV-SAMPLE-DATA-001-001";
+const SAMPLE = "CODE-DATA-SAMPLE-001";
 
 function sampleCodeTaskPlanRaw() {
   return {

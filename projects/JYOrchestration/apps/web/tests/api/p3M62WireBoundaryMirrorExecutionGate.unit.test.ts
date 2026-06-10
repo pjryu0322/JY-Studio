@@ -11,7 +11,7 @@ import { CODE_TASK_FILE_BOUNDARY_VERSION } from "@/lib/prototype/codeTaskFileBou
 import type { CodeTaskConflictPlanV1 } from "@/lib/prototype/codeTaskFileConflictPlanner";
 import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
-const SAMPLE = "CODE-DEV-SAMPLE-DATA-001-001";
+const SAMPLE = "CODE-DATA-SAMPLE-001";
 const FRAME = "CODE-DEV-FRAME-001-001";
 
 function dataTask(): ImplementationCodeTaskV1 {

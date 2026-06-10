@@ -16,7 +16,7 @@ import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCod
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 
 const MOCK = "CODE-DEV-MOCK-001-001";
-const SAMPLE = "CODE-DEV-SAMPLE-DATA-001-001";
+const SAMPLE = "CODE-DATA-SAMPLE-001";
 
 function dataTask(codeTaskId: string): ImplementationCodeTaskV1 {
   return {

@@ -40,6 +40,8 @@ export const WORKSPACE_SHELL_OWNED_PATTERNS = [
 export const WORKSPACE_SHELL_FORBIDDEN_FOR_OTHERS = [...WORKSPACE_SHELL_OWNED_PATTERNS] as const;
 
 export const SAMPLE_DATA_OWNED_PATTERNS = [
+  "src/data/sampleData.ts",
+  "src/types/meeting.ts",
   "src/data/sample/*",
   "src/data/samples/*",
   "src/data/mock/*",

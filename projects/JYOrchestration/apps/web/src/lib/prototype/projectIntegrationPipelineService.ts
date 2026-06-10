@@ -768,7 +768,9 @@ export async function runProjectIntegrationPipeline(input: {
         ? "configure_github_pages"
         : failStatus === "static_preview_artifact_missing"
           ? "generate_static_artifact"
-          : "app_preview_target";
+          : failStatus === "sample_data_required"
+            ? "sample_data_codetask"
+            : "app_preview_target";
     return {
       ok: false,
       status: failStatus,

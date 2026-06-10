@@ -83,21 +83,26 @@ export function getIntegratedAppPreviewOpenTarget(input: {
     return {
       url: null,
       mode: "internal",
-      label: "실제 앱 Preview 보기",
-      hint: "최종 Wiring·통합 branch·build 검증이 완료된 후에 열 수 있습니다.",
+      label: "Preview 보기",
+      hint: "먼저 통합 및 Preview 준비를 완료해 주세요.",
     };
   }
-  const target = resolvePreviewOpenTargetFromRuntime(input.runtime);
-  if (target.url && target.label === "내부 Preview 보기") {
-    return { ...target, label: "실제 앱 Preview 보기", hint: "실제 app entry Preview를 새 창으로 엽니다." };
-  }
-  if (target.url) {
-    return { ...target, label: "실제 앱 Preview 보기" };
+  const external = String(input.runtime?.externalPreviewUrl ?? "").trim() || null;
+  const githubPages = String(input.runtime?.githubPagesUrl ?? "").trim() || null;
+  const url = external || githubPages;
+  if (url) {
+    return {
+      url,
+      mode: "new_window",
+      label: "Preview 보기",
+      hint: "통합된 실제 앱 Preview를 새 창에서 엽니다.",
+    };
   }
   return {
-    ...target,
-    label: "실제 앱 Preview 보기",
-    hint: target.hint ?? PREVIEW_URL_NOT_READY_HINT,
+    url: null,
+    mode: "internal",
+    label: "Preview 보기",
+    hint: PREVIEW_URL_NOT_READY_HINT,
   };
 }
 

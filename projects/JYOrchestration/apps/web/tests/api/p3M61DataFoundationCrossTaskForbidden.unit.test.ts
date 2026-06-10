@@ -12,7 +12,7 @@ import {
 import { CODE_TASK_FILE_BOUNDARY_VERSION } from "@/lib/prototype/codeTaskFileBoundary";
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
-const SAMPLE = "CODE-DEV-SAMPLE-DATA-001-001";
+const SAMPLE = "CODE-DATA-SAMPLE-001";
 const FRAME = "CODE-DEV-FRAME-001-001";
 
 function dataTask(overrides?: Partial<ImplementationCodeTaskV1>): ImplementationCodeTaskV1 {

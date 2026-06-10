@@ -11,7 +11,7 @@ describe("P3-M38 repair GitHub verify sync", () => {
   describe("buildTaskCursorGithubBranchCandidates", () => {
     it("includes sample-data and legacy mock aliases", () => {
       const candidates = buildTaskCursorGithubBranchCandidates({
-        codeTaskId: "CODE-DEV-SAMPLE-DATA-001-001",
+        codeTaskId: "CODE-DATA-SAMPLE-001",
       });
       expect(candidates.some((b) => b.includes("code-dev-sample-data-001-001"))).toBe(true);
       expect(candidates.some((b) => b.includes("code-dev-mock-001-001"))).toBe(true);
@@ -21,7 +21,7 @@ describe("P3-M38 repair GitHub verify sync", () => {
       const primary = "wip/cursor/code-dev-mock-001-001";
       const planBranch = "wip/foundation/app-shell";
       const candidates = buildTaskCursorGithubBranchCandidates({
-        codeTaskId: "CODE-DEV-SAMPLE-DATA-001-001",
+        codeTaskId: "CODE-DATA-SAMPLE-001",
         branchPlanWorkBranch: planBranch,
         runWorkBranch: primary,
         executionWorkBranch: primary,
@@ -63,7 +63,7 @@ describe("P3-M38 repair GitHub verify sync", () => {
             return new Response(
               JSON.stringify({
                 sha: "abc123def4567890",
-                commit: { message: "wip(cursor): [CODE-DEV-SAMPLE-DATA-001-001]" },
+                commit: { message: "wip(cursor): [CODE-DATA-SAMPLE-001]" },
                 files: [{ filename: "src/App.tsx" }],
               }),
               { status: 200 },
@@ -97,7 +97,7 @@ describe("P3-M38 repair GitHub verify sync", () => {
         targetRepository,
         githubToken: "gh-token",
         allowedPathGlobs: ["src/**"],
-        codeTaskId: "CODE-DEV-SAMPLE-DATA-001-001",
+        codeTaskId: "CODE-DATA-SAMPLE-001",
       });
       expect(result.ok).toBe(true);
       expect(result.resolvedBranch).toContain("sample-data");
@@ -130,7 +130,7 @@ describe("P3-M38 repair GitHub verify sync", () => {
         targetRepository,
         githubToken: "gh-token",
         allowedPathGlobs: ["src/**"],
-        codeTaskId: "CODE-DEV-SAMPLE-DATA-001-001",
+        codeTaskId: "CODE-DATA-SAMPLE-001",
       });
       expect(result.ok).toBe(false);
       expect(result.allBranchesMissing).toBe(true);

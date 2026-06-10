@@ -79,7 +79,7 @@ import {
   resolveAutoGenerationReadyFromCapabilityJson,
 } from "@/lib/prototype/autoGenerationSettingsState";
 import { evaluateImplementationPreviewButtonState } from "@/lib/prototype/implementationPreviewButtonPolicy";
-import { sanitizeIntegratedAppPreviewUrl } from "@/lib/prototype/implementationPreviewEntryPolicy";
+import { openActualIntegratedPreviewInNewWindow } from "@/lib/prototype/actualIntegratedPreviewOpenAction";
 import type { ImplementationPreviewEntryModeV1 } from "@/lib/prototype/implementationPreviewEntryPolicy";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
@@ -975,36 +975,24 @@ export function ImplementationExecutionBoardPanel({
               {previewButtonState.show ? (
                 <button
                   type="button"
-                  className={
-                    previewButtonState.mode === "integrated_app_preview"
-                      ? styles.integrationPreviewButton
-                      : styles.integrationPreviewScopeButton
-                  }
+                  className={styles.integrationPreviewButton}
                   data-testid="implementation-preview-open-button"
                   disabled={!previewButtonState.enabled || !previewButtonState.url}
-                  title={previewButtonState.disabledReason ?? undefined}
+                  title={previewButtonState.title}
                   onClick={() => {
                     if (!previewButtonState.enabled || !previewButtonState.url) return;
                     const pid = (projectId ?? board.projectId).trim();
                     if (onOpenImplementationPreview) {
                       onOpenImplementationPreview({
-                        mode: previewButtonState.mode,
+                        mode: "integrated_app_preview",
                         url: previewButtonState.url,
                       });
                       return;
                     }
-                    if (previewButtonState.mode === "integrated_app_preview") {
-                      const url = sanitizeIntegratedAppPreviewUrl({
-                        projectId: pid,
-                        url: previewButtonState.url,
-                      });
-                      if (!url) return;
-                      window.open(url, "_blank", "noopener,noreferrer");
-                      return;
-                    }
-                    if (previewButtonState.mode === "codetask_result_preview") {
-                      window.open(previewButtonState.url, "_blank", "noopener,noreferrer");
-                    }
+                    openActualIntegratedPreviewInNewWindow({
+                      projectId: pid,
+                      url: previewButtonState.url,
+                    });
                   }}
                 >
                   {previewButtonState.label}

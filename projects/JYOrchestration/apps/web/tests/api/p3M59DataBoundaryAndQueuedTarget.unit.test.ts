@@ -10,7 +10,7 @@ import {
 } from "@/lib/prototype/codeTaskCanonicalId";
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 
-const SAMPLE = "CODE-DEV-SAMPLE-DATA-001-001";
+const SAMPLE = "CODE-DATA-SAMPLE-001";
 const MOCK = "CODE-DEV-MOCK-001-001";
 
 function dataTask(codeTaskId: string, title: string): ImplementationCodeTaskV1 {

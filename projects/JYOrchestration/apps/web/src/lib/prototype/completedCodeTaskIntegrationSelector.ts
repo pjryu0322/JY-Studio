@@ -12,6 +12,7 @@ import {
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { resolveCodeTaskSpecificRole, type CodeTaskRoleKind } from "@/lib/prototype/codeTaskPromptRoleResolver";
+import { isSampleDataCodeTaskRef } from "@/lib/prototype/sampleDataCodeTaskPlanner";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 export type CompletedCodeTaskIntegrationTarget = Readonly<{
@@ -194,6 +195,7 @@ export function selectCompletedCodeTasksForIntegration(input: {
   const excluded: ExcludedCodeTaskIntegrationTarget[] = [];
   let hasAppShell = false;
   let hasAnyScreenTask = false;
+  let hasSampleDataTask = false;
 
   for (const codeTask of tasks) {
     const parentTaskId = codeTask.parentTaskId;
@@ -216,6 +218,17 @@ export function selectCompletedCodeTasksForIntegration(input: {
       });
       if (role.roleKind === "app_shell") hasAppShell = true;
       if (SCREEN_ROLE_KINDS.has(role.roleKind)) hasAnyScreenTask = true;
+      if (
+        isSampleDataCodeTaskRef({
+          codeTaskId: codeTask.codeTaskId,
+          parentTaskId: codeTask.parentTaskId,
+          title: codeTask.title,
+          changeType: codeTask.changeType,
+        }) ||
+        role.roleKind === "mock_data"
+      ) {
+        hasSampleDataTask = true;
+      }
       continue;
     }
 
@@ -234,6 +247,9 @@ export function selectCompletedCodeTasksForIntegration(input: {
   }
   if (included.length > 0 && !hasAnyScreenTask) {
     warnings.push("완료된 화면 CodeTask가 없어 Preview에서 확인 가능한 화면이 제한됩니다.");
+  }
+  if (included.length > 0 && hasAnyScreenTask && !hasSampleDataTask) {
+    warnings.push("샘플데이터 CodeTask가 통합 대상에 없어 actual Preview 품질이 제한됩니다.");
   }
 
   return {

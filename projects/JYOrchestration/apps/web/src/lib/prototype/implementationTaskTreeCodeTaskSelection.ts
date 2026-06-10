@@ -8,6 +8,9 @@ import {
   isMockCodeTaskId,
   remapSelectedCodeTaskIdFromMockToPlan,
 } from "@/lib/prototype/codeTaskCanonicalId";
+import {
+  ensureSampleDataCodeTaskIncludedInSelection,
+} from "@/lib/prototype/sampleDataCodeTaskPlanner";
 import { listVisibleImplementationCodeTaskIds } from "@/lib/prototype/implementationCodeTaskSummary";
 
 /** implementationCodeTaskPlanV1.tasks 문서 순서(트리/기획 순). Quick Run Job SoT. */
@@ -186,7 +189,11 @@ export function resolveProcessTaskCodeTaskSelectionToggle(input: {
     if (input.checked) current.add(id);
     else current.delete(id);
   }
-  return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, [...current]);
+  const merged = ensureSampleDataCodeTaskIncludedInSelection({
+    selectedCodeTaskIds: [...current],
+    codeTaskPlan: input.codeTaskPlan,
+  });
+  return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, merged);
 }
 
 export function resolveCodeTaskTreeSelectionToggle(input: {
@@ -204,7 +211,11 @@ export function resolveCodeTaskTreeSelectionToggle(input: {
   );
   if (input.checked) current.add(codeTaskId);
   else current.delete(codeTaskId);
-  return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, [...current]);
+  const merged = ensureSampleDataCodeTaskIncludedInSelection({
+    selectedCodeTaskIds: [...current],
+    codeTaskPlan: input.codeTaskPlan,
+  });
+  return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, merged);
 }
 
 export function resolveCodeTaskTreeSelectAll(input: {

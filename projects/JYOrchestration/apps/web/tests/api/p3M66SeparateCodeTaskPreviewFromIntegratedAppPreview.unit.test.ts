@@ -137,7 +137,7 @@ describe("P3-M66 preview readiness separation", () => {
       integratedAppPreviewReady: false,
     });
     expect(integrated.url).toBeNull();
-    expect(integrated.label).toBe("실제 앱 Preview 보기");
+    expect(integrated.label).toBe("Preview 보기");
   });
 
   it("isIntegrationPreviewRuntimeReady requires integration branch on runtime", () => {

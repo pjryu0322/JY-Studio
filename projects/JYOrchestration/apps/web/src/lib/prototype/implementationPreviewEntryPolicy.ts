@@ -126,22 +126,16 @@ function resolveIntegratedAppPreviewEntryUrl(input: {
   readonly projectId: string;
   readonly snapshot: ImplementationRuntimeSnapshotV1;
   readonly previewRuntime?: ImplementationPreviewRuntimeV1 | null;
-}): string {
+}): string | null {
   const pid = input.projectId.trim();
   const runtime = input.previewRuntime ?? null;
   const external = String(runtime?.externalPreviewUrl ?? "").trim();
-  if (external) return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: external })!;
+  if (external) return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: external });
   const githubPages = String(runtime?.githubPagesUrl ?? "").trim();
-  if (githubPages) return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: githubPages })!;
-  const internal = String(runtime?.internalAppPreviewUrl ?? "").trim();
-  if (internal) return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: internal })!;
-  const appPreview = String(runtime?.appPreviewUrl ?? "").trim();
-  if (appPreview.includes("/preview/app")) {
-    return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: appPreview })!;
-  }
+  if (githubPages) return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: githubPages });
   const snapshotUrl = String(input.snapshot.preview.previewUrl ?? "").trim();
-  if (snapshotUrl && sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: snapshotUrl })) {
-    return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: snapshotUrl })!;
+  if (snapshotUrl) {
+    return sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: snapshotUrl });
   }
   return null;
 }

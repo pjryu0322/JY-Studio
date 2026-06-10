@@ -218,18 +218,21 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
   },
   mock_data: {
     implementationGoal: [
-      "Preview와 화면 검증에 필요한 샘플 데이터와 상태 데이터를 생성한다.",
-      "회의 파일, 참여자, 스크립트, 요약, 처리 상태 샘플을 준비한다.",
+      "Preview와 화면 검증에 필요한 샘플 데이터를 중앙 파일로 생성한다.",
+      "회의 파일, 참여자, 스크립트, 요약, 결정사항, 할 일, 초안 타임라인 샘플을 준비한다.",
     ],
     implementationRequirements: [
-      "화면/기능이 동일한 샘플 데이터 기준으로 렌더링되도록 연결한다.",
-      "실제 API 또는 실제 데이터 연동으로 교체 가능한 구조를 유지한다.",
-      "기존 화면/상태 흐름과 연동",
+      "src/types/meeting.ts에 MeetingFile, Participant, TranscriptSegment, MeetingSummary 등 타입을 정의한다.",
+      "src/data/sampleData.ts에 sampleMeetingFiles, sampleParticipants, sampleTranscriptSegments, sampleMeetingSummary, sampleDecisions, sampleActionItems, sampleDraftTimeline을 export한다.",
+      "각 화면 패널은 sampleData.ts를 import하여 동일한 샘플을 공유한다(패널별 mock 중복 금지).",
+      "placeholder 문구(「여기에 표시됩니다」)를 기본 Preview 기본값으로 두지 않는다.",
+      "실제 API 연동으로 교체 가능한 구조를 유지한다.",
     ],
     verificationChecklist: [
+      "sampleData.ts와 meeting types 파일이 존재하는지 확인",
+      "좌/중/우 패널이 동일 sampleData.ts를 참조하는지 확인",
       "샘플 데이터로 주요 화면이 렌더링되는지 확인",
-      "샘플 처리 상태로 로딩/완료/빈 결과 상태를 확인",
-      "실제 데이터 연동 전환 시 회귀가 없도록 구조 확인",
+      "기본 Preview에 placeholder-only 화면이 남지 않는지 확인",
     ],
   },
   feature_start: {
@@ -316,6 +319,7 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
   screen_input: {
     implementationGoal: ["사용자가 파일을 선택·업로드하고 분석을 시작할 수 있는 입력 화면을 구현한다."],
     implementationRequirements: [
+      "src/data/sampleData.ts의 sampleMeetingFiles, sampleParticipants를 import하여 좌측 패널에 표시한다.",
       "회의 파일 업로드/선택 진입점을 제공한다.",
       "파일명, 재생 길이, 변환 상태 등 선택 파일 정보를 확인할 수 있어야 한다.",
       "분석 시작 또는 작업 추가 흐름과 연결된다.",

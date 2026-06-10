@@ -81,7 +81,7 @@ describe("implementation task list sample data dependency", () => {
   it("links downstream developer tasks to DEV-MOCK-001 after sample data task", () => {
     const list = buildImplementationTaskListFromSeed({ projectId: "p1", seed: makeSeed(), nowIso: NOW });
     const mock = list.tasks.find((t) => t.taskId === "DEV-MOCK-001");
-    expect(mock?.title).toBe("샘플 데이터 생성");
+    expect(mock?.title).toMatch(/샘플데이터|샘플 데이터/);
     const devWithMockDep = list.tasks.filter(
       (t) =>
         t.ownerRole === "developer" &&

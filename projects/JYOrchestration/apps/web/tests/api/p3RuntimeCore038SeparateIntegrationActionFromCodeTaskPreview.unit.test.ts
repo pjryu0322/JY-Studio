@@ -131,10 +131,12 @@ describe("P3-Runtime-Core-03-8 separate integration from codetask preview", () =
       version: IMPLEMENTATION_PREVIEW_RUNTIME_VERSION,
       status: "ready",
       generatedAt: "2026-06-09T04:00:00.000Z",
-      internalAppPreviewUrl: "/projects/p/preview/app/generated",
+      externalPreviewUrl: "https://o.github.io/r/previews/p/",
+      githubPagesUrl: "https://o.github.io/r/previews/p/",
+      runtimeKind: "actual_integrated_app",
       sourceIntegrationBranch: "integration/p-test",
-      openMode: "internal_renderer",
-      renderMode: "internal_app",
+      openMode: "external_new_window",
+      renderMode: "external_preview",
       sourceScopeVersion: "implementation_preview_scope_v1",
       includedCodeTaskIds: [],
       excludedCodeTaskIds: [],
@@ -156,10 +158,10 @@ describe("P3-Runtime-Core-03-8 separate integration from codetask preview", () =
       integratedAppPreviewReady: true,
     });
     expect(entry.mode).toBe("integrated_app_preview");
-    expect(entry.url).toContain("/preview/app");
+    expect(entry.url).toContain("github.io");
 
     const boardSrc = readFileSync(boardPath, "utf8");
-    expect(boardSrc).toContain('previewButtonState.mode === "integrated_app_preview"');
+    expect(boardSrc).toContain("openActualIntegratedPreviewInNewWindow");
     expect(boardSrc).toContain("onOpenImplementationPreview");
   });
 

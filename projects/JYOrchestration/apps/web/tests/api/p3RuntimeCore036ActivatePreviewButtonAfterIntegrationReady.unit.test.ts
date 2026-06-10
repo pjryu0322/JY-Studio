@@ -138,15 +138,18 @@ function stepsWithStatuses(
 }
 
 function integratedRuntime(overrides?: Partial<ImplementationPreviewRuntimeV1>): ImplementationPreviewRuntimeV1 {
+  const actualUrl = `https://example.github.io/repo/previews/${encodeURIComponent(PID)}/`;
   return {
     version: IMPLEMENTATION_PREVIEW_RUNTIME_VERSION,
     status: "ready",
     generatedAt: NOW,
-    previewUrl: `/projects/${PID}/preview/app/generated`,
-    internalAppPreviewUrl: `/projects/${PID}/preview/app/generated`,
+    previewUrl: actualUrl,
+    externalPreviewUrl: actualUrl,
+    githubPagesUrl: actualUrl,
+    runtimeKind: "actual_integrated_app",
     sourceIntegrationBranch: INTEGRATION_BRANCH,
-    openMode: "internal_renderer",
-    renderMode: "internal_app",
+    openMode: "external_new_window",
+    renderMode: "external_preview",
     sourceScopeVersion: "implementation_preview_scope_v1",
     includedCodeTaskIds: ["CODE-1"],
     excludedCodeTaskIds: [],
@@ -192,10 +195,10 @@ describe("P3-Runtime-Core-03-6 activate Preview after integration ready", () => 
     });
     expect(state.mode).toBe("integrated_app_preview");
     expect(state.enabled).toBe(true);
-    expect(state.label).toBe("Preview");
+    expect(state.label).toBe("Preview 보기");
   });
 
-  it("2. code task preview only uses codetask_result_preview mode", () => {
+  it("2. code task preview only keeps actual Preview button disabled", () => {
     const snapshot = snapshotReady();
     const state = evaluateImplementationPreviewButtonState({
       projectId: PID,
@@ -205,13 +208,16 @@ describe("P3-Runtime-Core-03-6 activate Preview after integration ready", () => 
           ...snapshot.preview,
           integratedAppPreviewReady: false,
           codeTaskPreviewReady: true,
+          previewUrl: null,
         },
       },
       previewRuntime: integratedRuntime({
-        previewUrl: `/projects/${PID}/preview?scope=latest`,
+        previewUrl: null,
         internalAppPreviewUrl: null,
         appPreviewUrl: null,
         externalPreviewUrl: null,
+        githubPagesUrl: null,
+        runtimeKind: "codetask_diagnostic_preview",
         sourceIntegrationBranch: null,
         openMode: "scope_summary_fallback",
         renderMode: "scope_summary_fallback",
@@ -219,7 +225,9 @@ describe("P3-Runtime-Core-03-6 activate Preview after integration ready", () => 
       integratedAppPreviewReady: false,
       codeTaskPreviewReady: true,
     });
-    expect(state.mode).toBe("codetask_result_preview");
+    expect(state.mode).toBe("disabled");
+    expect(state.enabled).toBe(false);
+    expect(state.url).toBeNull();
   });
 
   it("3. failed CodeTask disables Preview button", () => {
@@ -256,12 +264,14 @@ describe("P3-Runtime-Core-03-6 activate Preview after integration ready", () => 
     expect(state.url).toBe("https://deploy.example/app");
   });
 
-  it("5. missing app URL falls back to /preview/app?scope=latest", () => {
+  it("5. missing actual preview URL does not fall back to diagnostic scope URL", () => {
     const runtime = integratedRuntime({
       previewUrl: null,
       internalAppPreviewUrl: null,
       appPreviewUrl: null,
       externalPreviewUrl: null,
+      githubPagesUrl: null,
+      runtimeKind: "actual_integrated_app",
     });
     const state = evaluateImplementationPreviewButtonState({
       projectId: PID,
@@ -269,7 +279,8 @@ describe("P3-Runtime-Core-03-6 activate Preview after integration ready", () => 
       previewRuntime: runtime,
       integratedAppPreviewReady: true,
     });
-    expect(state.url).toBe(`/projects/${encodeURIComponent(PID)}/preview/app?scope=latest`);
+    expect(state.url).toBeNull();
+    expect(state.enabled).toBe(false);
   });
 
   it("6. integrated_app_preview_ready status suppresses continue toast", () => {

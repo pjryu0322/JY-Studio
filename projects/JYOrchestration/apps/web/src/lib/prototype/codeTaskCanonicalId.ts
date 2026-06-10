@@ -15,7 +15,9 @@ export type ResolveCanonicalCodeTaskResultV1 =
 
 const LEGACY_MOCK_CODE_TASK_ID_PREFIX = "CODE-DEV-MOCK-";
 
-export const CANONICAL_SAMPLE_DATA_CODE_TASK_ID = "CODE-DEV-SAMPLE-DATA-001-001";
+export const CANONICAL_SAMPLE_DATA_CODE_TASK_ID = "CODE-DATA-SAMPLE-001";
+
+const LEGACY_CANONICAL_SAMPLE_DATA_CODE_TASK_ID = "CODE-DEV-SAMPLE-DATA-001-001";
 
 export function isLegacyMockCodeTaskId(codeTaskId: string): boolean {
   return String(codeTaskId ?? "")
@@ -41,7 +43,7 @@ export function buildSemanticProductionCodeTaskId(input: {
     if (/SAMPLE-DATA/i.test(parent)) {
       return `CODE-${parent}-${seq}`;
     }
-    return `CODE-DEV-SAMPLE-DATA-001-${seq}`;
+    return `CODE-DATA-SAMPLE-${seq}`;
   }
   if (taskType === "frame" || /DEV-FRAME/i.test(parent)) {
     return `CODE-DEV-FRAME-001-${seq}`;
@@ -123,6 +125,12 @@ export function repairLegacyMockCodeTaskIdsInPlan(
     });
     if (repair.status === "repaired") {
       idMap.set(repair.fromCodeTaskId, repair.toCodeTaskId);
+    }
+  }
+  for (const task of tasks) {
+    const id = task.codeTaskId.trim();
+    if (id === LEGACY_CANONICAL_SAMPLE_DATA_CODE_TASK_ID) {
+      idMap.set(id, CANONICAL_SAMPLE_DATA_CODE_TASK_ID);
     }
   }
   if (!idMap.size) return tasks;

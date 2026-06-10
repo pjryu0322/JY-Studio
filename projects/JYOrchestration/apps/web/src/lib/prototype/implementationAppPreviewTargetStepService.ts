@@ -21,6 +21,11 @@ import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
+import {
+  sampleDataQualityUserMessage,
+} from "@/lib/prototype/actualPreviewSampleDataQualityGate";
+import { runActualPreviewSampleDataQualityOnIntegrationBranch } from "@/lib/prototype/actualPreviewSampleDataQualityLoader";
+import { fetchRepositoryFilePathsForBranch } from "@/lib/prototype/githubPagesPreviewDeploymentService";
 
 export type AppPreviewTargetPipelineStatusV1 =
   | "app_preview_target_failed"
@@ -33,7 +38,8 @@ export type AppPreviewTargetPipelineStatusV1 =
   | "github_preview_workflow_request_invalid"
   | "github_actions_setup_required"
   | "github_preview_retry_required"
-  | "github_preview_operator_review_required";
+  | "github_preview_operator_review_required"
+  | "sample_data_required";
 
 export type RunAppPreviewTargetIntegrationStepResultV1 = Readonly<{
   readonly ok: boolean;
@@ -81,6 +87,66 @@ function completeAppPreviewTargetStep(input: {
     previewRuntimePatch: {
       implementationPreviewRuntimeV1: input.runtime,
     },
+  };
+}
+
+async function blockIfSampleDataQualityInsufficient(input: {
+  readonly projectId: string;
+  readonly steps: readonly ImplementationIntegrationStepV1[];
+  readonly integrationBranch: string;
+  readonly repoUrl: string;
+  readonly githubToken: string;
+  readonly nowIso: string;
+  readonly timeline: RequirementsPromptTimelineEntry[];
+}): Promise<RunAppPreviewTargetIntegrationStepResultV1 | null> {
+  const listed = await fetchRepositoryFilePathsForBranch({
+    repoUrl: input.repoUrl,
+    githubToken: input.githubToken,
+    branch: input.integrationBranch,
+  });
+  const quality = await runActualPreviewSampleDataQualityOnIntegrationBranch({
+    repoUrl: input.repoUrl,
+    githubToken: input.githubToken,
+    integrationBranch: input.integrationBranch,
+    repositoryFilePaths: listed.ok ? listed.filePaths : undefined,
+  });
+  if (quality.result.ok) {
+    input.timeline.push(
+      buildImplementationExecutionLogTimelineEntry({
+        action: "sample_data_codetask_outcome_verified",
+        orchestrationTraceGroup: "implementation_integration",
+        fields: { projectId: input.projectId, integrationBranch: input.integrationBranch },
+        nowIso: input.nowIso,
+      }),
+    );
+    return null;
+  }
+  const message = sampleDataQualityUserMessage();
+  const steps = mapIntegrationStepByKind(input.steps, "app_preview_target", (s) => ({
+    ...s,
+    status: "failed",
+    failedAt: input.nowIso,
+    errorCode: "sample_data_required",
+    errorMessage: message,
+  }));
+  input.timeline.push(
+    buildImplementationExecutionLogTimelineEntry({
+      action: "actual_preview_sample_data_quality_failed",
+      orchestrationTraceGroup: "implementation_integration",
+      fields: {
+        projectId: input.projectId,
+        missing: quality.result.missing,
+        warning: quality.result.warning,
+      },
+      nowIso: input.nowIso,
+    }),
+  );
+  return {
+    ok: false,
+    steps,
+    timelineEntries: input.timeline,
+    userSafeMessage: message,
+    pipelineStatus: "sample_data_required",
   };
 }
 
@@ -248,6 +314,18 @@ export async function runAppPreviewTargetIntegrationStep(input: {
             runtime,
           })
         ) {
+          const sampleBlock = await blockIfSampleDataQualityInsufficient({
+            projectId: input.projectId,
+            steps,
+            integrationBranch,
+            repoUrl,
+            githubToken: token,
+            nowIso: input.nowIso,
+            timeline,
+          });
+          if (sampleBlock) {
+            return attachPreflightPatch(sampleBlock);
+          }
           return attachPreflightPatch(
             completeAppPreviewTargetStep({
               projectId: input.projectId,
@@ -373,6 +451,23 @@ export async function runAppPreviewTargetIntegrationStep(input: {
       userSafeMessage: message,
       pipelineStatus: "app_preview_target_failed",
     };
+  }
+
+  const repoUrlForQuality = String(input.repoUrl ?? "").trim();
+  const tokenForQuality = String(input.githubToken ?? "").trim();
+  if (integrationBranch && repoUrlForQuality && tokenForQuality) {
+    const sampleBlock = await blockIfSampleDataQualityInsufficient({
+      projectId: input.projectId,
+      steps,
+      integrationBranch,
+      repoUrl: repoUrlForQuality,
+      githubToken: tokenForQuality,
+      nowIso: input.nowIso,
+      timeline,
+    });
+    if (sampleBlock) {
+      return sampleBlock;
+    }
   }
 
   return completeAppPreviewTargetStep({

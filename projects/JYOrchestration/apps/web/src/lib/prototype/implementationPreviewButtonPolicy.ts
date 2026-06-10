@@ -1,22 +1,25 @@
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import {
-  evaluateImplementationPreviewEntryState,
-  type ImplementationPreviewEntryModeV1,
-} from "@/lib/prototype/implementationPreviewEntryPolicy";
+  evaluateActualIntegratedPreviewButtonState,
+  ACTUAL_PREVIEW_BUTTON_LABEL,
+} from "@/lib/prototype/actualPreviewButtonPolicy";
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
-export type ImplementationPreviewButtonModeV1 = ImplementationPreviewEntryModeV1;
+export type ImplementationPreviewButtonModeV1 =
+  | "integrated_app_preview"
+  | "disabled";
 
 export type ImplementationPreviewButtonStateV1 = Readonly<{
   readonly show: boolean;
   readonly enabled: boolean;
-  readonly label: "Preview";
+  readonly label: typeof ACTUAL_PREVIEW_BUTTON_LABEL;
   readonly mode: ImplementationPreviewButtonModeV1;
   readonly url: string | null;
   readonly userMessage: string;
   readonly disabledReason: string | null;
+  readonly title: string;
 }>;
 
 export { buildCodeTaskPreviewFallbackUrl, buildIntegratedAppPreviewFallbackUrl } from "@/lib/prototype/implementationPreviewEntryPolicy";
@@ -32,24 +35,28 @@ export function evaluateImplementationPreviewButtonState(input: {
   readonly pipelineStatus?: string | null;
   readonly pipelinePreviewReady?: boolean | null;
 }): ImplementationPreviewButtonStateV1 {
-  const entry = evaluateImplementationPreviewEntryState(input);
-  const { failed, inconsistent, selected } = input.snapshot.codeTask;
+  void input.codeTaskPreviewReady;
+  const actual = evaluateActualIntegratedPreviewButtonState({
+    projectId: input.projectId,
+    snapshot: input.snapshot,
+    previewRuntime: input.previewRuntime,
+    integratedAppPreviewReady: input.integratedAppPreviewReady,
+    integrationPlan: input.integrationPlan,
+    requirementsState: input.requirementsState,
+    pipelineStatus: input.pipelineStatus,
+    pipelinePreviewReady: input.pipelinePreviewReady,
+  });
   return {
-    show: entry.mode !== "disabled" || selected > 0,
-    enabled: entry.enabled,
-    label: "Preview",
-    mode: entry.mode,
-    url: entry.url,
-    userMessage: entry.userMessage,
-    disabledReason: entry.enabled
-      ? null
-      : failed > 0 || inconsistent > 0
-        ? "실패 또는 검증 불일치 CodeTask가 있습니다."
-        : entry.mode === "disabled" && selected > 0
-          ? "완료된 CodeTask가 없습니다."
-          : entry.mode === "disabled"
-            ? "선택된 CodeTask가 없습니다."
-            : "Preview URL이 아직 없습니다.",
+    show: actual.show,
+    enabled: actual.enabled,
+    label: actual.label,
+    mode: actual.enabled ? "integrated_app_preview" : "disabled",
+    url: actual.url,
+    userMessage: actual.enabled
+      ? "Preview 보기를 눌러 실제 앱 화면을 새 창에서 확인할 수 있습니다."
+      : actual.disabledReason ?? actual.title,
+    disabledReason: actual.disabledReason,
+    title: actual.title,
   };
 }
 

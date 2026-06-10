@@ -155,7 +155,7 @@ export function buildImplementationTaskListFromSeed(input: {
 
   tasks.push({
     taskId: sampleDataTaskId,
-    title: "샘플 데이터 생성",
+    title: "회의록 자동정리 샘플데이터 구성",
     description:
       dataEntities.length > 0
         ? "화면과 기능 흐름을 확인할 수 있도록 주요 데이터 항목 기준의 샘플 데이터를 생성합니다."
