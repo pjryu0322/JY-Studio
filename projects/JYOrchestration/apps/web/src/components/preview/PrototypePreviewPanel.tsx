@@ -297,6 +297,7 @@ import {
   listRunnableCodeTaskIdsForImplementationBoardView,
 } from "@/lib/prototype/implementationBoardCodeTaskSelection";
 import {
+  type CodeTaskBoardSelectionSummaryV1,
   formatQuickRunToolbarTraceDetail,
   resolveQuickRunToolbarAction,
 } from "@/lib/prototype/implementationQuickRunPolicy";
@@ -1798,28 +1799,24 @@ export function PrototypePreviewPanel({
   const orchestrationAwareRequirementsStateRef = useRef(orchestrationAwareRequirementsState);
   orchestrationAwareRequirementsStateRef.current = orchestrationAwareRequirementsState;
 
-  /** Latest board checkbox selection (panel may lead persisted board state). */
+  /** Latest board checkbox selection from persist handler (may lag panel UI). */
   const boardSelectedCodeTaskIdsRef = useRef<readonly string[] | null>(null);
+  /** Same selection + summary as the rendered implementation board header. */
+  const implementationBoardLiveCheckedCodeTaskIdsRef = useRef<readonly string[] | null>(null);
+  const boardCodeTaskSelectionSummaryRef = useRef<CodeTaskBoardSelectionSummaryV1 | null>(null);
+
+  const handleBoardCodeTaskSelectionSummaryChange = useCallback(
+    (summary: CodeTaskBoardSelectionSummaryV1) => {
+      boardCodeTaskSelectionSummaryRef.current = summary;
+    },
+    [],
+  );
 
   useEffect(() => {
-    const imp = orchestrationAwareRequirementsState;
-    boardSelectedCodeTaskIdsRef.current = normalizeSelectedCodeTaskIds({
-      codeTaskPlan: imp.implementationCodeTaskPlanV1,
-      selectedCodeTaskIds:
-        imp.implementationExecutionBoardStateV1 &&
-        Object.prototype.hasOwnProperty.call(
-          imp.implementationExecutionBoardStateV1,
-          "selectedCodeTaskIds",
-        )
-          ? (imp.implementationExecutionBoardStateV1.selectedCodeTaskIds ?? [])
-          : undefined,
-      legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
-    });
-  }, [
-    orchestrationAwareRequirementsState.implementationExecutionBoardStateV1?.updatedAt,
-    orchestrationAwareRequirementsState.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
-    orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-  ]);
+    boardSelectedCodeTaskIdsRef.current = null;
+    implementationBoardLiveCheckedCodeTaskIdsRef.current = null;
+    boardCodeTaskSelectionSummaryRef.current = null;
+  }, [projectId]);
 
   const effectiveCodeTaskExecutionQueueV1 = useMemo(
     () =>
@@ -7375,9 +7372,15 @@ export function PrototypePreviewPanel({
     const selectionView = buildImplementationBoardCodeTaskSelectionView({
       projectId: pid,
       requirementsState: imp,
-      selectedCodeTaskIdsOverride: prep.selectedCodeTaskIds,
+      selectedCodeTaskIdsOverride:
+        options?.selectedCodeTaskIds ??
+        implementationBoardLiveCheckedCodeTaskIdsRef.current ??
+        boardSelectedCodeTaskIdsRef.current,
     });
     const selectedRunnableFromBoard =
+      (boardCodeTaskSelectionSummaryRef.current?.selectedRunnableCodeTaskIds.length
+        ? boardCodeTaskSelectionSummaryRef.current.selectedRunnableCodeTaskIds
+        : null) ??
       selectionView?.summary.selectedRunnableCodeTaskIds ??
       evaluateQuickRunExecutionSelectionGate({
         selectedCodeTaskIds: prep.selectedCodeTaskIds,
@@ -7693,6 +7696,7 @@ export function PrototypePreviewPanel({
       const pid = projectId.trim();
       const imp = orchestrationAwareRequirementsStateRef.current;
       const selectedCodeTaskIds =
+        implementationBoardLiveCheckedCodeTaskIdsRef.current ??
         boardSelectedCodeTaskIdsRef.current ??
         normalizeSelectedCodeTaskIds({
           codeTaskPlan: imp.implementationCodeTaskPlanV1,
@@ -7830,26 +7834,33 @@ export function PrototypePreviewPanel({
 
     const imp = orchestrationAwareRequirementsStateRef.current;
     const board = implementationStageBoardGateContext?.board ?? null;
+    const liveSummary = boardCodeTaskSelectionSummaryRef.current;
+    const liveSelectedIds = implementationBoardLiveCheckedCodeTaskIdsRef.current;
+    const selectionOverride =
+      liveSelectedIds !== null && liveSelectedIds !== undefined
+        ? liveSelectedIds
+        : boardSelectedCodeTaskIdsRef.current;
     const selectionView = buildImplementationBoardCodeTaskSelectionView({
       projectId: pid,
       requirementsState: imp,
-      selectedCodeTaskIdsOverride: boardSelectedCodeTaskIdsRef.current,
+      selectedCodeTaskIdsOverride: selectionOverride,
     });
-    if (board?.taskRows.length && selectionView) {
-      const resolved = resolveQuickRunToolbarAction({ summary: selectionView.summary });
+    const summaryForToolbar = liveSummary ?? selectionView?.summary ?? null;
+    if (board?.taskRows.length && summaryForToolbar) {
+      const resolved = resolveQuickRunToolbarAction({ summary: summaryForToolbar });
       recordQuickRunClientEvent({
         phase: "toolbar_quick_execution",
         detail: formatQuickRunToolbarTraceDetail({
           boardRows: board.taskRows.length,
-          summary: selectionView.summary,
+          summary: summaryForToolbar,
           resolvedAction: resolved.action,
         }),
-        selectedCount: selectionView.summary.selectedRunnableCount,
+        selectedCount: summaryForToolbar.selectedRunnableCount,
       });
       if (resolved.action === "blocked_no_selection") {
         recordQuickRunClientEvent({
           phase: "toolbar_blocked_no_selection",
-          detail: `runnableCount=${selectionView.summary.runnableCount} selectedRunnableCount=0 message=${resolved.message}`,
+          detail: `runnableCount=${summaryForToolbar.runnableCount} selectedRunnableCount=0 message=${resolved.message}`,
           toastMessage: resolved.message,
           selectedCount: 0,
         });
@@ -7860,7 +7871,7 @@ export function PrototypePreviewPanel({
         return;
       }
       void startImplementationQuickRun({
-        selectedCodeTaskIds: selectionView.selectedCodeTaskIds,
+        selectedCodeTaskIds: resolved.codeTaskIds,
       });
       return;
     }
@@ -8320,6 +8331,8 @@ export function PrototypePreviewPanel({
             onRestartTask={handleRestartBoardTask}
             onSelectedTaskIdsChange={handleBoardSelectedTaskIdsChange}
             onSelectedCodeTaskIdsChange={handleBoardSelectedCodeTaskIdsChange}
+            liveCheckedCodeTaskIdsRef={implementationBoardLiveCheckedCodeTaskIdsRef}
+            onCodeTaskSelectionSummaryChange={handleBoardCodeTaskSelectionSummaryChange}
             onCopyCodeTaskCursorPrompt={handleCopyCodeTaskCursorPrompt}
             onCopyDeveloperPromptsFromHeader={handleCopyDeveloperPromptsFromHeader}
             onRetryGithubVerify={() => void handleManualGithubVerifyRetry()}

@@ -136,6 +136,8 @@ export function ImplementationExecutionBoardPanel({
   onOpenImplementationPreview,
   onExecuteSelectedCodeTasks,
   onReworkSelectedCodeTasks,
+  liveCheckedCodeTaskIdsRef,
+  onCodeTaskSelectionSummaryChange,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -182,6 +184,11 @@ export function ImplementationExecutionBoardPanel({
   }) => void;
   readonly onExecuteSelectedCodeTasks?: () => void;
   readonly onReworkSelectedCodeTasks?: () => void;
+  /** Parent toolbar quick-run reads latest checkbox selection (panel local state). */
+  readonly liveCheckedCodeTaskIdsRef?: React.MutableRefObject<readonly string[] | null>;
+  readonly onCodeTaskSelectionSummaryChange?: (
+    summary: ReturnType<typeof summarizeCodeTaskBoardRowsFromTreeNodes>,
+  ) => void;
 }) {
   const reworkVm = useMemo(
     () =>
@@ -368,6 +375,9 @@ export function ImplementationExecutionBoardPanel({
   const displaySelectedCodeTaskIds = checkedCodeTaskIds;
   const checkedCodeTaskIdsRef = useRef(checkedCodeTaskIds);
   checkedCodeTaskIdsRef.current = checkedCodeTaskIds;
+  if (liveCheckedCodeTaskIdsRef) {
+    liveCheckedCodeTaskIdsRef.current = checkedCodeTaskIds;
+  }
 
   useEffect(() => {
     setSelectedTaskId((current) => current ?? activeTaskId);
@@ -575,6 +585,10 @@ export function ImplementationExecutionBoardPanel({
       summary: codeTaskSelectionSummary,
     });
   }, [projectId, board.projectId, codeTaskSelectionSummary]);
+
+  useEffect(() => {
+    onCodeTaskSelectionSummaryChange?.(codeTaskSelectionSummary);
+  }, [codeTaskSelectionSummary, onCodeTaskSelectionSummaryChange]);
 
   const selectAllHeaderState = useMemo(
     () =>
