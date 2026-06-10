@@ -27,6 +27,8 @@ export function reconcileImplementationExecutionSelectedUnits(input: {
   readonly units: readonly ImplementationExecutionUnitV1[];
   /** Legacy UI / job input — migrated once when persisted selection is empty */
   readonly legacySelectedCodeTaskIds?: readonly string[] | null;
+  /** When true, board selectedCodeTaskIds (including []) override persisted unit selection. */
+  readonly boardSelectionExplicit?: boolean;
   readonly nowIso?: string;
 }): Readonly<{
   readonly selectedUnitIds: readonly string[];
@@ -43,7 +45,13 @@ export function reconcileImplementationExecutionSelectedUnits(input: {
     .map((id) => id.trim())
     .filter(Boolean);
 
-  if (!selected.length && legacyIds.length) {
+  const boardExplicit =
+    input.boardSelectionExplicit === true ||
+    (input.legacySelectedCodeTaskIds !== undefined && input.legacySelectedCodeTaskIds !== null);
+
+  if (boardExplicit) {
+    selected = mapSelectedCodeTaskIdsToExecutionUnitIds(legacyIds, input.units);
+  } else if (!selected.length && legacyIds.length) {
     selected = mapSelectedCodeTaskIdsToExecutionUnitIds(legacyIds, input.units);
     timeline.push(
       buildImplementationExecutionLogTimelineEntry({

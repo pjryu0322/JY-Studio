@@ -63,12 +63,18 @@ import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentEx
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
+  countSelectableCodeTasksForTreeMode,
   isCodeTaskTreeFullySelected,
   normalizeSelectedCodeTaskIds,
   resolveCodeTaskTreeSelectAll,
   resolveCodeTaskTreeSelectionToggle,
   resolveParentTaskIdForCodeTask,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
+import {
+  DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
+  evaluateIntegrationBoardSelectionGate,
+  logCodeTaskSelectionModeResolved,
+} from "@/lib/prototype/implementationCodeTaskSelectionPolicy";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
@@ -539,14 +545,63 @@ export function ImplementationExecutionBoardPanel({
     ],
   );
 
+  const taskTreeProgressByCodeTaskId = useMemo(() => {
+    const map = new Map<string, { statusLabel: string; progressLabel: string }>();
+    for (const unit of runtimeSnapshot.units) {
+      map.set(unit.codeTaskId, {
+        statusLabel: unit.statusLabel,
+        progressLabel: unit.progressLabel,
+      });
+    }
+    return map;
+  }, [runtimeSnapshot.units]);
+
+  const taskTreeSelectionContext = useMemo(
+    () => ({
+      mode: DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
+      units: codeTaskSummaryCounts.executionUnits,
+      runs: codeTaskRuns,
+      progressByCodeTaskId: taskTreeProgressByCodeTaskId,
+    }),
+    [
+      codeTaskSummaryCounts.executionUnits,
+      codeTaskRuns,
+      taskTreeProgressByCodeTaskId,
+    ],
+  );
+
+  const visibleCodeTaskIds = useMemo(
+    () => taskTreeNodes.map((node) => node.codeTaskId),
+    [taskTreeNodes],
+  );
+
+  const selectableCodeTaskCount = useMemo(
+    () =>
+      countSelectableCodeTasksForTreeMode({
+        codeTaskPlan: implementationCodeTaskPlanV1,
+        visibleCodeTaskIds,
+        ...taskTreeSelectionContext,
+      }),
+    [implementationCodeTaskPlanV1, visibleCodeTaskIds, taskTreeSelectionContext],
+  );
+
+  useEffect(() => {
+    logCodeTaskSelectionModeResolved({
+      projectId: projectId ?? board.projectId,
+      mode: DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
+      selectableCount: selectableCodeTaskCount,
+    });
+  }, [projectId, board.projectId, selectableCodeTaskCount]);
+
   const allCodeTasksChecked = useMemo(
     () =>
       isCodeTaskTreeFullySelected({
         selectedCodeTaskIds: checkedCodeTaskIds,
         codeTaskPlan: implementationCodeTaskPlanV1,
-        visibleCodeTaskIds: taskTreeNodes.map((node) => node.codeTaskId),
+        visibleCodeTaskIds,
+        ...taskTreeSelectionContext,
       }),
-    [checkedCodeTaskIds, implementationCodeTaskPlanV1, taskTreeNodes],
+    [checkedCodeTaskIds, implementationCodeTaskPlanV1, visibleCodeTaskIds, taskTreeSelectionContext],
   );
 
   const integratedPipelineLines = useMemo(
@@ -640,13 +695,34 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const integrationButtonState = useMemo(
-    () =>
-      evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot, {
+    () => {
+      const fromSnapshot = evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot, {
         autoGenerationReady,
         isIntegrationRunning: integrationPipelineBusy === true,
         latestPipelineStatus: integrationPipelineStatus,
         projectId: projectId ?? board.projectId,
-      }),
+      });
+      const integrationSelectionGate = evaluateIntegrationBoardSelectionGate({
+        selectedCodeTaskIds: checkedCodeTaskIds,
+        codeTasks: implementationCodeTaskPlanV1?.tasks ?? [],
+        units: codeTaskSummaryCounts.executionUnits,
+        runs: codeTaskRuns,
+      });
+      if (!integrationSelectionGate.ok && fromSnapshot.show) {
+        return {
+          ...fromSnapshot,
+          enabled: false,
+          disabledTitle: integrationSelectionGate.message,
+          disabledReasonLines: integrationSelectionGate.message
+            ? integrationSelectionGate.message.split("\n")
+            : fromSnapshot.disabledReasonLines,
+          userStatusLines: integrationSelectionGate.message
+            ? integrationSelectionGate.message.split("\n")
+            : fromSnapshot.userStatusLines,
+        };
+      }
+      return fromSnapshot;
+    },
     [
       runtimeSnapshot,
       autoGenerationReady,
@@ -654,6 +730,10 @@ export function ImplementationExecutionBoardPanel({
       integrationPipelineStatus,
       projectId,
       board.projectId,
+      checkedCodeTaskIds,
+      implementationCodeTaskPlanV1,
+      codeTaskSummaryCounts.executionUnits,
+      codeTaskRuns,
     ],
   );
 
@@ -875,6 +955,7 @@ export function ImplementationExecutionBoardPanel({
           codeAgentProgress={codeAgentProgress}
           allChecked={allCodeTasksChecked}
           selectedCodeTaskCount={checkedCodeTaskIds.length}
+          selectableCodeTaskCount={selectableCodeTaskCount}
           onSelectCodeTask={(parentTaskId, codeTaskId) => {
             setSelectedTaskId(parentTaskId);
             setSelectedCodeTaskId(codeTaskId);
@@ -896,6 +977,7 @@ export function ImplementationExecutionBoardPanel({
                 checked,
                 selectedCodeTaskIds: displaySelectedCodeTaskIds,
                 codeTaskPlan: implementationCodeTaskPlanV1,
+                ...taskTreeSelectionContext,
               }),
             );
           }}
@@ -904,7 +986,8 @@ export function ImplementationExecutionBoardPanel({
               resolveCodeTaskTreeSelectAll({
                 selectAll: checked,
                 codeTaskPlan: implementationCodeTaskPlanV1,
-                visibleCodeTaskIds: taskTreeNodes.map((node) => node.codeTaskId),
+                visibleCodeTaskIds,
+                ...taskTreeSelectionContext,
               }),
             );
           }}

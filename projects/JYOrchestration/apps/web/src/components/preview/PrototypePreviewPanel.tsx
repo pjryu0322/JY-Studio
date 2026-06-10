@@ -291,6 +291,8 @@ import {
   prepareSelectedCodeTaskIdsForQuickRun,
   QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
+import { evaluateQuickRunExecutionSelectionGate } from "@/lib/prototype/implementationExecutionButtonPolicy";
+import { loadImplementationExecutionUnitsFromState } from "@/lib/prototype/implementationExecutionUnitStore";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
@@ -7324,7 +7326,24 @@ export function PrototypePreviewPanel({
       applyPendingFromOrchestrationPatchRef.current({ promptTimeline: repairTimeline });
       void persistChatToDb(undefined, { promptTimeline: repairTimeline }, undefined, { force: true });
     }
-    const selectedCodeTaskIds = prep.selectedCodeTaskIds;
+    const executionGate = evaluateQuickRunExecutionSelectionGate({
+      selectedCodeTaskIds: prep.selectedCodeTaskIds,
+      codeTasks: imp.implementationCodeTaskPlanV1?.tasks ?? [],
+      units: loadImplementationExecutionUnitsFromState(imp),
+      runs: parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ?? [],
+    });
+    if (!executionGate.ok) {
+      const message =
+        executionGate.message ?? "선택한 CodeTask 중 현재 실행할 수 있는 작업이 없습니다.";
+      recordQuickRunClientEvent({
+        phase: "blocked_no_runnable_selection",
+        detail: message,
+        toastMessage: message,
+        selectedCount: prep.selectedCodeTaskIds.length,
+      });
+      return { outcome: "blocked", message };
+    }
+    const selectedCodeTaskIds = executionGate.runnableIds;
     recordQuickRunClientEvent({
       phase: "start_implementation_quick_run",
       detail: selectedCodeTaskIds.length
@@ -7332,16 +7351,6 @@ export function PrototypePreviewPanel({
         : "selected=none",
       selectedCount: selectedCodeTaskIds.length,
     });
-    if (!selectedCodeTaskIds.length) {
-      const message = "실행할 CodeTask를 선택해 주세요.";
-      recordQuickRunClientEvent({
-        phase: "blocked_no_selection",
-        detail: message,
-        toastMessage: message,
-        selectedCount: 0,
-      });
-      return { outcome: "blocked", message };
-    }
     quickRunStuckGithubVerifyRef.current = null;
     quickRunCodeTaskContinuationRef.current = null;
     dbQueuedQuickRunDispatchRef.current = null;

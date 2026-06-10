@@ -82,6 +82,8 @@ export function buildImplementationExecutionSummaryCounts(input: {
   const orchestrationPatch = ensured?.bootstrapped ? ensured.orchestrationPatch : undefined;
 
   const legacySelected = input.selectedCodeTaskIds ?? input.legacySelectedTaskIds ?? [];
+  const boardSelectionExplicit =
+    input.selectedCodeTaskIds !== undefined && input.selectedCodeTaskIds !== null;
   const selection =
     pid && input.requirementsState
       ? reconcileImplementationExecutionSelectedUnits({
@@ -92,6 +94,7 @@ export function buildImplementationExecutionSummaryCounts(input: {
           },
           units,
           legacySelectedCodeTaskIds: legacySelected,
+          boardSelectionExplicit,
         })
       : null;
 
@@ -143,8 +146,8 @@ export function buildImplementationExecutionSummaryCounts(input: {
     .filter((id): id is string => Boolean(id?.trim()));
 
   const requestedCodeTaskIds = [...new Set(legacySelected.map((id) => id.trim()).filter(Boolean))];
-  const reconciledCodeTaskIdSet = new Set(reconciledCodeTaskIds);
-  const removedStaleCodeTaskIds = requestedCodeTaskIds.filter((id) => !reconciledCodeTaskIdSet.has(id));
+  const validCodeTaskIds = new Set(units.map((u) => u.codeTaskId.trim()).filter(Boolean));
+  const removedStaleCodeTaskIds = requestedCodeTaskIds.filter((id) => !validCodeTaskIds.has(id));
   const removedStaleSelectedIds = [...new Set([...removedStaleCodeTaskIds, ...removedIds])];
   const summaryCountReconciled = removedStaleSelectedIds.length > 0;
 

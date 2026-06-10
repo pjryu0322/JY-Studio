@@ -49,6 +49,10 @@ import {
   formatExecutionUnitVerificationCardLabels,
   resolveExecutionUnitVerificationDisplayStatus,
 } from "@/lib/prototype/implementationExecutionUnitVerification";
+import {
+  DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
+  getCodeTaskSelectionEligibility,
+} from "@/lib/prototype/implementationCodeTaskSelectionPolicy";
 
 export type ImplementationTaskTreeMetaLine = Readonly<{
   readonly label: string;
@@ -65,6 +69,8 @@ export type ImplementationCodeTaskTreeNode = Readonly<{
   readonly isActive: boolean;
   readonly isSelected: boolean;
   readonly isChecked: boolean;
+  readonly checkboxDisabled?: boolean;
+  readonly checkboxDisabledTitle?: string | null;
   readonly failureReason?: string;
   readonly nextActionHint?: string;
   readonly retryFailedActionLabel?: string;
@@ -361,6 +367,19 @@ function buildCodeTaskNode(input: {
     failureReason = "작업이 완료되지 않았습니다.";
   }
 
+  const selectionEligibility = getCodeTaskSelectionEligibility({
+    mode: DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
+    context: {
+      codeTask: input.codeTask,
+      unit: input.executionUnit ?? null,
+      runs: input.codeTaskExecutionRuns,
+      statusLabel,
+      progressLabel,
+    },
+  });
+  const checkboxDisabled = !selectionEligibility.selectable && !input.isChecked;
+  const checkboxDisabledTitle = checkboxDisabled ? selectionEligibility.userMessage : null;
+
   return {
     codeTaskId: input.codeTask.codeTaskId,
     parentTaskId: input.codeTask.parentTaskId,
@@ -371,6 +390,8 @@ function buildCodeTaskNode(input: {
     isActive: input.isActive,
     isSelected: input.isSelected,
     isChecked: input.isChecked,
+    checkboxDisabled,
+    checkboxDisabledTitle,
     ...(failureReason ? { failureReason } : {}),
     ...(showRetryFailedAction ? { showRetryFailedAction, retryFailedActionLabel } : {}),
     ...(githubVerifyView?.stateSyncFailed

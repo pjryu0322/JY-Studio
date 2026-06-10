@@ -200,9 +200,14 @@ function FlatCodeTaskListItem({
           type="checkbox"
           className={styles.taskTreeCheckbox}
           checked={node.isChecked}
+          disabled={node.checkboxDisabled === true}
+          title={node.checkboxDisabledTitle ?? undefined}
           aria-label={`${node.title} CodeTask 선택`}
           data-testid={`implementation-code-task-check-${node.codeTaskId}`}
-          onChange={(event) => onToggleChecked?.(node.codeTaskId, event.target.checked)}
+          onChange={(event) => {
+            if (node.checkboxDisabled === true && event.target.checked) return;
+            onToggleChecked?.(node.codeTaskId, event.target.checked);
+          }}
         />
         <button
           type="button"
@@ -248,6 +253,7 @@ export function ImplementationExecutionBoardTaskTree({
   onCopyDeveloperPromptsFromHeader,
   developerPromptHeaderCopyDisabled,
   selectedCodeTaskCount,
+  selectableCodeTaskCount,
   codeAgentProgress,
 }: {
   readonly nodes: readonly ImplementationCodeTaskTreeNode[];
@@ -262,10 +268,12 @@ export function ImplementationExecutionBoardTaskTree({
   readonly onCopyDeveloperPromptsFromHeader?: () => void;
   readonly developerPromptHeaderCopyDisabled?: boolean;
   readonly selectedCodeTaskCount?: number;
+  readonly selectableCodeTaskCount?: number;
 }) {
   const codeTaskCount = nodes.length;
   const selectedCount =
     selectedCodeTaskCount ?? nodes.filter((node) => node.isChecked).length;
+  const selectableCount = selectableCodeTaskCount ?? codeTaskCount;
 
   return (
     <div className={styles.taskTreeList} data-testid="implementation-task-tree">
@@ -298,7 +306,7 @@ export function ImplementationExecutionBoardTaskTree({
           ) : null}
         </label>
         <span className={styles.taskTreeSelectAllMeta}>
-          CodeTask {codeTaskCount}개 · 선택됨 {selectedCount}개
+          CodeTask {codeTaskCount}개 · 선택 가능 {selectableCount}개 · 선택됨 {selectedCount}개
         </span>
       </div>
       {nodes.map((node) => (
