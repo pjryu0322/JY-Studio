@@ -48,6 +48,7 @@ describe("summarizeCodeTaskBoardRowsFromTreeNodes", () => {
       selectedCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
     });
     expect(summary.selectedRunnableCount).toBe(1);
+    expect(summary.selectedRunnableCodeTaskIds).toEqual(["CODE-DATA-SAMPLE-001"]);
   });
 
   it("select-all picks only runnable board rows", () => {

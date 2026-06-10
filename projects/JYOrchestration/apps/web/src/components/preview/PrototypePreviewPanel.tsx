@@ -292,7 +292,14 @@ import {
   QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import { evaluateQuickRunExecutionSelectionGate } from "@/lib/prototype/implementationExecutionButtonPolicy";
-import { listRunnableCodeTaskIdsForImplementationBoardView } from "@/lib/prototype/implementationBoardCodeTaskSelection";
+import {
+  buildImplementationBoardCodeTaskSelectionView,
+  listRunnableCodeTaskIdsForImplementationBoardView,
+} from "@/lib/prototype/implementationBoardCodeTaskSelection";
+import {
+  formatQuickRunToolbarTraceDetail,
+  resolveQuickRunToolbarAction,
+} from "@/lib/prototype/implementationQuickRunPolicy";
 import { loadImplementationExecutionUnitsFromState } from "@/lib/prototype/implementationExecutionUnitStore";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
@@ -1790,6 +1797,29 @@ export function PrototypePreviewPanel({
   );
   const orchestrationAwareRequirementsStateRef = useRef(orchestrationAwareRequirementsState);
   orchestrationAwareRequirementsStateRef.current = orchestrationAwareRequirementsState;
+
+  /** Latest board checkbox selection (panel may lead persisted board state). */
+  const boardSelectedCodeTaskIdsRef = useRef<readonly string[] | null>(null);
+
+  useEffect(() => {
+    const imp = orchestrationAwareRequirementsState;
+    boardSelectedCodeTaskIdsRef.current = normalizeSelectedCodeTaskIds({
+      codeTaskPlan: imp.implementationCodeTaskPlanV1,
+      selectedCodeTaskIds:
+        imp.implementationExecutionBoardStateV1 &&
+        Object.prototype.hasOwnProperty.call(
+          imp.implementationExecutionBoardStateV1,
+          "selectedCodeTaskIds",
+        )
+          ? (imp.implementationExecutionBoardStateV1.selectedCodeTaskIds ?? [])
+          : undefined,
+      legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
+    });
+  }, [
+    orchestrationAwareRequirementsState.implementationExecutionBoardStateV1?.updatedAt,
+    orchestrationAwareRequirementsState.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
+    orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
+  ]);
 
   const effectiveCodeTaskExecutionQueueV1 = useMemo(
     () =>
@@ -6632,6 +6662,7 @@ export function PrototypePreviewPanel({
     (selectedCodeTaskIds: readonly string[]) => {
       const pid = projectId.trim();
       if (!pid) return;
+      boardSelectedCodeTaskIdsRef.current = selectedCodeTaskIds;
       const nowIso = new Date().toISOString();
       const nextBoardState = updateBoardSelectedCodeTaskIds({
         state:
@@ -7341,22 +7372,31 @@ export function PrototypePreviewPanel({
       requirementsState: imp,
       selectedCodeTaskIds: prep.selectedCodeTaskIds,
     });
-    const executionGate = evaluateQuickRunExecutionSelectionGate({
-      selectedCodeTaskIds: prep.selectedCodeTaskIds,
-      runnableCodeTaskIdsFromBoard,
+    const selectionView = buildImplementationBoardCodeTaskSelectionView({
+      projectId: pid,
+      requirementsState: imp,
+      selectedCodeTaskIdsOverride: prep.selectedCodeTaskIds,
     });
-    if (!executionGate.ok) {
+    const selectedRunnableFromBoard =
+      selectionView?.summary.selectedRunnableCodeTaskIds ??
+      evaluateQuickRunExecutionSelectionGate({
+        selectedCodeTaskIds: prep.selectedCodeTaskIds,
+        runnableCodeTaskIdsFromBoard,
+      }).runnableIds;
+    if (!selectedRunnableFromBoard.length) {
       const message =
-        executionGate.message ?? "선택한 CodeTask 중 현재 실행할 수 있는 작업이 없습니다.";
+        prep.selectedCodeTaskIds.length > 0
+          ? "선택한 CodeTask 중 현재 실행할 수 있는 작업이 없습니다."
+          : "실행할 CodeTask를 선택해 주세요.";
       recordQuickRunClientEvent({
-        phase: "blocked_no_runnable_selection",
+        phase: prep.selectedCodeTaskIds.length ? "blocked_no_runnable_selection" : "toolbar_blocked_no_selection",
         detail: message,
         toastMessage: message,
         selectedCount: prep.selectedCodeTaskIds.length,
       });
       return { outcome: "blocked", message };
     }
-    const selectedCodeTaskIds = executionGate.runnableIds;
+    const selectedCodeTaskIds = selectedRunnableFromBoard;
     recordQuickRunClientEvent({
       phase: "start_implementation_quick_run",
       detail: selectedCodeTaskIds.length
@@ -7650,15 +7690,18 @@ export function PrototypePreviewPanel({
 
   useEffect(() => {
     startImplementationQuickRunRef.current = () => {
+      const pid = projectId.trim();
       const imp = orchestrationAwareRequirementsStateRef.current;
-      const selectedCodeTaskIds = normalizeSelectedCodeTaskIds({
-        codeTaskPlan: imp.implementationCodeTaskPlanV1,
-        selectedCodeTaskIds: imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
-        legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
-      });
+      const selectedCodeTaskIds =
+        boardSelectedCodeTaskIdsRef.current ??
+        normalizeSelectedCodeTaskIds({
+          codeTaskPlan: imp.implementationCodeTaskPlanV1,
+          selectedCodeTaskIds: imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
+          legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
+        });
       void startImplementationQuickRun({ selectedCodeTaskIds });
     };
-  }, [startImplementationQuickRun]);
+  }, [startImplementationQuickRun, projectId]);
 
   const handleCopyCodeTaskCursorPrompt = useCallback(
     (codeTaskId: string) => {
@@ -7787,29 +7830,38 @@ export function PrototypePreviewPanel({
 
     const imp = orchestrationAwareRequirementsStateRef.current;
     const board = implementationStageBoardGateContext?.board ?? null;
-    const selectedOnBoard = normalizeSelectedCodeTaskIds({
-      codeTaskPlan: imp.implementationCodeTaskPlanV1,
-      selectedCodeTaskIds: imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
-      legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
+    const selectionView = buildImplementationBoardCodeTaskSelectionView({
+      projectId: pid,
+      requirementsState: imp,
+      selectedCodeTaskIdsOverride: boardSelectedCodeTaskIdsRef.current,
     });
-    recordQuickRunClientEvent({
-      phase: "toolbar_quick_execution",
-      detail: board?.taskRows.length
-        ? `boardRows=${board.taskRows.length} selected=${selectedOnBoard.length}`
-        : "no_board_rows",
-      selectedCount: selectedOnBoard.length,
-    });
-    if (board?.taskRows.length) {
-      if (!selectedOnBoard.length) {
+    if (board?.taskRows.length && selectionView) {
+      const resolved = resolveQuickRunToolbarAction({ summary: selectionView.summary });
+      recordQuickRunClientEvent({
+        phase: "toolbar_quick_execution",
+        detail: formatQuickRunToolbarTraceDetail({
+          boardRows: board.taskRows.length,
+          summary: selectionView.summary,
+          resolvedAction: resolved.action,
+        }),
+        selectedCount: selectionView.summary.selectedRunnableCount,
+      });
+      if (resolved.action === "blocked_no_selection") {
         recordQuickRunClientEvent({
           phase: "toolbar_blocked_no_selection",
-          detail: "실행할 CodeTask를 선택해 주세요.",
-          toastMessage: "실행할 CodeTask를 선택해 주세요.",
+          detail: `runnableCount=${selectionView.summary.runnableCount} selectedRunnableCount=0 message=${resolved.message}`,
+          toastMessage: resolved.message,
           selectedCount: 0,
         });
         return;
       }
-      void startImplementationQuickRun({ selectedCodeTaskIds: selectedOnBoard });
+      if (resolved.action === "prepare_integration_preview") {
+        runIntegrationPipeline();
+        return;
+      }
+      void startImplementationQuickRun({
+        selectedCodeTaskIds: selectionView.selectedCodeTaskIds,
+      });
       return;
     }
 
@@ -7911,6 +7963,7 @@ export function PrototypePreviewPanel({
     executeImplementationStageAction,
     implementationStageBoardGateContext,
     startImplementationQuickRun,
+    runIntegrationPipeline,
   ]);
 
   const implementationInterviewUi = useMemo(() => {

@@ -201,21 +201,33 @@ export function summarizeCodeTaskBoardRowsFromTreeNodes(input: {
   readonly runnableCount: number;
   readonly selectedCount: number;
   readonly selectedRunnableCount: number;
+  readonly selectedRunnableCodeTaskIds: readonly string[];
   readonly integrationReadyCount: number;
+  readonly integrationReadyCodeTaskIds: readonly string[];
   readonly incompleteCount: number;
 }> {
   const selectedSet = new Set((input.selectedCodeTaskIds ?? []).map((id) => id.trim()).filter(Boolean));
   const runnableCount = input.nodes.filter((n) => n.boardState.isRunnableForUser).length;
-  const integrationReadyCount = input.nodes.filter((n) => n.boardState.isIntegrationReady).length;
+  const integrationReadyNodes = input.nodes.filter((n) => n.boardState.isIntegrationReady);
+  const integrationReadyCount = integrationReadyNodes.length;
+  const integrationReadyCodeTaskIds = integrationReadyNodes
+    .map((n) => n.codeTaskId.trim())
+    .filter(Boolean);
   const selected = input.nodes.filter((n) => selectedSet.has(n.codeTaskId.trim()));
-  const selectedRunnableCount = selected.filter((n) => n.boardState.isRunnableForUser).length;
+  const selectedRunnableNodes = selected.filter((n) => n.boardState.isRunnableForUser);
+  const selectedRunnableCount = selectedRunnableNodes.length;
+  const selectedRunnableCodeTaskIds = selectedRunnableNodes
+    .map((n) => n.codeTaskId.trim())
+    .filter(Boolean);
 
   const summary = {
     totalCount: input.nodes.length,
     runnableCount,
     selectedCount: selected.length,
     selectedRunnableCount,
+    selectedRunnableCodeTaskIds,
     integrationReadyCount,
+    integrationReadyCodeTaskIds,
     incompleteCount: Math.max(0, input.nodes.length - integrationReadyCount),
   };
 
@@ -225,6 +237,7 @@ export function summarizeCodeTaskBoardRowsFromTreeNodes(input: {
       totalCount: summary.totalCount,
       runnableCount: summary.runnableCount,
       selectedRunnableCount: summary.selectedRunnableCount,
+      selectedRunnableCodeTaskIds: summary.selectedRunnableCodeTaskIds,
       integrationReadyCount: summary.integrationReadyCount,
     }),
   );
