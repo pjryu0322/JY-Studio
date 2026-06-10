@@ -69,14 +69,12 @@ import {
   resolveCodeTaskTreeSelectionToggle,
   resolveParentTaskIdForCodeTask,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
+import { INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE } from "@/lib/prototype/implementationRunnableCodeTaskSelection";
 import {
-  INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE,
-  resolveCodeTaskDisplayLabelsForUserSelection,
-} from "@/lib/prototype/implementationRunnableCodeTaskSelection";
-import {
-  logCodeTaskSelectionSummaryResolved,
-  summarizeImplementationCodeTasksForUserAction,
-} from "@/lib/prototype/implementationCodeTaskSelectionSummary";
+  listRunnableCodeTaskIdsFromBoardNodes,
+  summarizeCodeTaskBoardRowsFromTreeNodes,
+} from "@/lib/prototype/implementationCodeTaskBoardState";
+import { logCodeTaskSelectionSummaryResolved } from "@/lib/prototype/implementationCodeTaskSelectionSummary";
 import { resolveImplementationBoardPrimaryAction } from "@/lib/prototype/implementationActionButtonPolicy";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
@@ -552,63 +550,23 @@ export function ImplementationExecutionBoardPanel({
     ],
   );
 
-  const taskTreeProgressByCodeTaskId = useMemo(() => {
-    const map = new Map<string, { statusLabel: string; progressLabel: string }>();
-    for (const unit of runtimeSnapshot.units) {
-      map.set(unit.codeTaskId, {
-        statusLabel: unit.statusLabel,
-        progressLabel: unit.progressLabel,
-      });
-    }
-    for (const unit of codeTaskSummaryCounts.executionUnits) {
-      const id = unit.codeTaskId.trim();
-      if (!id || map.has(id)) continue;
-      const labels = resolveCodeTaskDisplayLabelsForUserSelection({
-        codeTaskId: id,
-        unit,
-        runs: codeTaskRuns,
-      });
-      map.set(id, labels);
-    }
-    return map;
-  }, [runtimeSnapshot.units, codeTaskSummaryCounts.executionUnits, codeTaskRuns]);
-
-  const taskTreeSelectionContext = useMemo(
-    () => ({
-      units: codeTaskSummaryCounts.executionUnits,
-      runs: codeTaskRuns,
-      progressByCodeTaskId: taskTreeProgressByCodeTaskId,
-    }),
-    [
-      codeTaskSummaryCounts.executionUnits,
-      codeTaskRuns,
-      taskTreeProgressByCodeTaskId,
-    ],
-  );
-
   const visibleCodeTaskIds = useMemo(
     () => taskTreeNodes.map((node) => node.codeTaskId),
     [taskTreeNodes],
   );
 
+  const runnableCodeTaskIdsFromBoard = useMemo(
+    () => listRunnableCodeTaskIdsFromBoardNodes(taskTreeNodes),
+    [taskTreeNodes],
+  );
+
   const codeTaskSelectionSummary = useMemo(
     () =>
-      summarizeImplementationCodeTasksForUserAction({
-        codeTasks: implementationCodeTaskPlanV1?.tasks ?? [],
+      summarizeCodeTaskBoardRowsFromTreeNodes({
+        nodes: taskTreeNodes,
         selectedCodeTaskIds: checkedCodeTaskIds,
-        units: codeTaskSummaryCounts.executionUnits,
-        runs: codeTaskRuns,
-        progressByCodeTaskId: taskTreeProgressByCodeTaskId,
-        visibleCodeTaskIds,
       }),
-    [
-      implementationCodeTaskPlanV1,
-      checkedCodeTaskIds,
-      codeTaskSummaryCounts.executionUnits,
-      codeTaskRuns,
-      taskTreeProgressByCodeTaskId,
-      visibleCodeTaskIds,
-    ],
+    [taskTreeNodes, checkedCodeTaskIds],
   );
 
   useEffect(() => {
@@ -624,9 +582,9 @@ export function ImplementationExecutionBoardPanel({
         selectedCodeTaskIds: checkedCodeTaskIds,
         codeTaskPlan: implementationCodeTaskPlanV1,
         visibleCodeTaskIds,
-        ...taskTreeSelectionContext,
+        runnableCodeTaskIds: runnableCodeTaskIdsFromBoard,
       }),
-    [checkedCodeTaskIds, implementationCodeTaskPlanV1, visibleCodeTaskIds, taskTreeSelectionContext],
+    [checkedCodeTaskIds, implementationCodeTaskPlanV1, visibleCodeTaskIds, runnableCodeTaskIdsFromBoard],
   );
 
   const integratedPipelineLines = useMemo(
@@ -765,19 +723,16 @@ export function ImplementationExecutionBoardPanel({
       resolveImplementationBoardPrimaryAction({
         selectedCodeTaskIds: checkedCodeTaskIds,
         codeTasks: implementationCodeTaskPlanV1?.tasks ?? [],
-        units: codeTaskSummaryCounts.executionUnits,
-        runs: codeTaskRuns,
-        progressByCodeTaskId: taskTreeProgressByCodeTaskId,
-        visibleCodeTaskIds,
+        userActionSummary: codeTaskSelectionSummary,
+        runnableCodeTaskIds: runnableCodeTaskIdsFromBoard,
         integratedAppPreviewReady: integrationSection.integratedAppPreviewReady,
         integrationPrepareEnabled: integrationButtonState.enabled,
       }),
     [
       checkedCodeTaskIds,
       implementationCodeTaskPlanV1,
-      codeTaskSummaryCounts.executionUnits,
-      codeTaskRuns,
-      taskTreeProgressByCodeTaskId,
+      codeTaskSelectionSummary,
+      runnableCodeTaskIdsFromBoard,
       integrationSection.integratedAppPreviewReady,
       integrationButtonState.enabled,
     ],
@@ -1027,7 +982,7 @@ export function ImplementationExecutionBoardPanel({
                 checked,
                 selectedCodeTaskIds: displaySelectedCodeTaskIds,
                 codeTaskPlan: implementationCodeTaskPlanV1,
-                ...taskTreeSelectionContext,
+                runnableCodeTaskIds: runnableCodeTaskIdsFromBoard,
               }),
             );
           }}
@@ -1037,7 +992,7 @@ export function ImplementationExecutionBoardPanel({
                 selectAll: checked,
                 codeTaskPlan: implementationCodeTaskPlanV1,
                 visibleCodeTaskIds,
-                ...taskTreeSelectionContext,
+                runnableCodeTaskIds: runnableCodeTaskIdsFromBoard,
               }),
             );
           }}

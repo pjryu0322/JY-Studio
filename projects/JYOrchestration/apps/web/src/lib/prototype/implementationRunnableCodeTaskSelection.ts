@@ -317,4 +317,4 @@ export function evaluateSelectedRunnableCodeTasksGate(input: {
 }
 
 export const INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE =
-  "실행 가능한 미완료 작업이 있습니다.\n먼저 선택 작업 실행을 완료한 뒤 통합 및 Preview 준비를 진행해 주세요." as const;
+  "실행 가능한 미완료 작업이 있습니다. 먼저 선택 작업 실행을 완료해 주세요." as const;

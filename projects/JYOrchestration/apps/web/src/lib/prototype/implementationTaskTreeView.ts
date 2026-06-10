@@ -49,10 +49,9 @@ import {
   formatExecutionUnitVerificationCardLabels,
   resolveExecutionUnitVerificationDisplayStatus,
 } from "@/lib/prototype/implementationExecutionUnitVerification";
-import {
-  resolveCodeTaskDisplayLabelsForUserSelection,
-  resolveUserRunnableCodeTaskSelectionState,
-} from "@/lib/prototype/implementationRunnableCodeTaskSelection";
+import { resolveCodeTaskBoardState, type ImplementationCodeTaskBoardStateV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
+import { resolveCodeTaskDisplayLabelsForUserSelection } from "@/lib/prototype/implementationRunnableCodeTaskSelection";
+import { resolveAuthoritativeCodeTaskOutcome } from "@/lib/prototype/implementationCodeTaskOutcomeResolver";
 
 export type ImplementationTaskTreeMetaLine = Readonly<{
   readonly label: string;
@@ -69,8 +68,10 @@ export type ImplementationCodeTaskTreeNode = Readonly<{
   readonly isActive: boolean;
   readonly isSelected: boolean;
   readonly isChecked: boolean;
+  readonly boardState: ImplementationCodeTaskBoardStateV1;
   readonly checkboxDisabled?: boolean;
   readonly checkboxDisabledTitle?: string | null;
+  readonly checkboxDisabledReason?: string | null;
   readonly failureReason?: string;
   readonly nextActionHint?: string;
   readonly retryFailedActionLabel?: string;
@@ -320,6 +321,17 @@ function buildCodeTaskNode(input: {
     progressLabel = githubVerifyView.progressLabel;
   }
 
+  const labelsForSelection = resolveCodeTaskDisplayLabelsForUserSelection({
+    codeTaskId: input.codeTask.codeTaskId,
+    progressByCodeTaskId: undefined,
+    unit: input.executionUnit ?? null,
+    runs: input.codeTaskExecutionRuns,
+  });
+  statusLabel =
+    input.runtimeSnapshotUnit?.statusLabel ?? labelsForSelection.statusLabel ?? statusLabel;
+  progressLabel =
+    input.runtimeSnapshotUnit?.progressLabel ?? labelsForSelection.progressLabel ?? progressLabel;
+
   const metaLines: ImplementationTaskTreeMetaLine[] = [
     formatMetaLine("상태", statusLabel),
     formatMetaLine("진행", progressLabel),
@@ -367,21 +379,41 @@ function buildCodeTaskNode(input: {
     failureReason = "작업이 완료되지 않았습니다.";
   }
 
-  const labelsForSelection = resolveCodeTaskDisplayLabelsForUserSelection({
+  const unitOutcome = input.executionUnit
+    ? resolveAuthoritativeCodeTaskOutcome({
+        unit: input.executionUnit,
+        runs: input.codeTaskExecutionRuns,
+      })
+    : null;
+  const githubOutcomeSaved =
+    input.runtimeSnapshotUnit?.hasPersistedGithubOutcome === true ||
+    unitOutcome?.hasPersistedGithubOutcome === true ||
+    unitOutcome?.status === "skipped";
+
+  const boardState = resolveCodeTaskBoardState({
     codeTaskId: input.codeTask.codeTaskId,
-    progressByCodeTaskId: undefined,
-    unit: input.executionUnit ?? null,
-    runs: input.codeTaskExecutionRuns,
+    title,
+    statusLabel,
+    progressLabel,
+    githubOutcomeSaved,
+    commitSha: input.runtimeSnapshotUnit?.latestCommitSha ?? unitOutcome?.commitSha ?? null,
+    branchName: input.executionUnit?.workBranch ?? input.codeTask.branchPlan?.workBranch ?? null,
+    isChecked: input.isChecked,
   });
-  const selectionEligibility = resolveUserRunnableCodeTaskSelectionState({
-    codeTask: input.codeTask,
-    unit: input.executionUnit ?? null,
-    runs: input.codeTaskExecutionRuns,
-    statusLabel: input.runtimeSnapshotUnit?.statusLabel ?? labelsForSelection.statusLabel ?? statusLabel,
-    progressLabel: input.runtimeSnapshotUnit?.progressLabel ?? labelsForSelection.progressLabel ?? progressLabel,
-  });
-  const checkboxDisabled = !selectionEligibility.selectable && !input.isChecked;
-  const checkboxDisabledTitle = checkboxDisabled ? selectionEligibility.userMessage : null;
+
+  const checkboxDisabled = boardState.checkboxDisabled;
+  const checkboxDisabledTitle = boardState.checkboxDisabledReason;
+  const checkboxDisabledReason = boardState.checkboxDisabledReason;
+
+  console.info(
+    JSON.stringify({
+      action: "codetask_checkbox_state_resolved",
+      codeTaskId: boardState.codeTaskId,
+      isRunnableForUser: boardState.isRunnableForUser,
+      checkboxDisabled,
+      checkboxDisabledReason,
+    }),
+  );
 
   return {
     codeTaskId: input.codeTask.codeTaskId,
@@ -393,8 +425,10 @@ function buildCodeTaskNode(input: {
     isActive: input.isActive,
     isSelected: input.isSelected,
     isChecked: input.isChecked,
+    boardState,
     checkboxDisabled,
     checkboxDisabledTitle,
+    checkboxDisabledReason,
     ...(failureReason ? { failureReason } : {}),
     ...(showRetryFailedAction ? { showRetryFailedAction, retryFailedActionLabel } : {}),
     ...(githubVerifyView?.stateSyncFailed

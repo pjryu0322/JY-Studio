@@ -1,9 +1,11 @@
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+import type { ImplementationCodeTaskUserActionSummaryV1 } from "@/lib/prototype/implementationCodeTaskSelectionSummary";
 import {
   summarizeImplementationCodeTasksForUserAction,
 } from "@/lib/prototype/implementationCodeTaskSelectionSummary";
+import { evaluateSelectedRunnableCodeTasksGateFromBoard } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { evaluateSelectedRunnableCodeTasksGate } from "@/lib/prototype/implementationRunnableCodeTaskSelection";
 
 export type ImplementationBoardPrimaryActionKindV1 =
@@ -31,23 +33,33 @@ export function resolveImplementationBoardPrimaryAction(input: {
   readonly visibleCodeTaskIds?: readonly string[] | null;
   readonly integratedAppPreviewReady?: boolean;
   readonly integrationPrepareEnabled?: boolean;
+  readonly userActionSummary?: ImplementationCodeTaskUserActionSummaryV1;
+  readonly runnableCodeTaskIds?: readonly string[] | null;
 }): ImplementationBoardPrimaryActionStateV1 {
-  const summary = summarizeImplementationCodeTasksForUserAction({
-    codeTasks: input.codeTasks,
-    selectedCodeTaskIds: input.selectedCodeTaskIds,
-    units: input.units,
-    runs: input.runs,
-    progressByCodeTaskId: input.progressByCodeTaskId,
-    visibleCodeTaskIds: input.visibleCodeTaskIds,
-  });
+  const summary =
+    input.userActionSummary ??
+    summarizeImplementationCodeTasksForUserAction({
+      codeTasks: input.codeTasks,
+      selectedCodeTaskIds: input.selectedCodeTaskIds,
+      units: input.units,
+      runs: input.runs,
+      progressByCodeTaskId: input.progressByCodeTaskId,
+      visibleCodeTaskIds: input.visibleCodeTaskIds,
+    });
 
-  const executionGate = evaluateSelectedRunnableCodeTasksGate({
-    selectedCodeTaskIds: input.selectedCodeTaskIds,
-    codeTasks: input.codeTasks,
-    units: input.units,
-    runs: input.runs,
-    progressByCodeTaskId: input.progressByCodeTaskId,
-  });
+  const executionGate =
+    input.runnableCodeTaskIds != null
+      ? evaluateSelectedRunnableCodeTasksGateFromBoard({
+          selectedCodeTaskIds: input.selectedCodeTaskIds,
+          runnableCodeTaskIds: input.runnableCodeTaskIds,
+        })
+      : evaluateSelectedRunnableCodeTasksGate({
+          selectedCodeTaskIds: input.selectedCodeTaskIds,
+          codeTasks: input.codeTasks,
+          units: input.units,
+          runs: input.runs,
+          progressByCodeTaskId: input.progressByCodeTaskId,
+        });
 
   let primaryAction: ImplementationBoardPrimaryActionKindV1 = null;
   let primaryLabel: string | null = null;
