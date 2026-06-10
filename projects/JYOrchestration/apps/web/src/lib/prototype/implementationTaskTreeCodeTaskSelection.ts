@@ -15,11 +15,10 @@ import { listVisibleImplementationCodeTaskIds } from "@/lib/prototype/implementa
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
 import {
-  DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
-  listSelectableCodeTaskIdsForMode,
-  getCodeTaskSelectionEligibility,
-  type CodeTaskSelectionModeV1,
-} from "@/lib/prototype/implementationCodeTaskSelectionPolicy";
+  listUserSelectableRunnableCodeTaskIds,
+  resolveCodeTaskDisplayLabelsForUserSelection,
+  resolveUserRunnableCodeTaskSelectionState,
+} from "@/lib/prototype/implementationRunnableCodeTaskSelection";
 
 /** implementationCodeTaskPlanV1.tasks 문서 순서(트리/기획 순). Quick Run Job SoT. */
 export function sortCodeTaskIdsByImplementationPlanOrder(
@@ -209,7 +208,6 @@ export function resolveCodeTaskTreeSelectionToggle(input: {
   readonly checked: boolean;
   readonly selectedCodeTaskIds: readonly string[];
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
-  readonly mode?: CodeTaskSelectionModeV1;
   readonly units?: readonly ImplementationExecutionUnitV1[] | null;
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
   readonly progressByCodeTaskId?: ReadonlyMap<string, { readonly statusLabel: string; readonly progressLabel: string }>;
@@ -218,19 +216,21 @@ export function resolveCodeTaskTreeSelectionToggle(input: {
   const codeTasks = input.codeTaskPlan?.tasks ?? [];
   const codeTask = codeTasks.find((t) => t.codeTaskId.trim() === codeTaskId);
   if (input.checked && codeTask) {
-    const labels = input.progressByCodeTaskId?.get(codeTaskId);
     const unitById = new Map((input.units ?? []).map((u) => [u.codeTaskId, u] as const));
-    const eligibility = getCodeTaskSelectionEligibility({
-      mode: input.mode ?? DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
-      context: {
-        codeTask,
-        unit: unitById.get(codeTaskId) ?? null,
-        runs: input.runs,
-        statusLabel: labels?.statusLabel,
-        progressLabel: labels?.progressLabel,
-      },
+    const labels = resolveCodeTaskDisplayLabelsForUserSelection({
+      codeTaskId,
+      progressByCodeTaskId: input.progressByCodeTaskId,
+      unit: unitById.get(codeTaskId) ?? null,
+      runs: input.runs,
     });
-    if (!eligibility.selectable) {
+    const state = resolveUserRunnableCodeTaskSelectionState({
+      codeTask,
+      unit: unitById.get(codeTaskId) ?? null,
+      runs: input.runs,
+      statusLabel: labels.statusLabel,
+      progressLabel: labels.progressLabel,
+    });
+    if (!state.selectable) {
       return normalizeSelectedCodeTaskIds({
         selectedCodeTaskIds: input.selectedCodeTaskIds,
         codeTaskPlan: input.codeTaskPlan,
@@ -245,19 +245,13 @@ export function resolveCodeTaskTreeSelectionToggle(input: {
   );
   if (input.checked) current.add(codeTaskId);
   else current.delete(codeTaskId);
-  const merged = ensureSampleDataCodeTaskIncludedInSelection({
-    selectedCodeTaskIds: [...current],
-    codeTaskPlan: input.codeTaskPlan,
-  });
-  return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, merged);
+  return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, [...current]);
 }
 
 export function resolveCodeTaskTreeSelectAll(input: {
   readonly selectAll: boolean;
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
-  /** Tree-visible CodeTask ids — when set, must match task tree nodes (not only listVisible). */
   readonly visibleCodeTaskIds?: readonly string[] | null;
-  readonly mode?: CodeTaskSelectionModeV1;
   readonly units?: readonly ImplementationExecutionUnitV1[] | null;
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
   readonly progressByCodeTaskId?: ReadonlyMap<string, { readonly statusLabel: string; readonly progressLabel: string }>;
@@ -266,17 +260,13 @@ export function resolveCodeTaskTreeSelectAll(input: {
   const visible =
     input.visibleCodeTaskIds?.map((id) => id.trim()).filter(Boolean) ??
     listVisibleImplementationCodeTaskIds(input.codeTaskPlan);
-  const mode = input.mode ?? DEFAULT_CODE_TASK_TREE_SELECTION_MODE;
-  const codeTasks = input.codeTaskPlan?.tasks ?? [];
-  const selectable = listSelectableCodeTaskIdsForMode({
-    mode,
-    codeTasks,
+  const ids = listUserSelectableRunnableCodeTaskIds({
+    codeTasks: input.codeTaskPlan?.tasks ?? [],
     units: input.units,
     runs: input.runs,
     progressByCodeTaskId: input.progressByCodeTaskId,
+    visibleCodeTaskIds: visible,
   });
-  const visibleSet = new Set(visible);
-  const ids = selectable.filter((id) => visibleSet.has(id));
   return sortCodeTaskIdsByImplementationPlanOrder(input.codeTaskPlan, ids);
 }
 
@@ -284,7 +274,6 @@ export function isCodeTaskTreeFullySelected(input: {
   readonly selectedCodeTaskIds: readonly string[];
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
   readonly visibleCodeTaskIds?: readonly string[] | null;
-  readonly mode?: CodeTaskSelectionModeV1;
   readonly units?: readonly ImplementationExecutionUnitV1[] | null;
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
   readonly progressByCodeTaskId?: ReadonlyMap<string, { readonly statusLabel: string; readonly progressLabel: string }>;
@@ -293,15 +282,13 @@ export function isCodeTaskTreeFullySelected(input: {
     input.visibleCodeTaskIds?.map((id) => id.trim()).filter(Boolean) ??
     listVisibleImplementationCodeTaskIds(input.codeTaskPlan);
   if (!visible.length) return false;
-  const mode = input.mode ?? DEFAULT_CODE_TASK_TREE_SELECTION_MODE;
-  const codeTasks = input.codeTaskPlan?.tasks ?? [];
-  const selectable = listSelectableCodeTaskIdsForMode({
-    mode,
-    codeTasks,
+  const selectable = listUserSelectableRunnableCodeTaskIds({
+    codeTasks: input.codeTaskPlan?.tasks ?? [],
     units: input.units,
     runs: input.runs,
     progressByCodeTaskId: input.progressByCodeTaskId,
-  }).filter((id) => visible.includes(id));
+    visibleCodeTaskIds: visible,
+  });
   if (!selectable.length) return false;
   const selected = new Set(
     normalizeSelectedCodeTaskIds({
@@ -315,7 +302,6 @@ export function isCodeTaskTreeFullySelected(input: {
 export function countSelectableCodeTasksForTreeMode(input: {
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null | undefined;
   readonly visibleCodeTaskIds?: readonly string[] | null;
-  readonly mode?: CodeTaskSelectionModeV1;
   readonly units?: readonly ImplementationExecutionUnitV1[] | null;
   readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
   readonly progressByCodeTaskId?: ReadonlyMap<string, { readonly statusLabel: string; readonly progressLabel: string }>;
@@ -323,15 +309,13 @@ export function countSelectableCodeTasksForTreeMode(input: {
   const visible =
     input.visibleCodeTaskIds?.map((id) => id.trim()).filter(Boolean) ??
     listVisibleImplementationCodeTaskIds(input.codeTaskPlan);
-  const visibleSet = new Set(visible);
-  const mode = input.mode ?? DEFAULT_CODE_TASK_TREE_SELECTION_MODE;
-  return listSelectableCodeTaskIdsForMode({
-    mode,
+  return listUserSelectableRunnableCodeTaskIds({
     codeTasks: input.codeTaskPlan?.tasks ?? [],
     units: input.units,
     runs: input.runs,
     progressByCodeTaskId: input.progressByCodeTaskId,
-  }).filter((id) => visibleSet.has(id)).length;
+    visibleCodeTaskIds: visible,
+  }).length;
 }
 
 export function isProcessTaskCodeTasksFullySelected(input: {

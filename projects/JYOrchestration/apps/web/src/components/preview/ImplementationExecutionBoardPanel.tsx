@@ -70,13 +70,12 @@ import {
   resolveParentTaskIdForCodeTask,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import {
-  DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
-  evaluateIntegrationBoardSelectionGate,
-  logCodeTaskSelectionModeResolved,
-} from "@/lib/prototype/implementationCodeTaskSelectionPolicy";
+  INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE,
+  resolveCodeTaskDisplayLabelsForUserSelection,
+} from "@/lib/prototype/implementationRunnableCodeTaskSelection";
 import {
   logCodeTaskSelectionSummaryResolved,
-  summarizeSelectableCodeTasks,
+  summarizeImplementationCodeTasksForUserAction,
 } from "@/lib/prototype/implementationCodeTaskSelectionSummary";
 import { resolveImplementationBoardPrimaryAction } from "@/lib/prototype/implementationActionButtonPolicy";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
@@ -561,12 +560,21 @@ export function ImplementationExecutionBoardPanel({
         progressLabel: unit.progressLabel,
       });
     }
+    for (const unit of codeTaskSummaryCounts.executionUnits) {
+      const id = unit.codeTaskId.trim();
+      if (!id || map.has(id)) continue;
+      const labels = resolveCodeTaskDisplayLabelsForUserSelection({
+        codeTaskId: id,
+        unit,
+        runs: codeTaskRuns,
+      });
+      map.set(id, labels);
+    }
     return map;
-  }, [runtimeSnapshot.units]);
+  }, [runtimeSnapshot.units, codeTaskSummaryCounts.executionUnits, codeTaskRuns]);
 
   const taskTreeSelectionContext = useMemo(
     () => ({
-      mode: DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
       units: codeTaskSummaryCounts.executionUnits,
       runs: codeTaskRuns,
       progressByCodeTaskId: taskTreeProgressByCodeTaskId,
@@ -585,10 +593,9 @@ export function ImplementationExecutionBoardPanel({
 
   const codeTaskSelectionSummary = useMemo(
     () =>
-      summarizeSelectableCodeTasks({
+      summarizeImplementationCodeTasksForUserAction({
         codeTasks: implementationCodeTaskPlanV1?.tasks ?? [],
         selectedCodeTaskIds: checkedCodeTaskIds,
-        mode: DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
         units: codeTaskSummaryCounts.executionUnits,
         runs: codeTaskRuns,
         progressByCodeTaskId: taskTreeProgressByCodeTaskId,
@@ -605,11 +612,6 @@ export function ImplementationExecutionBoardPanel({
   );
 
   useEffect(() => {
-    logCodeTaskSelectionModeResolved({
-      projectId: projectId ?? board.projectId,
-      mode: DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
-      selectableCount: codeTaskSelectionSummary.selectableCount,
-    });
     logCodeTaskSelectionSummaryResolved({
       projectId: projectId ?? board.projectId,
       summary: codeTaskSelectionSummary,
@@ -725,12 +727,10 @@ export function ImplementationExecutionBoardPanel({
         latestPipelineStatus: integrationPipelineStatus,
         projectId: projectId ?? board.projectId,
       });
-      const integrationSelectionGate = evaluateIntegrationBoardSelectionGate({
-        selectedCodeTaskIds: checkedCodeTaskIds,
-        codeTasks: implementationCodeTaskPlanV1?.tasks ?? [],
-        units: codeTaskSummaryCounts.executionUnits,
-        runs: codeTaskRuns,
-      });
+      const integrationSelectionGate =
+        codeTaskSelectionSummary.runnableCount > 0
+          ? { ok: false as const, message: INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE }
+          : { ok: true as const, message: null as string | null };
       if (!integrationSelectionGate.ok && fromSnapshot.show) {
         return {
           ...fromSnapshot,
@@ -768,6 +768,7 @@ export function ImplementationExecutionBoardPanel({
         units: codeTaskSummaryCounts.executionUnits,
         runs: codeTaskRuns,
         progressByCodeTaskId: taskTreeProgressByCodeTaskId,
+        visibleCodeTaskIds,
         integratedAppPreviewReady: integrationSection.integratedAppPreviewReady,
         integrationPrepareEnabled: integrationButtonState.enabled,
       }),
@@ -783,7 +784,9 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const showIntegrationButton =
-    integrationButtonState.show && boardPrimaryAction.showIntegrationPrepareButton;
+    integrationButtonState.show &&
+    boardPrimaryAction.showIntegrationPrepareButton &&
+    codeTaskSelectionSummary.runnableCount === 0;
   const integrationButtonEnabled = integrationButtonState.enabled;
 
   const previewButtonState = useMemo(
@@ -1048,9 +1051,7 @@ export function ImplementationExecutionBoardPanel({
         />
       </section>
 
-      {(boardPrimaryAction.showExecuteSelectedButton ||
-        boardPrimaryAction.showReworkSelectedButton) &&
-      (onExecuteSelectedCodeTasks || onReworkSelectedCodeTasks) ? (
+      {boardPrimaryAction.showExecuteSelectedButton && onExecuteSelectedCodeTasks ? (
         <section
           className={styles.taskTreeSection}
           data-testid="implementation-execution-primary-action-section"

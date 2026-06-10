@@ -50,9 +50,9 @@ import {
   resolveExecutionUnitVerificationDisplayStatus,
 } from "@/lib/prototype/implementationExecutionUnitVerification";
 import {
-  DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
-  getCodeTaskSelectionEligibility,
-} from "@/lib/prototype/implementationCodeTaskSelectionPolicy";
+  resolveCodeTaskDisplayLabelsForUserSelection,
+  resolveUserRunnableCodeTaskSelectionState,
+} from "@/lib/prototype/implementationRunnableCodeTaskSelection";
 
 export type ImplementationTaskTreeMetaLine = Readonly<{
   readonly label: string;
@@ -367,16 +367,18 @@ function buildCodeTaskNode(input: {
     failureReason = "작업이 완료되지 않았습니다.";
   }
 
-  const selectionEligibility = getCodeTaskSelectionEligibility({
-    mode: DEFAULT_CODE_TASK_TREE_SELECTION_MODE,
-    quiet: true,
-    context: {
-      codeTask: input.codeTask,
-      unit: input.executionUnit ?? null,
-      runs: input.codeTaskExecutionRuns,
-      statusLabel: input.runtimeSnapshotUnit?.statusLabel ?? statusLabel,
-      progressLabel: input.runtimeSnapshotUnit?.progressLabel ?? progressLabel,
-    },
+  const labelsForSelection = resolveCodeTaskDisplayLabelsForUserSelection({
+    codeTaskId: input.codeTask.codeTaskId,
+    progressByCodeTaskId: undefined,
+    unit: input.executionUnit ?? null,
+    runs: input.codeTaskExecutionRuns,
+  });
+  const selectionEligibility = resolveUserRunnableCodeTaskSelectionState({
+    codeTask: input.codeTask,
+    unit: input.executionUnit ?? null,
+    runs: input.codeTaskExecutionRuns,
+    statusLabel: input.runtimeSnapshotUnit?.statusLabel ?? labelsForSelection.statusLabel ?? statusLabel,
+    progressLabel: input.runtimeSnapshotUnit?.progressLabel ?? labelsForSelection.progressLabel ?? progressLabel,
   });
   const checkboxDisabled = !selectionEligibility.selectable && !input.isChecked;
   const checkboxDisabledTitle = checkboxDisabled ? selectionEligibility.userMessage : null;

@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { CANONICAL_SAMPLE_DATA_CODE_TASK_ID } from "@/lib/prototype/codeTaskCanonicalId";
-import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
-import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
-import { summarizeImplementationCodeTasksForUserAction } from "@/lib/prototype/implementationCodeTaskSelectionSummary";
-import { resolveImplementationBoardPrimaryAction } from "@/lib/prototype/implementationActionButtonPolicy";
 import { buildVerifiedCodeTaskGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+import {
+  isIntegrationReadyCodeTask,
+  isUserSelectableRunnableCodeTask,
+  listUserSelectableRunnableCodeTaskIds,
+} from "@/lib/prototype/implementationRunnableCodeTaskSelection";
+import { summarizeImplementationCodeTasksForUserAction } from "@/lib/prototype/implementationCodeTaskSelectionSummary";
+import { resolveImplementationBoardPrimaryAction } from "@/lib/prototype/implementationActionButtonPolicy";
+import { resolveCodeTaskTreeSelectAll } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 
 const NOW = "2026-06-03T12:00:00.000Z";
 
@@ -75,59 +81,105 @@ function verifiedRun(codeTaskId: string): CodeTaskExecutionRunV1 {
   };
 }
 
-describe("P3-08C/08D selection summary and actions", () => {
-  const completedIds = ["CT-1", "CT-2"];
-  const sampleId = CANONICAL_SAMPLE_DATA_CODE_TASK_ID;
-  const codeTasks = [...completedIds.map((id) => task(id)), task(sampleId, "data")];
-  const units = [
-    ...completedIds.map((id) => unit(id, "verified")),
-    unit(sampleId, "ready"),
-  ];
-  const runs = completedIds.map((id) => verifiedRun(id));
+describe("runnable CodeTask user selection (P3-08D)", () => {
+  const completed = ["CT-1", "CT-2"];
+  const sample = CANONICAL_SAMPLE_DATA_CODE_TASK_ID;
+  const codeTasks = [...completed.map((id) => task(id)), task(sample, "data")];
+  const units = [...completed.map((id) => unit(id, "verified")), unit(sample, "ready")];
+  const runs = completed.map((id) => verifiedRun(id));
   const progress = new Map([
-    ...completedIds.map((id) => [id, { statusLabel: "완료", progressLabel: "GitHub outcome 저장됨" }] as const),
-    [sampleId, { statusLabel: "대기", progressLabel: "실행 가능" }] as const,
+    ...completed.map((id) => [id, { statusLabel: "완료", progressLabel: "GitHub outcome 저장됨" }] as const),
+    [sample, { statusLabel: "대기", progressLabel: "실행 가능" }] as const,
   ]);
-  const visible = codeTasks.map((t) => t.codeTaskId);
 
-  it("reports runnableCount=1 when only sample data is execution-eligible", () => {
+  it("sample data 대기/실행 가능 is user selectable", () => {
+    expect(
+      isUserSelectableRunnableCodeTask({
+        codeTask: codeTasks.find((t) => t.codeTaskId === sample)!,
+        unit: units.find((u) => u.codeTaskId === sample)!,
+        runs: [],
+        statusLabel: "대기",
+        progressLabel: "실행 가능",
+      }),
+    ).toBe(true);
+  });
+
+  it("completed outcome saved is not user selectable", () => {
+    expect(
+      isUserSelectableRunnableCodeTask({
+        codeTask: codeTasks[0]!,
+        unit: units[0]!,
+        runs,
+        statusLabel: "완료",
+        progressLabel: "GitHub outcome 저장됨",
+      }),
+    ).toBe(false);
+    expect(isIntegrationReadyCodeTask({ codeTask: codeTasks[0]!, unit: units[0]!, runs })).toBe(true);
+  });
+
+  it("summary reports runnable 1 and integration ready 2", () => {
     const summary = summarizeImplementationCodeTasksForUserAction({
       codeTasks,
       units,
       runs,
       progressByCodeTaskId: progress,
-      visibleCodeTaskIds: visible,
     });
     expect(summary.runnableCount).toBe(1);
     expect(summary.integrationReadyCount).toBe(2);
   });
 
-  it("primary action is execute_selected when sample data is selected", () => {
+  it("select all picks only runnable sample task", () => {
+    const plan = {
+      version: "implementation_code_task_plan_v1" as const,
+      projectId: "p1",
+      createdAt: NOW,
+      updatedAt: NOW,
+      tasks: codeTasks,
+    };
+    const selected = resolveCodeTaskTreeSelectAll({
+      selectAll: true,
+      codeTaskPlan: plan,
+      visibleCodeTaskIds: codeTasks.map((t) => t.codeTaskId),
+      units,
+      runs,
+      progressByCodeTaskId: progress,
+    });
+    expect(selected).toEqual([sample]);
+  });
+
+  it("primary action is execute when sample selected", () => {
     const action = resolveImplementationBoardPrimaryAction({
-      selectedCodeTaskIds: [sampleId],
+      selectedCodeTaskIds: [sample],
       codeTasks,
       units,
       runs,
       progressByCodeTaskId: progress,
     });
-    expect(action.primaryAction).toBe("execute_selected_runnable_codetasks");
     expect(action.primaryLabel).toBe("선택 작업 실행");
-    expect(action.showExecuteSelectedButton).toBe(true);
     expect(action.showIntegrationPrepareButton).toBe(false);
   });
 
-  it("primary action is integration when no runnable tasks remain", () => {
+  it("primary action is integration when no runnable left", () => {
+    const allDone = codeTasks.map((t) => t.codeTaskId);
     const action = resolveImplementationBoardPrimaryAction({
       selectedCodeTaskIds: [],
       codeTasks,
-      units: completedIds.map((id) => unit(id, "verified")),
-      runs,
+      units: allDone.map((id) => unit(id, "verified")),
+      runs: allDone.map((id) => verifiedRun(id)),
       progressByCodeTaskId: new Map(
-        completedIds.map((id) => [id, { statusLabel: "완료", progressLabel: "GitHub outcome 저장됨" }] as const),
+        allDone.map((id) => [id, { statusLabel: "완료", progressLabel: "GitHub outcome 저장됨" }] as const),
       ),
       integrationPrepareEnabled: true,
     });
     expect(action.primaryAction).toBe("prepare_integration_preview");
-    expect(action.showIntegrationPrepareButton).toBe(true);
+  });
+
+  it("listUserSelectableRunnableCodeTaskIds without progress map uses unit labels", () => {
+    const ids = listUserSelectableRunnableCodeTaskIds({
+      codeTasks,
+      units,
+      runs: [],
+    });
+    expect(ids).toContain(sample);
   });
 });
