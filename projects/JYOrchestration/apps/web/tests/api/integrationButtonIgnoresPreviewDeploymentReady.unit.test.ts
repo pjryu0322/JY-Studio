@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
 
-function readySnapshot(): ImplementationRuntimeSnapshotV1 {
+function minimalReadySnapshot(): ImplementationRuntimeSnapshotV1 {
   return {
     projectId: "p1",
     codeTask: {
@@ -53,26 +53,22 @@ function readySnapshot(): ImplementationRuntimeSnapshotV1 {
   };
 }
 
-describe("integrationButtonPreviewPreflightGate", () => {
-  it("disables when autoGenerationReady is false", () => {
-    const button = evaluateIntegrationPipelineButtonFromSnapshot(readySnapshot(), {
+describe("integrationButtonIgnoresPreviewDeploymentReady", () => {
+  it("enables integration when autoGenerationReady is true even if preview gate would have blocked", () => {
+    const snapshot = minimalReadySnapshot();
+    const button = evaluateIntegrationPipelineButtonFromSnapshot(snapshot, {
+      autoGenerationReady: true,
+    });
+    expect(button.show).toBe(true);
+    expect(button.enabled).toBe(true);
+    expect(button.userStatusLines.join("\n")).not.toContain("Preview 배포 권한");
+  });
+
+  it("disables integration when autoGenerationReady is false", () => {
+    const button = evaluateIntegrationPipelineButtonFromSnapshot(minimalReadySnapshot(), {
       autoGenerationReady: false,
     });
     expect(button.enabled).toBe(false);
     expect(button.userStatusLines.join("\n")).toContain("자동 생성 기본 연결");
-  });
-
-  it("does not disable integration solely because preview deployment is not ready at settings", () => {
-    const button = evaluateIntegrationPipelineButtonFromSnapshot(readySnapshot(), {
-      autoGenerationReady: true,
-    });
-    expect(button.enabled).toBe(true);
-  });
-
-  it("enables when autoGenerationReady is true", () => {
-    const button = evaluateIntegrationPipelineButtonFromSnapshot(readySnapshot(), {
-      autoGenerationReady: true,
-    });
-    expect(button.enabled).toBe(true);
   });
 });

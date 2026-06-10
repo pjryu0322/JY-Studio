@@ -77,4 +77,28 @@ describe("autoGenerationConnectionTestNormalizer", () => {
     expect(result.previewDeploymentReady).toBe(false);
     expect(result.sectionSummaries.previewDeploymentPreflight).toContain("Actions");
   });
+
+  it("settings scope treats preview as deferred and keeps level ready when envcheck passes", () => {
+    const result = normalizeAutoGenerationConnectionTestResult({
+      settingsConnectionTestOnly: true,
+      basicConnection: [
+        { key: "github_repository", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+        { key: "github_token", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+        { key: "cursor_api", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+      ],
+      envcheck: [
+        { key: "branch_create", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+        { key: "file_write", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+        { key: "pull_request_create_or_update", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+      ],
+      previewDeploymentPreflight: [
+        { key: "actions_workflow_dispatch", status: "failed", required: true, userSafeMessage: "GitHub Actions 실행 권한이 필요합니다.", operatorMessage: null, remediationCode: "enable_actions_permission" },
+      ],
+      checkedAt: "2026-06-01T00:00:00.000Z",
+    });
+    expect(result.autoGenerationReady).toBe(true);
+    expect(result.previewDeploymentReady).toBe(true);
+    expect(result.level).toBe("ready");
+    expect(result.userSummary).toContain("자동 생성 기본 연결이 정상입니다");
+  });
 });

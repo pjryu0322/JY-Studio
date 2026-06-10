@@ -1,9 +1,11 @@
 import {
   buildBasicConnectionChecks,
   buildConnectionTestUserSummary,
+  buildSettingsScopeConnectionTestUserSummary,
   deriveAutoGenerationReadyFromConnectionTest,
   deriveConnectionTestLevel,
   derivePreviewDeploymentReadyFromConnectionTest,
+  SETTINGS_DEFERRED_PREVIEW_PREFLIGHT_MESSAGE,
   type AutoGenerationCheckResultV1,
   type AutoGenerationCheckStatusV1,
   type AutoGenerationSettingsConnectionTestResultV1,
@@ -111,16 +113,21 @@ function fillPreview(
   partial: readonly AutoGenerationCheckResultV1[] | null | undefined,
   envOk: boolean,
   preflightException: boolean,
+  settingsConnectionTestOnly: boolean,
 ): AutoGenerationCheckResultV1[] {
   const byKey = new Map((partial ?? []).map((c) => [c.key, c]));
   const skippedMsg = "자동 생성 기본 점검 실패로 미실행";
   const afterEnvMsg = "자동 생성 기본 점검 후 실행됩니다.";
+  const deferredMsg = SETTINGS_DEFERRED_PREVIEW_PREFLIGHT_MESSAGE;
   const exceptionMsg = "Preview 배포 사전점검 중 오류가 발생했습니다. 연결 테스트를 다시 실행해 주세요.";
 
   return PREVIEW_KEYS.map((key) => {
     const existing = byKey.get(key);
     if (existing) return existing;
     const required = key !== "pages_configuration";
+    if (settingsConnectionTestOnly) {
+      return row(key, "skipped", deferredMsg, { required });
+    }
     if (!envOk) {
       return row(key, "skipped", skippedMsg, { required });
     }
@@ -190,6 +197,7 @@ export function normalizeAutoGenerationConnectionTestResult(input: {
   readonly defaultBranch?: string | null;
   readonly checkedAt: string;
   readonly executionSetupForBasic?: Parameters<typeof buildBasicConnectionChecks>[0];
+  readonly settingsConnectionTestOnly?: boolean;
 }): AutoGenerationSettingsConnectionTestResultV1 {
   void input.ownerRepo;
   void input.defaultBranch;
@@ -215,10 +223,12 @@ export function normalizeAutoGenerationConnectionTestResult(input: {
     input.envcheckException === true || Boolean(input.thrownError && !input.envcheck?.length),
   );
   const envOk = envcheckPassed(envcheck);
+  const settingsConnectionTestOnly = input.settingsConnectionTestOnly === true;
   const previewFilled = fillPreview(
     input.previewDeploymentPreflight,
     envOk,
     input.preflightException === true,
+    settingsConnectionTestOnly,
   );
   const previewDeploymentPreflight = previewFilled.filter(
     (c) => c.key !== "pages_configuration" || !previewDeploymentPreflightHasPagesRead(input.previewDeploymentPreflight),
@@ -228,16 +238,24 @@ export function normalizeAutoGenerationConnectionTestResult(input: {
     basicConnection,
     envcheck,
   });
-  const previewDeploymentReady = derivePreviewDeploymentReadyFromConnectionTest(
-    previewDeploymentPreflight,
-  );
-  const level = deriveConnectionTestLevel({ autoGenerationReady, previewDeploymentReady });
+  const previewDeploymentReady = settingsConnectionTestOnly
+    ? true
+    : derivePreviewDeploymentReadyFromConnectionTest(previewDeploymentPreflight);
+  const level = settingsConnectionTestOnly
+    ? autoGenerationReady
+      ? "ready"
+      : "blocked"
+    : deriveConnectionTestLevel({ autoGenerationReady, previewDeploymentReady });
   const sectionSummaries: AutoGenerationConnectionTestSectionSummariesV1 = {
     basicConnection: buildBasicConnectionSectionSummary(basicConnection),
     envcheck: buildEnvcheckSectionSummary(envcheck),
-    previewDeploymentPreflight: buildPreviewSectionSummary(previewDeploymentPreflight),
+    previewDeploymentPreflight: settingsConnectionTestOnly
+      ? SETTINGS_DEFERRED_PREVIEW_PREFLIGHT_MESSAGE
+      : buildPreviewSectionSummary(previewDeploymentPreflight),
   };
-  const userSummary = buildConnectionTestUserSummary({ autoGenerationReady, previewDeploymentReady });
+  const userSummary = settingsConnectionTestOnly
+    ? buildSettingsScopeConnectionTestUserSummary(autoGenerationReady)
+    : buildConnectionTestUserSummary({ autoGenerationReady, previewDeploymentReady });
 
   return {
     basicConnection,
@@ -268,5 +286,6 @@ export function coerceNormalizedConnectionTestResult(
     envcheck: raw.envcheck,
     previewDeploymentPreflight: raw.previewDeploymentPreflight,
     checkedAt: raw.checkedAt || new Date().toISOString(),
+    settingsConnectionTestOnly: true,
   });
 }

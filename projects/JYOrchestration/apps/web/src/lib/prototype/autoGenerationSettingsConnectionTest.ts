@@ -183,6 +183,18 @@ export function buildConnectionTestUserSummary(input: {
   return "자동 생성 기본 연결에 문제가 있습니다. GitHub 저장소/토큰/Cursor API 설정을 확인해 주세요.";
 }
 
+export function buildSettingsScopeConnectionTestUserSummary(
+  autoGenerationReady: boolean,
+): string {
+  if (autoGenerationReady) {
+    return "자동 생성 기본 연결이 정상입니다.\nAI 개발자가 GitHub branch와 PR을 생성할 수 있습니다.";
+  }
+  return "자동 생성 기본 연결에 문제가 있습니다. GitHub 저장소/토큰/Cursor API 설정을 확인해 주세요.";
+}
+
+export const SETTINGS_DEFERRED_PREVIEW_PREFLIGHT_MESSAGE =
+  "통합 및 Preview 준비 단계에서 확인됩니다." as const;
+
 export function buildEnvcheckSummaryLine(envcheck: readonly AutoGenerationCheckResultV1[]): string {
   const failed = envcheck.filter((c) => c.required && c.status === "failed");
   if (!failed.length) return "정상입니다.";
@@ -250,6 +262,7 @@ export function extractConnectionTestFromCapabilityJson(
     envcheck: parsed.envcheck,
     previewDeploymentPreflight: parsed.previewDeploymentPreflight,
     checkedAt: parsed.checkedAt,
+    settingsConnectionTestOnly: true,
   });
 }
 
@@ -269,6 +282,8 @@ export async function buildAutoGenerationSettingsConnectionTestResult(input: {
   readonly capabilitySnapshot?: GithubCapabilityValidationSnapshot | null;
   readonly cursorApiConfigured?: boolean;
   readonly envcheckBlocked?: boolean;
+  /** When false (default), preview preflight runs only for advanced checks — not settings gate. */
+  readonly includePreviewPreflight?: boolean;
 }): Promise<AutoGenerationSettingsConnectionTestResultV1> {
   const basicConnection = buildBasicConnectionChecks(input.executionSetup);
   const envcheck = buildEnvcheckResultsFromSources({
@@ -277,9 +292,14 @@ export async function buildAutoGenerationSettingsConnectionTestResult(input: {
     envcheckBlocked: input.envcheckBlocked === true,
   });
 
+  const includePreviewPreflight = input.includePreviewPreflight === true;
   let previewDeploymentPreflight: AutoGenerationCheckResultV1[] = [];
   let preflightException = false;
-  if (input.envcheckBlocked) {
+  const settingsConnectionTestOnly = !includePreviewPreflight;
+
+  if (!includePreviewPreflight) {
+    previewDeploymentPreflight = [];
+  } else if (input.envcheckBlocked) {
     previewDeploymentPreflight = [
       check("workflow_file_write", "skipped", { userSafeMessage: "자동 생성 기본 점검 실패로 미실행" }),
       check("actions_workflow_dispatch", "skipped", { userSafeMessage: "자동 생성 기본 점검 실패로 미실행" }),
@@ -309,6 +329,7 @@ export async function buildAutoGenerationSettingsConnectionTestResult(input: {
     preflightException,
     checkedAt,
     executionSetupForBasic: input.executionSetup,
+    settingsConnectionTestOnly,
   });
 }
 

@@ -69,7 +69,6 @@ export function evaluateIntegrationPipelineButtonEnablement(input: {
 export function evaluateIntegrationPipelineButtonFromSnapshot(
   snapshot: ImplementationRuntimeSnapshotV1,
   options?: Readonly<{
-    readonly previewDeploymentReady?: boolean;
     readonly autoGenerationReady?: boolean;
   }>,
 ): Readonly<{
@@ -103,7 +102,6 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
       snapshot.integration.appPreviewTargetStatus !== "completed");
 
   const autoGenerationReady = options?.autoGenerationReady !== false;
-  const previewDeploymentReady = options?.previewDeploymentReady !== false;
 
   let enabled =
     show &&
@@ -114,9 +112,6 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
       (finalWiringRunnable && fwStatus !== "completed"));
 
   if (!autoGenerationReady && enabled) {
-    enabled = false;
-  }
-  if (!previewDeploymentReady && enabled && !continueBuildPreview) {
     enabled = false;
   }
 
@@ -160,11 +155,6 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
     }
   } else if (!autoGenerationReady && selectedCompleted && !finalWiringRunning && !finalWiringMissing) {
     userStatusLines.push("자동 생성 기본 연결을 먼저 정상화해 주세요.");
-  } else if (!previewDeploymentReady && selectedCompleted && !finalWiringRunning && !finalWiringMissing) {
-    userStatusLines.push(
-      "Preview 배포 권한 확인이 필요합니다.",
-      "환경설정에서 Preview 배포 사전점검을 완료해 주세요.",
-    );
   } else if (enabled) {
     userStatusLines.push(
       `개발 CodeTask ${snapshot.codeTask.completed}/${snapshot.codeTask.selected} 완료`,

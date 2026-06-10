@@ -74,9 +74,9 @@ import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeT
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
+import { IntegrationPreviewRemediationPanel } from "@/components/preview/IntegrationPreviewRemediationPanel";
 import {
   resolveAutoGenerationReadyFromCapabilityJson,
-  resolvePreviewDeploymentReadyFromCapabilityJson,
 } from "@/lib/prototype/autoGenerationSettingsState";
 import { evaluateImplementationPreviewButtonState } from "@/lib/prototype/implementationPreviewButtonPolicy";
 import { sanitizeIntegratedAppPreviewUrl } from "@/lib/prototype/implementationPreviewEntryPolicy";
@@ -639,18 +639,12 @@ export function ImplementationExecutionBoardPanel({
     [executionSetup?.githubCapabilityValidation],
   );
 
-  const previewDeploymentReady = useMemo(
-    () => resolvePreviewDeploymentReadyFromCapabilityJson(executionSetup?.githubCapabilityValidation ?? null),
-    [executionSetup?.githubCapabilityValidation],
-  );
-
   const integrationButtonState = useMemo(
     () =>
       evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot, {
         autoGenerationReady,
-        previewDeploymentReady,
       }),
-    [runtimeSnapshot, autoGenerationReady, previewDeploymentReady],
+    [runtimeSnapshot, autoGenerationReady],
   );
 
   const showIntegrationButton = integrationButtonState.show;
@@ -1007,6 +1001,11 @@ export function ImplementationExecutionBoardPanel({
               ) : null}
             </div>
           </div>
+          <IntegrationPreviewRemediationPanel
+            pipelineStatus={integrationPipelineStatus}
+            gitRepoUrl={targetRepository?.gitRepoUrl ?? executionSetup?.gitRepoUrl ?? null}
+            onRetryIntegration={onRunIntegrationPipeline}
+          />
         </section>
       ) : null}
     </section>

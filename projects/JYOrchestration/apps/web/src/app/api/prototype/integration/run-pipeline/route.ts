@@ -25,7 +25,6 @@ import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototyp
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import {
   resolveAutoGenerationReadyFromCapabilityJson,
-  resolvePreviewDeploymentReadyFromCapabilityJson,
 } from "@/lib/prototype/autoGenerationSettingsState";
 
 export const maxDuration = 120;
@@ -99,16 +98,6 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           message: "자동 생성 기본 연결을 먼저 정상화해 주세요.",
-        },
-        { status: 403 },
-      );
-    }
-    if (!resolvePreviewDeploymentReadyFromCapabilityJson(capJson)) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Preview 배포 권한 확인이 필요합니다.\n환경설정에서 Preview 배포 사전점검을 완료해 주세요.",
         },
         { status: 403 },
       );

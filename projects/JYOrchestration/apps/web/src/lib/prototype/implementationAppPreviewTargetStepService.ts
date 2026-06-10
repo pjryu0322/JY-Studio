@@ -3,6 +3,7 @@ import {
   resolveActualIntegratedAppPreviewTarget,
 } from "@/lib/prototype/actualIntegratedAppPreviewResolver";
 import { deployIntegratedPreviewToGitHubPages } from "@/lib/prototype/githubPagesPreviewDeploymentService";
+import { runIntegrationPreviewPreflight } from "@/lib/prototype/integrationPreviewPreflightService";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import type { ImplementationIntegrationStepV1 } from "@/lib/prototype/implementationIntegrationStep";
@@ -22,7 +23,9 @@ export type AppPreviewTargetPipelineStatusV1 =
   | "app_preview_target_failed"
   | "static_preview_artifact_missing"
   | "github_pages_not_configured"
-  | "github_pages_deploy_pending";
+  | "github_pages_deploy_pending"
+  | "github_preview_permission_required"
+  | "github_pages_setup_required";
 
 export type RunAppPreviewTargetIntegrationStepResultV1 = Readonly<{
   readonly ok: boolean;
@@ -84,6 +87,7 @@ export async function runAppPreviewTargetIntegrationStep(input: {
   readonly repoUrl?: string | null;
   readonly githubToken?: string | null;
   readonly baseBranch?: string | null;
+  readonly capabilitySnapshot?: unknown;
 }): Promise<RunAppPreviewTargetIntegrationStepResultV1> {
   void input.codeTaskPlan;
   void input.taskList;
@@ -135,6 +139,58 @@ export async function runAppPreviewTargetIntegrationStep(input: {
     const token = String(input.githubToken ?? "").trim();
     if (repoUrl && token) {
       const parsed = resolveGithubOwnerRepoStrict(repoUrl);
+      const ownerRepo = parsed ? `${parsed.owner}/${parsed.repo}` : repoUrl;
+      const defaultBranch = input.baseBranch?.trim() || "main";
+
+      const preflight = await runIntegrationPreviewPreflight({
+        ownerRepo,
+        defaultBranch,
+        githubToken: token,
+        capabilitySnapshot: input.capabilitySnapshot as never,
+        projectId: input.projectId,
+        integrationBranch,
+      });
+
+      if (!preflight.ok) {
+        const message = preflight.userSafeMessage;
+        steps = mapIntegrationStepByKind(steps, "app_preview_target", (s) => ({
+          ...s,
+          status: "pending",
+          errorMessage: message,
+        }));
+        const timelineAction =
+          preflight.kind === "github_pages_setup_required"
+            ? "github_pages_setup_required"
+            : "github_actions_permission_required";
+        timeline.push(
+          buildImplementationExecutionLogTimelineEntry({
+            action: timelineAction,
+            orchestrationTraceGroup: "implementation_integration",
+            fields: {
+              projectId: input.projectId,
+              remediationCode: preflight.remediationCode,
+              requiredPermission: preflight.kind,
+            },
+            nowIso: input.nowIso,
+          }),
+        );
+        timeline.push(
+          buildImplementationExecutionLogTimelineEntry({
+            action: "implementation_integration_app_preview_target_user_action_required",
+            orchestrationTraceGroup: "implementation_integration",
+            fields: { projectId: input.projectId, reason: preflight.kind },
+            nowIso: input.nowIso,
+          }),
+        );
+        return {
+          ok: false,
+          steps,
+          timelineEntries: timeline,
+          userSafeMessage: message,
+          pipelineStatus: preflight.kind,
+        };
+      }
+
       const deploy = await deployIntegratedPreviewToGitHubPages({
         projectId: input.projectId,
         repositoryFullName: parsed ? `${parsed.owner}/${parsed.repo}` : repoUrl,

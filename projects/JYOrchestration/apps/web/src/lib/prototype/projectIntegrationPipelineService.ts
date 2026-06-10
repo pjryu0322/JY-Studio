@@ -65,6 +65,8 @@ export type ProjectIntegrationPipelineResultV1 = Readonly<{
     | "static_preview_artifact_missing"
     | "github_pages_not_configured"
     | "github_pages_deploy_pending"
+    | "github_preview_permission_required"
+    | "github_pages_setup_required"
     | "final_wiring_failed"
     | "integration_branch_failed"
     | "codetasks_incomplete"
@@ -692,6 +694,7 @@ export async function runProjectIntegrationPipeline(input: {
     repoUrl: input.repoUrl,
     githubToken: input.githubToken,
     baseBranch: context.baseBranch,
+    capabilitySnapshot: null,
   });
   steps = stampIntegrationStepsWithPipelineContext([...previewResult.steps], context);
   timeline.push(...previewResult.timelineEntries);
@@ -710,7 +713,11 @@ export async function runProjectIntegrationPipeline(input: {
   if (!previewResult.ok) {
     const failStatus =
       previewResult.pipelineStatus ?? "app_preview_target_failed";
-    if (failStatus === "github_pages_deploy_pending") {
+    if (
+      failStatus === "github_pages_deploy_pending" ||
+      failStatus === "github_preview_permission_required" ||
+      failStatus === "github_pages_setup_required"
+    ) {
       pushPipelineTimeline(timeline, {
         action: "project_integration_pipeline_step_pending",
         context,

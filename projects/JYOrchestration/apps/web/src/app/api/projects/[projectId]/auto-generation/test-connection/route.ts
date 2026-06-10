@@ -94,6 +94,11 @@ export async function POST(
     const cap = (row.githubCapabilityValidation as GithubCapabilityValidationSnapshot | null) ?? null;
     const tok = sanitizeGithubPatForStorage(String(row.githubAccessToken ?? ""));
 
+    const body = (await request.json().catch(() => ({}))) as {
+      readonly includePreviewPreflight?: boolean;
+    };
+    const includePreviewPreflight = body?.includePreviewPreflight === true;
+
     let result: AutoGenerationSettingsConnectionTestResultV1;
     if (!tok) {
       result = normalizeAutoGenerationConnectionTestResult({
@@ -114,6 +119,7 @@ export async function POST(
           hasCursorToken: Boolean(String(row.cursorApiToken ?? "").trim()),
         } as never,
         capabilitySnapshot: cap,
+        includePreviewPreflight,
       });
     }
 
@@ -160,6 +166,7 @@ export async function POST(
       checkedAt: new Date().toISOString(),
       preflightException: true,
       envcheckException: true,
+      settingsConnectionTestOnly: true,
     });
     return jsonWithConnectionTest(normalized, { success: false });
   }

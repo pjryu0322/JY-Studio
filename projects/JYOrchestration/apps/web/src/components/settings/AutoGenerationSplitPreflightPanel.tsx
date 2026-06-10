@@ -13,7 +13,6 @@ import { SettingsHelpPopoverContentView } from "@/components/settings/SettingsHe
 import { ConnectionCheckResultTable } from "@/components/settings/ConnectionCheckResultTable";
 import {
   buildEnvcheckTableRows,
-  buildPreviewPreflightTableRows,
   splitPreflightNeedsRemediation,
 } from "@/lib/prototype/autoGenerationSplitPreflightDisplay";
 import type { AutoGenerationSettingsConnectionTestResultV1 } from "@/lib/prototype/autoGenerationSettingsConnectionTest";
@@ -66,14 +65,16 @@ export function AutoGenerationSplitPreflightPanel(input: {
   const coerced = (() => {
     if (input.connectionTest) return coerceNormalizedConnectionTestResult(input.connectionTest);
     if (input.connectionTestAttempted) {
-      return normalizeAutoGenerationConnectionTestResult({ checkedAt: new Date().toISOString() });
+      return normalizeAutoGenerationConnectionTestResult({
+        checkedAt: new Date().toISOString(),
+        settingsConnectionTestOnly: true,
+      });
     }
     return null;
   })();
 
   const showPlaceholder = !input.connectionTestAttempted && !input.connectionTest;
   const envRows = coerced ? buildEnvcheckTableRows(coerced) : [];
-  const previewRows = coerced ? buildPreviewPreflightTableRows(coerced) : [];
   const showRemediation = splitPreflightNeedsRemediation(coerced);
 
   const [openHelpKey, setOpenHelpKey] = useState<string | null>(null);
@@ -173,15 +174,6 @@ export function AutoGenerationSplitPreflightPanel(input: {
         onToggleHelp={(k) => setOpenHelpKey((prev) => (prev === k ? null : k))}
         triggerRefs={triggerRefs}
       />
-      <ConnectionCheckResultTable
-        title="Preview 배포 사전점검"
-        testId="auto-gen-preview-preflight"
-        rows={previewRows}
-        showPlaceholder={showPlaceholder}
-        openHelpKey={openHelpKey}
-        onToggleHelp={(k) => setOpenHelpKey((prev) => (prev === k ? null : k))}
-        triggerRefs={triggerRefs}
-      />
       {coerced ? (
         <div
           data-testid="auto-gen-split-status-messages"
@@ -193,26 +185,12 @@ export function AutoGenerationSplitPreflightPanel(input: {
           <div style={summaryCardStyle(coerced.envcheck.some((c) => c.required && c.status === "failed"))}>
             <strong>자동 생성 기본 점검:</strong> {coerced.sectionSummaries.envcheck}
           </div>
-          <div
-            style={summaryCardStyle(
-              !coerced.previewDeploymentReady && coerced.autoGenerationReady,
-            )}
-          >
-            <strong>Preview 배포 사전점검:</strong> {coerced.sectionSummaries.previewDeploymentPreflight}
-          </div>
         </div>
       ) : null}
       {showRemediation ? (
         <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
           <button type="button" style={btnStyle} onClick={() => input.onFocusGithubToken?.()}>
             GitHub Token 재설정
-          </button>
-          <button
-            type="button"
-            style={btnStyle}
-            onClick={() => setOpenHelpKey("auto-gen-preview-preflight:actions_workflow_dispatch")}
-          >
-            권한 설정 가이드
           </button>
           <button
             type="button"

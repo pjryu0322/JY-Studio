@@ -84,6 +84,7 @@ export function buildEnvcheckTableRows(
     envcheck: result.envcheck,
     previewDeploymentPreflight: result.previewDeploymentPreflight,
     checkedAt: result.checkedAt,
+    settingsConnectionTestOnly: true,
   }) : null;
   if (!normalized) return [];
   return rowsForChecks(normalized.envcheck, ENVCHECK_LABELS, [
@@ -108,6 +109,7 @@ export function buildPreviewPreflightTableRows(
     envcheck: result.envcheck,
     previewDeploymentPreflight: result.previewDeploymentPreflight,
     checkedAt: result.checkedAt,
+    settingsConnectionTestOnly: true,
   }) : null;
   if (!normalized) return [];
   const checks = normalized.previewDeploymentPreflight.filter(
@@ -138,5 +140,5 @@ export function splitPreflightNeedsRemediation(
   result: AutoGenerationSettingsConnectionTestResultV1 | null,
 ): boolean {
   if (!result) return false;
-  return !result.autoGenerationReady || !result.previewDeploymentReady;
+  return !result.autoGenerationReady;
 }

@@ -44,6 +44,7 @@ export async function runAutoGenerationTestConnectionForProject(input: {
     readonly cursorApiConnectionOk?: boolean | null;
   };
   readonly capabilitySnapshot?: GithubCapabilityValidationSnapshot | null;
+  readonly includePreviewPreflight?: boolean;
 }): Promise<AutoGenerationSettingsConnectionTestResultV1> {
   const checkedAt = new Date().toISOString();
   const parsed = parseGitHubRepoFullName(String(input.executionSetup.gitRepoUrl ?? "").trim());
@@ -74,6 +75,7 @@ export async function runAutoGenerationTestConnectionForProject(input: {
       capabilitySnapshot: input.capabilitySnapshot ?? null,
       cursorApiConfigured: Boolean(String(input.executionSetup.cursorApiToken ?? "").trim()),
       envcheckBlocked: basicFails,
+      includePreviewPreflight: input.includePreviewPreflight === true,
     });
   } catch (thrownError) {
     console.info(
@@ -88,6 +90,7 @@ export async function runAutoGenerationTestConnectionForProject(input: {
       checkedAt,
       preflightException: true,
       envcheckException: true,
+      settingsConnectionTestOnly: input.includePreviewPreflight !== true,
     });
   }
 }

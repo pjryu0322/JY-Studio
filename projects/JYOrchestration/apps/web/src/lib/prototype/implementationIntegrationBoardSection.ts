@@ -20,6 +20,7 @@ import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementatio
 import type { ImplementationIntegratedPipelineLine } from "@/lib/prototype/implementationTaskPipelinePolicy";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildIntegrationStepStatusLines } from "@/lib/prototype/implementationIntegrationStatus";
+import { buildIntegrationPreviewRemediationStatusLines } from "@/lib/prototype/integrationPreviewRemediationGuide";
 import { resolveIntegrationStepsForRuntimeSnapshot } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
 import { integrationPlanHasSuccessfulMerge } from "@/lib/prototype/implementationIntegrationPlanMergeStatus";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
@@ -123,6 +124,12 @@ export function buildImplementationIntegrationBoardSection(input: {
           "잠시 후 Preview 상태를 다시 확인해 주세요.",
           ...integrationStepLines,
         ]
+      : String(input.integrationPipelineStatus ?? "").trim() === "github_preview_permission_required" ||
+          String(input.integrationPipelineStatus ?? "").trim() === "github_pages_setup_required"
+        ? [
+            ...buildIntegrationPreviewRemediationStatusLines(input.integrationPipelineStatus),
+            ...integrationStepLines,
+          ]
       : previewReadiness.mode === "code_task_preview_ready"
       ? [
           "CodeTask 진단 Preview만 사용 가능",

@@ -46,14 +46,14 @@ function sampleResult(): AutoGenerationSettingsConnectionTestResultV1 {
 }
 
 describe("AutoGenerationSettingsSplitPreflightPanel", () => {
-  it("shows envcheck and preview sections separately", () => {
+  it("shows envcheck section only without preview preflight UI", () => {
     const html = renderToStaticMarkup(
       createElement(AutoGenerationSplitPreflightPanel, { connectionTest: sampleResult() }),
     );
     expect(html).toContain("자동 생성 기본 점검");
-    expect(html).toContain("Preview 배포 사전점검");
+    expect(html).not.toContain("Preview 배포 사전점검");
+    expect(html).not.toContain("고급 Preview");
     expect(html).toContain("PR 생성/갱신");
-    expect(html).toContain("GitHub Actions 실행");
   });
 
   it("shows PR failure only under envcheck summary", () => {
@@ -65,7 +65,7 @@ describe("AutoGenerationSettingsSplitPreflightPanel", () => {
     expect(html).not.toContain("raw");
   });
 
-  it("shows section summaries when connection test attempted", () => {
+  it("shows section summaries without preview preflight card by default", () => {
     const html = renderToStaticMarkup(
       createElement(AutoGenerationSplitPreflightPanel, {
         connectionTest: sampleResult(),
@@ -73,6 +73,6 @@ describe("AutoGenerationSettingsSplitPreflightPanel", () => {
       }),
     );
     expect(html).toContain("기본 연결 상태:");
-    expect(html).toContain("Preview 배포 사전점검:");
+    expect(html).not.toContain("Preview 배포 사전점검:");
   });
 });

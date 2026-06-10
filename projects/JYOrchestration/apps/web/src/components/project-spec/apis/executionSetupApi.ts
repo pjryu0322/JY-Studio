@@ -195,12 +195,17 @@ export async function postRevealCursorApiToken(projectId: string) {
   return { res, json };
 }
 
-export async function postAutoGenerationTestConnection(projectId: string) {
+export async function postAutoGenerationTestConnection(
+  projectId: string,
+  options?: Readonly<{ readonly includePreviewPreflight?: boolean }>,
+) {
   const encoded = encodeURIComponent(projectId);
   const res = await credentialsIncludeFetch(`/api/projects/${encoded}/auto-generation/test-connection`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify({
+      includePreviewPreflight: options?.includePreviewPreflight === true,
+    }),
   });
   const json = (await res.json()) as ApiResponse<AutoGenerationSettingsConnectionTestResultV1> & {
     ok?: boolean;
