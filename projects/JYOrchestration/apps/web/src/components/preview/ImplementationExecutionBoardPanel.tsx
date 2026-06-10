@@ -643,8 +643,18 @@ export function ImplementationExecutionBoardPanel({
     () =>
       evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot, {
         autoGenerationReady,
+        isIntegrationRunning: integrationPipelineBusy === true,
+        latestPipelineStatus: integrationPipelineStatus,
+        projectId: projectId ?? board.projectId,
       }),
-    [runtimeSnapshot, autoGenerationReady],
+    [
+      runtimeSnapshot,
+      autoGenerationReady,
+      integrationPipelineBusy,
+      integrationPipelineStatus,
+      projectId,
+      board.projectId,
+    ],
   );
 
   const showIntegrationButton = integrationButtonState.show;
@@ -922,6 +932,7 @@ export function ImplementationExecutionBoardPanel({
                   data-testid="implementation-integration-run-button"
                   disabled={integrationPipelineBusy === true || !integrationButtonEnabled}
                   aria-disabled={integrationPipelineBusy === true || !integrationButtonEnabled}
+                  title={integrationButtonState.disabledTitle ?? undefined}
                   onClick={onRunIntegrationPipeline}
                 >
                   {integrationPipelineBusy

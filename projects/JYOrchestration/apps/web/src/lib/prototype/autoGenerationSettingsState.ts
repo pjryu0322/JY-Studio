@@ -1,6 +1,7 @@
 import type { ExecutionSetupDto } from "@/components/project-spec/api";
 import {
   extractConnectionTestFromCapabilityJson,
+  deriveAutoGenerationReadyFromConnectionTest,
   type AutoGenerationSettingsConnectionTestResultV1,
 } from "@/lib/prototype/autoGenerationSettingsConnectionTest";
 import { derivePreviewDeploymentReadyFromPreflight } from "@/lib/prototype/githubProviderPreflightService";
@@ -44,10 +45,10 @@ export function resolvePreviewDeploymentReadyFromCapabilityJson(raw: unknown): b
 
 export function resolveAutoGenerationReadyFromCapabilityJson(raw: unknown): boolean {
   const connectionTest = extractConnectionTestFromCapabilityJson(raw);
-  if (connectionTest) return connectionTest.autoGenerationReady;
-  const preflight = extractGithubProviderPreflightFromCapabilityJson(raw);
-  if (!preflight) return true;
-  return preflight.level !== "blocked";
+  if (connectionTest) {
+    return deriveAutoGenerationReadyFromConnectionTest(connectionTest);
+  }
+  return true;
 }
 
 export function resolveAutoGenerationSettingsConnectionState(

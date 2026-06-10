@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { normalizeAutoGenerationConnectionTestResult } from "@/lib/prototype/autoGenerationConnectionTestNormalizer";
+import { mergeCapabilityWithConnectionTest } from "@/lib/prototype/autoGenerationSettingsConnectionTest";
 import {
   extractGithubProviderPreflightFromCapabilityJson,
   mergeGithubCapabilityWithPreflight,
+  resolveAutoGenerationReadyFromCapabilityJson,
   resolveAutoGenerationSettingsConnectionState,
   resolvePreviewDeploymentReadyFromCapabilityJson,
 } from "@/lib/prototype/autoGenerationSettingsState";
@@ -104,5 +107,30 @@ describe("autoGenerationSettingsPreflightState", () => {
     expect(state.githubRepositoryStatus).toBe("ok");
     expect(state.githubTokenStatus).toBe("ok");
     expect(state.cursorApiStatus).toBe("ok");
+  });
+
+  it("resolveAutoGenerationReady ignores stale preflight blocked when envcheck connection test is passed", () => {
+    const passed = normalizeAutoGenerationConnectionTestResult({
+      settingsConnectionTestOnly: true,
+      basicConnection: [
+        { key: "github_repository", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+        { key: "github_token", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+        { key: "cursor_api", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+      ],
+      envcheck: [
+        { key: "branch_create", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+        { key: "file_write", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+        { key: "pull_request_create_or_update", status: "passed", required: true, userSafeMessage: null, operatorMessage: null, remediationCode: "none" },
+      ],
+      previewDeploymentPreflight: [
+        { key: "actions_workflow_dispatch", status: "failed", required: true, userSafeMessage: "x", operatorMessage: null, remediationCode: "enable_actions_permission" },
+      ],
+    });
+    const cap = mergeCapabilityWithConnectionTest(
+      mergeGithubCapabilityWithPreflight({ githubOperableOk: true }, blockedPreflight),
+      passed,
+    );
+    expect(passed.autoGenerationReady).toBe(true);
+    expect(resolveAutoGenerationReadyFromCapabilityJson(cap)).toBe(true);
   });
 });
