@@ -10,6 +10,11 @@ import { derivePreviewDeploymentReadyFromPreflight } from "@/lib/prototype/githu
 import { mapWorkflowDispatchRemediationToIntegrationPipelineStatus } from "@/lib/prototype/githubPreviewDeploymentFailureClassifier";
 import type { GithubProviderPreflightResultV1 } from "@/lib/prototype/githubProviderPreflightTypes";
 import { runPreviewDeploymentPreflightWithGithubResult } from "@/lib/prototype/previewDeploymentPreflightService";
+import {
+  ensureGitHubPagesActionsSource,
+  GITHUB_PAGES_AUTO_CONFIGURE_PERMISSION_DENIED_USER_MESSAGE,
+} from "@/lib/prototype/githubPagesSetupService";
+import { resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
 
 export type IntegrationPreviewPreflightFailureKindV1 =
   | "github_preview_permission_required"
@@ -118,11 +123,17 @@ function classifyPreviewPreflightFailure(
       (c.status === "failed" || c.status === "warning" || (c.required && c.status === "unknown")),
   );
   if (pagesRows.length > 0) {
+    const pagesRow = pagesRows[0]!;
+    const remediationCode = String(pagesRow.remediationCode ?? "set_pages_source_actions");
+    const userSafeMessage =
+      remediationCode === "add_pages_admin_permissions"
+        ? GITHUB_PAGES_AUTO_CONFIGURE_PERMISSION_DENIED_USER_MESSAGE
+        : pagesRow.userSafeMessage?.trim() || PAGES_USER_MESSAGE;
     return {
       ok: false,
       kind: "github_pages_setup_required",
-      userSafeMessage: PAGES_USER_MESSAGE,
-      remediationCode: "set_pages_source_actions",
+      userSafeMessage,
+      remediationCode,
       checks,
     } as const;
   }
@@ -141,6 +152,109 @@ function classifyPreviewPreflightFailure(
   }
 
   return { ok: true };
+}
+
+function pagesChecksNeedAutoConfigure(checks: readonly AutoGenerationCheckResultV1[]): boolean {
+  return checks.some(
+    (c) =>
+      (c.key === "pages_status_read" || c.key === "pages_configuration") &&
+      (c.status === "failed" || c.status === "warning" || (c.required && c.status === "unknown")),
+  );
+}
+
+function patchPagesChecksAfterAutoConfigure(
+  checks: readonly AutoGenerationCheckResultV1[],
+  configure: Awaited<ReturnType<typeof ensureGitHubPagesActionsSource>>,
+): readonly AutoGenerationCheckResultV1[] {
+  if (configure.ok) {
+    return checks.map((c) =>
+      c.key === "pages_status_read" || c.key === "pages_configuration"
+        ? {
+            ...c,
+            status: "passed" as const,
+            userSafeMessage: null,
+            remediationCode: "none" as const,
+          }
+        : c,
+    );
+  }
+  const userMsg =
+    configure.userSafeMessage?.trim() ||
+    (configure.remediationCode === "add_pages_admin_permissions"
+      ? GITHUB_PAGES_AUTO_CONFIGURE_PERMISSION_DENIED_USER_MESSAGE
+      : PAGES_USER_MESSAGE);
+  const remediation =
+    configure.remediationCode === "add_pages_admin_permissions"
+      ? "add_pages_admin_permissions"
+      : configure.remediationCode === "retry_later"
+        ? "retry_later"
+        : "set_pages_source_actions";
+  return checks.map((c) =>
+    c.key === "pages_status_read" || c.key === "pages_configuration"
+      ? {
+          ...c,
+          status: "failed" as const,
+          userSafeMessage: userMsg,
+          remediationCode: remediation as AutoGenerationCheckResultV1["remediationCode"],
+        }
+      : c,
+  );
+}
+
+async function tryAutoConfigureGitHubPagesActionsSource(input: {
+  readonly checks: readonly AutoGenerationCheckResultV1[];
+  readonly ownerRepo: string;
+  readonly defaultBranch: string;
+  readonly githubToken: string;
+  readonly projectId?: string;
+}): Promise<readonly AutoGenerationCheckResultV1[]> {
+  if (!pagesChecksNeedAutoConfigure(input.checks)) return input.checks;
+  const projectId = String(input.projectId ?? "").trim();
+  if (!projectId) return input.checks;
+
+  const ownerRepo = input.ownerRepo.trim();
+  const slash = ownerRepo.indexOf("/");
+  const parsed =
+    slash > 0
+      ? {
+          owner: ownerRepo.slice(0, slash),
+          repo: ownerRepo.slice(slash + 1).replace(/\.git$/i, ""),
+        }
+      : resolveGithubOwnerRepoStrict(
+          ownerRepo.startsWith("http") ? ownerRepo : `https://github.com/${ownerRepo}`,
+        );
+  if (!parsed?.owner || !parsed?.repo) return input.checks;
+
+  console.info(
+    JSON.stringify({
+      action: "github_pages_actions_source_autoconfigure_started",
+      projectId,
+      repositoryFullName: `${parsed.owner}/${parsed.repo}`,
+    }),
+  );
+
+  const configure = await ensureGitHubPagesActionsSource({
+    repositoryFullName: `${parsed.owner}/${parsed.repo}`,
+    owner: parsed.owner,
+    repo: parsed.repo,
+    projectId,
+    githubToken: input.githubToken,
+    defaultBranch: input.defaultBranch,
+  });
+
+  if (!configure.ok) {
+    console.info(
+      JSON.stringify({
+        action: "github_pages_actions_source_required_user_action",
+        projectId,
+        repositoryFullName: `${parsed.owner}/${parsed.repo}`,
+        remediationCode: configure.remediationCode,
+        failureKind: configure.failureKind,
+      }),
+    );
+  }
+
+  return patchPagesChecksAfterAutoConfigure(input.checks, configure);
 }
 
 function buildCapabilityPatch(input: {
@@ -228,6 +342,13 @@ export async function runIntegrationPreviewPreflight(input: {
     });
     checks = live.checks;
     githubPreflight = live.preflight;
+    checks = await tryAutoConfigureGitHubPagesActionsSource({
+      checks,
+      ownerRepo: input.ownerRepo,
+      defaultBranch: input.defaultBranch,
+      githubToken: input.githubToken,
+      projectId: input.projectId,
+    });
   } catch (thrownError) {
     const operatorMessage =
       thrownError instanceof Error ? thrownError.message.slice(0, 200) : "preflight_error";

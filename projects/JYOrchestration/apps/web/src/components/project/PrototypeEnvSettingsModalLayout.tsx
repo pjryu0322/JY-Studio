@@ -7,6 +7,11 @@ import {
   type PrototypeEnvModalTableRow,
 } from "@/lib/project/prototypeEnvSettingsModalRows";
 import { prototypeEnvReadinessToneColors } from "@/lib/project/prototypeEnvSettingsReadiness";
+import {
+  GITHUB_TOKEN_CORE_PERMISSION_LINES,
+  GITHUB_TOKEN_PREVIEW_AUTO_CONFIGURE_GUIDE_INTRO,
+  GITHUB_TOKEN_PREVIEW_AUTO_CONFIGURE_PERMISSION_LINES,
+} from "@/lib/prototype/githubProviderPermissionGuide";
 
 const GITHUB_FINE_GRAINED_TOKEN_NEW_URL = "https://github.com/settings/personal-access-tokens/new" as const;
 const HELP_POPOVER_Z_INDEX = 70;
@@ -90,9 +95,23 @@ function RowHelpPopover({ rowKey }: { readonly rowKey: PrototypeEnvModalRowKey }
         <HelpList>
           <li>Repository access: Only select repositories</li>
           <li>Repository: 현재 프로젝트 저장소</li>
-          <li>Contents: Read and write</li>
-          <li>Pull requests: Read and write</li>
-          <li>Metadata: 자동 포함</li>
+          {GITHUB_TOKEN_CORE_PERMISSION_LINES.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </HelpList>
+
+        <HelpSubTitle>Preview 자동 설정(선택)</HelpSubTitle>
+        <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.55, marginTop: 6 }}>
+          {GITHUB_TOKEN_PREVIEW_AUTO_CONFIGURE_GUIDE_INTRO.split("\n").map((line) => (
+            <p key={line} style={{ margin: "0 0 6px" }}>
+              {line}
+            </p>
+          ))}
+        </div>
+        <HelpList>
+          {GITHUB_TOKEN_PREVIEW_AUTO_CONFIGURE_PERMISSION_LINES.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
         </HelpList>
 
         <HelpSubTitle>오류가 나면 확인</HelpSubTitle>

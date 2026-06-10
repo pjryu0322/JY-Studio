@@ -24,6 +24,7 @@ export type GithubPreflightRemediationCodeV1 =
   | "enable_workflow_permission"
   | "enable_pages"
   | "set_pages_source_actions"
+  | "add_pages_admin_permissions"
   | "check_repository"
   | "check_token"
   | "check_cursor_api"

@@ -39,6 +39,7 @@ export type AutoGenerationRemediationCodeV1 =
   | "enable_actions_permission"
   | "enable_pages"
   | "set_pages_source_actions"
+  | "add_pages_admin_permissions"
   | "manual_setup_required"
   | "ensure_workflow_file"
   | "ensure_workflow_dispatch"

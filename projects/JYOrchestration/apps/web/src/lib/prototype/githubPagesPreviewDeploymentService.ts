@@ -20,6 +20,10 @@ import {
   JYO_PREVIEW_PAGES_WORKFLOW_FILE,
   pollGithubPagesPreviewWorkflowResult,
 } from "@/lib/prototype/githubPagesWorkflowService";
+import {
+  ensureGitHubPagesActionsSource,
+  GITHUB_PAGES_AUTO_CONFIGURE_PERMISSION_DENIED_USER_MESSAGE,
+} from "@/lib/prototype/githubPagesSetupService";
 import { resolveStaticAppBuildContract } from "@/lib/prototype/staticAppBuildContractResolver";
 import { ensureStaticAppBuildContractOnIntegrationBranch } from "@/lib/prototype/staticAppBuildContractScaffoldService";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -312,6 +316,39 @@ export async function deployIntegratedPreviewToGitHubPages(input: {
     };
     pushTimeline("github_pages_preview_deploy_failed", { reason: "github_auth_missing" });
     return { ok: false, deployment, timelineEntries: timeline, pipelineStatus: "app_preview_target_failed" };
+  }
+
+  const pagesConfigure = await ensureGitHubPagesActionsSource({
+    repositoryFullName,
+    owner: parsed.owner,
+    repo: parsed.repo,
+    projectId: input.projectId,
+    githubToken: token,
+    defaultBranch: input.fallbackBaseBranch?.trim() || "main",
+  });
+  if (!pagesConfigure.ok) {
+    const userSafeMessage =
+      pagesConfigure.userSafeMessage?.trim() ||
+      (pagesConfigure.remediationCode === "add_pages_admin_permissions"
+        ? GITHUB_PAGES_AUTO_CONFIGURE_PERMISSION_DENIED_USER_MESSAGE
+        : "GitHub Pages 설정이 필요합니다.\n저장소 Settings → Pages에서 Source를 GitHub Actions로 선택한 뒤 다시 통합 및 Preview 준비를 실행해 주세요.");
+    deployment = {
+      ...deployment,
+      status: "failed",
+      errorCode: pagesConfigure.remediationCode,
+      userSafeMessage,
+      updatedAt: input.nowIso,
+    };
+    pushTimeline("github_pages_actions_source_required_user_action", {
+      remediationCode: pagesConfigure.remediationCode,
+      failureKind: pagesConfigure.failureKind,
+    });
+    return {
+      ok: false,
+      deployment,
+      timelineEntries: timeline,
+      pipelineStatus: "github_pages_setup_required",
+    };
   }
 
   const integrationHead = await fetchBranchHeadCommitSha({

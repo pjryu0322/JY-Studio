@@ -37,8 +37,10 @@ export function isIntegrationPreviewRemediationPipelineStatus(
 
 export function getIntegrationPreviewRemediationGuide(
   pipelineStatus: string | null | undefined,
+  options?: Readonly<{ readonly remediationCode?: string | null }>,
 ): IntegrationPreviewRemediationGuideV1 | null {
   const status = String(pipelineStatus ?? "").trim();
+  const remediationCode = String(options?.remediationCode ?? "").trim();
   if (status === "github_preview_permission_required") {
     return {
       kind: "github_preview_permission_required",
@@ -58,6 +60,24 @@ export function getIntegrationPreviewRemediationGuide(
     };
   }
   if (status === "github_pages_setup_required") {
+    if (remediationCode === "add_pages_admin_permissions") {
+      return {
+        kind: "github_pages_setup_required",
+        title: "GitHub Pages 자동 설정 권한이 필요합니다.",
+        introLine: "Preview 배포 설정을 플랫폼이 자동으로 처리하려면 추가 GitHub Token 권한이 필요합니다.",
+        actionLines: [
+          "GitHub Token 권한에서 Pages를 Read and write로 설정합니다.",
+          "Administration도 Read and write로 설정합니다.",
+          "권한을 추가한 뒤 다시 [통합 및 Preview 준비]를 실행합니다.",
+          "권한 추가 없이 Settings → Pages에서 Source를 GitHub Actions로 직접 선택할 수도 있습니다.",
+        ],
+        showOpenSettings: true,
+        showPermissionGuide: true,
+        showOpenRepository: false,
+        showPagesSetupGuide: true,
+        showRetry: true,
+      };
+    }
     return {
       kind: "github_pages_setup_required",
       title: "GitHub Pages 설정이 필요합니다.",
