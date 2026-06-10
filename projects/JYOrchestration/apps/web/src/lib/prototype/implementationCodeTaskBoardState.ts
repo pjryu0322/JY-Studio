@@ -21,6 +21,29 @@ function progressIndicatesRunnable(progressLabel: string): boolean {
   return p === "실행 가능" || p.includes("실행 가능") || p === "Quick 실행 대기";
 }
 
+function labelIndicatesRunnable(statusLabel: string, progressLabel: string): boolean {
+  const s = statusLabel.trim();
+  return (
+    progressIndicatesRunnable(progressLabel) ||
+    s === "대기" ||
+    s === "준비" ||
+    s === "대기열" ||
+    s === "실패"
+  );
+}
+
+function labelIndicatesCompleted(statusLabel: string, progressLabel: string): boolean {
+  const s = statusLabel.trim();
+  const p = progressLabel.trim();
+  return (
+    s === "완료" ||
+    p === "완료" ||
+    p === "GitHub outcome 저장됨" ||
+    p.includes("GitHub outcome") ||
+    p.includes("outcome 저장")
+  );
+}
+
 export function resolveCodeTaskBoardState(input: {
   readonly codeTaskId: string;
   readonly title: string;
@@ -36,12 +59,8 @@ export function resolveCodeTaskBoardState(input: {
   const progressLabel = String(input.progressLabel ?? "").trim();
   const githubOutcomeSaved = input.githubOutcomeSaved === true;
 
-  const isCompleted =
-    statusLabel === "완료" ||
-    progressLabel === "GitHub outcome 저장됨" ||
-    progressLabel.includes("GitHub outcome") ||
-    progressLabel.includes("outcome 저장") ||
-    githubOutcomeSaved;
+  const runnableByDisplayLabels = labelIndicatesRunnable(statusLabel, progressLabel);
+  const completedByDisplayLabels = labelIndicatesCompleted(statusLabel, progressLabel);
 
   const isRunning =
     progressLabel === "실행 중" ||
@@ -51,11 +70,13 @@ export function resolveCodeTaskBoardState(input: {
 
   const isBlocked = statusLabel.includes("차단") || progressLabel.includes("차단");
 
+  const isCompleted = completedByDisplayLabels && !runnableByDisplayLabels;
+
   const isRunnableForUser =
-    !isCompleted && !isRunning && !isBlocked && progressIndicatesRunnable(progressLabel);
+    !isCompleted && !isRunning && !isBlocked && runnableByDisplayLabels;
 
   const isIntegrationReady =
-    isCompleted &&
+    completedByDisplayLabels &&
     githubOutcomeSaved &&
     Boolean(
       String(input.commitSha ?? "").trim() ||

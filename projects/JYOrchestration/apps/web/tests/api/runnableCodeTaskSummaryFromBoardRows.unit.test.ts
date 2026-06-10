@@ -23,7 +23,7 @@ function node(codeTaskId: string, statusLabel: string, progressLabel: string, gi
 }
 
 describe("summarizeCodeTaskBoardRowsFromTreeNodes", () => {
-  it("counts 1 runnable and 14 integration-ready from board rows", () => {
+  it("counts one runnable sample data task and fourteen integration-ready tasks", () => {
     const completed = Array.from({ length: 14 }, (_, i) =>
       node(`CODE-DONE-${i}`, "완료", "GitHub outcome 저장됨", true),
     );

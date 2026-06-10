@@ -390,6 +390,21 @@ function buildCodeTaskNode(input: {
     unitOutcome?.hasPersistedGithubOutcome === true ||
     unitOutcome?.status === "skipped";
 
+  console.info(
+    JSON.stringify({
+      action: "codetask_board_state_input_resolved",
+      codeTaskId: input.codeTask.codeTaskId,
+      title,
+      statusLabel,
+      progressLabel,
+      githubOutcomeSaved,
+      hasRuntimeSnapshotUnit: Boolean(input.runtimeSnapshotUnit),
+      hasExecutionUnit: Boolean(input.executionUnit),
+      unitStatus: input.executionUnit?.status ?? null,
+      runtimeDisplayStatus: input.runtimeSnapshotUnit?.displayStatus ?? null,
+    }),
+  );
+
   const boardState = resolveCodeTaskBoardState({
     codeTaskId: input.codeTask.codeTaskId,
     title,
