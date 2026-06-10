@@ -292,6 +292,7 @@ import {
   QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import { evaluateQuickRunExecutionSelectionGate } from "@/lib/prototype/implementationExecutionButtonPolicy";
+import { listRunnableCodeTaskIdsForImplementationBoardView } from "@/lib/prototype/implementationBoardCodeTaskSelection";
 import { loadImplementationExecutionUnitsFromState } from "@/lib/prototype/implementationExecutionUnitStore";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
@@ -7326,12 +7327,14 @@ export function PrototypePreviewPanel({
       applyPendingFromOrchestrationPatchRef.current({ promptTimeline: repairTimeline });
       void persistChatToDb(undefined, { promptTimeline: repairTimeline }, undefined, { force: true });
     }
+    const runnableCodeTaskIdsFromBoard = listRunnableCodeTaskIdsForImplementationBoardView({
+      projectId: pid,
+      requirementsState: imp,
+      selectedCodeTaskIds: prep.selectedCodeTaskIds,
+    });
     const executionGate = evaluateQuickRunExecutionSelectionGate({
       selectedCodeTaskIds: prep.selectedCodeTaskIds,
-      codeTasks: imp.implementationCodeTaskPlanV1?.tasks ?? [],
-      units: loadImplementationExecutionUnitsFromState(imp),
-      runs: parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ?? [],
-      progressByCodeTaskId: undefined,
+      runnableCodeTaskIdsFromBoard,
     });
     if (!executionGate.ok) {
       const message =

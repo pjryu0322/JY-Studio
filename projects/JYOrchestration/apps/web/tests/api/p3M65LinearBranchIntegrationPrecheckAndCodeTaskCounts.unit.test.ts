@@ -16,7 +16,7 @@ import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/pr
 import { summarizeCodeTaskExecutionQueueRuns } from "@/lib/prototype/codeTaskExecutionRunUi";
 import { buildVerifiedCodeTaskGithubOutcome } from "@/lib/prototype/codeTaskGithubOutcome";
 import { INTEGRATION_WIRING_CODE_TASK_ID } from "@/lib/prototype/codeTaskIntegrationWiringTask";
-import { resolveCodeTaskTreeSelectAll } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
+import { selectAllVisibleCodeTaskIdsInPlan } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -179,7 +179,7 @@ describe("P3-M65 CodeTask summary counts", () => {
 
   it("select all uses visible CodeTask ids only", () => {
     const plan = planWithIntegrationWiring();
-    const selected = resolveCodeTaskTreeSelectAll({ selectAll: true, codeTaskPlan: plan });
+    const selected = selectAllVisibleCodeTaskIdsInPlan({ selectAll: true, codeTaskPlan: plan });
     expect(selected).toHaveLength(5);
     expect(selected).not.toContain(INTEGRATION_WIRING_CODE_TASK_ID);
   });

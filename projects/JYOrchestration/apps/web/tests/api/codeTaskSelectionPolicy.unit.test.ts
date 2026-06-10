@@ -184,25 +184,18 @@ describe("implementationCodeTaskSelectionPolicy", () => {
       updatedAt: NOW,
       tasks: codeTasks,
     };
+    const runnableIds = [pendingId];
     const selected = resolveCodeTaskTreeSelectAll({
       selectAll: true,
       codeTaskPlan: plan,
-      visibleCodeTaskIds: codeTasks.map((t) => t.codeTaskId),
-      mode: "execution",
-      units,
-      runs,
-      progressByCodeTaskId: progress,
+      runnableCodeTaskIds: runnableIds,
     });
     expect(selected).toEqual([pendingId]);
     expect(
       isCodeTaskTreeFullySelected({
         selectedCodeTaskIds: selected,
         codeTaskPlan: plan,
-        visibleCodeTaskIds: codeTasks.map((t) => t.codeTaskId),
-        mode: "execution",
-        units,
-        runs,
-        progressByCodeTaskId: progress,
+        runnableCodeTaskIds: runnableIds,
       }),
     ).toBe(true);
   });
@@ -222,9 +215,7 @@ describe("implementationCodeTaskSelectionPolicy", () => {
   it("quick run gate allows sample-only selection", () => {
     const gate = evaluateQuickRunExecutionSelectionGate({
       selectedCodeTaskIds: [pendingId],
-      codeTasks,
-      units,
-      runs: [],
+      runnableCodeTaskIdsFromBoard: [pendingId],
     });
     expect(gate.ok).toBe(true);
     expect(gate.runnableIds).toEqual([pendingId]);

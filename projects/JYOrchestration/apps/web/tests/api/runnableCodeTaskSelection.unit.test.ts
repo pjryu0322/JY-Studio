@@ -139,21 +139,23 @@ describe("runnable CodeTask user selection (P3-08D)", () => {
     const selected = resolveCodeTaskTreeSelectAll({
       selectAll: true,
       codeTaskPlan: plan,
-      visibleCodeTaskIds: codeTasks.map((t) => t.codeTaskId),
-      units,
-      runs,
-      progressByCodeTaskId: progress,
+      runnableCodeTaskIds: [sample],
     });
     expect(selected).toEqual([sample]);
   });
 
   it("primary action is execute when sample selected", () => {
-    const action = resolveImplementationBoardPrimaryAction({
-      selectedCodeTaskIds: [sample],
+    const summary = summarizeImplementationCodeTasksForUserAction({
       codeTasks,
+      selectedCodeTaskIds: [sample],
       units,
       runs,
       progressByCodeTaskId: progress,
+    });
+    const action = resolveImplementationBoardPrimaryAction({
+      selectedCodeTaskIds: [sample],
+      userActionSummary: summary,
+      runnableCodeTaskIds: [sample],
     });
     expect(action.primaryLabel).toBe("선택 작업 실행");
     expect(action.showIntegrationPrepareButton).toBe(false);
@@ -161,14 +163,19 @@ describe("runnable CodeTask user selection (P3-08D)", () => {
 
   it("primary action is integration when no runnable left", () => {
     const allDone = codeTasks.map((t) => t.codeTaskId);
-    const action = resolveImplementationBoardPrimaryAction({
-      selectedCodeTaskIds: [],
+    const summary = summarizeImplementationCodeTasksForUserAction({
       codeTasks,
+      selectedCodeTaskIds: [],
       units: allDone.map((id) => unit(id, "verified")),
       runs: allDone.map((id) => verifiedRun(id)),
       progressByCodeTaskId: new Map(
         allDone.map((id) => [id, { statusLabel: "완료", progressLabel: "GitHub outcome 저장됨" }] as const),
       ),
+    });
+    const action = resolveImplementationBoardPrimaryAction({
+      selectedCodeTaskIds: [],
+      userActionSummary: summary,
+      runnableCodeTaskIds: [],
       integrationPrepareEnabled: true,
     });
     expect(action.primaryAction).toBe("prepare_integration_preview");

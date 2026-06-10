@@ -7,6 +7,11 @@ import {
   listUserSelectableRunnableCodeTaskIds,
 } from "@/lib/prototype/implementationRunnableCodeTaskSelection";
 
+/**
+ * Legacy unit/outcome-based counts. Implementation board UI must use
+ * `summarizeCodeTaskBoardRowsFromTreeNodes` + `listRunnableCodeTaskIdsFromBoardNodes` instead.
+ */
+
 export type ImplementationCodeTaskUserActionSummaryV1 = Readonly<{
   readonly totalCount: number;
   readonly runnableCount: number;

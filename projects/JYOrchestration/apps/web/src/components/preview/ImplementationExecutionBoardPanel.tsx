@@ -357,17 +357,31 @@ export function ImplementationExecutionBoardPanel({
   useEffect(() => {
     const reconciled = codeTaskSummaryCounts.reconciledSelectedCodeTaskIds;
     if (!codeTaskSummaryCounts.removedStaleSelectedIds.length) return;
+    const removedStaleSet = new Set(
+      codeTaskSummaryCounts.removedStaleSelectedIds.map((id) => id.trim()).filter(Boolean),
+    );
+    const preservedBoardSelection = checkedCodeTaskIds
+      .map((id) => id.trim())
+      .filter((id) => id && !removedStaleSet.has(id));
+    const nextIds =
+      boardState?.selectedCodeTaskIds !== undefined &&
+      boardState?.selectedCodeTaskIds !== null &&
+      preservedBoardSelection.length > 0
+        ? preservedBoardSelection
+        : reconciled;
     if (
-      reconciled.length === checkedCodeTaskIds.length &&
-      reconciled.every((id, i) => id === checkedCodeTaskIds[i])
+      nextIds.length === checkedCodeTaskIds.length &&
+      nextIds.every((id, i) => id === checkedCodeTaskIds[i])
     ) {
       return;
     }
-    onSelectedCodeTaskIdsChange?.(reconciled);
+    onSelectedCodeTaskIdsChange?.(nextIds);
   }, [
     codeTaskSummaryCounts.reconciledSelectedCodeTaskIds,
     codeTaskSummaryCounts.removedStaleSelectedIds.length,
+    codeTaskSummaryCounts.removedStaleSelectedIds,
     checkedCodeTaskIds,
+    boardState?.selectedCodeTaskIds,
     onSelectedCodeTaskIdsChange,
   ]);
 
@@ -550,11 +564,6 @@ export function ImplementationExecutionBoardPanel({
     ],
   );
 
-  const visibleCodeTaskIds = useMemo(
-    () => taskTreeNodes.map((node) => node.codeTaskId),
-    [taskTreeNodes],
-  );
-
   const runnableCodeTaskIdsFromBoard = useMemo(
     () => listRunnableCodeTaskIdsFromBoardNodes(taskTreeNodes),
     [taskTreeNodes],
@@ -581,10 +590,9 @@ export function ImplementationExecutionBoardPanel({
       isCodeTaskTreeFullySelected({
         selectedCodeTaskIds: checkedCodeTaskIds,
         codeTaskPlan: implementationCodeTaskPlanV1,
-        visibleCodeTaskIds,
         runnableCodeTaskIds: runnableCodeTaskIdsFromBoard,
       }),
-    [checkedCodeTaskIds, implementationCodeTaskPlanV1, visibleCodeTaskIds, runnableCodeTaskIdsFromBoard],
+    [checkedCodeTaskIds, implementationCodeTaskPlanV1, runnableCodeTaskIdsFromBoard],
   );
 
   const integratedPipelineLines = useMemo(
@@ -711,10 +719,7 @@ export function ImplementationExecutionBoardPanel({
       integrationPipelineStatus,
       projectId,
       board.projectId,
-      checkedCodeTaskIds,
-      implementationCodeTaskPlanV1,
-      codeTaskSummaryCounts.executionUnits,
-      codeTaskRuns,
+      codeTaskSelectionSummary.runnableCount,
     ],
   );
 
@@ -722,7 +727,6 @@ export function ImplementationExecutionBoardPanel({
     () =>
       resolveImplementationBoardPrimaryAction({
         selectedCodeTaskIds: checkedCodeTaskIds,
-        codeTasks: implementationCodeTaskPlanV1?.tasks ?? [],
         userActionSummary: codeTaskSelectionSummary,
         runnableCodeTaskIds: runnableCodeTaskIdsFromBoard,
         integratedAppPreviewReady: integrationSection.integratedAppPreviewReady,
@@ -730,7 +734,6 @@ export function ImplementationExecutionBoardPanel({
       }),
     [
       checkedCodeTaskIds,
-      implementationCodeTaskPlanV1,
       codeTaskSelectionSummary,
       runnableCodeTaskIdsFromBoard,
       integrationSection.integratedAppPreviewReady,
@@ -991,7 +994,6 @@ export function ImplementationExecutionBoardPanel({
               resolveCodeTaskTreeSelectAll({
                 selectAll: checked,
                 codeTaskPlan: implementationCodeTaskPlanV1,
-                visibleCodeTaskIds,
                 runnableCodeTaskIds: runnableCodeTaskIdsFromBoard,
               }),
             );

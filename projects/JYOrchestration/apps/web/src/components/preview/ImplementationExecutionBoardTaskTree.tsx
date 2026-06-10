@@ -180,8 +180,9 @@ function FlatCodeTaskListItem({
     .filter(Boolean)
     .join(" ");
 
-  const statusLabel = node.metaLines.find((line) => line.label === "상태")?.value;
-  const progressLabel = node.metaLines.find((line) => line.label === "진행")?.value;
+  const statusLabel = node.boardState.statusLabel || node.metaLines.find((line) => line.label === "상태")?.value;
+  const progressLabel =
+    node.boardState.progressLabel || node.metaLines.find((line) => line.label === "진행")?.value;
   const headerMeta = [
     statusLabel ? `상태: ${statusLabel}` : null,
     progressLabel ? `진행: ${progressLabel}` : null,
@@ -196,19 +197,26 @@ function FlatCodeTaskListItem({
       data-selected={node.isSelected ? "true" : "false"}
     >
       <div className={styles.taskTreeHeaderRow}>
-        <input
-          type="checkbox"
-          className={styles.taskTreeCheckbox}
-          checked={node.isChecked}
-          disabled={node.checkboxDisabled === true}
-          title={node.checkboxDisabledTitle ?? undefined}
-          aria-label={`${node.title} CodeTask 선택`}
-          data-testid={`implementation-code-task-check-${node.codeTaskId}`}
-          onChange={(event) => {
-            if (node.checkboxDisabled === true && event.target.checked) return;
-            onToggleChecked?.(node.codeTaskId, event.target.checked);
-          }}
-        />
+        <label
+          className={styles.taskTreeCheckboxLabel}
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            className={styles.taskTreeCheckbox}
+            checked={node.isChecked}
+            disabled={node.boardState.isRunnableForUser !== true}
+            title={node.checkboxDisabledTitle ?? undefined}
+            aria-label={`${node.title} CodeTask 선택`}
+            data-testid={`implementation-code-task-check-${node.codeTaskId}`}
+            data-runnable={node.boardState.isRunnableForUser ? "true" : "false"}
+            onChange={(event) => {
+              if (node.boardState.isRunnableForUser !== true && event.target.checked) return;
+              onToggleChecked?.(node.codeTaskId, event.target.checked);
+            }}
+          />
+        </label>
         <button
           type="button"
           className={styles.taskTreeCodeTaskHeader}
@@ -286,6 +294,7 @@ export function ImplementationExecutionBoardTaskTree({
             type="checkbox"
             className={styles.taskTreeCheckbox}
             checked={Boolean(allChecked)}
+            disabled={runnableCount === 0}
             data-testid="implementation-task-select-all"
             onChange={(event) => onToggleSelectAll?.(event.target.checked)}
           />

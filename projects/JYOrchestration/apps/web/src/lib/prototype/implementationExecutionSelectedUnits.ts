@@ -67,8 +67,14 @@ export function reconcileImplementationExecutionSelectedUnits(input: {
     );
   }
 
+  const defaultAllUnitIds = input.units.map((u) => u.unitId);
   const { selectedUnitIds, removedIds } = reconcileSelectedExecutionUnitIds({
-    selectedUnitIds: selected.length ? selected : input.units.map((u) => u.unitId),
+    selectedUnitIds:
+      selected.length > 0
+        ? selected
+        : boardExplicit
+          ? []
+          : defaultAllUnitIds,
     units: input.units,
   });
 

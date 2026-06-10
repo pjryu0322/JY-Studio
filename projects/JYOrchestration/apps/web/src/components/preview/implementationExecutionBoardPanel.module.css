@@ -598,6 +598,16 @@
   display: flex;
   align-items: stretch;
   width: 100%;
+  position: relative;
+}
+
+.taskTreeCheckboxLabel {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 8px 6px 8px 10px;
+  z-index: 2;
+  cursor: pointer;
 }
 
 .taskTreeSelectAllRow {
@@ -632,7 +642,7 @@
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  margin: 0 0 0 10px;
+  margin: 0;
   accent-color: #2563eb;
   cursor: pointer;
 }
@@ -736,7 +746,9 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  width: 100%;
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
   padding: 8px 10px;
   border: none;
   background: transparent;

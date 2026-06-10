@@ -32,6 +32,53 @@ function labelIndicatesRunnable(statusLabel: string, progressLabel: string): boo
   );
 }
 
+export function coalesceCodeTaskBoardRowDisplayLabels(input: {
+  readonly statusLabel: string;
+  readonly progressLabel: string;
+  readonly collapsedSummary?: string | null;
+  readonly promptReadyPhase?: boolean;
+  readonly rowStatusLabel?: string | null;
+  readonly rowProgressLabel?: string | null;
+}): Readonly<{ readonly statusLabel: string; readonly progressLabel: string }> {
+  const pick = (...candidates: readonly (string | null | undefined)[]): string => {
+    for (const candidate of candidates) {
+      const trimmed = String(candidate ?? "").trim();
+      if (trimmed) return trimmed;
+    }
+    return "";
+  };
+
+  let statusLabel = pick(input.statusLabel, input.rowStatusLabel);
+  let progressLabel = pick(input.progressLabel, input.rowProgressLabel);
+  const collapsedSummary = String(input.collapsedSummary ?? "").trim();
+
+  if (!statusLabel && collapsedSummary) {
+    if (
+      collapsedSummary === "대기" ||
+      collapsedSummary === "완료" ||
+      collapsedSummary === "실패" ||
+      collapsedSummary === "실행 중"
+    ) {
+      statusLabel = collapsedSummary;
+    }
+  }
+
+  const waitingByVisibleSummary =
+    collapsedSummary === "대기" || input.promptReadyPhase === true || statusLabel === "대기";
+
+  if (waitingByVisibleSummary) {
+    statusLabel = "대기";
+    progressLabel = progressIndicatesRunnable(progressLabel) ? progressLabel.trim() : "실행 가능";
+    return { statusLabel, progressLabel };
+  }
+
+  if (statusLabel === "대기" && !progressLabel) {
+    progressLabel = "실행 가능";
+  }
+
+  return { statusLabel, progressLabel };
+}
+
 function labelIndicatesCompleted(statusLabel: string, progressLabel: string): boolean {
   const s = statusLabel.trim();
   const p = progressLabel.trim();
@@ -95,7 +142,7 @@ export function resolveCodeTaskBoardState(input: {
     checkboxDisabledReason = "현재 실행할 수 없는 CodeTask입니다.";
   }
 
-  const checkboxDisabled = !isRunnableForUser && input.isChecked !== true;
+  const checkboxDisabled = !isRunnableForUser;
 
   const state: ImplementationCodeTaskBoardStateV1 = {
     codeTaskId: input.codeTaskId.trim(),

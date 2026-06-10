@@ -49,7 +49,11 @@ import {
   formatExecutionUnitVerificationCardLabels,
   resolveExecutionUnitVerificationDisplayStatus,
 } from "@/lib/prototype/implementationExecutionUnitVerification";
-import { resolveCodeTaskBoardState, type ImplementationCodeTaskBoardStateV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
+import {
+  coalesceCodeTaskBoardRowDisplayLabels,
+  resolveCodeTaskBoardState,
+  type ImplementationCodeTaskBoardStateV1,
+} from "@/lib/prototype/implementationCodeTaskBoardState";
 import { resolveCodeTaskDisplayLabelsForUserSelection } from "@/lib/prototype/implementationRunnableCodeTaskSelection";
 import { resolveAuthoritativeCodeTaskOutcome } from "@/lib/prototype/implementationCodeTaskOutcomeResolver";
 
@@ -327,10 +331,21 @@ function buildCodeTaskNode(input: {
     unit: input.executionUnit ?? null,
     runs: input.codeTaskExecutionRuns,
   });
-  statusLabel =
-    input.runtimeSnapshotUnit?.statusLabel ?? labelsForSelection.statusLabel ?? statusLabel;
-  progressLabel =
-    input.runtimeSnapshotUnit?.progressLabel ?? labelsForSelection.progressLabel ?? progressLabel;
+  const snapshotStatus = String(input.runtimeSnapshotUnit?.statusLabel ?? "").trim();
+  const snapshotProgress = String(input.runtimeSnapshotUnit?.progressLabel ?? "").trim();
+  statusLabel = snapshotStatus || labelsForSelection.statusLabel || statusLabel;
+  progressLabel = snapshotProgress || labelsForSelection.progressLabel || progressLabel;
+
+  const coalescedDisplayLabels = coalesceCodeTaskBoardRowDisplayLabels({
+    statusLabel,
+    progressLabel,
+    collapsedSummary,
+    promptReadyPhase: phase === "prompt_ready",
+    rowStatusLabel: rowView.statusLabel,
+    rowProgressLabel: rowView.progressLabel,
+  });
+  statusLabel = coalescedDisplayLabels.statusLabel;
+  progressLabel = coalescedDisplayLabels.progressLabel;
 
   const metaLines: ImplementationTaskTreeMetaLine[] = [
     formatMetaLine("상태", statusLabel),
@@ -416,7 +431,7 @@ function buildCodeTaskNode(input: {
     isChecked: input.isChecked,
   });
 
-  const checkboxDisabled = boardState.checkboxDisabled;
+  const checkboxDisabled = !boardState.isRunnableForUser;
   const checkboxDisabledTitle = boardState.checkboxDisabledReason;
   const checkboxDisabledReason = boardState.checkboxDisabledReason;
 

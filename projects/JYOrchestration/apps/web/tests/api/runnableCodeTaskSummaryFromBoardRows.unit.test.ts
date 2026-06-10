@@ -99,7 +99,6 @@ describe("resolveImplementationBoardPrimaryAction from board summary", () => {
   it("disables execute when runnable present but none selected", () => {
     const action = resolveImplementationBoardPrimaryAction({
       selectedCodeTaskIds: [],
-      codeTasks: [],
       userActionSummary: summary14Plus1,
       runnableCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
       integrationPrepareEnabled: true,
@@ -119,7 +118,6 @@ describe("resolveImplementationBoardPrimaryAction from board summary", () => {
     });
     const action = resolveImplementationBoardPrimaryAction({
       selectedCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
-      codeTasks: [],
       userActionSummary: summary,
       runnableCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
       integrationPrepareEnabled: true,
@@ -135,7 +133,6 @@ describe("resolveImplementationBoardPrimaryAction from board summary", () => {
     });
     const action = resolveImplementationBoardPrimaryAction({
       selectedCodeTaskIds: [],
-      codeTasks: [],
       userActionSummary: summary,
       runnableCodeTaskIds: [],
       integrationPrepareEnabled: true,

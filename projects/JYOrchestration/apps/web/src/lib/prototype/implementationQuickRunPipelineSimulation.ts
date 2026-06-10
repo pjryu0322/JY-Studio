@@ -4,7 +4,7 @@ import {
 } from "@/lib/prototype/implementationSelectedCodeTaskSequence";
 import {
   listCodeTaskIdsFromPlan,
-  resolveCodeTaskTreeSelectAll,
+  selectAllVisibleCodeTaskIdsInPlan,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { isTerminalRuntimeState } from "@/lib/runtime/implementationRuntime/implementationRuntimeStateMachine";
@@ -218,7 +218,7 @@ export function simulateSelectAllQuickRunSequentialExecution(input: {
   const terminalState = input.terminalRuntimeState ?? "completed";
   const steps: QuickRunPipelineSimulationStep[] = [];
 
-  const selectedCodeTaskIds = resolveCodeTaskTreeSelectAll({
+  const selectedCodeTaskIds = selectAllVisibleCodeTaskIdsInPlan({
     selectAll: true,
     codeTaskPlan: input.codeTaskPlan,
   });

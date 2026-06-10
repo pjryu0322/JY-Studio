@@ -1,7 +1,66 @@
 import { describe, expect, it } from "vitest";
-import { resolveCodeTaskBoardState } from "@/lib/prototype/implementationCodeTaskBoardState";
+import {
+  coalesceCodeTaskBoardRowDisplayLabels,
+  resolveCodeTaskBoardState,
+} from "@/lib/prototype/implementationCodeTaskBoardState";
+
+describe("coalesceCodeTaskBoardRowDisplayLabels", () => {
+  it("overrides stale completed unit labels when row is visibly waiting", () => {
+    const labels = coalesceCodeTaskBoardRowDisplayLabels({
+      statusLabel: "완료",
+      progressLabel: "GitHub outcome 저장됨",
+      collapsedSummary: "대기",
+      promptReadyPhase: true,
+      rowStatusLabel: "대기",
+      rowProgressLabel: "실행 가능",
+    });
+    expect(labels).toEqual({ statusLabel: "대기", progressLabel: "실행 가능" });
+    const state = resolveCodeTaskBoardState({
+      codeTaskId: "CODE-DATA-SAMPLE-001",
+      title: "샘플 데이터 생성",
+      ...labels,
+      githubOutcomeSaved: true,
+      commitSha: "abc",
+      branchName: "wip/data/sample-data",
+    });
+    expect(state.isRunnableForUser).toBe(true);
+    expect(state.checkboxDisabled).toBe(false);
+  });
+
+  it("fills 대기/실행 가능 when snapshot labels are empty but collapsed summary is 대기", () => {
+    const labels = coalesceCodeTaskBoardRowDisplayLabels({
+      statusLabel: "",
+      progressLabel: "",
+      collapsedSummary: "대기",
+      promptReadyPhase: true,
+      rowStatusLabel: "",
+      rowProgressLabel: "",
+    });
+    expect(labels).toEqual({ statusLabel: "대기", progressLabel: "실행 가능" });
+    const state = resolveCodeTaskBoardState({
+      codeTaskId: "CODE-DATA-SAMPLE-001",
+      title: "샘플 데이터 생성",
+      ...labels,
+      githubOutcomeSaved: true,
+      branchName: "wip/data/sample-data",
+    });
+    expect(state.isRunnableForUser).toBe(true);
+    expect(state.checkboxDisabled).toBe(false);
+  });
+});
 
 describe("resolveCodeTaskBoardState", () => {
+  it("treats 대기 with empty progress as runnable", () => {
+    const state = resolveCodeTaskBoardState({
+      codeTaskId: "CODE-DATA-SAMPLE-001",
+      title: "샘플 데이터 생성",
+      statusLabel: "대기",
+      progressLabel: "",
+      githubOutcomeSaved: false,
+    });
+    expect(state.isRunnableForUser).toBe(true);
+  });
+
   it("marks 대기 + 실행 가능 as runnable for user", () => {
     const state = resolveCodeTaskBoardState({
       codeTaskId: "CODE-DATA-SAMPLE-001",

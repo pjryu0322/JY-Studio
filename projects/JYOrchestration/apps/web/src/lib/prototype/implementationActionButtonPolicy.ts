@@ -1,12 +1,5 @@
-import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
-import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
 import type { ImplementationCodeTaskUserActionSummaryV1 } from "@/lib/prototype/implementationCodeTaskSelectionSummary";
-import {
-  summarizeImplementationCodeTasksForUserAction,
-} from "@/lib/prototype/implementationCodeTaskSelectionSummary";
 import { evaluateSelectedRunnableCodeTasksGateFromBoard } from "@/lib/prototype/implementationCodeTaskBoardState";
-import { evaluateSelectedRunnableCodeTasksGate } from "@/lib/prototype/implementationRunnableCodeTaskSelection";
 
 export type ImplementationBoardPrimaryActionKindV1 =
   | "execute_selected_runnable_codetasks"
@@ -26,40 +19,17 @@ export type ImplementationBoardPrimaryActionStateV1 = Readonly<{
 
 export function resolveImplementationBoardPrimaryAction(input: {
   readonly selectedCodeTaskIds: readonly string[];
-  readonly codeTasks: readonly ImplementationCodeTaskV1[];
-  readonly units?: readonly ImplementationExecutionUnitV1[] | null;
-  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
-  readonly progressByCodeTaskId?: ReadonlyMap<string, { readonly statusLabel: string; readonly progressLabel: string }>;
-  readonly visibleCodeTaskIds?: readonly string[] | null;
+  readonly userActionSummary: ImplementationCodeTaskUserActionSummaryV1;
+  readonly runnableCodeTaskIds: readonly string[];
   readonly integratedAppPreviewReady?: boolean;
   readonly integrationPrepareEnabled?: boolean;
-  readonly userActionSummary?: ImplementationCodeTaskUserActionSummaryV1;
-  readonly runnableCodeTaskIds?: readonly string[] | null;
 }): ImplementationBoardPrimaryActionStateV1 {
-  const summary =
-    input.userActionSummary ??
-    summarizeImplementationCodeTasksForUserAction({
-      codeTasks: input.codeTasks,
-      selectedCodeTaskIds: input.selectedCodeTaskIds,
-      units: input.units,
-      runs: input.runs,
-      progressByCodeTaskId: input.progressByCodeTaskId,
-      visibleCodeTaskIds: input.visibleCodeTaskIds,
-    });
+  const summary = input.userActionSummary;
 
-  const executionGate =
-    input.runnableCodeTaskIds != null
-      ? evaluateSelectedRunnableCodeTasksGateFromBoard({
-          selectedCodeTaskIds: input.selectedCodeTaskIds,
-          runnableCodeTaskIds: input.runnableCodeTaskIds,
-        })
-      : evaluateSelectedRunnableCodeTasksGate({
-          selectedCodeTaskIds: input.selectedCodeTaskIds,
-          codeTasks: input.codeTasks,
-          units: input.units,
-          runs: input.runs,
-          progressByCodeTaskId: input.progressByCodeTaskId,
-        });
+  const executionGate = evaluateSelectedRunnableCodeTasksGateFromBoard({
+    selectedCodeTaskIds: input.selectedCodeTaskIds,
+    runnableCodeTaskIds: input.runnableCodeTaskIds,
+  });
 
   let primaryAction: ImplementationBoardPrimaryActionKindV1 = null;
   let primaryLabel: string | null = null;

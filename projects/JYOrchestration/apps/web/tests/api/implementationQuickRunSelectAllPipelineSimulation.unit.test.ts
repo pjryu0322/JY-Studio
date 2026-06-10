@@ -22,7 +22,7 @@ import {
   markSimulatedRunTerminal,
   simulateSelectAllQuickRunSequentialExecution,
 } from "@/lib/prototype/implementationQuickRunPipelineSimulation";
-import { resolveCodeTaskTreeSelectAll } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
+import { selectAllVisibleCodeTaskIdsInPlan } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import {
   buildInitialImplementationTaskExecutionStateFromTaskList,
@@ -153,7 +153,7 @@ describe("Quick Run select-all pipeline simulation", () => {
   const workItems = workItemsForPlan(plan);
 
   it("select-all order is FRAME → FEATURE → COMMON (not alphabetical COMMON first)", () => {
-    const selected = resolveCodeTaskTreeSelectAll({ selectAll: true, codeTaskPlan: plan });
+    const selected = selectAllVisibleCodeTaskIdsInPlan({ selectAll: true, codeTaskPlan: plan });
     expect(selected).toEqual([
       "CODE-DEV-FRAME-001-001",
       "CODE-DEV-FEATURE-001-001",

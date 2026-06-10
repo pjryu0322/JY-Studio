@@ -103,12 +103,18 @@ describe("P3-08C/08D selection summary and actions", () => {
   });
 
   it("primary action is execute_selected when sample data is selected", () => {
-    const action = resolveImplementationBoardPrimaryAction({
-      selectedCodeTaskIds: [sampleId],
+    const summary = summarizeImplementationCodeTasksForUserAction({
       codeTasks,
+      selectedCodeTaskIds: [sampleId],
       units,
       runs,
       progressByCodeTaskId: progress,
+      visibleCodeTaskIds: visible,
+    });
+    const action = resolveImplementationBoardPrimaryAction({
+      selectedCodeTaskIds: [sampleId],
+      userActionSummary: summary,
+      runnableCodeTaskIds: [sampleId],
     });
     expect(action.primaryAction).toBe("execute_selected_runnable_codetasks");
     expect(action.primaryLabel).toBe("선택 작업 실행");
@@ -117,14 +123,20 @@ describe("P3-08C/08D selection summary and actions", () => {
   });
 
   it("primary action is integration when no runnable tasks remain", () => {
-    const action = resolveImplementationBoardPrimaryAction({
+    const summary = summarizeImplementationCodeTasksForUserAction({
+      codeTasks: completedIds.map((id) => task(id)),
       selectedCodeTaskIds: [],
-      codeTasks,
       units: completedIds.map((id) => unit(id, "verified")),
       runs,
       progressByCodeTaskId: new Map(
         completedIds.map((id) => [id, { statusLabel: "완료", progressLabel: "GitHub outcome 저장됨" }] as const),
       ),
+      visibleCodeTaskIds: completedIds,
+    });
+    const action = resolveImplementationBoardPrimaryAction({
+      selectedCodeTaskIds: [],
+      userActionSummary: summary,
+      runnableCodeTaskIds: [],
       integrationPrepareEnabled: true,
     });
     expect(action.primaryAction).toBe("prepare_integration_preview");

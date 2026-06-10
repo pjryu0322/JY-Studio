@@ -16,7 +16,10 @@ import {
   reconcileSelectedExecutionUnitIds,
 } from "@/lib/prototype/implementationExecutionScheduler";
 import type { BuildExecutionUnitsAuditV1 } from "@/lib/prototype/implementationExecutionUnitBuilder";
-import type { ImplementationCodeTaskSummaryCountsV1 } from "@/lib/prototype/implementationCodeTaskSummary";
+import {
+  type ImplementationCodeTaskSummaryCountsV1,
+  listVisibleImplementationCodeTaskIds,
+} from "@/lib/prototype/implementationCodeTaskSummary";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   buildImplementationRuntimeSnapshot,
@@ -146,7 +149,12 @@ export function buildImplementationExecutionSummaryCounts(input: {
     .filter((id): id is string => Boolean(id?.trim()));
 
   const requestedCodeTaskIds = [...new Set(legacySelected.map((id) => id.trim()).filter(Boolean))];
-  const validCodeTaskIds = new Set(units.map((u) => u.codeTaskId.trim()).filter(Boolean));
+  const validCodeTaskIds = new Set(
+    [
+      ...listVisibleImplementationCodeTaskIds(input.codeTaskPlan),
+      ...units.map((u) => u.codeTaskId.trim()),
+    ].filter(Boolean),
+  );
   const removedStaleCodeTaskIds = requestedCodeTaskIds.filter((id) => !validCodeTaskIds.has(id));
   const removedStaleSelectedIds = [...new Set([...removedStaleCodeTaskIds, ...removedIds])];
   const summaryCountReconciled = removedStaleSelectedIds.length > 0;
