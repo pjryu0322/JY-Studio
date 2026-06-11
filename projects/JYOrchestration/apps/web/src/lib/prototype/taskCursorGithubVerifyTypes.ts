@@ -5,12 +5,15 @@ import type { TaskCursorGithubVerifyResult } from "@/lib/prototype/taskCursorGit
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
+import type { CodeTaskManualGithubRecheckPayloadV1 } from "@/lib/prototype/codeTaskManualGithubRecheckPayload";
+
 export type TaskCursorGithubVerifyRequestBody = Readonly<{
   readonly projectId: string;
   readonly execution: TaskCursorExecutionV1;
   readonly codeTaskId?: string;
   /** CodeTask row 수동 GitHub 재확인 */
   readonly manualGithubRecheck?: boolean;
+  readonly manualRecheckPayload?: CodeTaskManualGithubRecheckPayloadV1;
   readonly implementationTaskExecutionStateV1?: unknown;
   readonly workItems?: readonly CursorWorkItem[];
   readonly codeTaskExecutionRunsV1?: unknown;

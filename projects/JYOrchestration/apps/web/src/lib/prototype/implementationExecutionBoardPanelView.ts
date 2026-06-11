@@ -445,6 +445,8 @@ export function buildImplementationTaskTreeNodes(input: {
   readonly sequentialQuickRunCodeTaskIds?: readonly string[] | null;
   readonly executionUnits?: readonly import("@/lib/prototype/implementationExecutionUnit").ImplementationExecutionUnitV1[] | null;
   readonly runtimeSnapshotUnits?: readonly import("@/lib/prototype/implementationRuntimeSnapshot").ImplementationRuntimeSnapshotV1["units"] | null;
+  readonly projectId?: string | null;
+  readonly targetRepository?: import("@/lib/prototype/projectTargetRepository").ProjectTargetRepository | null;
 }): readonly ImplementationCodeTaskTreeNode[] {
   const taskCursorExecution = input.taskCursorExecution ?? null;
   const activeCodeTaskId =
@@ -468,6 +470,8 @@ export function buildImplementationTaskTreeNodes(input: {
     promptTimeline: input.promptTimeline,
     executionUnits: input.executionUnits,
     runtimeSnapshotUnits: input.runtimeSnapshotUnits,
+    projectId: input.projectId,
+    targetRepository: input.targetRepository,
   });
 
   const activeParentId =

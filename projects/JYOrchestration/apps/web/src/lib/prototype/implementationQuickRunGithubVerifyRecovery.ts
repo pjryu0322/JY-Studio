@@ -30,6 +30,12 @@ import {
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
+  resolveManualGithubRecheckPayload,
+  type CodeTaskManualGithubRecheckPayloadV1,
+} from "@/lib/prototype/codeTaskManualGithubRecheckPayload";
+import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+import {
   buildImplementationToastDedupeKey,
   recordImplementationToastDedupe,
   shouldSuppressDuplicateImplementationToast,
@@ -181,6 +187,15 @@ export type CodeTaskGithubVerifyRecheckInput = Readonly<{
   readonly codeTaskId: string;
   readonly state: RequirementsStateJson;
   readonly dbBundle?: ImplementationRuntimeBundleView | null;
+  readonly executionSetup?: Readonly<{
+    readonly gitRepoUrl?: string | null;
+    readonly gitRepoName?: string | null;
+    readonly gitRepoProvider?: string | null;
+    readonly baseBranch?: string | null;
+  }> | null;
+  readonly taskList?: ImplementationTaskListV1 | null;
+  readonly executionUnits?: readonly ImplementationExecutionUnitV1[] | null;
+  readonly rowPayload?: CodeTaskManualGithubRecheckPayloadV1 | null;
   readonly continuationTriggerRef: { current: string | null };
   readonly enrichPatch: (
     patch: PrototypeExecutionOrchestrationPersistInput,
@@ -200,7 +215,20 @@ export async function runCodeTaskGithubVerifyRecheck(
   const codeTaskId = input.codeTaskId.trim();
   if (!pid || !codeTaskId) return false;
 
-  const codeTaskPlan = parseImplementationCodeTaskPlanV1(input.state.implementationCodeTaskPlanV1);
+  const resolved = resolveManualGithubRecheckPayload({
+    projectId: pid,
+    codeTaskId,
+    requirementsState: input.state,
+    dbBundle: input.dbBundle,
+    executionSetup: input.executionSetup,
+    taskList: input.taskList,
+    cursorWorkItems: input.state.cursorWorkItemsV1,
+    executionUnits: input.executionUnits,
+    hints: input.rowPayload ?? undefined,
+  });
+
+  const codeTaskPlan = resolved.codeTaskPlan;
+  const manualPayload = resolved.payload;
   const jsonRuns = parseCodeTaskExecutionRunsV1(input.state.codeTaskExecutionRunsV1) ?? [];
   const mergedRuns = mergeCodeTaskRunsWithDbRuntime({
     jsonRuns,
@@ -216,13 +244,24 @@ export async function runCodeTaskGithubVerifyRecheck(
     taskCursorExecution: parseTaskCursorExecutionV1(input.state.taskCursorExecutionV1),
     taskCursorExecutionHistory: input.state.taskCursorExecutionHistoryV1,
     dbBundle: input.dbBundle,
+    manualPayload,
   });
 
-  const workBranch = String(execution?.workBranch ?? "").trim();
+  const workBranch = String(manualPayload?.workBranch ?? execution?.workBranch ?? "").trim();
   if (!execution || !workBranch) {
     input.applyOrchestrationPatch(
       input.enrichPatch({
         promptTimeline: [
+          buildImplementationExecutionLogTimelineEntry({
+            action: "manual_github_commit_recheck_missing_execution_info",
+            orchestrationTraceGroup: "task_cursor_execution",
+            routingDecision: codeTaskId,
+            fields: {
+              projectId: pid,
+              codeTaskId,
+              missing: resolved.missing.join(",") || "workBranch",
+            },
+          }),
           buildImplementationExecutionLogTimelineEntry({
             action: "manual_github_commit_recheck_failed",
             orchestrationTraceGroup: "task_cursor_execution",
@@ -238,9 +277,31 @@ export async function runCodeTaskGithubVerifyRecheck(
       }),
     );
     input.onFailureNotice?.(
-      "GitHub commit 확인에 필요한 CodeTask 실행 정보를 찾지 못했습니다.",
+      "GitHub 확인에 필요한 작업 브랜치 정보를 찾지 못했습니다. 작업 정보를 새로고침한 뒤 다시 확인해 주세요.",
     );
     return false;
+  }
+
+  if (manualPayload) {
+    input.applyOrchestrationPatch(
+      input.enrichPatch({
+        promptTimeline: [
+          buildImplementationExecutionLogTimelineEntry({
+            action: "manual_github_commit_recheck_payload_resolved",
+            orchestrationTraceGroup: "task_cursor_execution",
+            routingDecision: codeTaskId,
+            fields: {
+              projectId: pid,
+              codeTaskId,
+              repository: manualPayload.repositoryFullName,
+              branch: manualPayload.workBranch,
+              baseBranch: manualPayload.baseBranch,
+              taskId: manualPayload.taskId,
+            },
+          }),
+        ],
+      }),
+    );
   }
 
   let runsForVerify = [...mergedRuns];
@@ -310,6 +371,7 @@ export async function runCodeTaskGithubVerifyRecheck(
         state: stateForVerify,
         codeTaskId,
         manualGithubRecheck: true,
+        manualRecheckPayload: manualPayload ?? undefined,
       }),
     );
     const ok = applyTaskCursorGithubVerifyApiResult({

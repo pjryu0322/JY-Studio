@@ -56,6 +56,7 @@ import {
 } from "@/lib/prototype/codeTaskStuckRecoveryUi";
 import { resolveTaskCursorExecutionForRow } from "@/lib/prototype/codeAgentExecutionProgressView";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
+import type { CodeTaskManualGithubRecheckPayloadV1 } from "@/lib/prototype/codeTaskManualGithubRecheckPayload";
 import { ImplementationExecutionBoardTaskTree } from "@/components/preview/ImplementationExecutionBoardTaskTree";
 import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
@@ -153,7 +154,10 @@ export function ImplementationExecutionBoardPanel({
   readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
   readonly onCopyDeveloperPromptsFromHeader?: () => void;
   readonly onRetryGithubVerify?: () => void;
-  readonly onRecheckCodeTaskGithubVerify?: (codeTaskId: string) => void;
+  readonly onRecheckCodeTaskGithubVerify?: (input: {
+    readonly codeTaskId: string;
+    readonly rowPayload?: CodeTaskManualGithubRecheckPayloadV1 | null;
+  }) => void;
   readonly githubRecheckBusyCodeTaskId?: string | null;
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
   readonly projectId?: string;
@@ -510,6 +514,8 @@ export function ImplementationExecutionBoardPanel({
             : null,
         executionUnits: codeTaskSummaryCounts.executionUnits,
         runtimeSnapshotUnits: runtimeSnapshot.units,
+        projectId: projectId ?? board.projectId,
+        targetRepository,
       }),
     [
       board,
@@ -528,6 +534,9 @@ export function ImplementationExecutionBoardPanel({
       activeTaskCursorJob,
       codeTaskSummaryCounts.executionUnits,
       runtimeSnapshot.units,
+      targetRepository,
+      projectId,
+      board.projectId,
     ],
   );
 

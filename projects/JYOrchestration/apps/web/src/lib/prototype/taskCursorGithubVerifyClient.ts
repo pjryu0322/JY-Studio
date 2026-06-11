@@ -16,6 +16,7 @@ export function buildTaskCursorGithubVerifyRequestBody(input: {
   readonly state: RequirementsStateJson;
   readonly codeTaskId?: string;
   readonly manualGithubRecheck?: boolean;
+  readonly manualRecheckPayload?: import("@/lib/prototype/codeTaskManualGithubRecheckPayload").CodeTaskManualGithubRecheckPayloadV1;
 }): TaskCursorGithubVerifyRequestBody {
   const { state } = input;
   return {
@@ -23,6 +24,7 @@ export function buildTaskCursorGithubVerifyRequestBody(input: {
     execution: input.execution,
     ...(input.codeTaskId?.trim() ? { codeTaskId: input.codeTaskId.trim() } : {}),
     ...(input.manualGithubRecheck === true ? { manualGithubRecheck: true } : {}),
+    ...(input.manualRecheckPayload ? { manualRecheckPayload: input.manualRecheckPayload } : {}),
     implementationTaskExecutionStateV1: state.implementationTaskExecutionStateV1,
     workItems: state.cursorWorkItemsV1 ?? [],
     codeTaskExecutionRunsV1: state.codeTaskExecutionRunsV1,

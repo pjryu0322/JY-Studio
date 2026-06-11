@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { ImplementationCodeTaskTreeNode } from "@/lib/prototype/implementationTaskTreeView";
+import type { CodeTaskManualGithubRecheckPayloadV1 } from "@/lib/prototype/codeTaskManualGithubRecheckPayload";
 import type { CodeTaskExecutionFlowStepVm } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
 import type { CodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
 import { buildCodeTaskInlineExecutionDetail } from "@/lib/prototype/implementationCodeTaskInlineExecution";
@@ -138,7 +139,10 @@ function CodeTaskSelectedDetail({
   readonly node: ImplementationCodeTaskTreeNode;
   readonly codeAgentProgress?: CodeAgentExecutionProgressView;
   readonly onCopyCursorPrompt?: (codeTaskId: string) => void;
-  readonly onRecheckGithubVerify?: (codeTaskId: string) => void;
+  readonly onRecheckGithubVerify?: (input: {
+    readonly codeTaskId: string;
+    readonly rowPayload?: CodeTaskManualGithubRecheckPayloadV1 | null;
+  }) => void;
   readonly githubRecheckBusy?: boolean;
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
 }) {
@@ -193,7 +197,13 @@ function CodeTaskSelectedDetail({
           onCopyCursorPrompt ? () => onCopyCursorPrompt(node.codeTaskId) : undefined
         }
         onRecheckGithubVerify={
-          onRecheckGithubVerify ? () => onRecheckGithubVerify(node.codeTaskId) : undefined
+          onRecheckGithubVerify
+            ? () =>
+                onRecheckGithubVerify({
+                  codeTaskId: node.codeTaskId,
+                  rowPayload: node.githubRecheckPayload,
+                })
+            : undefined
         }
         githubRecheckBusy={githubRecheckBusy}
       />
@@ -219,7 +229,10 @@ function FlatCodeTaskListItem({
   readonly onSelect: (parentTaskId: string, codeTaskId: string) => void;
   readonly onToggleChecked?: (codeTaskId: string, checked: boolean) => void;
   readonly onCopyCursorPrompt?: (codeTaskId: string) => void;
-  readonly onRecheckGithubVerify?: (codeTaskId: string) => void;
+  readonly onRecheckGithubVerify?: (input: {
+    readonly codeTaskId: string;
+    readonly rowPayload?: CodeTaskManualGithubRecheckPayloadV1 | null;
+  }) => void;
   readonly githubRecheckBusyCodeTaskId?: string | null;
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
 }) {
@@ -327,7 +340,10 @@ export function ImplementationExecutionBoardTaskTree({
   readonly onToggleSelectAll?: (checked: boolean) => void;
   readonly onToggleCodeTaskChecked?: (codeTaskId: string, checked: boolean) => void;
   readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
-  readonly onRecheckCodeTaskGithubVerify?: (codeTaskId: string) => void;
+  readonly onRecheckCodeTaskGithubVerify?: (input: {
+    readonly codeTaskId: string;
+    readonly rowPayload?: CodeTaskManualGithubRecheckPayloadV1 | null;
+  }) => void;
   readonly githubRecheckBusyCodeTaskId?: string | null;
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
   readonly onCopyDeveloperPromptsFromHeader?: () => void;

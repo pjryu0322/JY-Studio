@@ -6,8 +6,7 @@ import {
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
 import { isTerminalCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
-import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
-import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CodeTaskManualGithubRecheckPayloadV1 } from "@/lib/prototype/codeTaskManualGithubRecheckPayload";
 import type { ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { resolveTaskCursorExecutionForRow } from "@/lib/prototype/codeAgentExecutionProgressView";
 import {
@@ -528,13 +527,15 @@ export function buildGithubVerifyExecutionForCodeTask(input: {
   readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
   readonly taskCursorExecutionHistory?: readonly TaskCursorExecutionV1[] | null;
   readonly dbBundle?: ImplementationRuntimeBundleView | null;
+  readonly manualPayload?: CodeTaskManualGithubRecheckPayloadV1 | null;
 }): TaskCursorExecutionV1 | null {
   const codeTaskId = input.codeTaskId.trim();
   if (!codeTaskId) return null;
 
   const planTask = input.codeTaskPlan?.tasks.find((task) => task.codeTaskId === codeTaskId);
-  const parentTaskId = planTask?.parentTaskId?.trim() ?? "";
-  if (!parentTaskId) return null;
+  const parentTaskId =
+    planTask?.parentTaskId?.trim() ?? input.manualPayload?.taskId?.trim() ?? "";
+  if (!parentTaskId && !input.manualPayload?.workBranch?.trim()) return null;
 
   const runs = mergeCodeTaskRunsWithDbRuntime({
     jsonRuns: input.runs ?? [],
@@ -548,21 +549,29 @@ export function buildGithubVerifyExecutionForCodeTask(input: {
     taskCursorExecutionHistory: input.taskCursorExecutionHistory ?? null,
   });
 
-  const workBranch = resolveWorkBranch({
-    parentTaskId,
-    codeTaskId,
-    execution: historyExecution,
-    run,
-    codeTaskPlan: input.codeTaskPlan,
-  });
-  if (!String(workBranch ?? "").trim()) return null;
+  const workBranch = String(
+    input.manualPayload?.workBranch?.trim() ||
+      resolveWorkBranch({
+        parentTaskId: parentTaskId || codeTaskId,
+        codeTaskId,
+        execution: historyExecution,
+        run,
+        codeTaskPlan: input.codeTaskPlan,
+      }) ||
+      "",
+  ).trim();
+  if (!workBranch) return null;
 
-  const baseBranch = resolveWorkBaseBranch({
-    codeTaskId,
-    execution: historyExecution,
-    run,
-    codeTaskPlan: input.codeTaskPlan,
-  });
+  const baseBranch = String(
+    input.manualPayload?.baseBranch?.trim() ||
+      resolveWorkBaseBranch({
+        codeTaskId,
+        execution: historyExecution,
+        run,
+        codeTaskPlan: input.codeTaskPlan,
+      }) ||
+      "main",
+  ).trim() || "main";
 
   let cursorRunId = String(run?.cursorRunId ?? historyExecution?.cursorRunId ?? "").trim();
   const dbRun = input.dbBundle?.runs.find((r) => r.codeTaskId === codeTaskId);
@@ -573,19 +582,25 @@ export function buildGithubVerifyExecutionForCodeTask(input: {
     run = synthesizeManualRecheckRun({
       projectId: input.projectId,
       codeTaskId,
-      parentTaskId,
+      parentTaskId: parentTaskId || input.manualPayload?.taskId?.trim() || codeTaskId,
       workBranch,
       baseBranch,
       cursorRunId,
     });
   }
 
-  return buildGithubVerifyExecutionFromRunContext({
+  const built = buildGithubVerifyExecutionFromRunContext({
     projectId: input.projectId,
-    parentTaskId,
+    parentTaskId: parentTaskId || input.manualPayload?.taskId?.trim() || codeTaskId,
     codeTaskId,
     run,
     execution: historyExecution,
     codeTaskPlan: input.codeTaskPlan,
   });
+  if (!built) return null;
+  const targetRepository = input.manualPayload?.targetRepository?.trim();
+  if (targetRepository) {
+    return { ...built, targetRepository };
+  }
+  return built;
 }

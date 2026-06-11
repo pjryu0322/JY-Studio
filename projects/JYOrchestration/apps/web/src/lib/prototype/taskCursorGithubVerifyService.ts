@@ -36,6 +36,7 @@ import {
 import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { resolveManualGithubRecheckPayload } from "@/lib/prototype/codeTaskManualGithubRecheckPayload";
 import { mergeOrchestrationPersistPatches } from "@/lib/prototype/orchestrationPatchMerge";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { syncImplementationRuntimeFromTaskCursor } from "@/lib/runtime/implementationRuntime/implementationRuntimeTaskCursorSync";
@@ -159,7 +160,47 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
 }): Promise<TaskCursorGithubVerifyOutcome> {
   const projectId = input.projectId.trim();
   const body = input.body;
-  const execution = input.execution;
+  let execution = input.execution;
+
+  if (body.manualGithubRecheck) {
+    const codeTaskIdHint =
+      String(body.codeTaskId ?? body.manualRecheckPayload?.codeTaskId ?? "").trim() ||
+      String(body.manualRecheckPayload?.codeTaskId ?? "").trim();
+    const setupRowEarly = await prisma.executionSetup.findUnique({
+      where: { projectId },
+      select: EXECUTION_SETUP_SELECT,
+    });
+    const setupRowMapped = mapExecutionSetupPrismaRowToSourceGenerationRow(setupRowEarly);
+    const stateSlice = mergeRequirementsStateJson(parseRequirementsStateJson({}) ?? {}, {
+      implementationCodeTaskPlanV1: body.implementationCodeTaskPlanV1,
+      implementationTaskListV1: body.implementationTaskListV1,
+      codeTaskExecutionRunsV1: body.codeTaskExecutionRunsV1,
+      cursorWorkItemsV1: body.workItems ?? [],
+      implementationExecutionUnitsV1: (body as Record<string, unknown>).implementationExecutionUnitsV1,
+    });
+    const dbBundlePreManual = await getImplementationRuntimeBundle(projectId);
+    const resolvedPayload = resolveManualGithubRecheckPayload({
+      projectId,
+      codeTaskId: codeTaskIdHint,
+      requirementsState: stateSlice,
+      dbBundle: dbBundlePreManual,
+      executionSetup: setupRowMapped,
+      cursorWorkItems: body.workItems ?? [],
+      hints: body.manualRecheckPayload ?? undefined,
+    });
+    const payload = resolvedPayload.payload;
+    if (payload) {
+      execution = patchTaskCursorExecution(execution, {
+        taskId: payload.taskId,
+        workBranch: payload.workBranch,
+        baseBranch: payload.baseBranch,
+        targetRepository: payload.targetRepository,
+        status: "github_verifying",
+        nowIso: new Date().toISOString(),
+      });
+    }
+  }
+
   const blocked = validateTaskCursorGithubVerifyExecution(execution);
   if (blocked) return blocked;
 

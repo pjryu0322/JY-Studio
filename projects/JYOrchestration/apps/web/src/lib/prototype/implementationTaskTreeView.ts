@@ -49,6 +49,9 @@ import {
   formatExecutionUnitVerificationCardLabels,
   resolveExecutionUnitVerificationDisplayStatus,
 } from "@/lib/prototype/implementationExecutionUnitVerification";
+import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
+import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
+import type { CodeTaskManualGithubRecheckPayloadV1 } from "@/lib/prototype/codeTaskManualGithubRecheckPayload";
 import {
   coalesceCodeTaskBoardRowDisplayLabels,
   resolveCodeTaskBoardState,
@@ -98,6 +101,7 @@ export type ImplementationCodeTaskTreeNode = Readonly<{
   readonly showRetryFailedAction?: boolean;
   readonly pollStatusLabel?: string;
   readonly githubVerifyTechnicalLines?: readonly ImplementationTaskTreeMetaLine[];
+  readonly githubRecheckPayload?: CodeTaskManualGithubRecheckPayloadV1;
 }>;
 
 export type ImplementationProcessTaskTreeNode = Readonly<{
@@ -206,6 +210,8 @@ function buildCodeTaskNode(input: {
   readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
   readonly executionUnit?: ImplementationExecutionUnitV1 | null;
   readonly runtimeSnapshotUnit?: import("@/lib/prototype/implementationRuntimeSnapshot").ImplementationRuntimeSnapshotV1["units"][number] | null;
+  readonly projectId?: string | null;
+  readonly targetRepository?: ProjectTargetRepository | null;
 }): ImplementationCodeTaskTreeNode {
   const executionForParent = resolveTaskCursorExecutionForRow({
     taskId: input.row.taskId,
@@ -467,6 +473,41 @@ function buildCodeTaskNode(input: {
     }),
   );
 
+  const branchPlanForRecheck = parseCodeTaskBranchPlanV1(input.codeTask.branchPlan);
+  const recheckWorkBranch =
+    input.executionUnit?.workBranch?.trim() ||
+    branchPlanForRecheck?.workBranch?.trim() ||
+    dbRun?.branchName?.trim() ||
+    boardState.branchName?.trim() ||
+    "";
+  const recheckBaseBranch =
+    input.executionUnit?.baseBranch?.trim() ||
+    branchPlanForRecheck?.baseBranch?.trim() ||
+    "";
+  const githubRecheckPayload: CodeTaskManualGithubRecheckPayloadV1 | undefined =
+    input.projectId?.trim() &&
+    input.targetRepository?.owner?.trim() &&
+    input.targetRepository?.repo?.trim() &&
+    recheckWorkBranch
+      ? {
+          projectId: input.projectId.trim(),
+          codeTaskId: input.codeTask.codeTaskId,
+          taskId: input.codeTask.parentTaskId.trim(),
+          workBranch: recheckWorkBranch,
+          baseBranch: recheckBaseBranch || input.targetRepository.defaultBranch || "main",
+          repositoryOwner: input.targetRepository.owner.trim(),
+          repositoryName: input.targetRepository.repo.trim(),
+          repositoryFullName: input.targetRepository.repoFullName,
+          targetRepository: input.targetRepository.repoFullName,
+          githubCommitSha:
+            unitOutcome?.commitSha ??
+            input.runtimeSnapshotUnit?.latestCommitSha ??
+            latestRun?.commitSha ??
+            null,
+          githubOutcomeSaved,
+        }
+      : undefined;
+
   return {
     codeTaskId: input.codeTask.codeTaskId,
     parentTaskId: input.codeTask.parentTaskId,
@@ -506,6 +547,7 @@ function buildCodeTaskNode(input: {
             nextActionHint:
               "다음 처리: AI 개발자 실행 → GitHub 결과 확인",
           }),
+    ...(githubRecheckPayload ? { githubRecheckPayload } : {}),
   };
 }
 
@@ -551,6 +593,8 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
   readonly promptTimeline?: readonly import("@/lib/requirements/requirementsStateJson").RequirementsPromptTimelineEntry[] | null;
   readonly executionUnits?: readonly ImplementationExecutionUnitV1[] | null;
   readonly runtimeSnapshotUnits?: readonly import("@/lib/prototype/implementationRuntimeSnapshot").ImplementationRuntimeSnapshotV1["units"] | null;
+  readonly projectId?: string | null;
+  readonly targetRepository?: ProjectTargetRepository | null;
 }): readonly ImplementationCodeTaskTreeNode[] {
   const plan =
     ensureCodeTaskPlanWithFileBoundaries({
@@ -608,6 +652,8 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
         promptTimeline: input.promptTimeline,
         executionUnit: unitByCodeTaskId.get(codeTask.codeTaskId) ?? null,
         runtimeSnapshotUnit: snapshotByCodeTaskId.get(codeTask.codeTaskId) ?? null,
+        projectId: input.projectId,
+        targetRepository: input.targetRepository,
       }),
     );
   }

@@ -279,7 +279,7 @@ import {
   postImplementationQuickRunStartJob,
 } from "@/lib/prototype/implementationQuickRunStartService";
 import { evaluateImplementationToolbarQuickRun } from "@/lib/prototype/implementationToolbarQuickRunDispatch";
-import { loadImplementationExecutionUnitsFromState } from "@/lib/prototype/implementationExecutionUnitStore";
+import { loadImplementationExecutionUnitsFromState, parseImplementationExecutionUnitsStateV1 } from "@/lib/prototype/implementationExecutionUnitStore";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
@@ -2543,9 +2543,12 @@ export function PrototypePreviewPanel({
   );
 
   const handleRecheckCodeTaskGithubVerify = useCallback(
-    async (codeTaskId: string) => {
+    async (input: {
+      readonly codeTaskId: string;
+      readonly rowPayload?: import("@/lib/prototype/codeTaskManualGithubRecheckPayload").CodeTaskManualGithubRecheckPayloadV1 | null;
+    }) => {
       const pid = projectId.trim();
-      const id = codeTaskId.trim();
+      const id = input.codeTaskId.trim();
       if (!pid || !id || githubRecheckBusyCodeTaskId === id) return;
       setGithubRecheckBusyCodeTaskId(id);
       try {
@@ -2555,6 +2558,13 @@ export function PrototypePreviewPanel({
           codeTaskId: id,
           state,
           dbBundle: implementationRuntimeDbBundle,
+          executionSetup: executionSetupRow ?? undefined,
+          taskList: implementationStageBoardInput?.taskList,
+          executionUnits:
+            parseImplementationExecutionUnitsStateV1(
+              orchestrationAwareRequirementsState.implementationExecutionUnitsV1,
+            )?.units ?? undefined,
+          rowPayload: input.rowPayload ?? undefined,
           continuationTriggerRef: quickRunCodeTaskContinuationRef,
           enrichPatch: enrichCodeTaskRunOrchestrationPatch,
           applyOrchestrationPatch: (patch) => {
@@ -2580,6 +2590,9 @@ export function PrototypePreviewPanel({
       projectId,
       githubRecheckBusyCodeTaskId,
       implementationRuntimeDbBundle,
+      executionSetupRow,
+      implementationStageBoardInput?.taskList,
+      orchestrationAwareRequirementsState.implementationExecutionUnitsV1,
       enrichCodeTaskRunOrchestrationPatch,
       applyImplementationOrchestrationResult,
       executionSingleChat.chatMessages,
@@ -6989,9 +7002,7 @@ export function PrototypePreviewPanel({
             onCopyCodeTaskCursorPrompt={handleCopyCodeTaskCursorPrompt}
             onCopyDeveloperPromptsFromHeader={handleCopyDeveloperPromptsFromHeader}
             onRetryGithubVerify={() => void handleManualGithubVerifyRetry()}
-            onRecheckCodeTaskGithubVerify={(codeTaskId) =>
-              void handleRecheckCodeTaskGithubVerify(codeTaskId)
-            }
+            onRecheckCodeTaskGithubVerify={(input) => void handleRecheckCodeTaskGithubVerify(input)}
             githubRecheckBusyCodeTaskId={githubRecheckBusyCodeTaskId}
             onRetryFailedCodeTask={(codeTaskId) => void handleRetryFailedCodeTask(codeTaskId)}
             projectId={projectId.trim()}
