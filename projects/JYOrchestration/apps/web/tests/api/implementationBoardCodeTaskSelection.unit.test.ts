@@ -5,6 +5,7 @@ import {
   coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride,
   resolveImplementationBoardQuickRunSelection,
   resolveQuickRunSelectionSummaryFromBoardView,
+  resolveToolbarQuickRunSelectionSummary,
 } from "@/lib/prototype/implementationBoardCodeTaskSelection";
 import { boardTreeNode } from "./implementationBoardSummaryTestHelpers";
 import { evaluateSelectedRunnableCodeTasksGateFromBoard } from "@/lib/prototype/implementationCodeTaskBoardState";
@@ -67,6 +68,33 @@ describe("resolveQuickRunSelectionSummaryFromBoardView", () => {
       viewSummary,
       livePanelSummary: stalePanelSummary,
       hasCheckedSelectionOverride: true,
+    });
+    expect(picked?.selectedRunnableCount).toBe(1);
+    expect(picked?.selectedRunnableCodeTaskIds).toEqual([sampleId]);
+  });
+});
+
+describe("resolveToolbarQuickRunSelectionSummary", () => {
+  it("uses panel runnable ids when rebuilt summary misses checked runnable", () => {
+    const sampleId = CANONICAL_SAMPLE_DATA_CODE_TASK_ID;
+    const nodes = [
+      boardTreeNode(sampleId, "대기", "실행 가능"),
+      boardTreeNode("CODE-DONE-0", "완료", "GitHub outcome 저장됨", true),
+    ];
+    const rebuilt = summarizeCodeTaskBoardRowsFromTreeNodes({
+      nodes,
+      checkedCodeTaskIds: [sampleId],
+    });
+    const staleRebuilt = summarizeCodeTaskBoardRowsFromTreeNodes({
+      nodes: [boardTreeNode("CODE-OTHER", "대기", "실행 가능")],
+      checkedCodeTaskIds: [sampleId],
+    });
+    const picked = resolveToolbarQuickRunSelectionSummary({
+      checkedCodeTaskIds: [sampleId],
+      livePanelSummary: rebuilt,
+      rebuiltSummary: staleRebuilt,
+      liveRunnableCodeTaskIds: [sampleId],
+      rebuiltRunnableCodeTaskIds: ["CODE-OTHER"],
     });
     expect(picked?.selectedRunnableCount).toBe(1);
     expect(picked?.selectedRunnableCodeTaskIds).toEqual([sampleId]);

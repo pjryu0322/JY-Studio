@@ -19,11 +19,13 @@ export function useImplementationBoardSelectionBridge(projectId: string) {
   const boardPersistSelectionRef = useRef<readonly string[] | null>(null);
   const liveCheckedCodeTaskIdsRef = useRef<readonly string[] | null>(null);
   const livePanelSummaryRef = useRef<ImplementationCodeTaskSelectionSummaryV1 | null>(null);
+  const liveRunnableCodeTaskIdsRef = useRef<readonly string[] | null>(null);
 
   useEffect(() => {
     boardPersistSelectionRef.current = null;
     liveCheckedCodeTaskIdsRef.current = null;
     livePanelSummaryRef.current = null;
+    liveRunnableCodeTaskIdsRef.current = null;
   }, [projectId]);
 
   const onCodeTaskSelectionSummaryChange = useCallback(
@@ -42,6 +44,7 @@ export function useImplementationBoardSelectionBridge(projectId: string) {
       liveCheckedCodeTaskIds: liveCheckedCodeTaskIdsRef.current,
       boardPersistSelection: boardPersistSelectionRef.current,
       livePanelSummary: livePanelSummaryRef.current,
+      liveRunnableCodeTaskIds: liveRunnableCodeTaskIdsRef.current,
     };
   }, []);
 
@@ -71,6 +74,7 @@ export function useImplementationBoardSelectionBridge(projectId: string) {
 
   return {
     liveCheckedCodeTaskIdsRef,
+    liveRunnableCodeTaskIdsRef,
     onCodeTaskSelectionSummaryChange,
     recordPersistedBoardSelection,
     getBridgeSnapshot,

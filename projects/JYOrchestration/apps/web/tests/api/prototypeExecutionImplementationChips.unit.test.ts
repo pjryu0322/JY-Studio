@@ -16,7 +16,6 @@ import { IMPLEMENTATION_GENERATION_REQUEST_CHIP } from "@/lib/requirements/imple
 
 const baseHandlers = () => ({
   openEnvSettings: vi.fn(),
-  openArtifactHub: vi.fn(),
   focusComposerForScopeEdit: vi.fn(),
   generateImplementationWorkPlanDraft: vi.fn(),
   confirmImplementationTaskPlan: vi.fn(),

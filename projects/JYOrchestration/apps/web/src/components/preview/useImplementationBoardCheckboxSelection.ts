@@ -53,6 +53,7 @@ export function useImplementationBoardCodeTaskSelectionSummary(input: {
   readonly onCodeTaskSelectionSummaryChange?: (
     summary: ReturnType<typeof summarizeCodeTaskBoardRowsFromTreeNodes>,
   ) => void;
+  readonly liveRunnableCodeTaskIdsRef?: React.MutableRefObject<readonly string[] | null>;
 }): Readonly<{
   readonly codeTaskSelectionSummary: ReturnType<typeof summarizeCodeTaskBoardRowsFromTreeNodes>;
   readonly runnableCodeTaskIdsFromBoard: readonly string[];
@@ -63,6 +64,10 @@ export function useImplementationBoardCodeTaskSelectionSummary(input: {
     () => listRunnableCodeTaskIdsFromBoardNodes(input.taskTreeNodes),
     [input.taskTreeNodes],
   );
+
+  if (input.liveRunnableCodeTaskIdsRef) {
+    input.liveRunnableCodeTaskIdsRef.current = runnableCodeTaskIdsFromBoard;
+  }
 
   const userSelectableCodeTaskIdsFromBoard = useMemo(
     () => listUserCheckboxSelectableCodeTaskIdsFromBoardNodes(input.taskTreeNodes),

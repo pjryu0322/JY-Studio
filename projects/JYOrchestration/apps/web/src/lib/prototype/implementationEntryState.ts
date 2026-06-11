@@ -2,6 +2,7 @@ import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkIte
 import {
   buildCursorWorkItemsFromImplementationCodeTaskPlan,
   buildCursorWorkItemsFromImplementationTaskListFallback,
+  mergeCursorWorkItemsWithMissingCodeTaskPlanTasks,
 } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
@@ -222,6 +223,22 @@ export function buildImplementationEntryCursorWorkItemsRecovery(input: {
   readonly regenerated: boolean;
   readonly timelineEntry?: RequirementsPromptTimelineEntry;
 }> {
+  if (input.codeTaskPlan?.tasks?.length && (input.existingCursorWorkItems?.length ?? 0) > 0) {
+    const merged = mergeCursorWorkItemsWithMissingCodeTaskPlanTasks({
+      projectId: input.projectId,
+      codeTaskPlan: input.codeTaskPlan,
+      existingWorkItems: input.existingCursorWorkItems ?? [],
+      nowIso: input.nowIso,
+      originStage: "implementation",
+    });
+    if (merged.appendedCodeTaskIds.length) {
+      return {
+        cursorWorkItems: merged.cursorWorkItems,
+        regenerated: true,
+      };
+    }
+    return { cursorWorkItems: input.existingCursorWorkItems ?? [], regenerated: false };
+  }
   if ((input.existingCursorWorkItems?.length ?? 0) > 0) {
     return { cursorWorkItems: input.existingCursorWorkItems ?? [], regenerated: false };
   }

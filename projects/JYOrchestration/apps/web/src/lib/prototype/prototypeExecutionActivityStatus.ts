@@ -81,8 +81,6 @@ export function resolvePrototypeRunActivityLabel(status: PrototypeRun["status"] 
 }
 
 export function resolvePrototypeExecutionActivityStatus(input: {
-  readonly implementationResetBusy: boolean;
-  readonly executionAiSummaryBusy: boolean;
   readonly plannerCreatePending: boolean;
   readonly isPlannerRunning: boolean;
   readonly plannerProgressStep?: number;
@@ -94,12 +92,6 @@ export function resolvePrototypeExecutionActivityStatus(input: {
   readonly aiInvokePending: boolean;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
 }): PrototypeExecutionActivityStatus {
-  if (input.implementationResetBusy) {
-    return { active: true, label: "구현 세션 초기화 중" };
-  }
-  if (input.executionAiSummaryBusy) {
-    return { active: true, label: "대화 요약 생성 중" };
-  }
   if (input.plannerCreatePending) {
     return { active: true, label: "작업계획 생성 요청 중" };
   }

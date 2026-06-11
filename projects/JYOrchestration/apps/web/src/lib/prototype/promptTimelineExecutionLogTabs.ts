@@ -262,6 +262,14 @@ export function pickExecutionLogTimelineEntries(
     .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
 
+/** 실행 로그 탭에 표시되는 항목만 제거하고 나머지 promptTimeline은 유지한다. */
+export function stripExecutionLogTimelineEntries(
+  timeline: readonly RequirementsPromptTimelineEntry[] | null | undefined,
+): RequirementsPromptTimelineEntry[] {
+  if (!timeline?.length) return [];
+  return timeline.filter((entry) => !isExecutionLogTimelineEntry(entry));
+}
+
 export function parseExecutionLogResponseFields(
   responseText: string | null | undefined,
 ): Readonly<Record<string, string>> {

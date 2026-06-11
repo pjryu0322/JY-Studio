@@ -1,6 +1,7 @@
 import {
   coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride,
   resolveImplementationBoardQuickRunSelection,
+  resolveToolbarQuickRunSelectionSummary,
   type ImplementationBoardSelectionBridgeSnapshotV1,
 } from "@/lib/prototype/implementationBoardCodeTaskSelection";
 import {
@@ -58,14 +59,20 @@ export function evaluateImplementationToolbarQuickRun(input: {
     selectedCodeTaskIdsOverride: selectionOverride,
   });
 
-  const summary = quickRunSelection.summary;
+  const checkedForTrace =
+    input.bridge.liveCheckedCodeTaskIds ?? input.bridge.boardPersistSelection ?? [];
+  const summary = resolveToolbarQuickRunSelectionSummary({
+    checkedCodeTaskIds: checkedForTrace,
+    livePanelSummary: input.bridge.livePanelSummary,
+    rebuiltSummary: quickRunSelection.summary,
+    liveRunnableCodeTaskIds: input.bridge.liveRunnableCodeTaskIds,
+    rebuiltRunnableCodeTaskIds: quickRunSelection.view?.runnableCodeTaskIds ?? [],
+  });
   if (!summary) {
     return { outcome: "not_board_ready" };
   }
 
   const resolved = resolveQuickRunToolbarAction({ summary });
-  const checkedForTrace =
-    input.bridge.liveCheckedCodeTaskIds ?? input.bridge.boardPersistSelection ?? [];
   const traceDetail = formatQuickRunToolbarTraceDetail({
     boardRows: input.boardTaskRowCount,
     summary,

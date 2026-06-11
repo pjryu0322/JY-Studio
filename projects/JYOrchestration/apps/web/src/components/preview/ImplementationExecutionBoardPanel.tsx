@@ -134,6 +134,7 @@ export function ImplementationExecutionBoardPanel({
   onExecuteSelectedCodeTasks,
   onReworkSelectedCodeTasks,
   liveCheckedCodeTaskIdsRef,
+  liveRunnableCodeTaskIdsRef,
   onCodeTaskSelectionSummaryChange,
 }: {
   readonly board: ImplementationExecutionBoardV1;
@@ -183,6 +184,7 @@ export function ImplementationExecutionBoardPanel({
   readonly onReworkSelectedCodeTasks?: () => void;
   /** Parent toolbar quick-run reads latest checkbox selection (panel local state). */
   readonly liveCheckedCodeTaskIdsRef?: React.MutableRefObject<readonly string[] | null>;
+  readonly liveRunnableCodeTaskIdsRef?: React.MutableRefObject<readonly string[] | null>;
   readonly onCodeTaskSelectionSummaryChange?: (
     summary: ReturnType<typeof summarizeCodeTaskBoardRowsFromTreeNodes>,
   ) => void;
@@ -553,6 +555,7 @@ export function ImplementationExecutionBoardPanel({
     checkedCodeTaskIds,
     taskTreeNodes,
     onCodeTaskSelectionSummaryChange,
+    liveRunnableCodeTaskIdsRef,
   });
 
   const integratedPipelineLines = useMemo(
@@ -771,7 +774,7 @@ export function ImplementationExecutionBoardPanel({
           codeAgentProgress={codeAgentProgress}
           allChecked={selectAllHeaderState.allChecked}
           selectAllIndeterminate={selectAllHeaderState.indeterminate}
-          selectedCodeTaskCount={checkedCodeTaskIds.length}
+          selectedCodeTaskCount={codeTaskSelectionSummary.selectedRunnableCount}
           selectableCodeTaskCount={codeTaskSelectionSummary.runnableCount}
           integrationReadyCount={codeTaskSelectionSummary.integrationReadyCount}
           waitingCodeTaskIds={userSelectableCodeTaskIdsFromBoard}

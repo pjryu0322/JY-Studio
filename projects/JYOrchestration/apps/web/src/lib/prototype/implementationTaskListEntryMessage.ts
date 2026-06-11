@@ -655,7 +655,6 @@ export function tryHandleImplementationTaskListChip(input: {
   readonly nowIso?: string;
   readonly appendAiMessage: (message: RequirementsMessage) => void;
   readonly openEnvSettings: () => void;
-  readonly openArtifactHub: () => void;
   readonly openPrototypePreview?: () => void;
   readonly returnToPlanningStage: () => void;
   readonly generateTaskListFromSeed?: () => void;
@@ -816,7 +815,9 @@ export function tryHandleImplementationTaskListChip(input: {
       input.openEnvSettings();
       return true;
     case IMPLEMENTATION_ARTIFACT_REVIEW_LABEL:
-      input.openArtifactHub();
+      input.showToast(
+        "구현 산출물 Hub는 제공되지 않습니다. 기획(/requirements) 화면에서 산출물을 확인해 주세요.",
+      );
       return true;
     default:
       return false;

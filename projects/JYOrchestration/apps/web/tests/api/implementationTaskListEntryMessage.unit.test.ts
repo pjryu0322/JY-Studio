@@ -225,7 +225,6 @@ describe("implementationTaskListEntryMessage", () => {
       nowIso: NOW,
       appendAiMessage,
       openEnvSettings,
-      openArtifactHub: vi.fn(),
       returnToPlanningStage: vi.fn(),
       showToast: vi.fn(),
     });
@@ -244,7 +243,6 @@ describe("implementationTaskListEntryMessage", () => {
       nowIso: NOW,
       appendAiMessage,
       openEnvSettings,
-      openArtifactHub: vi.fn(),
       returnToPlanningStage: vi.fn(),
       showToast: vi.fn(),
     });
@@ -262,7 +260,6 @@ describe("implementationTaskListEntryMessage", () => {
       nowIso: NOW,
       appendAiMessage,
       openEnvSettings: vi.fn(),
-      openArtifactHub: vi.fn(),
       returnToPlanningStage: vi.fn(),
       showToast: vi.fn(),
     });
@@ -280,7 +277,6 @@ describe("implementationTaskListEntryMessage", () => {
       nowIso: NOW,
       appendAiMessage,
       openEnvSettings: vi.fn(),
-      openArtifactHub: vi.fn(),
       returnToPlanningStage: vi.fn(),
       showToast: vi.fn(),
     });

@@ -82,6 +82,61 @@ export function mergeCursorWorkItemsByTask(input: {
   return [...deduped.values()];
 }
 
+function cursorWorkItemCoversCodeTaskId(
+  workItem: CursorWorkItem,
+  codeTaskId: string,
+): boolean {
+  const id = codeTaskId.trim();
+  if (!id) return false;
+  if (String(workItem.codeTaskId ?? "").trim() === id) return true;
+  if (workItem.id === `cursor-wi-${id}`) return true;
+  return false;
+}
+
+/** Plan에 추가된 CodeTask(예: 샘플 데이터)에 WorkItem이 없을 때 기존 항목은 유지하고 누락분만 생성한다. */
+export function mergeCursorWorkItemsWithMissingCodeTaskPlanTasks(input: {
+  readonly projectId: string;
+  readonly codeTaskPlan: ImplementationCodeTaskPlanV1;
+  readonly existingWorkItems: readonly CursorWorkItem[];
+  readonly nowIso?: string;
+  readonly originStage?: CursorWorkItemOriginStage;
+}): Readonly<{
+  readonly cursorWorkItems: readonly CursorWorkItem[];
+  readonly appendedCodeTaskIds: readonly string[];
+}> {
+  const existing = input.existingWorkItems ?? [];
+  const planTasks = input.codeTaskPlan.tasks ?? [];
+  const missingTasks = planTasks.filter(
+    (task) => !existing.some((item) => cursorWorkItemCoversCodeTaskId(item, task.codeTaskId)),
+  );
+  if (!missingTasks.length) {
+    return { cursorWorkItems: existing, appendedCodeTaskIds: [] };
+  }
+  const built = buildCursorWorkItemsFromImplementationCodeTaskPlan({
+    projectId: input.projectId,
+    codeTaskPlan: input.codeTaskPlan,
+    nowIso: input.nowIso,
+    originStage: input.originStage ?? "implementation",
+  });
+  const builtByCodeTaskId = new Map(
+    built.map((item) => [String(item.codeTaskId ?? "").trim(), item] as const),
+  );
+  const seenIds = new Set(existing.map((item) => item.id));
+  const appended: CursorWorkItem[] = [];
+  const appendedCodeTaskIds: string[] = [];
+  for (const task of missingTasks) {
+    const workItem = builtByCodeTaskId.get(task.codeTaskId.trim());
+    if (!workItem || seenIds.has(workItem.id)) continue;
+    appended.push(workItem);
+    seenIds.add(workItem.id);
+    appendedCodeTaskIds.push(task.codeTaskId);
+  }
+  return {
+    cursorWorkItems: appended.length ? [...existing, ...appended] : existing,
+    appendedCodeTaskIds,
+  };
+}
+
 export function validateTaskScopedWorkItems(input: {
   readonly selectedTaskId: string;
   readonly selectedWorkItems: readonly CursorWorkItem[];

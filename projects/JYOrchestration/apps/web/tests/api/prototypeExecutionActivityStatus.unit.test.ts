@@ -24,8 +24,6 @@ describe("prototypeExecutionActivityStatus", () => {
   it("returns idle when nothing is in progress", () => {
     expect(
       resolvePrototypeExecutionActivityStatus({
-        implementationResetBusy: false,
-        executionAiSummaryBusy: false,
         plannerCreatePending: false,
         isPlannerRunning: false,
         isRunningState: false,
@@ -37,27 +35,9 @@ describe("prototypeExecutionActivityStatus", () => {
     ).toEqual({ active: false, label: "" });
   });
 
-  it("prioritizes reset over other busy flags", () => {
-    expect(
-      resolvePrototypeExecutionActivityStatus({
-        implementationResetBusy: true,
-        executionAiSummaryBusy: true,
-        plannerCreatePending: true,
-        isPlannerRunning: true,
-        isRunningState: true,
-        protoBusy: true,
-        executionEnvLoading: true,
-        conversationLoading: true,
-        aiInvokePending: true,
-      }),
-    ).toEqual({ active: true, label: "구현 세션 초기화 중" });
-  });
-
   it("shows planner progress step detail", () => {
     expect(
       resolvePrototypeExecutionActivityStatus({
-        implementationResetBusy: false,
-        executionAiSummaryBusy: false,
         plannerCreatePending: false,
         isPlannerRunning: true,
         plannerProgressStep: 3,
@@ -92,8 +72,6 @@ describe("prototypeExecutionActivityStatus", () => {
   it("shows wip bridge running label with task detail", () => {
     expect(
       resolvePrototypeExecutionActivityStatus({
-        implementationResetBusy: false,
-        executionAiSummaryBusy: false,
         plannerCreatePending: false,
         isPlannerRunning: false,
         isRunningState: false,

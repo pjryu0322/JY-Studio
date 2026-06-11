@@ -1,4 +1,5 @@
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
+import { mergeCursorWorkItemsWithMissingCodeTaskPlanTasks } from "@/lib/prototype/implementationCursorWorkItems";
 import {
   appendCodeTaskExecutionRun,
   createCodeTaskExecutionRun,
@@ -97,6 +98,7 @@ export function evaluateImplementationQuickRunPrepAndSelection(input: {
     requirementsState: imp,
     livePanelSummary: input.bridge.livePanelSummary,
     liveCheckedCodeTaskIds: input.bridge.liveCheckedCodeTaskIds,
+    liveRunnableCodeTaskIds: input.bridge.liveRunnableCodeTaskIds,
     boardPersistSelection: input.bridge.boardPersistSelection,
     selectedCodeTaskIdsOverride: input.selectedCodeTaskIdsOverride ?? prep.selectedCodeTaskIds,
   });
@@ -124,6 +126,38 @@ export function evaluateImplementationQuickRunPrepAndSelection(input: {
       fromCodeTaskId: r.fromCodeTaskId,
       toCodeTaskId: r.toCodeTaskId,
     })),
+  };
+}
+
+/** CodeTaskPlan 대비 누락된 Cursor WorkItem을 보강한 requirementsState (빠른실행 dispatch용). */
+export function ensureRequirementsStateCursorWorkItemsForCodeTaskPlan(input: {
+  readonly projectId: string;
+  readonly requirementsState: RequirementsStateJson;
+  readonly nowIso?: string;
+}): Readonly<{
+  readonly requirementsState: RequirementsStateJson;
+  readonly appendedCodeTaskIds: readonly string[];
+}> {
+  const plan = input.requirementsState.implementationCodeTaskPlanV1;
+  if (!plan?.tasks?.length) {
+    return { requirementsState: input.requirementsState, appendedCodeTaskIds: [] };
+  }
+  const merged = mergeCursorWorkItemsWithMissingCodeTaskPlanTasks({
+    projectId: input.projectId.trim(),
+    codeTaskPlan: plan,
+    existingWorkItems: input.requirementsState.cursorWorkItemsV1 ?? [],
+    nowIso: input.nowIso,
+    originStage: "implementation",
+  });
+  if (!merged.appendedCodeTaskIds.length) {
+    return { requirementsState: input.requirementsState, appendedCodeTaskIds: [] };
+  }
+  return {
+    requirementsState: {
+      ...input.requirementsState,
+      cursorWorkItemsV1: [...merged.cursorWorkItems],
+    },
+    appendedCodeTaskIds: merged.appendedCodeTaskIds,
   };
 }
 

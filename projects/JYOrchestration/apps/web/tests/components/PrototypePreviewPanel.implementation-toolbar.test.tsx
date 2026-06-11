@@ -18,28 +18,33 @@ describe("Implementation stage global toolbar layout", () => {
     expect(html).toContain("tools");
   });
 
-  it("renders mobile compact icon row with at most five primary controls plus overflow", () => {
+  it("renders mobile compact icon row without overflow when extras are toolbar icons", () => {
     const html = renderToStaticMarkup(
-      <WorkspaceConversationHubIconRow
-        iconLayout="mobileCompact"
-        interviewUi={{
-          readinessPercent: 40,
-          covered: 2,
-          total: 5,
-          remainingQuestionsEstimate: 3,
-          onForceGeneratePlanNow: () => {},
-        }}
-        memberControls={{ count: 2, onOpen: () => {} }}
-        artifactHubControls={{ count: 1, onOpen: () => {} }}
-        onResetConversation={() => {}}
-        onDownloadConversationMarkdown={() => {}}
-        onSummarizeConversation={() => {}}
-        overflowMenuItems={[{ id: "template", label: "템플릿 변경", onClick: () => {} }]}
-      />,
+      <ImplementationStageGlobalToolbar>
+        <WorkspaceHubChromeIconButton
+          title={IMPLEMENTATION_ENV_SETTINGS_LABEL}
+          ariaLabel={IMPLEMENTATION_ENV_SETTINGS_LABEL}
+          disabled={false}
+          onClick={() => {}}
+        >
+          <span>env</span>
+        </WorkspaceHubChromeIconButton>
+        <WorkspaceConversationHubIconRow
+          iconLayout="mobileCompact"
+          showSlotsChrome={false}
+          interviewUi={{
+            readinessPercent: 40,
+            covered: 2,
+            total: 5,
+            remainingQuestionsEstimate: 3,
+            onForceGeneratePlanNow: () => {},
+          }}
+        />
+      </ImplementationStageGlobalToolbar>,
     );
     expect(html).toContain('data-icon-layout="mobileCompact"');
-    expect(html).toContain("더보기");
-    expect(html).not.toContain("Canvas Hub");
+    expect(html).not.toContain("더보기");
+    expect(html).not.toContain("참여 멤버");
   });
 
   it("renders environment settings icon in implementation toolbar", () => {

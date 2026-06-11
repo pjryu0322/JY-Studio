@@ -10,6 +10,7 @@ import {
   isExecutionLogTimelineEntry,
   parseExecutionLogResponseFields,
   pickExecutionLogTimelineEntries,
+  stripExecutionLogTimelineEntries,
 } from "@/lib/prototype/promptTimelineExecutionLogTabs";
 
 describe("promptTimelineExecutionLogTabs", () => {
@@ -58,6 +59,27 @@ describe("promptTimelineExecutionLogTabs", () => {
     expect(fields.toTaskId).toBe("DEV-002");
     expect(fields.blockedTaskIds).toBe("DEV-003,DEV-004");
     expect(fields.notice).toBe("hello | world");
+  });
+
+  it("stripExecutionLogTimelineEntries removes execution log rows only", () => {
+    const timeline = [
+      {
+        stage: "implementation",
+        action: "task_cursor_api_started",
+        source: "platform",
+        createdAt: "2026-05-30T12:00:00.000Z",
+      },
+      {
+        stage: "ideation",
+        action: "ideation_bootstrap",
+        source: "platform",
+        createdAt: "2026-05-30T12:01:30.000Z",
+      },
+    ];
+    const stripped = stripExecutionLogTimelineEntries(timeline);
+    expect(stripped).toHaveLength(1);
+    expect(stripped[0]?.action).toBe("ideation_bootstrap");
+    expect(pickExecutionLogTimelineEntries(stripped)).toHaveLength(0);
   });
 
   it("ignores null timeline entries", () => {

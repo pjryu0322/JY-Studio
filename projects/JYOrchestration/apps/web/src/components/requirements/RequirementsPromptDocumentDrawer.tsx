@@ -308,6 +308,7 @@ export function RequirementsPromptDocumentDrawer({
   exportBaseName,
   orchestrationDebugSummary,
   initialTab = "prompt",
+  onClearExecutionLog,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
@@ -320,6 +321,8 @@ export function RequirementsPromptDocumentDrawer({
   readonly exportBaseName?: string | null;
   readonly orchestrationDebugSummary?: string | null;
   readonly initialTab?: PromptTimelineDrawerTab;
+  /** 실행 로그 탭 항목만 promptTimeline에서 제거 (DB 저장은 호출 측) */
+  readonly onClearExecutionLog?: () => void | Promise<void>;
 }) {
   const show = useShowScreenLabels();
   const [tab, setTab] = useState<PromptTimelineDrawerTab>("prompt");
@@ -448,6 +451,18 @@ export function RequirementsPromptDocumentDrawer({
     const date = localDateSlug();
     downloadTextFile(`${exportStem}-execution-log-${date}.md`, md, "text/markdown;charset=utf-8");
   }, [exportStem, executionLogTimeline]);
+
+  const onClearExecutionLogClick = useCallback(() => {
+    if (!executionLogTimeline.length || !onClearExecutionLog) return;
+    const count = executionLogTimeline.length;
+    const ok = window.confirm(
+      `표시 중인 실행 로그 ${count}건을 삭제할까요?\n프롬프트·대화 기록 등 다른 타임라인은 유지됩니다.`,
+    );
+    if (!ok) return;
+    void Promise.resolve(onClearExecutionLog()).then(() => {
+      showCopyFeedback("실행 로그를 초기화했습니다.");
+    });
+  }, [executionLogTimeline.length, onClearExecutionLog, showCopyFeedback]);
 
   const onCopyExecutionLogEntry = useCallback(
     async (entry: RequirementsPromptTimelineEntry) => {
@@ -1049,22 +1064,29 @@ export function RequirementsPromptDocumentDrawer({
               >
                 <div style={labelSm}>실행 로그</div>
                 {executionLogTimeline.length ? (
-                  <button
-                    type="button"
-                    onClick={onDownloadExecutionLogMarkdown}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 8,
-                      border: "1px solid #cbd5e1",
-                      background: "#fff",
-                      fontWeight: 700,
-                      fontSize: 12,
-                      cursor: "pointer",
-                      color: "#0f172a",
-                    }}
-                  >
-                    실행 로그 MD 저장
-                  </button>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                    {onClearExecutionLog ? (
+                      <button
+                        type="button"
+                        onClick={onClearExecutionLogClick}
+                        data-testid="execution-log-clear-button"
+                        style={{
+                          ...actionBarBtn,
+                          borderColor: "#fecaca",
+                          color: "#b91c1c",
+                        }}
+                      >
+                        실행 로그 초기화
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={onDownloadExecutionLogMarkdown}
+                      style={actionBarBtn}
+                    >
+                      실행 로그 MD 저장
+                    </button>
+                  </div>
                 ) : null}
               </div>
               {!executionLogTimeline.length ? (

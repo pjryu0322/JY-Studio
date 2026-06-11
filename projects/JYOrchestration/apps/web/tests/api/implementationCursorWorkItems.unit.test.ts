@@ -3,9 +3,12 @@ import {
   appendReworkRequest,
   parseImplementationExecutionBoardStateV1,
 } from "@/lib/prototype/implementationExecutionBoardState";
+import { CANONICAL_SAMPLE_DATA_CODE_TASK_ID } from "@/lib/prototype/codeTaskCanonicalId";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
   enrichCursorWorkItemsWithBoardReworkContext,
   mergeCursorWorkItemsByTask,
+  mergeCursorWorkItemsWithMissingCodeTaskPlanTasks,
   validateTaskScopedWorkItems,
   type CursorWorkItem,
 } from "@/lib/prototype/implementationCursorWorkItems";
@@ -26,6 +29,62 @@ const baseWorkItem: CursorWorkItem = {
   blockers: [],
   qualityGate: { score: 1, promptReady: true, missing: [] },
 };
+
+describe("mergeCursorWorkItemsWithMissingCodeTaskPlanTasks", () => {
+  const sampleId = CANONICAL_SAMPLE_DATA_CODE_TASK_ID;
+
+  it("appends work item for sample CodeTask when plan grew but cursorWorkItems did not", () => {
+    const plan: ImplementationCodeTaskPlanV1 = {
+      version: 1,
+      projectId: "p1",
+      parentTaskCount: 1,
+      codeTaskCount: 2,
+      tasks: [
+        {
+          codeTaskId: "CODE-FRAME-001",
+          parentTaskId: "TASK-FRAME",
+          title: "Frame",
+          description: "desc",
+          changeType: "component",
+          status: "ready",
+          targetHints: ["apps/web"],
+          acceptanceCriteria: ["ok"],
+          verificationHints: ["pnpm test"],
+          forbiddenPaths: ["node_modules"],
+        },
+        {
+          codeTaskId: sampleId,
+          parentTaskId: "TASK-DATA",
+          title: "Sample data",
+          description: "desc",
+          changeType: "data",
+          status: "ready",
+          targetHints: ["apps/web"],
+          acceptanceCriteria: ["ok"],
+          verificationHints: ["pnpm test"],
+          forbiddenPaths: ["node_modules"],
+        },
+      ],
+    };
+    const existing: CursorWorkItem[] = [
+      {
+        ...baseWorkItem,
+        id: "cursor-wi-CODE-FRAME-001",
+        taskId: "TASK-FRAME",
+        codeTaskId: "CODE-FRAME-001",
+      },
+    ];
+    const merged = mergeCursorWorkItemsWithMissingCodeTaskPlanTasks({
+      projectId: "p1",
+      codeTaskPlan: plan,
+      existingWorkItems: existing,
+      nowIso: NOW,
+    });
+    expect(merged.appendedCodeTaskIds).toEqual([sampleId]);
+    expect(merged.cursorWorkItems).toHaveLength(2);
+    expect(merged.cursorWorkItems.some((w) => w.codeTaskId === sampleId)).toBe(true);
+  });
+});
 
 describe("mergeCursorWorkItemsByTask", () => {
   const workItem = (

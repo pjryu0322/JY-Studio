@@ -39,6 +39,8 @@ export type WorkspaceConversationHubIconRowProps = Readonly<{
   readonly busy?: boolean;
   readonly remoteLocked?: boolean;
   readonly interviewUi?: WorkspaceConversationInterviewUi | null;
+  /** false면 슬롯 그리드 버튼·팝오버만 숨김(빠른 실행 등 interviewUi 기반 버튼은 유지) */
+  readonly showSlotsChrome?: boolean;
   /** planning 기본값 대신 구현 단계 등 화면별 라벨 */
   readonly slotsChromeLabels?: WorkspaceSlotsChromeLabels | null;
   readonly quickExecutionTitle?: string;
@@ -192,6 +194,7 @@ export function WorkspaceConversationHubIconRow({
   busy = false,
   remoteLocked = false,
   interviewUi,
+  showSlotsChrome = true,
   quickExecutionTitle,
   quickExecutionAriaLabel,
   memberControls,
@@ -291,7 +294,7 @@ export function WorkspaceConversationHubIconRow({
   }, [slotsOpen]);
 
   const slotPanel = useMemo(() => {
-    if (!slotsOpen || !slotsUi) return null;
+    if (!showSlotsChrome || !slotsOpen || !slotsUi) return null;
     const pos = slotsPos ?? computeSlotsPos();
     if (!pos) return null;
     const sections = slotsUi.orchestrationSlotSections ?? [];
@@ -489,7 +492,7 @@ export function WorkspaceConversationHubIconRow({
         </div>
       </>
     );
-  }, [slotsOpen, slotsUi, slotsPos, slotsPanelSize, useOrchestrationGrid, progressLabel]);
+  }, [showSlotsChrome, slotsOpen, slotsUi, slotsPos, slotsPanelSize, useOrchestrationGrid, progressLabel]);
 
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -538,7 +541,7 @@ export function WorkspaceConversationHubIconRow({
     ) : null;
 
   const slotsButton =
-    slotsUi ? (
+    showSlotsChrome && slotsUi ? (
       <WorkspaceHubChromeIconButton
         title={`${detailAriaLabel} · ${progressLabel} ${slotsUi.readinessPercent}%`}
         ariaLabel={`${detailAriaLabel}, ${progressLabel} ${slotsUi.readinessPercent}퍼센트`}

@@ -14,6 +14,8 @@ export type ImplementationBoardSelectionBridgeSnapshotV1 = Readonly<{
   readonly liveCheckedCodeTaskIds: readonly string[] | null;
   readonly boardPersistSelection: readonly string[] | null;
   readonly livePanelSummary: ImplementationCodeTaskSelectionSummaryV1 | null;
+  /** Runnable ids from the rendered board panel tree (may differ from state-only rebuild). */
+  readonly liveRunnableCodeTaskIds: readonly string[] | null;
 }>;
 
 export type ImplementationBoardCodeTaskSelectionViewV1 = Readonly<{
@@ -117,10 +119,51 @@ export function resolveQuickRunSelectionSummaryFromBoardView(input: {
   readonly livePanelSummary: ImplementationCodeTaskSelectionSummaryV1 | null | undefined;
   readonly hasCheckedSelectionOverride: boolean;
 }): ImplementationCodeTaskSelectionSummaryV1 | null {
+  const panel = input.livePanelSummary ?? null;
+  const view = input.viewSummary ?? null;
   if (input.hasCheckedSelectionOverride) {
-    return input.viewSummary ?? input.livePanelSummary ?? null;
+    if (panel && panel.selectedRunnableCount > 0) return panel;
+    if (view && view.selectedRunnableCount > 0) return view;
+    return view ?? panel ?? null;
   }
-  return input.livePanelSummary ?? input.viewSummary ?? null;
+  return panel ?? view ?? null;
+}
+
+/**
+ * Toolbar quick-run: intersect live checkbox ids with panel-rendered runnable ids,
+ * then fall back to panel summary (full tree context) over state-only rebuild.
+ */
+export function resolveToolbarQuickRunSelectionSummary(input: {
+  readonly checkedCodeTaskIds: readonly string[];
+  readonly livePanelSummary: ImplementationCodeTaskSelectionSummaryV1 | null;
+  readonly rebuiltSummary: ImplementationCodeTaskSelectionSummaryV1 | null;
+  readonly liveRunnableCodeTaskIds: readonly string[] | null;
+  readonly rebuiltRunnableCodeTaskIds: readonly string[];
+}): ImplementationCodeTaskSelectionSummaryV1 | null {
+  const base = input.rebuiltSummary ?? input.livePanelSummary;
+  if (!base) return null;
+
+  const runnableIds =
+    input.liveRunnableCodeTaskIds && input.liveRunnableCodeTaskIds.length > 0
+      ? input.liveRunnableCodeTaskIds
+      : input.rebuiltRunnableCodeTaskIds;
+
+  const checked = input.checkedCodeTaskIds.map((id) => id.trim()).filter(Boolean);
+  const selectedRunnableFromChecked = checked.filter((id) => runnableIds.includes(id));
+
+  if (selectedRunnableFromChecked.length > 0) {
+    return {
+      ...base,
+      selectedRunnableCount: selectedRunnableFromChecked.length,
+      selectedRunnableCodeTaskIds: selectedRunnableFromChecked,
+    };
+  }
+
+  if (input.livePanelSummary && input.livePanelSummary.selectedRunnableCount > 0) {
+    return input.livePanelSummary;
+  }
+
+  return input.rebuiltSummary ?? input.livePanelSummary;
 }
 
 /**
@@ -159,6 +202,7 @@ export function resolveSelectedRunnableCodeTaskIdsForQuickRun(input: {
   readonly requirementsState: RequirementsStateJson;
   readonly livePanelSummary?: ImplementationCodeTaskSelectionSummaryV1 | null;
   readonly liveCheckedCodeTaskIds?: readonly string[] | null;
+  readonly liveRunnableCodeTaskIds?: readonly string[] | null;
   readonly boardPersistSelection?: readonly string[] | null;
   readonly selectedCodeTaskIdsOverride?: readonly string[] | null;
 }): readonly string[] {
@@ -168,14 +212,24 @@ export function resolveSelectedRunnableCodeTaskIdsForQuickRun(input: {
       liveCheckedCodeTaskIds: input.liveCheckedCodeTaskIds,
       boardPersistHandlerRef: input.boardPersistSelection,
     });
-  return (
-    resolveImplementationBoardQuickRunSelection({
-      projectId: input.projectId,
-      requirementsState: input.requirementsState,
-      livePanelSummary: input.livePanelSummary,
-      selectedCodeTaskIdsOverride: override,
-    }).selectedRunnableCodeTaskIds ?? []
-  );
+  const quickRunSelection = resolveImplementationBoardQuickRunSelection({
+    projectId: input.projectId,
+    requirementsState: input.requirementsState,
+    livePanelSummary: input.livePanelSummary,
+    selectedCodeTaskIdsOverride: override,
+  });
+  const checked =
+    override !== undefined && override !== null
+      ? override
+      : (input.liveCheckedCodeTaskIds ?? input.boardPersistSelection ?? []);
+  const summary = resolveToolbarQuickRunSelectionSummary({
+    checkedCodeTaskIds: checked,
+    livePanelSummary: input.livePanelSummary ?? null,
+    rebuiltSummary: quickRunSelection.summary,
+    liveRunnableCodeTaskIds: input.liveRunnableCodeTaskIds ?? null,
+    rebuiltRunnableCodeTaskIds: quickRunSelection.view?.runnableCodeTaskIds ?? [],
+  });
+  return summary?.selectedRunnableCodeTaskIds ?? [];
 }
 
 /** Checkbox / persist selection with live board bridge override (not runnable filter). */

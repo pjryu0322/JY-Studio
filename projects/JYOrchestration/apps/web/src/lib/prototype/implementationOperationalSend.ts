@@ -46,7 +46,6 @@ export type ImplementationOperationalSendHandlers = Readonly<{
   startWorkPlanGeneration: () => void;
   openPlannerPrompt: () => void;
   openEnvSettings: () => void;
-  openArtifactHub: () => void;
   buildStatusQueryResult: (intent: ImplementationStatusQueryIntent) => PrototypeExecutionOperationalSendResult | null;
   persistRequirementPatch: (patch: ImplementationUserFeedbackPatchV1) => void;
 }>;
@@ -175,7 +174,11 @@ function executeRoutedAction(
     case "OPEN_ENV_SETTINGS":
       return runHandlerWithActionTimeline(handlers, classification, actionId, () => handlers.openEnvSettings());
     case "SHOW_ARTIFACTS":
-      return runHandlerWithActionTimeline(handlers, classification, actionId, () => handlers.openArtifactHub());
+      return runHandlerWithActionTimeline(handlers, classification, actionId, () => {
+        handlers.showToast(
+          "구현 산출물 Hub는 제공되지 않습니다. 기획(/requirements) 화면에서 산출물을 확인해 주세요.",
+        );
+      });
     case "DIRECT_IMPLEMENTATION_SCOPE_INPUT":
       return runHandlerWithActionTimeline(handlers, classification, actionId, () => {
         handlers.showToast("아래 입력란에 구현 범위·요구사항을 적고 전송해 주세요.");

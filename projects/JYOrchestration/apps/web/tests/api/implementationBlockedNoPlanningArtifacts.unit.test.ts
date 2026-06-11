@@ -80,7 +80,6 @@ describe("implementation blocked when no planning artifacts", () => {
     expect(
       tryHandlePrototypeExecutionChip(IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP, {
         openEnvSettings: () => {},
-        openArtifactHub: () => {},
         returnToPlanningStage: () => {
           navigated = true;
         },

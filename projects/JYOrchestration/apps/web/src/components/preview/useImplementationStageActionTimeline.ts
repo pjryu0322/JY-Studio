@@ -30,7 +30,6 @@ export function useImplementationStageActionTimeline(input: {
   >["persistChatToDb"];
   readonly showToast: (message: string) => void;
   readonly setExecutionEnvironmentModalOpen: (open: boolean) => void;
-  readonly setArtifactHubOpen: (open: boolean) => void;
   readonly chatInputRef: React.RefObject<HTMLTextAreaElement | null>;
   readonly showRoleCheckDetails: () => void;
   readonly appendStatusQueryFromChip: (chip: string) => void;
@@ -145,7 +144,9 @@ export function useImplementationStageActionTimeline(input: {
           input.setExecutionEnvironmentModalOpen(true);
           break;
         case "open_artifacts":
-          input.setArtifactHubOpen(true);
+          input.showToast(
+            "구현 산출물 Hub는 제공되지 않습니다. 기획(/requirements) 화면에서 산출물을 확인해 주세요.",
+          );
           break;
         case "show_status":
           if (result.intent === "role") input.showRoleCheckDetails();
@@ -161,7 +162,6 @@ export function useImplementationStageActionTimeline(input: {
       input.showRoleCheckDetails,
       input.appendStatusQueryFromChip,
       input.setExecutionEnvironmentModalOpen,
-      input.setArtifactHubOpen,
       input.chatInputRef,
       persistStageActionTimelineEntries,
     ],

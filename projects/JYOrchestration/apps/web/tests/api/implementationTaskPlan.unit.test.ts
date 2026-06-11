@@ -460,7 +460,6 @@ describe("implementation work plan chip routing", () => {
     expect(
       tryHandlePrototypeExecutionChip("구현 작업안 확정", {
         openEnvSettings: vi.fn(),
-        openArtifactHub: vi.fn(),
         focusComposerForScopeEdit: vi.fn(),
         showRoleCheckDetails: vi.fn(),
         showScmCheckDetails: vi.fn(),

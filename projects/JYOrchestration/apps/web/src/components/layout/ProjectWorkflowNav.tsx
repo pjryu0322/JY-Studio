@@ -58,7 +58,7 @@ function ProjectWorkflowNavInner({ hideCompactTitle }: { readonly hideCompactTit
   );
   const hasProjectContext = Boolean(projectContextId?.trim());
 
-  // Admin links are available via the gear/settings entry point (not primary workflow).
+  // Admin links are not shown in the workflow strip (use platform /settings or project-admin when needed).
   const admin: NavItem[] = useMemo(() => [], []);
 
   const workflowItems = useMemo(() => {

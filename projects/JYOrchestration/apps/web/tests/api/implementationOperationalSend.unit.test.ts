@@ -66,7 +66,6 @@ const handlers: ImplementationOperationalSendHandlers = {
   startWorkPlanGeneration: vi.fn(),
   openPlannerPrompt: vi.fn(),
   openEnvSettings: vi.fn(),
-  openArtifactHub: vi.fn(),
   buildStatusQueryResult: () => null,
   persistRequirementPatch: vi.fn(),
 };

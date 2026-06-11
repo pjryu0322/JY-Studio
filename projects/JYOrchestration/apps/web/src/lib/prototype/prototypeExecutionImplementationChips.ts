@@ -25,7 +25,6 @@ import { IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP } from "@/lib/prototype/
 
 export type PrototypeExecutionChipHandlers = Readonly<{
   readonly openEnvSettings: () => void;
-  readonly openArtifactHub: () => void;
   readonly returnToPlanningStage?: () => void;
   readonly showImplementationSeedReadinessCheck?: () => void;
   readonly focusComposerForScopeEdit: () => void;

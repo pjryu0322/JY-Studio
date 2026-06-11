@@ -13,6 +13,7 @@ describe("evaluateImplementationToolbarQuickRun", () => {
       bridge: {
         liveCheckedCodeTaskIds: [sampleId],
         boardPersistSelection: [],
+        liveRunnableCodeTaskIds: [sampleId],
         livePanelSummary: {
           totalCount: 15,
           runnableCount: 1,
@@ -39,6 +40,7 @@ describe("evaluateImplementationToolbarQuickRun", () => {
       bridge: {
         liveCheckedCodeTaskIds: [],
         boardPersistSelection: [],
+        liveRunnableCodeTaskIds: [sampleId],
         livePanelSummary: {
           totalCount: 15,
           runnableCount: 1,
