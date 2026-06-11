@@ -29,6 +29,7 @@ import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototyp
 import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
 import { resolveExecutionTargetCodeTaskId } from "@/lib/prototype/resolveExecutionTargetCodeTaskId";
 import { resolveStageTwoDeveloperPromptPreview } from "@/lib/prototype/resolveStageTwoDeveloperPromptPreview";
+import { SHOW_STAGE_TWO_DEVELOPER_PROMPT_PREVIEW } from "@/lib/prototype/implementationDeveloperPromptPreviewUi";
 import type { CodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 import { parseCodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";

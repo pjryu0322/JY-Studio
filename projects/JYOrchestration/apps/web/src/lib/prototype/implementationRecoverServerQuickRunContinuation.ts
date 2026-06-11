@@ -8,10 +8,8 @@ import {
 } from "@/lib/prototype/implementationQuickRun";
 import { parseImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { shouldPlanQuickRunCodeTaskContinuationAfterAutoGate } from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
-import {
-  isActiveTaskCursorExecution,
-  parseTaskCursorExecutionV1,
-} from "@/lib/prototype/taskCursorExecution";
+import { isActiveTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
+import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/promptTimelineState";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";

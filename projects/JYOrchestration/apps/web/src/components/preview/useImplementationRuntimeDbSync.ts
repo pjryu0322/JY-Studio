@@ -17,6 +17,9 @@ export function useImplementationRuntimeDbSync(input: {
   readonly setImplementationRuntimeDbBundle: Dispatch<SetStateAction<ImplementationRuntimeBundleView | null>>;
   readonly implementationRuntimeDbDiagnostics: readonly ImplementationRuntimeDiagnosticsRow[];
   readonly loadImplementationRuntimeDb: (options?: { readonly recover?: boolean }) => Promise<void>;
+  readonly applyImplementationRuntimeFetch: (
+    fetched: Awaited<ReturnType<typeof fetchImplementationRuntime>>,
+  ) => void;
   readonly implementationRuntimePollSuspendedRef: Readonly<{ readonly current: boolean }>;
 }> {
   const pollSuspendedRef = useRef(false);
@@ -100,6 +103,7 @@ export function useImplementationRuntimeDbSync(input: {
     setImplementationRuntimeDbBundle,
     implementationRuntimeDbDiagnostics,
     loadImplementationRuntimeDb,
+    applyImplementationRuntimeFetch,
     implementationRuntimePollSuspendedRef: pollSuspendedRef,
   };
 }

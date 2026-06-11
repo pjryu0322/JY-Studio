@@ -31,7 +31,7 @@ import {
   buildImplementationQuickRunTimelineEntry,
   formatQuickRunContinuationReason,
 } from "@/lib/prototype/implementationQuickRun";
-import { appendPromptTimeline } from "@/lib/prototype/implementationTaskListWipPrep";
+import { appendPromptTimeline } from "@/lib/requirements/promptTimelineState";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 export type QuickRunPrepRepairV1 = Readonly<{
   readonly fromCodeTaskId: string;

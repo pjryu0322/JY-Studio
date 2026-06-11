@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   logImplementationBoardSelectionSummaryResolved,
   listRunnableCodeTaskIdsFromBoardNodes,
@@ -85,7 +85,7 @@ export function useImplementationBoardCodeTaskSelectionSummary(input: {
     });
   }, [input.projectId, input.boardProjectId, codeTaskSelectionSummary]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     input.onCodeTaskSelectionSummaryChange?.(codeTaskSelectionSummary);
   }, [codeTaskSelectionSummary, input.onCodeTaskSelectionSummaryChange]);
 

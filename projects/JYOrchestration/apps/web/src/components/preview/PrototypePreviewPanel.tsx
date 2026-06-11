@@ -1664,6 +1664,7 @@ export function PrototypePreviewPanel({
     implementationRuntimeDbBundle,
     setImplementationRuntimeDbBundle,
     loadImplementationRuntimeDb,
+    applyImplementationRuntimeFetch,
     implementationRuntimePollSuspendedRef,
   } = useImplementationRuntimeDbSync({
     projectId,
@@ -2625,7 +2626,7 @@ export function PrototypePreviewPanel({
     enrichCodeTaskRunOrchestrationPatch,
     applyImplementationOrchestrationResult,
     executionSingleChat.chatMessages,
-    appendAiNoticeForImplementation,
+    appendImplementationExecutionNotice,
     dispatchNextQuickRunFromGithubVerify,
     showToast,
     applyImplementationRuntimeFetch,

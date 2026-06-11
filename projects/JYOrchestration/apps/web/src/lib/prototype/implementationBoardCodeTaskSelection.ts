@@ -109,7 +109,22 @@ export function coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride(input
 }
 
 /**
- * Quick Run / toolbar: prefer panel-rendered summary (header counts), else rebuilt view.
+ * Panel summary updates in useEffect (one frame after checkbox ref). When live checked ids
+ * are coalesced into an override, prefer the view rebuilt from BoardState + those ids.
+ */
+export function resolveQuickRunSelectionSummaryFromBoardView(input: {
+  readonly viewSummary: ImplementationCodeTaskSelectionSummaryV1 | null | undefined;
+  readonly livePanelSummary: ImplementationCodeTaskSelectionSummaryV1 | null | undefined;
+  readonly hasCheckedSelectionOverride: boolean;
+}): ImplementationCodeTaskSelectionSummaryV1 | null {
+  if (input.hasCheckedSelectionOverride) {
+    return input.viewSummary ?? input.livePanelSummary ?? null;
+  }
+  return input.livePanelSummary ?? input.viewSummary ?? null;
+}
+
+/**
+ * Quick Run / toolbar: BoardState + checkedCodeTaskIds (override) is authoritative for action.
  */
 export function resolveImplementationBoardQuickRunSelection(input: {
   readonly projectId: string;
@@ -126,7 +141,14 @@ export function resolveImplementationBoardQuickRunSelection(input: {
     requirementsState: input.requirementsState,
     selectedCodeTaskIdsOverride: input.selectedCodeTaskIdsOverride,
   });
-  const summary = input.livePanelSummary ?? view?.summary ?? null;
+  const hasCheckedSelectionOverride =
+    input.selectedCodeTaskIdsOverride !== undefined &&
+    input.selectedCodeTaskIdsOverride !== null;
+  const summary = resolveQuickRunSelectionSummaryFromBoardView({
+    viewSummary: view?.summary,
+    livePanelSummary: input.livePanelSummary,
+    hasCheckedSelectionOverride,
+  });
   const selectedRunnableCodeTaskIds = summary?.selectedRunnableCodeTaskIds ?? [];
   return { view, summary, selectedRunnableCodeTaskIds };
 }
