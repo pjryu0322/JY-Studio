@@ -69,7 +69,6 @@ export const REVIEW_STAGE_ADD_FEEDBACK_CHIP = "피드백 등록" as const;
 export const REVIEW_STAGE_VIEW_FEEDBACK_CHIP = "피드백 보기" as const;
 export const REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP = "구현단계 보완 요청" as const;
 export const REVIEW_STAGE_COMPLETE_TEST_CHIP = "검토 완료" as const;
-export const REQUEST_TASK_REWORK_CHIP = "작업 재작업 요청" as const;
 export const IMPLEMENTATION_EXECUTION_BOARD_CHIP = "구현 작업 보드" as const;
 export const RUN_REFACTOR_COMMON_CHIP = "통합 및 Preview 생성" as const;
 export const RUN_INTEGRATED_REVIEW_CHIP = "통합 검수 실행" as const;

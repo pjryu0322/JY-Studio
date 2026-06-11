@@ -45,6 +45,8 @@ export type WorkspaceConversationHubIconRowProps = Readonly<{
   readonly slotsChromeLabels?: WorkspaceSlotsChromeLabels | null;
   readonly quickExecutionTitle?: string;
   readonly quickExecutionAriaLabel?: string;
+  /** CodeTask 1건 이상 선택 시 빠른 실행 아이콘 강조 */
+  readonly quickExecutionEmphasized?: boolean;
   readonly memberControls?: { readonly count: number; readonly onOpen: () => void } | null;
   readonly canvasHubControls?: { readonly count: number; readonly onOpen: () => void } | null;
   readonly artifactHubControls?: {
@@ -197,6 +199,7 @@ export function WorkspaceConversationHubIconRow({
   showSlotsChrome = true,
   quickExecutionTitle,
   quickExecutionAriaLabel,
+  quickExecutionEmphasized = false,
   memberControls,
   canvasHubControls,
   artifactHubControls,
@@ -528,6 +531,7 @@ export function WorkspaceConversationHubIconRow({
         title={quickTitle}
         ariaLabel={quickAria}
         disabled={remoteLocked}
+        emphasisTone={quickExecutionEmphasized ? "amber" : "default"}
         onClick={() => {
           if (busy) {
             slotsUi.onForceGeneratePlanNow();

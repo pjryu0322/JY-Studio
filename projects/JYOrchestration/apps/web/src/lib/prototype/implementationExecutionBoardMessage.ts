@@ -1,6 +1,5 @@
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import {
-  boardShowsRequestTaskReworkChip,
   buildImplementationReviewStageReadinessNotice,
   formatBoardExecutionTargetLines,
   formatImplementationExecutionBoardIntegratedLine,

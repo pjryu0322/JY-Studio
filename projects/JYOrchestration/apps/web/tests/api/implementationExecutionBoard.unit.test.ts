@@ -19,7 +19,6 @@ import { mapImplementationChipToAction } from "@/lib/prototype/effectiveImplemen
 import {
   IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_ALL_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
-  REQUEST_TASK_REWORK_CHIP,
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
   IMPLEMENTATION_EXECUTION_BOARD_CHIP,
@@ -1019,10 +1018,6 @@ describe("implementationExecutionBoard", () => {
     ).toEqual(["dev-1"]);
   });
 
-  it("mapImplementationChipToAction maps 작업 재작업 요청 to REQUEST_TASK_REWORK", () => {
-    expect(mapImplementationChipToAction(REQUEST_TASK_REWORK_CHIP)).toBe("REQUEST_TASK_REWORK");
-  });
-
   it("legacy and 전체 처리 confirmation chips map to RESOLVE_USER_CONFIRMATION", () => {
     expect(mapImplementationChipToAction(IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP)).toBe(
       "RESOLVE_USER_CONFIRMATION",
@@ -1181,7 +1176,7 @@ describe("implementationExecutionBoard", () => {
       }),
     ).toEqual({
       canRestart: true,
-      needsReworkRegistration: true,
+      needsReworkRegistration: false,
     });
     expect(pickTaskIdForReworkRequest(board, "dev-2")).toBe("dev-2");
   });
@@ -1250,7 +1245,7 @@ describe("implementationExecutionBoard", () => {
       }),
     ).toEqual({
       canRestart: true,
-      needsReworkRegistration: true,
+      needsReworkRegistration: false,
     });
   });
 

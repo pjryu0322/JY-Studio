@@ -1,5 +1,4 @@
 import {
-  boardShowsRequestTaskReworkChip,
   deriveIntegratedStageInterviewChips,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
@@ -15,7 +14,6 @@ import {
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP,
   MOVE_TO_REVIEW_STAGE_CHIP,
-  REQUEST_TASK_REWORK_CHIP,
   REVIEWER_CHECK_CHIP,
   SECURITY_CHECK_CHIP,
   TASK_LIST_VIEW_CHIP,
@@ -88,16 +86,21 @@ export function deriveImplementationBoardInterviewChips(input: {
   ).length;
   const reviewerDoneCount = board.taskRows.filter((row) => row.reviewerStatus === "done").length;
   const developerInProgress = board.taskRows.some((row) => row.developerStatus === "in_progress");
-  const showReworkChip = boardShowsRequestTaskReworkChip(board);
   const hasFailed = board.summary.failedTasks > 0;
+  const needsRemediationChip =
+    hasFailed ||
+    board.taskRows.some(
+      (row) => row.reviewerResultStatus === "failed" || row.securityResultStatus === "failed",
+    ) ||
+    board.summary.userConfirmationRequired > 0 ||
+    board.taskRows.some((row) => row.reworkCount > 0);
   const allTasksComplete =
     board.taskRows.length > 0 && board.taskRows.every((row) => row.currentRole === "completed");
 
   const chips: string[] = [IMPLEMENTATION_GENERATION_REQUEST_CHIP, IMPLEMENTATION_ENV_SETTINGS_LABEL];
 
-  if (hasFailed || showReworkChip) {
+  if (needsRemediationChip) {
     chips.push(AI_DEVELOPER_REMEDIATION_REQUEST_CHIP);
-    if (showReworkChip) chips.push(REQUEST_TASK_REWORK_CHIP);
     if (board.summary.userConfirmationRequired > 0) {
       chips.push(IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP);
     }

@@ -1,4 +1,5 @@
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
+import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
 import { mergeCursorWorkItemsWithMissingCodeTaskPlanTasks } from "@/lib/prototype/implementationCursorWorkItems";
 import {
   appendCodeTaskExecutionRun,
@@ -161,6 +162,40 @@ export function ensureRequirementsStateCursorWorkItemsForCodeTaskPlan(input: {
   };
 }
 
+/**
+ * 실행 보드와 동일한 CodeTaskPlan 보정(경계·mock id 등) 후 WorkItem을 맞춘다.
+ * 보드 UI만 `ensureCodeTaskPlanWithFileBoundaries`를 쓰고 저장 state는 구버전일 때 빠른실행 dispatch가 실패하는 것을 방지한다.
+ */
+export function prepareRequirementsStateForImplementationQuickRun(input: {
+  readonly projectId: string;
+  readonly requirementsState: RequirementsStateJson;
+  readonly nowIso?: string;
+}): Readonly<{
+  readonly requirementsState: RequirementsStateJson;
+  readonly appendedCodeTaskIds: readonly string[];
+  readonly planRepaired: boolean;
+}> {
+  const taskList = input.requirementsState.implementationTaskListV1 ?? null;
+  const rawPlan = input.requirementsState.implementationCodeTaskPlanV1 ?? null;
+  const ensuredPlan =
+    ensureCodeTaskPlanWithFileBoundaries({ plan: rawPlan, taskList }) ?? rawPlan;
+  let state = input.requirementsState;
+  const planRepaired = Boolean(ensuredPlan && ensuredPlan !== rawPlan);
+  if (ensuredPlan && planRepaired) {
+    state = { ...state, implementationCodeTaskPlanV1: ensuredPlan };
+  }
+  const workItemsEnsured = ensureRequirementsStateCursorWorkItemsForCodeTaskPlan({
+    projectId: input.projectId,
+    requirementsState: state,
+    nowIso: input.nowIso,
+  });
+  return {
+    requirementsState: workItemsEnsured.requirementsState,
+    appendedCodeTaskIds: workItemsEnsured.appendedCodeTaskIds,
+    planRepaired,
+  };
+}
+
 export function buildImplementationQuickRunQueueItems(input: {
   readonly selectedCodeTaskIds: readonly string[];
   readonly requirementsState: RequirementsStateJson;
@@ -207,7 +242,12 @@ export function buildQuickRunOrchestrationAfterJobStart(input: {
   readonly nowIso: string;
 }): QuickRunOrchestrationAfterJobStartV1 | Readonly<{ readonly ok: false; readonly message: string }> {
   const pid = input.projectId.trim();
-  const imp = input.requirementsState;
+  const prepared = prepareRequirementsStateForImplementationQuickRun({
+    projectId: pid,
+    requirementsState: input.requirementsState,
+    nowIso: input.nowIso,
+  });
+  const imp = prepared.requirementsState;
   const firstCodeTaskId =
     input.firstCodeTaskId?.trim() ?? input.jobSelectedCodeTaskIds[0]?.trim() ?? "";
   const dispatchTarget = resolveCodeTaskDispatchTarget({

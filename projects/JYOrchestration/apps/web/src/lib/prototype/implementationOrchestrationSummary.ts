@@ -1184,3 +1184,24 @@ export function buildImplementationBootstrapBundle(input: ImplementationOrchestr
   }
   return finalizeBootstrapBundle(input, buildNormalImplementationBootstrapBundle(input));
 }
+
+/** 작업목록·보드 전 구현 화면(채팅 없음)용 안내 본문 + CTA 라벨 */
+export function buildImplementationBootstrapShellView(input: {
+  readonly summaryInput: ImplementationOrchestrationSummaryInput | null;
+  readonly actionLabels: readonly string[];
+}): Readonly<{ readonly body: string; readonly actionLabels: readonly string[] }> {
+  const actionLabels = input.actionLabels.map((l) => String(l ?? "").trim()).filter(Boolean);
+  if (!input.summaryInput) {
+    return { body: "프로젝트 구현 상태를 불러오는 중입니다.", actionLabels };
+  }
+  if (!input.summaryInput.implementationSeedV1) {
+    return {
+      body: "구현 Seed가 없습니다. 기획(/requirements) 단계에서 구현 준비를 마친 뒤 다시 열어 주세요.",
+      actionLabels,
+    };
+  }
+  const bundle = buildImplementationBootstrapBundle(input.summaryInput);
+  const body =
+    String(bundle.messages[0]?.content ?? "").trim() || IMPLEMENTATION_ENTRY_READINESS_HEADLINE;
+  return { body, actionLabels };
+}

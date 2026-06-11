@@ -46,7 +46,7 @@ import {
   SCM_CRITERIA_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
   MOVE_TO_REVIEW_STAGE_CHIP,
-  REQUEST_TASK_REWORK_CHIP,
+  AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
@@ -535,7 +535,7 @@ describe("implementationExecutionBoardMessage helpers", () => {
     expect(message.meta?.interviewSuggestions).not.toContain(MOVE_TO_REVIEW_STAGE_CHIP);
   });
 
-  it("board with quality failed row contains 작업 재작업 요청 chip", () => {
+  it("board with quality failed row contains remediation chip only", () => {
     const qualityGateResults: readonly ImplementationQualityGateResultV1[] = [
       {
         version: "implementation_quality_gate_result_v1",
@@ -556,7 +556,8 @@ describe("implementationExecutionBoardMessage helpers", () => {
       nowIso: NOW,
     });
     const message = buildImplementationExecutionBoardMessage({ board, nowIso: NOW });
-    expect(message.meta?.interviewSuggestions).toContain(REQUEST_TASK_REWORK_CHIP);
+    expect(message.meta?.interviewSuggestions).toContain(AI_DEVELOPER_REMEDIATION_REQUEST_CHIP);
+    expect(message.meta?.interviewSuggestions).not.toContain("작업 재작업 요청");
   });
 
   it("board diagnostic shows cursor_api when ExecutionSetup is complete", () => {

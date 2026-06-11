@@ -21,8 +21,6 @@ import {
 } from "@/lib/prototype/taskCursorExecution";
 import { shouldShowManualGithubVerifyRetry } from "@/lib/prototype/implementationCodeTaskGithubVerifyRetryUi";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
-import type { ImplementationCodeTaskExecutionFeedbackV1 } from "@/lib/prototype/implementationCodeTaskExecutionFeedback";
-import { buildImplementationCodeTaskReworkVm } from "@/lib/prototype/implementationCodeTaskReworkVm";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
@@ -45,7 +43,6 @@ import type { ImplementationStageNextActionsBoardInput } from "@/lib/prototype/i
 import { buildImplementationBoardExecutionContext } from "@/lib/prototype/implementationBoardExecutionContext";
 import { ImplementationExecutionBoardIntegrationFooter } from "@/components/preview/ImplementationExecutionBoardIntegrationFooter";
 import { ImplementationExecutionBoardRuntimeAdmin } from "@/components/preview/ImplementationExecutionBoardRuntimeAdmin";
-import { ImplementationExecutionBoardReworkCandidates } from "@/components/preview/ImplementationExecutionBoardReworkCandidates";
 import { ImplementationExecutionBoardDeveloperPromptPreview } from "@/components/preview/ImplementationExecutionBoardDeveloperPromptPreview";
 import {
   normalizeCheckedCodeTaskIds,
@@ -114,7 +111,6 @@ export function ImplementationExecutionBoardPanel({
   projectId,
   implementationRuntimeStateV1,
   implementationRuntimeDbBundle,
-  codeTaskExecutionFeedbackV1,
   implementationCodeTaskPlanV1,
   codeTaskPromptContextMapV1,
   cursorWorkItemsV1,
@@ -132,7 +128,6 @@ export function ImplementationExecutionBoardPanel({
   integrationPipelineStatus,
   onOpenImplementationPreview,
   onExecuteSelectedCodeTasks,
-  onReworkSelectedCodeTasks,
   liveCheckedCodeTaskIdsRef,
   liveRunnableCodeTaskIdsRef,
   onCodeTaskSelectionSummaryChange,
@@ -160,7 +155,6 @@ export function ImplementationExecutionBoardPanel({
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
   readonly projectId?: string;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
-  readonly codeTaskExecutionFeedbackV1?: ImplementationCodeTaskExecutionFeedbackV1 | null;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
   readonly codeTaskPromptContextMapV1?: CodeTaskPromptContextMapV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
@@ -181,7 +175,6 @@ export function ImplementationExecutionBoardPanel({
     readonly url: string;
   }) => void;
   readonly onExecuteSelectedCodeTasks?: () => void;
-  readonly onReworkSelectedCodeTasks?: () => void;
   /** Parent toolbar quick-run reads latest checkbox selection (panel local state). */
   readonly liveCheckedCodeTaskIdsRef?: React.MutableRefObject<readonly string[] | null>;
   readonly liveRunnableCodeTaskIdsRef?: React.MutableRefObject<readonly string[] | null>;
@@ -189,15 +182,6 @@ export function ImplementationExecutionBoardPanel({
     summary: ReturnType<typeof summarizeCodeTaskBoardRowsFromTreeNodes>,
   ) => void;
 }) {
-  const reworkVm = useMemo(
-    () =>
-      buildImplementationCodeTaskReworkVm({
-        feedback: codeTaskExecutionFeedbackV1,
-        codeTaskPlan: implementationCodeTaskPlanV1,
-      }),
-    [codeTaskExecutionFeedbackV1, implementationCodeTaskPlanV1],
-  );
-
   const parsedCodeTaskPlan = useMemo(
     () => parseImplementationCodeTaskPlanV1(implementationCodeTaskPlanV1) ?? null,
     [implementationCodeTaskPlanV1],
@@ -740,26 +724,29 @@ export function ImplementationExecutionBoardPanel({
     [codeTaskQueue, codeTaskRuns, queueCurrentCodeTaskId, taskCursorExecutionV1],
   );
 
+  const showSummaryCard = showStuckRecovery || showManualGithubVerifyRetry;
+
   return (
     <section
       className={styles.root}
       data-testid="implementation-execution-board-panel"
       aria-label="구현 Execution Board"
     >
-      <div className={styles.summaryCard}>
-        <ImplementationExecutionBoardRuntimeAdmin
-          showStuckRecovery={showStuckRecovery}
-          stuckRecoveryHint={stuckRecoveryHint}
-          onRetryGithubVerify={onRetryGithubVerify}
-          onRestartTask={onRestartTask}
-          queueParentTaskId={queueParentTaskId}
-          projectId={projectId}
-          selectedCodeTaskId={selectedCodeTaskId}
-          queueCurrentCodeTaskId={queueCurrentCodeTaskId}
-          showManualGithubVerifyRetry={showManualGithubVerifyRetry}
-        />
-        <ImplementationExecutionBoardReworkCandidates reworkVm={reworkVm} onRestartTask={onRestartTask} />
-      </div>
+      {showSummaryCard ? (
+        <div className={styles.summaryCard}>
+          <ImplementationExecutionBoardRuntimeAdmin
+            showStuckRecovery={showStuckRecovery}
+            stuckRecoveryHint={stuckRecoveryHint}
+            onRetryGithubVerify={onRetryGithubVerify}
+            onRestartTask={onRestartTask}
+            queueParentTaskId={queueParentTaskId}
+            projectId={projectId}
+            selectedCodeTaskId={selectedCodeTaskId}
+            queueCurrentCodeTaskId={queueCurrentCodeTaskId}
+            showManualGithubVerifyRetry={showManualGithubVerifyRetry}
+          />
+        </div>
+      ) : null}
 
       <ImplementationExecutionBoardDeveloperPromptPreview
         codeTaskPlan={parsedCodeTaskPlan}

@@ -20,6 +20,7 @@ import {
 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
@@ -106,9 +107,18 @@ export function mergeCursorWorkItemsWithMissingCodeTaskPlanTasks(input: {
 }> {
   const existing = input.existingWorkItems ?? [];
   const planTasks = input.codeTaskPlan.tasks ?? [];
-  const missingTasks = planTasks.filter(
-    (task) => !existing.some((item) => cursorWorkItemCoversCodeTaskId(item, task.codeTaskId)),
-  );
+  const missingTasks = planTasks.filter((task) => {
+    const codeTaskId = task.codeTaskId.trim();
+    if (!codeTaskId) return false;
+    const covered = existing.some((item) => cursorWorkItemCoversCodeTaskId(item, codeTaskId));
+    if (!covered) return true;
+    const dispatchable = resolveCodeTaskDispatchTarget({
+      codeTaskId,
+      codeTaskPlan: input.codeTaskPlan,
+      cursorWorkItems: existing,
+    });
+    return !dispatchable;
+  });
   if (!missingTasks.length) {
     return { cursorWorkItems: existing, appendedCodeTaskIds: [] };
   }

@@ -12,7 +12,6 @@ import {
   type PrototypePrePlanGate,
 } from "@/lib/prototype/buildPrototypeChatMessages";
 import {
-  PrototypeExecutionChatPanel,
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
 } from "@/components/preview/PrototypeExecutionChatPanel";
 import { ImplementationExecutionBoardPanel } from "@/components/preview/ImplementationExecutionBoardPanel";
@@ -28,6 +27,7 @@ import { useImplementationAutoQualityGateTrigger } from "@/components/preview/us
 import { executeImplementationBoardIntegrationPipeline } from "@/lib/prototype/implementationBoardIntegrationPipelineRun";
 import { ImplementationStageNoticeModal } from "@/components/preview/ImplementationStageNoticeModal";
 import { ImplementationStageGlobalToolbar } from "@/components/preview/ImplementationStageGlobalToolbar";
+import { ImplementationExecutionBoardBootstrapPanel } from "@/components/preview/ImplementationExecutionBoardBootstrapPanel";
 import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
 import { useImplementationToolbarMobileBreakpoint } from "@/components/ui/breakpoints";
 
@@ -170,6 +170,7 @@ import {
   buildImplementationStatusQueryTimelineEntry,
   hasImplementationRoleCheckDetailsShown,
   implementationEntryChipsForBootstrap,
+  buildImplementationBootstrapShellView,
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import type { ImplementationStatusQueryIntent } from "@/lib/prototype/implementationStatusQueryIntent";
@@ -197,13 +198,11 @@ import { hasImplementationTaskListReady } from "@/lib/requirements/implementatio
 import {
   buildImplementationExecutionBoardFromRequirementsState,
   buildIntegratedStageStepActionNotice,
-  buildReworkRequestRegistrationNotice,
   countTaskListWipCandidateTasks,
   formatTaskScopedWipExecutionBlockedNotice,
   isImplementationReadyForReviewStage,
   pickFirstExecutableDeveloperTaskId,
   pickQualityGateTargetTaskIds,
-  pickTaskIdForReworkRequest,
   resolveTaskRowUserRestartCapability,
   selectCursorWorkItemsForWipExecution,
 } from "@/lib/prototype/implementationExecutionBoard";
@@ -260,7 +259,7 @@ import {
   buildImplementationBoardRefreshSyncKey,
   tryAppendImplementationUserConfirmationBoardMessage,
 } from "@/lib/prototype/implementationExecutionBoardMessage";
-import { collapseImplementationBoardChatMessagesForPanelView, dedupeImplementationStageNextActions, extractBoardVisibleActionLabels, filterBoardDuplicateChatInterviewSuggestions } from "@/lib/prototype/implementationExecutionBoardPanelView";
+import { dedupeImplementationStageNextActions, extractBoardVisibleActionLabels } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import {
   appendReworkRequest,
   markReworkRequestsAcceptedForTask,
@@ -274,7 +273,7 @@ import {
   buildQuickRunOrchestrationAfterJobStart,
   buildRepairTimelineEntries,
   continueImplementationQuickRunAfterStart,
-  ensureRequirementsStateCursorWorkItemsForCodeTaskPlan,
+  prepareRequirementsStateForImplementationQuickRun,
   evaluateImplementationQuickRunPrepAndSelection,
   postImplementationQuickRunStartJob,
 } from "@/lib/prototype/implementationQuickRunStartService";
@@ -420,8 +419,7 @@ import {
 } from "@/lib/prototype/taskCursorGithubVerifyClient";
 import type { QuickRunGithubAdvanceDispatch } from "@/lib/prototype/implementationQuickRunGithubAdvanceService";
 import { normalizeSelectedTaskIds } from "@/lib/prototype/implementationTaskTreeSelection";
-import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
-import type { PromptTimelineDrawerTab } from "@/lib/prototype/promptTimelineExecutionLogTabs";
+import { ImplementationExecutionLogModal } from "@/components/preview/ImplementationExecutionLogModal";
 import {
   buildTaskCursorLaunchTransientFailurePatch,
   formatTransientTaskCursorLaunchErrorMessage,
@@ -624,9 +622,7 @@ export function PrototypePreviewPanel({
   /** 콤보에서의 선택(미확정 포함). AI 추천 행은 `PROTOTYPE_INLINE_TEMPLATE_AI_VALUE` */
   const [draftPickerValue, setDraftPickerValue] = useState<string>(PROTOTYPE_INLINE_TEMPLATE_AI_VALUE);
   const [executionEnvironmentModalOpen, setExecutionEnvironmentModalOpen] = useState(false);
-  const [implementationPromptDrawerOpen, setImplementationPromptDrawerOpen] = useState(false);
-  const [implementationPromptDrawerTab, setImplementationPromptDrawerTab] =
-    useState<PromptTimelineDrawerTab>("execution_log");
+  const [implementationExecutionLogModalOpen, setImplementationExecutionLogModalOpen] = useState(false);
   const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
   const [deliverableViewerIds, setDeliverableViewerIds] = useState<readonly string[]>([]);
   const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
@@ -1935,14 +1931,10 @@ export function PrototypePreviewPanel({
   ]);
 
   const implementationBoard = implementationStageBoardGateContext?.board ?? null;
-  const boardPanelVisible = implementationBoard != null;
-  const boardPanelVisibleRef = useRef(boardPanelVisible);
-  boardPanelVisibleRef.current = boardPanelVisible;
-
   const isImplementationToolbarMobileCompact = useImplementationToolbarMobileBreakpoint();
 
   const implementationBoardVisibleActionLabels = useMemo(() => {
-    if (!boardPanelVisible || !implementationBoard || !implementationStageBoardInput) return [];
+    if (!implementationBoard || !implementationStageBoardInput) return [];
     const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({
       latestRun: effectiveImplementationState.latestRun,
       workUnits: effectiveImplementationState.latestRun?.workUnits,
@@ -1964,12 +1956,7 @@ export function PrototypePreviewPanel({
       ),
     );
     return extractBoardVisibleActionLabels(actions);
-  }, [
-    boardPanelVisible,
-    implementationBoard,
-    implementationStageBoardInput,
-    effectiveImplementationState,
-  ]);
+  }, [implementationBoard, implementationStageBoardInput, effectiveImplementationState]);
 
   const implementationVisibleActionLabels = useMemo(() => {
     const labels = implementationBootstrapInput
@@ -1987,6 +1974,14 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
     implementationStageBoardInput,
   ]);
+
+  const implementationBootstrapShell = useMemo(() => {
+    if (implementationBoard) return null;
+    return buildImplementationBootstrapShellView({
+      summaryInput: implementationBootstrapInput,
+      actionLabels: implementationVisibleActionLabels,
+    });
+  }, [implementationBoard, implementationBootstrapInput, implementationVisibleActionLabels]);
 
   const runImplementationStageActionRef = useRef<
     (actionId: ImplementationStageActionId) => ImplementationStageActionRunResult
@@ -2118,7 +2113,7 @@ export function PrototypePreviewPanel({
       appendNotice: (message: string) => appendExecutionNoticeRef.current(message),
       showToast,
       focusChatInput: () => {
-        queueMicrotask(() => chatInputRef.current?.focus());
+        showToast("구현 단계에서는 보드와 상단 버튼으로 작업을 진행해 주세요.");
       },
       startWorkPlanGeneration: () => startWorkPlanGenerationFromChat(),
       openPlannerPrompt: () => setPlannerPromptModalOpen(true),
@@ -2289,14 +2284,10 @@ export function PrototypePreviewPanel({
         });
         return;
       }
-      if (boardPanelVisibleRef.current) {
-        if (integratedReady) return;
-        setImplementationStageNoticeModal({ body: text });
-        return;
-      }
-      executionSingleChat.appendAiNotice(text);
+      if (integratedReady) return;
+      setImplementationStageNoticeModal({ body: text });
     },
-    [executionSingleChat, projectId],
+    [projectId],
   );
 
   const appendImplementationExecutionNotice = useCallback(
@@ -2352,40 +2343,6 @@ export function PrototypePreviewPanel({
   );
 
   appendExecutionNoticeRef.current = appendImplementationExecutionNotice;
-
-  const prioritizedChatMessages = useMemo(() => {
-    if (boardPanelVisible) return [];
-    const prioritized = executionSingleChat.chatMessages.map((m) => {
-      const suggestions = (m.meta as any)?.interviewSuggestions;
-      if (!Array.isArray(suggestions) || suggestions.length < 2) return m;
-      return {
-        ...m,
-        meta: {
-          ...m.meta,
-          interviewSuggestions: prioritizeImplementationChipsForState(
-            suggestions as readonly string[],
-            effectiveImplementationState,
-            orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
-            implementationStageBoardInput,
-          ),
-        },
-      };
-    });
-    return filterBoardDuplicateChatInterviewSuggestions(
-      collapseImplementationBoardChatMessagesForPanelView(prioritized, boardPanelVisible),
-      boardPanelVisible,
-      implementationBoardVisibleActionLabels,
-    );
-  }, [
-    boardPanelVisible,
-    executionSingleChat.chatMessages,
-    effectiveImplementationState,
-    orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
-    implementationStageBoardInput,
-    boardPanelVisible,
-    implementationBoardVisibleActionLabels,
-  ]);
-  // CTA priority is display-only. Persisted order is used for export/summary/evidence.
 
   const applyImplementationOrchestrationResult = useApplyImplementationOrchestrationResult({
     projectId,
@@ -2803,40 +2760,28 @@ export function PrototypePreviewPanel({
 
   const appendImplementationTaskListAiMessage = useCallback(
     (message: RequirementsMessage) => {
-      if (boardPanelVisibleRef.current) {
-        const pid = projectId.trim();
-        if (
-          pid &&
-          resolveIntegratedAppPreviewReadyFromOrchestration({
-            projectId: pid,
-            orchestration: orchestrationAwareRequirementsStateRef.current,
-          })
-        ) {
-          return;
-        }
-        const text = String(message.content ?? "").trim();
-        const suggestions = (message.meta as { interviewSuggestions?: readonly string[] } | undefined)
-          ?.interviewSuggestions;
-        const actionLabels = suggestions?.filter((l) => String(l ?? "").trim());
-        if (text || actionLabels?.length) {
-          setImplementationStageNoticeModal({
-            body: text,
-            ...(actionLabels?.length ? { actionLabels: [...actionLabels] } : {}),
-          });
-        }
+      const pid = projectId.trim();
+      if (
+        pid &&
+        resolveIntegratedAppPreviewReadyFromOrchestration({
+          projectId: pid,
+          orchestration: orchestrationAwareRequirementsStateRef.current,
+        })
+      ) {
         return;
       }
-      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-      const nextMessages = [...(resolved.messages ?? []), message];
-      executionSingleChat.applyPersistedMessages(nextMessages);
-      void persistChatToDb({
-        messages: nextMessages,
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      });
+      const text = String(message.content ?? "").trim();
+      const suggestions = (message.meta as { interviewSuggestions?: readonly string[] } | undefined)
+        ?.interviewSuggestions;
+      const actionLabels = suggestions?.filter((l) => String(l ?? "").trim());
+      if (text || actionLabels?.length) {
+        setImplementationStageNoticeModal({
+          body: text,
+          ...(actionLabels?.length ? { actionLabels: [...actionLabels] } : {}),
+        });
+      }
     },
-    [requirementsStateJson, executionSingleChat, persistChatToDb, projectId],
+    [projectId],
   );
 
   const refreshImplementationBoardWithExecutionSetup = useCallback(
@@ -5318,61 +5263,6 @@ export function PrototypePreviewPanel({
           if (result.kind === "appended") return { outcome: "executed" };
           return { outcome: "blocked", message: result.message };
         }
-        case "REQUEST_TASK_REWORK": {
-          const pid = projectId.trim();
-          const board = buildImplementationExecutionBoardFromRequirementsState({
-            projectId: pid,
-            orchestration: parsedRequirementsState,
-          });
-          if (!board) {
-            const message = "구현 작업목록이 없어 재작업 요청을 등록할 수 없습니다.";
-            showToast(message);
-            return { outcome: "blocked", message };
-          }
-          const taskId = pickTaskIdForReworkRequest(board, boardManualPickTaskIdRef.current);
-          boardManualPickTaskIdRef.current = null;
-          if (!taskId) {
-            const message = "재작업 요청을 등록할 대상 작업이 없습니다.";
-            showToast(message);
-            return { outcome: "blocked", message };
-          }
-          const nowIso = new Date().toISOString();
-          const nextBoardState = appendReworkRequest({
-            state: parsedRequirementsState.implementationExecutionBoardStateV1,
-            projectId: pid,
-            taskId,
-            targetRole: "developer",
-            reason: "사용자 재작업 요청: 구현 결과 보완 필요",
-            nowIso,
-          });
-          void persistChatToDb(undefined, {
-            implementationExecutionBoardStateV1: nextBoardState,
-          });
-          const nextBoard = buildImplementationExecutionBoardFromRequirementsState({
-            projectId: pid,
-            orchestration: {
-              ...parsedRequirementsState,
-              implementationExecutionBoardStateV1: nextBoardState,
-            },
-          });
-          if (nextBoard) {
-            appendImplementationTaskListAiMessage(
-              buildImplementationExecutionBoardMessage({
-                board: nextBoard,
-                nowIso,
-                previewReady: prototypeRunSyncSnapshot.previewReady,
-                executionSetup: executionSetupRow,
-              }),
-            );
-          }
-          const notice = buildReworkRequestRegistrationNotice({
-            board: nextBoard ?? board,
-            taskId,
-          });
-          appendAiNoticeForImplementation(notice);
-          showToast(notice.split("\n")[0] ?? notice);
-          return { outcome: "executed" };
-        }
         case "MOVE_TO_REVIEW_STAGE": {
           const pid = projectId.trim();
           const board = buildImplementationExecutionBoardFromRequirementsState({
@@ -5805,27 +5695,6 @@ export function PrototypePreviewPanel({
         return;
       }
 
-      if (capability.needsReworkRegistration) {
-        const nowIso = new Date().toISOString();
-        const nextBoardState = appendReworkRequest({
-          state: parsedRequirementsState.implementationExecutionBoardStateV1,
-          projectId: pid,
-          taskId,
-          targetRole: "developer",
-          reason: "사용자 재작업 요청: 선택 Task 재시작",
-          nowIso,
-        });
-        applyImplementationOrchestrationResult({
-          messages: executionSingleChat.chatMessages,
-          orchestrationPatch: {
-            implementationExecutionBoardStateV1: nextBoardState,
-          },
-        });
-        const notice = buildReworkRequestRegistrationNotice({ board, taskId });
-        appendAiNoticeForImplementation(notice);
-        showToast(`${taskId} · 재작업 등록 후 실행합니다.`);
-      }
-
       boardManualPickTaskIdRef.current = taskId;
       void orchestrateImplementationStageAction({
         projectId: pid,
@@ -5993,8 +5862,7 @@ export function PrototypePreviewPanel({
           window.location.assign(`/requirements?projectId=${encodeURIComponent(pid)}`);
         },
         focusComposerForScopeEdit: () => {
-          showToast("아래 입력란에 수정·범위 조정 요청을 적고 전송해 주세요.");
-          queueMicrotask(() => chatInputRef.current?.focus());
+          showToast("범위 조정은 기획 단계 또는 보드의 작업 버튼으로 진행해 주세요.");
         },
         showRoleCheckDetails,
         showScmCheckDetails: () => appendStatusQueryFromChip("scm_check_details"),
@@ -6284,6 +6152,15 @@ export function PrototypePreviewPanel({
     ],
   );
 
+  const onPickImplementationInterviewLabel = useCallback(
+    (label: string) => {
+      if (handleImplementationChip(label)) return;
+      const picked = executionSingleChat.handleInterviewSuggestionPick(label);
+      if (picked.kind === "action") handleChatIntent(picked.action);
+    },
+    [handleImplementationChip, executionSingleChat, handleChatIntent],
+  );
+
   const isWorkPlanPlanningUi = isPlannerRunning || plannerCreatePending;
 
   const executionActivityStatus = useMemo(
@@ -6459,22 +6336,22 @@ export function PrototypePreviewPanel({
     quickRunCodeTaskContinuationRef.current = null;
     dbQueuedQuickRunDispatchRef.current = null;
     const nowIso = new Date().toISOString();
-    const workItemsEnsured = ensureRequirementsStateCursorWorkItemsForCodeTaskPlan({
+    const quickRunPrepared = prepareRequirementsStateForImplementationQuickRun({
       projectId: pid,
       requirementsState: imp,
       nowIso,
     });
-    const impForQuickRun = workItemsEnsured.requirementsState;
-    if (workItemsEnsured.appendedCodeTaskIds.length) {
-      applyPendingFromOrchestrationPatchRef.current({
-        cursorWorkItemsV1: impForQuickRun.cursorWorkItemsV1,
-      });
-      void persistChatToDb(
-        undefined,
-        { cursorWorkItemsV1: impForQuickRun.cursorWorkItemsV1 },
-        undefined,
-        { force: true },
-      );
+    const impForQuickRun = quickRunPrepared.requirementsState;
+    if (quickRunPrepared.planRepaired || quickRunPrepared.appendedCodeTaskIds.length) {
+      const persistPatch: Record<string, unknown> = {};
+      if (quickRunPrepared.planRepaired && impForQuickRun.implementationCodeTaskPlanV1) {
+        persistPatch.implementationCodeTaskPlanV1 = impForQuickRun.implementationCodeTaskPlanV1;
+      }
+      if (quickRunPrepared.appendedCodeTaskIds.length) {
+        persistPatch.cursorWorkItemsV1 = impForQuickRun.cursorWorkItemsV1;
+      }
+      applyPendingFromOrchestrationPatchRef.current(persistPatch);
+      void persistChatToDb(undefined, persistPatch, undefined, { force: true });
     }
     const queueItems = buildImplementationQuickRunQueueItems({
       selectedCodeTaskIds: jobSelectedCodeTaskIds,
@@ -6896,8 +6773,7 @@ export function PrototypePreviewPanel({
   }, []);
 
   const onOpenImplementationExecutionLog = useCallback(() => {
-    setImplementationPromptDrawerTab("execution_log");
-    setImplementationPromptDrawerOpen(true);
+    setImplementationExecutionLogModalOpen(true);
   }, []);
 
   const onClearImplementationExecutionLog = useCallback(() => {
@@ -6959,6 +6835,7 @@ export function PrototypePreviewPanel({
           busy={protoBusy}
           interviewUi={implementationToolbarQuickHubUi}
           showSlotsChrome={false}
+          quickExecutionEmphasized={(boardSelectionBridge.liveCodeTaskSelectionSummary?.selectedCount ?? 0) >= 1}
           quickExecutionTitle="빠른 실행 - 구현 작업안WIP"
           quickExecutionAriaLabel="빠른 실행 - 선택한 구현 Task를 자동 진행합니다"
           iconLayout={isImplementationToolbarMobileCompact ? "mobileCompact" : "full"}
@@ -6969,6 +6846,7 @@ export function PrototypePreviewPanel({
       isImplementationToolbarMobileCompact,
       protoBusy,
       implementationToolbarQuickHubUi,
+      boardSelectionBridge.liveCodeTaskSelectionSummary,
       onOpenExecutionEnvironmentSettings,
       onOpenImplementationExecutionLog,
     ],
@@ -7044,9 +6922,6 @@ export function PrototypePreviewPanel({
               dbBundle: implementationRuntimeDbBundle,
             })}
             implementationRuntimeDbBundle={implementationRuntimeDbBundle}
-            codeTaskExecutionFeedbackV1={
-              orchestrationAwareRequirementsState.implementationCodeTaskExecutionFeedbackV1
-            }
             implementationCodeTaskPlanV1={
               orchestrationAwareRequirementsState.implementationCodeTaskPlanV1
             }
@@ -7075,85 +6950,54 @@ export function PrototypePreviewPanel({
               });
               void startImplementationQuickRun({ selectedCodeTaskIds: selected });
             }}
-            onReworkSelectedCodeTasks={() => {
-              const imp = orchestrationAwareRequirementsStateRef.current;
-              const selected = resolveCheckedCodeTaskIdsFromBoardBridge({
-                bridge: boardSelectionBridge.getBridgeSnapshot(),
-                requirementsState: imp,
-              });
-              void startImplementationQuickRun({ selectedCodeTaskIds: selected });
-            }}
           />
-        ) : null}
-        {!boardPanelVisible ? (
-        <div className="jyo-prototype-execution-chat-region">
-        <PrototypeExecutionChatPanel
-          conversationStatus={executionSingleChat.conversationStatus}
-          chatMessages={prioritizedChatMessages}
-          dashboardPanelActive={false}
-          memberControls={null}
-          input={executionSingleChat.input}
-          onInputChange={executionSingleChat.setInput}
-          onSend={() => void executionSingleChat.sendMessage()}
-          busy={protoBusy}
-          inputDisabled={isMessageInputBlocked}
-          composerPlaceholder={chatPlaceholder}
-          textAreaRef={chatInputRef}
-          targetPickerItems={prototypeComposerAtAtItems}
-          replyTo={executionSingleChat.replyTo}
-          onClearReplyTo={() => executionSingleChat.setReplyTo(null)}
-          onSetReplyTo={(id, preview) => executionSingleChat.setReplyTo({ id, preview })}
-          onInterviewSuggestionPick={(label) => {
-            if (handleImplementationChip(label)) return;
-            const picked = executionSingleChat.handleInterviewSuggestionPick(label);
-            if (picked.kind === "action") handleChatIntent(picked.action);
-          }}
-          aiInvokePending={executionSingleChat.aiInvokePending}
-          activityStatus={executionActivityStatus}
-        />
-        {isNextPublicDevWorkflowToolsEnabled() ? (
-          <details style={{ fontSize: 11, color: "#475569", flexShrink: 0, margin: "0 18px 12px" }}>
-            <summary style={{ cursor: "pointer", fontWeight: 900, color: "#334155" }}>내부 오케스트레이션 (개발)</summary>
-            <pre
-              style={{
-                marginTop: 8,
-                fontSize: 10,
-                lineHeight: 1.35,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                background: "#fff",
-                border: "1px solid #e2e8f0",
-                borderRadius: 8,
-                padding: 8,
-              }}
-            >
-              {JSON.stringify(
-                {
-                  executionSlots,
-                  plannerSource: latestRun?.plannerSource ?? null,
-                  plannerError: latestRun?.plannerError ?? null,
-                },
-                null,
-                2,
-              )}
-            </pre>
-          </details>
-        ) : null}
-        </div>
+        ) : implementationBootstrapShell ? (
+          <>
+            <ImplementationExecutionBoardBootstrapPanel
+              body={implementationBootstrapShell.body}
+              actionLabels={implementationBootstrapShell.actionLabels}
+              onAction={onPickImplementationInterviewLabel}
+            />
+            {isNextPublicDevWorkflowToolsEnabled() ? (
+              <details style={{ fontSize: 11, color: "#475569", flexShrink: 0, margin: "0 18px 12px" }}>
+                <summary style={{ cursor: "pointer", fontWeight: 900, color: "#334155" }}>
+                  내부 오케스트레이션 (개발)
+                </summary>
+                <pre
+                  style={{
+                    marginTop: 8,
+                    fontSize: 10,
+                    lineHeight: 1.35,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    background: "#fff",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 8,
+                    padding: 8,
+                  }}
+                >
+                  {JSON.stringify(
+                    {
+                      executionSlots,
+                      plannerSource: latestRun?.plannerSource ?? null,
+                      plannerError: latestRun?.plannerError ?? null,
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+              </details>
+            ) : null}
+          </>
         ) : null}
       </div>
 
       <ImplementationStageNoticeModal
-        open={boardPanelVisible && implementationStageNoticeModal != null}
+        open={implementationStageNoticeModal != null}
         body={implementationStageNoticeModal?.body ?? ""}
         actionLabels={implementationStageNoticeModal?.actionLabels}
         onAction={(label) => {
-          if (handleImplementationChip(label)) {
-            setImplementationStageNoticeModal(null);
-            return;
-          }
-          const picked = executionSingleChat.handleInterviewSuggestionPick(label);
-          if (picked.kind === "action") handleChatIntent(picked.action);
+          onPickImplementationInterviewLabel(label);
           setImplementationStageNoticeModal(null);
         }}
         onClose={() => setImplementationStageNoticeModal(null)}
@@ -7166,14 +7010,11 @@ export function PrototypePreviewPanel({
         closeOnEscape={!deliverableViewerOpen}
       />
 
-      <RequirementsPromptDocumentDrawer
-        open={implementationPromptDrawerOpen}
-        onClose={() => setImplementationPromptDrawerOpen(false)}
-        view={null}
+      <ImplementationExecutionLogModal
+        open={implementationExecutionLogModalOpen}
+        onClose={() => setImplementationExecutionLogModalOpen(false)}
         promptTimeline={orchestrationAwareRequirementsState.promptTimeline}
-        conversationMessages={executionSingleChat.persistedConversationMessages}
         exportBaseName={projectName || "project"}
-        initialTab={implementationPromptDrawerTab}
         onClearExecutionLog={onClearImplementationExecutionLog}
       />
 

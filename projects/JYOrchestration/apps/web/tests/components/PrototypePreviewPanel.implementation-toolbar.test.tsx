@@ -47,6 +47,24 @@ describe("Implementation stage global toolbar layout", () => {
     expect(html).not.toContain("참여 멤버");
   });
 
+  it("emphasizes quick execution icon when quickExecutionEmphasized is true", () => {
+    const html = renderToStaticMarkup(
+      <WorkspaceConversationHubIconRow
+        showSlotsChrome={false}
+        quickExecutionEmphasized
+        interviewUi={{
+          readinessPercent: 0,
+          covered: 0,
+          total: 0,
+          remainingQuestionsEstimate: 0,
+          onForceGeneratePlanNow: () => {},
+        }}
+      />,
+    );
+    expect(html).toContain("#facc15");
+    expect(html).toContain("#ca8a04");
+  });
+
   it("renders environment settings icon in implementation toolbar", () => {
     const html = renderToStaticMarkup(
       <ImplementationStageGlobalToolbar>

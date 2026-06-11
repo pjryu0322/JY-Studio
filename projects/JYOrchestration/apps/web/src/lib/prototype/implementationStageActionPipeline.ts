@@ -539,15 +539,6 @@ export function evaluateImplementationStageActionGate(
       }
       return { ok: true };
     }
-    case "REQUEST_TASK_REWORK": {
-      if (!isTaskListReadyForImplementationStageActions(state)) {
-        return { ok: false, message: "구현 작업목록이 준비된 뒤 재작업 요청을 등록할 수 있습니다." };
-      }
-      if (!boardContext) {
-        return { ok: false, message: "구현 작업 보드가 준비된 뒤 재작업 요청을 등록할 수 있습니다." };
-      }
-      return { ok: true };
-    }
     case "REVIEW_STAGE_OPEN_PREVIEW":
     case "REVIEW_STAGE_START_USER_TEST":
     case "REVIEW_STAGE_ADD_FEEDBACK":

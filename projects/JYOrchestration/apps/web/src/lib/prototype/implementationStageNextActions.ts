@@ -49,7 +49,6 @@ import {
   RUN_INTEGRATED_SECURITY_CHIP,
   RUN_REFACTOR_COMMON_CHIP,
   MOVE_TO_REVIEW_STAGE_CHIP,
-  REQUEST_TASK_REWORK_CHIP,
   REVIEW_STAGE_ADD_FEEDBACK_CHIP,
   REVIEW_STAGE_COMPLETE_TEST_CHIP,
   REVIEW_STAGE_OPEN_PREVIEW_CHIP,
@@ -345,21 +344,12 @@ function boardNeedsRemediation(board: ImplementationExecutionBoardV1): boolean {
 function deriveNextActionsFromBoardRemediation(
   board: ImplementationExecutionBoardV1,
 ): readonly ImplementationStageNextAction[] {
-  const hasRework = board.taskRows.some((row) => row.reworkCount > 0);
   return [
     {
       actionId: "REQUEST_CODE_AGENT_WIP",
       label: AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
       priority: "primary",
-      reason: hasRework
-        ? "등록된 재작업 요청 task 보완 WIP 실행"
-        : "검수/보안 실패 또는 실패 작업 보완 WIP 실행",
-    },
-    {
-      actionId: "REQUEST_TASK_REWORK",
-      label: REQUEST_TASK_REWORK_CHIP,
-      priority: "secondary",
-      reason: "재작업 요청을 boardState에 등록",
+      reason: "검수/보안 실패 또는 실패 작업 보완 WIP 실행",
     },
     {
       actionId: "SHOW_ARTIFACTS",
@@ -610,8 +600,8 @@ function deriveNextActionsFromTaskCursorExecution(
     if (gateMatches && autoGate.status === "failed") {
       return [
         {
-          actionId: "REQUEST_TASK_REWORK",
-          label: REQUEST_TASK_REWORK_CHIP,
+          actionId: "REQUEST_CODE_AGENT_WIP",
+          label: AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
           priority: "primary",
           reason: autoGate.failureReason ?? "검수자 또는 보안관 점검에서 수정 필요 항목이 발견되었습니다.",
         },
@@ -638,14 +628,14 @@ function deriveNextActionsFromTaskCursorExecution(
   if (isTaskCursorExecutionFailed(execution) || status === "github_verify_failed") {
     return [
       {
-        actionId: "REQUEST_TASK_REWORK",
-        label: REQUEST_TASK_REWORK_CHIP,
+        actionId: "REQUEST_CODE_AGENT_WIP",
+        label: AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
         priority: "primary",
         reason:
           execution.errorMessage ??
           (execution.failureReason === "cursor_endpoint_unsupported"
-            ? "Cursor API endpoint 미지원 — 재작업 또는 환경설정 확인"
-            : "Task Cursor 실행 실패 — 재작업 요청"),
+            ? "Cursor API endpoint 미지원 — 보완 WIP 또는 환경설정 확인"
+            : "Task Cursor 실행 실패 — 보완 WIP 실행"),
       },
       {
         actionId: "SHOW_ARTIFACTS",

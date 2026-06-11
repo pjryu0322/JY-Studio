@@ -31,7 +31,6 @@ import {
   RUN_REFACTOR_COMMON_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
-  REQUEST_TASK_REWORK_CHIP,
   SECURITY_CHECK_RUN_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import {
@@ -245,7 +244,7 @@ describe("deriveImplementationStageNextActions", () => {
       taskList,
       taskCursorExecutionV1: execution,
     });
-    expect(actions[0]?.actionId).toBe("REQUEST_TASK_REWORK");
+    expect(actions[0]?.actionId).toBe("REQUEST_CODE_AGENT_WIP");
     expect(actions[0]?.reason).toContain("endpoint");
   });
 
@@ -293,7 +292,7 @@ describe("deriveImplementationStageNextActions", () => {
     );
   });
 
-  it("auto gate failed -> rework primary CTA", () => {
+  it("auto gate failed -> remediation WIP primary CTA", () => {
     const taskList = buildImplementationTaskListFromSeed({
       projectId: "p1",
       seed: {
@@ -340,8 +339,8 @@ describe("deriveImplementationStageNextActions", () => {
         updatedAt: "2026-05-30T12:00:00.000Z",
       },
     });
-    expect(actions[0]?.actionId).toBe("REQUEST_TASK_REWORK");
-    expect(actions[0]?.label).toBe(REQUEST_TASK_REWORK_CHIP);
+    expect(actions[0]?.actionId).toBe("REQUEST_CODE_AGENT_WIP");
+    expect(actions[0]?.label).toBe(AI_DEVELOPER_REMEDIATION_REQUEST_CHIP);
   });
 
   it("cursor_api completed WIP -> 구현 결과 승인", () => {

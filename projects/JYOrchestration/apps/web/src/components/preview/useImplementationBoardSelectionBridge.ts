@@ -1,7 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ImplementationCodeTaskSelectionSummaryV1,
+  summarizeCodeTaskBoardRowsFromTreeNodes,
+} from "@/lib/prototype/implementationCodeTaskBoardState";
 import {
   coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride,
   resolveImplementationBoardQuickRunSelection,
@@ -10,6 +13,10 @@ import {
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 export type { ImplementationBoardSelectionBridgeSnapshotV1 };
+
+export type ImplementationBoardLiveSelectionSummary = ReturnType<
+  typeof summarizeCodeTaskBoardRowsFromTreeNodes
+>;
 
 /**
  * Bridges ImplementationExecutionBoardPanel checkbox state to PrototypePreviewPanel
@@ -20,17 +27,21 @@ export function useImplementationBoardSelectionBridge(projectId: string) {
   const liveCheckedCodeTaskIdsRef = useRef<readonly string[] | null>(null);
   const livePanelSummaryRef = useRef<ImplementationCodeTaskSelectionSummaryV1 | null>(null);
   const liveRunnableCodeTaskIdsRef = useRef<readonly string[] | null>(null);
+  const [liveCodeTaskSelectionSummary, setLiveCodeTaskSelectionSummary] =
+    useState<ImplementationBoardLiveSelectionSummary | null>(null);
 
   useEffect(() => {
     boardPersistSelectionRef.current = null;
     liveCheckedCodeTaskIdsRef.current = null;
     livePanelSummaryRef.current = null;
     liveRunnableCodeTaskIdsRef.current = null;
+    setLiveCodeTaskSelectionSummary(null);
   }, [projectId]);
 
   const onCodeTaskSelectionSummaryChange = useCallback(
-    (summary: ImplementationCodeTaskSelectionSummaryV1) => {
+    (summary: ImplementationBoardLiveSelectionSummary) => {
       livePanelSummaryRef.current = summary;
+      setLiveCodeTaskSelectionSummary(summary);
     },
     [],
   );
@@ -75,6 +86,7 @@ export function useImplementationBoardSelectionBridge(projectId: string) {
   return {
     liveCheckedCodeTaskIdsRef,
     liveRunnableCodeTaskIdsRef,
+    liveCodeTaskSelectionSummary,
     onCodeTaskSelectionSummaryChange,
     recordPersistedBoardSelection,
     getBridgeSnapshot,

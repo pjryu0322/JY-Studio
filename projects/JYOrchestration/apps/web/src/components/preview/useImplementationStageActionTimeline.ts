@@ -138,7 +138,6 @@ export function useImplementationStageActionTimeline(input: {
           break;
         case "focus_composer":
           input.showToast(result.message);
-          queueMicrotask(() => input.chatInputRef.current?.focus());
           break;
         case "open_env_settings":
           input.setExecutionEnvironmentModalOpen(true);

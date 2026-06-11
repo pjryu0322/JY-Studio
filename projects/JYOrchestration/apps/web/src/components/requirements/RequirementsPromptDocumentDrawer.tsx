@@ -12,15 +12,11 @@ import {
 import { pickOrchestrationPromptTimelineEntries } from "@/lib/requirements/requirementsOrchestrationTimelineView";
 import { buildFoldedOrchestrationTimeline } from "@/lib/requirements/requirementsOrchestrationTimelineFolding";
 import {
-  buildExecutionLogEntryCopyText,
-  buildExecutionLogTimelineMarkdown,
-  formatExecutionLogEntryMetadataLines,
-  formatExecutionLogTimelineLabel,
   hasExecutionLogTimelineEntries,
-  parseExecutionLogResponseFields,
   pickExecutionLogTimelineEntries,
   type PromptTimelineDrawerTab,
 } from "@/lib/prototype/promptTimelineExecutionLogTabs";
+import { ImplementationExecutionLogPanelContent } from "@/components/preview/ImplementationExecutionLogPanelContent";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
@@ -444,35 +440,6 @@ export function RequirementsPromptDocumentDrawer({
     const date = localDateSlug();
     downloadTextFile(`${exportStem}-prompt-timeline-${date}.md`, md, "text/markdown;charset=utf-8");
   }, [exportStem, promptTimelineExportAsc]);
-
-  const onDownloadExecutionLogMarkdown = useCallback(() => {
-    if (!executionLogTimeline.length) return;
-    const md = buildExecutionLogTimelineMarkdown(executionLogTimeline);
-    const date = localDateSlug();
-    downloadTextFile(`${exportStem}-execution-log-${date}.md`, md, "text/markdown;charset=utf-8");
-  }, [exportStem, executionLogTimeline]);
-
-  const onClearExecutionLogClick = useCallback(() => {
-    if (!executionLogTimeline.length || !onClearExecutionLog) return;
-    const count = executionLogTimeline.length;
-    const ok = window.confirm(
-      `표시 중인 실행 로그 ${count}건을 삭제할까요?\n프롬프트·대화 기록 등 다른 타임라인은 유지됩니다.`,
-    );
-    if (!ok) return;
-    void Promise.resolve(onClearExecutionLog()).then(() => {
-      showCopyFeedback("실행 로그를 초기화했습니다.");
-    });
-  }, [executionLogTimeline.length, onClearExecutionLog, showCopyFeedback]);
-
-  const onCopyExecutionLogEntry = useCallback(
-    async (entry: RequirementsPromptTimelineEntry) => {
-      const text = buildExecutionLogEntryCopyText(entry);
-      if (!text.trim()) return;
-      const ok = await writeClipboardText(text);
-      showCopyFeedback(ok ? "실행 로그를 클립보드에 복사했습니다." : "복사에 실패했습니다. 브라우저 권한을 확인해 주세요.");
-    },
-    [showCopyFeedback],
-  );
 
   const toggleSelectAll = useCallback(() => {
     if (!orderedMessages.length) return;
@@ -1051,177 +1018,12 @@ export function RequirementsPromptDocumentDrawer({
               )}
             </div>
           ) : tab === "execution_log" ? (
-            <div style={docBlock} data-testid="prompt-timeline-execution-log-tab">
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  marginBottom: 10,
-                }}
-              >
-                <div style={labelSm}>실행 로그</div>
-                {executionLogTimeline.length ? (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                    {onClearExecutionLog ? (
-                      <button
-                        type="button"
-                        onClick={onClearExecutionLogClick}
-                        data-testid="execution-log-clear-button"
-                        style={{
-                          ...actionBarBtn,
-                          borderColor: "#fecaca",
-                          color: "#b91c1c",
-                        }}
-                      >
-                        실행 로그 초기화
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={onDownloadExecutionLogMarkdown}
-                      style={actionBarBtn}
-                    >
-                      실행 로그 MD 저장
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-              {!executionLogTimeline.length ? (
-                <div style={{ ...bodyLg, color: "#64748b" }}>표시할 실행 로그가 없습니다.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {executionLogTimeline.map((entry, index) => {
-                    const parsedFields = parseExecutionLogResponseFields(entry.responseText);
-                    const metadataLines = formatExecutionLogEntryMetadataLines(entry);
-                    const fieldEntries = Object.entries(parsedFields).filter(([key]) => key !== "type");
-                    return (
-                    <div
-                      key={`${entry.action}-${entry.createdAt}-${index}`}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 10,
-                        border: "1px solid #e2e8f0",
-                        background: "#fff",
-                        fontSize: 12,
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "flex-start",
-                          justifyContent: "space-between",
-                          gap: 8,
-                        }}
-                      >
-                        <div style={{ flex: "1 1 0%", minWidth: 0 }}>
-                          <div style={{ fontWeight: 800, color: "#0f172a" }}>
-                            {formatExecutionLogTimelineLabel(entry)}
-                          </div>
-                          <div style={{ color: "#64748b", marginTop: 4 }}>
-                            {new Date(entry.createdAt).toLocaleString("ko-KR")}
-                            {entry.action ? ` · ${entry.action}` : ""}
-                          </div>
-                        </div>
-                        <CopyIconButton
-                          ariaLabel="실행 로그 항목 복사"
-                          title="이 실행 로그 복사"
-                          disabled={!buildExecutionLogEntryCopyText(entry).trim()}
-                          onClick={() => void onCopyExecutionLogEntry(entry)}
-                        />
-                      </div>
-                      {metadataLines.length ? (
-                        <div
-                          style={{
-                            marginTop: 8,
-                            padding: "6px 8px",
-                            borderRadius: 8,
-                            background: "#f8fafc",
-                            border: "1px solid #e2e8f0",
-                            color: "#475569",
-                            fontSize: 11,
-                          }}
-                        >
-                          {metadataLines.map((line) => (
-                            <div key={line}>{line}</div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {fieldEntries.length ? (
-                        <div
-                          style={{
-                            marginTop: 8,
-                            display: "grid",
-                            gridTemplateColumns: "minmax(96px, auto) 1fr",
-                            gap: "4px 10px",
-                            fontSize: 11,
-                            color: "#334155",
-                          }}
-                        >
-                          {fieldEntries.map(([key, value]) => (
-                            <div key={`${entry.createdAt}-${key}`} style={{ display: "contents" }}>
-                              <div style={{ fontWeight: 700, color: "#64748b" }}>{key}</div>
-                              <div style={{ wordBreak: "break-word" }}>{value}</div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {entry.error?.trim() ? (
-                        <pre
-                          style={{
-                            margin: "8px 0 0",
-                            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                            fontSize: 11,
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-word",
-                            color: "#991b1b",
-                          }}
-                        >
-                          {entry.error}
-                        </pre>
-                      ) : null}
-                      {entry.responseText?.trim() && !fieldEntries.length ? (
-                        <pre
-                          style={{
-                            margin: "8px 0 0",
-                            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                            fontSize: 11,
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-word",
-                            color: "#334155",
-                          }}
-                        >
-                          {entry.responseText}
-                        </pre>
-                      ) : null}
-                      {entry.promptText?.trim() ? (
-                        <>
-                          <div style={{ ...labelSm, marginTop: 10, marginBottom: 4 }}>프롬프트</div>
-                          <pre
-                            style={{
-                              margin: 0,
-                              fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                              fontSize: 11,
-                              whiteSpace: "pre-wrap",
-                              wordBreak: "break-word",
-                              color: "#334155",
-                              maxHeight: 180,
-                              overflow: "auto",
-                            }}
-                          >
-                            {entry.promptText}
-                          </pre>
-                        </>
-                      ) : null}
-                    </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <ImplementationExecutionLogPanelContent
+              promptTimeline={promptTimeline}
+              exportBaseName={exportBaseName}
+              onClearExecutionLog={onClearExecutionLog}
+              onFeedback={showCopyFeedback}
+            />
           ) : (
             <div style={docBlock}>
               <div style={labelSm}>대화 기록 (저장본 기준)</div>

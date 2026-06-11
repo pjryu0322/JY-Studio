@@ -3,8 +3,10 @@ import { CANONICAL_SAMPLE_DATA_CODE_TASK_ID } from "@/lib/prototype/codeTaskCano
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
+  buildQuickRunOrchestrationAfterJobStart,
   ensureRequirementsStateCursorWorkItemsForCodeTaskPlan,
   evaluateImplementationQuickRunPrepAndSelection,
+  prepareRequirementsStateForImplementationQuickRun,
 } from "@/lib/prototype/implementationQuickRunStartService";
 
 const sampleId = CANONICAL_SAMPLE_DATA_CODE_TASK_ID;
@@ -97,5 +99,53 @@ describe("ensureRequirementsStateCursorWorkItemsForCodeTaskPlan", () => {
       cursorWorkItems: ensured.requirementsState.cursorWorkItemsV1,
     });
     expect(target?.workItem.codeTaskId).toBe(sampleId);
+  });
+});
+
+describe("prepareRequirementsStateForImplementationQuickRun", () => {
+  it("repairs legacy sample CodeTask id and creates WorkItem for dispatch", () => {
+    const legacyId = "CODE-DEV-SAMPLE-DATA-001-001";
+    const plan: ImplementationCodeTaskPlanV1 = {
+      version: 1,
+      projectId: "p1",
+      parentTaskCount: 1,
+      codeTaskCount: 1,
+      tasks: [
+        {
+          codeTaskId: legacyId,
+          parentTaskId: "DEV-MOCK-001",
+          title: "샘플 데이터 구현",
+          description: "desc",
+          changeType: "data",
+          status: "ready",
+          targetHints: ["apps/web"],
+          acceptanceCriteria: ["ok"],
+          verificationHints: ["pnpm test"],
+          forbiddenPaths: ["node_modules"],
+          branchPlan: { branchGroup: "data", workBranch: "wip/data/sample-data" },
+        },
+      ],
+    };
+    const prepared = prepareRequirementsStateForImplementationQuickRun({
+      projectId: "p1",
+      requirementsState: {
+        implementationCodeTaskPlanV1: plan,
+        cursorWorkItemsV1: [],
+      },
+    });
+    expect(prepared.planRepaired).toBe(true);
+    expect(prepared.appendedCodeTaskIds).toContain(sampleId);
+    const orch = buildQuickRunOrchestrationAfterJobStart({
+      projectId: "p1",
+      jobSelectedCodeTaskIds: [sampleId],
+      requirementsState: prepared.requirementsState,
+      requirementsStateJsonRaw: {},
+      executionSetup: null,
+      nowIso: new Date().toISOString(),
+    });
+    expect("ok" in orch).toBe(false);
+    if (!("ok" in orch)) {
+      expect(orch.dispatchTarget.codeTask.codeTaskId).toBe(sampleId);
+    }
   });
 });

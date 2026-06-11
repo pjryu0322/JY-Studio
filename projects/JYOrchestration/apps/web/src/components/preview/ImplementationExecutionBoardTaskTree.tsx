@@ -292,8 +292,15 @@ export function ImplementationExecutionBoardTaskTree({
     }
   }, [selectAllIndeterminate, allChecked]);
 
+  const summaryText = `CodeTask ${codeTaskCount}개 · 실행 가능 ${runnableCount}개 · 선택됨 ${selectedCount}개${
+    integrationReady > 0 ? ` · 통합 가능 ${integrationReady}개` : ""
+  }`;
+
   return (
     <div className={styles.taskTreeList} data-testid="implementation-task-tree">
+      <div className={styles.taskTreeSummaryRow} data-testid="implementation-task-tree-summary">
+        <span className={styles.taskTreeSelectAllMeta}>{summaryText}</span>
+      </div>
       <div className={styles.taskTreeSelectAllRow}>
         <label className={styles.taskTreeSelectAllLabel}>
           <input
@@ -306,7 +313,7 @@ export function ImplementationExecutionBoardTaskTree({
             data-indeterminate={selectAllIndeterminate ? "true" : "false"}
             onChange={(event) => onToggleSelectAll?.(event.target.checked)}
           />
-          <span>전체 선택</span>
+          <span>선택</span>
           {onCopyDeveloperPromptsFromHeader && codeTaskCount > 0 ? (
             <button
               type="button"
@@ -325,10 +332,6 @@ export function ImplementationExecutionBoardTaskTree({
             </button>
           ) : null}
         </label>
-        <span className={styles.taskTreeSelectAllMeta}>
-          CodeTask {codeTaskCount}개 · 실행 가능 {runnableCount}개 · 선택됨 {selectedCount}개
-          {integrationReady > 0 ? ` · 통합 가능 ${integrationReady}개` : ""}
-        </span>
       </div>
       {nodes.map((node) => (
         <FlatCodeTaskListItem

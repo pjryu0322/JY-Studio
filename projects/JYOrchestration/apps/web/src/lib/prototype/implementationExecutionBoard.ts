@@ -404,7 +404,7 @@ export function buildReworkRequestRegistrationNotice(input: {
   ].join("\n");
 }
 
-/** Target task for REQUEST_TASK_REWORK — preferredTaskId가 유효하면 우선 사용. */
+/** 재작업 등록 대상 task 선정 — preferredTaskId가 유효하면 우선 사용. */
 export function pickTaskIdForReworkRequest(
   board: ImplementationExecutionBoardV1,
   preferredTaskId?: string | null,
@@ -417,7 +417,7 @@ export function pickTaskIdForReworkRequest(
         row,
         board,
       });
-      if (capability.canRestart && capability.needsReworkRegistration) {
+      if (capability.canRestart) {
         return preferred;
       }
     }
@@ -497,29 +497,10 @@ export function resolveTaskRowUserRestartCapability(input: {
     };
   }
 
-  const needsReworkRegistration =
-    (input.row.developerStatus === "failed" && input.row.reworkCount === 0) ||
-    ((input.row.reviewerResultStatus === "failed" || input.row.securityResultStatus === "failed") &&
-      input.row.reworkCount === 0);
-
   return {
     canRestart: true,
-    needsReworkRegistration,
+    needsReworkRegistration: false,
   };
-}
-
-export function boardShowsRequestTaskReworkChip(board: ImplementationExecutionBoardV1): boolean {
-  if (board.summary.failedTasks > 0) return true;
-  if (
-    board.taskRows.some(
-      (row) => row.reviewerResultStatus === "failed" || row.securityResultStatus === "failed",
-    )
-  ) {
-    return true;
-  }
-  if (board.summary.userConfirmationRequired > 0) return true;
-  if (board.taskRows.some((row) => row.reworkCount > 0)) return true;
-  return false;
 }
 
 export function pickQualityGateTargetTaskIds(input: {
