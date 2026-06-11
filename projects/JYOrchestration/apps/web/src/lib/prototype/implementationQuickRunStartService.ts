@@ -2,6 +2,10 @@ import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecution
 import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
 import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
 import {
+  listCodeTaskPromptContextIdsToRefresh,
+  repairSampleDataCodeTaskFileBoundariesInPlan,
+} from "@/lib/prototype/sampleDataCodeTaskPlanner";
+import {
   buildCodeTaskIdRemapFromPlanTasks,
   mergeCursorWorkItemsWithMissingCodeTaskPlanTasks,
   reconcileCursorWorkItemsWithCodeTaskIdRemap,
@@ -181,10 +185,11 @@ export function ensureRequirementsStateCodeTaskPromptContextForPlan(input: {
     input.requirementsState.codeTaskPromptContextMapV1,
   );
   const existingContexts = existingMap?.contexts ?? {};
-  const missingIds = plan.tasks
-    .map((t) => t.codeTaskId.trim())
-    .filter((id) => id && !existingContexts[id]);
-  if (!missingIds.length) {
+  const idsNeedingContext = listCodeTaskPromptContextIdsToRefresh({
+    plan,
+    existingContexts,
+  });
+  if (!idsNeedingContext.length) {
     return { requirementsState: input.requirementsState, patchedCodeTaskIds: [] };
   }
   const built = buildCodeTaskPromptContextMap({
@@ -195,7 +200,7 @@ export function ensureRequirementsStateCodeTaskPromptContextForPlan(input: {
   });
   const contexts: CodeTaskPromptContextMapV1["contexts"] = { ...existingContexts };
   const patchedCodeTaskIds: string[] = [];
-  for (const id of missingIds) {
+  for (const id of idsNeedingContext) {
     const ctx = built.contexts[id];
     if (!ctx) continue;
     contexts[id] = ctx;
@@ -272,11 +277,15 @@ export function prepareRequirementsStateForImplementationQuickRun(input: {
   const ensuredPlan =
     ensureCodeTaskPlanWithFileBoundaries({ plan: rawPlan, taskList }) ?? rawPlan;
   let state = input.requirementsState;
-  const planRepaired = Boolean(ensuredPlan && rawPlan && ensuredPlan !== rawPlan);
-  if (ensuredPlan) {
-    state = { ...state, implementationCodeTaskPlanV1: ensuredPlan };
+  let planForState = ensuredPlan;
+  if (planForState) {
+    planForState = repairSampleDataCodeTaskFileBoundariesInPlan(planForState);
   }
-  const idRemap = buildCodeTaskIdRemapFromPlanTasks(rawTasks, ensuredPlan?.tasks ?? rawTasks);
+  let planRepaired = Boolean(planForState && rawPlan && planForState !== rawPlan);
+  if (planForState) {
+    state = { ...state, implementationCodeTaskPlanV1: planForState };
+  }
+  const idRemap = buildCodeTaskIdRemapFromPlanTasks(rawTasks, planForState?.tasks ?? rawTasks);
   const reconciledItems = reconcileCursorWorkItemsWithCodeTaskIdRemap({
     workItems: state.cursorWorkItemsV1 ?? [],
     idRemap,

@@ -19,7 +19,6 @@ import {
   parseTaskCursorExecutionV1,
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
-import { shouldShowManualGithubVerifyRetry } from "@/lib/prototype/implementationCodeTaskGithubVerifyRetryUi";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
@@ -713,18 +712,7 @@ export function ImplementationExecutionBoardPanel({
     [codeAgentWipExecutionV1, taskCursorExecutionV1, board, promptTimeline, implementationAutoQualityGateV1],
   );
 
-  const showManualGithubVerifyRetry = useMemo(
-    () =>
-      shouldShowManualGithubVerifyRetry({
-        queue: codeTaskQueue,
-        runs: codeTaskRuns,
-        currentCodeTaskId: queueCurrentCodeTaskId,
-        taskCursor: parseTaskCursorExecutionV1(taskCursorExecutionV1),
-      }),
-    [codeTaskQueue, codeTaskRuns, queueCurrentCodeTaskId, taskCursorExecutionV1],
-  );
-
-  const showSummaryCard = showStuckRecovery || showManualGithubVerifyRetry;
+  const showSummaryCard = showStuckRecovery;
 
   return (
     <section
@@ -743,7 +731,6 @@ export function ImplementationExecutionBoardPanel({
             projectId={projectId}
             selectedCodeTaskId={selectedCodeTaskId}
             queueCurrentCodeTaskId={queueCurrentCodeTaskId}
-            showManualGithubVerifyRetry={showManualGithubVerifyRetry}
           />
         </div>
       ) : null}

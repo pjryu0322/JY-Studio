@@ -1,6 +1,12 @@
-import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import { CANONICAL_SAMPLE_DATA_CODE_TASK_ID } from "@/lib/prototype/codeTaskCanonicalId";
+import type { CodeTaskPromptContextV1 } from "@/lib/prototype/codeTaskPromptContext";
+import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
+import {
+  inferCodeTaskFileBoundary,
+  SAMPLE_DATA_OWNED_PATTERNS,
+} from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import { resolveCodeTaskSpecificRole } from "@/lib/prototype/codeTaskPromptRoleResolver";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
@@ -26,6 +32,60 @@ export const SAMPLE_DATA_EXPECTED_EXPORTS = [
   "sampleActionItems",
   "sampleDraftTimeline",
 ] as const;
+
+/** Stored prompt context가 구(패널 직접 연결) 템플릿이면 quick-run prep에서 다시 생성한다. */
+export const STALE_SAMPLE_DATA_PROMPT_CONTEXT_MARKERS = [
+  "각 화면 패널은 sampleData.ts를 import",
+  "좌/중/우 패널이 동일 sampleData.ts를 참조",
+] as const;
+
+export function storedSampleDataPromptContextIsStale(
+  context: CodeTaskPromptContextV1 | null | undefined,
+): boolean {
+  if (!context) return true;
+  const hay = [
+    context.implementationContext?.requirements?.join("\n") ?? "",
+    context.implementationContext?.intent ?? "",
+    context.verificationContext?.acceptanceCriteria?.join("\n") ?? "",
+    context.verificationContext?.manualChecks?.join("\n") ?? "",
+  ].join("\n");
+  return STALE_SAMPLE_DATA_PROMPT_CONTEXT_MARKERS.some((marker) => hay.includes(marker));
+}
+
+/** Plan task 대비 prompt context map에 새로 채우거나(누락) 샘플 데이터 구템플릿을 갱신할 CodeTask id. */
+export function listCodeTaskPromptContextIdsToRefresh(input: {
+  readonly plan: ImplementationCodeTaskPlanV1;
+  readonly existingContexts: Readonly<Record<string, CodeTaskPromptContextV1>>;
+}): readonly string[] {
+  const ids: string[] = [];
+  for (const task of input.plan.tasks) {
+    const id = task.codeTaskId.trim();
+    if (!id) continue;
+    const existing = input.existingContexts[id];
+    if (!existing) {
+      ids.push(id);
+      continue;
+    }
+    if (sampleDataPromptContextNeedsRefreshForTask(task, existing)) {
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+function sampleDataPromptContextNeedsRefreshForTask(
+  task: ImplementationCodeTaskV1,
+  context: CodeTaskPromptContextV1,
+): boolean {
+  return (
+    isSampleDataCodeTaskRef({
+      codeTaskId: task.codeTaskId,
+      parentTaskId: task.parentTaskId,
+      title: task.title,
+      changeType: task.changeType,
+    }) && storedSampleDataPromptContextIsStale(context)
+  );
+}
 
 export const ACTUAL_PREVIEW_SAMPLE_DATA_REQUIRED_USER_MESSAGE =
   "Preview에 표시할 샘플데이터가 아직 준비되지 않았습니다.\n샘플데이터 작업을 완료한 뒤 다시 통합 및 Preview 준비를 실행해 주세요." as const;
@@ -115,4 +175,41 @@ export function ensureSampleDataCodeTaskIncludedInSelection(input: {
   const merged = new Set(selected);
   for (const id of sampleIds) merged.add(id);
   return [...merged];
+}
+
+function sampleDataFileBoundaryCoversRequiredPatterns(
+  boundary: ReturnType<typeof parseCodeTaskFileBoundaryV1>,
+): boolean {
+  if (!boundary) return false;
+  const owned = [...(boundary.ownedFiles ?? []), ...(boundary.expectedFiles ?? [])];
+  return SAMPLE_DATA_OWNED_PATTERNS.every((pattern) => owned.includes(pattern));
+}
+
+/** 저장된 plan에 샘플 데이터 Task 경계가 구버전(owned 누락)이면 mock_data 경계로 다시 맞춘다. */
+export function repairSampleDataCodeTaskFileBoundariesInPlan(
+  plan: ImplementationCodeTaskPlanV1,
+): ImplementationCodeTaskPlanV1 {
+  let changed = false;
+  const tasks = plan.tasks.map((task) => {
+    if (
+      !isSampleDataCodeTaskRef({
+        codeTaskId: task.codeTaskId,
+        parentTaskId: task.parentTaskId,
+        title: task.title,
+        changeType: task.changeType,
+      })
+    ) {
+      return task;
+    }
+    const boundary = parseCodeTaskFileBoundaryV1(task.fileBoundary);
+    if (sampleDataFileBoundaryCoversRequiredPatterns(boundary)) return task;
+    const inferred = inferCodeTaskFileBoundary({ codeTask: task });
+    changed = true;
+    const forbiddenPaths = [
+      ...new Set([...(task.forbiddenPaths ?? []), ...inferred.forbiddenFiles.slice(0, 12)]),
+    ];
+    return { ...task, fileBoundary: inferred, forbiddenPaths };
+  });
+  if (!changed) return plan;
+  return { ...plan, tasks, updatedAt: new Date().toISOString() };
 }

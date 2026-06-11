@@ -220,4 +220,84 @@ describe("prepareRequirementsStateForImplementationQuickRun", () => {
     });
     expect(target?.workItem.codeTaskId).toBe(sampleId);
   });
+
+  it("refreshes stale sample-data prompt context during prep", () => {
+    const legacyPlan: ImplementationCodeTaskPlanV1 = {
+      version: 1,
+      projectId: "p1",
+      parentTaskCount: 1,
+      codeTaskCount: 1,
+      tasks: [
+        {
+          codeTaskId: sampleId,
+          parentTaskId: "DEV-MOCK-001",
+          title: "샘플 데이터 구현",
+          description: "desc",
+          changeType: "data",
+          status: "ready",
+          targetHints: ["src/data"],
+          acceptanceCriteria: ["ok"],
+          verificationHints: ["pnpm test"],
+          forbiddenPaths: ["node_modules"],
+          branchPlan: { branchGroup: "data", workBranch: "wip/data/sample-data" },
+        },
+      ],
+    };
+    const prepared = prepareRequirementsStateForImplementationQuickRun({
+      projectId: "p1",
+      requirementsState: {
+        implementationCodeTaskPlanV1: legacyPlan,
+        cursorWorkItemsV1: [],
+        codeTaskPromptContextMapV1: {
+          version: "code_task_prompt_context_map_v1",
+          projectId: "p1",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          contexts: {
+            [sampleId]: {
+              version: "code_task_prompt_context_v1",
+              projectId: "p1",
+              codeTaskId: sampleId,
+              parentTaskId: "DEV-MOCK-001",
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              source: "heuristic_fallback",
+              planningContext: { targetUsers: [] },
+              flowContext: {
+                relatedActors: [],
+                relatedUserFlows: [],
+                relatedServiceSteps: [],
+              },
+              featureContext: {
+                relatedFeatures: [],
+                relatedScreens: [],
+                relatedStates: [],
+                inputs: [],
+                outputs: [],
+              },
+              implementationContext: {
+                intent: "sample",
+                requirements: ["각 화면 패널은 sampleData.ts를 import하여 동일한 샘플을 공유한다."],
+                constraints: [],
+                expectedBehavior: [],
+                edgeCases: [],
+              },
+              verificationContext: {
+                acceptanceCriteria: ["좌/중/우 패널이 동일 sampleData.ts를 참조하는지 확인"],
+                manualChecks: [],
+                regressionChecks: [],
+              },
+              quality: { ready: true, missing: [], warnings: [] },
+            },
+          },
+        },
+      },
+    });
+    expect(prepared.patchedPromptContextCodeTaskIds).toContain(sampleId);
+    const reqHay =
+      prepared.requirementsState.codeTaskPromptContextMapV1?.contexts?.[sampleId]
+        ?.implementationContext?.requirements?.join("\n") ?? "";
+    expect(reqHay).toContain("requiresIntegrationChange");
+    expect(reqHay).not.toContain("각 화면 패널은 sampleData.ts를 import");
+  });
 });
