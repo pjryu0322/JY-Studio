@@ -1,6 +1,15 @@
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
-import { mergeCursorWorkItemsWithMissingCodeTaskPlanTasks } from "@/lib/prototype/implementationCursorWorkItems";
+import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
+import {
+  buildCodeTaskIdRemapFromPlanTasks,
+  mergeCursorWorkItemsWithMissingCodeTaskPlanTasks,
+  reconcileCursorWorkItemsWithCodeTaskIdRemap,
+} from "@/lib/prototype/implementationCursorWorkItems";
+import {
+  parseCodeTaskPromptContextMapV1,
+  type CodeTaskPromptContextMapV1,
+} from "@/lib/prototype/codeTaskPromptContext";
 import {
   appendCodeTaskExecutionRun,
   createCodeTaskExecutionRun,
@@ -130,6 +139,86 @@ export function evaluateImplementationQuickRunPrepAndSelection(input: {
   };
 }
 
+export function buildImplementationQuickRunRequirementsPrepPersistPatch(input: {
+  readonly prepared: ReturnType<typeof prepareRequirementsStateForImplementationQuickRun>;
+}): Record<string, unknown> {
+  const {
+    requirementsState,
+    planRepaired,
+    appendedCodeTaskIds,
+    patchedPromptContextCodeTaskIds,
+    workItemsReconciled,
+  } = input.prepared;
+  const patch: Record<string, unknown> = {};
+  if (planRepaired && requirementsState.implementationCodeTaskPlanV1) {
+    patch.implementationCodeTaskPlanV1 = requirementsState.implementationCodeTaskPlanV1;
+  }
+  if (appendedCodeTaskIds.length || workItemsReconciled) {
+    patch.cursorWorkItemsV1 = requirementsState.cursorWorkItemsV1;
+  }
+  if (patchedPromptContextCodeTaskIds.length && requirementsState.codeTaskPromptContextMapV1) {
+    patch.codeTaskPromptContextMapV1 = requirementsState.codeTaskPromptContextMapV1;
+  }
+  return patch;
+}
+
+/** CodeTaskPlan 대비 누락된 prompt context map 항목을 보강한다. */
+export function ensureRequirementsStateCodeTaskPromptContextForPlan(input: {
+  readonly projectId: string;
+  readonly requirementsState: RequirementsStateJson;
+  readonly nowIso?: string;
+}): Readonly<{
+  readonly requirementsState: RequirementsStateJson;
+  readonly patchedCodeTaskIds: readonly string[];
+}> {
+  const plan = input.requirementsState.implementationCodeTaskPlanV1;
+  if (!plan?.tasks?.length) {
+    return { requirementsState: input.requirementsState, patchedCodeTaskIds: [] };
+  }
+  const pid = input.projectId.trim();
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const existingMap = parseCodeTaskPromptContextMapV1(
+    input.requirementsState.codeTaskPromptContextMapV1,
+  );
+  const existingContexts = existingMap?.contexts ?? {};
+  const missingIds = plan.tasks
+    .map((t) => t.codeTaskId.trim())
+    .filter((id) => id && !existingContexts[id]);
+  if (!missingIds.length) {
+    return { requirementsState: input.requirementsState, patchedCodeTaskIds: [] };
+  }
+  const built = buildCodeTaskPromptContextMap({
+    projectId: pid,
+    codeTaskPlan: plan,
+    requirementsStateJson: input.requirementsState as Record<string, unknown>,
+    nowIso,
+  });
+  const contexts: CodeTaskPromptContextMapV1["contexts"] = { ...existingContexts };
+  const patchedCodeTaskIds: string[] = [];
+  for (const id of missingIds) {
+    const ctx = built.contexts[id];
+    if (!ctx) continue;
+    contexts[id] = ctx;
+    patchedCodeTaskIds.push(id);
+  }
+  if (!patchedCodeTaskIds.length) {
+    return { requirementsState: input.requirementsState, patchedCodeTaskIds: [] };
+  }
+  const mergedMap: CodeTaskPromptContextMapV1 = {
+    ...(existingMap ?? built),
+    projectId: pid,
+    contexts,
+    updatedAt: nowIso,
+  };
+  return {
+    requirementsState: {
+      ...input.requirementsState,
+      codeTaskPromptContextMapV1: mergedMap,
+    },
+    patchedCodeTaskIds,
+  };
+}
+
 /** CodeTaskPlan 대비 누락된 Cursor WorkItem을 보강한 requirementsState (빠른실행 dispatch용). */
 export function ensureRequirementsStateCursorWorkItemsForCodeTaskPlan(input: {
   readonly projectId: string;
@@ -173,26 +262,46 @@ export function prepareRequirementsStateForImplementationQuickRun(input: {
 }): Readonly<{
   readonly requirementsState: RequirementsStateJson;
   readonly appendedCodeTaskIds: readonly string[];
+  readonly patchedPromptContextCodeTaskIds: readonly string[];
   readonly planRepaired: boolean;
+  readonly workItemsReconciled: boolean;
 }> {
   const taskList = input.requirementsState.implementationTaskListV1 ?? null;
   const rawPlan = input.requirementsState.implementationCodeTaskPlanV1 ?? null;
+  const rawTasks = rawPlan?.tasks ?? [];
   const ensuredPlan =
     ensureCodeTaskPlanWithFileBoundaries({ plan: rawPlan, taskList }) ?? rawPlan;
   let state = input.requirementsState;
-  const planRepaired = Boolean(ensuredPlan && ensuredPlan !== rawPlan);
-  if (ensuredPlan && planRepaired) {
+  const planRepaired = Boolean(ensuredPlan && rawPlan && ensuredPlan !== rawPlan);
+  if (ensuredPlan) {
     state = { ...state, implementationCodeTaskPlanV1: ensuredPlan };
+  }
+  const idRemap = buildCodeTaskIdRemapFromPlanTasks(rawTasks, ensuredPlan?.tasks ?? rawTasks);
+  const reconciledItems = reconcileCursorWorkItemsWithCodeTaskIdRemap({
+    workItems: state.cursorWorkItemsV1 ?? [],
+    idRemap,
+  });
+  const workItemsReconciled = reconciledItems !== (state.cursorWorkItemsV1 ?? []);
+  if (workItemsReconciled) {
+    state = { ...state, cursorWorkItemsV1: [...reconciledItems] };
   }
   const workItemsEnsured = ensureRequirementsStateCursorWorkItemsForCodeTaskPlan({
     projectId: input.projectId,
     requirementsState: state,
     nowIso: input.nowIso,
   });
+  state = workItemsEnsured.requirementsState;
+  const promptContextEnsured = ensureRequirementsStateCodeTaskPromptContextForPlan({
+    projectId: input.projectId,
+    requirementsState: state,
+    nowIso: input.nowIso,
+  });
   return {
-    requirementsState: workItemsEnsured.requirementsState,
+    requirementsState: promptContextEnsured.requirementsState,
     appendedCodeTaskIds: workItemsEnsured.appendedCodeTaskIds,
+    patchedPromptContextCodeTaskIds: promptContextEnsured.patchedCodeTaskIds,
     planRepaired,
+    workItemsReconciled,
   };
 }
 
@@ -432,6 +541,7 @@ export async function continueImplementationQuickRunAfterStart(
         buildImplementationQuickRunTimelineEntry({
           action: "implementation_quick_run_started",
           projectId: pid,
+          codeTaskId: dispatchTarget.codeTask.codeTaskId,
           taskId: dispatchTarget.parentTaskId,
           nowIso: input.nowIso,
         }),

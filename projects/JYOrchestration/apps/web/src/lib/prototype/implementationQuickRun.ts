@@ -144,11 +144,13 @@ export function buildImplementationQuickRunTimelineEntry(input: {
   readonly action: "implementation_quick_run_started" | "implementation_quick_run_blocked" | "implementation_quick_run_preview_ready";
   readonly projectId: string;
   readonly taskId?: string | null;
+  readonly codeTaskId?: string | null;
   readonly reason?: string | null;
   readonly nowIso?: string;
 }): RequirementsPromptTimelineEntry {
   const nowIso = input.nowIso ?? new Date().toISOString();
   const parts = [`projectId=${input.projectId}`];
+  if (input.codeTaskId?.trim()) parts.push(`codeTaskId=${input.codeTaskId.trim()}`);
   if (input.taskId?.trim()) parts.push(`taskId=${input.taskId.trim()}`);
   if (input.reason?.trim()) parts.push(`reason=${input.reason.trim()}`);
   return {

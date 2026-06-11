@@ -94,6 +94,50 @@ function cursorWorkItemCoversCodeTaskId(
   return false;
 }
 
+/** CodeTaskPlan ID repair(legacy → canonical) 후 WorkItem codeTaskId/id를 맞춘다. */
+export function reconcileCursorWorkItemsWithCodeTaskIdRemap(input: {
+  readonly workItems: readonly CursorWorkItem[];
+  readonly idRemap: ReadonlyMap<string, string>;
+}): readonly CursorWorkItem[] {
+  if (!input.idRemap.size || !input.workItems.length) return input.workItems;
+  let changed = false;
+  const remapped = input.workItems.map((item) => {
+    const codeTaskId = String(item.codeTaskId ?? "").trim();
+    const fromId =
+      codeTaskId && input.idRemap.has(codeTaskId)
+        ? codeTaskId
+        : input.idRemap.has(item.id.replace(/^cursor-wi-/, ""))
+          ? item.id.replace(/^cursor-wi-/, "")
+          : "";
+    if (!fromId) return item;
+    const toId = input.idRemap.get(fromId)?.trim() ?? "";
+    if (!toId || toId === fromId) return item;
+    changed = true;
+    return {
+      ...item,
+      id: `cursor-wi-${toId}`,
+      codeTaskId: toId,
+    };
+  });
+  if (!changed) return input.workItems;
+  const deduped = new Map(remapped.map((item) => [item.id, item] as const));
+  return [...deduped.values()];
+}
+
+export function buildCodeTaskIdRemapFromPlanTasks(
+  before: readonly ImplementationCodeTaskV1[],
+  after: readonly ImplementationCodeTaskV1[],
+): ReadonlyMap<string, string> {
+  const map = new Map<string, string>();
+  const len = Math.min(before.length, after.length);
+  for (let i = 0; i < len; i += 1) {
+    const from = before[i]!.codeTaskId.trim();
+    const to = after[i]!.codeTaskId.trim();
+    if (from && to && from !== to) map.set(from, to);
+  }
+  return map;
+}
+
 /** Plan에 추가된 CodeTask(예: 샘플 데이터)에 WorkItem이 없을 때 기존 항목은 유지하고 누락분만 생성한다. */
 export function mergeCursorWorkItemsWithMissingCodeTaskPlanTasks(input: {
   readonly projectId: string;

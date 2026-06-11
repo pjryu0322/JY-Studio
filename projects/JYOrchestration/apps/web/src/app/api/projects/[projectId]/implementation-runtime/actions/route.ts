@@ -35,6 +35,11 @@ import { prisma } from "@/lib/prisma";
 import { materializeSelectedCodeTaskRuns } from "@/lib/prototype/implementationRuntimeRunMaterialization";
 import { resolveCanonicalCodeTaskRunId } from "@/lib/prototype/codeTaskExecutionRunIdentity";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import {
+  buildImplementationQuickRunRequirementsPrepPersistPatch,
+  prepareRequirementsStateForImplementationQuickRun,
+} from "@/lib/prototype/implementationQuickRunStartService";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
 type ActionBody = {
@@ -136,7 +141,24 @@ export async function POST(request: NextRequest, context: RouteContext) {
         where: { id: pid },
         select: { requirementsStateJson: true },
       });
-      const state = parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
+      let state: RequirementsStateJson =
+        parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
+      const nowIso = new Date().toISOString();
+      const quickRunPrepared = prepareRequirementsStateForImplementationQuickRun({
+        projectId: pid,
+        requirementsState: state,
+        nowIso,
+      });
+      const prepPatch = buildImplementationQuickRunRequirementsPrepPersistPatch({
+        prepared: quickRunPrepared,
+      });
+      if (Object.keys(prepPatch).length) {
+        await persistTaskCursorOrchestrationToProject({
+          projectId: pid,
+          orchestrationPatch: prepPatch,
+        });
+      }
+      state = quickRunPrepared.requirementsState;
       const codeTaskPlan = parseImplementationCodeTaskPlanV1(state.implementationCodeTaskPlanV1);
       const ids = sortCodeTaskIdsByImplementationPlanOrder(codeTaskPlan, idsRaw);
       console.info("[implementation-runtime] start_job", { projectId: pid, codeTaskCount: ids.length, head: ids[0] });
@@ -169,7 +191,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
             .filter(Boolean),
         ),
       ];
-      const nowIso = new Date().toISOString();
       const quickRun = buildImplementationQuickRunStartedPatch({
         projectId: pid,
         currentTaskId: dispatchTarget?.parentTaskId ?? parentTaskIds[0] ?? null,

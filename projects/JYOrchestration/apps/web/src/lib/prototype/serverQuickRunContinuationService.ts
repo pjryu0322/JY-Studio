@@ -27,6 +27,10 @@ import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import { dispatchQuickRunContinuationOnServer } from "@/lib/prototype/implementationQuickRunContinuationDispatchService";
 import { resolveCanonicalCodeTaskForQueuedRun } from "@/lib/prototype/codeTaskCanonicalId";
 import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
+import {
+  buildImplementationQuickRunRequirementsPrepPersistPatch,
+  prepareRequirementsStateForImplementationQuickRun,
+} from "@/lib/prototype/implementationQuickRunStartService";
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import {
   buildQuickRunQueuedTargetBlockedTimelineEntry,
@@ -262,6 +266,21 @@ export async function tryDispatchCurrentQueuedQuickRunAfterDbAdvance(input: {
   });
   let requirementsState =
     parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
+  const quickRunRequirementsPrepared = prepareRequirementsStateForImplementationQuickRun({
+    projectId: pid,
+    requirementsState,
+    nowIso,
+  });
+  const quickRunRequirementsPrepPatch = buildImplementationQuickRunRequirementsPrepPersistPatch({
+    prepared: quickRunRequirementsPrepared,
+  });
+  if (Object.keys(quickRunRequirementsPrepPatch).length) {
+    await persistTaskCursorOrchestrationToProject({
+      projectId: pid,
+      orchestrationPatch: quickRunRequirementsPrepPatch,
+    });
+  }
+  requirementsState = quickRunRequirementsPrepared.requirementsState;
   latestPromptTimeline = requirementsState.promptTimeline;
 
   let bundle = await getImplementationRuntimeBundle(pid);

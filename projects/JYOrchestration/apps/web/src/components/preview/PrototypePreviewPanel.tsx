@@ -271,6 +271,7 @@ import { resolveCheckedCodeTaskIdsFromBoardBridge } from "@/lib/prototype/implem
 import {
   buildImplementationQuickRunQueueItems,
   buildQuickRunOrchestrationAfterJobStart,
+  buildImplementationQuickRunRequirementsPrepPersistPatch,
   buildRepairTimelineEntries,
   continueImplementationQuickRunAfterStart,
   prepareRequirementsStateForImplementationQuickRun,
@@ -6342,16 +6343,15 @@ export function PrototypePreviewPanel({
       nowIso,
     });
     const impForQuickRun = quickRunPrepared.requirementsState;
-    if (quickRunPrepared.planRepaired || quickRunPrepared.appendedCodeTaskIds.length) {
-      const persistPatch: Record<string, unknown> = {};
-      if (quickRunPrepared.planRepaired && impForQuickRun.implementationCodeTaskPlanV1) {
-        persistPatch.implementationCodeTaskPlanV1 = impForQuickRun.implementationCodeTaskPlanV1;
-      }
-      if (quickRunPrepared.appendedCodeTaskIds.length) {
-        persistPatch.cursorWorkItemsV1 = impForQuickRun.cursorWorkItemsV1;
-      }
-      applyPendingFromOrchestrationPatchRef.current(persistPatch);
-      void persistChatToDb(undefined, persistPatch, undefined, { force: true });
+    const quickRunPrepPersistPatch = buildImplementationQuickRunRequirementsPrepPersistPatch({
+      prepared: quickRunPrepared,
+    });
+    if (Object.keys(quickRunPrepPersistPatch).length) {
+      applyPendingFromOrchestrationPatchRef.current(quickRunPrepPersistPatch);
+      await persistChatToDb(undefined, quickRunPrepPersistPatch, undefined, {
+        awaitServer: true,
+        force: true,
+      });
     }
     const queueItems = buildImplementationQuickRunQueueItems({
       selectedCodeTaskIds: jobSelectedCodeTaskIds,
@@ -6488,6 +6488,16 @@ export function PrototypePreviewPanel({
       const pid = projectId.trim();
       const id = codeTaskId.trim();
       if (!pid || !id) return;
+      const prepared = prepareRequirementsStateForImplementationQuickRun({
+        projectId: pid,
+        requirementsState: orchestrationAwareRequirementsState,
+      });
+      const imp = prepared.requirementsState;
+      const prepPatch = buildImplementationQuickRunRequirementsPrepPersistPatch({ prepared });
+      if (Object.keys(prepPatch).length) {
+        applyPendingFromOrchestrationPatchRef.current(prepPatch);
+        void persistChatToDb(undefined, prepPatch, undefined, { force: true });
+      }
       const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
         gitRepoUrl: executionSetupRow?.gitRepoUrl,
         gitRepoName: executionSetupRow?.gitRepoName,
@@ -6495,20 +6505,19 @@ export function PrototypePreviewPanel({
         baseBranch: executionSetupRow?.baseBranch,
       });
       const runs =
-        parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
+        parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ??
         [];
       const result = resolveCodeTaskDeveloperPromptForCopy({
         projectId: pid,
         codeTaskId: id,
-        codeTaskPlan: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1 ?? null,
-        taskList: orchestrationAwareRequirementsState.implementationTaskListV1 ?? null,
-        cursorWorkItems: orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [],
+        codeTaskPlan: imp.implementationCodeTaskPlanV1 ?? null,
+        taskList: imp.implementationTaskListV1 ?? null,
+        cursorWorkItems: imp.cursorWorkItemsV1 ?? [],
         runs,
         targetRepository,
         baseBranch: executionSetupRow?.baseBranch ?? targetRepository?.defaultBranch ?? "main",
         allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
-        codeTaskPromptContextMapV1:
-          orchestrationAwareRequirementsState.codeTaskPromptContextMapV1 ?? null,
+        codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
       });
       if (!result.ok || !result.prompt) {
         showToast(result.reason ?? "프롬프트 생성 정보가 아직 없습니다.");
@@ -6525,11 +6534,9 @@ export function PrototypePreviewPanel({
     [
       projectId,
       executionSetupRow,
-      orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-      orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-      orchestrationAwareRequirementsState.implementationTaskListV1,
-      orchestrationAwareRequirementsState.cursorWorkItemsV1,
-      orchestrationAwareRequirementsState.codeTaskPromptContextMapV1,
+      orchestrationAwareRequirementsState,
+      applyPendingFromOrchestrationPatchRef,
+      persistChatToDb,
       showToast,
     ],
   );
@@ -6537,7 +6544,16 @@ export function PrototypePreviewPanel({
   const handleCopyDeveloperPromptsFromHeader = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) return;
-    const imp = orchestrationAwareRequirementsState;
+    const prepared = prepareRequirementsStateForImplementationQuickRun({
+      projectId: pid,
+      requirementsState: orchestrationAwareRequirementsState,
+    });
+    const imp = prepared.requirementsState;
+    const prepPatch = buildImplementationQuickRunRequirementsPrepPersistPatch({ prepared });
+    if (Object.keys(prepPatch).length) {
+      applyPendingFromOrchestrationPatchRef.current(prepPatch);
+      void persistChatToDb(undefined, prepPatch, undefined, { force: true });
+    }
     const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
       gitRepoUrl: executionSetupRow?.gitRepoUrl,
       gitRepoName: executionSetupRow?.gitRepoName,
@@ -6591,6 +6607,9 @@ export function PrototypePreviewPanel({
     orchestrationAwareRequirementsState,
     executionSetupRow,
     implementationRuntimeDbBundle?.job?.currentCodeTaskId,
+    boardSelectionBridge,
+    applyPendingFromOrchestrationPatchRef,
+    persistChatToDb,
     showToast,
   ]);
 

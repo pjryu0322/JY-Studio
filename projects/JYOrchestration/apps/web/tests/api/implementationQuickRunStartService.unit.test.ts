@@ -148,4 +148,76 @@ describe("prepareRequirementsStateForImplementationQuickRun", () => {
       expect(orch.dispatchTarget.codeTask.codeTaskId).toBe(sampleId);
     }
   });
+
+  it("reconciles legacy sample work item id and fills prompt context for canonical CodeTask", () => {
+    const legacyId = "CODE-DEV-SAMPLE-DATA-001-001";
+    const plan: ImplementationCodeTaskPlanV1 = {
+      version: 1,
+      projectId: "p1",
+      parentTaskCount: 1,
+      codeTaskCount: 1,
+      tasks: [
+        {
+          codeTaskId: legacyId,
+          parentTaskId: "DEV-MOCK-001",
+          title: "샘플 데이터 구현",
+          description: "Preview sample data",
+          changeType: "data",
+          status: "ready",
+          targetHints: ["src/data"],
+          acceptanceCriteria: ["sample exports"],
+          verificationHints: ["pnpm test"],
+          forbiddenPaths: ["node_modules"],
+          branchPlan: { branchGroup: "data", workBranch: "wip/data/sample-data" },
+        },
+      ],
+    };
+    const prepared = prepareRequirementsStateForImplementationQuickRun({
+      projectId: "p1",
+      requirementsState: {
+        implementationCodeTaskPlanV1: plan,
+        implementationTaskListV1: {
+          version: 1,
+          projectId: "p1",
+          tasks: [
+            {
+              taskId: "DEV-MOCK-001",
+              title: "샘플 데이터 생성",
+              ownerRole: "developer",
+              status: "ready",
+              priority: "medium",
+              acceptanceCriteria: [],
+            },
+          ],
+        },
+        cursorWorkItemsV1: [
+          {
+            id: `cursor-wi-${legacyId}`,
+            taskId: "DEV-MOCK-001",
+            codeTaskId: legacyId,
+            title: "샘플 데이터",
+            prompt: "legacy prompt",
+            requiredFilesHint: [],
+            expectedOutput: [],
+            testCommands: ["pnpm test"],
+            forbiddenPaths: ["node_modules"],
+            blocked: false,
+            blockers: [],
+            qualityGate: { score: 1, promptReady: true, missing: [] },
+          },
+        ],
+      },
+    });
+    expect(prepared.requirementsState.implementationCodeTaskPlanV1?.tasks[0]?.codeTaskId).toBe(
+      sampleId,
+    );
+    expect(prepared.workItemsReconciled || prepared.appendedCodeTaskIds.length).toBe(true);
+    expect(prepared.patchedPromptContextCodeTaskIds).toContain(sampleId);
+    const target = resolveCodeTaskDispatchTarget({
+      codeTaskId: sampleId,
+      codeTaskPlan: prepared.requirementsState.implementationCodeTaskPlanV1,
+      cursorWorkItems: prepared.requirementsState.cursorWorkItemsV1,
+    });
+    expect(target?.workItem.codeTaskId).toBe(sampleId);
+  });
 });

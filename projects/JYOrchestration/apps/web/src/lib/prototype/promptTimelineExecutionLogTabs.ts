@@ -304,7 +304,8 @@ export function formatExecutionLogTimelineLabel(
   if (action === "task_cursor_api_failed" && fields.reason === "poll_cancelled") {
     return "Cloud Agent 상태 확인 중단(레거시)";
   }
-  const taskId = fields.taskId ?? fields.selectedTaskId ?? fields.toTaskId ?? fields.failedTaskId;
+  const taskId =
+    fields.codeTaskId ?? fields.taskId ?? fields.selectedTaskId ?? fields.toTaskId ?? fields.failedTaskId;
   if (taskId && !base.includes(taskId)) {
     return `${base} · ${taskId}`;
   }
