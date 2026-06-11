@@ -9,6 +9,8 @@ export type TaskCursorGithubVerifyRequestBody = Readonly<{
   readonly projectId: string;
   readonly execution: TaskCursorExecutionV1;
   readonly codeTaskId?: string;
+  /** CodeTask row 수동 GitHub 재확인 */
+  readonly manualGithubRecheck?: boolean;
   readonly implementationTaskExecutionStateV1?: unknown;
   readonly workItems?: readonly CursorWorkItem[];
   readonly codeTaskExecutionRunsV1?: unknown;
@@ -31,4 +33,5 @@ export type TaskCursorGithubVerifyApiResponse = Readonly<{
   readonly orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
   readonly nextQuickRunDispatch?: QuickRunGithubAdvanceDispatch | null;
   readonly continuationDispatchedOnServer?: boolean;
+  readonly commitSha?: string | null;
 }>;

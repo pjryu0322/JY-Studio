@@ -62,6 +62,7 @@ import {
   resolveCanonicalCodeTaskRunTarget,
 } from "@/lib/prototype/codeTaskRunTargetCanonical";
 import { isInFlightCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
+import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 
 const EXECUTION_SETUP_SELECT = {
   gitRepoUrl: true,
@@ -230,6 +231,22 @@ export async function runTaskCursorGithubVerifyWithQuickRunAdvance(input: {
   });
 
   const timeline = [
+    ...(body.manualGithubRecheck && codeTaskIdEarly
+      ? [
+          buildImplementationExecutionLogTimelineEntry({
+            action: "manual_github_commit_recheck_started",
+            orchestrationTraceGroup: "task_cursor_execution",
+            routingDecision: codeTaskIdEarly,
+            fields: {
+              projectId,
+              codeTaskId: codeTaskIdEarly,
+              workBranch: branchPlanWorkBranch ?? nextExecution.workBranch,
+              taskId: verifyProcessTaskId,
+            },
+            nowIso,
+          }),
+        ]
+      : []),
     buildTaskCursorTimelineEntry({
       action: "task_cursor_github_verify_requested",
       projectId,

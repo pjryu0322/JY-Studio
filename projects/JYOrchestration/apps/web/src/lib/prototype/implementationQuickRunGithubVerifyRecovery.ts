@@ -5,8 +5,14 @@ import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQui
 import {
   buildQuickRunStuckGithubVerifyDedupeKey,
   buildGithubVerifyExecutionForCodeTask,
+  mergeCodeTaskRunsWithDbRuntime,
   resolveQuickRunStuckGithubVerifyTarget,
 } from "@/lib/prototype/implementationQuickRunStuckGithubRecovery";
+import {
+  findLatestRunForCodeTask,
+  CODE_TASK_EXECUTION_RUN_VERSION,
+  parseCodeTaskExecutionRunsV1,
+} from "@/lib/prototype/codeTaskExecutionRun";
 import {
   applyTaskCursorGithubVerifyApiResult,
   buildTaskCursorGithubVerifyRequestBody,
@@ -14,7 +20,6 @@ import {
   resolveTaskCursorGithubVerifyUserNotice,
 } from "@/lib/prototype/taskCursorGithubVerifyClient";
 import { resolveFirstIncompleteSelectedCodeTaskId } from "@/lib/prototype/codeTaskExecutionQueue";
-import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
@@ -196,22 +201,96 @@ export async function runCodeTaskGithubVerifyRecheck(
   if (!pid || !codeTaskId) return false;
 
   const codeTaskPlan = parseImplementationCodeTaskPlanV1(input.state.implementationCodeTaskPlanV1);
-  const runs = parseCodeTaskExecutionRunsV1(input.state.codeTaskExecutionRunsV1) ?? [];
+  const jsonRuns = parseCodeTaskExecutionRunsV1(input.state.codeTaskExecutionRunsV1) ?? [];
+  const mergedRuns = mergeCodeTaskRunsWithDbRuntime({
+    jsonRuns,
+    dbBundle: input.dbBundle,
+    codeTaskPlan,
+  });
+
   const execution = buildGithubVerifyExecutionForCodeTask({
     projectId: pid,
     codeTaskId,
-    runs,
+    runs: mergedRuns,
     codeTaskPlan,
     taskCursorExecution: parseTaskCursorExecutionV1(input.state.taskCursorExecutionV1),
     taskCursorExecutionHistory: input.state.taskCursorExecutionHistoryV1,
     dbBundle: input.dbBundle,
   });
-  if (!execution) {
+
+  const workBranch = String(execution?.workBranch ?? "").trim();
+  if (!execution || !workBranch) {
+    input.applyOrchestrationPatch(
+      input.enrichPatch({
+        promptTimeline: [
+          buildImplementationExecutionLogTimelineEntry({
+            action: "manual_github_commit_recheck_failed",
+            orchestrationTraceGroup: "task_cursor_execution",
+            routingDecision: codeTaskId,
+            fields: {
+              projectId: pid,
+              codeTaskId,
+              workBranch: workBranch || undefined,
+              reason: "execution_context_unavailable",
+            },
+          }),
+        ],
+      }),
+    );
     input.onFailureNotice?.(
-      "GitHub commit을 아직 확인하지 못했습니다. 잠시 후 다시 확인해 주세요.",
+      "GitHub commit 확인에 필요한 CodeTask 실행 정보를 찾지 못했습니다.",
     );
     return false;
   }
+
+  let runsForVerify = [...mergedRuns];
+  if (!findLatestRunForCodeTask(runsForVerify, codeTaskId)) {
+    const planTask = codeTaskPlan?.tasks.find((t) => t.codeTaskId === codeTaskId);
+    const parentTaskId = planTask?.parentTaskId?.trim() ?? "";
+    if (parentTaskId) {
+      runsForVerify = [
+        ...runsForVerify,
+        {
+          version: CODE_TASK_EXECUTION_RUN_VERSION,
+          runId: `manual-recheck-${codeTaskId}`,
+          projectId: pid,
+          processTaskId: parentTaskId,
+          workItemId: "",
+          codeTaskId,
+          status: "github_verifying" as const,
+          attemptNo: 1,
+          cursorRunId: execution.cursorRunId,
+          workBranch: execution.workBranch,
+          baseBranch: execution.baseBranch,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+    }
+  }
+
+  const stateForVerify: RequirementsStateJson = {
+    ...input.state,
+    codeTaskExecutionRunsV1: runsForVerify,
+  };
+
+  input.applyOrchestrationPatch(
+    input.enrichPatch({
+      promptTimeline: [
+        buildImplementationExecutionLogTimelineEntry({
+          action: "manual_github_commit_recheck_started",
+          orchestrationTraceGroup: "task_cursor_execution",
+          routingDecision: codeTaskId,
+          fields: {
+            projectId: pid,
+            codeTaskId,
+            workBranch,
+            taskId: execution.taskId,
+          },
+        }),
+      ],
+    }),
+  );
 
   const toastLabel = resolveGithubVerifyToastTaskLabel({
     executionTaskId: execution.taskId,
@@ -219,30 +298,18 @@ export async function runCodeTaskGithubVerifyRecheck(
     codeTaskPlan,
   });
   input.showToast(formatGithubVerifyCheckingToast(toastLabel.label));
-  input.applyOrchestrationPatch(
-    input.enrichPatch({
-      promptTimeline: [
-        buildImplementationExecutionLogTimelineEntry({
-          action: "code_task_github_verify_recheck",
-          orchestrationTraceGroup: "task_cursor_execution",
-          routingDecision: codeTaskId,
-          fields: {
-            projectId: pid,
-            codeTaskId,
-            workBranch: execution.workBranch,
-          },
-        }),
-      ],
-    }),
-  );
+
+  const manualRecheckFailureNotice =
+    "GitHub commit을 아직 확인하지 못했습니다. 잠시 후 다시 확인해 주세요.";
 
   try {
     const json = await postTaskCursorGithubVerify(
       buildTaskCursorGithubVerifyRequestBody({
         projectId: pid,
-        execution,
-        state: input.state,
+        execution: { ...execution, status: "github_verifying" },
+        state: stateForVerify,
         codeTaskId,
+        manualGithubRecheck: true,
       }),
     );
     const ok = applyTaskCursorGithubVerifyApiResult({
@@ -255,15 +322,56 @@ export async function runCodeTaskGithubVerifyRecheck(
         input.onNextQuickRunDispatch(next);
       },
     });
-    void input.refreshRuntime?.();
+    await input.refreshRuntime?.();
     const notice = resolveTaskCursorGithubVerifyUserNotice(json);
     const transientPending =
       !ok &&
       (json.verify?.detailReason === "branch_not_found" ||
         json.verify?.detailReason === "commit_not_found" ||
         json.verify?.reason === "commit_not_created");
+    const commitSha = String(json.verify?.verifiedCommitSha ?? json.commitSha ?? "").trim();
+    const followUpTimeline = ok
+      ? [
+          buildImplementationExecutionLogTimelineEntry({
+            action: "github_branch_head_commit_found",
+            orchestrationTraceGroup: "task_cursor_execution",
+            routingDecision: codeTaskId,
+            fields: { codeTaskId, workBranch, commitSha },
+          }),
+          buildImplementationExecutionLogTimelineEntry({
+            action: "github_outcome_saved",
+            orchestrationTraceGroup: "task_cursor_execution",
+            routingDecision: codeTaskId,
+            fields: { codeTaskId, commitSha },
+          }),
+          buildImplementationExecutionLogTimelineEntry({
+            action: "codetask_completed",
+            orchestrationTraceGroup: "task_cursor_execution",
+            routingDecision: codeTaskId,
+            fields: { codeTaskId, status: "completed", progress: "completed" },
+          }),
+        ]
+      : !transientPending
+        ? [
+            buildImplementationExecutionLogTimelineEntry({
+              action: "manual_github_commit_recheck_failed",
+              orchestrationTraceGroup: "task_cursor_execution",
+              routingDecision: codeTaskId,
+              fields: {
+                codeTaskId,
+                workBranch,
+                reason: "branch_head_commit_not_found",
+              },
+            }),
+          ]
+        : [];
+    if (followUpTimeline.length) {
+      input.applyOrchestrationPatch(
+        input.enrichPatch({ promptTimeline: followUpTimeline }),
+      );
+    }
     if (!ok && !transientPending) {
-      input.onFailureNotice?.(notice);
+      input.onFailureNotice?.(manualRecheckFailureNotice);
     }
     if (ok || !transientPending) {
       input.showToast(notice);

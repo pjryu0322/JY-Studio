@@ -15,12 +15,14 @@ export function buildTaskCursorGithubVerifyRequestBody(input: {
   readonly execution: TaskCursorExecutionV1;
   readonly state: RequirementsStateJson;
   readonly codeTaskId?: string;
+  readonly manualGithubRecheck?: boolean;
 }): TaskCursorGithubVerifyRequestBody {
   const { state } = input;
   return {
     projectId: input.projectId.trim(),
     execution: input.execution,
     ...(input.codeTaskId?.trim() ? { codeTaskId: input.codeTaskId.trim() } : {}),
+    ...(input.manualGithubRecheck === true ? { manualGithubRecheck: true } : {}),
     implementationTaskExecutionStateV1: state.implementationTaskExecutionStateV1,
     workItems: state.cursorWorkItemsV1 ?? [],
     codeTaskExecutionRunsV1: state.codeTaskExecutionRunsV1,

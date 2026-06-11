@@ -4,6 +4,7 @@ import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRu
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { resolveQuickRunStuckGithubVerifyTarget } from "@/lib/prototype/implementationQuickRunStuckGithubRecovery";
 import { buildGithubVerifyExecutionFromRunContext } from "@/lib/prototype/implementationQuickRunStuckGithubRecovery";
+import { buildGithubVerifyExecutionForCodeTask } from "@/lib/prototype/implementationQuickRunStuckGithubRecovery";
 import type { ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 
@@ -450,5 +451,44 @@ describe("buildGithubVerifyExecutionFromRunContext", () => {
     expect(execution?.workBranch).toBe("wip/data/sample-data");
     expect(execution?.baseBranch).toBe("wip/foundation/app-shell");
     expect(execution?.taskId).toBe("DEV-SAMPLE-DATA-001");
+  });
+});
+
+describe("buildGithubVerifyExecutionForCodeTask", () => {
+  it("builds verify execution without cursorRunId when plan workBranch exists", () => {
+    const samplePlan: ImplementationCodeTaskPlanV1 = {
+      version: "implementation_code_task_plan_v1",
+      projectId: "p1",
+      codeTaskCount: 1,
+      tasks: [
+        {
+          codeTaskId: "CODE-DATA-SAMPLE-001",
+          parentTaskId: "DEV-MOCK-001",
+          title: "sample",
+          description: "d",
+          acceptanceCriteria: [],
+          dependencies: [],
+          branchPlan: {
+            version: "code_task_branch_plan_v1",
+            branchGroup: "data",
+            baseBranch: "wip/foundation/app-shell",
+            workBranch: "wip/data/sample-data",
+          },
+        },
+      ],
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const execution = buildGithubVerifyExecutionForCodeTask({
+      projectId: "p1",
+      codeTaskId: "CODE-DATA-SAMPLE-001",
+      runs: [],
+      codeTaskPlan: samplePlan,
+      taskCursorExecution: null,
+      taskCursorExecutionHistory: [],
+      dbBundle: null,
+    });
+    expect(execution?.workBranch).toBe("wip/data/sample-data");
+    expect(execution?.cursorRunId).toBe("manual-recheck:CODE-DATA-SAMPLE-001");
   });
 });
