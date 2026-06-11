@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getCurrentQueueCodeTaskId,
   parseCodeTaskExecutionQueueV1,
@@ -19,22 +19,15 @@ import {
   parseTaskCursorExecutionV1,
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
-import {
-  MANUAL_GITHUB_VERIFY_RETRY_LABEL,
-  shouldShowManualGithubVerifyRetry,
-} from "@/lib/prototype/implementationCodeTaskGithubVerifyRetryUi";
+import { shouldShowManualGithubVerifyRetry } from "@/lib/prototype/implementationCodeTaskGithubVerifyRetryUi";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import type { ImplementationCodeTaskExecutionFeedbackV1 } from "@/lib/prototype/implementationCodeTaskExecutionFeedback";
-import {
-  buildImplementationCodeTaskReworkVm,
-  formatCodeTaskReworkRecommendedActionKo,
-} from "@/lib/prototype/implementationCodeTaskReworkVm";
+import { buildImplementationCodeTaskReworkVm } from "@/lib/prototype/implementationCodeTaskReworkVm";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
 import { resolveExecutionTargetCodeTaskId } from "@/lib/prototype/resolveExecutionTargetCodeTaskId";
-import { SHOW_STAGE_TWO_DEVELOPER_PROMPT_PREVIEW } from "@/lib/prototype/implementationDeveloperPromptPreviewUi";
 import { resolveStageTwoDeveloperPromptPreview } from "@/lib/prototype/resolveStageTwoDeveloperPromptPreview";
 import type { CodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 import { parseCodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
@@ -48,7 +41,15 @@ import {
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import type { ImplementationRuntimeStateV1 } from "@/lib/prototype/implementationRuntimeState";
 import type { ImplementationStageNextActionsBoardInput } from "@/lib/prototype/implementationStageNextActions";
-import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
+import { buildImplementationBoardExecutionContext } from "@/lib/prototype/implementationBoardExecutionContext";
+import { ImplementationExecutionBoardIntegrationFooter } from "@/components/preview/ImplementationExecutionBoardIntegrationFooter";
+import { ImplementationExecutionBoardRuntimeAdmin } from "@/components/preview/ImplementationExecutionBoardRuntimeAdmin";
+import { ImplementationExecutionBoardReworkCandidates } from "@/components/preview/ImplementationExecutionBoardReworkCandidates";
+import { ImplementationExecutionBoardDeveloperPromptPreview } from "@/components/preview/ImplementationExecutionBoardDeveloperPromptPreview";
+import {
+  normalizeCheckedCodeTaskIds,
+  readBoardCheckedCodeTaskIds,
+} from "@/lib/prototype/implementationBoardCheckedIds";
 import { enrichCodeTaskRunForFlowPhase } from "@/lib/prototype/implementationCodeTaskExecutionFlow";
 import { deriveCodeTaskRunPhase } from "@/lib/prototype/codeTaskRunDerivedView";
 import { resolveCursorSessionForRunPhase } from "@/lib/prototype/cursorSessionModel";
@@ -63,31 +64,26 @@ import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentEx
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
-  normalizeSelectedCodeTaskIds,
   resolveCodeTaskTreeSelectAll,
-  resolveCodeTaskTreeSelectAllHeaderState,
   resolveCodeTaskTreeSelectAllToggleChecked,
   resolveCodeTaskTreeSelectionToggle,
   resolveParentTaskIdForCodeTask,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
-import { INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE } from "@/lib/prototype/implementationRunnableCodeTaskSelection";
+import { evaluateIntegrationBlockedByRunnableBoardSummary } from "@/lib/prototype/implementationBoardIntegrationGate";
+import type { summarizeCodeTaskBoardRowsFromTreeNodes } from "@/lib/prototype/implementationCodeTaskBoardState";
 import {
-  listRunnableCodeTaskIdsFromBoardNodes,
-  listUserCheckboxSelectableCodeTaskIdsFromBoardNodes,
-  summarizeCodeTaskBoardRowsFromTreeNodes,
-} from "@/lib/prototype/implementationCodeTaskBoardState";
-import { logCodeTaskSelectionSummaryResolved } from "@/lib/prototype/implementationCodeTaskSelectionSummary";
+  useImplementationBoardCheckedCodeTaskIds,
+  useImplementationBoardCodeTaskSelectionSummary,
+} from "@/components/preview/useImplementationBoardCheckboxSelection";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
-import { IntegrationPreviewRemediationPanel } from "@/components/preview/IntegrationPreviewRemediationPanel";
 import {
   resolveAutoGenerationReadyFromCapabilityJson,
 } from "@/lib/prototype/autoGenerationSettingsState";
 import { evaluateImplementationPreviewButtonState } from "@/lib/prototype/implementationPreviewButtonPolicy";
-import { openActualIntegratedPreviewInNewWindow } from "@/lib/prototype/actualIntegratedPreviewOpenAction";
 import type { ImplementationPreviewEntryModeV1 } from "@/lib/prototype/implementationPreviewEntryPolicy";
 import { parseImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
@@ -313,35 +309,31 @@ export function ImplementationExecutionBoardPanel({
 
   const boardSelectedCodeTaskIdsExplicit = useMemo(() => {
     if (!boardState) return undefined;
-    return Object.prototype.hasOwnProperty.call(boardState, "selectedCodeTaskIds")
-      ? (boardState.selectedCodeTaskIds ?? [])
-      : undefined;
+    return readBoardCheckedCodeTaskIds(boardState);
   }, [boardState]);
 
   const checkedFromBoard = useMemo(
     () =>
-      normalizeSelectedCodeTaskIds({
-        selectedCodeTaskIds: boardSelectedCodeTaskIdsExplicit,
+      normalizeCheckedCodeTaskIds({
+        checkedCodeTaskIds: boardSelectedCodeTaskIdsExplicit,
         codeTaskPlan: implementationCodeTaskPlanV1,
         legacySelectedTaskIds: boardState?.selectedTaskIds,
       }),
     [boardSelectedCodeTaskIdsExplicit, boardState?.selectedTaskIds, implementationCodeTaskPlanV1],
   );
 
-  const [checkedCodeTaskIds, setCheckedCodeTaskIds] = useState<readonly string[]>([]);
-  const selectionHydratedForProjectRef = useRef<string | null>(null);
+  const { checkedCodeTaskIds, commitCheckedCodeTaskIds } = useImplementationBoardCheckedCodeTaskIds({
+    projectId: projectId ?? "",
+    boardProjectId: board.projectId,
+    checkedFromBoard,
+    onSelectedCodeTaskIdsChange,
+    liveCheckedCodeTaskIdsRef,
+  });
 
-  useEffect(() => {
-    const pid = (projectId ?? board.projectId).trim();
-    if (!pid) return;
-    if (selectionHydratedForProjectRef.current === pid) return;
-    selectionHydratedForProjectRef.current = pid;
-    setCheckedCodeTaskIds(checkedFromBoard);
-  }, [projectId, board.projectId, checkedFromBoard]);
-
+  /** Integration/server snapshot — not used for checkbox or toolbar runnable gates (board rows SoT). */
   const codeTaskSummaryCounts = useMemo(
     () => {
-      const summary = buildImplementationExecutionSummaryCounts({
+      const summary = buildImplementationBoardExecutionContext({
         projectId,
         requirementsState: {
           implementationCodeTaskPlanV1: implementationCodeTaskPlanV1 ?? undefined,
@@ -373,21 +365,10 @@ export function ImplementationExecutionBoardPanel({
   const runtimeSnapshot = codeTaskSummaryCounts.runtimeSnapshot;
 
   const displaySelectedCodeTaskIds = checkedCodeTaskIds;
-  const checkedCodeTaskIdsRef = useRef(checkedCodeTaskIds);
-  checkedCodeTaskIdsRef.current = checkedCodeTaskIds;
-  if (liveCheckedCodeTaskIdsRef) {
-    liveCheckedCodeTaskIdsRef.current = checkedCodeTaskIds;
-  }
 
   useEffect(() => {
     setSelectedTaskId((current) => current ?? activeTaskId);
   }, [activeTaskId]);
-
-  const commitCheckedCodeTaskIds = (nextSelectedCodeTaskIds: readonly string[]) => {
-    const next = [...new Set(nextSelectedCodeTaskIds.map((id) => id.trim()).filter(Boolean))];
-    setCheckedCodeTaskIds(next);
-    onSelectedCodeTaskIdsChange?.(next);
-  };
 
   const activeCodeTaskRun = useMemo(() => {
     const codeTaskId =
@@ -560,44 +541,18 @@ export function ImplementationExecutionBoardPanel({
     ],
   );
 
-  const runnableCodeTaskIdsFromBoard = useMemo(
-    () => listRunnableCodeTaskIdsFromBoardNodes(taskTreeNodes),
-    [taskTreeNodes],
-  );
-
-  const userSelectableCodeTaskIdsFromBoard = useMemo(
-    () => listUserCheckboxSelectableCodeTaskIdsFromBoardNodes(taskTreeNodes),
-    [taskTreeNodes],
-  );
-
-  const codeTaskSelectionSummary = useMemo(
-    () =>
-      summarizeCodeTaskBoardRowsFromTreeNodes({
-        nodes: taskTreeNodes,
-        checkedCodeTaskIds,
-      }),
-    [taskTreeNodes, checkedCodeTaskIds],
-  );
-
-  useEffect(() => {
-    logCodeTaskSelectionSummaryResolved({
-      projectId: projectId ?? board.projectId,
-      summary: codeTaskSelectionSummary,
-    });
-  }, [projectId, board.projectId, codeTaskSelectionSummary]);
-
-  useEffect(() => {
-    onCodeTaskSelectionSummaryChange?.(codeTaskSelectionSummary);
-  }, [codeTaskSelectionSummary, onCodeTaskSelectionSummaryChange]);
-
-  const selectAllHeaderState = useMemo(
-    () =>
-      resolveCodeTaskTreeSelectAllHeaderState({
-        selectedCodeTaskIds: checkedCodeTaskIds,
-        userSelectableCodeTaskIds: userSelectableCodeTaskIdsFromBoard,
-      }),
-    [checkedCodeTaskIds, userSelectableCodeTaskIdsFromBoard],
-  );
+  const {
+    codeTaskSelectionSummary,
+    runnableCodeTaskIdsFromBoard,
+    userSelectableCodeTaskIdsFromBoard,
+    selectAllHeaderState,
+  } = useImplementationBoardCodeTaskSelectionSummary({
+    projectId: projectId ?? "",
+    boardProjectId: board.projectId,
+    checkedCodeTaskIds,
+    taskTreeNodes,
+    onCodeTaskSelectionSummaryChange,
+  });
 
   const integratedPipelineLines = useMemo(
     () => buildImplementationIntegratedPipelineLines(board.integratedRows),
@@ -697,10 +652,9 @@ export function ImplementationExecutionBoardPanel({
         latestPipelineStatus: integrationPipelineStatus,
         projectId: projectId ?? board.projectId,
       });
-      const integrationSelectionGate =
-        codeTaskSelectionSummary.runnableCount > 0
-          ? { ok: false as const, message: INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE }
-          : { ok: true as const, message: null as string | null };
+      const integrationSelectionGate = evaluateIntegrationBlockedByRunnableBoardSummary(
+        codeTaskSelectionSummary,
+      );
       if (!integrationSelectionGate.ok && fromSnapshot.show) {
         return {
           ...fromSnapshot,
@@ -771,8 +725,6 @@ export function ImplementationExecutionBoardPanel({
     [codeAgentWipExecutionV1, taskCursorExecutionV1, board, promptTimeline, implementationAutoQualityGateV1],
   );
 
-  const [reworkOpen, setReworkOpen] = useState(false);
-
   const showManualGithubVerifyRetry = useMemo(
     () =>
       shouldShowManualGithubVerifyRetry({
@@ -791,154 +743,25 @@ export function ImplementationExecutionBoardPanel({
       aria-label="구현 Execution Board"
     >
       <div className={styles.summaryCard}>
-        {showStuckRecovery ? (
-          <div className={styles.runtimeAdminActions} data-testid="code-task-stuck-recovery">
-            {stuckRecoveryHint ? (
-              <span className={styles.githubVerifyAutoStatus}>{stuckRecoveryHint}</span>
-            ) : null}
-            <div className={styles.stuckRecoveryActions}>
-              {onRetryGithubVerify ? (
-                <button type="button" className={styles.githubVerifyRetryLink} onClick={onRetryGithubVerify}>
-                  상태 재확인
-                </button>
-              ) : null}
-              {onRestartTask && queueParentTaskId ? (
-                <button
-                  type="button"
-                  className={styles.githubVerifyRetryLink}
-                  onClick={() => onRestartTask(queueParentTaskId)}
-                >
-                  이 CodeTask 재실행
-                </button>
-              ) : null}
-              {projectId && (selectedCodeTaskId ?? queueCurrentCodeTaskId) ? (
-                <button
-                  type="button"
-                  className={styles.githubVerifyRetryLink}
-                  onClick={() => {
-                    const codeTaskId = (selectedCodeTaskId ?? queueCurrentCodeTaskId)!.trim();
-                    void fetch(`/api/projects/${projectId.trim()}/implementation-runtime/actions`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ action: "skip_code_task", codeTaskId }),
-                    });
-                  }}
-                >
-                  이 CodeTask 건너뛰기
-                </button>
-              ) : null}
-              {projectId ? (
-                <button
-                  type="button"
-                  className={styles.githubVerifyRetryLink}
-                  onClick={() => {
-                    void fetch(`/api/projects/${projectId.trim()}/implementation-runtime/actions`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ action: "cancel_selected_quick_run" }),
-                    });
-                  }}
-                >
-                  선택 실행 중단
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-        {showManualGithubVerifyRetry ? (
-          <div className={styles.runtimeAdminActions} data-testid="code-task-github-verify-auto">
-            <span className={styles.githubVerifyAutoStatus}>
-              GitHub push 여부를 플랫폼이 자동 확인 중입니다. (Cursor 시작 후 60초 뒤 1회, 이후 10초마다)
-            </span>
-            {onRetryGithubVerify ? (
-              <button
-                type="button"
-                className={styles.githubVerifyRetryLink}
-                onClick={onRetryGithubVerify}
-              >
-                {MANUAL_GITHUB_VERIFY_RETRY_LABEL}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-        {reworkVm?.candidateCount ? (
-          <div className={styles.reworkSummary}>
-            <button
-              type="button"
-              className={styles.reworkToggle}
-              aria-expanded={reworkOpen}
-              onClick={() => setReworkOpen((open) => !open)}
-            >
-              {reworkOpen ? "재작업 후보 닫기" : `재작업 후보 ${reworkVm.candidateCount}개 보기`}
-            </button>
-            {reworkOpen ? (
-              <ul className={styles.reworkList}>
-                {reworkVm.candidates.map((candidate) => (
-                  <li key={candidate.codeTaskId} className={styles.reworkItem}>
-                    <div>
-                      {candidate.parentTaskId} · {candidate.codeTaskId}
-                      {candidate.title ? ` · ${candidate.title}` : ""}
-                    </div>
-                    <div className={styles.reworkMeta}>
-                      {candidate.causeLayer ? `원인: ${candidate.causeLayer}` : null}
-                      {candidate.failureReason ? ` · ${candidate.failureReason}` : null}
-                    </div>
-                    <div className={styles.reworkMeta}>
-                      권장: {formatCodeTaskReworkRecommendedActionKo(candidate.recommendedAction)}
-                      {candidate.recommendedAction === "rerun_task" && onRestartTask ? (
-                        <>
-                          {" · "}
-                          <button
-                            type="button"
-                            className={styles.reworkActionLink}
-                            onClick={() => onRestartTask(candidate.parentTaskId)}
-                          >
-                            Task 재실행
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-        ) : null}
+        <ImplementationExecutionBoardRuntimeAdmin
+          showStuckRecovery={showStuckRecovery}
+          stuckRecoveryHint={stuckRecoveryHint}
+          onRetryGithubVerify={onRetryGithubVerify}
+          onRestartTask={onRestartTask}
+          queueParentTaskId={queueParentTaskId}
+          projectId={projectId}
+          selectedCodeTaskId={selectedCodeTaskId}
+          queueCurrentCodeTaskId={queueCurrentCodeTaskId}
+          showManualGithubVerifyRetry={showManualGithubVerifyRetry}
+        />
+        <ImplementationExecutionBoardReworkCandidates reworkVm={reworkVm} onRestartTask={onRestartTask} />
       </div>
 
-      {parsedCodeTaskPlan && SHOW_STAGE_TWO_DEVELOPER_PROMPT_PREVIEW ? (
-        <section className={styles.taskTreeSection} data-testid="implementation-stage-two-developer-prompt">
-          <div className={styles.integrationSectionHeader}>
-            <strong>현재 CodeTask 개발 프롬프트 (2단계 · Cursor 전달용)</strong>
-          </div>
-          {executionTargetCodeTaskId ? (
-            <div className={styles.summarySecondary}>
-              <div>{executionTargetCodeTaskId}</div>
-              {stageTwoDeveloperPromptPreview.title ? (
-                <div>{stageTwoDeveloperPromptPreview.title}</div>
-              ) : null}
-              {stageTwoDeveloperPromptPreview.branchGroup ? (
-                <div>
-                  branch group: {stageTwoDeveloperPromptPreview.branchGroup} · base branch:{" "}
-                  {stageTwoDeveloperPromptPreview.baseBranch} · work branch:{" "}
-                  {stageTwoDeveloperPromptPreview.workBranch}
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className={styles.summarySecondary}>실행 대상 CodeTask를 선택해 주세요.</div>
-          )}
-          {stageTwoDeveloperPromptPreview.preview ? (
-            <pre
-              className={styles.summarySecondary}
-              data-testid="implementation-stage-two-developer-prompt-preview"
-              style={{ whiteSpace: "pre-wrap", maxHeight: 240, overflow: "auto" }}
-            >
-              {stageTwoDeveloperPromptPreview.preview.slice(0, 4000)}
-            </pre>
-          ) : null}
-        </section>
-      ) : null}
+      <ImplementationExecutionBoardDeveloperPromptPreview
+        codeTaskPlan={parsedCodeTaskPlan}
+        executionTargetCodeTaskId={executionTargetCodeTaskId}
+        stageTwoDeveloperPromptPreview={stageTwoDeveloperPromptPreview}
+      />
 
       <section className={styles.taskTreeSection} data-testid="implementation-task-tree-section">
         <ImplementationExecutionBoardTaskTree
@@ -967,7 +790,7 @@ export function ImplementationExecutionBoardPanel({
               resolveCodeTaskTreeSelectionToggle({
                 codeTaskId,
                 checked,
-                selectedCodeTaskIds: checkedCodeTaskIdsRef.current,
+                selectedCodeTaskIds: checkedCodeTaskIds,
                 codeTaskPlan: implementationCodeTaskPlanV1,
                 userSelectableCodeTaskIds: userSelectableCodeTaskIdsFromBoard,
               }),
@@ -995,95 +818,24 @@ export function ImplementationExecutionBoardPanel({
         />
       </section>
 
-      {showIntegrationFooter ? (
-        <section
-          className={[styles.taskTreeSection, styles.integrationFooterSticky].join(" ")}
-          data-testid="implementation-integrated-pipeline-section"
-        >
-          <div className={styles.integrationSectionHeader}>
-            <div className={styles.integrationSectionActions}>
-              {showIntegrationButton ? (
-                <button
-                  type="button"
-                  className={styles.integrationPrimaryButton}
-                  data-testid="implementation-integration-run-button"
-                  disabled={integrationPipelineBusy === true || !integrationButtonEnabled}
-                  aria-disabled={integrationPipelineBusy === true || !integrationButtonEnabled}
-                  title={integrationButtonState.disabledTitle ?? undefined}
-                  onClick={onRunIntegrationPipeline}
-                >
-                  {integrationPipelineBusy
-                    ? integrationButtonState.buttonLabel === "Preview 준비 계속"
-                      ? "Preview 준비 계속 중…"
-                      : integrationButtonState.continueBuildPreview
-                        ? "Build 검증 및 Preview 준비 계속 중…"
-                        : "통합 및 Preview 준비 중…"
-                    : integrationButtonState.buttonLabel || "통합 및 Preview 준비"}
-                </button>
-              ) : null}
-              {integrationSection.integrationPullRequestUrl ? (
-                <button
-                  type="button"
-                  className={styles.integrationPreviewScopeButton}
-                  data-testid="implementation-integration-pr-open-button"
-                  onClick={() => {
-                    window.open(
-                      integrationSection.integrationPullRequestUrl!,
-                      "_blank",
-                      "noopener,noreferrer",
-                    );
-                  }}
-                >
-                  PR 열기
-                </button>
-              ) : null}
-              {integrationSection.canMergeIntegrationPullRequest &&
-              onMergeIntegrationPullRequest ? (
-                <button
-                  type="button"
-                  className={styles.integrationPrimaryButton}
-                  data-testid="implementation-integration-merge-main-button"
-                  disabled={integrationMergeBusy === true}
-                  onClick={onMergeIntegrationPullRequest}
-                >
-                  {integrationMergeBusy ? "main 반영 중…" : "main에 반영"}
-                </button>
-              ) : null}
-              {previewButtonState.show || integrationSection.integratedAppPreviewReady ? (
-                <button
-                  type="button"
-                  className={styles.integrationPreviewButton}
-                  data-testid="implementation-preview-open-button"
-                  disabled={!previewButtonState.enabled || !previewButtonState.url}
-                  title={previewButtonState.title}
-                  onClick={() => {
-                    if (!previewButtonState.enabled || !previewButtonState.url) return;
-                    const pid = (projectId ?? board.projectId).trim();
-                    if (onOpenImplementationPreview) {
-                      onOpenImplementationPreview({
-                        mode: "integrated_app_preview",
-                        url: previewButtonState.url,
-                      });
-                      return;
-                    }
-                    openActualIntegratedPreviewInNewWindow({
-                      projectId: pid,
-                      url: previewButtonState.url,
-                    });
-                  }}
-                >
-                  {previewButtonState.label}
-                </button>
-              ) : null}
-            </div>
-          </div>
-          <IntegrationPreviewRemediationPanel
-            pipelineStatus={integrationPipelineStatus}
-            gitRepoUrl={targetRepository?.gitRepoUrl ?? executionSetup?.gitRepoUrl ?? null}
-            onRetryIntegration={onRunIntegrationPipeline}
-          />
-        </section>
-      ) : null}
+      <ImplementationExecutionBoardIntegrationFooter
+        projectId={projectId ?? ""}
+        boardProjectId={board.projectId}
+        showIntegrationFooter={showIntegrationFooter}
+        showIntegrationButton={showIntegrationButton}
+        integrationButtonEnabled={integrationButtonEnabled}
+        integrationButtonState={integrationButtonState}
+        integrationPipelineBusy={integrationPipelineBusy}
+        integrationSection={integrationSection}
+        previewButtonState={previewButtonState}
+        integrationPipelineStatus={integrationPipelineStatus}
+        targetRepositoryGitRepoUrl={targetRepository?.gitRepoUrl}
+        executionSetupGitRepoUrl={executionSetup?.gitRepoUrl}
+        onRunIntegrationPipeline={onRunIntegrationPipeline}
+        onMergeIntegrationPullRequest={onMergeIntegrationPullRequest}
+        integrationMergeBusy={integrationMergeBusy}
+        onOpenImplementationPreview={onOpenImplementationPreview}
+      />
     </section>
   );
 }

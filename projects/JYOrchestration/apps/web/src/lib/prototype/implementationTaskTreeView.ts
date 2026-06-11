@@ -54,8 +54,24 @@ import {
   resolveCodeTaskBoardState,
   type ImplementationCodeTaskBoardStateV1,
 } from "@/lib/prototype/implementationCodeTaskBoardState";
-import { resolveCodeTaskDisplayLabelsForUserSelection } from "@/lib/prototype/implementationRunnableCodeTaskSelection";
 import { resolveAuthoritativeCodeTaskOutcome } from "@/lib/prototype/implementationCodeTaskOutcomeResolver";
+
+function resolveCodeTaskTreeRowUnitDisplayLabels(input: {
+  readonly codeTaskId: string;
+  readonly executionUnit?: ImplementationExecutionUnitV1 | null;
+  readonly runs: readonly CodeTaskExecutionRunV1[];
+}): Readonly<{ readonly statusLabel: string; readonly progressLabel: string }> {
+  if (!input.executionUnit) {
+    return { statusLabel: "", progressLabel: "" };
+  }
+  const run = findLatestRunForCodeTask(input.runs, input.codeTaskId);
+  const display = resolveExecutionUnitVerificationDisplayStatus({
+    unit: input.executionUnit,
+    run,
+  });
+  const card = formatExecutionUnitVerificationCardLabels(display);
+  return { statusLabel: card.statusLabel, progressLabel: card.progressLabel };
+}
 
 export type ImplementationTaskTreeMetaLine = Readonly<{
   readonly label: string;
@@ -331,10 +347,9 @@ function buildCodeTaskNode(input: {
     progressLabel = githubVerifyView.progressLabel;
   }
 
-  const labelsForSelection = resolveCodeTaskDisplayLabelsForUserSelection({
+  const labelsForSelection = resolveCodeTaskTreeRowUnitDisplayLabels({
     codeTaskId: input.codeTask.codeTaskId,
-    progressByCodeTaskId: undefined,
-    unit: input.executionUnit ?? null,
+    executionUnit: input.executionUnit ?? null,
     runs: input.codeTaskExecutionRuns,
   });
   const snapshotStatus = String(input.runtimeSnapshotUnit?.statusLabel ?? "").trim();

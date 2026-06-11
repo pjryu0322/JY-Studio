@@ -1,26 +1,11 @@
 import { describe, expect, it } from "vitest";
-import {
-  resolveCodeTaskBoardState,
-  summarizeCodeTaskBoardRowsFromTreeNodes,
-} from "@/lib/prototype/implementationCodeTaskBoardState";
+import { summarizeCodeTaskBoardRowsFromTreeNodes } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { resolveImplementationBoardPrimaryAction } from "@/lib/prototype/implementationActionButtonPolicy";
 import {
   isCodeTaskTreeFullySelected,
   resolveCodeTaskTreeSelectAll,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
-
-function node(codeTaskId: string, statusLabel: string, progressLabel: string, github = false) {
-  const boardState = resolveCodeTaskBoardState({
-    codeTaskId,
-    title: codeTaskId,
-    statusLabel,
-    progressLabel,
-    githubOutcomeSaved: github,
-    commitSha: github ? "sha" : null,
-    branchName: github ? "wip/branch" : null,
-  });
-  return { codeTaskId, boardState };
-}
+import { boardTreeNode as node } from "./implementationBoardSummaryTestHelpers";
 
 describe("summarizeCodeTaskBoardRowsFromTreeNodes", () => {
   it("counts one runnable sample data task and fourteen integration-ready tasks", () => {
@@ -30,7 +15,7 @@ describe("summarizeCodeTaskBoardRowsFromTreeNodes", () => {
     const runnable = node("CODE-DATA-SAMPLE-001", "대기", "실행 가능", false);
     const summary = summarizeCodeTaskBoardRowsFromTreeNodes({
       nodes: [...completed, runnable],
-      selectedCodeTaskIds: [],
+      checkedCodeTaskIds: [],
     });
     expect(summary.totalCount).toBe(15);
     expect(summary.runnableCount).toBe(1);
@@ -45,7 +30,7 @@ describe("summarizeCodeTaskBoardRowsFromTreeNodes", () => {
     ];
     const summary = summarizeCodeTaskBoardRowsFromTreeNodes({
       nodes,
-      selectedCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
+      checkedCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
     });
     expect(summary.selectedRunnableCount).toBe(1);
     expect(summary.selectedRunnableCodeTaskIds).toEqual(["CODE-DATA-SAMPLE-001"]);
@@ -101,7 +86,7 @@ describe("resolveImplementationBoardPrimaryAction from board summary", () => {
 
   it("does not show board execute when runnable tasks remain (toolbar Quick Run only)", () => {
     const action = resolveImplementationBoardPrimaryAction({
-      userActionSummary: summary14Plus1,
+      selectionSummary: summary14Plus1,
       integrationPrepareEnabled: true,
     });
     expect(action.showExecuteSelectedButton).toBe(false);
@@ -115,10 +100,10 @@ describe("resolveImplementationBoardPrimaryAction from board summary", () => {
         node("CODE-DATA-SAMPLE-001", "대기", "실행 가능", false),
         node("CODE-DONE-0", "완료", "GitHub outcome 저장됨", true),
       ],
-      selectedCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
+      checkedCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
     });
     const action = resolveImplementationBoardPrimaryAction({
-      userActionSummary: summary,
+      selectionSummary: summary,
       integrationPrepareEnabled: true,
     });
     expect(action.showExecuteSelectedButton).toBe(false);
@@ -128,10 +113,10 @@ describe("resolveImplementationBoardPrimaryAction from board summary", () => {
   it("shows integration primary when no runnable remain", () => {
     const summary = summarizeCodeTaskBoardRowsFromTreeNodes({
       nodes: [node("CODE-DONE-0", "완료", "GitHub outcome 저장됨", true)],
-      selectedCodeTaskIds: [],
+      checkedCodeTaskIds: [],
     });
     const action = resolveImplementationBoardPrimaryAction({
-      userActionSummary: summary,
+      selectionSummary: summary,
       integrationPrepareEnabled: true,
     });
     expect(action.primaryLabel).toBe("통합 및 Preview 준비");

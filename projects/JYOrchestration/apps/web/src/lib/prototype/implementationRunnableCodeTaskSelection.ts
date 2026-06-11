@@ -316,5 +316,4 @@ export function evaluateSelectedRunnableCodeTasksGate(input: {
   return { ok: true, message: null, runnableIds };
 }
 
-export const INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE =
-  "실행 가능한 미완료 작업이 있습니다. 먼저 선택 작업 실행을 완료해 주세요." as const;
+export { INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE } from "@/lib/prototype/implementationBoardIntegrationGate";

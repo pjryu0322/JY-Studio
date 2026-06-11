@@ -16,6 +16,16 @@ import {
   PROTOTYPE_INLINE_TEMPLATE_AI_VALUE,
 } from "@/components/preview/PrototypeExecutionChatPanel";
 import { ImplementationExecutionBoardPanel } from "@/components/preview/ImplementationExecutionBoardPanel";
+import { useImplementationBoardSelectionBridge } from "@/components/preview/useImplementationBoardSelectionBridge";
+import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
+import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
+import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
+import { usePrototypeExecutionPersistChatToDb } from "@/components/preview/usePrototypeExecutionPersistChatToDb";
+import { useImplementationStageActionTimeline } from "@/components/preview/useImplementationStageActionTimeline";
+import { useRecoverServerQuickRunContinuation } from "@/components/preview/useRecoverServerQuickRunContinuation";
+import { useTaskCursorServerJobPoll } from "@/components/preview/useTaskCursorServerJobPoll";
+import { useImplementationAutoQualityGateTrigger } from "@/components/preview/useImplementationAutoQualityGateTrigger";
+import { executeImplementationBoardIntegrationPipeline } from "@/lib/prototype/implementationBoardIntegrationPipelineRun";
 import { ImplementationStageNoticeModal } from "@/components/preview/ImplementationStageNoticeModal";
 import { ImplementationStageGlobalToolbar } from "@/components/preview/ImplementationStageGlobalToolbar";
 import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
@@ -60,11 +70,8 @@ import {
   toPrototypeChatEnvSnapshot,
 } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
 import {
-  buildCodeAgentWipDraftCreatedTimelineEntry,
-  buildCodeAgentWipDraftFailedTimelineEntry,
   buildImplementationWipDraftLifecycleTimelineEntry,
   CODE_AGENT_WIP_WORK_REQUEST_CHIP,
-  mapBlockedMessageToWipDraftFailureReason,
   type CodeAgentWipExecutionV1,
 } from "@/lib/prototype/codeAgentWipExecution";
 import {
@@ -159,10 +166,7 @@ import {
   type ImplementationStageActionClickInput,
   type ImplementationStageActionClickSource,
 } from "@/lib/prototype/implementationStageActionBinding";
-import {
-  buildImplementationStageActionRunLogPatch,
-  type ImplementationStageActionRun,
-} from "@/lib/prototype/implementationStageActionRun";
+import { type ImplementationStageActionRun } from "@/lib/prototype/implementationStageActionRun";
 import { prioritizeImplementationChipsForState, deriveImplementationStageNextActions } from "@/lib/prototype/implementationStageNextActions";
 import { deriveImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
@@ -225,11 +229,9 @@ import {
 import { buildIntegrationScopeDetailLines } from "@/lib/prototype/implementationIntegrationScopeUi";
 import { integrateCompletedCodeTasksForPreview } from "@/lib/prototype/implementationIntegrationService";
 import { resolveIntegratedAppPreviewReadyFromOrchestration } from "@/lib/prototype/implementationPreviewReadiness";
-import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import {
   mergeIntegrationPullRequestClient,
 } from "@/lib/prototype/implementationIntegrationClient";
-import { runProjectIntegrationPrepareOnly } from "@/lib/prototype/projectIntegrationPipelineClient";
 import { ensureCompletedCodeTaskPreviewForFallback } from "@/lib/prototype/completedCodeTaskPreviewBuildService";
 import {
   shouldRunCompletedCodeTaskPreviewFallbackOnOpen,
@@ -252,7 +254,6 @@ import {
   isLegacyContinuePreviewMessage,
   resolveIntegrationPipelineUserToast,
 } from "@/lib/prototype/implementationIntegrationToastPolicy";
-import { INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE } from "@/lib/prototype/integrationPreviewPreflightService";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
 import {
@@ -283,23 +284,19 @@ import {
   appendReworkRequest,
   markReworkRequestsAcceptedForTask,
   resolveAllPendingUserConfirmations,
-  updateBoardSelectedCodeTaskIds,
   updateBoardSelectedTaskIds,
 } from "@/lib/prototype/implementationExecutionBoardState";
+import { updateBoardCheckedCodeTaskIds } from "@/lib/prototype/implementationBoardCheckedIds";
+import { resolveCheckedCodeTaskIdsFromBoardBridge } from "@/lib/prototype/implementationBoardCodeTaskSelection";
 import {
-  normalizeSelectedCodeTaskIds,
-  prepareSelectedCodeTaskIdsForQuickRun,
-  QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE,
-} from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
-import {
-  coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride,
-  resolveImplementationBoardQuickRunSelection,
-} from "@/lib/prototype/implementationBoardCodeTaskSelection";
-import {
-  type CodeTaskBoardSelectionSummaryV1,
-  formatQuickRunToolbarTraceDetail,
-  resolveQuickRunToolbarAction,
-} from "@/lib/prototype/implementationQuickRunPolicy";
+  buildImplementationQuickRunQueueItems,
+  buildQuickRunOrchestrationAfterJobStart,
+  buildRepairTimelineEntries,
+  continueImplementationQuickRunAfterStart,
+  evaluateImplementationQuickRunPrepAndSelection,
+  postImplementationQuickRunStartJob,
+} from "@/lib/prototype/implementationQuickRunStartService";
+import { evaluateImplementationToolbarQuickRun } from "@/lib/prototype/implementationToolbarQuickRunDispatch";
 import { loadImplementationExecutionUnitsFromState } from "@/lib/prototype/implementationExecutionUnitStore";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { buildCodeTaskPromptContextMap } from "@/lib/prototype/buildCodeTaskPromptContext";
@@ -369,13 +366,7 @@ import {
 } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
 import { isTaskCursorExecutePromptPreflightFailure } from "@/lib/prototype/taskCursorExecutePreflightResponse";
 import { parseImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
-import {
-  buildImplementationAutoQualityGateTriggerKey,
-  isImplementationAutoQualityGateClientInFlight,
-  resolveCodeTaskRunForAutoQualityGateClient,
-  runImplementationAutoQualityGateClient,
-  shouldTriggerImplementationAutoQualityGateClient,
-} from "@/lib/prototype/implementationAutoQualityGateClient";
+import { resolveCodeTaskRunForAutoQualityGateClient } from "@/lib/prototype/implementationAutoQualityGateClient";
 import {
   buildImplementationExecutionLogTimelineEntry,
   buildPromptTimelineOrchestrationPatch,
@@ -420,7 +411,6 @@ import {
 import { postPlanningResetCascade } from "@/lib/requirements/planningResetCascadeClient";
 import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
-import { shouldPollImplementationRuntime } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiFlow";
 import {
   parseImplementationRuntimeStateV1,
   patchRuntimeWatchdogPoll,
@@ -434,11 +424,9 @@ import {
   buildImplementationQuickRunStartedPatch,
   buildImplementationQuickRunCursorDispatchTimelineEntry,
   buildImplementationQuickRunTimelineEntry,
-  formatQuickRunContinuationReason,
   parseImplementationQuickRunV1,
   resolveQuickRunAllowedTaskIds,
 } from "@/lib/prototype/implementationQuickRun";
-import { shouldPlanQuickRunCodeTaskContinuationAfterAutoGate } from "@/lib/prototype/implementationQuickRunCodeTaskContinuation";
 import { runQuickRunStuckGithubVerifyRecovery } from "@/lib/prototype/implementationQuickRunGithubVerifyRecovery";
 import {
   applyTaskCursorGithubVerifyApiResult,
@@ -450,7 +438,6 @@ import type { QuickRunGithubAdvanceDispatch } from "@/lib/prototype/implementati
 import { normalizeSelectedTaskIds } from "@/lib/prototype/implementationTaskTreeSelection";
 import { RequirementsPromptDocumentDrawer } from "@/components/requirements/RequirementsPromptDocumentDrawer";
 import type { PromptTimelineDrawerTab } from "@/lib/prototype/promptTimelineExecutionLogTabs";
-import { parseImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import {
   buildTaskCursorLaunchTransientFailurePatch,
   formatTransientTaskCursorLaunchErrorMessage,
@@ -462,9 +449,6 @@ import {
   isActiveTaskCursorExecution,
   isInFlightTaskCursorExecution,
 } from "@/lib/prototype/taskCursorClientPollLoop";
-import { isServerTaskCursorPolling } from "@/lib/prototype/taskCursorPollingMode";
-import { buildTaskCursorJobOrchestrationSyncFingerprint } from "@/lib/prototype/taskCursorJobStateSync";
-import { shouldSyncTaskCursorServerJobPollState } from "@/lib/prototype/taskCursorServerJobPollState";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { parseTaskCursorExecutionV1, patchTaskCursorExecution, type TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
@@ -840,130 +824,18 @@ export function PrototypePreviewPanel({
     executionSetupBoardSyncedKeyRef.current = null;
   }, [reloadExecutionSetupRow]);
 
-  const lastPersistedChatFingerprintRef = useRef<string>("");
-  const orchestrationPersistSeqRef = useRef(0);
+  const requirementsStateJsonRef = useRef(requirementsStateJson);
   const implementationResetInFlightRef = useRef(false);
   const applyPendingFromOrchestrationPatchRef = useRef<
     (patch: PrototypeExecutionOrchestrationPersistInput | undefined) => void
   >(() => {});
-  const persistChatToDb = useCallback(
-    async (
-      chatPatch?: {
-        messages: readonly import("@/lib/requirements/requirementsMessage").RequirementsMessage[];
-        slots: readonly import("@/lib/prototype/prototypeExecutionSingleChatTypes").PrototypeExecutionInterviewSlot[];
-        answers: Readonly<Record<string, string>>;
-        currentSlotKey: string | null;
-      },
-      orchestrationPatch?: Omit<PrototypeExecutionOrchestrationPersistInput, "chat">,
-      persistSeq?: number,
-      persistOptions?: { readonly awaitServer?: boolean; readonly force?: boolean },
-    ): Promise<{ readonly serverSaved: boolean } | void> => {
-      const mySeq = persistSeq ?? ++orchestrationPersistSeqRef.current;
-      const pid = projectId.trim();
-      if (!pid) return { serverSaved: false };
-      const tc = [...timelineCards].slice(-300);
-      const fingerprint = JSON.stringify({
-        c: chatPatch?.messages?.map((m) => [m.id, m.createdAt]) ?? [],
-        t: tc.map((c) => [c.id, c.at]),
-        o: orchestrationPatch
-          ? [
-              orchestrationPatch.implementationTaskPlanV1?.createdAt,
-              orchestrationPatch.cursorWorkItemsV1?.length,
-              orchestrationPatch.codeAgentWipExecutionV1?.status,
-              orchestrationPatch.codeAgentWipExecutionV1?.requestedAt,
-              orchestrationPatch.codeAgentWipExecutionV1?.selectedTaskId,
-              orchestrationPatch.codeAgentWipExecutionV1?.bridgeExecutionStatus,
-              orchestrationPatch.taskCursorExecutionV1?.status,
-              orchestrationPatch.taskCursorExecutionV1?.cursorRunId,
-              orchestrationPatch.taskCursorExecutionV1?.updatedAt,
-              (() => {
-                const logs = pickPersistentExecutionLogTimelineEntries(orchestrationPatch.promptTimeline);
-                const last = logs.at(-1);
-                return [
-                  logs.length,
-                  last ? buildPromptTimelineEntryFingerprint(last) : null,
-                  last?.createdAt ?? null,
-                ];
-              })(),
-              orchestrationPatch.implementationTaskExecutionStateV1?.updatedAt,
-              orchestrationPatch.implementationTaskExecutionStateV1?.summary,
-              orchestrationPatch.implementationStageActionRunLogV1 ? "runlog" : null,
-              orchestrationPatch.implementationQuickRunV1?.status,
-              orchestrationPatch.implementationQuickRunV1?.updatedAt,
-              orchestrationPatch.codeTaskExecutionRunsV1?.length,
-              orchestrationPatch.implementationPreviewRuntimeV1?.generatedAt,
-              orchestrationPatch.implementationPreviewScopeV1?.generatedAt,
-              orchestrationPatch.implementationExecutionBoardStateV1?.updatedAt,
-              orchestrationPatch.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
-            ]
-          : null,
-      });
-      if (!persistOptions?.force && fingerprint === lastPersistedChatFingerprintRef.current) {
-        return { serverSaved: true };
-      }
-      lastPersistedChatFingerprintRef.current = fingerprint;
-
-      const prior = parseRequirementsStateJson(requirementsStateJsonRef.current);
-      const mergedWithoutAutoLog =
-        chatPatch || orchestrationPatch
-          ? buildPrototypeExecutionOrchestrationPersistPatch(requirementsStateJsonRef.current, {
-              ...(chatPatch ? { chat: chatPatch } : {}),
-              ...(orchestrationPatch ?? {}),
-            })
-          : mergeRequirementsStateJson(parseRequirementsStateJson(requirementsStateJsonRef.current), {
-              prototypeWorkspaceTimelineCardsV1: tc,
-              lastSavedAt: new Date().toISOString(),
-            });
-
-      const promptTimeline =
-        orchestrationPatch !== undefined
-          ? mergeImplementationExecutionLogTimeline({
-              prior,
-              next: mergedWithoutAutoLog,
-              patch: orchestrationPatch,
-            })
-          : (mergedWithoutAutoLog.promptTimeline ?? prior.promptTimeline ?? []);
-
-      const mergedBase =
-        orchestrationPatch !== undefined && promptTimeline.length
-          ? { ...mergedWithoutAutoLog, promptTimeline }
-          : mergedWithoutAutoLog;
-
-      const merged =
-        chatPatch || orchestrationPatch
-          ? (mergeRequirementsStateWithRuntime({
-              projectId: pid,
-              state: mergedBase as Record<string, unknown>,
-            }) as typeof mergedBase)
-          : mergedBase;
-
-      if (mySeq !== orchestrationPersistSeqRef.current) return { serverSaved: false };
-
-      requirementsStateJsonRef.current = merged;
-      if (orchestrationPatch) {
-        applyPendingFromOrchestrationPatchRef.current({
-          ...orchestrationPatch,
-          ...(merged.promptTimeline?.length ? { promptTimeline: merged.promptTimeline } : {}),
-        });
-      }
-
-      queueMicrotask(() => {
-        onRequirementsStateJsonChange?.(merged);
-      });
-      let serverSaved = true;
-      if (persistOptions?.awaitServer) {
-        const patchResult = await patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged });
-        if (patchResult.networkError) {
-          serverSaved = false;
-          console.warn("[spec-workspace] PATCH network error — local state kept");
-        }
-      } else {
-        void patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged });
-      }
-      return { serverSaved };
-    },
-    [projectId, timelineCards, onRequirementsStateJsonChange],
-  );
+  const { orchestrationPersistSeqRef, persistChatToDb } = usePrototypeExecutionPersistChatToDb({
+    projectId,
+    timelineCards,
+    requirementsStateJsonRef,
+    applyPendingFromOrchestrationPatchRef,
+    onRequirementsStateJsonChange,
+  });
 
   const appendUiToastToExecutionLog = useCallback(
     (message: string) => {
@@ -1729,24 +1601,12 @@ export function PrototypePreviewPanel({
     [requirementsStateJson],
   );
 
-  /** Latest merged requirements JSON — updated synchronously on persist to avoid WIP/timeline race overwrites. */
-  const requirementsStateJsonRef = useRef(requirementsStateJson);
-  const autoQualityGateInFlightRef = useRef<string | null>(null);
-  const autoQualityGateFailedTriggerRef = useRef<string | null>(null);
-  const autoQualityGateCompletedTriggerRef = useRef<string | null>(null);
   const quickRunCodeTaskContinuationRef = useRef<string | null>(null);
   const quickRunStuckGithubVerifyRef = useRef<string | null>(null);
   const codeTaskDispatchPreferredTaskIdRef = useRef<string | null>(null);
   const pendingQuickRunQueueDispatchRef = useRef<CodeTaskQueueDispatchRef | null>(null);
   const dbQueuedQuickRunDispatchRef = useRef<string | null>(null);
   const implementationStatusToastSeenRef = useRef(new Set<string>());
-  const implementationRuntimePollSuspendedRef = useRef(false);
-  const [implementationRuntimeDbBundle, setImplementationRuntimeDbBundle] =
-    useState<ImplementationRuntimeBundleView | null>(null);
-  const [implementationRuntimeDbDiagnostics, setImplementationRuntimeDbDiagnostics] = useState<
-    readonly ImplementationRuntimeDiagnosticsRow[]
-  >([]);
-
   const enrichCodeTaskRunOrchestrationPatch = useCallback(
     (patch: PrototypeExecutionOrchestrationPersistInput): PrototypeExecutionOrchestrationPersistInput => {
       const dispatch = readActiveRuntimeDispatchFromState(
@@ -1798,24 +1658,18 @@ export function PrototypePreviewPanel({
   const orchestrationAwareRequirementsStateRef = useRef(orchestrationAwareRequirementsState);
   orchestrationAwareRequirementsStateRef.current = orchestrationAwareRequirementsState;
 
-  /** Latest board checkbox selection from persist handler (may lag panel UI). */
-  const boardSelectedCodeTaskIdsRef = useRef<readonly string[] | null>(null);
-  /** Same selection + summary as the rendered implementation board header. */
-  const implementationBoardLiveCheckedCodeTaskIdsRef = useRef<readonly string[] | null>(null);
-  const boardCodeTaskSelectionSummaryRef = useRef<CodeTaskBoardSelectionSummaryV1 | null>(null);
+  const boardSelectionBridge = useImplementationBoardSelectionBridge(projectId);
 
-  const handleBoardCodeTaskSelectionSummaryChange = useCallback(
-    (summary: CodeTaskBoardSelectionSummaryV1) => {
-      boardCodeTaskSelectionSummaryRef.current = summary;
-    },
-    [],
-  );
-
-  useEffect(() => {
-    boardSelectedCodeTaskIdsRef.current = null;
-    implementationBoardLiveCheckedCodeTaskIdsRef.current = null;
-    boardCodeTaskSelectionSummaryRef.current = null;
-  }, [projectId]);
+  const {
+    implementationRuntimeDbBundle,
+    setImplementationRuntimeDbBundle,
+    loadImplementationRuntimeDb,
+    implementationRuntimePollSuspendedRef,
+  } = useImplementationRuntimeDbSync({
+    projectId,
+    showToast,
+    taskCursorExecutionV1: orchestrationAwareRequirementsState.taskCursorExecutionV1,
+  });
 
   const effectiveCodeTaskExecutionQueueV1 = useMemo(
     () =>
@@ -1829,77 +1683,6 @@ export function PrototypePreviewPanel({
     () => resolvePersistedQueueDispatch(orchestrationAwareRequirementsState),
     [orchestrationAwareRequirementsState.implementationRuntimeUiSnapshotV1],
   );
-
-  const applyImplementationRuntimeFetch = useCallback(
-    (fetched: Awaited<ReturnType<typeof fetchImplementationRuntime>>) => {
-      if (fetched.bundle) setImplementationRuntimeDbBundle(fetched.bundle);
-      if (fetched.diagnostics?.length) {
-        setImplementationRuntimeDbDiagnostics(fetched.diagnostics);
-      }
-    },
-    [],
-  );
-
-  const loadImplementationRuntimeDb = useCallback(
-    async (options?: { readonly recover?: boolean }) => {
-      const pid = projectId.trim();
-      if (!pid) return;
-      if (implementationRuntimePollSuspendedRef.current && options?.recover !== true) {
-        return;
-      }
-      try {
-        const fetched = await fetchImplementationRuntime(pid, options);
-        if (!fetched.success) {
-          const message = fetched.message ?? "";
-          if (message.includes("DB 스키마가 최신") || message.includes("pnpm db:migrate")) {
-            implementationRuntimePollSuspendedRef.current = true;
-            showToast(message.split(". ")[0] ?? message);
-          }
-          return;
-        }
-        implementationRuntimePollSuspendedRef.current = false;
-        applyImplementationRuntimeFetch(fetched);
-      } catch {
-        // ignore transient poll errors (dev recompile / network)
-      }
-    },
-    [applyImplementationRuntimeFetch, projectId, showToast],
-  );
-
-  useEffect(() => {
-    void loadImplementationRuntimeDb({ recover: false });
-  }, [loadImplementationRuntimeDb]);
-
-  useEffect(() => {
-    const pid = projectId.trim();
-    if (!pid) return;
-    const legacyCursor = parseTaskCursorExecutionV1(
-      orchestrationAwareRequirementsState.taskCursorExecutionV1,
-    );
-    if (implementationRuntimePollSuspendedRef.current) {
-      return;
-    }
-    if (
-      !shouldPollImplementationRuntime({
-        bundle: implementationRuntimeDbBundle,
-        legacyCursorInFlight: Boolean(
-          legacyCursor && isInFlightTaskCursorExecution(legacyCursor),
-        ),
-      })
-    ) {
-      return;
-    }
-    const timer = setInterval(() => {
-      void loadImplementationRuntimeDb({ recover: true });
-    }, 10_000);
-    return () => clearInterval(timer);
-  }, [
-    implementationRuntimeDbBundle?.currentRun?.runtimeState,
-    implementationRuntimeDbBundle?.job?.status,
-    loadImplementationRuntimeDb,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1,
-    projectId,
-  ]);
 
   const prototypeRunSyncSnapshot = useMemo(
     () =>
@@ -2667,69 +2450,16 @@ export function PrototypePreviewPanel({
   ]);
   // CTA priority is display-only. Persisted order is used for export/summary/evidence.
 
-  /** Shared persist path for implementation stage actions (expand to full applyImplementationStageActionResult later). */
-  const applyImplementationOrchestrationResult = useCallback(
-    (
-      input: {
-        readonly messages: readonly RequirementsMessage[];
-        readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
-      },
-      options?: { readonly persist?: boolean; readonly forcePersist?: boolean },
-    ) => {
-      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-      const chatPatch = {
-        messages: input.messages,
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
-      };
-      const prior = parseRequirementsStateJson(requirementsStateJsonRef.current);
-      const mergedWithoutAutoLog = buildPrototypeExecutionOrchestrationPersistPatch(requirementsStateJsonRef.current, {
-        chat: chatPatch,
-        ...input.orchestrationPatch,
-      });
-      const promptTimeline = mergeImplementationExecutionLogTimeline({
-        prior,
-        next: mergedWithoutAutoLog,
-        patch: input.orchestrationPatch,
-      });
-      const mergedBase =
-        promptTimeline.length > 0
-          ? { ...mergedWithoutAutoLog, promptTimeline }
-          : mergedWithoutAutoLog;
-      const mergedRequirementsState = mergeRequirementsStateWithRuntime({
-        projectId: projectId.trim(),
-        state: mergedBase as Record<string, unknown>,
-      }) as typeof mergedBase;
-      const orchestrationPatchWithTimeline: PrototypeExecutionOrchestrationPersistInput = {
-        ...input.orchestrationPatch,
-        ...(promptTimeline.length ? { promptTimeline } : {}),
-      };
-      requirementsStateJsonRef.current = mergedRequirementsState;
-      applyPendingFromOrchestrationPatch(orchestrationPatchWithTimeline);
-      executionSingleChat.applyPersistedMessages(input.messages);
-      if (options?.persist !== false) {
-        const persistSeq = ++orchestrationPersistSeqRef.current;
-        void persistChatToDb(
-          chatPatch,
-          orchestrationPatchWithTimeline,
-          persistSeq,
-          options?.forcePersist ? { force: true } : undefined,
-        );
-      } else {
-        queueMicrotask(() => {
-          onRequirementsStateJsonChange?.(mergedRequirementsState);
-        });
-      }
-    },
-    [
-      requirementsStateJson,
-      executionSingleChat,
-      persistChatToDb,
-      applyPendingFromOrchestrationPatch,
-      onRequirementsStateJsonChange,
-    ],
-  );
+  const applyImplementationOrchestrationResult = useApplyImplementationOrchestrationResult({
+    projectId,
+    requirementsStateJson,
+    requirementsStateJsonRef,
+    orchestrationPersistSeqRef,
+    executionSingleChat,
+    persistChatToDb,
+    applyPendingFromOrchestrationPatch,
+    onRequirementsStateJsonChange,
+  });
 
   const applyImplementationOrchestrationResultRef = useRef(applyImplementationOrchestrationResult);
   useEffect(() => {
@@ -2739,221 +2469,75 @@ export function PrototypePreviewPanel({
   const executionSingleChatMessagesRef = useRef(executionSingleChat.chatMessages);
   executionSingleChatMessagesRef.current = executionSingleChat.chatMessages;
 
-  useEffect(() => {
-    const pid = projectId.trim();
-    if (!pid || implementationRuntimePollSuspendedRef.current) return;
-
-    const quickRun = parseImplementationQuickRunV1(
-      orchestrationAwareRequirementsState.implementationQuickRunV1,
-    );
-    if (quickRun?.status !== "running") {
-      dbQueuedQuickRunDispatchRef.current = null;
-      return;
-    }
-
-    const job = implementationRuntimeDbBundle?.job;
-    const dbRun = implementationRuntimeDbBundle?.currentRun;
-    if (!job || job.status !== "running" || dbRun?.runtimeState !== "queued") {
-      if (dbRun?.runtimeState !== "queued") {
-        dbQueuedQuickRunDispatchRef.current = null;
-      }
-      return;
-    }
-
-    const dedupeKey = `${dbRun.id}:${dbRun.codeTaskId}`;
-    if (dbQueuedQuickRunDispatchRef.current === dedupeKey) {
-      return;
-    }
-    dbQueuedQuickRunDispatchRef.current = dedupeKey;
-
-    void (async () => {
-      try {
-        const res = await credentialsIncludeFetch(
-          "/api/prototype/implementation-runtime/continue-quick-run",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              projectId: pid,
-              mode: "db_queued_auto_dispatch",
-            }),
-          },
-        );
-        const json = (await res.json()) as {
-          success?: boolean;
-          outcome?: string;
-          reason?: string;
-          orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
-        };
-        if (json.orchestrationPatch) {
-          applyImplementationOrchestrationResultRef.current({
-            messages: executionSingleChatMessagesRef.current,
-            orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
-          });
-        }
-        if (json.outcome === "dispatched") {
-          showImplementationToast(`다음 CodeTask(${dbRun.codeTaskId}) Cursor 실행을 시작했습니다.`);
-          void loadImplementationRuntimeDb({ recover: false });
-        } else if (json.reason && json.outcome !== "skipped") {
-          showImplementationToast(formatQuickRunContinuationReason(json.reason));
-          dbQueuedQuickRunDispatchRef.current = null;
-        }
-      } catch {
-        dbQueuedQuickRunDispatchRef.current = null;
-      }
-    })();
-  }, [
-    enrichCodeTaskRunOrchestrationPatch,
-    implementationRuntimeDbBundle?.currentRun?.codeTaskId,
-    implementationRuntimeDbBundle?.currentRun?.id,
-    implementationRuntimeDbBundle?.currentRun?.runtimeState,
-    implementationRuntimeDbBundle?.job?.status,
-    loadImplementationRuntimeDb,
-    orchestrationAwareRequirementsState.implementationQuickRunV1,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1,
+  useDbQueuedQuickRunAutoDispatch({
     projectId,
-    showImplementationToast,
-  ]);
+    implementationQuickRunV1: orchestrationAwareRequirementsState.implementationQuickRunV1,
+    implementationRuntimeDbBundle,
+    runtimePollSuspendedRef: implementationRuntimePollSuspendedRef,
+    dbQueuedQuickRunDispatchRef,
+    enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
+    applyOrchestrationPatch: (patch) => {
+      applyImplementationOrchestrationResultRef.current({
+        messages: executionSingleChatMessagesRef.current,
+        orchestrationPatch: patch,
+      });
+    },
+    showToast: showImplementationToast,
+    reloadRuntime: () => {
+      void loadImplementationRuntimeDb({ recover: false });
+    },
+  });
 
-  const lastServerTaskCursorJobSyncFingerprintRef = useRef("");
-
-  useEffect(() => {
-    if (!isServerTaskCursorPolling()) return;
-    const pid = projectId.trim();
-    if (!pid) return;
-    if (!shouldSyncTaskCursorServerJobPollState(requirementsStateJsonRef.current)) {
-      if (activeTaskCursorJobRef.current) setActiveTaskCursorJob(null);
-      return;
-    }
-
-    let cancelled = false;
-    const refresh = async () => {
-      if (implementationResetInFlightRef.current) return;
-      try {
-        const res = await credentialsIncludeFetch(
-          `/api/prototype/task-cursor/jobs?projectId=${encodeURIComponent(pid)}`,
-        );
-        const json = (await res.json()) as {
-          success?: boolean;
-          activeJob?: TaskCursorJobSummary | null;
-          orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
-        };
-        if (cancelled || !json.success || implementationResetInFlightRef.current) return;
-        if (!shouldSyncTaskCursorServerJobPollState(requirementsStateJsonRef.current)) {
-          setActiveTaskCursorJob(null);
-          return;
-        }
-        setActiveTaskCursorJob(json.activeJob ?? null);
-        if (json.orchestrationPatch) {
-          const syncFingerprint = buildTaskCursorJobOrchestrationSyncFingerprint(json.orchestrationPatch);
-          if (syncFingerprint === lastServerTaskCursorJobSyncFingerprintRef.current) return;
-          lastServerTaskCursorJobSyncFingerprintRef.current = syncFingerprint;
-          applyImplementationOrchestrationResultRef.current({
-            messages: executionSingleChatMessagesRef.current,
-            orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
-          });
-        }
-      } catch {
-        // ignore refresh errors
-      }
-    };
-    void refresh();
-    const interval = window.setInterval(() => {
-      void refresh();
-    }, 5_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [
+  useRecoverServerQuickRunContinuation({
     projectId,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
-  ]);
+    autoQualityGateStatus:
+      orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
+    autoQualityGateSourceCommitSha:
+      orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.sourceCommitSha,
+    promptTimeline: orchestrationAwareRequirementsState.promptTimeline,
+    fallbackRunsV1: orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
+    implementationRuntimeDbBundle,
+    requirementsStateJsonRef,
+    orchestrationAwareRequirementsState,
+    enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
+    applyOrchestrationPatch: (patch) => {
+      applyImplementationOrchestrationResult({
+        messages: executionSingleChat.chatMessages,
+        orchestrationPatch: patch,
+      });
+    },
+    showToast: showImplementationToast,
+  });
 
-  useEffect(() => {
-    lastServerTaskCursorJobSyncFingerprintRef.current = "";
-  }, [
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
-  ]);
-
-  const triggerImplementationAutoQualityGate = useCallback(async () => {
-    const pid = projectId.trim();
-    if (!pid) return;
-    const freshState = parseRequirementsStateJson(requirementsStateJsonRef.current);
-    const execution = parseTaskCursorExecutionV1(freshState.taskCursorExecutionV1);
-    if (!execution) return;
-    const clientInput = {
-      projectId: pid,
-      taskCursorExecutionV1: execution,
-      implementationTaskListV1: freshState.implementationTaskListV1,
-      implementationTaskExecutionStateV1: freshState.implementationTaskExecutionStateV1,
-      implementationQualityGateResultsV1: freshState.implementationQualityGateResultsV1,
-      implementationAutoQualityGateV1: freshState.implementationAutoQualityGateV1,
-      implementationAutoQualityGateHistoryV1: freshState.implementationAutoQualityGateHistoryV1,
-      cursorWorkItemsV1: freshState.cursorWorkItemsV1 ?? [],
-      promptTimeline: freshState.promptTimeline,
-      codeTaskExecutionRunsV1: freshState.codeTaskExecutionRunsV1,
-    };
-    if (!shouldTriggerImplementationAutoQualityGateClient(clientInput)) {
-      autoQualityGateCompletedTriggerRef.current = buildImplementationAutoQualityGateTriggerKey(execution);
-      return;
-    }
-    const triggerKey = buildImplementationAutoQualityGateTriggerKey(execution);
-    if (autoQualityGateCompletedTriggerRef.current === triggerKey) return;
-    if (autoQualityGateFailedTriggerRef.current === triggerKey) return;
-    if (autoQualityGateInFlightRef.current === triggerKey) return;
-    autoQualityGateInFlightRef.current = triggerKey;
-    try {
-      const outcome = await runImplementationAutoQualityGateClient(clientInput);
-      if (!outcome.ok) {
-        autoQualityGateFailedTriggerRef.current = triggerKey;
-        if (outcome.message) {
-          appendImplementationExecutionNotice(outcome.message);
-          showImplementationToast(outcome.message);
-        }
-        return;
-      }
-      autoQualityGateFailedTriggerRef.current = null;
-      if (outcome.orchestrationPatch) {
-        applyImplementationOrchestrationResultRef.current({
-          messages: executionSingleChatMessagesRef.current,
-          orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(outcome.orchestrationPatch),
-        });
-      }
-      const afterPatch = parseRequirementsStateJson(requirementsStateJsonRef.current);
-      const afterExecution = parseTaskCursorExecutionV1(afterPatch.taskCursorExecutionV1);
-      const stillNeedsGate =
-        afterExecution &&
-        shouldTriggerImplementationAutoQualityGateClient({
-          projectId: pid,
-          taskCursorExecutionV1: afterExecution,
-          implementationAutoQualityGateV1: afterPatch.implementationAutoQualityGateV1,
-          codeTaskExecutionRunsV1: afterPatch.codeTaskExecutionRunsV1,
-        });
-      if (outcome.status === "skipped" || !stillNeedsGate) {
-        autoQualityGateCompletedTriggerRef.current = triggerKey;
-      }
-      if (outcome.message) {
-        appendImplementationExecutionNotice(outcome.message);
-        showImplementationToast(outcome.message);
-      }
-    } finally {
-      if (autoQualityGateInFlightRef.current === triggerKey) {
-        autoQualityGateInFlightRef.current = null;
-      }
-    }
-  }, [
+  useTaskCursorServerJobPoll({
     projectId,
-    appendImplementationExecutionNotice,
-    showImplementationToast,
-  ]);
+    requirementsStateJsonRef,
+    implementationResetInFlightRef,
+    taskCursorExecutionStatus: orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
+    taskCursorCursorRunId: orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
+    setActiveTaskCursorJob,
+    enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
+    applyOrchestrationResult: (orchInput) => {
+      applyImplementationOrchestrationResultRef.current(orchInput);
+    },
+    chatMessagesRef: executionSingleChatMessagesRef,
+  });
 
-  const triggerImplementationAutoQualityGateRef = useRef(triggerImplementationAutoQualityGate);
-  useEffect(() => {
-    triggerImplementationAutoQualityGateRef.current = triggerImplementationAutoQualityGate;
-  }, [triggerImplementationAutoQualityGate]);
+  const {
+    triggerRef: triggerImplementationAutoQualityGateRef,
+    failedTriggerRef: autoQualityGateFailedTriggerRef,
+    completedTriggerRef: autoQualityGateCompletedTriggerRef,
+  } = useImplementationAutoQualityGateTrigger({
+    projectId,
+    requirementsStateJsonRef,
+    enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
+    applyOrchestrationResult: (orchInput) => {
+      applyImplementationOrchestrationResultRef.current(orchInput);
+    },
+    chatMessagesRef: executionSingleChatMessagesRef,
+    appendExecutionNotice: appendImplementationExecutionNotice,
+    showToast: showImplementationToast,
+  });
 
   const autoQualityGateEffectSignal = useMemo(() => {
     const execution = parseTaskCursorExecutionV1(
@@ -2992,110 +2576,6 @@ export function PrototypePreviewPanel({
   useEffect(() => {
     void triggerImplementationAutoQualityGateRef.current();
   }, [autoQualityGateEffectSignal]);
-
-  const recoverServerQuickRunContinuationIfNeeded = useCallback(async () => {
-    const pid = projectId.trim();
-    if (!pid) return;
-    const timeline = orchestrationAwareRequirementsState.promptTimeline ?? [];
-    const recentServerContinuation = timeline.some((entry, idx) => {
-      if (idx < timeline.length - 40) return false;
-      const action = String(entry.action ?? "");
-      if (
-        action !== "quick_run_next_dispatch_executed" &&
-        action !== "quick_run_next_dispatch_planned"
-      ) {
-        return false;
-      }
-      const created = Date.parse(String(entry.createdAt ?? ""));
-      return Number.isFinite(created) && Date.now() - created < 120_000;
-    });
-    if (recentServerContinuation) return;
-
-    const state = parseRequirementsStateJson(requirementsStateJsonRef.current);
-    const execution = parseTaskCursorExecutionV1(state.taskCursorExecutionV1);
-    const autoGate = parseImplementationAutoQualityGateV1(state.implementationAutoQualityGateV1);
-    const quickRun = parseImplementationQuickRunV1(state.implementationQuickRunV1);
-    const runs =
-      parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ??
-      parseCodeTaskExecutionRunsV1(orchestrationAwareRequirementsState.codeTaskExecutionRunsV1) ??
-      [];
-    if (
-      !execution ||
-      !autoGate ||
-      autoGate.status !== "passed" ||
-      !quickRun ||
-      !shouldPlanQuickRunCodeTaskContinuationAfterAutoGate({
-        quickRun,
-        taskCursorExecution: execution,
-        autoGate,
-        runs,
-        codeTaskPlan: state.implementationCodeTaskPlanV1,
-        taskList: state.implementationTaskListV1,
-        cursorWorkItems: state.cursorWorkItemsV1,
-        dbBundle: implementationRuntimeDbBundle,
-      })
-    ) {
-      return;
-    }
-    if (execution && isActiveTaskCursorExecution(execution)) return;
-
-    try {
-      const res = await credentialsIncludeFetch(
-        "/api/prototype/implementation-runtime/continue-quick-run",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: pid,
-            mode: "recover_missing_server_continuation",
-          }),
-        },
-      );
-      const json = (await res.json()) as {
-        success?: boolean;
-        orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
-        outcome?: string;
-        reason?: string;
-      };
-      if (json.orchestrationPatch) {
-        applyImplementationOrchestrationResult({
-          messages: executionSingleChat.chatMessages,
-          orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
-        });
-      }
-      if (json.outcome === "dispatched") {
-        showImplementationToast("서버에서 다음 CodeTask Cursor 실행을 복구했습니다.");
-      } else if (json.reason) {
-        showImplementationToast(
-          `다음 CodeTask 실행 복구: ${formatQuickRunContinuationReason(json.reason)}`,
-        );
-      }
-    } catch {
-      // recovery is best-effort
-    }
-  }, [
-    projectId,
-    orchestrationAwareRequirementsState.promptTimeline,
-    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-    implementationRuntimeDbBundle,
-    applyImplementationOrchestrationResult,
-    executionSingleChat.chatMessages,
-    showImplementationToast,
-  ]);
-
-  useEffect(() => {
-    if (orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status !== "passed") {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      void recoverServerQuickRunContinuationIfNeeded();
-    }, 12_000);
-    return () => window.clearTimeout(timer);
-  }, [
-    orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
-    orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.sourceCommitSha,
-    recoverServerQuickRunContinuationIfNeeded,
-  ]);
 
   const dispatchNextQuickRunFromGithubVerify = useCallback(
     (next: QuickRunGithubAdvanceDispatch) => {
@@ -3366,6 +2846,24 @@ export function PrototypePreviewPanel({
   const showRoleCheckDetails = useCallback(() => {
     appendStatusQueryFromChip("role_check_details");
   }, [appendStatusQueryFromChip]);
+
+  const {
+    persistStageActionTimelineEntries,
+    persistImplementationStageActionRun,
+    applyImplementationStageActionExecutionResult,
+  } = useImplementationStageActionTimeline({
+    projectId,
+    requirementsStateJsonRef,
+    pendingImplementationPatchRef,
+    applyPendingFromOrchestrationPatchRef,
+    persistChatToDb,
+    showToast,
+    setExecutionEnvironmentModalOpen,
+    setArtifactHubOpen,
+    chatInputRef,
+    showRoleCheckDetails,
+    appendStatusQueryFromChip,
+  });
 
   const appendImplementationTaskListAiMessage = useCallback(
     (message: RequirementsMessage) => {
@@ -3807,114 +3305,6 @@ export function PrototypePreviewPanel({
       executePlatformScmAfterRequest,
       canApplyGit,
     ],
-  );
-
-  const persistStageActionTimelineEntries = useCallback(
-    (
-      entries: readonly RequirementsPromptTimelineEntry[],
-      runLogPatch?: { readonly implementationStageActionRunLogV1: unknown },
-    ) => {
-      if (!entries.length && !runLogPatch) return;
-      const imp = resolveOrchestrationAwareRequirementsState({
-        base: parseRequirementsStateJson(requirementsStateJsonRef.current),
-        pendingPatch: pendingImplementationPatchRef.current,
-      });
-      let timeline = imp.promptTimeline;
-      for (const entry of entries) {
-        timeline = appendPromptTimeline(timeline, entry);
-      }
-      applyPendingFromOrchestrationPatchRef.current({ promptTimeline: timeline });
-      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJsonRef.current);
-      void persistChatToDb(
-        {
-          messages: resolved.messages ?? [],
-          slots: resolved.slots ?? [],
-          answers: resolved.answers ?? {},
-          currentSlotKey: resolved.currentSlotKey ?? null,
-        },
-        { promptTimeline: timeline, ...(runLogPatch ?? {}) },
-        undefined,
-        { force: true },
-      );
-    },
-    [persistChatToDb],
-  );
-
-  const persistImplementationStageActionRun = useCallback(
-    (run: ImplementationStageActionRun) => {
-      const refState = parseRequirementsStateJson(requirementsStateJsonRef.current);
-      const runLogPatch = buildImplementationStageActionRunLogPatch({
-        currentLog: refState.implementationStageActionRunLogV1,
-        run,
-      });
-      let extraEntries = [...run.timelineEntries];
-      if (run.actionId === "REQUEST_CODE_AGENT_WIP") {
-        const pid = projectId.trim();
-        if (run.runResult?.outcome === "executed") {
-          const wip = refState.codeAgentWipExecutionV1;
-          const hasDraftWip =
-            wip &&
-            (wip.bridgeExecutionStatus === "draft_created" ||
-              wip.executionStatus === "draft_created" ||
-              wip.commits.some((commit) => String(commit.sha ?? "").startsWith("wip-stub")));
-          if (hasDraftWip && wip) {
-            extraEntries = [
-              ...extraEntries,
-              buildCodeAgentWipDraftCreatedTimelineEntry({
-                projectId: pid,
-                wip,
-                runId: run.runId,
-                source: "REQUEST_CODE_AGENT_WIP",
-              }),
-            ];
-          }
-        } else if (run.runResult?.outcome === "blocked") {
-          extraEntries = [
-            ...extraEntries,
-            buildCodeAgentWipDraftFailedTimelineEntry({
-              projectId: pid,
-              runId: run.runId,
-              reason: mapBlockedMessageToWipDraftFailureReason(run.runResult.message),
-              detail: run.runResult.message,
-              source: "REQUEST_CODE_AGENT_WIP",
-            }),
-          ];
-        }
-      }
-      persistStageActionTimelineEntries(extraEntries, runLogPatch);
-    },
-    [persistStageActionTimelineEntries, projectId],
-  );
-
-  const applyImplementationStageActionExecutionResult = useCallback(
-    (result: ImplementationStageActionExecutionResult) => {
-      if (result.timelineEntries?.length) {
-        persistStageActionTimelineEntries(result.timelineEntries);
-      }
-      switch (result.kind) {
-        case "blocked":
-          showToast(result.message);
-          break;
-        case "focus_composer":
-          showToast(result.message);
-          queueMicrotask(() => chatInputRef.current?.focus());
-          break;
-        case "open_env_settings":
-          setExecutionEnvironmentModalOpen(true);
-          break;
-        case "open_artifacts":
-          setArtifactHubOpen(true);
-          break;
-        case "show_status":
-          if (result.intent === "role") showRoleCheckDetails();
-          else if (result.intent === "scm") appendStatusQueryFromChip("scm_check_details");
-          else appendStatusQueryFromChip("environment_check_details");
-          break;
-        case "handled":
-          break;
-      }
-    },
-    [showToast, showRoleCheckDetails, appendStatusQueryFromChip, persistStageActionTimelineEntries],
   );
 
   const showImplementationSeedReadinessCheck = useCallback(() => {
@@ -4446,125 +3836,23 @@ export function PrototypePreviewPanel({
   );
 
   const runIntegrationPipeline = useCallback(() => {
-    const pid = projectId.trim();
-    if (!pid) {
-      showToast("프로젝트를 선택해 주세요.");
-      return;
-    }
     if (!implementationBoard) {
       showToast("구현 작업 보드가 준비된 뒤 통합을 실행할 수 있습니다.");
       return;
     }
-    if (implementationBoard.summary.blockingUserConfirmation > 0) {
-      const canIntegrateFromCompleted = evaluateCodeTaskIntegration({
-        codeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1 ?? null,
-        taskList: parsedRequirementsState.implementationTaskListV1 ?? null,
-        codeTaskRuns: parseCodeTaskExecutionRunsV1(parsedRequirementsState.codeTaskExecutionRunsV1) ?? [],
-        taskCursorExecution: parsedRequirementsState.taskCursorExecutionV1 ?? null,
-        taskCursorExecutionHistory: parsedRequirementsState.taskCursorExecutionHistoryV1 ?? null,
-        autoQualityGate: parsedRequirementsState.implementationAutoQualityGateV1 ?? null,
-      }).canIntegrate;
-      if (!canIntegrateFromCompleted) {
-        showToast("사용자 확인이 필요한 작업이 해소된 뒤 통합을 실행할 수 있습니다.");
-        return;
-      }
-    }
-
-    void (async () => {
-      setIntegrationPipelineBusy(true);
-      showToast(INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE);
-      try {
-        const pipelineResult = await runProjectIntegrationPrepareOnly({
-          projectId: pid,
-          projectName: projectName.trim() || null,
-          implementationCodeTaskPlanV1: parsedRequirementsState.implementationCodeTaskPlanV1,
-          implementationTaskListV1: parsedRequirementsState.implementationTaskListV1,
-          codeTaskExecutionRunsV1: parsedRequirementsState.codeTaskExecutionRunsV1,
-          implementationQuickRunV1: parsedRequirementsState.implementationQuickRunV1,
-          createPullRequest: true,
-        });
-
-        if (pipelineResult.orchestrationPatch) {
-          applyPendingFromOrchestrationPatch(pipelineResult.orchestrationPatch);
-        }
-
-        if (!pipelineResult.ok) {
-          showToast(pipelineResult.message ?? "통합 및 Preview 준비에 실패했습니다.");
-          if (pipelineResult.orchestrationPatch) {
-            await persistChatToDb(undefined, pipelineResult.orchestrationPatch, undefined, {
-              awaitServer: false,
-              force: true,
-            });
-          }
-          return;
-        }
-
-        let integrationServerSaved = true;
-        if (pipelineResult.orchestrationPatch) {
-          const saveResult = await persistChatToDb(
-            undefined,
-            pipelineResult.orchestrationPatch,
-            undefined,
-            { awaitServer: false, force: true },
-          );
-          if (saveResult?.serverSaved === false) {
-            integrationServerSaved = false;
-          }
-        }
-
-        const pipelineIntegratedReady =
-          pipelineResult.previewReady === true ||
-          String(pipelineResult.status ?? "").trim() === "integrated_app_preview_ready";
-
-        setIntegrationPipelineClientResult({
-          status: pipelineIntegratedReady ? "integrated_app_preview_ready" : pipelineResult.status,
-          previewReady: pipelineIntegratedReady ? true : pipelineResult.previewReady,
-          receivedAt: Date.now(),
-        });
-
-        const visibleContinueButton =
-          Boolean(String(pipelineResult.nextRequiredStep ?? "").trim()) &&
-          pipelineResult.previewReady !== true;
-
-        const pipelineToast = resolveIntegrationPipelineUserToast({
-          status: pipelineResult.status,
-          previewReady: pipelineResult.previewReady,
-          integratedAppPreviewReady: pipelineIntegratedReady,
-          message: pipelineResult.message?.trim() || null,
-          serverSaved: integrationServerSaved,
-          nextRequiredStep: pipelineResult.nextRequiredStep,
-          visibleContinueButton,
-        });
-
-        if (pipelineToast.reason === "suppressed_legacy_continue") {
-          const suppressLog = buildImplementationExecutionLogTimelineEntry({
-            action: "implementation_legacy_continue_toast_suppressed",
-            orchestrationTraceGroup: "project_integration_pipeline",
-            fields: {
-              projectId: pid,
-              status: pipelineResult.status ?? "",
-              previewReady: pipelineResult.previewReady === true,
-              integratedAppPreviewReady: pipelineIntegratedReady,
-              rawMessage: pipelineResult.message ?? "",
-            },
-          });
-          void persistChatToDb(undefined, {
-            promptTimeline: appendPromptTimeline(
-              parseRequirementsStateJson(requirementsStateJsonRef.current).promptTimeline ?? [],
-              suppressLog,
-            ),
-          });
-        }
-
-        if (pipelineToast.show && pipelineToast.message) {
-          showToast(pipelineToast.message);
-        }
-      } catch (error) {
-        showToast(toUserSafeIntegrationErrorMessage(error));
-      } finally {
-        setIntegrationPipelineBusy(false);
-      }
-    })();
+    void executeImplementationBoardIntegrationPipeline({
+      projectId,
+      projectName,
+      requirementsState: parsedRequirementsState,
+      requirementsStateJsonRef,
+      implementationBoardBlockingUserConfirmation:
+        implementationBoard.summary.blockingUserConfirmation,
+      persistChatToDb,
+      applyPendingFromOrchestrationPatch,
+      showToast,
+      setBusy: setIntegrationPipelineBusy,
+      onClientResult: setIntegrationPipelineClientResult,
+    });
   }, [
     projectId,
     projectName,
@@ -6658,13 +5946,13 @@ export function PrototypePreviewPanel({
     (selectedCodeTaskIds: readonly string[]) => {
       const pid = projectId.trim();
       if (!pid) return;
-      boardSelectedCodeTaskIdsRef.current = selectedCodeTaskIds;
+      boardSelectionBridge.recordPersistedBoardSelection(selectedCodeTaskIds);
       const nowIso = new Date().toISOString();
-      const nextBoardState = updateBoardSelectedCodeTaskIds({
+      const nextBoardState = updateBoardCheckedCodeTaskIds({
         state:
           orchestrationAwareRequirementsStateRef.current.implementationExecutionBoardStateV1,
         projectId: pid,
-        selectedCodeTaskIds,
+        checkedCodeTaskIds: selectedCodeTaskIds,
         nowIso,
       });
       applyPendingFromOrchestrationPatchRef.current({
@@ -6680,7 +5968,12 @@ export function PrototypePreviewPanel({
         { persist: true, forcePersist: true },
       );
     },
-    [projectId, applyImplementationOrchestrationResult, executionSingleChat.chatMessages],
+    [
+      projectId,
+      applyImplementationOrchestrationResult,
+      executionSingleChat.chatMessages,
+      boardSelectionBridge.recordPersistedBoardSelection,
+    ],
   );
 
   const handleImplementationBoardAction = useCallback(
@@ -7314,119 +6607,66 @@ export function PrototypePreviewPanel({
     const pid = projectId.trim();
     if (!pid) return { outcome: "blocked", message: "프로젝트 ID가 없습니다." };
     const imp = orchestrationAwareRequirementsStateRef.current;
-    const prep = prepareSelectedCodeTaskIdsForQuickRun({
-      codeTaskPlan: imp.implementationCodeTaskPlanV1,
-      selectedCodeTaskIds:
-        options?.selectedCodeTaskIds ??
-        imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
-      legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
+    const bridge = boardSelectionBridge.getBridgeSnapshot();
+    const prepEval = evaluateImplementationQuickRunPrepAndSelection({
+      projectId: pid,
+      requirementsState: imp,
+      selectedCodeTaskIdsOverride: options?.selectedCodeTaskIds,
+      bridge,
     });
-    if (prep.status === "blocked") {
-      const toastMessage =
-        prep.message.split("\n")[0]?.trim() ?? QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE;
-      const nowIso = new Date().toISOString();
+    if (!prepEval.ok) {
+      if (prepEval.kind === "mock_id_blocked") {
+        recordQuickRunClientEvent({
+          phase: "quick_run_selected_mock_id_blocked",
+          detail: prepEval.message,
+          toastMessage: prepEval.message,
+          selectedCount: 0,
+        });
+        const blockedTimeline = appendPromptTimeline(imp.promptTimeline, prepEval.timelineEntry);
+        applyPendingFromOrchestrationPatchRef.current({ promptTimeline: blockedTimeline });
+        void persistChatToDb(undefined, { promptTimeline: blockedTimeline }, undefined, { force: true });
+        return { outcome: "blocked", message: prepEval.message };
+      }
       recordQuickRunClientEvent({
-        phase: "quick_run_selected_mock_id_blocked",
-        detail: prep.message,
-        toastMessage,
-        selectedCount: 0,
+        phase: prepEval.phase,
+        detail: prepEval.message,
+        toastMessage: prepEval.message,
+        selectedCount: prepEval.selectedCount,
       });
-      const blockedEntry = buildImplementationExecutionLogTimelineEntry({
-        action: "quick_run_selected_mock_id_blocked",
-        orchestrationTraceGroup: "implementation_orchestration",
-        fields: { projectId: pid, codeTaskId: prep.codeTaskId },
+      return { outcome: "blocked", message: prepEval.message };
+    }
+    if (prepEval.repairs.length) {
+      const nowIso = new Date().toISOString();
+      const repairEntries = buildRepairTimelineEntries({
+        projectId: pid,
+        repairs: prepEval.repairs,
         nowIso,
       });
-      const blockedTimeline = appendPromptTimeline(imp.promptTimeline, blockedEntry);
-      applyPendingFromOrchestrationPatchRef.current({ promptTimeline: blockedTimeline });
-      void persistChatToDb(undefined, { promptTimeline: blockedTimeline }, undefined, { force: true });
-      return { outcome: "blocked", message: toastMessage };
-    }
-    if (prep.repairs.length) {
-      const nowIso = new Date().toISOString();
       let repairTimeline = imp.promptTimeline;
-      for (const repair of prep.repairs) {
-        repairTimeline = appendPromptTimeline(
-          repairTimeline,
-          buildImplementationExecutionLogTimelineEntry({
-            action: "quick_run_selected_mock_id_repaired",
-            orchestrationTraceGroup: "implementation_orchestration",
-            fields: {
-              projectId: pid,
-              fromCodeTaskId: repair.fromCodeTaskId,
-              toCodeTaskId: repair.toCodeTaskId,
-            },
-            nowIso,
-          }),
-        );
+      for (const entry of repairEntries) {
+        repairTimeline = appendPromptTimeline(repairTimeline, entry);
       }
       applyPendingFromOrchestrationPatchRef.current({ promptTimeline: repairTimeline });
       void persistChatToDb(undefined, { promptTimeline: repairTimeline }, undefined, { force: true });
     }
-    const selectionOverride = coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride({
-      liveCheckedCodeTaskIds: implementationBoardLiveCheckedCodeTaskIdsRef.current,
-      boardPersistHandlerRef: boardSelectedCodeTaskIdsRef.current,
-    });
-    const quickRunSelection = resolveImplementationBoardQuickRunSelection({
-      projectId: pid,
-      requirementsState: imp,
-      livePanelSummary: boardCodeTaskSelectionSummaryRef.current,
-      selectedCodeTaskIdsOverride:
-        options?.selectedCodeTaskIds ?? selectionOverride ?? prep.selectedCodeTaskIds,
-    });
-    const selectedRunnableFromBoard = quickRunSelection.selectedRunnableCodeTaskIds;
-    if (!selectedRunnableFromBoard.length) {
-      const message =
-        prep.selectedCodeTaskIds.length > 0
-          ? "선택한 CodeTask 중 현재 실행할 수 있는 작업이 없습니다."
-          : "실행할 CodeTask를 선택해 주세요.";
-      recordQuickRunClientEvent({
-        phase: prep.selectedCodeTaskIds.length ? "blocked_no_runnable_selection" : "toolbar_blocked_no_selection",
-        detail: message,
-        toastMessage: message,
-        selectedCount: prep.selectedCodeTaskIds.length,
-      });
-      return { outcome: "blocked", message };
-    }
-    const selectedCodeTaskIds = selectedRunnableFromBoard;
+    const jobSelectedCodeTaskIds = prepEval.selectedRunnableCodeTaskIds;
     recordQuickRunClientEvent({
       phase: "start_implementation_quick_run",
-      detail: selectedCodeTaskIds.length
-        ? `selected=${selectedCodeTaskIds.join(",")}`
+      detail: jobSelectedCodeTaskIds.length
+        ? `selected=${jobSelectedCodeTaskIds.join(",")}`
         : "selected=none",
-      selectedCount: selectedCodeTaskIds.length,
+      selectedCount: jobSelectedCodeTaskIds.length,
     });
     quickRunStuckGithubVerifyRef.current = null;
     quickRunCodeTaskContinuationRef.current = null;
     dbQueuedQuickRunDispatchRef.current = null;
-    const codeTaskPlan = imp.implementationCodeTaskPlanV1;
     const nowIso = new Date().toISOString();
-    let codeTaskExecutionRunsV1 =
-      parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ?? [];
-    const jobSelectedCodeTaskIds = selectedCodeTaskIds;
-    const queueItems = jobSelectedCodeTaskIds.map((codeTaskId) => {
-      const target = resolveCodeTaskDispatchTarget({
-        codeTaskId,
-        codeTaskPlan: imp.implementationCodeTaskPlanV1,
-        taskList: imp.implementationTaskListV1,
-        cursorWorkItems: imp.cursorWorkItemsV1,
-      });
-      return {
-        codeTaskId,
-        parentTaskId: target?.parentTaskId ?? codeTaskId,
-        workItemId: target?.workItem.id ?? null,
-      };
+    const queueItems = buildImplementationQuickRunQueueItems({
+      selectedCodeTaskIds: jobSelectedCodeTaskIds,
+      requirementsState: imp,
     });
-    if (typeof console !== "undefined" && console.info) {
-      console.info("[quick-run] POST start_job", {
-        projectId: pid,
-        codeTaskCount: jobSelectedCodeTaskIds.length,
-        head: jobSelectedCodeTaskIds[0],
-      });
-    }
-    const startJobRes = await postImplementationRuntimeAction({
+    const startJobRes = await postImplementationQuickRunStartJob({
       projectId: pid,
-      action: "execute_selected_runnable_codetasks",
       selectedCodeTaskIds: jobSelectedCodeTaskIds,
       queueItems,
     });
@@ -7453,94 +6693,21 @@ export function PrototypePreviewPanel({
       showToast(message);
       return { outcome: "blocked", message };
     }
-    const dispatchTarget = resolveCodeTaskDispatchTarget({
-      codeTaskId: firstCodeTaskId,
-      codeTaskPlan: imp.implementationCodeTaskPlanV1,
-      taskList: imp.implementationTaskListV1,
-      cursorWorkItems: imp.cursorWorkItemsV1,
+    const orchestration = buildQuickRunOrchestrationAfterJobStart({
+      projectId: pid,
+      jobSelectedCodeTaskIds,
+      firstCodeTaskId,
+      requirementsState: imp,
+      requirementsStateJsonRaw: requirementsStateJsonRef.current,
+      executionSetup: executionSetupRow,
+      nowIso,
     });
-    if (!dispatchTarget) {
-      const message = `CodeTask ${firstCodeTaskId ?? ""}에 연결된 WorkItem을 찾을 수 없습니다.`;
-      showToast(message);
-      return { outcome: "blocked", message };
+    if ("ok" in orchestration) {
+      showToast(orchestration.message);
+      return { outcome: "blocked", message: orchestration.message };
     }
-    const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
-      gitRepoUrl: executionSetupRow?.gitRepoUrl,
-      gitRepoName: executionSetupRow?.gitRepoName,
-      gitRepoProvider: executionSetupRow?.gitRepoProvider,
-      baseBranch: executionSetupRow?.baseBranch,
-    });
-    const developerPrompt = targetRepository
-      ? (() => {
-          const promptContext = getCodeTaskPromptContextFromMap(
-            imp.codeTaskPromptContextMapV1,
-            dispatchTarget.codeTask.codeTaskId,
-          );
-          const built = buildCodeTaskDeveloperPromptDetailed({
-            codeTask: dispatchTarget.codeTask,
-            parentTask: dispatchTarget.parentTask,
-            promptContext,
-            targetRepository,
-            baseBranch: executionSetupRow?.baseBranch ?? "main",
-            allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
-            targetRepoKind: "generated_project",
-          }).prompt.trim();
-          const copy = resolveCodeTaskDeveloperPromptForCopy({
-            projectId: pid,
-            codeTaskId: dispatchTarget.codeTask.codeTaskId,
-            codeTaskPlan: imp.implementationCodeTaskPlanV1 ?? null,
-            taskList: imp.implementationTaskListV1 ?? null,
-            cursorWorkItems: imp.cursorWorkItemsV1 ?? [],
-            runs: codeTaskExecutionRunsV1,
-            targetRepository,
-            baseBranch: executionSetupRow?.baseBranch ?? targetRepository.defaultBranch ?? "main",
-            allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
-            codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
-          });
-          return copy.ok && copy.prompt ? copy.prompt : built || undefined;
-        })()
-      : undefined;
-    const quickRunNextRun = createCodeTaskExecutionRun({
-      projectId: pid,
-      processTaskId: dispatchTarget.parentTaskId,
-      workItemId: dispatchTarget.workItem.id,
-      codeTaskId: dispatchTarget.codeTask.codeTaskId,
-      developerPrompt,
-      nowIso,
-    });
-    codeTaskExecutionRunsV1 = appendCodeTaskExecutionRun(codeTaskExecutionRunsV1, quickRunNextRun);
-    const quickRunActiveDispatch = {
-      codeTaskId: dispatchTarget.codeTask.codeTaskId,
-      parentTaskId: dispatchTarget.parentTaskId,
-      workItemId: dispatchTarget.workItem.id,
-      runId: quickRunNextRun.runId,
-    };
-    const quickRunParentTaskIds = [
-      ...new Set(
-        jobSelectedCodeTaskIds
-          .map(
-            (codeTaskId) =>
-              codeTaskPlan?.tasks.find((t) => t.codeTaskId === codeTaskId)?.parentTaskId.trim() ?? "",
-          )
-          .filter(Boolean),
-      ),
-    ];
-    const quickRun = buildImplementationQuickRunStartedPatch({
-      projectId: pid,
-      currentTaskId: dispatchTarget.parentTaskId,
-      selectedTaskIds: quickRunParentTaskIds,
-      nowIso,
-    });
-    const runtimeUiSnapshotPatch = buildPersistedActiveDispatchSnapshotPatch({
-      projectId: pid,
-      dispatch: quickRunActiveDispatch,
-      baseState: {
-        ...(parseRequirementsStateJson(requirementsStateJsonRef.current) as Record<string, unknown>),
-        implementationQuickRunV1: quickRun,
-        codeTaskExecutionRunsV1,
-      },
-      nowIso,
-    });
+    const orch = orchestration;
+    const { quickRun, codeTaskExecutionRunsV1, runtimeUiSnapshotPatch, dispatchTarget } = orch;
     applyImplementationOrchestrationResult(
       {
         messages: executionSingleChat.chatMessages,
@@ -7560,106 +6727,41 @@ export function PrototypePreviewPanel({
     if (dbRunId) {
       dbQueuedQuickRunDispatchRef.current = `${dbRunId}:${dispatchTarget.codeTask.codeTaskId}`;
     }
-    void (async () => {
-      try {
-        let dispatchOutcome = startJobRes.quickRunDispatch?.outcome;
-        let dispatchReason = startJobRes.quickRunDispatch?.reason ?? null;
-        let dispatchOk = startJobRes.quickRunDispatch?.ok === true;
-        let dispatchPatch = startJobRes.quickRunDispatch?.orchestrationPatch as
-          | PrototypeExecutionOrchestrationPersistInput
-          | undefined;
-
-        if (!dispatchOk) {
-          const res = await credentialsIncludeFetch(
-            "/api/prototype/implementation-runtime/continue-quick-run",
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                projectId: pid,
-                mode: "db_queued_auto_dispatch",
-              }),
-            },
-          );
-          const json = (await res.json()) as {
-            success?: boolean;
-            outcome?: string;
-            reason?: string;
-            orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
-          };
-          dispatchOk = json.outcome === "dispatched" || json.success === true;
-          dispatchOutcome = json.outcome;
-          dispatchReason = json.reason ?? null;
-          dispatchPatch = json.orchestrationPatch;
-        }
-
-        if (dispatchPatch) {
-          applyImplementationOrchestrationResult({
-            messages: executionSingleChat.chatMessages,
-            orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(dispatchPatch),
-          });
-        }
-
+    void continueImplementationQuickRunAfterStart({
+      projectId: pid,
+      imp,
+      startJobRes,
+      orchestration: orch,
+      nowIso,
+      enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
+      onDispatchPatch: (patch) => {
+        applyImplementationOrchestrationResult({
+          messages: executionSingleChat.chatMessages,
+          orchestrationPatch: patch,
+        });
+      },
+      persistAfterStart: async (patch) => {
         await persistChatToDb(
           resolvePrototypeExecutionSingleChatFromState(requirementsStateJson),
-          {
-            implementationQuickRunV1: quickRun,
-            codeTaskExecutionRunsV1,
-            implementationRuntimeUiSnapshotV1: runtimeUiSnapshotPatch,
-            promptTimeline: appendPromptTimeline(
-              imp.promptTimeline,
-              buildImplementationQuickRunTimelineEntry({
-                action: "implementation_quick_run_started",
-                projectId: pid,
-                taskId: dispatchTarget.parentTaskId,
-                nowIso,
-              }),
-            ),
-          },
+          patch,
           undefined,
           { awaitServer: true, force: true },
         );
-
-        if (startJobRes.bundle) {
-          setImplementationRuntimeDbBundle(startJobRes.bundle);
-        }
-        void loadImplementationRuntimeDb({ recover: false });
-
-        const dispatchNowIso = new Date().toISOString();
+      },
+      persistDispatchTimeline: (entry) => {
         void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
-          promptTimeline: appendPromptTimeline(
-            imp.promptTimeline,
-            buildImplementationQuickRunCursorDispatchTimelineEntry({
-              projectId: pid,
-              taskId: dispatchTarget.parentTaskId,
-              outcome:
-                dispatchOk || dispatchOutcome === "dispatched"
-                  ? "executed"
-                  : dispatchOutcome === "blocked"
-                    ? "blocked"
-                    : "no_op",
-              message: dispatchReason,
-              nowIso: dispatchNowIso,
-            }),
-          ),
+          promptTimeline: appendPromptTimeline(imp.promptTimeline, entry),
         });
-
-        if (dispatchOk || dispatchOutcome === "dispatched") {
-          showToast(`CodeTask ${dispatchTarget.codeTask.codeTaskId} Cursor 실행을 시작했습니다.`);
-        } else if (dispatchReason || dispatchOutcome === "skipped") {
-          showToast(
-            dispatchReason != null
-              ? formatQuickRunContinuationReason(dispatchReason)
-              : "Cursor 자동 실행이 건너뛰어졌습니다.",
-          );
-          dbQueuedQuickRunDispatchRef.current = null;
-        }
-      } catch (error) {
+      },
+      showToast,
+      onRuntimeBundle: setImplementationRuntimeDbBundle,
+      reloadRuntime: () => {
+        void loadImplementationRuntimeDb({ recover: false });
+      },
+      clearDbQueuedDispatchKey: () => {
         dbQueuedQuickRunDispatchRef.current = null;
-        const message = error instanceof Error ? error.message : String(error);
-        showToast(`Cursor 실행 시작 실패: ${message}`);
-      }
-    })();
+      },
+    });
     return { outcome: "executed" as const };
   }, [
     projectId,
@@ -7670,31 +6772,24 @@ export function PrototypePreviewPanel({
     loadImplementationRuntimeDb,
     persistChatToDb,
     requirementsStateJson,
-    executionSetupRow?.allowedPathGlobs,
-    executionSetupRow?.baseBranch,
-    executionSetupRow?.gitRepoName,
-    executionSetupRow?.gitRepoProvider,
-    executionSetupRow?.gitRepoUrl,
+    executionSetupRow,
     executionSingleChat,
     showToast,
-    formatQuickRunContinuationReason,
+    boardSelectionBridge,
   ]);
 
   useEffect(() => {
     startImplementationQuickRunRef.current = () => {
       const pid = projectId.trim();
       const imp = orchestrationAwareRequirementsStateRef.current;
-      const selectedCodeTaskIds =
-        implementationBoardLiveCheckedCodeTaskIdsRef.current ??
-        boardSelectedCodeTaskIdsRef.current ??
-        normalizeSelectedCodeTaskIds({
-          codeTaskPlan: imp.implementationCodeTaskPlanV1,
-          selectedCodeTaskIds: imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
-          legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
-        });
+      const bridgeSnap = boardSelectionBridge.getBridgeSnapshot();
+      const selectedCodeTaskIds = resolveCheckedCodeTaskIdsFromBoardBridge({
+        bridge: bridgeSnap,
+        requirementsState: imp,
+      });
       void startImplementationQuickRun({ selectedCodeTaskIds });
     };
-  }, [startImplementationQuickRun, projectId]);
+  }, [startImplementationQuickRun, projectId, boardSelectionBridge]);
 
   const handleCopyCodeTaskCursorPrompt = useCallback(
     (codeTaskId: string) => {
@@ -7757,10 +6852,9 @@ export function PrototypePreviewPanel({
       gitRepoProvider: executionSetupRow?.gitRepoProvider,
       baseBranch: executionSetupRow?.baseBranch,
     });
-    const selectedCodeTaskIds = normalizeSelectedCodeTaskIds({
-      codeTaskPlan: imp.implementationCodeTaskPlanV1,
-      selectedCodeTaskIds: imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
-      legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
+    const selectedCodeTaskIds = resolveCheckedCodeTaskIdsFromBoardBridge({
+      bridge: boardSelectionBridge.getBridgeSnapshot(),
+      requirementsState: imp,
     });
     const plan = imp.implementationCodeTaskPlanV1 ?? null;
     const currentCodeTaskId = resolveExecutionTargetCodeTaskId({
@@ -7823,56 +6917,54 @@ export function PrototypePreviewPanel({
 
     const imp = orchestrationAwareRequirementsStateRef.current;
     const board = implementationStageBoardGateContext?.board ?? null;
-    const quickRunSelection = resolveImplementationBoardQuickRunSelection({
+    const toolbarEval = evaluateImplementationToolbarQuickRun({
       projectId: pid,
       requirementsState: imp,
-      livePanelSummary: boardCodeTaskSelectionSummaryRef.current,
-      selectedCodeTaskIdsOverride: coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride({
-        liveCheckedCodeTaskIds: implementationBoardLiveCheckedCodeTaskIdsRef.current,
-        boardPersistHandlerRef: boardSelectedCodeTaskIdsRef.current,
-      }),
+      boardTaskRowCount: board?.taskRows.length ?? 0,
+      bridge: boardSelectionBridge.getBridgeSnapshot(),
     });
-    const summaryForToolbar = quickRunSelection.summary;
-    const checkedForTrace =
-      implementationBoardLiveCheckedCodeTaskIdsRef.current ??
-      boardSelectedCodeTaskIdsRef.current ??
-      [];
-    if (board?.taskRows.length && summaryForToolbar) {
-      const resolved = resolveQuickRunToolbarAction({ summary: summaryForToolbar });
+    if (toolbarEval.outcome === "blocked") {
       recordQuickRunClientEvent({
         phase: "toolbar_quick_execution",
-        detail: formatQuickRunToolbarTraceDetail({
-          boardRows: board.taskRows.length,
-          summary: summaryForToolbar,
-          resolvedAction: resolved.action,
-          checkedCodeTaskIds: checkedForTrace,
-        }),
-        selectedCount: summaryForToolbar.selectedRunnableCount,
+        detail: toolbarEval.traceDetail,
+        selectedCount: toolbarEval.selectedRunnableCount,
       });
-      if (
-        resolved.action === "blocked_no_selection" ||
-        resolved.action === "blocked_no_available_action"
-      ) {
-        recordQuickRunClientEvent({
-          phase: "toolbar_blocked_no_selection",
-          detail: `runnableCount=${summaryForToolbar.runnableCount} selectedRunnableCount=${summaryForToolbar.selectedRunnableCount} message=${resolved.message}`,
-          toastMessage: resolved.message,
-          selectedCount: summaryForToolbar.selectedRunnableCount,
-        });
-        return;
-      }
-      if (resolved.action === "prepare_integration_preview") {
-        runIntegrationPipeline();
-        return;
-      }
-      if (resolved.action === "open_preview") {
-        const url = previewUrl ?? prototypeRunSyncSnapshot.previewUrl;
-        if (url) window.open(url, "_blank", "noopener,noreferrer");
-        else showToast("Preview URL이 아직 없습니다.");
-        return;
-      }
+      recordQuickRunClientEvent({
+        phase: "toolbar_blocked_no_selection",
+        detail: toolbarEval.traceDetail,
+        toastMessage: toolbarEval.message,
+        selectedCount: toolbarEval.selectedRunnableCount,
+      });
+      return;
+    }
+    if (toolbarEval.outcome === "prepare_integration_preview") {
+      recordQuickRunClientEvent({
+        phase: "toolbar_quick_execution",
+        detail: toolbarEval.traceDetail,
+        selectedCount: toolbarEval.selectedRunnableCount,
+      });
+      runIntegrationPipeline();
+      return;
+    }
+    if (toolbarEval.outcome === "open_preview") {
+      recordQuickRunClientEvent({
+        phase: "toolbar_quick_execution",
+        detail: toolbarEval.traceDetail,
+        selectedCount: 0,
+      });
+      const url = previewUrl ?? prototypeRunSyncSnapshot.previewUrl;
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      else showToast("Preview URL이 아직 없습니다.");
+      return;
+    }
+    if (toolbarEval.outcome === "execute_selected_runnable_codetasks") {
+      recordQuickRunClientEvent({
+        phase: "toolbar_quick_execution",
+        detail: toolbarEval.traceDetail,
+        selectedCount: toolbarEval.selectedRunnableCount,
+      });
       void startImplementationQuickRun({
-        selectedCodeTaskIds: resolved.codeTaskIds,
+        selectedCodeTaskIds: toolbarEval.codeTaskIds,
       });
       return;
     }
@@ -7976,6 +7068,9 @@ export function PrototypePreviewPanel({
     implementationStageBoardGateContext,
     startImplementationQuickRun,
     runIntegrationPipeline,
+    boardSelectionBridge,
+    previewUrl,
+    prototypeRunSyncSnapshot.previewUrl,
   ]);
 
   const implementationInterviewUi = useMemo(() => {
@@ -8332,8 +7427,8 @@ export function PrototypePreviewPanel({
             onRestartTask={handleRestartBoardTask}
             onSelectedTaskIdsChange={handleBoardSelectedTaskIdsChange}
             onSelectedCodeTaskIdsChange={handleBoardSelectedCodeTaskIdsChange}
-            liveCheckedCodeTaskIdsRef={implementationBoardLiveCheckedCodeTaskIdsRef}
-            onCodeTaskSelectionSummaryChange={handleBoardCodeTaskSelectionSummaryChange}
+            liveCheckedCodeTaskIdsRef={boardSelectionBridge.liveCheckedCodeTaskIdsRef}
+            onCodeTaskSelectionSummaryChange={boardSelectionBridge.onCodeTaskSelectionSummaryChange}
             onCopyCodeTaskCursorPrompt={handleCopyCodeTaskCursorPrompt}
             onCopyDeveloperPromptsFromHeader={handleCopyDeveloperPromptsFromHeader}
             onRetryGithubVerify={() => void handleManualGithubVerifyRetry()}
@@ -8370,19 +7465,17 @@ export function PrototypePreviewPanel({
             onOpenImplementationPreview={openImplementationPreview}
             onExecuteSelectedCodeTasks={() => {
               const imp = orchestrationAwareRequirementsStateRef.current;
-              const selected = normalizeSelectedCodeTaskIds({
-                codeTaskPlan: imp.implementationCodeTaskPlanV1,
-                selectedCodeTaskIds: imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
-                legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
+              const selected = resolveCheckedCodeTaskIdsFromBoardBridge({
+                bridge: boardSelectionBridge.getBridgeSnapshot(),
+                requirementsState: imp,
               });
               void startImplementationQuickRun({ selectedCodeTaskIds: selected });
             }}
             onReworkSelectedCodeTasks={() => {
               const imp = orchestrationAwareRequirementsStateRef.current;
-              const selected = normalizeSelectedCodeTaskIds({
-                codeTaskPlan: imp.implementationCodeTaskPlanV1,
-                selectedCodeTaskIds: imp.implementationExecutionBoardStateV1?.selectedCodeTaskIds,
-                legacySelectedTaskIds: imp.implementationExecutionBoardStateV1?.selectedTaskIds,
+              const selected = resolveCheckedCodeTaskIdsFromBoardBridge({
+                bridge: boardSelectionBridge.getBridgeSnapshot(),
+                requirementsState: imp,
               });
               void startImplementationQuickRun({ selectedCodeTaskIds: selected });
             }}

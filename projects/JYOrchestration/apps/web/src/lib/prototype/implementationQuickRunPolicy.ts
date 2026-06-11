@@ -4,13 +4,6 @@ import {
   type ImplementationPrimaryActionV1,
 } from "@/lib/prototype/implementationActionRoutingPolicy";
 
-/** @deprecated alias — use ImplementationCodeTaskSelectionSummaryV1 */
-export type CodeTaskBoardSelectionSummaryV1 = ImplementationCodeTaskSelectionSummaryV1 &
-  Readonly<{
-    readonly selectedCount?: number;
-    readonly incompleteCount?: number;
-  }>;
-
 export type QuickRunToolbarResolvedActionV1 =
   | Readonly<{
       readonly action: "execute_selected_runnable_codetasks";
@@ -30,7 +23,7 @@ export type QuickRunToolbarResolvedActionV1 =
     }>;
 
 export function resolveQuickRunToolbarAction(input: {
-  readonly summary: CodeTaskBoardSelectionSummaryV1;
+  readonly summary: ImplementationCodeTaskSelectionSummaryV1;
   readonly previewReady?: boolean;
   readonly actualPreviewUrl?: string | null;
 }): QuickRunToolbarResolvedActionV1 {
@@ -66,7 +59,7 @@ function mapPrimaryActionToQuickRunResolved(
 
 export function formatQuickRunToolbarTraceDetail(input: {
   readonly boardRows: number;
-  readonly summary: CodeTaskBoardSelectionSummaryV1;
+  readonly summary: ImplementationCodeTaskSelectionSummaryV1;
   readonly resolvedAction: QuickRunToolbarResolvedActionV1["action"];
   readonly checkedCodeTaskIds?: readonly string[];
 }): string {

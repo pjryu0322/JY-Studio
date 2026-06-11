@@ -5,10 +5,16 @@ import {
 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
 import { buildImplementationTaskTreeNodes } from "@/lib/prototype/implementationExecutionBoardPanelView";
-import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
+import { buildImplementationBoardExecutionContext } from "@/lib/prototype/implementationBoardExecutionContext";
 import { normalizeSelectedCodeTaskIds } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
+
+export type ImplementationBoardSelectionBridgeSnapshotV1 = Readonly<{
+  readonly liveCheckedCodeTaskIds: readonly string[] | null;
+  readonly boardPersistSelection: readonly string[] | null;
+  readonly livePanelSummary: ImplementationCodeTaskSelectionSummaryV1 | null;
+}>;
 
 export type ImplementationBoardCodeTaskSelectionViewV1 = Readonly<{
   readonly summary: ImplementationCodeTaskSelectionSummaryV1;
@@ -58,7 +64,7 @@ export function buildImplementationBoardCodeTaskSelectionView(input: {
     legacySelectedTaskIds: boardState?.selectedTaskIds,
   });
 
-  const summaryCounts = buildImplementationExecutionSummaryCounts({
+  const summaryCounts = buildImplementationBoardExecutionContext({
     projectId,
     requirementsState: input.requirementsState,
     codeTaskPlan,
@@ -112,7 +118,7 @@ export function resolveImplementationBoardQuickRunSelection(input: {
   readonly selectedCodeTaskIdsOverride?: readonly string[] | null;
 }): Readonly<{
   readonly view: ImplementationBoardCodeTaskSelectionViewV1 | null;
-  readonly summary: CodeTaskBoardSelectionSummaryV1 | null;
+  readonly summary: ImplementationCodeTaskSelectionSummaryV1 | null;
   readonly selectedRunnableCodeTaskIds: readonly string[];
 }> {
   const view = buildImplementationBoardCodeTaskSelectionView({
@@ -123,4 +129,51 @@ export function resolveImplementationBoardQuickRunSelection(input: {
   const summary = input.livePanelSummary ?? view?.summary ?? null;
   const selectedRunnableCodeTaskIds = summary?.selectedRunnableCodeTaskIds ?? [];
   return { view, summary, selectedRunnableCodeTaskIds };
+}
+
+/** Quick-run gate: board tree summary only (no unit/outcome reconcile). */
+export function resolveSelectedRunnableCodeTaskIdsForQuickRun(input: {
+  readonly projectId: string;
+  readonly requirementsState: RequirementsStateJson;
+  readonly livePanelSummary?: ImplementationCodeTaskSelectionSummaryV1 | null;
+  readonly liveCheckedCodeTaskIds?: readonly string[] | null;
+  readonly boardPersistSelection?: readonly string[] | null;
+  readonly selectedCodeTaskIdsOverride?: readonly string[] | null;
+}): readonly string[] {
+  const override =
+    input.selectedCodeTaskIdsOverride ??
+    coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride({
+      liveCheckedCodeTaskIds: input.liveCheckedCodeTaskIds,
+      boardPersistHandlerRef: input.boardPersistSelection,
+    });
+  return (
+    resolveImplementationBoardQuickRunSelection({
+      projectId: input.projectId,
+      requirementsState: input.requirementsState,
+      livePanelSummary: input.livePanelSummary,
+      selectedCodeTaskIdsOverride: override,
+    }).selectedRunnableCodeTaskIds ?? []
+  );
+}
+
+/** Checkbox / persist selection with live board bridge override (not runnable filter). */
+export function resolveCheckedCodeTaskIdsFromBoardBridge(input: {
+  readonly bridge: ImplementationBoardSelectionBridgeSnapshotV1;
+  readonly requirementsState: RequirementsStateJson;
+}): readonly string[] {
+  const boardState = input.requirementsState.implementationExecutionBoardStateV1;
+  const override = coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride({
+    liveCheckedCodeTaskIds: input.bridge.liveCheckedCodeTaskIds,
+    boardPersistHandlerRef: input.bridge.boardPersistSelection,
+  });
+  return normalizeSelectedCodeTaskIds({
+    selectedCodeTaskIds:
+      override !== undefined && override !== null
+        ? override
+        : boardState && Object.prototype.hasOwnProperty.call(boardState, "selectedCodeTaskIds")
+          ? (boardState.selectedCodeTaskIds ?? [])
+          : undefined,
+    codeTaskPlan: input.requirementsState.implementationCodeTaskPlanV1,
+    legacySelectedTaskIds: boardState?.selectedTaskIds,
+  });
 }

@@ -254,6 +254,25 @@ export function summarizeCodeTaskBoardRowsFromTreeNodes(input: {
   return summary;
 }
 
+export function logImplementationBoardSelectionSummaryResolved(input: {
+  readonly projectId?: string | null;
+  readonly summary: ImplementationCodeTaskSelectionSummaryV1 &
+    Readonly<{ readonly selectedCount?: number; readonly incompleteCount?: number }>;
+}): void {
+  if (typeof console === "undefined" || !console.info) return;
+  console.info(
+    JSON.stringify({
+      action: "implementation_board_selection_summary_resolved",
+      projectId: input.projectId ?? null,
+      totalCount: input.summary.totalCount,
+      runnableCount: input.summary.runnableCount,
+      selectedRunnableCount: input.summary.selectedRunnableCount,
+      selectedRunnableCodeTaskIds: input.summary.selectedRunnableCodeTaskIds,
+      integrationReadyCount: input.summary.integrationReadyCount,
+    }),
+  );
+}
+
 export function listRunnableCodeTaskIdsFromBoardNodes(
   nodes: readonly { readonly codeTaskId: string; readonly boardState: ImplementationCodeTaskBoardStateV1 }[],
 ): readonly string[] {

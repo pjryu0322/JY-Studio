@@ -1,6 +1,5 @@
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { resolveImplementationPrimaryAction } from "@/lib/prototype/implementationActionRoutingPolicy";
-import type { ImplementationCodeTaskUserActionSummaryV1 } from "@/lib/prototype/implementationCodeTaskSelectionSummary";
 
 export type ImplementationBoardPrimaryActionKindV1 =
   | "prepare_integration_preview"
@@ -18,37 +17,19 @@ export type ImplementationBoardPrimaryActionStateV1 = Readonly<{
   readonly showReworkSelectedButton: boolean;
 }>;
 
-function toBoardSelectionSummary(
-  summary: ImplementationCodeTaskUserActionSummaryV1 & {
-    readonly selectedRunnableCodeTaskIds?: readonly string[];
-    readonly integrationReadyCodeTaskIds?: readonly string[];
-  },
-): ImplementationCodeTaskSelectionSummaryV1 {
-  return {
-    totalCount: summary.totalCount,
-    runnableCount: summary.runnableCount,
-    selectedRunnableCount: summary.selectedRunnableCount,
-    selectedRunnableCodeTaskIds: summary.selectedRunnableCodeTaskIds ?? [],
-    integrationReadyCount: summary.integrationReadyCount,
-    integrationReadyCodeTaskIds: summary.integrationReadyCodeTaskIds ?? [],
-  };
-}
-
 /**
  * Board footer primary actions: integration / preview only.
  * Runnable CodeTask selection + Quick Run live in the global toolbar (same routing policy).
  */
 export function resolveImplementationBoardPrimaryAction(input: {
-  readonly userActionSummary: ImplementationCodeTaskUserActionSummaryV1 & {
-    readonly selectedRunnableCodeTaskIds?: readonly string[];
-    readonly integrationReadyCodeTaskIds?: readonly string[];
-  };
+  readonly selectionSummary: ImplementationCodeTaskSelectionSummaryV1;
   readonly integratedAppPreviewReady?: boolean;
   readonly integrationPrepareEnabled?: boolean;
   readonly actualPreviewUrl?: string | null;
 }): ImplementationBoardPrimaryActionStateV1 {
+  const summary = input.selectionSummary;
   const routed = resolveImplementationPrimaryAction({
-    selectionSummary: toBoardSelectionSummary(input.userActionSummary),
+    selectionSummary: summary,
     previewReady: input.integratedAppPreviewReady,
     actualPreviewUrl: input.actualPreviewUrl,
   });
@@ -64,10 +45,9 @@ export function resolveImplementationBoardPrimaryAction(input: {
     primaryEnabled = input.integrationPrepareEnabled === true;
   } else if (
     routed.action === "blocked_no_available_action" &&
-    input.userActionSummary.runnableCount === 0 &&
-    input.userActionSummary.integrationReadyCount > 0
+    summary.runnableCount === 0 &&
+    summary.integrationReadyCount > 0
   ) {
-    // Legacy unit/outcome summaries may omit integrationReadyCodeTaskIds; counts still gate integration.
     primaryAction = "prepare_integration_preview";
     primaryLabel = "통합 및 Preview 준비";
     primaryEnabled = input.integrationPrepareEnabled === true;
@@ -75,11 +55,10 @@ export function resolveImplementationBoardPrimaryAction(input: {
     primaryAction = "open_preview";
     primaryLabel = routed.label;
     primaryEnabled = routed.enabled;
-  } else if (routed.action === "blocked_no_selection" && input.userActionSummary.runnableCount > 0) {
+  } else if (routed.action === "blocked_no_selection" && summary.runnableCount > 0) {
     primaryDisabledTitle = routed.disabledReason;
   }
 
-  const summary = input.userActionSummary;
   const showIntegrationPrepareButton =
     primaryAction === "prepare_integration_preview" ||
     summary.integrationReadyCount > 0 ||
