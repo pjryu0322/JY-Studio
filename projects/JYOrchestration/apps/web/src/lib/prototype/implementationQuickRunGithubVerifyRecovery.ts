@@ -4,6 +4,7 @@ import type { QuickRunGithubAdvanceDispatch } from "@/lib/prototype/implementati
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import {
   buildQuickRunStuckGithubVerifyDedupeKey,
+  buildGithubVerifyExecutionForCodeTask,
   resolveQuickRunStuckGithubVerifyTarget,
 } from "@/lib/prototype/implementationQuickRunStuckGithubRecovery";
 import {
@@ -164,6 +165,111 @@ export async function runQuickRunStuckGithubVerifyRecovery(
     return ok;
   } catch (error) {
     input.stuckVerifyDedupeRef.current = null;
+    const message = error instanceof Error ? error.message : String(error);
+    input.showToast(`GitHub 확인 오류: ${message}`);
+    return false;
+  }
+}
+
+export type CodeTaskGithubVerifyRecheckInput = Readonly<{
+  readonly projectId: string;
+  readonly codeTaskId: string;
+  readonly state: RequirementsStateJson;
+  readonly dbBundle?: ImplementationRuntimeBundleView | null;
+  readonly continuationTriggerRef: { current: string | null };
+  readonly enrichPatch: (
+    patch: PrototypeExecutionOrchestrationPersistInput,
+  ) => PrototypeExecutionOrchestrationPersistInput;
+  readonly applyOrchestrationPatch: (patch: PrototypeExecutionOrchestrationPersistInput) => void;
+  readonly onNextQuickRunDispatch: (dispatch: QuickRunGithubAdvanceDispatch) => void;
+  readonly showToast: (message: string) => void;
+  readonly onFailureNotice?: (message: string) => void;
+  readonly refreshRuntime?: () => void | Promise<void>;
+}>;
+
+/** CodeTask row GitHub 재확인 — poll dedupe 없이 verify-github 1회 */
+export async function runCodeTaskGithubVerifyRecheck(
+  input: CodeTaskGithubVerifyRecheckInput,
+): Promise<boolean> {
+  const pid = input.projectId.trim();
+  const codeTaskId = input.codeTaskId.trim();
+  if (!pid || !codeTaskId) return false;
+
+  const codeTaskPlan = parseImplementationCodeTaskPlanV1(input.state.implementationCodeTaskPlanV1);
+  const runs = parseCodeTaskExecutionRunsV1(input.state.codeTaskExecutionRunsV1) ?? [];
+  const execution = buildGithubVerifyExecutionForCodeTask({
+    projectId: pid,
+    codeTaskId,
+    runs,
+    codeTaskPlan,
+    taskCursorExecution: parseTaskCursorExecutionV1(input.state.taskCursorExecutionV1),
+    taskCursorExecutionHistory: input.state.taskCursorExecutionHistoryV1,
+    dbBundle: input.dbBundle,
+  });
+  if (!execution) {
+    input.onFailureNotice?.(
+      "GitHub commit을 아직 확인하지 못했습니다. 잠시 후 다시 확인해 주세요.",
+    );
+    return false;
+  }
+
+  const toastLabel = resolveGithubVerifyToastTaskLabel({
+    executionTaskId: execution.taskId,
+    codeTaskId,
+    codeTaskPlan,
+  });
+  input.showToast(formatGithubVerifyCheckingToast(toastLabel.label));
+  input.applyOrchestrationPatch(
+    input.enrichPatch({
+      promptTimeline: [
+        buildImplementationExecutionLogTimelineEntry({
+          action: "code_task_github_verify_recheck",
+          orchestrationTraceGroup: "task_cursor_execution",
+          routingDecision: codeTaskId,
+          fields: {
+            projectId: pid,
+            codeTaskId,
+            workBranch: execution.workBranch,
+          },
+        }),
+      ],
+    }),
+  );
+
+  try {
+    const json = await postTaskCursorGithubVerify(
+      buildTaskCursorGithubVerifyRequestBody({
+        projectId: pid,
+        execution,
+        state: input.state,
+        codeTaskId,
+      }),
+    );
+    const ok = applyTaskCursorGithubVerifyApiResult({
+      json,
+      enrichPatch: input.enrichPatch,
+      applyOrchestrationPatch: input.applyOrchestrationPatch,
+      shouldApplyNextDispatch: (next) => input.continuationTriggerRef.current !== next.triggerKey,
+      onNextQuickRunDispatch: (next) => {
+        input.continuationTriggerRef.current = next.triggerKey;
+        input.onNextQuickRunDispatch(next);
+      },
+    });
+    void input.refreshRuntime?.();
+    const notice = resolveTaskCursorGithubVerifyUserNotice(json);
+    const transientPending =
+      !ok &&
+      (json.verify?.detailReason === "branch_not_found" ||
+        json.verify?.detailReason === "commit_not_found" ||
+        json.verify?.reason === "commit_not_created");
+    if (!ok && !transientPending) {
+      input.onFailureNotice?.(notice);
+    }
+    if (ok || !transientPending) {
+      input.showToast(notice);
+    }
+    return ok;
+  } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     input.showToast(`GitHub 확인 오류: ${message}`);
     return false;

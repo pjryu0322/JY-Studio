@@ -106,6 +106,8 @@ export function ImplementationExecutionBoardPanel({
   onCopyCodeTaskCursorPrompt,
   onCopyDeveloperPromptsFromHeader,
   onRetryGithubVerify,
+  onRecheckCodeTaskGithubVerify,
+  githubRecheckBusyCodeTaskId,
   onRetryFailedCodeTask,
   projectId,
   implementationRuntimeStateV1,
@@ -151,6 +153,8 @@ export function ImplementationExecutionBoardPanel({
   readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
   readonly onCopyDeveloperPromptsFromHeader?: () => void;
   readonly onRetryGithubVerify?: () => void;
+  readonly onRecheckCodeTaskGithubVerify?: (codeTaskId: string) => void;
+  readonly githubRecheckBusyCodeTaskId?: string | null;
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
   readonly projectId?: string;
   readonly implementationRuntimeStateV1?: ImplementationRuntimeStateV1 | null;
@@ -788,6 +792,8 @@ export function ImplementationExecutionBoardPanel({
             );
           }}
           onCopyCodeTaskCursorPrompt={onCopyCodeTaskCursorPrompt}
+          onRecheckCodeTaskGithubVerify={onRecheckCodeTaskGithubVerify}
+          githubRecheckBusyCodeTaskId={githubRecheckBusyCodeTaskId}
           onRetryFailedCodeTask={onRetryFailedCodeTask}
           onCopyDeveloperPromptsFromHeader={onCopyDeveloperPromptsFromHeader}
           developerPromptHeaderCopyDisabled={

@@ -121,6 +121,7 @@ export async function processOrphanGithubCentricRuntimeRun(input: {
     codeTaskId,
     run: jsonRun,
     execution: historyExecution,
+    codeTaskPlan: codeTaskPlan ?? undefined,
   });
 
   if (!execution || !String(execution.workBranch ?? "").trim()) {

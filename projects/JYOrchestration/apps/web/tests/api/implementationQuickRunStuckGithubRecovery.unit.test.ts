@@ -3,6 +3,7 @@ import { startCodeTaskExecutionQueue } from "@/lib/prototype/codeTaskExecutionQu
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { resolveQuickRunStuckGithubVerifyTarget } from "@/lib/prototype/implementationQuickRunStuckGithubRecovery";
+import { buildGithubVerifyExecutionFromRunContext } from "@/lib/prototype/implementationQuickRunStuckGithubRecovery";
 import type { ImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 
@@ -391,5 +392,63 @@ describe("resolveQuickRunStuckGithubVerifyTarget", () => {
       taskCursorExecutionHistory: [],
     });
     expect(target?.workBranch).toBe("wip/cursor/code-dev-frame-001-001");
+  });
+});
+
+describe("buildGithubVerifyExecutionFromRunContext", () => {
+  it("prefers plan branchPlan workBranch over stale run workBranch for sample data", () => {
+    const launched = new Date(Date.now() - 120_000).toISOString();
+    const samplePlan: ImplementationCodeTaskPlanV1 = {
+      version: "implementation_code_task_plan_v1",
+      projectId: "p1",
+      codeTaskCount: 1,
+      tasks: [
+        {
+          codeTaskId: "CODE-DATA-SAMPLE-001",
+          parentTaskId: "DEV-MOCK-001",
+          title: "sample",
+          description: "d",
+          acceptanceCriteria: [],
+          dependencies: [],
+          branchPlan: {
+            version: "code_task_branch_plan_v1",
+            branchGroup: "data",
+            baseBranch: "wip/foundation/app-shell",
+            workBranch: "wip/data/sample-data",
+          },
+        },
+      ],
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const run: CodeTaskExecutionRunV1 = {
+      runId: "r-sample",
+      projectId: "p1",
+      processTaskId: "DEV-MOCK-001",
+      workItemId: "w1",
+      codeTaskId: "CODE-DATA-SAMPLE-001",
+      status: "github_verifying",
+      cursorRunId: "bc-sample",
+      workBranch: "wip/cursor/dev-mock-001",
+      createdAt: launched,
+      updatedAt: launched,
+    };
+    const execution = buildGithubVerifyExecutionFromRunContext({
+      projectId: "p1",
+      parentTaskId: "DEV-MOCK-001",
+      codeTaskId: "CODE-DATA-SAMPLE-001",
+      run,
+      execution: {
+        projectId: "p1",
+        taskId: "DEV-MOCK-001",
+        status: "github_verifying",
+        cursorRunId: "bc-sample",
+        workBranch: "wip/cursor/dev-mock-001",
+      } as TaskCursorExecutionV1,
+      codeTaskPlan: samplePlan,
+    });
+    expect(execution?.workBranch).toBe("wip/data/sample-data");
+    expect(execution?.baseBranch).toBe("wip/foundation/app-shell");
+    expect(execution?.taskId).toBe("DEV-SAMPLE-DATA-001");
   });
 });

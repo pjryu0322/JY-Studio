@@ -39,6 +39,8 @@ export type CodeTaskExecutionFlowStepVm = Readonly<{
   readonly id: string;
   readonly label: string;
   readonly state: CodeTaskExecutionFlowStepState;
+  /** GitHub commit 확인 단계 — 수동 재확인 아이콘 표시 */
+  readonly allowGithubRecheck?: boolean;
 }>;
 
 const FLOW_STEP_DEFS: readonly Readonly<{ readonly id: string; readonly label: string }>[] = [
@@ -417,7 +419,16 @@ export function buildCodeTaskExecutionFlowSteps(input: {
       state = "done";
     }
 
-    return { id: def.id, label, state };
+    const allowGithubRecheck =
+      def.id === "github_verifying" &&
+      (state === "active" ||
+        state === "failed" ||
+        input.phase === "github_verifying" ||
+        input.phase === "github_branch_missing" ||
+        input.phase === "github_verify_timeout" ||
+        input.phase === "cursor_completed");
+
+    return { id: def.id, label, state, ...(allowGithubRecheck ? { allowGithubRecheck: true } : {}) };
   });
 }
 

@@ -2,6 +2,7 @@ import type { CodeTaskExecutionQueueV1 } from "@/lib/prototype/codeTaskExecution
 import { resolveFirstIncompleteSelectedCodeTaskId } from "@/lib/prototype/codeTaskExecutionQueue";
 import {
   findLatestRunForCodeTask,
+  CODE_TASK_EXECUTION_RUN_VERSION,
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
 import { isTerminalCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
@@ -20,10 +21,15 @@ import type {
   RuntimeState,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import { isRuntimeInFlight } from "@/lib/prototype/implementationRuntimeState";
-import { CODE_TASK_EXECUTION_RUN_VERSION, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
+import {
+  resolveCanonicalCodeTaskRunTarget,
+} from "@/lib/prototype/codeTaskRunTargetCanonical";
 import {
   buildCodeTaskWorkBranch,
   buildTaskCursorWorkBranch,
+  resolveCodeTaskWorkBranchForTask,
+  resolveCodeTaskBaseBranchForTask,
   TASK_CURSOR_EXECUTION_VERSION,
   type TaskCursorExecutionStatus,
   type TaskCursorExecutionV1,
@@ -125,14 +131,45 @@ function resolveWorkBranch(input: {
   readonly codeTaskId?: string;
   readonly execution?: TaskCursorExecutionV1 | null;
   readonly run?: CodeTaskExecutionRunV1 | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
 }): string {
+  const codeTaskId = input.codeTaskId?.trim() ?? input.run?.codeTaskId?.trim() ?? "";
+  if (codeTaskId && input.codeTaskPlan) {
+    const task = input.codeTaskPlan.tasks.find((t) => t.codeTaskId.trim() === codeTaskId);
+    if (task) {
+      const planned = String(parseCodeTaskBranchPlanV1(task.branchPlan)?.workBranch ?? "").trim();
+      if (planned) return planned;
+      return resolveCodeTaskWorkBranchForTask({
+        codeTask: task,
+        existingWorkBranch: input.run?.workBranch ?? input.execution?.workBranch,
+      });
+    }
+  }
   const explicit = String(
     input.execution?.workBranch ?? input.run?.workBranch ?? "",
   ).trim();
   if (explicit) return explicit;
-  const codeTaskId = input.codeTaskId?.trim() ?? input.run?.codeTaskId?.trim() ?? "";
   if (codeTaskId) return buildCodeTaskWorkBranch(codeTaskId);
   return buildTaskCursorWorkBranch(input.parentTaskId);
+}
+
+function resolveWorkBaseBranch(input: {
+  readonly codeTaskId?: string;
+  readonly execution?: TaskCursorExecutionV1 | null;
+  readonly run?: CodeTaskExecutionRunV1 | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+}): string {
+  const codeTaskId = input.codeTaskId?.trim() ?? input.run?.codeTaskId?.trim() ?? "";
+  if (codeTaskId && input.codeTaskPlan) {
+    const task = input.codeTaskPlan.tasks.find((t) => t.codeTaskId.trim() === codeTaskId);
+    if (task) {
+      return resolveCodeTaskBaseBranchForTask({
+        codeTask: task,
+        fallbackBaseBranch: input.run?.baseBranch ?? input.execution?.baseBranch,
+      });
+    }
+  }
+  return String(input.run?.baseBranch ?? input.execution?.baseBranch ?? "main").trim() || "main";
 }
 
 /** verify-github API에 넘길 execution — history/run만으로도 구성 */
@@ -142,20 +179,39 @@ export function buildGithubVerifyExecutionFromRunContext(input: {
   readonly codeTaskId?: string;
   readonly run: CodeTaskExecutionRunV1 | null;
   readonly execution: TaskCursorExecutionV1 | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
 }): TaskCursorExecutionV1 | null {
   const cursorRunId = String(input.run?.cursorRunId ?? input.execution?.cursorRunId ?? "").trim();
   if (!cursorRunId) return null;
 
+  const codeTaskId = input.codeTaskId?.trim() ?? input.run?.codeTaskId?.trim() ?? "";
+  const planTask = codeTaskId
+    ? input.codeTaskPlan?.tasks.find((t) => t.codeTaskId.trim() === codeTaskId)
+    : undefined;
+  const canonicalTarget = planTask ? resolveCanonicalCodeTaskRunTarget({ codeTask: planTask }) : null;
+  const taskIdForExecution =
+    canonicalTarget?.processTaskId?.trim() ||
+    planTask?.parentTaskId?.trim() ||
+    input.parentTaskId.trim();
+
   const workBranch = resolveWorkBranch({
     parentTaskId: input.parentTaskId,
-    codeTaskId: input.codeTaskId ?? input.run?.codeTaskId,
+    codeTaskId,
     execution: input.execution,
     run: input.run,
+    codeTaskPlan: input.codeTaskPlan,
+  });
+  const baseBranch = resolveWorkBaseBranch({
+    codeTaskId,
+    execution: input.execution,
+    run: input.run,
+    codeTaskPlan: input.codeTaskPlan,
   });
 
   const executionForTask =
     input.execution &&
-    input.execution.taskId === input.parentTaskId &&
+    (input.execution.taskId === input.parentTaskId ||
+      input.execution.taskId === taskIdForExecution) &&
     (!input.run?.cursorRunId || input.execution.cursorRunId === input.run.cursorRunId)
       ? input.execution
       : null;
@@ -166,6 +222,8 @@ export function buildGithubVerifyExecutionFromRunContext(input: {
       : "cursor_running";
     return {
       ...executionForTask,
+      taskId: taskIdForExecution,
+      baseBranch,
       workBranch,
       cursorRunId,
       commitSha: undefined,
@@ -178,12 +236,12 @@ export function buildGithubVerifyExecutionFromRunContext(input: {
   return {
     version: TASK_CURSOR_EXECUTION_VERSION,
     projectId: input.projectId.trim(),
-    taskId: input.parentTaskId.trim(),
+    taskId: taskIdForExecution,
     workItemIds: [],
     status: "cursor_running",
     cursorProvider: "cursor",
-    targetRepository: String(input.run.repository ?? "").trim(),
-    baseBranch: String(input.run.baseBranch ?? "main").trim() || "main",
+    targetRepository: String(input.run.repository ?? input.execution?.targetRepository ?? "").trim(),
+    baseBranch,
     workBranch,
     cursorRunId,
     createdAt: input.run.createdAt,
@@ -334,6 +392,7 @@ export function resolveQuickRunStuckGithubVerifyTarget(input: {
     codeTaskId,
     execution: historyExecution,
     run,
+    codeTaskPlan: input.codeTaskPlan,
   });
   const dbRunForTask =
     input.dbBundle?.runs.find((r) => r.codeTaskId === codeTaskId) ?? input.dbBundle?.currentRun;
@@ -362,6 +421,7 @@ export function resolveQuickRunStuckGithubVerifyTarget(input: {
     codeTaskId,
     run,
     execution: historyExecution,
+    codeTaskPlan: input.codeTaskPlan,
   });
   if (!verifyExecution) return null;
 
@@ -386,4 +446,46 @@ export function buildQuickRunStuckGithubVerifyDedupeKey(
 ): string {
   const bucket = Math.floor(nowMs / TASK_CURSOR_GITHUB_RETRY_INTERVAL_MS);
   return `${codeTaskId}:${String(execution.cursorRunId ?? "").trim()}:github-recover:${bucket}`;
+}
+
+/** 단일 CodeTask 수동 GitHub 재확인용 execution */
+export function buildGithubVerifyExecutionForCodeTask(input: {
+  readonly projectId: string;
+  readonly codeTaskId: string;
+  readonly runs?: readonly CodeTaskExecutionRunV1[] | null;
+  readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly taskCursorExecution?: TaskCursorExecutionV1 | null;
+  readonly taskCursorExecutionHistory?: readonly TaskCursorExecutionV1[] | null;
+  readonly dbBundle?: ImplementationRuntimeBundleView | null;
+}): TaskCursorExecutionV1 | null {
+  const codeTaskId = input.codeTaskId.trim();
+  if (!codeTaskId) return null;
+
+  const parentTaskId =
+    input.codeTaskPlan?.tasks.find((task) => task.codeTaskId === codeTaskId)?.parentTaskId?.trim() ??
+    "";
+  if (!parentTaskId) return null;
+
+  const runs = mergeCodeTaskRunsWithDbRuntime({
+    jsonRuns: input.runs ?? [],
+    dbBundle: input.dbBundle,
+    codeTaskPlan: input.codeTaskPlan,
+  });
+  const run = findLatestRunForCodeTask(runs, codeTaskId);
+  const historyExecution = resolveTaskCursorExecutionForRow({
+    taskId: parentTaskId,
+    taskCursorExecutionV1: input.taskCursorExecution ?? null,
+    taskCursorExecutionHistoryV1: input.taskCursorExecutionHistory ?? null,
+  });
+  const cursorRunId = String(run?.cursorRunId ?? historyExecution?.cursorRunId ?? "").trim();
+  if (!cursorRunId) return null;
+
+  return buildGithubVerifyExecutionFromRunContext({
+    projectId: input.projectId,
+    parentTaskId,
+    codeTaskId,
+    run,
+    execution: historyExecution,
+    codeTaskPlan: input.codeTaskPlan,
+  });
 }

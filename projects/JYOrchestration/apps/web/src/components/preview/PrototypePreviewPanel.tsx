@@ -411,7 +411,10 @@ import {
   parseImplementationQuickRunV1,
   resolveQuickRunAllowedTaskIds,
 } from "@/lib/prototype/implementationQuickRun";
-import { runQuickRunStuckGithubVerifyRecovery } from "@/lib/prototype/implementationQuickRunGithubVerifyRecovery";
+import {
+  runQuickRunStuckGithubVerifyRecovery,
+  runCodeTaskGithubVerifyRecheck,
+} from "@/lib/prototype/implementationQuickRunGithubVerifyRecovery";
 import {
   applyTaskCursorGithubVerifyApiResult,
   buildTaskCursorGithubVerifyRequestBody,
@@ -2534,6 +2537,59 @@ export function PrototypePreviewPanel({
       runImplementationStageActionRef.current("VERIFY_TASK_CURSOR_GITHUB");
     }
   }, [recoverQuickRunStuckGithubVerify, loadImplementationRuntimeDb]);
+
+  const [githubRecheckBusyCodeTaskId, setGithubRecheckBusyCodeTaskId] = useState<string | null>(
+    null,
+  );
+
+  const handleRecheckCodeTaskGithubVerify = useCallback(
+    async (codeTaskId: string) => {
+      const pid = projectId.trim();
+      const id = codeTaskId.trim();
+      if (!pid || !id || githubRecheckBusyCodeTaskId === id) return;
+      setGithubRecheckBusyCodeTaskId(id);
+      try {
+        const state = parseRequirementsStateJson(requirementsStateJsonRef.current);
+        await runCodeTaskGithubVerifyRecheck({
+          projectId: pid,
+          codeTaskId: id,
+          state,
+          dbBundle: implementationRuntimeDbBundle,
+          continuationTriggerRef: quickRunCodeTaskContinuationRef,
+          enrichPatch: enrichCodeTaskRunOrchestrationPatch,
+          applyOrchestrationPatch: (patch) => {
+            applyImplementationOrchestrationResult({
+              messages: executionSingleChat.chatMessages,
+              orchestrationPatch: patch,
+            });
+          },
+          onNextQuickRunDispatch: dispatchNextQuickRunFromGithubVerify,
+          showToast,
+          onFailureNotice: (message) => appendImplementationExecutionNotice(message),
+          refreshRuntime: async () => {
+            const fetched = await fetchImplementationRuntime(pid);
+            if (fetched.success) applyImplementationRuntimeFetch(fetched);
+          },
+        });
+        await loadImplementationRuntimeDb({ recover: true });
+      } finally {
+        setGithubRecheckBusyCodeTaskId((current) => (current === id ? null : current));
+      }
+    },
+    [
+      projectId,
+      githubRecheckBusyCodeTaskId,
+      implementationRuntimeDbBundle,
+      enrichCodeTaskRunOrchestrationPatch,
+      applyImplementationOrchestrationResult,
+      executionSingleChat.chatMessages,
+      appendImplementationExecutionNotice,
+      dispatchNextQuickRunFromGithubVerify,
+      showToast,
+      applyImplementationRuntimeFetch,
+      loadImplementationRuntimeDb,
+    ],
+  );
 
   const handleRetryFailedCodeTask = useCallback(
     async (codeTaskId: string) => {
@@ -6933,6 +6989,10 @@ export function PrototypePreviewPanel({
             onCopyCodeTaskCursorPrompt={handleCopyCodeTaskCursorPrompt}
             onCopyDeveloperPromptsFromHeader={handleCopyDeveloperPromptsFromHeader}
             onRetryGithubVerify={() => void handleManualGithubVerifyRetry()}
+            onRecheckCodeTaskGithubVerify={(codeTaskId) =>
+              void handleRecheckCodeTaskGithubVerify(codeTaskId)
+            }
+            githubRecheckBusyCodeTaskId={githubRecheckBusyCodeTaskId}
             onRetryFailedCodeTask={(codeTaskId) => void handleRetryFailedCodeTask(codeTaskId)}
             projectId={projectId.trim()}
             implementationRuntimeStateV1={resolveImplementationRuntimeStateForRead({

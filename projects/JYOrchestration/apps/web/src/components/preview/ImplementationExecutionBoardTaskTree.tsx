@@ -27,12 +27,35 @@ function CodeTaskCursorPromptCopyIcon({ size = 14 }: { readonly size?: number })
   );
 }
 
+function CodeTaskGithubRecheckIcon({ size = 14 }: { readonly size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M21 12a9 9 0 1 1-3-6.7" />
+      <polyline points="21 3 21 9 15 9" />
+    </svg>
+  );
+}
+
 function ExecutionFlowSteps({
   steps,
   onCopyCursorPrompt,
+  onRecheckGithubVerify,
+  githubRecheckBusy,
 }: {
   readonly steps: readonly CodeTaskExecutionFlowStepVm[];
   readonly onCopyCursorPrompt?: () => void;
+  readonly onRecheckGithubVerify?: () => void;
+  readonly githubRecheckBusy?: boolean;
 }) {
   if (!steps.length) return null;
   return (
@@ -80,6 +103,22 @@ function ExecutionFlowSteps({
                   <CodeTaskCursorPromptCopyIcon />
                 </button>
               ) : null}
+              {step.allowGithubRecheck && onRecheckGithubVerify ? (
+                <button
+                  type="button"
+                  className={styles.taskTreeCopyPromptButton}
+                  aria-label="GitHub commit 재확인"
+                  title="GitHub commit 재확인"
+                  data-testid="implementation-code-task-github-recheck"
+                  disabled={githubRecheckBusy === true}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRecheckGithubVerify();
+                  }}
+                >
+                  <CodeTaskGithubRecheckIcon />
+                </button>
+              ) : null}
             </li>
           );
         })}
@@ -92,11 +131,15 @@ function CodeTaskSelectedDetail({
   node,
   codeAgentProgress,
   onCopyCursorPrompt,
+  onRecheckGithubVerify,
+  githubRecheckBusy,
   onRetryFailedCodeTask,
 }: {
   readonly node: ImplementationCodeTaskTreeNode;
   readonly codeAgentProgress?: CodeAgentExecutionProgressView;
   readonly onCopyCursorPrompt?: (codeTaskId: string) => void;
+  readonly onRecheckGithubVerify?: (codeTaskId: string) => void;
+  readonly githubRecheckBusy?: boolean;
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
 }) {
   const cursorMatchesParent =
@@ -149,6 +192,10 @@ function CodeTaskSelectedDetail({
         onCopyCursorPrompt={
           onCopyCursorPrompt ? () => onCopyCursorPrompt(node.codeTaskId) : undefined
         }
+        onRecheckGithubVerify={
+          onRecheckGithubVerify ? () => onRecheckGithubVerify(node.codeTaskId) : undefined
+        }
+        githubRecheckBusy={githubRecheckBusy}
       />
       {showInlineExecution && inlineExecution ? (
         <CodeTaskInlineExecutionDetailBlock detail={inlineExecution} />
@@ -163,6 +210,8 @@ function FlatCodeTaskListItem({
   onSelect,
   onToggleChecked,
   onCopyCursorPrompt,
+  onRecheckGithubVerify,
+  githubRecheckBusyCodeTaskId,
   onRetryFailedCodeTask,
 }: {
   readonly node: ImplementationCodeTaskTreeNode;
@@ -170,6 +219,8 @@ function FlatCodeTaskListItem({
   readonly onSelect: (parentTaskId: string, codeTaskId: string) => void;
   readonly onToggleChecked?: (codeTaskId: string, checked: boolean) => void;
   readonly onCopyCursorPrompt?: (codeTaskId: string) => void;
+  readonly onRecheckGithubVerify?: (codeTaskId: string) => void;
+  readonly githubRecheckBusyCodeTaskId?: string | null;
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
 }) {
   const itemClass = [styles.taskTreeCodeTaskItem, styles.taskTreeItem].join(" ");
@@ -223,12 +274,14 @@ function FlatCodeTaskListItem({
           </span>
         </button>
       </div>
-      {node.pollStatusLabel ? (
+      {node.pollStatusLabel || githubRecheckBusyCodeTaskId === node.codeTaskId ? (
         <div
           className={styles.taskTreePollStatus}
           data-testid={`implementation-code-task-poll-status-${node.codeTaskId}`}
         >
-          {node.pollStatusLabel}
+          {githubRecheckBusyCodeTaskId === node.codeTaskId
+            ? "GitHub commit 재확인 중..."
+            : node.pollStatusLabel}
         </div>
       ) : null}
       {node.isSelected ? (
@@ -236,6 +289,8 @@ function FlatCodeTaskListItem({
           node={node}
           codeAgentProgress={codeAgentProgress}
           onCopyCursorPrompt={onCopyCursorPrompt}
+          onRecheckGithubVerify={onRecheckGithubVerify}
+          githubRecheckBusy={githubRecheckBusyCodeTaskId === node.codeTaskId}
           onRetryFailedCodeTask={onRetryFailedCodeTask}
         />
       ) : null}
@@ -252,6 +307,8 @@ export function ImplementationExecutionBoardTaskTree({
   onToggleSelectAll,
   onToggleCodeTaskChecked,
   onCopyCodeTaskCursorPrompt,
+  onRecheckCodeTaskGithubVerify,
+  githubRecheckBusyCodeTaskId,
   onRetryFailedCodeTask,
   onCopyDeveloperPromptsFromHeader,
   developerPromptHeaderCopyDisabled,
@@ -270,6 +327,8 @@ export function ImplementationExecutionBoardTaskTree({
   readonly onToggleSelectAll?: (checked: boolean) => void;
   readonly onToggleCodeTaskChecked?: (codeTaskId: string, checked: boolean) => void;
   readonly onCopyCodeTaskCursorPrompt?: (codeTaskId: string) => void;
+  readonly onRecheckCodeTaskGithubVerify?: (codeTaskId: string) => void;
+  readonly githubRecheckBusyCodeTaskId?: string | null;
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
   readonly onCopyDeveloperPromptsFromHeader?: () => void;
   readonly developerPromptHeaderCopyDisabled?: boolean;
@@ -344,6 +403,8 @@ export function ImplementationExecutionBoardTaskTree({
           onSelect={(parentTaskId, codeTaskId) => onSelectCodeTask?.(parentTaskId, codeTaskId)}
           onToggleChecked={onToggleCodeTaskChecked}
           onCopyCursorPrompt={onCopyCodeTaskCursorPrompt}
+          onRecheckGithubVerify={onRecheckCodeTaskGithubVerify}
+          githubRecheckBusyCodeTaskId={githubRecheckBusyCodeTaskId}
           onRetryFailedCodeTask={onRetryFailedCodeTask}
         />
       ))}
