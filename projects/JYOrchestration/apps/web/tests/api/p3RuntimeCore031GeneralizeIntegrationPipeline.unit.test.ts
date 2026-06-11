@@ -186,9 +186,9 @@ describe("P3-Runtime-Core-03-1 pipeline wiring", () => {
     expect(src).toContain("projectIntegrationPipelineContextLogFields");
   });
 
-  it("8. implementation wrapper delegates to runProjectIntegrationPipeline", () => {
-    const src = readFileSync(join(prototypeDir, "implementationIntegrationStepPipelineService.ts"), "utf8");
-    expect(src).toContain("runProjectIntegrationPipeline");
+  it("8. board integration pipeline client delegates to prepare-only integration path", () => {
+    const src = readFileSync(join(prototypeDir, "implementationBoardIntegrationPipelineRun.ts"), "utf8");
+    expect(src).toContain("runProjectIntegrationPrepareOnly");
   });
 
   it("9. run-pipeline route uses runProjectIntegrationPipeline as primary path", () => {

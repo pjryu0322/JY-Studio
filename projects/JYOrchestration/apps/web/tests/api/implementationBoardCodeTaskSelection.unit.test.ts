@@ -7,22 +7,22 @@ import {
   resolveQuickRunSelectionSummaryFromBoardView,
 } from "@/lib/prototype/implementationBoardCodeTaskSelection";
 import { boardTreeNode } from "./implementationBoardSummaryTestHelpers";
-import { evaluateQuickRunExecutionSelectionGate } from "@/lib/prototype/implementationExecutionButtonPolicy";
+import { evaluateSelectedRunnableCodeTasksGateFromBoard } from "@/lib/prototype/implementationCodeTaskBoardState";
 
 describe("evaluateQuickRunExecutionSelectionGate with board runnable ids", () => {
   it("accepts selection when board runnable set includes selected sample task", () => {
-    const gate = evaluateQuickRunExecutionSelectionGate({
+    const gate = evaluateSelectedRunnableCodeTasksGateFromBoard({
       selectedCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
-      runnableCodeTaskIdsFromBoard: ["CODE-DATA-SAMPLE-001"],
+      runnableCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
     });
     expect(gate.ok).toBe(true);
     expect(gate.runnableIds).toEqual(["CODE-DATA-SAMPLE-001"]);
   });
 
   it("rejects when board runnable set does not include selection", () => {
-    const gate = evaluateQuickRunExecutionSelectionGate({
+    const gate = evaluateSelectedRunnableCodeTasksGateFromBoard({
       selectedCodeTaskIds: ["CODE-DONE-001"],
-      runnableCodeTaskIdsFromBoard: ["CODE-DATA-SAMPLE-001"],
+      runnableCodeTaskIds: ["CODE-DATA-SAMPLE-001"],
     });
     expect(gate.ok).toBe(false);
   });
