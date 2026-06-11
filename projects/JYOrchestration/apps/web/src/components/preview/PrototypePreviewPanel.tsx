@@ -291,10 +291,9 @@ import {
   prepareSelectedCodeTaskIdsForQuickRun,
   QUICK_RUN_MOCK_CODE_TASK_ID_BLOCKED_MESSAGE,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
-import { evaluateQuickRunExecutionSelectionGate } from "@/lib/prototype/implementationExecutionButtonPolicy";
 import {
-  buildImplementationBoardCodeTaskSelectionView,
-  listRunnableCodeTaskIdsForImplementationBoardView,
+  coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride,
+  resolveImplementationBoardQuickRunSelection,
 } from "@/lib/prototype/implementationBoardCodeTaskSelection";
 import {
   type CodeTaskBoardSelectionSummaryV1,
@@ -7364,28 +7363,18 @@ export function PrototypePreviewPanel({
       applyPendingFromOrchestrationPatchRef.current({ promptTimeline: repairTimeline });
       void persistChatToDb(undefined, { promptTimeline: repairTimeline }, undefined, { force: true });
     }
-    const runnableCodeTaskIdsFromBoard = listRunnableCodeTaskIdsForImplementationBoardView({
-      projectId: pid,
-      requirementsState: imp,
-      selectedCodeTaskIds: prep.selectedCodeTaskIds,
+    const selectionOverride = coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride({
+      liveCheckedCodeTaskIds: implementationBoardLiveCheckedCodeTaskIdsRef.current,
+      boardPersistHandlerRef: boardSelectedCodeTaskIdsRef.current,
     });
-    const selectionView = buildImplementationBoardCodeTaskSelectionView({
+    const quickRunSelection = resolveImplementationBoardQuickRunSelection({
       projectId: pid,
       requirementsState: imp,
+      livePanelSummary: boardCodeTaskSelectionSummaryRef.current,
       selectedCodeTaskIdsOverride:
-        options?.selectedCodeTaskIds ??
-        implementationBoardLiveCheckedCodeTaskIdsRef.current ??
-        boardSelectedCodeTaskIdsRef.current,
+        options?.selectedCodeTaskIds ?? selectionOverride ?? prep.selectedCodeTaskIds,
     });
-    const selectedRunnableFromBoard =
-      (boardCodeTaskSelectionSummaryRef.current?.selectedRunnableCodeTaskIds.length
-        ? boardCodeTaskSelectionSummaryRef.current.selectedRunnableCodeTaskIds
-        : null) ??
-      selectionView?.summary.selectedRunnableCodeTaskIds ??
-      evaluateQuickRunExecutionSelectionGate({
-        selectedCodeTaskIds: prep.selectedCodeTaskIds,
-        runnableCodeTaskIdsFromBoard,
-      }).runnableIds;
+    const selectedRunnableFromBoard = quickRunSelection.selectedRunnableCodeTaskIds;
     if (!selectedRunnableFromBoard.length) {
       const message =
         prep.selectedCodeTaskIds.length > 0
@@ -7437,7 +7426,7 @@ export function PrototypePreviewPanel({
     }
     const startJobRes = await postImplementationRuntimeAction({
       projectId: pid,
-      action: "start_job",
+      action: "execute_selected_runnable_codetasks",
       selectedCodeTaskIds: jobSelectedCodeTaskIds,
       queueItems,
     });
@@ -7834,18 +7823,20 @@ export function PrototypePreviewPanel({
 
     const imp = orchestrationAwareRequirementsStateRef.current;
     const board = implementationStageBoardGateContext?.board ?? null;
-    const liveSummary = boardCodeTaskSelectionSummaryRef.current;
-    const liveSelectedIds = implementationBoardLiveCheckedCodeTaskIdsRef.current;
-    const selectionOverride =
-      liveSelectedIds !== null && liveSelectedIds !== undefined
-        ? liveSelectedIds
-        : boardSelectedCodeTaskIdsRef.current;
-    const selectionView = buildImplementationBoardCodeTaskSelectionView({
+    const quickRunSelection = resolveImplementationBoardQuickRunSelection({
       projectId: pid,
       requirementsState: imp,
-      selectedCodeTaskIdsOverride: selectionOverride,
+      livePanelSummary: boardCodeTaskSelectionSummaryRef.current,
+      selectedCodeTaskIdsOverride: coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride({
+        liveCheckedCodeTaskIds: implementationBoardLiveCheckedCodeTaskIdsRef.current,
+        boardPersistHandlerRef: boardSelectedCodeTaskIdsRef.current,
+      }),
     });
-    const summaryForToolbar = liveSummary ?? selectionView?.summary ?? null;
+    const summaryForToolbar = quickRunSelection.summary;
+    const checkedForTrace =
+      implementationBoardLiveCheckedCodeTaskIdsRef.current ??
+      boardSelectedCodeTaskIdsRef.current ??
+      [];
     if (board?.taskRows.length && summaryForToolbar) {
       const resolved = resolveQuickRunToolbarAction({ summary: summaryForToolbar });
       recordQuickRunClientEvent({
@@ -7854,20 +7845,30 @@ export function PrototypePreviewPanel({
           boardRows: board.taskRows.length,
           summary: summaryForToolbar,
           resolvedAction: resolved.action,
+          checkedCodeTaskIds: checkedForTrace,
         }),
         selectedCount: summaryForToolbar.selectedRunnableCount,
       });
-      if (resolved.action === "blocked_no_selection") {
+      if (
+        resolved.action === "blocked_no_selection" ||
+        resolved.action === "blocked_no_available_action"
+      ) {
         recordQuickRunClientEvent({
           phase: "toolbar_blocked_no_selection",
-          detail: `runnableCount=${summaryForToolbar.runnableCount} selectedRunnableCount=0 message=${resolved.message}`,
+          detail: `runnableCount=${summaryForToolbar.runnableCount} selectedRunnableCount=${summaryForToolbar.selectedRunnableCount} message=${resolved.message}`,
           toastMessage: resolved.message,
-          selectedCount: 0,
+          selectedCount: summaryForToolbar.selectedRunnableCount,
         });
         return;
       }
       if (resolved.action === "prepare_integration_preview") {
         runIntegrationPipeline();
+        return;
+      }
+      if (resolved.action === "open_preview") {
+        const url = previewUrl ?? prototypeRunSyncSnapshot.previewUrl;
+        if (url) window.open(url, "_blank", "noopener,noreferrer");
+        else showToast("Preview URL이 아직 없습니다.");
         return;
       }
       void startImplementationQuickRun({

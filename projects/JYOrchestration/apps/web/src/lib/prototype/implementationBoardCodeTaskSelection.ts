@@ -8,10 +8,10 @@ import { buildImplementationTaskTreeNodes } from "@/lib/prototype/implementation
 import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
 import { normalizeSelectedCodeTaskIds } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import type { CodeTaskBoardSelectionSummaryV1 } from "@/lib/prototype/implementationQuickRunPolicy";
+import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
 
 export type ImplementationBoardCodeTaskSelectionViewV1 = Readonly<{
-  readonly summary: CodeTaskBoardSelectionSummaryV1;
+  readonly summary: ImplementationCodeTaskSelectionSummaryV1;
   readonly selectedCodeTaskIds: readonly string[];
   readonly runnableCodeTaskIds: readonly string[];
 }>;
@@ -81,7 +81,7 @@ export function buildImplementationBoardCodeTaskSelectionView(input: {
 
   const summary = summarizeCodeTaskBoardRowsFromTreeNodes({
     nodes,
-    selectedCodeTaskIds,
+    checkedCodeTaskIds: selectedCodeTaskIds,
   });
 
   return {
@@ -91,16 +91,36 @@ export function buildImplementationBoardCodeTaskSelectionView(input: {
   };
 }
 
-/** @deprecated use buildImplementationBoardCodeTaskSelectionView */
-export function listRunnableCodeTaskIdsForImplementationBoardView(input: {
+/** Panel local checkbox ids beat persist-handler ref (toolbar quick run). */
+export function coalesceImplementationBoardLiveSelectedCodeTaskIdsOverride(input: {
+  readonly liveCheckedCodeTaskIds?: readonly string[] | null;
+  readonly boardPersistHandlerRef?: readonly string[] | null;
+}): readonly string[] | null | undefined {
+  if (input.liveCheckedCodeTaskIds !== undefined && input.liveCheckedCodeTaskIds !== null) {
+    return input.liveCheckedCodeTaskIds;
+  }
+  return input.boardPersistHandlerRef;
+}
+
+/**
+ * Quick Run / toolbar: prefer panel-rendered summary (header counts), else rebuilt view.
+ */
+export function resolveImplementationBoardQuickRunSelection(input: {
   readonly projectId: string;
   readonly requirementsState: RequirementsStateJson;
-  readonly selectedCodeTaskIds?: readonly string[] | null;
-}): readonly string[] {
+  readonly livePanelSummary?: ImplementationCodeTaskSelectionSummaryV1 | null;
+  readonly selectedCodeTaskIdsOverride?: readonly string[] | null;
+}): Readonly<{
+  readonly view: ImplementationBoardCodeTaskSelectionViewV1 | null;
+  readonly summary: CodeTaskBoardSelectionSummaryV1 | null;
+  readonly selectedRunnableCodeTaskIds: readonly string[];
+}> {
   const view = buildImplementationBoardCodeTaskSelectionView({
     projectId: input.projectId,
     requirementsState: input.requirementsState,
-    selectedCodeTaskIdsOverride: input.selectedCodeTaskIds,
+    selectedCodeTaskIdsOverride: input.selectedCodeTaskIdsOverride,
   });
-  return view?.runnableCodeTaskIds ?? [];
+  const summary = input.livePanelSummary ?? view?.summary ?? null;
+  const selectedRunnableCodeTaskIds = summary?.selectedRunnableCodeTaskIds ?? [];
+  return { view, summary, selectedRunnableCodeTaskIds };
 }

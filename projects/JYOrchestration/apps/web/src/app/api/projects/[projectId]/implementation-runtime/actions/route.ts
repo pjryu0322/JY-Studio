@@ -40,6 +40,7 @@ type RouteContext = { readonly params: Promise<{ projectId: string }> };
 type ActionBody = {
   readonly action?: string;
   readonly selectedCodeTaskIds?: readonly string[];
+  readonly codeTaskIds?: readonly string[];
   readonly jobId?: string;
   readonly cursorAgentId?: string;
   readonly branchName?: string | null;
@@ -70,8 +71,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       throw error;
     }
 
-    const body = (await request.json().catch(() => ({}))) as ActionBody;
-    const action = String(body.action ?? "").trim();
+    let body = (await request.json().catch(() => ({}))) as ActionBody;
+    let action = String(body.action ?? "").trim();
 
     if (isDisabledImplementationRuntimeUserAction(action)) {
       return NextResponse.json(
@@ -91,6 +92,39 @@ export async function POST(request: NextRequest, context: RouteContext) {
         selectedCount,
       });
       return NextResponse.json({ success: true });
+    }
+
+    if (action === "execute_selected_runnable_codetasks") {
+      const idsRaw = (body.codeTaskIds ?? body.selectedCodeTaskIds ?? [])
+        .map(String)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (!idsRaw.length) {
+        return NextResponse.json(
+          { success: false, message: "실행할 CodeTask를 선택해 주세요." },
+          { status: 400 },
+        );
+      }
+      body = { ...body, action: "start_job", selectedCodeTaskIds: idsRaw };
+      action = "start_job";
+    }
+
+    if (action === "prepare_integration_preview") {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "통합 및 Preview 준비는 POST /api/prototype/integration/run-pipeline 을 사용하세요.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (action === "open_preview") {
+      return NextResponse.json(
+        { success: false, message: "Preview 보기는 클라이언트에서 actualPreviewUrl을 엽니다." },
+        { status: 400 },
+      );
     }
 
     if (action === "start_job") {

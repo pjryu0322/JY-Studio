@@ -574,7 +574,7 @@ export function ImplementationExecutionBoardPanel({
     () =>
       summarizeCodeTaskBoardRowsFromTreeNodes({
         nodes: taskTreeNodes,
-        selectedCodeTaskIds: checkedCodeTaskIds,
+        checkedCodeTaskIds,
       }),
     [taskTreeNodes, checkedCodeTaskIds],
   );

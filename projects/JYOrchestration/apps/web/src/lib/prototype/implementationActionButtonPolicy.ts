@@ -1,3 +1,5 @@
+import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
+import { resolveImplementationPrimaryAction } from "@/lib/prototype/implementationActionRoutingPolicy";
 import type { ImplementationCodeTaskUserActionSummaryV1 } from "@/lib/prototype/implementationCodeTaskSelectionSummary";
 
 export type ImplementationBoardPrimaryActionKindV1 =
@@ -16,38 +18,74 @@ export type ImplementationBoardPrimaryActionStateV1 = Readonly<{
   readonly showReworkSelectedButton: boolean;
 }>;
 
+function toBoardSelectionSummary(
+  summary: ImplementationCodeTaskUserActionSummaryV1 & {
+    readonly selectedRunnableCodeTaskIds?: readonly string[];
+    readonly integrationReadyCodeTaskIds?: readonly string[];
+  },
+): ImplementationCodeTaskSelectionSummaryV1 {
+  return {
+    totalCount: summary.totalCount,
+    runnableCount: summary.runnableCount,
+    selectedRunnableCount: summary.selectedRunnableCount,
+    selectedRunnableCodeTaskIds: summary.selectedRunnableCodeTaskIds ?? [],
+    integrationReadyCount: summary.integrationReadyCount,
+    integrationReadyCodeTaskIds: summary.integrationReadyCodeTaskIds ?? [],
+  };
+}
+
 /**
  * Board footer primary actions: integration / preview only.
- * Runnable CodeTask selection + Quick Run live in the global toolbar.
+ * Runnable CodeTask selection + Quick Run live in the global toolbar (same routing policy).
  */
 export function resolveImplementationBoardPrimaryAction(input: {
-  readonly userActionSummary: ImplementationCodeTaskUserActionSummaryV1;
+  readonly userActionSummary: ImplementationCodeTaskUserActionSummaryV1 & {
+    readonly selectedRunnableCodeTaskIds?: readonly string[];
+    readonly integrationReadyCodeTaskIds?: readonly string[];
+  };
   readonly integratedAppPreviewReady?: boolean;
   readonly integrationPrepareEnabled?: boolean;
+  readonly actualPreviewUrl?: string | null;
 }): ImplementationBoardPrimaryActionStateV1 {
-  const summary = input.userActionSummary;
+  const routed = resolveImplementationPrimaryAction({
+    selectionSummary: toBoardSelectionSummary(input.userActionSummary),
+    previewReady: input.integratedAppPreviewReady,
+    actualPreviewUrl: input.actualPreviewUrl,
+  });
 
   let primaryAction: ImplementationBoardPrimaryActionKindV1 = null;
   let primaryLabel: string | null = null;
   let primaryEnabled = false;
   let primaryDisabledTitle: string | null = null;
 
-  if (summary.runnableCount === 0 && summary.integrationReadyCount > 0) {
+  if (routed.action === "prepare_integration_preview") {
+    primaryAction = "prepare_integration_preview";
+    primaryLabel = routed.label;
+    primaryEnabled = input.integrationPrepareEnabled === true;
+  } else if (
+    routed.action === "blocked_no_available_action" &&
+    input.userActionSummary.runnableCount === 0 &&
+    input.userActionSummary.integrationReadyCount > 0
+  ) {
+    // Legacy unit/outcome summaries may omit integrationReadyCodeTaskIds; counts still gate integration.
     primaryAction = "prepare_integration_preview";
     primaryLabel = "통합 및 Preview 준비";
     primaryEnabled = input.integrationPrepareEnabled === true;
-  } else if (input.integratedAppPreviewReady && summary.runnableCount === 0) {
+  } else if (routed.action === "open_preview") {
     primaryAction = "open_preview";
-    primaryLabel = "Preview 보기";
-    primaryEnabled = true;
+    primaryLabel = routed.label;
+    primaryEnabled = routed.enabled;
+  } else if (routed.action === "blocked_no_selection" && input.userActionSummary.runnableCount > 0) {
+    primaryDisabledTitle = routed.disabledReason;
   }
 
+  const summary = input.userActionSummary;
   const showIntegrationPrepareButton =
     primaryAction === "prepare_integration_preview" ||
     summary.integrationReadyCount > 0 ||
     input.integratedAppPreviewReady === true;
 
-  const state: ImplementationBoardPrimaryActionStateV1 = {
+  return {
     primaryAction,
     primaryLabel,
     primaryEnabled,
@@ -56,17 +94,4 @@ export function resolveImplementationBoardPrimaryAction(input: {
     showExecuteSelectedButton: false,
     showReworkSelectedButton: false,
   };
-
-  console.info(
-    JSON.stringify({
-      action: "implementation_primary_action_resolved",
-      primaryAction: state.primaryAction,
-      primaryEnabled: state.primaryEnabled,
-      runnableCount: summary.runnableCount,
-      integrationReadyCount: summary.integrationReadyCount,
-      boardExecuteButton: false,
-    }),
-  );
-
-  return state;
 }

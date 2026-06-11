@@ -109,6 +109,15 @@ function labelIndicatesCompleted(statusLabel: string, progressLabel: string): bo
   );
 }
 
+export type ImplementationCodeTaskSelectionSummaryV1 = Readonly<{
+  readonly totalCount: number;
+  readonly runnableCount: number;
+  readonly selectedRunnableCount: number;
+  readonly selectedRunnableCodeTaskIds: readonly string[];
+  readonly integrationReadyCount: number;
+  readonly integrationReadyCodeTaskIds: readonly string[];
+}>;
+
 export function resolveCodeTaskBoardState(input: {
   readonly codeTaskId: string;
   readonly title: string;
@@ -195,18 +204,17 @@ export function resolveCodeTaskBoardState(input: {
 
 export function summarizeCodeTaskBoardRowsFromTreeNodes(input: {
   readonly nodes: readonly { readonly codeTaskId: string; readonly boardState: ImplementationCodeTaskBoardStateV1 }[];
+  /** Checkbox SoT (preferred). */
+  readonly checkedCodeTaskIds?: readonly string[] | null;
+  /** @deprecated use checkedCodeTaskIds */
   readonly selectedCodeTaskIds?: readonly string[] | null;
-}): Readonly<{
-  readonly totalCount: number;
-  readonly runnableCount: number;
-  readonly selectedCount: number;
-  readonly selectedRunnableCount: number;
-  readonly selectedRunnableCodeTaskIds: readonly string[];
-  readonly integrationReadyCount: number;
-  readonly integrationReadyCodeTaskIds: readonly string[];
-  readonly incompleteCount: number;
-}> {
-  const selectedSet = new Set((input.selectedCodeTaskIds ?? []).map((id) => id.trim()).filter(Boolean));
+}): ImplementationCodeTaskSelectionSummaryV1 &
+  Readonly<{
+    readonly selectedCount: number;
+    readonly incompleteCount: number;
+  }> {
+  const checked = input.checkedCodeTaskIds ?? input.selectedCodeTaskIds ?? [];
+  const selectedSet = new Set(checked.map((id) => id.trim()).filter(Boolean));
   const runnableCount = input.nodes.filter((n) => n.boardState.isRunnableForUser).length;
   const integrationReadyNodes = input.nodes.filter((n) => n.boardState.isIntegrationReady);
   const integrationReadyCount = integrationReadyNodes.length;
@@ -233,12 +241,13 @@ export function summarizeCodeTaskBoardRowsFromTreeNodes(input: {
 
   console.info(
     JSON.stringify({
-      action: "codetask_runnable_summary_resolved",
+      action: "implementation_selection_summary_resolved",
       totalCount: summary.totalCount,
       runnableCount: summary.runnableCount,
       selectedRunnableCount: summary.selectedRunnableCount,
       selectedRunnableCodeTaskIds: summary.selectedRunnableCodeTaskIds,
       integrationReadyCount: summary.integrationReadyCount,
+      integrationReadyCodeTaskIds: summary.integrationReadyCodeTaskIds,
     }),
   );
 
