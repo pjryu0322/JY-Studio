@@ -109,14 +109,12 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
     implementationRequirements: [
       "LoadingState, Spinner, Skeleton 또는 유사 컴포넌트 구현",
       "loading flag 기반 표시/숨김 처리",
-      "기존 화면 중 최소 1곳에 연동",
-      "정상 완료 후 로딩 상태가 사라져야 함",
+      "정상 완료 후 로딩 상태가 사라지도록 props로 표현",
       "접근성: aria-busy 또는 status role 검토",
     ],
     verificationChecklist: [
-      "로딩 중 UI 표시 확인",
-      "완료 후 정상 화면 복귀 확인",
-      "기존 정상 화면 회귀 없음 확인",
+      "loading prop 또는 상태 값에 따라 로딩 UI와 완료 상태 UI를 구분해 렌더링할 수 있다.",
+      "실제 화면 연결은 integration Task에서 수행한다.",
     ],
   },
   error_message: {
@@ -127,13 +125,11 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
       "ErrorMessage 또는 ErrorState 공통 컴포넌트 구현",
       "message, description, variant, retry action 지원",
       "role=\"alert\" 또는 aria-live 적용",
-      "기존 화면/상태 흐름 중 최소 1곳에 연동",
-      "정상/오류/재시도 흐름 구분",
+      "정상/오류/재시도 흐름을 props로 구분",
     ],
     verificationChecklist: [
-      "오류 상태가 화면에 표시되는지 확인",
-      "retry action이 있을 때 버튼 표시 확인",
-      "정상 상태 회귀 없음 확인",
+      "message, description, variant, retry action prop에 따라 오류 안내와 재시도 액션을 렌더링할 수 있다.",
+      "실제 화면 연결은 integration Task에서 수행한다.",
     ],
   },
   empty_state: {
@@ -143,13 +139,11 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
     implementationRequirements: [
       "EmptyState 또는 NoResultState 공통 컴포넌트 구현",
       "title, description, optional action 지원",
-      "기존 목록/검색/결과 화면 중 최소 1곳에 연동",
-      "오류 상태와 빈 상태가 구분되어야 함",
+      "오류 상태와 빈 상태가 props로 구분되어야 함",
     ],
     verificationChecklist: [
-      "데이터 없음 상태에서 EmptyState 표시",
-      "action이 있으면 동작 확인",
-      "데이터가 있을 때 기존 목록 표시 유지",
+      "title, description, optional action prop에 따라 빈 결과 안내를 렌더링할 수 있다.",
+      "데이터 존재 여부 판단과 실제 화면 연결은 integration Task에서 수행한다.",
     ],
   },
   retry: {
@@ -160,15 +154,12 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
       "RetryButton, RetryAction 또는 유사 공통 컴포넌트 구현",
       "onRetry handler 지원",
       "재시도 중 중복 클릭 방지",
-      "retrying/loading 상태 표시",
-      "오류 메시지 또는 로딩 실패 상태와 함께 재사용 가능",
-      "기존 오류/빈 결과/로딩 실패 상태 중 최소 1곳에 연동",
+      "retrying/loading 상태를 props로 표현",
+      "오류 메시지 또는 로딩 실패 상태와 함께 재사용 가능한 구조",
     ],
     verificationChecklist: [
-      "재시도 버튼 표시 확인",
-      "onRetry 호출 확인",
-      "재시도 중 버튼 disabled 또는 중복 클릭 방지 확인",
-      "정상 상태 회귀 없음 확인",
+      "onRetry callback과 retrying/loading prop에 따라 재시도 UI를 렌더링할 수 있다.",
+      "실제 화면 연결은 integration Task에서 수행한다.",
     ],
   },
   permission_denied: {
@@ -178,12 +169,11 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
     implementationRequirements: [
       "PermissionDenied 또는 AccessDenied 공통 컴포넌트 구현",
       "안내 메시지, 설명, optional action 지원",
-      "권한 조건 또는 placeholder 상태와 연동 가능한 구조",
-      "기존 화면 중 최소 1곳에 적용 가능해야 함",
+      "권한 조건을 props로 표현 가능한 구조",
     ],
     verificationChecklist: [
-      "권한 없음 상태에서 안내 표시",
-      "권한 있음 상태에서 정상 화면 유지",
+      "권한 없음 안내 메시지, 설명, optional action prop을 렌더링할 수 있다.",
+      "권한 조건 판단과 실제 화면 연결은 integration Task에서 수행한다.",
     ],
   },
   draft_save: {
@@ -192,15 +182,13 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
     ],
     implementationRequirements: [
       "draft state 또는 temporary save helper 구현",
-      "저장 중/saved/error 상태 구분",
-      "사용자에게 저장 상태 표시",
-      "기존 입력 흐름 중 최소 1곳에 연동",
+      "저장 중/saved/error 상태를 props로 구분",
+      "사용자에게 저장 상태를 표현할 수 있는 구조",
       "브라우저 저장소 사용 시 key scope를 명확히 함",
     ],
     verificationChecklist: [
-      "입력 후 임시 저장 상태 표시",
-      "새로고침/재진입 정책이 있다면 복원 확인",
-      "저장 실패 상태 표시 확인",
+      "저장 중/saved/error prop에 따라 임시 저장 상태 UI를 렌더링할 수 있다.",
+      "실제 화면 연결은 integration Task에서 수행한다.",
     ],
   },
   api: {
@@ -277,30 +265,25 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
       "사용자가 회의 분석 작업을 시작하는 진입 액션과 상태 전환을 제공한다.",
     ],
     implementationRequirements: [
-      "시작/분석 실행 버튼 또는 진입 액션을 제공한다.",
-      "입력 준비 상태에서 처리 중 상태로 전환될 수 있어야 한다.",
-      "파일 미선택/입력 부족 등 예외 상태를 처리한다.",
+      "시작/분석 실행 액션을 props/callback 기반 flow API 또는 컴포넌트로 제공한다.",
+      "입력 준비 상태에서 처리 중 상태로 전환될 수 있는 상태 모델을 제공한다.",
+      "파일 미선택/입력 부족 등 예외 상태를 props로 표현한다.",
     ],
     verificationChecklist: [
-      "시작 액션 표시 및 동작 확인",
-      "입력 부족/미선택 예외 상태 확인",
-      "처리 중 상태 전환 확인",
-      "기존 레이아웃 회귀 없음 확인",
+      "시작 액션을 표현할 수 있는 flow API 또는 컴포넌트가 독립적으로 import/export 가능하다.",
+      "시작 요청, 입력 부족, 업로드 전환 상태를 props/callback 기반으로 표현할 수 있다.",
     ],
   },
   feature_input: {
     implementationGoal: ["회의 분석에 필요한 입력 정보를 수집하고 작업 공간 상태와 연결한다."],
     implementationRequirements: [
-      "회의 파일, 참여자, 분석 옵션 등 입력 정보를 수집한다.",
-      "입력값을 화면 상태 또는 mock data state와 연결한다.",
-      "입력 부족/잘못된 입력 상태를 표시할 수 있어야 한다.",
-      "분석 시작 흐름에서 사용할 수 있는 구조로 정리한다.",
+      "회의 파일, 참여자, 분석 옵션 등 입력 상태를 flow API 또는 컴포넌트로 표현한다.",
+      "입력 부족/잘못된 입력 상태를 props로 표현한다.",
+      "분석 시작 흐름으로 전달할 수 있는 callback 구조를 제공한다.",
     ],
     verificationChecklist: [
-      "입력 필드/선택 UI 표시 확인",
-      "입력 부족/오류 상태 표시 확인",
-      "분석 시작 흐름 연결 확인",
-      "기존 레이아웃 회귀 없음 확인",
+      "회의 파일, 참여자, 분석 옵션 입력 상태를 표현할 수 있는 flow API 또는 컴포넌트가 독립적으로 import/export 가능하다.",
+      "분석 시작 흐름으로 전달할 수 있는 callback 구조를 제공한다.",
     ],
   },
   feature_processing: {
@@ -312,9 +295,8 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
       "완료/실패 상태로 전환될 수 있어야 한다.",
     ],
     verificationChecklist: [
-      "진행 단계/진행률 UI 표시 확인",
-      "완료/실패 상태 전환 확인",
-      "기존 정상 화면 회귀 없음 확인",
+      "업로드/STT/화자 분리/초안 생성 단계 상태를 표현할 수 있는 flow API 또는 컴포넌트가 독립적으로 import/export 가능하다.",
+      "완료/실패 상태 전환은 props/callback 또는 상태 모델로 표현 가능해야 한다.",
     ],
   },
   feature_result: {
@@ -325,9 +307,8 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
       "사용자가 결과를 검토하거나 다음 행동을 판단할 수 있는 UI 구조를 제공한다.",
     ],
     verificationChecklist: [
-      "요약/스크립트 확인 UI 표시 확인",
-      "결과 없음/로딩/오류 상태 연동 확인",
-      "기존 레이아웃 회귀 없음 확인",
+      "요약본, 결정사항, 할 일, 화자별 스크립트 결과 상태를 표현할 수 있는 flow API 또는 컴포넌트가 독립적으로 import/export 가능하다.",
+      "결과 없음/로딩/오류 상태는 props/callback 또는 상태 모델로 표현 가능해야 한다.",
     ],
   },
   app_shell: {
@@ -354,48 +335,36 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
   screen_input: {
     implementationGoal: ["사용자가 파일을 선택·업로드하고 분석을 시작할 수 있는 입력 화면을 구현한다."],
     implementationRequirements: [
-      "회의 파일 업로드/선택 진입점을 제공한다.",
-      "파일명, 재생 길이, 변환 상태 등 선택 파일 정보를 확인할 수 있어야 한다.",
-      "분석 시작 또는 작업 추가 흐름과 연결될 수 있는 컴포넌트 구조를 만든다.",
+      "회의 파일 업로드/선택 진입점을 props 기반 화면 컴포넌트로 제공한다.",
+      "파일명, 재생 길이, 변환 상태 등 선택 파일 정보를 카드/리스트로 표현한다.",
       "참여자 이름·역할·상태를 구분해 표시할 수 있는 UI 구조를 포함한다.",
-      "모바일에서도 주요 입력 동작이 가능해야 한다.",
+      "placeholder-only 화면을 만들지 않는다.",
     ],
     verificationChecklist: [
-      "파일 업로드/선택 진입점이 표시된다.",
-      "선택 파일 정보 또는 대기 상태가 표시된다.",
-      "분석 시작 또는 작업 추가 동작으로 이어질 수 있다.",
-      "기존 레이아웃 회귀가 없다.",
+      "회의 파일 카드, 참여자 목록, 업로드/선택 상태를 실제 화면처럼 표현한다.",
     ],
   },
   screen_result: {
     implementationGoal: ["요약·스크립트 등 분석 결과를 확인하는 결과 화면을 구현한다."],
     implementationRequirements: [
-      "요약본/스크립트 결과 확인 영역을 제공한다.",
+      "요약본/스크립트 결과 확인 영역을 카드/탭 구조로 제공한다.",
       "핵심 안건, 결정사항, 할 일 카드 구조를 제공한다.",
       "화자별 스크립트 표시 구조를 제공한다.",
-      "결과 없음/로딩/오류 상태와 연결 가능해야 한다.",
-      "초안 생성 타임라인 또는 결과 상태와 연결된다.",
+      "undefined/null/빈 문자열 노출을 방어한다.",
     ],
     verificationChecklist: [
-      "요약본/스크립트 탭 또는 결과 영역이 표시된다.",
-      "핵심 안건/결정사항/할 일/스크립트 샘플이 표시된다.",
-      "결과 없음/로딩/오류 상태와 연결 가능하다.",
-      "기존 레이아웃 회귀가 없다.",
+      "요약, 핵심 안건, 결정사항, 할 일, 스크립트, 초안 생성 타임라인을 실제 결과 화면처럼 표현한다.",
     ],
   },
   screen_admin: {
     implementationGoal: ["분석 결과·처리 상태를 관리·확인할 수 있는 관리 화면을 구현한다."],
     implementationRequirements: [
-      "회의 분석 결과 또는 처리 상태를 관리/확인할 수 있는 영역을 제공한다.",
-      "파일/처리 상태/결과 상태를 목록 또는 카드 형태로 확인할 수 있어야 한다.",
-      "필요한 경우 재처리, 확인, 상태 변경 같은 보조 행동을 연결할 수 있는 구조를 둔다.",
-      "기존 작업 공간/결과 패널 흐름을 깨지 않아야 한다.",
+      "회의 분석 결과 또는 처리 상태를 관리/확인할 수 있는 카드/목록 영역을 제공한다.",
+      "재처리, 확인, 상태 변경 같은 보조 행동을 props/callback으로 표현한다.",
+      "optional screen이더라도 빈 placeholder만 생성하지 않는다.",
     ],
     verificationChecklist: [
-      "관리/상태 확인 영역이 표시된다.",
-      "처리 상태 또는 결과 상태를 확인할 수 있다.",
-      "보조 행동이 있다면 기존 흐름을 깨지 않는다.",
-      "기존 레이아웃 회귀가 없다.",
+      "처리 상태, 결과 상태, 재처리/확인 등 보조 행동을 실제 관리 화면처럼 표현한다.",
     ],
   },
   screen: {

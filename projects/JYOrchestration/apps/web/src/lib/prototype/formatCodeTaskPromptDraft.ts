@@ -20,6 +20,7 @@ import {
   buildCodeTaskBranchPlanBlockLines,
   buildCodeTaskFileBoundaryStageOneBlockLines,
   buildIntegrationOrchestrationTaskSummarySection,
+  evaluateIntegrationOrchestrationPromptReadiness,
   formatIntegrationOrchestrationTaskDetailSection,
   STAGE_ONE_CONFLICT_PREVENTION_POLICY_LINES,
   summarizeStageOnePromptQuality,
@@ -41,37 +42,32 @@ import {
 
 const PREVIEW_UX_QUALITY_REQUIREMENTS: readonly string[] = [
   "placeholder-only 화면을 만들지 않는다.",
-  "`여기에 표시됩니다`, `준비 중입니다`, `샘플 영역` 같은 임시 문구만으로 화면을 채우지 않는다.",
-  "실제 서비스 초기 화면처럼 보이도록 구성한다.",
-  "샘플 데이터가 있는 경우 실제 데이터 카드/목록/타임라인/탭 형태로 표현한다.",
-  "단순 `<ul><li>` 나열만 사용하지 않는다.",
-  "좌/중/우 패널 내 정보 밀도와 여백을 실제 사용 화면 수준으로 조정한다.",
-  "모바일 또는 좁은 화면에서도 주요 정보가 겹치지 않게 한다.",
+  "단순 텍스트 나열이나 빈 bullet 목록만 출력하지 않는다.",
+  "undefined/null/빈 문자열이 그대로 화면에 노출되지 않도록 방어한다.",
+  "샘플 데이터가 props로 주입되었을 때 실제 서비스 초기 화면처럼 보이도록 카드/리스트/탭/상태 배지를 활용한다.",
+  "파일명, 참여자, 처리 상태, 요약, 결정사항, 할 일, 타임라인이 들어갈 수 있는 시각적 구조를 만든다.",
+  "모바일 또는 좁은 화면에서 주요 영역이 겹치지 않도록 한다.",
+  "화면 연결은 integration Task가 수행하므로 Shell/Panel/route/global style은 수정하지 않는다.",
 ];
 
 function screenRoleSpecificRequirements(codeTask: ImplementationCodeTaskV1): string[] {
   const id = codeTask.codeTaskId.trim();
   if (id === "CODE-DEV-SCREEN-001-001") {
     return [
-      "sampleMeetingFiles, sampleParticipants를 사용할 수 있는 화면 구조를 만든다.",
-      "파일명, 파일 상태, 업로드/변환 진행 상태가 실제 서비스 카드처럼 보이게 한다.",
-      "참여자는 이름, 역할, 상태를 구분해서 표시할 수 있는 구조로 만든다.",
-      "데이터 연결은 직접 가능한 범위에서 수행하되, Shell/Panel 연결이 필요한 경우 requiresIntegrationChange에 기록한다.",
+      "회의 파일 카드, 참여자 목록, 업로드/선택 상태, 분석 시작 준비 상태를 실제 화면처럼 표현한다.",
+      "sampleMeetingFiles, sampleParticipants를 props로 주입했을 때 카드/리스트 구조로 표현할 수 있는 화면 컴포넌트를 만든다.",
     ];
   }
   if (id === "CODE-DEV-SCREEN-002-001") {
     return [
-      "sampleMeetingSummary, sampleTranscriptSegments, sampleDecisions, sampleActionItems, sampleDraftTimeline을 표현할 수 있는 화면 구조를 만든다.",
-      "요약, 핵심 성과, 결정사항, 할 일, 스크립트가 구역별로 명확히 구분되어야 한다.",
-      "빈 결정사항/빈 할 일은 빈 bullet만 표시하지 말고 의미 있는 안내 상태로 표현한다.",
-      "timestamp/name 필드가 없을 때도 UI가 깨지지 않도록 fallback을 둔다.",
+      "요약, 핵심 안건, 결정사항, 할 일, 스크립트, 초안 생성 타임라인을 실제 결과 화면처럼 표현한다.",
+      "sampleMeetingSummary, sampleTranscriptSegments, sampleDecisions, sampleActionItems, sampleDraftTimeline을 props로 표현할 수 있는 구조를 만든다.",
     ];
   }
   if (id === "CODE-DEV-SCREEN-003-001") {
     return [
-      "관리 화면은 필수 화면이 아니므로 optional scope임을 명시한다.",
-      "생성하더라도 기존 Workspace UX를 방해하지 않는 보조 영역으로 제한한다.",
-      "실제 사용자가 처리 상태를 확인할 수 있는 카드/목록 중심으로 구성한다.",
+      "처리 상태, 결과 상태, 재처리/확인 등 보조 행동을 실제 관리 화면처럼 표현한다.",
+      "optional screen이더라도 빈 placeholder만 생성하지 않는다.",
     ];
   }
   return [];
@@ -228,7 +224,7 @@ function verificationBullets(
   if (options?.includeOptionalMockVerify) {
     lines = appendOptionalScreenMockVerification(lines, roleKind);
   }
-  return lines.map((r) => sanitizePlanningPromptLine(r)).slice(0, 5);
+  return lines.map((r) => sanitizePlanningPromptLine(r)).slice(0, isScreenRoleKind(roleKind) ? 10 : 5);
 }
 
 function uniqStrings(items: readonly string[]): string[] {
@@ -399,19 +395,22 @@ export function formatCodeTaskPromptDraftBundle(input: {
   }
 
   const parentById = new Map((input.taskList?.tasks ?? []).map((t) => [t.taskId, t] as const));
+  const integrationState = evaluateIntegrationOrchestrationPromptReadiness({ orchestration });
 
   const sections: string[] = [
     "# CodeTask 1단계 프롬프트 초안",
     "",
     "## 프로젝트 구현 준비 요약",
     `- 실행 CodeTask: ${executableTasks.length}개`,
-    `- Integration Orchestration Task: ${orchestration ? "있음" : "없음"}`,
+    `- Integration Orchestration Task: ${orchestration ? "정의됨" : "없음"}`,
     `- PromptContext 생성: ${contextCount}개`,
     `- Branch Plan 생성: ${qualitySummary.branchPlanCount}개`,
     `- File Boundary 생성: ${qualitySummary.fileBoundaryCount}개`,
     `- ready CodeTask: ${readyCount}개`,
     `- warning CodeTask: ${warningTaskCount}개`,
-    `- missing 항목 수: ${missingItemCount}개`,
+    `- missing CodeTask 항목 수: ${missingItemCount}개`,
+    `- Integration ready: ${integrationState.integrationReady}`,
+    `- Integration missing: ${integrationState.integrationMissing ?? "없음"}`,
     "",
     ...STAGE_ONE_CONFLICT_PREVENTION_POLICY_LINES,
     "",
@@ -447,12 +446,10 @@ export function formatCodeTaskPromptDraftBundle(input: {
 
   if (orchestration) {
     const parentTask = parentById.get(orchestration.parentTaskId) ?? null;
-    const ctx = getCodeTaskPromptContextFromMap(input.promptContextMap ?? null, orchestration.codeTaskId);
     sections.push(
       formatIntegrationOrchestrationTaskDetailSection({
         orchestration,
         parentTaskTitle: parentTask?.title ?? INTEGRATION_WIRING_PROCESS_TASK_TITLE,
-        promptContext: ctx,
       }),
     );
   }

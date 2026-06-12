@@ -16,6 +16,8 @@ export const INTEGRATION_WIRING_ROLE_TEXT =
 
 const INTEGRATION_FORBIDDEN = [
   "src/data/sample/*",
+  "src/data/sampleData.ts",
+  "src/types/meeting.ts",
   "src/components/common/*",
   "src/features/*",
   "src/screens/*",
@@ -24,14 +26,20 @@ const INTEGRATION_FORBIDDEN = [
 
 const INTEGRATION_OWNED = mergeIntegrationWiringOwnedFiles([
   "app/index.html",
+  "app/layout.*",
+  "app/page.*",
+  "pages/index.*",
+  "src/App.*",
+  "src/app/layout.*",
+  "src/app/page.*",
   "src/components/WorkspaceShell.*",
   "src/components/LeftPanel.*",
   "src/components/CenterPanel.*",
   "src/components/RightPanel.*",
+  "src/pages/index.*",
+  "src/routes/*",
   "src/styles/workspace.*",
   "src/styles/global.*",
-  "src/App.*",
-  "src/routes/*",
 ]);
 
 export function isIntegrationWiringCodeTask(
@@ -110,6 +118,9 @@ export function buildIntegrationWiringCodeTask(input: {
       "sampleDraftTimeline을 초안 생성 타임라인 영역에 연결한다.",
       "기존 WorkspaceShell/LeftPanel/CenterPanel/RightPanel 구조를 재작성하지 않는다.",
       "regex 기반 임시 패치나 placeholder 교체 방식으로 연결하지 않는다.",
+      "screen Task가 제공한 실제 화면형 컴포넌트를 App Shell의 적절한 panel/slot에 연결한다.",
+      "screen Task 컴포넌트를 단순 placeholder wrapper로 대체하지 않는다.",
+      "common/feature 산출물은 필요한 경우 props/callback으로 연결하되, 해당 산출물 내부를 재작성하지 않는다.",
       "동일 데이터를 패널별 mock으로 중복 작성하지 않는다.",
       "src/data/sampleData.ts를 단일 sample data source로 사용한다.",
       "Preview에서 실제 서비스 초기 화면처럼 보이는 것을 완료 기준으로 삼는다.",
@@ -121,6 +132,9 @@ export function buildIntegrationWiringCodeTask(input: {
       "빈 bullet, 깨진 필드명, undefined/null 표시가 없어야 한다.",
       "모바일 또는 좁은 화면에서 주요 영역이 겹치지 않는다.",
       "App Shell, screen, common, feature 산출물이 import/props 기반으로 연결된다.",
+      "screen Task의 placeholder-only 금지 기준이 최종 Preview에서도 유지된다.",
+      "common/feature 산출물이 import/props/callback 기반으로 연결되며 내부 구현이 재작성되지 않았다.",
+      "sampleData는 수정하지 않고 읽어서 연결한다.",
       "build/lint/test 중 가능한 검증을 수행한다.",
     ],
     forbiddenPaths: ["package.json", "pnpm-lock.yaml"],

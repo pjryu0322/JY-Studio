@@ -4,6 +4,7 @@ import { planHasIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegr
 import {
   INTEGRATION_WIRING_PROCESS_TASK_TITLE,
   isIntegrationWiringCodeTask,
+  listExecutableCodeTasksFromPlan,
 } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { evaluateIntegrationWiringTaskContent } from "@/lib/prototype/integrationWiringContentValidation";
 import {
@@ -71,25 +72,16 @@ export function evaluateStageOnePromptPlanReadiness(input: {
   let readyCodeTaskCount = 0;
   let warningCodeTaskCount = 0;
 
-  for (const ct of input.plan.tasks) {
+  const executable = listExecutableCodeTasksFromPlan(input.plan.tasks);
+  const orchestration = input.plan.tasks.find((t) => isIntegrationWiringCodeTask(t)) ?? null;
+
+  for (const ct of executable) {
     const hasBranch = codeTaskHasPersistedBranchPlan(ct);
     const hasBoundary = codeTaskHasPersistedFileBoundary(ct);
     if (hasBranch) branchPlanCount += 1;
     if (hasBoundary) fileBoundaryCount += 1;
 
     let taskReady = hasBranch && hasBoundary;
-    if (taskReady && isIntegrationWiringCodeTask(ct)) {
-      const content = evaluateIntegrationWiringTaskContent({
-        codeTask: ct,
-        processTaskTitle: INTEGRATION_WIRING_PROCESS_TASK_TITLE,
-      });
-      if (!content.ok) {
-        taskReady = false;
-        for (const issue of content.issues) {
-          diagnostics.push({ code: issue, message: issue, codeTaskId: ct.codeTaskId });
-        }
-      }
-    }
     if (taskReady) {
       const common = evaluateCommonBoundarySpecificity({ codeTask: ct });
       if (common.missing.length) {
@@ -126,6 +118,32 @@ export function evaluateStageOnePromptPlanReadiness(input: {
       code: "integration_task_missing",
       message: "Integration Task 없음",
     });
+  } else if (orchestration) {
+    const hasBranch = codeTaskHasPersistedBranchPlan(orchestration);
+    const hasBoundary = codeTaskHasPersistedFileBoundary(orchestration);
+    if (!hasBranch) {
+      diagnostics.push({
+        code: "branch_plan_missing",
+        message: "Integration branchPlan 누락",
+        codeTaskId: orchestration.codeTaskId,
+      });
+    }
+    if (!hasBoundary) {
+      diagnostics.push({
+        code: "file_boundary_missing",
+        message: "Integration fileBoundary 누락",
+        codeTaskId: orchestration.codeTaskId,
+      });
+    }
+    const content = evaluateIntegrationWiringTaskContent({
+      codeTask: orchestration,
+      processTaskTitle: INTEGRATION_WIRING_PROCESS_TASK_TITLE,
+    });
+    if (!content.ok) {
+      for (const issue of content.issues) {
+        diagnostics.push({ code: issue, message: issue, codeTaskId: orchestration.codeTaskId });
+      }
+    }
   }
   if (!integrationTaskIsLast(input.plan)) {
     diagnostics.push({
@@ -155,11 +173,26 @@ export function evaluateStageOnePromptPlanReadiness(input: {
     ].includes(d.code),
   );
 
+  const execLen = executable.length;
+  const integrationContentOk =
+    orchestration &&
+    evaluateIntegrationWiringTaskContent({
+      codeTask: orchestration,
+      processTaskTitle: INTEGRATION_WIRING_PROCESS_TASK_TITLE,
+    }).ok;
+  const orchestrationBoundaryOk =
+    orchestration &&
+    codeTaskHasPersistedBranchPlan(orchestration) &&
+    codeTaskHasPersistedFileBoundary(orchestration);
+
   const allReady =
-    input.plan.tasks.length > 0 &&
-    readyCodeTaskCount === input.plan.tasks.length &&
-    branchPlanCount === input.plan.tasks.length &&
-    fileBoundaryCount === input.plan.tasks.length &&
+    execLen > 0 &&
+    readyCodeTaskCount === execLen &&
+    branchPlanCount === execLen &&
+    fileBoundaryCount === execLen &&
+    Boolean(orchestration) &&
+    Boolean(orchestrationBoundaryOk) &&
+    Boolean(integrationContentOk) &&
     planHasIntegrationWiringCodeTask(input.plan.tasks) &&
     integrationTaskIsLast(input.plan) &&
     branchGroupSummaryNonEmpty(input.plan);

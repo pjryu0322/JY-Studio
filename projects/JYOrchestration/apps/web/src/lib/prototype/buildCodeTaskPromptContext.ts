@@ -21,6 +21,8 @@ import {
   mergePromptContextQualityWithCollisionReadiness,
 } from "@/lib/prototype/codeTaskPromptQualityGate";
 import { refineTargetUsersForRuntime, refineProblemToSolveForRuntime } from "@/lib/prototype/codeTaskRuntimePromptContextView";
+import { INTEGRATION_WIRING_PROCESS_TASK_TITLE } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import { evaluateIntegrationWiringTaskContent } from "@/lib/prototype/integrationWiringContentValidation";
 import { formatTemplateLayoutSnippetForRole } from "@/lib/prototype/codeTaskTemplateLayoutDraft";
 import { parseImplementationSeedV1, type ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import {
@@ -211,6 +213,7 @@ function evaluateContextQuality(input: {
   readonly verificationContext: CodeTaskPromptContextV1["verificationContext"];
   readonly featureContext: CodeTaskPromptContextV1["featureContext"];
   readonly hasTemplateSnippet: boolean;
+  readonly codeTask?: ImplementationCodeTaskV1 | null;
 }): CodeTaskPromptContextV1["quality"] {
   const missing: string[] = [];
   const warnings = [...input.roleWarnings];
@@ -275,18 +278,23 @@ function evaluateContextQuality(input: {
     missing.push("specificRole");
   }
 
-  if (input.roleKind === "integration_wiring") {
-    const reqHay = input.implementationContext.requirements.join("\n");
-    const ready =
-      /import/i.test(reqHay) &&
-      /props|wiring/i.test(reqHay) &&
-      /Preview/i.test(reqHay) &&
-      !/반응형 3열 workspace shell/i.test(reqHay) &&
-      input.implementationContext.requirements.length >= 3 &&
-      input.verificationContext.acceptanceCriteria.length >= 2;
+  if (input.roleKind === "integration_wiring" && input.codeTask) {
+    const content = evaluateIntegrationWiringTaskContent({
+      codeTask: input.codeTask,
+      processTaskTitle: INTEGRATION_WIRING_PROCESS_TASK_TITLE,
+    });
+    const wiringReady = content.ok && reqCount >= 3 && verCount >= 2;
     return {
-      ready,
-      missing: ready ? uniq(missing) : uniq([...missing, "integration_task_not_final_wiring"]),
+      ready: wiringReady,
+      missing: wiringReady ? uniq(missing) : uniq([...missing, ...(content.issues[0] ? [content.issues[0]] : ["integration_definition_incomplete"])]),
+      warnings: uniq(warnings),
+    };
+  }
+
+  if (input.roleKind === "integration_wiring") {
+    return {
+      ready: false,
+      missing: uniq([...missing, "integration_definition_incomplete"]),
       warnings: uniq(warnings),
     };
   }
@@ -459,6 +467,7 @@ function buildContextForCodeTask(input: {
       verificationContext,
       featureContext,
       hasTemplateSnippet: Boolean(layoutSnippet),
+      codeTask: input.codeTask,
     }),
     collision: evaluateCodeTaskPromptCollisionReadiness({ codeTask: input.codeTask }),
   });

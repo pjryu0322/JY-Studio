@@ -75,7 +75,9 @@ describe("P3-M22 planning draft output polish", () => {
     expect(text).toContain("package.json scripts");
     expect(text).toContain("- ready CodeTask:");
     expect(text).toContain("- warning CodeTask:");
-    const perTaskBlocks = text.split("### ").slice(1);
+    const execSection =
+      text.split("## 실행 CodeTask 목록")[1]?.split("## Integration Orchestration Task 상세")[0] ?? "";
+    const perTaskBlocks = execSection.split("### ").slice(1);
     for (const block of perTaskBlocks) {
       expect(block).not.toContain("대상 저장소 루트에서 package.json");
       expect(block).not.toContain("동일 기능 회귀 없음");

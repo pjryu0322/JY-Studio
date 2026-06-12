@@ -3,6 +3,7 @@ import {
   codeTaskHasPersistedBranchPlan,
   codeTaskHasPersistedFileBoundary,
 } from "@/lib/prototype/stageOnePromptReadiness";
+import { evaluateIntegrationWiringTaskContent } from "@/lib/prototype/integrationWiringContentValidation";
 import {
   WORKSPACE_SHELL_OWNED_PATTERNS,
 } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
@@ -121,12 +122,43 @@ export function buildIntegrationOrchestrationTaskSummarySection(input: {
   ];
 }
 
+export function evaluateIntegrationOrchestrationPromptReadiness(input: {
+  readonly orchestration: ImplementationCodeTaskV1 | null;
+}): Readonly<{
+  readonly integrationReady: boolean;
+  readonly integrationMissing: string | null;
+  readonly integrationWarnings: readonly string[];
+}> {
+  const orchestration = input.orchestration;
+  if (!orchestration) {
+    return {
+      integrationReady: false,
+      integrationMissing: "integration_task_missing",
+      integrationWarnings: [],
+    };
+  }
+  const content = evaluateIntegrationWiringTaskContent({
+    codeTask: orchestration,
+    processTaskTitle: INTEGRATION_WIRING_PROCESS_TASK_TITLE,
+  });
+  const hasBranch = codeTaskHasPersistedBranchPlan(orchestration);
+  const hasBoundary = codeTaskHasPersistedFileBoundary(orchestration);
+  let integrationMissing: string | null = null;
+  if (!hasBranch) integrationMissing = "branch_plan_missing";
+  else if (!hasBoundary) integrationMissing = "file_boundary_missing";
+  else if (!content.ok) integrationMissing = content.issues[0] ?? "integration_definition_incomplete";
+  const integrationReady = integrationMissing === null;
+  return {
+    integrationReady,
+    integrationMissing,
+    integrationWarnings: [],
+  };
+}
+
 export function formatIntegrationOrchestrationTaskDetailSection(input: {
   readonly orchestration: ImplementationCodeTaskV1;
   readonly parentTaskTitle?: string | null;
-  readonly promptContext?: import("@/lib/prototype/codeTaskPromptContext").CodeTaskPromptContextV1 | null;
 }): string {
-  const ctx = input.promptContext;
   const lines = [
     "",
     "## Integration Orchestration Task 상세",
@@ -154,23 +186,21 @@ export function formatIntegrationOrchestrationTaskDetailSection(input: {
     ...buildCodeTaskBranchPlanBlockLines(input.orchestration, 4),
     "",
     ...buildCodeTaskFileBoundaryStageOneBlockLines(input.orchestration, 4),
+    "",
+    ...formatIntegrationOrchestrationQualityBlock(input.orchestration),
   ];
-  if (ctx) {
-    lines.push("", ...formatQualityBlockForOrchestration(ctx));
-  }
-  return lines;
+  return lines.join("\n");
 }
 
-function formatQualityBlockForOrchestration(
-  ctx: import("@/lib/prototype/codeTaskPromptContext").CodeTaskPromptContextV1,
+function formatIntegrationOrchestrationQualityBlock(
+  orchestration: ImplementationCodeTaskV1,
 ): string[] {
-  const quality = ctx.quality;
-  if (!quality) return ["#### 품질 상태", "- ready: unknown"];
+  const state = evaluateIntegrationOrchestrationPromptReadiness({ orchestration });
   return [
-    "#### 품질 상태",
-    `- ready: ${String(quality.ready)}`,
-    `- missing: ${quality.missing?.length ? quality.missing.join(", ") : "(없음)"}`,
-    `- warnings: ${quality.warnings?.length ? quality.warnings.join(", ") : "(없음)"}`,
+    "#### Orchestration 품질 상태",
+    `- integrationReady: ${state.integrationReady}`,
+    `- missing: ${state.integrationMissing ?? "(없음)"}`,
+    `- warnings: ${state.integrationWarnings.length ? state.integrationWarnings.join(", ") : "(없음)"}`,
   ];
 }
 
@@ -284,7 +314,7 @@ export function summarizeStageOnePromptQuality(input: {
     totalCodeTasks: tasks.length,
     branchPlanCount,
     fileBoundaryCount,
-    integrationTaskPresent: planHasIntegrationWiringCodeTask(tasks),
+    integrationTaskPresent: planHasIntegrationWiringCodeTask(input.codeTaskPlan.tasks),
     readyCount,
     warningTaskCount,
     warningExamples,

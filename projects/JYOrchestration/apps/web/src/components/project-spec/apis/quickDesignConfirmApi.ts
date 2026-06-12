@@ -1,4 +1,4 @@
-import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { credentialsIncludeFetch, readJsonApiResponse } from "@/lib/http/credentialsIncludeFetch";
 import type { ApiResponse } from "@/components/project-spec/types";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
@@ -38,7 +38,7 @@ export async function postQuickDesignConfirm(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const json = (await res.json()) as ApiResponse<PostQuickDesignConfirmSuccess>;
+  const json = await readJsonApiResponse<ApiResponse<PostQuickDesignConfirmSuccess>>(res);
   return { res, json };
 }
 
@@ -73,8 +73,8 @@ export async function postImplementationPrepSync(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const json = (await res.json()) as ApiResponse<
-    import("@/lib/prototype/implementationTaskListGeneration").GenerateImplementationTaskListResult
-  >;
+  const json = await readJsonApiResponse<
+    ApiResponse<import("@/lib/prototype/implementationTaskListGeneration").GenerateImplementationTaskListResult>
+  >(res);
   return { res, json };
 }

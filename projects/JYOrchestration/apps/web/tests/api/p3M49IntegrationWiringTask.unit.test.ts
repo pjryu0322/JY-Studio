@@ -168,7 +168,7 @@ describe("P3-M49 stage-one prompt output", () => {
       promptContextMap: null,
     });
     expect(bundle).toContain(`Process Task: ${INTEGRATION_WIRING_PROCESS_TASK_TITLE}`);
-    const integrationSection = bundle.split("### 6. 최종 연결/통합 Wiring")[1]?.split("### ")[0] ?? "";
+    const integrationSection = bundle.split("## Integration Orchestration Task 상세")[1] ?? "";
     expect(integrationSection).toContain(`Process Task: ${INTEGRATION_WIRING_PROCESS_TASK_TITLE}`);
     expect(integrationSection).not.toContain("Process Task: 관리 화면 화면 구현");
     expect(integrationSection).not.toContain("반응형 3열 workspace shell/container를 구현한다");
