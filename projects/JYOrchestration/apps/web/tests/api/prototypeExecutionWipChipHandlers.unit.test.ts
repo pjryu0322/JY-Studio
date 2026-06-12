@@ -119,7 +119,7 @@ function wipForReview(): CodeAgentWipExecutionV1 {
 }
 
 function makeDeps(overrides?: Partial<Parameters<typeof buildWipChipHandlerSlice>[0]>) {
-  const showToast = vi.fn();
+  const appendUserNotice = vi.fn();
   const persistOrchestration = vi.fn();
   const taskList = sampleTaskList();
   const executionState = markDeveloperTasksInProgressForWip({
@@ -148,13 +148,12 @@ function makeDeps(overrides?: Partial<Parameters<typeof buildWipChipHandlerSlice
     applyMessages: vi.fn(),
     appendNotice: vi.fn(),
     persistOrchestration,
-    focusComposer: vi.fn(),
-    showToast,
+    appendUserNotice,
   };
 
   return {
     ...buildWipChipHandlerSlice({ ...base, ...overrides }),
-    showToast,
+    appendUserNotice,
     persistOrchestration,
     taskList,
     executionState,
@@ -163,7 +162,7 @@ function makeDeps(overrides?: Partial<Parameters<typeof buildWipChipHandlerSlice
 
 describe("prototypeExecutionWipChipHandlers", () => {
   it("REQUEST_CODE_AGENT_WIP with taskList but no cursorWorkItems creates cursorWorkItems and WIP draft", () => {
-    const { showToast, persistOrchestration, requestCodeAgentWipWork } = makeDeps();
+    const { appendUserNotice, persistOrchestration, requestCodeAgentWipWork } = makeDeps();
     requestCodeAgentWipWork();
     expect(persistOrchestration).toHaveBeenCalled();
     const orch = persistOrchestration.mock.calls[0]?.[1];
@@ -171,7 +170,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
     expect(orch?.codeAgentWipExecutionV1?.bridgeExecutionStatus).toBe("draft_created");
     expect(orch?.implementationTaskPlanV1).toBeTruthy();
     expect(orch?.codeAgentWipExecutionV1?.selectedTaskId).toBe("dev-1");
-    const toastMsg = String(showToast.mock.calls[0]?.[0] ?? "");
+    const toastMsg = String(appendUserNotice.mock.calls[0]?.[0] ?? "");
     expect(toastMsg).not.toContain("구현 작업목록을 생성");
     expect(toastMsg).not.toContain("구현 작업안 초안");
   });
@@ -212,8 +211,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice: vi.fn(),
       persistOrchestration,
-      focusComposer: vi.fn(),
-      showToast: vi.fn(),
+      appendUserNotice: vi.fn(),
     });
     requestCodeAgentWipWork();
     expect(persistOrchestration).toHaveBeenCalled();
@@ -223,7 +221,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
   });
 
   it("REQUEST_CODE_AGENT_WIP with seed only returns generate task list message", () => {
-    const showToast = vi.fn();
+    const appendUserNotice = vi.fn();
     const { requestCodeAgentWipWork } = buildWipChipHandlerSlice({
       projectId: "p-wip",
       requirementsStateJson: {},
@@ -254,15 +252,14 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice: vi.fn(),
       persistOrchestration: vi.fn(),
-      focusComposer: vi.fn(),
-      showToast,
+      appendUserNotice,
     });
     requestCodeAgentWipWork();
-    expect(showToast).toHaveBeenCalledWith("구현 작업목록을 먼저 생성해 주세요.");
+    expect(appendUserNotice).toHaveBeenCalledWith("구현 작업목록을 먼저 생성해 주세요.");
   });
 
   it("REQUEST_CODE_AGENT_WIP does not show missing task list when taskList exists", () => {
-    const showToast = vi.fn();
+    const appendUserNotice = vi.fn();
     const persistOrchestration = vi.fn();
     const taskList = sampleTaskList();
     const { requestCodeAgentWipWork } = buildWipChipHandlerSlice({
@@ -283,18 +280,17 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice: vi.fn(),
       persistOrchestration,
-      focusComposer: vi.fn(),
-      showToast,
+      appendUserNotice,
     });
     requestCodeAgentWipWork();
-    for (const call of showToast.mock.calls) {
+    for (const call of appendUserNotice.mock.calls) {
       expect(String(call[0])).not.toContain("구현 작업목록을 생성");
     }
     expect(persistOrchestration).toHaveBeenCalled();
   });
 
   it("requestCodeAgentWipWork without task list shows generic fallback message", () => {
-    const showToast = vi.fn();
+    const appendUserNotice = vi.fn();
     const { requestCodeAgentWipWork } = buildWipChipHandlerSlice({
       projectId: "p-wip",
       requirementsStateJson: {},
@@ -309,15 +305,14 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice: vi.fn(),
       persistOrchestration: vi.fn(),
-      focusComposer: vi.fn(),
-      showToast,
+      appendUserNotice,
     });
     requestCodeAgentWipWork();
-    expect(showToast).toHaveBeenCalledWith("구현 작업목록 또는 작업 계획을 먼저 준비해 주세요.");
+    expect(appendUserNotice).toHaveBeenCalledWith("구현 작업목록 또는 작업 계획을 먼저 준비해 주세요.");
   });
 
   it("discardWipWork persists failed WIP and developer task failed execution state", () => {
-    const showToast = vi.fn();
+    const appendUserNotice = vi.fn();
     const persistOrchestration = vi.fn();
     const taskList = sampleTaskList();
     const wip = wipForReview();
@@ -346,8 +341,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice: vi.fn(),
       persistOrchestration,
-      focusComposer: vi.fn(),
-      showToast,
+      appendUserNotice,
     });
     discardWipWork();
     expect(persistOrchestration).toHaveBeenCalled();
@@ -355,11 +349,11 @@ describe("prototypeExecutionWipChipHandlers", () => {
     expect(orch?.codeAgentWipExecutionV1?.status).toBe("failed");
     const dev = orch?.implementationTaskExecutionStateV1?.items.find((i) => i.taskId === "dev-1");
     expect(dev?.status).toBe("failed");
-    expect(showToast).toHaveBeenCalledWith("WIP 작업을 폐기했습니다.");
+    expect(appendUserNotice).toHaveBeenCalledWith("WIP 작업을 폐기했습니다.");
   });
 
   it("approveDeveloperResult persists developer done and reviewer/security/scm queued", () => {
-    const showToast = vi.fn();
+    const appendUserNotice = vi.fn();
     const persistOrchestration = vi.fn();
     const taskList = sampleTaskList();
     const wip = wipForReview();
@@ -388,8 +382,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice: vi.fn(),
       persistOrchestration,
-      focusComposer: vi.fn(),
-      showToast,
+      appendUserNotice,
     });
     approveDeveloperResult();
     expect(persistOrchestration).toHaveBeenCalled();
@@ -455,8 +448,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice,
       persistOrchestration,
-      focusComposer: vi.fn(),
-      showToast: vi.fn(),
+      appendUserNotice: vi.fn(),
     });
     approveDeveloperResult();
     const boardPatch = persistOrchestration.mock.calls.find(
@@ -467,7 +459,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
   });
 
   it("discardWipWork does not queue reviewer/security/scm tasks", () => {
-    const showToast = vi.fn();
+    const appendUserNotice = vi.fn();
     const persistOrchestration = vi.fn();
     const taskList = sampleTaskList();
     const wip = wipForReview();
@@ -496,8 +488,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice: vi.fn(),
       persistOrchestration,
-      focusComposer: vi.fn(),
-      showToast,
+      appendUserNotice,
     });
     discardWipWork();
     const exec = persistOrchestration.mock.calls[0]?.[1]?.implementationTaskExecutionStateV1;
@@ -528,15 +519,14 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice,
       persistOrchestration: vi.fn(),
-      focusComposer: vi.fn(),
-      showToast: vi.fn(),
+      appendUserNotice: vi.fn(),
     });
     expect(canApproveDeveloperResult()).toBe(true);
     expect(appendNotice).not.toHaveBeenCalled();
   });
 
   it("requestScmOfficialCommit persists scm task in_progress", () => {
-    const showToast = vi.fn();
+    const appendUserNotice = vi.fn();
     const persistOrchestration = vi.fn();
     const taskList = sampleTaskList();
     const wip = {
@@ -570,8 +560,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice: vi.fn(),
       persistOrchestration,
-      focusComposer: vi.fn(),
-      showToast,
+      appendUserNotice,
     });
     requestScmOfficialCommit();
     const orch = persistOrchestration.mock.calls[0]?.[1];
@@ -605,8 +594,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice: vi.fn(),
       persistOrchestration,
-      focusComposer: vi.fn(),
-      showToast: vi.fn(),
+      appendUserNotice: vi.fn(),
     });
     requestCodeAgentWipWork();
     expect(persistOrchestration).toHaveBeenCalled();
@@ -639,8 +627,7 @@ describe("prototypeExecutionWipChipHandlers", () => {
       applyMessages: vi.fn(),
       appendNotice: vi.fn(),
       persistOrchestration,
-      focusComposer: vi.fn(),
-      showToast: vi.fn(),
+      appendUserNotice: vi.fn(),
     });
     requestCodeAgentWipWork();
     expect(persistOrchestration).toHaveBeenCalled();

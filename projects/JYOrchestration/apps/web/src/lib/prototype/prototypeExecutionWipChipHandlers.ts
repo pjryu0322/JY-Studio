@@ -68,8 +68,7 @@ export type WipChipHandlerDeps = Readonly<{
     chat?: CodeAgentWipChatPatch,
     orch?: PrototypeExecutionOrchestrationPersistInput,
   ) => void;
-  readonly focusComposer: () => void;
-  readonly showToast: (message: string) => void;
+  readonly appendUserNotice: (message: string) => void;
   readonly onAfterScmCommitRequested?: (wip: CodeAgentWipExecutionV1) => void;
   readonly envOk?: boolean;
   readonly designOk?: boolean;
@@ -310,7 +309,7 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
 
       if (!workItems.length) {
         const taskListReady = hasImplementationTaskListReady(taskList);
-        deps.showToast(
+        deps.appendUserNotice(
           taskListReady
             ? "구현 작업목록 기준 Code Agent WIP 후보를 먼저 준비해 주세요."
             : prepared.state.implementationSeedV1
@@ -381,15 +380,15 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         },
       );
       if (result.kind === "blocked") {
-        deps.showToast(result.message);
+        deps.appendUserNotice(result.message);
         return;
       }
       if (result.kind === "already_active") {
-        deps.showToast("이미 Code Agent WIP 작업이 진행 중입니다.");
+        deps.appendUserNotice("이미 Code Agent WIP 작업이 진행 중입니다.");
         return;
       }
       if (result.developerTaskCount > 0) {
-        deps.showToast(
+        deps.appendUserNotice(
           `TaskList 기준 개발자 작업 ${result.developerTaskCount}건을 Code Agent WIP 요청으로 전환했습니다.`,
         );
       }
@@ -397,7 +396,7 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
     viewWipChanges: () => {
       const wip = deps.parsedState.codeAgentWipExecutionV1;
       if (!wip?.commits.length) {
-        deps.showToast("표시할 WIP commit이 없습니다.");
+        deps.appendUserNotice("표시할 WIP commit이 없습니다.");
         return;
       }
       deps.appendNotice(formatWipChangesView(wip));
@@ -405,7 +404,7 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
     requestRefactor: () => {
       const wip = deps.parsedState.codeAgentWipExecutionV1;
       if (!wip) {
-        deps.showToast("먼저 코드 에이전트 WIP 작업을 요청해 주세요.");
+        deps.appendUserNotice("먼저 코드 에이전트 WIP 작업을 요청해 주세요.");
         return;
       }
       const updated = buildRefactorRequestWipState({ wip });
@@ -418,17 +417,17 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         }),
       );
       deps.persistOrchestration(undefined, { codeAgentWipExecutionV1: updated, promptTimeline: timeline });
-      deps.showToast(REFACTOR_REQUEST_PROMPT);
-      deps.focusComposer();
+      deps.appendUserNotice(REFACTOR_REQUEST_PROMPT);
     },
     requestAdditionalEdit: () => {
-      deps.showToast("추가 수정 요청 내용을 아래 입력란에 적고 전송해 주세요.");
-      deps.focusComposer();
+      deps.appendUserNotice(
+        "추가 수정 요청은 기획(/requirements) 대화 또는 보드에서 작업을 선택해 진행해 주세요.",
+      );
     },
     approveDeveloperResult: () => {
       const wip = deps.parsedState.codeAgentWipExecutionV1;
       if (!wip) {
-        deps.showToast("WIP 검토 대상이 없습니다.");
+        deps.appendUserNotice("WIP 검토 대상이 없습니다.");
         return;
       }
       const result = buildDeveloperApproveWipResult({
@@ -483,12 +482,12 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
           ? { implementationTaskExecutionStateV1: executionState }
           : {}),
       });
-      deps.showToast("WIP 작업을 폐기했습니다.");
+      deps.appendUserNotice("WIP 작업을 폐기했습니다.");
     },
     requestScmOfficialCommit: () => {
       const wip = deps.parsedState.codeAgentWipExecutionV1;
       if (!wip) {
-        deps.showToast("WIP 승인 상태가 없습니다.");
+        deps.appendUserNotice("WIP 승인 상태가 없습니다.");
         return;
       }
       const result = buildScmOfficialCommitRequestResult({
@@ -497,7 +496,7 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         promptTimeline: deps.parsedState.promptTimeline,
       });
       if (result.kind === "blocked") {
-        deps.showToast(result.reason);
+        deps.appendUserNotice(result.reason);
         return;
       }
       const scmWip = result.orchestrationPatch.codeAgentWipExecutionV1;
@@ -525,7 +524,7 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
     },
     canRequestScmOfficialCommit: () => {
       if (deps.canApplyGit === false) {
-        deps.showToast(PLATFORM_SCM_PERMISSION_DENIED_MESSAGE);
+        deps.appendUserNotice(PLATFORM_SCM_PERMISSION_DENIED_MESSAGE);
         return false;
       }
       const wip = deps.parsedState.codeAgentWipExecutionV1;
@@ -535,7 +534,7 @@ export function buildWipChipHandlerSlice(deps: WipChipHandlerDeps): Pick<
         return wip.status === "scm_commit_pending" || wip.status === "developer_approved";
       }
       if (wip.status !== "developer_approved") {
-        deps.showToast("AI개발자 [구현 결과 승인] 후 SCM 공식 반영을 요청할 수 있습니다.");
+        deps.appendUserNotice("AI개발자 [구현 결과 승인] 후 SCM 공식 반영을 요청할 수 있습니다.");
         return false;
       }
       return true;

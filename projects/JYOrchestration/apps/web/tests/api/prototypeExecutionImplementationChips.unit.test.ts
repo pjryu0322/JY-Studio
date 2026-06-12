@@ -33,7 +33,7 @@ const baseHandlers = () => ({
   prepareImplementationExecution: vi.fn(),
   confirmExecution: vi.fn(),
   refreshStatus: vi.fn(),
-  showToast: vi.fn(),
+  appendUserNotice: vi.fn(),
   canConfirmImplementationTaskPlan: () => true,
   canRequestCodeAgentWipWork: () => true,
   canApproveDeveloperResult: () => true,
@@ -64,7 +64,7 @@ describe("tryHandlePrototypeExecutionChip", () => {
       tryHandlePrototypeExecutionChip("구현 작업안 확정", {
         ...baseHandlers(),
         confirmImplementationTaskPlan: confirm,
-        showToast: toast,
+        appendUserNotice: toast,
         canConfirmImplementationTaskPlan: () => {
           toast("blocked");
           return false;
@@ -130,5 +130,9 @@ describe("stage action chip mapping", () => {
       expect(mapImplementationChipToAction(label)).toBeNull();
       expect(tryHandlePrototypeExecutionChip(label, baseHandlers())).toBe(true);
     }
+  });
+
+  it("maps return-to-planning blocked chip to stage action", () => {
+    expect(mapImplementationChipToAction("기획단계로 돌아가기")).toBe("RETURN_TO_PLANNING_STAGE");
   });
 });

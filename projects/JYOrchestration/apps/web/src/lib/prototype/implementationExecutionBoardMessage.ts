@@ -311,11 +311,11 @@ export function tryAppendImplementationUserConfirmationBoardMessage(input: {
   readonly board: ImplementationExecutionBoardV1 | null;
   readonly nowIso: string;
   readonly appendAiMessage: (message: RequirementsMessage) => void;
-  readonly showToast?: (message: string) => void;
+  readonly appendUserNotice?: (message: string) => void;
 }): AppendImplementationUserConfirmationBoardMessageResult {
   if (!input.board) {
     const message = "표시할 구현 작업목록이 없습니다.";
-    input.showToast?.(message);
+    input.appendUserNotice?.(message);
     return { kind: "no_board", message };
   }
   const message = buildImplementationUserConfirmationBoardMessage({
@@ -324,7 +324,7 @@ export function tryAppendImplementationUserConfirmationBoardMessage(input: {
   });
   if (!message) {
     const blocked = "사용자 확인이 필요한 작업이 없습니다.";
-    input.showToast?.(blocked);
+    input.appendUserNotice?.(blocked);
     return { kind: "no_items", message: blocked };
   }
   input.appendAiMessage(message);

@@ -46,7 +46,7 @@ export type PrototypeExecutionChipHandlers = Readonly<{
   readonly prepareImplementationExecution: () => void;
   readonly confirmExecution: () => void;
   readonly refreshStatus: () => void;
-  readonly showToast: (message: string) => void;
+  readonly appendUserNotice: (message: string) => void;
   readonly canConfirmImplementationTaskPlan: () => boolean;
   readonly canRequestCodeAgentWipWork: () => boolean;
   readonly canApproveDeveloperResult: () => boolean;
@@ -72,15 +72,15 @@ export function tryHandlePrototypeExecutionChip(
       }
       if (handlers.returnToPlanningStage) {
         if (t === IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_CHIP) {
-          handlers.showToast("기획단계에서 Seed 후보를 확인·확정해 주세요.");
+          handlers.appendUserNotice("기획단계에서 Seed 후보를 확인·확정해 주세요.");
         } else if (t === PLANNING_IMPLEMENTATION_SEED_GENERATE_CHIP) {
-          handlers.showToast("기획단계에서 AI팀이 구현 Seed 후보 생성을 실행해 주세요.");
+          handlers.appendUserNotice("기획단계에서 AI팀이 구현 Seed 후보 생성을 실행해 주세요.");
         } else if (t === PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP) {
-          handlers.showToast("기획단계에서 구현 준비도를 점검해 주세요.");
+          handlers.appendUserNotice("기획단계에서 구현 준비도를 점검해 주세요.");
         }
         handlers.returnToPlanningStage();
       } else {
-        handlers.showToast("기획단계 화면으로 이동해 주세요.");
+        handlers.appendUserNotice("기획단계 화면으로 이동해 주세요.");
       }
       return true;
 
@@ -161,5 +161,4 @@ export const FALLBACK_LEGACY_CHIP_LABELS = [
   "변경사항 보기",
   "구현 실행",
   "구현 실행 준비",
-  IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP,
 ] as const;
