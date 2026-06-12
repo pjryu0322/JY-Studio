@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useMemo, type CSSProperties, type ReactNode } from "react";
 import { writeClipboardText } from "@/lib/clipboard/writeClipboardText";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import {
@@ -138,11 +138,7 @@ export function ImplementationExecutionLogPanelContent(props: {
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[] | null;
   readonly exportBaseName?: string | null;
   readonly onClearExecutionLog?: () => void | Promise<void>;
-  readonly onFeedback?: (message: string) => void;
 }): ReactNode {
-  const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [copyToastMessage, setCopyToastMessage] = useState<string | null>(null);
-
   const executionLogTimeline = useMemo(
     () => pickExecutionLogTimelineEntries(props.promptTimeline),
     [props.promptTimeline],
@@ -151,28 +147,6 @@ export function ImplementationExecutionLogPanelContent(props: {
   const exportStem = useMemo(
     () => sanitizeExportFileStem(props.exportBaseName ?? ""),
     [props.exportBaseName],
-  );
-
-  useEffect(() => {
-    return () => {
-      if (copyToastTimerRef.current) {
-        clearTimeout(copyToastTimerRef.current);
-        copyToastTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  const showCopyFeedback = useCallback(
-    (message: string) => {
-      if (copyToastTimerRef.current) clearTimeout(copyToastTimerRef.current);
-      setCopyToastMessage(message);
-      props.onFeedback?.(message);
-      copyToastTimerRef.current = setTimeout(() => {
-        setCopyToastMessage(null);
-        copyToastTimerRef.current = null;
-      }, 2000);
-    },
-    [props.onFeedback],
   );
 
   const onDownloadExecutionLogMarkdown = useCallback(() => {
@@ -189,47 +163,20 @@ export function ImplementationExecutionLogPanelContent(props: {
       `표시 중인 실행 로그 ${count}건을 삭제할까요?\n프롬프트·대화 기록 등 다른 타임라인은 유지됩니다.`,
     );
     if (!ok) return;
-    void Promise.resolve(props.onClearExecutionLog()).then(() => {
-      showCopyFeedback("실행 로그를 초기화했습니다.");
-    });
-  }, [executionLogTimeline.length, props.onClearExecutionLog, showCopyFeedback]);
+    void Promise.resolve(props.onClearExecutionLog());
+  }, [executionLogTimeline.length, props.onClearExecutionLog]);
 
   const onCopyExecutionLogEntry = useCallback(
     async (entry: RequirementsPromptTimelineEntry) => {
       const text = buildExecutionLogEntryCopyText(entry);
       if (!text.trim()) return;
-      const ok = await writeClipboardText(text);
-      showCopyFeedback(
-        ok ? "실행 로그를 클립보드에 복사했습니다." : "복사에 실패했습니다. 브라우저 권한을 확인해 주세요.",
-      );
+      await writeClipboardText(text);
     },
-    [showCopyFeedback],
+    [],
   );
 
   return (
-    <div style={{ position: "relative" }} data-testid="prompt-timeline-execution-log-tab">
-      {copyToastMessage ? (
-        <div
-          role="status"
-          aria-live="polite"
-          style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
-            zIndex: 2,
-            padding: "8px 14px",
-            borderRadius: 10,
-            background: "#0f172a",
-            color: "#fff",
-            fontSize: 13,
-            fontWeight: 700,
-            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.25)",
-            maxWidth: "min(320px, 90vw)",
-          }}
-        >
-          {copyToastMessage}
-        </div>
-      ) : null}
+    <div data-testid="prompt-timeline-execution-log-tab">
       <div style={docBlock}>
         <div
           style={{

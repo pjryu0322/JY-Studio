@@ -37,16 +37,17 @@ describe("resolveImplementationPrimaryAction (P3-09)", () => {
     expect(resolved.enabled).toBe(true);
   });
 
-  it("returns blocked_no_selection when runnable remain but none selected", () => {
+  it("returns prepare_integration when runnable remain but none selected", () => {
     const resolved = resolveImplementationPrimaryAction({
       selectionSummary: selectionSummary({
         runnableCount: 1,
         selectedRunnableCount: 0,
         integrationReadyCount: 14,
+        integrationReadyCodeTaskIds: ["A"],
       }),
     });
-    expect(resolved.action).toBe("blocked_no_selection");
-    expect(resolved.disabledReason).toContain("선택");
+    expect(resolved.action).toBe("prepare_integration_preview");
+    expect(resolved.enabled).toBe(true);
   });
 
   it("returns prepare_integration when no runnable and integration ready", () => {
@@ -62,15 +63,16 @@ describe("resolveImplementationPrimaryAction (P3-09)", () => {
     expect(resolved.codeTaskIds).toEqual(ids);
   });
 
-  it("does not return prepare_integration when runnableCount > 0", () => {
+  it("returns prepare_integration when runnableCount > 0 and none selected", () => {
     const resolved = resolveImplementationPrimaryAction({
       selectionSummary: selectionSummary({
         runnableCount: 1,
         selectedRunnableCount: 0,
         integrationReadyCount: 14,
+        integrationReadyCodeTaskIds: ["CT-1"],
       }),
     });
-    expect(resolved.action).not.toBe("prepare_integration_preview");
+    expect(resolved.action).toBe("prepare_integration_preview");
   });
 
   it("maps execute to runtime API action with ids", () => {

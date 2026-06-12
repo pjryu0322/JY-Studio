@@ -16,7 +16,9 @@ export type LegacyRuntimeClass = (typeof LEGACY_RUNTIME_CLASS)[keyof typeof LEGA
 export const LEGACY_QUICK_RUN_RUNTIME_USAGE_MAP: Readonly<
   Record<string, LegacyRuntimeClass>
 > = {
-  "serverQuickRunContinuationService.ts": LEGACY_RUNTIME_CLASS.legacy_runtime_projection_only,
+  "serverQuickRunContinuationService.ts": LEGACY_RUNTIME_CLASS.legacy_runtime_deprecated,
+  "implementationDbQueuedExecutionUnitDispatch.ts": LEGACY_RUNTIME_CLASS.legacy_runtime_projection_only,
+  "implementationIntegrationLegacyPipelineAdapter.ts": LEGACY_RUNTIME_CLASS.legacy_runtime_deprecated,
   "dispatchQuickRunContinuationOnServer.ts": LEGACY_RUNTIME_CLASS.legacy_runtime_audit_only,
   "implementationQuickRunQueue.ts": LEGACY_RUNTIME_CLASS.legacy_runtime_projection_only,
   "quickRunContinuationAfterGithubVerify.ts": LEGACY_RUNTIME_CLASS.legacy_runtime_deprecated,

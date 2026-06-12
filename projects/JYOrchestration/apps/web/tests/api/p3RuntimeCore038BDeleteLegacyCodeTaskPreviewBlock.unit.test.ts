@@ -16,7 +16,7 @@ import {
 import { resolveEffectiveIntegrationSourceBranch } from "@/lib/prototype/integrationEffectiveSourceBranch";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const panelPath = join(__dirname, "../../src/components/preview/PrototypePreviewPanel.tsx");
+import { readImplementationStagePanelSources } from "../helpers/implementationStagePanelSources";
 const buildServicePath = join(
   __dirname,
   "../../src/lib/prototype/completedCodeTaskPreviewBuildService.ts",
@@ -43,15 +43,15 @@ function extractRunIntegrationPipelineBlock(source: string): string {
 
 describe("P3-Runtime-Core-03-8B delete legacy codetask preview sync from integration handler", () => {
   it("1–2. integration prepare calls pipeline client only, not batch sync", () => {
-    const block = extractRunIntegrationPipelineBlock(readFileSync(panelPath, "utf8"));
-    expect(block).toContain("runProjectIntegrationPrepareOnly");
+    const block = extractRunIntegrationPipelineBlock(readImplementationStagePanelSources());
+    expect(block).toContain("executeImplementationBoardIntegrationPipeline");
     expect(block).not.toContain("applyIntegratedPipelineSyncSteps");
     expect(block).not.toContain("ensureCompletedCodeTaskPreviewForFallback");
     expect(readFileSync(clientPath, "utf8")).toContain("runIntegrationBranchPipelineClient");
   });
 
   it("3–6. no completed_codetask timeline actions in runIntegrationPipeline", () => {
-    const block = extractRunIntegrationPipelineBlock(readFileSync(panelPath, "utf8"));
+    const block = extractRunIntegrationPipelineBlock(readImplementationStagePanelSources());
     for (const action of COMPLETED_CODETASK_ACTIONS) {
       expect(block).not.toContain(action);
     }
@@ -59,7 +59,7 @@ describe("P3-Runtime-Core-03-8B delete legacy codetask preview sync from integra
   });
 
   it("7–8. integration handler does not persist CodeTask preview scope/runtime from batch", () => {
-    const block = extractRunIntegrationPipelineBlock(readFileSync(panelPath, "utf8"));
+    const block = extractRunIntegrationPipelineBlock(readImplementationStagePanelSources());
     expect(block).not.toContain("batch.previewScope");
     expect(block).not.toContain("batch.previewRuntime");
     expect(block).not.toContain("batch.integratedState");
@@ -125,7 +125,7 @@ describe("P3-Runtime-Core-03-8B delete legacy codetask preview sync from integra
       orchestration: {},
     });
     expect(blocked.ok).toBe(false);
-    expect(readFileSync(panelPath, "utf8")).toContain("actionSource: \"preview_button\"");
+    expect(readImplementationStagePanelSources()).toContain("actionSource: \"preview_button\"");
   });
 
   it("14–15. continue message guards", () => {

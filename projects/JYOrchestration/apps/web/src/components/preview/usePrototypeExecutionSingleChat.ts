@@ -93,6 +93,7 @@ export function usePrototypeExecutionSingleChat({
   implementationBootstrapInput,
   envLoading = false,
   conversationResetNonce = 0,
+  conversationSurfaceEnabled = true,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -124,6 +125,8 @@ export function usePrototypeExecutionSingleChat({
   readonly implementationBootstrapInput?: ImplementationOrchestrationSummaryInput | null;
   readonly envLoading?: boolean;
   readonly conversationResetNonce?: number;
+  /** false: no chat timeline merge, slots/bootstrap injection, or composer send (board-only UX) */
+  readonly conversationSurfaceEnabled?: boolean;
 }) {
   const [conversationStatus, setConversationStatus] = useState<"idle" | "loading" | "loaded">("idle");
   const [conversationMessages, setConversationMessages] = useState<readonly RequirementsMessage[]>([]);
@@ -183,6 +186,7 @@ export function usePrototypeExecutionSingleChat({
   }, [conversationResetNonce]);
 
   useEffect(() => {
+    if (!conversationSurfaceEnabled) return;
     const pid = projectId.trim();
     if (!pid || conversationStatus !== "loaded" || envLoading) return;
     if (!implementationBootstrapInput?.implementationSeedV1) return;
@@ -220,20 +224,25 @@ export function usePrototypeExecutionSingleChat({
     answers,
     currentSlotKey,
     conversationResetNonce,
+    conversationSurfaceEnabled,
   ]);
 
   const { messages: derivedMessages, actionByLabel } = useMemo(
-    () => projectPrototypeBuiltMessagesToRequirements(mergedBuiltMessages),
-    [mergedBuiltMessages],
+    () =>
+      conversationSurfaceEnabled
+        ? projectPrototypeBuiltMessagesToRequirements(mergedBuiltMessages)
+        : { messages: [] as readonly RequirementsMessage[], actionByLabel: new Map<string, PrototypeChatAction>() },
+    [conversationSurfaceEnabled, mergedBuiltMessages],
   );
   actionByLabelRef.current = actionByLabel;
 
-  const chatMessages = useMemo(
-    () => mergePrototypeExecutionChatTimeline(derivedMessages, conversationMessages),
-    [derivedMessages, conversationMessages],
-  );
+  const chatMessages = useMemo(() => {
+    if (!conversationSurfaceEnabled) return [] as readonly RequirementsMessage[];
+    return mergePrototypeExecutionChatTimeline(derivedMessages, conversationMessages);
+  }, [conversationSurfaceEnabled, derivedMessages, conversationMessages]);
 
   useEffect(() => {
+    if (!conversationSurfaceEnabled) return;
     const pid = projectId.trim();
     if (!pid || conversationStatus !== "loaded") return;
     if (slotsBootstrapRef.current || !envOk) return;
@@ -252,10 +261,11 @@ export function usePrototypeExecutionSingleChat({
         setCurrentSlotKey(r.slots[0]?.key ?? null);
       }
     })();
-  }, [projectId, projectName, projectDescription, templateName, ideationSummary, actorFlowSummary, envOk, conversationStatus]);
+  }, [projectId, projectName, projectDescription, templateName, ideationSummary, actorFlowSummary, envOk, conversationStatus, conversationSurfaceEnabled]);
 
   const appendAiNotice = useCallback(
     (text: string) => {
+      if (!conversationSurfaceEnabled) return;
       const body = String(text ?? "").trim();
       if (!body) return;
       const msg = newRequirementsMessage({
@@ -280,10 +290,11 @@ export function usePrototypeExecutionSingleChat({
         return next;
       });
     },
-    [aiTitle, answers, currentSlotKey, onPersistStateJson, slots],
+    [aiTitle, answers, currentSlotKey, onPersistStateJson, slots, conversationSurfaceEnabled],
   );
 
   const sendMessage = useCallback(async () => {
+    if (!conversationSurfaceEnabled) return;
     const text = input.trim();
     if (!text || inputBlocked || protoBusy || aiInvokePending) return;
 

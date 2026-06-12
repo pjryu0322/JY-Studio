@@ -23,8 +23,23 @@ describe("coalesceCodeTaskBoardRowDisplayLabels", () => {
       commitSha: "abc",
       branchName: "wip/data/sample-data",
     });
-    expect(state.isRunnableForUser).toBe(true);
-    expect(state.checkboxDisabled).toBe(false);
+    expect(state.isRunnableForUser).toBe(false);
+    expect(state.isCompleted).toBe(true);
+    expect(state.isIntegrationReady).toBe(true);
+    expect(state.checkboxDisabled).toBe(true);
+    expect(state.progressLabel).toBe("GitHub outcome 저장됨");
+  });
+
+  it("locks completed display when completion evidence is present", () => {
+    const labels = coalesceCodeTaskBoardRowDisplayLabels({
+      statusLabel: "완료",
+      progressLabel: "GitHub outcome 저장됨",
+      collapsedSummary: "대기",
+      rowStatusLabel: "대기",
+      rowProgressLabel: "실행 가능",
+      completionEvidenceLocked: true,
+    });
+    expect(labels).toEqual({ statusLabel: "완료", progressLabel: "GitHub outcome 저장됨" });
   });
 
   it("overrides stale completed labels when row view still shows waiting", () => {
@@ -53,7 +68,7 @@ describe("coalesceCodeTaskBoardRowDisplayLabels", () => {
       codeTaskId: "CODE-DATA-SAMPLE-001",
       title: "샘플 데이터 생성",
       ...labels,
-      githubOutcomeSaved: true,
+      githubOutcomeSaved: false,
       branchName: "wip/data/sample-data",
     });
     expect(state.isRunnableForUser).toBe(true);
@@ -87,7 +102,7 @@ describe("resolveCodeTaskBoardState", () => {
     expect(state.isCompleted).toBe(false);
   });
 
-  it("keeps a displayed runnable task selectable even when github outcome flag is stale true", () => {
+  it("keeps github outcome tasks non-runnable even when row labels look waiting", () => {
     const state = resolveCodeTaskBoardState({
       codeTaskId: "CODE-DATA-SAMPLE-001",
       title: "샘플 데이터 생성 · 샘플 데이터 구현",
@@ -95,11 +110,25 @@ describe("resolveCodeTaskBoardState", () => {
       progressLabel: "실행 가능",
       githubOutcomeSaved: true,
       branchName: "wip/data/sample-data",
+      commitSha: "abc123",
     });
-    expect(state.isRunnableForUser).toBe(true);
-    expect(state.checkboxDisabled).toBe(false);
-    expect(state.isCompleted).toBe(false);
-    expect(state.isIntegrationReady).toBe(false);
+    expect(state.isRunnableForUser).toBe(false);
+    expect(state.checkboxDisabled).toBe(true);
+    expect(state.isCompleted).toBe(true);
+    expect(state.isIntegrationReady).toBe(true);
+  });
+
+  it("forbids 완료 + 실행 가능 display combination", () => {
+    const state = resolveCodeTaskBoardState({
+      codeTaskId: "CODE-DATA-SAMPLE-001",
+      title: "샘플",
+      statusLabel: "완료",
+      progressLabel: "실행 가능",
+      githubOutcomeSaved: true,
+      commitSha: "abc",
+    });
+    expect(state.isRunnableForUser).toBe(false);
+    expect(state.progressLabel).toBe("GitHub outcome 저장됨");
   });
 
   it("marks completed github outcome tasks as integration ready", () => {
@@ -114,7 +143,7 @@ describe("resolveCodeTaskBoardState", () => {
     expect(state.isRunnableForUser).toBe(false);
     expect(state.checkboxDisabled).toBe(true);
     expect(state.isIntegrationReady).toBe(true);
-    expect(state.checkboxDisabledReason).toContain("통합 시 자동 포함");
+    expect(state.checkboxDisabledReason).toBe("completed");
   });
 
   it("marks running as not runnable", () => {

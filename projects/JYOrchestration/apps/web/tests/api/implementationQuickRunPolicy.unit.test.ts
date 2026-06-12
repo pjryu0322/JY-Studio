@@ -39,11 +39,11 @@ describe("resolveQuickRunToolbarAction (P3-08G)", () => {
     }
   });
 
-  it("blocks when runnable remain but nothing runnable selected", () => {
+  it("prepares integration when runnable remain but nothing runnable selected", () => {
     const resolved = resolveQuickRunToolbarAction({
       summary: summary({ runnableCount: 1, selectedRunnableCount: 0, integrationReadyCount: 14 }),
     });
-    expect(resolved.action).toBe("blocked_no_selection");
+    expect(resolved.action).toBe("prepare_integration_preview");
   });
 
   it("does not block when selectedRunnableCount > 0", () => {
@@ -57,11 +57,11 @@ describe("resolveQuickRunToolbarAction (P3-08G)", () => {
     expect(resolved.action).not.toBe("blocked_no_selection");
   });
 
-  it("does not prepare integration when runnableCount > 0", () => {
+  it("prepares integration when runnableCount > 0 and none selected", () => {
     const resolved = resolveQuickRunToolbarAction({
       summary: summary({ runnableCount: 1, selectedRunnableCount: 0, integrationReadyCount: 14 }),
     });
-    expect(resolved.action).not.toBe("prepare_integration_preview");
+    expect(resolved.action).toBe("prepare_integration_preview");
   });
 
   it("prepares integration when no runnable and integration ready tasks exist", () => {

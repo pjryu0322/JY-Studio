@@ -5,11 +5,16 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
-import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { buildImplementationIntegrationPipelineContext } from "@/lib/prototype/implementationIntegrationPipelineContextBuilder";
 import { resolveIntegrationStepsForRuntimeSnapshot } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
 import { buildImplementationIntegrationPipelineEligibilityFromSnapshot } from "@/lib/prototype/projectIntegrationPipelineEligibility";
+import { summarizeCodeTaskBoardGateFromPlanAndUnits } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
+import {
+  evaluateIntegrationPrepareGateFromBoardSummary,
+  logIntegrationPrepareStarted,
+} from "@/lib/prototype/implementationBoardIntegrationGate";
+import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { runProjectIntegrationPipeline } from "@/lib/prototype/projectIntegrationPipelineService";
 import { buildProjectIntegrationPipelinePersistState } from "@/lib/prototype/projectIntegrationPipelinePersist";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
@@ -22,7 +27,6 @@ import { toImplementationRuntimeSnapshotApiSummary } from "@/lib/prototype/imple
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import { prisma } from "@/lib/prisma";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
-import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import {
   resolveAutoGenerationReadyFromCapabilityJson,
 } from "@/lib/prototype/autoGenerationSettingsState";
@@ -37,6 +41,7 @@ type Body = Readonly<{
   readonly codeTaskExecutionRunsV1?: unknown;
   readonly implementationQuickRunV1?: unknown;
   readonly createPullRequest?: boolean;
+  readonly boardSelectionSummary?: ImplementationCodeTaskSelectionSummaryV1 | null;
 }>;
 
 const EXECUTION_SETUP_SELECT = {
@@ -117,12 +122,7 @@ export async function POST(request: NextRequest) {
     const runs =
       parseCodeTaskExecutionRunsV1(body.codeTaskExecutionRunsV1) ??
       parseCodeTaskExecutionRunsV1(persisted.codeTaskExecutionRunsV1);
-    const quickRun =
-      parseImplementationQuickRunV1(body.implementationQuickRunV1) ??
-      parseImplementationQuickRunV1(persisted.implementationQuickRunV1);
 
-    const bundle = await getImplementationRuntimeBundle(projectId);
-    const selectedCodeTaskIds = bundle.job?.selectedCodeTaskIds ?? quickRun?.selectedCodeTaskIds ?? null;
     const storedIntegrationPlan =
       parseCodeTaskIntegrationPlanV1(persisted.codeTaskIntegrationPlanV1) ?? null;
 
@@ -134,12 +134,31 @@ export async function POST(request: NextRequest) {
       taskList,
       runs,
     });
+    const serverBoardGate = summarizeCodeTaskBoardGateFromPlanAndUnits({
+      codeTaskPlan,
+      units: summary.executionUnits,
+      runs,
+    });
+    const boardGateSummary = body.boardSelectionSummary ?? serverBoardGate;
+    const boardGateBlockedDetails =
+      body.boardSelectionSummary != null ? undefined : serverBoardGate.blockedDetails;
+
+    evaluateIntegrationPrepareGateFromBoardSummary(boardGateSummary, {
+      projectId,
+      blockedDetails: boardGateBlockedDetails ?? serverBoardGate.blockedDetails,
+      runnableCodeTaskIds: serverBoardGate.runnableCodeTaskIds,
+    });
+
     const integrationSteps = resolveIntegrationStepsForRuntimeSnapshot({
       requirementsState: persisted,
       codeTaskPlan,
     });
     const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(
       summary.runtimeSnapshot,
+      {
+        boardGateSummary,
+        boardGateBlockedDetails: boardGateBlockedDetails ?? serverBoardGate.blockedDetails,
+      },
     );
     const pipelineContext = buildImplementationIntegrationPipelineContext({
       projectId,
@@ -151,6 +170,16 @@ export async function POST(request: NextRequest) {
       createPullRequest: body.createPullRequest !== false,
     });
 
+    const integrationCodeTaskIds = boardGateSummary.integrationReadyCodeTaskIds;
+
+    if (eligibility.canRun) {
+      logIntegrationPrepareStarted({
+        projectId,
+        integrationCodeTaskCount: integrationCodeTaskIds.length,
+        integrationCodeTaskIds,
+      });
+    }
+
     const outcome = await runProjectIntegrationPipeline({
       context: pipelineContext,
       eligibility,
@@ -159,7 +188,7 @@ export async function POST(request: NextRequest) {
       codeTaskPlan,
       taskList,
       codeTaskRuns: runs,
-      selectedCodeTaskIds,
+      integrationCodeTaskIds,
       storedIntegrationPlan,
       integrationSteps,
       requirementsState: persisted,

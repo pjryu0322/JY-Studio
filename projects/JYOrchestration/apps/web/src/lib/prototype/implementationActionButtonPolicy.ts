@@ -42,26 +42,17 @@ export function resolveImplementationBoardPrimaryAction(input: {
   if (routed.action === "prepare_integration_preview") {
     primaryAction = "prepare_integration_preview";
     primaryLabel = routed.label;
-    primaryEnabled = input.integrationPrepareEnabled === true;
-  } else if (
-    routed.action === "blocked_no_available_action" &&
-    summary.runnableCount === 0 &&
-    summary.integrationReadyCount > 0
-  ) {
-    primaryAction = "prepare_integration_preview";
-    primaryLabel = "통합 및 Preview 준비";
-    primaryEnabled = input.integrationPrepareEnabled === true;
+    primaryEnabled = input.integrationPrepareEnabled !== false;
   } else if (routed.action === "open_preview") {
     primaryAction = "open_preview";
     primaryLabel = routed.label;
     primaryEnabled = routed.enabled;
-  } else if (routed.action === "blocked_no_selection" && summary.runnableCount > 0) {
-    primaryDisabledTitle = routed.disabledReason;
   }
 
   const showIntegrationPrepareButton =
     primaryAction === "prepare_integration_preview" ||
     summary.integrationReadyCount > 0 ||
+    summary.runnableCount > 0 ||
     input.integratedAppPreviewReady === true;
 
   return {

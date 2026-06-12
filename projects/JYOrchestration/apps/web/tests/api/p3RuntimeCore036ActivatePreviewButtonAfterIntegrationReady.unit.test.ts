@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { readImplementationStagePanelSources } from "../helpers/implementationStagePanelSources";
 import { CODE_TASK_EXECUTION_RUN_VERSION } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { INTEGRATION_WIRING_PROCESS_TASK_TITLE } from "@/lib/prototype/codeTaskIntegrationWiringTask";
@@ -425,7 +426,7 @@ describe("P3-Runtime-Core-03-6 activate Preview after integration ready", () => 
   });
 
   it("17. PrototypePreviewPanel wires integration steps into execution board", () => {
-    const src = readFileSync(join(componentsDir, "PrototypePreviewPanel.tsx"), "utf8");
+    const src = readImplementationStagePanelSources();
     expect(src).toContain("implementationIntegrationStepsV1={");
     expect(src).toContain("shouldSuppressIntegrationContinueUserMessage");
     expect(src).toContain("INTEGRATION_APP_PREVIEW_READY_SUCCESS_USER_MESSAGE");

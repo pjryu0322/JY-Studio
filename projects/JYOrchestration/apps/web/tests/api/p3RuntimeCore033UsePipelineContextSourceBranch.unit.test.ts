@@ -17,6 +17,7 @@ import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementati
 import { INTEGRATION_WIRING_PROCESS_TASK_TITLE } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { buildDefaultIntegrationStepsFromBranchPlan } from "@/lib/prototype/implementationIntegrationStepBuilder";
+import { integrationReadyBoardGateSummary } from "./integrationEligibilityBoardGateFixtures";
 
 const PID = "p-runtime-core-033";
 const NOW = "2026-06-08T12:00:00.000Z";
@@ -203,17 +204,21 @@ describe("P3-Runtime-Core-03-3 pipeline ordering and messages", () => {
     expect(pipelineSrc).toContain("includedWorkBranches");
   });
 
-  it("legacy adapter forwards context source branch", () => {
-    const src = readFileSync(join(prototypeDir, "implementationIntegrationLegacyPipelineAdapter.ts"), "utf8");
-    expect(src).toContain("sourceBranch: input.sourceBranch");
-    expect(src).toContain("targetBranch: input.targetBranch");
+  it("project integration pipeline forwards context source branch to branch pipeline", () => {
+    const src = readFileSync(join(prototypeDir, "projectIntegrationPipelineService.ts"), "utf8");
+    expect(src).toContain("sourceBranch: context.sourceBranch");
+    expect(src).toContain("runIntegrationBranchPipeline(");
   });
 });
 
 describe("P3-Runtime-Core-03-3 regression", () => {
   it("14. integration button enabled when all complete + final_wiring pending", () => {
-    const { snapshot } = regressionSnapshot();
-    const button = evaluateIntegrationPipelineButtonFromSnapshot(snapshot);
+    const { snapshot, units } = regressionSnapshot();
+    const button = evaluateIntegrationPipelineButtonFromSnapshot(snapshot, {
+      boardGateSummary: integrationReadyBoardGateSummary({
+        integrationReadyCodeTaskIds: units.map((u) => u.codeTaskId),
+      }),
+    });
     expect(button.enabled).toBe(true);
   });
 

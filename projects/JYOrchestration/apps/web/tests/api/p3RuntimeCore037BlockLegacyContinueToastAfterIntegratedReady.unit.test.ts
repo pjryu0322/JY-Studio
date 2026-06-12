@@ -62,8 +62,8 @@ describe("P3-Runtime-Core-03-7 block legacy continue toast", () => {
     expect(toast.message).toContain("서버 저장에 실패");
   });
 
-  it("5. PrototypePreviewPanel uses resolveIntegrationPipelineUserToast", () => {
-    const src = readFileSync(join(componentsDir, "PrototypePreviewPanel.tsx"), "utf8");
+  it("5. integration pipeline runner uses resolveIntegrationPipelineUserToast", () => {
+    const src = readFileSync(join(__dirname, "../../src/lib/prototype/implementationBoardIntegrationPipelineRun.ts"), "utf8");
     expect(src).toContain("resolveIntegrationPipelineUserToast");
     expect(src).not.toMatch(/suppressContinueToast\)\s*\{\s*showToast\(\s*integrationServerSaved\s*\?\s*pipelineResult\.message/);
   });

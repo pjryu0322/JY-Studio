@@ -18,6 +18,8 @@ export type RunIntegrationBranchPipelineClientResult = Readonly<{
   readonly orchestrationPatch?: Record<string, unknown>;
 }>;
 
+import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
+
 export async function runIntegrationBranchPipelineClient(input: {
   readonly projectId: string;
   readonly projectName?: string | null;
@@ -26,6 +28,8 @@ export async function runIntegrationBranchPipelineClient(input: {
   readonly codeTaskExecutionRunsV1?: unknown;
   readonly implementationQuickRunV1?: unknown;
   readonly createPullRequest?: boolean;
+  /** Board checkbox와 무관 — integration-ready 완료 CodeTask 집계 */
+  readonly boardSelectionSummary?: ImplementationCodeTaskSelectionSummaryV1 | null;
 }): Promise<RunIntegrationBranchPipelineClientResult> {
   const res = await credentialsIncludeFetch("/api/prototype/integration/run-pipeline", {
     method: "POST",

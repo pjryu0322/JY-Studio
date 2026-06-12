@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { readImplementationStagePanelSources } from "../helpers/implementationStagePanelSources";
 import { getIntegrationPreviewRemediationGuide } from "@/lib/prototype/integrationPreviewRemediationGuide";
 
 describe("IntegrationPreviewPreflightToast", () => {
   it("14. PrototypePreviewPanel shows checking message on integration click", () => {
-    const src = readFileSync(
-      join(__dirname, "../../src/components/preview/PrototypePreviewPanel.tsx"),
-      "utf8",
-    );
+    const src = readImplementationStagePanelSources();
     expect(src).toContain("INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE");
   });
 

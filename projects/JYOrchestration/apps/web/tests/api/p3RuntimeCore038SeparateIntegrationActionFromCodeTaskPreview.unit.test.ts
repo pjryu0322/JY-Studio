@@ -21,9 +21,9 @@ import {
   type ImplementationPreviewRuntimeV1,
 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import { resolveEffectiveIntegrationSourceBranch } from "@/lib/prototype/integrationEffectiveSourceBranch";
+import { readImplementationStagePanelSources } from "../helpers/implementationStagePanelSources";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const panelPath = join(__dirname, "../../src/components/preview/PrototypePreviewPanel.tsx");
 const boardPath = join(
   __dirname,
   "../../src/components/preview/ImplementationExecutionBoardPanel.tsx",
@@ -41,8 +41,9 @@ function extractRunIntegrationPipelineBlock(source: string): string {
 
 describe("P3-Runtime-Core-03-8 separate integration from codetask preview", () => {
   it("1–2. runIntegrationPipeline does not run completed_codetask preview build", () => {
-    const block = extractRunIntegrationPipelineBlock(readFileSync(panelPath, "utf8"));
-    expect(block).toContain("runProjectIntegrationPrepareOnly");
+    const block = extractRunIntegrationPipelineBlock(readImplementationStagePanelSources());
+    expect(block).toContain("executeImplementationBoardIntegrationPipeline");
+    expect(block).not.toContain("runIntegrationBranchPipelineClient");
     expect(block).not.toContain("applyIntegratedPipelineSyncSteps");
     expect(block).not.toContain("completed_codetask_preview_build_started");
     expect(block).not.toContain("completed_codetask_preview_ready");
@@ -72,7 +73,7 @@ describe("P3-Runtime-Core-03-8 separate integration from codetask preview", () =
         previewRuntimeV1: null,
       }),
     ).toBe(false);
-    const panelSrc = readFileSync(panelPath, "utf8");
+    const panelSrc = readImplementationStagePanelSources();
     expect(panelSrc).toContain("openImplementationPreview");
     expect(panelSrc).toContain("ensureCompletedCodeTaskPreviewForFallback");
   });
@@ -160,7 +161,7 @@ describe("P3-Runtime-Core-03-8 separate integration from codetask preview", () =
     expect(entry.mode).toBe("integrated_app_preview");
     expect(entry.url).toContain("github.io");
 
-    const boardSrc = readFileSync(boardPath, "utf8");
+    const boardSrc = readImplementationStagePanelSources();
     expect(boardSrc).toContain("openActualIntegratedPreviewInNewWindow");
     expect(boardSrc).toContain("onOpenImplementationPreview");
   });

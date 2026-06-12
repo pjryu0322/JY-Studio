@@ -67,11 +67,11 @@ import {
   resolveCodeTaskTreeSelectionToggle,
   resolveParentTaskIdForCodeTask,
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
-import { evaluateIntegrationBlockedByRunnableBoardSummary } from "@/lib/prototype/implementationBoardIntegrationGate";
 import type { summarizeCodeTaskBoardRowsFromTreeNodes } from "@/lib/prototype/implementationCodeTaskBoardState";
 import {
   useImplementationBoardCheckedCodeTaskIds,
   useImplementationBoardCodeTaskSelectionSummary,
+  usePruneNonSelectableCheckedCodeTaskIds,
 } from "@/components/preview/useImplementationBoardCheckboxSelection";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
@@ -554,6 +554,12 @@ export function ImplementationExecutionBoardPanel({
     liveRunnableCodeTaskIdsRef,
   });
 
+  usePruneNonSelectableCheckedCodeTaskIds({
+    taskTreeNodes,
+    checkedCodeTaskIds,
+    commitCheckedCodeTaskIds,
+  });
+
   const integratedPipelineLines = useMemo(
     () => buildImplementationIntegratedPipelineLines(board.integratedRows),
     [board.integratedRows],
@@ -645,31 +651,14 @@ export function ImplementationExecutionBoardPanel({
   );
 
   const integrationButtonState = useMemo(
-    () => {
-      const fromSnapshot = evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot, {
+    () =>
+      evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot, {
         autoGenerationReady,
         isIntegrationRunning: integrationPipelineBusy === true,
         latestPipelineStatus: integrationPipelineStatus,
         projectId: projectId ?? board.projectId,
-      });
-      const integrationSelectionGate = evaluateIntegrationBlockedByRunnableBoardSummary(
-        codeTaskSelectionSummary,
-      );
-      if (!integrationSelectionGate.ok && fromSnapshot.show) {
-        return {
-          ...fromSnapshot,
-          enabled: false,
-          disabledTitle: integrationSelectionGate.message,
-          disabledReasonLines: integrationSelectionGate.message
-            ? integrationSelectionGate.message.split("\n")
-            : fromSnapshot.disabledReasonLines,
-          userStatusLines: integrationSelectionGate.message
-            ? integrationSelectionGate.message.split("\n")
-            : fromSnapshot.userStatusLines,
-        };
-      }
-      return fromSnapshot;
-    },
+        boardGateSummary: codeTaskSelectionSummary,
+      }),
     [
       runtimeSnapshot,
       autoGenerationReady,
@@ -677,7 +666,7 @@ export function ImplementationExecutionBoardPanel({
       integrationPipelineStatus,
       projectId,
       board.projectId,
-      codeTaskSelectionSummary.runnableCount,
+      codeTaskSelectionSummary,
     ],
   );
 

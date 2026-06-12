@@ -64,6 +64,7 @@ import {
 } from "@/lib/prototype/codeTaskRunTargetCanonical";
 import { isInFlightCodeTaskExecutionRunStatus } from "@/lib/prototype/codeTaskExecutionRunStatus";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import { prisma } from "@/lib/prisma";
 
 const EXECUTION_SETUP_SELECT = {
   gitRepoUrl: true,

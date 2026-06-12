@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { readImplementationStagePanelSources } from "../helpers/implementationStagePanelSources";
 import {
   resolveCompletedCodeTaskPreviewPageHeader,
 } from "@/lib/prototype/completedCodeTaskPreviewView";
@@ -241,7 +242,7 @@ describe("P3-Runtime-Core-03-6B unify preview entry routing", () => {
   });
 
   it("15. PrototypePreviewPanel skips notice modal when integrated ready", () => {
-    const src = readFileSync(join(componentsDir, "PrototypePreviewPanel.tsx"), "utf8");
+    const src = readImplementationStagePanelSources();
     expect(src).toContain("resolveIntegratedAppPreviewReadyFromOrchestration");
     expect(src).toContain("COMPLETED_CODETASK_PREVIEW_NOTICE_SUPPRESSED_LOG_ACTION");
   });

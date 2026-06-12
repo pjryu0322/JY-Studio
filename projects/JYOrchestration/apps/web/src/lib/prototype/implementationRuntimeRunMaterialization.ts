@@ -14,6 +14,7 @@ import {
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
 import {
   getImplementationRuntimeBundle,
+  getImplementationRuntimeBundleByJobId,
   type ImplementationRuntimeBundleView,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { prisma } from "@/lib/prisma";
@@ -229,4 +230,29 @@ export function resolveFirstRunnableRunIdFromMaterialized(input: {
     runs: input.runs,
   });
   return selectNextRunnableCodeTaskRun({ queue, runs: input.runs })?.runId ?? null;
+}
+
+/** DB job pointer repair when current run is terminal but job has not advanced yet. */
+export async function ensureQuickRunJobPointsAtQueuedRun(input: {
+  readonly projectId: string;
+  readonly jobId: string;
+}): Promise<void> {
+  const pid = input.projectId.trim();
+  const jobId = input.jobId.trim();
+  if (!pid || !jobId) return;
+
+  for (let guard = 0; guard < 16; guard += 1) {
+    const bundle = await getImplementationRuntimeBundleByJobId({ projectId: pid, jobId });
+    const job = bundle.job;
+    if (!job || job.status !== "running") return;
+    const run = bundle.currentRun;
+    if (!run) return;
+    if (run.runtimeState === "queued") return;
+    if (!isTerminalRuntimeState(run.runtimeState)) return;
+    try {
+      await advanceImplementationRuntimeJob({ projectId: pid, jobId });
+    } catch {
+      return;
+    }
+  }
 }

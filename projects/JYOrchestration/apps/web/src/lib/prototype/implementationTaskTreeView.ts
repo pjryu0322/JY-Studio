@@ -55,6 +55,7 @@ import type { CodeTaskManualGithubRecheckPayloadV1 } from "@/lib/prototype/codeT
 import {
   coalesceCodeTaskBoardRowDisplayLabels,
   resolveCodeTaskBoardState,
+  resolveCodeTaskCheckboxDisabledTitle,
   type ImplementationCodeTaskBoardStateV1,
 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { resolveAuthoritativeCodeTaskOutcome } from "@/lib/prototype/implementationCodeTaskOutcomeResolver";
@@ -363,6 +364,30 @@ function buildCodeTaskNode(input: {
   statusLabel = snapshotStatus || labelsForSelection.statusLabel || statusLabel;
   progressLabel = snapshotProgress || labelsForSelection.progressLabel || progressLabel;
 
+  const unitOutcomeForBoard = input.executionUnit
+    ? resolveAuthoritativeCodeTaskOutcome({
+        unit: input.executionUnit,
+        runs: input.codeTaskExecutionRuns,
+      })
+    : null;
+  const githubOutcomeSavedForBoard =
+    input.runtimeSnapshotUnit?.hasPersistedGithubOutcome === true ||
+    unitOutcomeForBoard?.hasPersistedGithubOutcome === true ||
+    unitOutcomeForBoard?.status === "skipped";
+  const commitShaForBoard =
+    input.runtimeSnapshotUnit?.latestCommitSha ??
+    unitOutcomeForBoard?.commitSha ??
+    latestRun?.commitSha ??
+    null;
+  const noCodeChangeForBoard =
+    unitOutcomeForBoard?.latestOutcomeStatus === "no_code_change" ||
+    latestRun?.status === "no_code_change_completed" ||
+    Boolean(latestRun?.noCodeChangeEvidence?.trim());
+  const completionEvidenceLocked =
+    githubOutcomeSavedForBoard ||
+    Boolean(String(commitShaForBoard ?? "").trim()) ||
+    noCodeChangeForBoard;
+
   const coalescedDisplayLabels = coalesceCodeTaskBoardRowDisplayLabels({
     statusLabel,
     progressLabel,
@@ -371,6 +396,7 @@ function buildCodeTaskNode(input: {
     rowStatusLabel: rowView.statusLabel,
     rowProgressLabel: rowView.progressLabel,
     rowCollapsedSummary: rowView.collapsedSummary,
+    completionEvidenceLocked,
   });
   statusLabel = coalescedDisplayLabels.statusLabel;
   progressLabel = coalescedDisplayLabels.progressLabel;
@@ -422,16 +448,9 @@ function buildCodeTaskNode(input: {
     failureReason = "작업이 완료되지 않았습니다.";
   }
 
-  const unitOutcome = input.executionUnit
-    ? resolveAuthoritativeCodeTaskOutcome({
-        unit: input.executionUnit,
-        runs: input.codeTaskExecutionRuns,
-      })
-    : null;
+  const unitOutcome = unitOutcomeForBoard;
   const githubOutcomeSaved =
-    input.runtimeSnapshotUnit?.hasPersistedGithubOutcome === true ||
-    unitOutcome?.hasPersistedGithubOutcome === true ||
-    unitOutcome?.status === "skipped";
+    githubOutcomeSavedForBoard;
 
   console.info(
     JSON.stringify({
@@ -454,14 +473,24 @@ function buildCodeTaskNode(input: {
     statusLabel,
     progressLabel,
     githubOutcomeSaved,
-    commitSha: input.runtimeSnapshotUnit?.latestCommitSha ?? unitOutcome?.commitSha ?? null,
+    commitSha: commitShaForBoard ?? input.runtimeSnapshotUnit?.latestCommitSha ?? unitOutcome?.commitSha ?? null,
     branchName: input.executionUnit?.workBranch ?? input.codeTask.branchPlan?.workBranch ?? null,
+    noCodeChangeEvidence: noCodeChangeForBoard,
     isChecked: input.isChecked,
   });
 
   const checkboxDisabled = !boardState.isRunnableForUser;
-  const checkboxDisabledTitle = boardState.checkboxDisabledReason;
+  const checkboxDisabledTitle = resolveCodeTaskCheckboxDisabledTitle(boardState.checkboxDisabledReason);
   const checkboxDisabledReason = boardState.checkboxDisabledReason;
+
+  for (let i = 0; i < metaLines.length; i += 1) {
+    const line = metaLines[i];
+    if (line?.label === "상태") {
+      metaLines[i] = formatMetaLine("상태", boardState.statusLabel);
+    } else if (line?.label === "진행") {
+      metaLines[i] = formatMetaLine("진행", boardState.progressLabel);
+    }
+  }
 
   console.info(
     JSON.stringify({

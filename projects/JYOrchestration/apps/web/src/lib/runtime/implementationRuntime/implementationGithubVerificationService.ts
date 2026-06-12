@@ -8,7 +8,8 @@ import {
 } from "@/lib/prototype/taskCursorGithubVerify";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
-import { tryDispatchCurrentQueuedQuickRunAfterDbAdvance } from "@/lib/prototype/serverQuickRunContinuationService";
+import { dispatchDbQueuedAutoAdvanceOnServer } from "@/lib/prototype/implementationDbQueuedExecutionUnitDispatch";
+import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import {
   completeImplementationRuntimeGithubVerifyAndAdvance,
   failImplementationRuntimeGithubVerify,
@@ -72,9 +73,15 @@ export async function applyImplementationRuntimeGithubVerifyResult(input: {
     commitSha: verify.verifiedCommitSha ?? null,
     pullRequestUrl: input.pullRequestUrl ?? null,
   });
-  await tryDispatchCurrentQueuedQuickRunAfterDbAdvance({
+  const continuation = await dispatchDbQueuedAutoAdvanceOnServer({
     projectId: input.projectId.trim(),
-  }).catch(() => undefined);
+  }).catch(() => null);
+  if (continuation?.orchestrationPatch) {
+    await persistTaskCursorOrchestrationToProject({
+      projectId: input.projectId.trim(),
+      orchestrationPatch: continuation.orchestrationPatch,
+    }).catch(() => undefined);
+  }
   return {
     ok: true,
     outcomeType: "github_verified",
@@ -122,9 +129,15 @@ export async function completeImplementationRuntimeFromRecordedGithubOutcome(inp
     commitSha,
     pullRequestUrl: input.pullRequestUrl ?? null,
   });
-  await tryDispatchCurrentQueuedQuickRunAfterDbAdvance({
+  const continuation = await dispatchDbQueuedAutoAdvanceOnServer({
     projectId: input.projectId.trim(),
-  }).catch(() => undefined);
+  }).catch(() => null);
+  if (continuation?.orchestrationPatch) {
+    await persistTaskCursorOrchestrationToProject({
+      projectId: input.projectId.trim(),
+      orchestrationPatch: continuation.orchestrationPatch,
+    }).catch(() => undefined);
+  }
   return {
     ok: true,
     outcomeType: "github_verified",

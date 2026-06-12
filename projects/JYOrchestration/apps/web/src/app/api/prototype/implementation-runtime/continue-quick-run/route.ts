@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { dispatchDbQueuedAutoAdvanceOnServer } from "@/lib/prototype/implementationDbQueuedExecutionUnitDispatch";
 import { dispatchNextExecutionUnitOnServer } from "@/lib/prototype/implementationExecutionUnitDispatchService";
-import { tryDispatchCurrentQueuedQuickRunAfterDbAdvance } from "@/lib/prototype/serverQuickRunContinuationService";
 import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
@@ -20,6 +20,13 @@ type Body = {
   readonly completedTaskId?: string;
   readonly mode?: string;
 };
+
+const DB_QUEUED_MODES = new Set([
+  "legacy_db_queued_auto_dispatch",
+  "db_queued_auto_dispatch",
+  "dispatch_current_queued",
+  "recover_missing_server_continuation",
+]);
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,12 +54,8 @@ export async function POST(request: NextRequest) {
 
     const mode = String(body.mode ?? "").trim();
 
-    if (
-      mode === "legacy_db_queued_auto_dispatch" ||
-      mode === "db_queued_auto_dispatch" ||
-      mode === "dispatch_current_queued"
-    ) {
-      const continuation = await tryDispatchCurrentQueuedQuickRunAfterDbAdvance({ projectId });
+    if (DB_QUEUED_MODES.has(mode)) {
+      const continuation = await dispatchDbQueuedAutoAdvanceOnServer({ projectId });
       if (continuation.orchestrationPatch) {
         await persistTaskCursorOrchestrationToProject({
           projectId,
@@ -67,8 +70,8 @@ export async function POST(request: NextRequest) {
         reason: continuation.reason,
         diagnostics: continuation.diagnostics,
         orchestrationPatch: continuation.orchestrationPatch,
-        scheduler: "legacy_db_queued",
-        mode,
+        scheduler: "execution_unit",
+        mode: mode || "db_queued_auto_dispatch",
       });
     }
 

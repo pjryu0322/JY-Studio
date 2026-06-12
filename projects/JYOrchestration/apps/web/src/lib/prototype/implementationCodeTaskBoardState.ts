@@ -13,6 +13,12 @@ export type ImplementationCodeTaskBoardStateV1 = Readonly<{
 }>;
 
 const COMPLETED_REASON = "이미 완료된 작업입니다. 통합 시 자동 포함됩니다." as const;
+export const COMPLETED_CODE_TASK_CHECKBOX_DISABLED_REASON = "completed" as const;
+
+export function resolveCodeTaskCheckboxDisabledTitle(reason: string | null): string | null {
+  if (reason === COMPLETED_CODE_TASK_CHECKBOX_DISABLED_REASON) return COMPLETED_REASON;
+  return reason;
+}
 const RUNNING_REASON = "현재 실행 중인 작업은 선택할 수 없습니다." as const;
 const BLOCKED_REASON = "의존 작업이 완료되지 않아 아직 실행할 수 없습니다." as const;
 
@@ -40,7 +46,27 @@ export function coalesceCodeTaskBoardRowDisplayLabels(input: {
   readonly rowStatusLabel?: string | null;
   readonly rowProgressLabel?: string | null;
   readonly rowCollapsedSummary?: string | null;
+  /** GitHub outcome / commit / no-code-change — do not downgrade row to 대기·실행 가능. */
+  readonly completionEvidenceLocked?: boolean;
 }): Readonly<{ readonly statusLabel: string; readonly progressLabel: string }> {
+  if (input.completionEvidenceLocked === true) {
+    const pick = (...candidates: readonly (string | null | undefined)[]): string => {
+      for (const candidate of candidates) {
+        const trimmed = String(candidate ?? "").trim();
+        if (trimmed) return trimmed;
+      }
+      return "";
+    };
+    const rawProgress = pick(input.progressLabel, input.rowProgressLabel);
+    const progressLabel =
+      rawProgress &&
+      !progressIndicatesRunnable(rawProgress) &&
+      (labelIndicatesCompleted("완료", rawProgress) || rawProgress.includes("통합"))
+        ? rawProgress
+        : "GitHub outcome 저장됨";
+    return { statusLabel: "완료", progressLabel };
+  }
+
   const pick = (...candidates: readonly (string | null | undefined)[]): string => {
     for (const candidate of candidates) {
       const trimmed = String(candidate ?? "").trim();
@@ -118,6 +144,18 @@ export type ImplementationCodeTaskSelectionSummaryV1 = Readonly<{
   readonly integrationReadyCodeTaskIds: readonly string[];
 }>;
 
+function hasCodeTaskCompletionEvidence(input: {
+  readonly githubOutcomeSaved?: boolean;
+  readonly commitSha?: string | null;
+  readonly noCodeChangeEvidence?: boolean | null;
+}): boolean {
+  return (
+    input.githubOutcomeSaved === true ||
+    Boolean(String(input.commitSha ?? "").trim()) ||
+    input.noCodeChangeEvidence === true
+  );
+}
+
 export function resolveCodeTaskBoardState(input: {
   readonly codeTaskId: string;
   readonly title: string;
@@ -129,9 +167,10 @@ export function resolveCodeTaskBoardState(input: {
   readonly noCodeChangeEvidence?: boolean | null;
   readonly isChecked?: boolean;
 }): ImplementationCodeTaskBoardStateV1 {
-  const statusLabel = String(input.statusLabel ?? "").trim();
-  const progressLabel = String(input.progressLabel ?? "").trim();
+  let statusLabel = String(input.statusLabel ?? "").trim();
+  let progressLabel = String(input.progressLabel ?? "").trim();
   const githubOutcomeSaved = input.githubOutcomeSaved === true;
+  const completionEvidence = hasCodeTaskCompletionEvidence(input);
 
   const runnableByDisplayLabels = labelIndicatesRunnable(statusLabel, progressLabel);
   const completedByDisplayLabels = labelIndicatesCompleted(statusLabel, progressLabel);
@@ -144,23 +183,49 @@ export function resolveCodeTaskBoardState(input: {
 
   const isBlocked = statusLabel.includes("차단") || progressLabel.includes("차단");
 
-  const isCompleted = completedByDisplayLabels && !runnableByDisplayLabels;
+  let isCompleted =
+    completionEvidence ||
+    statusLabel === "완료" ||
+    (completedByDisplayLabels && !runnableByDisplayLabels);
+
+  const hasIntegrationEvidence =
+    githubOutcomeSaved ||
+    Boolean(String(input.commitSha ?? "").trim()) ||
+    input.noCodeChangeEvidence === true;
+
+  if (statusLabel === "완료" && progressIndicatesRunnable(progressLabel)) {
+    isCompleted = true;
+    progressLabel =
+      completionEvidence && (githubOutcomeSaved || String(input.commitSha ?? "").trim())
+        ? "GitHub outcome 저장됨"
+        : progressLabel.includes("통합")
+          ? progressLabel
+          : "GitHub outcome 저장됨";
+  }
+
+  if (isCompleted && progressIndicatesRunnable(progressLabel)) {
+    progressLabel =
+      hasIntegrationEvidence && (githubOutcomeSaved || String(input.commitSha ?? "").trim())
+        ? "GitHub outcome 저장됨"
+        : "통합 가능";
+  }
+
+  if (isCompleted && statusLabel !== "완료" && !isRunning && !isBlocked) {
+    statusLabel = "완료";
+  }
 
   const isRunnableForUser =
-    !isCompleted && !isRunning && !isBlocked && runnableByDisplayLabels;
+    !isCompleted &&
+    !completionEvidence &&
+    !isRunning &&
+    !isBlocked &&
+    runnableByDisplayLabels;
 
-  const isIntegrationReady =
-    completedByDisplayLabels &&
-    githubOutcomeSaved &&
-    Boolean(
-      String(input.commitSha ?? "").trim() ||
-        String(input.branchName ?? "").trim() ||
-        input.noCodeChangeEvidence === true,
-    );
+  const isIntegrationReady = isCompleted && hasIntegrationEvidence;
 
   let checkboxDisabledReason: string | null = null;
   if (isCompleted) {
-    checkboxDisabledReason = COMPLETED_REASON;
+    checkboxDisabledReason = "completed";
   } else if (isRunning) {
     checkboxDisabledReason = RUNNING_REASON;
   } else if (isBlocked) {
@@ -301,6 +366,17 @@ export function listUserCheckboxSelectableCodeTaskIdsFromBoardNodes(
     .filter((n) => !n.boardState.checkboxDisabled)
     .map((n) => n.codeTaskId.trim())
     .filter(Boolean);
+}
+
+/** Drop checked ids that are no longer user-selectable (e.g. after GitHub verify completes). */
+export function pruneCheckedCodeTaskIdsToSelectableBoardRows(input: {
+  readonly nodes: readonly { readonly codeTaskId: string; readonly boardState: ImplementationCodeTaskBoardStateV1 }[];
+  readonly checkedCodeTaskIds: readonly string[];
+}): readonly string[] {
+  const selectable = new Set(listUserCheckboxSelectableCodeTaskIdsFromBoardNodes(input.nodes));
+  return [...new Set(input.checkedCodeTaskIds.map((id) => id.trim()).filter(Boolean))].filter((id) =>
+    selectable.has(id),
+  );
 }
 
 export function evaluateSelectedRunnableCodeTasksGateFromBoard(input: {

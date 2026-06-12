@@ -14,6 +14,7 @@ export async function runProjectIntegrationPrepareOnly(input: {
   readonly codeTaskExecutionRunsV1?: unknown;
   readonly implementationQuickRunV1?: unknown;
   readonly createPullRequest?: boolean;
+  readonly boardSelectionSummary?: import("@/lib/prototype/implementationCodeTaskBoardState").ImplementationCodeTaskSelectionSummaryV1 | null;
 }): Promise<ProjectIntegrationPipelineClientResult> {
   return runIntegrationBranchPipelineClient(input);
 }

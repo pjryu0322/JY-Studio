@@ -129,7 +129,7 @@ function candidateComponents(kind: TaskKind): string[] {
   if (kind === "ui" || kind === "orchestration") {
     return [
       `${WEB_ROOT}/src/components/preview/PrototypePreviewPanel.tsx`,
-      `${WEB_ROOT}/src/components/preview/PrototypeExecutionChatPanel.tsx`,
+      `${WEB_ROOT}/src/components/preview/PrototypeImplementationStagePanel.tsx`,
     ];
   }
   return [];

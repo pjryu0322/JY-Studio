@@ -23,7 +23,7 @@ import {
 import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { mergeOrchestrationPersistPatches } from "@/lib/prototype/orchestrationPatchMerge";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
-import type { ServerQuickRunContinuationResult } from "@/lib/prototype/serverQuickRunContinuationService";
+import type { ServerQuickRunContinuationResult } from "@/lib/prototype/serverQuickRunContinuationTypes";
 import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";

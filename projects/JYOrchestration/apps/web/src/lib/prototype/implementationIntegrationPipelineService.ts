@@ -39,6 +39,17 @@ import {
 } from "@/lib/prototype/implementationIntegrationErrors";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import type { CompletedCodeTaskIntegrationTarget } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
+
+function filterIntegrationTargetsByCodeTaskIds(
+  included: readonly CompletedCodeTaskIntegrationTarget[],
+  integrationCodeTaskIds: readonly string[] | null | undefined,
+): readonly CompletedCodeTaskIntegrationTarget[] {
+  const ids = [...new Set((integrationCodeTaskIds ?? []).map((id) => id.trim()).filter(Boolean))];
+  if (!ids.length) return included;
+  const allow = new Set(ids);
+  return included.filter((row) => allow.has(row.codeTaskId.trim()));
+}
 
 export type RunIntegrationBranchPipelineResult = Readonly<{
   readonly ok: boolean;
@@ -57,7 +68,10 @@ export async function runIntegrationBranchPipeline(input: {
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null;
   readonly taskList: ImplementationTaskListV1 | null;
   readonly codeTaskRuns: readonly CodeTaskExecutionRunV1[] | null;
+  /** @deprecated checkbox 선택 — 통합 대상은 integrationCodeTaskIds 사용 */
   readonly selectedCodeTaskIds?: readonly string[] | null;
+  /** Board integration-ready 완료 CodeTask (checkbox 무관) */
+  readonly integrationCodeTaskIds?: readonly string[] | null;
   readonly previewUrl?: string | null;
   readonly createPullRequest?: boolean;
   readonly nowIso?: string;
@@ -126,15 +140,26 @@ export async function runIntegrationBranchPipeline(input: {
       codeTaskRuns: input.codeTaskRuns,
     });
 
-    if (!targets.canIntegrate) {
+    const integrationCodeTaskIds = input.integrationCodeTaskIds ?? null;
+    const includedForMerge = filterIntegrationTargetsByCodeTaskIds(
+      targets.included,
+      integrationCodeTaskIds,
+    );
+    const integrationTargets = {
+      ...targets,
+      included: includedForMerge,
+      canIntegrate: includedForMerge.length > 0,
+    };
+
+    if (!integrationTargets.canIntegrate) {
     const plan = buildCodeTaskIntegrationPlanDraft({
       projectId: input.projectId,
       targetRepository: input.repoUrl,
       baseBranch: input.baseBranch,
       included: [],
-      excluded: targets.excluded,
+      excluded: integrationTargets.excluded,
       codeTaskPlan: input.codeTaskPlan,
-      selectedCodeTaskIds: input.selectedCodeTaskIds,
+      selectedCodeTaskIds: integrationCodeTaskIds,
       nowIso,
     });
       lastPlan = plan;
@@ -150,7 +175,7 @@ export async function runIntegrationBranchPipeline(input: {
     }
 
     const runIdByCodeTaskId = new Map<string, string>();
-  for (const row of targets.included) {
+  for (const row of integrationTargets.included) {
     const run = findLatestRunForCodeTask(input.codeTaskRuns ?? [], row.codeTaskId);
     if (run?.runId) runIdByCodeTaskId.set(row.codeTaskId, run.runId);
   }
@@ -161,7 +186,7 @@ export async function runIntegrationBranchPipeline(input: {
       taskList: input.taskList,
     }) ?? input.codeTaskPlan;
   const precheck = runIntegrationConflictPrecheck({
-    included: targets.included,
+    included: integrationTargets.included,
     codeTaskPlan: codeTaskPlanForPrecheck,
     codeTaskRuns: input.codeTaskRuns,
     conflictPlan: codeTaskPlanForPrecheck?.codeTaskConflictPlanV1 ?? null,
@@ -171,10 +196,10 @@ export async function runIntegrationBranchPipeline(input: {
       projectId: input.projectId,
       targetRepository: input.repoUrl,
       baseBranch: input.baseBranch,
-      included: targets.included,
-      excluded: targets.excluded,
+      included: integrationTargets.included,
+      excluded: integrationTargets.excluded,
       codeTaskPlan: input.codeTaskPlan,
-      selectedCodeTaskIds: input.selectedCodeTaskIds,
+      selectedCodeTaskIds: integrationCodeTaskIds,
       runIdByCodeTaskId,
       nowIso,
     });
@@ -212,11 +237,11 @@ export async function runIntegrationBranchPipeline(input: {
       topology?.kind === "linear_chain" ? topology.chainHead : null;
     chainHeadForLog = chainHead;
 
-    const includedWorkBranches = targets.included
+    const includedWorkBranches = integrationTargets.included
       .map((row) => String(row.workBranch ?? "").trim())
       .filter(Boolean);
     const latestVerifiedWorkBranch = resolveLatestVerifiedWorkBranchFromIncluded({
-      included: targets.included,
+      included: integrationTargets.included,
       codeTaskPlan: input.codeTaskPlan,
     });
 
@@ -251,10 +276,10 @@ export async function runIntegrationBranchPipeline(input: {
         projectId: input.projectId,
         targetRepository: input.repoUrl,
         baseBranch: input.baseBranch,
-        included: targets.included,
-        excluded: targets.excluded,
+        included: integrationTargets.included,
+        excluded: integrationTargets.excluded,
         codeTaskPlan: input.codeTaskPlan,
-        selectedCodeTaskIds: input.selectedCodeTaskIds,
+        selectedCodeTaskIds: integrationCodeTaskIds,
         runIdByCodeTaskId,
         nowIso,
       });
@@ -284,10 +309,10 @@ export async function runIntegrationBranchPipeline(input: {
       projectId: input.projectId,
       targetRepository: input.repoUrl,
       baseBranch: input.baseBranch,
-      included: targets.included,
-      excluded: targets.excluded,
+      included: integrationTargets.included,
+      excluded: integrationTargets.excluded,
       codeTaskPlan: input.codeTaskPlan,
-      selectedCodeTaskIds: input.selectedCodeTaskIds,
+      selectedCodeTaskIds: integrationCodeTaskIds,
       runIdByCodeTaskId,
       nowIso,
     });

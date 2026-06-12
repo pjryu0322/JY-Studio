@@ -1,6 +1,7 @@
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { isCodeTaskCompletedForSummary } from "@/lib/prototype/implementationCodeTaskSummary";
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
 import type { SelectedExecutionUnitsCompletionGateV1 } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import { isIntegrationPreviewRemediationPipelineStatus } from "@/lib/prototype/integrationPreviewRemediationGuide";
@@ -38,6 +39,11 @@ export function resolveIntegrationButtonReadiness(input: {
   readonly latestAppPreviewTargetStatus?: string | null;
   readonly continueBuildPreview?: boolean;
   readonly canRunInitialIntegration?: boolean;
+  /** Board summary: 통합은 checkbox가 아니라 integration-ready 완료 CodeTask 전체 */
+  readonly boardGateSummary?: Pick<
+    ImplementationCodeTaskSelectionSummaryV1,
+    "runnableCount" | "integrationReadyCount"
+  > | null;
 }): Readonly<{
   readonly enabled: boolean;
   readonly reason: IntegrationButtonReadinessReasonV1;
@@ -52,25 +58,32 @@ export function resolveIntegrationButtonReadiness(input: {
       disabledTitle: "통합 및 Preview 준비가 이미 진행 중입니다.",
     };
   }
-  if (input.selectedCodeTaskCount <= 0) {
-    return {
-      enabled: false,
-      reason: "no_selected_codetasks",
-      userSafeMessage: "선택된 작업이 없습니다.",
-      disabledTitle: "선택된 작업이 없습니다.",
-    };
-  }
-  if (
-    input.selectedFailedCount > 0 ||
-    input.selectedInconsistentCount > 0 ||
-    input.selectedCompletedCount < input.selectedCodeTaskCount
-  ) {
-    return {
-      enabled: false,
-      reason: "selected_codetasks_not_complete",
-      userSafeMessage: "선택된 작업 중 아직 완료되지 않은 작업이 있습니다.",
-      disabledTitle: "선택된 작업 중 아직 완료되지 않은 작업이 있습니다.",
-    };
+
+  const boardIntegrationReady =
+    (input.boardGateSummary?.runnableCount ?? 1) === 0 &&
+    (input.boardGateSummary?.integrationReadyCount ?? 0) > 0;
+
+  if (!boardIntegrationReady) {
+    if (input.selectedCodeTaskCount <= 0) {
+      return {
+        enabled: false,
+        reason: "no_selected_codetasks",
+        userSafeMessage: "선택된 작업이 없습니다.",
+        disabledTitle: "선택된 작업이 없습니다.",
+      };
+    }
+    if (
+      input.selectedFailedCount > 0 ||
+      input.selectedInconsistentCount > 0 ||
+      input.selectedCompletedCount < input.selectedCodeTaskCount
+    ) {
+      return {
+        enabled: false,
+        reason: "selected_codetasks_not_complete",
+        userSafeMessage: "선택된 작업 중 아직 완료되지 않은 작업이 있습니다.",
+        disabledTitle: "선택된 작업 중 아직 완료되지 않은 작업이 있습니다.",
+      };
+    }
   }
   if (!input.autoGenerationReady) {
     return {
@@ -208,6 +221,10 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
     readonly isIntegrationRunning?: boolean;
     readonly latestPipelineStatus?: string | null;
     readonly projectId?: string | null;
+    readonly boardGateSummary?: Pick<
+      ImplementationCodeTaskSelectionSummaryV1,
+      "runnableCount" | "integrationReadyCount" | "totalCount"
+    > | null;
   }>,
 ): Readonly<{
   readonly show: boolean;
@@ -219,14 +236,9 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
   readonly disabledTitle: string | null;
   readonly readinessReason: IntegrationButtonReadinessReasonV1;
 }> {
-  const show =
-    !snapshot.preview.integratedAppPreviewReady && snapshot.codeTask.selected > 0;
-
-  const selectedCompleted =
-    snapshot.codeTask.selected > 0 &&
-    snapshot.codeTask.completed === snapshot.codeTask.selected &&
-    snapshot.codeTask.failed === 0 &&
-    snapshot.codeTask.inconsistent === 0;
+  const boardIntegrationReady =
+    (options?.boardGateSummary?.runnableCount ?? 1) === 0 &&
+    (options?.boardGateSummary?.integrationReadyCount ?? 0) > 0;
 
   const fwStatus = snapshot.integration.finalWiringStatus;
   const finalWiringMissing = fwStatus === "missing";
@@ -234,12 +246,23 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
   const finalWiringRunnable =
     fwStatus === "pending" || fwStatus === "ready" || fwStatus === "failed";
 
+  const selectedCompleted =
+    boardIntegrationReady ||
+    (snapshot.codeTask.failed === 0 &&
+      snapshot.codeTask.inconsistent === 0 &&
+      fwStatus === "completed" &&
+      snapshot.integration.integrationBranchStatus === "completed");
+
   const continueBuildPreview =
     selectedCompleted &&
     fwStatus === "completed" &&
     snapshot.integration.integrationBranchStatus === "completed" &&
     (snapshot.integration.buildStatus !== "completed" ||
       snapshot.integration.appPreviewTargetStatus !== "completed");
+
+  const show =
+    !snapshot.preview.integratedAppPreviewReady &&
+    (boardIntegrationReady || continueBuildPreview);
 
   const autoGenerationReady = options?.autoGenerationReady !== false;
 
@@ -261,6 +284,7 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
     latestAppPreviewTargetStatus: snapshot.integration.appPreviewTargetStatus,
     continueBuildPreview,
     canRunInitialIntegration,
+    boardGateSummary: options?.boardGateSummary ?? null,
   });
 
   const enabled = show && readiness.enabled;
@@ -294,7 +318,7 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
       `개발 CodeTask ${snapshot.codeTask.completed}/${snapshot.codeTask.selected} 완료`,
       "미완료 또는 검증 대기 중인 CodeTask가 있어 통합을 시작할 수 없습니다.",
     );
-  } else if (!selectedCompleted) {
+  } else if (!selectedCompleted && !boardIntegrationReady) {
     userStatusLines.push(
       `개발 CodeTask ${snapshot.codeTask.completed}/${snapshot.codeTask.selected} 완료`,
       "미완료 또는 검증 대기 중인 CodeTask가 있어 통합을 시작할 수 없습니다.",

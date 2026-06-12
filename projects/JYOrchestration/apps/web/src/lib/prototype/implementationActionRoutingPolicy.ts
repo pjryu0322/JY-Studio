@@ -15,8 +15,6 @@ export type ImplementationPrimaryActionResolutionV1 = Readonly<{
   readonly disabledReason: string | null;
 }>;
 
-const NO_SELECTION_MESSAGE = "실행할 CodeTask를 선택해 주세요." as const;
-const NO_AVAILABLE_MESSAGE = "실행하거나 통합할 CodeTask가 없습니다." as const;
 
 /**
  * Toolbar Quick Run, board footer, and runtime dispatch share this policy.
@@ -43,18 +41,6 @@ export function resolveImplementationPrimaryAction(input: {
     return resolution;
   }
 
-  if (summary.runnableCount > 0) {
-    const resolution: ImplementationPrimaryActionResolutionV1 = {
-      action: "blocked_no_selection",
-      label: "선택 작업 실행",
-      enabled: false,
-      codeTaskIds: [],
-      disabledReason: NO_SELECTION_MESSAGE,
-    };
-    logImplementationPrimaryActionResolved(summary, resolution);
-    return resolution;
-  }
-
   if (previewReady && previewUrl) {
     const resolution: ImplementationPrimaryActionResolutionV1 = {
       action: "open_preview",
@@ -67,24 +53,12 @@ export function resolveImplementationPrimaryAction(input: {
     return resolution;
   }
 
-  if (summary.integrationReadyCodeTaskIds.length > 0) {
-    const resolution: ImplementationPrimaryActionResolutionV1 = {
-      action: "prepare_integration_preview",
-      label: "통합 및 Preview 준비",
-      enabled: true,
-      codeTaskIds: summary.integrationReadyCodeTaskIds,
-      disabledReason: null,
-    };
-    logImplementationPrimaryActionResolved(summary, resolution);
-    return resolution;
-  }
-
   const resolution: ImplementationPrimaryActionResolutionV1 = {
-    action: "blocked_no_available_action",
-    label: "실행 가능한 작업 없음",
-    enabled: false,
-    codeTaskIds: [],
-    disabledReason: NO_AVAILABLE_MESSAGE,
+    action: "prepare_integration_preview",
+    label: "통합 및 Preview 준비",
+    enabled: true,
+    codeTaskIds: summary.integrationReadyCodeTaskIds,
+    disabledReason: null,
   };
   logImplementationPrimaryActionResolved(summary, resolution);
   return resolution;

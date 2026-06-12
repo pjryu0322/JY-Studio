@@ -23,7 +23,7 @@ import {
 import { resolveEffectiveIntegrationSourceBranch } from "@/lib/prototype/integrationEffectiveSourceBranch";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const panelPath = join(__dirname, "../../src/components/preview/PrototypePreviewPanel.tsx");
+import { readImplementationStagePanelSources } from "../helpers/implementationStagePanelSources";
 const boardPath = join(
   __dirname,
   "../../src/components/preview/ImplementationExecutionBoardPanel.tsx",
@@ -44,8 +44,8 @@ function extractRunIntegrationPipelineBlock(source: string): string {
 
 describe("P3-Runtime-Core-03-8A isolate integration prepare from codetask preview", () => {
   it("1–4. runIntegrationPipeline does not emit completed_codetask preview timeline actions", () => {
-    const block = extractRunIntegrationPipelineBlock(readFileSync(panelPath, "utf8"));
-    expect(block).toContain("runProjectIntegrationPrepareOnly");
+    const block = extractRunIntegrationPipelineBlock(readImplementationStagePanelSources());
+    expect(block).toContain("executeImplementationBoardIntegrationPipeline");
     expect(block).not.toContain("applyIntegratedPipelineSyncSteps");
     expect(block).not.toContain("completed_codetask_integration_started");
     expect(block).not.toContain("completed_codetask_preview_build_started");
@@ -82,7 +82,7 @@ describe("P3-Runtime-Core-03-8A isolate integration prepare from codetask previe
     });
     expect(blocked.ok).toBe(false);
 
-    const panelSrc = readFileSync(panelPath, "utf8");
+    const panelSrc = readImplementationStagePanelSources();
     expect(panelSrc).toContain("ensureCompletedCodeTaskPreviewForFallback");
     expect(panelSrc).not.toMatch(/runIntegrationPipeline[\s\S]*applyIntegratedPipelineSyncSteps/);
   });

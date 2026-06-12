@@ -7,7 +7,7 @@ import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/im
 import { isIntegratedAppRenderTarget } from "@/lib/prototype/implementationAppPreviewTarget";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
-import { runLegacyIntegrationBranchPipelineAsFinalWiringAdapter } from "@/lib/prototype/implementationIntegrationLegacyPipelineAdapter";
+import { runIntegrationBranchPipeline } from "@/lib/prototype/implementationIntegrationPipelineService";
 import type { CodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { reconcileIntegrationStepsWithIntegrationPlan } from "@/lib/prototype/implementationIntegrationStepPlanReconcile";
@@ -360,7 +360,7 @@ export async function runProjectIntegrationPipeline(input: {
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null;
   readonly taskList: ImplementationTaskListV1 | null;
   readonly codeTaskRuns: readonly CodeTaskExecutionRunV1[] | null;
-  readonly selectedCodeTaskIds?: readonly string[] | null;
+  readonly integrationCodeTaskIds: readonly string[];
 
   readonly storedIntegrationPlan?: CodeTaskIntegrationPlanV1 | null;
   readonly integrationSteps?: readonly ImplementationIntegrationStepV1[] | null;
@@ -520,7 +520,7 @@ export async function runProjectIntegrationPipeline(input: {
       }),
     );
 
-    const legacy = await runLegacyIntegrationBranchPipelineAsFinalWiringAdapter({
+    const branchPipeline = await runIntegrationBranchPipeline({
       projectId: pid,
       repoUrl: input.repoUrl,
       baseBranch: context.baseBranch,
@@ -531,20 +531,22 @@ export async function runProjectIntegrationPipeline(input: {
       codeTaskPlan: input.codeTaskPlan,
       taskList: input.taskList,
       codeTaskRuns: input.codeTaskRuns,
-      selectedCodeTaskIds: input.selectedCodeTaskIds,
+      integrationCodeTaskIds: input.integrationCodeTaskIds,
       createPullRequest: context.createPullRequest,
       storedIntegrationPlan: input.storedIntegrationPlan ?? plan,
       nowIso,
     });
-    timeline.push(...legacy.timeline);
-    plan = legacy.plan;
+    timeline.push(...branchPipeline.timeline);
+    plan = branchPipeline.plan;
+    const integrationBranch =
+      String(branchPipeline.plan.integrationBranch ?? "").trim() || null;
 
     const applied = applyWiringAndBranchFromLegacyPipeline({
       steps,
-      ok: legacy.ok,
-      integrationBranch: legacy.integrationBranch,
-      plan: legacy.plan,
-      message: legacy.message,
+      ok: branchPipeline.ok,
+      integrationBranch,
+      plan: branchPipeline.plan,
+      message: branchPipeline.message,
       nowIso,
     });
     steps = stampIntegrationStepsWithPipelineContext([...applied.steps], context);
@@ -553,11 +555,11 @@ export async function runProjectIntegrationPipeline(input: {
       orchestrationPatch,
       projectId: pid,
       steps,
-      reason: legacy.ok
+      reason: branchPipeline.ok
         ? "implementation_integration_final_wiring_completed"
         : "implementation_integration_final_wiring_failed",
       nowIso,
-      extra: { codeTaskIntegrationPlanV1: legacy.plan },
+      extra: { codeTaskIntegrationPlanV1: branchPipeline.plan },
     });
 
     if (applied.failed) {
@@ -571,16 +573,16 @@ export async function runProjectIntegrationPipeline(input: {
         buildImplementationExecutionLogTimelineEntry({
           action: "implementation_integration_final_wiring_failed",
           orchestrationTraceGroup: "implementation_integration",
-          fields: { projectId: pid, reason: legacy.message.slice(0, 200) },
+          fields: { projectId: pid, reason: branchPipeline.message.slice(0, 200) },
           nowIso,
         }),
       );
       return {
         ok: false,
-        status: legacy.ok ? "integration_branch_failed" : "final_wiring_failed",
+        status: branchPipeline.ok ? "integration_branch_failed" : "final_wiring_failed",
         previewReady: false,
-        userSafeMessage: applied.userSafeMessage ?? toUserSafeIntegrationErrorMessage(legacy.message),
-        plan: legacy.plan,
+        userSafeMessage: applied.userSafeMessage ?? toUserSafeIntegrationErrorMessage(branchPipeline.message),
+        plan: branchPipeline.plan,
         orchestrationPatch,
         timelineEntries: timeline,
       };
@@ -596,7 +598,7 @@ export async function runProjectIntegrationPipeline(input: {
       buildImplementationExecutionLogTimelineEntry({
         action: "implementation_integration_final_wiring_completed",
         orchestrationTraceGroup: "implementation_integration",
-        fields: { projectId: pid, integrationBranch: legacy.integrationBranch },
+        fields: { projectId: pid, integrationBranch },
         nowIso,
       }),
     );

@@ -22,6 +22,15 @@ describe("P3-08C/08D board selection summary and footer actions", () => {
     expect(summary.integrationReadyCount).toBe(2);
   });
 
+  it("excludes checked completed tasks from selectedRunnableCount", () => {
+    const summary = summarizeCodeTaskBoardRowsFromTreeNodes({
+      nodes: baseNodes,
+      checkedCodeTaskIds: [completedIds[0]!, sampleId],
+    });
+    expect(summary.selectedRunnableCount).toBe(1);
+    expect(summary.selectedRunnableCodeTaskIds).toEqual([sampleId]);
+  });
+
   it("does not show board execute when runnable sample is selected", () => {
     const summary = summarizeCodeTaskBoardRowsFromTreeNodes({
       nodes: baseNodes,

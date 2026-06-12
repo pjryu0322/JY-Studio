@@ -10,6 +10,9 @@ import type { RequirementsStateJson } from "@/lib/requirements/requirementsState
 
 const VERIFY_GITHUB_PATH = "/api/prototype/task-cursor/verify-github";
 
+export const TASK_CURSOR_GITHUB_VERIFY_NON_JSON_USER_MESSAGE =
+  "GitHub 확인 API 응답 형식이 올바르지 않습니다. 작업 로그를 확인해 주세요.";
+
 export function buildTaskCursorGithubVerifyRequestBody(input: {
   readonly projectId: string;
   readonly execution: TaskCursorExecutionV1;
@@ -46,6 +49,23 @@ export async function postTaskCursorGithubVerify(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    const text = await res.text();
+    const codeTaskId = String(body.codeTaskId ?? body.manualRecheckPayload?.codeTaskId ?? "").trim();
+    const workBranch = String(
+      body.manualRecheckPayload?.workBranch ?? body.execution?.workBranch ?? "",
+    ).trim();
+    console.error("[manual_github_commit_recheck_non_json_response]", {
+      status: res.status,
+      contentType,
+      bodyPreview: text.slice(0, 300),
+      url: VERIFY_GITHUB_PATH,
+      codeTaskId,
+      workBranch,
+    });
+    throw new Error(TASK_CURSOR_GITHUB_VERIFY_NON_JSON_USER_MESSAGE);
+  }
   return (await res.json()) as TaskCursorGithubVerifyApiResponse;
 }
 

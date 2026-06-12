@@ -29,6 +29,7 @@ import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementat
 import { buildProjectIntegrationPipelinePersistState } from "@/lib/prototype/projectIntegrationPipelinePersist";
 import { resolveEffectiveIntegrationSourceBranch } from "@/lib/prototype/integrationEffectiveSourceBranch";
 import { buildImplementationIntegrationPipelineEligibilityFromSnapshot } from "@/lib/prototype/projectIntegrationPipelineEligibility";
+import { integrationReadyBoardGateSummary } from "./integrationEligibilityBoardGateFixtures";
 import { formatExecutionLogTimelineLabel } from "@/lib/prototype/promptTimelineExecutionLogTabs";
 
 const PID = "p-runtime-core-034";
@@ -383,14 +384,18 @@ describe("P3-Runtime-Core-03-4 build/preview target sync", () => {
       integration_branch: "completed",
       build: "pending",
     });
-    const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(snapshot);
+    const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(snapshot, {
+      boardGateSummary: integrationReadyBoardGateSummary({ integrationReadyCodeTaskIds: ["CODE-1"] }),
+    });
     expect(eligibility.canRun).toBe(true);
   });
 
   it("13. board panel uses dynamic integration button label", () => {
-    const src = readFileSync(join(componentsDir, "ImplementationExecutionBoardPanel.tsx"), "utf8");
-    expect(src).toContain("integrationButtonState.buttonLabel");
-    expect(src).toContain("Build 검증 및 Preview 준비 계속 중…");
+    const panelSrc = readFileSync(join(componentsDir, "ImplementationExecutionBoardPanel.tsx"), "utf8");
+    const footerSrc = readFileSync(join(componentsDir, "ImplementationExecutionBoardIntegrationFooter.tsx"), "utf8");
+    expect(panelSrc).toContain("integrationButtonState");
+    expect(footerSrc).toContain("integrationButtonState.buttonLabel");
+    expect(footerSrc).toContain("Build 검증 및 Preview 준비 계속 중…");
   });
 
   it("14. board section hides raw integration branch name after merge", () => {
@@ -470,7 +475,9 @@ describe("P3-Runtime-Core-03-4 build/preview target sync", () => {
       integrationSteps: stepsWithStatuses({ final_wiring: "pending" }),
     });
     expect(snapshot.integration.canRunIntegration).toBe(false);
-    const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(snapshot);
+    const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(snapshot, {
+      boardGateSummary: integrationReadyBoardGateSummary({ integrationReadyCodeTaskIds: ["CODE-1"] }),
+    });
     expect(eligibility.canRun).toBe(false);
   });
 

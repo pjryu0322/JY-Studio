@@ -205,24 +205,6 @@ export function buildTaskCursorWorkerSchedulerTimelineEntry(input: {
   });
 }
 
-export function buildImplementationUiToastTimelineEntry(input: {
-  readonly projectId?: string;
-  readonly message: string;
-  readonly nowIso?: string;
-}): RequirementsPromptTimelineEntry {
-  const message = input.message.replace(/\s+/g, " ").trim().slice(0, 500);
-  return buildImplementationExecutionLogTimelineEntry({
-    action: "implementation_ui_toast",
-    orchestrationTraceGroup: "implementation_execution_log",
-    fields: {
-      ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
-      message,
-    },
-    promptText: message,
-    nowIso: input.nowIso,
-  });
-}
-
 export function buildTaskCursorPollLifecycleTimelineEntry(input: {
   readonly action:
     | "task_cursor_poll_loop_started"

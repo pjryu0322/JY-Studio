@@ -13,6 +13,7 @@ import { buildDefaultIntegrationStepsFromBranchPlan } from "@/lib/prototype/impl
 import {
   buildImplementationIntegrationPipelineEligibilityFromSnapshot,
 } from "@/lib/prototype/projectIntegrationPipelineEligibility";
+import { integrationReadyBoardGateSummary, blockedBoardGateSummary } from "./integrationEligibilityBoardGateFixtures";
 import {
   buildImplementationRuntimeSnapshot,
 } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
@@ -150,14 +151,18 @@ describe("P3-Runtime-Core-03-1 pipeline context", () => {
 });
 
 describe("P3-Runtime-Core-03-1 eligibility", () => {
-  it("4. implementation eligibility derives canRun from snapshot completion state", () => {
-    const { snapshot } = snapshotAllComplete();
-    const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(snapshot);
+  it("4. implementation eligibility derives canRun from board gate + snapshot", () => {
+    const { snapshot, units } = snapshotAllComplete();
+    const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(snapshot, {
+      boardGateSummary: integrationReadyBoardGateSummary({
+        integrationReadyCodeTaskIds: units.map((u) => u.codeTaskId),
+      }),
+    });
     expect(eligibility.canRun).toBe(true);
     expect(eligibility.reasonCode).toBe("ready");
   });
 
-  it("5. blocked eligibility maps to non-ready reason codes", () => {
+  it("5. blocked eligibility maps to board gate when integration not ready on board", () => {
     const units = [unit(1), unit(2, { status: "ready" })];
     const snapshot = buildImplementationRuntimeSnapshot({
       projectId: PID,
@@ -166,9 +171,11 @@ describe("P3-Runtime-Core-03-1 eligibility", () => {
       codeTaskRuns: [verifiedRun("CODE-1")],
       integrationSteps: buildDefaultIntegrationStepsFromBranchPlan({ codeTaskPlan: integrationPlan() }),
     });
-    const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(snapshot);
+    const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(snapshot, {
+      boardGateSummary: blockedBoardGateSummary({ totalCount: 2, integrationReadyCount: 1, runnableCount: 1 }),
+    });
     expect(eligibility.canRun).toBe(false);
-    expect(eligibility.reasonCode).toBe("codetask_completion_required");
+    expect(eligibility.reasonCode).toBe("board_gate_blocked");
   });
 
   it("6. pipeline service checks eligibility before running steps", () => {
@@ -199,9 +206,13 @@ describe("P3-Runtime-Core-03-1 pipeline wiring", () => {
   });
 
   it("10. final_wiring pending eligibility allows pipeline start", () => {
-    const { snapshot } = snapshotAllComplete();
+    const { snapshot, units } = snapshotAllComplete();
     expect(snapshot.integration.finalWiringStatus).toBe("pending");
-    const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(snapshot);
+    const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(snapshot, {
+      boardGateSummary: integrationReadyBoardGateSummary({
+        integrationReadyCodeTaskIds: units.map((u) => u.codeTaskId),
+      }),
+    });
     expect(eligibility.canRun).toBe(true);
   });
 });
@@ -227,8 +238,12 @@ describe("P3-Runtime-Core-03-1 review reuse", () => {
 
 describe("P3-Runtime-Core-03-1 regression", () => {
   it("13. integration button policy unchanged for completed codetasks", () => {
-    const { snapshot } = snapshotAllComplete();
-    const button = evaluateIntegrationPipelineButtonFromSnapshot(snapshot);
+    const { snapshot, units } = snapshotAllComplete();
+    const button = evaluateIntegrationPipelineButtonFromSnapshot(snapshot, {
+      boardGateSummary: integrationReadyBoardGateSummary({
+        integrationReadyCodeTaskIds: units.map((u) => u.codeTaskId),
+      }),
+    });
     expect(button.enabled).toBe(true);
   });
 

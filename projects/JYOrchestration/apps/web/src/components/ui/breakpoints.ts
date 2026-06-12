@@ -14,8 +14,6 @@ export const MEDIA_QUERY = {
   prototypeReviewMobile: "(max-width: 760px)",
   /** 앱 셸·사이드 레이아웃 (`useViewport`와 동일) */
   layoutMobile: "(max-width: 1023px)",
-  /** 구현단계 전역 툴바 compact (sticky·5아이콘) */
-  implementationToolbarMobile: "(max-width: 767px)",
 } as const;
 
 /** `MEDIA_QUERY.layoutMobile`과 맞는 분류용 너비(px). 실제 `window.innerWidth`가 아닙니다. */
@@ -23,10 +21,6 @@ export const LAYOUT_MOBILE_BREAKPOINT = 1024;
 
 export function useLayoutMobileBreakpoint(): boolean {
   return useMediaQuery(MEDIA_QUERY.layoutMobile);
-}
-
-export function useImplementationToolbarMobileBreakpoint(): boolean {
-  return useMediaQuery(MEDIA_QUERY.implementationToolbarMobile);
 }
 
 export function useWorkflowNavNarrowBreakpoint(): boolean {

@@ -30,7 +30,7 @@ import {
 import { pollTaskCursorExecutionOnce } from "@/lib/prototype/taskCursorPollService";
 import { reconcileTaskCursorRuntimePollTargets } from "@/lib/prototype/taskCursorRuntimeReconcile";
 import { enqueueNextTaskCursorJobAfterTerminal } from "@/lib/prototype/taskCursorServerAutoChain";
-import { tryDispatchCurrentQueuedQuickRunAfterDbAdvance } from "@/lib/prototype/serverQuickRunContinuationService";
+import { dispatchDbQueuedAutoAdvanceOnServer } from "@/lib/prototype/implementationDbQueuedExecutionUnitDispatch";
 import { buildTaskCursorFailedOrchestrationPatch } from "@/lib/prototype/prototypeExecutionTaskCursorActions";
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
@@ -416,7 +416,7 @@ async function processPollingTaskCursorJob(
   if (terminal) {
     const quickRun = parseImplementationQuickRunV1(mergedPatch.implementationQuickRunV1);
     if (quickRun?.status === "running") {
-      const continuation = await tryDispatchCurrentQueuedQuickRunAfterDbAdvance({
+      const continuation = await dispatchDbQueuedAutoAdvanceOnServer({
         projectId: job.projectId,
         nowIso,
       });

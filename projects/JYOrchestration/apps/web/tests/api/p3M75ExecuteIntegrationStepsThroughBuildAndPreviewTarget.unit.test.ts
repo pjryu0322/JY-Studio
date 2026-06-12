@@ -68,10 +68,11 @@ describe("P3-M75 legacy pipeline isolation", () => {
     expect(src).not.toContain("runImplementationIntegrationStepPipeline");
   });
 
-  it("project integration pipeline uses legacy adapter not direct pipeline import", () => {
+  it("project integration pipeline calls runIntegrationBranchPipeline for final wiring", () => {
     const src = readPrototypeSource("projectIntegrationPipelineService.ts");
-    expect(src).not.toContain("runIntegrationBranchPipeline(");
-    expect(src).toContain("runLegacyIntegrationBranchPipelineAsFinalWiringAdapter");
+    expect(src).toContain("runIntegrationBranchPipeline(");
+    expect(src).not.toContain("runLegacyIntegrationBranchPipelineAsFinalWiringAdapter");
+    expect(src).not.toContain("implementationIntegrationLegacyPipelineAdapter");
   });
 
   it("run-pipeline route calls runProjectIntegrationPipeline", () => {

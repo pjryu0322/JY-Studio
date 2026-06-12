@@ -1,5 +1,4 @@
-import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
+import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { resolveIntegrationPipelineUserToast } from "@/lib/prototype/implementationIntegrationToastPolicy";
 import { INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE } from "@/lib/prototype/integrationPreviewPreflightService";
@@ -8,6 +7,10 @@ import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementatio
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { parseRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  evaluatePrepareIntegrationPreviewStartGate,
+  logPrepareIntegrationPreviewStarted,
+} from "@/lib/prototype/implementationBoardIntegrationGate";
 
 export type IntegrationPipelineClientSnapshotV1 = Readonly<{
   readonly status: string;
@@ -33,26 +36,40 @@ export async function executeImplementationBoardIntegrationPipeline(input: {
   readonly showToast: (message: string) => void;
   readonly setBusy: (busy: boolean) => void;
   readonly onClientResult: (snapshot: IntegrationPipelineClientSnapshotV1) => void;
+  readonly boardSelectionSummary?: ImplementationCodeTaskSelectionSummaryV1 | null;
 }): Promise<void> {
   const pid = input.projectId.trim();
   if (!pid) {
     input.showToast("프로젝트를 선택해 주세요.");
     return;
   }
-  if (input.implementationBoardBlockingUserConfirmation > 0) {
-    const canIntegrateFromCompleted = evaluateCodeTaskIntegration({
-      codeTaskPlan: input.requirementsState.implementationCodeTaskPlanV1 ?? null,
-      taskList: input.requirementsState.implementationTaskListV1 ?? null,
-      codeTaskRuns:
-        parseCodeTaskExecutionRunsV1(input.requirementsState.codeTaskExecutionRunsV1) ?? [],
-      taskCursorExecution: input.requirementsState.taskCursorExecutionV1 ?? null,
-      taskCursorExecutionHistory: input.requirementsState.taskCursorExecutionHistoryV1 ?? null,
-      autoQualityGate: input.requirementsState.implementationAutoQualityGateV1 ?? null,
-    }).canIntegrate;
-    if (!canIntegrateFromCompleted) {
-      input.showToast("사용자 확인이 필요한 작업이 해소된 뒤 통합을 실행할 수 있습니다.");
-      return;
-    }
+
+  const integrationGate = evaluatePrepareIntegrationPreviewStartGate(
+    input.boardSelectionSummary ?? {
+      runnableCount: 0,
+      integrationReadyCount: 0,
+      integrationReadyCodeTaskIds: [],
+      totalCount: 0,
+      selectedRunnableCount: 0,
+      selectedRunnableCodeTaskIds: [],
+    },
+  );
+  if (!integrationGate.ok) {
+    input.showToast(integrationGate.message ?? "통합 가능한 완료 작업이 없습니다.");
+    return;
+  }
+  logPrepareIntegrationPreviewStarted({
+    projectId: pid,
+    integrationTargetCount: integrationGate.codeTaskIds.length,
+    integrationCodeTaskIds: integrationGate.codeTaskIds,
+  });
+
+  if (
+    input.implementationBoardBlockingUserConfirmation > 0 &&
+    integrationGate.codeTaskIds.length === 0
+  ) {
+    input.showToast("사용자 확인이 필요한 작업이 해소된 뒤 통합을 실행할 수 있습니다.");
+    return;
   }
 
   input.setBusy(true);
@@ -65,6 +82,7 @@ export async function executeImplementationBoardIntegrationPipeline(input: {
       implementationTaskListV1: input.requirementsState.implementationTaskListV1,
       codeTaskExecutionRunsV1: input.requirementsState.codeTaskExecutionRunsV1,
       implementationQuickRunV1: input.requirementsState.implementationQuickRunV1,
+      boardSelectionSummary: input.boardSelectionSummary ?? null,
       createPullRequest: true,
     });
 

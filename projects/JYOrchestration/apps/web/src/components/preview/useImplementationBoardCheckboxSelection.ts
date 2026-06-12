@@ -3,6 +3,7 @@ import {
   logImplementationBoardSelectionSummaryResolved,
   listRunnableCodeTaskIdsFromBoardNodes,
   listUserCheckboxSelectableCodeTaskIdsFromBoardNodes,
+  pruneCheckedCodeTaskIdsToSelectableBoardRows,
   summarizeCodeTaskBoardRowsFromTreeNodes,
   type ImplementationCodeTaskBoardStateV1,
 } from "@/lib/prototype/implementationCodeTaskBoardState";
@@ -109,4 +110,25 @@ export function useImplementationBoardCodeTaskSelectionSummary(input: {
     userSelectableCodeTaskIdsFromBoard,
     selectAllHeaderState,
   };
+}
+
+export function usePruneNonSelectableCheckedCodeTaskIds(input: {
+  readonly taskTreeNodes: readonly {
+    readonly codeTaskId: string;
+    readonly boardState: ImplementationCodeTaskBoardStateV1;
+  }[];
+  readonly checkedCodeTaskIds: readonly string[];
+  readonly commitCheckedCodeTaskIds: (nextSelectedCodeTaskIds: readonly string[]) => void;
+}): void {
+  useLayoutEffect(() => {
+    const pruned = pruneCheckedCodeTaskIdsToSelectableBoardRows({
+      nodes: input.taskTreeNodes,
+      checkedCodeTaskIds: input.checkedCodeTaskIds,
+    });
+    const currentKey = input.checkedCodeTaskIds.join("\0");
+    const prunedKey = pruned.join("\0");
+    if (currentKey !== prunedKey) {
+      input.commitCheckedCodeTaskIds(pruned);
+    }
+  }, [input.taskTreeNodes, input.checkedCodeTaskIds, input.commitCheckedCodeTaskIds]);
 }

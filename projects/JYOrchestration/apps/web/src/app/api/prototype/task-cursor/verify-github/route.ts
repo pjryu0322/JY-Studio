@@ -78,7 +78,16 @@ export async function POST(request: NextRequest) {
       continuationDispatchedOnServer: outcome.continuationDispatchedOnServer === true,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ success: false, message }, { status: 500 });
+    const message =
+      e instanceof Error ? e.message : "GitHub commit 재확인 중 오류가 발생했습니다.";
+    return NextResponse.json(
+      {
+        ok: false,
+        success: false,
+        errorCode: "manual_github_commit_recheck_failed",
+        message,
+      },
+      { status: 500 },
+    );
   }
 }

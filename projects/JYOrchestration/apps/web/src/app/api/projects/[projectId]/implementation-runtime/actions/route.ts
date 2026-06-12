@@ -22,7 +22,7 @@ import {
   findDispatchableRunForCodeTask,
   parseCodeTaskExecutionRunsV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
-import { tryDispatchCurrentQueuedQuickRunAfterDbAdvance } from "@/lib/prototype/serverQuickRunContinuationService";
+import { dispatchDbQueuedAutoAdvanceOnServer } from "@/lib/prototype/implementationDbQueuedExecutionUnitDispatch";
 import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
@@ -254,7 +254,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         orchestrationPatch: { implementationQuickRunV1: quickRun, codeTaskExecutionRunsV1 },
       });
 
-      const quickRunDispatch = await tryDispatchCurrentQueuedQuickRunAfterDbAdvance({
+      const quickRunDispatch = await dispatchDbQueuedAutoAdvanceOnServer({
         projectId: pid,
         nowIso,
       });
@@ -351,7 +351,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           promptTimeline: [...(state.promptTimeline ?? []), timelineEntry],
         },
       });
-      const dispatch = await tryDispatchCurrentQueuedQuickRunAfterDbAdvance({ projectId: pid, nowIso });
+      const dispatch = await dispatchDbQueuedAutoAdvanceOnServer({ projectId: pid, nowIso });
       return NextResponse.json({
         success: true,
         message: "다음 CodeTask 실행 준비 정보를 복구했습니다.",
