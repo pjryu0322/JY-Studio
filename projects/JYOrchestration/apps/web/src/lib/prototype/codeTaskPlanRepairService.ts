@@ -11,6 +11,7 @@ import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryP
 import { normalizeCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundaryNormalize";
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import { ensureIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import { ensurePreviewUxWiringCodeTaskInPlan } from "@/lib/prototype/previewUxWiringCodeTaskPlanner";
 import { prepareCodeTaskPlanForStageOnePrompt } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
 import { integrationTaskIsLast } from "@/lib/prototype/stageOnePromptReadiness";
 import {
@@ -182,6 +183,10 @@ function withRecomputedConflictPlanIfStale(
   };
 }
 
+function finalizeCodeTaskPlanForRuntime(plan: ImplementationCodeTaskPlanV1): ImplementationCodeTaskPlanV1 {
+  return ensurePreviewUxWiringCodeTaskInPlan(plan);
+}
+
 export function ensureCodeTaskPlanWithFileBoundaries(input: {
   readonly plan: ImplementationCodeTaskPlanV1 | null;
   readonly taskList?: ImplementationTaskListV1 | null;
@@ -210,7 +215,7 @@ export function ensureCodeTaskPlanWithFileBoundaries(input: {
     !needsMockIdRepair &&
     !needsConflictRecompute
   ) {
-    return input.plan;
+    return finalizeCodeTaskPlanForRuntime(input.plan);
   }
   if (
     !needsFileRepair &&
@@ -220,11 +225,13 @@ export function ensureCodeTaskPlanWithFileBoundaries(input: {
     !needsMockIdRepair &&
     needsConflictRecompute
   ) {
-    return withRecomputedConflictPlanIfStale(input.plan);
+    return finalizeCodeTaskPlanForRuntime(withRecomputedConflictPlanIfStale(input.plan));
   }
-  return repairCodeTaskPlanWithBranchPlan({
-    plan: input.plan,
-    taskList: input.taskList,
-    baseBranch: input.baseBranch,
-  }).plan;
+  return finalizeCodeTaskPlanForRuntime(
+    repairCodeTaskPlanWithBranchPlan({
+      plan: input.plan,
+      taskList: input.taskList,
+      baseBranch: input.baseBranch,
+    }).plan,
+  );
 }

@@ -26,6 +26,7 @@ import {
 } from "@/lib/prototype/githubPagesSetupService";
 import { resolveStaticAppBuildContract } from "@/lib/prototype/staticAppBuildContractResolver";
 import { ensureMeetingWorkspaceSampleDataPreviewWiring } from "@/lib/prototype/integrationPreviewSampleDataWiringService";
+import { isLegacyPreviewWiringPatchEnabled } from "@/lib/prototype/integrationPreviewDeployPolicy";
 import { ensureStaticAppBuildContractOnIntegrationBranch } from "@/lib/prototype/staticAppBuildContractScaffoldService";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
@@ -464,28 +465,35 @@ export async function deployIntegratedPreviewToGitHubPages(input: {
       pushTimeline("static_build_contract_scaffold_completed", { files: scaffold.changedFiles.join(",") });
     }
 
-    pushTimeline("integration_preview_sample_data_wiring_started", {
-      integrationBranch: input.integrationBranch,
-    });
-    const sampleWiring = await ensureMeetingWorkspaceSampleDataPreviewWiring({
-      projectId: input.projectId,
-      repoUrl: input.repoUrl,
-      githubToken: token,
-      integrationBranch: input.integrationBranch,
-      repositoryFilePaths: filePaths,
-    });
-    if (!sampleWiring.ok) {
-      pushTimeline("integration_preview_sample_data_wiring_failed", {
-        reason: sampleWiring.skippedReason,
+    if (isLegacyPreviewWiringPatchEnabled()) {
+      pushTimeline("integration_preview_sample_data_wiring_started", {
+        integrationBranch: input.integrationBranch,
       });
-    } else if (sampleWiring.changedFiles.length > 0) {
-      pushTimeline("integration_preview_sample_data_wiring_completed", {
-        files: sampleWiring.changedFiles.join(","),
-        commitSha: sampleWiring.commitSha,
+      const sampleWiring = await ensureMeetingWorkspaceSampleDataPreviewWiring({
+        projectId: input.projectId,
+        repoUrl: input.repoUrl,
+        githubToken: token,
+        integrationBranch: input.integrationBranch,
+        repositoryFilePaths: filePaths,
       });
+      if (!sampleWiring.ok) {
+        pushTimeline("integration_preview_sample_data_wiring_failed", {
+          reason: sampleWiring.skippedReason,
+        });
+      } else if (sampleWiring.changedFiles.length > 0) {
+        pushTimeline("legacy_preview_wiring_patch_used", {
+          reason: "JY_LEGACY_PREVIEW_WIRING_PATCH",
+          files: sampleWiring.changedFiles.join(","),
+          commitSha: sampleWiring.commitSha,
+        });
+      } else {
+        pushTimeline("integration_preview_sample_data_wiring_skipped", {
+          reason: sampleWiring.skippedReason,
+        });
+      }
     } else {
       pushTimeline("integration_preview_sample_data_wiring_skipped", {
-        reason: sampleWiring.skippedReason,
+        reason: "product_path_use_preview_ux_codetask",
       });
     }
 

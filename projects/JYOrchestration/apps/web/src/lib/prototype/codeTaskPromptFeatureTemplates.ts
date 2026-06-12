@@ -18,6 +18,7 @@ export type CodeTaskFeaturePromptKind =
   | "app_shell"
   | "api"
   | "mock_data"
+  | "preview_ux_wiring"
   | "generic_component";
 
 export function featurePromptKindFromRoleKind(
@@ -216,6 +217,28 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
       "연동 화면 회귀 없음 확인",
     ],
   },
+  preview_ux_wiring: {
+    implementationGoal: [
+      "actual Preview가 실제 회의 분석 워크스페이스 첫 사용 화면처럼 보이도록 UX를 마감한다.",
+      "src/data/sampleData.ts를 좌/중/우 패널에 자연스럽게 연결한다.",
+    ],
+    implementationRequirements: [
+      "placeholder-only 문구를 제거한다.",
+      "좌측: 회의 파일 카드(파일명·길이·상태), 참여자 카드(이름·역할)를 분리해 표시한다. 파일명과 참여자가 동일하게 보이지 않게 한다.",
+      "중앙: 처리 단계(업로드/STT/화자분리/초안) 상태와 transcript 대화 로그(시간·화자·발화)를 카드/타임라인 형태로 표시한다. bullet만 길게 나열하지 않는다.",
+      "우측: 요약·핵심 성과·결정·할 일·초안 타임라인 섹션 제목과 여백을 정리한다. 빈 배열은 빈 bullet 대신 안내 문구를 쓴다.",
+      "상단 액션 버튼은 현재 샘플 데이터 상태와 어울리게(예: 업로드 완료, STT 변환 완료) 표현한다.",
+      "App Shell·WorkspaceShell 구조를 재작성하지 않는다.",
+      "data provider 구조를 유지해 이후 API 연동으로 교체 가능하게 한다.",
+    ],
+    verificationChecklist: [
+      "placeholder 문구가 기본 화면에 남지 않는다.",
+      "빈 bullet·[]·undefined·null·중복 파일명 표시가 없다.",
+      "좌/중/우 패널 역할이 명확하다.",
+      "좁은 화면에서 가로 겹침이 없다.",
+      "build/lint 통과",
+    ],
+  },
   mock_data: {
     implementationGoal: [
       "Preview와 후속 Integration을 위한 중앙 샘플 데이터·타입 파일을 생성한다.",
@@ -407,6 +430,10 @@ export function resolveCodeTaskFeaturePromptTemplate(input: {
   readonly parentTitle?: string;
   readonly roleKind?: CodeTaskRoleKind;
 }): CodeTaskFeaturePromptTemplate {
+  if (/preview\s*ux|샘플데이터\s*실제\s*화면\s*연결/i.test(input.title)) {
+    const base = TEMPLATES.preview_ux_wiring;
+    return { kind: "preview_ux_wiring", ...base };
+  }
   const fromRole = input.roleKind ? featurePromptKindFromRoleKind(input.roleKind) : null;
   const kind = fromRole ?? matchCodeTaskFeaturePromptKind(input);
   const base = TEMPLATES[kind];

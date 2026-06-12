@@ -10,9 +10,12 @@ import { CANONICAL_SAMPLE_DATA_CODE_TASK_ID } from "@/lib/prototype/codeTaskCano
 function target(workBranch: string, codeTaskId = "CODE-1"): CompletedCodeTaskIntegrationTarget {
   return {
     codeTaskId,
+    taskId: "DEV-1",
+    title: "",
+    status: "completed",
     workBranch,
     commitSha: "abc",
-    processTaskId: "DEV-1",
+    source: "runtime_run",
   };
 }
 
@@ -26,7 +29,7 @@ describe("resolveIntegrationBranchMergeItems", () => {
     const mergeItems = resolveIntegrationBranchMergeItems({
       included,
       effectiveSourceBranch: "wip/screen/workspace",
-    });
+    }).mergeItems;
     expect(mergeItems.map((i) => i.workBranch)).toEqual([
       "wip/data/sample-data",
       "wip/screen/workspace",
@@ -38,7 +41,7 @@ describe("resolveIntegrationBranchMergeItems", () => {
     const mergeItems = resolveIntegrationBranchMergeItems({
       included,
       effectiveSourceBranch: "wip/screen/workspace",
-    });
+    }).mergeItems;
     expect(mergeItems.map((i) => i.workBranch)).toEqual(["wip/screen/workspace"]);
   });
 
@@ -48,7 +51,7 @@ describe("resolveIntegrationBranchMergeItems", () => {
       resolveIntegrationBranchMergeItems({
         included,
         effectiveSourceBranch: "wip/data/sample-data",
-      }),
+      }).mergeItems,
     ).toEqual(included);
   });
 
@@ -78,12 +81,13 @@ describe("resolveIntegrationBranchMergeItems", () => {
     expect(resolveVerifiedSampleDataSupplementalMergeTarget({ codeTaskRuns: runs })?.workBranch).toBe(
       "wip/data/sample-data",
     );
-    const mergeItems = resolveIntegrationBranchMergeItems({
+    const resolution = resolveIntegrationBranchMergeItems({
       included: [target("wip/screen/workspace", "CODE-SCREEN")],
       effectiveSourceBranch: "wip/screen/workspace",
       codeTaskRuns: runs,
     });
-    expect(mergeItems.map((i) => i.workBranch)).toEqual([
+    expect(resolution.legacySampleDataFallback?.codeTaskId).toBeTruthy();
+    expect(resolution.mergeItems.map((i) => i.workBranch)).toEqual([
       "wip/data/sample-data",
       "wip/screen/workspace",
     ]);

@@ -142,15 +142,24 @@ export async function runIntegrationBranchPipeline(input: {
     });
 
     const integrationCodeTaskIds = input.integrationCodeTaskIds ?? null;
-    const includedForMerge = filterIntegrationTargetsByCodeTaskIds(
-      targets.included,
-      integrationCodeTaskIds,
-    );
+    const includedForMerge = targets.included;
     const integrationTargets = {
       ...targets,
       included: includedForMerge,
       canIntegrate: includedForMerge.length > 0,
     };
+
+    if (integrationCodeTaskIds?.length) {
+      const includedSet = new Set(includedForMerge.map((row) => row.codeTaskId.trim()));
+      const missingFromSelector = integrationCodeTaskIds.filter((id) => !includedSet.has(id.trim()));
+      if (missingFromSelector.length) {
+        pushTimeline("integration_selection_board_mismatch", {
+          boardReadyCount: integrationCodeTaskIds.length,
+          selectorIncludedCount: includedForMerge.length,
+          missingFromSelector: missingFromSelector.join(","),
+        });
+      }
+    }
 
     if (!integrationTargets.canIntegrate) {
     const plan = buildCodeTaskIntegrationPlanDraft({
@@ -394,11 +403,17 @@ export async function runIntegrationBranchPipeline(input: {
   lastPlan = plan;
   const included = asReadonlyArray(plan.included);
   const effectiveSourceBranch = effectiveSource.sourceBranch!;
-  const mergeItems = resolveIntegrationBranchMergeItems({
+  const mergeResolution = resolveIntegrationBranchMergeItems({
     included,
     effectiveSourceBranch,
     codeTaskRuns: input.codeTaskRuns,
   });
+  const mergeItems = mergeResolution.mergeItems;
+  if (mergeResolution.legacySampleDataFallback) {
+    pushTimeline("legacy_sample_data_fallback_merge_used", {
+      ...mergeResolution.legacySampleDataFallback,
+    });
+  }
   assertIntegrationMergeTargets({
     plan,
     effectiveSourceBranch,
@@ -519,6 +534,11 @@ export async function runIntegrationBranchPipeline(input: {
       });
     }
   }
+
+  pushTimeline("integration_gate_passed", {
+    integrationReadyCount: asReadonlyArray(plan.included).length,
+    integrationBranch: plan.integrationBranch,
+  });
 
   return {
     ok: true,

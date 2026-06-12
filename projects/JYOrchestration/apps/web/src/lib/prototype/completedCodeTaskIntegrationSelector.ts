@@ -252,7 +252,7 @@ export function selectCompletedCodeTasksForIntegration(input: {
     warnings.push("샘플데이터 CodeTask가 통합 대상에 없어 actual Preview 품질이 제한됩니다.");
   }
 
-  return {
+  const result = {
     included,
     excluded,
     hasAppShell,
@@ -260,4 +260,18 @@ export function selectCompletedCodeTasksForIntegration(input: {
     canIntegrate: included.length > 0,
     warnings,
   };
+
+  console.info(
+    JSON.stringify({
+      action: "integration_selection_resolved",
+      totalCodeTaskCount: tasks.length,
+      includedCount: included.length,
+      excludedCount: excluded.length,
+      includedCodeTaskIds: included.map((i) => i.codeTaskId).join(","),
+      excludedCodeTaskIds: excluded.map((e) => e.codeTaskId).join(","),
+      excludedReasons: excluded.map((e) => `${e.codeTaskId}:${e.reason}`).join(";"),
+    }),
+  );
+
+  return result;
 }
