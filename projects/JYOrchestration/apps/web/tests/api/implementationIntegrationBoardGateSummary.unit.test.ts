@@ -93,6 +93,6 @@ describe("integration board gate vs pipeline eligibility", () => {
 
     const gate = evaluateIntegrationPrepareGateFromBoardSummary(boardSummary);
     expect(gate.ok).toBe(false);
-    expect(gate.message).toContain("모든 CodeTask");
+    expect(gate.message).toContain("GitHub 확인");
   });
 });

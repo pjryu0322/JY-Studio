@@ -1,4 +1,5 @@
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
+import { INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE } from "@/lib/prototype/implementationIntegrationGate";
 import type { IntegrationGateBlockedDetailV1 } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 
 export const INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE =
@@ -54,8 +55,7 @@ export function evaluateIntegrationPrepareGateFromBoardSummary(
   } else if (summary.integrationReadyCount < summary.totalCount) {
     resolvedAction = "blocked_no_integration_ready";
     ok = false;
-    message =
-      "모든 CodeTask가 통합 가능 상태여야 합니다. 미완료 또는 검증 대기 작업을 먼저 완료해 주세요.";
+    message = INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE;
     blockedCodeTaskIds = notReadyIds.length > 0 ? notReadyIds : [];
   }
 

@@ -414,6 +414,9 @@ export async function runIntegrationBranchPipeline(input: {
   });
   const mergeItems = mergeResolution.mergeItems;
   if (mergeResolution.legacySampleDataFallback) {
+    pushTimeline("sample_data_supplemental_merge_started", {
+      ...mergeResolution.legacySampleDataFallback,
+    });
     pushTimeline("legacy_sample_data_fallback_merge_used", {
       ...mergeResolution.legacySampleDataFallback,
     });
@@ -539,8 +542,10 @@ export async function runIntegrationBranchPipeline(input: {
     }
   }
 
+  const totalCodeTaskCount = input.codeTaskPlan?.tasks?.length ?? asReadonlyArray(plan.included).length;
   pushTimeline("integration_gate_passed", {
     integrationReadyCount: asReadonlyArray(plan.included).length,
+    totalCount: totalCodeTaskCount,
     integrationBranch: plan.integrationBranch,
   });
 

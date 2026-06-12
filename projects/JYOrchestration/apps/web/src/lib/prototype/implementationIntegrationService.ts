@@ -3,6 +3,7 @@ import {
   type CompletedCodeTaskIntegrationTarget,
   type ExcludedCodeTaskIntegrationTarget,
 } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
+import { INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE } from "@/lib/prototype/implementationIntegrationGate";
 import {
   evaluateCodeTaskIntegration,
   type CodeTaskIntegrationSource,
@@ -39,7 +40,11 @@ export function integrateCompletedCodeTasksForPreview(
   const targets = evaluateCodeTaskIntegration(input);
 
   if (!targets.canIntegrate) {
-    return { ok: false, message: "완료된 CodeTask가 없어 통합할 수 없습니다." };
+    const message =
+      targets.excluded.length > 0
+        ? INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE
+        : "완료된 CodeTask가 없어 통합할 수 없습니다.";
+    return { ok: false, message };
   }
 
   const previewScope = buildImplementationPreviewScopeV1({

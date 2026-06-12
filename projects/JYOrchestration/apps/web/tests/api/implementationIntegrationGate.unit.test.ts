@@ -1,11 +1,39 @@
-import { describe, expect, it } from "vitest";
-import { computeStrictIntegrationCanIntegrate } from "@/lib/prototype/implementationIntegrationGate";
+import { describe, expect, it, vi } from "vitest";
+import {
+  computeStrictIntegrationCanIntegrate,
+  logIntegrationGateBlocked,
+} from "@/lib/prototype/implementationIntegrationGate";
 import { selectCompletedCodeTasksForIntegration } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 const NOW = "2026-06-03T12:00:00.000Z";
+
+describe("logIntegrationGateBlocked", () => {
+  it("logs blockedCodeTaskIds and blockedReasons", () => {
+    const spy = vi.spyOn(console, "info").mockImplementation(() => {});
+    logIntegrationGateBlocked({
+      totalCodeTaskCount: 2,
+      includedCount: 1,
+      excludedCount: 1,
+      excluded: [
+        {
+          codeTaskId: "CT-X",
+          taskId: "DEV",
+          title: "t",
+          status: "대기",
+          reason: "prompt_ready",
+        },
+      ],
+    });
+    const payload = JSON.parse(String(spy.mock.calls[0]?.[0]));
+    expect(payload.action).toBe("integration_gate_blocked");
+    expect(payload.blockedCodeTaskIds).toEqual(["CT-X"]);
+    expect(payload.blockedReasons).toEqual(["CT-X:prompt_ready"]);
+    spy.mockRestore();
+  });
+});
 
 describe("computeStrictIntegrationCanIntegrate", () => {
   it("requires all tasks included", () => {

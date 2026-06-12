@@ -33,10 +33,13 @@ export function buildPreviewUxWiringCodeTask(input: {
     dependencies: deps,
     codeTaskDependencies: deps,
     acceptanceCriteria: [
-      "src/data/sampleData.ts export를 좌/중/우 패널에 자연스럽게 연결한다.",
-      "placeholder-only 문구를 제거한다.",
-      "회의 파일·참여자·transcript·요약·결정·할 일 UI 영역을 분리한다.",
-      "상단 액션(업로드/STT/화자분리/초안)이 현재 샘플 상태와 어울리게 표시된다.",
+      "Preview에서 placeholder-only 화면을 기본값으로 두지 않는다.",
+      "샘플데이터가 있는 경우 실제 서비스 초기 화면처럼 렌더링한다.",
+      "회의 파일, 참여자, 스크립트, 요약, 결정사항, 할 일을 구획별로 자연스럽게 표시한다.",
+      "빈 배열·결정사항 없음 상태도 실제 UX 안내 문구로 표현한다.",
+      "<ul><li>만 나열된 데모 화면처럼 보이지 않게 한다.",
+      "패널 간 여백, 제목, 상태 뱃지, 카드 구성을 적용한다.",
+      "src/data/sampleData.ts export를 좌/중/우 패널에 연결한다(플랫폼 Runtime 패치가 아닌 본 repo CodeTask 산출).",
       "App Shell 구조를 재작성하지 않는다.",
     ],
     verificationHints: [

@@ -46,7 +46,9 @@ describe("P3-Runtime-Core-05 GitHub Pages preview deployment", () => {
     expect(src).toContain("github_pages_preview_deployed");
     expect(src).toContain("runJyoPreviewPagesWorkflowDeploy");
     expect(src).not.toMatch(/Authorization:\s*`Bearer\s+\$\{input\.githubToken/);
-    expect(src).not.toContain("ensureMeetingWorkspaceSampleDataPreviewWiring");
+    expect(src).toContain("preview_deploy_build_only");
+    expect(src).toContain("legacy_preview_sample_wiring_skipped");
+    expect(src).toContain("isLegacyPreviewSampleWiringEnabled");
   });
 
   it("app preview step invokes GitHub Pages deploy when branch-only", () => {

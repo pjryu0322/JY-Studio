@@ -26,6 +26,8 @@ import {
 } from "@/lib/prototype/githubPagesSetupService";
 import { resolveStaticAppBuildContract } from "@/lib/prototype/staticAppBuildContractResolver";
 import { ensureStaticAppBuildContractOnIntegrationBranch } from "@/lib/prototype/staticAppBuildContractScaffoldService";
+import { ensureMeetingWorkspaceSampleDataPreviewWiring } from "@/lib/prototype/integrationPreviewSampleDataWiringService";
+import { isLegacyPreviewSampleWiringEnabled } from "@/lib/prototype/integrationPreviewDeployPolicy";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 const WORKFLOW_POLL_TIMEOUT_MS = 120_000;
@@ -463,9 +465,38 @@ export async function deployIntegratedPreviewToGitHubPages(input: {
       pushTimeline("static_build_contract_scaffold_completed", { files: scaffold.changedFiles.join(",") });
     }
 
-    pushTimeline("integration_preview_sample_data_wiring_skipped", {
-      reason: "product_path_preview_deploy_build_only",
+    pushTimeline("preview_deploy_build_only", {
+      integrationBranch: input.integrationBranch,
     });
+
+    if (isLegacyPreviewSampleWiringEnabled()) {
+      console.info(
+        JSON.stringify({
+          action: "legacy_preview_sample_wiring_enabled",
+          projectId: input.projectId,
+          integrationBranch: input.integrationBranch,
+        }),
+      );
+      pushTimeline("legacy_preview_sample_wiring_started", {
+        integrationBranch: input.integrationBranch,
+      });
+      const sampleWiring = await ensureMeetingWorkspaceSampleDataPreviewWiring({
+        projectId: input.projectId,
+        repoUrl: input.repoUrl,
+        githubToken: token,
+        integrationBranch: input.integrationBranch,
+        repositoryFilePaths: filePaths,
+      });
+      pushTimeline("legacy_preview_sample_wiring_completed", {
+        ok: sampleWiring.ok,
+        changedFiles: sampleWiring.changedFiles.join(","),
+        skippedReason: sampleWiring.skippedReason ?? null,
+      });
+    } else {
+      pushTimeline("legacy_preview_sample_wiring_skipped", {
+        reason: "disabled_by_default",
+      });
+    }
 
     const workflowRefBranch = input.fallbackBaseBranch?.trim() || "main";
     const workflowResult = await runJyoPreviewPagesWorkflowDeploy({
