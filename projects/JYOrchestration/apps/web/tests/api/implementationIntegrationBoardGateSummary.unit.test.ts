@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { evaluateIntegrationPrepareGateFromBoardSummary } from "@/lib/prototype/implementationBoardIntegrationGate";
 import { buildImplementationIntegrationPipelineEligibilityFromSnapshot } from "@/lib/prototype/projectIntegrationPipelineEligibility";
 import { boardTreeNode } from "./implementationBoardSummaryTestHelpers";
-import { summarizeCodeTaskBoardRowsFromTreeNodes } from "@/lib/prototype/implementationCodeTaskBoardState";
+import {
+  resolveCodeTaskBoardState,
+  summarizeCodeTaskBoardRowsFromTreeNodes,
+} from "@/lib/prototype/implementationCodeTaskBoardState";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
 
 function minimalSnapshot(input: {
@@ -62,5 +65,34 @@ describe("integration board gate vs pipeline eligibility", () => {
     );
     expect(eligibility.canRun).toBe(true);
     expect(eligibility.userMessage).not.toContain("미완료 또는 검증 대기");
+  });
+
+  it("blocks integration when only 14 of 15 are integration-ready", () => {
+    const nodes = [
+      ...Array.from({ length: 14 }, (_, i) =>
+        boardTreeNode(`CT-${i + 1}`, "완료", "GitHub outcome 저장됨", true),
+      ),
+      {
+        codeTaskId: "CT-15",
+        boardState: resolveCodeTaskBoardState({
+          codeTaskId: "CT-15",
+          title: "CT-15",
+          statusLabel: "GitHub 확인 중",
+          progressLabel: "검증 중",
+          githubOutcomeSaved: false,
+          runIntegrationReady: false,
+        }),
+      },
+    ];
+    const boardSummary = summarizeCodeTaskBoardRowsFromTreeNodes({
+      nodes,
+      checkedCodeTaskIds: [],
+    });
+    expect(boardSummary.integrationReadyCount).toBe(14);
+    expect(boardSummary.totalCount).toBe(15);
+
+    const gate = evaluateIntegrationPrepareGateFromBoardSummary(boardSummary);
+    expect(gate.ok).toBe(false);
+    expect(gate.message).toContain("모든 CodeTask");
   });
 });

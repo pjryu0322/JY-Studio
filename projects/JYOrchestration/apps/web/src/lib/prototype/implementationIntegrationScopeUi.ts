@@ -44,6 +44,12 @@ export function buildIntegrationEligibilitySummaryLines(
   if (includedCount === 0) {
     return ["완료된 CodeTask가 없어 통합할 수 없습니다."];
   }
+  if (!eligibility.canIntegrate) {
+    return [
+      `완료된 CodeTask ${includedCount}개`,
+      "실행 중이거나 미완료·검증 대기 CodeTask가 있어 통합할 수 없습니다.",
+    ];
+  }
   const lines = [`완료된 CodeTask ${includedCount}개를 기준으로 통합할 수 있습니다.`];
   for (const warning of eligibility.warnings) {
     lines.push(warning);

@@ -4,6 +4,7 @@ import {
   type ImplementationCodeTaskSelectionSummaryV1,
 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { isCodeTaskRunIntegrationReady } from "@/lib/prototype/codeTaskIntegrationReadiness";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
 import {
@@ -65,6 +66,7 @@ export function summarizeCodeTaskBoardGateFromPlanAndUnits(input: {
       commitSha,
       branchName: unit?.workBranch ?? task.branchPlan?.workBranch ?? null,
       noCodeChangeEvidence,
+      runIntegrationReady: run ? isCodeTaskRunIntegrationReady(run) : false,
     });
 
     return { codeTaskId, boardState };

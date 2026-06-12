@@ -104,10 +104,10 @@ describe("selectCompletedCodeTasksForIntegration", () => {
     });
     expect(result.included.map((r) => r.codeTaskId).sort()).toEqual(["CT-INPUT", "CT-SHELL"]);
     expect(result.excluded.map((r) => r.codeTaskId)).toEqual(["CT-PENDING"]);
-    expect(result.canIntegrate).toBe(true);
+    expect(result.canIntegrate).toBe(false);
     expect(result.hasAppShell).toBe(true);
     expect(result.hasAnyScreenTask).toBe(true);
-    expect(result.warnings).toHaveLength(0);
+    expect(result.warnings.some((w) => w.includes("샘플데이터"))).toBe(true);
   });
 
   it("excludes prompt_ready and cursor_running", () => {

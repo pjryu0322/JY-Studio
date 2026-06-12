@@ -1,4 +1,5 @@
 import { selectCompletedCodeTasksForIntegration } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
+import { INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE } from "@/lib/prototype/implementationIntegrationGate";
 import {
   ensureGithubIntegrationBranch,
   isValidProjectIntegrationBranchName,
@@ -146,7 +147,6 @@ export async function runIntegrationBranchPipeline(input: {
     const integrationTargets = {
       ...targets,
       included: includedForMerge,
-      canIntegrate: includedForMerge.length > 0,
     };
 
     if (integrationCodeTaskIds?.length) {
@@ -162,25 +162,29 @@ export async function runIntegrationBranchPipeline(input: {
     }
 
     if (!integrationTargets.canIntegrate) {
-    const plan = buildCodeTaskIntegrationPlanDraft({
-      projectId: input.projectId,
-      targetRepository: input.repoUrl,
-      baseBranch: input.baseBranch,
-      included: [],
-      excluded: integrationTargets.excluded,
-      codeTaskPlan: input.codeTaskPlan,
-      selectedCodeTaskIds: integrationCodeTaskIds,
-      nowIso,
-    });
+      const gateMessage =
+        integrationTargets.excluded.length > 0
+          ? INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE
+          : "완료된 CodeTask가 없어 integration branch를 만들 수 없습니다.";
+      const plan = buildCodeTaskIntegrationPlanDraft({
+        projectId: input.projectId,
+        targetRepository: input.repoUrl,
+        baseBranch: input.baseBranch,
+        included: [],
+        excluded: integrationTargets.excluded,
+        codeTaskPlan: input.codeTaskPlan,
+        selectedCodeTaskIds: integrationCodeTaskIds,
+        nowIso,
+      });
       lastPlan = plan;
       return {
         ok: false,
         plan: patchCodeTaskIntegrationPlan(plan, {
           status: "failed",
-          failureMessage: "완료된 CodeTask가 없어 integration branch를 만들 수 없습니다.",
+          failureMessage: gateMessage,
         }),
         timeline,
-        message: "완료된 CodeTask가 없어 integration branch를 만들 수 없습니다.",
+        message: gateMessage,
       };
     }
 

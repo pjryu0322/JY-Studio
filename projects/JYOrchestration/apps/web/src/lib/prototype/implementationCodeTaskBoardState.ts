@@ -166,6 +166,8 @@ export function resolveCodeTaskBoardState(input: {
   readonly branchName?: string | null;
   readonly noCodeChangeEvidence?: boolean | null;
   readonly isChecked?: boolean;
+  /** Run SoT — 있으면 label 기반 통합 가능 판정보다 우선한다. */
+  readonly runIntegrationReady?: boolean | null;
 }): ImplementationCodeTaskBoardStateV1 {
   let statusLabel = String(input.statusLabel ?? "").trim();
   let progressLabel = String(input.progressLabel ?? "").trim();
@@ -221,7 +223,10 @@ export function resolveCodeTaskBoardState(input: {
     !isBlocked &&
     runnableByDisplayLabels;
 
-  const isIntegrationReady = isCompleted && hasIntegrationEvidence;
+  const isIntegrationReady =
+    input.runIntegrationReady != null
+      ? input.runIntegrationReady
+      : isCompleted && hasIntegrationEvidence;
 
   let checkboxDisabledReason: string | null = null;
   if (isCompleted) {

@@ -82,7 +82,7 @@ describe("P3-M35 integration eligibility with stuck github_verifying", () => {
         run("CT-MOCK", "DEV-B", "github_verifying"),
       ],
     });
-    expect(eligibility.canIntegrate).toBe(true);
+    expect(eligibility.canIntegrate).toBe(false);
     expect(eligibility.included.map((r) => r.codeTaskId)).toEqual(["CT-SHELL"]);
     expect(eligibility.excluded[0]?.reason).toBe("github_verifying");
     const lines = buildIntegrationEligibilitySummaryLines(eligibility);

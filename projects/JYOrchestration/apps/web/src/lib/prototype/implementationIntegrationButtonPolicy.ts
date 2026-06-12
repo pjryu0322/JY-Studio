@@ -59,9 +59,11 @@ export function resolveIntegrationButtonReadiness(input: {
     };
   }
 
+  const boardGate = input.boardGateSummary;
   const boardIntegrationReady =
-    (input.boardGateSummary?.runnableCount ?? 1) === 0 &&
-    (input.boardGateSummary?.integrationReadyCount ?? 0) > 0;
+    (boardGate?.runnableCount ?? 1) === 0 &&
+    (boardGate?.totalCount ?? 0) > 0 &&
+    boardGate?.integrationReadyCount === boardGate?.totalCount;
 
   if (!boardIntegrationReady) {
     if (input.selectedCodeTaskCount <= 0) {
@@ -236,9 +238,11 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
   readonly disabledTitle: string | null;
   readonly readinessReason: IntegrationButtonReadinessReasonV1;
 }> {
+  const boardGate = options?.boardGateSummary;
   const boardIntegrationReady =
-    (options?.boardGateSummary?.runnableCount ?? 1) === 0 &&
-    (options?.boardGateSummary?.integrationReadyCount ?? 0) > 0;
+    (boardGate?.runnableCount ?? 1) === 0 &&
+    (boardGate?.totalCount ?? 0) > 0 &&
+    boardGate?.integrationReadyCount === boardGate?.totalCount;
 
   const fwStatus = snapshot.integration.finalWiringStatus;
   const finalWiringMissing = fwStatus === "missing";

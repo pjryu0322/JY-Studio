@@ -11,6 +11,7 @@ import {
   findLatestRunForCodeTask,
   type CodeTaskExecutionRunV1,
 } from "@/lib/prototype/codeTaskExecutionRun";
+import { isCodeTaskRunIntegrationReady } from "@/lib/prototype/codeTaskIntegrationReadiness";
 import {
   buildCodeTaskRowView,
   summarizeCodeTaskRowViewsForProcess,
@@ -480,6 +481,7 @@ function buildCodeTaskNode(input: {
     branchName: input.executionUnit?.workBranch ?? input.codeTask.branchPlan?.workBranch ?? null,
     noCodeChangeEvidence: noCodeChangeForBoard,
     isChecked: input.isChecked,
+    runIntegrationReady: latestRun ? isCodeTaskRunIntegrationReady(latestRun) : null,
   });
 
   const checkboxDisabled = !boardState.isRunnableForUser;

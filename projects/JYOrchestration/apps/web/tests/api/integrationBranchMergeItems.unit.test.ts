@@ -55,7 +55,39 @@ describe("resolveIntegrationBranchMergeItems", () => {
     ).toEqual(included);
   });
 
-  it("supplements sample-data merge from verified run when not in integration included", () => {
+  it("does not supplement sample-data merge by default when not in included", () => {
+    const runs = [
+      {
+        version: CODE_TASK_EXECUTION_RUN_VERSION,
+        runId: "r-sample",
+        projectId: "p1",
+        processTaskId: "DEV-MOCK-001",
+        workItemId: "w1",
+        codeTaskId: CANONICAL_SAMPLE_DATA_CODE_TASK_ID,
+        status: "github_verified" as const,
+        attemptNo: 1,
+        workBranch: "wip/data/sample-data",
+        commitSha: "deadbeef",
+        createdAt: "2026-06-12T00:00:00.000Z",
+        updatedAt: "2026-06-12T00:00:00.000Z",
+        githubOutcome: {
+          version: "code_task_github_outcome_v1",
+          status: "verified",
+          commitSha: "deadbeef",
+          verifiedAt: "2026-06-12T00:00:00.000Z",
+        },
+      },
+    ];
+    const resolution = resolveIntegrationBranchMergeItems({
+      included: [target("wip/screen/workspace", "CODE-SCREEN")],
+      effectiveSourceBranch: "wip/screen/workspace",
+      codeTaskRuns: runs,
+    });
+    expect(resolution.legacySampleDataFallback).toBeNull();
+    expect(resolution.mergeItems.map((i) => i.workBranch)).toEqual(["wip/screen/workspace"]);
+  });
+
+  it("supplements sample-data merge when legacy env enabled", () => {
     const runs = [
       {
         version: CODE_TASK_EXECUTION_RUN_VERSION,
@@ -81,15 +113,22 @@ describe("resolveIntegrationBranchMergeItems", () => {
     expect(resolveVerifiedSampleDataSupplementalMergeTarget({ codeTaskRuns: runs })?.workBranch).toBe(
       "wip/data/sample-data",
     );
-    const resolution = resolveIntegrationBranchMergeItems({
-      included: [target("wip/screen/workspace", "CODE-SCREEN")],
-      effectiveSourceBranch: "wip/screen/workspace",
-      codeTaskRuns: runs,
-    });
-    expect(resolution.legacySampleDataFallback?.codeTaskId).toBeTruthy();
-    expect(resolution.mergeItems.map((i) => i.workBranch)).toEqual([
-      "wip/data/sample-data",
-      "wip/screen/workspace",
-    ]);
+    const prev = process.env.JY_LEGACY_SAMPLE_SUPPLEMENTAL_MERGE;
+    process.env.JY_LEGACY_SAMPLE_SUPPLEMENTAL_MERGE = "1";
+    try {
+      const resolution = resolveIntegrationBranchMergeItems({
+        included: [target("wip/screen/workspace", "CODE-SCREEN")],
+        effectiveSourceBranch: "wip/screen/workspace",
+        codeTaskRuns: runs,
+      });
+      expect(resolution.legacySampleDataFallback?.codeTaskId).toBeTruthy();
+      expect(resolution.mergeItems.map((i) => i.workBranch)).toEqual([
+        "wip/data/sample-data",
+        "wip/screen/workspace",
+      ]);
+    } finally {
+      if (prev === undefined) delete process.env.JY_LEGACY_SAMPLE_SUPPLEMENTAL_MERGE;
+      else process.env.JY_LEGACY_SAMPLE_SUPPLEMENTAL_MERGE = prev;
+    }
   });
 });

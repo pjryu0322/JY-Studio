@@ -12,6 +12,10 @@ import {
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import { resolveCodeTaskSpecificRole, type CodeTaskRoleKind } from "@/lib/prototype/codeTaskPromptRoleResolver";
+import {
+  computeStrictIntegrationCanIntegrate,
+  logIntegrationGateBlocked,
+} from "@/lib/prototype/implementationIntegrationGate";
 import { isSampleDataCodeTaskRef } from "@/lib/prototype/sampleDataCodeTaskPlanner";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
@@ -95,7 +99,7 @@ function mapRunToExcludedReason(
   const outcome = normalizeCodeTaskGithubOutcomeFromRun(run);
   if (outcome?.status === "failed") return "failed";
   if (outcome?.status === "pending") return "github_verifying";
-  if (run?.status === "github_verified") return "github_verifying";
+  if (run?.status === "github_verified" && outcome?.status !== "verified") return "github_verifying";
   if (run.status === "blocked_by_dependency") return "blocked_by_dependency";
   if (run.status === "failed" || run.status === "rework_required") return "failed";
   if (run.status === "skipped_by_user") return "cancelled";
@@ -252,21 +256,38 @@ export function selectCompletedCodeTasksForIntegration(input: {
     warnings.push("샘플데이터 CodeTask가 통합 대상에 없어 actual Preview 품질이 제한됩니다.");
   }
 
+  const totalCount = tasks.length;
+  const canIntegrate = computeStrictIntegrationCanIntegrate({
+    totalCount,
+    includedCount: included.length,
+    excludedCount: excluded.length,
+  });
+
+  if (!canIntegrate) {
+    logIntegrationGateBlocked({
+      totalCodeTaskCount: totalCount,
+      includedCount: included.length,
+      excludedCount: excluded.length,
+      excluded,
+    });
+  }
+
   const result = {
     included,
     excluded,
     hasAppShell,
     hasAnyScreenTask,
-    canIntegrate: included.length > 0,
+    canIntegrate,
     warnings,
   };
 
   console.info(
     JSON.stringify({
       action: "integration_selection_resolved",
-      totalCodeTaskCount: tasks.length,
+      totalCodeTaskCount: totalCount,
       includedCount: included.length,
       excludedCount: excluded.length,
+      canIntegrate,
       includedCodeTaskIds: included.map((i) => i.codeTaskId).join(","),
       excludedCodeTaskIds: excluded.map((e) => e.codeTaskId).join(","),
       excludedReasons: excluded.map((e) => `${e.codeTaskId}:${e.reason}`).join(";"),
