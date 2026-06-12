@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { postDbQueuedQuickRunAutoDispatch } from "@/lib/prototype/implementationDbQueuedQuickRunContinuation";
-import { formatQuickRunContinuationReason, parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
+import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 
@@ -14,7 +14,6 @@ export function useDbQueuedQuickRunAutoDispatch(input: {
     patch: PrototypeExecutionOrchestrationPersistInput,
   ) => PrototypeExecutionOrchestrationPersistInput;
   readonly applyOrchestrationPatch: (patch: PrototypeExecutionOrchestrationPersistInput) => void;
-  readonly showToast: (message: string) => void;
   readonly reloadRuntime: () => void;
 }): void {
   const enrichRef = useRef(input.enrichOrchestrationPatch);
@@ -56,10 +55,8 @@ export function useDbQueuedQuickRunAutoDispatch(input: {
           );
         }
         if (result.dispatchOk || result.dispatchOutcome === "dispatched") {
-          input.showToast(`다음 CodeTask(${dbRun.codeTaskId}) Cursor 실행을 시작했습니다.`);
           input.reloadRuntime();
         } else if (result.dispatchReason && result.dispatchOutcome !== "skipped") {
-          input.showToast(formatQuickRunContinuationReason(result.dispatchReason));
           input.dbQueuedQuickRunDispatchRef.current = null;
         }
       } catch {
@@ -76,6 +73,5 @@ export function useDbQueuedQuickRunAutoDispatch(input: {
     input.reloadRuntime,
     input.runtimePollSuspendedRef,
     input.dbQueuedQuickRunDispatchRef,
-    input.showToast,
   ]);
 }

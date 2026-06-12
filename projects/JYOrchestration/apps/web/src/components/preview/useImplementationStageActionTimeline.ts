@@ -28,9 +28,8 @@ export function useImplementationStageActionTimeline(input: {
   readonly persistChatToDb: ReturnType<
     typeof import("@/components/preview/usePrototypeExecutionPersistChatToDb").usePrototypeExecutionPersistChatToDb
   >["persistChatToDb"];
-  readonly showToast: (message: string) => void;
+  readonly appendUserNotice: (message: string) => void;
   readonly setExecutionEnvironmentModalOpen: (open: boolean) => void;
-  readonly chatInputRef: React.RefObject<HTMLTextAreaElement | null>;
   readonly showRoleCheckDetails: () => void;
   readonly appendStatusQueryFromChip: (chip: string) => void;
 }): Readonly<{
@@ -134,16 +133,16 @@ export function useImplementationStageActionTimeline(input: {
       }
       switch (result.kind) {
         case "blocked":
-          input.showToast(result.message);
+          input.appendUserNotice(result.message);
           break;
         case "focus_composer":
-          input.showToast(result.message);
+          input.appendUserNotice(result.message);
           break;
         case "open_env_settings":
           input.setExecutionEnvironmentModalOpen(true);
           break;
         case "open_artifacts":
-          input.showToast(
+          input.appendUserNotice(
             "구현 산출물 Hub는 제공되지 않습니다. 기획(/requirements) 화면에서 산출물을 확인해 주세요.",
           );
           break;
@@ -157,11 +156,10 @@ export function useImplementationStageActionTimeline(input: {
       }
     },
     [
-      input.showToast,
+      input.appendUserNotice,
       input.showRoleCheckDetails,
       input.appendStatusQueryFromChip,
       input.setExecutionEnvironmentModalOpen,
-      input.chatInputRef,
       persistStageActionTimelineEntries,
     ],
   );

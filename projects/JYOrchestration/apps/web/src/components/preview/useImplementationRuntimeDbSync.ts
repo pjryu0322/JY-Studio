@@ -10,7 +10,6 @@ import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientP
 
 export function useImplementationRuntimeDbSync(input: {
   readonly projectId: string;
-  readonly showToast: (message: string) => void;
   readonly taskCursorExecutionV1: unknown;
 }): Readonly<{
   readonly implementationRuntimeDbBundle: ImplementationRuntimeBundleView | null;
@@ -52,7 +51,7 @@ export function useImplementationRuntimeDbSync(input: {
           const message = fetched.message ?? "";
           if (message.includes("DB 스키마가 최신") || message.includes("pnpm db:migrate")) {
             pollSuspendedRef.current = true;
-            input.showToast(message.split(". ")[0] ?? message);
+            console.warn("[implementation-runtime]", message.split(". ")[0] ?? message);
           }
           return;
         }
@@ -62,7 +61,7 @@ export function useImplementationRuntimeDbSync(input: {
         // ignore transient poll errors (dev recompile / network)
       }
     },
-    [applyImplementationRuntimeFetch, input.projectId, input.showToast],
+    [applyImplementationRuntimeFetch, input.projectId],
   );
 
   useEffect(() => {

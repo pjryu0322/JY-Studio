@@ -152,7 +152,6 @@ import {
   sanitizeImplementationConversationMessages,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import type { ImplementationStatusQueryIntent } from "@/lib/prototype/implementationStatusQueryIntent";
-import { resolveImplementationOperationalSend } from "@/lib/prototype/implementationOperationalSend";
 import {
   appendCreateWorkPlanBootstrapCtaRouteTimeline,
   mergePromptTimelineWithBootstrapEntries,
@@ -298,6 +297,10 @@ import {
 import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
 import { writeClipboardText } from "@/lib/clipboard/writeClipboardText";
 import {
+  readImplementationStageChatMessages,
+  readImplementationStageChatPatch,
+} from "@/lib/prototype/implementationStageChatSnapshot";
+import {
   shouldSuppressImplementationStatusMessage,
 } from "@/lib/prototype/implementationStatusChatPolicy";
 import {
@@ -410,9 +413,7 @@ import {
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { parseTaskCursorExecutionV1, patchTaskCursorExecution, type TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
-import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
-import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
 import { buildDisplayedPlannerUserMessage, workUnitProgressAllMerged } from "@/components/preview/prototypePreviewPanelHelpers";
 import {
   isPrototypeTemplatePlanningReady,
@@ -472,16 +473,11 @@ import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator
 
 import type { MutableRefObject, ReactNode, RefObject } from "react";
 
-type PrototypeExecutionSingleChat = ReturnType<typeof usePrototypeExecutionSingleChat>;
-
 function isLikelyPreviewUrl(url: string): boolean {
   const u = url.trim();
   if (!u) return false;
   return /^https?:\/\//i.test(u);
 }
-
-/** 구현 단계에서는 토스트 UI를 사용하지 않습니다. */
-function noopImplementationStageToast(_message?: string, _displayMs?: number): void {}
 
 export type PrototypeImplementationStageHost = Readonly<{
   projectId: string;
@@ -701,8 +697,6 @@ export function usePrototypeImplementationStagePanel(
     refreshExecutionEnvironmentStatus,
   } = host;
 
-  const showToast = noopImplementationStageToast;
-
   const [integrationPipelineBusy, setIntegrationPipelineBusy] = useState(false);
   const [integrationPipelineClientResult, setIntegrationPipelineClientResult] = useState<{
     readonly status?: string;
@@ -799,7 +793,6 @@ export function usePrototypeImplementationStagePanel(
     implementationRuntimePollSuspendedRef,
   } = useImplementationRuntimeDbSync({
     projectId,
-    showToast,
     taskCursorExecutionV1: orchestrationAwareRequirementsState.taskCursorExecutionV1,
   });
 
@@ -1186,189 +1179,6 @@ export function usePrototypeImplementationStagePanel(
   }));
   const persistImplementationStageActionRunRef = useRef<(run: ImplementationStageActionRun) => void>(() => {});
 
-  const buildStatusQueryOperationalResult = useCallback(
-    (intent: ImplementationStatusQueryIntent): PrototypeExecutionOperationalSendResult | null => {
-      if (intent === "none" || !implementationBootstrapInput) return null;
-      const prior = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson).messages ?? [];
-      if (intent === "role_check_details" && hasImplementationRoleCheckDetailsShown(prior)) {
-        showToast("역할별 점검 결과가 이미 표시되어 있습니다.");
-        return "handled";
-      }
-      const roleCheckSummary = buildImplementationRoleCheckSummary(implementationBootstrapInput);
-      const aiMessage = buildImplementationStatusQueryMessage({
-        intent,
-        summaryInput: implementationBootstrapInput,
-        roleCheckSummary,
-      });
-      if (!aiMessage) return "handled";
-      return {
-        kind: "status_query",
-        aiMessage,
-        timelineEntries: [
-          buildImplementationStatusQueryTimelineEntry({
-            query: intent,
-            summaryInput: implementationBootstrapInput,
-            roleCheckSummary,
-          }),
-        ],
-      };
-    },
-    [implementationBootstrapInput, requirementsStateJson, showToast],
-  );
-
-  const implementationOperationalHandlers = useMemo(
-    () => ({
-      appendNotice: (message: string) => appendExecutionNoticeRef.current(message),
-      showToast,
-      focusChatInput: () => {
-        showToast("구현 단계에서는 보드와 상단 버튼으로 작업을 진행해 주세요.");
-      },
-      startWorkPlanGeneration: () => startWorkPlanGenerationFromChat(),
-      openPlannerPrompt: () => setPlannerPromptModalOpen(true),
-      openEnvSettings: () => setExecutionEnvironmentModalOpen(true),
-      buildStatusQueryResult: buildStatusQueryOperationalResult,
-      persistRequirementPatch: (patch: import("@/lib/prototype/implementationUserFeedback").ImplementationUserFeedbackPatchV1) => {
-        const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-        const orchPatch = buildImplementationUserFeedbackOrchestrationPatch({
-          requirementsStateJson,
-          patch,
-          nowIso: patch.createdAt,
-        });
-        void persistChatToDb(
-          {
-            messages: resolved.messages ?? [],
-            slots: resolved.slots ?? [],
-            answers: resolved.answers ?? {},
-            currentSlotKey: resolved.currentSlotKey ?? null,
-          },
-          orchPatch,
-        );
-      },
-    }),
-    [
-      showToast,
-      buildStatusQueryOperationalResult,
-      requirementsStateJson,
-      persistChatToDb,
-      startWorkPlanGenerationFromChat,
-    ],
-  );
-
-  const executionSingleChat = usePrototypeExecutionSingleChat({
-    projectId,
-    projectName: projectName || "프로젝트",
-    projectDescription,
-    requirementsStateJson,
-    mergedBuiltMessages: [],
-    conversationSurfaceEnabled: false,
-    envOk: canRequestGeneration.envOk,
-    templateName: effectiveTemplateDef?.nameKo ?? effectiveTemplate,
-    ideationSummary: ideationSummaryForChat,
-    actorFlowSummary: actorFlowSummaryForChat,
-    protoBusy,
-    inputBlocked: true,
-    implementationBootstrapInput,
-    envLoading: executionEnvLoading,
-    onPersistStateJson: (patch) => {
-      applyPendingFromOrchestrationPatch(patch.orchestration);
-      const parsed = parseRequirementsStateJson(requirementsStateJson);
-      const timeline = mergePromptTimelineWithBootstrapEntries({
-        baseTimeline: parsed.promptTimeline,
-        orchestrationTimeline: patch.orchestration?.promptTimeline,
-        bootstrapTimeline: patch.bootstrapTimeline,
-      });
-      const orchestrationPatch = {
-        ...(patch.orchestration ?? {}),
-        ...(timeline.length ? { promptTimeline: timeline } : {}),
-      };
-      const hasOrchestrationPatch = Object.values(orchestrationPatch).some(
-        (value) => value !== undefined && value !== null,
-      );
-      void persistChatToDb(
-        {
-          messages: patch.messages,
-          slots: patch.slots,
-          answers: patch.answers,
-          currentSlotKey: patch.currentSlotKey,
-        },
-        hasOrchestrationPatch ? orchestrationPatch : undefined,
-      );
-    },
-    onOperationalSend: async (text, userMsg) => {
-      const run = latestRun;
-      if (run?.id && run.status === "WORK_UNITS_READY" && run.workUnitsExecutionConfirmed !== true) {
-        setProtoBusy(true);
-        try {
-          const r = await postPrototypeRegeneratePlan(run.id, {
-            projectId,
-            userFeedback: text,
-            plannerContext: plannerContextPayload,
-          });
-          if (r.success && r.data?.run) setLatestRun(r.data.run);
-          if (r.message) showToast(r.message);
-        } finally {
-          setProtoBusy(false);
-          void refreshLatestRun();
-        }
-        return "handled";
-      }
-
-      const pid = projectId.trim();
-      return resolveImplementationOperationalSend(
-        {
-          text,
-          userMsg,
-          isDraftGenerationComplete,
-          isRunningState,
-          envOk: canRequestGeneration.envOk,
-          designOk: canRequestGeneration.designOk,
-          requirementsStateJson,
-          projectId: pid,
-          projectArtifacts: executionArtifacts.projectArtifacts,
-          orchestration: parsedRequirementsState.singleChatOrchestrationV1,
-          slotDefinitions: planningSlotDefinitions,
-          implementationSeedV1: parsedRequirementsState.implementationSeedV1,
-          implementationWorkPlanDraftV1: effectiveImplementationState.implementationWorkPlanDraftV1,
-          promptTimeline: parsedRequirementsState.promptTimeline,
-          stageActionOrchestrator: pid
-            ? {
-                projectId: pid,
-                effectiveState: effectiveImplementationState,
-                execute: (actionId) => runImplementationStageActionRef.current(actionId),
-              }
-            : undefined,
-          routeParams: {
-            text,
-            visibleActionLabels: implementationVisibleActionLabels,
-            envOk: canRequestGeneration.envOk,
-            templatePlanningReady,
-            implementationSeedReady,
-            hasWorkUnits: (latestRun?.workUnits?.length ?? 0) > 0,
-            isPlannerRunning,
-            plannerCreatePending,
-            protoBusy,
-            projectName: projectName || "프로젝트",
-            projectDescription,
-            latestRunStatus: latestRun?.status ?? null,
-            enableLlmClassifier: true,
-          },
-        },
-        implementationOperationalHandlers,
-      );
-    },
-    onOperationalAfterPersist: (action) => {
-      if (action === "start_prototype_work_plan") {
-        startWorkPlanGenerationFromChat();
-      }
-    },
-    onOperationalStageActionRun: (run) => {
-      persistImplementationStageActionRun(run);
-      if ((run.status === "failed" || run.status === "blocked" || run.status === "no_op") && run.message) {
-        showToast(run.message);
-      }
-    },
-  });
-
   const appendAiNoticeForImplementation = useCallback(
     (content: string) => {
       const text = String(content ?? "").trim();
@@ -1399,6 +1209,14 @@ export function usePrototypeImplementationStagePanel(
     [projectId],
   );
 
+  const showToast = useCallback(
+    (message: string) => {
+      const text = String(message ?? "").trim();
+      if (text) appendAiNoticeForImplementation(text);
+    },
+    [appendAiNoticeForImplementation],
+  );
+
   const appendImplementationExecutionNotice = useCallback(
     (content: string) => {
       if (shouldSuppressImplementationStatusMessage({ content })) return;
@@ -1427,7 +1245,6 @@ export function usePrototypeImplementationStagePanel(
     requirementsStateJson,
     requirementsStateJsonRef,
     orchestrationPersistSeqRef,
-    executionSingleChat,
     persistChatToDb,
     applyPendingFromOrchestrationPatch,
     onRequirementsStateJsonChange,
@@ -1438,8 +1255,8 @@ export function usePrototypeImplementationStagePanel(
     applyImplementationOrchestrationResultRef.current = applyImplementationOrchestrationResult;
   }, [applyImplementationOrchestrationResult]);
 
-  const executionSingleChatMessagesRef = useRef(executionSingleChat.chatMessages);
-  executionSingleChatMessagesRef.current = executionSingleChat.chatMessages;
+  const executionSingleChatMessagesRef = useRef(readImplementationStageChatMessages(requirementsStateJsonRef.current));
+  executionSingleChatMessagesRef.current = readImplementationStageChatMessages(requirementsStateJsonRef.current);
 
   useDbQueuedQuickRunAutoDispatch({
     projectId,
@@ -1450,11 +1267,9 @@ export function usePrototypeImplementationStagePanel(
     enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
     applyOrchestrationPatch: (patch) => {
       applyImplementationOrchestrationResultRef.current({
-        messages: executionSingleChatMessagesRef.current,
         orchestrationPatch: patch,
       });
     },
-    showToast,
     reloadRuntime: () => {
       void loadImplementationRuntimeDb({ recover: false });
     },
@@ -1474,11 +1289,9 @@ export function usePrototypeImplementationStagePanel(
     enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
     applyOrchestrationPatch: (patch) => {
       applyImplementationOrchestrationResult({
-        messages: executionSingleChat.chatMessages,
         orchestrationPatch: patch,
       });
     },
-    showToast,
   });
 
   useTaskCursorServerJobPoll({
@@ -1508,7 +1321,6 @@ export function usePrototypeImplementationStagePanel(
     },
     chatMessagesRef: executionSingleChatMessagesRef,
     appendExecutionNotice: appendImplementationExecutionNotice,
-    showToast,
   });
 
   const autoQualityGateEffectSignal = useMemo(() => {
@@ -1557,10 +1369,9 @@ export function usePrototypeImplementationStagePanel(
         workItemId: next.workItemId,
       };
       codeTaskDispatchPreferredTaskIdRef.current = next.parentTaskId;
-      showToast(`다음 CodeTask(${next.codeTaskId}) Cursor 실행을 시작합니다.`);
       runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
     },
-    [showToast],
+    [],
   );
 
   const recoverQuickRunStuckGithubVerify = useCallback(async (options?: { readonly force?: boolean }) => {
@@ -1577,12 +1388,10 @@ export function usePrototypeImplementationStagePanel(
       enrichPatch: enrichCodeTaskRunOrchestrationPatch,
       applyOrchestrationPatch: (patch) => {
         applyImplementationOrchestrationResult({
-          messages: executionSingleChat.chatMessages,
-          orchestrationPatch: patch,
+        orchestrationPatch: patch,
         });
       },
       onNextQuickRunDispatch: dispatchNextQuickRunFromGithubVerify,
-      showToast,
       onFailureNotice: (message) => appendImplementationExecutionNotice(message),
       refreshRuntime: async () => {
         const fetched = await fetchImplementationRuntime(pid);
@@ -1596,7 +1405,7 @@ export function usePrototypeImplementationStagePanel(
     implementationRuntimeDbBundle,
     enrichCodeTaskRunOrchestrationPatch,
     applyImplementationOrchestrationResult,
-    executionSingleChat.chatMessages,
+    readImplementationStageChatMessages(requirementsStateJsonRef.current),
     appendImplementationExecutionNotice,
     dispatchNextQuickRunFromGithubVerify,
     showToast,
@@ -1643,8 +1452,7 @@ export function usePrototypeImplementationStagePanel(
           enrichPatch: enrichCodeTaskRunOrchestrationPatch,
           applyOrchestrationPatch: (patch) => {
             applyImplementationOrchestrationResult({
-              messages: executionSingleChat.chatMessages,
-              orchestrationPatch: patch,
+        orchestrationPatch: patch,
             });
           },
           onNextQuickRunDispatch: dispatchNextQuickRunFromGithubVerify,
@@ -1669,10 +1477,9 @@ export function usePrototypeImplementationStagePanel(
       orchestrationAwareRequirementsState.implementationExecutionUnitsV1,
       enrichCodeTaskRunOrchestrationPatch,
       applyImplementationOrchestrationResult,
-      executionSingleChat.chatMessages,
+      readImplementationStageChatMessages(requirementsStateJsonRef.current),
       appendImplementationExecutionNotice,
       dispatchNextQuickRunFromGithubVerify,
-      showToast,
       applyImplementationRuntimeFetch,
       loadImplementationRuntimeDb,
     ],
@@ -1773,16 +1580,13 @@ export function usePrototypeImplementationStagePanel(
       promptTimeline: parsedRequirementsState.promptTimeline,
     });
     if (result.kind === "blocked") {
-      showToast(result.message);
       return { outcome: "blocked", message: result.message };
     }
     if (result.kind === "already_confirmed") {
       const message = "이미 구현 작업안이 확정되었습니다.";
-      showToast(message);
       return { outcome: "no_op", message };
     }
     applyImplementationOrchestrationResult({
-      messages: result.chatPatch.messages,
       orchestrationPatch: result.orchestrationPatch,
     });
     return { outcome: "executed" };
@@ -1794,7 +1598,6 @@ export function usePrototypeImplementationStagePanel(
     effectiveImplementationState,
     parsedRequirementsState.promptTimeline,
     applyImplementationOrchestrationResult,
-    showToast,
   ]);
 
   const generateImplementationWorkPlanDraft = useCallback((): ImplementationStageActionRunResult => {
@@ -1812,12 +1615,10 @@ export function usePrototypeImplementationStagePanel(
       promptTimeline: parsedRequirementsState.promptTimeline,
     });
     if (result.kind === "blocked") {
-      showToast(result.message);
       return { outcome: "blocked", message: result.message };
     }
     if (result.kind === "already_exists") {
       const message = "이미 구현 작업안 초안이 생성되었습니다.";
-      showToast(message);
       return { outcome: "no_op", message };
     }
     const orchestrationPatch = {
@@ -1827,7 +1628,6 @@ export function usePrototypeImplementationStagePanel(
       }),
     };
     applyImplementationOrchestrationResult({
-      messages: result.messages,
       orchestrationPatch,
     });
     return { outcome: "executed" };
@@ -1842,42 +1642,45 @@ export function usePrototypeImplementationStagePanel(
     parsedRequirementsState.implementationSeedV1,
     planningSlotDefinitions,
     applyImplementationOrchestrationResult,
-    showToast,
   ]);
 
   const appendStatusQueryFromChip = useCallback(
     (intent: ImplementationStatusQueryIntent) => {
-      const result = buildStatusQueryOperationalResult(intent);
-      if (!result) {
-        showToast("환경 점검 결과를 표시할 수 없습니다. [환경 점검 결과]를 다시 선택해 주세요.");
+      if (!implementationBootstrapInput) {
+        appendAiNoticeForImplementation("환경 점검 결과를 표시할 수 없습니다. [환경 점검 결과]를 다시 선택해 주세요.");
         return;
       }
-      if (result === "handled" || result === "continue") return;
-      if (result.kind !== "status_query") return;
-      const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-      const nextMessages = [...(resolved.messages ?? []), result.aiMessage];
-      executionSingleChat.applyPersistedMessages(nextMessages);
-      let timeline = parsedRequirementsState.promptTimeline;
-      for (const entry of result.timelineEntries ?? []) {
-        timeline = appendPromptTimeline(timeline, entry);
+      const prior = readImplementationStageChatMessages(requirementsStateJsonRef.current);
+      if (intent === "role_check_details" && hasImplementationRoleCheckDetailsShown(prior)) {
+        appendAiNoticeForImplementation("역할별 점검 결과가 이미 표시되어 있습니다.");
+        return;
       }
-      void persistChatToDb(
-        {
-          messages: nextMessages,
-          slots: resolved.slots ?? [],
-          answers: resolved.answers ?? {},
-          currentSlotKey: resolved.currentSlotKey ?? null,
-        },
-        { promptTimeline: timeline },
+      const roleCheckSummary = buildImplementationRoleCheckSummary(implementationBootstrapInput);
+      const aiMessage = buildImplementationStatusQueryMessage({
+        intent,
+        summaryInput: implementationBootstrapInput,
+        roleCheckSummary,
+      });
+      if (!aiMessage) return;
+      let timeline = parsedRequirementsState.promptTimeline;
+      timeline = appendPromptTimeline(
+        timeline,
+        buildImplementationStatusQueryTimelineEntry({
+          query: intent,
+          summaryInput: implementationBootstrapInput,
+          roleCheckSummary,
+        }),
       );
+      const chatPatch = readImplementationStageChatPatch(requirementsStateJsonRef.current);
+      void persistChatToDb(chatPatch, { promptTimeline: timeline }, undefined, { force: true });
+      appendAiNoticeForImplementation(String(aiMessage.content ?? "").trim());
     },
     [
-      buildStatusQueryOperationalResult,
-      executionSingleChat,
-      requirementsStateJson,
+      implementationBootstrapInput,
+      requirementsStateJsonRef,
       parsedRequirementsState.promptTimeline,
       persistChatToDb,
-      showToast,
+      appendAiNoticeForImplementation,
     ],
   );
 
@@ -1895,9 +1698,8 @@ export function usePrototypeImplementationStagePanel(
     pendingImplementationPatchRef,
     applyPendingFromOrchestrationPatchRef,
     persistChatToDb,
-    showToast,
+    appendUserNotice: appendAiNoticeForImplementation,
     setExecutionEnvironmentModalOpen,
-    chatInputRef,
     showRoleCheckDetails,
     appendStatusQueryFromChip,
   });
@@ -1962,11 +1764,10 @@ export function usePrototypeImplementationStagePanel(
     executionSetupBoardSyncedKeyRef.current = null;
     const row = await refreshExecutionEnvironmentStatus();
     if (!row) {
-      showToast("환경설정을 다시 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
       return;
     }
     refreshImplementationBoardWithExecutionSetup(row, "execution_setup_saved");
-  }, [refreshExecutionEnvironmentStatus, refreshImplementationBoardWithExecutionSetup, showToast]);
+  }, [refreshExecutionEnvironmentStatus, refreshImplementationBoardWithExecutionSetup]);
 
   const applyDbStrategyResult = useCallback(
     (
@@ -1976,7 +1777,6 @@ export function usePrototypeImplementationStagePanel(
         | ReturnType<typeof buildMockImplementationModeResult>,
     ): ImplementationStageActionRunResult => {
       if (result.kind === "blocked") {
-        showToast(result.message);
         return { outcome: "blocked", message: result.message };
       }
       applyImplementationOrchestrationResult({
@@ -1985,7 +1785,7 @@ export function usePrototypeImplementationStagePanel(
       });
       return { outcome: "executed" };
     },
-    [applyImplementationOrchestrationResult, showToast],
+    [applyImplementationOrchestrationResult],
   );
 
   const reviewDbIntegrationNeed = useCallback((): ImplementationStageActionRunResult => {
@@ -2017,7 +1817,6 @@ export function usePrototypeImplementationStagePanel(
 
       if (!ensured.ok || !ensured.patch) {
         const message = ensured.message ?? "구현 작업안을 자동으로 준비할 수 없습니다.";
-        showToast(message);
         return { outcome: "blocked", message };
       }
 
@@ -2130,7 +1929,6 @@ export function usePrototypeImplementationStagePanel(
 
       if (!ensured.ok || !ensured.patch) {
         const message = ensured.message ?? "구현 작업안을 자동으로 준비할 수 없습니다.";
-        showToast(message);
         return { outcome: "blocked", message };
       }
 
@@ -2214,7 +2012,7 @@ export function usePrototypeImplementationStagePanel(
       if (!patch) return;
       applyImplementationOrchestrationResult({
         messages:
-          persistPatch.orchestration.chatPatch?.messages ?? executionSingleChat.chatMessages,
+          persistPatch.orchestration.chatPatch?.messages ?? readImplementationStageChatMessages(requirementsStateJsonRef.current),
         orchestrationPatch: {
           ...patch.orchestrationPatch,
           ...(patch.executionState
@@ -2226,7 +2024,7 @@ export function usePrototypeImplementationStagePanel(
         },
       });
     },
-    [applyImplementationOrchestrationResult, executionSingleChat.chatMessages],
+    [applyImplementationOrchestrationResult, readImplementationStageChatMessages(requirementsStateJsonRef.current)],
   );
 
   const persistPlatformScmMergePatch = useCallback(
@@ -2235,7 +2033,7 @@ export function usePrototypeImplementationStagePanel(
       if (!patch) return;
       applyImplementationOrchestrationResult({
         messages:
-          persistPatch.orchestration.chatPatch?.messages ?? executionSingleChat.chatMessages,
+          persistPatch.orchestration.chatPatch?.messages ?? readImplementationStageChatMessages(requirementsStateJsonRef.current),
         orchestrationPatch: {
           ...patch.orchestrationPatch,
           ...(patch.executionState
@@ -2244,7 +2042,7 @@ export function usePrototypeImplementationStagePanel(
         },
       });
     },
-    [applyImplementationOrchestrationResult, executionSingleChat.chatMessages],
+    [applyImplementationOrchestrationResult, readImplementationStageChatMessages(requirementsStateJsonRef.current)],
   );
 
   const tryAutoPlatformScmMergeAfterPush = useCallback(
@@ -2254,34 +2052,30 @@ export function usePrototypeImplementationStagePanel(
         const mergePatch = await applyPlatformScmMergeExecutorJson({ wip, autoMergeOnly: true });
         persistPlatformScmMergePatch(mergePatch);
         if (mergePatch.orchestration.message) {
-          showToast(mergePatch.orchestration.message);
         }
       } catch {
         // auto-merge is best-effort after push/PR
       }
     },
-    [applyPlatformScmMergeExecutorJson, persistPlatformScmMergePatch, showToast],
+    [applyPlatformScmMergeExecutorJson, persistPlatformScmMergePatch],
   );
 
   const executePlatformScmAfterRequest = useCallback(
     (wip: CodeAgentWipExecutionV1) => {
       void (async () => {
-        showToast("플랫폼 SCM push/PR 실행을 시작합니다...");
         try {
           const persistPatch = await applyPlatformScmExecutorJson({ wip });
           persistPlatformScmOrchestrationPatch(persistPatch);
-          showToast(persistPatch.orchestration.message);
           const updatedWip =
             persistPatch.orchestration.orchestrationPatch?.codeAgentWipExecutionV1 ?? wip;
           if (persistPatch.orchestration.kind === "completed") {
             await tryAutoPlatformScmMergeAfterPush(updatedWip);
           }
         } catch (error) {
-          showToast(error instanceof Error ? error.message : String(error));
         }
       })();
     },
-    [applyPlatformScmExecutorJson, persistPlatformScmOrchestrationPatch, tryAutoPlatformScmMergeAfterPush, showToast],
+    [applyPlatformScmExecutorJson, persistPlatformScmOrchestrationPatch, tryAutoPlatformScmMergeAfterPush],
   );
 
   const wipChipHandlers = useMemo(
@@ -2295,7 +2089,7 @@ export function usePrototypeImplementationStagePanel(
         envOk: effectiveImplementationState.envOk,
         designOk: effectiveImplementationState.designOk,
         cursorApiConfigured: evaluateCursorExecutionAvailability({ setup: executionSetupRow }).ready,
-        applyMessages: executionSingleChat.applyPersistedMessages,
+        applyMessages: () => {},
         appendNotice: (text) => appendAiNoticeForImplementation(text),
         persistOrchestration: (chat, orch) => {
           if (chat && orch) {
@@ -2322,11 +2116,9 @@ export function usePrototypeImplementationStagePanel(
       effectiveImplementationState.envOk,
       effectiveImplementationState.designOk,
       executionSetupRow,
-      executionSingleChat,
       persistChatToDb,
       applyPendingFromOrchestrationPatch,
       applyImplementationOrchestrationResult,
-      showToast,
       executePlatformScmAfterRequest,
       canApplyGit,
     ],
@@ -2341,12 +2133,10 @@ export function usePrototypeImplementationStagePanel(
       definitions: planningSlotDefinitions,
       promptTimeline: parsedRequirementsState.promptTimeline,
     });
-    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-    const nextMessages = [...(resolved.messages ?? []), result.message];
     applyImplementationOrchestrationResult({
-      messages: nextMessages,
       orchestrationPatch: result.orchestrationPatch,
     });
+    appendAiNoticeForImplementation(String(result.message.content ?? "").trim());
   }, [
     projectId,
     parsedRequirementsState.singleChatOrchestrationV1,
@@ -2354,6 +2144,7 @@ export function usePrototypeImplementationStagePanel(
     planningSlotDefinitions,
     requirementsStateJson,
     applyImplementationOrchestrationResult,
+    appendAiNoticeForImplementation,
   ]);
 
   const runImplementationQualityGate = useCallback(
@@ -2363,7 +2154,6 @@ export function usePrototypeImplementationStagePanel(
       const pid = projectId.trim();
       if (!taskList || !pid) {
         const message = "구현 작업목록이 없어 점검을 실행할 수 없습니다.";
-        showToast(message);
         return { outcome: "blocked", message };
       }
 
@@ -2390,7 +2180,6 @@ export function usePrototypeImplementationStagePanel(
       });
       if (!board) {
         const message = "구현 작업 보드를 만들 수 없어 점검을 실행할 수 없습니다.";
-        showToast(message);
         return { outcome: "blocked", message };
       }
 
@@ -2417,7 +2206,6 @@ export function usePrototypeImplementationStagePanel(
         bridgeTarget,
       });
       if ("blocked" in outcome) {
-        showToast(outcome.blocked);
         return { outcome: "blocked", message: outcome.blocked };
       }
       const qgTimeline =
@@ -2445,14 +2233,13 @@ export function usePrototypeImplementationStagePanel(
       appendAiNoticeForImplementation(outcome.aiMessageContent);
       return { outcome: "executed" };
     },
-    [orchestrationAwareRequirementsState, projectId, persistChatToDb, executionSingleChat, showToast],
+    [orchestrationAwareRequirementsState, projectId, persistChatToDb],
   );
 
   const runFinalScmIntegratedStageStep = useCallback((): ImplementationStageActionRunResult => {
     const pid = projectId.trim();
     if (!pid) {
       const message = "프로젝트를 선택해 주세요.";
-      showToast(message);
       return { outcome: "blocked", message };
     }
 
@@ -2472,7 +2259,6 @@ export function usePrototypeImplementationStagePanel(
       executionSetup: executionSetupRow,
     });
     if (!resolvedWip.ok) {
-      showToast(resolvedWip.message);
       return { outcome: "blocked", message: resolvedWip.message };
     }
     const wip = resolvedWip.wip;
@@ -2484,14 +2270,12 @@ export function usePrototypeImplementationStagePanel(
     }
     const readiness = validateFinalScmIntegratedStageReadiness(wip);
     if (!readiness.ok) {
-      showToast(readiness.message);
       return { outcome: "blocked", message: readiness.message };
     }
 
     const taskList = parsedRequirementsState.implementationTaskListV1;
     if (!taskList) {
       const message = "구현 작업목록이 없어 통합 단계를 실행할 수 없습니다.";
-      showToast(message);
       return { outcome: "blocked", message };
     }
 
@@ -2501,7 +2285,6 @@ export function usePrototypeImplementationStagePanel(
     });
     if (!boardBefore) {
       const message = "구현 실행 보드를 만들 수 없습니다.";
-      showToast(message);
       return { outcome: "blocked", message };
     }
     const allTasksComplete = boardBefore.taskRows.every((row) => row.currentRole === "completed");
@@ -2551,8 +2334,6 @@ export function usePrototypeImplementationStagePanel(
         implementationIntegratedExecutionStateV1: inProgressIntegrated,
       },
     });
-
-    showToast("최종 SCM 반영 실행을 시작합니다...");
     appendAiNoticeForImplementation(buildFinalScmIntegratedStageStartedNotice());
 
     void (async () => {
@@ -2575,7 +2356,7 @@ export function usePrototypeImplementationStagePanel(
         if (persistPatch.orchestration.orchestrationPatch) {
           applyImplementationOrchestrationResult({
             messages:
-              persistPatch.orchestration.chatPatch?.messages ?? executionSingleChat.chatMessages,
+              persistPatch.orchestration.chatPatch?.messages ?? readImplementationStageChatMessages(requirementsStateJsonRef.current),
             orchestrationPatch: {
               ...persistPatch.orchestration.orchestrationPatch,
               ...(persistPatch.executionState
@@ -2614,10 +2395,8 @@ export function usePrototypeImplementationStagePanel(
             executionSetup: executionSetupRow,
           }),
         );
-        showToast(persistPatch.orchestration.message);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        showToast(message);
         appendAiNoticeForImplementation(buildFinalScmIntegratedStageFailedNotice(message));
       }
     })();
@@ -2627,9 +2406,7 @@ export function usePrototypeImplementationStagePanel(
     projectId,
     orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
     parsedRequirementsState,
-    showToast,
     applyImplementationOrchestrationResult,
-    executionSingleChat,
     applyPlatformScmExecutorJson,
     tryAutoPlatformScmMergeAfterPush,
     appendImplementationTaskListAiMessage,
@@ -2642,20 +2419,15 @@ export function usePrototypeImplementationStagePanel(
     const wip = orchestrationAwareRequirementsState.codeAgentWipExecutionV1;
     const readiness = validatePlatformScmMergeStepReadiness(wip);
     if (!readiness.ok) {
-      showToast(readiness.message);
       return readiness.noOp
         ? { outcome: "no_op", message: readiness.message }
         : { outcome: "blocked", message: readiness.message };
     }
-
-    showToast("플랫폼 SCM PR merge를 시작합니다...");
     void (async () => {
       try {
         const persistPatch = await applyPlatformScmMergeExecutorJson({ wip: wip!, autoMergeOnly: false });
         persistPlatformScmMergePatch(persistPatch);
-        showToast(persistPatch.orchestration.message);
       } catch (error) {
-        showToast(error instanceof Error ? error.message : String(error));
       }
     })();
 
@@ -2675,13 +2447,11 @@ export function usePrototypeImplementationStagePanel(
       const pid = projectId.trim();
       if (!pid) {
         const message = "프로젝트를 선택해 주세요.";
-        showToast(message);
         return { outcome: "blocked", message };
       }
       const taskList = parsedRequirementsState.implementationTaskListV1;
       if (!taskList) {
         const message = "구현 작업목록이 없어 통합 단계를 실행할 수 없습니다.";
-        showToast(message);
         return { outcome: "blocked", message };
       }
 
@@ -2703,7 +2473,6 @@ export function usePrototypeImplementationStagePanel(
           autoQualityGate: parsedRequirementsState.implementationAutoQualityGateV1 ?? null,
         });
         if (!integration.ok) {
-          showToast(integration.message);
           return { outcome: "blocked", message: integration.message };
         }
         previewScopePatch = { implementationPreviewScopeV1: integration.previewScope };
@@ -2750,8 +2519,6 @@ export function usePrototypeImplementationStagePanel(
       parsedRequirementsState,
       projectId,
       persistChatToDb,
-      executionSingleChat,
-      showToast,
       appendImplementationTaskListAiMessage,
       prototypeRunSyncSnapshot.previewReady,
       orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
@@ -2762,7 +2529,6 @@ export function usePrototypeImplementationStagePanel(
   const mergeIntegrationPullRequest = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) {
-      showToast("프로젝트를 선택해 주세요.");
       return;
     }
     void (async () => {
@@ -2770,17 +2536,14 @@ export function usePrototypeImplementationStagePanel(
       try {
         const result = await mergeIntegrationPullRequestClient({ projectId: pid });
         if (result.ok) {
-          showToast("통합 PR을 main에 반영했습니다.");
         } else {
-          showToast(result.message ?? "main 반영에 실패했습니다.");
         }
       } catch (error) {
-        showToast(toUserSafeIntegrationErrorMessage(error));
       } finally {
         setIntegrationMergeBusy(false);
       }
     })();
-  }, [projectId, showToast]);
+  }, [projectId]);
 
   const openImplementationPreview = useCallback(
     (input: { readonly mode: ImplementationPreviewEntryModeV1; readonly url: string }) => {
@@ -2833,7 +2596,6 @@ export function usePrototypeImplementationStagePanel(
             sourceIntegrationBranch: integrationPlan?.integrationBranch ?? null,
           });
           if (!fallback.ok) {
-            showToast(fallback.message ?? "CodeTask Preview 준비에 실패했습니다.");
             return;
           }
           if (fallback.orchestrationPatch) {
@@ -2851,7 +2613,6 @@ export function usePrototypeImplementationStagePanel(
     },
     [
       projectId,
-      showToast,
       persistChatToDb,
       applyPendingFromOrchestrationPatch,
       previewUrl,
@@ -2862,7 +2623,6 @@ export function usePrototypeImplementationStagePanel(
 
   const runIntegrationPipeline = useCallback(() => {
     if (!implementationBoard) {
-      showToast("구현 작업 보드가 준비된 뒤 통합을 실행할 수 있습니다.");
       return;
     }
     void executeImplementationBoardIntegrationPipeline({
@@ -2875,7 +2635,6 @@ export function usePrototypeImplementationStagePanel(
       boardSelectionSummary: boardSelectionBridge.getBridgeSnapshot().livePanelSummary,
       persistChatToDb,
       applyPendingFromOrchestrationPatch,
-      showToast,
       setBusy: setIntegrationPipelineBusy,
       onClientResult: setIntegrationPipelineClientResult,
     });
@@ -2902,7 +2661,6 @@ export function usePrototypeImplementationStagePanel(
       promptTimeline: parsedRequirementsState.promptTimeline,
     });
     if (result.kind === "blocked") {
-      showToast(result.message);
       return { outcome: "blocked", message: result.message };
     }
     const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
@@ -2910,7 +2668,6 @@ export function usePrototypeImplementationStagePanel(
       messages: [...(resolved.messages ?? []), ...result.messages],
       orchestrationPatch: result.orchestrationPatch,
     });
-    showToast("Quick Design 초안을 기준으로 구현 Seed를 생성했습니다.");
     return { outcome: "executed" };
   }, [
     projectId,
@@ -2929,7 +2686,6 @@ export function usePrototypeImplementationStagePanel(
     if (!pid) return { outcome: "blocked", message: "프로젝트를 선택해 주세요." };
     void (async () => {
       setProtoBusy(true);
-      showToast("Quick Design 확정 중입니다. LLM 설정이 켜져 있으면 1분 이상 걸릴 수 있습니다.");
       try {
         const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
         const { res, json } = await postQuickDesignConfirm(pid, {
@@ -2942,17 +2698,14 @@ export function usePrototypeImplementationStagePanel(
           envOkOverride: canRequestGeneration.envOk,
         });
         if (!res.ok || !json.success || !json.data) {
-          showToast(json.message || "Quick Design 확정에 실패했습니다.");
           return;
         }
         applyImplementationOrchestrationResult({
           messages: json.data.messages ?? [],
           orchestrationPatch: (json.data.orchestrationPatch ?? {}) as PrototypeExecutionOrchestrationPersistInput,
         });
-        showToast(json.data.userFacingSummary ?? json.message ?? "Quick Design을 확정했습니다.");
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";
-        showToast(msg);
       } finally {
         setProtoBusy(false);
       }
@@ -2990,7 +2743,6 @@ export function usePrototypeImplementationStagePanel(
       });
       const result = json.data;
       if (!res.ok || !json.success || !result?.ok) {
-        showToast(json.message || result?.message || "구현 작업목록 생성에 실패했습니다.");
         return;
       }
       void persistChatToDb(
@@ -3000,12 +2752,6 @@ export function usePrototypeImplementationStagePanel(
       for (const message of result.messages) {
         appendImplementationTaskListAiMessage(message);
       }
-      showToast(
-        result.userMessage ??
-          (result.alreadyExisted
-            ? "구현 준비 산출물이 이미 있습니다. 작업 보드를 표시합니다."
-            : "구현 준비 산출물을 생성했습니다."),
-      );
     })();
     return { outcome: "executed" };
   }, [
@@ -3037,7 +2783,6 @@ export function usePrototypeImplementationStagePanel(
         case "REDISPATCH_IMPLEMENTATION_RUNTIME": {
           const message =
             "재디스패치는 비활성화되었습니다. 선택 CodeTask 실행으로 DB Queue를 다시 시작하세요.";
-          showToast(message);
           return { outcome: "blocked", message };
         }
         case "SHOW_IMPLEMENTATION_RUNTIME_DIAGNOSTICS": {
@@ -3047,7 +2792,6 @@ export function usePrototypeImplementationStagePanel(
         case "RELEASE_IMPLEMENTATION_EXECUTION_LOCK": {
           const message =
             "실행 잠금 해제는 비활성화되었습니다. 필요 시 선택 CodeTask 실행을 다시 시작하세요.";
-          showToast(message);
           return { outcome: "blocked", message };
         }
         case "RETURN_TO_PLANNING_STAGE":
@@ -3078,7 +2822,6 @@ export function usePrototypeImplementationStagePanel(
         case "SHOW_ARTIFACTS": {
           const message =
             "구현 산출물 Hub는 제공되지 않습니다. 기획(/requirements) 화면에서 산출물을 확인해 주세요.";
-          showToast(message);
           return { outcome: "blocked", message };
         }
         case "OPEN_ENV_SETTINGS":
@@ -3212,7 +2955,6 @@ export function usePrototypeImplementationStagePanel(
               });
             }
             appendAiNoticeForImplementation(message);
-            showToast("Code Agent WIP 요청을 시작하지 못했습니다. 개발자 작업 상태를 실패로 기록했습니다.");
             return { outcome: "blocked", message };
           }
 
@@ -3280,7 +3022,7 @@ export function usePrototypeImplementationStagePanel(
               projectId: pid,
               requirementsStateJson,
               parsedState: runtimeState,
-              applyMessages: executionSingleChat.applyPersistedMessages,
+              applyMessages: () => {},
               appendNotice: (text) => appendAiNoticeForImplementation(text),
               persistOrchestration: () => {
                 // Full persist + local merge handled by applyImplementationOrchestrationResult below.
@@ -3307,9 +3049,6 @@ export function usePrototypeImplementationStagePanel(
             return { outcome: "blocked", message: wipResult.message };
           }
           if (wipResult.kind === "already_active") {
-            showToast(
-              "WIP 초안이 이미 있습니다. [Cursor 실행 요청]으로 실제 소스 생성을 진행하세요.",
-            );
             return { outcome: "executed" };
           }
 
@@ -3434,9 +3173,7 @@ export function usePrototypeImplementationStagePanel(
               devCount > 0
                 ? `TaskList 기준 개발자 작업 ${devCount}건을 Code Agent WIP 요청으로 전환했습니다.`
                 : "Code Agent WIP 작업 요청을 시작했습니다.";
-            showToast(successNotice);
           } else {
-            showToast("Code Agent WIP 초안이 생성되었습니다.");
           }
           return { outcome: "executed" };
         }
@@ -3455,7 +3192,6 @@ export function usePrototypeImplementationStagePanel(
           if (envGate.blocked) {
             const message = envGate.message ?? "환경설정 점검이 필요합니다.";
             appendAiNoticeForImplementation(message);
-            showToast(message);
             return { outcome: "blocked", message };
           }
           const parsedInFlight =
@@ -3471,7 +3207,6 @@ export function usePrototypeImplementationStagePanel(
           ) {
             const message = CODE_TASK_IN_FLIGHT_USER_MESSAGE;
             appendAiNoticeForImplementation(message);
-            showToast(message);
             return { outcome: "no_op", message };
           }
           const planningGate = evaluateImplementationPlanningExecutionGate({
@@ -3499,7 +3234,6 @@ export function usePrototypeImplementationStagePanel(
             appendAiNoticeForImplementation(
               `${message} [구현 준비 산출물 동기화] 또는 기획단계 보완 후 다시 시도해 주세요.`,
             );
-            showToast(message);
             return { outcome: "blocked", message };
           }
           const queueDispatch =
@@ -3542,7 +3276,6 @@ export function usePrototypeImplementationStagePanel(
             });
             if (!prep.ok) {
               appendAiNoticeForImplementation(prep.message);
-              showToast(prep.message);
               return { outcome: prep.outcome, message: prep.message };
             }
             const { prepared } = prep;
@@ -3551,8 +3284,7 @@ export function usePrototypeImplementationStagePanel(
             )?.title;
             applyImplementationOrchestrationResult(
               {
-                messages: executionSingleChat.chatMessages,
-                orchestrationPatch: {
+        orchestrationPatch: {
                   ...buildTaskCursorOrchestrationPatch({
                     execution: prepared.pendingExecution,
                     history: orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
@@ -3586,12 +3318,6 @@ export function usePrototypeImplementationStagePanel(
               },
               { persist: false },
             );
-            showToast(
-              buildCodeTaskRunLaunchToastMessage({
-                codeTaskId: prepared.codeTaskId,
-                codeTaskTitle,
-              }),
-            );
             const pollHistory = orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1;
             const pollTimeline = orchestrationAwareRequirementsState.promptTimeline;
             const pollWorkItems = [...prepared.selectedWorkItems];
@@ -3612,8 +3338,7 @@ export function usePrototypeImplementationStagePanel(
                 const preflightFailure = isTaskCursorExecutePromptPreflightFailure(json);
                 if (json.orchestrationPatch) {
                   applyImplementationOrchestrationResult({
-                    messages: executionSingleChat.chatMessages,
-                    orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
+        orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
                   });
                 }
                 const launchedExecution =
@@ -3632,7 +3357,6 @@ export function usePrototypeImplementationStagePanel(
                   (json.serverPolling || json.pollRequired) &&
                   launchedExecution.status === "cursor_running"
                 ) {
-                  showToast(`${codeTaskTitle ?? prepared.codeTaskId} · ${userStatus.label}`);
                   return;
                 }
                 const notice =
@@ -3640,8 +3364,7 @@ export function usePrototypeImplementationStagePanel(
                   (json.success ? `${userStatus.label} 처리되었습니다.` : "CodeTask 실행에 실패했습니다.");
                 if (!json.success && !json.pollRequired && !preflightFailure) {
                   applyImplementationOrchestrationResult({
-                    messages: executionSingleChat.chatMessages,
-                    orchestrationPatch: buildTaskCursorFailedOrchestrationPatch({
+        orchestrationPatch: buildTaskCursorFailedOrchestrationPatch({
                       execution:
                         parseTaskCursorExecutionV1(json.orchestrationPatch?.taskCursorExecutionV1) ??
                         prepared.pendingExecution,
@@ -3654,7 +3377,6 @@ export function usePrototypeImplementationStagePanel(
                 if (!preflightFailure) {
                   appendAiNoticeForImplementation(notice);
                 }
-                showToast(notice);
               } catch (e) {
                 const friendly = formatTransientTaskCursorLaunchErrorMessage(e);
                 const orchestrationPatch = isTransientTaskCursorLaunchError(friendly)
@@ -3671,11 +3393,10 @@ export function usePrototypeImplementationStagePanel(
                       existingTimeline: pollTimeline,
                     });
                 applyImplementationOrchestrationResult({
-                  messages: executionSingleChat.chatMessages,
+                  messages: readImplementationStageChatMessages(requirementsStateJsonRef.current),
                   orchestrationPatch,
                 });
                 appendAiNoticeForImplementation(`CodeTask 실행 오류: ${friendly}`);
-                showToast(`CodeTask 실행 오류: ${friendly}`);
               }
             })();
             return { outcome: "executed" };
@@ -3788,8 +3509,7 @@ export function usePrototypeImplementationStagePanel(
               nowIso,
             });
             applyImplementationOrchestrationResult({
-              messages: executionSingleChat.chatMessages,
-              orchestrationPatch: {
+        orchestrationPatch: {
                 ...buildTaskCursorFailedOrchestrationPatch({
                   execution: failedRequest,
                   message,
@@ -3814,7 +3534,6 @@ export function usePrototypeImplementationStagePanel(
               },
             });
             appendAiNoticeForImplementation(message);
-            showToast("WorkItem 보완 필요 · Cursor 실행을 시작하지 않았습니다.");
             return { outcome: "blocked", message };
           }
 
@@ -3841,7 +3560,6 @@ export function usePrototypeImplementationStagePanel(
                 : null,
             nowIso,
           });
-          showToast(`Cursor 실행 요청 중 · ${scoped.selectedTaskId}`);
           const pollHistory = orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1;
           const pollTimeline = orchestrationAwareRequirementsState.promptTimeline;
           const pollWorkItems = scoped.selectedWorkItems;
@@ -3872,8 +3590,7 @@ export function usePrototypeImplementationStagePanel(
               const preflightFailure = isTaskCursorExecutePromptPreflightFailure(json);
               if (json.orchestrationPatch) {
                 applyImplementationOrchestrationResult({
-                  messages: executionSingleChat.chatMessages,
-                  orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
+        orchestrationPatch: enrichCodeTaskRunOrchestrationPatch(json.orchestrationPatch),
                 });
               }
               const launchedExecution =
@@ -3885,7 +3602,6 @@ export function usePrototypeImplementationStagePanel(
                 (json.serverPolling || json.pollRequired) &&
                 launchedExecution.status === "cursor_running"
               ) {
-                showToast(`${scoped.selectedTaskId} · Cursor 작업 중`);
                 return;
               }
 
@@ -3895,8 +3611,7 @@ export function usePrototypeImplementationStagePanel(
                 (json.success ? "Task Cursor 실행이 완료되었습니다." : "Task Cursor 실행에 실패했습니다.");
               if (!json.success && !json.pollRequired && !preflightFailure) {
                 applyImplementationOrchestrationResult({
-                  messages: executionSingleChat.chatMessages,
-                  orchestrationPatch: buildTaskCursorFailedOrchestrationPatch({
+        orchestrationPatch: buildTaskCursorFailedOrchestrationPatch({
                     execution:
                       parseTaskCursorExecutionV1(json.orchestrationPatch?.taskCursorExecutionV1) ??
                       pendingExecution,
@@ -3909,7 +3624,6 @@ export function usePrototypeImplementationStagePanel(
               if (!preflightFailure) {
                 appendAiNoticeForImplementation(notice);
               }
-              showToast(notice);
             } catch (e) {
               const friendly = formatTransientTaskCursorLaunchErrorMessage(e);
               const orchestrationPatch = isTransientTaskCursorLaunchError(friendly)
@@ -3926,11 +3640,10 @@ export function usePrototypeImplementationStagePanel(
                     existingTimeline: pollTimeline,
                   });
               applyImplementationOrchestrationResult({
-                messages: executionSingleChat.chatMessages,
+                messages: readImplementationStageChatMessages(requirementsStateJsonRef.current),
                 orchestrationPatch,
               });
               appendAiNoticeForImplementation(`Task Cursor 실행 오류: ${friendly}`);
-              showToast(`Task Cursor 실행 오류: ${friendly}`);
             }
           })();
           return { outcome: "executed" };
@@ -3943,7 +3656,6 @@ export function usePrototypeImplementationStagePanel(
           if (!execution) {
             return { outcome: "blocked", message: "Task Cursor 실행 상태가 없습니다." };
           }
-          showToast("GitHub commit 결과를 확인합니다...");
           void (async () => {
             try {
               const state = parseRequirementsStateJson(requirementsStateJsonRef.current);
@@ -3959,8 +3671,7 @@ export function usePrototypeImplementationStagePanel(
                 enrichPatch: enrichCodeTaskRunOrchestrationPatch,
                 applyOrchestrationPatch: (patch) => {
                   applyImplementationOrchestrationResult({
-                    messages: executionSingleChat.chatMessages,
-                    orchestrationPatch: patch,
+        orchestrationPatch: patch,
                   });
                 },
                 shouldApplyNextDispatch: (next) =>
@@ -3977,7 +3688,6 @@ export function usePrototypeImplementationStagePanel(
               });
             } catch (e) {
               const message = e instanceof Error ? e.message : String(e);
-              showToast(`GitHub 확인 오류: ${message}`);
             }
           })();
           return { outcome: "executed" };
@@ -4039,13 +3749,12 @@ export function usePrototypeImplementationStagePanel(
               });
               if (orchestration.orchestrationPatch) {
                 applyImplementationOrchestrationResult({
-                  messages: orchestration.chatPatch?.messages ?? executionSingleChat.chatMessages,
+                  messages: orchestration.chatPatch?.messages ?? readImplementationStageChatMessages(requirementsStateJsonRef.current),
                   orchestrationPatch: orchestration.orchestrationPatch,
                 });
               } else {
                 appendAiNoticeForImplementation(message);
               }
-              showToast(message);
               if (openEnv) setExecutionEnvironmentModalOpen(true);
             };
 
@@ -4145,8 +3854,6 @@ export function usePrototypeImplementationStagePanel(
               status: "ready",
               nowIso: new Date().toISOString(),
             });
-
-            showToast("Cursor API 직접 실행을 시작합니다...");
             const requestedTimeline = buildCursorApiDirectTimelineEntry({
               action: "cursor_api_direct_execution_requested",
               projectId: pid,
@@ -4168,8 +3875,7 @@ export function usePrototypeImplementationStagePanel(
               allowedPathGlobs: readiness.context.allowedPathGlobs,
             });
             applyImplementationOrchestrationResult({
-              messages: executionSingleChat.chatMessages,
-              orchestrationPatch: {
+        orchestrationPatch: {
                 codeAgentWipExecutionV1: requestedWip,
                 promptTimeline: [...refTimeline(), availabilityTimeline, readinessTimeline, requestedTimeline],
               },
@@ -4191,8 +3897,7 @@ export function usePrototypeImplementationStagePanel(
               nowIso: new Date().toISOString(),
             });
             applyImplementationOrchestrationResult({
-              messages: executionSingleChat.chatMessages,
-              orchestrationPatch: {
+        orchestrationPatch: {
                 codeAgentWipExecutionV1: runningWip,
                 promptTimeline: [...refTimeline(), startedTimeline],
               },
@@ -4212,8 +3917,7 @@ export function usePrototypeImplementationStagePanel(
                 nowIso: new Date().toISOString(),
               });
               applyImplementationOrchestrationResult({
-                messages: executionSingleChat.chatMessages,
-                orchestrationPatch: {
+        orchestrationPatch: {
                   codeAgentWipExecutionV1: runningWip,
                   promptTimeline: [...refTimeline(), routeCallingTimeline],
                 },
@@ -4245,8 +3949,7 @@ export function usePrototypeImplementationStagePanel(
               if (!json.result) {
                 if (String(json.message ?? "").includes("일치하지 않습니다")) {
                   applyImplementationOrchestrationResult({
-                    messages: executionSingleChat.chatMessages,
-                    orchestrationPatch: {
+        orchestrationPatch: {
                       promptTimeline: [
                         ...refTimeline(),
                         buildTargetRepoE2eTimelineEntry({
@@ -4286,7 +3989,7 @@ export function usePrototypeImplementationStagePanel(
                     : null;
                 if (orchestration.orchestrationPatch) {
                   applyImplementationOrchestrationResult({
-                    messages: orchestration.chatPatch?.messages ?? executionSingleChat.chatMessages,
+                    messages: orchestration.chatPatch?.messages ?? readImplementationStageChatMessages(requirementsStateJsonRef.current),
                     orchestrationPatch: {
                       ...orchestration.orchestrationPatch,
                       ...(mismatchTimeline
@@ -4302,7 +4005,6 @@ export function usePrototypeImplementationStagePanel(
                 } else {
                   appendAiNoticeForImplementation(orchestration.message);
                 }
-                showToast(orchestration.message);
                 return;
               }
               if (orchestration.chatPatch && orchestration.orchestrationPatch) {
@@ -4351,7 +4053,6 @@ export function usePrototypeImplementationStagePanel(
                     }),
                   );
                 }
-                showToast(orchestration.message);
               }
             } catch (e) {
               const message = e instanceof Error ? e.message : String(e);
@@ -4368,8 +4069,7 @@ export function usePrototypeImplementationStagePanel(
                 nowIso: new Date().toISOString(),
               });
               applyImplementationOrchestrationResult({
-                messages: executionSingleChat.chatMessages,
-                orchestrationPatch: {
+        orchestrationPatch: {
                   codeAgentWipExecutionV1: runningWip,
                   promptTimeline: [...refTimeline(), routeFailedTimeline],
                 },
@@ -4391,7 +4091,6 @@ export function usePrototypeImplementationStagePanel(
           });
           const notice = "사용자 확인 항목을 처리했습니다. 후속 작업을 이어갈 수 있습니다.";
           appendAiNoticeForImplementation(notice);
-          showToast(notice);
           queueMicrotask(() => chatInputRef.current?.focus());
           return { outcome: "executed" };
         }
@@ -4430,7 +4129,6 @@ export function usePrototypeImplementationStagePanel(
             const message = !integratedAppPreviewReady
               ? "실제 앱 Preview가 준비되지 않아 검토단계로 이동할 수 없습니다. 최종 Wiring·통합·build 검증을 완료해 주세요."
               : "구현 실행 보드가 완료되지 않아 검토단계로 이동할 수 없습니다.";
-            showToast(message);
             return { outcome: "blocked", message };
           }
           const reviewMarker = buildImplementationReviewStageReadyMarker({
@@ -4462,7 +4160,6 @@ export function usePrototypeImplementationStagePanel(
           const message =
             "검토단계로 이동할 수 있습니다. 좌측 [검토] 메뉴에서 프로토타입 사용자 테스트를 진행하세요.";
           appendAiNoticeForImplementation(message);
-          showToast(message);
           return { outcome: "executed" };
         }
         case "REVIEW_STAGE_OPEN_PREVIEW": {
@@ -4471,7 +4168,6 @@ export function usePrototypeImplementationStagePanel(
             window.open(url, "_blank", "noopener,noreferrer");
             return { outcome: "executed" };
           }
-          showToast("Preview URL이 아직 없습니다.");
           return { outcome: "blocked", message: "Preview URL이 아직 없습니다." };
         }
         case "REVIEW_STAGE_START_USER_TEST": {
@@ -4496,7 +4192,6 @@ export function usePrototypeImplementationStagePanel(
           );
           const notice = "사용자 테스트를 시작했습니다. Preview에서 화면·흐름·문구를 확인해 주세요.";
           appendAiNoticeForImplementation(notice);
-          showToast(notice);
           return { outcome: "executed" };
         }
         case "REVIEW_STAGE_ADD_FEEDBACK": {
@@ -4521,7 +4216,6 @@ export function usePrototypeImplementationStagePanel(
           });
           if (!board) {
             const message = "구현 작업 보드가 없어 보완 요청을 등록할 수 없습니다.";
-            showToast(message);
             return { outcome: "blocked", message };
           }
           const active = getActiveReviewFeedbackItems(
@@ -4530,7 +4224,6 @@ export function usePrototypeImplementationStagePanel(
           const feedback = active[0];
           if (!feedback) {
             const message = "구현단계로 전환할 미처리 피드백이 없습니다.";
-            showToast(message);
             return { outcome: "blocked", message };
           }
           const fallbackTaskId =
@@ -4539,13 +4232,11 @@ export function usePrototypeImplementationStagePanel(
             "";
           if (!fallbackTaskId) {
             const message = "보완 요청을 연결할 developer 작업이 없습니다.";
-            showToast(message);
             return { outcome: "blocked", message };
           }
           const feedbackList = parsedRequirementsState.reviewStageUserFeedbackListV1;
           if (!feedbackList) {
             const message = "피드백 목록이 없습니다.";
-            showToast(message);
             return { outcome: "blocked", message };
           }
           const converted = convertReviewFeedbackToImplementationRework({
@@ -4590,7 +4281,6 @@ export function usePrototypeImplementationStagePanel(
             reworkRequestId: converted.reworkRequestId,
           });
           appendAiNoticeForImplementation(notice);
-          showToast(notice);
           return { outcome: "executed" };
         }
         case "REVIEW_STAGE_COMPLETE_TEST": {
@@ -4598,13 +4288,11 @@ export function usePrototypeImplementationStagePanel(
             feedbackList: parsedRequirementsState.reviewStageUserFeedbackListV1,
           });
           if (!completeGate.ok) {
-            showToast(completeGate.message);
             return { outcome: "blocked", message: completeGate.message };
           }
           const session = parsedRequirementsState.reviewStageUserTestSessionV1;
           if (!session) {
             const message = "사용자 테스트 세션이 없습니다. 먼저 사용자 테스트를 시작해 주세요.";
-            showToast(message);
             return { outcome: "blocked", message };
           }
           const completed = markReviewStageUserTestCompleted({ session });
@@ -4621,7 +4309,6 @@ export function usePrototypeImplementationStagePanel(
           );
           const notice = "프로토타입 사용자 테스트 검토를 완료했습니다.";
           appendAiNoticeForImplementation(notice);
-          showToast(notice);
           return { outcome: "executed" };
         }
         case "RUN_REFACTOR_COMMON":
@@ -4650,7 +4337,6 @@ export function usePrototypeImplementationStagePanel(
       generateDataModelDraft,
       confirmMockImplementationMode,
       implementationCursorGate,
-      executionSingleChat,
       wipChipHandlers,
       runImplementationQualityGate,
       runIntegratedStageStep,
@@ -4666,7 +4352,6 @@ export function usePrototypeImplementationStagePanel(
       effectiveImplementationState,
       executionSetupRow,
       persistChatToDb,
-      showToast,
       executionArtifacts,
       prototypeRunSyncSnapshot,
     ],
@@ -4690,7 +4375,6 @@ export function usePrototypeImplementationStagePanel(
       "wip_updated",
     ]);
     if (wip && activeStatuses.has(wipStatus)) {
-      showToast("실행 중에는 구현준비 산출물을 다시 정제할 수 없습니다.");
       return;
     }
 
@@ -4716,14 +4400,12 @@ export function usePrototypeImplementationStagePanel(
       });
       const result = json.data;
       if (!res.ok || !json.success || !result?.ok) {
-        showToast(json.message || result?.message || "구현준비 산출물 재정제에 실패했습니다.");
         return;
       }
       void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), result.patch);
       for (const message of result.messages) {
         appendImplementationTaskListAiMessage(message);
       }
-      showToast("구현준비 산출물을 다시 정제했습니다.");
     })();
   }, [
     autoRefineImplementationPrep,
@@ -4752,7 +4434,6 @@ export function usePrototypeImplementationStagePanel(
     ): boolean => {
       const pid = projectId.trim();
       if (!pid) {
-        showToast("프로젝트를 선택해 주세요.");
         return true;
       }
 
@@ -4790,9 +4471,7 @@ export function usePrototypeImplementationStagePanel(
         persistImplementationStageActionRun(run);
         const gateBlocked = run.gateResult != null && !run.gateResult.ok;
         if (gateBlocked && run.message) {
-          showToast(run.message);
         } else if (run.status === "failed" && run.message) {
-          showToast(run.message);
         }
       });
 
@@ -4806,7 +4485,6 @@ export function usePrototypeImplementationStagePanel(
       runImplementationStageAction,
       persistImplementationStageActionRun,
       persistStageActionTimelineEntries,
-      showToast,
     ],
   );
 
@@ -4815,12 +4493,10 @@ export function usePrototypeImplementationStagePanel(
       const pid = projectId.trim();
       const board = implementationStageBoardGateContext?.board;
       if (!pid || !board) {
-        showToast("구현 Execution Board가 준비되지 않았습니다.");
         return;
       }
       const row = board.taskRows.find((item) => item.taskId === taskId);
       if (!row) {
-        showToast(`${taskId} Task를 찾을 수 없습니다.`);
         return;
       }
       const taskCursorExecution =
@@ -4831,12 +4507,10 @@ export function usePrototypeImplementationStagePanel(
         taskCursorExecution,
       });
       if (!capability.canRestart) {
-        showToast(capability.blockedReason ?? "이 Task는 지금 실행할 수 없습니다.");
         return;
       }
       const envGate = resolveTaskCursorExecutionEnvGate({ setup: executionSetupRow });
       if (envGate.blocked) {
-        showToast(envGate.message ?? "환경설정 점검이 필요합니다.");
         appendAiNoticeForImplementation(envGate.message ?? "환경설정 점검이 필요합니다.");
         return;
       }
@@ -4852,7 +4526,6 @@ export function usePrototypeImplementationStagePanel(
       }).then((run) => {
         persistImplementationStageActionRun(run);
         if (run.status === "failed" && run.message) {
-          showToast(run.message);
         }
       });
     },
@@ -4863,8 +4536,6 @@ export function usePrototypeImplementationStagePanel(
       parsedRequirementsState.implementationExecutionBoardStateV1,
       executionSetupRow,
       applyImplementationOrchestrationResult,
-      executionSingleChat,
-      showToast,
       effectiveImplementationState,
       persistImplementationStageActionRun,
     ],
@@ -4882,7 +4553,6 @@ export function usePrototypeImplementationStagePanel(
         nowIso,
       });
       applyImplementationOrchestrationResult({
-        messages: executionSingleChat.chatMessages,
         orchestrationPatch: {
           implementationExecutionBoardStateV1: nextBoardState,
         },
@@ -4892,7 +4562,7 @@ export function usePrototypeImplementationStagePanel(
       projectId,
       parsedRequirementsState.implementationExecutionBoardStateV1,
       applyImplementationOrchestrationResult,
-      executionSingleChat.chatMessages,
+      readImplementationStageChatMessages(requirementsStateJsonRef.current),
     ],
   );
 
@@ -4914,8 +4584,7 @@ export function usePrototypeImplementationStagePanel(
       });
       applyImplementationOrchestrationResult(
         {
-          messages: executionSingleChat.chatMessages,
-          orchestrationPatch: {
+        orchestrationPatch: {
             implementationExecutionBoardStateV1: nextBoardState,
           },
         },
@@ -4925,7 +4594,7 @@ export function usePrototypeImplementationStagePanel(
     [
       projectId,
       applyImplementationOrchestrationResult,
-      executionSingleChat.chatMessages,
+      readImplementationStageChatMessages(requirementsStateJsonRef.current),
       boardSelectionBridge.recordPersistedBoardSelection,
     ],
   );
@@ -5008,7 +4677,6 @@ export function usePrototypeImplementationStagePanel(
           window.location.assign(`/requirements?projectId=${encodeURIComponent(pid)}`);
         },
         focusComposerForScopeEdit: () => {
-          showToast("범위 조정은 기획 단계 또는 보드의 작업 버튼으로 진행해 주세요.");
         },
         showRoleCheckDetails,
         showScmCheckDetails: () => appendStatusQueryFromChip("scm_check_details"),
@@ -5031,7 +4699,6 @@ export function usePrototypeImplementationStagePanel(
         canConfirmImplementationTaskPlan: () => {
           const gate = canConfirmImplementationWorkPlanFromEffectiveState(effectiveImplementationState);
           if (!gate.ok) {
-            showToast(gate.message);
             return false;
           }
           return true;
@@ -5046,7 +4713,6 @@ export function usePrototypeImplementationStagePanel(
         },
         canConfirmExecution: () => {
           if (!effectiveImplementationState.envOk || !effectiveImplementationState.designOk) {
-            showToast("환경·설계 준비가 완료된 뒤 구현 실행을 진행할 수 있습니다.");
             return false;
           }
           return true;
@@ -5080,8 +4746,6 @@ export function usePrototypeImplementationStagePanel(
       implementationCursorGate,
       confirmExecution,
       onRefreshPrototypeStatus,
-      executionSingleChat,
-      showToast,
     ],
   );
 
@@ -5089,10 +4753,8 @@ export function usePrototypeImplementationStagePanel(
   const onPickImplementationInterviewLabel = useCallback(
     (label: string) => {
       if (handleImplementationChip(label)) return;
-      const picked = executionSingleChat.handleInterviewSuggestionPick(label);
-      if (picked.kind === "action") handleChatIntent(picked.action);
     },
-    [handleImplementationChip, executionSingleChat, handleChatIntent],
+    [handleImplementationChip],
   );
 
   const startImplementationQuickRun = useCallback(async (options?: {
@@ -5197,7 +4859,6 @@ export function usePrototypeImplementationStagePanel(
     if (!runtimeBundle?.job?.id || !firstCodeTaskId) {
       const message =
         "DB Runtime Job을 시작하지 못했습니다. 마이그레이션 적용 후 다시 시도하거나 Runtime을 새로고침하세요.";
-      showToast(message);
       return { outcome: "blocked", message };
     }
     const orchestration = buildQuickRunOrchestrationAfterJobStart({
@@ -5210,14 +4871,12 @@ export function usePrototypeImplementationStagePanel(
       nowIso,
     });
     if ("ok" in orchestration) {
-      showToast(orchestration.message);
       return { outcome: "blocked", message: orchestration.message };
     }
     const orch = orchestration;
     const { quickRun, codeTaskExecutionRunsV1, runtimeUiSnapshotPatch, dispatchTarget } = orch;
     applyImplementationOrchestrationResult(
       {
-        messages: executionSingleChat.chatMessages,
         orchestrationPatch: {
           implementationQuickRunV1: quickRun,
           codeTaskExecutionRunsV1,
@@ -5225,9 +4884,6 @@ export function usePrototypeImplementationStagePanel(
         },
       },
       { persist: false },
-    );
-    showToast(
-      `선택 CodeTask ${jobSelectedCodeTaskIds.length}개를 순차 실행합니다. (${dispatchTarget.codeTask.codeTaskId})`,
     );
     codeTaskDispatchPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
     const dbRunId = runtimeBundle.currentRun?.id?.trim() ?? "";
@@ -5243,8 +4899,7 @@ export function usePrototypeImplementationStagePanel(
       enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
       onDispatchPatch: (patch) => {
         applyImplementationOrchestrationResult({
-          messages: executionSingleChat.chatMessages,
-          orchestrationPatch: patch,
+        orchestrationPatch: patch,
         });
       },
       persistAfterStart: async (patch) => {
@@ -5260,7 +4915,6 @@ export function usePrototypeImplementationStagePanel(
           promptTimeline: appendPromptTimeline(imp.promptTimeline, entry),
         });
       },
-      showToast,
       onRuntimeBundle: setImplementationRuntimeDbBundle,
       reloadRuntime: () => {
         void loadImplementationRuntimeDb({ recover: false });
@@ -5280,8 +4934,6 @@ export function usePrototypeImplementationStagePanel(
     persistChatToDb,
     requirementsStateJson,
     executionSetupRow,
-    executionSingleChat,
-    showToast,
     boardSelectionBridge,
   ]);
 
@@ -5335,15 +4987,9 @@ export function usePrototypeImplementationStagePanel(
         codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
       });
       if (!result.ok || !result.prompt) {
-        showToast(result.reason ?? "프롬프트 생성 정보가 아직 없습니다.");
         return;
       }
       void writeClipboardText(result.prompt).then((ok) => {
-        showToast(
-          ok
-            ? formatDeveloperPromptSingleCopySuccessToast(id)
-            : "클립보드 복사에 실패했습니다.",
-        );
       });
     },
     [
@@ -5352,7 +4998,6 @@ export function usePrototypeImplementationStagePanel(
       orchestrationAwareRequirementsState,
       applyPendingFromOrchestrationPatchRef,
       persistChatToDb,
-      showToast,
     ],
   );
 
@@ -5402,20 +5047,10 @@ export function usePrototypeImplementationStagePanel(
       codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
     });
     if (!result.ok || !result.prompt) {
-      showToast(result.reason ?? "개발 프롬프트를 복사할 수 없습니다.");
       return;
     }
     const totalCodeTaskCount = plan?.tasks?.length ?? 0;
     void writeClipboardText(result.prompt).then((ok) => {
-      showToast(
-        ok
-          ? formatDeveloperPromptHeaderCopySuccessToast({
-              count: result.count ?? 1,
-              selectedCodeTaskIds,
-              totalCodeTaskCount,
-            })
-          : "클립보드 복사에 실패했습니다.",
-      );
     });
   }, [
     projectId,

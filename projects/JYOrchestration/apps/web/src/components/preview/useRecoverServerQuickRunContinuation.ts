@@ -1,5 +1,4 @@
 import { useCallback, useEffect } from "react";
-import { formatQuickRunContinuationReason } from "@/lib/prototype/implementationQuickRun";
 import {
   recoverServerQuickRunContinuation,
   shouldRecoverServerQuickRunContinuation,
@@ -22,7 +21,6 @@ export function useRecoverServerQuickRunContinuation(input: {
     patch: PrototypeExecutionOrchestrationPersistInput,
   ) => PrototypeExecutionOrchestrationPersistInput;
   readonly applyOrchestrationPatch: (patch: PrototypeExecutionOrchestrationPersistInput) => void;
-  readonly showToast: (message: string) => void;
 }): void {
   const recoverIfNeeded = useCallback(async () => {
     const pid = input.projectId.trim();
@@ -50,11 +48,10 @@ export function useRecoverServerQuickRunContinuation(input: {
         );
       }
       if (result.dispatchOutcome === "dispatched" || result.dispatchOk) {
-        input.showToast("서버에서 다음 CodeTask Cursor 실행을 복구했습니다.");
-      } else if (result.dispatchReason) {
-        input.showToast(
-          `다음 CodeTask 실행 복구: ${formatQuickRunContinuationReason(result.dispatchReason)}`,
-        );
+        return;
+      }
+      if (result.dispatchReason) {
+        return;
       }
     } catch {
       // recovery is best-effort
@@ -67,7 +64,6 @@ export function useRecoverServerQuickRunContinuation(input: {
     input.requirementsStateJsonRef,
     input.enrichOrchestrationPatch,
     input.applyOrchestrationPatch,
-    input.showToast,
   ]);
 
   useEffect(() => {

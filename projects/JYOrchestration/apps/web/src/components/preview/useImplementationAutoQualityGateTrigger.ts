@@ -17,12 +17,11 @@ export function useImplementationAutoQualityGateTrigger(input: {
     patch: PrototypeExecutionOrchestrationPersistInput,
   ) => PrototypeExecutionOrchestrationPersistInput;
   readonly applyOrchestrationResult: (orch: {
-    readonly messages: readonly RequirementsMessage[];
+    readonly messages?: readonly RequirementsMessage[];
     readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
   }) => void;
   readonly chatMessagesRef: { readonly current: readonly RequirementsMessage[] };
   readonly appendExecutionNotice: (message: string) => void;
-  readonly showToast: (message: string) => void;
 }): Readonly<{
   readonly trigger: () => Promise<void>;
   readonly triggerRef: MutableRefObject<() => Promise<void>>;
@@ -67,14 +66,12 @@ export function useImplementationAutoQualityGateTrigger(input: {
         failedTriggerRef.current = triggerKey;
         if (outcome.message) {
           input.appendExecutionNotice(outcome.message);
-          input.showToast(outcome.message);
         }
         return;
       }
       failedTriggerRef.current = null;
       if (outcome.orchestrationPatch) {
         input.applyOrchestrationResult({
-          messages: input.chatMessagesRef.current,
           orchestrationPatch: input.enrichOrchestrationPatch(outcome.orchestrationPatch),
         });
       }
@@ -93,7 +90,6 @@ export function useImplementationAutoQualityGateTrigger(input: {
       }
       if (outcome.message) {
         input.appendExecutionNotice(outcome.message);
-        input.showToast(outcome.message);
       }
     } finally {
       if (inFlightRef.current === triggerKey) {
@@ -107,7 +103,6 @@ export function useImplementationAutoQualityGateTrigger(input: {
     input.applyOrchestrationResult,
     input.chatMessagesRef,
     input.appendExecutionNotice,
-    input.showToast,
   ]);
 
   const triggerRef = useRef(trigger);

@@ -1,4 +1,4 @@
-import type { PrototypeExecutionOperationalSendResult } from "@/components/preview/usePrototypeExecutionSingleChat";
+import type { PrototypeExecutionOperationalSendResult } from "@/lib/prototype/prototypeExecutionOperationalSendResult";
 import type { EffectiveImplementationState, ImplementationStageActionId } from "@/lib/prototype/effectiveImplementationState";
 import { orchestrateImplementationStageAction } from "@/lib/prototype/implementationStageActionOrchestrator";
 import type { ImplementationStageActionRunResult } from "@/lib/prototype/implementationStageActionPipeline";

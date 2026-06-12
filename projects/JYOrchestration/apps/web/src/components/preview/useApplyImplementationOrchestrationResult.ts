@@ -1,21 +1,19 @@
 import { useCallback } from "react";
 import { mergeRequirementsStateWithRuntime } from "@/lib/prototype/implementationRuntimeSync";
 import { mergeImplementationExecutionLogTimeline } from "@/lib/prototype/implementationOrchestrationExecutionLog";
+import { readImplementationStageChatPatch } from "@/lib/prototype/implementationStageChatSnapshot";
 import {
   buildPrototypeExecutionOrchestrationPersistPatch,
   type PrototypeExecutionOrchestrationPersistInput,
 } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
-import type { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
 
 export function useApplyImplementationOrchestrationResult(input: {
   readonly projectId: string;
   readonly requirementsStateJson: unknown;
   readonly requirementsStateJsonRef: React.MutableRefObject<unknown>;
   readonly orchestrationPersistSeqRef: React.MutableRefObject<number>;
-  readonly executionSingleChat: ReturnType<typeof usePrototypeExecutionSingleChat>;
   readonly persistChatToDb: (
     chatPatch?: {
       messages: readonly RequirementsMessage[];
@@ -33,7 +31,7 @@ export function useApplyImplementationOrchestrationResult(input: {
   readonly onRequirementsStateJsonChange?: (next: unknown) => void;
 }): ((
   orchestrationInput: {
-    readonly messages: readonly RequirementsMessage[];
+    readonly messages?: readonly RequirementsMessage[];
     readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
   },
   options?: { readonly persist?: boolean; readonly forcePersist?: boolean },
@@ -41,17 +39,17 @@ export function useApplyImplementationOrchestrationResult(input: {
   return useCallback(
     (
       orchestrationInput: {
-        readonly messages: readonly RequirementsMessage[];
+        readonly messages?: readonly RequirementsMessage[];
         readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
       },
       options?: { readonly persist?: boolean; readonly forcePersist?: boolean },
     ) => {
-      const resolved = resolvePrototypeExecutionSingleChatFromState(input.requirementsStateJson);
+      const chatFromState = readImplementationStageChatPatch(input.requirementsStateJsonRef.current);
       const chatPatch = {
-        messages: orchestrationInput.messages,
-        slots: resolved.slots ?? [],
-        answers: resolved.answers ?? {},
-        currentSlotKey: resolved.currentSlotKey ?? null,
+        messages: orchestrationInput.messages ?? chatFromState.messages,
+        slots: chatFromState.slots,
+        answers: chatFromState.answers,
+        currentSlotKey: chatFromState.currentSlotKey,
       };
       const prior = parseRequirementsStateJson(input.requirementsStateJsonRef.current);
       const mergedWithoutAutoLog = buildPrototypeExecutionOrchestrationPersistPatch(
@@ -80,7 +78,6 @@ export function useApplyImplementationOrchestrationResult(input: {
       };
       input.requirementsStateJsonRef.current = mergedRequirementsState;
       input.applyPendingFromOrchestrationPatch(orchestrationPatchWithTimeline);
-      input.executionSingleChat.applyPersistedMessages(orchestrationInput.messages);
       if (options?.persist !== false) {
         const persistSeq = ++input.orchestrationPersistSeqRef.current;
         void input.persistChatToDb(
@@ -97,10 +94,8 @@ export function useApplyImplementationOrchestrationResult(input: {
     },
     [
       input.projectId,
-      input.requirementsStateJson,
       input.requirementsStateJsonRef,
       input.orchestrationPersistSeqRef,
-      input.executionSingleChat,
       input.persistChatToDb,
       input.applyPendingFromOrchestrationPatch,
       input.onRequirementsStateJsonChange,
