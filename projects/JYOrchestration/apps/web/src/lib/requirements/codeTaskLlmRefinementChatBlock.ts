@@ -1,5 +1,6 @@
 const BLOCK_TITLE = "CodeTask LLM 정제:";
 const TOTAL_LINE_PREFIX = "- 전체 CodeTask:";
+const EXECUTABLE_LINE_PREFIX = "- 실행 CodeTask:";
 
 export type CodeTaskLlmRefinementChatBlockParts = Readonly<{
   readonly prefix: string;
@@ -10,7 +11,7 @@ export type CodeTaskLlmRefinementChatBlockParts = Readonly<{
 
 export function isCodeTaskTotalCountSummaryLine(line: string): boolean {
   const trimmed = line.trim();
-  return trimmed.startsWith(TOTAL_LINE_PREFIX);
+  return trimmed.startsWith(TOTAL_LINE_PREFIX) || trimmed.startsWith(EXECUTABLE_LINE_PREFIX);
 }
 
 export function splitMessageContentForCodeTaskLlmRefinementBlock(

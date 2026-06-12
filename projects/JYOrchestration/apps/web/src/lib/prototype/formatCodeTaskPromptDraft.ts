@@ -19,6 +19,8 @@ import {
   buildBranchPlanSummarySections,
   buildCodeTaskBranchPlanBlockLines,
   buildCodeTaskFileBoundaryStageOneBlockLines,
+  buildIntegrationOrchestrationTaskSummarySection,
+  formatIntegrationOrchestrationTaskDetailSection,
   STAGE_ONE_CONFLICT_PREVENTION_POLICY_LINES,
   summarizeStageOnePromptQuality,
 } from "@/lib/prototype/codeTaskStageOnePromptSections";
@@ -31,9 +33,53 @@ import {
 import { formatTemplateLayoutSnippetForRole } from "@/lib/prototype/codeTaskTemplateLayoutDraft";
 import type { ImplementationTaskListV1, ImplementationTaskV1 } from "@/lib/requirements/implementationTaskList";
 import {
+  findIntegrationOrchestrationCodeTask,
   INTEGRATION_WIRING_PROCESS_TASK_TITLE,
   isIntegrationWiringCodeTask,
+  listExecutableCodeTasksFromPlan,
 } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+
+const PREVIEW_UX_QUALITY_REQUIREMENTS: readonly string[] = [
+  "placeholder-only 화면을 만들지 않는다.",
+  "`여기에 표시됩니다`, `준비 중입니다`, `샘플 영역` 같은 임시 문구만으로 화면을 채우지 않는다.",
+  "실제 서비스 초기 화면처럼 보이도록 구성한다.",
+  "샘플 데이터가 있는 경우 실제 데이터 카드/목록/타임라인/탭 형태로 표현한다.",
+  "단순 `<ul><li>` 나열만 사용하지 않는다.",
+  "좌/중/우 패널 내 정보 밀도와 여백을 실제 사용 화면 수준으로 조정한다.",
+  "모바일 또는 좁은 화면에서도 주요 정보가 겹치지 않게 한다.",
+];
+
+function screenRoleSpecificRequirements(codeTask: ImplementationCodeTaskV1): string[] {
+  const id = codeTask.codeTaskId.trim();
+  if (id === "CODE-DEV-SCREEN-001-001") {
+    return [
+      "sampleMeetingFiles, sampleParticipants를 사용할 수 있는 화면 구조를 만든다.",
+      "파일명, 파일 상태, 업로드/변환 진행 상태가 실제 서비스 카드처럼 보이게 한다.",
+      "참여자는 이름, 역할, 상태를 구분해서 표시할 수 있는 구조로 만든다.",
+      "데이터 연결은 직접 가능한 범위에서 수행하되, Shell/Panel 연결이 필요한 경우 requiresIntegrationChange에 기록한다.",
+    ];
+  }
+  if (id === "CODE-DEV-SCREEN-002-001") {
+    return [
+      "sampleMeetingSummary, sampleTranscriptSegments, sampleDecisions, sampleActionItems, sampleDraftTimeline을 표현할 수 있는 화면 구조를 만든다.",
+      "요약, 핵심 성과, 결정사항, 할 일, 스크립트가 구역별로 명확히 구분되어야 한다.",
+      "빈 결정사항/빈 할 일은 빈 bullet만 표시하지 말고 의미 있는 안내 상태로 표현한다.",
+      "timestamp/name 필드가 없을 때도 UI가 깨지지 않도록 fallback을 둔다.",
+    ];
+  }
+  if (id === "CODE-DEV-SCREEN-003-001") {
+    return [
+      "관리 화면은 필수 화면이 아니므로 optional scope임을 명시한다.",
+      "생성하더라도 기존 Workspace UX를 방해하지 않는 보조 영역으로 제한한다.",
+      "실제 사용자가 처리 상태를 확인할 수 있는 카드/목록 중심으로 구성한다.",
+    ];
+  }
+  return [];
+}
+
+function isScreenRoleKind(roleKind: CodeTaskRoleKind): boolean {
+  return roleKind === "screen_input" || roleKind === "screen_result" || roleKind === "screen_admin";
+}
 
 function resolveStageOneProcessTaskLabel(
   codeTask: ImplementationCodeTaskV1,
@@ -142,11 +188,16 @@ function requirementBullets(
     roleKind,
   });
   return filterPerTaskRequirementLines(
-    uniqStrings([...tpl.implementationRequirements, ...codeTask.acceptanceCriteria]),
+    uniqStrings([
+      ...tpl.implementationRequirements,
+      ...codeTask.acceptanceCriteria,
+      ...screenRoleSpecificRequirements(codeTask),
+      ...(isScreenRoleKind(roleKind) ? PREVIEW_UX_QUALITY_REQUIREMENTS : []),
+    ]),
     roleKind,
   )
     .map((r) => sanitizePlanningPromptLine(r))
-    .slice(0, 7);
+    .slice(0, isScreenRoleKind(roleKind) ? 14 : 7);
 }
 
 function verificationBullets(
@@ -162,7 +213,7 @@ function verificationBullets(
   ]);
   let lines =
     raw.length >= 2
-      ? filterPerTaskVerificationLines(raw)
+      ? filterPerTaskVerificationLines(raw, roleKind)
       : filterPerTaskVerificationLines(
           uniqStrings([...resolveCodeTaskFeaturePromptTemplate({
             title: codeTask.title,
@@ -172,6 +223,7 @@ function verificationBullets(
             parentTitle: parentTask?.title,
             roleKind,
           }).verificationChecklist, ...codeTask.acceptanceCriteria]),
+          roleKind,
         );
   if (options?.includeOptionalMockVerify) {
     lines = appendOptionalScreenMockVerification(lines, roleKind);
@@ -327,7 +379,8 @@ export function formatCodeTaskPromptDraftBundle(input: {
   readonly promptContextMap?: CodeTaskPromptContextMapV1 | null;
   readonly templateId?: string;
 }): string {
-  const tasks = input.codeTaskPlan.tasks;
+  const executableTasks = listExecutableCodeTasksFromPlan(input.codeTaskPlan.tasks);
+  const orchestration = findIntegrationOrchestrationCodeTask(input.codeTaskPlan.tasks);
   const qualitySummary = summarizeStageOnePromptQuality({
     codeTaskPlan: input.codeTaskPlan,
     promptContextMap: input.promptContextMap ?? null,
@@ -337,7 +390,7 @@ export function formatCodeTaskPromptDraftBundle(input: {
   let warningTaskCount = 0;
   let missingItemCount = 0;
 
-  for (const ct of tasks) {
+  for (const ct of executableTasks) {
     const ctx = getCodeTaskPromptContextFromMap(input.promptContextMap ?? null, ct.codeTaskId);
     if (ctx) contextCount += 1;
     if (ctx?.quality.ready) readyCount += 1;
@@ -351,11 +404,11 @@ export function formatCodeTaskPromptDraftBundle(input: {
     "# CodeTask 1단계 프롬프트 초안",
     "",
     "## 프로젝트 구현 준비 요약",
-    `- 전체 CodeTask: ${tasks.length}개`,
+    `- 실행 CodeTask: ${executableTasks.length}개`,
+    `- Integration Orchestration Task: ${orchestration ? "있음" : "없음"}`,
     `- PromptContext 생성: ${contextCount}개`,
     `- Branch Plan 생성: ${qualitySummary.branchPlanCount}개`,
     `- File Boundary 생성: ${qualitySummary.fileBoundaryCount}개`,
-    `- Integration Task: ${qualitySummary.integrationTaskPresent ? "있음" : "없음"}`,
     `- ready CodeTask: ${readyCount}개`,
     `- warning CodeTask: ${warningTaskCount}개`,
     `- missing 항목 수: ${missingItemCount}개`,
@@ -364,15 +417,19 @@ export function formatCodeTaskPromptDraftBundle(input: {
     "",
     ...buildBranchPlanSummarySections(input.codeTaskPlan),
     ...buildBranchPlanGroupListingSections(input.codeTaskPlan),
+    ...buildIntegrationOrchestrationTaskSummarySection({
+      orchestration,
+      executableCount: executableTasks.length,
+    }),
     "",
     "## 공통 검증 기준",
     ...bulletLines([...PLANNING_DRAFT_COMMON_VERIFICATION_CRITERIA]),
     "",
-    "## CodeTask 목록",
+    "## 실행 CodeTask 목록",
   ];
 
   let index = 0;
-  for (const codeTask of tasks) {
+  for (const codeTask of executableTasks) {
     index += 1;
     const parentTask = parentById.get(codeTask.parentTaskId) ?? null;
     const ctx = getCodeTaskPromptContextFromMap(input.promptContextMap ?? null, codeTask.codeTaskId);
@@ -384,6 +441,18 @@ export function formatCodeTaskPromptDraftBundle(input: {
         parentTask,
         promptContext: ctx,
         templateId: input.templateId,
+      }),
+    );
+  }
+
+  if (orchestration) {
+    const parentTask = parentById.get(orchestration.parentTaskId) ?? null;
+    const ctx = getCodeTaskPromptContextFromMap(input.promptContextMap ?? null, orchestration.codeTaskId);
+    sections.push(
+      formatIntegrationOrchestrationTaskDetailSection({
+        orchestration,
+        parentTaskTitle: parentTask?.title ?? INTEGRATION_WIRING_PROCESS_TASK_TITLE,
+        promptContext: ctx,
       }),
     );
   }

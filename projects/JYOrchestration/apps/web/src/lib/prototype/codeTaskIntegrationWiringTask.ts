@@ -61,6 +61,19 @@ export function planHasIntegrationWiringCodeTask(
   return tasks.some((t) => isIntegrationWiringCodeTask(t));
 }
 
+/** Board·통합 gate·1단계 프롬프트 집계용 — integration orchestration 제외. */
+export function listExecutableCodeTasksFromPlan(
+  tasks: readonly ImplementationCodeTaskV1[],
+): readonly ImplementationCodeTaskV1[] {
+  return tasks.filter((t) => !isIntegrationWiringCodeTask(t));
+}
+
+export function findIntegrationOrchestrationCodeTask(
+  tasks: readonly ImplementationCodeTaskV1[],
+): ImplementationCodeTaskV1 | null {
+  return tasks.find((t) => isIntegrationWiringCodeTask(t)) ?? null;
+}
+
 export function resolveIntegrationProcessTaskTitle(
   taskList?: ImplementationTaskListV1 | null,
 ): string {
@@ -87,22 +100,27 @@ export function buildIntegrationWiringCodeTask(input: {
     dependencies: deps,
     codeTaskDependencies: deps,
     acceptanceCriteria: [
-      "screen/common/feature/data 결과물을 App Shell에 연결한다.",
-      "필요한 import, props wiring, route/wrapper 연결을 수행한다.",
-      "기존 WorkspaceShell/LeftPanel/CenterPanel/RightPanel 구조를 재작성하지 않고 연결 작업만 수행한다.",
-      "생성된 screen component를 적절한 panel/slot에 배치한다.",
-      "Loading/Error/Empty/Retry/Permission/Draft 공통 컴포넌트를 필요한 상태 흐름에 연결한다.",
-      "샘플 데이터 provider를 화면 흐름에 연결한다.",
-      "Preview 가능한 최종 화면 흐름을 완성한다.",
-      "각 컴포넌트 내부 구현을 재작성하지 않는다.",
-      "새로운 대형 레이아웃을 만들지 않는다.",
+      "foundation/data/common/feature/screen branch 산출물을 App Shell 및 패널 slot에 import/props로 연결한다.",
+      "src/data/sampleData.ts의 sampleMeetingFiles를 회의 파일 영역에 연결한다.",
+      "sampleParticipants를 참여자 영역에 연결한다.",
+      "sampleTranscriptSegments를 중앙 작업 공간 또는 스크립트 영역에 연결한다.",
+      "sampleMeetingSummary를 결과 패널 요약 영역에 연결한다.",
+      "sampleDecisions를 결정사항 영역에 연결한다.",
+      "sampleActionItems를 할 일 영역에 연결한다.",
+      "sampleDraftTimeline을 초안 생성 타임라인 영역에 연결한다.",
+      "기존 WorkspaceShell/LeftPanel/CenterPanel/RightPanel 구조를 재작성하지 않는다.",
+      "regex 기반 임시 패치나 placeholder 교체 방식으로 연결하지 않는다.",
+      "동일 데이터를 패널별 mock으로 중복 작성하지 않는다.",
+      "src/data/sampleData.ts를 단일 sample data source로 사용한다.",
+      "Preview에서 실제 서비스 초기 화면처럼 보이는 것을 완료 기준으로 삼는다.",
     ],
     verificationHints: [
-      "App Shell 안에서 screen/common/feature/data 결과물이 연결되어 렌더링된다.",
-      "Preview에서 입력 → 처리 중 → 결과 확인 흐름이 최소 샘플 데이터 기준으로 확인된다.",
-      "기존 WorkspaceShell/Panel 구조가 재작성되지 않았다.",
-      "각 screen/common/feature/data 컴포넌트 내부 구현이 재작성되지 않았다.",
-      "import/props/wiring 변경이 필요한 파일에만 제한되어 있다.",
+      "Preview에서 좌/중/우 패널이 모두 실제 샘플 데이터로 렌더링된다.",
+      "회의 파일, 참여자, 스크립트, 요약, 결정사항, 할 일, 타임라인이 확인된다.",
+      "placeholder-only 화면이 남아 있지 않다.",
+      "빈 bullet, 깨진 필드명, undefined/null 표시가 없어야 한다.",
+      "모바일 또는 좁은 화면에서 주요 영역이 겹치지 않는다.",
+      "App Shell, screen, common, feature 산출물이 import/props 기반으로 연결된다.",
       "build/lint/test 중 가능한 검증을 수행한다.",
     ],
     forbiddenPaths: ["package.json", "pnpm-lock.yaml"],

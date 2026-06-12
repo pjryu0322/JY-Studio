@@ -16,6 +16,7 @@ import {
   computeStrictIntegrationCanIntegrate,
   logIntegrationGateBlocked,
 } from "@/lib/prototype/implementationIntegrationGate";
+import { listExecutableCodeTasksFromPlan } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { isSampleDataCodeTaskRef } from "@/lib/prototype/sampleDataCodeTaskPlanner";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
@@ -187,7 +188,7 @@ export function selectCompletedCodeTasksForIntegration(input: {
   readonly warnings: readonly string[];
 }> {
   const plan = input.codeTaskPlan;
-  const tasks = plan?.tasks ?? [];
+  const tasks = listExecutableCodeTasksFromPlan(plan?.tasks ?? []);
   const runs = input.codeTaskRuns ?? [];
   const autoGate = input.autoQualityGate ?? null;
 

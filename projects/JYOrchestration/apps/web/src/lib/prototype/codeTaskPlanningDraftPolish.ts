@@ -22,6 +22,35 @@ const COMMON_VERIFICATION_PATTERNS: readonly RegExp[] = [
   /회귀가\s*없다/i,
 ];
 
+export const COMMON_FEATURE_MODULE_REQUIREMENTS: readonly string[] = [
+  "이번 CodeTask는 독립 컴포넌트 또는 flow 모듈을 생성한다.",
+  "App Shell, LeftPanel, CenterPanel, RightPanel, route, global style은 수정하지 않는다.",
+  "화면 연결이 필요한 경우 직접 수정하지 말고 작업 결과 보고의 `requiresIntegrationChange`에 기록한다.",
+  "연결이 필요한 파일, 사유, 예상 연결 위치를 명시한다.",
+] as const;
+
+export const COMMON_FEATURE_MODULE_VERIFICATION: readonly string[] = [
+  "생성한 컴포넌트/flow 모듈이 import 가능한지 확인한다.",
+  "props 또는 handler 인터페이스가 명확한지 확인한다.",
+  "로딩/오류/빈결과/재시도/권한/임시저장 등 상태 표현이 독립적으로 동작 가능한지 확인한다.",
+  "화면 연결이 필요한 경우 `requiresIntegrationChange`에 기록한다.",
+] as const;
+
+const COMMON_FEATURE_SCREEN_WIRE_CONFLICT: readonly RegExp[] = [
+  /기존\s*화면.*연동/i,
+  /기존\s*목록.*연동/i,
+  /기존\s*입력\s*화면/i,
+  /작업\s*공간.*연결/i,
+  /결과\s*패널.*연결/i,
+  /요약본\/스크립트\s*탭/i,
+  /최소\s*1곳에\s*연동/i,
+  /최소\s*1곳에\s*적용/i,
+];
+
+function isCommonOrFeatureRoleKind(roleKind: CodeTaskRoleKind): boolean {
+  return roleKind.startsWith("common_") || roleKind.startsWith("feature_");
+}
+
 const GENERIC_REQUIREMENT_PATTERNS: readonly RegExp[] = [
   /^주요\s*UI\s*영역이\s*표시/i,
   /샘플\s*데이터\s*기준으로\s*화면\s*상태/i,
@@ -36,8 +65,15 @@ export function isCommonVerificationLine(line: string): boolean {
   return COMMON_VERIFICATION_PATTERNS.some((p) => p.test(t));
 }
 
-export function filterPerTaskVerificationLines(lines: readonly string[]): string[] {
-  return [...new Set(lines.map((l) => l.trim()).filter((l) => l && !isCommonVerificationLine(l)))];
+export function filterPerTaskVerificationLines(
+  lines: readonly string[],
+  roleKind?: CodeTaskRoleKind,
+): string[] {
+  let out = [...new Set(lines.map((l) => l.trim()).filter((l) => l && !isCommonVerificationLine(l)))];
+  if (roleKind && isCommonOrFeatureRoleKind(roleKind)) {
+    out = [...new Set([...out, ...COMMON_FEATURE_MODULE_VERIFICATION])];
+  }
+  return out;
 }
 
 export function filterPerTaskRequirementLines(
@@ -48,6 +84,9 @@ export function filterPerTaskRequirementLines(
     .map((l) => l.trim())
     .filter((l) => {
       if (!l) return false;
+      if (isCommonOrFeatureRoleKind(roleKind) && COMMON_FEATURE_SCREEN_WIRE_CONFLICT.some((p) => p.test(l))) {
+        return false;
+      }
       if (roleKind !== "mock_data" && GENERIC_REQUIREMENT_PATTERNS.some((p) => p.test(l))) {
         return false;
       }
@@ -64,7 +103,10 @@ export function filterPerTaskRequirementLines(
       }
       return true;
     });
-  return [...new Set(filtered)];
+  const merged = isCommonOrFeatureRoleKind(roleKind)
+    ? [...filtered, ...COMMON_FEATURE_MODULE_REQUIREMENTS]
+    : filtered;
+  return [...new Set(merged)];
 }
 
 const SCREEN_OPTIONAL_MOCK_VERIFY =

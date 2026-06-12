@@ -280,7 +280,6 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
       "시작/분석 실행 버튼 또는 진입 액션을 제공한다.",
       "입력 준비 상태에서 처리 중 상태로 전환될 수 있어야 한다.",
       "파일 미선택/입력 부족 등 예외 상태를 처리한다.",
-      "기존 입력 화면 또는 작업 공간 흐름과 연결한다.",
     ],
     verificationChecklist: [
       "시작 액션 표시 및 동작 확인",
@@ -322,9 +321,8 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
     implementationGoal: ["생성된 요약·스크립트를 확인하고 후속 행동을 판단할 수 있는 흐름을 제공한다."],
     implementationRequirements: [
       "요약본, 결정사항, 할 일, 화자별 스크립트를 확인할 수 있어야 한다.",
-      "요약본/스크립트 탭 또는 결과 패널 흐름과 연결한다.",
       "결과 없음/로딩/오류 상태를 처리할 수 있어야 한다.",
-      "사용자가 결과를 검토하거나 다음 행동을 판단할 수 있어야 한다.",
+      "사용자가 결과를 검토하거나 다음 행동을 판단할 수 있는 UI 구조를 제공한다.",
     ],
     verificationChecklist: [
       "요약/스크립트 확인 UI 표시 확인",
@@ -356,11 +354,10 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
   screen_input: {
     implementationGoal: ["사용자가 파일을 선택·업로드하고 분석을 시작할 수 있는 입력 화면을 구현한다."],
     implementationRequirements: [
-      "src/data/sampleData.ts의 sampleMeetingFiles, sampleParticipants를 import하여 좌측 패널에 표시한다.",
       "회의 파일 업로드/선택 진입점을 제공한다.",
       "파일명, 재생 길이, 변환 상태 등 선택 파일 정보를 확인할 수 있어야 한다.",
-      "분석 시작 또는 작업 추가 흐름과 연결된다.",
-      "중앙 작업 공간의 입력줄 또는 + 버튼 흐름과 자연스럽게 연결된다.",
+      "분석 시작 또는 작업 추가 흐름과 연결될 수 있는 컴포넌트 구조를 만든다.",
+      "참여자 이름·역할·상태를 구분해 표시할 수 있는 UI 구조를 포함한다.",
       "모바일에서도 주요 입력 동작이 가능해야 한다.",
     ],
     verificationChecklist: [

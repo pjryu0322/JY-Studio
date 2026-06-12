@@ -12,7 +12,14 @@ import {
   type CodeTaskBranchGroupV1,
 } from "@/lib/prototype/implementationBranchPlan";
 import { codeTaskPlanHasBranchPlan } from "@/lib/prototype/implementationBranchPlanBuilder";
-import { planHasIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import {
+  findIntegrationOrchestrationCodeTask,
+  INTEGRATION_WIRING_CODE_TASK_ID,
+  INTEGRATION_WIRING_PROCESS_TASK_TITLE,
+  INTEGRATION_WIRING_ROLE_TEXT,
+  listExecutableCodeTasksFromPlan,
+  planHasIntegrationWiringCodeTask,
+} from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import type {
   ImplementationCodeTaskPlanV1,
   ImplementationCodeTaskV1,
@@ -37,29 +44,56 @@ export function buildBranchPlanSummarySections(
 ): string[] {
   const branchPlan = plan.implementationBranchPlanV1;
   const baseBranch = branchPlan?.baseBranch?.trim() || "main";
-  const order = branchPlan?.executionOrder ?? DEFAULT_BRANCH_PLAN_EXECUTION_ORDER;
+  const order = (branchPlan?.executionOrder ?? DEFAULT_BRANCH_PLAN_EXECUTION_ORDER).filter(
+    (g) => g !== "integration",
+  );
   const lines: string[] = [
     "## Branch Plan 요약",
     "",
     `- 기준 브랜치: \`${baseBranch}\``,
     "- 실행 정책: 충돌 예방을 위해 branch group 순차 실행",
-    "- 실행 순서:",
+    "- 실행 CodeTask branch group 순서:",
   ];
   order.forEach((groupId, index) => {
     const group = branchPlan?.groups.find((g) => g.groupId === groupId);
     const workBranch = group?.workBranch ?? DEFAULT_WORK_BRANCH_BY_GROUP[groupId];
     lines.push(`  ${index + 1}. ${groupId} → \`${workBranch}\``);
   });
+  const orchestration = findIntegrationOrchestrationCodeTask(plan.tasks);
+  if (orchestration) {
+    const intBp = orchestration.branchPlan;
+    const intBranch =
+      intBp?.workBranch ?? branchPlan?.groups.find((g) => g.groupId === "integration")?.workBranch ?? DEFAULT_WORK_BRANCH_BY_GROUP.integration;
+    const screenBranch =
+      branchPlan?.groups.find((g) => g.groupId === "screen")?.workBranch ??
+      DEFAULT_WORK_BRANCH_BY_GROUP.screen;
+    lines.push(
+      "",
+      "## Integration Orchestration Branch",
+      "",
+      `- integration → \`${intBranch}\``,
+      `- 기준 브랜치: \`${intBp?.baseBranch ?? screenBranch}\``,
+      `- 실행 시점: 실행 CodeTask ${listExecutableCodeTasksFromPlan(plan.tasks).length}개 완료 후`,
+      "- 실행 방식: 통합 버튼 또는 integration pipeline에서 자동 수행",
+    );
+  }
   return lines;
 }
 
 export function buildBranchPlanGroupListingSections(
   plan: ImplementationCodeTaskPlanV1,
 ): string[] {
-  const order = plan.implementationBranchPlanV1?.executionOrder ?? DEFAULT_BRANCH_PLAN_EXECUTION_ORDER;
-  const lines: string[] = ["", "## Branch Group별 CodeTask", ""];
+  const order = (plan.implementationBranchPlanV1?.executionOrder ?? DEFAULT_BRANCH_PLAN_EXECUTION_ORDER).filter(
+    (g) => g !== "integration",
+  );
+  const executableIds = new Set(
+    listExecutableCodeTasksFromPlan(plan.tasks).map((t) => t.codeTaskId.trim()),
+  );
+  const lines: string[] = ["", "## Branch Group별 실행 CodeTask", ""];
   for (const groupId of order) {
-    const inGroup = plan.tasks.filter((t) => t.branchPlan?.branchGroup === groupId);
+    const inGroup = plan.tasks.filter(
+      (t) => t.branchPlan?.branchGroup === groupId && executableIds.has(t.codeTaskId.trim()),
+    );
     if (!inGroup.length) continue;
     lines.push(`### ${groupId}`);
     for (const task of inGroup) {
@@ -68,6 +102,76 @@ export function buildBranchPlanGroupListingSections(
     lines.push("");
   }
   return lines;
+}
+
+export function buildIntegrationOrchestrationTaskSummarySection(input: {
+  readonly orchestration: ImplementationCodeTaskV1 | null;
+  readonly executableCount: number;
+}): string[] {
+  if (!input.orchestration) return [];
+  return [
+    "",
+    "## Integration Orchestration Task",
+    "",
+    `### ${INTEGRATION_WIRING_PROCESS_TASK_TITLE}`,
+    `- Orchestration Task ID: ${INTEGRATION_WIRING_CODE_TASK_ID}`,
+    `- 역할: ${INTEGRATION_WIRING_ROLE_TEXT}`,
+    `- 실행 시점: 모든 실행 CodeTask ${input.executableCount}개가 commit outcome 저장 완료된 후`,
+    "- 실행 방식: 플랫폼 통합 파이프라인 또는 integration branch 작업",
+  ];
+}
+
+export function formatIntegrationOrchestrationTaskDetailSection(input: {
+  readonly orchestration: ImplementationCodeTaskV1;
+  readonly parentTaskTitle?: string | null;
+  readonly promptContext?: import("@/lib/prototype/codeTaskPromptContext").CodeTaskPromptContextV1 | null;
+}): string {
+  const ctx = input.promptContext;
+  const lines = [
+    "",
+    "## Integration Orchestration Task 상세",
+    "",
+    `### ${INTEGRATION_WIRING_PROCESS_TASK_TITLE}`,
+    `- Orchestration Task ID: ${input.orchestration.codeTaskId}`,
+    `- Process Task: ${input.parentTaskTitle?.trim() || INTEGRATION_WIRING_PROCESS_TASK_TITLE}`,
+    "",
+    "#### sampleData 최종 연결 책임",
+    "- `src/data/sampleData.ts`의 샘플 데이터를 App Shell 및 화면 컴포넌트에 연결한다.",
+    "- sampleMeetingFiles → 회의 파일 영역",
+    "- sampleParticipants → 참여자 영역",
+    "- sampleTranscriptSegments → 중앙 작업 공간/스크립트 영역",
+    "- sampleMeetingSummary → 결과 패널 요약 영역",
+    "- sampleDecisions → 결정사항 영역",
+    "- sampleActionItems → 할 일 영역",
+    "- sampleDraftTimeline → 초안 생성 타임라인 영역",
+    "",
+    "#### 구현 요구사항 초안",
+    ...input.orchestration.acceptanceCriteria.map((item) => `- ${item}`),
+    "",
+    "#### 검증 기준 초안",
+    ...input.orchestration.verificationHints.map((item) => `- ${item}`),
+    "",
+    ...buildCodeTaskBranchPlanBlockLines(input.orchestration, 4),
+    "",
+    ...buildCodeTaskFileBoundaryStageOneBlockLines(input.orchestration, 4),
+  ];
+  if (ctx) {
+    lines.push("", ...formatQualityBlockForOrchestration(ctx));
+  }
+  return lines;
+}
+
+function formatQualityBlockForOrchestration(
+  ctx: import("@/lib/prototype/codeTaskPromptContext").CodeTaskPromptContextV1,
+): string[] {
+  const quality = ctx.quality;
+  if (!quality) return ["#### 품질 상태", "- ready: unknown"];
+  return [
+    "#### 품질 상태",
+    `- ready: ${String(quality.ready)}`,
+    `- missing: ${quality.missing?.length ? quality.missing.join(", ") : "(없음)"}`,
+    `- warnings: ${quality.warnings?.length ? quality.warnings.join(", ") : "(없음)"}`,
+  ];
 }
 
 export function buildCodeTaskBranchPlanBlockLines(
@@ -155,7 +259,7 @@ export function summarizeStageOnePromptQuality(input: {
   readonly codeTaskPlan: ImplementationCodeTaskPlanV1;
   readonly promptContextMap?: CodeTaskPromptContextMapV1 | null;
 }): StageOnePromptQualitySummary {
-  const tasks = input.codeTaskPlan.tasks;
+  const tasks = listExecutableCodeTasksFromPlan(input.codeTaskPlan.tasks);
   let branchPlanCount = 0;
   let fileBoundaryCount = 0;
   let readyCount = 0;
@@ -194,6 +298,7 @@ export function formatStageOnePromptQualitySummaryLines(
     "CodeTask 1단계 프롬프트 품질",
     "",
     `전체 CodeTask: ${summary.totalCodeTasks}개`,
+    `실행 CodeTask: ${summary.totalCodeTasks}개`,
     `Branch Plan 생성: ${summary.branchPlanCount}개`,
     `File Boundary 생성: ${summary.fileBoundaryCount}개`,
     `Integration Task: ${summary.integrationTaskPresent ? "있음" : "없음"}`,

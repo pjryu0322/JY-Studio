@@ -7,7 +7,7 @@ import {
 describe("codeTaskLlmRefinementChatBlock", () => {
   it("detects total line", () => {
     expect(isCodeTaskTotalCountSummaryLine("- 전체 CodeTask: 15개")).toBe(true);
-    expect(isCodeTaskTotalCountSummaryLine("- LLM 정제: 15개")).toBe(false);
+    expect(isCodeTaskTotalCountSummaryLine("- 실행 CodeTask: 15개")).toBe(true);
   });
 
   it("splits message around CodeTask LLM refinement block", () => {
