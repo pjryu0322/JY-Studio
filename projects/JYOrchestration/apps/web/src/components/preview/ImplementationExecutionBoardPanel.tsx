@@ -37,6 +37,7 @@ import {
   buildImplementationTaskTreeNodes,
   resolveImplementationExecutionBoardSelectedTaskId,
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
+import { alignProductionCodeTaskIdsInRequirementsState } from "@/lib/prototype/requirementsStateProductionCodeTaskIdAlign";
 import type { ImplementationRuntimeStateV1 } from "@/lib/prototype/implementationRuntimeState";
 import type { ImplementationStageNextActionsBoardInput } from "@/lib/prototype/implementationStageNextActions";
 import { buildImplementationBoardExecutionContext } from "@/lib/prototype/implementationBoardExecutionContext";
@@ -58,6 +59,7 @@ import { resolveTaskCursorExecutionForRow } from "@/lib/prototype/codeAgentExecu
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { CodeTaskManualGithubRecheckPayloadV1 } from "@/lib/prototype/codeTaskManualGithubRecheckPayload";
 import { ImplementationExecutionBoardTaskTree } from "@/components/preview/ImplementationExecutionBoardTaskTree";
+import { SampleDataArtifactsModal } from "@/components/preview/SampleDataArtifactsModal";
 import { buildCodeAgentExecutionProgressView } from "@/lib/prototype/codeAgentExecutionProgressView";
 import type { ImplementationAutoQualityGateV1 } from "@/lib/prototype/implementationAutoQualityGate";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -245,6 +247,10 @@ export function ImplementationExecutionBoardPanel({
 
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(activeTaskId);
   const [selectedCodeTaskId, setSelectedCodeTaskId] = useState<string | null>(null);
+  const [sampleDataArtifactsModal, setSampleDataArtifactsModal] = useState<{
+    readonly codeTaskId: string;
+    readonly title: string;
+  } | null>(null);
 
   const targetRepository = useMemo(
     () =>
@@ -490,13 +496,26 @@ export function ImplementationExecutionBoardPanel({
     [activeFlowPhase, activeCodeTaskRun?.workBranch],
   );
 
+  const alignedCodeTaskOrchestration = useMemo(
+    () =>
+      alignProductionCodeTaskIdsInRequirementsState({
+        requirementsState: {
+          implementationCodeTaskPlanV1,
+          codeTaskExecutionRunsV1,
+          cursorWorkItemsV1,
+        },
+        taskList,
+      }),
+    [implementationCodeTaskPlanV1, codeTaskExecutionRunsV1, cursorWorkItemsV1, taskList],
+  );
+
   const taskTreeNodes = useMemo(
     () =>
       buildImplementationTaskTreeNodes({
         board,
-        codeTaskPlan: implementationCodeTaskPlanV1,
-        cursorWorkItems: cursorWorkItemsV1,
-        codeTaskExecutionRuns: parseCodeTaskExecutionRunsV1(codeTaskExecutionRunsV1) ?? [],
+        codeTaskPlan: alignedCodeTaskOrchestration.codeTaskPlan,
+        cursorWorkItems: alignedCodeTaskOrchestration.cursorWorkItems,
+        codeTaskExecutionRuns: alignedCodeTaskOrchestration.runs ?? [],
         activeTaskId,
         selectedTaskId,
         selectedCodeTaskId,
@@ -519,9 +538,7 @@ export function ImplementationExecutionBoardPanel({
       }),
     [
       board,
-      implementationCodeTaskPlanV1,
-      cursorWorkItemsV1,
-      codeTaskExecutionRunsV1,
+      alignedCodeTaskOrchestration,
       activeTaskId,
       selectedTaskId,
       selectedCodeTaskId,
@@ -793,6 +810,7 @@ export function ImplementationExecutionBoardPanel({
           onRecheckCodeTaskGithubVerify={onRecheckCodeTaskGithubVerify}
           githubRecheckBusyCodeTaskId={githubRecheckBusyCodeTaskId}
           onRetryFailedCodeTask={onRetryFailedCodeTask}
+          onOpenSampleDataArtifacts={(input) => setSampleDataArtifactsModal(input)}
           onCopyDeveloperPromptsFromHeader={onCopyDeveloperPromptsFromHeader}
           developerPromptHeaderCopyDisabled={
             !executionTargetCodeTaskId && checkedCodeTaskIds.length === 0
@@ -818,6 +836,16 @@ export function ImplementationExecutionBoardPanel({
         integrationMergeBusy={integrationMergeBusy}
         onOpenImplementationPreview={onOpenImplementationPreview}
       />
+
+      {projectId?.trim() && sampleDataArtifactsModal ? (
+        <SampleDataArtifactsModal
+          open
+          projectId={projectId.trim()}
+          codeTaskId={sampleDataArtifactsModal.codeTaskId}
+          codeTaskTitle={sampleDataArtifactsModal.title}
+          onClose={() => setSampleDataArtifactsModal(null)}
+        />
+      ) : null}
     </section>
   );
 }

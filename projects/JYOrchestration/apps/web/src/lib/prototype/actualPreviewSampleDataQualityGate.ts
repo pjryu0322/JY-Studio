@@ -2,6 +2,7 @@ import {
   ACTUAL_PREVIEW_SAMPLE_DATA_REQUIRED_USER_MESSAGE,
   SAMPLE_DATA_EXPECTED_EXPORTS,
   SAMPLE_DATA_OWNED_FILE_PATHS,
+  SAMPLE_DATA_PRIMARY_FILE_PATH,
 } from "@/lib/prototype/sampleDataCodeTaskPlanner";
 
 export type ActualPreviewSampleDataQualityResultV1 = Readonly<{
@@ -15,12 +16,6 @@ const PLACEHOLDER_UI_PATTERNS = [
   /업로드된\s*회의\s*녹취\s*파일이\s*여기에/u,
   /회의\s*참여자\s*목록이\s*여기에/u,
   /회의록\s*요약이\s*여기에/u,
-] as const;
-
-const SAMPLE_DATA_FILE_CANDIDATES = [
-  "src/data/sampleData.ts",
-  "src/data/sample/sampleData.ts",
-  "src/data/samples/sampleData.ts",
 ] as const;
 
 function countArrayLiteralEntries(source: string, exportName: string): number {
@@ -45,21 +40,19 @@ function countKeyPoints(source: string): number {
   return (block.match(/["'`][^"'`]+["'`]/g) ?? []).length;
 }
 
-export function evaluateActualPreviewSampleDataQuality(input: {
+function evaluateSampleDataFileQuality(input: {
   readonly repositoryFilePaths?: readonly string[] | null;
   readonly sampleDataFileContent?: string | null;
-  readonly workspaceSourceContents?: readonly string[] | null;
-}): ActualPreviewSampleDataQualityResultV1 {
+}): { readonly missing: string[]; readonly warning: string[] } {
   const missing: string[] = [];
   const warning: string[] = [];
   const paths = (input.repositoryFilePaths ?? []).map((p) => p.replace(/\\/g, "/"));
 
   const hasSampleFile =
-    paths.some((p) => SAMPLE_DATA_FILE_CANDIDATES.includes(p as (typeof SAMPLE_DATA_FILE_CANDIDATES)[number])) ||
-    Boolean(input.sampleDataFileContent?.trim());
+    paths.includes(SAMPLE_DATA_PRIMARY_FILE_PATH) || Boolean(input.sampleDataFileContent?.trim());
 
   if (!hasSampleFile) {
-    missing.push("src/data/sampleData.ts");
+    missing.push(SAMPLE_DATA_PRIMARY_FILE_PATH);
   }
 
   const content = String(input.sampleDataFileContent ?? "").trim();
@@ -99,7 +92,15 @@ export function evaluateActualPreviewSampleDataQuality(input: {
     }
   }
 
-  const panelSources = (input.workspaceSourceContents ?? []).filter(Boolean);
+  return { missing, warning };
+}
+
+function evaluateWorkspacePanelPlaceholderQuality(
+  workspaceSourceContents: readonly string[] | undefined | null,
+): { readonly missing: string[]; readonly warning: string[] } {
+  const missing: string[] = [];
+  const warning: string[] = [];
+  const panelSources = (workspaceSourceContents ?? []).filter(Boolean);
   for (const src of panelSources) {
     for (const pattern of PLACEHOLDER_UI_PATTERNS) {
       if (pattern.test(src)) {
@@ -111,6 +112,28 @@ export function evaluateActualPreviewSampleDataQuality(input: {
   if (warning.includes("placeholder_ui_text_in_workspace")) {
     missing.push("placeholder_only_primary_panels");
   }
+  return { missing, warning };
+}
+
+/** Sample data CodeTask 산출물·export 품질 (integration merge 게이트와 동일). */
+export function evaluateActualPreviewSampleDataFileQuality(input: {
+  readonly repositoryFilePaths?: readonly string[] | null;
+  readonly sampleDataFileContent?: string | null;
+}): ActualPreviewSampleDataQualityResultV1 {
+  const file = evaluateSampleDataFileQuality(input);
+  const ok = file.missing.length === 0;
+  return { ok, missing: file.missing, warning: file.warning };
+}
+
+export function evaluateActualPreviewSampleDataQuality(input: {
+  readonly repositoryFilePaths?: readonly string[] | null;
+  readonly sampleDataFileContent?: string | null;
+  readonly workspaceSourceContents?: readonly string[] | null;
+}): ActualPreviewSampleDataQualityResultV1 {
+  const file = evaluateSampleDataFileQuality(input);
+  const panels = evaluateWorkspacePanelPlaceholderQuality(input.workspaceSourceContents);
+  const missing = [...file.missing, ...panels.missing];
+  const warning = [...file.warning, ...panels.warning];
 
   const ok = missing.length === 0;
   console.info(
@@ -124,6 +147,12 @@ export function evaluateActualPreviewSampleDataQuality(input: {
   );
 
   return { ok, missing, warning };
+}
+
+export function isIntegrationSampleDataArtifactFailure(
+  result: ActualPreviewSampleDataQualityResultV1,
+): boolean {
+  return result.missing.some((m) => m !== "placeholder_only_primary_panels");
 }
 
 export function sampleDataQualityUserMessage(): string {

@@ -1,5 +1,6 @@
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import type { ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 
 export type ResolveCanonicalCodeTaskResultV1 =
   | Readonly<{ readonly status: "matched"; readonly codeTask: ImplementationCodeTaskV1 }>
@@ -15,9 +16,13 @@ export type ResolveCanonicalCodeTaskResultV1 =
 
 const LEGACY_MOCK_CODE_TASK_ID_PREFIX = "CODE-DEV-MOCK-";
 
+/** Production SoT — 샘플 데이터 CodeTask id (plan·run·UI·API 공통). */
 export const CANONICAL_SAMPLE_DATA_CODE_TASK_ID = "CODE-DATA-SAMPLE-001";
 
-const LEGACY_CANONICAL_SAMPLE_DATA_CODE_TASK_ID = "CODE-DEV-SAMPLE-DATA-001-001";
+/** @deprecated plan/run 정렬 시 {@link CANONICAL_SAMPLE_DATA_CODE_TASK_ID} 로 통합 */
+export const LEGACY_SAMPLE_DATA_CODE_TASK_ID = "CODE-DEV-SAMPLE-DATA-001-001" as const;
+
+const LEGACY_CANONICAL_SAMPLE_DATA_CODE_TASK_ID = LEGACY_SAMPLE_DATA_CODE_TASK_ID;
 
 export function isLegacyMockCodeTaskId(codeTaskId: string): boolean {
   return String(codeTaskId ?? "")
@@ -213,6 +218,80 @@ export function planContainsLegacyMockCodeTaskId(tasks: readonly ImplementationC
   return tasks.some((t) => isLegacyMockCodeTaskId(t.codeTaskId));
 }
 
+export function isLegacySampleDataCodeTaskId(codeTaskId: string): boolean {
+  const id = String(codeTaskId ?? "").trim();
+  if (!id) return false;
+  if (id === LEGACY_SAMPLE_DATA_CODE_TASK_ID) return true;
+  if (/^CODE-DEV-SAMPLE-DATA-/i.test(id)) return true;
+  if (/^CODE-DATA-SAMPLE-/i.test(id) && id !== CANONICAL_SAMPLE_DATA_CODE_TASK_ID) return true;
+  return isLegacyMockCodeTaskId(id) && /sample/i.test(id);
+}
+
+export function resolveCanonicalSampleDataCodeTaskId(input: {
+  readonly codeTaskId: string;
+  readonly codeTasks?: readonly ImplementationCodeTaskV1[];
+}): string {
+  const id = String(input.codeTaskId ?? "").trim();
+  if (!id) return CANONICAL_SAMPLE_DATA_CODE_TASK_ID;
+  if (id === CANONICAL_SAMPLE_DATA_CODE_TASK_ID) return id;
+
+  const tasks = input.codeTasks ?? [];
+  const direct = tasks.find((t) => t.codeTaskId.trim() === id);
+  if (direct) return direct.codeTaskId.trim();
+
+  const dataTask =
+    tasks.find((t) => t.codeTaskId.trim() === CANONICAL_SAMPLE_DATA_CODE_TASK_ID) ??
+    tasks.find((t) => parseCodeTaskBranchPlanV1(t.branchPlan)?.branchGroup === "data") ??
+    null;
+  if (dataTask && isLegacySampleDataCodeTaskId(id)) {
+    return dataTask.codeTaskId.trim();
+  }
+  if (isLegacySampleDataCodeTaskId(id)) {
+    return CANONICAL_SAMPLE_DATA_CODE_TASK_ID;
+  }
+  return id;
+}
+
+export function augmentProductionCodeTaskIdRemap(input: {
+  readonly remap: Map<string, string>;
+  readonly repairedTasks: readonly ImplementationCodeTaskV1[];
+  readonly runCodeTaskIds?: readonly string[];
+}): void {
+  const canonical =
+    input.repairedTasks.find((t) => t.codeTaskId.trim() === CANONICAL_SAMPLE_DATA_CODE_TASK_ID) ??
+    input.repairedTasks.find(
+      (t) => parseCodeTaskBranchPlanV1(t.branchPlan)?.branchGroup === "data",
+    ) ??
+    null;
+  if (!canonical) return;
+  const toId = canonical.codeTaskId.trim();
+  for (const fromId of [
+    LEGACY_SAMPLE_DATA_CODE_TASK_ID,
+    ...(input.runCodeTaskIds ?? []),
+  ]) {
+    const from = fromId.trim();
+    if (!from || from === toId) continue;
+    if (isLegacySampleDataCodeTaskId(from)) {
+      input.remap.set(from, toId);
+    }
+  }
+}
+
+export function remapCodeTaskExecutionRunsV1(
+  runs: readonly CodeTaskExecutionRunV1[],
+  idRemap: ReadonlyMap<string, string>,
+): readonly CodeTaskExecutionRunV1[] {
+  if (!idRemap.size) return runs;
+  let changed = false;
+  const remapped = runs.map((run) => {
+    const nextId = idRemap.get(run.codeTaskId.trim());
+    if (!nextId || nextId === run.codeTaskId.trim()) return run;
+    changed = true;
+    return { ...run, codeTaskId: nextId };
+  });
+  return changed ? remapped : runs;
+}
+
 export function remapSelectedCodeTaskIdFromMockToPlan(input: {
   readonly codeTaskId: string;
   readonly codeTasks: readonly ImplementationCodeTaskV1[];
@@ -220,6 +299,9 @@ export function remapSelectedCodeTaskIdFromMockToPlan(input: {
   const id = input.codeTaskId.trim();
   if (!id) return null;
   if (input.codeTasks.some((t) => t.codeTaskId.trim() === id)) return id;
+  if (isLegacySampleDataCodeTaskId(id)) {
+    return resolveCanonicalSampleDataCodeTaskId({ codeTaskId: id, codeTasks: input.codeTasks });
+  }
   if (!isLegacyMockCodeTaskId(id)) return null;
   const resolved = resolveCanonicalCodeTaskForQueuedRun({
     queuedCodeTaskId: id,

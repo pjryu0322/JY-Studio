@@ -1,7 +1,6 @@
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { resolveIntegrationPipelineUserToast } from "@/lib/prototype/implementationIntegrationToastPolicy";
-import { INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE } from "@/lib/prototype/integrationPreviewPreflightService";
 import { runProjectIntegrationPrepareOnly } from "@/lib/prototype/projectIntegrationPipelineClient";
 import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementationIntegrationErrors";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
@@ -73,7 +72,6 @@ export async function executeImplementationBoardIntegrationPipeline(input: {
   }
 
   input.setBusy(true);
-  input.showToast(INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE);
   try {
     const pipelineResult = await runProjectIntegrationPrepareOnly({
       projectId: pid,

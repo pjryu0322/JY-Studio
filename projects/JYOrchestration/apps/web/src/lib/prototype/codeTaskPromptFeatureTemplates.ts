@@ -224,10 +224,12 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
     implementationRequirements: [
       "src/types/meeting.ts에 MeetingFile, Participant, TranscriptSegment, MeetingSummary, MeetingDecision, MeetingActionItem, DraftTimelineEvent 타입을 정의한다.",
       "src/data/sampleData.ts에 sampleMeetingFiles, sampleParticipants, sampleTranscriptSegments, sampleMeetingSummary, sampleDecisions, sampleActionItems, sampleDraftTimeline을 export한다.",
+      "sampleData.ts의 meeting 타입 import는 반드시 `from '../types/meeting'`(= src/types/meeting.ts)만 사용한다. src/data/types/meeting.ts 등 다른 경로에 타입 파일을 두지 않는다.",
       "이번 CodeTask에서는 src/data/sampleData.ts와 src/types/meeting.ts만 생성·보완한다. WorkspaceShell·LeftPanel·CenterPanel·RightPanel·common 컴포넌트는 수정하지 않는다.",
       "Preview 화면 연결은 이번 Task에서 직접 수정하지 않는다. 패널 연결이 필요하면 작업 결과 보고의 requiresIntegrationChange에 연결 파일, 사유, 예상 연결 위치를 기록한다.",
       "패널별 mock 중복이 발견되면 직접 수정하지 말고 requiresIntegrationChange에 기록한다.",
       "실제 API 연동으로 교체 가능한 구조를 유지한다.",
+      "Preview 실사용감을 위해 참여자 name·role, 스크립트 timestamp, 요약 overview·keyPoints를 빈 값 없이 채운다.",
     ],
     verificationChecklist: [
       "src/types/meeting.ts가 존재하는지 확인",

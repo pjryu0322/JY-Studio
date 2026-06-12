@@ -56,19 +56,24 @@ export async function runIntegrationBranchPipelineClient(input: {
   }
   const previewReady = json.previewReady === true;
   const status = String(json.status ?? "").trim();
+  const apiMessage = String(json.message ?? "").trim();
   const toast = resolveIntegrationPipelineUserToast({
     status,
     previewReady,
     integratedAppPreviewReady: previewReady,
-    message: json.message,
+    message: apiMessage || null,
     serverSaved: true,
   });
+  const resolvedMessage =
+    toast.show && toast.message
+      ? toast.message
+      : apiMessage || undefined;
   return {
     ok: json.success === true,
     status,
     previewReady,
     nextRequiredStep: json.nextRequiredStep ?? null,
-    message: toast.show ? toast.message ?? undefined : undefined,
+    message: resolvedMessage,
     plan: json.plan,
     timeline: json.timeline,
     orchestrationPatch: json.orchestrationPatch,

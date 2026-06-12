@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { evaluateActualPreviewSampleDataQuality } from "@/lib/prototype/actualPreviewSampleDataQualityGate";
+import {
+  evaluateActualPreviewSampleDataFileQuality,
+  evaluateActualPreviewSampleDataQuality,
+  isIntegrationSampleDataArtifactFailure,
+} from "@/lib/prototype/actualPreviewSampleDataQualityGate";
 
 const VALID_SAMPLE = `
 export const sampleMeetingFiles = [
@@ -75,5 +79,19 @@ export const sampleDraftTimeline = [
     });
     expect(r.ok).toBe(false);
     expect(r.missing).toContain("placeholder_only_primary_panels");
+  });
+
+  it("integration merge gate ignores panel placeholders when sample file passes", () => {
+    const fileOnly = evaluateActualPreviewSampleDataFileQuality({
+      repositoryFilePaths: ["src/data/sampleData.ts"],
+      sampleDataFileContent: VALID_SAMPLE,
+    });
+    expect(fileOnly.ok).toBe(true);
+    const full = evaluateActualPreviewSampleDataQuality({
+      repositoryFilePaths: ["src/data/sampleData.ts"],
+      sampleDataFileContent: VALID_SAMPLE,
+      workspaceSourceContents: ["업로드된 회의 녹취 파일이 여기에 표시됩니다."],
+    });
+    expect(isIntegrationSampleDataArtifactFailure(full)).toBe(false);
   });
 });

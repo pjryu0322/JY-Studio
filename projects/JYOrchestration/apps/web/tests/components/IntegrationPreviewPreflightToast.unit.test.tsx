@@ -5,9 +5,10 @@ import { readImplementationStagePanelSources } from "../helpers/implementationSt
 import { getIntegrationPreviewRemediationGuide } from "@/lib/prototype/integrationPreviewRemediationGuide";
 
 describe("IntegrationPreviewPreflightToast", () => {
-  it("14. PrototypePreviewPanel shows checking message on integration click", () => {
+  it("14. integration click shows pipeline result notice without preflight checking modal", () => {
     const src = readImplementationStagePanelSources();
-    expect(src).toContain("INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE");
+    expect(src).toContain("showIntegrationPipelineUserNotice");
+    expect(src).not.toMatch(/showToast\(\s*INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE/);
   });
 
   it("16. permission guide includes re-run integration instruction", () => {

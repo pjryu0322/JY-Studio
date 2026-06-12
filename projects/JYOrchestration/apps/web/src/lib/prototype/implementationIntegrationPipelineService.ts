@@ -40,6 +40,7 @@ import {
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { CompletedCodeTaskIntegrationTarget } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
+import { resolveIntegrationBranchMergeItems } from "@/lib/prototype/integrationBranchMergeItems";
 
 function filterIntegrationTargetsByCodeTaskIds(
   included: readonly CompletedCodeTaskIntegrationTarget[],
@@ -393,10 +394,11 @@ export async function runIntegrationBranchPipeline(input: {
   lastPlan = plan;
   const included = asReadonlyArray(plan.included);
   const effectiveSourceBranch = effectiveSource.sourceBranch!;
-  const mergeItems =
-    included.length > 1
-      ? included.filter((item) => item.workBranch === effectiveSourceBranch).slice(-1)
-      : included;
+  const mergeItems = resolveIntegrationBranchMergeItems({
+    included,
+    effectiveSourceBranch,
+    codeTaskRuns: input.codeTaskRuns,
+  });
   assertIntegrationMergeTargets({
     plan,
     effectiveSourceBranch,

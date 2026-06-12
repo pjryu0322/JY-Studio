@@ -9,6 +9,26 @@ import { buildCodeTaskInlineExecutionDetail } from "@/lib/prototype/implementati
 import { CodeTaskInlineExecutionDetailBlock } from "@/components/preview/CodeTaskInlineExecutionDetail";
 import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
+function SampleDataArtifactsIcon({ size = 14 }: { readonly size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
+      <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3" />
+    </svg>
+  );
+}
+
 function CodeTaskCursorPromptCopyIcon({ size = 14 }: { readonly size?: number }) {
   return (
     <svg
@@ -223,6 +243,7 @@ function FlatCodeTaskListItem({
   onRecheckGithubVerify,
   githubRecheckBusyCodeTaskId,
   onRetryFailedCodeTask,
+  onOpenSampleDataArtifacts,
 }: {
   readonly node: ImplementationCodeTaskTreeNode;
   readonly codeAgentProgress?: CodeAgentExecutionProgressView;
@@ -235,6 +256,10 @@ function FlatCodeTaskListItem({
   }) => void;
   readonly githubRecheckBusyCodeTaskId?: string | null;
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
+  readonly onOpenSampleDataArtifacts?: (input: {
+    readonly codeTaskId: string;
+    readonly title: string;
+  }) => void;
 }) {
   const itemClass = [styles.taskTreeCodeTaskItem, styles.taskTreeItem].join(" ");
 
@@ -286,6 +311,22 @@ function FlatCodeTaskListItem({
             {headerMeta || node.collapsedSummary}
           </span>
         </button>
+        {node.isSampleDataCodeTask && onOpenSampleDataArtifacts ? (
+          <button
+            type="button"
+            className={styles.taskTreeCopyPromptButton}
+            aria-label="샘플 데이터 산출물 보기 및 다운로드"
+            title="GitHub branch의 sampleData.ts 등 샘플 데이터 보기·다운로드"
+            data-testid={`implementation-sample-data-artifacts-${node.codeTaskId}`}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenSampleDataArtifacts({ codeTaskId: node.codeTaskId, title: node.title });
+            }}
+          >
+            <SampleDataArtifactsIcon size={13} />
+          </button>
+        ) : null}
       </div>
       {node.pollStatusLabel || githubRecheckBusyCodeTaskId === node.codeTaskId ? (
         <div
@@ -323,6 +364,7 @@ export function ImplementationExecutionBoardTaskTree({
   onRecheckCodeTaskGithubVerify,
   githubRecheckBusyCodeTaskId,
   onRetryFailedCodeTask,
+  onOpenSampleDataArtifacts,
   onCopyDeveloperPromptsFromHeader,
   developerPromptHeaderCopyDisabled,
   selectedCodeTaskCount,
@@ -346,6 +388,10 @@ export function ImplementationExecutionBoardTaskTree({
   }) => void;
   readonly githubRecheckBusyCodeTaskId?: string | null;
   readonly onRetryFailedCodeTask?: (codeTaskId: string) => void;
+  readonly onOpenSampleDataArtifacts?: (input: {
+    readonly codeTaskId: string;
+    readonly title: string;
+  }) => void;
   readonly onCopyDeveloperPromptsFromHeader?: () => void;
   readonly developerPromptHeaderCopyDisabled?: boolean;
   readonly selectedCodeTaskCount?: number;
@@ -422,6 +468,7 @@ export function ImplementationExecutionBoardTaskTree({
           onRecheckGithubVerify={onRecheckCodeTaskGithubVerify}
           githubRecheckBusyCodeTaskId={githubRecheckBusyCodeTaskId}
           onRetryFailedCodeTask={onRetryFailedCodeTask}
+          onOpenSampleDataArtifacts={onOpenSampleDataArtifacts}
         />
       ))}
     </div>

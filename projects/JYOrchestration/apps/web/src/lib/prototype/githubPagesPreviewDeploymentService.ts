@@ -25,6 +25,7 @@ import {
   GITHUB_PAGES_AUTO_CONFIGURE_PERMISSION_DENIED_USER_MESSAGE,
 } from "@/lib/prototype/githubPagesSetupService";
 import { resolveStaticAppBuildContract } from "@/lib/prototype/staticAppBuildContractResolver";
+import { ensureMeetingWorkspaceSampleDataPreviewWiring } from "@/lib/prototype/integrationPreviewSampleDataWiringService";
 import { ensureStaticAppBuildContractOnIntegrationBranch } from "@/lib/prototype/staticAppBuildContractScaffoldService";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
@@ -461,6 +462,31 @@ export async function deployIntegratedPreviewToGitHubPages(input: {
     }
     if (scaffold.changedFiles.length > 0) {
       pushTimeline("static_build_contract_scaffold_completed", { files: scaffold.changedFiles.join(",") });
+    }
+
+    pushTimeline("integration_preview_sample_data_wiring_started", {
+      integrationBranch: input.integrationBranch,
+    });
+    const sampleWiring = await ensureMeetingWorkspaceSampleDataPreviewWiring({
+      projectId: input.projectId,
+      repoUrl: input.repoUrl,
+      githubToken: token,
+      integrationBranch: input.integrationBranch,
+      repositoryFilePaths: filePaths,
+    });
+    if (!sampleWiring.ok) {
+      pushTimeline("integration_preview_sample_data_wiring_failed", {
+        reason: sampleWiring.skippedReason,
+      });
+    } else if (sampleWiring.changedFiles.length > 0) {
+      pushTimeline("integration_preview_sample_data_wiring_completed", {
+        files: sampleWiring.changedFiles.join(","),
+        commitSha: sampleWiring.commitSha,
+      });
+    } else {
+      pushTimeline("integration_preview_sample_data_wiring_skipped", {
+        reason: sampleWiring.skippedReason,
+      });
     }
 
     const workflowRefBranch = input.fallbackBaseBranch?.trim() || "main";

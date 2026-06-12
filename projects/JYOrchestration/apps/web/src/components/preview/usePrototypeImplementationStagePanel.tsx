@@ -990,6 +990,13 @@ export function usePrototypeImplementationStagePanel(
     [appendAiNoticeForImplementation],
   );
 
+  /** 통합 파이프라인 결과는 integratedReady 억제 없이 항상 모달로 표시 */
+  const showIntegrationPipelineUserNotice = useCallback((message: string) => {
+    const text = String(message ?? "").trim();
+    if (!text) return;
+    setImplementationStageNoticeModal({ body: text });
+  }, []);
+
   const appendImplementationExecutionNotice = useCallback(
     (content: string) => {
       if (shouldSuppressImplementationStatusMessage({ content })) return;
@@ -1165,6 +1172,7 @@ export function usePrototypeImplementationStagePanel(
         });
       },
       onNextQuickRunDispatch: dispatchNextQuickRunFromGithubVerify,
+      showToast: appendUserNotice,
       onFailureNotice: (message) => appendImplementationExecutionNotice(message),
       refreshRuntime: async () => {
         const fetched = await fetchImplementationRuntime(pid);
@@ -1229,7 +1237,7 @@ export function usePrototypeImplementationStagePanel(
             });
           },
           onNextQuickRunDispatch: dispatchNextQuickRunFromGithubVerify,
-          appendUserNotice,
+          showToast: appendUserNotice,
           onFailureNotice: (message) => appendImplementationExecutionNotice(message),
           refreshRuntime: async () => {
             const fetched = await fetchImplementationRuntime(pid);
@@ -2409,6 +2417,7 @@ export function usePrototypeImplementationStagePanel(
       applyPendingFromOrchestrationPatch,
       setBusy: setIntegrationPipelineBusy,
       onClientResult: setIntegrationPipelineClientResult,
+      showToast: showIntegrationPipelineUserNotice,
     });
   }, [
     projectId,
@@ -2417,7 +2426,7 @@ export function usePrototypeImplementationStagePanel(
     parsedRequirementsState,
     persistChatToDb,
     applyPendingFromOrchestrationPatch,
-    appendUserNotice,
+    showIntegrationPipelineUserNotice,
     boardSelectionBridge,
   ]);
 
@@ -2934,7 +2943,7 @@ export function usePrototypeImplementationStagePanel(
           generateTaskListFromSeed: () => {
             void generateImplementationTaskList();
           },
-          appendUserNotice,
+          showToast: appendUserNotice,
         });
 
       if (chipHandled) {
@@ -3213,6 +3222,7 @@ export function usePrototypeImplementationStagePanel(
       clearDbQueuedDispatchKey: () => {
         dbQueuedQuickRunDispatchRef.current = null;
       },
+      showToast: appendUserNotice,
     });
     return { outcome: "executed" as const };
   }, [
@@ -3226,6 +3236,7 @@ export function usePrototypeImplementationStagePanel(
     requirementsStateJson,
     executionSetupRow,
     boardSelectionBridge,
+    appendUserNotice,
   ]);
 
   useEffect(() => {

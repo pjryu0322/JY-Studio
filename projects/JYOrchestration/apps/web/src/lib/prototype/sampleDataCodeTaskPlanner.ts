@@ -1,6 +1,6 @@
 import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
-import { CANONICAL_SAMPLE_DATA_CODE_TASK_ID } from "@/lib/prototype/codeTaskCanonicalId";
+import { CANONICAL_SAMPLE_DATA_CODE_TASK_ID, LEGACY_SAMPLE_DATA_CODE_TASK_ID } from "@/lib/prototype/codeTaskCanonicalId";
 import type { CodeTaskPromptContextV1 } from "@/lib/prototype/codeTaskPromptContext";
 import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundary";
 import {
@@ -16,12 +16,29 @@ export const SAMPLE_DATA_PARENT_PROCESS_TASK_ID = "DEV-MOCK-001" as const;
 /** Production CodeTask id for meeting / workspace sample data (P3-08A). */
 export const SAMPLE_DATA_CODE_TASK_ID = CANONICAL_SAMPLE_DATA_CODE_TASK_ID;
 
+/**
+ * Sample data SoT (repo + git):
+ * - Work branch: {@link SAMPLE_DATA_WORK_BRANCH} only (CodeTask 실행·산출물·통합 merge 대상).
+ * - Repo files: {@link SAMPLE_DATA_OWNED_FILE_PATHS} only — 다른 경로는 Preview/통합에서 인정하지 않음.
+ */
 export const SAMPLE_DATA_WORK_BRANCH = "wip/data/sample-data" as const;
 
+export const SAMPLE_DATA_CANONICAL_FILES = {
+  sampleData: "src/data/sampleData.ts",
+  meetingTypes: "src/types/meeting.ts",
+} as const;
+
+export const SAMPLE_DATA_PRIMARY_FILE_PATH = SAMPLE_DATA_CANONICAL_FILES.sampleData;
+
 export const SAMPLE_DATA_OWNED_FILE_PATHS = [
-  "src/data/sampleData.ts",
-  "src/types/meeting.ts",
+  SAMPLE_DATA_CANONICAL_FILES.sampleData,
+  SAMPLE_DATA_CANONICAL_FILES.meetingTypes,
 ] as const;
+
+export function areSampleDataOwnedFilesOnBranch(filePaths: readonly string[]): boolean {
+  const paths = new Set(filePaths.map((p) => p.replace(/\\/g, "/")));
+  return SAMPLE_DATA_OWNED_FILE_PATHS.every((owned) => paths.has(owned));
+}
 
 export const SAMPLE_DATA_EXPECTED_EXPORTS = [
   "sampleMeetingFiles",
@@ -98,6 +115,7 @@ export function isSampleDataCodeTaskRef(input: {
 }): boolean {
   const id = input.codeTaskId.trim();
   if (id === SAMPLE_DATA_CODE_TASK_ID) return true;
+  if (id === LEGACY_SAMPLE_DATA_CODE_TASK_ID) return true;
   const parent = String(input.parentTaskId ?? "").trim();
   if (parent === SAMPLE_DATA_PARENT_PROCESS_TASK_ID) return true;
   const role = resolveCodeTaskSpecificRole({

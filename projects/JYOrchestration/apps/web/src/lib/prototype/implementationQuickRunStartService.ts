@@ -6,6 +6,10 @@ import {
   repairSampleDataCodeTaskFileBoundariesInPlan,
 } from "@/lib/prototype/sampleDataCodeTaskPlanner";
 import {
+  augmentProductionCodeTaskIdRemap,
+  remapCodeTaskExecutionRunsV1,
+} from "@/lib/prototype/codeTaskCanonicalId";
+import {
   buildCodeTaskIdRemapFromPlanTasks,
   mergeCursorWorkItemsWithMissingCodeTaskPlanTasks,
   reconcileCursorWorkItemsWithCodeTaskIdRemap,
@@ -285,7 +289,21 @@ export function prepareRequirementsStateForImplementationQuickRun(input: {
   if (planForState) {
     state = { ...state, implementationCodeTaskPlanV1: planForState };
   }
-  const idRemap = buildCodeTaskIdRemapFromPlanTasks(rawTasks, planForState?.tasks ?? rawTasks);
+  const idRemap = new Map(buildCodeTaskIdRemapFromPlanTasks(rawTasks, planForState?.tasks ?? rawTasks));
+  augmentProductionCodeTaskIdRemap({
+    remap: idRemap,
+    repairedTasks: planForState?.tasks ?? rawTasks,
+    runCodeTaskIds: (parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? []).map(
+      (r) => r.codeTaskId,
+    ),
+  });
+  const remappedRuns = remapCodeTaskExecutionRunsV1(
+    parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [],
+    idRemap,
+  );
+  if (remappedRuns !== (parseCodeTaskExecutionRunsV1(state.codeTaskExecutionRunsV1) ?? [])) {
+    state = { ...state, codeTaskExecutionRunsV1: remappedRuns };
+  }
   const reconciledItems = reconcileCursorWorkItemsWithCodeTaskIdRemap({
     workItems: state.cursorWorkItemsV1 ?? [],
     idRemap,

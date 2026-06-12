@@ -22,6 +22,7 @@ import type { ImplementationTaskListV1 } from "@/lib/requirements/implementation
 import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { resolveGithubOwnerRepoStrict } from "@/lib/integration/githubRestCommon";
 import {
+  isIntegrationSampleDataArtifactFailure,
   sampleDataQualityUserMessage,
 } from "@/lib/prototype/actualPreviewSampleDataQualityGate";
 import { runActualPreviewSampleDataQualityOnIntegrationBranch } from "@/lib/prototype/actualPreviewSampleDataQualityLoader";
@@ -109,7 +110,22 @@ async function blockIfSampleDataQualityInsufficient(input: {
     githubToken: input.githubToken,
     integrationBranch: input.integrationBranch,
     repositoryFilePaths: listed.ok ? listed.filePaths : undefined,
+    mode: "integration_merge",
   });
+  if (quality.panelPlaceholderWarnings?.length) {
+    input.timeline.push(
+      buildImplementationExecutionLogTimelineEntry({
+        action: "actual_preview_panel_wiring_deferred",
+        orchestrationTraceGroup: "implementation_integration",
+        fields: {
+          projectId: input.projectId,
+          integrationBranch: input.integrationBranch,
+          warning: quality.panelPlaceholderWarnings,
+        },
+        nowIso: input.nowIso,
+      }),
+    );
+  }
   if (quality.result.ok) {
     input.timeline.push(
       buildImplementationExecutionLogTimelineEntry({
@@ -119,6 +135,9 @@ async function blockIfSampleDataQualityInsufficient(input: {
         nowIso: input.nowIso,
       }),
     );
+    return null;
+  }
+  if (!isIntegrationSampleDataArtifactFailure(quality.result)) {
     return null;
   }
   const message = sampleDataQualityUserMessage();

@@ -22,6 +22,7 @@ import {
 } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 import { PROMPT_PREFLIGHT_USER_BLOCK_MESSAGE } from "@/lib/prototype/codeTaskPromptPreflightFailure";
 import { normalizeCodeTaskDisplayLabel } from "@/lib/prototype/codeTaskDisplayNameNormalize";
+import { isSampleDataCodeTaskRef } from "@/lib/prototype/sampleDataCodeTaskPlanner";
 import {
   deriveCodeTaskRunPhase,
   deriveCodeTaskRunProgressSteps,
@@ -103,6 +104,8 @@ export type ImplementationCodeTaskTreeNode = Readonly<{
   readonly pollStatusLabel?: string;
   readonly githubVerifyTechnicalLines?: readonly ImplementationTaskTreeMetaLine[];
   readonly githubRecheckPayload?: CodeTaskManualGithubRecheckPayloadV1;
+  /** 샘플 데이터 CodeTask — GitHub branch 산출물 보기/다운로드 */
+  readonly isSampleDataCodeTask?: boolean;
 }>;
 
 export type ImplementationProcessTaskTreeNode = Readonly<{
@@ -577,6 +580,12 @@ function buildCodeTaskNode(input: {
               "다음 처리: AI 개발자 실행 → GitHub 결과 확인",
           }),
     ...(githubRecheckPayload ? { githubRecheckPayload } : {}),
+    isSampleDataCodeTask: isSampleDataCodeTaskRef({
+      codeTaskId: input.codeTask.codeTaskId,
+      parentTaskId: input.codeTask.parentTaskId,
+      title: input.codeTask.title,
+      changeType: input.codeTask.changeType,
+    }),
   };
 }
 

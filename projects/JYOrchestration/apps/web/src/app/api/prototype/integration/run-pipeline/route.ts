@@ -23,6 +23,7 @@ import { toUserSafeIntegrationErrorMessage } from "@/lib/prototype/implementatio
 import { sanitizeIntegrationPipelineApiResponseMessage } from "@/lib/prototype/implementationIntegrationToastPolicy";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
+import { alignProductionCodeTaskIdsInRequirementsState } from "@/lib/prototype/requirementsStateProductionCodeTaskIdAlign";
 import { toImplementationRuntimeSnapshotApiSummary } from "@/lib/prototype/implementationRuntimeSnapshot";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import { prisma } from "@/lib/prisma";
@@ -113,15 +114,24 @@ export async function POST(request: NextRequest) {
       select: { requirementsStateJson: true, name: true },
     });
     const persisted = parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
-    const codeTaskPlan =
-      parseImplementationCodeTaskPlanV1(body.implementationCodeTaskPlanV1) ??
-      parseImplementationCodeTaskPlanV1(persisted.implementationCodeTaskPlanV1);
     const taskList =
       parseImplementationTaskListV1(body.implementationTaskListV1) ??
       parseImplementationTaskListV1(persisted.implementationTaskListV1);
-    const runs =
-      parseCodeTaskExecutionRunsV1(body.codeTaskExecutionRunsV1) ??
-      parseCodeTaskExecutionRunsV1(persisted.codeTaskExecutionRunsV1);
+    const mergedForAlign: typeof persisted = {
+      ...persisted,
+      ...(body.implementationCodeTaskPlanV1 != null
+        ? { implementationCodeTaskPlanV1: body.implementationCodeTaskPlanV1 }
+        : {}),
+      ...(body.codeTaskExecutionRunsV1 != null
+        ? { codeTaskExecutionRunsV1: body.codeTaskExecutionRunsV1 }
+        : {}),
+    };
+    const aligned = alignProductionCodeTaskIdsInRequirementsState({
+      requirementsState: mergedForAlign,
+      taskList,
+    });
+    const codeTaskPlan = aligned.codeTaskPlan;
+    const runs = aligned.runs ?? [];
 
     const storedIntegrationPlan =
       parseCodeTaskIntegrationPlanV1(persisted.codeTaskIntegrationPlanV1) ?? null;

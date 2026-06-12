@@ -4,9 +4,10 @@ import { describe, expect, it } from "vitest";
 import { readImplementationStagePanelSources } from "../helpers/implementationStagePanelSources";
 
 describe("IntegrationToastPolicy", () => {
-  it("23. integration click uses preview checking toast not auto generation block", () => {
+  it("23. integration uses dedicated pipeline notice without preflight checking toast", () => {
     const src = readImplementationStagePanelSources();
-    expect(src).toContain("INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE");
+    expect(src).toContain("showIntegrationPipelineUserNotice");
+    expect(src).not.toMatch(/showToast\(\s*INTEGRATION_PREVIEW_PREFLIGHT_CHECKING_USER_MESSAGE/);
     expect(src).not.toContain('showToast("자동 생성 기본 연결을 먼저 정상화해 주세요.")');
   });
 
