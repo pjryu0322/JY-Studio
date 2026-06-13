@@ -44,11 +44,11 @@ import { useImplementationRuntimeSyncController } from "@/components/preview/use
 import { useImplementationDerivedViewModelController } from "@/components/preview/useImplementationDerivedViewModelController";
 import { useImplementationNoticeModalController } from "@/components/preview/useImplementationNoticeModalController";
 import { useImplementationEntryRecoveryController } from "@/components/preview/useImplementationEntryRecoveryController";
+import type { ImplementationDerivedViewModelControllerValue } from "@/components/preview/useImplementationDerivedViewModelController";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
 import { usePrototypeExecutionPersistChatToDb } from "@/components/preview/usePrototypeExecutionPersistChatToDb";
 import { useImplementationStageActionTimeline } from "@/components/preview/useImplementationStageActionTimeline";
 import { useProjectRecommendationEvidence } from "@/lib/recommendation/useProjectRecommendationEvidence";
-import { useImplementationControlPlaneSnapshot } from "@/components/preview/useImplementationControlPlaneSnapshot";
 import { buildPrototypeExecutionPlanningOrchestrationView } from "@/lib/prototype/prototypeExecutionPlanningOrchestration";
 import { toPrototypeChatEnvSnapshot } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
@@ -67,9 +67,6 @@ import {
   appendPromptTimeline,
   type PrototypeExecutionOrchestrationPersistInput,
 } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
-import { buildImplementationBootstrapShellView } from "@/lib/prototype/implementationOrchestrationSummary";
-import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
-import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import {
   pickPersistentExecutionLogTimelineEntries,
@@ -81,7 +78,6 @@ import { readActiveRuntimeDispatchFromState } from "@/lib/prototype/implementati
 import {
   postImplementationRuntimeAction,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
-import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -170,58 +166,10 @@ export type UsePrototypeImplementationStagePanelResult = Readonly<{
   onPickImplementationInterviewLabel: (label: string) => void;
   orchestrationAwareRequirementsState: ReturnType<typeof resolveOrchestrationAwareRequirementsState>;
   executionConversationIconToolbar: ReactNode;
-  implementationBoard: NonNullable<
-    ReturnType<typeof buildImplementationStageBoardGateContext>
-  >["board"] | null;
-  implementationStageBoardInput: {
-    readonly projectId: string;
-    readonly taskList: NonNullable<
-      ReturnType<typeof resolveOrchestrationAwareRequirementsState>["implementationTaskListV1"]
-    >;
-    readonly executionState: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["implementationTaskExecutionStateV1"];
-    readonly integratedExecutionState: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["implementationIntegratedExecutionStateV1"];
-    readonly boardState: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["implementationExecutionBoardStateV1"];
-    readonly qualityGateResults: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["implementationQualityGateResultsV1"];
-    readonly previewReady: boolean;
-    readonly implementationReviewStageReadyV1: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["implementationReviewStageReadyV1"];
-    readonly reviewStageUserTestSessionV1: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["reviewStageUserTestSessionV1"];
-    readonly reviewStageUserFeedbackListV1: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["reviewStageUserFeedbackListV1"];
-    readonly codeAgentWipExecutionV1: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["codeAgentWipExecutionV1"];
-    readonly taskCursorExecutionV1: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["taskCursorExecutionV1"];
-    readonly implementationAutoQualityGateV1: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["implementationAutoQualityGateV1"];
-    readonly implementationCodeTaskPlanV1: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["implementationCodeTaskPlanV1"];
-    readonly codeTaskExecutionRunsV1: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["codeTaskExecutionRunsV1"];
-    readonly taskCursorExecutionHistoryV1: ReturnType<
-      typeof resolveOrchestrationAwareRequirementsState
-    >["taskCursorExecutionHistoryV1"];
-    readonly canApplyGit: boolean | undefined;
-  } | null;
-  prototypeRunSyncSnapshot: ReturnType<typeof deriveImplementationPrototypeRunSyncSnapshot>;
-  effectiveCodeTaskExecutionQueueV1: ReturnType<typeof resolveEffectiveCodeTaskExecutionQueue>;
+  implementationBoard: ImplementationDerivedViewModelControllerValue["implementationBoard"];
+  implementationStageBoardInput: ImplementationDerivedViewModelControllerValue["implementationStageBoardInput"];
+  prototypeRunSyncSnapshot: ImplementationDerivedViewModelControllerValue["prototypeRunSyncSnapshot"];
+  effectiveCodeTaskExecutionQueueV1: ImplementationDerivedViewModelControllerValue["effectiveCodeTaskExecutionQueueV1"];
   boardSelectionBridge: ReturnType<typeof useImplementationBoardSelectionBridge>;
   activeTaskCursorJob: TaskCursorJobSummary | null;
   handleRestartBoardTask: (taskId: string) => void;
@@ -233,7 +181,7 @@ export type UsePrototypeImplementationStagePanelResult = Readonly<{
   handleRecheckCodeTaskGithubVerify: (input: { codeTaskId: string }) => void | Promise<void>;
   githubRecheckBusyCodeTaskId: string | null;
   handleRetryFailedCodeTask: (codeTaskId: string) => void | Promise<void>;
-  implementationControlPlaneSnapshot: ReturnType<typeof useImplementationControlPlaneSnapshot>;
+  implementationControlPlaneSnapshot: ImplementationDerivedViewModelControllerValue["implementationControlPlaneSnapshot"];
   implementationRuntimeDbBundle: ImplementationRuntimeBundleView | null;
   runIntegrationPipeline: () => void;
   integrationPipelineBusy: boolean;
@@ -247,7 +195,7 @@ export type UsePrototypeImplementationStagePanelResult = Readonly<{
   handleExecutionSetupChanged: () => Promise<void>;
   startImplementationQuickRun: (options?: { readonly selectedCodeTaskIds?: readonly string[] }) => Promise<ImplementationStageActionRunResult>;
   orchestrationAwareRequirementsStateRef: RefObject<ReturnType<typeof resolveOrchestrationAwareRequirementsState>>;
-  implementationBootstrapShell: ReturnType<typeof buildImplementationBootstrapShellView> | null;
+  implementationBootstrapShell: ImplementationDerivedViewModelControllerValue["implementationBootstrapShell"];
   implementationStageNoticeModal: { readonly body: string; readonly actionLabels?: readonly string[] } | null;
   setImplementationStageNoticeModal: (
     value:

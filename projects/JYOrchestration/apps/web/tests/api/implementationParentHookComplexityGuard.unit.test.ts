@@ -89,4 +89,18 @@ describe("implementation parent hook complexity guard", () => {
       expect(parent).not.toContain(snippet);
     }
   });
+
+  it("documents parent hook composition policy", () => {
+    const parent = readFileSync(
+      join(previewDir, "usePrototypeImplementationStagePanel.tsx"),
+      "utf8",
+    );
+
+    expect(parent).toContain(
+      "Implementation stage parent hook is intentionally kept as a controller-composition shell.",
+    );
+    expect(parent).toContain(
+      "Heavyweight business logic must live in named useImplementation*Controller hooks.",
+    );
+  });
 });
