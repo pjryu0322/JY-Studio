@@ -14,6 +14,7 @@ import {
   useImplementationIntegrationPipelineController,
   type ImplementationIntegrationPipelineClientResultV1,
 } from "@/components/preview/useImplementationIntegrationPipelineController";
+import { useImplementationGithubVerifyController } from "@/components/preview/useImplementationGithubVerifyController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -185,7 +186,6 @@ import {
   evaluateImplementationQuickRunPrepAndSelection,
   postImplementationQuickRunStartJob,
 } from "@/lib/prototype/implementationQuickRunStartService";
-import { parseImplementationExecutionUnitsStateV1 } from "@/lib/prototype/implementationExecutionUnitStore";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import {
   finalizeIntegratedStageStep,
@@ -222,16 +222,11 @@ import type { CodeTaskQueueDispatchRef } from "@/lib/prototype/selectedCodeTaskC
 import { resolvePersistedQueueDispatch } from "@/lib/prototype/implementationRuntimePanelBridge";
 import { readActiveRuntimeDispatchFromState } from "@/lib/prototype/implementationRuntimeSync";
 import {
-  fetchImplementationRuntime,
   postImplementationRuntimeAction,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
 import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
-import {
-  runQuickRunStuckGithubVerifyRecovery,
-  runCodeTaskGithubVerifyRecheck,
-} from "@/lib/prototype/implementationQuickRunGithubVerifyRecovery";
 import type { QuickRunGithubAdvanceDispatch } from "@/lib/prototype/implementationQuickRunGithubAdvanceService";
 import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
@@ -1189,117 +1184,32 @@ export function usePrototypeImplementationStagePanel(
     [],
   );
 
-  const recoverQuickRunStuckGithubVerify = useCallback(async (options?: { readonly force?: boolean }) => {
-    const pid = projectId.trim();
-    if (!pid) return false;
-    const state = parseRequirementsStateJson(requirementsStateJsonRef.current);
-    return runQuickRunStuckGithubVerifyRecovery({
-      projectId: pid,
-      state,
-      effectiveQueue: effectiveCodeTaskExecutionQueueV1,
-      dbBundle: implementationRuntimeDbBundle,
-      stuckVerifyDedupeRef: quickRunStuckGithubVerifyRef,
-      continuationTriggerRef: quickRunCodeTaskContinuationRef,
-      enrichPatch: enrichCodeTaskRunOrchestrationPatch,
-      applyOrchestrationPatch: (patch) => {
-        applyImplementationOrchestrationResult({
-        orchestrationPatch: patch,
-        });
-      },
-      onNextQuickRunDispatch: dispatchNextQuickRunFromGithubVerify,
-      showToast: appendUserNotice,
-      onFailureNotice: (message) => appendImplementationExecutionNotice(message),
-      refreshRuntime: async () => {
-        const fetched = await fetchImplementationRuntime(pid);
-        if (fetched.success) applyImplementationRuntimeFetch(fetched);
-      },
-      force: options?.force === true,
-    });
-  }, [
+  const {
+    githubRecheckBusyCodeTaskId,
+    recoverQuickRunStuckGithubVerify,
+    handleManualGithubVerifyRetry,
+    handleRecheckCodeTaskGithubVerify,
+  } = useImplementationGithubVerifyController({
     projectId,
+    requirementsStateJsonRef,
     effectiveCodeTaskExecutionQueueV1,
     implementationRuntimeDbBundle,
+    executionSetupRow,
+    implementationStageBoardInput,
+    orchestrationAwareRequirementsState,
+    quickRunStuckGithubVerifyRef,
+    quickRunCodeTaskContinuationRef,
     enrichCodeTaskRunOrchestrationPatch,
     applyImplementationOrchestrationResult,
-    readImplementationStageChatMessages(requirementsStateJsonRef.current),
-    appendImplementationExecutionNotice,
     dispatchNextQuickRunFromGithubVerify,
     appendUserNotice,
+    appendImplementationExecutionNotice,
     applyImplementationRuntimeFetch,
-  ]);
-
-  const handleManualGithubVerifyRetry = useCallback(async () => {
-    quickRunStuckGithubVerifyRef.current = null;
-    const ran = await recoverQuickRunStuckGithubVerify({ force: true });
-    await loadImplementationRuntimeDb({ recover: true });
-    if (!ran) {
+    loadImplementationRuntimeDb,
+    runFallbackVerifyAction: () => {
       runImplementationStageActionRef.current("VERIFY_TASK_CURSOR_GITHUB");
-    }
-  }, [recoverQuickRunStuckGithubVerify, loadImplementationRuntimeDb]);
-
-  const [githubRecheckBusyCodeTaskId, setGithubRecheckBusyCodeTaskId] = useState<string | null>(
-    null,
-  );
-
-  const handleRecheckCodeTaskGithubVerify = useCallback(
-    async (input: {
-      readonly codeTaskId: string;
-      readonly rowPayload?: import("@/lib/prototype/codeTaskManualGithubRecheckPayload").CodeTaskManualGithubRecheckPayloadV1 | null;
-    }) => {
-      const pid = projectId.trim();
-      const id = input.codeTaskId.trim();
-      if (!pid || !id || githubRecheckBusyCodeTaskId === id) return;
-      setGithubRecheckBusyCodeTaskId(id);
-      try {
-        const state = parseRequirementsStateJson(requirementsStateJsonRef.current);
-        await runCodeTaskGithubVerifyRecheck({
-          projectId: pid,
-          codeTaskId: id,
-          state,
-          dbBundle: implementationRuntimeDbBundle,
-          executionSetup: executionSetupRow ?? undefined,
-          taskList: implementationStageBoardInput?.taskList,
-          executionUnits:
-            parseImplementationExecutionUnitsStateV1(
-              orchestrationAwareRequirementsState.implementationExecutionUnitsV1,
-            )?.units ?? undefined,
-          rowPayload: input.rowPayload ?? undefined,
-          continuationTriggerRef: quickRunCodeTaskContinuationRef,
-          enrichPatch: enrichCodeTaskRunOrchestrationPatch,
-          applyOrchestrationPatch: (patch) => {
-            applyImplementationOrchestrationResult({
-        orchestrationPatch: patch,
-            });
-          },
-          onNextQuickRunDispatch: dispatchNextQuickRunFromGithubVerify,
-          showToast: appendUserNotice,
-          onFailureNotice: (message) => appendImplementationExecutionNotice(message),
-          refreshRuntime: async () => {
-            const fetched = await fetchImplementationRuntime(pid);
-            if (fetched.success) applyImplementationRuntimeFetch(fetched);
-          },
-        });
-        await loadImplementationRuntimeDb({ recover: true });
-      } finally {
-        setGithubRecheckBusyCodeTaskId((current) => (current === id ? null : current));
-      }
     },
-    [
-      projectId,
-      githubRecheckBusyCodeTaskId,
-      implementationRuntimeDbBundle,
-      executionSetupRow,
-      implementationStageBoardInput?.taskList,
-      orchestrationAwareRequirementsState.implementationExecutionUnitsV1,
-      enrichCodeTaskRunOrchestrationPatch,
-      applyImplementationOrchestrationResult,
-      readImplementationStageChatMessages(requirementsStateJsonRef.current),
-      appendImplementationExecutionNotice,
-      dispatchNextQuickRunFromGithubVerify,
-      applyImplementationRuntimeFetch,
-      loadImplementationRuntimeDb,
-    ],
-  );
+  });
 
   const handleRetryFailedCodeTask = useCallback(
     async (codeTaskId: string) => {
