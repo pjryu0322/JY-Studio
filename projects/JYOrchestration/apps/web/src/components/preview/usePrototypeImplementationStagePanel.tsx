@@ -32,6 +32,8 @@ import { useImplementationPlanningActionController } from "@/components/preview/
 import { useImplementationDbStrategyActionController } from "@/components/preview/useImplementationDbStrategyActionController";
 import { useImplementationBoardRefreshController } from "@/components/preview/useImplementationBoardRefreshController";
 import { useImplementationToolbarController } from "@/components/preview/useImplementationToolbarController";
+import { useImplementationRuntimeRecoveryController } from "@/components/preview/useImplementationRuntimeRecoveryController";
+import { useImplementationDeliverableViewerController } from "@/components/preview/useImplementationDeliverableViewerController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -114,10 +116,8 @@ import {
   postImplementationRuntimeAction,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
 import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
-import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
-import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import type { QuickRunGithubAdvanceDispatch } from "@/lib/prototype/implementationQuickRunGithubAdvanceService";
-import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
+import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
@@ -128,7 +128,6 @@ import {
   type PrototypeTemplateType,
 } from "@/lib/templates/prototypeTemplates";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 
 import type {
   MutableRefObject,
@@ -1108,69 +1107,14 @@ export function usePrototypeImplementationStagePanel(
     appendUserNotice,
   });
 
-  const handleRetryFailedCodeTask = useCallback(
-    async (codeTaskId: string) => {
-      const pid = projectId.trim();
-      if (!pid || !codeTaskId.trim()) return;
-      const res = await credentialsIncludeFetch(
-        "/api/prototype/implementation-runtime/retry-failed-task",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId: pid, codeTaskId: codeTaskId.trim() }),
-        },
-      );
-      const json = (await res.json()) as { success?: boolean; message?: string };
-      if (!json.success) {
-        window.alert(json.message ?? "실패 작업 재실행을 준비하지 못했습니다.");
-        return;
-      }
-      await loadImplementationRuntimeDb({ recover: true });
-    },
-    [projectId, loadImplementationRuntimeDb],
-  );
-
-  useEffect(() => {
-    void recoverQuickRunStuckGithubVerify();
-  }, [
-    recoverQuickRunStuckGithubVerify,
-    orchestrationAwareRequirementsState.implementationQuickRunV1?.status,
-    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
-    orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1,
-    effectiveCodeTaskExecutionQueueV1?.status,
-    effectiveCodeTaskExecutionQueueV1?.currentIndex,
-  ]);
-
-  useEffect(() => {
-    const pid = projectId.trim();
-    if (!pid) return;
-    const quickRun = parseImplementationQuickRunV1(
-      orchestrationAwareRequirementsState.implementationQuickRunV1,
-    );
-    if (quickRun?.status !== "running") return;
-    const cursor = parseTaskCursorExecutionV1(
-      orchestrationAwareRequirementsState.taskCursorExecutionV1,
-    );
-    if (!cursor || !isInFlightTaskCursorExecution(cursor)) return;
-
-    const tick = () => {
-      quickRunStuckGithubVerifyRef.current = null;
-      void recoverQuickRunStuckGithubVerify();
-      void loadImplementationRuntimeDb({ recover: true });
-    };
-    const interval = window.setInterval(tick, 10_000);
-    return () => window.clearInterval(interval);
-  }, [
+  const { handleRetryFailedCodeTask } = useImplementationRuntimeRecoveryController({
     projectId,
+    orchestrationAwareRequirementsState,
+    effectiveCodeTaskExecutionQueueV1,
+    quickRunStuckGithubVerifyRef,
     recoverQuickRunStuckGithubVerify,
     loadImplementationRuntimeDb,
-    orchestrationAwareRequirementsState.implementationQuickRunV1?.status,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
-    orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
-    effectiveCodeTaskExecutionQueueV1?.status,
-  ]);
+  });
 
   const implementationCursorGate = useMemo(
     () =>
@@ -1572,17 +1516,7 @@ export function usePrototypeImplementationStagePanel(
     [requirementsStateJson, projectId, projectName, projectDescription, servicePlanningAgentCatalogKeys],
   );
 
-  const [deliverableViewerOpen, setDeliverableViewerOpen] = useState(false);
-  const [deliverableViewerFocusId, setDeliverableViewerFocusId] = useState<string | null>(null);
-
-  const openDeliverableViewer = useCallback((ids: readonly string[], focusId?: string | null) => {
-    setDeliverableViewerFocusId(focusId ?? ids[0] ?? null);
-    setDeliverableViewerOpen(true);
-  }, []);
-
-  const closeDeliverableViewer = useCallback(() => {
-    setDeliverableViewerOpen(false);
-  }, []);
+  const { deliverableViewer } = useImplementationDeliverableViewerController();
 
   const recommendationEvidence = useProjectRecommendationEvidence({
     projectId,
@@ -1590,16 +1524,6 @@ export function usePrototypeImplementationStagePanel(
     projectArtifacts: planningOrchestrationView.projectArtifacts,
     projectDescription,
   });
-
-  const deliverableViewer = useMemo(
-    () => ({
-      open: deliverableViewerOpen,
-      focusAssetId: deliverableViewerFocusId,
-      openDeliverables: openDeliverableViewer,
-      close: closeDeliverableViewer,
-    }),
-    [deliverableViewerOpen, deliverableViewerFocusId, openDeliverableViewer, closeDeliverableViewer],
-  );
 
   return {
     planningOrchestrationView,
