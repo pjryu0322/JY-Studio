@@ -15,9 +15,13 @@ describe("implementation quality/integrated-stage controller wiring", () => {
     expect(src).toContain("run integrated stage steps except Final SCM");
   });
 
-  it("moves quality/integrated stage handlers out of parent panel hook", () => {
+  it("uses quality/integrated-stage controller from parent panel hook", () => {
     const parent = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
     expect(parent).toContain("useImplementationQualityIntegratedStageController");
+  });
+
+  it("moves quality/integrated stage handlers out of parent panel hook", () => {
+    const parent = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
     expect(parent).not.toContain("const runImplementationQualityGate = useCallback");
     expect(parent).not.toContain("const runIntegratedStageStep = useCallback");
     expect(parent).not.toContain("executeImplementationQualityGateCheck({");
