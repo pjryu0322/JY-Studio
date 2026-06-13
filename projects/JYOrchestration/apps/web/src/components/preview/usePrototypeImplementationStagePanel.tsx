@@ -19,6 +19,8 @@ import { useImplementationQuickRunController, persistImplementationQuickRunRequi
 import { useImplementationStageActionController } from "@/components/preview/useImplementationStageActionController";
 import { useImplementationStageActionLegacyDispatchBundle } from "@/components/preview/useImplementationStageActionLegacyDispatchBundle";
 import { useImplementationStageActionOrchestrator } from "@/components/preview/useImplementationStageActionOrchestrator";
+import { useImplementationBoardInteractionController } from "@/components/preview/useImplementationBoardInteractionController";
+import { useImplementationChipHandlerController } from "@/components/preview/useImplementationChipHandlerController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -31,9 +33,7 @@ import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHu
 
 import { useProjectRecommendationEvidence } from "@/lib/recommendation/useProjectRecommendationEvidence";
 import {
-  AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
-  IMPLEMENTATION_GENERATION_REQUEST_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import { buildPrototypeExecutionPlanningOrchestrationView } from "@/lib/prototype/prototypeExecutionPlanningOrchestration";
 import {
@@ -62,13 +62,11 @@ import {
 } from "@/lib/prototype/prototypePlatformScmPanelClient";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
-import { resolveTaskCursorExecutionEnvGate } from "@/lib/prototype/implementationBoardEnvDetailView";
 import {
   buildQualityGateBridgeTargetFromTaskCursor,
   buildQualityGateBridgeTargetFromWip,
 } from "@/lib/prototype/bridgeCompletionPolicy";
 import { buildTargetRepoE2eTimelineEntry } from "@/lib/prototype/targetRepoE2eDiagnostics";
-import { tryHandlePrototypeExecutionChip } from "@/lib/prototype/prototypeExecutionImplementationChips";
 import { buildWipChipHandlerSlice } from "@/lib/prototype/prototypeExecutionWipChipHandlers";
 import {
   buildDataModelDraftResult,
@@ -84,8 +82,6 @@ import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/
 import { buildPlanningImplementationSeedCheckResult } from "@/lib/requirements/planningImplementationSeedActions";
 import { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
-  canConfirmImplementationWorkPlanFromEffectiveState,
-  mapImplementationChipToAction,
   mergePendingImplementationPatch,
   mergePendingImplementationPatchFromOrchestration,
   resolveOrchestrationAwareRequirementsState,
@@ -96,7 +92,6 @@ import {
 } from "@/lib/prototype/effectiveImplementationState";
 import { hasActiveImplementationExecutionSession } from "@/lib/requirements/resetDerivedImplementationState";
 import type { ImplementationStageActionRunResult } from "@/lib/prototype/implementationStageActionPipeline";
-import { type ImplementationStageActionClickInput } from "@/lib/prototype/implementationStageActionBinding";
 import type { ImplementationStageActionRun } from "@/lib/prototype/implementationStageActionRun";
 import {
   prioritizeImplementationChipsForState,
@@ -107,9 +102,6 @@ import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage
 import {
   buildConfirmImplementationTaskPlanResult,
   buildImplementationCursorGateContext,
-  buildPrepareImplementationExecutionToast,
-  evaluateImplementationCursorGate,
-  formatImplementationCursorBlockedNotice,
 } from "@/lib/prototype/prototypeExecutionTaskPlanActions";
 import {
   appendPromptTimeline,
@@ -140,7 +132,6 @@ import {
   buildImplementationExecutionBoardFromRequirementsState,
   buildIntegratedStageStepActionNotice,
   pickQualityGateTargetTaskIds,
-  resolveTaskRowUserRestartCapability,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { buildIntegrationScopeDetailLines } from "@/lib/prototype/implementationIntegrationScopeUi";
 import { integrateCompletedCodeTasksForPreview } from "@/lib/prototype/implementationIntegrationService";
@@ -165,10 +156,7 @@ import {
   dedupeImplementationStageNextActions,
   extractBoardVisibleActionLabels,
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
-import { updateBoardSelectedTaskIds } from "@/lib/prototype/implementationExecutionBoardState";
-import { updateBoardCheckedCodeTaskIds } from "@/lib/prototype/implementationBoardCheckedIds";
 import { resolveCheckedCodeTaskIdsFromBoardBridge } from "@/lib/prototype/implementationBoardCodeTaskSelection";
-import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import {
   finalizeIntegratedStageStep,
   markIntegratedStepInProgress,
@@ -2565,6 +2553,61 @@ export function usePrototypeImplementationStagePanel(
       persistStageActionTimelineEntries,
     });
 
+  useEffect(() => {
+    runImplementationStageActionRef.current = runImplementationStageAction;
+    persistImplementationStageActionRunRef.current = persistImplementationStageActionRun;
+  }, [runImplementationStageAction, persistImplementationStageActionRun]);
+
+  const {
+    handleRestartBoardTask,
+    handleBoardSelectedTaskIdsChange,
+    handleBoardSelectedCodeTaskIdsChange,
+    handleImplementationBoardAction,
+  } = useImplementationBoardInteractionController({
+    projectId,
+    implementationStageBoardGateContext,
+    parsedRequirementsState,
+    orchestrationAwareRequirementsState,
+    orchestrationAwareRequirementsStateRef,
+    executionSetupRow,
+    boardSelectionBridge,
+    boardManualPickTaskIdRef,
+    runOrchestratedStageAction,
+    runImplementationStageActionRef,
+    executeImplementationStageAction,
+    applyImplementationOrchestrationResult,
+    applyPendingFromOrchestrationPatchRef,
+    appendAiNoticeForImplementation,
+  });
+
+  const { handleImplementationChip, onPickImplementationInterviewLabel } =
+    useImplementationChipHandlerController({
+      projectId,
+      parsedRequirementsState,
+      effectiveImplementationState,
+      prototypeRunSyncSnapshot,
+      previewUrl,
+      canRequestGenerationEnvOk: canRequestGeneration.envOk,
+      implementationCursorGate,
+      wipChipHandlers,
+      executeImplementationStageAction,
+      generateImplementationTaskList,
+      generateImplementationWorkPlanDraft,
+      confirmImplementationTaskPlan,
+      reviewDbIntegrationNeed,
+      generateDataModelDraft,
+      confirmMockImplementationMode,
+      appendImplementationTaskListAiMessage,
+      appendUserNotice,
+      appendAiNoticeForImplementation,
+      setExecutionEnvironmentModalOpen,
+      showImplementationSeedReadinessCheck,
+      showRoleCheckDetails,
+      appendStatusQueryFromChip,
+      confirmExecution,
+      onRefreshPrototypeStatus,
+    });
+
   const autoRefineOnceRef = useRef(false);
   useEffect(() => {
     if (autoRefineOnceRef.current) return;
@@ -2630,267 +2673,6 @@ export function usePrototypeImplementationStagePanel(
     appendImplementationTaskListAiMessage,
     appendUserNotice,
   ]);
-
-  const handleRestartBoardTask = useCallback(
-    (taskId: string) => {
-      const pid = projectId.trim();
-      const board = implementationStageBoardGateContext?.board;
-      if (!pid || !board) {
-        return;
-      }
-      const row = board.taskRows.find((item) => item.taskId === taskId);
-      if (!row) {
-        return;
-      }
-      const taskCursorExecution =
-        parseTaskCursorExecutionV1(orchestrationAwareRequirementsState.taskCursorExecutionV1) ?? null;
-      const capability = resolveTaskRowUserRestartCapability({
-        row,
-        board,
-        taskCursorExecution,
-      });
-      if (!capability.canRestart) {
-        return;
-      }
-      const envGate = resolveTaskCursorExecutionEnvGate({ setup: executionSetupRow });
-      if (envGate.blocked) {
-        appendAiNoticeForImplementation(envGate.message ?? "환경설정 점검이 필요합니다.");
-        return;
-      }
-
-      boardManualPickTaskIdRef.current = taskId;
-      runOrchestratedStageAction({
-        actionId: "REQUEST_TASK_CURSOR_EXECUTION",
-        execute: () => runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION"),
-      });
-    },
-    [
-      projectId,
-      implementationStageBoardGateContext,
-      orchestrationAwareRequirementsState.taskCursorExecutionV1,
-      parsedRequirementsState.implementationExecutionBoardStateV1,
-      executionSetupRow,
-      applyImplementationOrchestrationResult,
-      appendAiNoticeForImplementation,
-      runOrchestratedStageAction,
-    ],
-  );
-
-  const handleBoardSelectedTaskIdsChange = useCallback(
-    (selectedTaskIds: readonly string[]) => {
-      const pid = projectId.trim();
-      if (!pid) return;
-      const nowIso = new Date().toISOString();
-      const nextBoardState = updateBoardSelectedTaskIds({
-        state: parsedRequirementsState.implementationExecutionBoardStateV1,
-        projectId: pid,
-        selectedTaskIds,
-        nowIso,
-      });
-      applyImplementationOrchestrationResult({
-        orchestrationPatch: {
-          implementationExecutionBoardStateV1: nextBoardState,
-        },
-      });
-    },
-    [
-      projectId,
-      parsedRequirementsState.implementationExecutionBoardStateV1,
-      applyImplementationOrchestrationResult,
-      readImplementationStageChatMessages(requirementsStateJsonRef.current),
-    ],
-  );
-
-  const handleBoardSelectedCodeTaskIdsChange = useCallback(
-    (selectedCodeTaskIds: readonly string[]) => {
-      const pid = projectId.trim();
-      if (!pid) return;
-      boardSelectionBridge.recordPersistedBoardSelection(selectedCodeTaskIds);
-      const nowIso = new Date().toISOString();
-      const nextBoardState = updateBoardCheckedCodeTaskIds({
-        state:
-          orchestrationAwareRequirementsStateRef.current.implementationExecutionBoardStateV1,
-        projectId: pid,
-        checkedCodeTaskIds: selectedCodeTaskIds,
-        nowIso,
-      });
-      applyPendingFromOrchestrationPatchRef.current({
-        implementationExecutionBoardStateV1: nextBoardState,
-      });
-      applyImplementationOrchestrationResult(
-        {
-        orchestrationPatch: {
-            implementationExecutionBoardStateV1: nextBoardState,
-          },
-        },
-        { persist: true, forcePersist: true },
-      );
-    },
-    [
-      projectId,
-      applyImplementationOrchestrationResult,
-      readImplementationStageChatMessages(requirementsStateJsonRef.current),
-      boardSelectionBridge.recordPersistedBoardSelection,
-    ],
-  );
-
-  const handleImplementationBoardAction = useCallback(
-    (input: ImplementationStageActionClickInput) => {
-      executeImplementationStageAction(input.actionId, {
-        label: input.label,
-        source: input.source,
-        buttonIndex: input.buttonIndex,
-      });
-    },
-    [executeImplementationStageAction],
-  );
-
-  useEffect(() => {
-    runImplementationStageActionRef.current = runImplementationStageAction;
-    persistImplementationStageActionRunRef.current = persistImplementationStageActionRun;
-  }, [runImplementationStageAction, persistImplementationStageActionRun]);
-
-  const handleImplementationChip = useCallback(
-    (label: string) => {
-      const taskList = parsedRequirementsState.implementationTaskListV1 ?? null;
-      const chipHandled = tryHandleImplementationTaskListChip({
-          label,
-          projectId,
-          taskList,
-          executionState: parsedRequirementsState.implementationTaskExecutionStateV1,
-          integratedExecutionState: parsedRequirementsState.implementationIntegratedExecutionStateV1,
-          boardState: parsedRequirementsState.implementationExecutionBoardStateV1,
-          qualityGateResults: parsedRequirementsState.implementationQualityGateResultsV1,
-          prototypeSnapshot: prototypeRunSyncSnapshot,
-          envOk: canRequestGeneration.envOk,
-          appendAiMessage: appendImplementationTaskListAiMessage,
-          openEnvSettings: () => setExecutionEnvironmentModalOpen(true),
-          openPrototypePreview: () => {
-            const url = previewUrl ?? prototypeRunSyncSnapshot.previewUrl;
-            if (url) window.open(url, "_blank", "noopener,noreferrer");
-            else appendUserNotice("Preview URL이 아직 없습니다.");
-          },
-          returnToPlanningStage: () => {
-            const pid = projectId.trim();
-            if (!pid) return;
-            window.location.assign(`/requirements?projectId=${encodeURIComponent(pid)}`);
-          },
-          generateTaskListFromSeed: () => {
-            void generateImplementationTaskList();
-          },
-          showToast: appendUserNotice,
-        });
-
-      if (chipHandled) {
-        if (
-          label.trim() === AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP &&
-          taskList?.tasks?.length &&
-          (!parsedRequirementsState.cursorWorkItemsV1 || parsedRequirementsState.cursorWorkItemsV1.length === 0)
-        ) {
-          void generateImplementationTaskList();
-        }
-        return true;
-      }
-
-      if (
-        label.trim() === IMPLEMENTATION_GENERATION_REQUEST_CHIP &&
-        taskList?.tasks?.length &&
-        (!parsedRequirementsState.cursorWorkItemsV1 || parsedRequirementsState.cursorWorkItemsV1.length === 0)
-      ) {
-        void generateImplementationTaskList();
-      }
-
-      const actionId = mapImplementationChipToAction(label);
-      if (actionId && executeImplementationStageAction(actionId, { label, source: "chat_chip" })) return true;
-
-      return tryHandlePrototypeExecutionChip(label, {
-        openEnvSettings: () => setExecutionEnvironmentModalOpen(true),
-        showImplementationSeedReadinessCheck,
-        returnToPlanningStage: () => {
-          const pid = projectId.trim();
-          if (!pid) return;
-          window.location.assign(`/requirements?projectId=${encodeURIComponent(pid)}`);
-        },
-        focusComposerForScopeEdit: () => {
-        },
-        showRoleCheckDetails,
-        showScmCheckDetails: () => appendStatusQueryFromChip("scm_check_details"),
-        showEnvironmentCheckDetails: () => appendStatusQueryFromChip("environment_check_details"),
-        generateImplementationWorkPlanDraft,
-        confirmImplementationTaskPlan,
-        reviewDbIntegrationNeed,
-        generateDataModelDraft,
-        confirmMockImplementationMode,
-        ...wipChipHandlers,
-        prepareImplementationExecution: () => {
-          const toast = buildPrepareImplementationExecutionToast(
-            effectiveImplementationState.implementationTaskPlanV1,
-          );
-          if (toast) appendUserNotice(toast);
-        },
-        confirmExecution: () => confirmExecution(),
-        refreshStatus: () => void onRefreshPrototypeStatus(),
-        appendUserNotice,
-        canConfirmImplementationTaskPlan: () => {
-          const gate = canConfirmImplementationWorkPlanFromEffectiveState(effectiveImplementationState);
-          if (!gate.ok) {
-            return false;
-          }
-          return true;
-        },
-        canRequestCodeAgentWipWork: () => {
-          const gate = evaluateImplementationCursorGate(implementationCursorGate);
-          if (!gate.allowed) {
-            appendAiNoticeForImplementation(formatImplementationCursorBlockedNotice(implementationCursorGate));
-            return false;
-          }
-          return true;
-        },
-        canConfirmExecution: () => {
-          if (!effectiveImplementationState.envOk || !effectiveImplementationState.designOk) {
-            return false;
-          }
-          return true;
-        },
-      });
-    },
-    [
-      executeImplementationStageAction,
-      parsedRequirementsState.implementationTaskListV1,
-      parsedRequirementsState.implementationTaskExecutionStateV1,
-      parsedRequirementsState.implementationQualityGateResultsV1,
-      parsedRequirementsState.implementationSeedV1,
-      prototypeRunSyncSnapshot,
-      previewUrl,
-      projectId,
-      requirementsStateJson,
-      persistChatToDb,
-      canRequestGeneration.envOk,
-      appendImplementationTaskListAiMessage,
-      envSettingsHref,
-      showImplementationSeedReadinessCheck,
-      showRoleCheckDetails,
-      appendStatusQueryFromChip,
-      confirmImplementationTaskPlan,
-      generateImplementationWorkPlanDraft,
-      reviewDbIntegrationNeed,
-      generateDataModelDraft,
-      confirmMockImplementationMode,
-      effectiveImplementationState,
-      wipChipHandlers,
-      implementationCursorGate,
-      confirmExecution,
-      onRefreshPrototypeStatus,
-    ],
-  );
-
-
-  const onPickImplementationInterviewLabel = useCallback(
-    (label: string) => {
-      if (handleImplementationChip(label)) return;
-    },
-    [handleImplementationChip],
-  );
 
   const handleCopyCodeTaskCursorPrompt = useCallback(
     (codeTaskId: string) => {
