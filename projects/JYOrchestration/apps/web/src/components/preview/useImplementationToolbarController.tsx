@@ -11,6 +11,7 @@ import { IMPLEMENTATION_ENV_SETTINGS_LABEL } from "@/lib/requirements/implementa
  * - expose execution environment settings open handler
  * - build implementation conversation icon toolbar
  * - wire execution log open action into toolbar
+ * - wire implementation session reset into toolbar
  *
  * Not scope:
  * - execution log state management
@@ -21,6 +22,8 @@ import { IMPLEMENTATION_ENV_SETTINGS_LABEL } from "@/lib/requirements/implementa
 export type ImplementationToolbarControllerInput = Readonly<{
   readonly setExecutionEnvironmentModalOpen: (open: boolean) => void;
   readonly onOpenImplementationExecutionLog: () => void;
+  readonly onResetImplementationSession?: () => void | Promise<void>;
+  readonly resetImplementationSessionDisabled?: boolean;
 }>;
 
 export type ImplementationToolbarControllerValue = Readonly<{
@@ -80,9 +83,37 @@ export function useImplementationToolbarController(
             <path d="M8 21h12a2 2 0 0 0 2-2v-2H10v2a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v3h4" />
           </svg>
         </WorkspaceHubChromeIconButton>
+        {input.onResetImplementationSession ? (
+          <WorkspaceHubChromeIconButton
+            title="구현 단계 초기화"
+            ariaLabel="구현 단계 초기화 — 구현 대화·실행 기록·Runtime 데이터 삭제"
+            disabled={input.resetImplementationSessionDisabled ?? false}
+            onClick={() => void input.onResetImplementationSession?.()}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+              <path d="M21 3v6h-6" />
+            </svg>
+          </WorkspaceHubChromeIconButton>
+        ) : null}
       </>
     ),
-    [onOpenExecutionEnvironmentSettings, input.onOpenImplementationExecutionLog],
+    [
+      onOpenExecutionEnvironmentSettings,
+      input.onOpenImplementationExecutionLog,
+      input.onResetImplementationSession,
+      input.resetImplementationSessionDisabled,
+    ],
   );
 
   return {

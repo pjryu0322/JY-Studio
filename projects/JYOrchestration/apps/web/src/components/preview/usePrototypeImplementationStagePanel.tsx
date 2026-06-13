@@ -38,6 +38,7 @@ import { useImplementationPlanningActionController } from "@/components/preview/
 import { useImplementationDbStrategyActionController } from "@/components/preview/useImplementationDbStrategyActionController";
 import { useImplementationBoardRefreshController } from "@/components/preview/useImplementationBoardRefreshController";
 import { useImplementationToolbarController } from "@/components/preview/useImplementationToolbarController";
+import { useImplementationSessionResetController } from "@/components/preview/useImplementationSessionResetController";
 import { useImplementationRuntimeRecoveryController } from "@/components/preview/useImplementationRuntimeRecoveryController";
 import { useImplementationDeliverableViewerController } from "@/components/preview/useImplementationDeliverableViewerController";
 import { useImplementationRuntimeSyncController } from "@/components/preview/useImplementationRuntimeSyncController";
@@ -330,11 +331,14 @@ export function usePrototypeImplementationStagePanel(
   useEffect(() => {
     const incoming = parseRequirementsStateJson(requirementsStateJson);
     const current = parseRequirementsStateJson(requirementsStateJsonRef.current);
+    const incomingSessionActive = hasActiveImplementationExecutionSession(incoming);
+    const currentSessionActive = hasActiveImplementationExecutionSession(current);
     const incomingLogCount = pickPersistentExecutionLogTimelineEntries(incoming.promptTimeline).length;
     const currentLogCount = pickPersistentExecutionLogTimelineEntries(current.promptTimeline).length;
     const incomingTimelineLen = (incoming.promptTimeline ?? []).length;
     const currentTimelineLen = (current.promptTimeline ?? []).length;
     if (
+      (currentSessionActive && !incomingSessionActive) ||
       incomingLogCount >= currentLogCount ||
       incomingTimelineLen <= currentTimelineLen
     ) {
@@ -771,6 +775,33 @@ export function usePrototypeImplementationStagePanel(
     persistChatToDb,
   });
 
+  const onResetImplementationLocalCaches = useCallback(() => {
+    setPendingImplementationPatch({} as PendingImplementationPatch);
+    pendingImplementationPatchRef.current = {};
+    setImplementationRuntimeDbBundle(null);
+    setActiveTaskCursorJob(null);
+    lastServerTaskCursorJobSyncFingerprintRef.current = "";
+    implementationSessionActiveRef.current = false;
+    persistedDraftUpdatedAtRef.current = null;
+    persistedTaskPlanCreatedAtRef.current = null;
+  }, []);
+
+  const {
+    onResetImplementationSession,
+    resetImplementationSessionBusy,
+    resetImplementationSessionDisabled,
+  } = useImplementationSessionResetController({
+    projectId,
+    parsedRequirementsState,
+    requirementsStateJsonRef,
+    orchestrationPersistSeqRef,
+    implementationResetInFlightRef,
+    onRequirementsStateJsonChange,
+    onResetLocalCaches: onResetImplementationLocalCaches,
+    appendUserNotice,
+    protoBusy,
+  });
+
   const { wipChipHandlers } = useImplementationWipChipHandlerController({
     projectId,
     requirementsStateJson,
@@ -924,6 +955,8 @@ export function usePrototypeImplementationStagePanel(
   const { executionConversationIconToolbar } = useImplementationToolbarController({
     setExecutionEnvironmentModalOpen,
     onOpenImplementationExecutionLog,
+    onResetImplementationSession,
+    resetImplementationSessionDisabled,
   });
 
   const planningOrchestrationView = useMemo(

@@ -92,7 +92,7 @@ function workItem(codeTaskId: string, parentTaskId: string) {
 describe("P3-M51 developer prompt bundle copy", () => {
   it("orders selected ids by branch plan execution order", () => {
     const { plan } = preparedPlan();
-    const mock = plan.tasks.find((t) => t.codeTaskId.includes("MOCK-001"))!.codeTaskId;
+    const mock = plan.tasks.find((t) => t.parentTaskId === "DEV-MOCK-001")!.codeTaskId;
     const common = plan.tasks.find((t) => t.codeTaskId.includes("COMMON-001"))!.codeTaskId;
     const frame = plan.tasks.find((t) => t.branchPlan?.branchGroup === "foundation")!.codeTaskId;
     const ordered = orderCodeTaskIdsByBranchPlan({

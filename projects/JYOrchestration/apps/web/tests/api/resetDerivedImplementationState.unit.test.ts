@@ -136,6 +136,31 @@ describe("resetDerivedImplementationState", () => {
     expect(reset.reviewStageUserFeedbackListV1).toBeNull();
   });
 
+  it("clears P3 execution unit, integration, and preview keys when planning is reset", () => {
+    const base: RequirementsStateJson = {
+      implementationExecutionUnitsV1: {
+        version: "implementation_execution_units_state_v1",
+        units: [{ executionUnitId: "u1", status: "pending" }],
+      } as never,
+      implementationIntegrationStepsV1: {
+        version: "implementation_integration_steps_v1",
+        steps: [{ stepId: "s1", status: "pending" }],
+      } as never,
+      implementationPreviewScopeV1: { version: "implementation_preview_scope_v1" } as never,
+      implementationPreviewRuntimeV1: { version: "implementation_preview_runtime_v1" } as never,
+      codeTaskIntegrationPlanV1: { version: "code_task_integration_plan_v1" } as never,
+    };
+
+    const reset = buildRequirementsConversationResetStateJson(base, nowIso);
+
+    expect(reset.implementationExecutionUnitsV1).toBeNull();
+    expect(reset.implementationIntegrationStepsV1).toBeNull();
+    expect(reset.implementationPreviewScopeV1).toBeNull();
+    expect(reset.implementationPreviewRuntimeV1).toBeNull();
+    expect(reset.codeTaskIntegrationPlanV1).toBeNull();
+    expect(Object.prototype.hasOwnProperty.call(reset, "implementationExecutionUnitsV1")).toBe(true);
+  });
+
   it("planning reset keeps only planning reset trace in promptTimeline", () => {
     const reset = buildRequirementsConversationResetStateJson(
       {

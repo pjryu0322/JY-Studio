@@ -14,6 +14,7 @@ describe("implementation toolbar controller wiring", () => {
   it("uses toolbar controller from parent panel hook", () => {
     const parent = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
     expect(parent).toContain("useImplementationToolbarController");
+    expect(parent).toContain("useImplementationSessionResetController");
   });
 
   it("moves toolbar JSX out of parent panel hook", () => {

@@ -34,6 +34,7 @@ describe("implementation parent hook complexity guard", () => {
       "useImplementationDbStrategyActionController",
       "useImplementationBoardRefreshController",
       "useImplementationToolbarController",
+      "useImplementationSessionResetController",
       "useImplementationRuntimeRecoveryController",
       "useImplementationDeliverableViewerController",
     ];

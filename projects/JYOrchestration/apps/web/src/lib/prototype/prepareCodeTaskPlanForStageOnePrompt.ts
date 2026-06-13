@@ -19,11 +19,15 @@ import {
 } from "@/lib/prototype/stageOnePromptReadiness";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
-function isIntegrationLikeTask(task: ImplementationCodeTaskV1): boolean {
+export function isIntegrationLikeCodeTask(task: ImplementationCodeTaskV1): boolean {
   if (task.codeTaskId === INTEGRATION_WIRING_CODE_TASK_ID) return true;
   if (task.changeType === "integration") return true;
   if (task.branchPlan?.branchGroup === "integration") return true;
   return /최종 연결|통합\s*wiring/i.test(task.title);
+}
+
+function isIntegrationLikeTask(task: ImplementationCodeTaskV1): boolean {
+  return isIntegrationLikeCodeTask(task);
 }
 
 export function stripIntegrationTasksForReappend(

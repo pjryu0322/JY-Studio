@@ -6,6 +6,12 @@ export function isHttpUrl(url: string): boolean {
   return /^https?:\/\//i.test(url.trim());
 }
 
+/** True when the string looks like an absolute http(s) preview URL. */
+export function isLikelyPreviewUrl(url: string): boolean {
+  const u = readString(url);
+  return u.length > 0 && isHttpUrl(u);
+}
+
 export function isGithubPagesPreviewUrl(url: string): boolean {
   const u = url.trim();
   if (!isHttpUrl(u)) return false;

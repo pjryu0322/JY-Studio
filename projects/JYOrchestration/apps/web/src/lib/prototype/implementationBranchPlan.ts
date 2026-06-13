@@ -1,4 +1,4 @@
-import { buildBranchWorkPrincipleLines } from "@/lib/prototype/codeTaskDeveloperPromptTemplate";
+import { buildBranchWorkPrincipleLines, buildWorkBranchReusePrincipleLines } from "@/lib/prototype/codeTaskDeveloperPromptTemplate";
 
 export const IMPLEMENTATION_BRANCH_PLAN_VERSION = "implementation_branch_plan_v1" as const;
 
@@ -174,6 +174,9 @@ export function buildCodeTaskBranchPlanPromptSections(
     "",
     "## Branch 작업 원칙",
     ...buildBranchWorkPrincipleLines(branchPlan).map((line) => line),
+    "",
+    "## work branch 재사용 원칙",
+    ...buildWorkBranchReusePrincipleLines().map((line) => line),
   ];
 }
 

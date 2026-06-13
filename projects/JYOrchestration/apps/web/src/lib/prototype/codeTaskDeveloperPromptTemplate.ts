@@ -6,6 +6,16 @@ import {
   ROUTE_ENTRY_USAGE_NOTE,
 } from "@/lib/prototype/codeTaskRouteBoundaryPlanner";
 
+export function buildWorkBranchReusePrincipleLines(): readonly string[] {
+  return [
+    "- work branch가 이미 origin에 존재하면 base branch에서 새로 만들지 않는다.",
+    "- 반드시 origin/<work branch>를 checkout/pull 한 뒤 기존 커밋 위에 이어서 작업한다.",
+    "- work branch가 존재하지 않을 때만 base branch에서 새로 생성한다.",
+    "- 같은 branch group 내 후속 CodeTask는 이전 CodeTask 커밋을 보존해야 한다.",
+    "- 동일 work branch 공유는 Integration 단계에서 branch group 단위 검증을 하기 위한 의도된 구조다.",
+  ];
+}
+
 export function buildBranchWorkPrincipleLines(branchPlan: CodeTaskBranchPlanV1): readonly string[] {
   const workBranch = branchPlan.workBranch.trim();
   const baseIntro = "- 이 작업은 위에 명시된 base branch를 기준으로 수행한다.";
@@ -23,11 +33,13 @@ export function buildBranchWorkPrincipleLines(branchPlan: CodeTaskBranchPlanV1):
     case "integration":
       return [
         baseIntro,
+        "- integration group wiring CodeTask는 Developer Prompt Bundle에 포함하지 않는다.",
+        "- Integration은 사용자가 플랫폼에서 **통합 버튼**을 선택했을 때 별도 Integration Action으로 실행한다.",
         "- integration group은 screen group 결과물을 base로 최종 연결만 수행한다.",
         "- screen/common/feature/data 결과물을 App Shell에 연결한다.",
         "- 기존 컴포넌트 내부 구현을 재작성하지 않는다.",
         "- 변경은 import, props wiring, route/wrapper, panel slot 연결에 한정한다.",
-        "- Preview 가능한 최종 화면 흐름을 완성한다.",
+        "- CodeTask 단계에서 PR/merge/Preview 연결을 수행하지 않는다.",
       ];
     case "data":
     case "common":
@@ -41,6 +53,8 @@ export function buildBranchWorkPrincipleLines(branchPlan: CodeTaskBranchPlanV1):
         "- 기존 구조를 재생성하거나 재작성하지 않는다.",
         "- 이 Task의 수정 허용 파일 밖은 수정하지 않는다.",
         "- Shell/global 파일 연결이 필요하면 직접 수정하지 말고 `requiresIntegrationChange`에 기록한다.",
+        "- Integration은 통합 버튼 선택 시 별도 Integration Action으로 처리한다.",
+        "- 이번 CodeTask에서는 Shell/global 파일을 직접 연결하지 않는다.",
       ];
   }
 }
@@ -61,6 +75,8 @@ export function buildFileBoundaryPrincipleLines(
     case "integration":
       return [
         "- Integration Task는 연결/wiring만 수행한다.",
+        "- Integration은 사용자가 플랫폼 **통합 버튼**으로 별도 Integration Action을 실행할 때 수행한다.",
+        "- Developer Prompt Bundle에서 Integration Task를 자동 실행하지 않는다.",
         "- 개별 컴포넌트 내부 구현을 재작성하지 않는다.",
         "- 변경은 import, props, slot placement, route/wrapper 연결에 한정한다.",
         "- 수정 금지 파일은 생성·수정·삭제하지 않는다.",
@@ -72,6 +88,8 @@ export function buildFileBoundaryPrincipleLines(
         "- 수정 금지 파일은 생성·수정·삭제하지 않는다.",
         "- 기존 App Shell 구조를 재작성하지 않는다.",
         "- Shell/global 파일 연결이 필요하면 직접 수정하지 말고 작업 결과의 `requiresIntegrationChange` 항목에 기록한다.",
+        "- Integration은 통합 버튼 선택 시 별도 Integration Action으로 처리한다.",
+        "- 이번 CodeTask에서는 Shell/global 파일을 직접 연결하지 않는다.",
         "- 새 파일은 허용 경로 하위에만 생성한다.",
       ];
   }
@@ -106,6 +124,10 @@ export function buildWorkResultReportFormatSections(options?: {
     "workBranch:",
     "changedFiles:",
     "verification:",
+    "workBranchReuse:",
+    "  - origin work branch 존재 여부:",
+    "  - checkout/pull 여부:",
+    "  - 이전 group/task 커밋 보존 여부:",
     ...(options?.requireRouteEntryDecision
       ? [
           "routeEntryDecision:",

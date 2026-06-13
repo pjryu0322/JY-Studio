@@ -24,6 +24,14 @@ export const PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE =
   "환경설정과 Git/Code Agent 연결 정보는 유지됩니다.\n\n" +
   "이 작업은 되돌릴 수 없습니다.";
 
+/** 구현 단계 툴바 「초기화」 확인 — 기획 산출물·슬롯은 유지 */
+export const IMPLEMENTATION_RESET_CONVERSATION_CONFIRM_MESSAGE =
+  "구현 단계에서 생성된 데이터를 모두 초기화할까요?\n\n" +
+  "구현 대화, Seed, 작업안·Task/CodeTask, Cursor 실행, GitHub 확인 기록, 실행 큐, Runtime DB job, 구현 로그가 삭제됩니다.\n" +
+  "기획 산출물·Quick Design·서비스 흐름은 유지됩니다.\n" +
+  "환경설정과 Git/Code Agent 연결 정보는 유지됩니다.\n\n" +
+  "이 작업은 되돌릴 수 없습니다.";
+
 export const PLANNING_RESET_CLEARED_IMPLEMENTATION_TRACE_ACTION =
   "planning_reset_cleared_implementation_derivatives" as const;
 
@@ -119,8 +127,13 @@ export const IMPLEMENTATION_SESSION_RESET_NULL_PATCH = {
   implementationAutoQualityGateV1: null,
   implementationAutoQualityGateHistoryV1: null,
   implementationQuickRunV1: null,
+  implementationExecutionUnitsV1: null,
+  implementationIntegrationStepsV1: null,
   implementationExecutionJobsV1: null,
   codeTaskExecutionRunsV1: null,
+  implementationPreviewScopeV1: null,
+  implementationPreviewRuntimeV1: null,
+  codeTaskIntegrationPlanV1: null,
   implementationRuntimeStateV1: null,
   implementationRuntimeUiSnapshotV1: null,
   reviewStageUserTestSessionV1: null,
@@ -134,21 +147,41 @@ export function hasActiveImplementationExecutionSession(
     | "implementationSeedV1"
     | "implementationTaskListV1"
     | "implementationCodeTaskPlanV1"
+    | "implementationTaskPlanV1"
+    | "implementationWorkPlanDraftV1"
+    | "cursorWorkItemsV1"
     | "codeTaskExecutionRunsV1"
     | "taskCursorExecutionV1"
     | "implementationRuntimeUiSnapshotV1"
     | "implementationExecutionJobsV1"
     | "implementationQuickRunV1"
+    | "implementationExecutionUnitsV1"
+    | "implementationIntegrationStepsV1"
+    | "implementationPreviewScopeV1"
+    | "implementationPreviewRuntimeV1"
+    | "codeTaskIntegrationPlanV1"
+    | "prototypeExecutionSingleChatV1"
+    | "codeAgentWipExecutionV1"
   >,
 ): boolean {
   if (state.implementationSeedV1) return true;
   if ((state.implementationTaskListV1?.tasks?.length ?? 0) > 0) return true;
   if ((state.implementationCodeTaskPlanV1?.tasks?.length ?? 0) > 0) return true;
+  if (state.implementationTaskPlanV1) return true;
+  if (state.implementationWorkPlanDraftV1) return true;
+  if ((state.cursorWorkItemsV1?.length ?? 0) > 0) return true;
   if ((state.codeTaskExecutionRunsV1?.length ?? 0) > 0) return true;
   if (state.taskCursorExecutionV1) return true;
   if (state.implementationRuntimeUiSnapshotV1) return true;
   if ((state.implementationExecutionJobsV1?.length ?? 0) > 0) return true;
   if (state.implementationQuickRunV1) return true;
+  if ((state.implementationExecutionUnitsV1?.units?.length ?? 0) > 0) return true;
+  if ((state.implementationIntegrationStepsV1?.steps?.length ?? 0) > 0) return true;
+  if (state.implementationPreviewScopeV1) return true;
+  if (state.implementationPreviewRuntimeV1) return true;
+  if (state.codeTaskIntegrationPlanV1) return true;
+  if ((state.prototypeExecutionSingleChatV1?.messages?.length ?? 0) > 0) return true;
+  if (state.codeAgentWipExecutionV1) return true;
   return false;
 }
 

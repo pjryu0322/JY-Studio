@@ -1,4 +1,10 @@
+import {
+  buildDeveloperPromptBundleBranchGroupAccumulationPolicyLines,
+  buildDeveloperPromptBundleBranchGroupIntentLines,
+  buildDeveloperPromptBundleExecutionPolicyLines,
+} from "@/lib/prototype/codeTaskDeveloperPromptBundlePolicy";
 import { assertStageTwoDeveloperPromptAllowed } from "@/lib/prototype/codeTaskDeveloperPromptQualityGate";
+import { isIntegrationLikeCodeTask } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
 import {
   buildGeneratedStageTwoDeveloperPrompt,
   type GeneratedCodeTaskPromptV1,
@@ -40,9 +46,13 @@ export function buildStageTwoDeveloperPromptBundle(input: {
   readonly allowedPathGlobs?: readonly string[];
   readonly codeTaskPromptContextMapV1?: CodeTaskPromptContextMapV1 | null;
 }): Readonly<{ readonly ok: boolean; readonly content?: string; readonly reason?: string; readonly count?: number }> {
-  const ordered = orderCodeTaskIdsByBranchPlan({
+  const orderedRaw = orderCodeTaskIdsByBranchPlan({
     codeTaskPlan: input.codeTaskPlan,
     codeTaskIds: input.codeTaskIds,
+  });
+  const ordered = orderedRaw.filter((codeTaskId) => {
+    const task = input.codeTaskPlan.tasks.find((t) => t.codeTaskId === codeTaskId);
+    return task ? !isIntegrationLikeCodeTask(task) : false;
   });
   if (!ordered.length) {
     return { ok: false, reason: CODE_TASK_DEVELOPER_PROMPT_COPY_FAILED_MESSAGE };
@@ -90,6 +100,12 @@ export function buildStageTwoDeveloperPromptBundle(input: {
     `- CodeTask count: ${sections.length}`,
     "- Order: Branch Plan execution order",
     "- Usage: Copy individual section to Cursor one by one. Do not execute bundle as one prompt.",
+    "",
+    ...buildDeveloperPromptBundleExecutionPolicyLines(),
+    "",
+    ...buildDeveloperPromptBundleBranchGroupAccumulationPolicyLines(),
+    "",
+    ...buildDeveloperPromptBundleBranchGroupIntentLines(),
     "",
     DEVELOPER_PROMPT_BUNDLE_NOT_FOR_CURSOR,
     "",
