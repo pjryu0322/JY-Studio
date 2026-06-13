@@ -35,6 +35,19 @@ export const SAMPLE_DATA_OWNED_FILE_PATHS = [
   SAMPLE_DATA_CANONICAL_FILES.meetingTypes,
 ] as const;
 
+/** Sample-data artifact modal: human-readable file descriptions (path → label). */
+export const SAMPLE_DATA_ARTIFACT_FILE_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  [SAMPLE_DATA_CANONICAL_FILES.sampleData]:
+    "회의록 데모에 사용하는 샘플 데이터 export (파일·참가자·요약 등)",
+  [SAMPLE_DATA_CANONICAL_FILES.meetingTypes]:
+    "회의·참가자·요약·액션 아이템 등 도메인 TypeScript 타입",
+};
+
+export function describeSampleDataArtifactFile(path: string): string {
+  const normalized = path.replace(/\\/g, "/").trim();
+  return SAMPLE_DATA_ARTIFACT_FILE_DESCRIPTIONS[normalized] ?? "샘플 데이터 CodeTask 산출물";
+}
+
 export function areSampleDataOwnedFilesOnBranch(filePaths: readonly string[]): boolean {
   const paths = new Set(filePaths.map((p) => p.replace(/\\/g, "/")));
   return SAMPLE_DATA_OWNED_FILE_PATHS.every((owned) => paths.has(owned));

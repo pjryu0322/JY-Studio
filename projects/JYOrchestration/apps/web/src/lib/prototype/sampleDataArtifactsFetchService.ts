@@ -250,6 +250,7 @@ export async function fetchSampleDataArtifactsFromGithub(input: {
   const quality = evaluateActualPreviewSampleDataQuality({
     repositoryFilePaths: files.filter((f) => f.found).map((f) => f.path),
     sampleDataFileContent: primarySample,
+    githubHeadCommitVerified: Boolean(commitSha?.trim()),
   });
 
   const ownedPresent = areSampleDataOwnedFilesOnBranch(
@@ -257,18 +258,27 @@ export async function fetchSampleDataArtifactsFromGithub(input: {
   );
 
   let userMessage: string | null = null;
-  if (!primarySample) {
+  if (!commitSha?.trim() && !primarySample) {
+    userMessage = null;
+  } else if (!primarySample) {
     userMessage = `GitHub branch \`${workBranch}\` (${gitRef})에서 sampleData.ts를 찾지 못했습니다. CodeTask 실행 branch와 커밋을 확인해 주세요.`;
   } else if (!ownedPresent) {
     userMessage =
       "일부 샘플 데이터 파일이 branch에 없습니다. src/data/sampleData.ts와 src/types/meeting.ts를 확인해 주세요.";
+  } else if (quality.status === "pending") {
+    userMessage = null;
   } else if (!quality.ok) {
     userMessage =
-      "파일은 있으나 Preview 통합 품질 기준을 만족하지 않습니다. export·내용·플레이스홀더를 확인해 주세요.";
+      "산출물 계약 품질 기준을 만족하지 않습니다. export·필드·내용을 확인해 주세요.";
   }
 
+  const fetchOk =
+    quality.status === "pending"
+      ? Boolean(primarySample) || Boolean(commitSha?.trim())
+      : Boolean(primarySample) && quality.ok;
+
   return {
-    ok: Boolean(primarySample) && quality.ok,
+    ok: fetchOk,
     codeTaskId: input.codeTask.codeTaskId,
     workBranch,
     gitRef,
