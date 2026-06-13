@@ -594,9 +594,9 @@ export function usePrototypeImplementationStagePanel(
     [latestRun],
   );
 
-  // Parent-level snapshot is a toolbar/dispatch fallback based on bridge summary.
-  // The board panel rebuilds a local snapshot from live taskTreeNodes and uses it
-  // as the authoritative UI/footer snapshot.
+  // Parent-level controlPlaneSnapshot is a toolbar/dispatch fallback based on bridge summary.
+  // ImplementationExecutionBoardPanel rebuilds a local snapshot from live taskTreeNodes
+  // and uses local snapshot as the authoritative UI/footer snapshot.
   const implementationControlPlaneSnapshot = useImplementationControlPlaneSnapshot({
     projectId,
     selectionSummary: boardSelectionBridge.liveCodeTaskSelectionSummary,
@@ -2424,8 +2424,9 @@ export function usePrototypeImplementationStagePanel(
     if (!implementationBoard) {
       return;
     }
-    // Client summary is advisory only. Server route recomputes serverBoardGate
-    // and uses it as the authoritative integration gate.
+    // Client boardSelectionSummary is advisory only.
+    // Server route recomputes serverBoardGate and uses it as the authoritative integration gate.
+    // Prefer bridge live summary here because the parent snapshot can lag behind the board panel.
     const boardSelectionSummary = pickIntegrationPipelineClientBoardSummary({
       bridgeSummary: boardSelectionBridge.getBridgeSnapshot().livePanelSummary,
       parentSnapshot: implementationControlPlaneSnapshot,

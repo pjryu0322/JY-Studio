@@ -703,6 +703,13 @@ export function ImplementationExecutionBoardPanel({
     ],
   );
 
+  // Authoritative UI control plane: rebuilt from live taskTreeNodes + checkbox summary each render.
+  const localControlPlanePreviewReady =
+    integrationSection.integratedAppPreviewReady === true ||
+    integrationPipelinePreviewReady === true ||
+    previewReady === true ||
+    (previewButtonState.enabled === true && Boolean(previewButtonState.url?.trim()));
+
   const localControlPlaneSnapshot = useMemo(
     () =>
       buildImplementationControlPlaneSnapshot({
@@ -713,10 +720,7 @@ export function ImplementationExecutionBoardPanel({
         })),
         checkedCodeTaskIds,
         selectionSummary: codeTaskSelectionSummary,
-        previewReady:
-          integrationSection.integratedAppPreviewReady === true ||
-          integrationPipelinePreviewReady === true ||
-          previewReady === true,
+        previewReady: localControlPlanePreviewReady,
         actualPreviewUrl:
           previewButtonState.url ??
           parsedPreviewRuntime?.externalPreviewUrl ??
@@ -734,23 +738,17 @@ export function ImplementationExecutionBoardPanel({
       taskTreeNodes,
       checkedCodeTaskIds,
       codeTaskSelectionSummary,
-      integrationSection.integratedAppPreviewReady,
-      integrationPipelinePreviewReady,
-      previewReady,
+      localControlPlanePreviewReady,
       previewButtonState.url,
       parsedPreviewRuntime,
       implementationRuntimeDbBundle,
     ],
   );
 
-  const effectiveControlPlaneSnapshot = useMemo(
-    () =>
-      pickEffectiveImplementationControlPlaneSnapshot({
-        local: localControlPlaneSnapshot,
-        parent: controlPlaneSnapshot ?? null,
-      }),
-    [localControlPlaneSnapshot, controlPlaneSnapshot],
-  );
+  const effectiveControlPlaneSnapshot = pickEffectiveImplementationControlPlaneSnapshot({
+    local: localControlPlaneSnapshot,
+    parent: controlPlaneSnapshot,
+  });
 
   useEffect(() => {
     if (!localControlPlaneSnapshot || !controlPlaneSnapshot) return;
@@ -760,14 +758,16 @@ export function ImplementationExecutionBoardPanel({
         controlPlaneSnapshot.board.selectionSummary,
       )
     ) {
-      console.info(
-        JSON.stringify({
-          action: "implementation_control_plane_snapshot_parent_local_mismatch",
-          projectId: projectId ?? board.projectId,
-          parent: controlPlaneSnapshot.board.selectionSummary,
-          local: localControlPlaneSnapshot.board.selectionSummary,
-        }),
-      );
+      if (process.env.NODE_ENV !== "production") {
+        console.info(
+          JSON.stringify({
+            action: "implementation_control_plane_snapshot_parent_local_mismatch",
+            projectId: projectId ?? board.projectId ?? null,
+            parent: controlPlaneSnapshot.board.selectionSummary,
+            local: localControlPlaneSnapshot.board.selectionSummary,
+          }),
+        );
+      }
     }
   }, [localControlPlaneSnapshot, controlPlaneSnapshot, projectId, board.projectId]);
 

@@ -254,13 +254,14 @@ export function isSameControlPlaneBoardSummary(
   a: ImplementationCodeTaskSelectionSummaryV1 | null | undefined,
   b: ImplementationCodeTaskSelectionSummaryV1 | null | undefined,
 ): boolean {
-  if (!a || !b) return a === b;
+  if (a === b) return true;
+  if (!a || !b) return false;
   return isSameBoardGateSummary(a, b);
 }
 
 export function pickEffectiveImplementationControlPlaneSnapshot(input: {
-  readonly local: ImplementationControlPlaneSnapshotV1 | null;
-  readonly parent: ImplementationControlPlaneSnapshotV1 | null;
+  readonly local: ImplementationControlPlaneSnapshotV1 | null | undefined;
+  readonly parent: ImplementationControlPlaneSnapshotV1 | null | undefined;
 }): ImplementationControlPlaneSnapshotV1 | null {
   return input.local ?? input.parent ?? null;
 }

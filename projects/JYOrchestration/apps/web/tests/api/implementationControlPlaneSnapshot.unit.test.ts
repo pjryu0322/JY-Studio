@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { CANONICAL_SAMPLE_DATA_CODE_TASK_ID } from "@/lib/prototype/codeTaskCanonicalId";
 import { INTEGRATION_WIRING_CODE_TASK_ID } from "@/lib/prototype/codeTaskIntegrationWiringTask";
-import { buildImplementationControlPlaneSnapshot } from "@/lib/prototype/implementationControlPlaneSnapshot";
+import {
+  buildImplementationControlPlaneSnapshot,
+  isSameControlPlaneBoardSummary,
+  pickEffectiveImplementationControlPlaneSnapshot,
+  pickIntegrationPipelineClientBoardSummary,
+} from "@/lib/prototype/implementationControlPlaneSnapshot";
 import {
   resolveTotalExecutableCodeTaskCountFromSelectionSummary,
   summarizeCodeTaskBoardRowsFromTreeNodes,
+  type ImplementationCodeTaskSelectionSummaryV1,
 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE } from "@/lib/prototype/implementationBoardIntegrationGate";
 import { boardTreeNode } from "./implementationBoardSummaryTestHelpers";
@@ -103,5 +109,61 @@ describe("buildImplementationControlPlaneSnapshot", () => {
     });
     expect(snapshot?.boardFooter.showIntegrationPrepareButton).toBe(true);
     expect(snapshot?.boardFooter.primaryEnabled).toBe(snapshot?.action.enabled);
+  });
+});
+
+function minimalSelectionSummary(
+  overrides: Partial<ImplementationCodeTaskSelectionSummaryV1> = {},
+): ImplementationCodeTaskSelectionSummaryV1 {
+  return {
+    totalCount: 1,
+    runnableCount: 0,
+    integrationReadyCount: 1,
+    selectedRunnableCount: 0,
+    integrationReadyCodeTaskIds: ["CODE-DONE-0"],
+    selectedRunnableCodeTaskIds: [],
+    ...overrides,
+  };
+}
+
+describe("implementation control plane snapshot helpers", () => {
+  it("prefers local snapshot over parent snapshot", () => {
+    const nodes = [boardTreeNode("CODE-DONE-0", "완료", "GitHub outcome 저장됨", true)];
+    const local = buildImplementationControlPlaneSnapshot({ projectId: "p1", nodes });
+    const parent = buildImplementationControlPlaneSnapshot({
+      projectId: "p1",
+      selectionSummary: minimalSelectionSummary({ totalCount: 99 }),
+    });
+    expect(pickEffectiveImplementationControlPlaneSnapshot({ local, parent })).toBe(local);
+    expect(pickEffectiveImplementationControlPlaneSnapshot({ local: null, parent })).toBe(parent);
+    expect(
+      pickEffectiveImplementationControlPlaneSnapshot({ local: null, parent: null }),
+    ).toBeNull();
+  });
+
+  it("compares control plane board summaries", () => {
+    const summary = minimalSelectionSummary();
+    expect(isSameControlPlaneBoardSummary(summary, summary)).toBe(true);
+    expect(
+      isSameControlPlaneBoardSummary(summary, {
+        ...summary,
+        runnableCount: summary.runnableCount + 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("pickIntegrationPipelineClientBoardSummary prefers bridge over parent snapshot", () => {
+    const bridgeSummary = minimalSelectionSummary({ totalCount: 2 });
+    const parentSnapshot = buildImplementationControlPlaneSnapshot({
+      projectId: "p1",
+      selectionSummary: minimalSelectionSummary({ totalCount: 5 }),
+    });
+    expect(
+      pickIntegrationPipelineClientBoardSummary({ bridgeSummary, parentSnapshot }),
+    ).toBe(bridgeSummary);
+    expect(
+      pickIntegrationPipelineClientBoardSummary({ bridgeSummary: null, parentSnapshot })
+        ?.totalCount,
+    ).toBe(5);
   });
 });
