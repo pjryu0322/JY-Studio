@@ -13,6 +13,33 @@ import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/l
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { mergeOrchestrationPersistPatches } from "@/lib/prototype/orchestrationPatchMerge";
 import { buildIntegrationGateBlockedByFailedCodeTaskLogEntry } from "@/lib/prototype/implementationExecutionLogger";
+import { isIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+
+export function resolveSelectedExecutionUnitIdsForFinalWiringGate(input: {
+  readonly executionUnits: readonly ImplementationExecutionUnitV1[];
+  readonly selectedExecutionUnitIds: readonly string[];
+  readonly codeTaskPlan: ImplementationCodeTaskPlanV1 | null;
+}): readonly string[] {
+  const persisted = input.selectedExecutionUnitIds.map((id) => id.trim()).filter(Boolean);
+  if (persisted.length) return persisted;
+
+  const taskByCodeTaskId = new Map(
+    (input.codeTaskPlan?.tasks ?? []).map((task) => [task.codeTaskId.trim(), task] as const),
+  );
+
+  return input.executionUnits
+    .filter((unit) => {
+      const task = taskByCodeTaskId.get(unit.codeTaskId.trim());
+      if (task) return !isIntegrationWiringCodeTask(task);
+      return !isIntegrationWiringCodeTask({
+        codeTaskId: unit.codeTaskId,
+        changeType: "unknown",
+        title: unit.title,
+      });
+    })
+    .map((unit) => unit.unitId);
+}
 
 export async function markFinalWiringIntegrationStepReady(input: {
   readonly projectId: string;
@@ -46,9 +73,15 @@ export async function markFinalWiringIntegrationStepReady(input: {
     codeTaskPlan: input.codeTaskPlan,
     runs: input.runs,
   });
+  const selectedExecutionUnitIds = resolveSelectedExecutionUnitIdsForFinalWiringGate({
+    executionUnits: summary.executionUnits,
+    selectedExecutionUnitIds: summary.selectedExecutionUnitIds,
+    codeTaskPlan: input.codeTaskPlan,
+  });
+  const usedSelectionFallback = summary.selectedExecutionUnitIds.length === 0 && selectedExecutionUnitIds.length > 0;
   const completionGate = areSelectedExecutionUnitsCompletedWithPersistedOutcomes({
     units: summary.executionUnits,
-    selectedUnitIds: summary.selectedExecutionUnitIds,
+    selectedUnitIds: selectedExecutionUnitIds,
     runs: input.runs,
   });
   if (!completionGate.ok) {
@@ -93,6 +126,19 @@ export async function markFinalWiringIntegrationStepReady(input: {
   });
   const timeline: RequirementsPromptTimelineEntry[] = [
     ...ensured.timeline,
+    ...(usedSelectionFallback
+      ? [
+          buildImplementationExecutionLogTimelineEntry({
+            action: "implementation_final_wiring_selected_units_fallback_applied",
+            orchestrationTraceGroup: "implementation_integration",
+            fields: {
+              projectId: pid,
+              fallbackSelectedCount: selectedExecutionUnitIds.length,
+            },
+            nowIso,
+          }),
+        ]
+      : []),
     buildImplementationExecutionLogTimelineEntry({
       action: "implementation_integration_final_wiring_ready",
       orchestrationTraceGroup: "implementation_integration",
@@ -104,7 +150,7 @@ export async function markFinalWiringIntegrationStepReady(input: {
       orchestrationTraceGroup: "implementation_orchestration",
       fields: {
         projectId: pid,
-        selectedCount: summary.selectedExecutionUnitIds.length,
+        selectedCount: selectedExecutionUnitIds.length,
         verifiedCount: summary.completedCodeTaskCount,
       },
       nowIso,

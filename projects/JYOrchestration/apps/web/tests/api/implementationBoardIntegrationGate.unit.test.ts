@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBoardGateMismatchLogFields,
   evaluateIntegrationBlockedByRunnableBoardSummary,
+  evaluateIntegrationPrepareGateFromBoardSummary,
   evaluatePrepareIntegrationPreviewStartGate,
   INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE,
   INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE,
@@ -61,6 +62,20 @@ describe("evaluatePrepareIntegrationPreviewStartGate", () => {
     });
     expect(gate.ok).toBe(true);
     expect(gate.codeTaskIds).toEqual(["A", "B"]);
+  });
+
+  it("allows integration when all CodeTasks are integration-ready regardless of selected runnable count", () => {
+    const result = evaluateIntegrationPrepareGateFromBoardSummary({
+      totalCount: 15,
+      runnableCount: 0,
+      selectedRunnableCount: 0,
+      selectedRunnableCodeTaskIds: [],
+      integrationReadyCount: 15,
+      integrationReadyCodeTaskIds: Array.from({ length: 15 }, (_, i) => `CODE-${i + 1}`),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.message).toBeNull();
   });
 });
 

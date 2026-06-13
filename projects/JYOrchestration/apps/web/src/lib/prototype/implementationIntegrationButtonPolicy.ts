@@ -266,7 +266,13 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
 
   const show =
     !snapshot.preview.integratedAppPreviewReady &&
-    (boardIntegrationReady || continueBuildPreview);
+    (boardIntegrationReady ||
+      continueBuildPreview ||
+      fwStatus === "pending" ||
+      fwStatus === "ready" ||
+      fwStatus === "running" ||
+      fwStatus === "failed" ||
+      fwStatus === "completed");
 
   const autoGenerationReady = options?.autoGenerationReady !== false;
 

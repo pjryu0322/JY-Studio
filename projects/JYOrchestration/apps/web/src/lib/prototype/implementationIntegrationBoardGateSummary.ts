@@ -13,6 +13,22 @@ import {
 } from "@/lib/prototype/implementationExecutionUnitVerification";
 import { resolveAuthoritativeCodeTaskOutcome } from "@/lib/prototype/implementationCodeTaskOutcomeResolver";
 
+export function resolveRunIntegrationReadyForBoardGate(input: {
+  readonly run: CodeTaskExecutionRunV1 | null;
+  readonly githubOutcomeSaved: boolean;
+  readonly commitSha: string | null;
+  readonly noCodeChangeEvidence: boolean;
+}): boolean | null {
+  const runReady = input.run ? isCodeTaskRunIntegrationReady(input.run) : null;
+  const hasPersistedCompletionEvidence =
+    input.githubOutcomeSaved ||
+    Boolean(String(input.commitSha ?? "").trim()) ||
+    input.noCodeChangeEvidence;
+  if (runReady === true) return true;
+  if (runReady === false && !hasPersistedCompletionEvidence) return false;
+  return null;
+}
+
 export type IntegrationGateBlockedDetailV1 = Readonly<{
   readonly codeTaskId: string;
   readonly status: string;
@@ -47,14 +63,28 @@ export function summarizeCodeTaskBoardGateFromPlanAndUnits(input: {
 
     if (unit) {
       const outcome = resolveAuthoritativeCodeTaskOutcome({ unit, runs: input.runs });
-      const display = resolveExecutionUnitVerificationDisplayStatus({ unit, run });
-      const card = formatExecutionUnitVerificationCardLabels(display);
-      statusLabel = card.statusLabel;
-      progressLabel = card.progressLabel;
+      const unitCommitSha = String(unit.commitSha ?? "").trim() || null;
       githubOutcomeSaved =
-        outcome.hasPersistedGithubOutcome === true || outcome.status === "skipped";
-      commitSha = outcome.commitSha;
+        outcome.hasPersistedGithubOutcome === true ||
+        outcome.status === "skipped" ||
+        outcome.status === "verified" ||
+        (unit.status === "verified" && Boolean(unitCommitSha));
+      commitSha = outcome.commitSha ?? unitCommitSha;
       noCodeChangeEvidence = outcome.latestOutcomeStatus === "no_code_change";
+
+      if (
+        unit.status === "verified" &&
+        (githubOutcomeSaved || unitCommitSha) &&
+        (outcome.status === "verified" || outcome.status === "inconsistent")
+      ) {
+        statusLabel = "완료";
+        progressLabel = "GitHub outcome 저장됨";
+      } else {
+        const display = resolveExecutionUnitVerificationDisplayStatus({ unit, run });
+        const card = formatExecutionUnitVerificationCardLabels(display);
+        statusLabel = card.statusLabel;
+        progressLabel = card.progressLabel;
+      }
     }
 
     const boardState = resolveCodeTaskBoardState({
@@ -66,7 +96,12 @@ export function summarizeCodeTaskBoardGateFromPlanAndUnits(input: {
       commitSha,
       branchName: unit?.workBranch ?? task.branchPlan?.workBranch ?? null,
       noCodeChangeEvidence,
-      runIntegrationReady: run ? isCodeTaskRunIntegrationReady(run) : false,
+      runIntegrationReady: resolveRunIntegrationReadyForBoardGate({
+        run,
+        githubOutcomeSaved,
+        commitSha,
+        noCodeChangeEvidence,
+      }),
     });
 
     return { codeTaskId, boardState };

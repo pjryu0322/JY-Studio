@@ -1,4 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { CODE_TASK_EXECUTION_RUN_VERSION } from "@/lib/prototype/codeTaskExecutionRun";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { INTEGRATION_WIRING_CODE_TASK_ID } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+import {
+  resolveRunIntegrationReadyForBoardGate,
+  summarizeCodeTaskBoardGateFromPlanAndUnits,
+} from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 import { evaluateIntegrationPrepareGateFromBoardSummary } from "@/lib/prototype/implementationBoardIntegrationGate";
 import { buildImplementationIntegrationPipelineEligibilityFromSnapshot } from "@/lib/prototype/projectIntegrationPipelineEligibility";
 import { boardTreeNode } from "./implementationBoardSummaryTestHelpers";
@@ -94,5 +103,104 @@ describe("integration board gate vs pipeline eligibility", () => {
     const gate = evaluateIntegrationPrepareGateFromBoardSummary(boardSummary);
     expect(gate.ok).toBe(false);
     expect(gate.message).toContain("GitHub 확인");
+  });
+});
+
+describe("summarizeCodeTaskBoardGateFromPlanAndUnits", () => {
+  const PID = "p-gate-summary";
+  const NOW = "2026-06-13T12:00:00.000Z";
+
+  function planTask(codeTaskId: string): ImplementationCodeTaskPlanV1["tasks"][number] {
+    return {
+      codeTaskId,
+      parentTaskId: "DEV-001",
+      title: codeTaskId,
+      description: "",
+      changeType: "feature",
+      acceptanceCriteria: [],
+      verificationHints: [],
+      forbiddenPaths: [],
+      candidateFiles: [],
+      branchPlan: {
+        branchGroup: "feature",
+        workBranch: `wip/feature/${codeTaskId}`,
+        baseBranch: "main",
+        executionMode: "sequential",
+      },
+    };
+  }
+
+  function verifiedUnit(codeTaskId: string, order: number): ImplementationExecutionUnitV1 {
+    return {
+      unitId: codeTaskId,
+      codeTaskId,
+      processTaskId: "DEV-001",
+      title: codeTaskId,
+      order,
+      branchGroup: "feature",
+      baseBranch: "main",
+      workBranch: `wip/feature/${codeTaskId}`,
+      dependencies: [],
+      status: "verified",
+      verifiedAt: NOW,
+      commitSha: "abc123",
+    };
+  }
+
+  it("treats completed units with persisted GitHub outcome as integration-ready when runs are missing", () => {
+    const codeTaskIds = ["CODE-A", "CODE-B"];
+    const plan: ImplementationCodeTaskPlanV1 = {
+      version: "implementation_code_task_plan_v1",
+      projectId: PID,
+      generatedAt: NOW,
+      tasks: codeTaskIds.map(planTask),
+    };
+    const gate = summarizeCodeTaskBoardGateFromPlanAndUnits({
+      codeTaskPlan: plan,
+      units: codeTaskIds.map((id, i) => verifiedUnit(id, i)),
+      runs: [],
+    });
+    expect(gate.runnableCount).toBe(0);
+    expect(gate.integrationReadyCount).toBe(2);
+    expect(gate.totalCount).toBe(2);
+    expect(gate.blockedDetails).toHaveLength(0);
+    expect(evaluateIntegrationPrepareGateFromBoardSummary(gate).ok).toBe(true);
+  });
+
+  it("does not let stale runIntegrationReady=false override persisted completion evidence", () => {
+    const codeTaskId = "CODE-A";
+    const plan: ImplementationCodeTaskPlanV1 = {
+      version: "implementation_code_task_plan_v1",
+      projectId: PID,
+      generatedAt: NOW,
+      tasks: [planTask(codeTaskId)],
+    };
+    const queuedRun: CodeTaskExecutionRunV1 = {
+      version: CODE_TASK_EXECUTION_RUN_VERSION,
+      runId: "run-queued",
+      projectId: PID,
+      processTaskId: "DEV-001",
+      workItemId: "wi",
+      codeTaskId,
+      status: "queued",
+      attemptNo: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    expect(
+      resolveRunIntegrationReadyForBoardGate({
+        run: queuedRun,
+        githubOutcomeSaved: true,
+        commitSha: "abc123",
+        noCodeChangeEvidence: false,
+      }),
+    ).toBeNull();
+    const gate = summarizeCodeTaskBoardGateFromPlanAndUnits({
+      codeTaskPlan: plan,
+      units: [verifiedUnit(codeTaskId, 0)],
+      runs: [queuedRun],
+    });
+    expect(gate.integrationReadyCount).toBe(1);
+    expect(gate.runnableCount).toBe(0);
   });
 });
