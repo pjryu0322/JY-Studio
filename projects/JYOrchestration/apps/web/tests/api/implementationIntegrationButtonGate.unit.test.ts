@@ -68,4 +68,18 @@ describe("evaluateIntegrationButtonGate", () => {
     });
     expect(gate.canRun).toBe(true);
   });
+
+  it("does not block integration only because integrationReadyCount is less than totalCount", () => {
+    const gate = evaluateIntegrationButtonGate({
+      summary: summary({
+        totalCount: 20,
+        integrationReadyCount: 15,
+        integrationReadyCodeTaskIds: Array.from({ length: 15 }, (_, i) => `CODE-${i + 1}`),
+      }),
+      finalWiringReady: true,
+      selectedCount: 0,
+    });
+    expect(gate.canRun).toBe(true);
+    expect(gate.blockReason).toBeNull();
+  });
 });

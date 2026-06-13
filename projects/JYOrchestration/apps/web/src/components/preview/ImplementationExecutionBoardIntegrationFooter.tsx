@@ -7,7 +7,7 @@ import type { ImplementationPreviewEntryModeV1 } from "@/lib/prototype/implement
 import type { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 import type { evaluateImplementationPreviewButtonState } from "@/lib/prototype/implementationPreviewButtonPolicy";
 import type { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
-import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
+import { resolveIntegrationPipelineBusyLabel, mapIntegrationPipelineStatusToUiPhase } from "@/lib/prototype/implementationIntegrationPipelineUiStatus";
 
 type IntegrationButtonState = ReturnType<typeof evaluateIntegrationPipelineButtonFromSnapshot>;
 type PreviewButtonState = ReturnType<typeof evaluateImplementationPreviewButtonState>;
@@ -53,11 +53,12 @@ export function ImplementationExecutionBoardIntegrationFooter(props: {
               onClick={props.onRunIntegrationPipeline}
             >
               {props.integrationPipelineBusy
-                ? props.integrationButtonState.buttonLabel === "Preview 준비 계속"
-                  ? "Preview 준비 계속 중…"
-                  : props.integrationButtonState.continueBuildPreview
-                    ? "Build 검증 및 Preview 준비 계속 중…"
-                    : "통합 및 Preview 준비 중…"
+                ? resolveIntegrationPipelineBusyLabel({
+                    busy: true,
+                    phase: mapIntegrationPipelineStatusToUiPhase(props.integrationPipelineStatus),
+                    continueBuildPreview: props.integrationButtonState.continueBuildPreview,
+                    buttonLabel: props.integrationButtonState.buttonLabel,
+                  }) ?? "통합 및 Preview 준비 중…"
                 : props.integrationButtonState.buttonLabel || "통합 및 Preview 준비"}
             </button>
           ) : null}

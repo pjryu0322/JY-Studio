@@ -12,12 +12,11 @@ import { buildImplementationIntegrationPipelineEligibilityFromSnapshot } from "@
 import { summarizeCodeTaskBoardGateFromPlanAndUnits } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 import { findIntegrationStep } from "@/lib/prototype/implementationIntegrationStepMutations";
 import {
-  evaluateIntegrationPrepareGateFromBoardSummary,
+  evaluateIntegrationButtonGate,
   buildBoardGateMismatchLogFields,
   logIntegrationPrepareStarted,
   isFinalWiringStepReadyForIntegrationButton,
-  logIntegrationButtonGateEvaluated,
-  evaluateIntegrationButtonGate,
+  buildIntegrationGateBlockedApiBody,
 } from "@/lib/prototype/implementationBoardIntegrationGate";
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { runProjectIntegrationPipeline } from "@/lib/prototype/projectIntegrationPipelineService";
@@ -172,58 +171,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const boardGateEval = evaluateIntegrationPrepareGateFromBoardSummary(boardGateSummary, {
-      projectId,
-      blockedDetails: serverBoardGate.blockedDetails,
-      runnableCodeTaskIds: serverBoardGate.runnableCodeTaskIds,
-    });
-
     const integrationStepsForGate = resolveIntegrationStepsForRuntimeSnapshot({
       requirementsState: persisted,
       codeTaskPlan,
     });
     const finalWiringStep = findIntegrationStep(integrationStepsForGate, "final_wiring");
     const finalWiringReady = isFinalWiringStepReadyForIntegrationButton(finalWiringStep?.status);
-    logIntegrationButtonGateEvaluated({
-      projectId,
-      summary: boardGateSummary,
-      selectedCount: boardGateSummary.selectedRunnableCount,
-      verifiedCount: boardGateSummary.integrationReadyCount,
-      finalWiringReady,
-      blockReason: boardGateEval.ok ? null : "no_integration_ready_units",
-      canRun: boardGateEval.ok,
-      staleDetected:
-        clientBoardGate != null &&
-        buildBoardGateMismatchLogFields({ client: clientBoardGate, server: serverBoardGate })
-          .summariesMatch === false,
-    });
-
-    if (!boardGateEval.ok) {
-      return NextResponse.json(
-        {
-          success: false,
-          status: "board_gate_blocked",
-          previewReady: false,
-          message: boardGateEval.message ?? "통합을 시작할 수 없습니다.",
-        },
-        { status: 400 },
-      );
-    }
 
     const integrationButtonGate = evaluateIntegrationButtonGate({
       summary: boardGateSummary,
       finalWiringReady,
       projectId,
       clientSummary: clientBoardGate,
+      verifiedCount: boardGateSummary.integrationReadyCount,
     });
-    if (!integrationButtonGate.canRun) {
+    if (!integrationButtonGate.canRun && integrationButtonGate.blockReason) {
       return NextResponse.json(
-        {
-          success: false,
-          status: "board_gate_blocked",
-          previewReady: false,
-          message: integrationButtonGate.userMessage ?? "통합을 시작할 수 없습니다.",
-        },
+        buildIntegrationGateBlockedApiBody({
+          blockReason: integrationButtonGate.blockReason,
+          summary: boardGateSummary,
+          userMessage: integrationButtonGate.userMessage ?? "통합을 시작할 수 없습니다.",
+          verifiedCount: boardGateSummary.integrationReadyCount,
+        }),
         { status: 400 },
       );
     }
@@ -256,6 +225,17 @@ export async function POST(request: NextRequest) {
         integrationCodeTaskCount: integrationCodeTaskIds.length,
         integrationCodeTaskIds,
       });
+      console.info(
+        JSON.stringify({
+          action: "implementation_integration_pipeline_requested",
+          projectId,
+          targetRepository: targetRepository.gitRepoUrl,
+          runnableCount: boardGateSummary.runnableCount,
+          verifiedCount: boardGateSummary.integrationReadyCount,
+          integrationReadyCount: boardGateSummary.integrationReadyCount,
+          totalCount: boardGateSummary.totalCount,
+        }),
+      );
     }
 
     const outcome = await runProjectIntegrationPipeline({

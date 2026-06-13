@@ -1,5 +1,8 @@
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
-import { INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE } from "@/lib/prototype/implementationIntegrationGate";
+import {
+  isBoardSummaryReadyForIntegrationMerge,
+  logIntegrationReadyPartialCoverageWarning,
+} from "@/lib/prototype/implementationBoardIntegrationGatePolicy";
 import type { IntegrationGateBlockedDetailV1 } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 
 export const INTEGRATION_PREPARE_INTEGRATION_PREVIEW_LABEL = "통합 및 Preview 준비" as const;
@@ -20,10 +23,66 @@ export const INTEGRATION_FINAL_WIRING_NOT_READY_USER_MESSAGE =
 export const INTEGRATION_PIPELINE_START_SUCCESS_TOAST =
   "통합 및 Preview 준비를 시작했습니다." as const;
 
+export const INTEGRATION_PIPELINE_FAILED_USER_MESSAGE =
+  "통합 처리 중 오류가 발생했습니다. 상세 로그를 확인해 주세요." as const;
+
+export type IntegrationGateBlockedApiSummaryV1 = Readonly<{
+  readonly runnableCount: number;
+  readonly integrationReadyCount: number;
+  readonly verifiedCount: number;
+  readonly completedCount: number;
+  readonly totalCount: number;
+  readonly selectedCount: number;
+}>;
+
+export function buildIntegrationGateBlockedApiSummary(
+  summary: ImplementationCodeTaskSelectionSummaryV1,
+  input?: Readonly<{ readonly verifiedCount?: number; readonly completedCount?: number }>,
+): IntegrationGateBlockedApiSummaryV1 {
+  return {
+    runnableCount: summary.runnableCount,
+    integrationReadyCount: summary.integrationReadyCount,
+    verifiedCount: input?.verifiedCount ?? summary.integrationReadyCount,
+    completedCount: input?.completedCount ?? summary.integrationReadyCount,
+    totalCount: summary.totalCount,
+    selectedCount: summary.selectedRunnableCount,
+  };
+}
+
+export function buildIntegrationGateBlockedApiBody(input: {
+  readonly blockReason: Exclude<IntegrationButtonGateBlockReasonV1, null | "stale_summary_detected">;
+  readonly summary: ImplementationCodeTaskSelectionSummaryV1;
+  readonly userMessage: string;
+  readonly verifiedCount?: number;
+  readonly completedCount?: number;
+}): Readonly<{
+  readonly ok: false;
+  readonly success: false;
+  readonly status: "board_gate_blocked";
+  readonly previewReady: false;
+  readonly blockReason: Exclude<IntegrationButtonGateBlockReasonV1, null | "stale_summary_detected">;
+  readonly message: string;
+  readonly summary: IntegrationGateBlockedApiSummaryV1;
+}> {
+  return {
+    ok: false,
+    success: false,
+    status: "board_gate_blocked",
+    previewReady: false,
+    blockReason: input.blockReason,
+    message: input.userMessage,
+    summary: buildIntegrationGateBlockedApiSummary(input.summary, {
+      verifiedCount: input.verifiedCount,
+      completedCount: input.completedCount,
+    }),
+  };
+}
+
 export type IntegrationButtonGateBlockReasonV1 =
   | "runnable_tasks_exist"
   | "no_integration_ready_units"
   | "final_wiring_not_ready"
+  | "target_repository_missing"
   | "stale_summary_detected"
   | null;
 
@@ -63,18 +122,19 @@ export function evaluateIntegrationButtonGate(input: {
   } else if (integrationReadyCodeTaskIds.length === 0 || input.summary.integrationReadyCount === 0) {
     blockReason = "no_integration_ready_units";
     userMessage = INTEGRATION_NO_INTEGRATION_READY_USER_MESSAGE;
-  } else if (
-    input.summary.totalCount > 0 &&
-    input.summary.integrationReadyCount < input.summary.totalCount
-  ) {
-    blockReason = "no_integration_ready_units";
-    userMessage = INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE;
   } else if (!input.finalWiringReady) {
     blockReason = "final_wiring_not_ready";
     userMessage = INTEGRATION_FINAL_WIRING_NOT_READY_USER_MESSAGE;
   }
 
   const canRun = blockReason == null;
+
+  if (canRun) {
+    logIntegrationReadyPartialCoverageWarning({
+      projectId: input.projectId,
+      summary: input.summary,
+    });
+  }
 
   logIntegrationButtonGateEvaluated({
     projectId: input.projectId,
@@ -292,20 +352,17 @@ export function evaluateIntegrationPrepareGateFromBoardSummary(
   const blockedDetails = input?.blockedDetails ?? [];
   const notReadyIds = blockedDetails.map((row) => row.codeTaskId.trim()).filter(Boolean);
 
-  const allExecutableIntegrationReady =
-    summary.totalCount > 0 &&
-    summary.integrationReadyCount === summary.totalCount &&
-    integrationReadyCodeTaskIds.length === summary.totalCount;
-
   let resolvedAction: IntegrationPrepareGateResolutionV1 = "prepare_integration_preview";
-  let ok = true;
+  let ok =
+    isBoardSummaryReadyForIntegrationMerge(summary) && integrationReadyCodeTaskIds.length > 0;
   let message: string | null = null;
   let blockedCodeTaskIds: readonly string[] = [];
 
-  if (allExecutableIntegrationReady) {
-    resolvedAction = "prepare_integration_preview";
-    ok = true;
-    message = null;
+  if (ok) {
+    logIntegrationReadyPartialCoverageWarning({
+      projectId: input?.projectId,
+      summary,
+    });
   } else if (summary.runnableCount > 0) {
     resolvedAction = "blocked_runnable_tasks";
     ok = false;
@@ -319,11 +376,6 @@ export function evaluateIntegrationPrepareGateFromBoardSummary(
     ok = false;
     message = INTEGRATION_NO_INTEGRATION_READY_USER_MESSAGE;
     blockedCodeTaskIds = notReadyIds;
-  } else if (summary.integrationReadyCount < summary.totalCount) {
-    resolvedAction = "blocked_no_integration_ready";
-    ok = false;
-    message = INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE;
-    blockedCodeTaskIds = notReadyIds.length > 0 ? notReadyIds : [];
   }
 
   if (typeof console !== "undefined" && console.info) {

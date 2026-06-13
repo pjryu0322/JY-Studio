@@ -9,7 +9,6 @@ import {
   INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE,
   INTEGRATION_NO_INTEGRATION_READY_USER_MESSAGE,
 } from "@/lib/prototype/implementationBoardIntegrationGate";
-import { INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE } from "@/lib/prototype/implementationIntegrationGate";
 
 describe("evaluateIntegrationBlockedByRunnableBoardSummary", () => {
   it("no longer blocks integration when runnable rows remain", () => {
@@ -42,26 +41,26 @@ describe("evaluatePrepareIntegrationPreviewStartGate", () => {
     expect(gate.message).toBe(INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE);
   });
 
-  it("allows when all executable tasks are integration-ready even if runnableCount is stale", () => {
+  it("blocks when runnable tasks remain even if integrationReadyCount equals totalCount", () => {
     const gate = evaluatePrepareIntegrationPreviewStartGate({
       totalCount: 15,
       runnableCount: 1,
       integrationReadyCount: 15,
       integrationReadyCodeTaskIds: Array.from({ length: 15 }, (_, i) => `CODE-${i}`),
     });
-    expect(gate.ok).toBe(true);
-    expect(gate.codeTaskIds).toHaveLength(15);
+    expect(gate.ok).toBe(false);
+    expect(gate.message).toBe(INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE);
   });
 
-  it("allows when all executable tasks are integration-ready", () => {
+  it("allows when integrationReadyCount < totalCount but runnableCount is zero", () => {
     const gate = evaluatePrepareIntegrationPreviewStartGate({
-      totalCount: 2,
+      totalCount: 20,
       runnableCount: 0,
-      integrationReadyCount: 2,
-      integrationReadyCodeTaskIds: ["A", "B"],
+      integrationReadyCount: 15,
+      integrationReadyCodeTaskIds: Array.from({ length: 15 }, (_, i) => `CODE-${i}`),
     });
     expect(gate.ok).toBe(true);
-    expect(gate.codeTaskIds).toEqual(["A", "B"]);
+    expect(gate.codeTaskIds).toHaveLength(15);
   });
 
   it("allows integration when all CodeTasks are integration-ready regardless of selected runnable count", () => {
@@ -99,12 +98,12 @@ describe("resolveImplementationIntegrationControlGate", () => {
     expect(gate.enabled).toBe(true);
   });
 
-  it("allows prepare when all integration-ready despite stale runnableCount", () => {
+  it("blocks prepare when runnableCount > 0", () => {
     const gate = resolveImplementationIntegrationControlGate({
-      summary: { ...allReady, runnableCount: 1 },
+      summary: { ...allReady, runnableCount: 1, integrationReadyCount: 1, integrationReadyCodeTaskIds: ["A"] },
     });
-    expect(gate.action).toBe("prepare_integration_preview");
-    expect(gate.enabled).toBe(true);
+    expect(gate.action).toBe("blocked");
+    expect(gate.enabled).toBe(false);
   });
 
   it("blocks when runnableCount > 0 and integration incomplete", () => {
@@ -122,16 +121,17 @@ describe("resolveImplementationIntegrationControlGate", () => {
     expect(gate.disabledReason).toContain("미완료");
   });
 
-  it("blocks when integrationReadyCount < totalCount", () => {
+  it("allows prepare when integration-ready tasks exist even if integrationReadyCount < totalCount", () => {
     const gate = resolveImplementationIntegrationControlGate({
       summary: {
         ...allReady,
-        totalCount: 3,
-        integrationReadyCount: 2,
+        totalCount: 20,
+        integrationReadyCount: 15,
+        integrationReadyCodeTaskIds: Array.from({ length: 15 }, (_, i) => `CODE-${i + 1}`),
       },
     });
-    expect(gate.enabled).toBe(false);
-    expect(gate.disabledReason).toBe(INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE);
+    expect(gate.action).toBe("prepare_integration_preview");
+    expect(gate.enabled).toBe(true);
   });
 
   it("enables prepare when all executable tasks are ready", () => {

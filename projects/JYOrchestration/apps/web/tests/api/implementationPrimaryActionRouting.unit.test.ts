@@ -4,9 +4,8 @@ import { resolveImplementationPrimaryAction } from "@/lib/prototype/implementati
 import { buildImplementationRuntimeActionRequest } from "@/lib/prototype/implementationActionRunner";
 import {
   INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE,
-  INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE,
+  INTEGRATION_NO_INTEGRATION_READY_USER_MESSAGE,
 } from "@/lib/prototype/implementationBoardIntegrationGate";
-import { INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE } from "@/lib/prototype/implementationIntegrationGate";
 
 const sampleId = CANONICAL_SAMPLE_DATA_CODE_TASK_ID;
 
@@ -72,17 +71,19 @@ describe("resolveImplementationPrimaryAction (P3-09)", () => {
     expect(resolved.disabledReason).toBe(INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE);
   });
 
-  it("returns prepare_integration disabled when integration-ready count is partial", () => {
+  it("returns prepare_integration enabled when integration-ready tasks exist (partial total ok)", () => {
+    const ids = ["A", "B"];
     const resolved = resolveImplementationPrimaryAction({
       selectionSummary: selectionSummary({
-        totalCount: 3,
+        totalCount: 5,
         runnableCount: 0,
         integrationReadyCount: 2,
-        integrationReadyCodeTaskIds: ["A", "B"],
+        integrationReadyCodeTaskIds: ids,
       }),
     });
-    expect(resolved.enabled).toBe(false);
-    expect(resolved.disabledReason).toBe(INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE);
+    expect(resolved.action).toBe("prepare_integration_preview");
+    expect(resolved.enabled).toBe(true);
+    expect(resolved.codeTaskIds).toEqual(ids);
   });
 
   it("returns prepare_integration disabled when no integration-ready tasks", () => {
@@ -94,7 +95,7 @@ describe("resolveImplementationPrimaryAction (P3-09)", () => {
       }),
     });
     expect(resolved.enabled).toBe(false);
-    expect(resolved.disabledReason).toBe(INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE);
+    expect(resolved.disabledReason).toBe(INTEGRATION_NO_INTEGRATION_READY_USER_MESSAGE);
   });
 
   it("returns open_preview when preview is ready with url", () => {

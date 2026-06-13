@@ -1,5 +1,6 @@
 import { evaluateIntegrationPrepareGateFromBoardSummary } from "@/lib/prototype/implementationBoardIntegrationGate";
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
+import { isBoardSummaryReadyForIntegrationMerge } from "@/lib/prototype/implementationBoardIntegrationGatePolicy";
 import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 import type { IntegrationGateBlockedDetailV1 } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
@@ -55,10 +56,7 @@ export function buildImplementationIntegrationPipelineEligibilityFromSnapshot(
     };
   }
 
-  const boardIntegrationReady =
-    boardSummary.runnableCount === 0 &&
-    boardSummary.totalCount > 0 &&
-    boardSummary.integrationReadyCount === boardSummary.totalCount;
+  const boardIntegrationReady = isBoardSummaryReadyForIntegrationMerge(boardSummary);
 
   const continueBuildPreview =
     boardIntegrationReady &&
@@ -168,4 +166,4 @@ export function mapEligibilityReasonToPipelineStatus(
   }
   return "codetasks_incomplete";
 }
-
+

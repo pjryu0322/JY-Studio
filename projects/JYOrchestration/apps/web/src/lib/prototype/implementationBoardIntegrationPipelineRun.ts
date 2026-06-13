@@ -9,6 +9,7 @@ import { parseRequirementsStateJson, type RequirementsStateJson } from "@/lib/re
 import {
   evaluateIntegrationButtonGate,
   INTEGRATION_PIPELINE_START_SUCCESS_TOAST,
+  INTEGRATION_PIPELINE_FAILED_USER_MESSAGE,
   isFinalWiringStepReadyForIntegrationButton,
   logIntegrationButtonClicked,
   logPrepareIntegrationPreviewStarted,
@@ -102,6 +103,23 @@ export async function executeImplementationBoardIntegrationPipeline(input: {
 
   input.setBusy(true);
   input.showToast(INTEGRATION_PIPELINE_START_SUCCESS_TOAST);
+  input.onClientResult({
+    status: "integration_gate_checking",
+    previewReady: false,
+    receivedAt: Date.now(),
+  });
+  if (typeof console !== "undefined" && console.info) {
+    console.info(
+      JSON.stringify({
+        action: "implementation_integration_pipeline_requested",
+        projectId: pid,
+        runnableCount: authoritativeSummary.runnableCount,
+        verifiedCount: authoritativeSummary.integrationReadyCount,
+        integrationReadyCount: authoritativeSummary.integrationReadyCount,
+        totalCount: authoritativeSummary.totalCount,
+      }),
+    );
+  }
   try {
     const pipelineResult = await runProjectIntegrationPrepareOnly({
       projectId: pid,
@@ -119,7 +137,7 @@ export async function executeImplementationBoardIntegrationPipeline(input: {
     }
 
     if (!pipelineResult.ok) {
-      input.showToast(pipelineResult.message ?? "통합 및 Preview 준비에 실패했습니다.");
+      input.showToast(pipelineResult.message ?? INTEGRATION_PIPELINE_FAILED_USER_MESSAGE);
       if (pipelineResult.orchestrationPatch) {
         await input.persistChatToDb(undefined, pipelineResult.orchestrationPatch, undefined, {
           awaitServer: false,

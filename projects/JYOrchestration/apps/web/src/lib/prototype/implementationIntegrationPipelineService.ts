@@ -144,7 +144,10 @@ export async function runIntegrationBranchPipeline(input: {
     });
 
     const integrationCodeTaskIds = input.integrationCodeTaskIds ?? null;
-    const includedForMerge = targets.included;
+    let includedForMerge = targets.included;
+    if (integrationCodeTaskIds?.length) {
+      includedForMerge = filterIntegrationTargetsByCodeTaskIds(targets.included, integrationCodeTaskIds);
+    }
     const integrationTargets = {
       ...targets,
       included: includedForMerge,
@@ -162,7 +165,11 @@ export async function runIntegrationBranchPipeline(input: {
       }
     }
 
-    if (!integrationTargets.canIntegrate) {
+    const mergeFromBoardSelection =
+      Boolean(integrationCodeTaskIds?.length) && includedForMerge.length > 0;
+    const canRunMerge = mergeFromBoardSelection || integrationTargets.canIntegrate;
+
+    if (!canRunMerge) {
       const gateMessage =
         integrationTargets.excluded.length > 0
           ? INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE

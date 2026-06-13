@@ -2,6 +2,7 @@ import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRu
 import { isCodeTaskCompletedForSummary } from "@/lib/prototype/implementationCodeTaskSummary";
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
+import { isBoardSummaryReadyForIntegrationMerge } from "@/lib/prototype/implementationBoardIntegrationGatePolicy";
 import type { ImplementationRuntimeSnapshotV1 } from "@/lib/prototype/implementationRuntimeSnapshot";
 import type { SelectedExecutionUnitsCompletionGateV1 } from "@/lib/prototype/implementationExecutionSelectedUnits";
 import { isIntegrationPreviewRemediationPipelineStatus } from "@/lib/prototype/integrationPreviewRemediationGuide";
@@ -60,10 +61,10 @@ export function resolveIntegrationButtonReadiness(input: {
   }
 
   const boardGate = input.boardGateSummary;
-  const boardIntegrationReady =
-    (boardGate?.runnableCount ?? 1) === 0 &&
-    (boardGate?.totalCount ?? 0) > 0 &&
-    boardGate?.integrationReadyCount === boardGate?.totalCount;
+  const boardIntegrationReady = isBoardSummaryReadyForIntegrationMerge({
+    runnableCount: boardGate?.runnableCount ?? 1,
+    integrationReadyCount: boardGate?.integrationReadyCount ?? 0,
+  });
 
   if (!boardIntegrationReady) {
     if (input.selectedCodeTaskCount <= 0) {
@@ -239,10 +240,10 @@ export function evaluateIntegrationPipelineButtonFromSnapshot(
   readonly readinessReason: IntegrationButtonReadinessReasonV1;
 }> {
   const boardGate = options?.boardGateSummary;
-  const boardIntegrationReady =
-    (boardGate?.runnableCount ?? 1) === 0 &&
-    (boardGate?.totalCount ?? 0) > 0 &&
-    boardGate?.integrationReadyCount === boardGate?.totalCount;
+  const boardIntegrationReady = isBoardSummaryReadyForIntegrationMerge({
+    runnableCount: boardGate?.runnableCount ?? 1,
+    integrationReadyCount: boardGate?.integrationReadyCount ?? 0,
+  });
 
   const fwStatus = snapshot.integration.finalWiringStatus;
   const finalWiringMissing = fwStatus === "missing";
