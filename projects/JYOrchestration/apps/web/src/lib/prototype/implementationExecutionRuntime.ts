@@ -10,6 +10,7 @@ import {
 import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
 import {
   buildExecutionUnitsFromLegacyState,
+  realignExecutionUnitsWithCodeTaskRuns,
   type BuildExecutionUnitsAuditV1,
 } from "@/lib/prototype/implementationExecutionUnitBuilder";
 import {
@@ -131,33 +132,71 @@ export function resolveQuickRunExecutionContextFromPersisted(input: {
     workItemCount: input.workItemCount,
   });
 
+  const realigned = realignExecutionUnitsWithCodeTaskRuns({
+    units: ensured.units,
+    runs: input.runs,
+    reason: "execution_unit_realign_from_runs",
+  });
+  let unitsForSchedule = realigned.units;
+  let realignPatch: Partial<RequirementsStateJson> = {};
+  const realignTimeline: RequirementsPromptTimelineEntry[] = [];
+  if (realigned.realignedUnitIds.length) {
+    realignPatch = saveImplementationExecutionUnitsToState({
+      projectId: input.projectId,
+      units: realigned.units,
+      reason: "execution_unit_realign_from_runs",
+      selectedExecutionUnitIds:
+        input.requirementsState?.implementationExecutionUnitsV1?.selectedExecutionUnitIds ?? [],
+      nowIso: new Date().toISOString(),
+      mergeTerminalGuardFrom: ensured.units,
+    });
+    realignTimeline.push(
+      buildImplementationExecutionLogTimelineEntry({
+        action: "implementation_execution_units_realigned_from_runs",
+        orchestrationTraceGroup: "implementation_orchestration",
+        fields: {
+          projectId: input.projectId,
+          realignedCount: realigned.realignedUnitIds.length,
+          unitIds: realigned.realignedUnitIds.join(","),
+        },
+        nowIso: new Date().toISOString(),
+      }),
+    );
+  }
+
   const dbSelected =
     input.dbBundle?.job?.selectedCodeTaskIds?.map((id) => id.trim()).filter(Boolean) ?? [];
-  const legacySelected = input.selectedCodeTaskIds?.length ? input.selectedCodeTaskIds : dbSelected;
+  const legacySelectedCodeTaskIds = input.selectedCodeTaskIds?.length
+    ? input.selectedCodeTaskIds
+    : dbSelected.length
+      ? dbSelected
+      : undefined;
 
   const mergedState = {
     ...(input.requirementsState ?? {}),
     ...ensured.orchestrationPatch,
+    ...realignPatch,
   } as RequirementsStateJson;
 
   const selection = reconcileImplementationExecutionSelectedUnits({
     projectId: input.projectId,
     state: mergedState,
-    units: ensured.units,
-    legacySelectedCodeTaskIds: legacySelected,
+    units: unitsForSchedule,
+    legacySelectedCodeTaskIds,
   });
 
   const selectedUnitIds = selection.selectedUnitIds;
-  const next = resolveNextExecutableUnit({ units: ensured.units, selectedUnitIds });
+  const next = resolveNextExecutableUnit({ units: unitsForSchedule, selectedUnitIds });
 
   const orchestrationPatch = {
     ...ensured.orchestrationPatch,
+    ...realignPatch,
     ...selection.orchestrationPatch,
   };
-  const timeline = [...ensured.timeline, ...selection.timeline];
+  const timeline = [...ensured.timeline, ...realignTimeline, ...selection.timeline];
 
   return {
-    units: ensured.units,
+    units: unitsForSchedule,
     selectedUnitIds,
     next,
     orchestrationPatch,

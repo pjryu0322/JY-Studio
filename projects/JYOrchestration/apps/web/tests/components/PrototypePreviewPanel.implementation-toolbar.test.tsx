@@ -3,7 +3,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { ImplementationStageGlobalToolbar } from "@/components/preview/ImplementationStageGlobalToolbar";
 import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
-import { IMPLEMENTATION_ENV_SETTINGS_LABEL } from "@/lib/requirements/implementationUxLabels";
+import {
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
+  IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_ARIA,
+  IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_TITLE,
+} from "@/lib/requirements/implementationUxLabels";
 
 describe("Implementation stage global toolbar layout", () => {
   it("renders global toolbar wrapper with role=toolbar", () => {
@@ -15,6 +19,24 @@ describe("Implementation stage global toolbar layout", () => {
     expect(html).toContain('data-testid="implementation-stage-global-toolbar"');
     expect(html).toContain('role="toolbar"');
     expect(html).toContain("tools");
+  });
+
+  it("renders selected CodeTask execute icon in implementation toolbar", () => {
+    const html = renderToStaticMarkup(
+      <ImplementationStageGlobalToolbar>
+        <WorkspaceHubChromeIconButton
+          title={IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_TITLE}
+          ariaLabel={IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_ARIA}
+          disabled={false}
+          emphasisTone="amber"
+          onClick={() => {}}
+        >
+          <span>run</span>
+        </WorkspaceHubChromeIconButton>
+      </ImplementationStageGlobalToolbar>,
+    );
+    expect(html).toContain(`aria-label="${IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_ARIA}"`);
+    expect(html).toContain(`title="${IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_TITLE}"`);
   });
 
   it("renders environment settings icon in implementation toolbar", () => {

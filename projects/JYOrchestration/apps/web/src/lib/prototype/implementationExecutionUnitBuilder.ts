@@ -17,6 +17,7 @@ import {
   type ImplementationExecutionUnitStatusV1,
   type ImplementationExecutionUnitV1,
 } from "@/lib/prototype/implementationExecutionUnit";
+import { mergeExecutionUnitWithTerminalGuard } from "@/lib/prototype/implementationExecutionUnitTerminalGuard";
 import { sortCodeTaskIdsByImplementationPlanOrder } from "@/lib/prototype/implementationTaskTreeCodeTaskSelection";
 
 export type BuildExecutionUnitsAuditV1 = Readonly<{
@@ -55,7 +56,7 @@ function shouldIncludeCodeTaskInExecutionUnits(task: ImplementationCodeTaskV1): 
   return true;
 }
 
-function deriveExecutionUnitStatusFromRun(
+export function deriveExecutionUnitStatusFromRun(
   run: CodeTaskExecutionRunV1 | null | undefined,
 ): Pick<
   ImplementationExecutionUnitV1,
@@ -121,6 +122,16 @@ function deriveExecutionUnitStatusFromRun(
       status: "verifying",
       runId: run.runId,
       verifyingAt: run.updatedAt,
+      beforeHeadSha,
+      afterHeadSha,
+      commitSha,
+    };
+  }
+
+  if (run.status === "queued" || run.status === "prompt_ready") {
+    return {
+      status: "ready",
+      runId: run.runId,
       beforeHeadSha,
       afterHeadSha,
       commitSha,
@@ -249,4 +260,34 @@ export function buildExecutionUnitsFromLegacyState(input: {
       excludedPseudoCount,
     },
   };
+}
+
+function executionUnitRunAlignmentSignature(unit: ImplementationExecutionUnitV1): string {
+  return `${unit.status}|${unit.runId ?? ""}|${unit.startedAt ?? ""}|${unit.verifyingAt ?? ""}`;
+}
+
+/** Persisted units can lag JSON runs (e.g. queued run still marked running). Re-derive before scheduling. */
+export function realignExecutionUnitsWithCodeTaskRuns(input: {
+  readonly units: readonly ImplementationExecutionUnitV1[];
+  readonly runs: readonly CodeTaskExecutionRunV1[] | null | undefined;
+  readonly reason: string;
+}): Readonly<{
+  readonly units: readonly ImplementationExecutionUnitV1[];
+  readonly realignedUnitIds: readonly string[];
+}> {
+  const realignedUnitIds: string[] = [];
+  const nextUnits = input.units.map((unit) => {
+    const run = findLatestRunForCodeTask(input.runs, unit.codeTaskId);
+    const derived = deriveExecutionUnitStatusFromRun(run);
+    const guarded = mergeExecutionUnitWithTerminalGuard({
+      current: unit,
+      patch: derived,
+      reason: input.reason,
+    });
+    if (executionUnitRunAlignmentSignature(guarded.unit) !== executionUnitRunAlignmentSignature(unit)) {
+      realignedUnitIds.push(unit.unitId);
+    }
+    return guarded.unit;
+  });
+  return { units: nextUnits, realignedUnitIds };
 }

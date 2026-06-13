@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useCallback, type RefObject } from "react";
 import type { buildImplementationBootstrapInput } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
 import { resolveIntegratedAppPreviewReadyFromOrchestration } from "@/lib/prototype/implementationPreviewReadiness";
 import {
@@ -50,12 +50,6 @@ export type ImplementationStatusNoticeControllerInput = Readonly<{
   >;
   readonly implementationBootstrapInput: ReturnType<typeof buildImplementationBootstrapInput> | null;
   readonly planningSlotDefinitions: ReturnType<typeof buildDynamicServicePlanningSlotDefinitions>;
-  readonly setImplementationStageNoticeModal: Dispatch<
-    SetStateAction<{
-      readonly body: string;
-      readonly actionLabels?: readonly string[];
-    } | null>
-  >;
   readonly applyImplementationOrchestrationResult: (input: {
     readonly messages?: readonly RequirementsMessage[];
     readonly orchestrationPatch?: PrototypeExecutionOrchestrationPersistInput;
@@ -138,17 +132,11 @@ export function useImplementationStatusNoticeController(
         return;
       }
       const text = String(message.content ?? "").trim();
-      const suggestions = (message.meta as { interviewSuggestions?: readonly string[] } | undefined)
-        ?.interviewSuggestions;
-      const actionLabels = suggestions?.filter((l) => String(l ?? "").trim());
-      if (text || actionLabels?.length) {
-        input.setImplementationStageNoticeModal({
-          body: text,
-          ...(actionLabels?.length ? { actionLabels: [...actionLabels] } : {}),
-        });
+      if (text) {
+        input.appendAiNoticeForImplementation(text);
       }
     },
-    [input.projectId, input.orchestrationAwareRequirementsStateRef, input.setImplementationStageNoticeModal],
+    [input.projectId, input.orchestrationAwareRequirementsStateRef, input.appendAiNoticeForImplementation],
   );
 
   const showImplementationSeedReadinessCheck = useCallback(() => {

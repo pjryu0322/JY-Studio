@@ -2,8 +2,8 @@
 
 import { useCallback, useState, type MutableRefObject } from "react";
 import { confirmResetConversation } from "@/lib/chat/conversationMarkdown";
+import { buildImplementationResetWithPlanningReentry } from "@/lib/requirements/implementationSessionResetReentry";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
-import { buildImplementationConversationResetStateJson } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { postPlanningResetCascade } from "@/lib/requirements/planningResetCascadeClient";
 import {
   IMPLEMENTATION_RESET_CONVERSATION_CONFIRM_MESSAGE,
@@ -11,6 +11,9 @@ import {
 } from "@/lib/requirements/resetDerivedImplementationState";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { notifyAppFlowProjectContextRefresh } from "@/lib/workflow/appFlowModel";
+
+import type { SingleChatOrchestrationSlotDefinition } from "@/lib/requirements/singleChatOrchestrationTypes";
+import type { PrototypeTemplateType } from "@/lib/templates/prototypeTemplates";
 
 type SpecWorkspacePatchResponse = Readonly<{
   readonly success?: boolean;
@@ -20,6 +23,12 @@ type SpecWorkspacePatchResponse = Readonly<{
 
 export type ImplementationSessionResetControllerInput = Readonly<{
   readonly projectId: string;
+  readonly projectName?: string;
+  readonly projectDescription?: string;
+  readonly slotDefinitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly envOk: boolean;
+  readonly designOk: boolean;
+  readonly userSelectedTemplateId?: PrototypeTemplateType | null;
   readonly parsedRequirementsState: ReturnType<typeof parseRequirementsStateJson>;
   readonly requirementsStateJsonRef: MutableRefObject<unknown>;
   readonly orchestrationPersistSeqRef: MutableRefObject<number>;
@@ -73,7 +82,18 @@ export function useImplementationSessionResetController(
 
       const nowIso = new Date().toISOString();
       const base = parseRequirementsStateJson(input.requirementsStateJsonRef.current);
-      const resetState = buildImplementationConversationResetStateJson(base, nowIso);
+      const reentry = buildImplementationResetWithPlanningReentry({
+        base,
+        nowIso,
+        projectId: pid,
+        projectName: input.projectName,
+        projectDescription: input.projectDescription,
+        slotDefinitions: input.slotDefinitions,
+        envOk: input.envOk,
+        designOk: input.designOk,
+        userSelectedTemplateId: input.userSelectedTemplateId,
+      });
+      const resetState = reentry.state;
 
       input.requirementsStateJsonRef.current = resetState;
       input.onResetLocalCaches();
@@ -88,7 +108,15 @@ export function useImplementationSessionResetController(
 
       input.onRequirementsStateJsonChange?.(resetState);
       notifyAppFlowProjectContextRefresh();
-      input.appendUserNotice("구현 단계 데이터를 초기화했습니다.");
+      if (reentry.ok) {
+        input.appendUserNotice(
+          "구현 단계 데이터를 초기화했습니다. 기획 기준으로 구현 Seed·작업목록·CodeTask 계획을 다시 생성했습니다.",
+        );
+      } else {
+        input.appendUserNotice(
+          `구현 단계 데이터는 초기화했습니다. ${reentry.reason}`,
+        );
+      }
     } catch (e) {
       input.appendUserNotice(e instanceof Error ? e.message : "구현 초기화에 실패했습니다.");
     } finally {

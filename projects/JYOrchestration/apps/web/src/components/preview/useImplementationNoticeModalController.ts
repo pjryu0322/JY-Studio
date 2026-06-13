@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, type MutableRefObject, type RefObject } from "react";
 import type { ImplementationIntegrationPipelineClientResultV1 } from "@/components/preview/useImplementationIntegrationPipelineController";
+import { useTimedSuccessErrorToasts } from "@/components/workspace/useTimedSuccessErrorToasts";
 import { COMPLETED_CODETASK_PREVIEW_NOTICE_SUPPRESSED_LOG_ACTION } from "@/lib/prototype/implementationPreviewActionSource";
 import { isLegacyCodeTaskPreviewScopeNoticeContent } from "@/lib/prototype/implementationPreviewEntryPolicy";
 import { resolveIntegratedAppPreviewReadyFromOrchestration } from "@/lib/prototype/implementationPreviewReadiness";
@@ -10,11 +11,10 @@ import { shouldSuppressImplementationStatusMessage } from "@/lib/prototype/imple
 import { resolveOrchestrationAwareRequirementsState } from "@/lib/prototype/effectiveImplementationState";
 
 /**
- * Controls implementation-stage notice modal policy.
+ * Controls implementation-stage user notices (toast-only).
  *
  * Scope:
- * - own implementation stage notice modal state
- * - append AI/user/execution notices
+ * - append AI/user/execution notices as timed toasts
  * - suppress legacy CodeTask preview notices after integrated Preview is ready
  * - expose append execution notice ref wiring
  *
@@ -34,16 +34,8 @@ export type ImplementationNoticeModalControllerInput = Readonly<{
 }>;
 
 export type ImplementationNoticeModalControllerValue = Readonly<{
-  readonly implementationStageNoticeModal: {
-    readonly body: string;
-    readonly actionLabels?: readonly string[];
-  } | null;
-  readonly setImplementationStageNoticeModal: Dispatch<
-    SetStateAction<{
-      readonly body: string;
-      readonly actionLabels?: readonly string[];
-    } | null>
-  >;
+  readonly implementationNoticeSuccessToast: string | null;
+  readonly implementationNoticeErrorToast: string | null;
   readonly appendAiNoticeForImplementation: (content: string) => void;
   readonly appendUserNotice: (message: string) => void;
   readonly appendImplementationExecutionNotice: (content: string) => void;
@@ -53,10 +45,11 @@ export type ImplementationNoticeModalControllerValue = Readonly<{
 export function useImplementationNoticeModalController(
   input: ImplementationNoticeModalControllerInput,
 ): ImplementationNoticeModalControllerValue {
-  const [implementationStageNoticeModal, setImplementationStageNoticeModal] = useState<{
-    readonly body: string;
-    readonly actionLabels?: readonly string[];
-  } | null>(null);
+  const {
+    successToast: implementationNoticeSuccessToast,
+    errorToast: implementationNoticeErrorToast,
+    showSuccessToast,
+  } = useTimedSuccessErrorToasts({ successDismissMs: 4500, errorDismissMs: 5500 });
 
   const appendAiNoticeForImplementation = useCallback(
     (content: string) => {
@@ -83,9 +76,14 @@ export function useImplementationNoticeModalController(
         return;
       }
       if (integratedReady) return;
-      setImplementationStageNoticeModal({ body: text });
+      showSuccessToast(text);
     },
-    [input.integrationPipelineClientResultRef, input.orchestrationAwareRequirementsStateRef, input.projectId],
+    [
+      input.integrationPipelineClientResultRef,
+      input.orchestrationAwareRequirementsStateRef,
+      input.projectId,
+      showSuccessToast,
+    ],
   );
 
   const appendUserNotice = useCallback(
@@ -96,11 +94,14 @@ export function useImplementationNoticeModalController(
     [appendAiNoticeForImplementation],
   );
 
-  const showIntegrationPipelineUserNotice = useCallback((message: string) => {
-    const text = String(message ?? "").trim();
-    if (!text) return;
-    setImplementationStageNoticeModal({ body: text });
-  }, []);
+  const showIntegrationPipelineUserNotice = useCallback(
+    (message: string) => {
+      const text = String(message ?? "").trim();
+      if (!text) return;
+      showSuccessToast(text);
+    },
+    [showSuccessToast],
+  );
 
   const appendImplementationExecutionNotice = useCallback(
     (content: string) => {
@@ -133,8 +134,8 @@ export function useImplementationNoticeModalController(
   }, [appendImplementationExecutionNotice, input.appendImplementationExecutionNoticeRef]);
 
   return {
-    implementationStageNoticeModal,
-    setImplementationStageNoticeModal,
+    implementationNoticeSuccessToast,
+    implementationNoticeErrorToast,
     appendAiNoticeForImplementation,
     appendUserNotice,
     appendImplementationExecutionNotice,

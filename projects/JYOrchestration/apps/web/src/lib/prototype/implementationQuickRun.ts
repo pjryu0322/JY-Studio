@@ -271,6 +271,9 @@ export function formatQuickRunContinuationReason(reason: string | null | undefin
       return "실행 설정(Cursor 토큰·저장소)이 준비되지 않았습니다.";
     case "queue_state_mismatch":
       return "큐 상태가 일치하지 않습니다.";
+    case "execution_unit_in_flight":
+    case "already_in_flight":
+      return "이미 실행 중인 CodeTask가 있어 새 Cursor 실행을 시작하지 못했습니다. Runtime 상태를 확인하거나 잠시 후 다시 시도해 주세요.";
     default:
       return r || "Quick Run 연속 실행을 처리하지 못했습니다.";
   }

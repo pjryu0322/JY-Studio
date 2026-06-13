@@ -51,6 +51,10 @@ export const GENERATE_IMPLEMENTATION_TASK_LIST_CHIP = "구현 작업목록 생�
 export const IMPLEMENTATION_RETURN_TO_PLANNING_CHIP = "기획단계로 이동" as const;
 export const IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP = "프로토타입 미리보기" as const;
 export const IMPLEMENTATION_QUICK_RUN_CHIP = "선택한 CodeTask 실행" as const;
+/** 구현 단계 상단 툴바 빠른 실행(번개) — Quick Run */
+export const IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_TITLE = "빠른 실행 - 구현 작업·WIP" as const;
+export const IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_ARIA =
+  "빠른 실행 - 선택한 구현 Task를 자동 진행합니다" as const;
 export const IMPLEMENTATION_FORCE_RELEASE_EXECUTION_CHIP = "실행 잠금 해제" as const;
 export const IMPLEMENTATION_RUNTIME_REDISPATCH_CHIP = "재디스패치" as const;
 export const IMPLEMENTATION_RUNTIME_DIAGNOSTICS_CHIP = "Runtime 상태 보기" as const;

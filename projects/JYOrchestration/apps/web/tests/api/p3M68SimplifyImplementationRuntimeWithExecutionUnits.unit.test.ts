@@ -146,6 +146,32 @@ describe("P3-M68 resolveNextExecutableUnit", () => {
     const next = resolveNextExecutableUnit({ units, selectedUnitIds: selected });
     expect(next.status).toBe("in_flight");
   });
+
+  it("selects next unit when head run is queued (not in-flight noop)", () => {
+    const queuedHead: CodeTaskExecutionRunV1 = {
+      version: CODE_TASK_EXECUTION_RUN_VERSION,
+      runId: "run-frame",
+      projectId: "p1",
+      processTaskId: "DEV-FRAME-001",
+      workItemId: "wi-frame",
+      codeTaskId: SCREEN_1,
+      status: "queued",
+      attemptNo: 1,
+      createdAt: "2026-06-03T00:00:00.000Z",
+      updatedAt: "2026-06-03T00:00:00.000Z",
+    };
+    const { units } = buildExecutionUnitsFromLegacyState({
+      codeTaskPlan: planWithTwoScreens(),
+      runs: [queuedHead],
+    });
+    expect(units.find((u) => u.codeTaskId === SCREEN_1)?.status).toBe("ready");
+    const selected = units.map((u) => u.unitId);
+    const next = resolveNextExecutableUnit({ units, selectedUnitIds: selected });
+    expect(next.status).toBe("next");
+    if (next.status === "next") {
+      expect(next.unit.codeTaskId).toBe(SCREEN_1);
+    }
+  });
 });
 
 describe("P3-M68 summary counts", () => {

@@ -2,7 +2,11 @@
 
 import { useCallback, useMemo, type ReactNode } from "react";
 import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
-import { IMPLEMENTATION_ENV_SETTINGS_LABEL } from "@/lib/requirements/implementationUxLabels";
+import {
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
+  IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_ARIA,
+  IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_TITLE,
+} from "@/lib/requirements/implementationUxLabels";
 
 /**
  * Builds implementation-stage toolbar actions.
@@ -12,6 +16,7 @@ import { IMPLEMENTATION_ENV_SETTINGS_LABEL } from "@/lib/requirements/implementa
  * - build implementation conversation icon toolbar
  * - wire execution log open action into toolbar
  * - wire implementation session reset into toolbar
+ * - wire selected CodeTask quick run into toolbar
  *
  * Not scope:
  * - execution log state management
@@ -24,6 +29,9 @@ export type ImplementationToolbarControllerInput = Readonly<{
   readonly onOpenImplementationExecutionLog: () => void;
   readonly onResetImplementationSession?: () => void | Promise<void>;
   readonly resetImplementationSessionDisabled?: boolean;
+  readonly onExecuteSelectedCodeTasks?: () => void | Promise<void>;
+  readonly executeSelectedCodeTasksDisabled?: boolean;
+  readonly executeSelectedCodeTasksEmphasized?: boolean;
 }>;
 
 export type ImplementationToolbarControllerValue = Readonly<{
@@ -41,6 +49,29 @@ export function useImplementationToolbarController(
   const executionConversationIconToolbar = useMemo(
     () => (
       <>
+        {input.onExecuteSelectedCodeTasks ? (
+          <WorkspaceHubChromeIconButton
+            title={IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_TITLE}
+            ariaLabel={IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_ARIA}
+            disabled={input.executeSelectedCodeTasksDisabled ?? true}
+            emphasisTone={input.executeSelectedCodeTasksEmphasized ? "amber" : "default"}
+            onClick={() => void input.onExecuteSelectedCodeTasks?.()}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+          </WorkspaceHubChromeIconButton>
+        ) : null}
         <WorkspaceHubChromeIconButton
           title={IMPLEMENTATION_ENV_SETTINGS_LABEL}
           ariaLabel={IMPLEMENTATION_ENV_SETTINGS_LABEL}
@@ -113,6 +144,9 @@ export function useImplementationToolbarController(
       input.onOpenImplementationExecutionLog,
       input.onResetImplementationSession,
       input.resetImplementationSessionDisabled,
+      input.onExecuteSelectedCodeTasks,
+      input.executeSelectedCodeTasksDisabled,
+      input.executeSelectedCodeTasksEmphasized,
     ],
   );
 

@@ -14,7 +14,7 @@ describe("implementation session reset controller", () => {
   it("cascades runtime DB and persists buildImplementationConversationResetStateJson", () => {
     const src = readFileSync(join(previewDir, "useImplementationSessionResetController.ts"), "utf8");
     expect(src).toContain("postPlanningResetCascade");
-    expect(src).toContain("buildImplementationConversationResetStateJson");
+    expect(src).toContain("buildImplementationResetWithPlanningReentry");
     expect(src).toContain('reason: "manual"');
   });
 

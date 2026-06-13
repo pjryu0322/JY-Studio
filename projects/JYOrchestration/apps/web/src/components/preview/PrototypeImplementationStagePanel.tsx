@@ -3,7 +3,7 @@
 import { ImplementationExecutionBoardPanel } from "@/components/preview/ImplementationExecutionBoardPanel";
 import { ImplementationExecutionBoardBootstrapPanel } from "@/components/preview/ImplementationExecutionBoardBootstrapPanel";
 import { ImplementationStageGlobalToolbar } from "@/components/preview/ImplementationStageGlobalToolbar";
-import { ImplementationStageNoticeModal } from "@/components/preview/ImplementationStageNoticeModal";
+import { FixedToast } from "@/components/ui/FixedToast";
 import { ImplementationExecutionLogModal } from "@/components/preview/ImplementationExecutionLogModal";
 import { PrototypeImplementationStageOverlays } from "@/components/preview/PrototypeImplementationStageOverlays";
 import { resolveImplementationRuntimeStateForRead } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";
@@ -53,8 +53,8 @@ export function PrototypeImplementationStagePanel({
     startImplementationQuickRun,
     implementationControlPlaneSnapshot,
     implementationBootstrapShell,
-    implementationStageNoticeModal,
-    setImplementationStageNoticeModal,
+    implementationNoticeSuccessToast,
+    implementationNoticeErrorToast,
     implementationExecutionLogModalOpen,
     setImplementationExecutionLogModalOpen,
     onClearImplementationExecutionLog,
@@ -184,16 +184,14 @@ export function PrototypeImplementationStagePanel({
 
       <PrototypeImplementationStageOverlays host={host} stage={stage} />
 
-      <ImplementationStageNoticeModal
-        open={implementationStageNoticeModal != null}
-        body={implementationStageNoticeModal?.body ?? ""}
-        actionLabels={implementationStageNoticeModal?.actionLabels}
-        onAction={(label) => {
-          onPickImplementationInterviewLabel(label);
-          setImplementationStageNoticeModal(null);
-        }}
-        onClose={() => setImplementationStageNoticeModal(null)}
-      />
+      {implementationNoticeSuccessToast ? (
+        <FixedToast tone="success">{implementationNoticeSuccessToast}</FixedToast>
+      ) : null}
+      {implementationNoticeErrorToast ? (
+        <FixedToast tone="error" role="alert" aria-live="assertive">
+          {implementationNoticeErrorToast}
+        </FixedToast>
+      ) : null}
 
       <ImplementationExecutionLogModal
         open={implementationExecutionLogModalOpen}

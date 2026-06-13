@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildImplementationQuickRunStartedPatch,
   deriveImplementationQuickRunStatus,
+  formatQuickRunContinuationReason,
   shouldAllowTaskCursorAutoChain,
 } from "@/lib/prototype/implementationQuickRun";
 import { buildImplementationExecutionBoardFromRequirementsState } from "@/lib/prototype/implementationExecutionBoard";
@@ -72,5 +73,12 @@ describe("implementationQuickRun", () => {
         previewReady: true,
       }),
     ).toBe("preview_ready");
+  });
+
+  it("maps execution_unit_in_flight to user-facing Korean copy", () => {
+    expect(formatQuickRunContinuationReason("execution_unit_in_flight")).toContain("Runtime");
+    expect(formatQuickRunContinuationReason("execution_unit_in_flight")).not.toBe(
+      "execution_unit_in_flight",
+    );
   });
 });

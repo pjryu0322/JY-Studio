@@ -17,6 +17,7 @@ import {
 } from "react";
 import type { PrototypeChatAction } from "@/lib/prototype/buildPrototypeChatMessages";
 import { useImplementationBoardSelectionBridge } from "@/components/preview/useImplementationBoardSelectionBridge";
+import { resolveCheckedCodeTaskIdsFromBoardBridge } from "@/lib/prototype/implementationBoardCodeTaskSelection";
 import {
   useImplementationIntegrationPipelineController,
   type ImplementationIntegrationPipelineClientResultV1,
@@ -199,16 +200,8 @@ export type UsePrototypeImplementationStagePanelResult = Readonly<{
   startImplementationQuickRun: (options?: { readonly selectedCodeTaskIds?: readonly string[] }) => Promise<ImplementationStageActionRunResult>;
   orchestrationAwareRequirementsStateRef: RefObject<ReturnType<typeof resolveOrchestrationAwareRequirementsState>>;
   implementationBootstrapShell: ImplementationDerivedViewModelControllerValue["implementationBootstrapShell"];
-  implementationStageNoticeModal: { readonly body: string; readonly actionLabels?: readonly string[] } | null;
-  setImplementationStageNoticeModal: (
-    value:
-      | { readonly body: string; readonly actionLabels?: readonly string[] }
-      | null
-      | ((prev: { readonly body: string; readonly actionLabels?: readonly string[] } | null) => {
-          readonly body: string;
-          readonly actionLabels?: readonly string[];
-        } | null),
-  ) => void;
+  implementationNoticeSuccessToast: string | null;
+  implementationNoticeErrorToast: string | null;
   implementationExecutionLogModalOpen: boolean;
   setImplementationExecutionLogModalOpen: (open: boolean) => void;
   onClearImplementationExecutionLog: () => void;
@@ -520,8 +513,8 @@ export function usePrototypeImplementationStagePanel(
   });
 
   const {
-    implementationStageNoticeModal,
-    setImplementationStageNoticeModal,
+    implementationNoticeSuccessToast,
+    implementationNoticeErrorToast,
     appendAiNoticeForImplementation,
     appendUserNotice,
     appendImplementationExecutionNotice,
@@ -636,7 +629,6 @@ export function usePrototypeImplementationStagePanel(
     orchestrationAwareRequirementsStateRef,
     implementationBootstrapInput,
     planningSlotDefinitions,
-    setImplementationStageNoticeModal,
     applyImplementationOrchestrationResult,
     persistChatToDb,
     appendAiNoticeForImplementation,
@@ -792,6 +784,12 @@ export function usePrototypeImplementationStagePanel(
     resetImplementationSessionDisabled,
   } = useImplementationSessionResetController({
     projectId,
+    projectName,
+    projectDescription,
+    slotDefinitions: planningSlotDefinitions,
+    envOk: effectiveImplementationState.envOk,
+    designOk: effectiveImplementationState.designOk,
+    userSelectedTemplateId: effectiveTemplate,
     parsedRequirementsState,
     requirementsStateJsonRef,
     orchestrationPersistSeqRef,
@@ -952,11 +950,46 @@ export function usePrototypeImplementationStagePanel(
       onRefreshPrototypeStatus,
     });
 
+  const onExecuteSelectedCodeTasksFromToolbar = useCallback(() => {
+    const cp = implementationControlPlaneSnapshot;
+    if (
+      cp?.action.primaryAction === "execute_selected_runnable_codetasks" &&
+      cp.action.enabled &&
+      cp.action.codeTaskIds.length > 0
+    ) {
+      void startImplementationQuickRun({ selectedCodeTaskIds: cp.action.codeTaskIds });
+      return;
+    }
+    const selected = resolveCheckedCodeTaskIdsFromBoardBridge({
+      bridge: boardSelectionBridge.getBridgeSnapshot(),
+      requirementsState: orchestrationAwareRequirementsState,
+    });
+    void startImplementationQuickRun({ selectedCodeTaskIds: selected });
+  }, [
+    boardSelectionBridge,
+    implementationControlPlaneSnapshot,
+    orchestrationAwareRequirementsState,
+    startImplementationQuickRun,
+  ]);
+
+  const executeSelectedCodeTasksToolbarDisabled = useMemo(() => {
+    if (protoBusy || resetImplementationSessionBusy) return true;
+    return (implementationControlPlaneSnapshot?.board.selectionSummary.selectedRunnableCount ?? 0) <= 0;
+  }, [implementationControlPlaneSnapshot, protoBusy, resetImplementationSessionBusy]);
+
+  const executeSelectedCodeTasksToolbarEmphasized = useMemo(
+    () => (implementationControlPlaneSnapshot?.board.selectionSummary.selectedCount ?? 0) >= 1,
+    [implementationControlPlaneSnapshot],
+  );
+
   const { executionConversationIconToolbar } = useImplementationToolbarController({
     setExecutionEnvironmentModalOpen,
     onOpenImplementationExecutionLog,
     onResetImplementationSession,
     resetImplementationSessionDisabled,
+    onExecuteSelectedCodeTasks: onExecuteSelectedCodeTasksFromToolbar,
+    executeSelectedCodeTasksDisabled: executeSelectedCodeTasksToolbarDisabled,
+    executeSelectedCodeTasksEmphasized: executeSelectedCodeTasksToolbarEmphasized,
   });
 
   const planningOrchestrationView = useMemo(
@@ -1013,8 +1046,8 @@ export function usePrototypeImplementationStagePanel(
     startImplementationQuickRun,
     orchestrationAwareRequirementsStateRef,
     implementationBootstrapShell,
-    implementationStageNoticeModal,
-    setImplementationStageNoticeModal,
+    implementationNoticeSuccessToast,
+    implementationNoticeErrorToast,
     implementationExecutionLogModalOpen,
     setImplementationExecutionLogModalOpen,
     onClearImplementationExecutionLog,

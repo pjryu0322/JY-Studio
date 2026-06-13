@@ -161,12 +161,21 @@ export function evaluateIntegrationPrepareGateFromBoardSummary(
   const blockedDetails = input?.blockedDetails ?? [];
   const notReadyIds = blockedDetails.map((row) => row.codeTaskId.trim()).filter(Boolean);
 
+  const allExecutableIntegrationReady =
+    summary.totalCount > 0 &&
+    summary.integrationReadyCount === summary.totalCount &&
+    integrationReadyCodeTaskIds.length === summary.totalCount;
+
   let resolvedAction: IntegrationPrepareGateResolutionV1 = "prepare_integration_preview";
   let ok = true;
   let message: string | null = null;
   let blockedCodeTaskIds: readonly string[] = [];
 
-  if (summary.runnableCount > 0) {
+  if (allExecutableIntegrationReady) {
+    resolvedAction = "prepare_integration_preview";
+    ok = true;
+    message = null;
+  } else if (summary.runnableCount > 0) {
     resolvedAction = "blocked_runnable_tasks";
     ok = false;
     message = INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE;

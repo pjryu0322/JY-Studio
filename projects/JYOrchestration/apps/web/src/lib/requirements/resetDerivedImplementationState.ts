@@ -28,6 +28,7 @@ export const PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE =
 export const IMPLEMENTATION_RESET_CONVERSATION_CONFIRM_MESSAGE =
   "구현 단계에서 생성된 데이터를 모두 초기화할까요?\n\n" +
   "구현 대화, Seed, 작업안·Task/CodeTask, Cursor 실행, GitHub 확인 기록, 실행 큐, Runtime DB job, 구현 로그가 삭제됩니다.\n" +
+  "초기화 후 기획 산출물 기준으로 구현 Seed·작업목록·CodeTask 계획을 다시 생성합니다.\n" +
   "기획 산출물·Quick Design·서비스 흐름은 유지됩니다.\n" +
   "환경설정과 Git/Code Agent 연결 정보는 유지됩니다.\n\n" +
   "이 작업은 되돌릴 수 없습니다.";
