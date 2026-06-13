@@ -51,6 +51,7 @@ export function PrototypeImplementationStagePanel({
     integrationPipelineClientResult,
     openImplementationPreview,
     startImplementationQuickRun,
+    implementationControlPlaneSnapshot,
     implementationBootstrapShell,
     implementationStageNoticeModal,
     setImplementationStageNoticeModal,
@@ -121,7 +122,17 @@ export function PrototypeImplementationStagePanel({
             integrationPipelinePreviewReady={integrationPipelineClientResult?.previewReady}
             integrationPipelineStatus={integrationPipelineClientResult?.status}
             onOpenImplementationPreview={openImplementationPreview}
+            controlPlaneSnapshot={implementationControlPlaneSnapshot}
             onExecuteSelectedCodeTasks={() => {
+              const cp = implementationControlPlaneSnapshot;
+              if (
+                cp?.action.primaryAction === "execute_selected_runnable_codetasks" &&
+                cp.action.enabled &&
+                cp.action.codeTaskIds.length > 0
+              ) {
+                void startImplementationQuickRun({ selectedCodeTaskIds: cp.action.codeTaskIds });
+                return;
+              }
               const imp = orchestrationAwareRequirementsStateRef.current;
               const selected = resolveCheckedCodeTaskIdsFromBoardBridge({
                 bridge: boardSelectionBridge.getBridgeSnapshot(),

@@ -26,6 +26,11 @@ export function resolveImplementationBoardPrimaryAction(input: {
   readonly selectionSummary: ImplementationCodeTaskSelectionSummaryV1;
   readonly integratedAppPreviewReady?: boolean;
   /** @deprecated Ignored — enabled/disabled is owned by resolveImplementationPrimaryAction(). */
+  /**
+   * @deprecated Do not use for primary enabled decision.
+   * The single source of truth is resolveImplementationPrimaryAction()
+   * or ImplementationControlPlaneSnapshotV1.action.enabled.
+   */
   readonly integrationPrepareEnabled?: boolean;
   readonly actualPreviewUrl?: string | null;
   readonly blockedDetails?: readonly IntegrationGateBlockedDetailV1[];
@@ -55,7 +60,6 @@ export function resolveImplementationBoardPrimaryAction(input: {
   const primaryEnabled = routed.enabled;
   const primaryDisabledTitle = routed.enabled ? null : routed.disabledReason;
 
-  /** Footer: show integration/preview affordance whenever the board has executable rows; disabled reason comes from routing. */
   const showIntegrationPrepareButton =
     routed.action === "prepare_integration_preview" ||
     routed.action === "open_preview" ||

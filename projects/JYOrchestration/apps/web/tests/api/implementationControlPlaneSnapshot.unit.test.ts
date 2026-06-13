@@ -80,4 +80,28 @@ describe("buildImplementationControlPlaneSnapshot", () => {
     expect(snapshot?.board.totalExecutableCodeTaskCount).toBe(1);
     expect(resolveTotalExecutableCodeTaskCountFromSelectionSummary(summary)).toBe(1);
   });
+
+  it("keeps 15 executable tasks when integration wiring row is present", () => {
+    const nodes = [
+      ...Array.from({ length: 15 }, (_, i) =>
+        boardTreeNode(`CODE-DONE-${i}`, "완료", "GitHub outcome 저장됨", true),
+      ),
+      boardTreeNode(INTEGRATION_WIRING_CODE_TASK_ID, "완료", "GitHub outcome 저장됨", true),
+    ];
+    const snapshot = buildImplementationControlPlaneSnapshot({ projectId: "p1", nodes });
+    expect(snapshot?.board.totalExecutableCodeTaskCount).toBe(15);
+    expect(snapshot?.board.runnableCodeTaskIds).not.toContain(INTEGRATION_WIRING_CODE_TASK_ID);
+    expect(snapshot?.meta.source).toBe("implementation_control_plane_snapshot_v1");
+  });
+
+  it("derives boardFooter showIntegrationPrepareButton from executable count and preview", () => {
+    const nodes = [boardTreeNode("CODE-DONE-0", "완료", "GitHub outcome 저장됨", true)];
+    const snapshot = buildImplementationControlPlaneSnapshot({
+      projectId: "p1",
+      nodes,
+      previewReady: false,
+    });
+    expect(snapshot?.boardFooter.showIntegrationPrepareButton).toBe(true);
+    expect(snapshot?.boardFooter.primaryEnabled).toBe(snapshot?.action.enabled);
+  });
 });

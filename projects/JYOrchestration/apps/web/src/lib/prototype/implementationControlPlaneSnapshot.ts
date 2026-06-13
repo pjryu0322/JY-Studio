@@ -1,6 +1,9 @@
 import type { ImplementationPrimaryActionV1 } from "@/lib/prototype/implementationActionRoutingPolicy";
 import { resolveImplementationPrimaryAction } from "@/lib/prototype/implementationActionRoutingPolicy";
-import { resolveImplementationBoardPrimaryAction } from "@/lib/prototype/implementationActionButtonPolicy";
+import {
+  type ImplementationBoardPrimaryActionStateV1,
+} from "@/lib/prototype/implementationActionButtonPolicy";
+import type { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 import {
   listRunnableCodeTaskIdsFromBoardNodes,
   summarizeCodeTaskBoardRowsFromTreeNodes,
@@ -49,13 +52,18 @@ export type ImplementationControlPlaneSnapshotV1 = Readonly<{
     readonly actualPreviewUrl: string | null;
   }>;
 
-  readonly boardFooter: ReturnType<typeof resolveImplementationBoardPrimaryAction>;
+  readonly boardFooter: ImplementationBoardPrimaryActionStateV1;
 
   readonly runtime: Readonly<{
     readonly hasDbRuntimeJob: boolean;
     readonly currentCodeTaskId: string | null;
     readonly currentRuntimeState: string | null;
     readonly shouldPoll: boolean;
+  }>;
+
+  readonly meta: Readonly<{
+    readonly source: "implementation_control_plane_snapshot_v1";
+    readonly generatedAt: string;
   }>;
 }>;
 
@@ -121,14 +129,6 @@ export function buildImplementationControlPlaneSnapshot(
     projectId: pid,
   });
 
-  const boardFooter = resolveImplementationBoardPrimaryAction({
-    selectionSummary: summary,
-    integratedAppPreviewReady: previewReady,
-    actualPreviewUrl,
-    blockedDetails: input.blockedDetails,
-    projectId: pid,
-  });
-
   const completedCodeTaskIds =
     nodes.length > 0
       ? nodes
@@ -146,7 +146,7 @@ export function buildImplementationControlPlaneSnapshot(
           .map((n) => n.codeTaskId.trim())
           .filter(Boolean);
 
-  return {
+  const core: Omit<ImplementationControlPlaneSnapshotV1, "boardFooter" | "meta"> = {
     projectId: pid,
     board: {
       totalExecutableCodeTaskCount: summary.totalCount,
@@ -175,12 +175,74 @@ export function buildImplementationControlPlaneSnapshot(
       ready: previewReady,
       actualPreviewUrl,
     },
-    boardFooter,
     runtime: {
       hasDbRuntimeJob: input.runtime?.hasDbRuntimeJob === true,
       currentCodeTaskId: input.runtime?.currentCodeTaskId?.trim() || null,
       currentRuntimeState: input.runtime?.currentRuntimeState?.trim() || null,
       shouldPoll: input.runtime?.shouldPoll === true,
     },
+  };
+
+  return {
+    ...core,
+    boardFooter: resolveImplementationBoardPrimaryActionFromSnapshot(core),
+    meta: {
+      source: "implementation_control_plane_snapshot_v1",
+      generatedAt: new Date().toISOString(),
+    },
+  };
+}
+
+export function resolveImplementationBoardPrimaryActionFromSnapshot(
+  snapshot: Pick<ImplementationControlPlaneSnapshotV1, "action" | "preview" | "board">,
+): ImplementationBoardPrimaryActionStateV1 {
+  const routed = snapshot.action;
+
+  let primaryAction: ImplementationBoardPrimaryActionStateV1["primaryAction"] = null;
+  let primaryLabel: string | null = null;
+
+  if (routed.primaryAction === "prepare_integration_preview") {
+    primaryAction = "prepare_integration_preview";
+    primaryLabel = routed.label;
+  } else if (routed.primaryAction === "open_preview") {
+    primaryAction = "open_preview";
+    primaryLabel = routed.label;
+  }
+
+  const showIntegrationPrepareButton =
+    snapshot.board.totalExecutableCodeTaskCount > 0 || snapshot.preview.ready === true;
+
+  return {
+    primaryAction,
+    primaryLabel,
+    primaryEnabled: routed.enabled,
+    primaryDisabledTitle: routed.enabled ? null : routed.disabledReason,
+    showIntegrationPrepareButton,
+    showExecuteSelectedButton: false,
+    showReworkSelectedButton: false,
+  };
+}
+
+/** Applies control-plane integration gate on top of runtime integration button policy. */
+export function applyControlPlaneIntegrationPipelineButtonGate(input: {
+  readonly runtimeButton: ReturnType<typeof evaluateIntegrationPipelineButtonFromSnapshot>;
+  readonly controlPlane: ImplementationControlPlaneSnapshotV1 | null;
+}): ReturnType<typeof evaluateIntegrationPipelineButtonFromSnapshot> {
+  const { runtimeButton, controlPlane } = input;
+  if (!controlPlane || runtimeButton.continueBuildPreview) {
+    return runtimeButton;
+  }
+  if (!runtimeButton.enabled || controlPlane.integration.enabled) {
+    return runtimeButton;
+  }
+  const disabledTitle =
+    controlPlane.integration.disabledReason ??
+    controlPlane.action.disabledReason ??
+    runtimeButton.disabledTitle;
+  return {
+    ...runtimeButton,
+    enabled: false,
+    disabledTitle,
+    disabledReasonLines: disabledTitle ? [disabledTitle] : runtimeButton.disabledReasonLines,
   };
 }

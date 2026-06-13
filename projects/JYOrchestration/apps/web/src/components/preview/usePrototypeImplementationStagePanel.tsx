@@ -593,6 +593,8 @@ export function usePrototypeImplementationStagePanel(
     [latestRun],
   );
 
+  // Implementation Control Plane Snapshot is the single source of truth
+  // for board/action/integration/preview readiness in this hook.
   const implementationControlPlaneSnapshot = useImplementationControlPlaneSnapshot({
     projectId,
     selectionSummary: boardSelectionBridge.liveCodeTaskSelectionSummary,
@@ -2420,6 +2422,12 @@ export function usePrototypeImplementationStagePanel(
     if (!implementationBoard) {
       return;
     }
+    const boardSelectionSummary =
+      implementationControlPlaneSnapshot?.board.selectionSummary ??
+      boardSelectionBridge.getBridgeSnapshot().livePanelSummary;
+    if (!boardSelectionSummary) {
+      return;
+    }
     void executeImplementationBoardIntegrationPipeline({
       projectId,
       projectName,
@@ -2427,7 +2435,7 @@ export function usePrototypeImplementationStagePanel(
       requirementsStateJsonRef,
       implementationBoardBlockingUserConfirmation:
         implementationBoard.summary.blockingUserConfirmation,
-      boardSelectionSummary: boardSelectionBridge.getBridgeSnapshot().livePanelSummary,
+      boardSelectionSummary,
       persistChatToDb,
       applyPendingFromOrchestrationPatch,
       setBusy: setIntegrationPipelineBusy,
@@ -2443,6 +2451,7 @@ export function usePrototypeImplementationStagePanel(
     applyPendingFromOrchestrationPatch,
     showIntegrationPipelineUserNotice,
     boardSelectionBridge,
+    implementationControlPlaneSnapshot,
   ]);
 
   const createImplementationSeedFromQuickDesignDraft = useCallback((): ImplementationStageActionRunResult => {
@@ -3256,8 +3265,16 @@ export function usePrototypeImplementationStagePanel(
 
   useEffect(() => {
     startImplementationQuickRunRef.current = () => {
-      const pid = projectId.trim();
       const imp = orchestrationAwareRequirementsStateRef.current;
+      const cp = implementationControlPlaneSnapshot;
+      if (
+        cp?.action.primaryAction === "execute_selected_runnable_codetasks" &&
+        cp.action.enabled &&
+        cp.action.codeTaskIds.length > 0
+      ) {
+        void startImplementationQuickRun({ selectedCodeTaskIds: cp.action.codeTaskIds });
+        return;
+      }
       const bridgeSnap = boardSelectionBridge.getBridgeSnapshot();
       const selectedCodeTaskIds = resolveCheckedCodeTaskIdsFromBoardBridge({
         bridge: bridgeSnap,
@@ -3265,7 +3282,7 @@ export function usePrototypeImplementationStagePanel(
       });
       void startImplementationQuickRun({ selectedCodeTaskIds });
     };
-  }, [startImplementationQuickRun, projectId, boardSelectionBridge]);
+  }, [startImplementationQuickRun, projectId, boardSelectionBridge, implementationControlPlaneSnapshot]);
 
   const handleCopyCodeTaskCursorPrompt = useCallback(
     (codeTaskId: string) => {

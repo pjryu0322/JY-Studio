@@ -81,6 +81,10 @@ import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/impl
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 import {
+  applyControlPlaneIntegrationPipelineButtonGate,
+  type ImplementationControlPlaneSnapshotV1,
+} from "@/lib/prototype/implementationControlPlaneSnapshot";
+import {
   resolveAutoGenerationReadyFromCapabilityJson,
 } from "@/lib/prototype/autoGenerationSettingsState";
 import { evaluateImplementationPreviewButtonState } from "@/lib/prototype/implementationPreviewButtonPolicy";
@@ -135,6 +139,7 @@ export function ImplementationExecutionBoardPanel({
   liveCheckedCodeTaskIdsRef,
   liveRunnableCodeTaskIdsRef,
   onCodeTaskSelectionSummaryChange,
+  controlPlaneSnapshot,
 }: {
   readonly board: ImplementationExecutionBoardV1;
   readonly taskList: ImplementationTaskListV1;
@@ -190,6 +195,7 @@ export function ImplementationExecutionBoardPanel({
   readonly onCodeTaskSelectionSummaryChange?: (
     summary: ReturnType<typeof summarizeCodeTaskBoardRowsFromTreeNodes>,
   ) => void;
+  readonly controlPlaneSnapshot?: ImplementationControlPlaneSnapshotV1 | null;
 }) {
   const parsedCodeTaskPlan = useMemo(
     () => parseImplementationCodeTaskPlanV1(implementationCodeTaskPlanV1) ?? null,
@@ -667,14 +673,20 @@ export function ImplementationExecutionBoardPanel({
     [executionSetup?.githubCapabilityValidation],
   );
 
+  const boardGateSelectionSummary =
+    controlPlaneSnapshot?.board.selectionSummary ?? codeTaskSelectionSummary;
+
   const integrationButtonState = useMemo(
     () =>
-      evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot, {
-        autoGenerationReady,
-        isIntegrationRunning: integrationPipelineBusy === true,
-        latestPipelineStatus: integrationPipelineStatus,
-        projectId: projectId ?? board.projectId,
-        boardGateSummary: codeTaskSelectionSummary,
+      applyControlPlaneIntegrationPipelineButtonGate({
+        runtimeButton: evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot, {
+          autoGenerationReady,
+          isIntegrationRunning: integrationPipelineBusy === true,
+          latestPipelineStatus: integrationPipelineStatus,
+          projectId: projectId ?? board.projectId,
+          boardGateSummary: boardGateSelectionSummary,
+        }),
+        controlPlane: controlPlaneSnapshot ?? null,
       }),
     [
       runtimeSnapshot,
@@ -683,11 +695,13 @@ export function ImplementationExecutionBoardPanel({
       integrationPipelineStatus,
       projectId,
       board.projectId,
-      codeTaskSelectionSummary,
+      boardGateSelectionSummary,
+      controlPlaneSnapshot,
     ],
   );
 
-  const showIntegrationFooter = taskTreeNodes.length > 0;
+  const showIntegrationFooter =
+    controlPlaneSnapshot?.boardFooter.showIntegrationPrepareButton ?? taskTreeNodes.length > 0;
 
   const showIntegrationButton = Boolean(onRunIntegrationPipeline);
   const integrationButtonEnabled = integrationButtonState.enabled;
