@@ -85,6 +85,37 @@ export type ImplementationQuickRunControllerValue = Readonly<{
   }) => Promise<ImplementationStageActionRunResult>;
 }>;
 
+type OrchestrationAwareRequirementsState = ReturnType<typeof resolveOrchestrationAwareRequirementsState>;
+
+/** Quick Run prep persist (copy-prompt 등 client-side prep). 실행 본문은 `startImplementationQuickRun`. */
+export async function persistImplementationQuickRunRequirementsPrep(input: {
+  readonly projectId: string;
+  readonly requirementsState: OrchestrationAwareRequirementsState;
+  readonly applyPendingFromOrchestrationPatch: (
+    patch: PrototypeExecutionOrchestrationPersistInput | undefined,
+  ) => void;
+  readonly persistChatToDb: ImplementationQuickRunControllerInput["persistChatToDb"];
+  readonly nowIso?: string;
+  readonly persistAwaitServer?: boolean;
+}): Promise<OrchestrationAwareRequirementsState> {
+  const pid = input.projectId.trim();
+  const nowIso = input.nowIso ?? new Date().toISOString();
+  const prepared = prepareRequirementsStateForImplementationQuickRun({
+    projectId: pid,
+    requirementsState: input.requirementsState,
+    nowIso,
+  });
+  const prepPatch = buildImplementationQuickRunRequirementsPrepPersistPatch({ prepared });
+  if (Object.keys(prepPatch).length) {
+    input.applyPendingFromOrchestrationPatch(prepPatch);
+    await input.persistChatToDb(undefined, prepPatch, undefined, {
+      awaitServer: input.persistAwaitServer ?? false,
+      force: true,
+    });
+  }
+  return prepared.requirementsState;
+}
+
 export function useImplementationQuickRunController(
   input: ImplementationQuickRunControllerInput,
 ): ImplementationQuickRunControllerValue {
@@ -151,22 +182,16 @@ export function useImplementationQuickRunController(
       input.quickRunCodeTaskContinuationRef.current = null;
       input.dbQueuedQuickRunDispatchRef.current = null;
       const nowIso = new Date().toISOString();
-      const quickRunPrepared = prepareRequirementsStateForImplementationQuickRun({
+      const impForQuickRun = await persistImplementationQuickRunRequirementsPrep({
         projectId: pid,
         requirementsState: imp,
+        applyPendingFromOrchestrationPatch: (patch) => {
+          input.applyPendingFromOrchestrationPatchRef.current(patch);
+        },
+        persistChatToDb: input.persistChatToDb,
         nowIso,
+        persistAwaitServer: true,
       });
-      const impForQuickRun = quickRunPrepared.requirementsState;
-      const quickRunPrepPersistPatch = buildImplementationQuickRunRequirementsPrepPersistPatch({
-        prepared: quickRunPrepared,
-      });
-      if (Object.keys(quickRunPrepPersistPatch).length) {
-        input.applyPendingFromOrchestrationPatchRef.current(quickRunPrepPersistPatch);
-        await input.persistChatToDb(undefined, quickRunPrepPersistPatch, undefined, {
-          awaitServer: true,
-          force: true,
-        });
-      }
       const queueItems = buildImplementationQuickRunQueueItems({
         selectedCodeTaskIds: jobSelectedCodeTaskIds,
         requirementsState: impForQuickRun,

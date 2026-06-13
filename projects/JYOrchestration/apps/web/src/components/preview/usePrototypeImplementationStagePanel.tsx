@@ -15,7 +15,7 @@ import {
   type ImplementationIntegrationPipelineClientResultV1,
 } from "@/components/preview/useImplementationIntegrationPipelineController";
 import { useImplementationGithubVerifyController } from "@/components/preview/useImplementationGithubVerifyController";
-import { useImplementationQuickRunController } from "@/components/preview/useImplementationQuickRunController";
+import { useImplementationQuickRunController, persistImplementationQuickRunRequirementsPrep } from "@/components/preview/useImplementationQuickRunController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -177,10 +177,6 @@ import {
 import { updateBoardSelectedTaskIds } from "@/lib/prototype/implementationExecutionBoardState";
 import { updateBoardCheckedCodeTaskIds } from "@/lib/prototype/implementationBoardCheckedIds";
 import { resolveCheckedCodeTaskIdsFromBoardBridge } from "@/lib/prototype/implementationBoardCodeTaskSelection";
-import {
-  buildImplementationQuickRunRequirementsPrepPersistPatch,
-  prepareRequirementsStateForImplementationQuickRun,
-} from "@/lib/prototype/implementationQuickRunStartService";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import {
   finalizeIntegratedStageStep,
@@ -3015,42 +3011,39 @@ export function usePrototypeImplementationStagePanel(
       const pid = projectId.trim();
       const id = codeTaskId.trim();
       if (!pid || !id) return;
-      const prepared = prepareRequirementsStateForImplementationQuickRun({
-        projectId: pid,
-        requirementsState: orchestrationAwareRequirementsState,
-      });
-      const imp = prepared.requirementsState;
-      const prepPatch = buildImplementationQuickRunRequirementsPrepPersistPatch({ prepared });
-      if (Object.keys(prepPatch).length) {
-        applyPendingFromOrchestrationPatchRef.current(prepPatch);
-        void persistChatToDb(undefined, prepPatch, undefined, { force: true });
-      }
-      const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
-        gitRepoUrl: executionSetupRow?.gitRepoUrl,
-        gitRepoName: executionSetupRow?.gitRepoName,
-        gitRepoProvider: executionSetupRow?.gitRepoProvider,
-        baseBranch: executionSetupRow?.baseBranch,
-      });
-      const runs =
-        parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ??
-        [];
-      const result = resolveCodeTaskDeveloperPromptForCopy({
-        projectId: pid,
-        codeTaskId: id,
-        codeTaskPlan: imp.implementationCodeTaskPlanV1 ?? null,
-        taskList: imp.implementationTaskListV1 ?? null,
-        cursorWorkItems: imp.cursorWorkItemsV1 ?? [],
-        runs,
-        targetRepository,
-        baseBranch: executionSetupRow?.baseBranch ?? targetRepository?.defaultBranch ?? "main",
-        allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
-        codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
-      });
-      if (!result.ok || !result.prompt) {
-        return;
-      }
-      void writeClipboardText(result.prompt).then((ok) => {
-      });
+      void (async () => {
+        const imp = await persistImplementationQuickRunRequirementsPrep({
+          projectId: pid,
+          requirementsState: orchestrationAwareRequirementsState,
+          applyPendingFromOrchestrationPatch: (patch) => {
+            applyPendingFromOrchestrationPatchRef.current(patch);
+          },
+          persistChatToDb,
+        });
+        const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+          gitRepoUrl: executionSetupRow?.gitRepoUrl,
+          gitRepoName: executionSetupRow?.gitRepoName,
+          gitRepoProvider: executionSetupRow?.gitRepoProvider,
+          baseBranch: executionSetupRow?.baseBranch,
+        });
+        const runs = parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ?? [];
+        const result = resolveCodeTaskDeveloperPromptForCopy({
+          projectId: pid,
+          codeTaskId: id,
+          codeTaskPlan: imp.implementationCodeTaskPlanV1 ?? null,
+          taskList: imp.implementationTaskListV1 ?? null,
+          cursorWorkItems: imp.cursorWorkItemsV1 ?? [],
+          runs,
+          targetRepository,
+          baseBranch: executionSetupRow?.baseBranch ?? targetRepository?.defaultBranch ?? "main",
+          allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
+          codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
+        });
+        if (!result.ok || !result.prompt) {
+          return;
+        }
+        void writeClipboardText(result.prompt).then(() => {});
+      })();
     },
     [
       projectId,
@@ -3064,54 +3057,51 @@ export function usePrototypeImplementationStagePanel(
   const handleCopyDeveloperPromptsFromHeader = useCallback(() => {
     const pid = projectId.trim();
     if (!pid) return;
-    const prepared = prepareRequirementsStateForImplementationQuickRun({
-      projectId: pid,
-      requirementsState: orchestrationAwareRequirementsState,
-    });
-    const imp = prepared.requirementsState;
-    const prepPatch = buildImplementationQuickRunRequirementsPrepPersistPatch({ prepared });
-    if (Object.keys(prepPatch).length) {
-      applyPendingFromOrchestrationPatchRef.current(prepPatch);
-      void persistChatToDb(undefined, prepPatch, undefined, { force: true });
-    }
-    const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
-      gitRepoUrl: executionSetupRow?.gitRepoUrl,
-      gitRepoName: executionSetupRow?.gitRepoName,
-      gitRepoProvider: executionSetupRow?.gitRepoProvider,
-      baseBranch: executionSetupRow?.baseBranch,
-    });
-    const selectedCodeTaskIds = resolveCheckedCodeTaskIdsFromBoardBridge({
-      bridge: boardSelectionBridge.getBridgeSnapshot(),
-      requirementsState: imp,
-    });
-    const plan = imp.implementationCodeTaskPlanV1 ?? null;
-    const currentCodeTaskId = resolveExecutionTargetCodeTaskId({
-      selectedCodeTaskId: null,
-      runtimeCurrentCodeTaskId:
-        implementationRuntimeDbBundle?.job?.currentCodeTaskId?.trim() ?? null,
-      codeTaskPlan: plan ?? undefined,
-    });
-    const runs =
-      parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ?? [];
-    const result = resolveDeveloperPromptCopyFromSelection({
-      projectId: pid,
-      selectedCodeTaskIds,
-      currentCodeTaskId,
-      codeTaskPlan: plan,
-      taskList: imp.implementationTaskListV1 ?? null,
-      cursorWorkItems: imp.cursorWorkItemsV1 ?? [],
-      runs,
-      targetRepository,
-      baseBranch: executionSetupRow?.baseBranch ?? targetRepository?.defaultBranch ?? "main",
-      allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
-      codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
-    });
-    if (!result.ok || !result.prompt) {
-      return;
-    }
-    const totalCodeTaskCount = plan?.tasks?.length ?? 0;
-    void writeClipboardText(result.prompt).then((ok) => {
-    });
+    void (async () => {
+      const imp = await persistImplementationQuickRunRequirementsPrep({
+        projectId: pid,
+        requirementsState: orchestrationAwareRequirementsState,
+        applyPendingFromOrchestrationPatch: (patch) => {
+          applyPendingFromOrchestrationPatchRef.current(patch);
+        },
+        persistChatToDb,
+      });
+      const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
+        gitRepoUrl: executionSetupRow?.gitRepoUrl,
+        gitRepoName: executionSetupRow?.gitRepoName,
+        gitRepoProvider: executionSetupRow?.gitRepoProvider,
+        baseBranch: executionSetupRow?.baseBranch,
+      });
+      const selectedCodeTaskIds = resolveCheckedCodeTaskIdsFromBoardBridge({
+        bridge: boardSelectionBridge.getBridgeSnapshot(),
+        requirementsState: imp,
+      });
+      const plan = imp.implementationCodeTaskPlanV1 ?? null;
+      const currentCodeTaskId = resolveExecutionTargetCodeTaskId({
+        selectedCodeTaskId: null,
+        runtimeCurrentCodeTaskId:
+          implementationRuntimeDbBundle?.job?.currentCodeTaskId?.trim() ?? null,
+        codeTaskPlan: plan ?? undefined,
+      });
+      const runs = parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ?? [];
+      const result = resolveDeveloperPromptCopyFromSelection({
+        projectId: pid,
+        selectedCodeTaskIds,
+        currentCodeTaskId,
+        codeTaskPlan: plan,
+        taskList: imp.implementationTaskListV1 ?? null,
+        cursorWorkItems: imp.cursorWorkItemsV1 ?? [],
+        runs,
+        targetRepository,
+        baseBranch: executionSetupRow?.baseBranch ?? targetRepository?.defaultBranch ?? "main",
+        allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
+        codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
+      });
+      if (!result.ok || !result.prompt) {
+        return;
+      }
+      void writeClipboardText(result.prompt).then(() => {});
+    })();
   }, [
     projectId,
     orchestrationAwareRequirementsState,
