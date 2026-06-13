@@ -25,6 +25,8 @@ import { useImplementationPreviewController } from "@/components/preview/useImpl
 import { useImplementationFinalScmController } from "@/components/preview/useImplementationFinalScmController";
 import { useImplementationQualityIntegratedStageController } from "@/components/preview/useImplementationQualityIntegratedStageController";
 import { useImplementationDeveloperPromptCopyController } from "@/components/preview/useImplementationDeveloperPromptCopyController";
+import { useImplementationExecutionLogController } from "@/components/preview/useImplementationExecutionLogController";
+import { useImplementationAutoPrepSyncController } from "@/components/preview/useImplementationAutoPrepSyncController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -134,7 +136,6 @@ import { resolveCodeTaskRunForAutoQualityGateClient } from "@/lib/prototype/impl
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import {
   pickPersistentExecutionLogTimelineEntries,
-  stripExecutionLogTimelineEntries,
 } from "@/lib/prototype/promptTimelineExecutionLogTabs";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { syncCodeTaskExecutionRunsFromTaskCursor } from "@/lib/prototype/codeTaskExecutionRunTaskCursorAdapter";
@@ -398,8 +399,6 @@ export function usePrototypeImplementationStagePanel(
     useState<PendingImplementationPatch>({});
   const pendingImplementationPatchRef = hostPendingImplementationPatchRef;
   pendingImplementationPatchRef.current = pendingImplementationPatch;
-
-  const [implementationExecutionLogModalOpen, setImplementationExecutionLogModalOpen] = useState(false);
 
   const executionSetupBoardSyncedKeyRef = useRef<string | null>(null);
   const refreshImplementationBoardRef = useRef<
@@ -1386,6 +1385,20 @@ export function usePrototypeImplementationStagePanel(
     [projectId],
   );
 
+  useImplementationAutoPrepSyncController({
+    autoRefineImplementationPrep,
+    projectId,
+    parsedRequirementsState,
+    orchestrationAwareRequirementsState,
+    requirementsStateJson,
+    executionArtifacts,
+    envOk: canRequestGeneration.envOk,
+    designOk: effectiveImplementationState.designOk,
+    prototypeRunSyncSnapshot,
+    persistChatToDb,
+    appendImplementationTaskListAiMessage,
+  });
+
   const refreshImplementationBoardWithExecutionSetup = useCallback(
     (setup: ExecutionSetupSourceGenerationRow | null, source = "board_refresh") => {
       const pid = projectId.trim();
@@ -1662,6 +1675,17 @@ export function usePrototypeImplementationStagePanel(
       applyPendingFromOrchestrationPatchRef,
       persistChatToDb,
     });
+
+  const {
+    implementationExecutionLogModalOpen,
+    setImplementationExecutionLogModalOpen,
+    onOpenImplementationExecutionLog,
+    onClearImplementationExecutionLog,
+  } = useImplementationExecutionLogController({
+    orchestrationAwareRequirementsStateRef,
+    applyPendingFromOrchestrationPatchRef,
+    persistChatToDb,
+  });
 
   const wipChipHandlers = useMemo(
     () =>
@@ -2020,88 +2044,9 @@ export function usePrototypeImplementationStagePanel(
       onRefreshPrototypeStatus,
     });
 
-  const autoRefineOnceRef = useRef(false);
-  useEffect(() => {
-    if (autoRefineOnceRef.current) return;
-    if (autoRefineImplementationPrep !== true) return;
-    autoRefineOnceRef.current = true;
-
-    const wip = orchestrationAwareRequirementsState.codeAgentWipExecutionV1;
-    const wipStatus = String(wip?.status ?? "").trim();
-    const activeStatuses = new Set([
-      "requested",
-      "drafting",
-      "refactoring",
-      "wip_committed",
-      "developer_reviewing",
-      "refactor_requested",
-      "wip_updated",
-    ]);
-    if (wip && activeStatuses.has(wipStatus)) {
-      return;
-    }
-
-    const pid = projectId.trim();
-    const seed = parsedRequirementsState.implementationSeedV1;
-    void (async () => {
-      const { res, json } = await postImplementationPrepSync(pid, {
-        seed,
-        existingTaskList: parsedRequirementsState.implementationTaskListV1,
-        existingCodeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
-        existingExecutionState: parsedRequirementsState.implementationTaskExecutionStateV1,
-        existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
-        existingPreflightSummary: parsedRequirementsState.implementationWorkItemPreflightSummaryV1,
-        existingQualityGate: parsedRequirementsState.implementationCodeTaskQualityGateV1,
-        priorTimeline: parsedRequirementsState.promptTimeline,
-        projectArtifacts: executionArtifacts.projectArtifacts,
-        artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
-        envOk: canRequestGeneration.envOk,
-        designOk: effectiveImplementationState.designOk,
-        previewReady: prototypeRunSyncSnapshot.previewReady,
-        forceRefresh: true,
-        forceLlm: true,
-      });
-      const result = json.data;
-      if (!res.ok || !json.success || !result?.ok) {
-        return;
-      }
-      void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), result.patch);
-      for (const message of result.messages) {
-        appendImplementationTaskListAiMessage(message);
-      }
-    })();
-  }, [
-    autoRefineImplementationPrep,
-    orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
-    projectId,
-    parsedRequirementsState,
-    executionArtifacts,
-    canRequestGeneration.envOk,
-    effectiveImplementationState.designOk,
-    prototypeRunSyncSnapshot.previewReady,
-    executionSetupRow,
-    persistChatToDb,
-    requirementsStateJson,
-    appendImplementationTaskListAiMessage,
-    appendUserNotice,
-  ]);
-
   const onOpenExecutionEnvironmentSettings = useCallback(() => {
     setExecutionEnvironmentModalOpen(true);
   }, []);
-
-  const onOpenImplementationExecutionLog = useCallback(() => {
-    setImplementationExecutionLogModalOpen(true);
-  }, []);
-
-  const onClearImplementationExecutionLog = useCallback(() => {
-    const imp = orchestrationAwareRequirementsStateRef.current;
-    const current = imp.promptTimeline ?? [];
-    const next = stripExecutionLogTimelineEntries(current);
-    if (next.length === current.length) return;
-    applyPendingFromOrchestrationPatchRef.current({ promptTimeline: next });
-    void persistChatToDb(undefined, { promptTimeline: next }, undefined, { force: true });
-  }, [persistChatToDb]);
 
   const executionConversationIconToolbar = useMemo(
     () => (
