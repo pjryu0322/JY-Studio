@@ -12,6 +12,11 @@ describe("implementation final SCM controller wiring", () => {
     expect(src).toContain("finalize integrated final SCM stage");
   });
 
+  it("uses Final SCM controller from parent panel hook", () => {
+    const parent = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
+    expect(parent).toContain("useImplementationFinalScmController");
+  });
+
   it("moves Final SCM handlers out of parent panel hook", () => {
     const parent = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
     expect(parent).toContain("useImplementationFinalScmController");

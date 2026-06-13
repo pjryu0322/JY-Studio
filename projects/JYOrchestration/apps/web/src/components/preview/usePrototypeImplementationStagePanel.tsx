@@ -23,6 +23,7 @@ import { useImplementationBoardInteractionController } from "@/components/previe
 import { useImplementationChipHandlerController } from "@/components/preview/useImplementationChipHandlerController";
 import { useImplementationPreviewController } from "@/components/preview/useImplementationPreviewController";
 import { useImplementationFinalScmController } from "@/components/preview/useImplementationFinalScmController";
+import { useImplementationQualityIntegratedStageController } from "@/components/preview/useImplementationQualityIntegratedStageController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -45,11 +46,6 @@ import {
 } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
-import {
-  buildQualityGateBridgeTargetFromTaskCursor,
-  buildQualityGateBridgeTargetFromWip,
-} from "@/lib/prototype/bridgeCompletionPolicy";
-import { buildTargetRepoE2eTimelineEntry } from "@/lib/prototype/targetRepoE2eDiagnostics";
 import { buildWipChipHandlerSlice } from "@/lib/prototype/prototypeExecutionWipChipHandlers";
 import {
   buildDataModelDraftResult,
@@ -113,11 +109,7 @@ import {
 import { hasImplementationTaskListReady } from "@/lib/requirements/implementationTaskList";
 import {
   buildImplementationExecutionBoardFromRequirementsState,
-  buildIntegratedStageStepActionNotice,
-  pickQualityGateTargetTaskIds,
 } from "@/lib/prototype/implementationExecutionBoard";
-import { buildIntegrationScopeDetailLines } from "@/lib/prototype/implementationIntegrationScopeUi";
-import { integrateCompletedCodeTasksForPreview } from "@/lib/prototype/implementationIntegrationService";
 import { resolveIntegratedAppPreviewReadyFromOrchestration } from "@/lib/prototype/implementationPreviewReadiness";
 import { isLegacyCodeTaskPreviewScopeNoticeContent } from "@/lib/prototype/implementationPreviewEntryPolicy";
 import { COMPLETED_CODETASK_PREVIEW_NOTICE_SUPPRESSED_LOG_ACTION } from "@/lib/prototype/implementationPreviewActionSource";
@@ -131,13 +123,8 @@ import {
   extractBoardVisibleActionLabels,
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import { resolveCheckedCodeTaskIdsFromBoardBridge } from "@/lib/prototype/implementationBoardCodeTaskSelection";
-import {
-  finalizeIntegratedStageStep,
-  type ImplementationIntegratedStep,
-} from "@/lib/prototype/implementationIntegratedExecutionState";
 import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
-import { executeImplementationQualityGateCheck } from "@/lib/prototype/implementationQualityGate";
 import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
 import { writeClipboardText } from "@/lib/clipboard/writeClipboardText";
 import {
@@ -149,10 +136,6 @@ import { resolveDeveloperPromptCopyFromSelection } from "@/lib/prototype/codeTas
 import { resolveExecutionTargetCodeTaskId } from "@/lib/prototype/resolveExecutionTargetCodeTaskId";
 import { resolveCodeTaskDeveloperPromptForCopy } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
 import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
-import {
-  shouldSyncExecutionStateAfterTaskCursorGithubVerify,
-  syncTaskExecutionStateAfterGithubVerified,
-} from "@/lib/prototype/prototypeExecutionTaskCursorActions";
 import { resolveCodeTaskRunForAutoQualityGateClient } from "@/lib/prototype/implementationAutoQualityGateClient";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import {
@@ -1662,6 +1645,19 @@ export function usePrototypeImplementationStagePanel(
     appendImplementationTaskListAiMessage,
   });
 
+  const { runImplementationQualityGate, runIntegratedStageStep } =
+    useImplementationQualityIntegratedStageController({
+      projectId,
+      parsedRequirementsState,
+      orchestrationAwareRequirementsState,
+      executionSetupRow,
+      prototypeRunSyncSnapshot,
+      runFinalScmIntegratedStageStep,
+      persistChatToDb,
+      appendAiNoticeForImplementation,
+      appendImplementationTaskListAiMessage,
+    });
+
   const wipChipHandlers = useMemo(
     () =>
       buildWipChipHandlerSlice({
@@ -1729,184 +1725,6 @@ export function usePrototypeImplementationStagePanel(
     applyImplementationOrchestrationResult,
     appendAiNoticeForImplementation,
   ]);
-
-  const runImplementationQualityGate = useCallback(
-    (role: "reviewer" | "security"): ImplementationStageActionRunResult => {
-      const orchestration = orchestrationAwareRequirementsState;
-      const taskList = orchestration.implementationTaskListV1;
-      const pid = projectId.trim();
-      if (!taskList || !pid) {
-        const message = "구현 작업목록이 없어 점검을 실행할 수 없습니다.";
-        return { outcome: "blocked", message };
-      }
-
-      const taskCursor = orchestration.taskCursorExecutionV1;
-      let executionState = orchestration.implementationTaskExecutionStateV1;
-      if (
-        taskCursor &&
-        shouldSyncExecutionStateAfterTaskCursorGithubVerify(taskCursor.status) &&
-        executionState
-      ) {
-        executionState = syncTaskExecutionStateAfterGithubVerified({
-          executionState,
-          taskId: taskCursor.taskId,
-          cursorWorkItems: orchestration.cursorWorkItemsV1 ?? [],
-        });
-      }
-
-      const board = buildImplementationExecutionBoardFromRequirementsState({
-        projectId: pid,
-        orchestration: {
-          ...orchestration,
-          ...(executionState ? { implementationTaskExecutionStateV1: executionState } : {}),
-        },
-      });
-      if (!board) {
-        const message = "구현 작업 보드를 만들 수 없어 점검을 실행할 수 없습니다.";
-        return { outcome: "blocked", message };
-      }
-
-      const pickedTargetTaskIds = pickQualityGateTargetTaskIds({
-        role,
-        board,
-        taskCursorTaskId:
-          taskCursor && shouldSyncExecutionStateAfterTaskCursorGithubVerify(taskCursor.status)
-            ? taskCursor.taskId
-            : null,
-      });
-      const targetTaskIds = pickedTargetTaskIds.length ? pickedTargetTaskIds : undefined;
-      const bridgeTarget =
-        buildQualityGateBridgeTargetFromTaskCursor(taskCursor) ??
-        buildQualityGateBridgeTargetFromWip(orchestration.codeAgentWipExecutionV1);
-
-      const outcome = executeImplementationQualityGateCheck({
-        role,
-        taskList,
-        executionState,
-        qualityGateResults: orchestration.implementationQualityGateResultsV1,
-        projectId: pid,
-        targetTaskIds,
-        bridgeTarget,
-      });
-      if ("blocked" in outcome) {
-        return { outcome: "blocked", message: outcome.blocked };
-      }
-      const qgTimeline =
-        outcome.qualityGateResult.engineConnectionStatus === "pending_engine_connection"
-          ? buildTargetRepoE2eTimelineEntry({
-              action: "review_security_diff_engine_pending",
-              projectId: pid,
-              selectedTaskId: bridgeTarget?.selectedTaskId,
-              repoFullName: bridgeTarget?.targetRepository,
-              branchName: bridgeTarget?.branchName,
-              commitSha: bridgeTarget?.commitSha,
-              changedFilesCount: bridgeTarget?.changedFiles?.length,
-              status: "pending_engine_connection",
-            })
-          : null;
-      void persistChatToDb(undefined, {
-        implementationTaskExecutionStateV1: outcome.executionState,
-        implementationQualityGateResultsV1: outcome.qualityGateResults,
-        ...(qgTimeline
-          ? {
-              promptTimeline: [...(orchestration.promptTimeline ?? []), qgTimeline],
-            }
-          : {}),
-      });
-      appendAiNoticeForImplementation(outcome.aiMessageContent);
-      return { outcome: "executed" };
-    },
-    [orchestrationAwareRequirementsState, projectId, persistChatToDb],
-  );
-
-  const runIntegratedStageStep = useCallback(
-    (step: ImplementationIntegratedStep): ImplementationStageActionRunResult => {
-      if (step === "final_scm") {
-        return runFinalScmIntegratedStageStep();
-      }
-      const pid = projectId.trim();
-      if (!pid) {
-        const message = "프로젝트를 선택해 주세요.";
-        return { outcome: "blocked", message };
-      }
-      const taskList = parsedRequirementsState.implementationTaskListV1;
-      if (!taskList) {
-        const message = "구현 작업목록이 없어 통합 단계를 실행할 수 없습니다.";
-        return { outcome: "blocked", message };
-      }
-
-      const boardBefore = buildImplementationExecutionBoardFromRequirementsState({
-        projectId: pid,
-        orchestration: parsedRequirementsState,
-      })!;
-      const allTasksComplete = boardBefore.taskRows.every((row) => row.currentRole === "completed");
-
-      let previewScopePatch: { implementationPreviewScopeV1: import("@/lib/prototype/implementationPreviewScopeV1").ImplementationPreviewScopeV1 } | null =
-        null;
-      if (step === "refactor_common") {
-        const integration = integrateCompletedCodeTasksForPreview({
-          codeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1 ?? null,
-          taskList,
-          codeTaskRuns: parseCodeTaskExecutionRunsV1(parsedRequirementsState.codeTaskExecutionRunsV1) ?? [],
-          taskCursorExecution: parsedRequirementsState.taskCursorExecutionV1 ?? null,
-          taskCursorExecutionHistory: parsedRequirementsState.taskCursorExecutionHistoryV1 ?? null,
-          autoQualityGate: parsedRequirementsState.implementationAutoQualityGateV1 ?? null,
-        });
-        if (!integration.ok) {
-          return { outcome: "blocked", message: integration.message };
-        }
-        previewScopePatch = { implementationPreviewScopeV1: integration.previewScope };
-      }
-
-      const prior = parsedRequirementsState.implementationIntegratedExecutionStateV1;
-      const done = finalizeIntegratedStageStep({
-        state: prior,
-        projectId: pid,
-        step,
-        taskRowsCompleted: previewScopePatch != null ? true : allTasksComplete,
-      });
-      void persistChatToDb(undefined, {
-        implementationIntegratedExecutionStateV1: done,
-        ...(previewScopePatch ?? {}),
-      });
-
-      const actionNotice = buildIntegratedStageStepActionNotice({ step, integratedState: done });
-      const noticeLines = [actionNotice];
-      if (previewScopePatch) {
-        noticeLines.push(...buildIntegrationScopeDetailLines(previewScopePatch.implementationPreviewScopeV1));
-      }
-      appendAiNoticeForImplementation(noticeLines.join("\n"));
-
-      const nowIso = new Date().toISOString();
-      const nextBoard = buildImplementationExecutionBoardFromRequirementsState({
-        projectId: pid,
-        orchestration: parsedRequirementsState,
-        integratedExecutionState: done,
-      })!;
-      appendImplementationTaskListAiMessage(
-        buildImplementationExecutionBoardMessage({
-          board: nextBoard,
-          nowIso,
-          previewReady: prototypeRunSyncSnapshot.previewReady,
-          codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
-          executionSetup: executionSetupRow,
-        }),
-      );
-
-      return { outcome: "executed" };
-    },
-    [
-      parsedRequirementsState,
-      projectId,
-      persistChatToDb,
-      appendImplementationTaskListAiMessage,
-      appendAiNoticeForImplementation,
-      prototypeRunSyncSnapshot.previewReady,
-      orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
-      executionSetupRow,
-      runFinalScmIntegratedStageStep,
-    ],
-  );
 
   const {
     integrationMergeBusy,
