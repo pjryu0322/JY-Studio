@@ -16,6 +16,8 @@ import {
 } from "@/components/preview/useImplementationIntegrationPipelineController";
 import { useImplementationGithubVerifyController } from "@/components/preview/useImplementationGithubVerifyController";
 import { useImplementationQuickRunController, persistImplementationQuickRunRequirementsPrep } from "@/components/preview/useImplementationQuickRunController";
+import { useImplementationStageActionController } from "@/components/preview/useImplementationStageActionController";
+import type { ImplementationStageActionControllerInput } from "@/components/preview/useImplementationStageActionController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -93,12 +95,6 @@ import {
 } from "@/lib/prototype/effectiveImplementationState";
 import { hasActiveImplementationExecutionSession } from "@/lib/requirements/resetDerivedImplementationState";
 import type { ImplementationStageActionRunResult } from "@/lib/prototype/implementationStageActionPipeline";
-import { dispatchSimpleImplementationStageAction } from "@/lib/prototype/implementationStageActionSimpleDispatch";
-import { dispatchReviewAndConfirmationStageAction } from "@/lib/prototype/implementationStageActionReviewDispatch";
-import {
-  dispatchExecutionStageAction,
-  type ImplementationStageActionExecutionDispatchDeps,
-} from "@/lib/prototype/implementationStageActionExecutionDispatch";
 import { orchestrateImplementationStageAction } from "@/lib/prototype/implementationStageActionOrchestrator";
 import {
   buildImplementationStageActionClickedTimelineEntry,
@@ -2477,16 +2473,14 @@ export function usePrototypeImplementationStagePanel(
     appendUserNotice,
   ]);
 
-  const runImplementationStageAction = useCallback(
-    (actionId: ImplementationStageActionId): ImplementationStageActionRunResult => {
-      const simple = dispatchSimpleImplementationStageAction(actionId, {
+  const implementationStageActionControllerInput = useMemo((): ImplementationStageActionControllerInput => {
+    return {
+      startImplementationQuickRunRef,
+      simple: {
         projectId,
         generateImplementationTaskList,
         confirmQuickDesignForImplementation,
         createImplementationSeedFromQuickDesignDraft,
-        startImplementationQuickRun: () => {
-          void startImplementationQuickRunRef.current?.();
-        },
         loadImplementationRuntimeDb,
         generateImplementationWorkPlanDraft,
         confirmImplementationTaskPlan,
@@ -2499,10 +2493,8 @@ export function usePrototypeImplementationStagePanel(
         runIntegratedStageStep,
         runFinalScmIntegratedStageStep,
         runPlatformScmMergeStep,
-      });
-      if (simple) return simple;
-
-      const reviewOrConfirmation = dispatchReviewAndConfirmationStageAction(actionId, {
+      },
+      review: {
         projectId,
         parsedRequirementsState,
         previewUrl,
@@ -2513,10 +2505,8 @@ export function usePrototypeImplementationStagePanel(
         appendUserNotice,
         appendImplementationTaskListAiMessage,
         applyImplementationStageActionExecutionResult,
-      });
-      if (reviewOrConfirmation) return reviewOrConfirmation;
-
-      const execution = dispatchExecutionStageAction(actionId, {
+      },
+      execution: {
         projectId,
         parsedRequirementsState,
         pendingImplementationPatch,
@@ -2547,42 +2537,52 @@ export function usePrototypeImplementationStagePanel(
         persistedQueueDispatch,
         wipChipHandlers,
         setExecutionEnvironmentModalOpen,
-      } as ImplementationStageActionExecutionDispatchDeps);
-      if (execution) return execution;
-      return { outcome: "blocked", message: "지원하지 않는 구현단계 action입니다." };
-    },
-    [
-      applyImplementationStageActionExecutionResult,
-      refreshExecutionEnvironmentStatus,
-      generateImplementationTaskList,
-      confirmQuickDesignForImplementation,
-      createImplementationSeedFromQuickDesignDraft,
-      generateImplementationWorkPlanDraft,
-      confirmImplementationTaskPlan,
-      reviewDbIntegrationNeed,
-      generateDataModelDraft,
-      confirmMockImplementationMode,
-      implementationCursorGate,
-      wipChipHandlers,
-      runImplementationQualityGate,
-      runIntegratedStageStep,
-      runFinalScmIntegratedStageStep,
-      runPlatformScmMergeStep,
-      appendImplementationTaskListAiMessage,
-      parsedRequirementsState,
-      pendingImplementationPatch,
-      orchestrationAwareRequirementsState,
-      projectId,
-      requirementsStateJson,
-      effectiveImplementationState,
-      executionSetupRow,
-      persistChatToDb,
-      executionArtifacts,
-      prototypeRunSyncSnapshot,
-      loadImplementationRuntimeDb,
-      appendUserNotice,
-      previewUrl,
-    ],
+      },
+    };
+  }, [
+    applyImplementationStageActionExecutionResult,
+    refreshExecutionEnvironmentStatus,
+    generateImplementationTaskList,
+    confirmQuickDesignForImplementation,
+    createImplementationSeedFromQuickDesignDraft,
+    generateImplementationWorkPlanDraft,
+    confirmImplementationTaskPlan,
+    reviewDbIntegrationNeed,
+    generateDataModelDraft,
+    confirmMockImplementationMode,
+    implementationCursorGate,
+    wipChipHandlers,
+    runImplementationQualityGate,
+    runIntegratedStageStep,
+    runFinalScmIntegratedStageStep,
+    runPlatformScmMergeStep,
+    appendImplementationTaskListAiMessage,
+    parsedRequirementsState,
+    pendingImplementationPatch,
+    orchestrationAwareRequirementsState,
+    projectId,
+    requirementsStateJson,
+    effectiveImplementationState,
+    executionSetupRow,
+    persistChatToDb,
+    executionArtifacts,
+    prototypeRunSyncSnapshot,
+    loadImplementationRuntimeDb,
+    appendUserNotice,
+    previewUrl,
+    appendAiNoticeForImplementation,
+    applyImplementationOrchestrationResult,
+    applyPendingFromOrchestrationPatch,
+    implementationStageBoardGateContext,
+    dispatchNextQuickRunFromGithubVerify,
+    appendImplementationExecutionNotice,
+    enrichCodeTaskRunOrchestrationPatch,
+    applyImplementationRuntimeFetch,
+    persistedQueueDispatch,
+  ]);
+
+  const { runImplementationStageAction } = useImplementationStageActionController(
+    implementationStageActionControllerInput,
   );
 
   const autoRefineOnceRef = useRef(false);
