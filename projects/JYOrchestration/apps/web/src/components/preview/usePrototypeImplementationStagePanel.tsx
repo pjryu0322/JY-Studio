@@ -41,10 +41,12 @@ import { useImplementationToolbarController } from "@/components/preview/useImpl
 import { useImplementationRuntimeRecoveryController } from "@/components/preview/useImplementationRuntimeRecoveryController";
 import { useImplementationDeliverableViewerController } from "@/components/preview/useImplementationDeliverableViewerController";
 import { useImplementationRuntimeSyncController } from "@/components/preview/useImplementationRuntimeSyncController";
-import { useImplementationDerivedViewModelController } from "@/components/preview/useImplementationDerivedViewModelController";
+import {
+  useImplementationDerivedViewModelController,
+  type ImplementationDerivedViewModelControllerValue,
+} from "@/components/preview/useImplementationDerivedViewModelController";
 import { useImplementationNoticeModalController } from "@/components/preview/useImplementationNoticeModalController";
 import { useImplementationEntryRecoveryController } from "@/components/preview/useImplementationEntryRecoveryController";
-import type { ImplementationDerivedViewModelControllerValue } from "@/components/preview/useImplementationDerivedViewModelController";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
 import { usePrototypeExecutionPersistChatToDb } from "@/components/preview/usePrototypeExecutionPersistChatToDb";
 import { useImplementationStageActionTimeline } from "@/components/preview/useImplementationStageActionTimeline";
