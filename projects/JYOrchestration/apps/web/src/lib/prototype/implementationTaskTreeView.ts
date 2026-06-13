@@ -60,13 +60,20 @@ import {
   resolveCodeTaskCheckboxDisabledTitle,
   type ImplementationCodeTaskBoardStateV1,
 } from "@/lib/prototype/implementationCodeTaskBoardState";
+import {
+  formatCodeTaskGithubPollingBoardLabels,
+  type CodeTaskGithubPollingEntryV1,
+} from "@/lib/prototype/implementationCodeTaskGithubPollingState";
 import { resolveAuthoritativeCodeTaskOutcome } from "@/lib/prototype/implementationCodeTaskOutcomeResolver";
 
 function resolveCodeTaskTreeRowUnitDisplayLabels(input: {
   readonly codeTaskId: string;
   readonly executionUnit?: ImplementationExecutionUnitV1 | null;
   readonly runs: readonly CodeTaskExecutionRunV1[];
+  readonly githubPollingEntry?: CodeTaskGithubPollingEntryV1 | null;
 }): Readonly<{ readonly statusLabel: string; readonly progressLabel: string }> {
+  const pollLabels = formatCodeTaskGithubPollingBoardLabels(input.githubPollingEntry);
+  if (pollLabels) return pollLabels;
   if (!input.executionUnit) {
     return { statusLabel: "", progressLabel: "" };
   }
@@ -217,6 +224,7 @@ function buildCodeTaskNode(input: {
   readonly runtimeSnapshotUnit?: import("@/lib/prototype/implementationRuntimeSnapshot").ImplementationRuntimeSnapshotV1["units"][number] | null;
   readonly projectId?: string | null;
   readonly targetRepository?: ProjectTargetRepository | null;
+  readonly codeTaskGithubPollingByCodeTaskId?: Readonly<Record<string, CodeTaskGithubPollingEntryV1>>;
 }): ImplementationCodeTaskTreeNode {
   const executionForParent = resolveTaskCursorExecutionForRow({
     taskId: input.row.taskId,
@@ -361,7 +369,9 @@ function buildCodeTaskNode(input: {
   const labelsForSelection = resolveCodeTaskTreeRowUnitDisplayLabels({
     codeTaskId: input.codeTask.codeTaskId,
     executionUnit: input.executionUnit ?? null,
-    runs: input.codeTaskExecutionRuns,
+    runs: input.codeTaskExecutionRuns ?? [],
+    githubPollingEntry:
+      input.codeTaskGithubPollingByCodeTaskId?.[input.codeTask.codeTaskId] ?? null,
   });
   const snapshotStatus = String(input.runtimeSnapshotUnit?.statusLabel ?? "").trim();
   const snapshotProgress = String(input.runtimeSnapshotUnit?.progressLabel ?? "").trim();
@@ -635,6 +645,7 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
   readonly runtimeSnapshotUnits?: readonly import("@/lib/prototype/implementationRuntimeSnapshot").ImplementationRuntimeSnapshotV1["units"] | null;
   readonly projectId?: string | null;
   readonly targetRepository?: ProjectTargetRepository | null;
+  readonly codeTaskGithubPollingByCodeTaskId?: Readonly<Record<string, CodeTaskGithubPollingEntryV1>>;
 }): readonly ImplementationCodeTaskTreeNode[] {
   const plan =
     ensureCodeTaskPlanWithFileBoundaries({
@@ -694,6 +705,7 @@ export function buildImplementationFlatCodeTaskTreeNodes(input: {
         runtimeSnapshotUnit: snapshotByCodeTaskId.get(codeTask.codeTaskId) ?? null,
         projectId: input.projectId,
         targetRepository: input.targetRepository,
+        codeTaskGithubPollingByCodeTaskId: input.codeTaskGithubPollingByCodeTaskId,
       }),
     );
   }

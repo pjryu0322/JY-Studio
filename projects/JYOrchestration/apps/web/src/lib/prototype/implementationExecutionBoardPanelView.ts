@@ -58,6 +58,7 @@ import {
   buildImplementationFlatCodeTaskTreeNodes,
   type ImplementationCodeTaskTreeNode,
 } from "@/lib/prototype/implementationTaskTreeView";
+import { parseImplementationCodeTaskGithubPollingStateV1 } from "@/lib/prototype/implementationCodeTaskGithubPollingState";
 
 const IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE = "IMPLEMENTATION_TASK_LIST_READY_V1" as const;
 
@@ -447,6 +448,9 @@ export function buildImplementationTaskTreeNodes(input: {
   readonly runtimeSnapshotUnits?: readonly import("@/lib/prototype/implementationRuntimeSnapshot").ImplementationRuntimeSnapshotV1["units"] | null;
   readonly projectId?: string | null;
   readonly targetRepository?: import("@/lib/prototype/projectTargetRepository").ProjectTargetRepository | null;
+  readonly codeTaskGithubPollingByCodeTaskId?: Readonly<
+    Record<string, import("@/lib/prototype/implementationCodeTaskGithubPollingState").CodeTaskGithubPollingEntryV1>
+  >;
 }): readonly ImplementationCodeTaskTreeNode[] {
   const taskCursorExecution = input.taskCursorExecution ?? null;
   const activeCodeTaskId =
@@ -472,6 +476,7 @@ export function buildImplementationTaskTreeNodes(input: {
     runtimeSnapshotUnits: input.runtimeSnapshotUnits,
     projectId: input.projectId,
     targetRepository: input.targetRepository,
+    codeTaskGithubPollingByCodeTaskId: input.codeTaskGithubPollingByCodeTaskId,
   });
 
   const activeParentId =

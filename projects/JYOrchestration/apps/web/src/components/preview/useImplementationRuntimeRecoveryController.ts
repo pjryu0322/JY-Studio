@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, type MutableRefObject } from "react";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
+import { hasActiveCodeTaskGithubPollingState } from "@/lib/prototype/implementationCodeTaskGithubPollingState";
 import { parseImplementationQuickRunV1 } from "@/lib/prototype/implementationQuickRun";
 import { isInFlightTaskCursorExecution } from "@/lib/prototype/taskCursorClientPollLoop";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -34,6 +35,7 @@ export type ImplementationRuntimeRecoveryControllerInput = Readonly<{
   readonly quickRunStuckGithubVerifyRef: MutableRefObject<string | null>;
   readonly recoverQuickRunStuckGithubVerify: () => Promise<void> | void;
   readonly loadImplementationRuntimeDb: (input?: { readonly recover?: boolean }) => Promise<void> | void;
+  readonly applyGithubPollingOrchestrationPatch?: (patch: unknown) => void;
 }>;
 
 export type ImplementationRuntimeRecoveryControllerValue = Readonly<{
@@ -81,31 +83,58 @@ export function useImplementationRuntimeRecoveryController(
   useEffect(() => {
     const pid = input.projectId.trim();
     if (!pid) return;
+
+    const hasGithubPolling = hasActiveCodeTaskGithubPollingState(
+      input.orchestrationAwareRequirementsState,
+    );
     const quickRun = parseImplementationQuickRunV1(
       input.orchestrationAwareRequirementsState.implementationQuickRunV1,
     );
-    if (quickRun?.status !== "running") return;
     const cursor = parseTaskCursorExecutionV1(
       input.orchestrationAwareRequirementsState.taskCursorExecutionV1,
     );
-    if (!cursor || !isInFlightTaskCursorExecution(cursor)) return;
+    const quickRunInFlight = quickRun?.status === "running" && cursor && isInFlightTaskCursorExecution(cursor);
+    if (!hasGithubPolling && !quickRunInFlight) return;
 
     const tick = () => {
-      input.quickRunStuckGithubVerifyRef.current = null;
-      void input.recoverQuickRunStuckGithubVerify();
+      if (hasGithubPolling) {
+        void credentialsIncludeFetch("/api/prototype/implementation/github-polling/tick", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: pid }),
+        })
+          .then(async (res) => {
+            const json = (await res.json()) as {
+              success?: boolean;
+              orchestrationPatch?: unknown;
+            };
+            if (json.success && json.orchestrationPatch && input.applyGithubPollingOrchestrationPatch) {
+              input.applyGithubPollingOrchestrationPatch(json.orchestrationPatch);
+            }
+          })
+          .catch(() => undefined);
+      }
+      if (quickRunInFlight) {
+        input.quickRunStuckGithubVerifyRef.current = null;
+        void input.recoverQuickRunStuckGithubVerify();
+      }
       void input.loadImplementationRuntimeDb({ recover: true });
     };
+    tick();
     const interval = window.setInterval(tick, 10_000);
     return () => window.clearInterval(interval);
   }, [
     input.projectId,
     input.recoverQuickRunStuckGithubVerify,
     input.loadImplementationRuntimeDb,
+    input.applyGithubPollingOrchestrationPatch,
+    input.orchestrationAwareRequirementsState.implementationCodeTaskGithubPollingV1,
     input.orchestrationAwareRequirementsState.implementationQuickRunV1?.status,
     input.orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
     input.orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
     input.effectiveCodeTaskExecutionQueueV1?.status,
     input.quickRunStuckGithubVerifyRef,
+    input.orchestrationAwareRequirementsState,
   ]);
 
   return {

@@ -83,6 +83,9 @@ export function PrototypeImplementationStagePanel({
             implementationQuickRunV1={orchestrationAwareRequirementsState.implementationQuickRunV1}
             runtimeCodeTaskQueueView={effectiveCodeTaskExecutionQueueV1}
             codeTaskExecutionRunsV1={orchestrationAwareRequirementsState.codeTaskExecutionRunsV1}
+            implementationCodeTaskGithubPollingV1={
+              orchestrationAwareRequirementsState.implementationCodeTaskGithubPollingV1
+            }
             implementationPreviewScopeV1={orchestrationAwareRequirementsState.implementationPreviewScopeV1}
             implementationPreviewRuntimeV1={orchestrationAwareRequirementsState.implementationPreviewRuntimeV1}
             qualityGateResults={orchestrationAwareRequirementsState.implementationQualityGateResultsV1}

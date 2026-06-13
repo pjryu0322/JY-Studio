@@ -56,6 +56,10 @@ import {
   type ImplementationExecutionUnitsStateV1,
 } from "@/lib/prototype/implementationExecutionUnitStore";
 import {
+  parseImplementationCodeTaskGithubPollingStateV1,
+  type ImplementationCodeTaskGithubPollingStateV1,
+} from "@/lib/prototype/implementationCodeTaskGithubPollingState";
+import {
   parseImplementationIntegrationStepsStateV1,
   type ImplementationIntegrationStepsStateV1,
 } from "@/lib/prototype/implementationIntegrationStepStore";
@@ -657,6 +661,8 @@ export type RequirementsStateJson = {
   implementationQuickRunV1?: ImplementationQuickRunV1 | null;
   /** Persisted ExecutionUnit runtime (P3-M69) */
   implementationExecutionUnitsV1?: ImplementationExecutionUnitsStateV1 | null;
+  /** CodeTask GitHub polling job/state (post-Cursor dispatch) */
+  implementationCodeTaskGithubPollingV1?: ImplementationCodeTaskGithubPollingStateV1 | null;
   /** Integration service steps (final wiring, build, preview target) — P3-M74 */
   implementationIntegrationStepsV1?: ImplementationIntegrationStepsStateV1 | null;
   /** 구현단계 ExecutionJob 런타임(프로세스 Task 단위 실행 상태 SoT) */
@@ -1154,6 +1160,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationExecutionUnitsV1 = parseImplementationExecutionUnitsStateV1(
     "implementationExecutionUnitsV1" in o ? o.implementationExecutionUnitsV1 : undefined,
   );
+  const implementationCodeTaskGithubPollingV1 = parseImplementationCodeTaskGithubPollingStateV1(
+    "implementationCodeTaskGithubPollingV1" in o ? o.implementationCodeTaskGithubPollingV1 : undefined,
+  );
   const implementationIntegrationStepsV1 = parseImplementationIntegrationStepsStateV1(
     "implementationIntegrationStepsV1" in o ? o.implementationIntegrationStepsV1 : undefined,
   );
@@ -1357,6 +1366,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationAutoQualityGateV1 !== undefined ? { implementationAutoQualityGateV1 } : {}),
     ...(implementationQuickRunV1 !== undefined ? { implementationQuickRunV1 } : {}),
     ...(implementationExecutionUnitsV1 !== undefined ? { implementationExecutionUnitsV1 } : {}),
+    ...(implementationCodeTaskGithubPollingV1 !== undefined
+      ? { implementationCodeTaskGithubPollingV1 }
+      : {}),
     ...(implementationIntegrationStepsV1 !== undefined ? { implementationIntegrationStepsV1 } : {}),
     ...(implementationExecutionJobsV1 !== undefined ? { implementationExecutionJobsV1 } : {}),
     ...(codeTaskExecutionRunsV1 !== undefined ? { codeTaskExecutionRunsV1 } : {}),

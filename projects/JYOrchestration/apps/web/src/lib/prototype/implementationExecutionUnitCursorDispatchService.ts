@@ -8,6 +8,10 @@ import {
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { buildImplementationExecutionUnitGithubPollTimelineEntry } from "@/lib/prototype/implementationGithubPollingScheduler";
+import {
+  buildScheduledCodeTaskGithubPollingEntry,
+  upsertCodeTaskGithubPollingEntryInState,
+} from "@/lib/prototype/implementationCodeTaskGithubPollingState";
 import { buildExecutionUnitStartedPatch } from "@/lib/prototype/implementationExecutionRuntime";
 import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
 import { patchImplementationExecutionUnitInState } from "@/lib/prototype/implementationExecutionUnitStore";
@@ -320,20 +324,6 @@ export async function dispatchExecutionUnitWithCursor(input: {
               agentId,
               nowIso,
             }),
-            buildImplementationExecutionUnitGithubPollTimelineEntry({
-              action: "implementation_execution_unit_github_poll_scheduled",
-              projectId: pid,
-              unitId: unit.unitId,
-              codeTaskId: unit.codeTaskId,
-              processTaskId: prepared.parentTaskId,
-              targetRepository:
-                typeof input.executionContext.targetRepository === "string"
-                  ? input.executionContext.targetRepository
-                  : `${input.executionContext.targetRepository.owner}/${input.executionContext.targetRepository.repo}`,
-              baseBranch,
-              workBranch,
-              nowIso,
-            }),
           );
         } else {
           timelineEntries.push(
@@ -381,6 +371,47 @@ export async function dispatchExecutionUnitWithCursor(input: {
 
     mergedState = mergeRequirementsStateJson(mergedState, started.orchestrationPatch as Partial<RequirementsStateJson>);
 
+    const repoFullName =
+      typeof input.executionContext.targetRepository === "string"
+        ? input.executionContext.targetRepository
+        : `${input.executionContext.targetRepository.owner}/${input.executionContext.targetRepository.repo}`;
+
+    const pollingEntry = buildScheduledCodeTaskGithubPollingEntry({
+      projectId: pid,
+      unitId: unit.unitId,
+      codeTaskId: unit.codeTaskId,
+      processTaskId: prepared.parentTaskId,
+      targetRepository: repoFullName,
+      baseBranch,
+      workBranch,
+      nowIso,
+    });
+
+    mergedState = mergeRequirementsStateJson(
+      mergedState,
+      upsertCodeTaskGithubPollingEntryInState({
+        state: mergedState,
+        entry: pollingEntry,
+        nowIso,
+      }),
+    );
+
+    timelineEntries.push(
+      buildImplementationExecutionUnitGithubPollTimelineEntry({
+        action: "implementation_execution_unit_github_poll_scheduled",
+        projectId: pid,
+        unitId: unit.unitId,
+        codeTaskId: unit.codeTaskId,
+        processTaskId: prepared.parentTaskId,
+        targetRepository: repoFullName,
+        baseBranch,
+        workBranch,
+        timeoutAt: pollingEntry.timeoutAt,
+        nextPollAt: pollingEntry.nextPollAt,
+        nowIso,
+      }),
+    );
+
     const orchestrationPatch = buildTaskCursorOrchestrationPatch({
       execution,
       timelineEntries,
@@ -390,10 +421,7 @@ export async function dispatchExecutionUnitWithCursor(input: {
       activeWorkItemId: prepared.workItem.id,
     });
 
-    const mergedPatch = mergeOrchestrationPersistPatches(
-      started.orchestrationPatch,
-      orchestrationPatch,
-    );
+    const mergedPatch = mergeOrchestrationPersistPatches(started.orchestrationPatch, orchestrationPatch);
 
     timelineEntries.push(
       buildImplementationExecutionLogTimelineEntry({
@@ -414,6 +442,9 @@ export async function dispatchExecutionUnitWithCursor(input: {
       execution,
       orchestrationPatch: mergeOrchestrationPersistPatches(mergedPatch, {
         promptTimeline: timelineEntries,
+        ...(mergedState.implementationCodeTaskGithubPollingV1 !== undefined
+          ? { implementationCodeTaskGithubPollingV1: mergedState.implementationCodeTaskGithubPollingV1 }
+          : {}),
       }),
       timelineEntries,
     };

@@ -36,6 +36,8 @@ export function buildImplementationExecutionUnitGithubPollTimelineEntry(input: {
   readonly firstPollDelayMs?: number;
   readonly pollIntervalMs?: number;
   readonly elapsedMs?: number;
+  readonly timeoutAt?: string | null;
+  readonly nextPollAt?: string | null;
   readonly branchHeadCommit?: string | null;
   readonly errorCode?: string | null;
   readonly errorMessage?: string | null;
@@ -56,6 +58,8 @@ export function buildImplementationExecutionUnitGithubPollTimelineEntry(input: {
       firstPollDelayMs: input.firstPollDelayMs ?? CODE_TASK_GITHUB_FIRST_POLL_DELAY_MS,
       pollIntervalMs: input.pollIntervalMs ?? CODE_TASK_GITHUB_POLL_INTERVAL_MS,
       elapsedMs: input.elapsedMs,
+      timeoutAt: input.timeoutAt ?? undefined,
+      nextPollAt: input.nextPollAt ?? undefined,
       branchHeadCommit: input.branchHeadCommit ?? undefined,
       errorCode: input.errorCode ?? undefined,
       errorMessage: input.errorMessage ?? undefined,

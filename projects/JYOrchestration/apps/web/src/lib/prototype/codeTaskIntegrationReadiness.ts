@@ -1,4 +1,9 @@
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  findCodeTaskGithubPollingEntry,
+  isCodeTaskGithubPollingBlockingIntegration,
+} from "@/lib/prototype/implementationCodeTaskGithubPollingState";
 import {
   normalizeCodeTaskGithubOutcomeFromRun,
 } from "@/lib/prototype/codeTaskGithubOutcome";
@@ -11,7 +16,13 @@ import { hasVerifiedCodeTaskCompletionEvidence } from "@/lib/prototype/implement
  */
 export function isCodeTaskRunIntegrationReady(
   run: CodeTaskExecutionRunV1 | null | undefined,
+  requirementsState?: RequirementsStateJson | null,
 ): boolean {
+  const codeTaskId = String(run?.codeTaskId ?? "").trim();
+  if (codeTaskId && requirementsState) {
+    const pollingEntry = findCodeTaskGithubPollingEntry(requirementsState, codeTaskId);
+    if (isCodeTaskGithubPollingBlockingIntegration(pollingEntry)) return false;
+  }
   if (!run) return false;
 
   const github = normalizeCodeTaskGithubOutcomeFromRun(run);

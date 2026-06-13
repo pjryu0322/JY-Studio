@@ -614,6 +614,11 @@ export function usePrototypeImplementationStagePanel(
     quickRunStuckGithubVerifyRef,
     recoverQuickRunStuckGithubVerify,
     loadImplementationRuntimeDb,
+    applyGithubPollingOrchestrationPatch: (patch) => {
+      applyImplementationOrchestrationResult({
+        orchestrationPatch: patch as import("@/lib/prototype/prototypeExecutionTaskPlanPersist").PrototypeExecutionOrchestrationPersistInput,
+      });
+    },
   });
 
   const {

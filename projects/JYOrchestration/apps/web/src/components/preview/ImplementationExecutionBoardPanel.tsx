@@ -76,7 +76,7 @@ import {
   usePruneNonSelectableCheckedCodeTaskIds,
 } from "@/components/preview/useImplementationBoardCheckboxSelection";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
-import { evaluateCodeTaskIntegration } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
+import { parseImplementationCodeTaskGithubPollingStateV1 } from "@/lib/prototype/implementationCodeTaskGithubPollingState";
 import { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
 import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
@@ -127,6 +127,7 @@ export function ImplementationExecutionBoardPanel({
   cursorWorkItemsV1,
   runtimeCodeTaskQueueView,
   codeTaskExecutionRunsV1,
+  implementationCodeTaskGithubPollingV1,
   implementationPreviewScopeV1,
   implementationPreviewRuntimeV1,
   onRunIntegrationPipeline,
@@ -177,6 +178,7 @@ export function ImplementationExecutionBoardPanel({
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly runtimeCodeTaskQueueView?: unknown;
   readonly codeTaskExecutionRunsV1?: unknown;
+  readonly implementationCodeTaskGithubPollingV1?: unknown;
   readonly implementationPreviewScopeV1?: unknown;
   readonly implementationPreviewRuntimeV1?: unknown;
   readonly onRunIntegrationPipeline?: () => void;
@@ -544,6 +546,9 @@ export function ImplementationExecutionBoardPanel({
         runtimeSnapshotUnits: runtimeSnapshot.units,
         projectId: projectId ?? board.projectId,
         targetRepository,
+        codeTaskGithubPollingByCodeTaskId:
+          parseImplementationCodeTaskGithubPollingStateV1(implementationCodeTaskGithubPollingV1)
+            ?.byCodeTaskId,
       }),
     [
       board,
@@ -563,6 +568,7 @@ export function ImplementationExecutionBoardPanel({
       targetRepository,
       projectId,
       board.projectId,
+      implementationCodeTaskGithubPollingV1,
     ],
   );
 
