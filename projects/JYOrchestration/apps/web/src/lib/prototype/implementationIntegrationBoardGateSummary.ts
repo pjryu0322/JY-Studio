@@ -17,6 +17,31 @@ import {
   readVerifiedCommitShaFromRun,
 } from "@/lib/prototype/implementationCodeTaskCompletionEvidence";
 
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { coalesceCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { buildImplementationExecutionSummaryCounts } from "@/lib/prototype/implementationExecutionSummary";
+
+export function summarizeCodeTaskBoardGateFromRequirementsState(input: {
+  readonly projectId: string;
+  readonly requirementsState: RequirementsStateJson | null | undefined;
+}): ReturnType<typeof summarizeCodeTaskBoardGateFromPlanAndUnits> {
+  const codeTaskPlan =
+    parseImplementationCodeTaskPlanV1(input.requirementsState?.implementationCodeTaskPlanV1) ?? null;
+  const runs = coalesceCodeTaskExecutionRunsV1(input.requirementsState?.codeTaskExecutionRunsV1 ?? []);
+  const summary = buildImplementationExecutionSummaryCounts({
+    projectId: input.projectId,
+    requirementsState: input.requirementsState,
+    codeTaskPlan,
+    runs,
+  });
+  return summarizeCodeTaskBoardGateFromPlanAndUnits({
+    codeTaskPlan,
+    units: summary.executionUnits,
+    runs,
+  });
+}
+
 export function resolveRunIntegrationReadyForBoardGate(input: {
   readonly run: CodeTaskExecutionRunV1 | null;
   readonly githubOutcomeSaved: boolean;

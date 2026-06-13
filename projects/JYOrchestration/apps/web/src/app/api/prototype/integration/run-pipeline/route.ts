@@ -10,10 +10,14 @@ import { buildImplementationIntegrationPipelineContext } from "@/lib/prototype/i
 import { resolveIntegrationStepsForRuntimeSnapshot } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
 import { buildImplementationIntegrationPipelineEligibilityFromSnapshot } from "@/lib/prototype/projectIntegrationPipelineEligibility";
 import { summarizeCodeTaskBoardGateFromPlanAndUnits } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
+import { findIntegrationStep } from "@/lib/prototype/implementationIntegrationStepMutations";
 import {
   evaluateIntegrationPrepareGateFromBoardSummary,
   buildBoardGateMismatchLogFields,
   logIntegrationPrepareStarted,
+  isFinalWiringStepReadyForIntegrationButton,
+  logIntegrationButtonGateEvaluated,
+  evaluateIntegrationButtonGate,
 } from "@/lib/prototype/implementationBoardIntegrationGate";
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { runProjectIntegrationPipeline } from "@/lib/prototype/projectIntegrationPipelineService";
@@ -173,6 +177,27 @@ export async function POST(request: NextRequest) {
       blockedDetails: serverBoardGate.blockedDetails,
       runnableCodeTaskIds: serverBoardGate.runnableCodeTaskIds,
     });
+
+    const integrationStepsForGate = resolveIntegrationStepsForRuntimeSnapshot({
+      requirementsState: persisted,
+      codeTaskPlan,
+    });
+    const finalWiringStep = findIntegrationStep(integrationStepsForGate, "final_wiring");
+    const finalWiringReady = isFinalWiringStepReadyForIntegrationButton(finalWiringStep?.status);
+    logIntegrationButtonGateEvaluated({
+      projectId,
+      summary: boardGateSummary,
+      selectedCount: boardGateSummary.selectedRunnableCount,
+      verifiedCount: boardGateSummary.integrationReadyCount,
+      finalWiringReady,
+      blockReason: boardGateEval.ok ? null : "no_integration_ready_units",
+      canRun: boardGateEval.ok,
+      staleDetected:
+        clientBoardGate != null &&
+        buildBoardGateMismatchLogFields({ client: clientBoardGate, server: serverBoardGate })
+          .summariesMatch === false,
+    });
+
     if (!boardGateEval.ok) {
       return NextResponse.json(
         {
@@ -185,12 +210,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const integrationButtonGate = evaluateIntegrationButtonGate({
+      summary: boardGateSummary,
+      finalWiringReady,
+      projectId,
+      clientSummary: clientBoardGate,
+    });
+    if (!integrationButtonGate.canRun) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "board_gate_blocked",
+          previewReady: false,
+          message: integrationButtonGate.userMessage ?? "통합을 시작할 수 없습니다.",
+        },
+        { status: 400 },
+      );
+    }
+
     const boardGateBlockedDetails = serverBoardGate.blockedDetails;
 
-    const integrationSteps = resolveIntegrationStepsForRuntimeSnapshot({
-      requirementsState: persisted,
-      codeTaskPlan,
-    });
+    const integrationSteps = integrationStepsForGate;
     const eligibility = buildImplementationIntegrationPipelineEligibilityFromSnapshot(
       summary.runtimeSnapshot,
       {

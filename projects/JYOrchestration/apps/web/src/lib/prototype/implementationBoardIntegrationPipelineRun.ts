@@ -7,9 +7,17 @@ import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlan
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { parseRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
-  evaluatePrepareIntegrationPreviewStartGate,
+  evaluateIntegrationButtonGate,
+  INTEGRATION_PIPELINE_START_SUCCESS_TOAST,
+  isFinalWiringStepReadyForIntegrationButton,
+  logIntegrationButtonClicked,
   logPrepareIntegrationPreviewStarted,
 } from "@/lib/prototype/implementationBoardIntegrationGate";
+import { summarizeCodeTaskBoardGateFromRequirementsState } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
+import { findIntegrationStep } from "@/lib/prototype/implementationIntegrationStepMutations";
+import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
+import { pickIntegrationPipelineClientBoardSummary } from "@/lib/prototype/implementationControlPlaneSnapshot";
+import type { ImplementationControlPlaneSnapshotV1 } from "@/lib/prototype/implementationControlPlaneSnapshot";
 
 export type IntegrationPipelineClientSnapshotV1 = Readonly<{
   readonly status: string;
@@ -36,6 +44,7 @@ export async function executeImplementationBoardIntegrationPipeline(input: {
   readonly setBusy: (busy: boolean) => void;
   readonly onClientResult: (snapshot: IntegrationPipelineClientSnapshotV1) => void;
   readonly boardSelectionSummary?: ImplementationCodeTaskSelectionSummaryV1 | null;
+  readonly parentControlPlaneSnapshot?: ImplementationControlPlaneSnapshotV1 | null;
 }): Promise<void> {
   const pid = input.projectId.trim();
   if (!pid) {
@@ -43,35 +52,56 @@ export async function executeImplementationBoardIntegrationPipeline(input: {
     return;
   }
 
-  const integrationGate = evaluatePrepareIntegrationPreviewStartGate(
-    input.boardSelectionSummary ?? {
-      runnableCount: 0,
-      integrationReadyCount: 0,
-      integrationReadyCodeTaskIds: [],
-      totalCount: 0,
-      selectedRunnableCount: 0,
-      selectedRunnableCodeTaskIds: [],
-    },
+  logIntegrationButtonClicked({ projectId: pid });
+
+  const clientSummary =
+    input.boardSelectionSummary ??
+    pickIntegrationPipelineClientBoardSummary({
+      bridgeSummary: input.boardSelectionSummary,
+      parentSnapshot: input.parentControlPlaneSnapshot ?? null,
+    });
+
+  const authoritativeSummary = summarizeCodeTaskBoardGateFromRequirementsState({
+    projectId: pid,
+    requirementsState: parseRequirementsStateJson(input.requirementsStateJsonRef.current),
+  });
+
+  const mergedState = parseRequirementsStateJson(input.requirementsStateJsonRef.current);
+  const finalWiringStep = findIntegrationStep(
+    loadImplementationIntegrationStepsFromState(mergedState),
+    "final_wiring",
   );
-  if (!integrationGate.ok) {
-    input.showToast(integrationGate.message ?? "통합 가능한 완료 작업이 없습니다.");
+  const finalWiringReady = isFinalWiringStepReadyForIntegrationButton(finalWiringStep?.status);
+
+  const integrationGate = evaluateIntegrationButtonGate({
+    summary: authoritativeSummary,
+    finalWiringReady,
+    selectedCount: authoritativeSummary.selectedRunnableCount,
+    verifiedCount: authoritativeSummary.integrationReadyCount,
+    clientSummary,
+    projectId: pid,
+  });
+
+  if (!integrationGate.canRun) {
+    input.showToast(integrationGate.userMessage ?? "통합을 시작할 수 없습니다.");
     return;
   }
   logPrepareIntegrationPreviewStarted({
     projectId: pid,
-    integrationTargetCount: integrationGate.codeTaskIds.length,
-    integrationCodeTaskIds: integrationGate.codeTaskIds,
+    integrationTargetCount: integrationGate.integrationReadyCodeTaskIds.length,
+    integrationCodeTaskIds: integrationGate.integrationReadyCodeTaskIds,
   });
 
   if (
     input.implementationBoardBlockingUserConfirmation > 0 &&
-    integrationGate.codeTaskIds.length === 0
+    integrationGate.integrationReadyCodeTaskIds.length === 0
   ) {
     input.showToast("사용자 확인이 필요한 작업이 해소된 뒤 통합을 실행할 수 있습니다.");
     return;
   }
 
   input.setBusy(true);
+  input.showToast(INTEGRATION_PIPELINE_START_SUCCESS_TOAST);
   try {
     const pipelineResult = await runProjectIntegrationPrepareOnly({
       projectId: pid,
@@ -80,7 +110,7 @@ export async function executeImplementationBoardIntegrationPipeline(input: {
       implementationTaskListV1: input.requirementsState.implementationTaskListV1,
       codeTaskExecutionRunsV1: input.requirementsState.codeTaskExecutionRunsV1,
       implementationQuickRunV1: input.requirementsState.implementationQuickRunV1,
-      boardSelectionSummary: input.boardSelectionSummary ?? null,
+      boardSelectionSummary: authoritativeSummary,
       createPullRequest: true,
     });
 

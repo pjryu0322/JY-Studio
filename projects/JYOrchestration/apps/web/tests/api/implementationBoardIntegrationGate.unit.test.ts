@@ -4,10 +4,10 @@ import {
   evaluateIntegrationBlockedByRunnableBoardSummary,
   evaluateIntegrationPrepareGateFromBoardSummary,
   evaluatePrepareIntegrationPreviewStartGate,
-  INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE,
-  INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE,
   isSameBoardGateSummary,
   resolveImplementationIntegrationControlGate,
+  INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE,
+  INTEGRATION_NO_INTEGRATION_READY_USER_MESSAGE,
 } from "@/lib/prototype/implementationBoardIntegrationGate";
 import { INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE } from "@/lib/prototype/implementationIntegrationGate";
 
@@ -28,7 +28,7 @@ describe("evaluatePrepareIntegrationPreviewStartGate", () => {
       integrationReadyCodeTaskIds: [],
     });
     expect(gate.ok).toBe(false);
-    expect(gate.message).toBe(INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE);
+    expect(gate.message).toBe(INTEGRATION_NO_INTEGRATION_READY_USER_MESSAGE);
   });
 
   it("blocks when runnable tasks remain and not all integration-ready", () => {

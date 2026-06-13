@@ -15,6 +15,7 @@ import { mergeOrchestrationPersistPatches } from "@/lib/prototype/orchestrationP
 import { buildIntegrationGateBlockedByFailedCodeTaskLogEntry } from "@/lib/prototype/implementationExecutionLogger";
 import { isIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
+import { summarizeCodeTaskBoardGateFromPlanAndUnits } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 
 export function resolveSelectedExecutionUnitIdsForFinalWiringGate(input: {
   readonly executionUnits: readonly ImplementationExecutionUnitV1[];
@@ -124,6 +125,11 @@ export async function markFinalWiringIntegrationStepReady(input: {
     reason: "implementation_integration_final_wiring_ready",
     nowIso,
   });
+  const boardGate = summarizeCodeTaskBoardGateFromPlanAndUnits({
+    codeTaskPlan: input.codeTaskPlan,
+    units: summary.executionUnits,
+    runs: input.runs ?? [],
+  });
   const timeline: RequirementsPromptTimelineEntry[] = [
     ...ensured.timeline,
     ...(usedSelectionFallback
@@ -151,7 +157,8 @@ export async function markFinalWiringIntegrationStepReady(input: {
       fields: {
         projectId: pid,
         selectedCount: selectedExecutionUnitIds.length,
-        verifiedCount: summary.completedCodeTaskCount,
+        verifiedCount: boardGate.integrationReadyCount,
+        completedCount: completionGate.completedCount,
       },
       nowIso,
     }),

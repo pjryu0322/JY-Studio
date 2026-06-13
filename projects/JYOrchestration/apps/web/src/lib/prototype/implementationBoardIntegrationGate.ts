@@ -8,8 +8,139 @@ export const INTEGRATION_OPEN_PREVIEW_LABEL = "Preview 보기" as const;
 export const INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE =
   "통합 가능한 완료 작업이 없습니다." as const;
 
+export const INTEGRATION_NO_INTEGRATION_READY_USER_MESSAGE =
+  "통합 가능한 완료 CodeTask가 없습니다. GitHub commit 확인이 완료된 CodeTask가 필요합니다." as const;
+
 export const INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE =
-  "실행 가능한 미완료 작업이 있습니다. 먼저 선택 작업 실행을 완료해 주세요." as const;
+  "실행 가능한 미완료 CodeTask가 있습니다. 먼저 CodeTask 실행을 완료해 주세요." as const;
+
+export const INTEGRATION_FINAL_WIRING_NOT_READY_USER_MESSAGE =
+  "통합 작업 준비가 완료되지 않았습니다. 새로고침 후 다시 시도해 주세요." as const;
+
+export const INTEGRATION_PIPELINE_START_SUCCESS_TOAST =
+  "통합 및 Preview 준비를 시작했습니다." as const;
+
+export type IntegrationButtonGateBlockReasonV1 =
+  | "runnable_tasks_exist"
+  | "no_integration_ready_units"
+  | "final_wiring_not_ready"
+  | "stale_summary_detected"
+  | null;
+
+export function isFinalWiringStepReadyForIntegrationButton(
+  status: string | null | undefined,
+): boolean {
+  const s = String(status ?? "").trim();
+  return s === "ready" || s === "completed" || s === "failed";
+}
+
+export function evaluateIntegrationButtonGate(input: {
+  readonly summary: ImplementationCodeTaskSelectionSummaryV1;
+  readonly finalWiringReady: boolean;
+  readonly selectedCount?: number;
+  readonly completedCount?: number;
+  readonly verifiedCount?: number;
+  readonly clientSummary?: ImplementationCodeTaskSelectionSummaryV1 | null;
+  readonly projectId?: string | null;
+}): Readonly<{
+  readonly canRun: boolean;
+  readonly blockReason: IntegrationButtonGateBlockReasonV1;
+  readonly userMessage: string | null;
+  readonly integrationReadyCodeTaskIds: readonly string[];
+}> {
+  const integrationReadyCodeTaskIds = [
+    ...new Set(input.summary.integrationReadyCodeTaskIds.map((id) => id.trim()).filter(Boolean)),
+  ];
+  const staleDetected =
+    input.clientSummary != null && !isSameBoardGateSummary(input.clientSummary, input.summary);
+
+  let blockReason: IntegrationButtonGateBlockReasonV1 = null;
+  let userMessage: string | null = null;
+
+  if (input.summary.runnableCount > 0) {
+    blockReason = "runnable_tasks_exist";
+    userMessage = INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE;
+  } else if (integrationReadyCodeTaskIds.length === 0 || input.summary.integrationReadyCount === 0) {
+    blockReason = "no_integration_ready_units";
+    userMessage = INTEGRATION_NO_INTEGRATION_READY_USER_MESSAGE;
+  } else if (
+    input.summary.totalCount > 0 &&
+    input.summary.integrationReadyCount < input.summary.totalCount
+  ) {
+    blockReason = "no_integration_ready_units";
+    userMessage = INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE;
+  } else if (!input.finalWiringReady) {
+    blockReason = "final_wiring_not_ready";
+    userMessage = INTEGRATION_FINAL_WIRING_NOT_READY_USER_MESSAGE;
+  }
+
+  const canRun = blockReason == null;
+
+  logIntegrationButtonGateEvaluated({
+    projectId: input.projectId,
+    summary: input.summary,
+    selectedCount: input.selectedCount ?? input.summary.selectedRunnableCount,
+    completedCount: input.completedCount,
+    verifiedCount: input.verifiedCount ?? input.summary.integrationReadyCount,
+    finalWiringReady: input.finalWiringReady,
+    blockReason: canRun && staleDetected ? "stale_summary_detected" : blockReason,
+    canRun,
+    staleDetected,
+  });
+
+  if (canRun && staleDetected) {
+    console.info(
+      JSON.stringify({
+        action: "implementation_integration_button_gate_stale_client_summary",
+        projectId: input.projectId ?? null,
+        message: "Authoritative board gate used; client summary differed",
+      }),
+    );
+  }
+
+  return { canRun, blockReason, userMessage, integrationReadyCodeTaskIds };
+}
+
+export function logIntegrationButtonGateEvaluated(input: {
+  readonly projectId?: string | null;
+  readonly summary: ImplementationCodeTaskSelectionSummaryV1;
+  readonly selectedCount?: number;
+  readonly completedCount?: number;
+  readonly verifiedCount?: number;
+  readonly finalWiringReady: boolean;
+  readonly blockReason: IntegrationButtonGateBlockReasonV1;
+  readonly canRun: boolean;
+  readonly staleDetected?: boolean;
+}): void {
+  if (typeof console === "undefined" || !console.info) return;
+  const payload = {
+    action: input.canRun
+      ? "implementation_integration_button_gate_evaluated"
+      : "implementation_integration_button_gate_blocked",
+    projectId: input.projectId ?? null,
+    runnableCount: input.summary.runnableCount,
+    selectedCount: input.selectedCount ?? input.summary.selectedRunnableCount,
+    completedCount: input.completedCount ?? null,
+    verifiedCount: input.verifiedCount ?? input.summary.integrationReadyCount,
+    integrationReadyCount: input.summary.integrationReadyCount,
+    finalWiringReady: input.finalWiringReady,
+    blockReason: input.blockReason,
+    staleSummaryDetected: input.staleDetected === true,
+  };
+  console.info(JSON.stringify(payload));
+}
+
+export function logIntegrationButtonClicked(input: {
+  readonly projectId?: string | null;
+}): void {
+  if (typeof console === "undefined" || !console.info) return;
+  console.info(
+    JSON.stringify({
+      action: "implementation_integration_button_clicked",
+      projectId: input.projectId ?? null,
+    }),
+  );
+}
 
 export type IntegrationPrepareGateResolutionV1 =
   | "prepare_integration_preview"
@@ -186,7 +317,7 @@ export function evaluateIntegrationPrepareGateFromBoardSummary(
   } else if (integrationReadyCodeTaskIds.length === 0) {
     resolvedAction = "blocked_no_integration_ready";
     ok = false;
-    message = INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE;
+    message = INTEGRATION_NO_INTEGRATION_READY_USER_MESSAGE;
     blockedCodeTaskIds = notReadyIds;
   } else if (summary.integrationReadyCount < summary.totalCount) {
     resolvedAction = "blocked_no_integration_ready";

@@ -513,6 +513,14 @@ export async function runProjectIntegrationPipeline(input: {
     });
     timeline.push(
       buildImplementationExecutionLogTimelineEntry({
+        action: "implementation_integration_final_wiring_execution_requested",
+        orchestrationTraceGroup: "implementation_integration",
+        fields: { projectId: pid, trigger: context.trigger, ...projectIntegrationPipelineContextLogFields(context) },
+        nowIso,
+      }),
+    );
+    timeline.push(
+      buildImplementationExecutionLogTimelineEntry({
         action: "implementation_integration_final_wiring_started",
         orchestrationTraceGroup: "implementation_integration",
         fields: { projectId: pid, trigger: context.trigger, ...projectIntegrationPipelineContextLogFields(context) },
