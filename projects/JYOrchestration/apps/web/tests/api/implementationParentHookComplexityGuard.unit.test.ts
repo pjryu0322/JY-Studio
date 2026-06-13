@@ -33,6 +33,9 @@ describe("implementation parent hook complexity guard", () => {
       "useImplementationRuntimeRecoveryController",
       "useImplementationDeliverableViewerController",
       "useImplementationRuntimeSyncController",
+      "useImplementationNoticeModalController",
+      "useImplementationEntryRecoveryController",
+      "useImplementationDerivedViewModelController",
     ];
 
     for (const controller of requiredControllers) {
@@ -68,6 +71,16 @@ describe("implementation parent hook complexity guard", () => {
       "useRecoverServerQuickRunContinuation(",
       "useTaskCursorServerJobPoll(",
       "useImplementationAutoQualityGateTrigger(",
+      "const [implementationStageNoticeModal, setImplementationStageNoticeModal] = useState",
+      "const appendAiNoticeForImplementation = useCallback",
+      "const appendUserNotice = useCallback",
+      "const appendImplementationExecutionNotice = useCallback",
+      "buildImplementationEntryCursorWorkItemsRecovery({",
+      "buildImplementationEntryCursorWorkItemsRegeneratedTimelineEntry({",
+      "const implementationBootstrapInput = useMemo",
+      "const implementationStageBoardInput = useMemo",
+      "const implementationBootstrapShell = useMemo",
+      "const implementationVisibleActionLabels = useMemo",
     ];
 
     for (const snippet of forbiddenSnippets) {

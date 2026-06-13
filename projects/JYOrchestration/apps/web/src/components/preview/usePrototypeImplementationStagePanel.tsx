@@ -9,7 +9,6 @@ import {
 } from "react";
 import type { PrototypeChatAction } from "@/lib/prototype/buildPrototypeChatMessages";
 import { useImplementationBoardSelectionBridge } from "@/components/preview/useImplementationBoardSelectionBridge";
-import { useImplementationControlPlaneSnapshot } from "@/components/preview/useImplementationControlPlaneSnapshot";
 import {
   useImplementationIntegrationPipelineController,
   type ImplementationIntegrationPipelineClientResultV1,
@@ -34,23 +33,21 @@ import { useImplementationToolbarController } from "@/components/preview/useImpl
 import { useImplementationRuntimeRecoveryController } from "@/components/preview/useImplementationRuntimeRecoveryController";
 import { useImplementationDeliverableViewerController } from "@/components/preview/useImplementationDeliverableViewerController";
 import { useImplementationRuntimeSyncController } from "@/components/preview/useImplementationRuntimeSyncController";
+import { useImplementationDerivedViewModelController } from "@/components/preview/useImplementationDerivedViewModelController";
+import { useImplementationNoticeModalController } from "@/components/preview/useImplementationNoticeModalController";
+import { useImplementationEntryRecoveryController } from "@/components/preview/useImplementationEntryRecoveryController";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
 import { usePrototypeExecutionPersistChatToDb } from "@/components/preview/usePrototypeExecutionPersistChatToDb";
 import { useImplementationStageActionTimeline } from "@/components/preview/useImplementationStageActionTimeline";
 import { useProjectRecommendationEvidence } from "@/lib/recommendation/useProjectRecommendationEvidence";
+import { useImplementationControlPlaneSnapshot } from "@/components/preview/useImplementationControlPlaneSnapshot";
 import { buildPrototypeExecutionPlanningOrchestrationView } from "@/lib/prototype/prototypeExecutionPlanningOrchestration";
-import {
-  buildImplementationBootstrapInput,
-  pickExecutionStateArtifacts,
-  toPrototypeChatEnvSnapshot,
-} from "@/lib/prototype/prototypeExecutionEnvSnapshot";
+import { toPrototypeChatEnvSnapshot } from "@/lib/prototype/prototypeExecutionEnvSnapshot";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
-import { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
   mergePendingImplementationPatch,
   mergePendingImplementationPatchFromOrchestration,
   resolveOrchestrationAwareRequirementsState,
-  resolveEffectiveImplementationState,
   shouldClearPendingImplementationPatch,
   type ImplementationStageActionId,
   type PendingImplementationPatch,
@@ -59,38 +56,12 @@ import { hasActiveImplementationExecutionSession } from "@/lib/requirements/rese
 import type { ImplementationStageActionRunResult } from "@/lib/prototype/implementationStageActionPipeline";
 import type { ImplementationStageActionRun } from "@/lib/prototype/implementationStageActionRun";
 import {
-  prioritizeImplementationChipsForState,
-  deriveImplementationStageNextActions,
-} from "@/lib/prototype/implementationStageNextActions";
-import { deriveImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
-import {
-  buildImplementationCursorGateContext,
-} from "@/lib/prototype/prototypeExecutionTaskPlanActions";
-import {
   appendPromptTimeline,
   type PrototypeExecutionOrchestrationPersistInput,
 } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
-import {
-  implementationEntryChipsForBootstrap,
-  buildImplementationBootstrapShellView,
-} from "@/lib/prototype/implementationOrchestrationSummary";
-import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
-import {
-  buildImplementationEntryCursorWorkItemsRecovery,
-  buildImplementationEntryCursorWorkItemsRegeneratedTimelineEntry,
-} from "@/lib/prototype/implementationEntryState";
-import { hasImplementationTaskListReady } from "@/lib/requirements/implementationTaskList";
-import { resolveIntegratedAppPreviewReadyFromOrchestration } from "@/lib/prototype/implementationPreviewReadiness";
-import { isLegacyCodeTaskPreviewScopeNoticeContent } from "@/lib/prototype/implementationPreviewEntryPolicy";
-import { COMPLETED_CODETASK_PREVIEW_NOTICE_SUPPRESSED_LOG_ACTION } from "@/lib/prototype/implementationPreviewActionSource";
-import { isLegacyContinuePreviewMessage } from "@/lib/prototype/implementationIntegrationToastPolicy";
-import {
-  dedupeImplementationStageNextActions,
-  extractBoardVisibleActionLabels,
-} from "@/lib/prototype/implementationExecutionBoardPanelView";
+import { buildImplementationBootstrapShellView } from "@/lib/prototype/implementationOrchestrationSummary";
 import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
-import { shouldSuppressImplementationStatusMessage } from "@/lib/prototype/implementationStatusChatPolicy";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import {
   pickPersistentExecutionLogTimelineEntries,
@@ -98,7 +69,6 @@ import {
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { syncCodeTaskExecutionRunsFromTaskCursor } from "@/lib/prototype/codeTaskExecutionRunTaskCursorAdapter";
 import type { CodeTaskQueueDispatchRef } from "@/lib/prototype/selectedCodeTaskCursorExecution";
-import { resolvePersistedQueueDispatch } from "@/lib/prototype/implementationRuntimePanelBridge";
 import { readActiveRuntimeDispatchFromState } from "@/lib/prototype/implementationRuntimeSync";
 import {
   postImplementationRuntimeAction,
@@ -107,7 +77,6 @@ import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementa
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
-import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import { computePrototypeExecutionSlots } from "@/lib/prototype/prototypeExecutionSlots";
 import {
@@ -344,10 +313,6 @@ export function usePrototypeImplementationStagePanel(
   const integrationPipelineClientResultRef = useRef<ImplementationIntegrationPipelineClientResultV1 | null>(
     null,
   );
-  const [implementationStageNoticeModal, setImplementationStageNoticeModal] = useState<{
-    readonly body: string;
-    readonly actionLabels?: readonly string[];
-  } | null>(null);
 
   const [pendingImplementationPatch, setPendingImplementationPatch] =
     useState<PendingImplementationPatch>({});
@@ -454,84 +419,43 @@ export function usePrototypeImplementationStagePanel(
     appendImplementationExecutionNoticeRef,
   });
 
-  const effectiveCodeTaskExecutionQueueV1 = useMemo(
-    () =>
-      resolveEffectiveCodeTaskExecutionQueue({
-        dbBundle: implementationRuntimeDbBundle,
-      }),
-    [implementationRuntimeDbBundle],
-  );
-
-  const persistedQueueDispatch = useMemo(
-    () => resolvePersistedQueueDispatch(orchestrationAwareRequirementsState),
-    [orchestrationAwareRequirementsState.implementationRuntimeUiSnapshotV1],
-  );
-
-  const prototypeRunSyncSnapshot = useMemo(
-    () =>
-      deriveImplementationPrototypeRunSyncSnapshot({
-        latestRun,
-        workUnits: latestRun?.workUnits,
-      }),
-    [latestRun],
-  );
-
-  // Parent-level controlPlaneSnapshot is a toolbar/dispatch fallback based on bridge summary.
-  // ImplementationExecutionBoardPanel rebuilds a local snapshot from live taskTreeNodes
-  // and uses local snapshot as the authoritative UI/footer snapshot.
-  const implementationControlPlaneSnapshot = useImplementationControlPlaneSnapshot({
+  const {
+    effectiveImplementationState,
+    effectiveCodeTaskExecutionQueueV1,
+    persistedQueueDispatch,
+    prototypeRunSyncSnapshot,
+    implementationControlPlaneSnapshot,
+    implementationStageBoardGateContext,
+    implementationStageBoardInput,
+    implementationBoard,
+    executionArtifacts,
+    planningSlotDefinitions,
+    implementationBootstrapInput,
+    implementationBootstrapShell,
+    implementationCursorGate,
+  } = useImplementationDerivedViewModelController({
     projectId,
-    selectionSummary: boardSelectionBridge.liveCodeTaskSelectionSummary,
-    previewReady: prototypeRunSyncSnapshot.previewReady,
-    actualPreviewUrl: prototypeRunSyncSnapshot.previewUrl ?? null,
-    runtime: {
-      hasDbRuntimeJob: Boolean(implementationRuntimeDbBundle?.job),
-      currentCodeTaskId: implementationRuntimeDbBundle?.job?.currentCodeTaskId?.trim() ?? null,
-      currentRuntimeState: implementationRuntimeDbBundle?.job?.state?.trim() ?? null,
-      shouldPoll: !implementationRuntimePollSuspendedRef.current,
-    },
-  });
-
-  const implementationStageBoardGateContext = useMemo(() => {
-    const pid = projectId.trim();
-    const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
-    if (!pid || !taskList) return null;
-    return buildImplementationStageBoardGateContext({
-      projectId: pid,
-      taskList,
-      executionState: orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
-      integratedExecutionState:
-        orchestrationAwareRequirementsState.implementationIntegratedExecutionStateV1,
-      boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
-      qualityGateResults: orchestrationAwareRequirementsState.implementationQualityGateResultsV1,
-      previewReady: prototypeRunSyncSnapshot.previewReady,
-      implementationReviewStageReadyV1:
-        orchestrationAwareRequirementsState.implementationReviewStageReadyV1,
-      codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
-      taskCursorExecutionV1: orchestrationAwareRequirementsState.taskCursorExecutionV1,
-      canApplyGit,
-      implementationCodeTaskPlanV1: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-      cursorWorkItemsV1: orchestrationAwareRequirementsState.cursorWorkItemsV1,
-      implementationWorkItemPreflightSummaryV1:
-        orchestrationAwareRequirementsState.implementationWorkItemPreflightSummaryV1,
-      implementationCodeTaskQualityGateV1:
-        orchestrationAwareRequirementsState.implementationCodeTaskQualityGateV1,
-      codeTaskExecutionRunsV1: orchestrationAwareRequirementsState.codeTaskExecutionRunsV1 ?? null,
-      taskCursorExecutionHistoryV1:
-        orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1 ?? null,
-      implementationAutoQualityGateV1:
-        orchestrationAwareRequirementsState.implementationAutoQualityGateV1 ?? null,
-      activeTaskCursorJob,
-      implementationExecutionJobsV1:
-        orchestrationAwareRequirementsState.implementationExecutionJobsV1 ?? null,
-    });
-  }, [
-    projectId,
+    projectName,
+    projectDescription,
+    parsedRequirementsState,
+    pendingImplementationPatch,
     orchestrationAwareRequirementsState,
-    prototypeRunSyncSnapshot.previewReady,
+    canRequestGeneration,
+    latestRun,
+    protoBusy,
+    isPlannerRunning,
+    plannerCreatePending,
+    executionEnvLoading,
+    executionEnvSnapshot,
+    envSettingsHref,
+    featureDraftTitles,
+    executionSetupRow,
+    implementationRuntimeDbBundle,
+    implementationRuntimePollSuspendedRef,
+    boardSelectionBridge,
     canApplyGit,
     activeTaskCursorJob,
-  ]);
+  });
 
   const persistedDraftUpdatedAtRef = useRef<string | null | undefined>(undefined);
   const persistedTaskPlanCreatedAtRef = useRef<string | null | undefined>(undefined);
@@ -570,30 +494,6 @@ export function usePrototypeImplementationStagePanel(
     parsedRequirementsState.implementationWorkPlanDraftV1?.updatedAt,
     parsedRequirementsState.implementationTaskPlanV1?.createdAt,
   ]);
-
-  const effectiveImplementationState = useMemo(
-    () =>
-      resolveEffectiveImplementationState({
-        parsedRequirementsState,
-        pendingPatch: pendingImplementationPatch,
-        envOk: canRequestGeneration.envOk,
-        designOk: canRequestGeneration.designOk,
-        latestRun,
-        plannerRunning: isPlannerRunning,
-        plannerCreatePending,
-        protoBusy,
-      }),
-    [
-      parsedRequirementsState,
-      pendingImplementationPatch,
-      canRequestGeneration.envOk,
-      canRequestGeneration.designOk,
-      latestRun,
-      isPlannerRunning,
-      plannerCreatePending,
-      protoBusy,
-    ],
-  );
 
   const applyPendingFromOrchestrationPatch = useCallback(
     (patch: PrototypeExecutionOrchestrationPersistInput | undefined) => {
@@ -650,242 +550,26 @@ export function usePrototypeImplementationStagePanel(
     [persistChatToDb, projectId],
   );
 
-  const executionArtifacts = useMemo(
-    () => pickExecutionStateArtifacts(parsedRequirementsState),
-    [parsedRequirementsState],
-  );
-
-  const planningSlotDefinitions = useMemo(
-    () =>
-      buildDynamicServicePlanningSlotDefinitions({
-        projectName: projectName.trim() || "프로젝트",
-        projectDescription: projectDescription ?? "",
-      }),
-    [projectName, projectDescription],
-  );
-
-  const implementationBootstrapInput = useMemo(
-    () =>
-      buildImplementationBootstrapInput({
-        envLoading: executionEnvLoading,
-        projectId,
-        env: executionEnvSnapshot,
-        envOk: canRequestGeneration.envOk,
-        envSettingsHref,
-        featureDraftTitles: featureDraftTitles ?? [],
-        projectArtifacts: executionArtifacts.projectArtifacts,
-        artifactOrchestrationV1: executionArtifacts.artifactOrchestrationV1,
-        designOk: canRequestGeneration.designOk,
-        orchestration: parsedRequirementsState.singleChatOrchestrationV1,
-        slotDefinitions: planningSlotDefinitions,
-        implementationSeedV1: orchestrationAwareRequirementsState.implementationSeedV1,
-        implementationTaskListV1: orchestrationAwareRequirementsState.implementationTaskListV1,
-        implementationTaskPlanV1: orchestrationAwareRequirementsState.implementationTaskPlanV1,
-        cursorWorkItemsV1: orchestrationAwareRequirementsState.cursorWorkItemsV1,
-        fastPlanDraftV1: parsedRequirementsState.fastPlanDraftV1,
-        promptTimeline: orchestrationAwareRequirementsState.promptTimeline,
-        executionSetup: executionSetupRow,
-      }),
-    [
-      executionEnvLoading,
-      projectId,
-      executionEnvSnapshot,
-      canRequestGeneration.envOk,
-      canRequestGeneration.designOk,
-      envSettingsHref,
-      featureDraftTitles,
-      executionArtifacts,
-      parsedRequirementsState.singleChatOrchestrationV1,
-      orchestrationAwareRequirementsState.implementationSeedV1,
-      orchestrationAwareRequirementsState.implementationTaskListV1,
-      orchestrationAwareRequirementsState.implementationTaskPlanV1,
-      orchestrationAwareRequirementsState.cursorWorkItemsV1,
-      parsedRequirementsState.fastPlanDraftV1,
-      orchestrationAwareRequirementsState.promptTimeline,
-      planningSlotDefinitions,
-      executionSetupRow,
-    ],
-  );
-
-  useEffect(() => {
-    const pid = projectId.trim();
-    const taskList = parsedRequirementsState.implementationTaskListV1;
-    if (!pid || !parsedRequirementsState.implementationSeedV1) return;
-    if (!hasImplementationTaskListReady(taskList)) return;
-    if ((parsedRequirementsState.cursorWorkItemsV1?.length ?? 0) > 0) return;
-
-    const recovery = buildImplementationEntryCursorWorkItemsRecovery({
-      projectId: pid,
-      taskList: taskList!,
-      existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
-    });
-    if (!recovery.regenerated) return;
-
-    const nowIso = new Date().toISOString();
-    void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
-      cursorWorkItemsV1: [...recovery.cursorWorkItems],
-      promptTimeline: [
-        ...(parsedRequirementsState.promptTimeline ?? []),
-        buildImplementationEntryCursorWorkItemsRegeneratedTimelineEntry({
-          projectId: pid,
-          taskCount: taskList!.tasks.length,
-          developerTaskCount: taskList!.roleSummary?.developer ?? 0,
-          nowIso,
-        }),
-      ],
-    });
-  }, [
+  useImplementationEntryRecoveryController({
     projectId,
-    parsedRequirementsState.implementationTaskListV1,
-    parsedRequirementsState.cursorWorkItemsV1,
-    parsedRequirementsState.promptTimeline,
     requirementsStateJson,
+    parsedRequirementsState,
     persistChatToDb,
-  ]);
+  });
 
-  const implementationSeedReady = useMemo(() => {
-    const summary = summarizeImplementationSeedStatus({
-      orchestration: parsedRequirementsState.singleChatOrchestrationV1,
-      definitions: planningSlotDefinitions,
-      lifecycleStatus: parsedRequirementsState.implementationSeedV1?.lifecycleStatus,
-    });
-    return summary.ready || Boolean(parsedRequirementsState.implementationSeedV1?.readiness?.ready);
-  }, [
-    parsedRequirementsState.singleChatOrchestrationV1,
-    parsedRequirementsState.implementationSeedV1,
-    planningSlotDefinitions,
-  ]);
-
-  const implementationStageBoardInput = useMemo(() => {
-    const pid = projectId.trim();
-    const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
-    if (!pid || !taskList) return null;
-    return {
-      projectId: pid,
-      taskList,
-      executionState: orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
-      integratedExecutionState:
-        orchestrationAwareRequirementsState.implementationIntegratedExecutionStateV1,
-      boardState: orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
-      qualityGateResults: orchestrationAwareRequirementsState.implementationQualityGateResultsV1,
-      previewReady: prototypeRunSyncSnapshot.previewReady,
-      implementationReviewStageReadyV1:
-        orchestrationAwareRequirementsState.implementationReviewStageReadyV1,
-      reviewStageUserTestSessionV1: orchestrationAwareRequirementsState.reviewStageUserTestSessionV1,
-      reviewStageUserFeedbackListV1:
-        orchestrationAwareRequirementsState.reviewStageUserFeedbackListV1,
-      codeAgentWipExecutionV1: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
-      taskCursorExecutionV1: orchestrationAwareRequirementsState.taskCursorExecutionV1,
-      implementationAutoQualityGateV1: orchestrationAwareRequirementsState.implementationAutoQualityGateV1,
-      implementationCodeTaskPlanV1: orchestrationAwareRequirementsState.implementationCodeTaskPlanV1,
-      codeTaskExecutionRunsV1: orchestrationAwareRequirementsState.codeTaskExecutionRunsV1 ?? null,
-      taskCursorExecutionHistoryV1:
-        orchestrationAwareRequirementsState.taskCursorExecutionHistoryV1 ?? null,
-      canApplyGit,
-    };
-  }, [
+  const {
+    implementationStageNoticeModal,
+    setImplementationStageNoticeModal,
+    appendAiNoticeForImplementation,
+    appendUserNotice,
+    appendImplementationExecutionNotice,
+    showIntegrationPipelineUserNotice,
+  } = useImplementationNoticeModalController({
     projectId,
-    orchestrationAwareRequirementsState,
-    prototypeRunSyncSnapshot.previewReady,
-    canApplyGit,
-  ]);
-
-  const implementationBoard = implementationStageBoardGateContext?.board ?? null;
-
-  const implementationBoardVisibleActionLabels = useMemo(() => {
-    if (!implementationBoard || !implementationStageBoardInput) return [];
-    const prototypeSnapshot = deriveImplementationPrototypeRunSyncSnapshot({
-      latestRun: effectiveImplementationState.latestRun,
-      workUnits: effectiveImplementationState.latestRun?.workUnits,
-    });
-    const status = deriveImplementationStageStatus(
-      effectiveImplementationState,
-      implementationStageBoardInput.executionState,
-    );
-    const actions = dedupeImplementationStageNextActions(
-      deriveImplementationStageNextActions(
-        status,
-        implementationStageBoardInput.executionState,
-        prototypeSnapshot,
-        implementationStageBoardInput,
-        {
-          implementationSeedV1: effectiveImplementationState.implementationSeedV1,
-          implementationTaskListV1: implementationStageBoardInput.taskList,
-        },
-      ),
-    );
-    return extractBoardVisibleActionLabels(actions);
-  }, [implementationBoard, implementationStageBoardInput, effectiveImplementationState]);
-
-  const implementationVisibleActionLabels = useMemo(() => {
-    const labels = implementationBootstrapInput
-      ? implementationEntryChipsForBootstrap(implementationBootstrapInput)
-      : [];
-    return prioritizeImplementationChipsForState(
-      labels,
-      effectiveImplementationState,
-      orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
-      implementationStageBoardInput,
-    );
-  }, [
-    implementationBootstrapInput,
-    effectiveImplementationState,
-    orchestrationAwareRequirementsState.implementationTaskExecutionStateV1,
-    implementationStageBoardInput,
-  ]);
-
-  const implementationBootstrapShell = useMemo(() => {
-    if (implementationBoard) return null;
-    return buildImplementationBootstrapShellView({
-      summaryInput: implementationBootstrapInput,
-      actionLabels: implementationVisibleActionLabels,
-    });
-  }, [implementationBoard, implementationBootstrapInput, implementationVisibleActionLabels]);
-
-  const appendAiNoticeForImplementation = useCallback(
-    (content: string) => {
-      const text = String(content ?? "").trim();
-      if (!text) return;
-      const pid = projectId.trim();
-      const pipeline = integrationPipelineClientResultRef.current;
-      const integratedReady =
-        (pid &&
-          resolveIntegratedAppPreviewReadyFromOrchestration({
-            projectId: pid,
-            orchestration: orchestrationAwareRequirementsStateRef.current,
-          })) ||
-        pipeline?.previewReady === true ||
-        pipeline?.status === "integrated_app_preview_ready";
-      if (
-        integratedReady &&
-        (isLegacyCodeTaskPreviewScopeNoticeContent(text) || isLegacyContinuePreviewMessage(text))
-      ) {
-        console.info(`[implementation] ${COMPLETED_CODETASK_PREVIEW_NOTICE_SUPPRESSED_LOG_ACTION}`, {
-          status: pipeline?.status,
-          previewReady: pipeline?.previewReady,
-        });
-        return;
-      }
-      if (integratedReady) return;
-      setImplementationStageNoticeModal({ body: text });
-    },
-    [projectId],
-  );
-
-  const appendUserNotice = useCallback(
-    (message: string) => {
-      const text = String(message ?? "").trim();
-      if (text) appendAiNoticeForImplementation(text);
-    },
-    [appendAiNoticeForImplementation],
-  );
-
-  /** 통합 파이프라인 결과는 integratedReady 억제 없이 항상 모달로 표시 */
-  const showIntegrationPipelineUserNotice = useCallback((message: string) => {
-    const text = String(message ?? "").trim();
-    if (!text) return;
-    setImplementationStageNoticeModal({ body: text });
-  }, []);
+    orchestrationAwareRequirementsStateRef,
+    integrationPipelineClientResultRef,
+    appendImplementationExecutionNoticeRef,
+  });
 
   const {
     integrationPipelineBusy,
@@ -905,29 +589,6 @@ export function usePrototypeImplementationStagePanel(
     showIntegrationPipelineUserNotice,
     integrationPipelineClientResultRef,
   });
-
-  const appendImplementationExecutionNotice = useCallback(
-    (content: string) => {
-      if (shouldSuppressImplementationStatusMessage({ content })) return;
-      const pid = projectId.trim();
-      if (
-        pid &&
-        isLegacyCodeTaskPreviewScopeNoticeContent(content) &&
-        (resolveIntegratedAppPreviewReadyFromOrchestration({
-          projectId: pid,
-          orchestration: orchestrationAwareRequirementsStateRef.current,
-        }) ||
-          integrationPipelineClientResultRef.current?.previewReady === true ||
-          integrationPipelineClientResultRef.current?.status === "integrated_app_preview_ready")
-      ) {
-        return;
-      }
-      appendAiNoticeForImplementation(content);
-    },
-    [appendAiNoticeForImplementation, projectId],
-  );
-
-  appendImplementationExecutionNoticeRef.current = appendImplementationExecutionNotice;
 
   const applyImplementationOrchestrationResult = useApplyImplementationOrchestrationResult({
     projectId,
@@ -999,22 +660,6 @@ export function usePrototypeImplementationStagePanel(
     recoverQuickRunStuckGithubVerify,
     loadImplementationRuntimeDb,
   });
-
-  const implementationCursorGate = useMemo(
-    () =>
-      buildImplementationCursorGateContext(
-        {
-          ...parsedRequirementsState,
-          implementationTaskPlanV1: effectiveImplementationState.implementationTaskPlanV1,
-        },
-        {
-          envOk: effectiveImplementationState.envOk,
-          designOk: effectiveImplementationState.designOk,
-        },
-        { projectId: projectId.trim() || undefined },
-      ),
-    [parsedRequirementsState, effectiveImplementationState, projectId],
-  );
 
   const {
     appendImplementationTaskListAiMessage,
