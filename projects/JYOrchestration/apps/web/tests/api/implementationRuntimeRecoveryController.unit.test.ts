@@ -24,5 +24,6 @@ describe("implementation runtime recovery controller wiring", () => {
     const parent = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
     expect(parent).not.toContain("const handleRetryFailedCodeTask = useCallback");
     expect(parent).not.toContain("window.setInterval(tick, 10_000)");
+    expect(parent).not.toContain("/api/prototype/implementation-runtime/retry-failed-task");
   });
 });

@@ -8,6 +8,8 @@ describe("implementation WIP chip handler controller wiring", () => {
   it("declares WIP chip handler controller responsibility", () => {
     const src = readFileSync(join(previewDir, "useImplementationWipChipHandlerController.ts"), "utf8");
     expect(src).toContain("Controls implementation-stage WIP chip handler wiring");
+    expect(src).toContain("build WIP chip handler slice");
+    expect(src).toContain("connect platform SCM post-commit callback");
   });
 
   it("uses WIP chip handler controller from parent panel hook", () => {

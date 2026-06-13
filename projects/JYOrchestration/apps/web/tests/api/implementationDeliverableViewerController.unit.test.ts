@@ -12,6 +12,7 @@ describe("implementation deliverable viewer controller wiring", () => {
     );
     expect(src).toContain("Controls implementation-stage deliverable viewer state");
     expect(src).toContain("open deliverable viewer with selected asset ids");
+    expect(src).toContain("expose deliverable viewer view model");
   });
 
   it("uses deliverable viewer controller from parent panel hook", () => {

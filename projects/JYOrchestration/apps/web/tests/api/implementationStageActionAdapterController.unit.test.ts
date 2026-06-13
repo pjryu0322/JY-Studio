@@ -26,5 +26,7 @@ describe("implementation stage action adapter controller wiring", () => {
     expect(parent).not.toContain("const executeCodeTasks = useCallback");
     expect(parent).not.toContain("const openPreviewFromStageAction = useCallback");
     expect(parent).not.toContain("runImplementationStageActionRef.current = runImplementationStageAction");
+    expect(parent).not.toContain("useImplementationStageActionController({");
+    expect(parent).not.toContain("useImplementationStageActionOrchestrator({");
   });
 });
