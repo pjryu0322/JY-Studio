@@ -11,6 +11,8 @@ describe("implementation derived view model controller wiring", () => {
       "utf8",
     );
     expect(src).toContain("Builds implementation-stage derived view models");
+    expect(src).toContain("derive effective implementation state");
+    expect(src).toContain("derive board gate/input/view models");
   });
 
   it("uses derived view model controller from parent panel hook", () => {
@@ -18,11 +20,13 @@ describe("implementation derived view model controller wiring", () => {
     expect(parent).toContain("useImplementationDerivedViewModelController");
   });
 
-  it("moves major derived view-model useMemo blocks out of parent panel hook", () => {
+  it("moves major derived view-model calculations out of parent panel hook", () => {
     const parent = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
     expect(parent).not.toContain("const implementationBootstrapInput = useMemo");
     expect(parent).not.toContain("const implementationStageBoardInput = useMemo");
     expect(parent).not.toContain("const implementationBootstrapShell = useMemo");
     expect(parent).not.toContain("const implementationVisibleActionLabels = useMemo");
+    expect(parent).not.toContain("const implementationStageBoardGateContext = useMemo");
+    expect(parent).not.toContain("const effectiveImplementationState = useMemo");
   });
 });

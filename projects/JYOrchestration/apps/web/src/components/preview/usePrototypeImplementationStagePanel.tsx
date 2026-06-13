@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Implementation stage parent hook is intentionally kept as a controller-composition shell.
+ *
+ * Heavyweight business logic must live in named useImplementation*Controller hooks.
+ * When adding implementation-stage behavior, prefer adding or extending a controller
+ * and update implementationParentHookComplexityGuard.unit.test.ts accordingly.
+ */
+
 import {
   useCallback,
   useEffect,

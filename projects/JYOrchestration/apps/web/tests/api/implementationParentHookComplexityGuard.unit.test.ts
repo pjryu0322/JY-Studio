@@ -12,6 +12,10 @@ describe("implementation parent hook complexity guard", () => {
     );
 
     const requiredControllers = [
+      "useImplementationRuntimeSyncController",
+      "useImplementationDerivedViewModelController",
+      "useImplementationNoticeModalController",
+      "useImplementationEntryRecoveryController",
       "useImplementationQuickRunController",
       "useImplementationGithubVerifyController",
       "useImplementationIntegrationPipelineController",
@@ -32,10 +36,6 @@ describe("implementation parent hook complexity guard", () => {
       "useImplementationToolbarController",
       "useImplementationRuntimeRecoveryController",
       "useImplementationDeliverableViewerController",
-      "useImplementationRuntimeSyncController",
-      "useImplementationNoticeModalController",
-      "useImplementationEntryRecoveryController",
-      "useImplementationDerivedViewModelController",
     ];
 
     for (const controller of requiredControllers) {
@@ -66,11 +66,6 @@ describe("implementation parent hook complexity guard", () => {
       "buildImplementationBoardRefreshSyncKey({",
       "window.setInterval(tick, 10_000)",
       "/api/prototype/implementation-runtime/retry-failed-task",
-      "useImplementationRuntimeDbSync(",
-      "useDbQueuedQuickRunAutoDispatch(",
-      "useRecoverServerQuickRunContinuation(",
-      "useTaskCursorServerJobPoll(",
-      "useImplementationAutoQualityGateTrigger(",
       "const [implementationStageNoticeModal, setImplementationStageNoticeModal] = useState",
       "const appendAiNoticeForImplementation = useCallback",
       "const appendUserNotice = useCallback",
@@ -81,6 +76,13 @@ describe("implementation parent hook complexity guard", () => {
       "const implementationStageBoardInput = useMemo",
       "const implementationBootstrapShell = useMemo",
       "const implementationVisibleActionLabels = useMemo",
+      "const implementationStageBoardGateContext = useMemo",
+      "const effectiveImplementationState = useMemo",
+      "useImplementationRuntimeDbSync(",
+      "useDbQueuedQuickRunAutoDispatch(",
+      "useRecoverServerQuickRunContinuation(",
+      "useTaskCursorServerJobPoll(",
+      "useImplementationAutoQualityGateTrigger(",
     ];
 
     for (const snippet of forbiddenSnippets) {

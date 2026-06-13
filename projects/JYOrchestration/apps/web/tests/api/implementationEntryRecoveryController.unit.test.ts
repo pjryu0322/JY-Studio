@@ -8,6 +8,8 @@ describe("implementation entry recovery controller wiring", () => {
   it("declares entry recovery controller responsibility", () => {
     const src = readFileSync(join(previewDir, "useImplementationEntryRecoveryController.ts"), "utf8");
     expect(src).toContain("Controls implementation entry recovery for Cursor work items");
+    expect(src).toContain("regenerate missing Cursor work items after implementation seed/task-list are ready");
+    expect(src).toContain("persist regenerated Cursor work items");
   });
 
   it("uses entry recovery controller from parent panel hook", () => {
