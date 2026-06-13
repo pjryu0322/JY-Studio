@@ -33,15 +33,10 @@ import { useImplementationBoardRefreshController } from "@/components/preview/us
 import { useImplementationToolbarController } from "@/components/preview/useImplementationToolbarController";
 import { useImplementationRuntimeRecoveryController } from "@/components/preview/useImplementationRuntimeRecoveryController";
 import { useImplementationDeliverableViewerController } from "@/components/preview/useImplementationDeliverableViewerController";
-import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
-import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
+import { useImplementationRuntimeSyncController } from "@/components/preview/useImplementationRuntimeSyncController";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
 import { usePrototypeExecutionPersistChatToDb } from "@/components/preview/usePrototypeExecutionPersistChatToDb";
 import { useImplementationStageActionTimeline } from "@/components/preview/useImplementationStageActionTimeline";
-import { useRecoverServerQuickRunContinuation } from "@/components/preview/useRecoverServerQuickRunContinuation";
-import { useTaskCursorServerJobPoll } from "@/components/preview/useTaskCursorServerJobPoll";
-import { useImplementationAutoQualityGateTrigger } from "@/components/preview/useImplementationAutoQualityGateTrigger";
-
 import { useProjectRecommendationEvidence } from "@/lib/recommendation/useProjectRecommendationEvidence";
 import { buildPrototypeExecutionPlanningOrchestrationView } from "@/lib/prototype/prototypeExecutionPlanningOrchestration";
 import {
@@ -95,11 +90,7 @@ import {
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
 import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
-import {
-  readImplementationStageChatMessages,
-} from "@/lib/prototype/implementationStageChatSnapshot";
 import { shouldSuppressImplementationStatusMessage } from "@/lib/prototype/implementationStatusChatPolicy";
-import { resolveCodeTaskRunForAutoQualityGateClient } from "@/lib/prototype/implementationAutoQualityGateClient";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import {
   pickPersistentExecutionLogTimelineEntries,
@@ -113,7 +104,6 @@ import {
   postImplementationRuntimeAction,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
 import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
-import type { QuickRunGithubAdvanceDispatch } from "@/lib/prototype/implementationQuickRunGithubAdvanceService";
 import type { ImplementationRuntimeBundleView } from "@/lib/runtime/implementationRuntime/implementationRuntimeTypes";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import { parseTaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
@@ -376,6 +366,19 @@ export function usePrototypeImplementationStagePanel(
   const codeTaskDispatchPreferredTaskIdRef = useRef<string | null>(null);
   const pendingQuickRunQueueDispatchRef = useRef<CodeTaskQueueDispatchRef | null>(null);
   const dbQueuedQuickRunDispatchRef = useRef<string | null>(null);
+  const runImplementationStageActionRef = useRef<
+    (
+      actionId: ImplementationStageActionId,
+    ) => ImplementationStageActionRunResult | Promise<ImplementationStageActionRunResult>
+  >(() => ({ outcome: "blocked", message: "구현단계 action을 준비하는 중입니다." }));
+  const persistImplementationStageActionRunRef = useRef<(run: ImplementationStageActionRun) => void>(() => {});
+  const applyImplementationOrchestrationResultRef = useRef<
+    (input: {
+      readonly messages?: readonly import("@/lib/requirements/requirementsMessage").RequirementsMessage[];
+      readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
+    }) => void
+  >(() => {});
+  const appendImplementationExecutionNoticeRef = useRef<(content: string) => void>(() => {});
   const enrichCodeTaskRunOrchestrationPatch = useCallback(
     (patch: PrototypeExecutionOrchestrationPersistInput): PrototypeExecutionOrchestrationPersistInput => {
       const dispatch = readActiveRuntimeDispatchFromState(
@@ -435,9 +438,20 @@ export function usePrototypeImplementationStagePanel(
     loadImplementationRuntimeDb,
     applyImplementationRuntimeFetch,
     implementationRuntimePollSuspendedRef,
-  } = useImplementationRuntimeDbSync({
+    dispatchNextQuickRunFromGithubVerify,
+  } = useImplementationRuntimeSyncController({
     projectId,
-    taskCursorExecutionV1: orchestrationAwareRequirementsState.taskCursorExecutionV1,
+    orchestrationAwareRequirementsState,
+    requirementsStateJsonRef,
+    implementationResetInFlightRef,
+    setActiveTaskCursorJob,
+    dbQueuedQuickRunDispatchRef,
+    pendingQuickRunQueueDispatchRef,
+    codeTaskDispatchPreferredTaskIdRef,
+    runImplementationStageActionRef,
+    enrichCodeTaskRunOrchestrationPatch,
+    applyImplementationOrchestrationResultRef,
+    appendImplementationExecutionNoticeRef,
   });
 
   const effectiveCodeTaskExecutionQueueV1 = useMemo(
@@ -828,13 +842,6 @@ export function usePrototypeImplementationStagePanel(
     });
   }, [implementationBoard, implementationBootstrapInput, implementationVisibleActionLabels]);
 
-  const runImplementationStageActionRef = useRef<
-    (
-      actionId: ImplementationStageActionId,
-    ) => ImplementationStageActionRunResult | Promise<ImplementationStageActionRunResult>
-  >(() => ({ outcome: "blocked", message: "구현단계 action을 준비하는 중입니다." }));
-  const persistImplementationStageActionRunRef = useRef<(run: ImplementationStageActionRun) => void>(() => {});
-
   const appendAiNoticeForImplementation = useCallback(
     (content: string) => {
       const text = String(content ?? "").trim();
@@ -920,7 +927,7 @@ export function usePrototypeImplementationStagePanel(
     [appendAiNoticeForImplementation, projectId],
   );
 
-  appendExecutionNoticeRef.current = appendImplementationExecutionNotice;
+  appendImplementationExecutionNoticeRef.current = appendImplementationExecutionNotice;
 
   const applyImplementationOrchestrationResult = useApplyImplementationOrchestrationResult({
     projectId,
@@ -932,129 +939,9 @@ export function usePrototypeImplementationStagePanel(
     onRequirementsStateJsonChange,
   });
 
-  const applyImplementationOrchestrationResultRef = useRef(applyImplementationOrchestrationResult);
   useEffect(() => {
     applyImplementationOrchestrationResultRef.current = applyImplementationOrchestrationResult;
   }, [applyImplementationOrchestrationResult]);
-
-  const executionSingleChatMessagesRef = useRef(readImplementationStageChatMessages(requirementsStateJsonRef.current));
-  executionSingleChatMessagesRef.current = readImplementationStageChatMessages(requirementsStateJsonRef.current);
-
-  useDbQueuedQuickRunAutoDispatch({
-    projectId,
-    implementationQuickRunV1: orchestrationAwareRequirementsState.implementationQuickRunV1,
-    implementationRuntimeDbBundle,
-    runtimePollSuspendedRef: implementationRuntimePollSuspendedRef,
-    dbQueuedQuickRunDispatchRef,
-    enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
-    applyOrchestrationPatch: (patch) => {
-      applyImplementationOrchestrationResultRef.current({
-        orchestrationPatch: patch,
-      });
-    },
-    reloadRuntime: () => {
-      void loadImplementationRuntimeDb({ recover: false });
-    },
-  });
-
-  useRecoverServerQuickRunContinuation({
-    projectId,
-    autoQualityGateStatus:
-      orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.status,
-    autoQualityGateSourceCommitSha:
-      orchestrationAwareRequirementsState.implementationAutoQualityGateV1?.sourceCommitSha,
-    promptTimeline: orchestrationAwareRequirementsState.promptTimeline,
-    fallbackRunsV1: orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-    implementationRuntimeDbBundle,
-    requirementsStateJsonRef,
-    orchestrationAwareRequirementsState,
-    enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
-    applyOrchestrationPatch: (patch) => {
-      applyImplementationOrchestrationResult({
-        orchestrationPatch: patch,
-      });
-    },
-  });
-
-  useTaskCursorServerJobPoll({
-    projectId,
-    requirementsStateJsonRef,
-    implementationResetInFlightRef,
-    taskCursorExecutionStatus: orchestrationAwareRequirementsState.taskCursorExecutionV1?.status,
-    taskCursorCursorRunId: orchestrationAwareRequirementsState.taskCursorExecutionV1?.cursorRunId,
-    setActiveTaskCursorJob,
-    enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
-    applyOrchestrationResult: (orchInput) => {
-      applyImplementationOrchestrationResultRef.current(orchInput);
-    },
-    chatMessagesRef: executionSingleChatMessagesRef,
-  });
-
-  const {
-    triggerRef: triggerImplementationAutoQualityGateRef,
-    failedTriggerRef: autoQualityGateFailedTriggerRef,
-    completedTriggerRef: autoQualityGateCompletedTriggerRef,
-  } = useImplementationAutoQualityGateTrigger({
-    projectId,
-    requirementsStateJsonRef,
-    enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
-    applyOrchestrationResult: (orchInput) => {
-      applyImplementationOrchestrationResultRef.current(orchInput);
-    },
-    chatMessagesRef: executionSingleChatMessagesRef,
-    appendExecutionNotice: appendImplementationExecutionNotice,
-  });
-
-  const autoQualityGateEffectSignal = useMemo(() => {
-    const execution = parseTaskCursorExecutionV1(
-      orchestrationAwareRequirementsState.taskCursorExecutionV1,
-    );
-    const run = resolveCodeTaskRunForAutoQualityGateClient({
-      taskCursorExecutionV1: execution,
-      codeTaskExecutionRunsV1: orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-    });
-    const autoGate = orchestrationAwareRequirementsState.implementationAutoQualityGateV1;
-    const autoGateStatus =
-      autoGate && typeof autoGate === "object" && "status" in autoGate
-        ? String((autoGate as { status?: string }).status ?? "")
-        : "";
-    return [
-      execution?.taskId ?? "",
-      execution?.status ?? "",
-      String(execution?.commitSha ?? "").trim(),
-      run?.status ?? "",
-      autoGateStatus,
-      String(autoGate && typeof autoGate === "object" && "sourceCommitSha" in autoGate
-        ? (autoGate as { sourceCommitSha?: string }).sourceCommitSha ?? ""
-        : "").trim(),
-    ].join("|");
-  }, [
-    orchestrationAwareRequirementsState.taskCursorExecutionV1,
-    orchestrationAwareRequirementsState.codeTaskExecutionRunsV1,
-    orchestrationAwareRequirementsState.implementationAutoQualityGateV1,
-  ]);
-
-  useEffect(() => {
-    autoQualityGateFailedTriggerRef.current = null;
-    autoQualityGateCompletedTriggerRef.current = null;
-  }, [autoQualityGateEffectSignal]);
-
-  useEffect(() => {
-    void triggerImplementationAutoQualityGateRef.current();
-  }, [autoQualityGateEffectSignal]);
-
-  const dispatchNextQuickRunFromGithubVerify = useCallback(
-    (next: QuickRunGithubAdvanceDispatch) => {
-      pendingQuickRunQueueDispatchRef.current = {
-        codeTaskId: next.codeTaskId,
-        parentTaskId: next.parentTaskId,
-        workItemId: next.workItemId,
-      };
-      codeTaskDispatchPreferredTaskIdRef.current = next.parentTaskId;
-      runImplementationStageActionRef.current("REQUEST_TASK_CURSOR_EXECUTION");
-    },
-    [],
-  );
 
   const {
     githubRecheckBusyCodeTaskId,
