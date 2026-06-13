@@ -10,13 +10,14 @@ import {
   evaluateIntegrationButtonGate,
   INTEGRATION_PIPELINE_START_SUCCESS_TOAST,
   INTEGRATION_PIPELINE_FAILED_USER_MESSAGE,
-  isFinalWiringStepReadyForIntegrationButton,
   logIntegrationButtonClicked,
   logPrepareIntegrationPreviewStarted,
 } from "@/lib/prototype/implementationBoardIntegrationGate";
+import {
+  logFinalWiringReadyResolved,
+  resolveFinalWiringReadyForIntegrationGate,
+} from "@/lib/prototype/implementationFinalWiringReadyResolver";
 import { summarizeCodeTaskBoardGateFromRequirementsState } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
-import { findIntegrationStep } from "@/lib/prototype/implementationIntegrationStepMutations";
-import { loadImplementationIntegrationStepsFromState } from "@/lib/prototype/implementationIntegrationStepStore";
 import { pickIntegrationPipelineClientBoardSummary } from "@/lib/prototype/implementationControlPlaneSnapshot";
 import type { ImplementationControlPlaneSnapshotV1 } from "@/lib/prototype/implementationControlPlaneSnapshot";
 
@@ -53,7 +54,12 @@ export async function executeImplementationBoardIntegrationPipeline(input: {
     return;
   }
 
-  logIntegrationButtonClicked({ projectId: pid });
+  const mergedState = parseRequirementsStateJson(input.requirementsStateJsonRef.current);
+
+  const authoritativeSummary = summarizeCodeTaskBoardGateFromRequirementsState({
+    projectId: pid,
+    requirementsState: mergedState,
+  });
 
   const clientSummary =
     input.boardSelectionSummary ??
@@ -62,25 +68,28 @@ export async function executeImplementationBoardIntegrationPipeline(input: {
       parentSnapshot: input.parentControlPlaneSnapshot ?? null,
     });
 
-  const authoritativeSummary = summarizeCodeTaskBoardGateFromRequirementsState({
+  const finalWiringState = resolveFinalWiringReadyForIntegrationGate({
+    requirementsState: mergedState,
+    sourceUnitCount: authoritativeSummary.integrationReadyCount,
     projectId: pid,
-    requirementsState: parseRequirementsStateJson(input.requirementsStateJsonRef.current),
   });
+  logFinalWiringReadyResolved(finalWiringState, { projectId: pid });
 
-  const mergedState = parseRequirementsStateJson(input.requirementsStateJsonRef.current);
-  const finalWiringStep = findIntegrationStep(
-    loadImplementationIntegrationStepsFromState(mergedState),
-    "final_wiring",
-  );
-  const finalWiringReady = isFinalWiringStepReadyForIntegrationButton(finalWiringStep?.status);
+  logIntegrationButtonClicked({
+    projectId: pid,
+    clientSummary,
+    clientFinalWiringReady: finalWiringState.ready,
+  });
 
   const integrationGate = evaluateIntegrationButtonGate({
     summary: authoritativeSummary,
-    finalWiringReady,
+    finalWiringReady: finalWiringState.ready,
+    finalWiringReadyReason: finalWiringState.reason,
     selectedCount: authoritativeSummary.selectedRunnableCount,
     verifiedCount: authoritativeSummary.integrationReadyCount,
     clientSummary,
     projectId: pid,
+    countSummary: authoritativeSummary.countSummary,
   });
 
   if (!integrationGate.canRun) {

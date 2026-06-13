@@ -12,12 +12,28 @@ export function shouldLogIntegrationReadyPartialCoverage(
     ImplementationCodeTaskSelectionSummaryV1,
     "totalCount" | "integrationReadyCount" | "runnableCount"
   >,
+  countSummary?: Pick<
+    ImplementationIntegrationCountSummaryV1,
+    "executableCodeTaskCount" | "totalOrchestrationUnitCount" | "integrationTaskCount"
+  > | null,
 ): boolean {
+  if (summary.runnableCount > 0 || summary.integrationReadyCount === 0) return false;
+
+  const executableBasis = countSummary?.executableCodeTaskCount ?? summary.totalCount;
+  if (summary.integrationReadyCount < executableBasis) {
+    return true;
+  }
+
+  if (
+    countSummary &&
+    countSummary.totalOrchestrationUnitCount > executableBasis &&
+    summary.integrationReadyCount >= executableBasis
+  ) {
+    return true;
+  }
+
   return (
-    summary.runnableCount === 0 &&
-    summary.integrationReadyCount > 0 &&
-    summary.totalCount > 0 &&
-    summary.integrationReadyCount < summary.totalCount
+    summary.totalCount > 0 && summary.integrationReadyCount < summary.totalCount
   );
 }
 
@@ -27,9 +43,15 @@ export function logIntegrationReadyPartialCoverageWarning(input: {
     ImplementationCodeTaskSelectionSummaryV1,
     "totalCount" | "integrationReadyCount" | "runnableCount"
   >;
+  readonly countSummary?: Pick<
+    ImplementationIntegrationCountSummaryV1,
+    "executableCodeTaskCount" | "totalOrchestrationUnitCount" | "integrationTaskCount"
+  > | null;
 }): void {
-  if (!shouldLogIntegrationReadyPartialCoverage(input.summary)) return;
+  if (!shouldLogIntegrationReadyPartialCoverage(input.summary, input.countSummary)) return;
   if (typeof console === "undefined" || !console.info) return;
+  const executableBasis =
+    input.countSummary?.executableCodeTaskCount ?? input.summary.totalCount;
   console.info(
     JSON.stringify({
       action: "implementation_integration_gate_partial_ready_warning",
@@ -37,8 +59,12 @@ export function logIntegrationReadyPartialCoverageWarning(input: {
       runnableCount: input.summary.runnableCount,
       integrationReadyCount: input.summary.integrationReadyCount,
       totalCount: input.summary.totalCount,
+      executableCodeTaskCount: executableBasis,
+      integrationTaskCount: input.countSummary?.integrationTaskCount ?? null,
+      totalOrchestrationUnitCount: input.countSummary?.totalOrchestrationUnitCount ?? null,
+      warningReason: "partial_integration_ready_count",
       message:
-        "integrationReadyCount < totalCount; proceeding with integration-ready CodeTasks only (not a block)",
+        "Gate uses executable CodeTask count only; integration orchestration tasks are excluded from block conditions",
     }),
   );
 }

@@ -1,8 +1,13 @@
-import {
-  resolveCodeTaskBoardState,
+import { resolveCodeTaskBoardState,
   summarizeCodeTaskBoardRowsFromTreeNodes,
   type ImplementationCodeTaskSelectionSummaryV1,
 } from "@/lib/prototype/implementationCodeTaskBoardState";
+import { listExecutableCodeTasksFromPlan } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import {
+  buildImplementationIntegrationCountSummary,
+  logImplementationIntegrationCountSummary,
+  type ImplementationIntegrationCountSummaryV1,
+} from "@/lib/prototype/implementationIntegrationCountSummary";
 import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { isCodeTaskRunIntegrationReady } from "@/lib/prototype/codeTaskIntegrationReadiness";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
@@ -77,8 +82,9 @@ export function summarizeCodeTaskBoardGateFromPlanAndUnits(input: {
   Readonly<{
     readonly runnableCodeTaskIds: readonly string[];
     readonly blockedDetails: readonly IntegrationGateBlockedDetailV1[];
+    readonly countSummary: ImplementationIntegrationCountSummaryV1;
   }> {
-  const tasks = input.codeTaskPlan?.tasks ?? [];
+  const tasks = listExecutableCodeTasksFromPlan(input.codeTaskPlan?.tasks ?? []);
   const unitByCodeTaskId = new Map(
     input.units.map((unit) => [unit.codeTaskId.trim(), unit] as const),
   );
@@ -176,5 +182,16 @@ export function summarizeCodeTaskBoardGateFromPlanAndUnits(input: {
       };
     });
 
-  return { ...summary, runnableCodeTaskIds, blockedDetails };
+  const countSummary = buildImplementationIntegrationCountSummary({
+    boardSummary: summary,
+    planTasks: input.codeTaskPlan?.tasks ?? [],
+    executionUnits: input.units,
+  });
+  logImplementationIntegrationCountSummary({
+    projectId: null,
+    action: "implementation_selection_summary_resolved",
+    summary: countSummary,
+  });
+
+  return { ...summary, runnableCodeTaskIds, blockedDetails, countSummary };
 }

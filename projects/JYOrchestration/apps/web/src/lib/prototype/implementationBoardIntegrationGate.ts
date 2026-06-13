@@ -18,7 +18,7 @@ export const INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE =
   "실행 가능한 미완료 CodeTask가 있습니다. 먼저 CodeTask 실행을 완료해 주세요." as const;
 
 export const INTEGRATION_FINAL_WIRING_NOT_READY_USER_MESSAGE =
-  "통합 작업 준비가 완료되지 않았습니다. 새로고침 후 다시 시도해 주세요." as const;
+  "통합 작업 준비가 완료되지 않았습니다. 상세 로그를 확인해 주세요." as const;
 
 export const INTEGRATION_PIPELINE_START_SUCCESS_TOAST =
   "통합 및 Preview 준비를 시작했습니다." as const;
@@ -86,21 +86,24 @@ export type IntegrationButtonGateBlockReasonV1 =
   | "stale_summary_detected"
   | null;
 
-export function isFinalWiringStepReadyForIntegrationButton(
-  status: string | null | undefined,
-): boolean {
-  const s = String(status ?? "").trim();
-  return s === "ready" || s === "completed" || s === "failed";
-}
+export {
+  isFinalWiringStepReadyForIntegrationButton,
+  type FinalWiringReadyReasonV1,
+} from "@/lib/prototype/implementationFinalWiringReadyResolver";
 
 export function evaluateIntegrationButtonGate(input: {
   readonly summary: ImplementationCodeTaskSelectionSummaryV1;
   readonly finalWiringReady: boolean;
+  readonly finalWiringReadyReason?: string | null;
   readonly selectedCount?: number;
   readonly completedCount?: number;
   readonly verifiedCount?: number;
   readonly clientSummary?: ImplementationCodeTaskSelectionSummaryV1 | null;
   readonly projectId?: string | null;
+  readonly countSummary?: Pick<
+    import("@/lib/prototype/implementationIntegrationCountSummary").ImplementationIntegrationCountSummaryV1,
+    "executableCodeTaskCount" | "totalOrchestrationUnitCount" | "integrationTaskCount"
+  > | null;
 }): Readonly<{
   readonly canRun: boolean;
   readonly blockReason: IntegrationButtonGateBlockReasonV1;
@@ -133,6 +136,7 @@ export function evaluateIntegrationButtonGate(input: {
     logIntegrationReadyPartialCoverageWarning({
       projectId: input.projectId,
       summary: input.summary,
+      countSummary: input.countSummary,
     });
   }
 
@@ -143,6 +147,7 @@ export function evaluateIntegrationButtonGate(input: {
     completedCount: input.completedCount,
     verifiedCount: input.verifiedCount ?? input.summary.integrationReadyCount,
     finalWiringReady: input.finalWiringReady,
+    finalWiringReadyReason: input.finalWiringReadyReason ?? null,
     blockReason: canRun && staleDetected ? "stale_summary_detected" : blockReason,
     canRun,
     staleDetected,
@@ -168,6 +173,7 @@ export function logIntegrationButtonGateEvaluated(input: {
   readonly completedCount?: number;
   readonly verifiedCount?: number;
   readonly finalWiringReady: boolean;
+  readonly finalWiringReadyReason?: string | null;
   readonly blockReason: IntegrationButtonGateBlockReasonV1;
   readonly canRun: boolean;
   readonly staleDetected?: boolean;
@@ -184,6 +190,7 @@ export function logIntegrationButtonGateEvaluated(input: {
     verifiedCount: input.verifiedCount ?? input.summary.integrationReadyCount,
     integrationReadyCount: input.summary.integrationReadyCount,
     finalWiringReady: input.finalWiringReady,
+    finalWiringReadyReason: input.finalWiringReadyReason ?? null,
     blockReason: input.blockReason,
     staleSummaryDetected: input.staleDetected === true,
   };
@@ -192,12 +199,25 @@ export function logIntegrationButtonGateEvaluated(input: {
 
 export function logIntegrationButtonClicked(input: {
   readonly projectId?: string | null;
+  readonly clientSummary?: Pick<
+    ImplementationCodeTaskSelectionSummaryV1,
+    "runnableCount" | "selectedRunnableCount" | "integrationReadyCount" | "totalCount"
+  > | null;
+  readonly clientFinalWiringReady?: boolean | null;
+  readonly skipReason?: string | null;
 }): void {
   if (typeof console === "undefined" || !console.info) return;
+  const client = input.clientSummary;
   console.info(
     JSON.stringify({
       action: "implementation_integration_button_clicked",
       projectId: input.projectId ?? null,
+      skipReason: input.skipReason ?? null,
+      clientRunnableCount: client?.runnableCount ?? null,
+      clientSelectedCount: client?.selectedRunnableCount ?? null,
+      clientIntegrationReadyCount: client?.integrationReadyCount ?? null,
+      clientTotalCount: client?.totalCount ?? null,
+      clientFinalWiringReady: input.clientFinalWiringReady ?? null,
     }),
   );
 }
@@ -337,6 +357,10 @@ export function evaluateIntegrationPrepareGateFromBoardSummary(
     readonly blockedDetails?: readonly IntegrationGateBlockedDetailV1[];
     readonly runnableCodeTaskIds?: readonly string[];
     readonly projectId?: string | null;
+    readonly countSummary?: Pick<
+      import("@/lib/prototype/implementationIntegrationCountSummary").ImplementationIntegrationCountSummaryV1,
+      "executableCodeTaskCount" | "totalOrchestrationUnitCount" | "integrationTaskCount"
+    > | null;
   }>,
 ): Readonly<{
   readonly ok: boolean;
@@ -362,6 +386,7 @@ export function evaluateIntegrationPrepareGateFromBoardSummary(
     logIntegrationReadyPartialCoverageWarning({
       projectId: input?.projectId,
       summary,
+      countSummary: input?.countSummary,
     });
   } else if (summary.runnableCount > 0) {
     resolvedAction = "blocked_runnable_tasks";

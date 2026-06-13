@@ -7,6 +7,10 @@ import {
   type ImplementationControlPlaneSnapshotV1,
 } from "@/lib/prototype/implementationControlPlaneSnapshot";
 import { executeImplementationBoardIntegrationPipeline } from "@/lib/prototype/implementationBoardIntegrationPipelineRun";
+import { logIntegrationButtonClicked } from "@/lib/prototype/implementationBoardIntegrationGate";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { resolveFinalWiringReadyForIntegrationGate } from "@/lib/prototype/implementationFinalWiringReadyResolver";
+import { summarizeCodeTaskBoardGateFromRequirementsState } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -66,17 +70,39 @@ export function useImplementationIntegrationPipelineController(input: {
 
   const runIntegrationPipeline = useCallback(() => {
     const pid = input.projectId.trim();
-    if (!pid || integrationPipelineBusy) return;
-    if (input.implementationBoardBlockingUserConfirmation === null) return;
-
-    // Client boardSelectionSummary is advisory only.
-    // Server route recomputes serverBoardGate and uses it as the authoritative integration gate.
-    // Prefer bridge live summary because parent snapshot can lag behind the board panel.
+    const bridgeSummary = input.boardSelectionBridge.getBridgeSnapshot().livePanelSummary;
     const boardSelectionSummary = pickIntegrationPipelineClientBoardSummary({
-      bridgeSummary: input.boardSelectionBridge.getBridgeSnapshot().livePanelSummary,
+      bridgeSummary,
       parentSnapshot: input.parentControlPlaneSnapshot,
     });
-    if (!boardSelectionSummary) return;
+    const mergedState = parseRequirementsStateJson(input.requirementsStateJsonRef.current);
+    const authoritativeSummary = pid
+      ? summarizeCodeTaskBoardGateFromRequirementsState({
+          projectId: pid,
+          requirementsState: mergedState,
+        })
+      : null;
+    const fwState = resolveFinalWiringReadyForIntegrationGate({
+      requirementsState: mergedState,
+      sourceUnitCount: authoritativeSummary?.integrationReadyCount ?? 0,
+      projectId: pid || null,
+    });
+
+    logIntegrationButtonClicked({
+      projectId: pid || null,
+      clientSummary: boardSelectionSummary ?? bridgeSummary ?? authoritativeSummary,
+      clientFinalWiringReady: fwState.ready,
+      skipReason: !pid
+        ? "missing_project_id"
+        : integrationPipelineBusy
+          ? "pipeline_busy"
+          : input.implementationBoardBlockingUserConfirmation === null
+            ? "blocking_user_confirmation_unresolved"
+            : null,
+    });
+
+    if (!pid || integrationPipelineBusy) return;
+    if (input.implementationBoardBlockingUserConfirmation === null) return;
 
     void executeImplementationBoardIntegrationPipeline({
       projectId: pid,
@@ -84,7 +110,7 @@ export function useImplementationIntegrationPipelineController(input: {
       requirementsState: input.requirementsState,
       requirementsStateJsonRef: input.requirementsStateJsonRef,
       implementationBoardBlockingUserConfirmation: input.implementationBoardBlockingUserConfirmation,
-      boardSelectionSummary: boardSelectionSummary,
+      boardSelectionSummary: boardSelectionSummary ?? authoritativeSummary,
       parentControlPlaneSnapshot: input.parentControlPlaneSnapshot,
       persistChatToDb: input.persistChatToDb,
       applyPendingFromOrchestrationPatch: input.applyPendingFromOrchestrationPatch,

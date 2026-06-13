@@ -15,6 +15,7 @@ import { mergeOrchestrationPersistPatches } from "@/lib/prototype/orchestrationP
 import { buildIntegrationGateBlockedByFailedCodeTaskLogEntry } from "@/lib/prototype/implementationExecutionLogger";
 import { resolveSelectedExecutionUnitIdsForFinalWiringGate } from "@/lib/prototype/implementationFinalWiringSelectedUnits";
 import { summarizeCodeTaskBoardGateFromPlanAndUnits } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
+import { buildImplementationIntegrationCountSummary } from "@/lib/prototype/implementationIntegrationCountSummary";
 
 export { resolveSelectedExecutionUnitIdsForFinalWiringGate } from "@/lib/prototype/implementationFinalWiringSelectedUnits";
 
@@ -106,6 +107,13 @@ export async function markFinalWiringIntegrationStepReady(input: {
     units: summary.executionUnits,
     runs: input.runs ?? [],
   });
+  const countSummary =
+    boardGate.countSummary ??
+    buildImplementationIntegrationCountSummary({
+      boardSummary: boardGate,
+      planTasks: input.codeTaskPlan?.tasks ?? [],
+      executionUnits: summary.executionUnits,
+    });
   const timeline: RequirementsPromptTimelineEntry[] = [
     ...ensured.timeline,
     ...(usedSelectionFallback
@@ -133,8 +141,14 @@ export async function markFinalWiringIntegrationStepReady(input: {
       fields: {
         projectId: pid,
         selectedCount: selectedExecutionUnitIds.length,
-        verifiedCount: boardGate.integrationReadyCount,
-        completedCount: completionGate.completedCount,
+        verifiedCount: countSummary.verifiedCodeTaskCount,
+        verifiedCodeTaskCount: countSummary.verifiedCodeTaskCount,
+        integrationReadyCodeTaskCount: countSummary.integrationReadyCodeTaskCount,
+        completedCodeTaskCount: countSummary.completedCodeTaskCount,
+        executableCodeTaskCount: countSummary.executableCodeTaskCount,
+        integrationTaskCount: countSummary.integrationTaskCount,
+        totalOrchestrationUnitCount: countSummary.totalOrchestrationUnitCount,
+        countModel: countSummary.countModel,
       },
       nowIso,
     }),

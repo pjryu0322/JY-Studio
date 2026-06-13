@@ -475,6 +475,18 @@ export async function runProjectIntegrationPipeline(input: {
     context,
     nowIso,
   });
+  timeline.push(
+    buildImplementationExecutionLogTimelineEntry({
+      action: "implementation_integration_pipeline_started",
+      orchestrationTraceGroup: "project_integration_pipeline",
+      fields: {
+        projectId: pid,
+        trigger: context.trigger,
+        ...projectIntegrationPipelineContextLogFields(context),
+      },
+      nowIso,
+    }),
+  );
 
   let previewRuntimePatch: Partial<RequirementsStateJson> | undefined;
   let activeStepKind: IntegrationPipelineStepKindV1 = "final_wiring";

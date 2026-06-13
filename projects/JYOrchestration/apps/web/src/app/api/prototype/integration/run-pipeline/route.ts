@@ -10,14 +10,16 @@ import { buildImplementationIntegrationPipelineContext } from "@/lib/prototype/i
 import { resolveIntegrationStepsForRuntimeSnapshot } from "@/lib/prototype/implementationRuntimeSnapshotBuilder";
 import { buildImplementationIntegrationPipelineEligibilityFromSnapshot } from "@/lib/prototype/projectIntegrationPipelineEligibility";
 import { summarizeCodeTaskBoardGateFromPlanAndUnits } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
-import { findIntegrationStep } from "@/lib/prototype/implementationIntegrationStepMutations";
 import {
   evaluateIntegrationButtonGate,
   buildBoardGateMismatchLogFields,
   logIntegrationPrepareStarted,
-  isFinalWiringStepReadyForIntegrationButton,
   buildIntegrationGateBlockedApiBody,
 } from "@/lib/prototype/implementationBoardIntegrationGate";
+import {
+  logFinalWiringReadyResolved,
+  resolveFinalWiringReadyForIntegrationGate,
+} from "@/lib/prototype/implementationFinalWiringReadyResolver";
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { runProjectIntegrationPipeline } from "@/lib/prototype/projectIntegrationPipelineService";
 import { buildProjectIntegrationPipelinePersistState } from "@/lib/prototype/projectIntegrationPipelinePersist";
@@ -68,6 +70,13 @@ export async function POST(request: NextRequest) {
     if (!projectId) {
       return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
     }
+
+    console.info(
+      JSON.stringify({
+        action: "implementation_integration_run_pipeline_route_entered",
+        projectId,
+      }),
+    );
 
     try {
       await requireProjectPermission(
@@ -175,15 +184,23 @@ export async function POST(request: NextRequest) {
       requirementsState: persisted,
       codeTaskPlan,
     });
-    const finalWiringStep = findIntegrationStep(integrationStepsForGate, "final_wiring");
-    const finalWiringReady = isFinalWiringStepReadyForIntegrationButton(finalWiringStep?.status);
+    const finalWiringState = resolveFinalWiringReadyForIntegrationGate({
+      requirementsState: persisted,
+      sourceUnitCount: serverBoardGate.countSummary?.integrationReadyCodeTaskCount ?? boardGateSummary.integrationReadyCount,
+      projectId,
+      integrationSteps: integrationStepsForGate,
+    });
+    logFinalWiringReadyResolved(finalWiringState, { projectId });
 
     const integrationButtonGate = evaluateIntegrationButtonGate({
       summary: boardGateSummary,
-      finalWiringReady,
+      finalWiringReady: finalWiringState.ready,
+      finalWiringReadyReason: finalWiringState.reason,
       projectId,
       clientSummary: clientBoardGate,
       verifiedCount: boardGateSummary.integrationReadyCount,
+      completedCount: boardGateSummary.integrationReadyCount,
+      countSummary: serverBoardGate.countSummary,
     });
     if (!integrationButtonGate.canRun && integrationButtonGate.blockReason) {
       return NextResponse.json(
@@ -231,9 +248,20 @@ export async function POST(request: NextRequest) {
           projectId,
           targetRepository: targetRepository.gitRepoUrl,
           runnableCount: boardGateSummary.runnableCount,
+          selectedCount: boardGateSummary.selectedRunnableCount,
           verifiedCount: boardGateSummary.integrationReadyCount,
           integrationReadyCount: boardGateSummary.integrationReadyCount,
           totalCount: boardGateSummary.totalCount,
+          finalWiringReady: finalWiringState.ready,
+          finalWiringReadyReason: finalWiringState.reason,
+        }),
+      );
+      console.info(
+        JSON.stringify({
+          action: "implementation_integration_pipeline_started",
+          projectId,
+          targetRepository: targetRepository.gitRepoUrl,
+          integrationReadyCount: boardGateSummary.integrationReadyCount,
         }),
       );
     }

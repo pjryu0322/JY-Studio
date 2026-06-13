@@ -43,6 +43,7 @@ import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/im
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { CompletedCodeTaskIntegrationTarget } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
 import { resolveIntegrationBranchMergeItems } from "@/lib/prototype/integrationBranchMergeItems";
+import { filterExecutableIntegrationMergeTargets } from "@/lib/prototype/implementationExecutionUnitOrchestrationKind";
 
 function filterIntegrationTargetsByCodeTaskIds(
   included: readonly CompletedCodeTaskIntegrationTarget[],
@@ -148,10 +149,29 @@ export async function runIntegrationBranchPipeline(input: {
     if (integrationCodeTaskIds?.length) {
       includedForMerge = filterIntegrationTargetsByCodeTaskIds(targets.included, integrationCodeTaskIds);
     }
+    includedForMerge = filterExecutableIntegrationMergeTargets(includedForMerge);
     const integrationTargets = {
       ...targets,
       included: includedForMerge,
     };
+
+    const sourceBranches = [
+      ...new Set(
+        includedForMerge.map((row) => String(row.workBranch ?? "").trim()).filter(Boolean),
+      ),
+    ];
+    pushTimeline("implementation_integration_source_units_resolved", {
+      sourceUnitCount: includedForMerge.length,
+      excludedIntegrationTaskCount: Math.max(
+        0,
+        (integrationCodeTaskIds?.length ?? targets.included.length) - includedForMerge.length,
+      ),
+    });
+    pushTimeline("implementation_integration_source_branches_resolved", {
+      sourceBranchCount: sourceBranches.length,
+      sourceBranches: sourceBranches.join(","),
+      excludedIntegrationTaskCount: Math.max(0, targets.included.length - includedForMerge.length),
+    });
 
     if (integrationCodeTaskIds?.length) {
       const includedSet = new Set(includedForMerge.map((row) => row.codeTaskId.trim()));
