@@ -649,55 +649,11 @@ function omitControlledPilotExecutionCandidateLayerOnly<T extends RuntimeSemanti
   return rest;
 }
 
-function omitPilotValidationReadOnlyChainLayerOnly<T extends RuntimeSemanticPlanningReports>(
-  semantic: T
-): Omit<
-  T,
-  | "runtimePilotValidationReadOnlyChainSummary"
-  | "runtimeSafeEchoAdapterContractSummary"
-  | "runtimeSafeEchoAdapterInputContract"
-  | "runtimeSafeEchoAdapterOutputContract"
-  | "runtimeSandboxDryRunBoundary"
-  | "runtimePilotValidationRequestDraft"
-  | "runtimePilotValidationOperatorApprovalSnapshot"
-  | "runtimePilotValidationAuditTraceCandidate"
-  | "runtimePilotValidationRollbackPlanCandidate"
-  | "runtimeSafeEchoInvocationSimulatorSummary"
-  | "runtimeSafeEchoInvocationSimulatorInput"
-  | "runtimeSafeEchoInvocationSimulatorOutput"
-  | "runtimeSafeEchoInvocationSimulatorBoundary"
-> {
-  const {
-    runtimePilotValidationReadOnlyChainSummary: _pv0,
-    runtimeSafeEchoAdapterContractSummary: _pv1,
-    runtimeSafeEchoAdapterInputContract: _pv2,
-    runtimeSafeEchoAdapterOutputContract: _pv3,
-    runtimeSandboxDryRunBoundary: _pv4,
-    runtimePilotValidationRequestDraft: _pv5,
-    runtimePilotValidationOperatorApprovalSnapshot: _pv6,
-    runtimePilotValidationAuditTraceCandidate: _pv7,
-    runtimePilotValidationRollbackPlanCandidate: _pv8,
-    runtimeSafeEchoInvocationSimulatorSummary: _pv9,
-    runtimeSafeEchoInvocationSimulatorInput: _pv10,
-    runtimeSafeEchoInvocationSimulatorOutput: _pv11,
-    runtimeSafeEchoInvocationSimulatorBoundary: _pv12,
-    ...rest
-  } = semantic;
-  return rest;
-}
-
-/** Pilot Validation Phase 0 summary 제거 — 단독 테스트용. */
-export function stripRuntimePilotValidationLayer(
-  semantic: RuntimeSemanticPlanningReports
-): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforePilotValidation {
-  return omitPilotValidationReadOnlyChainLayerOnly(semantic);
-}
-
 /** H45 reports 제거 — H45 단독 테스트용. */
 export function stripRuntimeControlledPilotExecutionCandidateLayer(
   semantic: RuntimeSemanticPlanningReports
 ): import("@/lib/harness/runtimeSemantic/runtimeSemanticPlanningReportStages").RuntimeSemanticPlanningReportsBeforeControlledPilotExecutionCandidate {
-  return omitControlledPilotExecutionCandidateLayerOnly(omitPilotValidationReadOnlyChainLayerOnly(semantic));
+  return omitControlledPilotExecutionCandidateLayerOnly(semantic);
 }
 
 function omitPilotExecutionReadinessLayerOnly<T extends RuntimeSemanticPlanningReports>(

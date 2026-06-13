@@ -269,8 +269,6 @@ export type OverlayUiSectionDefaultsVM = Readonly<{
   runtimePlanningRuntimePilotExecutionReadiness: boolean;
   /** H45 controlled pilot execution candidate·final runtime handoff boundary. */
   runtimePlanningRuntimeControlledPilotExecutionCandidate: boolean;
-  /** Pilot Validation Phase 0 — read-only chain validation summary. */
-  runtimePlanningPilotValidationReadOnlyChain: boolean;
 }>;
 
 export type OverlayUiViewModel = Readonly<{
@@ -576,7 +574,6 @@ function buildSectionDefaults(
     runtimePlanningRuntimeLimitedPilotReadinessReview: false,
     runtimePlanningRuntimePilotExecutionReadiness: false,
     runtimePlanningRuntimeControlledPilotExecutionCandidate: false,
-    runtimePlanningPilotValidationReadOnlyChain: false,
   };
 }
 

@@ -200,7 +200,6 @@ export function OverlaySummaryCard({
     runtimeLimitedPilotReadinessReviewVm: runtimePlanningLimitedPilotReadinessReviewVm,
     runtimePilotExecutionReadinessVm: runtimePlanningPilotExecutionReadinessVm,
     runtimeControlledPilotExecutionCandidateVm: runtimePlanningControlledPilotExecutionCandidateVm,
-    runtimePilotValidationReadOnlyChainVm: runtimePlanningPilotValidationReadOnlyChainVm,
   } = buildOverlayRuntimePlanningSectionVms({
       overlay,
       maturityBaseline,
@@ -429,11 +428,6 @@ export function OverlaySummaryCard({
     d.runtimePlanningRuntimeControlledPilotExecutionCandidate ||
       runtimePlanningControlledPilotExecutionCandidateVm.showAttention
   );
-  const pPilotValidationReadOnlyChain = pol(
-    "runtime_planning_pilot_validation_read_only_chain",
-    d.runtimePlanningPilotValidationReadOnlyChain ||
-      runtimePlanningPilotValidationReadOnlyChainVm.showAttention
-  );
   /** H20.5 resource → H35 release-gate preflight까지 DOM에서 생략된 경우에만 상위(forecast·semantic…) 표시. */
   const resourceThroughNoopExecutionShellOmitted =
     pResource.omitFromDom &&
@@ -465,8 +459,7 @@ export function OverlaySummaryCard({
     pLimitedPilotBoundary.omitFromDom &&
     pLimitedPilotReadinessReview.omitFromDom &&
     pPilotExecutionReadiness.omitFromDom &&
-    pControlledPilotExecutionCandidate.omitFromDom &&
-    pPilotValidationReadOnlyChain.omitFromDom;
+    pControlledPilotExecutionCandidate.omitFromDom;
   const showDependencyCriticalityGrouped =
     !pDep.omitFromDom ||
     !pCrit.omitFromDom ||
@@ -711,9 +704,6 @@ export function OverlaySummaryCard({
           showRuntimeControlledPilotExecutionCandidate={!pControlledPilotExecutionCandidate.omitFromDom}
           controlledPilotExecutionCandidateDefaultOpen={pControlledPilotExecutionCandidate.defaultOpen}
           runtimeControlledPilotExecutionCandidateVm={runtimePlanningControlledPilotExecutionCandidateVm}
-          showRuntimePilotValidationReadOnlyChain={!pPilotValidationReadOnlyChain.omitFromDom}
-          pilotValidationReadOnlyChainDefaultOpen={pPilotValidationReadOnlyChain.defaultOpen}
-          runtimePilotValidationReadOnlyChainVm={runtimePlanningPilotValidationReadOnlyChainVm}
           showForecast={!pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted}
           showDecision={
             !pDecision.omitFromDom && pForecast.omitFromDom && resourceThroughNoopExecutionShellOmitted

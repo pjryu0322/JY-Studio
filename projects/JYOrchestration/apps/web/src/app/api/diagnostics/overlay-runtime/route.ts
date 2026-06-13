@@ -1026,24 +1026,6 @@ export async function GET(request: NextRequest) {
         runtimeSemanticDiag.runtimeControlledPilotExecutionCandidateAlignmentReport,
       runtimeControlledPilotExecutionCandidateFinalSafetyGate:
         runtimeSemanticDiag.runtimeControlledPilotExecutionCandidateFinalSafetyGate,
-      runtimePilotValidationReadOnlyChainSummary:
-        runtimeSemanticDiag.runtimePilotValidationReadOnlyChainSummary,
-      runtimeSafeEchoAdapterContractSummary: runtimeSemanticDiag.runtimeSafeEchoAdapterContractSummary,
-      runtimeSafeEchoAdapterInputContract: runtimeSemanticDiag.runtimeSafeEchoAdapterInputContract,
-      runtimeSafeEchoAdapterOutputContract: runtimeSemanticDiag.runtimeSafeEchoAdapterOutputContract,
-      runtimeSandboxDryRunBoundary: runtimeSemanticDiag.runtimeSandboxDryRunBoundary,
-      runtimePilotValidationRequestDraft: runtimeSemanticDiag.runtimePilotValidationRequestDraft,
-      runtimePilotValidationOperatorApprovalSnapshot:
-        runtimeSemanticDiag.runtimePilotValidationOperatorApprovalSnapshot,
-      runtimePilotValidationAuditTraceCandidate: runtimeSemanticDiag.runtimePilotValidationAuditTraceCandidate,
-      runtimePilotValidationRollbackPlanCandidate:
-        runtimeSemanticDiag.runtimePilotValidationRollbackPlanCandidate,
-      runtimeSafeEchoInvocationSimulatorSummary:
-        runtimeSemanticDiag.runtimeSafeEchoInvocationSimulatorSummary,
-      runtimeSafeEchoInvocationSimulatorInput: runtimeSemanticDiag.runtimeSafeEchoInvocationSimulatorInput,
-      runtimeSafeEchoInvocationSimulatorOutput: runtimeSemanticDiag.runtimeSafeEchoInvocationSimulatorOutput,
-      runtimeSafeEchoInvocationSimulatorBoundary:
-        runtimeSemanticDiag.runtimeSafeEchoInvocationSimulatorBoundary,
       overlayAssemblyPlanSummary,
       overlayAssemblyIncludeModeSummary,
       overlayPruningSummary,

@@ -77,8 +77,6 @@ import type { OverlayRuntimePilotExecutionReadinessSectionVM } from "@/lib/overl
 import { OverlayRuntimePilotExecutionReadinessSection } from "./OverlayRuntimePilotExecutionReadinessSection";
 import type { OverlayRuntimeControlledPilotExecutionCandidateSectionVM } from "@/lib/overlay-ui/overlayRuntimeControlledPilotExecutionCandidateAdapter";
 import { OverlayRuntimeControlledPilotExecutionCandidateSection } from "./OverlayRuntimeControlledPilotExecutionCandidateSection";
-import type { OverlayRuntimePilotValidationReadOnlyChainSectionVM } from "@/lib/overlay-ui/overlayRuntimePilotValidationReadOnlyChainAdapter";
-import { OverlayRuntimePilotValidationReadOnlyChainSection } from "./OverlayRuntimePilotValidationReadOnlyChainSection";
 import { OverlayRuntimeSemanticVocabularySection } from "./OverlayRuntimeSemanticVocabularySection";
 import { OverlayRuntimeSemanticSection } from "./OverlayRuntimeSemanticSection";
 import { OverlayRuntimeTraceabilitySection } from "./OverlayRuntimeTraceabilitySection";
@@ -117,7 +115,6 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   runtimeLimitedPilotReadinessReviewVm,
   runtimePilotExecutionReadinessVm,
   runtimeControlledPilotExecutionCandidateVm,
-  runtimePilotValidationReadOnlyChainVm,
   forecastVm,
   decisionVm,
   semanticVocabularyVm,
@@ -158,7 +155,6 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   limitedPilotReadinessReviewDefaultOpen,
   pilotExecutionReadinessDefaultOpen,
   controlledPilotExecutionCandidateDefaultOpen,
-  pilotValidationReadOnlyChainDefaultOpen,
   forecastDefaultOpen,
   decisionDefaultOpen,
   semanticVocabularyDefaultOpen,
@@ -200,7 +196,6 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   showRuntimeLimitedPilotReadinessReview = true,
   showRuntimePilotExecutionReadiness = true,
   showRuntimeControlledPilotExecutionCandidate = true,
-  showRuntimePilotValidationReadOnlyChain = true,
   showForecast = true,
   showDecision = true,
   showSemanticVocabulary = true,
@@ -242,7 +237,6 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly runtimeLimitedPilotReadinessReviewVm: OverlayRuntimeLimitedPilotReadinessReviewSectionVM;
   readonly runtimePilotExecutionReadinessVm: OverlayRuntimePilotExecutionReadinessSectionVM;
   readonly runtimeControlledPilotExecutionCandidateVm: OverlayRuntimeControlledPilotExecutionCandidateSectionVM;
-  readonly runtimePilotValidationReadOnlyChainVm: OverlayRuntimePilotValidationReadOnlyChainSectionVM;
   readonly forecastVm: OverlayRuntimeForecastSectionVM;
   readonly decisionVm: OverlayRuntimeDecisionSectionVM;
   readonly semanticVocabularyVm: OverlayRuntimeSemanticVocabularySectionVM;
@@ -283,7 +277,6 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly limitedPilotReadinessReviewDefaultOpen?: boolean;
   readonly pilotExecutionReadinessDefaultOpen?: boolean;
   readonly controlledPilotExecutionCandidateDefaultOpen?: boolean;
-  readonly pilotValidationReadOnlyChainDefaultOpen?: boolean;
   readonly forecastDefaultOpen?: boolean;
   readonly decisionDefaultOpen?: boolean;
   readonly semanticVocabularyDefaultOpen?: boolean;
@@ -325,7 +318,6 @@ export function OverlayRuntimeDependencyCriticalityGroup({
   readonly showRuntimeLimitedPilotReadinessReview?: boolean;
   readonly showRuntimePilotExecutionReadiness?: boolean;
   readonly showRuntimeControlledPilotExecutionCandidate?: boolean;
-  readonly showRuntimePilotValidationReadOnlyChain?: boolean;
   readonly showForecast?: boolean;
   readonly showDecision?: boolean;
   readonly showSemanticVocabulary?: boolean;
@@ -521,12 +513,6 @@ export function OverlayRuntimeDependencyCriticalityGroup({
         <OverlayRuntimeControlledPilotExecutionCandidateSection
           vm={runtimeControlledPilotExecutionCandidateVm}
           defaultOpen={controlledPilotExecutionCandidateDefaultOpen}
-        />
-      ) : null}
-      {showRuntimePilotValidationReadOnlyChain ? (
-        <OverlayRuntimePilotValidationReadOnlyChainSection
-          vm={runtimePilotValidationReadOnlyChainVm}
-          defaultOpen={pilotValidationReadOnlyChainDefaultOpen}
         />
       ) : null}
       {showForecast ? (

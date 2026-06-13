@@ -49,7 +49,6 @@ import { buildRuntimeLimitedPilotBoundaryPlanningReports } from "@/lib/harness/r
 import { buildRuntimeLimitedPilotReadinessReviewPlanningReports } from "@/lib/harness/runtimeLimitedPilotReadinessReview/buildRuntimeLimitedPilotReadinessReviewPlanningReports";
 import { buildRuntimePilotExecutionReadinessPlanningReports } from "@/lib/harness/runtimePilotExecutionReadiness/buildRuntimePilotExecutionReadinessPlanningReports";
 import { buildRuntimeControlledPilotExecutionCandidatePlanningReports } from "@/lib/harness/runtimeControlledPilotExecutionCandidate/buildRuntimeControlledPilotExecutionCandidatePlanningReports";
-import { buildRuntimePilotValidationReadOnlyChainPlanningReports } from "@/lib/harness/runtimePilotValidation/buildRuntimePilotValidationReadOnlyChainPlanningReports";
 import { buildRuntimeUltimateGovernanceReviewPlanningReports } from "@/lib/harness/runtimeUltimateGovernanceReview/buildRuntimeUltimateGovernanceReviewPlanningReports";
 import { buildRuntimeResourcePlanningReports } from "@/lib/harness/runtimeResource/buildRuntimeResourcePlanningReports";
 import { auditHiddenRuntimeSemanticTrace } from "./auditHiddenRuntimeSemanticTrace";
@@ -370,18 +369,9 @@ export function buildRuntimeSemanticPlanningReports(
     semanticWithPilotExecutionReadiness
   );
 
-  const semanticWithControlledPilotExecutionCandidate = {
+  return {
     ...semanticWithPilotExecutionReadiness,
     ...controlledPilotExecutionCandidateReports,
-  };
-
-  const pilotValidationReadOnlyChainReports = buildRuntimePilotValidationReadOnlyChainPlanningReports(
-    semanticWithControlledPilotExecutionCandidate
-  );
-
-  return {
-    ...semanticWithControlledPilotExecutionCandidate,
-    ...pilotValidationReadOnlyChainReports,
   };
 }
 

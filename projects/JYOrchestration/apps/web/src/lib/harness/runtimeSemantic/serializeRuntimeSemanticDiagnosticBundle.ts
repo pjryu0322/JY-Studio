@@ -70,7 +70,6 @@ import { serializeRuntimeLimitedPilotBoundaryDiagnosticBundleFromSemanticReports
 import { serializeRuntimeLimitedPilotReadinessReviewDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeLimitedPilotReadinessReview/serializeRuntimeLimitedPilotReadinessReviewDiagnosticBundle";
 import { serializeRuntimePilotExecutionReadinessDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotExecutionReadiness/serializeRuntimePilotExecutionReadinessDiagnosticBundle";
 import { serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeControlledPilotExecutionCandidate/serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundle";
-import { serializeRuntimePilotValidationDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimePilotValidation/serializeRuntimePilotValidationDiagnosticBundle";
 import { serializeRuntimeUltimateGovernanceReviewDiagnosticBundleFromSemanticReports } from "@/lib/harness/runtimeUltimateGovernanceReview/serializeRuntimeUltimateGovernanceReviewDiagnosticBundle";
 
 type SerializedRuntimeResourceGovernanceDiag = ReturnType<
@@ -159,9 +158,6 @@ type SerializedRuntimePilotExecutionReadinessDiag = ReturnType<
 >;
 type SerializedRuntimeControlledPilotExecutionCandidateDiag = ReturnType<
   typeof serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundleFromSemanticReports
->;
-type SerializedRuntimePilotValidationDiag = ReturnType<
-  typeof serializeRuntimePilotValidationDiagnosticBundleFromSemanticReports
 >;
 
 export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
@@ -439,19 +435,6 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
   runtimeControlledPilotExecutionCandidateVerificationReport: SerializedRuntimeControlledPilotExecutionCandidateDiag["runtimeControlledPilotExecutionCandidateVerificationReport"];
   runtimeControlledPilotExecutionCandidateAlignmentReport: SerializedRuntimeControlledPilotExecutionCandidateDiag["runtimeControlledPilotExecutionCandidateAlignmentReport"];
   runtimeControlledPilotExecutionCandidateFinalSafetyGate: SerializedRuntimeControlledPilotExecutionCandidateDiag["runtimeControlledPilotExecutionCandidateFinalSafetyGate"];
-  runtimePilotValidationReadOnlyChainSummary: SerializedRuntimePilotValidationDiag["runtimePilotValidationReadOnlyChainSummary"];
-  runtimeSafeEchoAdapterContractSummary: SerializedRuntimePilotValidationDiag["runtimeSafeEchoAdapterContractSummary"];
-  runtimeSafeEchoAdapterInputContract: SerializedRuntimePilotValidationDiag["runtimeSafeEchoAdapterInputContract"];
-  runtimeSafeEchoAdapterOutputContract: SerializedRuntimePilotValidationDiag["runtimeSafeEchoAdapterOutputContract"];
-  runtimeSandboxDryRunBoundary: SerializedRuntimePilotValidationDiag["runtimeSandboxDryRunBoundary"];
-  runtimePilotValidationRequestDraft: SerializedRuntimePilotValidationDiag["runtimePilotValidationRequestDraft"];
-  runtimePilotValidationOperatorApprovalSnapshot: SerializedRuntimePilotValidationDiag["runtimePilotValidationOperatorApprovalSnapshot"];
-  runtimePilotValidationAuditTraceCandidate: SerializedRuntimePilotValidationDiag["runtimePilotValidationAuditTraceCandidate"];
-  runtimePilotValidationRollbackPlanCandidate: SerializedRuntimePilotValidationDiag["runtimePilotValidationRollbackPlanCandidate"];
-  runtimeSafeEchoInvocationSimulatorSummary: SerializedRuntimePilotValidationDiag["runtimeSafeEchoInvocationSimulatorSummary"];
-  runtimeSafeEchoInvocationSimulatorInput: SerializedRuntimePilotValidationDiag["runtimeSafeEchoInvocationSimulatorInput"];
-  runtimeSafeEchoInvocationSimulatorOutput: SerializedRuntimePilotValidationDiag["runtimeSafeEchoInvocationSimulatorOutput"];
-  runtimeSafeEchoInvocationSimulatorBoundary: SerializedRuntimePilotValidationDiag["runtimeSafeEchoInvocationSimulatorBoundary"];
 }> {
   const governanceDiag = serializeRuntimeResourceGovernanceDiagnosticBundleFromSemanticReports(reports);
   const allocationDiag = serializeRuntimeResourceAllocationDiagnosticBundleFromSemanticReports(reports);
@@ -495,7 +478,6 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     serializeRuntimePilotExecutionReadinessDiagnosticBundleFromSemanticReports(reports);
   const controlledPilotExecutionCandidateDiag =
     serializeRuntimeControlledPilotExecutionCandidateDiagnosticBundleFromSemanticReports(reports);
-  const pilotValidationDiag = serializeRuntimePilotValidationDiagnosticBundleFromSemanticReports(reports);
   return {
     runtimeSemanticGroups: serializeRuntimeSemanticGroupsSummaryForDiagnostic(reports.semanticGroupsSummary),
     compressedRuntimeReasoningTrace: serializeCompressedRuntimeReasoningTraceForDiagnostic(
@@ -591,22 +573,6 @@ export function serializeRuntimeSemanticDiagnosticBundleFromPlanningReports(
     ...limitedPilotReadinessReviewDiag,
     ...pilotExecutionReadinessDiag,
     ...controlledPilotExecutionCandidateDiag,
-    runtimePilotValidationReadOnlyChainSummary:
-      pilotValidationDiag.runtimePilotValidationReadOnlyChainSummary,
-    runtimeSafeEchoAdapterContractSummary: pilotValidationDiag.runtimeSafeEchoAdapterContractSummary,
-    runtimeSafeEchoAdapterInputContract: pilotValidationDiag.runtimeSafeEchoAdapterInputContract,
-    runtimeSafeEchoAdapterOutputContract: pilotValidationDiag.runtimeSafeEchoAdapterOutputContract,
-    runtimeSandboxDryRunBoundary: pilotValidationDiag.runtimeSandboxDryRunBoundary,
-    runtimePilotValidationRequestDraft: pilotValidationDiag.runtimePilotValidationRequestDraft,
-    runtimePilotValidationOperatorApprovalSnapshot:
-      pilotValidationDiag.runtimePilotValidationOperatorApprovalSnapshot,
-    runtimePilotValidationAuditTraceCandidate: pilotValidationDiag.runtimePilotValidationAuditTraceCandidate,
-    runtimePilotValidationRollbackPlanCandidate: pilotValidationDiag.runtimePilotValidationRollbackPlanCandidate,
-    runtimeSafeEchoInvocationSimulatorSummary:
-      pilotValidationDiag.runtimeSafeEchoInvocationSimulatorSummary,
-    runtimeSafeEchoInvocationSimulatorInput: pilotValidationDiag.runtimeSafeEchoInvocationSimulatorInput,
-    runtimeSafeEchoInvocationSimulatorOutput: pilotValidationDiag.runtimeSafeEchoInvocationSimulatorOutput,
-    runtimeSafeEchoInvocationSimulatorBoundary: pilotValidationDiag.runtimeSafeEchoInvocationSimulatorBoundary,
   };
 }
 
