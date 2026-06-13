@@ -15,6 +15,7 @@ import {
   type ImplementationIntegrationPipelineClientResultV1,
 } from "@/components/preview/useImplementationIntegrationPipelineController";
 import { useImplementationGithubVerifyController } from "@/components/preview/useImplementationGithubVerifyController";
+import { useImplementationQuickRunController } from "@/components/preview/useImplementationQuickRunController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -177,14 +178,8 @@ import { updateBoardSelectedTaskIds } from "@/lib/prototype/implementationExecut
 import { updateBoardCheckedCodeTaskIds } from "@/lib/prototype/implementationBoardCheckedIds";
 import { resolveCheckedCodeTaskIdsFromBoardBridge } from "@/lib/prototype/implementationBoardCodeTaskSelection";
 import {
-  buildImplementationQuickRunQueueItems,
-  buildQuickRunOrchestrationAfterJobStart,
   buildImplementationQuickRunRequirementsPrepPersistPatch,
-  buildRepairTimelineEntries,
-  continueImplementationQuickRunAfterStart,
   prepareRequirementsStateForImplementationQuickRun,
-  evaluateImplementationQuickRunPrepAndSelection,
-  postImplementationQuickRunStartJob,
 } from "@/lib/prototype/implementationQuickRunStartService";
 import { tryHandleImplementationTaskListChip } from "@/lib/prototype/implementationTaskListEntryMessage";
 import {
@@ -1209,6 +1204,27 @@ export function usePrototypeImplementationStagePanel(
     runFallbackVerifyAction: () => {
       runImplementationStageActionRef.current("VERIFY_TASK_CURSOR_GITHUB");
     },
+  });
+
+  const { startImplementationQuickRun } = useImplementationQuickRunController({
+    projectId,
+    requirementsStateJson,
+    requirementsStateJsonRef,
+    orchestrationAwareRequirementsStateRef,
+    boardSelectionBridge,
+    executionSetupRow,
+    quickRunStuckGithubVerifyRef,
+    quickRunCodeTaskContinuationRef,
+    dbQueuedQuickRunDispatchRef,
+    codeTaskDispatchPreferredTaskIdRef,
+    setImplementationRuntimeDbBundle,
+    loadImplementationRuntimeDb,
+    recordQuickRunClientEvent,
+    applyPendingFromOrchestrationPatchRef,
+    applyImplementationOrchestrationResult,
+    enrichCodeTaskRunOrchestrationPatch,
+    persistChatToDb,
+    appendUserNotice,
   });
 
   const handleRetryFailedCodeTask = useCallback(
@@ -2972,188 +2988,6 @@ export function usePrototypeImplementationStagePanel(
     },
     [handleImplementationChip],
   );
-
-  const startImplementationQuickRun = useCallback(async (options?: {
-    readonly selectedCodeTaskIds?: readonly string[];
-  }): Promise<ImplementationStageActionRunResult> => {
-    const pid = projectId.trim();
-    if (!pid) return { outcome: "blocked", message: "프로젝트 ID가 없습니다." };
-    const imp = orchestrationAwareRequirementsStateRef.current;
-    const bridge = boardSelectionBridge.getBridgeSnapshot();
-    const prepEval = evaluateImplementationQuickRunPrepAndSelection({
-      projectId: pid,
-      requirementsState: imp,
-      selectedCodeTaskIdsOverride: options?.selectedCodeTaskIds,
-      bridge,
-    });
-    if (!prepEval.ok) {
-      if (prepEval.kind === "mock_id_blocked") {
-        recordQuickRunClientEvent({
-          phase: "quick_run_selected_mock_id_blocked",
-          detail: prepEval.message,
-          selectedCount: 0,
-        });
-        const blockedTimeline = appendPromptTimeline(imp.promptTimeline, prepEval.timelineEntry);
-        applyPendingFromOrchestrationPatchRef.current({ promptTimeline: blockedTimeline });
-        void persistChatToDb(undefined, { promptTimeline: blockedTimeline }, undefined, { force: true });
-        return { outcome: "blocked", message: prepEval.message };
-      }
-      recordQuickRunClientEvent({
-        phase: prepEval.phase,
-        detail: prepEval.message,
-        selectedCount: prepEval.selectedCount,
-      });
-      return { outcome: "blocked", message: prepEval.message };
-    }
-    if (prepEval.repairs.length) {
-      const nowIso = new Date().toISOString();
-      const repairEntries = buildRepairTimelineEntries({
-        projectId: pid,
-        repairs: prepEval.repairs,
-        nowIso,
-      });
-      let repairTimeline = imp.promptTimeline;
-      for (const entry of repairEntries) {
-        repairTimeline = appendPromptTimeline(repairTimeline, entry);
-      }
-      applyPendingFromOrchestrationPatchRef.current({ promptTimeline: repairTimeline });
-      void persistChatToDb(undefined, { promptTimeline: repairTimeline }, undefined, { force: true });
-    }
-    const jobSelectedCodeTaskIds = prepEval.selectedRunnableCodeTaskIds;
-    recordQuickRunClientEvent({
-      phase: "start_implementation_quick_run",
-      detail: jobSelectedCodeTaskIds.length
-        ? `selected=${jobSelectedCodeTaskIds.join(",")}`
-        : "selected=none",
-      selectedCount: jobSelectedCodeTaskIds.length,
-    });
-    quickRunStuckGithubVerifyRef.current = null;
-    quickRunCodeTaskContinuationRef.current = null;
-    dbQueuedQuickRunDispatchRef.current = null;
-    const nowIso = new Date().toISOString();
-    const quickRunPrepared = prepareRequirementsStateForImplementationQuickRun({
-      projectId: pid,
-      requirementsState: imp,
-      nowIso,
-    });
-    const impForQuickRun = quickRunPrepared.requirementsState;
-    const quickRunPrepPersistPatch = buildImplementationQuickRunRequirementsPrepPersistPatch({
-      prepared: quickRunPrepared,
-    });
-    if (Object.keys(quickRunPrepPersistPatch).length) {
-      applyPendingFromOrchestrationPatchRef.current(quickRunPrepPersistPatch);
-      await persistChatToDb(undefined, quickRunPrepPersistPatch, undefined, {
-        awaitServer: true,
-        force: true,
-      });
-    }
-    const queueItems = buildImplementationQuickRunQueueItems({
-      selectedCodeTaskIds: jobSelectedCodeTaskIds,
-      requirementsState: impForQuickRun,
-    });
-    const startJobRes = await postImplementationQuickRunStartJob({
-      projectId: pid,
-      selectedCodeTaskIds: jobSelectedCodeTaskIds,
-      queueItems,
-    });
-    if (!startJobRes.success) {
-      const message = startJobRes.message ?? "DB Runtime Job 시작에 실패했습니다.";
-      recordQuickRunClientEvent({
-        phase: "start_job_failed",
-        detail: message,
-        selectedCount: jobSelectedCodeTaskIds.length,
-      });
-      return { outcome: "blocked", message };
-    }
-    if (startJobRes.bundle) {
-      setImplementationRuntimeDbBundle(startJobRes.bundle);
-    }
-
-    const runtimeBundle = startJobRes.bundle ?? null;
-    const firstCodeTaskId =
-      runtimeBundle?.job?.currentCodeTaskId?.trim() ?? jobSelectedCodeTaskIds[0]?.trim() ?? "";
-    if (!runtimeBundle?.job?.id || !firstCodeTaskId) {
-      const message =
-        "DB Runtime Job을 시작하지 못했습니다. 마이그레이션 적용 후 다시 시도하거나 Runtime을 새로고침하세요.";
-      return { outcome: "blocked", message };
-    }
-    const orchestration = buildQuickRunOrchestrationAfterJobStart({
-      projectId: pid,
-      jobSelectedCodeTaskIds,
-      firstCodeTaskId,
-      requirementsState: impForQuickRun,
-      requirementsStateJsonRaw: requirementsStateJsonRef.current,
-      executionSetup: executionSetupRow,
-      nowIso,
-    });
-    if ("ok" in orchestration) {
-      return { outcome: "blocked", message: orchestration.message };
-    }
-    const orch = orchestration;
-    const { quickRun, codeTaskExecutionRunsV1, runtimeUiSnapshotPatch, dispatchTarget } = orch;
-    applyImplementationOrchestrationResult(
-      {
-        orchestrationPatch: {
-          implementationQuickRunV1: quickRun,
-          codeTaskExecutionRunsV1,
-          implementationRuntimeUiSnapshotV1: runtimeUiSnapshotPatch,
-        },
-      },
-      { persist: false },
-    );
-    codeTaskDispatchPreferredTaskIdRef.current = dispatchTarget.parentTaskId;
-    const dbRunId = runtimeBundle.currentRun?.id?.trim() ?? "";
-    if (dbRunId) {
-      dbQueuedQuickRunDispatchRef.current = `${dbRunId}:${dispatchTarget.codeTask.codeTaskId}`;
-    }
-    void continueImplementationQuickRunAfterStart({
-      projectId: pid,
-      imp,
-      startJobRes,
-      orchestration: orch,
-      nowIso,
-      enrichOrchestrationPatch: enrichCodeTaskRunOrchestrationPatch,
-      onDispatchPatch: (patch) => {
-        applyImplementationOrchestrationResult({
-        orchestrationPatch: patch,
-        });
-      },
-      persistAfterStart: async (patch) => {
-        await persistChatToDb(
-          resolvePrototypeExecutionSingleChatFromState(requirementsStateJson),
-          patch,
-          undefined,
-          { awaitServer: true, force: true },
-        );
-      },
-      persistDispatchTimeline: (entry) => {
-        void persistChatToDb(resolvePrototypeExecutionSingleChatFromState(requirementsStateJson), {
-          promptTimeline: appendPromptTimeline(imp.promptTimeline, entry),
-        });
-      },
-      onRuntimeBundle: setImplementationRuntimeDbBundle,
-      reloadRuntime: () => {
-        void loadImplementationRuntimeDb({ recover: false });
-      },
-      clearDbQueuedDispatchKey: () => {
-        dbQueuedQuickRunDispatchRef.current = null;
-      },
-      showToast: appendUserNotice,
-    });
-    return { outcome: "executed" as const };
-  }, [
-    projectId,
-    recordQuickRunClientEvent,
-    applyImplementationOrchestrationResult,
-    applyPendingFromOrchestrationPatchRef,
-    enrichCodeTaskRunOrchestrationPatch,
-    loadImplementationRuntimeDb,
-    persistChatToDb,
-    requirementsStateJson,
-    executionSetupRow,
-    boardSelectionBridge,
-    appendUserNotice,
-  ]);
 
   useEffect(() => {
     startImplementationQuickRunRef.current = () => {
