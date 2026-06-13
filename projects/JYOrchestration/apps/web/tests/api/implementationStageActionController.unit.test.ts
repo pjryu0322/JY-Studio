@@ -11,21 +11,24 @@ describe("implementation stage action controller wiring", () => {
     expect(src).toContain("route implementation stage actions to the correct controller");
   });
 
-  it("uses Stage Action controller from parent implementation hook", () => {
-    const src = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
-    expect(src).toContain("useImplementationStageActionController");
-    expect(src).not.toContain("dispatchSimpleImplementationStageAction(");
-    expect(src).not.toContain("dispatchExecutionStageAction(");
+  it("uses Stage Action controller from stage action adapter controller", () => {
+    const adapter = readFileSync(
+      join(previewDir, "useImplementationStageActionAdapterController.ts"),
+      "utf8",
+    );
+    const parent = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
+    expect(adapter).toContain("useImplementationStageActionController({");
+    expect(parent).not.toContain("useImplementationStageActionController({");
   });
 
   it("does not keep large action dispatch switch in parent hook", () => {
-    const src = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
-    expect(src).not.toContain('case "START_QUICK_IMPLEMENTATION":');
-    expect(src).not.toContain('case "VERIFY_TASK_CURSOR_GITHUB":');
-    expect(src).not.toContain('case "PREPARE_INTEGRATION_PREVIEW":');
-    expect(src).not.toContain('case "OPEN_PREVIEW":');
-    expect(src).not.toContain('action === "START_QUICK_IMPLEMENTATION"');
-    expect(src).not.toContain('action === "VERIFY_TASK_CURSOR_GITHUB"');
+    const parent = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
+    expect(parent).not.toContain('case "START_QUICK_IMPLEMENTATION":');
+    expect(parent).not.toContain('case "VERIFY_TASK_CURSOR_GITHUB":');
+    expect(parent).not.toContain('case "PREPARE_INTEGRATION_PREVIEW":');
+    expect(parent).not.toContain('case "OPEN_PREVIEW":');
+    expect(parent).not.toContain('action === "START_QUICK_IMPLEMENTATION"');
+    expect(parent).not.toContain('action === "VERIFY_TASK_CURSOR_GITHUB"');
   });
 
   it("routes control plane actions inside stage action controller", () => {

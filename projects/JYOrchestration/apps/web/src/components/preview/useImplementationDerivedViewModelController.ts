@@ -8,20 +8,12 @@ import {
   resolveOrchestrationAwareRequirementsState,
 } from "@/lib/prototype/effectiveImplementationState";
 import {
-  dedupeImplementationStageNextActions,
-  extractBoardVisibleActionLabels,
-} from "@/lib/prototype/implementationExecutionBoardPanelView";
-import {
   implementationEntryChipsForBootstrap,
   buildImplementationBootstrapShellView,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
 import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
-import {
-  deriveImplementationStageNextActions,
-  prioritizeImplementationChipsForState,
-} from "@/lib/prototype/implementationStageNextActions";
-import { deriveImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
+import { prioritizeImplementationChipsForState } from "@/lib/prototype/implementationStageNextActions";
 import {
   buildImplementationBootstrapInput,
   pickExecutionStateArtifacts,
@@ -30,7 +22,6 @@ import { buildImplementationCursorGateContext } from "@/lib/prototype/prototypeE
 import { resolvePersistedQueueDispatch } from "@/lib/prototype/implementationRuntimePanelBridge";
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import type { PendingImplementationPatch } from "@/lib/prototype/effectiveImplementationState";
-import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
 import { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { resolveEffectiveCodeTaskExecutionQueue } from "@/lib/runtime/implementationRuntime/implementationRuntimeCodeTaskQueueSnapshot";
@@ -122,7 +113,6 @@ export type ImplementationDerivedViewModelControllerValue = Readonly<{
   readonly implementationBootstrapInput: ReturnType<typeof buildImplementationBootstrapInput>;
   readonly implementationBootstrapShell: ReturnType<typeof buildImplementationBootstrapShellView> | null;
   readonly implementationCursorGate: ReturnType<typeof buildImplementationCursorGateContext>;
-  readonly implementationSeedReady: boolean;
 }>;
 
 export function useImplementationDerivedViewModelController(
@@ -286,19 +276,6 @@ export function useImplementationDerivedViewModelController(
     ],
   );
 
-  const implementationSeedReady = useMemo(() => {
-    const summary = summarizeImplementationSeedStatus({
-      orchestration: input.parsedRequirementsState.singleChatOrchestrationV1,
-      definitions: planningSlotDefinitions,
-      lifecycleStatus: input.parsedRequirementsState.implementationSeedV1?.lifecycleStatus,
-    });
-    return summary.ready || Boolean(input.parsedRequirementsState.implementationSeedV1?.readiness?.ready);
-  }, [
-    input.parsedRequirementsState.implementationSeedV1,
-    input.parsedRequirementsState.singleChatOrchestrationV1,
-    planningSlotDefinitions,
-  ]);
-
   const implementationStageBoardInput = useMemo(() => {
     const pid = input.projectId.trim();
     const taskList = input.orchestrationAwareRequirementsState.implementationTaskListV1;
@@ -391,6 +368,5 @@ export function useImplementationDerivedViewModelController(
     implementationBootstrapInput,
     implementationBootstrapShell,
     implementationCursorGate,
-    implementationSeedReady,
   };
 }

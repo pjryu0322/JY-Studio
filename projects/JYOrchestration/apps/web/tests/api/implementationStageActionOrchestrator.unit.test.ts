@@ -12,9 +12,14 @@ describe("implementation stage action orchestrator wiring", () => {
     expect(src).toContain("persist ImplementationStageActionRun result");
   });
 
-  it("moves action orchestration out of parent panel hook", () => {
+  it("wires action orchestration through stage action adapter controller", () => {
+    const adapter = readFileSync(
+      join(previewDir, "useImplementationStageActionAdapterController.ts"),
+      "utf8",
+    );
     const parent = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
-    expect(parent).toContain("useImplementationStageActionOrchestrator");
+    expect(adapter).toContain("useImplementationStageActionOrchestrator({");
+    expect(parent).not.toContain("useImplementationStageActionOrchestrator({");
     expect(parent).not.toContain("orchestrateImplementationStageAction({");
     expect(parent).not.toContain("buildImplementationStageActionClickedTimelineEntry({");
   });

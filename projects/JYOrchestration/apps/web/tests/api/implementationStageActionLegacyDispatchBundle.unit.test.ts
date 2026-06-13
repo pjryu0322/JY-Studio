@@ -14,9 +14,14 @@ describe("implementation stage action legacy dispatch bundle wiring", () => {
     expect(src).toContain("compose simple/review/execution legacy dispatch inputs");
   });
 
-  it("removes legacy dispatch input composition from parent hook", () => {
+  it("wires legacy dispatch bundle through stage action adapter controller", () => {
+    const adapter = readFileSync(
+      join(previewDir, "useImplementationStageActionAdapterController.ts"),
+      "utf8",
+    );
     const parent = readFileSync(join(previewDir, "usePrototypeImplementationStagePanel.tsx"), "utf8");
-    expect(parent).toContain("useImplementationStageActionLegacyDispatchBundle");
+    expect(adapter).toContain("useImplementationStageActionLegacyDispatchBundle(");
+    expect(parent).not.toContain("useImplementationStageActionLegacyDispatchBundle(");
     expect(parent).not.toContain("const implementationStageActionLegacyDispatchInput = useMemo");
     expect(parent).not.toContain("useImplementationStageActionLegacyDispatch(");
   });
