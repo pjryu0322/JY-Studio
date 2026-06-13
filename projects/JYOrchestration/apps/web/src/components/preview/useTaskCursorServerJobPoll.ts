@@ -6,6 +6,7 @@ import { shouldSyncTaskCursorServerJobPollState } from "@/lib/prototype/taskCurs
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import { fetchImplementationRuntime } from "@/lib/runtime/implementationRuntime/implementationRuntimeClient";
 
 export function useTaskCursorServerJobPoll(input: {
   readonly projectId: string;
@@ -42,6 +43,9 @@ export function useTaskCursorServerJobPoll(input: {
     const refresh = async () => {
       if (input.implementationResetInFlightRef.current) return;
       try {
+        if (shouldSyncTaskCursorServerJobPollState(input.requirementsStateJsonRef.current)) {
+          void fetchImplementationRuntime(pid, { recover: true });
+        }
         const res = await credentialsIncludeFetch(
           `/api/prototype/task-cursor/jobs?projectId=${encodeURIComponent(pid)}`,
         );

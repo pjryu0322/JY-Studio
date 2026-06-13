@@ -92,6 +92,18 @@ describe("resolveCodeTaskBoardState completion evidence", () => {
     });
     expect(noCodeChange.isIntegrationReady).toBe(true);
   });
+
+  it("does not persist final completed board state from cursor_started event only", () => {
+    const result = resolveCodeTaskBoardState({
+      codeTaskId: "CODE-RUNNING",
+      title: "Running",
+      statusLabel: "실행 중",
+      progressLabel: "Cursor API 요청됨",
+      githubOutcomeSaved: false,
+    });
+    expect(result.isCompleted).toBe(false);
+    expect(result.isIntegrationReady).toBe(false);
+  });
 });
 
 describe("codeTaskGithubOutcomeAppliesToExecutionUnit", () => {

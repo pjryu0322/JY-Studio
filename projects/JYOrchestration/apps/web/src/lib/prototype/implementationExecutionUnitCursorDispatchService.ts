@@ -299,7 +299,7 @@ export async function dispatchExecutionUnitWithCursor(input: {
 
     if (agentId) {
       try {
-        await syncCursorLaunchToDbRuntime({
+        const syncResult = await syncCursorLaunchToDbRuntime({
           projectId: pid,
           codeTaskId: unit.codeTaskId,
           taskId: prepared.parentTaskId,
@@ -310,15 +310,30 @@ export async function dispatchExecutionUnitWithCursor(input: {
           workBranch,
           now: new Date(nowIso),
         });
-        timelineEntries.push(
-          buildRuntimeSyncAfterLaunchTimelineEntry({
-            projectId: pid,
-            taskId: prepared.parentTaskId,
-            codeTaskId: unit.codeTaskId,
-            agentId,
-            nowIso,
-          }),
-        );
+        if (syncResult.synced) {
+          timelineEntries.push(
+            buildRuntimeSyncAfterLaunchTimelineEntry({
+              projectId: pid,
+              taskId: prepared.parentTaskId,
+              codeTaskId: unit.codeTaskId,
+              agentId,
+              nowIso,
+            }),
+          );
+        } else {
+          timelineEntries.push(
+            buildImplementationExecutionLogTimelineEntry({
+              action: "implementation_execution_unit_run_history_attached",
+              orchestrationTraceGroup: "implementation_orchestration",
+              fields: {
+                projectId: pid,
+                unitId: unit.unitId,
+                note: syncResult.note ?? "db_runtime_audit_sync_skipped",
+              },
+              nowIso,
+            }),
+          );
+        }
       } catch {
         timelineEntries.push(
           buildImplementationExecutionLogTimelineEntry({

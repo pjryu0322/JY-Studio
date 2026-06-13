@@ -16,6 +16,7 @@ import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementati
 import { patchImplementationExecutionUnitInState } from "@/lib/prototype/implementationExecutionUnitStore";
 import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
+import { ensureActiveRuntimeJobForCodeTaskDispatch } from "@/lib/prototype/implementationRuntimeRunMaterialization";
 import {
   evaluateExecutionSetupSourceGenerationReadiness,
   mapExecutionSetupPrismaRowToSourceGenerationRow,
@@ -344,6 +345,32 @@ export async function dispatchNextExecutionUnitOnServer(input: {
   const baseDispatchPatch = mergeOrchestrationPersistPatches(ctx.orchestrationPatch, {
     codeTaskExecutionRunsV1: runs,
   });
+
+  const selectedCodeTaskIdsForRuntimeJob = ctx.units
+    .filter((u) => ctx.selectedUnitIds.includes(u.unitId))
+    .map((u) => u.codeTaskId.trim())
+    .filter(Boolean);
+
+  try {
+    await ensureActiveRuntimeJobForCodeTaskDispatch({
+      projectId: pid,
+      codeTaskId: unit.codeTaskId,
+      selectedCodeTaskIds: selectedCodeTaskIdsForRuntimeJob,
+    });
+  } catch {
+    timelineEntries.push(
+      buildImplementationExecutionLogTimelineEntry({
+        action: "implementation_runtime_job_materialization_failed",
+        orchestrationTraceGroup: "implementation_orchestration",
+        fields: {
+          projectId: pid,
+          codeTaskId: unit.codeTaskId,
+        },
+        nowIso,
+      }),
+    );
+  }
+
   const dbHistory = await ensureExecutionUnitDbRunHistory({
     projectId: pid,
     unit,

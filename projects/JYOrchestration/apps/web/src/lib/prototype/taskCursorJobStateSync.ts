@@ -43,6 +43,8 @@ export function buildTaskCursorJobOrchestrationSlice(
     implementationTaskExecutionStateV1: state.implementationTaskExecutionStateV1 ?? null,
     implementationAutoQualityGateV1: state.implementationAutoQualityGateV1 ?? null,
     implementationQuickRunV1: state.implementationQuickRunV1 ?? null,
+    codeTaskExecutionRunsV1: state.codeTaskExecutionRunsV1 ?? null,
+    implementationExecutionUnitsV1: state.implementationExecutionUnitsV1 ?? null,
     promptTimeline: state.promptTimeline ?? null,
     cursorWorkItemsV1: state.cursorWorkItemsV1 ?? null,
   };
@@ -53,10 +55,16 @@ export function buildTaskCursorJobOrchestrationSyncFingerprint(
   patch: PrototypeExecutionOrchestrationPersistInput,
 ): string {
   const execution = patch.taskCursorExecutionV1;
+  const runs = patch.codeTaskExecutionRunsV1;
+  const latestRun =
+    Array.isArray(runs) && runs.length
+      ? runs[runs.length - 1]
+      : null;
   return JSON.stringify({
     cursorRunId: execution?.cursorRunId ?? null,
     status: execution?.status ?? null,
     updatedAt: execution?.updatedAt ?? null,
+    commitSha: execution?.commitSha ?? latestRun?.commitSha ?? null,
     bridgeExecutionStatus: execution?.bridgeExecutionStatus ?? null,
     executionUpdatedAt: patch.implementationTaskExecutionStateV1?.updatedAt ?? null,
     executionSummary: patch.implementationTaskExecutionStateV1?.summary ?? null,

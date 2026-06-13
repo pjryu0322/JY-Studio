@@ -1,5 +1,6 @@
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
+import { ensureQueuedRuntimeRunForCodeTask } from "@/lib/prototype/implementationRuntimeRunMaterialization";
 import { buildTaskCursorRuntimeSyncTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { markImplementationRuntimeCursorRunning } from "@/lib/runtime/implementationRuntime/implementationRuntimeCursorService";
@@ -21,26 +22,45 @@ export type SyncCursorLaunchToDbRuntimeInput = Readonly<{
 /** Cursor Agent launch 성공 직후 DB Run(+ task cursor sync)을 같은 agentId·branch로 맞춘다. */
 export async function syncCursorLaunchToDbRuntime(
   input: SyncCursorLaunchToDbRuntimeInput,
-): Promise<{ readonly synced: boolean; readonly runId: string | null }> {
+): Promise<{ readonly synced: boolean; readonly runId: string | null; readonly note?: string }> {
   const pid = input.projectId.trim();
   const codeTaskId = input.codeTaskId.trim();
   const agentId = input.agentId.trim();
   if (!pid || !codeTaskId || !agentId) {
-    return { synced: false, runId: null };
+    return { synced: false, runId: null, note: "missing_launch_context" };
   }
 
   const now = input.now ?? new Date();
-  const bundle = await getImplementationRuntimeBundle(pid);
-  const job = bundle.job;
-  if (!job || job.status !== "running") {
-    return { synced: false, runId: null };
+  let bundle = await getImplementationRuntimeBundle(pid);
+  let job = bundle.job;
+  if (!job?.id || job.status !== "running") {
+    return { synced: false, runId: null, note: "active_implementation_runtime_job_missing" };
   }
 
-  const run =
+  let run =
     bundle.runs.find((r) => r.codeTaskId === codeTaskId) ??
     (job.currentCodeTaskId === codeTaskId ? bundle.currentRun : null);
+
   if (!run) {
-    return { synced: false, runId: null };
+    try {
+      const ensured = await ensureQueuedRuntimeRunForCodeTask({
+        projectId: pid,
+        codeTaskId,
+        processTaskId: input.taskId.trim() || null,
+      });
+      bundle = ensured.bundle;
+      job = bundle.job;
+      run =
+        bundle.runs.find((r) => r.id === ensured.runId) ??
+        bundle.runs.find((r) => r.codeTaskId === codeTaskId) ??
+        bundle.currentRun;
+    } catch {
+      return { synced: false, runId: null, note: "runtime_queued_run_materialization_failed" };
+    }
+  }
+
+  if (!run || !job?.id) {
+    return { synced: false, runId: null, note: "runtime_run_not_found" };
   }
 
   const repoFullName =

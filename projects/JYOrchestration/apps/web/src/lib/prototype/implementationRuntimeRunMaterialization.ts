@@ -11,6 +11,7 @@ import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkIte
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
   advanceImplementationRuntimeJob,
+  startImplementationRuntimeJobFromCodeTasks,
 } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
 import {
   getImplementationRuntimeBundle,
@@ -82,6 +83,34 @@ export function materializeSelectedCodeTaskRuns(input: {
   }
 
   return { runs, createdRunIds, reusedRunIds, executionOrder };
+}
+
+/** ExecutionUnit Cursor dispatch 전 active DB runtime job이 없으면 생성한다. */
+export async function ensureActiveRuntimeJobForCodeTaskDispatch(input: {
+  readonly projectId: string;
+  readonly codeTaskId: string;
+  readonly selectedCodeTaskIds: readonly string[];
+}): Promise<ImplementationRuntimeBundleView> {
+  const pid = input.projectId.trim();
+  const codeTaskId = input.codeTaskId.trim();
+  let bundle = await getImplementationRuntimeBundle(pid);
+  if (bundle.job?.status === "running") {
+    return bundle;
+  }
+  const ids = [
+    ...new Set(
+      (input.selectedCodeTaskIds.length ? input.selectedCodeTaskIds : [codeTaskId])
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!ids.length) {
+    throw new Error("selectedCodeTaskIds is required");
+  }
+  return startImplementationRuntimeJobFromCodeTasks({
+    projectId: pid,
+    selectedCodeTaskIds: ids,
+  });
 }
 
 export async function ensureQueuedRuntimeRunForCodeTask(input: {
