@@ -15,7 +15,7 @@ import {
   type ImplementationIntegrationPipelineClientResultV1,
 } from "@/components/preview/useImplementationIntegrationPipelineController";
 import { useImplementationGithubVerifyController } from "@/components/preview/useImplementationGithubVerifyController";
-import { useImplementationQuickRunController, persistImplementationQuickRunRequirementsPrep } from "@/components/preview/useImplementationQuickRunController";
+import { useImplementationQuickRunController } from "@/components/preview/useImplementationQuickRunController";
 import { useImplementationStageActionController } from "@/components/preview/useImplementationStageActionController";
 import { useImplementationStageActionLegacyDispatchBundle } from "@/components/preview/useImplementationStageActionLegacyDispatchBundle";
 import { useImplementationStageActionOrchestrator } from "@/components/preview/useImplementationStageActionOrchestrator";
@@ -24,6 +24,7 @@ import { useImplementationChipHandlerController } from "@/components/preview/use
 import { useImplementationPreviewController } from "@/components/preview/useImplementationPreviewController";
 import { useImplementationFinalScmController } from "@/components/preview/useImplementationFinalScmController";
 import { useImplementationQualityIntegratedStageController } from "@/components/preview/useImplementationQualityIntegratedStageController";
+import { useImplementationDeveloperPromptCopyController } from "@/components/preview/useImplementationDeveloperPromptCopyController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -122,20 +123,13 @@ import {
   dedupeImplementationStageNextActions,
   extractBoardVisibleActionLabels,
 } from "@/lib/prototype/implementationExecutionBoardPanelView";
-import { resolveCheckedCodeTaskIdsFromBoardBridge } from "@/lib/prototype/implementationBoardCodeTaskSelection";
 import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
-import { parseStringArrayJson } from "@/lib/executionLoop/loopJsonUtils";
-import { writeClipboardText } from "@/lib/clipboard/writeClipboardText";
 import {
   readImplementationStageChatMessages,
   readImplementationStageChatPatch,
 } from "@/lib/prototype/implementationStageChatSnapshot";
 import { shouldSuppressImplementationStatusMessage } from "@/lib/prototype/implementationStatusChatPolicy";
-import { resolveDeveloperPromptCopyFromSelection } from "@/lib/prototype/codeTaskDeveloperPromptBundle";
-import { resolveExecutionTargetCodeTaskId } from "@/lib/prototype/resolveExecutionTargetCodeTaskId";
-import { resolveCodeTaskDeveloperPromptForCopy } from "@/lib/prototype/resolveCodeTaskDeveloperPromptForCopy";
-import { resolveProjectTargetRepositoryFromExecutionSetup } from "@/lib/prototype/projectTargetRepository";
 import { resolveCodeTaskRunForAutoQualityGateClient } from "@/lib/prototype/implementationAutoQualityGateClient";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import {
@@ -1658,6 +1652,17 @@ export function usePrototypeImplementationStagePanel(
       appendImplementationTaskListAiMessage,
     });
 
+  const { handleCopyCodeTaskCursorPrompt, handleCopyDeveloperPromptsFromHeader } =
+    useImplementationDeveloperPromptCopyController({
+      projectId,
+      orchestrationAwareRequirementsState,
+      executionSetupRow,
+      implementationRuntimeDbBundle,
+      boardSelectionBridge,
+      applyPendingFromOrchestrationPatchRef,
+      persistChatToDb,
+    });
+
   const wipChipHandlers = useMemo(
     () =>
       buildWipChipHandlerSlice({
@@ -2078,113 +2083,6 @@ export function usePrototypeImplementationStagePanel(
     persistChatToDb,
     requirementsStateJson,
     appendImplementationTaskListAiMessage,
-    appendUserNotice,
-  ]);
-
-  const handleCopyCodeTaskCursorPrompt = useCallback(
-    (codeTaskId: string) => {
-      const pid = projectId.trim();
-      const id = codeTaskId.trim();
-      if (!pid || !id) return;
-      void (async () => {
-        const imp = await persistImplementationQuickRunRequirementsPrep({
-          projectId: pid,
-          requirementsState: orchestrationAwareRequirementsState,
-          applyPendingFromOrchestrationPatch: (patch) => {
-            applyPendingFromOrchestrationPatchRef.current(patch);
-          },
-          persistChatToDb,
-        });
-        const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
-          gitRepoUrl: executionSetupRow?.gitRepoUrl,
-          gitRepoName: executionSetupRow?.gitRepoName,
-          gitRepoProvider: executionSetupRow?.gitRepoProvider,
-          baseBranch: executionSetupRow?.baseBranch,
-        });
-        const runs = parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ?? [];
-        const result = resolveCodeTaskDeveloperPromptForCopy({
-          projectId: pid,
-          codeTaskId: id,
-          codeTaskPlan: imp.implementationCodeTaskPlanV1 ?? null,
-          taskList: imp.implementationTaskListV1 ?? null,
-          cursorWorkItems: imp.cursorWorkItemsV1 ?? [],
-          runs,
-          targetRepository,
-          baseBranch: executionSetupRow?.baseBranch ?? targetRepository?.defaultBranch ?? "main",
-          allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
-          codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
-        });
-        if (!result.ok || !result.prompt) {
-          return;
-        }
-        void writeClipboardText(result.prompt).then(() => {});
-      })();
-    },
-    [
-      projectId,
-      executionSetupRow,
-      orchestrationAwareRequirementsState,
-      applyPendingFromOrchestrationPatchRef,
-      persistChatToDb,
-    ],
-  );
-
-  const handleCopyDeveloperPromptsFromHeader = useCallback(() => {
-    const pid = projectId.trim();
-    if (!pid) return;
-    void (async () => {
-      const imp = await persistImplementationQuickRunRequirementsPrep({
-        projectId: pid,
-        requirementsState: orchestrationAwareRequirementsState,
-        applyPendingFromOrchestrationPatch: (patch) => {
-          applyPendingFromOrchestrationPatchRef.current(patch);
-        },
-        persistChatToDb,
-      });
-      const targetRepository = resolveProjectTargetRepositoryFromExecutionSetup({
-        gitRepoUrl: executionSetupRow?.gitRepoUrl,
-        gitRepoName: executionSetupRow?.gitRepoName,
-        gitRepoProvider: executionSetupRow?.gitRepoProvider,
-        baseBranch: executionSetupRow?.baseBranch,
-      });
-      const selectedCodeTaskIds = resolveCheckedCodeTaskIdsFromBoardBridge({
-        bridge: boardSelectionBridge.getBridgeSnapshot(),
-        requirementsState: imp,
-      });
-      const plan = imp.implementationCodeTaskPlanV1 ?? null;
-      const currentCodeTaskId = resolveExecutionTargetCodeTaskId({
-        selectedCodeTaskId: null,
-        runtimeCurrentCodeTaskId:
-          implementationRuntimeDbBundle?.job?.currentCodeTaskId?.trim() ?? null,
-        codeTaskPlan: plan ?? undefined,
-      });
-      const runs = parseCodeTaskExecutionRunsV1(imp.codeTaskExecutionRunsV1) ?? [];
-      const result = resolveDeveloperPromptCopyFromSelection({
-        projectId: pid,
-        selectedCodeTaskIds,
-        currentCodeTaskId,
-        codeTaskPlan: plan,
-        taskList: imp.implementationTaskListV1 ?? null,
-        cursorWorkItems: imp.cursorWorkItemsV1 ?? [],
-        runs,
-        targetRepository,
-        baseBranch: executionSetupRow?.baseBranch ?? targetRepository?.defaultBranch ?? "main",
-        allowedPathGlobs: parseStringArrayJson(executionSetupRow?.allowedPathGlobs),
-        codeTaskPromptContextMapV1: imp.codeTaskPromptContextMapV1 ?? null,
-      });
-      if (!result.ok || !result.prompt) {
-        return;
-      }
-      void writeClipboardText(result.prompt).then(() => {});
-    })();
-  }, [
-    projectId,
-    orchestrationAwareRequirementsState,
-    executionSetupRow,
-    implementationRuntimeDbBundle?.job?.currentCodeTaskId,
-    boardSelectionBridge,
-    applyPendingFromOrchestrationPatchRef,
-    persistChatToDb,
     appendUserNotice,
   ]);
 
