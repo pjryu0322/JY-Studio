@@ -10,7 +10,10 @@ import {
   type ImplementationCodeTaskBoardStateV1,
   type ImplementationCodeTaskSelectionSummaryV1,
 } from "@/lib/prototype/implementationCodeTaskBoardState";
-import { resolveImplementationIntegrationControlGate } from "@/lib/prototype/implementationBoardIntegrationGate";
+import {
+  isSameBoardGateSummary,
+  resolveImplementationIntegrationControlGate,
+} from "@/lib/prototype/implementationBoardIntegrationGate";
 import type { IntegrationGateBlockedDetailV1 } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 
 export type ImplementationControlPlaneBoardNodeV1 = Readonly<{
@@ -245,4 +248,27 @@ export function applyControlPlaneIntegrationPipelineButtonGate(input: {
     disabledTitle,
     disabledReasonLines: disabledTitle ? [disabledTitle] : runtimeButton.disabledReasonLines,
   };
+}
+
+export function isSameControlPlaneBoardSummary(
+  a: ImplementationCodeTaskSelectionSummaryV1 | null | undefined,
+  b: ImplementationCodeTaskSelectionSummaryV1 | null | undefined,
+): boolean {
+  if (!a || !b) return a === b;
+  return isSameBoardGateSummary(a, b);
+}
+
+export function pickEffectiveImplementationControlPlaneSnapshot(input: {
+  readonly local: ImplementationControlPlaneSnapshotV1 | null;
+  readonly parent: ImplementationControlPlaneSnapshotV1 | null;
+}): ImplementationControlPlaneSnapshotV1 | null {
+  return input.local ?? input.parent ?? null;
+}
+
+/** Client advisory summary for integration pipeline start (server recomputes gate). */
+export function pickIntegrationPipelineClientBoardSummary(input: {
+  readonly bridgeSummary?: ImplementationCodeTaskSelectionSummaryV1 | null;
+  readonly parentSnapshot?: ImplementationControlPlaneSnapshotV1 | null;
+}): ImplementationCodeTaskSelectionSummaryV1 | null {
+  return input.bridgeSummary ?? input.parentSnapshot?.board.selectionSummary ?? null;
 }

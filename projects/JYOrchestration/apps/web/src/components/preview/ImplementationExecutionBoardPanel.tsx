@@ -82,6 +82,9 @@ import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIn
 import { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/prototype/implementationIntegrationButtonPolicy";
 import {
   applyControlPlaneIntegrationPipelineButtonGate,
+  buildImplementationControlPlaneSnapshot,
+  isSameControlPlaneBoardSummary,
+  pickEffectiveImplementationControlPlaneSnapshot,
   type ImplementationControlPlaneSnapshotV1,
 } from "@/lib/prototype/implementationControlPlaneSnapshot";
 import {
@@ -673,39 +676,6 @@ export function ImplementationExecutionBoardPanel({
     [executionSetup?.githubCapabilityValidation],
   );
 
-  const boardGateSelectionSummary =
-    controlPlaneSnapshot?.board.selectionSummary ?? codeTaskSelectionSummary;
-
-  const integrationButtonState = useMemo(
-    () =>
-      applyControlPlaneIntegrationPipelineButtonGate({
-        runtimeButton: evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot, {
-          autoGenerationReady,
-          isIntegrationRunning: integrationPipelineBusy === true,
-          latestPipelineStatus: integrationPipelineStatus,
-          projectId: projectId ?? board.projectId,
-          boardGateSummary: boardGateSelectionSummary,
-        }),
-        controlPlane: controlPlaneSnapshot ?? null,
-      }),
-    [
-      runtimeSnapshot,
-      autoGenerationReady,
-      integrationPipelineBusy,
-      integrationPipelineStatus,
-      projectId,
-      board.projectId,
-      boardGateSelectionSummary,
-      controlPlaneSnapshot,
-    ],
-  );
-
-  const showIntegrationFooter =
-    controlPlaneSnapshot?.boardFooter.showIntegrationPrepareButton ?? taskTreeNodes.length > 0;
-
-  const showIntegrationButton = Boolean(onRunIntegrationPipeline);
-  const integrationButtonEnabled = integrationButtonState.enabled;
-
   const previewButtonState = useMemo(
     () =>
       evaluateImplementationPreviewButtonState({
@@ -732,6 +702,108 @@ export function ImplementationExecutionBoardPanel({
       integrationPipelineStatus,
     ],
   );
+
+  const localControlPlaneSnapshot = useMemo(
+    () =>
+      buildImplementationControlPlaneSnapshot({
+        projectId: projectId ?? board.projectId,
+        nodes: taskTreeNodes.map((node) => ({
+          codeTaskId: node.codeTaskId,
+          boardState: node.boardState,
+        })),
+        checkedCodeTaskIds,
+        selectionSummary: codeTaskSelectionSummary,
+        previewReady:
+          integrationSection.integratedAppPreviewReady === true ||
+          integrationPipelinePreviewReady === true ||
+          previewReady === true,
+        actualPreviewUrl:
+          previewButtonState.url ??
+          parsedPreviewRuntime?.externalPreviewUrl ??
+          parsedPreviewRuntime?.previewUrl ??
+          null,
+        runtime: {
+          hasDbRuntimeJob: Boolean(implementationRuntimeDbBundle?.job),
+          currentCodeTaskId: implementationRuntimeDbBundle?.job?.currentCodeTaskId ?? null,
+          currentRuntimeState: implementationRuntimeDbBundle?.job?.state ?? null,
+        },
+      }),
+    [
+      projectId,
+      board.projectId,
+      taskTreeNodes,
+      checkedCodeTaskIds,
+      codeTaskSelectionSummary,
+      integrationSection.integratedAppPreviewReady,
+      integrationPipelinePreviewReady,
+      previewReady,
+      previewButtonState.url,
+      parsedPreviewRuntime,
+      implementationRuntimeDbBundle,
+    ],
+  );
+
+  const effectiveControlPlaneSnapshot = useMemo(
+    () =>
+      pickEffectiveImplementationControlPlaneSnapshot({
+        local: localControlPlaneSnapshot,
+        parent: controlPlaneSnapshot ?? null,
+      }),
+    [localControlPlaneSnapshot, controlPlaneSnapshot],
+  );
+
+  useEffect(() => {
+    if (!localControlPlaneSnapshot || !controlPlaneSnapshot) return;
+    if (
+      !isSameControlPlaneBoardSummary(
+        localControlPlaneSnapshot.board.selectionSummary,
+        controlPlaneSnapshot.board.selectionSummary,
+      )
+    ) {
+      console.info(
+        JSON.stringify({
+          action: "implementation_control_plane_snapshot_parent_local_mismatch",
+          projectId: projectId ?? board.projectId,
+          parent: controlPlaneSnapshot.board.selectionSummary,
+          local: localControlPlaneSnapshot.board.selectionSummary,
+        }),
+      );
+    }
+  }, [localControlPlaneSnapshot, controlPlaneSnapshot, projectId, board.projectId]);
+
+  const boardGateSelectionSummary =
+    effectiveControlPlaneSnapshot?.board.selectionSummary ?? codeTaskSelectionSummary;
+
+  const integrationButtonState = useMemo(
+    () =>
+      applyControlPlaneIntegrationPipelineButtonGate({
+        runtimeButton: evaluateIntegrationPipelineButtonFromSnapshot(runtimeSnapshot, {
+          autoGenerationReady,
+          isIntegrationRunning: integrationPipelineBusy === true,
+          latestPipelineStatus: integrationPipelineStatus,
+          projectId: projectId ?? board.projectId,
+          boardGateSummary: boardGateSelectionSummary,
+        }),
+        controlPlane: effectiveControlPlaneSnapshot,
+      }),
+    [
+      runtimeSnapshot,
+      autoGenerationReady,
+      integrationPipelineBusy,
+      integrationPipelineStatus,
+      projectId,
+      board.projectId,
+      boardGateSelectionSummary,
+      effectiveControlPlaneSnapshot,
+    ],
+  );
+
+  const showIntegrationFooter =
+    effectiveControlPlaneSnapshot?.boardFooter.showIntegrationPrepareButton ??
+    taskTreeNodes.length > 0;
+
+  const showIntegrationButton = Boolean(onRunIntegrationPipeline);
+  const integrationButtonEnabled = integrationButtonState.enabled;
 
   const codeAgentProgress = useMemo(
     () =>

@@ -10,6 +10,7 @@ import {
 import type { PrototypeChatAction } from "@/lib/prototype/buildPrototypeChatMessages";
 import { useImplementationBoardSelectionBridge } from "@/components/preview/useImplementationBoardSelectionBridge";
 import { useImplementationControlPlaneSnapshot } from "@/components/preview/useImplementationControlPlaneSnapshot";
+import { pickIntegrationPipelineClientBoardSummary } from "@/lib/prototype/implementationControlPlaneSnapshot";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -593,8 +594,9 @@ export function usePrototypeImplementationStagePanel(
     [latestRun],
   );
 
-  // Implementation Control Plane Snapshot is the single source of truth
-  // for board/action/integration/preview readiness in this hook.
+  // Parent-level snapshot is a toolbar/dispatch fallback based on bridge summary.
+  // The board panel rebuilds a local snapshot from live taskTreeNodes and uses it
+  // as the authoritative UI/footer snapshot.
   const implementationControlPlaneSnapshot = useImplementationControlPlaneSnapshot({
     projectId,
     selectionSummary: boardSelectionBridge.liveCodeTaskSelectionSummary,
@@ -2422,9 +2424,12 @@ export function usePrototypeImplementationStagePanel(
     if (!implementationBoard) {
       return;
     }
-    const boardSelectionSummary =
-      implementationControlPlaneSnapshot?.board.selectionSummary ??
-      boardSelectionBridge.getBridgeSnapshot().livePanelSummary;
+    // Client summary is advisory only. Server route recomputes serverBoardGate
+    // and uses it as the authoritative integration gate.
+    const boardSelectionSummary = pickIntegrationPipelineClientBoardSummary({
+      bridgeSummary: boardSelectionBridge.getBridgeSnapshot().livePanelSummary,
+      parentSnapshot: implementationControlPlaneSnapshot,
+    });
     if (!boardSelectionSummary) {
       return;
     }
