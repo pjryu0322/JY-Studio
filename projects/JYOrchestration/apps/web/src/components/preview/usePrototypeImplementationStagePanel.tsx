@@ -10,7 +10,10 @@ import {
 import type { PrototypeChatAction } from "@/lib/prototype/buildPrototypeChatMessages";
 import { useImplementationBoardSelectionBridge } from "@/components/preview/useImplementationBoardSelectionBridge";
 import { useImplementationControlPlaneSnapshot } from "@/components/preview/useImplementationControlPlaneSnapshot";
-import { pickIntegrationPipelineClientBoardSummary } from "@/lib/prototype/implementationControlPlaneSnapshot";
+import {
+  useImplementationIntegrationPipelineController,
+  type ImplementationIntegrationPipelineClientResultV1,
+} from "@/components/preview/useImplementationIntegrationPipelineController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -19,7 +22,6 @@ import { useImplementationStageActionTimeline } from "@/components/preview/useIm
 import { useRecoverServerQuickRunContinuation } from "@/components/preview/useRecoverServerQuickRunContinuation";
 import { useTaskCursorServerJobPoll } from "@/components/preview/useTaskCursorServerJobPoll";
 import { useImplementationAutoQualityGateTrigger } from "@/components/preview/useImplementationAutoQualityGateTrigger";
-import { executeImplementationBoardIntegrationPipeline } from "@/lib/prototype/implementationBoardIntegrationPipelineRun";
 import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
 
 import { useProjectRecommendationEvidence } from "@/lib/recommendation/useProjectRecommendationEvidence";
@@ -475,14 +477,9 @@ export function usePrototypeImplementationStagePanel(
     refreshExecutionEnvironmentStatus,
   } = host;
 
-  const [integrationPipelineBusy, setIntegrationPipelineBusy] = useState(false);
-  const [integrationPipelineClientResult, setIntegrationPipelineClientResult] = useState<{
-    readonly status?: string;
-    readonly previewReady?: boolean;
-    readonly receivedAt?: number;
-  } | null>(null);
-  const integrationPipelineClientResultRef = useRef(integrationPipelineClientResult);
-  integrationPipelineClientResultRef.current = integrationPipelineClientResult;
+  const integrationPipelineClientResultRef = useRef<ImplementationIntegrationPipelineClientResultV1 | null>(
+    null,
+  );
   const [integrationMergeBusy, setIntegrationMergeBusy] = useState(false);
   const [implementationStageNoticeModal, setImplementationStageNoticeModal] = useState<{
     readonly body: string;
@@ -1015,6 +1012,25 @@ export function usePrototypeImplementationStagePanel(
     if (!text) return;
     setImplementationStageNoticeModal({ body: text });
   }, []);
+
+  const {
+    integrationPipelineBusy,
+    integrationPipelineClientResult,
+    runIntegrationPipeline,
+  } = useImplementationIntegrationPipelineController({
+    projectId,
+    projectName,
+    boardSelectionBridge,
+    parentControlPlaneSnapshot: implementationControlPlaneSnapshot,
+    requirementsState: parsedRequirementsState,
+    requirementsStateJsonRef,
+    implementationBoardBlockingUserConfirmation:
+      implementationBoard?.summary.blockingUserConfirmation ?? null,
+    persistChatToDb,
+    applyPendingFromOrchestrationPatch,
+    showIntegrationPipelineUserNotice,
+    integrationPipelineClientResultRef,
+  });
 
   const appendImplementationExecutionNotice = useCallback(
     (content: string) => {
@@ -2419,46 +2435,6 @@ export function usePrototypeImplementationStagePanel(
       latestRun?.suggestedPreviewUrl,
     ],
   );
-
-  const runIntegrationPipeline = useCallback(() => {
-    if (!implementationBoard) {
-      return;
-    }
-    // Client boardSelectionSummary is advisory only.
-    // Server route recomputes serverBoardGate and uses it as the authoritative integration gate.
-    // Prefer bridge live summary here because the parent snapshot can lag behind the board panel.
-    const boardSelectionSummary = pickIntegrationPipelineClientBoardSummary({
-      bridgeSummary: boardSelectionBridge.getBridgeSnapshot().livePanelSummary,
-      parentSnapshot: implementationControlPlaneSnapshot,
-    });
-    if (!boardSelectionSummary) {
-      return;
-    }
-    void executeImplementationBoardIntegrationPipeline({
-      projectId,
-      projectName,
-      requirementsState: parsedRequirementsState,
-      requirementsStateJsonRef,
-      implementationBoardBlockingUserConfirmation:
-        implementationBoard.summary.blockingUserConfirmation,
-      boardSelectionSummary,
-      persistChatToDb,
-      applyPendingFromOrchestrationPatch,
-      setBusy: setIntegrationPipelineBusy,
-      onClientResult: setIntegrationPipelineClientResult,
-      showToast: showIntegrationPipelineUserNotice,
-    });
-  }, [
-    projectId,
-    projectName,
-    implementationBoard,
-    parsedRequirementsState,
-    persistChatToDb,
-    applyPendingFromOrchestrationPatch,
-    showIntegrationPipelineUserNotice,
-    boardSelectionBridge,
-    implementationControlPlaneSnapshot,
-  ]);
 
   const createImplementationSeedFromQuickDesignDraft = useCallback((): ImplementationStageActionRunResult => {
     const pid = projectId.trim();
