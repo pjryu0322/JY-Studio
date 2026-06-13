@@ -8,6 +8,7 @@ import type { evaluateIntegrationPipelineButtonFromSnapshot } from "@/lib/protot
 import type { evaluateImplementationPreviewButtonState } from "@/lib/prototype/implementationPreviewButtonPolicy";
 import type { buildImplementationIntegrationBoardSection } from "@/lib/prototype/implementationIntegrationBoardSection";
 import { resolveIntegrationPipelineBusyLabel, mapIntegrationPipelineStatusToUiPhase } from "@/lib/prototype/implementationIntegrationPipelineUiStatus";
+import styles from "@/components/preview/implementationExecutionBoardPanel.module.css";
 
 type IntegrationButtonState = ReturnType<typeof evaluateIntegrationPipelineButtonFromSnapshot>;
 type PreviewButtonState = ReturnType<typeof evaluateImplementationPreviewButtonState>;
