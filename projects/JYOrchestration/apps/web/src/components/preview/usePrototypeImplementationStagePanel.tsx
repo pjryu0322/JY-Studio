@@ -21,6 +21,7 @@ import { useImplementationStageActionLegacyDispatchBundle } from "@/components/p
 import { useImplementationStageActionOrchestrator } from "@/components/preview/useImplementationStageActionOrchestrator";
 import { useImplementationBoardInteractionController } from "@/components/preview/useImplementationBoardInteractionController";
 import { useImplementationChipHandlerController } from "@/components/preview/useImplementationChipHandlerController";
+import { useImplementationPreviewController } from "@/components/preview/useImplementationPreviewController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -136,18 +137,9 @@ import {
 import { buildIntegrationScopeDetailLines } from "@/lib/prototype/implementationIntegrationScopeUi";
 import { integrateCompletedCodeTasksForPreview } from "@/lib/prototype/implementationIntegrationService";
 import { resolveIntegratedAppPreviewReadyFromOrchestration } from "@/lib/prototype/implementationPreviewReadiness";
-import { mergeIntegrationPullRequestClient } from "@/lib/prototype/implementationIntegrationClient";
-import { ensureCompletedCodeTaskPreviewForFallback } from "@/lib/prototype/completedCodeTaskPreviewBuildService";
-import { shouldRunCompletedCodeTaskPreviewFallbackOnOpen } from "@/lib/prototype/completedCodeTaskPreviewFallback";
-import {
-  buildCodeTaskPreviewFallbackUrl,
-  isLegacyCodeTaskPreviewScopeNoticeContent,
-  sanitizeIntegratedAppPreviewUrl,
-  type ImplementationPreviewEntryModeV1,
-} from "@/lib/prototype/implementationPreviewEntryPolicy";
+import { isLegacyCodeTaskPreviewScopeNoticeContent } from "@/lib/prototype/implementationPreviewEntryPolicy";
 import { COMPLETED_CODETASK_PREVIEW_NOTICE_SUPPRESSED_LOG_ACTION } from "@/lib/prototype/implementationPreviewActionSource";
 import { isLegacyContinuePreviewMessage } from "@/lib/prototype/implementationIntegrationToastPolicy";
-import { parseCodeTaskIntegrationPlanV1 } from "@/lib/prototype/implementationIntegrationPlan";
 import {
   buildImplementationExecutionBoardMessage,
   buildImplementationBoardRefreshSyncKey,
@@ -216,12 +208,6 @@ import type {
   ReactNode,
   RefObject,
 } from "react";
-
-function isLikelyPreviewUrl(url: string): boolean {
-  const u = url.trim();
-  if (!u) return false;
-  return /^https?:\/\//i.test(u);
-}
 
 export type PrototypeImplementationStageHost = Readonly<{
   projectId: string;
@@ -445,7 +431,6 @@ export function usePrototypeImplementationStagePanel(
   const integrationPipelineClientResultRef = useRef<ImplementationIntegrationPipelineClientResultV1 | null>(
     null,
   );
-  const [integrationMergeBusy, setIntegrationMergeBusy] = useState(false);
   const [implementationStageNoticeModal, setImplementationStageNoticeModal] = useState<{
     readonly body: string;
     readonly actionLabels?: readonly string[];
@@ -2238,100 +2223,19 @@ export function usePrototypeImplementationStagePanel(
     ],
   );
 
-  const mergeIntegrationPullRequest = useCallback(() => {
-    const pid = projectId.trim();
-    if (!pid) {
-      return;
-    }
-    void (async () => {
-      setIntegrationMergeBusy(true);
-      try {
-        const result = await mergeIntegrationPullRequestClient({ projectId: pid });
-        if (result.ok) {
-        } else {
-        }
-      } catch (error) {
-      } finally {
-        setIntegrationMergeBusy(false);
-      }
-    })();
-  }, [projectId]);
-
-  const openImplementationPreview = useCallback(
-    (input: { readonly mode: ImplementationPreviewEntryModeV1; readonly url: string }) => {
-      void (async () => {
-        const pid = projectId.trim();
-        if (!pid || !input.url.trim()) return;
-
-        if (input.mode === "integrated_app_preview") {
-          const url = sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: input.url });
-          if (!url) return;
-          window.open(url, "_blank", "noopener,noreferrer");
-          return;
-        }
-
-        if (input.mode !== "codetask_result_preview") return;
-
-        const orchestration = orchestrationAwareRequirementsStateRef.current;
-        const integratedReady = resolveIntegratedAppPreviewReadyFromOrchestration({
-          projectId: pid,
-          orchestration,
-        });
-        if (integratedReady) return;
-
-        let openUrl = input.url.trim();
-        if (
-          shouldRunCompletedCodeTaskPreviewFallbackOnOpen({
-            mode: input.mode,
-            integratedAppPreviewReady: integratedReady,
-            previewScopeV1: orchestration.implementationPreviewScopeV1,
-            previewRuntimeV1: orchestration.implementationPreviewRuntimeV1,
-          })
-        ) {
-          const integrationPlan = parseCodeTaskIntegrationPlanV1(
-            orchestration.codeTaskIntegrationPlanV1,
-          );
-          const externalPreviewUrl =
-            previewUrl ??
-            (latestRun?.previewUrl && isLikelyPreviewUrl(latestRun.previewUrl)
-              ? latestRun.previewUrl.trim()
-              : null) ??
-            (latestRun?.suggestedPreviewUrl && isLikelyPreviewUrl(latestRun.suggestedPreviewUrl)
-              ? latestRun.suggestedPreviewUrl.trim()
-              : null);
-
-          const fallback = await ensureCompletedCodeTaskPreviewForFallback({
-            projectId: pid,
-            actionSource: "preview_button",
-            orchestration,
-            externalPreviewUrl,
-            sourceIntegrationBranch: integrationPlan?.integrationBranch ?? null,
-          });
-          if (!fallback.ok) {
-            return;
-          }
-          if (fallback.orchestrationPatch) {
-            applyPendingFromOrchestrationPatch(fallback.orchestrationPatch);
-            await persistChatToDb(undefined, fallback.orchestrationPatch, undefined, {
-              awaitServer: false,
-              force: true,
-            });
-          }
-          openUrl = fallback.previewUrl?.trim() || buildCodeTaskPreviewFallbackUrl(pid);
-        }
-
-        window.open(openUrl, "_blank", "noopener,noreferrer");
-      })();
-    },
-    [
-      projectId,
-      persistChatToDb,
-      applyPendingFromOrchestrationPatch,
-      previewUrl,
-      latestRun?.previewUrl,
-      latestRun?.suggestedPreviewUrl,
-    ],
-  );
+  const {
+    integrationMergeBusy,
+    mergeIntegrationPullRequest,
+    openImplementationPreview,
+  } = useImplementationPreviewController({
+    projectId,
+    previewUrl,
+    latestRunPreviewUrl: latestRun?.previewUrl ?? null,
+    latestRunSuggestedPreviewUrl: latestRun?.suggestedPreviewUrl ?? null,
+    orchestrationAwareRequirementsStateRef,
+    applyPendingFromOrchestrationPatch,
+    persistChatToDb,
+  });
 
   const createImplementationSeedFromQuickDesignDraft = useCallback((): ImplementationStageActionRunResult => {
     const pid = projectId.trim();
