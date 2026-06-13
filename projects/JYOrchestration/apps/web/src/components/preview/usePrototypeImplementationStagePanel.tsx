@@ -30,6 +30,8 @@ import { useImplementationAutoPrepSyncController } from "@/components/preview/us
 import { useImplementationStatusNoticeController } from "@/components/preview/useImplementationStatusNoticeController";
 import { useImplementationPlanningActionController } from "@/components/preview/useImplementationPlanningActionController";
 import { useImplementationDbStrategyActionController } from "@/components/preview/useImplementationDbStrategyActionController";
+import { useImplementationBoardRefreshController } from "@/components/preview/useImplementationBoardRefreshController";
+import { useImplementationToolbarController } from "@/components/preview/useImplementationToolbarController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -38,12 +40,8 @@ import { useImplementationStageActionTimeline } from "@/components/preview/useIm
 import { useRecoverServerQuickRunContinuation } from "@/components/preview/useRecoverServerQuickRunContinuation";
 import { useTaskCursorServerJobPoll } from "@/components/preview/useTaskCursorServerJobPoll";
 import { useImplementationAutoQualityGateTrigger } from "@/components/preview/useImplementationAutoQualityGateTrigger";
-import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
 
 import { useProjectRecommendationEvidence } from "@/lib/recommendation/useProjectRecommendationEvidence";
-import {
-  IMPLEMENTATION_ENV_SETTINGS_LABEL,
-} from "@/lib/requirements/implementationUxLabels";
 import { buildPrototypeExecutionPlanningOrchestrationView } from "@/lib/prototype/prototypeExecutionPlanningOrchestration";
 import {
   buildImplementationBootstrapInput,
@@ -88,17 +86,10 @@ import {
   buildImplementationEntryCursorWorkItemsRegeneratedTimelineEntry,
 } from "@/lib/prototype/implementationEntryState";
 import { hasImplementationTaskListReady } from "@/lib/requirements/implementationTaskList";
-import {
-  buildImplementationExecutionBoardFromRequirementsState,
-} from "@/lib/prototype/implementationExecutionBoard";
 import { resolveIntegratedAppPreviewReadyFromOrchestration } from "@/lib/prototype/implementationPreviewReadiness";
 import { isLegacyCodeTaskPreviewScopeNoticeContent } from "@/lib/prototype/implementationPreviewEntryPolicy";
 import { COMPLETED_CODETASK_PREVIEW_NOTICE_SUPPRESSED_LOG_ACTION } from "@/lib/prototype/implementationPreviewActionSource";
 import { isLegacyContinuePreviewMessage } from "@/lib/prototype/implementationIntegrationToastPolicy";
-import {
-  buildImplementationExecutionBoardMessage,
-  buildImplementationBoardRefreshSyncKey,
-} from "@/lib/prototype/implementationExecutionBoardMessage";
 import {
   dedupeImplementationStageNextActions,
   extractBoardVisibleActionLabels,
@@ -1288,44 +1279,14 @@ export function usePrototypeImplementationStagePanel(
     appendImplementationTaskListAiMessage,
   });
 
-  const refreshImplementationBoardWithExecutionSetup = useCallback(
-    (setup: ExecutionSetupSourceGenerationRow | null, source = "board_refresh") => {
-      const pid = projectId.trim();
-      const taskList = orchestrationAwareRequirementsState.implementationTaskListV1;
-      if (!pid || !taskList || !setup) return;
-
-      const board = buildImplementationExecutionBoardFromRequirementsState({
-        projectId: pid,
-        orchestration: orchestrationAwareRequirementsState,
-      });
-      if (!board) return;
-
-      // State-based board panel is the source of truth — env/setup refresh must not rewrite chat messages.
-      executionSetupBoardSyncedKeyRef.current = buildImplementationBoardRefreshSyncKey({
-        setup,
-        previewContent: "",
-        taskCount: taskList.tasks.length,
-        codeAgentWipStatus: orchestrationAwareRequirementsState.codeAgentWipExecutionV1?.status ?? null,
-      });
-    },
-    [projectId, orchestrationAwareRequirementsState],
-  );
-
-  refreshImplementationBoardRef.current = refreshImplementationBoardWithExecutionSetup;
-
-  useEffect(() => {
-    if (!executionSetupRow) return;
-    refreshImplementationBoardRef.current?.(executionSetupRow, "execution_setup_loaded");
-  }, [executionSetupRow, orchestrationAwareRequirementsState.implementationTaskListV1]);
-
-  const handleExecutionSetupChanged = useCallback(async () => {
-    executionSetupBoardSyncedKeyRef.current = null;
-    const row = await refreshExecutionEnvironmentStatus();
-    if (!row) {
-      return;
-    }
-    refreshImplementationBoardWithExecutionSetup(row, "execution_setup_saved");
-  }, [refreshExecutionEnvironmentStatus, refreshImplementationBoardWithExecutionSetup]);
+  const { handleExecutionSetupChanged } = useImplementationBoardRefreshController({
+    projectId,
+    orchestrationAwareRequirementsState,
+    executionSetupRow,
+    executionSetupBoardSyncedKeyRef,
+    refreshImplementationBoardRef,
+    refreshExecutionEnvironmentStatus,
+  });
 
   const {
     executePlatformScmAfterRequest,
@@ -1594,62 +1555,10 @@ export function usePrototypeImplementationStagePanel(
       onRefreshPrototypeStatus,
     });
 
-  const onOpenExecutionEnvironmentSettings = useCallback(() => {
-    setExecutionEnvironmentModalOpen(true);
-  }, []);
-
-  const executionConversationIconToolbar = useMemo(
-    () => (
-      <>
-        <WorkspaceHubChromeIconButton
-          title={IMPLEMENTATION_ENV_SETTINGS_LABEL}
-          ariaLabel={IMPLEMENTATION_ENV_SETTINGS_LABEL}
-          disabled={false}
-          onClick={onOpenExecutionEnvironmentSettings}
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            aria-hidden
-          >
-            <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </WorkspaceHubChromeIconButton>
-        <WorkspaceHubChromeIconButton
-          title="상세 로그 보기"
-          ariaLabel="상세 로그 보기"
-          disabled={false}
-          onClick={onOpenImplementationExecutionLog}
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="M15 12h-5" />
-            <path d="M15 8h-5" />
-            <path d="M19 17V5a2 2 0 0 0-2-2H4" />
-            <path d="M8 21h12a2 2 0 0 0 2-2v-2H10v2a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v3h4" />
-          </svg>
-        </WorkspaceHubChromeIconButton>
-      </>
-    ),
-    [
-      onOpenExecutionEnvironmentSettings,
-      onOpenImplementationExecutionLog,
-    ],
-  );
+  const { executionConversationIconToolbar } = useImplementationToolbarController({
+    setExecutionEnvironmentModalOpen,
+    onOpenImplementationExecutionLog,
+  });
 
   const planningOrchestrationView = useMemo(
     () =>
