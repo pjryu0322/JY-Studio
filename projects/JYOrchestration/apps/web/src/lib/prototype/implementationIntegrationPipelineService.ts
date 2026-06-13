@@ -43,6 +43,11 @@ import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/im
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { CompletedCodeTaskIntegrationTarget } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
 import { resolveIntegrationBranchMergeItems } from "@/lib/prototype/integrationBranchMergeItems";
+import {
+  buildDiagnosticSourceBranches,
+  dedupeSourceBranchesPreserveOrder,
+  mapImplementationBranchTopologyKind,
+} from "@/lib/prototype/integrationMergeTargetsResolver";
 import { filterExecutableIntegrationMergeTargets } from "@/lib/prototype/implementationExecutionUnitOrchestrationKind";
 
 function filterIntegrationTargetsByCodeTaskIds(
@@ -155,22 +160,12 @@ export async function runIntegrationBranchPipeline(input: {
       included: includedForMerge,
     };
 
-    const sourceBranches = [
-      ...new Set(
-        includedForMerge.map((row) => String(row.workBranch ?? "").trim()).filter(Boolean),
-      ),
-    ];
     pushTimeline("implementation_integration_source_units_resolved", {
       sourceUnitCount: includedForMerge.length,
       excludedIntegrationTaskCount: Math.max(
         0,
         (integrationCodeTaskIds?.length ?? targets.included.length) - includedForMerge.length,
       ),
-    });
-    pushTimeline("implementation_integration_source_branches_resolved", {
-      sourceBranchCount: sourceBranches.length,
-      sourceBranches: sourceBranches.join(","),
-      excludedIntegrationTaskCount: Math.max(0, targets.included.length - includedForMerge.length),
     });
 
     if (integrationCodeTaskIds?.length) {
@@ -279,9 +274,24 @@ export async function runIntegrationBranchPipeline(input: {
       topology?.kind === "linear_chain" ? topology.chainHead : null;
     chainHeadForLog = chainHead;
 
-    const includedWorkBranches = integrationTargets.included
-      .map((row) => String(row.workBranch ?? "").trim())
-      .filter(Boolean);
+    const includedWorkBranches = [
+      ...dedupeSourceBranchesPreserveOrder(
+        integrationTargets.included
+          .map((row) => String(row.workBranch ?? "").trim())
+          .filter(Boolean),
+      ),
+    ];
+    const diagnosticSourceBranches = buildDiagnosticSourceBranches({
+      includedWorkBranches,
+      topology,
+      integrationBranch: input.integrationBranch ?? input.targetBranch ?? null,
+    });
+    pushTimeline("implementation_integration_source_branches_resolved", {
+      sourceBranchCount: diagnosticSourceBranches.length,
+      uniqueSourceBranchCount: includedWorkBranches.length,
+      sourceBranches: diagnosticSourceBranches.join(","),
+      topology: topology?.kind ?? "unknown",
+    });
     const latestVerifiedWorkBranch = resolveLatestVerifiedWorkBranchFromIncluded({
       included: integrationTargets.included,
       codeTaskPlan: input.codeTaskPlan,
@@ -439,8 +449,31 @@ export async function runIntegrationBranchPipeline(input: {
     included,
     effectiveSourceBranch,
     codeTaskRuns: input.codeTaskRuns,
+    topology,
+    topologyChainHead: chainHead,
+    integrationBranch: plan.integrationBranch,
+    baseBranch: plan.baseBranch,
   });
   const mergeItems = mergeResolution.mergeItems;
+  const mergePlan = mergeResolution.mergePlan;
+  pushTimeline("implementation_integration_merge_targets_resolved", {
+    projectId: input.projectId,
+    topology: mapImplementationBranchTopologyKind(topology),
+    strategy: mergePlan.strategy,
+    effectiveSourceBranch,
+    topologyChainHead: chainHead,
+    sourceBranchCount: mergePlan.sourceBranches.length,
+    uniqueSourceBranchCount: mergePlan.uniqueSourceBranchCount,
+    mergeTargetCount: mergePlan.mergeTargets.length,
+    mergeTargets: mergePlan.mergeTargets.join(","),
+    skippedBranches: mergePlan.skippedBranches.join(","),
+    reason: mergePlan.reason,
+  });
+  pushTimeline("implementation_integration_merge_plan_resolved", {
+    strategy: mergePlan.strategy,
+    mergeTargets: mergePlan.mergeTargets.join(","),
+    mergeTargetCount: mergePlan.mergeTargets.length,
+  });
   if (mergeResolution.legacySampleDataFallback) {
     pushTimeline("sample_data_supplemental_merge_started", {
       ...mergeResolution.legacySampleDataFallback,
@@ -465,6 +498,11 @@ export async function runIntegrationBranchPipeline(input: {
   });
 
   for (const item of mergeItems) {
+    pushTimeline("implementation_integration_source_branch_merge_requested", {
+      workBranch: item.workBranch,
+      integrationBranch: plan.integrationBranch,
+      strategy: mergePlan.strategy,
+    });
     pushTimeline("implementation_codetask_branch_merge_started", {
       codeTaskId: item.codeTaskId,
       workBranch: item.workBranch,
@@ -482,6 +520,11 @@ export async function runIntegrationBranchPipeline(input: {
     mergeResults.push(mergeResult);
 
     if (mergeResult.status === "merged" || mergeResult.status === "already_integrated") {
+      pushTimeline("implementation_integration_source_branch_merge_succeeded", {
+        workBranch: item.workBranch,
+        integrationBranch: plan.integrationBranch,
+        mergeCommitSha: mergeResult.mergeCommitSha,
+      });
       pushTimeline(
         mergeResult.status === "already_integrated"
           ? "implementation_codetask_branch_already_integrated"
@@ -496,10 +539,20 @@ export async function runIntegrationBranchPipeline(input: {
     }
 
     if (mergeResult.status === "conflict") {
+      pushTimeline("implementation_integration_source_branch_merge_failed", {
+        workBranch: item.workBranch,
+        integrationBranch: plan.integrationBranch,
+        status: "conflict",
+        message: mergeResult.message,
+      });
       pushTimeline("implementation_codetask_branch_conflict", {
         codeTaskId: item.codeTaskId,
         workBranch: item.workBranch,
         message: mergeResult.message,
+        topology: mapImplementationBranchTopologyKind(topology),
+        strategy: mergePlan.strategy,
+        mergeTargets: mergePlan.mergeTargets.join(","),
+        conflictBranch: item.workBranch,
       });
       plan = patchCodeTaskIntegrationPlan(plan, {
         status: "conflict",
@@ -515,6 +568,12 @@ export async function runIntegrationBranchPipeline(input: {
       };
     }
 
+    pushTimeline("implementation_integration_source_branch_merge_failed", {
+      workBranch: item.workBranch,
+      integrationBranch: plan.integrationBranch,
+      status: mergeResult.status,
+      message: mergeResult.message,
+    });
     pushTimeline("implementation_codetask_branch_merge_failed", {
       codeTaskId: item.codeTaskId,
       workBranch: item.workBranch,

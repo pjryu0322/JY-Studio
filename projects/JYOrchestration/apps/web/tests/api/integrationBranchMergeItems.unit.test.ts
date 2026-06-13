@@ -6,6 +6,7 @@ import {
 import type { CompletedCodeTaskIntegrationTarget } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
 import { CODE_TASK_EXECUTION_RUN_VERSION } from "@/lib/prototype/codeTaskExecutionRun";
 import { CANONICAL_SAMPLE_DATA_CODE_TASK_ID } from "@/lib/prototype/codeTaskCanonicalId";
+import type { ImplementationBranchTopologyV1 } from "@/lib/prototype/implementationBranchTopology";
 
 function target(workBranch: string, codeTaskId = "CODE-1"): CompletedCodeTaskIntegrationTarget {
   return {
@@ -19,21 +20,32 @@ function target(workBranch: string, codeTaskId = "CODE-1"): CompletedCodeTaskInt
   };
 }
 
+const linearChainTopology: ImplementationBranchTopologyV1 = {
+  kind: "linear_chain",
+  orderedBranches: [
+    "wip/data/sample-data",
+    "wip/common/components",
+    "wip/screen/workspace",
+  ],
+  chainHead: "wip/screen/workspace",
+  baseBranch: "main",
+  branchGroups: ["data", "common", "screen"],
+};
+
 describe("resolveIntegrationBranchMergeItems", () => {
-  it("merges sample-data branch before chain head when both are in plan", () => {
+  it("merges only chain head for linear_chain when sample-data is also in plan", () => {
     const included = [
       target("wip/data/sample-data", "CODE-DATA-SAMPLE-001"),
       target("wip/common/components", "CODE-2"),
       target("wip/screen/workspace", "CODE-3"),
     ];
-    const mergeItems = resolveIntegrationBranchMergeItems({
+    const resolution = resolveIntegrationBranchMergeItems({
       included,
       effectiveSourceBranch: "wip/screen/workspace",
-    }).mergeItems;
-    expect(mergeItems.map((i) => i.workBranch)).toEqual([
-      "wip/data/sample-data",
-      "wip/screen/workspace",
-    ]);
+      topology: linearChainTopology,
+    });
+    expect(resolution.mergeItems.map((i) => i.workBranch)).toEqual(["wip/screen/workspace"]);
+    expect(resolution.mergePlan.skippedBranches).toContain("wip/data/sample-data");
   });
 
   it("keeps single head merge when sample-data is not in included", () => {
@@ -41,6 +53,7 @@ describe("resolveIntegrationBranchMergeItems", () => {
     const mergeItems = resolveIntegrationBranchMergeItems({
       included,
       effectiveSourceBranch: "wip/screen/workspace",
+      topology: linearChainTopology,
     }).mergeItems;
     expect(mergeItems.map((i) => i.workBranch)).toEqual(["wip/screen/workspace"]);
   });
@@ -51,6 +64,7 @@ describe("resolveIntegrationBranchMergeItems", () => {
       resolveIntegrationBranchMergeItems({
         included,
         effectiveSourceBranch: "wip/data/sample-data",
+        topology: linearChainTopology,
       }).mergeItems,
     ).toEqual(included);
   });
@@ -82,12 +96,13 @@ describe("resolveIntegrationBranchMergeItems", () => {
       included: [target("wip/screen/workspace", "CODE-SCREEN")],
       effectiveSourceBranch: "wip/screen/workspace",
       codeTaskRuns: runs,
+      topology: linearChainTopology,
     });
     expect(resolution.legacySampleDataFallback).toBeNull();
     expect(resolution.mergeItems.map((i) => i.workBranch)).toEqual(["wip/screen/workspace"]);
   });
 
-  it("supplements sample-data merge when legacy env enabled", () => {
+  it("does not supplement sample-data for linear_chain even when legacy env enabled", () => {
     const runs = [
       {
         version: CODE_TASK_EXECUTION_RUN_VERSION,
@@ -113,6 +128,46 @@ describe("resolveIntegrationBranchMergeItems", () => {
     expect(resolveVerifiedSampleDataSupplementalMergeTarget({ codeTaskRuns: runs })?.workBranch).toBe(
       "wip/data/sample-data",
     );
+    const prev = process.env.JY_LEGACY_SAMPLE_SUPPLEMENTAL_MERGE;
+    process.env.JY_LEGACY_SAMPLE_SUPPLEMENTAL_MERGE = "1";
+    try {
+      const resolution = resolveIntegrationBranchMergeItems({
+        included: [target("wip/screen/workspace", "CODE-SCREEN")],
+        effectiveSourceBranch: "wip/screen/workspace",
+        codeTaskRuns: runs,
+        topology: linearChainTopology,
+      });
+      expect(resolution.legacySampleDataFallback).toBeNull();
+      expect(resolution.mergeItems.map((i) => i.workBranch)).toEqual(["wip/screen/workspace"]);
+    } finally {
+      if (prev === undefined) delete process.env.JY_LEGACY_SAMPLE_SUPPLEMENTAL_MERGE;
+      else process.env.JY_LEGACY_SAMPLE_SUPPLEMENTAL_MERGE = prev;
+    }
+  });
+
+  it("supplements sample-data merge when legacy env enabled and topology is not linear_chain", () => {
+    const runs = [
+      {
+        version: CODE_TASK_EXECUTION_RUN_VERSION,
+        runId: "r-sample",
+        projectId: "p1",
+        processTaskId: "DEV-MOCK-001",
+        workItemId: "w1",
+        codeTaskId: CANONICAL_SAMPLE_DATA_CODE_TASK_ID,
+        status: "github_verified" as const,
+        attemptNo: 1,
+        workBranch: "wip/data/sample-data",
+        commitSha: "deadbeef",
+        createdAt: "2026-06-12T00:00:00.000Z",
+        updatedAt: "2026-06-12T00:00:00.000Z",
+        githubOutcome: {
+          version: "code_task_github_outcome_v1",
+          status: "verified",
+          commitSha: "deadbeef",
+          verifiedAt: "2026-06-12T00:00:00.000Z",
+        },
+      },
+    ];
     const prev = process.env.JY_LEGACY_SAMPLE_SUPPLEMENTAL_MERGE;
     process.env.JY_LEGACY_SAMPLE_SUPPLEMENTAL_MERGE = "1";
     try {

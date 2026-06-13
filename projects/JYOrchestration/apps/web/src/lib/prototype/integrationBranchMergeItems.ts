@@ -1,9 +1,15 @@
-import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import type { CompletedCodeTaskIntegrationTarget } from "@/lib/prototype/completedCodeTaskIntegrationSelector";
+import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import type { ImplementationBranchTopologyV1 } from "@/lib/prototype/implementationBranchTopology";
 import {
   isLegacySampleDataSupplementalMergeEnabled,
   resolveVerifiedSampleDataSupplementalMergeTarget,
 } from "@/lib/prototype/legacySampleDataSupplementalMerge";
+import {
+  mapImplementationBranchTopologyKind,
+  resolveIntegrationMergeTargets,
+  type IntegrationMergeTargetsResultV1,
+} from "@/lib/prototype/integrationMergeTargetsResolver";
 import { SAMPLE_DATA_WORK_BRANCH } from "@/lib/prototype/sampleDataCodeTaskPlanner";
 
 export type { LegacySampleDataFallbackMergeV1 } from "@/lib/prototype/legacySampleDataSupplementalMerge";
@@ -13,21 +19,8 @@ export { resolveVerifiedSampleDataSupplementalMergeTarget } from "@/lib/prototyp
 export type IntegrationBranchMergeResolutionV1 = Readonly<{
   readonly mergeItems: readonly CompletedCodeTaskIntegrationTarget[];
   readonly legacySampleDataFallback: import("@/lib/prototype/legacySampleDataSupplementalMerge").LegacySampleDataFallbackMergeV1 | null;
+  readonly mergePlan: IntegrationMergeTargetsResultV1;
 }>;
-
-function appendUniqueBranches(
-  items: readonly CompletedCodeTaskIntegrationTarget[],
-): CompletedCodeTaskIntegrationTarget[] {
-  const out: CompletedCodeTaskIntegrationTarget[] = [];
-  const seen = new Set<string>();
-  for (const item of items) {
-    const branch = item.workBranch?.trim();
-    if (!branch || seen.has(branch)) continue;
-    seen.add(branch);
-    out.push(item);
-  }
-  return out;
-}
 
 function maybeLegacySampleDataSupplement(input: {
   readonly included: readonly CompletedCodeTaskIntegrationTarget[];
@@ -51,48 +44,77 @@ function maybeLegacySampleDataSupplement(input: {
   if (!headItems.length) return null;
 
   return {
-    mergeItems: appendUniqueBranches([supplemental, ...headItems]),
+    mergeItems: [supplemental, ...headItems],
     legacySampleDataFallback: {
       reason: "sample_data_missing_from_included_selector",
       branch: supplemental.workBranch ?? SAMPLE_DATA_WORK_BRANCH,
       codeTaskId: supplemental.codeTaskId,
     },
+    mergePlan: resolveIntegrationMergeTargets({
+      topology: "unknown",
+      effectiveSourceBranch: effective,
+      sourceBranches: [supplemental.workBranch ?? SAMPLE_DATA_WORK_BRANCH, effective],
+    }),
   };
 }
 
+function pickMergeItemsForTargets(
+  included: readonly CompletedCodeTaskIntegrationTarget[],
+  mergeTargets: readonly string[],
+): readonly CompletedCodeTaskIntegrationTarget[] {
+  const items: CompletedCodeTaskIntegrationTarget[] = [];
+  for (const branch of mergeTargets) {
+    const targetBranch = branch.trim();
+    if (!targetBranch) continue;
+    const matches = included.filter((item) => String(item.workBranch ?? "").trim() === targetBranch);
+    const picked = matches[matches.length - 1];
+    if (picked) items.push(picked);
+  }
+  return items;
+}
+
 /**
- * Linear-chain: merge sample-data (from included) then effective chain head.
- * Supplemental sample-data는 `JY_LEGACY_SAMPLE_SUPPLEMENTAL_MERGE=1`일 때만.
+ * Resolves CodeTask merge rows from topology-aware branch merge targets.
+ * Linear chain: effective source head only (no intermediate branch merges).
  */
 export function resolveIntegrationBranchMergeItems(input: {
   readonly included: readonly CompletedCodeTaskIntegrationTarget[];
   readonly effectiveSourceBranch: string;
   readonly codeTaskRuns?: readonly CodeTaskExecutionRunV1[] | null;
+  readonly topology?: ImplementationBranchTopologyV1 | null;
+  readonly topologyChainHead?: string | null;
+  readonly integrationBranch?: string | null;
+  readonly baseBranch?: string | null;
 }): IntegrationBranchMergeResolutionV1 {
-  const legacy = maybeLegacySampleDataSupplement(input);
-  if (legacy) return legacy;
-
-  const included = input.included;
-  if (included.length <= 1) {
-    return { mergeItems: included, legacySampleDataFallback: null };
+  const topologyKind = mapImplementationBranchTopologyKind(input.topology);
+  if (topologyKind !== "linear_chain") {
+    const legacy = maybeLegacySampleDataSupplement(input);
+    if (legacy) return legacy;
   }
 
-  const effective = input.effectiveSourceBranch.trim();
-  const headItems = included.filter((item) => item.workBranch?.trim() === effective).slice(-1);
-  if (!headItems.length) {
-    return { mergeItems: included, legacySampleDataFallback: null };
-  }
+  const sourceBranches = input.included
+    .map((row) => String(row.workBranch ?? "").trim())
+    .filter(Boolean);
+  const orderedBranches =
+    input.topology?.kind === "linear_chain" ? input.topology.orderedBranches : undefined;
 
-  const dataItems = included
-    .filter((item) => item.workBranch?.trim() === SAMPLE_DATA_WORK_BRANCH)
-    .slice(-1);
+  const mergePlan = resolveIntegrationMergeTargets({
+    topology: topologyKind,
+    effectiveSourceBranch: input.effectiveSourceBranch,
+    topologyChainHead:
+      input.topologyChainHead ??
+      (input.topology?.kind === "linear_chain" ? input.topology.chainHead : null),
+    sourceBranches,
+    integrationBranch: input.integrationBranch,
+    baseBranch: input.baseBranch,
+    orderedBranches,
+  });
 
-  if (!dataItems.length || effective === SAMPLE_DATA_WORK_BRANCH) {
-    return { mergeItems: headItems, legacySampleDataFallback: null };
-  }
+  const mergeItems = pickMergeItemsForTargets(input.included, mergePlan.mergeTargets);
 
   return {
-    mergeItems: appendUniqueBranches([...dataItems, ...headItems]),
+    mergeItems,
     legacySampleDataFallback: null,
+    mergePlan,
   };
 }
