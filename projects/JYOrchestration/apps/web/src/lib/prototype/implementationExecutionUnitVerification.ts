@@ -95,7 +95,7 @@ export function formatExecutionUnitVerificationCardLabels(
 ): Readonly<{ readonly statusLabel: string; readonly progressLabel: string }> {
   switch (displayStatus) {
     case "verified":
-      return { statusLabel: "완료", progressLabel: "GitHub outcome 저장됨" };
+      return { statusLabel: "완료", progressLabel: "GitHub commit 확인됨" };
     case "verification_inconsistent":
       return {
         statusLabel: "검증 완료 대기",

@@ -1,6 +1,9 @@
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import { normalizeCodeTaskGithubOutcomeFromRun } from "@/lib/prototype/codeTaskGithubOutcome";
+import {
+  normalizeCodeTaskGithubOutcomeFromRun,
+} from "@/lib/prototype/codeTaskGithubOutcome";
 import { readCodeTaskRunCommitSha } from "@/lib/prototype/codeTaskRunPreviewPolicy";
+import { hasVerifiedCodeTaskCompletionEvidence } from "@/lib/prototype/implementationCodeTaskCompletionEvidence";
 
 /**
  * 통합·Board 공통 SoT — 완료 outcome + GitHub 증거.
@@ -15,24 +18,25 @@ export function isCodeTaskRunIntegrationReady(
   if (github?.status === "failed" || github?.status === "pending") return false;
 
   const commitSha = readCodeTaskRunCommitSha(run);
-  const branchName = String(run.workBranch ?? "").trim();
+  const branchHeadCommit = String(run.branchHeadCommitSha ?? "").trim();
   const noCodeChange = run.status === "no_code_change_completed";
 
-  const githubOutcomeSaved = github?.status === "verified";
-  const hasEvidence =
-    githubOutcomeSaved || Boolean(commitSha) || noCodeChange || Boolean(branchName);
+  const hasEvidence = hasVerifiedCodeTaskCompletionEvidence({
+    commitSha,
+    githubBranchHeadCommit: branchHeadCommit,
+    branchHeadCommit,
+    noCodeChangeEvidence: noCodeChange,
+  });
 
   if (!hasEvidence) return false;
   if (noCodeChange) return true;
-
-  if (!commitSha && !branchName) return false;
 
   if (
     run.status === "completed" ||
     run.status === "quality_gate_passed" ||
     run.status === "github_verified"
   ) {
-    return githubOutcomeSaved || Boolean(commitSha);
+    return github?.status === "verified" || Boolean(commitSha) || Boolean(branchHeadCommit);
   }
 
   return false;

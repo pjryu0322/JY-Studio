@@ -375,9 +375,7 @@ function buildCodeTaskNode(input: {
       })
     : null;
   const githubOutcomeSavedForBoard =
-    input.runtimeSnapshotUnit?.hasPersistedGithubOutcome === true ||
-    unitOutcomeForBoard?.hasPersistedGithubOutcome === true ||
-    unitOutcomeForBoard?.status === "skipped";
+    unitOutcomeForBoard?.hasPersistedGithubOutcome === true && unitOutcomeForBoard.status === "verified";
   const commitShaForBoard =
     input.runtimeSnapshotUnit?.latestCommitSha ??
     unitOutcomeForBoard?.commitSha ??
@@ -388,8 +386,8 @@ function buildCodeTaskNode(input: {
     latestRun?.status === "no_code_change_completed" ||
     Boolean(latestRun?.noCodeChangeEvidence?.trim());
   const completionEvidenceLocked =
-    githubOutcomeSavedForBoard ||
     Boolean(String(commitShaForBoard ?? "").trim()) ||
+    Boolean(String(latestRun?.branchHeadCommitSha ?? "").trim()) ||
     noCodeChangeForBoard;
 
   const coalescedDisplayLabels = coalesceCodeTaskBoardRowDisplayLabels({
@@ -478,6 +476,8 @@ function buildCodeTaskNode(input: {
     progressLabel,
     githubOutcomeSaved,
     commitSha: commitShaForBoard ?? input.runtimeSnapshotUnit?.latestCommitSha ?? unitOutcome?.commitSha ?? null,
+    githubBranchHeadCommit: latestRun?.branchHeadCommitSha ?? null,
+    branchHeadCommit: latestRun?.branchHeadCommitSha ?? null,
     branchName: input.executionUnit?.workBranch ?? input.codeTask.branchPlan?.workBranch ?? null,
     noCodeChangeEvidence: noCodeChangeForBoard,
     isChecked: input.isChecked,

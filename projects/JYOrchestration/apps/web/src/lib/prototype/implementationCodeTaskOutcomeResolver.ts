@@ -1,5 +1,12 @@
 import type { CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
-import { parseCodeTaskGithubOutcomeV1 } from "@/lib/prototype/codeTaskGithubOutcome";
+import {
+  codeTaskGithubOutcomeAppliesToExecutionUnit,
+  parseCodeTaskGithubOutcomeV1,
+} from "@/lib/prototype/codeTaskGithubOutcome";
+import {
+  hasVerifiedCodeTaskCompletionEvidence,
+  readVerifiedCommitShaFromRun,
+} from "@/lib/prototype/implementationCodeTaskCompletionEvidence";
 import {
   buildUserSafeCodeTaskFailureMessage,
   operatorDiagnosticMessageForGithubFailureReason,
@@ -57,13 +64,54 @@ export function findAuthoritativeLatestRunForCodeTask(
 
 function readPersistedGithubOutcomeStatus(
   run: CodeTaskExecutionRunV1 | null | undefined,
+  unitWorkBranch: string | null,
 ): "verified" | "failed" | "no_code_change" | null {
   if (!run) return null;
   const parsed = parseCodeTaskGithubOutcomeV1(run.githubOutcome);
-  if (parsed?.status === "verified") return "verified";
-  if (parsed?.status === "failed") return "failed";
+  if (parsed?.status === "failed") {
+    return codeTaskGithubOutcomeAppliesToExecutionUnit({ outcome: parsed, workBranch: unitWorkBranch })
+      ? "failed"
+      : null;
+  }
+  if (parsed?.status === "verified") {
+    return codeTaskGithubOutcomeAppliesToExecutionUnit({ outcome: parsed, workBranch: unitWorkBranch })
+      ? "verified"
+      : null;
+  }
   if (run.status === "no_code_change_completed") return "no_code_change";
   return null;
+}
+
+function resolveVerifiedCommitEvidence(input: {
+  readonly unit: ImplementationExecutionUnitV1;
+  readonly run: CodeTaskExecutionRunV1 | null;
+  readonly latestOutcomeStatus: "verified" | "failed" | "no_code_change" | null;
+}): Readonly<{
+  readonly commitSha: string | null;
+  readonly noCodeChangeEvidence: boolean;
+  readonly hasVerifiedEvidence: boolean;
+  readonly githubOutcomeSaved: boolean;
+}> {
+  const unitCommitSha = String(input.unit.commitSha ?? "").trim() || null;
+  const runCommitSha = readVerifiedCommitShaFromRun(input.run ?? {});
+  const noCodeChangeEvidence =
+    input.latestOutcomeStatus === "no_code_change" || input.run?.status === "no_code_change_completed";
+  const commitSha =
+    (input.latestOutcomeStatus === "verified" ? runCommitSha : null) ??
+    (input.latestOutcomeStatus === "no_code_change" ? runCommitSha : null) ??
+    (input.unit.status === "verified" || input.unit.status === "skipped" ? unitCommitSha : null);
+
+  const hasVerifiedEvidence = hasVerifiedCodeTaskCompletionEvidence({
+    commitSha,
+    githubBranchHeadCommit: input.run?.branchHeadCommitSha,
+    branchHeadCommit: input.run?.branchHeadCommitSha,
+    noCodeChangeEvidence,
+  });
+
+  const githubOutcomeSaved =
+    input.latestOutcomeStatus === "verified" && hasVerifiedEvidence;
+
+  return { commitSha, noCodeChangeEvidence, hasVerifiedEvidence, githubOutcomeSaved };
 }
 
 function resolveFailureReason(
@@ -83,8 +131,16 @@ export function resolveAuthoritativeCodeTaskOutcome(input: {
 }): AuthoritativeCodeTaskOutcomeV1 {
   const unit = input.unit;
   const latestRun = findAuthoritativeLatestRunForCodeTask(input.runs, unit.codeTaskId);
-  const latestOutcomeStatus = readPersistedGithubOutcomeStatus(latestRun);
-  const hasPersistedGithubOutcome = latestOutcomeStatus !== null;
+  const unitWorkBranch = unit.workBranch?.trim() || latestRun?.workBranch?.trim() || null;
+  const latestOutcomeStatus = readPersistedGithubOutcomeStatus(latestRun, unitWorkBranch);
+  const evidence = resolveVerifiedCommitEvidence({
+    unit,
+    run: latestRun,
+    latestOutcomeStatus,
+  });
+  const hasPersistedGithubOutcome =
+    latestOutcomeStatus !== null &&
+    (latestOutcomeStatus !== "verified" || evidence.hasVerifiedEvidence);
   const title = unit.title.trim() || unit.codeTaskId;
   const failureReason = resolveFailureReason(unit, latestRun);
 
@@ -94,11 +150,10 @@ export function resolveAuthoritativeCodeTaskOutcome(input: {
     status = "failed";
   } else if (unit.status === "skipped" || latestRun?.status === "skipped_by_user") {
     status = "skipped";
-  } else if (
-    latestOutcomeStatus === "verified" ||
-    latestOutcomeStatus === "no_code_change"
-  ) {
-    if (unit.status === "verified" || unit.status === "skipped") {
+  } else if (latestOutcomeStatus === "verified" || latestOutcomeStatus === "no_code_change") {
+    if (!evidence.hasVerifiedEvidence) {
+      status = unit.status === "running" || isExecutionUnitInFlight(unit.status) ? "running" : "verifying";
+    } else if (unit.status === "verified" || unit.status === "skipped") {
       status = "verified";
     } else {
       status = "inconsistent";
@@ -106,7 +161,7 @@ export function resolveAuthoritativeCodeTaskOutcome(input: {
   } else if (unit.status === "failed" && (unit.failedAt || unit.errorCode)) {
     status = "failed";
   } else if (unit.status === "verified") {
-    status = "inconsistent";
+    status = evidence.hasVerifiedEvidence ? "verified" : "inconsistent";
   } else if (unit.status === "running" && !hasPersistedGithubOutcome) {
     status = "running";
   } else if (
@@ -139,10 +194,7 @@ export function resolveAuthoritativeCodeTaskOutcome(input: {
     latestRunId: latestRun?.runId ?? null,
     latestOutcomeStatus,
     hasPersistedGithubOutcome,
-    commitSha:
-      latestRun?.commitSha?.trim() ||
-      latestRun?.branchHeadCommitSha?.trim() ||
-      null,
+    commitSha: evidence.commitSha,
     failureReason,
     userSafeTitle: userSafe?.title ?? "",
     userSafeMessage: userSafe?.message ?? "",

@@ -12,6 +12,10 @@ import {
   resolveExecutionUnitVerificationDisplayStatus,
 } from "@/lib/prototype/implementationExecutionUnitVerification";
 import { resolveAuthoritativeCodeTaskOutcome } from "@/lib/prototype/implementationCodeTaskOutcomeResolver";
+import {
+  hasVerifiedCodeTaskCompletionEvidence,
+  readVerifiedCommitShaFromRun,
+} from "@/lib/prototype/implementationCodeTaskCompletionEvidence";
 
 export function resolveRunIntegrationReadyForBoardGate(input: {
   readonly run: CodeTaskExecutionRunV1 | null;
@@ -20,10 +24,12 @@ export function resolveRunIntegrationReadyForBoardGate(input: {
   readonly noCodeChangeEvidence: boolean;
 }): boolean | null {
   const runReady = input.run ? isCodeTaskRunIntegrationReady(input.run) : null;
-  const hasPersistedCompletionEvidence =
-    input.githubOutcomeSaved ||
-    Boolean(String(input.commitSha ?? "").trim()) ||
-    input.noCodeChangeEvidence;
+  const hasPersistedCompletionEvidence = hasVerifiedCodeTaskCompletionEvidence({
+    commitSha: input.commitSha,
+    githubBranchHeadCommit: input.run?.branchHeadCommitSha,
+    branchHeadCommit: input.run?.branchHeadCommitSha,
+    noCodeChangeEvidence: input.noCodeChangeEvidence,
+  });
   if (runReady === true) return true;
   if (runReady === false && !hasPersistedCompletionEvidence) return false;
   return null;
@@ -64,26 +70,35 @@ export function summarizeCodeTaskBoardGateFromPlanAndUnits(input: {
     if (unit) {
       const outcome = resolveAuthoritativeCodeTaskOutcome({ unit, runs: input.runs });
       const unitCommitSha = String(unit.commitSha ?? "").trim() || null;
-      githubOutcomeSaved =
-        outcome.hasPersistedGithubOutcome === true ||
-        outcome.status === "skipped" ||
-        outcome.status === "verified" ||
-        (unit.status === "verified" && Boolean(unitCommitSha));
-      commitSha = outcome.commitSha ?? unitCommitSha;
-      noCodeChangeEvidence = outcome.latestOutcomeStatus === "no_code_change";
+      const runCommitSha = run ? readVerifiedCommitShaFromRun(run) : null;
+      githubOutcomeSaved = outcome.hasPersistedGithubOutcome === true && outcome.status === "verified";
+      commitSha = outcome.commitSha ?? unitCommitSha ?? runCommitSha;
+      noCodeChangeEvidence =
+        outcome.latestOutcomeStatus === "no_code_change" || run?.status === "no_code_change_completed";
+
+      const display = resolveExecutionUnitVerificationDisplayStatus({ unit, run });
+      const card = formatExecutionUnitVerificationCardLabels(display);
+      statusLabel = card.statusLabel;
+      progressLabel = card.progressLabel;
 
       if (
-        unit.status === "verified" &&
-        (githubOutcomeSaved || unitCommitSha) &&
-        (outcome.status === "verified" || outcome.status === "inconsistent")
+        hasVerifiedCodeTaskCompletionEvidence({
+          commitSha,
+          githubBranchHeadCommit: run?.branchHeadCommitSha,
+          branchHeadCommit: run?.branchHeadCommitSha,
+          noCodeChangeEvidence,
+        }) &&
+        (outcome.status === "verified" || outcome.status === "skipped")
       ) {
         statusLabel = "완료";
-        progressLabel = "GitHub outcome 저장됨";
-      } else {
-        const display = resolveExecutionUnitVerificationDisplayStatus({ unit, run });
-        const card = formatExecutionUnitVerificationCardLabels(display);
-        statusLabel = card.statusLabel;
-        progressLabel = card.progressLabel;
+        progressLabel = noCodeChangeEvidence
+          ? "코드 변경 없음 증거 확인됨"
+          : run?.branchHeadCommitSha && !commitSha
+            ? "GitHub branch head 확인됨"
+            : "GitHub commit 확인됨";
+      } else if (githubOutcomeSaved && !commitSha && !noCodeChangeEvidence) {
+        statusLabel = "검증 중";
+        progressLabel = "GitHub outcome 검증 필요";
       }
     }
 
@@ -94,6 +109,8 @@ export function summarizeCodeTaskBoardGateFromPlanAndUnits(input: {
       progressLabel,
       githubOutcomeSaved,
       commitSha,
+      githubBranchHeadCommit: run?.branchHeadCommitSha ?? null,
+      branchHeadCommit: run?.branchHeadCommitSha ?? null,
       branchName: unit?.workBranch ?? task.branchPlan?.workBranch ?? null,
       noCodeChangeEvidence,
       runIntegrationReady: resolveRunIntegrationReadyForBoardGate({

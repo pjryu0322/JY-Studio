@@ -1,4 +1,5 @@
 import type { CodeTaskExecutionRunStatus, CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
+import { ENV_TEST_HELLO_WORLD_BRANCH_PREFIX } from "@/lib/execution/branchPolicy";
 import type { TaskCursorGithubVerifyResult } from "@/lib/prototype/taskCursorGithubVerify";
 
 export type CodeTaskGithubOutcomeFailureReason =
@@ -92,6 +93,26 @@ export function parseCodeTaskGithubOutcomeV1(raw: unknown): CodeTaskGithubOutcom
   return null;
 }
 
+export function isEnvTestScopedWorkBranch(workBranch: string | null | undefined): boolean {
+  const b = String(workBranch ?? "").trim();
+  return b.startsWith(ENV_TEST_HELLO_WORLD_BRANCH_PREFIX) || b.startsWith("envcheck/");
+}
+
+/** CodeTask unit에 귀속 가능한 GitHub outcome인지 (환경점검·브랜치 불일치 제외). */
+export function codeTaskGithubOutcomeAppliesToExecutionUnit(input: {
+  readonly outcome: CodeTaskGithubOutcomeV1 | null | undefined;
+  readonly workBranch: string | null | undefined;
+}): boolean {
+  if (!input.outcome) return false;
+  if (input.outcome.status === "failed" || input.outcome.status === "pending") return true;
+  if (input.outcome.status !== "verified") return false;
+  const unitBranch = String(input.workBranch ?? "").trim();
+  const outcomeBranch = String(input.outcome.workBranch ?? "").trim();
+  if (!outcomeBranch || isEnvTestScopedWorkBranch(outcomeBranch)) return false;
+  if (unitBranch && outcomeBranch !== unitBranch) return false;
+  return Boolean(String(input.outcome.commitSha ?? "").trim());
+}
+
 export function normalizeCodeTaskGithubOutcomeFromRun(
   run: Pick<
     CodeTaskExecutionRunV1,
@@ -100,11 +121,22 @@ export function normalizeCodeTaskGithubOutcomeFromRun(
   nowIso?: string,
 ): CodeTaskGithubOutcomeV1 | undefined {
   const parsed = run.githubOutcome ? parseCodeTaskGithubOutcomeV1(run.githubOutcome) : null;
-  if (parsed) return parsed;
+  if (parsed) {
+    if (
+      parsed.status === "verified" &&
+      !codeTaskGithubOutcomeAppliesToExecutionUnit({
+        outcome: parsed,
+        workBranch: run.workBranch,
+      })
+    ) {
+      return undefined;
+    }
+    return parsed;
+  }
   const commitSha = String(run.commitSha ?? run.branchHeadCommitSha ?? "").trim();
   if (!commitSha) return undefined;
   const workBranch = String(run.workBranch ?? "").trim();
-  if (!workBranch) return undefined;
+  if (!workBranch || isEnvTestScopedWorkBranch(workBranch)) return undefined;
   return {
     status: "verified",
     checkedAt: run.updatedAt ?? nowIso ?? new Date().toISOString(),

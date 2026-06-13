@@ -1,4 +1,7 @@
 import { isIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import { hasVerifiedCodeTaskCompletionEvidence } from "@/lib/prototype/implementationCodeTaskCompletionEvidence";
+
+export { hasVerifiedCodeTaskCompletionEvidence };
 
 export type ImplementationCodeTaskBoardStateV1 = Readonly<{
   readonly codeTaskId: string;
@@ -63,9 +66,9 @@ export function coalesceCodeTaskBoardRowDisplayLabels(input: {
     const progressLabel =
       rawProgress &&
       !progressIndicatesRunnable(rawProgress) &&
-      (labelIndicatesCompleted("완료", rawProgress) || rawProgress.includes("통합"))
+      labelIndicatesCompleted("완료", rawProgress)
         ? rawProgress
-        : "GitHub outcome 저장됨";
+        : "GitHub commit 확인됨";
     return { statusLabel: "완료", progressLabel };
   }
 
@@ -131,9 +134,9 @@ function labelIndicatesCompleted(statusLabel: string, progressLabel: string): bo
   return (
     s === "완료" ||
     p === "완료" ||
-    p === "GitHub outcome 저장됨" ||
-    p.includes("GitHub outcome") ||
-    p.includes("outcome 저장")
+    p === "GitHub commit 확인됨" ||
+    p === "GitHub branch head 확인됨" ||
+    p === "코드 변경 없음 증거 확인됨"
   );
 }
 
@@ -152,15 +155,12 @@ export type ImplementationCodeTaskSelectionSummaryV1 = Readonly<{
 }>;
 
 function hasCodeTaskCompletionEvidence(input: {
-  readonly githubOutcomeSaved?: boolean;
   readonly commitSha?: string | null;
+  readonly githubBranchHeadCommit?: string | null;
+  readonly branchHeadCommit?: string | null;
   readonly noCodeChangeEvidence?: boolean | null;
 }): boolean {
-  return (
-    input.githubOutcomeSaved === true ||
-    Boolean(String(input.commitSha ?? "").trim()) ||
-    input.noCodeChangeEvidence === true
-  );
+  return hasVerifiedCodeTaskCompletionEvidence(input);
 }
 
 export function resolveCodeTaskBoardState(input: {
@@ -170,6 +170,8 @@ export function resolveCodeTaskBoardState(input: {
   readonly progressLabel: string;
   readonly githubOutcomeSaved?: boolean;
   readonly commitSha?: string | null;
+  readonly githubBranchHeadCommit?: string | null;
+  readonly branchHeadCommit?: string | null;
   readonly branchName?: string | null;
   readonly noCodeChangeEvidence?: boolean | null;
   readonly isChecked?: boolean;
@@ -179,7 +181,12 @@ export function resolveCodeTaskBoardState(input: {
   let statusLabel = String(input.statusLabel ?? "").trim();
   let progressLabel = String(input.progressLabel ?? "").trim();
   const githubOutcomeSaved = input.githubOutcomeSaved === true;
-  const completionEvidence = hasCodeTaskCompletionEvidence(input);
+  const hasVerifiedEvidence = hasCodeTaskCompletionEvidence({
+    commitSha: input.commitSha,
+    githubBranchHeadCommit: input.githubBranchHeadCommit,
+    branchHeadCommit: input.branchHeadCommit,
+    noCodeChangeEvidence: input.noCodeChangeEvidence,
+  });
 
   const runnableByDisplayLabels = labelIndicatesRunnable(statusLabel, progressLabel);
   const completedByDisplayLabels = labelIndicatesCompleted(statusLabel, progressLabel);
@@ -188,52 +195,44 @@ export function resolveCodeTaskBoardState(input: {
     progressLabel === "실행 중" ||
     progressLabel.includes("실행 중") ||
     progressLabel.includes("검증 중") ||
-    statusLabel === "실행 중";
+    progressLabel.includes("GitHub 확인") ||
+    progressLabel.includes("branch/commit 확인") ||
+    statusLabel === "실행 중" ||
+    statusLabel === "검증 중";
 
   const isBlocked = statusLabel.includes("차단") || progressLabel.includes("차단");
 
-  let isCompleted =
-    completionEvidence ||
-    statusLabel === "완료" ||
-    (completedByDisplayLabels && !runnableByDisplayLabels);
+  let isCompleted = hasVerifiedEvidence;
 
-  const hasIntegrationEvidence =
-    githubOutcomeSaved ||
-    Boolean(String(input.commitSha ?? "").trim()) ||
-    input.noCodeChangeEvidence === true;
-
-  if (statusLabel === "완료" && progressIndicatesRunnable(progressLabel)) {
-    isCompleted = true;
-    progressLabel =
-      completionEvidence && (githubOutcomeSaved || String(input.commitSha ?? "").trim())
-        ? "GitHub outcome 저장됨"
-        : progressLabel.includes("통합")
-          ? progressLabel
-          : "GitHub outcome 저장됨";
-  }
-
-  if (isCompleted && progressIndicatesRunnable(progressLabel)) {
-    progressLabel =
-      hasIntegrationEvidence && (githubOutcomeSaved || String(input.commitSha ?? "").trim())
-        ? "GitHub outcome 저장됨"
-        : "통합 가능";
+  if (!hasVerifiedEvidence && (githubOutcomeSaved || completedByDisplayLabels) && !isRunning && !isBlocked) {
+    isCompleted = false;
+    statusLabel = "검증 중";
+    progressLabel = githubOutcomeSaved
+      ? "GitHub outcome 검증 필요"
+      : "GitHub branch/commit 확인 중";
   }
 
   if (isCompleted && statusLabel !== "완료" && !isRunning && !isBlocked) {
     statusLabel = "완료";
   }
 
+  if (isCompleted && (progressIndicatesRunnable(progressLabel) || !progressLabel.trim())) {
+    progressLabel = input.noCodeChangeEvidence
+      ? "코드 변경 없음 증거 확인됨"
+      : "GitHub commit 확인됨";
+  }
+
   const isRunnableForUser =
     !isCompleted &&
-    !completionEvidence &&
+    !hasVerifiedEvidence &&
     !isRunning &&
     !isBlocked &&
     runnableByDisplayLabels;
 
   const isIntegrationReady =
     input.runIntegrationReady != null
-      ? input.runIntegrationReady
-      : isCompleted && hasIntegrationEvidence;
+      ? input.runIntegrationReady && hasVerifiedEvidence
+      : isCompleted && hasVerifiedEvidence;
 
   let checkboxDisabledReason: string | null = null;
   if (isCompleted) {

@@ -27,7 +27,7 @@ describe("coalesceCodeTaskBoardRowDisplayLabels", () => {
     expect(state.isCompleted).toBe(true);
     expect(state.isIntegrationReady).toBe(true);
     expect(state.checkboxDisabled).toBe(true);
-    expect(state.progressLabel).toBe("GitHub outcome 저장됨");
+    expect(state.progressLabel).toBe("GitHub commit 확인됨");
   });
 
   it("locks completed display when completion evidence is present", () => {
@@ -128,7 +128,7 @@ describe("resolveCodeTaskBoardState", () => {
       commitSha: "abc",
     });
     expect(state.isRunnableForUser).toBe(false);
-    expect(state.progressLabel).toBe("GitHub outcome 저장됨");
+    expect(state.progressLabel).toBe("GitHub commit 확인됨");
   });
 
   it("marks completed github outcome tasks as integration ready", () => {
