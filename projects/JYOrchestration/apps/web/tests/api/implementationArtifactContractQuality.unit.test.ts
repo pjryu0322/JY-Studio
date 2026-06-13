@@ -125,6 +125,7 @@ export const sampleMeetingSummary = { overview: "o", insights: ["1", "2"] };
     });
     expect(r.ok).toBe(true);
     expect(r.integrationRequired?.length).toBeGreaterThan(0);
+    expect(r.issues?.filter((i) => i.level === "fail").length ?? 0).toBe(0);
     expect(r.missing).not.toContain("placeholder_only_primary_panels");
   });
 

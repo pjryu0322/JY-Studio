@@ -174,3 +174,7 @@ export function resolveCodeTaskArtifactContract(input: {
 export function sampleDataContractWorkBranch(): string {
   return SAMPLE_DATA_WORK_BRANCH;
 }
+
+/** {@link CANONICAL_SAMPLE_DATA_CODE_TASK_ID} 산출물 계약 (spec alias). */
+export const meetingSampleDataArtifactContract: CodeTaskArtifactContractV1 =
+  buildSampleDataArtifactContract();

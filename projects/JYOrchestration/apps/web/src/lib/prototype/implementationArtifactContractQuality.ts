@@ -22,6 +22,8 @@ export type ArtifactContractQualityResultV1 = Readonly<{
   /** CodeTask stage contract — fail level 없음 */
   readonly ok: boolean;
   readonly issues: readonly QualityIssueV1[];
+  readonly failIssues: readonly QualityIssueV1[];
+  readonly integrationRequiredIssues: readonly QualityIssueV1[];
   readonly passedChecks: readonly string[];
   readonly integrationRequired: readonly string[];
   /** @deprecated fail-level messages for legacy callers */
@@ -183,6 +185,8 @@ export function evaluateCodeTaskArtifactContractQuality(input: {
           message: "GitHub branch head commit 검증 대기 중",
         },
       ],
+      failIssues: [],
+      integrationRequiredIssues: [],
       passedChecks: [],
       integrationRequired: [],
       missing: [],
@@ -213,16 +217,75 @@ export function evaluateCodeTaskArtifactContractQuality(input: {
   }
 
   const failIssues = issues.filter((i) => i.level === "fail");
+  const integrationRequiredIssues = issues.filter((i) => i.level === "integration_required");
   const ok = failIssues.length === 0;
 
   return {
     status: ok ? "pass" : "fail",
     ok,
     issues,
+    failIssues,
+    integrationRequiredIssues,
     passedChecks,
     integrationRequired: [],
     missing: failIssues.map((i) => i.message),
     warning: issues.filter((i) => i.level === "warning").map((i) => i.message),
+  };
+}
+
+export function evaluateArtifactContractRules(input: {
+  readonly contract: CodeTaskArtifactContractV1;
+  readonly files: Readonly<Record<string, string>>;
+  readonly githubHeadCommitVerified?: boolean;
+}): Readonly<{
+  readonly status: "passed" | "failed" | "pending" | "integration_required";
+  readonly failIssues: readonly QualityIssueV1[];
+  readonly warnings: readonly QualityIssueV1[];
+  readonly integrationRequiredIssues: readonly QualityIssueV1[];
+  readonly passedChecks: readonly string[];
+}> {
+  const normalizedFiles: Record<string, string> = {};
+  for (const [path, content] of Object.entries(input.files)) {
+    normalizedFiles[path.replace(/\\/g, "/")] = content;
+  }
+  const repositoryFilePaths = Object.keys(normalizedFiles);
+  const sampleDataFileContent =
+    normalizedFiles[SAMPLE_DATA_PRIMARY_FILE_PATH] ??
+    normalizedFiles["src/data/sampleData.ts"] ??
+    null;
+
+  const evaluated = evaluateCodeTaskArtifactContractQuality({
+    contract: input.contract,
+    repositoryFilePaths,
+    sampleDataFileContent,
+    githubHeadCommitVerified: input.githubHeadCommitVerified,
+  });
+
+  const warnings = evaluated.issues.filter((i) => i.level === "warning");
+
+  if (evaluated.status === "pending") {
+    return {
+      status: "pending",
+      failIssues: [],
+      warnings,
+      integrationRequiredIssues: [],
+      passedChecks: [],
+    };
+  }
+
+  const failIssues = evaluated.failIssues;
+  const integrationRequiredIssues = evaluated.integrationRequiredIssues;
+
+  let status: "passed" | "failed" | "pending" | "integration_required" = "passed";
+  if (failIssues.length > 0) status = "failed";
+  else if (integrationRequiredIssues.length > 0) status = "integration_required";
+
+  return {
+    status,
+    failIssues,
+    warnings,
+    integrationRequiredIssues,
+    passedChecks: evaluated.passedChecks,
   };
 }
 

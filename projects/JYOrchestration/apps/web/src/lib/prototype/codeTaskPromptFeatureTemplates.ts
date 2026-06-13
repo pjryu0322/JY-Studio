@@ -244,7 +244,7 @@ const TEMPLATES: Record<CodeTaskFeaturePromptKind, Omit<CodeTaskFeaturePromptTem
       "Preview 화면 연결은 이번 Task에서 직접 수정하지 않는다. 패널 연결이 필요하면 작업 결과 보고의 requiresIntegrationChange에 연결 파일, 사유, 예상 연결 위치를 기록한다.",
       "패널별 mock 중복이 발견되면 직접 수정하지 말고 requiresIntegrationChange에 기록한다.",
       "실제 API 연동으로 교체 가능한 구조를 유지한다.",
-      "Preview 실사용감을 위해 참여자 name·role, 스크립트 timestamp, 요약 overview·keyPoints를 빈 값 없이 채운다.",
+      "Preview 실사용감을 위해 참여자 name·role, 스크립트 timestamp, 요약 overview·highlights를 빈 값 없이 채운다.",
     ],
     verificationChecklist: [
       "src/types/meeting.ts가 존재하는지 확인",

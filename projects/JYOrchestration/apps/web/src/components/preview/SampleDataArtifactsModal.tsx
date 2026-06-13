@@ -183,6 +183,11 @@ export function SampleDataArtifactsModal(props: {
                         ? "통과"
                         : "미충족"}
                   </strong>
+                  {payload.quality.status === "pending" ? (
+                    <p style={{ margin: "6px 0 0", fontSize: 12, color: "#64748b" }}>
+                      GitHub branch/head commit 확인 후 산출물 계약 검사를 수행합니다.
+                    </p>
+                  ) : null}
                   {!payload.quality.ok && payload.quality.missing.length ? (
                     <span style={{ display: "block", marginTop: 4, color: "#64748b" }}>
                       missing: {payload.quality.missing.join(", ")}
