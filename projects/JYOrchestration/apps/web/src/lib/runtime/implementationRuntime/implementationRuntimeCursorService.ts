@@ -23,7 +23,11 @@ export async function markImplementationRuntimeDispatching(input: {
     runId: input.runId,
     eventType: "cursor_dispatched",
   });
-  await scheduleImplementationRuntimePoll({ runId: input.runId, now: input.now });
+  await scheduleImplementationRuntimePoll({
+    runId: input.runId,
+    now: input.now,
+    firstPollAfterCursorDispatch: true,
+  });
 }
 
 export async function markImplementationRuntimeCursorRunning(input: {
@@ -48,7 +52,11 @@ export async function markImplementationRuntimeCursorRunning(input: {
     cursorAgentId: input.cursorAgentId,
     now: input.now,
   });
-  await scheduleImplementationRuntimePoll({ runId: input.runId, now: input.now });
+  await scheduleImplementationRuntimePoll({
+    runId: input.runId,
+    now: input.now,
+    firstPollAfterCursorDispatch: true,
+  });
 }
 
 export async function markImplementationRuntimeGithubVerifying(input: {

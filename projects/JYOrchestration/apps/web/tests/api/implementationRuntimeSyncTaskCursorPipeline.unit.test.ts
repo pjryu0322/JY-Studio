@@ -83,7 +83,9 @@ describe("syncCursorLaunchToDbRuntime", () => {
 
     expect(ensureQueuedMock).toHaveBeenCalled();
     expect(markRunningMock).toHaveBeenCalled();
-    expect(schedulePollMock).toHaveBeenCalledWith(expect.objectContaining({ runId: "run-1" }));
+    expect(schedulePollMock).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "run-1", firstPollAfterCursorDispatch: true }),
+    );
     expect(result.synced).toBe(true);
     expect(result.runId).toBe("run-1");
   });

@@ -90,7 +90,11 @@ export async function syncCursorLaunchToDbRuntime(
     now,
   });
 
-  await scheduleImplementationRuntimePoll({ runId: run.id, now });
+  await scheduleImplementationRuntimePoll({
+    runId: run.id,
+    now,
+    firstPollAfterCursorDispatch: true,
+  });
 
   return { synced: true, runId: run.id };
 }

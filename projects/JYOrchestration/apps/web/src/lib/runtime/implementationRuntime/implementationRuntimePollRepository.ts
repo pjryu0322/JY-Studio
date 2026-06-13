@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { resolveFirstGithubPollAt } from "@/lib/prototype/implementationGithubPollingScheduler";
 import { TASK_CURSOR_JOB_DEFAULT_POLL_DELAY_MS } from "@/lib/prototype/taskCursorExecutionJobRepository";
 import type { RuntimeState } from "@/lib/runtime/implementationRuntime/implementationRuntimeStateMachine";
 
@@ -107,11 +108,15 @@ export async function scheduleImplementationRuntimePoll(input: {
   readonly runId: string;
   readonly nextPollAt?: Date | null;
   readonly now?: Date;
+  /** Cursor dispatch 직후 — GitHub 최초 poll은 60초 후 */
+  readonly firstPollAfterCursorDispatch?: boolean;
 }): Promise<void> {
   const now = input.now ?? new Date();
   const nextPollAt =
     input.nextPollAt === undefined
-      ? new Date(now.getTime() + TASK_CURSOR_JOB_DEFAULT_POLL_DELAY_MS)
+      ? input.firstPollAfterCursorDispatch
+        ? resolveFirstGithubPollAt(now)
+        : new Date(now.getTime() + TASK_CURSOR_JOB_DEFAULT_POLL_DELAY_MS)
       : input.nextPollAt;
   await prisma.implementationCodeTaskRun.update({
     where: { id: input.runId.trim() },
@@ -187,7 +192,7 @@ export async function linkTaskCursorJobToImplementationRun(input: {
       where: { id: run.id },
       data: {
         taskCursorJobId: jobId,
-        nextPollAt: now,
+        nextPollAt: resolveFirstGithubPollAt(now),
         pollCount: run.pollCount ?? 0,
         pollLockedBy: null,
         pollLockExpiresAt: null,

@@ -7,6 +7,7 @@ import {
 } from "@/lib/prototype/codeTaskExecutionRun";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import { buildImplementationExecutionUnitGithubPollTimelineEntry } from "@/lib/prototype/implementationGithubPollingScheduler";
 import { buildExecutionUnitStartedPatch } from "@/lib/prototype/implementationExecutionRuntime";
 import type { ImplementationExecutionUnitV1 } from "@/lib/prototype/implementationExecutionUnit";
 import { patchImplementationExecutionUnitInState } from "@/lib/prototype/implementationExecutionUnitStore";
@@ -317,6 +318,20 @@ export async function dispatchExecutionUnitWithCursor(input: {
               taskId: prepared.parentTaskId,
               codeTaskId: unit.codeTaskId,
               agentId,
+              nowIso,
+            }),
+            buildImplementationExecutionUnitGithubPollTimelineEntry({
+              action: "implementation_execution_unit_github_poll_scheduled",
+              projectId: pid,
+              unitId: unit.unitId,
+              codeTaskId: unit.codeTaskId,
+              processTaskId: prepared.parentTaskId,
+              targetRepository:
+                typeof input.executionContext.targetRepository === "string"
+                  ? input.executionContext.targetRepository
+                  : `${input.executionContext.targetRepository.owner}/${input.executionContext.targetRepository.repo}`,
+              baseBranch,
+              workBranch,
               nowIso,
             }),
           );

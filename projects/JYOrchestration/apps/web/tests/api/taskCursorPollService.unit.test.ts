@@ -107,7 +107,7 @@ describe("pollTaskCursorExecutionOnce githubVerifyResult", () => {
     expect(result.githubVerifyResult).toBeUndefined();
   });
 
-  it("does not verify while agent is still running", async () => {
+  it("does not verify while agent is still running (non-CodeTask uses Cursor API)", async () => {
     pollStepMock.mockResolvedValue({ kind: "running", statusUpper: "RUNNING" });
     const freshIso = new Date().toISOString();
 
@@ -119,8 +119,25 @@ describe("pollTaskCursorExecutionOnce githubVerifyResult", () => {
       context,
     });
 
+    expect(pollStepMock).toHaveBeenCalled();
     expect(verifyGithubMock).not.toHaveBeenCalled();
     expect(result.githubVerifyResult).toBeUndefined();
+    expect(result.status).toBe("cursor_running");
+  });
+
+  it("CodeTask poll skips Cursor API before first github check", async () => {
+    const freshIso = new Date().toISOString();
+    const result = await pollTaskCursorExecutionOnce({
+      projectId: "p1",
+      execution: execution({ createdAt: freshIso, updatedAt: freshIso }),
+      codeTaskId: "CODE-1",
+      workItems: [],
+      verifyGithub: true,
+      context,
+    });
+
+    expect(pollStepMock).not.toHaveBeenCalled();
+    expect(verifyGithubMock).not.toHaveBeenCalled();
     expect(result.status).toBe("cursor_running");
   });
 

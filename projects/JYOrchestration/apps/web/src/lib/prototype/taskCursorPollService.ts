@@ -24,6 +24,7 @@ import {
   type TaskCursorExecutionV1,
 } from "@/lib/prototype/taskCursorExecution";
 import {
+  isGithubProgressPollDue,
   parseGithubProgressLastCheckMs,
   resolveEffectiveGithubLaunchMs,
   resolveGithubProgressNextPollDelayMs,
@@ -32,6 +33,12 @@ import {
 } from "@/lib/prototype/taskCursorGithubFallbackVerifyPolicy";
 import { isTransientTaskCursorGithubVerifyMiss } from "@/lib/prototype/taskCursorGithubVerify";
 import { buildTaskCursorRuntimeSyncTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import {
+  buildImplementationExecutionUnitGithubPollTimelineEntry,
+  CODE_TASK_GITHUB_FIRST_POLL_DELAY_MS,
+  CODE_TASK_GITHUB_POLL_INTERVAL_MS,
+} from "@/lib/prototype/implementationGithubPollingScheduler";
+import { isTerminalTaskCursorPollResultStatus } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import type { ProjectTargetRepository } from "@/lib/prototype/projectTargetRepository";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
@@ -57,6 +64,224 @@ export type TaskCursorPollRuntimeContext = Readonly<{
   readonly allowedPathGlobs: readonly string[];
 }>;
 
+function repoFullNameFromContext(targetRepository: ProjectTargetRepository): string {
+  const owner = String(targetRepository.owner ?? "").trim();
+  const repo = String(targetRepository.repo ?? "").trim();
+  return owner && repo ? `${owner}/${repo}` : "";
+}
+
+async function pollCodeTaskGithubProgressOnce(input: {
+  readonly projectId: string;
+  readonly codeTaskId: string;
+  readonly execution: TaskCursorExecutionV1;
+  readonly nowIso: string;
+  readonly nowMs: number;
+  readonly context: TaskCursorPollRuntimeContext;
+  readonly buildPatch: (
+    nextExecution: TaskCursorExecutionV1,
+    timelineEntries: readonly RequirementsPromptTimelineEntry[],
+  ) => PrototypeExecutionOrchestrationPersistInput;
+  readonly resolveRunningNextPollDelayMs: (exec: TaskCursorExecutionV1) => number;
+}): Promise<TaskCursorPollOnceResult> {
+  const { projectId, codeTaskId, execution, nowIso, nowMs, context, buildPatch, resolveRunningNextPollDelayMs } =
+    input;
+  const processTaskId = execution.taskId;
+  const targetRepository =
+    repoFullNameFromContext(context.targetRepository) || String(execution.targetRepository ?? "");
+  const baseBranch = execution.baseBranch ?? context.baseBranch;
+  const workBranch = String(execution.workBranch ?? "").trim();
+  const launchMs = resolveEffectiveGithubLaunchMs({ execution });
+  const lastCheckMs = parseGithubProgressLastCheckMs(execution);
+  const elapsedMs = launchMs != null ? Math.max(0, nowMs - launchMs) : undefined;
+
+  const unitTimelineBase = {
+    projectId,
+    codeTaskId,
+    processTaskId,
+    targetRepository,
+    baseBranch,
+    workBranch,
+    firstPollDelayMs: CODE_TASK_GITHUB_FIRST_POLL_DELAY_MS,
+    pollIntervalMs: CODE_TASK_GITHUB_POLL_INTERVAL_MS,
+    elapsedMs,
+    nowIso,
+  };
+
+  if (isTerminalTaskCursorPollResultStatus(execution.status)) {
+    return {
+      success: execution.status === "github_verified" || execution.status === "review_pending",
+      status: execution.status,
+      execution,
+      orchestrationPatch: buildPatch(execution, []),
+      terminal: true,
+    };
+  }
+
+  if (
+    execution.status !== "cursor_running" &&
+    execution.status !== "cursor_requested" &&
+    execution.status !== "github_verifying"
+  ) {
+    const nextExecution = patchTaskCursorExecution(execution, { status: "cursor_running", nowIso });
+    return {
+      success: true,
+      status: nextExecution.status,
+      execution: nextExecution,
+      orchestrationPatch: buildPatch(nextExecution, []),
+      terminal: false,
+      nextPollDelayMs: resolveRunningNextPollDelayMs(nextExecution),
+    };
+  }
+
+  if (!isGithubProgressPollDue({ launchMs, lastCheckMs, nowMs })) {
+    const timeline = [
+      buildImplementationExecutionUnitGithubPollTimelineEntry({
+        ...unitTimelineBase,
+        action: "implementation_execution_unit_github_poll_waiting",
+      }),
+    ];
+    return {
+      success: true,
+      status: execution.status,
+      execution,
+      orchestrationPatch: buildPatch(execution, timeline),
+      terminal: false,
+      nextPollDelayMs: resolveGithubProgressNextPollDelayMs({ launchMs, lastCheckMs, nowMs }),
+    };
+  }
+
+  const githubOnlyTimeline: RequirementsPromptTimelineEntry[] = [
+    buildImplementationExecutionUnitGithubPollTimelineEntry({
+      ...unitTimelineBase,
+      action: "implementation_execution_unit_github_poll_started",
+    }),
+    buildImplementationExecutionUnitGithubPollTimelineEntry({
+      ...unitTimelineBase,
+      action: "implementation_execution_unit_github_branch_lookup_requested",
+    }),
+  ];
+
+  let nextExecution = patchTaskCursorExecution(execution, {
+    githubProgressLastCheckAt: nowIso,
+    status: execution.status === "cursor_requested" ? "cursor_running" : execution.status,
+    nowIso,
+  });
+
+  githubOnlyTimeline.push(
+    buildTaskCursorRuntimeSyncTimelineEntry({
+      action: "task_cursor_github_verify_requested",
+      projectId,
+      taskId: processTaskId,
+      codeTaskId,
+      nowIso,
+    }),
+  );
+
+  const verify = await verifyTaskCursorGithubResult({
+    execution: nextExecution,
+    targetRepository: context.targetRepository,
+    githubToken: context.githubToken,
+    allowedPathGlobs: context.allowedPathGlobs,
+    codeTaskId,
+  });
+
+  if (verify.ok && verify.verifiedCommitSha) {
+    githubOnlyTimeline.push(
+      buildImplementationExecutionUnitGithubPollTimelineEntry({
+        ...unitTimelineBase,
+        action: "implementation_execution_unit_github_head_commit_resolved",
+        branchHeadCommit: verify.verifiedCommitSha,
+      }),
+      buildImplementationExecutionUnitGithubPollTimelineEntry({
+        ...unitTimelineBase,
+        action: "implementation_execution_unit_github_verify_passed",
+        branchHeadCommit: verify.verifiedCommitSha,
+      }),
+    );
+  } else if (isTransientTaskCursorGithubVerifyMiss(verify)) {
+    githubOnlyTimeline.push(
+      buildImplementationExecutionUnitGithubPollTimelineEntry({
+        ...unitTimelineBase,
+        action: "implementation_execution_unit_github_branch_missing_retry_scheduled",
+        errorCode: verify.reason ?? verify.uiReason ?? "github_branch_missing",
+        errorMessage: verify.message,
+      }),
+    );
+  } else {
+    const timeoutLike =
+      verify.reason === "github_verify_timeout" || verify.detailReason === "github_verify_timeout";
+    githubOnlyTimeline.push(
+      buildImplementationExecutionUnitGithubPollTimelineEntry({
+        ...unitTimelineBase,
+        action: timeoutLike
+          ? "implementation_execution_unit_github_verify_timeout"
+          : "implementation_execution_unit_github_verify_failed",
+        errorCode: verify.reason ?? verify.detailReason ?? undefined,
+        errorMessage: verify.message,
+      }),
+    );
+  }
+
+  githubOnlyTimeline.push(
+    buildTaskCursorRuntimeSyncTimelineEntry({
+      action: verify.ok ? "task_cursor_github_verify_completed" : "task_cursor_github_verify_failed",
+      projectId,
+      taskId: processTaskId,
+      codeTaskId,
+      message: verify.ok ? "ok" : verify.reason ?? verify.message,
+      nowIso,
+    }),
+  );
+
+  nextExecution = applyTaskCursorGithubVerifyResult({
+    execution: nextExecution,
+    ok: verify.ok,
+    message: verify.message,
+    reason: verify.reason,
+    detailReason: verify.detailReason,
+    verifiedChangedFiles: verify.verifiedChangedFiles,
+    verifiedCommitSha: verify.verifiedCommitSha,
+    nowIso,
+  });
+
+  const escalation = applyGithubVerifyStuckEscalationIfNeeded({
+    execution: nextExecution,
+    verifyDetailReason: verify.detailReason,
+    codeTaskId,
+    nowIso,
+  });
+  nextExecution = escalation.execution;
+  if (escalation.timelineEntry) {
+    githubOnlyTimeline.push(escalation.timelineEntry);
+  }
+
+  if (verify.ok && nextExecution.status === "github_verified") {
+    nextExecution = patchTaskCursorExecution(nextExecution, { status: "review_pending", nowIso });
+  }
+
+  githubOnlyTimeline.push(
+    buildTaskCursorGithubVerifyTimeline({
+      execution: nextExecution,
+      ok: verify.ok,
+      reason: verify.reason,
+      nowIso,
+    }),
+  );
+
+  const status = nextExecution.status;
+  return {
+    success: verify.ok,
+    status,
+    execution: nextExecution,
+    orchestrationPatch: buildPatch(nextExecution, githubOnlyTimeline),
+    terminal: isTerminalTaskCursorPollResultStatus(status),
+    nextPollDelayMs: isTerminalTaskCursorPollResultStatus(status)
+      ? undefined
+      : resolveRunningNextPollDelayMs(nextExecution),
+    githubVerifyResult: verify,
+  };
+}
+
 export async function pollTaskCursorExecutionOnce(input: {
   readonly projectId: string;
   readonly execution: TaskCursorExecutionV1;
@@ -71,6 +296,7 @@ export async function pollTaskCursorExecutionOnce(input: {
 }): Promise<TaskCursorPollOnceResult> {
   const projectId = input.projectId.trim();
   const nowIso = input.nowIso ?? new Date().toISOString();
+  const nowMs = Date.parse(nowIso);
   const execution = input.execution;
   const executionState = input.implementationTaskExecutionStateV1 ?? null;
   const buildPatch = (
@@ -87,6 +313,43 @@ export async function pollTaskCursorExecutionOnce(input: {
         : {}),
       ...(input.codeTaskQualityGate ? { codeTaskQualityGate: input.codeTaskQualityGate } : {}),
     });
+
+  const codeTaskId = input.codeTaskId?.trim() ?? "";
+  const codeTaskGithubOnly =
+    Boolean(codeTaskId) && input.verifyGithub !== false && Boolean(input.context.githubToken?.trim());
+
+  const resolveRunningNextPollDelayMs = (exec: TaskCursorExecutionV1) =>
+    resolveGithubProgressNextPollDelayMs({
+      launchMs: resolveEffectiveGithubLaunchMs({ execution: exec }),
+      lastCheckMs: parseGithubProgressLastCheckMs(exec),
+      nowMs: Number.isFinite(nowMs) ? nowMs : Date.now(),
+    });
+
+  if (codeTaskGithubOnly) {
+    const branch = String(execution.workBranch ?? "").trim();
+    if (!branch) {
+      const nextExecution = patchTaskCursorExecution(execution, { status: "cursor_running", nowIso });
+      return {
+        success: false,
+        status: "poll_not_ready",
+        message: "workBranch가 없어 GitHub polling을 시작할 수 없습니다.",
+        execution: nextExecution,
+        orchestrationPatch: buildPatch(nextExecution, []),
+        terminal: false,
+        nextPollDelayMs: CODE_TASK_GITHUB_POLL_INTERVAL_MS,
+      };
+    }
+    return pollCodeTaskGithubProgressOnce({
+      projectId,
+      codeTaskId,
+      execution,
+      nowIso,
+      nowMs: Number.isFinite(nowMs) ? nowMs : Date.now(),
+      context: input.context,
+      buildPatch,
+      resolveRunningNextPollDelayMs,
+    });
+  }
 
   const agentId = String(execution.cursorRunId ?? "").trim();
   if (!agentId) {
@@ -113,14 +376,6 @@ export async function pollTaskCursorExecutionOnce(input: {
       nextPollDelayMs: 10_000,
     };
   }
-
-  const nowMs = Date.parse(nowIso);
-  const resolveRunningNextPollDelayMs = (exec: TaskCursorExecutionV1) =>
-    resolveGithubProgressNextPollDelayMs({
-      launchMs: resolveEffectiveGithubLaunchMs({ execution: exec }),
-      lastCheckMs: parseGithubProgressLastCheckMs(exec),
-      nowMs: Number.isFinite(nowMs) ? nowMs : Date.now(),
-    });
 
   if (
     execution.status === "github_verifying" &&
