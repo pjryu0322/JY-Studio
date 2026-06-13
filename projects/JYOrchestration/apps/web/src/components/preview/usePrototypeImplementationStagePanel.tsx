@@ -27,6 +27,9 @@ import { useImplementationQualityIntegratedStageController } from "@/components/
 import { useImplementationDeveloperPromptCopyController } from "@/components/preview/useImplementationDeveloperPromptCopyController";
 import { useImplementationExecutionLogController } from "@/components/preview/useImplementationExecutionLogController";
 import { useImplementationAutoPrepSyncController } from "@/components/preview/useImplementationAutoPrepSyncController";
+import { useImplementationStatusNoticeController } from "@/components/preview/useImplementationStatusNoticeController";
+import { useImplementationPlanningActionController } from "@/components/preview/useImplementationPlanningActionController";
+import { useImplementationDbStrategyActionController } from "@/components/preview/useImplementationDbStrategyActionController";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -50,18 +53,6 @@ import {
 import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executionSetupSourceGeneration";
 import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
 import { buildWipChipHandlerSlice } from "@/lib/prototype/prototypeExecutionWipChipHandlers";
-import {
-  buildDataModelDraftResult,
-  buildDbIntegrationReviewResult,
-  buildMockImplementationModeResult,
-} from "@/lib/prototype/prototypeExecutionDbStrategyActions";
-import {
-  ensureImplementationArtifactsFromTaskList,
-  ensureImplementationTaskPlan,
-  ensureMockImplementationReady,
-} from "@/lib/prototype/implementationAutoProgress";
-import { buildGenerateImplementationWorkPlanDraftResult } from "@/lib/prototype/prototypeExecutionWorkPlanDraftActions";
-import { buildPlanningImplementationSeedCheckResult } from "@/lib/requirements/planningImplementationSeedActions";
 import { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
 import {
   mergePendingImplementationPatch,
@@ -80,9 +71,7 @@ import {
   deriveImplementationStageNextActions,
 } from "@/lib/prototype/implementationStageNextActions";
 import { deriveImplementationStageStatus } from "@/lib/prototype/implementationStageStatus";
-import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import {
-  buildConfirmImplementationTaskPlanResult,
   buildImplementationCursorGateContext,
 } from "@/lib/prototype/prototypeExecutionTaskPlanActions";
 import {
@@ -90,21 +79,10 @@ import {
   type PrototypeExecutionOrchestrationPersistInput,
 } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import {
-  buildImplementationRoleCheckSummary,
-  buildImplementationStatusQueryMessage,
-  buildImplementationStatusQueryTimelineEntry,
-  hasImplementationRoleCheckDetailsShown,
   implementationEntryChipsForBootstrap,
   buildImplementationBootstrapShellView,
 } from "@/lib/prototype/implementationOrchestrationSummary";
-import type { ImplementationStatusQueryIntent } from "@/lib/prototype/implementationStatusQueryIntent";
-import { appendCreateWorkPlanBootstrapCtaRouteTimeline } from "@/lib/prototype/implementationIntentTimeline";
 import { summarizeImplementationSeedStatus } from "@/lib/requirements/implementationSeed";
-import {
-  postImplementationPrepSync,
-  postQuickDesignConfirm,
-} from "@/components/project-spec/apis/quickDesignConfirmApi";
-import { buildCreateImplementationSeedFromQuickDesignDraftResult } from "@/lib/prototype/implementationQuickDesignDraftBridge";
 import {
   buildImplementationEntryCursorWorkItemsRecovery,
   buildImplementationEntryCursorWorkItemsRegeneratedTimelineEntry,
@@ -129,7 +107,6 @@ import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implem
 import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
 import {
   readImplementationStageChatMessages,
-  readImplementationStageChatPatch,
 } from "@/lib/prototype/implementationStageChatSnapshot";
 import { shouldSuppressImplementationStatusMessage } from "@/lib/prototype/implementationStatusChatPolicy";
 import { resolveCodeTaskRunForAutoQualityGateClient } from "@/lib/prototype/implementationAutoQualityGateClient";
@@ -1220,128 +1197,66 @@ export function usePrototypeImplementationStagePanel(
     [parsedRequirementsState, effectiveImplementationState, projectId],
   );
 
-  const confirmImplementationTaskPlan = useCallback((): ImplementationStageActionRunResult => {
-    const pid = projectId.trim();
-    if (!pid) return { outcome: "blocked", message: "프로젝트를 선택해 주세요." };
-    const result = buildConfirmImplementationTaskPlanResult({
-      projectId: pid,
-      requirementsStateJson,
-      projectArtifacts: executionArtifacts.projectArtifacts,
-      artifactOrchestrationV1: executionArtifacts.artifactOrchestrationV1,
-      featureDraftTitles: featureDraftTitles ?? [],
-      implementationWorkPlanDraftV1: effectiveImplementationState.implementationWorkPlanDraftV1,
-      envOk: effectiveImplementationState.envOk,
-      designOk: effectiveImplementationState.designOk,
-      promptTimeline: parsedRequirementsState.promptTimeline,
-    });
-    if (result.kind === "blocked") {
-      return { outcome: "blocked", message: result.message };
-    }
-    if (result.kind === "already_confirmed") {
-      const message = "이미 구현 작업안이 확정되었습니다.";
-      return { outcome: "no_op", message };
-    }
-    applyImplementationOrchestrationResult({
-      orchestrationPatch: result.orchestrationPatch,
-    });
-    return { outcome: "executed" };
-  }, [
+  const {
+    appendImplementationTaskListAiMessage,
+    appendStatusQueryFromChip,
+    showRoleCheckDetails,
+    showImplementationSeedReadinessCheck,
+  } = useImplementationStatusNoticeController({
     projectId,
     requirementsStateJson,
+    requirementsStateJsonRef,
+    parsedRequirementsState,
+    orchestrationAwareRequirementsStateRef,
+    implementationBootstrapInput,
+    planningSlotDefinitions,
+    setImplementationStageNoticeModal,
+    applyImplementationOrchestrationResult,
+    persistChatToDb,
+    appendAiNoticeForImplementation,
+  });
+
+  const {
+    createImplementationSeedFromQuickDesignDraft,
+    confirmQuickDesignForImplementation,
+    generateImplementationTaskList,
+    generateImplementationWorkPlanDraft,
+    confirmImplementationTaskPlan,
+  } = useImplementationPlanningActionController({
+    projectId,
+    projectName,
+    projectDescription,
+    requirementsStateJson,
+    parsedRequirementsState,
+    effectiveImplementationState,
     executionArtifacts,
     featureDraftTitles,
-    effectiveImplementationState,
-    parsedRequirementsState.promptTimeline,
+    planningSlotDefinitions,
+    envOk: canRequestGeneration.envOk,
+    designOk: effectiveImplementationState.designOk,
+    prototypeRunSyncSnapshot,
+    setProtoBusy,
     applyImplementationOrchestrationResult,
-  ]);
+    persistChatToDb,
+    appendImplementationTaskListAiMessage,
+    appendUserNotice,
+  });
 
-  const generateImplementationWorkPlanDraft = useCallback((): ImplementationStageActionRunResult => {
-    const pid = projectId.trim();
-    if (!pid) return { outcome: "blocked", message: "프로젝트를 선택해 주세요." };
-    const result = buildGenerateImplementationWorkPlanDraftResult({
-      requirementsStateJson,
-      projectId: pid,
-      projectArtifacts: executionArtifacts.projectArtifacts,
-      orchestration: parsedRequirementsState.singleChatOrchestrationV1,
-      slotDefinitions: planningSlotDefinitions,
-      implementationSeedV1: parsedRequirementsState.implementationSeedV1,
-      envOk: canRequestGeneration.envOk,
-      designOk: canRequestGeneration.designOk,
-      promptTimeline: parsedRequirementsState.promptTimeline,
-    });
-    if (result.kind === "blocked") {
-      return { outcome: "blocked", message: result.message };
-    }
-    if (result.kind === "already_exists") {
-      const message = "이미 구현 작업안 초안이 생성되었습니다.";
-      return { outcome: "no_op", message };
-    }
-    const orchestrationPatch = {
-      ...result.orchestrationPatch,
-      promptTimeline: appendCreateWorkPlanBootstrapCtaRouteTimeline({
-        promptTimeline: result.orchestrationPatch.promptTimeline ?? parsedRequirementsState.promptTimeline,
-      }),
-    };
-    applyImplementationOrchestrationResult({
-      orchestrationPatch,
-    });
-    return { outcome: "executed" };
-  }, [
+  const {
+    reviewDbIntegrationNeed,
+    generateDataModelDraft,
+    confirmMockImplementationMode,
+  } = useImplementationDbStrategyActionController({
     projectId,
     requirementsStateJson,
-    executionArtifacts.projectArtifacts,
-    canRequestGeneration.envOk,
-    canRequestGeneration.designOk,
-    parsedRequirementsState.promptTimeline,
-    parsedRequirementsState.singleChatOrchestrationV1,
-    parsedRequirementsState.implementationSeedV1,
+    parsedRequirementsState,
+    effectiveImplementationState,
+    executionArtifacts,
     planningSlotDefinitions,
+    canRequestGenerationEnvOk: canRequestGeneration.envOk,
     applyImplementationOrchestrationResult,
-  ]);
-
-  const appendStatusQueryFromChip = useCallback(
-    (intent: ImplementationStatusQueryIntent) => {
-      if (!implementationBootstrapInput) {
-        appendAiNoticeForImplementation("환경 점검 결과를 표시할 수 없습니다. [환경 점검 결과]를 다시 선택해 주세요.");
-        return;
-      }
-      const prior = readImplementationStageChatMessages(requirementsStateJsonRef.current);
-      if (intent === "role_check_details" && hasImplementationRoleCheckDetailsShown(prior)) {
-        appendAiNoticeForImplementation("역할별 점검 결과가 이미 표시되어 있습니다.");
-        return;
-      }
-      const roleCheckSummary = buildImplementationRoleCheckSummary(implementationBootstrapInput);
-      const aiMessage = buildImplementationStatusQueryMessage({
-        intent,
-        summaryInput: implementationBootstrapInput,
-        roleCheckSummary,
-      });
-      if (!aiMessage) return;
-      let timeline = parsedRequirementsState.promptTimeline;
-      timeline = appendPromptTimeline(
-        timeline,
-        buildImplementationStatusQueryTimelineEntry({
-          query: intent,
-          summaryInput: implementationBootstrapInput,
-          roleCheckSummary,
-        }),
-      );
-      const chatPatch = readImplementationStageChatPatch(requirementsStateJsonRef.current);
-      void persistChatToDb(chatPatch, { promptTimeline: timeline }, undefined, { force: true });
-      appendAiNoticeForImplementation(String(aiMessage.content ?? "").trim());
-    },
-    [
-      implementationBootstrapInput,
-      requirementsStateJsonRef,
-      parsedRequirementsState.promptTimeline,
-      persistChatToDb,
-      appendAiNoticeForImplementation,
-    ],
-  );
-
-  const showRoleCheckDetails = useCallback(() => {
-    appendStatusQueryFromChip("role_check_details");
-  }, [appendStatusQueryFromChip]);
+    appendUserNotice,
+  });
 
   const {
     persistStageActionTimelineEntries,
@@ -1358,32 +1273,6 @@ export function usePrototypeImplementationStagePanel(
     showRoleCheckDetails,
     appendStatusQueryFromChip,
   });
-
-  const appendImplementationTaskListAiMessage = useCallback(
-    (message: RequirementsMessage) => {
-      const pid = projectId.trim();
-      if (
-        pid &&
-        resolveIntegratedAppPreviewReadyFromOrchestration({
-          projectId: pid,
-          orchestration: orchestrationAwareRequirementsStateRef.current,
-        })
-      ) {
-        return;
-      }
-      const text = String(message.content ?? "").trim();
-      const suggestions = (message.meta as { interviewSuggestions?: readonly string[] } | undefined)
-        ?.interviewSuggestions;
-      const actionLabels = suggestions?.filter((l) => String(l ?? "").trim());
-      if (text || actionLabels?.length) {
-        setImplementationStageNoticeModal({
-          body: text,
-          ...(actionLabels?.length ? { actionLabels: [...actionLabels] } : {}),
-        });
-      }
-    },
-    [projectId],
-  );
 
   useImplementationAutoPrepSyncController({
     autoRefineImplementationPrep,
@@ -1437,203 +1326,6 @@ export function usePrototypeImplementationStagePanel(
     }
     refreshImplementationBoardWithExecutionSetup(row, "execution_setup_saved");
   }, [refreshExecutionEnvironmentStatus, refreshImplementationBoardWithExecutionSetup]);
-
-  const applyDbStrategyResult = useCallback(
-    (
-      result:
-        | ReturnType<typeof buildDbIntegrationReviewResult>
-        | ReturnType<typeof buildDataModelDraftResult>
-        | ReturnType<typeof buildMockImplementationModeResult>,
-    ): ImplementationStageActionRunResult => {
-      if (result.kind === "blocked") {
-        return { outcome: "blocked", message: result.message };
-      }
-      applyImplementationOrchestrationResult({
-        messages: result.messages,
-        orchestrationPatch: result.orchestrationPatch,
-      });
-      return { outcome: "executed" };
-    },
-    [applyImplementationOrchestrationResult],
-  );
-
-  const reviewDbIntegrationNeed = useCallback((): ImplementationStageActionRunResult => {
-    let slots = parsedRequirementsState.implementationSlotsV1;
-    if (!slots) {
-      const ensured = ensureImplementationTaskPlan({
-        requirementsStateJson,
-        effectiveState: effectiveImplementationState,
-        ensureDraftInput: {
-          requirementsStateJson,
-          projectId: projectId.trim(),
-          projectArtifacts: executionArtifacts.projectArtifacts,
-          orchestration: parsedRequirementsState.singleChatOrchestrationV1,
-          slotDefinitions: planningSlotDefinitions,
-          envOk: canRequestGeneration.envOk,
-          promptTimeline: parsedRequirementsState.promptTimeline,
-        },
-        confirmTaskPlanInput: {
-          projectId: projectId.trim(),
-          requirementsStateJson,
-          projectArtifacts: executionArtifacts.projectArtifacts,
-          artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
-          featureDraftTitles: parsedRequirementsState.featureDraftTitles,
-          envOk: canRequestGeneration.envOk,
-          designOk: true,
-          promptTimeline: parsedRequirementsState.promptTimeline,
-        },
-      });
-
-      if (!ensured.ok || !ensured.patch) {
-        const message = ensured.message ?? "구현 작업안을 자동으로 준비할 수 없습니다.";
-        return { outcome: "blocked", message };
-      }
-
-      const current = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-      applyImplementationOrchestrationResult({
-        messages: ensured.messages ?? (current.messages ?? []),
-        orchestrationPatch: ensured.patch,
-      });
-      slots = ensured.patch.implementationSlotsV1 as typeof slots;
-    }
-
-    return applyDbStrategyResult(
-      buildDbIntegrationReviewResult({
-        requirementsStateJson,
-        implementationSlotsV1: slots,
-        implementationDbStrategyV1: parsedRequirementsState.implementationDbStrategyV1,
-        implementationTaskPlanV1: effectiveImplementationState.implementationTaskPlanV1,
-        projectArtifacts: executionArtifacts.projectArtifacts,
-        promptTimeline: parsedRequirementsState.promptTimeline,
-      }),
-    );
-  }, [
-    applyDbStrategyResult,
-    requirementsStateJson,
-    projectId,
-    parsedRequirementsState.implementationSlotsV1,
-    parsedRequirementsState.implementationDbStrategyV1,
-    effectiveImplementationState.implementationTaskPlanV1,
-    effectiveImplementationState,
-    parsedRequirementsState.promptTimeline,
-    executionArtifacts.projectArtifacts,
-    parsedRequirementsState.singleChatOrchestrationV1,
-    parsedRequirementsState.artifactOrchestrationV1,
-    parsedRequirementsState.featureDraftTitles,
-    planningSlotDefinitions,
-    canRequestGeneration.envOk,
-    applyImplementationOrchestrationResult,
-    appendUserNotice,
-  ]);
-
-  const generateDataModelDraft = useCallback((): ImplementationStageActionRunResult => {
-    return applyDbStrategyResult(
-      buildDataModelDraftResult({
-        requirementsStateJson,
-        implementationSlotsV1: parsedRequirementsState.implementationSlotsV1,
-        implementationDbStrategyV1: parsedRequirementsState.implementationDbStrategyV1,
-        promptTimeline: parsedRequirementsState.promptTimeline,
-      }),
-    );
-  }, [
-    applyDbStrategyResult,
-    requirementsStateJson,
-    parsedRequirementsState.implementationSlotsV1,
-    parsedRequirementsState.implementationDbStrategyV1,
-    parsedRequirementsState.promptTimeline,
-  ]);
-
-  const confirmMockImplementationMode = useCallback((): ImplementationStageActionRunResult => {
-    let slots = parsedRequirementsState.implementationSlotsV1;
-    if (!slots) {
-      const taskListEnsured = ensureImplementationArtifactsFromTaskList({
-        requirementsStateJson,
-        effectiveState: effectiveImplementationState,
-        projectId: projectId.trim(),
-        projectArtifacts: executionArtifacts.projectArtifacts,
-        artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
-        envOk: canRequestGeneration.envOk,
-        designOk: true,
-        envCursorBadge: canRequestGeneration.envOk ? "ok" : "needs",
-        promptTimeline: parsedRequirementsState.promptTimeline,
-      });
-      if (taskListEnsured.ok && taskListEnsured.patch) {
-        const current = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-        applyImplementationOrchestrationResult({
-          messages: taskListEnsured.messages ?? (current.messages ?? []),
-          orchestrationPatch: taskListEnsured.patch,
-        });
-        slots = taskListEnsured.patch.implementationSlotsV1 as typeof slots;
-      }
-    }
-    if (!slots) {
-      const ensured = ensureMockImplementationReady({
-        requirementsStateJson,
-        effectiveState: effectiveImplementationState,
-        ensureTaskPlanInput: {
-          requirementsStateJson,
-          effectiveState: effectiveImplementationState,
-          ensureDraftInput: {
-            requirementsStateJson,
-            projectId: projectId.trim(),
-            projectArtifacts: executionArtifacts.projectArtifacts,
-            orchestration: parsedRequirementsState.singleChatOrchestrationV1,
-            slotDefinitions: planningSlotDefinitions,
-            envOk: canRequestGeneration.envOk,
-            promptTimeline: parsedRequirementsState.promptTimeline,
-          },
-          confirmTaskPlanInput: {
-            projectId: projectId.trim(),
-            requirementsStateJson,
-            projectArtifacts: executionArtifacts.projectArtifacts,
-            artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
-            featureDraftTitles: parsedRequirementsState.featureDraftTitles,
-            envOk: canRequestGeneration.envOk,
-            designOk: true,
-            promptTimeline: parsedRequirementsState.promptTimeline,
-          },
-        },
-        promptTimeline: parsedRequirementsState.promptTimeline,
-      });
-
-      if (!ensured.ok || !ensured.patch) {
-        const message = ensured.message ?? "구현 작업안을 자동으로 준비할 수 없습니다.";
-        return { outcome: "blocked", message };
-      }
-
-      const current = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-      applyImplementationOrchestrationResult({
-        messages: ensured.messages ?? (current.messages ?? []),
-        orchestrationPatch: ensured.patch,
-      });
-      slots = ensured.patch.implementationSlotsV1 as typeof slots;
-    }
-
-    return applyDbStrategyResult(
-      buildMockImplementationModeResult({
-        requirementsStateJson,
-        implementationSlotsV1: slots,
-        implementationDbStrategyV1: parsedRequirementsState.implementationDbStrategyV1,
-        promptTimeline: parsedRequirementsState.promptTimeline,
-      }),
-    );
-  }, [
-    applyDbStrategyResult,
-    requirementsStateJson,
-    projectId,
-    parsedRequirementsState.implementationSlotsV1,
-    parsedRequirementsState.implementationDbStrategyV1,
-    parsedRequirementsState.promptTimeline,
-    effectiveImplementationState,
-    executionArtifacts.projectArtifacts,
-    parsedRequirementsState.singleChatOrchestrationV1,
-    parsedRequirementsState.artifactOrchestrationV1,
-    parsedRequirementsState.featureDraftTitles,
-    planningSlotDefinitions,
-    canRequestGeneration.envOk,
-    applyImplementationOrchestrationResult,
-    appendUserNotice,
-  ]);
 
   const {
     executePlatformScmAfterRequest,
@@ -1732,29 +1424,6 @@ export function usePrototypeImplementationStagePanel(
     ],
   );
 
-  const showImplementationSeedReadinessCheck = useCallback(() => {
-    const pid = projectId.trim();
-    if (!pid) return;
-    const result = buildPlanningImplementationSeedCheckResult({
-      projectId: pid,
-      orchestration: parsedRequirementsState.singleChatOrchestrationV1,
-      definitions: planningSlotDefinitions,
-      promptTimeline: parsedRequirementsState.promptTimeline,
-    });
-    applyImplementationOrchestrationResult({
-      orchestrationPatch: result.orchestrationPatch,
-    });
-    appendAiNoticeForImplementation(String(result.message.content ?? "").trim());
-  }, [
-    projectId,
-    parsedRequirementsState.singleChatOrchestrationV1,
-    parsedRequirementsState.promptTimeline,
-    planningSlotDefinitions,
-    requirementsStateJson,
-    applyImplementationOrchestrationResult,
-    appendAiNoticeForImplementation,
-  ]);
-
   const {
     integrationMergeBusy,
     mergeIntegrationPullRequest,
@@ -1768,125 +1437,6 @@ export function usePrototypeImplementationStagePanel(
     applyPendingFromOrchestrationPatch,
     persistChatToDb,
   });
-
-  const createImplementationSeedFromQuickDesignDraft = useCallback((): ImplementationStageActionRunResult => {
-    const pid = projectId.trim();
-    if (!pid) return { outcome: "blocked", message: "프로젝트를 선택해 주세요." };
-    const result = buildCreateImplementationSeedFromQuickDesignDraftResult({
-      projectId: pid,
-      projectName: projectName || "프로젝트",
-      fastPlanDraftV1: parsedRequirementsState.fastPlanDraftV1,
-      orchestration: parsedRequirementsState.singleChatOrchestrationV1,
-      slotDefinitions: planningSlotDefinitions,
-      promptTimeline: parsedRequirementsState.promptTimeline,
-    });
-    if (result.kind === "blocked") {
-      return { outcome: "blocked", message: result.message };
-    }
-    const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-    applyImplementationOrchestrationResult({
-      messages: [...(resolved.messages ?? []), ...result.messages],
-      orchestrationPatch: result.orchestrationPatch,
-    });
-    return { outcome: "executed" };
-  }, [
-    projectId,
-    projectName,
-    parsedRequirementsState.fastPlanDraftV1,
-    parsedRequirementsState.singleChatOrchestrationV1,
-    parsedRequirementsState.promptTimeline,
-    planningSlotDefinitions,
-    requirementsStateJson,
-    applyImplementationOrchestrationResult,
-    appendUserNotice,
-  ]);
-
-  const confirmQuickDesignForImplementation = useCallback((): ImplementationStageActionRunResult => {
-    const pid = projectId.trim();
-    if (!pid) return { outcome: "blocked", message: "프로젝트를 선택해 주세요." };
-    void (async () => {
-      setProtoBusy(true);
-      try {
-        const resolved = resolvePrototypeExecutionSingleChatFromState(requirementsStateJson);
-        const { res, json } = await postQuickDesignConfirm(pid, {
-          mode: "implementation",
-          projectName: projectName || "프로젝트",
-          projectDescription: projectDescription ?? "",
-          requirementsStateJson,
-          conversationMessages: resolved.messages ?? [],
-          slotDefinitions: planningSlotDefinitions,
-          envOkOverride: canRequestGeneration.envOk,
-        });
-        if (!res.ok || !json.success || !json.data) {
-          return;
-        }
-        applyImplementationOrchestrationResult({
-          messages: json.data.messages ?? [],
-          orchestrationPatch: (json.data.orchestrationPatch ?? {}) as PrototypeExecutionOrchestrationPersistInput,
-        });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";
-      } finally {
-        setProtoBusy(false);
-      }
-    })();
-    return { outcome: "executed" };
-  }, [
-    projectId,
-    projectName,
-    projectDescription,
-    requirementsStateJson,
-    planningSlotDefinitions,
-    canRequestGeneration.envOk,
-    applyImplementationOrchestrationResult,
-    appendUserNotice,
-  ]);
-
-  const generateImplementationTaskList = useCallback((): ImplementationStageActionRunResult => {
-    const pid = projectId.trim();
-    const seed = parsedRequirementsState.implementationSeedV1;
-    void (async () => {
-      const { res, json } = await postImplementationPrepSync(pid, {
-        seed,
-        existingTaskList: parsedRequirementsState.implementationTaskListV1,
-        existingCodeTaskPlan: parsedRequirementsState.implementationCodeTaskPlanV1,
-        existingExecutionState: parsedRequirementsState.implementationTaskExecutionStateV1,
-        existingCursorWorkItems: parsedRequirementsState.cursorWorkItemsV1,
-        existingPreflightSummary: parsedRequirementsState.implementationWorkItemPreflightSummaryV1,
-        existingQualityGate: parsedRequirementsState.implementationCodeTaskQualityGateV1,
-        priorTimeline: parsedRequirementsState.promptTimeline,
-        projectArtifacts: executionArtifacts.projectArtifacts,
-        artifactOrchestrationV1: parsedRequirementsState.artifactOrchestrationV1,
-        envOk: canRequestGeneration.envOk,
-        designOk: effectiveImplementationState.designOk,
-        previewReady: prototypeRunSyncSnapshot.previewReady,
-      });
-      const result = json.data;
-      if (!res.ok || !json.success || !result?.ok) {
-        return;
-      }
-      void persistChatToDb(
-        resolvePrototypeExecutionSingleChatFromState(requirementsStateJson),
-        result.patch,
-      );
-      for (const message of result.messages) {
-        appendImplementationTaskListAiMessage(message);
-      }
-    })();
-    return { outcome: "executed" };
-  }, [
-    projectId,
-    parsedRequirementsState,
-    executionArtifacts,
-    canRequestGeneration,
-    effectiveImplementationState.designOk,
-    executionSetupRow,
-    prototypeRunSyncSnapshot.previewReady,
-    persistChatToDb,
-    requirementsStateJson,
-    appendImplementationTaskListAiMessage,
-    appendUserNotice,
-  ]);
 
   const legacyDispatch = useImplementationStageActionLegacyDispatchBundle({
     projectId,
