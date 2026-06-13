@@ -17,7 +17,7 @@ import {
 import { useImplementationGithubVerifyController } from "@/components/preview/useImplementationGithubVerifyController";
 import { useImplementationQuickRunController, persistImplementationQuickRunRequirementsPrep } from "@/components/preview/useImplementationQuickRunController";
 import { useImplementationStageActionController } from "@/components/preview/useImplementationStageActionController";
-import type { ImplementationStageActionControllerInput } from "@/components/preview/useImplementationStageActionController";
+import { useImplementationStageActionLegacyDispatch } from "@/components/preview/useImplementationStageActionLegacyDispatch";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -940,14 +940,10 @@ export function usePrototypeImplementationStagePanel(
   }, [implementationBoard, implementationBootstrapInput, implementationVisibleActionLabels]);
 
   const runImplementationStageActionRef = useRef<
-    (actionId: ImplementationStageActionId) => ImplementationStageActionRunResult
+    (
+      actionId: ImplementationStageActionId,
+    ) => ImplementationStageActionRunResult | Promise<ImplementationStageActionRunResult>
   >(() => ({ outcome: "blocked", message: "구현단계 action을 준비하는 중입니다." }));
-  const startImplementationQuickRunRef = useRef<
-    () => Promise<ImplementationStageActionRunResult>
-  >(async () => ({
-    outcome: "blocked",
-    message: "Quick 실행을 준비하는 중입니다.",
-  }));
   const persistImplementationStageActionRunRef = useRef<(run: ImplementationStageActionRun) => void>(() => {});
 
   const appendAiNoticeForImplementation = useCallback(
@@ -2473,9 +2469,8 @@ export function usePrototypeImplementationStagePanel(
     appendUserNotice,
   ]);
 
-  const implementationStageActionControllerInput = useMemo((): ImplementationStageActionControllerInput => {
+  const implementationStageActionLegacyDispatchInput = useMemo(() => {
     return {
-      startImplementationQuickRunRef,
       simple: {
         projectId,
         generateImplementationTaskList,
@@ -2581,9 +2576,51 @@ export function usePrototypeImplementationStagePanel(
     persistedQueueDispatch,
   ]);
 
-  const { runImplementationStageAction } = useImplementationStageActionController(
-    implementationStageActionControllerInput,
+  const legacyDispatch = useImplementationStageActionLegacyDispatch(
+    implementationStageActionLegacyDispatchInput,
   );
+
+  const executeCodeTasks = useCallback(
+    async (executeInput: { readonly codeTaskIds: readonly string[]; readonly source: string }) => {
+      if (!executeInput.codeTaskIds.length) {
+        return { outcome: "blocked", message: "실행할 CodeTask를 선택해 주세요." };
+      }
+      return startImplementationQuickRun({ selectedCodeTaskIds: executeInput.codeTaskIds });
+    },
+    [startImplementationQuickRun],
+  );
+
+  const openPreviewFromStageAction = useCallback(() => {
+    const url = String(
+      implementationControlPlaneSnapshot?.preview.actualPreviewUrl ?? previewUrl ?? "",
+    ).trim();
+    if (!url) {
+      appendUserNotice("Preview URL을 확인할 수 없습니다.");
+      return;
+    }
+    openImplementationPreview({ mode: "integrated_app_preview", url });
+  }, [
+    implementationControlPlaneSnapshot,
+    previewUrl,
+    openImplementationPreview,
+    appendUserNotice,
+  ]);
+
+  const { runImplementationStageAction } = useImplementationStageActionController({
+    projectId,
+    implementationControlPlaneSnapshot,
+    boardSelectionBridge,
+    codeTaskDispatchPreferredTaskIdRef,
+    dbQueuedQuickRunDispatchRef,
+    startImplementationQuickRun,
+    recoverQuickRunStuckGithubVerify,
+    handleManualGithubVerifyRetry,
+    runIntegrationPipeline,
+    openPreview: openPreviewFromStageAction,
+    executeCodeTasks,
+    appendUserNotice,
+    legacyDispatch,
+  });
 
   const autoRefineOnceRef = useRef(false);
   useEffect(() => {
@@ -2984,27 +3021,6 @@ export function usePrototypeImplementationStagePanel(
     },
     [handleImplementationChip],
   );
-
-  useEffect(() => {
-    startImplementationQuickRunRef.current = () => {
-      const imp = orchestrationAwareRequirementsStateRef.current;
-      const cp = implementationControlPlaneSnapshot;
-      if (
-        cp?.action.primaryAction === "execute_selected_runnable_codetasks" &&
-        cp.action.enabled &&
-        cp.action.codeTaskIds.length > 0
-      ) {
-        void startImplementationQuickRun({ selectedCodeTaskIds: cp.action.codeTaskIds });
-        return;
-      }
-      const bridgeSnap = boardSelectionBridge.getBridgeSnapshot();
-      const selectedCodeTaskIds = resolveCheckedCodeTaskIdsFromBoardBridge({
-        bridge: bridgeSnap,
-        requirementsState: imp,
-      });
-      void startImplementationQuickRun({ selectedCodeTaskIds });
-    };
-  }, [startImplementationQuickRun, projectId, boardSelectionBridge, implementationControlPlaneSnapshot]);
 
   const handleCopyCodeTaskCursorPrompt = useCallback(
     (codeTaskId: string) => {

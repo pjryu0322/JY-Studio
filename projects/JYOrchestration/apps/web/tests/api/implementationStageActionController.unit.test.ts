@@ -23,5 +23,15 @@ describe("implementation stage action controller wiring", () => {
     expect(src).not.toContain('case "START_QUICK_IMPLEMENTATION":');
     expect(src).not.toContain('case "VERIFY_TASK_CURSOR_GITHUB":');
     expect(src).not.toContain('case "PREPARE_INTEGRATION_PREVIEW":');
+    expect(src).not.toContain('case "OPEN_PREVIEW":');
+    expect(src).not.toContain('action === "START_QUICK_IMPLEMENTATION"');
+    expect(src).not.toContain('action === "VERIFY_TASK_CURSOR_GITHUB"');
+  });
+
+  it("routes control plane actions inside stage action controller", () => {
+    const src = readFileSync(join(previewDir, "useImplementationStageActionController.ts"), "utf8");
+    expect(src).toContain("routeImplementationStageControlPlaneAction");
+    expect(src).toContain("executeCodeTasks");
+    expect(src).toContain("runIntegrationPipeline");
   });
 });
