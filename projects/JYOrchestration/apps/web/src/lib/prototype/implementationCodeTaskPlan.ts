@@ -12,6 +12,7 @@ import {
   parseImplementationBranchPlanV1,
 } from "@/lib/prototype/implementationBranchPlan";
 import { repairCodeTaskPlanWithBranchPlan } from "@/lib/prototype/codeTaskPlanRepairService";
+import { resolveCodeTaskPlanAggregateCounts } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { prepareCodeTaskPlanForStageOnePrompt } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
 import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import { buildSemanticProductionCodeTaskId } from "@/lib/prototype/codeTaskCanonicalId";
@@ -621,6 +622,7 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
     o.readiness && typeof o.readiness === "object"
       ? (o.readiness as Record<string, unknown>)
       : {};
+  const aggregateCounts = resolveCodeTaskPlanAggregateCounts(tasks);
   return {
     version: IMPLEMENTATION_CODE_TASK_PLAN_VERSION,
     projectId,
@@ -628,7 +630,7 @@ export function parseImplementationCodeTaskPlanV1(raw: unknown): ImplementationC
     updatedAt: String(o.updatedAt ?? nowIsoFallback()),
     source: "implementation_task_list",
     parentTaskCount: Number(o.parentTaskCount ?? 0) || 0,
-    codeTaskCount: tasks.length,
+    codeTaskCount: aggregateCounts.executableCodeTaskCount,
     tasks,
     readiness: {
       ready: readinessRaw.ready === true,

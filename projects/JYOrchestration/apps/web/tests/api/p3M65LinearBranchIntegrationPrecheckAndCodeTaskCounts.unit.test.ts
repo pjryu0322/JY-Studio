@@ -94,7 +94,7 @@ function planWithIntegrationWiring(): ImplementationCodeTaskPlanV1 {
     projectId: "p1",
     createdAt: NOW,
     updatedAt: NOW,
-    codeTaskCount: 16,
+    codeTaskCount: 5,
     tasks,
     implementationBranchPlanV1: impl,
   };

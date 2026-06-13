@@ -20,6 +20,7 @@ import {
   INTEGRATION_WIRING_ROLE_TEXT,
   listExecutableCodeTasksFromPlan,
   planHasIntegrationWiringCodeTask,
+  resolveCodeTaskPlanAggregateCounts,
 } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import type {
   ImplementationCodeTaskPlanV1,
@@ -276,7 +277,11 @@ export function buildCodeTaskFileBoundaryStageOneBlockLines(
 }
 
 export type StageOnePromptQualitySummary = Readonly<{
+  /** Executable CodeTask count (excludes integration orchestration). */
   readonly totalCodeTasks: number;
+  readonly executableCodeTaskCount: number;
+  readonly integrationOrchestrationTaskCount: number;
+  readonly totalPlannedTaskCount: number;
   readonly branchPlanCount: number;
   readonly fileBoundaryCount: number;
   readonly integrationTaskPresent: boolean;
@@ -290,6 +295,7 @@ export function summarizeStageOnePromptQuality(input: {
   readonly promptContextMap?: CodeTaskPromptContextMapV1 | null;
 }): StageOnePromptQualitySummary {
   const tasks = listExecutableCodeTasksFromPlan(input.codeTaskPlan.tasks);
+  const aggregate = resolveCodeTaskPlanAggregateCounts(input.codeTaskPlan.tasks);
   let branchPlanCount = 0;
   let fileBoundaryCount = 0;
   let readyCount = 0;
@@ -312,6 +318,9 @@ export function summarizeStageOnePromptQuality(input: {
 
   return {
     totalCodeTasks: tasks.length,
+    executableCodeTaskCount: aggregate.executableCodeTaskCount,
+    integrationOrchestrationTaskCount: aggregate.integrationOrchestrationTaskCount,
+    totalPlannedTaskCount: aggregate.totalPlannedTaskCount,
     branchPlanCount,
     fileBoundaryCount,
     integrationTaskPresent: planHasIntegrationWiringCodeTask(input.codeTaskPlan.tasks),
@@ -327,8 +336,9 @@ export function formatStageOnePromptQualitySummaryLines(
   return [
     "CodeTask 1단계 프롬프트 품질",
     "",
-    `전체 CodeTask: ${summary.totalCodeTasks}개`,
-    `실행 CodeTask: ${summary.totalCodeTasks}개`,
+    `실행 CodeTask: ${summary.executableCodeTaskCount}개`,
+    `Integration Orchestration Task: ${summary.integrationOrchestrationTaskCount > 0 ? "정의됨" : "없음"}`,
+    `전체 계획 Task: ${summary.totalPlannedTaskCount}개`,
     `Branch Plan 생성: ${summary.branchPlanCount}개`,
     `File Boundary 생성: ${summary.fileBoundaryCount}개`,
     `Integration Task: ${summary.integrationTaskPresent ? "있음" : "없음"}`,

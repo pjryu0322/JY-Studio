@@ -3,6 +3,7 @@ import { buildFileBoundaryForRole } from "@/lib/prototype/codeTaskFileBoundaryPl
 import {
   INTEGRATION_WIRING_CODE_TASK_ID,
   buildIntegrationWiringCodeTask,
+  resolveCodeTaskPlanAggregateCounts,
 } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { prepareCodeTaskPlanForStageOnePrompt } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
 import { resolveCodeTaskCanonicalSlug, slugContainsHangul } from "@/lib/prototype/codeTaskSlug";
@@ -81,8 +82,10 @@ describe("P3-M48 prepareCodeTaskPlanForStageOnePrompt", () => {
     });
     expect(prepared.plan.tasks.length).toBeGreaterThanOrEqual(raw.tasks.length);
     expect(integrationTaskIsLast(prepared.plan)).toBe(true);
-    expect(prepared.readiness.branchPlanCount).toBe(prepared.plan.tasks.length);
-    expect(prepared.readiness.fileBoundaryCount).toBe(prepared.plan.tasks.length);
+    const execTotal = resolveCodeTaskPlanAggregateCounts(prepared.plan.tasks).executableCodeTaskCount;
+    expect(prepared.plan.codeTaskCount).toBe(execTotal);
+    expect(prepared.readiness.branchPlanCount).toBe(execTotal);
+    expect(prepared.readiness.fileBoundaryCount).toBe(execTotal);
     expect(prepared.readiness.ready).toBe(true);
     for (const ct of prepared.plan.tasks) {
       expect(codeTaskHasPersistedBranchPlan(ct)).toBe(true);
@@ -90,7 +93,8 @@ describe("P3-M48 prepareCodeTaskPlanForStageOnePrompt", () => {
     }
     const groupSection = buildBranchPlanGroupListingSections(prepared.plan).join("\n");
     expect(groupSection).toContain("### foundation");
-    expect(groupSection).toContain(INTEGRATION_WIRING_CODE_TASK_ID);
+    expect(groupSection).not.toContain(INTEGRATION_WIRING_CODE_TASK_ID);
+    expect(prepared.plan.tasks.some((t) => t.codeTaskId === INTEGRATION_WIRING_CODE_TASK_ID)).toBe(true);
   });
 
   it("integration task uses final wiring content not app shell rewrite", () => {

@@ -82,6 +82,31 @@ export function findIntegrationOrchestrationCodeTask(
   return tasks.find((t) => isIntegrationWiringCodeTask(t)) ?? null;
 }
 
+export function listIntegrationOrchestrationTasksFromPlan(
+  tasks: readonly ImplementationCodeTaskV1[],
+): readonly ImplementationCodeTaskV1[] {
+  return tasks.filter((t) => isIntegrationWiringCodeTask(t));
+}
+
+export type CodeTaskPlanAggregateCountsV1 = Readonly<{
+  readonly executableCodeTaskCount: number;
+  readonly integrationOrchestrationTaskCount: number;
+  readonly totalPlannedTaskCount: number;
+}>;
+
+/** Persisted `codeTaskCount` = executable only; total plan size = totalPlannedTaskCount. */
+export function resolveCodeTaskPlanAggregateCounts(
+  tasks: readonly ImplementationCodeTaskV1[],
+): CodeTaskPlanAggregateCountsV1 {
+  const executableCodeTaskCount = listExecutableCodeTasksFromPlan(tasks).length;
+  const integrationOrchestrationTaskCount = listIntegrationOrchestrationTasksFromPlan(tasks).length;
+  return {
+    executableCodeTaskCount,
+    integrationOrchestrationTaskCount,
+    totalPlannedTaskCount: executableCodeTaskCount + integrationOrchestrationTaskCount,
+  };
+}
+
 export function resolveIntegrationProcessTaskTitle(
   taskList?: ImplementationTaskListV1 | null,
 ): string {
@@ -181,10 +206,11 @@ export function appendIntegrationWiringCodeTaskToPlan(input: {
     designOk: input.designOk ?? true,
   });
   tasks.push(wiring);
+  const counts = resolveCodeTaskPlanAggregateCounts(tasks);
   return {
     ...input.plan,
     tasks,
-    codeTaskCount: tasks.length,
+    codeTaskCount: counts.executableCodeTaskCount,
     updatedAt: new Date().toISOString(),
   };
 }

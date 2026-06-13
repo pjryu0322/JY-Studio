@@ -1,7 +1,7 @@
 import type { ImplementationCodeTaskPlanV1, ImplementationCodeTaskV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import { CODE_TASK_FILE_BOUNDARY_VERSION } from "@/lib/prototype/codeTaskFileBoundary";
 import { normalizeCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundaryNormalize";
-import { integrationWiringFileBoundary } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import { integrationWiringFileBoundary, resolveCodeTaskPlanAggregateCounts } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { isSampleDataCodeTaskRef } from "@/lib/prototype/sampleDataCodeTaskPlanner";
 
 export const CANONICAL_PREVIEW_UX_WIRING_CODE_TASK_ID = "CODE-WIRING-PREVIEW-001" as const;
@@ -99,10 +99,11 @@ export function ensurePreviewUxWiringCodeTaskInPlan(
     );
   }
 
+  const counts = resolveCodeTaskPlanAggregateCounts(tasks);
   return {
     ...plan,
     tasks,
-    codeTaskCount: tasks.length,
+    codeTaskCount: counts.executableCodeTaskCount,
     updatedAt: new Date().toISOString(),
   };
 }

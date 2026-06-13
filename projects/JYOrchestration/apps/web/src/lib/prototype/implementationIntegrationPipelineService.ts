@@ -17,6 +17,7 @@ import { createIntegrationPullRequest } from "@/lib/prototype/githubIntegrationP
 import { findLatestRunForCodeTask, type CodeTaskExecutionRunV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import { ensureCodeTaskPlanWithFileBoundaries } from "@/lib/prototype/codeTaskPlanRepairService";
 import { runIntegrationConflictPrecheck } from "@/lib/prototype/integrationConflictPrecheck";
+import { resolveCodeTaskPlanAggregateCounts } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import {
@@ -542,7 +543,11 @@ export async function runIntegrationBranchPipeline(input: {
     }
   }
 
-  const totalCodeTaskCount = input.codeTaskPlan?.tasks?.length ?? asReadonlyArray(plan.included).length;
+  const totalCodeTaskCount =
+    input.codeTaskPlan != null
+      ? (input.codeTaskPlan.codeTaskCount ??
+        resolveCodeTaskPlanAggregateCounts(input.codeTaskPlan.tasks).executableCodeTaskCount)
+      : asReadonlyArray(plan.included).length;
   pushTimeline("integration_gate_passed", {
     integrationReadyCount: asReadonlyArray(plan.included).length,
     totalCount: totalCodeTaskCount,

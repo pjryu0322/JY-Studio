@@ -4,6 +4,7 @@ import {
   buildCursorWorkItemsFromImplementationTaskListFallback,
   mergeCursorWorkItemsWithMissingCodeTaskPlanTasks,
 } from "@/lib/prototype/implementationCursorWorkItems";
+import { resolveCodeTaskPlanAggregateCounts } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
 import {
@@ -84,7 +85,9 @@ export function deriveImplementationEntryState(input: {
   const taskList = input.implementationTaskListV1;
   const taskCount = taskList?.tasks?.length ?? 0;
   const developerTaskCount = taskList?.roleSummary?.developer ?? 0;
-  const codeTaskCount = input.implementationCodeTaskPlanV1?.tasks?.length ?? 0;
+  const codeTaskCount =
+    input.implementationCodeTaskPlanV1?.codeTaskCount ??
+    resolveCodeTaskPlanAggregateCounts(input.implementationCodeTaskPlanV1?.tasks ?? []).executableCodeTaskCount;
   const workItemCount = input.cursorWorkItemsV1?.length ?? 0;
 
   const baseMeta = {

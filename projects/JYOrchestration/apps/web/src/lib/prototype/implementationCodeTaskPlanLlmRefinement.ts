@@ -44,6 +44,7 @@ import {
   type CodeTaskLlmRefinementBatch,
 } from "@/lib/prototype/implementationCodeTaskPlanLlmBatchRefinement";
 import { validateImplementationCodeTaskPlan } from "@/lib/prototype/implementationCodeTaskPlanValidator";
+import { resolveCodeTaskPlanAggregateCounts } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import type { LlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
@@ -368,11 +369,12 @@ function buildPlanFromTasks(input: {
   if (input.tasks.some((task) => task.status === "draft")) missing.push("draft CodeTask 존재");
   if (input.validationReport.status === "failed") missing.push("CodeTaskPlan validation failed");
 
+  const planCounts = resolveCodeTaskPlanAggregateCounts(input.tasks);
   const plan: ImplementationCodeTaskPlanV1 = {
     ...input.basePlan,
     updatedAt: input.nowIso,
     tasks: input.tasks,
-    codeTaskCount: input.tasks.length,
+    codeTaskCount: planCounts.executableCodeTaskCount,
     parentTaskCount: input.basePlan.parentTaskCount,
     readiness: {
       ready:

@@ -10,7 +10,7 @@ import { parseCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundar
 import { inferCodeTaskFileBoundary } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import { normalizeCodeTaskFileBoundaryV1 } from "@/lib/prototype/codeTaskFileBoundaryNormalize";
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
-import { ensureIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import { ensureIntegrationWiringCodeTask, resolveCodeTaskPlanAggregateCounts } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { ensurePreviewUxWiringCodeTaskInPlan } from "@/lib/prototype/previewUxWiringCodeTaskPlanner";
 import { prepareCodeTaskPlanForStageOnePrompt } from "@/lib/prototype/prepareCodeTaskPlanForStageOnePrompt";
 import { integrationTaskIsLast } from "@/lib/prototype/stageOnePromptReadiness";
@@ -156,13 +156,14 @@ export function repairCodeTaskPlanWithBranchPlan(input: {
     (g) => `${g.groupId}: ${g.codeTaskIds.length}개`,
   );
   const readiness = prepared.readiness;
+  const execTotal = resolveCodeTaskPlanAggregateCounts(prepared.plan.tasks).executableCodeTaskCount;
   return {
     plan: prepared.plan,
     conflictPlan: prepared.conflictPlan ?? input.plan.codeTaskConflictPlanV1 ?? buildCodeTaskFileConflictPlan(prepared.plan.tasks),
     summaryLines: [
-      `Branch Plan 생성: ${readiness.branchPlanCount}/${prepared.plan.tasks.length}`,
-      `File Boundary 생성: ${readiness.fileBoundaryCount}/${prepared.plan.tasks.length}`,
-      `ready CodeTask: ${readiness.readyCodeTaskCount}/${prepared.plan.tasks.length}`,
+      `Branch Plan 생성: ${readiness.branchPlanCount}/${execTotal}`,
+      `File Boundary 생성: ${readiness.fileBoundaryCount}/${execTotal}`,
+      `ready CodeTask: ${readiness.readyCodeTaskCount}/${execTotal}`,
       ...(groupSummary?.length
         ? [`Branch Plan 보정 완료 · ${groupSummary.join(" · ")}`]
         : []),

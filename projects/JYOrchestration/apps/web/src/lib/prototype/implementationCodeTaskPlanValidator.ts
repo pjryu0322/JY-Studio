@@ -6,6 +6,10 @@ import {
   type ImplementationCodeTaskPlanValidationReportV1,
 } from "@/lib/prototype/implementationCodeTaskPlan";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import {
+  INTEGRATION_WIRING_PARENT_TASK_ID,
+  isIntegrationWiringCodeTask,
+} from "@/lib/prototype/codeTaskIntegrationWiringTask";
 
 function developerTaskIds(taskList: ImplementationTaskListV1): ReadonlySet<string> {
   return new Set(
@@ -60,7 +64,10 @@ export function validateImplementationCodeTaskPlan(input: {
     }
     if (!parentTaskId) {
       errors.push(`missing parentTaskId for ${codeTaskId}`);
-    } else if (!devTaskIds.has(parentTaskId)) {
+    } else if (
+      !devTaskIds.has(parentTaskId) &&
+      !(isIntegrationWiringCodeTask(task) && parentTaskId === INTEGRATION_WIRING_PARENT_TASK_ID)
+    ) {
       errors.push(`unknown parentTaskId: ${parentTaskId}`);
     }
 

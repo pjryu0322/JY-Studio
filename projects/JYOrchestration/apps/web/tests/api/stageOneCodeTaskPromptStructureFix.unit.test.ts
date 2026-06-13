@@ -5,7 +5,16 @@ import {
   filterPerTaskVerificationLines,
 } from "@/lib/prototype/codeTaskPlanningDraftPolish";
 import { buildImplementationCodeTaskPlanFromTaskList } from "@/lib/prototype/implementationCodeTaskPlan";
-import { INTEGRATION_WIRING_CODE_TASK_ID } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import {
+  INTEGRATION_WIRING_CODE_TASK_ID,
+  listExecutableCodeTasksFromPlan,
+  listIntegrationOrchestrationTasksFromPlan,
+  resolveCodeTaskPlanAggregateCounts,
+} from "@/lib/prototype/codeTaskIntegrationWiringTask";
+import {
+  summarizeStageOnePromptQuality,
+  formatStageOnePromptQualitySummaryLines,
+} from "@/lib/prototype/codeTaskStageOnePromptSections";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 
 const NOW = "2026-06-04T00:00:00.000Z";
@@ -37,6 +46,48 @@ function minimalMeetingList(): ImplementationTaskListV1 {
 }
 
 describe("stage 1 CodeTask prompt structure", () => {
+  it("separates executable and integration counts on plan and stage-one quality summary", () => {
+    const plan = buildImplementationCodeTaskPlanFromTaskList({
+      projectId: PID,
+      taskList: minimalMeetingList(),
+      envOk: true,
+      designOk: true,
+      nowIso: NOW,
+    });
+    const counts = resolveCodeTaskPlanAggregateCounts(plan.tasks);
+    expect(counts.integrationOrchestrationTaskCount).toBe(1);
+    expect(counts.totalPlannedTaskCount).toBe(counts.executableCodeTaskCount + 1);
+    expect(plan.codeTaskCount).toBe(counts.executableCodeTaskCount);
+    expect(plan.codeTaskCount).not.toBe(plan.tasks.length);
+
+    const executableTasks = listExecutableCodeTasksFromPlan(plan.tasks);
+    const integrationTasks = listIntegrationOrchestrationTasksFromPlan(plan.tasks);
+    expect(integrationTasks.length).toBe(1);
+    expect(executableTasks.some((t) => t.codeTaskId === INTEGRATION_WIRING_CODE_TASK_ID)).toBe(false);
+    expect(integrationTasks[0]?.codeTaskId).toBe(INTEGRATION_WIRING_CODE_TASK_ID);
+
+    const summary = summarizeStageOnePromptQuality({ codeTaskPlan: plan, promptContextMap: null });
+    expect(summary.executableCodeTaskCount).toBe(plan.codeTaskCount);
+    expect(summary.integrationOrchestrationTaskCount).toBe(1);
+    expect(summary.totalPlannedTaskCount).toBe(plan.tasks.length);
+
+    const qualityLines = formatStageOnePromptQualitySummaryLines(summary).join("\n");
+    expect(qualityLines).toContain(`실행 CodeTask: ${summary.executableCodeTaskCount}개`);
+    expect(qualityLines).toContain("Integration Orchestration Task: 정의됨");
+    expect(qualityLines).not.toMatch(/PromptContext 생성:\s*${plan.tasks.length}/);
+
+    const text = formatCodeTaskPromptDraftBundle({
+      codeTaskPlan: plan,
+      taskList: minimalMeetingList(),
+      promptContextMap: null,
+    });
+    expect(text).toMatch(new RegExp(`- 실행 CodeTask: ${summary.executableCodeTaskCount}개`));
+    expect(text).toMatch(
+      new RegExp(`- Branch Plan 생성: ${summary.executableCodeTaskCount}개`),
+    );
+    expect(text).not.toMatch(new RegExp(`- Branch Plan 생성: ${plan.tasks.length}개`));
+  });
+
   it("lists integration orchestration separately from executable CodeTasks", () => {
     const plan = buildImplementationCodeTaskPlanFromTaskList({
       projectId: PID,
