@@ -29,14 +29,19 @@ describe("resolveImplementationBoardPrimaryAction routing mirror", () => {
     expect(action.primaryDisabledTitle).toBeNull();
   });
 
-  it("honors integrationPrepareEnabled=false debug override", () => {
+  it("ignores integrationPrepareEnabled override (routing is sole enabled SoT)", () => {
     const summary = summarizeCodeTaskBoardRowsFromTreeNodes({
-      nodes: [boardTreeNode("CODE-DONE-0", "완료", "GitHub outcome 저장됨", true)],
+      nodes: [
+        ...Array.from({ length: 14 }, (_, i) =>
+          boardTreeNode(`CODE-DONE-${i}`, "완료", "GitHub outcome 저장됨", true),
+        ),
+        boardTreeNode("CODE-DATA-SAMPLE-001", "대기", "실행 가능", false),
+      ],
       checkedCodeTaskIds: [],
     });
     const action = resolveImplementationBoardPrimaryAction({
       selectionSummary: summary,
-      integrationPrepareEnabled: false,
+      integrationPrepareEnabled: true,
     });
     expect(action.primaryEnabled).toBe(false);
   });

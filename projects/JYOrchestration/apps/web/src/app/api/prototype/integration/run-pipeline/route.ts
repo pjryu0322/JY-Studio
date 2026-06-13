@@ -12,7 +12,7 @@ import { buildImplementationIntegrationPipelineEligibilityFromSnapshot } from "@
 import { summarizeCodeTaskBoardGateFromPlanAndUnits } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 import {
   evaluateIntegrationPrepareGateFromBoardSummary,
-  isSameBoardGateSummary,
+  buildBoardGateMismatchLogFields,
   logIntegrationPrepareStarted,
 } from "@/lib/prototype/implementationBoardIntegrationGate";
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
@@ -152,19 +152,20 @@ export async function POST(request: NextRequest) {
     });
     const clientBoardGate = body.boardSelectionSummary ?? null;
     const boardGateSummary = serverBoardGate;
-    if (clientBoardGate && !isSameBoardGateSummary(clientBoardGate, serverBoardGate)) {
-      console.info(
-        JSON.stringify({
-          action: "integration_board_gate_client_server_mismatch",
-          projectId,
-          clientTotalCount: clientBoardGate.totalCount,
-          serverTotalCount: serverBoardGate.totalCount,
-          clientRunnableCount: clientBoardGate.runnableCount,
-          serverRunnableCount: serverBoardGate.runnableCount,
-          clientIntegrationReadyCount: clientBoardGate.integrationReadyCount,
-          serverIntegrationReadyCount: serverBoardGate.integrationReadyCount,
-        }),
-      );
+    if (clientBoardGate) {
+      const mismatchFields = buildBoardGateMismatchLogFields({
+        client: clientBoardGate,
+        server: serverBoardGate,
+      });
+      if (mismatchFields.summariesMatch === false) {
+        console.info(
+          JSON.stringify({
+            action: "integration_board_gate_client_server_mismatch",
+            projectId,
+            ...mismatchFields,
+          }),
+        );
+      }
     }
 
     const boardGateEval = evaluateIntegrationPrepareGateFromBoardSummary(boardGateSummary, {

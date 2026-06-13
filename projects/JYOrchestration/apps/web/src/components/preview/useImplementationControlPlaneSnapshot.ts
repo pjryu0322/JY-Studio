@@ -3,19 +3,19 @@
 import { useMemo } from "react";
 import {
   buildImplementationControlPlaneSnapshot,
+  type ImplementationControlPlaneBoardNodeV1,
   type ImplementationControlPlaneSnapshotV1,
 } from "@/lib/prototype/implementationControlPlaneSnapshot";
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
-import type { ImplementationCodeTaskBoardStateV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import type { IntegrationGateBlockedDetailV1 } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 
 export function useImplementationControlPlaneSnapshot(input: {
   readonly projectId: string;
-  readonly selectionSummary: ImplementationCodeTaskSelectionSummaryV1 | null | undefined;
-  readonly boardNodes?: readonly {
-    readonly codeTaskId: string;
-    readonly boardState: ImplementationCodeTaskBoardStateV1;
-  }[];
+  readonly selectionSummary?: ImplementationCodeTaskSelectionSummaryV1 | null;
+  readonly nodes?: readonly ImplementationControlPlaneBoardNodeV1[];
+  readonly checkedCodeTaskIds?: readonly string[] | null;
+  /** @deprecated prefer `nodes` */
+  readonly boardNodes?: readonly ImplementationControlPlaneBoardNodeV1[];
   readonly previewReady?: boolean;
   readonly actualPreviewUrl?: string | null;
   readonly integratedAppPreviewReady?: boolean;
@@ -31,11 +31,12 @@ export function useImplementationControlPlaneSnapshot(input: {
   const summary = input.selectionSummary;
 
   return useMemo(() => {
-    if (!pid || !summary) return null;
+    if (!pid) return null;
     return buildImplementationControlPlaneSnapshot({
       projectId: pid,
       selectionSummary: summary,
-      boardNodes: input.boardNodes,
+      nodes: input.nodes ?? input.boardNodes,
+      checkedCodeTaskIds: input.checkedCodeTaskIds,
       previewReady: input.previewReady,
       actualPreviewUrl: input.actualPreviewUrl,
       integratedAppPreviewReady: input.integratedAppPreviewReady,
@@ -45,7 +46,9 @@ export function useImplementationControlPlaneSnapshot(input: {
   }, [
     pid,
     summary,
+    input.nodes,
     input.boardNodes,
+    input.checkedCodeTaskIds,
     input.previewReady,
     input.actualPreviewUrl,
     input.integratedAppPreviewReady,

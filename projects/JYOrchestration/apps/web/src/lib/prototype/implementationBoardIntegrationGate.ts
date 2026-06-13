@@ -33,6 +33,53 @@ export function isSameBoardGateSummary(
   );
 }
 
+export type ExtendedBoardGateSummaryV1 = ImplementationCodeTaskSelectionSummaryV1 &
+  Readonly<{
+    readonly runnableCodeTaskIds?: readonly string[];
+    readonly blockedDetails?: readonly IntegrationGateBlockedDetailV1[];
+  }>;
+
+export function buildBoardGateMismatchLogFields(input: {
+  readonly client: ExtendedBoardGateSummaryV1 | null;
+  readonly server: ExtendedBoardGateSummaryV1;
+}): Record<string, unknown> {
+  const sortIds = (ids: readonly string[]) => [...ids].map((id) => id.trim()).filter(Boolean).sort();
+  const client = input.client;
+  const server = input.server;
+  const clientRunnableIds = client?.runnableCodeTaskIds ?? null;
+  const serverRunnableIds = server.runnableCodeTaskIds ?? [];
+  const clientBlockedIds = client?.blockedDetails?.map((d) => d.codeTaskId.trim()).filter(Boolean) ?? null;
+  const serverBlockedIds = server.blockedDetails?.map((d) => d.codeTaskId.trim()).filter(Boolean) ?? [];
+
+  return {
+    summariesMatch: client ? isSameBoardGateSummary(client, server) : null,
+    clientTotalCount: client?.totalCount ?? null,
+    serverTotalCount: server.totalCount,
+    clientRunnableCount: client?.runnableCount ?? null,
+    serverRunnableCount: server.runnableCount,
+    clientIntegrationReadyCount: client?.integrationReadyCount ?? null,
+    serverIntegrationReadyCount: server.integrationReadyCount,
+    clientSelectedRunnableCount: client?.selectedRunnableCount ?? null,
+    serverSelectedRunnableCount: server.selectedRunnableCount,
+    clientSelectedRunnableCodeTaskIds: client?.selectedRunnableCodeTaskIds ?? null,
+    serverSelectedRunnableCodeTaskIds: server.selectedRunnableCodeTaskIds,
+    clientIntegrationReadyCodeTaskIds: client?.integrationReadyCodeTaskIds ?? null,
+    serverIntegrationReadyCodeTaskIds: server.integrationReadyCodeTaskIds,
+    clientRunnableCodeTaskIds: clientRunnableIds,
+    serverRunnableCodeTaskIds: serverRunnableIds,
+    runnableCodeTaskIdsMatch:
+      clientRunnableIds == null
+        ? null
+        : JSON.stringify(sortIds(clientRunnableIds)) === JSON.stringify(sortIds(serverRunnableIds)),
+    clientBlockedCodeTaskIds: clientBlockedIds,
+    serverBlockedCodeTaskIds: serverBlockedIds,
+    blockedCodeTaskIdsMatch:
+      clientBlockedIds == null
+        ? null
+        : JSON.stringify(sortIds(clientBlockedIds)) === JSON.stringify(sortIds(serverBlockedIds)),
+  };
+}
+
 export type ImplementationIntegrationControlGateActionV1 =
   | "prepare_integration_preview"
   | "open_preview"

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildBoardGateMismatchLogFields,
   evaluateIntegrationBlockedByRunnableBoardSummary,
   evaluatePrepareIntegrationPreviewStartGate,
   INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE,
@@ -98,6 +99,27 @@ describe("resolveImplementationIntegrationControlGate", () => {
     expect(gate.action).toBe("prepare_integration_preview");
     expect(gate.enabled).toBe(true);
     expect(gate.targetCodeTaskIds).toEqual(["A", "B"]);
+  });
+});
+
+describe("buildBoardGateMismatchLogFields", () => {
+  it("builds mismatch fields when client and server board gate differ", () => {
+    const server = {
+      totalCount: 15,
+      runnableCount: 0,
+      selectedRunnableCount: 0,
+      selectedRunnableCodeTaskIds: [],
+      integrationReadyCount: 15,
+      integrationReadyCodeTaskIds: ["A"],
+      runnableCodeTaskIds: [],
+      blockedDetails: [{ codeTaskId: "B", status: "대기", progress: "실행 가능", githubOutcomeSaved: false, commitSha: null }],
+    };
+    const client = { ...server, runnableCount: 1, runnableCodeTaskIds: ["B"] };
+    const fields = buildBoardGateMismatchLogFields({ client, server });
+    expect(fields.summariesMatch).toBe(false);
+    expect(fields.runnableCodeTaskIdsMatch).toBe(false);
+    expect(fields.serverRunnableCount).toBe(0);
+    expect(fields.clientRunnableCount).toBe(1);
   });
 });
 

@@ -137,7 +137,12 @@ function labelIndicatesCompleted(statusLabel: string, progressLabel: string): bo
   );
 }
 
+/**
+ * Board selection aggregate for routing and integration gate.
+ * `totalCount` is executable CodeTask count only — integration orchestration/wiring tasks are excluded.
+ */
 export type ImplementationCodeTaskSelectionSummaryV1 = Readonly<{
+  /** Executable CodeTask count (integration wiring excluded). */
   readonly totalCount: number;
   readonly runnableCount: number;
   readonly selectedRunnableCount: number;
@@ -332,6 +337,13 @@ export function summarizeCodeTaskBoardRowsFromTreeNodes(input: {
   );
 
   return summary;
+}
+
+/** Alias for snapshot/control-plane: `totalCount` is executable-only. */
+export function resolveTotalExecutableCodeTaskCountFromSelectionSummary(
+  summary: Pick<ImplementationCodeTaskSelectionSummaryV1, "totalCount">,
+): number {
+  return summary.totalCount;
 }
 
 export function logImplementationBoardSelectionSummaryResolved(input: {
