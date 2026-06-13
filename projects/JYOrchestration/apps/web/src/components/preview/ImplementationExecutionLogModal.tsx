@@ -52,7 +52,7 @@ export function ImplementationExecutionLogModal(props: {
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="implementation-execution-log-modal-title"
+      aria-label="실행 로그"
       data-testid="implementation-execution-log-modal"
       style={overlay}
       onMouseDown={(e) => {
@@ -60,41 +60,6 @@ export function ImplementationExecutionLogModal(props: {
       }}
     >
       <div style={panel} onMouseDown={(e) => e.stopPropagation()}>
-        <div
-          style={{
-            padding: "16px 20px",
-            borderBottom: "1px solid #e2e8f0",
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: 10,
-            background: "linear-gradient(180deg, #fff 0%, #f8fafc 100%)",
-            flexShrink: 0,
-          }}
-        >
-          <h2
-            id="implementation-execution-log-modal-title"
-            style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#0f172a", flex: "1 1 auto" }}
-          >
-            상세 실행 로그
-          </h2>
-          <button
-            type="button"
-            onClick={props.onClose}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 10,
-              border: "1px solid #e2e8f0",
-              background: "#fff",
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: "pointer",
-              color: "#475569",
-            }}
-          >
-            닫기
-          </button>
-        </div>
         <div
           style={{
             flex: 1,
