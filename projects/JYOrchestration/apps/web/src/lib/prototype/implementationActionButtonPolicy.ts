@@ -1,5 +1,6 @@
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
 import { resolveImplementationPrimaryAction } from "@/lib/prototype/implementationActionRoutingPolicy";
+import type { IntegrationGateBlockedDetailV1 } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 
 export type ImplementationBoardPrimaryActionKindV1 =
   | "prepare_integration_preview"
@@ -24,36 +25,45 @@ export type ImplementationBoardPrimaryActionStateV1 = Readonly<{
 export function resolveImplementationBoardPrimaryAction(input: {
   readonly selectionSummary: ImplementationCodeTaskSelectionSummaryV1;
   readonly integratedAppPreviewReady?: boolean;
+  /** @deprecated Routing resolution owns enabled state; kept for debug overrides only. */
   readonly integrationPrepareEnabled?: boolean;
   readonly actualPreviewUrl?: string | null;
+  readonly blockedDetails?: readonly IntegrationGateBlockedDetailV1[];
+  readonly projectId?: string | null;
 }): ImplementationBoardPrimaryActionStateV1 {
   const summary = input.selectionSummary;
   const routed = resolveImplementationPrimaryAction({
     selectionSummary: summary,
     previewReady: input.integratedAppPreviewReady,
     actualPreviewUrl: input.actualPreviewUrl,
+    blockedDetails: input.blockedDetails,
+    projectId: input.projectId,
   });
 
   let primaryAction: ImplementationBoardPrimaryActionKindV1 = null;
   let primaryLabel: string | null = null;
   let primaryEnabled = false;
-  let primaryDisabledTitle: string | null = null;
+  let primaryDisabledTitle: string | null = routed.disabledReason;
 
   if (routed.action === "prepare_integration_preview") {
     primaryAction = "prepare_integration_preview";
     primaryLabel = routed.label;
-    primaryEnabled = input.integrationPrepareEnabled !== false;
+    primaryEnabled =
+      input.integrationPrepareEnabled === false ? false : routed.enabled;
+    primaryDisabledTitle = routed.enabled ? null : routed.disabledReason;
   } else if (routed.action === "open_preview") {
     primaryAction = "open_preview";
     primaryLabel = routed.label;
     primaryEnabled = routed.enabled;
+    primaryDisabledTitle = routed.enabled ? null : routed.disabledReason;
   }
 
   const showIntegrationPrepareButton =
-    primaryAction === "prepare_integration_preview" ||
-    summary.integrationReadyCount > 0 ||
+    routed.action === "prepare_integration_preview" ||
+    routed.action === "open_preview" ||
+    input.integratedAppPreviewReady === true ||
     summary.runnableCount > 0 ||
-    input.integratedAppPreviewReady === true;
+    summary.integrationReadyCount > 0;
 
   return {
     primaryAction,

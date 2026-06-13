@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   evaluateIntegrationBlockedByRunnableBoardSummary,
   evaluatePrepareIntegrationPreviewStartGate,
+  INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE,
   INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE,
+  isSameBoardGateSummary,
+  resolveImplementationIntegrationControlGate,
 } from "@/lib/prototype/implementationBoardIntegrationGate";
+import { INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE } from "@/lib/prototype/implementationIntegrationGate";
 
 describe("evaluateIntegrationBlockedByRunnableBoardSummary", () => {
   it("no longer blocks integration when runnable rows remain", () => {
@@ -16,6 +20,8 @@ describe("evaluateIntegrationBlockedByRunnableBoardSummary", () => {
 describe("evaluatePrepareIntegrationPreviewStartGate", () => {
   it("blocks when no integration-ready completed tasks", () => {
     const gate = evaluatePrepareIntegrationPreviewStartGate({
+      totalCount: 2,
+      runnableCount: 0,
       integrationReadyCount: 0,
       integrationReadyCodeTaskIds: [],
     });
@@ -23,12 +29,90 @@ describe("evaluatePrepareIntegrationPreviewStartGate", () => {
     expect(gate.message).toBe(INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE);
   });
 
-  it("allows only integration-ready code task ids", () => {
+  it("blocks when runnable tasks remain", () => {
     const gate = evaluatePrepareIntegrationPreviewStartGate({
+      totalCount: 3,
+      runnableCount: 1,
+      integrationReadyCount: 2,
+      integrationReadyCodeTaskIds: ["A", "B"],
+    });
+    expect(gate.ok).toBe(false);
+    expect(gate.message).toBe(INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE);
+  });
+
+  it("allows when all executable tasks are integration-ready", () => {
+    const gate = evaluatePrepareIntegrationPreviewStartGate({
+      totalCount: 2,
+      runnableCount: 0,
       integrationReadyCount: 2,
       integrationReadyCodeTaskIds: ["A", "B"],
     });
     expect(gate.ok).toBe(true);
     expect(gate.codeTaskIds).toEqual(["A", "B"]);
+  });
+});
+
+describe("resolveImplementationIntegrationControlGate", () => {
+  const allReady = {
+    totalCount: 2,
+    runnableCount: 0,
+    selectedRunnableCount: 0,
+    selectedRunnableCodeTaskIds: [],
+    integrationReadyCount: 2,
+    integrationReadyCodeTaskIds: ["A", "B"],
+  };
+
+  it("returns open_preview when preview url is ready", () => {
+    const gate = resolveImplementationIntegrationControlGate({
+      summary: allReady,
+      previewReady: true,
+      actualPreviewUrl: "https://x.test",
+    });
+    expect(gate.action).toBe("open_preview");
+    expect(gate.enabled).toBe(true);
+  });
+
+  it("blocks when runnableCount > 0", () => {
+    const gate = resolveImplementationIntegrationControlGate({
+      summary: { ...allReady, runnableCount: 1 },
+    });
+    expect(gate.action).toBe("blocked");
+    expect(gate.enabled).toBe(false);
+    expect(gate.disabledReason).toContain("미완료");
+  });
+
+  it("blocks when integrationReadyCount < totalCount", () => {
+    const gate = resolveImplementationIntegrationControlGate({
+      summary: {
+        ...allReady,
+        totalCount: 3,
+        integrationReadyCount: 2,
+      },
+    });
+    expect(gate.enabled).toBe(false);
+    expect(gate.disabledReason).toBe(INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE);
+  });
+
+  it("enables prepare when all executable tasks are ready", () => {
+    const gate = resolveImplementationIntegrationControlGate({ summary: allReady });
+    expect(gate.action).toBe("prepare_integration_preview");
+    expect(gate.enabled).toBe(true);
+    expect(gate.targetCodeTaskIds).toEqual(["A", "B"]);
+  });
+});
+
+describe("isSameBoardGateSummary", () => {
+  it("detects mismatched server/client summaries", () => {
+    const server = {
+      totalCount: 15,
+      runnableCount: 0,
+      selectedRunnableCount: 0,
+      selectedRunnableCodeTaskIds: [],
+      integrationReadyCount: 15,
+      integrationReadyCodeTaskIds: ["A"],
+    };
+    const client = { ...server, runnableCount: 1 };
+    expect(isSameBoardGateSummary(client, server)).toBe(false);
+    expect(isSameBoardGateSummary(server, server)).toBe(true);
   });
 });

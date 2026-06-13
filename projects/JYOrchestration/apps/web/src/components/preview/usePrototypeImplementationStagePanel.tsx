@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { PrototypeChatAction } from "@/lib/prototype/buildPrototypeChatMessages";
 import { useImplementationBoardSelectionBridge } from "@/components/preview/useImplementationBoardSelectionBridge";
+import { useImplementationControlPlaneSnapshot } from "@/components/preview/useImplementationControlPlaneSnapshot";
 import { useImplementationRuntimeDbSync } from "@/components/preview/useImplementationRuntimeDbSync";
 import { useDbQueuedQuickRunAutoDispatch } from "@/components/preview/useDbQueuedQuickRunAutoDispatch";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
@@ -388,6 +389,7 @@ export type UsePrototypeImplementationStagePanelResult = Readonly<{
   handleRecheckCodeTaskGithubVerify: (input: { codeTaskId: string }) => void | Promise<void>;
   githubRecheckBusyCodeTaskId: string | null;
   handleRetryFailedCodeTask: (codeTaskId: string) => void | Promise<void>;
+  implementationControlPlaneSnapshot: ReturnType<typeof useImplementationControlPlaneSnapshot>;
   implementationRuntimeDbBundle: ImplementationRuntimeBundleView | null;
   runIntegrationPipeline: () => void;
   integrationPipelineBusy: boolean;
@@ -590,6 +592,19 @@ export function usePrototypeImplementationStagePanel(
       }),
     [latestRun],
   );
+
+  const implementationControlPlaneSnapshot = useImplementationControlPlaneSnapshot({
+    projectId,
+    selectionSummary: boardSelectionBridge.liveCodeTaskSelectionSummary,
+    previewReady: prototypeRunSyncSnapshot.previewReady,
+    actualPreviewUrl: prototypeRunSyncSnapshot.previewUrl ?? null,
+    runtime: {
+      hasDbRuntimeJob: Boolean(implementationRuntimeDbBundle?.job),
+      currentCodeTaskId: implementationRuntimeDbBundle?.job?.currentCodeTaskId?.trim() ?? null,
+      currentRuntimeState: implementationRuntimeDbBundle?.job?.state?.trim() ?? null,
+      shouldPoll: !implementationRuntimePollSuspendedRef.current,
+    },
+  });
 
   const implementationStageBoardGateContext = useMemo(() => {
     const pid = projectId.trim();
@@ -3498,6 +3513,7 @@ export function usePrototypeImplementationStagePanel(
     handleRecheckCodeTaskGithubVerify,
     githubRecheckBusyCodeTaskId,
     handleRetryFailedCodeTask,
+    implementationControlPlaneSnapshot,
     implementationRuntimeDbBundle,
     runIntegrationPipeline,
     integrationPipelineBusy,

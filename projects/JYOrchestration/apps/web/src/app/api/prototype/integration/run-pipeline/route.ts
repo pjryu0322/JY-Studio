@@ -12,6 +12,7 @@ import { buildImplementationIntegrationPipelineEligibilityFromSnapshot } from "@
 import { summarizeCodeTaskBoardGateFromPlanAndUnits } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 import {
   evaluateIntegrationPrepareGateFromBoardSummary,
+  isSameBoardGateSummary,
   logIntegrationPrepareStarted,
 } from "@/lib/prototype/implementationBoardIntegrationGate";
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
@@ -149,15 +150,41 @@ export async function POST(request: NextRequest) {
       units: summary.executionUnits,
       runs,
     });
-    const boardGateSummary = body.boardSelectionSummary ?? serverBoardGate;
-    const boardGateBlockedDetails =
-      body.boardSelectionSummary != null ? undefined : serverBoardGate.blockedDetails;
+    const clientBoardGate = body.boardSelectionSummary ?? null;
+    const boardGateSummary = serverBoardGate;
+    if (clientBoardGate && !isSameBoardGateSummary(clientBoardGate, serverBoardGate)) {
+      console.info(
+        JSON.stringify({
+          action: "integration_board_gate_client_server_mismatch",
+          projectId,
+          clientTotalCount: clientBoardGate.totalCount,
+          serverTotalCount: serverBoardGate.totalCount,
+          clientRunnableCount: clientBoardGate.runnableCount,
+          serverRunnableCount: serverBoardGate.runnableCount,
+          clientIntegrationReadyCount: clientBoardGate.integrationReadyCount,
+          serverIntegrationReadyCount: serverBoardGate.integrationReadyCount,
+        }),
+      );
+    }
 
-    evaluateIntegrationPrepareGateFromBoardSummary(boardGateSummary, {
+    const boardGateEval = evaluateIntegrationPrepareGateFromBoardSummary(boardGateSummary, {
       projectId,
-      blockedDetails: boardGateBlockedDetails ?? serverBoardGate.blockedDetails,
+      blockedDetails: serverBoardGate.blockedDetails,
       runnableCodeTaskIds: serverBoardGate.runnableCodeTaskIds,
     });
+    if (!boardGateEval.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "board_gate_blocked",
+          previewReady: false,
+          message: boardGateEval.message ?? "통합을 시작할 수 없습니다.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const boardGateBlockedDetails = serverBoardGate.blockedDetails;
 
     const integrationSteps = resolveIntegrationStepsForRuntimeSnapshot({
       requirementsState: persisted,

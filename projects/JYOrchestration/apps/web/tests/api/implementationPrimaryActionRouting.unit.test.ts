@@ -2,10 +2,16 @@ import { describe, expect, it } from "vitest";
 import { CANONICAL_SAMPLE_DATA_CODE_TASK_ID } from "@/lib/prototype/codeTaskCanonicalId";
 import { resolveImplementationPrimaryAction } from "@/lib/prototype/implementationActionRoutingPolicy";
 import { buildImplementationRuntimeActionRequest } from "@/lib/prototype/implementationActionRunner";
+import {
+  INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE,
+  INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE,
+} from "@/lib/prototype/implementationBoardIntegrationGate";
+import { INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE } from "@/lib/prototype/implementationIntegrationGate";
 
 const sampleId = CANONICAL_SAMPLE_DATA_CODE_TASK_ID;
 
 function selectionSummary(input: {
+  readonly totalCount?: number;
   readonly runnableCount?: number;
   readonly selectedRunnableCount?: number;
   readonly selectedRunnableCodeTaskIds?: readonly string[];
@@ -13,7 +19,7 @@ function selectionSummary(input: {
   readonly integrationReadyCodeTaskIds?: readonly string[];
 }) {
   return {
-    totalCount: 15,
+    totalCount: input.totalCount ?? 15,
     runnableCount: input.runnableCount ?? 0,
     selectedRunnableCount: input.selectedRunnableCount ?? 0,
     selectedRunnableCodeTaskIds: input.selectedRunnableCodeTaskIds ?? [],
@@ -37,33 +43,22 @@ describe("resolveImplementationPrimaryAction (P3-09)", () => {
     expect(resolved.enabled).toBe(true);
   });
 
-  it("returns prepare_integration when runnable remain but none selected", () => {
-    const resolved = resolveImplementationPrimaryAction({
-      selectionSummary: selectionSummary({
-        runnableCount: 1,
-        selectedRunnableCount: 0,
-        integrationReadyCount: 14,
-        integrationReadyCodeTaskIds: ["A"],
-      }),
-    });
-    expect(resolved.action).toBe("prepare_integration_preview");
-    expect(resolved.enabled).toBe(true);
-  });
-
-  it("returns prepare_integration when no runnable and integration ready", () => {
+  it("returns prepare_integration enabled when all executable tasks are integration-ready", () => {
     const ids = ["A", "B"];
     const resolved = resolveImplementationPrimaryAction({
       selectionSummary: selectionSummary({
+        totalCount: 2,
         runnableCount: 0,
         integrationReadyCount: 2,
         integrationReadyCodeTaskIds: ids,
       }),
     });
     expect(resolved.action).toBe("prepare_integration_preview");
+    expect(resolved.enabled).toBe(true);
     expect(resolved.codeTaskIds).toEqual(ids);
   });
 
-  it("returns prepare_integration when runnableCount > 0 and none selected", () => {
+  it("returns prepare_integration disabled when runnable tasks remain", () => {
     const resolved = resolveImplementationPrimaryAction({
       selectionSummary: selectionSummary({
         runnableCount: 1,
@@ -73,6 +68,47 @@ describe("resolveImplementationPrimaryAction (P3-09)", () => {
       }),
     });
     expect(resolved.action).toBe("prepare_integration_preview");
+    expect(resolved.enabled).toBe(false);
+    expect(resolved.disabledReason).toBe(INTEGRATION_BLOCKED_BY_RUNNABLE_USER_MESSAGE);
+  });
+
+  it("returns prepare_integration disabled when integration-ready count is partial", () => {
+    const resolved = resolveImplementationPrimaryAction({
+      selectionSummary: selectionSummary({
+        totalCount: 3,
+        runnableCount: 0,
+        integrationReadyCount: 2,
+        integrationReadyCodeTaskIds: ["A", "B"],
+      }),
+    });
+    expect(resolved.enabled).toBe(false);
+    expect(resolved.disabledReason).toBe(INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE);
+  });
+
+  it("returns prepare_integration disabled when no integration-ready tasks", () => {
+    const resolved = resolveImplementationPrimaryAction({
+      selectionSummary: selectionSummary({
+        runnableCount: 0,
+        integrationReadyCount: 0,
+        integrationReadyCodeTaskIds: [],
+      }),
+    });
+    expect(resolved.enabled).toBe(false);
+    expect(resolved.disabledReason).toBe(INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE);
+  });
+
+  it("returns open_preview when preview is ready with url", () => {
+    const resolved = resolveImplementationPrimaryAction({
+      selectionSummary: selectionSummary({
+        runnableCount: 0,
+        integrationReadyCount: 2,
+        integrationReadyCodeTaskIds: ["A", "B"],
+      }),
+      previewReady: true,
+      actualPreviewUrl: "https://preview.example/app",
+    });
+    expect(resolved.action).toBe("open_preview");
+    expect(resolved.enabled).toBe(true);
   });
 
   it("maps execute to runtime API action with ids", () => {

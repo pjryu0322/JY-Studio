@@ -2,6 +2,9 @@ import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/i
 import { INTEGRATION_STRICT_GATE_INCOMPLETE_USER_MESSAGE } from "@/lib/prototype/implementationIntegrationGate";
 import type { IntegrationGateBlockedDetailV1 } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 
+export const INTEGRATION_PREPARE_INTEGRATION_PREVIEW_LABEL = "통합 및 Preview 준비" as const;
+export const INTEGRATION_OPEN_PREVIEW_LABEL = "Preview 보기" as const;
+
 export const INTEGRATION_NO_COMPLETED_TARGETS_USER_MESSAGE =
   "통합 가능한 완료 작업이 없습니다." as const;
 
@@ -12,6 +15,83 @@ export type IntegrationPrepareGateResolutionV1 =
   | "prepare_integration_preview"
   | "blocked_runnable_tasks"
   | "blocked_no_integration_ready";
+
+export function isSameBoardGateSummary(
+  a: ImplementationCodeTaskSelectionSummaryV1,
+  b: ImplementationCodeTaskSelectionSummaryV1,
+): boolean {
+  const sortIds = (ids: readonly string[]) => [...ids].map((id) => id.trim()).filter(Boolean).sort();
+  return (
+    a.totalCount === b.totalCount &&
+    a.runnableCount === b.runnableCount &&
+    a.integrationReadyCount === b.integrationReadyCount &&
+    a.selectedRunnableCount === b.selectedRunnableCount &&
+    JSON.stringify(sortIds(a.integrationReadyCodeTaskIds)) ===
+      JSON.stringify(sortIds(b.integrationReadyCodeTaskIds)) &&
+    JSON.stringify(sortIds(a.selectedRunnableCodeTaskIds)) ===
+      JSON.stringify(sortIds(b.selectedRunnableCodeTaskIds))
+  );
+}
+
+export type ImplementationIntegrationControlGateActionV1 =
+  | "prepare_integration_preview"
+  | "open_preview"
+  | "blocked";
+
+export function resolveImplementationIntegrationControlGate(input: {
+  readonly summary: ImplementationCodeTaskSelectionSummaryV1;
+  readonly previewReady?: boolean;
+  readonly actualPreviewUrl?: string | null;
+  readonly blockedDetails?: readonly IntegrationGateBlockedDetailV1[];
+  readonly runnableCodeTaskIds?: readonly string[];
+  readonly projectId?: string | null;
+}): Readonly<{
+  readonly action: ImplementationIntegrationControlGateActionV1;
+  readonly enabled: boolean;
+  readonly label: string;
+  readonly userMessage: string | null;
+  readonly disabledReason: string | null;
+  readonly targetCodeTaskIds: readonly string[];
+}> {
+  const previewReady = input.previewReady === true;
+  const previewUrl = String(input.actualPreviewUrl ?? "").trim();
+  if (previewReady && previewUrl) {
+    return {
+      action: "open_preview",
+      enabled: true,
+      label: INTEGRATION_OPEN_PREVIEW_LABEL,
+      userMessage: null,
+      disabledReason: null,
+      targetCodeTaskIds: [],
+    };
+  }
+
+  const gate = evaluateIntegrationPrepareGateFromBoardSummary(input.summary, {
+    blockedDetails: input.blockedDetails,
+    runnableCodeTaskIds: input.runnableCodeTaskIds,
+    projectId: input.projectId,
+  });
+
+  if (gate.ok) {
+    return {
+      action: "prepare_integration_preview",
+      enabled: true,
+      label: INTEGRATION_PREPARE_INTEGRATION_PREVIEW_LABEL,
+      userMessage: null,
+      disabledReason: null,
+      targetCodeTaskIds: gate.integrationReadyCodeTaskIds,
+    };
+  }
+
+  return {
+    action: "blocked",
+    enabled: false,
+    label: INTEGRATION_PREPARE_INTEGRATION_PREVIEW_LABEL,
+    userMessage: gate.message,
+    disabledReason: gate.message,
+    targetCodeTaskIds: gate.integrationReadyCodeTaskIds,
+  };
+}
 
 export function evaluateIntegrationPrepareGateFromBoardSummary(
   summary: ImplementationCodeTaskSelectionSummaryV1,
@@ -102,11 +182,11 @@ export function evaluateIntegrationBlockedByRunnableBoardSummary(
 export function evaluatePrepareIntegrationPreviewStartGate(
   summary: Pick<
     ImplementationCodeTaskSelectionSummaryV1,
-    "runnableCount" | "integrationReadyCount" | "integrationReadyCodeTaskIds"
+    "totalCount" | "runnableCount" | "integrationReadyCount" | "integrationReadyCodeTaskIds"
   >,
 ): Readonly<{ readonly ok: boolean; readonly message: string | null; readonly codeTaskIds: readonly string[] }> {
   const gate = evaluateIntegrationPrepareGateFromBoardSummary({
-    totalCount: summary.integrationReadyCount,
+    totalCount: summary.totalCount,
     runnableCount: summary.runnableCount,
     selectedRunnableCount: 0,
     selectedRunnableCodeTaskIds: [],

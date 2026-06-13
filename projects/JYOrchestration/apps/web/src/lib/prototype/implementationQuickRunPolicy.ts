@@ -43,6 +43,12 @@ function mapPrimaryActionToQuickRunResolved(
     case "execute_selected_runnable_codetasks":
       return { action, codeTaskIds: routed.codeTaskIds };
     case "prepare_integration_preview":
+      if (!routed.enabled) {
+        return {
+          action: "blocked_no_available_action",
+          message: routed.disabledReason ?? "통합을 실행할 수 없습니다.",
+        };
+      }
       return { action, codeTaskIds: routed.codeTaskIds };
     case "open_preview":
       return { action, codeTaskIds: [] };

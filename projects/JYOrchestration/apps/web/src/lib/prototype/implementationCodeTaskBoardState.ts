@@ -1,3 +1,5 @@
+import { isIntegrationWiringCodeTask } from "@/lib/prototype/codeTaskIntegrationWiringTask";
+
 export type ImplementationCodeTaskBoardStateV1 = Readonly<{
   readonly codeTaskId: string;
   readonly statusLabel: string;
@@ -283,15 +285,23 @@ export function summarizeCodeTaskBoardRowsFromTreeNodes(input: {
     readonly selectedCount: number;
     readonly incompleteCount: number;
   }> {
+  const executableNodes = input.nodes.filter(
+    (n) =>
+      !isIntegrationWiringCodeTask({
+        codeTaskId: n.codeTaskId,
+        changeType: "unknown",
+        title: n.boardState.title,
+      }),
+  );
   const checked = input.checkedCodeTaskIds ?? input.selectedCodeTaskIds ?? [];
   const selectedSet = new Set(checked.map((id) => id.trim()).filter(Boolean));
-  const runnableCount = input.nodes.filter((n) => n.boardState.isRunnableForUser).length;
-  const integrationReadyNodes = input.nodes.filter((n) => n.boardState.isIntegrationReady);
+  const runnableCount = executableNodes.filter((n) => n.boardState.isRunnableForUser).length;
+  const integrationReadyNodes = executableNodes.filter((n) => n.boardState.isIntegrationReady);
   const integrationReadyCount = integrationReadyNodes.length;
   const integrationReadyCodeTaskIds = integrationReadyNodes
     .map((n) => n.codeTaskId.trim())
     .filter(Boolean);
-  const selected = input.nodes.filter((n) => selectedSet.has(n.codeTaskId.trim()));
+  const selected = executableNodes.filter((n) => selectedSet.has(n.codeTaskId.trim()));
   const selectedRunnableNodes = selected.filter((n) => n.boardState.isRunnableForUser);
   const selectedRunnableCount = selectedRunnableNodes.length;
   const selectedRunnableCodeTaskIds = selectedRunnableNodes
@@ -299,14 +309,14 @@ export function summarizeCodeTaskBoardRowsFromTreeNodes(input: {
     .filter(Boolean);
 
   const summary = {
-    totalCount: input.nodes.length,
+    totalCount: executableNodes.length,
     runnableCount,
     selectedCount: selected.length,
     selectedRunnableCount,
     selectedRunnableCodeTaskIds,
     integrationReadyCount,
     integrationReadyCodeTaskIds,
-    incompleteCount: Math.max(0, input.nodes.length - integrationReadyCount),
+    incompleteCount: Math.max(0, executableNodes.length - integrationReadyCount),
   };
 
   console.info(

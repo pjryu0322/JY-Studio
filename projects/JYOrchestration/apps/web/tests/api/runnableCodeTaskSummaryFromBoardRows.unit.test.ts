@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { summarizeCodeTaskBoardRowsFromTreeNodes } from "@/lib/prototype/implementationCodeTaskBoardState";
+import { INTEGRATION_WIRING_CODE_TASK_ID } from "@/lib/prototype/codeTaskIntegrationWiringTask";
 import { resolveImplementationBoardPrimaryAction } from "@/lib/prototype/implementationActionButtonPolicy";
 import {
   isCodeTaskTreeFullySelected,
@@ -8,6 +9,16 @@ import {
 import { boardTreeNode as node } from "./implementationBoardSummaryTestHelpers";
 
 describe("summarizeCodeTaskBoardRowsFromTreeNodes", () => {
+  it("excludes integration orchestration wiring from executable totalCount", () => {
+    const nodes = [
+      node("CODE-DONE-0", "완료", "GitHub outcome 저장됨", true),
+      node(INTEGRATION_WIRING_CODE_TASK_ID, "완료", "GitHub outcome 저장됨", true),
+    ];
+    const summary = summarizeCodeTaskBoardRowsFromTreeNodes({ nodes, checkedCodeTaskIds: [] });
+    expect(summary.totalCount).toBe(1);
+    expect(summary.integrationReadyCount).toBe(1);
+  });
+
   it("counts one runnable sample data task and fourteen integration-ready tasks", () => {
     const completed = Array.from({ length: 14 }, (_, i) =>
       node(`CODE-DONE-${i}`, "완료", "GitHub outcome 저장됨", true),
@@ -84,13 +95,13 @@ describe("resolveImplementationBoardPrimaryAction from board summary", () => {
     selectedCodeTaskIds: [],
   });
 
-  it("does not show board execute when runnable tasks remain (toolbar Quick Run only)", () => {
+  it("shows integration primary disabled when runnable tasks remain", () => {
     const action = resolveImplementationBoardPrimaryAction({
       selectionSummary: summary14Plus1,
-      integrationPrepareEnabled: true,
     });
     expect(action.showExecuteSelectedButton).toBe(false);
-    expect(action.primaryAction).toBeNull();
+    expect(action.primaryAction).toBe("prepare_integration_preview");
+    expect(action.primaryEnabled).toBe(false);
     expect(action.showIntegrationPrepareButton).toBe(true);
   });
 
@@ -110,14 +121,13 @@ describe("resolveImplementationBoardPrimaryAction from board summary", () => {
     expect(action.primaryAction).toBeNull();
   });
 
-  it("shows integration primary when no runnable remain", () => {
+  it("shows integration primary enabled when no runnable remain", () => {
     const summary = summarizeCodeTaskBoardRowsFromTreeNodes({
       nodes: [node("CODE-DONE-0", "완료", "GitHub outcome 저장됨", true)],
       checkedCodeTaskIds: [],
     });
     const action = resolveImplementationBoardPrimaryAction({
       selectionSummary: summary,
-      integrationPrepareEnabled: true,
     });
     expect(action.primaryLabel).toBe("통합 및 Preview 준비");
     expect(action.primaryEnabled).toBe(true);

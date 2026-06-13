@@ -1,4 +1,6 @@
 import type { ImplementationCodeTaskSelectionSummaryV1 } from "@/lib/prototype/implementationCodeTaskBoardState";
+import { resolveImplementationIntegrationControlGate } from "@/lib/prototype/implementationBoardIntegrationGate";
+import type { IntegrationGateBlockedDetailV1 } from "@/lib/prototype/implementationIntegrationBoardGateSummary";
 
 export type ImplementationPrimaryActionV1 =
   | "execute_selected_runnable_codetasks"
@@ -15,7 +17,6 @@ export type ImplementationPrimaryActionResolutionV1 = Readonly<{
   readonly disabledReason: string | null;
 }>;
 
-
 /**
  * Toolbar Quick Run, board footer, and runtime dispatch share this policy.
  * Input must come from BoardState + checkedCodeTaskIds summary only.
@@ -24,6 +25,8 @@ export function resolveImplementationPrimaryAction(input: {
   readonly selectionSummary: ImplementationCodeTaskSelectionSummaryV1;
   readonly previewReady?: boolean;
   readonly actualPreviewUrl?: string | null;
+  readonly blockedDetails?: readonly IntegrationGateBlockedDetailV1[];
+  readonly projectId?: string | null;
 }): ImplementationPrimaryActionResolutionV1 {
   const summary = input.selectionSummary;
   const previewReady = input.previewReady === true;
@@ -41,10 +44,18 @@ export function resolveImplementationPrimaryAction(input: {
     return resolution;
   }
 
-  if (previewReady && previewUrl) {
+  const integrationGate = resolveImplementationIntegrationControlGate({
+    summary,
+    previewReady,
+    actualPreviewUrl: previewUrl || null,
+    blockedDetails: input.blockedDetails,
+    projectId: input.projectId,
+  });
+
+  if (integrationGate.action === "open_preview") {
     const resolution: ImplementationPrimaryActionResolutionV1 = {
       action: "open_preview",
-      label: "Preview 보기",
+      label: integrationGate.label,
       enabled: true,
       codeTaskIds: [],
       disabledReason: null,
@@ -53,12 +64,24 @@ export function resolveImplementationPrimaryAction(input: {
     return resolution;
   }
 
+  if (integrationGate.action === "prepare_integration_preview" && integrationGate.enabled) {
+    const resolution: ImplementationPrimaryActionResolutionV1 = {
+      action: "prepare_integration_preview",
+      label: integrationGate.label,
+      enabled: true,
+      codeTaskIds: integrationGate.targetCodeTaskIds,
+      disabledReason: null,
+    };
+    logImplementationPrimaryActionResolved(summary, resolution);
+    return resolution;
+  }
+
   const resolution: ImplementationPrimaryActionResolutionV1 = {
     action: "prepare_integration_preview",
-    label: "통합 및 Preview 준비",
-    enabled: true,
-    codeTaskIds: summary.integrationReadyCodeTaskIds,
-    disabledReason: null,
+    label: integrationGate.label,
+    enabled: false,
+    codeTaskIds: integrationGate.targetCodeTaskIds,
+    disabledReason: integrationGate.disabledReason,
   };
   logImplementationPrimaryActionResolved(summary, resolution);
   return resolution;
@@ -74,6 +97,7 @@ function logImplementationPrimaryActionResolved(
       action: "implementation_primary_action_resolved",
       resolvedAction: resolution.action,
       enabled: resolution.enabled,
+      disabledReason: resolution.disabledReason,
       runnableCount: summary.runnableCount,
       selectedRunnableCount: summary.selectedRunnableCount,
       selectedRunnableCodeTaskIds: summary.selectedRunnableCodeTaskIds,

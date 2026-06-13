@@ -83,9 +83,9 @@ describe("runnable CodeTask user selection (board rows, P3-08D)", () => {
     });
     const action = resolveImplementationBoardPrimaryAction({
       selectionSummary: summary,
-      integrationPrepareEnabled: true,
     });
     expect(action.primaryAction).toBe("prepare_integration_preview");
+    expect(action.primaryEnabled).toBe(true);
   });
 
   it("listRunnableCodeTaskIdsFromBoardNodes matches displayed runnable rows", () => {

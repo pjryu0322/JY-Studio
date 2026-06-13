@@ -51,7 +51,6 @@ describe("P3-08C/08D board selection summary and footer actions", () => {
     });
     const action = resolveImplementationBoardPrimaryAction({
       selectionSummary: summary,
-      integrationPrepareEnabled: true,
     });
     expect(action.primaryAction).toBe("prepare_integration_preview");
     expect(action.showIntegrationPrepareButton).toBe(true);
