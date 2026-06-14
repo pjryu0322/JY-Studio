@@ -17,6 +17,7 @@ export type ImplementationIntentResolverConfidence = "low" | "medium" | "high";
 export type ImplementationIntentResolverInput = Readonly<{
   readonly projectId: string;
   readonly stage: "implementation";
+  readonly mode?: "ready" | "build" | "preview_review" | "fix" | "blocked" | "failed" | "running";
   readonly userText: string;
   readonly lastAssistantMessage?: string;
   readonly recentMessages: ReadonlyArray<{
@@ -30,9 +31,22 @@ export type ImplementationIntentResolverInput = Readonly<{
     readonly status: string;
     readonly riskLevel?: string;
   }>;
+  readonly approvedWorkingQueueItems?: ReadonlyArray<{
+    readonly id: string;
+    readonly title: string;
+    readonly status: string;
+  }>;
   readonly hasPreviewCaptureAttachment: boolean;
+  readonly previewCaptureAttachment?: Readonly<{
+    readonly type: "preview_region_capture";
+    readonly captureId?: string;
+    readonly regionCaptureId?: string;
+    readonly previewUrl?: string;
+  }>;
   readonly implementationMode?: string;
   readonly hasRunnableCodeTasks?: boolean;
+  readonly runnableCodeTaskCount?: number;
+  readonly previewReady?: boolean;
   readonly lastRegisteredQueueItem?: Readonly<{
     readonly id: string;
     readonly title: string;

@@ -22,6 +22,7 @@ export type WorkingQueueLlmPreviewFeedbackResponse = Readonly<{
 export async function postImplementationWorkingQueueIntentResolve(input: Readonly<{
   projectId: string;
   resolverInput: ImplementationIntentResolverInput;
+  requirementsStateJson?: unknown;
 }>): Promise<WorkingQueueLlmIntentResponse> {
   const res = await fetch("/api/prototype-execution/working-queue-llm", {
     method: "POST",
@@ -30,6 +31,7 @@ export async function postImplementationWorkingQueueIntentResolve(input: Readonl
       projectId: input.projectId,
       mode: "intent",
       payload: input.resolverInput,
+      requirementsStateJson: input.requirementsStateJson,
     }),
   });
   return (await res.json()) as WorkingQueueLlmIntentResponse;
@@ -38,6 +40,7 @@ export async function postImplementationWorkingQueueIntentResolve(input: Readonl
 export async function postImplementationPreviewFeedbackAnalyze(input: Readonly<{
   projectId: string;
   analyzerInput: ImplementationPreviewFeedbackAnalyzerInput;
+  requirementsStateJson?: unknown;
 }>): Promise<WorkingQueueLlmPreviewFeedbackResponse> {
   const res = await fetch("/api/prototype-execution/working-queue-llm", {
     method: "POST",
@@ -46,6 +49,7 @@ export async function postImplementationPreviewFeedbackAnalyze(input: Readonly<{
       projectId: input.projectId,
       mode: "preview_feedback",
       payload: input.analyzerInput,
+      requirementsStateJson: input.requirementsStateJson,
     }),
   });
   return (await res.json()) as WorkingQueueLlmPreviewFeedbackResponse;

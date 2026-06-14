@@ -11,6 +11,7 @@ type Body = Readonly<{
   projectId?: string;
   mode?: "intent" | "preview_feedback";
   payload?: unknown;
+  requirementsStateJson?: unknown;
 }>;
 
 export async function POST(request: NextRequest) {
@@ -40,13 +41,19 @@ export async function POST(request: NextRequest) {
     const mode = body.mode;
     if (mode === "intent") {
       const payload = body.payload as ImplementationIntentResolverInput;
-      const out = await resolveImplementationIntentWithLlm(payload, { userId: String(userId) });
+      const out = await resolveImplementationIntentWithLlm(payload, {
+        userId: String(userId),
+        requirementsStateJson: body.requirementsStateJson,
+      });
       return NextResponse.json({ success: true, data: out });
     }
 
     if (mode === "preview_feedback") {
       const payload = body.payload as ImplementationPreviewFeedbackAnalyzerInput;
-      const out = await analyzeImplementationPreviewFeedbackWithLlm(payload, { userId: String(userId) });
+      const out = await analyzeImplementationPreviewFeedbackWithLlm(payload, {
+        userId: String(userId),
+        requirementsStateJson: body.requirementsStateJson,
+      });
       return NextResponse.json({ success: true, data: out });
     }
 

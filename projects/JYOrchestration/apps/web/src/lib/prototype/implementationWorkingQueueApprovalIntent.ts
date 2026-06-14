@@ -20,7 +20,7 @@ const DEFER_PATTERNS = [/보류/, /나중에/, /다음에/, /미루/];
 
 const REJECT_PATTERNS = [/취소/, /하지\s*마/, /거절/, /안\s*할/, /하지\s*않/];
 
-/** @deprecated Product path uses LLM intent resolver. Legacy fallback when LLM unavailable. */
+/** @deprecated Do not use for product runtime intent resolution. Use LLM Intent Resolver instead. */
 export function parseWorkingQueueControlIntent(text: string): WorkingQueueControlIntent | null {
   const t = text.trim();
   if (!t) return null;

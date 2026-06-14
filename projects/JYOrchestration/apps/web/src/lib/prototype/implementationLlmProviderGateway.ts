@@ -4,39 +4,34 @@ import {
   type OpenAiMultimodalMessage,
 } from "@/lib/ai/openAiChatMultimodal";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
-import { resolveLlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
-import {
-  modelSupportsVision,
-  type ImplementationLlmProviderConfig,
-  type ImplementationLlmProviderRequest,
-  type ImplementationLlmProviderResponse,
+import { resolveImplementationLlmProviderConfigRecord } from "@/lib/prototype/implementationLlmProviderConfig.server";
+import type {
+  ImplementationLlmProviderConfig,
+  ImplementationLlmProviderRequest,
+  ImplementationLlmProviderResponse,
 } from "@/lib/prototype/implementationLlmProviderTypes";
 
 export async function resolveImplementationLlmProviderConfig(input: Readonly<{
   readonly projectId: string;
   readonly userId?: string | null;
+  readonly requirementsStateJson?: unknown;
 }>): Promise<ImplementationLlmProviderConfig | null> {
-  const ctx = await resolveLlmCodeTaskRefinementProviderContext({
+  const resolved = await resolveImplementationLlmProviderConfigRecord({
     projectId: input.projectId,
     actorUserId: input.userId ?? null,
+    requirementsStateJson: input.requirementsStateJson,
   });
-  const apiKey = String(ctx.apiKey ?? "").trim();
-  if (!apiKey) return null;
-  const model = String(ctx.model ?? resolveOpenAiModelFromEnv()).trim() || resolveOpenAiModelFromEnv();
-  const source = ctx.providerSource ?? "none";
-  const providerSource =
-    source === "env_fallback"
-      ? ("dev_env_fallback" as const)
-      : (source as ImplementationLlmProviderConfig["providerSource"]);
+  const apiKey = String(resolved.apiKey ?? "").trim();
+  if (!apiKey || !resolved.config) return null;
   return {
-    provider: "openai",
-    model,
+    provider: resolved.config.provider ?? "openai",
+    model: resolved.config.model,
     apiKey,
     capabilities: {
-      text: true,
-      vision: modelSupportsVision(model),
+      text: resolved.config.capabilities.text !== false,
+      vision: resolved.config.capabilities.vision === true,
     },
-    providerSource,
+    providerSource: resolved.providerSource,
   };
 }
 
@@ -50,6 +45,7 @@ export async function invokeImplementationLlmProviderJson(
   const config = await resolveImplementationLlmProviderConfig({
     projectId: request.projectId,
     userId: request.userId,
+    requirementsStateJson: request.requirementsStateJson,
   });
 
   if (!config) {
@@ -66,9 +62,7 @@ export async function invokeImplementationLlmProviderJson(
 
   const imagePresent = Boolean(String(request.imageDataUrl ?? request.imageUrl ?? "").trim());
   const canUseVision =
-    request.requiresVision === true &&
-    imagePresent &&
-    config.capabilities.vision === true;
+    request.requiresVision === true && imagePresent && config.capabilities.vision === true;
 
   let messages: readonly OpenAiMultimodalMessage[] = request.messages;
   if (request.requiresVision && imagePresent && !canUseVision) {
@@ -83,7 +77,12 @@ export async function invokeImplementationLlmProviderJson(
               .join("\n");
       messages = [
         ...messages.slice(0, -1),
-        appendVisionNote(base, "image_analysis_limited: provider vision not supported — text metadata only"),
+        appendVisionNote(
+          base,
+          config.capabilities.vision
+            ? "image_analysis_limited: image_missing"
+            : "image_analysis_limited: provider_vision_not_supported — text metadata only",
+        ),
       ];
     }
   } else if (canUseVision) {
@@ -143,7 +142,9 @@ export async function invokeImplementationLlmProviderJson(
       usedVision: canUseVision,
       providerSource: config.providerSource,
       ...(!canUseVision && imagePresent && request.requiresVision
-        ? { fallbackReason: "provider_vision_not_supported" }
+        ? {
+            fallbackReason: config.capabilities.vision ? "image_missing" : "provider_vision_not_supported",
+          }
         : {}),
     },
   };

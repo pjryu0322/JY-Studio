@@ -38,11 +38,19 @@ export function buildImplementationIntentResolverInput(input: Readonly<{
   priorMessages: readonly RequirementsMessage[];
   queue: ImplementationWorkingQueueV1;
   hasRunnableCodeTasks?: boolean;
+  runnableCodeTaskCount?: number;
   implementationMode?: string;
+  previewReady?: boolean;
 }>): ImplementationIntentResolverInput {
   const pending = input.queue.items.filter((i) => i.status === "pending");
+  const approved = input.queue.items.filter((i) => i.status === "approved");
   const lastItem = input.queue.items[input.queue.items.length - 1];
   const hasPreview = hasPreviewRegionCaptureAttachment({ meta: input.userMsg.meta });
+  const previewCtx = hasPreview ? extractPreviewCaptureContextFromUserMessage(input.userMsg) : null;
+  const mode = mapImplementationMode(input.implementationMode);
+  const runnableCount =
+    input.runnableCodeTaskCount ??
+    (input.hasRunnableCodeTasks ? 1 : 0);
   const actions: ImplementationIntentResolverInput["availableActions"] = [
     "none",
     "ask_clarification",
@@ -55,6 +63,7 @@ export function buildImplementationIntentResolverInput(input: Readonly<{
   return {
     projectId: input.projectId.trim(),
     stage: "implementation",
+    mode,
     userText: input.userText.trim(),
     lastAssistantMessage: lastAssistantMessageContent(input.priorMessages),
     recentMessages: recentMessagesForWorkingQueueLlm(input.priorMessages),
@@ -64,14 +73,44 @@ export function buildImplementationIntentResolverInput(input: Readonly<{
       status: i.status,
       riskLevel: i.riskLevel,
     })),
+    approvedWorkingQueueItems: approved.map((i) => ({
+      id: i.id,
+      title: i.title,
+      status: i.status,
+    })),
     hasPreviewCaptureAttachment: hasPreview,
+    ...(hasPreview && previewCtx
+      ? {
+          previewCaptureAttachment: {
+            type: "preview_region_capture" as const,
+            captureId: previewCtx.sourceCaptureId,
+            regionCaptureId: previewCtx.regionCaptureId,
+            previewUrl: previewCtx.previewUrl,
+          },
+        }
+      : {}),
     implementationMode: input.implementationMode,
     hasRunnableCodeTasks: input.hasRunnableCodeTasks,
+    runnableCodeTaskCount: runnableCount,
+    previewReady: input.previewReady === true,
     lastRegisteredQueueItem: lastItem
       ? { id: lastItem.id, title: lastItem.title, status: lastItem.status }
       : null,
     availableActions: actions,
   };
+}
+
+function mapImplementationMode(
+  implementationMode?: string,
+): ImplementationIntentResolverInput["mode"] {
+  const m = String(implementationMode ?? "").trim().toLowerCase();
+  if (m === "running") return "running";
+  if (m === "build") return "build";
+  if (m === "preview_review") return "preview_review";
+  if (m === "fix") return "fix";
+  if (m === "blocked") return "blocked";
+  if (m === "failed") return "failed";
+  return "ready";
 }
 
 export function buildPreviewFeedbackAnalyzerInput(input: Readonly<{

@@ -25,6 +25,7 @@ export type ImplementationLlmProviderConfig = Readonly<{
 export type ImplementationLlmProviderRequest = Readonly<{
   readonly projectId: string;
   readonly userId?: string | null;
+  readonly requirementsStateJson?: unknown;
   readonly purpose: ImplementationLlmProviderPurpose;
   readonly messages: readonly OpenAiMultimodalMessage[];
   readonly responseFormat: "json";
@@ -49,13 +50,7 @@ export type ImplementationLlmProviderResponse = Readonly<{
   }>;
 }>;
 
-export function modelSupportsVision(model: string): boolean {
-  const m = model.trim().toLowerCase();
-  return (
-    m.includes("gpt-4o") ||
-    m.includes("gpt-4-turbo") ||
-    m.includes("gpt-4-vision") ||
-    m.includes("o1") ||
-    m.includes("o3")
-  );
+export function modelSupportsVision(_model: string): boolean {
+  /** @deprecated Product path uses providerConfig.capabilities.vision only. */
+  return false;
 }

@@ -1,6 +1,6 @@
 import { createFixCodeTasksFromApprovedQueueItems } from "@/lib/prototype/createFixCodeTasksFromApprovedQueueItems";
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
-import { parseWorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueApprovalIntent";
+import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueApprovalIntent";
 import {
   buildWorkingQueueControlAiMessage,
   buildWorkingQueuePreviewFeedbackRegisteredAiMessage,
@@ -20,6 +20,11 @@ import {
   postImplementationPreviewFeedbackAnalyze,
   postImplementationWorkingQueueIntentResolve,
 } from "@/lib/prototype/implementationWorkingQueueLlmClient";
+import {
+  buildIntentClarificationMessage,
+  buildIntentClarificationTimelineDetail,
+  pendingCountFromQueue,
+} from "@/lib/prototype/implementationWorkingQueueIntentClarification";
 import {
   buildWorkingQueueTimelineTrace,
   mapIntentResolverToControlIntent,
@@ -92,7 +97,7 @@ function applyControlIntentResult(input: Readonly<{
   priorMemory: ReturnType<typeof readImplementationDeveloperMemoryDraftFromState>;
   priorMessages: readonly RequirementsMessage[];
   userMsg: RequirementsMessage;
-  controlIntent: NonNullable<ReturnType<typeof parseWorkingQueueControlIntent>>;
+  controlIntent: WorkingQueueControlIntent;
   latestPreviewUrl?: string | null;
   nowIso: string;
   timelineEntries: readonly RequirementsPromptTimelineEntry[];
@@ -164,7 +169,48 @@ type OperationalSendInput = Readonly<{
   readonly latestPreviewUrl?: string | null;
   readonly hasRunnableCodeTasks?: boolean;
   readonly implementationMode?: string;
+  readonly previewReady?: boolean;
 }>;
+
+function implementationIntentRequiresAuthoritativeLlm(intent: string): boolean {
+  return (
+    intent === "start_initial_quick_run" ||
+    intent === "approve_pending_work_queue" ||
+    intent === "register_work_queue_supplement"
+  );
+}
+
+function buildIntentClarificationOperationalResult(input: Readonly<{
+  queue: ReturnType<typeof readImplementationWorkingQueueFromState>;
+  priorMessages: readonly RequirementsMessage[];
+  userMsg: RequirementsMessage;
+  hasRunnableCodeTasks?: boolean;
+  nowIso: string;
+  timelineEntries: RequirementsPromptTimelineEntry[];
+}>): PrototypeExecutionOperationalSendResult {
+  const timelineEntries = [
+    ...input.timelineEntries,
+    buildWorkingQueueTimelineTrace({
+      action: "implementation_intent_clarification",
+      source: "llm_intent_resolver",
+      detail: buildIntentClarificationTimelineDetail(),
+      nowIso: input.nowIso,
+    }),
+  ];
+  const aiMessage = buildWorkingQueueAssistantMessage(
+    buildIntentClarificationMessage({
+      pendingCount: pendingCountFromQueue(input.queue),
+      hasRunnableCodeTasks: input.hasRunnableCodeTasks,
+    }),
+    input.nowIso,
+    { intent: "ask_clarification" },
+  );
+  return {
+    kind: "assistant_reply",
+    aiMessage,
+    timelineEntries,
+  };
+}
 
 async function resolvePreviewCaptureFeedbackFirst(
   input: OperationalSendInput,
@@ -196,7 +242,11 @@ async function resolvePreviewCaptureFeedbackFirst(
     userMsg: input.userMsg,
     priorMessages,
   });
-  const analyzed = await postImplementationPreviewFeedbackAnalyze({ projectId: pid, analyzerInput });
+  const analyzed = await postImplementationPreviewFeedbackAnalyze({
+    projectId: pid,
+    analyzerInput,
+    requirementsStateJson: input.requirementsStateJson,
+  });
   const analysis =
     analyzed.success && analyzed.data ? analyzed.data.analysis : buildMinimalPreviewFeedbackFallback(userText);
   const trace = analyzed.data?.trace;
@@ -275,108 +325,111 @@ async function resolveNormalImplementationWorkingQueueSend(
     priorMessages,
     queue,
     hasRunnableCodeTasks: input.hasRunnableCodeTasks,
+    runnableCodeTaskCount: input.parsedRequirementsState.implementationTaskListV1?.tasks?.length ?? 0,
     implementationMode: input.implementationMode,
+    previewReady: input.previewReady,
   });
 
-  const resolved = await postImplementationWorkingQueueIntentResolve({ projectId: pid, resolverInput });
+  const resolved = await postImplementationWorkingQueueIntentResolve({
+    projectId: pid,
+    resolverInput,
+    requirementsStateJson: input.requirementsStateJson,
+  });
   const resolver = resolved.success && resolved.data ? resolved.data.result : null;
   const intentTrace = resolved.data?.trace;
 
-  if (resolver) {
-    timelineEntries.push(
-      buildWorkingQueueTimelineTrace({
-        action: "implementation_intent_resolved",
-        source: intentTrace?.source ?? "fallback",
-        detail: `${resolver.intent} · ${resolver.reason}`,
-        nowIso,
-      }),
-    );
+  const clarificationBase = {
+    queue,
+    priorMessages,
+    userMsg: input.userMsg,
+    hasRunnableCodeTasks: input.hasRunnableCodeTasks,
+    nowIso,
+    timelineEntries,
+  };
 
-    if (resolver.intent === "start_initial_quick_run" && resolver.confidence !== "low") {
-      return { kind: "start_implementation_quick_run", timelineEntries };
-    }
-
-    if (resolver.intent === "ask_clarification" && resolver.clarificationQuestion) {
-      return {
-        kind: "assistant_reply",
-        aiMessage: buildWorkingQueueAssistantMessage(resolver.clarificationQuestion, nowIso, {
-          intent: resolver.intent,
-        }),
-        timelineEntries,
-      };
-    }
-
-    const controlFromLlm = mapIntentResolverToControlIntent({ resolver, queue });
-    if (controlFromLlm) {
-      return applyControlIntentResult({
-        pid,
-        queue,
-        priorMemory,
-        priorMessages,
-        userMsg: input.userMsg,
-        controlIntent: controlFromLlm,
-        latestPreviewUrl: input.latestPreviewUrl,
-        nowIso,
-        timelineEntries,
-      });
-    }
-
-    if (resolver.intent === "register_work_queue_supplement" && resolver.workQueueDraft) {
-      const item = enqueueFromLlmDraft({
-        queue,
-        draft: resolver.workQueueDraft,
-        rawUserMessage: input.text,
-        sourceMessageId: input.userMsg.id,
-        nowIso,
-      });
-      const enqueued = enqueueWorkingQueueFromItem({ queue, item });
-      const memory = buildMemoryAfterQueueChange({
-        queue: enqueued.queue,
-        prior: priorMemory,
-        latestPreviewUrl: input.latestPreviewUrl,
-      });
-      const aiMessage = buildWorkingQueueAssistantMessage(
-        buildWorkingQueueRegisteredAiMessage([enqueued.item]),
-        nowIso,
-        { intent: "register_work_queue_supplement" },
-      );
-      return {
-        kind: "apply_conversation",
-        messages: [...priorMessages, input.userMsg, aiMessage],
-        orchestration: {
-          implementationWorkingQueueV1: enqueued.queue,
-          implementationDeveloperMemoryDraftV1: memory,
-        },
-        timelineEntries,
-      };
-    }
-
-    if (resolver.intent === "none" || resolver.intent === "implementation_question") {
-      return null;
-    }
+  if (!resolver || intentTrace?.source === "fallback") {
+    return buildIntentClarificationOperationalResult(clarificationBase);
   }
 
-  const legacyControl = parseWorkingQueueControlIntent(input.text);
-  if (legacyControl && intentTrace?.source === "fallback") {
-    timelineEntries.push(
-      buildWorkingQueueTimelineTrace({
-        action: "implementation_intent_resolved",
-        source: "fallback_legacy_control",
-        detail: legacyControl.kind,
-        nowIso,
+  const llmAuthoritative = intentTrace?.source === "llm" && resolver.confidence !== "low";
+
+  timelineEntries.push(
+    buildWorkingQueueTimelineTrace({
+      action: "implementation_intent_resolved",
+      source: intentTrace?.source ?? "llm",
+      detail: `${resolver.intent} · ${resolver.reason}`,
+      nowIso,
+    }),
+  );
+
+  if (
+    implementationIntentRequiresAuthoritativeLlm(resolver.intent) &&
+    !llmAuthoritative
+  ) {
+    return buildIntentClarificationOperationalResult({ ...clarificationBase, timelineEntries });
+  }
+
+  if (resolver.intent === "start_initial_quick_run") {
+    return { kind: "start_implementation_quick_run", timelineEntries };
+  }
+
+  if (resolver.intent === "ask_clarification" && resolver.clarificationQuestion) {
+    return {
+      kind: "assistant_reply",
+      aiMessage: buildWorkingQueueAssistantMessage(resolver.clarificationQuestion, nowIso, {
+        intent: resolver.intent,
       }),
-    );
+      timelineEntries,
+    };
+  }
+
+  const controlFromLlm = mapIntentResolverToControlIntent({ resolver, queue });
+  if (controlFromLlm) {
     return applyControlIntentResult({
       pid,
       queue,
       priorMemory,
       priorMessages,
       userMsg: input.userMsg,
-      controlIntent: legacyControl,
+      controlIntent: controlFromLlm,
       latestPreviewUrl: input.latestPreviewUrl,
       nowIso,
       timelineEntries,
     });
+  }
+
+  if (resolver.intent === "register_work_queue_supplement" && resolver.workQueueDraft) {
+    const item = enqueueFromLlmDraft({
+      queue,
+      draft: resolver.workQueueDraft,
+      rawUserMessage: input.text,
+      sourceMessageId: input.userMsg.id,
+      nowIso,
+    });
+    const enqueued = enqueueWorkingQueueFromItem({ queue, item });
+    const memory = buildMemoryAfterQueueChange({
+      queue: enqueued.queue,
+      prior: priorMemory,
+      latestPreviewUrl: input.latestPreviewUrl,
+    });
+    const aiMessage = buildWorkingQueueAssistantMessage(
+      buildWorkingQueueRegisteredAiMessage([enqueued.item]),
+      nowIso,
+      { intent: "register_work_queue_supplement" },
+    );
+    return {
+      kind: "apply_conversation",
+      messages: [...priorMessages, input.userMsg, aiMessage],
+      orchestration: {
+        implementationWorkingQueueV1: enqueued.queue,
+        implementationDeveloperMemoryDraftV1: memory,
+      },
+      timelineEntries,
+    };
+  }
+
+  if (resolver.intent === "none" || resolver.intent === "implementation_question") {
+    return null;
   }
 
   return null;

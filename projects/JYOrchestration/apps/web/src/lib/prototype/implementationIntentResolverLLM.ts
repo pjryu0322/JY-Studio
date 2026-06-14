@@ -9,7 +9,7 @@ import {
 
 export async function resolveImplementationIntentWithLlm(
   input: ImplementationIntentResolverInput,
-  gatewayInput?: Readonly<{ readonly userId?: string | null }>,
+  gatewayInput?: Readonly<{ readonly userId?: string | null; readonly requirementsStateJson?: unknown }>,
 ): Promise<
   Readonly<{
     result: ImplementationIntentResolverResult;
@@ -19,6 +19,7 @@ export async function resolveImplementationIntentWithLlm(
   const res = await invokeImplementationLlmProviderJson({
     projectId: input.projectId,
     userId: gatewayInput?.userId,
+    requirementsStateJson: gatewayInput?.requirementsStateJson,
     purpose: "implementation_intent_resolver",
     responseFormat: "json",
     messages: [

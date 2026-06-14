@@ -289,6 +289,10 @@ export function useImplementationSingleChatWorkspaceController(
           null,
         hasRunnableCodeTasks: (input.parsedRequirementsState.implementationTaskListV1?.tasks?.length ?? 0) > 0,
         implementationMode: input.isRunningState ? "running" : "ready",
+        previewReady: Boolean(
+          input.parsedRequirementsState.implementationPreviewRuntimeV1?.previewUrl ??
+            input.parsedRequirementsState.implementationPreviewScopeV1?.previewUrl,
+        ),
       });
       if (workingQueueResult) {
         if (

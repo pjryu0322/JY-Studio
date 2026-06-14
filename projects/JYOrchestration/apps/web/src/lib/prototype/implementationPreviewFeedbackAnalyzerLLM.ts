@@ -14,7 +14,7 @@ function imagePresent(input: ImplementationPreviewFeedbackAnalyzerInput): boolea
 
 export async function analyzeImplementationPreviewFeedbackWithLlm(
   input: ImplementationPreviewFeedbackAnalyzerInput,
-  gatewayInput?: Readonly<{ readonly userId?: string | null }>,
+  gatewayInput?: Readonly<{ readonly userId?: string | null; readonly requirementsStateJson?: unknown }>,
 ): Promise<
   Readonly<{
     analysis: ImplementationPreviewFeedbackAnalysis;
@@ -47,6 +47,7 @@ export async function analyzeImplementationPreviewFeedbackWithLlm(
   const res = await invokeImplementationLlmProviderJson({
     projectId: input.projectId,
     userId: gatewayInput?.userId,
+    requirementsStateJson: gatewayInput?.requirementsStateJson,
     purpose: "implementation_preview_feedback",
     responseFormat: "json",
     requiresVision: imagePresent(input),
