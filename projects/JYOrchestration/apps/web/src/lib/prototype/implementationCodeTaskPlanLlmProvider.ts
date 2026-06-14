@@ -1,14 +1,25 @@
-import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
-import { prisma } from "@/lib/prisma";
+import { resolveImplementationLlmProviderConfigRecord } from "@/lib/prototype/implementationLlmProviderConfig.server";
 
 export type LlmCodeTaskRefinementProviderContext = Readonly<{
   readonly apiKey?: string | null;
   readonly model?: string | null;
-  readonly providerSource?: "project_execution_setup" | "user_default" | "env_fallback" | "none";
+  readonly providerSource?:
+    | "project_execution_setup"
+    | "user_default"
+    | "dev_env_fallback"
+    | "env_fallback"
+    | "none";
+  readonly projectId?: string;
+  readonly actorUserId?: string | null;
+  readonly configStatus?: "ok" | "provider_config_missing";
+  readonly envFallback?: boolean;
 }>;
 
-function allowEnvOpenAiFallback(): boolean {
-  return String(process.env.NODE_ENV ?? "").trim() !== "production";
+function mapProviderSource(
+  source: Awaited<ReturnType<typeof resolveImplementationLlmProviderConfigRecord>>["providerSource"],
+): LlmCodeTaskRefinementProviderContext["providerSource"] {
+  if (source === "dev_env_fallback") return "env_fallback";
+  return source;
 }
 
 export async function resolveLlmCodeTaskRefinementProviderContext(input: {
@@ -16,61 +27,34 @@ export async function resolveLlmCodeTaskRefinementProviderContext(input: {
   readonly actorUserId?: string | null;
 }): Promise<LlmCodeTaskRefinementProviderContext> {
   const projectId = input.projectId.trim();
-  const model = resolveOpenAiModelFromEnv();
   if (!projectId) {
-    return { apiKey: null, model, providerSource: "none" };
+    return { apiKey: null, model: null, providerSource: "none", configStatus: "provider_config_missing" };
   }
 
-  let setup: {
-    openaiPlannerApiKey: string | null;
-    project: { ownerUserId: string | null } | null;
-  } | null = null;
-  try {
-    setup = await prisma.executionSetup.findUnique({
-      where: { projectId },
-      select: {
-        openaiPlannerApiKey: true,
-        project: { select: { ownerUserId: true } },
-      },
-    });
-  } catch {
-    setup = null;
+  const resolved = await resolveImplementationLlmProviderConfigRecord({
+    projectId,
+    actorUserId: input.actorUserId ?? null,
+  });
+
+  if (resolved.status !== "ok" || !resolved.apiKey || !resolved.config?.model) {
+    return {
+      apiKey: null,
+      model: resolved.config?.model ?? null,
+      providerSource: mapProviderSource(resolved.providerSource),
+      projectId,
+      actorUserId: input.actorUserId ?? null,
+      configStatus: "provider_config_missing",
+      envFallback: resolved.envFallback,
+    };
   }
 
-  const projectKey = String(setup?.openaiPlannerApiKey ?? "").trim();
-  if (projectKey) {
-    return { apiKey: projectKey, model, providerSource: "project_execution_setup" };
-  }
-
-  const ownerId = String(setup?.project?.ownerUserId ?? "").trim();
-  const actorId = String(input.actorUserId ?? "").trim();
-
-  const tryLegacyUserKey = async (userId: string): Promise<string | null> => {
-    if (!userId) return null;
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { defaultOpenaiApiKey: true },
-      });
-      const key = String(user?.defaultOpenaiApiKey ?? "").trim();
-      return key || null;
-    } catch {
-      return null;
-    }
+  return {
+    apiKey: resolved.apiKey,
+    model: resolved.config.model,
+    providerSource: mapProviderSource(resolved.providerSource),
+    projectId,
+    actorUserId: input.actorUserId ?? null,
+    configStatus: "ok",
+    envFallback: resolved.envFallback,
   };
-
-  const ownerKey = await tryLegacyUserKey(ownerId);
-  if (ownerKey) return { apiKey: ownerKey, model, providerSource: "user_default" };
-
-  if (actorId && actorId !== ownerId) {
-    const actorKey = await tryLegacyUserKey(actorId);
-    if (actorKey) return { apiKey: actorKey, model, providerSource: "user_default" };
-  }
-
-  const envKey = String(process.env.OPENAI_API_KEY ?? "").trim();
-  if (envKey && allowEnvOpenAiFallback()) {
-    return { apiKey: envKey, model, providerSource: "env_fallback" };
-  }
-
-  return { apiKey: null, model, providerSource: "none" };
 }

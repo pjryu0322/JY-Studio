@@ -2533,7 +2533,8 @@ export function ProjectExecutionEnvironmentPanel({
         projectId={projectId}
         canEdit={canEdit}
         hasProjectApiKey={plannerKeyOnThisProject}
-        initialConfig={executionSetup?.implementationLlmProviderConfig ?? null}
+        openaiPlannerApiKeyMasked={executionSetup?.openaiPlannerApiKeyMasked ?? null}
+        initialProjectConfig={executionSetup?.implementationLlmProviderConfig ?? null}
         onSaved={(config) =>
           setExecutionSetup((prev) => (prev ? { ...prev, implementationLlmProviderConfig: config } : prev))
         }

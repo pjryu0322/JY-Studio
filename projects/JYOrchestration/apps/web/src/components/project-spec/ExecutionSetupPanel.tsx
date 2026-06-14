@@ -40,6 +40,7 @@ import {
 } from "@/components/project-spec/PrototypeSimpleExecutionPolicy";
 import { WorkspaceLabelBadge } from "@/components/project-spec/WorkspaceLabelBadge";
 import { WORKSPACE_SECTION_META } from "@/components/project-spec/workspaceSectionMeta";
+import { ImplementationLlmProviderSettingsBlock } from "@/components/project/ImplementationLlmProviderSettingsBlock";
 
 const CURSOR_API_DEFAULT_URL = "https://api.cursor.com";
 
@@ -188,6 +189,23 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
             Planner API Key: {hasPlannerKey ? "설정됨" : "미설정"}
           </span>
         </div>
+
+        <ImplementationLlmProviderSettingsBlock
+          projectId={pid}
+          canEdit={canEdit}
+          hasProjectApiKey={hasPlannerKey}
+          openaiPlannerApiKeyMasked={
+            (executionSetup as ExecutionSetupDto | null | undefined)?.openaiPlannerApiKeyMasked ?? null
+          }
+          initialProjectConfig={
+            (executionSetup as ExecutionSetupDto | null | undefined)?.implementationLlmProviderConfig ?? null
+          }
+          onSaved={(config) => {
+            const prev = executionSetup as ExecutionSetupDto | null | undefined;
+            if (prev) persistSetup({ ...prev, implementationLlmProviderConfig: config });
+          }}
+          onNotice={(message, tone) => setMessage(tone === "error" ? message : message)}
+        />
       </div>
     );
   }, [canEdit, executionSetup, persistSetup, projectId, setBusy, setMessage]);

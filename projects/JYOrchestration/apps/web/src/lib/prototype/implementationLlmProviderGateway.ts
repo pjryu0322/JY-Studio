@@ -129,7 +129,12 @@ export async function invokeImplementationLlmProviderJson(
     apiKey: config.apiKey,
     model: config.model,
     temperature: 0.12,
-    maxTokens: request.purpose === "implementation_intent_resolver" ? 650 : 750,
+    maxTokens:
+      request.purpose === "implementation_code_task_refinement"
+        ? 2048
+        : request.purpose === "implementation_intent_resolver"
+          ? 650
+          : 750,
     responseFormatJsonObject: true,
     messages,
   });

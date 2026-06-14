@@ -1,5 +1,6 @@
 import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
-import { resolveOpenAiFromEnv, resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
+import { invokeImplementationLlmProviderJson } from "@/lib/prototype/implementationLlmProviderGateway";
+import { IMPLEMENTATION_LLM_PROVIDER_CONFIG_MISSING_MESSAGE } from "@/lib/prototype/implementationLlmProviderMessages";
 import {
   classifyLlmProviderFallbackReason,
   CODE_TASK_LLM_JSON_SYSTEM_INSTRUCTIONS,
@@ -408,19 +409,32 @@ async function defaultLlmCaller(
   prompt: string,
   providerContext?: LlmCodeTaskRefinementProviderContext | null,
 ): Promise<LlmCodeTaskRefinementCallerResult> {
-  const projectKey = String(providerContext?.apiKey ?? "").trim();
-  const env = resolveOpenAiFromEnv();
-  const apiKey = projectKey || (env.ok ? env.apiKey : "");
-  const model = String(providerContext?.model ?? (env.ok ? env.model : resolveOpenAiModelFromEnv()));
-  if (!apiKey) {
-    return {
-      ok: false,
-      message: projectKey
-        ? "OpenAI API key가 유효하지 않습니다."
-        : env.ok
-          ? env.message
-          : "OpenAI Planner API key가 설정되어 있지 않습니다.",
-    };
+  const projectId = String(providerContext?.projectId ?? "").trim();
+  if (projectId) {
+    const res = await invokeImplementationLlmProviderJson({
+      projectId,
+      userId: providerContext?.actorUserId,
+      purpose: "implementation_code_task_refinement",
+      responseFormat: "json",
+      requiresVision: false,
+      messages: [
+        { role: "system", content: CODE_TASK_LLM_JSON_SYSTEM_INSTRUCTIONS },
+        { role: "user", content: prompt },
+      ],
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        message: res.errorMessage ?? IMPLEMENTATION_LLM_PROVIDER_CONFIG_MISSING_MESSAGE,
+      };
+    }
+    return { ok: true, text: String(res.content ?? ""), usage: null };
+  }
+
+  const apiKey = String(providerContext?.apiKey ?? "").trim();
+  const model = String(providerContext?.model ?? "").trim();
+  if (!apiKey || !model) {
+    return { ok: false, message: IMPLEMENTATION_LLM_PROVIDER_CONFIG_MISSING_MESSAGE };
   }
   const result = await postOpenAiChatCompletion({
     apiKey,
@@ -888,7 +902,7 @@ export async function refineImplementationCodeTaskPlanWithLlm(input: {
   const concurrency = resolveCodeTaskLlmBatchConcurrency();
   const caller = input.llmCaller ?? ((prompt) => defaultLlmCaller(prompt, input.providerContext));
   const providerSource = String(input.providerContext?.providerSource ?? "none");
-  const modelName = String(input.providerContext?.model ?? resolveOpenAiModelFromEnv());
+  const modelName = String(input.providerContext?.model ?? "").trim() || "provider_config";
   const refinementRequestedAt = now;
   const projectArtifactsSummary = summarizeArtifacts(input.projectArtifacts) || "(none)";
   const implementationSeedSummary = summarizeSeed(input.implementationSeedV1);

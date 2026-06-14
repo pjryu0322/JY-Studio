@@ -2,7 +2,8 @@ import type { OpenAiMultimodalMessage } from "@/lib/ai/openAiChatMultimodal";
 
 export type ImplementationLlmProviderPurpose =
   | "implementation_intent_resolver"
-  | "implementation_preview_feedback";
+  | "implementation_preview_feedback"
+  | "implementation_code_task_refinement";
 
 export type ImplementationLlmProviderCapabilities = Readonly<{
   readonly text: boolean;
@@ -17,7 +18,6 @@ export type ImplementationLlmProviderConfig = Readonly<{
   readonly providerSource:
     | "project_execution_setup"
     | "user_default"
-    | "env_fallback"
     | "dev_env_fallback"
     | "none";
 }>;
