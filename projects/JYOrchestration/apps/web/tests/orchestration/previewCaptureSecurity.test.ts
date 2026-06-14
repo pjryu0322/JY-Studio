@@ -4,12 +4,35 @@ import { validatePreviewCaptureTargetUrl } from "@/lib/preview/previewCaptureSec
 const ORIGIN = "https://app.example.com";
 
 describe("previewCaptureSecurity", () => {
-  it("allows https github.io hosts", () => {
+  it("blocks arbitrary github.io in production without project allowlist", () => {
     const result = validatePreviewCaptureTargetUrl({
       previewUrl: "https://pjryu0322.github.io/my-app/",
       projectId: "p1",
       platformOrigin: ORIGIN,
       isDevelopment: false,
+      allowedPreviewUrls: [],
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("allows github.io in development", () => {
+    const result = validatePreviewCaptureTargetUrl({
+      previewUrl: "https://pjryu0322.github.io/my-app/",
+      projectId: "p1",
+      platformOrigin: ORIGIN,
+      isDevelopment: true,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("allows project preview URL in production", () => {
+    const previewUrl = "https://my-pages.github.io/demo/";
+    const result = validatePreviewCaptureTargetUrl({
+      previewUrl,
+      projectId: "p1",
+      platformOrigin: ORIGIN,
+      isDevelopment: false,
+      allowedPreviewUrls: [previewUrl],
     });
     expect(result.ok).toBe(true);
   });

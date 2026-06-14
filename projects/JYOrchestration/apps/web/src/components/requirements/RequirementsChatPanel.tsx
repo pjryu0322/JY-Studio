@@ -30,7 +30,10 @@ import { RequirementsAiMessageMarkdown } from "@/components/requirements/Require
 import { RequirementsAiMessageWithOptionalCodeTaskCopy } from "@/components/requirements/CodeTaskLlmRefinementChatSection";
 import { splitMessageContentForCodeTaskLlmRefinementBlock } from "@/lib/requirements/codeTaskLlmRefinementChatBlock";
 import { QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE } from "@/lib/requirements/quickDesignConfirmArtifacts";
-import { PREVIEW_REGION_CAPTURE_INTERNAL_TYPE } from "@/lib/prototype/previewCaptureSingleChatBridge";
+import {
+  IMPLEMENTATION_USER_MESSAGE_WITH_PREVIEW_CAPTURE_INTERNAL_TYPE,
+  PREVIEW_REGION_CAPTURE_INTERNAL_TYPE,
+} from "@/lib/prototype/previewCaptureSingleChatBridge";
 import { RequirementsMessageExplainability } from "@/components/requirements/RequirementsMessageExplainability";
 import { WorkspaceAiHeaderWithAvatar } from "@/components/ai-member/WorkspaceAiHeaderWithAvatar";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
@@ -546,7 +549,8 @@ export function RequirementsChatPanel({
             if (mine) {
               const text = normalizeRequirementsMessageText(m.content);
               const previewCaptureImage =
-                m.meta?.internalType === PREVIEW_REGION_CAPTURE_INTERNAL_TYPE
+                m.meta?.internalType === PREVIEW_REGION_CAPTURE_INTERNAL_TYPE ||
+                m.meta?.internalType === IMPLEMENTATION_USER_MESSAGE_WITH_PREVIEW_CAPTURE_INTERNAL_TYPE
                   ? String(m.meta?.previewRegionCaptureImageDataUrl ?? "").trim()
                   : "";
               return (

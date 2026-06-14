@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { persistPreviewRegionCaptureAndChatMessage } from "@/lib/preview/previewCaptureRegionPersist";
+import { persistPreviewRegionCapture } from "@/lib/preview/previewCaptureRegionPersist";
 import {
   parsePreviewCaptureRegionRequest,
   type PreviewCaptureRegionResponse,
@@ -42,9 +42,8 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    const result = await persistPreviewRegionCaptureAndChatMessage({
+    const result = await persistPreviewRegionCapture({
       body,
-      userId,
       platformOrigin: readPlatformOrigin(request),
     });
     if (!result.ok) {
@@ -58,7 +57,6 @@ export async function POST(request: NextRequest) {
       ok: true,
       regionCaptureId: result.regionCaptureId,
       imageUrl: result.imageDataUrl,
-      messageId: result.messageId,
     } satisfies PreviewCaptureRegionResponse);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

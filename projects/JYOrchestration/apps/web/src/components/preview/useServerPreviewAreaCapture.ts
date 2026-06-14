@@ -8,7 +8,10 @@ import {
   type PreviewCaptureRegionRect,
   type PreviewCaptureViewport,
 } from "@/lib/preview/previewCaptureTypes";
-import { notifyPreviewRegionCaptureSentToOpener } from "@/lib/prototype/previewCaptureSingleChatBridge";
+import {
+  JYO_PREVIEW_CAPTURE_ATTACH_TO_COMPOSER,
+  postPreviewCaptureAttachToComposerOpener,
+} from "@/lib/prototype/previewCaptureSingleChatBridge";
 import type { PreviewCaptureRegion } from "@/lib/prototype/capturePreviewRegionToClipboard";
 
 export type ServerPreviewAreaCapturePhase = "idle" | "loading" | "overlay" | "sending";
@@ -42,12 +45,12 @@ export function useServerPreviewAreaCapture(input: {
     Readonly<{ readonly ok: true } | { readonly ok: false; readonly errorMessage: string; readonly securityBlocked: boolean }>
   >;
   readonly close: () => void;
-  readonly sendRegionToAiDeveloper: (input: {
+  readonly stageRegionToComposer: (input: {
     readonly region: PreviewCaptureRegion;
     readonly scaleX: number;
     readonly scaleY: number;
     readonly memo: string;
-  }) => Promise<void>;
+  }) => Promise<Readonly<{ readonly ok: true } | { readonly ok: false; readonly errorMessage: string }>>;
 }> {
   const [state, setState] = useState<ServerPreviewAreaCaptureState>(initialState);
 
@@ -134,17 +137,19 @@ export function useServerPreviewAreaCapture(input: {
     }
   }, [input.projectId, input.previewUrl]);
 
-  const sendRegionToAiDeveloper = useCallback(
+  const stageRegionToComposer = useCallback(
     async (sendInput: {
       readonly region: PreviewCaptureRegion;
       readonly scaleX: number;
       readonly scaleY: number;
       readonly memo: string;
-    }) => {
+    }): Promise<Readonly<{ readonly ok: true } | { readonly ok: false; readonly errorMessage: string }>> => {
       const captureId = state.captureId;
       const previewUrl = state.previewUrl;
       const imageDataUrl = state.imageDataUrl;
-      if (!captureId || !previewUrl || !imageDataUrl) return;
+      if (!captureId || !previewUrl || !imageDataUrl) {
+        return { ok: false, errorMessage: "캡처 정보가 없습니다." };
+      }
 
       setState((prev) => ({ ...prev, phase: "sending" }));
 
@@ -178,21 +183,45 @@ export function useServerPreviewAreaCapture(input: {
       });
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
-        messageId?: string;
+        regionCaptureId?: string;
+        imageUrl?: string;
         errorMessage?: string;
       };
-      if (!res.ok || !json.ok) {
-        throw new Error(json.errorMessage ?? "AI 개발자에게 전달하지 못했습니다.");
+      if (!res.ok || !json.ok || !json.regionCaptureId) {
+        setState((prev) => ({ ...prev, phase: "overlay" }));
+        return {
+          ok: false,
+          errorMessage: json.errorMessage ?? "대화입력창에 추가하지 못했습니다.",
+        };
       }
 
-      notifyPreviewRegionCaptureSentToOpener({
-        projectId: input.projectId,
-        messageId: json.messageId,
+      const posted = postPreviewCaptureAttachToComposerOpener({
+        type: JYO_PREVIEW_CAPTURE_ATTACH_TO_COMPOSER,
+        projectId: input.projectId.trim(),
+        stage: "implementation",
+        previewUrl,
+        captureId,
+        regionCaptureId: json.regionCaptureId,
+        imageDataUrl: json.imageUrl ?? croppedDataUrl,
+        ...(sendInput.memo.trim() ? { memo: sendInput.memo.trim() } : {}),
+        rect,
+        viewport: state.viewport,
       });
+
       setState(initialState);
+
+      if (!posted) {
+        return {
+          ok: false,
+          errorMessage:
+            "구현 단계 창을 찾을 수 없습니다. Preview Viewer를 구현 단계 툴바에서 연 뒤 다시 시도해 주세요.",
+        };
+      }
+
+      return { ok: true };
     },
     [input.projectId, state.captureId, state.imageDataUrl, state.previewUrl, state.viewport],
   );
 
-  return { state, startServerCapture, close, sendRegionToAiDeveloper };
+  return { state, startServerCapture, close, stageRegionToComposer };
 }

@@ -202,10 +202,17 @@ export function ImplementationPreviewViewerChrome(props: {
           onClose={() => serverCapture.close()}
           onSend={async (sendInput) => {
             try {
-              await serverCapture.sendRegionToAiDeveloper(sendInput);
-              notify("AI 개발자 SingleChat에 Preview 캡처를 전달했습니다.", "success");
+              const result = await serverCapture.stageRegionToComposer(sendInput);
+              if (!result.ok) {
+                notify(result.errorMessage, "error");
+                return;
+              }
+              notify(
+                "Preview 캡처를 AI 개발자 대화입력창에 추가했습니다. 보완 내용을 입력한 뒤 전송해 주세요.",
+                "success",
+              );
             } catch (err) {
-              const msg = err instanceof Error ? err.message : "AI 개발자에게 전달하지 못했습니다.";
+              const msg = err instanceof Error ? err.message : "대화입력창에 추가하지 못했습니다.";
               notify(msg, "error");
             }
           }}

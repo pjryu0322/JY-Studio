@@ -54,7 +54,6 @@ import {
 import { useImplementationNoticeModalController } from "@/components/preview/useImplementationNoticeModalController";
 import { useImplementationEntryRecoveryController } from "@/components/preview/useImplementationEntryRecoveryController";
 import { useApplyImplementationOrchestrationResult } from "@/components/preview/useApplyImplementationOrchestrationResult";
-import { usePreviewRegionCaptureOpenerSync } from "@/components/preview/usePreviewRegionCaptureOpenerSync";
 import { usePrototypeExecutionPersistChatToDb } from "@/components/preview/usePrototypeExecutionPersistChatToDb";
 import { useImplementationStageActionTimeline } from "@/components/preview/useImplementationStageActionTimeline";
 import { useProjectRecommendationEvidence } from "@/lib/recommendation/useProjectRecommendationEvidence";
@@ -1052,13 +1051,6 @@ export function usePrototypeImplementationStagePanel(
     applyImplementationOrchestrationResult,
     persistImplementationStageActionRun,
     runImplementationStageActionRef,
-  });
-
-  usePreviewRegionCaptureOpenerSync({
-    projectId,
-    requirementsStateJsonRef,
-    onRequirementsStateJsonChange,
-    applyPersistedMessages: implementationSingleChatWorkspace.executionSingleChat.applyPersistedMessages,
   });
 
   const onExecuteSelectedCodeTasksFromToolbar = useCallback(() => {

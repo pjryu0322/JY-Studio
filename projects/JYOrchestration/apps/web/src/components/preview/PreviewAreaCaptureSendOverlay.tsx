@@ -255,7 +255,7 @@ export function PreviewAreaCaptureSendOverlay(props: {
           disabled={!canSend || sendBusy || props.busy}
           onClick={() => void onSendClick()}
         >
-          AI 개발자에게 전달
+          대화입력창에 추가
         </button>
         <button type="button" style={btn()} onClick={props.onClose} disabled={sendBusy}>
           닫기
@@ -290,7 +290,7 @@ export function PreviewAreaCaptureSendOverlay(props: {
         </div>
       </div>
       <p style={{ margin: 0, fontSize: 12, color: "#e2e8f0", flexShrink: 0 }}>
-        드래그로 영역을 지정하고 메모를 입력한 뒤 「AI 개발자에게 전달」을 누르세요. Esc로 닫을 수 있습니다.
+        드래그로 영역을 지정한 뒤 「대화입력창에 추가」를 누르세요. Esc로 닫을 수 있습니다.
       </p>
     </div>
   );

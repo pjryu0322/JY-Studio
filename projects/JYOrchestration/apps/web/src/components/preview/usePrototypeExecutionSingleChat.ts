@@ -44,6 +44,8 @@ import {
   type PrototypeExecutionOrchestrationPersistInput,
 } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { PrototypeExecutionOperationalSendResult } from "@/lib/prototype/prototypeExecutionOperationalSendResult";
+import type { ImplementationComposerAttachment } from "@/lib/preview/implementationComposerAttachmentTypes";
+import { buildUserMessageWithPreviewCaptureAttachment } from "@/lib/prototype/previewCaptureSingleChatBridge";
 
 export type { PrototypeExecutionOperationalSendResult };
 
@@ -67,6 +69,9 @@ export function usePrototypeExecutionSingleChat({
   envLoading = false,
   conversationResetNonce = 0,
   conversationSurfaceEnabled = true,
+  readPendingComposerAttachments,
+  clearPendingComposerAttachments,
+  onComposerSendValidationError,
 }: {
   readonly projectId: string;
   readonly projectName: string;
@@ -100,6 +105,9 @@ export function usePrototypeExecutionSingleChat({
   readonly conversationResetNonce?: number;
   /** false: no chat timeline merge, slots/bootstrap injection, or composer send (board-only UX) */
   readonly conversationSurfaceEnabled?: boolean;
+  readonly readPendingComposerAttachments?: () => readonly ImplementationComposerAttachment[];
+  readonly clearPendingComposerAttachments?: () => void;
+  readonly onComposerSendValidationError?: (message: string) => void;
 }) {
   const [conversationStatus, setConversationStatus] = useState<"idle" | "loading" | "loaded">("idle");
   const [conversationMessages, setConversationMessages] = useState<readonly RequirementsMessage[]>([]);
@@ -269,22 +277,40 @@ export function usePrototypeExecutionSingleChat({
   const sendMessage = useCallback(async () => {
     if (!conversationSurfaceEnabled) return;
     const text = input.trim();
-    if (!text || inputBlocked || protoBusy || aiInvokePending) return;
+    const pendingAttachments = readPendingComposerAttachments?.() ?? [];
+    const previewAttachment = pendingAttachments.find((a) => a.type === "preview_region_capture") ?? null;
+
+    if (!text && !previewAttachment) return;
+    if (previewAttachment && !text) {
+      onComposerSendValidationError?.("보완 내용을 입력해 주세요.");
+      return;
+    }
+    if (inputBlocked || protoBusy || aiInvokePending) return;
 
     const replySnapshot = replyTo;
     if (replyTo) setReplyTo(null);
     setInput("");
+    if (pendingAttachments.length) {
+      clearPendingComposerAttachments?.();
+    }
 
-    const userMsg = newRequirementsMessage({
-      role: "user",
-      speakerType: "USER",
-      speakerId: "me",
-      speakerName: "나",
-      messageType: "STATEMENT",
-      content: text,
-      replyTo: replySnapshot?.id ?? null,
-      meta: { serviceDesignStage: "implementation" },
-    });
+    const userMsg = previewAttachment
+      ? buildUserMessageWithPreviewCaptureAttachment({
+          userId: "me",
+          content: text,
+          attachment: previewAttachment,
+          replyTo: replySnapshot?.id ?? null,
+        })
+      : newRequirementsMessage({
+          role: "user",
+          speakerType: "USER",
+          speakerId: "me",
+          speakerName: "나",
+          messageType: "STATEMENT",
+          content: text,
+          replyTo: replySnapshot?.id ?? null,
+          meta: { serviceDesignStage: "implementation" },
+        });
 
     flushSync(() => {
       setConversationMessages((prev) => [...prev, userMsg]);
@@ -457,6 +483,10 @@ export function usePrototypeExecutionSingleChat({
     aiTitle,
     onPersistStateJson,
     onOperationalAfterPersist,
+    conversationSurfaceEnabled,
+    readPendingComposerAttachments,
+    clearPendingComposerAttachments,
+    onComposerSendValidationError,
   ]);
 
   const handleInterviewSuggestionPick = useCallback((label: string) => {

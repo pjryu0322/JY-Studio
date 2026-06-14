@@ -179,11 +179,11 @@ export function validatePreviewCaptureTargetUrl(input: {
   }
 
   const allowlisted =
-    isGithubIoHost(parsed.hostname) ||
     previewUrlMatchesProjectAllowlist({
       absolutePreviewUrl,
       allowedPreviewUrls: input.allowedPreviewUrls ?? [],
-    });
+    }) ||
+    (isDevelopment && isGithubIoHost(parsed.hostname));
 
   if (!allowlisted) {
     return {

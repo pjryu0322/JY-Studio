@@ -32,6 +32,7 @@ import { parseRequirementsStateJson } from "@/lib/requirements/requirementsState
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
 import type { ComposerAtAtPickerItem } from "@/lib/composer/composerAtAtPicker";
+import { useImplementationComposerPendingAttachments } from "@/components/preview/useImplementationComposerPendingAttachments";
 import type { PrototypeRun } from "@/lib/prototype/prototypeRunTypes";
 import { postPrototypeRegeneratePlan } from "@/lib/prototype/prototypeRunApiClient";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
@@ -353,6 +354,16 @@ export function useImplementationSingleChatWorkspaceController(
     [input, implementationVisibleActionLabels, buildStatusQueryOperationalResult],
   );
 
+  const composerPendingAttachments = useImplementationComposerPendingAttachments({
+    projectId: input.projectId,
+    chatInputRef,
+  });
+
+  const readPendingComposerAttachments = useCallback(
+    () => composerPendingAttachments.pendingAttachments,
+    [composerPendingAttachments.pendingAttachments],
+  );
+
   const executionSingleChat = usePrototypeExecutionSingleChat({
     projectId: input.projectId,
     projectName: input.projectName || "프로젝트",
@@ -381,6 +392,9 @@ export function useImplementationSingleChatWorkspaceController(
     onPersistStateJson,
     implementationBootstrapInput: input.implementationBootstrapInput ?? undefined,
     envLoading: input.executionEnvLoading,
+    readPendingComposerAttachments,
+    clearPendingComposerAttachments: composerPendingAttachments.clearPendingAttachments,
+    onComposerSendValidationError: input.appendUserNotice,
   });
 
   const prioritizedChatMessages = useMemo(() => {
@@ -425,5 +439,6 @@ export function useImplementationSingleChatWorkspaceController(
     executionSingleChat,
     prioritizedChatMessages,
     onInterviewSuggestionPick,
+    composerPendingAttachments,
   };
 }

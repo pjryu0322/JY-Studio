@@ -1,28 +1,36 @@
-import { buildPrototypeExecutionOrchestrationPersistPatch } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
-import { readImplementationStageChatPatch } from "@/lib/prototype/implementationStageChatSnapshot";
-import { buildPreviewRegionCaptureUserMessage } from "@/lib/prototype/previewCaptureSingleChatBridge";
 import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import {
   collectProjectPreviewUrlCandidates,
   validatePreviewCaptureTargetUrl,
 } from "@/lib/preview/previewCaptureSecurity";
 import {
+  validatePreviewCaptureSessionForRegion,
+  validatePreviewRegionImageAndRect,
+} from "@/lib/preview/previewCaptureRegionValidation";
+import {
   IMPLEMENTATION_PREVIEW_REGION_CAPTURES_KEY,
   type ImplementationPreviewRegionCaptureV1,
   type PreviewCaptureRegionRequest,
 } from "@/lib/preview/previewCaptureTypes";
-import { dedupeRequirementsMessagesById } from "@/lib/requirements/requirementsMessage";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { prisma } from "@/lib/prisma";
 
-export async function persistPreviewRegionCaptureAndChatMessage(input: {
+export async function persistPreviewRegionCapture(input: {
   readonly body: PreviewCaptureRegionRequest;
-  readonly userId: string;
   readonly platformOrigin: string;
 }): Promise<
-  | Readonly<{ readonly ok: true; readonly regionCaptureId: string; readonly messageId: string; readonly imageDataUrl: string }>
+  | Readonly<{ readonly ok: true; readonly regionCaptureId: string; readonly imageDataUrl: string }>
   | Readonly<{ readonly ok: false; readonly message: string; readonly status: number }>
 > {
+  const sessionCheck = validatePreviewCaptureSessionForRegion(input.body);
+  if (!sessionCheck.ok) {
+    return { ok: false, message: sessionCheck.message, status: sessionCheck.status };
+  }
+  const imageCheck = validatePreviewRegionImageAndRect(input.body);
+  if (!imageCheck.ok) {
+    return { ok: false, message: imageCheck.message, status: imageCheck.status };
+  }
+
   const row = await prisma.project.findUnique({
     where: { id: input.body.projectId },
     select: { requirementsStateJson: true },
@@ -70,29 +78,7 @@ export async function persistPreviewRegionCaptureAndChatMessage(input: {
     : [];
   const nextCaptures = [...priorCaptures, captureRecord].slice(-80);
 
-  const chatFromState = readImplementationStageChatPatch(prior);
-  const userMessage = buildPreviewRegionCaptureUserMessage({
-    userId: input.userId,
-    previewUrl: input.body.previewUrl,
-    captureId: input.body.captureId,
-    regionCaptureId,
-    rect: input.body.rect,
-    memo: input.body.memo,
-    imageDataUrl: input.body.imageDataUrl,
-  });
-  const nextMessages = dedupeRequirementsMessagesById([...chatFromState.messages, userMessage]).slice(-400);
-
-  const chatPatch = {
-    messages: nextMessages,
-    slots: chatFromState.slots,
-    answers: chatFromState.answers,
-    currentSlotKey: chatFromState.currentSlotKey,
-  };
-
-  const orchestrationPatch = buildPrototypeExecutionOrchestrationPersistPatch(prior, {
-    chat: chatPatch,
-  });
-  const merged = mergeRequirementsStateJson(orchestrationPatch, {
+  const merged = mergeRequirementsStateJson(prior, {
     [IMPLEMENTATION_PREVIEW_REGION_CAPTURES_KEY]: nextCaptures,
     lastSavedAt: new Date().toISOString(),
   });
@@ -105,7 +91,6 @@ export async function persistPreviewRegionCaptureAndChatMessage(input: {
   return {
     ok: true,
     regionCaptureId,
-    messageId: userMessage.id,
     imageDataUrl: input.body.imageDataUrl,
   };
 }

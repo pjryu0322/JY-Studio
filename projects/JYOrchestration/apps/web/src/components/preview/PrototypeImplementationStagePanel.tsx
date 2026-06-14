@@ -81,6 +81,7 @@ export function PrototypeImplementationStagePanel({
     executionSingleChat,
     prioritizedChatMessages,
     onInterviewSuggestionPick,
+    composerPendingAttachments,
   } = implementationSingleChatWorkspace;
 
   const boardPanel =
@@ -197,6 +198,8 @@ export function PrototypeImplementationStagePanel({
             onSetReplyTo={(id, preview) => executionSingleChat.setReplyTo({ id, preview })}
             onInterviewSuggestionPick={onInterviewSuggestionPick}
             aiInvokePending={executionSingleChat.aiInvokePending}
+            composerPendingAttachments={composerPendingAttachments.pendingAttachments}
+            onRemoveComposerAttachment={composerPendingAttachments.removePendingAttachment}
           />
         </div>
         {isNextPublicDevWorkflowToolsEnabled() ? (

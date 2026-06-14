@@ -3,7 +3,9 @@
 import type { ReactNode, RefObject } from "react";
 import { RequirementsChatPanel } from "@/components/requirements/RequirementsChatPanel";
 import { PrototypeExecutionComposer } from "@/components/preview/PrototypeExecutionComposer";
+import { ImplementationComposerAttachmentBar } from "@/components/preview/ImplementationComposerAttachmentBar";
 import { RequirementsChatComposerFooter } from "@/components/requirements/RequirementsChatComposerFooter";
+import type { ImplementationComposerAttachment } from "@/lib/preview/implementationComposerAttachmentTypes";
 import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import { WorkspaceChatReplyComposerBar } from "@/components/workspace/workspaceMessageHeaderActions";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
@@ -29,6 +31,8 @@ export type PrototypeExecutionChatPanelProps = Readonly<{
   aiInvokePending: boolean;
   headerLeading?: ReactNode;
   headerIconToolbar?: ReactNode;
+  composerPendingAttachments?: readonly ImplementationComposerAttachment[];
+  onRemoveComposerAttachment?: (attachmentId: string) => void;
 }>;
 
 export function PrototypeExecutionChatPanel({
@@ -50,6 +54,8 @@ export function PrototypeExecutionChatPanel({
   onInterviewSuggestionPick,
   aiInvokePending,
   headerIconToolbar,
+  composerPendingAttachments = [],
+  onRemoveComposerAttachment,
 }: PrototypeExecutionChatPanelProps) {
   const showTyping =
     aiInvokePending &&
@@ -58,6 +64,12 @@ export function PrototypeExecutionChatPanel({
   const composer = (
     <RequirementsChatComposerFooter>
       {replyTo ? <WorkspaceChatReplyComposerBar preview={replyTo.preview} onClear={onClearReplyTo} /> : null}
+      {composerPendingAttachments.length && onRemoveComposerAttachment ? (
+        <ImplementationComposerAttachmentBar
+          attachments={composerPendingAttachments}
+          onRemove={onRemoveComposerAttachment}
+        />
+      ) : null}
       <PrototypeExecutionComposer
         value={input}
         onChange={onInputChange}
