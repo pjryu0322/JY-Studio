@@ -4,6 +4,10 @@ import {
   workingQueueStatusLabelKo,
 } from "@/lib/prototype/implementationWorkingQueueClassifier";
 import type { ImplementationWorkingQueueItem } from "@/lib/prototype/implementationWorkingQueueTypes";
+import {
+  inferPreviewFeedbackActionLine,
+  inferPreviewFeedbackTargetLine,
+} from "@/lib/prototype/implementationWorkingQueuePreviewFeedback";
 
 function formatItemBlock(item: ImplementationWorkingQueueItem, index: number): string {
   return [
@@ -11,6 +15,33 @@ function formatItemBlock(item: ImplementationWorkingQueueItem, index: number): s
     `- 영향 영역: ${affectedAreaLabelKo(item.affectedArea)}`,
     `- 위험도: ${riskLevelLabelKo(item.riskLevel)}`,
     `- 상태: ${workingQueueStatusLabelKo(item.status)}`,
+  ].join("\n");
+}
+
+function formatPreviewFeedbackItemBlock(item: ImplementationWorkingQueueItem, index: number): string {
+  return [
+    `${index + 1}. ${item.title}`,
+    `- 대상: ${inferPreviewFeedbackTargetLine(item)}`,
+    `- 동작: ${inferPreviewFeedbackActionLine(item)}`,
+    `- 영향 영역: ${affectedAreaLabelKo(item.affectedArea)} / interaction`,
+    `- 위험도: ${riskLevelLabelKo(item.riskLevel)}`,
+    `- 상태: ${workingQueueStatusLabelKo(item.status)}`,
+  ].join("\n");
+}
+
+export function buildWorkingQueuePreviewFeedbackRegisteredAiMessage(
+  registered: readonly ImplementationWorkingQueueItem[],
+): string {
+  if (registered.length !== 1) {
+    return buildWorkingQueueRegisteredAiMessage(registered);
+  }
+  const item = registered[0]!;
+  return [
+    "Preview 캡처 기준으로 보완요청을 작업대기에 등록했습니다.",
+    "",
+    formatPreviewFeedbackItemBlock(item, 0),
+    "",
+    '진행하려면 "진행해"라고 입력해 주세요.',
   ].join("\n");
 }
 

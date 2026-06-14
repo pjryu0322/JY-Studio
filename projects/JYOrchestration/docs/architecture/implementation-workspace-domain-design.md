@@ -1,6 +1,6 @@
 # Implementation Workspace Domain Design
 
-P4-M0-01 산출물. **구현 코드 변경 없음** — 현재 `projects/JYOrchestration` 구조 분석과 목표 도메인 경계 정의.
+P4-M0-01 산출물. 도메인 경계 정의 + **2026-06 기준** 구현단계 UI/상태 매핑(이후 마이그레이션 반영해 갱신).
 
 ---
 
@@ -8,23 +8,29 @@ P4-M0-01 산출물. **구현 코드 변경 없음** — 현재 `projects/JYOrche
 
 ### 1.1 제품 관점
 
-오늘 사용자가 보는 구현단계는 **CodeTask Execution Board가 메인 화면**이다.
+구현단계 **기본 화면은 AI Developer SingleChat**이다 (`PrototypeImplementationStagePanel` → `PrototypeExecutionChatPanel`).
 
 ```text
-Implementation ≈ CodeTask Board + Task Tree + Integration Footer + Toolbar icons
+Implementation ≈ SingleChat (메인)
+            + Toolbar (Preview, Dashboard, Working Queue, …)
+            + Modal: Developer Dashboard (CodeTask Board)
+            + Modal: Working Queue
 ```
 
-사용자는 branch, commit SHA, GitHub verify, integration merge, CodeTask ID를 직접 해석해야 다음 행동을 선택한다. AI 개발자(`prototype_build`)는 대화·칩·보드 메시지로 존재하지만, **화면 주목점은 보드**이다.
+- **Primary**: `prototype_build`와 대화·칩·preview 캡처 첨부로 보완 의도를 표현.
+- **Secondary**: 툴바에서 **Developer Dashboard**를 열면 Task Tree, GitHub verify, integration footer, CodeTask ID 등 **실행 진실(truth panel)** 이 노출된다.
+- **남는 UX 부담**: Dashboard를 열지 않아도 chat/칩 경로로 Cursor·CodeTask가 바로 이어질 수 있고, 파이프라인 상태는 chat 요약만으로는 불완전하다. Working Queue는 도입됐지만 preview → queue → 승인 루프·Adapter 서술은 아직 단계적이다.
 
 ### 1.2 소스 관점 (2026-06 기준)
 
 | 영역 | 현재 위치 | 역할 |
 |------|-----------|------|
 | Route | `apps/web/src/app/execution/page.tsx` → `ExecutionPageClient` | `?projectId=` 로 프로젝트 orchestration 로드 |
-| Stage shell | `PrototypePreviewPanel.tsx` → `PrototypeImplementationStagePanel.tsx` | 구현단계 전체 UI 루트 |
+| Stage shell | `PrototypePreviewPanel.tsx` → `PrototypeImplementationStagePanel.tsx` | 구현단계 전체 UI 루트 (SingleChat 메인, 보드는 Dashboard modal) |
 | Controller composition | `usePrototypeImplementationStagePanel.tsx` | 20+ `useImplementation*Controller` 조립 (parent는 shell만 유지) |
-| Main surface | `ImplementationExecutionBoardPanel.tsx` | Task tree, integration footer, developer prompt preview, runtime admin |
-| Toolbar | `ImplementationStageGlobalToolbar` + `useImplementationToolbarController.tsx` | 환경설정, 상세 로그, 선택 CodeTask 빠른 실행, 세션 초기화 |
+| Main surface (chat) | `PrototypeExecutionChatPanel.tsx` | SingleChat transcript + composer |
+| Developer Dashboard | `ImplementationExecutionBoardPanel.tsx` (+ `ImplementationExecutionBoardModal`) | Task tree, integration footer, developer prompt preview, runtime admin |
+| Toolbar | `ImplementationStageGlobalToolbar` + `useImplementationToolbarController.tsx` | Preview, Developer Dashboard, Working Queue, 환경설정, 로그, 빠른 실행 등 |
 | Board domain | `implementationExecutionBoard.ts`, `implementationExecutionBoardState.ts`, `implementationExecutionBoardPanelView.ts` | DevTask/통합 단계/사용자 확인 집계 |
 | CodeTask run | `codeTaskExecutionRun.ts`, `codeTaskGithubOutcome.ts`, `implementationCodeTaskGithubPollingState.ts` | Cursor → GitHub verify 상태 머신 |
 | Integration / Preview | `implementationIntegrationPipelineService.ts`, `projectIntegrationPipelineService.ts`, `POST /api/prototype/integration/run-pipeline` | merge/build/PR/Pages preview |
@@ -32,18 +38,19 @@ Implementation ≈ CodeTask Board + Task Tree + Integration Footer + Toolbar ico
 | Preview open | `useImplementationPreviewController.ts`, `implementationPreviewReadiness.ts` | integrated app preview URL |
 | Stage actions | `implementationStageActionPipeline.ts`, `implementationStageActionExecutionDispatch.ts`, `implementationStageNextActions.ts` | 칩/게이트/디스패치 |
 | Chat persistence | `prototypeExecutionSingleChatWire.ts`, `requirementsStateJson.prototypeExecutionSingleChatV1` | 구현단계 SingleChat 메시지 저장 |
-| Chat UI building blocks | `prototypeChatTimeline.tsx` (`PrototypeChatShell`, `PrototypeChatTimeline`) | **재사용 가능**; 현재 execution 메인 레이아웃에서는 보드가 전면 |
-| Orchestration blob | `requirementsStateJson.ts` | 프로젝트 단일 JSON에 implementation·runtime·integration 상태 대부분 저장 |
+| Working Queue | `useImplementationWorkingQueue.ts`, `ImplementationWorkingQueueModal.tsx`, `implementationWorkingQueueService.ts` | persisted `implementationWorkingQueueV1`; approve → fix CodeTask hook |
+| Preview capture → composer | `useServerPreviewAreaCapture`, `previewCaptureSingleChatBridge.ts`, `useImplementationComposerPendingAttachments.ts` | Preview 창 영역 캡처 → 부모 composer pending attachment |
+| Orchestration blob | `requirementsStateJson.ts` | 프로젝트 단일 JSON에 implementation·runtime·integration·queue·chat 상태 대부분 저장 |
 | Navigation | `flow-state.ts` (`execution`), `workflowStepMeta.ts`, `ProjectRailWorkflowStrip.tsx` | 레일: 기획 / 구현 / 검토(placeholder) |
 | Review stage | `app/prototype-review/PrototypeReviewPlaceholderPageClient.tsx` | **레거시 검토 UI 제거 후 placeholder** — 구현단계와 분리 재개발 예정 |
 
-### 1.3 구조적 문제
+### 1.3 구조적 문제 (남은 과제)
 
-1. **UX와 도메인 불일치**: “AI Developer Workspace” 목표 vs “CodeTask Board” UI.
-2. **상태 응집**: `requirementsStateJson`에 실행·보드·통합·채팅·타임라인이 혼재 — Workspace 도메인 경계가 타입/모듈에 없음.
-3. **파이프라인과 UI 결합**: Integration merge 전략, GitHub verify, preview ready가 보드/푸터/컨트롤러에 직접 노출.
-4. **보완요청 버퍼 없음**: 사용자 자연어 요청이 곧바로 CodeTask/Cursor 경로로 갈 수 있음 (`implementationStageAction*`, WIP chip handlers).
-5. **Developer Memory 없음**: 설계 의도·영향 범위가 프롬프트/타임라인/보드 메시지에 분산.
+1. **도메인 경계**: chat-first shell·Dashboard modal·Working Queue는 있으나, **Implementation Workspace** aggregate 타입/Provider로 묶이지 않음 — 로직이 `usePrototypeImplementationStagePanel` 및 다수 controller에 분산.
+2. **상태 응집**: `requirementsStateJson`에 실행·보드·통합·채팅·queue·memory draft가 혼재.
+3. **파이프라인과 UI 결합**: merge/verify/preview ready가 Dashboard·integration footer·controller에 직접 노출; chat에는 **Adapter 경유 요약**이 부족.
+4. **의도 버퍼 미완**: `implementationWorkingQueueV1` + operational send 경로는 있으나, 모든 보완요청·칩·WIP가 queue를 거치지 않음 (`implementationStageAction*`, legacy chip handlers).
+5. **Developer Memory 초안**: `implementationDeveloperMemoryDraftV1`는 queue 변경 시 갱신되나, planner/Adapter와의 **단일 SoT** 는 아직 아님 (`promptTimeline`, board 메시지 등과 병존).
 
 ---
 
@@ -54,7 +61,7 @@ Implementation = AI Developer Workspace
 ```
 
 - **Primary**: SingleChat — 한 명의 AI Developer(`prototype_build`)와 대화하며 진행.
-- **Secondary**: Developer Dashboard — 현재 `ImplementationExecutionBoardPanel` 역할을 Modal/Drawer로 격리.
+- **Secondary**: Developer Dashboard — `ImplementationExecutionBoardPanel`을 **툴바 → modal** 로 격리 (**구현됨**).
 - **Loop**: Preview 확인 → 보완요청 → Working Queue → 승인 → CodeTask → Preview 갱신.
 - **Engine**: 기존 CodeTask / GitHub verify / integration / preview pipeline은 **변경하지 않고** Adapter로만 연결.
 
@@ -101,55 +108,34 @@ Implementation Workspace (UX orchestration)
 ### 4.3 SingleChat Workspace
 
 - **State**: `prototypeExecutionSingleChatV1` (+ future dedicated slot for workspace-only metadata if split).
-- **UI reuse**: `PrototypeChatShell`, `PrototypeChatTimeline`, `PrototypeChatInput` (`prototypeChatTimeline.tsx`).
-- **Maps today**: `useImplementationRuntimeSyncController`, `usePrototypeExecutionPersistChatToDb`, chip handlers — but **not** main layout today.
+- **UI**: `PrototypeExecutionChatPanel` (composer, reply-to, pending preview attachments) wired by `useImplementationSingleChatWorkspaceController` → `usePrototypeExecutionSingleChat`.
+- **Maps today**: `useImplementationRuntimeSyncController`, `usePrototypeExecutionPersistChatToDb`, chip handlers; **chat-first shell** in `PrototypeImplementationStagePanel.tsx` (Developer Dashboard는 modal/drawer).
 
 ### 4.4 Working Queue
 
 - **Purpose**: 사용자 보완요청·변경 의도를 **즉시 CodeTask 실행하지 않고** 구조화.
-- **Proposed type** (design-only):
-
-```ts
-export type ImplementationWorkItemStatus =
-  | "pending"
-  | "approved"
-  | "running"
-  | "completed"
-  | "rejected"
-  | "deferred";
-
-export type ImplementationWorkItemV1 = Readonly<{
-  readonly workItemId: string;
-  readonly projectId: string;
-  readonly source: "user_chat" | "preview_feedback" | "dashboard";
-  readonly summary: string;
-  readonly detail?: string;
-  readonly status: ImplementationWorkItemStatus;
-  readonly linkedCodeTaskIds?: readonly string[];
-  readonly createdAt: string;
-  readonly updatedAt: string;
-}>;
-```
-
-- **Maps today (partial)**: `implementationUserFeedback` (generic), `implementationExecutionBoardStateV1` rework/confirmation rows, `cursorWorkItemsV1` (planning/implementation WIP — **not** a user intent queue). **Greenfield** for P4.
+- **Persisted model**: `implementationWorkingQueueV1` — `ImplementationWorkingQueueItem` (`implementationWorkingQueueTypes.ts`).
+- **UI**: `ImplementationWorkingQueueModal` + `useImplementationWorkingQueue` (approve / defer / reject).
+- **Operational send**: `implementationWorkingQueueOperationalSend.ts` — chat send 시 queue 정책과 연동.
+- **Maps today (partial)**: preview capture·chat에서 queue 적재 경로 확장 중; legacy `implementationExecutionBoardStateV1` rework rows, `cursorWorkItemsV1` WIP와 **병존**.
 
 ### 4.5 Developer Memory
 
 - **Purpose**: AI-only context — branch plan intent, file boundaries, open risks, last integration outcome.
 - **Exposure**: Summaries only in chat (“지금 integration branch에 screen head만 merge했습니다”).
-- **Maps today (fragments)**: `codeTaskPromptContextMapV1`, `implementationCodeTaskPlanV1`, `promptTimeline`, `implementationExecutionLogTimeline` — **no unified memory model**.
+- **Maps today**: `implementationDeveloperMemoryDraftV1` (queue 연동 draft) + fragments — `codeTaskPromptContextMapV1`, `implementationCodeTaskPlanV1`, `promptTimeline`, `implementationExecutionLogTimeline`.
 
 ### 4.6 Developer Dashboard
 
 - **Absorbs**: `ImplementationExecutionBoardPanel` (task tree, integration footer, github recheck, execution log entry, developer prompt preview).
-- **Placement**: Toolbar icon → Drawer/Modal (not full-page default).
-- **Maps today**: entire panel + `ImplementationExecutionLogModal`, integration footer components.
+- **Placement**: Toolbar → `ImplementationExecutionBoardModal` (**기본 화면 아님**).
+- **Maps today**: `ImplementationExecutionBoardPanel` in modal + `ImplementationExecutionLogModal`, integration footer.
 
 ### 4.7 Preview Loop
 
 - **States**: `implementationPreviewScopeV1`, `implementationPreviewRuntimeV1`, `prototypeRunSyncSnapshot.previewReady`, `integratedAppPreviewReady` (`implementationPreviewReadiness.ts`).
-- **Actions**: open external preview (`useImplementationPreviewController`), post-preview feedback → Working Queue.
-- **Maps today**: preview controllers + integration success toasts; **no** closed-loop queue yet.
+- **Actions**: open external preview (`useImplementationPreviewController`); region capture → composer attachment; feedback → Working Queue (경로 확장 중).
+- **Maps today**: server `/api/preview-capture`, `ImplementationPreviewViewerChrome`, `previewCaptureSingleChatBridge`; integration success toasts; **closed-loop Adapter narration** 은 미완.
 
 ### 4.8 Execution Pipeline Adapter
 
@@ -197,8 +183,8 @@ Adapter **translates** pipeline timeline events → AI Developer utterances + Da
 | Integration plan | `codeTaskIntegrationPlanV1`, `implementationIntegrationStepsV1` | Adapter + Dashboard |
 | Preview scope/runtime | `implementationPreviewScopeV1`, `implementationPreviewRuntimeV1` | Preview Loop |
 | Prompt timeline / exec log | `promptTimeline` | Dashboard log tab + AI summaries |
-| Working Queue | *(none)* | **New** `implementationWorkQueueV1` (proposed) |
-| Developer Memory | *(fragments)* | **New** `developerMemoryV1` (proposed, AI-facing) |
+| Working Queue | `implementationWorkingQueueV1` | Working Queue (동일 필드; enrich/batch rules) |
+| Developer Memory | `implementationDeveloperMemoryDraftV1` + fragments | **Unified** `developerMemoryV1` (AI-facing SoT) |
 | UI drawer/modal | — | Ephemeral React state only |
 
 **Rule**: Pipeline services remain source of truth for **execution truth** (runs, merge results). Workspace owns **intent** (queue) and **presentation** (chat, summaries).
@@ -262,13 +248,13 @@ Implementation Workspace **must not** absorb review-stage acceptance criteria. M
 
 ## 10. Next Implementation Tasks
 
-Suggested sequence (aligns with `jyo_p4_m0_02` ~ `04` prompts):
+Suggested sequence (aligns with `jyo_p4_m0_02` ~ `04` prompts). **Already landed (2026-06):** chat-first shell, Developer Dashboard modal, Working Queue modal + `implementationWorkingQueueV1`, preview region capture → composer.
 
-1. **M0-02 Runtime architecture** — event flow: chat → queue → adapter → pipeline → chat; controller layering vs new `ImplementationWorkspaceProvider`.
-2. **M0-03 Component & data model** — `implementationWorkQueueV1`, `developerMemoryV1`; SingleChat-first layout; Dashboard drawer wrapping existing board panel.
-3. **M0-04 Migration strategy** — phased: (a) dashboard behind icon, (b) chat-first layout with adapter read-only, (c) queue before Cursor, (d) deprecate board-as-home.
-4. **Adapter spike** — thin module mapping `promptTimeline` actions to workspace events (no pipeline edits).
-5. **Guardrails** — extend complexity guards so new logic lands in workspace modules, not `usePrototypeImplementationStagePanel` body.
+1. **M0-02 Runtime architecture** — event flow: chat → queue → adapter → pipeline → chat; `ImplementationWorkspaceProvider` vs controller layering.
+2. **M0-03 Component & data model** — memory SoT 정리; queue를 default intent path로 확대; Dashboard “advanced” 접기.
+3. **M0-04 Migration strategy** — remaining: (c) **모든** Cursor dispatch 전 queue gate, (d) board-derived UX를 chat 요약으로 대체, (e) legacy chip/WIP 경로 축소.
+4. **Adapter spike** — `promptTimeline` + run/integration patches → `ImplementationWorkspaceEventV1` → AI Developer utterances.
+5. **Guardrails** — workspace 모듈로 신규 로직 유입; parent hook 비대화 방지.
 
 ---
 
@@ -286,7 +272,15 @@ apps/web/src/lib/prototype/implementationIntegrationPipelineService.ts
 apps/web/src/lib/prototype/projectIntegrationPipelineService.ts
 apps/web/src/app/api/prototype/integration/run-pipeline/route.ts
 apps/web/src/lib/requirements/requirementsStateJson.ts
-apps/web/src/components/preview/prototypeChatTimeline.tsx
+apps/web/src/components/preview/PrototypeExecutionChatPanel.tsx
+apps/web/src/components/preview/usePrototypeExecutionSingleChat.ts
+apps/web/src/components/preview/useImplementationSingleChatWorkspaceController.ts
+apps/web/src/components/preview/ImplementationExecutionBoardModal.tsx
+apps/web/src/components/preview/ImplementationWorkingQueueModal.tsx
+apps/web/src/components/preview/useImplementationWorkingQueue.ts
+apps/web/src/lib/prototype/implementationWorkingQueueTypes.ts
+apps/web/src/lib/preview/
+apps/web/src/lib/prototype/prototypeExecutionSingleChatWire.ts
 docs/implementation-control-plane-complexity-summary.md
 ```
 
@@ -294,7 +288,7 @@ docs/implementation-control-plane-complexity-summary.md
 
 ## Appendix B — Migration principles
 
-1. **Strangler fig**: Dashboard drawer first; chat-first layout second; queue third.
+1. **Strangler fig (progress)**: ✅ Dashboard modal, ✅ chat-first layout, ✅ Working Queue v1 — next: Adapter narration + universal queue gate before Cursor.
 2. **Dual read**: During migration, Dashboard and Adapter both read same `requirementsStateJson` fields.
 3. **No pipeline forks**: All execution side effects go through existing routes/services.
 4. **User-visible simplification**: Branch/SHA/conflict details stay in Dashboard “advanced” sections until user opens them.

@@ -137,3 +137,78 @@ export function composerAttachmentFromAttachMessage(
     createdAt: new Date().toISOString(),
   };
 }
+
+export type PreviewCaptureUserMessageContext = Readonly<{
+  readonly sourceCaptureId?: string;
+  readonly regionCaptureId?: string;
+  readonly previewUrl?: string;
+  readonly rect?: PreviewCaptureRegionRect;
+}>;
+
+function readMetaRecord(meta: unknown): Record<string, unknown> | null {
+  if (!meta || typeof meta !== "object") return null;
+  return meta as Record<string, unknown>;
+}
+
+function readPreviewRect(meta: Record<string, unknown>): PreviewCaptureRegionRect | undefined {
+  const raw = meta.previewRegionCaptureRect ?? meta.rect;
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  if (
+    typeof r.x === "number" &&
+    typeof r.y === "number" &&
+    typeof r.width === "number" &&
+    typeof r.height === "number"
+  ) {
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  }
+  return undefined;
+}
+
+export function hasPreviewRegionCaptureAttachment(input: {
+  readonly content?: string;
+  readonly attachments?: readonly unknown[];
+  readonly meta?: unknown;
+}): boolean {
+  const meta = readMetaRecord(input.meta);
+  if (meta?.internalType === IMPLEMENTATION_USER_MESSAGE_WITH_PREVIEW_CAPTURE_INTERNAL_TYPE) {
+    return true;
+  }
+  if (meta?.internalType === PREVIEW_REGION_CAPTURE_INTERNAL_TYPE) {
+    return true;
+  }
+  if (Array.isArray(input.attachments)) {
+    return input.attachments.some((attachment) => {
+      return (
+        attachment &&
+        typeof attachment === "object" &&
+        (attachment as { type?: unknown }).type === PREVIEW_REGION_CAPTURE_INTERNAL_TYPE
+      );
+    });
+  }
+  if (!meta) return false;
+  return Boolean(
+    meta.regionCaptureId ||
+      meta.captureId ||
+      meta.previewUrl ||
+      meta.previewRegionCaptureImageDataUrl,
+  );
+}
+
+export function extractPreviewCaptureContextFromUserMessage(
+  userMsg: Pick<RequirementsMessage, "meta">,
+): PreviewCaptureUserMessageContext | null {
+  const meta = readMetaRecord(userMsg.meta);
+  if (!hasPreviewRegionCaptureAttachment({ meta })) return null;
+  if (!meta) return {};
+  const captureId = typeof meta.captureId === "string" ? meta.captureId.trim() : "";
+  const regionCaptureId = typeof meta.regionCaptureId === "string" ? meta.regionCaptureId.trim() : "";
+  const previewUrl = typeof meta.previewUrl === "string" ? meta.previewUrl.trim() : "";
+  const rect = readPreviewRect(meta);
+  return {
+    ...(captureId ? { sourceCaptureId: captureId } : {}),
+    ...(regionCaptureId ? { regionCaptureId } : {}),
+    ...(previewUrl ? { previewUrl } : {}),
+    ...(rect ? { rect } : {}),
+  };
+}

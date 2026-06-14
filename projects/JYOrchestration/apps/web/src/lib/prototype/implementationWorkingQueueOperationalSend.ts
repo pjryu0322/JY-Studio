@@ -1,16 +1,23 @@
 import { createFixCodeTasksFromApprovedQueueItems } from "@/lib/prototype/createFixCodeTasksFromApprovedQueueItems";
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
-import {
-  buildWorkingQueueControlAiMessage,
-  buildWorkingQueueRegisteredAiMessage,
-} from "@/lib/prototype/implementationWorkingQueueMessages";
 import { parseWorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueApprovalIntent";
 import { isImplementationSupplementRequest } from "@/lib/prototype/implementationWorkingQueueClassifier";
 import {
+  buildWorkingQueueControlAiMessage,
+  buildWorkingQueuePreviewFeedbackRegisteredAiMessage,
+  buildWorkingQueueRegisteredAiMessage,
+} from "@/lib/prototype/implementationWorkingQueueMessages";
+import { IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT } from "@/lib/prototype/implementationWorkingQueuePreviewFeedback";
+import {
   applyWorkingQueueControlIntent,
   buildMemoryAfterQueueChange,
+  enqueueWorkingQueuePreviewFeedback,
   enqueueWorkingQueueSupplement,
 } from "@/lib/prototype/implementationWorkingQueueService";
+import {
+  extractPreviewCaptureContextFromUserMessage,
+  hasPreviewRegionCaptureAttachment,
+} from "@/lib/prototype/previewCaptureSingleChatBridge";
 import {
   readImplementationDeveloperMemoryDraftFromState,
   readImplementationWorkingQueueFromState,
@@ -35,7 +42,11 @@ export function shouldHandleImplementationWorkingQueueChat(input: {
   );
 }
 
-function buildWorkingQueueAssistantMessage(content: string, nowIso: string): RequirementsMessage {
+function buildWorkingQueueAssistantMessage(
+  content: string,
+  nowIso: string,
+  metaExtra?: Readonly<{ readonly intent?: string }>,
+): RequirementsMessage {
   const def = getWorkspaceAiMember("prototype_build");
   return newRequirementsMessage({
     id: `impl-working-queue-${nowIso}`,
@@ -50,6 +61,7 @@ function buildWorkingQueueAssistantMessage(content: string, nowIso: string): Req
       internalType: "implementation_working_queue",
       serviceDesignStage: "implementation",
       source: "fallback",
+      ...(metaExtra?.intent ? { intent: metaExtra.intent } : {}),
     },
   });
 }
@@ -110,6 +122,47 @@ export function resolveImplementationWorkingQueueOperationalSend(input: {
     }
     const orchestration: PrototypeExecutionOrchestrationPersistInput = {
       implementationWorkingQueueV1: applied.queue,
+      implementationDeveloperMemoryDraftV1: memory,
+    };
+    return {
+      kind: "apply_conversation",
+      messages: [...priorMessages, input.userMsg, aiMessage],
+      orchestration,
+    };
+  }
+
+  const previewCaptureMessage = hasPreviewRegionCaptureAttachment({
+    meta: input.userMsg.meta,
+  });
+  if (previewCaptureMessage) {
+    const userText = input.text.trim();
+    if (!userText) {
+      return {
+        kind: "assistant_reply",
+        aiMessage: buildWorkingQueueAssistantMessage("보완 내용을 입력해 주세요.", nowIso, {
+          intent: IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT,
+        }),
+      };
+    }
+    const captureContext = extractPreviewCaptureContextFromUserMessage(input.userMsg);
+    const enqueued = enqueueWorkingQueuePreviewFeedback({
+      queue,
+      rawUserMessage: userText,
+      sourceMessageId: input.userMsg.id,
+      captureContext,
+    });
+    const memory = buildMemoryAfterQueueChange({
+      queue: enqueued.queue,
+      prior: priorMemory,
+      latestPreviewUrl: input.latestPreviewUrl ?? captureContext?.previewUrl ?? null,
+    });
+    const aiMessage = buildWorkingQueueAssistantMessage(
+      buildWorkingQueuePreviewFeedbackRegisteredAiMessage([enqueued.item]),
+      nowIso,
+      { intent: IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT },
+    );
+    const orchestration: PrototypeExecutionOrchestrationPersistInput = {
+      implementationWorkingQueueV1: enqueued.queue,
       implementationDeveloperMemoryDraftV1: memory,
     };
     return {

@@ -9,6 +9,10 @@ import type {
   ImplementationWorkingQueueItem,
   ImplementationWorkingQueueV1,
 } from "@/lib/prototype/implementationWorkingQueueTypes";
+import {
+  buildPreviewFeedbackQueueItemFields,
+} from "@/lib/prototype/implementationWorkingQueuePreviewFeedback";
+import type { PreviewCaptureUserMessageContext } from "@/lib/prototype/previewCaptureSingleChatBridge";
 import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueApprovalIntent";
 
 function nowIso(): string {
@@ -43,6 +47,36 @@ export function enqueueWorkingQueueSupplement(input: {
     createdAt: now,
     updatedAt: now,
   };
+  return {
+    queue: {
+      ...input.queue,
+      items: [...input.queue.items, item],
+      updatedAt: now,
+    },
+    item,
+  };
+}
+
+export function enqueueWorkingQueuePreviewFeedback(input: {
+  readonly queue: ImplementationWorkingQueueV1;
+  readonly rawUserMessage: string;
+  readonly sourceMessageId?: string;
+  readonly captureContext?: PreviewCaptureUserMessageContext | null;
+}): Readonly<{ queue: ImplementationWorkingQueueV1; item: ImplementationWorkingQueueItem }> {
+  const pid = input.queue.projectId.trim();
+  const now = nowIso();
+  const ctx = input.captureContext ?? {};
+  const item: ImplementationWorkingQueueItem = buildPreviewFeedbackQueueItemFields({
+    projectId: pid,
+    rawUserMessage: input.rawUserMessage,
+    sourceMessageId: input.sourceMessageId,
+    sourceCaptureId: ctx.sourceCaptureId,
+    regionCaptureId: ctx.regionCaptureId,
+    previewUrl: ctx.previewUrl,
+    rect: ctx.rect,
+    nowIso: now,
+    newItemId: newQueueItemId(),
+  });
   return {
     queue: {
       ...input.queue,

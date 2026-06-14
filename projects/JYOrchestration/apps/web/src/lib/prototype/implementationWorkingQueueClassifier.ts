@@ -28,6 +28,12 @@ const SUPPLEMENT_KEYWORDS = [
   "맞춰",
   "틀려",
   "깨져",
+  "클릭",
+  "탭",
+  "이벤트",
+  "적용",
+  "보여",
+  "표시",
 ] as const;
 
 /** 명령형 chip/CTA는 보완요청으로 분류하지 않음 */
@@ -55,7 +61,7 @@ export function inferWorkingQueueAffectedArea(text: string): ImplementationWorki
   const t = text.toLowerCase();
   if (/오류|버그|안돼|안 돼|깨|crash|error/.test(t)) return "bug";
   if (/색|색상|어두|밝|font|글자|스타일|디자인/.test(t)) return "style";
-  if (/버튼|메뉴|레이아웃|위치|올려|내려|ui|화면/.test(t)) return "ui";
+  if (/버튼|메뉴|레이아웃|위치|올려|내려|ui|화면|클릭|탭|이벤트/.test(t)) return "ui";
   if (/흐름|단계|절차|flow/.test(t)) return "flow";
   if (/데이터|db|저장|조회/.test(t)) return "data";
   if (/기능|추가|삭제/.test(t)) return "feature";

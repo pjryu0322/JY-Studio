@@ -17,10 +17,21 @@ export type ImplementationWorkingQueueAffectedArea =
 
 export type ImplementationWorkingQueueRiskLevel = "low" | "medium" | "high";
 
+export type ImplementationWorkingQueuePreviewRect = Readonly<{
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}>;
+
 export type ImplementationWorkingQueueItem = Readonly<{
   readonly id: string;
   readonly projectId: string;
   readonly sourceMessageId?: string;
+  readonly sourceCaptureId?: string;
+  readonly regionCaptureId?: string;
+  readonly previewUrl?: string;
+  readonly rect?: ImplementationWorkingQueuePreviewRect;
   readonly rawUserMessage: string;
   readonly title: string;
   readonly description: string;
