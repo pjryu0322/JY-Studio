@@ -453,6 +453,7 @@ export async function PATCH(
                 provider: parsed.provider ?? "openai",
                 model: parsed.model,
                 scope: "project",
+                apiKeyRef: "project_openai_planner",
                 capabilities: parsed.capabilities,
                 enabled: true,
                 updatedAt: new Date().toISOString(),

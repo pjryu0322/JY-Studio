@@ -1,18 +1,56 @@
 import type { ImplementationLlmProviderCapabilities } from "@/lib/prototype/implementationLlmProviderTypes";
 
+export type ImplementationLlmProviderApiKeyRef =
+  | "user_default_openai"
+  | "project_openai_planner"
+  | string;
+
 export type ImplementationLlmProviderConfigV1 = Readonly<{
   readonly version?: "implementation_llm_provider_config_v1";
   readonly provider?: "openai" | string;
   readonly model: string;
   readonly scope?: "project" | "user" | "platform";
+  /** Credential location — never store plaintext API keys in this JSON. */
+  readonly apiKeyRef?: ImplementationLlmProviderApiKeyRef;
   readonly capabilities: ImplementationLlmProviderCapabilities & { readonly jsonMode?: boolean };
   readonly enabled?: boolean;
   readonly updatedAt?: string;
 }>;
 
+export type ImplementationLlmProviderTestResponse = Readonly<{
+  readonly success: boolean;
+  readonly message: string;
+  readonly errorCode?: string;
+  readonly data?: Readonly<{
+    readonly provider: string;
+    readonly model: string;
+    readonly capabilities: Readonly<{
+      readonly text: boolean;
+      readonly vision: boolean;
+      readonly jsonMode?: boolean;
+    }>;
+    readonly trace?: Readonly<{
+      readonly usedEnvFallback: boolean;
+      readonly capabilitySource: "provider_config";
+    }>;
+    readonly providerSource?: string;
+  }>;
+}>;
+
+function stripPlaintextSecretsFromConfigInput(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const o = { ...(raw as Record<string, unknown>) };
+  delete o.apiKey;
+  delete o.encryptedApiKey;
+  delete o.openaiApiKey;
+  delete o.defaultOpenaiApiKey;
+  return o;
+}
+
 export function parseImplementationLlmProviderConfigWire(raw: unknown): ImplementationLlmProviderConfigV1 | null {
-  if (!raw || typeof raw !== "object") return null;
-  const cfg = raw as Record<string, unknown>;
+  const cleaned = stripPlaintextSecretsFromConfigInput(raw);
+  if (!cleaned || typeof cleaned !== "object") return null;
+  const cfg = cleaned as Record<string, unknown>;
   const model = typeof cfg.model === "string" ? cfg.model.trim() : "";
   const caps = cfg.capabilities;
   if (!model || !caps || typeof caps !== "object") return null;
@@ -33,6 +71,9 @@ export function parseImplementationLlmProviderConfigWire(raw: unknown): Implemen
       ...(c.jsonMode === true ? { jsonMode: true } : {}),
     },
     enabled: true,
+    ...(typeof cfg.apiKeyRef === "string" && cfg.apiKeyRef.trim()
+      ? { apiKeyRef: cfg.apiKeyRef.trim() as ImplementationLlmProviderApiKeyRef }
+      : {}),
     ...(typeof cfg.updatedAt === "string" ? { updatedAt: cfg.updatedAt } : {}),
   };
 }
@@ -52,6 +93,7 @@ export function sanitizeImplementationLlmProviderConfigForApi(
       ...(config.capabilities.jsonMode ? { jsonMode: true } : {}),
     },
     enabled: config.enabled !== false,
+    ...(config.apiKeyRef ? { apiKeyRef: config.apiKeyRef } : {}),
     ...(config.updatedAt ? { updatedAt: config.updatedAt } : {}),
   };
 }

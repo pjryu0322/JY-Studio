@@ -131,7 +131,7 @@ export async function invokeImplementationLlmProviderJson(
     temperature: 0.12,
     maxTokens:
       request.purpose === "implementation_code_task_refinement"
-        ? 2048
+        ? 4096
         : request.purpose === "implementation_intent_resolver"
           ? 650
           : 750,

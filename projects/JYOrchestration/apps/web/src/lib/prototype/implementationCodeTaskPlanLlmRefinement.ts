@@ -465,6 +465,14 @@ async function defaultLlmCaller(
   return { ok: true, text: result.text, usage };
 }
 
+/** Prompt-mode CodeTask refinement — uses Provider Gateway when projectId is on context. */
+export async function callCodeTaskRefinementLlmPrompt(
+  prompt: string,
+  providerContext?: LlmCodeTaskRefinementProviderContext | null,
+): Promise<LlmCodeTaskRefinementCallerResult> {
+  return defaultLlmCaller(prompt, providerContext);
+}
+
 type CodeTaskLlmBatchProcessResult = Readonly<{
   readonly source: "llm" | "heuristic_fallback";
   readonly tasks: readonly ImplementationCodeTaskV1[];

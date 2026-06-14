@@ -204,7 +204,17 @@ export const ExecutionSetupPanel = forwardRef<ExecutionSetupPanelHandle, Executi
             const prev = executionSetup as ExecutionSetupDto | null | undefined;
             if (prev) persistSetup({ ...prev, implementationLlmProviderConfig: config });
           }}
-          onNotice={(message, tone) => setMessage(tone === "error" ? message : message)}
+          onProjectApiKeySaved={(hasKey, masked) => {
+            const prev = executionSetup as ExecutionSetupDto | null | undefined;
+            if (prev) {
+              persistSetup({
+                ...prev,
+                hasOpenaiPlannerApiKey: hasKey,
+                openaiPlannerApiKeyMasked: masked,
+              });
+            }
+          }}
+          onNotice={(message, tone) => setMessage(message)}
         />
       </div>
     );

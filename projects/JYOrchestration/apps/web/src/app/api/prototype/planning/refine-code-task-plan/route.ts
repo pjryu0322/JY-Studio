@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
 import {
+  callCodeTaskRefinementLlmPrompt,
   refineImplementationCodeTaskPlanWithLlm,
 } from "@/lib/prototype/implementationCodeTaskPlanLlmRefinement";
-import { CODE_TASK_LLM_JSON_SYSTEM_INSTRUCTIONS } from "@/lib/prototype/llmJsonParseRecovery";
+import { IMPLEMENTATION_LLM_PROVIDER_CONFIG_MISSING_MESSAGE } from "@/lib/prototype/implementationLlmProviderMessages";
 import { resolveLlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -78,30 +78,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, message: "prompt 또는 plan payload가 필요합니다." }, { status: 400 });
   }
 
-  const apiKey = String(providerContext.apiKey ?? "").trim();
-  if (!apiKey) {
+  if (providerContext.configStatus === "provider_config_missing") {
     return NextResponse.json(
-      { ok: false, message: "OpenAI Planner API key가 설정되어 있지 않습니다." },
+      { ok: false, message: IMPLEMENTATION_LLM_PROVIDER_CONFIG_MISSING_MESSAGE },
       { status: 503 },
     );
   }
 
-  const llmResult = await postOpenAiChatCompletion({
-    apiKey,
-    model: String(providerContext.model ?? "gpt-4o-mini"),
-    temperature: 0.2,
-    responseFormatJsonObject: true,
-    maxTokens: 4096,
-    returnUsage: true,
-    messages: [
-      {
-        role: "system",
-        content: CODE_TASK_LLM_JSON_SYSTEM_INSTRUCTIONS,
-      },
-      { role: "user", content: prompt },
-    ],
-  });
-
+  const llmResult = await callCodeTaskRefinementLlmPrompt(prompt, providerContext);
   if (!llmResult.ok) {
     return NextResponse.json({ ok: false, message: llmResult.message }, { status: 502 });
   }
@@ -115,7 +99,7 @@ export async function POST(request: NextRequest) {
             promptTokens: llmResult.usage.promptTokens,
             completionTokens: llmResult.usage.completionTokens,
             totalTokens: llmResult.usage.totalTokens,
-            model: String(providerContext.model ?? "gpt-4o-mini"),
+            model: String(providerContext.model ?? "provider_config"),
           },
         }
       : {}),

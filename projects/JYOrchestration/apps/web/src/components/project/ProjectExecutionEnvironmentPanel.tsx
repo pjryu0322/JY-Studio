@@ -2538,6 +2538,17 @@ export function ProjectExecutionEnvironmentPanel({
         onSaved={(config) =>
           setExecutionSetup((prev) => (prev ? { ...prev, implementationLlmProviderConfig: config } : prev))
         }
+        onProjectApiKeySaved={(hasKey, masked) =>
+          setExecutionSetup((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  hasOpenaiPlannerApiKey: hasKey,
+                  openaiPlannerApiKeyMasked: masked,
+                }
+              : prev,
+          )
+        }
       />
     </div>
   ) : null;
