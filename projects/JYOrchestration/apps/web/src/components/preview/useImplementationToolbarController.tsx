@@ -3,6 +3,8 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { WorkspaceHubChromeIconButton } from "@/components/workspace/WorkspaceHubChromeIconButton";
 import {
+  IMPLEMENTATION_DEVELOPER_DASHBOARD_TOOLBAR_ARIA,
+  IMPLEMENTATION_DEVELOPER_DASHBOARD_TOOLBAR_TITLE,
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
   IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_ARIA,
   IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_TITLE,
@@ -26,6 +28,8 @@ import {
  */
 export type ImplementationToolbarControllerInput = Readonly<{
   readonly setExecutionEnvironmentModalOpen: (open: boolean) => void;
+  readonly onOpenDeveloperDashboard?: () => void;
+  readonly developerDashboardDisabled?: boolean;
   readonly onOpenImplementationExecutionLog: () => void;
   readonly onResetImplementationSession?: () => void | Promise<void>;
   readonly resetImplementationSessionDisabled?: boolean;
@@ -49,6 +53,31 @@ export function useImplementationToolbarController(
   const executionConversationIconToolbar = useMemo(
     () => (
       <>
+        {input.onOpenDeveloperDashboard ? (
+          <WorkspaceHubChromeIconButton
+            title={IMPLEMENTATION_DEVELOPER_DASHBOARD_TOOLBAR_TITLE}
+            ariaLabel={IMPLEMENTATION_DEVELOPER_DASHBOARD_TOOLBAR_ARIA}
+            disabled={input.developerDashboardDisabled ?? false}
+            onClick={input.onOpenDeveloperDashboard}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" />
+            </svg>
+          </WorkspaceHubChromeIconButton>
+        ) : null}
         {input.onExecuteSelectedCodeTasks ? (
           <WorkspaceHubChromeIconButton
             title={IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_TITLE}
@@ -141,6 +170,8 @@ export function useImplementationToolbarController(
     ),
     [
       onOpenExecutionEnvironmentSettings,
+      input.onOpenDeveloperDashboard,
+      input.developerDashboardDisabled,
       input.onOpenImplementationExecutionLog,
       input.onResetImplementationSession,
       input.resetImplementationSessionDisabled,

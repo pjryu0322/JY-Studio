@@ -39,6 +39,7 @@ import { useImplementationPlanningActionController } from "@/components/preview/
 import { useImplementationDbStrategyActionController } from "@/components/preview/useImplementationDbStrategyActionController";
 import { useImplementationBoardRefreshController } from "@/components/preview/useImplementationBoardRefreshController";
 import { useImplementationToolbarController } from "@/components/preview/useImplementationToolbarController";
+import { useImplementationSingleChatWorkspaceController } from "@/components/preview/useImplementationSingleChatWorkspaceController";
 import { useImplementationSessionResetController } from "@/components/preview/useImplementationSessionResetController";
 import { useImplementationRuntimeRecoveryController } from "@/components/preview/useImplementationRuntimeRecoveryController";
 import { useImplementationDeliverableViewerController } from "@/components/preview/useImplementationDeliverableViewerController";
@@ -207,6 +208,9 @@ export type UsePrototypeImplementationStagePanelResult = Readonly<{
   onClearImplementationExecutionLog: () => void;
   latestRunForDevTools: PrototypeRun | null;
   executionSlotsForDevTools: ReturnType<typeof computePrototypeExecutionSlots>;
+  implementationDeveloperDashboardOpen: boolean;
+  setImplementationDeveloperDashboardOpen: (open: boolean) => void;
+  implementationSingleChatWorkspace: ReturnType<typeof useImplementationSingleChatWorkspaceController>;
 }>;
 
 export function usePrototypeImplementationStagePanel(
@@ -318,6 +322,7 @@ export function usePrototypeImplementationStagePanel(
     [],
   );
   const [activeTaskCursorJob, setActiveTaskCursorJob] = useState<TaskCursorJobSummary | null>(null);
+  const [implementationDeveloperDashboardOpen, setImplementationDeveloperDashboardOpen] = useState(false);
   const activeTaskCursorJobRef = useRef<TaskCursorJobSummary | null>(null);
   activeTaskCursorJobRef.current = activeTaskCursorJob;
   const boardManualPickTaskIdRef = useRef<string | null>(null);
@@ -955,6 +960,58 @@ export function usePrototypeImplementationStagePanel(
       onRefreshPrototypeStatus,
     });
 
+  const planningOrchestrationView = useMemo(
+    () =>
+      buildPrototypeExecutionPlanningOrchestrationView({
+        requirementsStateJson,
+        projectId,
+        projectName: projectName || "프로젝트",
+        projectDescription,
+        servicePlanningAgentCatalogKeys,
+      }),
+    [requirementsStateJson, projectId, projectName, projectDescription, servicePlanningAgentCatalogKeys],
+  );
+
+  const implementationSingleChatWorkspace = useImplementationSingleChatWorkspaceController({
+    projectId,
+    projectName,
+    projectDescription,
+    requirementsStateJson,
+    requirementsStateJsonRef,
+    parsedRequirementsState,
+    protoBusy,
+    setProtoBusy,
+    latestRun,
+    setLatestRun,
+    canRequestGeneration,
+    effectiveImplementationState,
+    implementationBootstrapInput,
+    implementationStageBoardInput,
+    planningSlotDefinitions,
+    projectArtifacts: planningOrchestrationView.projectArtifacts,
+    isDraftGenerationComplete,
+    isRunningState,
+    templatePlanningReady,
+    isPlannerRunning,
+    plannerCreatePending,
+    plannerContextPayload,
+    effectiveTemplate,
+    effectiveTemplateDefName: effectiveTemplateDef?.nameKo ?? effectiveTemplate,
+    ideationSummaryForChat,
+    actorFlowSummaryForChat,
+    executionEnvLoading,
+    startWorkPlanGenerationFromChat,
+    setPlannerPromptModalOpen,
+    setExecutionEnvironmentModalOpen,
+    handleChatIntent,
+    handleImplementationChip,
+    appendUserNotice,
+    applyPendingFromOrchestrationPatch,
+    applyImplementationOrchestrationResult,
+    persistImplementationStageActionRun,
+    runImplementationStageActionRef,
+  });
+
   const onExecuteSelectedCodeTasksFromToolbar = useCallback(() => {
     const cp = implementationControlPlaneSnapshot;
     if (
@@ -989,6 +1046,8 @@ export function usePrototypeImplementationStagePanel(
 
   const { executionConversationIconToolbar } = useImplementationToolbarController({
     setExecutionEnvironmentModalOpen,
+    onOpenDeveloperDashboard: () => setImplementationDeveloperDashboardOpen(true),
+    developerDashboardDisabled: !implementationBoard && !implementationBootstrapShell,
     onOpenImplementationExecutionLog,
     onResetImplementationSession,
     resetImplementationSessionDisabled,
@@ -996,18 +1055,6 @@ export function usePrototypeImplementationStagePanel(
     executeSelectedCodeTasksDisabled: executeSelectedCodeTasksToolbarDisabled,
     executeSelectedCodeTasksEmphasized: executeSelectedCodeTasksToolbarEmphasized,
   });
-
-  const planningOrchestrationView = useMemo(
-    () =>
-      buildPrototypeExecutionPlanningOrchestrationView({
-        requirementsStateJson,
-        projectId,
-        projectName: projectName || "프로젝트",
-        projectDescription,
-        servicePlanningAgentCatalogKeys,
-      }),
-    [requirementsStateJson, projectId, projectName, projectDescription, servicePlanningAgentCatalogKeys],
-  );
 
   const { deliverableViewer } = useImplementationDeliverableViewerController();
 
@@ -1059,5 +1106,8 @@ export function usePrototypeImplementationStagePanel(
     handleExecutionSetupChanged,
     latestRunForDevTools: latestRun,
     executionSlotsForDevTools: executionSlots,
+    implementationDeveloperDashboardOpen,
+    setImplementationDeveloperDashboardOpen,
+    implementationSingleChatWorkspace,
   };
 }

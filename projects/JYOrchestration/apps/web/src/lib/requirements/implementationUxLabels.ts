@@ -35,6 +35,8 @@ export const IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL = "구현 작업안 �
 export const PLANNING_ENV_SETTINGS_LABEL = "환경설정 열기" as const;
 /** 구현 단계·기획 단계 공통 실행 환경 칩 */
 export const IMPLEMENTATION_ENV_SETTINGS_LABEL = PLANNING_ENV_SETTINGS_LABEL;
+export const IMPLEMENTATION_DEVELOPER_DASHBOARD_TOOLBAR_TITLE = "개발 현황판" as const;
+export const IMPLEMENTATION_DEVELOPER_DASHBOARD_TOOLBAR_ARIA = "개발 현황판 열기 — CodeTask·통합·Preview" as const;
 
 export const IMPLEMENTATION_ARTIFACT_REVIEW_LABEL = "산출물 다시 보기" as const;
 
