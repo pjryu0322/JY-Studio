@@ -30,6 +30,9 @@ export type ImplementationPreviewFeedbackLlmTrace = Readonly<{
   readonly source: "llm_vision" | "llm_text" | "fallback";
   readonly model?: string;
   readonly reason?: string;
+  readonly usedVision?: boolean;
+  readonly providerSource?: string;
+  readonly fallbackReason?: string;
 }>;
 
 const AREAS = new Set<ImplementationWorkingQueueAffectedArea>([
@@ -84,9 +87,9 @@ export function buildMinimalPreviewFeedbackFallback(userText: string): Implement
     description: raw,
     desiredBehavior: raw,
     affectedArea: "unknown",
-    riskLevel: "low",
+    riskLevel: "medium",
     needsClarification: false,
     confidence: "low",
-    reason: "LLM unavailable — preserved user text only (no keyword inference)",
+    reason: "LLM unavailable — preserved user text only, no keyword inference",
   };
 }

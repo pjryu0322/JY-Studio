@@ -153,7 +153,7 @@ function enqueueFromLlmDraft(input: Readonly<{
   };
 }
 
-export async function resolveImplementationWorkingQueueOperationalSend(input: {
+type OperationalSendInput = Readonly<{
   readonly text: string;
   readonly userMsg: RequirementsMessage;
   readonly projectId: string;
@@ -164,17 +164,99 @@ export async function resolveImplementationWorkingQueueOperationalSend(input: {
   readonly latestPreviewUrl?: string | null;
   readonly hasRunnableCodeTasks?: boolean;
   readonly implementationMode?: string;
-}): Promise<PrototypeExecutionOperationalSendResult | null> {
-  if (
-    !shouldHandleImplementationWorkingQueueChat({
-      isDraftGenerationComplete: input.isDraftGenerationComplete,
-      parsedRequirementsState: input.parsedRequirementsState,
-      implementationBootstrapInput: input.implementationBootstrapInput,
-    })
-  ) {
-    return null;
+}>;
+
+async function resolvePreviewCaptureFeedbackFirst(
+  input: OperationalSendInput,
+): Promise<PrototypeExecutionOperationalSendResult | null> {
+  const pid = input.projectId.trim();
+  if (!pid) return null;
+
+  const nowIso = new Date().toISOString();
+  const queue = readImplementationWorkingQueueFromState(input.requirementsStateJson, pid);
+  const priorMemory = readImplementationDeveloperMemoryDraftFromState(input.requirementsStateJson, pid);
+  const priorMessages =
+    resolvePrototypeExecutionSingleChatFromState(input.requirementsStateJson).messages ?? [];
+  const timelineEntries: RequirementsPromptTimelineEntry[] = [];
+
+  const userText = input.text.trim();
+  if (!userText) {
+    return {
+      kind: "assistant_reply",
+      aiMessage: buildWorkingQueueAssistantMessage("보완 내용을 입력해 주세요.", nowIso, {
+        intent: IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT,
+        source: "rule",
+      }),
+    };
   }
 
+  const analyzerInput = buildPreviewFeedbackAnalyzerInput({
+    projectId: pid,
+    userText,
+    userMsg: input.userMsg,
+    priorMessages,
+  });
+  const analyzed = await postImplementationPreviewFeedbackAnalyze({ projectId: pid, analyzerInput });
+  const analysis =
+    analyzed.success && analyzed.data ? analyzed.data.analysis : buildMinimalPreviewFeedbackFallback(userText);
+  const trace = analyzed.data?.trace;
+
+  timelineEntries.push(
+    buildWorkingQueueTimelineTrace({
+      action: "implementation_preview_feedback_analyzed",
+      source: trace?.source ?? "fallback",
+      detail: [trace?.reason, trace?.fallbackReason, trace?.usedVision ? "usedVision=true" : "image_analysis_limited"]
+        .filter(Boolean)
+        .join(" · "),
+      nowIso,
+    }),
+  );
+
+  if (analysis.needsClarification && analysis.clarificationQuestion) {
+    return {
+      kind: "assistant_reply",
+      aiMessage: buildWorkingQueueAssistantMessage(analysis.clarificationQuestion, nowIso, {
+        intent: IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT,
+      }),
+      timelineEntries,
+    };
+  }
+
+  const captureContext = extractPreviewCaptureContextFromUserMessage(input.userMsg);
+  const item = queueItemFromPreviewAnalysis({
+    analysis,
+    projectId: pid,
+    rawUserMessage: userText,
+    sourceMessageId: input.userMsg.id,
+    captureContext,
+    itemId: newQueueItemId(),
+    nowIso,
+  });
+  const enqueued = enqueueWorkingQueueFromItem({ queue, item });
+  const memory = buildMemoryAfterQueueChange({
+    queue: enqueued.queue,
+    prior: priorMemory,
+    latestPreviewUrl: input.latestPreviewUrl ?? captureContext?.previewUrl ?? null,
+  });
+  const aiMessage = buildWorkingQueueAssistantMessage(
+    buildWorkingQueuePreviewFeedbackRegisteredAiMessage([enqueued.item]),
+    nowIso,
+    { intent: IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT },
+  );
+  return {
+    kind: "apply_conversation",
+    messages: [...priorMessages, input.userMsg, aiMessage],
+    orchestration: {
+      implementationWorkingQueueV1: enqueued.queue,
+      implementationDeveloperMemoryDraftV1: memory,
+    },
+    timelineEntries,
+  };
+}
+
+async function resolveNormalImplementationWorkingQueueSend(
+  input: OperationalSendInput,
+): Promise<PrototypeExecutionOperationalSendResult | null> {
   const pid = input.projectId.trim();
   if (!pid) return null;
 
@@ -185,87 +267,6 @@ export async function resolveImplementationWorkingQueueOperationalSend(input: {
     resolvePrototypeExecutionSingleChatFromState(input.requirementsStateJson).messages ?? [];
 
   const timelineEntries: RequirementsPromptTimelineEntry[] = [];
-
-  const previewCaptureMessage = hasPreviewRegionCaptureAttachment({ meta: input.userMsg.meta });
-  if (previewCaptureMessage) {
-    const userText = input.text.trim();
-    if (!userText) {
-      return {
-        kind: "assistant_reply",
-        aiMessage: buildWorkingQueueAssistantMessage("보완 내용을 입력해 주세요.", nowIso, {
-          intent: IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT,
-          source: "rule",
-        }),
-      };
-    }
-
-    const analyzerInput = buildPreviewFeedbackAnalyzerInput({
-      projectId: pid,
-      userText,
-      userMsg: input.userMsg,
-      priorMessages,
-    });
-    const analyzed = await postImplementationPreviewFeedbackAnalyze({ projectId: pid, analyzerInput });
-    const analysis =
-      analyzed.success && analyzed.data
-        ? analyzed.data.analysis
-        : buildMinimalPreviewFeedbackFallback(userText);
-    const trace = analyzed.data?.trace;
-
-    timelineEntries.push(
-      buildWorkingQueueTimelineTrace({
-        action: "implementation_preview_feedback_analyzed",
-        source: trace?.source ?? "fallback",
-        detail: trace?.reason,
-        nowIso,
-      }),
-    );
-
-    if (!analysis) {
-      return null;
-    }
-
-    if (analysis.needsClarification && analysis.clarificationQuestion) {
-      return {
-        kind: "assistant_reply",
-        aiMessage: buildWorkingQueueAssistantMessage(analysis.clarificationQuestion, nowIso, {
-          intent: IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT,
-        }),
-        timelineEntries,
-      };
-    }
-
-    const captureContext = extractPreviewCaptureContextFromUserMessage(input.userMsg);
-    const item = queueItemFromPreviewAnalysis({
-      analysis,
-      projectId: pid,
-      rawUserMessage: userText,
-      sourceMessageId: input.userMsg.id,
-      captureContext,
-      itemId: newQueueItemId(),
-      nowIso,
-    });
-    const enqueued = enqueueWorkingQueueFromItem({ queue, item });
-    const memory = buildMemoryAfterQueueChange({
-      queue: enqueued.queue,
-      prior: priorMemory,
-      latestPreviewUrl: input.latestPreviewUrl ?? captureContext?.previewUrl ?? null,
-    });
-    const aiMessage = buildWorkingQueueAssistantMessage(
-      buildWorkingQueuePreviewFeedbackRegisteredAiMessage([enqueued.item]),
-      nowIso,
-      { intent: IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT },
-    );
-    return {
-      kind: "apply_conversation",
-      messages: [...priorMessages, input.userMsg, aiMessage],
-      orchestration: {
-        implementationWorkingQueueV1: enqueued.queue,
-        implementationDeveloperMemoryDraftV1: memory,
-      },
-      timelineEntries,
-    };
-  }
 
   const resolverInput = buildImplementationIntentResolverInput({
     projectId: pid,
@@ -379,4 +380,24 @@ export async function resolveImplementationWorkingQueueOperationalSend(input: {
   }
 
   return null;
+}
+
+export async function resolveImplementationWorkingQueueOperationalSend(
+  input: OperationalSendInput,
+): Promise<PrototypeExecutionOperationalSendResult | null> {
+  if (hasPreviewRegionCaptureAttachment({ meta: input.userMsg.meta })) {
+    return resolvePreviewCaptureFeedbackFirst(input);
+  }
+
+  if (
+    !shouldHandleImplementationWorkingQueueChat({
+      isDraftGenerationComplete: input.isDraftGenerationComplete,
+      parsedRequirementsState: input.parsedRequirementsState,
+      implementationBootstrapInput: input.implementationBootstrapInput,
+    })
+  ) {
+    return null;
+  }
+
+  return resolveNormalImplementationWorkingQueueSend(input);
 }

@@ -33,6 +33,11 @@ export type ImplementationIntentResolverInput = Readonly<{
   readonly hasPreviewCaptureAttachment: boolean;
   readonly implementationMode?: string;
   readonly hasRunnableCodeTasks?: boolean;
+  readonly lastRegisteredQueueItem?: Readonly<{
+    readonly id: string;
+    readonly title: string;
+    readonly status: string;
+  }> | null;
   readonly availableActions: ReadonlyArray<
     | "start_initial_quick_run"
     | "approve_pending_work_queue"
@@ -64,6 +69,7 @@ export type ImplementationIntentResolverLlmTrace = Readonly<{
   readonly source: "llm" | "fallback";
   readonly model?: string;
   readonly reason?: string;
+  readonly providerSource?: string;
 }>;
 
 const CONFIDENCE = new Set<ImplementationIntentResolverConfidence>(["low", "medium", "high"]);

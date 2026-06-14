@@ -41,6 +41,7 @@ export function buildImplementationIntentResolverInput(input: Readonly<{
   implementationMode?: string;
 }>): ImplementationIntentResolverInput {
   const pending = input.queue.items.filter((i) => i.status === "pending");
+  const lastItem = input.queue.items[input.queue.items.length - 1];
   const hasPreview = hasPreviewRegionCaptureAttachment({ meta: input.userMsg.meta });
   const actions: ImplementationIntentResolverInput["availableActions"] = [
     "none",
@@ -66,6 +67,9 @@ export function buildImplementationIntentResolverInput(input: Readonly<{
     hasPreviewCaptureAttachment: hasPreview,
     implementationMode: input.implementationMode,
     hasRunnableCodeTasks: input.hasRunnableCodeTasks,
+    lastRegisteredQueueItem: lastItem
+      ? { id: lastItem.id, title: lastItem.title, status: lastItem.status }
+      : null,
     availableActions: actions,
   };
 }

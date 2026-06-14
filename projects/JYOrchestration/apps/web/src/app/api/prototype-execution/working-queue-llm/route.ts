@@ -40,13 +40,13 @@ export async function POST(request: NextRequest) {
     const mode = body.mode;
     if (mode === "intent") {
       const payload = body.payload as ImplementationIntentResolverInput;
-      const out = await resolveImplementationIntentWithLlm(payload);
+      const out = await resolveImplementationIntentWithLlm(payload, { userId: String(userId) });
       return NextResponse.json({ success: true, data: out });
     }
 
     if (mode === "preview_feedback") {
       const payload = body.payload as ImplementationPreviewFeedbackAnalyzerInput;
-      const out = await analyzeImplementationPreviewFeedbackWithLlm(payload);
+      const out = await analyzeImplementationPreviewFeedbackWithLlm(payload, { userId: String(userId) });
       return NextResponse.json({ success: true, data: out });
     }
 

@@ -1,5 +1,4 @@
-import { resolveOpenAiFromEnv } from "@/lib/ai/openAiEnv";
-import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
+import { invokeImplementationLlmProviderJson } from "@/lib/prototype/implementationLlmProviderGateway";
 import { buildImplementationIntentResolverSystemPrompt } from "@/lib/prototype/implementationIntentResolverPrompt";
 import {
   parseImplementationIntentResolverJson,
@@ -8,65 +7,57 @@ import {
   type ImplementationIntentResolverResult,
 } from "@/lib/prototype/implementationIntentResolverTypes";
 
-export async function resolveImplementationIntentWithLlm(input: ImplementationIntentResolverInput): Promise<
+export async function resolveImplementationIntentWithLlm(
+  input: ImplementationIntentResolverInput,
+  gatewayInput?: Readonly<{ readonly userId?: string | null }>,
+): Promise<
   Readonly<{
     result: ImplementationIntentResolverResult;
     trace: ImplementationIntentResolverLlmTrace;
   }>
 > {
-  const env = resolveOpenAiFromEnv();
-  if (!env.ok) {
+  const res = await invokeImplementationLlmProviderJson({
+    projectId: input.projectId,
+    userId: gatewayInput?.userId,
+    purpose: "implementation_intent_resolver",
+    responseFormat: "json",
+    messages: [
+      { role: "system", content: buildImplementationIntentResolverSystemPrompt() },
+      { role: "user", content: JSON.stringify(input) },
+    ],
+  });
+
+  if (!res.ok || !res.parsedJson) {
     return {
       result: {
         intent: "none",
         confidence: "low",
-        reason: env.message,
+        reason: res.errorMessage ?? "LLM provider unavailable",
       },
-      trace: { source: "fallback", reason: "NO_KEY" },
+      trace: {
+        source: "fallback",
+        model: res.model,
+        reason: res.trace?.fallbackReason ?? res.errorCode ?? "provider_error",
+        providerSource: res.trace?.providerSource,
+      },
     };
   }
 
-  const system = buildImplementationIntentResolverSystemPrompt();
-  const userPayload = JSON.stringify(input);
-  const res = await postOpenAiChatCompletion({
-    apiKey: env.apiKey,
-    model: env.model,
-    temperature: 0.1,
-    maxTokens: 600,
-    responseFormatJsonObject: true,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: userPayload },
-    ],
-  });
-
-  if (!res.ok) {
-    return {
-      result: { intent: "none", confidence: "low", reason: res.message },
-      trace: { source: "fallback", model: env.model, reason: res.code },
-    };
-  }
-
-  let raw: unknown;
-  try {
-    raw = JSON.parse(res.text);
-  } catch {
-    return {
-      result: { intent: "none", confidence: "low", reason: "Intent JSON parse failed" },
-      trace: { source: "fallback", model: env.model, reason: "PARSE" },
-    };
-  }
-
-  const parsed = parseImplementationIntentResolverJson(raw);
+  const parsed = parseImplementationIntentResolverJson(res.parsedJson);
   if (!parsed) {
     return {
       result: { intent: "none", confidence: "low", reason: "Intent schema validation failed" },
-      trace: { source: "fallback", model: env.model, reason: "VALIDATION" },
+      trace: { source: "fallback", model: res.model, reason: "VALIDATION", providerSource: res.trace?.providerSource },
     };
   }
 
   return {
     result: parsed,
-    trace: { source: "llm", model: env.model, reason: parsed.reason },
+    trace: {
+      source: "llm",
+      model: res.model,
+      reason: parsed.reason,
+      providerSource: res.trace?.providerSource,
+    },
   };
 }

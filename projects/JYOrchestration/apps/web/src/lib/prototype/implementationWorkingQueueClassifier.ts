@@ -3,6 +3,7 @@ import type {
   ImplementationWorkingQueueRiskLevel,
 } from "@/lib/prototype/implementationWorkingQueueTypes";
 
+/** @legacy Product path must not import infer* helpers — tests and LLM-failure-only helpers only. */
 const SUPPLEMENT_KEYWORDS = [
   "수정",
   "바꿔",

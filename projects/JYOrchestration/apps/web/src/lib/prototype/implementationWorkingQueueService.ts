@@ -1,8 +1,3 @@
-import {
-  buildWorkingQueueItemTitle,
-  inferWorkingQueueAffectedArea,
-  inferWorkingQueueRiskLevel,
-} from "@/lib/prototype/implementationWorkingQueueClassifier";
 import { buildDeveloperMemoryDraftFromQueue } from "@/lib/prototype/implementationDeveloperMemory";
 import type {
   ImplementationDeveloperMemoryDraft,
@@ -23,24 +18,29 @@ function newQueueItemId(): string {
   return `iwq-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/**
+ * @deprecated Legacy/test helper only — no keyword inference. Product path uses LLM drafts.
+ */
 export function enqueueWorkingQueueSupplement(input: {
   readonly queue: ImplementationWorkingQueueV1;
   readonly rawUserMessage: string;
   readonly sourceMessageId?: string;
 }): Readonly<{ queue: ImplementationWorkingQueueV1; item: ImplementationWorkingQueueItem }> {
   const pid = input.queue.projectId.trim();
-  const area = inferWorkingQueueAffectedArea(input.rawUserMessage);
+  const raw = input.rawUserMessage.trim();
   const now = nowIso();
+  const compact = raw.replace(/\s+/g, " ");
+  const title = compact.length <= 48 ? compact : `${compact.slice(0, 45)}…`;
   const item: ImplementationWorkingQueueItem = {
     id: newQueueItemId(),
     projectId: pid,
     sourceMessageId: input.sourceMessageId,
-    rawUserMessage: input.rawUserMessage.trim(),
-    title: buildWorkingQueueItemTitle(input.rawUserMessage),
-    description: input.rawUserMessage.trim(),
-    affectedArea: area,
+    rawUserMessage: raw,
+    title,
+    description: raw,
+    affectedArea: "unknown",
     status: "pending",
-    riskLevel: inferWorkingQueueRiskLevel(area, input.rawUserMessage),
+    riskLevel: "medium",
     createdAt: now,
     updatedAt: now,
   };

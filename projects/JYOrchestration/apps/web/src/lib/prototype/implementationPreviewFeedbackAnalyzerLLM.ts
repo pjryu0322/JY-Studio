@@ -1,5 +1,4 @@
-import { resolveOpenAiFromEnv } from "@/lib/ai/openAiEnv";
-import { buildVisionUserMessage, postOpenAiChatCompletionMultimodal } from "@/lib/ai/openAiChatMultimodal";
+import { invokeImplementationLlmProviderJson } from "@/lib/prototype/implementationLlmProviderGateway";
 import { buildImplementationPreviewFeedbackSystemPrompt } from "@/lib/prototype/implementationPreviewFeedbackPrompt";
 import {
   buildMinimalPreviewFeedbackFallback,
@@ -9,12 +8,13 @@ import {
   type ImplementationPreviewFeedbackLlmTrace,
 } from "@/lib/prototype/implementationPreviewFeedbackTypes";
 
-function visionImagePresent(input: ImplementationPreviewFeedbackAnalyzerInput): boolean {
+function imagePresent(input: ImplementationPreviewFeedbackAnalyzerInput): boolean {
   return Boolean(String(input.imageDataUrl ?? input.imageUrl ?? "").trim());
 }
 
 export async function analyzeImplementationPreviewFeedbackWithLlm(
   input: ImplementationPreviewFeedbackAnalyzerInput,
+  gatewayInput?: Readonly<{ readonly userId?: string | null }>,
 ): Promise<
   Readonly<{
     analysis: ImplementationPreviewFeedbackAnalysis;
@@ -30,19 +30,10 @@ export async function analyzeImplementationPreviewFeedbackWithLlm(
         clarificationQuestion: "보완 내용을 입력해 주세요.",
         reason: "Empty user text",
       },
-      trace: { source: "fallback", reason: "EMPTY_TEXT" },
+      trace: { source: "fallback", reason: "EMPTY_TEXT", usedVision: false },
     };
   }
 
-  const env = resolveOpenAiFromEnv();
-  if (!env.ok) {
-    return {
-      analysis: buildMinimalPreviewFeedbackFallback(userText),
-      trace: { source: "fallback", reason: "NO_KEY" },
-    };
-  }
-
-  const system = buildImplementationPreviewFeedbackSystemPrompt();
   const payload = JSON.stringify({
     projectId: input.projectId,
     userText,
@@ -53,66 +44,63 @@ export async function analyzeImplementationPreviewFeedbackWithLlm(
     recentMessages: input.recentMessages ?? [],
   });
 
-  const hasVision = visionImagePresent(input);
-  const res = hasVision
-    ? await postOpenAiChatCompletionMultimodal({
-        apiKey: env.apiKey,
-        model: env.model,
-        temperature: 0.15,
-        maxTokens: 700,
-        responseFormatJsonObject: true,
-        messages: [
-          { role: "system", content: system },
-          buildVisionUserMessage({
-            textPayload: payload,
-            imageDataUrl: input.imageDataUrl,
-            imageUrl: input.imageUrl,
-          }),
-        ],
-      })
-    : await postOpenAiChatCompletionMultimodal({
-        apiKey: env.apiKey,
-        model: env.model,
-        temperature: 0.15,
-        maxTokens: 700,
-        responseFormatJsonObject: true,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: `${payload}\n\n(note: image not sent — text-only analysis)` },
-        ],
-      });
+  const res = await invokeImplementationLlmProviderJson({
+    projectId: input.projectId,
+    userId: gatewayInput?.userId,
+    purpose: "implementation_preview_feedback",
+    responseFormat: "json",
+    requiresVision: imagePresent(input),
+    imageDataUrl: input.imageDataUrl,
+    imageUrl: input.imageUrl,
+    messages: [
+      { role: "system", content: buildImplementationPreviewFeedbackSystemPrompt() },
+      { role: "user", content: payload },
+    ],
+  });
 
-  if (!res.ok) {
+  if (!res.ok || !res.parsedJson) {
     return {
       analysis: buildMinimalPreviewFeedbackFallback(userText),
-      trace: { source: "fallback", model: env.model, reason: res.code },
+      trace: {
+        source: "fallback",
+        model: res.model,
+        reason: res.trace?.fallbackReason ?? res.errorCode ?? "provider_error",
+        usedVision: false,
+        providerSource: res.trace?.providerSource,
+        fallbackReason: res.trace?.fallbackReason,
+      },
     };
   }
 
-  let raw: unknown;
-  try {
-    raw = JSON.parse(res.text);
-  } catch {
-    return {
-      analysis: buildMinimalPreviewFeedbackFallback(userText),
-      trace: { source: "fallback", model: env.model, reason: "PARSE" },
-    };
-  }
-
-  const parsed = parseImplementationPreviewFeedbackAnalysisJson(raw);
+  const parsed = parseImplementationPreviewFeedbackAnalysisJson(res.parsedJson);
   if (!parsed) {
     return {
       analysis: buildMinimalPreviewFeedbackFallback(userText),
-      trace: { source: "fallback", model: env.model, reason: "VALIDATION" },
+      trace: {
+        source: "fallback",
+        model: res.model,
+        reason: "VALIDATION",
+        usedVision: false,
+        providerSource: res.trace?.providerSource,
+      },
     };
+  }
+
+  const usedVision = res.trace?.usedVision === true;
+  let traceReason = parsed.reason;
+  if (!usedVision && imagePresent(input)) {
+    traceReason = `${parsed.reason} · image_analysis_limited`;
   }
 
   return {
     analysis: parsed,
     trace: {
-      source: hasVision ? "llm_vision" : "llm_text",
-      model: env.model,
-      reason: parsed.reason,
+      source: usedVision ? "llm_vision" : "llm_text",
+      model: res.model,
+      reason: traceReason,
+      usedVision,
+      providerSource: res.trace?.providerSource,
+      fallbackReason: res.trace?.fallbackReason,
     },
   };
 }
