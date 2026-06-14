@@ -27,6 +27,10 @@ export type PrototypeExecutionOperationalSendResult =
       timelineEntries: readonly RequirementsPromptTimelineEntry[];
     }>
   | Readonly<{
+      kind: "start_implementation_quick_run";
+      timelineEntries?: readonly RequirementsPromptTimelineEntry[];
+    }>
+  | Readonly<{
       kind: "stage_action_run";
       run: import("@/lib/prototype/implementationStageActionRun").ImplementationStageActionRun;
     }>;

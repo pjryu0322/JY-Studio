@@ -87,6 +87,7 @@ export type UseImplementationSingleChatWorkspaceControllerInput = Readonly<{
   readonly runImplementationStageActionRef: RefObject<
     (actionId: ImplementationStageActionId) => ImplementationStageActionRunResult | Promise<ImplementationStageActionRunResult>
   >;
+  readonly startImplementationQuickRun: (options?: { readonly selectedCodeTaskIds?: readonly string[] }) => Promise<ImplementationStageActionRunResult>;
 }>;
 
 export function useImplementationSingleChatWorkspaceController(
@@ -274,7 +275,7 @@ export function useImplementationSingleChatWorkspaceController(
 
       const pid = input.projectId.trim();
 
-      const workingQueueResult = resolveImplementationWorkingQueueOperationalSend({
+      const workingQueueResult = await resolveImplementationWorkingQueueOperationalSend({
         text,
         userMsg,
         projectId: pid,
@@ -286,8 +287,17 @@ export function useImplementationSingleChatWorkspaceController(
           input.parsedRequirementsState.implementationPreviewRuntimeV1?.previewUrl ??
           input.parsedRequirementsState.implementationPreviewScopeV1?.previewUrl ??
           null,
+        hasRunnableCodeTasks: (input.parsedRequirementsState.implementationTaskListV1?.tasks?.length ?? 0) > 0,
+        implementationMode: input.isRunningState ? "running" : "ready",
       });
       if (workingQueueResult) {
+        if (
+          typeof workingQueueResult === "object" &&
+          workingQueueResult.kind === "start_implementation_quick_run"
+        ) {
+          void input.startImplementationQuickRun();
+          return "handled";
+        }
         return workingQueueResult;
       }
 

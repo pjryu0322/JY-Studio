@@ -49,6 +49,10 @@ const NON_SUPPLEMENT_EXACT = new Set(
   ].map((s) => s.trim()),
 );
 
+/**
+ * Legacy keyword supplement detector — not used on the default Working Queue LLM path.
+ * Retained for tests and LLM-failure fallback in `implementationWorkingQueueClassifier`.
+ */
 export function isImplementationSupplementRequest(text: string): boolean {
   const t = text.trim();
   if (!t || t.length < 4) return false;

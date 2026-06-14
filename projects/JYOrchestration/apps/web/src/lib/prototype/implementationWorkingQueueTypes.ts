@@ -32,6 +32,8 @@ export type ImplementationWorkingQueueItem = Readonly<{
   readonly regionCaptureId?: string;
   readonly previewUrl?: string;
   readonly rect?: ImplementationWorkingQueuePreviewRect;
+  readonly targetUi?: string;
+  readonly desiredBehavior?: string;
   readonly rawUserMessage: string;
   readonly title: string;
   readonly description: string;

@@ -5,8 +5,8 @@ import {
 } from "@/lib/prototype/implementationWorkingQueueClassifier";
 import type { ImplementationWorkingQueueItem } from "@/lib/prototype/implementationWorkingQueueTypes";
 import {
-  inferPreviewFeedbackActionLine,
-  inferPreviewFeedbackTargetLine,
+  previewFeedbackActionLine,
+  previewFeedbackTargetLine,
 } from "@/lib/prototype/implementationWorkingQueuePreviewFeedback";
 
 function formatItemBlock(item: ImplementationWorkingQueueItem, index: number): string {
@@ -21,8 +21,8 @@ function formatItemBlock(item: ImplementationWorkingQueueItem, index: number): s
 function formatPreviewFeedbackItemBlock(item: ImplementationWorkingQueueItem, index: number): string {
   return [
     `${index + 1}. ${item.title}`,
-    `- 대상: ${inferPreviewFeedbackTargetLine(item)}`,
-    `- 동작: ${inferPreviewFeedbackActionLine(item)}`,
+    `- 대상: ${previewFeedbackTargetLine(item)}`,
+    `- 동작: ${previewFeedbackActionLine(item)}`,
     `- 영향 영역: ${affectedAreaLabelKo(item.affectedArea)} / interaction`,
     `- 위험도: ${riskLevelLabelKo(item.riskLevel)}`,
     `- 상태: ${workingQueueStatusLabelKo(item.status)}`,

@@ -1051,6 +1051,7 @@ export function usePrototypeImplementationStagePanel(
     applyImplementationOrchestrationResult,
     persistImplementationStageActionRun,
     runImplementationStageActionRef,
+    startImplementationQuickRun,
   });
 
   const onExecuteSelectedCodeTasksFromToolbar = useCallback(() => {
