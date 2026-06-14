@@ -16,9 +16,6 @@ import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/i
 import type { ImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
 import type { ImplementationPreviewScopeV1 } from "@/lib/prototype/implementationPreviewScopeV1";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
-import type { ImplementationReviewStageReadyV1 } from "@/lib/prototype/implementationReviewStageReady";
-import type { ReviewStageUserFeedbackListV1 } from "@/lib/prototype/reviewStageUserFeedback";
-import type { ReviewStageUserTestSessionV1 } from "@/lib/prototype/reviewStageUserTest";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationSlotsV1 } from "@/lib/prototype/implementationSlots";
 import type { ImplementationStageActionRunLogV1 } from "@/lib/prototype/implementationStageActionRun";
@@ -104,9 +101,6 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
   readonly implementationPreviewScopeV1?: ImplementationPreviewScopeV1 | null;
   readonly implementationPreviewRuntimeV1?: ImplementationPreviewRuntimeV1 | null;
   readonly implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
-  readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
-  readonly reviewStageUserTestSessionV1?: ReviewStageUserTestSessionV1 | null;
-  readonly reviewStageUserFeedbackListV1?: ReviewStageUserFeedbackListV1 | null;
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
   readonly implementationExecutionJobsV1?: readonly ImplementationExecutionJobV1[] | null;
   readonly codeTaskExecutionRunsV1?: readonly CodeTaskExecutionRunV1[] | null;
@@ -195,15 +189,6 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
       : {}),
     ...(input.implementationExecutionBoardStateV1 !== undefined
       ? { implementationExecutionBoardStateV1: input.implementationExecutionBoardStateV1 }
-      : {}),
-    ...(input.implementationReviewStageReadyV1 !== undefined
-      ? { implementationReviewStageReadyV1: input.implementationReviewStageReadyV1 }
-      : {}),
-    ...(input.reviewStageUserTestSessionV1 !== undefined
-      ? { reviewStageUserTestSessionV1: input.reviewStageUserTestSessionV1 }
-      : {}),
-    ...(input.reviewStageUserFeedbackListV1 !== undefined
-      ? { reviewStageUserFeedbackListV1: input.reviewStageUserFeedbackListV1 }
       : {}),
     ...(input.promptTimeline !== undefined ? { promptTimeline: [...input.promptTimeline] } : {}),
     ...(input.implementationExecutionJobsV1 !== undefined

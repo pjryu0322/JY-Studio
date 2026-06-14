@@ -13,6 +13,7 @@ import {
 import { appFlowStepHref, isWorkflowStepNavActive } from "@/lib/workflow/flow-state";
 import type { AppFlowStepId } from "@/lib/workflow/flow-state";
 import { workflowStepMeta } from "@/lib/workflow/workflowStepMeta";
+import { workflowStepRailGlyph } from "@/components/layout/platformTopNav/workflowStepRailGlyph";
 
 function railShortLabel(stepId: AppFlowStepId): string {
   switch (stepId) {
@@ -73,7 +74,12 @@ export function ProjectRailWorkflowStrip({
             }}
             aria-current={active ? "page" : undefined}
           >
-            <span style={active ? platformRailNavPrimaryTextWorkflowActive : platformRailNavPrimaryText}>{short}</span>
+            <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+              {workflowStepRailGlyph(item.stepId)}
+              <span style={active ? platformRailNavPrimaryTextWorkflowActive : platformRailNavPrimaryText}>
+                {short}
+              </span>
+            </span>
             {showBadge ? <ProjectRailCountBadge count={badgeCount} /> : null}
           </Link>
         );

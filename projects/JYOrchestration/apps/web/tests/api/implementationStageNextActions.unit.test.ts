@@ -7,12 +7,9 @@ import {
 } from "@/lib/prototype/implementationTaskExecutionState";
 import {
   deriveImplementationStageNextActions,
-  deriveReviewStageNextActions,
   prioritizeImplementationChipsByNextActions,
   prioritizeImplementationChipsForState,
 } from "@/lib/prototype/implementationStageNextActions";
-import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
-import { appendReviewStageUserFeedback } from "@/lib/prototype/reviewStageUserFeedback";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
@@ -20,9 +17,6 @@ import {
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
   TASK_LIST_VIEW_CHIP,
-  MOVE_TO_REVIEW_STAGE_CHIP,
-  REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
-  REVIEW_STAGE_START_USER_TEST_CHIP,
   REVIEWER_CHECK_CHIP,
   REVIEWER_CHECK_RUN_CHIP,
   RUN_FINAL_SCM_CHIP,
@@ -975,61 +969,25 @@ describe("deriveImplementationStageNextActions integrated board", () => {
       boardState,
     });
     expect(actions[0]?.label).toBe(AI_DEVELOPER_REMEDIATION_REQUEST_CHIP);
-    expect(actions[0]?.label).not.toBe(MOVE_TO_REVIEW_STAGE_CHIP);
   });
 
-  it("board complete + previewReady returns MOVE_TO_REVIEW_STAGE before review-stage chips", () => {
+  it("board complete + previewReady returns SHOW_ARTIFACTS primary", () => {
     const input = fullyIntegratedCompleteInput();
-    const marker = buildImplementationReviewStageReadyMarker({ previewReady: true, nowIso: NOW });
     const actions = deriveImplementationStageNextActions("task_list_ready", input.executionState, null, {
       ...input,
       previewReady: true,
-      implementationReviewStageReadyV1: marker,
     });
-    expect(actions[0]?.actionId).toBe("MOVE_TO_REVIEW_STAGE");
-    expect(actions.some((a) => a.actionId === "REVIEW_STAGE_START_USER_TEST")).toBe(false);
+    expect(actions[0]?.actionId).toBe("SHOW_ARTIFACTS");
+    expect(actions[0]?.label).toBe(IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP);
   });
 
-  it("active feedback + previewReady true prioritizes 구현단계 보완 요청", () => {
+  it("board complete + previewReady true prioritizes preview over implementation generation", () => {
     const input = fullyIntegratedCompleteInput();
-    const marker = buildImplementationReviewStageReadyMarker({ previewReady: true, nowIso: NOW });
-    const feedbackList = appendReviewStageUserFeedback({
-      list: null,
-      projectId: "p1",
-      title: "피드백",
-      detail: "수정",
-      nowIso: NOW,
-    });
-    const actions = deriveReviewStageNextActions({
-      feedbackList,
-    });
-    expect(actions[0]?.label).toBe(REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP);
-    expect(actions[0]?.label).not.toBe(MOVE_TO_REVIEW_STAGE_CHIP);
-  });
-
-  it("blocking feedback prevents 검토 완료 primary in deriveReviewStageNextActions", () => {
-    const feedbackList = appendReviewStageUserFeedback({
-      list: null,
-      projectId: "p1",
-      title: "blocking",
-      detail: "d",
-      severity: "blocking",
-      nowIso: NOW,
-    });
-    const actions = deriveReviewStageNextActions({ feedbackList });
-    expect(actions[0]?.actionId).toBe("REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION");
-    expect(actions.some((a) => a.actionId === "REVIEW_STAGE_COMPLETE_TEST")).toBe(false);
-  });
-
-  it("board complete + previewReady true prioritizes MOVE_TO_REVIEW_STAGE over implementation generation", () => {
-    const input = fullyIntegratedCompleteInput();
-    const marker = buildImplementationReviewStageReadyMarker({ previewReady: true, nowIso: NOW });
     const actions = deriveImplementationStageNextActions("task_list_ready", input.executionState, null, {
       ...input,
       previewReady: true,
-      implementationReviewStageReadyV1: marker,
     });
-    expect(actions[0]?.actionId).toBe("MOVE_TO_REVIEW_STAGE");
+    expect(actions[0]?.actionId).toBe("SHOW_ARTIFACTS");
     expect(actions.some((a) => a.actionId === "GENERATE_IMPLEMENTATION_WORK_PLAN")).toBe(false);
   });
 });

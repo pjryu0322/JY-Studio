@@ -1,6 +1,5 @@
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import {
-  buildImplementationReviewStageReadinessNotice,
   formatBoardExecutionTargetLines,
   formatImplementationExecutionBoardIntegratedLine,
   formatImplementationExecutionBoardTaskLine,
@@ -12,10 +11,6 @@ import type { ExecutionSetupSourceGenerationRow } from "@/lib/prototype/executio
 import { evaluateCursorExecutionAvailability } from "@/lib/prototype/cursorExecutionAvailability";
 import { deriveImplementationBoardInterviewChips } from "@/lib/prototype/implementationChipPolicy";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
-import {
-  buildImplementationUserTestSummaryLines,
-  deriveImplementationUserTestReadiness,
-} from "@/lib/prototype/implementationUserTestReadiness";
 import { formatImplementationTaskListRoleSummaryLines } from "@/lib/requirements/implementationTaskList";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 const IMPLEMENTATION_TASK_LIST_READY_INTERNAL_TYPE = "IMPLEMENTATION_TASK_LIST_READY_V1" as const;
@@ -92,22 +87,6 @@ export function buildImplementationExecutionBoardMessage(input: {
   const integratedLines = input.board.integratedRows.map(formatImplementationExecutionBoardIntegratedLine);
 
   const previewReady = input.previewReady === true;
-  const testReadiness = deriveImplementationUserTestReadiness({
-    board: input.board,
-    previewReady,
-    hasTaskList: true,
-    hasExecutionState: input.hasExecutionState !== false,
-    boardState: input.boardState,
-  });
-  const testSummaryLines = buildImplementationUserTestSummaryLines({
-    board: input.board,
-    previewReady,
-    readiness: testReadiness,
-  });
-  const reviewReadinessNotice = buildImplementationReviewStageReadinessNotice({
-    board: input.board,
-    previewReady,
-  });
   const executionTargetLines = formatBoardExecutionTargetLines(input.board);
   const chips = deriveImplementationBoardInterviewChips({
     board: input.board,
@@ -150,13 +129,9 @@ export function buildImplementationExecutionBoardMessage(input: {
     "통합 정리 단계:",
     ...(integratedLines.length ? integratedLines : ["(통합 단계 없음)"]),
     "",
-    ...testSummaryLines,
-    "",
     ...formatCodeAgentExecutionModeDiagnosticLines(input.codeAgentWipExecutionV1),
     ...formatCursorExecutionAvailabilityDiagnosticLines({ setup: input.executionSetup }),
     "",
-    ...(reviewReadinessNotice ? [reviewReadinessNotice, ""] : []),
-    ...(testReadiness.ready ? [] : [`진단: ${testReadiness.message}`, ""]),
     "다음 작업을 선택해 주세요.",
   ].join("\n");
 

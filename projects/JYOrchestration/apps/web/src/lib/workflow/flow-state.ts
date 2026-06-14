@@ -62,7 +62,9 @@ export function appFlowStepHref(stepId: AppFlowStepId, projectId: string | null)
     case "execution":
       return pid ? `/requirements?projectId=${encodeURIComponent(pid)}&stage=execution` : "/requirements?stage=execution";
     case "prototype_review":
-      return pid ? `/requirements?projectId=${encodeURIComponent(pid)}&stage=prototype-review` : "/requirements?stage=prototype-review";
+      return pid
+        ? `/prototype-review?projectId=${encodeURIComponent(pid)}`
+        : "/prototype-review";
     case "trace":
       return `/trace${q}`;
     default:

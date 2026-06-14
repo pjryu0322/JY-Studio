@@ -3,9 +3,8 @@ import {
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
-import { deriveCodeAgentWipBoardInterviewChips } from "@/lib/prototype/codeAgentWipExecution";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
-import { deriveImplementationUserTestReadiness } from "@/lib/prototype/implementationUserTestReadiness";
+import { deriveCodeAgentWipBoardInterviewChips } from "@/lib/prototype/codeAgentWipExecution";
 import {
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
   DESIGNER_REVIEW_CHIP,
@@ -13,7 +12,6 @@ import {
   IMPLEMENTATION_EXECUTION_BOARD_CHIP,
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP,
-  MOVE_TO_REVIEW_STAGE_CHIP,
   REVIEWER_CHECK_CHIP,
   SECURITY_CHECK_CHIP,
   TASK_LIST_VIEW_CHIP,
@@ -143,16 +141,6 @@ export function deriveImplementationBoardInterviewChips(input: {
         integrationPipelineUnlocked: allTasksComplete || integrationUnlocked,
       }),
     );
-    const testReadiness = deriveImplementationUserTestReadiness({
-      board,
-      previewReady: input.previewReady === true,
-      hasTaskList: true,
-      hasExecutionState: input.hasExecutionState !== false,
-      boardState: input.boardState,
-    });
-    if (testReadiness.reviewStageMoveAllowed) {
-      chips.push(MOVE_TO_REVIEW_STAGE_CHIP);
-    }
   }
 
   if (board.summary.userConfirmationRequired > 0) {

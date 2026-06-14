@@ -95,7 +95,6 @@ describe("resetDerivedImplementationState", () => {
       implementationExecutionBoardStateV1: {
         version: "implementation_execution_board_state_v1",
       } as never,
-      implementationReviewStageReadyV1: { version: "implementation_review_stage_ready_v1" } as never,
       implementationUserFeedbackPatchesV1: [{ id: "p1" } as never],
       implementationStageActionRunLogV1: [{ action: "run" } as never],
       implementationCodeTaskQualityGateV1: { version: "implementation_code_task_quality_gate_v1" } as never,
@@ -118,7 +117,6 @@ describe("resetDerivedImplementationState", () => {
     expect(reset.implementationTaskExecutionStateV1).toBeNull();
     expect(reset.implementationIntegratedExecutionStateV1).toBeNull();
     expect(reset.implementationExecutionBoardStateV1).toBeNull();
-    expect(reset.implementationReviewStageReadyV1).toBeNull();
     expect(reset.implementationUserFeedbackPatchesV1).toBeNull();
     expect(reset.implementationStageActionRunLogV1).toBeNull();
     expect(reset.implementationCodeTaskQualityGateV1).toBeNull();
@@ -132,8 +130,6 @@ describe("resetDerivedImplementationState", () => {
     expect(reset.implementationExecutionJobsV1).toBeNull();
     expect(reset.codeTaskExecutionRunsV1).toBeNull();
     expect(reset.codeTaskPromptContextMapV1).toBeNull();
-    expect(reset.reviewStageUserTestSessionV1).toBeNull();
-    expect(reset.reviewStageUserFeedbackListV1).toBeNull();
   });
 
   it("clears P3 execution unit, integration, and preview keys when planning is reset", () => {

@@ -94,9 +94,6 @@ export type ImplementationDerivedViewModelControllerValue = Readonly<{
     readonly boardState: RequirementsStateJson["implementationExecutionBoardStateV1"];
     readonly qualityGateResults: RequirementsStateJson["implementationQualityGateResultsV1"];
     readonly previewReady: boolean;
-    readonly implementationReviewStageReadyV1: RequirementsStateJson["implementationReviewStageReadyV1"];
-    readonly reviewStageUserTestSessionV1: RequirementsStateJson["reviewStageUserTestSessionV1"];
-    readonly reviewStageUserFeedbackListV1: RequirementsStateJson["reviewStageUserFeedbackListV1"];
     readonly codeAgentWipExecutionV1: RequirementsStateJson["codeAgentWipExecutionV1"];
     readonly taskCursorExecutionV1: RequirementsStateJson["taskCursorExecutionV1"];
     readonly implementationAutoQualityGateV1: RequirementsStateJson["implementationAutoQualityGateV1"];
@@ -166,8 +163,6 @@ export function useImplementationDerivedViewModelController(
       boardState: input.orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
       qualityGateResults: input.orchestrationAwareRequirementsState.implementationQualityGateResultsV1,
       previewReady: prototypeRunSyncSnapshot.previewReady,
-      implementationReviewStageReadyV1:
-        input.orchestrationAwareRequirementsState.implementationReviewStageReadyV1,
       codeAgentWipExecutionV1: input.orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
       taskCursorExecutionV1: input.orchestrationAwareRequirementsState.taskCursorExecutionV1,
       canApplyGit: input.canApplyGit,
@@ -289,11 +284,6 @@ export function useImplementationDerivedViewModelController(
       boardState: input.orchestrationAwareRequirementsState.implementationExecutionBoardStateV1,
       qualityGateResults: input.orchestrationAwareRequirementsState.implementationQualityGateResultsV1,
       previewReady: prototypeRunSyncSnapshot.previewReady,
-      implementationReviewStageReadyV1:
-        input.orchestrationAwareRequirementsState.implementationReviewStageReadyV1,
-      reviewStageUserTestSessionV1: input.orchestrationAwareRequirementsState.reviewStageUserTestSessionV1,
-      reviewStageUserFeedbackListV1:
-        input.orchestrationAwareRequirementsState.reviewStageUserFeedbackListV1,
       codeAgentWipExecutionV1: input.orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
       taskCursorExecutionV1: input.orchestrationAwareRequirementsState.taskCursorExecutionV1,
       implementationAutoQualityGateV1:

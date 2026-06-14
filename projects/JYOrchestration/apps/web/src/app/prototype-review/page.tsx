@@ -1,12 +1,10 @@
-"use client";
-
 import { Suspense } from "react";
-import { PrototypeReviewPageClient } from "@/app/prototype-review/PrototypeReviewPageClient";
+import { PrototypeReviewPlaceholderPageClient } from "@/app/prototype-review/PrototypeReviewPlaceholderPageClient";
 
 export default function PrototypeReviewPage() {
   return (
-    <Suspense fallback={null}>
-      <PrototypeReviewPageClient />
+    <Suspense fallback={<div />}>
+      <PrototypeReviewPlaceholderPageClient />
     </Suspense>
   );
 }

@@ -1121,19 +1121,6 @@ export function isImplementationBoardComplete(input: {
   return true;
 }
 
-export function isImplementationReadyForReviewStage(input: {
-  readonly board: ImplementationExecutionBoardV1;
-  readonly previewReady: boolean;
-  /** P3-M66: 검토단계는 Integrated App Preview 준비 시에만 허용 */
-  readonly integratedAppPreviewReady?: boolean;
-}): boolean {
-  const integrated =
-    input.integratedAppPreviewReady === undefined
-      ? input.previewReady
-      : input.integratedAppPreviewReady;
-  return isImplementationBoardComplete({ board: input.board, previewReady: integrated });
-}
-
 const INTEGRATED_STEP_ACTION_LABEL: Readonly<Record<ImplementationIntegratedStep, string>> = {
   refactor_common: "리팩토링/공통화",
   integrated_review: "통합 검수",
@@ -1226,26 +1213,6 @@ export function formatTaskScopedWipExecutionBlockedNotice(input: {
     return `${input.selectedTaskId}에 해당하는 Cursor WorkItem이 없어 WIP 요청을 시작하지 못했습니다.`;
   }
   return input.blockedReason;
-}
-
-export function buildImplementationReviewStageReadinessNotice(input: {
-  readonly board: ImplementationExecutionBoardV1;
-  readonly previewReady: boolean;
-}): string | null {
-  if (isImplementationReadyForReviewStage(input)) {
-    return "통합 정리, 통합 검수, 통합 보안, 최종 SCM까지 완료되어 검토단계로 이동할 수 있습니다.";
-  }
-  const allIntegratedDone = input.board.integratedRows.every((row) => row.status === "done");
-  if (allIntegratedDone && !input.previewReady) {
-    return [
-      "통합 정리 단계는 완료되었지만, 프로토타입 Preview가 아직 준비되지 않았습니다.",
-      "Preview 상태를 새로고침하거나 배포 상태를 확인해 주세요.",
-    ].join("\n");
-  }
-  if (input.previewReady && !allIntegratedDone) {
-    return "프로토타입 Preview는 준비되었지만, 구현단계 통합 정리/검수/보안/최종 SCM이 아직 완료되지 않았습니다.";
-  }
-  return null;
 }
 
 export function formatImplementationExecutionBoardTaskLine(

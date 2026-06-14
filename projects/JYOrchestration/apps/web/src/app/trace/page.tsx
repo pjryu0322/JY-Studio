@@ -89,9 +89,6 @@ function TracePageInner() {
             <Link href="/execution" style={btnSecondary}>
               프로토타입 생성
             </Link>
-            <Link href="/prototype-review" style={btnSecondary}>
-              프로토타입 검토
-            </Link>
           </div>
         </WorkflowCard>
 

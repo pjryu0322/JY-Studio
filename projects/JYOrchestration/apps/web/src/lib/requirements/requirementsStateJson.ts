@@ -88,12 +88,6 @@ import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/i
 import { parseImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import { parseImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
-import type { ImplementationReviewStageReadyV1 } from "@/lib/prototype/implementationReviewStageReady";
-import { parseImplementationReviewStageReadyV1 } from "@/lib/prototype/implementationReviewStageReady";
-import type { ReviewStageUserFeedbackListV1 } from "@/lib/prototype/reviewStageUserFeedback";
-import { parseReviewStageUserFeedbackListV1 } from "@/lib/prototype/reviewStageUserFeedback";
-import type { ReviewStageUserTestSessionV1 } from "@/lib/prototype/reviewStageUserTest";
-import { parseReviewStageUserTestSessionV1 } from "@/lib/prototype/reviewStageUserTest";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { parseImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import {
@@ -635,12 +629,6 @@ export type RequirementsStateJson = {
   implementationIntegratedExecutionStateV1?: ImplementationIntegratedExecutionStateV1 | null;
   /** 실행 보드 사용자 확인·재작업 요청 상태 */
   implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
-  /** 구현 보드 완료 후 검토단계 진입 readiness */
-  implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
-  /** 검토단계 사용자 테스트 세션 */
-  reviewStageUserTestSessionV1?: ReviewStageUserTestSessionV1 | null;
-  /** 검토단계 사용자 피드백 목록 */
-  reviewStageUserFeedbackListV1?: ReviewStageUserFeedbackListV1 | null;
   /** 구현 작업안 초안(JSON) — 확정 전 범위·방식 */
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   /** 구현단계 사용자 피드백 patch 누적 */
@@ -1123,15 +1111,6 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationExecutionBoardStateV1 = parseImplementationExecutionBoardStateV1(
     "implementationExecutionBoardStateV1" in o ? o.implementationExecutionBoardStateV1 : undefined,
   );
-  const implementationReviewStageReadyV1 = parseImplementationReviewStageReadyV1(
-    "implementationReviewStageReadyV1" in o ? o.implementationReviewStageReadyV1 : undefined,
-  );
-  const reviewStageUserTestSessionV1 = parseReviewStageUserTestSessionV1(
-    "reviewStageUserTestSessionV1" in o ? o.reviewStageUserTestSessionV1 : undefined,
-  );
-  const reviewStageUserFeedbackListV1 = parseReviewStageUserFeedbackListV1(
-    "reviewStageUserFeedbackListV1" in o ? o.reviewStageUserFeedbackListV1 : undefined,
-  );
   const implementationWorkPlanDraftV1 = parseImplementationWorkPlanDraftV1(
     "implementationWorkPlanDraftV1" in o ? o.implementationWorkPlanDraftV1 : undefined,
   );
@@ -1351,11 +1330,6 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(implementationExecutionBoardStateV1 !== undefined
       ? { implementationExecutionBoardStateV1 }
       : {}),
-    ...(implementationReviewStageReadyV1 !== undefined
-      ? { implementationReviewStageReadyV1 }
-      : {}),
-    ...(reviewStageUserTestSessionV1 !== undefined ? { reviewStageUserTestSessionV1 } : {}),
-    ...(reviewStageUserFeedbackListV1 !== undefined ? { reviewStageUserFeedbackListV1 } : {}),
     ...(implementationWorkPlanDraftV1 !== undefined ? { implementationWorkPlanDraftV1 } : {}),
     ...(implementationUserFeedbackPatchesV1 !== undefined
       ? { implementationUserFeedbackPatchesV1 }

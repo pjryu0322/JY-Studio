@@ -1190,11 +1190,11 @@ export function PrototypePreviewPanel({
           return;
         }
         case "OPEN_PROTOTYPE_REVIEW": {
-          const rid = latestRun?.id;
-          if (!projectId.trim() || !rid) return;
-          window.location.assign(
-            `/prototype-review?${new URLSearchParams({ projectId: projectId.trim(), runId: rid }).toString()}`,
-          );
+          const u = previewUrl ?? latestRun?.previewUrl ?? latestRun?.suggestedPreviewUrl ?? "";
+          if (u) {
+            const win = window.open(u, "_blank", "noopener,noreferrer");
+            registerPlatformPopupFromOpenedUrl(win, u);
+          }
           return;
         }
         default:

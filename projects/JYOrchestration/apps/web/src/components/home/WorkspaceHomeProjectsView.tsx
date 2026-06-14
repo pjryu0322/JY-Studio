@@ -652,10 +652,6 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
                 Boolean(sessionUser) &&
                 project.ownerUserId === sessionUser?.id &&
                 project.status !== PROJECT_LIFECYCLE_DELETED;
-              const runId = project.latestPrototypeRunId?.trim();
-              const prototypeReviewHref = runId
-                ? `${appFlowStepHref("prototype_review", project.id)}&runId=${encodeURIComponent(runId)}`
-                : appFlowStepHref("prototype_review", project.id);
               const executionHref = appFlowStepHref("execution", project.id);
               const previewEnabled = Boolean(project.prototypePreviewActionAvailable);
               const deployEnabled = Boolean(project.prototypeDeployActionAvailable);
@@ -776,12 +772,12 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
                           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
                             {previewEnabled ? (
                               <Link
-                                href={prototypeReviewHref}
+                                href={executionHref}
                                 data-testid={`home-prototype-preview-${project.id}`}
                                 onClick={() => setProjectCardMenuId(null)}
                                 style={homeProjectMenuActionLink}
-                                aria-label="미리보기 · 프로토타입 검토"
-                                title="프로토타입 검토"
+                                aria-label="미리보기 · 프로토타입 생성"
+                                title="프로토타입 생성"
                               >
                                 <ProjectCardPreviewIcon />
                                 <span>미리보기</span>
@@ -794,8 +790,8 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
                                   background: t.bgCard,
                                   color: t.textSecondary,
                                 }}
-                                aria-label="미리보기 URL이 준비된 뒤 프로토타입 검토를 사용할 수 있습니다"
-                                title="미리보기가 준비되면 프로토타입 검토로 이동할 수 있습니다"
+                                aria-label="미리보기 URL이 준비된 뒤 프로토타입 생성 화면을 사용할 수 있습니다"
+                                title="미리보기가 준비되면 프로토타입 생성 단계로 이동할 수 있습니다"
                               >
                                 <ProjectCardPreviewIcon />
                                 <span>미리보기</span>

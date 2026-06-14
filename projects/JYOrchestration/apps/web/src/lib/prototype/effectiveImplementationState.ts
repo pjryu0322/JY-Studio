@@ -60,13 +60,6 @@ import {
   IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_ALL_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP,
-  MOVE_TO_REVIEW_STAGE_CHIP,
-  REVIEW_STAGE_ADD_FEEDBACK_CHIP,
-  REVIEW_STAGE_COMPLETE_TEST_CHIP,
-  REVIEW_STAGE_OPEN_PREVIEW_CHIP,
-  REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
-  REVIEW_STAGE_START_USER_TEST_CHIP,
-  REVIEW_STAGE_VIEW_FEEDBACK_CHIP,
   QUICK_DESIGN_CONFIRM_ACTION_LABEL,
   CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT_LABEL,
   START_QUICK_DESIGN_FROM_IMPLEMENTATION_LABEL,
@@ -76,7 +69,6 @@ import {
   IMPLEMENTATION_RUNTIME_DIAGNOSTICS_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import { IMPLEMENTATION_BLOCKED_RETURN_TO_PLANNING_CHIP } from "@/lib/prototype/implementationWorkPlanDraft";
-import { mapReviewStageChipToAction } from "@/lib/prototype/reviewStageMessage";
 
 export type ImplementationStageActionId =
   | "GENERATE_IMPLEMENTATION_TASK_LIST"
@@ -104,13 +96,6 @@ export type ImplementationStageActionId =
   | "RUN_PLATFORM_SCM_MERGE"
   | "RESOLVE_USER_CONFIRMATION"
   | "SHOW_USER_CONFIRMATION_ITEMS"
-  | "MOVE_TO_REVIEW_STAGE"
-  | "REVIEW_STAGE_OPEN_PREVIEW"
-  | "REVIEW_STAGE_START_USER_TEST"
-  | "REVIEW_STAGE_ADD_FEEDBACK"
-  | "REVIEW_STAGE_VIEW_FEEDBACK"
-  | "REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION"
-  | "REVIEW_STAGE_COMPLETE_TEST"
   | "CONFIRM_QUICK_DESIGN_FOR_IMPLEMENTATION"
   | "CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT"
   | "START_QUICK_DESIGN_FROM_IMPLEMENTATION"
@@ -471,8 +456,6 @@ export function canConfirmImplementationWorkPlanFromEffectiveState(
 
 /** CTA label → stage action id. Unmapped labels fall back to tryHandlePrototypeExecutionChip. */
 export function mapImplementationChipToAction(label: string): ImplementationStageActionId | null {
-  const reviewAction = mapReviewStageChipToAction(label);
-  if (reviewAction) return reviewAction;
   switch (label.trim()) {
     case GENERATE_IMPLEMENTATION_TASK_LIST_CHIP:
     case "구현 작업목록 생성":
@@ -549,8 +532,6 @@ export function mapImplementationChipToAction(label: string): ImplementationStag
       return "RESOLVE_USER_CONFIRMATION";
     case IMPLEMENTATION_USER_CONFIRMATION_VIEW_CHIP:
       return "SHOW_USER_CONFIRMATION_ITEMS";
-    case MOVE_TO_REVIEW_STAGE_CHIP:
-      return "MOVE_TO_REVIEW_STAGE";
     case QUICK_DESIGN_CONFIRM_ACTION_LABEL:
       return "CONFIRM_QUICK_DESIGN_FOR_IMPLEMENTATION";
     case CREATE_IMPLEMENTATION_SEED_FROM_QUICK_DESIGN_DRAFT_LABEL:

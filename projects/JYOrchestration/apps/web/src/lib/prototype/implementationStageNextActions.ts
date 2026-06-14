@@ -15,21 +15,12 @@ import {
 } from "@/lib/prototype/implementationPrototypeRunSync";
 import {
   buildImplementationExecutionBoardFromOrchestration,
-  isImplementationReadyForReviewStage,
   type ImplementationExecutionBoardV1,
 } from "@/lib/prototype/implementationExecutionBoard";
 import { resolveIntegrationPipelineUnlocked } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
-import type { ImplementationReviewStageReadyV1 } from "@/lib/prototype/implementationReviewStageReady";
-import {
-  getActiveReviewFeedbackItems,
-  summarizeReviewStageUserFeedback,
-  type ReviewStageUserFeedbackListV1,
-} from "@/lib/prototype/reviewStageUserFeedback";
-import { isReviewStageEntryReady, type ReviewStageUserTestSessionV1 } from "@/lib/prototype/reviewStageUserTest";
-import { canCompleteReviewStage } from "@/lib/prototype/reviewStageUserFeedback";
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
@@ -48,13 +39,6 @@ import {
   RUN_INTEGRATED_REVIEW_CHIP,
   RUN_INTEGRATED_SECURITY_CHIP,
   RUN_REFACTOR_COMMON_CHIP,
-  MOVE_TO_REVIEW_STAGE_CHIP,
-  REVIEW_STAGE_ADD_FEEDBACK_CHIP,
-  REVIEW_STAGE_COMPLETE_TEST_CHIP,
-  REVIEW_STAGE_OPEN_PREVIEW_CHIP,
-  REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
-  REVIEW_STAGE_START_USER_TEST_CHIP,
-  REVIEW_STAGE_VIEW_FEEDBACK_CHIP,
   SCM_CRITERIA_CHIP,
   SECURITY_CHECK_CHIP,
   SECURITY_CHECK_RUN_CHIP,
@@ -103,9 +87,6 @@ export type ImplementationStageNextActionsBoardInput = Readonly<{
   readonly boardState?: ImplementationExecutionBoardStateV1 | null;
   readonly qualityGateResults?: readonly ImplementationQualityGateResultV1[] | null;
   readonly previewReady?: boolean;
-  readonly implementationReviewStageReadyV1?: ImplementationReviewStageReadyV1 | null;
-  readonly reviewStageUserTestSessionV1?: ReviewStageUserTestSessionV1 | null;
-  readonly reviewStageUserFeedbackListV1?: ReviewStageUserFeedbackListV1 | null;
   readonly codeAgentWipExecutionV1?: CodeAgentWipExecutionV1 | null;
   readonly taskCursorExecutionV1?: TaskCursorExecutionV1 | null;
   readonly implementationAutoQualityGateV1?: ImplementationAutoQualityGateV1 | null;
@@ -117,124 +98,6 @@ export type ImplementationStageNextActionsBoardInput = Readonly<{
   /** false when REVIEWER/VIEWER — hides SCM push/PR/merge CTAs */
   readonly canApplyGit?: boolean;
 }>;
-
-export function deriveReviewStageNextActions(input: {
-  readonly session?: ReviewStageUserTestSessionV1 | null;
-  readonly feedbackList?: ReviewStageUserFeedbackListV1 | null;
-}): readonly ImplementationStageNextAction[] {
-  const active = getActiveReviewFeedbackItems(input.feedbackList);
-  const summary = summarizeReviewStageUserFeedback(input.feedbackList);
-  const canComplete = canCompleteReviewStage({ feedbackList: input.feedbackList }).ok;
-
-  if (input.session?.status === "completed") {
-    const actions: ImplementationStageNextAction[] = [];
-    if (active.length > 0) {
-      actions.push({
-        actionId: "REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION",
-        label: REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
-        priority: "primary",
-        reason: "검토 완료 후 남은 사용자 피드백을 구현단계 보완 요청으로 전환",
-      });
-    }
-    actions.push({
-      actionId: "REVIEW_STAGE_OPEN_PREVIEW",
-      label: REVIEW_STAGE_OPEN_PREVIEW_CHIP,
-      priority: actions.length ? "secondary" : "primary",
-      reason: "프로토타입 Preview 재확인",
-    });
-    if (summary.total > 0) {
-      actions.push({
-        actionId: "REVIEW_STAGE_VIEW_FEEDBACK",
-        label: REVIEW_STAGE_VIEW_FEEDBACK_CHIP,
-        priority: "secondary",
-        reason: "등록된 사용자 피드백 목록 확인",
-      });
-    }
-    actions.push({
-      actionId: "REVIEW_STAGE_ADD_FEEDBACK",
-      label: REVIEW_STAGE_ADD_FEEDBACK_CHIP,
-      priority: "tertiary",
-      reason: "검토 완료 후 추가 사용자 피드백 등록",
-    });
-    return actions;
-  }
-
-  if (active.length > 0) {
-    const actions: ImplementationStageNextAction[] = [
-      {
-        actionId: "REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION",
-        label: REVIEW_STAGE_SEND_FEEDBACK_TO_IMPLEMENTATION_CHIP,
-        priority: "primary",
-        reason: "등록된 검토 피드백을 구현단계 재작업 요청으로 전환",
-      },
-      {
-        actionId: "REVIEW_STAGE_VIEW_FEEDBACK",
-        label: REVIEW_STAGE_VIEW_FEEDBACK_CHIP,
-        priority: "secondary",
-        reason: "미처리 피드백 목록 확인",
-      },
-      {
-        actionId: "REVIEW_STAGE_ADD_FEEDBACK",
-        label: REVIEW_STAGE_ADD_FEEDBACK_CHIP,
-        priority: "secondary",
-        reason: "추가 사용자 테스트 피드백 등록",
-      },
-    ];
-    if (canComplete) {
-      actions.push({
-        actionId: "REVIEW_STAGE_COMPLETE_TEST",
-        label: REVIEW_STAGE_COMPLETE_TEST_CHIP,
-        priority: "tertiary",
-        reason: "blocking 피드백 없음 — 검토 완료 가능",
-      });
-    }
-    actions.push({
-      actionId: "REVIEW_STAGE_OPEN_PREVIEW",
-      label: REVIEW_STAGE_OPEN_PREVIEW_CHIP,
-      priority: "tertiary",
-      reason: "프로토타입 Preview 확인",
-    });
-    return actions;
-  }
-
-  const actions: ImplementationStageNextAction[] = [];
-  if (!input.session || input.session.status === "not_started") {
-    actions.push({
-      actionId: "REVIEW_STAGE_START_USER_TEST",
-      label: REVIEW_STAGE_START_USER_TEST_CHIP,
-      priority: "primary",
-      reason: "검토단계 사용자 테스트 세션 시작",
-    });
-  } else if (canComplete && input.session.status !== "completed") {
-    actions.push({
-      actionId: "REVIEW_STAGE_COMPLETE_TEST",
-      label: REVIEW_STAGE_COMPLETE_TEST_CHIP,
-      priority: "primary",
-      reason: "미처리 피드백 없음 — 검토 완료",
-    });
-  }
-  actions.push({
-    actionId: "REVIEW_STAGE_OPEN_PREVIEW",
-    label: REVIEW_STAGE_OPEN_PREVIEW_CHIP,
-    priority: actions.length ? "secondary" : "primary",
-    reason: "프로토타입 Preview 열기",
-  });
-  actions.push({
-    actionId: "REVIEW_STAGE_ADD_FEEDBACK",
-    label: REVIEW_STAGE_ADD_FEEDBACK_CHIP,
-    priority: "secondary",
-    reason: "사용자 테스트 피드백 등록",
-  });
-  if (summary.total > 0) {
-    actions.push({
-      actionId: "REVIEW_STAGE_VIEW_FEEDBACK",
-      label: REVIEW_STAGE_VIEW_FEEDBACK_CHIP,
-      priority: "tertiary",
-      reason: "등록된 피드백 확인",
-    });
-  }
-  return actions;
-}
 
 function deriveNextActionsFromIntegratedBoard(
   board: ImplementationExecutionBoardV1,
@@ -284,22 +147,6 @@ function deriveNextActionsFromIntegratedBoard(
     ];
   }
   if (stepStatus("final_scm") === "done" && previewReady) {
-    if (isImplementationReadyForReviewStage({ board, previewReady: true })) {
-      return [
-        {
-          actionId: "MOVE_TO_REVIEW_STAGE",
-          label: MOVE_TO_REVIEW_STAGE_CHIP,
-          priority: "primary",
-          reason: "구현 보드 완료 및 preview ready — 검토단계 이동",
-        },
-        {
-          actionId: "SHOW_ARTIFACTS",
-          label: IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
-          priority: "secondary",
-          reason: "프로토타입 미리보기 확인",
-        },
-      ];
-    }
     return [
       {
         actionId: "SHOW_ARTIFACTS",
@@ -363,10 +210,8 @@ function deriveNextActionsFromBoardRemediation(
 function deriveNextActionsFromPrototypeComplete(
   prototypeSnapshot: ImplementationPrototypeRunSyncSnapshot | null | undefined,
   executionState: ImplementationTaskExecutionStateV1 | null | undefined,
-  reviewGate?: { readonly board: ImplementationExecutionBoardV1; readonly previewReady: boolean } | null,
 ): readonly ImplementationStageNextAction[] | null {
   if (!isImplementationPrototypeComplete({ executionState, prototypeSnapshot })) return null;
-  if (reviewGate && !isImplementationReadyForReviewStage(reviewGate)) return null;
   return [
     {
       actionId: "SHOW_ARTIFACTS",
@@ -404,12 +249,10 @@ function deriveNextActionsFromPrototypeComplete(
 function deriveNextActionsFromExecutionState(
   executionState: ImplementationTaskExecutionStateV1 | null | undefined,
   prototypeSnapshot?: ImplementationPrototypeRunSyncSnapshot | null,
-  reviewGate?: { readonly board: ImplementationExecutionBoardV1; readonly previewReady: boolean } | null,
 ): readonly ImplementationStageNextAction[] | null {
   const fromComplete = deriveNextActionsFromPrototypeComplete(
     prototypeSnapshot,
     executionState,
-    reviewGate,
   );
   if (fromComplete?.length) return fromComplete;
 
@@ -964,8 +807,7 @@ function deriveImplementationStageNextActionsCore(
     return fromWip;
   }
 
-  let reviewGate: { readonly board: ImplementationExecutionBoardV1; readonly previewReady: boolean } | null =
-    null;
+  let board: ImplementationExecutionBoardV1 | null = null;
   if (boardInput) {
     const integrationPipelineUnlocked = resolveIntegrationPipelineUnlocked({
       codeTaskPlan: boardInput.implementationCodeTaskPlanV1 ?? null,
@@ -975,7 +817,7 @@ function deriveImplementationStageNextActionsCore(
       taskCursorExecutionHistory: boardInput.taskCursorExecutionHistoryV1 ?? null,
       autoQualityGate: boardInput.implementationAutoQualityGateV1 ?? null,
     });
-    const board = buildImplementationExecutionBoardFromOrchestration({
+    board = buildImplementationExecutionBoardFromOrchestration({
       projectId: boardInput.projectId,
       taskList: boardInput.taskList,
       executionState: boardInput.executionState,
@@ -984,8 +826,6 @@ function deriveImplementationStageNextActionsCore(
       qualityGateResults: boardInput.qualityGateResults,
       integrationPipelineUnlocked,
     });
-    reviewGate = { board, previewReady: boardInput.previewReady === true };
-
     if (boardNeedsRemediation(board)) {
       return deriveNextActionsFromBoardRemediation(board);
     }
@@ -1003,7 +843,6 @@ function deriveImplementationStageNextActionsCore(
       const fromExecutionWhileBoard = deriveNextActionsFromExecutionState(
         executionState,
         prototypeSnapshot,
-        reviewGate,
       );
       if (fromExecutionWhileBoard?.length) return fromExecutionWhileBoard;
       const fromTaskReady = deriveNextActionsWhenTaskListReadyForCursor(boardInput);
@@ -1023,27 +862,11 @@ function deriveImplementationStageNextActionsCore(
         },
       ];
     }
-
-    if (
-      reviewGate &&
-      isImplementationReadyForReviewStage(reviewGate) &&
-      isReviewStageEntryReady({
-        implementationReviewStageReadyV1: boardInput.implementationReviewStageReadyV1,
-        previewReady: boardInput.previewReady === true,
-      })
-    ) {
-      const reviewActions = deriveReviewStageNextActions({
-        session: boardInput.reviewStageUserTestSessionV1,
-        feedbackList: boardInput.reviewStageUserFeedbackListV1,
-      });
-      if (reviewActions.length) return reviewActions;
-    }
   }
 
   const fromExecution = deriveNextActionsFromExecutionState(
     executionState,
     prototypeSnapshot,
-    reviewGate,
   );
   if (fromExecution?.length) return fromExecution;
 

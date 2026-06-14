@@ -2,12 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   buildImplementationExecutionBoard,
   buildIntegratedStageStepActionNotice,
-  buildImplementationReviewStageReadinessNotice,
   deriveIntegratedStageInterviewChips,
   deriveIntegratedStagePrimaryChip,
   formatTaskScopedWipExecutionBlockedNotice,
   formatTaskScopedWipExecutionSuccessNotice,
-  isImplementationReadyForReviewStage,
 } from "@/lib/prototype/implementationExecutionBoard";
 import {
   buildCompactImplementationExecutionBoardNoticeMessage,
@@ -45,8 +43,8 @@ import {
   RUN_REFACTOR_COMMON_CHIP,
   SCM_CRITERIA_CHIP,
   IMPLEMENTATION_USER_CONFIRMATION_RESOLVE_CHIP,
-  MOVE_TO_REVIEW_STAGE_CHIP,
   AI_DEVELOPER_REMEDIATION_REQUEST_CHIP,
+  IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP,
 } from "@/lib/requirements/implementationUxLabels";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
@@ -227,7 +225,7 @@ describe("implementationExecutionBoardMessage helpers", () => {
     expect(message.content).toContain("통합 검수 | ready");
   });
 
-  it("all integrated done + previewReady false shows preview pending notice", () => {
+  it("all integrated done + previewReady false message still lists integrated rows", () => {
     let integrated = deriveIntegratedExecutionStateReadiness({
       projectId: "p-board",
       state: null,
@@ -250,18 +248,15 @@ describe("implementationExecutionBoardMessage helpers", () => {
       });
     }
     const board = completedBoard(integrated);
-    const notice = buildImplementationReviewStageReadinessNotice({ board, previewReady: false });
-    expect(notice).toContain("Preview");
-    expect(isImplementationReadyForReviewStage({ board, previewReady: false })).toBe(false);
     const message = buildImplementationExecutionBoardMessage({
       board,
       nowIso: NOW,
       previewReady: false,
     });
-    expect(message.content).toContain("Preview");
+    expect(message.content).toContain("통합 정리 단계");
   });
 
-  it("previewReady true + board complete shows review stage ready", () => {
+  it("previewReady true + board complete message includes task table", () => {
     let integrated = deriveIntegratedExecutionStateReadiness({
       projectId: "p-board",
       state: null,
@@ -284,16 +279,22 @@ describe("implementationExecutionBoardMessage helpers", () => {
       });
     }
     const board = completedBoard(integrated);
-    expect(isImplementationReadyForReviewStage({ board, previewReady: true })).toBe(true);
-    const notice = buildImplementationReviewStageReadinessNotice({ board, previewReady: true });
-    expect(notice).toContain("검토단계");
+    const message = buildImplementationExecutionBoardMessage({
+      board,
+      nowIso: NOW,
+      previewReady: true,
+    });
+    expect(message.content).toContain("작업 목록");
   });
 
-  it("previewReady true + board incomplete shows integrated pending message", () => {
+  it("previewReady true + board incomplete still renders board message", () => {
     const board = completedBoard();
-    expect(isImplementationReadyForReviewStage({ board, previewReady: true })).toBe(false);
-    const notice = buildImplementationReviewStageReadinessNotice({ board, previewReady: true });
-    expect(notice).toContain("통합");
+    const message = buildImplementationExecutionBoardMessage({
+      board,
+      nowIso: NOW,
+      previewReady: true,
+    });
+    expect(message.content).toContain("통합");
   });
 
   it("board chips and next actions agree for all integrated steps", () => {
@@ -476,7 +477,7 @@ describe("implementationExecutionBoardMessage helpers", () => {
     expect(message?.content).toContain("blocking");
   });
 
-  it("board complete + previewReady true includes 검토단계로 이동 chip", () => {
+  it("board complete + previewReady true primary next action is prototype preview", () => {
     let integrated = deriveIntegratedExecutionStateReadiness({
       projectId: "p-board",
       state: null,
@@ -498,8 +499,6 @@ describe("implementationExecutionBoardMessage helpers", () => {
       nowIso: NOW,
       previewReady: true,
     });
-    expect(isImplementationReadyForReviewStage({ board, previewReady: true })).toBe(true);
-    expect(message.meta?.interviewSuggestions).toContain(MOVE_TO_REVIEW_STAGE_CHIP);
     const actions = deriveImplementationStageNextActions("task_list_ready", completedExecutionState(), null, {
       projectId: "p-board",
       taskList: sampleTaskList(),
@@ -507,10 +506,10 @@ describe("implementationExecutionBoardMessage helpers", () => {
       integratedExecutionState: integrated,
       previewReady: true,
     });
-    expect(actions[0]?.label).toBe(MOVE_TO_REVIEW_STAGE_CHIP);
+    expect(actions[0]?.label).toBe(IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP);
   });
 
-  it("board complete + previewReady false does not include 검토단계로 이동 chip", () => {
+  it("board complete + previewReady false does not prioritize prototype preview primary", () => {
     let integrated = deriveIntegratedExecutionStateReadiness({
       projectId: "p-board",
       state: null,
@@ -532,7 +531,7 @@ describe("implementationExecutionBoardMessage helpers", () => {
       nowIso: NOW,
       previewReady: false,
     });
-    expect(message.meta?.interviewSuggestions).not.toContain(MOVE_TO_REVIEW_STAGE_CHIP);
+    expect(message.meta?.interviewSuggestions).not.toContain(IMPLEMENTATION_PROTOTYPE_PREVIEW_CHIP);
   });
 
   it("board with quality failed row contains remediation chip only", () => {

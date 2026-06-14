@@ -4,7 +4,7 @@
 
 import { githubRestApiBase } from "@/lib/integration/githubRestCommon";
 import { composeGithubPagesPreviewUrlFromRepoUrl } from "@/lib/prototype/githubPagesPreviewUrl";
-import { openAiJsonCompletion } from "@/lib/prototype/prototypeReviewOpenAi";
+import { openAiJsonCompletion } from "@/lib/prototype/prototypeOpenAiCompletion";
 import type { PrototypeRun, PrototypeSecurityFinding } from "@/lib/prototype/prototypeRunTypes";
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
 import { appendAiContextToSystemPrompt } from "@/lib/ai/knowledge/aiMemberContextInjection";

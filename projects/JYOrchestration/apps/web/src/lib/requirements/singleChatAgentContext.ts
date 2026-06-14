@@ -42,7 +42,6 @@ export function timelineStageForWorkspaceScreen(screenKey: WorkspaceScreenKey): 
     requirements_service_flow: "service-flow",
     feature_planning: "feature-planning",
     prototype_build: "prototype-generation",
-    prototype_review: "prototype-review",
     deploy_gate: "deploy-gate",
     work_note: "work-note",
   };
@@ -58,7 +57,6 @@ export function workspaceStageGroupLabel(screenKey: WorkspaceScreenKey): string 
     return "서비스 기획";
   }
   if (screenKey === "prototype_build") return "프로토타입 생성";
-  if (screenKey === "prototype_review") return "프로토타입 검토";
   if (screenKey === "deploy_gate") return "배포 전 보안 검증";
   return WORKSPACE_SCREEN_LABEL[screenKey] ?? screenKey;
 }
@@ -69,7 +67,6 @@ export function orchestrationDbStageForWorkspaceScreen(screenKey: WorkspaceScree
   if (screenKey === "requirements_service_flow") return "service-flow";
   if (screenKey === "feature_planning") return "task";
   if (screenKey === "prototype_build") return "prototype-generation";
-  if (screenKey === "prototype_review") return "execution-review";
   if (screenKey === "deploy_gate") return "scm-manager";
   return null;
 }

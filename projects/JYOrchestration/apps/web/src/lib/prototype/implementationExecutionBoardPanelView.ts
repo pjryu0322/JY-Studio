@@ -27,11 +27,6 @@ import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implem
 import type { ImplementationQualityGateResultV1 } from "@/lib/prototype/implementationQualityGate";
 import type { ImplementationTaskExecutionStateV1 } from "@/lib/prototype/implementationTaskExecutionState";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
-import {
-  deriveImplementationUserTestReadiness,
-  type ImplementationUserTestReadiness,
-} from "@/lib/prototype/implementationUserTestReadiness";
-import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { isRoutineImplementationStatusChatContent } from "@/lib/prototype/implementationStatusChatPolicy";
 import type { ImplementationStageNextAction } from "@/lib/prototype/implementationStageNextActions";
 import { parseExecutionLogResponseFields } from "@/lib/prototype/promptTimelineExecutionLogTabs";
@@ -504,14 +499,10 @@ export function buildImplementationTaskTreeNodes(input: {
 export function buildCompactBoardSecondarySummaryLine(input: {
   readonly board: ImplementationExecutionBoardV1;
   readonly previewReady: boolean;
-  readonly reviewReady: boolean;
   readonly feedbackSummary?: ImplementationCodeTaskFeedbackSummaryV1 | null;
   readonly reworkVm?: ImplementationCodeTaskReworkVmV1 | null;
 }): string {
-  const parts = [
-    input.previewReady ? "Preview 준비됨" : "Preview 미준비",
-    input.reviewReady ? "검토단계 이동 가능" : "검토단계 불가",
-  ];
+  const parts = [input.previewReady ? "Preview 준비됨" : "Preview 미준비"];
   if (input.board.summary.userConfirmationRequired > 0) {
     parts.unshift(`사용자 확인 ${input.board.summary.userConfirmationRequired}`);
   }
@@ -593,7 +584,6 @@ export type ImplementationExecutionBoardSummaryView = Readonly<{
   readonly taskCursorSetupReadiness: TaskCursorSetupReadiness;
   readonly envPills: readonly { readonly label: string; readonly value: string; readonly tone: "ok" | "warn" | "muted" }[];
   readonly envDiagnosticLines: readonly string[];
-  readonly testReadiness: ImplementationUserTestReadiness;
   readonly previewReady: boolean;
 }>;
 
@@ -607,13 +597,6 @@ export function buildImplementationExecutionBoardSummaryView(input: {
   const cursorAvailability = evaluateCursorExecutionAvailability({ setup: input.executionSetup });
   const taskCursorSetupReadiness = evaluateTaskCursorExecutionSetupReadiness({
     setup: input.executionSetup,
-  });
-  const testReadiness = deriveImplementationUserTestReadiness({
-    board: input.board,
-    previewReady: input.previewReady === true,
-    hasTaskList: true,
-    hasExecutionState: input.hasExecutionState !== false,
-    boardState: input.boardState,
   });
 
   const setupStatus = input.executionSetup?.status;
@@ -649,7 +632,6 @@ export function buildImplementationExecutionBoardSummaryView(input: {
     envDiagnosticLines: buildImplementationBoardEnvDetailLines({
       setup: input.executionSetup,
     }),
-    testReadiness,
     previewReady: input.previewReady === true,
   };
 }

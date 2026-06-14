@@ -38,6 +38,7 @@ export function resolveWorkingSurfaceFromPathname(pathname: string): WorkingSurf
     p === "/tasks" ||
     p === "/execution" ||
     p === "/prototype-review" ||
+    p.startsWith("/prototype-review/") ||
     p === "/trace" ||
     p === "/planning-execution" ||
     p.startsWith("/projects/") ||

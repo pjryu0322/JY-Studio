@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildInitialImplementationIntegratedExecutionState } from "@/lib/prototype/implementationIntegratedExecutionState";
 import { parseImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
-import { buildImplementationReviewStageReadyMarker } from "@/lib/prototype/implementationReviewStageReady";
 import { buildPrototypeExecutionOrchestrationPersistPatch } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { buildInitialCodeAgentWipExecution } from "@/lib/prototype/codeAgentWipExecution";
 import { parseCodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecutionStateWire";
@@ -109,48 +108,6 @@ describe("requirementsStateJson implementation execution board state", () => {
       implementationExecutionBoardStateV1: boardState ?? null,
     });
     expect(merged.implementationExecutionBoardStateV1?.reworkRequests[0]?.requestId).toBe("rw-1");
-  });
-
-  it("parseRequirementsStateJson preserves implementationReviewStageReadyV1", () => {
-    const marker = buildImplementationReviewStageReadyMarker({
-      previewReady: true,
-      nowIso: NOW,
-    });
-    const state = parseRequirementsStateJson({
-      implementationReviewStageReadyV1: marker,
-    });
-    expect(state.implementationReviewStageReadyV1?.ready).toBe(true);
-    expect(state.implementationReviewStageReadyV1?.previewReady).toBe(true);
-  });
-
-  it("mergeRequirementsStateJson preserves implementationReviewStageReadyV1", () => {
-    const marker = buildImplementationReviewStageReadyMarker({
-      previewReady: true,
-      nowIso: NOW,
-    });
-    const merged = mergeRequirementsStateJson(parseRequirementsStateJson({}), {
-      implementationReviewStageReadyV1: marker,
-    });
-    expect(merged.implementationReviewStageReadyV1?.source).toBe("execution_board_complete");
-  });
-
-  it("buildPrototypeExecutionOrchestrationPersistPatch includes implementationReviewStageReadyV1", () => {
-    const marker = buildImplementationReviewStageReadyMarker({
-      previewReady: true,
-      nowIso: NOW,
-    });
-    const patch = buildPrototypeExecutionOrchestrationPersistPatch(
-      {},
-      { implementationReviewStageReadyV1: marker },
-    );
-    expect(patch.implementationReviewStageReadyV1?.ready).toBe(true);
-  });
-
-  it("invalid implementationReviewStageReadyV1 is dropped on parse", () => {
-    const state = parseRequirementsStateJson({
-      implementationReviewStageReadyV1: { version: "wrong", ready: true },
-    });
-    expect(state.implementationReviewStageReadyV1).toBeNull();
   });
 
   it("mergeRequirementsStateJson preserves codeAgentWipExecutionV1 selectedTaskId", () => {

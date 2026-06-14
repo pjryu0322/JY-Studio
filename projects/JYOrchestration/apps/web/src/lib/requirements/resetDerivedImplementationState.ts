@@ -117,7 +117,6 @@ export const IMPLEMENTATION_SESSION_RESET_NULL_PATCH = {
   implementationTaskExecutionStateV1: null,
   implementationIntegratedExecutionStateV1: null,
   implementationExecutionBoardStateV1: null,
-  implementationReviewStageReadyV1: null,
   implementationUserFeedbackPatchesV1: null,
   implementationStageActionRunLogV1: null,
   implementationCodeTaskQualityGateV1: null,
@@ -137,8 +136,6 @@ export const IMPLEMENTATION_SESSION_RESET_NULL_PATCH = {
   codeTaskIntegrationPlanV1: null,
   implementationRuntimeStateV1: null,
   implementationRuntimeUiSnapshotV1: null,
-  reviewStageUserTestSessionV1: null,
-  reviewStageUserFeedbackListV1: null,
 } as const;
 
 /** persisted requirementsStateJson에 구현 실행·준비 세션이 남아 있는지 */
