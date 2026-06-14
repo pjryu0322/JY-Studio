@@ -30,6 +30,7 @@ import { RequirementsAiMessageMarkdown } from "@/components/requirements/Require
 import { RequirementsAiMessageWithOptionalCodeTaskCopy } from "@/components/requirements/CodeTaskLlmRefinementChatSection";
 import { splitMessageContentForCodeTaskLlmRefinementBlock } from "@/lib/requirements/codeTaskLlmRefinementChatBlock";
 import { QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE } from "@/lib/requirements/quickDesignConfirmArtifacts";
+import { PREVIEW_REGION_CAPTURE_INTERNAL_TYPE } from "@/lib/prototype/previewCaptureSingleChatBridge";
 import { RequirementsMessageExplainability } from "@/components/requirements/RequirementsMessageExplainability";
 import { WorkspaceAiHeaderWithAvatar } from "@/components/ai-member/WorkspaceAiHeaderWithAvatar";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
@@ -544,6 +545,10 @@ export function RequirementsChatPanel({
 
             if (mine) {
               const text = normalizeRequirementsMessageText(m.content);
+              const previewCaptureImage =
+                m.meta?.internalType === PREVIEW_REGION_CAPTURE_INTERNAL_TYPE
+                  ? String(m.meta?.previewRegionCaptureImageDataUrl ?? "").trim()
+                  : "";
               return (
                 <div
                   key={m.id}
@@ -577,7 +582,22 @@ export function RequirementsChatPanel({
                       </span>
                       {headerTrailingActions}
                     </div>
-                    <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>{text}</div>
+                    <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>
+                      {previewCaptureImage ? (
+                        <img
+                          src={previewCaptureImage}
+                          alt="Preview 영역 캡처"
+                          style={{
+                            display: "block",
+                            maxWidth: "100%",
+                            borderRadius: 8,
+                            border: "1px solid #e2e8f0",
+                            marginBottom: text ? 10 : 0,
+                          }}
+                        />
+                      ) : null}
+                      {text}
+                    </div>
                     {actionIconRow("end")}
                   </div>
                 </div>

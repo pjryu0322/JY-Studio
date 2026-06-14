@@ -3,13 +3,11 @@
 import { useCallback, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FixedToast } from "@/components/ui/FixedToast";
 import { PreviewAreaCaptureClipboardOverlay } from "@/components/preview/PreviewAreaCaptureClipboardOverlay";
+import { PreviewAreaCaptureSendOverlay } from "@/components/preview/PreviewAreaCaptureSendOverlay";
 import { PreviewRegionCaptureLayer } from "@/components/preview/PreviewRegionCaptureLayer";
 import { useBrowserPreviewAreaClipboardCapture } from "@/components/preview/useBrowserPreviewAreaClipboardCapture";
+import { useServerPreviewAreaCapture } from "@/components/preview/useServerPreviewAreaCapture";
 import { PreviewRegionCaptureError, PREVIEW_CLIPBOARD_COPY_SUCCESS_MESSAGE } from "@/lib/prototype/capturePreviewRegionToClipboard";
-import {
-  EXTERNAL_PREVIEW_CAPTURE_GUIDANCE,
-  isPreviewViewerExternalCaptureTarget,
-} from "@/lib/prototype/previewViewerCaptureMode";
 import { resolvePreviewViewerIframeSrc } from "@/lib/prototype/implementationPreviewViewerWindow";
 
 const shell: CSSProperties = {
@@ -48,6 +46,7 @@ const iframeStyle: CSSProperties = {
 };
 
 export function ImplementationPreviewViewerChrome(props: {
+  readonly projectId: string;
   readonly previewUrl: string;
   readonly onClose?: () => void;
 }): ReactNode {
@@ -58,10 +57,10 @@ export function ImplementationPreviewViewerChrome(props: {
   );
 
   const browserCapture = useBrowserPreviewAreaClipboardCapture();
-  const isExternalCapture = useMemo(
-    () => isPreviewViewerExternalCaptureTarget(props.previewUrl),
-    [props.previewUrl],
-  );
+  const serverCapture = useServerPreviewAreaCapture({
+    projectId: props.projectId,
+    previewUrl: props.previewUrl,
+  });
 
   const src = useMemo(() => resolvePreviewViewerIframeSrc(props.previewUrl), [props.previewUrl]);
 
@@ -72,38 +71,65 @@ export function ImplementationPreviewViewerChrome(props: {
 
   const onClose = useCallback(() => {
     browserCapture.close();
+    serverCapture.close();
     setInternalCaptureMode(false);
     if (props.onClose) {
       props.onClose();
       return;
     }
     window.close();
-  }, [browserCapture, props.onClose]);
+  }, [browserCapture, serverCapture, props.onClose]);
 
   const onCaptureButtonClick = useCallback(() => {
-    if (isExternalCapture) {
-      void (async () => {
-        notify(EXTERNAL_PREVIEW_CAPTURE_GUIDANCE, "success");
-        try {
-          await browserCapture.startDisplayCapture();
-        } catch (err) {
-          const message =
-            err instanceof PreviewRegionCaptureError
-              ? err.message
-              : "화면 캡처에 실패했습니다.";
-          notify(message, "error");
-        }
-      })();
+    if (serverCapture.state.phase === "overlay" || serverCapture.state.phase === "sending") {
+      serverCapture.close();
       return;
     }
-    setInternalCaptureMode((v) => !v);
-  }, [browserCapture, isExternalCapture, notify]);
+    if (internalCaptureMode) {
+      setInternalCaptureMode(false);
+      return;
+    }
 
-  const subtitle = browserCapture.state.open
-    ? "캡처 이미지에서 영역을 지정한 뒤 클립보드에 복사하세요."
-    : internalCaptureMode
-      ? "캡처할 영역을 드래그하세요."
-      : "실제 앱 화면을 새 창에서 확인합니다.";
+    void (async () => {
+      const result = await serverCapture.startServerCapture();
+      if (result.ok) return;
+
+      notify(result.errorMessage, "error");
+      if (!result.securityBlocked) {
+        try {
+          await browserCapture.startDisplayCapture();
+        } catch {
+          setInternalCaptureMode(true);
+          notify("서버·화면 캡처를 사용할 수 없어 iframe 영역 캡처(fallback)로 전환했습니다.", "success");
+        }
+      }
+    })();
+  }, [serverCapture, internalCaptureMode, notify, browserCapture]);
+
+  const captureBusy =
+    serverCapture.state.phase === "loading" ||
+    serverCapture.state.phase === "sending" ||
+    browserCapture.state.loading;
+
+  const subtitle =
+    serverCapture.state.phase === "loading"
+      ? "서버에서 Preview 화면을 캡처하고 있습니다…"
+      : serverCapture.state.phase === "overlay" || serverCapture.state.phase === "sending"
+        ? "캡처 이미지에서 영역을 지정하고 AI 개발자에게 전달하세요."
+        : browserCapture.state.open
+          ? "화면 캡처(fallback)에서 영역을 지정하세요."
+          : internalCaptureMode
+            ? "캡처할 영역을 드래그하세요 (iframe · fallback)."
+            : "실제 앱 화면을 새 창에서 확인합니다.";
+
+  const captureButtonLabel =
+    serverCapture.state.phase === "loading"
+      ? "캡처 중…"
+      : serverCapture.state.phase === "overlay" || serverCapture.state.phase === "sending"
+        ? "캡처 취소"
+        : internalCaptureMode
+          ? "캡처 취소"
+          : "영역 캡처";
 
   return (
     <div data-testid="implementation-preview-viewer" style={shell}>
@@ -116,24 +142,22 @@ export function ImplementationPreviewViewerChrome(props: {
           <button
             type="button"
             data-testid="preview-region-capture-start"
-            disabled={browserCapture.state.loading}
+            disabled={captureBusy}
             onClick={onCaptureButtonClick}
             style={{
               fontSize: 13,
               padding: "8px 14px",
               borderRadius: 8,
               border: "1px solid #cbd5e1",
-              background: internalCaptureMode ? "#0f172a" : "#fff",
-              color: internalCaptureMode ? "#fff" : "#0f172a",
-              cursor: browserCapture.state.loading ? "wait" : "pointer",
-              opacity: browserCapture.state.loading ? 0.75 : 1,
+              background:
+                internalCaptureMode || serverCapture.state.phase === "overlay" ? "#0f172a" : "#fff",
+              color:
+                internalCaptureMode || serverCapture.state.phase === "overlay" ? "#fff" : "#0f172a",
+              cursor: captureBusy ? "wait" : "pointer",
+              opacity: captureBusy ? 0.75 : 1,
             }}
           >
-            {browserCapture.state.loading
-              ? "캡처 중…"
-              : internalCaptureMode
-                ? "캡처 취소"
-                : "영역 캡처"}
+            {captureButtonLabel}
           </button>
           <button
             type="button"
@@ -160,27 +184,42 @@ export function ImplementationPreviewViewerChrome(props: {
           style={iframeStyle}
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
         />
-        {!isExternalCapture ? (
-          <PreviewRegionCaptureLayer
-            active={internalCaptureMode}
-            iframeRef={iframeRef}
-            onCaptureDone={() => setInternalCaptureMode(false)}
-            onCaptureError={(message) => notify(message, "error")}
-            onCaptureSuccess={(message) =>
-              notify(message || PREVIEW_CLIPBOARD_COPY_SUCCESS_MESSAGE, "success")
-            }
-          />
-        ) : null}
+        <PreviewRegionCaptureLayer
+          active={internalCaptureMode && serverCapture.state.phase === "idle" && !browserCapture.state.open}
+          iframeRef={iframeRef}
+          onCaptureDone={() => setInternalCaptureMode(false)}
+          onCaptureError={(message) => notify(message, "error")}
+          onCaptureSuccess={(message) =>
+            notify(message || PREVIEW_CLIPBOARD_COPY_SUCCESS_MESSAGE, "success")
+          }
+        />
       </div>
+
+      {serverCapture.state.imageDataUrl && serverCapture.state.phase !== "idle" ? (
+        <PreviewAreaCaptureSendOverlay
+          imageUrl={serverCapture.state.imageDataUrl}
+          busy={serverCapture.state.phase === "sending"}
+          onClose={() => serverCapture.close()}
+          onSend={async (sendInput) => {
+            try {
+              await serverCapture.sendRegionToAiDeveloper(sendInput);
+              notify("AI 개발자 SingleChat에 Preview 캡처를 전달했습니다.", "success");
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "AI 개발자에게 전달하지 못했습니다.";
+              notify(msg, "error");
+            }
+          }}
+        />
+      ) : null}
 
       {browserCapture.state.imageUrl ? (
         <PreviewAreaCaptureClipboardOverlay
           imageUrl={browserCapture.state.imageUrl}
           busy={browserCapture.state.loading}
           onClose={() => browserCapture.close()}
-          onCopy={async (input) => {
+          onCopy={async (copyInput) => {
             try {
-              const message = await browserCapture.copyRegionToClipboard(input);
+              const message = await browserCapture.copyRegionToClipboard(copyInput);
               notify(message, "success");
               browserCapture.close();
             } catch (err) {

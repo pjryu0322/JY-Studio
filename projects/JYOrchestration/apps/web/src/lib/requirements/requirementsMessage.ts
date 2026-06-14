@@ -75,6 +75,18 @@ export type RequirementsMessageMeta = {
   prototypeOrderKey?: number;
   /** 구현 진입 bootstrap: lead_developer_summary 등 */
   implementationBootstrapKind?: string;
+  /** Preview Viewer 영역 캡처 — 첨부 PNG(data URL) */
+  previewRegionCaptureImageDataUrl?: string;
+  previewUrl?: string;
+  captureId?: string;
+  regionCaptureId?: string;
+  previewRegionCaptureRect?: Readonly<{
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  }>;
+  previewRegionCaptureSource?: string;
 };
 
 /** 요구사항 협의실 메시지(JSON 저장용). */

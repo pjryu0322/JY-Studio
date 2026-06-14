@@ -31,5 +31,5 @@ export function ImplementationPreviewViewerPageClient(props: {
     );
   }
 
-  return <ImplementationPreviewViewerChrome previewUrl={previewUrl} />;
+  return <ImplementationPreviewViewerChrome projectId={props.projectId} previewUrl={previewUrl} />;
 }
