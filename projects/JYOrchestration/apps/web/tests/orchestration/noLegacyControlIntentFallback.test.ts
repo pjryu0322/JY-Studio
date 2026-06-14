@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { newRequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import { resolveImplementationWorkingQueueOperationalSend } from "@/lib/prototype/implementationWorkingQueueOperationalSend";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
@@ -93,8 +95,13 @@ describe("no legacy control intent on LLM failure", () => {
     expect(result?.kind).not.toBe("start_implementation_quick_run");
   });
 
-  it("LLM failure + 부탁해 → clarification", async () => {
-    const result = await baseSend("부탁해");
-    expect(result?.kind).toBe("assistant_reply");
+  it("runtime source does not import legacy parser", () => {
+    const path = resolve(
+      process.cwd(),
+      "src/lib/prototype/implementationWorkingQueueOperationalSend.ts",
+    );
+    const src = readFileSync(path, "utf8");
+    expect(src).not.toContain("parseWorkingQueueControlIntent");
+    expect(src).not.toContain("legacyWorkingQueueApprovalIntent");
   });
 });

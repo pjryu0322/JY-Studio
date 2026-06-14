@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseWorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueApprovalIntent";
+import { parseWorkingQueueControlIntent } from "../helpers/legacyWorkingQueueApprovalIntent";
 import { isImplementationSupplementRequest } from "@/lib/prototype/implementationWorkingQueueClassifier";
 import { enqueueWorkingQueueSupplement, applyWorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueService";
 import { readImplementationWorkingQueueFromState } from "@/lib/prototype/implementationWorkingQueueState";

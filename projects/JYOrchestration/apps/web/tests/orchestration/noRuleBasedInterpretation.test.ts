@@ -26,6 +26,7 @@ describe("no rule-based preview feedback interpretation in product path", () => 
     expect(src).toContain("postImplementationWorkingQueueIntentResolve");
     expect(src).not.toContain("isImplementationSupplementRequest");
     expect(src).not.toContain("parseWorkingQueueControlIntent");
+    expect(src).not.toContain("implementationWorkingQueueApprovalIntent");
     const exportFn = src.slice(src.indexOf("export async function resolveImplementationWorkingQueueOperationalSend"));
     expect(exportFn.indexOf("hasPreviewRegionCaptureAttachment")).toBeLessThan(
       exportFn.indexOf("shouldHandleImplementationWorkingQueueChat"),

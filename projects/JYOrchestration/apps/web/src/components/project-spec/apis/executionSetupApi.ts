@@ -45,6 +45,7 @@ export type ExecutionSetupDto = {
   openaiPlannerApiKeyMasked?: string | null;
   hasOpenaiPlannerApiKey?: boolean;
   enableLlmCodeTaskRefinement?: boolean;
+  implementationLlmProviderConfig?: import("@/lib/prototype/implementationLlmProviderConfigWire").ImplementationLlmProviderConfigV1 | null;
   workspacePath: string;
   allowedPathGlobs?: string[];
   autoCommit: boolean;

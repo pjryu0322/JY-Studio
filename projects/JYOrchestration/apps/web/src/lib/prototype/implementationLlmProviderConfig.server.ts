@@ -1,17 +1,26 @@
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { prisma } from "@/lib/prisma";
-import type { ImplementationLlmProviderCapabilities } from "@/lib/prototype/implementationLlmProviderTypes";
+import {
+  isProductionNodeEnv,
+  parseImplementationLlmProviderConfigWire,
+  pickImplementationLlmProviderConfig,
+  type ImplementationLlmProviderConfigV1,
+} from "@/lib/prototype/implementationLlmProviderConfigWire";
 
-export type ImplementationLlmProviderConfigV1 = Readonly<{
-  readonly version?: "implementation_llm_provider_config_v1";
-  readonly provider?: "openai" | string;
-  readonly model: string;
-  readonly capabilities: ImplementationLlmProviderCapabilities & { readonly jsonMode?: boolean };
-  readonly scope?: "project" | "user" | "platform";
+export type { ImplementationLlmProviderConfigV1 } from "@/lib/prototype/implementationLlmProviderConfigWire";
+
+export type ImplementationLlmProviderResolutionStatus = "ok" | "provider_config_missing";
+
+export type ImplementationLlmProviderConfigRecord = Readonly<{
+  apiKey: string | null;
+  config: ImplementationLlmProviderConfigV1 | null;
+  providerSource: "project_execution_setup" | "user_default" | "dev_env_fallback" | "none";
+  status: ImplementationLlmProviderResolutionStatus;
+  envFallback: boolean;
 }>;
 
 function allowEnvOpenAiFallback(): boolean {
-  return String(process.env.NODE_ENV ?? "").trim() !== "production";
+  return !isProductionNodeEnv(process.env.NODE_ENV);
 }
 
 function parseVisionFromEnv(): boolean | null {
@@ -41,93 +50,90 @@ function readRequirementsStateRoot(raw: unknown): Record<string, unknown> | null
   return root as Record<string, unknown>;
 }
 
-function readProviderConfigFromRequirementsState(projectId: string): ImplementationLlmProviderConfigV1 | null {
-  // Future: load requirementsStateJson row from DB. For gateway calls, caller may pass config via extended context later.
-  void projectId;
-  return null;
+function readInlineConfigFromRequirementsState(requirementsStateJson?: unknown): ImplementationLlmProviderConfigV1 | null {
+  if (!requirementsStateJson) return null;
+  try {
+    const o = readRequirementsStateRoot(requirementsStateJson);
+    if (!o) return null;
+    return parseImplementationLlmProviderConfigWire(o.implementationLlmProviderConfigV1);
+  } catch {
+    return null;
+  }
+}
+
+async function loadProjectProviderConfigFromDb(projectId: string): Promise<ImplementationLlmProviderConfigV1 | null> {
+  if (!projectId.trim()) return null;
+  try {
+    const setup = await prisma.executionSetup.findUnique({
+      where: { projectId: projectId.trim() },
+      select: { implementationLlmProviderConfigJson: true },
+    });
+    return parseImplementationLlmProviderConfigWire(setup?.implementationLlmProviderConfigJson);
+  } catch {
+    return null;
+  }
+}
+
+async function loadUserProviderConfigFromDb(userId: string): Promise<ImplementationLlmProviderConfigV1 | null> {
+  if (!userId.trim()) return null;
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId.trim() },
+      select: { implementationLlmProviderConfigJson: true },
+    });
+    return parseImplementationLlmProviderConfigWire(user?.implementationLlmProviderConfigJson);
+  } catch {
+    return null;
+  }
+}
+
+function devEnvSyntheticConfig(): ImplementationLlmProviderConfigV1 | null {
+  if (!allowEnvOpenAiFallback()) return null;
+  const model = parseModelFromEnv() ?? resolveOpenAiModelFromEnv();
+  const vision = parseVisionFromEnv() ?? false;
+  return {
+    version: "implementation_llm_provider_config_v1",
+    provider: "openai",
+    model,
+    scope: "platform",
+    capabilities: { text: true, vision, jsonMode: true },
+    enabled: true,
+  };
 }
 
 export async function loadImplementationLlmProviderConfigFromProject(input: Readonly<{
   readonly projectId: string;
   readonly requirementsStateJson?: unknown;
 }>): Promise<ImplementationLlmProviderConfigV1 | null> {
-  const fromState = (() => {
-    if (!input.requirementsStateJson) return null;
-    try {
-      const o = readRequirementsStateRoot(input.requirementsStateJson);
-      if (!o) return null;
-      const raw = o.implementationLlmProviderConfigV1;
-      if (!raw || typeof raw !== "object") return null;
-      const cfg = raw as Record<string, unknown>;
-      const model = typeof cfg.model === "string" ? cfg.model.trim() : "";
-      const caps = cfg.capabilities;
-      if (!model || !caps || typeof caps !== "object") return null;
-      const c = caps as Record<string, unknown>;
-      return {
-        version: "implementation_llm_provider_config_v1",
-        provider: typeof cfg.provider === "string" ? cfg.provider : "openai",
-        model,
-        capabilities: {
-          text: c.text !== false,
-          vision: c.vision === true,
-          ...(c.jsonMode === true ? { jsonMode: true } : {}),
-        },
-        scope: "project",
-      } satisfies ImplementationLlmProviderConfigV1;
-    } catch {
-      return null;
-    }
-  })();
-  if (fromState) return fromState;
-  return readProviderConfigFromRequirementsState(input.projectId);
+  const projectDb = await loadProjectProviderConfigFromDb(input.projectId);
+  const stateInline = readInlineConfigFromRequirementsState(input.requirementsStateJson);
+  const picked = pickImplementationLlmProviderConfig({ projectDb, stateInline, userDb: null });
+  return picked.config;
 }
 
 export async function resolveImplementationLlmProviderConfigRecord(input: Readonly<{
   readonly projectId: string;
   readonly actorUserId?: string | null;
   readonly requirementsStateJson?: unknown;
-}>): Promise<
-  Readonly<{
-    apiKey: string | null;
-    config: ImplementationLlmProviderConfigV1 | null;
-    providerSource: "project_execution_setup" | "user_default" | "dev_env_fallback" | "none";
-  }>
-> {
+}>): Promise<ImplementationLlmProviderConfigRecord> {
   const projectId = input.projectId.trim();
-  const stateConfig = await loadImplementationLlmProviderConfigFromProject({
-    projectId,
-    requirementsStateJson: input.requirementsStateJson,
-  });
-
-  const platformModel = parseModelFromEnv();
-  const platformVision = parseVisionFromEnv();
-
-  const defaultCapabilities: ImplementationLlmProviderCapabilities = {
-    text: true,
-    vision: platformVision ?? false,
+  const missing: ImplementationLlmProviderConfigRecord = {
+    apiKey: null,
+    config: null,
+    providerSource: "none",
+    status: "provider_config_missing",
+    envFallback: false,
   };
 
-  const buildConfig = (
-    scope: ImplementationLlmProviderConfigV1["scope"],
-    modelOverride: string | null,
-    visionOverride: boolean | null,
-  ): ImplementationLlmProviderConfigV1 => ({
-    provider: stateConfig?.provider ?? "openai",
-    model: stateConfig?.model ?? modelOverride ?? platformModel ?? resolveOpenAiModelFromEnv(),
-    capabilities: {
-      text: stateConfig?.capabilities.text ?? true,
-      vision: stateConfig?.capabilities.vision ?? visionOverride ?? platformVision ?? false,
-      ...(stateConfig?.capabilities.jsonMode ? { jsonMode: true } : { jsonMode: true }),
-    },
-    scope: stateConfig?.scope ?? scope,
-    version: "implementation_llm_provider_config_v1",
-  });
+  if (!projectId) return missing;
 
-  if (!projectId) {
-    return { apiKey: null, config: null, providerSource: "none" };
-  }
+  const projectDb = await loadProjectProviderConfigFromDb(projectId);
+  const stateInline = readInlineConfigFromRequirementsState(input.requirementsStateJson);
 
-  let setup: { openaiPlannerApiKey: string | null; project: { ownerUserId: string | null } | null } | null = null;
+  let setup: {
+    openaiPlannerApiKey: string | null;
+    project: { ownerUserId: string | null } | null;
+  } | null = null;
   try {
     setup = await prisma.executionSetup.findUnique({
       where: { projectId },
@@ -137,17 +143,12 @@ export async function resolveImplementationLlmProviderConfigRecord(input: Readon
     setup = null;
   }
 
-  const projectKey = String(setup?.openaiPlannerApiKey ?? "").trim();
-  if (projectKey) {
-    return {
-      apiKey: projectKey,
-      config: buildConfig("project", null, null),
-      providerSource: "project_execution_setup",
-    };
-  }
-
   const ownerId = String(setup?.project?.ownerUserId ?? "").trim();
   const actorId = String(input.actorUserId ?? "").trim();
+  const userDb = await loadUserProviderConfigFromDb(ownerId || actorId);
+
+  const picked = pickImplementationLlmProviderConfig({ projectDb, stateInline, userDb });
+  let config = picked.config;
 
   const tryUserKey = async (userId: string): Promise<string | null> => {
     if (!userId) return null;
@@ -162,34 +163,96 @@ export async function resolveImplementationLlmProviderConfigRecord(input: Readon
     }
   };
 
-  const ownerKey = await tryUserKey(ownerId);
-  if (ownerKey) {
-    return {
-      apiKey: ownerKey,
-      config: buildConfig("user", null, null),
-      providerSource: "user_default",
-    };
-  }
+  const projectKey = String(setup?.openaiPlannerApiKey ?? "").trim();
 
-  if (actorId && actorId !== ownerId) {
-    const actorKey = await tryUserKey(actorId);
-    if (actorKey) {
-      return {
-        apiKey: actorKey,
-        config: buildConfig("user", null, null),
-        providerSource: "user_default",
-      };
+  const resolveKeyForScope = async (): Promise<
+    Readonly<{ apiKey: string | null; providerSource: ImplementationLlmProviderConfigRecord["providerSource"] }>
+  > => {
+    if (picked.scope === "project" && projectKey) {
+      return { apiKey: projectKey, providerSource: "project_execution_setup" };
     }
+    if (picked.scope === "user") {
+      const ownerKey = await tryUserKey(ownerId);
+      if (ownerKey) return { apiKey: ownerKey, providerSource: "user_default" };
+      if (actorId && actorId !== ownerId) {
+        const actorKey = await tryUserKey(actorId);
+        if (actorKey) return { apiKey: actorKey, providerSource: "user_default" };
+      }
+    }
+    if (projectKey) return { apiKey: projectKey, providerSource: "project_execution_setup" };
+    const ownerKey = await tryUserKey(ownerId);
+    if (ownerKey) return { apiKey: ownerKey, providerSource: "user_default" };
+    if (actorId && actorId !== ownerId) {
+      const actorKey = await tryUserKey(actorId);
+      if (actorKey) return { apiKey: actorKey, providerSource: "user_default" };
+    }
+    const envKey = String(process.env.OPENAI_API_KEY ?? "").trim();
+    if (envKey && allowEnvOpenAiFallback()) {
+      return { apiKey: envKey, providerSource: "dev_env_fallback" };
+    }
+    return { apiKey: null, providerSource: "none" };
+  };
+
+  const { apiKey, providerSource } = await resolveKeyForScope();
+  const envFallback = providerSource === "dev_env_fallback";
+
+  if (!config && apiKey && envFallback) {
+    config = devEnvSyntheticConfig();
   }
 
-  const envKey = String(process.env.OPENAI_API_KEY ?? "").trim();
-  if (envKey && allowEnvOpenAiFallback()) {
-    return {
-      apiKey: envKey,
-      config: buildConfig("platform", resolveOpenAiModelFromEnv(), platformVision),
-      providerSource: "dev_env_fallback",
-    };
+  if (!apiKey || !config?.model?.trim()) {
+    return { ...missing, providerSource, envFallback };
   }
 
-  return { apiKey: null, config: buildConfig("platform", null, null), providerSource: "none" };
+  if (!config && !envFallback) {
+    return { ...missing, apiKey: null, providerSource, envFallback: false };
+  }
+
+  if (!config) {
+    return { ...missing, providerSource, envFallback };
+  }
+
+  return {
+    apiKey,
+    config: {
+      ...config,
+      scope: picked.scope ?? config.scope ?? "project",
+    },
+    providerSource,
+    status: "ok",
+    envFallback,
+  };
+}
+
+export async function testImplementationLlmProviderConnection(input: Readonly<{
+  readonly projectId: string;
+  readonly actorUserId?: string | null;
+}>): Promise<
+  Readonly<{ ok: boolean; message: string; model?: string; providerSource?: string }>
+> {
+  const resolved = await resolveImplementationLlmProviderConfigRecord({
+    projectId: input.projectId,
+    actorUserId: input.actorUserId,
+  });
+  if (resolved.status !== "ok" || !resolved.apiKey || !resolved.config) {
+    return { ok: false, message: "Provider 설정 또는 API Key가 없습니다." };
+  }
+  const { postOpenAiChatCompletionMultimodal } = await import("@/lib/ai/openAiChatMultimodal");
+  const res = await postOpenAiChatCompletionMultimodal({
+    apiKey: resolved.apiKey,
+    model: resolved.config.model,
+    temperature: 0,
+    maxTokens: 16,
+    responseFormatJsonObject: false,
+    messages: [{ role: "user", content: "Reply with OK only." }],
+  });
+  if (!res.ok) {
+    return { ok: false, message: res.message ?? "Connection test failed" };
+  }
+  return {
+    ok: true,
+    message: "연결 테스트에 성공했습니다.",
+    model: resolved.config.model,
+    providerSource: resolved.providerSource,
+  };
 }

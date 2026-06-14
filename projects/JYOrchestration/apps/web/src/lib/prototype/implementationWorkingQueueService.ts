@@ -5,7 +5,7 @@ import type {
   ImplementationWorkingQueueV1,
 } from "@/lib/prototype/implementationWorkingQueueTypes";
 import { IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT } from "@/lib/prototype/implementationWorkingQueuePreviewFeedback";
-import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueApprovalIntent";
+import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueControlIntent";
 
 function nowIso(): string {
   return new Date().toISOString();

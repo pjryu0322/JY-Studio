@@ -45,6 +45,8 @@ const EXECUTION_SETUP_ADD_COLUMNS_IF_NOT_EXISTS: readonly string[] = [
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "openaiPlannerApiKeyMasked" TEXT`,
   // 20260601121500_llm_codetask_refinement_toggle
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "enableLlmCodeTaskRefinement" BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "implementationLlmProviderConfigJson" JSONB`,
+  `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "implementationLlmProviderConfigJson" JSONB`,
 ];
 
 /** Wrong snake_case columns from an earlier mistaken script — merge into camelCase then drop. */

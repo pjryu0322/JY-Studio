@@ -47,6 +47,8 @@ export type ImplementationLlmProviderResponse = Readonly<{
     readonly usedVision: boolean;
     readonly providerSource: ImplementationLlmProviderConfig["providerSource"];
     readonly fallbackReason?: string;
+    readonly capabilitySource?: "provider_config";
+    readonly envFallback?: boolean;
   }>;
 }>;
 

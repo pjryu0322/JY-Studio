@@ -20,6 +20,10 @@ import {
   type GithubPatPostSaveRepoProbeResult,
 } from "@/lib/integration/githubPatIntegrity";
 import { githubTokenFingerprint, githubTokenPrefixForLog } from "@/lib/integration/githubTokenTrace";
+import {
+  parseImplementationLlmProviderConfigWire,
+  sanitizeImplementationLlmProviderConfigForApi,
+} from "@/lib/prototype/implementationLlmProviderConfigWire";
 
 function cursorTokenMaskedForApiResponse(cursorApiToken: string | null | undefined): string | null {
   const t = String(cursorApiToken ?? "").trim();
@@ -106,6 +110,7 @@ type PatchBody = Partial<{
   openaiPlannerApiKey: string | null;
   /** Planning readiness: LLM CodeTask refinement toggle */
   enableLlmCodeTaskRefinement: boolean;
+  implementationLlmProviderConfig: unknown | null;
 }>;
 
 function toStringOrNull(v: unknown): string | null {
@@ -268,6 +273,11 @@ export async function GET(
         enableLlmCodeTaskRefinement: Boolean(
           (row as { enableLlmCodeTaskRefinement?: boolean | null }).enableLlmCodeTaskRefinement
         ),
+        implementationLlmProviderConfig: sanitizeImplementationLlmProviderConfigForApi(
+          parseImplementationLlmProviderConfigWire(
+            (row as { implementationLlmProviderConfigJson?: unknown }).implementationLlmProviderConfigJson,
+          ),
+        ),
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
         cursorApiTokenMasked: curTok.masked,
         hasCursorToken: curTok.hasToken,
@@ -426,6 +436,29 @@ export async function PATCH(
 
       ...(toBoolOrUndefined(body.enableLlmCodeTaskRefinement) !== undefined
         ? { enableLlmCodeTaskRefinement: Boolean(body.enableLlmCodeTaskRefinement) }
+        : {}),
+
+      ...(body.implementationLlmProviderConfig !== undefined
+        ? (() => {
+            if (body.implementationLlmProviderConfig === null) {
+              return { implementationLlmProviderConfigJson: Prisma.DbNull };
+            }
+            const parsed = parseImplementationLlmProviderConfigWire(body.implementationLlmProviderConfig);
+            if (!parsed) {
+              return {};
+            }
+            return {
+              implementationLlmProviderConfigJson: {
+                version: "implementation_llm_provider_config_v1",
+                provider: parsed.provider ?? "openai",
+                model: parsed.model,
+                scope: "project",
+                capabilities: parsed.capabilities,
+                enabled: true,
+                updatedAt: new Date().toISOString(),
+              },
+            };
+          })()
         : {}),
 
       ...(body.cursorApiUrl !== undefined
@@ -740,6 +773,11 @@ export async function PATCH(
         hasOpenaiPlannerApiKey: openAiTokPatch.hasToken,
         enableLlmCodeTaskRefinement: Boolean(
           (row as { enableLlmCodeTaskRefinement?: boolean | null }).enableLlmCodeTaskRefinement
+        ),
+        implementationLlmProviderConfig: sanitizeImplementationLlmProviderConfigForApi(
+          parseImplementationLlmProviderConfigWire(
+            (row as { implementationLlmProviderConfigJson?: unknown }).implementationLlmProviderConfigJson,
+          ),
         ),
         cursorApiUrl: normalizeCursorApiBaseUrl(row.cursorApiUrl),
         cursorApiTokenMasked: curTokPatch.masked,

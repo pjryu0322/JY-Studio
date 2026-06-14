@@ -1,4 +1,4 @@
-import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueApprovalIntent";
+import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueControlIntent";
 import type { ImplementationIntentResolverResult } from "@/lib/prototype/implementationIntentResolverTypes";
 import type { ImplementationWorkingQueueItem, ImplementationWorkingQueueV1 } from "@/lib/prototype/implementationWorkingQueueTypes";
 

@@ -53,6 +53,7 @@ import {
   resolvePlannerKeyUiState,
   syncEnableLlmCodeTaskRefinementFromSetup,
 } from "@/lib/project/prototypeAiExecutionSettings";
+import { ImplementationLlmProviderSettingsBlock } from "@/components/project/ImplementationLlmProviderSettingsBlock";
 import {
   githubCredentialLooksStored,
   cursorCredentialLooksStored,
@@ -2527,6 +2528,16 @@ export function ProjectExecutionEnvironmentPanel({
       <p style={{ margin: 0, fontSize: 11, color: "#64748b", lineHeight: 1.55 }}>
         LLM 기반 CodeTask 정제는 Planner API Key가 설정된 경우 기획 확정/구현준비 동기화 시 사용됩니다.
       </p>
+
+      <ImplementationLlmProviderSettingsBlock
+        projectId={projectId}
+        canEdit={canEdit}
+        hasProjectApiKey={plannerKeyOnThisProject}
+        initialConfig={executionSetup?.implementationLlmProviderConfig ?? null}
+        onSaved={(config) =>
+          setExecutionSetup((prev) => (prev ? { ...prev, implementationLlmProviderConfig: config } : prev))
+        }
+      />
     </div>
   ) : null;
 

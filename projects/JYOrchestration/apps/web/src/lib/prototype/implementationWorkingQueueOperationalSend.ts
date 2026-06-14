@@ -1,6 +1,6 @@
 import { createFixCodeTasksFromApprovedQueueItems } from "@/lib/prototype/createFixCodeTasksFromApprovedQueueItems";
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
-import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueApprovalIntent";
+import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueControlIntent";
 import {
   buildWorkingQueueControlAiMessage,
   buildWorkingQueuePreviewFeedbackRegisteredAiMessage,

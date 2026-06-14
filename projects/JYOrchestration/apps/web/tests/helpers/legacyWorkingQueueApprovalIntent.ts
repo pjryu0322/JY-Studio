@@ -1,29 +1,20 @@
-export type WorkingQueueControlIntent =
-  | Readonly<{ kind: "approve_all" }>
-  | Readonly<{ kind: "approve_one"; index: number }>
-  | Readonly<{ kind: "approve_ids"; ids: readonly string[] }>
-  | Readonly<{ kind: "defer_all" }>
-  | Readonly<{ kind: "reject_all" }>
-  | Readonly<{ kind: "defer_one"; index: number }>
-  | Readonly<{ kind: "reject_one"; index: number }>;
+import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueControlIntent";
 
-const APPROVE_PATTERNS = [
-  /^진행해$/i,
-  /^모두\s*진행/i,
-  /^전부\s*진행/i,
-  /승인$/,
-  /진행\s*해\s*주세요/,
-  /진행\s*해\s*줘/,
-];
-
-const DEFER_PATTERNS = [/보류/, /나중에/, /다음에/, /미루/];
-
-const REJECT_PATTERNS = [/취소/, /하지\s*마/, /거절/, /안\s*할/, /하지\s*않/];
-
-/** @deprecated Do not use for product runtime intent resolution. Use LLM Intent Resolver instead. */
+/** Test-only legacy regex parser — not used in product runtime. */
 export function parseWorkingQueueControlIntent(text: string): WorkingQueueControlIntent | null {
   const t = text.trim();
   if (!t) return null;
+
+  const REJECT_PATTERNS = [/취소/, /하지\s*마/, /거절/, /안\s*할/, /하지\s*않/];
+  const DEFER_PATTERNS = [/보류/, /나중에/, /다음에/, /미루/];
+  const APPROVE_PATTERNS = [
+    /^진행해$/i,
+    /^모두\s*진행/i,
+    /^전부\s*진행/i,
+    /승인$/,
+    /진행\s*해\s*주세요/,
+    /진행\s*해\s*줘/,
+  ];
 
   for (const p of REJECT_PATTERNS) {
     if (p.test(t)) {

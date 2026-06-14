@@ -34,24 +34,33 @@ describe("provider gateway config (no model-name vision heuristics)", () => {
     }
   });
 
-  it("resolveImplementationLlmProviderConfigRecord reads model from state config", async () => {
+  it("resolveImplementationLlmProviderConfigRecord reads model from inline state with dev key", async () => {
     const { resolveImplementationLlmProviderConfigRecord } = await import(
       "@/lib/prototype/implementationLlmProviderConfig.server"
     );
     const prevEnv = process.env.NODE_ENV;
+    const prevKey = process.env.OPENAI_API_KEY;
     process.env.NODE_ENV = "test";
+    process.env.OPENAI_API_KEY = "sk-test-dev-only";
     const state = {
       implementationLlmProviderConfigV1: {
         model: "custom-model-from-state",
         capabilities: { text: true, vision: true },
+        enabled: true,
       },
     };
-    const out = await resolveImplementationLlmProviderConfigRecord({
-      projectId: "no-db-project",
-      requirementsStateJson: state,
-    });
-    expect(out.config?.model).toBe("custom-model-from-state");
-    expect(out.config?.capabilities.vision).toBe(true);
-    process.env.NODE_ENV = prevEnv;
+    try {
+      const out = await resolveImplementationLlmProviderConfigRecord({
+        projectId: "no-db-project",
+        requirementsStateJson: state,
+      });
+      expect(out.status).toBe("ok");
+      expect(out.config?.model).toBe("custom-model-from-state");
+      expect(out.config?.capabilities.vision).toBe(true);
+      expect(out.envFallback).toBe(true);
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+      process.env.OPENAI_API_KEY = prevKey;
+    }
   });
 });

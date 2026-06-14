@@ -212,6 +212,8 @@ model User {
   /// 기본 OpenAI API 키(프로토타입 플래너 등). API 응답 마스킹만.
   defaultOpenaiApiKey       String? @db.Text
   defaultOpenaiApiKeyMasked String?
+  /// 구현단계 AI 개발자 LLM Provider (model/capabilities; API Key는 defaultOpenaiApiKey)
+  implementationLlmProviderConfigJson Json?
 
   userIntegrations UserIntegration[]
   /// 메신저형 사전 대화방(소유)
@@ -734,6 +736,8 @@ model ExecutionSetup {
 
   /// Planning readiness: LLM-based CodeTask refinement toggle (project-level)
   enableLlmCodeTaskRefinement Boolean @default(false)
+  /// 구현단계 AI 개발자 LLM Provider (model/capabilities; API Key는 openaiPlannerApiKey)
+  implementationLlmProviderConfigJson Json?
 
   /// Cursor executor
   cursorApiUrl    String

@@ -3,8 +3,11 @@ import {
   postOpenAiChatCompletionMultimodal,
   type OpenAiMultimodalMessage,
 } from "@/lib/ai/openAiChatMultimodal";
-import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { resolveImplementationLlmProviderConfigRecord } from "@/lib/prototype/implementationLlmProviderConfig.server";
+import {
+  IMPLEMENTATION_LLM_PROVIDER_CONFIG_MISSING_MESSAGE,
+  IMPLEMENTATION_LLM_PROVIDER_GATEWAY_ERROR_CODE,
+} from "@/lib/prototype/implementationLlmProviderMessages";
 import type {
   ImplementationLlmProviderConfig,
   ImplementationLlmProviderRequest,
@@ -21,6 +24,7 @@ export async function resolveImplementationLlmProviderConfig(input: Readonly<{
     actorUserId: input.userId ?? null,
     requirementsStateJson: input.requirementsStateJson,
   });
+  if (resolved.status !== "ok") return null;
   const apiKey = String(resolved.apiKey ?? "").trim();
   if (!apiKey || !resolved.config) return null;
   return {
@@ -39,9 +43,39 @@ function appendVisionNote(content: string, note: string): OpenAiMultimodalMessag
   return { role: "user", content: `${content}\n\n(${note})` };
 }
 
+function providerMissingResponse(
+  resolved: Awaited<ReturnType<typeof resolveImplementationLlmProviderConfigRecord>>,
+): ImplementationLlmProviderResponse {
+  return {
+    ok: false,
+    provider: "none",
+    model: resolved.config?.model ?? "",
+    capabilities: { text: false, vision: false },
+    errorCode: IMPLEMENTATION_LLM_PROVIDER_GATEWAY_ERROR_CODE,
+    errorMessage: IMPLEMENTATION_LLM_PROVIDER_CONFIG_MISSING_MESSAGE,
+    trace: {
+      usedVision: false,
+      providerSource: resolved.providerSource,
+      fallbackReason: "provider_config_missing",
+      capabilitySource: "provider_config",
+      envFallback: resolved.envFallback,
+    },
+  };
+}
+
 export async function invokeImplementationLlmProviderJson(
   request: ImplementationLlmProviderRequest,
 ): Promise<ImplementationLlmProviderResponse> {
+  const resolved = await resolveImplementationLlmProviderConfigRecord({
+    projectId: request.projectId,
+    actorUserId: request.userId ?? null,
+    requirementsStateJson: request.requirementsStateJson,
+  });
+
+  if (resolved.status !== "ok") {
+    return providerMissingResponse(resolved);
+  }
+
   const config = await resolveImplementationLlmProviderConfig({
     projectId: request.projectId,
     userId: request.userId,
@@ -49,15 +83,7 @@ export async function invokeImplementationLlmProviderJson(
   });
 
   if (!config) {
-    return {
-      ok: false,
-      provider: "none",
-      model: resolveOpenAiModelFromEnv(),
-      capabilities: { text: false, vision: false },
-      errorCode: "NO_PROVIDER",
-      errorMessage: "LLM provider config not available for project",
-      trace: { usedVision: false, providerSource: "none", fallbackReason: "no_provider" },
-    };
+    return providerMissingResponse(resolved);
   }
 
   const imagePresent = Boolean(String(request.imageDataUrl ?? request.imageUrl ?? "").trim());
@@ -108,6 +134,12 @@ export async function invokeImplementationLlmProviderJson(
     messages,
   });
 
+  const traceBase = {
+    providerSource: config.providerSource,
+    capabilitySource: "provider_config" as const,
+    envFallback: resolved.envFallback,
+  };
+
   if (!res.ok) {
     return {
       ok: false,
@@ -118,7 +150,7 @@ export async function invokeImplementationLlmProviderJson(
       errorMessage: res.message,
       trace: {
         usedVision: false,
-        providerSource: config.providerSource,
+        ...traceBase,
         fallbackReason: res.code,
       },
     };
@@ -140,7 +172,7 @@ export async function invokeImplementationLlmProviderJson(
     parsedJson,
     trace: {
       usedVision: canUseVision,
-      providerSource: config.providerSource,
+      ...traceBase,
       ...(!canUseVision && imagePresent && request.requiresVision
         ? {
             fallbackReason: config.capabilities.vision ? "image_missing" : "provider_vision_not_supported",
