@@ -10,6 +10,7 @@ import {
 export function useImplementationComposerPendingAttachments(input: {
   readonly projectId: string;
   readonly chatInputRef: React.RefObject<HTMLTextAreaElement | null>;
+  readonly onAttachmentStaged?: (message: string) => void;
 }): Readonly<{
   readonly pendingAttachments: readonly ImplementationComposerAttachment[];
   readonly addPendingAttachment: (attachment: ImplementationComposerAttachment) => void;
@@ -34,12 +35,15 @@ export function useImplementationComposerPendingAttachments(input: {
         const withoutDup = prev.filter((a) => a.id !== attachment.id);
         return [...withoutDup, attachment];
       });
+      input.onAttachmentStaged?.(
+        "Preview 캡처가 대화입력창에 추가되었습니다. 보완 내용을 입력한 뒤 전송해 주세요.",
+      );
       window.setTimeout(() => input.chatInputRef.current?.focus(), 0);
     };
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [input.projectId, input.chatInputRef]);
+  }, [input.projectId, input.chatInputRef, input.onAttachmentStaged]);
 
   const addPendingAttachment = useCallback((attachment: ImplementationComposerAttachment) => {
     setPendingAttachments((prev) => {

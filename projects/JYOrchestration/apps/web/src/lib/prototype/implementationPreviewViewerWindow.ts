@@ -1,3 +1,20 @@
+export function buildImplementationPreviewViewerWindowFeatures(input: {
+  readonly screenAvailWidth: number;
+  readonly screenAvailHeight: number;
+}): string {
+  const width = Math.min(1680, Math.max(960, input.screenAvailWidth - 48));
+  const height = Math.min(1050, Math.max(640, input.screenAvailHeight - 48));
+  const left = Math.round((input.screenAvailWidth - width) / 2);
+  const top = Math.round((input.screenAvailHeight - height) / 2);
+  return [
+    "popup=yes",
+    `width=${width}`,
+    `height=${height}`,
+    `left=${left}`,
+    `top=${top}`,
+  ].join(",");
+}
+
 export function sanitizePreviewViewerTargetParam(input: {
   readonly projectId: string;
   readonly target: string | null | undefined;
@@ -44,26 +61,20 @@ export function openImplementationPreviewViewerWindow(input: {
   const pageUrl = buildImplementationPreviewViewerPageUrl(input);
   if (!pageUrl) return false;
 
-  const width = Math.min(1680, Math.max(960, window.screen.availWidth - 48));
-  const height = Math.min(1050, Math.max(640, window.screen.availHeight - 48));
-  const left = Math.round((window.screen.availWidth - width) / 2);
-  const top = Math.round((window.screen.availHeight - height) / 2);
-  const features = [
-    "popup=yes",
-    `width=${width}`,
-    `height=${height}`,
-    `left=${left}`,
-    `top=${top}`,
-    "noopener",
-    "noreferrer",
-  ].join(",");
+  const windowName = `jyo-implementation-preview-${input.projectId.trim()}`;
+  const features = buildImplementationPreviewViewerWindowFeatures({
+    screenAvailWidth: window.screen.availWidth,
+    screenAvailHeight: window.screen.availHeight,
+  });
 
-  const win = window.open(pageUrl, `jyo-implementation-preview-${input.projectId.trim()}`, features);
+  let win = window.open(pageUrl, windowName, features);
+  if (!win) {
+    win = window.open(pageUrl, windowName);
+  }
   if (win) {
-    win.opener = null;
     win.focus();
   }
-  return Boolean(win);
+  return win != null;
 }
 
 export function resolvePreviewViewerIframeSrc(previewUrl: string): string {

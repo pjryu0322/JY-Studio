@@ -357,6 +357,7 @@ export function useImplementationSingleChatWorkspaceController(
   const composerPendingAttachments = useImplementationComposerPendingAttachments({
     projectId: input.projectId,
     chatInputRef,
+    onAttachmentStaged: input.appendUserNotice,
   });
 
   const readPendingComposerAttachments = useCallback(

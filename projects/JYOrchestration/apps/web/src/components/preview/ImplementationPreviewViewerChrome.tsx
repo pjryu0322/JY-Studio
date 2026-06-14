@@ -115,7 +115,7 @@ export function ImplementationPreviewViewerChrome(props: {
     serverCapture.state.phase === "loading"
       ? "서버에서 Preview 화면을 캡처하고 있습니다…"
       : serverCapture.state.phase === "overlay" || serverCapture.state.phase === "sending"
-        ? "캡처 이미지에서 영역을 지정하고 AI 개발자에게 전달하세요."
+        ? "캡처 이미지에서 영역을 지정하고 대화입력창에 추가하세요."
         : browserCapture.state.open
           ? "화면 캡처(fallback)에서 영역을 지정하세요."
           : internalCaptureMode

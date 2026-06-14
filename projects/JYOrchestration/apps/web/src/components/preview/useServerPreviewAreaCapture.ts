@@ -214,7 +214,7 @@ export function useServerPreviewAreaCapture(input: {
         return {
           ok: false,
           errorMessage:
-            "구현 단계 창을 찾을 수 없습니다. Preview Viewer를 구현 단계 툴바에서 연 뒤 다시 시도해 주세요.",
+            "구현단계 화면을 찾을 수 없어 대화입력창에 추가하지 못했습니다. Preview를 구현단계 Toolbar에서 다시 열어 주세요.",
         };
       }
 
