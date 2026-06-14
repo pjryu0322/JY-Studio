@@ -117,6 +117,8 @@ export const IMPLEMENTATION_SESSION_RESET_NULL_PATCH = {
   implementationTaskExecutionStateV1: null,
   implementationIntegratedExecutionStateV1: null,
   implementationExecutionBoardStateV1: null,
+  implementationWorkingQueueV1: null,
+  implementationDeveloperMemoryDraftV1: null,
   implementationUserFeedbackPatchesV1: null,
   implementationStageActionRunLogV1: null,
   implementationCodeTaskQualityGateV1: null,

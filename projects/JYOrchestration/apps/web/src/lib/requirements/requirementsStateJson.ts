@@ -88,6 +88,14 @@ import type { ImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/i
 import { parseImplementationIntegratedExecutionStateV1 } from "@/lib/prototype/implementationIntegratedExecutionState";
 import type { ImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
 import { parseImplementationExecutionBoardStateV1 } from "@/lib/prototype/implementationExecutionBoardState";
+import type {
+  ImplementationDeveloperMemoryDraft,
+  ImplementationWorkingQueueV1,
+} from "@/lib/prototype/implementationWorkingQueueTypes";
+import {
+  parseImplementationDeveloperMemoryDraftV1,
+  parseImplementationWorkingQueueV1,
+} from "@/lib/prototype/implementationWorkingQueueState";
 import type { ImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import { parseImplementationWorkPlanDraftV1 } from "@/lib/prototype/implementationWorkPlanDraft";
 import {
@@ -629,6 +637,10 @@ export type RequirementsStateJson = {
   implementationIntegratedExecutionStateV1?: ImplementationIntegratedExecutionStateV1 | null;
   /** 실행 보드 사용자 확인·재작업 요청 상태 */
   implementationExecutionBoardStateV1?: ImplementationExecutionBoardStateV1 | null;
+  /** AI Developer 보완요청 작업대기 큐 */
+  implementationWorkingQueueV1?: ImplementationWorkingQueueV1 | null;
+  /** Working Queue 연동 Developer Memory 초안(내부 전용) */
+  implementationDeveloperMemoryDraftV1?: ImplementationDeveloperMemoryDraft | null;
   /** 구현 작업안 초안(JSON) — 확정 전 범위·방식 */
   implementationWorkPlanDraftV1?: ImplementationWorkPlanDraftV1 | null;
   /** 구현단계 사용자 피드백 patch 누적 */
@@ -1111,6 +1123,14 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   const implementationExecutionBoardStateV1 = parseImplementationExecutionBoardStateV1(
     "implementationExecutionBoardStateV1" in o ? o.implementationExecutionBoardStateV1 : undefined,
   );
+  const implementationWorkingQueueV1 = parseImplementationWorkingQueueV1(
+    "implementationWorkingQueueV1" in o ? o.implementationWorkingQueueV1 : undefined,
+    "",
+  );
+  const implementationDeveloperMemoryDraftV1 = parseImplementationDeveloperMemoryDraftV1(
+    "implementationDeveloperMemoryDraftV1" in o ? o.implementationDeveloperMemoryDraftV1 : undefined,
+    "",
+  );
   const implementationWorkPlanDraftV1 = parseImplementationWorkPlanDraftV1(
     "implementationWorkPlanDraftV1" in o ? o.implementationWorkPlanDraftV1 : undefined,
   );
@@ -1329,6 +1349,10 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
       : {}),
     ...(implementationExecutionBoardStateV1 !== undefined
       ? { implementationExecutionBoardStateV1 }
+      : {}),
+    ...(implementationWorkingQueueV1 !== undefined ? { implementationWorkingQueueV1 } : {}),
+    ...(implementationDeveloperMemoryDraftV1 !== undefined
+      ? { implementationDeveloperMemoryDraftV1 }
       : {}),
     ...(implementationWorkPlanDraftV1 !== undefined ? { implementationWorkPlanDraftV1 } : {}),
     ...(implementationUserFeedbackPatchesV1 !== undefined
