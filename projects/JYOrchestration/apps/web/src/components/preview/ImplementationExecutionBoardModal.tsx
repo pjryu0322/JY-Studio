@@ -29,6 +29,7 @@ export function ImplementationExecutionBoardModal(props: {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly children: ReactNode;
+  readonly ariaLabel?: string;
 }): ReactNode {
   useEffect(() => {
     if (!props.open) return;
@@ -48,7 +49,7 @@ export function ImplementationExecutionBoardModal(props: {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="개발 현황판"
+      aria-label={props.ariaLabel ?? "개발 현황판"}
       data-testid="implementation-execution-board-modal"
       style={overlay}
       onMouseDown={(e) => {

@@ -8,6 +8,8 @@ import {
   IMPLEMENTATION_ENV_SETTINGS_LABEL,
   IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_ARIA,
   IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_TITLE,
+  IMPLEMENTATION_WORKING_QUEUE_TOOLBAR_ARIA,
+  IMPLEMENTATION_WORKING_QUEUE_TOOLBAR_TITLE,
 } from "@/lib/requirements/implementationUxLabels";
 
 /**
@@ -30,6 +32,8 @@ export type ImplementationToolbarControllerInput = Readonly<{
   readonly setExecutionEnvironmentModalOpen: (open: boolean) => void;
   readonly onOpenDeveloperDashboard?: () => void;
   readonly developerDashboardDisabled?: boolean;
+  readonly onOpenWorkingQueue?: () => void;
+  readonly workingQueuePendingCount?: number;
   readonly onOpenImplementationExecutionLog: () => void;
   readonly onResetImplementationSession?: () => void | Promise<void>;
   readonly resetImplementationSessionDisabled?: boolean;
@@ -75,6 +79,37 @@ export function useImplementationToolbarController(
               <rect x="14" y="3" width="7" height="7" rx="1" />
               <rect x="3" y="14" width="7" height="7" rx="1" />
               <rect x="14" y="14" width="7" height="7" rx="1" />
+            </svg>
+          </WorkspaceHubChromeIconButton>
+        ) : null}
+        {input.onOpenWorkingQueue ? (
+          <WorkspaceHubChromeIconButton
+            title={IMPLEMENTATION_WORKING_QUEUE_TOOLBAR_TITLE}
+            ariaLabel={IMPLEMENTATION_WORKING_QUEUE_TOOLBAR_ARIA}
+            disabled={false}
+            onClick={input.onOpenWorkingQueue}
+            badge={
+              (input.workingQueuePendingCount ?? 0) > 0 ? input.workingQueuePendingCount : null
+            }
+            badgeTone="stale"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M8 6h13" />
+              <path d="M8 12h13" />
+              <path d="M8 18h13" />
+              <path d="M3 6h.01" />
+              <path d="M3 12h.01" />
+              <path d="M3 18h.01" />
             </svg>
           </WorkspaceHubChromeIconButton>
         ) : null}
@@ -172,6 +207,8 @@ export function useImplementationToolbarController(
       onOpenExecutionEnvironmentSettings,
       input.onOpenDeveloperDashboard,
       input.developerDashboardDisabled,
+      input.onOpenWorkingQueue,
+      input.workingQueuePendingCount,
       input.onOpenImplementationExecutionLog,
       input.onResetImplementationSession,
       input.resetImplementationSessionDisabled,

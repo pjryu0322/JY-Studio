@@ -5,6 +5,7 @@ import type { PrototypeChatAction } from "@/lib/prototype/buildPrototypeChatMess
 import { usePrototypeExecutionSingleChat } from "@/components/preview/usePrototypeExecutionSingleChat";
 import type { PrototypeExecutionOperationalSendResult } from "@/lib/prototype/prototypeExecutionOperationalSendResult";
 import { resolveImplementationOperationalSend } from "@/lib/prototype/implementationOperationalSend";
+import { resolveImplementationWorkingQueueOperationalSend } from "@/lib/prototype/implementationWorkingQueueOperationalSend";
 import {
   buildImplementationRoleCheckSummary,
   buildImplementationStatusQueryMessage,
@@ -271,6 +272,24 @@ export function useImplementationSingleChatWorkspaceController(
       }
 
       const pid = input.projectId.trim();
+
+      const workingQueueResult = resolveImplementationWorkingQueueOperationalSend({
+        text,
+        userMsg,
+        projectId: pid,
+        requirementsStateJson: input.requirementsStateJsonRef.current,
+        isDraftGenerationComplete: input.isDraftGenerationComplete,
+        parsedRequirementsState: input.parsedRequirementsState,
+        implementationBootstrapInput: input.implementationBootstrapInput,
+        latestPreviewUrl:
+          input.parsedRequirementsState.implementationPreviewRuntimeV1?.previewUrl ??
+          input.parsedRequirementsState.implementationPreviewScopeV1?.previewUrl ??
+          null,
+      });
+      if (workingQueueResult) {
+        return workingQueueResult;
+      }
+
       return resolveImplementationOperationalSend(
         {
           text,

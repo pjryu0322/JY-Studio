@@ -40,6 +40,7 @@ import { useImplementationDbStrategyActionController } from "@/components/previe
 import { useImplementationBoardRefreshController } from "@/components/preview/useImplementationBoardRefreshController";
 import { useImplementationToolbarController } from "@/components/preview/useImplementationToolbarController";
 import { useImplementationSingleChatWorkspaceController } from "@/components/preview/useImplementationSingleChatWorkspaceController";
+import { useImplementationWorkingQueue } from "@/components/preview/useImplementationWorkingQueue";
 import { useImplementationSessionResetController } from "@/components/preview/useImplementationSessionResetController";
 import { useImplementationRuntimeRecoveryController } from "@/components/preview/useImplementationRuntimeRecoveryController";
 import { useImplementationDeliverableViewerController } from "@/components/preview/useImplementationDeliverableViewerController";
@@ -210,6 +211,9 @@ export type UsePrototypeImplementationStagePanelResult = Readonly<{
   executionSlotsForDevTools: ReturnType<typeof computePrototypeExecutionSlots>;
   implementationDeveloperDashboardOpen: boolean;
   setImplementationDeveloperDashboardOpen: (open: boolean) => void;
+  implementationWorkingQueueOpen: boolean;
+  setImplementationWorkingQueueOpen: (open: boolean) => void;
+  implementationWorkingQueue: ReturnType<typeof useImplementationWorkingQueue>;
   implementationSingleChatWorkspace: ReturnType<typeof useImplementationSingleChatWorkspaceController>;
 }>;
 
@@ -323,6 +327,7 @@ export function usePrototypeImplementationStagePanel(
   );
   const [activeTaskCursorJob, setActiveTaskCursorJob] = useState<TaskCursorJobSummary | null>(null);
   const [implementationDeveloperDashboardOpen, setImplementationDeveloperDashboardOpen] = useState(false);
+  const [implementationWorkingQueueOpen, setImplementationWorkingQueueOpen] = useState(false);
   const activeTaskCursorJobRef = useRef<TaskCursorJobSummary | null>(null);
   activeTaskCursorJobRef.current = activeTaskCursorJob;
   const boardManualPickTaskIdRef = useRef<string | null>(null);
@@ -563,6 +568,17 @@ export function usePrototypeImplementationStagePanel(
   useEffect(() => {
     applyImplementationOrchestrationResultRef.current = applyImplementationOrchestrationResult;
   }, [applyImplementationOrchestrationResult]);
+
+  const implementationWorkingQueue = useImplementationWorkingQueue({
+    projectId,
+    requirementsStateJson: orchestrationAwareRequirementsState,
+    requirementsStateJsonRef,
+    latestPreviewUrl:
+      orchestrationAwareRequirementsState.implementationPreviewRuntimeV1?.previewUrl ??
+      previewUrl ??
+      null,
+    applyImplementationOrchestrationResult,
+  });
 
   const {
     githubRecheckBusyCodeTaskId,
@@ -953,6 +969,7 @@ export function usePrototypeImplementationStagePanel(
       appendUserNotice,
       appendAiNoticeForImplementation,
       setExecutionEnvironmentModalOpen,
+      openDeveloperDashboard: () => setImplementationDeveloperDashboardOpen(true),
       showImplementationSeedReadinessCheck,
       showRoleCheckDetails,
       appendStatusQueryFromChip,
@@ -1048,6 +1065,8 @@ export function usePrototypeImplementationStagePanel(
     setExecutionEnvironmentModalOpen,
     onOpenDeveloperDashboard: () => setImplementationDeveloperDashboardOpen(true),
     developerDashboardDisabled: !implementationBoard && !implementationBootstrapShell,
+    onOpenWorkingQueue: () => setImplementationWorkingQueueOpen(true),
+    workingQueuePendingCount: implementationWorkingQueue.pendingCount,
     onOpenImplementationExecutionLog,
     onResetImplementationSession,
     resetImplementationSessionDisabled,
@@ -1108,6 +1127,9 @@ export function usePrototypeImplementationStagePanel(
     executionSlotsForDevTools: executionSlots,
     implementationDeveloperDashboardOpen,
     setImplementationDeveloperDashboardOpen,
+    implementationWorkingQueueOpen,
+    setImplementationWorkingQueueOpen,
+    implementationWorkingQueue,
     implementationSingleChatWorkspace,
   };
 }

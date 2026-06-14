@@ -5,6 +5,8 @@ import type { ImplementationStageActionOrchestratorValue } from "@/components/pr
 import {
   AI_DEVELOPER_IMPLEMENTATION_REQUEST_CHIP,
   IMPLEMENTATION_GENERATION_REQUEST_CHIP,
+  IMPLEMENTATION_ENV_SETTINGS_LABEL,
+  PLANNING_ENV_SETTINGS_LABEL,
 } from "@/lib/requirements/implementationUxLabels";
 import {
   canConfirmImplementationWorkPlanFromEffectiveState,
@@ -60,6 +62,7 @@ export type ImplementationChipHandlerControllerInput = Readonly<{
   readonly appendUserNotice: (message: string) => void;
   readonly appendAiNoticeForImplementation: (message: string) => void;
   readonly setExecutionEnvironmentModalOpen: (open: boolean) => void;
+  readonly openDeveloperDashboard?: () => void;
   readonly showImplementationSeedReadinessCheck: () => void;
   readonly showRoleCheckDetails: () => void;
   readonly appendStatusQueryFromChip: (chip: string) => void;
@@ -77,6 +80,22 @@ export function useImplementationChipHandlerController(
 ): ImplementationChipHandlerControllerValue {
   const handleImplementationChip = useCallback(
     (label: string) => {
+      const trimmed = label.trim();
+      if (
+        trimmed === PLANNING_ENV_SETTINGS_LABEL ||
+        trimmed === IMPLEMENTATION_ENV_SETTINGS_LABEL ||
+        trimmed === "환경설정 보기"
+      ) {
+        input.setExecutionEnvironmentModalOpen(true);
+        return true;
+      }
+      if (trimmed === IMPLEMENTATION_GENERATION_REQUEST_CHIP) {
+        if (input.openDeveloperDashboard) {
+          input.openDeveloperDashboard();
+          return true;
+        }
+      }
+
       const taskList = input.parsedRequirementsState.implementationTaskListV1 ?? null;
       const chipHandled = tryHandleImplementationTaskListChip({
         label,
@@ -116,15 +135,6 @@ export function useImplementationChipHandlerController(
           void input.generateImplementationTaskList();
         }
         return true;
-      }
-
-      if (
-        label.trim() === IMPLEMENTATION_GENERATION_REQUEST_CHIP &&
-        taskList?.tasks?.length &&
-        (!input.parsedRequirementsState.cursorWorkItemsV1 ||
-          input.parsedRequirementsState.cursorWorkItemsV1.length === 0)
-      ) {
-        void input.generateImplementationTaskList();
       }
 
       const actionId = mapImplementationChipToAction(label);
@@ -211,6 +221,7 @@ export function useImplementationChipHandlerController(
       input.confirmExecution,
       input.onRefreshPrototypeStatus,
       input.setExecutionEnvironmentModalOpen,
+      input.openDeveloperDashboard,
     ],
   );
 

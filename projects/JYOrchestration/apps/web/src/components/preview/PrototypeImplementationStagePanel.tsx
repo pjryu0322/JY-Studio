@@ -3,6 +3,7 @@
 import { ImplementationExecutionBoardPanel } from "@/components/preview/ImplementationExecutionBoardPanel";
 import { ImplementationExecutionBoardBootstrapPanel } from "@/components/preview/ImplementationExecutionBoardBootstrapPanel";
 import { ImplementationExecutionBoardModal } from "@/components/preview/ImplementationExecutionBoardModal";
+import { ImplementationWorkingQueueModal } from "@/components/preview/ImplementationWorkingQueueModal";
 import { ImplementationStageGlobalToolbar } from "@/components/preview/ImplementationStageGlobalToolbar";
 import { PrototypeExecutionChatPanel } from "@/components/preview/PrototypeExecutionChatPanel";
 import { FixedToast } from "@/components/ui/FixedToast";
@@ -64,6 +65,9 @@ export function PrototypeImplementationStagePanel({
     executionSlotsForDevTools,
     implementationDeveloperDashboardOpen,
     setImplementationDeveloperDashboardOpen,
+    implementationWorkingQueueOpen,
+    setImplementationWorkingQueueOpen,
+    implementationWorkingQueue,
     implementationSingleChatWorkspace,
   } = stage;
 
@@ -232,6 +236,15 @@ export function PrototypeImplementationStagePanel({
       >
         {boardPanel}
       </ImplementationExecutionBoardModal>
+
+      <ImplementationWorkingQueueModal
+        open={implementationWorkingQueueOpen}
+        onClose={() => setImplementationWorkingQueueOpen(false)}
+        queue={implementationWorkingQueue.queue}
+        onApproveItem={implementationWorkingQueue.approveItem}
+        onDeferItem={implementationWorkingQueue.deferItem}
+        onRejectItem={implementationWorkingQueue.rejectItem}
+      />
 
       <PrototypeImplementationStageOverlays host={host} stage={stage} />
 
