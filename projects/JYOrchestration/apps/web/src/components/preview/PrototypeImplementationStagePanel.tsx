@@ -68,6 +68,7 @@ export function PrototypeImplementationStagePanel({
     implementationWorkingQueueOpen,
     setImplementationWorkingQueueOpen,
     implementationWorkingQueue,
+    implementationToolbarPreviewEntry,
     implementationSingleChatWorkspace,
   } = stage;
 

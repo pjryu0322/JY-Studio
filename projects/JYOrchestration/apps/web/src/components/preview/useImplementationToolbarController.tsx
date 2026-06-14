@@ -10,6 +10,8 @@ import {
   IMPLEMENTATION_QUICK_EXECUTION_TOOLBAR_TITLE,
   IMPLEMENTATION_WORKING_QUEUE_TOOLBAR_ARIA,
   IMPLEMENTATION_WORKING_QUEUE_TOOLBAR_TITLE,
+  IMPLEMENTATION_PREVIEW_TOOLBAR_ARIA,
+  IMPLEMENTATION_PREVIEW_TOOLBAR_TITLE,
 } from "@/lib/requirements/implementationUxLabels";
 
 /**
@@ -34,6 +36,8 @@ export type ImplementationToolbarControllerInput = Readonly<{
   readonly developerDashboardDisabled?: boolean;
   readonly onOpenWorkingQueue?: () => void;
   readonly workingQueuePendingCount?: number;
+  readonly onOpenPreview?: () => void;
+  readonly showPreviewToolbarIcon?: boolean;
   readonly onOpenImplementationExecutionLog: () => void;
   readonly onResetImplementationSession?: () => void | Promise<void>;
   readonly resetImplementationSessionDisabled?: boolean;
@@ -110,6 +114,30 @@ export function useImplementationToolbarController(
               <path d="M3 6h.01" />
               <path d="M3 12h.01" />
               <path d="M3 18h.01" />
+            </svg>
+          </WorkspaceHubChromeIconButton>
+        ) : null}
+        {input.showPreviewToolbarIcon && input.onOpenPreview ? (
+          <WorkspaceHubChromeIconButton
+            title={IMPLEMENTATION_PREVIEW_TOOLBAR_TITLE}
+            ariaLabel={IMPLEMENTATION_PREVIEW_TOOLBAR_ARIA}
+            disabled={false}
+            onClick={input.onOpenPreview}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M15 3h6v6" />
+              <path d="M10 14 21 3" />
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
             </svg>
           </WorkspaceHubChromeIconButton>
         ) : null}
@@ -209,6 +237,8 @@ export function useImplementationToolbarController(
       input.developerDashboardDisabled,
       input.onOpenWorkingQueue,
       input.workingQueuePendingCount,
+      input.showPreviewToolbarIcon,
+      input.onOpenPreview,
       input.onOpenImplementationExecutionLog,
       input.onResetImplementationSession,
       input.resetImplementationSessionDisabled,

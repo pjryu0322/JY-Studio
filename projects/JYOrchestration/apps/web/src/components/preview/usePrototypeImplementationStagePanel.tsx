@@ -41,6 +41,8 @@ import { useImplementationBoardRefreshController } from "@/components/preview/us
 import { useImplementationToolbarController } from "@/components/preview/useImplementationToolbarController";
 import { useImplementationSingleChatWorkspaceController } from "@/components/preview/useImplementationSingleChatWorkspaceController";
 import { useImplementationWorkingQueue } from "@/components/preview/useImplementationWorkingQueue";
+import { resolveImplementationToolbarPreviewEntry } from "@/lib/prototype/implementationToolbarPreviewEntry";
+import { openImplementationPreviewViewerWindow } from "@/lib/prototype/implementationPreviewViewerWindow";
 import { useImplementationSessionResetController } from "@/components/preview/useImplementationSessionResetController";
 import { useImplementationRuntimeRecoveryController } from "@/components/preview/useImplementationRuntimeRecoveryController";
 import { useImplementationDeliverableViewerController } from "@/components/preview/useImplementationDeliverableViewerController";
@@ -204,6 +206,7 @@ export type UsePrototypeImplementationStagePanelResult = Readonly<{
   implementationBootstrapShell: ImplementationDerivedViewModelControllerValue["implementationBootstrapShell"];
   implementationNoticeSuccessToast: string | null;
   implementationNoticeErrorToast: string | null;
+  appendUserNotice: (message: string) => void;
   implementationExecutionLogModalOpen: boolean;
   setImplementationExecutionLogModalOpen: (open: boolean) => void;
   onClearImplementationExecutionLog: () => void;
@@ -214,6 +217,7 @@ export type UsePrototypeImplementationStagePanelResult = Readonly<{
   implementationWorkingQueueOpen: boolean;
   setImplementationWorkingQueueOpen: (open: boolean) => void;
   implementationWorkingQueue: ReturnType<typeof useImplementationWorkingQueue>;
+  implementationToolbarPreviewEntry: ReturnType<typeof resolveImplementationToolbarPreviewEntry>;
   implementationSingleChatWorkspace: ReturnType<typeof useImplementationSingleChatWorkspaceController>;
 }>;
 
@@ -579,6 +583,26 @@ export function usePrototypeImplementationStagePanel(
       null,
     applyImplementationOrchestrationResult,
   });
+
+  const implementationToolbarPreviewEntry = useMemo(
+    () =>
+      resolveImplementationToolbarPreviewEntry({
+        projectId,
+        orchestration: orchestrationAwareRequirementsState,
+        controlPlanePreviewReady: implementationControlPlaneSnapshot?.preview.ready,
+        controlPlanePreviewUrl: implementationControlPlaneSnapshot?.preview.actualPreviewUrl,
+        hostPreviewUrl: previewUrl,
+        prototypeRunPreviewReady: prototypeRunSyncSnapshot.previewReady,
+      }),
+    [
+      projectId,
+      orchestrationAwareRequirementsState,
+      implementationControlPlaneSnapshot?.preview.ready,
+      implementationControlPlaneSnapshot?.preview.actualPreviewUrl,
+      previewUrl,
+      prototypeRunSyncSnapshot.previewReady,
+    ],
+  );
 
   const {
     githubRecheckBusyCodeTaskId,
@@ -1061,12 +1085,29 @@ export function usePrototypeImplementationStagePanel(
     [implementationControlPlaneSnapshot],
   );
 
+  const openImplementationPreviewFromToolbar = useCallback(() => {
+    const entry = implementationToolbarPreviewEntry;
+    if (!entry.url) {
+      appendUserNotice("Preview URL이 아직 없습니다.");
+      return;
+    }
+    const opened = openImplementationPreviewViewerWindow({
+      projectId,
+      previewUrl: entry.url,
+    });
+    if (!opened) {
+      appendUserNotice("팝업이 차단되었습니다. 브라우저에서 팝업 허용 후 다시 시도해 주세요.");
+    }
+  }, [appendUserNotice, implementationToolbarPreviewEntry, projectId]);
+
   const { executionConversationIconToolbar } = useImplementationToolbarController({
     setExecutionEnvironmentModalOpen,
     onOpenDeveloperDashboard: () => setImplementationDeveloperDashboardOpen(true),
     developerDashboardDisabled: !implementationBoard && !implementationBootstrapShell,
     onOpenWorkingQueue: () => setImplementationWorkingQueueOpen(true),
     workingQueuePendingCount: implementationWorkingQueue.pendingCount,
+    showPreviewToolbarIcon: implementationToolbarPreviewEntry.showToolbarIcon,
+    onOpenPreview: openImplementationPreviewFromToolbar,
     onOpenImplementationExecutionLog,
     onResetImplementationSession,
     resetImplementationSessionDisabled,
@@ -1119,6 +1160,7 @@ export function usePrototypeImplementationStagePanel(
     implementationBootstrapShell,
     implementationNoticeSuccessToast,
     implementationNoticeErrorToast,
+    appendUserNotice,
     implementationExecutionLogModalOpen,
     setImplementationExecutionLogModalOpen,
     onClearImplementationExecutionLog,
@@ -1130,6 +1172,7 @@ export function usePrototypeImplementationStagePanel(
     implementationWorkingQueueOpen,
     setImplementationWorkingQueueOpen,
     implementationWorkingQueue,
+    implementationToolbarPreviewEntry,
     implementationSingleChatWorkspace,
   };
 }

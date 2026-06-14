@@ -40,6 +40,8 @@ export const IMPLEMENTATION_DEVELOPER_DASHBOARD_TOOLBAR_ARIA = "개발 현황판
 export const IMPLEMENTATION_WORKING_QUEUE_TOOLBAR_TITLE = "작업대기" as const;
 export const IMPLEMENTATION_WORKING_QUEUE_TOOLBAR_ARIA =
   "작업대기 열기 — 보완요청 승인·보류·거절" as const;
+export const IMPLEMENTATION_PREVIEW_TOOLBAR_TITLE = "Preview" as const;
+export const IMPLEMENTATION_PREVIEW_TOOLBAR_ARIA = "Preview 새 창 열기 — 영역 캡처 가능" as const;
 
 export const IMPLEMENTATION_ARTIFACT_REVIEW_LABEL = "산출물 다시 보기" as const;
 

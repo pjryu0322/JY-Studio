@@ -12,6 +12,9 @@ import {
   buildImplementationBootstrapShellView,
 } from "@/lib/prototype/implementationOrchestrationSummary";
 import { deriveImplementationPrototypeRunSyncSnapshot } from "@/lib/prototype/implementationPrototypeRunSync";
+import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementationPreviewRuntimeV1";
+import { sanitizeIntegratedAppPreviewUrl } from "@/lib/prototype/implementationPreviewEntryPolicy";
+import { resolveIntegratedAppPreviewReadyFromOrchestration } from "@/lib/prototype/implementationPreviewReadiness";
 import { buildImplementationStageBoardGateContext } from "@/lib/prototype/implementationStageActionPipeline";
 import { prioritizeImplementationChipsForState } from "@/lib/prototype/implementationStageNextActions";
 import {
@@ -137,11 +140,35 @@ export function useImplementationDerivedViewModelController(
     [input.latestRun],
   );
 
+  const integratedAppPreviewReady = useMemo(
+    () =>
+      resolveIntegratedAppPreviewReadyFromOrchestration({
+        projectId: input.projectId,
+        orchestration: input.orchestrationAwareRequirementsState,
+      }),
+    [input.projectId, input.orchestrationAwareRequirementsState],
+  );
+
+  const orchestrationPreviewUrl = useMemo(() => {
+    const pid = input.projectId.trim();
+    if (!pid) return null;
+    const runtime = parseImplementationPreviewRuntimeV1(
+      input.orchestrationAwareRequirementsState.implementationPreviewRuntimeV1,
+    );
+    return (
+      sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: runtime?.internalAppPreviewUrl }) ??
+      sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: runtime?.previewUrl }) ??
+      sanitizeIntegratedAppPreviewUrl({ projectId: pid, url: runtime?.externalPreviewUrl }) ??
+      null
+    );
+  }, [input.projectId, input.orchestrationAwareRequirementsState.implementationPreviewRuntimeV1]);
+
   const implementationControlPlaneSnapshot = useImplementationControlPlaneSnapshot({
     projectId: input.projectId,
     selectionSummary: input.boardSelectionBridge.liveCodeTaskSelectionSummary,
-    previewReady: prototypeRunSyncSnapshot.previewReady,
-    actualPreviewUrl: prototypeRunSyncSnapshot.previewUrl ?? null,
+    previewReady: prototypeRunSyncSnapshot.previewReady || integratedAppPreviewReady,
+    integratedAppPreviewReady,
+    actualPreviewUrl: orchestrationPreviewUrl ?? prototypeRunSyncSnapshot.previewUrl ?? null,
     runtime: {
       hasDbRuntimeJob: Boolean(input.implementationRuntimeDbBundle?.job),
       currentCodeTaskId: input.implementationRuntimeDbBundle?.job?.currentCodeTaskId?.trim() ?? null,
