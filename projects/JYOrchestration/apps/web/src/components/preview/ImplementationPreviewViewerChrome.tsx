@@ -224,11 +224,26 @@ export function ImplementationPreviewViewerChrome(props: {
           imageUrl={browserCapture.state.imageUrl}
           busy={browserCapture.state.loading}
           onClose={() => browserCapture.close()}
-          onCopy={async (copyInput) => {
+          onStageToComposer={async (sendInput) => {
+            const result = browserCapture.stageRegionToComposer({
+              projectId: props.projectId,
+              previewUrl: props.previewUrl,
+              sendInput,
+            });
+            if (!result.ok) {
+              notify(result.errorMessage, "error");
+              return;
+            }
+            browserCapture.close();
+            notify(
+              "Preview 캡처를 AI 개발자 대화입력창에 추가했습니다. 보완 내용을 입력한 뒤 전송해 주세요.",
+              "success",
+            );
+          }}
+          onCopyAnnotated={async (sendInput) => {
             try {
-              const message = await browserCapture.copyRegionToClipboard(copyInput);
+              const message = await browserCapture.copyAnnotatedToClipboard(sendInput);
               notify(message, "success");
-              browserCapture.close();
             } catch (err) {
               const msg =
                 err instanceof PreviewRegionCaptureError

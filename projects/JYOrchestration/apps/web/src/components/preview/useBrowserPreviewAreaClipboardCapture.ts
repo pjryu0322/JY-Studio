@@ -1,13 +1,20 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import type { PreviewAreaCaptureSendInput } from "@/components/preview/previewAreaCaptureSendTypes";
+import {
+  DEFAULT_PREVIEW_CAPTURE_VIEWPORT,
+  type PreviewCaptureRegionRect,
+} from "@/lib/preview/previewCaptureTypes";
 import {
   copyCanvasToClipboard,
-  cropCanvasFromSource,
   PreviewRegionCaptureError,
   PREVIEW_CLIPBOARD_COPY_SUCCESS_MESSAGE,
-  type PreviewCaptureRegion,
 } from "@/lib/prototype/capturePreviewRegionToClipboard";
+import {
+  JYO_PREVIEW_CAPTURE_ATTACH_TO_COMPOSER,
+  postPreviewCaptureAttachToComposerOpener,
+} from "@/lib/prototype/previewCaptureSingleChatBridge";
 
 export type BrowserPreviewAreaCaptureState = Readonly<{
   readonly open: boolean;
@@ -112,26 +119,69 @@ export function useBrowserPreviewAreaClipboardCapture() {
     }
   }, [stopStream]);
 
-  const copyRegionToClipboard = useCallback(
-    async (input: {
-      readonly region: PreviewCaptureRegion;
-      readonly scaleX: number;
-      readonly scaleY: number;
-    }): Promise<string> => {
-      const source = sourceCanvasRef.current;
-      if (!source) {
-        throw new PreviewRegionCaptureError("capture_failed", "캡처 이미지가 없습니다.");
-      }
-      const cropped = cropCanvasFromSource({
-        source,
-        region: input.region,
-        scaleX: input.scaleX,
-        scaleY: input.scaleY,
+  const readViewport = useCallback(() => {
+    const source = sourceCanvasRef.current;
+    if (!source) return DEFAULT_PREVIEW_CAPTURE_VIEWPORT;
+    return { width: source.width, height: source.height, deviceScaleFactor: 1 };
+  }, []);
+
+  const copyAnnotatedToClipboard = useCallback(async (sendInput: PreviewAreaCaptureSendInput): Promise<string> => {
+    const dataUrl = sendInput.annotatedImageDataUrl;
+    const img = document.createElement("img");
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new PreviewRegionCaptureError("capture_failed", "주석 이미지를 불러오지 못했습니다."));
+      img.src = dataUrl;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new PreviewRegionCaptureError("capture_failed", "클립보드용 canvas를 만들 수 없습니다.");
+    }
+    ctx.drawImage(img, 0, 0);
+    await copyCanvasToClipboard(canvas);
+    return PREVIEW_CLIPBOARD_COPY_SUCCESS_MESSAGE;
+  }, []);
+
+  const stageRegionToComposer = useCallback(
+    (input: {
+      readonly projectId: string;
+      readonly previewUrl: string;
+      readonly sendInput: PreviewAreaCaptureSendInput;
+    }): Readonly<{ readonly ok: true } | { readonly ok: false; readonly errorMessage: string }> => {
+      const rect: PreviewCaptureRegionRect = {
+        x: Math.round(input.sendInput.region.x * input.sendInput.scaleX),
+        y: Math.round(input.sendInput.region.y * input.sendInput.scaleY),
+        width: Math.max(1, Math.round(input.sendInput.region.width * input.sendInput.scaleX)),
+        height: Math.max(1, Math.round(input.sendInput.region.height * input.sendInput.scaleY)),
+      };
+      const posted = postPreviewCaptureAttachToComposerOpener({
+        type: JYO_PREVIEW_CAPTURE_ATTACH_TO_COMPOSER,
+        projectId: input.projectId.trim(),
+        stage: "implementation",
+        previewUrl: input.previewUrl.trim(),
+        captureId: crypto.randomUUID(),
+        regionCaptureId: crypto.randomUUID(),
+        imageDataUrl: input.sendInput.annotatedImageDataUrl,
+        rect,
+        viewport: readViewport(),
+        meta: {
+          hasAnnotations: input.sendInput.hasAnnotations,
+          annotationToolSummary: input.sendInput.annotationToolSummary,
+        },
       });
-      await copyCanvasToClipboard(cropped);
-      return PREVIEW_CLIPBOARD_COPY_SUCCESS_MESSAGE;
+      if (!posted) {
+        return {
+          ok: false,
+          errorMessage:
+            "구현단계 화면을 찾을 수 없어 대화입력창에 추가하지 못했습니다. Preview를 구현단계 Toolbar에서 다시 열어 주세요.",
+        };
+      }
+      return { ok: true };
     },
-    [],
+    [readViewport],
   );
 
   const state: BrowserPreviewAreaCaptureState = {
@@ -145,7 +195,8 @@ export function useBrowserPreviewAreaClipboardCapture() {
     state,
     startDisplayCapture,
     close,
-    copyRegionToClipboard,
+    copyAnnotatedToClipboard,
+    stageRegionToComposer,
     setLastError,
   };
 }

@@ -9,14 +9,11 @@ import {
 } from "@/lib/preview/previewCaptureAnnotationModel";
 
 describe("preview capture annotation UI", () => {
-  it("removes memo input from send overlay", () => {
+  it("uses shared annotated region overlay for send path", () => {
     const path = resolve(process.cwd(), "src/components/preview/PreviewAreaCaptureSendOverlay.tsx");
     const src = readFileSync(path, "utf8");
+    expect(src).toContain("PreviewAreaCaptureAnnotatedRegionOverlay");
     expect(src).not.toContain("메모 (선택)");
-    expect(src).not.toContain('aria-label="캡처 메모"');
-    expect(src).toContain("preview-capture-annotation-toolbar");
-    expect(src).toContain("preview-capture-tool-${tool}");
-    expect(src).toContain('toolBtn("pen"');
   });
 });
 

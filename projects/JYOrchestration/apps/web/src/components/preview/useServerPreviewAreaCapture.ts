@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
-import type { PreviewAreaCaptureSendInput } from "@/components/preview/PreviewAreaCaptureSendOverlay";
+import type { PreviewAreaCaptureSendInput } from "@/components/preview/previewAreaCaptureSendTypes";
 import {
   DEFAULT_PREVIEW_CAPTURE_VIEWPORT,
   type PreviewCaptureRegionRect,
