@@ -39,32 +39,18 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
   const imgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [imgRevision, setImgRevision] = useState(0);
-  const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
   const [actionBusy, setActionBusy] = useState(false);
 
   const regionSel = usePreviewCaptureRegionSelection({
     disabled: props.busy || actionBusy,
-    surfaceWidth: imgSize.width,
-    surfaceHeight: imgSize.height,
   });
 
   const ann = usePreviewCaptureAnnotationDrawing({
-    disabled: props.busy || actionBusy,
+    disabled: props.busy || actionBusy || !regionSel.selectionLocked,
     region: regionSel.selectionLocked,
   });
 
-  useEffect(() => {
-    if (regionSel.selectionLocked) {
-      ann.setActiveTool("pen");
-      ann.resetAnnotationDrawingState();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- lock transition only
-  }, [regionSel.selectionLocked]);
-
   const syncImageSize = useCallback(() => {
-    const img = imgRef.current;
-    if (!img) return;
-    setImgSize({ width: img.clientWidth, height: img.clientHeight });
     setImgRevision((n) => n + 1);
   }, []);
 
@@ -145,6 +131,7 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
     flexDirection: "column",
     padding: 16,
     gap: 12,
+    pointerEvents: "auto",
   };
 
   const frame: CSSProperties = {
@@ -154,12 +141,16 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
     alignItems: "center",
     justifyContent: "center",
     overflow: "auto",
+    position: "relative",
+    zIndex: 1,
+    pointerEvents: "auto",
   };
 
   const imgWrap: CSSProperties = {
     position: "relative",
     maxWidth: "100%",
     maxHeight: "100%",
+    zIndex: 1,
     ...PREVIEW_CAPTURE_POINTER_SURFACE_STYLE,
     cursor: locked ? "default" : "crosshair",
   };
@@ -178,8 +169,7 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
         activeTool={ann.activeTool}
         onToolChange={ann.setActiveTool}
         onClearAll={() => ann.clearAllAnnotations()}
-        toolsEnabled={Boolean(locked)}
-        canClearAll={Boolean(locked && ann.annotations.items.length > 0)}
+        canClearAll={ann.annotations.items.length > 0}
         disabled={props.busy || actionBusy}
         trailingActions={
           <>

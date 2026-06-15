@@ -84,6 +84,7 @@ export function PreviewCaptureAnnotationCanvas(props: PreviewCaptureAnnotationCa
     top: props.region.y,
     width: props.region.width,
     height: props.region.height,
+    zIndex: 2,
     cursor: props.activeTool === "eraser" ? "cell" : "crosshair",
     ...PREVIEW_CAPTURE_POINTER_SURFACE_STYLE,
   };

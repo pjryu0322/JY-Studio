@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
+import { useCallback, useRef, useState, type HTMLAttributes, type PointerEvent } from "react";
 import type { PreviewCaptureRegion } from "@/lib/prototype/capturePreviewRegionToClipboard";
 import {
   clampPointInSize,
@@ -10,10 +10,13 @@ import {
 
 export const PREVIEW_CAPTURE_REGION_MIN_SIZE = 6;
 
+function pointInSurface(event: PointerEvent<HTMLElement>): PreviewCaptureLocalPoint {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return clampPointInSize(getLocalPointFromPointerEvent(event), rect.width, rect.height);
+}
+
 export function usePreviewCaptureRegionSelection(input: {
   readonly disabled?: boolean;
-  readonly surfaceWidth: number;
-  readonly surfaceHeight: number;
   readonly onSelectionLocked?: (region: PreviewCaptureRegion) => void;
   readonly onReset?: () => void;
 }): Readonly<{
@@ -26,14 +29,18 @@ export function usePreviewCaptureRegionSelection(input: {
   const [dragCurrent, setDragCurrent] = useState<PreviewCaptureLocalPoint | null>(null);
   const [selectionLocked, setSelectionLocked] = useState<PreviewCaptureRegion | null>(null);
   const activePointerRef = useRef<number | null>(null);
+  const onResetRef = useRef(input.onReset);
+  const onSelectionLockedRef = useRef(input.onSelectionLocked);
+  onResetRef.current = input.onReset;
+  onSelectionLockedRef.current = input.onSelectionLocked;
 
   const resetSelection = useCallback(() => {
     activePointerRef.current = null;
     setDragStart(null);
     setDragCurrent(null);
     setSelectionLocked(null);
-    input.onReset?.();
-  }, [input]);
+    onResetRef.current?.();
+  }, []);
 
   const liveSelection = ((): PreviewCaptureRegion | null => {
     if (selectionLocked) return selectionLocked;
@@ -64,10 +71,10 @@ export function usePreviewCaptureRegionSelection(input: {
       if (width >= PREVIEW_CAPTURE_REGION_MIN_SIZE && height >= PREVIEW_CAPTURE_REGION_MIN_SIZE) {
         const region = { x, y, width, height };
         setSelectionLocked(region);
-        input.onSelectionLocked?.(region);
+        onSelectionLockedRef.current?.(region);
       }
     },
-    [dragStart, input],
+    [dragStart],
   );
 
   const bindSelectionSurface: HTMLAttributes<HTMLDivElement> = {
@@ -76,22 +83,20 @@ export function usePreviewCaptureRegionSelection(input: {
       e.preventDefault();
       e.currentTarget.setPointerCapture(e.pointerId);
       activePointerRef.current = e.pointerId;
-      const p = clampPointInSize(getLocalPointFromPointerEvent(e), input.surfaceWidth, input.surfaceHeight);
+      const p = pointInSurface(e);
       setDragStart(p);
       setDragCurrent(p);
     },
     onPointerMove: (e) => {
       if (selectionLocked || !dragStart || input.disabled || activePointerRef.current !== e.pointerId) return;
-      const p = clampPointInSize(getLocalPointFromPointerEvent(e), input.surfaceWidth, input.surfaceHeight);
-      setDragCurrent(p);
+      setDragCurrent(pointInSurface(e));
     },
     onPointerUp: (e) => {
       if (activePointerRef.current !== e.pointerId) return;
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId);
       }
-      const p = clampPointInSize(getLocalPointFromPointerEvent(e), input.surfaceWidth, input.surfaceHeight);
-      finishDrag(p);
+      finishDrag(pointInSurface(e));
     },
     onPointerCancel: (e) => {
       if (activePointerRef.current !== e.pointerId) return;
