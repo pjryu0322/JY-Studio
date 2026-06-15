@@ -1,5 +1,8 @@
 import type { PreviewCaptureRegion } from "@/lib/prototype/capturePreviewRegionToClipboard";
-import type { PreviewCaptureTool } from "@/lib/preview/previewCaptureAnnotationModel";
+import type {
+  PreviewCaptureAnnotationStyleSummary,
+  PreviewCaptureTool,
+} from "@/lib/preview/previewCaptureAnnotationModel";
 
 export type PreviewAreaCaptureSendInput = Readonly<{
   readonly region: PreviewCaptureRegion;
@@ -8,4 +11,5 @@ export type PreviewAreaCaptureSendInput = Readonly<{
   readonly annotatedImageDataUrl: string;
   readonly hasAnnotations: boolean;
   readonly annotationToolSummary: readonly PreviewCaptureTool[];
+  readonly annotationStyleSummary: PreviewCaptureAnnotationStyleSummary;
 }>;

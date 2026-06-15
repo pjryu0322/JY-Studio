@@ -169,6 +169,7 @@ export function useServerPreviewAreaCapture(input: {
           meta: {
             hasAnnotations: sendInput.hasAnnotations,
             annotationToolSummary: sendInput.annotationToolSummary,
+            annotationStyleSummary: sendInput.annotationStyleSummary,
           },
         }),
       });
@@ -199,6 +200,7 @@ export function useServerPreviewAreaCapture(input: {
         meta: {
           hasAnnotations: sendInput.hasAnnotations,
           annotationToolSummary: sendInput.annotationToolSummary,
+          annotationStyleSummary: sendInput.annotationStyleSummary,
         },
       });
 

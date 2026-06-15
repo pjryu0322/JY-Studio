@@ -170,6 +170,7 @@ export function useBrowserPreviewAreaClipboardCapture() {
         meta: {
           hasAnnotations: input.sendInput.hasAnnotations,
           annotationToolSummary: input.sendInput.annotationToolSummary,
+          annotationStyleSummary: input.sendInput.annotationStyleSummary,
         },
       });
       if (!posted) {

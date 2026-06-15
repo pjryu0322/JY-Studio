@@ -4,9 +4,8 @@ import { useCallback, useEffect, type CSSProperties, type ReactNode, type RefObj
 import type { PreviewCaptureRegion } from "@/lib/prototype/capturePreviewRegionToClipboard";
 import { PREVIEW_CAPTURE_POINTER_SURFACE_STYLE } from "@/lib/preview/previewCapturePointerUtils";
 import {
-  paintArrow,
+  paintPreviewCaptureAnnotationItem,
   paintPreviewCaptureAnnotations,
-  paintRect,
   type PreviewCaptureAnnotationDocument,
   type PreviewCaptureShape,
   type PreviewCaptureStroke,
@@ -63,14 +62,10 @@ export function PreviewCaptureAnnotationCanvas(props: PreviewCaptureAnnotationCa
 
     paintPreviewCaptureAnnotations(ctx, props.annotations.items, 1);
     if (props.draftStroke && props.draftStroke.points.length >= 2) {
-      paintPreviewCaptureAnnotations(ctx, [props.draftStroke], 1);
+      paintPreviewCaptureAnnotationItem(ctx, props.draftStroke, 1);
     }
     if (props.draftShape) {
-      if (props.draftShape.tool === "arrow") {
-        paintArrow(ctx, props.draftShape.start, props.draftShape.end, props.draftShape.size, props.draftShape.color);
-      } else {
-        paintRect(ctx, props.draftShape.start, props.draftShape.end, props.draftShape.size, props.draftShape.color);
-      }
+      paintPreviewCaptureAnnotationItem(ctx, props.draftShape, 1);
     }
   }, [computeScale, props]);
 

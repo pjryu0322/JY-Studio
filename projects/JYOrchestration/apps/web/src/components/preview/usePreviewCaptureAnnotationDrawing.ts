@@ -7,11 +7,14 @@ import {
   getLocalPointFromPointerEvent,
 } from "@/lib/preview/previewCapturePointerUtils";
 import {
+  buildAnnotationStyle,
   emptyPreviewCaptureAnnotationDocument,
-  PREVIEW_CAPTURE_ANNOTATION_DEFAULT_COLOR,
-  PREVIEW_CAPTURE_ANNOTATION_DEFAULT_SIZE,
+  isPreviewCaptureShapeTool,
+  isPreviewCaptureStrokeTool,
   PREVIEW_CAPTURE_ERASER_SIZE,
   removeAnnotationsHitByEraser,
+  type AnnotationColor,
+  type AnnotationStrokeWidth,
   type PreviewCaptureAnnotationDocument,
   type PreviewCaptureShape,
   type PreviewCaptureStroke,
@@ -25,6 +28,8 @@ function newAnnotationId(): string {
 export function usePreviewCaptureAnnotationDrawing(input: {
   readonly disabled?: boolean;
   readonly region: PreviewCaptureRegion | null;
+  readonly activeColor: AnnotationColor;
+  readonly strokeWidth: AnnotationStrokeWidth;
 }): Readonly<{
   readonly activeTool: PreviewCaptureTool;
   readonly setActiveTool: (tool: PreviewCaptureTool) => void;
@@ -49,6 +54,8 @@ export function usePreviewCaptureAnnotationDrawing(input: {
   const eraserPointsRef = useRef<readonly { x: number; y: number }[]>([]);
   const activePointerRef = useRef<number | null>(null);
   const isDrawingRef = useRef(false);
+  const styleInputRef = useRef({ color: input.activeColor, strokeWidth: input.strokeWidth });
+  styleInputRef.current = { color: input.activeColor, strokeWidth: input.strokeWidth };
 
   useEffect(() => {
     draftStrokeRef.current = draftStroke;
@@ -124,24 +131,23 @@ export function usePreviewCaptureAnnotationDrawing(input: {
       isDrawingRef.current = true;
       const p = localPointInRegion(e);
       if (!p) return;
-      if (activeTool === "pen") {
+      const { color, strokeWidth } = styleInputRef.current;
+      if (isPreviewCaptureStrokeTool(activeTool)) {
         setDraftStroke({
           id: newAnnotationId(),
-          tool: "pen",
+          tool: activeTool,
           points: [p],
-          size: PREVIEW_CAPTURE_ANNOTATION_DEFAULT_SIZE,
-          color: PREVIEW_CAPTURE_ANNOTATION_DEFAULT_COLOR,
+          style: buildAnnotationStyle(activeTool, color, strokeWidth),
         });
       } else if (activeTool === "eraser") {
         setEraserPoints([p]);
-      } else {
+      } else if (isPreviewCaptureShapeTool(activeTool)) {
         setDraftShape({
           id: newAnnotationId(),
           tool: activeTool,
           start: p,
           end: p,
-          size: PREVIEW_CAPTURE_ANNOTATION_DEFAULT_SIZE,
-          color: PREVIEW_CAPTURE_ANNOTATION_DEFAULT_COLOR,
+          style: buildAnnotationStyle(activeTool, color, strokeWidth),
         });
       }
     },

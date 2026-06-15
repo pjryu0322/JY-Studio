@@ -51,7 +51,9 @@ describe("preview capture annotation interaction", () => {
       resolve(process.cwd(), "src/components/preview/PreviewAreaCaptureAnnotatedRegionOverlay.tsx"),
       "utf8",
     );
-    expect(overlay).toContain("!regionSel.selectionLocked");
+    expect(overlay).toContain("regionSelectActive");
+    expect(overlay).toContain("readFullImageDisplayRegion");
+    expect(overlay).toContain("preview-capture-enter-region-select");
   });
 
   it("measures selection from live surface bounds", () => {

@@ -4,8 +4,13 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { exportAnnotatedPreviewRegionCapture } from "@/lib/preview/previewCaptureAnnotationExport";
 import { PREVIEW_CAPTURE_POINTER_SURFACE_STYLE } from "@/lib/preview/previewCapturePointerUtils";
 import {
+  annotationStyleSummary,
   annotationToolSummary,
   emptyPreviewCaptureAnnotationDocument,
+  PREVIEW_CAPTURE_ANNOTATION_DEFAULT_COLOR,
+  PREVIEW_CAPTURE_ANNOTATION_DEFAULT_STROKE_WIDTH,
+  type AnnotationColor,
+  type AnnotationStrokeWidth,
 } from "@/lib/preview/previewCaptureAnnotationModel";
 import { PreviewCaptureAnnotationCanvas } from "@/components/preview/PreviewCaptureAnnotationCanvas";
 import {
@@ -14,7 +19,9 @@ import {
 } from "@/components/preview/PreviewCaptureAnnotationToolbar";
 import { usePreviewCaptureAnnotationDrawing } from "@/components/preview/usePreviewCaptureAnnotationDrawing";
 import { usePreviewCaptureRegionSelection } from "@/components/preview/usePreviewCaptureRegionSelection";
+import { readFullImageDisplayRegion } from "@/components/preview/previewCaptureFullImageRegion";
 import type { PreviewAreaCaptureSendInput } from "@/components/preview/previewAreaCaptureSendTypes";
+import type { PreviewCaptureRegion } from "@/lib/prototype/capturePreviewRegionToClipboard";
 
 export type PreviewAreaCaptureAnnotatedRegionOverlayProps = Readonly<{
   readonly testId: string;
@@ -40,31 +47,66 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [imgRevision, setImgRevision] = useState(0);
   const [actionBusy, setActionBusy] = useState(false);
+  const [annotationRegion, setAnnotationRegion] = useState<PreviewCaptureRegion | null>(null);
+  const [regionSelectActive, setRegionSelectActive] = useState(false);
+  const [activeColor, setActiveColor] = useState<AnnotationColor>(PREVIEW_CAPTURE_ANNOTATION_DEFAULT_COLOR);
+  const [strokeWidth, setStrokeWidth] = useState<AnnotationStrokeWidth>(
+    PREVIEW_CAPTURE_ANNOTATION_DEFAULT_STROKE_WIDTH,
+  );
+  const onCustomRegionLockedRef = useRef<(region: PreviewCaptureRegion) => void>(() => {});
 
   const regionSel = usePreviewCaptureRegionSelection({
-    disabled: props.busy || actionBusy,
+    disabled: props.busy || actionBusy || !regionSelectActive,
+    onSelectionLocked: (region) => onCustomRegionLockedRef.current(region),
   });
 
   const ann = usePreviewCaptureAnnotationDrawing({
-    disabled: props.busy || actionBusy || !regionSel.selectionLocked,
-    region: regionSel.selectionLocked,
+    disabled: props.busy || actionBusy || regionSelectActive || !annotationRegion,
+    region: annotationRegion,
+    activeColor,
+    strokeWidth,
   });
 
-  const syncImageSize = useCallback(() => {
+  onCustomRegionLockedRef.current = (region) => {
+    setAnnotationRegion(region);
+    setRegionSelectActive(false);
+    ann.setAnnotations(emptyPreviewCaptureAnnotationDocument());
+    ann.resetAnnotationDrawingState();
+    regionSel.resetSelection();
+  };
+
+  const applyFullImageRegion = useCallback(() => {
+    const img = imgRef.current;
+    if (!img || img.clientWidth < 1 || img.clientHeight < 1) return;
+    setAnnotationRegion(readFullImageDisplayRegion(img));
     setImgRevision((n) => n + 1);
   }, []);
 
+  const syncImageSize = useCallback(() => {
+    if (!regionSelectActive) applyFullImageRegion();
+    else setImgRevision((n) => n + 1);
+  }, [applyFullImageRegion, regionSelectActive]);
+
+  useEffect(() => {
+    if (!regionSelectActive && !annotationRegion) applyFullImageRegion();
+  }, [annotationRegion, applyFullImageRegion, regionSelectActive]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        ann.resetAnnotationDrawingState();
-        props.onClose();
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      if (regionSelectActive) {
+        setRegionSelectActive(false);
+        regionSel.resetSelection();
+        applyFullImageRegion();
+        return;
       }
+      ann.resetAnnotationDrawingState();
+      props.onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [ann, props]);
+  }, [ann, applyFullImageRegion, props, regionSelectActive, regionSel]);
 
   const computeScale = useCallback(() => {
     const img = imgRef.current;
@@ -72,33 +114,34 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
     return { scaleX: img.naturalWidth / img.clientWidth, scaleY: img.naturalHeight / img.clientHeight };
   }, []);
 
-  const resetAll = useCallback(() => {
+  const enterRegionSelectMode = useCallback(() => {
     ann.resetAnnotationDrawingState();
     ann.setAnnotations(emptyPreviewCaptureAnnotationDocument());
     regionSel.resetSelection();
+    setRegionSelectActive(true);
   }, [ann, regionSel]);
 
   const buildSendInput = useCallback(async (): Promise<PreviewAreaCaptureSendInput | null> => {
-    const region = regionSel.selectionLocked ?? regionSel.liveSelection;
-    if (!region) return null;
+    if (!annotationRegion || regionSelectActive) return null;
     ann.resetAnnotationDrawingState();
     const { scaleX, scaleY } = computeScale();
     const annotatedImageDataUrl = await exportAnnotatedPreviewRegionCapture({
       imageDataUrl: props.imageUrl,
-      region,
+      region: annotationRegion,
       scaleX,
       scaleY,
       annotations: ann.annotations,
     });
     return {
-      region,
+      region: annotationRegion,
       scaleX,
       scaleY,
       annotatedImageDataUrl,
       hasAnnotations: ann.annotations.items.length > 0,
       annotationToolSummary: annotationToolSummary(ann.annotations.items),
+      annotationStyleSummary: annotationStyleSummary(ann.annotations.items),
     };
-  }, [ann, computeScale, props.imageUrl, regionSel]);
+  }, [ann, annotationRegion, computeScale, props.imageUrl, regionSelectActive]);
 
   const runAction = useCallback(
     async (handler: (input: PreviewAreaCaptureSendInput) => Promise<void>) => {
@@ -110,17 +153,19 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
         await handler(payload);
         ann.setAnnotations(emptyPreviewCaptureAnnotationDocument());
         ann.resetAnnotationDrawingState();
+        setRegionSelectActive(false);
         regionSel.resetSelection();
+        applyFullImageRegion();
       } finally {
         setActionBusy(false);
       }
     },
-    [actionBusy, buildSendInput, ann, props.busy, regionSel],
+    [actionBusy, applyFullImageRegion, buildSendInput, ann, props.busy, regionSel],
   );
 
-  const locked = regionSel.selectionLocked;
-  const live = regionSel.liveSelection;
-  const canAct = Boolean(locked ?? live);
+  const canAct = Boolean(annotationRegion && !regionSelectActive);
+  const showAnnotationCanvas = canAct;
+  const live = regionSelectActive ? regionSel.liveSelection : null;
 
   const shell: CSSProperties = {
     position: "fixed",
@@ -152,7 +197,7 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
     maxHeight: "100%",
     zIndex: 1,
     ...PREVIEW_CAPTURE_POINTER_SURFACE_STYLE,
-    cursor: locked ? "default" : "crosshair",
+    cursor: regionSelectActive ? "crosshair" : "default",
   };
 
   const shade: CSSProperties = {
@@ -168,9 +213,13 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
       <PreviewCaptureAnnotationToolbar
         activeTool={ann.activeTool}
         onToolChange={ann.setActiveTool}
+        activeColor={activeColor}
+        onColorChange={setActiveColor}
+        strokeWidth={strokeWidth}
+        onStrokeWidthChange={setStrokeWidth}
         onClearAll={() => ann.clearAllAnnotations()}
         canClearAll={ann.annotations.items.length > 0}
-        disabled={props.busy || actionBusy}
+        disabled={props.busy || actionBusy || regionSelectActive}
         trailingActions={
           <>
             <span style={{ flex: 1, minWidth: 8 }} />
@@ -187,8 +236,9 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
             ) : null}
             <button
               type="button"
+              data-testid="preview-capture-enter-region-select"
               style={previewCaptureOverlayActionBtnStyle(false, actionBusy)}
-              onClick={resetAll}
+              onClick={enterRegionSelectMode}
               disabled={actionBusy}
             >
               다시 선택
@@ -217,7 +267,11 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
         }
       />
       <div style={frame}>
-        <div style={imgWrap} {...(locked ? {} : regionSel.bindSelectionSurface)}>
+        <div
+          style={imgWrap}
+          data-testid={regionSelectActive ? "preview-capture-region-select-mode" : "preview-capture-annotate-mode"}
+          {...(regionSelectActive ? regionSel.bindSelectionSurface : {})}
+        >
           <img
             ref={imgRef}
             src={props.imageUrl}
@@ -229,18 +283,18 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
               maxHeight: "calc(100vh - 160px)",
               width: "auto",
               height: "auto",
-              visibility: locked ? "hidden" : "visible",
+              visibility: showAnnotationCanvas ? "hidden" : "visible",
             }}
             draggable={false}
           />
-          {!locked && live ? (
+          {regionSelectActive && live ? (
             <div style={{ ...shade, left: live.x, top: live.y, width: live.width, height: live.height }} />
           ) : null}
-          {locked ? (
+          {showAnnotationCanvas && annotationRegion ? (
             <PreviewCaptureAnnotationCanvas
               canvasRef={canvasRef}
               imgRef={imgRef}
-              region={locked}
+              region={annotationRegion}
               annotations={ann.annotations}
               draftStroke={ann.draftStroke}
               draftShape={ann.draftShape}
@@ -252,9 +306,9 @@ export function PreviewAreaCaptureAnnotatedRegionOverlay(
         </div>
       </div>
       <p style={{ margin: 0, fontSize: 12, color: "#e2e8f0" }}>
-        {locked
-          ? "펜·화살표·사각형으로 표시한 뒤 버튼을 누르세요. 설명은 구현단계 대화입력창에서 작성합니다."
-          : "드래그로 영역을 지정하세요. Esc로 닫을 수 있습니다."}
+        {regionSelectActive
+          ? "드래그로 영역을 지정하세요. Esc로 선택을 취소합니다."
+          : "펜·화살표·사각형으로 표시한 뒤 「대화입력창에 추가」를 누르세요. 영역 변경은 「다시 선택」을 사용합니다."}
       </p>
     </div>
   );

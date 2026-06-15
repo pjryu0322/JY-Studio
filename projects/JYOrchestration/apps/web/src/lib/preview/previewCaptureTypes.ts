@@ -30,9 +30,16 @@ export type PreviewCaptureRegionRect = Readonly<{
   readonly height: number;
 }>;
 
+export type PreviewCaptureRegionAnnotationStyleMeta = Readonly<{
+  readonly colors?: readonly string[];
+  readonly strokeWidths?: readonly number[];
+  readonly tools?: readonly string[];
+}>;
+
 export type PreviewCaptureRegionAnnotationMeta = Readonly<{
   readonly hasAnnotations?: boolean;
   readonly annotationToolSummary?: readonly string[];
+  readonly annotationStyleSummary?: PreviewCaptureRegionAnnotationStyleMeta;
 }>;
 
 export type PreviewCaptureRegionRequest = Readonly<{
@@ -164,10 +171,35 @@ function parsePreviewCaptureRegionAnnotationMeta(raw: unknown): PreviewCaptureRe
   const annotationToolSummary = Array.isArray(summaryRaw)
     ? summaryRaw.map((x) => String(x).trim()).filter(Boolean).slice(0, 8)
     : undefined;
-  if (hasAnnotations === undefined && !annotationToolSummary?.length) return undefined;
+  const styleRaw = o.annotationStyleSummary;
+  let annotationStyleSummary: PreviewCaptureRegionAnnotationStyleMeta | undefined;
+  if (styleRaw && typeof styleRaw === "object") {
+    const s = styleRaw as Record<string, unknown>;
+    const colors = Array.isArray(s.colors)
+      ? s.colors.map((x) => String(x).trim()).filter(Boolean).slice(0, 8)
+      : undefined;
+    const strokeWidths = Array.isArray(s.strokeWidths)
+      ? s.strokeWidths
+          .map((x) => Number(x))
+          .filter((n) => Number.isFinite(n))
+          .slice(0, 8)
+      : undefined;
+    const tools = Array.isArray(s.tools)
+      ? s.tools.map((x) => String(x).trim()).filter(Boolean).slice(0, 8)
+      : undefined;
+    if (colors?.length || strokeWidths?.length || tools?.length) {
+      annotationStyleSummary = {
+        ...(colors?.length ? { colors } : {}),
+        ...(strokeWidths?.length ? { strokeWidths } : {}),
+        ...(tools?.length ? { tools } : {}),
+      };
+    }
+  }
+  if (hasAnnotations === undefined && !annotationToolSummary?.length && !annotationStyleSummary) return undefined;
   return {
     ...(hasAnnotations !== undefined ? { hasAnnotations } : {}),
     ...(annotationToolSummary?.length ? { annotationToolSummary } : {}),
+    ...(annotationStyleSummary ? { annotationStyleSummary } : {}),
   };
 }
 
