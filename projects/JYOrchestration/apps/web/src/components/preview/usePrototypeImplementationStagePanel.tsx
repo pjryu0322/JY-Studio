@@ -1118,11 +1118,12 @@ export function usePrototypeImplementationStagePanel(
     const opened = openImplementationPreviewViewerWindow({
       projectId,
       previewUrl: entry.url,
+      composerAttachEnabled: implementationChatAvailability.canChat,
     });
     if (!opened) {
       appendUserNotice("팝업이 차단되었습니다. 브라우저에서 팝업 허용 후 다시 시도해 주세요.");
     }
-  }, [appendUserNotice, implementationToolbarPreviewEntry, projectId]);
+  }, [appendUserNotice, implementationToolbarPreviewEntry, implementationChatAvailability.canChat, projectId]);
 
   const { executionConversationIconToolbar } = useImplementationToolbarController({
     setExecutionEnvironmentModalOpen,

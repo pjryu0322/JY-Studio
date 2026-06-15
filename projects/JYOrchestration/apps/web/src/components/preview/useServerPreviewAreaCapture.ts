@@ -38,6 +38,7 @@ const initialState: ServerPreviewAreaCaptureState = {
 export function useServerPreviewAreaCapture(input: {
   readonly projectId: string;
   readonly previewUrl: string;
+  readonly composerAttachEnabled?: boolean;
 }): Readonly<{
   readonly state: ServerPreviewAreaCaptureState;
   readonly startServerCapture: () => Promise<
@@ -137,6 +138,9 @@ export function useServerPreviewAreaCapture(input: {
     async (
       sendInput: PreviewAreaCaptureSendInput,
     ): Promise<Readonly<{ readonly ok: true } | { readonly ok: false; readonly errorMessage: string }>> => {
+      if (input.composerAttachEnabled === false) {
+        return { ok: false, errorMessage: "Preview가 준비되면 캡처할 수 있습니다." };
+      }
       const captureId = state.captureId;
       const previewUrl = state.previewUrl;
       const imageDataUrl = state.imageDataUrl;
@@ -216,7 +220,7 @@ export function useServerPreviewAreaCapture(input: {
 
       return { ok: true };
     },
-    [input.projectId, state.captureId, state.imageDataUrl, state.previewUrl, state.viewport],
+    [input.projectId, input.composerAttachEnabled, state.captureId, state.imageDataUrl, state.previewUrl, state.viewport],
   );
 
   return { state, startServerCapture, close, stageRegionToComposer };

@@ -44,11 +44,16 @@ export function sanitizePreviewViewerTargetParam(input: {
 export function buildImplementationPreviewViewerPageUrl(input: {
   readonly projectId: string;
   readonly previewUrl: string;
+  readonly composerAttachEnabled?: boolean;
 }): string | null {
   const pid = input.projectId.trim();
   const previewUrl = input.previewUrl.trim();
   if (!pid || !previewUrl) return null;
-  const path = `/projects/${encodeURIComponent(pid)}/preview/viewer?target=${encodeURIComponent(previewUrl)}`;
+  const params = new URLSearchParams({ target: previewUrl });
+  if (input.composerAttachEnabled === false) {
+    params.set("composerAttach", "0");
+  }
+  const path = `/projects/${encodeURIComponent(pid)}/preview/viewer?${params.toString()}`;
   if (typeof window === "undefined") return path;
   return `${window.location.origin}${path}`;
 }
@@ -56,6 +61,7 @@ export function buildImplementationPreviewViewerPageUrl(input: {
 export function openImplementationPreviewViewerWindow(input: {
   readonly projectId: string;
   readonly previewUrl: string;
+  readonly composerAttachEnabled?: boolean;
 }): boolean {
   if (typeof window === "undefined") return false;
   const pageUrl = buildImplementationPreviewViewerPageUrl(input);

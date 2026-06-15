@@ -451,6 +451,9 @@ async function resolveNormalImplementationWorkingQueueSend(
 export async function resolveImplementationWorkingQueueOperationalSend(
   input: OperationalSendInput,
 ): Promise<PrototypeExecutionOperationalSendResult | null> {
+  const blockedEarly = blockWhenImplementationChatUnavailable(input);
+  if (blockedEarly) return blockedEarly;
+
   if (hasPreviewRegionCaptureAttachment({ meta: input.userMsg.meta })) {
     return resolvePreviewCaptureFeedbackFirst(input);
   }

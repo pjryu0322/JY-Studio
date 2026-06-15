@@ -54,6 +54,10 @@ export type ImplementationPreviewRuntimeV1 = Readonly<{
   readonly localPreviewServerUrl?: string | null;
   readonly githubPagesUrl?: string | null;
   readonly deployedCommitSha?: string | null;
+  readonly sampleDataQualityOk?: boolean;
+  readonly sampleDataRenderedOk?: boolean;
+  readonly sampleDataStatus?: string | null;
+  readonly sampleDataIssues?: readonly string[];
 }>;
 
 function readString(value: unknown): string {
@@ -141,6 +145,14 @@ export function parseImplementationPreviewRuntimeV1(
       : {}),
     ...(readString(o.githubPagesUrl) ? { githubPagesUrl: readString(o.githubPagesUrl) } : {}),
     ...(readString(o.deployedCommitSha) ? { deployedCommitSha: readString(o.deployedCommitSha) } : {}),
+    ...(typeof o.sampleDataQualityOk === "boolean" ? { sampleDataQualityOk: o.sampleDataQualityOk } : {}),
+    ...(typeof o.sampleDataRenderedOk === "boolean" ? { sampleDataRenderedOk: o.sampleDataRenderedOk } : {}),
+    ...(readString(o.sampleDataStatus) ? { sampleDataStatus: readString(o.sampleDataStatus) } : {}),
+    ...(Array.isArray(o.sampleDataIssues)
+      ? {
+          sampleDataIssues: o.sampleDataIssues.map((x) => readString(x)).filter(Boolean),
+        }
+      : {}),
   };
 }
 

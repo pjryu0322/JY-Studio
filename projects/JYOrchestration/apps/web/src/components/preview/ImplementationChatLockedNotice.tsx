@@ -27,8 +27,8 @@ export function ImplementationChatLockedNotice(props: {
       <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", lineHeight: 1.45 }}>
         Preview 준비 후 대화 가능
       </div>
-      <div style={{ fontSize: 12, color: "#475569", marginTop: 6, lineHeight: 1.45 }}>{props.title}</div>
-      <div style={{ fontSize: 12, color: "#64748b", marginTop: 4, lineHeight: 1.45 }}>{props.message}</div>
+      <div style={{ fontSize: 12, color: "#475569", marginTop: 6, lineHeight: 1.5 }}>{props.title}</div>
+      <div style={{ fontSize: 12, color: "#64748b", marginTop: 4, lineHeight: 1.5 }}>{props.message}</div>
     </div>
   );
 }

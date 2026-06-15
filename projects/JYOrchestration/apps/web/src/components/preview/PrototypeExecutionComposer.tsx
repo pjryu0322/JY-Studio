@@ -14,6 +14,9 @@ export function PrototypeExecutionComposer({
   onSend,
   busy,
   disabled = false,
+  disabledReason,
+  disableAttachments = false,
+  disablePreviewCapture = false,
   placeholder,
   textAreaRef,
   targetPickerItems,
@@ -23,10 +26,14 @@ export function PrototypeExecutionComposer({
   readonly onSend: () => void;
   readonly busy: boolean;
   readonly disabled?: boolean;
+  readonly disabledReason?: string;
+  readonly disableAttachments?: boolean;
+  readonly disablePreviewCapture?: boolean;
   readonly placeholder?: string;
   readonly textAreaRef?: MutableRefObject<HTMLTextAreaElement | null>;
   readonly targetPickerItems?: readonly ComposerAtAtPickerItem[];
 }) {
+  const inputDisabled = disabled || disableAttachments || disablePreviewCapture;
   return (
     <WorkspaceComposerColumn>
       <WorkspaceComposerHubRow>
@@ -34,9 +41,9 @@ export function PrototypeExecutionComposer({
           value={value}
           onChange={onChange}
           onSend={onSend}
-          disabled={disabled}
+          disabled={inputDisabled}
           busy={busy}
-          placeholder={placeholder}
+          placeholder={placeholder ?? (disabledReason && inputDisabled ? disabledReason : undefined)}
           textAreaRef={textAreaRef}
           targetPickerItems={targetPickerItems}
           inputTestId="prototype-execution-chat-input"

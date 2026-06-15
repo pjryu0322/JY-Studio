@@ -27,7 +27,10 @@ import {
 import { resolveStaticAppBuildContract } from "@/lib/prototype/staticAppBuildContractResolver";
 import { ensureStaticAppBuildContractOnIntegrationBranch } from "@/lib/prototype/staticAppBuildContractScaffoldService";
 import { ensureMeetingWorkspaceSampleDataPreviewWiring } from "@/lib/prototype/integrationPreviewSampleDataWiringService";
-import { isLegacyPreviewSampleWiringEnabled } from "@/lib/prototype/integrationPreviewDeployPolicy";
+import {
+  isLegacyPreviewSampleWiringEnabled,
+  isRequiredPreviewSampleDataWiringEnabled,
+} from "@/lib/prototype/integrationPreviewDeployPolicy";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 const WORKFLOW_POLL_TIMEOUT_MS = 120_000;
@@ -469,7 +472,48 @@ export async function deployIntegratedPreviewToGitHubPages(input: {
       integrationBranch: input.integrationBranch,
     });
 
-    if (isLegacyPreviewSampleWiringEnabled()) {
+    if (isRequiredPreviewSampleDataWiringEnabled()) {
+      console.info(
+        JSON.stringify({
+          action: "required_preview_sample_wiring_started",
+          projectId: input.projectId,
+          integrationBranch: input.integrationBranch,
+        }),
+      );
+      pushTimeline("required_preview_sample_wiring_started", {
+        integrationBranch: input.integrationBranch,
+      });
+      const sampleWiring = await ensureMeetingWorkspaceSampleDataPreviewWiring({
+        projectId: input.projectId,
+        repoUrl: input.repoUrl,
+        githubToken: token,
+        integrationBranch: input.integrationBranch,
+        repositoryFilePaths: filePaths,
+      });
+      if (!sampleWiring.ok && sampleWiring.skippedReason?.startsWith("put_failed")) {
+        pushTimeline("required_preview_sample_wiring_failed", {
+          reason: sampleWiring.skippedReason,
+        });
+        return {
+          ok: false,
+          deployment: {
+            ...deployment,
+            status: "failed",
+            errorCode: "sample_data_wiring_failed",
+            userSafeMessage:
+              "Preview용 샘플 데이터 연결에 실패했습니다. 통합 branch 패널 wiring을 확인해 주세요.",
+            updatedAt: input.nowIso,
+          },
+          timelineEntries: timeline,
+          pipelineStatus: "app_preview_target_failed",
+        };
+      }
+      pushTimeline("required_preview_sample_wiring_completed", {
+        ok: sampleWiring.ok,
+        changedFiles: sampleWiring.changedFiles.join(","),
+        skippedReason: sampleWiring.skippedReason ?? null,
+      });
+    } else if (isLegacyPreviewSampleWiringEnabled()) {
       console.info(
         JSON.stringify({
           action: "legacy_preview_sample_wiring_enabled",

@@ -34,6 +34,11 @@ import { parseImplementationPreviewRuntimeV1 } from "@/lib/prototype/implementat
 import { parseImplementationIntegrationStepsStateV1 } from "@/lib/prototype/implementationIntegrationStepStore";
 import { parseImplementationExecutionUnitsStateV1 } from "@/lib/prototype/implementationExecutionUnitStore";
 import { isPreviewRuntimeOpenReady } from "@/lib/prototype/implementationIntegrationButtonPolicy";
+import {
+  isImplementationPreviewSampleDataReady,
+  resolveImplementationPreviewSampleDataReadiness,
+  type ImplementationPreviewSampleDataReadinessV1,
+} from "@/lib/prototype/implementationPreviewSampleDataReadiness";
 
 type OrchestrationPreviewSlice = Readonly<{
   readonly implementationCodeTaskPlanV1?: unknown;
@@ -54,6 +59,8 @@ export type ImplementationPreviewModeV1 =
   | "final_wiring_pending"
   | "build_pending"
   | "build_failed"
+  | "sample_data_pending"
+  | "sample_data_not_rendered"
   | "integrated_app_preview_ready";
 
 export type ImplementationPreviewReadinessV1 = Readonly<{
@@ -66,6 +73,11 @@ export type ImplementationPreviewReadinessV1 = Readonly<{
   readonly conclusionLine: string | null;
   readonly finalWiringPending: boolean;
   readonly integrationPrecheckBlocked: boolean;
+  readonly sampleDataRequired: boolean;
+  readonly sampleDataQualityOk: boolean;
+  readonly sampleDataRenderedOk: boolean;
+  readonly sampleDataStatus: ImplementationPreviewSampleDataReadinessV1["sampleDataStatus"];
+  readonly sampleDataIssues: readonly string[];
 }>;
 
 function projectHasIntegrationStepPipeline(input: {
@@ -195,6 +207,31 @@ export function evaluateImplementationPreviewReadiness(input: {
     mode = "code_task_preview_ready";
   }
 
+  const sampleDataReadiness = resolveImplementationPreviewSampleDataReadiness({
+    previewRuntime: input.previewRuntime,
+  });
+  const sampleDataReady = isImplementationPreviewSampleDataReady(sampleDataReadiness);
+
+  const pipelineWouldBeIntegrated =
+    integratedRenderOk &&
+    finalWiringCompleted &&
+    integrationBranchStepDone &&
+    buildStepDone &&
+    appPreviewStepDone;
+
+  if (pipelineWouldBeIntegrated && !sampleDataReady) {
+    if (
+      sampleDataReadiness.sampleDataStatus === "not_rendered" ||
+      sampleDataReadiness.sampleDataStatus === "wiring_failed"
+    ) {
+      mode = "sample_data_not_rendered";
+    } else {
+      mode = "sample_data_pending";
+    }
+  } else if (pipelineWouldBeIntegrated && sampleDataReady) {
+    mode = "integrated_app_preview_ready";
+  }
+
   const integratedAppPreviewReady = mode === "integrated_app_preview_ready";
 
   const statusTitleLines: string[] = [];
@@ -234,6 +271,18 @@ export function evaluateImplementationPreviewReadiness(input: {
     case "integrated_app_preview_ready":
       statusTitleLines.push("통합 및 Preview 준비 완료");
       statusTitleLines.push("실제 앱 Preview 준비 완료");
+      break;
+    case "sample_data_pending":
+      statusTitleLines.push("샘플 데이터 확인 중");
+      statusTitleLines.push("Preview 샘플 데이터를 확인 중입니다.");
+      statusTitleLines.push(
+        "샘플 회의파일과 참여자 정보가 화면에 표시되면 보완요청을 입력할 수 있습니다.",
+      );
+      break;
+    case "sample_data_not_rendered":
+      statusTitleLines.push("샘플 데이터 미반영");
+      statusTitleLines.push("Preview는 생성되었지만 샘플 데이터가 화면에 표시되지 않았습니다.");
+      statusTitleLines.push("샘플 데이터 반영 후 보완요청을 입력할 수 있습니다.");
       break;
     default:
       break;
@@ -278,6 +327,15 @@ export function evaluateImplementationPreviewReadiness(input: {
       : "- app entry 렌더링: 미확인",
   );
 
+  integratedAppGateLines.push(
+    sampleDataReady
+      ? "- 샘플 데이터 화면 반영: 완료"
+      : sampleDataReadiness.sampleDataStatus === "not_rendered" ||
+          sampleDataReadiness.sampleDataStatus === "wiring_failed"
+        ? "- 샘플 데이터 화면 반영: 미반영"
+        : "- 샘플 데이터 화면 반영: 확인 중",
+  );
+
   const codeTaskScopeTitleLine = codeTaskPreviewReady
     ? `Preview 범위 · 완료 ${summary.completedCodeTaskCount}개`
     : null;
@@ -297,6 +355,11 @@ export function evaluateImplementationPreviewReadiness(input: {
     conclusionLine,
     finalWiringPending,
     integrationPrecheckBlocked: precheckBlocked,
+    sampleDataRequired: sampleDataReadiness.sampleDataRequired,
+    sampleDataQualityOk: sampleDataReadiness.sampleDataQualityOk,
+    sampleDataRenderedOk: sampleDataReadiness.sampleDataRenderedOk,
+    sampleDataStatus: sampleDataReadiness.sampleDataStatus,
+    sampleDataIssues: sampleDataReadiness.sampleDataIssues,
   };
 }
 

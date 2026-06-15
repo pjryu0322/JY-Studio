@@ -26,6 +26,11 @@ import {
   sampleDataQualityUserMessage,
 } from "@/lib/prototype/actualPreviewSampleDataQualityGate";
 import { runActualPreviewSampleDataQualityOnIntegrationBranch } from "@/lib/prototype/actualPreviewSampleDataQualityLoader";
+import { checkPreviewSampleDataRendered } from "@/lib/prototype/actualPreviewSampleDataRenderedGate";
+import {
+  buildPreviewSampleDataReadinessFromQualityResult,
+  patchPreviewRuntimeSampleDataGate,
+} from "@/lib/prototype/implementationPreviewSampleDataReadiness";
 import { fetchRepositoryFilePathsForBranch } from "@/lib/prototype/githubPagesPreviewDeploymentService";
 
 export type AppPreviewTargetPipelineStatusV1 =
@@ -40,7 +45,8 @@ export type AppPreviewTargetPipelineStatusV1 =
   | "github_actions_setup_required"
   | "github_preview_retry_required"
   | "github_preview_operator_review_required"
-  | "sample_data_required";
+  | "sample_data_required"
+  | "sample_data_not_rendered";
 
 export type RunAppPreviewTargetIntegrationStepResultV1 = Readonly<{
   readonly ok: boolean;
@@ -166,6 +172,119 @@ async function blockIfSampleDataQualityInsufficient(input: {
     timelineEntries: input.timeline,
     userSafeMessage: message,
     pipelineStatus: "sample_data_required",
+  };
+}
+
+async function applySampleDataGatesBeforePreviewComplete(input: {
+  readonly projectId: string;
+  readonly steps: readonly ImplementationIntegrationStepV1[];
+  readonly integrationBranch: string;
+  readonly repoUrl: string;
+  readonly githubToken: string;
+  readonly nowIso: string;
+  readonly timeline: RequirementsPromptTimelineEntry[];
+  readonly runtime: ImplementationPreviewRuntimeV1;
+}): Promise<
+  | Readonly<{ readonly runtime: ImplementationPreviewRuntimeV1 }>
+  | RunAppPreviewTargetIntegrationStepResultV1
+> {
+  const sampleBlock = await blockIfSampleDataQualityInsufficient({
+    projectId: input.projectId,
+    steps: input.steps,
+    integrationBranch: input.integrationBranch,
+    repoUrl: input.repoUrl,
+    githubToken: input.githubToken,
+    nowIso: input.nowIso,
+    timeline: input.timeline,
+  });
+  if (sampleBlock) return sampleBlock;
+
+  const listed = await fetchRepositoryFilePathsForBranch({
+    repoUrl: input.repoUrl,
+    githubToken: input.githubToken,
+    branch: input.integrationBranch,
+  });
+  const quality = await runActualPreviewSampleDataQualityOnIntegrationBranch({
+    repoUrl: input.repoUrl,
+    githubToken: input.githubToken,
+    integrationBranch: input.integrationBranch,
+    repositoryFilePaths: listed.ok ? listed.filePaths : undefined,
+    mode: "integration_merge",
+  });
+
+  const previewUrl =
+    String(input.runtime.externalPreviewUrl ?? "").trim() ||
+    String(input.runtime.githubPagesUrl ?? "").trim() ||
+    String(input.runtime.previewUrl ?? "").trim();
+
+  const rendered = previewUrl
+    ? await checkPreviewSampleDataRendered({ previewUrl })
+    : {
+        ok: false,
+        status: "preview_unreachable" as const,
+        foundMarkers: [],
+        missingMarkers: [],
+        issues: ["missing_preview_url_for_rendered_check"],
+      };
+
+  const gate = buildPreviewSampleDataReadinessFromQualityResult({
+    quality: quality.result,
+    renderedOk: rendered.ok,
+    renderedStatus: rendered.ok ? "ready" : "not_rendered",
+    renderedIssues: rendered.issues,
+  });
+
+  if (!rendered.ok) {
+    const message =
+      "Preview는 열렸지만 샘플 데이터가 화면에 표시되지 않았습니다.";
+    const steps = mapIntegrationStepByKind(input.steps, "app_preview_target", (s) => ({
+      ...s,
+      status: "failed",
+      failedAt: input.nowIso,
+      errorCode: "sample_data_not_rendered",
+      errorMessage: message,
+    }));
+    input.timeline.push(
+      buildImplementationExecutionLogTimelineEntry({
+        action: "actual_preview_sample_data_not_rendered",
+        orchestrationTraceGroup: "implementation_integration",
+        fields: {
+          projectId: input.projectId,
+          previewUrl,
+          renderedStatus: rendered.status,
+          issues: rendered.issues,
+        },
+        nowIso: input.nowIso,
+      }),
+    );
+    return {
+      ok: false,
+      steps,
+      timelineEntries: input.timeline,
+      userSafeMessage: message,
+      pipelineStatus: "sample_data_not_rendered",
+      previewRuntime: patchPreviewRuntimeSampleDataGate(input.runtime, gate),
+      previewRuntimePatch: {
+        implementationPreviewRuntimeV1: patchPreviewRuntimeSampleDataGate(input.runtime, gate),
+      },
+    };
+  }
+
+  input.timeline.push(
+    buildImplementationExecutionLogTimelineEntry({
+      action: "actual_preview_sample_data_rendered_verified",
+      orchestrationTraceGroup: "implementation_integration",
+      fields: {
+        projectId: input.projectId,
+        previewUrl,
+        renderedStatus: rendered.status,
+      },
+      nowIso: input.nowIso,
+    }),
+  );
+
+  return {
+    runtime: patchPreviewRuntimeSampleDataGate(input.runtime, gate),
   };
 }
 
@@ -333,7 +452,7 @@ export async function runAppPreviewTargetIntegrationStep(input: {
             runtime,
           })
         ) {
-          const sampleBlock = await blockIfSampleDataQualityInsufficient({
+          const sampleGate = await applySampleDataGatesBeforePreviewComplete({
             projectId: input.projectId,
             steps,
             integrationBranch,
@@ -341,15 +460,17 @@ export async function runAppPreviewTargetIntegrationStep(input: {
             githubToken: token,
             nowIso: input.nowIso,
             timeline,
+            runtime,
           });
-          if (sampleBlock) {
-            return attachPreflightPatch(sampleBlock);
+          if ("ok" in sampleGate && sampleGate.ok === false) {
+            return attachPreflightPatch(sampleGate);
           }
+          const gatedRuntime = "runtime" in sampleGate ? sampleGate.runtime : runtime;
           return attachPreflightPatch(
             completeAppPreviewTargetStep({
               projectId: input.projectId,
               steps,
-              runtime,
+              runtime: gatedRuntime,
               nowIso: input.nowIso,
               timeline,
             }),
@@ -475,7 +596,7 @@ export async function runAppPreviewTargetIntegrationStep(input: {
   const repoUrlForQuality = String(input.repoUrl ?? "").trim();
   const tokenForQuality = String(input.githubToken ?? "").trim();
   if (integrationBranch && repoUrlForQuality && tokenForQuality) {
-    const sampleBlock = await blockIfSampleDataQualityInsufficient({
+    const sampleGate = await applySampleDataGatesBeforePreviewComplete({
       projectId: input.projectId,
       steps,
       integrationBranch,
@@ -483,10 +604,19 @@ export async function runAppPreviewTargetIntegrationStep(input: {
       githubToken: tokenForQuality,
       nowIso: input.nowIso,
       timeline,
+      runtime,
     });
-    if (sampleBlock) {
-      return sampleBlock;
+    if ("ok" in sampleGate && sampleGate.ok === false) {
+      return sampleGate;
     }
+    const gatedRuntime = "runtime" in sampleGate ? sampleGate.runtime : runtime;
+    return completeAppPreviewTargetStep({
+      projectId: input.projectId,
+      steps,
+      runtime: gatedRuntime,
+      nowIso: input.nowIso,
+      timeline,
+    });
   }
 
   return completeAppPreviewTargetStep({

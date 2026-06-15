@@ -48,8 +48,10 @@ const iframeStyle: CSSProperties = {
 export function ImplementationPreviewViewerChrome(props: {
   readonly projectId: string;
   readonly previewUrl: string;
+  readonly composerAttachEnabled?: boolean;
   readonly onClose?: () => void;
 }): ReactNode {
+  const composerAttachEnabled = props.composerAttachEnabled !== false;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [internalCaptureMode, setInternalCaptureMode] = useState(false);
   const [toast, setToast] = useState<{ readonly message: string; readonly tone: "success" | "error" } | null>(
@@ -60,6 +62,7 @@ export function ImplementationPreviewViewerChrome(props: {
   const serverCapture = useServerPreviewAreaCapture({
     projectId: props.projectId,
     previewUrl: props.previewUrl,
+    composerAttachEnabled,
   });
 
   const src = useMemo(() => resolvePreviewViewerIframeSrc(props.previewUrl), [props.previewUrl]);
@@ -81,6 +84,10 @@ export function ImplementationPreviewViewerChrome(props: {
   }, [browserCapture, serverCapture, props.onClose]);
 
   const onCaptureButtonClick = useCallback(() => {
+    if (!composerAttachEnabled) {
+      notify("Preview가 준비되면 캡처할 수 있습니다.", "error");
+      return;
+    }
     if (serverCapture.state.phase === "overlay" || serverCapture.state.phase === "sending") {
       serverCapture.close();
       return;
@@ -104,7 +111,7 @@ export function ImplementationPreviewViewerChrome(props: {
         }
       }
     })();
-  }, [serverCapture, internalCaptureMode, notify, browserCapture]);
+  }, [composerAttachEnabled, serverCapture, internalCaptureMode, notify, browserCapture]);
 
   const captureBusy =
     serverCapture.state.phase === "loading" ||
@@ -142,7 +149,7 @@ export function ImplementationPreviewViewerChrome(props: {
           <button
             type="button"
             data-testid="preview-region-capture-start"
-            disabled={captureBusy}
+            disabled={captureBusy || !composerAttachEnabled}
             onClick={onCaptureButtonClick}
             style={{
               fontSize: 13,

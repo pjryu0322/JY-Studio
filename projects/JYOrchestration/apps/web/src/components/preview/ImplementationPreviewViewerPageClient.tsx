@@ -7,6 +7,7 @@ import { sanitizePreviewViewerTargetParam } from "@/lib/prototype/implementation
 export function ImplementationPreviewViewerPageClient(props: {
   readonly projectId: string;
   readonly initialTarget: string | null;
+  readonly composerAttachEnabled?: boolean;
 }): ReactNode {
   const previewUrl = useMemo(
     () =>
@@ -31,5 +32,11 @@ export function ImplementationPreviewViewerPageClient(props: {
     );
   }
 
-  return <ImplementationPreviewViewerChrome projectId={props.projectId} previewUrl={previewUrl} />;
+  return (
+    <ImplementationPreviewViewerChrome
+      projectId={props.projectId}
+      previewUrl={previewUrl}
+      composerAttachEnabled={props.composerAttachEnabled}
+    />
+  );
 }

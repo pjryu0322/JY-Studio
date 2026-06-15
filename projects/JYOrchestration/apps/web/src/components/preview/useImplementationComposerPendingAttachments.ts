@@ -12,6 +12,7 @@ export function useImplementationComposerPendingAttachments(input: {
   readonly chatInputRef: React.RefObject<HTMLTextAreaElement | null>;
   readonly onAttachmentStaged?: (message: string) => void;
   readonly captureAttachEnabled?: boolean;
+  readonly fileAttachEnabled?: boolean;
 }): Readonly<{
   readonly pendingAttachments: readonly ImplementationComposerAttachment[];
   readonly addPendingAttachment: (attachment: ImplementationComposerAttachment) => void;
@@ -51,12 +52,16 @@ export function useImplementationComposerPendingAttachments(input: {
   }, [input.projectId, input.chatInputRef, input.onAttachmentStaged, input.captureAttachEnabled]);
 
   const addPendingAttachment = useCallback((attachment: ImplementationComposerAttachment) => {
+    if (input.fileAttachEnabled === false || input.captureAttachEnabled === false) {
+      input.onAttachmentStaged?.("Preview가 준비되면 첨부할 수 있습니다.");
+      return;
+    }
     setPendingAttachments((prev) => {
       const withoutDup = prev.filter((a) => a.id !== attachment.id);
       return [...withoutDup, attachment];
     });
     window.setTimeout(() => input.chatInputRef.current?.focus(), 0);
-  }, [input.chatInputRef]);
+  }, [input.chatInputRef, input.captureAttachEnabled, input.fileAttachEnabled, input.onAttachmentStaged]);
 
   const removePendingAttachment = useCallback((attachmentId: string) => {
     setPendingAttachments((prev) => prev.filter((a) => a.id !== attachmentId));

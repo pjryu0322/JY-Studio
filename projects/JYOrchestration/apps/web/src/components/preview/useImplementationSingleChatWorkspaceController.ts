@@ -42,6 +42,7 @@ import type { ImplementationControlPlaneSnapshotV1 } from "@/lib/prototype/imple
 import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
 import { resolveIntegrationPipelineUnlocked } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
 import {
+  buildImplementationChatAvailabilityInput,
   deriveImplementationChatAvailabilitySignals,
   implementationChatComposerPlaceholder,
   resolveImplementationChatAvailability,
@@ -146,41 +147,48 @@ export function useImplementationSingleChatWorkspaceController(
 
   const implementationChatAvailability = useMemo((): ImplementationChatAvailability => {
     const boardInput = input.implementationStageBoardInput;
-    const integrationPipelineUnlocked = resolveIntegrationPipelineUnlocked({
+    const integrationSource = {
       codeTaskPlan: boardInput?.implementationCodeTaskPlanV1 ?? null,
       taskList: boardInput?.taskList ?? null,
       codeTaskRuns: boardInput?.codeTaskExecutionRunsV1 ?? null,
       taskCursorExecution: boardInput?.taskCursorExecutionV1 ?? null,
       taskCursorExecutionHistory: boardInput?.taskCursorExecutionHistoryV1 ?? null,
       autoQualityGate: boardInput?.implementationAutoQualityGateV1 ?? null,
-    });
-    const previewReady =
-      input.implementationControlPlaneSnapshot?.preview.ready === true ||
-      boardInput?.previewReady === true;
-    const previewUrl = input.implementationControlPlaneSnapshot?.preview.actualPreviewUrl ?? null;
+    };
+    const integrationPipelineUnlocked = resolveIntegrationPipelineUnlocked(integrationSource);
     const taskCursorStatus = boardInput?.taskCursorExecutionV1?.status?.trim() ?? "";
+    const built = buildImplementationChatAvailabilityInput({
+      projectId: input.projectId,
+      implementationStarted: Boolean(
+        input.parsedRequirementsState.implementationSeedV1 ||
+          input.parsedRequirementsState.implementationTaskListV1 ||
+          input.implementationBootstrapInput,
+      ),
+      board: input.implementationBoard,
+      integrationSource,
+      requirementsState: input.parsedRequirementsState,
+      activeTaskCursorRunning: Boolean(input.activeTaskCursorJob),
+      taskCursorGithubVerifying: taskCursorStatus === "github_verifying",
+      controlPlanePreviewReady: input.implementationControlPlaneSnapshot?.preview.ready === true,
+      controlPlanePreviewUrl: input.implementationControlPlaneSnapshot?.preview.actualPreviewUrl ?? null,
+      controlPlaneIntegrationReady: input.implementationControlPlaneSnapshot?.integration.ready === true,
+    });
     return resolveImplementationChatAvailability(
       deriveImplementationChatAvailabilitySignals({
         board: input.implementationBoard,
-        previewReady,
-        previewUrl,
         integrationPipelineUnlocked,
         activeTaskCursorRunning: Boolean(input.activeTaskCursorJob),
         taskCursorGithubVerifying: taskCursorStatus === "github_verifying",
-        implementationStarted: Boolean(
-          input.parsedRequirementsState.implementationSeedV1 ||
-            input.parsedRequirementsState.implementationTaskListV1 ||
-            input.implementationBootstrapInput,
-        ),
+        availabilityInput: built,
       }),
     );
   }, [
+    input.projectId,
     input.implementationBoard,
     input.implementationControlPlaneSnapshot,
     input.implementationStageBoardInput,
     input.activeTaskCursorJob,
-    input.parsedRequirementsState.implementationSeedV1,
-    input.parsedRequirementsState.implementationTaskListV1,
+    input.parsedRequirementsState,
     input.implementationBootstrapInput,
   ]);
 
@@ -450,6 +458,7 @@ export function useImplementationSingleChatWorkspaceController(
     chatInputRef,
     onAttachmentStaged: input.appendUserNotice,
     captureAttachEnabled: implementationChatAvailability.canChat,
+    fileAttachEnabled: implementationChatAvailability.canChat,
   });
 
   const readPendingComposerAttachments = useCallback(

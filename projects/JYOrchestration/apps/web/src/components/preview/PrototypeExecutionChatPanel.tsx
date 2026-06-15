@@ -33,6 +33,9 @@ export type PrototypeExecutionChatPanelProps = Readonly<{
   headerIconToolbar?: ReactNode;
   composerPendingAttachments?: readonly ImplementationComposerAttachment[];
   onRemoveComposerAttachment?: (attachmentId: string) => void;
+  composerDisabledReason?: string;
+  composerDisableAttachments?: boolean;
+  composerDisablePreviewCapture?: boolean;
 }>;
 
 export function PrototypeExecutionChatPanel({
@@ -56,6 +59,9 @@ export function PrototypeExecutionChatPanel({
   headerIconToolbar,
   composerPendingAttachments = [],
   onRemoveComposerAttachment,
+  composerDisabledReason,
+  composerDisableAttachments = false,
+  composerDisablePreviewCapture = false,
 }: PrototypeExecutionChatPanelProps) {
   const showTyping =
     aiInvokePending &&
@@ -76,6 +82,9 @@ export function PrototypeExecutionChatPanel({
         onSend={() => void onSend()}
         busy={busy || aiInvokePending}
         disabled={inputDisabled}
+        disabledReason={composerDisabledReason}
+        disableAttachments={composerDisableAttachments}
+        disablePreviewCapture={composerDisablePreviewCapture}
         placeholder={composerPlaceholder}
         textAreaRef={textAreaRef}
         targetPickerItems={targetPickerItems}

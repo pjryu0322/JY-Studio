@@ -231,6 +231,9 @@ export function PrototypeImplementationStagePanel({
             aiInvokePending={executionSingleChat.aiInvokePending}
             composerPendingAttachments={composerPendingAttachments.pendingAttachments}
             onRemoveComposerAttachment={composerPendingAttachments.removePendingAttachment}
+            composerDisabledReason={implementationChatAvailability.message}
+            composerDisableAttachments={!implementationChatAvailability.canChat}
+            composerDisablePreviewCapture={!implementationChatAvailability.canChat}
           />
         </div>
         {isNextPublicDevWorkflowToolsEnabled() ? (
