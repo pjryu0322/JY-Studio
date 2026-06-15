@@ -1,4 +1,4 @@
-import type { ImplementationWorkingQueueAffectedArea, ImplementationWorkingQueueRiskLevel } from "@/lib/prototype/implementationWorkingQueueTypes";
+import type { ImplementationWorkingQueueAffectedArea, ImplementationWorkingQueueRiskLevel, ImplementationWorkingQueueRoleRoutingSource } from "@/lib/prototype/implementationWorkingQueueTypes";
 import type { ImplementationWorkingQueueRole, ImplementationWorkingQueueWorkflowStep } from "@/lib/prototype/implementationWorkingQueueTypes";
 import {
   buildDeveloperFallbackRoleFields,
@@ -23,6 +23,7 @@ export type ImplementationPreviewFeedbackAnalysis = Readonly<{
   readonly executionOwnerRole?: ImplementationWorkingQueueRole;
   readonly reviewWorkflow?: readonly ImplementationWorkingQueueWorkflowStep[];
   readonly roleReviewSummary?: string;
+  readonly roleRoutingSource?: ImplementationWorkingQueueRoleRoutingSource;
 }>;
 
 export type ImplementationPreviewFeedbackAnalyzerInput = Readonly<{
@@ -83,9 +84,6 @@ export function parseImplementationPreviewFeedbackAnalysisJson(raw: unknown): Im
     typeof o.roleReviewSummary === "string" ? o.roleReviewSummary.trim().slice(0, 400) : undefined;
 
   const roleFields = resolveRoleOrchestrationFields({
-    affectedArea: areaRaw,
-    description,
-    desiredBehavior,
     primaryRole,
     executionOwnerRole,
     reviewWorkflow,
@@ -108,6 +106,7 @@ export function parseImplementationPreviewFeedbackAnalysisJson(raw: unknown): Im
     executionOwnerRole: roleFields.executionOwnerRole,
     reviewWorkflow: roleFields.reviewWorkflow,
     ...(roleFields.roleReviewSummary ? { roleReviewSummary: roleFields.roleReviewSummary } : {}),
+    roleRoutingSource: roleFields.roleRoutingSource,
   };
 }
 
@@ -128,5 +127,6 @@ export function buildMinimalPreviewFeedbackFallback(userText: string): Implement
     executionOwnerRole: roleFields.executionOwnerRole,
     reviewWorkflow: roleFields.reviewWorkflow,
     roleReviewSummary: roleFields.roleReviewSummary,
+    roleRoutingSource: roleFields.roleRoutingSource,
   };
 }

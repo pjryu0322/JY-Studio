@@ -3,7 +3,7 @@ import type {
   ImplementationWorkingQueueRole,
   ImplementationWorkingQueueWorkflowStep,
 } from "@/lib/prototype/implementationWorkingQueueTypes";
-import { defaultReviewWorkflowForPrimaryRole } from "@/lib/prototype/implementationWorkingQueueRoleWorkflow";
+import { DEFAULT_DEVELOPER_WORKFLOW } from "@/lib/prototype/implementationWorkingQueueRoleWorkflow";
 
 export function workingQueueRoleLabelKo(role: ImplementationWorkingQueueRole): string {
   switch (role) {
@@ -43,10 +43,7 @@ export function workingQueueWorkflowStepLabelKo(step: ImplementationWorkingQueue
 }
 
 export function workingQueueItemWorkflowLabel(item: ImplementationWorkingQueueItem): string {
-  const steps =
-    item.reviewWorkflow?.length ?
-      item.reviewWorkflow
-    : defaultReviewWorkflowForPrimaryRole(item.primaryRole ?? "developer");
+  const steps = item.reviewWorkflow?.length ? item.reviewWorkflow : DEFAULT_DEVELOPER_WORKFLOW;
   if (!steps.length) return "개발자 반영";
   return steps.map((s) => workingQueueWorkflowStepLabelKo(s)).join(" → ");
 }

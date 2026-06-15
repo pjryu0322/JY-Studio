@@ -1,7 +1,6 @@
 import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueControlIntent";
 import type { ImplementationIntentResolverResult } from "@/lib/prototype/implementationIntentResolverTypes";
 import type { ImplementationWorkingQueueItem, ImplementationWorkingQueueV1 } from "@/lib/prototype/implementationWorkingQueueTypes";
-import { resolveRoleOrchestrationFields } from "@/lib/prototype/implementationWorkingQueueRoleWorkflow";
 
 export function mapIntentResolverToControlIntent(input: Readonly<{
   resolver: ImplementationIntentResolverResult;
@@ -54,34 +53,26 @@ export function queueItemFromPreviewAnalysis(input: Readonly<{
   nowIso: string;
 }>): ImplementationWorkingQueueItem {
   const ctx = input.captureContext ?? {};
-  const roleFields = resolveRoleOrchestrationFields({
-    affectedArea: input.analysis.affectedArea,
-    description: input.analysis.description,
-    desiredBehavior: input.analysis.desiredBehavior,
-    rawUserMessage: input.rawUserMessage,
-    primaryRole: input.analysis.primaryRole,
-    executionOwnerRole: input.analysis.executionOwnerRole,
-    reviewWorkflow: input.analysis.reviewWorkflow,
-    roleReviewSummary: input.analysis.roleReviewSummary,
-  });
+  const a = input.analysis;
   return {
     id: input.itemId,
     projectId: input.projectId.trim(),
     sourceMessageId: input.sourceMessageId,
     rawUserMessage: input.rawUserMessage.trim(),
-    title: input.analysis.title,
-    description: input.analysis.description,
-    targetUi: input.analysis.targetUi,
-    desiredBehavior: input.analysis.desiredBehavior,
-    affectedArea: input.analysis.affectedArea,
+    title: a.title,
+    description: a.description,
+    targetUi: a.targetUi,
+    desiredBehavior: a.desiredBehavior,
+    affectedArea: a.affectedArea,
     status: "pending",
-    riskLevel: input.analysis.riskLevel,
+    riskLevel: a.riskLevel,
     createdAt: input.nowIso,
     updatedAt: input.nowIso,
-    primaryRole: roleFields.primaryRole,
-    executionOwnerRole: roleFields.executionOwnerRole,
-    reviewWorkflow: roleFields.reviewWorkflow,
-    ...(roleFields.roleReviewSummary ? { roleReviewSummary: roleFields.roleReviewSummary } : {}),
+    primaryRole: a.primaryRole,
+    executionOwnerRole: a.executionOwnerRole,
+    reviewWorkflow: a.reviewWorkflow,
+    ...(a.roleReviewSummary ? { roleReviewSummary: a.roleReviewSummary } : {}),
+    roleRoutingSource: a.roleRoutingSource,
     ...(ctx.sourceCaptureId ? { sourceCaptureId: ctx.sourceCaptureId } : {}),
     ...(ctx.regionCaptureId ? { regionCaptureId: ctx.regionCaptureId } : {}),
     ...(ctx.previewUrl ? { previewUrl: ctx.previewUrl } : {}),

@@ -42,6 +42,8 @@ export type ImplementationWorkingQueueWorkflowStep = Readonly<{
   readonly summary?: string;
 }>;
 
+export type ImplementationWorkingQueueRoleRoutingSource = "llm" | "fallback";
+
 export type ImplementationWorkingQueuePreviewRect = Readonly<{
   readonly x: number;
   readonly y: number;
@@ -72,6 +74,7 @@ export type ImplementationWorkingQueueItem = Readonly<{
   readonly executionOwnerRole?: ImplementationWorkingQueueRole;
   readonly reviewWorkflow?: readonly ImplementationWorkingQueueWorkflowStep[];
   readonly roleReviewSummary?: string;
+  readonly roleRoutingSource?: ImplementationWorkingQueueRoleRoutingSource;
 }>;
 
 export type ImplementationWorkingQueueV1 = Readonly<{

@@ -1,7 +1,7 @@
 import type {
-  ImplementationWorkingQueueAffectedArea,
   ImplementationWorkingQueueItem,
   ImplementationWorkingQueueRole,
+  ImplementationWorkingQueueRoleRoutingSource,
   ImplementationWorkingQueueWorkflowStep,
   ImplementationWorkingQueueWorkflowStepStatus,
   ImplementationWorkingQueueWorkflowTask,
@@ -41,6 +41,7 @@ function workflowStep(
   return { role, task, status: "pending" };
 }
 
+/** Display/helper only — not used for keyword or text-based role routing. */
 export function defaultReviewWorkflowForPrimaryRole(
   primaryRole: ImplementationWorkingQueueRole,
 ): readonly ImplementationWorkingQueueWorkflowStep[] {
@@ -90,6 +91,7 @@ export type RoleOrchestrationFields = Readonly<{
   readonly executionOwnerRole: ImplementationWorkingQueueRole;
   readonly reviewWorkflow: readonly ImplementationWorkingQueueWorkflowStep[];
   readonly roleReviewSummary?: string;
+  readonly roleRoutingSource: ImplementationWorkingQueueRoleRoutingSource;
 }>;
 
 export function buildDeveloperFallbackRoleFields(): RoleOrchestrationFields {
@@ -98,106 +100,61 @@ export function buildDeveloperFallbackRoleFields(): RoleOrchestrationFields {
     executionOwnerRole: "developer",
     reviewWorkflow: DEFAULT_DEVELOPER_WORKFLOW,
     roleReviewSummary: LLM_FALLBACK_ROLE_REVIEW_SUMMARY,
+    roleRoutingSource: "fallback",
   };
-}
-
-function inferPrimaryRoleFromSignals(input: Readonly<{
-  readonly affectedArea: ImplementationWorkingQueueAffectedArea;
-  readonly combinedText: string;
-}>): ImplementationWorkingQueueRole {
-  const text = input.combinedText.toLowerCase();
-  if (
-    /권한|인증|보안|민감|비밀|접근\s*제한|로그인한|authorized|permission|auth\b|security/i.test(
-      input.combinedText,
-    )
-  ) {
-    return "security";
-  }
-  if (
-    input.affectedArea === "bug" ||
-    /qa|회귀|일관성\s*검|검수|오류\s*확인/i.test(input.combinedText)
-  ) {
-    return "reviewer";
-  }
-  if (
-    input.affectedArea === "data" ||
-    input.affectedArea === "feature" ||
-    /api\b|데이터\s*모델|상태\s*관리|저장하고\s*불러|비즈니스\s*로직|integration/i.test(input.combinedText)
-  ) {
-    return "developer";
-  }
-  if (
-    input.affectedArea === "ui" ||
-    input.affectedArea === "style" ||
-    input.affectedArea === "flow" ||
-    /레이아웃|정보\s*구조|가독|타이틀|진하게|목록|spacing|typography|화면\s*구조|사용성|ui\b|ux\b/i.test(
-      input.combinedText,
-    )
-  ) {
-    return "designer";
-  }
-  if (text.includes("design") || text.includes("layout")) return "designer";
-  return "developer";
 }
 
 export function resolveRoleOrchestrationFields(input: Readonly<{
-  readonly affectedArea: ImplementationWorkingQueueAffectedArea;
-  readonly description: string;
-  readonly desiredBehavior?: string;
-  readonly rawUserMessage?: string;
-  readonly primaryRole?: ImplementationWorkingQueueRole;
-  readonly executionOwnerRole?: ImplementationWorkingQueueRole;
-  readonly reviewWorkflow?: readonly ImplementationWorkingQueueWorkflowStep[];
-  readonly roleReviewSummary?: string;
+  readonly primaryRole?: ImplementationWorkingQueueRole | null;
+  readonly executionOwnerRole?: ImplementationWorkingQueueRole | null;
+  readonly reviewWorkflow?: readonly ImplementationWorkingQueueWorkflowStep[] | null;
+  readonly roleReviewSummary?: string | null;
 }>): RoleOrchestrationFields {
-  const combinedText = [input.description, input.desiredBehavior ?? "", input.rawUserMessage ?? ""]
-    .join(" ")
-    .trim();
+  const primaryRole = input.primaryRole ? parseImplementationWorkingQueueRole(input.primaryRole) : null;
+  const reviewWorkflow =
+    input.reviewWorkflow && input.reviewWorkflow.length > 0 ? input.reviewWorkflow : null;
+  const executionOwnerRole = parseImplementationWorkingQueueRole(input.executionOwnerRole) ?? "developer";
 
-  const primaryRole =
-    input.primaryRole ?? inferPrimaryRoleFromSignals({ affectedArea: input.affectedArea, combinedText });
-  const executionOwnerRole = input.executionOwnerRole ?? "developer";
-
-  let reviewWorkflow: readonly ImplementationWorkingQueueWorkflowStep[];
-  if (input.reviewWorkflow?.length) {
-    reviewWorkflow = input.reviewWorkflow;
-  } else if (input.primaryRole) {
-    reviewWorkflow = defaultReviewWorkflowForPrimaryRole(input.primaryRole);
-  } else {
-    reviewWorkflow = defaultReviewWorkflowForPrimaryRole(primaryRole);
+  if (primaryRole && reviewWorkflow) {
+    const roleReviewSummary = input.roleReviewSummary?.trim()
+      ? input.roleReviewSummary.trim().slice(0, 400)
+      : undefined;
+    return {
+      primaryRole,
+      executionOwnerRole,
+      reviewWorkflow,
+      ...(roleReviewSummary ? { roleReviewSummary } : {}),
+      roleRoutingSource: "llm",
+    };
   }
 
-  const roleReviewSummary = input.roleReviewSummary?.trim()
-    ? input.roleReviewSummary.trim().slice(0, 400)
-    : undefined;
-
-  return {
-    primaryRole,
-    executionOwnerRole,
-    reviewWorkflow,
-    ...(roleReviewSummary ? { roleReviewSummary } : {}),
-  };
+  return buildDeveloperFallbackRoleFields();
 }
 
 export function attachRoleOrchestrationToWorkingQueueItem(
   item: ImplementationWorkingQueueItem,
 ): ImplementationWorkingQueueItem {
-  if (item.primaryRole && item.reviewWorkflow?.length) return item;
+  if (
+    item.roleRoutingSource === "llm" &&
+    item.primaryRole &&
+    item.reviewWorkflow?.length
+  ) {
+    return item;
+  }
+
   const roleFields = resolveRoleOrchestrationFields({
-    affectedArea: item.affectedArea,
-    description: item.description,
-    desiredBehavior: item.desiredBehavior,
-    rawUserMessage: item.rawUserMessage,
     primaryRole: item.primaryRole,
     executionOwnerRole: item.executionOwnerRole,
     reviewWorkflow: item.reviewWorkflow,
     roleReviewSummary: item.roleReviewSummary,
   });
+
   return {
     ...item,
     primaryRole: roleFields.primaryRole,
     executionOwnerRole: roleFields.executionOwnerRole,
     reviewWorkflow: roleFields.reviewWorkflow,
     ...(roleFields.roleReviewSummary ? { roleReviewSummary: roleFields.roleReviewSummary } : {}),
+    roleRoutingSource: roleFields.roleRoutingSource,
   };
 }
