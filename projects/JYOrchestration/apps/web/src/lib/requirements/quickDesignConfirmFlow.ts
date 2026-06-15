@@ -310,6 +310,7 @@ export function runQuickDesignConfirmFlowSync(input: {
     projectArtifacts: merged.projectArtifacts,
     artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
     existingTaskList: st.implementationTaskListV1,
+    sampleDataSpecV1: st.sampleDataSpecV1 ?? null,
   });
 
   const readyMessage = buildQuickDesignImplementationReadyChatMessage({

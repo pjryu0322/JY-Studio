@@ -26,6 +26,11 @@ import { evaluateIntegrationWiringTaskContent } from "@/lib/prototype/integratio
 import { formatTemplateLayoutSnippetForRole } from "@/lib/prototype/codeTaskTemplateLayoutDraft";
 import { parseImplementationSeedV1, type ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
 import {
+  buildSampleDataAcceptanceCriteriaFromSpec,
+  formatSampleDataSpecPromptLines,
+  resolveSampleDataSpecForImplementation,
+} from "@/lib/prototype/sampleDataCodeTaskPlanner";
+import {
   parseImplementationTaskListV1,
   type ImplementationTaskListV1,
 } from "@/lib/requirements/implementationTaskList";
@@ -320,6 +325,7 @@ function buildContextForCodeTask(input: {
   readonly parentTask: ImplementationTaskListV1["tasks"][number] | null;
   readonly seed: ImplementationSeedV1 | null;
   readonly planningSummary: ReturnType<typeof extractPlanningSummary>;
+  readonly sampleDataSpecV1?: import("@/lib/featurePlanning/sampleDataSpecV1").SampleDataSpecV1 | null;
   readonly nowIso: string;
 }): CodeTaskPromptContextV1 {
   const parent = input.parentTask;
@@ -414,6 +420,22 @@ function buildContextForCodeTask(input: {
     roleResolved.roleKind,
   );
 
+  const sampleDataSpec =
+    roleResolved.roleKind === "mock_data"
+      ? input.sampleDataSpecV1 ?? seed?.sampleDataSpecV1 ?? null
+      : null;
+  const mockDataSpecLines =
+    roleResolved.roleKind === "mock_data" && sampleDataSpec
+      ? [
+          ...formatSampleDataSpecPromptLines(sampleDataSpec),
+          ...buildSampleDataAcceptanceCriteriaFromSpec(sampleDataSpec),
+        ]
+      : [];
+  const mockCriteria =
+    roleResolved.roleKind === "mock_data"
+      ? filterPerTaskRequirementLines(uniq([...uniqueCriteria, ...mockDataSpecLines]), "mock_data")
+      : uniqueCriteria;
+
   const implementationContext =
     roleResolved.roleKind === "integration_wiring"
       ? {
@@ -428,9 +450,12 @@ function buildContextForCodeTask(input: {
       : {
           intent: sanitizePlanningPromptText(roleResolved.role),
           requirements: filterPerTaskRequirementLines(
-            uniq([...featureTemplate.implementationRequirements, ...uniqueCriteria]),
+            uniq([
+              ...featureTemplate.implementationRequirements,
+              ...(roleResolved.roleKind === "mock_data" ? mockCriteria : uniqueCriteria),
+            ]),
             roleResolved.roleKind,
-          ).slice(0, 7),
+          ).slice(0, roleResolved.roleKind === "mock_data" ? 12 : 7),
           constraints: uniq(input.codeTask.forbiddenPaths ?? []).slice(0, 8),
           expectedBehavior: uniq([
             ...featureTemplate.implementationGoal,
@@ -452,8 +477,11 @@ function buildContextForCodeTask(input: {
         }
       : {
           acceptanceCriteria: filterPerTaskVerificationLines(
-            uniq([...featureTemplate.verificationChecklist, ...uniqueCriteria]),
-          ).slice(0, 5),
+            uniq([
+              ...featureTemplate.verificationChecklist,
+              ...(roleResolved.roleKind === "mock_data" ? mockCriteria : uniqueCriteria),
+            ]),
+          ).slice(0, roleResolved.roleKind === "mock_data" ? 8 : 5),
           manualChecks: uniq(input.codeTask.verificationHints ?? []).slice(0, 6),
           regressionChecks: [],
         };
@@ -500,6 +528,7 @@ export function buildCodeTaskPromptContextMap(input: {
   const state = input.requirementsStateJson ?? {};
   const taskList = parseImplementationTaskListV1(state.implementationTaskListV1);
   const seed = parseImplementationSeedV1(state.implementationSeedV1);
+  const sampleDataSpecV1 = resolveSampleDataSpecForImplementation({ seed, requirementsStateJson: state });
   const planningSummary = extractPlanningSummary(state);
   const contexts: Record<string, CodeTaskPromptContextV1> = {};
 
@@ -513,6 +542,7 @@ export function buildCodeTaskPromptContextMap(input: {
       parentTask,
       seed,
       planningSummary,
+      sampleDataSpecV1,
       nowIso: now,
     });
   }

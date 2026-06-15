@@ -18,6 +18,7 @@ import {
 } from "@/lib/prototype/implementationUserFeedback";
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   buildImplementationSeedFromPlanning,
   buildImplementationSeedUsedForWorkPlanTimelineEntry,
@@ -67,6 +68,7 @@ function resolveSeedForWorkPlanDraft(input: {
     orchestration: input.orchestration,
     definitions: input.definitions,
     lifecycleStatus: "confirmed",
+    sampleDataSpecV1: parseRequirementsStateJson(input.requirementsStateJson).sampleDataSpecV1 ?? undefined,
   });
 }
 

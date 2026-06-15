@@ -1,4 +1,4 @@
-import type { SelectedPrototypeTemplateV1 } from "@/lib/requirements/implementationPrototypeTemplateContext";
+import { parseSampleDataSpecV1, type SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
 import { findOrchestrationSlotKeysBySuffix, findSlotRow } from "@/lib/requirements/singleChatSlotNextAction";
 import { normalizeSlotStatus } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -148,6 +148,7 @@ export type ImplementationSeedV1 = Readonly<{
   readonly assumptions: readonly string[];
   readonly gaps: readonly ImplementationSeedGap[];
   readonly templateContext?: SelectedPrototypeTemplateV1;
+  readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
 }>;
 
 export type BuildImplementationSeedInput = Readonly<{
@@ -156,6 +157,7 @@ export type BuildImplementationSeedInput = Readonly<{
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly lifecycleStatus?: ImplementationSeedLifecycleStatus;
   readonly nowIso?: string;
+  readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
 }>;
 
 export type SlotFillLevel = "empty" | "candidate" | "confirmed";
@@ -438,6 +440,7 @@ export function buildImplementationSeedFromPlanning(
     dataModelSeed,
     assumptions,
     gaps,
+    ...(input.sampleDataSpecV1 ? { sampleDataSpecV1: input.sampleDataSpecV1 } : {}),
   };
 }
 
@@ -949,6 +952,10 @@ export function parseImplementationSeedV1(raw: unknown): ImplementationSeedV1 | 
     ...(parseSelectedPrototypeTemplateV1(o.templateContext)
       ? { templateContext: parseSelectedPrototypeTemplateV1(o.templateContext) }
       : {}),
+    ...(() => {
+      const sampleDataSpecV1 = parseSampleDataSpecV1(o.sampleDataSpecV1);
+      return sampleDataSpecV1 ? { sampleDataSpecV1 } : {};
+    })(),
   };
 }
 

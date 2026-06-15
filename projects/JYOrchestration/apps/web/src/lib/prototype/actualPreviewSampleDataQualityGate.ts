@@ -3,6 +3,7 @@ import {
   SAMPLE_DATA_OWNED_FILE_PATHS,
 } from "@/lib/prototype/sampleDataCodeTaskPlanner";
 import { buildSampleDataArtifactContract } from "@/lib/prototype/implementationArtifactContract";
+import { evaluateSampleDataFileContentAgainstSpec, type SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
 import {
   evaluateCodeTaskArtifactContractQuality,
   type ArtifactContractQualityStatusV1,
@@ -50,6 +51,7 @@ function evaluateSampleDataFileQuality(input: {
   readonly repositoryFilePaths?: readonly string[] | null;
   readonly sampleDataFileContent?: string | null;
   readonly githubHeadCommitVerified?: boolean;
+  readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
 }): ActualPreviewSampleDataQualityResultV1 {
   const contract = buildSampleDataArtifactContract();
   const contractResult = evaluateCodeTaskArtifactContractQuality({
@@ -60,9 +62,20 @@ function evaluateSampleDataFileQuality(input: {
     stage: "codeTask",
   });
 
+  const specMissing: string[] = [];
+  if (contractResult.ok && input.sampleDataSpecV1 && input.sampleDataFileContent?.trim()) {
+    const specCheck = evaluateSampleDataFileContentAgainstSpec({
+      spec: input.sampleDataSpecV1,
+      sampleDataFileContent: input.sampleDataFileContent,
+    });
+    if (!specCheck.ok) specMissing.push(...specCheck.missing);
+  }
+
+  const ok = contractResult.ok && specMissing.length === 0;
+
   return {
-    ok: contractResult.ok,
-    missing: contractResult.missing,
+    ok,
+    missing: [...contractResult.missing, ...specMissing],
     warning: contractResult.warning,
     status: contractResult.status,
     issues: contractResult.issues,
@@ -76,6 +89,7 @@ export function evaluateActualPreviewSampleDataFileQuality(input: {
   readonly repositoryFilePaths?: readonly string[] | null;
   readonly sampleDataFileContent?: string | null;
   readonly githubHeadCommitVerified?: boolean;
+  readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
 }): ActualPreviewSampleDataQualityResultV1 {
   return evaluateSampleDataFileQuality(input);
 }
@@ -85,6 +99,7 @@ export function evaluateActualPreviewSampleDataQuality(input: {
   readonly sampleDataFileContent?: string | null;
   readonly workspaceSourceContents?: readonly string[] | null;
   readonly githubHeadCommitVerified?: boolean;
+  readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
 }): ActualPreviewSampleDataQualityResultV1 {
   const file = evaluateSampleDataFileQuality(input);
   const panels = evaluateWorkspacePanelPlaceholderQuality(input.workspaceSourceContents);

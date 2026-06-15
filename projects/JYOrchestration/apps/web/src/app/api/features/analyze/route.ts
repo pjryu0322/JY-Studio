@@ -166,6 +166,7 @@ export async function POST(request: NextRequest) {
           }
           const patch = await patchProjectRequirementsStateJson(projectId, {
             featurePlanningSlotsV1: gen.artifact,
+            sampleDataSpecV1: gen.sampleDataSpecV1,
             featurePlanningWorkspaceChatV1: { messages: [gen.aiMessage] },
           });
           if (!patch.ok) {
@@ -214,6 +215,7 @@ export async function POST(request: NextRequest) {
 
         const patch = await patchProjectRequirementsStateJson(projectId, {
           featurePlanningSlotsV1: gen.artifact,
+          sampleDataSpecV1: gen.sampleDataSpecV1,
           featurePlanningWorkspaceChatV1: { messages: nextMessages },
         });
         if (!patch.ok) {

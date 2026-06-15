@@ -247,6 +247,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   readonly projectArtifacts?: readonly ProjectArtifact[] | null;
   readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
   readonly existingTaskList?: ImplementationTaskListV1 | null;
+  readonly sampleDataSpecV1?: import("@/lib/featurePlanning/sampleDataSpecV1").SampleDataSpecV1 | null;
 }): QuickDesignConfirmImplementationPrepResult {
   const now = input.nowIso;
   const initialReadiness = evaluateImplementationSeedReadiness({
@@ -303,6 +304,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     definitions: input.definitions,
     lifecycleStatus,
     nowIso: now,
+    ...(input.sampleDataSpecV1 ? { sampleDataSpecV1: input.sampleDataSpecV1 } : {}),
   });
   const implementationSeedV1 = attachTemplateContextToSeed({
     seed: baseSeed,

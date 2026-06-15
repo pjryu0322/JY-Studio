@@ -24,6 +24,12 @@ import {
   openingMessageFromChecklist,
 } from "@/lib/featurePlanning/featurePlanningDynamicChecklist";
 import {
+  bundleFeaturePlanningSampleDataPersist,
+  ensureSampleDataChecklistArea,
+} from "@/lib/featurePlanning/featurePlanningSampleDataSync";
+import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
   extractOpeningMessageFromAnalyzeRoot,
   parsePlanningChecklistAnalyzeResponse,
 } from "@/lib/featurePlanning/featurePlanningPlanningChecklistParse";
@@ -37,6 +43,7 @@ export type FeaturePlanningAnalyzeChecklistOk = {
   readonly aiMessage: FeaturePlanningWorkspaceChatMessageV1;
   readonly model: string;
   readonly usedFallbackChecklist: boolean;
+  readonly sampleDataSpecV1: SampleDataSpecV1;
 };
 
 export type FeaturePlanningAnalyzeChecklistErr = { readonly ok: false; readonly code: string; readonly message: string };
@@ -154,6 +161,8 @@ export async function runFeaturePlanningAnalyzeChecklistLlm(input: {
     });
   }
 
+  checklist = ensureSampleDataChecklistArea(checklist);
+
   const now = new Date().toISOString();
   const topic: FeaturePlanningTopicV1 = "FEATURES";
   const slots = checklistToFeatureSlots(checklist);
@@ -183,7 +192,7 @@ export async function runFeaturePlanningAnalyzeChecklistLlm(input: {
     return { ok: false, code: "SCHEMA", message: "슬롯 아티팩트 조립에 실패했습니다." };
   }
   const stripped = stripLegacyRoleSlotsFromNewInitializeArtifact(parsedArtifact, input.ctx.confirmedActorRoleNames);
-  const artifact: FeaturePlanningSlotsArtifactV1 = {
+  const artifactBase: FeaturePlanningSlotsArtifactV1 = {
     ...stripped,
     planningTopic: topic,
     planningChecklistV1: checklist,
@@ -192,6 +201,15 @@ export async function runFeaturePlanningAnalyzeChecklistLlm(input: {
     userEdited: false,
     planningMemoryV1: memBase,
   };
+
+  const reqState = parseRequirementsStateJson(input.requirementsStateJson);
+  const bundled = bundleFeaturePlanningSampleDataPersist({
+    artifact: artifactBase,
+    existingSpecRaw: reqState.sampleDataSpecV1,
+    projectName: input.ctx.projectName,
+    projectDescription: input.ctx.projectDescription,
+  });
+  const artifact: FeaturePlanningSlotsArtifactV1 = bundled.featurePlanningSlotsV1;
 
   const openingExtra = parsedRoot ? extractOpeningMessageFromAnalyzeRoot(parsedRoot) : null;
   const chatBody = openingExtra ?? openingMessageFromChecklist(checklist);
@@ -204,5 +222,12 @@ export async function runFeaturePlanningAnalyzeChecklistLlm(input: {
     plannerSurface: "initial_entry",
   };
 
-  return { ok: true, artifact, aiMessage, model: input.model, usedFallbackChecklist: usedFallback };
+  return {
+    ok: true,
+    artifact,
+    aiMessage,
+    model: input.model,
+    usedFallbackChecklist: usedFallback,
+    sampleDataSpecV1: bundled.sampleDataSpecV1,
+  };
 }

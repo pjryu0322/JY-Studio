@@ -13,6 +13,7 @@ import {
 import { IMPLEMENTATION_STAGE_NAVIGATE_LABEL } from "@/lib/requirements/implementationUxLabels";
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
 import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatOrchestrationSlotDefinition,
@@ -29,6 +30,7 @@ export function buildPlanningImplementationSeedCheckResult(input: {
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
   readonly nowIso?: string;
+  readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
 }): Readonly<{
   readonly message: RequirementsMessage;
   readonly seed: ImplementationSeedV1;
@@ -48,6 +50,7 @@ export function buildPlanningImplementationSeedCheckResult(input: {
     definitions: input.definitions,
     lifecycleStatus: readiness.ready ? "partial" : "candidate",
     nowIso: now,
+    ...(input.sampleDataSpecV1 ? { sampleDataSpecV1: input.sampleDataSpecV1 } : {}),
   });
   const content = formatImplementationSeedReadinessMessage(readiness);
   const timeline = appendPromptTimeline(
@@ -89,6 +92,7 @@ export function buildPlanningImplementationSeedSupplementResult(input: {
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
   readonly nowIso?: string;
+  readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
 }): Readonly<{
   readonly message: RequirementsMessage;
   readonly orchestrationPatch: {
@@ -116,6 +120,7 @@ export function buildPlanningImplementationSeedSupplementResult(input: {
     definitions: input.definitions,
     lifecycleStatus: "candidate",
     nowIso: now,
+    ...(input.sampleDataSpecV1 ? { sampleDataSpecV1: input.sampleDataSpecV1 } : {}),
   });
   const labels = seed.gaps.filter((g) => g.severity === "blocking").map((g) => g.label);
   const content = [
@@ -170,6 +175,7 @@ export function buildPlanningImplementationSeedGenerateCandidateResult(input: {
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
   readonly nowIso?: string;
+  readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
 }): Readonly<{
   readonly message: RequirementsMessage;
   readonly orchestrationPatch: {
@@ -198,6 +204,7 @@ export function buildPlanningImplementationSeedGenerateCandidateResult(input: {
     definitions: input.definitions,
     lifecycleStatus: "candidate",
     nowIso: now,
+    ...(input.sampleDataSpecV1 ? { sampleDataSpecV1: input.sampleDataSpecV1 } : {}),
   });
 
   const summary = summarizeImplementationSeedStatus({

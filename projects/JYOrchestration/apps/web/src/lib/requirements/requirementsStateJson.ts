@@ -1,5 +1,6 @@
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import { parseFeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
+import { parseSampleDataSpecV1, type SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
 import type { FeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
 import { parseFeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
 import {
@@ -686,6 +687,8 @@ export type RequirementsStateJson = {
   prototypeWorkspaceTimelineCardsV1?: readonly PrototypeWorkspaceTimelineCardV1[] | null;
   /** 기능 정리: LLM 동적 planning artifact(JSON 단일 blob, 내부 slot 모델) */
   featurePlanningSlotsV1?: FeaturePlanningSlotsArtifactV1 | null;
+  /** Preview 검토용 샘플데이터 기준(기획 산출물) */
+  sampleDataSpecV1?: SampleDataSpecV1 | null;
   /** 세부 기능 정의(FEATURE_DETAIL) structured slots — orchestration SoT */
   featureDetailSlotsV1?: FeatureDetailSlotsV1 | null;
   /** 기능 정리 워크스페이스 대화(요구사항 채팅과 분리) */
@@ -1199,6 +1202,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     featurePlanningSlotsV1 = parsed ? softMigrateLegacyRoleSlotsArtifact(parsed) : null;
   }
 
+  const sampleDataSpecRaw = "sampleDataSpecV1" in o ? (o.sampleDataSpecV1 as unknown) : undefined;
+  let sampleDataSpecV1: SampleDataSpecV1 | null | undefined;
+  if (sampleDataSpecRaw === undefined) sampleDataSpecV1 = undefined;
+  else if (sampleDataSpecRaw === null) sampleDataSpecV1 = null;
+  else sampleDataSpecV1 = parseSampleDataSpecV1(sampleDataSpecRaw);
+
   const featureDetailRaw = "featureDetailSlotsV1" in o ? (o.featureDetailSlotsV1 as unknown) : undefined;
   let featureDetailSlotsV1: FeatureDetailSlotsV1 | null | undefined;
   if (featureDetailRaw === undefined) featureDetailSlotsV1 = undefined;
@@ -1384,6 +1393,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
       : {}),
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
+    ...(sampleDataSpecV1 !== undefined ? { sampleDataSpecV1 } : {}),
     ...(featureDetailSlotsV1 !== undefined ? { featureDetailSlotsV1 } : {}),
     ...(featurePlanningWorkspaceChatV1 !== undefined ? { featurePlanningWorkspaceChatV1 } : {}),
     ...(fastPlanGenerationV1 !== undefined ? { fastPlanGenerationV1 } : {}),

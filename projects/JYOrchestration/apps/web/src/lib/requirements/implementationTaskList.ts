@@ -1,4 +1,5 @@
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import { buildSampleDataAcceptanceCriteriaFromSpec } from "@/lib/prototype/sampleDataCodeTaskPlanner";
 import {
   DEV_FRAME_TASK_ID,
   shouldCreateDevFrameTask,
@@ -147,11 +148,9 @@ export function buildImplementationTaskListFromSeed(input: {
     ? [DEV_FRAME_TASK_ID, sampleDataTaskId]
     : [sampleDataTaskId];
 
-  const sampleAcceptanceCriteria = [
-    "주요 화면이 샘플 데이터로 렌더링된다.",
-    "회의 파일, 참여자, 스크립트, 요약, 처리 상태 중 필요한 샘플 상태가 준비된다.",
-    "화면/기능 흐름을 샘플 데이터 기준으로 확인할 수 있다.",
-  ] as const;
+  const sampleAcceptanceCriteria = buildSampleDataAcceptanceCriteriaFromSpec(
+    input.seed.sampleDataSpecV1 ?? null,
+  );
 
   tasks.push({
     taskId: sampleDataTaskId,

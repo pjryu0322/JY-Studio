@@ -147,6 +147,7 @@ export function useImplementationStatusNoticeController(
       orchestration: input.parsedRequirementsState.singleChatOrchestrationV1,
       definitions: input.planningSlotDefinitions,
       promptTimeline: input.parsedRequirementsState.promptTimeline,
+      sampleDataSpecV1: input.parsedRequirementsState.sampleDataSpecV1 ?? null,
     });
     input.applyImplementationOrchestrationResult({
       orchestrationPatch: result.orchestrationPatch,

@@ -125,6 +125,7 @@ export function buildFeaturePlanningAnalyzeChecklistSystemPrompt(): string {
 - examples: 선택지 라벨을 짧게 나열해도 됨(question에 이미 넣었으면 중복 최소화).
 - 각 영역: areaKey, title, purpose(한 문장), requiredScore(0~100, 기본 80), slots
 - 영역당 슬롯 **4~8개 권장**(최소 2, 최대 10). 영역 개수 1~16.
+- **Preview 샘플데이터**: areas에 areaKey \`sample_data_preview\`(또는 동등 주제) 영역을 포함한다. 슬롯 질문은 Preview에서 확인할 핵심 데이터·최소 수량·필수 상태값·정상/처리중/실패/빈 시나리오·Preview 확인 기준을 다룬다.
 - 질문은 **기능·화면·정책** 수준이며, 항상 선택지+추천이 있어야 함(사용자가 기획자 역할을 떠안게 하지 말 것).
 
 선택 키 openingMessage: 있으면 한국어 2~5문단. 없으면 생략(클라이언트가 첫 질문 조합).

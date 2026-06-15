@@ -7,14 +7,20 @@ import {
   canvasOverlayPanelStyle,
   canvasSectionTitleStyle,
 } from "@/components/service-flow/canvasOverlayStyles";
+import { FeaturePlanningSampleDataSpecSection } from "@/components/feature-planning/FeaturePlanningSampleDataSpecSection";
+import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
 
 export function FeatureDefinitionCanvasOverlay({
   open,
   artifact,
+  sampleDataSpecV1,
+  onSaveSampleDataSpec,
   onClose,
 }: {
   readonly open: boolean;
   readonly artifact: FeaturePlanningSlotsArtifactV1 | null;
+  readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
+  readonly onSaveSampleDataSpec?: (next: SampleDataSpecV1) => void;
   readonly onClose: () => void;
 }) {
   useEffect(() => {
@@ -62,6 +68,10 @@ export function FeatureDefinitionCanvasOverlay({
             </p>
           </section>
         ))}
+        <FeaturePlanningSampleDataSpecSection
+          spec={sampleDataSpecV1}
+          onSave={onSaveSampleDataSpec}
+        />
       </div>
     </div>
   );

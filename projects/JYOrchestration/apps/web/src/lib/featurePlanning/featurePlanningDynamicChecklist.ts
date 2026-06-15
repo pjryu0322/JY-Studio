@@ -21,6 +21,7 @@ export {
 } from "@/lib/featurePlanning/featurePlanningPlanningChecklistParse";
 import type { FeaturePlanningSlotItemV1, FeaturePlanningSlotV1, FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import { normalizeFeaturePlanningSlotType } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
+import { buildSampleDataPlanningChecklistArea } from "@/lib/featurePlanning/featurePlanningSampleDataSync";
 
 const PRIORITY_ORDER: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 
@@ -101,6 +102,7 @@ export function buildFallbackPlanningChecklist(input: {
           },
         ],
       },
+      buildSampleDataPlanningChecklistArea(),
     ],
   };
 }

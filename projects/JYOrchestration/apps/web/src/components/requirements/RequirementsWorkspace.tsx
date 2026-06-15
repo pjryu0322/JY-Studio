@@ -309,6 +309,8 @@ import { buildOrchestrationRecoveryTimelineEntry } from "@/lib/requirements/requ
 import { ServiceFlowStateCanvasOverlay } from "@/components/service-flow/ServiceFlowStateCanvasOverlay";
 import { BaselineFlowCanvasOverlay } from "@/components/service-flow/BaselineFlowCanvasOverlay";
 import { FeatureDefinitionCanvasOverlay } from "@/components/feature-planning/FeatureDefinitionCanvasOverlay";
+import { applySampleDataSpecToPrototypeReadiness } from "@/lib/featurePlanning/featurePlanningSampleDataSync";
+import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
 import { FeatureDetailCanvasOverlay } from "@/components/feature-planning/FeatureDetailCanvasOverlay";
 import { FeatureDetailEditDrawer } from "@/components/feature-planning/FeatureDetailEditDrawer";
 import { mergeFeatureDetailReadinessPercent, projectFeatureDetailMetrics } from "@/lib/requirements/featureDetailSlots";
@@ -1105,6 +1107,26 @@ export function RequirementsWorkspace({
       });
     },
     [persistStateJsonOnly]
+  );
+
+  const handleSaveSampleDataSpec = useCallback(
+    async (next: SampleDataSpecV1) => {
+      const fp = stateJsonRef.current.featurePlanningSlotsV1 ?? persistedPromptState.featurePlanningSlotsV1;
+      const patch: Record<string, unknown> = { sampleDataSpecV1: next };
+      if (fp?.prototypeReadiness) {
+        patch.featurePlanningSlotsV1 = {
+          ...fp,
+          prototypeReadiness: applySampleDataSpecToPrototypeReadiness({
+            prototypeReadiness: fp.prototypeReadiness,
+            sampleDataSpec: next,
+          }),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      await persistStateJsonOnly(patch);
+      showSuccessToast("샘플데이터 기준을 저장했습니다.");
+    },
+    [persistStateJsonOnly, persistedPromptState.featurePlanningSlotsV1, showSuccessToast],
   );
 
   const recoveryTimelineKeyRef = useRef<string | null>(null);
@@ -2902,6 +2924,7 @@ export function RequirementsWorkspace({
       const defs = slotDefsForProgress;
       const timeline = stateJsonRef.current.promptTimeline;
       const nowIso = new Date().toISOString();
+      const sampleDataSpecV1 = stateJsonRef.current.sampleDataSpecV1 ?? null;
 
       if (trimmed === PLANNING_IMPLEMENTATION_SEED_CHECK_CHIP) {
         const result = buildPlanningImplementationSeedCheckResult({
@@ -2910,6 +2933,7 @@ export function RequirementsWorkspace({
           definitions: defs,
           promptTimeline: timeline,
           nowIso,
+          sampleDataSpecV1,
         });
         await appendServiceFlowWorkshopMessages([result.message]);
         await persistStateJsonOnly({
@@ -2930,6 +2954,7 @@ export function RequirementsWorkspace({
           definitions: defs,
           promptTimeline: timeline,
           nowIso,
+          sampleDataSpecV1,
         });
         await appendServiceFlowWorkshopMessages([result.message]);
         await persistStateJsonOnly({
@@ -2947,6 +2972,7 @@ export function RequirementsWorkspace({
           definitions: defs,
           promptTimeline: timeline,
           nowIso,
+          sampleDataSpecV1,
         });
         await appendServiceFlowWorkshopMessages([result.message]);
         await persistStateJsonOnly({
@@ -3704,6 +3730,8 @@ export function RequirementsWorkspace({
       <FeatureDefinitionCanvasOverlay
         open={activeCanvasView === "feature-definition"}
         artifact={stateJsonRef.current.featurePlanningSlotsV1 ?? persistedPromptState.featurePlanningSlotsV1 ?? null}
+        sampleDataSpecV1={stateJsonRef.current.sampleDataSpecV1 ?? persistedPromptState.sampleDataSpecV1 ?? null}
+        onSaveSampleDataSpec={(next) => void handleSaveSampleDataSpec(next)}
         onClose={() => setActiveCanvasView(null)}
       />
       <FeatureDetailCanvasOverlay

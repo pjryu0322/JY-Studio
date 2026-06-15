@@ -9,6 +9,13 @@ import {
 } from "@/lib/prototype/codeTaskFileBoundaryPlanner";
 import { resolveCodeTaskSpecificRole } from "@/lib/prototype/codeTaskPromptRoleResolver";
 import type { ImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
+import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import {
+  MEETING_WORKSPACE_SAMPLE_DATA_SPEC_V1,
+  parseSampleDataSpecV1,
+  resolveSampleDataSpecV1ForPlanning,
+  type SampleDataSpecV1,
+} from "@/lib/featurePlanning/sampleDataSpecV1";
 
 /** Process-task id in implementation task list (sample data foundation). */
 export const SAMPLE_DATA_PARENT_PROCESS_TASK_ID = "DEV-MOCK-001" as const;
@@ -206,6 +213,76 @@ export function ensureSampleDataCodeTaskIncludedInSelection(input: {
   const merged = new Set(selected);
   for (const id of sampleIds) merged.add(id);
   return [...merged];
+}
+
+export function resolveSampleDataSpecForImplementation(input: Readonly<{
+  readonly seed?: ImplementationSeedV1 | null;
+  readonly requirementsStateJson?: Record<string, unknown> | null;
+}>): SampleDataSpecV1 | null {
+  if (input.seed?.sampleDataSpecV1) return input.seed.sampleDataSpecV1;
+  return parseSampleDataSpecV1(input.requirementsStateJson?.sampleDataSpecV1) ?? null;
+}
+
+export function buildSampleDataAcceptanceCriteriaFromSpec(
+  spec: SampleDataSpecV1 | null | undefined,
+): readonly string[] {
+  const resolved =
+    spec ??
+    resolveSampleDataSpecV1ForPlanning({
+      existingSpec: null,
+      projectName: "회의록",
+      projectDescription: "회의",
+    });
+  const lines: string[] = [
+    "sampleDataSpecV1 기준을 반드시 충족한다.",
+    "entities.minimumCount 미달 금지, requiredFields 누락 금지.",
+    "requiredStatuses·requiredScenarios·emptyStates를 모두 반영한다.",
+  ];
+  for (const entity of resolved.entities) {
+    lines.push(`${entity.name}(${entity.key}) 샘플 ${entity.minimumCount}개 이상 생성`);
+  }
+  if (resolved.requiredStatuses.length) {
+    lines.push(
+      `상태값 ${resolved.requiredStatuses.map((s) => s.key).join("/")} 모두 샘플에 포함`,
+    );
+  }
+  for (const scenario of resolved.requiredScenarios.slice(0, 6)) {
+    lines.push(`시나리오: ${scenario.name} — ${scenario.description}`);
+  }
+  for (const criterion of resolved.previewValidationCriteria.slice(0, 4)) {
+    lines.push(`Preview 확인: ${criterion}`);
+  }
+  return lines.slice(0, 12);
+}
+
+export function formatSampleDataSpecPromptLines(spec: SampleDataSpecV1): readonly string[] {
+  const lines: string[] = [
+    "샘플데이터 생성 기준 (sampleDataSpecV1):",
+    `- 목적: ${spec.purpose}`,
+  ];
+  for (const entity of spec.entities) {
+    lines.push(
+      `- ${entity.name}(${entity.key}): 최소 ${entity.minimumCount}건, 필드 ${entity.requiredFields.join(", ")}`,
+    );
+  }
+  if (spec.requiredStatuses.length) {
+    lines.push(`- 필수 상태: ${spec.requiredStatuses.map((s) => s.key).join(", ")}`);
+  }
+  if (spec.requiredScenarios.length) {
+    lines.push(`- 필수 시나리오: ${spec.requiredScenarios.map((s) => s.key).join(", ")}`);
+  }
+  if (spec.emptyStates.length) {
+    lines.push(`- 빈 상태: ${spec.emptyStates.map((s) => s.key).join(", ")}`);
+  }
+  for (const c of spec.previewValidationCriteria.slice(0, 6)) {
+    lines.push(`- Preview 검증: ${c}`);
+  }
+  return lines;
+}
+
+/** 회의 워크스페이스 기본 spec (CodeTask fallback). */
+export function defaultMeetingWorkspaceSampleDataSpec(): SampleDataSpecV1 {
+  return MEETING_WORKSPACE_SAMPLE_DATA_SPEC_V1;
 }
 
 function sampleDataFileBoundaryCoversRequiredPatterns(

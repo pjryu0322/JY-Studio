@@ -14,6 +14,7 @@ import {
 import type { FeaturePlanningWorkspaceChatMessageV1, FeaturePlanningWorkspaceChatV1 } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
 import { buildSingleSlotDigestForChat, newFeaturePlanningMessageId } from "@/lib/featurePlanning/featurePlanningWorkspaceChat";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { bundleFeaturePlanningSampleDataPersist } from "@/lib/featurePlanning/featurePlanningSampleDataSync";
 import { patchSpecWorkspaceRequest } from "@/lib/project/specWorkspaceClient";
 import {
   FEATURE_PLANNING_SERVICE_FLOW_INCOMPLETE_MESSAGE,
@@ -142,7 +143,16 @@ export function useFeaturePlanningWorkspace(projectId: string) {
   const persistArtifact = useCallback(
     async (next: FeaturePlanningSlotsArtifactV1, pid: string, proj: Project) => {
       const base = parseRequirementsStateJson(proj.requirementsStateJson);
-      const merged = mergeRequirementsStateJson(base, { featurePlanningSlotsV1: next });
+      const bundled = bundleFeaturePlanningSampleDataPersist({
+        artifact: next,
+        existingSpecRaw: base.sampleDataSpecV1,
+        projectName: proj.name,
+        projectDescription: proj.description,
+      });
+      const merged = mergeRequirementsStateJson(base, {
+        featurePlanningSlotsV1: bundled.featurePlanningSlotsV1,
+        sampleDataSpecV1: bundled.sampleDataSpecV1,
+      });
       const { res, json } = await patchSpecWorkspaceRequest(pid, { requirementsStateJson: merged });
       const raw = json as { success?: boolean; message?: string };
       if (!res.ok || raw?.success === false) {

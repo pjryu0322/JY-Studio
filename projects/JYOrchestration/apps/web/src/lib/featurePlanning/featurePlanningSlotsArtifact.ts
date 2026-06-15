@@ -20,6 +20,7 @@ export const FEATURE_PLANNING_SLOT_TYPES = [
   "TASK",
   "MENU",
   "SCREEN",
+  "SAMPLE_DATA",
   "CUSTOM",
 ] as const;
 export type FeaturePlanningSlotType = (typeof FEATURE_PLANNING_SLOT_TYPES)[number];
@@ -55,10 +56,13 @@ export type FeaturePlanningSlotV1 = {
   legacy?: boolean;
 };
 
+import type { SampleDataReadinessV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+
 export type FeaturePlanningPrototypeReadinessV1 = {
   status: "READY" | "NEEDS_REVIEW" | "INSUFFICIENT";
   missingItems: string[];
   notes: string;
+  sampleDataReadiness?: SampleDataReadinessV1;
 };
 
 export type FeaturePlanningSlotsArtifactV1 = {
@@ -183,6 +187,26 @@ function parsePrototypeReadiness(raw: unknown): FeaturePlanningPrototypeReadines
     ? o.missingItems.map((x) => String(x ?? "").trim()).filter(Boolean).slice(0, 48)
     : [];
   d.notes = typeof o.notes === "string" ? o.notes.trim().slice(0, 4000) : "";
+  const sd = (o as { sampleDataReadiness?: unknown }).sampleDataReadiness;
+  if (sd && typeof sd === "object") {
+    const s = sd as Record<string, unknown>;
+    const st = String(s.status ?? "").trim();
+    if (st === "READY" || st === "NEEDS_REVIEW" || st === "INSUFFICIENT") {
+      d.sampleDataReadiness = {
+        status: st,
+        missingEntities: Array.isArray(s.missingEntities)
+          ? s.missingEntities.map((x) => String(x ?? "").trim()).filter(Boolean)
+          : [],
+        missingScenarios: Array.isArray(s.missingScenarios)
+          ? s.missingScenarios.map((x) => String(x ?? "").trim()).filter(Boolean)
+          : [],
+        missingStatuses: Array.isArray(s.missingStatuses)
+          ? s.missingStatuses.map((x) => String(x ?? "").trim()).filter(Boolean)
+          : [],
+        notes: typeof s.notes === "string" ? s.notes.trim().slice(0, 2000) : "",
+      };
+    }
+  }
   return d;
 }
 
