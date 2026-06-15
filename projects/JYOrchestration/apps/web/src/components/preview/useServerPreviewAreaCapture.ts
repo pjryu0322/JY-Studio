@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
-import { cropPreviewCaptureImageDataUrl } from "@/lib/preview/previewCaptureClientCrop";
+import type { PreviewAreaCaptureSendInput } from "@/components/preview/PreviewAreaCaptureSendOverlay";
 import {
   DEFAULT_PREVIEW_CAPTURE_VIEWPORT,
   type PreviewCaptureRegionRect,
@@ -12,7 +12,6 @@ import {
   JYO_PREVIEW_CAPTURE_ATTACH_TO_COMPOSER,
   postPreviewCaptureAttachToComposerOpener,
 } from "@/lib/prototype/previewCaptureSingleChatBridge";
-import type { PreviewCaptureRegion } from "@/lib/prototype/capturePreviewRegionToClipboard";
 
 export type ServerPreviewAreaCapturePhase = "idle" | "loading" | "overlay" | "sending";
 
@@ -45,12 +44,9 @@ export function useServerPreviewAreaCapture(input: {
     Readonly<{ readonly ok: true } | { readonly ok: false; readonly errorMessage: string; readonly securityBlocked: boolean }>
   >;
   readonly close: () => void;
-  readonly stageRegionToComposer: (input: {
-    readonly region: PreviewCaptureRegion;
-    readonly scaleX: number;
-    readonly scaleY: number;
-    readonly memo: string;
-  }) => Promise<Readonly<{ readonly ok: true } | { readonly ok: false; readonly errorMessage: string }>>;
+  readonly stageRegionToComposer: (
+    input: PreviewAreaCaptureSendInput,
+  ) => Promise<Readonly<{ readonly ok: true } | { readonly ok: false; readonly errorMessage: string }>>;
 }> {
   const [state, setState] = useState<ServerPreviewAreaCaptureState>(initialState);
 
@@ -138,12 +134,9 @@ export function useServerPreviewAreaCapture(input: {
   }, [input.projectId, input.previewUrl]);
 
   const stageRegionToComposer = useCallback(
-    async (sendInput: {
-      readonly region: PreviewCaptureRegion;
-      readonly scaleX: number;
-      readonly scaleY: number;
-      readonly memo: string;
-    }): Promise<Readonly<{ readonly ok: true } | { readonly ok: false; readonly errorMessage: string }>> => {
+    async (
+      sendInput: PreviewAreaCaptureSendInput,
+    ): Promise<Readonly<{ readonly ok: true } | { readonly ok: false; readonly errorMessage: string }>> => {
       const captureId = state.captureId;
       const previewUrl = state.previewUrl;
       const imageDataUrl = state.imageDataUrl;
@@ -160,12 +153,7 @@ export function useServerPreviewAreaCapture(input: {
         height: Math.max(1, Math.round(sendInput.region.height * sendInput.scaleY)),
       };
 
-      const croppedDataUrl = await cropPreviewCaptureImageDataUrl({
-        imageDataUrl,
-        region: sendInput.region,
-        scaleX: sendInput.scaleX,
-        scaleY: sendInput.scaleY,
-      });
+      const annotatedDataUrl = sendInput.annotatedImageDataUrl;
 
       const res = await credentialsIncludeFetch("/api/preview-capture/region", {
         method: "POST",
@@ -174,11 +162,14 @@ export function useServerPreviewAreaCapture(input: {
           projectId: input.projectId.trim(),
           captureId,
           previewUrl,
-          imageDataUrl: croppedDataUrl,
+          imageDataUrl: annotatedDataUrl,
           rect,
           viewport: state.viewport,
-          memo: sendInput.memo,
           stage: "implementation",
+          meta: {
+            hasAnnotations: sendInput.hasAnnotations,
+            annotationToolSummary: sendInput.annotationToolSummary,
+          },
         }),
       });
       const json = (await res.json().catch(() => ({}))) as {
@@ -202,10 +193,13 @@ export function useServerPreviewAreaCapture(input: {
         previewUrl,
         captureId,
         regionCaptureId: json.regionCaptureId,
-        imageDataUrl: json.imageUrl ?? croppedDataUrl,
-        ...(sendInput.memo.trim() ? { memo: sendInput.memo.trim() } : {}),
+        imageDataUrl: json.imageUrl ?? annotatedDataUrl,
         rect,
         viewport: state.viewport,
+        meta: {
+          hasAnnotations: sendInput.hasAnnotations,
+          annotationToolSummary: sendInput.annotationToolSummary,
+        },
       });
 
       setState(initialState);

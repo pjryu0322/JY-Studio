@@ -30,6 +30,11 @@ export type PreviewCaptureRegionRect = Readonly<{
   readonly height: number;
 }>;
 
+export type PreviewCaptureRegionAnnotationMeta = Readonly<{
+  readonly hasAnnotations?: boolean;
+  readonly annotationToolSummary?: readonly string[];
+}>;
+
 export type PreviewCaptureRegionRequest = Readonly<{
   readonly projectId: string;
   readonly captureId: string;
@@ -38,6 +43,7 @@ export type PreviewCaptureRegionRequest = Readonly<{
   readonly rect: PreviewCaptureRegionRect;
   readonly viewport: PreviewCaptureViewport;
   readonly memo?: string;
+  readonly meta?: PreviewCaptureRegionAnnotationMeta;
   readonly stage: "implementation";
 }>;
 
@@ -59,6 +65,7 @@ export type ImplementationPreviewRegionCaptureV1 = Readonly<{
   readonly imageUrl?: string;
   readonly imageDataUrl?: string;
   readonly memo?: string;
+  readonly meta?: PreviewCaptureRegionAnnotationMeta;
   readonly viewport: PreviewCaptureViewport;
   readonly rect: PreviewCaptureRegionRect;
   readonly createdAt: string;
@@ -131,6 +138,7 @@ export function parsePreviewCaptureRegionRequest(raw: unknown): PreviewCaptureRe
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
   const dsf = Number(v.deviceScaleFactor);
   const memo = typeof o.memo === "string" ? o.memo.trim().slice(0, 4000) : undefined;
+  const meta = parsePreviewCaptureRegionAnnotationMeta(o.meta);
   return {
     projectId,
     captureId,
@@ -143,7 +151,23 @@ export function parsePreviewCaptureRegionRequest(raw: unknown): PreviewCaptureRe
       ...(Number.isFinite(dsf) && dsf > 0 ? { deviceScaleFactor: dsf } : {}),
     },
     ...(memo ? { memo } : {}),
+    ...(meta ? { meta } : {}),
     stage: "implementation",
+  };
+}
+
+function parsePreviewCaptureRegionAnnotationMeta(raw: unknown): PreviewCaptureRegionAnnotationMeta | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const hasAnnotations = o.hasAnnotations === true ? true : o.hasAnnotations === false ? false : undefined;
+  const summaryRaw = o.annotationToolSummary;
+  const annotationToolSummary = Array.isArray(summaryRaw)
+    ? summaryRaw.map((x) => String(x).trim()).filter(Boolean).slice(0, 8)
+    : undefined;
+  if (hasAnnotations === undefined && !annotationToolSummary?.length) return undefined;
+  return {
+    ...(hasAnnotations !== undefined ? { hasAnnotations } : {}),
+    ...(annotationToolSummary?.length ? { annotationToolSummary } : {}),
   };
 }
 

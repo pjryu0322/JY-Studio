@@ -1,4 +1,4 @@
-import type { PreviewCaptureRegionRect, PreviewCaptureViewport } from "@/lib/preview/previewCaptureTypes";
+import type { PreviewCaptureRegionAnnotationMeta, PreviewCaptureRegionRect, PreviewCaptureViewport } from "@/lib/preview/previewCaptureTypes";
 
 export type ImplementationComposerPreviewRegionAttachment = Readonly<{
   readonly id: string;
@@ -11,6 +11,7 @@ export type ImplementationComposerPreviewRegionAttachment = Readonly<{
   readonly imageUrl?: string;
   readonly imageDataUrl?: string;
   readonly memo?: string;
+  readonly meta?: PreviewCaptureRegionAnnotationMeta;
   readonly rect: PreviewCaptureRegionRect;
   readonly viewport: PreviewCaptureViewport;
   readonly createdAt: string;

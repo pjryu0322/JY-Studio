@@ -66,6 +66,7 @@ export async function persistPreviewRegionCapture(input: {
     captureId: input.body.captureId,
     imageDataUrl: input.body.imageDataUrl,
     ...(input.body.memo ? { memo: input.body.memo } : {}),
+    ...(input.body.meta ? { meta: input.body.meta } : {}),
     viewport: input.body.viewport,
     rect: input.body.rect,
     createdAt: new Date().toISOString(),

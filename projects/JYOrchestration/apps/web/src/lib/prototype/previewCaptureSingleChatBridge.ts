@@ -1,5 +1,9 @@
 import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirements/requirementsMessage";
-import type { PreviewCaptureRegionRect, PreviewCaptureViewport } from "@/lib/preview/previewCaptureTypes";
+import type {
+  PreviewCaptureRegionAnnotationMeta,
+  PreviewCaptureRegionRect,
+  PreviewCaptureViewport,
+} from "@/lib/preview/previewCaptureTypes";
 import type { ImplementationComposerPreviewRegionAttachment } from "@/lib/preview/implementationComposerAttachmentTypes";
 
 export const PREVIEW_REGION_CAPTURE_INTERNAL_TYPE = "preview_region_capture" as const;
@@ -22,6 +26,7 @@ export type PreviewCaptureComposerAttachMessage = Readonly<{
   readonly imageUrl?: string;
   readonly imageDataUrl?: string;
   readonly memo?: string;
+  readonly meta?: PreviewCaptureRegionAnnotationMeta;
   readonly rect: PreviewCaptureRegionRect;
   readonly viewport: PreviewCaptureViewport;
 }>;
@@ -132,6 +137,7 @@ export function composerAttachmentFromAttachMessage(
     ...(message.imageUrl ? { imageUrl: message.imageUrl } : {}),
     ...(message.imageDataUrl ? { imageDataUrl: message.imageDataUrl } : {}),
     ...(message.memo ? { memo: message.memo } : {}),
+    ...(message.meta ? { meta: message.meta } : {}),
     rect: message.rect,
     viewport: message.viewport,
     createdAt: new Date().toISOString(),
