@@ -44,6 +44,7 @@ import { useImplementationWorkingQueue } from "@/components/preview/useImplement
 import { resolveImplementationToolbarPreviewEntry } from "@/lib/prototype/implementationToolbarPreviewEntry";
 import { openImplementationPreviewViewerWindow } from "@/lib/prototype/implementationPreviewViewerWindow";
 import { useImplementationSessionResetController } from "@/components/preview/useImplementationSessionResetController";
+import type { ImplementationResetScope } from "@/lib/requirements/implementationResetScope";
 import { useImplementationRuntimeRecoveryController } from "@/components/preview/useImplementationRuntimeRecoveryController";
 import { useImplementationDeliverableViewerController } from "@/components/preview/useImplementationDeliverableViewerController";
 import { useImplementationRuntimeSyncController } from "@/components/preview/useImplementationRuntimeSyncController";
@@ -219,6 +220,12 @@ export type UsePrototypeImplementationStagePanelResult = Readonly<{
   implementationWorkingQueue: ReturnType<typeof useImplementationWorkingQueue>;
   implementationToolbarPreviewEntry: ReturnType<typeof resolveImplementationToolbarPreviewEntry>;
   implementationSingleChatWorkspace: ReturnType<typeof useImplementationSingleChatWorkspaceController>;
+  implementationResetScopeDialogOpen: boolean;
+  onCloseImplementationResetDialog: () => void;
+  onConfirmImplementationResetScope: (scope: ImplementationResetScope) => void | Promise<void>;
+  resetImplementationSessionBusy: boolean;
+  implementationResetConversationOnlyDisabled: boolean;
+  implementationResetCodeTaskDisabled: boolean;
 }>;
 
 export function usePrototypeImplementationStagePanel(
@@ -819,7 +826,10 @@ export function usePrototypeImplementationStagePanel(
     persistChatToDb,
   });
 
-  const onResetImplementationLocalCaches = useCallback(() => {
+  const onResetImplementationLocalCaches = useCallback((scope: ImplementationResetScope) => {
+    if (scope === "conversation_only") {
+      return;
+    }
     setPendingImplementationPatch({} as PendingImplementationPatch);
     pendingImplementationPatchRef.current = {};
     setImplementationRuntimeDbBundle(null);
@@ -831,9 +841,14 @@ export function usePrototypeImplementationStagePanel(
   }, []);
 
   const {
-    onResetImplementationSession,
+    implementationResetScopeDialogOpen,
+    onOpenImplementationResetDialog,
+    onCloseImplementationResetDialog,
+    onConfirmImplementationResetScope,
     resetImplementationSessionBusy,
     resetImplementationSessionDisabled,
+    implementationResetConversationOnlyDisabled,
+    implementationResetCodeTaskDisabled,
   } = useImplementationSessionResetController({
     projectId,
     projectName,
@@ -1112,7 +1127,7 @@ export function usePrototypeImplementationStagePanel(
     showPreviewToolbarIcon: implementationToolbarPreviewEntry.showToolbarIcon,
     onOpenPreview: openImplementationPreviewFromToolbar,
     onOpenImplementationExecutionLog,
-    onResetImplementationSession,
+    onOpenImplementationResetDialog,
     resetImplementationSessionDisabled,
     onExecuteSelectedCodeTasks: onExecuteSelectedCodeTasksFromToolbar,
     executeSelectedCodeTasksDisabled: executeSelectedCodeTasksToolbarDisabled,
@@ -1177,5 +1192,11 @@ export function usePrototypeImplementationStagePanel(
     implementationWorkingQueue,
     implementationToolbarPreviewEntry,
     implementationSingleChatWorkspace,
+    implementationResetScopeDialogOpen,
+    onCloseImplementationResetDialog,
+    onConfirmImplementationResetScope,
+    resetImplementationSessionBusy,
+    implementationResetConversationOnlyDisabled,
+    implementationResetCodeTaskDisabled,
   };
 }

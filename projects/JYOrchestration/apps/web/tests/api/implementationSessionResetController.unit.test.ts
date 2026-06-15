@@ -1,26 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { IMPLEMENTATION_RESET_CONVERSATION_CONFIRM_MESSAGE } from "@/lib/requirements/resetDerivedImplementationState";
-
-const previewDir = join(__dirname, "../../src/components/preview");
+import { IMPLEMENTATION_RESET_SCOPE_TRACE_ACTIONS } from "@/lib/requirements/implementationResetScope";
 
 describe("implementation session reset controller", () => {
-  it("documents implementation-only reset confirm copy", () => {
-    expect(IMPLEMENTATION_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("기획 산출물");
-    expect(IMPLEMENTATION_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("구현 단계");
+  it("documents scope-based reset flow", () => {
+    const src = readFileSync(
+      join(__dirname, "../../src/components/preview/useImplementationSessionResetController.ts"),
+      "utf8",
+    );
+    expect(src).toContain("ImplementationResetScope");
+    expect(src).toContain("onOpenImplementationResetDialog");
+    expect(src).not.toContain("IMPLEMENTATION_RESET_CONVERSATION_CONFIRM_MESSAGE");
   });
 
-  it("cascades runtime DB and persists buildImplementationConversationResetStateJson", () => {
-    const src = readFileSync(join(previewDir, "useImplementationSessionResetController.ts"), "utf8");
-    expect(src).toContain("postPlanningResetCascade");
-    expect(src).toContain("buildImplementationResetWithPlanningReentry");
-    expect(src).toContain('reason: "manual"');
-  });
-
-  it("wires reset into implementation toolbar", () => {
-    const toolbar = readFileSync(join(previewDir, "useImplementationToolbarController.tsx"), "utf8");
-    expect(toolbar).toContain("onResetImplementationSession");
+  it("wires scope dialog open into implementation toolbar", () => {
+    const toolbar = readFileSync(
+      join(__dirname, "../../src/components/preview/useImplementationToolbarController.tsx"),
+      "utf8",
+    );
+    expect(toolbar).toContain("onOpenImplementationResetDialog");
     expect(toolbar).toContain("구현 단계 초기화");
+  });
+
+  it("audit actions are llm/fallback free scope names only", () => {
+    const actions = Object.values(IMPLEMENTATION_RESET_SCOPE_TRACE_ACTIONS);
+    expect(actions.some((a) => a.includes("keyword"))).toBe(false);
+    expect(actions.some((a) => a.includes("heuristic"))).toBe(false);
   });
 });

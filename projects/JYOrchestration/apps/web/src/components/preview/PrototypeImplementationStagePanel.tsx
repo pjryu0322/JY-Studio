@@ -5,6 +5,7 @@ import { ImplementationExecutionBoardPanel } from "@/components/preview/Implemen
 import { ImplementationExecutionBoardBootstrapPanel } from "@/components/preview/ImplementationExecutionBoardBootstrapPanel";
 import { ImplementationExecutionBoardModal } from "@/components/preview/ImplementationExecutionBoardModal";
 import { ImplementationWorkingQueueModal } from "@/components/preview/ImplementationWorkingQueueModal";
+import { ImplementationResetScopeDialog } from "@/components/preview/ImplementationResetScopeDialog";
 import { ImplementationStageGlobalToolbar } from "@/components/preview/ImplementationStageGlobalToolbar";
 import { PrototypeExecutionChatPanel } from "@/components/preview/PrototypeExecutionChatPanel";
 import { FixedToast } from "@/components/ui/FixedToast";
@@ -76,6 +77,12 @@ export function PrototypeImplementationStagePanel({
     implementationWorkingQueue,
     implementationToolbarPreviewEntry,
     implementationSingleChatWorkspace,
+    implementationResetScopeDialogOpen,
+    onCloseImplementationResetDialog,
+    onConfirmImplementationResetScope,
+    resetImplementationSessionBusy,
+    implementationResetConversationOnlyDisabled,
+    implementationResetCodeTaskDisabled,
   } = stage;
 
   const { projectId, projectName, protoBusy } = host;
@@ -264,6 +271,15 @@ export function PrototypeImplementationStagePanel({
         onDeferItem={implementationWorkingQueue.deferItem}
         onRejectItem={implementationWorkingQueue.rejectItem}
         resolvePreviewImageUrl={resolveWorkingQueuePreviewImageUrl}
+      />
+
+      <ImplementationResetScopeDialog
+        open={implementationResetScopeDialogOpen}
+        busy={resetImplementationSessionBusy}
+        conversationOnlyDisabled={implementationResetConversationOnlyDisabled}
+        codeTaskResetDisabled={implementationResetCodeTaskDisabled}
+        onClose={onCloseImplementationResetDialog}
+        onConfirm={(scope) => void onConfirmImplementationResetScope(scope)}
       />
 
       <PrototypeImplementationStageOverlays host={host} stage={stage} />

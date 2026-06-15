@@ -39,7 +39,7 @@ export type ImplementationToolbarControllerInput = Readonly<{
   readonly onOpenPreview?: () => void;
   readonly showPreviewToolbarIcon?: boolean;
   readonly onOpenImplementationExecutionLog: () => void;
-  readonly onResetImplementationSession?: () => void | Promise<void>;
+  readonly onOpenImplementationResetDialog?: () => void;
   readonly resetImplementationSessionDisabled?: boolean;
   readonly onExecuteSelectedCodeTasks?: () => void | Promise<void>;
   readonly executeSelectedCodeTasksDisabled?: boolean;
@@ -206,12 +206,12 @@ export function useImplementationToolbarController(
             <path d="M8 21h12a2 2 0 0 0 2-2v-2H10v2a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v3h4" />
           </svg>
         </WorkspaceHubChromeIconButton>
-        {input.onResetImplementationSession ? (
+        {input.onOpenImplementationResetDialog ? (
           <WorkspaceHubChromeIconButton
             title="구현 단계 초기화"
-            ariaLabel="구현 단계 초기화 — 구현 대화·실행 기록·Runtime 데이터 삭제"
+            ariaLabel="구현 단계 초기화 — 범위 선택"
             disabled={input.resetImplementationSessionDisabled ?? false}
-            onClick={() => void input.onResetImplementationSession?.()}
+            onClick={() => input.onOpenImplementationResetDialog?.()}
           >
             <svg
               width="18"
@@ -240,7 +240,7 @@ export function useImplementationToolbarController(
       input.showPreviewToolbarIcon,
       input.onOpenPreview,
       input.onOpenImplementationExecutionLog,
-      input.onResetImplementationSession,
+      input.onOpenImplementationResetDialog,
       input.resetImplementationSessionDisabled,
       input.onExecuteSelectedCodeTasks,
       input.executeSelectedCodeTasksDisabled,

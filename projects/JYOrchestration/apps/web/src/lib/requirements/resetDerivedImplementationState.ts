@@ -12,6 +12,12 @@ import type {
 import type { PrototypeExecutionSingleChatV1 } from "@/lib/prototype/prototypeExecutionSingleChatTypes";
 import { isImplementationTimelineResetAction } from "@/lib/requirements/promptTimelineActionCatalog";
 import {
+  appendImplementationResetScopeTrace,
+  IMPLEMENTATION_RESET_SCOPE_TRACE_ACTIONS,
+  implementationResetAuditFieldsForScope,
+  type ImplementationResetScope,
+} from "@/lib/requirements/implementationResetScope";
+import {
   isExecutionLogTimelineEntry,
   isPersistentExecutionLogTimelineEntry,
 } from "@/lib/prototype/promptTimelineExecutionLogTabs";
@@ -246,6 +252,15 @@ export function filterImplementationPromptTimeline(
   });
 }
 
+/** 구현 단계 대화·대화성 타임라인만 비울 때 사용 가능한지 */
+export function hasImplementationConversationToReset(
+  state: Pick<RequirementsStateJson, "prototypeExecutionSingleChatV1" | "promptTimeline">,
+): boolean {
+  const messages = state.prototypeExecutionSingleChatV1?.messages ?? [];
+  if (messages.some((m) => isImplementationSingleChatMessage(m))) return true;
+  return (state.promptTimeline ?? []).some((e) => isImplementationPromptTimelineEntry(e));
+}
+
 export function isImplementationProjectArtifact(artifact: ProjectArtifact): boolean {
   const sourceStage = String(artifact.sourceStage ?? "").trim().toLowerCase();
   if (sourceStage === "implementation" || sourceStage.includes("prototype_execution")) return true;
@@ -339,3 +354,53 @@ export function clearDerivedImplementationStateFromRequirementsJson(
 /** @alias clearDerivedImplementationStateFromRequirementsJson — 프롬프트/문서 명칭 호환 */
 export const resetDerivedImplementationStateFromRequirementsJson =
   clearDerivedImplementationStateFromRequirementsJson;
+
+/**
+ * 구현단계 대화·대화성 prompt timeline만 제거. CodeTask·실행·Preview·Working Queue는 유지.
+ */
+export function clearImplementationConversationOnlyFromRequirementsJson(
+  state: RequirementsStateJson,
+  input: Readonly<{ readonly nowIso: string; readonly projectId: string }>,
+): RequirementsStateJson {
+  const filteredTimeline = filterImplementationPromptTimeline(state.promptTimeline ?? [], {
+    clearExecutionLog: false,
+  });
+  const audit = implementationResetAuditFieldsForScope(
+    "conversation_only",
+    input.projectId,
+    input.nowIso,
+  );
+  const promptTimeline = appendImplementationResetScopeTrace(filteredTimeline, {
+    action: IMPLEMENTATION_RESET_SCOPE_TRACE_ACTIONS.conversationCompleted,
+    audit,
+  });
+
+  return {
+    ...state,
+    prototypeExecutionSingleChatV1: resetImplementationSingleChatMessages(state.prototypeExecutionSingleChatV1),
+    promptTimeline,
+    lastSavedAt: input.nowIso,
+  };
+}
+
+/** 전체 구현 초기화 후 audit trace */
+export function appendCodeTaskResetCompletedTrace(
+  state: RequirementsStateJson,
+  input: Readonly<{ readonly nowIso: string; readonly projectId: string }>,
+): RequirementsStateJson {
+  const audit = implementationResetAuditFieldsForScope(
+    "codetask_with_conversation",
+    input.projectId,
+    input.nowIso,
+  );
+  return {
+    ...state,
+    promptTimeline: appendImplementationResetScopeTrace(state.promptTimeline ?? [], {
+      action: IMPLEMENTATION_RESET_SCOPE_TRACE_ACTIONS.codetaskCompleted,
+      audit,
+    }),
+    lastSavedAt: input.nowIso,
+  };
+}
+
+export type { ImplementationResetScope };
