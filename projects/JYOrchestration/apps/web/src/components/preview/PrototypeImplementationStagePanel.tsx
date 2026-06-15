@@ -5,6 +5,7 @@ import { ImplementationExecutionBoardPanel } from "@/components/preview/Implemen
 import { ImplementationExecutionBoardBootstrapPanel } from "@/components/preview/ImplementationExecutionBoardBootstrapPanel";
 import { ImplementationExecutionBoardModal } from "@/components/preview/ImplementationExecutionBoardModal";
 import { ImplementationWorkingQueueModal } from "@/components/preview/ImplementationWorkingQueueModal";
+import { ImplementationChatLockedNotice } from "@/components/preview/ImplementationChatLockedNotice";
 import { ImplementationResetScopeDialog } from "@/components/preview/ImplementationResetScopeDialog";
 import { ImplementationStageGlobalToolbar } from "@/components/preview/ImplementationStageGlobalToolbar";
 import { PrototypeExecutionChatPanel } from "@/components/preview/PrototypeExecutionChatPanel";
@@ -77,6 +78,7 @@ export function PrototypeImplementationStagePanel({
     implementationWorkingQueue,
     implementationToolbarPreviewEntry,
     implementationSingleChatWorkspace,
+    implementationChatAvailability,
     implementationResetScopeDialogOpen,
     onCloseImplementationResetDialog,
     onConfirmImplementationResetScope,
@@ -202,6 +204,13 @@ export function PrototypeImplementationStagePanel({
         }}
       >
         <ImplementationStageGlobalToolbar>{executionConversationIconToolbar}</ImplementationStageGlobalToolbar>
+        {!implementationChatAvailability.canChat ? (
+          <ImplementationChatLockedNotice
+            title={implementationChatAvailability.title}
+            message={implementationChatAvailability.message}
+            status={implementationChatAvailability.status}
+          />
+        ) : null}
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <PrototypeExecutionChatPanel
             conversationStatus={executionSingleChat.conversationStatus}

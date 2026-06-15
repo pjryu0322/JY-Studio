@@ -27,6 +27,11 @@ import type {
 } from "@/lib/prototype/implementationIntentRouterTypes";
 import { buildImplementationRouterAssistantReply } from "@/lib/prototype/implementationRouterMessages";
 import type { ImplementationStatusQueryIntent } from "@/lib/prototype/implementationStatusQueryIntent";
+import type { ImplementationChatAvailability } from "@/lib/prototype/implementationChatAvailability";
+import {
+  buildImplementationChatAvailabilityBlockedOperationalResult,
+  shouldBlockImplementationSupplementChat,
+} from "@/lib/prototype/implementationChatAvailabilityGuard";
 import { detectImplementationStatusQueryIntent } from "@/lib/prototype/implementationStatusQueryIntent";
 import {
   buildImplementationUserFeedbackAppliedMessage,
@@ -76,6 +81,7 @@ export type ImplementationOperationalSendContext = Readonly<{
   promptTimeline?: readonly RequirementsPromptTimelineEntry[];
   /** When set, stage-action-compatible router results use orchestrateImplementationStageAction. */
   stageActionOrchestrator?: ImplementationStageActionOrchestratorInput;
+  readonly chatAvailability?: ImplementationChatAvailability;
 }>;
 
 function buildRoutedTimeline(classification: ImplementationIntentClassification | null | undefined) {
@@ -307,6 +313,14 @@ export async function resolveImplementationOperationalSend(
   if (input.isRunningState) {
     handlers.appendNotice("?ㅽ뻾 以묒뿉???묒뾽怨꾪쉷???섏젙?????놁뒿?덈떎. 以묐떒 ???ш퀎?랁븷 ???덉뒿?덈떎.");
     return "handled";
+  }
+
+  if (input.text.trim() && shouldBlockImplementationSupplementChat(input.chatAvailability)) {
+    const nowIso = new Date().toISOString();
+    return buildImplementationChatAvailabilityBlockedOperationalResult({
+      availability: input.chatAvailability,
+      nowIso,
+    });
   }
 
   const route = await routeImplementationUserInput({

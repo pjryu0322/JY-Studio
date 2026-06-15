@@ -38,6 +38,19 @@ import { postPrototypeRegeneratePlan } from "@/lib/prototype/prototypeRunApiClie
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { buildDynamicServicePlanningSlotDefinitions } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { ImplementationDerivedViewModelControllerValue } from "@/components/preview/useImplementationDerivedViewModelController";
+import type { ImplementationControlPlaneSnapshotV1 } from "@/lib/prototype/implementationControlPlaneSnapshot";
+import type { ImplementationExecutionBoardV1 } from "@/lib/prototype/implementationExecutionBoard";
+import { resolveIntegrationPipelineUnlocked } from "@/lib/prototype/implementationCodeTaskIntegrationContext";
+import {
+  deriveImplementationChatAvailabilitySignals,
+  implementationChatComposerPlaceholder,
+  resolveImplementationChatAvailability,
+  type ImplementationChatAvailability,
+} from "@/lib/prototype/implementationChatAvailability";
+import {
+  buildImplementationChatAvailabilityBlockedOperationalResult,
+  shouldBlockImplementationSupplementChat,
+} from "@/lib/prototype/implementationChatAvailabilityGuard";
 
 export type UseImplementationSingleChatWorkspaceControllerInput = Readonly<{
   readonly projectId: string;
@@ -88,6 +101,9 @@ export type UseImplementationSingleChatWorkspaceControllerInput = Readonly<{
     (actionId: ImplementationStageActionId) => ImplementationStageActionRunResult | Promise<ImplementationStageActionRunResult>
   >;
   readonly startImplementationQuickRun: (options?: { readonly selectedCodeTaskIds?: readonly string[] }) => Promise<ImplementationStageActionRunResult>;
+  readonly implementationBoard: ImplementationExecutionBoardV1 | null;
+  readonly implementationControlPlaneSnapshot: ImplementationControlPlaneSnapshotV1 | null;
+  readonly activeTaskCursorJob: import("@/lib/prototype/taskCursorExecutionJobTypes").TaskCursorJobSummary | null;
 }>;
 
 export function useImplementationSingleChatWorkspaceController(
@@ -128,7 +144,48 @@ export function useImplementationSingleChatWorkspaceController(
     input.implementationStageBoardInput,
   ]);
 
+  const implementationChatAvailability = useMemo((): ImplementationChatAvailability => {
+    const boardInput = input.implementationStageBoardInput;
+    const integrationPipelineUnlocked = resolveIntegrationPipelineUnlocked({
+      codeTaskPlan: boardInput?.implementationCodeTaskPlanV1 ?? null,
+      taskList: boardInput?.taskList ?? null,
+      codeTaskRuns: boardInput?.codeTaskExecutionRunsV1 ?? null,
+      taskCursorExecution: boardInput?.taskCursorExecutionV1 ?? null,
+      taskCursorExecutionHistory: boardInput?.taskCursorExecutionHistoryV1 ?? null,
+      autoQualityGate: boardInput?.implementationAutoQualityGateV1 ?? null,
+    });
+    const previewReady =
+      input.implementationControlPlaneSnapshot?.preview.ready === true ||
+      boardInput?.previewReady === true;
+    const previewUrl = input.implementationControlPlaneSnapshot?.preview.actualPreviewUrl ?? null;
+    const taskCursorStatus = boardInput?.taskCursorExecutionV1?.status?.trim() ?? "";
+    return resolveImplementationChatAvailability(
+      deriveImplementationChatAvailabilitySignals({
+        board: input.implementationBoard,
+        previewReady,
+        previewUrl,
+        integrationPipelineUnlocked,
+        activeTaskCursorRunning: Boolean(input.activeTaskCursorJob),
+        taskCursorGithubVerifying: taskCursorStatus === "github_verifying",
+        implementationStarted: Boolean(
+          input.parsedRequirementsState.implementationSeedV1 ||
+            input.parsedRequirementsState.implementationTaskListV1 ||
+            input.implementationBootstrapInput,
+        ),
+      }),
+    );
+  }, [
+    input.implementationBoard,
+    input.implementationControlPlaneSnapshot,
+    input.implementationStageBoardInput,
+    input.activeTaskCursorJob,
+    input.parsedRequirementsState.implementationSeedV1,
+    input.parsedRequirementsState.implementationTaskListV1,
+    input.implementationBootstrapInput,
+  ]);
+
   const isMessageInputBlocked = useMemo(() => {
+    if (!implementationChatAvailability.canChat) return true;
     if (input.plannerCreatePending) return true;
     if (input.protoBusy) return true;
     if (input.isPlannerRunning) return true;
@@ -151,9 +208,18 @@ export function useImplementationSingleChatWorkspaceController(
       "DEPLOYING",
     ];
     return blocked.includes(s);
-  }, [input.plannerCreatePending, input.protoBusy, input.isPlannerRunning, input.latestRun]);
+  }, [
+    implementationChatAvailability.canChat,
+    input.plannerCreatePending,
+    input.protoBusy,
+    input.isPlannerRunning,
+    input.latestRun,
+  ]);
 
   const chatPlaceholder = useMemo(() => {
+    if (!implementationChatAvailability.canChat) {
+      return implementationChatComposerPlaceholder(implementationChatAvailability);
+    }
     if (isMessageInputBlocked) {
       return `${prototypeAiTitle}가 작업 중입니다. 잠시 기다려 주세요.`;
     }
@@ -180,6 +246,7 @@ export function useImplementationSingleChatWorkspaceController(
     return "메시지를 입력하세요.";
   }, [
     prototypeAiTitle,
+    implementationChatAvailability,
     input.templatePlanningReady,
     isMessageInputBlocked,
     input.isRunningState,
@@ -256,6 +323,14 @@ export function useImplementationSingleChatWorkspaceController(
 
   const onOperationalSend = useCallback(
     async (text: string, userMsg: RequirementsMessage): Promise<PrototypeExecutionOperationalSendResult> => {
+      if (shouldBlockImplementationSupplementChat(implementationChatAvailability)) {
+        const nowIso = new Date().toISOString();
+        return buildImplementationChatAvailabilityBlockedOperationalResult({
+          availability: implementationChatAvailability,
+          nowIso,
+        });
+      }
+
       const run = input.latestRun;
       if (run?.id && run.status === "WORK_UNITS_READY" && run.workUnitsExecutionConfirmed !== true) {
         input.setProtoBusy(true);
@@ -293,6 +368,7 @@ export function useImplementationSingleChatWorkspaceController(
           input.parsedRequirementsState.implementationPreviewRuntimeV1?.previewUrl ??
             input.parsedRequirementsState.implementationPreviewScopeV1?.previewUrl,
         ),
+        chatAvailability: implementationChatAvailability,
       });
       if (workingQueueResult) {
         if (
@@ -341,6 +417,7 @@ export function useImplementationSingleChatWorkspaceController(
                 execute: (actionId) => input.runImplementationStageActionRef.current(actionId),
               }
             : undefined,
+          chatAvailability: implementationChatAvailability,
         },
         {
           appendNotice: input.appendUserNotice,
@@ -365,13 +442,14 @@ export function useImplementationSingleChatWorkspaceController(
         },
       );
     },
-    [input, implementationVisibleActionLabels, buildStatusQueryOperationalResult],
+    [input, implementationVisibleActionLabels, buildStatusQueryOperationalResult, implementationChatAvailability],
   );
 
   const composerPendingAttachments = useImplementationComposerPendingAttachments({
     projectId: input.projectId,
     chatInputRef,
     onAttachmentStaged: input.appendUserNotice,
+    captureAttachEnabled: implementationChatAvailability.canChat,
   });
 
   const readPendingComposerAttachments = useCallback(
@@ -455,5 +533,6 @@ export function useImplementationSingleChatWorkspaceController(
     prioritizedChatMessages,
     onInterviewSuggestionPick,
     composerPendingAttachments,
+    implementationChatAvailability,
   };
 }

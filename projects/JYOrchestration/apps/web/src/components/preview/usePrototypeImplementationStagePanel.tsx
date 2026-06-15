@@ -220,6 +220,7 @@ export type UsePrototypeImplementationStagePanelResult = Readonly<{
   implementationWorkingQueue: ReturnType<typeof useImplementationWorkingQueue>;
   implementationToolbarPreviewEntry: ReturnType<typeof resolveImplementationToolbarPreviewEntry>;
   implementationSingleChatWorkspace: ReturnType<typeof useImplementationSingleChatWorkspaceController>;
+  implementationChatAvailability: import("@/lib/prototype/implementationChatAvailability").ImplementationChatAvailability;
   implementationResetScopeDialogOpen: boolean;
   onCloseImplementationResetDialog: () => void;
   onConfirmImplementationResetScope: (scope: ImplementationResetScope) => void | Promise<void>;
@@ -1069,7 +1070,12 @@ export function usePrototypeImplementationStagePanel(
     persistImplementationStageActionRun,
     runImplementationStageActionRef,
     startImplementationQuickRun,
+    implementationBoard,
+    implementationControlPlaneSnapshot,
+    activeTaskCursorJob,
   });
+
+  const implementationChatAvailability = implementationSingleChatWorkspace.implementationChatAvailability;
 
   const onExecuteSelectedCodeTasksFromToolbar = useCallback(() => {
     const cp = implementationControlPlaneSnapshot;
@@ -1192,6 +1198,7 @@ export function usePrototypeImplementationStagePanel(
     implementationWorkingQueue,
     implementationToolbarPreviewEntry,
     implementationSingleChatWorkspace,
+    implementationChatAvailability,
     implementationResetScopeDialogOpen,
     onCloseImplementationResetDialog,
     onConfirmImplementationResetScope,

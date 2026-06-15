@@ -47,6 +47,11 @@ import { newRequirementsMessage, type RequirementsMessage } from "@/lib/requirem
 import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import type { ImplementationWorkingQueueItem } from "@/lib/prototype/implementationWorkingQueueTypes";
+import type { ImplementationChatAvailability } from "@/lib/prototype/implementationChatAvailability";
+import {
+  buildImplementationChatAvailabilityBlockedOperationalResult,
+  shouldBlockImplementationSupplementChat,
+} from "@/lib/prototype/implementationChatAvailabilityGuard";
 
 export function shouldHandleImplementationWorkingQueueChat(input: {
   readonly isDraftGenerationComplete: boolean;
@@ -155,7 +160,27 @@ type OperationalSendInput = Readonly<{
   readonly hasRunnableCodeTasks?: boolean;
   readonly implementationMode?: string;
   readonly previewReady?: boolean;
+  readonly chatAvailability?: ImplementationChatAvailability;
 }>;
+
+function blockWhenImplementationChatUnavailable(
+  input: OperationalSendInput,
+): PrototypeExecutionOperationalSendResult | null {
+  if (!shouldBlockImplementationSupplementChat(input.chatAvailability)) return null;
+  const nowIso = new Date().toISOString();
+  return buildImplementationChatAvailabilityBlockedOperationalResult({
+    availability: input.chatAvailability,
+    nowIso,
+    timelineEntries: [
+      buildWorkingQueueTimelineTrace({
+        action: "implementation_chat_availability_guard_blocked",
+        source: "implementation_chat_availability_guard",
+        detail: `status=${input.chatAvailability.status}`,
+        nowIso,
+      }),
+    ],
+  });
+}
 
 function implementationIntentRequiresAuthoritativeLlm(intent: string): boolean {
   return intent === "register_work_queue_supplement";
@@ -196,6 +221,9 @@ function buildIntentClarificationOperationalResult(input: Readonly<{
 async function resolvePreviewCaptureFeedbackFirst(
   input: OperationalSendInput,
 ): Promise<PrototypeExecutionOperationalSendResult | null> {
+  const blocked = blockWhenImplementationChatUnavailable(input);
+  if (blocked) return blocked;
+
   const pid = input.projectId.trim();
   if (!pid) return null;
 
@@ -288,6 +316,9 @@ async function resolvePreviewCaptureFeedbackFirst(
 async function resolveNormalImplementationWorkingQueueSend(
   input: OperationalSendInput,
 ): Promise<PrototypeExecutionOperationalSendResult | null> {
+  const blocked = blockWhenImplementationChatUnavailable(input);
+  if (blocked) return blocked;
+
   const pid = input.projectId.trim();
   if (!pid) return null;
 

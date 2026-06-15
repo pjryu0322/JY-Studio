@@ -11,6 +11,7 @@ export function useImplementationComposerPendingAttachments(input: {
   readonly projectId: string;
   readonly chatInputRef: React.RefObject<HTMLTextAreaElement | null>;
   readonly onAttachmentStaged?: (message: string) => void;
+  readonly captureAttachEnabled?: boolean;
 }): Readonly<{
   readonly pendingAttachments: readonly ImplementationComposerAttachment[];
   readonly addPendingAttachment: (attachment: ImplementationComposerAttachment) => void;
@@ -29,6 +30,10 @@ export function useImplementationComposerPendingAttachments(input: {
       if (!isPreviewCaptureComposerAttachMessage(event.data)) return;
       if (event.data.projectId.trim() !== pid) return;
       if (event.data.stage !== "implementation") return;
+      if (input.captureAttachEnabled === false) {
+        input.onAttachmentStaged?.("Preview가 준비되면 캡처할 수 있습니다.");
+        return;
+      }
 
       const attachment = composerAttachmentFromAttachMessage(event.data);
       setPendingAttachments((prev) => {
@@ -43,7 +48,7 @@ export function useImplementationComposerPendingAttachments(input: {
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [input.projectId, input.chatInputRef, input.onAttachmentStaged]);
+  }, [input.projectId, input.chatInputRef, input.onAttachmentStaged, input.captureAttachEnabled]);
 
   const addPendingAttachment = useCallback((attachment: ImplementationComposerAttachment) => {
     setPendingAttachments((prev) => {
