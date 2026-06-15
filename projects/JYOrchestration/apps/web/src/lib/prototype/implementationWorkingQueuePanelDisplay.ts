@@ -42,6 +42,7 @@ export function filterWorkingQueueItems(
       item.rawUserMessage,
       item.desiredBehavior ?? "",
       item.targetUi ?? "",
+      item.roleReviewSummary ?? "",
       workingQueueStatusLabelKo(item.status),
     ]
       .join(" ")

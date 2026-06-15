@@ -1,11 +1,13 @@
 import { workingQueueStatusLabelKo } from "@/lib/prototype/implementationWorkingQueueClassifier";
 import { workingQueueItemRequestText } from "@/lib/prototype/implementationWorkingQueuePanelDisplay";
+import { workingQueueItemWorkflowLabel } from "@/lib/prototype/implementationWorkingQueueRoleLabels";
 import type { ImplementationWorkingQueueItem } from "@/lib/prototype/implementationWorkingQueueTypes";
 
 export type WorkingQueueItemDownloadPayload = Readonly<{
   readonly itemId: string;
   readonly status: string;
   readonly requestText: string;
+  readonly workflowLabel: string;
   readonly title: string;
   readonly updatedAt: string;
   readonly previewImageUrl?: string;
@@ -19,6 +21,7 @@ export function buildWorkingQueueItemDownloadPayload(
     itemId: item.id,
     status: workingQueueStatusLabelKo(item.status),
     requestText: workingQueueItemRequestText(item),
+    workflowLabel: workingQueueItemWorkflowLabel(item),
     title: item.title,
     updatedAt: item.updatedAt,
     ...(previewImageUrl?.trim() ? { previewImageUrl: previewImageUrl.trim() } : {}),
@@ -71,6 +74,7 @@ export async function downloadWorkingQueueItemAssets(
 
   const summaryLines = [
     `상태: ${payload.status}`,
+    `담당: ${payload.workflowLabel}`,
     `항목 ID: ${payload.itemId}`,
     `갱신: ${payload.updatedAt}`,
     "",

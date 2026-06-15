@@ -3,7 +3,7 @@ import {
   buildWorkingQueuePreviewFeedbackRegisteredAiMessage,
   buildWorkingQueueRegisteredAiMessage,
 } from "@/lib/prototype/implementationWorkingQueueMessages";
-import { IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT } from "@/lib/prototype/implementationWorkingQueuePreviewFeedback";
+import { attachRoleOrchestrationToWorkingQueueItem } from "@/lib/prototype/implementationWorkingQueueRoleWorkflow";
 import {
   buildMemoryAfterQueueChange,
   enqueueWorkingQueueFromItem,
@@ -31,6 +31,7 @@ import {
   queueItemFromPreviewAnalysis,
 } from "@/lib/prototype/implementationWorkingQueueLlmMapping";
 import { buildMinimalPreviewFeedbackFallback } from "@/lib/prototype/implementationPreviewFeedbackTypes";
+import { IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT } from "@/lib/prototype/implementationWorkingQueuePreviewFeedback";
 import {
   extractPreviewCaptureContextFromUserMessage,
   hasPreviewRegionCaptureAttachment,
@@ -127,7 +128,7 @@ function enqueueFromLlmDraft(input: Readonly<{
   sourceMessageId?: string;
   nowIso: string;
 }>): ImplementationWorkingQueueItem {
-  return {
+  return attachRoleOrchestrationToWorkingQueueItem({
     id: newQueueItemId(),
     projectId: input.queue.projectId.trim(),
     sourceMessageId: input.sourceMessageId,
@@ -139,7 +140,7 @@ function enqueueFromLlmDraft(input: Readonly<{
     riskLevel: input.draft.riskLevel,
     createdAt: input.nowIso,
     updatedAt: input.nowIso,
-  };
+  });
 }
 
 type OperationalSendInput = Readonly<{

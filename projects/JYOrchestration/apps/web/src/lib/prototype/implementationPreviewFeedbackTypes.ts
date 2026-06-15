@@ -1,4 +1,11 @@
 import type { ImplementationWorkingQueueAffectedArea, ImplementationWorkingQueueRiskLevel } from "@/lib/prototype/implementationWorkingQueueTypes";
+import type { ImplementationWorkingQueueRole, ImplementationWorkingQueueWorkflowStep } from "@/lib/prototype/implementationWorkingQueueTypes";
+import {
+  buildDeveloperFallbackRoleFields,
+  parseImplementationWorkingQueueRole,
+  parseImplementationWorkingQueueWorkflowSteps,
+  resolveRoleOrchestrationFields,
+} from "@/lib/prototype/implementationWorkingQueueRoleWorkflow";
 
 export type ImplementationPreviewFeedbackAnalysis = Readonly<{
   readonly intent: "implementation_preview_feedback";
@@ -12,6 +19,10 @@ export type ImplementationPreviewFeedbackAnalysis = Readonly<{
   readonly clarificationQuestion?: string;
   readonly confidence: "low" | "medium" | "high";
   readonly reason: string;
+  readonly primaryRole?: ImplementationWorkingQueueRole;
+  readonly executionOwnerRole?: ImplementationWorkingQueueRole;
+  readonly reviewWorkflow?: readonly ImplementationWorkingQueueWorkflowStep[];
+  readonly roleReviewSummary?: string;
 }>;
 
 export type ImplementationPreviewFeedbackAnalyzerInput = Readonly<{
@@ -64,6 +75,23 @@ export function parseImplementationPreviewFeedbackAnalysisJson(raw: unknown): Im
   const needsClarification = o.needsClarification === true;
   const clarificationQuestion =
     typeof o.clarificationQuestion === "string" ? o.clarificationQuestion.trim().slice(0, 500) : undefined;
+
+  const primaryRole = parseImplementationWorkingQueueRole(o.primaryRole) ?? undefined;
+  const executionOwnerRole = parseImplementationWorkingQueueRole(o.executionOwnerRole) ?? undefined;
+  const reviewWorkflow = parseImplementationWorkingQueueWorkflowSteps(o.reviewWorkflow) ?? undefined;
+  const roleReviewSummary =
+    typeof o.roleReviewSummary === "string" ? o.roleReviewSummary.trim().slice(0, 400) : undefined;
+
+  const roleFields = resolveRoleOrchestrationFields({
+    affectedArea: areaRaw,
+    description,
+    desiredBehavior,
+    primaryRole,
+    executionOwnerRole,
+    reviewWorkflow,
+    roleReviewSummary,
+  });
+
   return {
     intent: "implementation_preview_feedback",
     title: title.slice(0, 120),
@@ -76,11 +104,16 @@ export function parseImplementationPreviewFeedbackAnalysisJson(raw: unknown): Im
     ...(clarificationQuestion ? { clarificationQuestion } : {}),
     confidence,
     reason: reason.slice(0, 500),
+    primaryRole: roleFields.primaryRole,
+    executionOwnerRole: roleFields.executionOwnerRole,
+    reviewWorkflow: roleFields.reviewWorkflow,
+    ...(roleFields.roleReviewSummary ? { roleReviewSummary: roleFields.roleReviewSummary } : {}),
   };
 }
 
 export function buildMinimalPreviewFeedbackFallback(userText: string): ImplementationPreviewFeedbackAnalysis {
   const raw = userText.trim();
+  const roleFields = buildDeveloperFallbackRoleFields();
   return {
     intent: "implementation_preview_feedback",
     title: "Preview 캡처 기반 보완요청",
@@ -91,5 +124,9 @@ export function buildMinimalPreviewFeedbackFallback(userText: string): Implement
     needsClarification: false,
     confidence: "low",
     reason: "LLM unavailable — preserved user text only, no keyword inference",
+    primaryRole: roleFields.primaryRole,
+    executionOwnerRole: roleFields.executionOwnerRole,
+    reviewWorkflow: roleFields.reviewWorkflow,
+    roleReviewSummary: roleFields.roleReviewSummary,
   };
 }

@@ -2,7 +2,6 @@
 
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  affectedAreaLabelKo,
   riskLevelLabelKo,
   workingQueueStatusLabelKo,
 } from "@/lib/prototype/implementationWorkingQueueClassifier";
@@ -13,6 +12,7 @@ import {
   sortWorkingQueueItemsForDisplay,
   workingQueueItemRequestText,
 } from "@/lib/prototype/implementationWorkingQueuePanelDisplay";
+import { workingQueueItemWorkflowLabel } from "@/lib/prototype/implementationWorkingQueueRoleLabels";
 import type {
   ImplementationWorkingQueueItem,
   ImplementationWorkingQueueStatus,
@@ -150,13 +150,19 @@ function WorkingQueueItemCard(props: {
             }}
           />
         ) : null}
-        <p style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 13, color: "#334155", lineHeight: 1.5 }}>
-          {requestText}
+        <p
+          style={{ margin: 0, flex: 1, minWidth: 0, fontSize: 13, color: "#334155", lineHeight: 1.45 }}
+          data-testid="working-queue-item-request"
+        >
+          요청: {requestText}
         </p>
       </div>
-      <div style={metaLine}>
-        영향 영역: {affectedAreaLabelKo(props.item.affectedArea)} · 위험도:{" "}
-        {riskLevelLabelKo(props.item.riskLevel)} · 상태: {workingQueueStatusLabelKo(props.item.status)}
+      <div style={metaLine} data-testid="working-queue-item-meta">
+        <div>담당: {workingQueueItemWorkflowLabel(props.item)}</div>
+        <div style={{ marginTop: 4 }}>
+          위험도: {riskLevelLabelKo(props.item.riskLevel)} · 상태:{" "}
+          {workingQueueStatusLabelKo(props.item.status)}
+        </div>
       </div>
       <div style={actionRow}>
         <button

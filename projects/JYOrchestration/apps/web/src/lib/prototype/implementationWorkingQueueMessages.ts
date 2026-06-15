@@ -1,32 +1,20 @@
-import {
-  affectedAreaLabelKo,
-  riskLevelLabelKo,
-  workingQueueStatusLabelKo,
-} from "@/lib/prototype/implementationWorkingQueueClassifier";
+import { workingQueueStatusLabelKo } from "@/lib/prototype/implementationWorkingQueueClassifier";
+import { workingQueueItemWorkflowLabel } from "@/lib/prototype/implementationWorkingQueueRoleLabels";
 import type { ImplementationWorkingQueueItem } from "@/lib/prototype/implementationWorkingQueueTypes";
-import {
-  previewFeedbackActionLine,
-  previewFeedbackTargetLine,
-} from "@/lib/prototype/implementationWorkingQueuePreviewFeedback";
+import { workingQueueItemRequestText } from "@/lib/prototype/implementationWorkingQueuePanelDisplay";
 
-function formatItemBlock(item: ImplementationWorkingQueueItem, index: number): string {
+function buildSingleRegisteredMessageLines(input: Readonly<{
+  readonly item: ImplementationWorkingQueueItem;
+  readonly leadLine: string;
+  readonly approveHint: string;
+}>): string[] {
   return [
-    `${index + 1}. ${item.title}`,
-    `- 영향 영역: ${affectedAreaLabelKo(item.affectedArea)}`,
-    `- 위험도: ${riskLevelLabelKo(item.riskLevel)}`,
-    `- 상태: ${workingQueueStatusLabelKo(item.status)}`,
-  ].join("\n");
-}
-
-function formatPreviewFeedbackItemBlock(item: ImplementationWorkingQueueItem, index: number): string {
-  return [
-    `${index + 1}. ${item.title}`,
-    `- 대상: ${previewFeedbackTargetLine(item)}`,
-    `- 동작: ${previewFeedbackActionLine(item)}`,
-    `- 영향 영역: ${affectedAreaLabelKo(item.affectedArea)} / interaction`,
-    `- 위험도: ${riskLevelLabelKo(item.riskLevel)}`,
-    `- 상태: ${workingQueueStatusLabelKo(item.status)}`,
-  ].join("\n");
+    input.leadLine,
+    `요청: ${workingQueueItemRequestText(input.item)}`,
+    `담당: ${workingQueueItemWorkflowLabel(input.item)}`,
+    `상태: ${workingQueueStatusLabelKo(input.item.status)}`,
+    input.approveHint,
+  ];
 }
 
 export function buildWorkingQueuePreviewFeedbackRegisteredAiMessage(
@@ -36,13 +24,11 @@ export function buildWorkingQueuePreviewFeedbackRegisteredAiMessage(
     return buildWorkingQueueRegisteredAiMessage(registered);
   }
   const item = registered[0]!;
-  return [
-    "Preview 캡처 기준으로 보완요청을 작업대기에 등록했습니다.",
-    "",
-    formatPreviewFeedbackItemBlock(item, 0),
-    "",
-    "실행하려면 작업대기에서 [승인] 버튼을 눌러 주세요.",
-  ].join("\n");
+  return buildSingleRegisteredMessageLines({
+    item,
+    leadLine: "Preview 캡처 기준으로 작업대기에 등록했습니다.",
+    approveHint: "실행하려면 작업대기에서 [승인] 버튼을 눌러 주세요.",
+  }).join("\n");
 }
 
 export function buildWorkingQueueRegisteredAiMessage(
@@ -50,20 +36,19 @@ export function buildWorkingQueueRegisteredAiMessage(
 ): string {
   if (registered.length === 1) {
     const item = registered[0]!;
-    return [
-      "보완요청을 작업대기에 등록했습니다.",
-      "",
-      formatItemBlock(item, 0),
-      "",
-      "실행하려면 작업대기에서 [승인] 버튼을 눌러 주세요.",
-    ].join("\n");
+    return buildSingleRegisteredMessageLines({
+      item,
+      leadLine: "보완요청을 작업대기에 등록했습니다.",
+      approveHint: "실행하려면 작업대기에서 [승인] 버튼을 눌러 주세요.",
+    }).join("\n");
   }
-  const lines = registered.map((item, i) => `${i + 1}. ${item.title}`);
+  const lines = registered.map(
+    (item, i) =>
+      `${i + 1}. ${workingQueueItemRequestText(item)} (담당: ${workingQueueItemWorkflowLabel(item)})`,
+  );
   return [
     `보완요청 ${registered.length}건을 작업대기에 등록했습니다.`,
-    "",
     ...lines,
-    "",
     "실행할 항목은 작업대기에서 [승인] 버튼을 눌러 주세요.",
   ].join("\n");
 }
@@ -78,7 +63,6 @@ export function buildWorkingQueueControlAiMessage(input: {
     parts.push(
       `${input.approved.length}건을 승인했습니다.`,
       ...input.approved.map((i, idx) => `${idx + 1}. ${i.title} — ${workingQueueStatusLabelKo("approved")}`),
-      "",
       "Fix CodeTask가 생성되었으며 Implementation 실행 파이프라인에 등록됩니다.",
     );
   }

@@ -6,6 +6,18 @@ export function buildImplementationPreviewFeedbackSystemPrompt(): string {
     "Ask clarification only if user text is empty or request is impossible/conflicting.",
     "Resolve deictic terms (여기, 이 탭, 이 버튼) using the screenshot when provided.",
     "",
+    "Assign internal AI member review workflow (not a single developer-only guess when UX/design is involved):",
+    "- designer: UI layout, visual hierarchy, information architecture, screen structure, usability, spacing, typography, list/detail arrangement, user flow",
+    "- developer: code implementation, state management, API, data model, business logic, integration, event handling",
+    "- security: authentication, authorization, sensitive data, secrets, permission, data leakage",
+    "- reviewer: QA, acceptance criteria, regression risk, consistency check",
+    "executionOwnerRole is almost always developer.",
+    "Typical workflows:",
+    "- UI/UX/structure/readability → primaryRole designer, reviewWorkflow: designer ux_review then developer developer_fix",
+    "- feature/API/data/state → primaryRole developer, reviewWorkflow: developer developer_fix only",
+    "- security/permission → primaryRole security, security_review then developer_fix",
+    "- QA/consistency → primaryRole reviewer, qa_review then developer_fix",
+    "",
     "Schema:",
     JSON.stringify({
       intent: "implementation_preview_feedback",
@@ -19,6 +31,17 @@ export function buildImplementationPreviewFeedbackSystemPrompt(): string {
       clarificationQuestion: "string|null",
       confidence: "low|medium|high",
       reason: "string",
+      primaryRole: "planner|designer|developer|reviewer|security|orchestrator",
+      executionOwnerRole: "developer",
+      reviewWorkflow: [
+        {
+          role: "designer|developer|reviewer|security|planner|orchestrator",
+          task: "ux_review|ui_structure_review|developer_fix|security_review|qa_review|orchestration_summary",
+          status: "pending|reviewed|skipped",
+          summary: "optional short Korean note",
+        },
+      ],
+      roleReviewSummary: "short Korean summary of who reviews what",
     }),
   ].join("\n");
 }

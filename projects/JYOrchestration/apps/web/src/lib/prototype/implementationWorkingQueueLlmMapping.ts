@@ -1,6 +1,7 @@
 import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueControlIntent";
 import type { ImplementationIntentResolverResult } from "@/lib/prototype/implementationIntentResolverTypes";
 import type { ImplementationWorkingQueueItem, ImplementationWorkingQueueV1 } from "@/lib/prototype/implementationWorkingQueueTypes";
+import { resolveRoleOrchestrationFields } from "@/lib/prototype/implementationWorkingQueueRoleWorkflow";
 
 export function mapIntentResolverToControlIntent(input: Readonly<{
   resolver: ImplementationIntentResolverResult;
@@ -53,6 +54,16 @@ export function queueItemFromPreviewAnalysis(input: Readonly<{
   nowIso: string;
 }>): ImplementationWorkingQueueItem {
   const ctx = input.captureContext ?? {};
+  const roleFields = resolveRoleOrchestrationFields({
+    affectedArea: input.analysis.affectedArea,
+    description: input.analysis.description,
+    desiredBehavior: input.analysis.desiredBehavior,
+    rawUserMessage: input.rawUserMessage,
+    primaryRole: input.analysis.primaryRole,
+    executionOwnerRole: input.analysis.executionOwnerRole,
+    reviewWorkflow: input.analysis.reviewWorkflow,
+    roleReviewSummary: input.analysis.roleReviewSummary,
+  });
   return {
     id: input.itemId,
     projectId: input.projectId.trim(),
@@ -67,6 +78,10 @@ export function queueItemFromPreviewAnalysis(input: Readonly<{
     riskLevel: input.analysis.riskLevel,
     createdAt: input.nowIso,
     updatedAt: input.nowIso,
+    primaryRole: roleFields.primaryRole,
+    executionOwnerRole: roleFields.executionOwnerRole,
+    reviewWorkflow: roleFields.reviewWorkflow,
+    ...(roleFields.roleReviewSummary ? { roleReviewSummary: roleFields.roleReviewSummary } : {}),
     ...(ctx.sourceCaptureId ? { sourceCaptureId: ctx.sourceCaptureId } : {}),
     ...(ctx.regionCaptureId ? { regionCaptureId: ctx.regionCaptureId } : {}),
     ...(ctx.previewUrl ? { previewUrl: ctx.previewUrl } : {}),

@@ -17,6 +17,31 @@ export type ImplementationWorkingQueueAffectedArea =
 
 export type ImplementationWorkingQueueRiskLevel = "low" | "medium" | "high";
 
+export type ImplementationWorkingQueueRole =
+  | "planner"
+  | "designer"
+  | "developer"
+  | "reviewer"
+  | "security"
+  | "orchestrator";
+
+export type ImplementationWorkingQueueWorkflowStepStatus = "pending" | "reviewed" | "skipped";
+
+export type ImplementationWorkingQueueWorkflowTask =
+  | "ux_review"
+  | "ui_structure_review"
+  | "developer_fix"
+  | "security_review"
+  | "qa_review"
+  | "orchestration_summary";
+
+export type ImplementationWorkingQueueWorkflowStep = Readonly<{
+  readonly role: ImplementationWorkingQueueRole;
+  readonly task: ImplementationWorkingQueueWorkflowTask;
+  readonly status: ImplementationWorkingQueueWorkflowStepStatus;
+  readonly summary?: string;
+}>;
+
 export type ImplementationWorkingQueuePreviewRect = Readonly<{
   readonly x: number;
   readonly y: number;
@@ -43,6 +68,10 @@ export type ImplementationWorkingQueueItem = Readonly<{
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly fixCodeTaskIds?: readonly string[];
+  readonly primaryRole?: ImplementationWorkingQueueRole;
+  readonly executionOwnerRole?: ImplementationWorkingQueueRole;
+  readonly reviewWorkflow?: readonly ImplementationWorkingQueueWorkflowStep[];
+  readonly roleReviewSummary?: string;
 }>;
 
 export type ImplementationWorkingQueueV1 = Readonly<{
