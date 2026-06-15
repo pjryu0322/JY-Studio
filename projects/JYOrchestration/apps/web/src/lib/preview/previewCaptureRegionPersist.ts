@@ -4,6 +4,10 @@ import {
   validatePreviewCaptureTargetUrl,
 } from "@/lib/preview/previewCaptureSecurity";
 import {
+  findPreviewCaptureActiveSession,
+  parsePreviewCaptureActiveSessionsFromState,
+} from "@/lib/preview/previewCaptureActiveSession";
+import {
   validatePreviewCaptureSessionForRegion,
   validatePreviewRegionImageAndRect,
 } from "@/lib/preview/previewCaptureRegionValidation";
@@ -22,15 +26,6 @@ export async function persistPreviewRegionCapture(input: {
   | Readonly<{ readonly ok: true; readonly regionCaptureId: string; readonly imageDataUrl: string }>
   | Readonly<{ readonly ok: false; readonly message: string; readonly status: number }>
 > {
-  const sessionCheck = validatePreviewCaptureSessionForRegion(input.body);
-  if (!sessionCheck.ok) {
-    return { ok: false, message: sessionCheck.message, status: sessionCheck.status };
-  }
-  const imageCheck = validatePreviewRegionImageAndRect(input.body);
-  if (!imageCheck.ok) {
-    return { ok: false, message: imageCheck.message, status: imageCheck.status };
-  }
-
   const row = await prisma.project.findUnique({
     where: { id: input.body.projectId },
     select: { requirementsStateJson: true },
@@ -40,6 +35,18 @@ export async function persistPreviewRegionCapture(input: {
   }
 
   const prior = parseRequirementsStateJson(row.requirementsStateJson) ?? {};
+  const activeSessions = parsePreviewCaptureActiveSessionsFromState(prior as Record<string, unknown>);
+  const persistedSession = findPreviewCaptureActiveSession(activeSessions, input.body.captureId);
+
+  const sessionCheck = validatePreviewCaptureSessionForRegion(input.body, persistedSession);
+  if (!sessionCheck.ok) {
+    return { ok: false, message: sessionCheck.message, status: sessionCheck.status };
+  }
+  const imageCheck = validatePreviewRegionImageAndRect(input.body);
+  if (!imageCheck.ok) {
+    return { ok: false, message: imageCheck.message, status: imageCheck.status };
+  }
+
   const previewRuntime = parseImplementationPreviewRuntimeV1(prior.implementationPreviewRuntimeV1) ?? null;
   const allowed = collectProjectPreviewUrlCandidates({
     projectId: input.body.projectId,

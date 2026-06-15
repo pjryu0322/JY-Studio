@@ -9,9 +9,20 @@ type StoredCapture = Readonly<{
   readonly createdAt: number;
 }>;
 
-const store = new Map<string, StoredCapture>();
+type PreviewCaptureSessionGlobal = {
+  readonly __jyoPreviewCaptureSessionStore?: Map<string, StoredCapture>;
+};
+
+function getStore(): Map<string, StoredCapture> {
+  const g = globalThis as PreviewCaptureSessionGlobal;
+  if (!g.__jyoPreviewCaptureSessionStore) {
+    g.__jyoPreviewCaptureSessionStore = new Map();
+  }
+  return g.__jyoPreviewCaptureSessionStore;
+}
 
 function pruneExpired(now = Date.now()): void {
+  const store = getStore();
   for (const [id, row] of store.entries()) {
     if (now - row.createdAt > TTL_MS) store.delete(id);
   }
@@ -26,7 +37,7 @@ export function putPreviewCaptureSession(input: {
   readonly height: number;
 }): void {
   pruneExpired();
-  store.set(input.captureId, {
+  getStore().set(input.captureId, {
     projectId: input.projectId,
     previewUrl: input.previewUrl,
     imageDataUrl: input.imageDataUrl,
@@ -38,6 +49,7 @@ export function putPreviewCaptureSession(input: {
 
 export function getPreviewCaptureSession(captureId: string): StoredCapture | null {
   pruneExpired();
+  const store = getStore();
   const row = store.get(captureId.trim());
   if (!row) return null;
   if (Date.now() - row.createdAt > TTL_MS) {
@@ -48,5 +60,5 @@ export function getPreviewCaptureSession(captureId: string): StoredCapture | nul
 }
 
 export function clearPreviewCaptureStoreForTests(): void {
-  store.clear();
+  getStore().clear();
 }

@@ -1,4 +1,5 @@
 import { getPreviewCaptureSession } from "@/lib/preview/previewCaptureSessionStore";
+import type { PreviewCaptureActiveSessionV1 } from "@/lib/preview/previewCaptureActiveSession";
 import type { PreviewCaptureRegionRequest } from "@/lib/preview/previewCaptureTypes";
 import { PREVIEW_REGION_CAPTURE_MAX_DATA_URL_CHARS } from "@/lib/preview/previewCaptureTypes";
 
@@ -9,15 +10,19 @@ export type PreviewRegionValidationResult =
   | Readonly<{ readonly ok: true }>
   | Readonly<{ readonly ok: false; readonly message: string; readonly status: number }>;
 
-export function validatePreviewCaptureSessionForRegion(body: PreviewCaptureRegionRequest): PreviewRegionValidationResult {
-  const session = getPreviewCaptureSession(body.captureId);
-  if (!session) {
-    return {
-      ok: false,
-      message: "캡처 세션이 만료되었습니다. 다시 캡처해 주세요.",
-      status: 400,
-    };
-  }
+export function normalizePreviewCaptureUrl(url: string): string {
+  return url.trim().replace(/\/+$/, "");
+}
+
+type SessionIdentity = Readonly<{
+  readonly projectId: string;
+  readonly previewUrl: string;
+}>;
+
+function validateSessionIdentity(
+  body: PreviewCaptureRegionRequest,
+  session: SessionIdentity,
+): PreviewRegionValidationResult {
   if (session.projectId !== body.projectId) {
     return {
       ok: false,
@@ -25,7 +30,7 @@ export function validatePreviewCaptureSessionForRegion(body: PreviewCaptureRegio
       status: 403,
     };
   }
-  if (session.previewUrl !== body.previewUrl) {
+  if (normalizePreviewCaptureUrl(session.previewUrl) !== normalizePreviewCaptureUrl(body.previewUrl)) {
     return {
       ok: false,
       message: "캡처 URL이 일치하지 않습니다.",
@@ -33,6 +38,24 @@ export function validatePreviewCaptureSessionForRegion(body: PreviewCaptureRegio
     };
   }
   return { ok: true };
+}
+
+export function validatePreviewCaptureSessionForRegion(
+  body: PreviewCaptureRegionRequest,
+  persistedSession?: PreviewCaptureActiveSessionV1 | null,
+): PreviewRegionValidationResult {
+  const memory = getPreviewCaptureSession(body.captureId);
+  if (memory) {
+    return validateSessionIdentity(body, memory);
+  }
+  if (persistedSession) {
+    return validateSessionIdentity(body, persistedSession);
+  }
+  return {
+    ok: false,
+    message: "캡처 세션이 만료되었습니다. 다시 캡처해 주세요.",
+    status: 400,
+  };
 }
 
 export function validatePreviewRegionImageAndRect(body: PreviewCaptureRegionRequest): PreviewRegionValidationResult {

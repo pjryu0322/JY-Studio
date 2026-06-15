@@ -57,6 +57,18 @@ describe("previewCaptureRegionValidation", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("accepts persisted session when in-memory store is empty", () => {
+    const result = validatePreviewCaptureSessionForRegion(sampleRegionRequest(), {
+      captureId: "cap-1",
+      projectId: "p1",
+      previewUrl: "https://demo.github.io/app/",
+      width: 1440,
+      height: 900,
+      createdAt: new Date().toISOString(),
+    });
+    expect(result.ok).toBe(true);
+  });
+
   it("rejects previewUrl mismatch", () => {
     putPreviewCaptureSession({
       captureId: "cap-1",

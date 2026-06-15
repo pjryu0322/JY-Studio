@@ -14,6 +14,7 @@ import {
   pngBufferToDataUrl,
 } from "@/lib/preview/previewCaptureServer";
 import { putPreviewCaptureSession } from "@/lib/preview/previewCaptureSessionStore";
+import { registerPreviewCaptureActiveSession } from "@/lib/preview/previewCaptureActiveSession";
 import {
   DEFAULT_PREVIEW_CAPTURE_VIEWPORT,
   parsePreviewCaptureRequest,
@@ -109,6 +110,19 @@ export async function POST(request: NextRequest) {
       width: shot.width,
       height: shot.height,
     });
+
+    try {
+      await registerPreviewCaptureActiveSession({
+        captureId,
+        projectId: parsed.projectId,
+        previewUrl: parsed.previewUrl,
+        width: shot.width,
+        height: shot.height,
+        createdAt: new Date().toISOString(),
+      });
+    } catch {
+      // In-memory session still valid on same instance; DB row enables region API after cold reload.
+    }
 
     return NextResponse.json({
       ok: true,
