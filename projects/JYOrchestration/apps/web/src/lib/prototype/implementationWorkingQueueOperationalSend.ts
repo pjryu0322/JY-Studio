@@ -1,17 +1,18 @@
-import { createFixCodeTasksFromApprovedQueueItems } from "@/lib/prototype/createFixCodeTasksFromApprovedQueueItems";
 import { getWorkspaceAiMember } from "@/lib/ai-member/platformAiMembers";
-import type { WorkingQueueControlIntent } from "@/lib/prototype/implementationWorkingQueueControlIntent";
 import {
-  buildWorkingQueueControlAiMessage,
   buildWorkingQueuePreviewFeedbackRegisteredAiMessage,
   buildWorkingQueueRegisteredAiMessage,
 } from "@/lib/prototype/implementationWorkingQueueMessages";
 import { IMPLEMENTATION_PREVIEW_FEEDBACK_INTENT } from "@/lib/prototype/implementationWorkingQueuePreviewFeedback";
 import {
-  applyWorkingQueueControlIntent,
   buildMemoryAfterQueueChange,
   enqueueWorkingQueueFromItem,
 } from "@/lib/prototype/implementationWorkingQueueService";
+import {
+  CHAT_EXECUTION_REQUIRES_WORKING_QUEUE_BUTTON_MESSAGE,
+  isChatBlockedExecutionIntent,
+  isChatExecutionLikeText,
+} from "@/lib/prototype/implementationWorkingQueueChatExecutionGuard";
 import {
   buildImplementationIntentResolverInput,
   buildPreviewFeedbackAnalyzerInput,
@@ -27,7 +28,6 @@ import {
 } from "@/lib/prototype/implementationWorkingQueueIntentClarification";
 import {
   buildWorkingQueueTimelineTrace,
-  mapIntentResolverToControlIntent,
   queueItemFromPreviewAnalysis,
 } from "@/lib/prototype/implementationWorkingQueueLlmMapping";
 import { buildMinimalPreviewFeedbackFallback } from "@/lib/prototype/implementationPreviewFeedbackTypes";
@@ -91,46 +91,30 @@ function buildWorkingQueueAssistantMessage(
   });
 }
 
-function applyControlIntentResult(input: Readonly<{
-  pid: string;
-  queue: ReturnType<typeof readImplementationWorkingQueueFromState>;
-  priorMemory: ReturnType<typeof readImplementationDeveloperMemoryDraftFromState>;
+function buildChatExecutionBlockedResult(input: Readonly<{
   priorMessages: readonly RequirementsMessage[];
   userMsg: RequirementsMessage;
-  controlIntent: WorkingQueueControlIntent;
-  latestPreviewUrl?: string | null;
   nowIso: string;
   timelineEntries: readonly RequirementsPromptTimelineEntry[];
+  reason: string;
 }>): PrototypeExecutionOperationalSendResult {
-  const pendingCount = input.queue.items.filter((i) => i.status === "pending").length;
-  if (pendingCount === 0) {
-    return {
-      kind: "assistant_reply",
-      aiMessage: buildWorkingQueueAssistantMessage(
-        buildWorkingQueueControlAiMessage({ approved: [], deferred: [], rejected: [] }),
-        input.nowIso,
-      ),
-      timelineEntries: input.timelineEntries,
-    };
-  }
-  const applied = applyWorkingQueueControlIntent({ queue: input.queue, intent: input.controlIntent });
-  const memory = buildMemoryAfterQueueChange({
-    queue: applied.queue,
-    prior: input.priorMemory,
-    latestPreviewUrl: input.latestPreviewUrl,
-  });
-  const aiMessage = buildWorkingQueueAssistantMessage(buildWorkingQueueControlAiMessage(applied), input.nowIso);
-  if (applied.approved.length) {
-    void createFixCodeTasksFromApprovedQueueItems(input.pid, applied.approved);
-  }
+  const timelineEntries = [
+    ...input.timelineEntries,
+    buildWorkingQueueTimelineTrace({
+      action: "chat_execution_guard_blocked",
+      source: "chat_execution_guard",
+      detail: input.reason,
+      nowIso: input.nowIso,
+    }),
+  ];
   return {
-    kind: "apply_conversation",
-    messages: [...input.priorMessages, input.userMsg, aiMessage],
-    orchestration: {
-      implementationWorkingQueueV1: applied.queue,
-      implementationDeveloperMemoryDraftV1: memory,
-    },
-    timelineEntries: input.timelineEntries,
+    kind: "assistant_reply",
+    aiMessage: buildWorkingQueueAssistantMessage(
+      CHAT_EXECUTION_REQUIRES_WORKING_QUEUE_BUTTON_MESSAGE,
+      input.nowIso,
+      { source: "chat_execution_guard" },
+    ),
+    timelineEntries,
   };
 }
 
@@ -173,11 +157,7 @@ type OperationalSendInput = Readonly<{
 }>;
 
 function implementationIntentRequiresAuthoritativeLlm(intent: string): boolean {
-  return (
-    intent === "start_initial_quick_run" ||
-    intent === "approve_pending_work_queue" ||
-    intent === "register_work_queue_supplement"
-  );
+  return intent === "register_work_queue_supplement";
 }
 
 function buildIntentClarificationOperationalResult(input: Readonly<{
@@ -318,6 +298,16 @@ async function resolveNormalImplementationWorkingQueueSend(
 
   const timelineEntries: RequirementsPromptTimelineEntry[] = [];
 
+  if (isChatExecutionLikeText(input.text)) {
+    return buildChatExecutionBlockedResult({
+      priorMessages,
+      userMsg: input.userMsg,
+      nowIso,
+      timelineEntries,
+      reason: "execution_requires_explicit_working_queue_button",
+    });
+  }
+
   const resolverInput = buildImplementationIntentResolverInput({
     projectId: pid,
     userText: input.text,
@@ -369,8 +359,14 @@ async function resolveNormalImplementationWorkingQueueSend(
     return buildIntentClarificationOperationalResult({ ...clarificationBase, timelineEntries });
   }
 
-  if (resolver.intent === "start_initial_quick_run") {
-    return { kind: "start_implementation_quick_run", timelineEntries };
+  if (isChatBlockedExecutionIntent(resolver.intent)) {
+    return buildChatExecutionBlockedResult({
+      priorMessages,
+      userMsg: input.userMsg,
+      nowIso,
+      timelineEntries,
+      reason: `blocked_intent:${resolver.intent}`,
+    });
   }
 
   if (resolver.intent === "ask_clarification" && resolver.clarificationQuestion) {
@@ -381,21 +377,6 @@ async function resolveNormalImplementationWorkingQueueSend(
       }),
       timelineEntries,
     };
-  }
-
-  const controlFromLlm = mapIntentResolverToControlIntent({ resolver, queue });
-  if (controlFromLlm) {
-    return applyControlIntentResult({
-      pid,
-      queue,
-      priorMemory,
-      priorMessages,
-      userMsg: input.userMsg,
-      controlIntent: controlFromLlm,
-      latestPreviewUrl: input.latestPreviewUrl,
-      nowIso,
-      timelineEntries,
-    });
   }
 
   if (resolver.intent === "register_work_queue_supplement" && resolver.workQueueDraft) {

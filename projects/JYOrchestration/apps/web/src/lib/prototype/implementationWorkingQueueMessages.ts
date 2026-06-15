@@ -41,7 +41,7 @@ export function buildWorkingQueuePreviewFeedbackRegisteredAiMessage(
     "",
     formatPreviewFeedbackItemBlock(item, 0),
     "",
-    '진행하려면 "진행해"라고 입력해 주세요.',
+    "실행하려면 작업대기에서 [승인] 버튼을 눌러 주세요.",
   ].join("\n");
 }
 
@@ -55,7 +55,7 @@ export function buildWorkingQueueRegisteredAiMessage(
       "",
       formatItemBlock(item, 0),
       "",
-      '이 작업을 진행하려면 "진행해"라고 말씀해 주세요.',
+      "실행하려면 작업대기에서 [승인] 버튼을 눌러 주세요.",
     ].join("\n");
   }
   const lines = registered.map((item, i) => `${i + 1}. ${item.title}`);
@@ -64,7 +64,7 @@ export function buildWorkingQueueRegisteredAiMessage(
     "",
     ...lines,
     "",
-    "진행할 항목을 승인해 주세요. (예: 「진행해」, 「1번만 진행해」)",
+    "실행할 항목은 작업대기에서 [승인] 버튼을 눌러 주세요.",
   ].join("\n");
 }
 
@@ -79,7 +79,7 @@ export function buildWorkingQueueControlAiMessage(input: {
       `${input.approved.length}건을 승인했습니다.`,
       ...input.approved.map((i, idx) => `${idx + 1}. ${i.title} — ${workingQueueStatusLabelKo("approved")}`),
       "",
-      "실행 준비가 완료되었습니다. 후속 CodeTask 생성은 다음 단계에서 연결됩니다.",
+      "Fix CodeTask가 생성되었으며 Implementation 실행 파이프라인에 등록됩니다.",
     );
   }
   if (input.deferred.length) {

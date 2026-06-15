@@ -1,19 +1,31 @@
 import type { ImplementationWorkingQueueItem } from "@/lib/prototype/implementationWorkingQueueTypes";
+import {
+  buildWorkingQueueApprovalOrchestrationPatch,
+  type WorkingQueueApprovalPersistResult,
+} from "@/lib/prototype/implementationWorkingQueueFixCodeTasks";
 
 /**
- * Approved queue items → fix CodeTask creation (Epic1-2 boundary).
- * Pipeline execution is intentionally not wired in this epic.
+ * Builds orchestration state for approved Working Queue items (Fix CodeTasks + execution runs).
+ * Call from the Working Queue [승인] button path only — not from chat.
  */
-export async function createFixCodeTasksFromApprovedQueueItems(
+export function createFixCodeTasksFromApprovedQueueItems(
   projectId: string,
   approvedItems: readonly ImplementationWorkingQueueItem[],
-): Promise<void> {
+  input: {
+    readonly requirementsStateJson: unknown;
+    readonly queue: import("@/lib/prototype/implementationWorkingQueueTypes").ImplementationWorkingQueueV1;
+    readonly nowIso?: string;
+  },
+): WorkingQueueApprovalPersistResult {
   const pid = projectId.trim();
-  if (!pid || !approvedItems.length) return;
-  console.info("[implementation-working-queue] createFixCodeTasksFromApprovedQueueItems (stub)", {
+  if (!pid || !approvedItems.length) {
+    return { orchestrationPatch: {}, createdCodeTaskIds: [] };
+  }
+  return buildWorkingQueueApprovalOrchestrationPatch({
     projectId: pid,
-    count: approvedItems.length,
-    itemIds: approvedItems.map((i) => i.id),
-    titles: approvedItems.map((i) => i.title),
+    requirementsStateJson: input.requirementsStateJson,
+    queue: input.queue,
+    approvedItems,
+    nowIso: input.nowIso,
   });
 }

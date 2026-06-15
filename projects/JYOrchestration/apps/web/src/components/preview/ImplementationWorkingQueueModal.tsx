@@ -2,7 +2,10 @@
 
 import { ImplementationExecutionBoardModal } from "@/components/preview/ImplementationExecutionBoardModal";
 import { ImplementationWorkingQueuePanel } from "@/components/preview/ImplementationWorkingQueuePanel";
-import type { ImplementationWorkingQueueV1 } from "@/lib/prototype/implementationWorkingQueueTypes";
+import type {
+  ImplementationWorkingQueueItem,
+  ImplementationWorkingQueueV1,
+} from "@/lib/prototype/implementationWorkingQueueTypes";
 import type { ReactNode } from "react";
 
 export function ImplementationWorkingQueueModal(props: {
@@ -12,6 +15,7 @@ export function ImplementationWorkingQueueModal(props: {
   readonly onApproveItem: (itemId: string) => void;
   readonly onDeferItem: (itemId: string) => void;
   readonly onRejectItem: (itemId: string) => void;
+  readonly resolvePreviewImageUrl?: (item: ImplementationWorkingQueueItem) => string | null;
 }): ReactNode {
   return (
     <ImplementationExecutionBoardModal open={props.open} onClose={props.onClose} ariaLabel="작업대기">
@@ -25,6 +29,7 @@ export function ImplementationWorkingQueueModal(props: {
           onApproveItem={props.onApproveItem}
           onDeferItem={props.onDeferItem}
           onRejectItem={props.onRejectItem}
+          resolvePreviewImageUrl={props.resolvePreviewImageUrl}
         />
       </div>
     </ImplementationExecutionBoardModal>

@@ -573,17 +573,6 @@ export function usePrototypeImplementationStagePanel(
     applyImplementationOrchestrationResultRef.current = applyImplementationOrchestrationResult;
   }, [applyImplementationOrchestrationResult]);
 
-  const implementationWorkingQueue = useImplementationWorkingQueue({
-    projectId,
-    requirementsStateJson: orchestrationAwareRequirementsState,
-    requirementsStateJsonRef,
-    latestPreviewUrl:
-      orchestrationAwareRequirementsState.implementationPreviewRuntimeV1?.previewUrl ??
-      previewUrl ??
-      null,
-    applyImplementationOrchestrationResult,
-  });
-
   const implementationToolbarPreviewEntry = useMemo(
     () =>
       resolveImplementationToolbarPreviewEntry({
@@ -650,6 +639,19 @@ export function usePrototypeImplementationStagePanel(
     enrichCodeTaskRunOrchestrationPatch,
     persistChatToDb,
     appendUserNotice,
+  });
+
+  const implementationWorkingQueue = useImplementationWorkingQueue({
+    projectId,
+    requirementsStateJson: orchestrationAwareRequirementsState,
+    requirementsStateJsonRef,
+    latestPreviewUrl:
+      orchestrationAwareRequirementsState.implementationPreviewRuntimeV1?.previewUrl ??
+      previewUrl ??
+      null,
+    applyImplementationOrchestrationResult,
+    startImplementationQuickRun,
+    onApprovalNotice: appendUserNotice,
   });
 
   const { handleRetryFailedCodeTask } = useImplementationRuntimeRecoveryController({

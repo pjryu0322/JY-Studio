@@ -65,8 +65,9 @@ describe("implementation intent resolver input context", () => {
     expect(input.runnableCodeTaskCount).toBe(3);
     expect(input.previewReady).toBe(true);
     expect(input.lastAssistantMessage).toContain("진행해");
-    expect(input.availableActions).toContain("approve_pending_work_queue");
-    expect(input.availableActions).toContain("start_initial_quick_run");
+    expect(input.availableActions).not.toContain("approve_pending_work_queue");
+    expect(input.availableActions).not.toContain("start_initial_quick_run");
+    expect(input.availableActions).toContain("register_work_queue_supplement");
   });
 
   it("documents LLM-only resolution for ambiguous phrases (context fields present)", () => {

@@ -74,14 +74,11 @@ describe("no legacy control intent on LLM failure", () => {
     });
   }
 
-  it("LLM failure + 진행해 → clarification, no queue mutation", async () => {
+  it("LLM failure + 진행해 → execution guard, no queue mutation", async () => {
     const result = await baseSend("진행해");
     expect(result?.kind).toBe("assistant_reply");
     if (result?.kind === "assistant_reply") {
-      expect(result.aiMessage.content).toContain("실행 대상을 확정하지 못했습니다");
-      expect(result.timelineEntries?.some((e) => e.responseText?.includes("no_rule_based_control_intent"))).toBe(
-        true,
-      );
+      expect(result.aiMessage.content).toContain("작업대기에서 [승인] 버튼");
     }
     expect(result?.kind).not.toBe("start_implementation_quick_run");
     if (result?.kind === "apply_conversation") {
@@ -89,9 +86,12 @@ describe("no legacy control intent on LLM failure", () => {
     }
   });
 
-  it("LLM failure + 시작해 → no quick run", async () => {
+  it("LLM failure + 시작해 → execution guard, no quick run", async () => {
     const result = await baseSend("시작해");
     expect(result?.kind).toBe("assistant_reply");
+    if (result?.kind === "assistant_reply") {
+      expect(result.aiMessage.content).toContain("작업대기에서 [승인] 버튼");
+    }
     expect(result?.kind).not.toBe("start_implementation_quick_run");
   });
 

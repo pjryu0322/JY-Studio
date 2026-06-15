@@ -14,6 +14,7 @@ import {
 import type { ImplementationWorkingQueueItem } from "@/lib/prototype/implementationWorkingQueueTypes";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
+import type { ImplementationStageActionRunResult } from "@/lib/prototype/implementationStageActionPipeline";
 
 export type UseImplementationWorkingQueueInput = Readonly<{
   readonly projectId: string;
@@ -24,6 +25,10 @@ export type UseImplementationWorkingQueueInput = Readonly<{
     readonly messages?: readonly RequirementsMessage[];
     readonly orchestrationPatch: PrototypeExecutionOrchestrationPersistInput;
   }) => void;
+  readonly startImplementationQuickRun?: (options?: {
+    readonly selectedCodeTaskIds?: readonly string[];
+  }) => Promise<ImplementationStageActionRunResult>;
+  readonly onApprovalNotice?: (message: string) => void;
 }>;
 
 export function useImplementationWorkingQueue(input: UseImplementationWorkingQueueInput) {
@@ -44,8 +49,8 @@ export function useImplementationWorkingQueue(input: UseImplementationWorkingQue
     [queue.items],
   );
 
-  const persistQueue = useCallback(
-    (nextQueue: typeof queue, approvedForHook: readonly ImplementationWorkingQueueItem[] = []) => {
+  const persistQueueOnly = useCallback(
+    (nextQueue: typeof queue) => {
       const memory = buildMemoryAfterQueueChange({
         queue: nextQueue,
         prior: memoryDraft,
@@ -59,23 +64,55 @@ export function useImplementationWorkingQueue(input: UseImplementationWorkingQue
           implementationDeveloperMemoryDraftV1: memory,
         },
       });
-      if (approvedForHook.length) {
-        void createFixCodeTasksFromApprovedQueueItems(pid, approvedForHook);
-      }
     },
-    [input, memoryDraft, pid],
+    [input, memoryDraft],
   );
 
   const setItemStatus = useCallback(
     (itemId: string, status: ImplementationWorkingQueueItem["status"]) => {
       const item = queue.items.find((i) => i.id === itemId);
       if (!item || item.status === status) return;
+
+      if (status === "approved" && item.status === "pending") {
+        const nextQueue = updateWorkingQueueItemStatus({ queue, itemId, status });
+        const approvedItem = nextQueue.items.find((i) => i.id === itemId);
+        if (!approvedItem) return;
+        const { orchestrationPatch, createdCodeTaskIds } = createFixCodeTasksFromApprovedQueueItems(
+          pid,
+          [{ ...approvedItem, status: "approved" }],
+          {
+            requirementsStateJson: input.requirementsStateJsonRef.current,
+            queue: nextQueue,
+          },
+        );
+        const memory = buildMemoryAfterQueueChange({
+          queue: orchestrationPatch.implementationWorkingQueueV1 ?? nextQueue,
+          prior: memoryDraft,
+          latestPreviewUrl: input.latestPreviewUrl,
+        });
+        const resolved = resolvePrototypeExecutionSingleChatFromState(input.requirementsStateJsonRef.current);
+        input.applyImplementationOrchestrationResult({
+          messages: resolved.messages,
+          orchestrationPatch: {
+            ...orchestrationPatch,
+            implementationDeveloperMemoryDraftV1: memory,
+          },
+        });
+        if (createdCodeTaskIds.length && input.startImplementationQuickRun) {
+          void input.startImplementationQuickRun({ selectedCodeTaskIds: createdCodeTaskIds }).then((result) => {
+            if (result.status === "failed" || result.status === "blocked") {
+              const msg = result.message?.trim();
+              if (msg) input.onApprovalNotice?.(msg);
+            }
+          });
+        }
+        return;
+      }
+
       const nextQueue = updateWorkingQueueItemStatus({ queue, itemId, status });
-      const approved =
-        status === "approved" && item.status === "pending" ? ([{ ...item, status: "approved" }] as const) : [];
-      persistQueue(nextQueue, approved);
+      persistQueueOnly(nextQueue);
     },
-    [queue, persistQueue],
+    [queue, persistQueueOnly, pid, input, memoryDraft],
   );
 
   return {

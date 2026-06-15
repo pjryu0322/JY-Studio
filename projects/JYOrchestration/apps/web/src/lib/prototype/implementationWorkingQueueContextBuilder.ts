@@ -54,11 +54,9 @@ export function buildImplementationIntentResolverInput(input: Readonly<{
   const actions: ImplementationIntentResolverInput["availableActions"] = [
     "none",
     "ask_clarification",
-    "approve_pending_work_queue",
     "register_work_queue_supplement",
   ];
   if (hasPreview) actions.push("register_preview_feedback");
-  if (input.hasRunnableCodeTasks) actions.push("start_initial_quick_run");
 
   return {
     projectId: input.projectId.trim(),

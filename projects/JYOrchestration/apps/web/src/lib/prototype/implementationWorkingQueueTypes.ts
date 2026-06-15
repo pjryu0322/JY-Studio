@@ -42,6 +42,7 @@ export type ImplementationWorkingQueueItem = Readonly<{
   readonly riskLevel: ImplementationWorkingQueueRiskLevel;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly fixCodeTaskIds?: readonly string[];
 }>;
 
 export type ImplementationWorkingQueueV1 = Readonly<{

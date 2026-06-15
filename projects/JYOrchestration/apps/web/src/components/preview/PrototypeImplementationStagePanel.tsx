@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { ImplementationExecutionBoardPanel } from "@/components/preview/ImplementationExecutionBoardPanel";
 import { ImplementationExecutionBoardBootstrapPanel } from "@/components/preview/ImplementationExecutionBoardBootstrapPanel";
 import { ImplementationExecutionBoardModal } from "@/components/preview/ImplementationExecutionBoardModal";
@@ -12,6 +13,11 @@ import { PrototypeImplementationStageOverlays } from "@/components/preview/Proto
 import { resolveImplementationRuntimeStateForRead } from "@/lib/runtime/implementationRuntime/implementationRuntimeUiSnapshot";
 import { resolveCheckedCodeTaskIdsFromBoardBridge } from "@/lib/prototype/implementationBoardCodeTaskSelection";
 import { isNextPublicDevWorkflowToolsEnabled } from "@/lib/env/devWorkflowTools";
+import type { ImplementationWorkingQueueItem } from "@/lib/prototype/implementationWorkingQueueTypes";
+import {
+  parseImplementationPreviewRegionCapturesFromState,
+  resolveWorkingQueueItemPreviewImageUrl,
+} from "@/lib/prototype/implementationWorkingQueuePreviewThumbnail";
 import type {
   PrototypeImplementationStageHost,
   UsePrototypeImplementationStagePanelResult,
@@ -83,6 +89,15 @@ export function PrototypeImplementationStagePanel({
     onInterviewSuggestionPick,
     composerPendingAttachments,
   } = implementationSingleChatWorkspace;
+
+  const resolveWorkingQueuePreviewImageUrl = useMemo(() => {
+    const regionCaptures = parseImplementationPreviewRegionCapturesFromState(orchestrationAwareRequirementsState);
+    return (item: ImplementationWorkingQueueItem) =>
+      resolveWorkingQueueItemPreviewImageUrl(item, {
+        regionCaptures,
+        messages: prioritizedChatMessages,
+      });
+  }, [orchestrationAwareRequirementsState, prioritizedChatMessages]);
 
   const boardPanel =
     implementationBoard && implementationStageBoardInput ? (
@@ -248,6 +263,7 @@ export function PrototypeImplementationStagePanel({
         onApproveItem={implementationWorkingQueue.approveItem}
         onDeferItem={implementationWorkingQueue.deferItem}
         onRejectItem={implementationWorkingQueue.rejectItem}
+        resolvePreviewImageUrl={resolveWorkingQueuePreviewImageUrl}
       />
 
       <PrototypeImplementationStageOverlays host={host} stage={stage} />

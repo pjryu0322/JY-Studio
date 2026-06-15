@@ -1,3 +1,5 @@
+import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import type { CodeTaskPromptContextMapV1 } from "@/lib/prototype/codeTaskPromptContext";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
@@ -87,6 +89,8 @@ export type PrototypeExecutionOrchestrationPersistInput = Readonly<{
     readonly currentSlotKey: string | null;
   };
   readonly implementationTaskPlanV1?: ImplementationTaskPlanV1 | null;
+  readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1 | null;
+  readonly codeTaskPromptContextMapV1?: CodeTaskPromptContextMapV1 | null;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[] | null;
   readonly implementationSlotsV1?: ImplementationSlotsV1 | null;
   readonly implementationDbStrategyV1?: ImplementationDbStrategyV1 | null;
@@ -125,6 +129,12 @@ export function buildPrototypeExecutionOrchestrationPersistPatch(
   return mergeRequirementsStateJson(base, {
     ...(input.implementationTaskPlanV1 !== undefined
       ? { implementationTaskPlanV1: input.implementationTaskPlanV1 }
+      : {}),
+    ...(input.implementationCodeTaskPlanV1 !== undefined
+      ? { implementationCodeTaskPlanV1: input.implementationCodeTaskPlanV1 }
+      : {}),
+    ...(input.codeTaskPromptContextMapV1 !== undefined
+      ? { codeTaskPromptContextMapV1: input.codeTaskPromptContextMapV1 }
       : {}),
     ...(input.cursorWorkItemsV1 !== undefined ? { cursorWorkItemsV1: input.cursorWorkItemsV1 } : {}),
     ...(input.implementationSlotsV1 !== undefined
