@@ -138,6 +138,8 @@ describe("buildQuickDesignImplementationReadyChatMessage readiness summary", () 
     });
     expect(msg.content).toContain("생성된 산출물:\n- 프로젝트 요약서\n- 프로토타입 기획안");
     expect(msg.content).not.toMatch(/- 프로젝트 요약서\n\n-/);
+    expect(msg.content).not.toMatch(/구현 준비 정보:\n\n-/);
+    expect(msg.content).not.toMatch(/구현 작업목록:\n\n-/);
     expect(msg.content).toContain("이제 구현단계에서 실행할 CodeTask를 선택할 수 있습니다.");
   });
 

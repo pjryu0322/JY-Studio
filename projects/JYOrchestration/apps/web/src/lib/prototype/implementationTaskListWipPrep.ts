@@ -57,6 +57,7 @@ export function buildTaskListDerivedWipOrchestration(input: {
   readonly envCursorBadge: "ok" | "needs" | "error" | "loading";
   readonly priorTimeline?: readonly RequirementsPromptTimelineEntry[];
   readonly priorExecutionState?: ImplementationTaskExecutionStateV1 | null;
+  readonly planningHandoffForImplementationV1?: import("@/lib/planning/planningDataSlotsV1").PlanningHandoffForImplementationV1 | null;
   readonly nowIso?: string;
 }): TaskListDerivedWipOrchestration {
   const now = input.nowIso ?? new Date().toISOString();
@@ -81,6 +82,7 @@ export function buildTaskListDerivedWipOrchestration(input: {
     envOk: input.envOk,
     designOk: input.designOk,
     envCursorBadge: input.envCursorBadge,
+    planningHandoffForImplementationV1: input.planningHandoffForImplementationV1 ?? null,
   });
   const dbStrategy = defaultImplementationDbStrategy();
 

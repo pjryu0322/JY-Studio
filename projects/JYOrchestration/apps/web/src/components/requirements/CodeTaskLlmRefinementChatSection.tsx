@@ -148,7 +148,7 @@ export function RequirementsAiMessageWithOptionalCodeTaskCopy(input: {
 
   return (
     <>
-      <RequirementsAiMessageMarkdown text={displayText} variant={variant} />
+      <RequirementsAiMessageMarkdown text={displayText} variant={variant} layout="chat" />
       {diagnosticsText ? (
         <ImplementationPreparationDiagnosticsCollapsible
           diagnosticsText={diagnosticsText}

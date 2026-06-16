@@ -7,6 +7,7 @@ import {
   type PlanningDatabaseSettingsV1,
   type PlanningDatabaseSslMode,
 } from "@/lib/planning/planningDatabaseSettingsV1";
+import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningDatabaseStoreNamingSync";
 
 type Props = Readonly<{
   readonly projectId: string;
@@ -19,6 +20,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<"load" | "save" | "test" | null>("load");
   const [message, setMessage] = useState<string | null>(null);
+  const repoHint = String(gitRepoName ?? "").trim();
 
   const load = useCallback(async () => {
     const pid = projectId.trim();
@@ -38,6 +40,18 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!projectId.trim() || busy === "load") return;
+    setSettings((prev) =>
+      syncPlanningDatabaseSettingsStoreNames({
+        settings: prev,
+        gitRepoName: repoHint || null,
+        projectId: projectId.trim(),
+        preserveManualStoreName: Boolean(prev.databaseStoreName?.trim()),
+      }),
+    );
+  }, [repoHint, projectId, busy]);
 
   const patch = (partial: Partial<PlanningDatabaseSettingsV1>) => {
     setSettings((s) => ({ ...s, ...partial }));
@@ -92,7 +106,20 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
     }
   };
 
-  const repoHint = String(gitRepoName ?? "").trim();
+  const storeNameField = (label: string, key: keyof Pick<
+    PlanningDatabaseSettingsV1,
+    "databaseStoreName" | "implementationSchemaName" | "reviewSchemaName"
+  >) => (
+    <label style={{ display: "grid", gap: 4 }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>{label}</span>
+      <input
+        value={String(settings[key] ?? "")}
+        disabled={!canEdit || !settings.enabled}
+        onChange={(e) => patch({ [key]: e.target.value } as Partial<PlanningDatabaseSettingsV1>)}
+        style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+      />
+    </label>
+  );
 
   return (
     <div data-testid="planning-database-settings-section" style={{ maxWidth: 720 }}>
@@ -192,6 +219,9 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
           />
         </label>
+        {storeNameField("프로젝트 데이터 저장소명", "databaseStoreName")}
+        {storeNameField("구현단계 샘플 저장소", "implementationSchemaName")}
+        {storeNameField("검토단계 테스트 저장소", "reviewSchemaName")}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <button

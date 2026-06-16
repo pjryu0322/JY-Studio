@@ -312,6 +312,12 @@ import {
 import { RecommendationEvidenceDrawer } from "@/components/recommendation/RecommendationEvidenceDrawer";
 import { useProjectRecommendationEvidence } from "@/lib/recommendation/useProjectRecommendationEvidence";
 import { buildWorkspacePlanningOrchestrationView } from "@/lib/requirements/buildWorkspacePlanningOrchestrationView";
+import { buildPlanningDataSlotsStatePatch, resolvePlanningRepositoryName } from "@/lib/planning/planningDataSlotsStatePatch";
+import {
+  buildDynamicServicePlanningSlotDefinitions,
+  hashSlotDefinitions,
+} from "@/lib/requirements/singleChatOrchestrationSlots";
+import { resolveWorkspaceSingleChatOrchestration } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { compactRequirementsIntentOrchestration } from "@/lib/requirements/requirementsOrchestrationCompaction";
 import { buildOrchestrationRecoveryTimelineEntry } from "@/lib/requirements/requirementsOrchestrationTimelineView";
 import { ServiceFlowStateCanvasOverlay } from "@/components/service-flow/ServiceFlowStateCanvasOverlay";
@@ -1089,6 +1095,39 @@ export function RequirementsWorkspace({
     return null;
   }, [workflowBannerEligible, initialWorkflowNotice, project]);
 
+  const enrichPlanningDataSlotsOnPersist = useCallback(
+    (state: RequirementsStateJson): Partial<RequirementsStateJson> => {
+      const pid = resolvedProjectId.trim();
+      if (!pid) return {};
+      const defs = buildDynamicServicePlanningSlotDefinitions({
+        projectName: project?.name ?? "",
+        projectDescription: project?.description ?? "",
+        projectType: project?.projectType ?? null,
+        servicePlanningAgentCatalogKeys: servicePlanningScreenCatalogIds ?? null,
+      });
+      const defsHash = hashSlotDefinitions(defs);
+      const orchestration = resolveWorkspaceSingleChatOrchestration({
+        localState: state,
+        persistedOrchestration: state.singleChatOrchestrationV1,
+        slotDefinitionsHash: defsHash,
+      });
+      if (!orchestration) return {};
+      const repositoryName = resolvePlanningRepositoryName({ projectName: project?.name ?? "" });
+      const patch = buildPlanningDataSlotsStatePatch({
+        state,
+        projectId: pid,
+        repositoryName,
+        orchestration,
+        definitions: defs,
+      });
+      return {
+        planningDataSlotsV1: patch.planningDataSlotsV1,
+        planningHandoffForImplementationV1: patch.planningHandoffForImplementationV1,
+      };
+    },
+    [resolvedProjectId, project?.name, project?.description, project?.projectType, servicePlanningScreenCatalogIds],
+  );
+
   const { persistStateJsonOnly, persistServiceFlow, persistRemote } = useRequirementsSpecWorkspacePersist({
     resolvedProjectId,
     stateJsonRef,
@@ -1108,6 +1147,7 @@ export function RequirementsWorkspace({
     organizedAt,
     onboardingAppliedKey,
     onboardingKey,
+    enrichRequirementsStateBeforePersist: enrichPlanningDataSlotsOnPersist,
   });
 
   const appendSingleChatPromptTimeline = useCallback(
@@ -3990,6 +4030,7 @@ export function RequirementsWorkspace({
           setFetchNonce((n) => n + 1);
         }}
         onGoHome={() => router.push("/")}
+        onOpenEnvironmentSettings={() => setExecutionEnvironmentModalOpen(true)}
       />
 
       {conversationAiInsight || conversationAiSummaryError ? (

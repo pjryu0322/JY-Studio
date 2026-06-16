@@ -60,6 +60,7 @@ export type WorkspaceConversationHubIconRowProps = Readonly<{
   readonly onSummarizeConversation?: () => void | Promise<void>;
   readonly resetConversationDisabled?: boolean;
   readonly downloadDisabled?: boolean;
+  readonly onOpenEnvironmentSettings?: () => void;
   /** 모바일: primary 5개 + 더보기 메뉴 */
   readonly iconLayout?: "full" | "mobileCompact";
   readonly overflowMenuItems?: readonly Readonly<{
@@ -85,6 +86,15 @@ function RefreshIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M21 12a9 9 0 1 1-2.64-6.36" />
       <path d="M21 3v6h-6" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
     </svg>
   );
 }
@@ -208,6 +218,7 @@ export function WorkspaceConversationHubIconRow({
   onSummarizeConversation,
   resetConversationDisabled = false,
   downloadDisabled = false,
+  onOpenEnvironmentSettings,
   slotsChromeLabels = null,
   iconLayout = "full",
   overflowMenuItems = [],
@@ -652,6 +663,18 @@ export function WorkspaceConversationHubIconRow({
       </WorkspaceHubChromeIconButton>
     ) : null;
 
+  const settingsButton =
+    onOpenEnvironmentSettings ? (
+      <WorkspaceHubChromeIconButton
+        title="환경설정"
+        ariaLabel="환경설정 열기"
+        disabled={remoteLocked}
+        onClick={() => onOpenEnvironmentSettings()}
+      >
+        <SettingsIcon />
+      </WorkspaceHubChromeIconButton>
+    ) : null;
+
   const chromeToolbar =
     onResetConversation ? (
       <ConversationChromeToolbar
@@ -678,6 +701,14 @@ export function WorkspaceConversationHubIconRow({
       onClick: () => void;
       disabled?: boolean;
     }> = [];
+    if (onOpenEnvironmentSettings) {
+      items.push({
+        id: "environment-settings",
+        label: "환경설정",
+        onClick: () => onOpenEnvironmentSettings(),
+        disabled: remoteLocked,
+      });
+    }
     if (downloadButton) {
       items.push({
         id: "download",
@@ -731,6 +762,7 @@ export function WorkspaceConversationHubIconRow({
     onSummarizeConversation,
     onResetConversation,
     resetConversationDisabled,
+    onOpenEnvironmentSettings,
     busy,
     remoteLocked,
   ]);
@@ -793,6 +825,7 @@ export function WorkspaceConversationHubIconRow({
     onDownloadConversationMarkdown ||
     onResetConversation ||
     onSummarizeConversation ||
+    onOpenEnvironmentSettings ||
     overflowMenuItems.length > 0;
 
   if (!hasAny) return null;
@@ -816,6 +849,7 @@ export function WorkspaceConversationHubIconRow({
       {isMobileCompact ? (
         <>
           {quickButton}
+          {settingsButton}
           {slotsButton}
           {memberButton}
           {resetButton}
@@ -839,6 +873,7 @@ export function WorkspaceConversationHubIconRow({
       ) : (
         <>
           {quickButton}
+          {settingsButton}
           {slotsButton}
           {canvasHubButton}
           {artifactHubButton}

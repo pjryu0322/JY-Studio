@@ -41,6 +41,7 @@ export function buildPlanningDataSlotsStatePatch(input: Readonly<{
     orchestration: input.orchestration,
     definitions: input.definitions,
     sampleDataSpecV1: input.sampleDataSpecV1 ?? input.state.sampleDataSpecV1 ?? null,
+    planningDatabaseSettings: input.state.planningDatabaseSettingsV1 ?? null,
     prior,
     nowIso: input.nowIso,
   });
@@ -48,6 +49,7 @@ export function buildPlanningDataSlotsStatePatch(input: Readonly<{
     projectId: input.projectId,
     repositoryName: input.repositoryName,
     planningDataSlots: planningDataSlotsV1,
+    planningDatabaseSettings: input.state.planningDatabaseSettingsV1 ?? null,
   });
   return { planningDataSlotsV1, planningHandoffForImplementationV1 };
 }

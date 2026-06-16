@@ -5,10 +5,41 @@ import {
   sanitizePlanningDatabaseSettingsForClient,
   type PlanningDatabaseSettingsV1,
 } from "@/lib/planning/planningDatabaseSettingsV1";
+import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningDatabaseStoreNamingSync";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 function maskPasswordForStorage(_password: string): string {
   return "••••••••";
+}
+
+function executionSetupCreateDefaults(projectId: string) {
+  return {
+    projectId,
+    gitRepoUrl: "",
+    gitRepoProvider: "github",
+    gitRepoName: null as string | null,
+    baseBranch: "main",
+    branchStrategy: "feature-per-task",
+    branchPrefix: null as string | null,
+    cursorApiUrl: "https://api.cursor.com",
+    workspacePath: "",
+    projectRootPath: "",
+    repoValidationCommands: [] as string[],
+    allowedPathGlobs: [] as string[],
+    autoCommit: true,
+    autoPush: false,
+    autoPr: false,
+    requireApprovalBeforeApply: true,
+    requireTestsBeforePush: true,
+    dryRunAllowed: true,
+    autoAdvanceToNextTask: true,
+    maxAutoRetriesPerTask: 2,
+    stopOnTestFailure: true,
+    stopOnRepeatedFailure: true,
+    stopOnOutOfScopeChange: true,
+    requireApprovalForSensitiveTasks: false,
+    status: "draft",
+  };
 }
 
 export async function loadPlanningDatabaseSettingsForProject(projectId: string): Promise<PlanningDatabaseSettingsV1> {
@@ -25,17 +56,22 @@ export async function loadPlanningDatabaseSettingsForProject(projectId: string):
       planningDatabaseSettingsJson: true,
       planningPostgresPasswordMasked: true,
       planningPostgresPassword: true,
+      gitRepoName: true,
     },
   });
   const fromSetup = parsePlanningDatabaseSettingsV1(setup?.planningDatabaseSettingsJson);
   const merged = fromSetup ?? fromState ?? defaultPlanningDatabaseSettingsV1();
   const hasPassword = Boolean(String(setup?.planningPostgresPassword ?? "").trim());
+  const withNames = syncPlanningDatabaseSettingsStoreNames({
+    settings: merged,
+    gitRepoName: setup?.gitRepoName,
+    projectId: pid,
+    preserveManualStoreName: Boolean(merged.databaseStoreName?.trim()),
+  });
   return sanitizePlanningDatabaseSettingsForClient({
-    ...merged,
+    ...withNames,
     hasPassword,
-    passwordMasked: hasPassword
-      ? setup?.planningPostgresPasswordMasked || maskPasswordForStorage("")
-      : null,
+    passwordMasked: hasPassword ? setup?.planningPostgresPasswordMasked || maskPasswordForStorage("") : null,
   });
 }
 
@@ -43,10 +79,17 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
   readonly projectId: string;
   readonly settings: PlanningDatabaseSettingsV1;
   readonly password?: string | null;
+  readonly gitRepoName?: string | null;
 }>): Promise<PlanningDatabaseSettingsV1> {
   const pid = input.projectId.trim();
+  const synced = syncPlanningDatabaseSettingsStoreNames({
+    settings: input.settings,
+    gitRepoName: input.gitRepoName,
+    projectId: pid,
+    preserveManualStoreName: true,
+  });
   const settings = {
-    ...input.settings,
+    ...synced,
     version: 1 as const,
     provider: "POSTGRESQL" as const,
     passwordMasked: undefined,
@@ -89,12 +132,14 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
         }) as object,
       },
     });
-    if (existingSetup) {
-      await tx.executionSetup.update({
-        where: { projectId: pid },
-        data: setupUpdate,
-      });
-    }
+    await tx.executionSetup.upsert({
+      where: { projectId: pid },
+      create: {
+        ...executionSetupCreateDefaults(pid),
+        ...setupUpdate,
+      },
+      update: setupUpdate,
+    });
   });
 
   return loadPlanningDatabaseSettingsForProject(pid);

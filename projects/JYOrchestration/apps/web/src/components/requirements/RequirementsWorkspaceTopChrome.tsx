@@ -41,6 +41,7 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   loadError: string | null;
   onClearLoadErrorAndRetry: () => void;
   onGoHome: () => void;
+  onOpenEnvironmentSettings?: () => void;
 }>;
 
 export function RequirementsWorkspaceTopChrome({
@@ -65,6 +66,7 @@ export function RequirementsWorkspaceTopChrome({
   loadError,
   onClearLoadErrorAndRetry,
   onGoHome,
+  onOpenEnvironmentSettings,
 }: RequirementsWorkspaceTopChromeProps) {
   const showOrganizeCta =
     Boolean(resolvedProjectIdTrimmed) &&
@@ -97,6 +99,7 @@ export function RequirementsWorkspaceTopChrome({
           onDownloadConversationMarkdown={onDownloadConversationMarkdown}
           onResetConversation={onResetConversation}
           onSummarizeConversation={onSummarizeConversation}
+          onOpenEnvironmentSettings={onOpenEnvironmentSettings}
           resetConversationDisabled={resetConversationDisabled}
           downloadDisabled={!onDownloadConversationMarkdown}
         />

@@ -2,7 +2,11 @@
 
 import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
-import { REQUIREMENTS_CHAT_MESSAGE_MARKDOWN_CLASS } from "@/lib/requirements/messageTextNormalize";
+import {
+  normalizeUserVisibleMessageText,
+  REQUIREMENTS_CHAT_MESSAGE_MARKDOWN_CLASS,
+} from "@/lib/requirements/messageTextNormalize";
+import "./requirementsMessageMarkdownChat.css";
 
 const textMain = "#0f172a";
 const textMuted = "#475569";
@@ -11,9 +15,9 @@ function mdComponents(variant: "default" | "error", layout: "chat" | "document")
   const accent = variant === "error" ? "#991b1b" : textMain;
   const compact = layout === "chat";
   const pMargin = compact ? "0 0 8px" : "0.45em 0";
-  const listMargin = compact ? "4px 0 8px" : "0.45em 0";
+  const listMargin = compact ? "4px 0 10px" : "0.45em 0";
   const listPad = compact ? "20px" : "1.25rem";
-  const liMargin = compact ? "2px 0" : "0.2em 0";
+  const liMargin = compact ? "0" : "0.2em 0";
   const headingMargin = compact ? "12px 0 6px" : "0.75em 0 0.4em";
 
   return {
@@ -70,7 +74,7 @@ function mdComponents(variant: "default" | "error", layout: "chat" | "document")
       </ol>
     ),
     li: ({ children, ...rest }) => (
-      <li style={{ margin: liMargin, lineHeight: 1.5 }} {...rest}>
+      <li style={{ margin: liMargin, lineHeight: compact ? 1.55 : 1.5 }} {...rest}>
         {children}
       </li>
     ),
@@ -99,7 +103,9 @@ function mdComponents(variant: "default" | "error", layout: "chat" | "document")
         {children}
       </blockquote>
     ),
-    hr: () => <hr style={{ border: 0, borderTop: "1px solid #e2e8f0", margin: "0.85em 0" }} />,
+    hr: () => (
+      <hr style={{ border: 0, borderTop: "1px solid #e2e8f0", margin: compact ? "12px 0" : "0.85em 0" }} />
+    ),
     a: ({ children, href, ...rest }) => (
       <a href={href} style={{ color: "#0d9488", fontWeight: 700, textDecoration: "underline" }} target="_blank" rel="noopener noreferrer" {...rest}>
         {children}
@@ -154,6 +160,15 @@ function mdComponents(variant: "default" | "error", layout: "chat" | "document")
   };
 }
 
+/** Display text before ReactMarkdown (chat applies normalize for stored/legacy messages). */
+export function resolveAiMessageMarkdownDisplayText(
+  text: string,
+  layout: "chat" | "document",
+): string {
+  const raw = String(text ?? "");
+  return layout === "chat" ? normalizeUserVisibleMessageText(raw) : raw;
+}
+
 export function RequirementsAiMessageMarkdown({
   text,
   variant = "default",
@@ -165,10 +180,11 @@ export function RequirementsAiMessageMarkdown({
   readonly layout?: "chat" | "document";
 }) {
   const rootClass = layout === "chat" ? REQUIREMENTS_CHAT_MESSAGE_MARKDOWN_CLASS : "jyo-requirements-md";
+  const displayText = resolveAiMessageMarkdownDisplayText(text, layout);
   return (
     <div className={rootClass} data-variant={variant} data-layout={layout}>
       <Markdown components={mdComponents(variant, layout)} skipHtml>
-        {text}
+        {displayText}
       </Markdown>
     </div>
   );

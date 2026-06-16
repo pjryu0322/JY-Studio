@@ -45,7 +45,7 @@ describe("planningDataSlotsV1", () => {
       repositoryName: "doitmeet",
       planningDataSlots: draft,
     });
-    expect(handoff.implementationDataPlan.useRuntimeApi).toBe(true);
-    expect(handoff.implementationDataPlan.useSampleDb).toBe(true);
+    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("MOCK_JSON_FALLBACK");
+    expect(handoff.implementationDataPlan.useRuntimeApi).toBe(false);
   });
 });

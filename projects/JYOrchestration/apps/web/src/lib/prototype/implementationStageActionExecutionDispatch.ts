@@ -272,6 +272,7 @@ export function dispatchExecutionStageAction(
               envCursorBadge: effectiveImplementationState.envOk ? "ok" : "needs",
               priorTimeline: runtimeTimeline,
               priorExecutionState: runtimeExecutionState,
+              planningHandoffForImplementationV1: runtimeState.planningHandoffForImplementationV1 ?? null,
             });
             runtimeTaskPlan = derived.plan;
             runtimeWorkItems = [...derived.workItems];

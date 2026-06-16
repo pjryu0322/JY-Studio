@@ -50,6 +50,7 @@ import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOr
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry, RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 
 export type ImplementationCursorGateContext = Readonly<{
@@ -209,6 +210,7 @@ export function buildConfirmImplementationTaskPlanResult(
     designOk: input.designOk,
   });
   const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+  const parsedState = parseRequirementsStateJson(input.requirementsStateJson);
   const implementationSlotsV1 = buildImplementationSlotsFromContext({
     projectId: pid,
     projectArtifacts: input.projectArtifacts,
@@ -218,6 +220,7 @@ export function buildConfirmImplementationTaskPlanResult(
     envOk: input.envOk,
     designOk: input.designOk,
     envCursorBadge: input.envOk ? "ok" : "needs",
+    planningHandoffForImplementationV1: parsedState.planningHandoffForImplementationV1 ?? null,
   });
   const summaryMsg = buildImplementationTaskPlanSummaryMessage(plan, {
     workItems,

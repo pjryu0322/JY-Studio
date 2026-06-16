@@ -24,6 +24,11 @@ export type PlanningDatabaseSettingsV1 = Readonly<{
   readonly hasPassword?: boolean;
   readonly sslMode: PlanningDatabaseSslMode;
   readonly runtimeApiBaseUrl?: string | null;
+  readonly repositoryName?: string | null;
+  readonly databaseStoreName?: string | null;
+  readonly implementationSchemaName?: string | null;
+  readonly reviewSchemaName?: string | null;
+  readonly schemaStrategy?: "PROJECT_STAGE_SCHEMA" | null;
   readonly connectionStatus: PlanningDatabaseConnectionStatus;
   readonly lastCheckedAt?: string | null;
   readonly lastErrorMessage?: string | null;
@@ -87,6 +92,11 @@ export function parsePlanningDatabaseSettingsV1(raw: unknown): PlanningDatabaseS
     hasPassword: Boolean(o.hasPassword) || Boolean(masked),
     sslMode: readSsl(o.sslMode),
     runtimeApiBaseUrl: readStr(o.runtimeApiBaseUrl, 500) || null,
+    repositoryName: readStr(o.repositoryName, 200) || null,
+    databaseStoreName: readStr(o.databaseStoreName, 120) || null,
+    implementationSchemaName: readStr(o.implementationSchemaName, 120) || null,
+    reviewSchemaName: readStr(o.reviewSchemaName, 120) || null,
+    schemaStrategy: readStr(o.schemaStrategy, 40) === "PROJECT_STAGE_SCHEMA" ? "PROJECT_STAGE_SCHEMA" : null,
     connectionStatus: readStatus(o.connectionStatus),
     lastCheckedAt: readStr(o.lastCheckedAt, 80) || null,
     lastErrorMessage: readStr(o.lastErrorMessage, 500) || null,

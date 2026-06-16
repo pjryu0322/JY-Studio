@@ -238,6 +238,32 @@ describe("implementation DB slots", () => {
     );
     expect(gate.allowed).toBe(true);
   });
+
+  it("applies planning handoff persistence overrides to DB-related slots", () => {
+    const plan = samplePlan(true, true);
+    const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
+    const slots = buildImplementationSlotsFromContext({
+      projectId: "p1",
+      projectArtifacts: [],
+      implementationTaskPlanV1: plan,
+      cursorWorkItemsV1: workItems,
+      envOk: true,
+      designOk: true,
+      envCursorBadge: "ok",
+      planningHandoffForImplementationV1: {
+        version: "planning_handoff_for_implementation_v1",
+        projectId: "p1",
+        createdAt: "2026-06-03T00:00:00.000Z",
+        updatedAt: "2026-06-03T00:00:00.000Z",
+        implementationDefaults: {
+          dataPersistenceMode: "POSTGRES_SAMPLE_DB",
+        },
+      },
+    });
+    expect(slots.slots.find((s) => s.key === "data_persistence_mode")?.value).toBe("db");
+    expect(slots.slots.find((s) => s.key === "db_required")?.value).toBe(true);
+    expect(slots.slots.find((s) => s.key === "migration_required")?.value).toBe(true);
+  });
 });
 
 describe("implementation slot labels", () => {

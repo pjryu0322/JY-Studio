@@ -7,6 +7,10 @@ import { CODE_AGENT_WIP_POLICY_SLOT_LINES } from "@/lib/prototype/codeAgentWipDe
 import type { CursorWorkItem } from "@/lib/prototype/implementationCursorWorkItems";
 import { COMMON_FORBIDDEN_PATHS } from "@/lib/prototype/implementationExecutionHints";
 import type { ImplementationTaskPlanV1 } from "@/lib/prototype/implementationTaskPlan";
+import type { PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
+import {
+  implementationDbSlotOverridesForPlanningPersistence,
+} from "@/lib/planning/planningDbPersistencePolicy";
 import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
@@ -93,6 +97,7 @@ export type BuildImplementationSlotsInput = Readonly<{
   readonly codeAgentProvider?: CodeAgentProvider;
   readonly envCursorBadge?: "ok" | "needs" | "error" | "loading";
   readonly nowIso?: string;
+  readonly planningHandoffForImplementationV1?: PlanningHandoffForImplementationV1 | null;
 }>;
 
 export const IMPLEMENTATION_SLOT_META: Record<
@@ -594,7 +599,29 @@ export function buildImplementationSlotsFromContext(input: BuildImplementationSl
     slots,
     readiness: { ready: false, confirmed: 0, required: 0, missing: [], blocked: [], candidate: 0, partial: 0 },
   };
-  return { ...bundle, readiness: evaluateImplementationSlotsReadiness(bundle) };
+  const withReadiness = { ...bundle, readiness: evaluateImplementationSlotsReadiness(bundle) };
+  const handoff = input.planningHandoffForImplementationV1;
+  if (!handoff?.implementationDefaults) return withReadiness;
+  const overrides = implementationDbSlotOverridesForPlanningPersistence(
+    handoff.implementationDefaults.dataPersistenceMode,
+  );
+  const patchedSlots = withReadiness.slots.map((slot) => {
+    if (slot.key === "data_persistence_mode") {
+      return { ...slot, value: overrides.data_persistence_mode, reason: "기획 handoff 데이터 저장소 정책" };
+    }
+    if (slot.key === "db_required") {
+      return { ...slot, value: overrides.db_required, reason: "기획 handoff 데이터 저장소 정책" };
+    }
+    if (slot.key === "storage_strategy") {
+      return { ...slot, value: overrides.storage_strategy, reason: "기획 handoff 데이터 저장소 정책" };
+    }
+    if (slot.key === "migration_required") {
+      return { ...slot, value: overrides.migration_required, reason: "기획 handoff 데이터 저장소 정책" };
+    }
+    return slot;
+  });
+  const nextBundle = { ...withReadiness, slots: patchedSlots, updatedAt: now };
+  return { ...nextBundle, readiness: evaluateImplementationSlotsReadiness(nextBundle) };
 }
 
 export function patchImplementationSlots(input: {

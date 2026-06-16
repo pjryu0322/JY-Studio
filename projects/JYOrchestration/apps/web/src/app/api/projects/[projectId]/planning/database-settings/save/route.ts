@@ -7,6 +7,7 @@ import {
   parsePlanningDatabaseSettingsV1,
 } from "@/lib/planning/planningDatabaseSettingsV1";
 import { savePlanningDatabaseSettingsForProject } from "@/lib/planning/planningDatabaseSettingsService";
+import { prisma } from "@/lib/prisma";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
 
@@ -30,10 +31,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const settingsRaw = body?.settings ?? body;
     const parsed = parsePlanningDatabaseSettingsV1(settingsRaw) ?? defaultPlanningDatabaseSettingsV1();
     const password = typeof body?.password === "string" ? body.password : undefined;
+    const setup = await prisma.executionSetup.findUnique({
+      where: { projectId: pid },
+      select: { gitRepoName: true },
+    });
     const settings = await savePlanningDatabaseSettingsForProject({
       projectId: pid,
       settings: parsed,
       password,
+      gitRepoName: setup?.gitRepoName ?? null,
     });
     return NextResponse.json({ success: true, data: { settings } });
   } catch (error) {

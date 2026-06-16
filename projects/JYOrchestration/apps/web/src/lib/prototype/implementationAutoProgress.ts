@@ -113,6 +113,7 @@ export function ensureImplementationArtifactsFromTaskList(input: {
     envCursorBadge: input.envCursorBadge ?? (input.envOk ? "ok" : "needs"),
     priorTimeline: input.promptTimeline ?? parsed.promptTimeline,
     priorExecutionState: parsed.implementationTaskExecutionStateV1,
+    planningHandoffForImplementationV1: parsed.planningHandoffForImplementationV1 ?? null,
   });
 
   return {

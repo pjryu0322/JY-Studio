@@ -52,6 +52,7 @@ export function buildWorkspacePlanningOrchestrationView(input: {
   readonly projectName: string;
   readonly projectDescription: string;
   readonly projectType?: string | null;
+  readonly gitRepoName?: string | null;
   readonly servicePlanningAgentCatalogKeys?: readonly WorkspaceAiMemberId[] | null;
   readonly deliverableAssets?: readonly IdeationDeliverableAsset[];
   readonly projectArtifacts?: readonly ProjectArtifact[];
@@ -88,7 +89,10 @@ export function buildWorkspacePlanningOrchestrationView(input: {
   const orchestrationStatusCounts = singleChatOrchestrationStatusCounts(orchestrationUiState);
   const orchestrationSlotSections = buildOrchestrationSlotSummarySections(slotDefs, orchestrationUiState);
 
-  const repositoryName = resolvePlanningRepositoryName({ projectName: input.projectName });
+  const repositoryName = resolvePlanningRepositoryName({
+    gitRepoName: input.gitRepoName,
+    projectName: input.projectName,
+  });
   const planningDataSlots =
     parsePlanningDataSlotsV1(input.state.planningDataSlotsV1) ??
     buildPlanningDataSlotsStatePatch({

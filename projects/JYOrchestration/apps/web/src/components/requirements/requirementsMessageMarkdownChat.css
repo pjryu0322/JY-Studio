@@ -1,0 +1,44 @@
+/* Chat bubble markdown only (.messageMarkdown root). Document viewers use layout="document" without this class pair. */
+.messageMarkdown {
+  white-space: normal;
+}
+
+.messageMarkdown p {
+  margin: 0 0 8px;
+}
+
+.messageMarkdown p:last-child {
+  margin-bottom: 0;
+}
+
+.messageMarkdown ul,
+.messageMarkdown ol {
+  margin: 4px 0 10px;
+  padding-left: 20px;
+}
+
+.messageMarkdown li {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.messageMarkdown li + li {
+  margin-top: 2px;
+}
+
+/* Remark "loose" lists wrap item text in <p>; neutralize extra vertical gap. */
+.messageMarkdown li > p {
+  margin: 0;
+}
+
+.messageMarkdown h1,
+.messageMarkdown h2,
+.messageMarkdown h3 {
+  margin: 12px 0 6px;
+}
+
+.messageMarkdown hr {
+  margin: 12px 0;
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+}

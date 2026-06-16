@@ -3,6 +3,11 @@
  */
 
 import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
+import {
+  resolvePlanningDataPersistenceMode,
+  type PlanningDataPersistenceMode,
+} from "@/lib/planning/planningDbPersistencePolicy";
 import type { ProjectDataStoreNaming } from "@/lib/planning/projectDataStoreNaming";
 import { buildProjectDataStoreNaming } from "@/lib/planning/projectDataStoreNaming";
 import { findOrchestrationSlotKeysBySuffix, findSlotRow } from "@/lib/requirements/singleChatSlotNextAction";
@@ -437,6 +442,7 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
   readonly prior?: PlanningDataSlotsV1 | null;
+  readonly planningDatabaseSettings?: PlanningDatabaseSettingsV1 | null;
   readonly nowIso?: string;
 }>): PlanningDataSlotsV1 {
   const now = input.nowIso ?? new Date().toISOString();
@@ -447,11 +453,16 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
   const entities = buildEntitiesFromOrchestration(input);
   const hasEntities = entities.length > 0;
   const prior = input.prior ?? null;
+  const dbReady =
+    Boolean(input.planningDatabaseSettings?.enabled) &&
+    input.planningDatabaseSettings?.connectionStatus === "READY";
 
   const dataStoreSlot: DataStoreSlotV1 = {
-    status: slotStatusFromContent(Boolean(naming.normalizedBaseName), prior?.dataStoreSlot.status),
+    status: dbReady
+      ? slotStatusFromContent(Boolean(naming.normalizedBaseName), prior?.dataStoreSlot.status)
+      : "NEEDS_REVIEW",
     provider: "POSTGRESQL",
-    enabled: true,
+    enabled: dbReady,
     repositoryName: naming.repositoryName,
     normalizedBaseName: naming.normalizedBaseName,
     implementationStore: {
@@ -471,7 +482,7 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
       displayName: "운영 데이터 저장소",
       description: "운영 배포 단계에서 별도로 구성합니다.",
     },
-    runtimeApiRequired: true,
+    runtimeApiRequired: dbReady,
   };
 
   const dataModelSlot: DataModelSlotV1 = {
@@ -490,7 +501,7 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
   const endpoints = buildRuntimeEndpoints(dataModelSlot.entities);
   const runtimeApiSlot: RuntimeApiSlotV1 = {
     status: slotStatusFromContent(endpoints.length > 0, prior?.runtimeApiSlot.status),
-    required: true,
+    required: dbReady,
     apiBaseMode: "PLATFORM_DEFAULT",
     endpoints: endpoints.length ? endpoints : (prior?.runtimeApiSlot.endpoints ?? []),
   };
@@ -521,17 +532,28 @@ export type PlanningHandoffForImplementationV1 = Readonly<{
     readonly useSampleDb: true;
     readonly useRuntimeApi: true;
   }>;
+  readonly implementationDefaults: Readonly<{
+    readonly previewHost: "GITHUB_PAGES";
+    readonly dataPersistenceMode: PlanningDataPersistenceMode;
+    readonly runtimeApiRequired: boolean;
+  }>;
 }>;
 
 export function buildPlanningHandoffForImplementation(input: Readonly<{
   readonly projectId: string;
   readonly repositoryName: string;
   readonly planningDataSlots: PlanningDataSlotsV1;
+  readonly planningDatabaseSettings?: PlanningDatabaseSettingsV1 | null;
 }>): PlanningHandoffForImplementationV1 {
   const naming = buildProjectDataStoreNaming({
     repositoryName: input.repositoryName,
     projectId: input.projectId,
   });
+  const dataPersistenceMode = resolvePlanningDataPersistenceMode({
+    planningDatabaseSettings: input.planningDatabaseSettings,
+    dataStoreSlot: input.planningDataSlots.dataStoreSlot,
+  });
+  const runtimeApiRequired = dataPersistenceMode === "POSTGRES_SAMPLE_DB";
   return {
     version: 1,
     projectId: input.projectId.trim(),
@@ -545,7 +567,12 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
       repositoryBasedStoreName: naming.normalizedBaseName,
       implementationSchemaName: naming.implementationSchemaName,
       useSampleDb: true,
-      useRuntimeApi: true,
+      useRuntimeApi: runtimeApiRequired,
+    },
+    implementationDefaults: {
+      previewHost: "GITHUB_PAGES",
+      dataPersistenceMode,
+      runtimeApiRequired,
     },
   };
 }
@@ -606,6 +633,7 @@ export function mergePlanningDataSlotsPatch(input: Readonly<{
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
+  readonly planningDatabaseSettings?: PlanningDatabaseSettingsV1 | null;
   readonly prior?: PlanningDataSlotsV1 | null;
   readonly nowIso?: string;
 }>): PlanningDataSlotsV1 {

@@ -36,6 +36,7 @@ export type RequirementsSpecWorkspacePersistArgs = {
   readonly organizedAt: string | null;
   readonly onboardingAppliedKey: string | null;
   readonly onboardingKey: string;
+  readonly enrichRequirementsStateBeforePersist?: (state: RequirementsStateJson) => Partial<RequirementsStateJson>;
 };
 
 export function useRequirementsSpecWorkspacePersist(args: RequirementsSpecWorkspacePersistArgs) {
@@ -142,14 +143,18 @@ export function useRequirementsSpecWorkspacePersist(args: RequirementsSpecWorksp
         openIssues: meta?.openIssues ?? (openIssues.trim() || ""),
         priorityFeatures: meta?.priorityFeatures ?? (priorityFeatures.trim() || ""),
       });
-      const mergedState = meta ? mergeRequirementsStateJson(baseState, meta) : baseState;
-      stateJsonRef.current = mergedState;
+    const mergedState = meta ? mergeRequirementsStateJson(baseState, meta) : baseState;
+    const enrich = argsRef.current.enrichRequirementsStateBeforePersist?.(mergedState);
+    const mergedWithPlanning = enrich
+      ? mergeRequirementsStateJson(mergedState, enrich)
+      : mergedState;
+    stateJsonRef.current = mergedWithPlanning;
       const deliverableAssetsSnapshot =
         meta && Array.isArray(meta.deliverableAssets) && meta.deliverableAssets.length ? meta.deliverableAssets : null;
       const body: Record<string, unknown> = {
         requirementsConversationJson: nextRoom.requirementsConversation,
         requirementsDraftJson: nextRoom.requirementsDraft ?? null,
-        requirementsStateJson: mergedState,
+        requirementsStateJson: mergedWithPlanning,
         requirementsRoomState: {
           ...nextRoom,
           openIssues: openIssues.trim() || undefined,
@@ -187,7 +192,7 @@ export function useRequirementsSpecWorkspacePersist(args: RequirementsSpecWorksp
       }
       notifyAppFlowProjectContextRefresh();
       setSaveState("saved");
-      setLastSavedAt(mergedState.lastSavedAt ?? nextSavedAt);
+      setLastSavedAt(mergedWithPlanning.lastSavedAt ?? nextSavedAt);
       return json.data.project;
     },
     []
