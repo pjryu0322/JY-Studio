@@ -46,6 +46,10 @@ const EXECUTION_SETUP_ADD_COLUMNS_IF_NOT_EXISTS: readonly string[] = [
   // 20260601121500_llm_codetask_refinement_toggle
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "enableLlmCodeTaskRefinement" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "implementationLlmProviderConfigJson" JSONB`,
+  // 20260603120000_planning_database_settings
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "planningDatabaseSettingsJson" JSONB`,
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "planningPostgresPassword" TEXT`,
+  `ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "planningPostgresPasswordMasked" TEXT`,
   `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "implementationLlmProviderConfigJson" JSONB`,
 ];
 

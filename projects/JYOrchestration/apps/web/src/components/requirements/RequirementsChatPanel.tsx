@@ -663,9 +663,10 @@ export function RequirementsChatPanel({
                 interviewSuggestions.length > 0 &&
                 !deliverPayload &&
                 !isErr;
-              const codeTaskLlmRefinementBlockParts = onCopyAllCodeTaskPrompts
-                ? splitMessageContentForCodeTaskLlmRefinementBlock(text)
-                : null;
+              const codeTaskLlmRefinementBlockParts =
+                onCopyAllCodeTaskPrompts && !m.meta?.implementationPreparationDiagnosticsText
+                  ? splitMessageContentForCodeTaskLlmRefinementBlock(text)
+                  : null;
               const showBootstrapProposalPlain =
                 !codeTaskLlmRefinementBlockParts &&
                 !deliverPayload &&
@@ -688,6 +689,7 @@ export function RequirementsChatPanel({
                   variant={isErr ? "error" : "default"}
                   enableCodeTaskPromptBulkCopy={Boolean(onCopyAllCodeTaskPrompts)}
                   onCopyAllCodeTaskPrompts={onCopyAllCodeTaskPrompts}
+                  implementationPreparationDiagnosticsText={m.meta?.implementationPreparationDiagnosticsText}
                 />
               ) : (
                 <div style={{ ...WORKSPACE_STANDARD_CHAT_BODY_STYLE, whiteSpace: "pre-wrap" }}>{text}</div>

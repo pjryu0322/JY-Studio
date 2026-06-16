@@ -51,6 +51,10 @@ import type {
 import type { PlanningDataSlotsV1, PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
 import { buildPlanningDataSlotsStatePatch, resolvePlanningRepositoryName } from "@/lib/planning/planningDataSlotsStatePatch";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import {
+  buildImplementationPreparationUserSummary,
+  formatImplementationPreparationUserMessage,
+} from "@/lib/requirements/implementationPreparationMessageFormatter";
 
 export type QuickDesignConfirmImplementationPrepResult = Readonly<{
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
@@ -564,28 +568,13 @@ export function formatImplementationPrepCompleteSummaryLines(input: {
   readonly workItemCount?: number;
   readonly usedHeuristicFallback?: boolean;
 }): readonly string[] {
-  const frameCount = input.taskList?.tasks.filter((t) => t.taskType === "frame").length ?? 0;
-  const processTaskCount = input.taskList?.tasks.filter((t) => t.ownerRole === "developer").length ?? 0;
-  const codeTaskCount = input.codeTaskPlan?.codeTaskCount ?? input.codeTaskPlan?.tasks.length ?? 0;
-  const workItemCount = input.workItemCount ?? codeTaskCount;
-  const lines = [
-    "구현준비 완료",
-    "",
-    "확정 템플릿:",
-    `- ${input.templateContext?.templateNameKo ?? "대시보드"}`,
-    "",
-    "생성 항목:",
-    `- 화면 프레임/앱 Shell: ${frameCount}개`,
-    `- Process Task: ${processTaskCount}개`,
-    `- WorkItem: ${workItemCount}개`,
-    `- CodeTask: ${codeTaskCount}개`,
-    "",
-    "구현단계에서는 실행할 CodeTask를 선택해서 진행합니다.",
-  ];
-  if (input.usedHeuristicFallback) {
-    lines.push("", "일부 CodeTask는 기본 규칙으로 생성되었습니다.");
-  }
-  return lines;
+  const summary = buildImplementationPreparationUserSummary({
+    taskList: input.taskList,
+    codeTaskPlan: input.codeTaskPlan,
+    workItemCount: input.workItemCount,
+    templateNameKo: input.templateContext?.templateNameKo ?? "대시보드",
+  });
+  return formatImplementationPreparationUserMessage(summary).split("\n");
 }
 
 export function formatQuickDesignImplementationPrepSummaryLines(input: {

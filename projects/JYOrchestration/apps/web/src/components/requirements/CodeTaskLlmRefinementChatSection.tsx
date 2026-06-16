@@ -22,8 +22,8 @@ function CopyIcon({ size = 14 }: { readonly size?: number }) {
   );
 }
 
-export function CodeTaskLlmRefinementChatSection(input: {
-  readonly parts: CodeTaskLlmRefinementChatBlockParts;
+function DiagnosticsLinesList(input: {
+  readonly lines: readonly string[];
   readonly onCopyAllCodeTaskPrompts?: () => Promise<boolean>;
 }) {
   const [copyBusy, setCopyBusy] = useState(false);
@@ -39,55 +39,91 @@ export function CodeTaskLlmRefinementChatSection(input: {
   }, [copyBusy, input.onCopyAllCodeTaskPrompts]);
 
   return (
-    <div style={{ margin: "8px 0" }}>
-      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginBottom: 6 }}>{input.parts.title}</div>
-      <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
-        {input.parts.lines.map((line) => {
-          const showCopy = isCodeTaskTotalCountSummaryLine(line) && Boolean(input.onCopyAllCodeTaskPrompts);
-          return (
-            <li
-              key={line}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                fontSize: 13,
-                lineHeight: 1.5,
-                color: "#334155",
-                marginBottom: 2,
-              }}
-            >
-              <span style={{ flex: "1 1 auto", minWidth: 0 }}>{line}</span>
-              {showCopy ? (
-                <button
-                  type="button"
-                  aria-label="CodeTask 1단계 프롬프트 초안 복사"
-                  title="CodeTask 1단계 프롬프트 초안 복사"
-                  disabled={copyBusy}
-                  onClick={() => void handleCopyAll()}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 28,
-                    height: 28,
-                    flexShrink: 0,
-                    border: "1px solid #cbd5e1",
-                    borderRadius: 8,
-                    background: "#fff",
-                    color: "#1e40af",
-                    cursor: copyBusy ? "wait" : "pointer",
-                    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
-                  }}
-                >
-                  <CopyIcon />
-                </button>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+    <ul style={{ margin: "6px 0 0", paddingLeft: 0, listStyle: "none" }}>
+      {input.lines.map((line) => {
+        const showCopy = isCodeTaskTotalCountSummaryLine(line) && Boolean(input.onCopyAllCodeTaskPrompts);
+        return (
+          <li
+            key={line}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              lineHeight: 1.45,
+              color: "#64748b",
+              margin: "2px 0",
+            }}
+          >
+            <span style={{ flex: "1 1 auto", minWidth: 0 }}>{line}</span>
+            {showCopy ? (
+              <button
+                type="button"
+                aria-label="CodeTask 1단계 프롬프트 초안 복사"
+                title="CodeTask 1단계 프롬프트 초안 복사"
+                disabled={copyBusy}
+                onClick={() => void handleCopyAll()}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 28,
+                  height: 28,
+                  flexShrink: 0,
+                  border: "1px solid #cbd5e1",
+                  borderRadius: 8,
+                  background: "#fff",
+                  color: "#1e40af",
+                  cursor: copyBusy ? "wait" : "pointer",
+                }}
+              >
+                <CopyIcon />
+              </button>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+export function ImplementationPreparationDiagnosticsCollapsible(input: {
+  readonly diagnosticsText: string;
+  readonly onCopyAllCodeTaskPrompts?: () => Promise<boolean>;
+}) {
+  const body = String(input.diagnosticsText ?? "").trim();
+  if (!body) return null;
+  const lines = body.split("\n").map((l) => l.trimEnd()).filter((l) => l.length > 0);
+
+  return (
+    <details
+      style={{
+        marginTop: 10,
+        fontSize: 12,
+        color: "#64748b",
+        borderTop: "1px solid #e2e8f0",
+        paddingTop: 8,
+      }}
+    >
+      <summary style={{ cursor: "pointer", fontWeight: 700, color: "#475569", userSelect: "none" }}>
+        실행 진단 정보
+      </summary>
+      <DiagnosticsLinesList lines={lines} onCopyAllCodeTaskPrompts={input.onCopyAllCodeTaskPrompts} />
+    </details>
+  );
+}
+
+/** @deprecated Prefer ImplementationPreparationDiagnosticsCollapsible */
+export function CodeTaskLlmRefinementChatSection(input: {
+  readonly parts: CodeTaskLlmRefinementChatBlockParts;
+  readonly onCopyAllCodeTaskPrompts?: () => Promise<boolean>;
+}) {
+  const body = [input.parts.title, ...input.parts.lines].join("\n");
+  return (
+    <ImplementationPreparationDiagnosticsCollapsible
+      diagnosticsText={body}
+      onCopyAllCodeTaskPrompts={input.onCopyAllCodeTaskPrompts}
+    />
   );
 }
 
@@ -96,25 +132,31 @@ export function RequirementsAiMessageWithOptionalCodeTaskCopy(input: {
   readonly variant?: "default" | "error";
   readonly enableCodeTaskPromptBulkCopy?: boolean;
   readonly onCopyAllCodeTaskPrompts?: () => Promise<boolean>;
+  readonly implementationPreparationDiagnosticsText?: string | null;
 }) {
-  const parts =
-    input.enableCodeTaskPromptBulkCopy && input.onCopyAllCodeTaskPrompts
-      ? splitMessageContentForCodeTaskLlmRefinementBlock(input.text)
-      : null;
+  const legacyParts = splitMessageContentForCodeTaskLlmRefinementBlock(input.text);
 
-  if (!parts) {
-    return <RequirementsAiMessageMarkdown text={input.text} variant={input.variant ?? "default"} />;
-  }
+  const diagnosticsText =
+    input.implementationPreparationDiagnosticsText?.trim() ||
+    (legacyParts ? [legacyParts.title, ...legacyParts.lines].join("\n") : "");
+
+  const displayText = legacyParts
+    ? [legacyParts.prefix, legacyParts.suffix].filter((s) => s.trim().length > 0).join("\n\n")
+    : input.text;
 
   const variant = input.variant ?? "default";
+
   return (
     <>
-      {parts.prefix ? <RequirementsAiMessageMarkdown text={parts.prefix} variant={variant} /> : null}
-      <CodeTaskLlmRefinementChatSection
-        parts={parts}
-        onCopyAllCodeTaskPrompts={input.onCopyAllCodeTaskPrompts}
-      />
-      {parts.suffix ? <RequirementsAiMessageMarkdown text={parts.suffix} variant={variant} /> : null}
+      <RequirementsAiMessageMarkdown text={displayText} variant={variant} />
+      {diagnosticsText ? (
+        <ImplementationPreparationDiagnosticsCollapsible
+          diagnosticsText={diagnosticsText}
+          onCopyAllCodeTaskPrompts={
+            input.enableCodeTaskPromptBulkCopy ? input.onCopyAllCodeTaskPrompts : undefined
+          }
+        />
+      ) : null}
     </>
   );
 }

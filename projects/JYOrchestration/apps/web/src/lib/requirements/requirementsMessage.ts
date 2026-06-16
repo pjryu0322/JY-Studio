@@ -1,3 +1,6 @@
+import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
+import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
+
 export type RequirementsMessageRole = "user" | "ai" | "human" | "system";
 
 /** 사용자 질문의 복수 대상(단일 targetId/targetName과 병행 저장 가능) */
@@ -6,9 +9,6 @@ export type RequirementsMessageTarget = { id: string; name: string };
 export type RequirementsSpeakerType = "USER" | "AI" | "HUMAN" | "SYSTEM";
 export type RequirementsVisibility = "PUBLIC";
 export type RequirementsMessageType = "QUESTION" | "STATEMENT" | "ANSWER" | "NOTICE" | "FRIENDLY_ERROR";
-
-import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
-import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
 
 export type RequirementsMessageMeta = {
   stage: "REQUIREMENTS";
@@ -86,6 +86,8 @@ export type RequirementsMessageMeta = {
     readonly width: number;
     readonly height: number;
   }>;
+  /** CodeTask LLM 정제·Batch 등 실행 진단(채팅 기본 노출 아님) */
+  implementationPreparationDiagnosticsText?: string;
   previewRegionCaptureSource?: string;
 };
 

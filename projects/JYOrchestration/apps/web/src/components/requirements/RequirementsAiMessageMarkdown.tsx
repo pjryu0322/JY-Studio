@@ -15,7 +15,7 @@ function mdComponents(variant: "default" | "error"): Components {
           fontSize: "1.2rem",
           fontWeight: 800,
           color: accent,
-          margin: "0.35em 0 0.45em",
+          margin: "12px 0 6px",
           lineHeight: 1.35,
           letterSpacing: "-0.02em",
         }}
@@ -25,32 +25,32 @@ function mdComponents(variant: "default" | "error"): Components {
       </h1>
     ),
     h2: ({ children, ...rest }) => (
-      <h2 style={{ fontSize: "1.05rem", fontWeight: 800, color: accent, margin: "0.75em 0 0.4em", lineHeight: 1.35 }} {...rest}>
+      <h2 style={{ fontSize: "1.05rem", fontWeight: 800, color: accent, margin: "12px 0 6px", lineHeight: 1.35 }} {...rest}>
         {children}
       </h2>
     ),
     h3: ({ children, ...rest }) => (
-      <h3 style={{ fontSize: "0.98rem", fontWeight: 800, color: variant === "error" ? "#b91c1c" : "#334155", margin: "0.65em 0 0.35em", lineHeight: 1.4 }} {...rest}>
+      <h3 style={{ fontSize: "0.98rem", fontWeight: 800, color: variant === "error" ? "#b91c1c" : "#334155", margin: "12px 0 6px", lineHeight: 1.4 }} {...rest}>
         {children}
       </h3>
     ),
     p: ({ children, ...rest }) => (
-      <p style={{ margin: "0.45em 0", lineHeight: 1.62, color: variant === "error" ? "#7f1d1d" : textMain }} {...rest}>
+      <p style={{ margin: "0 0 8px", lineHeight: 1.55, color: variant === "error" ? "#7f1d1d" : textMain }} {...rest}>
         {children}
       </p>
     ),
     ul: ({ children, ...rest }) => (
-      <ul style={{ margin: "0.45em 0", paddingLeft: "1.25rem", color: textMain, listStyleType: "disc" }} {...rest}>
+      <ul style={{ margin: "6px 0", paddingLeft: "20px", color: textMain, listStyleType: "disc" }} {...rest}>
         {children}
       </ul>
     ),
     ol: ({ children, ...rest }) => (
-      <ol style={{ margin: "0.45em 0", paddingLeft: "1.35rem", color: textMain, listStyleType: "decimal" }} {...rest}>
+      <ol style={{ margin: "6px 0", paddingLeft: "20px", color: textMain, listStyleType: "decimal" }} {...rest}>
         {children}
       </ol>
     ),
     li: ({ children, ...rest }) => (
-      <li style={{ margin: "0.2em 0", lineHeight: 1.55 }} {...rest}>
+      <li style={{ margin: "2px 0", lineHeight: 1.5 }} {...rest}>
         {children}
       </li>
     ),
@@ -142,7 +142,7 @@ export function RequirementsAiMessageMarkdown({
   readonly variant?: "default" | "error";
 }) {
   return (
-    <div className="jyo-requirements-md" data-variant={variant}>
+    <div className="jyo-requirements-md messageMarkdown" data-variant={variant}>
       <Markdown components={mdComponents(variant)} skipHtml>
         {text}
       </Markdown>

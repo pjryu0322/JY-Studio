@@ -26,7 +26,7 @@ function spawnProc(label, command, args, cwd) {
   return child;
 }
 
-const nextDev = spawnProc("next", "pnpm", ["exec", "next", "dev"], webDir);
+const nextDev = spawnProc("next", "pnpm", ["run", "dev"], webDir);
 
 const taskCursorDevWorker = String(process.env.TASK_CURSOR_DEV_WORKER ?? "")
   .trim()

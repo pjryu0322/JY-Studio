@@ -228,7 +228,7 @@ describe("template-based frame and codetask consolidation", () => {
     });
     expect(lines.join("\n")).toContain("확정 템플릿:");
     expect(lines.join("\n")).toContain("회의 분석 워크스페이스");
-    expect(lines.join("\n")).toContain("화면 프레임/앱 Shell: 1개");
+    expect(lines.join("\n")).toContain("화면 프레임/App Shell:");
     expect(lines.join("\n")).toContain("CodeTask:");
   });
 });

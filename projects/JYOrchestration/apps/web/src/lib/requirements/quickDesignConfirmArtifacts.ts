@@ -7,7 +7,6 @@ import {
   QUICK_DESIGN_PLANNING_SEED_READY_HEADING,
 } from "@/lib/requirements/implementationUxLabels";
 import type { ImplementationSurfaceReadiness } from "@/lib/requirements/implementationReadinessGates";
-import { formatImplementationTaskListSummarySection } from "@/lib/requirements/implementationTaskList";
 import { resolveImplementationCandidateGapKeys } from "@/lib/requirements/implementationCandidateLabels";
 import {
   formatQuickDesignImplementationPrepSummaryLines,
@@ -29,10 +28,10 @@ import {
 import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 import type { RequirementsOrchestrationStageV1 } from "@/lib/requirements/requirementsStateJson";
 import {
-  buildImplementationReadinessUserSummary,
-  formatCodeTaskLlmRefinementSummaryFromPlan,
-  formatImplementationReadinessIntroLines,
-} from "@/lib/prototype/implementationReadinessSummary";
+  formatImplementationPreparationDiagnosticsFromPlan,
+  formatImplementationPreparationTaskListSection,
+} from "@/lib/requirements/implementationPreparationMessageFormatter";
+import { normalizeUserVisibleMessageText } from "@/lib/requirements/messageTextNormalize";
 
 export type QuickDesignConfirmArtifactsInput = Readonly<
   Omit<FastPlanGenerationInput, "nowIso"> & {
@@ -183,20 +182,8 @@ export function resolveQuickDesignImplementationReadyCopy(input: {
   return {
     heading: QUICK_DESIGN_IMPLEMENTATION_READY_WITH_ENV_HEADING,
     intro: input.autoConfirmedRequired
-      ? [
-          "AI팀이 기획 산출물과 구현 준비정보(Implementation Seed)를 자동 생성·확정했고,",
-          "AI 개발자가 실행할 구현 작업목록도 준비했습니다.",
-          "실행 환경도 준비되었습니다.",
-          "",
-          "구현단계로 이동해 준비된 작업목록을 기준으로 구현을 시작할 수 있습니다.",
-        ].join("\n")
-      : [
-          "AI팀이 기획 산출물과 구현 준비정보를 정리했고,",
-          "AI 개발자가 실행할 구현 작업목록도 준비했습니다.",
-          "실행 환경도 준비되었습니다.",
-          "",
-          "구현단계로 이동해 준비된 작업목록을 기준으로 구현을 시작할 수 있습니다.",
-        ].join("\n"),
+      ? "AI팀이 기획 산출물과 구현 준비정보를 자동 생성·확정했고, 실행할 구현 작업목록과 실행 환경을 준비했습니다."
+      : "AI팀이 기획 산출물과 구현 준비정보, 구현 작업목록, 실행 환경을 정리했습니다.",
     prepInfoSectionLabel: "구현 준비정보:",
   };
 }
@@ -282,23 +269,15 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     ...prepSummaryLines,
   ];
 
-  const readinessUserSummary = buildImplementationReadinessUserSummary({
+  const implementationPreparationDiagnosticsText = formatImplementationPreparationDiagnosticsFromPlan({
     codeTaskPlan: input.prep.implementationCodeTaskPlanV1,
     timelineEntries: input.prep.timelineEntries,
   });
-  const llmRefinementIntroLines = formatImplementationReadinessIntroLines(readinessUserSummary);
-  const llmRefinementLines = formatCodeTaskLlmRefinementSummaryFromPlan({
-    codeTaskPlan: input.prep.implementationCodeTaskPlanV1,
-    timelineEntries: input.prep.timelineEntries,
-  });
-  if (llmRefinementIntroLines.length) {
-    contentParts.push("", ...llmRefinementIntroLines);
-  }
-  if (llmRefinementLines.length) {
-    contentParts.push("", ...llmRefinementLines);
-  }
 
-  contentParts.push(...formatImplementationTaskListSummarySection(input.prep.implementationTaskListV1));
+  const taskListSection = formatImplementationPreparationTaskListSection(input.prep.implementationTaskListV1);
+  if (taskListSection) {
+    contentParts.push("", taskListSection);
+  }
 
   if (!input.prep.postConfirmState.seedReady && input.planningSummary?.trim()) {
     contentParts.push("", input.planningSummary.trim());
@@ -306,7 +285,7 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
 
   contentParts.push("", "다음 작업을 선택해 주세요.");
 
-  const content = contentParts.join("\n");
+  const content = normalizeUserVisibleMessageText(contentParts.join("\n"));
 
   return newRequirementsMessage({
     role: "ai",
@@ -325,6 +304,9 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
       interviewAllowCustomInput: true,
       ...(implementationCandidateGapKeys.length
         ? { implementationCandidateGapKeys: [...implementationCandidateGapKeys] }
+        : {}),
+      ...(implementationPreparationDiagnosticsText.trim()
+        ? { implementationPreparationDiagnosticsText: implementationPreparationDiagnosticsText.trim() }
         : {}),
     },
   });

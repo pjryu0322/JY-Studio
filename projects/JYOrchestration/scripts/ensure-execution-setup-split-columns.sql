@@ -52,3 +52,8 @@ SET
 WHERE "status" = 'validated'
   AND "repoConnectionOk" IS NULL
   AND "executorConnectionOk" IS NULL;
+
+-- 20260603120000_planning_database_settings
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "planningDatabaseSettingsJson" JSONB;
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "planningPostgresPassword" TEXT;
+ALTER TABLE "execution_setups" ADD COLUMN IF NOT EXISTS "planningPostgresPasswordMasked" TEXT;
