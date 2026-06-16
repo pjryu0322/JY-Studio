@@ -45,7 +45,7 @@ export function ServiceDesignComposer({
 }: ServiceDesignComposerProps) {
   const submit = async () => {
     const harnessPayload = buildServiceDesignHarnessPayload(stage, value);
-    if (stage === "ideation") await onSendIdeation(harnessPayload);
+    if (stage === "ideation" || stage === "product-definition") await onSendIdeation(harnessPayload);
     else if (stage === "service-flow") await onSendServiceFlow(harnessPayload);
     else await onSendFeaturePlanning(harnessPayload);
   };

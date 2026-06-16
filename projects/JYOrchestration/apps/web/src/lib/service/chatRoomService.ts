@@ -12,6 +12,8 @@ import { runMessengerAiTurn } from "@/lib/messenger/messengerLlm";
 import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromChatDraftTypes";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { buildInitialProductDefinitionOrchestrationStage } from "@/lib/requirements/productDefinitionOrchestration";
+import { buildProductDefinitionFromChatDraft } from "@/lib/requirements/productDefinitionV1";
 import { createProject } from "@/lib/service/projectService";
 import { platformUserDisplayName } from "@/lib/user/platformProfile";
 
@@ -587,9 +589,17 @@ export async function confirmProjectFromChatRoom(input: {
       select: { requirementsStateJson: true },
     });
     const base = (cur?.requirementsStateJson ?? {}) as RequirementsStateJson;
+    const nowIso = new Date().toISOString();
     const patch: Partial<RequirementsStateJson> = {
       originalProjectDescription: desc || "",
       seededFromPreProjectChat: true,
+      requirementsOrchestrationStageV1: buildInitialProductDefinitionOrchestrationStage(nowIso),
+      productDefinitionV1: buildProductDefinitionFromChatDraft({
+        productName: name,
+        description: desc,
+        draft: payload,
+        nowIso,
+      }),
     };
     if (Array.isArray(payload.openQuestions) && payload.openQuestions.length) {
       patch.openIssues = payload.openQuestions.map((s) => String(s)).join("\n");

@@ -31,6 +31,21 @@ export type OrchestrationStageDefinition = Readonly<{
 }>;
 
 const STAGE_REGISTRY: Record<OrchestrationStage, OrchestrationStageDefinition> = {
+  PRODUCT_DEFINITION: {
+    wireStage: "PRODUCT_DEFINITION",
+    workspaceStage: "product-definition",
+    conversationState: null,
+    allowedTransitions: ["IDEATION"],
+    rollbackTransitions: [],
+    allowedActionIds: [],
+    obsoleteActionIds: [
+      "APPROVE_FLOW",
+      "NEXT_STAGE",
+      "START_FEATURE_DETAIL",
+      "APPLY_PROPOSAL",
+      "GENERATE_ALTERNATIVE",
+    ],
+  },
   IDEATION: {
     wireStage: "IDEATION",
     workspaceStage: "ideation",
@@ -171,6 +186,7 @@ export function resolveAuthoritativeOrchestrationStage(
   if (activePhase === "api_define") return "FEATURE_DETAIL";
 
   const stored = state.requirementsOrchestrationStageV1?.currentStage;
+  if (stored === "PRODUCT_DEFINITION") return "PRODUCT_DEFINITION";
   if (stored === "FEATURE_DETAIL") return "FEATURE_DETAIL";
   if (stored === "DOCUMENTATION_COMPLETE") return "DOCUMENTATION_COMPLETE";
   if (stored === "SERVICE_FLOW_REVIEW") return "SERVICE_FLOW_REVIEW";

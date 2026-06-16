@@ -9,6 +9,8 @@ import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/proje
 import { PROJECT_WORKFLOW_REQUIREMENTS_PENDING } from "@/lib/project/projectWorkflowStatus";
 import { ensureDefaultAiPlannerProjectMember } from "@/lib/service/projectMemberService";
 import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { buildInitialProductDefinitionOrchestrationStage } from "@/lib/requirements/productDefinitionOrchestration";
+import { buildProductDefinitionStubFromProject } from "@/lib/requirements/productDefinitionV1";
 
 /** @deprecated 이름 보존용 — 내부적으로 소유 또는 HUMAN 멤버십 프로젝트를 반환합니다. */
 export async function listProjectsOrderedByCreatedDesc(
@@ -102,6 +104,7 @@ export type CreateProjectInput = {
 export async function createProject(input: CreateProjectInput) {
   const includeAi = input.includeDefaultAiPlanner !== false;
   return prisma.$transaction(async (tx) => {
+    const nowIso = new Date().toISOString();
     const project = await tx.project.create({
       data: {
         name: input.name,
@@ -113,7 +116,15 @@ export async function createProject(input: CreateProjectInput) {
         status: PROJECT_LIFECYCLE_ACTIVE,
         workflowStatus: PROJECT_WORKFLOW_REQUIREMENTS_PENDING,
         // Preserve original creation description for project cards.
-        requirementsStateJson: mergeRequirementsStateJson({}, { originalProjectDescription: input.description ?? "" }) as Prisma.InputJsonValue,
+        requirementsStateJson: mergeRequirementsStateJson({}, {
+          originalProjectDescription: input.description ?? "",
+          requirementsOrchestrationStageV1: buildInitialProductDefinitionOrchestrationStage(nowIso),
+          productDefinitionV1: buildProductDefinitionStubFromProject({
+            productName: input.name,
+            description: input.description,
+            nowIso,
+          }),
+        }) as Prisma.InputJsonValue,
       },
     });
     await tx.projectMember.create({

@@ -19,7 +19,7 @@ import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { SingleChatOrchestrationStatusCounts } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 
-export type RequirementsWorkspaceStage = "ideation" | "service-flow" | "feature-planning" | "implementation";
+export type RequirementsWorkspaceStage = "product-definition" | "ideation" | "service-flow" | "feature-planning" | "implementation";
 
 const IDEATION_SEND_DEV = process.env.NODE_ENV !== "production";
 

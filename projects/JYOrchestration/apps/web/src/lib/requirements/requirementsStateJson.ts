@@ -1,6 +1,7 @@
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import { parseFeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import { parseSampleDataSpecV1, type SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+import { parseProductDefinitionV1, type ProductDefinitionV1 } from "@/lib/requirements/productDefinitionV1";
 import type { FeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
 import { parseFeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
 import {
@@ -689,6 +690,8 @@ export type RequirementsStateJson = {
   featurePlanningSlotsV1?: FeaturePlanningSlotsArtifactV1 | null;
   /** Preview 검토용 샘플데이터 기준(기획 산출물) */
   sampleDataSpecV1?: SampleDataSpecV1 | null;
+  /** 프로젝트 생성 직후 Product Definition(제품 방향·범위) */
+  productDefinitionV1?: ProductDefinitionV1 | null;
   /** 세부 기능 정의(FEATURE_DETAIL) structured slots — orchestration SoT */
   featureDetailSlotsV1?: FeatureDetailSlotsV1 | null;
   /** 기능 정리 워크스페이스 대화(요구사항 채팅과 분리) */
@@ -708,6 +711,7 @@ export type RequirementsStateJson = {
 };
 
 export type RequirementsOrchestrationStageWire =
+  | "PRODUCT_DEFINITION"
   | "IDEATION"
   | "SERVICE_FLOW_REVIEW"
   | "FEATURE_DETAIL"
@@ -1208,6 +1212,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   else if (sampleDataSpecRaw === null) sampleDataSpecV1 = null;
   else sampleDataSpecV1 = parseSampleDataSpecV1(sampleDataSpecRaw);
 
+  const productDefinitionRaw = "productDefinitionV1" in o ? (o.productDefinitionV1 as unknown) : undefined;
+  let productDefinitionV1: ProductDefinitionV1 | null | undefined;
+  if (productDefinitionRaw === undefined) productDefinitionV1 = undefined;
+  else if (productDefinitionRaw === null) productDefinitionV1 = null;
+  else productDefinitionV1 = parseProductDefinitionV1(productDefinitionRaw);
+
   const featureDetailRaw = "featureDetailSlotsV1" in o ? (o.featureDetailSlotsV1 as unknown) : undefined;
   let featureDetailSlotsV1: FeatureDetailSlotsV1 | null | undefined;
   if (featureDetailRaw === undefined) featureDetailSlotsV1 = undefined;
@@ -1394,6 +1404,7 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
     ...(sampleDataSpecV1 !== undefined ? { sampleDataSpecV1 } : {}),
+    ...(productDefinitionV1 !== undefined ? { productDefinitionV1 } : {}),
     ...(featureDetailSlotsV1 !== undefined ? { featureDetailSlotsV1 } : {}),
     ...(featurePlanningWorkspaceChatV1 !== undefined ? { featurePlanningWorkspaceChatV1 } : {}),
     ...(fastPlanGenerationV1 !== undefined ? { fastPlanGenerationV1 } : {}),
@@ -1914,6 +1925,7 @@ function parseRequirementsServiceFlowV1(raw: unknown): RequirementsServiceFlowV1
 }
 
 const ORCHESTRATION_STAGE_WIRE = new Set<RequirementsOrchestrationStageWire>([
+  "PRODUCT_DEFINITION",
   "IDEATION",
   "SERVICE_FLOW_REVIEW",
   "FEATURE_DETAIL",

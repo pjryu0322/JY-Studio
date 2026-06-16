@@ -66,6 +66,14 @@ import {
   type PreProjectInterviewSuggestionActionMeta,
 } from "@/lib/requirements/preProjectSingleChatInitialProposal";
 import {
+  buildProductDefinitionIntroAiMessage,
+  hasProductDefinitionIntroMessage,
+} from "@/lib/requirements/productDefinitionChatService";
+import {
+  buildProductDefinitionUserMessage,
+  postProductDefinitionChat,
+} from "@/components/requirements/workspace/runProductDefinitionSend";
+import {
   emptyProblemInterviewState,
   problemInterviewStateFromBootstrapSeedWire,
   problemInterviewStrictFilledCount,
@@ -413,6 +421,7 @@ export function RequirementsWorkspace({
   const draftDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 인터뷰 자동 시작 이펙트 중복 실행(React StrictMode 등) 방지 */
   const ideationBootstrapFlightRef = useRef<string | null>(null);
+  const productDefinitionIntroFlightRef = useRef<string | null>(null);
   const consumedResetSeedNonceRef = useRef<number | null>(null);
   /** 아이디어 구체화: spec 단계 기본 AI(planner) 보강 요청 중복 방지 */
   const ideationEnsurePlannerInFlightRef = useRef(false);
@@ -447,6 +456,7 @@ export function RequirementsWorkspace({
     return workspaceStageFromOrchestrationStage(resolveAuthoritativeOrchestrationStage(st));
   }, [project?.requirementsStateJson, fetchNonce]);
   const inIdeationStage = activeStage === "ideation";
+  const inProductDefinitionStage = activeStage === "product-definition";
   const participantAiMemberId = useMemo(() => resolveParticipantContextKey(activeStage), [activeStage]);
   const ideationScreenCatalogIds = useMemo(() => {
     if (!workspaceAiGraph) return undefined;
@@ -1521,7 +1531,8 @@ export function RequirementsWorkspace({
           existingMessageCount: existing.length,
           seededFromPreProject,
           forceRegenerate: forceRegeneratePlanningSummary,
-        })
+        }) &&
+        resolveAuthoritativeOrchestrationStage(workspaceState) !== "PRODUCT_DEFINITION"
       ) {
         if (forceRegeneratePlanningSummary) {
           consumedResetSeedNonceRef.current = conversationResetNonce;
@@ -2192,8 +2203,83 @@ export function RequirementsWorkspace({
     onSingleChatAiMessages: appendFeaturePlanningAiTurnsToRequirementsConversation,
   });
 
+  const runProductDefinitionSend = useCallback(
+    async (_harnessPayload: ServiceDesignHarnessPayload) => {
+      const text = input.trim();
+      const pid = resolvedProjectId.trim();
+      if (!text || busy || !pid) return;
+      flushSync(() => setInput(""));
+      setBusy(true);
+      setError(null);
+      try {
+        const userMsg = buildProductDefinitionUserMessage({
+          text,
+          sessionUserId: sessionUser?.id ?? "me",
+          sessionUserName: sessionUser?.name ?? "나",
+        });
+        const r0 = roomRef.current;
+        const withUser = [...r0.requirementsConversation.messages, userMsg];
+        await persistRemote(
+          {
+            ...r0,
+            requirementsConversation: { ...r0.requirementsConversation, projectId: pid, messages: withUser },
+          },
+          {},
+          {},
+        );
+        const transcript = filterIdeationConversationMessages(withUser)
+          .slice(-10)
+          .map((m) => `${m.role}: ${String(m.content ?? "").slice(0, 400)}`)
+          .join("\n");
+        const result = await postProductDefinitionChat({
+          projectId: pid,
+          userMessage: text,
+          recentTranscript: transcript,
+        });
+        if (!result.ok) {
+          showErrorToast(result.message);
+          return;
+        }
+        await persistStateJsonOnly(result.requirementsStateJson);
+        const r1 = roomRef.current;
+        const withAi = [...r1.requirementsConversation.messages, result.assistantMessage];
+        await persistRemote(
+          {
+            ...r1,
+            requirementsConversation: { ...r1.requirementsConversation, projectId: pid, messages: withAi },
+          },
+          {},
+          {},
+        );
+        setFetchNonce((n) => n + 1);
+        if (result.completedPlanning) {
+          showSuccessToast("Product Definition을 확정했습니다. 기획 단계를 이어갈 수 있습니다.");
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Product Definition 전송 오류");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [
+      input,
+      busy,
+      resolvedProjectId,
+      sessionUser?.id,
+      sessionUser?.name,
+      persistRemote,
+      persistStateJsonOnly,
+      showErrorToast,
+      showSuccessToast,
+    ],
+  );
+
   const handleServiceDesignComposerSend = useCallback(
     async (payload: ServiceDesignHarnessPayload) => {
+      if (activeStage === "product-definition") {
+        await runProductDefinitionSend(payload);
+        return;
+      }
       if (activeStage === "ideation") {
         await runIdeationSend(payload);
         return;
@@ -2207,8 +2293,40 @@ export function RequirementsWorkspace({
         return;
       }
     },
-    [activeStage, runIdeationSend, runServiceFlowSend, runFeaturePlanningSend]
+    [activeStage, runProductDefinitionSend, runIdeationSend, runServiceFlowSend, runFeaturePlanningSend]
   );
+
+  useEffect(() => {
+    if (!inProductDefinitionStage || conversationStatus !== "loaded") return;
+    const pid = resolvedProjectId.trim();
+    if (!pid || !project) return;
+    const st = parseRequirementsStateJson(project.requirementsStateJson);
+    const def = st.productDefinitionV1;
+    if (!def) return;
+    if (hasProductDefinitionIntroMessage(conversationMessages)) return;
+    if (productDefinitionIntroFlightRef.current === pid) return;
+    productDefinitionIntroFlightRef.current = pid;
+    void (async () => {
+      const intro = buildProductDefinitionIntroAiMessage({ definition: def });
+      const r = roomRef.current;
+      const appended = [...r.requirementsConversation.messages, intro];
+      await persistRemote(
+        {
+          ...r,
+          requirementsConversation: { ...r.requirementsConversation, projectId: pid, messages: appended },
+        },
+        {},
+        {},
+      );
+    })();
+  }, [
+    inProductDefinitionStage,
+    conversationStatus,
+    resolvedProjectId,
+    project,
+    conversationMessages,
+    persistRemote,
+  ]);
 
   const onPanelBlurSave = useCallback(async () => {
     if (busy) return;

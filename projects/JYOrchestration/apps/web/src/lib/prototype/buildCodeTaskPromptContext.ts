@@ -25,6 +25,8 @@ import { INTEGRATION_WIRING_PROCESS_TASK_TITLE } from "@/lib/prototype/codeTaskI
 import { evaluateIntegrationWiringTaskContent } from "@/lib/prototype/integrationWiringContentValidation";
 import { formatTemplateLayoutSnippetForRole } from "@/lib/prototype/codeTaskTemplateLayoutDraft";
 import { parseImplementationSeedV1, type ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import { parseProductDefinitionV1 } from "@/lib/requirements/productDefinitionV1";
+import { formatProductDefinitionPlanningContext } from "@/lib/requirements/productDefinitionV1";
 import {
   buildSampleDataAcceptanceCriteriaFromSpec,
   formatSampleDataSpecPromptLines,
@@ -63,6 +65,7 @@ function extractPlanningSummary(state: Record<string, unknown>): {
   readonly templateId?: string;
 } {
   const seed = parseImplementationSeedV1(state.implementationSeedV1);
+  const productDef = parseProductDefinitionV1(state.productDefinitionV1);
   const organize = state.organizeContext;
   let serviceGoal: string | undefined;
   let problemToSolve: string | undefined;
@@ -97,6 +100,18 @@ function extractPlanningSummary(state: Record<string, unknown>): {
       problemToSolve = sanitizePlanningPromptText(
         String(o.problemToSolve ?? o.userProblem ?? "").trim(),
       );
+    }
+  }
+
+  if (productDef) {
+    if (!serviceGoal && productDef.overview.productPurpose.confidence === "confirmed") {
+      serviceGoal = sanitizePlanningPromptText(productDef.overview.productPurpose.value);
+    }
+    if (!problemToSolve && productDef.overview.problemToSolve.confidence === "confirmed") {
+      problemToSolve = sanitizePlanningPromptText(productDef.overview.problemToSolve.value);
+    }
+    if (!targetUsers.length && productDef.targetUsers.primaryUsers.confidence === "confirmed") {
+      targetUsers.push(sanitizePlanningPromptText(productDef.targetUsers.primaryUsers.value));
     }
   }
 
@@ -325,6 +340,7 @@ function buildContextForCodeTask(input: {
   readonly parentTask: ImplementationTaskListV1["tasks"][number] | null;
   readonly seed: ImplementationSeedV1 | null;
   readonly planningSummary: ReturnType<typeof extractPlanningSummary>;
+  readonly productDefinitionLines?: readonly string[];
   readonly sampleDataSpecV1?: import("@/lib/featurePlanning/sampleDataSpecV1").SampleDataSpecV1 | null;
   readonly nowIso: string;
 }): CodeTaskPromptContextV1 {
@@ -451,11 +467,12 @@ function buildContextForCodeTask(input: {
           intent: sanitizePlanningPromptText(roleResolved.role),
           requirements: filterPerTaskRequirementLines(
             uniq([
+              ...(input.productDefinitionLines ?? []),
               ...featureTemplate.implementationRequirements,
               ...(roleResolved.roleKind === "mock_data" ? mockCriteria : uniqueCriteria),
             ]),
             roleResolved.roleKind,
-          ).slice(0, roleResolved.roleKind === "mock_data" ? 12 : 7),
+          ).slice(0, roleResolved.roleKind === "mock_data" ? 12 : 9),
           constraints: uniq(input.codeTask.forbiddenPaths ?? []).slice(0, 8),
           expectedBehavior: uniq([
             ...featureTemplate.implementationGoal,
@@ -529,6 +546,7 @@ export function buildCodeTaskPromptContextMap(input: {
   const taskList = parseImplementationTaskListV1(state.implementationTaskListV1);
   const seed = parseImplementationSeedV1(state.implementationSeedV1);
   const sampleDataSpecV1 = resolveSampleDataSpecForImplementation({ seed, requirementsStateJson: state });
+  const productDefinitionLines = formatProductDefinitionPlanningContext(parseProductDefinitionV1(state.productDefinitionV1));
   const planningSummary = extractPlanningSummary(state);
   const contexts: Record<string, CodeTaskPromptContextV1> = {};
 
@@ -542,6 +560,7 @@ export function buildCodeTaskPromptContextMap(input: {
       parentTask,
       seed,
       planningSummary,
+      productDefinitionLines,
       sampleDataSpecV1,
       nowIso: now,
     });
