@@ -241,7 +241,7 @@ export function ProposalPlanPreviewModal({
           </button>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 16px 18px" }}>
-          <RequirementsAiMessageMarkdown text={markdown} variant="default" />
+          <RequirementsAiMessageMarkdown text={markdown} variant="default" layout="document" />
         </div>
         <div
           style={{

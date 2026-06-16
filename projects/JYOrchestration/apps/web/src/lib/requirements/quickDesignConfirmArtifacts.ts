@@ -28,10 +28,15 @@ import {
 import type { ArtifactOrchestrationStateV1 } from "@/lib/requirements/artifactOrchestration";
 import type { RequirementsOrchestrationStageV1 } from "@/lib/requirements/requirementsStateJson";
 import {
+  formatImplementationPreparationCompactSection,
   formatImplementationPreparationDiagnosticsFromPlan,
   formatImplementationPreparationTaskListSection,
+  buildImplementationPreparationUserSummary,
 } from "@/lib/requirements/implementationPreparationMessageFormatter";
-import { normalizeUserVisibleMessageText } from "@/lib/requirements/messageTextNormalize";
+import {
+  formatCompactBulletSection,
+  joinUserVisibleMessageSections,
+} from "@/lib/requirements/messageTextNormalize";
 
 export type QuickDesignConfirmArtifactsInput = Readonly<
   Omit<FastPlanGenerationInput, "nowIso"> & {
@@ -175,7 +180,7 @@ export function resolveQuickDesignImplementationReadyCopy(input: {
             "AI 개발자가 실행할 구현 작업목록도 준비했습니다.",
             "코드 에이전트 WIP 작업 전 실행 환경 설정이 필요합니다.",
           ].join("\n"),
-      prepInfoSectionLabel: "구현 준비정보:",
+      prepInfoSectionLabel: "구현 준비 정보",
     };
   }
 
@@ -184,7 +189,7 @@ export function resolveQuickDesignImplementationReadyCopy(input: {
     intro: input.autoConfirmedRequired
       ? "AI팀이 기획 산출물과 구현 준비정보를 자동 생성·확정했고, 실행할 구현 작업목록과 실행 환경을 준비했습니다."
       : "AI팀이 기획 산출물과 구현 준비정보, 구현 작업목록, 실행 환경을 정리했습니다.",
-    prepInfoSectionLabel: "구현 준비정보:",
+    prepInfoSectionLabel: "구현 준비 정보",
   };
 }
 
@@ -196,14 +201,13 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
   readonly prep: QuickDesignConfirmImplementationPrepResult;
   readonly definitions?: readonly SingleChatOrchestrationSlotDefinition[];
 }): RequirementsMessage {
-  const titles = input.artifactTitles.length
-    ? input.artifactTitles.map((t) => `- ${t}`).join("\n")
-    : "- 프로젝트 요약서";
-
   const copy = resolveQuickDesignImplementationReadyCopy({
     state: input.prep.postConfirmState,
     autoConfirmedRequired: input.prep.autoConfirmedRequired,
   });
+
+  const artifactTitles = input.artifactTitles.length ? [...input.artifactTitles] : ["프로젝트 요약서"];
+  const artifactsSection = formatCompactBulletSection("생성된 산출물", artifactTitles);
 
   const prepSummaryLines = formatQuickDesignImplementationPrepSummaryLines({
     prepComplete: input.prep.postConfirmState.seedReady,
@@ -220,6 +224,24 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
       input.prep.implementationCodeTaskPlanV1?.refinementSource === "heuristic" ||
       input.prep.implementationCodeTaskPlanV1?.refinementStatus === "heuristic_only",
   });
+
+  const prepInfoSection =
+    input.prep.postConfirmState.seedReady &&
+    (input.prep.implementationSeedV1.templateContext ||
+      input.prep.implementationTaskListV1 ||
+      input.prep.implementationCodeTaskPlanV1)
+      ? formatImplementationPreparationCompactSection(
+          buildImplementationPreparationUserSummary({
+            taskList: input.prep.implementationTaskListV1,
+            codeTaskPlan: input.prep.implementationCodeTaskPlanV1,
+            workItemCount: input.prep.cursorWorkItemsV1?.length,
+            templateNameKo: input.prep.implementationSeedV1.templateContext?.templateNameKo ?? "대시보드",
+          }),
+        )
+      : formatCompactBulletSection(
+          copy.prepInfoSectionLabel.replace(/:$/, ""),
+          prepSummaryLines.map((line) => line.replace(/^\s*-\s*/, "").trim()).filter(Boolean),
+        );
 
   const qualityWarningCount =
     input.prep.implementationCodeTaskQualityGateV1?.status === "warning"
@@ -255,37 +277,27 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     definitions: input.definitions,
   });
 
-  const contentParts = [
-    `**${copy.heading}**`,
-    "",
-    ...readinessSummaryLines,
-    "",
-    copy.intro,
-    "",
-    "생성된 산출물:",
-    titles,
-    "",
-    copy.prepInfoSectionLabel,
-    ...prepSummaryLines,
-  ];
-
   const implementationPreparationDiagnosticsText = formatImplementationPreparationDiagnosticsFromPlan({
     codeTaskPlan: input.prep.implementationCodeTaskPlanV1,
     timelineEntries: input.prep.timelineEntries,
   });
 
   const taskListSection = formatImplementationPreparationTaskListSection(input.prep.implementationTaskListV1);
-  if (taskListSection) {
-    contentParts.push("", taskListSection);
-  }
 
-  if (!input.prep.postConfirmState.seedReady && input.planningSummary?.trim()) {
-    contentParts.push("", input.planningSummary.trim());
-  }
+  const closingLine = executionReady
+    ? "이제 구현단계에서 실행할 CodeTask를 선택할 수 있습니다."
+    : "다음 작업을 선택해 주세요.";
 
-  contentParts.push("", "다음 작업을 선택해 주세요.");
-
-  const content = normalizeUserVisibleMessageText(contentParts.join("\n"));
+  const content = joinUserVisibleMessageSections([
+    `**${copy.heading}**`,
+    readinessSummaryLines.join("\n"),
+    copy.intro,
+    artifactsSection,
+    prepInfoSection,
+    taskListSection,
+    !input.prep.postConfirmState.seedReady && input.planningSummary?.trim() ? input.planningSummary.trim() : "",
+    closingLine,
+  ]);
 
   return newRequirementsMessage({
     role: "ai",

@@ -2,12 +2,20 @@
 
 import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
+import { REQUIREMENTS_CHAT_MESSAGE_MARKDOWN_CLASS } from "@/lib/requirements/messageTextNormalize";
 
 const textMain = "#0f172a";
 const textMuted = "#475569";
 
-function mdComponents(variant: "default" | "error"): Components {
+function mdComponents(variant: "default" | "error", layout: "chat" | "document"): Components {
   const accent = variant === "error" ? "#991b1b" : textMain;
+  const compact = layout === "chat";
+  const pMargin = compact ? "0 0 8px" : "0.45em 0";
+  const listMargin = compact ? "4px 0 8px" : "0.45em 0";
+  const listPad = compact ? "20px" : "1.25rem";
+  const liMargin = compact ? "2px 0" : "0.2em 0";
+  const headingMargin = compact ? "12px 0 6px" : "0.75em 0 0.4em";
+
   return {
     h1: ({ children, ...rest }) => (
       <h1
@@ -15,7 +23,7 @@ function mdComponents(variant: "default" | "error"): Components {
           fontSize: "1.2rem",
           fontWeight: 800,
           color: accent,
-          margin: "12px 0 6px",
+          margin: headingMargin,
           lineHeight: 1.35,
           letterSpacing: "-0.02em",
         }}
@@ -25,32 +33,44 @@ function mdComponents(variant: "default" | "error"): Components {
       </h1>
     ),
     h2: ({ children, ...rest }) => (
-      <h2 style={{ fontSize: "1.05rem", fontWeight: 800, color: accent, margin: "12px 0 6px", lineHeight: 1.35 }} {...rest}>
+      <h2 style={{ fontSize: "1.05rem", fontWeight: 800, color: accent, margin: headingMargin, lineHeight: 1.35 }} {...rest}>
         {children}
       </h2>
     ),
     h3: ({ children, ...rest }) => (
-      <h3 style={{ fontSize: "0.98rem", fontWeight: 800, color: variant === "error" ? "#b91c1c" : "#334155", margin: "12px 0 6px", lineHeight: 1.4 }} {...rest}>
+      <h3
+        style={{
+          fontSize: "0.98rem",
+          fontWeight: 800,
+          color: variant === "error" ? "#b91c1c" : "#334155",
+          margin: headingMargin,
+          lineHeight: 1.4,
+        }}
+        {...rest}
+      >
         {children}
       </h3>
     ),
     p: ({ children, ...rest }) => (
-      <p style={{ margin: "0 0 8px", lineHeight: 1.55, color: variant === "error" ? "#7f1d1d" : textMain }} {...rest}>
+      <p style={{ margin: pMargin, lineHeight: 1.55, color: variant === "error" ? "#7f1d1d" : textMain }} {...rest}>
         {children}
       </p>
     ),
     ul: ({ children, ...rest }) => (
-      <ul style={{ margin: "6px 0", paddingLeft: "20px", color: textMain, listStyleType: "disc" }} {...rest}>
+      <ul style={{ margin: listMargin, paddingLeft: listPad, color: textMain, listStyleType: "disc" }} {...rest}>
         {children}
       </ul>
     ),
     ol: ({ children, ...rest }) => (
-      <ol style={{ margin: "6px 0", paddingLeft: "20px", color: textMain, listStyleType: "decimal" }} {...rest}>
+      <ol
+        style={{ margin: listMargin, paddingLeft: compact ? "20px" : "1.35rem", color: textMain, listStyleType: "decimal" }}
+        {...rest}
+      >
         {children}
       </ol>
     ),
     li: ({ children, ...rest }) => (
-      <li style={{ margin: "2px 0", lineHeight: 1.5 }} {...rest}>
+      <li style={{ margin: liMargin, lineHeight: 1.5 }} {...rest}>
         {children}
       </li>
     ),
@@ -137,13 +157,17 @@ function mdComponents(variant: "default" | "error"): Components {
 export function RequirementsAiMessageMarkdown({
   text,
   variant = "default",
+  layout = "chat",
 }: {
   readonly text: string;
   readonly variant?: "default" | "error";
+  /** chat = compact bubble; document = deliverable/preview viewers */
+  readonly layout?: "chat" | "document";
 }) {
+  const rootClass = layout === "chat" ? REQUIREMENTS_CHAT_MESSAGE_MARKDOWN_CLASS : "jyo-requirements-md";
   return (
-    <div className="jyo-requirements-md messageMarkdown" data-variant={variant}>
-      <Markdown components={mdComponents(variant)} skipHtml>
+    <div className={rootClass} data-variant={variant} data-layout={layout}>
+      <Markdown components={mdComponents(variant, layout)} skipHtml>
         {text}
       </Markdown>
     </div>

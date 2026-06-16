@@ -77,7 +77,7 @@ function prepBase(overrides: Partial<QuickDesignConfirmImplementationPrepResult>
     touchedGapKeys: [],
     chipLabels: [],
     prepComplete: true,
-    postConfirmState: { seedReady: true, designOk: true } as never,
+    postConfirmState: { seedReady: true, designOk: true, envOk: true, hasReferenceArtifacts: true } as never,
     timelineEntries: [],
     ...overrides,
   };
@@ -108,13 +108,37 @@ describe("buildQuickDesignImplementationReadyChatMessage readiness summary", () 
     expect(msg.content).not.toContain("병렬 처리");
     expect(msg.meta?.implementationPreparationDiagnosticsText).toContain("CodeTask LLM 정제:");
     expect(msg.meta?.implementationPreparationDiagnosticsText).toContain("전체 CodeTask: 55개");
-    expect(msg.content).toContain("구현 준비 항목을 생성했습니다.");
+    expect(msg.content).toContain("구현 준비 정보:");
     expect(msg.content).toContain("CodeTask:");
+    expect(msg.content).not.toMatch(/생성된 산출물:\n\n-/);
+    expect(msg.content).not.toMatch(/구현 준비 정보:\n\n-/);
     expect(msg.content).not.toContain("Validation");
     expect(msg.content).not.toContain("Preflight");
     expect(msg.content).not.toContain("LLM Refinement");
     expect(msg.content).not.toContain("heuristic only");
     expect(msg.content).not.toContain("위험 CodeTask");
+  });
+
+  it("adds compact artifact and prep bullet sections", () => {
+    const msg = buildQuickDesignImplementationReadyChatMessage({
+      artifactIds: ["a1", "a2"],
+      artifactTitles: ["프로젝트 요약서", "프로토타입 기획안"],
+      nowIso: NOW,
+      prep: prepBase({
+        implementationTaskListV1: {
+          version: 1,
+          projectId: "p1",
+          createdAt: NOW,
+          updatedAt: NOW,
+          source: "implementation_seed_v1",
+          tasks: [{ taskId: "DEV-1" } as never],
+          roleSummary: { developer: 1, designer: 0, reviewer: 0, security: 0, scm: 0 },
+        } as never,
+      }),
+    });
+    expect(msg.content).toContain("생성된 산출물:\n- 프로젝트 요약서\n- 프로토타입 기획안");
+    expect(msg.content).not.toMatch(/- 프로젝트 요약서\n\n-/);
+    expect(msg.content).toContain("이제 구현단계에서 실행할 CodeTask를 선택할 수 있습니다.");
   });
 
   it("adds warning summary line when quality gate is warning", () => {

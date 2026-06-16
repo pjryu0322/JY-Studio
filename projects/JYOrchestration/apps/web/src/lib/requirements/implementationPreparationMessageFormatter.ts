@@ -8,7 +8,7 @@ import {
 } from "@/lib/prototype/implementationReadinessSummary";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { formatImplementationTaskListRoleSummaryLines } from "@/lib/requirements/implementationTaskList";
-import { normalizeUserVisibleMessageText } from "@/lib/requirements/messageTextNormalize";
+import { formatCompactBulletSection } from "@/lib/requirements/messageTextNormalize";
 
 export type ImplementationPreparationUserSummary = Readonly<{
   readonly appShellCount: number;
@@ -53,17 +53,29 @@ export function buildImplementationPreparationUserSummary(input: {
 export function formatImplementationPreparationUserMessage(
   summary: ImplementationPreparationUserSummary,
 ): string {
-  const lines = [
-    "구현 준비 항목을 생성했습니다.",
-    `- 화면 프레임/App Shell: ${summary.appShellCount}개`,
-    `- Process Task: ${summary.processTaskCount}개`,
-    `- WorkItem: ${summary.workItemCount}개`,
-    `- CodeTask: ${summary.codeTaskCount}개`,
-  ];
+  return formatImplementationPreparationCompactSection(summary);
+}
+
+export function formatImplementationPreparationCompactItems(
+  summary: ImplementationPreparationUserSummary,
+): readonly string[] {
+  const items: string[] = [];
   if (summary.templateNameKo) {
-    lines.splice(1, 0, `- 확정 템플릿: ${summary.templateNameKo}`);
+    items.push(`확정 템플릿: ${summary.templateNameKo}`);
   }
-  return normalizeUserVisibleMessageText(lines.join("\n"));
+  items.push(
+    `화면 프레임/App Shell: ${summary.appShellCount}개`,
+    `Process Task: ${summary.processTaskCount}개`,
+    `WorkItem: ${summary.workItemCount}개`,
+    `CodeTask: ${summary.codeTaskCount}개`,
+  );
+  return items;
+}
+
+export function formatImplementationPreparationCompactSection(
+  summary: ImplementationPreparationUserSummary,
+): string {
+  return formatCompactBulletSection("구현 준비 정보", formatImplementationPreparationCompactItems(summary));
 }
 
 export function buildImplementationPreparationDiagnostics(input: {
@@ -124,6 +136,8 @@ export function formatImplementationPreparationTaskListSection(
   taskList: ImplementationTaskListV1 | null | undefined,
 ): string {
   if (!taskList?.tasks?.length || !taskList.roleSummary) return "";
-  const lines = ["구현 작업목록:", ...formatImplementationTaskListRoleSummaryLines(taskList)];
-  return normalizeUserVisibleMessageText(lines.join("\n"));
+  const items = formatImplementationTaskListRoleSummaryLines(taskList).map((line) =>
+    line.replace(/^\s*-\s*/, "").trim(),
+  );
+  return formatCompactBulletSection("구현 작업목록", items);
 }

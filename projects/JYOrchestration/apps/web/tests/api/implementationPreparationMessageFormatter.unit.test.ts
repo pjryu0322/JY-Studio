@@ -30,12 +30,12 @@ describe("formatImplementationPreparationUserMessage", () => {
         templateNameKo: "대시보드",
       }),
     );
-    expect(text).toContain("구현 준비 항목을 생성했습니다.");
+    expect(text).toContain("구현 준비 정보:");
     expect(text).toContain("CodeTask: 15개");
     expect(text).not.toContain("Fallback");
     expect(text).not.toContain("Batch");
     expect(text).not.toContain("소요 시간");
-    expect(text).not.toMatch(/\n\n\n/);
+    expect(text).not.toMatch(/\n\n/);
   });
 });
 

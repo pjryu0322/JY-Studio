@@ -226,7 +226,7 @@ export function RequirementsDeliverableViewerModal({
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 20px 22px" }}>
           {active ? (
-            <RequirementsAiMessageMarkdown text={active.content} variant="default" />
+            <RequirementsAiMessageMarkdown text={active.content} variant="default" layout="document" />
           ) : (
             <div style={{ color: "#64748b" }}>문서가 없습니다.</div>
           )}

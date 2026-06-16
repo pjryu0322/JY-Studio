@@ -1,5 +1,6 @@
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import type { ExtractedOverlayPromptTraceMetadata } from "@/lib/overlay/overlayPromptTraceExtract";
+import { normalizeUserVisibleMessageText } from "@/lib/requirements/messageTextNormalize";
 
 export type RequirementsMessageRole = "user" | "ai" | "human" | "system";
 
@@ -165,7 +166,10 @@ export function newRequirementsMessage(input: Omit<RequirementsMessage, "id" | "
     ...(targets && targets.length ? { targets } : {}),
     visibility: input.visibility ?? "PUBLIC",
     messageType: input.messageType,
-    content: input.content,
+    content:
+      input.role === "ai" || input.role === "system"
+        ? normalizeUserVisibleMessageText(input.content)
+        : input.content,
     createdAt,
     meta: {
       stage: "REQUIREMENTS",

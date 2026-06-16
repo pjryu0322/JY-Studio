@@ -26,8 +26,7 @@ import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
 import { useWorkspaceScrollToEnd } from "@/components/workspace/useWorkspaceScroll";
 import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
-import { RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsAiMessageMarkdown";
-import { RequirementsAiMessageWithOptionalCodeTaskCopy } from "@/components/requirements/CodeTaskLlmRefinementChatSection";
+import { RequirementsMessageRenderer, RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsMessageRenderer";
 import { splitMessageContentForCodeTaskLlmRefinementBlock } from "@/lib/requirements/codeTaskLlmRefinementChatBlock";
 import { QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE } from "@/lib/requirements/quickDesignConfirmArtifacts";
 import {
@@ -684,7 +683,7 @@ export function RequirementsChatPanel({
                   onConfirm={(ids) => onConfirmDeliverables?.(ids)}
                 />
               ) : codeTaskLlmRefinementBlockParts || !showBootstrapProposalPlain ? (
-                <RequirementsAiMessageWithOptionalCodeTaskCopy
+                <RequirementsMessageRenderer
                   text={text}
                   variant={isErr ? "error" : "default"}
                   enableCodeTaskPromptBulkCopy={Boolean(onCopyAllCodeTaskPrompts)}
@@ -822,7 +821,7 @@ export function RequirementsChatPanel({
                     {repliesNavBtn}
                   </div>
                   <div style={WORKSPACE_STANDARD_CHAT_BODY_STYLE}>
-                    <RequirementsAiMessageMarkdown text={text} variant={isErr ? "error" : "default"} />
+                    <RequirementsAiMessageMarkdown text={text} variant={isErr ? "error" : "default"} layout="chat" />
                   </div>
                 </div>
               </div>
