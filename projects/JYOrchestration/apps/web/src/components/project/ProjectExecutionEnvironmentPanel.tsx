@@ -38,6 +38,7 @@ import {
   PrototypeEnvSettingsGithubTokenStepCard,
   PrototypeEnvSettingsStepCard,
 } from "@/components/project/prototypeEnvSettingsUx";
+import { PrototypeEnvSettingsModalLayout } from "@/components/project/PrototypeEnvSettingsModalLayout";
 import {
   buildPrototypeEnvModalTableRows,
   type PrototypeEnvModalRowKey,

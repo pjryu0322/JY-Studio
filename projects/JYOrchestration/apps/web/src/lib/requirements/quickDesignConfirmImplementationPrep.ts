@@ -312,6 +312,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   const repositoryName = resolvePlanningRepositoryName({
     gitRepoName: input.gitRepoName,
     projectName: input.projectName,
+    planningDatabaseSettings: input.planningStateJson?.planningDatabaseSettingsV1 ?? null,
   });
   const planningDataPatch = buildPlanningDataSlotsStatePatch({
     state: input.planningStateJson ?? { sampleDataSpecV1: input.sampleDataSpecV1 ?? null },
@@ -478,23 +479,14 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   };
 }
 
-export async function runQuickDesignConfirmImplementationPrepWithLlm(input: {
-  readonly projectId: string;
-  readonly projectName?: string;
-  readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
-  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
-  readonly promptTimeline?: readonly RequirementsPromptTimelineEntry[];
-  readonly nowIso: string;
-  readonly generatedArtifactCount?: number;
-  readonly envOk?: boolean;
-  readonly projectArtifacts?: readonly ProjectArtifact[] | null;
-  readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
-  readonly existingTaskList?: ImplementationTaskListV1 | null;
-  readonly llmCaller?: LlmCodeTaskRefinementCaller;
-  readonly forceLlm?: boolean;
-  readonly refinementSettings?: ProjectCodeTaskRefinementSettings | null;
-  readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
-}): Promise<QuickDesignConfirmImplementationPrepResult> {
+export async function runQuickDesignConfirmImplementationPrepWithLlm(
+  input: Parameters<typeof runQuickDesignConfirmImplementationPrep>[0] & {
+    readonly llmCaller?: LlmCodeTaskRefinementCaller;
+    readonly forceLlm?: boolean;
+    readonly refinementSettings?: ProjectCodeTaskRefinementSettings | null;
+    readonly providerContext?: LlmCodeTaskRefinementProviderContext | null;
+  },
+): Promise<QuickDesignConfirmImplementationPrepResult> {
   const syncResult = runQuickDesignConfirmImplementationPrep(input);
   const taskListForReadiness = input.existingTaskList ?? syncResult.implementationTaskListV1;
   if (!syncResult.prepComplete || !taskListForReadiness?.tasks?.length) {

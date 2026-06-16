@@ -1,4 +1,5 @@
 import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import {
   buildPlanningHandoffForImplementation,
   mergePlanningDataSlotsPatch,
@@ -7,8 +8,7 @@ import {
   type PlanningHandoffForImplementationV1,
 } from "@/lib/planning/planningDataSlotsV1";
 import { extractRepositoryBaseNameFromGitRepoName } from "@/lib/planning/projectDataStoreNaming";
-import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import type {
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatOrchestrationSlotDefinition,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
@@ -16,9 +16,12 @@ import type {
 export function resolvePlanningRepositoryName(input: Readonly<{
   readonly gitRepoName?: string | null;
   readonly projectName?: string | null;
+  readonly planningDatabaseSettings?: PlanningDatabaseSettingsV1 | null;
 }>): string {
   const fromGit = extractRepositoryBaseNameFromGitRepoName(input.gitRepoName);
   if (fromGit) return fromGit;
+  const fromSettings = String(input.planningDatabaseSettings?.repositoryName ?? "").trim();
+  if (fromSettings) return fromSettings;
   return String(input.projectName ?? "").trim() || "project";
 }
 

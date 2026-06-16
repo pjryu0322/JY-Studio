@@ -529,14 +529,14 @@ export function buildImplementationSlotsFromContext(input: BuildImplementationSl
       status: "confirmed",
       value: "mock",
       source: ["implementation_db_strategy"],
-      reason: "초기 구현은 Mock JSON·정적 프로토타입 우선",
+      reason: "기본은 PostgreSQL 샘플 DB; DB 미설정 시 Mock JSON fallback",
       nowIso: now,
     }),
     makeSlot("db_required", {
       status: "confirmed",
       value: false,
       source: ["implementation_db_strategy"],
-      reason: "초기 단계 DB 연동 불필요",
+      reason: "DB READY handoff 시 true로 전환",
       nowIso: now,
     }),
     makeSlot("db_trigger_condition", {
@@ -555,16 +555,16 @@ export function buildImplementationSlotsFromContext(input: BuildImplementationSl
     }),
     makeSlot("storage_strategy", {
       status: "confirmed",
-      value: "Mock JSON / local state",
+      value: "Mock JSON fallback (데이터 저장소 미설정)",
       source: ["implementation_db_strategy"],
-      reason: "프로토타입 검토용 초기 저장",
+      reason: "PostgreSQL 설정 완료 시 handoff로 샘플 DB 전략 적용",
       nowIso: now,
     }),
     makeSlot("migration_required", {
       status: "confirmed",
       value: false,
       source: ["implementation_db_strategy"],
-      reason: "Mock 단계 migration 없음",
+      reason: "Mock fallback 단계에서는 migration 불필요",
       nowIso: now,
     }),
     makeSlot("data_security_level", {

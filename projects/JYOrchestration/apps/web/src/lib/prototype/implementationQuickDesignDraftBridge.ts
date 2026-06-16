@@ -17,6 +17,10 @@ import type {
   SingleChatOrchestrationSlotDefinition,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import { runQuickDesignConfirmFlow, type QuickDesignConfirmFlowResult } from "@/lib/requirements/quickDesignConfirmFlow";
+import {
+  buildQuickDesignConfirmPlanningStateSnapshotFromRequirementsState,
+} from "@/lib/requirements/quickDesignConfirmFlow";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { OrchestrationStage } from "@/lib/requirements/requirementsOrchestrationRegistry";
 import type { LlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
 import type { ProjectCodeTaskRefinementSettings } from "@/lib/prototype/resolveProjectCodeTaskRefinementSettingsShared";
@@ -252,6 +256,7 @@ export async function runConfirmQuickDesignForImplementationFromState(
     return { kind: "blocked", message: "슬롯 상태를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요." };
   }
 
+  const parsedRequirements = parseRequirementsStateJson(input.requirementsStateJson);
   const nowIso = new Date().toISOString();
   const flowResult = await runQuickDesignConfirmFlow({
     projectId: input.projectId,
@@ -265,19 +270,7 @@ export async function runConfirmQuickDesignForImplementationFromState(
     fastPlanDraftV1: draft,
     orchestrationForConfirm,
     slotDefinitions: input.slotDefinitions,
-    planningState: {
-      featurePlanningSlotsV1: (state.featurePlanningSlotsV1 as Record<string, unknown> | null) ?? null,
-      serviceFlowV1: (state.serviceFlowV1 as { readonly version?: string } | null) ?? null,
-      projectArtifacts: (state.projectArtifacts as import("@/lib/requirements/projectArtifactTypes").ProjectArtifact[]) ?? [],
-      deliverableAssets:
-        (state.deliverableAssets as import("@/lib/requirements/ideationDeliverables").IdeationDeliverableAsset[]) ?? [],
-      requirementsOrchestrationStageV1:
-        (state.requirementsOrchestrationStageV1 as import("@/lib/requirements/requirementsStateJson").RequirementsOrchestrationStageV1 | null) ??
-        null,
-      implementationTaskListV1:
-        (state.implementationTaskListV1 as import("@/lib/requirements/implementationTaskList").ImplementationTaskListV1 | null) ??
-        null,
-    },
+    planningState: buildQuickDesignConfirmPlanningStateSnapshotFromRequirementsState(parsedRequirements),
     ...(input.envOkOverride !== undefined ? { envOkOverride: input.envOkOverride } : {}),
     ...(input.refinementSettings !== undefined ? { refinementSettings: input.refinementSettings } : {}),
     ...(input.providerContext !== undefined ? { providerContext: input.providerContext } : {}),

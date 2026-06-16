@@ -19,14 +19,21 @@ describe("planningDatabaseStoreNamingSync", () => {
 });
 
 describe("planningDbPersistencePolicy", () => {
-  it("uses POSTGRES_SAMPLE_DB only when connection is READY", () => {
+  it("uses POSTGRES_SAMPLE_DB only when connection is READY with store naming", () => {
+    const settings = syncPlanningDatabaseSettingsStoreNames({
+      settings: {
+        ...defaultPlanningDatabaseSettingsV1(),
+        enabled: true,
+        connectionStatus: "READY",
+        repositoryName: "meeting-note",
+      },
+      gitRepoName: "org/meeting-note-2026",
+      projectId: "cmq123",
+      preserveManualStoreName: false,
+    });
     expect(
       resolvePlanningDataPersistenceMode({
-        planningDatabaseSettings: {
-          ...defaultPlanningDatabaseSettingsV1(),
-          enabled: true,
-          connectionStatus: "READY",
-        },
+        planningDatabaseSettings: settings,
       }),
     ).toBe("POSTGRES_SAMPLE_DB");
     expect(

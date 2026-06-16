@@ -7,8 +7,24 @@ import {
   type ConfirmQuickDesignForImplementationFromStateInput,
   type ConfirmQuickDesignForImplementationResult,
 } from "@/lib/prototype/implementationQuickDesignDraftBridge";
-import { runQuickDesignConfirmFlow, type QuickDesignConfirmFlowResult } from "@/lib/requirements/quickDesignConfirmFlow";
+import {
+  runQuickDesignConfirmFlow,
+  buildQuickDesignConfirmPlanningStateSnapshotFromRequirementsState,
+  type QuickDesignConfirmFlowResult,
+} from "@/lib/requirements/quickDesignConfirmFlow";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { loadPlanningDatabaseSettingsForProject } from "@/lib/planning/planningDatabaseSettingsService";
+import { prisma } from "@/lib/prisma";
 import { resolveQuickDesignLlmServerContext } from "@/lib/prototype/resolveProjectCodeTaskRefinementSettings.server";
+
+async function loadExecutionSetupGitRepoName(projectId: string): Promise<string | null> {
+  const row = await prisma.executionSetup.findUnique({
+    where: { projectId },
+    select: { gitRepoName: true },
+  });
+  const name = String(row?.gitRepoName ?? "").trim();
+  return name || null;
+}
 
 export type QuickDesignConfirmServerMode = "implementation" | "planning";
 
@@ -23,6 +39,7 @@ export type QuickDesignConfirmServerInput = Readonly<{
   readonly slotDefinitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly sourceStage?: OrchestrationStage;
   readonly envOkOverride?: boolean;
+  readonly gitRepoName?: string | null;
   readonly serviceFlow?: FastPlanGenerationInput["serviceFlow"];
   readonly problemInterview?: FastPlanGenerationInput["problemInterview"];
 }>;
@@ -85,32 +102,36 @@ export async function runQuickDesignConfirmOnServer(
     return { success: false, message: "확정할 Quick Design 초안 정보를 찾을 수 없습니다." };
   }
 
+  const parsedState = parseRequirementsStateJson(input.requirementsStateJson ?? {});
+  const [dbSettings, gitRepoNameFromSetup] = await Promise.all([
+    loadPlanningDatabaseSettingsForProject(projectId),
+    input.gitRepoName ? Promise.resolve(input.gitRepoName) : loadExecutionSetupGitRepoName(projectId),
+  ]);
+  const planningState = {
+    ...buildQuickDesignConfirmPlanningStateSnapshotFromRequirementsState({
+      ...parsedState,
+      planningDatabaseSettingsV1: dbSettings,
+    }),
+    featurePlanningSlotsV1:
+      parsedState.featurePlanningSlotsV1 ??
+      ((state.featurePlanningSlotsV1 as Record<string, unknown> | null) ?? null),
+    gitRepoName: gitRepoNameFromSetup,
+  };
+
   const nowIso = new Date().toISOString();
   const flowResult = await runQuickDesignConfirmFlow({
     projectId,
     projectName: input.projectName,
     projectDescription: input.projectDescription,
     conversationMessages: input.conversationMessages,
-    serviceFlow: input.serviceFlow ?? (state.serviceFlowV1 as { readonly version?: string } | null) ?? null,
+    serviceFlow: input.serviceFlow ?? parsedState.serviceFlowV1 ?? (state.serviceFlowV1 as { readonly version?: string } | null) ?? null,
     problemInterview: input.problemInterview ?? null,
     sourceStage: input.sourceStage ?? "IDEATION",
     nowIso,
     fastPlanDraftV1: draft,
     orchestrationForConfirm,
     slotDefinitions: input.slotDefinitions,
-    planningState: {
-      featurePlanningSlotsV1: (state.featurePlanningSlotsV1 as Record<string, unknown> | null) ?? null,
-      serviceFlowV1: (state.serviceFlowV1 as { readonly version?: string } | null) ?? null,
-      projectArtifacts: (state.projectArtifacts as import("@/lib/requirements/projectArtifactTypes").ProjectArtifact[]) ?? [],
-      deliverableAssets:
-        (state.deliverableAssets as import("@/lib/requirements/ideationDeliverables").IdeationDeliverableAsset[]) ?? [],
-      requirementsOrchestrationStageV1:
-        (state.requirementsOrchestrationStageV1 as import("@/lib/requirements/requirementsStateJson").RequirementsOrchestrationStageV1 | null) ??
-        null,
-      implementationTaskListV1:
-        (state.implementationTaskListV1 as import("@/lib/requirements/implementationTaskList").ImplementationTaskListV1 | null) ??
-        null,
-    },
+    planningState,
     envOkOverride: input.envOkOverride,
     refinementSettings,
     providerContext,

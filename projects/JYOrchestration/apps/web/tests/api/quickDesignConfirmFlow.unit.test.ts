@@ -5,6 +5,8 @@ import {
   buildQuickDesignConfirmStatePatch,
   runQuickDesignConfirmFlowSync,
 } from "@/lib/requirements/quickDesignConfirmFlow";
+import { defaultPlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
+import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningDatabaseStoreNamingSync";
 import {
   buildAnalystMemberDraft,
   buildArchitectMemberDraft,
@@ -138,6 +140,57 @@ describe("quickDesignConfirmFlow", () => {
     expect(result.statePatch).not.toHaveProperty("implementationWorkPlanDraftV1");
     expect(result.readyMessage.meta?.internalType).toBe("quick_design_implementation_ready");
     expect(result.timelineEntries.length).toBeGreaterThan(0);
+  });
+
+  it("includes postgres handoff in prep when planning DB settings are READY", () => {
+    const { definitions, fastPlanDraftV1, orchestrationForConfirm } = buildConfirmedQuickDesignFixture();
+    const dbSettings = syncPlanningDatabaseSettingsStoreNames({
+      settings: {
+        ...defaultPlanningDatabaseSettingsV1(),
+        enabled: true,
+        connectionStatus: "READY",
+        repositoryName: "doit-meet",
+      },
+      gitRepoName: "org/doit-meet",
+      projectId: "p-flow",
+      preserveManualStoreName: false,
+    });
+    const result = runQuickDesignConfirmFlowSync({
+      envOk: true,
+      flow: {
+        projectId: "p-flow",
+        projectName: "회의록",
+        projectDescription: "녹취",
+        conversationMessages: [],
+        serviceFlow: null,
+        problemInterview: null,
+        sourceStage: "IDEATION",
+        nowIso,
+        fastPlanDraftV1,
+        orchestrationForConfirm,
+        slotDefinitions: definitions,
+        planningState: {
+          featurePlanningSlotsV1: null,
+          serviceFlowV1: null,
+          projectArtifacts: [],
+          deliverableAssets: [],
+          requirementsOrchestrationStageV1: null,
+          implementationTaskListV1: null,
+          planningDatabaseSettingsV1: dbSettings,
+          gitRepoName: "org/doit-meet",
+        },
+      },
+    });
+    expect(result.kind).toBe("success");
+    if (result.kind !== "success") return;
+    expect(result.prep.planningHandoffForImplementationV1?.implementationDefaults.dataPersistenceMode).toBe(
+      "POSTGRES_SAMPLE_DB",
+    );
+    expect(result.prep.planningHandoffForImplementationV1?.implementationDataPlan.useSampleDb).toBe(true);
+    expect(result.prep.planningHandoffForImplementationV1?.implementationDataPlan.useRuntimeApi).toBe(true);
+    expect(result.statePatch.planningHandoffForImplementationV1?.implementationDataPlan.implementationSchemaName).toContain(
+      "_impl_sample",
+    );
   });
 
   it("preserves existing implementationTaskListV1 on state patch", () => {

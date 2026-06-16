@@ -104,6 +104,7 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
     planningDatabaseSettingsJson: settings,
   };
   if (passwordTrim) {
+    // TODO: Encrypt planningPostgresPassword or move it to secret vault before production.
     setupUpdate.planningPostgresPassword = passwordTrim;
     setupUpdate.planningPostgresPasswordMasked = maskPasswordForStorage(passwordTrim);
   }

@@ -5,6 +5,7 @@
 import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import {
+  resolvePlanningDataPersistenceFallbackReason,
   resolvePlanningDataPersistenceMode,
   type PlanningDataPersistenceMode,
 } from "@/lib/planning/planningDbPersistencePolicy";
@@ -527,10 +528,13 @@ export type PlanningHandoffForImplementationV1 = Readonly<{
   readonly runtimeApiSlot: RuntimeApiSlotV1;
   readonly implementationDataPlan: Readonly<{
     readonly provider: "POSTGRESQL";
+    readonly dataPersistenceMode: PlanningDataPersistenceMode;
     readonly repositoryBasedStoreName: string;
     readonly implementationSchemaName: string;
-    readonly useSampleDb: true;
-    readonly useRuntimeApi: true;
+    readonly reviewSchemaName: string;
+    readonly useSampleDb: boolean;
+    readonly useRuntimeApi: boolean;
+    readonly fallbackReason: string | null;
   }>;
   readonly implementationDefaults: Readonly<{
     readonly previewHost: "GITHUB_PAGES";
@@ -553,7 +557,17 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
     planningDatabaseSettings: input.planningDatabaseSettings,
     dataStoreSlot: input.planningDataSlots.dataStoreSlot,
   });
-  const runtimeApiRequired = dataPersistenceMode === "POSTGRES_SAMPLE_DB";
+  const useSampleDb = dataPersistenceMode === "POSTGRES_SAMPLE_DB";
+  const useRuntimeApi = useSampleDb;
+  const settings = input.planningDatabaseSettings;
+  const implementationSchemaName =
+    String(settings?.implementationSchemaName ?? "").trim() || naming.implementationSchemaName;
+  const reviewSchemaName = String(settings?.reviewSchemaName ?? "").trim() || naming.reviewSchemaName;
+  const repositoryBasedStoreName =
+    String(settings?.databaseStoreName ?? "").trim() || naming.normalizedBaseName;
+  const fallbackReason = useSampleDb
+    ? null
+    : resolvePlanningDataPersistenceFallbackReason(settings);
   return {
     version: 1,
     projectId: input.projectId.trim(),
@@ -564,15 +578,18 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
     runtimeApiSlot: input.planningDataSlots.runtimeApiSlot,
     implementationDataPlan: {
       provider: "POSTGRESQL",
-      repositoryBasedStoreName: naming.normalizedBaseName,
-      implementationSchemaName: naming.implementationSchemaName,
-      useSampleDb: true,
-      useRuntimeApi: runtimeApiRequired,
+      dataPersistenceMode,
+      repositoryBasedStoreName,
+      implementationSchemaName,
+      reviewSchemaName,
+      useSampleDb,
+      useRuntimeApi,
+      fallbackReason,
     },
     implementationDefaults: {
       previewHost: "GITHUB_PAGES",
       dataPersistenceMode,
-      runtimeApiRequired,
+      runtimeApiRequired: useRuntimeApi,
     },
   };
 }

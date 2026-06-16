@@ -38,6 +38,10 @@ import type {
 import { resolveProjectExecutionEnvOk } from "@/lib/prototype/prototypeExecutionEnvOk";
 import type { LlmCodeTaskRefinementProviderContext } from "@/lib/prototype/implementationCodeTaskPlanLlmProvider";
 import type { ProjectCodeTaskRefinementSettings } from "@/lib/prototype/resolveProjectCodeTaskRefinementSettingsShared";
+import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+import type { PlanningDataSlotsV1, PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
+import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 /** Planning-stage snapshot needed to run Quick Design confirm (no UI deps). */
 export type QuickDesignConfirmPlanningStateSnapshot = Readonly<{
@@ -47,7 +51,49 @@ export type QuickDesignConfirmPlanningStateSnapshot = Readonly<{
   readonly deliverableAssets: readonly IdeationDeliverableAsset[] | null | undefined;
   readonly requirementsOrchestrationStageV1: RequirementsOrchestrationStageV1 | null | undefined;
   readonly implementationTaskListV1: ImplementationTaskListV1 | null | undefined;
+  readonly planningDatabaseSettingsV1?: PlanningDatabaseSettingsV1 | null;
+  readonly planningDataSlotsV1?: PlanningDataSlotsV1 | null;
+  readonly planningHandoffForImplementationV1?: PlanningHandoffForImplementationV1 | null;
+  readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
+  readonly gitRepoName?: string | null;
 }>;
+
+/** Merge DB-related planning fields for implementation prep / data slot patch. */
+export function buildQuickDesignConfirmPlanningStateJson(
+  snapshot: QuickDesignConfirmPlanningStateSnapshot,
+): RequirementsStateJson {
+  const out: RequirementsStateJson = {};
+  if (snapshot.sampleDataSpecV1 !== undefined) {
+    out.sampleDataSpecV1 = snapshot.sampleDataSpecV1;
+  }
+  if (snapshot.planningDatabaseSettingsV1 !== undefined) {
+    out.planningDatabaseSettingsV1 = snapshot.planningDatabaseSettingsV1;
+  }
+  if (snapshot.planningDataSlotsV1 !== undefined) {
+    out.planningDataSlotsV1 = snapshot.planningDataSlotsV1;
+  }
+  if (snapshot.planningHandoffForImplementationV1 !== undefined) {
+    out.planningHandoffForImplementationV1 = snapshot.planningHandoffForImplementationV1;
+  }
+  return out;
+}
+
+export function buildQuickDesignConfirmPlanningStateSnapshotFromRequirementsState(
+  state: RequirementsStateJson,
+): QuickDesignConfirmPlanningStateSnapshot {
+  return {
+    featurePlanningSlotsV1: state.featurePlanningSlotsV1 ?? null,
+    serviceFlowV1: state.serviceFlowV1 ?? null,
+    projectArtifacts: state.projectArtifacts ?? [],
+    deliverableAssets: state.deliverableAssets ?? [],
+    requirementsOrchestrationStageV1: state.requirementsOrchestrationStageV1 ?? null,
+    implementationTaskListV1: state.implementationTaskListV1 ?? null,
+    planningDatabaseSettingsV1: state.planningDatabaseSettingsV1 ?? null,
+    planningDataSlotsV1: state.planningDataSlotsV1 ?? null,
+    planningHandoffForImplementationV1: state.planningHandoffForImplementationV1 ?? null,
+    sampleDataSpecV1: state.sampleDataSpecV1 ?? null,
+  };
+}
 
 export type QuickDesignConfirmFlowInput = Readonly<
   Omit<FastPlanGenerationInput, "nowIso" | "orchestration" | "sourceStage"> & {
@@ -216,6 +262,9 @@ export async function runQuickDesignConfirmFlowWithPrep(input: {
     projectArtifacts: merged.projectArtifacts,
     artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
     existingTaskList: st.implementationTaskListV1,
+    sampleDataSpecV1: st.sampleDataSpecV1 ?? null,
+    gitRepoName: st.gitRepoName ?? null,
+    planningStateJson: buildQuickDesignConfirmPlanningStateJson(st),
     llmCaller: flow.providerContext?.apiKey
       ? undefined
       : createProjectLlmCodeTaskRefinementCaller(flow.projectId),
@@ -315,7 +364,8 @@ export function runQuickDesignConfirmFlowSync(input: {
     artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
     existingTaskList: st.implementationTaskListV1,
     sampleDataSpecV1: st.sampleDataSpecV1 ?? null,
-    planningStateJson: st,
+    gitRepoName: st.gitRepoName ?? null,
+    planningStateJson: buildQuickDesignConfirmPlanningStateJson(st),
   });
 
   const readyMessage = buildQuickDesignImplementationReadyChatMessage({
