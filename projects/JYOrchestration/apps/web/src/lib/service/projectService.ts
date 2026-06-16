@@ -8,9 +8,9 @@ import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import { PROJECT_WORKFLOW_REQUIREMENTS_PENDING } from "@/lib/project/projectWorkflowStatus";
 import { ensureDefaultAiPlannerProjectMember } from "@/lib/service/projectMemberService";
-import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import { buildInitialProductDefinitionOrchestrationStage } from "@/lib/requirements/productDefinitionOrchestration";
-import { buildProductDefinitionStubFromProject } from "@/lib/requirements/productDefinitionV1";
+import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromChatDraftTypes";
+import { buildInitialRequirementsStateForNewProject } from "@/lib/requirements/productDefinitionInitial";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 /** @deprecated 이름 보존용 — 내부적으로 소유 또는 HUMAN 멤버십 프로젝트를 반환합니다. */
 export async function listProjectsOrderedByCreatedDesc(
@@ -99,12 +99,20 @@ export type CreateProjectInput = {
   ownerUserId: string;
   /** 기본 true. false면 spec 단계 기본 AI(planner) 멤버를 넣지 않습니다. */
   includeDefaultAiPlanner?: boolean;
+  /** 자유 대화방 Project Draft — 있으면 Product Definition 초안에 반영합니다. */
+  projectFromChatDraft?: ProjectFromChatDraftPayloadV1 | null;
 };
 
 export async function createProject(input: CreateProjectInput) {
   const includeAi = input.includeDefaultAiPlanner !== false;
   return prisma.$transaction(async (tx) => {
     const nowIso = new Date().toISOString();
+    const initialRequirementsState: RequirementsStateJson = buildInitialRequirementsStateForNewProject({
+      name: input.name,
+      description: input.description,
+      projectFromChatDraft: input.projectFromChatDraft ?? null,
+      nowIso,
+    });
     const project = await tx.project.create({
       data: {
         name: input.name,
@@ -115,16 +123,7 @@ export async function createProject(input: CreateProjectInput) {
         defaultBranch: input.defaultBranch,
         status: PROJECT_LIFECYCLE_ACTIVE,
         workflowStatus: PROJECT_WORKFLOW_REQUIREMENTS_PENDING,
-        // Preserve original creation description for project cards.
-        requirementsStateJson: mergeRequirementsStateJson({}, {
-          originalProjectDescription: input.description ?? "",
-          requirementsOrchestrationStageV1: buildInitialProductDefinitionOrchestrationStage(nowIso),
-          productDefinitionV1: buildProductDefinitionStubFromProject({
-            productName: input.name,
-            description: input.description,
-            nowIso,
-          }),
-        }) as Prisma.InputJsonValue,
+        requirementsStateJson: initialRequirementsState as Prisma.InputJsonValue,
       },
     });
     await tx.projectMember.create({

@@ -9,6 +9,7 @@ import {
   parseProductDefinitionV1,
   type ProductDefinitionV1,
 } from "@/lib/requirements/productDefinitionV1";
+import { mergeProductDefinitionIntoRequirementsState } from "@/lib/requirements/productDefinitionArtifact";
 import {
   mergeRequirementsStateJson,
   parseRequirementsStateJson,
@@ -104,10 +105,10 @@ export async function executeProductDefinitionChatTurn(input: Readonly<{
       updatedAt: now,
       completedAt: now,
     };
-    const mergedState = mergeRequirementsStateJson(state, {
-      productDefinitionV1: completedDef,
-      requirementsOrchestrationStageV1: buildProductDefinitionCompletedOrchestrationStage(now),
-    });
+    const mergedState = mergeRequirementsStateJson(
+      mergeProductDefinitionIntoRequirementsState(state, completedDef, now),
+      { requirementsOrchestrationStageV1: buildProductDefinitionCompletedOrchestrationStage(now) },
+    );
     const assistantMessage = newRequirementsMessage({
       role: "ai",
       speakerType: "AI",
@@ -148,7 +149,7 @@ export async function executeProductDefinitionChatTurn(input: Readonly<{
     return { ok: false, code: "SCHEMA", message: "Product Definition 저장 형식이 올바르지 않습니다." };
   }
 
-  const mergedState = mergeRequirementsStateJson(state, { productDefinitionV1: parsed });
+  const mergedState = mergeProductDefinitionIntoRequirementsState(state, parsed, now);
   const assistantMessage = newRequirementsMessage({
     role: "ai",
     speakerType: "AI",

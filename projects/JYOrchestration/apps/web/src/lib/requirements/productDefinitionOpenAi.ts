@@ -18,7 +18,8 @@ const SYSTEM = `당신은 JYOrchestration Product Definition 편집 AI입니다.
 - 사용자가 명시적으로 확정한 내용만 confidence: confirmed.
 - 출력은 productDefinition JSON + assistantMessage(한국어, 사용자에게 보이는 요약)만 포함합니다.
 
-JSON 스키마는 productDefinitionV1 (version 1) 구조를 따릅니다.`;
+JSON 스키마는 productDefinitionV1 (version 1) 구조를 따릅니다.
+productModel(organizationModel, pricingModel, operatingModel), dataPolicy(dataSensitivity, retentionPolicy, consentPolicy), qualityPolicy(availabilityTarget, performanceTarget, recoveryPolicy) 필드를 포함합니다. 각 하위 필드는 { value, confidence } 형태입니다.`;
 
 export async function runProductDefinitionChatOpenAI(input: {
   readonly apiKey: string;

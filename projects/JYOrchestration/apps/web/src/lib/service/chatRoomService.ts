@@ -10,10 +10,6 @@ import { prisma } from "@/lib/prisma";
 import { MESSENGER_DEFAULT_AI_CATALOG_KEY } from "@/lib/messenger/messengerConstants";
 import { runMessengerAiTurn } from "@/lib/messenger/messengerLlm";
 import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromChatDraftTypes";
-import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import { mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import { buildInitialProductDefinitionOrchestrationStage } from "@/lib/requirements/productDefinitionOrchestration";
-import { buildProductDefinitionFromChatDraft } from "@/lib/requirements/productDefinitionV1";
 import { createProject } from "@/lib/service/projectService";
 import { platformUserDisplayName } from "@/lib/user/platformProfile";
 
@@ -581,39 +577,10 @@ export async function confirmProjectFromChatRoom(input: {
     defaultBranch: "main",
     ownerUserId: input.userId,
     includeDefaultAiPlanner: true,
+    ...(input.requirementsSeedFromDraft !== false && payload && typeof payload === "object"
+      ? { projectFromChatDraft: payload }
+      : {}),
   });
-
-  if (input.requirementsSeedFromDraft !== false && payload && typeof payload === "object") {
-    const cur = await prisma.project.findUnique({
-      where: { id: project.id },
-      select: { requirementsStateJson: true },
-    });
-    const base = (cur?.requirementsStateJson ?? {}) as RequirementsStateJson;
-    const nowIso = new Date().toISOString();
-    const patch: Partial<RequirementsStateJson> = {
-      originalProjectDescription: desc || "",
-      seededFromPreProjectChat: true,
-      requirementsOrchestrationStageV1: buildInitialProductDefinitionOrchestrationStage(nowIso),
-      productDefinitionV1: buildProductDefinitionFromChatDraft({
-        productName: name,
-        description: desc,
-        draft: payload,
-        nowIso,
-      }),
-    };
-    if (Array.isArray(payload.openQuestions) && payload.openQuestions.length) {
-      patch.openIssues = payload.openQuestions.map((s) => String(s)).join("\n");
-    }
-    if (Array.isArray(payload.featureCandidates) && payload.featureCandidates.length) {
-      patch.priorityFeatures = payload.featureCandidates.map((s) => String(s)).join("\n");
-    }
-    await prisma.project.update({
-      where: { id: project.id },
-      data: {
-        requirementsStateJson: mergeRequirementsStateJson(base, patch) as Prisma.InputJsonValue,
-      },
-    });
-  }
 
   await prisma.$transaction([
     prisma.chatRoom.update({

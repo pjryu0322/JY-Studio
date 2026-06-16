@@ -8,6 +8,7 @@ import type { RequirementsOrchestrationStageWire } from "@/lib/requirements/requ
 export type { ProjectArtifactOrchestrationMeta } from "@/lib/requirements/artifactOrchestration";
 
 export type ProjectArtifactType =
+  | "product-definition"
   | "service-flow-doc"
   | "feature-spec"
   | "screen-spec"
@@ -29,6 +30,7 @@ export type ProjectArtifact = Readonly<{
 }>;
 
 export const PROJECT_ARTIFACT_LABELS: Record<ProjectArtifactType, string> = {
+  "product-definition": "Product Definition",
   "service-flow-doc": "서비스 흐름 문서",
   "feature-spec": "기능 정의서",
   "screen-spec": "화면 정의서",

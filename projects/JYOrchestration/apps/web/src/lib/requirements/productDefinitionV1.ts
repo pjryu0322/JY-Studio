@@ -50,6 +50,21 @@ export type ProductDefinitionV1 = Readonly<{
   readonly implementationDifficulty: ProductDefinitionDifficultyV1;
   readonly implementationDifficultyNotes: ProductDefinitionTextFieldV1;
   readonly majorRisks: ProductDefinitionTextFieldV1;
+  readonly productModel: Readonly<{
+    readonly organizationModel: ProductDefinitionTextFieldV1;
+    readonly pricingModel: ProductDefinitionTextFieldV1;
+    readonly operatingModel: ProductDefinitionTextFieldV1;
+  }>;
+  readonly dataPolicy: Readonly<{
+    readonly dataSensitivity: ProductDefinitionTextFieldV1;
+    readonly retentionPolicy: ProductDefinitionTextFieldV1;
+    readonly consentPolicy: ProductDefinitionTextFieldV1;
+  }>;
+  readonly qualityPolicy: Readonly<{
+    readonly availabilityTarget: ProductDefinitionTextFieldV1;
+    readonly performanceTarget: ProductDefinitionTextFieldV1;
+    readonly recoveryPolicy: ProductDefinitionTextFieldV1;
+  }>;
 }>;
 
 export type ProductDefinitionReadinessV1 = Readonly<{
@@ -79,6 +94,52 @@ function fieldFromText(text: string, confirmed: boolean): ProductDefinitionTextF
     return { value: PRODUCT_DEFINITION_NEEDS_CONFIRMATION, confidence: "needs_confirmation" };
   }
   return { value, confidence: confirmed ? "confirmed" : "needs_confirmation" };
+}
+
+function parseFieldGroup(
+  raw: unknown,
+  keys: readonly string[],
+): Record<string, ProductDefinitionTextFieldV1> {
+  const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return Object.fromEntries(keys.map((k) => [k, parseField(o[k])]));
+}
+
+export function defaultProductizationFields(): Pick<
+  ProductDefinitionV1,
+  "productModel" | "dataPolicy" | "qualityPolicy"
+> {
+  const empty = () => fieldFromText("", false);
+  return {
+    productModel: {
+      organizationModel: empty(),
+      pricingModel: empty(),
+      operatingModel: empty(),
+    },
+    dataPolicy: {
+      dataSensitivity: empty(),
+      retentionPolicy: empty(),
+      consentPolicy: empty(),
+    },
+    qualityPolicy: {
+      availabilityTarget: empty(),
+      performanceTarget: empty(),
+      recoveryPolicy: empty(),
+    },
+  };
+}
+
+const DATA_POLICY_KEYWORD =
+  /데이터|파일|음성|녹음|회의|사용자|권한|개인정보|결제|업로드|api|storage|stt|transcript|녹취|참석|민감/i;
+
+export function requiresDataPolicyConfirmation(def: ProductDefinitionV1): boolean {
+  if (def.externalIntegrations.confidence === "confirmed") return true;
+  const hay = [
+    def.scope.scopeIn.value,
+    def.overview.problemToSolve.value,
+    def.overview.productPurpose.value,
+    ...def.coreFeatures.items,
+  ].join(" ");
+  return DATA_POLICY_KEYWORD.test(hay);
 }
 
 export function parseProductDefinitionV1(raw: unknown): ProductDefinitionV1 | null {
@@ -121,6 +182,11 @@ export function parseProductDefinitionV1(raw: unknown): ProductDefinitionV1 | nu
   const sc = scopeRaw && typeof scopeRaw === "object" ? (scopeRaw as Record<string, unknown>) : {};
   const cv = coreValueRaw && typeof coreValueRaw === "object" ? (coreValueRaw as Record<string, unknown>) : {};
 
+  const pm = parseFieldGroup(o.productModel, ["organizationModel", "pricingModel", "operatingModel"]);
+  const dp = parseFieldGroup(o.dataPolicy, ["dataSensitivity", "retentionPolicy", "consentPolicy"]);
+  const qp = parseFieldGroup(o.qualityPolicy, ["availabilityTarget", "performanceTarget", "recoveryPolicy"]);
+  const defaults = defaultProductizationFields();
+
   return {
     version: PRODUCT_DEFINITION_VERSION,
     updatedAt,
@@ -152,6 +218,21 @@ export function parseProductDefinitionV1(raw: unknown): ProductDefinitionV1 | nu
     implementationDifficulty,
     implementationDifficultyNotes: parseField(o.implementationDifficultyNotes),
     majorRisks: parseField(o.majorRisks),
+    productModel: {
+      organizationModel: pm.organizationModel ?? defaults.productModel.organizationModel,
+      pricingModel: pm.pricingModel ?? defaults.productModel.pricingModel,
+      operatingModel: pm.operatingModel ?? defaults.productModel.operatingModel,
+    },
+    dataPolicy: {
+      dataSensitivity: dp.dataSensitivity ?? defaults.dataPolicy.dataSensitivity,
+      retentionPolicy: dp.retentionPolicy ?? defaults.dataPolicy.retentionPolicy,
+      consentPolicy: dp.consentPolicy ?? defaults.dataPolicy.consentPolicy,
+    },
+    qualityPolicy: {
+      availabilityTarget: qp.availabilityTarget ?? defaults.qualityPolicy.availabilityTarget,
+      performanceTarget: qp.performanceTarget ?? defaults.qualityPolicy.performanceTarget,
+      recoveryPolicy: qp.recoveryPolicy ?? defaults.qualityPolicy.recoveryPolicy,
+    },
   };
 }
 
@@ -173,6 +254,11 @@ export function evaluateProductDefinitionReadiness(def: ProductDefinitionV1 | nu
   fieldReady(def.scope.scopeIn, "scopeIn", missing);
   fieldReady(def.scope.scopeOut, "scopeOut", missing);
   fieldReady(def.successCriteria, "successCriteria", missing);
+  if (requiresDataPolicyConfirmation(def)) {
+    fieldReady(def.dataPolicy.dataSensitivity, "dataSensitivity", missing);
+    fieldReady(def.dataPolicy.retentionPolicy, "retentionPolicy", missing);
+    fieldReady(def.dataPolicy.consentPolicy, "consentPolicy", missing);
+  }
   return { ready: missing.length === 0, missing };
 }
 
@@ -215,6 +301,7 @@ export function buildProductDefinitionStubFromProject(input: Readonly<{
     implementationDifficulty: "needs_confirmation",
     implementationDifficultyNotes: fieldFromText("", false),
     majorRisks: fieldFromText("", false),
+    ...defaultProductizationFields(),
   };
 }
 
@@ -276,12 +363,16 @@ export function buildProductDefinitionFromChatDraft(input: Readonly<{
       d.assumptions?.length ? d.assumptions.slice(0, 6).join("\n") : "",
       false,
     ),
+    ...defaultProductizationFields(),
   };
 }
 
 export function formatProductDefinitionUserSummary(def: ProductDefinitionV1): string {
   const lines: string[] = [
-    "프로젝트 Product Definition 초안을 정리했습니다. 아래 내용을 검토·수정해 주세요.",
+    "AI가 지금까지의 대화를 기준으로 제품 정의 초안을 정리했습니다.",
+    "부족한 항목은 「추가 확인 필요」로 표시했습니다.",
+    "수정하고 싶은 내용은 대화로 알려 주세요.",
+    "준비되면 「기획 단계로 진행」이라고 입력하면 됩니다.",
     "",
     `■ 제품명: ${def.overview.productName}`,
     `■ 한 줄 소개: ${def.overview.oneLineIntro.value}`,
@@ -298,31 +389,44 @@ export function formatProductDefinitionUserSummary(def: ProductDefinitionV1): st
     "",
     `■ 성공 기준: ${def.successCriteria.value}`,
     `■ 구현 난이도: ${def.implementationDifficulty}`,
-    "",
-    "수정은 대화로 요청하시면 됩니다. 준비되면 「기획 단계로 진행」이라고 입력해 주세요.",
   ];
   return lines.join("\n").slice(0, 12000);
+}
+
+function clipPlanningLine(text: string): string {
+  return text.trim().slice(0, 300);
 }
 
 export function formatProductDefinitionPlanningContext(def: ProductDefinitionV1 | null | undefined): readonly string[] {
   if (!def) return [];
   const lines: string[] = [
     "[Product Definition]",
-    `제품명: ${def.overview.productName}`,
-    `목적: ${def.overview.productPurpose.value}`,
-    `문제: ${def.overview.problemToSolve.value}`,
-    `주요 사용자: ${def.targetUsers.primaryUsers.value}`,
-    `범위(In): ${def.scope.scopeIn.value}`,
-    `범위(Out): ${def.scope.scopeOut.value}`,
-    `핵심 가치: ${def.coreValue.userValue.value}`,
+    clipPlanningLine(`제품명: ${def.overview.productName}`),
+    clipPlanningLine(`목적: ${def.overview.productPurpose.value}`),
+    clipPlanningLine(`문제: ${def.overview.problemToSolve.value}`),
+    clipPlanningLine(`주요 사용자: ${def.targetUsers.primaryUsers.value}`),
+    clipPlanningLine(`범위(In): ${def.scope.scopeIn.value}`),
+    clipPlanningLine(`범위(Out): ${def.scope.scopeOut.value}`),
+    clipPlanningLine(`핵심 가치: ${def.coreValue.userValue.value}`),
   ];
   if (def.coreFeatures.items.length) {
-    lines.push(`핵심 기능: ${def.coreFeatures.items.slice(0, 12).join(", ")}`);
+    lines.push(clipPlanningLine(`핵심 기능: ${def.coreFeatures.items.slice(0, 12).join(", ")}`));
   }
   if (def.successCriteria.value && def.successCriteria.value !== PRODUCT_DEFINITION_NEEDS_CONFIRMATION) {
-    lines.push(`성공 기준: ${def.successCriteria.value}`);
+    lines.push(clipPlanningLine(`성공 기준: ${def.successCriteria.value}`));
   }
-  return lines;
+  lines.push(clipPlanningLine(`조직 모델: ${def.productModel.organizationModel.value}`));
+  lines.push(clipPlanningLine(`운영 모델: ${def.productModel.operatingModel.value}`));
+  lines.push(clipPlanningLine(`데이터 민감도: ${def.dataPolicy.dataSensitivity.value}`));
+  lines.push(clipPlanningLine(`보관 정책: ${def.dataPolicy.retentionPolicy.value}`));
+  lines.push(clipPlanningLine(`동의 정책: ${def.dataPolicy.consentPolicy.value}`));
+  lines.push(clipPlanningLine(`가용성 목표: ${def.qualityPolicy.availabilityTarget.value}`));
+  lines.push(clipPlanningLine(`성능 목표: ${def.qualityPolicy.performanceTarget.value}`));
+  lines.push(clipPlanningLine(`복구 정책: ${def.qualityPolicy.recoveryPolicy.value}`));
+  if (def.majorRisks.value && def.majorRisks.value !== PRODUCT_DEFINITION_NEEDS_CONFIRMATION) {
+    lines.push(clipPlanningLine(`주요 리스크: ${def.majorRisks.value}`));
+  }
+  return lines.slice(0, 20);
 }
 
 export function isProductDefinitionCompleteIntent(text: string): boolean {
