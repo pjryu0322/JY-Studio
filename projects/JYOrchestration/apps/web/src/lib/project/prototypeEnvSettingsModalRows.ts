@@ -6,8 +6,9 @@ import {
 } from "@/components/project-spec/credentialUiMask";
 import { isGithubTokenCredentialsError } from "@/lib/project/prototypeEnvSettingsReadiness";
 import type { PrototypeEnvReadinessTone } from "@/lib/project/prototypeEnvSettingsReadiness";
+import { parsePlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 
-export type PrototypeEnvModalRowKey = "repo" | "token" | "cursor";
+export type PrototypeEnvModalRowKey = "repo" | "token" | "cursor" | "database";
 
 export type PrototypeEnvModalTableRow = Readonly<{
   readonly key: PrototypeEnvModalRowKey;
@@ -84,6 +85,25 @@ export function buildPrototypeEnvModalTableRows(input: {
       status: repoStatus,
       statusTone: repoTone,
       currentValue: repoName || "—",
+    },
+    {
+      key: "database",
+      label: "데이터베이스",
+      status: (() => {
+        const db = parsePlanningDatabaseSettingsV1(es?.planningDatabaseSettingsJson ?? null);
+        if (!db?.enabled) return "미사용";
+        if (db.connectionStatus === "READY") return "정상";
+        if (db.connectionStatus === "FAILED") return "실패";
+        return "설정 필요";
+      })(),
+      statusTone: (() => {
+        const db = parsePlanningDatabaseSettingsV1(es?.planningDatabaseSettingsJson ?? null);
+        if (!db?.enabled) return "neutral" as const;
+        if (db.connectionStatus === "READY") return "ok" as const;
+        if (db.connectionStatus === "FAILED") return "fail" as const;
+        return "warn" as const;
+      })(),
+      currentValue: "PostgreSQL",
     },
     {
       key: "token",

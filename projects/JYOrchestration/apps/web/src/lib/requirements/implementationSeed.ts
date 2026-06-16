@@ -1,4 +1,6 @@
-import { parseSampleDataSpecV1, type SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+import { parseSampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+import type { PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
 import { findOrchestrationSlotKeysBySuffix, findSlotRow } from "@/lib/requirements/singleChatSlotNextAction";
 import { normalizeSlotStatus } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -149,6 +151,7 @@ export type ImplementationSeedV1 = Readonly<{
   readonly gaps: readonly ImplementationSeedGap[];
   readonly templateContext?: SelectedPrototypeTemplateV1;
   readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
+  readonly planningHandoffForImplementationV1?: PlanningHandoffForImplementationV1 | null;
 }>;
 
 export type BuildImplementationSeedInput = Readonly<{
@@ -158,6 +161,7 @@ export type BuildImplementationSeedInput = Readonly<{
   readonly lifecycleStatus?: ImplementationSeedLifecycleStatus;
   readonly nowIso?: string;
   readonly sampleDataSpecV1?: SampleDataSpecV1 | null;
+  readonly planningHandoffForImplementationV1?: PlanningHandoffForImplementationV1 | null;
 }>;
 
 export type SlotFillLevel = "empty" | "candidate" | "confirmed";
@@ -441,6 +445,9 @@ export function buildImplementationSeedFromPlanning(
     assumptions,
     gaps,
     ...(input.sampleDataSpecV1 ? { sampleDataSpecV1: input.sampleDataSpecV1 } : {}),
+    ...(input.planningHandoffForImplementationV1
+      ? { planningHandoffForImplementationV1: input.planningHandoffForImplementationV1 }
+      : {}),
   };
 }
 

@@ -23,6 +23,9 @@ import {
   singleChatOrchestrationStatusCounts,
   singleChatOrchestrationWeightedProgress,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
+import { planningDataSlotSummaryRows } from "@/lib/planning/planningDataSlotsV1";
+import { parsePlanningDataSlotsV1 } from "@/lib/planning/planningDataSlotsV1";
+import { buildPlanningDataSlotsStatePatch, resolvePlanningRepositoryName } from "@/lib/planning/planningDataSlotsStatePatch";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
 
 export type WorkspacePlanningOrchestrationView = Readonly<{
@@ -34,6 +37,7 @@ export type WorkspacePlanningOrchestrationView = Readonly<{
   readonly orchestrationWeightedMetrics: ReturnType<typeof singleChatOrchestrationWeightedProgress>;
   readonly orchestrationStatusCounts: ReturnType<typeof singleChatOrchestrationStatusCounts>;
   readonly orchestrationSlotSections: ReturnType<typeof buildOrchestrationSlotSummarySections>;
+  readonly planningDataSlotSections: readonly import("@/lib/requirements/singleChatOrchestrationSlots").OrchestrationSlotSummarySection[];
   readonly showWorkspaceHubBadges: boolean;
   readonly planningArtifactHub: ArtifactHubBundle;
   readonly orchestrationUi: ReturnType<typeof buildOrchestrationUiProjection>;
@@ -84,6 +88,25 @@ export function buildWorkspacePlanningOrchestrationView(input: {
   const orchestrationStatusCounts = singleChatOrchestrationStatusCounts(orchestrationUiState);
   const orchestrationSlotSections = buildOrchestrationSlotSummarySections(slotDefs, orchestrationUiState);
 
+  const repositoryName = resolvePlanningRepositoryName({ projectName: input.projectName });
+  const planningDataSlots =
+    parsePlanningDataSlotsV1(input.state.planningDataSlotsV1) ??
+    buildPlanningDataSlotsStatePatch({
+      state: input.state,
+      projectId: input.projectId,
+      repositoryName,
+      orchestration: orchestrationUiState,
+      definitions: slotDefs,
+      sampleDataSpecV1: input.state.sampleDataSpecV1 ?? null,
+      nowIso,
+    }).planningDataSlotsV1;
+  const planningDataSlotSections = [
+    {
+      sectionTitle: "데이터",
+      slots: [...planningDataSlotSummaryRows(planningDataSlots)],
+    },
+  ] as const;
+
   const readinessPercent =
     input.readinessPercentForBadges ?? orchestrationWeightedMetrics.percent;
 
@@ -120,7 +143,8 @@ export function buildWorkspacePlanningOrchestrationView(input: {
     orchestrationConfirmedMetrics,
     orchestrationWeightedMetrics,
     orchestrationStatusCounts,
-    orchestrationSlotSections,
+    orchestrationSlotSections: [...orchestrationSlotSections, ...planningDataSlotSections],
+    planningDataSlotSections,
     showWorkspaceHubBadges,
     planningArtifactHub,
     orchestrationUi,

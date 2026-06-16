@@ -1,6 +1,17 @@
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import { parseFeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
-import { parseSampleDataSpecV1, type SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+import { parseSampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
+import {
+  parsePlanningDatabaseSettingsV1,
+  type PlanningDatabaseSettingsV1,
+} from "@/lib/planning/planningDatabaseSettingsV1";
+import {
+  parsePlanningDataSlotsV1,
+  parsePlanningHandoffForImplementationV1,
+  type PlanningDataSlotsV1,
+  type PlanningHandoffForImplementationV1,
+} from "@/lib/planning/planningDataSlotsV1";
 import { parseProductDefinitionV1, type ProductDefinitionV1 } from "@/lib/requirements/productDefinitionV1";
 import type { FeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
 import { parseFeatureDetailSlotsV1 } from "@/lib/requirements/featureDetailSlots";
@@ -690,6 +701,12 @@ export type RequirementsStateJson = {
   featurePlanningSlotsV1?: FeaturePlanningSlotsArtifactV1 | null;
   /** Preview 검토용 샘플데이터 기준(기획 산출물) */
   sampleDataSpecV1?: SampleDataSpecV1 | null;
+  /** 기획단계 PostgreSQL 환경설정(비밀번호 제외) */
+  planningDatabaseSettingsV1?: PlanningDatabaseSettingsV1 | null;
+  /** 기획단계 데이터 저장소·구조·샘플·Runtime API 슬롯 */
+  planningDataSlotsV1?: PlanningDataSlotsV1 | null;
+  /** 구현단계 handoff — 데이터 슬롯 스냅샷 */
+  planningHandoffForImplementationV1?: PlanningHandoffForImplementationV1 | null;
   /** 프로젝트 생성 직후 Product Definition(제품 방향·범위) */
   productDefinitionV1?: ProductDefinitionV1 | null;
   /** 세부 기능 정의(FEATURE_DETAIL) structured slots — orchestration SoT */
@@ -1212,6 +1229,25 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
   else if (sampleDataSpecRaw === null) sampleDataSpecV1 = null;
   else sampleDataSpecV1 = parseSampleDataSpecV1(sampleDataSpecRaw);
 
+  const planningDbRaw = "planningDatabaseSettingsV1" in o ? (o.planningDatabaseSettingsV1 as unknown) : undefined;
+  let planningDatabaseSettingsV1: PlanningDatabaseSettingsV1 | null | undefined;
+  if (planningDbRaw === undefined) planningDatabaseSettingsV1 = undefined;
+  else if (planningDbRaw === null) planningDatabaseSettingsV1 = null;
+  else planningDatabaseSettingsV1 = parsePlanningDatabaseSettingsV1(planningDbRaw);
+
+  const planningDataSlotsRaw = "planningDataSlotsV1" in o ? (o.planningDataSlotsV1 as unknown) : undefined;
+  let planningDataSlotsV1: PlanningDataSlotsV1 | null | undefined;
+  if (planningDataSlotsRaw === undefined) planningDataSlotsV1 = undefined;
+  else if (planningDataSlotsRaw === null) planningDataSlotsV1 = null;
+  else planningDataSlotsV1 = parsePlanningDataSlotsV1(planningDataSlotsRaw);
+
+  const planningHandoffRaw =
+    "planningHandoffForImplementationV1" in o ? (o.planningHandoffForImplementationV1 as unknown) : undefined;
+  let planningHandoffForImplementationV1: PlanningHandoffForImplementationV1 | null | undefined;
+  if (planningHandoffRaw === undefined) planningHandoffForImplementationV1 = undefined;
+  else if (planningHandoffRaw === null) planningHandoffForImplementationV1 = null;
+  else planningHandoffForImplementationV1 = parsePlanningHandoffForImplementationV1(planningHandoffRaw);
+
   const productDefinitionRaw = "productDefinitionV1" in o ? (o.productDefinitionV1 as unknown) : undefined;
   let productDefinitionV1: ProductDefinitionV1 | null | undefined;
   if (productDefinitionRaw === undefined) productDefinitionV1 = undefined;
@@ -1404,6 +1440,9 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     ...(prototypeWorkspaceTimelineCardsV1 !== undefined ? { prototypeWorkspaceTimelineCardsV1 } : {}),
     ...(featurePlanningSlotsV1 !== undefined ? { featurePlanningSlotsV1 } : {}),
     ...(sampleDataSpecV1 !== undefined ? { sampleDataSpecV1 } : {}),
+    ...(planningDatabaseSettingsV1 !== undefined ? { planningDatabaseSettingsV1 } : {}),
+    ...(planningDataSlotsV1 !== undefined ? { planningDataSlotsV1 } : {}),
+    ...(planningHandoffForImplementationV1 !== undefined ? { planningHandoffForImplementationV1 } : {}),
     ...(productDefinitionV1 !== undefined ? { productDefinitionV1 } : {}),
     ...(featureDetailSlotsV1 !== undefined ? { featureDetailSlotsV1 } : {}),
     ...(featurePlanningWorkspaceChatV1 !== undefined ? { featurePlanningWorkspaceChatV1 } : {}),

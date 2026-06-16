@@ -22,7 +22,7 @@ import {
 import { ProjectIntegrationOverridesPanel } from "@/components/project/ProjectIntegrationOverridesPanel";
 import { AutoGenerationSplitPreflightPanel } from "@/components/settings/AutoGenerationSplitPreflightPanel";
 import { postAutoGenerationTestConnection } from "@/components/project-spec/api";
-import { PrototypeEnvSettingsModalLayout } from "@/components/project/PrototypeEnvSettingsModalLayout";
+import { PlanningDatabaseSettingsSection } from "@/components/planning/PlanningDatabaseSettingsSection";
 import { resolveAutoGenerationSettingsConnectionState } from "@/lib/prototype/autoGenerationSettingsState";
 import {
   mergeConnectionTestPreservingEnvcheckEvidence,
@@ -2644,6 +2644,15 @@ export function ProjectExecutionEnvironmentPanel({
           ) : null}
           {mvpGithubTokenFields}
         </>
+      );
+    }
+    if (selectedModalRow === "database") {
+      return (
+        <PlanningDatabaseSettingsSection
+          projectId={projectId}
+          canEdit={canEdit}
+          gitRepoName={executionSetup?.gitRepoName ?? null}
+        />
       );
     }
     if (selectedModalRow === "cursor") {

@@ -83,6 +83,7 @@ export type ExecutionSetupDto = {
     cursorApiUrl: string | null;
     cursorApiTokenMasked: string | null;
   } | null;
+  planningDatabaseSettingsJson?: unknown;
 };
 
 /** GET: `data`가 null일 때도 동일 계정 peer 힌트가 올 수 있음 */

@@ -308,6 +308,8 @@ export async function GET(
         executorConnectionOk: row.executorConnectionOk ?? null,
         executorValidatedAt: row.executorValidatedAt ? row.executorValidatedAt.toISOString() : null,
         executorValidationError: row.executorValidationError ?? null,
+        planningDatabaseSettingsJson:
+          (row as { planningDatabaseSettingsJson?: unknown }).planningDatabaseSettingsJson ?? null,
         updatedAt: row.updatedAt.toISOString(),
         peerCredentialHints,
       },

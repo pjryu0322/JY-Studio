@@ -792,6 +792,12 @@ model ExecutionSetup {
   executorValidatedAt      DateTime?
   executorValidationError    String?  @db.Text
 
+  /// 기획단계 PostgreSQL 설정(JSON, 비밀번호 제외) + 연결 테스트 상태
+  planningDatabaseSettingsJson Json?
+  /// 기획단계 PostgreSQL 비밀번호(서버 전용, API 응답 미포함)
+  planningPostgresPassword String? @db.Text
+  planningPostgresPasswordMasked String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -48,10 +48,15 @@ import type {
   RequirementsSingleChatOrchestrationStateV1,
   SingleChatOrchestrationSlotDefinition,
 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import type { PlanningDataSlotsV1, PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
+import { buildPlanningDataSlotsStatePatch, resolvePlanningRepositoryName } from "@/lib/planning/planningDataSlotsStatePatch";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 export type QuickDesignConfirmImplementationPrepResult = Readonly<{
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
   readonly implementationSeedV1: ImplementationSeedV1;
+  readonly planningDataSlotsV1: PlanningDataSlotsV1;
+  readonly planningHandoffForImplementationV1: PlanningHandoffForImplementationV1;
   readonly implementationTaskListV1: ImplementationTaskListV1 | null;
   readonly implementationCodeTaskPlanV1: ImplementationCodeTaskPlanV1 | null;
   readonly cursorWorkItemsV1: readonly CursorWorkItem[] | null;
@@ -248,6 +253,8 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
   readonly existingTaskList?: ImplementationTaskListV1 | null;
   readonly sampleDataSpecV1?: import("@/lib/featurePlanning/sampleDataSpecV1").SampleDataSpecV1 | null;
+  readonly gitRepoName?: string | null;
+  readonly planningStateJson?: RequirementsStateJson | null;
 }): QuickDesignConfirmImplementationPrepResult {
   const now = input.nowIso;
   const initialReadiness = evaluateImplementationSeedReadiness({
@@ -298,6 +305,20 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     readinessReady: readiness.ready,
   });
 
+  const repositoryName = resolvePlanningRepositoryName({
+    gitRepoName: input.gitRepoName,
+    projectName: input.projectName,
+  });
+  const planningDataPatch = buildPlanningDataSlotsStatePatch({
+    state: input.planningStateJson ?? { sampleDataSpecV1: input.sampleDataSpecV1 ?? null },
+    projectId: input.projectId,
+    repositoryName,
+    orchestration,
+    definitions: input.definitions,
+    sampleDataSpecV1: input.sampleDataSpecV1,
+    nowIso: now,
+  });
+
   const baseSeed = buildImplementationSeedFromPlanning({
     projectId: input.projectId,
     orchestration,
@@ -305,6 +326,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     lifecycleStatus,
     nowIso: now,
     ...(input.sampleDataSpecV1 ? { sampleDataSpecV1: input.sampleDataSpecV1 } : {}),
+    planningHandoffForImplementationV1: planningDataPatch.planningHandoffForImplementationV1,
   });
   const implementationSeedV1 = attachTemplateContextToSeed({
     seed: baseSeed,
@@ -432,6 +454,8 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   return {
     orchestration,
     implementationSeedV1,
+    planningDataSlotsV1: planningDataPatch.planningDataSlotsV1,
+    planningHandoffForImplementationV1: planningDataPatch.planningHandoffForImplementationV1,
     implementationTaskListV1,
     implementationCodeTaskPlanV1,
     cursorWorkItemsV1,

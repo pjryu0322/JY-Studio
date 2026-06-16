@@ -71,6 +71,8 @@ export type QuickDesignConfirmFlowStatePatch = Readonly<{
   readonly fastPlanDraftV1: FastPlanDraftStateV1;
   readonly singleChatOrchestrationV1: RequirementsSingleChatOrchestrationStateV1;
   readonly implementationSeedV1: ImplementationSeedV1;
+  readonly planningDataSlotsV1?: import("@/lib/planning/planningDataSlotsV1").PlanningDataSlotsV1;
+  readonly planningHandoffForImplementationV1?: import("@/lib/planning/planningDataSlotsV1").PlanningHandoffForImplementationV1;
   readonly implementationTaskListV1?: ImplementationTaskListV1;
   readonly implementationCodeTaskPlanV1?: ImplementationCodeTaskPlanV1;
   readonly cursorWorkItemsV1?: readonly CursorWorkItem[];
@@ -131,6 +133,8 @@ export function buildQuickDesignConfirmStatePatch(input: {
     fastPlanDraftV1: input.confirm.fastPlanDraftV1,
     singleChatOrchestrationV1: input.prep.orchestration,
     implementationSeedV1: input.prep.implementationSeedV1,
+    planningDataSlotsV1: input.prep.planningDataSlotsV1,
+    planningHandoffForImplementationV1: input.prep.planningHandoffForImplementationV1,
     projectArtifacts: [...input.mergedProjectArtifacts],
     deliverableAssets: [...input.mergedDeliverableAssets],
     artifactOrchestrationV1: input.artifactBundle.artifactOrchestrationV1,
@@ -311,6 +315,7 @@ export function runQuickDesignConfirmFlowSync(input: {
     artifactOrchestrationV1: artifactBundle.artifactOrchestrationV1,
     existingTaskList: st.implementationTaskListV1,
     sampleDataSpecV1: st.sampleDataSpecV1 ?? null,
+    planningStateJson: st,
   });
 
   const readyMessage = buildQuickDesignImplementationReadyChatMessage({
