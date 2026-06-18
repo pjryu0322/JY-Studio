@@ -8,10 +8,7 @@ import { resolveOrchestrationAwareRequirementsState } from "@/lib/prototype/impl
 import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
-import {
-  buildImplementationDatabaseRequiredRunResult,
-  evaluateImplementationDatabaseRequiredExecutionBlock,
-} from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
+import { buildImplementationDatabaseRequiredRunResult } from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
 import {
   buildImplementationQuickRunQueueItems,
   buildImplementationQuickRunRequirementsPrepPersistPatch,
@@ -130,13 +127,6 @@ export function useImplementationQuickRunController(
       const pid = input.projectId.trim();
       if (!pid) return { outcome: "blocked", message: "프로젝트 ID가 없습니다." };
       const imp = input.orchestrationAwareRequirementsStateRef.current;
-      const databaseBlock = evaluateImplementationDatabaseRequiredExecutionBlock({
-        planningHandoffForImplementationV1: imp.planningHandoffForImplementationV1 ?? null,
-      });
-      if (databaseBlock.blocked) {
-        input.appendUserNotice(databaseBlock.message);
-        return buildImplementationDatabaseRequiredRunResult(databaseBlock);
-      }
       const bridge = input.boardSelectionBridge.getBridgeSnapshot();
       const prepEval = evaluateImplementationQuickRunPrepAndSelection({
         projectId: pid,
@@ -145,6 +135,25 @@ export function useImplementationQuickRunController(
         bridge,
       });
       if (!prepEval.ok) {
+        if (prepEval.kind === "database_required") {
+          input.recordQuickRunClientEvent({
+            phase: "quick_run_blocked_database_required",
+            detail: prepEval.blockReason,
+            selectedCount: 0,
+          });
+          const blockedTimeline = appendPromptTimeline(imp.promptTimeline, prepEval.timelineEntry);
+          input.applyPendingFromOrchestrationPatchRef.current({ promptTimeline: blockedTimeline });
+          void input.persistChatToDb(undefined, { promptTimeline: blockedTimeline }, undefined, {
+            force: true,
+          });
+          input.appendUserNotice(prepEval.message);
+          return buildImplementationDatabaseRequiredRunResult({
+            blocked: true,
+            blockReason: prepEval.blockReason,
+            message: prepEval.message,
+            actionLabel: prepEval.actionLabel,
+          });
+        }
         if (prepEval.kind === "mock_id_blocked") {
           input.recordQuickRunClientEvent({
             phase: "quick_run_selected_mock_id_blocked",

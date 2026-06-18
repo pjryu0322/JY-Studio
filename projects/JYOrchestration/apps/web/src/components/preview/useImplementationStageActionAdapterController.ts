@@ -7,6 +7,7 @@ import {
 } from "@/components/preview/useImplementationStageActionLegacyDispatchBundle";
 import { useImplementationStageActionController } from "@/components/preview/useImplementationStageActionController";
 import { useImplementationStageActionOrchestrator } from "@/components/preview/useImplementationStageActionOrchestrator";
+import type { PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
 import type { useImplementationBoardSelectionBridge } from "@/components/preview/useImplementationBoardSelectionBridge";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import type { ImplementationControlPlaneSnapshotV1 } from "@/lib/prototype/implementationControlPlaneSnapshot";
@@ -54,6 +55,7 @@ export type ImplementationStageActionAdapterControllerInput = Readonly<{
   readonly previewUrl: string | null | undefined;
   readonly appendUserNotice: (message: string) => void;
   readonly effectiveImplementationState: ReturnType<typeof resolveEffectiveImplementationState>;
+  readonly planningHandoffForImplementationV1?: PlanningHandoffForImplementationV1 | null;
   readonly implementationStageBoardGateContext: ImplementationStageBoardGateContext | null;
   readonly currentWip: CodeAgentWipExecutionV1 | null | undefined;
   readonly persistImplementationStageActionRun: (run: ImplementationStageActionRun) => void;
@@ -131,6 +133,7 @@ export function useImplementationStageActionAdapterController(
       projectId: input.legacyDispatchInput.projectId,
       effectiveImplementationState: input.effectiveImplementationState,
       implementationStageBoardGateContext: input.implementationStageBoardGateContext,
+      planningHandoffForImplementationV1: input.planningHandoffForImplementationV1 ?? null,
       currentWip: input.currentWip,
       runImplementationStageAction,
       persistImplementationStageActionRun: input.persistImplementationStageActionRun,

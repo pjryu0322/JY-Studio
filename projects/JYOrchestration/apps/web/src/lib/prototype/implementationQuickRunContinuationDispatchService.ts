@@ -26,6 +26,10 @@ import {
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
 import { mergeRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
+import {
+  buildImplementationDatabaseRequiredBlockedTimelineEntry,
+  evaluateImplementationDatabaseRequiredExecutionBlock,
+} from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
 
 export type QuickRunContinuationServerDispatchResult = Readonly<{
   readonly dispatched: boolean;
@@ -45,6 +49,23 @@ export async function dispatchQuickRunContinuationOnServer(input: {
 }): Promise<QuickRunContinuationServerDispatchResult> {
   const pid = input.projectId.trim();
   const nowIso = input.nowIso ?? new Date().toISOString();
+  const databaseBlock = evaluateImplementationDatabaseRequiredExecutionBlock({
+    planningHandoffForImplementationV1: input.requirementsSlice.planningHandoffForImplementationV1 ?? null,
+  });
+  if (databaseBlock.blocked) {
+    const timelineEntry = buildImplementationDatabaseRequiredBlockedTimelineEntry({
+      projectId: pid,
+      handoff: input.requirementsSlice.planningHandoffForImplementationV1 ?? null,
+      nowIso,
+    });
+    return {
+      dispatched: false,
+      orchestrationPatch: mergeOrchestrationPersistPatches(input.baseOrchestrationPatch, {
+        promptTimeline: [...(input.requirementsSlice.promptTimeline ?? []), timelineEntry],
+      }),
+      message: databaseBlock.message,
+    };
+  }
   const state = mergeRequirementsStateJson(
     input.requirementsSlice,
     input.baseOrchestrationPatch as Partial<RequirementsStateJson>,

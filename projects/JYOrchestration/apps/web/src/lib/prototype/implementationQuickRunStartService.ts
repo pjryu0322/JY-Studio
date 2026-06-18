@@ -52,12 +52,26 @@ import {
 } from "@/lib/prototype/implementationQuickRun";
 import { appendPromptTimeline } from "@/lib/requirements/promptTimelineState";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import {
+  buildImplementationDatabaseRequiredBlockedTimelineEntry,
+  evaluateImplementationDatabaseRequiredExecutionBlock,
+  IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON,
+} from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
+import { PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementationUxLabels";
 export type QuickRunPrepRepairV1 = Readonly<{
   readonly fromCodeTaskId: string;
   readonly toCodeTaskId: string;
 }>;
 
 export type EvaluateQuickRunPrepAndSelectionResultV1 =
+  | Readonly<{
+      readonly ok: false;
+      readonly kind: "database_required";
+      readonly blockReason: typeof IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON;
+      readonly message: string;
+      readonly actionLabel: typeof PLANNING_DATABASE_SETUP_LABEL;
+      readonly timelineEntry: ReturnType<typeof buildImplementationDatabaseRequiredBlockedTimelineEntry>;
+    }>
   | Readonly<{
       readonly ok: false;
       readonly kind: "mock_id_blocked";
@@ -86,6 +100,24 @@ export function evaluateImplementationQuickRunPrepAndSelection(input: {
 }): EvaluateQuickRunPrepAndSelectionResultV1 {
   const pid = input.projectId.trim();
   const imp = input.requirementsState;
+  const nowIso = new Date().toISOString();
+  const databaseBlock = evaluateImplementationDatabaseRequiredExecutionBlock({
+    planningHandoffForImplementationV1: imp.planningHandoffForImplementationV1 ?? null,
+  });
+  if (databaseBlock.blocked) {
+    return {
+      ok: false,
+      kind: "database_required",
+      blockReason: databaseBlock.blockReason,
+      message: databaseBlock.message,
+      actionLabel: databaseBlock.actionLabel,
+      timelineEntry: buildImplementationDatabaseRequiredBlockedTimelineEntry({
+        projectId: pid,
+        handoff: imp.planningHandoffForImplementationV1 ?? null,
+        nowIso,
+      }),
+    };
+  }
   const prep = prepareSelectedCodeTaskIdsForQuickRun({
     codeTaskPlan: imp.implementationCodeTaskPlanV1,
     selectedCodeTaskIds:

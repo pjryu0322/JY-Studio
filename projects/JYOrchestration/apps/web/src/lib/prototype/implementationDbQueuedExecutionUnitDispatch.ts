@@ -27,6 +27,11 @@ import { reconcileImplementationRunBeforeDispatch } from "@/lib/runtime/implemen
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { prisma } from "@/lib/prisma";
 import type { ServerQuickRunContinuationResult } from "@/lib/prototype/serverQuickRunContinuationTypes";
+import {
+  buildImplementationDatabaseRequiredBlockedTimelineEntry,
+  evaluateImplementationDatabaseRequiredExecutionBlock,
+  IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON,
+} from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
 
 /**
  * P3-M71/E — materialize DB queued runtime (if needed) then dispatch via ExecutionUnit scheduler.
@@ -45,6 +50,25 @@ export async function dispatchDbQueuedAutoAdvanceOnServer(input: {
     select: { requirementsStateJson: true },
   });
   let requirementsState = parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
+  const databaseBlock = evaluateImplementationDatabaseRequiredExecutionBlock({
+    planningHandoffForImplementationV1: requirementsState.planningHandoffForImplementationV1 ?? null,
+  });
+  if (databaseBlock.blocked) {
+    timelineEntries.push(
+      buildImplementationDatabaseRequiredBlockedTimelineEntry({
+        projectId: pid,
+        handoff: requirementsState.planningHandoffForImplementationV1 ?? null,
+        nowIso,
+      }),
+    );
+    return {
+      ok: false,
+      outcome: "skipped",
+      reason: IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON,
+      timelineEntries,
+      orchestrationPatch: { promptTimeline: timelineEntries },
+    };
+  }
   const quickRunRequirementsPrepared = prepareRequirementsStateForImplementationQuickRun({
     projectId: pid,
     requirementsState,

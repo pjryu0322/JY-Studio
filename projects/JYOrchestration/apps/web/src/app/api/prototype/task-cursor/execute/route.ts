@@ -73,6 +73,7 @@ import {
   type RuntimeDeveloperPromptSource,
 } from "@/lib/prototype/resolveRuntimeCodeTaskDeveloperPromptForExecute";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { evaluateImplementationDatabaseRequiredExecutionBlock } from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
 
 type Body = {
   readonly projectId?: string;
@@ -126,6 +127,28 @@ export async function POST(request: NextRequest) {
       const denied = rbacErrorResponse(error);
       if (denied) return denied;
       throw error;
+    }
+
+    const projectRow = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { requirementsStateJson: true },
+    });
+    const requirementsState = parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
+    const databaseBlock = evaluateImplementationDatabaseRequiredExecutionBlock({
+      planningHandoffForImplementationV1: requirementsState.planningHandoffForImplementationV1 ?? null,
+    });
+    if (databaseBlock.blocked) {
+      return NextResponse.json(
+        {
+          success: false,
+          status: "blocked",
+          blocked: true,
+          blockReason: databaseBlock.blockReason,
+          message: databaseBlock.message,
+          action: { type: "OPEN_PLANNING_DATABASE_SETTINGS", label: databaseBlock.actionLabel },
+        },
+        { status: 200 },
+      );
     }
 
     const setupRow = await prisma.executionSetup.findUnique({

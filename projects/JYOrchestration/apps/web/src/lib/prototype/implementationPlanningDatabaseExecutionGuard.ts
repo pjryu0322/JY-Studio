@@ -3,8 +3,23 @@ import { isPlanningHandoffBlockedByDatabase } from "@/lib/planning/planningDbPer
 import { PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementationUxLabels";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationStageActionRunResult } from "@/lib/prototype/implementationStageActionPipeline";
+import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
 
 export const IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON = "DATABASE_REQUIRED" as const;
+
+export function isImplementationBlockedByPlanningDatabase(
+  handoff: PlanningHandoffForImplementationV1 | null | undefined,
+): boolean {
+  return isPlanningHandoffBlockedByDatabase(handoff);
+}
+
+export function implementationDatabaseRequiredBlockMessage(
+  handoff: PlanningHandoffForImplementationV1 | null | undefined,
+): string {
+  const detail = handoff?.implementationDataPlan?.blockingReason?.trim();
+  if (detail) return detail;
+  return "구현단계를 시작하려면 PostgreSQL 데이터베이스 설정과 연결 테스트가 필요합니다.";
+}
 
 export function formatImplementationDatabaseRequiredUserNotice(): string {
   return [
@@ -52,4 +67,22 @@ export function buildImplementationDatabaseRequiredRunResult(
   >,
 ): ImplementationStageActionRunResult {
   return { outcome: "blocked", message: block.message };
+}
+
+export function buildImplementationDatabaseRequiredBlockedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly handoff?: PlanningHandoffForImplementationV1 | null;
+  readonly nowIso?: string;
+}) {
+  const detail = implementationDatabaseRequiredBlockMessage(input.handoff);
+  return buildImplementationExecutionLogTimelineEntry({
+    action: "implementation_execution_blocked_database_required",
+    orchestrationTraceGroup: "implementation_orchestration",
+    fields: {
+      projectId: input.projectId.trim(),
+      blockReason: IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON,
+      detail: `DATABASE_REQUIRED: ${detail}`,
+    },
+    nowIso: input.nowIso ?? new Date().toISOString(),
+  });
 }

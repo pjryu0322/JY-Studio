@@ -5,6 +5,7 @@ import type {
   EffectiveImplementationState,
   ImplementationStageActionId,
 } from "@/lib/prototype/effectiveImplementationState";
+import type { PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
 import type { CodeAgentWipExecutionV1 } from "@/lib/prototype/codeAgentWipExecution";
 import {
   buildImplementationStageActionClickedTimelineEntry,
@@ -40,6 +41,7 @@ export type ImplementationStageActionOrchestratorInput = Readonly<{
   readonly projectId: string;
   readonly effectiveImplementationState: EffectiveImplementationState;
   readonly implementationStageBoardGateContext: ImplementationStageBoardGateContext | null;
+  readonly planningHandoffForImplementationV1?: PlanningHandoffForImplementationV1 | null;
   readonly currentWip: CodeAgentWipExecutionV1 | null | undefined;
   readonly runImplementationStageAction: (
     actionId: ImplementationStageActionId,
@@ -88,6 +90,7 @@ export function useImplementationStageActionOrchestrator(
         source: runInput.source ?? "cta",
         effectiveState: input.effectiveImplementationState,
         boardGateContext: input.implementationStageBoardGateContext,
+        planningHandoffForImplementationV1: input.planningHandoffForImplementationV1 ?? null,
         execute: () =>
           runInput.execute?.() ?? input.runImplementationStageAction(runInput.actionId),
       }).then((run) => {

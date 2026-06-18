@@ -960,6 +960,8 @@ export function usePrototypeImplementationStagePanel(
       previewUrl,
       appendUserNotice,
       effectiveImplementationState,
+      planningHandoffForImplementationV1:
+        orchestrationAwareRequirementsState.planningHandoffForImplementationV1 ?? null,
       implementationStageBoardGateContext,
       currentWip: orchestrationAwareRequirementsState.codeAgentWipExecutionV1,
       persistImplementationStageActionRun,

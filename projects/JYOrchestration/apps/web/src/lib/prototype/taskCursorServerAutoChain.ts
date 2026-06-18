@@ -11,6 +11,7 @@ import { parseImplementationQuickRunV1, resolveQuickRunAllowedTaskIds } from "@/
 import { parseRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { TaskCursorExecutionV1 } from "@/lib/prototype/taskCursorExecution";
 import { buildTaskCursorJobLifecycleTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import { isImplementationBlockedByPlanningDatabase } from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
 
 export async function enqueueNextTaskCursorJobAfterTerminal(input: {
   readonly projectId: string;
@@ -24,6 +25,9 @@ export async function enqueueNextTaskCursorJobAfterTerminal(input: {
     readonly orchestrationPatch?: ReturnType<typeof buildTaskCursorOrchestrationPatch>;
   }>
 > {
+  if (isImplementationBlockedByPlanningDatabase(input.requirementsState.planningHandoffForImplementationV1)) {
+    return {};
+  }
   const board = buildImplementationExecutionBoardFromRequirementsState({
     projectId: input.projectId,
     orchestration: input.requirementsState,

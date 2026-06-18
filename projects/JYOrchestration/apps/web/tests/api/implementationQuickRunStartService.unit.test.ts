@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { CANONICAL_SAMPLE_DATA_CODE_TASK_ID } from "@/lib/prototype/codeTaskCanonicalId";
+import { IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON } from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
 import { resolveCodeTaskDispatchTarget } from "@/lib/prototype/codeTaskExecutionQueueDispatch";
 import type { ImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementationCodeTaskPlan";
+import { buildPlanningDataSlotsDraft, buildPlanningHandoffForImplementation } from "@/lib/planning/planningDataSlotsV1";
+import { PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementationUxLabels";
+import { parsePlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import {
   buildQuickRunOrchestrationAfterJobStart,
   ensureRequirementsStateCursorWorkItemsForCodeTaskPlan,
@@ -11,11 +15,87 @@ import {
 
 const sampleId = CANONICAL_SAMPLE_DATA_CODE_TASK_ID;
 
+function blockedDbHandoff() {
+  const draft = buildPlanningDataSlotsDraft({
+    repositoryName: "app",
+    orchestration: null,
+    definitions: [],
+  });
+  return buildPlanningHandoffForImplementation({
+    projectId: "p1",
+    repositoryName: "app",
+    planningDataSlots: draft,
+  });
+}
+
+function readyDbHandoff() {
+  const settings = parsePlanningDatabaseSettingsV1({
+    version: 1,
+    enabled: true,
+    provider: "POSTGRESQL",
+    host: "db",
+    port: 5432,
+    database: "app",
+    username: "app",
+    password: "",
+    connectionStatus: "READY",
+    repositoryName: "org/app",
+    implementationSchemaName: "app_impl_sample",
+    reviewSchemaName: "app_review_test",
+  })!;
+  const draft = buildPlanningDataSlotsDraft({
+    repositoryName: "org/app",
+    orchestration: null,
+    definitions: [],
+    planningDatabaseSettings: settings,
+  });
+  return buildPlanningHandoffForImplementation({
+    projectId: "p1",
+    repositoryName: "org/app",
+    planningDataSlots: draft,
+    planningDatabaseSettings: settings,
+  });
+}
+
+const runnableBridge = {
+  liveCheckedCodeTaskIds: [sampleId],
+  boardPersistSelection: [],
+  liveRunnableCodeTaskIds: [sampleId],
+  livePanelSummary: {
+    totalCount: 15,
+    runnableCount: 1,
+    selectedRunnableCount: 1,
+    selectedRunnableCodeTaskIds: [sampleId],
+    integrationReadyCount: 14,
+    integrationReadyCodeTaskIds: [],
+  },
+} as const;
+
 describe("evaluateImplementationQuickRunPrepAndSelection", () => {
+  it("blocks Quick Run when planning handoff is database-blocked even with runnable CodeTasks", () => {
+    const result = evaluateImplementationQuickRunPrepAndSelection({
+      projectId: "p1",
+      requirementsState: {
+        planningHandoffForImplementationV1: blockedDbHandoff(),
+        implementationTaskListV1: { version: 1, projectId: "p1", tasks: [], roleSummary: {} as never },
+      },
+      selectedCodeTaskIdsOverride: [sampleId],
+      bridge: { ...runnableBridge },
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.kind === "database_required") {
+      expect(result.blockReason).toBe(IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON);
+      expect(result.actionLabel).toBe(PLANNING_DATABASE_SETUP_LABEL);
+      expect(result.message).toContain("PostgreSQL");
+    } else {
+      expect.fail("expected database_required block");
+    }
+  });
+
   it("returns runnable ids when live panel summary has selected runnable", () => {
     const result = evaluateImplementationQuickRunPrepAndSelection({
       projectId: "p1",
-      requirementsState: {},
+      requirementsState: { planningHandoffForImplementationV1: readyDbHandoff() },
       selectedCodeTaskIdsOverride: [sampleId],
       bridge: {
         liveCheckedCodeTaskIds: [sampleId],
@@ -40,7 +120,7 @@ describe("evaluateImplementationQuickRunPrepAndSelection", () => {
   it("blocks with toolbar message when nothing runnable is selected", () => {
     const result = evaluateImplementationQuickRunPrepAndSelection({
       projectId: "p1",
-      requirementsState: {},
+      requirementsState: { planningHandoffForImplementationV1: readyDbHandoff() },
       bridge: {
         liveCheckedCodeTaskIds: [],
         boardPersistSelection: [],

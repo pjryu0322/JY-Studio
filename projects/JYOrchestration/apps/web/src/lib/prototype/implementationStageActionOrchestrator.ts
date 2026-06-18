@@ -1,3 +1,4 @@
+import type { PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
 import type {
   EffectiveImplementationState,
   ImplementationStageActionId,
@@ -22,6 +23,7 @@ export async function orchestrateImplementationStageAction(input: {
   readonly source: ImplementationStageActionRunSource;
   readonly effectiveState: EffectiveImplementationState;
   readonly boardGateContext?: ImplementationStageBoardGateContext | null;
+  readonly planningHandoffForImplementationV1?: PlanningHandoffForImplementationV1 | null;
   readonly execute: () => ImplementationStageActionRunResult | Promise<ImplementationStageActionRunResult>;
   readonly nowIso?: string;
 }): Promise<ImplementationStageActionRun> {
@@ -38,6 +40,7 @@ export async function orchestrateImplementationStageAction(input: {
       input.actionId,
       input.effectiveState,
       input.boardGateContext,
+      input.planningHandoffForImplementationV1,
     ) ?? { ok: false, message: "구현단계 action gate 결과를 확인할 수 없습니다." };
   if (!gate.ok) {
     const timelineEntries = buildStageActionRunCompletionTimelineEntries(
