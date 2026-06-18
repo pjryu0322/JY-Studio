@@ -225,7 +225,7 @@ export function ensureMockImplementationReady(input: {
   const patch = ensured.patch as Record<string, unknown>;
   const slots = patch.implementationSlotsV1 as import("@/lib/prototype/implementationSlots").ImplementationSlotsV1 | null | undefined;
   if (!slots) {
-    return { ok: false, message: "Mock 기반 구현 준비를 자동으로 완료할 수 없습니다.", created: [] };
+    return { ok: false, message: "PostgreSQL 구현 준비를 자동으로 완료할 수 없습니다.", created: [] };
   }
 
   const result = buildMockImplementationModeResult({

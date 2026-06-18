@@ -36,7 +36,7 @@ describe("implementation task plan confirmed chips", () => {
     const chips = implementationTaskPlanConfirmedChips();
     expect(chips).toContain("DB 연동 필요성 검토");
     expect(chips).toContain("데이터 모델 초안 생성");
-    expect(chips).toContain("Mock 기반 구현 진행");
+    expect(chips).toContain("PostgreSQL 구현 준비");
   });
 });
 
@@ -62,7 +62,7 @@ describe("buildDbIntegrationReviewResult", () => {
     });
     const decision = derived.find((d) => d.type === "db-integration-decision");
     expect(decision?.body).toContain("# DB 연동 판단서");
-    expect(decision?.body).toContain("Mock 기반");
+    expect(decision?.body).toContain("PostgreSQL");
     expect(result.orchestrationPatch.implementationDbStrategyV1.dbDecisionRequested).toBe(true);
     expect(
       result.orchestrationPatch.promptTimeline.some((e) => e.action === "implementation_db_decision_requested"),
@@ -97,7 +97,7 @@ describe("buildDataModelDraftResult", () => {
 });
 
 describe("buildMockImplementationModeResult", () => {
-  it("confirms mock mode without blocking WIP flow", () => {
+  it("confirms PostgreSQL implementation prep on storage strategy", () => {
     const { slots } = sampleContext();
     const result = buildMockImplementationModeResult({
       requirementsStateJson: {},
@@ -107,8 +107,8 @@ describe("buildMockImplementationModeResult", () => {
     expect(result.kind).toBe("applied");
     if (result.kind !== "applied") return;
     const patched = result.orchestrationPatch.implementationSlotsV1;
-    expect(patched.slots.find((s) => s.key === "data_persistence_mode")?.value).toBe("mock");
-    expect(patched.slots.find((s) => s.key === "db_required")?.value).toBe(false);
+    expect(patched.slots.find((s) => s.key === "data_persistence_mode")?.value).toBe("db");
+    expect(patched.slots.find((s) => s.key === "db_required")?.value).toBe(true);
     expect(result.orchestrationPatch.implementationDbStrategyV1.mockModeConfirmed).toBe(true);
 
     const derived = buildDerivedImplementationArtifacts({

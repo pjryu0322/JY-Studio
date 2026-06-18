@@ -257,7 +257,7 @@ export function implementationTaskPlanConfirmedChips(): readonly string[] {
     "코드 에이전트 WIP 작업 요청",
     "DB 연동 필요성 검토",
     "데이터 모델 초안 생성",
-    "Mock 기반 구현 진행",
+    "PostgreSQL 구현 준비",
     "작업 범위 수정",
     "산출물 다시 보기",
     "환경설정 열기",

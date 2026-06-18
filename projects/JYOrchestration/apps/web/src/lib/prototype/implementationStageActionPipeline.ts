@@ -34,6 +34,8 @@ import {
   IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
   type ImplementationWorkItemPreflightSummaryV1,
 } from "@/lib/prototype/implementationPlanningReadiness";
+import { evaluateImplementationDatabaseRequiredExecutionBlock } from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
+import type { PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
 import { evaluateActiveImplementationExecutionGate } from "@/lib/prototype/implementationStageRunningGate";
 import type { TaskCursorJobSummary } from "@/lib/prototype/taskCursorExecutionJobTypes";
 import type { ImplementationExecutionJobV1 } from "@/lib/prototype/implementationExecutionJob";
@@ -436,7 +438,22 @@ export function evaluateImplementationStageActionGate(
   actionId: ImplementationStageActionId,
   state: EffectiveImplementationState,
   boardContext?: ImplementationStageBoardGateContext | null,
+  planningHandoffForImplementationV1?: PlanningHandoffForImplementationV1 | null,
 ): ImplementationStageActionGateResult {
+  if (planningHandoffForImplementationV1 !== undefined) {
+    const dbBlock = evaluateImplementationDatabaseRequiredExecutionBlock({
+      planningHandoffForImplementationV1,
+    });
+    if (
+      dbBlock.blocked &&
+      (actionId === "REQUEST_CODE_AGENT_WIP" ||
+        actionId === "REQUEST_TASK_CURSOR_EXECUTION" ||
+        actionId === "REQUEST_CURSOR_BRIDGE_EXECUTION" ||
+        actionId === "START_IMPLEMENTATION_QUICK_RUN")
+    ) {
+      return { ok: false, message: dbBlock.message };
+    }
+  }
   if (
     actionId === "RUN_REFACTOR_COMMON" ||
     actionId === "RUN_INTEGRATED_REVIEW" ||

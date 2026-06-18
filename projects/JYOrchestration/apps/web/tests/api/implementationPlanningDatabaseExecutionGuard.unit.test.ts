@@ -1,0 +1,67 @@
+import { describe, expect, it } from "vitest";
+import {
+  evaluateImplementationDatabaseRequiredExecutionBlock,
+  IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON,
+} from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
+import { buildPlanningDataSlotsDraft, buildPlanningHandoffForImplementation } from "@/lib/planning/planningDataSlotsV1";
+import { PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementationUxLabels";
+import { parsePlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
+
+describe("implementationPlanningDatabaseExecutionGuard", () => {
+  it("blocks execution when handoff is database-blocked", () => {
+    const draft = buildPlanningDataSlotsDraft({
+      repositoryName: "app",
+      orchestration: null,
+      definitions: [],
+    });
+    const handoff = buildPlanningHandoffForImplementation({
+      projectId: "p1",
+      repositoryName: "app",
+      planningDataSlots: draft,
+    });
+    const block = evaluateImplementationDatabaseRequiredExecutionBlock({
+      planningHandoffForImplementationV1: handoff,
+    });
+    expect(block.blocked).toBe(true);
+    if (block.blocked) {
+      expect(block.blockReason).toBe(IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON);
+      expect(block.actionLabel).toBe(PLANNING_DATABASE_SETUP_LABEL);
+      expect(block.message).toContain("PostgreSQL");
+    }
+  });
+
+  it("allows execution when handoff is READY", () => {
+    const settings = parsePlanningDatabaseSettingsV1({
+      version: 1,
+      enabled: true,
+      provider: "POSTGRESQL",
+      host: "db.example.com",
+      port: 5432,
+      database: "app",
+      username: "app",
+      password: "",
+      connectionStatus: "READY",
+      repositoryName: "org/app",
+      databaseStoreName: "app",
+      implementationSchemaName: "app_impl_sample",
+      reviewSchemaName: "app_review_test",
+    })!;
+    const draft = buildPlanningDataSlotsDraft({
+      repositoryName: "org/app",
+      orchestration: null,
+      definitions: [],
+      planningDatabaseSettings: settings,
+    });
+    const handoff = buildPlanningHandoffForImplementation({
+      projectId: "p1",
+      repositoryName: "org/app",
+      planningDataSlots: draft,
+      planningDatabaseSettings: settings,
+    });
+    expect(
+      evaluateImplementationDatabaseRequiredExecutionBlock({
+        planningHandoffForImplementationV1: handoff,
+      }).blocked,
+    ).toBe(false);
+  });
+});

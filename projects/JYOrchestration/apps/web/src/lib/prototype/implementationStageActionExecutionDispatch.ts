@@ -60,6 +60,10 @@ import {
   evaluateImplementationPlanningExecutionGate,
   IMPLEMENTATION_PLANNING_EXECUTION_BLOCKED_MESSAGE,
 } from "@/lib/prototype/implementationPlanningReadiness";
+import {
+  buildImplementationDatabaseRequiredRunResult,
+  evaluateImplementationDatabaseRequiredExecutionBlock,
+} from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
 import { refineCursorWorkItemsForImplementation } from "@/lib/prototype/implementationWorkItemRefinement";
 import {
   buildWorkItemPreflightTimelineEntry,
@@ -175,6 +179,18 @@ export type ImplementationStageActionExecutionDispatchDeps = Readonly<{
   readonly setExecutionEnvironmentModalOpen: (open: boolean) => void;
 }>;
 
+function blockImplementationExecutionWhenDatabaseRequired(input: {
+  readonly planningHandoffForImplementationV1?: import("@/lib/planning/planningDataSlotsV1").PlanningHandoffForImplementationV1 | null;
+  readonly appendAiNoticeForImplementation: (message: string) => void;
+}): ImplementationStageActionRunResult | null {
+  const block = evaluateImplementationDatabaseRequiredExecutionBlock({
+    planningHandoffForImplementationV1: input.planningHandoffForImplementationV1,
+  });
+  if (!block.blocked) return null;
+  input.appendAiNoticeForImplementation(block.message);
+  return buildImplementationDatabaseRequiredRunResult(block);
+}
+
 export function dispatchExecutionStageAction(
   actionId: ImplementationStageActionId,
   deps: ImplementationStageActionExecutionDispatchDeps,
@@ -219,6 +235,14 @@ export function dispatchExecutionStageAction(
   switch (actionId) {
     case "REQUEST_CODE_AGENT_WIP": {
           const pid = projectId.trim();
+          const databaseBlock = blockImplementationExecutionWhenDatabaseRequired({
+            planningHandoffForImplementationV1:
+              orchestrationAwareRequirementsState.planningHandoffForImplementationV1 ??
+              parsedRequirementsState.planningHandoffForImplementationV1 ??
+              null,
+            appendAiNoticeForImplementation,
+          });
+          if (databaseBlock) return databaseBlock;
           const cursorApiReady = evaluateCursorExecutionAvailability({ setup: executionSetupRow }).ready;
 
           const prepared = prepareWipRequestRuntime({
@@ -548,6 +572,14 @@ export function dispatchExecutionStageAction(
     }
     case "REQUEST_TASK_CURSOR_EXECUTION": {
           const pid = projectId.trim();
+          const databaseBlock = blockImplementationExecutionWhenDatabaseRequired({
+            planningHandoffForImplementationV1:
+              orchestrationAwareRequirementsState.planningHandoffForImplementationV1 ??
+              requirementsJsonFromRef().planningHandoffForImplementationV1 ??
+              null,
+            appendAiNoticeForImplementation,
+          });
+          if (databaseBlock) return databaseBlock;
           const board = implementationStageBoardGateContext?.board;
           const workItems = orchestrationAwareRequirementsState.cursorWorkItemsV1 ?? [];
           const codeTaskPlan = orchestrationAwareRequirementsState.implementationCodeTaskPlanV1;
@@ -1071,6 +1103,12 @@ export function dispatchExecutionStageAction(
           return { outcome: "executed" };
     }
     case "REQUEST_CURSOR_BRIDGE_EXECUTION": {
+          const databaseBlock = blockImplementationExecutionWhenDatabaseRequired({
+            planningHandoffForImplementationV1:
+              orchestrationAwareRequirementsState.planningHandoffForImplementationV1 ?? null,
+            appendAiNoticeForImplementation,
+          });
+          if (databaseBlock) return databaseBlock;
           const pid = projectId.trim();
           const wip = orchestrationAwareRequirementsState.codeAgentWipExecutionV1;
           if (!wip) {

@@ -257,6 +257,7 @@ import {
   PLANNING_INFO_REFINE_LABEL,
 } from "@/lib/requirements/implementationUxLabels";
 import { ProjectExecutionEnvironmentModal } from "@/components/project/ProjectExecutionEnvironmentModal";
+import type { PrototypeEnvModalRowKey } from "@/lib/project/prototypeEnvSettingsModalRows";
 import { buildApplyImplementationCandidateRefinePatches } from "@/lib/requirements/implementationCandidateRefineResult";
 import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
 import { ImplementationCandidateRefineDrawer } from "@/components/requirements/ImplementationCandidateRefineDrawer";
@@ -365,6 +366,8 @@ export function RequirementsWorkspace({
   const [resolvedProjectId, setResolvedProjectId] = useState(() => initialProjectId.trim());
   const [project, setProject] = useState<Project | null>(null);
   const [executionEnvironmentModalOpen, setExecutionEnvironmentModalOpen] = useState(false);
+  const [executionEnvironmentModalInitialRow, setExecutionEnvironmentModalInitialRow] =
+    useState<PrototypeEnvModalRowKey | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const membersRef = useRef(members);
@@ -3321,6 +3324,9 @@ export function RequirementsWorkspace({
           showErrorToast("프로젝트를 먼저 저장해 주세요.");
           return;
         }
+        setExecutionEnvironmentModalInitialRow(
+          trimmed === PLANNING_DATABASE_SETUP_LABEL ? "database" : null,
+        );
         setExecutionEnvironmentModalOpen(true);
         return;
       }
@@ -4206,7 +4212,11 @@ export function RequirementsWorkspace({
 
       <ProjectExecutionEnvironmentModal
         open={executionEnvironmentModalOpen}
-        onClose={() => setExecutionEnvironmentModalOpen(false)}
+        onClose={() => {
+          setExecutionEnvironmentModalOpen(false);
+          setExecutionEnvironmentModalInitialRow(null);
+        }}
+        initialModalRow={executionEnvironmentModalInitialRow}
         projectId={resolvedProjectId.trim()}
         project={project}
         canEdit={true}

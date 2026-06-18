@@ -12,7 +12,7 @@ export const IMPLEMENTATION_DB_STRATEGY_VERSION = "implementation_db_strategy_v1
 
 export const DB_INTEGRATION_REVIEW_CHIP = "DB 연동 필요성 검토";
 export const DATA_MODEL_DRAFT_CHIP = "데이터 모델 초안 생성";
-export const MOCK_IMPLEMENTATION_CHIP = "Mock 기반 구현 진행";
+export const MOCK_IMPLEMENTATION_CHIP = "PostgreSQL 구현 준비";
 
 export type ImplementationDbStrategyV1 = Readonly<{
   version: typeof IMPLEMENTATION_DB_STRATEGY_VERSION;
@@ -71,13 +71,13 @@ export function buildDbIntegrationDecisionMarkdown(input: {
     "# DB 연동 판단서",
     "",
     "## 1. 현재 구현 전략",
-    "- Mock 기반 / 정적 프로토타입",
-    `- 저장 방식: \`${String(getImplementationSlotValue(input.slots, "data_persistence_mode") ?? "mock")}\``,
-    `- 초기 저장: ${String(getImplementationSlotValue(input.slots, "storage_strategy") ?? "Mock JSON / local state")}`,
+    "- PostgreSQL 샘플 DB + Platform Runtime API",
+    `- 저장 방식: \`${String(getImplementationSlotValue(input.slots, "data_persistence_mode") ?? "db")}\``,
+    `- 초기 저장: ${String(getImplementationSlotValue(input.slots, "storage_strategy") ?? "PostgreSQL sample DB + Platform Runtime API")}`,
     "",
     "## 2. 현재 DB 연동 여부",
     `- db_required: ${getImplementationSlotValue(input.slots, "db_required") === true ? "true" : "false"}`,
-    "- 현재 단계에서는 DB 연동을 필수로 하지 않음 (Mock 검토 우선)",
+    "- 데이터베이스 설정이 완료되지 않으면 구현단계로 진행할 수 없습니다.",
     "",
     "## 3. DB 전환이 필요한 조건",
     "- 사용자별 저장 필요",
@@ -93,9 +93,9 @@ export function buildDbIntegrationDecisionMarkdown(input: {
     ...(artifactTitles.length ? ["", "### 참조 산출물", ...artifactTitles.map((t) => `- ${t}`)] : []),
     "",
     "## 5. 권장 전환 단계",
-    "1. Mock 기반 구현·프로토타입 검토",
+    "1. PostgreSQL 데이터베이스 설정·연결 테스트",
     "2. DB 연동 필요성 검토 확정",
-    "3. 데이터 모델 초안 → DB 연동 task 생성",
+    "3. 데이터 모델 초안 → schema/seed task 생성",
     "4. Code Agent WIP로 schema/API 연동 구현",
     "",
     "## 6. 보안 고려사항",
@@ -150,7 +150,8 @@ export function buildStorageStrategyMarkdown(slots: ImplementationSlotsV1): stri
     `- db_required: ${getImplementationSlotValue(slots, "db_required") === true}`,
     `- migration_required: ${getImplementationSlotValue(slots, "migration_required") === true}`,
     "",
-    "Mock 단계에서는 Local state·샘플 JSON으로 화면·동선을 검증합니다.",
+    "PostgreSQL 샘플 DB + Platform Runtime API가 기본입니다.",
+    "DB 설정 완료 후 구현단계 샘플 DB schema와 seed 생성을 진행합니다.",
   ].join("\n");
 }
 
@@ -164,29 +165,29 @@ export function applyMockImplementationModeSlots(
       {
         key: "data_persistence_mode",
         status: "confirmed",
-        value: "mock",
-        reason: "Mock 기반 구현 확정",
-        source: ["implementation_db_strategy", "mock_mode_cta"],
+        value: "db",
+        reason: "PostgreSQL 샘플 DB 구현 준비",
+        source: ["implementation_db_strategy", "postgres_mode_cta"],
       },
       {
         key: "db_required",
         status: "confirmed",
-        value: false,
-        reason: "프로토타입 단계 DB 미연동",
-        source: ["implementation_db_strategy", "mock_mode_cta"],
+        value: true,
+        reason: "구현단계 PostgreSQL 샘플 DB 필수",
+        source: ["implementation_db_strategy", "postgres_mode_cta"],
       },
       {
         key: "storage_strategy",
         status: "confirmed",
-        value: "Mock JSON / local state",
-        reason: "정적·Mock 검토 우선",
-        source: ["implementation_db_strategy", "mock_mode_cta"],
+        value: "PostgreSQL sample DB + Platform Runtime API",
+        reason: "PostgreSQL 샘플 DB + Runtime API",
+        source: ["implementation_db_strategy", "postgres_mode_cta"],
       },
       {
         key: "migration_required",
         status: "confirmed",
-        value: false,
-        source: ["implementation_db_strategy", "mock_mode_cta"],
+        value: true,
+        source: ["implementation_db_strategy", "postgres_mode_cta"],
       },
     ],
     nowIso,

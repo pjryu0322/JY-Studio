@@ -6,10 +6,16 @@ import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import {
   isPlanningDatabaseReady,
+  normalizePlanningDataPersistenceMode,
   resolvePlanningDatabaseBlockingReason,
+  resolvePlanningDatabaseBlockingReasonForReadiness,
+  resolvePlanningDatabaseReadinessV1,
   resolvePlanningDataPersistenceMode,
   resolvePlanningHandoffStatus,
+  planningDatabaseReadinessUserDisplay,
+  planningDatabaseSettingsActionLabel,
   type PlanningDataPersistenceMode,
+  type PlanningDatabaseReadinessV1,
   type PlanningHandoffStatus,
 } from "@/lib/planning/planningDbPersistencePolicy";
 import type { ProjectDataStoreNaming } from "@/lib/planning/projectDataStoreNaming";
@@ -38,8 +44,11 @@ export type PlanningDataFieldType =
   | "text"
   | "json";
 
+export type { PlanningDatabaseReadinessV1 } from "@/lib/planning/planningDbPersistencePolicy";
+
 export type DataStoreSlotV1 = Readonly<{
   readonly status: PlanningDataSlotStatus;
+  readonly databaseReadiness: PlanningDatabaseReadinessV1;
   readonly provider: "POSTGRESQL";
   readonly enabled: boolean;
   readonly repositoryName?: string;
@@ -63,6 +72,7 @@ export type DataStoreSlotV1 = Readonly<{
   }>;
   readonly runtimeApiRequired: boolean;
   readonly blockingReason?: string | null;
+  readonly settingsActionLabel?: string | null;
 }>;
 
 export type DataModelEntityV1 = Readonly<{
@@ -155,6 +165,21 @@ function parseStringArray(raw: unknown, maxItems: number, maxLen: number): strin
     .map((x) => String(x ?? "").trim().slice(0, maxLen))
     .filter(Boolean)
     .slice(0, maxItems);
+}
+
+function readDatabaseReadiness(v: unknown): PlanningDatabaseReadinessV1 | null {
+  const s = String(v ?? "").trim();
+  if (
+    s === "READY" ||
+    s === "CONFIG_REQUIRED" ||
+    s === "CONNECTION_TEST_REQUIRED" ||
+    s === "CONNECTION_FAILED" ||
+    s === "STORE_NAMING_REQUIRED" ||
+    s === "BLOCKED_DATABASE_REQUIRED"
+  ) {
+    return s;
+  }
+  return null;
 }
 
 export function parsePlanningDataSlotsV1(raw: unknown): PlanningDataSlotsV1 | null {
@@ -258,11 +283,14 @@ export function parsePlanningDataSlotsV1(raw: unknown): PlanningDataSlotsV1 | nu
     }
   }
 
+  const parsedReadiness = readDatabaseReadiness(storeRaw.databaseReadiness);
+
   return {
     version: PLANNING_DATA_SLOTS_VERSION,
     updatedAt,
     dataStoreSlot: {
       status: readStatus(storeRaw.status),
+      databaseReadiness: parsedReadiness ?? "BLOCKED_DATABASE_REQUIRED",
       provider: "POSTGRESQL",
       enabled: Boolean(storeRaw.enabled),
       ...(String(storeRaw.repositoryName ?? "").trim()
@@ -298,6 +326,9 @@ export function parsePlanningDataSlotsV1(raw: unknown): PlanningDataSlotsV1 | nu
       runtimeApiRequired: storeRaw.runtimeApiRequired !== false,
       ...(String(storeRaw.blockingReason ?? "").trim()
         ? { blockingReason: String(storeRaw.blockingReason).trim().slice(0, 500) }
+        : {}),
+      ...(String(storeRaw.settingsActionLabel ?? "").trim()
+        ? { settingsActionLabel: String(storeRaw.settingsActionLabel).trim().slice(0, 80) }
         : {}),
     },
     dataModelSlot: {
@@ -463,12 +494,15 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
   const prior = input.prior ?? null;
   const settings = input.planningDatabaseSettings ?? null;
   const dbReady = isPlanningDatabaseReady(settings);
-  const blockingReason = dbReady ? null : resolvePlanningDatabaseBlockingReason(settings);
+  const databaseReadiness = resolvePlanningDatabaseReadinessV1(settings, naming);
+  const blockingReason = dbReady
+    ? null
+    : resolvePlanningDatabaseBlockingReasonForReadiness(databaseReadiness, settings);
+  const settingsActionLabel = planningDatabaseSettingsActionLabel(databaseReadiness);
 
   const dataStoreSlot: DataStoreSlotV1 = {
-    status: dbReady
-      ? slotStatusFromContent(Boolean(naming.normalizedBaseName), prior?.dataStoreSlot.status)
-      : "NEEDS_REVIEW",
+    status: dbReady ? "CONFIRMED" : "NEEDS_REVIEW",
+    databaseReadiness,
     provider: "POSTGRESQL",
     enabled: dbReady,
     repositoryName: naming.repositoryName,
@@ -492,6 +526,7 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
     },
     runtimeApiRequired: dbReady,
     ...(blockingReason ? { blockingReason } : {}),
+    ...(settingsActionLabel ? { settingsActionLabel } : {}),
   };
 
   const dataModelSlot: DataModelSlotV1 = {
@@ -623,11 +658,71 @@ export function parsePlanningHandoffForImplementationV1(raw: unknown): PlanningH
     o.implementationDataPlan && typeof o.implementationDataPlan === "object"
       ? (o.implementationDataPlan as Record<string, unknown>)
       : null;
-  return buildPlanningHandoffForImplementation({
+  const normalizedMode = normalizePlanningDataPersistenceMode(String(planRaw?.dataPersistenceMode ?? ""));
+  const rawStatus = String(o.status ?? "").trim();
+  const status: PlanningHandoffStatus =
+    rawStatus === "READY" && normalizedMode === "POSTGRES_SAMPLE_DB"
+      ? "READY"
+      : "BLOCKED_DATABASE_REQUIRED";
+  const useSampleDb =
+    typeof planRaw?.useSampleDb === "boolean" ? planRaw.useSampleDb : normalizedMode === "POSTGRES_SAMPLE_DB";
+  const useRuntimeApi =
+    typeof planRaw?.useRuntimeApi === "boolean" ? planRaw.useRuntimeApi : normalizedMode === "POSTGRES_SAMPLE_DB";
+  const blocked =
+    typeof planRaw?.blocked === "boolean" ? planRaw.blocked : normalizedMode === "BLOCKED_DATABASE_REQUIRED";
+  const repositoryName = String(o.repositoryName ?? slots.dataStoreSlot.repositoryName ?? "project").trim();
+  const naming = buildProjectDataStoreNaming({
+    repositoryName,
     projectId,
-    repositoryName: String(o.repositoryName ?? slots.dataStoreSlot.repositoryName ?? "project"),
-    planningDataSlots: slots,
   });
+  const implementationSchemaName =
+    String(planRaw?.implementationSchemaName ?? "").trim() || naming.implementationSchemaName;
+  const reviewSchemaName = String(planRaw?.reviewSchemaName ?? "").trim() || naming.reviewSchemaName;
+  const repositoryBasedStoreName =
+    String(planRaw?.repositoryBasedStoreName ?? planRaw?.databaseStoreName ?? "").trim() ||
+    naming.normalizedBaseName;
+  const blockingReason =
+    typeof planRaw?.blockingReason === "string" && planRaw.blockingReason.trim()
+      ? planRaw.blockingReason.trim().slice(0, 500)
+      : blocked
+        ? resolvePlanningDatabaseBlockingReason(null)
+        : null;
+  const defaultsRaw =
+    o.implementationDefaults && typeof o.implementationDefaults === "object"
+      ? (o.implementationDefaults as Record<string, unknown>)
+      : null;
+  const defaultMode = normalizePlanningDataPersistenceMode(
+    String(defaultsRaw?.dataPersistenceMode ?? planRaw?.dataPersistenceMode ?? ""),
+  );
+  const runtimeApiRequired =
+    typeof defaultsRaw?.runtimeApiRequired === "boolean" ? defaultsRaw.runtimeApiRequired : useRuntimeApi;
+
+  return {
+    version: 1,
+    projectId,
+    status,
+    repositoryName,
+    dataStoreSlot: slots.dataStoreSlot,
+    dataModelSlot: slots.dataModelSlot,
+    sampleDataSlot: slots.sampleDataSlot,
+    runtimeApiSlot: slots.runtimeApiSlot,
+    implementationDataPlan: {
+      provider: "POSTGRESQL",
+      dataPersistenceMode: normalizedMode,
+      repositoryBasedStoreName,
+      implementationSchemaName,
+      reviewSchemaName,
+      useSampleDb,
+      useRuntimeApi,
+      blocked,
+      blockingReason,
+    },
+    implementationDefaults: {
+      previewHost: "GITHUB_PAGES",
+      dataPersistenceMode: defaultMode,
+      runtimeApiRequired,
+    },
+  };
 }
 
 export function planningDataSlotSummaryRows(
@@ -646,8 +741,9 @@ export function planningDataSlotSummaryRows(
     if (status === "AUTO_DRAFTED" || status === "NEEDS_REVIEW" || status === "UPDATED_FROM_CHAT") return "partial";
     return "empty";
   };
+  const storeDisplay = planningDatabaseReadinessUserDisplay(slots.dataStoreSlot.databaseReadiness);
   return [
-    { label: "데이터 저장소", level: level(slots.dataStoreSlot.status) },
+    { label: `${storeDisplay.title} — ${storeDisplay.detail}`, level: storeDisplay.level },
     { label: "데이터 구조", level: level(slots.dataModelSlot.status) },
     { label: "샘플데이터 기준", level: level(slots.sampleDataSlot.status) },
     { label: "데이터 연결 방식", level: level(slots.runtimeApiSlot.status) },
@@ -665,4 +761,13 @@ export function mergePlanningDataSlotsPatch(input: Readonly<{
   readonly nowIso?: string;
 }>): PlanningDataSlotsV1 {
   return buildPlanningDataSlotsDraft(input);
+}
+
+export function planningDatabaseRequiredMessage(
+  handoff?: PlanningHandoffForImplementationV1 | null,
+): string {
+  return (
+    handoff?.implementationDataPlan?.blockingReason?.trim() ||
+    "PostgreSQL 데이터베이스 설정과 연결 테스트가 필요합니다."
+  );
 }

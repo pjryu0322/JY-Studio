@@ -564,7 +564,7 @@ export function buildImplementationSlotsFromContext(input: BuildImplementationSl
       status: "confirmed",
       value: false,
       source: ["implementation_db_strategy"],
-      reason: "Mock fallback 단계에서는 migration 불필요",
+      reason: "DB 설정 완료 전에는 migration을 생성하지 않습니다.",
       nowIso: now,
     }),
     makeSlot("data_security_level", {

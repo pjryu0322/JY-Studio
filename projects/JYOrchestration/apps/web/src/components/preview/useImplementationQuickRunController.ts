@@ -9,6 +9,10 @@ import { appendPromptTimeline } from "@/lib/prototype/prototypeExecutionTaskPlan
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import { resolvePrototypeExecutionSingleChatFromState } from "@/lib/prototype/prototypeExecutionSingleChatWire";
 import {
+  buildImplementationDatabaseRequiredRunResult,
+  evaluateImplementationDatabaseRequiredExecutionBlock,
+} from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
+import {
   buildImplementationQuickRunQueueItems,
   buildImplementationQuickRunRequirementsPrepPersistPatch,
   buildQuickRunOrchestrationAfterJobStart,
@@ -126,6 +130,13 @@ export function useImplementationQuickRunController(
       const pid = input.projectId.trim();
       if (!pid) return { outcome: "blocked", message: "프로젝트 ID가 없습니다." };
       const imp = input.orchestrationAwareRequirementsStateRef.current;
+      const databaseBlock = evaluateImplementationDatabaseRequiredExecutionBlock({
+        planningHandoffForImplementationV1: imp.planningHandoffForImplementationV1 ?? null,
+      });
+      if (databaseBlock.blocked) {
+        input.appendUserNotice(databaseBlock.message);
+        return buildImplementationDatabaseRequiredRunResult(databaseBlock);
+      }
       const bridge = input.boardSelectionBridge.getBridgeSnapshot();
       const prepEval = evaluateImplementationQuickRunPrepAndSelection({
         projectId: pid,

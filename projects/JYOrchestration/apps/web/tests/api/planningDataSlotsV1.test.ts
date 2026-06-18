@@ -3,6 +3,7 @@ import {
   buildPlanningDataSlotsDraft,
   buildPlanningHandoffForImplementation,
   parsePlanningDataSlotsV1,
+  parsePlanningHandoffForImplementationV1,
   planningDataSlotSummaryRows,
 } from "@/lib/planning/planningDataSlotsV1";
 import {
@@ -10,6 +11,7 @@ import {
   normalizeRepositoryNameForDb,
 } from "@/lib/planning/projectDataStoreNaming";
 import { defaultPlanningDatabaseSettingsV1, parsePlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
+import { PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementationUxLabels";
 
 describe("projectDataStoreNaming", () => {
   it("normalizes repository names for PostgreSQL schemas", () => {
@@ -49,5 +51,116 @@ describe("planningDataSlotsV1", () => {
     expect(handoff.status).toBe("BLOCKED_DATABASE_REQUIRED");
     expect(handoff.implementationDataPlan.useRuntimeApi).toBe(false);
     expect(handoff.implementationDataPlan.blocked).toBe(true);
+  });
+
+  it("sets dataStoreSlot databaseReadiness when DB is not configured", () => {
+    const draft = buildPlanningDataSlotsDraft({
+      repositoryName: "app",
+      orchestration: null,
+      definitions: [],
+    });
+    expect(draft.dataStoreSlot.databaseReadiness).toBe("CONFIG_REQUIRED");
+    expect(draft.dataStoreSlot.settingsActionLabel).toBe(PLANNING_DATABASE_SETUP_LABEL);
+    expect(draft.dataStoreSlot.blockingReason).toBeTruthy();
+  });
+
+  it("sets dataStoreSlot READY when PostgreSQL connection is ready", () => {
+    const settings = parsePlanningDatabaseSettingsV1({
+      version: 1,
+      enabled: true,
+      provider: "POSTGRESQL",
+      host: "db",
+      port: 5432,
+      database: "app",
+      username: "app",
+      password: "",
+      connectionStatus: "READY",
+      repositoryName: "org/app",
+      implementationSchemaName: "app_impl_sample",
+      reviewSchemaName: "app_review_test",
+    })!;
+    const draft = buildPlanningDataSlotsDraft({
+      repositoryName: "org/app",
+      orchestration: null,
+      definitions: [],
+      planningDatabaseSettings: settings,
+    });
+    expect(draft.dataStoreSlot.databaseReadiness).toBe("READY");
+    expect(draft.dataStoreSlot.status).toBe("CONFIRMED");
+    expect(draft.dataStoreSlot.blockingReason).toBeUndefined();
+  });
+
+  it("preserves stored implementationDataPlan on parse", () => {
+    const raw = {
+      version: 1,
+      projectId: "p1",
+      status: "READY",
+      repositoryName: "app",
+      updatedAt: new Date().toISOString(),
+      dataStoreSlot: {
+        status: "CONFIRMED",
+        databaseReadiness: "READY",
+        provider: "POSTGRESQL",
+        enabled: true,
+        implementationStore: { mode: "SAMPLE_DB", displayName: "impl", description: "" },
+        reviewStore: { mode: "TEST_DB", displayName: "review", description: "" },
+        productionStore: { mode: "NOT_CONFIGURED", displayName: "prod", description: "" },
+        runtimeApiRequired: true,
+      },
+      dataModelSlot: { status: "EMPTY", entities: [] },
+      sampleDataSlot: { status: "EMPTY", seedMode: "AI_GENERATED_SAMPLE_DB", resettable: true, entities: [] },
+      runtimeApiSlot: { status: "EMPTY", required: true, apiBaseMode: "PLATFORM_DEFAULT", endpoints: [] },
+      implementationDataPlan: {
+        provider: "POSTGRESQL",
+        dataPersistenceMode: "POSTGRES_SAMPLE_DB",
+        repositoryBasedStoreName: "app",
+        implementationSchemaName: "app_impl_sample",
+        reviewSchemaName: "app_review_test",
+        useSampleDb: true,
+        useRuntimeApi: true,
+        blocked: false,
+        blockingReason: null,
+      },
+      implementationDefaults: {
+        previewHost: "GITHUB_PAGES",
+        dataPersistenceMode: "POSTGRES_SAMPLE_DB",
+        runtimeApiRequired: true,
+      },
+    };
+    const parsed = parsePlanningHandoffForImplementationV1(raw);
+    expect(parsed?.status).toBe("READY");
+    expect(parsed?.implementationDataPlan.dataPersistenceMode).toBe("POSTGRES_SAMPLE_DB");
+    expect(parsed?.implementationDataPlan.useSampleDb).toBe(true);
+    expect(parsed?.implementationDataPlan.useRuntimeApi).toBe(true);
+    expect(parsed?.implementationDataPlan.blocked).toBe(false);
+  });
+
+  it("normalizes legacy MOCK_JSON_FALLBACK on parse", () => {
+    const raw = {
+      version: 1,
+      projectId: "p1",
+      repositoryName: "app",
+      updatedAt: new Date().toISOString(),
+      dataStoreSlot: {
+        status: "NEEDS_REVIEW",
+        databaseReadiness: "BLOCKED_DATABASE_REQUIRED",
+        provider: "POSTGRESQL",
+        enabled: false,
+        implementationStore: { mode: "SAMPLE_DB", displayName: "impl", description: "" },
+        reviewStore: { mode: "TEST_DB", displayName: "review", description: "" },
+        productionStore: { mode: "NOT_CONFIGURED", displayName: "prod", description: "" },
+        runtimeApiRequired: false,
+      },
+      dataModelSlot: { status: "EMPTY", entities: [] },
+      sampleDataSlot: { status: "EMPTY", seedMode: "AI_GENERATED_SAMPLE_DB", resettable: true, entities: [] },
+      runtimeApiSlot: { status: "EMPTY", required: false, apiBaseMode: "PLATFORM_DEFAULT", endpoints: [] },
+      implementationDataPlan: {
+        dataPersistenceMode: "MOCK_JSON_FALLBACK",
+      },
+    };
+    const parsed = parsePlanningHandoffForImplementationV1(raw);
+    expect(parsed?.implementationDataPlan.dataPersistenceMode).toBe("BLOCKED_DATABASE_REQUIRED");
+    expect(parsed?.status).toBe("BLOCKED_DATABASE_REQUIRED");
+    expect(parsed?.implementationDataPlan.blocked).toBe(true);
   });
 });

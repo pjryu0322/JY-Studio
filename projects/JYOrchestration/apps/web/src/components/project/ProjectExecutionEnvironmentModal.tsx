@@ -10,6 +10,7 @@ export type ProjectExecutionEnvironmentModalProps = Readonly<{
   canEdit: boolean;
   canRevealCursorApiKey?: boolean;
   open: boolean;
+  initialModalRow?: import("@/lib/project/prototypeEnvSettingsModalRows").PrototypeEnvModalRowKey | null;
   onClose: () => void;
   onSetupSaved?: () => void;
 }>;
@@ -85,6 +86,7 @@ export function ProjectExecutionEnvironmentModal(p: ProjectExecutionEnvironmentM
             canRevealCursorApiKey={p.canRevealCursorApiKey}
             settingsSurface="modal"
             settingsPurpose="prototype"
+            initialModalRow={p.initialModalRow ?? undefined}
             onExecutionSetupChanged={p.onSetupSaved}
           />
         </div>

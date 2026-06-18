@@ -55,11 +55,21 @@ function mdComponents(variant: "default" | "error", layout: "chat" | "document")
         {children}
       </h3>
     ),
-    p: ({ children, ...rest }) => (
-      <p style={{ margin: pMargin, lineHeight: 1.55, color: variant === "error" ? "#7f1d1d" : textMain }} {...rest}>
-        {children}
-      </p>
-    ),
+    p: ({ children, ...rest }) => {
+      const color = variant === "error" ? "#7f1d1d" : textMain;
+      if (compact) {
+        return (
+          <p className="messageMarkdownParagraph" style={{ lineHeight: 1.55, color }} {...rest}>
+            {children}
+          </p>
+        );
+      }
+      return (
+        <p style={{ margin: pMargin, lineHeight: 1.55, color }} {...rest}>
+          {children}
+        </p>
+      );
+    },
     ul: ({ children, ...rest }) => (
       <ul style={{ margin: listMargin, paddingLeft: listPad, color: textMain, listStyleType: "disc" }} {...rest}>
         {children}

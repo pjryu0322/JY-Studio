@@ -73,6 +73,8 @@ type Props = {
   /** 프로젝트 관리 설정 화면 전용 톤(문구만 조정, 로직 동일) */
   settingsSurface?: "admin" | "modal";
   settingsPurpose?: "prototype" | "env-test";
+  /** modal surface: open with this settings row selected */
+  initialModalRow?: PrototypeEnvModalRowKey;
   onExecutionSetupChanged?: (setup: ExecutionSetupDto) => void;
 };
 
@@ -474,6 +476,7 @@ export function ProjectExecutionEnvironmentPanel({
   canRevealCursorApiKey = false,
   settingsSurface,
   settingsPurpose,
+  initialModalRow,
   onExecutionSetupChanged,
 }: Props) {
   const isModalCompact = settingsSurface === "modal";
@@ -481,7 +484,14 @@ export function ProjectExecutionEnvironmentPanel({
   const effectivePurpose: "prototype" | "env-test" =
     settingsPurpose ?? (isAdminSettings || isModalCompact ? "prototype" : "env-test");
   const isPrototypeMvpUi = effectivePurpose === "prototype";
-  const [selectedModalRow, setSelectedModalRow] = useState<PrototypeEnvModalRowKey | null>("repo");
+  const [selectedModalRow, setSelectedModalRow] = useState<PrototypeEnvModalRowKey | null>(
+    initialModalRow ?? "repo",
+  );
+  useEffect(() => {
+    if (isModalCompact && initialModalRow) {
+      setSelectedModalRow(initialModalRow);
+    }
+  }, [isModalCompact, initialModalRow]);
   const [executionSetup, setExecutionSetup] = useState<ExecutionSetupDto | null>(null);
   /** execution_setup 행이 없을 때 GET이 내려주는 동일 계정 peer 힌트 */
   const [peerHintsWhenNoSetup, setPeerHintsWhenNoSetup] = useState<

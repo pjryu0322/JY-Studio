@@ -940,7 +940,7 @@ function deriveImplementationStageNextActionsCore(
       return [
         {
           actionId: "CONFIRM_MOCK_IMPLEMENTATION",
-          label: "Mock 기반 구현 진행",
+          label: "PostgreSQL 구현 준비",
           priority: "primary",
           reason: "확정된 작업 계획을 기반으로 구현 진행",
         },

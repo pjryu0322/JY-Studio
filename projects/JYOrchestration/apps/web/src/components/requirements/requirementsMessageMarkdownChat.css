@@ -3,11 +3,14 @@
   white-space: normal;
 }
 
-.messageMarkdown p {
+.messageMarkdown p,
+.messageMarkdown .messageMarkdownParagraph {
   margin: 0 0 8px;
+  line-height: 1.55;
 }
 
-.messageMarkdown p:last-child {
+.messageMarkdown p:last-child,
+.messageMarkdown .messageMarkdownParagraph:last-child {
   margin-bottom: 0;
 }
 
@@ -26,9 +29,15 @@
   margin-top: 2px;
 }
 
-/* Remark "loose" lists wrap item text in <p>; neutralize extra vertical gap. */
-.messageMarkdown li > p {
-  margin: 0;
+/* Remark "loose" lists wrap item text in <p>; inline p styles must lose to this rule. */
+.messageMarkdown li > p,
+.messageMarkdown li > .messageMarkdownParagraph {
+  margin: 0 !important;
+}
+
+.messageMarkdown li > p + p,
+.messageMarkdown li > .messageMarkdownParagraph + .messageMarkdownParagraph {
+  margin-top: 4px !important;
 }
 
 .messageMarkdown h1,

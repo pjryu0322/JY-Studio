@@ -85,10 +85,10 @@ describe("tryHandlePrototypeExecutionChip", () => {
     expect(review).not.toHaveBeenCalled();
   });
 
-  it("handles Mock 기반 구현 진행 chip", () => {
+  it("handles PostgreSQL 구현 준비 chip", () => {
     const mock = vi.fn();
     expect(
-      tryHandlePrototypeExecutionChip("Mock 기반 구현 진행", {
+      tryHandlePrototypeExecutionChip("PostgreSQL 구현 준비", {
         ...baseHandlers(),
         confirmMockImplementationMode: mock,
       }),

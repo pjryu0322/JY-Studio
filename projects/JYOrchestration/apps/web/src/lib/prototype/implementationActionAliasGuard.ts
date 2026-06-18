@@ -32,6 +32,7 @@ const EXACT_LABEL_TO_ACTION: Readonly<Record<string, ImplementationActionId>> = 
   "작업 계획 생성": "CREATE_WORK_PLAN",
   "구현 작업안 확정": "CONFIRM_WORK_PLAN",
   "mock 기반 구현 진행": "CONFIRM_MOCK_IMPLEMENTATION",
+  "postgres 구현 준비": "CONFIRM_MOCK_IMPLEMENTATION",
   "mock으로 진행해": "CONFIRM_MOCK_IMPLEMENTATION",
   "일단 mock으로 구현해줘": "CONFIRM_MOCK_IMPLEMENTATION",
   "db 없이 진행해": "CONFIRM_MOCK_IMPLEMENTATION",

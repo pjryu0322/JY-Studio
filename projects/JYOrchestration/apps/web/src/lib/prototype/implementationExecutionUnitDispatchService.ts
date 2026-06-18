@@ -34,7 +34,7 @@ import {
   type RequirementsPromptTimelineEntry,
   type RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
-import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
+import { evaluateImplementationDatabaseRequiredExecutionBlock } from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
 import { prisma } from "@/lib/prisma";
 
 const EXECUTION_SETUP_SELECT = {
@@ -134,6 +134,28 @@ export async function dispatchNextExecutionUnitOnServer(input: {
   let requirementsState = parseRequirementsStateJson(projectRow?.requirementsStateJson) ?? {};
   if (input.requirementsOverlay && Object.keys(input.requirementsOverlay).length > 0) {
     requirementsState = mergeRequirementsStateJson(requirementsState, input.requirementsOverlay);
+  }
+
+  const databaseBlock = evaluateImplementationDatabaseRequiredExecutionBlock({
+    planningHandoffForImplementationV1: requirementsState.planningHandoffForImplementationV1 ?? null,
+  });
+  if (databaseBlock.blocked) {
+    return {
+      ok: false,
+      outcome: "blocked",
+      reason: databaseBlock.blockReason,
+      timelineEntries: [
+        buildImplementationExecutionLogTimelineEntry({
+          action: "implementation_execution_blocked_database_required",
+          orchestrationTraceGroup: "implementation_orchestration",
+          fields: {
+            projectId: pid,
+            blockReason: databaseBlock.blockReason,
+          },
+          nowIso,
+        }),
+      ],
+    };
   }
 
   const taskList = parseImplementationTaskListV1(requirementsState.implementationTaskListV1);

@@ -427,7 +427,7 @@ export function implementationEntryChipsForState(input: {
   }
   return [
     "구현 작업안 확정",
-    "Mock 기반 구현 진행",
+    "PostgreSQL 구현 준비",
     "DB 연동 필요성 검토",
     IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
     IMPLEMENTATION_ENV_SETTINGS_LABEL,
@@ -440,7 +440,7 @@ export function implementationWorkPlanDraftChips(): readonly string[] {
     "구현 범위 수정",
     "DB 연동 필요성 검토",
     "데이터 모델 초안 생성",
-    "Mock 기반 구현 진행",
+    "PostgreSQL 구현 준비",
     IMPLEMENTATION_ARTIFACT_REVIEW_LABEL,
     IMPLEMENTATION_ENV_SETTINGS_LABEL,
   ];

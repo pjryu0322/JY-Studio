@@ -143,7 +143,7 @@ describe("implementation entry CTA", () => {
     expect(chips).not.toContain(WORK_PLAN_DRAFT_GENERATE_CHIP);
     expect(chips).toContain("AI 개발자에게 구현 요청");
     expect(chips).toContain("작업목록 보기");
-    expect(chips).not.toContain("Mock 기반 구현 진행");
+    expect(chips).not.toContain("PostgreSQL 구현 준비");
   });
 
   it("shows task list recovery CTAs when seed is ready but task list is missing", () => {
@@ -155,7 +155,7 @@ describe("implementation entry CTA", () => {
       taskListReady: false,
     });
     expect(chips).toContain("기획단계로 이동");
-    expect(chips).toContain("구현 작업목록 생성");
+    expect(chips).toContain("산출물 다시 보기");
     expect(chips).not.toContain(WORK_PLAN_DRAFT_GENERATE_CHIP);
   });
 
@@ -175,7 +175,7 @@ describe("implementation entry CTA", () => {
     expect(chips).toContain("구현 작업안 확정");
     expect(chips).toContain("구현 범위 수정");
     expect(chips).toContain("DB 연동 필요성 검토");
-    expect(chips).toContain("Mock 기반 구현 진행");
+    expect(chips).toContain("PostgreSQL 구현 준비");
   });
 });
 
