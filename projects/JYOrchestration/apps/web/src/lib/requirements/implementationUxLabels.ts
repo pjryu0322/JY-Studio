@@ -33,6 +33,7 @@ export const PLANNING_IMPLEMENTATION_SEED_GENERATE_LABEL = "AI팀이 구현 Seed
 export const IMPLEMENTATION_SEED_CONFIRM_CANDIDATES_LABEL = "Seed 후보 확인/확정" as const;
 export const IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL = "구현 작업안 초안 생성" as const;
 export const PLANNING_ENV_SETTINGS_LABEL = "환경설정 열기" as const;
+export const PLANNING_DATABASE_SETUP_LABEL = "데이터베이스 설정하기" as const;
 /** 구현 단계·기획 단계 공통 실행 환경 칩 */
 export const IMPLEMENTATION_ENV_SETTINGS_LABEL = PLANNING_ENV_SETTINGS_LABEL;
 export const IMPLEMENTATION_DEVELOPER_DASHBOARD_TOOLBAR_TITLE = "개발 현황판" as const;

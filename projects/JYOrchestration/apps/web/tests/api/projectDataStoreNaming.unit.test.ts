@@ -31,6 +31,9 @@ describe("buildPlanningHandoffForImplementation", () => {
         ...defaultPlanningDatabaseSettingsV1(),
         enabled: true,
         connectionStatus: "READY",
+        host: "localhost",
+        database: "app",
+        username: "app",
         repositoryName: "doit-meet",
       },
       gitRepoName: "org/doit-meet",
@@ -53,12 +56,13 @@ describe("buildPlanningHandoffForImplementation", () => {
     expect(handoff.implementationDefaults.dataPersistenceMode).toBe("POSTGRES_SAMPLE_DB");
     expect(handoff.implementationDataPlan.useSampleDb).toBe(true);
     expect(handoff.implementationDataPlan.useRuntimeApi).toBe(true);
-    expect(handoff.implementationDataPlan.fallbackReason).toBeNull();
+    expect(handoff.implementationDataPlan.blockingReason).toBeNull();
+    expect(handoff.status).toBe("READY");
     expect(handoff.implementationDataPlan.implementationSchemaName).toContain("_impl_sample");
     expect(handoff.implementationDataPlan.reviewSchemaName).toContain("_review_test");
   });
 
-  it("falls back to mock when DB is disabled", () => {
+  it("blocks handoff when DB is disabled", () => {
     const settings = defaultPlanningDatabaseSettingsV1();
     const slots = buildPlanningDataSlotsDraft({
       repositoryName: "doit-meet",
@@ -72,9 +76,10 @@ describe("buildPlanningHandoffForImplementation", () => {
       planningDataSlots: slots,
       planningDatabaseSettings: settings,
     });
-    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("MOCK_JSON_FALLBACK");
+    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("BLOCKED_DATABASE_REQUIRED");
+    expect(handoff.status).toBe("BLOCKED_DATABASE_REQUIRED");
     expect(handoff.implementationDataPlan.useSampleDb).toBe(false);
-    expect(handoff.implementationDataPlan.useRuntimeApi).toBe(false);
-    expect(handoff.implementationDataPlan.fallbackReason).toBeTruthy();
+    expect(handoff.implementationDataPlan.blocked).toBe(true);
+    expect(handoff.implementationDataPlan.blockingReason).toBeTruthy();
   });
 });

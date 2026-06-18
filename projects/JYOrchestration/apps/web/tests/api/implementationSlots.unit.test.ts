@@ -26,6 +26,18 @@ function samplePlan(envOk: boolean, designOk: boolean) {
   });
 }
 
+function minimalWorkPlanDraft() {
+  return {
+    version: "implementation_work_plan_draft_v1" as const,
+    projectId: "p1",
+    status: "draft" as const,
+    createdAt: "2026-05-19T03:00:00.000Z",
+    updatedAt: "2026-05-19T03:00:00.000Z",
+    implementationScope: ["업로드 화면 구현"],
+    confirmedAt: null,
+  };
+}
+
 describe("buildImplementationSlotsFromContext", () => {
   it("builds implementation slots from task plan and code agent work items", () => {
     const plan = samplePlan(true, true);
@@ -87,11 +99,10 @@ describe("evaluateImplementationSlotsReadiness", () => {
 describe("implementation cursor gate with slots", () => {
   it("blocks code agent WIP request when required implementation slots are missing", () => {
     const plan = samplePlan(true, true);
-    const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
     const ctx = buildImplementationCursorGateContext(
       {
         implementationTaskPlanV1: plan,
-        cursorWorkItemsV1: workItems,
+        cursorWorkItemsV1: [],
         implementationSlotsV1: null,
       },
       { envOk: true, designOk: true },
@@ -154,6 +165,7 @@ describe("implementation slots state persistence", () => {
       requirementsStateJson: {},
       projectArtifacts: [],
       featureDraftTitles: ["업로드"],
+      implementationWorkPlanDraftV1: minimalWorkPlanDraft(),
       envOk: true,
       designOk: true,
     });
@@ -176,6 +188,7 @@ describe("implementation slots timeline", () => {
       requirementsStateJson: {},
       projectArtifacts: [],
       featureDraftTitles: ["업로드"],
+      implementationWorkPlanDraftV1: minimalWorkPlanDraft(),
       envOk: true,
       designOk: true,
     });
@@ -189,13 +202,13 @@ describe("implementation slots timeline", () => {
     const dbEntry = result.orchestrationPatch.promptTimeline.find(
       (e) => e.action === "implementation_db_slots_built",
     );
-    expect(dbEntry?.responseText).toContain("dataPersistenceMode=mock");
-    expect(dbEntry?.responseText).toContain("dbRequired=false");
+    expect(dbEntry?.responseText).toContain("dataPersistenceMode=blocked_database_required");
+    expect(dbEntry?.responseText).toContain("dbRequired=true");
   });
 });
 
 describe("implementation DB slots", () => {
-  it("sets mock persistence as default implementation data strategy", () => {
+  it("defaults to postgres-required blocked strategy without handoff", () => {
     const plan = samplePlan(true, true);
     const workItems = buildCursorWorkItemsFromImplementationTaskPlan(plan);
     const slots = buildImplementationSlotsFromContext({
@@ -207,8 +220,8 @@ describe("implementation DB slots", () => {
       designOk: true,
       envCursorBadge: "ok",
     });
-    expect(slots.slots.find((s) => s.key === "data_persistence_mode")?.value).toBe("mock");
-    expect(slots.slots.find((s) => s.key === "db_required")?.value).toBe(false);
+    expect(slots.slots.find((s) => s.key === "data_persistence_mode")?.value).toBe("blocked_database_required");
+    expect(slots.slots.find((s) => s.key === "db_required")?.value).toBe(true);
     expect(slots.slots.find((s) => s.key === "storage_strategy")?.status).toBe("confirmed");
     expect(slots.slots.find((s) => s.key === "db_trigger_condition")?.status).toBe("candidate");
   });
@@ -251,12 +264,29 @@ describe("implementation DB slots", () => {
       designOk: true,
       envCursorBadge: "ok",
       planningHandoffForImplementationV1: {
-        version: "planning_handoff_for_implementation_v1",
+        version: 1,
         projectId: "p1",
-        createdAt: "2026-06-03T00:00:00.000Z",
-        updatedAt: "2026-06-03T00:00:00.000Z",
-        implementationDefaults: {
+        status: "READY",
+        repositoryName: "p1",
+        dataStoreSlot: {} as never,
+        dataModelSlot: {} as never,
+        sampleDataSlot: {} as never,
+        runtimeApiSlot: {} as never,
+        implementationDataPlan: {
+          provider: "POSTGRESQL",
           dataPersistenceMode: "POSTGRES_SAMPLE_DB",
+          repositoryBasedStoreName: "p1",
+          implementationSchemaName: "p1_impl_sample",
+          reviewSchemaName: "p1_review_test",
+          useSampleDb: true,
+          useRuntimeApi: true,
+          blocked: false,
+          blockingReason: null,
+        },
+        implementationDefaults: {
+          previewHost: "GITHUB_PAGES",
+          dataPersistenceMode: "POSTGRES_SAMPLE_DB",
+          runtimeApiRequired: true,
         },
       },
     });

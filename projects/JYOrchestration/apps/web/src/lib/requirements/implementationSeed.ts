@@ -519,7 +519,7 @@ const CANDIDATE_TEMPLATES: Readonly<Record<ImplementationSeedGapKey, (ctx: { rea
   state_model: () =>
     ["idle", "processing", "completed", "failed", "review_requested", "approved"].join("\n"),
   mock_data_strategy: () =>
-    "초기에는 Local State + JSON Mock. API 연동 전까지 시드 데이터 3~5건 유지.",
+    "기본은 PostgreSQL 샘플 DB + Platform Runtime API입니다. 데이터베이스 설정이 완료되지 않으면 구현단계로 진행할 수 없습니다.",
 };
 
 export function buildImplementationSeedCandidateSlotPatches(input: {

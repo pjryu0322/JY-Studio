@@ -253,6 +253,7 @@ import {
   IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
   IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL,
   PLANNING_ENV_SETTINGS_LABEL,
+  PLANNING_DATABASE_SETUP_LABEL,
   PLANNING_INFO_REFINE_LABEL,
 } from "@/lib/requirements/implementationUxLabels";
 import { ProjectExecutionEnvironmentModal } from "@/components/project/ProjectExecutionEnvironmentModal";
@@ -3314,7 +3315,7 @@ export function RequirementsWorkspace({
         void handleStartImplementation();
         return;
       }
-      if (trimmed === PLANNING_ENV_SETTINGS_LABEL) {
+      if (trimmed === PLANNING_ENV_SETTINGS_LABEL || trimmed === PLANNING_DATABASE_SETUP_LABEL) {
         const pid = resolvedProjectId.trim();
         if (!pid) {
           showErrorToast("프로젝트를 먼저 저장해 주세요.");

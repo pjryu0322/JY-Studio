@@ -134,9 +134,10 @@ describe("quickDesignConfirmFlow", () => {
     if (result.kind !== "success") return;
 
     expect(result.statePatch.implementationSeedV1).toBeTruthy();
-    expect(result.statePatch.implementationTaskListV1?.tasks?.length).toBeGreaterThan(0);
-    expect(result.statePatch.implementationCodeTaskPlanV1?.codeTaskCount).toBeGreaterThan(0);
-    expect(result.statePatch.cursorWorkItemsV1?.length).toBeGreaterThan(0);
+    expect(result.prep.planningHandoffForImplementationV1?.status).toBe("BLOCKED_DATABASE_REQUIRED");
+    expect(result.statePatch.implementationTaskListV1).toBeUndefined();
+    expect(result.statePatch.implementationCodeTaskPlanV1).toBeUndefined();
+    expect(result.statePatch.cursorWorkItemsV1).toBeUndefined();
     expect(result.statePatch).not.toHaveProperty("implementationWorkPlanDraftV1");
     expect(result.readyMessage.meta?.internalType).toBe("quick_design_implementation_ready");
     expect(result.timelineEntries.length).toBeGreaterThan(0);
@@ -149,6 +150,9 @@ describe("quickDesignConfirmFlow", () => {
         ...defaultPlanningDatabaseSettingsV1(),
         enabled: true,
         connectionStatus: "READY",
+        host: "localhost",
+        database: "app",
+        username: "app",
         repositoryName: "doit-meet",
       },
       gitRepoName: "org/doit-meet",
@@ -183,9 +187,7 @@ describe("quickDesignConfirmFlow", () => {
     });
     expect(result.kind).toBe("success");
     if (result.kind !== "success") return;
-    expect(result.prep.planningHandoffForImplementationV1?.implementationDefaults.dataPersistenceMode).toBe(
-      "POSTGRES_SAMPLE_DB",
-    );
+    expect(result.prep.planningHandoffForImplementationV1?.status).toBe("READY");
     expect(result.prep.planningHandoffForImplementationV1?.implementationDataPlan.useSampleDb).toBe(true);
     expect(result.prep.planningHandoffForImplementationV1?.implementationDataPlan.useRuntimeApi).toBe(true);
     expect(result.statePatch.planningHandoffForImplementationV1?.implementationDataPlan.implementationSchemaName).toContain(
@@ -193,7 +195,21 @@ describe("quickDesignConfirmFlow", () => {
     );
   });
 
-  it("preserves existing implementationTaskListV1 on state patch", () => {
+  it("preserves existing implementationTaskListV1 on state patch when database is ready", () => {
+    const dbSettings = syncPlanningDatabaseSettingsStoreNames({
+      settings: {
+        ...defaultPlanningDatabaseSettingsV1(),
+        enabled: true,
+        connectionStatus: "READY",
+        host: "localhost",
+        database: "app",
+        username: "app",
+        repositoryName: "doit-meet",
+      },
+      gitRepoName: "org/doit-meet",
+      projectId: "p-flow",
+      preserveManualStoreName: false,
+    });
     const { definitions, fastPlanDraftV1, orchestrationForConfirm } = buildConfirmedQuickDesignFixture();
     const confirm = confirmFastPlanDraftSlots({
       fastPlanDraftV1,
@@ -216,7 +232,7 @@ describe("quickDesignConfirmFlow", () => {
     };
 
     const sync = runQuickDesignConfirmFlowSync({
-      envOk: false,
+      envOk: true,
       flow: {
         projectId: "p-flow",
         projectName: "회의록",
@@ -236,6 +252,8 @@ describe("quickDesignConfirmFlow", () => {
           deliverableAssets: [],
           requirementsOrchestrationStageV1: null,
           implementationTaskListV1: existingList,
+          planningDatabaseSettingsV1: dbSettings,
+          gitRepoName: "org/doit-meet",
         },
       },
     });

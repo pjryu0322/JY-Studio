@@ -22,7 +22,7 @@ import {
   evaluateQuickDesignPostConfirmReadiness,
   type ImplementationSurfaceReadiness,
 } from "@/lib/requirements/implementationReadinessGates";
-import { quickDesignPostConfirmChipLabelsForState } from "@/lib/requirements/implementationUxLabels";
+import { quickDesignPostConfirmChipLabelsForState, PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementationUxLabels";
 import {
   buildImplementationPlanningReadinessPatch,
   buildImplementationPlanningReadinessPatchWithLlm,
@@ -50,6 +50,7 @@ import type {
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import type { PlanningDataSlotsV1, PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
 import { buildPlanningDataSlotsStatePatch, resolvePlanningRepositoryName } from "@/lib/planning/planningDataSlotsStatePatch";
+import { isPlanningHandoffBlockedByDatabase } from "@/lib/planning/planningDbPersistencePolicy";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   buildImplementationPreparationUserSummary,
@@ -323,6 +324,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     sampleDataSpecV1: input.sampleDataSpecV1,
     nowIso: now,
   });
+  const databaseReady = !isPlanningHandoffBlockedByDatabase(planningDataPatch.planningHandoffForImplementationV1);
 
   const baseSeed = buildImplementationSeedFromPlanning({
     projectId: input.projectId,
@@ -344,7 +346,8 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   });
 
   const prepComplete = readiness.ready && lifecycleStatus === "confirmed";
-  const implementationTaskListV1 = prepComplete
+  const executionPrepAllowed = prepComplete && databaseReady;
+  const implementationTaskListV1 = executionPrepAllowed
     ? buildImplementationTaskListFromSeed({
         projectId: input.projectId,
         seed: implementationSeedV1,
@@ -353,13 +356,15 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     : null;
   const postConfirmState = evaluateQuickDesignPostConfirmReadiness({
     readiness,
-    prepComplete,
+    prepComplete: executionPrepAllowed,
     projectArtifacts: input.projectArtifacts,
     artifactOrchestrationV1: input.artifactOrchestrationV1,
     envOk: input.envOk,
     generatedArtifactCount: input.generatedArtifactCount,
   });
-  const chipLabels = quickDesignPostConfirmChipLabelsForState(postConfirmState);
+  const chipLabels = databaseReady
+    ? quickDesignPostConfirmChipLabelsForState(postConfirmState)
+    : [PLANNING_DATABASE_SETUP_LABEL, ...quickDesignPostConfirmChipLabelsForState(postConfirmState)];
 
   const taskListForReadiness = input.existingTaskList ?? implementationTaskListV1;
   let implementationCodeTaskPlanV1: ImplementationCodeTaskPlanV1 | null = null;
@@ -370,7 +375,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     null;
   let planningReadinessTimeline: RequirementsPromptTimelineEntry[] = [];
 
-  if (prepComplete && taskListForReadiness?.tasks?.length) {
+  if (executionPrepAllowed && taskListForReadiness?.tasks?.length) {
     const readinessPatch = buildImplementationPlanningReadinessPatch({
       projectId: input.projectId,
       taskList: taskListForReadiness,

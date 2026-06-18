@@ -527,16 +527,16 @@ export function buildImplementationSlotsFromContext(input: BuildImplementationSl
     }),
     makeSlot("data_persistence_mode", {
       status: "confirmed",
-      value: "mock",
+      value: "blocked_database_required",
       source: ["implementation_db_strategy"],
-      reason: "기본은 PostgreSQL 샘플 DB; DB 미설정 시 Mock JSON fallback",
+      reason: "PostgreSQL 샘플 DB 설정 완료 후 구현 진행",
       nowIso: now,
     }),
     makeSlot("db_required", {
       status: "confirmed",
-      value: false,
+      value: true,
       source: ["implementation_db_strategy"],
-      reason: "DB READY handoff 시 true로 전환",
+      reason: "구현단계는 PostgreSQL 샘플 DB 필수",
       nowIso: now,
     }),
     makeSlot("db_trigger_condition", {
@@ -555,9 +555,9 @@ export function buildImplementationSlotsFromContext(input: BuildImplementationSl
     }),
     makeSlot("storage_strategy", {
       status: "confirmed",
-      value: "Mock JSON fallback (데이터 저장소 미설정)",
+      value: "PostgreSQL database setup required before implementation",
       source: ["implementation_db_strategy"],
-      reason: "PostgreSQL 설정 완료 시 handoff로 샘플 DB 전략 적용",
+      reason: "DB READY handoff 시 PostgreSQL sample DB + Platform Runtime API",
       nowIso: now,
     }),
     makeSlot("migration_required", {

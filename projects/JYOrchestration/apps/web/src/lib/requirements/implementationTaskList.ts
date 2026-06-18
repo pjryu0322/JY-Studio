@@ -1,4 +1,6 @@
 import type { ImplementationSeedV1 } from "@/lib/requirements/implementationSeed";
+import type { PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
+import { isPlanningHandoffBlockedByDatabase } from "@/lib/planning/planningDbPersistencePolicy";
 import { buildSampleDataAcceptanceCriteriaFromSpec } from "@/lib/prototype/sampleDataCodeTaskPlanner";
 import {
   DEV_FRAME_TASK_ID,
@@ -374,8 +376,19 @@ export function isPlanningReadyForImplementationExecution(input: {
 export function evaluatePlanningImplementationExecutionReadiness(input: {
   readonly implementationSeedV1?: ImplementationSeedV1 | null;
   readonly implementationTaskListV1?: ImplementationTaskListV1 | null;
+  readonly planningHandoffForImplementationV1?: PlanningHandoffForImplementationV1 | null;
 }): PlanningImplementationExecutionReadiness {
   const missing: string[] = [];
+  if (isPlanningHandoffBlockedByDatabase(input.planningHandoffForImplementationV1)) {
+    missing.push("planning_database_not_ready");
+    return {
+      ok: false,
+      missing,
+      message:
+        input.planningHandoffForImplementationV1?.implementationDataPlan.blockingReason ??
+        "PostgreSQL 데이터베이스 설정과 연결 테스트가 필요합니다.",
+    };
+  }
   const seed = input.implementationSeedV1;
   if (!seed) {
     missing.push("implementation_seed_missing");

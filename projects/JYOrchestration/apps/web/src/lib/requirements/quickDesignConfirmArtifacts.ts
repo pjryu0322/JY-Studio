@@ -37,6 +37,7 @@ import {
   formatCompactBulletSection,
   joinUserVisibleMessageSections,
 } from "@/lib/requirements/messageTextNormalize";
+import { isPlanningHandoffBlockedByDatabase } from "@/lib/planning/planningDbPersistencePolicy";
 
 export type QuickDesignConfirmArtifactsInput = Readonly<
   Omit<FastPlanGenerationInput, "nowIso"> & {
@@ -248,7 +249,9 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
       ? input.prep.implementationCodeTaskQualityGateV1.warningCount
       : 0;
   const hasQualityWarnings = qualityWarningCount > 0;
+  const databaseBlocked = isPlanningHandoffBlockedByDatabase(input.prep.planningHandoffForImplementationV1);
   const executionReady =
+    !databaseBlocked &&
     Boolean(input.prep.implementationTaskListV1?.tasks?.length) &&
     Boolean(input.prep.implementationCodeTaskPlanV1?.tasks?.length) &&
     Boolean(input.prep.cursorWorkItemsV1?.length) &&
@@ -256,7 +259,13 @@ export function buildQuickDesignImplementationReadyChatMessage(input: {
     input.prep.implementationCodeTaskQualityGateV1 != null &&
     input.prep.implementationCodeTaskQualityGateV1.status !== "failed";
 
-  const readinessSummaryLines = executionReady
+  const readinessSummaryLines = databaseBlocked
+    ? [
+        "구현단계 준비를 위해 데이터베이스 설정이 필요합니다.",
+        "현재 플랫폼은 구현단계부터 PostgreSQL 샘플 DB를 사용하도록 설정되어 있습니다.",
+        "데이터베이스 연결 테스트를 완료해야 구현단계로 넘어갈 수 있습니다.",
+      ]
+    : executionReady
     ? [
         "구현 준비가 완료되었습니다.",
         ...(hasQualityWarnings

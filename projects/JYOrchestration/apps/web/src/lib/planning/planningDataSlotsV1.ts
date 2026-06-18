@@ -5,9 +5,12 @@
 import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import {
-  resolvePlanningDataPersistenceFallbackReason,
+  isPlanningDatabaseReady,
+  resolvePlanningDatabaseBlockingReason,
   resolvePlanningDataPersistenceMode,
+  resolvePlanningHandoffStatus,
   type PlanningDataPersistenceMode,
+  type PlanningHandoffStatus,
 } from "@/lib/planning/planningDbPersistencePolicy";
 import type { ProjectDataStoreNaming } from "@/lib/planning/projectDataStoreNaming";
 import { buildProjectDataStoreNaming } from "@/lib/planning/projectDataStoreNaming";
@@ -59,6 +62,7 @@ export type DataStoreSlotV1 = Readonly<{
     readonly description: string;
   }>;
   readonly runtimeApiRequired: boolean;
+  readonly blockingReason?: string | null;
 }>;
 
 export type DataModelEntityV1 = Readonly<{
@@ -292,6 +296,9 @@ export function parsePlanningDataSlotsV1(raw: unknown): PlanningDataSlotsV1 | nu
         description: String(prodRaw.description ?? "").trim().slice(0, 500),
       },
       runtimeApiRequired: storeRaw.runtimeApiRequired !== false,
+      ...(String(storeRaw.blockingReason ?? "").trim()
+        ? { blockingReason: String(storeRaw.blockingReason).trim().slice(0, 500) }
+        : {}),
     },
     dataModelSlot: {
       status: readStatus(modelRaw.status),
@@ -454,9 +461,9 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
   const entities = buildEntitiesFromOrchestration(input);
   const hasEntities = entities.length > 0;
   const prior = input.prior ?? null;
-  const dbReady =
-    Boolean(input.planningDatabaseSettings?.enabled) &&
-    input.planningDatabaseSettings?.connectionStatus === "READY";
+  const settings = input.planningDatabaseSettings ?? null;
+  const dbReady = isPlanningDatabaseReady(settings);
+  const blockingReason = dbReady ? null : resolvePlanningDatabaseBlockingReason(settings);
 
   const dataStoreSlot: DataStoreSlotV1 = {
     status: dbReady
@@ -484,6 +491,7 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
       description: "운영 배포 단계에서 별도로 구성합니다.",
     },
     runtimeApiRequired: dbReady,
+    ...(blockingReason ? { blockingReason } : {}),
   };
 
   const dataModelSlot: DataModelSlotV1 = {
@@ -521,6 +529,7 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
 export type PlanningHandoffForImplementationV1 = Readonly<{
   readonly version: 1;
   readonly projectId: string;
+  readonly status: PlanningHandoffStatus;
   readonly repositoryName: string;
   readonly dataStoreSlot: DataStoreSlotV1;
   readonly dataModelSlot: DataModelSlotV1;
@@ -534,7 +543,8 @@ export type PlanningHandoffForImplementationV1 = Readonly<{
     readonly reviewSchemaName: string;
     readonly useSampleDb: boolean;
     readonly useRuntimeApi: boolean;
-    readonly fallbackReason: string | null;
+    readonly blocked: boolean;
+    readonly blockingReason: string | null;
   }>;
   readonly implementationDefaults: Readonly<{
     readonly previewHost: "GITHUB_PAGES";
@@ -555,8 +565,8 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
   });
   const dataPersistenceMode = resolvePlanningDataPersistenceMode({
     planningDatabaseSettings: input.planningDatabaseSettings,
-    dataStoreSlot: input.planningDataSlots.dataStoreSlot,
   });
+  const status = resolvePlanningHandoffStatus(dataPersistenceMode);
   const useSampleDb = dataPersistenceMode === "POSTGRES_SAMPLE_DB";
   const useRuntimeApi = useSampleDb;
   const settings = input.planningDatabaseSettings;
@@ -565,12 +575,11 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
   const reviewSchemaName = String(settings?.reviewSchemaName ?? "").trim() || naming.reviewSchemaName;
   const repositoryBasedStoreName =
     String(settings?.databaseStoreName ?? "").trim() || naming.normalizedBaseName;
-  const fallbackReason = useSampleDb
-    ? null
-    : resolvePlanningDataPersistenceFallbackReason(settings);
+  const blockingReason = useSampleDb ? null : resolvePlanningDatabaseBlockingReason(settings);
   return {
     version: 1,
     projectId: input.projectId.trim(),
+    status,
     repositoryName: naming.repositoryName,
     dataStoreSlot: input.planningDataSlots.dataStoreSlot,
     dataModelSlot: input.planningDataSlots.dataModelSlot,
@@ -584,7 +593,8 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
       reviewSchemaName,
       useSampleDb,
       useRuntimeApi,
-      fallbackReason,
+      blocked: !useSampleDb,
+      blockingReason,
     },
     implementationDefaults: {
       previewHost: "GITHUB_PAGES",

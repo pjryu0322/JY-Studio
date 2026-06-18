@@ -25,6 +25,9 @@ describe("planningDbPersistencePolicy", () => {
         ...defaultPlanningDatabaseSettingsV1(),
         enabled: true,
         connectionStatus: "READY",
+        host: "localhost",
+        database: "app",
+        username: "app",
         repositoryName: "meeting-note",
       },
       gitRepoName: "org/meeting-note-2026",
@@ -44,7 +47,7 @@ describe("planningDbPersistencePolicy", () => {
           connectionStatus: "NOT_CONFIGURED",
         },
       }),
-    ).toBe("MOCK_JSON_FALLBACK");
+    ).toBe("BLOCKED_DATABASE_REQUIRED");
   });
 });
 
