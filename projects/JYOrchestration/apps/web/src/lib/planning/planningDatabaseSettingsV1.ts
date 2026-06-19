@@ -3,6 +3,7 @@
  */
 
 import type { DatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
+import type { ProjectDatabaseLifecycleStatus } from "@/lib/planning/projectDatabaseLifecycle";
 
 export const PLANNING_DB_SETTINGS_VERSION = 1 as const;
 
@@ -36,6 +37,8 @@ export type PlanningDatabaseSettingsV1 = Readonly<{
   readonly implementationSchemaName?: string | null;
   readonly reviewSchemaName?: string | null;
   readonly schemaStrategy?: "PROJECT_STAGE_SCHEMA" | null;
+  readonly projectDbName?: string | null;
+  readonly projectDbStatus?: ProjectDatabaseLifecycleStatus;
   readonly connectionStatus: PlanningDatabaseConnectionStatus;
   readonly lastCheckedAt?: string | null;
   readonly lastErrorMessage?: string | null;
@@ -73,7 +76,30 @@ function readStatus(v: unknown): PlanningDatabaseConnectionStatus {
 
 function readUsageMode(v: unknown): DatabaseUsageMode | undefined {
   const s = readStr(v, 40);
-  if (s === "UNSELECTED" || s === "DISABLED_JSON_SAMPLE" || s === "ENABLED_POSTGRESQL") return s;
+  if (
+    s === "UNSELECTED" ||
+    s === "DISABLED_JSON_SAMPLE" ||
+    s === "ENABLED_PROJECT_DATABASE" ||
+    s === "ENABLED_POSTGRESQL"
+  ) {
+    return s;
+  }
+  return undefined;
+}
+
+function readProjectDbStatus(v: unknown): ProjectDatabaseLifecycleStatus | undefined {
+  const s = readStr(v, 40);
+  if (
+    s === "NOT_REQUIRED" ||
+    s === "PLANNED" ||
+    s === "CREATING" ||
+    s === "CREATED" ||
+    s === "FAILED" ||
+    s === "DELETING" ||
+    s === "DELETED"
+  ) {
+    return s;
+  }
   return undefined;
 }
 
@@ -122,6 +148,8 @@ export function parsePlanningDatabaseSettingsV1(raw: unknown): PlanningDatabaseS
     implementationSchemaName: readStr(o.implementationSchemaName, 120) || null,
     reviewSchemaName: readStr(o.reviewSchemaName, 120) || null,
     schemaStrategy: readStr(o.schemaStrategy, 40) === "PROJECT_STAGE_SCHEMA" ? "PROJECT_STAGE_SCHEMA" : null,
+    projectDbName: readStr(o.projectDbName, 120) || null,
+    ...(readProjectDbStatus(o.projectDbStatus) ? { projectDbStatus: readProjectDbStatus(o.projectDbStatus)! } : {}),
     connectionStatus: readStatus(o.connectionStatus),
     lastCheckedAt: readStr(o.lastCheckedAt, 80) || null,
     lastErrorMessage: readStr(o.lastErrorMessage, 500) || null,
@@ -134,6 +162,13 @@ export function sanitizePlanningDatabaseSettingsForClient(
   const base = settings ?? defaultPlanningDatabaseSettingsV1();
   return {
     ...base,
-    passwordMasked: base.hasPassword ? base.passwordMasked || "••••••••" : null,
+    host: "",
+    port: 5432,
+    database: "",
+    username: "",
+    passwordMasked: null,
+    hasPassword: false,
+    sslMode: "PREFER",
+    runtimeApiBaseUrl: null,
   };
 }

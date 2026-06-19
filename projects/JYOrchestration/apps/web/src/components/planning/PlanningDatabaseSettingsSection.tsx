@@ -5,11 +5,17 @@ import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import {
   defaultPlanningDatabaseSettingsV1,
   type PlanningDatabaseSettingsV1,
-  type PlanningDatabaseSslMode,
 } from "@/lib/planning/planningDatabaseSettingsV1";
-import { resolveDatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
+import {
+  isDatabaseUsageEnabledMode,
+  resolveDatabaseUsageMode,
+} from "@/lib/planning/planningDatabaseUsageMode";
 import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningDatabaseStoreNamingSync";
-import { resolveDefaultPostgresDatabaseNameFromGitRepo } from "@/lib/planning/projectDataStoreNaming";
+import {
+  projectDatabaseUserSaveResultMessage,
+  projectDatabaseUserSectionHeadline,
+} from "@/lib/planning/projectDatabaseUserDisplay";
+import { readProjectDatabaseLifecycleStatus } from "@/lib/planning/projectDatabaseLifecycle";
 
 type Props = Readonly<{
   readonly projectId: string;
@@ -17,25 +23,16 @@ type Props = Readonly<{
   readonly gitRepoName?: string | null;
 }>;
 
-function formatConnectionStatusLabel(settings: PlanningDatabaseSettingsV1): string {
-  const usage = resolveDatabaseUsageMode(settings);
-  if (usage === "UNSELECTED") return "선택 필요";
-  if (usage === "DISABLED_JSON_SAMPLE") return "미사용 · JSON 샘플데이터";
-  if (settings.connectionStatus === "READY") return "정상";
-  if (settings.connectionStatus === "FAILED") return "연결 실패";
-  if (settings.connectionStatus === "CHECKING") return "테스트 중";
-  return "PostgreSQL 설정 필요";
-}
-
 export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoName }: Props) {
   const [settings, setSettings] = useState<PlanningDatabaseSettingsV1>(defaultPlanningDatabaseSettingsV1());
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState<"load" | "save" | "test" | null>("load");
+  const [busy, setBusy] = useState<"load" | "save" | null>("load");
   const [message, setMessage] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const repoHint = String(gitRepoName ?? "").trim();
   const usageMode = resolveDatabaseUsageMode(settings);
-  const postgresFieldsEnabled = usageMode === "ENABLED_POSTGRESQL" && settings.enabled;
+  const dbUsageEnabled = isDatabaseUsageEnabledMode(usageMode) && settings.enabled;
+  const projectDbStatus = readProjectDatabaseLifecycleStatus(settings.projectDbStatus);
+  const showRetry = dbUsageEnabled && projectDbStatus === "FAILED";
 
   const load = useCallback(async () => {
     const pid = projectId.trim();
@@ -63,37 +60,40 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
         settings: prev,
         gitRepoName: repoHint || null,
         projectId: projectId.trim(),
-        preserveManualStoreName: Boolean(prev.databaseStoreName?.trim()),
+        preserveManualStoreName: false,
       }),
     );
   }, [repoHint, projectId, busy]);
 
-  const patch = (partial: Partial<PlanningDatabaseSettingsV1>) => {
-    setSettings((s) => ({ ...s, ...partial }));
-  };
-
   const handleToggleDatabaseUsage = (checked: boolean) => {
     if (checked) {
-      const defaultDb =
-        String(settings.database ?? "").trim() ||
-        resolveDefaultPostgresDatabaseNameFromGitRepo(gitRepoName, projectId);
-      patch({
-        enabled: true,
-        usageMode: "ENABLED_POSTGRESQL",
-        database: defaultDb,
-        connectionStatus:
-          settings.connectionStatus === "NOT_REQUIRED" ? "NOT_CONFIGURED" : settings.connectionStatus,
-      });
+      setSettings((prev) =>
+        syncPlanningDatabaseSettingsStoreNames({
+          settings: {
+            ...prev,
+            enabled: true,
+            usageMode: "ENABLED_PROJECT_DATABASE",
+            usageSelectionCommitted: true,
+            connectionStatus: "NOT_CONFIGURED",
+          },
+          gitRepoName: repoHint || null,
+          projectId: projectId.trim(),
+          preserveManualStoreName: false,
+        }),
+      );
       return;
     }
-    patch({
+    setSettings((prev) => ({
+      ...prev,
       enabled: false,
       usageMode: "DISABLED_JSON_SAMPLE",
+      usageSelectionCommitted: true,
       connectionStatus: "NOT_REQUIRED",
-    });
+      projectDbStatus: "NOT_REQUIRED",
+    }));
   };
 
-  const handleSave = async () => {
+  const persistSettings = async () => {
     setBusy("save");
     setMessage(null);
     try {
@@ -102,14 +102,17 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ settings, ...(password.trim() ? { password: password.trim() } : {}) }),
+          body: JSON.stringify({ settings }),
         },
       );
-      const json = (await res.json()) as { success?: boolean; message?: string; data?: { settings?: PlanningDatabaseSettingsV1 } };
-      if (json.success && json.data?.settings) {
+      const json = (await res.json()) as {
+        success?: boolean;
+        message?: string;
+        data?: { settings?: PlanningDatabaseSettingsV1; message?: string };
+      };
+      if (json.data?.settings) {
         setSettings(json.data.settings);
-        setPassword("");
-        setMessage("데이터베이스 설정을 저장했습니다.");
+        setMessage(json.data.message ?? projectDatabaseUserSaveResultMessage(json.data.settings));
       } else {
         setMessage(json.message ?? "저장에 실패했습니다.");
       }
@@ -118,60 +121,38 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
     }
   };
 
-  const handleTest = async () => {
-    setBusy("test");
-    setMessage(null);
-    try {
-      const res = await credentialsIncludeFetch(
-        `/api/projects/${encodeURIComponent(projectId.trim())}/planning/database-settings/test`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ settings, ...(password.trim() ? { password: password.trim() } : {}) }),
-        },
-      );
-      const json = (await res.json()) as {
-        success?: boolean;
-        message?: string;
-        data?: { settings?: PlanningDatabaseSettingsV1; message?: string };
-      };
-      if (json.data?.settings) setSettings(json.data.settings);
-      setMessage(json.data?.message ?? json.message ?? (json.success ? "연결 성공" : "연결 실패"));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const storeNameField = (label: string, key: keyof Pick<
-    PlanningDatabaseSettingsV1,
-    "databaseStoreName" | "implementationSchemaName" | "reviewSchemaName"
-  >) => (
-    <label style={{ display: "grid", gap: 4 }}>
-      <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>{label}</span>
-      <input
-        value={String(settings[key] ?? "")}
-        disabled={!canEdit || !postgresFieldsEnabled}
-        onChange={(e) => patch({ [key]: e.target.value } as Partial<PlanningDatabaseSettingsV1>)}
-        style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-      />
-    </label>
-  );
+  const projectDbName = String(settings.projectDbName ?? "").trim();
 
   return (
     <div data-testid="planning-database-settings-section" style={{ maxWidth: 720 }}>
       <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b" }}>
-        상태: {formatConnectionStatusLabel(settings)}
+        현재 상태: {projectDatabaseUserSectionHeadline(settings)}
       </p>
+      <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+        데이터베이스를 사용하면 플랫폼이 프로젝트 DB를 자동으로 준비합니다. 사용하지 않으면 JSON 샘플데이터로
+        구현단계를 진행합니다.
+      </p>
+      {usageMode === "UNSELECTED" ? (
+        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+          데이터베이스 사용 여부를 선택해 주세요.
+        </p>
+      ) : null}
       {usageMode === "DISABLED_JSON_SAMPLE" ? (
         <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#334155", lineHeight: 1.55 }}>
-          데이터베이스 미사용 상태입니다. 구현단계에서는 JSON 샘플데이터를 생성합니다. PostgreSQL 저장소는
-          생성되지 않습니다.
+          샘플데이터 방식: JSON 샘플데이터. 구현단계에서는 JSON 샘플데이터로 화면과 기능 흐름을 확인합니다.
+          PostgreSQL 프로젝트 DB는 생성되지 않습니다.
         </p>
-      ) : postgresFieldsEnabled ? (
+      ) : null}
+      {dbUsageEnabled && projectDbStatus === "FAILED" ? (
+        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#b45309", lineHeight: 1.55 }}>
+          프로젝트 데이터베이스를 준비하지 못했습니다. 플랫폼 관리자 설정 또는 PostgreSQL 권한 확인이 필요합니다.
+        </p>
+      ) : null}
+      {dbUsageEnabled && projectDbStatus !== "FAILED" ? (
         <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-          저장소명은 예정값입니다. 실제 저장소는 단계 전환 시 자동 생성됩니다. 구현단계 샘플 저장소는
-          구현준비 또는 구현단계 진입 시, 검토단계 테스트 저장소는 구현단계 완료 후 검토단계 전환 시
-          생성됩니다.
+          {projectDbStatus === "CREATED"
+            ? "구현단계 진입 시 샘플 저장소가 자동 생성됩니다."
+            : "플랫폼이 프로젝트 데이터베이스를 자동으로 준비합니다. 구현단계 진입 시 샘플 저장소가 생성되고, 검토단계 전환 시 테스트 저장소가 생성됩니다."}
         </p>
       ) : null}
       <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 13 }}>
@@ -183,120 +164,34 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
         />
         데이터베이스 사용
       </label>
-      <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>DB 종류</span>
-          <input
-            value={postgresFieldsEnabled ? "PostgreSQL" : "JSON 샘플데이터"}
-            disabled
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-          />
-        </label>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Host</span>
-          <input
-            value={settings.host}
-            disabled={!canEdit || !postgresFieldsEnabled}
-            onChange={(e) => patch({ host: e.target.value })}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-          />
-        </label>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Port</span>
-          <input
-            type="number"
-            value={settings.port}
-            disabled={!canEdit || !postgresFieldsEnabled}
-            onChange={(e) => patch({ port: Number(e.target.value) || 5432 })}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-          />
-        </label>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Database</span>
-          <input
-            value={settings.database}
-            disabled={!canEdit || !postgresFieldsEnabled}
-            onChange={(e) => patch({ database: e.target.value })}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-          />
-        </label>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Username</span>
-          <input
-            value={settings.username}
-            disabled={!canEdit || !postgresFieldsEnabled}
-            onChange={(e) => patch({ username: e.target.value })}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-          />
-        </label>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Password</span>
-          <input
-            type="password"
-            value={password}
-            disabled={!canEdit || !postgresFieldsEnabled}
-            placeholder={settings.hasPassword ? "저장된 비밀번호 (변경 시에만 입력)" : "비밀번호"}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-            autoComplete="new-password"
-          />
-        </label>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>SSL Mode</span>
-          <select
-            value={settings.sslMode}
-            disabled={!canEdit || !postgresFieldsEnabled}
-            onChange={(e) => patch({ sslMode: e.target.value as PlanningDatabaseSslMode })}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-          >
-            <option value="PREFER">PREFER</option>
-            <option value="REQUIRE">REQUIRE</option>
-            <option value="DISABLE">DISABLE</option>
-          </select>
-        </label>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Runtime API Base URL</span>
-          <input
-            value={settings.runtimeApiBaseUrl ?? ""}
-            disabled={!canEdit || !postgresFieldsEnabled}
-            placeholder="비워두면 플랫폼 기본값"
-            onChange={(e) => patch({ runtimeApiBaseUrl: e.target.value || null })}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-          />
-        </label>
-        {postgresFieldsEnabled ? storeNameField("프로젝트 데이터 저장소명 예정값", "databaseStoreName") : null}
-        {postgresFieldsEnabled ? (
-          <>
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen((v) => !v)}
-              style={{
-                justifySelf: "start",
-                padding: 0,
-                border: "none",
-                background: "transparent",
-                color: "#2563eb",
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              {advancedOpen ? "고급 설정 접기" : "고급 설정 펼치기 · 자동 생성 예정 저장소명"}
-            </button>
-            {advancedOpen ? (
-              <>
-                {storeNameField("구현단계 샘플 저장소명 예정값", "implementationSchemaName")}
-                {storeNameField("검토단계 테스트 저장소명 예정값", "reviewSchemaName")}
-              </>
-            ) : null}
-          </>
-        ) : null}
-      </div>
+      {dbUsageEnabled && projectDbName && advancedOpen ? (
+        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b" }}>
+          고급 정보 · 프로젝트 DB: {projectDbName}
+        </p>
+      ) : null}
+      {dbUsageEnabled && projectDbName ? (
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((v) => !v)}
+          style={{
+            marginBottom: 12,
+            padding: 0,
+            border: "none",
+            background: "transparent",
+            color: "#2563eb",
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {advancedOpen ? "고급 정보 접기" : "고급 정보"}
+        </button>
+      ) : null}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <button
           type="button"
           disabled={!canEdit || busy !== null}
-          onClick={() => void handleSave()}
+          onClick={() => void persistSettings()}
           style={{
             padding: "8px 14px",
             borderRadius: 8,
@@ -309,22 +204,22 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
         >
           {busy === "save" ? "저장 중…" : "저장"}
         </button>
-        {postgresFieldsEnabled ? (
+        {showRetry ? (
           <button
             type="button"
             disabled={!canEdit || busy !== null}
-            onClick={() => void handleTest()}
+            onClick={() => void persistSettings()}
             style={{
               padding: "8px 14px",
               borderRadius: 8,
-              border: "1px solid #0f766e",
-              background: "#0d9488",
-              color: "#fff",
+              border: "1px solid #b45309",
+              background: "#fff",
+              color: "#b45309",
               fontWeight: 800,
               fontSize: 12,
             }}
           >
-            {busy === "test" ? "테스트 중…" : "연결 테스트"}
+            {busy === "save" ? "재시도 중…" : "다시 시도"}
           </button>
         ) : null}
       </div>

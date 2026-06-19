@@ -71,18 +71,21 @@ describe("planningDataSlotsV1", () => {
     const settings = parsePlanningDatabaseSettingsV1({
       version: 1,
       usageSelectionCommitted: true,
-      usageMode: "ENABLED_POSTGRESQL",
+      usageMode: "ENABLED_PROJECT_DATABASE",
       enabled: true,
       provider: "POSTGRESQL",
       host: "db",
       port: 5432,
-      database: "app",
+      database: "p_app",
       username: "app",
       password: "",
       connectionStatus: "READY",
       repositoryName: "org/app",
-      implementationSchemaName: "app_impl_sample",
-      reviewSchemaName: "app_review_test",
+      projectDbName: "p_app",
+      projectDbStatus: "CREATED",
+      databaseStoreName: "p_app",
+      implementationSchemaName: "impl_sample",
+      reviewSchemaName: "review_test",
     })!;
     const draft = buildPlanningDataSlotsDraft({
       repositoryName: "org/app",
@@ -160,7 +163,7 @@ describe("planningDataSlotsV1", () => {
     };
     const parsed = parsePlanningHandoffForImplementationV1(raw);
     expect(parsed?.status).toBe("READY");
-    expect(parsed?.implementationDataPlan.dataPersistenceMode).toBe("POSTGRES_SAMPLE_DB");
+    expect(parsed?.implementationDataPlan.dataPersistenceMode).toBe("PROJECT_DATABASE");
     expect(parsed?.implementationDataPlan.useSampleDb).toBe(true);
     expect(parsed?.implementationDataPlan.useRuntimeApi).toBe(true);
     expect(parsed?.implementationDataPlan.blocked).toBe(false);

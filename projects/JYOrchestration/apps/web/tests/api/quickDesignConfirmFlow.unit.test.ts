@@ -161,12 +161,13 @@ describe("quickDesignConfirmFlow", () => {
     const dbSettings = syncPlanningDatabaseSettingsStoreNames({
       settings: {
         ...defaultPlanningDatabaseSettingsV1(),
-        usageMode: "ENABLED_POSTGRESQL",
+        usageMode: "ENABLED_PROJECT_DATABASE",
         usageSelectionCommitted: true,
         enabled: true,
         connectionStatus: "READY",
+        projectDbStatus: "CREATED",
         host: "localhost",
-        database: "app",
+        database: "p_p_flow",
         username: "app",
         repositoryName: "doit-meet",
       },
@@ -205,8 +206,8 @@ describe("quickDesignConfirmFlow", () => {
     expect(result.prep.planningHandoffForImplementationV1?.status).toBe("READY");
     expect(result.prep.planningHandoffForImplementationV1?.implementationDataPlan.useSampleDb).toBe(true);
     expect(result.prep.planningHandoffForImplementationV1?.implementationDataPlan.useRuntimeApi).toBe(true);
-    expect(result.statePatch.planningHandoffForImplementationV1?.implementationDataPlan.implementationSchemaName).toContain(
-      "_impl_sample",
+    expect(result.statePatch.planningHandoffForImplementationV1?.implementationDataPlan.implementationSchemaName).toBe(
+      "impl_sample",
     );
   });
 
@@ -214,12 +215,13 @@ describe("quickDesignConfirmFlow", () => {
     const dbSettings = syncPlanningDatabaseSettingsStoreNames({
       settings: {
         ...defaultPlanningDatabaseSettingsV1(),
-        usageMode: "ENABLED_POSTGRESQL",
+        usageMode: "ENABLED_PROJECT_DATABASE",
         usageSelectionCommitted: true,
         enabled: true,
         connectionStatus: "READY",
+        projectDbStatus: "CREATED",
         host: "localhost",
-        database: "app",
+        database: "p_p_flow",
         username: "app",
         repositoryName: "doit-meet",
       },

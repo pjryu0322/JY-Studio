@@ -3,9 +3,10 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import {
-  loadPlanningDatabaseSettingsForProject,
+  loadPlanningDatabaseSettingsRawForProject,
   resolvePlanningPostgresPassword,
 } from "@/lib/planning/planningDatabaseSettingsService";
+import { resolvePlanningPostgresConnectionForProject } from "@/lib/planning/resolvePlanningPostgresConnection.server";
 import { parsePlanningDataSlotsV1 } from "@/lib/planning/planningDataSlotsV1";
 import {
   provisionImplementationSampleStore,
@@ -45,10 +46,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
     const state = parseRequirementsStateJson(project?.requirementsStateJson);
     const slots = parsePlanningDataSlotsV1(state.planningDataSlotsV1);
-    const [settings, password] = await Promise.all([
-      loadPlanningDatabaseSettingsForProject(pid),
+    const [rawSettings, passwordFromStore] = await Promise.all([
+      loadPlanningDatabaseSettingsRawForProject(pid),
       resolvePlanningPostgresPassword(pid),
     ]);
+    const connection = await resolvePlanningPostgresConnectionForProject({ settings: rawSettings });
+    const settings = connection.settings;
+    const password = connection.password ?? passwordFromStore;
 
     const provision =
       target === "review"

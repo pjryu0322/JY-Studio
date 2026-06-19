@@ -3,6 +3,12 @@ import {
   extractRepositoryBaseNameFromGitRepoName,
   type ProjectDataStoreNaming,
 } from "@/lib/planning/projectDataStoreNaming";
+import {
+  buildProjectDatabaseName,
+  PLATFORM_PROJECT_IMPLEMENTATION_SCHEMA,
+  PLATFORM_PROJECT_REVIEW_SCHEMA,
+} from "@/lib/planning/projectDatabaseNaming";
+import { isDatabaseUsageEnabledMode, resolveDatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 
 export function resolveRepositoryNameForPlanningDbSettings(input: Readonly<{
@@ -43,6 +49,24 @@ export function syncPlanningDatabaseSettingsStoreNames(input: Readonly<{
     repositoryName: input.settings.repositoryName,
     projectName: input.projectName,
   });
+  const usage = resolveDatabaseUsageMode(input.settings);
+  const projectDbName =
+    String(input.settings.projectDbName ?? "").trim() ||
+    buildProjectDatabaseName({ projectId: input.projectId, gitRepoName: input.gitRepoName });
+
+  if (isDatabaseUsageEnabledMode(usage)) {
+    return {
+      ...input.settings,
+      repositoryName,
+      projectDbName,
+      databaseStoreName: projectDbName,
+      implementationSchemaName: PLATFORM_PROJECT_IMPLEMENTATION_SCHEMA,
+      reviewSchemaName: PLATFORM_PROJECT_REVIEW_SCHEMA,
+      schemaStrategy: "PROJECT_STAGE_SCHEMA",
+      projectDbStatus: input.settings.projectDbStatus ?? "PLANNED",
+    };
+  }
+
   const naming = buildProjectDataStoreNaming({
     repositoryName,
     projectId: input.projectId,

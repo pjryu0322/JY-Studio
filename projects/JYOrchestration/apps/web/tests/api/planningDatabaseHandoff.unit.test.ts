@@ -3,55 +3,43 @@ import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningD
 import { defaultPlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import { resolvePlanningDataPersistenceMode } from "@/lib/planning/planningDbPersistencePolicy";
 import { buildPlanningDataSlotsDraft } from "@/lib/planning/planningDataSlotsV1";
+import { readyPlatformProjectDatabaseSettings } from "./platformManagedProjectDatabase.unit.test";
 
 describe("planningDatabaseStoreNamingSync", () => {
-  it("derives store names from git repository name", () => {
+  it("derives platform store names when database usage is enabled", () => {
     const synced = syncPlanningDatabaseSettingsStoreNames({
-      settings: defaultPlanningDatabaseSettingsV1(),
-      gitRepoName: "org/meeting-note-2026",
-      projectId: "cmq123",
-      preserveManualStoreName: false,
-    });
-    expect(synced.databaseStoreName).toMatch(/^meeting_note_2026/);
-    expect(synced.implementationSchemaName).toContain("_impl_sample");
-    expect(synced.reviewSchemaName).toContain("_review_test");
-  });
-});
-
-describe("planningDbPersistencePolicy", () => {
-  it("uses POSTGRES_SAMPLE_DB only when connection is READY with store naming", () => {
-    const settings = syncPlanningDatabaseSettingsStoreNames({
       settings: {
         ...defaultPlanningDatabaseSettingsV1(),
-        usageMode: "ENABLED_POSTGRESQL",
-        usageSelectionCommitted: true,
         enabled: true,
-        connectionStatus: "READY",
-        host: "localhost",
-        database: "app",
-        username: "app",
-        repositoryName: "meeting-note",
+        usageMode: "ENABLED_PROJECT_DATABASE",
+        usageSelectionCommitted: true,
       },
       gitRepoName: "org/meeting-note-2026",
       projectId: "cmq123",
       preserveManualStoreName: false,
     });
+    expect(synced.projectDbName).toMatch(/^p_/);
+    expect(synced.implementationSchemaName).toBe("impl_sample");
+    expect(synced.reviewSchemaName).toBe("review_test");
+  });
+});
+
+describe("planningDbPersistencePolicy", () => {
+  it("uses PROJECT_DATABASE when platform project DB is CREATED", () => {
+    const settings = readyPlatformProjectDatabaseSettings();
     expect(
       resolvePlanningDataPersistenceMode({
         planningDatabaseSettings: settings,
       }),
-    ).toBe("POSTGRES_SAMPLE_DB");
+    ).toBe("PROJECT_DATABASE");
     expect(
       resolvePlanningDataPersistenceMode({
-        planningDatabaseSettings: {
-          ...defaultPlanningDatabaseSettingsV1(),
-          usageMode: "ENABLED_POSTGRESQL",
-          usageSelectionCommitted: true,
-          enabled: true,
+        planningDatabaseSettings: readyPlatformProjectDatabaseSettings({
+          projectDbStatus: "PLANNED",
           connectionStatus: "NOT_CONFIGURED",
-        },
+        }),
       }),
-    ).toBe("BLOCKED_DATABASE_REQUIRED");
+    ).toBe("BLOCKED_PROJECT_DATABASE_REQUIRED");
     expect(
       resolvePlanningDataPersistenceMode({
         planningDatabaseSettings: defaultPlanningDatabaseSettingsV1(),

@@ -6,7 +6,7 @@ import {
 } from "@/lib/planning/projectDataStoreNaming";
 import { buildPlanningHandoffForImplementation, buildPlanningDataSlotsDraft } from "@/lib/planning/planningDataSlotsV1";
 import { defaultPlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
-import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningDatabaseStoreNamingSync";
+import { readyPlatformProjectDatabaseSettings } from "./platformManagedProjectDatabase.unit.test";
 
 describe("projectDataStoreNaming", () => {
   it("maps doit-meet to impl/review schema names", () => {
@@ -31,23 +31,8 @@ describe("projectDataStoreNaming", () => {
 });
 
 describe("buildPlanningHandoffForImplementation", () => {
-  it("uses POSTGRES_SAMPLE_DB when DB is READY with store names", () => {
-    const settings = syncPlanningDatabaseSettingsStoreNames({
-      settings: {
-        ...defaultPlanningDatabaseSettingsV1(),
-        usageMode: "ENABLED_POSTGRESQL",
-        usageSelectionCommitted: true,
-        enabled: true,
-        connectionStatus: "READY",
-        host: "localhost",
-        database: "app",
-        username: "app",
-        repositoryName: "doit-meet",
-      },
-      gitRepoName: "org/doit-meet",
-      projectId: "p1",
-      preserveManualStoreName: false,
-    });
+  it("uses PROJECT_DATABASE when platform project DB is CREATED", () => {
+    const settings = readyPlatformProjectDatabaseSettings({ repositoryName: "doit-meet" });
     const slots = buildPlanningDataSlotsDraft({
       repositoryName: "doit-meet",
       projectId: "p1",
@@ -61,13 +46,14 @@ describe("buildPlanningHandoffForImplementation", () => {
       planningDataSlots: slots,
       planningDatabaseSettings: settings,
     });
-    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("POSTGRES_SAMPLE_DB");
+    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("PROJECT_DATABASE");
     expect(handoff.implementationDataPlan.useSampleDb).toBe(true);
+    expect(handoff.implementationDataPlan.useProjectDatabase).toBe(true);
     expect(handoff.implementationDataPlan.useRuntimeApi).toBe(true);
     expect(handoff.implementationDataPlan.blockingReason).toBeNull();
     expect(handoff.status).toBe("READY");
-    expect(handoff.implementationDataPlan.implementationSchemaName).toContain("_impl_sample");
-    expect(handoff.implementationDataPlan.reviewSchemaName).toContain("_review_test");
+    expect(handoff.implementationDataPlan.implementationSchemaName).toBe("impl_sample");
+    expect(handoff.implementationDataPlan.reviewSchemaName).toBe("review_test");
   });
 
   it("blocks handoff when DB is disabled after explicit JSON selection", () => {

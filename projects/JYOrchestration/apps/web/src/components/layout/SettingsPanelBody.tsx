@@ -188,6 +188,12 @@ export function SettingsPanelBody() {
                   열기
                 </Link>,
               )}
+              {row(
+                "PostgreSQL (인프라)",
+                <Link href="/admin/infrastructure/postgresql" prefetch={false} style={linkStyle}>
+                  열기
+                </Link>,
+              )}
             </>
           ) : null}
         </>

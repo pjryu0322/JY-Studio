@@ -2,19 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import {
-  defaultPlanningDatabaseSettingsV1,
-  parsePlanningDatabaseSettingsV1,
-} from "@/lib/planning/planningDatabaseSettingsV1";
-import {
-  loadPlanningDatabaseSettingsForProject,
-  resolvePlanningPostgresPassword,
-  savePlanningDatabaseSettingsForProject,
-} from "@/lib/planning/planningDatabaseSettingsService";
-import { testPlanningPostgresConnection } from "@/lib/planning/planningPostgresConnectionTest";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
 
+/** Project users no longer run PostgreSQL connection tests; platform admin tests infra separately. */
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const userId = await requireSessionUserId(request);
@@ -31,29 +22,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (denied) return denied;
       throw error;
     }
-    const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-    const settingsRaw = body?.settings ?? body;
-    const parsed =
-      parsePlanningDatabaseSettingsV1(settingsRaw) ?? (await loadPlanningDatabaseSettingsForProject(pid));
-    const passwordFromBody = typeof body?.password === "string" ? body.password.trim() : "";
-    const password = passwordFromBody || (await resolvePlanningPostgresPassword(pid));
-
-    const test = await testPlanningPostgresConnection({ settings: parsed, password: password || null });
-    const nowIso = new Date().toISOString();
-    const nextSettings = {
-      ...parsed,
-      connectionStatus: test.connectionStatus,
-      lastCheckedAt: nowIso,
-      lastErrorMessage: test.ok ? null : test.message,
-    };
-    await savePlanningDatabaseSettingsForProject({
-      projectId: pid,
-      settings: nextSettings,
-      password: passwordFromBody || undefined,
-    });
     return NextResponse.json({
-      success: test.ok,
-      data: { settings: nextSettings, message: test.message },
+      success: false,
+      message:
+        "프로젝트 환경설정에서는 연결 테스트를 제공하지 않습니다. 데이터베이스 사용을 선택한 뒤 저장하면 플랫폼이 프로젝트 DB를 자동 생성합니다.",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);

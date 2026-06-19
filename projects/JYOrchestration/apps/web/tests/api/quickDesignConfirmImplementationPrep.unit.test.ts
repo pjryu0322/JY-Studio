@@ -49,15 +49,16 @@ function jsonSamplePlanningStateJson(): RequirementsStateJson {
 const nowIso = "2026-05-24T12:00:00.000Z";
 
 function readyPlanningStateJson(projectId: string): RequirementsStateJson {
-  const dbSettings = syncPlanningDatabaseSettingsStoreNames({
+  const synced = syncPlanningDatabaseSettingsStoreNames({
     settings: {
       ...defaultPlanningDatabaseSettingsV1(),
-      usageMode: "ENABLED_POSTGRESQL",
+      usageMode: "ENABLED_PROJECT_DATABASE",
       usageSelectionCommitted: true,
       enabled: true,
       connectionStatus: "READY",
+      projectDbStatus: "CREATED",
       host: "localhost",
-      database: "app",
+      database: "p_p1",
       username: "app",
       repositoryName: "doit-meet",
     },
@@ -65,6 +66,10 @@ function readyPlanningStateJson(projectId: string): RequirementsStateJson {
     projectId,
     preserveManualStoreName: false,
   });
+  const dbSettings = {
+    ...synced,
+    database: synced.projectDbName ?? synced.database,
+  };
   return { planningDatabaseSettingsV1: dbSettings, gitRepoName: "org/doit-meet" };
 }
 
@@ -294,7 +299,7 @@ describe("quickDesignConfirmImplementationPrep", () => {
 
     expect(prep.prepComplete).toBe(false);
     expect(prep.postConfirmState.seedReady).toBe(false);
-    expect(prep.planningHandoffForImplementationV1.status).toBe("BLOCKED_DATABASE_REQUIRED");
+    expect(prep.planningHandoffForImplementationV1.status).toBe("BLOCKED_PROJECT_DATABASE_REQUIRED");
     expect(prep.implementationTaskListV1).toBeNull();
     expect(prep.implementationCodeTaskPlanV1).toBeNull();
     expect(prep.cursorWorkItemsV1).toBeNull();
@@ -314,7 +319,7 @@ describe("quickDesignConfirmImplementationPrep", () => {
     );
     expect(evaluated?.responseText).toContain("seedReady=false");
     expect(evaluated?.responseText).toContain("seedStatus=blocked_database_required");
-    expect(evaluated?.responseText).toContain("handoffStatus=BLOCKED_DATABASE_REQUIRED");
+    expect(evaluated?.responseText).toContain("handoffStatus=BLOCKED_PROJECT_DATABASE_REQUIRED");
 
     const progressContent = buildImplementationPrepProgressChatContent({
       snapshot: buildImplementationPrepDatabaseBlockedSnapshot(),

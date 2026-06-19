@@ -6,7 +6,12 @@ import {
   type PlanningDatabaseSettingsV1,
 } from "@/lib/planning/planningDatabaseSettingsV1";
 import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningDatabaseStoreNamingSync";
-import { normalizePlanningDatabaseSettingsUsageOnSave } from "@/lib/planning/planningDatabaseUsageMode";
+import {
+  isDatabaseUsageEnabledMode,
+  normalizePlanningDatabaseSettingsUsageOnSave,
+  resolveDatabaseUsageMode,
+} from "@/lib/planning/planningDatabaseUsageMode";
+import { createProjectDatabaseForProject } from "@/lib/planning/createProjectDatabaseForProject.server";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 function maskPasswordForStorage(_password: string): string {
@@ -76,6 +81,34 @@ export async function loadPlanningDatabaseSettingsForProject(projectId: string):
   });
 }
 
+/** Server-side load including platform-managed connection fields (not for client). */
+export async function loadPlanningDatabaseSettingsRawForProject(
+  projectId: string,
+): Promise<PlanningDatabaseSettingsV1> {
+  const pid = projectId.trim();
+  const project = await prisma.project.findUnique({
+    where: { id: pid },
+    select: { requirementsStateJson: true },
+  });
+  const state = parseRequirementsStateJson(project?.requirementsStateJson);
+  const fromState = parsePlanningDatabaseSettingsV1(state.planningDatabaseSettingsV1);
+  const setup = await prisma.executionSetup.findUnique({
+    where: { projectId: pid },
+    select: {
+      planningDatabaseSettingsJson: true,
+      gitRepoName: true,
+    },
+  });
+  const fromSetup = parsePlanningDatabaseSettingsV1(setup?.planningDatabaseSettingsJson);
+  const merged = fromSetup ?? fromState ?? defaultPlanningDatabaseSettingsV1();
+  return syncPlanningDatabaseSettingsStoreNames({
+    settings: merged,
+    gitRepoName: setup?.gitRepoName,
+    projectId: pid,
+    preserveManualStoreName: false,
+  });
+}
+
 export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
   readonly projectId: string;
   readonly settings: PlanningDatabaseSettingsV1;
@@ -83,12 +116,41 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
   readonly gitRepoName?: string | null;
 }>): Promise<PlanningDatabaseSettingsV1> {
   const pid = input.projectId.trim();
-  const synced = syncPlanningDatabaseSettingsStoreNames({
+  let synced = syncPlanningDatabaseSettingsStoreNames({
     settings: normalizePlanningDatabaseSettingsUsageOnSave(input.settings),
     gitRepoName: input.gitRepoName,
     projectId: pid,
-    preserveManualStoreName: true,
+    preserveManualStoreName: false,
   });
+  const usage = resolveDatabaseUsageMode(synced);
+  const nowIso = new Date().toISOString();
+
+  if (isDatabaseUsageEnabledMode(usage) && synced.projectDbStatus !== "CREATED") {
+    synced = { ...synced, projectDbStatus: "CREATING", connectionStatus: "CHECKING" };
+    const created = await createProjectDatabaseForProject({
+      projectId: pid,
+      gitRepoName: input.gitRepoName,
+      priorSettings: synced,
+      nowIso,
+    });
+    synced = {
+      ...synced,
+      ...created.settingsPatch,
+      usageMode: "ENABLED_PROJECT_DATABASE",
+      enabled: true,
+      usageSelectionCommitted: true,
+    };
+  }
+
+  if (usage === "DISABLED_JSON_SAMPLE" || resolveDatabaseUsageMode(synced) === "DISABLED_JSON_SAMPLE") {
+    synced = {
+      ...synced,
+      projectDbStatus: "NOT_REQUIRED",
+      connectionStatus: "NOT_REQUIRED",
+      lastErrorMessage: null,
+    };
+  }
+
   const settings = {
     ...synced,
     version: 1 as const,
@@ -105,7 +167,6 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
     planningDatabaseSettingsJson: settings,
   };
   if (passwordTrim) {
-    // TODO: Encrypt planningPostgresPassword or move it to secret vault before production.
     setupUpdate.planningPostgresPassword = passwordTrim;
     setupUpdate.planningPostgresPasswordMasked = maskPasswordForStorage(passwordTrim);
   }
@@ -148,10 +209,18 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
 }
 
 export async function resolvePlanningPostgresPassword(projectId: string): Promise<string | null> {
+  const pid = projectId.trim();
+  const stored = await loadPlanningDatabaseSettingsRawForProject(pid);
+  const { resolvePlanningPostgresPasswordForProject } = await import(
+    "@/lib/planning/resolvePlanningPostgresConnection.server"
+  );
   const row = await prisma.executionSetup.findUnique({
-    where: { projectId: projectId.trim() },
+    where: { projectId: pid },
     select: { planningPostgresPassword: true },
   });
-  const p = String(row?.planningPostgresPassword ?? "").trim();
-  return p || null;
+  return resolvePlanningPostgresPasswordForProject(
+    pid,
+    stored,
+    String(row?.planningPostgresPassword ?? "").trim() || null,
+  );
 }

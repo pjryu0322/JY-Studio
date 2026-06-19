@@ -55,12 +55,12 @@ describe("planningDbPersistencePolicy usage modes", () => {
   it("blocks handoff when postgres enabled but not ready", () => {
     const settings = {
       ...defaultPlanningDatabaseSettingsV1(),
-      usageMode: "ENABLED_POSTGRESQL" as const,
+      usageMode: "ENABLED_PROJECT_DATABASE" as const,
       usageSelectionCommitted: true,
       enabled: true,
     };
     expect(resolvePlanningDataPersistenceMode({ planningDatabaseSettings: settings })).toBe(
-      "BLOCKED_DATABASE_REQUIRED",
+      "BLOCKED_PROJECT_DATABASE_REQUIRED",
     );
     const draft = buildPlanningDataSlotsDraft({
       repositoryName: "doit-meet",
@@ -74,20 +74,21 @@ describe("planningDbPersistencePolicy usage modes", () => {
       planningDataSlots: draft,
       planningDatabaseSettings: settings,
     });
-    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("BLOCKED_DATABASE_REQUIRED");
+    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("BLOCKED_PROJECT_DATABASE_REQUIRED");
     expect(isPlanningHandoffBlockedByDatabase(handoff)).toBe(true);
   });
 
-  it("allows handoff when database is READY", () => {
+  it("allows handoff when platform project database is CREATED", () => {
     const settings = syncPlanningDatabaseSettingsStoreNames({
       settings: {
         ...defaultPlanningDatabaseSettingsV1(),
-        usageMode: "ENABLED_POSTGRESQL",
+        usageMode: "ENABLED_PROJECT_DATABASE",
         usageSelectionCommitted: true,
         enabled: true,
         connectionStatus: "READY",
+        projectDbStatus: "CREATED",
         host: "localhost",
-        database: "app",
+        database: "p_p1",
         username: "app",
         hasPassword: true,
         repositoryName: "doit-meet",

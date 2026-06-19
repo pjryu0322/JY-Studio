@@ -15,8 +15,10 @@ import {
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   loadPlanningDatabaseSettingsForProject,
+  loadPlanningDatabaseSettingsRawForProject,
   resolvePlanningPostgresPassword,
 } from "@/lib/planning/planningDatabaseSettingsService";
+import { resolvePlanningPostgresConnectionForProject } from "@/lib/planning/resolvePlanningPostgresConnection.server";
 import {
   provisionImplementationSampleStore,
 } from "@/lib/planning/provisionProjectStageDataStores";
@@ -151,14 +153,19 @@ export async function runQuickDesignConfirmOnServer(
   const handoff = flowResult.prep.planningHandoffForImplementationV1;
   if (
     flowResult.prep.prepComplete &&
-    handoff?.implementationDataPlan.dataPersistenceMode === "POSTGRES_SAMPLE_DB"
+    (handoff?.implementationDataPlan.dataPersistenceMode === "PROJECT_DATABASE" ||
+      handoff?.implementationDataPlan.dataPersistenceMode === "POSTGRES_SAMPLE_DB")
   ) {
     const provisionNow = new Date().toISOString();
-    const [password] = await Promise.all([resolvePlanningPostgresPassword(projectId)]);
+    const rawSettings = await loadPlanningDatabaseSettingsRawForProject(projectId);
+    const connection = await resolvePlanningPostgresConnectionForProject({ settings: rawSettings });
+    const [password] = await Promise.all([
+      Promise.resolve(connection.password ?? (await resolvePlanningPostgresPassword(projectId))),
+    ]);
     const provision = await provisionImplementationSampleStore({
       projectId,
       planningDataSlotsV1: flowResult.statePatch.planningDataSlotsV1 ?? null,
-      settings: dbSettings,
+      settings: connection.settings,
       password,
       nowIso: provisionNow,
     });

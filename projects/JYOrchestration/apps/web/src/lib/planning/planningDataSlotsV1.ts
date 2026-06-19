@@ -548,7 +548,8 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
   const dataPersistenceMode = resolvePlanningDataPersistenceMode({
     planningDatabaseSettings: settings,
   });
-  const dbReady = dataPersistenceMode === "POSTGRES_SAMPLE_DB";
+  const dbReady =
+    dataPersistenceMode === "PROJECT_DATABASE" || dataPersistenceMode === "POSTGRES_SAMPLE_DB";
   const jsonSample = dataPersistenceMode === "JSON_SAMPLE_DATA";
   const databaseReadiness = resolvePlanningDatabaseReadinessV1(settings, naming);
   const blockingReason = dbReady || jsonSample
@@ -566,6 +567,13 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
     priorStatus: priorStore?.reviewStore.lifecycleStatus ?? null,
   });
   const projectStoreLifecycle: DataStoreLifecycleStatus = jsonSample ? "NOT_REQUIRED" : "PLANNED";
+  const implSchemaName =
+    String(settings?.implementationSchemaName ?? "").trim() || naming.implementationSchemaName;
+  const reviewSchemaName =
+    String(settings?.reviewSchemaName ?? "").trim() || naming.reviewSchemaName;
+  const projectDataStoreName =
+    String(settings?.projectDbName ?? settings?.databaseStoreName ?? "").trim() ||
+    naming.normalizedBaseName;
 
   const dataStoreSlot: DataStoreSlotV1 = {
     status: dbReady || jsonSample ? "CONFIRMED" : "NEEDS_REVIEW",
@@ -574,12 +582,12 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
     enabled: dbReady,
     repositoryName: naming.repositoryName,
     normalizedBaseName: naming.normalizedBaseName,
-    projectDataStoreName: naming.normalizedBaseName,
+    projectDataStoreName,
     projectDataStoreNameStatus: projectStoreLifecycle,
     implementationStore: {
       mode: "SAMPLE_DB",
       displayName: "구현단계 샘플 저장소 (예정)",
-      schemaName: naming.implementationSchemaName,
+      schemaName: implSchemaName,
       lifecycleStatus: implLifecycle,
       description:
         "구현준비 또는 구현단계 진입 시 PostgreSQL 스키마로 생성됩니다. 기획단계에서는 예정값만 계산합니다.",
@@ -587,7 +595,7 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
     reviewStore: {
       mode: "TEST_DB",
       displayName: "검토단계 테스트 저장소 (예정)",
-      schemaName: naming.reviewSchemaName,
+      schemaName: reviewSchemaName,
       lifecycleStatus: reviewLifecycle,
       description:
         "구현단계 완료 후 검토단계 전환 시 생성됩니다. 기획단계에서는 예정값만 계산합니다.",
@@ -677,18 +685,25 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
     planningDatabaseSettings: input.planningDatabaseSettings,
   });
   const status = resolvePlanningHandoffStatus(dataPersistenceMode);
-  const useSampleDb = dataPersistenceMode === "POSTGRES_SAMPLE_DB";
+  const useSampleDb =
+    dataPersistenceMode === "PROJECT_DATABASE" || dataPersistenceMode === "POSTGRES_SAMPLE_DB";
   const useRuntimeApi = useSampleDb;
   const useJsonSampleData = dataPersistenceMode === "JSON_SAMPLE_DATA";
+  const useProjectDatabase = useSampleDb;
   const settings = input.planningDatabaseSettings;
   const implementationSchemaName =
     String(settings?.implementationSchemaName ?? "").trim() || naming.implementationSchemaName;
   const reviewSchemaName = String(settings?.reviewSchemaName ?? "").trim() || naming.reviewSchemaName;
   const repositoryBasedStoreName =
-    String(settings?.databaseStoreName ?? "").trim() || naming.normalizedBaseName;
+    String(settings?.projectDbName ?? settings?.databaseStoreName ?? "").trim() || naming.normalizedBaseName;
+  const projectDbName = String(settings?.projectDbName ?? settings?.database ?? "").trim() || null;
   const blocked = status !== "READY";
   const blockingReason = blocked ? resolvePlanningDatabaseBlockingReason(settings) : null;
-  const provider: "POSTGRESQL" | "NONE" = useJsonSampleData ? "NONE" : "POSTGRESQL";
+  const provider: "POSTGRESQL" | "PLATFORM_POSTGRESQL" | "NONE" = useJsonSampleData
+    ? "NONE"
+    : useProjectDatabase
+      ? "PLATFORM_POSTGRESQL"
+      : "POSTGRESQL";
   return {
     version: 1,
     projectId: input.projectId.trim(),
@@ -707,8 +722,13 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
       useSampleDb,
       useRuntimeApi,
       ...(useJsonSampleData ? { useJsonSampleData: true } : {}),
-      ...(useSampleDb && settings?.database
-        ? { databaseName: String(settings.database).trim() }
+      ...(useProjectDatabase ? { useProjectDatabase: true } : {}),
+      ...(useSampleDb && projectDbName ? { projectDbName, databaseName: projectDbName } : {}),
+      ...(useSampleDb
+        ? { implementationStoreName: implementationSchemaName, reviewStoreName: reviewSchemaName }
+        : {}),
+      ...(useSampleDb && settings?.projectDbStatus
+        ? { projectDbStatus: settings.projectDbStatus }
         : {}),
       blocked,
       blockingReason,
@@ -743,19 +763,24 @@ export function parsePlanningHandoffForImplementationV1(raw: unknown): PlanningH
   const normalizedMode = normalizePlanningDataPersistenceMode(String(planRaw?.dataPersistenceMode ?? ""));
   const rawStatus = String(o.status ?? "").trim();
   let status: PlanningHandoffStatus = "BLOCKED_DATABASE_REQUIRED";
-  if (rawStatus === "READY" || rawStatus === "BLOCKED_DATABASE_USAGE_UNSELECTED" || rawStatus === "BLOCKED_DATABASE_REQUIRED") {
+  if (rawStatus === "READY" || rawStatus === "BLOCKED_DATABASE_USAGE_UNSELECTED" || rawStatus === "BLOCKED_DATABASE_REQUIRED" || rawStatus === "BLOCKED_PROJECT_DATABASE_REQUIRED") {
     if (rawStatus === "READY") status = "READY";
     else if (rawStatus === "BLOCKED_DATABASE_USAGE_UNSELECTED") status = "BLOCKED_DATABASE_USAGE_UNSELECTED";
+    else if (rawStatus === "BLOCKED_PROJECT_DATABASE_REQUIRED") status = "BLOCKED_PROJECT_DATABASE_REQUIRED";
     else status = "BLOCKED_DATABASE_REQUIRED";
-  } else if (normalizedMode === "JSON_SAMPLE_DATA" || normalizedMode === "POSTGRES_SAMPLE_DB") {
+  } else if (normalizedMode === "JSON_SAMPLE_DATA" || normalizedMode === "PROJECT_DATABASE" || normalizedMode === "POSTGRES_SAMPLE_DB") {
     status = "READY";
   } else if (normalizedMode === "BLOCKED_DATABASE_USAGE_UNSELECTED") {
     status = "BLOCKED_DATABASE_USAGE_UNSELECTED";
   }
   const useSampleDb =
-    typeof planRaw?.useSampleDb === "boolean" ? planRaw.useSampleDb : normalizedMode === "POSTGRES_SAMPLE_DB";
+    typeof planRaw?.useSampleDb === "boolean"
+      ? planRaw.useSampleDb
+      : normalizedMode === "PROJECT_DATABASE" || normalizedMode === "POSTGRES_SAMPLE_DB";
   const useRuntimeApi =
-    typeof planRaw?.useRuntimeApi === "boolean" ? planRaw.useRuntimeApi : normalizedMode === "POSTGRES_SAMPLE_DB";
+    typeof planRaw?.useRuntimeApi === "boolean"
+      ? planRaw.useRuntimeApi
+      : normalizedMode === "PROJECT_DATABASE" || normalizedMode === "POSTGRES_SAMPLE_DB";
   const useJsonSampleData =
     typeof planRaw?.useJsonSampleData === "boolean"
       ? planRaw.useJsonSampleData
