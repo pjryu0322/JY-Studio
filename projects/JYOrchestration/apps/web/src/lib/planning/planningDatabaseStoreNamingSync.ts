@@ -4,12 +4,12 @@ import {
   type ProjectDataStoreNaming,
 } from "@/lib/planning/projectDataStoreNaming";
 import {
-  buildProjectDatabaseName,
-  PLATFORM_PROJECT_IMPLEMENTATION_SCHEMA,
-  PLATFORM_PROJECT_REVIEW_SCHEMA,
-} from "@/lib/planning/projectDatabaseNaming";
-import { isDatabaseUsageEnabledMode, resolveDatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
+  isDatabaseUsageEnabledMode,
+  resolveDatabaseUsageMode,
+  JYPROJECTS_RUNTIME_DATABASE_NAME,
+} from "@/lib/planning/planningDatabaseUsageMode";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
+import { readProjectDatabaseLifecycleStatus } from "@/lib/planning/projectDatabaseLifecycle";
 
 export function resolveRepositoryNameForPlanningDbSettings(input: Readonly<{
   readonly gitRepoName?: string | null;
@@ -50,45 +50,29 @@ export function syncPlanningDatabaseSettingsStoreNames(input: Readonly<{
     projectName: input.projectName,
   });
   const usage = resolveDatabaseUsageMode(input.settings);
-  const projectDbName =
-    String(input.settings.projectDbName ?? "").trim() ||
-    buildProjectDatabaseName({ projectId: input.projectId, gitRepoName: input.gitRepoName });
-
-  if (isDatabaseUsageEnabledMode(usage)) {
-    const naming = buildProjectDataStoreNaming({
-      repositoryName,
-      projectId: input.projectId,
-    });
-    const displayName =
-      input.preserveManualStoreName && String(input.settings.databaseStoreName ?? "").trim()
-        ? String(input.settings.databaseStoreName).trim()
-        : naming.normalizedBaseName;
-    return {
-      ...input.settings,
-      repositoryName,
-      projectDbName,
-      databaseStoreName: displayName,
-      implementationSchemaName: PLATFORM_PROJECT_IMPLEMENTATION_SCHEMA,
-      reviewSchemaName: PLATFORM_PROJECT_REVIEW_SCHEMA,
-      schemaStrategy: "PROJECT_STAGE_SCHEMA",
-      projectDbStatus: input.settings.projectDbStatus ?? "PLANNED",
-    };
-  }
-
   const naming = buildProjectDataStoreNaming({
     repositoryName,
     projectId: input.projectId,
+    includeProjectIdSuffix: false,
   });
-  const manualBase = String(input.settings.databaseStoreName ?? "").trim();
-  if (input.preserveManualStoreName && manualBase) {
+
+  if (isDatabaseUsageEnabledMode(usage)) {
+    const priorStatus = readProjectDatabaseLifecycleStatus(input.settings.projectDbStatus);
+    const projectDbStatus =
+      priorStatus === "CREATED" ? "CREATED" : priorStatus === "FAILED" ? "FAILED" : "PLANNED";
     return {
       ...input.settings,
       repositoryName,
-      implementationSchemaName: `${manualBase}_impl_sample`,
-      reviewSchemaName: `${manualBase}_review_test`,
+      databaseStoreName: naming.normalizedBaseName,
+      implementationSchemaName: naming.implementationSchemaName,
+      reviewSchemaName: naming.reviewSchemaName,
       schemaStrategy: "PROJECT_STAGE_SCHEMA",
+      projectDbStatus,
+      runtimeDatabaseName: JYPROJECTS_RUNTIME_DATABASE_NAME,
+      connectionStatus: "NOT_CONFIGURED",
     };
   }
+
   return applyProjectDataStoreNamingToPlanningDatabaseSettings({
     settings: input.settings,
     naming,

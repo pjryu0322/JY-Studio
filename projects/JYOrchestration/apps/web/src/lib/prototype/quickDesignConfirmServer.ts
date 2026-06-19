@@ -22,6 +22,7 @@ import { resolvePlanningPostgresConnectionForProject } from "@/lib/planning/reso
 import {
   provisionImplementationSampleStore,
 } from "@/lib/planning/provisionProjectStageDataStores";
+import { provisionQuickDesignImplementationSchemaAndSeed } from "@/lib/planning/provisionQuickDesignImplementationSchemaAndSeed.server";
 import { prisma } from "@/lib/prisma";
 import { resolveQuickDesignLlmServerContext } from "@/lib/prototype/resolveProjectCodeTaskRefinementSettings.server";
 
@@ -153,7 +154,9 @@ export async function runQuickDesignConfirmOnServer(
   const handoff = flowResult.prep.planningHandoffForImplementationV1;
   if (
     flowResult.prep.prepComplete &&
-    (handoff?.implementationDataPlan.dataPersistenceMode === "PROJECT_DATABASE" ||
+    (handoff?.implementationDataPlan.dataPersistenceMode === "JYPROJECTS_SCHEMA" ||
+      handoff?.implementationDataPlan.dataPersistenceMode === "PLATFORM_SCHEMA" ||
+      handoff?.implementationDataPlan.dataPersistenceMode === "PROJECT_DATABASE" ||
       handoff?.implementationDataPlan.dataPersistenceMode === "POSTGRES_SAMPLE_DB")
   ) {
     const provisionNow = new Date().toISOString();
@@ -186,6 +189,27 @@ export async function runQuickDesignConfirmOnServer(
         success: false,
         message: `구현단계 샘플 저장소 생성에 실패했습니다. ${provision.message}`,
       };
+    }
+    const slotsAfterSchema = provision.planningDataSlotsV1 ?? flow.statePatch.planningDataSlotsV1 ?? null;
+    const entities = slotsAfterSchema?.dataModelSlot?.entities ?? [];
+    const implSchema = String(
+      slotsAfterSchema?.dataStoreSlot?.implementationStore?.schemaName ??
+        connection.settings.implementationSchemaName ??
+        "",
+    ).trim();
+    if (entities.length && implSchema) {
+      const structure = await provisionQuickDesignImplementationSchemaAndSeed({
+        settings: connection.settings,
+        password,
+        schemaName: implSchema,
+        entities,
+      });
+      if (!structure.ok) {
+        return {
+          success: false,
+          message: `Quick Design 데이터 모델 테이블 생성에 실패했습니다. ${structure.message}`,
+        };
+      }
     }
     try {
       const project = await prisma.project.findUnique({

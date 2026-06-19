@@ -4,6 +4,7 @@
 
 import type { DatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
 import type { ProjectDatabaseLifecycleStatus } from "@/lib/planning/projectDatabaseLifecycle";
+import type { ProjectDatabaseCreationFailureReason } from "@/lib/planning/projectDatabaseCreationFailure";
 
 export const PLANNING_DB_SETTINGS_VERSION = 1 as const;
 
@@ -39,6 +40,8 @@ export type PlanningDatabaseSettingsV1 = Readonly<{
   readonly schemaStrategy?: "PROJECT_STAGE_SCHEMA" | null;
   readonly projectDbName?: string | null;
   readonly projectDbStatus?: ProjectDatabaseLifecycleStatus;
+  readonly projectDbFailureReason?: ProjectDatabaseCreationFailureReason | null;
+  readonly runtimeDatabaseName?: string | null;
   readonly connectionStatus: PlanningDatabaseConnectionStatus;
   readonly lastCheckedAt?: string | null;
   readonly lastErrorMessage?: string | null;
@@ -79,12 +82,29 @@ function readUsageMode(v: unknown): DatabaseUsageMode | undefined {
   if (
     s === "UNSELECTED" ||
     s === "DISABLED_JSON_SAMPLE" ||
+    s === "ENABLED_JYPROJECTS_SCHEMA" ||
+    s === "ENABLED_PLATFORM_SCHEMA" ||
     s === "ENABLED_PROJECT_DATABASE" ||
     s === "ENABLED_POSTGRESQL"
   ) {
     return s;
   }
   return undefined;
+}
+
+function readFailureReason(v: unknown): ProjectDatabaseCreationFailureReason | null {
+  const s = readStr(v, 80);
+  if (
+    s === "POSTGRES_ADMIN_CONFIG_MISSING" ||
+    s === "POSTGRES_CONNECTION_FAILED" ||
+    s === "CREATE_DATABASE_PERMISSION_DENIED" ||
+    s === "DATABASE_ALREADY_EXISTS_BUT_INACCESSIBLE" ||
+    s === "INVALID_DATABASE_NAME" ||
+    s === "UNKNOWN"
+  ) {
+    return s;
+  }
+  return null;
 }
 
 function readProjectDbStatus(v: unknown): ProjectDatabaseLifecycleStatus | undefined {
@@ -150,6 +170,8 @@ export function parsePlanningDatabaseSettingsV1(raw: unknown): PlanningDatabaseS
     schemaStrategy: readStr(o.schemaStrategy, 40) === "PROJECT_STAGE_SCHEMA" ? "PROJECT_STAGE_SCHEMA" : null,
     projectDbName: readStr(o.projectDbName, 120) || null,
     ...(readProjectDbStatus(o.projectDbStatus) ? { projectDbStatus: readProjectDbStatus(o.projectDbStatus)! } : {}),
+    projectDbFailureReason: readFailureReason(o.projectDbFailureReason),
+    runtimeDatabaseName: readStr(o.runtimeDatabaseName, 80) || null,
     connectionStatus: readStatus(o.connectionStatus),
     lastCheckedAt: readStr(o.lastCheckedAt, 80) || null,
     lastErrorMessage: readStr(o.lastErrorMessage, 500) || null,
@@ -172,5 +194,6 @@ export function sanitizePlanningDatabaseSettingsForClient(
     runtimeApiBaseUrl: null,
     projectDbName: null,
     lastErrorMessage: null,
+    projectDbFailureReason: base.projectDbFailureReason ?? null,
   };
 }

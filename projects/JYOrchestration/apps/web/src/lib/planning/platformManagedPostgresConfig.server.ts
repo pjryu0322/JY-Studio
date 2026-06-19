@@ -1,5 +1,6 @@
 import "server-only";
 
+import { JYPROJECTS_RUNTIME_DATABASE_NAME } from "@/lib/planning/jyprojectsRuntimeDatabase";
 import type { PlanningDatabaseSettingsV1, PlanningDatabaseSslMode } from "@/lib/planning/planningDatabaseSettingsV1";
 
 export type PlatformManagedPostgresConfig = Readonly<{
@@ -7,6 +8,7 @@ export type PlatformManagedPostgresConfig = Readonly<{
   readonly host: string;
   readonly port: number;
   readonly adminDatabase: string;
+  readonly runtimeDatabase: string;
   readonly adminUsername: string;
   readonly adminPassword: string;
   readonly sslMode: PlanningDatabaseSslMode;
@@ -29,6 +31,8 @@ export function loadPlatformManagedPostgresConfig(): PlatformManagedPostgresConf
   const adminUsername = readEnv("JYO_PLATFORM_PG_ADMIN_USERNAME");
   const adminPassword = readEnv("JYO_PLATFORM_PG_ADMIN_PASSWORD");
   const adminDatabase = readEnv("JYO_PLATFORM_PG_ADMIN_DATABASE") || "postgres";
+  const runtimeDatabase =
+    readEnv("JYO_PLATFORM_PG_RUNTIME_DATABASE") || JYPROJECTS_RUNTIME_DATABASE_NAME;
   const portRaw = Number(readEnv("JYO_PLATFORM_PG_PORT") || "5432");
   const port = Number.isFinite(portRaw) && portRaw > 0 ? Math.min(65535, Math.floor(portRaw)) : 5432;
   const configured = Boolean(host && adminUsername && adminPassword);
@@ -37,6 +41,7 @@ export function loadPlatformManagedPostgresConfig(): PlatformManagedPostgresConf
     host,
     port,
     adminDatabase,
+    runtimeDatabase,
     adminUsername,
     adminPassword,
     sslMode: readSslMode(),
@@ -52,6 +57,7 @@ export function sanitizePlatformManagedPostgresConfigForAdmin(
   readonly host: string;
   readonly port: number;
   readonly adminDatabase: string;
+  readonly runtimeDatabase: string;
   readonly adminUsername: string;
   readonly hasAdminPassword: boolean;
   readonly sslMode: PlanningDatabaseSslMode;
@@ -63,6 +69,7 @@ export function sanitizePlatformManagedPostgresConfigForAdmin(
     host: config.host,
     port: config.port,
     adminDatabase: config.adminDatabase,
+    runtimeDatabase: config.runtimeDatabase,
     adminUsername: config.adminUsername,
     hasAdminPassword: Boolean(config.adminPassword),
     sslMode: config.sslMode,
@@ -71,9 +78,8 @@ export function sanitizePlatformManagedPostgresConfigForAdmin(
   };
 }
 
-export function buildServerPlanningDatabaseSettingsForProjectDb(input: Readonly<{
+export function buildServerPlanningDatabaseSettingsForRuntimeDb(input: Readonly<{
   readonly settings: PlanningDatabaseSettingsV1;
-  readonly projectDbName: string;
   readonly config: PlatformManagedPostgresConfig;
 }>): PlanningDatabaseSettingsV1 {
   return {
@@ -81,11 +87,23 @@ export function buildServerPlanningDatabaseSettingsForProjectDb(input: Readonly<
     provider: "POSTGRESQL",
     host: input.config.host,
     port: input.config.port,
-    database: input.projectDbName,
+    database: input.config.runtimeDatabase,
     username: input.config.adminUsername,
     sslMode: input.config.sslMode,
     runtimeApiBaseUrl: input.config.runtimeApiBaseUrl,
     connectionStatus: "READY",
     lastErrorMessage: null,
   };
+}
+
+/** @deprecated Use buildServerPlanningDatabaseSettingsForRuntimeDb */
+export function buildServerPlanningDatabaseSettingsForProjectDb(input: Readonly<{
+  readonly settings: PlanningDatabaseSettingsV1;
+  readonly projectDbName: string;
+  readonly config: PlatformManagedPostgresConfig;
+}>): PlanningDatabaseSettingsV1 {
+  return buildServerPlanningDatabaseSettingsForRuntimeDb({
+    settings: input.settings,
+    config: input.config,
+  });
 }

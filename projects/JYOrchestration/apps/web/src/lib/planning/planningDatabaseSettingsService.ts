@@ -11,8 +11,7 @@ import {
   normalizePlanningDatabaseSettingsUsageOnSave,
   resolveDatabaseUsageMode,
 } from "@/lib/planning/planningDatabaseUsageMode";
-import { createProjectDatabaseForProject } from "@/lib/planning/createProjectDatabaseForProject.server";
-import { projectDatabaseSaveAckMessage } from "@/lib/planning/projectDatabaseUserDisplay";
+import { projectDatabaseSaveOutcomeMessage } from "@/lib/planning/projectDatabaseUserDisplay";
 import type { SavePlanningDatabaseUsageSettingsResult } from "@/lib/planning/savePlanningDatabaseSettingsTypes";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -74,7 +73,7 @@ export async function loadPlanningDatabaseSettingsForProject(projectId: string):
     settings: merged,
     gitRepoName: setup?.gitRepoName,
     projectId: pid,
-    preserveManualStoreName: Boolean(merged.databaseStoreName?.trim()),
+    preserveManualStoreName: false,
   });
   return sanitizePlanningDatabaseSettingsForClient({
     ...withNames,
@@ -116,16 +115,16 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
   readonly settings: PlanningDatabaseSettingsV1;
   readonly password?: string | null;
   readonly gitRepoName?: string | null;
+  readonly skipProjectDatabaseProvisioning?: boolean;
 }>): Promise<SavePlanningDatabaseUsageSettingsResult> {
   const pid = input.projectId.trim();
   let synced = syncPlanningDatabaseSettingsStoreNames({
     settings: normalizePlanningDatabaseSettingsUsageOnSave(input.settings),
     gitRepoName: input.gitRepoName,
     projectId: pid,
-    preserveManualStoreName: true,
+    preserveManualStoreName: false,
   });
   const usage = resolveDatabaseUsageMode(synced);
-  const nowIso = new Date().toISOString();
   const passwordTrim = String(input.password ?? "").trim();
 
   async function persistToDb(toPersist: PlanningDatabaseSettingsV1): Promise<void> {
@@ -194,47 +193,20 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
     return {
       settings,
       saved: true,
-      message: projectDatabaseSaveAckMessage(settings),
+      message: projectDatabaseSaveOutcomeMessage(settings),
       projectDbStatus: "NOT_REQUIRED",
     };
   }
 
   if (isDatabaseUsageEnabledMode(usage)) {
-    const priorStatus = synced.projectDbStatus;
-    if (priorStatus !== "CREATED") {
-      synced = {
-        ...synced,
-        projectDbStatus: priorStatus === "FAILED" ? "PLANNED" : priorStatus ?? "PLANNED",
-        connectionStatus: "NOT_CONFIGURED",
-        lastErrorMessage: null,
-      };
-    }
+    synced = {
+      ...synced,
+      projectDbStatus: synced.projectDbStatus === "CREATED" ? "CREATED" : "PLANNED",
+      connectionStatus: "NOT_CONFIGURED",
+      projectDbFailureReason: null,
+      lastErrorMessage: null,
+    };
     await persistToDb(synced);
-
-    if (synced.projectDbStatus !== "CREATED") {
-      synced = { ...synced, projectDbStatus: "CREATING", connectionStatus: "CHECKING" };
-      await persistToDb(synced);
-      const created = await createProjectDatabaseForProject({
-        projectId: pid,
-        gitRepoName: input.gitRepoName,
-        priorSettings: synced,
-        nowIso,
-      });
-      if (!created.ok) {
-        console.error(
-          `[planning-db] Project database creation failed for project ${pid}:`,
-          created.message,
-        );
-      }
-      synced = {
-        ...synced,
-        ...created.settingsPatch,
-        usageMode: "ENABLED_PROJECT_DATABASE",
-        enabled: true,
-        usageSelectionCommitted: true,
-      };
-      await persistToDb(synced);
-    }
   } else {
     await persistToDb(synced);
   }
@@ -243,7 +215,7 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
   return {
     settings,
     saved: true,
-    message: projectDatabaseSaveAckMessage(settings),
+    message: projectDatabaseSaveOutcomeMessage(settings),
     projectDbStatus: settings.projectDbStatus,
   };
 }

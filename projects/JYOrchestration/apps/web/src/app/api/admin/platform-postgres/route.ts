@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       data: {
         config: sanitizePlatformManagedPostgresConfigForAdmin(config),
         envHint:
-          "JYO_PLATFORM_PG_HOST, JYO_PLATFORM_PG_PORT, JYO_PLATFORM_PG_ADMIN_DATABASE, JYO_PLATFORM_PG_ADMIN_USERNAME, JYO_PLATFORM_PG_ADMIN_PASSWORD",
+          "JYO_PLATFORM_PG_HOST, JYO_PLATFORM_PG_PORT, JYO_PLATFORM_PG_RUNTIME_DATABASE (default: jyprojects), JYO_PLATFORM_PG_ADMIN_USERNAME, JYO_PLATFORM_PG_ADMIN_PASSWORD",
       },
     });
   } catch (error) {

@@ -19,6 +19,7 @@ import {
 } from "@/lib/planning/planningDbPersistencePolicy";
 import type { ProjectDataStoreNaming } from "@/lib/planning/projectDataStoreNaming";
 import { buildProjectDataStoreNaming } from "@/lib/planning/projectDataStoreNaming";
+import { JYPROJECTS_RUNTIME_DATABASE_NAME } from "@/lib/planning/jyprojectsRuntimeDatabase";
 import {
   readDataStoreLifecycleStatus,
   resolvePlanningStageStoreLifecycle,
@@ -540,6 +541,7 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
   const naming = buildProjectDataStoreNaming({
     repositoryName: input.repositoryName || "project",
     projectId: input.projectId ?? null,
+    includeProjectIdSuffix: false,
   });
   const entities = buildEntitiesFromOrchestration(input);
   const hasEntities = entities.length > 0;
@@ -549,7 +551,10 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
     planningDatabaseSettings: settings,
   });
   const dbReady =
-    dataPersistenceMode === "PROJECT_DATABASE" || dataPersistenceMode === "POSTGRES_SAMPLE_DB";
+    dataPersistenceMode === "JYPROJECTS_SCHEMA" ||
+    dataPersistenceMode === "PLATFORM_SCHEMA" ||
+    dataPersistenceMode === "PROJECT_DATABASE" ||
+    dataPersistenceMode === "POSTGRES_SAMPLE_DB";
   const jsonSample = dataPersistenceMode === "JSON_SAMPLE_DATA";
   const databaseReadiness = resolvePlanningDatabaseReadinessV1(settings, naming);
   const blockingReason = dbReady || jsonSample
@@ -680,28 +685,39 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
   const naming = buildProjectDataStoreNaming({
     repositoryName: input.repositoryName,
     projectId: input.projectId,
+    includeProjectIdSuffix: false,
   });
-  const dataPersistenceMode = resolvePlanningDataPersistenceMode({
+  const implSchemaFailed =
+    input.planningDataSlots.dataStoreSlot.implementationStore.lifecycleStatus === "FAILED";
+  let dataPersistenceMode = resolvePlanningDataPersistenceMode({
     planningDatabaseSettings: input.planningDatabaseSettings,
   });
+  if (implSchemaFailed) {
+    dataPersistenceMode = "BLOCKED_SCHEMA_REQUIRED";
+  }
   const status = resolvePlanningHandoffStatus(dataPersistenceMode);
-  const useSampleDb =
-    dataPersistenceMode === "PROJECT_DATABASE" || dataPersistenceMode === "POSTGRES_SAMPLE_DB";
-  const useRuntimeApi = useSampleDb;
+  const usePlatformSchema =
+    dataPersistenceMode === "JYPROJECTS_SCHEMA" ||
+    dataPersistenceMode === "PLATFORM_SCHEMA" ||
+    dataPersistenceMode === "PROJECT_DATABASE" ||
+    dataPersistenceMode === "POSTGRES_SAMPLE_DB";
+  const useRuntimeApi = usePlatformSchema;
   const useJsonSampleData = dataPersistenceMode === "JSON_SAMPLE_DATA";
-  const useProjectDatabase = useSampleDb;
   const settings = input.planningDatabaseSettings;
   const implementationSchemaName =
     String(settings?.implementationSchemaName ?? "").trim() || naming.implementationSchemaName;
   const reviewSchemaName = String(settings?.reviewSchemaName ?? "").trim() || naming.reviewSchemaName;
   const repositoryBasedStoreName =
-    String(settings?.projectDbName ?? settings?.databaseStoreName ?? "").trim() || naming.normalizedBaseName;
-  const projectDbName = String(settings?.projectDbName ?? settings?.database ?? "").trim() || null;
+    String(settings?.databaseStoreName ?? "").trim() || naming.normalizedBaseName;
   const blocked = status !== "READY";
-  const blockingReason = blocked ? resolvePlanningDatabaseBlockingReason(settings) : null;
+  const blockingReason = blocked
+    ? implSchemaFailed
+      ? "프로젝트 저장소 생성이 필요합니다."
+      : resolvePlanningDatabaseBlockingReason(settings)
+    : null;
   const provider: "POSTGRESQL" | "PLATFORM_POSTGRESQL" | "NONE" = useJsonSampleData
     ? "NONE"
-    : useProjectDatabase
+    : usePlatformSchema
       ? "PLATFORM_POSTGRESQL"
       : "POSTGRESQL";
   return {
@@ -719,16 +735,16 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
       repositoryBasedStoreName,
       implementationSchemaName,
       reviewSchemaName,
-      useSampleDb,
+      useSampleDb: usePlatformSchema,
       useRuntimeApi,
       ...(useJsonSampleData ? { useJsonSampleData: true } : {}),
-      ...(useProjectDatabase ? { useProjectDatabase: true } : {}),
-      ...(useSampleDb && projectDbName ? { projectDbName, databaseName: projectDbName } : {}),
-      ...(useSampleDb
-        ? { implementationStoreName: implementationSchemaName, reviewStoreName: reviewSchemaName }
-        : {}),
-      ...(useSampleDb && settings?.projectDbStatus
-        ? { projectDbStatus: settings.projectDbStatus }
+      ...(usePlatformSchema ? { usePlatformSchema: true, useProjectDatabase: true } : {}),
+      ...(usePlatformSchema
+        ? {
+            implementationStoreName: implementationSchemaName,
+            reviewStoreName: reviewSchemaName,
+            runtimeDatabaseName: JYPROJECTS_RUNTIME_DATABASE_NAME,
+          }
         : {}),
       blocked,
       blockingReason,
@@ -763,24 +779,39 @@ export function parsePlanningHandoffForImplementationV1(raw: unknown): PlanningH
   const normalizedMode = normalizePlanningDataPersistenceMode(String(planRaw?.dataPersistenceMode ?? ""));
   const rawStatus = String(o.status ?? "").trim();
   let status: PlanningHandoffStatus = "BLOCKED_DATABASE_REQUIRED";
-  if (rawStatus === "READY" || rawStatus === "BLOCKED_DATABASE_USAGE_UNSELECTED" || rawStatus === "BLOCKED_DATABASE_REQUIRED" || rawStatus === "BLOCKED_PROJECT_DATABASE_REQUIRED") {
+  if (rawStatus === "READY" || rawStatus === "BLOCKED_DATABASE_USAGE_UNSELECTED" || rawStatus === "BLOCKED_DATABASE_REQUIRED" || rawStatus === "BLOCKED_PROJECT_DATABASE_REQUIRED" || rawStatus === "BLOCKED_SCHEMA_REQUIRED") {
     if (rawStatus === "READY") status = "READY";
     else if (rawStatus === "BLOCKED_DATABASE_USAGE_UNSELECTED") status = "BLOCKED_DATABASE_USAGE_UNSELECTED";
-    else if (rawStatus === "BLOCKED_PROJECT_DATABASE_REQUIRED") status = "BLOCKED_PROJECT_DATABASE_REQUIRED";
-    else status = "BLOCKED_DATABASE_REQUIRED";
-  } else if (normalizedMode === "JSON_SAMPLE_DATA" || normalizedMode === "PROJECT_DATABASE" || normalizedMode === "POSTGRES_SAMPLE_DB") {
+    else if (rawStatus === "BLOCKED_SCHEMA_REQUIRED" || rawStatus === "BLOCKED_PROJECT_DATABASE_REQUIRED") {
+      status = "BLOCKED_SCHEMA_REQUIRED";
+    } else status = "BLOCKED_DATABASE_REQUIRED";
+  } else if (
+    normalizedMode === "JSON_SAMPLE_DATA" ||
+    normalizedMode === "JYPROJECTS_SCHEMA" ||
+    normalizedMode === "PLATFORM_SCHEMA" ||
+    normalizedMode === "PROJECT_DATABASE" ||
+    normalizedMode === "POSTGRES_SAMPLE_DB"
+  ) {
     status = "READY";
   } else if (normalizedMode === "BLOCKED_DATABASE_USAGE_UNSELECTED") {
     status = "BLOCKED_DATABASE_USAGE_UNSELECTED";
+  } else if (normalizedMode === "BLOCKED_SCHEMA_REQUIRED") {
+    status = "BLOCKED_SCHEMA_REQUIRED";
   }
   const useSampleDb =
     typeof planRaw?.useSampleDb === "boolean"
       ? planRaw.useSampleDb
-      : normalizedMode === "PROJECT_DATABASE" || normalizedMode === "POSTGRES_SAMPLE_DB";
+      : normalizedMode === "JYPROJECTS_SCHEMA" ||
+        normalizedMode === "PLATFORM_SCHEMA" ||
+        normalizedMode === "PROJECT_DATABASE" ||
+        normalizedMode === "POSTGRES_SAMPLE_DB";
   const useRuntimeApi =
     typeof planRaw?.useRuntimeApi === "boolean"
       ? planRaw.useRuntimeApi
-      : normalizedMode === "PROJECT_DATABASE" || normalizedMode === "POSTGRES_SAMPLE_DB";
+      : normalizedMode === "JYPROJECTS_SCHEMA" ||
+        normalizedMode === "PLATFORM_SCHEMA" ||
+        normalizedMode === "PROJECT_DATABASE" ||
+        normalizedMode === "POSTGRES_SAMPLE_DB";
   const useJsonSampleData =
     typeof planRaw?.useJsonSampleData === "boolean"
       ? planRaw.useJsonSampleData

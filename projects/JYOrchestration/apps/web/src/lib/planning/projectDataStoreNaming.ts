@@ -53,9 +53,14 @@ export function resolveDefaultPostgresDatabaseNameFromGitRepo(
 export function buildProjectDataStoreNaming(input: Readonly<{
   readonly repositoryName: string;
   readonly projectId?: string | null;
+  /** When true, append projectId suffix to store name (collision avoidance). */
+  readonly includeProjectIdSuffix?: boolean;
 }>): ProjectDataStoreNaming {
   const repositoryName = String(input.repositoryName ?? "").trim() || "project";
-  const normalizedBaseName = normalizeRepositoryNameForDb(repositoryName, input.projectId ?? null);
+  const normalizedBaseName = normalizeRepositoryNameForDb(
+    repositoryName,
+    input.includeProjectIdSuffix ? (input.projectId ?? null) : null,
+  );
   return {
     repositoryName,
     normalizedBaseName,

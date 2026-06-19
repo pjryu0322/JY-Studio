@@ -31,7 +31,7 @@ describe("projectDataStoreNaming", () => {
 });
 
 describe("buildPlanningHandoffForImplementation", () => {
-  it("uses PROJECT_DATABASE when platform project DB is CREATED", () => {
+  it("uses JYPROJECTS_SCHEMA when jyprojects schema plan is ready", () => {
     const settings = readyPlatformProjectDatabaseSettings({ repositoryName: "doit-meet" });
     const slots = buildPlanningDataSlotsDraft({
       repositoryName: "doit-meet",
@@ -46,14 +46,15 @@ describe("buildPlanningHandoffForImplementation", () => {
       planningDataSlots: slots,
       planningDatabaseSettings: settings,
     });
-    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("PROJECT_DATABASE");
+    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("JYPROJECTS_SCHEMA");
     expect(handoff.implementationDataPlan.useSampleDb).toBe(true);
     expect(handoff.implementationDataPlan.useProjectDatabase).toBe(true);
     expect(handoff.implementationDataPlan.useRuntimeApi).toBe(true);
     expect(handoff.implementationDataPlan.blockingReason).toBeNull();
     expect(handoff.status).toBe("READY");
-    expect(handoff.implementationDataPlan.implementationSchemaName).toBe("impl_sample");
-    expect(handoff.implementationDataPlan.reviewSchemaName).toBe("review_test");
+    expect(handoff.implementationDataPlan.implementationSchemaName).toBe("aiproject_impl_sample");
+    expect(handoff.implementationDataPlan.reviewSchemaName).toBe("aiproject_review_test");
+    expect(handoff.implementationDataPlan.runtimeDatabaseName).toBe("jyprojects");
   });
 
   it("blocks handoff when DB is disabled after explicit JSON selection", () => {

@@ -1,14 +1,34 @@
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import type { ProjectDatabaseLifecycleStatus } from "@/lib/planning/projectDatabaseLifecycle";
+import { JYPROJECTS_RUNTIME_DATABASE_NAME } from "@/lib/planning/jyprojectsRuntimeDatabase";
 
+/** Canonical DB usage mode (`jyprojects` runtime DB + project schemas). */
 export type DatabaseUsageMode =
   | "UNSELECTED"
   | "DISABLED_JSON_SAMPLE"
+  | "ENABLED_JYPROJECTS_SCHEMA"
+  | "ENABLED_PLATFORM_SCHEMA"
   | "ENABLED_PROJECT_DATABASE"
   | "ENABLED_POSTGRESQL";
 
+export function normalizeDatabaseUsageMode(raw: DatabaseUsageMode): DatabaseUsageMode {
+  if (
+    raw === "ENABLED_PROJECT_DATABASE" ||
+    raw === "ENABLED_POSTGRESQL" ||
+    raw === "ENABLED_PLATFORM_SCHEMA"
+  ) {
+    return "ENABLED_JYPROJECTS_SCHEMA";
+  }
+  return raw;
+}
+
 export function isDatabaseUsageEnabledMode(usage: DatabaseUsageMode): boolean {
-  return usage === "ENABLED_PROJECT_DATABASE" || usage === "ENABLED_POSTGRESQL";
+  return (
+    usage === "ENABLED_JYPROJECTS_SCHEMA" ||
+    usage === "ENABLED_PLATFORM_SCHEMA" ||
+    usage === "ENABLED_PROJECT_DATABASE" ||
+    usage === "ENABLED_POSTGRESQL"
+  );
 }
 
 export function resolveDatabaseUsageMode(
@@ -19,16 +39,17 @@ export function resolveDatabaseUsageMode(
   if (
     explicit === "UNSELECTED" ||
     explicit === "DISABLED_JSON_SAMPLE" ||
+    explicit === "ENABLED_JYPROJECTS_SCHEMA" ||
+    explicit === "ENABLED_PLATFORM_SCHEMA" ||
     explicit === "ENABLED_PROJECT_DATABASE" ||
     explicit === "ENABLED_POSTGRESQL"
   ) {
-    if (explicit === "ENABLED_POSTGRESQL") return "ENABLED_PROJECT_DATABASE";
-    return explicit;
+    return normalizeDatabaseUsageMode(explicit);
   }
   if (settings.usageSelectionCommitted) {
-    return settings.enabled ? "ENABLED_PROJECT_DATABASE" : "DISABLED_JSON_SAMPLE";
+    return settings.enabled ? "ENABLED_JYPROJECTS_SCHEMA" : "DISABLED_JSON_SAMPLE";
   }
-  if (settings.enabled) return "ENABLED_PROJECT_DATABASE";
+  if (settings.enabled) return "ENABLED_JYPROJECTS_SCHEMA";
   return "UNSELECTED";
 }
 
@@ -36,7 +57,7 @@ export function normalizePlanningDatabaseSettingsUsageOnSave(
   settings: PlanningDatabaseSettingsV1,
 ): PlanningDatabaseSettingsV1 {
   const usageMode: DatabaseUsageMode = settings.enabled
-    ? "ENABLED_PROJECT_DATABASE"
+    ? "ENABLED_JYPROJECTS_SCHEMA"
     : "DISABLED_JSON_SAMPLE";
   const connectionStatus =
     usageMode === "DISABLED_JSON_SAMPLE"
@@ -47,15 +68,24 @@ export function normalizePlanningDatabaseSettingsUsageOnSave(
   const projectDbStatus: ProjectDatabaseLifecycleStatus =
     usageMode === "DISABLED_JSON_SAMPLE"
       ? "NOT_REQUIRED"
-      : settings.projectDbStatus === "CREATED"
-        ? "CREATED"
-        : (settings.projectDbStatus ?? "PLANNED");
+      : settings.projectDbStatus === "FAILED"
+        ? "FAILED"
+        : settings.projectDbStatus === "CREATED"
+          ? "CREATED"
+          : "PLANNED";
   return {
     ...settings,
     usageMode,
     usageSelectionCommitted: true,
-    enabled: usageMode === "ENABLED_PROJECT_DATABASE",
+    enabled: usageMode === "ENABLED_JYPROJECTS_SCHEMA",
     connectionStatus,
     projectDbStatus,
+    projectDbFailureReason: usageMode === "ENABLED_JYPROJECTS_SCHEMA" ? null : settings.projectDbFailureReason,
+    runtimeDatabaseName:
+      usageMode === "ENABLED_JYPROJECTS_SCHEMA"
+        ? JYPROJECTS_RUNTIME_DATABASE_NAME
+        : null,
   };
 }
+
+export { JYPROJECTS_RUNTIME_DATABASE_NAME };

@@ -3,44 +3,39 @@ import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningD
 import { defaultPlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import { resolvePlanningDataPersistenceMode } from "@/lib/planning/planningDbPersistencePolicy";
 import { buildPlanningDataSlotsDraft } from "@/lib/planning/planningDataSlotsV1";
-import { readyPlatformProjectDatabaseSettings } from "./platformManagedProjectDatabase.unit.test";
+import { readyPlatformSchemaSettings } from "./platformManagedProjectDatabase.unit.test";
 
 describe("planningDatabaseStoreNamingSync", () => {
-  it("derives platform store names when database usage is enabled", () => {
+  it("derives per-project schema names when database usage is enabled", () => {
     const synced = syncPlanningDatabaseSettingsStoreNames({
       settings: {
         ...defaultPlanningDatabaseSettingsV1(),
         enabled: true,
-        usageMode: "ENABLED_PROJECT_DATABASE",
+        usageMode: "ENABLED_JYPROJECTS_SCHEMA",
         usageSelectionCommitted: true,
       },
       gitRepoName: "org/meeting-note-2026",
       projectId: "cmq123",
       preserveManualStoreName: false,
     });
-    expect(synced.projectDbName).toMatch(/^p_/);
-    expect(synced.databaseStoreName).toMatch(/^meeting_note_2026/);
-    expect(synced.implementationSchemaName).toBe("impl_sample");
-    expect(synced.reviewSchemaName).toBe("review_test");
+    expect(synced.databaseStoreName).toBe("meeting_note_2026");
+    expect(synced.implementationSchemaName).toBe("meeting_note_2026_impl_sample");
+    expect(synced.reviewSchemaName).toBe("meeting_note_2026_review_test");
   });
 });
 
 describe("planningDbPersistencePolicy", () => {
-  it("uses PROJECT_DATABASE when platform project DB is CREATED", () => {
-    const settings = readyPlatformProjectDatabaseSettings();
+  it("uses JYPROJECTS_SCHEMA when schema plan is ready", () => {
     expect(
       resolvePlanningDataPersistenceMode({
-        planningDatabaseSettings: settings,
+        planningDatabaseSettings: readyPlatformSchemaSettings(),
       }),
-    ).toBe("PROJECT_DATABASE");
+    ).toBe("JYPROJECTS_SCHEMA");
     expect(
       resolvePlanningDataPersistenceMode({
-        planningDatabaseSettings: readyPlatformProjectDatabaseSettings({
-          projectDbStatus: "PLANNED",
-          connectionStatus: "NOT_CONFIGURED",
-        }),
+        planningDatabaseSettings: readyPlatformSchemaSettings({ projectDbStatus: "FAILED" }),
       }),
-    ).toBe("BLOCKED_PROJECT_DATABASE_REQUIRED");
+    ).toBe("BLOCKED_SCHEMA_REQUIRED");
     expect(
       resolvePlanningDataPersistenceMode({
         planningDatabaseSettings: defaultPlanningDatabaseSettingsV1(),
@@ -50,14 +45,17 @@ describe("planningDbPersistencePolicy", () => {
 });
 
 describe("planning data slots with DB settings", () => {
-  it("marks data store NEEDS_REVIEW when DB is not ready", () => {
+  it("marks data store CONFIRMED when jyprojects schema usage is saved", () => {
     const draft = buildPlanningDataSlotsDraft({
-      repositoryName: "doit-meet",
+      repositoryName: "aiproject",
+      projectId: "cmq123",
       orchestration: null,
       definitions: [],
-      planningDatabaseSettings: defaultPlanningDatabaseSettingsV1(),
+      planningDatabaseSettings: readyPlatformSchemaSettings(),
     });
-    expect(draft.dataStoreSlot.status).toBe("NEEDS_REVIEW");
-    expect(draft.dataStoreSlot.enabled).toBe(false);
+    expect(draft.dataStoreSlot.status).toBe("CONFIRMED");
+    expect(draft.dataStoreSlot.enabled).toBe(true);
+    expect(draft.dataStoreSlot.implementationStore.schemaName).toBe("aiproject_impl_sample");
+    expect(draft.dataStoreSlot.implementationStore.lifecycleStatus).toBe("PLANNED");
   });
 });

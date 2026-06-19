@@ -10,6 +10,7 @@ import {
   type ProjectDataStoreNaming,
 } from "@/lib/planning/projectDataStoreNaming";
 import { PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementationUxLabels";
+import { JYPROJECTS_RUNTIME_DATABASE_NAME } from "@/lib/planning/jyprojectsRuntimeDatabase";
 
 export type PlanningDatabaseReadinessV1 =
   | "USAGE_UNSELECTED"
@@ -23,9 +24,12 @@ export type PlanningDatabaseReadinessV1 =
 
 export type PlanningDataPersistenceMode =
   | "JSON_SAMPLE_DATA"
+  | "JYPROJECTS_SCHEMA"
+  | "PLATFORM_SCHEMA"
   | "PROJECT_DATABASE"
   | "POSTGRES_SAMPLE_DB"
   | "BLOCKED_DATABASE_USAGE_UNSELECTED"
+  | "BLOCKED_SCHEMA_REQUIRED"
   | "BLOCKED_PROJECT_DATABASE_REQUIRED"
   | "BLOCKED_DATABASE_REQUIRED";
 
@@ -37,6 +41,7 @@ export type DeprecatedPlanningDataPersistenceMode = "MOCK_JSON_FALLBACK";
 export type PlanningHandoffStatus =
   | "READY"
   | "BLOCKED_DATABASE_USAGE_UNSELECTED"
+  | "BLOCKED_SCHEMA_REQUIRED"
   | "BLOCKED_PROJECT_DATABASE_REQUIRED"
   | "BLOCKED_DATABASE_REQUIRED";
 
@@ -57,16 +62,7 @@ function hasPostgresStoreNaming(settings: PlanningDatabaseSettingsV1): boolean {
 
 export function isPlanningDatabaseReady(settings?: PlanningDatabaseSettingsV1 | null): boolean {
   if (!isDatabaseUsageEnabledMode(resolveDatabaseUsageMode(settings))) return false;
-  const projectDbName = String(settings?.projectDbName ?? settings?.database ?? "").trim();
-  if (settings?.projectDbStatus === "CREATED" && projectDbName) {
-    return hasPostgresStoreNaming(settings);
-  }
-  // Legacy per-project PostgreSQL credentials
-  if (settings?.provider !== "POSTGRESQL") return false;
-  if (!String(settings.host ?? "").trim()) return false;
-  if (!String(settings.database ?? "").trim()) return false;
-  if (!String(settings.username ?? "").trim()) return false;
-  if (settings.connectionStatus !== "READY") return false;
+  if (settings?.projectDbStatus === "FAILED") return false;
   if (!hasPostgresStoreNaming(settings)) return false;
   return true;
 }
@@ -85,25 +81,25 @@ export function resolvePlanningDatabaseBlockingReason(
     return "PostgreSQL 설정과 연결 테스트가 필요합니다.";
   }
   const dbStatus = settings?.projectDbStatus;
-  if (dbStatus === "CREATING" || dbStatus === "PLANNED") {
-    return "프로젝트 데이터베이스를 준비하고 있습니다. 잠시 후 다시 확인해 주세요.";
-  }
   if (dbStatus === "FAILED") {
-    return "프로젝트 데이터베이스 준비가 지연되고 있습니다. 관리자 확인 후 다시 진행됩니다.";
+    return "프로젝트 저장소를 준비하지 못했습니다. 플랫폼 관리자 설정 또는 PostgreSQL schema 생성 권한 확인이 필요합니다.";
+  }
+  if (dbStatus === "CREATING") {
+    return "프로젝트 저장소를 준비하고 있습니다. Quick Design 확정 시 샘플 저장소가 생성됩니다.";
+  }
+  if (dbStatus === "PLANNED" && isDatabaseUsageEnabledMode(usage)) {
+    return "";
   }
   if (dbStatus !== "CREATED" && isDatabaseUsageEnabledMode(usage)) {
-    return "프로젝트 데이터베이스를 준비하고 있습니다. 잠시 후 다시 확인해 주세요.";
+    return "데이터베이스 사용을 저장하면 프로젝트 저장소 예정값이 준비됩니다. Quick Design 확정 시 schema가 생성됩니다.";
   }
   if (settings?.connectionStatus === "FAILED") {
-    return "프로젝트 데이터베이스 준비가 지연되고 있습니다. 관리자 확인 후 다시 진행됩니다.";
-  }
-  if (settings.connectionStatus !== "READY") {
-    return "프로젝트 데이터베이스를 준비하고 있습니다. 잠시 후 다시 확인해 주세요.";
+    return "프로젝트 저장소 준비가 지연되고 있습니다. 관리자 확인 후 다시 진행됩니다.";
   }
   if (!hasPostgresStoreNaming(settings)) {
-    return "프로젝트 데이터베이스를 준비하고 있습니다. 잠시 후 다시 확인해 주세요.";
+    return "프로젝트 데이터 저장소명을 계산할 수 없습니다. GitHub 저장소 연결을 확인해 주세요.";
   }
-  return "프로젝트 데이터베이스를 준비하고 있습니다. 잠시 후 다시 확인해 주세요.";
+  return "";
 }
 
 /** @deprecated Renamed to resolvePlanningDatabaseBlockingReason */
@@ -120,13 +116,23 @@ export function normalizePlanningDataPersistenceMode(
   raw: string | null | undefined,
 ): PlanningDataPersistenceMode {
   if (raw === "JSON_SAMPLE_DATA") return "JSON_SAMPLE_DATA";
-  if (raw === "PROJECT_DATABASE") return "PROJECT_DATABASE";
-  if (raw === "POSTGRES_SAMPLE_DB") return "PROJECT_DATABASE";
+  if (raw === "JYPROJECTS_SCHEMA") return "JYPROJECTS_SCHEMA";
+  if (raw === "PLATFORM_SCHEMA") return "JYPROJECTS_SCHEMA";
+  if (raw === "PROJECT_DATABASE") return "JYPROJECTS_SCHEMA";
+  if (raw === "POSTGRES_SAMPLE_DB") return "JYPROJECTS_SCHEMA";
   if (raw === "BLOCKED_DATABASE_USAGE_UNSELECTED") return "BLOCKED_DATABASE_USAGE_UNSELECTED";
-  if (raw === "BLOCKED_PROJECT_DATABASE_REQUIRED") return "BLOCKED_PROJECT_DATABASE_REQUIRED";
+  if (raw === "BLOCKED_SCHEMA_REQUIRED") return "BLOCKED_SCHEMA_REQUIRED";
+  if (raw === "BLOCKED_PROJECT_DATABASE_REQUIRED") return "BLOCKED_SCHEMA_REQUIRED";
   if (raw === "MOCK_JSON_FALLBACK") return "BLOCKED_DATABASE_REQUIRED";
   if (raw === "BLOCKED_DATABASE_REQUIRED") return "BLOCKED_DATABASE_REQUIRED";
   return "BLOCKED_DATABASE_USAGE_UNSELECTED";
+}
+
+export function isPlatformSchemaPersistenceMode(
+  mode: PlanningDataPersistenceMode | string | null | undefined,
+): boolean {
+  const normalized = normalizePlanningDataPersistenceMode(String(mode ?? ""));
+  return normalized === "JYPROJECTS_SCHEMA" || normalized === "PLATFORM_SCHEMA";
 }
 
 export function resolvePlanningDataPersistenceMode(input: Readonly<{
@@ -135,9 +141,9 @@ export function resolvePlanningDataPersistenceMode(input: Readonly<{
   const usage = resolveDatabaseUsageMode(input.planningDatabaseSettings);
   if (usage === "UNSELECTED") return "BLOCKED_DATABASE_USAGE_UNSELECTED";
   if (usage === "DISABLED_JSON_SAMPLE") return "JSON_SAMPLE_DATA";
-  if (isPlanningDatabaseReady(input.planningDatabaseSettings)) return "PROJECT_DATABASE";
+  if (isPlanningDatabaseReady(input.planningDatabaseSettings)) return "JYPROJECTS_SCHEMA";
   if (isDatabaseUsageEnabledMode(resolveDatabaseUsageMode(input.planningDatabaseSettings))) {
-    return "BLOCKED_PROJECT_DATABASE_REQUIRED";
+    return "BLOCKED_SCHEMA_REQUIRED";
   }
   return "BLOCKED_DATABASE_REQUIRED";
 }
@@ -145,9 +151,19 @@ export function resolvePlanningDataPersistenceMode(input: Readonly<{
 export function resolvePlanningHandoffStatus(
   mode: PlanningDataPersistenceMode,
 ): PlanningHandoffStatus {
-  if (mode === "PROJECT_DATABASE" || mode === "JSON_SAMPLE_DATA") return "READY";
+  if (
+    mode === "JYPROJECTS_SCHEMA" ||
+    mode === "PLATFORM_SCHEMA" ||
+    mode === "PROJECT_DATABASE" ||
+    mode === "POSTGRES_SAMPLE_DB" ||
+    mode === "JSON_SAMPLE_DATA"
+  ) {
+    return "READY";
+  }
   if (mode === "BLOCKED_DATABASE_USAGE_UNSELECTED") return "BLOCKED_DATABASE_USAGE_UNSELECTED";
-  if (mode === "BLOCKED_PROJECT_DATABASE_REQUIRED") return "BLOCKED_PROJECT_DATABASE_REQUIRED";
+  if (mode === "BLOCKED_SCHEMA_REQUIRED" || mode === "BLOCKED_PROJECT_DATABASE_REQUIRED") {
+    return "BLOCKED_SCHEMA_REQUIRED";
+  }
   return "BLOCKED_DATABASE_REQUIRED";
 }
 
@@ -157,6 +173,7 @@ export function isPlanningDataPersistenceModeBlocked(
   const normalized = normalizePlanningDataPersistenceMode(String(mode ?? ""));
   return (
     normalized === "BLOCKED_DATABASE_USAGE_UNSELECTED" ||
+    normalized === "BLOCKED_SCHEMA_REQUIRED" ||
     normalized === "BLOCKED_PROJECT_DATABASE_REQUIRED" ||
     normalized === "BLOCKED_DATABASE_REQUIRED"
   );
@@ -167,6 +184,7 @@ export function isPlanningHandoffBlockedByDatabase(
 ): boolean {
   if (!handoff) return true;
   if (handoff.status === "BLOCKED_DATABASE_USAGE_UNSELECTED") return true;
+  if (handoff.status === "BLOCKED_SCHEMA_REQUIRED") return true;
   if (handoff.status === "BLOCKED_PROJECT_DATABASE_REQUIRED") return true;
   if (handoff.status === "BLOCKED_DATABASE_REQUIRED") return true;
   if (handoff.implementationDataPlan?.blocked === true) return true;
@@ -179,7 +197,13 @@ export function isPlanningHandoffReadyForImplementationPrep(
 ): boolean {
   if (!handoff || handoff.implementationDataPlan?.blocked) return false;
   const mode = handoff.implementationDataPlan?.dataPersistenceMode;
-  return mode === "JSON_SAMPLE_DATA" || mode === "PROJECT_DATABASE" || mode === "POSTGRES_SAMPLE_DB";
+  return (
+    mode === "JSON_SAMPLE_DATA" ||
+    mode === "JYPROJECTS_SCHEMA" ||
+    mode === "PLATFORM_SCHEMA" ||
+    mode === "PROJECT_DATABASE" ||
+    mode === "POSTGRES_SAMPLE_DB"
+  );
 }
 
 export function resolveImplementationPrepDatabaseBlockKind(
@@ -194,7 +218,9 @@ export function resolveImplementationPrepDatabaseBlockKind(
     return "usage_unselected";
   }
   if (
+    mode === "BLOCKED_SCHEMA_REQUIRED" ||
     mode === "BLOCKED_PROJECT_DATABASE_REQUIRED" ||
+    handoff.status === "BLOCKED_SCHEMA_REQUIRED" ||
     handoff.status === "BLOCKED_PROJECT_DATABASE_REQUIRED"
   ) {
     return "database_required";
@@ -220,8 +246,8 @@ export function resolvePlanningDatabaseReadinessV1(
       String(settings.implementationSchemaName ?? naming?.implementationSchemaName ?? "").trim();
     const reviewSchema = String(settings.reviewSchemaName ?? naming?.reviewSchemaName ?? "").trim();
     if (!implSchema || !reviewSchema) return "STORE_NAMING_REQUIRED";
-    if (String(settings.projectDbName ?? "").trim()) return "CONNECTION_TEST_REQUIRED";
-    return "CONFIG_REQUIRED";
+    if (settings.projectDbStatus === "FAILED") return "CONNECTION_FAILED";
+    return "READY";
   }
 
   if (settings.provider !== "POSTGRESQL") return "CONFIG_REQUIRED";
@@ -247,7 +273,7 @@ export function planningDatabaseReadinessUserDisplay(readiness: PlanningDatabase
       return {
         title: "데이터베이스 사용 여부 선택",
         detail:
-          "데이터베이스를 사용하지 않으면 JSON 샘플데이터로 구현단계를 진행합니다. 사용하면 플랫폼이 프로젝트 DB를 자동 생성합니다.",
+          "데이터베이스를 사용하지 않으면 JSON 샘플데이터로 구현단계를 진행합니다. 사용하면 플랫폼 Runtime Database 안에 프로젝트 schema가 준비됩니다.",
         level: "empty",
       };
     case "DISABLED_JSON_SAMPLE":
@@ -258,14 +284,14 @@ export function planningDatabaseReadinessUserDisplay(readiness: PlanningDatabase
       };
     case "READY":
       return {
-        title: "프로젝트 데이터베이스",
-        detail: "프로젝트 DB 준비 완료 · 구현단계 진입 시 샘플 저장소가 자동 생성됩니다.",
+        title: "프로젝트 데이터 저장소",
+        detail: "저장소 예정값 준비 완료 · Quick Design 확정 시 schema·테이블·seed가 생성됩니다.",
         level: "filled",
       };
     case "CONFIG_REQUIRED":
       return {
-        title: "프로젝트 DB 생성 필요",
-        detail: "데이터베이스 사용을 선택했습니다. 저장하면 플랫폼이 프로젝트 DB를 자동 생성합니다.",
+        title: "프로젝트 저장소 예정",
+        detail: "데이터베이스 사용을 저장하면 프로젝트 schema 예정값이 계산됩니다. Quick Design 확정 시 생성됩니다.",
         level: "partial",
       };
     case "CONNECTION_TEST_REQUIRED":
@@ -278,7 +304,7 @@ export function planningDatabaseReadinessUserDisplay(readiness: PlanningDatabase
       return {
         title: "플랫폼 확인 필요",
         detail:
-          "프로젝트 데이터베이스를 준비하지 못했습니다. 플랫폼 관리자 설정 또는 PostgreSQL 권한 확인이 필요합니다.",
+          "프로젝트 저장소를 준비하지 못했습니다. 플랫폼 관리자 설정 또는 PostgreSQL schema 생성 권한 확인이 필요합니다.",
         level: "partial",
       };
     case "STORE_NAMING_REQUIRED":
@@ -324,11 +350,11 @@ export function implementationDbSlotOverridesForPlanningPersistence(
   readonly storage_strategy: string;
   readonly migration_required: boolean;
 }> {
-  if (mode === "PROJECT_DATABASE" || mode === "POSTGRES_SAMPLE_DB") {
+  if (mode === "JYPROJECTS_SCHEMA" || mode === "PLATFORM_SCHEMA" || mode === "PROJECT_DATABASE" || mode === "POSTGRES_SAMPLE_DB") {
     return {
       data_persistence_mode: "db",
       db_required: true,
-      storage_strategy: "Platform-managed PostgreSQL project DB + Runtime API",
+      storage_strategy: `Platform Runtime Database (${JYPROJECTS_RUNTIME_DATABASE_NAME}) + project schemas + Runtime API`,
       migration_required: true,
     };
   }

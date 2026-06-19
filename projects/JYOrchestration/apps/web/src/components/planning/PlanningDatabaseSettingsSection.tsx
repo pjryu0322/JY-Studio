@@ -12,10 +12,10 @@ import {
 } from "@/lib/planning/planningDatabaseUsageMode";
 import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningDatabaseStoreNamingSync";
 import {
+  projectDatabaseSaveOutcomeMessage,
   projectDatabaseUserInlineStatusCopy,
   projectDatabaseUserSectionHeadline,
 } from "@/lib/planning/projectDatabaseUserDisplay";
-import { readProjectDatabaseLifecycleStatus } from "@/lib/planning/projectDatabaseLifecycle";
 
 type Props = Readonly<{
   readonly projectId: string;
@@ -26,12 +26,10 @@ type Props = Readonly<{
 export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoName }: Props) {
   const [settings, setSettings] = useState<PlanningDatabaseSettingsV1>(defaultPlanningDatabaseSettingsV1());
   const [busy, setBusy] = useState<"load" | "save" | null>("load");
-  const [message, setMessage] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const repoHint = String(gitRepoName ?? "").trim();
   const usageMode = resolveDatabaseUsageMode(settings);
   const dbUsageEnabled = isDatabaseUsageEnabledMode(usageMode) && settings.enabled;
-  const projectDbStatus = readProjectDatabaseLifecycleStatus(settings.projectDbStatus);
-  const showRetry = dbUsageEnabled && projectDbStatus === "FAILED";
   const inlineCopy = projectDatabaseUserInlineStatusCopy(settings);
 
   const load = useCallback(async () => {
@@ -60,7 +58,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
         settings: prev,
         gitRepoName: repoHint || null,
         projectId: projectId.trim(),
-        preserveManualStoreName: true,
+        preserveManualStoreName: false,
       }),
     );
   }, [repoHint, projectId, busy]);
@@ -72,13 +70,14 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
           settings: {
             ...prev,
             enabled: true,
-            usageMode: "ENABLED_PROJECT_DATABASE",
+            usageMode: "ENABLED_JYPROJECTS_SCHEMA",
             usageSelectionCommitted: true,
             connectionStatus: "NOT_CONFIGURED",
+            projectDbStatus: "PLANNED",
           },
           gitRepoName: repoHint || null,
           projectId: projectId.trim(),
-          preserveManualStoreName: true,
+          preserveManualStoreName: false,
         }),
       );
       return;
@@ -90,12 +89,13 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
       usageSelectionCommitted: true,
       connectionStatus: "NOT_REQUIRED",
       projectDbStatus: "NOT_REQUIRED",
+      projectDbFailureReason: null,
     }));
   };
 
   const persistSettings = async () => {
     setBusy("save");
-    setMessage(null);
+    setSaveMessage(null);
     try {
       const res = await credentialsIncludeFetch(
         `/api/projects/${encodeURIComponent(projectId.trim())}/planning/database-settings/save`,
@@ -108,18 +108,13 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
       const json = (await res.json()) as {
         success?: boolean;
         message?: string;
-        data?: {
-          settings?: PlanningDatabaseSettingsV1;
-          message?: string;
-          saved?: boolean;
-          projectDbStatus?: string;
-        };
+        data?: { settings?: PlanningDatabaseSettingsV1; message?: string };
       };
       if (json.success && json.data?.settings) {
         setSettings(json.data.settings);
-        setMessage(json.data.message ?? json.message ?? "설정이 저장되었습니다.");
+        setSaveMessage(json.data.message ?? projectDatabaseSaveOutcomeMessage(json.data.settings));
       } else {
-        setMessage(json.message ?? "저장에 실패했습니다.");
+        setSaveMessage(json.message ?? "설정을 저장하지 못했습니다. 다시 시도해 주세요.");
       }
     } finally {
       setBusy(null);
@@ -134,20 +129,11 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
       {usageMode === "UNSELECTED" ? (
         <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
           데이터베이스 사용 여부를 선택해 주세요. 사용하지 않으면 JSON 샘플데이터로 구현단계를 진행합니다. 사용하면
-          플랫폼이 프로젝트 DB를 자동으로 준비합니다.
+          플랫폼 Runtime Database(`jyprojects`) 안에 프로젝트 schema가 준비됩니다.
         </p>
       ) : null}
       {inlineCopy ? (
-        <p
-          style={{
-            margin: "0 0 12px 0",
-            fontSize: 12,
-            color: projectDbStatus === "FAILED" ? "#b45309" : "#334155",
-            lineHeight: 1.55,
-          }}
-        >
-          {inlineCopy}
-        </p>
+        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#334155", lineHeight: 1.55 }}>{inlineCopy}</p>
       ) : null}
       <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 13 }}>
         <input
@@ -159,15 +145,9 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
         데이터베이스 사용
       </label>
       {dbUsageEnabled ? (
-        <label style={{ display: "grid", gap: 4, marginBottom: 12 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>데이터베이스명</span>
-          <input
-            value={String(settings.databaseStoreName ?? "")}
-            disabled={!canEdit || busy !== null}
-            onChange={(e) => setSettings((s) => ({ ...s, databaseStoreName: e.target.value }))}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", maxWidth: 360 }}
-          />
-        </label>
+        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+          플랫폼 데이터 저장소를 사용합니다. Quick Design 확정 후 필요한 데이터 구조와 샘플데이터가 자동 생성됩니다.
+        </p>
       ) : null}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <button
@@ -186,28 +166,10 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
         >
           {busy === "save" ? "저장 중…" : "저장"}
         </button>
-        {showRetry ? (
-          <button
-            type="button"
-            disabled={!canEdit || busy !== null}
-            onClick={() => void persistSettings()}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              border: "1px solid #b45309",
-              background: "#fff",
-              color: "#b45309",
-              fontWeight: 800,
-              fontSize: 12,
-            }}
-          >
-            {busy === "save" ? "재시도 중…" : "다시 시도"}
-          </button>
-        ) : null}
       </div>
-      {message ? (
+      {saveMessage ? (
         <p style={{ marginTop: 10, fontSize: 12, color: "#334155", lineHeight: 1.5 }} role="status">
-          {message}
+          {saveMessage}
         </p>
       ) : null}
     </div>

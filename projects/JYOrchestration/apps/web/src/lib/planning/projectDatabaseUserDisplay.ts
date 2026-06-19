@@ -1,10 +1,15 @@
 import type { DatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
-import { resolveDatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
+import { isDatabaseUsageEnabledMode, resolveDatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import {
   readProjectDatabaseLifecycleStatus,
   type ProjectDatabaseLifecycleStatus,
 } from "@/lib/planning/projectDatabaseLifecycle";
+import {
+  buildProjectDatabaseStatusNotice,
+  buildSaveResultNotice,
+  readProjectDatabaseCreationFailureReason,
+} from "@/lib/planning/projectDatabaseCreationFailure";
 
 export function projectDatabaseUserStatusLabel(
   usageMode: DatabaseUsageMode,
@@ -13,9 +18,8 @@ export function projectDatabaseUserStatusLabel(
   if (usageMode === "UNSELECTED") return "선택 필요";
   if (usageMode === "DISABLED_JSON_SAMPLE") return "미사용";
 
-  if (usageMode === "ENABLED_PROJECT_DATABASE") {
+  if (isDatabaseUsageEnabledMode(usageMode)) {
     if (projectDbStatus === "CREATED") return "정상";
-    if (projectDbStatus === "CREATING") return "준비 중";
     if (projectDbStatus === "FAILED") return "플랫폼 확인 필요";
     return "준비 예정";
   }
@@ -26,15 +30,15 @@ export function projectDatabaseUserStatusLabel(
 export function projectDatabaseUserCurrentValue(
   usageMode: DatabaseUsageMode,
   projectDbStatus: ProjectDatabaseLifecycleStatus | null | undefined,
+  failureReason?: import("@/lib/planning/projectDatabaseCreationFailure").ProjectDatabaseCreationFailureReason | null,
 ): string {
   if (usageMode === "DISABLED_JSON_SAMPLE") return "JSON 샘플데이터";
   if (usageMode === "UNSELECTED") return "사용 여부 미선택";
 
-  if (usageMode === "ENABLED_PROJECT_DATABASE") {
-    if (projectDbStatus === "CREATED") return "프로젝트 DB 준비 완료";
-    if (projectDbStatus === "CREATING") return "프로젝트 DB 준비 중";
+  if (isDatabaseUsageEnabledMode(usageMode)) {
+    if (projectDbStatus === "CREATED") return "프로젝트 저장소 준비 완료";
     if (projectDbStatus === "FAILED") return "관리자 확인 필요";
-    return "프로젝트 DB 자동 준비";
+    return "프로젝트 저장소 자동 준비";
   }
 
   return "사용 여부 미선택";
@@ -46,10 +50,9 @@ export function projectDatabaseUserStatusTone(
 ): "ok" | "warn" | "fail" | "neutral" {
   if (usageMode === "DISABLED_JSON_SAMPLE") return "neutral";
   if (usageMode === "UNSELECTED") return "warn";
-  if (usageMode === "ENABLED_PROJECT_DATABASE") {
+  if (isDatabaseUsageEnabledMode(usageMode)) {
     if (projectDbStatus === "CREATED") return "ok";
     if (projectDbStatus === "FAILED") return "warn";
-    if (projectDbStatus === "CREATING") return "warn";
     return "neutral";
   }
   return "warn";
@@ -60,9 +63,10 @@ export function projectDatabaseUserDisplayFromSettings(
 ): Readonly<{ readonly status: string; readonly currentValue: string; readonly statusTone: "ok" | "warn" | "fail" | "neutral" }> {
   const usage = resolveDatabaseUsageMode(settings);
   const projectDbStatus = readProjectDatabaseLifecycleStatus(settings?.projectDbStatus);
+  const failureReason = readProjectDatabaseCreationFailureReason(settings?.projectDbFailureReason);
   return {
     status: projectDatabaseUserStatusLabel(usage, projectDbStatus),
-    currentValue: projectDatabaseUserCurrentValue(usage, projectDbStatus),
+    currentValue: projectDatabaseUserCurrentValue(usage, projectDbStatus, failureReason),
     statusTone: projectDatabaseUserStatusTone(usage, projectDbStatus),
   };
 }
@@ -74,45 +78,40 @@ export function projectDatabaseUserSectionHeadline(
   const projectDbStatus = readProjectDatabaseLifecycleStatus(settings?.projectDbStatus);
   if (usage === "UNSELECTED") return "선택 필요";
   if (usage === "DISABLED_JSON_SAMPLE") return "데이터베이스 미사용";
-  if (projectDbStatus === "CREATED") return "프로젝트 DB 준비 완료";
-  if (projectDbStatus === "CREATING") return "프로젝트 DB 준비 중";
-  if (projectDbStatus === "FAILED") return "플랫폼 확인 필요";
-  return "프로젝트 DB 자동 준비";
+  if (isDatabaseUsageEnabledMode(usage)) {
+    if (projectDbStatus === "CREATED") return "프로젝트 저장소 준비 완료";
+    if (projectDbStatus === "FAILED") return "플랫폼 확인 필요";
+    return "프로젝트 저장소 자동 준비";
+  }
+  return "프로젝트 저장소 자동 준비";
 }
 
 export function projectDatabaseUserInlineStatusCopy(
   settings: PlanningDatabaseSettingsV1 | null | undefined,
 ): string | null {
   const usage = resolveDatabaseUsageMode(settings);
-  const projectDbStatus = readProjectDatabaseLifecycleStatus(settings?.projectDbStatus);
   if (usage === "DISABLED_JSON_SAMPLE") {
     return "데이터베이스를 사용하지 않습니다. 구현단계에서는 JSON 샘플데이터로 화면과 기능 흐름을 확인합니다.";
   }
-  if (usage === "ENABLED_PROJECT_DATABASE") {
-    if (projectDbStatus === "CREATED") {
-      return "Quick Design 확정 후 필요한 테이블과 샘플데이터가 생성됩니다.";
-    }
-    if (projectDbStatus === "CREATING" || projectDbStatus === "PLANNED") {
-      return "플랫폼이 프로젝트 데이터베이스를 준비하고 있습니다.";
-    }
-    if (projectDbStatus === "FAILED") {
-      return "프로젝트 데이터베이스 준비가 지연되고 있습니다. 관리자 확인 후 다시 진행됩니다.";
-    }
-    return "플랫폼이 프로젝트 데이터베이스를 자동으로 준비합니다. Quick Design 확정 후 필요한 테이블과 샘플데이터가 생성됩니다.";
-  }
+  const notice = buildProjectDatabaseStatusNotice(settings);
+  if (notice) return notice.summary;
   return null;
 }
 
-/** Message shown immediately after a successful settings save (not DB provisioning outcome). */
+/** Message shown after save (settings vs project DB provisioning separated). */
+export function projectDatabaseSaveOutcomeMessage(settings: PlanningDatabaseSettingsV1): string {
+  return (
+    buildSaveResultNotice({
+      saved: true,
+      projectDbStatus: settings.projectDbStatus,
+      usageMode: resolveDatabaseUsageMode(settings),
+    }) ?? "설정이 저장되었습니다."
+  );
+}
+
+/** @deprecated Prefer projectDatabaseSaveOutcomeMessage after save. */
 export function projectDatabaseSaveAckMessage(settings: PlanningDatabaseSettingsV1): string {
-  const usage = resolveDatabaseUsageMode(settings);
-  if (usage === "DISABLED_JSON_SAMPLE") {
-    return "데이터베이스 미사용으로 설정되었습니다. 구현단계에서는 JSON 샘플데이터로 화면과 기능 흐름을 확인합니다.";
-  }
-  if (usage === "ENABLED_PROJECT_DATABASE") {
-    return "설정이 저장되었습니다. 프로젝트 데이터베이스는 플랫폼이 자동으로 준비합니다.";
-  }
-  return "설정이 저장되었습니다.";
+  return projectDatabaseSaveOutcomeMessage(settings);
 }
 
 /** @deprecated Use projectDatabaseSaveAckMessage after save; use projectDatabaseUserInlineStatusCopy for status area. */

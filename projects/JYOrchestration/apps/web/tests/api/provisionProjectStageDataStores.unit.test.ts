@@ -51,7 +51,7 @@ describe("provisionProjectStageDataStores", () => {
 
     expect(result.ok).toBe(true);
     expect(stagePostgresSchemaProvisioning.createPostgresSchemaIfNotExists).toHaveBeenCalledWith(
-      expect.objectContaining({ schemaName: "impl_sample" }),
+      expect.objectContaining({ schemaName: "aiproject_impl_sample" }),
     );
     expect(result.planningDataSlotsV1?.dataStoreSlot.implementationStore.lifecycleStatus).toBe("CREATED");
     expect(result.planningDataSlotsV1?.dataStoreSlot.reviewStore.lifecycleStatus).toBe("PLANNED");
@@ -85,7 +85,7 @@ describe("provisionProjectStageDataStores", () => {
     });
     expect(reviewResult.ok).toBe(true);
     expect(stagePostgresSchemaProvisioning.createPostgresSchemaIfNotExists).toHaveBeenLastCalledWith(
-      expect.objectContaining({ schemaName: "review_test" }),
+      expect.objectContaining({ schemaName: "aiproject_review_test" }),
     );
     expect(reviewResult.planningDataSlotsV1?.dataStoreSlot.reviewStore.lifecycleStatus).toBe("CREATED");
     expect(reviewResult.planningDataSlotsV1?.dataStoreSlot.implementationStore.lifecycleStatus).toBe(

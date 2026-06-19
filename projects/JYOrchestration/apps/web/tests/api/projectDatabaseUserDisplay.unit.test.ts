@@ -4,6 +4,7 @@ import {
   projectDatabaseUserStatusLabel,
   projectDatabaseUserDisplayFromSettings,
   projectDatabaseSaveAckMessage,
+  projectDatabaseSaveOutcomeMessage,
   projectDatabaseUserInlineStatusCopy,
 } from "@/lib/planning/projectDatabaseUserDisplay";
 import { parsePlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
@@ -27,7 +28,7 @@ describe("projectDatabaseUserDisplay", () => {
     );
     expect(projectDatabaseUserStatusLabel("ENABLED_PROJECT_DATABASE", "CREATED")).toBe("정상");
     expect(projectDatabaseUserCurrentValue("ENABLED_PROJECT_DATABASE", "CREATED")).toBe(
-      "프로젝트 DB 준비 완료",
+      "프로젝트 저장소 준비 완료",
     );
   });
 });
@@ -61,8 +62,26 @@ describe("prototypeEnvSettingsModalRows database row", () => {
     expect(dbRow?.currentValue).not.toBe("PostgreSQL");
   });
 
-  it("save ack does not expose provisioning failure as save failure", () => {
-    const settings = parsePlanningDatabaseSettingsV1({
+  it("save outcome reflects provisioning success and failure", () => {
+    const created = parsePlanningDatabaseSettingsV1({
+      version: 1,
+      usageSelectionCommitted: true,
+      usageMode: "ENABLED_PROJECT_DATABASE",
+      enabled: true,
+      provider: "POSTGRESQL",
+      host: "",
+      port: 5432,
+      database: "aiproject",
+      username: "",
+      password: "",
+      connectionStatus: "READY",
+      projectDbStatus: "CREATED",
+      databaseStoreName: "aiproject",
+    })!;
+    expect(projectDatabaseSaveOutcomeMessage(created)).toContain("설정이 저장되었습니다");
+    expect(projectDatabaseSaveOutcomeMessage(created)).toContain("프로젝트 저장소");
+
+    const failed = parsePlanningDatabaseSettingsV1({
       version: 1,
       usageSelectionCommitted: true,
       usageMode: "ENABLED_PROJECT_DATABASE",
@@ -75,12 +94,16 @@ describe("prototypeEnvSettingsModalRows database row", () => {
       password: "",
       connectionStatus: "FAILED",
       projectDbStatus: "FAILED",
+      projectDbFailureReason: "CREATE_DATABASE_PERMISSION_DENIED",
       databaseStoreName: "aiproject",
     })!;
-    const ack = projectDatabaseSaveAckMessage(settings);
-    expect(ack).toContain("설정이 저장되었습니다");
-    expect(ack).not.toContain("준비하지 못했습니다");
-    expect(projectDatabaseUserInlineStatusCopy(settings)).toContain("지연");
+    const outcome = projectDatabaseSaveOutcomeMessage(failed);
+    expect(outcome).toContain("설정이 저장되었습니다");
+    expect(outcome).toContain("프로젝트 저장소");
+    expect(outcome).not.toMatch(/Host|Port|Password/i);
+    expect(outcome).not.toContain("permission denied");
+    expect(projectDatabaseSaveAckMessage(failed)).toBe(outcome);
+    expect(projectDatabaseUserInlineStatusCopy(failed)).toContain("schema");
   });
 
   it("display helper matches settings", () => {
@@ -101,6 +124,6 @@ describe("prototypeEnvSettingsModalRows database row", () => {
     })!;
     const display = projectDatabaseUserDisplayFromSettings(settings);
     expect(display.status).toBe("정상");
-    expect(display.currentValue).toBe("프로젝트 DB 준비 완료");
+    expect(display.currentValue).toBe("프로젝트 저장소 준비 완료");
   });
 });
