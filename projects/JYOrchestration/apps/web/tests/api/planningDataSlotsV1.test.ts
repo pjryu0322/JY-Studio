@@ -39,6 +39,9 @@ describe("planningDataSlotsV1", () => {
       definitions: [],
     });
     expect(draft.dataStoreSlot.implementationStore.schemaName).toBe("doitmeet_impl_sample");
+    expect(draft.dataStoreSlot.implementationStore.lifecycleStatus).toBe("PLANNED");
+    expect(draft.dataStoreSlot.reviewStore.lifecycleStatus).toBe("PLANNED");
+    expect(draft.dataStoreSlot.projectDataStoreNameStatus).toBe("PLANNED");
     expect(parsePlanningDataSlotsV1(draft)?.dataStoreSlot.provider).toBe("POSTGRESQL");
     const rows = planningDataSlotSummaryRows(draft);
     expect(rows.length).toBe(4);
@@ -90,6 +93,32 @@ describe("planningDataSlotsV1", () => {
     expect(draft.dataStoreSlot.databaseReadiness).toBe("READY");
     expect(draft.dataStoreSlot.status).toBe("CONFIRMED");
     expect(draft.dataStoreSlot.blockingReason).toBeUndefined();
+  });
+
+  it("marks stage stores NOT_REQUIRED when JSON sample mode is selected", () => {
+    const settings = parsePlanningDatabaseSettingsV1({
+      version: 1,
+      usageSelectionCommitted: true,
+      usageMode: "DISABLED_JSON_SAMPLE",
+      enabled: false,
+      provider: "POSTGRESQL",
+      host: "",
+      port: 5432,
+      database: "",
+      username: "",
+      password: "",
+      connectionStatus: "NOT_CONFIGURED",
+      repositoryName: "app",
+    })!;
+    const draft = buildPlanningDataSlotsDraft({
+      repositoryName: "app",
+      orchestration: null,
+      definitions: [],
+      planningDatabaseSettings: settings,
+    });
+    expect(draft.dataStoreSlot.implementationStore.lifecycleStatus).toBe("NOT_REQUIRED");
+    expect(draft.dataStoreSlot.reviewStore.lifecycleStatus).toBe("NOT_REQUIRED");
+    expect(draft.dataStoreSlot.projectDataStoreNameStatus).toBe("NOT_REQUIRED");
   });
 
   it("preserves stored implementationDataPlan on parse", () => {

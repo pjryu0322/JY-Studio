@@ -13,7 +13,13 @@ import {
   type QuickDesignConfirmFlowResult,
 } from "@/lib/requirements/quickDesignConfirmFlow";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
-import { loadPlanningDatabaseSettingsForProject } from "@/lib/planning/planningDatabaseSettingsService";
+import {
+  loadPlanningDatabaseSettingsForProject,
+  resolvePlanningPostgresPassword,
+} from "@/lib/planning/planningDatabaseSettingsService";
+import {
+  provisionImplementationSampleStore,
+} from "@/lib/planning/provisionProjectStageDataStores";
 import { prisma } from "@/lib/prisma";
 import { resolveQuickDesignLlmServerContext } from "@/lib/prototype/resolveProjectCodeTaskRefinementSettings.server";
 
@@ -140,5 +146,62 @@ export async function runQuickDesignConfirmOnServer(
   if (flowResult.kind === "blocked") {
     return { success: false, message: flowResult.message };
   }
-  return { success: true, mode: "planning", flow: flowResult };
+
+  let flow = flowResult;
+  const handoff = flowResult.prep.planningHandoffForImplementationV1;
+  if (
+    flowResult.prep.prepComplete &&
+    handoff?.implementationDataPlan.dataPersistenceMode === "POSTGRES_SAMPLE_DB"
+  ) {
+    const provisionNow = new Date().toISOString();
+    const [password] = await Promise.all([resolvePlanningPostgresPassword(projectId)]);
+    const provision = await provisionImplementationSampleStore({
+      projectId,
+      planningDataSlotsV1: flowResult.statePatch.planningDataSlotsV1 ?? null,
+      settings: dbSettings,
+      password,
+      nowIso: provisionNow,
+    });
+    if (provision.planningDataSlotsV1) {
+      flow = {
+        ...flowResult,
+        statePatch: {
+          ...flowResult.statePatch,
+          planningDataSlotsV1: provision.planningDataSlotsV1,
+        },
+        timelineEntries: provision.timelineEntry
+          ? [...flowResult.timelineEntries, provision.timelineEntry]
+          : flowResult.timelineEntries,
+      };
+    }
+    if (!provision.ok) {
+      return {
+        success: false,
+        message: `구현단계 샘플 저장소 생성에 실패했습니다. ${provision.message}`,
+      };
+    }
+    try {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { requirementsStateJson: true },
+      });
+      const parsed = parseRequirementsStateJson(project?.requirementsStateJson);
+      const merged = {
+        ...parsed,
+        ...flow.statePatch,
+        promptTimeline: [
+          ...(parsed.promptTimeline ?? []),
+          ...(flow.timelineEntries ?? []),
+        ],
+      };
+      await prisma.project.update({
+        where: { id: projectId },
+        data: { requirementsStateJson: merged as object },
+      });
+    } catch {
+      // confirm response still returns flow patch to client
+    }
+  }
+
+  return { success: true, mode: "planning", flow };
 }

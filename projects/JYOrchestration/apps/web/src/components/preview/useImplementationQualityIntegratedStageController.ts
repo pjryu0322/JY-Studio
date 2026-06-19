@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { parseCodeTaskExecutionRunsV1 } from "@/lib/prototype/codeTaskExecutionRun";
 import {
   buildImplementationExecutionBoardFromRequirementsState,
@@ -213,6 +214,17 @@ export function useImplementationQualityIntegratedStageController(
           return { outcome: "blocked", message: integration.message };
         }
         previewScopePatch = { implementationPreviewScopeV1: integration.previewScope };
+      }
+
+      if (step === "integrated_review") {
+        void credentialsIncludeFetch(
+          `/api/projects/${encodeURIComponent(pid)}/planning/stage-data-store/provision`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ target: "review" }),
+          },
+        ).catch(() => undefined);
       }
 
       const prior = input.parsedRequirementsState.implementationIntegratedExecutionStateV1;

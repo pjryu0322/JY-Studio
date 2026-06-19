@@ -32,6 +32,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<"load" | "save" | "test" | null>("load");
   const [message, setMessage] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const repoHint = String(gitRepoName ?? "").trim();
   const usageMode = resolveDatabaseUsageMode(settings);
   const postgresFieldsEnabled = usageMode === "ENABLED_POSTGRESQL" && settings.enabled;
@@ -161,6 +162,18 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
       <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b" }}>
         상태: {formatConnectionStatusLabel(settings)}
       </p>
+      {usageMode === "DISABLED_JSON_SAMPLE" ? (
+        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#334155", lineHeight: 1.55 }}>
+          데이터베이스 미사용 상태입니다. 구현단계에서는 JSON 샘플데이터를 생성합니다. PostgreSQL 저장소는
+          생성되지 않습니다.
+        </p>
+      ) : postgresFieldsEnabled ? (
+        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
+          저장소명은 예정값입니다. 실제 저장소는 단계 전환 시 자동 생성됩니다. 구현단계 샘플 저장소는
+          구현준비 또는 구현단계 진입 시, 검토단계 테스트 저장소는 구현단계 완료 후 검토단계 전환 시
+          생성됩니다.
+        </p>
+      ) : null}
       <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 13 }}>
         <input
           type="checkbox"
@@ -251,9 +264,33 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
           />
         </label>
-        {storeNameField("프로젝트 데이터 저장소명", "databaseStoreName")}
-        {storeNameField("구현단계 샘플 저장소", "implementationSchemaName")}
-        {storeNameField("검토단계 테스트 저장소", "reviewSchemaName")}
+        {postgresFieldsEnabled ? storeNameField("프로젝트 데이터 저장소명 예정값", "databaseStoreName") : null}
+        {postgresFieldsEnabled ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((v) => !v)}
+              style={{
+                justifySelf: "start",
+                padding: 0,
+                border: "none",
+                background: "transparent",
+                color: "#2563eb",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {advancedOpen ? "고급 설정 접기" : "고급 설정 펼치기 · 자동 생성 예정 저장소명"}
+            </button>
+            {advancedOpen ? (
+              <>
+                {storeNameField("구현단계 샘플 저장소명 예정값", "implementationSchemaName")}
+                {storeNameField("검토단계 테스트 저장소명 예정값", "reviewSchemaName")}
+              </>
+            ) : null}
+          </>
+        ) : null}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <button

@@ -19,6 +19,11 @@ import {
 } from "@/lib/planning/planningDbPersistencePolicy";
 import type { ProjectDataStoreNaming } from "@/lib/planning/projectDataStoreNaming";
 import { buildProjectDataStoreNaming } from "@/lib/planning/projectDataStoreNaming";
+import {
+  readDataStoreLifecycleStatus,
+  resolvePlanningStageStoreLifecycle,
+  type DataStoreLifecycleStatus,
+} from "@/lib/planning/stageDataStoreLifecycle";
 import { findOrchestrationSlotKeysBySuffix, findSlotRow } from "@/lib/requirements/singleChatSlotNextAction";
 import type {
   RequirementsSingleChatOrchestrationStateV1,
@@ -44,6 +49,17 @@ export type PlanningDataFieldType =
   | "json";
 
 export type { PlanningDatabaseReadinessV1 } from "@/lib/planning/planningDbPersistencePolicy";
+export type { DataStoreLifecycleStatus } from "@/lib/planning/stageDataStoreLifecycle";
+
+export type StageDataStoreSlotDescriptorV1 = Readonly<{
+  readonly mode: "SAMPLE_DB" | "TEST_DB";
+  readonly displayName: string;
+  readonly schemaName?: string;
+  readonly description: string;
+  readonly lifecycleStatus?: DataStoreLifecycleStatus;
+  readonly createdAt?: string | null;
+  readonly errorMessage?: string | null;
+}>;
 
 export type DataStoreSlotV1 = Readonly<{
   readonly status: PlanningDataSlotStatus;
@@ -52,17 +68,25 @@ export type DataStoreSlotV1 = Readonly<{
   readonly enabled: boolean;
   readonly repositoryName?: string;
   readonly normalizedBaseName?: string;
+  readonly projectDataStoreName?: string;
+  readonly projectDataStoreNameStatus?: DataStoreLifecycleStatus;
   readonly implementationStore: Readonly<{
     readonly mode: "SAMPLE_DB";
     readonly displayName: string;
     readonly schemaName?: string;
     readonly description: string;
+    readonly lifecycleStatus?: DataStoreLifecycleStatus;
+    readonly createdAt?: string | null;
+    readonly errorMessage?: string | null;
   }>;
   readonly reviewStore: Readonly<{
     readonly mode: "TEST_DB";
     readonly displayName: string;
     readonly schemaName?: string;
     readonly description: string;
+    readonly lifecycleStatus?: DataStoreLifecycleStatus;
+    readonly createdAt?: string | null;
+    readonly errorMessage?: string | null;
   }>;
   readonly productionStore: Readonly<{
     readonly mode: "NOT_CONFIGURED" | "SEPARATE_PRODUCTION_DB" | "SEPARATE_SCHEMA";
@@ -292,7 +316,7 @@ export function parsePlanningDataSlotsV1(raw: unknown): PlanningDataSlotsV1 | nu
     dataStoreSlot: {
       status: readStatus(storeRaw.status),
       databaseReadiness: parsedReadiness ?? "BLOCKED_DATABASE_REQUIRED",
-      provider: "POSTGRESQL",
+      provider: storeRaw.provider === "NONE" ? "NONE" : "POSTGRESQL",
       enabled: Boolean(storeRaw.enabled),
       ...(String(storeRaw.repositoryName ?? "").trim()
         ? { repositoryName: String(storeRaw.repositoryName).trim().slice(0, 200) }
@@ -300,21 +324,45 @@ export function parsePlanningDataSlotsV1(raw: unknown): PlanningDataSlotsV1 | nu
       ...(String(storeRaw.normalizedBaseName ?? "").trim()
         ? { normalizedBaseName: String(storeRaw.normalizedBaseName).trim().slice(0, 80) }
         : {}),
+      ...(String(storeRaw.projectDataStoreName ?? "").trim()
+        ? { projectDataStoreName: String(storeRaw.projectDataStoreName).trim().slice(0, 80) }
+        : {}),
+      ...(readDataStoreLifecycleStatus(storeRaw.projectDataStoreNameStatus)
+        ? { projectDataStoreNameStatus: readDataStoreLifecycleStatus(storeRaw.projectDataStoreNameStatus)! }
+        : {}),
       implementationStore: {
         mode: "SAMPLE_DB",
-        displayName: String(implRaw.displayName ?? "구현단계 샘플 데이터 저장소").trim().slice(0, 200),
+        displayName: String(implRaw.displayName ?? "구현단계 샘플 저장소 (예정)").trim().slice(0, 200),
         ...(String(implRaw.schemaName ?? "").trim()
           ? { schemaName: String(implRaw.schemaName).trim().slice(0, 80) }
           : {}),
         description: String(implRaw.description ?? "").trim().slice(0, 500),
+        ...(readDataStoreLifecycleStatus(implRaw.lifecycleStatus)
+          ? { lifecycleStatus: readDataStoreLifecycleStatus(implRaw.lifecycleStatus)! }
+          : {}),
+        ...(String(implRaw.createdAt ?? "").trim()
+          ? { createdAt: String(implRaw.createdAt).trim().slice(0, 80) }
+          : {}),
+        ...(String(implRaw.errorMessage ?? "").trim()
+          ? { errorMessage: String(implRaw.errorMessage).trim().slice(0, 500) }
+          : {}),
       },
       reviewStore: {
         mode: "TEST_DB",
-        displayName: String(reviewRaw.displayName ?? "검토단계 테스트 데이터 저장소").trim().slice(0, 200),
+        displayName: String(reviewRaw.displayName ?? "검토단계 테스트 저장소 (예정)").trim().slice(0, 200),
         ...(String(reviewRaw.schemaName ?? "").trim()
           ? { schemaName: String(reviewRaw.schemaName).trim().slice(0, 80) }
           : {}),
         description: String(reviewRaw.description ?? "").trim().slice(0, 500),
+        ...(readDataStoreLifecycleStatus(reviewRaw.lifecycleStatus)
+          ? { lifecycleStatus: readDataStoreLifecycleStatus(reviewRaw.lifecycleStatus)! }
+          : {}),
+        ...(String(reviewRaw.createdAt ?? "").trim()
+          ? { createdAt: String(reviewRaw.createdAt).trim().slice(0, 80) }
+          : {}),
+        ...(String(reviewRaw.errorMessage ?? "").trim()
+          ? { errorMessage: String(reviewRaw.errorMessage).trim().slice(0, 500) }
+          : {}),
       },
       productionStore: {
         mode:
@@ -338,7 +386,10 @@ export function parsePlanningDataSlotsV1(raw: unknown): PlanningDataSlotsV1 | nu
     },
     sampleDataSlot: {
       status: readStatus(sampleRaw.status),
-      seedMode: "AI_GENERATED_SAMPLE_DB",
+      seedMode:
+        String(sampleRaw.seedMode ?? "").trim() === "AI_GENERATED_JSON"
+          ? "AI_GENERATED_JSON"
+          : "AI_GENERATED_SAMPLE_DB",
       resettable: sampleRaw.resettable !== false,
       entities: sampleEntities,
     },
@@ -505,6 +556,17 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
     : resolvePlanningDatabaseBlockingReasonForReadiness(databaseReadiness, settings);
   const settingsActionLabel = planningDatabaseSettingsActionLabel(databaseReadiness);
 
+  const priorStore = prior?.dataStoreSlot;
+  const implLifecycle = resolvePlanningStageStoreLifecycle({
+    jsonSampleMode: jsonSample,
+    priorStatus: priorStore?.implementationStore.lifecycleStatus ?? null,
+  });
+  const reviewLifecycle = resolvePlanningStageStoreLifecycle({
+    jsonSampleMode: jsonSample,
+    priorStatus: priorStore?.reviewStore.lifecycleStatus ?? null,
+  });
+  const projectStoreLifecycle: DataStoreLifecycleStatus = jsonSample ? "NOT_REQUIRED" : "PLANNED";
+
   const dataStoreSlot: DataStoreSlotV1 = {
     status: dbReady || jsonSample ? "CONFIRMED" : "NEEDS_REVIEW",
     databaseReadiness,
@@ -512,17 +574,23 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
     enabled: dbReady,
     repositoryName: naming.repositoryName,
     normalizedBaseName: naming.normalizedBaseName,
+    projectDataStoreName: naming.normalizedBaseName,
+    projectDataStoreNameStatus: projectStoreLifecycle,
     implementationStore: {
       mode: "SAMPLE_DB",
-      displayName: "구현단계 샘플 데이터 저장소",
+      displayName: "구현단계 샘플 저장소 (예정)",
       schemaName: naming.implementationSchemaName,
-      description: "구현단계에서는 샘플 데이터 저장소를 사용합니다. Preview에서 등록·조회·수정·삭제를 확인합니다.",
+      lifecycleStatus: implLifecycle,
+      description:
+        "구현준비 또는 구현단계 진입 시 PostgreSQL 스키마로 생성됩니다. 기획단계에서는 예정값만 계산합니다.",
     },
     reviewStore: {
       mode: "TEST_DB",
-      displayName: "검토단계 테스트 데이터 저장소",
+      displayName: "검토단계 테스트 저장소 (예정)",
       schemaName: naming.reviewSchemaName,
-      description: "검토단계에서는 테스트 데이터 저장소를 사용합니다.",
+      lifecycleStatus: reviewLifecycle,
+      description:
+        "구현단계 완료 후 검토단계 전환 시 생성됩니다. 기획단계에서는 예정값만 계산합니다.",
     },
     productionStore: {
       mode: "NOT_CONFIGURED",
