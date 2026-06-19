@@ -149,6 +149,23 @@ function RowHelpPopover({ rowKey }: { readonly rowKey: PrototypeEnvModalRowKey }
     );
   }
 
+  if (rowKey === "database") {
+    return (
+      <>
+        <HelpTitle>데이터베이스 사용</HelpTitle>
+        <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.55 }}>
+          체크하면 Quick Design 확정 후 플랫폼 데이터 저장소에 프로젝트 schema·샘플데이터가 생성됩니다. 해제하면 JSON
+          샘플데이터로 구현단계를 진행합니다.
+        </div>
+        <HelpSubTitle>확인할 것</HelpSubTitle>
+        <HelpList>
+          <li>PostgreSQL 접속 정보는 프로젝트 사용자가 입력하지 않습니다.</li>
+          <li>schema 생성은 Quick Design 확정 시점에 수행됩니다.</li>
+        </HelpList>
+      </>
+    );
+  }
+
   if (rowKey === "cursor") {
     return (
       <>
@@ -170,6 +187,11 @@ export function PrototypeEnvSettingsModalLayout(input: {
   readonly detail: ReactNode;
   readonly belowTable?: ReactNode;
   readonly footer: ReactNode;
+  readonly databaseUsage?: Readonly<{
+    readonly checked: boolean;
+    readonly disabled: boolean;
+    readonly onChange: (enabled: boolean) => void;
+  }>;
 }) {
   const [openHelpKey, setOpenHelpKey] = useState<PrototypeEnvModalRowKey | null>(null);
   const [helpPlacement, setHelpPlacement] = useState<HelpPopoverPlacement | null>(null);
@@ -303,6 +325,8 @@ export function PrototypeEnvSettingsModalLayout(input: {
               {input.rows.map((row) => {
                 const colors = prototypeEnvReadinessToneColors(row.statusTone);
                 const selected = input.selectedRow === row.key;
+                const isDatabaseRow = row.key === "database";
+                const dbUsage = input.databaseUsage;
                 return (
                   <tr
                     key={row.key}
@@ -327,49 +351,118 @@ export function PrototypeEnvSettingsModalLayout(input: {
                     <td style={{ padding: "10px" }}>
                       <span style={{ fontWeight: 800, color: colors.color }}>{row.status}</span>
                     </td>
-                    <td
-                      style={{
-                        padding: "10px",
-                        color: "#475569",
-                        maxWidth: 220,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                      title={row.currentValue}
-                    >
-                      {row.currentValue}
-                    </td>
-                    <td style={{ padding: "10px" }}>
-                      <button
-                        type="button"
-                        ref={(el) => {
-                          triggerRefs.current[row.key] = el;
-                        }}
-                        aria-label={`${row.label} 도움말`}
-                        aria-expanded={openHelpKey === row.key}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setOpenHelpKey((prev) => (prev === row.key ? null : row.key));
-                        }}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        data-prototype-env-help-trigger
-                        style={{
-                          width: 24,
-                          height: 24,
-                          borderRadius: 999,
-                          border: "1px solid #cbd5e1",
-                          background: openHelpKey === row.key ? "#f1f5f9" : "#fff",
-                          color: "#475569",
-                          fontWeight: 900,
-                          fontSize: 12,
-                          lineHeight: 1,
-                          cursor: "pointer",
-                        }}
-                      >
-                        ?
-                      </button>
-                    </td>
+                    {isDatabaseRow && dbUsage ? (
+                      <td colSpan={2} style={{ padding: "10px" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            minWidth: 0,
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
+                          <label
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              fontSize: 13,
+                              color: "#334155",
+                              cursor: dbUsage.disabled ? "default" : "pointer",
+                              flex: "1 1 auto",
+                              minWidth: 0,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={dbUsage.checked}
+                              disabled={dbUsage.disabled}
+                              data-testid="prototype-env-database-usage-checkbox"
+                              onChange={(e) => dbUsage.onChange(e.target.checked)}
+                            />
+                            <span style={{ fontWeight: 600 }}>데이터베이스 사용</span>
+                          </label>
+                          <button
+                            type="button"
+                            ref={(el) => {
+                              triggerRefs.current[row.key] = el;
+                            }}
+                            aria-label={`${row.label} 도움말`}
+                            aria-expanded={openHelpKey === row.key}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenHelpKey((prev) => (prev === row.key ? null : row.key));
+                            }}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            data-prototype-env-help-trigger
+                            style={{
+                              width: 24,
+                              height: 24,
+                              flexShrink: 0,
+                              borderRadius: 999,
+                              border: "1px solid #cbd5e1",
+                              background: openHelpKey === row.key ? "#f1f5f9" : "#fff",
+                              color: "#475569",
+                              fontWeight: 900,
+                              fontSize: 12,
+                              lineHeight: 1,
+                              cursor: "pointer",
+                            }}
+                          >
+                            ?
+                          </button>
+                        </div>
+                      </td>
+                    ) : (
+                      <>
+                        <td
+                          style={{
+                            padding: "10px",
+                            color: "#475569",
+                            maxWidth: 220,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={row.currentValue}
+                        >
+                          {row.currentValue}
+                        </td>
+                        <td style={{ padding: "10px" }}>
+                          <button
+                            type="button"
+                            ref={(el) => {
+                              triggerRefs.current[row.key] = el;
+                            }}
+                            aria-label={`${row.label} 도움말`}
+                            aria-expanded={openHelpKey === row.key}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenHelpKey((prev) => (prev === row.key ? null : row.key));
+                            }}
+                            onKeyDown={(e) => e.stopPropagation()}
+                            data-prototype-env-help-trigger
+                            style={{
+                              width: 24,
+                              height: 24,
+                              borderRadius: 999,
+                              border: "1px solid #cbd5e1",
+                              background: openHelpKey === row.key ? "#f1f5f9" : "#fff",
+                              color: "#475569",
+                              fontWeight: 900,
+                              fontSize: 12,
+                              lineHeight: 1,
+                              cursor: "pointer",
+                            }}
+                          >
+                            ?
+                          </button>
+                        </td>
+                      </>
+                    )}
                   </tr>
                 );
               })}

@@ -7,6 +7,7 @@ import {
 import { isGithubTokenCredentialsError } from "@/lib/project/prototypeEnvSettingsReadiness";
 import type { PrototypeEnvReadinessTone } from "@/lib/project/prototypeEnvSettingsReadiness";
 import { parsePlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
+import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import { projectDatabaseUserDisplayFromSettings } from "@/lib/planning/projectDatabaseUserDisplay";
 
 export type PrototypeEnvModalRowKey = "repo" | "token" | "cursor" | "database";
@@ -21,6 +22,7 @@ export type PrototypeEnvModalTableRow = Readonly<{
 
 export function buildPrototypeEnvModalTableRows(input: {
   readonly executionSetup: ExecutionSetupDto | null;
+  readonly planningDatabaseSettings?: PlanningDatabaseSettingsV1 | null;
 }): readonly PrototypeEnvModalTableRow[] {
   const es = input.executionSetup;
   const repoName = String(es?.gitRepoName ?? "").trim();
@@ -91,7 +93,9 @@ export function buildPrototypeEnvModalTableRows(input: {
       key: "database",
       label: "데이터베이스",
       ...(() => {
-        const db = parsePlanningDatabaseSettingsV1(es?.planningDatabaseSettingsJson ?? null);
+        const db =
+          input.planningDatabaseSettings ??
+          parsePlanningDatabaseSettingsV1(es?.planningDatabaseSettingsJson ?? null);
         const display = projectDatabaseUserDisplayFromSettings(db);
         return {
           status: display.status,

@@ -239,15 +239,7 @@ export function buildProjectDatabaseStatusNotice(
     };
   }
   if (status === "PLANNED" || status === "CREATING") {
-    return {
-      headline: "프로젝트 저장소 자동 준비",
-      summary:
-        "플랫폼 데이터 저장소를 사용합니다. Quick Design 확정 후 jyprojects에 프로젝트 schema·테이블·seed가 생성됩니다.",
-      detail: null,
-      showActionGuide: false,
-      retryable: false,
-      failureReason: null,
-    };
+    return null;
   }
   if (status === "FAILED") {
     const failureReason = readProjectDatabaseCreationFailureReason(settings?.projectDbFailureReason) ?? "UNKNOWN";

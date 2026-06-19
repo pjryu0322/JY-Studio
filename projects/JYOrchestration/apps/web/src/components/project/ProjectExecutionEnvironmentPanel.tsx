@@ -23,6 +23,11 @@ import { ProjectIntegrationOverridesPanel } from "@/components/project/ProjectIn
 import { AutoGenerationSplitPreflightPanel } from "@/components/settings/AutoGenerationSplitPreflightPanel";
 import { postAutoGenerationTestConnection } from "@/components/project-spec/api";
 import { PlanningDatabaseSettingsSection } from "@/components/planning/PlanningDatabaseSettingsSection";
+import { usePlanningDatabaseSettings } from "@/components/planning/usePlanningDatabaseSettings";
+import {
+  isDatabaseUsageEnabledMode,
+  resolveDatabaseUsageMode,
+} from "@/lib/planning/planningDatabaseUsageMode";
 import { resolveAutoGenerationSettingsConnectionState } from "@/lib/prototype/autoGenerationSettingsState";
 import {
   mergeConnectionTestPreservingEnvcheckEvidence,
@@ -1075,10 +1080,25 @@ export function ProjectExecutionEnvironmentPanel({
     return false;
   }, [envTestLast]);
 
+  const planningDb = usePlanningDatabaseSettings({
+    projectId,
+    gitRepoName: executionSetup?.gitRepoName ?? null,
+    onSettingsSaved: () => {
+      void loadExecutionSetup();
+    },
+  });
+
   const modalTableRows = useMemo(
-    () => buildPrototypeEnvModalTableRows({ executionSetup }),
-    [executionSetup],
+    () =>
+      buildPrototypeEnvModalTableRows({
+        executionSetup,
+        planningDatabaseSettings: planningDb.settings,
+      }),
+    [executionSetup, planningDb.settings],
   );
+
+  const prototypeEnvDatabaseUsageChecked =
+    isDatabaseUsageEnabledMode(resolveDatabaseUsageMode(planningDb.settings)) && planningDb.settings.enabled;
 
   const autoGenConnectionState = useMemo(
     () => resolveAutoGenerationSettingsConnectionState(executionSetup),
@@ -2658,13 +2678,7 @@ export function ProjectExecutionEnvironmentPanel({
       );
     }
     if (selectedModalRow === "database") {
-      return (
-        <PlanningDatabaseSettingsSection
-          projectId={projectId}
-          canEdit={canEdit}
-          gitRepoName={executionSetup?.gitRepoName ?? null}
-        />
-      );
+      return <PlanningDatabaseSettingsSection planningDb={planningDb} />;
     }
     if (selectedModalRow === "cursor") {
       return (
@@ -2709,6 +2723,13 @@ export function ProjectExecutionEnvironmentPanel({
           rows={modalTableRows}
           selectedRow={selectedModalRow}
           onSelectRow={setSelectedModalRow}
+          databaseUsage={{
+            checked: prototypeEnvDatabaseUsageChecked,
+            disabled: !canEdit || planningDb.busy !== null,
+            onChange: (enabled) => {
+              void planningDb.setDatabaseUsageEnabled(enabled);
+            },
+          }}
           belowTable={
             <AutoGenerationSplitPreflightPanel
               connectionTest={displayedConnectionTest}
