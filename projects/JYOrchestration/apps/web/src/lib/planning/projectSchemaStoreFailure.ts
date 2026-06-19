@@ -44,7 +44,9 @@ export function classifyProjectSchemaStoreFailure(rawError: string): ProjectSche
   if (
     msg.includes("permission denied for schema") ||
     msg.includes("permission denied to create schema") ||
-    msg.includes("create schema") && msg.includes("permission")
+    (msg.includes("create schema") && msg.includes("permission")) ||
+    msg.includes("permission denied to create database") ||
+    (msg.includes("createdb") && msg.includes("permission"))
   ) {
     return "CREATE_SCHEMA_PERMISSION_DENIED";
   }

@@ -29,7 +29,7 @@ export function readyPlatformSchemaSettings(overrides: Record<string, unknown> =
     platformManagementDatabaseName: JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME,
     generatedProjectDataDatabaseName: JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
     runtimeDatabaseName: JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
-    projectDbStatus: "PLANNED",
+    dataStoreStatus: "PLANNED",
     implementationSchemaName: "aiproject_impl_sample",
     reviewSchemaName: "aiproject_review_test",
     ...overrides,
@@ -62,7 +62,7 @@ describe("planningDatabaseStoreNamingSync", () => {
     expect(synced.reviewSchemaName).toBe("aiproject_review_test");
     expect(synced.generatedProjectDataDatabaseName).toBe("jyprojects");
     expect(synced.platformManagementDatabaseName).toBe("jyorchestration");
-    expect(synced.projectDbStatus).toBe("PLANNED");
+    expect(synced.dataStoreStatus).toBe("PLANNED");
   });
 });
 
@@ -76,7 +76,7 @@ describe("jyprojects runtime schema policy", () => {
 
   it("blocks when schema plan failed", () => {
     const mode = resolvePlanningDataPersistenceMode({
-      planningDatabaseSettings: readyPlatformSchemaSettings({ projectDbStatus: "FAILED" }),
+      planningDatabaseSettings: readyPlatformSchemaSettings({ dataStoreStatus: "FAILED" }),
     });
     expect(mode).toBe("BLOCKED_SCHEMA_REQUIRED");
   });

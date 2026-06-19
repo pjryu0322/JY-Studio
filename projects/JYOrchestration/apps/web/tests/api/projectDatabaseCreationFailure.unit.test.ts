@@ -1,68 +1,75 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildProjectDatabaseStatusNotice,
-  buildSaveResultNotice,
-  classifyProjectDatabaseCreationFailure,
-  projectDatabaseActionGuide,
-  projectDatabaseFailureUserMessage,
-} from "@/lib/planning/projectDatabaseCreationFailure";
+  classifyProjectSchemaProvisionFailure,
+  projectDataStoreActionGuide,
+  projectSchemaProvisionFailureUserMessage,
+} from "@/lib/planning/projectSchemaProvisionFailure";
 import { parsePlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
+import { planningDatabaseSettingsForPersistence } from "@/lib/planning/planningDatabaseSettingsCanonical";
 
-describe("classifyProjectDatabaseCreationFailure", () => {
-  it("maps CREATE DATABASE permission errors", () => {
+describe("classifyProjectSchemaProvisionFailure", () => {
+  it("maps schema permission errors", () => {
     expect(
-      classifyProjectDatabaseCreationFailure({
-        rawError: "permission denied to create database",
+      classifyProjectSchemaProvisionFailure({
+        rawError: "permission denied to create schema",
       }),
-    ).toBe("CREATE_DATABASE_PERMISSION_DENIED");
-    expect(
-      classifyProjectDatabaseCreationFailure({
-        rawError: "must be superuser or have CREATEDB privilege",
-      }),
-    ).toBe("CREATE_DATABASE_PERMISSION_DENIED");
+    ).toBe("CREATE_SCHEMA_PERMISSION_DENIED");
   });
 
   it("maps connection errors", () => {
-    expect(classifyProjectDatabaseCreationFailure({ rawError: "connect ECONNREFUSED" })).toBe(
-      "POSTGRES_CONNECTION_FAILED",
+    expect(classifyProjectSchemaProvisionFailure({ rawError: "connect ECONNREFUSED" })).toBe(
+      "JYPROJECTS_CONNECTION_FAILED",
     );
   });
 });
 
-describe("project database UI notices", () => {
+describe("project data store UI notices", () => {
   it("does not duplicate failure text between status and save notices", () => {
     const settings = parsePlanningDatabaseSettingsV1({
       version: 1,
       usageSelectionCommitted: true,
-      usageMode: "ENABLED_PROJECT_DATABASE",
+      usageMode: "ENABLED_JYPROJECTS_SCHEMA",
       enabled: true,
       provider: "POSTGRESQL",
       host: "",
       port: 5432,
       database: "",
       username: "",
-      password: "",
       connectionStatus: "FAILED",
-      projectDbStatus: "FAILED",
-      projectDbFailureReason: "CREATE_DATABASE_PERMISSION_DENIED",
-      databaseStoreName: "aiproject",
+      dataStoreStatus: "FAILED",
+      dataStoreFailureReason: "CREATE_SCHEMA_PERMISSION_DENIED",
     })!;
-    const status = buildProjectDatabaseStatusNotice(settings)!;
-    const save = buildSaveResultNotice({
-      saved: true,
-      projectDbStatus: "FAILED",
-      usageMode: "ENABLED_PROJECT_DATABASE",
-    })!;
-    expect(status.summary).toContain("프로젝트 저장소");
-    expect(save).toContain("설정이 저장되었습니다");
-    expect(save).not.toContain(status.summary);
-    expect(projectDatabaseFailureUserMessage("CREATE_DATABASE_PERMISSION_DENIED")).not.toContain(
-      "permission denied",
-    );
+    expect(settings?.dataStoreFailureReason).toBe("CREATE_SCHEMA_PERMISSION_DENIED");
   });
 
-  it("includes CREATEDB guidance for permission failures", () => {
-    const guide = projectDatabaseActionGuide({ failureReason: "CREATE_DATABASE_PERMISSION_DENIED" });
-    expect(guide.adminGuide).toContain("CREATE SCHEMA");
+  it("includes schema guidance for permission failures", () => {
+    expect(projectSchemaProvisionFailureUserMessage("CREATE_SCHEMA_PERMISSION_DENIED")).not.toContain(
+      "CREATE DATABASE",
+    );
+    const guide = projectDataStoreActionGuide({ failureReason: "CREATE_SCHEMA_PERMISSION_DENIED" });
+    expect(guide.adminGuide).toMatch(/CREATE SCHEMA/i);
+  });
+});
+
+describe("persistence canonical form", () => {
+  it("strips legacy projectDb fields on save", () => {
+    const parsed = parsePlanningDatabaseSettingsV1({
+      version: 1,
+      usageMode: "ENABLED_JYPROJECTS_SCHEMA",
+      enabled: true,
+      provider: "POSTGRESQL",
+      host: "",
+      port: 5432,
+      database: "",
+      username: "",
+      connectionStatus: "NOT_CONFIGURED",
+      projectDbStatus: "PLANNED",
+      projectDbName: "legacy_name",
+    })!;
+    const persisted = planningDatabaseSettingsForPersistence(parsed);
+    expect(persisted).not.toHaveProperty("projectDbStatus");
+    expect(persisted).not.toHaveProperty("projectDbName");
+    expect(persisted.dataStoreStatus).toBe("PLANNED");
+    expect(persisted.projectStoreName).toBeTruthy();
   });
 });

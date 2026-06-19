@@ -207,7 +207,7 @@ describe("quickDesignConfirmFlow", () => {
     expect(result.prep.planningHandoffForImplementationV1?.implementationDataPlan.useSampleDb).toBe(true);
     expect(result.prep.planningHandoffForImplementationV1?.implementationDataPlan.useRuntimeApi).toBe(true);
     expect(result.statePatch.planningHandoffForImplementationV1?.implementationDataPlan.implementationSchemaName).toBe(
-      "impl_sample",
+      "doit_meet_impl_sample",
     );
   });
 

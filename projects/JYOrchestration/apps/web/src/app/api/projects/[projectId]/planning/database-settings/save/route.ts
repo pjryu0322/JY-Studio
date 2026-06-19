@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         settings: result.settings,
         message: result.message,
         saved: result.saved,
-        projectDbStatus: result.projectDbStatus,
+        dataStoreStatus: result.dataStoreStatus,
       },
       message: result.message,
     });

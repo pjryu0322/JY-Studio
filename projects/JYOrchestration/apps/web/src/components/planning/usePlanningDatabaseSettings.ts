@@ -23,7 +23,7 @@ export function applyPlanningDatabaseUsageToggle(input: Readonly<{
         usageMode: "ENABLED_JYPROJECTS_SCHEMA",
         usageSelectionCommitted: true,
         connectionStatus: "NOT_CONFIGURED",
-        projectDbStatus: "PLANNED",
+        dataStoreStatus: "PLANNED",
       },
       gitRepoName: input.gitRepoName ?? null,
       projectId: input.projectId.trim(),
@@ -36,8 +36,8 @@ export function applyPlanningDatabaseUsageToggle(input: Readonly<{
     usageMode: "DISABLED_JSON_SAMPLE",
     usageSelectionCommitted: true,
     connectionStatus: "NOT_REQUIRED",
-    projectDbStatus: "NOT_REQUIRED",
-    projectDbFailureReason: null,
+    dataStoreStatus: "NOT_REQUIRED",
+    dataStoreFailureReason: null,
   };
 }
 

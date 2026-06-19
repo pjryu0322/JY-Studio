@@ -7,7 +7,7 @@ import {
 } from "@/lib/planning/planningDataStoreSettingsAdapter";
 
 describe("planningDataStoreSettingsAdapter", () => {
-  it("reads implementationSchema.status before legacy projectDbStatus", () => {
+  it("reads implementationSchema.status before legacy persisted fields", () => {
     const settings = parsePlanningDatabaseSettingsV1({
       version: 1,
       usageMode: "ENABLED_JYPROJECTS_SCHEMA",
@@ -17,7 +17,6 @@ describe("planningDataStoreSettingsAdapter", () => {
       port: 5432,
       database: "",
       username: "",
-      connectionStatus: "FAILED",
       projectDbStatus: "PLANNED",
       implementationSchema: { name: "app_impl_sample", status: "FAILED" },
     })!;
@@ -63,7 +62,8 @@ describe("planningDataStoreSettingsAdapter", () => {
     });
     expect(patch.dataStoreStatus).toBe("FAILED");
     expect(patch.implementationSchema?.status).toBe("FAILED");
-    expect(patch.projectDbStatus).toBe("FAILED");
+    expect(patch).not.toHaveProperty("projectDbStatus");
+    expect(patch).not.toHaveProperty("projectDbFailureReason");
     expect(readProjectStoreName({ ...prior, ...patch })).toBe("myapp");
   });
 });

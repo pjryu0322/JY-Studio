@@ -163,7 +163,7 @@ describe("planningDataSlotsV1", () => {
     };
     const parsed = parsePlanningHandoffForImplementationV1(raw);
     expect(parsed?.status).toBe("READY");
-    expect(parsed?.implementationDataPlan.dataPersistenceMode).toBe("PROJECT_DATABASE");
+    expect(parsed?.implementationDataPlan.dataPersistenceMode).toBe("JYPROJECTS_SCHEMA");
     expect(parsed?.implementationDataPlan.useSampleDb).toBe(true);
     expect(parsed?.implementationDataPlan.useRuntimeApi).toBe(true);
     expect(parsed?.implementationDataPlan.blocked).toBe(false);

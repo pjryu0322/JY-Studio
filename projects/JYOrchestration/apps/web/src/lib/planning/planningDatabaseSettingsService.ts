@@ -12,6 +12,8 @@ import {
   resolveDatabaseUsageMode,
 } from "@/lib/planning/planningDatabaseUsageMode";
 import { projectDatabaseSaveOutcomeMessage } from "@/lib/planning/projectDatabaseUserDisplay";
+import { planningDatabaseSettingsForPersistence } from "@/lib/planning/planningDatabaseSettingsCanonical";
+import { readEffectiveImplementationSchemaStatus } from "@/lib/planning/planningDataStoreSettingsAdapter";
 import type { SavePlanningDatabaseUsageSettingsResult } from "@/lib/planning/savePlanningDatabaseSettingsTypes";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -128,13 +130,13 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
   const passwordTrim = String(input.password ?? "").trim();
 
   async function persistToDb(toPersist: PlanningDatabaseSettingsV1): Promise<void> {
-    const settings = {
+    const settings = planningDatabaseSettingsForPersistence({
       ...toPersist,
       version: 1 as const,
       provider: "POSTGRESQL" as const,
       passwordMasked: undefined,
       hasPassword: undefined,
-    };
+    });
     const setupUpdate: {
       planningDatabaseSettingsJson: unknown;
       planningPostgresPassword?: string;
@@ -184,7 +186,7 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
   if (usage === "DISABLED_JSON_SAMPLE" || resolveDatabaseUsageMode(synced) === "DISABLED_JSON_SAMPLE") {
     synced = {
       ...synced,
-      projectDbStatus: "NOT_REQUIRED",
+      dataStoreStatus: "NOT_REQUIRED",
       connectionStatus: "NOT_REQUIRED",
       lastErrorMessage: null,
     };
@@ -194,16 +196,17 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
       settings,
       saved: true,
       message: projectDatabaseSaveOutcomeMessage(settings),
-      projectDbStatus: "NOT_REQUIRED",
+      dataStoreStatus: "NOT_REQUIRED",
     };
   }
 
   if (isDatabaseUsageEnabledMode(usage)) {
     synced = {
       ...synced,
-      projectDbStatus: synced.projectDbStatus === "CREATED" ? "CREATED" : "PLANNED",
+      dataStoreStatus:
+        readEffectiveImplementationSchemaStatus(synced) === "CREATED" ? "CREATED" : "PLANNED",
       connectionStatus: "NOT_CONFIGURED",
-      projectDbFailureReason: null,
+      dataStoreFailureReason: null,
       lastErrorMessage: null,
     };
     await persistToDb(synced);
@@ -216,7 +219,7 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
     settings,
     saved: true,
     message: projectDatabaseSaveOutcomeMessage(settings),
-    projectDbStatus: settings.projectDbStatus,
+    dataStoreStatus: readEffectiveImplementationSchemaStatus(settings),
   };
 }
 

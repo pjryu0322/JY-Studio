@@ -3,8 +3,6 @@
  */
 
 import type { DatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
-import type { ProjectDatabaseLifecycleStatus } from "@/lib/planning/projectDatabaseLifecycle";
-import type { ProjectDatabaseCreationFailureReason } from "@/lib/planning/projectDatabaseCreationFailure";
 import type {
   PlanningSchemaRecordV1,
   SchemaLifecycleStatus,
@@ -14,6 +12,14 @@ import {
   readSchemaLifecycleStatus,
 } from "@/lib/planning/projectDataStoreTypes";
 import type { ProjectSchemaStoreFailureReason } from "@/lib/planning/projectSchemaStoreFailure";
+import { normalizeLegacyDatabaseUsageMode } from "@/lib/planning/projectDataStoreLegacyNormalize";
+import {
+  canonicalizePlanningDatabaseSettingsV1,
+} from "@/lib/planning/planningDatabaseSettingsCanonical";
+import {
+  normalizeLegacyProjectDbFailureReason,
+  normalizeLegacySchemaLifecycleStatus,
+} from "@/lib/planning/projectDataStoreLegacyNormalize";
 
 export const PLANNING_DB_SETTINGS_VERSION = 1 as const;
 
@@ -47,10 +53,7 @@ export type PlanningDatabaseSettingsV1 = Readonly<{
   readonly implementationSchemaName?: string | null;
   readonly reviewSchemaName?: string | null;
   readonly schemaStrategy?: "PROJECT_STAGE_SCHEMA" | null;
-  readonly projectDbName?: string | null;
-  readonly projectDbStatus?: ProjectDatabaseLifecycleStatus;
-  readonly projectDbFailureReason?: ProjectDatabaseCreationFailureReason | null;
-  /** Project data store lifecycle (jyprojects schema). Prefer over projectDbStatus in new code. */
+  /** Project data store lifecycle (jyprojects schema). */
   readonly dataStoreStatus?: SchemaLifecycleStatus;
   readonly projectStoreName?: string | null;
   readonly dataStoreFailureReason?: ProjectSchemaStoreFailureReason | null;
@@ -99,32 +102,17 @@ function readStatus(v: unknown): PlanningDatabaseConnectionStatus {
 
 function readUsageMode(v: unknown): DatabaseUsageMode | undefined {
   const s = readStr(v, 40);
-  if (
-    s === "UNSELECTED" ||
-    s === "DISABLED_JSON_SAMPLE" ||
-    s === "ENABLED_JYPROJECTS_SCHEMA" ||
-    s === "ENABLED_PLATFORM_SCHEMA" ||
-    s === "ENABLED_PROJECT_DATABASE" ||
-    s === "ENABLED_POSTGRESQL"
-  ) {
+  if (!s) return undefined;
+  if (s === "UNSELECTED" || s === "DISABLED_JSON_SAMPLE" || s === "ENABLED_JYPROJECTS_SCHEMA") {
     return s;
   }
-  return undefined;
+  return normalizeLegacyDatabaseUsageMode(s) ?? undefined;
 }
 
-function readFailureReason(v: unknown): ProjectDatabaseCreationFailureReason | null {
-  const s = readStr(v, 80);
-  if (
-    s === "POSTGRES_ADMIN_CONFIG_MISSING" ||
-    s === "POSTGRES_CONNECTION_FAILED" ||
-    s === "CREATE_DATABASE_PERMISSION_DENIED" ||
-    s === "DATABASE_ALREADY_EXISTS_BUT_INACCESSIBLE" ||
-    s === "INVALID_DATABASE_NAME" ||
-    s === "UNKNOWN"
-  ) {
-    return s;
-  }
-  return null;
+function readLegacyFailureForParse(v: unknown): ProjectSchemaStoreFailureReason | null {
+  return (
+    readProjectSchemaFailureReason(v) ?? normalizeLegacyProjectDbFailureReason(String(v ?? ""))
+  );
 }
 
 function readSchemaRecord(raw: unknown): PlanningSchemaRecordV1 | null {
@@ -141,20 +129,8 @@ function readSchemaRecord(raw: unknown): PlanningSchemaRecordV1 | null {
   };
 }
 
-function readProjectDbStatus(v: unknown): ProjectDatabaseLifecycleStatus | undefined {
-  const s = readStr(v, 40);
-  if (
-    s === "NOT_REQUIRED" ||
-    s === "PLANNED" ||
-    s === "CREATING" ||
-    s === "CREATED" ||
-    s === "FAILED" ||
-    s === "DELETING" ||
-    s === "DELETED"
-  ) {
-    return s;
-  }
-  return undefined;
+function readProjectDbStatus(v: unknown): SchemaLifecycleStatus | undefined {
+  return normalizeLegacySchemaLifecycleStatus(String(v ?? "").trim()) ?? undefined;
 }
 
 export function defaultPlanningDatabaseSettingsV1(): PlanningDatabaseSettingsV1 {
@@ -183,7 +159,8 @@ export function parsePlanningDatabaseSettingsV1(raw: unknown): PlanningDatabaseS
   const o = raw as Record<string, unknown>;
   if (o.version !== PLANNING_DB_SETTINGS_VERSION) return null;
   const masked = readStr(o.passwordMasked, 80) || null;
-  return {
+  const legacyDbStatus = readProjectDbStatus(o.projectDbStatus);
+  return canonicalizePlanningDatabaseSettingsV1({
     version: PLANNING_DB_SETTINGS_VERSION,
     usageMode: readUsageMode(o.usageMode),
     usageSelectionCommitted: Boolean(o.usageSelectionCommitted),
@@ -202,12 +179,15 @@ export function parsePlanningDatabaseSettingsV1(raw: unknown): PlanningDatabaseS
     implementationSchemaName: readStr(o.implementationSchemaName, 120) || null,
     reviewSchemaName: readStr(o.reviewSchemaName, 120) || null,
     schemaStrategy: readStr(o.schemaStrategy, 40) === "PROJECT_STAGE_SCHEMA" ? "PROJECT_STAGE_SCHEMA" : null,
-    projectDbName: readStr(o.projectDbName, 120) || null,
-    ...(readProjectDbStatus(o.projectDbStatus) ? { projectDbStatus: readProjectDbStatus(o.projectDbStatus)! } : {}),
-    projectDbFailureReason: readFailureReason(o.projectDbFailureReason),
-    dataStoreStatus: readSchemaLifecycleStatus(o.dataStoreStatus) ?? undefined,
-    projectStoreName: readStr(o.projectStoreName, 120) || null,
-    dataStoreFailureReason: readProjectSchemaFailureReason(o.dataStoreFailureReason),
+    dataStoreStatus: readSchemaLifecycleStatus(o.dataStoreStatus) ?? legacyDbStatus ?? undefined,
+    projectStoreName:
+      readStr(o.projectStoreName, 120) ||
+      readStr(o.databaseStoreName, 120) ||
+      readStr(o.projectDbName, 120) ||
+      null,
+    dataStoreFailureReason:
+      readProjectSchemaFailureReason(o.dataStoreFailureReason) ??
+      readLegacyFailureForParse(o.projectDbFailureReason),
     implementationSchema: readSchemaRecord(o.implementationSchema),
     reviewSchema: readSchemaRecord(o.reviewSchema),
     runtimeDatabaseName:
@@ -222,7 +202,10 @@ export function parsePlanningDatabaseSettingsV1(raw: unknown): PlanningDatabaseS
     connectionStatus: readStatus(o.connectionStatus),
     lastCheckedAt: readStr(o.lastCheckedAt, 80) || null,
     lastErrorMessage: readStr(o.lastErrorMessage, 500) || null,
-  };
+    projectDbName: readStr(o.projectDbName, 120) || null,
+    projectDbStatus: readStr(o.projectDbStatus, 40) || null,
+    projectDbFailureReason: readStr(o.projectDbFailureReason, 80) || null,
+  });
 }
 
 export function sanitizePlanningDatabaseSettingsForClient(
@@ -239,8 +222,7 @@ export function sanitizePlanningDatabaseSettingsForClient(
     hasPassword: false,
     sslMode: "PREFER",
     runtimeApiBaseUrl: null,
-    projectDbName: null,
     lastErrorMessage: null,
-    projectDbFailureReason: base.projectDbFailureReason ?? null,
+    dataStoreFailureReason: base.dataStoreFailureReason ?? null,
   };
 }

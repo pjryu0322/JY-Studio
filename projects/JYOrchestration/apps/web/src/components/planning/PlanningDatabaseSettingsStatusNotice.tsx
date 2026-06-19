@@ -3,9 +3,9 @@
 import { useState } from "react";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import {
-  buildProjectDatabaseStatusNotice,
-  projectDatabaseActionGuide,
-} from "@/lib/planning/projectDatabaseCreationFailure";
+  buildProjectDataStoreStatusNotice,
+  projectDataStoreActionGuide,
+} from "@/lib/planning/projectSchemaProvisionFailure";
 import { projectDatabaseUserSectionHeadline } from "@/lib/planning/projectDatabaseUserDisplay";
 
 type Props = Readonly<{
@@ -22,11 +22,11 @@ export function PlanningDatabaseSettingsStatusNotice({
   canEdit = true,
 }: Props) {
   const [guideOpen, setGuideOpen] = useState(false);
-  const notice = buildProjectDatabaseStatusNotice(settings);
+  const notice = buildProjectDataStoreStatusNotice(settings);
   if (!notice) return null;
 
   const guide = notice.failureReason
-    ? projectDatabaseActionGuide({ failureReason: notice.failureReason })
+    ? projectDataStoreActionGuide({ failureReason: notice.failureReason })
     : null;
   const detailLine =
     notice.detail && notice.detail !== notice.summary ? notice.detail : null;

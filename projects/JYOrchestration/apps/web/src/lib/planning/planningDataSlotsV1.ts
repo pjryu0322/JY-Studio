@@ -581,7 +581,7 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
   const reviewSchemaName =
     String(settings?.reviewSchemaName ?? "").trim() || naming.reviewSchemaName;
   const projectDataStoreName =
-    String(settings?.projectDbName ?? settings?.databaseStoreName ?? "").trim() ||
+    String(settings?.projectStoreName ?? settings?.databaseStoreName ?? "").trim() ||
     naming.normalizedBaseName;
 
   const dataStoreSlot: DataStoreSlotV1 = {

@@ -512,8 +512,8 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     const dbMissing =
       prepBlockKind === "usage_unselected"
         ? ["database_usage_selection"]
-        : handoff.status === "BLOCKED_PROJECT_DATABASE_REQUIRED" ||
-            handoff.implementationDataPlan.dataPersistenceMode === "BLOCKED_PROJECT_DATABASE_REQUIRED"
+        : handoff.status === "BLOCKED_SCHEMA_REQUIRED" ||
+            handoff.implementationDataPlan.dataPersistenceMode === "BLOCKED_SCHEMA_REQUIRED"
           ? ["project_database_provisioning"]
           : ["database_settings"];
     const seedStatus =

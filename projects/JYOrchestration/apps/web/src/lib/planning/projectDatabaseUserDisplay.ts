@@ -4,10 +4,9 @@ import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabase
 import { readEffectiveImplementationSchemaStatus } from "@/lib/planning/planningDataStoreSettingsAdapter";
 import type { SchemaLifecycleStatus } from "@/lib/planning/projectDataStoreTypes";
 import {
-  buildProjectDatabaseStatusNotice,
   buildSaveResultNotice,
-  readProjectDatabaseCreationFailureReason,
-} from "@/lib/planning/projectDatabaseCreationFailure";
+  buildProjectDataStoreStatusNotice,
+} from "@/lib/planning/projectSchemaProvisionFailure";
 
 export function projectDatabaseUserStatusLabel(
   usageMode: DatabaseUsageMode,
@@ -28,7 +27,7 @@ export function projectDatabaseUserStatusLabel(
 export function projectDatabaseUserCurrentValue(
   usageMode: DatabaseUsageMode,
   schemaStatus: SchemaLifecycleStatus | null | undefined,
-  failureReason?: import("@/lib/planning/projectDatabaseCreationFailure").ProjectDatabaseCreationFailureReason | null,
+  failureReason?: import("@/lib/planning/projectSchemaProvisionFailure").ProjectSchemaProvisionFailureReason | null,
 ): string {
   if (usageMode === "DISABLED_JSON_SAMPLE") return "JSON 샘플데이터";
   if (usageMode === "UNSELECTED") return "사용 여부 미선택";
@@ -61,7 +60,7 @@ export function projectDatabaseUserDisplayFromSettings(
 ): Readonly<{ readonly status: string; readonly currentValue: string; readonly statusTone: "ok" | "warn" | "fail" | "neutral" }> {
   const usage = resolveDatabaseUsageMode(settings);
   const schemaStatus = readEffectiveImplementationSchemaStatus(settings);
-  const failureReason = readProjectDatabaseCreationFailureReason(settings?.projectDbFailureReason);
+  const failureReason = settings?.dataStoreFailureReason ?? settings?.implementationSchema?.failureReason ?? null;
   return {
     status: projectDatabaseUserStatusLabel(usage, schemaStatus),
     currentValue: projectDatabaseUserCurrentValue(usage, schemaStatus, failureReason),
@@ -91,7 +90,7 @@ export function projectDatabaseUserInlineStatusCopy(
   if (usage === "DISABLED_JSON_SAMPLE") {
     return "데이터베이스를 사용하지 않습니다. 구현단계에서는 JSON 샘플데이터로 화면과 기능 흐름을 확인합니다.";
   }
-  const notice = buildProjectDatabaseStatusNotice(settings);
+  const notice = buildProjectDataStoreStatusNotice(settings);
   if (notice) return notice.summary;
   return null;
 }
@@ -101,7 +100,7 @@ export function projectDatabaseSaveOutcomeMessage(settings: PlanningDatabaseSett
   return (
     buildSaveResultNotice({
       saved: true,
-      projectDbStatus: readEffectiveImplementationSchemaStatus(settings),
+      dataStoreStatus: readEffectiveImplementationSchemaStatus(settings),
       usageMode: resolveDatabaseUsageMode(settings),
     }) ?? "설정이 저장되었습니다."
   );

@@ -28,9 +28,8 @@ import {
   buildDataStoreFailureSettingsPatch,
   buildDataStoreSuccessSettingsPatch,
 } from "@/lib/planning/planningDataStoreSettingsAdapter";
-import {
-  provisionImplementationSampleStore,
-} from "@/lib/planning/provisionProjectStageDataStores";
+import { isJyprojectsSchemaPersistenceMode } from "@/lib/planning/projectDataStoreLegacyNormalize";
+import { provisionImplementationSampleStore } from "@/lib/planning/provisionProjectStageDataStores";
 import { provisionQuickDesignImplementationSchemaAndSeed } from "@/lib/planning/provisionQuickDesignImplementationSchemaAndSeed.server";
 import { prisma } from "@/lib/prisma";
 import { resolveQuickDesignLlmServerContext } from "@/lib/prototype/resolveProjectCodeTaskRefinementSettings.server";
@@ -217,10 +216,7 @@ export async function runQuickDesignConfirmOnServer(
   const handoff = flowResult.prep.planningHandoffForImplementationV1;
   if (
     flowResult.prep.prepComplete &&
-    (handoff?.implementationDataPlan.dataPersistenceMode === "JYPROJECTS_SCHEMA" ||
-      handoff?.implementationDataPlan.dataPersistenceMode === "PLATFORM_SCHEMA" ||
-      handoff?.implementationDataPlan.dataPersistenceMode === "PROJECT_DATABASE" ||
-      handoff?.implementationDataPlan.dataPersistenceMode === "POSTGRES_SAMPLE_DB")
+    isJyprojectsSchemaPersistenceMode(handoff?.implementationDataPlan.dataPersistenceMode)
   ) {
     const provisionNow = new Date().toISOString();
     const rawSettings = await loadPlanningDatabaseSettingsRawForProject(projectId);

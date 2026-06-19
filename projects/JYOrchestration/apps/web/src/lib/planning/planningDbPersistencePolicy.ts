@@ -133,7 +133,7 @@ export function isPlatformSchemaPersistenceMode(
   mode: PlanningDataPersistenceMode | string | null | undefined,
 ): boolean {
   const normalized = normalizePlanningDataPersistenceMode(String(mode ?? ""));
-  return normalized === "JYPROJECTS_SCHEMA" || normalized === "PLATFORM_SCHEMA";
+  return normalized === "JYPROJECTS_SCHEMA";
 }
 
 export function resolvePlanningDataPersistenceMode(input: Readonly<{

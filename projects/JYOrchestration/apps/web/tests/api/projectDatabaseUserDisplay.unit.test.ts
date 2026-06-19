@@ -11,14 +11,14 @@ import { parsePlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabase
 import { buildPrototypeEnvModalTableRows } from "@/lib/project/prototypeEnvSettingsModalRows";
 
 describe("projectDatabaseUserDisplay", () => {
-  it("shows platform attention labels when project DB creation failed", () => {
+  it("shows platform attention labels when schema provisioning failed", () => {
     expect(
-      projectDatabaseUserStatusLabel("ENABLED_PROJECT_DATABASE", "FAILED"),
+      projectDatabaseUserStatusLabel("ENABLED_JYPROJECTS_SCHEMA", "FAILED"),
     ).toBe("플랫폼 확인 필요");
     expect(
-      projectDatabaseUserCurrentValue("ENABLED_PROJECT_DATABASE", "FAILED"),
+      projectDatabaseUserCurrentValue("ENABLED_JYPROJECTS_SCHEMA", "FAILED"),
     ).toBe("프로젝트 저장소 권한 확인 필요");
-    expect(projectDatabaseUserStatusLabel("ENABLED_PROJECT_DATABASE", "FAILED")).not.toBe("실패");
+    expect(projectDatabaseUserStatusLabel("ENABLED_JYPROJECTS_SCHEMA", "FAILED")).not.toBe("실패");
   });
 
   it("maps JSON sample and ready states", () => {
@@ -26,8 +26,8 @@ describe("projectDatabaseUserDisplay", () => {
     expect(projectDatabaseUserCurrentValue("DISABLED_JSON_SAMPLE", "NOT_REQUIRED")).toBe(
       "JSON 샘플데이터",
     );
-    expect(projectDatabaseUserStatusLabel("ENABLED_PROJECT_DATABASE", "CREATED")).toBe("정상");
-    expect(projectDatabaseUserCurrentValue("ENABLED_PROJECT_DATABASE", "CREATED")).toBe(
+    expect(projectDatabaseUserStatusLabel("ENABLED_JYPROJECTS_SCHEMA", "CREATED")).toBe("정상");
+    expect(projectDatabaseUserCurrentValue("ENABLED_JYPROJECTS_SCHEMA", "CREATED")).toBe(
       "프로젝트 저장소 준비 완료",
     );
   });
@@ -44,7 +44,7 @@ describe("prototypeEnvSettingsModalRows database row", () => {
     const settings = parsePlanningDatabaseSettingsV1({
       version: 1,
       usageSelectionCommitted: true,
-      usageMode: "ENABLED_PROJECT_DATABASE",
+      usageMode: "ENABLED_JYPROJECTS_SCHEMA",
       enabled: true,
       provider: "POSTGRESQL",
       host: "",
@@ -53,8 +53,9 @@ describe("prototypeEnvSettingsModalRows database row", () => {
       username: "",
       password: "",
       connectionStatus: "FAILED",
-      projectDbName: "p_test",
-      projectDbStatus: "FAILED",
+      dataStoreStatus: "FAILED",
+      dataStoreFailureReason: "CREATE_SCHEMA_PERMISSION_DENIED",
+      databaseStoreName: "p_test",
     })!;
     const rows = buildPrototypeEnvModalTableRows({
       executionSetup: {
@@ -72,7 +73,7 @@ describe("prototypeEnvSettingsModalRows database row", () => {
     const created = parsePlanningDatabaseSettingsV1({
       version: 1,
       usageSelectionCommitted: true,
-      usageMode: "ENABLED_PROJECT_DATABASE",
+      usageMode: "ENABLED_JYPROJECTS_SCHEMA",
       enabled: true,
       provider: "POSTGRESQL",
       host: "",
@@ -81,7 +82,7 @@ describe("prototypeEnvSettingsModalRows database row", () => {
       username: "",
       password: "",
       connectionStatus: "READY",
-      projectDbStatus: "CREATED",
+      dataStoreStatus: "CREATED",
       databaseStoreName: "aiproject",
     })!;
     expect(projectDatabaseSaveOutcomeMessage(created)).toContain("설정이 저장되었습니다");
@@ -90,7 +91,7 @@ describe("prototypeEnvSettingsModalRows database row", () => {
     const failed = parsePlanningDatabaseSettingsV1({
       version: 1,
       usageSelectionCommitted: true,
-      usageMode: "ENABLED_PROJECT_DATABASE",
+      usageMode: "ENABLED_JYPROJECTS_SCHEMA",
       enabled: true,
       provider: "POSTGRESQL",
       host: "",
@@ -99,8 +100,8 @@ describe("prototypeEnvSettingsModalRows database row", () => {
       username: "",
       password: "",
       connectionStatus: "FAILED",
-      projectDbStatus: "FAILED",
-      projectDbFailureReason: "CREATE_DATABASE_PERMISSION_DENIED",
+      dataStoreStatus: "FAILED",
+      dataStoreFailureReason: "CREATE_SCHEMA_PERMISSION_DENIED",
       databaseStoreName: "aiproject",
     })!;
     const outcome = projectDatabaseSaveOutcomeMessage(failed);
@@ -117,7 +118,7 @@ describe("prototypeEnvSettingsModalRows database row", () => {
     const settings = parsePlanningDatabaseSettingsV1({
       version: 1,
       usageSelectionCommitted: true,
-      usageMode: "ENABLED_PROJECT_DATABASE",
+      usageMode: "ENABLED_JYPROJECTS_SCHEMA",
       enabled: true,
       provider: "POSTGRESQL",
       host: "",
@@ -126,8 +127,8 @@ describe("prototypeEnvSettingsModalRows database row", () => {
       username: "",
       password: "",
       connectionStatus: "READY",
-      projectDbName: "p_x",
-      projectDbStatus: "CREATED",
+      dataStoreStatus: "CREATED",
+      projectStoreName: "p_x",
     })!;
     const display = projectDatabaseUserDisplayFromSettings(settings);
     expect(display.status).toBe("정상");

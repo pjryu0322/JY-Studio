@@ -1,12 +1,4 @@
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
-import {
-  readProjectDatabaseCreationFailureReason,
-  type ProjectDatabaseCreationFailureReason,
-} from "@/lib/planning/projectDatabaseCreationFailure";
-import {
-  readProjectDatabaseLifecycleStatus,
-  type ProjectDatabaseLifecycleStatus,
-} from "@/lib/planning/projectDatabaseLifecycle";
 import type {
   PlanningSchemaRecordV1,
   ProjectSchemaFailureReason,
@@ -15,15 +7,6 @@ import type {
 import type { ProjectSchemaStoreFailureReason } from "@/lib/planning/projectSchemaStoreFailure";
 
 export type { PlanningSchemaRecordV1, ProjectSchemaFailureReason, SchemaLifecycleStatus };
-
-function mapLegacyDbStatus(
-  legacy: ProjectDatabaseLifecycleStatus | null,
-): SchemaLifecycleStatus {
-  if (!legacy || legacy === "DELETING" || legacy === "DELETED") {
-    return legacy === "NOT_REQUIRED" ? "NOT_REQUIRED" : "FAILED";
-  }
-  return legacy;
-}
 
 export function readProjectStoreName(
   settings: PlanningDatabaseSettingsV1 | null | undefined,
@@ -44,37 +27,17 @@ export function readEffectiveImplementationSchemaStatus(
 ): SchemaLifecycleStatus {
   const impl = settings?.implementationSchema;
   if (impl?.status) return impl.status;
-  const dataStoreStatus = settings?.dataStoreStatus;
-  if (dataStoreStatus) return dataStoreStatus;
-  const legacy = readProjectDatabaseLifecycleStatus(settings?.projectDbStatus);
-  return mapLegacyDbStatus(legacy);
+  if (settings?.dataStoreStatus) return settings.dataStoreStatus;
+  return "PLANNED";
 }
 
 export function readEffectiveDataStoreFailureReason(
   settings: PlanningDatabaseSettingsV1 | null | undefined,
-): ProjectSchemaFailureReason | ProjectDatabaseCreationFailureReason | null {
+): ProjectSchemaStoreFailureReason | null {
   const fromSchema = settings?.implementationSchema?.failureReason;
   if (fromSchema) return fromSchema;
-  const fromDataStore = settings?.dataStoreFailureReason;
-  if (fromDataStore) return fromDataStore;
-  return readProjectDatabaseCreationFailureReason(settings?.projectDbFailureReason);
-}
-
-function mapSchemaFailureToLegacyReason(
-  reason: ProjectSchemaStoreFailureReason,
-): ProjectDatabaseCreationFailureReason {
-  switch (reason) {
-    case "JYPROJECTS_CONFIG_MISSING":
-      return "POSTGRES_ADMIN_CONFIG_MISSING";
-    case "JYPROJECTS_CONNECTION_FAILED":
-      return "POSTGRES_CONNECTION_FAILED";
-    case "CREATE_SCHEMA_PERMISSION_DENIED":
-      return "CREATE_DATABASE_PERMISSION_DENIED";
-    case "INVALID_SCHEMA_NAME":
-      return "INVALID_DATABASE_NAME";
-    default:
-      return "UNKNOWN";
-  }
+  if (settings?.dataStoreFailureReason) return settings.dataStoreFailureReason;
+  return null;
 }
 
 export function buildDataStoreFailureSettingsPatch(input: Readonly<{
@@ -84,7 +47,6 @@ export function buildDataStoreFailureSettingsPatch(input: Readonly<{
   readonly adminMessage: string;
   readonly nowIso: string;
 }>): Partial<PlanningDatabaseSettingsV1> {
-  const legacyReason = mapSchemaFailureToLegacyReason(input.failureReason);
   const projectStoreName = readProjectStoreName(input.prior);
   const implName =
     String(input.implementationSchemaName ?? input.prior.implementationSchemaName ?? "").trim() || null;
@@ -97,13 +59,10 @@ export function buildDataStoreFailureSettingsPatch(input: Readonly<{
   };
 
   return {
-    ...input.prior,
     projectStoreName,
     dataStoreStatus: "FAILED",
     dataStoreFailureReason: input.failureReason,
     implementationSchema,
-    projectDbStatus: "FAILED",
-    projectDbFailureReason: legacyReason,
     connectionStatus: "FAILED",
     lastErrorMessage: input.adminMessage.slice(0, 500),
     lastCheckedAt: input.nowIso,
@@ -128,8 +87,6 @@ export function buildDataStoreSuccessSettingsPatch(input: Readonly<{
     dataStoreStatus: "CREATED",
     dataStoreFailureReason: null,
     implementationSchema,
-    projectDbStatus: "CREATED",
-    projectDbFailureReason: null,
     connectionStatus: "READY",
     lastErrorMessage: null,
     lastCheckedAt: input.nowIso,

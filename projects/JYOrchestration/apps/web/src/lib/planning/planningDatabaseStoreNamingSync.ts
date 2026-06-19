@@ -11,7 +11,7 @@ import {
   JYPROJECTS_RUNTIME_DATABASE_NAME,
 } from "@/lib/planning/planningDatabaseUsageMode";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
-import { readProjectDatabaseLifecycleStatus } from "@/lib/planning/projectDatabaseLifecycle";
+import { readEffectiveImplementationSchemaStatus } from "@/lib/planning/planningDataStoreSettingsAdapter";
 
 export function resolveRepositoryNameForPlanningDbSettings(input: Readonly<{
   readonly gitRepoName?: string | null;
@@ -59,8 +59,8 @@ export function syncPlanningDatabaseSettingsStoreNames(input: Readonly<{
   });
 
   if (isDatabaseUsageEnabledMode(usage)) {
-    const priorStatus = readProjectDatabaseLifecycleStatus(input.settings.projectDbStatus);
-    const projectDbStatus =
+    const priorStatus = readEffectiveImplementationSchemaStatus(input.settings);
+    const dataStoreStatus =
       priorStatus === "CREATED" ? "CREATED" : priorStatus === "FAILED" ? "FAILED" : "PLANNED";
     return {
       ...input.settings,
@@ -69,7 +69,8 @@ export function syncPlanningDatabaseSettingsStoreNames(input: Readonly<{
       implementationSchemaName: naming.implementationSchemaName,
       reviewSchemaName: naming.reviewSchemaName,
       schemaStrategy: "PROJECT_STAGE_SCHEMA",
-      projectDbStatus,
+      dataStoreStatus,
+      projectStoreName: naming.normalizedBaseName,
       platformManagementDatabaseName: JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME,
       generatedProjectDataDatabaseName: JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
       runtimeDatabaseName: JYPROJECTS_RUNTIME_DATABASE_NAME,
