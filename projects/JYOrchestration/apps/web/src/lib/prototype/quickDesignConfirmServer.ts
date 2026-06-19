@@ -25,6 +25,10 @@ import {
 } from "@/lib/planning/projectSchemaStoreFailure";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import {
+  buildDataStoreFailureSettingsPatch,
+  buildDataStoreSuccessSettingsPatch,
+} from "@/lib/planning/planningDataStoreSettingsAdapter";
+import {
   provisionImplementationSampleStore,
 } from "@/lib/planning/provisionProjectStageDataStores";
 import { provisionQuickDesignImplementationSchemaAndSeed } from "@/lib/planning/provisionQuickDesignImplementationSchemaAndSeed.server";
@@ -122,29 +126,6 @@ async function persistQuickDesignPlanningConfirmState(input: Readonly<{
   } catch (error) {
     console.error("[quick-design-confirm] persist planning state failed:", error);
   }
-}
-
-function buildStorePrepFailureDbPatch(input: Readonly<{
-  readonly prior: PlanningDatabaseSettingsV1;
-  readonly adminMessage: string;
-  readonly failureReason: ReturnType<typeof classifyProjectSchemaStoreFailure>;
-}>): Partial<PlanningDatabaseSettingsV1> {
-  const projectDbFailureReason =
-    input.failureReason === "JYPROJECTS_CONFIG_MISSING"
-      ? ("POSTGRES_ADMIN_CONFIG_MISSING" as const)
-      : input.failureReason === "JYPROJECTS_CONNECTION_FAILED"
-        ? ("POSTGRES_CONNECTION_FAILED" as const)
-        : input.failureReason === "CREATE_SCHEMA_PERMISSION_DENIED"
-          ? ("CREATE_DATABASE_PERMISSION_DENIED" as const)
-          : ("UNKNOWN" as const);
-  return {
-    ...input.prior,
-    projectDbStatus: "FAILED",
-    projectDbFailureReason,
-    connectionStatus: "FAILED",
-    lastErrorMessage: input.adminMessage.slice(0, 500),
-    lastCheckedAt: new Date().toISOString(),
-  };
 }
 
 export async function runQuickDesignConfirmOnServer(
@@ -264,10 +245,12 @@ export async function runQuickDesignConfirmOnServer(
     if (!connection.ok) {
       await finishStorePrep({
         warning: QUICK_DESIGN_CONFIRM_WITH_STORE_PREP_FAILURE_SUMMARY,
-        dbPatch: buildStorePrepFailureDbPatch({
+        dbPatch: buildDataStoreFailureSettingsPatch({
           prior: rawSettings,
+          implementationSchemaName: null,
           adminMessage: connection.adminMessage,
           failureReason: connection.failureReason,
+          nowIso: provisionNow,
         }),
       });
       return { success: true, mode: "planning", flow, storePrepWarning };
@@ -296,10 +279,14 @@ export async function runQuickDesignConfirmOnServer(
       const failureReason = classifyProjectSchemaStoreFailure(provision.message);
       await finishStorePrep({
         warning: QUICK_DESIGN_CONFIRM_WITH_STORE_PREP_FAILURE_SUMMARY,
-        dbPatch: buildStorePrepFailureDbPatch({
+        dbPatch: buildDataStoreFailureSettingsPatch({
           prior: rawSettings,
+          implementationSchemaName: String(
+            provision.planningDataSlotsV1?.dataStoreSlot?.implementationStore?.schemaName ?? "",
+          ).trim() || null,
           adminMessage: provision.message,
           failureReason,
+          nowIso: provisionNow,
         }),
       });
       return { success: true, mode: "planning", flow, storePrepWarning };
@@ -323,17 +310,29 @@ export async function runQuickDesignConfirmOnServer(
         const failureReason = classifyProjectSchemaStoreFailure(structure.message);
         await finishStorePrep({
           warning: QUICK_DESIGN_CONFIRM_WITH_STORE_PREP_FAILURE_SUMMARY,
-          dbPatch: buildStorePrepFailureDbPatch({
+          dbPatch: buildDataStoreFailureSettingsPatch({
             prior: rawSettings,
+            implementationSchemaName: implSchema,
             adminMessage: structure.message,
             failureReason,
+            nowIso: provisionNow,
           }),
         });
         return { success: true, mode: "planning", flow, storePrepWarning };
       }
     }
 
-    await persistQuickDesignPlanningConfirmState({ projectId, flow, dbSettingsPatch: null });
+    await persistQuickDesignPlanningConfirmState({
+      projectId,
+      flow,
+      dbSettingsPatch: implSchema
+        ? buildDataStoreSuccessSettingsPatch({
+            prior: rawSettings,
+            implementationSchemaName: implSchema,
+            nowIso: provisionNow,
+          })
+        : null,
+    });
   }
 
   return { success: true, mode: "planning", flow, storePrepWarning: storePrepWarning ?? undefined };

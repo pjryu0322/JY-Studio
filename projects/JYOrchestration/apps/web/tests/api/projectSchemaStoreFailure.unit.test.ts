@@ -25,8 +25,8 @@ describe("classifyProjectSchemaStoreFailure", () => {
 });
 
 describe("Quick Design confirm store prep copy", () => {
-  it("summarizes partial success without failing confirm", () => {
+    it("summarizes partial success without failing confirm", () => {
     expect(QUICK_DESIGN_CONFIRM_WITH_STORE_PREP_FAILURE_SUMMARY).toMatch(/확정/);
-    expect(QUICK_DESIGN_CONFIRM_WITH_STORE_PREP_FAILURE_SUMMARY).not.toMatch(/실패했습니다/);
+    expect(QUICK_DESIGN_CONFIRM_WITH_STORE_PREP_FAILURE_SUMMARY).toMatch(/저장소 준비/);
   });
 });

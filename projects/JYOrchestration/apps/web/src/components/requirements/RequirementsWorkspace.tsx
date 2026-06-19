@@ -234,6 +234,7 @@ import {
   upsertImplementationPrepProgressMessage,
 } from "@/lib/requirements/implementationPrepProgressChatMessage";
 import { postQuickDesignConfirm } from "@/components/project-spec/apis/quickDesignConfirmApi";
+import { QUICK_DESIGN_STORE_PREP_USER_SHORT_MESSAGE } from "@/lib/planning/projectSchemaStoreFailure";
 import { parsePlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
 import {
   isPlanningHandoffBlockedByDatabase,
@@ -2828,7 +2829,7 @@ export function RequirementsWorkspace({
       }
       showSuccessToast(flowResult.userFacingSummary ?? json.message ?? "Quick Design을 확정했습니다.");
       if (flowResult.storePrepWarning?.trim()) {
-        showErrorToast(flowResult.storePrepWarning.trim());
+        showErrorToast(QUICK_DESIGN_STORE_PREP_USER_SHORT_MESSAGE);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";

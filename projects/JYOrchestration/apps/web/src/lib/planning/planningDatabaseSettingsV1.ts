@@ -5,6 +5,15 @@
 import type { DatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
 import type { ProjectDatabaseLifecycleStatus } from "@/lib/planning/projectDatabaseLifecycle";
 import type { ProjectDatabaseCreationFailureReason } from "@/lib/planning/projectDatabaseCreationFailure";
+import type {
+  PlanningSchemaRecordV1,
+  SchemaLifecycleStatus,
+} from "@/lib/planning/projectDataStoreTypes";
+import {
+  readProjectSchemaFailureReason,
+  readSchemaLifecycleStatus,
+} from "@/lib/planning/projectDataStoreTypes";
+import type { ProjectSchemaStoreFailureReason } from "@/lib/planning/projectSchemaStoreFailure";
 
 export const PLANNING_DB_SETTINGS_VERSION = 1 as const;
 
@@ -41,6 +50,12 @@ export type PlanningDatabaseSettingsV1 = Readonly<{
   readonly projectDbName?: string | null;
   readonly projectDbStatus?: ProjectDatabaseLifecycleStatus;
   readonly projectDbFailureReason?: ProjectDatabaseCreationFailureReason | null;
+  /** Project data store lifecycle (jyprojects schema). Prefer over projectDbStatus in new code. */
+  readonly dataStoreStatus?: SchemaLifecycleStatus;
+  readonly projectStoreName?: string | null;
+  readonly dataStoreFailureReason?: ProjectSchemaStoreFailureReason | null;
+  readonly implementationSchema?: PlanningSchemaRecordV1 | null;
+  readonly reviewSchema?: PlanningSchemaRecordV1 | null;
   /** Generated project data DB (`jyprojects`) — schemas created on QD confirm. */
   readonly generatedProjectDataDatabaseName?: string | null;
   /** Platform management DB (`jyorchestration`) — settings/metadata only. */
@@ -112,6 +127,20 @@ function readFailureReason(v: unknown): ProjectDatabaseCreationFailureReason | n
   return null;
 }
 
+function readSchemaRecord(raw: unknown): PlanningSchemaRecordV1 | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const status = readSchemaLifecycleStatus(o.status);
+  if (!status) return null;
+  return {
+    name: readStr(o.name, 120) || null,
+    status,
+    failureReason: readProjectSchemaFailureReason(o.failureReason),
+    errorMessage: readStr(o.errorMessage, 500) || null,
+    createdAt: readStr(o.createdAt, 80) || null,
+  };
+}
+
 function readProjectDbStatus(v: unknown): ProjectDatabaseLifecycleStatus | undefined {
   const s = readStr(v, 40);
   if (
@@ -176,6 +205,11 @@ export function parsePlanningDatabaseSettingsV1(raw: unknown): PlanningDatabaseS
     projectDbName: readStr(o.projectDbName, 120) || null,
     ...(readProjectDbStatus(o.projectDbStatus) ? { projectDbStatus: readProjectDbStatus(o.projectDbStatus)! } : {}),
     projectDbFailureReason: readFailureReason(o.projectDbFailureReason),
+    dataStoreStatus: readSchemaLifecycleStatus(o.dataStoreStatus) ?? undefined,
+    projectStoreName: readStr(o.projectStoreName, 120) || null,
+    dataStoreFailureReason: readProjectSchemaFailureReason(o.dataStoreFailureReason),
+    implementationSchema: readSchemaRecord(o.implementationSchema),
+    reviewSchema: readSchemaRecord(o.reviewSchema),
     runtimeDatabaseName:
       readStr(o.generatedProjectDataDatabaseName, 80) ||
       readStr(o.runtimeDatabaseName, 80) ||

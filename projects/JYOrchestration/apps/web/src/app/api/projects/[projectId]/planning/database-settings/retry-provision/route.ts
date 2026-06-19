@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { retryImplementationSchemaProvision } from "@/lib/planning/retryImplementationSchemaProvision.server";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
 
-/** @deprecated Use POST .../retry-provision — per-project CREATE DATABASE removed. */
 export async function POST(_request: NextRequest, context: RouteContext) {
   try {
     const userId = await requireSessionUserId(_request);
@@ -16,15 +16,12 @@ export async function POST(_request: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
     }
     try {
-      await requireProjectPermission(pid, userId, "canEditProject", "POST planning/database-settings/retry-create");
+      await requireProjectPermission(pid, userId, "canEditProject", "POST planning/database-settings/retry-provision");
     } catch (error) {
       const denied = rbacErrorResponse(error);
       if (denied) return denied;
       throw error;
     }
-    const { retryImplementationSchemaProvision } = await import(
-      "@/lib/planning/retryImplementationSchemaProvision.server"
-    );
     const result = await retryImplementationSchemaProvision(pid);
     return NextResponse.json({
       success: result.ok,
@@ -34,6 +31,6 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   } catch (error) {
     const denied = rbacErrorResponse(error);
     if (denied) return denied;
-    return NextResponse.json({ success: false, message: "다시 시도 중 오류가 발생했습니다." }, { status: 500 });
+    return NextResponse.json({ success: false, message: "저장소 준비 재시도 중 오류가 발생했습니다." }, { status: 500 });
   }
 }

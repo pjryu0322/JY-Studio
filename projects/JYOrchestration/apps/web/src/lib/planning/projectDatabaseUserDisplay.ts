@@ -1,10 +1,8 @@
 import type { DatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
 import { isDatabaseUsageEnabledMode, resolveDatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
-import {
-  readProjectDatabaseLifecycleStatus,
-  type ProjectDatabaseLifecycleStatus,
-} from "@/lib/planning/projectDatabaseLifecycle";
+import { readEffectiveImplementationSchemaStatus } from "@/lib/planning/planningDataStoreSettingsAdapter";
+import type { SchemaLifecycleStatus } from "@/lib/planning/projectDataStoreTypes";
 import {
   buildProjectDatabaseStatusNotice,
   buildSaveResultNotice,
@@ -13,14 +11,14 @@ import {
 
 export function projectDatabaseUserStatusLabel(
   usageMode: DatabaseUsageMode,
-  projectDbStatus: ProjectDatabaseLifecycleStatus | null | undefined,
+  schemaStatus: SchemaLifecycleStatus | null | undefined,
 ): string {
   if (usageMode === "UNSELECTED") return "선택 필요";
   if (usageMode === "DISABLED_JSON_SAMPLE") return "미사용";
 
   if (isDatabaseUsageEnabledMode(usageMode)) {
-    if (projectDbStatus === "CREATED") return "정상";
-    if (projectDbStatus === "FAILED") return "플랫폼 확인 필요";
+    if (schemaStatus === "CREATED") return "정상";
+    if (schemaStatus === "FAILED") return "플랫폼 확인 필요";
     return "준비 예정";
   }
 
@@ -29,15 +27,15 @@ export function projectDatabaseUserStatusLabel(
 
 export function projectDatabaseUserCurrentValue(
   usageMode: DatabaseUsageMode,
-  projectDbStatus: ProjectDatabaseLifecycleStatus | null | undefined,
+  schemaStatus: SchemaLifecycleStatus | null | undefined,
   failureReason?: import("@/lib/planning/projectDatabaseCreationFailure").ProjectDatabaseCreationFailureReason | null,
 ): string {
   if (usageMode === "DISABLED_JSON_SAMPLE") return "JSON 샘플데이터";
   if (usageMode === "UNSELECTED") return "사용 여부 미선택";
 
   if (isDatabaseUsageEnabledMode(usageMode)) {
-    if (projectDbStatus === "CREATED") return "프로젝트 저장소 준비 완료";
-    if (projectDbStatus === "FAILED") return "프로젝트 저장소 권한 확인 필요";
+    if (schemaStatus === "CREATED") return "프로젝트 저장소 준비 완료";
+    if (schemaStatus === "FAILED") return "프로젝트 저장소 권한 확인 필요";
     return "프로젝트 데이터 저장소 사용";
   }
 
@@ -46,13 +44,13 @@ export function projectDatabaseUserCurrentValue(
 
 export function projectDatabaseUserStatusTone(
   usageMode: DatabaseUsageMode,
-  projectDbStatus: ProjectDatabaseLifecycleStatus | null | undefined,
+  schemaStatus: SchemaLifecycleStatus | null | undefined,
 ): "ok" | "warn" | "fail" | "neutral" {
   if (usageMode === "DISABLED_JSON_SAMPLE") return "neutral";
   if (usageMode === "UNSELECTED") return "warn";
   if (isDatabaseUsageEnabledMode(usageMode)) {
-    if (projectDbStatus === "CREATED") return "ok";
-    if (projectDbStatus === "FAILED") return "warn";
+    if (schemaStatus === "CREATED") return "ok";
+    if (schemaStatus === "FAILED") return "warn";
     return "neutral";
   }
   return "warn";
@@ -62,12 +60,12 @@ export function projectDatabaseUserDisplayFromSettings(
   settings: PlanningDatabaseSettingsV1 | null | undefined,
 ): Readonly<{ readonly status: string; readonly currentValue: string; readonly statusTone: "ok" | "warn" | "fail" | "neutral" }> {
   const usage = resolveDatabaseUsageMode(settings);
-  const projectDbStatus = readProjectDatabaseLifecycleStatus(settings?.projectDbStatus);
+  const schemaStatus = readEffectiveImplementationSchemaStatus(settings);
   const failureReason = readProjectDatabaseCreationFailureReason(settings?.projectDbFailureReason);
   return {
-    status: projectDatabaseUserStatusLabel(usage, projectDbStatus),
-    currentValue: projectDatabaseUserCurrentValue(usage, projectDbStatus, failureReason),
-    statusTone: projectDatabaseUserStatusTone(usage, projectDbStatus),
+    status: projectDatabaseUserStatusLabel(usage, schemaStatus),
+    currentValue: projectDatabaseUserCurrentValue(usage, schemaStatus, failureReason),
+    statusTone: projectDatabaseUserStatusTone(usage, schemaStatus),
   };
 }
 
@@ -75,12 +73,12 @@ export function projectDatabaseUserSectionHeadline(
   settings: PlanningDatabaseSettingsV1 | null | undefined,
 ): string {
   const usage = resolveDatabaseUsageMode(settings);
-  const projectDbStatus = readProjectDatabaseLifecycleStatus(settings?.projectDbStatus);
+  const schemaStatus = readEffectiveImplementationSchemaStatus(settings);
   if (usage === "UNSELECTED") return "선택 필요";
   if (usage === "DISABLED_JSON_SAMPLE") return "데이터베이스 미사용";
   if (isDatabaseUsageEnabledMode(usage)) {
-    if (projectDbStatus === "CREATED") return "프로젝트 저장소 준비 완료";
-    if (projectDbStatus === "FAILED") return "플랫폼 확인 필요";
+    if (schemaStatus === "CREATED") return "프로젝트 저장소 준비 완료";
+    if (schemaStatus === "FAILED") return "플랫폼 확인 필요";
     return "프로젝트 데이터 저장소 사용";
   }
   return "프로젝트 데이터 저장소";
@@ -103,7 +101,7 @@ export function projectDatabaseSaveOutcomeMessage(settings: PlanningDatabaseSett
   return (
     buildSaveResultNotice({
       saved: true,
-      projectDbStatus: settings.projectDbStatus,
+      projectDbStatus: readEffectiveImplementationSchemaStatus(settings),
       usageMode: resolveDatabaseUsageMode(settings),
     }) ?? "설정이 저장되었습니다."
   );

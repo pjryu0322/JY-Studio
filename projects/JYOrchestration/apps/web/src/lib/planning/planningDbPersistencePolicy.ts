@@ -11,6 +11,7 @@ import {
 } from "@/lib/planning/projectDataStoreNaming";
 import { PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementationUxLabels";
 import { JYPROJECTS_RUNTIME_DATABASE_NAME } from "@/lib/planning/jyprojectsRuntimeDatabase";
+import { readEffectiveImplementationSchemaStatus } from "@/lib/planning/planningDataStoreSettingsAdapter";
 
 export type PlanningDatabaseReadinessV1 =
   | "USAGE_UNSELECTED"
@@ -62,7 +63,7 @@ function hasPostgresStoreNaming(settings: PlanningDatabaseSettingsV1): boolean {
 
 export function isPlanningDatabaseReady(settings?: PlanningDatabaseSettingsV1 | null): boolean {
   if (!isDatabaseUsageEnabledMode(resolveDatabaseUsageMode(settings))) return false;
-  if (settings?.projectDbStatus === "FAILED") return false;
+  if (readEffectiveImplementationSchemaStatus(settings) === "FAILED") return false;
   if (!hasPostgresStoreNaming(settings)) return false;
   return true;
 }
@@ -80,7 +81,7 @@ export function resolvePlanningDatabaseBlockingReason(
   if (!isDatabaseUsageEnabledMode(usage)) {
     return "PostgreSQL 설정과 연결 테스트가 필요합니다.";
   }
-  const dbStatus = settings?.projectDbStatus;
+  const dbStatus = readEffectiveImplementationSchemaStatus(settings);
   if (dbStatus === "FAILED") {
     return "프로젝트 저장소를 준비하지 못했습니다. 플랫폼 관리자 설정 또는 PostgreSQL schema 생성 권한 확인이 필요합니다.";
   }
@@ -238,15 +239,16 @@ export function resolvePlanningDatabaseReadinessV1(
   if (usage === "DISABLED_JSON_SAMPLE") return "DISABLED_JSON_SAMPLE";
 
   if (!settings) return "CONFIG_REQUIRED";
-  if (settings.projectDbStatus === "CREATED") return "READY";
-  if (settings.projectDbStatus === "CREATING") return "CONNECTION_TEST_REQUIRED";
-  if (settings.projectDbStatus === "FAILED") return "CONNECTION_FAILED";
+  const schemaStatus = readEffectiveImplementationSchemaStatus(settings);
+  if (schemaStatus === "CREATED") return "READY";
+  if (schemaStatus === "CREATING") return "CONNECTION_TEST_REQUIRED";
+  if (schemaStatus === "FAILED") return "CONNECTION_FAILED";
   if (isDatabaseUsageEnabledMode(usage)) {
     const implSchema =
       String(settings.implementationSchemaName ?? naming?.implementationSchemaName ?? "").trim();
     const reviewSchema = String(settings.reviewSchemaName ?? naming?.reviewSchemaName ?? "").trim();
     if (!implSchema || !reviewSchema) return "STORE_NAMING_REQUIRED";
-    if (settings.projectDbStatus === "FAILED") return "CONNECTION_FAILED";
+    if (schemaStatus === "FAILED") return "CONNECTION_FAILED";
     return "READY";
   }
 
@@ -296,8 +298,8 @@ export function planningDatabaseReadinessUserDisplay(readiness: PlanningDatabase
       };
     case "CONNECTION_TEST_REQUIRED":
       return {
-        title: "프로젝트 DB 생성 중",
-        detail: "프로젝트 데이터베이스를 생성하고 있습니다. 잠시 후 다시 확인해 주세요.",
+        title: "프로젝트 저장소 준비 중",
+        detail: "프로젝트 저장소 schema를 준비하고 있습니다. 잠시 후 다시 확인해 주세요.",
         level: "partial",
       };
     case "CONNECTION_FAILED":

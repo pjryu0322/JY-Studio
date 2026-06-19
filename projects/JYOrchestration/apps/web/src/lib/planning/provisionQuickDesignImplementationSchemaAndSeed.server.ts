@@ -124,6 +124,7 @@ export async function provisionQuickDesignImplementationSchemaAndSeed(input: Rea
     });
     await client.connect();
     const schemaIdent = quotePgIdent(schemaName);
+    await client.query(`CREATE SCHEMA IF NOT EXISTS ${schemaIdent}`);
 
     for (const entity of entities) {
       const tableName = normalizeEntityTableName(entity.name);
@@ -140,6 +141,7 @@ export async function provisionQuickDesignImplementationSchemaAndSeed(input: Rea
 
       const seedFields = entity.fields.filter((f) => String(f.sampleValue ?? "").trim());
       if (seedFields.length) {
+        await client.query(`TRUNCATE ${tableIdent} RESTART IDENTITY`);
         const colNames = seedFields.map((f) => quotePgIdent(normalizeFieldColumnName(f.name)));
         const placeholders = seedFields.map((_, i) => `$${i + 1}`);
         const values = seedFields.map((f) => coerceSampleValue(f.type, f.sampleValue));

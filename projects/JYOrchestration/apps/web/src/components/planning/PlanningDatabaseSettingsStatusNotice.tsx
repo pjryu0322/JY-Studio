@@ -95,11 +95,6 @@ export function PlanningDatabaseSettingsStatusNotice({
                 <>
                   {"\n\nPostgreSQL 예시:\n"}
                   <code style={{ display: "block", marginTop: 6, fontFamily: "monospace" }}>{guide.sqlExample}</code>
-                  {"\n\n로컬 개발환경 예시:\n"}
-                  <code style={{ display: "block", marginTop: 6, fontFamily: "monospace" }}>
-                    ALTER ROLE postgres CREATEDB;{"\n"}
-                    {guide.sqlExample}
-                  </code>
                 </>
               ) : null}
               {guide.securityNote ? `\n\n${guide.securityNote}` : null}
@@ -123,7 +118,7 @@ export function PlanningDatabaseSettingsStatusNotice({
               fontSize: 12,
             }}
           >
-            {retryBusy ? "프로젝트 데이터베이스를 다시 준비하고 있습니다…" : "다시 시도"}
+            {retryBusy ? "프로젝트 저장소 schema를 다시 준비하고 있습니다…" : "저장소 준비 재시도"}
           </button>
         </div>
       ) : null}

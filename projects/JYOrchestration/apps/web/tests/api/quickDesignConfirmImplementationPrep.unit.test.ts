@@ -299,7 +299,7 @@ describe("quickDesignConfirmImplementationPrep", () => {
 
     expect(prep.prepComplete).toBe(false);
     expect(prep.postConfirmState.seedReady).toBe(false);
-    expect(prep.planningHandoffForImplementationV1.status).toBe("BLOCKED_PROJECT_DATABASE_REQUIRED");
+    expect(prep.planningHandoffForImplementationV1.status).toBe("BLOCKED_SCHEMA_REQUIRED");
     expect(prep.implementationTaskListV1).toBeNull();
     expect(prep.implementationCodeTaskPlanV1).toBeNull();
     expect(prep.cursorWorkItemsV1).toBeNull();
@@ -319,7 +319,7 @@ describe("quickDesignConfirmImplementationPrep", () => {
     );
     expect(evaluated?.responseText).toContain("seedReady=false");
     expect(evaluated?.responseText).toContain("seedStatus=blocked_database_required");
-    expect(evaluated?.responseText).toContain("handoffStatus=BLOCKED_PROJECT_DATABASE_REQUIRED");
+    expect(evaluated?.responseText).toContain("handoffStatus=BLOCKED_SCHEMA_REQUIRED");
 
     const progressContent = buildImplementationPrepProgressChatContent({
       snapshot: buildImplementationPrepDatabaseBlockedSnapshot(),

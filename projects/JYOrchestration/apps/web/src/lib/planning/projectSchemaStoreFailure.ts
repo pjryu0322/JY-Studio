@@ -70,4 +70,4 @@ export const QUICK_DESIGN_STORE_PREP_USER_SHORT_MESSAGE =
   "프로젝트 저장소 준비가 필요합니다.";
 
 export const QUICK_DESIGN_CONFIRM_WITH_STORE_PREP_FAILURE_SUMMARY =
-  "Quick Design이 확정되었습니다. 다만 프로젝트 데이터 저장소 준비는 관리자 확인이 필요합니다.";
+  "Quick Design이 확정되었습니다. 프로젝트 저장소 준비는 관리자 확인이 필요합니다.";

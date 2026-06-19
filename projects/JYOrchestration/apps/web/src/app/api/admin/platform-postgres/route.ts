@@ -10,7 +10,7 @@ import {
   testGeneratedProjectDataDatabaseConnection,
   testPlatformManagedPostgresAdminConnection,
   testPlatformManagementDatabaseConnection,
-} from "@/lib/planning/createProjectDatabaseForProject.server";
+} from "@/lib/planning/platformPostgresConnectionTest.server";
 
 export async function GET(request: NextRequest) {
   try {

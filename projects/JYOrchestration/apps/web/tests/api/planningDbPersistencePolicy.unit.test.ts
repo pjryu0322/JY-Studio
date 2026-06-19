@@ -60,7 +60,7 @@ describe("planningDbPersistencePolicy usage modes", () => {
       enabled: true,
     };
     expect(resolvePlanningDataPersistenceMode({ planningDatabaseSettings: settings })).toBe(
-      "BLOCKED_PROJECT_DATABASE_REQUIRED",
+      "BLOCKED_SCHEMA_REQUIRED",
     );
     const draft = buildPlanningDataSlotsDraft({
       repositoryName: "doit-meet",
@@ -74,7 +74,7 @@ describe("planningDbPersistencePolicy usage modes", () => {
       planningDataSlots: draft,
       planningDatabaseSettings: settings,
     });
-    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("BLOCKED_PROJECT_DATABASE_REQUIRED");
+    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("BLOCKED_SCHEMA_REQUIRED");
     expect(isPlanningHandoffBlockedByDatabase(handoff)).toBe(true);
   });
 

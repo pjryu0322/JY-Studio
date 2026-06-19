@@ -4,6 +4,7 @@ import {
   readProjectDatabaseLifecycleStatus,
   type ProjectDatabaseLifecycleStatus,
 } from "@/lib/planning/projectDatabaseLifecycle";
+import { readEffectiveImplementationSchemaStatus } from "@/lib/planning/planningDataStoreSettingsAdapter";
 
 export type ProjectDatabaseCreationFailureReason =
   | "POSTGRES_ADMIN_CONFIG_MISSING"
@@ -88,7 +89,7 @@ export function projectDatabaseFailureUserMessage(
     case "DATABASE_ALREADY_EXISTS_BUT_INACCESSIBLE":
       return "프로젝트 데이터 저장소 연결 확인이 필요합니다. 플랫폼 관리자 설정을 확인해 주세요.";
     case "INVALID_DATABASE_NAME":
-      return "데이터베이스명을 사용할 수 없습니다. 영문 소문자, 숫자, underscore 조합으로 입력해 주세요.";
+      return "프로젝트 저장소 이름을 사용할 수 없습니다. 영문 소문자, 숫자, underscore 조합으로 입력해 주세요.";
     case "UNKNOWN":
     default:
       return "프로젝트 저장소를 준비할 수 없습니다. 플랫폼 관리자 설정 또는 schema 생성 권한 확인이 필요합니다.";
@@ -157,14 +158,13 @@ export function projectDatabaseActionGuide(input: Readonly<{
       };
     case "DATABASE_ALREADY_EXISTS_BUT_INACCESSIBLE":
       return {
-        summary: "데이터베이스 접속 권한을 확인해 주세요.",
+        summary: "프로젝트 저장소 연결 확인이 필요합니다.",
         adminGuide: [
           "관리자 조치 방법",
           "",
-          "1. 동일 이름의 PostgreSQL database가 이미 존재하는지 확인합니다.",
-          "2. 플랫폼 계정에 해당 database 접속 권한이 있는지 확인합니다.",
-          "3. 필요 시 database 소유자 또는 GRANT CONNECT 권한을 조정합니다.",
-          "4. 조치 후 다시 시도를 실행합니다.",
+          "1. jyprojects 데이터베이스 접속 설정을 확인합니다.",
+          "2. 플랫폼 계정에 schema 생성·접속 권한이 있는지 확인합니다.",
+          "3. 조치 후 저장소 준비 재시도 또는 Quick Design 확정을 다시 실행합니다.",
         ].join("\n"),
         sqlExample: null,
         securityNote: baseSecurity,
@@ -172,12 +172,12 @@ export function projectDatabaseActionGuide(input: Readonly<{
       };
     case "INVALID_DATABASE_NAME":
       return {
-        summary: "데이터베이스명을 수정해 주세요.",
+        summary: "프로젝트 저장소 이름을 확인해 주세요.",
         adminGuide: [
           "조치 방법",
           "",
-          "1. 데이터베이스명을 영문 소문자, 숫자, underscore 조합으로 입력합니다.",
-          "2. 저장을 실행한 뒤 프로젝트 DB 생성을 다시 시도합니다.",
+          "1. Repository 저장소명을 영문 소문자, 숫자, underscore 조합으로 확인합니다.",
+          "2. 환경설정을 저장한 뒤 Quick Design 확정 또는 저장소 준비 재시도를 실행합니다.",
         ].join("\n"),
         sqlExample: null,
         securityNote: "",
@@ -226,7 +226,7 @@ export function buildProjectDatabaseStatusNotice(
     };
   }
   if (!isDatabaseUsageEnabledMode(usage)) return null;
-  const status = readProjectDatabaseLifecycleStatus(settings?.projectDbStatus);
+  const status = readEffectiveImplementationSchemaStatus(settings);
   if (status === "CREATED") {
     return {
       headline: "프로젝트 저장소 준비 완료",
