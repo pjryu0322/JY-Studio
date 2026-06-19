@@ -6,6 +6,8 @@ import {
 import {
   isDatabaseUsageEnabledMode,
   resolveDatabaseUsageMode,
+  JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME,
+  JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
   JYPROJECTS_RUNTIME_DATABASE_NAME,
 } from "@/lib/planning/planningDatabaseUsageMode";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
@@ -68,6 +70,8 @@ export function syncPlanningDatabaseSettingsStoreNames(input: Readonly<{
       reviewSchemaName: naming.reviewSchemaName,
       schemaStrategy: "PROJECT_STAGE_SCHEMA",
       projectDbStatus,
+      platformManagementDatabaseName: JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME,
+      generatedProjectDataDatabaseName: JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
       runtimeDatabaseName: JYPROJECTS_RUNTIME_DATABASE_NAME,
       connectionStatus: "NOT_CONFIGURED",
     };

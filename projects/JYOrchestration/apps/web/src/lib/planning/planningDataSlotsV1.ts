@@ -19,7 +19,11 @@ import {
 } from "@/lib/planning/planningDbPersistencePolicy";
 import type { ProjectDataStoreNaming } from "@/lib/planning/projectDataStoreNaming";
 import { buildProjectDataStoreNaming } from "@/lib/planning/projectDataStoreNaming";
-import { JYPROJECTS_RUNTIME_DATABASE_NAME } from "@/lib/planning/jyprojectsRuntimeDatabase";
+import {
+  JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME,
+  JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
+  JYPROJECTS_RUNTIME_DATABASE_NAME,
+} from "@/lib/planning/platformDatabaseRoles";
 import {
   readDataStoreLifecycleStatus,
   resolvePlanningStageStoreLifecycle,
@@ -657,7 +661,7 @@ export type PlanningHandoffForImplementationV1 = Readonly<{
   readonly sampleDataSlot: SampleDataSlotV1;
   readonly runtimeApiSlot: RuntimeApiSlotV1;
   readonly implementationDataPlan: Readonly<{
-    readonly provider: "POSTGRESQL" | "NONE";
+    readonly provider: "POSTGRESQL" | "PLATFORM_POSTGRESQL" | "NONE";
     readonly dataPersistenceMode: PlanningDataPersistenceMode;
     readonly repositoryBasedStoreName: string;
     readonly implementationSchemaName: string;
@@ -665,6 +669,12 @@ export type PlanningHandoffForImplementationV1 = Readonly<{
     readonly useSampleDb: boolean;
     readonly useRuntimeApi: boolean;
     readonly useJsonSampleData?: boolean;
+    readonly usePlatformSchema?: boolean;
+    readonly useProjectDatabase?: boolean;
+    readonly platformManagementDatabaseName?: string | null;
+    readonly generatedProjectDataDatabaseName?: string | null;
+    /** @deprecated Use generatedProjectDataDatabaseName */
+    readonly runtimeDatabaseName?: string | null;
     readonly databaseName?: string;
     readonly blocked: boolean;
     readonly blockingReason: string | null;
@@ -720,6 +730,7 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
     : usePlatformSchema
       ? "PLATFORM_POSTGRESQL"
       : "POSTGRESQL";
+  const platformManagementDatabaseName = JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME;
   return {
     version: 1,
     projectId: input.projectId.trim(),
@@ -737,10 +748,15 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
       reviewSchemaName,
       useSampleDb: usePlatformSchema,
       useRuntimeApi,
-      ...(useJsonSampleData ? { useJsonSampleData: true } : {}),
-      ...(usePlatformSchema ? { usePlatformSchema: true, useProjectDatabase: true } : {}),
+      platformManagementDatabaseName,
+      ...(useJsonSampleData
+        ? { useJsonSampleData: true, generatedProjectDataDatabaseName: null }
+        : {}),
       ...(usePlatformSchema
         ? {
+            usePlatformSchema: true,
+            useProjectDatabase: true,
+            generatedProjectDataDatabaseName: JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
             implementationStoreName: implementationSchemaName,
             reviewStoreName: reviewSchemaName,
             runtimeDatabaseName: JYPROJECTS_RUNTIME_DATABASE_NAME,

@@ -129,7 +129,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
       {usageMode === "UNSELECTED" ? (
         <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
           데이터베이스 사용 여부를 선택해 주세요. 사용하지 않으면 JSON 샘플데이터로 구현단계를 진행합니다. 사용하면
-          플랫폼 Runtime Database(`jyprojects`) 안에 프로젝트 schema가 준비됩니다.
+          Quick Design 확정 후 jyprojects에 프로젝트 schema가 생성됩니다.
         </p>
       ) : null}
       {inlineCopy ? (

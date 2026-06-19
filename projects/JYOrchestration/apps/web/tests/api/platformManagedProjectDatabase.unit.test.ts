@@ -5,7 +5,10 @@ import {
   resolvePlanningDataPersistenceMode,
   resolvePlanningDatabaseBlockingReason,
 } from "@/lib/planning/planningDbPersistencePolicy";
-import { JYPROJECTS_RUNTIME_DATABASE_NAME } from "@/lib/planning/jyprojectsRuntimeDatabase";
+import {
+  JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME,
+  JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
+} from "@/lib/planning/platformDatabaseRoles";
 import { parsePlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 
 export function readyPlatformSchemaSettings(overrides: Record<string, unknown> = {}) {
@@ -23,7 +26,9 @@ export function readyPlatformSchemaSettings(overrides: Record<string, unknown> =
     connectionStatus: "NOT_CONFIGURED",
     repositoryName: "aiproject",
     databaseStoreName: "aiproject",
-    runtimeDatabaseName: JYPROJECTS_RUNTIME_DATABASE_NAME,
+    platformManagementDatabaseName: JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME,
+    generatedProjectDataDatabaseName: JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
+    runtimeDatabaseName: JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
     projectDbStatus: "PLANNED",
     implementationSchemaName: "aiproject_impl_sample",
     reviewSchemaName: "aiproject_review_test",
@@ -55,7 +60,8 @@ describe("planningDatabaseStoreNamingSync", () => {
     expect(synced.databaseStoreName).toBe("aiproject");
     expect(synced.implementationSchemaName).toBe("aiproject_impl_sample");
     expect(synced.reviewSchemaName).toBe("aiproject_review_test");
-    expect(synced.runtimeDatabaseName).toBe("jyprojects");
+    expect(synced.generatedProjectDataDatabaseName).toBe("jyprojects");
+    expect(synced.platformManagementDatabaseName).toBe("jyorchestration");
     expect(synced.projectDbStatus).toBe("PLANNED");
   });
 });

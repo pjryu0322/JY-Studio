@@ -1,2 +1,5 @@
-/** Platform runtime PostgreSQL database for all project schemas (admin pre-creates this DB). */
-export const JYPROJECTS_RUNTIME_DATABASE_NAME = "jyprojects";
+export {
+  JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME,
+  JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
+  JYPROJECTS_RUNTIME_DATABASE_NAME,
+} from "@/lib/planning/platformDatabaseRoles";

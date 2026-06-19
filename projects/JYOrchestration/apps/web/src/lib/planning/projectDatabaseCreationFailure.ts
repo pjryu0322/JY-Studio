@@ -146,12 +146,12 @@ export function projectDatabaseActionGuide(input: Readonly<{
         adminGuide: [
           "관리자 조치 방법",
           "",
-          "1. 플랫폼 Runtime Database 접속 설정을 확인합니다.",
+          "1. 생성 프로젝트 데이터 DB(jyprojects) 접속 설정을 확인합니다.",
           "2. 플랫폼 계정에 CREATE SCHEMA 권한이 있는지 확인합니다.",
           "3. 권한이 없으면 PostgreSQL 관리자 계정으로 schema 생성 권한을 부여합니다.",
           "4. Quick Design 확정을 다시 실행합니다.",
         ].join("\n"),
-        sqlExample: `GRANT CREATE ON DATABASE <runtime_database> TO ${user};`,
+        sqlExample: `GRANT CREATE ON DATABASE jyprojects TO ${user};`,
         securityNote: baseSecurity,
         retryable: true,
       };
@@ -242,7 +242,7 @@ export function buildProjectDatabaseStatusNotice(
     return {
       headline: "프로젝트 저장소 자동 준비",
       summary:
-        "플랫폼 데이터 저장소를 사용합니다. Quick Design 확정 후 Runtime Database 안에 프로젝트 schema·테이블·seed가 생성됩니다.",
+        "플랫폼 데이터 저장소를 사용합니다. Quick Design 확정 후 jyprojects에 프로젝트 schema·테이블·seed가 생성됩니다.",
       detail: null,
       showActionGuide: false,
       retryable: false,

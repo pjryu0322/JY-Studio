@@ -7,7 +7,7 @@ import {
 } from "@/lib/planning/platformManagedPostgresConfig.server";
 import { isDatabaseUsageEnabledMode, resolveDatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
 
-/** Server-side PostgreSQL connection (platform Runtime Database + project schemas). */
+/** Server-side PostgreSQL connection to jyprojects (generated project data) + project schemas. */
 export async function resolvePlanningPostgresConnectionForProject(input: Readonly<{
   readonly settings: PlanningDatabaseSettingsV1;
 }>): Promise<Readonly<{ settings: PlanningDatabaseSettingsV1; password: string | null }>> {

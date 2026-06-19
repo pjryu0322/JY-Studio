@@ -25,7 +25,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     return NextResponse.json({
       success: false,
       message:
-        "프로젝트별 Database 생성은 사용하지 않습니다. Quick Design 확정 시 Runtime Database 안에 프로젝트 schema가 생성됩니다.",
+        "프로젝트별 Database 생성은 사용하지 않습니다. Quick Design 확정 시 jyprojects에 프로젝트 schema가 생성됩니다.",
     });
   } catch (error) {
     const denied = rbacErrorResponse(error);

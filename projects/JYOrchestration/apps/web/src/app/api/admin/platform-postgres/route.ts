@@ -6,7 +6,11 @@ import {
   loadPlatformManagedPostgresConfig,
   sanitizePlatformManagedPostgresConfigForAdmin,
 } from "@/lib/planning/platformManagedPostgresConfig.server";
-import { testPlatformManagedPostgresAdminConnection } from "@/lib/planning/createProjectDatabaseForProject.server";
+import {
+  testGeneratedProjectDataDatabaseConnection,
+  testPlatformManagedPostgresAdminConnection,
+  testPlatformManagementDatabaseConnection,
+} from "@/lib/planning/createProjectDatabaseForProject.server";
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,7 +29,7 @@ export async function GET(request: NextRequest) {
       data: {
         config: sanitizePlatformManagedPostgresConfigForAdmin(config),
         envHint:
-          "JYO_PLATFORM_PG_HOST, JYO_PLATFORM_PG_PORT, JYO_PLATFORM_PG_RUNTIME_DATABASE (default: jyprojects), JYO_PLATFORM_PG_ADMIN_USERNAME, JYO_PLATFORM_PG_ADMIN_PASSWORD",
+          "DATABASE_URL or JY_PLATFORM_DATABASE_URL (jyorchestration), JYO_PLATFORM_PG_* (jyprojects schema provisioning)",
       },
     });
   } catch (error) {
@@ -46,13 +50,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "권한이 없습니다." }, { status: 403 });
     }
     const body = (await request.json().catch(() => ({}))) as { readonly action?: string };
-    if (body.action !== "test") {
+    const action = String(body.action ?? "test").trim();
+    if (action !== "test" && action !== "testPlatformManagement" && action !== "testGeneratedProjectData") {
       return NextResponse.json(
         { success: false, message: "플랫폼 PostgreSQL 설정은 서버 환경 변수로 관리합니다." },
         { status: 400 },
       );
     }
-    const test = await testPlatformManagedPostgresAdminConnection();
+    const test =
+      action === "testPlatformManagement"
+        ? await testPlatformManagementDatabaseConnection()
+        : action === "testGeneratedProjectData"
+          ? await testGeneratedProjectDataDatabaseConnection()
+          : await testPlatformManagedPostgresAdminConnection();
     return NextResponse.json({ success: test.ok, data: test, message: test.message });
   } catch (error) {
     console.error("POST admin/platform-postgres error:", error);

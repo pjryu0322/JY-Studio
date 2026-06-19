@@ -41,6 +41,11 @@ export type PlanningDatabaseSettingsV1 = Readonly<{
   readonly projectDbName?: string | null;
   readonly projectDbStatus?: ProjectDatabaseLifecycleStatus;
   readonly projectDbFailureReason?: ProjectDatabaseCreationFailureReason | null;
+  /** Generated project data DB (`jyprojects`) — schemas created on QD confirm. */
+  readonly generatedProjectDataDatabaseName?: string | null;
+  /** Platform management DB (`jyorchestration`) — settings/metadata only. */
+  readonly platformManagementDatabaseName?: string | null;
+  /** @deprecated Use generatedProjectDataDatabaseName */
   readonly runtimeDatabaseName?: string | null;
   readonly connectionStatus: PlanningDatabaseConnectionStatus;
   readonly lastCheckedAt?: string | null;
@@ -171,7 +176,15 @@ export function parsePlanningDatabaseSettingsV1(raw: unknown): PlanningDatabaseS
     projectDbName: readStr(o.projectDbName, 120) || null,
     ...(readProjectDbStatus(o.projectDbStatus) ? { projectDbStatus: readProjectDbStatus(o.projectDbStatus)! } : {}),
     projectDbFailureReason: readFailureReason(o.projectDbFailureReason),
-    runtimeDatabaseName: readStr(o.runtimeDatabaseName, 80) || null,
+    runtimeDatabaseName:
+      readStr(o.generatedProjectDataDatabaseName, 80) ||
+      readStr(o.runtimeDatabaseName, 80) ||
+      null,
+    generatedProjectDataDatabaseName:
+      readStr(o.generatedProjectDataDatabaseName, 80) ||
+      readStr(o.runtimeDatabaseName, 80) ||
+      null,
+    platformManagementDatabaseName: readStr(o.platformManagementDatabaseName, 80) || null,
     connectionStatus: readStatus(o.connectionStatus),
     lastCheckedAt: readStr(o.lastCheckedAt, 80) || null,
     lastErrorMessage: readStr(o.lastErrorMessage, 500) || null,

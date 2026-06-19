@@ -273,7 +273,7 @@ export function planningDatabaseReadinessUserDisplay(readiness: PlanningDatabase
       return {
         title: "데이터베이스 사용 여부 선택",
         detail:
-          "데이터베이스를 사용하지 않으면 JSON 샘플데이터로 구현단계를 진행합니다. 사용하면 플랫폼 Runtime Database 안에 프로젝트 schema가 준비됩니다.",
+          "데이터베이스를 사용하지 않으면 JSON 샘플데이터로 구현단계를 진행합니다. 사용하면 생성 프로젝트 데이터 저장소(jyprojects)에 프로젝트 schema가 준비됩니다.",
         level: "empty",
       };
     case "DISABLED_JSON_SAMPLE":
@@ -354,7 +354,7 @@ export function implementationDbSlotOverridesForPlanningPersistence(
     return {
       data_persistence_mode: "db",
       db_required: true,
-      storage_strategy: `Platform Runtime Database (${JYPROJECTS_RUNTIME_DATABASE_NAME}) + project schemas + Runtime API`,
+      storage_strategy: `jyorchestration (platform metadata) + jyprojects schemas (${JYPROJECTS_RUNTIME_DATABASE_NAME}) + Runtime API`,
       migration_required: true,
     };
   }

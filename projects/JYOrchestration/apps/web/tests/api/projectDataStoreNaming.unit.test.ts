@@ -54,7 +54,8 @@ describe("buildPlanningHandoffForImplementation", () => {
     expect(handoff.status).toBe("READY");
     expect(handoff.implementationDataPlan.implementationSchemaName).toBe("aiproject_impl_sample");
     expect(handoff.implementationDataPlan.reviewSchemaName).toBe("aiproject_review_test");
-    expect(handoff.implementationDataPlan.runtimeDatabaseName).toBe("jyprojects");
+    expect(handoff.implementationDataPlan.generatedProjectDataDatabaseName).toBe("jyprojects");
+    expect(handoff.implementationDataPlan.platformManagementDatabaseName).toBe("jyorchestration");
   });
 
   it("blocks handoff when DB is disabled after explicit JSON selection", () => {

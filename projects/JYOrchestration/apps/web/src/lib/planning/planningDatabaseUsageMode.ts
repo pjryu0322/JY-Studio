@@ -1,6 +1,10 @@
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import type { ProjectDatabaseLifecycleStatus } from "@/lib/planning/projectDatabaseLifecycle";
-import { JYPROJECTS_RUNTIME_DATABASE_NAME } from "@/lib/planning/jyprojectsRuntimeDatabase";
+import {
+  JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME,
+  JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
+  JYPROJECTS_RUNTIME_DATABASE_NAME,
+} from "@/lib/planning/platformDatabaseRoles";
 
 /** Canonical DB usage mode (`jyprojects` runtime DB + project schemas). */
 export type DatabaseUsageMode =
@@ -81,6 +85,14 @@ export function normalizePlanningDatabaseSettingsUsageOnSave(
     connectionStatus,
     projectDbStatus,
     projectDbFailureReason: usageMode === "ENABLED_JYPROJECTS_SCHEMA" ? null : settings.projectDbFailureReason,
+    platformManagementDatabaseName:
+      usageMode === "ENABLED_JYPROJECTS_SCHEMA"
+        ? JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME
+        : null,
+    generatedProjectDataDatabaseName:
+      usageMode === "ENABLED_JYPROJECTS_SCHEMA"
+        ? JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME
+        : null,
     runtimeDatabaseName:
       usageMode === "ENABLED_JYPROJECTS_SCHEMA"
         ? JYPROJECTS_RUNTIME_DATABASE_NAME
@@ -88,4 +100,8 @@ export function normalizePlanningDatabaseSettingsUsageOnSave(
   };
 }
 
-export { JYPROJECTS_RUNTIME_DATABASE_NAME };
+export {
+  JYORCHESTRATION_PLATFORM_MANAGEMENT_DATABASE_NAME,
+  JYPROJECTS_GENERATED_PROJECT_DATA_DATABASE_NAME,
+  JYPROJECTS_RUNTIME_DATABASE_NAME,
+};
