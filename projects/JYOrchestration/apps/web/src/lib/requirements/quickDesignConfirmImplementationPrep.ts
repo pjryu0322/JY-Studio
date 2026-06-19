@@ -50,7 +50,11 @@ import type {
 } from "@/lib/requirements/singleChatOrchestrationTypes";
 import type { PlanningDataSlotsV1, PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
 import { buildPlanningDataSlotsStatePatch, resolvePlanningRepositoryName } from "@/lib/planning/planningDataSlotsStatePatch";
-import { isPlanningHandoffBlockedByDatabase } from "@/lib/planning/planningDbPersistencePolicy";
+import {
+  isPlanningHandoffBlockedByDatabase,
+  resolvePlanningDatabaseBlockingReason,
+  type PlanningDatabaseReadinessV1,
+} from "@/lib/planning/planningDbPersistencePolicy";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   buildImplementationPreparationUserSummary,
@@ -161,25 +165,67 @@ function buildQuickDesignSeedAutoBuiltTimelineEntry(input: {
 
 function buildQuickDesignReadinessEvaluatedTimelineEntry(input: {
   readonly projectId: string;
-  readonly readiness: ImplementationSeedReadiness;
-  readonly lifecycleStatus: ImplementationSeedLifecycleStatus;
+  readonly seedReady: boolean;
+  readonly seedStatus: string;
+  readonly missing: readonly string[];
   readonly autoCandidateGenerated: boolean;
   readonly nowIso: string;
+  readonly databaseReadiness?: PlanningDatabaseReadinessV1;
+  readonly handoffStatus?: string;
+  readonly dataPersistenceMode?: string;
+  readonly implementationPrepStatus?: string;
 }): RequirementsPromptTimelineEntry {
+  const parts = [
+    "type=quick_design_confirmed_implementation_readiness_evaluated",
+    "mode=planning",
+    "source=quick_design_confirm",
+    `seedReady=${input.seedReady}`,
+    `seedStatus=${input.seedStatus}`,
+    `missing=${input.missing.join(",")}`,
+    `autoCandidateGenerated=${input.autoCandidateGenerated}`,
+  ];
+  if (input.databaseReadiness) parts.push(`databaseReadiness=${input.databaseReadiness}`);
+  if (input.handoffStatus) parts.push(`handoffStatus=${input.handoffStatus}`);
+  if (input.dataPersistenceMode) parts.push(`dataPersistenceMode=${input.dataPersistenceMode}`);
+  if (input.implementationPrepStatus) parts.push(`implementationPrepStatus=${input.implementationPrepStatus}`);
   return {
     stage: "requirements",
     stageGroup: "기획",
     workspaceScreenKey: "requirements",
     action: "quick_design_confirmed_implementation_readiness_evaluated",
     source: "system",
+    responseText: parts.join(" "),
+    createdAt: input.nowIso,
+    orchestrationTraceGroup: "planning_orchestration",
+  };
+}
+
+function buildQuickDesignPrepBlockedDatabaseRequiredTimelineEntry(input: {
+  readonly projectId: string;
+  readonly handoff: PlanningHandoffForImplementationV1;
+  readonly databaseReadiness: PlanningDatabaseReadinessV1;
+  readonly planningDatabaseSettings?: import("@/lib/planning/planningDatabaseSettingsV1").PlanningDatabaseSettingsV1 | null;
+  readonly nowIso: string;
+}): RequirementsPromptTimelineEntry {
+  const reason = resolvePlanningDatabaseBlockingReason(input.planningDatabaseSettings ?? null);
+  return {
+    stage: "requirements",
+    stageGroup: "기획",
+    workspaceScreenKey: "requirements",
+    action: "quick_design_confirmed_implementation_prep_blocked_database_required",
+    source: "system",
     responseText: [
-      "type=quick_design_confirmed_implementation_readiness_evaluated",
+      "type=quick_design_confirmed_implementation_prep_blocked_database_required",
       "mode=planning",
       "source=quick_design_confirm",
-      `seedReady=${input.readiness.ready}`,
-      `seedStatus=${input.lifecycleStatus}`,
-      `missing=${input.readiness.missing.join(",")}`,
-      `autoCandidateGenerated=${input.autoCandidateGenerated}`,
+      `handoffStatus=${input.handoff.status}`,
+      `databaseReadiness=${input.databaseReadiness}`,
+      `dataPersistenceMode=${input.handoff.implementationDataPlan.dataPersistenceMode}`,
+      "seedReady=false",
+      "seedStatus=blocked_database_required",
+      "blockReason=DATABASE_REQUIRED",
+      `reason=${reason}`,
+      "action=OPEN_PLANNING_DATABASE_SETTINGS",
     ].join(" "),
     createdAt: input.nowIso,
     orchestrationTraceGroup: "planning_orchestration",
@@ -402,60 +448,98 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   }
 
   const artifactCount = input.generatedArtifactCount ?? 0;
-  const timelineEntries: RequirementsPromptTimelineEntry[] = [
-    buildQuickDesignSeedAutoBuiltTimelineEntry({
-      projectId: input.projectId,
-      seed: implementationSeedV1,
-      generatedArtifactCount: artifactCount,
-      nowIso: now,
-    }),
-    buildQuickDesignReadinessEvaluatedTimelineEntry({
-      projectId: input.projectId,
-      readiness,
-      lifecycleStatus,
-      autoCandidateGenerated,
-      nowIso: now,
-    }),
-  ];
-  if (autoCandidateGenerated) {
+  const databaseReadiness = planningDataPatch.planningDataSlotsV1.dataStoreSlot.databaseReadiness;
+  const handoff = planningDataPatch.planningHandoffForImplementationV1;
+  const timelineEntries: RequirementsPromptTimelineEntry[] = [];
+
+  if (!databaseReady) {
     timelineEntries.push(
-      buildQuickDesignCandidatesAutoGeneratedTimelineEntry({
+      buildQuickDesignPrepBlockedDatabaseRequiredTimelineEntry({
         projectId: input.projectId,
-        touchedGapKeys,
+        handoff,
+        databaseReadiness,
+        planningDatabaseSettings: input.planningStateJson?.planningDatabaseSettingsV1 ?? null,
         nowIso: now,
       }),
     );
-  }
-  if (autoConfirmedRequired) {
+    const dbMissing = ["database_settings", "postgres_connection_test"];
     timelineEntries.push(
-      buildQuickDesignSeedAutoConfirmedTimelineEntry({
+      buildQuickDesignReadinessEvaluatedTimelineEntry({
         projectId: input.projectId,
-        confirmedGapKeys: autoConfirmEligibility.requiredReadyGapKeys,
+        seedReady: false,
+        seedStatus: "blocked_database_required",
+        missing: dbMissing,
+        autoCandidateGenerated: false,
         nowIso: now,
+        databaseReadiness,
+        handoffStatus: handoff.status,
+        dataPersistenceMode: handoff.implementationDataPlan.dataPersistenceMode,
+        implementationPrepStatus: "BLOCKED_DATABASE_REQUIRED",
       }),
     );
-  }
-  if (implementationTaskListV1?.tasks?.length) {
+  } else {
     timelineEntries.push(
-      buildImplementationTaskListAutoCreatedTimelineEntry({
+      buildQuickDesignSeedAutoBuiltTimelineEntry({
         projectId: input.projectId,
-        taskList: {
-          ...implementationTaskListV1,
-          roleSummary: summarizeImplementationTaskRoles(implementationTaskListV1.tasks),
-        },
+        seed: implementationSeedV1,
+        generatedArtifactCount: artifactCount,
         nowIso: now,
       }),
     );
     timelineEntries.push(
-      buildPlanningReadyForImplementationExecutionTimelineEntry({
+      buildQuickDesignReadinessEvaluatedTimelineEntry({
         projectId: input.projectId,
-        ok: isPlanningReadyForImplementationExecution({
-          implementationSeedV1,
-          implementationTaskListV1,
+        seedReady: readiness.ready && lifecycleStatus === "confirmed",
+        seedStatus: lifecycleStatus,
+        missing: readiness.missing,
+        autoCandidateGenerated,
+        nowIso: now,
+        databaseReadiness,
+        handoffStatus: handoff.status,
+        dataPersistenceMode: handoff.implementationDataPlan.dataPersistenceMode,
+        implementationPrepStatus: executionPrepAllowed ? "READY" : "INCOMPLETE",
+      }),
+    );
+    if (autoCandidateGenerated) {
+      timelineEntries.push(
+        buildQuickDesignCandidatesAutoGeneratedTimelineEntry({
+          projectId: input.projectId,
+          touchedGapKeys,
+          nowIso: now,
         }),
-        nowIso: now,
-      }),
-    );
+      );
+    }
+    if (autoConfirmedRequired) {
+      timelineEntries.push(
+        buildQuickDesignSeedAutoConfirmedTimelineEntry({
+          projectId: input.projectId,
+          confirmedGapKeys: autoConfirmEligibility.requiredReadyGapKeys,
+          nowIso: now,
+        }),
+      );
+    }
+    if (implementationTaskListV1?.tasks?.length) {
+      timelineEntries.push(
+        buildImplementationTaskListAutoCreatedTimelineEntry({
+          projectId: input.projectId,
+          taskList: {
+            ...implementationTaskListV1,
+            roleSummary: summarizeImplementationTaskRoles(implementationTaskListV1.tasks),
+          },
+          nowIso: now,
+        }),
+      );
+      timelineEntries.push(
+        buildPlanningReadyForImplementationExecutionTimelineEntry({
+          projectId: input.projectId,
+          ok: isPlanningReadyForImplementationExecution({
+            implementationSeedV1,
+            implementationTaskListV1,
+          }),
+          nowIso: now,
+        }),
+      );
+    }
   }
   if (planningReadinessTimeline.length) {
     timelineEntries.push(...planningReadinessTimeline);
@@ -478,7 +562,7 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     autoConfirmedRequired,
     touchedGapKeys,
     chipLabels,
-    prepComplete,
+    prepComplete: executionPrepAllowed,
     postConfirmState,
     timelineEntries,
   };

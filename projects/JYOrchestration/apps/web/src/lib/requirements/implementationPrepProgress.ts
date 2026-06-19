@@ -16,7 +16,8 @@ export type ImplementationPrepProgressPhase =
   | "workitem_building"
   | "preflight_checking"
   | "ready"
-  | "failed";
+  | "failed"
+  | "database_setup";
 
 export type ImplementationPrepStepStatus = "done" | "active" | "pending";
 
@@ -152,6 +153,23 @@ export function buildImplementationPrepCompletedSnapshot(): ImplementationPrepPr
   };
 }
 
+/** PostgreSQL 미준비로 구현준비가 차단된 경우 (Quick Design 확정은 성공). */
+export function buildImplementationPrepDatabaseBlockedSnapshot(): ImplementationPrepProgressSnapshot {
+  const steps = STEP_DEFINITIONS.map((step) => ({
+    label: step.label,
+    status: "pending" as const,
+  }));
+  return {
+    phase: "database_setup",
+    percent: 0,
+    headline: "구현 준비를 완료할 수 없습니다.",
+    description:
+      "이 프로젝트는 구현단계부터 PostgreSQL 샘플 DB를 사용합니다. 기획단계에서 데이터베이스 설정과 연결 테스트를 완료해야 합니다.",
+    metaLines: ["현재 단계: 데이터베이스 설정 필요", "진행률: 대기", "상세 로그: 로그 탭"],
+    steps,
+  };
+}
+
 export function formatImplementationPrepStepLine(step: ImplementationPrepStepItem): string {
   const suffix = step.status === "done" ? " 완료" : step.status === "active" ? " 중" : " 대기";
   return `${step.label}${suffix}`;
@@ -178,6 +196,8 @@ export function formatImplementationPrepProgressUserStepLabel(
       return "구현준비 완료";
     case "failed":
       return "구현준비 생성 실패";
+    case "database_setup":
+      return "데이터베이스 설정 필요";
     default:
       return "구현준비 생성";
   }

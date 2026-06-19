@@ -224,6 +224,7 @@ import {
   buildPseudoImplementationPrepProgress,
   type ImplementationPrepProgressPhase,
   buildImplementationPrepCompletedSnapshot,
+  buildImplementationPrepDatabaseBlockedSnapshot,
 } from "@/lib/requirements/implementationPrepProgress";
 import {
   IMPLEMENTATION_PREP_LOG_VIEW_CHIP_LABEL,
@@ -232,6 +233,8 @@ import {
   upsertImplementationPrepProgressMessage,
 } from "@/lib/requirements/implementationPrepProgressChatMessage";
 import { postQuickDesignConfirm } from "@/components/project-spec/apis/quickDesignConfirmApi";
+import { parsePlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
+import { isPlanningHandoffBlockedByDatabase } from "@/lib/planning/planningDbPersistencePolicy";
 import {
   buildImplementationCandidateItems,
   implementationCandidateLabelForKey,
@@ -2786,11 +2789,19 @@ export function RequirementsWorkspace({
       implementationPrepProgressStartedAtRef.current = null;
       implementationPrepProgressTrackRef.current = null;
       const completedAtIso = new Date().toISOString();
+      const handoffAfterConfirm = parsePlanningHandoffForImplementationV1(
+        flowResult.statePatch?.planningHandoffForImplementationV1,
+      );
+      const implementationPrepBlockedByDatabase = isPlanningHandoffBlockedByDatabase(handoffAfterConfirm);
       applyLocalConversationMessages(
         upsertImplementationPrepProgressMessage({
           messages: roomRef.current.requirementsConversation.messages,
-          progressStatus: "completed",
-          snapshot: buildImplementationPrepCompletedSnapshot(),
+          progressStatus: implementationPrepBlockedByDatabase
+            ? "blocked_database_required"
+            : "completed",
+          snapshot: implementationPrepBlockedByDatabase
+            ? buildImplementationPrepDatabaseBlockedSnapshot()
+            : buildImplementationPrepCompletedSnapshot(),
           nowIso: completedAtIso,
         }),
       );

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildImplementationPrepCompletedSnapshot,
+  buildImplementationPrepDatabaseBlockedSnapshot,
   buildPseudoImplementationPrepProgress,
 } from "@/lib/requirements/implementationPrepProgress";
 import {
@@ -67,6 +68,16 @@ describe("implementationPrepProgressChatMessage", () => {
     });
     expect(content).toContain("진행률: 100%");
     expect(content).toContain("구현준비 완료");
+  });
+
+  it("database blocked chat content does not imply CodeTask selection", () => {
+    const content = buildImplementationPrepProgressChatContent({
+      snapshot: buildImplementationPrepDatabaseBlockedSnapshot(),
+      progressStatus: "blocked_database_required",
+    });
+    expect(content).toContain("데이터베이스 설정");
+    expect(content).not.toContain("진행률: 100%");
+    expect(content).not.toContain("CodeTask를 선택할 수 있습니다");
   });
 
   it("throttles refresh until phase changes or 5 percent delta", () => {

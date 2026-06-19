@@ -4,7 +4,7 @@ import {
   type ImplementationPrepProgressPhase,
   type ImplementationPrepProgressSnapshot,
 } from "@/lib/requirements/implementationPrepProgress";
-import { QUICK_DESIGN_CONFIRM_ACTION_LABEL } from "@/lib/requirements/implementationUxLabels";
+import { QUICK_DESIGN_CONFIRM_ACTION_LABEL, PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementationUxLabels";
 import {
   newRequirementsMessage,
   type RequirementsMessage,
@@ -15,7 +15,12 @@ export const QUICK_DESIGN_IMPLEMENTATION_PREP_PROGRESS_INTERNAL_TYPE =
 
 export const IMPLEMENTATION_PREP_LOG_VIEW_CHIP_LABEL = "로그 보기" as const;
 
-export type ImplementationPrepProgressStatus = "running" | "completed" | "partial" | "failed";
+export type ImplementationPrepProgressStatus =
+  | "running"
+  | "completed"
+  | "partial"
+  | "failed"
+  | "blocked_database_required";
 
 export type ImplementationPrepProgressMessageMeta = Readonly<{
   readonly progressKind: "implementation_prep";
@@ -100,6 +105,22 @@ export function buildImplementationPrepProgressChatContent(input: {
     ].join("\n");
   }
 
+  if (input.progressStatus === "blocked_database_required") {
+    const stepLabel = formatImplementationPrepProgressUserStepLabel(input.snapshot.phase);
+    return [
+      input.snapshot.headline,
+      "",
+      input.snapshot.description,
+      "",
+      `현재 단계: ${stepLabel}`,
+      "진행률: 대기",
+      "",
+      `[${PLANNING_DATABASE_SETUP_LABEL}]`,
+      "",
+      "상세 내용은 로그 탭의 실행 로그에서 확인할 수 있습니다.",
+    ].join("\n");
+  }
+
   return [
     "Quick Design 확정 내용을 기준으로 구현 준비 산출물을 생성하고 있습니다.",
     "",
@@ -136,7 +157,9 @@ export function buildImplementationPrepProgressMessage(input: {
           QUICK_DESIGN_CONFIRM_ACTION_LABEL,
           IMPLEMENTATION_PREP_LOG_VIEW_CHIP_LABEL,
         ]
-      : [];
+      : input.progressStatus === "blocked_database_required"
+        ? [PLANNING_DATABASE_SETUP_LABEL, IMPLEMENTATION_PREP_LOG_VIEW_CHIP_LABEL]
+        : [];
 
   return newRequirementsMessage({
     id: PROGRESS_MESSAGE_ID,

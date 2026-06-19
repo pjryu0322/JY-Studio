@@ -139,7 +139,20 @@ describe("quickDesignConfirmFlow", () => {
     expect(result.statePatch.implementationCodeTaskPlanV1).toBeUndefined();
     expect(result.statePatch.cursorWorkItemsV1).toBeUndefined();
     expect(result.statePatch).not.toHaveProperty("implementationWorkPlanDraftV1");
+    expect(result.prep.prepComplete).toBe(false);
+    expect(
+      result.timelineEntries.some(
+        (e) => e.action === "quick_design_confirmed_implementation_prep_blocked_database_required",
+      ),
+    ).toBe(true);
+    expect(
+      result.timelineEntries.some(
+        (e) => e.action === "quick_design_confirmed_implementation_seed_auto_confirmed",
+      ),
+    ).toBe(false);
     expect(result.readyMessage.meta?.internalType).toBe("quick_design_implementation_ready");
+    expect(result.readyMessage.content).not.toContain("진행률: 100%");
+    expect(result.readyMessage.content).not.toMatch(/CodeTask를 선택할 수 있습니다/);
     expect(result.timelineEntries.length).toBeGreaterThan(0);
   });
 

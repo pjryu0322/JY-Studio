@@ -27,8 +27,32 @@ import {
   buildDynamicServicePlanningSlotDefinitions,
   initialOrchestrationStateFromDefinitions,
 } from "@/lib/requirements/singleChatOrchestrationSlots";
+import { defaultPlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
+import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningDatabaseStoreNamingSync";
+import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementationUxLabels";
+import { buildImplementationPrepProgressChatContent } from "@/lib/requirements/implementationPrepProgressChatMessage";
+import { buildImplementationPrepDatabaseBlockedSnapshot } from "@/lib/requirements/implementationPrepProgress";
 
 const nowIso = "2026-05-24T12:00:00.000Z";
+
+function readyPlanningStateJson(projectId: string): RequirementsStateJson {
+  const dbSettings = syncPlanningDatabaseSettingsStoreNames({
+    settings: {
+      ...defaultPlanningDatabaseSettingsV1(),
+      enabled: true,
+      connectionStatus: "READY",
+      host: "localhost",
+      database: "app",
+      username: "app",
+      repositoryName: "doit-meet",
+    },
+    gitRepoName: "org/doit-meet",
+    projectId,
+    preserveManualStoreName: false,
+  });
+  return { planningDatabaseSettingsV1: dbSettings, gitRepoName: "org/doit-meet" };
+}
 
 const quickDesignArtifactOrchestration = {
   plannedAt: nowIso,
@@ -130,6 +154,7 @@ describe("quickDesignConfirmImplementationPrep", () => {
       envOk: false,
       projectArtifacts: quickDesignPrepArtifacts(),
       artifactOrchestrationV1: quickDesignArtifactOrchestration,
+      planningStateJson: readyPlanningStateJson("p1"),
     });
 
     expect(prep.implementationSeedV1.projectId).toBe("p1");
@@ -175,6 +200,58 @@ describe("quickDesignConfirmImplementationPrep", () => {
     expect(message.content).not.toContain("구현 작업안 초안");
   });
 
+  it("blocks implementation prep timeline and outputs when PostgreSQL is not ready", () => {
+    const definitions = buildDynamicServicePlanningSlotDefinitions({
+      projectId: "p-db-block",
+      projectName: "DB",
+    });
+    const orchestration = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+    const prep = runQuickDesignConfirmImplementationPrep({
+      projectId: "p-db-block",
+      orchestration,
+      definitions,
+      nowIso,
+      generatedArtifactCount: 2,
+      envOk: true,
+      projectArtifacts: quickDesignPrepArtifacts(),
+      artifactOrchestrationV1: quickDesignArtifactOrchestration,
+      planningStateJson: {},
+    });
+
+    expect(prep.prepComplete).toBe(false);
+    expect(prep.postConfirmState.seedReady).toBe(false);
+    expect(prep.planningHandoffForImplementationV1.status).toBe("BLOCKED_DATABASE_REQUIRED");
+    expect(prep.implementationTaskListV1).toBeNull();
+    expect(prep.implementationCodeTaskPlanV1).toBeNull();
+    expect(prep.cursorWorkItemsV1).toBeNull();
+    expect(
+      prep.timelineEntries.some(
+        (e) => e.action === "quick_design_confirmed_implementation_prep_blocked_database_required",
+      ),
+    ).toBe(true);
+    expect(
+      prep.timelineEntries.some((e) => e.action === "quick_design_confirmed_implementation_seed_auto_confirmed"),
+    ).toBe(false);
+    expect(
+      prep.timelineEntries.some((e) => e.action === "quick_design_confirmed_implementation_seed_auto_built"),
+    ).toBe(false);
+    const evaluated = prep.timelineEntries.find(
+      (e) => e.action === "quick_design_confirmed_implementation_readiness_evaluated",
+    );
+    expect(evaluated?.responseText).toContain("seedReady=false");
+    expect(evaluated?.responseText).toContain("seedStatus=blocked_database_required");
+    expect(evaluated?.responseText).toContain("handoffStatus=BLOCKED_DATABASE_REQUIRED");
+
+    const progressContent = buildImplementationPrepProgressChatContent({
+      snapshot: buildImplementationPrepDatabaseBlockedSnapshot(),
+      progressStatus: "blocked_database_required",
+    });
+    expect(progressContent).toContain("구현 준비를 완료할 수 없습니다.");
+    expect(progressContent).not.toContain("진행률: 100%");
+    expect(progressContent).not.toContain("CodeTask를 선택할 수 있습니다");
+    expect(progressContent).toContain(PLANNING_DATABASE_SETUP_LABEL);
+  });
+
   it("auto-generates implementation seed candidates when readiness is incomplete", () => {
     const definitions = buildDynamicServicePlanningSlotDefinitions({
       projectId: "p2",
@@ -215,6 +292,7 @@ describe("quickDesignConfirmImplementationPrep", () => {
       envOk: false,
       projectArtifacts: quickDesignPrepArtifacts(),
       artifactOrchestrationV1: quickDesignArtifactOrchestration,
+      planningStateJson: readyPlanningStateJson("p3"),
     });
     const message = buildQuickDesignImplementationReadyChatMessage({
       artifactIds: ["a1"],
@@ -270,6 +348,7 @@ describe("quickDesignConfirmImplementationPrep", () => {
       envOk: false,
       projectArtifacts: quickDesignPrepArtifacts(),
       artifactOrchestrationV1: quickDesignArtifactOrchestration,
+      planningStateJson: readyPlanningStateJson("p4"),
     });
     const message = buildQuickDesignImplementationReadyChatMessage({
       artifactIds: ["a1", "a2"],
@@ -285,14 +364,16 @@ describe("quickDesignConfirmImplementationPrep", () => {
     expect(message.content).toContain("AI팀이");
     expect(message.content).toContain("생성된 산출물:");
     if (prep.postConfirmState.seedReady) {
-      expect(message.content).toContain("구현 준비정보:");
+      expect(message.content).toContain("구현 준비 정보:");
       if (!prep.postConfirmState.envOk) {
         expect(message.content).toContain(QUICK_DESIGN_PLANNING_SEED_READY_HEADING);
         expect(message.content).not.toContain("구현 작업안 초안을 생성할 수 있습니다");
       }
       expect(message.content).toContain("확정 템플릿:");
       expect(message.content).toContain("CodeTask:");
-      expect(message.content).toContain("구현단계에서는 실행할 CodeTask를 선택해서 진행합니다.");
+      expect(message.content).toMatch(
+        /(구현단계에서는 실행할 CodeTask를 선택해서 진행합니다|이제 구현단계에서 실행할 CodeTask를 선택할 수 있습니다)/,
+      );
     } else {
       expect(message.content).toContain("보완이 필요한 항목:");
       expect(message.content).not.toContain("일부 항목은 후보 상태로 보완되었습니다");
