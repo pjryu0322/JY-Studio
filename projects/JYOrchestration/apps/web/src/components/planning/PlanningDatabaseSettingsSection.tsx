@@ -12,7 +12,7 @@ import {
 } from "@/lib/planning/planningDatabaseUsageMode";
 import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningDatabaseStoreNamingSync";
 import {
-  projectDatabaseUserSaveResultMessage,
+  projectDatabaseUserInlineStatusCopy,
   projectDatabaseUserSectionHeadline,
 } from "@/lib/planning/projectDatabaseUserDisplay";
 import { readProjectDatabaseLifecycleStatus } from "@/lib/planning/projectDatabaseLifecycle";
@@ -27,12 +27,12 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
   const [settings, setSettings] = useState<PlanningDatabaseSettingsV1>(defaultPlanningDatabaseSettingsV1());
   const [busy, setBusy] = useState<"load" | "save" | null>("load");
   const [message, setMessage] = useState<string | null>(null);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const repoHint = String(gitRepoName ?? "").trim();
   const usageMode = resolveDatabaseUsageMode(settings);
   const dbUsageEnabled = isDatabaseUsageEnabledMode(usageMode) && settings.enabled;
   const projectDbStatus = readProjectDatabaseLifecycleStatus(settings.projectDbStatus);
   const showRetry = dbUsageEnabled && projectDbStatus === "FAILED";
+  const inlineCopy = projectDatabaseUserInlineStatusCopy(settings);
 
   const load = useCallback(async () => {
     const pid = projectId.trim();
@@ -60,7 +60,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
         settings: prev,
         gitRepoName: repoHint || null,
         projectId: projectId.trim(),
-        preserveManualStoreName: false,
+        preserveManualStoreName: true,
       }),
     );
   }, [repoHint, projectId, busy]);
@@ -78,7 +78,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
           },
           gitRepoName: repoHint || null,
           projectId: projectId.trim(),
-          preserveManualStoreName: false,
+          preserveManualStoreName: true,
         }),
       );
       return;
@@ -108,11 +108,16 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
       const json = (await res.json()) as {
         success?: boolean;
         message?: string;
-        data?: { settings?: PlanningDatabaseSettingsV1; message?: string };
+        data?: {
+          settings?: PlanningDatabaseSettingsV1;
+          message?: string;
+          saved?: boolean;
+          projectDbStatus?: string;
+        };
       };
-      if (json.data?.settings) {
+      if (json.success && json.data?.settings) {
         setSettings(json.data.settings);
-        setMessage(json.data.message ?? projectDatabaseUserSaveResultMessage(json.data.settings));
+        setMessage(json.data.message ?? json.message ?? "설정이 저장되었습니다.");
       } else {
         setMessage(json.message ?? "저장에 실패했습니다.");
       }
@@ -121,38 +126,27 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
     }
   };
 
-  const projectDbName = String(settings.projectDbName ?? "").trim();
-
   return (
     <div data-testid="planning-database-settings-section" style={{ maxWidth: 720 }}>
       <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b" }}>
         현재 상태: {projectDatabaseUserSectionHeadline(settings)}
       </p>
-      <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-        데이터베이스를 사용하면 플랫폼이 프로젝트 DB를 자동으로 준비합니다. 사용하지 않으면 JSON 샘플데이터로
-        구현단계를 진행합니다.
-      </p>
       {usageMode === "UNSELECTED" ? (
         <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-          데이터베이스 사용 여부를 선택해 주세요.
+          데이터베이스 사용 여부를 선택해 주세요. 사용하지 않으면 JSON 샘플데이터로 구현단계를 진행합니다. 사용하면
+          플랫폼이 프로젝트 DB를 자동으로 준비합니다.
         </p>
       ) : null}
-      {usageMode === "DISABLED_JSON_SAMPLE" ? (
-        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#334155", lineHeight: 1.55 }}>
-          샘플데이터 방식: JSON 샘플데이터. 구현단계에서는 JSON 샘플데이터로 화면과 기능 흐름을 확인합니다.
-          PostgreSQL 프로젝트 DB는 생성되지 않습니다.
-        </p>
-      ) : null}
-      {dbUsageEnabled && projectDbStatus === "FAILED" ? (
-        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#b45309", lineHeight: 1.55 }}>
-          프로젝트 데이터베이스를 준비하지 못했습니다. 플랫폼 관리자 설정 또는 PostgreSQL 권한 확인이 필요합니다.
-        </p>
-      ) : null}
-      {dbUsageEnabled && projectDbStatus !== "FAILED" ? (
-        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-          {projectDbStatus === "CREATED"
-            ? "구현단계 진입 시 샘플 저장소가 자동 생성됩니다."
-            : "플랫폼이 프로젝트 데이터베이스를 자동으로 준비합니다. 구현단계 진입 시 샘플 저장소가 생성되고, 검토단계 전환 시 테스트 저장소가 생성됩니다."}
+      {inlineCopy ? (
+        <p
+          style={{
+            margin: "0 0 12px 0",
+            fontSize: 12,
+            color: projectDbStatus === "FAILED" ? "#b45309" : "#334155",
+            lineHeight: 1.55,
+          }}
+        >
+          {inlineCopy}
         </p>
       ) : null}
       <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 13 }}>
@@ -164,28 +158,16 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
         />
         데이터베이스 사용
       </label>
-      {dbUsageEnabled && projectDbName && advancedOpen ? (
-        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b" }}>
-          고급 정보 · 프로젝트 DB: {projectDbName}
-        </p>
-      ) : null}
-      {dbUsageEnabled && projectDbName ? (
-        <button
-          type="button"
-          onClick={() => setAdvancedOpen((v) => !v)}
-          style={{
-            marginBottom: 12,
-            padding: 0,
-            border: "none",
-            background: "transparent",
-            color: "#2563eb",
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          {advancedOpen ? "고급 정보 접기" : "고급 정보"}
-        </button>
+      {dbUsageEnabled ? (
+        <label style={{ display: "grid", gap: 4, marginBottom: 12 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>데이터베이스명</span>
+          <input
+            value={String(settings.databaseStoreName ?? "")}
+            disabled={!canEdit || busy !== null}
+            onChange={(e) => setSettings((s) => ({ ...s, databaseStoreName: e.target.value }))}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1", maxWidth: 360 }}
+          />
+        </label>
       ) : null}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <button

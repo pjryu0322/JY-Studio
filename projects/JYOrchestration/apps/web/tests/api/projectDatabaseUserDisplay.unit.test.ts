@@ -3,6 +3,8 @@ import {
   projectDatabaseUserCurrentValue,
   projectDatabaseUserStatusLabel,
   projectDatabaseUserDisplayFromSettings,
+  projectDatabaseSaveAckMessage,
+  projectDatabaseUserInlineStatusCopy,
 } from "@/lib/planning/projectDatabaseUserDisplay";
 import { parsePlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import { buildPrototypeEnvModalTableRows } from "@/lib/project/prototypeEnvSettingsModalRows";
@@ -57,6 +59,28 @@ describe("prototypeEnvSettingsModalRows database row", () => {
     expect(dbRow?.currentValue).toBe("관리자 확인 필요");
     expect(dbRow?.status).not.toBe("실패");
     expect(dbRow?.currentValue).not.toBe("PostgreSQL");
+  });
+
+  it("save ack does not expose provisioning failure as save failure", () => {
+    const settings = parsePlanningDatabaseSettingsV1({
+      version: 1,
+      usageSelectionCommitted: true,
+      usageMode: "ENABLED_PROJECT_DATABASE",
+      enabled: true,
+      provider: "POSTGRESQL",
+      host: "",
+      port: 5432,
+      database: "",
+      username: "",
+      password: "",
+      connectionStatus: "FAILED",
+      projectDbStatus: "FAILED",
+      databaseStoreName: "aiproject",
+    })!;
+    const ack = projectDatabaseSaveAckMessage(settings);
+    expect(ack).toContain("설정이 저장되었습니다");
+    expect(ack).not.toContain("준비하지 못했습니다");
+    expect(projectDatabaseUserInlineStatusCopy(settings)).toContain("지연");
   });
 
   it("display helper matches settings", () => {

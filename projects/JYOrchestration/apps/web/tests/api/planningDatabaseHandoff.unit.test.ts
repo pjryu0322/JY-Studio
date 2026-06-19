@@ -19,6 +19,7 @@ describe("planningDatabaseStoreNamingSync", () => {
       preserveManualStoreName: false,
     });
     expect(synced.projectDbName).toMatch(/^p_/);
+    expect(synced.databaseStoreName).toMatch(/^meeting_note_2026/);
     expect(synced.implementationSchemaName).toBe("impl_sample");
     expect(synced.reviewSchemaName).toBe("review_test");
   });

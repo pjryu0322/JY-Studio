@@ -170,5 +170,7 @@ export function sanitizePlanningDatabaseSettingsForClient(
     hasPassword: false,
     sslMode: "PREFER",
     runtimeApiBaseUrl: null,
+    projectDbName: null,
+    lastErrorMessage: null,
   };
 }

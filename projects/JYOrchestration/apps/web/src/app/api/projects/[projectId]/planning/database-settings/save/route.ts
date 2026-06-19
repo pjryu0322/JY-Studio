@@ -34,18 +34,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
       where: { projectId: pid },
       select: { gitRepoName: true },
     });
-    const settings = await savePlanningDatabaseSettingsForProject({
+    const result = await savePlanningDatabaseSettingsForProject({
       projectId: pid,
       settings: parsed,
       gitRepoName: setup?.gitRepoName ?? null,
     });
-    const msg =
-      settings.projectDbStatus === "CREATED"
-        ? "프로젝트 데이터베이스가 준비되었습니다."
-        : settings.projectDbStatus === "FAILED"
-          ? "프로젝트 데이터베이스를 준비하지 못했습니다. 플랫폼 관리자 설정 또는 PostgreSQL 권한 확인이 필요합니다."
-          : "설정을 저장했습니다.";
-    return NextResponse.json({ success: settings.projectDbStatus !== "FAILED", data: { settings, message: msg }, message: msg });
+    return NextResponse.json({
+      success: result.saved,
+      data: {
+        settings: result.settings,
+        message: result.message,
+        saved: result.saved,
+        projectDbStatus: result.projectDbStatus,
+      },
+      message: result.message,
+    });
   } catch (error) {
     const denied = rbacErrorResponse(error);
     if (denied) return denied;

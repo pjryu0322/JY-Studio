@@ -85,30 +85,25 @@ export function resolvePlanningDatabaseBlockingReason(
     return "PostgreSQL 설정과 연결 테스트가 필요합니다.";
   }
   const dbStatus = settings?.projectDbStatus;
-  if (dbStatus === "CREATING") {
-    return "프로젝트 데이터베이스를 생성하고 있습니다. 잠시 후 다시 확인해 주세요.";
+  if (dbStatus === "CREATING" || dbStatus === "PLANNED") {
+    return "프로젝트 데이터베이스를 준비하고 있습니다. 잠시 후 다시 확인해 주세요.";
   }
   if (dbStatus === "FAILED") {
-    const err = String(settings?.lastErrorMessage ?? "").trim();
-    return (
-      err ||
-      "프로젝트 데이터베이스를 준비하지 못했습니다. 플랫폼 관리자 설정 또는 PostgreSQL 권한 확인이 필요합니다."
-    );
+    return "프로젝트 데이터베이스 준비가 지연되고 있습니다. 관리자 확인 후 다시 진행됩니다.";
   }
-  if (dbStatus !== "CREATED" && String(settings?.projectDbName ?? "").trim()) {
-    return "프로젝트 데이터베이스 생성이 필요합니다. 환경설정에서 저장하여 생성을 요청해 주세요.";
+  if (dbStatus !== "CREATED" && isDatabaseUsageEnabledMode(usage)) {
+    return "프로젝트 데이터베이스를 준비하고 있습니다. 잠시 후 다시 확인해 주세요.";
   }
   if (settings?.connectionStatus === "FAILED") {
-    const err = String(settings.lastErrorMessage ?? "").trim();
-    return err || "데이터 저장소 연결 테스트에 실패했습니다. 설정을 확인한 뒤 다시 테스트해 주세요.";
+    return "프로젝트 데이터베이스 준비가 지연되고 있습니다. 관리자 확인 후 다시 진행됩니다.";
   }
   if (settings.connectionStatus !== "READY") {
-    return "데이터 저장소 연결 테스트를 완료해야 PostgreSQL 샘플 DB를 사용할 수 있습니다.";
+    return "프로젝트 데이터베이스를 준비하고 있습니다. 잠시 후 다시 확인해 주세요.";
   }
   if (!hasPostgresStoreNaming(settings)) {
-    return "프로젝트 데이터 저장소명 또는 스키마명이 아직 생성되지 않았습니다.";
+    return "프로젝트 데이터베이스를 준비하고 있습니다. 잠시 후 다시 확인해 주세요.";
   }
-  return "PostgreSQL 설정과 연결 테스트가 필요합니다.";
+  return "프로젝트 데이터베이스를 준비하고 있습니다. 잠시 후 다시 확인해 주세요.";
 }
 
 /** @deprecated Renamed to resolvePlanningDatabaseBlockingReason */

@@ -55,11 +55,19 @@ export function syncPlanningDatabaseSettingsStoreNames(input: Readonly<{
     buildProjectDatabaseName({ projectId: input.projectId, gitRepoName: input.gitRepoName });
 
   if (isDatabaseUsageEnabledMode(usage)) {
+    const naming = buildProjectDataStoreNaming({
+      repositoryName,
+      projectId: input.projectId,
+    });
+    const displayName =
+      input.preserveManualStoreName && String(input.settings.databaseStoreName ?? "").trim()
+        ? String(input.settings.databaseStoreName).trim()
+        : naming.normalizedBaseName;
     return {
       ...input.settings,
       repositoryName,
       projectDbName,
-      databaseStoreName: projectDbName,
+      databaseStoreName: displayName,
       implementationSchemaName: PLATFORM_PROJECT_IMPLEMENTATION_SCHEMA,
       reviewSchemaName: PLATFORM_PROJECT_REVIEW_SCHEMA,
       schemaStrategy: "PROJECT_STAGE_SCHEMA",

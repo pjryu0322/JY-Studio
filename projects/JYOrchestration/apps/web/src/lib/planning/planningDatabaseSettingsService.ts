@@ -12,6 +12,8 @@ import {
   resolveDatabaseUsageMode,
 } from "@/lib/planning/planningDatabaseUsageMode";
 import { createProjectDatabaseForProject } from "@/lib/planning/createProjectDatabaseForProject.server";
+import { projectDatabaseSaveAckMessage } from "@/lib/planning/projectDatabaseUserDisplay";
+import type { SavePlanningDatabaseUsageSettingsResult } from "@/lib/planning/savePlanningDatabaseSettingsTypes";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 function maskPasswordForStorage(_password: string): string {
@@ -114,32 +116,70 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
   readonly settings: PlanningDatabaseSettingsV1;
   readonly password?: string | null;
   readonly gitRepoName?: string | null;
-}>): Promise<PlanningDatabaseSettingsV1> {
+}>): Promise<SavePlanningDatabaseUsageSettingsResult> {
   const pid = input.projectId.trim();
   let synced = syncPlanningDatabaseSettingsStoreNames({
     settings: normalizePlanningDatabaseSettingsUsageOnSave(input.settings),
     gitRepoName: input.gitRepoName,
     projectId: pid,
-    preserveManualStoreName: false,
+    preserveManualStoreName: true,
   });
   const usage = resolveDatabaseUsageMode(synced);
   const nowIso = new Date().toISOString();
+  const passwordTrim = String(input.password ?? "").trim();
 
-  if (isDatabaseUsageEnabledMode(usage) && synced.projectDbStatus !== "CREATED") {
-    synced = { ...synced, projectDbStatus: "CREATING", connectionStatus: "CHECKING" };
-    const created = await createProjectDatabaseForProject({
-      projectId: pid,
-      gitRepoName: input.gitRepoName,
-      priorSettings: synced,
-      nowIso,
-    });
-    synced = {
-      ...synced,
-      ...created.settingsPatch,
-      usageMode: "ENABLED_PROJECT_DATABASE",
-      enabled: true,
-      usageSelectionCommitted: true,
+  async function persistToDb(toPersist: PlanningDatabaseSettingsV1): Promise<void> {
+    const settings = {
+      ...toPersist,
+      version: 1 as const,
+      provider: "POSTGRESQL" as const,
+      passwordMasked: undefined,
+      hasPassword: undefined,
     };
+    const setupUpdate: {
+      planningDatabaseSettingsJson: unknown;
+      planningPostgresPassword?: string;
+      planningPostgresPasswordMasked?: string;
+    } = {
+      planningDatabaseSettingsJson: settings,
+    };
+    if (passwordTrim) {
+      setupUpdate.planningPostgresPassword = passwordTrim;
+      setupUpdate.planningPostgresPasswordMasked = maskPasswordForStorage(passwordTrim);
+    }
+    await prisma.$transaction(async (tx) => {
+      const project = await tx.project.findUnique({
+        where: { id: pid },
+        select: { requirementsStateJson: true },
+      });
+      const base = parseRequirementsStateJson(project?.requirementsStateJson);
+      const existingSetup = await tx.executionSetup.findUnique({ where: { projectId: pid } });
+      const hasPassword = passwordTrim
+        ? true
+        : Boolean(existingSetup?.planningPostgresPassword?.trim()) ||
+          Boolean(base.planningDatabaseSettingsV1?.hasPassword);
+      const clientSettings: PlanningDatabaseSettingsV1 = {
+        ...settings,
+        hasPassword,
+        passwordMasked: hasPassword ? "••••••••" : null,
+      };
+      await tx.project.update({
+        where: { id: pid },
+        data: {
+          requirementsStateJson: mergeRequirementsStateJson(base, {
+            planningDatabaseSettingsV1: clientSettings,
+          }) as object,
+        },
+      });
+      await tx.executionSetup.upsert({
+        where: { projectId: pid },
+        create: {
+          ...executionSetupCreateDefaults(pid),
+          ...setupUpdate,
+        },
+        update: setupUpdate,
+      });
+    });
   }
 
   if (usage === "DISABLED_JSON_SAMPLE" || resolveDatabaseUsageMode(synced) === "DISABLED_JSON_SAMPLE") {
@@ -149,63 +189,63 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
       connectionStatus: "NOT_REQUIRED",
       lastErrorMessage: null,
     };
-  }
-
-  const settings = {
-    ...synced,
-    version: 1 as const,
-    provider: "POSTGRESQL" as const,
-    passwordMasked: undefined,
-    hasPassword: undefined,
-  };
-  const passwordTrim = String(input.password ?? "").trim();
-  const setupUpdate: {
-    planningDatabaseSettingsJson: unknown;
-    planningPostgresPassword?: string;
-    planningPostgresPasswordMasked?: string;
-  } = {
-    planningDatabaseSettingsJson: settings,
-  };
-  if (passwordTrim) {
-    setupUpdate.planningPostgresPassword = passwordTrim;
-    setupUpdate.planningPostgresPasswordMasked = maskPasswordForStorage(passwordTrim);
-  }
-
-  await prisma.$transaction(async (tx) => {
-    const project = await tx.project.findUnique({
-      where: { id: pid },
-      select: { requirementsStateJson: true },
-    });
-    const base = parseRequirementsStateJson(project?.requirementsStateJson);
-    const existingSetup = await tx.executionSetup.findUnique({ where: { projectId: pid } });
-    const hasPassword = passwordTrim
-      ? true
-      : Boolean(existingSetup?.planningPostgresPassword?.trim()) ||
-        Boolean(base.planningDatabaseSettingsV1?.hasPassword);
-    const clientSettings: PlanningDatabaseSettingsV1 = {
-      ...settings,
-      hasPassword,
-      passwordMasked: hasPassword ? "••••••••" : null,
+    await persistToDb(synced);
+    const settings = await loadPlanningDatabaseSettingsForProject(pid);
+    return {
+      settings,
+      saved: true,
+      message: projectDatabaseSaveAckMessage(settings),
+      projectDbStatus: "NOT_REQUIRED",
     };
-    await tx.project.update({
-      where: { id: pid },
-      data: {
-        requirementsStateJson: mergeRequirementsStateJson(base, {
-          planningDatabaseSettingsV1: clientSettings,
-        }) as object,
-      },
-    });
-    await tx.executionSetup.upsert({
-      where: { projectId: pid },
-      create: {
-        ...executionSetupCreateDefaults(pid),
-        ...setupUpdate,
-      },
-      update: setupUpdate,
-    });
-  });
+  }
 
-  return loadPlanningDatabaseSettingsForProject(pid);
+  if (isDatabaseUsageEnabledMode(usage)) {
+    const priorStatus = synced.projectDbStatus;
+    if (priorStatus !== "CREATED") {
+      synced = {
+        ...synced,
+        projectDbStatus: priorStatus === "FAILED" ? "PLANNED" : priorStatus ?? "PLANNED",
+        connectionStatus: "NOT_CONFIGURED",
+        lastErrorMessage: null,
+      };
+    }
+    await persistToDb(synced);
+
+    if (synced.projectDbStatus !== "CREATED") {
+      synced = { ...synced, projectDbStatus: "CREATING", connectionStatus: "CHECKING" };
+      await persistToDb(synced);
+      const created = await createProjectDatabaseForProject({
+        projectId: pid,
+        gitRepoName: input.gitRepoName,
+        priorSettings: synced,
+        nowIso,
+      });
+      if (!created.ok) {
+        console.error(
+          `[planning-db] Project database creation failed for project ${pid}:`,
+          created.message,
+        );
+      }
+      synced = {
+        ...synced,
+        ...created.settingsPatch,
+        usageMode: "ENABLED_PROJECT_DATABASE",
+        enabled: true,
+        usageSelectionCommitted: true,
+      };
+      await persistToDb(synced);
+    }
+  } else {
+    await persistToDb(synced);
+  }
+
+  const settings = await loadPlanningDatabaseSettingsForProject(pid);
+  return {
+    settings,
+    saved: true,
+    message: projectDatabaseSaveAckMessage(settings),
+    projectDbStatus: settings.projectDbStatus,
+  };
 }
 
 export async function resolvePlanningPostgresPassword(projectId: string): Promise<string | null> {
