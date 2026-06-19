@@ -12,13 +12,18 @@ import {
   buildQuickDesignConfirmPlanningStateSnapshotFromRequirementsState,
   type QuickDesignConfirmFlowResult,
 } from "@/lib/requirements/quickDesignConfirmFlow";
-import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { parseRequirementsStateJson, mergeRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import {
   loadPlanningDatabaseSettingsForProject,
   loadPlanningDatabaseSettingsRawForProject,
   resolvePlanningPostgresPassword,
 } from "@/lib/planning/planningDatabaseSettingsService";
-import { resolvePlanningPostgresConnectionForProject } from "@/lib/planning/resolvePlanningPostgresConnection.server";
+import { resolveJyprojectsPgConnectionForProvisioning } from "@/lib/planning/jyprojectsPgConnection.server";
+import {
+  QUICK_DESIGN_CONFIRM_WITH_STORE_PREP_FAILURE_SUMMARY,
+  classifyProjectSchemaStoreFailure,
+} from "@/lib/planning/projectSchemaStoreFailure";
+import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import {
   provisionImplementationSampleStore,
 } from "@/lib/planning/provisionProjectStageDataStores";
@@ -64,7 +69,83 @@ export type QuickDesignConfirmServerResult =
       readonly success: true;
       readonly mode: "planning";
       readonly flow: Extract<QuickDesignConfirmFlowResult, { readonly kind: "success" }>;
+      readonly storePrepWarning?: string | null;
     }>;
+
+async function persistQuickDesignPlanningConfirmState(input: Readonly<{
+  readonly projectId: string;
+  readonly flow: Extract<QuickDesignConfirmFlowResult, { readonly kind: "success" }>;
+  readonly dbSettingsPatch?: Partial<PlanningDatabaseSettingsV1> | null;
+}>): Promise<void> {
+  try {
+    const project = await prisma.project.findUnique({
+      where: { id: input.projectId },
+      select: { requirementsStateJson: true },
+    });
+    const parsed = parseRequirementsStateJson(project?.requirementsStateJson);
+    const mergedRequirements = mergeRequirementsStateJson(parsed, {
+      ...input.flow.statePatch,
+      promptTimeline: [...(parsed.promptTimeline ?? []), ...(input.flow.timelineEntries ?? [])],
+      ...(input.dbSettingsPatch
+        ? {
+            planningDatabaseSettingsV1: {
+              ...(parsed.planningDatabaseSettingsV1 ?? {}),
+              ...input.dbSettingsPatch,
+            } as PlanningDatabaseSettingsV1,
+          }
+        : {}),
+    });
+    await prisma.project.update({
+      where: { id: input.projectId },
+      data: { requirementsStateJson: mergedRequirements as object },
+    });
+    if (input.dbSettingsPatch) {
+      const setup = await prisma.executionSetup.findUnique({
+        where: { projectId: input.projectId },
+        select: { planningDatabaseSettingsJson: true },
+      });
+      const prior =
+        setup?.planningDatabaseSettingsJson && typeof setup.planningDatabaseSettingsJson === "object"
+          ? (setup.planningDatabaseSettingsJson as Record<string, unknown>)
+          : {};
+      await prisma.executionSetup.upsert({
+        where: { projectId: input.projectId },
+        create: {
+          projectId: input.projectId,
+          planningDatabaseSettingsJson: { ...prior, ...input.dbSettingsPatch },
+        },
+        update: {
+          planningDatabaseSettingsJson: { ...prior, ...input.dbSettingsPatch },
+        },
+      });
+    }
+  } catch (error) {
+    console.error("[quick-design-confirm] persist planning state failed:", error);
+  }
+}
+
+function buildStorePrepFailureDbPatch(input: Readonly<{
+  readonly prior: PlanningDatabaseSettingsV1;
+  readonly adminMessage: string;
+  readonly failureReason: ReturnType<typeof classifyProjectSchemaStoreFailure>;
+}>): Partial<PlanningDatabaseSettingsV1> {
+  const projectDbFailureReason =
+    input.failureReason === "JYPROJECTS_CONFIG_MISSING"
+      ? ("POSTGRES_ADMIN_CONFIG_MISSING" as const)
+      : input.failureReason === "JYPROJECTS_CONNECTION_FAILED"
+        ? ("POSTGRES_CONNECTION_FAILED" as const)
+        : input.failureReason === "CREATE_SCHEMA_PERMISSION_DENIED"
+          ? ("CREATE_DATABASE_PERMISSION_DENIED" as const)
+          : ("UNKNOWN" as const);
+  return {
+    ...input.prior,
+    projectDbStatus: "FAILED",
+    projectDbFailureReason,
+    connectionStatus: "FAILED",
+    lastErrorMessage: input.adminMessage.slice(0, 500),
+    lastCheckedAt: new Date().toISOString(),
+  };
+}
 
 export async function runQuickDesignConfirmOnServer(
   input: QuickDesignConfirmServerInput,
@@ -151,6 +232,7 @@ export async function runQuickDesignConfirmOnServer(
   }
 
   let flow = flowResult;
+  let storePrepWarning: string | null = null;
   const handoff = flowResult.prep.planningHandoffForImplementationV1;
   if (
     flowResult.prep.prepComplete &&
@@ -161,15 +243,41 @@ export async function runQuickDesignConfirmOnServer(
   ) {
     const provisionNow = new Date().toISOString();
     const rawSettings = await loadPlanningDatabaseSettingsRawForProject(projectId);
-    const connection = await resolvePlanningPostgresConnectionForProject({ settings: rawSettings });
-    const [password] = await Promise.all([
-      Promise.resolve(connection.password ?? (await resolvePlanningPostgresPassword(projectId))),
-    ]);
+    const passwordOverride = await resolvePlanningPostgresPassword(projectId);
+    const connection = resolveJyprojectsPgConnectionForProvisioning({
+      planningSettings: rawSettings,
+      passwordOverride,
+    });
+
+    const finishStorePrep = async (input: Readonly<{
+      readonly dbPatch: Partial<PlanningDatabaseSettingsV1> | null;
+      readonly warning: string;
+    }>) => {
+      storePrepWarning = input.warning;
+      await persistQuickDesignPlanningConfirmState({
+        projectId,
+        flow,
+        dbSettingsPatch: input.dbPatch,
+      });
+    };
+
+    if (!connection.ok) {
+      await finishStorePrep({
+        warning: QUICK_DESIGN_CONFIRM_WITH_STORE_PREP_FAILURE_SUMMARY,
+        dbPatch: buildStorePrepFailureDbPatch({
+          prior: rawSettings,
+          adminMessage: connection.adminMessage,
+          failureReason: connection.failureReason,
+        }),
+      });
+      return { success: true, mode: "planning", flow, storePrepWarning };
+    }
+
     const provision = await provisionImplementationSampleStore({
       projectId,
       planningDataSlotsV1: flowResult.statePatch.planningDataSlotsV1 ?? null,
       settings: connection.settings,
-      password,
+      password: connection.password,
       nowIso: provisionNow,
     });
     if (provision.planningDataSlotsV1) {
@@ -185,11 +293,18 @@ export async function runQuickDesignConfirmOnServer(
       };
     }
     if (!provision.ok) {
-      return {
-        success: false,
-        message: `구현단계 샘플 저장소 생성에 실패했습니다. ${provision.message}`,
-      };
+      const failureReason = classifyProjectSchemaStoreFailure(provision.message);
+      await finishStorePrep({
+        warning: QUICK_DESIGN_CONFIRM_WITH_STORE_PREP_FAILURE_SUMMARY,
+        dbPatch: buildStorePrepFailureDbPatch({
+          prior: rawSettings,
+          adminMessage: provision.message,
+          failureReason,
+        }),
+      });
+      return { success: true, mode: "planning", flow, storePrepWarning };
     }
+
     const slotsAfterSchema = provision.planningDataSlotsV1 ?? flow.statePatch.planningDataSlotsV1 ?? null;
     const entities = slotsAfterSchema?.dataModelSlot?.entities ?? [];
     const implSchema = String(
@@ -200,39 +315,26 @@ export async function runQuickDesignConfirmOnServer(
     if (entities.length && implSchema) {
       const structure = await provisionQuickDesignImplementationSchemaAndSeed({
         settings: connection.settings,
-        password,
+        password: connection.password,
         schemaName: implSchema,
         entities,
       });
       if (!structure.ok) {
-        return {
-          success: false,
-          message: `Quick Design 데이터 모델 테이블 생성에 실패했습니다. ${structure.message}`,
-        };
+        const failureReason = classifyProjectSchemaStoreFailure(structure.message);
+        await finishStorePrep({
+          warning: QUICK_DESIGN_CONFIRM_WITH_STORE_PREP_FAILURE_SUMMARY,
+          dbPatch: buildStorePrepFailureDbPatch({
+            prior: rawSettings,
+            adminMessage: structure.message,
+            failureReason,
+          }),
+        });
+        return { success: true, mode: "planning", flow, storePrepWarning };
       }
     }
-    try {
-      const project = await prisma.project.findUnique({
-        where: { id: projectId },
-        select: { requirementsStateJson: true },
-      });
-      const parsed = parseRequirementsStateJson(project?.requirementsStateJson);
-      const merged = {
-        ...parsed,
-        ...flow.statePatch,
-        promptTimeline: [
-          ...(parsed.promptTimeline ?? []),
-          ...(flow.timelineEntries ?? []),
-        ],
-      };
-      await prisma.project.update({
-        where: { id: projectId },
-        data: { requirementsStateJson: merged as object },
-      });
-    } catch {
-      // confirm response still returns flow patch to client
-    }
+
+    await persistQuickDesignPlanningConfirmState({ projectId, flow, dbSettingsPatch: null });
   }
 
-  return { success: true, mode: "planning", flow };
+  return { success: true, mode: "planning", flow, storePrepWarning: storePrepWarning ?? undefined };
 }

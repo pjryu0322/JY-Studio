@@ -23,6 +23,7 @@ export type PostQuickDesignConfirmSuccess = Readonly<{
   readonly messages?: readonly RequirementsMessage[];
   readonly orchestrationPatch?: Record<string, unknown>;
   readonly userFacingSummary?: string;
+  readonly storePrepWarning?: string | null;
   readonly statePatch?: Record<string, unknown>;
   readonly timelineEntries?: readonly unknown[];
   readonly primaryArtifactId?: string;

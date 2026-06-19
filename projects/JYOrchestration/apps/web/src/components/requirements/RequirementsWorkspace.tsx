@@ -2827,6 +2827,9 @@ export function RequirementsWorkspace({
         ]);
       }
       showSuccessToast(flowResult.userFacingSummary ?? json.message ?? "Quick Design을 확정했습니다.");
+      if (flowResult.storePrepWarning?.trim()) {
+        showErrorToast(flowResult.storePrepWarning.trim());
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Quick Design 확정 처리 중 오류가 발생했습니다.";
       implementationPrepProgressFrozenRef.current = true;

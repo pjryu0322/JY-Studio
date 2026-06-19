@@ -3,6 +3,11 @@ import "server-only";
 import type { DataModelEntityV1, PlanningDataFieldType } from "@/lib/planning/planningDataSlotsV1";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import { normalizeRepositoryNameForDb } from "@/lib/planning/projectDataStoreNaming";
+import { resolveJyprojectsPgConnectionForProvisioning } from "@/lib/planning/jyprojectsPgConnection.server";
+import {
+  classifyProjectSchemaStoreFailure,
+  projectSchemaStoreFailureUserMessage,
+} from "@/lib/planning/projectSchemaStoreFailure";
 
 export type QuickDesignImplementationDbStructureResult = Readonly<{
   readonly ok: boolean;
@@ -83,13 +88,15 @@ export async function provisionQuickDesignImplementationSchemaAndSeed(input: Rea
     return { ok: true, message: "생성할 데이터 엔티티가 없어 테이블 생성을 건너뜁니다.", tablesCreated: [], seedRowsInserted: 0 };
   }
 
-  const host = input.settings.host.trim();
-  const database = input.settings.database.trim();
-  const username = input.settings.username.trim();
-  const password = String(input.password ?? "").trim();
-  if (!host || !database || !username || !password) {
-    return { ok: false, message: "PostgreSQL 접속 정보가 부족합니다.", tablesCreated: [], seedRowsInserted: 0 };
+  const resolved = resolveJyprojectsPgConnectionForProvisioning({
+    planningSettings: input.settings,
+    passwordOverride: input.password,
+  });
+  if (!resolved.ok) {
+    return { ok: false, message: resolved.userMessage, tablesCreated: [], seedRowsInserted: 0 };
   }
+  const settings = resolved.settings;
+  const password = resolved.password;
 
   const tablesCreated: string[] = [];
   let seedRowsInserted = 0;
@@ -101,16 +108,16 @@ export async function provisionQuickDesignImplementationSchemaAndSeed(input: Rea
       return { ok: false, message: "서버에서 PostgreSQL 클라이언트를 사용할 수 없습니다.", tablesCreated: [], seedRowsInserted: 0 };
     }
     const ssl =
-      input.settings.sslMode === "DISABLE"
+      settings.sslMode === "DISABLE"
         ? false
-        : input.settings.sslMode === "REQUIRE"
+        : settings.sslMode === "REQUIRE"
           ? { rejectUnauthorized: false }
           : undefined;
     const client = new Client({
-      host,
-      port: input.settings.port,
-      database,
-      user: username,
+      host: settings.host,
+      port: settings.port,
+      database: settings.database,
+      user: settings.username,
       password,
       ssl,
       connectionTimeoutMillis: 12000,
@@ -153,6 +160,12 @@ export async function provisionQuickDesignImplementationSchemaAndSeed(input: Rea
     };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    return { ok: false, message: msg.slice(0, 500), tablesCreated, seedRowsInserted };
+    const reason = classifyProjectSchemaStoreFailure(msg);
+    return {
+      ok: false,
+      message: projectSchemaStoreFailureUserMessage(reason),
+      tablesCreated,
+      seedRowsInserted,
+    };
   }
 }

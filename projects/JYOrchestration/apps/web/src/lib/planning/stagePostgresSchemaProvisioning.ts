@@ -1,5 +1,10 @@
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
+import { resolveJyprojectsPgConnectionForProvisioning } from "@/lib/planning/jyprojectsPgConnection.server";
+import {
+  classifyProjectSchemaStoreFailure,
+  projectSchemaStoreFailureUserMessage,
+} from "@/lib/planning/projectSchemaStoreFailure";
 
 export type PostgresSchemaProvisionResult = Readonly<{
   readonly ok: boolean;
@@ -20,15 +25,18 @@ export async function createPostgresSchemaIfNotExists(input: Readonly<{
     return { ok: false, message: "스키마명이 비어 있습니다." };
   }
   if (!/^[a-z][a-z0-9_]*$/i.test(schemaName)) {
-    return { ok: false, message: "스키마명 형식이 올바르지 않습니다." };
+    return { ok: false, message: projectSchemaStoreFailureUserMessage("INVALID_SCHEMA_NAME") };
   }
-  const host = input.settings.host.trim();
-  const database = input.settings.database.trim();
-  const username = input.settings.username.trim();
-  const password = String(input.password ?? "").trim();
-  if (!host || !database || !username || !password) {
-    return { ok: false, message: "PostgreSQL 접속 정보가 부족합니다." };
+
+  const resolved = resolveJyprojectsPgConnectionForProvisioning({
+    planningSettings: input.settings,
+    passwordOverride: input.password,
+  });
+  if (!resolved.ok) {
+    return { ok: false, message: resolved.userMessage };
   }
+  const settings = resolved.settings;
+  const password = resolved.password;
 
   try {
     const pg = await import("pg");
@@ -36,19 +44,18 @@ export async function createPostgresSchemaIfNotExists(input: Readonly<{
     if (!Client) {
       return { ok: false, message: "서버에서 PostgreSQL 클라이언트를 사용할 수 없습니다." };
     }
-    const ssl =
-      input.settings.sslMode === "DISABLE"
-        ? false
-        : input.settings.sslMode === "REQUIRE"
-          ? { rejectUnauthorized: false }
-          : undefined;
     const client = new Client({
-      host,
-      port: input.settings.port,
-      database,
-      user: username,
+      host: settings.host,
+      port: settings.port,
+      database: settings.database,
+      user: settings.username,
       password,
-      ssl,
+      ssl:
+        settings.sslMode === "DISABLE"
+          ? false
+          : settings.sslMode === "REQUIRE"
+            ? { rejectUnauthorized: false }
+            : undefined,
       connectionTimeoutMillis: 12000,
     });
     await client.connect();
@@ -57,7 +64,8 @@ export async function createPostgresSchemaIfNotExists(input: Readonly<{
     return { ok: true, message: "스키마를 생성했습니다." };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    return { ok: false, message: msg.slice(0, 500) };
+    const reason = classifyProjectSchemaStoreFailure(msg);
+    return { ok: false, message: projectSchemaStoreFailureUserMessage(reason) };
   }
 }
 

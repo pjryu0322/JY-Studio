@@ -84,11 +84,12 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: result.flow.userFacingSummary,
+      message: result.storePrepWarning ?? result.flow.userFacingSummary,
       data: {
         mode: "planning" as const,
         statePatch: result.flow.statePatch,
         userFacingSummary: result.flow.userFacingSummary,
+        storePrepWarning: result.storePrepWarning ?? null,
         timelineEntries: result.flow.timelineEntries,
         primaryArtifactId: result.flow.primaryArtifactId,
         messages: [result.flow.readyMessage],
