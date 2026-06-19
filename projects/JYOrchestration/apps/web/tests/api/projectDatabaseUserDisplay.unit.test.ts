@@ -17,7 +17,7 @@ describe("projectDatabaseUserDisplay", () => {
     ).toBe("플랫폼 확인 필요");
     expect(
       projectDatabaseUserCurrentValue("ENABLED_PROJECT_DATABASE", "FAILED"),
-    ).toBe("관리자 확인 필요");
+    ).toBe("프로젝트 저장소 권한 확인 필요");
     expect(projectDatabaseUserStatusLabel("ENABLED_PROJECT_DATABASE", "FAILED")).not.toBe("실패");
   });
 
@@ -29,6 +29,12 @@ describe("projectDatabaseUserDisplay", () => {
     expect(projectDatabaseUserStatusLabel("ENABLED_PROJECT_DATABASE", "CREATED")).toBe("정상");
     expect(projectDatabaseUserCurrentValue("ENABLED_PROJECT_DATABASE", "CREATED")).toBe(
       "프로젝트 저장소 준비 완료",
+    );
+  });
+
+  it("maps planned DB usage to datastore label in status table", () => {
+    expect(projectDatabaseUserCurrentValue("ENABLED_JYPROJECTS_SCHEMA", "PLANNED")).toBe(
+      "프로젝트 데이터 저장소 사용",
     );
   });
 });
@@ -57,7 +63,7 @@ describe("prototypeEnvSettingsModalRows database row", () => {
     });
     const dbRow = rows.find((r) => r.key === "database");
     expect(dbRow?.status).toBe("플랫폼 확인 필요");
-    expect(dbRow?.currentValue).toBe("관리자 확인 필요");
+    expect(dbRow?.currentValue).toBe("프로젝트 저장소 권한 확인 필요");
     expect(dbRow?.status).not.toBe("실패");
     expect(dbRow?.currentValue).not.toBe("PostgreSQL");
   });
@@ -103,7 +109,8 @@ describe("prototypeEnvSettingsModalRows database row", () => {
     expect(outcome).not.toMatch(/Host|Port|Password/i);
     expect(outcome).not.toContain("permission denied");
     expect(projectDatabaseSaveAckMessage(failed)).toBe(outcome);
-    expect(projectDatabaseUserInlineStatusCopy(failed)).toContain("schema");
+    expect(projectDatabaseUserInlineStatusCopy(failed)).toContain("프로젝트 저장소");
+    expect(projectDatabaseUserInlineStatusCopy(failed)).not.toMatch(/CREATE DATABASE|CREATEDB/i);
   });
 
   it("display helper matches settings", () => {

@@ -84,14 +84,14 @@ export function projectDatabaseFailureUserMessage(
     case "POSTGRES_CONNECTION_FAILED":
       return "플랫폼이 PostgreSQL 서버에 접속하지 못했습니다. 관리자 설정의 PostgreSQL 연결 상태를 확인해 주세요.";
     case "CREATE_DATABASE_PERMISSION_DENIED":
-      return "프로젝트 schema 생성 권한이 필요합니다. 플랫폼 관리자에게 PostgreSQL CREATE SCHEMA 권한 설정을 요청해 주세요.";
+      return "프로젝트 저장소를 준비할 수 없습니다. 플랫폼 관리자 설정 또는 schema 생성 권한 확인이 필요합니다.";
     case "DATABASE_ALREADY_EXISTS_BUT_INACCESSIBLE":
-      return "동일한 데이터베이스가 있으나 플랫폼이 접속할 수 없습니다. 소유자 또는 접속 권한을 확인해 주세요.";
+      return "프로젝트 데이터 저장소 연결 확인이 필요합니다. 플랫폼 관리자 설정을 확인해 주세요.";
     case "INVALID_DATABASE_NAME":
       return "데이터베이스명을 사용할 수 없습니다. 영문 소문자, 숫자, underscore 조합으로 입력해 주세요.";
     case "UNKNOWN":
     default:
-      return "프로젝트 저장소를 준비하지 못했습니다. 플랫폼 관리자 설정 또는 PostgreSQL schema 생성 권한 확인이 필요합니다.";
+      return "프로젝트 저장소를 준비할 수 없습니다. 플랫폼 관리자 설정 또는 schema 생성 권한 확인이 필요합니다.";
   }
 }
 
@@ -142,16 +142,16 @@ export function projectDatabaseActionGuide(input: Readonly<{
       };
     case "CREATE_DATABASE_PERMISSION_DENIED":
       return {
-        summary: "프로젝트 schema 생성 권한이 필요합니다.",
+        summary: "프로젝트 저장소 권한 확인 필요",
         adminGuide: [
           "관리자 조치 방법",
           "",
-          "1. 생성 프로젝트 데이터 DB(jyprojects) 접속 설정을 확인합니다.",
+          "1. 프로젝트 데이터 저장소 접속 설정을 확인합니다.",
           "2. 플랫폼 계정에 CREATE SCHEMA 권한이 있는지 확인합니다.",
           "3. 권한이 없으면 PostgreSQL 관리자 계정으로 schema 생성 권한을 부여합니다.",
           "4. Quick Design 확정을 다시 실행합니다.",
         ].join("\n"),
-        sqlExample: `GRANT CREATE ON DATABASE jyprojects TO ${user};`,
+        sqlExample: `GRANT CREATE ON DATABASE <project_data_database> TO ${user};`,
         securityNote: baseSecurity,
         retryable: true,
       };
@@ -186,7 +186,7 @@ export function projectDatabaseActionGuide(input: Readonly<{
     case "UNKNOWN":
     default:
       return {
-        summary: "프로젝트 데이터베이스를 준비하지 못했습니다.",
+        summary: "프로젝트 데이터 저장소를 준비하지 못했습니다.",
         adminGuide: [
           "관리자 조치 방법",
           "",

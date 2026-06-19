@@ -23,11 +23,8 @@ import { ProjectIntegrationOverridesPanel } from "@/components/project/ProjectIn
 import { AutoGenerationSplitPreflightPanel } from "@/components/settings/AutoGenerationSplitPreflightPanel";
 import { postAutoGenerationTestConnection } from "@/components/project-spec/api";
 import { PlanningDatabaseSettingsSection } from "@/components/planning/PlanningDatabaseSettingsSection";
+import { ProjectDataStoreSettingsPanel } from "@/components/planning/ProjectDataStoreSettingsPanel";
 import { usePlanningDatabaseSettings } from "@/components/planning/usePlanningDatabaseSettings";
-import {
-  isDatabaseUsageEnabledMode,
-  resolveDatabaseUsageMode,
-} from "@/lib/planning/planningDatabaseUsageMode";
 import { resolveAutoGenerationSettingsConnectionState } from "@/lib/prototype/autoGenerationSettingsState";
 import {
   mergeConnectionTestPreservingEnvcheckEvidence,
@@ -585,6 +582,14 @@ export function ProjectExecutionEnvironmentPanel({
     }
   }, [projectId]);
 
+  const planningDb = usePlanningDatabaseSettings({
+    projectId,
+    gitRepoName: executionSetup?.gitRepoName ?? null,
+    onSettingsSaved: () => {
+      void loadExecutionSetup();
+    },
+  });
+
   useEffect(() => {
     void loadExecutionSetup();
   }, [loadExecutionSetup]);
@@ -864,6 +869,7 @@ export function ProjectExecutionEnvironmentPanel({
         setExecutionSetup(latestSetup);
       }
       notifyExecutionSetupChanged(latestSetup);
+      await planningDb.persistSettings(planningDb.settings);
       await loadExecutionSetup();
       setExecutionMessage("저장했습니다.");
     } finally {
@@ -878,6 +884,7 @@ export function ProjectExecutionEnvironmentPanel({
     openaiPlannerApiKeyPendingDelete,
     notifyExecutionSetupChanged,
     loadExecutionSetup,
+    planningDb,
   ]);
 
   const handleEnvironmentTest = useCallback(async () => {
@@ -1080,25 +1087,10 @@ export function ProjectExecutionEnvironmentPanel({
     return false;
   }, [envTestLast]);
 
-  const planningDb = usePlanningDatabaseSettings({
-    projectId,
-    gitRepoName: executionSetup?.gitRepoName ?? null,
-    onSettingsSaved: () => {
-      void loadExecutionSetup();
-    },
-  });
-
   const modalTableRows = useMemo(
-    () =>
-      buildPrototypeEnvModalTableRows({
-        executionSetup,
-        planningDatabaseSettings: planningDb.settings,
-      }),
-    [executionSetup, planningDb.settings],
+    () => buildPrototypeEnvModalTableRows({ executionSetup }),
+    [executionSetup],
   );
-
-  const prototypeEnvDatabaseUsageChecked =
-    isDatabaseUsageEnabledMode(resolveDatabaseUsageMode(planningDb.settings)) && planningDb.settings.enabled;
 
   const autoGenConnectionState = useMemo(
     () => resolveAutoGenerationSettingsConnectionState(executionSetup),
@@ -2723,19 +2715,15 @@ export function ProjectExecutionEnvironmentPanel({
           rows={modalTableRows}
           selectedRow={selectedModalRow}
           onSelectRow={setSelectedModalRow}
-          databaseUsage={{
-            checked: prototypeEnvDatabaseUsageChecked,
-            disabled: !canEdit || planningDb.busy !== null,
-            onChange: (enabled) => {
-              void planningDb.setDatabaseUsageEnabled(enabled);
-            },
-          }}
           belowTable={
-            <AutoGenerationSplitPreflightPanel
-              connectionTest={displayedConnectionTest}
-              connectionTestAttempted={connectionTestAttempted}
-              onFocusGithubToken={() => setSelectedModalRow("token")}
-            />
+            <>
+              <ProjectDataStoreSettingsPanel planningDb={planningDb} canEdit={canEdit} />
+              <AutoGenerationSplitPreflightPanel
+                connectionTest={displayedConnectionTest}
+                connectionTestAttempted={connectionTestAttempted}
+                onFocusGithubToken={() => setSelectedModalRow("token")}
+              />
+            </>
           }
           detail={renderModalDetail()}
           footer={

@@ -119,21 +119,17 @@ export function usePlanningDatabaseSettings(input: Readonly<{
   );
 
   const setDatabaseUsageEnabled = useCallback(
-    async (enabled: boolean) => {
-      let nextSettings: PlanningDatabaseSettingsV1 | null = null;
-      setSettings((prev) => {
-        nextSettings = applyPlanningDatabaseUsageToggle({
+    (enabled: boolean) => {
+      setSettings((prev) =>
+        applyPlanningDatabaseUsageToggle({
           settings: prev,
           enabled,
           gitRepoName: repoHint || null,
           projectId,
-        });
-        return nextSettings;
-      });
-      if (!nextSettings) return null;
-      return persistSettings(nextSettings);
+        }),
+      );
     },
-    [persistSettings, projectId, repoHint],
+    [projectId, repoHint],
   );
 
   return {

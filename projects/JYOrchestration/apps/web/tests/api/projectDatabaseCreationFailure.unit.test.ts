@@ -53,7 +53,7 @@ describe("project database UI notices", () => {
       projectDbStatus: "FAILED",
       usageMode: "ENABLED_PROJECT_DATABASE",
     })!;
-    expect(status.summary).toContain("schema");
+    expect(status.summary).toContain("프로젝트 저장소");
     expect(save).toContain("설정이 저장되었습니다");
     expect(save).not.toContain(status.summary);
     expect(projectDatabaseFailureUserMessage("CREATE_DATABASE_PERMISSION_DENIED")).not.toContain(

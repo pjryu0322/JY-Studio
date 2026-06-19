@@ -37,8 +37,8 @@ export function projectDatabaseUserCurrentValue(
 
   if (isDatabaseUsageEnabledMode(usageMode)) {
     if (projectDbStatus === "CREATED") return "프로젝트 저장소 준비 완료";
-    if (projectDbStatus === "FAILED") return "관리자 확인 필요";
-    return "프로젝트 저장소 자동 준비";
+    if (projectDbStatus === "FAILED") return "프로젝트 저장소 권한 확인 필요";
+    return "프로젝트 데이터 저장소 사용";
   }
 
   return "사용 여부 미선택";
@@ -81,9 +81,9 @@ export function projectDatabaseUserSectionHeadline(
   if (isDatabaseUsageEnabledMode(usage)) {
     if (projectDbStatus === "CREATED") return "프로젝트 저장소 준비 완료";
     if (projectDbStatus === "FAILED") return "플랫폼 확인 필요";
-    return "프로젝트 저장소 자동 준비";
+    return "프로젝트 데이터 저장소 사용";
   }
-  return "프로젝트 저장소 자동 준비";
+  return "프로젝트 데이터 저장소";
 }
 
 export function projectDatabaseUserInlineStatusCopy(
