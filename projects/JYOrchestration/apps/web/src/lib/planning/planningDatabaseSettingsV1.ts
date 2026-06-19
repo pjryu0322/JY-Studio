@@ -2,18 +2,25 @@
  * 기획단계 PostgreSQL 환경설정 — `requirementsStateJson.planningDatabaseSettingsV1` (비밀번호 제외).
  */
 
+import type { DatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
+
 export const PLANNING_DB_SETTINGS_VERSION = 1 as const;
 
 export type PlanningDatabaseConnectionStatus =
   | "NOT_CONFIGURED"
+  | "NOT_REQUIRED"
   | "READY"
   | "FAILED"
   | "CHECKING";
+
+export type { DatabaseUsageMode };
 
 export type PlanningDatabaseSslMode = "DISABLE" | "REQUIRE" | "PREFER";
 
 export type PlanningDatabaseSettingsV1 = Readonly<{
   readonly version: typeof PLANNING_DB_SETTINGS_VERSION;
+  readonly usageMode?: DatabaseUsageMode;
+  readonly usageSelectionCommitted?: boolean;
   readonly enabled: boolean;
   readonly provider: "POSTGRESQL";
   readonly host: string;
@@ -52,13 +59,29 @@ function readSsl(v: unknown): PlanningDatabaseSslMode {
 
 function readStatus(v: unknown): PlanningDatabaseConnectionStatus {
   const s = readStr(v, 40);
-  if (s === "READY" || s === "FAILED" || s === "CHECKING" || s === "NOT_CONFIGURED") return s;
+  if (
+    s === "READY" ||
+    s === "FAILED" ||
+    s === "CHECKING" ||
+    s === "NOT_CONFIGURED" ||
+    s === "NOT_REQUIRED"
+  ) {
+    return s;
+  }
   return "NOT_CONFIGURED";
+}
+
+function readUsageMode(v: unknown): DatabaseUsageMode | undefined {
+  const s = readStr(v, 40);
+  if (s === "UNSELECTED" || s === "DISABLED_JSON_SAMPLE" || s === "ENABLED_POSTGRESQL") return s;
+  return undefined;
 }
 
 export function defaultPlanningDatabaseSettingsV1(): PlanningDatabaseSettingsV1 {
   return {
     version: PLANNING_DB_SETTINGS_VERSION,
+    usageMode: "UNSELECTED",
+    usageSelectionCommitted: false,
     enabled: false,
     provider: "POSTGRESQL",
     host: "",
@@ -82,6 +105,8 @@ export function parsePlanningDatabaseSettingsV1(raw: unknown): PlanningDatabaseS
   const masked = readStr(o.passwordMasked, 80) || null;
   return {
     version: PLANNING_DB_SETTINGS_VERSION,
+    usageMode: readUsageMode(o.usageMode),
+    usageSelectionCommitted: Boolean(o.usageSelectionCommitted),
     enabled: Boolean(o.enabled),
     provider: "POSTGRESQL",
     host: readStr(o.host, 400),

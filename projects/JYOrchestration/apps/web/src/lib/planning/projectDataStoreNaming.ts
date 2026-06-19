@@ -40,6 +40,16 @@ export function extractRepositoryBaseNameFromGitRepoName(gitRepoName: string | n
   return slash >= 0 ? raw.slice(slash + 1) : raw;
 }
 
+/** GitHub `owner/repo` → PostgreSQL database name default (repo segment, schema-safe). */
+export function resolveDefaultPostgresDatabaseNameFromGitRepo(
+  gitRepoName: string | null | undefined,
+  projectId?: string | null,
+): string {
+  const repo = extractRepositoryBaseNameFromGitRepoName(gitRepoName);
+  if (!repo) return "";
+  return normalizeRepositoryNameForDb(repo, projectId ?? null);
+}
+
 export function buildProjectDataStoreNaming(input: Readonly<{
   readonly repositoryName: string;
   readonly projectId?: string | null;

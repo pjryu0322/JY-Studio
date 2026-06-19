@@ -164,8 +164,25 @@ export function buildImplementationPrepDatabaseBlockedSnapshot(): Implementation
     percent: 0,
     headline: "구현 준비를 완료할 수 없습니다.",
     description:
-      "이 프로젝트는 구현단계부터 PostgreSQL 샘플 DB를 사용합니다. 기획단계에서 데이터베이스 설정과 연결 테스트를 완료해야 합니다.",
+      "데이터베이스 사용을 선택했기 때문에 PostgreSQL 연결 설정과 연결 테스트를 완료해야 합니다.",
     metaLines: ["현재 단계: 데이터베이스 설정 필요", "진행률: 대기", "상세 로그: 로그 탭"],
+    steps,
+  };
+}
+
+/** DB 사용 여부 미선택으로 구현준비가 차단된 경우. */
+export function buildImplementationPrepDatabaseUsageUnselectedSnapshot(): ImplementationPrepProgressSnapshot {
+  const steps = STEP_DEFINITIONS.map((step) => ({
+    label: step.label,
+    status: "pending" as const,
+  }));
+  return {
+    phase: "database_setup",
+    percent: 0,
+    headline: "데이터베이스 사용 여부를 선택해 주세요.",
+    description:
+      "데이터베이스를 사용하지 않으면 JSON 샘플데이터로 구현단계를 진행합니다. 데이터베이스를 사용하면 PostgreSQL 연결 설정과 연결 테스트가 필요합니다.",
+    metaLines: ["현재 단계: 데이터베이스 사용 여부 선택", "진행률: 대기", "상세 로그: 로그 탭"],
     steps,
   };
 }

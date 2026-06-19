@@ -20,7 +20,8 @@ export type ImplementationPrepProgressStatus =
   | "completed"
   | "partial"
   | "failed"
-  | "blocked_database_required";
+  | "blocked_database_required"
+  | "blocked_database_usage_unselected";
 
 export type ImplementationPrepProgressMessageMeta = Readonly<{
   readonly progressKind: "implementation_prep";
@@ -121,6 +122,20 @@ export function buildImplementationPrepProgressChatContent(input: {
     ].join("\n");
   }
 
+  if (input.progressStatus === "blocked_database_usage_unselected") {
+    return [
+      input.snapshot.headline,
+      "",
+      input.snapshot.description,
+      "",
+      "진행률: 대기",
+      "",
+      `[${PLANNING_DATABASE_SETUP_LABEL}]`,
+      "",
+      "상세 내용은 로그 탭의 실행 로그에서 확인할 수 있습니다.",
+    ].join("\n");
+  }
+
   return [
     "Quick Design 확정 내용을 기준으로 구현 준비 산출물을 생성하고 있습니다.",
     "",
@@ -157,7 +172,8 @@ export function buildImplementationPrepProgressMessage(input: {
           QUICK_DESIGN_CONFIRM_ACTION_LABEL,
           IMPLEMENTATION_PREP_LOG_VIEW_CHIP_LABEL,
         ]
-      : input.progressStatus === "blocked_database_required"
+      : input.progressStatus === "blocked_database_required" ||
+          input.progressStatus === "blocked_database_usage_unselected"
         ? [PLANNING_DATABASE_SETUP_LABEL, IMPLEMENTATION_PREP_LOG_VIEW_CHIP_LABEL]
         : [];
 

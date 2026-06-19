@@ -7,7 +7,9 @@ import {
   type PlanningDatabaseSettingsV1,
   type PlanningDatabaseSslMode,
 } from "@/lib/planning/planningDatabaseSettingsV1";
+import { resolveDatabaseUsageMode } from "@/lib/planning/planningDatabaseUsageMode";
 import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningDatabaseStoreNamingSync";
+import { resolveDefaultPostgresDatabaseNameFromGitRepo } from "@/lib/planning/projectDataStoreNaming";
 
 type Props = Readonly<{
   readonly projectId: string;
@@ -15,12 +17,24 @@ type Props = Readonly<{
   readonly gitRepoName?: string | null;
 }>;
 
+function formatConnectionStatusLabel(settings: PlanningDatabaseSettingsV1): string {
+  const usage = resolveDatabaseUsageMode(settings);
+  if (usage === "UNSELECTED") return "선택 필요";
+  if (usage === "DISABLED_JSON_SAMPLE") return "미사용 · JSON 샘플데이터";
+  if (settings.connectionStatus === "READY") return "정상";
+  if (settings.connectionStatus === "FAILED") return "연결 실패";
+  if (settings.connectionStatus === "CHECKING") return "테스트 중";
+  return "PostgreSQL 설정 필요";
+}
+
 export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoName }: Props) {
   const [settings, setSettings] = useState<PlanningDatabaseSettingsV1>(defaultPlanningDatabaseSettingsV1());
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<"load" | "save" | "test" | null>("load");
   const [message, setMessage] = useState<string | null>(null);
   const repoHint = String(gitRepoName ?? "").trim();
+  const usageMode = resolveDatabaseUsageMode(settings);
+  const postgresFieldsEnabled = usageMode === "ENABLED_POSTGRESQL" && settings.enabled;
 
   const load = useCallback(async () => {
     const pid = projectId.trim();
@@ -55,6 +69,27 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
 
   const patch = (partial: Partial<PlanningDatabaseSettingsV1>) => {
     setSettings((s) => ({ ...s, ...partial }));
+  };
+
+  const handleToggleDatabaseUsage = (checked: boolean) => {
+    if (checked) {
+      const defaultDb =
+        String(settings.database ?? "").trim() ||
+        resolveDefaultPostgresDatabaseNameFromGitRepo(gitRepoName, projectId);
+      patch({
+        enabled: true,
+        usageMode: "ENABLED_POSTGRESQL",
+        database: defaultDb,
+        connectionStatus:
+          settings.connectionStatus === "NOT_REQUIRED" ? "NOT_CONFIGURED" : settings.connectionStatus,
+      });
+      return;
+    }
+    patch({
+      enabled: false,
+      usageMode: "DISABLED_JSON_SAMPLE",
+      connectionStatus: "NOT_REQUIRED",
+    });
   };
 
   const handleSave = async () => {
@@ -114,7 +149,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
       <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>{label}</span>
       <input
         value={String(settings[key] ?? "")}
-        disabled={!canEdit || !settings.enabled}
+        disabled={!canEdit || !postgresFieldsEnabled}
         onChange={(e) => patch({ [key]: e.target.value } as Partial<PlanningDatabaseSettingsV1>)}
         style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
       />
@@ -123,35 +158,32 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
 
   return (
     <div data-testid="planning-database-settings-section" style={{ maxWidth: 720 }}>
-      <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#64748b", lineHeight: 1.55 }}>
-        구현단계에서 샘플데이터를 JSON 파일이 아니라 데이터 저장소에 저장해 Preview에서 등록·수정·삭제까지 확인할 수
-        있도록 설정합니다. GitHub Pages Preview는 PostgreSQL에 직접 연결하지 않고 Platform Runtime API(데이터 연결)를
-        사용합니다.
+      <p style={{ margin: "0 0 10px 0", fontSize: 12, color: "#64748b" }}>
+        상태: {formatConnectionStatusLabel(settings)}
       </p>
-      {repoHint ? (
-        <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#334155" }}>
-          Git Repository 기준 저장소명: <strong>{repoHint}</strong>
-        </p>
-      ) : null}
       <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 13 }}>
         <input
           type="checkbox"
           checked={settings.enabled}
           disabled={!canEdit || busy !== null}
-          onChange={(e) => patch({ enabled: e.target.checked })}
+          onChange={(e) => handleToggleDatabaseUsage(e.target.checked)}
         />
         데이터베이스 사용
       </label>
       <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>DB 종류</span>
-          <input value="PostgreSQL" disabled style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }} />
+          <input
+            value={postgresFieldsEnabled ? "PostgreSQL" : "JSON 샘플데이터"}
+            disabled
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
+          />
         </label>
         <label style={{ display: "grid", gap: 4 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Host</span>
           <input
             value={settings.host}
-            disabled={!canEdit || !settings.enabled}
+            disabled={!canEdit || !postgresFieldsEnabled}
             onChange={(e) => patch({ host: e.target.value })}
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
           />
@@ -161,7 +193,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
           <input
             type="number"
             value={settings.port}
-            disabled={!canEdit || !settings.enabled}
+            disabled={!canEdit || !postgresFieldsEnabled}
             onChange={(e) => patch({ port: Number(e.target.value) || 5432 })}
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
           />
@@ -170,7 +202,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
           <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Database</span>
           <input
             value={settings.database}
-            disabled={!canEdit || !settings.enabled}
+            disabled={!canEdit || !postgresFieldsEnabled}
             onChange={(e) => patch({ database: e.target.value })}
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
           />
@@ -179,7 +211,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
           <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Username</span>
           <input
             value={settings.username}
-            disabled={!canEdit || !settings.enabled}
+            disabled={!canEdit || !postgresFieldsEnabled}
             onChange={(e) => patch({ username: e.target.value })}
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
           />
@@ -189,7 +221,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
           <input
             type="password"
             value={password}
-            disabled={!canEdit || !settings.enabled}
+            disabled={!canEdit || !postgresFieldsEnabled}
             placeholder={settings.hasPassword ? "저장된 비밀번호 (변경 시에만 입력)" : "비밀번호"}
             onChange={(e) => setPassword(e.target.value)}
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
@@ -200,7 +232,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
           <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>SSL Mode</span>
           <select
             value={settings.sslMode}
-            disabled={!canEdit || !settings.enabled}
+            disabled={!canEdit || !postgresFieldsEnabled}
             onChange={(e) => patch({ sslMode: e.target.value as PlanningDatabaseSslMode })}
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
           >
@@ -213,7 +245,7 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
           <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>Runtime API Base URL</span>
           <input
             value={settings.runtimeApiBaseUrl ?? ""}
-            disabled={!canEdit || !settings.enabled}
+            disabled={!canEdit || !postgresFieldsEnabled}
             placeholder="비워두면 플랫폼 기본값"
             onChange={(e) => patch({ runtimeApiBaseUrl: e.target.value || null })}
             style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
@@ -240,25 +272,24 @@ export function PlanningDatabaseSettingsSection({ projectId, canEdit, gitRepoNam
         >
           {busy === "save" ? "저장 중…" : "저장"}
         </button>
-        <button
-          type="button"
-          disabled={!canEdit || busy !== null || !settings.enabled}
-          onClick={() => void handleTest()}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 8,
-            border: "1px solid #0f766e",
-            background: "#0d9488",
-            color: "#fff",
-            fontWeight: 800,
-            fontSize: 12,
-          }}
-        >
-          {busy === "test" ? "테스트 중…" : "연결 테스트"}
-        </button>
-        <span style={{ fontSize: 12, color: settings.connectionStatus === "READY" ? "#15803d" : "#64748b" }}>
-          상태: {settings.connectionStatus}
-        </span>
+        {postgresFieldsEnabled ? (
+          <button
+            type="button"
+            disabled={!canEdit || busy !== null}
+            onClick={() => void handleTest()}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: "1px solid #0f766e",
+              background: "#0d9488",
+              color: "#fff",
+              fontWeight: 800,
+              fontSize: 12,
+            }}
+          >
+            {busy === "test" ? "테스트 중…" : "연결 테스트"}
+          </button>
+        ) : null}
       </div>
       {message ? (
         <p style={{ marginTop: 10, fontSize: 12, color: "#334155", lineHeight: 1.5 }} role="status">

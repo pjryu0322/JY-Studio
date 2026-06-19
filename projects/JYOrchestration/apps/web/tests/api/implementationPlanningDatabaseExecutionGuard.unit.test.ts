@@ -63,13 +63,15 @@ describe("implementationPlanningDatabaseExecutionGuard", () => {
     if (block.blocked) {
       expect(block.blockReason).toBe(IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON);
       expect(block.actionLabel).toBe(PLANNING_DATABASE_SETUP_LABEL);
-      expect(block.message).toContain("PostgreSQL");
+      expect(block.message).toMatch(/PostgreSQL|데이터베이스 사용 여부/);
     }
   });
 
   it("allows execution when handoff is READY", () => {
     const settings = parsePlanningDatabaseSettingsV1({
       version: 1,
+      usageSelectionCommitted: true,
+      usageMode: "ENABLED_POSTGRESQL",
       enabled: true,
       provider: "POSTGRESQL",
       host: "db.example.com",

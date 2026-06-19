@@ -34,12 +34,26 @@ import { PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementation
 import { buildImplementationPrepProgressChatContent } from "@/lib/requirements/implementationPrepProgressChatMessage";
 import { buildImplementationPrepDatabaseBlockedSnapshot } from "@/lib/requirements/implementationPrepProgress";
 
+function jsonSamplePlanningStateJson(): RequirementsStateJson {
+  return {
+    planningDatabaseSettingsV1: {
+      ...defaultPlanningDatabaseSettingsV1(),
+      usageMode: "DISABLED_JSON_SAMPLE",
+      usageSelectionCommitted: true,
+      enabled: false,
+      connectionStatus: "NOT_REQUIRED",
+    },
+  };
+}
+
 const nowIso = "2026-05-24T12:00:00.000Z";
 
 function readyPlanningStateJson(projectId: string): RequirementsStateJson {
   const dbSettings = syncPlanningDatabaseSettingsStoreNames({
     settings: {
       ...defaultPlanningDatabaseSettingsV1(),
+      usageMode: "ENABLED_POSTGRESQL",
+      usageSelectionCommitted: true,
       enabled: true,
       connectionStatus: "READY",
       host: "localhost",
@@ -200,6 +214,59 @@ describe("quickDesignConfirmImplementationPrep", () => {
     expect(message.content).not.toContain("구현 작업안 초안");
   });
 
+  it("blocks implementation prep when database usage is unselected", () => {
+    const definitions = buildDynamicServicePlanningSlotDefinitions({
+      projectId: "p-db-unsel",
+      projectName: "DB",
+    });
+    const orchestration = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+    const prep = runQuickDesignConfirmImplementationPrep({
+      projectId: "p-db-unsel",
+      orchestration,
+      definitions,
+      nowIso,
+      generatedArtifactCount: 2,
+      envOk: true,
+      projectArtifacts: quickDesignPrepArtifacts(),
+      artifactOrchestrationV1: quickDesignArtifactOrchestration,
+      planningStateJson: {},
+    });
+
+    expect(prep.prepComplete).toBe(false);
+    expect(prep.planningHandoffForImplementationV1.status).toBe("BLOCKED_DATABASE_USAGE_UNSELECTED");
+    expect(
+      prep.timelineEntries.some(
+        (e) => e.action === "quick_design_confirmed_implementation_prep_blocked_database_usage_unselected",
+      ),
+    ).toBe(true);
+  });
+
+  it("allows implementation prep when JSON sample mode is selected", () => {
+    const definitions = buildDynamicServicePlanningSlotDefinitions({
+      projectId: "p-json",
+      projectName: "JSON",
+    });
+    const orchestration = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+    const prep = runQuickDesignConfirmImplementationPrep({
+      projectId: "p-json",
+      orchestration,
+      definitions,
+      nowIso,
+      generatedArtifactCount: 2,
+      envOk: true,
+      projectArtifacts: quickDesignPrepArtifacts(),
+      artifactOrchestrationV1: quickDesignArtifactOrchestration,
+      planningStateJson: jsonSamplePlanningStateJson(),
+    });
+
+    expect(prep.prepComplete).toBe(true);
+    expect(prep.planningHandoffForImplementationV1.status).toBe("READY");
+    expect(prep.planningHandoffForImplementationV1.implementationDataPlan.dataPersistenceMode).toBe(
+      "JSON_SAMPLE_DATA",
+    );
+    expect(prep.implementationTaskListV1?.tasks?.length ?? 0).toBeGreaterThan(0);
+  });
+
   it("blocks implementation prep timeline and outputs when PostgreSQL is not ready", () => {
     const definitions = buildDynamicServicePlanningSlotDefinitions({
       projectId: "p-db-block",
@@ -215,7 +282,14 @@ describe("quickDesignConfirmImplementationPrep", () => {
       envOk: true,
       projectArtifacts: quickDesignPrepArtifacts(),
       artifactOrchestrationV1: quickDesignArtifactOrchestration,
-      planningStateJson: {},
+      planningStateJson: {
+        planningDatabaseSettingsV1: {
+          ...defaultPlanningDatabaseSettingsV1(),
+          usageMode: "ENABLED_POSTGRESQL",
+          usageSelectionCommitted: true,
+          enabled: true,
+        },
+      },
     });
 
     expect(prep.prepComplete).toBe(false);

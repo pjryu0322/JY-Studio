@@ -47,8 +47,8 @@ describe("planningDataSlotsV1", () => {
       repositoryName: "doitmeet",
       planningDataSlots: draft,
     });
-    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("BLOCKED_DATABASE_REQUIRED");
-    expect(handoff.status).toBe("BLOCKED_DATABASE_REQUIRED");
+    expect(handoff.implementationDefaults.dataPersistenceMode).toBe("BLOCKED_DATABASE_USAGE_UNSELECTED");
+    expect(handoff.status).toBe("BLOCKED_DATABASE_USAGE_UNSELECTED");
     expect(handoff.implementationDataPlan.useRuntimeApi).toBe(false);
     expect(handoff.implementationDataPlan.blocked).toBe(true);
   });
@@ -59,7 +59,7 @@ describe("planningDataSlotsV1", () => {
       orchestration: null,
       definitions: [],
     });
-    expect(draft.dataStoreSlot.databaseReadiness).toBe("CONFIG_REQUIRED");
+    expect(draft.dataStoreSlot.databaseReadiness).toBe("USAGE_UNSELECTED");
     expect(draft.dataStoreSlot.settingsActionLabel).toBe(PLANNING_DATABASE_SETUP_LABEL);
     expect(draft.dataStoreSlot.blockingReason).toBeTruthy();
   });
@@ -67,6 +67,8 @@ describe("planningDataSlotsV1", () => {
   it("sets dataStoreSlot READY when PostgreSQL connection is ready", () => {
     const settings = parsePlanningDatabaseSettingsV1({
       version: 1,
+      usageSelectionCommitted: true,
+      usageMode: "ENABLED_POSTGRESQL",
       enabled: true,
       provider: "POSTGRESQL",
       host: "db",

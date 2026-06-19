@@ -134,7 +134,7 @@ describe("quickDesignConfirmFlow", () => {
     if (result.kind !== "success") return;
 
     expect(result.statePatch.implementationSeedV1).toBeTruthy();
-    expect(result.prep.planningHandoffForImplementationV1?.status).toBe("BLOCKED_DATABASE_REQUIRED");
+    expect(result.prep.planningHandoffForImplementationV1?.status).toBe("BLOCKED_DATABASE_USAGE_UNSELECTED");
     expect(result.statePatch.implementationTaskListV1).toBeUndefined();
     expect(result.statePatch.implementationCodeTaskPlanV1).toBeUndefined();
     expect(result.statePatch.cursorWorkItemsV1).toBeUndefined();
@@ -142,7 +142,7 @@ describe("quickDesignConfirmFlow", () => {
     expect(result.prep.prepComplete).toBe(false);
     expect(
       result.timelineEntries.some(
-        (e) => e.action === "quick_design_confirmed_implementation_prep_blocked_database_required",
+        (e) => e.action === "quick_design_confirmed_implementation_prep_blocked_database_usage_unselected",
       ),
     ).toBe(true);
     expect(
@@ -161,6 +161,8 @@ describe("quickDesignConfirmFlow", () => {
     const dbSettings = syncPlanningDatabaseSettingsStoreNames({
       settings: {
         ...defaultPlanningDatabaseSettingsV1(),
+        usageMode: "ENABLED_POSTGRESQL",
+        usageSelectionCommitted: true,
         enabled: true,
         connectionStatus: "READY",
         host: "localhost",
@@ -212,6 +214,8 @@ describe("quickDesignConfirmFlow", () => {
     const dbSettings = syncPlanningDatabaseSettingsStoreNames({
       settings: {
         ...defaultPlanningDatabaseSettingsV1(),
+        usageMode: "ENABLED_POSTGRESQL",
+        usageSelectionCommitted: true,
         enabled: true,
         connectionStatus: "READY",
         host: "localhost",

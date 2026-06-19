@@ -6,6 +6,7 @@ import {
   type PlanningDatabaseSettingsV1,
 } from "@/lib/planning/planningDatabaseSettingsV1";
 import { syncPlanningDatabaseSettingsStoreNames } from "@/lib/planning/planningDatabaseStoreNamingSync";
+import { normalizePlanningDatabaseSettingsUsageOnSave } from "@/lib/planning/planningDatabaseUsageMode";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 function maskPasswordForStorage(_password: string): string {
@@ -83,7 +84,7 @@ export async function savePlanningDatabaseSettingsForProject(input: Readonly<{
 }>): Promise<PlanningDatabaseSettingsV1> {
   const pid = input.projectId.trim();
   const synced = syncPlanningDatabaseSettingsStoreNames({
-    settings: input.settings,
+    settings: normalizePlanningDatabaseSettingsUsageOnSave(input.settings),
     gitRepoName: input.gitRepoName,
     projectId: pid,
     preserveManualStoreName: true,

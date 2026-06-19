@@ -1,5 +1,8 @@
 import type { PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
-import { isPlanningHandoffBlockedByDatabase } from "@/lib/planning/planningDbPersistencePolicy";
+import {
+  isPlanningHandoffBlockedByDatabase,
+  resolveImplementationPrepDatabaseBlockKind,
+} from "@/lib/planning/planningDbPersistencePolicy";
 import { PLANNING_DATABASE_SETUP_LABEL } from "@/lib/requirements/implementationUxLabels";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { ImplementationStageActionRunResult } from "@/lib/prototype/implementationStageActionPipeline";
@@ -21,12 +24,25 @@ export function implementationDatabaseRequiredBlockMessage(
   return "구현단계를 시작하려면 PostgreSQL 데이터베이스 설정과 연결 테스트가 필요합니다.";
 }
 
-export function formatImplementationDatabaseRequiredUserNotice(): string {
+export function formatImplementationDatabaseRequiredUserNotice(
+  handoff?: PlanningHandoffForImplementationV1 | null,
+): string {
+  const kind = resolveImplementationPrepDatabaseBlockKind(handoff);
+  if (kind === "usage_unselected") {
+    return [
+      "구현단계를 시작할 수 없습니다.",
+      "",
+      "데이터베이스 사용 여부를 선택해 주세요.",
+      "데이터베이스를 사용하지 않으면 JSON 샘플데이터로 구현단계를 진행합니다.",
+      "데이터베이스를 사용하면 PostgreSQL 연결 설정과 연결 테스트가 필요합니다.",
+      "",
+      `[${PLANNING_DATABASE_SETUP_LABEL}]`,
+    ].join("\n");
+  }
   return [
     "구현단계를 시작할 수 없습니다.",
     "",
-    "이 프로젝트는 구현단계부터 PostgreSQL 샘플 DB를 사용합니다.",
-    "기획단계에서 데이터베이스 설정과 연결 테스트를 완료해 주세요.",
+    implementationDatabaseRequiredBlockMessage(handoff),
     "",
     `[${PLANNING_DATABASE_SETUP_LABEL}]`,
   ].join("\n");
@@ -49,7 +65,7 @@ export function evaluateImplementationDatabaseRequiredExecutionBlock(input: {
   return {
     blocked: true,
     blockReason: IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON,
-    message: formatImplementationDatabaseRequiredUserNotice(),
+    message: formatImplementationDatabaseRequiredUserNotice(handoff),
     actionLabel: PLANNING_DATABASE_SETUP_LABEL,
   };
 }

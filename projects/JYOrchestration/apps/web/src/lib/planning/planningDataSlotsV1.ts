@@ -5,7 +5,6 @@
 import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
 import type { PlanningDatabaseSettingsV1 } from "@/lib/planning/planningDatabaseSettingsV1";
 import {
-  isPlanningDatabaseReady,
   normalizePlanningDataPersistenceMode,
   resolvePlanningDatabaseBlockingReason,
   resolvePlanningDatabaseBlockingReasonForReadiness,
@@ -49,7 +48,7 @@ export type { PlanningDatabaseReadinessV1 } from "@/lib/planning/planningDbPersi
 export type DataStoreSlotV1 = Readonly<{
   readonly status: PlanningDataSlotStatus;
   readonly databaseReadiness: PlanningDatabaseReadinessV1;
-  readonly provider: "POSTGRESQL";
+  readonly provider: "POSTGRESQL" | "NONE";
   readonly enabled: boolean;
   readonly repositoryName?: string;
   readonly normalizedBaseName?: string;
@@ -101,7 +100,7 @@ export type DataModelSlotV1 = Readonly<{
 
 export type SampleDataSlotV1 = Readonly<{
   readonly status: PlanningDataSlotStatus;
-  readonly seedMode: "AI_GENERATED_SAMPLE_DB";
+  readonly seedMode: "AI_GENERATED_SAMPLE_DB" | "AI_GENERATED_JSON";
   readonly resettable: boolean;
   readonly entities: readonly Readonly<{
     readonly entityName: string;
@@ -175,7 +174,9 @@ function readDatabaseReadiness(v: unknown): PlanningDatabaseReadinessV1 | null {
     s === "CONNECTION_TEST_REQUIRED" ||
     s === "CONNECTION_FAILED" ||
     s === "STORE_NAMING_REQUIRED" ||
-    s === "BLOCKED_DATABASE_REQUIRED"
+    s === "BLOCKED_DATABASE_REQUIRED" ||
+    s === "USAGE_UNSELECTED" ||
+    s === "DISABLED_JSON_SAMPLE"
   ) {
     return s;
   }
@@ -493,17 +494,21 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
   const hasEntities = entities.length > 0;
   const prior = input.prior ?? null;
   const settings = input.planningDatabaseSettings ?? null;
-  const dbReady = isPlanningDatabaseReady(settings);
+  const dataPersistenceMode = resolvePlanningDataPersistenceMode({
+    planningDatabaseSettings: settings,
+  });
+  const dbReady = dataPersistenceMode === "POSTGRES_SAMPLE_DB";
+  const jsonSample = dataPersistenceMode === "JSON_SAMPLE_DATA";
   const databaseReadiness = resolvePlanningDatabaseReadinessV1(settings, naming);
-  const blockingReason = dbReady
+  const blockingReason = dbReady || jsonSample
     ? null
     : resolvePlanningDatabaseBlockingReasonForReadiness(databaseReadiness, settings);
   const settingsActionLabel = planningDatabaseSettingsActionLabel(databaseReadiness);
 
   const dataStoreSlot: DataStoreSlotV1 = {
-    status: dbReady ? "CONFIRMED" : "NEEDS_REVIEW",
+    status: dbReady || jsonSample ? "CONFIRMED" : "NEEDS_REVIEW",
     databaseReadiness,
-    provider: "POSTGRESQL",
+    provider: jsonSample ? "NONE" : "POSTGRESQL",
     enabled: dbReady,
     repositoryName: naming.repositoryName,
     normalizedBaseName: naming.normalizedBaseName,
@@ -537,7 +542,7 @@ export function buildPlanningDataSlotsDraft(input: Readonly<{
   const sampleEntities = buildSampleEntities(dataModelSlot.entities, input.sampleDataSpecV1);
   const sampleDataSlot: SampleDataSlotV1 = {
     status: slotStatusFromContent(sampleEntities.length > 0, prior?.sampleDataSlot.status),
-    seedMode: "AI_GENERATED_SAMPLE_DB",
+    seedMode: jsonSample ? "AI_GENERATED_JSON" : "AI_GENERATED_SAMPLE_DB",
     resettable: true,
     entities: sampleEntities.length ? sampleEntities : (prior?.sampleDataSlot.entities ?? []),
   };
@@ -571,13 +576,15 @@ export type PlanningHandoffForImplementationV1 = Readonly<{
   readonly sampleDataSlot: SampleDataSlotV1;
   readonly runtimeApiSlot: RuntimeApiSlotV1;
   readonly implementationDataPlan: Readonly<{
-    readonly provider: "POSTGRESQL";
+    readonly provider: "POSTGRESQL" | "NONE";
     readonly dataPersistenceMode: PlanningDataPersistenceMode;
     readonly repositoryBasedStoreName: string;
     readonly implementationSchemaName: string;
     readonly reviewSchemaName: string;
     readonly useSampleDb: boolean;
     readonly useRuntimeApi: boolean;
+    readonly useJsonSampleData?: boolean;
+    readonly databaseName?: string;
     readonly blocked: boolean;
     readonly blockingReason: string | null;
   }>;
@@ -604,13 +611,16 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
   const status = resolvePlanningHandoffStatus(dataPersistenceMode);
   const useSampleDb = dataPersistenceMode === "POSTGRES_SAMPLE_DB";
   const useRuntimeApi = useSampleDb;
+  const useJsonSampleData = dataPersistenceMode === "JSON_SAMPLE_DATA";
   const settings = input.planningDatabaseSettings;
   const implementationSchemaName =
     String(settings?.implementationSchemaName ?? "").trim() || naming.implementationSchemaName;
   const reviewSchemaName = String(settings?.reviewSchemaName ?? "").trim() || naming.reviewSchemaName;
   const repositoryBasedStoreName =
     String(settings?.databaseStoreName ?? "").trim() || naming.normalizedBaseName;
-  const blockingReason = useSampleDb ? null : resolvePlanningDatabaseBlockingReason(settings);
+  const blocked = status !== "READY";
+  const blockingReason = blocked ? resolvePlanningDatabaseBlockingReason(settings) : null;
+  const provider: "POSTGRESQL" | "NONE" = useJsonSampleData ? "NONE" : "POSTGRESQL";
   return {
     version: 1,
     projectId: input.projectId.trim(),
@@ -621,14 +631,18 @@ export function buildPlanningHandoffForImplementation(input: Readonly<{
     sampleDataSlot: input.planningDataSlots.sampleDataSlot,
     runtimeApiSlot: input.planningDataSlots.runtimeApiSlot,
     implementationDataPlan: {
-      provider: "POSTGRESQL",
+      provider,
       dataPersistenceMode,
       repositoryBasedStoreName,
       implementationSchemaName,
       reviewSchemaName,
       useSampleDb,
       useRuntimeApi,
-      blocked: !useSampleDb,
+      ...(useJsonSampleData ? { useJsonSampleData: true } : {}),
+      ...(useSampleDb && settings?.database
+        ? { databaseName: String(settings.database).trim() }
+        : {}),
+      blocked,
       blockingReason,
     },
     implementationDefaults: {
@@ -660,16 +674,29 @@ export function parsePlanningHandoffForImplementationV1(raw: unknown): PlanningH
       : null;
   const normalizedMode = normalizePlanningDataPersistenceMode(String(planRaw?.dataPersistenceMode ?? ""));
   const rawStatus = String(o.status ?? "").trim();
-  const status: PlanningHandoffStatus =
-    rawStatus === "READY" && normalizedMode === "POSTGRES_SAMPLE_DB"
-      ? "READY"
-      : "BLOCKED_DATABASE_REQUIRED";
+  let status: PlanningHandoffStatus = "BLOCKED_DATABASE_REQUIRED";
+  if (rawStatus === "READY" || rawStatus === "BLOCKED_DATABASE_USAGE_UNSELECTED" || rawStatus === "BLOCKED_DATABASE_REQUIRED") {
+    if (rawStatus === "READY") status = "READY";
+    else if (rawStatus === "BLOCKED_DATABASE_USAGE_UNSELECTED") status = "BLOCKED_DATABASE_USAGE_UNSELECTED";
+    else status = "BLOCKED_DATABASE_REQUIRED";
+  } else if (normalizedMode === "JSON_SAMPLE_DATA" || normalizedMode === "POSTGRES_SAMPLE_DB") {
+    status = "READY";
+  } else if (normalizedMode === "BLOCKED_DATABASE_USAGE_UNSELECTED") {
+    status = "BLOCKED_DATABASE_USAGE_UNSELECTED";
+  }
   const useSampleDb =
     typeof planRaw?.useSampleDb === "boolean" ? planRaw.useSampleDb : normalizedMode === "POSTGRES_SAMPLE_DB";
   const useRuntimeApi =
     typeof planRaw?.useRuntimeApi === "boolean" ? planRaw.useRuntimeApi : normalizedMode === "POSTGRES_SAMPLE_DB";
+  const useJsonSampleData =
+    typeof planRaw?.useJsonSampleData === "boolean"
+      ? planRaw.useJsonSampleData
+      : normalizedMode === "JSON_SAMPLE_DATA";
   const blocked =
-    typeof planRaw?.blocked === "boolean" ? planRaw.blocked : normalizedMode === "BLOCKED_DATABASE_REQUIRED";
+    typeof planRaw?.blocked === "boolean"
+      ? planRaw.blocked
+      : normalizedMode === "BLOCKED_DATABASE_REQUIRED" ||
+        normalizedMode === "BLOCKED_DATABASE_USAGE_UNSELECTED";
   const repositoryName = String(o.repositoryName ?? slots.dataStoreSlot.repositoryName ?? "project").trim();
   const naming = buildProjectDataStoreNaming({
     repositoryName,
@@ -707,13 +734,18 @@ export function parsePlanningHandoffForImplementationV1(raw: unknown): PlanningH
     sampleDataSlot: slots.sampleDataSlot,
     runtimeApiSlot: slots.runtimeApiSlot,
     implementationDataPlan: {
-      provider: "POSTGRESQL",
+      provider:
+        String(planRaw?.provider ?? "").trim() === "NONE" || useJsonSampleData ? "NONE" : "POSTGRESQL",
       dataPersistenceMode: normalizedMode,
       repositoryBasedStoreName,
       implementationSchemaName,
       reviewSchemaName,
       useSampleDb,
       useRuntimeApi,
+      ...(useJsonSampleData ? { useJsonSampleData: true } : {}),
+      ...(String(planRaw?.databaseName ?? "").trim()
+        ? { databaseName: String(planRaw?.databaseName).trim().slice(0, 200) }
+        : {}),
       blocked,
       blockingReason,
     },

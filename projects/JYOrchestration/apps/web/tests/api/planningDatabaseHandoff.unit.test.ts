@@ -23,6 +23,8 @@ describe("planningDbPersistencePolicy", () => {
     const settings = syncPlanningDatabaseSettingsStoreNames({
       settings: {
         ...defaultPlanningDatabaseSettingsV1(),
+        usageMode: "ENABLED_POSTGRESQL",
+        usageSelectionCommitted: true,
         enabled: true,
         connectionStatus: "READY",
         host: "localhost",
@@ -43,11 +45,18 @@ describe("planningDbPersistencePolicy", () => {
       resolvePlanningDataPersistenceMode({
         planningDatabaseSettings: {
           ...defaultPlanningDatabaseSettingsV1(),
-          enabled: false,
+          usageMode: "ENABLED_POSTGRESQL",
+          usageSelectionCommitted: true,
+          enabled: true,
           connectionStatus: "NOT_CONFIGURED",
         },
       }),
     ).toBe("BLOCKED_DATABASE_REQUIRED");
+    expect(
+      resolvePlanningDataPersistenceMode({
+        planningDatabaseSettings: defaultPlanningDatabaseSettingsV1(),
+      }),
+    ).toBe("BLOCKED_DATABASE_USAGE_UNSELECTED");
   });
 });
 

@@ -51,7 +51,8 @@ import type {
 import type { PlanningDataSlotsV1, PlanningHandoffForImplementationV1 } from "@/lib/planning/planningDataSlotsV1";
 import { buildPlanningDataSlotsStatePatch, resolvePlanningRepositoryName } from "@/lib/planning/planningDataSlotsStatePatch";
 import {
-  isPlanningHandoffBlockedByDatabase,
+  isPlanningHandoffReadyForImplementationPrep,
+  resolveImplementationPrepDatabaseBlockKind,
   resolvePlanningDatabaseBlockingReason,
   type PlanningDatabaseReadinessV1,
 } from "@/lib/planning/planningDbPersistencePolicy";
@@ -195,6 +196,35 @@ function buildQuickDesignReadinessEvaluatedTimelineEntry(input: {
     action: "quick_design_confirmed_implementation_readiness_evaluated",
     source: "system",
     responseText: parts.join(" "),
+    createdAt: input.nowIso,
+    orchestrationTraceGroup: "planning_orchestration",
+  };
+}
+
+function buildQuickDesignPrepBlockedDatabaseUsageUnselectedTimelineEntry(input: {
+  readonly projectId: string;
+  readonly handoff: PlanningHandoffForImplementationV1;
+  readonly databaseReadiness: PlanningDatabaseReadinessV1;
+  readonly nowIso: string;
+}): RequirementsPromptTimelineEntry {
+  return {
+    stage: "requirements",
+    stageGroup: "기획",
+    workspaceScreenKey: "requirements",
+    action: "quick_design_confirmed_implementation_prep_blocked_database_usage_unselected",
+    source: "system",
+    responseText: [
+      "type=quick_design_confirmed_implementation_prep_blocked_database_usage_unselected",
+      "mode=planning",
+      "source=quick_design_confirm",
+      `handoffStatus=${input.handoff.status}`,
+      `databaseReadiness=${input.databaseReadiness}`,
+      `dataPersistenceMode=${input.handoff.implementationDataPlan.dataPersistenceMode}`,
+      "seedReady=false",
+      "seedStatus=database_usage_unselected",
+      "blockReason=DATABASE_USAGE_UNSELECTED",
+      "action=OPEN_PLANNING_DATABASE_SETTINGS",
+    ].join(" "),
     createdAt: input.nowIso,
     orchestrationTraceGroup: "planning_orchestration",
   };
@@ -370,7 +400,12 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     sampleDataSpecV1: input.sampleDataSpecV1,
     nowIso: now,
   });
-  const databaseReady = !isPlanningHandoffBlockedByDatabase(planningDataPatch.planningHandoffForImplementationV1);
+  const databaseReady = isPlanningHandoffReadyForImplementationPrep(
+    planningDataPatch.planningHandoffForImplementationV1,
+  );
+  const prepBlockKind = resolveImplementationPrepDatabaseBlockKind(
+    planningDataPatch.planningHandoffForImplementationV1,
+  );
 
   const baseSeed = buildImplementationSeedFromPlanning({
     projectId: input.projectId,
@@ -408,9 +443,10 @@ export function runQuickDesignConfirmImplementationPrep(input: {
     envOk: input.envOk,
     generatedArtifactCount: input.generatedArtifactCount,
   });
-  const chipLabels = databaseReady
-    ? quickDesignPostConfirmChipLabelsForState(postConfirmState)
-    : [PLANNING_DATABASE_SETUP_LABEL, ...quickDesignPostConfirmChipLabelsForState(postConfirmState)];
+  const chipLabels =
+    prepBlockKind === "none"
+      ? quickDesignPostConfirmChipLabelsForState(postConfirmState)
+      : [PLANNING_DATABASE_SETUP_LABEL, ...quickDesignPostConfirmChipLabelsForState(postConfirmState)];
 
   const taskListForReadiness = input.existingTaskList ?? implementationTaskListV1;
   let implementationCodeTaskPlanV1: ImplementationCodeTaskPlanV1 | null = null;
@@ -452,29 +488,49 @@ export function runQuickDesignConfirmImplementationPrep(input: {
   const handoff = planningDataPatch.planningHandoffForImplementationV1;
   const timelineEntries: RequirementsPromptTimelineEntry[] = [];
 
-  if (!databaseReady) {
-    timelineEntries.push(
-      buildQuickDesignPrepBlockedDatabaseRequiredTimelineEntry({
-        projectId: input.projectId,
-        handoff,
-        databaseReadiness,
-        planningDatabaseSettings: input.planningStateJson?.planningDatabaseSettingsV1 ?? null,
-        nowIso: now,
-      }),
-    );
-    const dbMissing = ["database_settings", "postgres_connection_test"];
+  if (prepBlockKind !== "none") {
+    if (prepBlockKind === "usage_unselected") {
+      timelineEntries.push(
+        buildQuickDesignPrepBlockedDatabaseUsageUnselectedTimelineEntry({
+          projectId: input.projectId,
+          handoff,
+          databaseReadiness,
+          nowIso: now,
+        }),
+      );
+    } else {
+      timelineEntries.push(
+        buildQuickDesignPrepBlockedDatabaseRequiredTimelineEntry({
+          projectId: input.projectId,
+          handoff,
+          databaseReadiness,
+          planningDatabaseSettings: input.planningStateJson?.planningDatabaseSettingsV1 ?? null,
+          nowIso: now,
+        }),
+      );
+    }
+    const dbMissing =
+      prepBlockKind === "usage_unselected"
+        ? ["database_usage_selection"]
+        : ["database_settings", "postgres_connection_test"];
+    const seedStatus =
+      prepBlockKind === "usage_unselected" ? "database_usage_unselected" : "blocked_database_required";
+    const implementationPrepStatus =
+      prepBlockKind === "usage_unselected"
+        ? "BLOCKED_DATABASE_USAGE_UNSELECTED"
+        : "BLOCKED_DATABASE_REQUIRED";
     timelineEntries.push(
       buildQuickDesignReadinessEvaluatedTimelineEntry({
         projectId: input.projectId,
         seedReady: false,
-        seedStatus: "blocked_database_required",
+        seedStatus,
         missing: dbMissing,
         autoCandidateGenerated: false,
         nowIso: now,
         databaseReadiness,
         handoffStatus: handoff.status,
         dataPersistenceMode: handoff.implementationDataPlan.dataPersistenceMode,
-        implementationPrepStatus: "BLOCKED_DATABASE_REQUIRED",
+        implementationPrepStatus,
       }),
     );
   } else {
