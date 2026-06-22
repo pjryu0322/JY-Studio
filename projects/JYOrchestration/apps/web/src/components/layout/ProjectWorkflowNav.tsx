@@ -5,8 +5,6 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { DesktopWorkflowTabs } from "@/components/layout/DesktopWorkflowTabs";
 import { MobileStepSelector } from "@/components/layout/MobileStepSelector";
@@ -16,9 +14,9 @@ import {
   isWorkflowStepNavActive,
   resolveWorkflowProjectContextId,
 } from "@/lib/workflow/flow-state";
-import { WORKFLOW_NAV_STRIP_SCREEN_LABEL, workflowStepMeta } from "@/lib/workflow/workflowStepMeta";
+import { workflowStepMeta } from "@/lib/workflow/workflowStepMeta";
 
-type NavItem = { label: string; href: string; screenLabel: string };
+type NavItem = { label: string; href: string };
 
 function isAdminPathActive(pathname: string, basePath: string): boolean {
   return pathname === basePath || pathname.startsWith(`${basePath}/`);
@@ -42,9 +40,7 @@ const linkMgmt = (active: boolean): CSSProperties => ({
  */
 function ProjectWorkflowNavInner({ hideCompactTitle }: { readonly hideCompactTitle?: boolean }) {
   const pathname = usePathname() || "/";
-  const searchParams = useSearchParams();
-  const showScreenLabels = useShowScreenLabels();
-  const { effectiveLayout } = useWorkspaceMode();
+  const searchParams = useSearchParams();  const { effectiveLayout } = useWorkspaceMode();
   /** `PlatformTopNav`와 동일 — 하이드레이션 완료 전에는 항상 데스크톱 내비 트리를 맞춰 SSR·클라이언트 HTML 불일치를 방지 */
   const [layoutHydrated, setLayoutHydrated] = useState(false);
   useEffect(() => {
@@ -79,9 +75,7 @@ function ProjectWorkflowNavInner({ hideCompactTitle }: { readonly hideCompactTit
   if (compactWorkflowNav) {
     if (hideCompactTitle) return null;
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 6, width: "100%" }}>
-        <ScreenLabel label={WORKFLOW_NAV_STRIP_SCREEN_LABEL} visible={showScreenLabels} />
-        <MobileStepSelector items={workflowItems} trailingSlot={workflowTrailing} />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 6, width: "100%" }}>        <MobileStepSelector items={workflowItems} trailingSlot={workflowTrailing} />
       </div>
     );
   }
@@ -97,9 +91,7 @@ function ProjectWorkflowNavInner({ hideCompactTitle }: { readonly hideCompactTit
         rowGap: 12,
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, minWidth: 0, flex: "1 1 200px" }}>
-        <ScreenLabel label={WORKFLOW_NAV_STRIP_SCREEN_LABEL} visible={showScreenLabels} />
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 6, minWidth: 0, flex: "1 1 200px" }}>        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
           <DesktopWorkflowTabs items={workflowItems} />
           {workflowTrailing}
         </div>
@@ -125,9 +117,7 @@ function ProjectWorkflowNavInner({ hideCompactTitle }: { readonly hideCompactTit
               const base = item.href.split("?")[0] ?? item.href;
               const active = isAdminPathActive(pathname, base);
               return (
-                <span key={item.label + item.href} className="relative">
-                  <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-                  <Link href={item.href} style={linkMgmt(active)} aria-current={active ? "page" : undefined}>
+                <span key={item.label + item.href} className="relative">                  <Link href={item.href} style={linkMgmt(active)} aria-current={active ? "page" : undefined}>
                     {item.label}
                   </Link>
                 </span>

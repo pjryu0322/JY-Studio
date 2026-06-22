@@ -39,8 +39,6 @@ import {
   confirmResetConversation,
   downloadConversationMarkdownFile,
 } from "@/lib/chat/conversationMarkdown";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import {
   IDEATION_UNIFIED_PROPOSAL_OUTPUT,
   markDeliverableAssetsConfirmed,
@@ -362,9 +360,7 @@ export function RequirementsWorkspace({
   readonly initialWorkflowNotice: string;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const showScreenLabels = useShowScreenLabels();
-  useRequirementsStageRouteRedirect(initialProjectId);
+  const searchParams = useSearchParams();  useRequirementsStageRouteRedirect(initialProjectId);
 
   const autoOpenPrototypePreview = useMemo(() => {
     const v = String(searchParams?.get("preview") ?? "").trim();
@@ -3772,9 +3768,7 @@ export function RequirementsWorkspace({
 
   const ideationStage = (
     <div key="ideation" style={{ display: "contents" }}>
-      <RequirementsIdeationChatPanel
-        showScreenLabels={showScreenLabels}
-        conversationStatus={conversationStatus}
+      <RequirementsIdeationChatPanel        conversationStatus={conversationStatus}
         chatMessages={conversationMessages}
         participantAiMemberId={participantAiMemberId}
         aiInvokePending={aiInvokePending}
@@ -3831,10 +3825,7 @@ export function RequirementsWorkspace({
   );
 
   return (
-    <div style={requirementsWorkspaceShellStyle}>
-      <ScreenLabel label="요구사항-목록-페이지-섹션" visible={showScreenLabels} />
-
-      <RequirementsCanvasHubDrawer
+    <div style={requirementsWorkspaceShellStyle}>      <RequirementsCanvasHubDrawer
         open={canvasHubOpen}
         items={canvasHubCatalog}
         onClose={() => setCanvasHubOpen(false)}
@@ -4005,9 +3996,7 @@ export function RequirementsWorkspace({
         error={errorToast}
       />
 
-      <RequirementsWorkspaceTopChrome
-        showScreenLabels={showScreenLabels}
-        showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
+      <RequirementsWorkspaceTopChrome        showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
         resolvedProjectIdTrimmed={resolvedProjectId.trim()}
         inIdeationStage={inIdeationStage}
         conversationStatus={conversationStatus}

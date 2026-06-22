@@ -6,7 +6,6 @@ import { WorkingSurfaceLayoutEffect } from "@/components/layout/WorkingSurfaceLa
 import { WorkspaceModeProvider } from "@/components/layout/WorkspaceModeContext";
 import { subscribePlatformLogoutCloseSelf } from "@/lib/platform/platformPopupRegistry";
 import { SessionAuthGuard } from "@/components/layout/SessionAuthGuard";
-import { ScreenLabelsProvider } from "@/components/ui/ScreenLabelsContext";
 
 function PlatformLogoutBroadcastListener() {
   useEffect(() => subscribePlatformLogoutCloseSelf(), []);
@@ -15,7 +14,7 @@ function PlatformLogoutBroadcastListener() {
 
 export function ClientProviders({ children }: { readonly children: ReactNode }) {
   return (
-    <ScreenLabelsProvider>
+    <>
       <PlatformLogoutBroadcastListener />
       <SessionAuthGuard />
       <GlobalPreferenceEffects />
@@ -23,6 +22,6 @@ export function ClientProviders({ children }: { readonly children: ReactNode }) 
         <WorkingSurfaceLayoutEffect />
         {children}
       </WorkspaceModeProvider>
-    </ScreenLabelsProvider>
+    </>
   );
 }

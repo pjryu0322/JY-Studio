@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { TaskDraftsPanel } from "@/components/workflow/TaskDraftsPanel";
 import { TaskSequence } from "@/components/workflow/TaskSequence";
 import { TasksWorkspaceSummaryStrip } from "@/components/workflow/TasksWorkspaceSummaryStrip";
@@ -41,9 +39,7 @@ const inputStyle: CSSProperties = {
   boxSizing: "border-box",
 };
 
-export function TasksWorkspaceContent({ view }: Props) {
-  const showScreenLabels = useShowScreenLabels();
-  const sessionResultsVersion = useCollaborationSessionResultsVersion();
+export function TasksWorkspaceContent({ view }: Props) {  const sessionResultsVersion = useCollaborationSessionResultsVersion();
   const working = useTasksWorkspaceReview(view.taskDrafts);
   const [addName, setAddName] = useState("");
   const [addDesc, setAddDesc] = useState("");
@@ -159,9 +155,7 @@ export function TasksWorkspaceContent({ view }: Props) {
       <TasksWorkspaceSummaryStrip view={view} />
 
       {view.hasConfirmedTaskSet ? (
-        <div className="relative" style={{ border: "1px solid #bbf7d0", borderRadius: 12, padding: 10, background: "#f0fdf4" }}>
-          <ScreenLabel label="작업-워크스페이스-공식확정-안내패널" visible={showScreenLabels} />
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#166534" }}>공식 확정 스냅샷</div>
+        <div className="relative" style={{ border: "1px solid #bbf7d0", borderRadius: 12, padding: 10, background: "#f0fdf4" }}>          <div style={{ fontSize: 13, fontWeight: 800, color: "#166534" }}>공식 확정 스냅샷</div>
           <div style={{ fontSize: 12, color: "#15803d", marginTop: 6, lineHeight: 1.5 }}>
             이 세션에 확정된 작업 세트가 있습니다
             {view.confirmedTaskSetRecordedAtIso ? ` (저장: ${new Date(view.confirmedTaskSetRecordedAtIso).toLocaleString("ko-KR")})` : ""}. 작업 목록은 계속
@@ -171,29 +165,21 @@ export function TasksWorkspaceContent({ view }: Props) {
       ) : null}
 
       {confirmFlash ? (
-        <div className="relative" style={{ border: "1px solid #bfdbfe", borderRadius: 12, padding: 10, background: "#eff6ff" }}>
-          <ScreenLabel label="작업-워크스페이스-확정결과-알림패널" visible={showScreenLabels} />
-          <div style={{ fontSize: 13, color: "#1e40af", lineHeight: 1.5 }}>{confirmFlash}</div>
+        <div className="relative" style={{ border: "1px solid #bfdbfe", borderRadius: 12, padding: 10, background: "#eff6ff" }}>          <div style={{ fontSize: 13, color: "#1e40af", lineHeight: 1.5 }}>{confirmFlash}</div>
         </div>
       ) : null}
 
-      <div className="relative" style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-        <ScreenLabel label="작업-워크스페이스-편집안내-본문섹션" visible={showScreenLabels} />
-        아래에는 생성된 공식 초안이 표시됩니다. 공식 세트에 넣을 각 작업에{" "}
+      <div className="relative" style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>        아래에는 생성된 공식 초안이 표시됩니다. 공식 세트에 넣을 각 작업에{" "}
         <span style={{ fontWeight: 800, color: "#374151" }}>확정</span>을 사용한 뒤, 공유 세션 저장소(메모리)에 저장하려면{" "}
         <span style={{ fontWeight: 800, color: "#374151" }}>작업 확정</span>을 누르세요. 확정하지 않은 행은 이 워크스페이스에서만 초안으로 남습니다.
       </div>
 
-      <div className="relative" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-        <ScreenLabel label="작업-워크스페이스-작업확정-실행섹션" visible={showScreenLabels} />
-        <WorkflowActionButton label="작업 확정" variant="primary" onClick={confirmTaskSet} disabled={!view.sessionId} />
+      <div className="relative" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>        <WorkflowActionButton label="작업 확정" variant="primary" onClick={confirmTaskSet} disabled={!view.sessionId} />
         <span style={{ fontSize: 12, color: "#6b7280" }}>확정으로 표시된 작업만 현재 순서대로 저장합니다.</span>
       </div>
 
       {view.sessionId ? (
-        <div className="relative" style={{ fontSize: 13, color: "#374151", lineHeight: 1.5 }}>
-          <ScreenLabel label="작업-워크스페이스-실행후보-현황섹션" visible={showScreenLabels} />
-          <span style={{ fontWeight: 800 }}>{readyCount}</span> / <span style={{ fontWeight: 800 }}>{readyTotal}</span>개의{" "}
+        <div className="relative" style={{ fontSize: 13, color: "#374151", lineHeight: 1.5 }}>          <span style={{ fontWeight: 800 }}>{readyCount}</span> / <span style={{ fontWeight: 800 }}>{readyTotal}</span>개의{" "}
           <span style={{ fontWeight: 800 }}>저장된 확정 세트</span> 작업이 실행 후보(준비됨)입니다.
           {readyTotal === 0 ? (
             <span style={{ color: "#6b7280" }}> 행을 확정한 뒤 작업 확정을 실행하면 합계가 갱신됩니다.</span>
@@ -204,15 +190,11 @@ export function TasksWorkspaceContent({ view }: Props) {
       <div
         className="relative"
         style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5, borderLeft: "3px solid #e5e7eb", paddingLeft: 10 }}
-      >
-        <ScreenLabel label="작업-워크스페이스-실행후보-설명섹션" visible={showScreenLabels} />
-        준비된 작업은 <span style={{ fontWeight: 800, color: "#374151" }}>실행 후보 집합</span>을 구성합니다. 이후 단계에서 실행에 사용할 수 있습니다(여기서는
+      >        준비된 작업은 <span style={{ fontWeight: 800, color: "#374151" }}>실행 후보 집합</span>을 구성합니다. 이후 단계에서 실행에 사용할 수 있습니다(여기서는
         연결되지 않음). 이름·설명이 분명하고 선행 작업이 막지 않을 때만 준비로 표시하세요.
       </div>
 
-      <div className="relative" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <ScreenLabel label="작업-워크스페이스-목록보기-토글섹션" visible={showScreenLabels} />
-        <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 800 }}>보기</span>
+      <div className="relative" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>        <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 800 }}>보기</span>
         <button
           type="button"
           onClick={() => setSequenceView("all")}
@@ -250,9 +232,7 @@ export function TasksWorkspaceContent({ view }: Props) {
         ) : null}
       </div>
 
-      <div className="relative">
-        <ScreenLabel label="작업-워크스페이스-작업순서-미리보기패널" visible={showScreenLabels} />
-        <WorkflowSectionLabel marginBottom={10}>작업 순서</WorkflowSectionLabel>
+      <div className="relative">        <WorkflowSectionLabel marginBottom={10}>작업 순서</WorkflowSectionLabel>
         <TaskSequence tasks={displayedSequenceTasks} review={reviewApi} />
         {sequenceView === "candidates" && displayedSequenceTasks.length === 0 ? (
           <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
@@ -262,9 +242,7 @@ export function TasksWorkspaceContent({ view }: Props) {
       </div>
 
       {executionLaunchPreview ? (
-        <div className="relative">
-          <ScreenLabel label="작업-워크스페이스-실행입력-미리보기패널" visible={showScreenLabels} />
-          <WorkflowCard padding={12}>
+        <div className="relative">          <WorkflowCard padding={12}>
             <details>
               <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, listStyle: "none" }}>실행 입력 미리보기</summary>
               <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
@@ -295,9 +273,7 @@ export function TasksWorkspaceContent({ view }: Props) {
       ) : null}
 
       {executionLaunchPreview ? (
-        <div className="relative">
-          <ScreenLabel label="작업-워크스페이스-실행스냅샷-준비패널" visible={showScreenLabels} />
-          <WorkflowCard padding={12}>
+        <div className="relative">          <WorkflowCard padding={12}>
             <details>
               <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, listStyle: "none" }}>실행 시작 스냅샷</summary>
               <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
@@ -483,9 +459,7 @@ export function TasksWorkspaceContent({ view }: Props) {
       ) : null}
 
       {working.removedTasks.length > 0 ? (
-        <div className="relative">
-          <ScreenLabel label="작업-워크스페이스-검토제외-목록패널" visible={showScreenLabels} />
-          <WorkflowCard padding={10}>
+        <div className="relative">          <WorkflowCard padding={10}>
             <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8, color: "#6b7280" }}>이 검토에서 제외됨</div>
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "#374151" }}>
               {working.removedTasks.map((t) => (
@@ -513,9 +487,7 @@ export function TasksWorkspaceContent({ view }: Props) {
         </div>
       ) : null}
 
-      <div className="relative">
-        <ScreenLabel label="작업-워크스페이스-수동추가-폼패널" visible={showScreenLabels} />
-        <WorkflowCard padding={12}>
+      <div className="relative">        <WorkflowCard padding={12}>
           <details>
             <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, listStyle: "none" }}>작업 추가</summary>
             <div style={{ marginTop: 12, display: "grid", gap: 10, maxWidth: 440 }}>
@@ -559,9 +531,7 @@ export function TasksWorkspaceContent({ view }: Props) {
         </WorkflowCard>
       </div>
 
-      <div className="relative">
-        <ScreenLabel label="작업-워크스페이스-상세작업목록-패널" visible={showScreenLabels} />
-        <WorkflowCard padding={12}>
+      <div className="relative">        <WorkflowCard padding={12}>
           <details>
             <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 900, listStyle: "none" }}>상세 작업 목록</summary>
             <div style={{ marginTop: 12 }}>
@@ -576,9 +546,7 @@ export function TasksWorkspaceContent({ view }: Props) {
         </WorkflowCard>
       </div>
 
-      <div className="relative">
-        <ScreenLabel label="작업-워크스페이스-실행참고-접이섹션" visible={showScreenLabels} />
-        <details>
+      <div className="relative">        <details>
           <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 800, color: "#9ca3af" }}>실행(아직 연결되지 않음)</summary>
           <p style={{ fontSize: 12, color: "#6b7280", marginTop: 8, lineHeight: 1.5, marginBottom: 0 }}>
             준비도 표시는 실행 전 단계(메모리)용입니다. 실행, 대기열, Stage 연결은 아직 없습니다.

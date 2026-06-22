@@ -2,8 +2,6 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
 import type { WorkflowStepMeta } from "@/lib/workflow/workflowStepMeta";
 
@@ -24,14 +22,10 @@ export type DesktopWorkflowTabItem = WorkflowStepMeta & {
   readonly active: boolean;
 };
 
-export function DesktopWorkflowTabs({ items }: { readonly items: readonly DesktopWorkflowTabItem[] }) {
-  const showScreenLabels = useShowScreenLabels();
-  return (
+export function DesktopWorkflowTabs({ items }: { readonly items: readonly DesktopWorkflowTabItem[] }) {  return (
     <nav aria-label="프로젝트 단계" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
       {items.map((item) => (
-        <span key={item.stepId} className="relative">
-          <ScreenLabel label={item.screenLabel} visible={showScreenLabels} />
-          <Link href={item.href} style={linkProcess(item.active)} aria-current={item.active ? "page" : undefined}>
+        <span key={item.stepId} className="relative">          <Link href={item.href} style={linkProcess(item.active)} aria-current={item.active ? "page" : undefined}>
             {item.label}
           </Link>
         </span>

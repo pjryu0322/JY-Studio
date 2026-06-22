@@ -1,7 +1,5 @@
 "use client";
 
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
 const panelCard = {
   background: "#fff",
@@ -39,9 +37,7 @@ export function RequirementsSummaryPanel({
   readonly onOpenIssuesChange: (v: string) => void;
   readonly onSuccessChange: (v: string) => void;
   readonly onBlurSave: () => void;
-}) {
-  const showScreenLabels = useShowScreenLabels();
-  const ta = {
+}) {  const ta = {
     width: "100%",
     boxSizing: "border-box" as const,
     border: "none",
@@ -62,9 +58,7 @@ export function RequirementsSummaryPanel({
         background: "#f9fafb",
       }}
       aria-label="아이디어 요약 패널"
-    >
-      <ScreenLabel label="요구사항-AI정리패널" visible={showScreenLabels} />
-      <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
+    >      <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#52525b", marginBottom: 10 }}>요약 메모</div>
         <div style={panelCard}>
           <div style={{ fontSize: 11, fontWeight: 800, color: "#71717a", marginBottom: 6 }}>프로젝트 목표</div>

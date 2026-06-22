@@ -12,8 +12,6 @@ import { ProjectRailWorkflowStrip } from "@/components/layout/platformTopNav/Pro
 import { useProjectNameFromId } from "@/lib/project/useProjectNameFromId";
 import { usePlatformRailCollapsed } from "@/components/layout/platformTopNav/usePlatformRailCollapsed";
 import { usePlatformTopNavAuth } from "@/components/layout/platformTopNav/usePlatformTopNavAuth";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { resolveEffectiveWorkflowProjectId } from "@/lib/layout/effectiveWorkflowProjectId";
 import {
   PLATFORM_RAIL_EXPAND_TAB_W,
@@ -30,9 +28,7 @@ export function PlatformTopNav() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- WorkspaceMode 클라이언트 레이아웃 확정 후 compact 여부 반영
     setLayoutHydrated(true);
   }, []);
-  const compactToolbar = layoutHydrated && effectiveLayout === "MOBILE";
-  const showScreenLabels = useShowScreenLabels();
-  const pathname = usePathname() || "/";
+  const compactToolbar = layoutHydrated && effectiveLayout === "MOBILE";  const pathname = usePathname() || "/";
   const searchParams = useSearchParams();
   const [railCollapsed, persistRailCollapsed] = usePlatformRailCollapsed();
   const { me, meReady, avatarLoadFailed, setAvatarLoadFailed, logout } = usePlatformTopNavAuth(pathname);
@@ -91,9 +87,7 @@ export function PlatformTopNav() {
         paddingRight: 12,
         boxSizing: "border-box",
       }}
-    >
-      <ScreenLabel label="공통-상단내비-전체" visible={showScreenLabels} />
-      <button
+    >      <button
         type="button"
         aria-label="사이드바 접기"
         title="메뉴 접기"

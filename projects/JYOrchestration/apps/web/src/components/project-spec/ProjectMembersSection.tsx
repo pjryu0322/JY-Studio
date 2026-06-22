@@ -19,8 +19,6 @@ import {
 } from "@/lib/ai-member/aiMemberOrchestration";
 import { AiMembersPage } from "@/components/project-spec/ai-members/AiMembersPage";
 import type { ProjectMemberUiRow } from "@/components/project-spec/memberUiTypes";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import {
   memberRowToUnified,
   memberTypeLabelKr,
@@ -821,10 +819,7 @@ export function ProjectMembersSection({
   const [requestTaskId, setRequestTaskId] = useState("");
   const [requestGitId, setRequestGitId] = useState("");
   const [requestPromptId, setRequestPromptId] = useState("");
-  const [requestBusy, setRequestBusy] = useState(false);
-
-  const showScreenLabels = useShowScreenLabels();
-  const [unifiedMemberTab, setUnifiedMemberTab] = useState<"all" | "human" | "ai">("all");
+  const [requestBusy, setRequestBusy] = useState(false);  const [unifiedMemberTab, setUnifiedMemberTab] = useState<"all" | "human" | "ai">("all");
   const [unifiedSelectedId, setUnifiedSelectedId] = useState<string | null>(null);
 
   const canAnyAiRequest = canRequestAiMemberAction || canRequestAiReviewAction;
@@ -1909,9 +1904,7 @@ export function ProjectMembersSection({
       {memberSurface === "ai" || memberSurface === "unified" ? (
         <>
           {memberSurface === "unified" ? (
-            <div data-testid="project-unified-members-table-wrap" style={{ marginBottom: 20 }}>
-              <ScreenLabel label="프로젝트관리-멤버-탭-구역" visible={showScreenLabels} />
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+            <div data-testid="project-unified-members-table-wrap" style={{ marginBottom: 20 }}>              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
                 {(["all", "human", "ai"] as const).map((tab) => (
                   <button
                     key={tab}
@@ -1935,9 +1928,7 @@ export function ProjectMembersSection({
                 ))}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
-                <div data-testid="project-unified-members-list-column" style={{ flex: "1 1 320px", minWidth: 0 }}>
-                  <ScreenLabel label="프로젝트관리-멤버-목록-테이블" visible={showScreenLabels} />
-                  <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+                <div data-testid="project-unified-members-list-column" style={{ flex: "1 1 320px", minWidth: 0 }}>                  <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
                         <tr style={{ background: "#f8fafc", textAlign: "left" }}>
@@ -1962,14 +1953,10 @@ export function ProjectMembersSection({
                               }}
                             >
                               <td style={{ padding: "10px 12px", verticalAlign: "top" }}>
-                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
-                                  <ScreenLabel label="프로젝트관리-멤버-행-컨테이너" visible={showScreenLabels} />
-                                  <span style={{ fontWeight: 700 }}>{u.name}</span>
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>                                  <span style={{ fontWeight: 700 }}>{u.name}</span>
                                 </div>
                               </td>
-                              <td style={{ padding: "10px 12px" }}>
-                                <ScreenLabel label="프로젝트관리-멤버-행-유형배지" visible={showScreenLabels} />
-                                <span
+                              <td style={{ padding: "10px 12px" }}>                                <span
                                   style={{
                                     fontSize: 11,
                                     fontWeight: 800,
@@ -2000,9 +1987,7 @@ export function ProjectMembersSection({
                     background: "#fafafa",
                     minHeight: 200,
                   }}
-                >
-                  <ScreenLabel label="프로젝트관리-멤버-상세-패널" visible={showScreenLabels} />
-                  {!unifiedSelectedMember ? (
+                >                  {!unifiedSelectedMember ? (
                     <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>목록에서 멤버를 선택하세요.</p>
                   ) : unifiedSelectedMember.memberType === "HUMAN" ? (
                     <div>
@@ -2044,9 +2029,7 @@ export function ProjectMembersSection({
                     </div>
                   ) : (
                     <div>
-                      <h3 style={{ margin: "0 0 10px 0", fontSize: 16, fontWeight: 800 }}>AI 멤버 상세</h3>
-                      <ScreenLabel label="프로젝트관리-멤버-상세-AI설정" visible={showScreenLabels} />
-                      <p style={{ margin: "0 0 6px 0", fontSize: 13 }}>
+                      <h3 style={{ margin: "0 0 10px 0", fontSize: 16, fontWeight: 800 }}>AI 멤버 상세</h3>                      <p style={{ margin: "0 0 6px 0", fontSize: 13 }}>
                         <span style={{ color: "#64748b" }}>이름</span> {unifiedSelectedMember.displayName}
                       </p>
                       <p style={{ margin: "0 0 12px 0", fontSize: 13 }}>

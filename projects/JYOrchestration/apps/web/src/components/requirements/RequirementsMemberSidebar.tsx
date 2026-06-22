@@ -1,8 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 import {
   formatParticipantStatusSubtitle,
@@ -28,9 +26,7 @@ export function RequirementsMemberSidebar({
   readonly onInviteClick: () => void;
   /** 가로 플렉스 형제가 아닌(예: 그리드 열) 레이아웃에서 레일 높이를 채울 때 true */
   readonly fillRail?: boolean;
-}) {
-  const showScreenLabels = useShowScreenLabels();
-  const ordered = useMemo(() => sortParticipantsForPresenceList(participants), [participants]);
+}) {  const ordered = useMemo(() => sortParticipantsForPresenceList(participants), [participants]);
 
   return (
     <aside
@@ -49,9 +45,7 @@ export function RequirementsMemberSidebar({
         ...(fillRail ? { height: "100%" } : { flex: "0 0 220px" }),
       }}
     >
-      <div className="relative" style={{ position: "relative", padding: "12px 12px 8px" }}>
-        <ScreenLabel label="요구사항-참가자영역-멤버리스트" visible={showScreenLabels} />
-        <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.02em", textTransform: "uppercase" }}>참여 멤버</div>
+      <div className="relative" style={{ position: "relative", padding: "12px 12px 8px" }}>        <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", letterSpacing: "0.02em", textTransform: "uppercase" }}>참여 멤버</div>
       </div>
       <div
         role="list"
@@ -97,9 +91,7 @@ export function RequirementsMemberSidebar({
         ))}
       </div>
       {showInvite ? (
-        <div className="relative" style={{ position: "relative", padding: "10px 10px 12px", borderTop: "1px solid #e2e8f0", background: "rgba(255,255,255,0.65)" }}>
-          <ScreenLabel label="요구사항-헤더-멤버초대버튼" visible={showScreenLabels} />
-          <button
+        <div className="relative" style={{ position: "relative", padding: "10px 10px 12px", borderTop: "1px solid #e2e8f0", background: "rgba(255,255,255,0.65)" }}>          <button
             type="button"
             disabled={inviteDisabled}
             onClick={onInviteClick}

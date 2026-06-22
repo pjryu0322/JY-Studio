@@ -17,8 +17,6 @@ import {
   type PromptTimelineDrawerTab,
 } from "@/lib/prototype/promptTimelineExecutionLogTabs";
 import { ImplementationExecutionLogPanelContent } from "@/components/preview/ImplementationExecutionLogPanelContent";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
 const backdrop: CSSProperties = {
   position: "fixed",
@@ -319,9 +317,7 @@ export function RequirementsPromptDocumentDrawer({
   readonly initialTab?: PromptTimelineDrawerTab;
   /** 실행 로그 탭 항목만 promptTimeline에서 제거 (DB 저장은 호출 측) */
   readonly onClearExecutionLog?: () => void | Promise<void>;
-}) {
-  const show = useShowScreenLabels();
-  const [tab, setTab] = useState<PromptTimelineDrawerTab>("prompt");
+}) {  const [tab, setTab] = useState<PromptTimelineDrawerTab>("prompt");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [copyToastMessage, setCopyToastMessage] = useState<string | null>(null);
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -494,9 +490,7 @@ export function RequirementsPromptDocumentDrawer({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div style={panel} onMouseDown={(e) => e.stopPropagation()}>
-        <ScreenLabel label="요구사항-프롬프트-드로어" visible={show} />
-        {copyToastMessage ? (
+      <div style={panel} onMouseDown={(e) => e.stopPropagation()}>        {copyToastMessage ? (
           <div
             role="status"
             aria-live="polite"

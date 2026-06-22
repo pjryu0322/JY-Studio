@@ -4,10 +4,7 @@ import type { ProblemInterviewState } from "@/lib/requirements/problemInterview"
 import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import { WorkspaceConversationHubIconRow } from "@/components/workspace/WorkspaceConversationHubIconRow";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-export type RequirementsWorkspaceTopChromeProps = Readonly<{
-  showScreenLabels: boolean;
-  showProjectWorkflowNav: boolean;
+export type RequirementsWorkspaceTopChromeProps = Readonly<{  showProjectWorkflowNav: boolean;
   resolvedProjectIdTrimmed: string;
   inIdeationStage: boolean;
   conversationStatus: "idle" | "loading" | "loaded" | "error";
@@ -44,9 +41,7 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{
   onOpenEnvironmentSettings?: () => void;
 }>;
 
-export function RequirementsWorkspaceTopChrome({
-  showScreenLabels,
-  showProjectWorkflowNav,
+export function RequirementsWorkspaceTopChrome({  showProjectWorkflowNav,
   resolvedProjectIdTrimmed,
   inIdeationStage,
   conversationStatus,
@@ -156,9 +151,7 @@ export function RequirementsWorkspaceTopChrome({
       ) : null}
 
       {loadError ? (
-        <div className="relative" style={{ position: "relative" }}>
-          <ScreenLabel label="요구사항-상단-오류배너" visible={showScreenLabels} />
-          <div style={{ fontSize: 12, color: "#64748b", padding: "8px 10px", background: "#f8fafc", borderRadius: 8 }} role="status">
+        <div style={{ fontSize: 12, color: "#64748b", padding: "8px 10px", background: "#f8fafc", borderRadius: 8 }} role="status">
             {loadError}{" "}
             <button
               type="button"
@@ -176,7 +169,6 @@ export function RequirementsWorkspaceTopChrome({
             >
               다시 시도
             </button>
-          </div>
         </div>
       ) : null}
 

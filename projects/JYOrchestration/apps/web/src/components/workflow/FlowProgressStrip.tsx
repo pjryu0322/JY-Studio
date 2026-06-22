@@ -2,12 +2,10 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { APP_FLOW_STEPS, appFlowStepHref, type AppFlowStepId } from "@/lib/workflow/flow-state";
 import type { AppFlowGateSnapshot } from "@/lib/workflow/flow-gates";
 import { gateReasonForStep, stripStepReachableForUi } from "@/components/workflow/flowStripHelpers";
-import { WORKFLOW_NAV_STRIP_SCREEN_LABEL, workflowStepScreenLabel } from "@/lib/workflow/workflowStepMeta";
+
 
 export function FlowProgressStrip({
   current,
@@ -19,9 +17,7 @@ export function FlowProgressStrip({
   readonly gates: AppFlowGateSnapshot;
   readonly loading: boolean;
   readonly projectId: string | null;
-}) {
-  const showScreenLabels = useShowScreenLabels();
-  const stripStyle: CSSProperties = {
+}) {  const stripStyle: CSSProperties = {
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
@@ -35,9 +31,7 @@ export function FlowProgressStrip({
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
-      <ScreenLabel label={WORKFLOW_NAV_STRIP_SCREEN_LABEL} visible={showScreenLabels} />
-      <nav aria-label="전체 워크플로 단계" style={stripStyle}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>      <nav aria-label="전체 워크플로 단계" style={stripStyle}>
         {APP_FLOW_STEPS.map((s, i) => {
           const active = current === s.id;
           const reachable = stripStepReachableForUi(s.id, current, gates);
@@ -48,7 +42,6 @@ export function FlowProgressStrip({
             whiteSpace: "nowrap",
           };
           const sep = i > 0 ? <span style={{ color: "#cbd5e1" }}>→</span> : null;
-          const stepScreen = workflowStepScreenLabel(s.id);
           return (
             <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               {sep}
@@ -56,7 +49,7 @@ export function FlowProgressStrip({
                 className="relative"
                 style={{ position: "relative", display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}
               >
-                {stepScreen ? <ScreenLabel label={stepScreen} visible={showScreenLabels} /> : null}
+                null
                 {reachable ? (
                   <Link href={appFlowStepHref(s.id, projectId?.trim() || null)} style={{ ...labelStyle, textDecoration: "none" }}>
                     {s.label}

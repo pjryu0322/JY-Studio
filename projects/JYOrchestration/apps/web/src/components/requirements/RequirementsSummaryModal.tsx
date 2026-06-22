@@ -1,8 +1,6 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { RequirementsSummaryPanel } from "@/components/requirements/RequirementsSummaryPanel";
 
 const overlay: CSSProperties = {
@@ -60,9 +58,7 @@ export function RequirementsSummaryModal({
   readonly onOpenIssuesChange: (v: string) => void;
   readonly onSuccessChange: (v: string) => void;
   readonly onBlurSave: () => void;
-}) {
-  const show = useShowScreenLabels();
-  if (!open) return null;
+}) {  if (!open) return null;
 
   return (
     <div
@@ -74,9 +70,7 @@ export function RequirementsSummaryModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div style={panel}>
-        <ScreenLabel label="요구사항-요약모달-패널" visible={show} />
-        <div
+      <div style={panel}>        <div
           style={{
             display: "flex",
             alignItems: "center",

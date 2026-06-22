@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { RequirementsDraftDoc } from "@/lib/requirements/draftStore";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
 /** `RequirementsPromptDocumentDrawer`와 동일한 시각 스케일 */
 const backdrop: CSSProperties = {
@@ -206,9 +204,7 @@ export function RequirementsDraftDocumentDrawer({
   readonly onClose: () => void;
   readonly draft: RequirementsDraftDoc;
   readonly exportBaseName?: string | null;
-}) {
-  const show = useShowScreenLabels();
-  const [copyToastVisible, setCopyToastVisible] = useState(false);
+}) {  const [copyToastVisible, setCopyToastVisible] = useState(false);
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const exportStem = useMemo(() => sanitizeExportFileStem(exportBaseName ?? ""), [exportBaseName]);
@@ -272,9 +268,7 @@ export function RequirementsDraftDocumentDrawer({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div style={panel} onMouseDown={(e) => e.stopPropagation()}>
-        <ScreenLabel label="요구사항-정리본-드로어" visible={show} />
-        {copyToastVisible ? (
+      <div style={panel} onMouseDown={(e) => e.stopPropagation()}>        {copyToastVisible ? (
           <div
             role="status"
             aria-live="polite"

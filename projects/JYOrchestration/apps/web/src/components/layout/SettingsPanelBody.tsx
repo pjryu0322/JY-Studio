@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useUiLabel } from "@/lib/ui-label/useUiLabel";
 import { useGlobalPreferences } from "@/lib/preferences/useGlobalPreferences";
 import { projectExecutionSettingsHref } from "@/lib/project/projectExecutionSettingsHref";
 import { projectMembersAdminHref } from "@/lib/project/projectMembersAdminHref";
@@ -49,9 +48,7 @@ function row(label: string, control: ReactNode) {
 const linkStyle: CSSProperties = { fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" };
 
 /** 플랫폼 설정 본문(`/settings` 페이지 및 기타에서 재사용). */
-export function SettingsPanelBody() {
-  const { enabled, setEnabled, ready } = useUiLabel();
-  const prefs = useGlobalPreferences();
+export function SettingsPanelBody() {  const prefs = useGlobalPreferences();
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [sessionPresent, setSessionPresent] = useState(false);
   const pathname = usePathname() || "/";
@@ -277,18 +274,6 @@ export function SettingsPanelBody() {
           </Link>,
         )}
       </>
-
-      {sectionTitle("화면")}
-
-      {row(
-        "화면 라벨 표시",
-        <input
-          type="checkbox"
-          checked={ready ? enabled : false}
-          onChange={(e) => setEnabled(e.target.checked)}
-          style={{ width: 18, height: 18, accentColor: "#2563eb", cursor: "pointer" }}
-        />,
-      )}
 
       {isPlatformAdmin ? (
         <>

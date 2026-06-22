@@ -12,13 +12,10 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { uiFixedViewportScrimButtonStyle } from "@/components/ui/fixedViewportScrimStyle";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { useComposerNarrowBreakpoint } from "@/components/ui/breakpoints";
 import { WorkspaceComposerPlusTrigger } from "@/components/workspace/WorkspaceComposer";
 import {
-  WORKSPACE_HUB_CHAT_MENU_Z,
-  WORKSPACE_HUB_SCREEN_LABEL_ACTION,
+  WORKSPACE_HUB_CHAT_MENU_Z
   workspaceComposerNarrowMenuInnerFlexStyle,
   workspaceComposerNarrowMenuModalStyle,
   workspaceComposerWideToolsPopoverStyle,
@@ -155,9 +152,7 @@ export function WorkspaceComposerToolsMenuFrame({
   menuOpen: controlledOpen,
   onMenuOpenChange,
   onPlusClick,
-}: WorkspaceComposerToolsMenuFrameProps) {
-  const showScreenLabels = useShowScreenLabels();
-  const plusRef = useRef<HTMLButtonElement | null>(null);
+}: WorkspaceComposerToolsMenuFrameProps) {  const plusRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const narrowModalRef = useRef<HTMLDivElement | null>(null);
   const menuId = useId();
@@ -200,9 +195,7 @@ export function WorkspaceComposerToolsMenuFrame({
 
   return (
     <>
-      <div className="relative" style={{ position: "relative" }}>
-        <ScreenLabel label={WORKSPACE_HUB_SCREEN_LABEL_ACTION} visible={showScreenLabels} />
-        <WorkspaceComposerPlusTrigger
+      <div className="relative" style={{ position: "relative" }}>        <WorkspaceComposerPlusTrigger
           plusRef={plusRef}
           menuOpen={menuOpen}
           menuId={menuId}

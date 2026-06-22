@@ -7,16 +7,13 @@ import { RequirementsChatPanel } from "@/components/requirements/RequirementsCha
 import type { RequirementsComposerTargetPickerItem } from "@/components/requirements/RequirementsComposerGpt";
 import type { ServiceDesignHarnessPayload } from "@/lib/service-design/serviceDesignTurnPayload";
 import { ServiceDesignComposer } from "@/components/requirements/ServiceDesignComposer";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 
-export type RequirementsIdeationChatPanelProps = Readonly<{
-  showScreenLabels: boolean;
-  conversationStatus: "idle" | "loading" | "loaded" | "error";
+export type RequirementsIdeationChatPanelProps = Readonly<{  conversationStatus: "idle" | "loading" | "loaded" | "error";
   /** 통합 타임라인(`requirementsConversation.messages` 전체) */
   chatMessages: readonly RequirementsMessage[];
   participantAiMemberId: WorkspaceAiMemberId;
@@ -69,9 +66,7 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   scrollToMessageId?: string | null;
 }>;
 
-export function RequirementsIdeationChatPanel({
-  showScreenLabels,
-  conversationStatus,
+export function RequirementsIdeationChatPanel({  conversationStatus,
   chatMessages,
   participantAiMemberId,
   aiInvokePending,
@@ -189,9 +184,7 @@ export function RequirementsIdeationChatPanel({
   );
 
   return (
-    <div className="jyo-requirements-chat-panel-shell" style={requirementsIdeationChatPanelShellStyle}>
-      <ScreenLabel label="요구사항-채팅영역-대화이력복원" visible={showScreenLabels} />
-      <RequirementsChatPanel
+    <div className="jyo-requirements-chat-panel-shell" style={requirementsIdeationChatPanelShellStyle}>      <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? chatMessages : null}
         screenAiMemberId={participantAiMemberId}
         headerLeading={headerLeading}

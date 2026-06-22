@@ -8,8 +8,6 @@ import { fetchExecutionSetup, patchSpecWorkspace } from "@/components/project-sp
 import { computeProjectExecutionReadiness } from "@/components/project/projectExecutionReadinessModel";
 import { ProjectDeleteConfirmModal } from "@/components/project/ProjectDeleteConfirmModal";
 import { Button, Card, EmptyState, InlineAlert, LoadingState, SectionCard, uiTokens as t } from "@/components/ui";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { readAiFacilitatorAutoJoin } from "@/lib/preferences/globalPreferences";
 import { PROJECT_LIFECYCLE_ACTIVE, PROJECT_LIFECYCLE_DELETED } from "@/lib/project/projectLifecycle";
 import type { WorkspaceMode } from "@/lib/ui/workspaceMode";
@@ -222,9 +220,7 @@ const WORKSPACE_MODE_HINT: Record<WorkspaceMode, string> = {
 
 export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = {}) {
   const embed = props.embed === true;
-  const { mode: workspaceMode, effectiveLayout } = useWorkspaceMode();
-  const showScreenLabels = useShowScreenLabels();
-  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const { mode: workspaceMode, effectiveLayout } = useWorkspaceMode();  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const cachedAtBoot = useRef<ProjectsCachePayload | null>(null);
   if (cachedAtBoot.current == null) cachedAtBoot.current = readProjectsCache();
   const [projects, setProjects] = useState<Project[]>(() => cachedAtBoot.current?.projects ?? []);
@@ -510,10 +506,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
           overflow: "hidden",
           height: "100%",
         }}
-      >
-      <ScreenLabel label="워크스페이스-홈-메인-섹션" visible={showScreenLabels} />
-
-      {createToast ? (
+      >      {createToast ? (
         <div
           role="status"
           data-testid="home-project-created-toast"
@@ -532,19 +525,14 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
           gap: 16,
         }}
       >
-      <SectionCard data-ui-label="[B] Create Project Form" style={{ flexShrink: 0, marginBottom: 0 }}>
-        <ScreenLabel label="워크스페이스-프로젝트생성-섹션" visible={showScreenLabels} />
-
-        <form data-testid="home-create-project-form" className="space-y-3" onSubmit={handleCreateProject}>
+      <SectionCard data-ui-label="[B] Create Project Form" style={{ flexShrink: 0, marginBottom: 0 }}>        <form data-testid="home-create-project-form" className="space-y-3" onSubmit={handleCreateProject}>
           {errorMessage ? (
             <InlineAlert variant="danger" style={{ marginBottom: 4 }}>
               {errorMessage}
             </InlineAlert>
           ) : null}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div className="relative min-w-0 flex-1">
-              <ScreenLabel label="워크스페이스-프로젝트생성-프로젝트명-입력" visible={showScreenLabels} />
-              <input
+            <div className="relative min-w-0 flex-1">              <input
                 type="text"
                 placeholder="프로젝트명"
                 value={name}
@@ -555,9 +543,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
                 className="h-11 w-full min-w-0 rounded-lg border border-neutral-300 px-3 text-base text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-60"
               />
             </div>
-            <div className="relative flex shrink-0 self-center">
-              <ScreenLabel label="워크스페이스-프로젝트생성-생성버튼" visible={showScreenLabels} />
-              <Button
+            <div className="relative flex shrink-0 self-center">              <Button
                 type="submit"
                 variant="primary"
                 size="md"
@@ -579,9 +565,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
             </div>
           </div>
 
-          <div className="relative">
-            <ScreenLabel label="워크스페이스-프로젝트생성-프로젝트설명-입력영역" visible={showScreenLabels} />
-            <textarea
+          <div className="relative">            <textarea
               placeholder="프로젝트 설명 (선택)"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -616,10 +600,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
           display: "flex",
           flexDirection: "column",
         }}
-      >
-        <ScreenLabel label="워크스페이스-프로젝트목록-섹션" visible={showScreenLabels} />
-
-        <div
+      >        <div
           className="relative"
           data-ui-label="[C-1] Project List Content"
           style={{
@@ -668,9 +649,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
                   background: highlightProjectId === project.id ? t.accentTealSurface : undefined,
                   boxShadow: highlightProjectId === project.id ? "0 0 0 3px rgba(13, 148, 136, 0.2)" : undefined,
                 }}
-              >
-                <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드" visible={showScreenLabels} />
-                <div
+              >                <div
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
@@ -679,9 +658,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
                     marginBottom: 8,
                   }}
                 >
-                  <div className="relative" style={{ minWidth: 0, flex: 1 }}>
-                    <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-프로젝트명" visible={showScreenLabels} />
-                    {canOpenProject ? (
+                  <div className="relative" style={{ minWidth: 0, flex: 1 }}>                    {canOpenProject ? (
                       <a
                         href={buildPathWithWorkspaceModePreview(
                           appFlowStepHref("requirements", project.id),
@@ -724,9 +701,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
                     onClick={(e) => e.stopPropagation()}
                     onKeyDown={(e) => e.stopPropagation()}
                   >
-                    <div data-home-project-card-menu-root={project.id} className="relative">
-                    <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-메뉴" visible={showScreenLabels} />
-                    <Button
+                    <div data-home-project-card-menu-root={project.id} className="relative">                    <Button
                       type="button"
                       variant="ghost"
                       size="sm"
@@ -825,9 +800,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
                               </div>
                             )}
                             {showOwnerDelete ? (
-                              <>
-                                <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-삭제버튼" visible={showScreenLabels} />
-                                <button
+                              <>                                <button
                                   type="button"
                                   data-testid={`home-delete-project-${project.id}`}
                                   onClick={(e) => {
@@ -992,9 +965,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
                     maxHeight: "calc(1.45em * 2)",
                     wordBreak: "break-word",
                   }}
-                >
-                  <ScreenLabel label="워크스페이스-프로젝트목록-프로젝트카드-설명" visible={showScreenLabels} />
-                  {(() => {
+                >                  {(() => {
                     const raw = String(project.description ?? "");
                     const normalized = raw.replace(/\s+/g, " ").trim();
                     return normalized || "설명 없음";

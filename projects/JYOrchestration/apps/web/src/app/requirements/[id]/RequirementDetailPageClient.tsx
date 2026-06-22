@@ -32,16 +32,12 @@ import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { formatCollaborationSessionStatusForUi, formatRequirementStatusForUi } from "@/lib/ui/workflowUiCopy";
 import { getRequirementDetailView } from "@/lib/workflow/workflowViewModel";
 
 type TabId = "overview" | "sessions" | "minutes" | "features" | "tasks";
 
-export function RequirementDetailPageClient() {
-  const showScreenLabels = useShowScreenLabels();
-  const tabs = useMemo(
+export function RequirementDetailPageClient() {  const tabs = useMemo(
     () =>
       [
         { id: "overview" as const, label: "개요" },
@@ -132,9 +128,7 @@ export function RequirementDetailPageClient() {
     );
 
   return (
-    <div className="relative">
-      <ScreenLabel label="요구사항-상세-페이지-섹션" visible={showScreenLabels} />
-      <WorkflowPageHeader
+    <div className="relative">      <WorkflowPageHeader
         title={vm.requirement?.title ?? "아이디어"}
         subtitle={
           vm.requirement?.description ?? (requirementId ? `알 수 없는 아이디어 ID: ${requirementId}` : "알 수 없는 아이디어 ID입니다.")
@@ -144,9 +138,7 @@ export function RequirementDetailPageClient() {
         right={statusBadge}
       />
 
-      <div className="relative" style={{ marginTop: 14 }}>
-        <ScreenLabel label="요구사항-상세-요약-카드" visible={showScreenLabels} />
-        <WorkflowCard>
+      <div className="relative" style={{ marginTop: 14 }}>        <WorkflowCard>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 13, color: "#6b7280" }}>
               <div>
@@ -244,16 +236,12 @@ export function RequirementDetailPageClient() {
         </WorkflowCard>
       </div>
 
-      <div className="relative">
-        <ScreenLabel label="요구사항-상세-탭-메뉴" visible={showScreenLabels} />
-        <WorkflowTabs ariaLabel="아이디어 상세 탭" tabs={tabs} activeId={tab} onChange={(id) => setTab(id)} />
+      <div className="relative">        <WorkflowTabs ariaLabel="아이디어 상세 탭" tabs={tabs} activeId={tab} onChange={(id) => setTab(id)} />
       </div>
 
       {tab === "overview" ? (
         vm.requirement ? (
-          <div className="relative">
-            <ScreenLabel label="요구사항-상세-개요탭-패널" visible={showScreenLabels} />
-            <WorkflowCard>
+          <div className="relative">            <WorkflowCard>
               <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8 }}>개요</div>
               <div style={{ fontSize: 13, color: "#111827", lineHeight: 1.6 }}>
                 UI 골격입니다. 이후 단계에서 실제 아이디어·세션·회의록·기능 데이터와 연동됩니다.
@@ -269,9 +257,7 @@ export function RequirementDetailPageClient() {
       ) : null}
 
       {tab === "sessions" ? (
-        <div className="relative" style={{ display: "grid", gap: 10 }}>
-          <ScreenLabel label="요구사항-상세-세션탭-섹션" visible={showScreenLabels} />
-          <div style={{ fontSize: 13, fontWeight: 900 }}>세션</div>
+        <div className="relative" style={{ display: "grid", gap: 10 }}>          <div style={{ fontSize: 13, fontWeight: 900 }}>세션</div>
           {vm.sessions.length === 0 ? (
             <div style={{ fontSize: 13, color: "#6b7280" }}>연결된 세션이 없습니다.</div>
           ) : (
@@ -295,9 +281,7 @@ export function RequirementDetailPageClient() {
       ) : null}
 
       {tab === "minutes" ? (
-        <div className="relative" style={{ display: "grid", gap: 10 }}>
-          <ScreenLabel label="요구사항-상세-회의록탭-섹션" visible={showScreenLabels} />
-          {vm.requirement && latestSessionId ? (
+        <div className="relative" style={{ display: "grid", gap: 10 }}>          {vm.requirement && latestSessionId ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               {minutesFromCollaboration ? (
                 <>
@@ -318,9 +302,7 @@ export function RequirementDetailPageClient() {
       ) : null}
 
       {tab === "features" ? (
-        <div className="relative" style={{ display: "grid", gap: 10 }}>
-          <ScreenLabel label="요구사항-상세-기능탭-섹션" visible={showScreenLabels} />
-          {vm.requirement && latestSessionId ? (
+        <div className="relative" style={{ display: "grid", gap: 10 }}>          {vm.requirement && latestSessionId ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               {featuresFromCollaboration ? (
                 <>
@@ -343,9 +325,7 @@ export function RequirementDetailPageClient() {
       ) : null}
 
       {tab === "tasks" ? (
-        <div className="relative" style={{ display: "grid", gap: 10 }}>
-          <ScreenLabel label="요구사항-상세-작업탭-섹션" visible={showScreenLabels} />
-          {vm.requirement ? (
+        <div className="relative" style={{ display: "grid", gap: 10 }}>          {vm.requirement ? (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
               <WorkflowActionButton
                 label="작업 워크스페이스 열기"

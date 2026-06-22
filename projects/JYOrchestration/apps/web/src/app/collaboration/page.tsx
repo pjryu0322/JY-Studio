@@ -5,20 +5,14 @@ import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import { WorkflowEmptyState } from "@/components/workflow/primitives/WorkflowEmptyState";
 import { WorkflowPageHeader } from "@/components/workflow/primitives/WorkflowPageHeader";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { formatCollaborationSessionStatusForUi } from "@/lib/ui/workflowUiCopy";
 import { getCollaborationListView } from "@/lib/workflow/workflowViewModel";
 import { WorkflowDemoSampleBanner } from "@/components/workflow/primitives/WorkflowDemoSampleBanner";
 
 export default function CollaborationPage() {
-  const vm = getCollaborationListView();
-  const showScreenLabels = useShowScreenLabels();
-
+  const vm = getCollaborationListView();
   return (
-    <div className="relative">
-      <ScreenLabel label="협업-목록-페이지-섹션" visible={showScreenLabels} />
-      <WorkflowPageHeader
+    <div className="relative">      <WorkflowPageHeader
         title="협업"
         subtitle="주 진행은 아이디어 구체화 → 기능 정리입니다. 이 목록은 데모·심화용 세션으로 유지됩니다."
         backHref="/requirements"
@@ -36,26 +30,16 @@ export default function CollaborationPage() {
           vm.sessions.map(({ session: s, requirement: req }) => {
             return (
               <WorkflowCard key={s.id}>
-                <div className="relative" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-                  <ScreenLabel label="협업-목록-세션카드-컨테이너" visible={showScreenLabels} />
-                  <div style={{ minWidth: 0 }}>
+                <div className="relative" style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>                  <div style={{ minWidth: 0 }}>
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                      <div className="relative" style={{ fontSize: 14, fontWeight: 900 }}>
-                        <ScreenLabel label="협업-목록-세션카드-제목텍스트" visible={showScreenLabels} />
-                        {s.title}
+                      <div className="relative" style={{ fontSize: 14, fontWeight: 900 }}>                        {s.title}
                       </div>
-                      <div className="relative">
-                        <ScreenLabel label="협업-목록-세션카드-상태배지" visible={showScreenLabels} />
-                        <WorkflowBadge>{formatCollaborationSessionStatusForUi(s.status)}</WorkflowBadge>
+                      <div className="relative">                        <WorkflowBadge>{formatCollaborationSessionStatusForUi(s.status)}</WorkflowBadge>
                       </div>
                     </div>
-                    <div className="relative" style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-                      <ScreenLabel label="협업-목록-세션카드-생성일시" visible={showScreenLabels} />
-                      {s.createdAt}
+                    <div className="relative" style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>                      {s.createdAt}
                     </div>
-                    <div className="relative" style={{ marginTop: 10, fontSize: 13, color: "#111827", lineHeight: 1.55 }}>
-                      <ScreenLabel label="협업-목록-세션카드-요구사항링크" visible={showScreenLabels} />
-                      <strong>연결된 아이디어:</strong>{" "}
+                    <div className="relative" style={{ marginTop: 10, fontSize: 13, color: "#111827", lineHeight: 1.55 }}>                      <strong>연결된 아이디어:</strong>{" "}
                       {req ? (
                         <Link href={`/requirements/${encodeURIComponent(req.id)}?tab=overview`} style={{ textDecoration: "underline" }}>
                           {req.title}
@@ -66,9 +50,7 @@ export default function CollaborationPage() {
                     </div>
                   </div>
 
-                  <div className="relative" style={{ flex: "0 0 auto" }}>
-                    <ScreenLabel label="협업-목록-세션카드-워크스페이스열기버튼" visible={showScreenLabels} />
-                    <Link
+                  <div className="relative" style={{ flex: "0 0 auto" }}>                    <Link
                       href={`/collaboration/${encodeURIComponent(s.id)}`}
                       style={{
                         display: "inline-block",

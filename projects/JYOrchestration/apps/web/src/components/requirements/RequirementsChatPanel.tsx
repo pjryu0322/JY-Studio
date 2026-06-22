@@ -25,8 +25,6 @@ import { WorkspaceMessageList } from "@/components/workspace/WorkspaceMessageLis
 import { WorkspaceResultCard } from "@/components/workspace/WorkspaceResultCard";
 import { WorkspaceShell } from "@/components/workspace/WorkspaceShell";
 import { useWorkspaceScrollToEnd } from "@/components/workspace/useWorkspaceScroll";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { RequirementsMessageRenderer, RequirementsAiMessageMarkdown } from "@/components/requirements/RequirementsMessageRenderer";
 import { splitMessageContentForCodeTaskLlmRefinementBlock } from "@/lib/requirements/codeTaskLlmRefinementChatBlock";
 import { QUICK_DESIGN_IMPLEMENTATION_READY_INTERNAL_TYPE } from "@/lib/requirements/quickDesignConfirmArtifacts";
@@ -182,9 +180,7 @@ export function RequirementsChatPanel({
   readonly knowledgeGraphProjectId?: string;
   /** Graph에서 대화로 돌아올 때 스크롤할 메시지 ID */
   readonly scrollToMessageId?: string | null;
-}) {
-  const showScreenLabels = useShowScreenLabels();
-  const endRef = useWorkspaceScrollToEnd(`${(messages?.length ?? 0)}-${typingIndicator ? 1 : 0}`);
+}) {  const endRef = useWorkspaceScrollToEnd(`${(messages?.length ?? 0)}-${typingIndicator ? 1 : 0}`);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [deepLinkHighlightMessageId, setDeepLinkHighlightMessageId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -438,10 +434,7 @@ export function RequirementsChatPanel({
   const messageBody = (
     <>
           {messages === null ? (
-            <div style={{ fontSize: 13, color: "#71717a", marginBottom: 12 }}>
-              <ScreenLabel label="요구사항-채팅영역-로딩상태" visible={showScreenLabels} />
-              <ScreenLabel label="요구사항-불러오기상태" visible={showScreenLabels} />
-              대화 이력을 불러오는 중입니다…
+            <div style={{ fontSize: 13, color: "#71717a", marginBottom: 12 }}>              대화 이력을 불러오는 중입니다…
             </div>
           ) : null}
 
@@ -909,10 +902,7 @@ export function RequirementsChatPanel({
         <WorkspaceMessageList
           scrollRootRef={selectionToComposerEnabled ? chatRootRef : undefined}
           endRef={endRef}
-          beforeMessages={
-            <>
-              <ScreenLabel label="요구사항-채팅영역-메시지타임라인" visible={showScreenLabels} />
-              {firstIsOnboarding ? <ScreenLabel label="요구사항-채팅영역-초기안내메시지" visible={showScreenLabels} /> : null}
+          beforeMessages=null
             </>
           }
         >

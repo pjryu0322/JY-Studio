@@ -1,7 +1,5 @@
 "use client";
 
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import type { RequirementsPromptView } from "@/lib/requirements/requirementsPromptView";
 
 const card: React.CSSProperties = {
@@ -22,12 +20,8 @@ function preStyle(): React.CSSProperties {
   };
 }
 
-export function RequirementsPromptPanel({ view }: { readonly view: RequirementsPromptView }) {
-  const show = useShowScreenLabels();
-  return (
-    <section className="relative" style={{ position: "relative", ...card }}>
-      <ScreenLabel label="요구사항-프롬프트보기-패널" visible={show} />
-      <div style={{ display: "grid", gap: 10 }}>
+export function RequirementsPromptPanel({ view }: { readonly view: RequirementsPromptView }) {  return (
+    <section className="relative" style={{ position: "relative", ...card }}>      <div style={{ display: "grid", gap: 10 }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 900, color: "#0f172a", marginBottom: 6 }}>System prompt</div>
           <pre style={preStyle()}>{view.systemPrompt}</pre>

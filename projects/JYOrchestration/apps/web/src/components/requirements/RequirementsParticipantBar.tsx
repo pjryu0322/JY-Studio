@@ -1,7 +1,5 @@
 "use client";
 
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import type { ParticipantOption } from "@/components/workspace/workspaceParticipantTypes";
 import { WorkspaceAiParticipantAvatar } from "@/components/ai-member/WorkspaceAiMemberAvatar";
 import { VIRTUAL_AI_PLANNER_ID } from "@/lib/project/requirementsRoomState";
@@ -20,9 +18,7 @@ export function RequirementsParticipantBar({
   readonly onSelect: (id: string, name: string) => void;
   /** true면 하단 안내 문구를 숨겨 입력 영역을 더 단정하게 유지합니다. */
   readonly dense?: boolean;
-}) {
-  const showScreenLabels = useShowScreenLabels();
-  return (
+}) {  return (
     <div
       data-testid="requirements-participant-bar"
       style={{
@@ -33,9 +29,7 @@ export function RequirementsParticipantBar({
       }}
     >
       <div style={{ fontWeight: 800, color: "#475569", marginBottom: dense ? 6 : 8 }}>참여 대상</div>
-      <div className="relative" style={{ position: "relative", display: "flex", flexWrap: "wrap", gap: 8 }}>
-        <ScreenLabel label="요구사항-참가자영역-질문대상리스트" visible={showScreenLabels} />
-        {participants.map((p) => {
+      <div className="relative" style={{ position: "relative", display: "flex", flexWrap: "wrap", gap: 8 }}>        {participants.map((p) => {
           const active = p.id === selectedId;
           const status =
             p.kind === "ai"

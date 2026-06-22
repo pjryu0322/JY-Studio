@@ -2,8 +2,6 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { WorkspaceAiHeaderWithAvatar } from "@/components/ai-member/WorkspaceAiHeaderWithAvatar";
 import type { WorkspaceAiMemberId } from "@/lib/ai-member/platformAiMembers";
 import { displayedWorkspaceAiTitle } from "@/lib/ai-member/visibleAiOrchestrator";
@@ -66,7 +64,6 @@ export function WorkspaceChatPanel({
   loading,
   loadingHint,
   emptyHint,
-  screenLabel,
   onSlotNavChipClick,
   slotDigestLoading,
   onChatSelectionToWorkNote,
@@ -76,16 +73,13 @@ export function WorkspaceChatPanel({
   readonly loading?: boolean;
   readonly loadingHint?: string;
   readonly emptyHint?: ReactNode;
-  readonly screenLabel?: string;
   readonly onSlotNavChipClick?: (slotId: string) => void;
   readonly slotDigestLoading?: boolean;
   /** 지정 시 채팅 영역에서 드래그 선택 후 작업메모로 보낼 수 있음 */
   readonly onChatSelectionToWorkNote?: (text: string) => void;
   /** 기능 정리 등 — 채팅 헤더에 표시할 전담 AI */
   readonly workspaceAiMemberId?: WorkspaceAiMemberId;
-}) {
-  const showScreenLabels = useShowScreenLabels();
-  const endRef = useWorkspaceScrollToEnd(`${messages.length}-${loading ? 1 : 0}`);
+}) {  const endRef = useWorkspaceScrollToEnd(`${messages.length}-${loading ? 1 : 0}`);
   const chatRootRef = useRef<HTMLDivElement | null>(null);
   const selectionToolbarRef = useRef<HTMLDivElement | null>(null);
   const [selectionBubble, setSelectionBubble] = useState<SelectionBubble | null>(null);
@@ -177,7 +171,7 @@ export function WorkspaceChatPanel({
       <WorkspaceMessageList
         scrollRootRef={onChatSelectionToWorkNote ? chatRootRef : undefined}
         endRef={endRef}
-        beforeMessages={screenLabel ? <ScreenLabel label={screenLabel} visible={showScreenLabels} /> : null}
+        beforeMessages=null
       >
       {!messages.length && !loading ? emptyHint : null}
       {messages.map((m) => {

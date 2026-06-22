@@ -1,7 +1,5 @@
 "use client";
 
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { WorkflowBadge } from "@/components/workflow/primitives/WorkflowBadge";
 import { WorkflowCard } from "@/components/workflow/primitives/WorkflowCard";
 import type { TasksWorkspaceView } from "@/lib/workflow/tasksWorkspaceViewModel";
@@ -11,13 +9,9 @@ type Props = {
 };
 
 /** Single compact row: context and source (단계 이동은 ProjectWorkflowNav만 사용). */
-export function TasksWorkspaceSummaryStrip({ view }: Props) {
-  const showScreenLabels = useShowScreenLabels();
-
+export function TasksWorkspaceSummaryStrip({ view }: Props) {
   return (
-    <div className="relative">
-      <ScreenLabel label="작업-워크스페이스-상단요약스트립-패널" visible={showScreenLabels} />
-      <WorkflowCard padding={12}>
+    <div className="relative">      <WorkflowCard padding={12}>
         <div
           style={{
             display: "flex",

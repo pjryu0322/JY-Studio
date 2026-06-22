@@ -14,9 +14,6 @@ export const WORKSPACE_COMPOSER_NARROW_PORTAL_Z = 1200;
 /** 허브 내 textarea 자동 높이 상한(px) — 요구사항/서비스흐름/기능정리 공통 */
 export const WORKSPACE_HUB_CHAT_TEXTAREA_MAX_PX = 220;
 
-export const WORKSPACE_HUB_SCREEN_LABEL_ACTION = "요구사항-입력창-액션행";
-export const WORKSPACE_HUB_SCREEN_LABEL_INPUT = "요구사항-채팅영역-입력창";
-export const WORKSPACE_HUB_SCREEN_LABEL_SEND = "요구사항-채팅영역-전송버튼";
 
 /** 데스크톱: + 버튼 위 팝오버 — 구현은 `composerPopoverAboveAnchorStyle`와 동일 */
 export function workspaceComposerWideToolsPopoverStyle(zIndex: number): CSSProperties {

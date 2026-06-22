@@ -1,7 +1,5 @@
 "use client";
 
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 
 export function RequirementsPromptToggle({
   open,
@@ -9,12 +7,8 @@ export function RequirementsPromptToggle({
 }: {
   readonly open: boolean;
   readonly onToggle: () => void;
-}) {
-  const show = useShowScreenLabels();
-  return (
-    <div className="relative" style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 8 }}>
-      <ScreenLabel label="요구사항-프롬프트보기-토글" visible={show} />
-      <button
+}) {  return (
+    <div className="relative" style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 8 }}>      <button
         type="button"
         onClick={onToggle}
         style={{

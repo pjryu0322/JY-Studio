@@ -1,8 +1,6 @@
 "use client";
 
 import { ProjectWorkflowNav } from "@/components/layout/ProjectWorkflowNav";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import { uiTokens as t } from "@/components/ui/tokens";
 
 export function RequirementsHeader({
@@ -13,9 +11,7 @@ export function RequirementsHeader({
   readonly showProjectWorkflowNav: boolean;
   /** 모바일(컴팩트)에서 단계 라벨(예: "서비스 기획") 한 줄만 뜨는 것을 숨김 */
   readonly hideCompactWorkflowTitle?: boolean;
-}) {
-  const showScreenLabels = useShowScreenLabels();
-
+}) {
   if (!showProjectWorkflowNav) return null;
 
   return (
@@ -28,9 +24,7 @@ export function RequirementsHeader({
         borderBottom: `1px solid ${t.border}`,
       }}
     >
-      <div className="relative" style={{ position: "relative", width: "100%" }}>
-        <ScreenLabel label="요구사항-헤더-프로젝트정보" visible={showScreenLabels} />
-        <ProjectWorkflowNav hideCompactTitle={hideCompactWorkflowTitle} />
+      <div className="relative" style={{ position: "relative", width: "100%" }}>        <ProjectWorkflowNav hideCompactTitle={hideCompactWorkflowTitle} />
       </div>
     </header>
   );

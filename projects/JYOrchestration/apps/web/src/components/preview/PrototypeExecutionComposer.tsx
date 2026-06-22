@@ -47,8 +47,6 @@ export function PrototypeExecutionComposer({
           textAreaRef={textAreaRef}
           targetPickerItems={targetPickerItems}
           inputTestId="prototype-execution-chat-input"
-          screenLabelInput="구현-채팅-입력"
-          screenLabelSend="구현-채팅-전송"
         />
       </WorkspaceComposerHubRow>
     </WorkspaceComposerColumn>

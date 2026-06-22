@@ -1,8 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ScreenLabel } from "@/components/ui/ScreenLabel";
-import { useShowScreenLabels } from "@/components/ui/ScreenLabelsContext";
 import type { RequirementsPromptPresenterView } from "@/lib/requirements/promptPresenter";
 
 export function RequirementsPromptView({
@@ -15,9 +13,7 @@ export function RequirementsPromptView({
   readonly onToggle: () => void;
   readonly view: RequirementsPromptPresenterView | null;
   readonly variant?: "pill" | "menu";
-}) {
-  const show = useShowScreenLabels();
-  const [copied, setCopied] = useState(false);
+}) {  const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -41,9 +37,7 @@ export function RequirementsPromptView({
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      <div className="relative" style={{ position: "relative", display: "flex", alignItems: "center", gap: 10 }}>
-        <ScreenLabel label="요구사항-프롬프트보기-토글" visible={show} />
-        <button
+      <div className="relative" style={{ position: "relative", display: "flex", alignItems: "center", gap: 10 }}>        <button
           type="button"
           onClick={onToggle}
           style={{
@@ -66,9 +60,7 @@ export function RequirementsPromptView({
         <section
           className="relative"
           style={{ position: "relative", border: "1px solid #e5e7eb", background: "#fff", borderRadius: 12, padding: "10px 12px" }}
-        >
-          <ScreenLabel label="요구사항-프롬프트보기-패널" visible={show} />
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        >          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <div style={{ fontWeight: 900, color: "#0f172a" }}>{view.title}</div>
             <button
               type="button"
