@@ -20,6 +20,8 @@ import {
 import { trySyncTaskDraftsAfterSpecChange } from "@/lib/project-spec/trySyncTaskDraftsAfterSpecChange";
 import { isAllowedSpecWorkspaceModel } from "@/lib/project-spec/specWorkspaceModels";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { PROJECT_PROCESS_STAGES } from "@/lib/project-process/projectEventTypes";
+import { syncRequirementsConversationMessagesToEventStore } from "@/lib/project-process/projectEventStore";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
@@ -662,6 +664,8 @@ export async function PATCH(
       return NextResponse.json({ success: false, message: "프로젝트를 찾을 수 없습니다." }, { status: 404 });
     }
 
+    const previousConversationJson = updated.requirementsConversationJson ?? null;
+
     let patchApplied = false;
     let patchDegraded: { code: string; message: string } | null = null;
 
@@ -703,6 +707,24 @@ export async function PATCH(
       specPromptConfigOut = mapSpecPromptConfigRow(saved);
     }
 
+    let eventStoreWarning: string | null = null;
+    if (body.requirementsConversationJson !== undefined && body.requirementsConversationJson !== null) {
+      try {
+        const nextConversationJson =
+          updated.requirementsConversationJson ?? body.requirementsConversationJson;
+        await syncRequirementsConversationMessagesToEventStore(prisma, {
+          projectId: id,
+          actorId: userId,
+          previousConversationJson,
+          nextConversationJson,
+          fallbackStage: PROJECT_PROCESS_STAGES.REQUIREMENTS_IDEATION,
+        });
+      } catch (eventError) {
+        console.error("Project Event Store sync failed:", eventError);
+        eventStoreWarning = "EVENT_STORE_SYNC_FAILED";
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: patchDegraded?.message ?? "실행 계획 입력이 저장되었습니다.",
@@ -710,6 +732,7 @@ export async function PATCH(
         project: toProjectMapRow(updated),
         patchApplied,
         ...(patchDegraded ? { code: patchDegraded.code } : {}),
+        ...(eventStoreWarning ? { eventStoreWarning } : {}),
         ...(specPromptConfigOut ? { specPromptConfig: specPromptConfigOut } : {}),
       },
     });

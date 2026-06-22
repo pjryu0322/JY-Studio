@@ -11,6 +11,7 @@ import { ensureDefaultAiPlannerProjectMember } from "@/lib/service/projectMember
 import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromChatDraftTypes";
 import { buildInitialRequirementsStateForNewProject } from "@/lib/requirements/productDefinitionInitial";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { appendProjectCreatedEvents } from "@/lib/project-process/projectEventStore";
 
 /** @deprecated 이름 보존용 — 내부적으로 소유 또는 HUMAN 멤버십 프로젝트를 반환합니다. */
 export async function listProjectsOrderedByCreatedDesc(
@@ -125,6 +126,15 @@ export async function createProject(input: CreateProjectInput) {
         workflowStatus: PROJECT_WORKFLOW_REQUIREMENTS_PENDING,
         requirementsStateJson: initialRequirementsState as Prisma.InputJsonValue,
       },
+    });
+    await appendProjectCreatedEvents(tx, {
+      projectId: project.id,
+      actorId: input.ownerUserId,
+      name: input.name,
+      description: input.description,
+      projectType: input.projectType,
+      repoUrl: input.repoUrl,
+      defaultBranch: input.defaultBranch,
     });
     await tx.projectMember.create({
       data: {

@@ -625,9 +625,75 @@ model Project {
   implementationRuntimeEvents ImplementationRuntimeEvent[]
   /// 메신저 대화방에서 승격되어 연결된 룸
   chatRooms ChatRoom[]
+  /// Project Process Event Store: append-only 프로젝트 과정 이벤트
+  processEvents ProjectEvent[]
+  /// Project Process Event Store: 원본 메시지 정규화 저장소
+  processMessages ProjectMessage[]
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+model ProjectMessage {
+  id               String   @id @default(uuid())
+  projectId        String
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// 플랫폼 단계: requirements_ideation | requirements_service_flow | feature_planning | prototype_build | prototype_review | spec_workspace | project_create 등
+  stage            String
+  /// 원천 종류: requirements_conversation | chat_room | spec_workspace | system 등
+  source           String   @default("requirements_conversation")
+  /// 원천 메시지 ID. RequirementsMessage.id 또는 ChatMessage.id 등
+  sourceMessageId  String?
+
+  senderType       String
+  senderId         String?
+  senderName       String?
+  messageType      String?
+  content          String   @db.Text
+  metadata         Json?
+  raw              Json?
+
+  messageCreatedAt DateTime?
+  createdAt        DateTime @default(now())
+
+  events           ProjectEvent[]
+
+  @@unique([projectId, stage, source, sourceMessageId])
+  @@index([projectId, stage, messageCreatedAt])
+  @@index([projectId, sourceMessageId])
+  @@map("project_messages")
+}
+
+model ProjectEvent {
+  id                String   @id @default(uuid())
+  projectId         String
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  eventType         String
+  actorType         String
+  actorId           String?
+
+  stage             String?
+  sourceMessageId   String?
+  projectMessageId  String?
+  projectMessage    ProjectMessage? @relation(fields: [projectMessageId], references: [id], onDelete: SetNull)
+
+  correlationId     String?
+  causationId       String?
+  sessionId         String?
+  idempotencyKey    String?
+
+  payload           Json
+  metadata          Json?
+  createdAt         DateTime @default(now())
+
+  @@unique([projectId, idempotencyKey])
+  @@index([projectId, createdAt])
+  @@index([projectId, eventType, createdAt])
+  @@index([projectMessageId])
+  @@index([correlationId])
+  @@map("project_events")
 }
 
 /// 프로젝트별 플랫폼 AI(카탈로그 키). `workspace_screen_ai_mapping`으로 화면과 M:N.
