@@ -35,13 +35,52 @@ function parseMessageCreatedAt(iso: string | undefined): Date | null {
   return new Date(t);
 }
 
+export function buildConversationMessageCreatedEventIdempotencyKey(
+  projectId: string,
+  sourceMessageId: string,
+): string {
+  return `conversation-message-created:${projectId}:${sourceMessageId}`;
+}
+
+/** @deprecated Use buildConversationMessageCreatedEventIdempotencyKey */
 export function buildConversationMessageIdempotencyKey(input: Readonly<{
   readonly projectId: string;
   readonly stage: string;
   readonly source: string;
   readonly sourceMessageId: string;
 }>): string {
-  return `message:${input.projectId}:${input.stage}:${input.source}:${input.sourceMessageId}`;
+  return buildConversationMessageCreatedEventIdempotencyKey(input.projectId, input.sourceMessageId);
+}
+
+export function resolveRequirementsMessageActor(input: Readonly<{
+  readonly speakerType: string;
+  readonly speakerId?: string | null;
+  readonly loginUserId?: string | null;
+}>): Readonly<{ readonly actorType: string; readonly actorId: string | null }> {
+  const actorType =
+    input.speakerType === "AI"
+      ? "AI"
+      : input.speakerType === "SYSTEM"
+        ? "SYSTEM"
+        : "USER";
+  const speakerId = String(input.speakerId ?? "").trim() || null;
+  const loginUserId = String(input.loginUserId ?? "").trim() || null;
+  const actorId = actorType === "USER" ? loginUserId ?? speakerId : speakerId;
+  return { actorType, actorId };
+}
+
+function isRootPrismaClient(db: ProjectEventStoreClient): db is typeof prisma {
+  return typeof (db as typeof prisma).$transaction === "function";
+}
+
+async function withEventStoreTransaction<T>(
+  db: ProjectEventStoreClient,
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  if (isRootPrismaClient(db)) {
+    return db.$transaction((tx) => fn(tx));
+  }
+  return fn(db);
 }
 
 export async function appendProjectEvent(
@@ -168,18 +207,19 @@ export async function appendProjectMessageWithEvent(
     }
   }
 
-  const idempotencyKey = buildConversationMessageIdempotencyKey({
-    projectId,
-    stage,
-    source,
-    sourceMessageId,
-  });
+  const idempotencyKey = buildConversationMessageCreatedEventIdempotencyKey(projectId, sourceMessageId);
+
+  const actorType = String(input.actorType ?? "USER").trim() || "USER";
+  const actorId =
+    actorType === "USER"
+      ? (input.actorId ?? input.senderId ?? null)
+      : (input.actorId ?? null);
 
   const event = await appendProjectEvent(db, {
     projectId,
     eventType: PROJECT_EVENT_TYPES.CONVERSATION_MESSAGE_CREATED,
-    actorType: input.actorType ?? "USER",
-    actorId: input.actorId ?? input.senderId ?? null,
+    actorType,
+    actorId,
     stage,
     sourceMessageId,
     projectMessageId: projectMessage.id,
@@ -261,26 +301,33 @@ export async function syncRequirementsConversationMessagesToEventStore(
     fallbackStage: input.fallbackStage,
   });
 
-  const results: Awaited<ReturnType<typeof appendProjectMessageWithEvent>>[] = [];
-  for (const item of extracted) {
-    const msg = item.message;
-    const result = await appendProjectMessageWithEvent(db, {
-      projectId: input.projectId,
-      stage: item.stage,
-      source: PROJECT_MESSAGE_SOURCES.REQUIREMENTS_CONVERSATION,
-      sourceMessageId: msg.id,
-      senderType: msg.speakerType,
-      senderId: msg.speakerId,
-      senderName: msg.speakerName,
-      messageType: msg.messageType,
-      content: msg.content,
-      messageCreatedAt: parseMessageCreatedAt(msg.createdAt),
-      raw: msg,
-      actorType: msg.speakerType === "AI" ? "AI" : msg.speakerType === "SYSTEM" ? "SYSTEM" : "USER",
-      actorId: input.actorId ?? (msg.speakerType === "USER" ? msg.speakerId : null),
-    });
-    results.push(result);
-  }
+  return withEventStoreTransaction(db, async (tx) => {
+    const results: Awaited<ReturnType<typeof appendProjectMessageWithEvent>>[] = [];
+    for (const item of extracted) {
+      const msg = item.message;
+      const { actorType, actorId } = resolveRequirementsMessageActor({
+        speakerType: msg.speakerType,
+        speakerId: msg.speakerId,
+        loginUserId: input.actorId,
+      });
+      const result = await appendProjectMessageWithEvent(tx, {
+        projectId: input.projectId,
+        stage: item.stage,
+        source: PROJECT_MESSAGE_SOURCES.REQUIREMENTS_CONVERSATION,
+        sourceMessageId: msg.id,
+        senderType: msg.speakerType,
+        senderId: msg.speakerId,
+        senderName: msg.speakerName,
+        messageType: msg.messageType,
+        content: msg.content,
+        messageCreatedAt: parseMessageCreatedAt(msg.createdAt),
+        raw: msg,
+        actorType,
+        actorId,
+      });
+      results.push(result);
+    }
 
-  return { syncedCount: results.length, results };
+    return { syncedCount: results.length, results };
+  });
 }
