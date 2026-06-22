@@ -3,14 +3,18 @@ import type {
   StructureCandidateRow,
   StructureConflictRow,
 } from "@/lib/project-structure/structureReviewUiTypes";
+import { normalizeConfidenceLabel } from "@/lib/project-structure/structureExplainabilityModel";
 
 type ApiEnvelope<T> = { success?: boolean; message?: string; data?: T };
 
 function parseExplainability(raw: unknown): StructureCandidateRow["explainability"] | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const e = raw as Record<string, unknown>;
-  const label = String(e.confidenceLabel ?? "");
-  if (label !== "High" && label !== "Medium" && label !== "Low") return undefined;
+  const labelRaw = String(e.confidenceLabel ?? "");
+  const normalized = normalizeConfidenceLabel(labelRaw);
+  const label =
+    normalized === "HIGH" ? "High" : normalized === "MEDIUM" ? "Medium" : normalized === "LOW" ? "Low" : null;
+  if (!label) return undefined;
   const sc = e.sourceConversation;
   const se = e.sourceEvent;
   const cf = e.createdFrom;

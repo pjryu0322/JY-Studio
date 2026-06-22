@@ -69,6 +69,9 @@ export function SettingsPanelBody() {
   const structureReviewHref = hasProjectContext
     ? `/projects/${encodedProjectId}/structure-review`
     : "/";
+  const knowledgeGraphHref = hasProjectContext
+    ? `/projects/${encodedProjectId}/knowledge-graph`
+    : "/";
 
   useEffect(() => {
     let cancelled = false;
@@ -237,6 +240,17 @@ export function SettingsPanelBody() {
             href={structureReviewHref}
             prefetch={false}
             title={hasProjectContext ? undefined : "프로젝트를 선택한 뒤 구조 후보를 검토하세요"}
+            style={linkStyle}
+          >
+            열기
+          </Link>,
+        )}
+        {row(
+          "지식 그래프",
+          <Link
+            href={knowledgeGraphHref}
+            prefetch={false}
+            title={hasProjectContext ? undefined : "프로젝트를 선택한 뒤 지식 그래프를 탐색하세요"}
             style={linkStyle}
           >
             열기

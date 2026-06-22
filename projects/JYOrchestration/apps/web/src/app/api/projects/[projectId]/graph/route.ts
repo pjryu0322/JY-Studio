@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { getProjectGraphSnapshot } from "@/lib/project-graph/projectGraphQuery";
+import { getProjectGraphSnapshotWithExplainability } from "@/lib/project-graph/projectGraphSnapshotEnrich";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const edgeType = request.nextUrl.searchParams.get("edgeType")?.trim() || undefined;
     const limitRaw = Number(request.nextUrl.searchParams.get("limit") ?? 200);
 
-    const graph = await getProjectGraphSnapshot(pid, {
+    const graph = await getProjectGraphSnapshotWithExplainability(pid, {
       nodeType,
       edgeType,
       limit: Number.isFinite(limitRaw) ? limitRaw : 200,
