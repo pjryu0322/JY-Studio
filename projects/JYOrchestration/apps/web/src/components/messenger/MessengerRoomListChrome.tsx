@@ -197,6 +197,7 @@ export function MessengerRoomListActionButtons(p: {
           title="대화방 삭제"
           ariaLabel="대화방 삭제"
           disabled={p.disabled}
+          emphasisTone="danger"
           onClick={p.onDelete}
         >
           <MessengerRoomDeleteIcon />

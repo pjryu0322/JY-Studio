@@ -13,11 +13,13 @@ import { MessengerHomeMembersSection } from "@/components/messenger/MessengerHom
 import { parseMessengerHomePanel } from "@/components/messenger/messengerHomePanel";
 import { createAndOpenMessengerAgentRoom } from "@/lib/messenger/createAndOpenMessengerAgentRoom";
 import {
-  deleteMessengerChatRoom,
   fetchMessengerChatRooms,
+  postDeleteMessengerChatRoomWithLinkedProject,
   postMessengerChatRoomLeave,
   type MessengerChatRoomListRow,
 } from "@/lib/messenger/messengerChatRoomApi";
+import { MessengerChatRoomDeleteConfirmModal } from "@/components/messenger/MessengerChatRoomDeleteConfirmModal";
+import type { MessengerChatRoomDeleteModalVariant } from "@/lib/messenger/messengerChatRoomDeleteModalCopy";
 import { openMessengerChatRoomWindow } from "@/lib/messenger/openMessengerChatRoomWindow";
 import { registerPlatformPopupFromOpenedUrl } from "@/lib/platform/platformPopupRegistry";
 import { openProjectRoomWindow } from "@/lib/ui/workspaceMode";
@@ -32,6 +34,11 @@ export function MessengerHome() {
   const [listError, setListError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [roomListBusyId, setRoomListBusyId] = useState<string | null>(null);
+  const [deleteModal, setDeleteModal] = useState<{
+    readonly roomId: string;
+    readonly variant: MessengerChatRoomDeleteModalVariant;
+  } | null>(null);
+  const [deleteSuccessToast, setDeleteSuccessToast] = useState<string | null>(null);
 
   const loadRooms = useCallback(async () => {
     setListError(null);
@@ -94,22 +101,32 @@ export function MessengerHome() {
     [workspaceMode],
   );
 
-  const deleteRoomFromList = useCallback(
-    async (roomId: string) => {
-      if (!window.confirm("이 대화방과 모든 메시지를 삭제할까요? 되돌릴 수 없습니다.")) return;
-      setRoomListBusyId(roomId);
-      setListError(null);
-      try {
-        await deleteMessengerChatRoom(roomId);
-        await loadRooms();
-      } catch (e) {
-        setListError(e instanceof Error ? e.message : "삭제 오류");
-      } finally {
-        setRoomListBusyId(null);
-      }
-    },
-    [loadRooms],
-  );
+  const requestDeleteRoomFromList = useCallback((row: MessengerChatRoomListRow) => {
+    if (!row.isOwner) return;
+    setDeleteModal({
+      roomId: row.id,
+      variant: row.projectId ? "linkedProject" : "plain",
+    });
+  }, []);
+
+  const confirmDeleteRoomFromList = useCallback(async () => {
+    if (!deleteModal) return;
+    const roomId = deleteModal.roomId;
+    setRoomListBusyId(roomId);
+    setListError(null);
+    try {
+      const result = await postDeleteMessengerChatRoomWithLinkedProject(roomId, {
+        confirmDeleteLinkedProjectData: deleteModal.variant === "linkedProject",
+      });
+      setDeleteModal(null);
+      setDeleteSuccessToast(result.message);
+      await loadRooms();
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : "삭제 중 문제가 발생했습니다. 다시 시도해 주세요.");
+    } finally {
+      setRoomListBusyId(null);
+    }
+  }, [deleteModal, loadRooms]);
 
   const leaveRoomFromList = useCallback(
     async (roomId: string) => {
@@ -167,6 +184,7 @@ export function MessengerHome() {
               </Button>
             </div>
             {listError ? <InlineAlert variant="danger">{listError}</InlineAlert> : null}
+            {deleteSuccessToast ? <InlineAlert variant="success">{deleteSuccessToast}</InlineAlert> : null}
             {rooms === null ? (
               <LoadingState />
             ) : rooms.length === 0 ? (
@@ -217,10 +235,10 @@ export function MessengerHome() {
                         </div>
                         <MessengerRoomListActionButtons
                           disabled={listBusy}
-                          showDelete={r.isOwner === true && !r.projectId}
+                          showDelete={r.isOwner === true}
                           onEnter={() => openRoomInWorkModeWindow(r.id)}
                           onLeave={() => void leaveRoomFromList(r.id)}
-                          onDelete={() => void deleteRoomFromList(r.id)}
+                          onDelete={() => requestDeleteRoomFromList(r)}
                         />
                       </div>
                     </Card>
@@ -231,6 +249,16 @@ export function MessengerHome() {
           </div>
         ) : null}
       </ResponsivePageContainer>
+      <MessengerChatRoomDeleteConfirmModal
+        open={deleteModal != null}
+        variant={deleteModal?.variant ?? "plain"}
+        busy={deleteModal != null && roomListBusyId === deleteModal.roomId}
+        onClose={() => {
+          if (roomListBusyId) return;
+          setDeleteModal(null);
+        }}
+        onConfirm={() => void confirmDeleteRoomFromList()}
+      />
     </ResponsiveShell>
   );
 }

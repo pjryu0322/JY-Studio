@@ -47,10 +47,11 @@ export function WorkspaceHubChromeIconButton({
   /** stale artifact 등 강조 배지 */
   readonly badgeTone?: "default" | "stale";
   /** 구현 빠른 실행 등 선택 강조 */
-  readonly emphasisTone?: "default" | "amber";
+  readonly emphasisTone?: "default" | "amber" | "danger";
   readonly buttonRef?: (node: HTMLButtonElement | null) => void;
 }) {
   const amberActive = emphasisTone === "amber" && !disabled;
+  const dangerActive = emphasisTone === "danger" && !disabled;
   return (
     <button
       ref={buttonRef}
@@ -68,9 +69,9 @@ export function WorkspaceHubChromeIconButton({
         width: 34,
         height: 34,
         borderRadius: 10,
-        border: amberActive ? "1px solid #ca8a04" : "1px solid #e2e8f0",
-        background: disabled ? "#f8fafc" : amberActive ? "#facc15" : "#fff",
-        color: disabled ? t.textMuted : amberActive ? "#713f12" : "#0f172a",
+        border: dangerActive ? "1px solid #fecaca" : amberActive ? "1px solid #ca8a04" : "1px solid #e2e8f0",
+        background: disabled ? "#f8fafc" : dangerActive ? "#fef2f2" : amberActive ? "#facc15" : "#fff",
+        color: disabled ? t.textMuted : dangerActive ? "#b91c1c" : amberActive ? "#713f12" : "#0f172a",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.55 : 1,
         display: "inline-flex",

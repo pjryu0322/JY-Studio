@@ -20,11 +20,12 @@ import {
   requirementsWorkspaceShellStyle,
 } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import { InlineAlert } from "@/components/ui";
+import { MessengerChatRoomDeleteConfirmModal } from "@/components/messenger/MessengerChatRoomDeleteConfirmModal";
 import {
   clearMessengerChatRoomConversation,
-  deleteMessengerChatRoom,
   patchMessengerRoomAiParticipation,
   patchMessengerRoomTitle,
+  postDeleteMessengerChatRoomWithLinkedProject,
   postMessengerAiSummaryBlockMessage,
   postMessengerChatRoomLeave,
   postMessengerConfirmProject,
@@ -87,6 +88,7 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
   const [renameBusy, setRenameBusy] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [roomLifecycleBusy, setRoomLifecycleBusy] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [resetConversationBusy, setResetConversationBusy] = useState(false);
   const composerTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   /** 레일에서 `?discardEmpty=1`로 연 방: 사용자(현재 세션)가 USER 메시지를 보내지 않고 창을 나가면 삭제 */
@@ -356,26 +358,34 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
     }
   }, [rid, renameBusy, renameDraft, reloadDetail, applyRoomDetail]);
 
-  const deleteRoomInView = useCallback(async () => {
+  const deleteRoomInView = useCallback(() => {
     if (!rid || roomLifecycleBusy) return;
-    if (!window.confirm("이 대화방과 모든 메시지를 삭제할까요? 되돌릴 수 없습니다.")) return;
+    setDeleteConfirmOpen(true);
+  }, [rid, roomLifecycleBusy]);
+
+  const confirmDeleteRoomInView = useCallback(async () => {
+    if (!rid || roomLifecycleBusy) return;
     setRoomLifecycleBusy(true);
     setToast(null);
     try {
-      await deleteMessengerChatRoom(rid);
+      const result = await postDeleteMessengerChatRoomWithLinkedProject(rid, {
+        confirmDeleteLinkedProjectData: Boolean(projectLinkedId),
+      });
       try {
         sessionStorage.removeItem(messengerDiscardEmptyStorageKey(rid));
       } catch {
         /* noop */
       }
       discardEmptyOnCloseRef.current = false;
+      setDeleteConfirmOpen(false);
+      setToast(result.message);
       router.push("/?panel=chat");
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "삭제 오류");
+      setToast(e instanceof Error ? e.message : "삭제 중 문제가 발생했습니다. 다시 시도해 주세요.");
     } finally {
       setRoomLifecycleBusy(false);
     }
-  }, [rid, roomLifecycleBusy, router]);
+  }, [rid, roomLifecycleBusy, projectLinkedId, router]);
 
   const leaveRoomInView = useCallback(async () => {
     if (!rid || roomLifecycleBusy) return;
@@ -588,6 +598,17 @@ export function MessengerChatRoomClient({ roomId }: { readonly roomId: string })
           onProjectDescChange={setProjectDesc}
           onClose={() => setDraftOpen(false)}
           onConfirm={() => void confirmProject()}
+        />
+
+        <MessengerChatRoomDeleteConfirmModal
+          open={deleteConfirmOpen}
+          variant={projectLinkedId ? "linkedProject" : "plain"}
+          busy={roomLifecycleBusy}
+          onClose={() => {
+            if (roomLifecycleBusy) return;
+            setDeleteConfirmOpen(false);
+          }}
+          onConfirm={() => void confirmDeleteRoomInView()}
         />
       </div>
     </div>

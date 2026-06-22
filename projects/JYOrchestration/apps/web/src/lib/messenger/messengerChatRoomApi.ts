@@ -177,6 +177,51 @@ export async function deleteMessengerChatRoom(roomId: string): Promise<void> {
   }
 }
 
+export type DeleteMessengerChatRoomWithLinkedProjectResult = Readonly<{
+  readonly ok: boolean;
+  readonly roomDeleted: boolean;
+  readonly linkedProjectReset: boolean;
+  readonly projectId?: string | null;
+  readonly warnings?: readonly string[];
+  readonly message: string;
+}>;
+
+export async function postDeleteMessengerChatRoomWithLinkedProject(
+  roomId: string,
+  input?: Readonly<{ readonly confirmDeleteLinkedProjectData?: boolean }>,
+): Promise<DeleteMessengerChatRoomWithLinkedProjectResult> {
+  const res = await credentialsIncludeFetch(
+    `/api/chat-rooms/${encRoomId(roomId)}/delete-with-linked-project`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        confirmDeleteLinkedProjectData: input?.confirmDeleteLinkedProjectData === true,
+      }),
+    },
+  );
+  const json = (await res.json()) as {
+    success?: boolean;
+    message?: string;
+    data?: DeleteMessengerChatRoomWithLinkedProjectResult;
+    ok?: boolean;
+    roomDeleted?: boolean;
+    linkedProjectReset?: boolean;
+  };
+  const payload = json.data ?? json;
+  if (!res.ok || !json.success || payload.ok === false) {
+    throw new Error(json.message || payload.message || "삭제 중 문제가 발생했습니다. 다시 시도해 주세요.");
+  }
+  return {
+    ok: true,
+    roomDeleted: Boolean(payload.roomDeleted),
+    linkedProjectReset: Boolean(payload.linkedProjectReset),
+    projectId: payload.projectId ?? null,
+    warnings: payload.warnings,
+    message: payload.message || json.message || "삭제되었습니다.",
+  };
+}
+
 export async function postMessengerChatRoomLeave(roomId: string): Promise<void> {
   const res = await credentialsIncludeFetch(`/api/chat-rooms/${encRoomId(roomId)}/leave`, { method: "POST" });
   const json = (await res.json()) as { success?: boolean; message?: string };

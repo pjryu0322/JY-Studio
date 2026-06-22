@@ -39,7 +39,7 @@ export function MessengerChatRoomHeaderBar(p: {
   const roomType = p.detail?.room.type ?? "SOLO";
   const isGroupFriendChat = roomType === "GROUP" && aiMode === "NONE";
   const isRoomOwner = Boolean(p.sessionUserId && p.detail?.room.ownerUserId && p.detail.room.ownerUserId === p.sessionUserId);
-  const showRoomDelete = isRoomOwner && !projectLinkedId;
+  const showRoomDelete = isRoomOwner;
   const showRoomLeave = Boolean(p.sessionUserId && p.detail);
 
   const hasChatBody = Boolean((p.messages ?? []).some((m) => String(m.content ?? "").trim()));
