@@ -1,11 +1,14 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildRequirementsConversationResetStateJson } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { resetProjectDownstreamFromPlanning } from "@/lib/requirements/planningResetCascadeService";
 import { clearProjectGraphProjection } from "@/lib/project-graph/projectGraphProjection";
 import { softDeleteProjectByOwner } from "@/lib/service/projectService";
+import {
+  assertLinkedProjectDeleteAuthority,
+  LinkedProjectDeleteForbiddenError,
+} from "@/lib/messenger/chatRoomDeleteWithLinkedProjectPolicy";
 import {
   assertChatRoomAccess,
   ChatRoomAccessError,
@@ -133,14 +136,14 @@ export async function deleteChatRoomWithLinkedProject(input: Readonly<{
     }
 
     try {
-      await requireProjectPermission(projectId, uid, "canEditProject", "deleteChatRoomWithLinkedProject");
-    } catch {
+      await assertLinkedProjectDeleteAuthority({ projectId, chatOwnerUserId: uid });
+    } catch (e) {
       return {
         ok: false,
         roomDeleted: false,
         linkedProjectReset: false,
         projectId,
-        message: "삭제 권한이 없습니다.",
+        message: e instanceof LinkedProjectDeleteForbiddenError ? e.message : "삭제 권한이 없습니다.",
       };
     }
 
