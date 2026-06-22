@@ -633,6 +633,10 @@ model Project {
   graphNodes ProjectGraphNode[]
   /// Project Graph Projection: 엣지
   graphEdges ProjectGraphEdge[]
+  structureCandidates ProjectStructureCandidate[]
+  structureCandidateEdges ProjectStructureCandidateEdge[]
+  structureLifecycleEntries ProjectNodeLifecycle[]
+  structureMergeHistory ProjectMergeHistory[]
 
   @@index([ownerUserId])
   @@map("projects")
@@ -753,6 +757,103 @@ model ProjectGraphEdge {
   @@index([projectId, toNodeId])
   @@index([sourceEventId])
   @@map("project_graph_edges")
+}
+
+/// AI Structure Engine: 승인 전 후보 노드
+model ProjectStructureCandidate {
+  id                  String   @id @default(uuid())
+  projectId           String
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  idempotencyKey      String
+  nodeType            String
+  title               String
+  summary             String   @default("") @db.Text
+  /// CANDIDATE | APPROVED | MODIFIED | DEPRECATED | ARCHIVED
+  lifecycleStatus     String   @default("CANDIDATE")
+  sourceEventId       String?
+  fingerprint         String?
+  metadata            Json?
+  approvedGraphNodeId String?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  outgoingCandidateEdges ProjectStructureCandidateEdge[] @relation("StructureCandEdgeFrom")
+  incomingCandidateEdges ProjectStructureCandidateEdge[] @relation("StructureCandEdgeTo")
+  lifecycleEntries       ProjectNodeLifecycle[]
+
+  @@unique([projectId, idempotencyKey])
+  @@index([projectId, lifecycleStatus])
+  @@index([projectId, nodeType])
+  @@index([projectId, fingerprint])
+  @@index([sourceEventId])
+  @@map("project_structure_candidates")
+}
+
+/// AI Structure Engine: 승인 전 후보 엣지
+model ProjectStructureCandidateEdge {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  idempotencyKey  String
+  fromCandidateId String
+  fromCandidate   ProjectStructureCandidate @relation("StructureCandEdgeFrom", fields: [fromCandidateId], references: [id], onDelete: Cascade)
+  toCandidateId   String
+  toCandidate     ProjectStructureCandidate @relation("StructureCandEdgeTo", fields: [toCandidateId], references: [id], onDelete: Cascade)
+  edgeType        String
+  lifecycleStatus String   @default("CANDIDATE")
+  sourceEventId   String?
+  metadata        Json?
+
+  createdAt       DateTime @default(now())
+
+  @@unique([projectId, idempotencyKey])
+  @@index([projectId, edgeType])
+  @@index([fromCandidateId])
+  @@index([toCandidateId])
+  @@map("project_structure_candidate_edges")
+}
+
+/// Structure 노드 Lifecycle 감사 이력 (삭제 대신 상태 전이)
+model ProjectNodeLifecycle {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   ProjectStructureCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  fromStatus  String?
+  toStatus    String
+  actorId     String?
+  reason      String?
+  audit       Json?
+
+  createdAt   DateTime @default(now())
+
+  @@index([projectId, candidateId, createdAt])
+  @@map("project_node_lifecycle")
+}
+
+/// Structure Merge 감사 이력
+model ProjectMergeHistory {
+  id                String   @id @default(uuid())
+  projectId         String
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  sourceCandidateId String
+  targetCandidateId String
+  mergedByUserId    String?
+  mergeSummary      String?  @db.Text
+  audit             Json?
+
+  createdAt         DateTime @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([sourceCandidateId])
+  @@index([targetCandidateId])
+  @@map("project_merge_history")
 }
 
 /// 프로젝트별 플랫폼 AI(카탈로그 키). `workspace_screen_ai_mapping`으로 화면과 M:N.
