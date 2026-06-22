@@ -22,6 +22,7 @@ import { isAllowedSpecWorkspaceModel } from "@/lib/project-spec/specWorkspaceMod
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { PROJECT_PROCESS_STAGES } from "@/lib/project-process/projectEventTypes";
 import { syncRequirementsConversationMessagesToEventStore } from "@/lib/project-process/projectEventStore";
+import { trySyncProjectGraphProjection } from "@/lib/project-graph/projectGraphProjection";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
@@ -719,6 +720,7 @@ export async function PATCH(
           nextConversationJson,
           fallbackStage: PROJECT_PROCESS_STAGES.REQUIREMENTS_IDEATION,
         });
+        trySyncProjectGraphProjection(id);
       } catch (eventError) {
         console.error("Project Event Store sync failed:", eventError);
         eventStoreWarning = "EVENT_STORE_SYNC_FAILED";

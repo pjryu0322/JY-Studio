@@ -12,6 +12,7 @@ import type { ProjectFromChatDraftPayloadV1 } from "@/lib/messenger/projectFromC
 import { buildInitialRequirementsStateForNewProject } from "@/lib/requirements/productDefinitionInitial";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { appendProjectCreatedEvents } from "@/lib/project-process/projectEventStore";
+import { trySyncProjectGraphProjection } from "@/lib/project-graph/projectGraphProjection";
 
 /** @deprecated 이름 보존용 — 내부적으로 소유 또는 HUMAN 멤버십 프로젝트를 반환합니다. */
 export async function listProjectsOrderedByCreatedDesc(
@@ -106,7 +107,7 @@ export type CreateProjectInput = {
 
 export async function createProject(input: CreateProjectInput) {
   const includeAi = input.includeDefaultAiPlanner !== false;
-  return prisma.$transaction(async (tx) => {
+  const { project, graphEventIds } = await prisma.$transaction(async (tx) => {
     const nowIso = new Date().toISOString();
     const initialRequirementsState: RequirementsStateJson = buildInitialRequirementsStateForNewProject({
       name: input.name,
@@ -127,7 +128,7 @@ export async function createProject(input: CreateProjectInput) {
         requirementsStateJson: initialRequirementsState as Prisma.InputJsonValue,
       },
     });
-    await appendProjectCreatedEvents(tx, {
+    const createdEvents = await appendProjectCreatedEvents(tx, {
       projectId: project.id,
       actorId: input.ownerUserId,
       name: input.name,
@@ -149,8 +150,13 @@ export async function createProject(input: CreateProjectInput) {
         invitedByUserId: input.ownerUserId,
       });
     }
-    return project;
+    const graphEventIds = [createdEvents.created.id, createdEvents.ideaEvent?.id].filter((id): id is string =>
+      Boolean(id),
+    );
+    return { project, graphEventIds };
   });
+  trySyncProjectGraphProjection(project.id, graphEventIds);
+  return project;
 }
 
 export async function projectIdExists(id: string): Promise<boolean> {

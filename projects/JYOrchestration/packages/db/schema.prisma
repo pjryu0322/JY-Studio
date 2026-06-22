@@ -629,6 +629,10 @@ model Project {
   processEvents ProjectEvent[]
   /// Project Process Event Store: 원본 메시지 정규화 저장소
   processMessages ProjectMessage[]
+  /// Project Graph Projection: 노드
+  graphNodes ProjectGraphNode[]
+  /// Project Graph Projection: 엣지
+  graphEdges ProjectGraphEdge[]
 
   @@index([ownerUserId])
   @@map("projects")
@@ -694,6 +698,61 @@ model ProjectEvent {
   @@index([projectMessageId])
   @@index([correlationId])
   @@map("project_events")
+}
+
+/// Event Store 기반 Graph Projection 노드 (재생성 가능)
+model ProjectGraphNode {
+  id             String   @id @default(uuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// event:{eventId}:node:{nodeType} 등 — 동일 이벤트 재처리 시 idempotent
+  projectionKey  String
+  /// project:{projectId}:Project, requirement:{projectId}:{messageId} 등 안정 식별자
+  entityKey      String
+  nodeType       String
+  title          String
+  summary        String   @default("") @db.Text
+  metadata       Json?
+  sourceEventId  String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  outgoingEdges  ProjectGraphEdge[] @relation("GraphEdgeFrom")
+  incomingEdges  ProjectGraphEdge[] @relation("GraphEdgeTo")
+
+  @@unique([projectId, projectionKey])
+  @@unique([projectId, entityKey])
+  @@index([projectId, nodeType])
+  @@index([projectId, createdAt])
+  @@index([sourceEventId])
+  @@map("project_graph_nodes")
+}
+
+/// Event Store 기반 Graph Projection 엣지 (재생성 가능)
+model ProjectGraphEdge {
+  id             String   @id @default(uuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  projectionKey  String
+  fromNodeId     String
+  fromNode       ProjectGraphNode @relation("GraphEdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNodeId       String
+  toNode         ProjectGraphNode @relation("GraphEdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
+  edgeType       String
+  metadata       Json?
+  sourceEventId  String?
+
+  createdAt      DateTime @default(now())
+
+  @@unique([projectId, projectionKey])
+  @@index([projectId, edgeType])
+  @@index([projectId, fromNodeId])
+  @@index([projectId, toNodeId])
+  @@index([sourceEventId])
+  @@map("project_graph_edges")
 }
 
 /// 프로젝트별 플랫폼 AI(카탈로그 키). `workspace_screen_ai_mapping`으로 화면과 M:N.
