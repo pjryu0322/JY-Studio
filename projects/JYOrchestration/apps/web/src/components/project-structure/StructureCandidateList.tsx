@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { StructureGraphReflectionBadge, StructureLifecycleBadge } from "@/components/project-structure/StructureLifecycleBadge";
+import { StructureConfidenceBadge } from "@/components/project-structure/StructureExplainabilitySection";
 import type { StructureCandidateRow, StructureConflictRow } from "@/lib/project-structure/structureReviewUiTypes";
 import { candidateCanMerge, resolveGraphReflectionStatus } from "@/lib/project-structure/structureReviewViewModel";
 
@@ -51,6 +52,9 @@ export function StructureCandidateList({
                 <StructureGraphReflectionBadge status={reflection} />
                 {hasConflict ? (
                   <span style={{ fontSize: 10, fontWeight: 700, color: t.danger }}>CONFLICT</span>
+                ) : null}
+                {c.confidenceLabel ? (
+                  <StructureConfidenceBadge label={c.confidenceLabel} percent={c.confidence} />
                 ) : null}
               </div>
               <strong style={{ fontSize: 13, color: t.textPrimary, lineHeight: 1.35 }}>{c.title}</strong>

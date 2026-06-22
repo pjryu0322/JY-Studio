@@ -1,3 +1,23 @@
+export type StructureCandidateExplainability = Readonly<{
+  readonly confidence: number;
+  readonly confidenceLabel: "High" | "Medium" | "Low";
+  readonly reason: string;
+  readonly sourceConversation: Readonly<{
+    readonly excerpt: string;
+    readonly messageId: string | null;
+    readonly href: string | null;
+  }>;
+  readonly sourceEvent: Readonly<{
+    readonly eventType: string;
+    readonly eventId: string | null;
+  }>;
+  readonly createdBy: string;
+  readonly createdFrom: Readonly<{
+    readonly eventId: string | null;
+    readonly messageId: string | null;
+  }>;
+}>;
+
 export type StructureCandidateRow = Readonly<{
   readonly id: string;
   readonly projectId: string;
@@ -12,6 +32,14 @@ export type StructureCandidateRow = Readonly<{
   readonly metadata: unknown;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly explainability?: StructureCandidateExplainability;
+  readonly confidence?: number;
+  readonly confidenceLabel?: string;
+  readonly reason?: string;
+  readonly sourceConversation?: StructureCandidateExplainability["sourceConversation"];
+  readonly sourceEvent?: StructureCandidateExplainability["sourceEvent"];
+  readonly createdBy?: string;
+  readonly createdFrom?: StructureCandidateExplainability["createdFrom"];
 }>;
 
 export type StructureCandidateEdgeRow = Readonly<{

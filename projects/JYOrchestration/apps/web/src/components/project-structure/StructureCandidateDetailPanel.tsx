@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { StructureGraphReflectionBadge, StructureLifecycleBadge } from "@/components/project-structure/StructureLifecycleBadge";
+import { StructureExplainabilitySection } from "@/components/project-structure/StructureExplainabilitySection";
 import {
   patchStructureEdit,
   postStructureApprove,
@@ -155,6 +156,8 @@ export function StructureCandidateDetailPanel({
           </ul>
         </div>
       ) : null}
+
+      <StructureExplainabilitySection candidate={candidate} />
 
       {actionError ? <p style={{ color: t.danger, fontSize: 12, margin: 0 }}>{actionError}</p> : null}
 

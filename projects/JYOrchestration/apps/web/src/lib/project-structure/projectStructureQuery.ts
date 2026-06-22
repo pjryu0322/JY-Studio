@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { detectStructureConflicts } from "@/lib/project-structure/projectStructureConflicts";
 import { extractStructureCandidatesFromEventStore } from "@/lib/project-structure/projectStructureExtractor";
+import { enrichStructureCandidatesWithExplainability } from "@/lib/project-structure/projectStructureExplainabilityEnrich";
 
 export async function listStructureCandidates(
   projectId: string,
@@ -13,13 +14,15 @@ export async function listStructureCandidates(
   }
 
   const lifecycleStatus = input?.lifecycleStatus?.trim();
-  const candidates = await prisma.projectStructureCandidate.findMany({
+  const rows = await prisma.projectStructureCandidate.findMany({
     where: {
       projectId: pid,
       ...(lifecycleStatus ? { lifecycleStatus } : {}),
     },
     orderBy: { createdAt: "asc" },
   });
+
+  const candidates = await enrichStructureCandidatesWithExplainability(pid, rows);
 
   const edges = await prisma.projectStructureCandidateEdge.findMany({
     where: { projectId: pid },

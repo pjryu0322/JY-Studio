@@ -6,11 +6,77 @@ import type {
 
 type ApiEnvelope<T> = { success?: boolean; message?: string; data?: T };
 
+function parseExplainability(raw: unknown): StructureCandidateRow["explainability"] | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const e = raw as Record<string, unknown>;
+  const label = String(e.confidenceLabel ?? "");
+  if (label !== "High" && label !== "Medium" && label !== "Low") return undefined;
+  const sc = e.sourceConversation;
+  const se = e.sourceEvent;
+  const cf = e.createdFrom;
+  return {
+    confidence: Number(e.confidence ?? 0),
+    confidenceLabel: label,
+    reason: String(e.reason ?? ""),
+    sourceConversation:
+      sc && typeof sc === "object" && !Array.isArray(sc)
+        ? {
+            excerpt: String((sc as Record<string, unknown>).excerpt ?? ""),
+            messageId:
+              (sc as Record<string, unknown>).messageId == null
+                ? null
+                : String((sc as Record<string, unknown>).messageId),
+            href:
+              (sc as Record<string, unknown>).href == null
+                ? null
+                : String((sc as Record<string, unknown>).href),
+          }
+        : { excerpt: "", messageId: null, href: null },
+    sourceEvent:
+      se && typeof se === "object" && !Array.isArray(se)
+        ? {
+            eventType: String((se as Record<string, unknown>).eventType ?? ""),
+            eventId:
+              (se as Record<string, unknown>).eventId == null
+                ? null
+                : String((se as Record<string, unknown>).eventId),
+          }
+        : { eventType: "", eventId: null },
+    createdBy: String(e.createdBy ?? ""),
+    createdFrom:
+      cf && typeof cf === "object" && !Array.isArray(cf)
+        ? {
+            eventId:
+              (cf as Record<string, unknown>).eventId == null
+                ? null
+                : String((cf as Record<string, unknown>).eventId),
+            messageId:
+              (cf as Record<string, unknown>).messageId == null
+                ? null
+                : String((cf as Record<string, unknown>).messageId),
+          }
+        : { eventId: null, messageId: null },
+  };
+}
+
 function parseCandidate(raw: unknown): StructureCandidateRow | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const id = String(r.id ?? "").trim();
   if (!id) return null;
+  const explainability =
+    parseExplainability(r.explainability) ??
+    (r.reason && r.confidenceLabel
+      ? parseExplainability({
+          confidence: r.confidence,
+          confidenceLabel: r.confidenceLabel,
+          reason: r.reason,
+          sourceConversation: r.sourceConversation,
+          sourceEvent: r.sourceEvent,
+          createdBy: r.createdBy,
+          createdFrom: r.createdFrom,
+        })
+      : undefined);
   return {
     id,
     projectId: String(r.projectId ?? ""),
@@ -25,6 +91,15 @@ function parseCandidate(raw: unknown): StructureCandidateRow | null {
     metadata: r.metadata,
     createdAt: String(r.createdAt ?? ""),
     updatedAt: String(r.updatedAt ?? ""),
+    explainability,
+    confidence: r.confidence == null ? explainability?.confidence : Number(r.confidence),
+    confidenceLabel:
+      r.confidenceLabel == null ? explainability?.confidenceLabel : String(r.confidenceLabel),
+    reason: r.reason == null ? explainability?.reason : String(r.reason),
+    sourceConversation: explainability?.sourceConversation,
+    sourceEvent: explainability?.sourceEvent,
+    createdBy: r.createdBy == null ? explainability?.createdBy : String(r.createdBy),
+    createdFrom: explainability?.createdFrom,
   };
 }
 
