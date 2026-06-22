@@ -66,6 +66,9 @@ export function SettingsPanelBody() {
     : "/project-admin/settings";
   const projectInfoHref = hasProjectContext ? `/requirements?projectId=${encodedProjectId}` : "/";
   const projectMembersHref = hasProjectContext ? projectMembersAdminHref(pid) : "/project-members";
+  const structureReviewHref = hasProjectContext
+    ? `/projects/${encodedProjectId}/structure-review`
+    : "/";
 
   useEffect(() => {
     let cancelled = false;
@@ -223,6 +226,17 @@ export function SettingsPanelBody() {
             href={projectMembersHref}
             prefetch={false}
             title={hasProjectContext ? undefined : "프로젝트를 선택한 뒤 멤버를 관리하세요"}
+            style={linkStyle}
+          >
+            열기
+          </Link>,
+        )}
+        {row(
+          "구조 후보 검토",
+          <Link
+            href={structureReviewHref}
+            prefetch={false}
+            title={hasProjectContext ? undefined : "프로젝트를 선택한 뒤 구조 후보를 검토하세요"}
             style={linkStyle}
           >
             열기
