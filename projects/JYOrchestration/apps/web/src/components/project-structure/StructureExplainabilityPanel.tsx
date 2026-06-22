@@ -7,6 +7,7 @@ import {
   formatConfidenceLabelForDisplay,
   type StructureExplainability,
   type StructureExplainabilityConfidenceLabel,
+  type StructureExplainabilityRelatedNode,
 } from "@/lib/project-structure/structureExplainabilityModel";
 
 const confidenceColors: Record<StructureExplainabilityConfidenceLabel, { bg: string; color: string; border: string }> = {
@@ -69,9 +70,11 @@ export function StructureConfidenceBadge({
 export function StructureExplainabilityPanel({
   explainability,
   title = "생성 근거",
+  onSelectRelatedNodeId,
 }: {
   readonly explainability: StructureExplainability | null;
   readonly title?: string;
+  readonly onSelectRelatedNodeId?: (nodeId: string) => void;
 }) {
   if (!explainability) {
     return (
@@ -118,6 +121,15 @@ export function StructureExplainabilityPanel({
         <p style={{ margin: 0, fontSize: 13, color: t.textSecondary, lineHeight: 1.5 }}>{explainability.reason}</p>
       </div>
 
+      {explainability.confidenceReason ? (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 4 }}>Confidence Reason</div>
+          <p style={{ margin: 0, fontSize: 12, color: t.textSecondary, lineHeight: 1.5 }}>{explainability.confidenceReason}</p>
+        </div>
+      ) : null}
+
+      <ExplainabilityRelatedSections explainability={explainability} onSelectNodeId={onSelectRelatedNodeId} />
+
       <dl style={{ margin: 0, fontSize: 12, display: "grid", gap: 6 }}>
         <div>
           <dt style={{ fontWeight: 700, color: t.textMuted, display: "inline" }}>Source Event: </dt>
@@ -138,5 +150,82 @@ export function StructureExplainabilityPanel({
         </div>
       </dl>
     </section>
+  );
+}
+
+function RelatedList({
+  label,
+  items,
+  onSelectNodeId,
+}: {
+  readonly label: string;
+  readonly items: readonly StructureExplainabilityRelatedNode[];
+  readonly onSelectNodeId?: (nodeId: string) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 4 }}>{label}</div>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: t.textSecondary }}>
+        {items.map((r) => (
+          <li key={`${r.direction}-${r.nodeId}-${r.edgeType}`}>
+            {onSelectNodeId ? (
+              <button
+                type="button"
+                onClick={() => onSelectNodeId(r.nodeId)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  color: t.primary,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                {r.title}
+              </button>
+            ) : (
+              r.title
+            )}{" "}
+            <span style={{ color: t.textMuted }}>
+              ({r.nodeType} · {r.edgeType} · {r.direction === "IN" ? "←" : "→"})
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ExplainabilityRelatedSections({
+  explainability,
+  onSelectNodeId,
+}: {
+  readonly explainability: StructureExplainability;
+  readonly onSelectNodeId?: (nodeId: string) => void;
+}) {
+  const art = explainability.relatedArtifacts;
+  const hasAny =
+    explainability.relatedNodes.length > 0 ||
+    art.features.length > 0 ||
+    art.screens.length > 0 ||
+    art.reviews.length > 0 ||
+    art.changeRequests.length > 0 ||
+    art.flows.length > 0 ||
+    art.tasks.length > 0;
+  if (!hasAny) return null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: t.textSecondary }}>Related</div>
+      <RelatedList label="Related Nodes" items={explainability.relatedNodes} onSelectNodeId={onSelectNodeId} />
+      <RelatedList label="Related Features" items={art.features} onSelectNodeId={onSelectNodeId} />
+      <RelatedList label="Related Screens" items={art.screens} onSelectNodeId={onSelectNodeId} />
+      <RelatedList label="Related Reviews" items={art.reviews} onSelectNodeId={onSelectNodeId} />
+      <RelatedList label="Related Change Requests" items={art.changeRequests} onSelectNodeId={onSelectNodeId} />
+      <RelatedList label="Related Flows" items={art.flows} onSelectNodeId={onSelectNodeId} />
+      <RelatedList label="Related Tasks" items={art.tasks} onSelectNodeId={onSelectNodeId} />
+    </div>
   );
 }

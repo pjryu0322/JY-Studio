@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense } from "react";
 import { useParams } from "next/navigation";
 import { WorkflowStageChrome } from "@/components/workflow/primitives/WorkflowStageChrome";
 import { ProjectKnowledgeGraphWorkspace } from "@/components/project-graph/ProjectKnowledgeGraphWorkspace";
@@ -33,7 +34,9 @@ export default function ProjectKnowledgeGraphPage() {
         </Link>
         에서 진행할 수 있습니다.
       </p>
-      <ProjectKnowledgeGraphWorkspace projectId={projectId} />
+      <Suspense fallback={<p style={{ fontSize: 13, color: t.textMuted }}>그래프 UI 준비 중…</p>}>
+        <ProjectKnowledgeGraphWorkspace projectId={projectId} />
+      </Suspense>
     </WorkflowStageChrome>
   );
 }

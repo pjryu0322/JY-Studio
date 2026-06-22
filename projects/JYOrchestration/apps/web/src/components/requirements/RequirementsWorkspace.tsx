@@ -371,6 +371,11 @@ export function RequirementsWorkspace({
     return v === "1";
   }, [searchParams]);
 
+  const scrollToMessageIdFromGraph = useMemo(
+    () => String(searchParams?.get("sourceMessageId") ?? "").trim() || null,
+    [searchParams],
+  );
+
   const [resolvedProjectId, setResolvedProjectId] = useState(() => initialProjectId.trim());
   const [project, setProject] = useState<Project | null>(null);
   const [executionEnvironmentModalOpen, setExecutionEnvironmentModalOpen] = useState(false);
@@ -3799,6 +3804,8 @@ export function RequirementsWorkspace({
         targetPickerItems={targetPickerItems}
         onOrganizeRequirements={() => void onOrganizeRequirements()}
         onCopyAllCodeTaskPrompts={handleCopyAllCodeTaskPrompts}
+        knowledgeGraphProjectId={resolvedProjectId || undefined}
+        scrollToMessageId={scrollToMessageIdFromGraph}
         organizeDisabled={busy || remoteLocked}
         draftDocTruthy={Boolean(draftDoc)}
         onOpenDraftView={() => setDraftDrawerOpen(true)}

@@ -23,6 +23,7 @@ describe("projectStructureExplainability", () => {
     expect(ex.reason).toContain("Requirement");
     expect(ex.confidence).toBeGreaterThan(0);
     expect(ex.confidenceLabel).toBeTruthy();
+    expect(ex.confidenceReason).toBeTruthy();
     expect(ex.createdBy).toContain("AI Structure Engine");
     expect(ex.createdFrom.messageId).toBe("msg-1");
     expect(ex.sourceEvent.eventType).toBe("conversation.message_created");

@@ -22,6 +22,7 @@ function parseExplainability(raw: unknown): StructureCandidateRow["explainabilit
     confidence: Number(e.confidence ?? 0),
     confidenceLabel: label,
     reason: String(e.reason ?? ""),
+    confidenceReason: String(e.confidenceReason ?? ""),
     sourceConversation:
       sc && typeof sc === "object" && !Array.isArray(sc)
         ? {

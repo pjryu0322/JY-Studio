@@ -6,6 +6,6 @@ export async function getProjectGraphSnapshotWithExplainability(
   filters?: Parameters<typeof getProjectGraphSnapshot>[1],
 ) {
   const { nodes, edges } = await getProjectGraphSnapshot(projectId, filters);
-  const enrichedNodes = await enrichGraphNodesWithExplainability(projectId, nodes);
+  const enrichedNodes = await enrichGraphNodesWithExplainability(projectId, nodes, edges);
   return { nodes: enrichedNodes, edges };
 }

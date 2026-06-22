@@ -65,6 +65,8 @@ export type RequirementsIdeationChatPanelProps = Readonly<{
   chatHeaderLeading?: ReactNode;
   /** CodeTask LLM 정제 요약 옆: 전체 프롬프트 클립보드 복사 */
   onCopyAllCodeTaskPrompts?: () => Promise<boolean>;
+  knowledgeGraphProjectId?: string;
+  scrollToMessageId?: string | null;
 }>;
 
 export function RequirementsIdeationChatPanel({
@@ -107,6 +109,8 @@ export function RequirementsIdeationChatPanel({
   onOpenPromptTimeline,
   chatHeaderLeading,
   onCopyAllCodeTaskPrompts,
+  knowledgeGraphProjectId,
+  scrollToMessageId,
 }: RequirementsIdeationChatPanelProps) {
   const showTypingIndicator = useMemo(() => {
     if (quickDesignConfirmPending) return false;
@@ -207,6 +211,8 @@ export function RequirementsIdeationChatPanel({
         promptTimeline={promptTimeline}
         onOpenPromptTimeline={onOpenPromptTimeline}
         onCopyAllCodeTaskPrompts={onCopyAllCodeTaskPrompts}
+        knowledgeGraphProjectId={knowledgeGraphProjectId}
+        scrollToMessageId={scrollToMessageId}
         onInsertComposerPrompt={onInsertComposerPrompt}
         onInterviewSuggestionPick={onInterviewSuggestionPick}
         onSetReplyTo={(messageId, preview) => {

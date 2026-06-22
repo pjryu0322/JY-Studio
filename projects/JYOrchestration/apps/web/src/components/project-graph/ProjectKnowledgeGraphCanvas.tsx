@@ -8,6 +8,7 @@ import {
   type ProjectGraphEdgeUi,
   type ProjectGraphNodeUi,
 } from "@/lib/project-graph/projectGraphLayout";
+import type { GraphImpactZones } from "@/lib/project-graph/projectGraphExploration";
 
 const NODE_R = 22;
 
@@ -28,6 +29,8 @@ export function ProjectKnowledgeGraphCanvas({
   edges,
   selectedNodeId,
   selectedEdgeId,
+  highlightNodeIds,
+  impactZones,
   onSelectNode,
   onSelectEdge,
   width,
@@ -37,6 +40,8 @@ export function ProjectKnowledgeGraphCanvas({
   readonly edges: readonly ProjectGraphEdgeUi[];
   readonly selectedNodeId: string | null;
   readonly selectedEdgeId: string | null;
+  readonly highlightNodeIds?: ReadonlySet<string>;
+  readonly impactZones?: GraphImpactZones | null;
   readonly onSelectNode: (id: string | null) => void;
   readonly onSelectEdge: (id: string | null) => void;
   readonly width: number;
@@ -146,12 +151,26 @@ export function ProjectKnowledgeGraphCanvas({
             const pos = positions.get(node.id);
             if (!pos) return null;
             const selected = selectedNodeId === node.id;
+            const highlighted = highlightNodeIds?.has(node.id) ?? false;
+            const impactD1 = impactZones?.depth1.has(node.id) ?? false;
+            const impactD2 = impactZones?.depth2.has(node.id) ?? false;
             const fill = nodeColor(node.nodeType);
+            const stroke = selected
+              ? "#fbbf24"
+              : highlighted
+                ? "#38bdf8"
+                : impactD1
+                  ? "#f97316"
+                  : impactD2
+                    ? "#fb923c"
+                    : "#e2e8f0";
+            const strokeWidth = selected ? 3 : highlighted || impactD1 ? 2.5 : impactD2 ? 2 : 1;
+            const opacity = highlighted || selected || impactD1 || impactD2 ? 1 : 0.92;
             return (
               <g
                 key={node.id}
                 transform={`translate(${pos.x} ${pos.y})`}
-                style={{ cursor: "pointer" }}
+                style={{ cursor: "pointer", opacity }}
                 onClick={(ev) => {
                   ev.stopPropagation();
                   onSelectNode(node.id);
@@ -161,8 +180,8 @@ export function ProjectKnowledgeGraphCanvas({
                 <circle
                   r={NODE_R}
                   fill={fill}
-                  stroke={selected ? "#fbbf24" : "#e2e8f0"}
-                  strokeWidth={selected ? 3 : 1}
+                  stroke={stroke}
+                  strokeWidth={strokeWidth}
                 />
                 <text
                   y={NODE_R + 14}

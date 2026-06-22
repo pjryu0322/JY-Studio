@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -46,6 +47,7 @@ import {
 import { useChatTextSelectionToolbar } from "@/components/workspace/useChatTextSelectionToolbar";
 import { resolveInitialProposalQuickReplyAction } from "@/lib/requirements/preProjectSingleChatInitialProposal";
 import { normalizeRequirementsChatSelectionText } from "@/lib/requirements/requirementsChatSelection";
+import { buildKnowledgeGraphHref } from "@/lib/project-graph/projectGraphExploration";
 
 function aiCardShell(tone: "default" | "notice" | "error"): CSSProperties {
   const base = workspaceStandardChatBubbleShell("ai");
@@ -134,6 +136,8 @@ export function RequirementsChatPanel({
   promptTimeline,
   onOpenPromptTimeline,
   onCopyAllCodeTaskPrompts,
+  knowledgeGraphProjectId,
+  scrollToMessageId,
 }: {
   readonly messages: readonly RequirementsMessage[] | null;
   readonly composer: ReactNode;
@@ -174,10 +178,15 @@ export function RequirementsChatPanel({
   readonly onOpenPromptTimeline?: () => void;
   /** Quick Design 구현준비 메시지: 전체 CodeTask Cursor 프롬프트 일괄 복사 */
   readonly onCopyAllCodeTaskPrompts?: () => Promise<boolean>;
+  /** Graph ↔ Chat: 프로젝트 지식 그래프 링크 */
+  readonly knowledgeGraphProjectId?: string;
+  /** Graph에서 대화로 돌아올 때 스크롤할 메시지 ID */
+  readonly scrollToMessageId?: string | null;
 }) {
   const showScreenLabels = useShowScreenLabels();
   const endRef = useWorkspaceScrollToEnd(`${(messages?.length ?? 0)}-${typingIndicator ? 1 : 0}`);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [deepLinkHighlightMessageId, setDeepLinkHighlightMessageId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const headerRef = useRef<HTMLDivElement | null>(null);
   /** 원문 messageId → 다음에 스크롤할 답글 인덱스(순환) */
@@ -192,6 +201,15 @@ export function RequirementsChatPanel({
   );
 
   const canReply = Boolean(onSetReplyTo);
+
+  useEffect(() => {
+    const mid = String(scrollToMessageId ?? "").trim();
+    if (!mid || !messages?.length) return;
+    const el = messageRefs.current.get(mid);
+    if (!el) return;
+    setDeepLinkHighlightMessageId(mid);
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [scrollToMessageId, messages]);
 
   const shouldLogSpeakerBinding = useMemo(() => {
     return process.env.NODE_ENV !== "production" || String(process.env.NEXT_PUBLIC_JY_SPEAKER_BIND_LOG ?? "").trim() === "1";
@@ -517,10 +535,23 @@ export function RequirementsChatPanel({
                 }}
                 aria-label="메시지 작업"
               >
+                {knowledgeGraphProjectId && (mine || m.role === "human") ? (
+                  <Link
+                    href={buildKnowledgeGraphHref(knowledgeGraphProjectId, { sourceMessageId: m.id })}
+                    style={{ ...iconActionBtn, fontSize: 11, fontWeight: 800, textDecoration: "none", color: t.primary }}
+                    title="구조 보기"
+                  >
+                    구조
+                  </Link>
+                ) : null}
                 {headerReplyBtn}
                 {headerCopyBtn}
               </div>
             );
+            const messageDeepLinkStyle =
+              deepLinkHighlightMessageId === m.id
+                ? { boxShadow: `0 0 0 2px ${t.primary}`, borderRadius: 12 }
+                : undefined;
             const headerRowWithCopy: CSSProperties = {
               ...WORKSPACE_STANDARD_CHAT_HEADER_STYLE,
               width: "100%",
@@ -570,6 +601,7 @@ export function RequirementsChatPanel({
                     width: "100%",
                     minWidth: 0,
                     position: "relative",
+                    ...messageDeepLinkStyle,
                   }}
                   onMouseEnter={() => setHoveredId(m.id)}
                   onMouseLeave={() => setHoveredId((cur) => (cur === m.id ? null : cur))}
@@ -622,7 +654,7 @@ export function RequirementsChatPanel({
                     }
                     messageRefs.current.set(m.id, el);
                   }}
-                  style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "fit-content", minWidth: 0, position: "relative" }}
+                  style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "fit-content", minWidth: 0, position: "relative", ...messageDeepLinkStyle }}
                   onMouseEnter={() => setHoveredId(m.id)}
                   onMouseLeave={() => setHoveredId((cur) => (cur === m.id ? null : cur))}
                 >
@@ -720,7 +752,7 @@ export function RequirementsChatPanel({
                     }
                     messageRefs.current.set(m.id, el);
                   }}
-                  style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "100%", minWidth: 0 }}
+                  style={{ justifySelf: "start", maxWidth: "min(100%, 620px)", width: "100%", minWidth: 0, ...messageDeepLinkStyle }}
                 >
                   <div
                     style={{ ...aiCardShell(tone), position: "relative" }}

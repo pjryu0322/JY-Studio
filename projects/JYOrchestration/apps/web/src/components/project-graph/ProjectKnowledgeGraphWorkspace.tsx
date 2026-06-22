@@ -2,17 +2,38 @@
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { ProjectKnowledgeGraphCanvas } from "@/components/project-graph/ProjectKnowledgeGraphCanvas";
-import { ProjectGraphNodeDetailPanel } from "@/components/project-graph/ProjectGraphNodeDetailPanel";
+import {
+  ProjectGraphNodeDetailPanel,
+  ProjectGraphRelatedExplorerStrip,
+} from "@/components/project-graph/ProjectGraphNodeDetailPanel";
 import { fetchProjectGraph, type ProjectGraphEdgeDto, type ProjectGraphNodeDto } from "@/lib/project-graph/projectGraphClient";
 import { filterGraphNodes } from "@/lib/project-graph/projectGraphLayout";
+import {
+  applyGraphExplorationQuery,
+  buildUndirectedAdjacency,
+  collectNeighbors,
+  computeImpactZones,
+  findGraphNodeIdsForSourceMessageId,
+  parseGraphQuestionQuery,
+} from "@/lib/project-graph/projectGraphExploration";
 import { requirementsWorkspaceMainRowStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 
 const LIFECYCLE_OPTIONS = ["", "PROJECTED", "APPROVED", "CANDIDATE"] as const;
 
+const QUESTION_HINTS = [
+  "왜 생성되었는가?",
+  "어떤 대화에서 생성되었는가?",
+  "어떤 기능과 연결되는가?",
+  "어떤 화면에 영향을 주는가?",
+  "어떤 Review가 존재하는가?",
+] as const;
+
 export function ProjectKnowledgeGraphWorkspace({ projectId }: { readonly projectId: string }) {
+  const searchParams = useSearchParams();
   const { effectiveLayout } = useWorkspaceMode();
   const isMobile = effectiveLayout === "MOBILE";
 
@@ -23,6 +44,9 @@ export function ProjectKnowledgeGraphWorkspace({ projectId }: { readonly project
   const [search, setSearch] = useState("");
   const [nodeTypeFilter, setNodeTypeFilter] = useState("");
   const [lifecycleFilter, setLifecycleFilter] = useState("");
+  const [edgeTypeFilter, setEdgeTypeFilter] = useState("");
+  const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,24 +70,89 @@ export function ProjectKnowledgeGraphWorkspace({ projectId }: { readonly project
     void reload();
   }, [reload]);
 
+  useEffect(() => {
+    const focus = String(searchParams?.get("focusNodeId") ?? "").trim();
+    const sourceMessageId = String(searchParams?.get("sourceMessageId") ?? "").trim();
+    if (nodes.length === 0) return;
+
+    if (focus) {
+      setFocusNodeId(focus);
+      setSelectedNodeId(focus);
+      setExpandedNodeIds(new Set(collectNeighbors(focus, buildUndirectedAdjacency(edges))));
+      return;
+    }
+    if (sourceMessageId) {
+      const ids = findGraphNodeIdsForSourceMessageId(nodes, sourceMessageId);
+      if (ids[0]) {
+        setFocusNodeId(ids[0]);
+        setSelectedNodeId(ids[0]);
+        setExpandedNodeIds(new Set(collectNeighbors(ids[0], buildUndirectedAdjacency(edges))));
+      }
+    }
+  }, [searchParams, nodes, edges]);
+
+  const adjacency = useMemo(() => buildUndirectedAdjacency(edges), [edges]);
+  const edgeTypes = useMemo(() => [...new Set(edges.map((e) => e.edgeType))].sort(), [edges]);
   const nodeTypes = useMemo(() => [...new Set(nodes.map((n) => n.nodeType))].sort(), [nodes]);
 
-  const filteredNodes = useMemo(
-    () => filterGraphNodes(nodes, { search, nodeType: nodeTypeFilter, lifecycle: lifecycleFilter }),
-    [nodes, search, nodeTypeFilter, lifecycleFilter],
-  );
+  const explorationQuery = useMemo(() => parseGraphQuestionQuery(search), [search]);
+  const explored = useMemo(() => applyGraphExplorationQuery(nodes, explorationQuery), [nodes, explorationQuery]);
 
-  const visibleNodeIds = useMemo(() => new Set(filteredNodes.map((n) => n.id)), [filteredNodes]);
+  const filteredNodes = useMemo(() => {
+    let list = explored.nodes;
+    list = filterGraphNodes(list, { nodeType: nodeTypeFilter || explorationQuery.nodeTypeFilter, lifecycle: lifecycleFilter });
+    if (focusNodeId) {
+      const visible = new Set<string>([focusNodeId, ...expandedNodeIds]);
+      list = list.filter((n) => visible.has(n.id));
+    }
+    return list;
+  }, [explored.nodes, nodeTypeFilter, lifecycleFilter, explorationQuery.nodeTypeFilter, focusNodeId, expandedNodeIds]);
 
-  const visibleEdges = useMemo(
-    () => edges.filter((e) => visibleNodeIds.has(e.fromNodeId) && visibleNodeIds.has(e.toNodeId)),
-    [edges, visibleNodeIds],
-  );
+  const filteredEdges = useMemo(() => {
+    const visibleNodeIds = new Set(filteredNodes.map((n) => n.id));
+    return edges.filter((e) => {
+      if (!visibleNodeIds.has(e.fromNodeId) || !visibleNodeIds.has(e.toNodeId)) return false;
+      if (edgeTypeFilter && e.edgeType !== edgeTypeFilter) return false;
+      if (explorationQuery.edgeTypeFilter && e.edgeType !== explorationQuery.edgeTypeFilter) return false;
+      return true;
+    });
+  }, [edges, filteredNodes, edgeTypeFilter, explorationQuery.edgeTypeFilter]);
 
-  const selectedNode = filteredNodes.find((n) => n.id === selectedNodeId) ?? nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const selectedNode =
+    filteredNodes.find((n) => n.id === selectedNodeId) ?? nodes.find((n) => n.id === selectedNodeId) ?? null;
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId) ?? null;
-
   const nodeTitleById = useMemo(() => new Map(nodes.map((n) => [n.id, n.title])), [nodes]);
+
+  const impact = useMemo(
+    () => (selectedNodeId ? computeImpactZones(selectedNodeId, adjacency, 2) : null),
+    [selectedNodeId, adjacency],
+  );
+
+  const handleSelectNode = useCallback((id: string | null) => {
+    setSelectedNodeId(id);
+    if (id) setSelectedEdgeId(null);
+  }, []);
+
+  const handleFocusNode = useCallback(() => {
+    if (!selectedNodeId) return;
+    setFocusNodeId(selectedNodeId);
+    setExpandedNodeIds(new Set(collectNeighbors(selectedNodeId, adjacency)));
+  }, [selectedNodeId, adjacency]);
+
+  const handleExpandNeighbors = useCallback(() => {
+    if (!selectedNodeId) return;
+    setExpandedNodeIds((prev) => {
+      const next = new Set(prev);
+      for (const n of collectNeighbors(selectedNodeId, adjacency)) next.add(n);
+      if (focusNodeId) next.add(focusNodeId);
+      return next;
+    });
+  }, [selectedNodeId, adjacency, focusNodeId]);
+
+  const handleCollapseFocus = useCallback(() => {
+    setFocusNodeId(null);
+    setExpandedNodeIds(new Set());
+  }, []);
 
   const shell: CSSProperties = {
     ...requirementsWorkspaceMainRowStyle,
@@ -94,23 +183,34 @@ export function ProjectKnowledgeGraphWorkspace({ projectId }: { readonly project
     minWidth: 120,
   };
 
+  const btnStyle: CSSProperties = {
+    fontSize: 12,
+    fontWeight: 700,
+    padding: "6px 10px",
+    borderRadius: 8,
+    border: `1px solid ${t.border}`,
+    background: t.bgPage,
+    cursor: "pointer",
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
       <div style={toolbar}>
         <input
           type="search"
-          placeholder="노드 검색"
+          placeholder="노드·질문 검색 (예: 왜 생성되었는가?)"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ ...inputStyle, flex: "1 1 160px", maxWidth: 280 }}
-          aria-label="노드 검색"
+          list="graph-question-hints"
+          style={{ ...inputStyle, flex: "1 1 200px", maxWidth: 360 }}
+          aria-label="그래프 질문 검색"
         />
-        <select
-          value={nodeTypeFilter}
-          onChange={(e) => setNodeTypeFilter(e.target.value)}
-          style={inputStyle}
-          aria-label="노드 타입 필터"
-        >
+        <datalist id="graph-question-hints">
+          {QUESTION_HINTS.map((q) => (
+            <option key={q} value={q} />
+          ))}
+        </datalist>
+        <select value={nodeTypeFilter} onChange={(e) => setNodeTypeFilter(e.target.value)} style={inputStyle} aria-label="노드 타입 필터">
           <option value="">모든 타입</option>
           {nodeTypes.map((nt) => (
             <option key={nt} value={nt}>
@@ -118,35 +218,36 @@ export function ProjectKnowledgeGraphWorkspace({ projectId }: { readonly project
             </option>
           ))}
         </select>
-        <select
-          value={lifecycleFilter}
-          onChange={(e) => setLifecycleFilter(e.target.value)}
-          style={inputStyle}
-          aria-label="라이프사이클 필터"
-        >
+        <select value={lifecycleFilter} onChange={(e) => setLifecycleFilter(e.target.value)} style={inputStyle} aria-label="라이프사이클 필터">
           {LIFECYCLE_OPTIONS.map((opt) => (
             <option key={opt || "all"} value={opt}>
               {opt || "모든 상태"}
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          onClick={() => void reload()}
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            padding: "6px 12px",
-            borderRadius: 8,
-            border: `1px solid ${t.border}`,
-            background: t.bgPage,
-            cursor: "pointer",
-          }}
-        >
+        <select value={edgeTypeFilter} onChange={(e) => setEdgeTypeFilter(e.target.value)} style={inputStyle} aria-label="관계 필터">
+          <option value="">모든 관계</option>
+          {edgeTypes.map((et) => (
+            <option key={et} value={et}>
+              {et}
+            </option>
+          ))}
+        </select>
+        <button type="button" onClick={handleFocusNode} disabled={!selectedNodeId} style={btnStyle}>
+          Focus
+        </button>
+        <button type="button" onClick={handleExpandNeighbors} disabled={!selectedNodeId} style={btnStyle}>
+          Neighbor Expand
+        </button>
+        <button type="button" onClick={handleCollapseFocus} style={btnStyle}>
+          Collapse
+        </button>
+        <button type="button" onClick={() => void reload()} style={btnStyle}>
           새로고침
         </button>
         <span style={{ fontSize: 11, color: t.textMuted }}>
-          {filteredNodes.length} nodes · {visibleEdges.length} edges
+          {filteredNodes.length} nodes · {filteredEdges.length} edges
+          {explorationQuery.kind === "question" ? " · 질문 모드" : ""}
         </span>
       </div>
 
@@ -157,32 +258,42 @@ export function ProjectKnowledgeGraphWorkspace({ projectId }: { readonly project
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 280 }}>
           <ProjectKnowledgeGraphCanvas
             nodes={filteredNodes}
-            edges={visibleEdges}
+            edges={filteredEdges}
             selectedNodeId={selectedNodeId}
             selectedEdgeId={selectedEdgeId}
-            onSelectNode={setSelectedNodeId}
+            highlightNodeIds={explored.highlightIds}
+            impactZones={impact}
+            onSelectNode={handleSelectNode}
             onSelectEdge={setSelectedEdgeId}
             width={960}
             height={520}
           />
+          <ProjectGraphRelatedExplorerStrip
+            node={selectedNode}
+            onSelectRelatedNodeId={(id) => {
+              handleSelectNode(id);
+              setFocusNodeId((prev) => prev ?? id);
+            }}
+          />
           {selectedEdge ? (
-            <div
-              style={{
-                padding: "8px 12px",
-                borderTop: `1px solid ${t.border}`,
-                fontSize: 12,
-                color: t.textSecondary,
-              }}
-            >
-              <strong>선택된 관계:</strong> {selectedEdge.edgeType} · {nodeTitleById.get(selectedEdge.fromNodeId) ?? selectedEdge.fromNodeId}{" "}
-              → {nodeTitleById.get(selectedEdge.toNodeId) ?? selectedEdge.toNodeId}
+            <div style={{ padding: "8px 12px", borderTop: `1px solid ${t.border}`, fontSize: 12, color: t.textSecondary }}>
+              <strong>선택된 관계:</strong> {selectedEdge.edgeType} · {nodeTitleById.get(selectedEdge.fromNodeId) ?? selectedEdge.fromNodeId} →{" "}
+              {nodeTitleById.get(selectedEdge.toNodeId) ?? selectedEdge.toNodeId}
             </div>
           ) : null}
         </div>
         {!isMobile ? (
-          <ProjectGraphNodeDetailPanel node={selectedNode} edges={edges} nodeTitleById={nodeTitleById} />
+          <ProjectGraphNodeDetailPanel
+            node={selectedNode}
+            impact={impact}
+            onSelectRelatedNodeId={(id) => handleSelectNode(id)}
+          />
         ) : selectedNode ? (
-          <ProjectGraphNodeDetailPanel node={selectedNode} edges={edges} nodeTitleById={nodeTitleById} />
+          <ProjectGraphNodeDetailPanel
+            node={selectedNode}
+            impact={impact}
+            onSelectRelatedNodeId={(id) => handleSelectNode(id)}
+          />
         ) : null}
       </div>
     </div>

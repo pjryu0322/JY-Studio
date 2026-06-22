@@ -20,6 +20,7 @@ export type StructureCandidateExplainability = Readonly<{
   readonly confidence: number;
   readonly confidenceLabel: StructureConfidenceLabel;
   readonly reason: string;
+  readonly confidenceReason: string;
   readonly sourceConversation: StructureCandidateSourceConversation;
   readonly sourceEvent: StructureCandidateSourceEventInfo;
   readonly createdBy: string;
@@ -78,6 +79,7 @@ function readStoredExplainability(meta: unknown): StructureCandidateExplainabili
     confidence: Number(e.confidence ?? 0),
     confidenceLabel: label,
     reason: String(e.reason ?? ""),
+    confidenceReason: String(e.confidenceReason ?? ""),
     sourceConversation: (e.sourceConversation as StructureCandidateSourceConversation) ?? {
       excerpt: "",
       messageId: null,
@@ -137,11 +139,19 @@ export function buildStructureCandidateExplainability(
   });
 
   const confidence = confidencePercentFromScore(score01);
+  const confidenceReason = buildConfidenceReason({
+    conversationText,
+    messageId,
+    eventType,
+    inferred,
+    score01,
+  });
 
   return {
     confidence,
     confidenceLabel: confidenceLabelFromScore(score01),
     reason,
+    confidenceReason,
     sourceConversation: {
       excerpt: excerpt ? `"${excerpt}"` : "—",
       messageId,
@@ -185,6 +195,25 @@ function buildExplainabilityReason(input: Readonly<{
     return `관련 대화 내용과 ${input.eventType || "이벤트"}를 근거로 ${nt} 후보를 생성했습니다.`;
   }
   return `Event Store의 ${input.eventType || "이벤트"}를 근거로 ${nt} 후보를 생성했습니다.`;
+}
+
+export function buildConfidenceReason(input: Readonly<{
+  conversationText: string;
+  messageId: string | null;
+  eventType: string;
+  inferred: boolean;
+  score01: number;
+}>): string {
+  const parts: string[] = [];
+  if (input.conversationText.length >= 40) parts.push("대화 발화가 충분히 길어 근거로 활용했습니다.");
+  else if (input.conversationText.length > 0) parts.push("짧은 대화 발화를 보조 근거로 사용했습니다.");
+  if (input.messageId) parts.push("원본 메시지 ID가 연결되어 있습니다.");
+  if (input.eventType && !input.inferred) parts.push(`이벤트 유형(${input.eventType})이 명확합니다.`);
+  if (input.inferred) parts.push("대화에서 추론(inferred)된 신호가 포함되어 신뢰도가 조정되었습니다.");
+  if (!input.conversationText) parts.push("직접 대화 인용이 없어 이벤트·메타데이터에 의존합니다.");
+  const pct = Math.round(input.score01 * 100);
+  parts.push(`종합 점수 ${pct}% 기준으로 confidence를 산정했습니다.`);
+  return parts.join(" ");
 }
 
 export function mergeExplainabilityOntoCandidateRow<

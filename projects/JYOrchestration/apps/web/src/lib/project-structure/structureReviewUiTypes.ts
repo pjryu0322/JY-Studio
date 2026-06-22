@@ -2,6 +2,7 @@ export type StructureCandidateExplainability = Readonly<{
   readonly confidence: number;
   readonly confidenceLabel: "High" | "Medium" | "Low";
   readonly reason: string;
+  readonly confidenceReason?: string;
   readonly sourceConversation: Readonly<{
     readonly excerpt: string;
     readonly messageId: string | null;

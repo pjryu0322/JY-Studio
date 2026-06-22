@@ -4,7 +4,10 @@ import {
   buildStructureCandidateExplainability,
   type ExplainabilityBuildInput,
 } from "@/lib/project-structure/projectStructureExplainability";
+import { listProjectGraphEdges, listProjectGraphNodes } from "@/lib/project-graph/projectGraphQuery";
+import { collectRelatedNodesForGraphNode } from "@/lib/project-structure/projectStructureExplainabilityRelations";
 import {
+  mergeExplainabilityContext,
   toStructureExplainability,
   type StructureExplainability,
 } from "@/lib/project-structure/structureExplainabilityModel";
@@ -37,6 +40,7 @@ export function resolveExplainabilityForCandidateRow(
     confidence: Number(row.confidence ?? 0),
     confidenceLabel: (row.confidenceLabel as "High" | "Medium" | "Low") ?? "Medium",
     reason: String(row.reason ?? ""),
+    confidenceReason: "",
     sourceConversation: row.sourceConversation ?? { excerpt: "—", messageId: null, href: null },
     sourceEvent: row.sourceEvent ?? { eventType: "", eventId: null },
     createdBy: row.createdBy ?? "AI Structure Engine",
@@ -103,11 +107,20 @@ export async function resolveExplainabilityForGraphNode(
 export async function enrichGraphNodesWithExplainability(
   projectId: string,
   nodes: readonly ProjectGraphNode[],
+  edges?: readonly import("@prisma/client").ProjectGraphEdge[],
 ) {
+  const pid = String(projectId).trim();
+  const edgeList =
+    edges ??
+    (await listProjectGraphEdges(pid, { limit: 500 }));
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
   const out = [];
   for (const node of nodes) {
-    const explainability = await resolveExplainabilityForGraphNode(projectId, node);
-    const lifecycleStatus = await resolveGraphNodeLifecycleStatus(projectId, node);
+    let explainability = await resolveExplainabilityForGraphNode(pid, node);
+    const relatedNodes = collectRelatedNodesForGraphNode(node.id, edgeList, nodeById);
+    explainability = mergeExplainabilityContext(explainability, { relatedNodes });
+    const lifecycleStatus = await resolveGraphNodeLifecycleStatus(pid, node);
     out.push({ ...node, explainability, lifecycleStatus });
   }
   return out;
@@ -150,6 +163,10 @@ export async function enrichStructureCandidatesWithExplainabilityService(
 
   const eventById = new Map(events.map((e) => [e.id, e]));
 
+  const graphNodes = await listProjectGraphNodes(pid, { limit: 500 });
+  const graphEdges = await listProjectGraphEdges(pid, { limit: 500 });
+  const graphNodeById = new Map(graphNodes.map((n) => [n.id, n]));
+
   return candidates.map((c) => {
     const event = c.sourceEventId ? eventById.get(c.sourceEventId) : null;
     const messageContent = event?.projectMessage?.content ?? null;
@@ -158,7 +175,7 @@ export async function enrichStructureCandidatesWithExplainabilityService(
       event?.projectMessage?.sourceMessageId ??
       (readPayloadString(event?.payload, "sourceMessageId") || null);
 
-    const explainability = resolveExplainabilityFromBuildInput({
+    let explainability = resolveExplainabilityFromBuildInput({
       projectId: pid,
       nodeType: c.nodeType,
       title: c.title,
@@ -169,6 +186,12 @@ export async function enrichStructureCandidatesWithExplainabilityService(
       messageContent,
       sourceMessageId,
     });
+
+    const graphNodeId = String(c.approvedGraphNodeId ?? "").trim();
+    if (graphNodeId && graphNodeById.has(graphNodeId)) {
+      const relatedNodes = collectRelatedNodesForGraphNode(graphNodeId, graphEdges, graphNodeById);
+      explainability = mergeExplainabilityContext(explainability, { relatedNodes });
+    }
 
     return {
       ...c,
