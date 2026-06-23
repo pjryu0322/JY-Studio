@@ -225,6 +225,7 @@ export function WorkspaceConversationHubIconRow({
 }: WorkspaceConversationHubIconRowProps) {
   const slotsUi = interviewUi ?? null;
   const progressLabel = slotsChromeLabels?.progressLabel ?? SERVICE_DEFINITION_PROGRESS_LABEL;
+  const progressCountLabel = slotsUi?.progressCountKind === "tasks" ? "완료" : "확정";
   const detailAriaLabel = slotsChromeLabels?.detailAriaLabel ?? SERVICE_DEFINITION_DETAIL_ARIA_LABEL;
   const quickTitle = quickExecutionTitle ?? QUICK_DESIGN_ACCESSIBLE_LABEL;
   const quickAria = quickExecutionAriaLabel ?? quickTitle;
@@ -506,7 +507,7 @@ export function WorkspaceConversationHubIconRow({
         </div>
       </>
     );
-  }, [showSlotsChrome, slotsOpen, slotsUi, slotsPos, slotsPanelSize, useOrchestrationGrid, progressLabel]);
+  }, [showSlotsChrome, slotsOpen, slotsUi, slotsPos, slotsPanelSize, useOrchestrationGrid, progressLabel, progressCountLabel]);
 
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -533,8 +534,6 @@ export function WorkspaceConversationHubIconRow({
       document.removeEventListener("mousedown", onDown);
     };
   }, [overflowOpen]);
-
-  const progressCountLabel = slotsUi?.progressCountKind === "tasks" ? "완료" : "확정";
 
   const quickButton =
     slotsUi ? (

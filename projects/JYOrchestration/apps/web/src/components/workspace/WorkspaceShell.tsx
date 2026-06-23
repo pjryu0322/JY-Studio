@@ -27,10 +27,12 @@ export function WorkspaceShell({
       role="region"
       aria-label="워크스페이스"
     >
-      <div className="chat-header">        {top ? <div className={styles.top}>{top}</div> : null}
+      <div className="chat-header">
+        {top ? <div className={styles.top}>{top}</div> : null}
       </div>
       {children}
-      <div className="chat-input">        <div className={styles.footer}>{footer}</div>
+      <div className="chat-input">
+        <div className={styles.footer}>{footer}</div>
       </div>
     </div>
   );

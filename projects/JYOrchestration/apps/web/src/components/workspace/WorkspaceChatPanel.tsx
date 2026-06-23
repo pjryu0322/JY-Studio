@@ -79,7 +79,8 @@ export function WorkspaceChatPanel({
   readonly onChatSelectionToWorkNote?: (text: string) => void;
   /** 기능 정리 등 — 채팅 헤더에 표시할 전담 AI */
   readonly workspaceAiMemberId?: WorkspaceAiMemberId;
-}) {  const endRef = useWorkspaceScrollToEnd(`${messages.length}-${loading ? 1 : 0}`);
+}) {
+  const endRef = useWorkspaceScrollToEnd(`${messages.length}-${loading ? 1 : 0}`);
   const chatRootRef = useRef<HTMLDivElement | null>(null);
   const selectionToolbarRef = useRef<HTMLDivElement | null>(null);
   const [selectionBubble, setSelectionBubble] = useState<SelectionBubble | null>(null);

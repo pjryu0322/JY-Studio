@@ -42,7 +42,8 @@ export function WorkspaceHubChatInputColumn({
   readonly targetPickerItems?: readonly ComposerAtAtPickerItem[];
   readonly inputTestId?: string;
   readonly menuZ?: number;
-}) {  const taRef = useRef<HTMLTextAreaElement | null>(null);
+}) {
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
   const { targetPickerOpen, normalizedTargetPickerItems, closeTargetPicker, pickTargetItem } = useComposerAtAtPicker({
     value,
     onChange,
@@ -65,7 +66,8 @@ export function WorkspaceHubChatInputColumn({
   const sendOff = Boolean(busy) || Boolean(disabled);
 
   return (
-    <WorkspaceComposerInputColumn>      <ComposerAtAtTargetPicker
+    <WorkspaceComposerInputColumn>
+      <ComposerAtAtTargetPicker
         open={targetPickerOpen}
         items={normalizedTargetPickerItems}
         onPick={pickTargetItem}
@@ -88,7 +90,8 @@ export function WorkspaceHubChatInputColumn({
           placeholder={placeholder ?? "메시지를 입력하세요 (Shift+Enter 줄바꿈)"}
           className={workspaceComposerTextareaClassName()}
         />
-        <div className={composerStyles.sendStack}>          <button
+        <div className={composerStyles.sendStack}>
+          <button
             type="button"
             disabled={sendOff}
             title="전송"

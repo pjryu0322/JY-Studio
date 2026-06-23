@@ -4,7 +4,8 @@ import type { ProblemInterviewState } from "@/lib/requirements/problemInterview"
 import type { OrchestrationSlotSummarySection } from "@/lib/requirements/singleChatOrchestrationSlots";
 import { RequirementsHeader } from "@/components/requirements/RequirementsHeader";
 import { WorkspaceConversationHubIconRow } from "@/components/workspace/WorkspaceConversationHubIconRow";
-export type RequirementsWorkspaceTopChromeProps = Readonly<{  showProjectWorkflowNav: boolean;
+export type RequirementsWorkspaceTopChromeProps = Readonly<{
+  showProjectWorkflowNav: boolean;
   resolvedProjectIdTrimmed: string;
   inIdeationStage: boolean;
   conversationStatus: "idle" | "loading" | "loaded" | "error";
@@ -41,7 +42,8 @@ export type RequirementsWorkspaceTopChromeProps = Readonly<{  showProjectWorkfl
   onOpenEnvironmentSettings?: () => void;
 }>;
 
-export function RequirementsWorkspaceTopChrome({  showProjectWorkflowNav,
+export function RequirementsWorkspaceTopChrome({
+  showProjectWorkflowNav,
   resolvedProjectIdTrimmed,
   inIdeationStage,
   conversationStatus,

@@ -48,7 +48,8 @@ function row(label: string, control: ReactNode) {
 const linkStyle: CSSProperties = { fontSize: 12, fontWeight: 800, color: "#2563eb", textDecoration: "none" };
 
 /** 플랫폼 설정 본문(`/settings` 페이지 및 기타에서 재사용). */
-export function SettingsPanelBody() {  const prefs = useGlobalPreferences();
+export function SettingsPanelBody() {
+  const prefs = useGlobalPreferences();
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [sessionPresent, setSessionPresent] = useState(false);
   const pathname = usePathname() || "/";

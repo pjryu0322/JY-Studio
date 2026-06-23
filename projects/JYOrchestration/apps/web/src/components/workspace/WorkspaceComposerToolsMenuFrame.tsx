@@ -152,7 +152,8 @@ export function WorkspaceComposerToolsMenuFrame({
   menuOpen: controlledOpen,
   onMenuOpenChange,
   onPlusClick,
-}: WorkspaceComposerToolsMenuFrameProps) {  const plusRef = useRef<HTMLButtonElement | null>(null);
+}: WorkspaceComposerToolsMenuFrameProps) {
+  const plusRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const narrowModalRef = useRef<HTMLDivElement | null>(null);
   const menuId = useId();
@@ -195,7 +196,8 @@ export function WorkspaceComposerToolsMenuFrame({
 
   return (
     <>
-      <div className="relative" style={{ position: "relative" }}>        <WorkspaceComposerPlusTrigger
+      <div className="relative" style={{ position: "relative" }}>
+        <WorkspaceComposerPlusTrigger
           plusRef={plusRef}
           menuOpen={menuOpen}
           menuId={menuId}
