@@ -222,12 +222,22 @@ export async function postDeleteMessengerChatRoomWithLinkedProject(
   };
 }
 
-export async function postMessengerChatRoomLeave(roomId: string): Promise<void> {
+export async function postMessengerChatRoomLeave(
+  roomId: string,
+): Promise<{ readonly message: string; readonly roomDeleted: boolean }> {
   const res = await credentialsIncludeFetch(`/api/chat-rooms/${encRoomId(roomId)}/leave`, { method: "POST" });
-  const json = (await res.json()) as { success?: boolean; message?: string };
+  const json = (await res.json()) as {
+    success?: boolean;
+    message?: string;
+    data?: { roomDeleted?: boolean };
+  };
   if (!res.ok || !json.success) {
     throw new Error(json.message || "나가기에 실패했습니다.");
   }
+  return {
+    message: json.message || "대화방에서 나갔습니다.",
+    roomDeleted: Boolean(json.data?.roomDeleted),
+  };
 }
 
 export async function postMessengerProjectDraft(roomId: string): Promise<ProjectFromChatDraftPayloadV1> {

@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { ProjectKnowledgeGraphModal } from "@/components/project-graph/ProjectKnowledgeGraphModal";
 import { ProjectRailCountBadge } from "@/components/layout/ProjectRailCountBadge";
 import type { PlatformTopNavMeState } from "@/components/layout/platformTopNav/usePlatformTopNavAuth";
 import {
@@ -32,8 +34,14 @@ export function ProjectRailSecondaryTools({
   projectWorkNotesCount,
 }: Props) {
   const pathname = usePathname() || "/";
+  const searchParams = useSearchParams();
   const pathOnly = (pathname.split("?")[0] || "/").trim() || "/";
   const knowledgePacksActive = pathOnly === "/knowledge-packs" || pathOnly.startsWith("/knowledge-packs/");
+  const knowledgeGraphActive =
+    pathOnly === `/projects/${effectiveProjectId}/knowledge-graph` ||
+    pathOnly.startsWith(`/projects/${encodeURIComponent(effectiveProjectId)}/knowledge-graph`);
+  const sourceMessageId = String(searchParams?.get("sourceMessageId") ?? "").trim() || null;
+  const [knowledgeGraphModalOpen, setKnowledgeGraphModalOpen] = useState(false);
   /** `/api/auth/me` 지연 시에도 지식팩 진입은 보이게(미로그인 확정 시에만 숨김). */
   const showKnowledgePacksLink = !meReady || Boolean(me);
 
@@ -59,6 +67,53 @@ export function ProjectRailSecondaryTools({
           <span style={platformRailNavPrimaryText}>멤버</span>
           <ProjectRailCountBadge count={projectMembersCount} />
         </Link>
+      ) : null}
+      {Boolean(me) ? (
+        <>
+          <button
+            type="button"
+            data-testid="platform-knowledge-graph-rail-project"
+            aria-label="지식 그래프 생성 현황"
+            title="Project Knowledge Graph 생성 현황"
+            onClick={() => setKnowledgeGraphModalOpen(true)}
+            style={{
+              ...platformRailNavTextCell,
+              ...(knowledgeGraphActive || knowledgeGraphModalOpen ? platformRailMessengerActiveShell : {}),
+              border: "none",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 4,
+              font: "inherit",
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <circle cx="6" cy="6" r="2" />
+              <circle cx="18" cy="6" r="2" />
+              <circle cx="12" cy="18" r="2" />
+              <path d="M8 7h8" />
+              <path d="M7 8l4 8" />
+              <path d="M17 8l-4 8" />
+            </svg>
+            <span
+              style={
+                knowledgeGraphActive || knowledgeGraphModalOpen
+                  ? platformRailMessengerActiveText
+                  : platformRailNavPrimaryText
+              }
+            >
+              그래프
+            </span>
+          </button>
+          <ProjectKnowledgeGraphModal
+            open={knowledgeGraphModalOpen}
+            projectId={effectiveProjectId}
+            sourceMessageId={sourceMessageId}
+            onClose={() => setKnowledgeGraphModalOpen(false)}
+          />
+        </>
       ) : null}
       {showKnowledgePacksLink ? (
         <Link

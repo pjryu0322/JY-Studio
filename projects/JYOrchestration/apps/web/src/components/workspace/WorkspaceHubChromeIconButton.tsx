@@ -64,6 +64,9 @@ export function WorkspaceHubChromeIconButton({
         e.stopPropagation();
         void onClick();
       }}
+      onMouseDown={(e) => {
+        e.preventDefault();
+      }}
       style={{
         position: "relative",
         width: 34,

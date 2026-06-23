@@ -119,6 +119,7 @@ export function WorkNotesPageClient() {
         selectNote={active.selectNote}
         createNote={active.createNote}
         deleteNote={active.deleteNote}
+        reorderNotes={active.reorderNotes}
         title={active.title}
         setTitle={active.setTitle}
         text={active.text}

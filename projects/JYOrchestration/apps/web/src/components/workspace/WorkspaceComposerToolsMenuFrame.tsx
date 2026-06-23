@@ -15,7 +15,7 @@ import { uiFixedViewportScrimButtonStyle } from "@/components/ui/fixedViewportSc
 import { useComposerNarrowBreakpoint } from "@/components/ui/breakpoints";
 import { WorkspaceComposerPlusTrigger } from "@/components/workspace/WorkspaceComposer";
 import {
-  WORKSPACE_HUB_CHAT_MENU_Z
+  WORKSPACE_HUB_CHAT_MENU_Z,
   workspaceComposerNarrowMenuInnerFlexStyle,
   workspaceComposerNarrowMenuModalStyle,
   workspaceComposerWideToolsPopoverStyle,

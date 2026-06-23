@@ -63,7 +63,7 @@ export async function persistRequirementsIdeationUserTurnBeforeAi(ctx: {
     lastPromptView: pv,
     lastPromptText: pv.copyText,
     lastPromptGeneratedAt: promptMetaIso,
-    lastUserDraftText: text,
+    lastUserDraftText: "",
     ...(problemInterviewSnapshot ? { problemInterview: problemInterviewSnapshot } : {}),
   });
   restoreProblemInterviewSnapshotIfClearedInRef(stateJsonRef, problemInterviewSnapshot, sendTraceId);

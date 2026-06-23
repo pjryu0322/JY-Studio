@@ -22,6 +22,7 @@ type WorkNoteRow = {
   title: string;
   content: string;
   visibility: string;
+  railSortOrder: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -57,7 +58,7 @@ export async function listWorkNotesForUser(params: { userId: string; projectId: 
       SELECT * FROM "work_notes"
       WHERE "userId" = ${uid}
         AND "projectId" IS NULL
-      ORDER BY "updatedAt" DESC
+      ORDER BY "railSortOrder" ASC, "updatedAt" DESC
     `
         )
       : await prisma.$queryRaw<WorkNoteRow[]>(
@@ -65,7 +66,7 @@ export async function listWorkNotesForUser(params: { userId: string; projectId: 
       SELECT * FROM "work_notes"
       WHERE "projectId" = ${String(params.projectId).trim()}
         AND "userId" = ${uid}
-      ORDER BY "updatedAt" DESC
+      ORDER BY "railSortOrder" ASC, "updatedAt" DESC
     `
         );
   return rows.map(toDto);
@@ -84,15 +85,23 @@ export async function createWorkNoteForUser(params: {
   const rows = pid
     ? await prisma.$queryRaw<WorkNoteRow[]>(
         Prisma.sql`
-      INSERT INTO "work_notes" ("id", "projectId", "userId", "title", "content", "visibility", "createdAt", "updatedAt")
-      VALUES (${id}, ${pid}, ${params.userId}, ${title}, ${content}, CAST('PRIVATE' AS "WorkNoteVisibility"), NOW(), NOW())
+      INSERT INTO "work_notes" ("id", "projectId", "userId", "title", "content", "visibility", "railSortOrder", "createdAt", "updatedAt")
+      VALUES (
+        ${id}, ${pid}, ${params.userId}, ${title}, ${content}, CAST('PRIVATE' AS "WorkNoteVisibility"),
+        (SELECT COALESCE(MIN("railSortOrder"), 0) - 1 FROM "work_notes" WHERE "userId" = ${params.userId} AND "projectId" = ${pid}),
+        NOW(), NOW()
+      )
       RETURNING *
     `
       )
     : await prisma.$queryRaw<WorkNoteRow[]>(
         Prisma.sql`
-      INSERT INTO "work_notes" ("id", "projectId", "userId", "title", "content", "visibility", "createdAt", "updatedAt")
-      VALUES (${id}, NULL, ${params.userId}, ${title}, ${content}, CAST('PRIVATE' AS "WorkNoteVisibility"), NOW(), NOW())
+      INSERT INTO "work_notes" ("id", "projectId", "userId", "title", "content", "visibility", "railSortOrder", "createdAt", "updatedAt")
+      VALUES (
+        ${id}, NULL, ${params.userId}, ${title}, ${content}, CAST('PRIVATE' AS "WorkNoteVisibility"),
+        (SELECT COALESCE(MIN("railSortOrder"), 0) - 1 FROM "work_notes" WHERE "userId" = ${params.userId} AND "projectId" IS NULL),
+        NOW(), NOW()
+      )
       RETURNING *
     `
       );
@@ -134,6 +143,41 @@ export async function deleteWorkNoteForOwner(params: { id: string; userId: strin
     `
   );
   return rows.length > 0;
+}
+
+/** 메모 레일 순서 — `orderedIds`는 해당 scope의 전체 메모 id(순서대로) */
+export async function reorderWorkNotesForUser(params: {
+  userId: string;
+  projectId: string | null;
+  orderedIds: readonly string[];
+}): Promise<boolean> {
+  const uid = params.userId.trim();
+  const ids = params.orderedIds.map((x) => String(x ?? "").trim()).filter(Boolean);
+  if (!uid || ids.length === 0) return false;
+
+  const pid =
+    params.projectId === null || !String(params.projectId).trim()
+      ? null
+      : String(params.projectId).trim();
+
+  const existing = await listWorkNotesForUser({ userId: uid, projectId: pid });
+  const allowed = new Set(existing.map((n) => n.id));
+  if (ids.length !== allowed.size || ids.some((id) => !allowed.has(id))) {
+    return false;
+  }
+
+  await prisma.$transaction(
+    ids.map((id, index) =>
+      prisma.$executeRaw(
+        Prisma.sql`
+          UPDATE "work_notes"
+          SET "railSortOrder" = ${index}, "updatedAt" = "updatedAt"
+          WHERE "id" = ${id} AND "userId" = ${uid}
+        `,
+      ),
+    ),
+  );
+  return true;
 }
 
 /** 메모 소유 확인 — `projectId`가 null이면 개인(비프로젝트) 메모 */

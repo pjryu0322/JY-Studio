@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { syncProjectGraphProjectionForProject } from "@/lib/project-graph/projectGraphProjection";
 import { getProjectGraphSnapshotWithExplainability } from "@/lib/project-graph/projectGraphSnapshotEnrich";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
@@ -28,6 +29,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const nodeType = request.nextUrl.searchParams.get("nodeType")?.trim() || undefined;
     const edgeType = request.nextUrl.searchParams.get("edgeType")?.trim() || undefined;
     const limitRaw = Number(request.nextUrl.searchParams.get("limit") ?? 200);
+    const syncGraph = request.nextUrl.searchParams.get("sync") === "true";
+
+    if (syncGraph) {
+      try {
+        await syncProjectGraphProjectionForProject(pid);
+      } catch (syncError) {
+        console.error("GET /api/projects/[projectId]/graph sync error:", syncError);
+      }
+    }
 
     const graph = await getProjectGraphSnapshotWithExplainability(pid, {
       nodeType,

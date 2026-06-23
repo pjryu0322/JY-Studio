@@ -455,16 +455,28 @@ function messengerMemberLeftSystemLine(displayName: string): string {
  * 누구나 탈퇴(USER 멤버십 해제).
  * 다른 사람이 남아 있으면 시스템 메시지를 남기고, 개설자 탈퇴 시 다음 USER에게 소유권을 넘깁니다.
  * USER가 본인만 남았을 때는 방을 삭제(단, 프로젝트 연결 방이면 금지).
+ * 이미 나갔거나 방이 없으면 멱등 성공.
  */
-export async function leaveChatRoomAsMember(roomId: string, userId: string): Promise<void> {
-  const room = await assertChatRoomAccess(roomId, userId);
+export async function leaveChatRoomAsMember(
+  roomId: string,
+  userId: string,
+): Promise<{ readonly roomDeleted: boolean }> {
+  const rid = roomId.trim();
   const uid = userId.trim();
-  const rid = room.id;
+  if (!rid || !uid) return { roomDeleted: false };
+
+  const room = await prisma.chatRoom.findFirst({
+    where: {
+      id: rid,
+      OR: [{ ownerUserId: uid }, { members: { some: { userId: uid, memberType: "USER" } } }],
+    },
+  });
+  if (!room) return { roomDeleted: false };
 
   const myMember = await prisma.chatRoomMember.findFirst({
     where: { chatRoomId: rid, userId: uid, memberType: "USER" },
   });
-  if (!myMember) throw new Error("NOT_A_MEMBER");
+  if (!myMember) return { roomDeleted: false };
 
   const userMembers = await prisma.chatRoomMember.findMany({
     where: { chatRoomId: rid, memberType: "USER" },
@@ -474,7 +486,7 @@ export async function leaveChatRoomAsMember(roomId: string, userId: string): Pro
   if (userMembers.length <= 1) {
     if (room.projectId) throw new Error("PROJECT_LINKED_CANNOT_LEAVE_ALONE");
     await prisma.chatRoom.delete({ where: { id: rid } });
-    return;
+    return { roomDeleted: true };
   }
 
   const leaveLine = messengerMemberLeftSystemLine(myMember.displayName);
@@ -514,6 +526,7 @@ export async function leaveChatRoomAsMember(roomId: string, userId: string): Pro
       data: { lastMessagePreview: preview, updatedAt: new Date() },
     });
   });
+  return { roomDeleted: false };
 }
 
 export async function saveProjectFromChatDraft(input: {

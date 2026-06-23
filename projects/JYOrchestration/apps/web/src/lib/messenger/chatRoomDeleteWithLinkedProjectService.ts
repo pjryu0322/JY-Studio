@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { runPrismaIgnoreMissingTable } from "@/lib/prisma/prismaOptionalTableOps";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildRequirementsConversationResetStateJson } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { resetProjectDownstreamFromPlanning } from "@/lib/requirements/planningResetCascadeService";
@@ -50,12 +51,22 @@ async function resetLinkedProjectDataForChatRoomDelete(
     warnings.push("implementationRuntimeResetPartial");
   }
 
+  const structureWipes = await Promise.all([
+    runPrismaIgnoreMissingTable(() =>
+      prisma.projectStructureCandidateEdge.deleteMany({ where: { projectId: pid } }),
+    ),
+    runPrismaIgnoreMissingTable(() => prisma.projectNodeLifecycle.deleteMany({ where: { projectId: pid } })),
+    runPrismaIgnoreMissingTable(() => prisma.projectMergeHistory.deleteMany({ where: { projectId: pid } })),
+    runPrismaIgnoreMissingTable(() =>
+      prisma.projectStructureCandidate.deleteMany({ where: { projectId: pid } }),
+    ),
+    runPrismaIgnoreMissingTable(() => clearProjectGraphProjection(prisma, pid)),
+  ]);
+  if (structureWipes.some((r) => r === "missing_table")) {
+    warnings.push("optionalProjectTablesSkipped");
+  }
+
   await prisma.$transaction(async (tx) => {
-    await tx.projectStructureCandidateEdge.deleteMany({ where: { projectId: pid } });
-    await tx.projectNodeLifecycle.deleteMany({ where: { projectId: pid } });
-    await tx.projectMergeHistory.deleteMany({ where: { projectId: pid } });
-    await tx.projectStructureCandidate.deleteMany({ where: { projectId: pid } });
-    await clearProjectGraphProjection(tx, pid);
     await tx.projectEvent.deleteMany({ where: { projectId: pid } });
     await tx.projectMessage.deleteMany({ where: { projectId: pid } });
     await tx.taskExecutionRun.deleteMany({ where: { projectId: pid } });
@@ -147,7 +158,19 @@ export async function deleteChatRoomWithLinkedProject(input: Readonly<{
       };
     }
 
-    await resetLinkedProjectDataForChatRoomDelete(projectId, warnings);
+    try {
+      await resetLinkedProjectDataForChatRoomDelete(projectId, warnings);
+    } catch (e) {
+      console.error("deleteChatRoomWithLinkedProject resetLinkedProjectData", e);
+      return {
+        ok: false,
+        roomDeleted: false,
+        linkedProjectReset: false,
+        projectId,
+        warnings: warnings.length ? warnings : undefined,
+        message: "삭제 중 문제가 발생했습니다. 다시 시도해 주세요.",
+      };
+    }
 
     const soft = await softDeleteProjectByOwner(projectId, uid);
     if (!soft.ok) {

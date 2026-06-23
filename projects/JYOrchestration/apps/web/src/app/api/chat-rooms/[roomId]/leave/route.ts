@@ -7,8 +7,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ roomId: st
   if (userId instanceof NextResponse) return userId;
   const { roomId } = await ctx.params;
   try {
-    await leaveChatRoomAsMember(roomId, userId);
-    return NextResponse.json({ success: true, message: "대화방에서 나갔습니다." });
+    const result = await leaveChatRoomAsMember(roomId, userId);
+    return NextResponse.json({
+      success: true,
+      message: "대화방에서 나갔습니다.",
+      data: { roomDeleted: result.roomDeleted },
+    });
   } catch (e) {
     if (e instanceof ChatRoomAccessError) {
       return NextResponse.json({ success: false, message: e.message }, { status: e.code === "NOT_FOUND" ? 404 : 403 });

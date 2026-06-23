@@ -317,6 +317,49 @@ export function useWorkNotesPanel(args: UseWorkNotesPanelArgs) {
     [flushActive, loadNotes, memoScope, projectId]
   );
 
+  const reorderNotes = useCallback(
+    async (orderedIds: readonly string[]) => {
+      const prev = notesRef.current;
+      const idSet = new Set(prev.map((n) => n.id));
+      const ids = orderedIds.map((x) => x.trim()).filter(Boolean);
+      if (ids.length !== prev.length || ids.some((id) => !idSet.has(id))) return;
+
+      const byId = new Map(prev.map((n) => [n.id, n] as const));
+      setNotes(ids.map((id) => byId.get(id)!));
+
+      const scopeBody =
+        memoScope === "USER"
+          ? { scope: "user" as const, orderedIds: ids }
+          : { projectId: String(projectId ?? "").trim(), orderedIds: ids };
+
+      try {
+        const res = await fetch("/api/work-notes/reorder", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(scopeBody),
+        });
+        const raw = await res.text();
+        let json: { success?: boolean; message?: string } = {};
+        try {
+          json = raw ? (JSON.parse(raw) as typeof json) : {};
+        } catch {
+          throw new Error("순서 저장 응답을 해석할 수 없습니다.");
+        }
+        if (!res.ok || !json.success) {
+          throw new Error(typeof json.message === "string" ? json.message : "순서를 저장하지 못했습니다.");
+        }
+        if (memoScope === "PROJECT" && String(projectId ?? "").trim()) {
+          notifyProjectWorkNotesRailRefresh(String(projectId).trim());
+        }
+      } catch (e) {
+        setNotes(prev);
+        setListError(e instanceof Error ? e.message : "순서를 저장하지 못했습니다.");
+      }
+    },
+    [memoScope, projectId],
+  );
+
   useEffect(() => {
     if (!enabled || !editorHydrated || !activeId) return;
     if (skipNextAutosave.current) {
@@ -337,6 +380,7 @@ export function useWorkNotesPanel(args: UseWorkNotesPanelArgs) {
     selectNote,
     createNote,
     deleteNote,
+    reorderNotes,
     title,
     setTitle,
     text,

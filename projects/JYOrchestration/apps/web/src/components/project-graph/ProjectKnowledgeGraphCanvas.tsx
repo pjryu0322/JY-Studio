@@ -50,12 +50,26 @@ export function ProjectKnowledgeGraphCanvas({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const dragRef = useRef<{ active: boolean; x: number; y: number }>({ active: false, x: 0, y: 0 });
+  const [nodeOffsets, setNodeOffsets] = useState<Record<string, { readonly dx: number; readonly dy: number }>>({});
+  const panDragRef = useRef<{ active: boolean; x: number; y: number }>({ active: false, x: 0, y: 0 });
+  const nodeDragRef = useRef<{ nodeId: string; x: number; y: number } | null>(null);
+  const [canvasCursor, setCanvasCursor] = useState<"grab" | "grabbing">("grab");
 
-  const positions = useMemo(
+  const layoutPositions = useMemo(
     () => layoutProjectGraphNodes(nodes, Math.max(width, 400), Math.max(height, 320)),
     [nodes, width, height],
   );
+
+  const positions = useMemo(() => {
+    const next = new Map(layoutPositions);
+    for (const node of nodes) {
+      const base = layoutPositions.get(node.id);
+      const off = nodeOffsets[node.id];
+      if (!base || !off) continue;
+      next.set(node.id, { x: base.x + off.dx, y: base.y + off.dy });
+    }
+    return next;
+  }, [layoutPositions, nodeOffsets, nodes]);
 
   const onWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
@@ -63,23 +77,59 @@ export function ProjectKnowledgeGraphCanvas({
     setZoom((z) => Math.min(2.5, Math.max(0.35, z * delta)));
   }, []);
 
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const nodeDrag = nodeDragRef.current;
+      if (nodeDrag) {
+        const dx = (e.clientX - nodeDrag.x) / zoom;
+        const dy = (e.clientY - nodeDrag.y) / zoom;
+        nodeDragRef.current = { ...nodeDrag, x: e.clientX, y: e.clientY };
+        setNodeOffsets((prev) => {
+          const cur = prev[nodeDrag.nodeId] ?? { dx: 0, dy: 0 };
+          return {
+            ...prev,
+            [nodeDrag.nodeId]: { dx: cur.dx + dx, dy: cur.dy + dy },
+          };
+        });
+        return;
+      }
+      if (!panDragRef.current.active) return;
+      const dx = e.clientX - panDragRef.current.x;
+      const dy = e.clientY - panDragRef.current.y;
+      panDragRef.current = { active: true, x: e.clientX, y: e.clientY };
+      setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
+    },
+    [zoom],
+  );
+
+  const endPointerDrag = useCallback(() => {
+    panDragRef.current.active = false;
+    nodeDragRef.current = null;
+    setCanvasCursor("grab");
+  }, []);
+
+  const onCanvasPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    dragRef.current = { active: true, x: e.clientX, y: e.clientY };
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+    panDragRef.current = { active: true, x: e.clientX, y: e.clientY };
+    setCanvasCursor("grabbing");
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
   }, []);
 
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!dragRef.current.active) return;
-    const dx = e.clientX - dragRef.current.x;
-    const dy = e.clientY - dragRef.current.y;
-    dragRef.current = { active: true, x: e.clientX, y: e.clientY };
-    setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
-  }, []);
-
-  const onPointerUp = useCallback(() => {
-    dragRef.current.active = false;
-  }, []);
+  const onNodePointerDown = useCallback(
+    (nodeId: string, e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      onSelectEdge(null);
+      if (selectedNodeId !== nodeId) {
+        onSelectNode(nodeId);
+        return;
+      }
+      nodeDragRef.current = { nodeId, x: e.clientX, y: e.clientY };
+      setCanvasCursor("grabbing");
+      (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    },
+    [onSelectEdge, onSelectNode, selectedNodeId],
+  );
 
   const shell: CSSProperties = {
     flex: 1,
@@ -89,7 +139,7 @@ export function ProjectKnowledgeGraphCanvas({
     background: "#0f172a",
     overflow: "hidden",
     position: "relative",
-    cursor: dragRef.current.active ? "grabbing" : "grab",
+    cursor: canvasCursor,
   };
 
   return (
@@ -100,14 +150,22 @@ export function ProjectKnowledgeGraphCanvas({
         height="100%"
         viewBox={`0 0 ${width} ${height}`}
         onWheel={onWheel}
-        onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerLeave={onPointerUp}
+        onPointerUp={endPointerDrag}
+        onPointerLeave={endPointerDrag}
         role="img"
         aria-label="Project knowledge graph"
       >
-        <rect width={width} height={height} fill="#0f172a" onClick={() => { onSelectNode(null); onSelectEdge(null); }} />
+        <rect
+          width={width}
+          height={height}
+          fill="#0f172a"
+          onPointerDown={onCanvasPointerDown}
+          onClick={() => {
+            onSelectNode(null);
+            onSelectEdge(null);
+          }}
+        />
         <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
           {edges.map((edge) => {
             const a = positions.get(edge.fromNodeId);
@@ -169,27 +227,18 @@ export function ProjectKnowledgeGraphCanvas({
             return (
               <g
                 key={node.id}
+                data-graph-node="1"
                 transform={`translate(${pos.x} ${pos.y})`}
-                style={{ cursor: "pointer", opacity }}
+                style={{ cursor: selected ? "grab" : "pointer", opacity }}
+                onPointerDown={(ev) => onNodePointerDown(node.id, ev)}
                 onClick={(ev) => {
                   ev.stopPropagation();
                   onSelectNode(node.id);
                   onSelectEdge(null);
                 }}
               >
-                <circle
-                  r={NODE_R}
-                  fill={fill}
-                  stroke={stroke}
-                  strokeWidth={strokeWidth}
-                />
-                <text
-                  y={NODE_R + 14}
-                  textAnchor="middle"
-                  fill="#e2e8f0"
-                  fontSize={11}
-                  fontWeight={600}
-                >
+                <circle r={NODE_R} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
+                <text y={NODE_R + 14} textAnchor="middle" fill="#e2e8f0" fontSize={11} fontWeight={600}>
                   {node.title.length > 18 ? `${node.title.slice(0, 16)}…` : node.title}
                 </text>
                 <text y={NODE_R + 28} textAnchor="middle" fill="#94a3b8" fontSize={9}>
@@ -212,7 +261,7 @@ export function ProjectKnowledgeGraphCanvas({
           borderRadius: 6,
         }}
       >
-        Zoom {Math.round(zoom * 100)}% · 드래그로 이동 · 휠로 확대/축소
+        Zoom {Math.round(zoom * 100)}% · 선택 노드 드래그 · 빈 곳 드래그로 이동 · 휠 확대/축소
       </div>
     </div>
   );

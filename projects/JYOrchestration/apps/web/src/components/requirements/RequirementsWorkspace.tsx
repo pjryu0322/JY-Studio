@@ -360,7 +360,8 @@ export function RequirementsWorkspace({
   readonly initialWorkflowNotice: string;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();  useRequirementsStageRouteRedirect(initialProjectId);
+  const searchParams = useSearchParams();
+  useRequirementsStageRouteRedirect(initialProjectId);
 
   const autoOpenPrototypePreview = useMemo(() => {
     const v = String(searchParams?.get("preview") ?? "").trim();
@@ -408,6 +409,10 @@ export function RequirementsWorkspace({
   const [aiConnPhase, setAiConnPhase] = useState<"checking" | "ready" | "no_key" | "error">("checking");
   const [aiConnDetail, setAiConnDetail] = useState<string | undefined>();
   const [aiInvokePending, setAiInvokePending] = useState(false);
+  const aiInvokePendingRef = useRef(false);
+  useEffect(() => {
+    aiInvokePendingRef.current = aiInvokePending;
+  }, [aiInvokePending]);
   const [typingIndicatorSpeakerLine, setTypingIndicatorSpeakerLine] = useState<string | null>(null);
   const [typingIndicatorResolvedSpeakerSource, setTypingIndicatorResolvedSpeakerSource] = useState<string | null>(null);
   const [aiLastInvoke, setAiLastInvoke] = useState<{ ok: boolean; at: string; detail?: string } | null>(null);
@@ -1363,6 +1368,7 @@ export function RequirementsWorkspace({
     setServiceFlow,
     setInput,
     setMembers,
+    shouldRestoreDraftInput: () => !requirementsSendFlightRef.current && !aiInvokePendingRef.current,
   });
 
   const composerPlaceholder = "메시지를 입력하세요";
@@ -1433,6 +1439,19 @@ export function RequirementsWorkspace({
       }
     };
   }, [input, resolvedProjectId, conversationStatus, persistStateJsonOnly]);
+
+  const clearComposerDraftAfterSend = useCallback(() => {
+    if (draftDebounceTimerRef.current) {
+      clearTimeout(draftDebounceTimerRef.current);
+      draftDebounceTimerRef.current = null;
+    }
+    stateJsonRef.current = mergeRequirementsStateJson(stateJsonRef.current, {
+      lastUserDraftText: "",
+    });
+    flushSync(() => {
+      setInput("");
+    });
+  }, []);
 
   const serviceFlowDraft = useRequirementsServiceFlowDraft({
     resolvedProjectId,
@@ -1961,10 +1980,6 @@ export function RequirementsWorkspace({
     }
     requirementsSendFlightRef.current = true;
     try {
-      if (draftDebounceTimerRef.current) {
-        clearTimeout(draftDebounceTimerRef.current);
-        draftDebounceTimerRef.current = null;
-      }
       const text = input.trim();
       if (!text || busy || aiInvokePending) return;
       if (
@@ -1979,9 +1994,7 @@ export function RequirementsWorkspace({
         return;
       }
       sendDraftRestoreRef.current = text;
-      flushSync(() => {
-        setInput("");
-      });
+      clearComposerDraftAfterSend();
       const sendTraceId = newIdeationSendTraceId();
       const hasAtAtMention = text.includes("@@");
       const replyToIdSnapshot = hasAtAtMention ? null : (replyTo?.id ?? null);
@@ -2024,6 +2037,7 @@ export function RequirementsWorkspace({
           persistRemote,
         });
         ideationSendDevLog("user-appended", `id=${sendTraceId}`);
+        void persistStateJsonOnly({ lastUserDraftText: "" });
         const ownerHint = detectOwnerHintFromText(text);
         if (ownerHint) {
           setTypingIndicatorSpeakerLine(speakerNameForOwner(ownerHint));
@@ -2118,26 +2132,44 @@ export function RequirementsWorkspace({
     showErrorToast,
     activeStage,
     project?.projectType,
+    clearComposerDraftAfterSend,
+    persistStateJsonOnly,
   ]);
 
   const runServiceFlowSend = useCallback(
     async (payload: ServiceDesignHarnessPayload) => {
       const text = input.trim();
+      if (!text || requirementsSendFlightRef.current) return;
+      requirementsSendFlightRef.current = true;
+      sendDraftRestoreRef.current = text;
+      clearComposerDraftAfterSend();
       const pick = interviewSuggestionPickRef.current;
       interviewSuggestionPickRef.current = null;
       const routerOverrides = interviewSuggestionPickToRouterOverrides(pick);
-      await dispatchServiceFlowSingleChatSend({
-        payload,
-        text,
-        quickAction: interviewSuggestionPickToQuickAction(pick),
-        quickActionLabel: interviewSuggestionPickToLabel(pick),
-        slotAction: interviewSuggestionPickToSlotAction(pick),
-        ...(routerOverrides ?? {}),
-        sendRefCurrent: serviceFlowSendRef.current,
-        onAfterDispatch: () => setInput(""),
-      });
+      try {
+        void persistStateJsonOnly({ lastUserDraftText: "" });
+        await dispatchServiceFlowSingleChatSend({
+          payload,
+          text,
+          quickAction: interviewSuggestionPickToQuickAction(pick),
+          quickActionLabel: interviewSuggestionPickToLabel(pick),
+          slotAction: interviewSuggestionPickToSlotAction(pick),
+          ...(routerOverrides ?? {}),
+          sendRefCurrent: serviceFlowSendRef.current,
+          onAfterDispatch: () => {},
+        });
+        sendDraftRestoreRef.current = null;
+      } catch (e) {
+        if (sendDraftRestoreRef.current) {
+          setInput(sendDraftRestoreRef.current);
+          sendDraftRestoreRef.current = null;
+        }
+        throw e;
+      } finally {
+        requirementsSendFlightRef.current = false;
+      }
     },
-    [input]
+    [input, clearComposerDraftAfterSend, persistStateJsonOnly],
   );
 
   const runFeaturePlanningSend = useCallback(
@@ -2146,68 +2178,101 @@ export function RequirementsWorkspace({
       if (payload.serviceDesignStage !== "feature-planning") return;
       const pid = resolvedProjectId.trim();
       const text = input.trim();
-      if (!pid || !text) return;
+      if (!pid || !text || requirementsSendFlightRef.current) return;
+
+      requirementsSendFlightRef.current = true;
+      sendDraftRestoreRef.current = text;
+      clearComposerDraftAfterSend();
 
       const pick = interviewSuggestionPickRef.current;
       interviewSuggestionPickRef.current = null;
       const quickAction = interviewSuggestionPickToQuickAction(pick);
       const quickLabel = interviewSuggestionPickToLabel(pick);
 
-      setInput("");
-
-      const nowIso = new Date().toISOString();
-      const baseMessages = roomRef.current.requirementsConversation.messages;
-
-      let mirroredUserTurn = false;
-      // Mirror user turn into requirementsConversation (single timeline).
-      if (
-        !shouldSkipFeaturePlanningMirror({
-          messages: baseMessages,
-          text,
-          mentionedAI: payload.mentionedAI,
-          nowIso,
-        })
-      ) {
-        const userMsg = buildFeaturePlanningMirroredUserTurn({
-          text,
-          payload,
-          speakerId: sessionUser?.id ?? "me",
-          speakerName: sessionUser?.name ?? "나",
-          createdAtIso: nowIso,
-        });
-        const nextRoom = patchRequirementsRoomConversationMessages(roomRef.current, pid, [...baseMessages, userMsg]);
-        setRoom(nextRoom);
-        await persistRemote(nextRoom, {}, { lastUserDraftText: "" });
-        mirroredUserTurn = true;
-      }
-
-      // Orchestration quick actions (화면 정의 등) — service-flow-analyze fast-path + 단일 타임라인 반영
-      const orchestrationDispatched = await dispatchServiceFlowSingleChatSend({
-        payload,
-        text,
-        quickAction,
-        quickActionLabel: quickLabel,
-        silentUserAppend: mirroredUserTurn,
-        sendRefCurrent: serviceFlowSendRef.current,
-        onAfterDispatch: () => {},
-      });
-      if (orchestrationDispatched.dispatched) return;
-
-      // Execute existing feature-planning logic (no rewrite).
-      const fn = featurePlanningSendRef.current;
-      if (!fn) {
-        showErrorToast("기능 정리 전송을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.");
-        return;
-      }
       try {
-        await fn(payload, text);
+        void persistStateJsonOnly({ lastUserDraftText: "" });
+
+        const nowIso = new Date().toISOString();
+        const baseMessages = roomRef.current.requirementsConversation.messages;
+
+        let mirroredUserTurn = false;
+        // Mirror user turn into requirementsConversation (single timeline).
+        if (
+          !shouldSkipFeaturePlanningMirror({
+            messages: baseMessages,
+            text,
+            mentionedAI: payload.mentionedAI,
+            nowIso,
+          })
+        ) {
+          const userMsg = buildFeaturePlanningMirroredUserTurn({
+            text,
+            payload,
+            speakerId: sessionUser?.id ?? "me",
+            speakerName: sessionUser?.name ?? "나",
+            createdAtIso: nowIso,
+          });
+          const nextRoom = patchRequirementsRoomConversationMessages(roomRef.current, pid, [...baseMessages, userMsg]);
+          setRoom(nextRoom);
+          await persistRemote(nextRoom, {}, { lastUserDraftText: "" });
+          mirroredUserTurn = true;
+        }
+
+        // Orchestration quick actions (화면 정의 등) — service-flow-analyze fast-path + 단일 타임라인 반영
+        const orchestrationDispatched = await dispatchServiceFlowSingleChatSend({
+          payload,
+          text,
+          quickAction,
+          quickActionLabel: quickLabel,
+          silentUserAppend: mirroredUserTurn,
+          sendRefCurrent: serviceFlowSendRef.current,
+          onAfterDispatch: () => {},
+        });
+        if (orchestrationDispatched.dispatched) {
+          sendDraftRestoreRef.current = null;
+          return;
+        }
+
+        // Execute existing feature-planning logic (no rewrite).
+        const fn = featurePlanningSendRef.current;
+        if (!fn) {
+          showErrorToast("기능 정리 전송을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+          if (sendDraftRestoreRef.current) {
+            setInput(sendDraftRestoreRef.current);
+            sendDraftRestoreRef.current = null;
+          }
+          return;
+        }
+        try {
+          await fn(payload, text);
+        } catch (e) {
+          if (sendDraftRestoreRef.current) {
+            setInput(sendDraftRestoreRef.current);
+            sendDraftRestoreRef.current = null;
+          }
+          throw e;
+        }
+        sendDraftRestoreRef.current = null;
       } catch (e) {
-        // restore input if stage-local send failed
-        setInput(text);
+        if (sendDraftRestoreRef.current) {
+          setInput(sendDraftRestoreRef.current);
+          sendDraftRestoreRef.current = null;
+        }
         throw e;
+      } finally {
+        requirementsSendFlightRef.current = false;
       }
     },
-    [resolvedProjectId, input, sessionUser?.id, sessionUser?.name, persistRemote, showErrorToast]
+    [
+      resolvedProjectId,
+      input,
+      sessionUser?.id,
+      sessionUser?.name,
+      persistRemote,
+      showErrorToast,
+      clearComposerDraftAfterSend,
+      persistStateJsonOnly,
+    ],
   );
 
   const appendFeaturePlanningAiTurnsToRequirementsConversation = useCallback(
@@ -2260,11 +2325,14 @@ export function RequirementsWorkspace({
     async (_harnessPayload: ServiceDesignHarnessPayload) => {
       const text = input.trim();
       const pid = resolvedProjectId.trim();
-      if (!text || busy || !pid) return;
-      flushSync(() => setInput(""));
+      if (!text || busy || !pid || requirementsSendFlightRef.current) return;
+      requirementsSendFlightRef.current = true;
+      sendDraftRestoreRef.current = text;
+      clearComposerDraftAfterSend();
       setBusy(true);
       setError(null);
       try {
+        void persistStateJsonOnly({ lastUserDraftText: "" });
         const userMsg = buildProductDefinitionUserMessage({
           text,
           sessionUserId: sessionUser?.id ?? "me",
@@ -2278,7 +2346,7 @@ export function RequirementsWorkspace({
             requirementsConversation: { ...r0.requirementsConversation, projectId: pid, messages: withUser },
           },
           {},
-          {},
+          { lastUserDraftText: "" },
         );
         const transcript = filterIdeationConversationMessages(withUser)
           .slice(-10)
@@ -2291,9 +2359,13 @@ export function RequirementsWorkspace({
         });
         if (!result.ok) {
           showErrorToast(result.message);
+          if (sendDraftRestoreRef.current) {
+            setInput(sendDraftRestoreRef.current);
+            sendDraftRestoreRef.current = null;
+          }
           return;
         }
-        await persistStateJsonOnly(result.requirementsStateJson);
+        await persistStateJsonOnly({ ...result.requirementsStateJson, lastUserDraftText: "" });
         const r1 = roomRef.current;
         const withAi = [...r1.requirementsConversation.messages, result.assistantMessage];
         await persistRemote(
@@ -2302,15 +2374,21 @@ export function RequirementsWorkspace({
             requirementsConversation: { ...r1.requirementsConversation, projectId: pid, messages: withAi },
           },
           {},
-          {},
+          { lastUserDraftText: "" },
         );
+        sendDraftRestoreRef.current = null;
         setFetchNonce((n) => n + 1);
         if (result.completedPlanning) {
           showSuccessToast("Product Definition을 확정했습니다. 기획 단계를 이어갈 수 있습니다.");
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Product Definition 전송 오류");
+        if (sendDraftRestoreRef.current) {
+          setInput(sendDraftRestoreRef.current);
+          sendDraftRestoreRef.current = null;
+        }
       } finally {
+        requirementsSendFlightRef.current = false;
         setBusy(false);
       }
     },
@@ -2324,6 +2402,7 @@ export function RequirementsWorkspace({
       persistStateJsonOnly,
       showErrorToast,
       showSuccessToast,
+      clearComposerDraftAfterSend,
     ],
   );
 
@@ -3768,7 +3847,8 @@ export function RequirementsWorkspace({
 
   const ideationStage = (
     <div key="ideation" style={{ display: "contents" }}>
-      <RequirementsIdeationChatPanel        conversationStatus={conversationStatus}
+      <RequirementsIdeationChatPanel
+        conversationStatus={conversationStatus}
         chatMessages={conversationMessages}
         participantAiMemberId={participantAiMemberId}
         aiInvokePending={aiInvokePending}
@@ -3825,7 +3905,8 @@ export function RequirementsWorkspace({
   );
 
   return (
-    <div style={requirementsWorkspaceShellStyle}>      <RequirementsCanvasHubDrawer
+    <div style={requirementsWorkspaceShellStyle}>
+      <RequirementsCanvasHubDrawer
         open={canvasHubOpen}
         items={canvasHubCatalog}
         onClose={() => setCanvasHubOpen(false)}
@@ -3996,7 +4077,8 @@ export function RequirementsWorkspace({
         error={errorToast}
       />
 
-      <RequirementsWorkspaceTopChrome        showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
+      <RequirementsWorkspaceTopChrome
+        showProjectWorkflowNav={Boolean(resolvedProjectId.trim())}
         resolvedProjectIdTrimmed={resolvedProjectId.trim()}
         inIdeationStage={inIdeationStage}
         conversationStatus={conversationStatus}

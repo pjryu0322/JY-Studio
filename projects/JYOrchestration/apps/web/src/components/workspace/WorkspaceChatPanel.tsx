@@ -171,7 +171,7 @@ export function WorkspaceChatPanel({
       <WorkspaceMessageList
         scrollRootRef={onChatSelectionToWorkNote ? chatRootRef : undefined}
         endRef={endRef}
-        beforeMessages=null
+        beforeMessages={null}
       >
       {!messages.length && !loading ? emptyHint : null}
       {messages.map((m) => {

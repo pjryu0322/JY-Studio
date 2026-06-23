@@ -52,6 +52,7 @@ export type RequirementsProjectLoadArgs = {
   readonly setServiceFlow: Dispatch<SetStateAction<RequirementsServiceFlowV1 | null>>;
   readonly setInput: Dispatch<SetStateAction<string>>;
   readonly setMembers: Dispatch<SetStateAction<MemberRow[]>>;
+  readonly shouldRestoreDraftInput?: () => boolean;
 };
 
 export function useRequirementsProjectLoad(args: RequirementsProjectLoadArgs) {
@@ -134,8 +135,10 @@ export function useRequirementsProjectLoad(args: RequirementsProjectLoadArgs) {
         const cur = (proj.description ?? "").trim();
         if (isProbablyOriginalProjectDescription(cur)) void p.persistStateJsonOnly({ originalProjectDescription: cur });
       }
-      if (typeof state.lastUserDraftText === "string" && state.lastUserDraftText.trim()) {
-        p.setInput(state.lastUserDraftText);
+      const composerDraftText =
+        typeof state.lastUserDraftText === "string" ? state.lastUserDraftText.trim() : "";
+      if (composerDraftText && p.shouldRestoreDraftInput?.() !== false) {
+        p.setInput(composerDraftText);
       }
       p.setConversationStatus("loaded");
 

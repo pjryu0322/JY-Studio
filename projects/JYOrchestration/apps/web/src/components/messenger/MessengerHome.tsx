@@ -38,9 +38,9 @@ export function MessengerHome() {
     readonly roomId: string;
     readonly variant: MessengerChatRoomDeleteModalVariant;
   } | null>(null);
-  const [deleteSuccessToast, setDeleteSuccessToast] = useState<string | null>(null);
+  const [listSuccessMessage, setListSuccessMessage] = useState<string | null>(null);
 
-  const loadRooms = useCallback(async () => {
+  const loadRooms = useCallback(async (): Promise<readonly MessengerChatRoomListRow[]> => {
     setListError(null);
     try {
       const result = await fetchMessengerChatRooms();
@@ -48,15 +48,17 @@ export function MessengerHome() {
         setRooms([]);
         if (result.status === 401) {
           router.replace(`/login?from=${encodeURIComponent("/")}`);
-          return;
+          return [];
         }
         setListError(result.message);
-        return;
+        return [];
       }
       setRooms([...result.rooms]);
+      return result.rooms;
     } catch {
       setRooms([]);
       setListError("네트워크 오류가 발생했습니다.");
+      return [];
     }
   }, [router]);
 
@@ -114,12 +116,13 @@ export function MessengerHome() {
     const roomId = deleteModal.roomId;
     setRoomListBusyId(roomId);
     setListError(null);
+    setListSuccessMessage(null);
     try {
       const result = await postDeleteMessengerChatRoomWithLinkedProject(roomId, {
         confirmDeleteLinkedProjectData: deleteModal.variant === "linkedProject",
       });
       setDeleteModal(null);
-      setDeleteSuccessToast(result.message);
+      setListSuccessMessage(result.message);
       await loadRooms();
     } catch (e) {
       setListError(e instanceof Error ? e.message : "삭제 중 문제가 발생했습니다. 다시 시도해 주세요.");
@@ -130,19 +133,30 @@ export function MessengerHome() {
 
   const leaveRoomFromList = useCallback(
     async (roomId: string) => {
+      if (roomListBusyId) return;
       if (!window.confirm("이 대화방에서 나가시겠습니까? 목록에서 사라지며, 다시 참여하려면 초대가 필요합니다.")) return;
       setRoomListBusyId(roomId);
       setListError(null);
+      setListSuccessMessage(null);
       try {
-        await postMessengerChatRoomLeave(roomId);
+        const result = await postMessengerChatRoomLeave(roomId);
+        setListSuccessMessage(result.message);
         await loadRooms();
       } catch (e) {
-        setListError(e instanceof Error ? e.message : "나가기 오류");
+        const msg = e instanceof Error ? e.message : "나가기 오류";
+        const refreshed = await loadRooms();
+        const stillListed = refreshed.some((r) => r.id === roomId);
+        if (!stillListed && msg.includes("접근할 수 없습니다")) {
+          setListSuccessMessage("대화방에서 나갔습니다.");
+          setListError(null);
+        } else {
+          setListError(msg);
+        }
       } finally {
         setRoomListBusyId(null);
       }
     },
-    [loadRooms],
+    [loadRooms, roomListBusyId],
   );
 
   const showChatList = panel === "chat" || panel === "aichat";
@@ -184,7 +198,7 @@ export function MessengerHome() {
               </Button>
             </div>
             {listError ? <InlineAlert variant="danger">{listError}</InlineAlert> : null}
-            {deleteSuccessToast ? <InlineAlert variant="success">{deleteSuccessToast}</InlineAlert> : null}
+            {listSuccessMessage ? <InlineAlert variant="success">{listSuccessMessage}</InlineAlert> : null}
             {rooms === null ? (
               <LoadingState />
             ) : rooms.length === 0 ? (

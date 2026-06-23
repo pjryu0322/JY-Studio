@@ -6,11 +6,16 @@ import { useSearchParams } from "next/navigation";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { ProjectKnowledgeGraphCanvas } from "@/components/project-graph/ProjectKnowledgeGraphCanvas";
+import { ProjectKnowledgeGraphActivityPanel } from "@/components/project-graph/ProjectKnowledgeGraphActivityPanel";
 import {
   ProjectGraphNodeDetailPanel,
   ProjectGraphRelatedExplorerStrip,
 } from "@/components/project-graph/ProjectGraphNodeDetailPanel";
 import { fetchProjectGraph, type ProjectGraphEdgeDto, type ProjectGraphNodeDto } from "@/lib/project-graph/projectGraphClient";
+import {
+  loadProjectGraphActivitySummary,
+  type ProjectGraphActivitySummary,
+} from "@/lib/project-graph/projectGraphActivityClient";
 import { filterGraphNodes } from "@/lib/project-graph/projectGraphLayout";
 import {
   applyGraphExplorationQuery,
@@ -32,10 +37,31 @@ const QUESTION_HINTS = [
   "어떤 Review가 존재하는가?",
 ] as const;
 
-export function ProjectKnowledgeGraphWorkspace({ projectId }: { readonly projectId: string }) {
+export function ProjectKnowledgeGraphWorkspace({
+  projectId,
+  variant = "page",
+  initialSourceMessageId = null,
+}: {
+  readonly projectId: string;
+  readonly variant?: "page" | "modal";
+  readonly initialSourceMessageId?: string | null;
+}) {
   const searchParams = useSearchParams();
+  const [clientReady, setClientReady] = useState(false);
+  useEffect(() => {
+    setClientReady(true);
+  }, []);
+
+  const isModal = variant === "modal";
+  const viewMode = clientReady && !isModal ? String(searchParams?.get("view") ?? "").trim() : "";
+  const activityView = isModal || viewMode === "activity";
+  const syncOnEntry =
+    clientReady && (isModal || searchParams?.get("sync") === "true");
+  const highlightSourceMessageId = clientReady
+    ? String(initialSourceMessageId ?? searchParams?.get("sourceMessageId") ?? "").trim() || null
+    : null;
   const { effectiveLayout } = useWorkspaceMode();
-  const isMobile = effectiveLayout === "MOBILE";
+  const isMobile = clientReady && effectiveLayout === "MOBILE";
 
   const [nodes, setNodes] = useState<ProjectGraphNodeDto[]>([]);
   const [edges, setEdges] = useState<ProjectGraphEdgeDto[]>([]);
@@ -49,6 +75,27 @@ export function ProjectKnowledgeGraphWorkspace({ projectId }: { readonly project
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activitySummary, setActivitySummary] = useState<ProjectGraphActivitySummary | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+
+  const reloadActivity = useCallback(
+    async (withSync: boolean) => {
+      const pid = projectId.trim();
+      if (!pid) return;
+      setActivityError(null);
+      setActivityLoading(true);
+      try {
+        const summary = await loadProjectGraphActivitySummary(pid, { sync: withSync });
+        setActivitySummary(summary);
+      } catch (e) {
+        setActivityError(e instanceof Error ? e.message : "생성 현황을 불러오지 못했습니다.");
+      } finally {
+        setActivityLoading(false);
+      }
+    },
+    [projectId],
+  );
 
   const reload = useCallback(async () => {
     const pid = projectId.trim();
@@ -67,10 +114,27 @@ export function ProjectKnowledgeGraphWorkspace({ projectId }: { readonly project
   }, [projectId]);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    if (!clientReady) return;
+    void (async () => {
+      const pid = projectId.trim();
+      if (!pid) return;
+      if (syncOnEntry) {
+        await fetch(`/api/projects/${encodeURIComponent(pid)}/graph?sync=true&limit=1`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+      }
+      await reload();
+    })();
+  }, [clientReady, projectId, syncOnEntry, reload]);
 
   useEffect(() => {
+    if (!clientReady || !activityView) return;
+    void reloadActivity(syncOnEntry);
+  }, [clientReady, activityView, projectId, syncOnEntry, reloadActivity]);
+
+  useEffect(() => {
+    if (!clientReady) return;
     const focus = String(searchParams?.get("focusNodeId") ?? "").trim();
     const sourceMessageId = String(searchParams?.get("sourceMessageId") ?? "").trim();
     if (nodes.length === 0) return;
@@ -89,7 +153,7 @@ export function ProjectKnowledgeGraphWorkspace({ projectId }: { readonly project
         setExpandedNodeIds(new Set(collectNeighbors(ids[0], buildUndirectedAdjacency(edges))));
       }
     }
-  }, [searchParams, nodes, edges]);
+  }, [clientReady, searchParams, nodes, edges]);
 
   const adjacency = useMemo(() => buildUndirectedAdjacency(edges), [edges]);
   const edgeTypes = useMemo(() => [...new Set(edges.map((e) => e.edgeType))].sort(), [edges]);
@@ -195,6 +259,18 @@ export function ProjectKnowledgeGraphWorkspace({ projectId }: { readonly project
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      {activityView ? (
+        <ProjectKnowledgeGraphActivityPanel
+          summary={activitySummary}
+          loading={activityLoading}
+          error={activityError}
+          highlightSourceMessageId={highlightSourceMessageId}
+          onRefresh={() => {
+            void reloadActivity(true);
+            void reload();
+          }}
+        />
+      ) : null}
       <div style={toolbar}>
         <input
           type="search"

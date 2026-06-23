@@ -180,7 +180,8 @@ export function RequirementsChatPanel({
   readonly knowledgeGraphProjectId?: string;
   /** Graph에서 대화로 돌아올 때 스크롤할 메시지 ID */
   readonly scrollToMessageId?: string | null;
-}) {  const endRef = useWorkspaceScrollToEnd(`${(messages?.length ?? 0)}-${typingIndicator ? 1 : 0}`);
+}) {
+  const endRef = useWorkspaceScrollToEnd(`${(messages?.length ?? 0)}-${typingIndicator ? 1 : 0}`);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [deepLinkHighlightMessageId, setDeepLinkHighlightMessageId] = useState<string | null>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -434,7 +435,8 @@ export function RequirementsChatPanel({
   const messageBody = (
     <>
           {messages === null ? (
-            <div style={{ fontSize: 13, color: "#71717a", marginBottom: 12 }}>              대화 이력을 불러오는 중입니다…
+            <div style={{ fontSize: 13, color: "#71717a", marginBottom: 12 }}>
+              대화 이력을 불러오는 중입니다…
             </div>
           ) : null}
 
@@ -528,6 +530,7 @@ export function RequirementsChatPanel({
                 }}
                 aria-label="메시지 작업"
               >
+                {headerReplyBtn}
                 {knowledgeGraphProjectId && (mine || m.role === "human") ? (
                   <Link
                     href={buildKnowledgeGraphHref(knowledgeGraphProjectId, { sourceMessageId: m.id })}
@@ -537,7 +540,6 @@ export function RequirementsChatPanel({
                     구조
                   </Link>
                 ) : null}
-                {headerReplyBtn}
                 {headerCopyBtn}
               </div>
             );
@@ -902,9 +904,7 @@ export function RequirementsChatPanel({
         <WorkspaceMessageList
           scrollRootRef={selectionToComposerEnabled ? chatRootRef : undefined}
           endRef={endRef}
-          beforeMessages=null
-            </>
-          }
+          beforeMessages={null}
         >
           {messageBody}
         </WorkspaceMessageList>

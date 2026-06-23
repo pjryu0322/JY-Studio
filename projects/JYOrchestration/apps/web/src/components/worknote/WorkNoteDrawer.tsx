@@ -23,6 +23,7 @@ import {
 import { escapeHtmlText, imageFileToJpegDataUrl, noteRawToEditorHtml } from "@/lib/worknote/workNoteEditorHtml";
 import { workNoteHtmlToPlainForSummary } from "@/lib/worknote/workNoteHtmlPlain";
 import { postWorkNoteSummarize } from "@/lib/worknote/workNotesSummarizeApi";
+import { reorderWorkNoteMemoIds } from "@/lib/worknote/workNoteMemoRailReorder";
 
 type PanelGeom = WorkNotePanelGeom;
 
@@ -53,6 +54,7 @@ export function WorkNoteDrawer(p: {
   readonly selectNote: (id: string) => void;
   readonly createNote: () => void;
   readonly deleteNote: (id: string) => void;
+  readonly reorderNotes: (orderedIds: readonly string[]) => void | Promise<void>;
   readonly title: string;
   readonly setTitle: (next: string) => void;
   readonly text: string;
@@ -71,6 +73,8 @@ export function WorkNoteDrawer(p: {
   const dragRef = useRef<{ kind: "move" | "resize"; sx: number; sy: number; g: PanelGeom } | null>(null);
   const [selectionBubble, setSelectionBubble] = useState<{ left: number; top: number; text: string } | null>(null);
   const [railHoverId, setRailHoverId] = useState<string | null>(null);
+  const [draggingMemoId, setDraggingMemoId] = useState<string | null>(null);
+  const [dragOverMemoId, setDragOverMemoId] = useState<string | null>(null);
   const [aiInsight, setAiInsight] = useState<WorkNoteAiInsight | null>(null);
   const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
   const [aiSummarizing, setAiSummarizing] = useState(false);
@@ -601,6 +605,9 @@ export function WorkNoteDrawer(p: {
               const label = workNoteMemoDisplayTitle(n.title);
               const showDelete = railHoverId === n.id || (isNarrow && active);
               const sw = workNoteMemoSwatchColors(n.id, active);
+              const canDrag = p.notes.length > 1 && !p.listLoading;
+              const isDragging = draggingMemoId === n.id;
+              const isDragOver = dragOverMemoId === n.id && draggingMemoId !== n.id;
               return (
                 <div
                   key={n.id}
@@ -610,27 +617,62 @@ export function WorkNoteDrawer(p: {
                     justifyContent: "center",
                     width: isNarrow ? "auto" : "100%",
                     flexShrink: 0,
+                    opacity: isDragging ? 0.45 : 1,
                   }}
                   onMouseEnter={() => setRailHoverId(n.id)}
                   onMouseLeave={() => setRailHoverId((cur) => (cur === n.id ? null : cur))}
+                  onDragOver={(e) => {
+                    if (!canDrag || !draggingMemoId) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    setDragOverMemoId(n.id);
+                  }}
+                  onDragLeave={() => {
+                    setDragOverMemoId((cur) => (cur === n.id ? null : cur));
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const sourceId = e.dataTransfer.getData("text/plain") || draggingMemoId;
+                    setDragOverMemoId(null);
+                    setDraggingMemoId(null);
+                    if (!sourceId || !canDrag) return;
+                    const next = reorderWorkNoteMemoIds(
+                      p.notes.map((x) => x.id),
+                      sourceId,
+                      n.id,
+                    );
+                    if (next) void p.reorderNotes(next);
+                  }}
                 >
                   <button
                     type="button"
+                    draggable={canDrag}
+                    onDragStart={(e) => {
+                      if (!canDrag) return;
+                      setDraggingMemoId(n.id);
+                      e.dataTransfer.setData("text/plain", n.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragEnd={() => {
+                      setDraggingMemoId(null);
+                      setDragOverMemoId(null);
+                    }}
                     onClick={() => void handleSelectNote(n.id)}
-                    title={label}
+                    title={canDrag ? `${label} — 드래그하여 순서 변경` : label}
                     aria-label={label}
                     style={{
                       width: 40,
                       height: 40,
                       borderRadius: 10,
                       borderStyle: "solid",
-                      borderWidth: active ? 3 : 2,
-                      borderColor: sw.borderColor,
+                      borderWidth: active || isDragOver ? 3 : 2,
+                      borderColor: isDragOver ? t.primary : sw.borderColor,
                       background: sw.background,
-                      cursor: "pointer",
+                      cursor: canDrag ? (isDragging ? "grabbing" : "grab") : "pointer",
                       flexShrink: 0,
                       padding: 0,
                       boxSizing: "border-box",
+                      boxShadow: isDragOver ? `0 0 0 2px ${t.primary}33` : undefined,
                     }}
                   />
                   {showDelete ? (

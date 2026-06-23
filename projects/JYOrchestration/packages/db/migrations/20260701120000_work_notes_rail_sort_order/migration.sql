@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "work_notes" ADD COLUMN IF NOT EXISTS "railSortOrder" INTEGER NOT NULL DEFAULT 0;
