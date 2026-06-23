@@ -17,6 +17,8 @@ import {
 } from "@/lib/project-graph/projectGraphTypes";
 import { planProjectGraphProjectionFromPlanningSnapshot } from "@/lib/planning-snapshot/planningSnapshotGraphPlan";
 import { parsePlanningSnapshotFromEventPayload } from "@/lib/planning-snapshot/planningSnapshotStructurePlan";
+import { parsePlanningProposalFromEventPayload } from "@/lib/planning-proposal/planningProposalMapper";
+import { planProjectGraphProjectionFromPlanningProposal } from "@/lib/planning-proposal/planningProposalGraphPlan";
 
 export type ProjectGraphEventInput = Readonly<{
   readonly id: string;
@@ -234,6 +236,17 @@ export function planProjectGraphProjectionFromEvent(event: ProjectGraphEventInpu
       );
       if (snapshot) {
         return planProjectGraphProjectionFromPlanningSnapshot(event.id, event.projectId, snapshot);
+      }
+      break;
+    }
+    case PROJECT_GRAPH_EVENT_TYPES.PLANNING_PROPOSAL_APPROVED: {
+      const proposal = parsePlanningProposalFromEventPayload(
+        event.projectId,
+        event.payload,
+        event.sourceMessageId,
+      );
+      if (proposal) {
+        return planProjectGraphProjectionFromPlanningProposal(event.id, event.projectId, proposal);
       }
       break;
     }

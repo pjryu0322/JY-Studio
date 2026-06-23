@@ -1,12 +1,13 @@
 import { parsePlanningSnapshotFromEventPayload } from "@/lib/planning-snapshot/planningSnapshotStructurePlan";
 import { PLANNING_SNAPSHOT_EVENT_TYPE } from "@/lib/planning-snapshot/planningSnapshotModel";
+import { PLANNING_PROPOSAL_EVENT_TYPE } from "@/lib/planning-proposal/planningProposalModel";
 import { buildRequirementsConversationHref } from "@/lib/project-structure/projectStructureExplainability";
 import type {
   ProjectGraphActivityFeedDetail,
   ProjectGraphActivityFeedRow,
 } from "@/lib/project-graph/projectGraphActivityClient";
 
-const SNAPSHOT_CANDIDATE_TYPE_ORDER = ["Idea", "Problem", "Requirement", "Feature", "Actor"] as const;
+const SNAPSHOT_CANDIDATE_TYPE_ORDER = ["Idea", "Problem", "Requirement", "Feature", "Actor", "Flow"] as const;
 
 export type ActivityFeedBuildInput = Readonly<{
   readonly projectId: string;
@@ -40,6 +41,15 @@ function isPlanningSnapshotCandidate(c: Record<string, unknown>): boolean {
   return meta?.planningSnapshot === true;
 }
 
+function isPlanningProposalCandidate(c: Record<string, unknown>): boolean {
+  const meta = readMeta(c);
+  return meta?.planningProposal === true;
+}
+
+function isGroupedPlanningCandidate(c: Record<string, unknown>): boolean {
+  return isPlanningSnapshotCandidate(c) || isPlanningProposalCandidate(c);
+}
+
 function rawPayloadJson(payload: unknown): string | undefined {
   if (payload == null) return undefined;
   try {
@@ -53,6 +63,7 @@ function rawPayloadJson(payload: unknown): string | undefined {
 
 function formatEventLine(eventType: string): string {
   if (eventType === PLANNING_SNAPSHOT_EVENT_TYPE) return "Planning Snapshot 생성";
+  if (eventType === PLANNING_PROPOSAL_EVENT_TYPE) return "AI 기획자 추천안 승인";
   if (eventType === "conversation.message_created") return "원본 대화 저장";
   return `Event: ${eventType}`;
 }
@@ -61,7 +72,7 @@ function countByType(candidates: readonly Record<string, unknown>[], sourceMessa
   const counts = new Map<string, number>();
   const sid = sourceMessageId.trim();
   for (const c of candidates) {
-    if (!isPlanningSnapshotCandidate(c)) continue;
+    if (!isGroupedPlanningCandidate(c)) continue;
     if (String(c.sourceMessageId ?? "").trim() !== sid) continue;
     const nodeType = String(c.nodeType ?? c.entityType ?? "Candidate").trim() || "Candidate";
     counts.set(nodeType, (counts.get(nodeType) ?? 0) + 1);
@@ -94,7 +105,7 @@ function countApprovedSnapshotCandidates(candidates: readonly Record<string, unk
   const sid = sourceMessageId.trim();
   let n = 0;
   for (const c of candidates) {
-    if (!isPlanningSnapshotCandidate(c)) continue;
+    if (!isGroupedPlanningCandidate(c)) continue;
     if (String(c.sourceMessageId ?? "").trim() !== sid) continue;
     if (String(c.lifecycleStatus ?? "") === "APPROVED") n += 1;
   }
@@ -163,7 +174,7 @@ export function buildProjectGraphActivityFeed(input: ActivityFeedBuildInput): re
   const snapshotCandidateKeys = new Set<string>();
 
   for (const c of input.candidates) {
-    if (!isPlanningSnapshotCandidate(c)) continue;
+    if (!isGroupedPlanningCandidate(c)) continue;
     const sid = String(c.sourceMessageId ?? "").trim();
     const sortAt = String(c.createdAt ?? "");
     snapshotCandidateKeys.add(`${sid}\0${minuteBucket(sortAt)}`);
@@ -199,7 +210,7 @@ export function buildProjectGraphActivityFeed(input: ActivityFeedBuildInput): re
   for (const key of snapshotCandidateKeys) {
     const [sourceMessageId, bucket] = key.split("\0");
     const grouped = input.candidates.filter((c) => {
-      if (!isPlanningSnapshotCandidate(c)) return false;
+      if (!isGroupedPlanningCandidate(c)) return false;
       return (
         String(c.sourceMessageId ?? "").trim() === sourceMessageId &&
         minuteBucket(String(c.createdAt ?? "")) === bucket
@@ -246,7 +257,7 @@ export function buildProjectGraphActivityFeed(input: ActivityFeedBuildInput): re
   }
 
   for (const c of input.candidates.slice(0, 40)) {
-    if (isPlanningSnapshotCandidate(c)) continue;
+    if (isGroupedPlanningCandidate(c)) continue;
     const sortAt = String(c.createdAt ?? "");
     if (!sortAt) continue;
     const nodeType = String(c.nodeType ?? c.entityType ?? "");

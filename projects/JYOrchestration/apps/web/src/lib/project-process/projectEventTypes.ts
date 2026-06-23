@@ -4,6 +4,9 @@ export const PROJECT_EVENT_TYPES = {
   CONVERSATION_MESSAGE_CREATED: "conversation.message_created",
   REQUIREMENTS_STATE_SAVED: "requirements.state_saved",
   PLANNING_SNAPSHOT_CREATED: "planning.snapshot_created",
+  PLANNING_PROPOSAL_CREATED: "planning.proposal_created",
+  PLANNING_PROPOSAL_APPROVED: "planning.proposal_approved",
+  PLANNING_PROPOSAL_REVISED: "planning.proposal_revised",
 } as const;
 
 export type ProjectEventType = (typeof PROJECT_EVENT_TYPES)[keyof typeof PROJECT_EVENT_TYPES];

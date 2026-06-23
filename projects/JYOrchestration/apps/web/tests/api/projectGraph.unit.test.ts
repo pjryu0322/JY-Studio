@@ -110,6 +110,44 @@ describe("applyProjectGraphProjectionForEvent", () => {
     expect(db.projectGraphNode.create).not.toHaveBeenCalled();
   });
 
+  it("returns existing node by entityKey when projectionKey differs (unique race)", async () => {
+    const entityKey = buildProjectEntityKey("p1");
+    const storedNode = {
+      id: "n1",
+      projectId: "p1",
+      projectionKey: "event:older:node:Project",
+      entityKey,
+      nodeType: PROJECT_GRAPH_NODE_TYPES.PROJECT,
+      title: "X",
+      summary: "",
+    };
+    let findCalls = 0;
+    const db = {
+      $executeRawUnsafe: vi.fn().mockResolvedValue(0),
+      projectGraphNode: {
+        findFirst: vi.fn().mockImplementation(async () => {
+          findCalls += 1;
+          return findCalls === 1 ? null : storedNode;
+        }),
+        create: vi.fn().mockRejectedValue({ code: "P2002" }),
+      },
+      projectGraphEdge: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn(),
+      },
+    };
+
+    const result = await applyProjectGraphProjectionForEvent(db as never, eventInput({
+      id: "e1",
+      eventType: PROJECT_GRAPH_EVENT_TYPES.PROJECT_CREATED,
+      payload: { name: "X" },
+    }));
+
+    expect(result.nodes[0]?.id).toBe("n1");
+    expect(db.projectGraphNode.create).toHaveBeenCalledTimes(1);
+    expect(db.$executeRawUnsafe).toHaveBeenCalled();
+  });
+
   it("creates edge when both nodes exist", async () => {
     const projectNode = { id: "n-project", entityKey: buildProjectEntityKey("p1") };
     const ideaNode = { id: "n-idea", entityKey: buildIdeaEntityKey("p1") };

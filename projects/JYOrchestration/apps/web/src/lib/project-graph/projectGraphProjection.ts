@@ -16,6 +16,49 @@ function isPrismaUniqueViolation(error: unknown): boolean {
   );
 }
 
+function savepointSqlName(key: string): string {
+  const safe = String(key ?? "")
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .slice(0, 48);
+  return `kg_${safe || "sp"}`;
+}
+
+/** Postgres: unique 위반 후에도 동일 트랜잭션에서 후속 쿼리가 가능하도록 SAVEPOINT 사용 */
+async function runWithSavepoint<T>(
+  db: ProjectGraphDbClient,
+  savepointKey: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const run = typeof (db as { $executeRawUnsafe?: unknown }).$executeRawUnsafe === "function";
+  if (!run) {
+    return fn();
+  }
+  const sp = savepointSqlName(savepointKey);
+  await (db as Prisma.TransactionClient).$executeRawUnsafe(`SAVEPOINT "${sp}"`);
+  try {
+    return await fn();
+  } catch (error) {
+    await (db as Prisma.TransactionClient).$executeRawUnsafe(`ROLLBACK TO SAVEPOINT "${sp}"`);
+    throw error;
+  }
+}
+
+async function findNodeForPlan(
+  db: ProjectGraphDbClient,
+  projectId: string,
+  plan: Pick<
+    ReturnType<typeof planProjectGraphProjectionFromEvent>["nodes"][number],
+    "projectionKey" | "entityKey"
+  >,
+) {
+  return db.projectGraphNode.findFirst({
+    where: {
+      projectId,
+      OR: [{ projectionKey: plan.projectionKey }, { entityKey: plan.entityKey }],
+    },
+  });
+}
+
 async function resolveNodeIdByEntityKey(
   db: ProjectGraphDbClient,
   projectId: string,
@@ -33,34 +76,28 @@ async function upsertNodeFromPlan(
   projectId: string,
   plan: ReturnType<typeof planProjectGraphProjectionFromEvent>["nodes"][number],
 ) {
-  const existing = await db.projectGraphNode.findFirst({
-    where: { projectId, projectionKey: plan.projectionKey },
-  });
+  const existing = await findNodeForPlan(db, projectId, plan);
   if (existing) return existing;
 
   try {
-    return await db.projectGraphNode.create({
-      data: {
-        projectId,
-        projectionKey: plan.projectionKey,
-        entityKey: plan.entityKey,
-        nodeType: plan.nodeType,
-        title: plan.title,
-        summary: plan.summary,
-        metadata: plan.metadata as Prisma.InputJsonValue,
-        sourceEventId: plan.sourceEventId,
-      },
-    });
+    return await runWithSavepoint(db, plan.projectionKey, () =>
+      db.projectGraphNode.create({
+        data: {
+          projectId,
+          projectionKey: plan.projectionKey,
+          entityKey: plan.entityKey,
+          nodeType: plan.nodeType,
+          title: plan.title,
+          summary: plan.summary,
+          metadata: plan.metadata as Prisma.InputJsonValue,
+          sourceEventId: plan.sourceEventId,
+        },
+      }),
+    );
   } catch (error) {
     if (isPrismaUniqueViolation(error)) {
-      const byProjection = await db.projectGraphNode.findFirst({
-        where: { projectId, projectionKey: plan.projectionKey },
-      });
-      if (byProjection) return byProjection;
-      const byEntity = await db.projectGraphNode.findFirst({
-        where: { projectId, entityKey: plan.entityKey },
-      });
-      if (byEntity) return byEntity;
+      const row = await findNodeForPlan(db, projectId, plan);
+      if (row) return row;
     }
     throw error;
   }
@@ -81,17 +118,19 @@ async function upsertEdgeFromPlan(
   if (!fromNodeId || !toNodeId) return null;
 
   try {
-    return await db.projectGraphEdge.create({
-      data: {
-        projectId,
-        projectionKey: plan.projectionKey,
-        fromNodeId,
-        toNodeId,
-        edgeType: plan.edgeType,
-        metadata: plan.metadata as Prisma.InputJsonValue,
-        sourceEventId: plan.sourceEventId,
-      },
-    });
+    return await runWithSavepoint(db, plan.projectionKey, () =>
+      db.projectGraphEdge.create({
+        data: {
+          projectId,
+          projectionKey: plan.projectionKey,
+          fromNodeId,
+          toNodeId,
+          edgeType: plan.edgeType,
+          metadata: plan.metadata as Prisma.InputJsonValue,
+          sourceEventId: plan.sourceEventId,
+        },
+      }),
+    );
   } catch (error) {
     if (isPrismaUniqueViolation(error)) {
       return db.projectGraphEdge.findFirst({

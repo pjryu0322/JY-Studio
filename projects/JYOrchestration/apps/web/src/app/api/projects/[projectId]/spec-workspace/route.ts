@@ -24,6 +24,7 @@ import { PROJECT_PROCESS_STAGES } from "@/lib/project-process/projectEventTypes"
 import { syncRequirementsConversationMessagesToEventStore } from "@/lib/project-process/projectEventStore";
 import { trySyncProjectGraphProjection } from "@/lib/project-graph/projectGraphProjection";
 import { integratePlanningSnapshotsAfterConversationSync } from "@/lib/planning-snapshot/planningSnapshotConversationIntegrate";
+import { integratePlanningProposalApprovalFromRequirementsState } from "@/lib/planning-proposal/planningProposalConversationIntegrate";
 import {
   mergeRequirementsStateJson,
   parseRequirementsStateJson,
@@ -745,9 +746,22 @@ export async function PATCH(
             data: { requirementsStateJson: mergedState as Prisma.InputJsonValue },
           });
         }
+
       } catch (eventError) {
         console.error("Project Event Store sync failed:", eventError);
         eventStoreWarning = "EVENT_STORE_SYNC_FAILED";
+      }
+    }
+
+    if (body.requirementsStateJson !== undefined || body.requirementsConversationJson !== undefined) {
+      try {
+        await integratePlanningProposalApprovalFromRequirementsState(prisma, {
+          projectId: id,
+          requirementsStateJson: updated.requirementsStateJson,
+          requirementsConversationJson: updated.requirementsConversationJson,
+        });
+      } catch (proposalError) {
+        console.error("Planning proposal Event Store integration failed:", proposalError);
       }
     }
 

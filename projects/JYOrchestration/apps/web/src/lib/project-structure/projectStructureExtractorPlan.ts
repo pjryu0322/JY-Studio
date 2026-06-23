@@ -8,6 +8,8 @@ import {
   parsePlanningSnapshotFromEventPayload,
   planStructureCandidatesFromPlanningSnapshot,
 } from "@/lib/planning-snapshot/planningSnapshotStructurePlan";
+import { parsePlanningProposalFromEventPayload } from "@/lib/planning-proposal/planningProposalMapper";
+import { planStructureCandidatesFromPlanningProposal } from "@/lib/planning-proposal/planningProposalStructurePlan";
 import { STRUCTURE_CANDIDATE_NODE_TYPES } from "@/lib/project-structure/projectStructureTypes";
 
 export type StructureCandidateNodeDraft = Readonly<{
@@ -85,6 +87,17 @@ export function planStructureCandidatesFromEvent(event: ProjectGraphEventInput):
     );
     if (snapshot) {
       return planStructureCandidatesFromPlanningSnapshot(event.id, snapshot);
+    }
+  }
+
+  if (event.eventType === PROJECT_GRAPH_EVENT_TYPES.PLANNING_PROPOSAL_APPROVED) {
+    const proposal = parsePlanningProposalFromEventPayload(
+      event.projectId,
+      event.payload,
+      event.sourceMessageId,
+    );
+    if (proposal) {
+      return planStructureCandidatesFromPlanningProposal(event.id, proposal);
     }
   }
 
