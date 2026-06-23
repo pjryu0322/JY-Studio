@@ -10,6 +10,7 @@ import {
   type ProjectGraphNodeUi,
 } from "@/lib/project-graph/projectGraphLayout";
 import type { GraphImpactZones } from "@/lib/project-graph/projectGraphExploration";
+import { PROJECT_GRAPH_LONG_PRESS_MS, shouldCancelLongPress } from "@/components/project-graph/projectGraphLongPress";
 
 const NODE_R = 22;
 
@@ -39,6 +40,12 @@ export function ProjectKnowledgeGraphCanvas({
   height,
   centerOnNodeRequest,
   treeLayoutRootId = null,
+  viewResetNonce = 0,
+  enableLongPressMenu = false,
+  onNodeContextMenu,
+  onCanvasContextMenu,
+  onNodeLongPress,
+  onCanvasLongPress,
 }: {
   readonly nodes: readonly ProjectGraphNodeUi[];
   readonly edges: readonly ProjectGraphEdgeUi[];
@@ -55,6 +62,12 @@ export function ProjectKnowledgeGraphCanvas({
   readonly centerOnNodeRequest?: Readonly<{ readonly nodeId: string; readonly nonce: number }> | null;
   /** 설정 시 선택 노드 기준 조직도형 레이아웃 */
   readonly treeLayoutRootId?: string | null;
+  readonly viewResetNonce?: number;
+  readonly enableLongPressMenu?: boolean;
+  readonly onNodeContextMenu?: (nodeId: string, clientX: number, clientY: number) => void;
+  readonly onCanvasContextMenu?: (clientX: number, clientY: number) => void;
+  readonly onNodeLongPress?: (nodeId: string) => void;
+  readonly onCanvasLongPress?: (clientX: number, clientY: number) => void;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -62,7 +75,28 @@ export function ProjectKnowledgeGraphCanvas({
   const [nodeOffsets, setNodeOffsets] = useState<Record<string, { readonly dx: number; readonly dy: number }>>({});
   const panDragRef = useRef<{ active: boolean; x: number; y: number }>({ active: false, x: 0, y: 0 });
   const nodeDragRef = useRef<{ nodeId: string; x: number; y: number } | null>(null);
+  const longPressRef = useRef<{
+    timer: ReturnType<typeof setTimeout> | null;
+    nodeId: string | null;
+    startX: number;
+    startY: number;
+    canvas: boolean;
+  }>({ timer: null, nodeId: null, startX: 0, startY: 0, canvas: false });
+  const longPressTriggeredRef = useRef(false);
   const [canvasCursor, setCanvasCursor] = useState<"grab" | "grabbing">("grab");
+
+  const clearLongPressTimer = useCallback(() => {
+    const t = longPressRef.current.timer;
+    if (t != null) clearTimeout(t);
+    longPressRef.current = { timer: null, nodeId: null, startX: 0, startY: 0, canvas: false };
+  }, []);
+
+  useEffect(() => {
+    if (!viewResetNonce) return;
+    setPan({ x: 0, y: 0 });
+    setZoom(1);
+    setNodeOffsets({});
+  }, [viewResetNonce]);
 
   const layoutPositions = useMemo(() => {
     const w = Math.max(width, 400);
@@ -110,6 +144,12 @@ export function ProjectKnowledgeGraphCanvas({
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
+      const lp = longPressRef.current;
+      if (lp.timer != null) {
+        const dx = e.clientX - lp.startX;
+        const dy = e.clientY - lp.startY;
+        if (shouldCancelLongPress(dx, dy)) clearLongPressTimer();
+      }
       const nodeDrag = nodeDragRef.current;
       if (nodeDrag) {
         const dx = (e.clientX - nodeDrag.x) / zoom;
@@ -130,35 +170,93 @@ export function ProjectKnowledgeGraphCanvas({
       panDragRef.current = { active: true, x: e.clientX, y: e.clientY };
       setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
     },
-    [zoom],
+    [zoom, clearLongPressTimer],
   );
 
   const endPointerDrag = useCallback(() => {
+    clearLongPressTimer();
     panDragRef.current.active = false;
     nodeDragRef.current = null;
     setCanvasCursor("grab");
-  }, []);
+  }, [clearLongPressTimer]);
 
-  const onCanvasPointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    panDragRef.current = { active: true, x: e.clientX, y: e.clientY };
-    setCanvasCursor("grabbing");
-    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
-  }, []);
+  const onCanvasPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      longPressTriggeredRef.current = false;
+      if (enableLongPressMenu && onCanvasLongPress) {
+        clearLongPressTimer();
+        longPressRef.current = {
+          timer: setTimeout(() => {
+            longPressRef.current.timer = null;
+            longPressTriggeredRef.current = true;
+            panDragRef.current.active = false;
+            setCanvasCursor("grab");
+            onCanvasLongPress(e.clientX, e.clientY);
+          }, PROJECT_GRAPH_LONG_PRESS_MS),
+          nodeId: null,
+          startX: e.clientX,
+          startY: e.clientY,
+          canvas: true,
+        };
+      }
+      panDragRef.current = { active: true, x: e.clientX, y: e.clientY };
+      setCanvasCursor("grabbing");
+      (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    },
+    [enableLongPressMenu, onCanvasLongPress, clearLongPressTimer],
+  );
 
   const onNodePointerDown = useCallback(
     (nodeId: string, e: React.PointerEvent) => {
       if (e.button !== 0) return;
       e.stopPropagation();
+      longPressTriggeredRef.current = false;
       onSelectEdge(null);
       if (selectedNodeId !== nodeId) {
         onSelectNode(nodeId);
+      }
+      if (enableLongPressMenu && onNodeLongPress) {
+        clearLongPressTimer();
+        longPressRef.current = {
+          timer: setTimeout(() => {
+            longPressRef.current.timer = null;
+            longPressTriggeredRef.current = true;
+            nodeDragRef.current = null;
+            panDragRef.current.active = false;
+            setCanvasCursor("grab");
+            onNodeLongPress(nodeId);
+          }, PROJECT_GRAPH_LONG_PRESS_MS),
+          nodeId,
+          startX: e.clientX,
+          startY: e.clientY,
+          canvas: false,
+        };
       }
       nodeDragRef.current = { nodeId, x: e.clientX, y: e.clientY };
       setCanvasCursor("grabbing");
       (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     },
-    [onSelectEdge, onSelectNode, selectedNodeId],
+    [onSelectEdge, onSelectNode, selectedNodeId, enableLongPressMenu, onNodeLongPress, clearLongPressTimer],
+  );
+
+  const handleNodeContextMenu = useCallback(
+    (nodeId: string, e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onSelectNode(nodeId);
+      onSelectEdge(null);
+      onNodeContextMenu?.(nodeId, e.clientX, e.clientY);
+    },
+    [onNodeContextMenu, onSelectEdge, onSelectNode],
+  );
+
+  const onBackgroundContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      onCanvasContextMenu?.(e.clientX, e.clientY);
+    },
+    [onCanvasContextMenu],
   );
 
   const shell: CSSProperties = {
@@ -191,6 +289,7 @@ export function ProjectKnowledgeGraphCanvas({
           height={height}
           fill="#0f172a"
           onPointerDown={onCanvasPointerDown}
+          onContextMenu={onBackgroundContextMenu}
           onClick={() => {
             onSelectNode(null);
             onSelectEdge(null);
@@ -262,6 +361,7 @@ export function ProjectKnowledgeGraphCanvas({
                 transform={`translate(${pos.x} ${pos.y})`}
                 style={{ cursor: selected ? "grab" : "pointer", opacity }}
                 onPointerDown={(ev) => onNodePointerDown(node.id, ev)}
+                onContextMenu={(ev) => handleNodeContextMenu(node.id, ev)}
                 onDoubleClick={(ev) => {
                   ev.stopPropagation();
                   onSelectNode(node.id);
@@ -293,7 +393,7 @@ export function ProjectKnowledgeGraphCanvas({
           borderRadius: 6,
         }}
       >
-        Zoom {Math.round(zoom * 100)}% · 클릭 선택·드래그 · 더블클릭 상세 · 빈 곳 드래그 이동 · 휠 확대/축소
+        Zoom {Math.round(zoom * 100)}% · 우클릭 메뉴 · 클릭 드래그 · 더블클릭 상세
       </div>
     </div>
   );

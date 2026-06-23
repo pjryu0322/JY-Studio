@@ -1,18 +1,41 @@
+import { buildProjectGraphActivityFeed } from "@/lib/project-graph/projectGraphActivityFeed";
+
 type ApiEnvelope<T> = { success?: boolean; message?: string; data?: T };
 
+export type PlanningSnapshotActivityContext = Readonly<{
+  readonly productName: string;
+  readonly summary: string;
+  readonly problems: readonly string[];
+  readonly actors: readonly string[];
+  readonly features: readonly string[];
+  readonly candidateCountsByType: Readonly<Record<string, number>>;
+  readonly graphEdgeCount: number;
+  readonly graphNodeCount: number;
+  readonly approvedCount: number;
+  readonly statusBadges: readonly string[];
+  readonly requirementsHref: string | null;
+  readonly structureReviewHref: string | null;
+  readonly sourceMessageId: string;
+  readonly eventId?: string;
+}>;
+
 export type ProjectGraphActivityFeedDetail = Readonly<{
+  readonly view?: "planning_snapshot" | "group_summary" | "default";
   readonly eventType?: string;
   readonly stage?: string;
   readonly lifecycleStatus?: string;
   readonly title?: string;
   readonly summary?: string;
-  readonly payloadPreview?: string;
+  /** 개발자 Accordion 전용 — 기본 UI에 노출하지 않음 */
+  readonly rawPayloadJson?: string;
   readonly entityId?: string;
+  readonly planningSnapshot?: PlanningSnapshotActivityContext;
+  readonly groupSummary?: Readonly<{ readonly nodeType: string; readonly count: number; readonly sourceMessageId?: string }>;
 }>;
 
 export type ProjectGraphActivityFeedRow = Readonly<{
   readonly id: string;
-  readonly kind: "event" | "candidate";
+  readonly kind: "event" | "candidate" | "group";
   readonly at: string;
   readonly line: string;
   readonly sourceMessageId?: string | null;
@@ -30,41 +53,6 @@ export type ProjectGraphActivitySummary = Readonly<{
   readonly recentCandidates: readonly { readonly title: string; readonly nodeType: string; readonly at: string }[];
   readonly recentApprovedNodes: readonly { readonly title: string; readonly nodeType: string }[];
 }>;
-
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-function formatActivityEventLine(eventType: string): string {
-  if (eventType === "planning.snapshot_created") return "Planning Snapshot 생성";
-  return `Event: ${eventType}`;
-}
-
-function formatActivityCandidateLine(nodeType: string, title: string, metadata: unknown): string {
-  const meta =
-    metadata && typeof metadata === "object" && !Array.isArray(metadata)
-      ? (metadata as Record<string, unknown>)
-      : null;
-  if (meta?.planningSnapshot === true) {
-    if (nodeType === "Actor") return `Actor Candidate 생성 · ${title}`;
-    if (nodeType === "Feature") return `Feature Candidate 생성 · ${title}`;
-    return `Candidate 생성 · ${title}`;
-  }
-  return `Candidate: ${nodeType ? `${nodeType} · ` : ""}${title}`;
-}
-
-function payloadPreview(payload: unknown): string | undefined {
-  if (payload == null) return undefined;
-  try {
-    const text = JSON.stringify(payload);
-    if (!text || text === "{}") return undefined;
-    return text.length > 480 ? `${text.slice(0, 477)}…` : text;
-  } catch {
-    return undefined;
-  }
-}
 
 export async function loadProjectGraphActivitySummary(
   projectId: string,
@@ -118,53 +106,14 @@ export async function loadProjectGraphActivitySummary(
     nodeType: String(n.nodeType ?? ""),
   }));
 
-  const feed: Array<ProjectGraphActivityFeedRow & { readonly sortAt: string }> = [];
-
-  for (const ev of events.slice(0, 15)) {
-    const sortAt = String(ev.createdAt ?? "");
-    const eventType = String(ev.eventType ?? "event");
-    feed.push({
-      id: `event:${String(ev.id ?? sortAt)}`,
-      kind: "event",
-      sortAt,
-      at: sortAt,
-      line: formatActivityEventLine(eventType),
-      sourceMessageId: ev.sourceMessageId == null ? null : String(ev.sourceMessageId),
-      detail: {
-        eventType,
-        stage: ev.stage == null ? undefined : String(ev.stage),
-        payloadPreview: payloadPreview(ev.payload),
-        entityId: ev.id == null ? undefined : String(ev.id),
-      },
-    });
-  }
-
-  for (const c of candidates.slice(0, 20)) {
-    const sortAt = String(c.createdAt ?? "");
-    if (!sortAt) continue;
-    const nodeType = String(c.nodeType ?? c.entityType ?? "");
-    const title = String(c.title ?? c.name ?? "후보");
-    feed.push({
-      id: `candidate:${String(c.id ?? sortAt)}`,
-      kind: "candidate",
-      sortAt,
-      at: sortAt,
-      line: formatActivityCandidateLine(
-        nodeType,
-        title,
-        c.metadata ?? c.meta,
-      ),
-      sourceMessageId: c.sourceMessageId == null ? null : String(c.sourceMessageId),
-      detail: {
-        title,
-        lifecycleStatus: c.lifecycleStatus == null ? undefined : String(c.lifecycleStatus),
-        summary: c.summary == null ? undefined : String(c.summary),
-        entityId: c.id == null ? undefined : String(c.id),
-      },
-    });
-  }
-
-  feed.sort((a, b) => b.sortAt.localeCompare(a.sortAt));
+  const feed = buildProjectGraphActivityFeed({
+    projectId: pid,
+    events,
+    candidates,
+    graphNodes: nodes,
+    graphEdges: edges,
+    maxRows: 24,
+  });
 
   const lastSyncedAt = sync ? new Date().toISOString() : null;
 
@@ -175,14 +124,7 @@ export async function loadProjectGraphActivitySummary(
     edgeCount: edges.length,
     conflictCount: conflicts.length,
     lastSyncedAt,
-    feed: feed.slice(0, 24).map((row) => ({
-      id: row.id,
-      kind: row.kind,
-      at: formatTime(row.at),
-      line: row.line,
-      sourceMessageId: row.sourceMessageId,
-      detail: row.detail,
-    })),
+    feed,
     recentCandidates,
     recentApprovedNodes,
   };

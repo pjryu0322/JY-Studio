@@ -2,15 +2,16 @@
 
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { ProjectKnowledgeGraphCanvas } from "@/components/project-graph/ProjectKnowledgeGraphCanvas";
 import { ProjectKnowledgeGraphActivityPanel } from "@/components/project-graph/ProjectKnowledgeGraphActivityPanel";
 import { FixedToast } from "@/components/ui/FixedToast";
-import { ProjectKnowledgeGraphMobileFab } from "@/components/project-graph/ProjectKnowledgeGraphMobileFab";
+import { ProjectGraphContextMenu, type ProjectGraphContextMenuItem } from "@/components/project-graph/ProjectGraphContextMenu";
+import { ProjectGraphNodeActionSheet } from "@/components/project-graph/ProjectGraphNodeActionSheet";
 import { ProjectKnowledgeGraphNodeBottomSheet } from "@/components/project-graph/ProjectKnowledgeGraphNodeBottomSheet";
-import { ProjectKnowledgeGraphSummaryBadges } from "@/components/project-graph/ProjectKnowledgeGraphSummaryBadges";
+import { useProjectGraphContextMenu } from "@/components/project-graph/useProjectGraphContextMenu";
 import { useGraphMobileUx } from "@/components/project-graph/useGraphMobileUx";
 import { useProjectKnowledgeGraphToast } from "@/components/project-graph/useProjectKnowledgeGraphToast";
 import { ProjectGraphNodeDetailPanel } from "@/components/project-graph/ProjectGraphNodeDetailPanel";
@@ -29,7 +30,6 @@ import {
   parseGraphQuestionQuery,
 } from "@/lib/project-graph/projectGraphExploration";
 import { requirementsWorkspaceMainRowStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
-import { computeProjectGraphSummaryCounts } from "@/lib/project-graph/projectGraphSummaryCounts";
 import type { ProjectKnowledgeGraphLaunchContext } from "@/components/project-graph/projectKnowledgeGraphLaunchTypes";
 
 const LIFECYCLE_OPTIONS = ["", "PROJECTED", "APPROVED", "CANDIDATE"] as const;
@@ -56,6 +56,7 @@ export function ProjectKnowledgeGraphWorkspace({
   readonly onLaunchContextChange?: (ctx: ProjectKnowledgeGraphLaunchContext) => void;
 }) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [clientReady, setClientReady] = useState(false);
   useEffect(() => {
     setClientReady(true);
@@ -86,6 +87,9 @@ export function ProjectKnowledgeGraphWorkspace({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
   const [treeLayoutRootId, setTreeLayoutRootId] = useState<string | null>(null);
+  const [detailPanelOpen, setDetailPanelOpen] = useState(true);
+  const [viewResetNonce, setViewResetNonce] = useState(0);
+  const contextMenu = useProjectGraphContextMenu();
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [nodeTypeFilter, setNodeTypeFilter] = useState("");
@@ -190,7 +194,6 @@ export function ProjectKnowledgeGraphWorkspace({
   }, [onLaunchContextChange, focusNodeId, selectedNodeId, activityView, highlightSourceMessageId]);
 
   const adjacency = useMemo(() => buildUndirectedAdjacency(edges), [edges]);
-  const edgeTypes = useMemo(() => [...new Set(edges.map((e) => e.edgeType))].sort(), [edges]);
   const nodeTypes = useMemo(() => [...new Set(nodes.map((n) => n.nodeType))].sort(), [nodes]);
 
   const explorationQuery = useMemo(() => parseGraphQuestionQuery(search), [search]);
@@ -233,8 +236,6 @@ export function ProjectKnowledgeGraphWorkspace({
     [detailNodeId, adjacency],
   );
 
-  const summaryCounts = useMemo(() => computeProjectGraphSummaryCounts(nodes, edges), [nodes, edges]);
-
   const handleSelectNode = useCallback((id: string | null) => {
     setSelectedNodeId(id);
     if (id) {
@@ -262,75 +263,194 @@ export function ProjectKnowledgeGraphWorkspace({
     setDetailNodeId(null);
   }, []);
 
-  const handleFocusNode = useCallback(() => {
-    if (!selectedNodeId) {
-      showToast("노드를 먼저 선택하세요.");
-      return;
-    }
-    setFocusNodeId(selectedNodeId);
-    setExpandedNodeIds(new Set(collectNeighbors(selectedNodeId, adjacency)));
-    setCenterOnNodeNonce((n) => n + 1);
-    showToast("선택 노드 중심 이동");
-  }, [selectedNodeId, adjacency, showToast]);
-
-  const handleExpandNeighbors = useCallback(() => {
-    if (!selectedNodeId) {
-      showToast("노드를 먼저 선택하세요.");
-      return;
-    }
-    const neighbors = collectNeighbors(selectedNodeId, adjacency);
-    let added = 0;
-    setExpandedNodeIds((prev) => {
-      const next = new Set(prev);
-      for (const n of neighbors) {
-        if (!next.has(n)) added += 1;
-        next.add(n);
+  const handleFocusNode = useCallback(
+    (targetNodeId?: string | null) => {
+      const nid = String(targetNodeId ?? selectedNodeId ?? "").trim();
+      if (!nid) {
+        showToast("노드를 먼저 선택하세요.");
+        return;
       }
-      const focus = focusNodeId ?? selectedNodeId;
-      next.add(focus);
-      return next;
-    });
-    if (!focusNodeId) setFocusNodeId(selectedNodeId);
-    showToast(added > 0 ? `+${added}개 노드 확장됨` : "인접 노드가 이미 표시 중입니다.");
-  }, [selectedNodeId, adjacency, focusNodeId, showToast]);
+      setSelectedNodeId(nid);
+      setFocusNodeId(nid);
+      setExpandedNodeIds(new Set(collectNeighbors(nid, adjacency)));
+      setCenterOnNodeNonce((n) => n + 1);
+      showToast("노드 중심 이동 완료");
+    },
+    [selectedNodeId, adjacency, showToast],
+  );
 
-  const handleCollapseFocus = useCallback(() => {
-    if (!selectedNodeId) {
-      showToast("노드를 먼저 선택하세요.");
-      return;
-    }
-    setFocusNodeId(null);
-    setExpandedNodeIds(new Set());
-    showToast("확장된 노드 접힘");
-  }, [selectedNodeId, showToast]);
+  const handleExpandNeighbors = useCallback(
+    (targetNodeId?: string | null) => {
+      const nid = String(targetNodeId ?? selectedNodeId ?? "").trim();
+      if (!nid) {
+        showToast("노드를 먼저 선택하세요.");
+        return;
+      }
+      setSelectedNodeId(nid);
+      const neighbors = collectNeighbors(nid, adjacency);
+      let added = 0;
+      setExpandedNodeIds((prev) => {
+        const next = new Set(prev);
+        for (const n of neighbors) {
+          if (!next.has(n)) added += 1;
+          next.add(n);
+        }
+        next.add(focusNodeId ?? nid);
+        return next;
+      });
+      if (!focusNodeId) setFocusNodeId(nid);
+      showToast(added > 0 ? `+${added}개 노드 확장됨` : "인접 노드가 이미 표시 중입니다.");
+    },
+    [selectedNodeId, adjacency, focusNodeId, showToast],
+  );
+
+  const handleCollapseFocus = useCallback(
+    (targetNodeId?: string | null) => {
+      const nid = String(targetNodeId ?? selectedNodeId ?? "").trim();
+      if (!nid) {
+        showToast("노드를 먼저 선택하세요.");
+        return;
+      }
+      setSelectedNodeId(nid);
+      setFocusNodeId(null);
+      setExpandedNodeIds(new Set());
+      showToast("확장된 노드 접힘");
+    },
+    [selectedNodeId, showToast],
+  );
 
   const handleShowAllGraph = useCallback(() => {
     setFocusNodeId(null);
     setExpandedNodeIds(new Set());
     setTreeLayoutRootId(null);
-    showToast("확장된 노드 접힘");
+    showToast("전체 그래프 보기");
   }, [showToast]);
 
-  const handleOrgChartLayout = useCallback(() => {
-    if (!selectedNodeId) {
-      showToast("노드를 먼저 선택하세요.");
-      return;
-    }
-    setTreeLayoutRootId(selectedNodeId);
-    setCenterOnNodeNonce((n) => n + 1);
-    showToast("선택 노드 기준 조직도 정렬");
-  }, [selectedNodeId, showToast]);
-
-  const requireSelectionAction = useCallback(
-    (action: () => void) => {
-      if (!selectedNodeId) {
+  const handleOrgChartLayout = useCallback(
+    (targetNodeId?: string | null) => {
+      const nid = String(targetNodeId ?? selectedNodeId ?? "").trim();
+      if (!nid) {
         showToast("노드를 먼저 선택하세요.");
         return;
       }
-      action();
+      setSelectedNodeId(nid);
+      setTreeLayoutRootId(nid);
+      setCenterOnNodeNonce((n) => n + 1);
+      showToast("선택 노드 기준 조직도 정렬");
     },
     [selectedNodeId, showToast],
   );
+
+  const handleAutoLayout = useCallback(() => {
+    setTreeLayoutRootId(null);
+    setViewResetNonce((n) => n + 1);
+    showToast("자동 정렬 적용");
+  }, [showToast]);
+
+  const handleResetZoom = useCallback(() => {
+    setViewResetNonce((n) => n + 1);
+    showToast("줌 초기화");
+  }, [showToast]);
+
+  const handleOpenRelatedConversation = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      const href = node?.explainability?.sourceConversation?.href;
+      if (!href) {
+        showToast("연결된 대화를 찾을 수 없습니다.");
+        return;
+      }
+      router.push(href);
+      showToast("원본 대화로 이동합니다.");
+    },
+    [nodes, router, showToast],
+  );
+
+  const handleShowImpactAnalysis = useCallback(
+    (nodeId: string) => {
+      handleOpenNodeDetail(nodeId);
+      if (!graphMobileUx) setDetailPanelOpen(true);
+      showToast("영향 분석을 상세 패널에서 확인하세요.");
+    },
+    [handleOpenNodeDetail, graphMobileUx, showToast],
+  );
+
+  const buildNodeMenuItems = useCallback(
+    (nodeId: string): readonly ProjectGraphContextMenuItem[] => {
+      const node = nodes.find((n) => n.id === nodeId);
+      const hasConversation = Boolean(node?.explainability?.sourceConversation?.href);
+      return [
+        { id: "focus", label: "Focus", onSelect: () => handleFocusNode(nodeId) },
+        { id: "neighbors", label: "이웃 노드 보기", onSelect: () => handleExpandNeighbors(nodeId) },
+        { id: "collapse", label: "노드 접기", onSelect: () => handleCollapseFocus(nodeId) },
+        {
+          id: "conversation",
+          label: "관련 대화 보기",
+          disabled: !hasConversation,
+          onSelect: () => handleOpenRelatedConversation(nodeId),
+        },
+        { id: "detail", label: "노드 상세 보기", onSelect: () => handleOpenNodeDetail(nodeId) },
+        { id: "impact", label: "영향 분석", onSelect: () => handleShowImpactAnalysis(nodeId) },
+      ];
+    },
+    [
+      nodes,
+      handleFocusNode,
+      handleExpandNeighbors,
+      handleCollapseFocus,
+      handleOpenRelatedConversation,
+      handleOpenNodeDetail,
+      handleShowImpactAnalysis,
+    ],
+  );
+
+  const buildMobileNodeMenuItems = useCallback(
+    (nodeId: string): readonly ProjectGraphContextMenuItem[] => {
+      const node = nodes.find((n) => n.id === nodeId);
+      const hasConversation = Boolean(node?.explainability?.sourceConversation?.href);
+      return [
+        { id: "focus", label: "Focus", onSelect: () => handleFocusNode(nodeId) },
+        { id: "neighbors", label: "이웃 노드 보기", onSelect: () => handleExpandNeighbors(nodeId) },
+        {
+          id: "conversation",
+          label: "관련 대화",
+          disabled: !hasConversation,
+          onSelect: () => handleOpenRelatedConversation(nodeId),
+        },
+        { id: "detail", label: "상세 보기", onSelect: () => handleOpenNodeDetail(nodeId) },
+      ];
+    },
+    [nodes, handleFocusNode, handleExpandNeighbors, handleOpenRelatedConversation, handleOpenNodeDetail],
+  );
+
+  const canvasMenuItems = useMemo((): readonly ProjectGraphContextMenuItem[] => {
+    const hasSelection = Boolean(selectedNodeId);
+    return [
+      { id: "show-all", label: "전체 보기", onSelect: () => handleShowAllGraph() },
+      {
+        id: "org",
+        label: "조직도 정렬",
+        disabled: !hasSelection,
+        onSelect: () => handleOrgChartLayout(),
+      },
+      { id: "auto", label: "자동 정렬", onSelect: () => handleAutoLayout() },
+      { id: "refresh", label: "새로고침", onSelect: () => void reload() },
+      { id: "zoom", label: "줌 초기화", onSelect: () => handleResetZoom() },
+    ];
+  }, [selectedNodeId, handleShowAllGraph, handleOrgChartLayout, handleAutoLayout, handleResetZoom, reload]);
+
+  const contextMenuNodeId =
+    contextMenu.menu.open && contextMenu.menu.kind === "node" ? contextMenu.menu.nodeId : null;
+  const nodeContextMenuItems = useMemo(
+    () => (contextMenuNodeId ? buildNodeMenuItems(contextMenuNodeId) : []),
+    [contextMenuNodeId, buildNodeMenuItems],
+  );
+
+  const actionSheetNode = useMemo(() => {
+    const id = contextMenu.actionSheetNodeId;
+    if (!id) return null;
+    return nodes.find((n) => n.id === id) ?? null;
+  }, [contextMenu.actionSheetNodeId, nodes]);
 
   const shell: CSSProperties = {
     ...requirementsWorkspaceMainRowStyle,
@@ -372,12 +492,6 @@ export function ProjectKnowledgeGraphWorkspace({
     background: t.bgPage,
     cursor: "pointer",
   };
-
-  const graphActionBtnStyle = (disabled: boolean): CSSProperties => ({
-    ...btnStyle,
-    opacity: disabled ? 0.45 : 1,
-    cursor: disabled ? "not-allowed" : "pointer",
-  });
 
   const canvasHeight = graphMobileUx ? 400 : 520;
   const canvasWidth = 960;
@@ -433,6 +547,7 @@ export function ProjectKnowledgeGraphWorkspace({
       {activityView ? (
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
           <ProjectKnowledgeGraphActivityPanel
+            projectId={projectId}
             summary={activitySummary}
             loading={activityLoading}
             error={activityError}
@@ -458,7 +573,6 @@ export function ProjectKnowledgeGraphWorkspace({
             >
               {selectedNode ? `현재 선택: ${selectedNode.title}` : "선택된 노드 없음"}
             </div>
-            <ProjectKnowledgeGraphSummaryBadges counts={summaryCounts} />
         <input
           type="search"
           placeholder="노드·질문 검색 (예: 왜 생성되었는가?)"
@@ -488,53 +602,16 @@ export function ProjectKnowledgeGraphWorkspace({
             </option>
           ))}
         </select>
-        <select value={edgeTypeFilter} onChange={(e) => setEdgeTypeFilter(e.target.value)} style={inputStyle} aria-label="관계 필터">
-          <option value="">모든 관계</option>
-          {edgeTypes.map((et) => (
-            <option key={et} value={et}>
-              {et}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={() => requireSelectionAction(handleFocusNode)}
-          disabled={!selectedNodeId}
-          aria-label="선택 노드 중심 이동"
-          style={graphActionBtnStyle(!selectedNodeId)}
-        >
-          Focus
-        </button>
-        <button
-          type="button"
-          onClick={() => requireSelectionAction(handleExpandNeighbors)}
-          disabled={!selectedNodeId}
-          aria-label="인접 노드 확장"
-          style={graphActionBtnStyle(!selectedNodeId)}
-        >
-          Neighbor Expand
-        </button>
-        <button
-          type="button"
-          onClick={() => requireSelectionAction(handleCollapseFocus)}
-          disabled={!selectedNodeId}
-          aria-label="확장된 노드 접기"
-          style={graphActionBtnStyle(!selectedNodeId)}
-        >
-          Collapse
-        </button>
-        <button
-          type="button"
-          onClick={() => requireSelectionAction(handleOrgChartLayout)}
-          disabled={!selectedNodeId}
-          aria-label="선택 노드 기준 조직도 정렬"
-          style={graphActionBtnStyle(!selectedNodeId)}
-        >
-          조직도 정렬
-        </button>
-        <button type="button" onClick={() => void reload()} style={btnStyle}>
-          새로고침
-        </button>
+        {!graphMobileUx ? (
+          <button
+            type="button"
+            onClick={() => setDetailPanelOpen((v) => !v)}
+            aria-pressed={detailPanelOpen}
+            style={btnStyle}
+          >
+            {detailPanelOpen ? "상세 숨기기" : "상세 보기"}
+          </button>
+        ) : null}
         <span style={{ fontSize: 11, color: t.textMuted }}>
           {filteredNodes.length} nodes · {filteredEdges.length} edges
           {explorationQuery.kind === "question" ? " · 질문 모드" : ""}
@@ -569,13 +646,35 @@ export function ProjectKnowledgeGraphWorkspace({
             height={canvasHeight}
             centerOnNodeRequest={centerOnNodeRequest}
             treeLayoutRootId={treeLayoutRootId}
+            viewResetNonce={viewResetNonce}
+            enableLongPressMenu={graphMobileUx}
+            onNodeContextMenu={contextMenu.openNodeMenu}
+            onCanvasContextMenu={contextMenu.openCanvasMenu}
+            onNodeLongPress={contextMenu.openNodeActionSheet}
+            onCanvasLongPress={contextMenu.openCanvasMenu}
+          />
+          <ProjectGraphContextMenu
+            open={contextMenu.menu.open && contextMenu.menu.kind === "node"}
+            x={contextMenu.menu.open && contextMenu.menu.kind === "node" ? contextMenu.menu.x : 0}
+            y={contextMenu.menu.open && contextMenu.menu.kind === "node" ? contextMenu.menu.y : 0}
+            items={nodeContextMenuItems}
+            ariaLabel="노드 작업 메뉴"
+            onClose={contextMenu.close}
+          />
+          <ProjectGraphContextMenu
+            open={contextMenu.menu.open && contextMenu.menu.kind === "canvas"}
+            x={contextMenu.menu.open && contextMenu.menu.kind === "canvas" ? contextMenu.menu.x : 0}
+            y={contextMenu.menu.open && contextMenu.menu.kind === "canvas" ? contextMenu.menu.y : 0}
+            items={canvasMenuItems}
+            ariaLabel="캔버스 작업 메뉴"
+            onClose={contextMenu.close}
           />
           {graphMobileUx ? (
-            <ProjectKnowledgeGraphMobileFab
-              onShowAll={handleShowAllGraph}
-              onFocusNode={handleFocusNode}
-              onRefresh={() => void reload()}
-              focusDisabled={!selectedNodeId}
+            <ProjectGraphNodeActionSheet
+              open={Boolean(actionSheetNode)}
+              nodeTitle={actionSheetNode?.title ?? "노드"}
+              items={actionSheetNode ? buildMobileNodeMenuItems(actionSheetNode.id) : []}
+              onClose={contextMenu.close}
             />
           ) : null}
           {graphMobileUx ? (
@@ -594,7 +693,7 @@ export function ProjectKnowledgeGraphWorkspace({
             </div>
           ) : null}
         </div>
-        {!graphMobileUx ? (
+        {!graphMobileUx && detailPanelOpen ? (
           <ProjectGraphNodeDetailPanel
             node={detailNode}
             impact={detailImpact}
