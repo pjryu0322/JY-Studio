@@ -62,8 +62,16 @@ export function ProjectKnowledgeGraphWorkspace({
   }, []);
 
   const isModal = variant === "modal";
-  const viewMode = clientReady && !isModal ? String(searchParams?.get("view") ?? "").trim() : "";
-  const activityView = isModal || viewMode === "activity";
+  const viewMode = clientReady ? String(searchParams?.get("view") ?? "").trim() : "";
+  type WorkspacePane = "graph" | "activity";
+  const [workspacePane, setWorkspacePane] = useState<WorkspacePane>("graph");
+
+  useEffect(() => {
+    if (!clientReady) return;
+    if (viewMode === "activity") setWorkspacePane("activity");
+  }, [clientReady, viewMode]);
+
+  const activityView = workspacePane === "activity";
   const syncOnEntry =
     clientReady && (isModal || searchParams?.get("sync") === "true");
   const highlightSourceMessageId = clientReady
@@ -76,6 +84,8 @@ export function ProjectKnowledgeGraphWorkspace({
   const [nodes, setNodes] = useState<ProjectGraphNodeDto[]>([]);
   const [edges, setEdges] = useState<ProjectGraphEdgeDto[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [detailNodeId, setDetailNodeId] = useState<string | null>(null);
+  const [treeLayoutRootId, setTreeLayoutRootId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [nodeTypeFilter, setNodeTypeFilter] = useState("");
@@ -208,32 +218,48 @@ export function ProjectKnowledgeGraphWorkspace({
 
   const selectedNode =
     filteredNodes.find((n) => n.id === selectedNodeId) ?? nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const detailNode =
+    filteredNodes.find((n) => n.id === detailNodeId) ?? nodes.find((n) => n.id === detailNodeId) ?? null;
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId) ?? null;
   const nodeTitleById = useMemo(() => new Map(nodes.map((n) => [n.id, n.title])), [nodes]);
 
-  const impact = useMemo(
+  const selectionImpact = useMemo(
     () => (selectedNodeId ? computeImpactZones(selectedNodeId, adjacency, 2) : null),
     [selectedNodeId, adjacency],
+  );
+
+  const detailImpact = useMemo(
+    () => (detailNodeId ? computeImpactZones(detailNodeId, adjacency, 2) : null),
+    [detailNodeId, adjacency],
   );
 
   const summaryCounts = useMemo(() => computeProjectGraphSummaryCounts(nodes, edges), [nodes, edges]);
 
   const handleSelectNode = useCallback((id: string | null) => {
     setSelectedNodeId(id);
-    if (id) setSelectedEdgeId(null);
+    if (id) {
+      setSelectedEdgeId(null);
+    } else {
+      setDetailNodeId(null);
+    }
+  }, []);
+
+  const handleOpenNodeDetail = useCallback((id: string) => {
+    setSelectedNodeId(id);
+    setDetailNodeId(id);
+    setSelectedEdgeId(null);
   }, []);
 
   const handleSelectRelatedNodeId = useCallback(
     (id: string) => {
-      handleSelectNode(id);
+      handleOpenNodeDetail(id);
       setFocusNodeId((prev) => prev ?? id);
     },
-    [handleSelectNode],
+    [handleOpenNodeDetail],
   );
 
   const closeMobileNodeSheet = useCallback(() => {
-    setSelectedNodeId(null);
-    setSelectedEdgeId(null);
+    setDetailNodeId(null);
   }, []);
 
   const handleFocusNode = useCallback(() => {
@@ -281,8 +307,19 @@ export function ProjectKnowledgeGraphWorkspace({
   const handleShowAllGraph = useCallback(() => {
     setFocusNodeId(null);
     setExpandedNodeIds(new Set());
+    setTreeLayoutRootId(null);
     showToast("확장된 노드 접힘");
   }, [showToast]);
+
+  const handleOrgChartLayout = useCallback(() => {
+    if (!selectedNodeId) {
+      showToast("노드를 먼저 선택하세요.");
+      return;
+    }
+    setTreeLayoutRootId(selectedNodeId);
+    setCenterOnNodeNonce((n) => n + 1);
+    showToast("선택 노드 기준 조직도 정렬");
+  }, [selectedNodeId, showToast]);
 
   const requireSelectionAction = useCallback(
     (action: () => void) => {
@@ -349,6 +386,19 @@ export function ProjectKnowledgeGraphWorkspace({
       ? { nodeId: selectedNodeId, nonce: centerOnNodeNonce }
       : null;
 
+  const viewTabStyle = (active: boolean): CSSProperties => ({
+    minHeight: 44,
+    minWidth: 88,
+    padding: "8px 14px",
+    borderRadius: 8,
+    border: `1px solid ${active ? t.primary : t.border}`,
+    background: active ? "#eff6ff" : t.bgPage,
+    color: active ? t.primary : t.textSecondary,
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: "pointer",
+  });
+
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
       {toastMessage ? (
@@ -356,31 +406,59 @@ export function ProjectKnowledgeGraphWorkspace({
           {toastMessage}
         </FixedToast>
       ) : null}
-      {activityView ? (
-        <ProjectKnowledgeGraphActivityPanel
-          summary={activitySummary}
-          loading={activityLoading}
-          error={activityError}
-          highlightSourceMessageId={highlightSourceMessageId}
-          onRefresh={() => {
-            void reloadActivity(true);
-            void reload();
-          }}
-        />
-      ) : null}
-      <div style={toolbar}>
-        <div
-          style={{
-            flex: "1 1 100%",
-            fontSize: 12,
-            fontWeight: 700,
-            color: selectedNode ? t.textPrimary : t.textMuted,
-          }}
-          aria-live="polite"
+      <div
+        role="tablist"
+        aria-label="지식 그래프 보기"
+        style={{ display: "flex", gap: 8, padding: "0 0 10px", flexShrink: 0 }}
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={workspacePane === "graph"}
+          onClick={() => setWorkspacePane("graph")}
+          style={viewTabStyle(workspacePane === "graph")}
         >
-          {selectedNode ? `현재 선택: ${selectedNode.title}` : "선택된 노드 없음"}
+          그래프
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={workspacePane === "activity"}
+          onClick={() => setWorkspacePane("activity")}
+          style={viewTabStyle(workspacePane === "activity")}
+        >
+          Activity
+        </button>
+      </div>
+      {activityView ? (
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+          <ProjectKnowledgeGraphActivityPanel
+            summary={activitySummary}
+            loading={activityLoading}
+            error={activityError}
+            highlightSourceMessageId={highlightSourceMessageId}
+            showTimeline
+            onRefresh={() => {
+              void reloadActivity(true);
+              void reload();
+            }}
+          />
         </div>
-        <ProjectKnowledgeGraphSummaryBadges counts={summaryCounts} />
+      ) : (
+        <>
+          <div style={toolbar}>
+            <div
+              style={{
+                flex: "1 1 100%",
+                fontSize: 12,
+                fontWeight: 700,
+                color: selectedNode ? t.textPrimary : t.textMuted,
+              }}
+              aria-live="polite"
+            >
+              {selectedNode ? `현재 선택: ${selectedNode.title}` : "선택된 노드 없음"}
+            </div>
+            <ProjectKnowledgeGraphSummaryBadges counts={summaryCounts} />
         <input
           type="search"
           placeholder="노드·질문 검색 (예: 왜 생성되었는가?)"
@@ -445,6 +523,15 @@ export function ProjectKnowledgeGraphWorkspace({
         >
           Collapse
         </button>
+        <button
+          type="button"
+          onClick={() => requireSelectionAction(handleOrgChartLayout)}
+          disabled={!selectedNodeId}
+          aria-label="선택 노드 기준 조직도 정렬"
+          style={graphActionBtnStyle(!selectedNodeId)}
+        >
+          조직도 정렬
+        </button>
         <button type="button" onClick={() => void reload()} style={btnStyle}>
           새로고침
         </button>
@@ -474,12 +561,14 @@ export function ProjectKnowledgeGraphWorkspace({
             selectedNodeId={selectedNodeId}
             selectedEdgeId={selectedEdgeId}
             highlightNodeIds={explored.highlightIds}
-            impactZones={impact}
+            impactZones={selectionImpact}
             onSelectNode={handleSelectNode}
+            onOpenNodeDetail={handleOpenNodeDetail}
             onSelectEdge={setSelectedEdgeId}
             width={canvasWidth}
             height={canvasHeight}
             centerOnNodeRequest={centerOnNodeRequest}
+            treeLayoutRootId={treeLayoutRootId}
           />
           {graphMobileUx ? (
             <ProjectKnowledgeGraphMobileFab
@@ -491,9 +580,9 @@ export function ProjectKnowledgeGraphWorkspace({
           ) : null}
           {graphMobileUx ? (
             <ProjectKnowledgeGraphNodeBottomSheet
-              open={Boolean(selectedNode)}
-              node={selectedNode}
-              impact={impact}
+              open={Boolean(detailNode)}
+              node={detailNode}
+              impact={detailImpact}
               onClose={closeMobileNodeSheet}
               onSelectRelatedNodeId={handleSelectRelatedNodeId}
             />
@@ -507,37 +596,39 @@ export function ProjectKnowledgeGraphWorkspace({
         </div>
         {!graphMobileUx ? (
           <ProjectGraphNodeDetailPanel
-            node={selectedNode}
-            impact={impact}
+            node={detailNode}
+            impact={detailImpact}
             onSelectRelatedNodeId={handleSelectRelatedNodeId}
           />
         ) : null}
       </div>
-      {!isModal && onExit && graphMobileUx ? (
-        <button
-          type="button"
-          onClick={onExit}
-          aria-label="대화로 돌아가기"
-          style={{
-            position: "fixed",
-            left: 12,
-            right: 12,
-            bottom: 12,
-            zIndex: 55,
-            minHeight: 48,
-            borderRadius: 12,
-            border: `1px solid ${t.border}`,
-            background: t.bgPage,
-            fontSize: 14,
-            fontWeight: 800,
-            color: t.primary,
-            boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
-            cursor: "pointer",
-          }}
-        >
-          ← 대화로 돌아가기
-        </button>
-      ) : null}
+          {!isModal && onExit && graphMobileUx ? (
+            <button
+              type="button"
+              onClick={onExit}
+              aria-label="대화로 돌아가기"
+              style={{
+                position: "fixed",
+                left: 12,
+                right: 12,
+                bottom: 12,
+                zIndex: 55,
+                minHeight: 48,
+                borderRadius: 12,
+                border: `1px solid ${t.border}`,
+                background: t.bgPage,
+                fontSize: 14,
+                fontWeight: 800,
+                color: t.primary,
+                boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
+                cursor: "pointer",
+              }}
+            >
+              ← 대화로 돌아가기
+            </button>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

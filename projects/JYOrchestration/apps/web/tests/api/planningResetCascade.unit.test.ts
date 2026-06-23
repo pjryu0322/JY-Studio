@@ -28,6 +28,12 @@ vi.mock("@/lib/runtime/implementationRuntime/implementationRuntimeRepository", (
   getImplementationRuntimeBundle: (...args: unknown[]) => getBundleMock(...args),
 }));
 
+const resetKgMock = vi.fn();
+
+vi.mock("@/lib/project-graph/resetProjectKnowledgeGraphForPlanning", () => ({
+  resetProjectKnowledgeGraphForPlanning: (...args: unknown[]) => resetKgMock(...args),
+}));
+
 import { resetProjectDownstreamFromPlanning } from "@/lib/requirements/planningResetCascadeService";
 
 describe("resetProjectDownstreamFromPlanning", () => {
@@ -46,6 +52,15 @@ describe("resetProjectDownstreamFromPlanning", () => {
     createEventMock.mockResolvedValue({});
     cancelActiveMock.mockResolvedValue(1);
     getBundleMock.mockResolvedValue({ job: null, runs: [], currentRun: null });
+    resetKgMock.mockResolvedValue({
+      deletedProjectEvents: 3,
+      deletedProjectMessages: 2,
+      deletedStructureCandidates: 5,
+      deletedStructureCandidateEdges: 1,
+      deletedGraphNodes: 4,
+      deletedGraphEdges: 6,
+      optionalTablesSkipped: false,
+    });
   });
 
   it("deletes runtime jobs, runs, and task cursor jobs for project", async () => {
@@ -65,6 +80,8 @@ describe("resetProjectDownstreamFromPlanning", () => {
     expect(result.resetTaskCursorJobs).toBe(4);
     expect(result.githubResourcesDeleted).toBe(false);
     expect(result.resetStateKeys.length).toBeGreaterThan(0);
+    expect(resetKgMock).toHaveBeenCalledWith("p1");
+    expect(result.knowledgeGraph.deletedProjectEvents).toBe(3);
   });
 
   it("records planning_reset_cascade event and returns empty bundle", async () => {

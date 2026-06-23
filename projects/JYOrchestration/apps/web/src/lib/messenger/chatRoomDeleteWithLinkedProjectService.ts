@@ -1,10 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { runPrismaIgnoreMissingTable } from "@/lib/prisma/prismaOptionalTableOps";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildRequirementsConversationResetStateJson } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { resetProjectDownstreamFromPlanning } from "@/lib/requirements/planningResetCascadeService";
-import { clearProjectGraphProjection } from "@/lib/project-graph/projectGraphProjection";
 import { softDeleteProjectByOwner } from "@/lib/service/projectService";
 import {
   assertLinkedProjectDeleteAuthority,
@@ -49,21 +47,6 @@ async function resetLinkedProjectDataForChatRoomDelete(
     await resetProjectDownstreamFromPlanning({ projectId: pid, reason: "manual" });
   } catch {
     warnings.push("implementationRuntimeResetPartial");
-  }
-
-  const structureWipes = await Promise.all([
-    runPrismaIgnoreMissingTable(() =>
-      prisma.projectStructureCandidateEdge.deleteMany({ where: { projectId: pid } }),
-    ),
-    runPrismaIgnoreMissingTable(() => prisma.projectNodeLifecycle.deleteMany({ where: { projectId: pid } })),
-    runPrismaIgnoreMissingTable(() => prisma.projectMergeHistory.deleteMany({ where: { projectId: pid } })),
-    runPrismaIgnoreMissingTable(() =>
-      prisma.projectStructureCandidate.deleteMany({ where: { projectId: pid } }),
-    ),
-    runPrismaIgnoreMissingTable(() => clearProjectGraphProjection(prisma, pid)),
-  ]);
-  if (structureWipes.some((r) => r === "missing_table")) {
-    warnings.push("optionalProjectTablesSkipped");
   }
 
   await prisma.$transaction(async (tx) => {

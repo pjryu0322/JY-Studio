@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import {
   layoutProjectGraphNodes,
+  layoutProjectGraphNodesFromRoot,
   type ProjectGraphEdgeUi,
   type ProjectGraphNodeUi,
 } from "@/lib/project-graph/projectGraphLayout";
@@ -32,10 +33,12 @@ export function ProjectKnowledgeGraphCanvas({
   highlightNodeIds,
   impactZones,
   onSelectNode,
+  onOpenNodeDetail,
   onSelectEdge,
   width,
   height,
   centerOnNodeRequest,
+  treeLayoutRootId = null,
 }: {
   readonly nodes: readonly ProjectGraphNodeUi[];
   readonly edges: readonly ProjectGraphEdgeUi[];
@@ -44,11 +47,14 @@ export function ProjectKnowledgeGraphCanvas({
   readonly highlightNodeIds?: ReadonlySet<string>;
   readonly impactZones?: GraphImpactZones | null;
   readonly onSelectNode: (id: string | null) => void;
+  readonly onOpenNodeDetail: (id: string) => void;
   readonly onSelectEdge: (id: string | null) => void;
   readonly width: number;
   readonly height: number;
   /** nonce가 바뀔 때마다 해당 노드를 뷰 중앙으로 이동·확대 */
   readonly centerOnNodeRequest?: Readonly<{ readonly nodeId: string; readonly nonce: number }> | null;
+  /** 설정 시 선택 노드 기준 조직도형 레이아웃 */
+  readonly treeLayoutRootId?: string | null;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -58,10 +64,19 @@ export function ProjectKnowledgeGraphCanvas({
   const nodeDragRef = useRef<{ nodeId: string; x: number; y: number } | null>(null);
   const [canvasCursor, setCanvasCursor] = useState<"grab" | "grabbing">("grab");
 
-  const layoutPositions = useMemo(
-    () => layoutProjectGraphNodes(nodes, Math.max(width, 400), Math.max(height, 320)),
-    [nodes, width, height],
-  );
+  const layoutPositions = useMemo(() => {
+    const w = Math.max(width, 400);
+    const h = Math.max(height, 320);
+    const root = String(treeLayoutRootId ?? "").trim();
+    if (root) {
+      return layoutProjectGraphNodesFromRoot(root, nodes, edges, w, h);
+    }
+    return layoutProjectGraphNodes(nodes, w, h);
+  }, [nodes, edges, width, height, treeLayoutRootId]);
+
+  useEffect(() => {
+    setNodeOffsets({});
+  }, [treeLayoutRootId, nodes.length]);
 
   const positions = useMemo(() => {
     const next = new Map(layoutPositions);
@@ -138,7 +153,6 @@ export function ProjectKnowledgeGraphCanvas({
       onSelectEdge(null);
       if (selectedNodeId !== nodeId) {
         onSelectNode(nodeId);
-        return;
       }
       nodeDragRef.current = { nodeId, x: e.clientX, y: e.clientY };
       setCanvasCursor("grabbing");
@@ -181,6 +195,7 @@ export function ProjectKnowledgeGraphCanvas({
             onSelectNode(null);
             onSelectEdge(null);
           }}
+          aria-label="그래프 배경"
         />
         <g transform={`translate(${pan.x} ${pan.y}) scale(${zoom})`}>
           {edges.map((edge) => {
@@ -247,10 +262,11 @@ export function ProjectKnowledgeGraphCanvas({
                 transform={`translate(${pos.x} ${pos.y})`}
                 style={{ cursor: selected ? "grab" : "pointer", opacity }}
                 onPointerDown={(ev) => onNodePointerDown(node.id, ev)}
-                onClick={(ev) => {
+                onDoubleClick={(ev) => {
                   ev.stopPropagation();
                   onSelectNode(node.id);
                   onSelectEdge(null);
+                  onOpenNodeDetail(node.id);
                 }}
               >
                 <circle r={NODE_R} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />
@@ -277,7 +293,7 @@ export function ProjectKnowledgeGraphCanvas({
           borderRadius: 6,
         }}
       >
-        Zoom {Math.round(zoom * 100)}% · 선택 노드 드래그 · 빈 곳 드래그로 이동 · 휠 확대/축소
+        Zoom {Math.round(zoom * 100)}% · 클릭 선택·드래그 · 더블클릭 상세 · 빈 곳 드래그 이동 · 휠 확대/축소
       </div>
     </div>
   );

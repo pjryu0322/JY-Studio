@@ -3,6 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { cancelActiveTaskCursorJobsForProject } from "@/lib/prototype/taskCursorExecutionJobRepository";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { IMPLEMENTATION_SESSION_RESET_NULL_PATCH } from "@/lib/requirements/resetDerivedImplementationState";
+import {
+  resetProjectKnowledgeGraphForPlanning,
+  type ProjectKnowledgeGraphResetResult,
+} from "@/lib/project-graph/resetProjectKnowledgeGraphForPlanning";
 
 export type PlanningResetCascadeReason =
   | "planning_reset"
@@ -21,6 +25,7 @@ export type PlanningResetCascadeResult = Readonly<{
   readonly cancelledActiveTaskCursorJobs: number;
   readonly resetStateKeys: readonly string[];
   readonly githubResourcesDeleted: false;
+  readonly knowledgeGraph: ProjectKnowledgeGraphResetResult;
 }>;
 
 async function deleteDownstreamRuntimeForProject(
@@ -73,6 +78,8 @@ export async function resetProjectDownstreamFromPlanning(input: {
     now: input.now,
   });
 
+  const knowledgeGraph = await resetProjectKnowledgeGraphForPlanning(projectId);
+
   const deleted = await prisma.$transaction(async (tx) => {
     const counts = await deleteDownstreamRuntimeForProject(tx, projectId);
     await tx.implementationRuntimeEvent.create({
@@ -102,5 +109,6 @@ export async function resetProjectDownstreamFromPlanning(input: {
     cancelledActiveTaskCursorJobs,
     resetStateKeys: PLANNING_RESET_CLEARED_REQUIREMENTS_STATE_KEYS,
     githubResourcesDeleted: false,
+    knowledgeGraph,
   };
 }

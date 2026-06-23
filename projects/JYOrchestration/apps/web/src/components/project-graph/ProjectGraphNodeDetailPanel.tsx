@@ -82,7 +82,9 @@ export function ProjectGraphNodeDetailPanel({
   if (!node) {
     return (
       <aside style={panel} aria-label="그래프 노드 상세">
-        <p style={{ margin: 0, fontSize: 13, color: t.textMuted }}>노드를 선택하면 생성 근거와 관련 노드를 볼 수 있습니다.</p>
+        <p style={{ margin: 0, fontSize: 13, color: t.textMuted }}>
+          노드를 더블클릭하면 생성 근거와 관련 노드를 볼 수 있습니다.
+        </p>
       </aside>
     );
   }

@@ -209,6 +209,7 @@ export function buildRequirementsConversationResetStateJson(
     onboardingShown: false,
     selectedTargetId: null,
     selectedMembers: null,
+    planningSnapshotV1: null,
     problemInterview: emptyProblemInterviewState(nowIso),
     problemInterviewHistory: null,
     globalDelegation: false,

@@ -12,9 +12,11 @@ export function ProjectKnowledgeGraphActivityPanel(p: {
   readonly loading: boolean;
   readonly error: string | null;
   readonly highlightSourceMessageId: string | null;
+  readonly showTimeline?: boolean;
   readonly onRefresh: () => void;
 }) {
   const s = p.summary;
+  const showTimeline = p.showTimeline !== false;
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
 
   const selectedRow = useMemo(
@@ -79,30 +81,34 @@ export function ProjectKnowledgeGraphActivityPanel(p: {
             <Stat label="마지막 동기화" value={s.lastSyncedAt ? formatSynced(s.lastSyncedAt) : "—"} text />
           </div>
 
-          <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6, color: t.textSecondary }}>Activity</div>
-          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
-            {s.feed.length === 0 ? (
-              <li style={{ fontSize: 12, color: t.textMuted }}>표시할 활동이 없습니다.</li>
-            ) : (
-              s.feed.map((row) => (
-                <ActivityFeedRowButton
-                  key={row.id}
-                  row={row}
-                  selected={selectedFeedId === row.id}
-                  highlight={
-                    Boolean(
-                      p.highlightSourceMessageId &&
-                        row.sourceMessageId &&
-                        row.sourceMessageId === p.highlightSourceMessageId,
-                    )
-                  }
-                  onSelect={() => setSelectedFeedId((cur) => (cur === row.id ? null : row.id))}
-                />
-              ))
-            )}
-          </ul>
+          {showTimeline ? (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6, color: t.textSecondary }}>Activity</div>
+              <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+                {s.feed.length === 0 ? (
+                  <li style={{ fontSize: 12, color: t.textMuted }}>표시할 활동이 없습니다.</li>
+                ) : (
+                  s.feed.map((row) => (
+                    <ActivityFeedRowButton
+                      key={row.id}
+                      row={row}
+                      selected={selectedFeedId === row.id}
+                      highlight={
+                        Boolean(
+                          p.highlightSourceMessageId &&
+                            row.sourceMessageId &&
+                            row.sourceMessageId === p.highlightSourceMessageId,
+                        )
+                      }
+                      onSelect={() => setSelectedFeedId((cur) => (cur === row.id ? null : row.id))}
+                    />
+                  ))
+                )}
+              </ul>
 
-          {selectedRow ? <ActivityFeedDetail row={selectedRow} /> : null}
+              {selectedRow ? <ActivityFeedDetail row={selectedRow} /> : null}
+            </>
+          ) : null}
         </>
       ) : p.loading ? (
         <p style={{ margin: 0, fontSize: 12, color: t.textMuted }}>생성 현황 불러오는 중…</p>
