@@ -2,12 +2,16 @@
 
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import { useCallback, useId, useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
+import {
+  collectExplainabilityRelatedForChips,
+  StructureExplainabilityRelatedChips,
+} from "@/components/project-graph/StructureExplainabilityRelatedChips";
 import {
   formatConfidenceLabelForDisplay,
   type StructureExplainability,
   type StructureExplainabilityConfidenceLabel,
-  type StructureExplainabilityRelatedNode,
 } from "@/lib/project-structure/structureExplainabilityModel";
 
 const confidenceColors: Record<StructureExplainabilityConfidenceLabel, { bg: string; color: string; border: string }> = {
@@ -17,14 +21,19 @@ const confidenceColors: Record<StructureExplainabilityConfidenceLabel, { bg: str
 };
 
 const panelStyle: CSSProperties = {
-  marginTop: 12,
-  padding: 12,
-  borderRadius: 10,
-  border: `1px solid ${t.border}`,
-  background: "#f8fafc",
+  marginTop: 0,
+  padding: 0,
   display: "flex",
   flexDirection: "column",
-  gap: 10,
+  gap: 14,
+};
+
+const sectionLabel: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 800,
+  color: t.textMuted,
+  marginBottom: 6,
+  textTransform: "none",
 };
 
 export function StructureConfidenceBadge({
@@ -52,16 +61,17 @@ export function StructureConfidenceBadge({
         display: "inline-flex",
         alignItems: "center",
         gap: 6,
-        padding: "2px 8px",
+        padding: "6px 12px",
+        minHeight: 32,
         borderRadius: 999,
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: 700,
         border: `1px solid ${style.border}`,
         background: style.bg,
         color: style.color,
       }}
     >
-      {display}
+      신뢰도 {display}
       {typeof percent === "number" ? ` ${percent}%` : ""}
     </span>
   );
@@ -71,161 +81,172 @@ export function StructureExplainabilityPanel({
   explainability,
   title = "생성 근거",
   onSelectRelatedNodeId,
+  compact = false,
 }: {
   readonly explainability: StructureExplainability | null;
   readonly title?: string;
   readonly onSelectRelatedNodeId?: (nodeId: string) => void;
+  readonly compact?: boolean;
 }) {
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const advancedId = useId();
+
+  const toggleAdvanced = useCallback(() => {
+    setAdvancedOpen((v) => !v);
+  }, []);
+
+  const onAdvancedKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggleAdvanced();
+      }
+    },
+    [toggleAdvanced],
+  );
+
   if (!explainability) {
     return (
-      <section style={panelStyle} aria-label="Explainability">
-        <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: t.textSecondary }}>{title}</h3>
-        <p style={{ margin: 0, fontSize: 12, color: t.textMuted }}>Explainability 정보를 불러오지 못했습니다.</p>
+      <section style={panelStyle} aria-label="노드 생성 정보">
+        {!compact ? (
+          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: t.textSecondary }}>{title}</h3>
+        ) : null}
+        <p style={{ margin: 0, fontSize: 12, color: t.textMuted }}>생성 근거 정보를 불러오지 못했습니다.</p>
       </section>
     );
   }
 
+  const relatedItems = collectExplainabilityRelatedForChips(explainability);
+
   return (
-    <section style={panelStyle} aria-label="Explainability">
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+    <section style={panelStyle} aria-label="노드 생성 정보">
+      {!compact ? (
         <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: t.textSecondary }}>{title}</h3>
-        <StructureConfidenceBadge label={explainability.confidenceLabel} percent={explainability.confidence} />
-      </div>
+      ) : null}
 
       <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 4 }}>Source Conversation</div>
+        <div style={sectionLabel}>생성 근거</div>
         <blockquote
           style={{
             margin: 0,
-            fontSize: 13,
+            fontSize: 14,
             color: t.textPrimary,
-            fontStyle: "italic",
+            lineHeight: 1.5,
             borderLeft: `3px solid ${t.primary}`,
             paddingLeft: 10,
           }}
         >
           {explainability.sourceConversation.excerpt}
         </blockquote>
-        {explainability.sourceConversation.href ? (
-          <Link
-            href={explainability.sourceConversation.href}
-            style={{ fontSize: 12, fontWeight: 700, color: t.primary, marginTop: 6, display: "inline-block" }}
-          >
-            대화 위치로 이동
-          </Link>
-        ) : null}
       </div>
 
       <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 4 }}>Reason</div>
-        <p style={{ margin: 0, fontSize: 13, color: t.textSecondary, lineHeight: 1.5 }}>{explainability.reason}</p>
+        <div style={sectionLabel}>생성 이유</div>
+        <p style={{ margin: 0, fontSize: 13, color: t.textSecondary, lineHeight: 1.55 }}>{explainability.reason}</p>
       </div>
 
-      {explainability.confidenceReason ? (
+      <div>
+        <div style={sectionLabel}>신뢰도</div>
+        <StructureConfidenceBadge label={explainability.confidenceLabel} percent={explainability.confidence} />
+      </div>
+
+      <div>
+        <div style={sectionLabel}>관련 노드</div>
+        <StructureExplainabilityRelatedChips items={relatedItems} onSelectNodeId={onSelectRelatedNodeId} />
+      </div>
+
+      {explainability.sourceConversation.href ? (
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 4 }}>Confidence Reason</div>
-          <p style={{ margin: 0, fontSize: 12, color: t.textSecondary, lineHeight: 1.5 }}>{explainability.confidenceReason}</p>
+          <Link
+            href={explainability.sourceConversation.href}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: 44,
+              padding: "10px 14px",
+              fontSize: 13,
+              fontWeight: 800,
+              color: t.primary,
+              textDecoration: "none",
+              border: `1px solid ${t.border}`,
+              borderRadius: 10,
+              background: t.bgCard,
+            }}
+          >
+            대화 위치로 이동
+          </Link>
         </div>
       ) : null}
 
-      <ExplainabilityRelatedSections explainability={explainability} onSelectNodeId={onSelectRelatedNodeId} />
-
-      <dl style={{ margin: 0, fontSize: 12, display: "grid", gap: 6 }}>
-        <div>
-          <dt style={{ fontWeight: 700, color: t.textMuted, display: "inline" }}>Source Event: </dt>
-          <dd style={{ display: "inline", margin: 0, color: t.textPrimary }}>
-            {explainability.sourceEvent.eventType}
-            {explainability.sourceEvent.eventId ? ` (${explainability.sourceEvent.eventId})` : ""}
-          </dd>
-        </div>
-        <div>
-          <dt style={{ fontWeight: 700, color: t.textMuted, display: "inline" }}>Created By: </dt>
-          <dd style={{ display: "inline", margin: 0 }}>{explainability.createdBy}</dd>
-        </div>
-        <div>
-          <dt style={{ fontWeight: 700, color: t.textMuted, display: "inline" }}>Created From: </dt>
-          <dd style={{ display: "inline", margin: 0 }}>
-            Event {explainability.createdFrom.eventId ?? "—"}, Message {explainability.createdFrom.messageId ?? "—"}
-          </dd>
-        </div>
-      </dl>
+      <div>
+        <button
+          type="button"
+          aria-expanded={advancedOpen}
+          aria-controls={advancedId}
+          onClick={toggleAdvanced}
+          onKeyDown={onAdvancedKeyDown}
+          style={{
+            width: "100%",
+            minHeight: 44,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: `1px solid ${t.border}`,
+            background: t.bgPage,
+            fontSize: 13,
+            fontWeight: 800,
+            color: t.textPrimary,
+            cursor: "pointer",
+          }}
+        >
+          상세 생성 정보
+          <span aria-hidden style={{ color: t.textMuted }}>
+            {advancedOpen ? "▲" : "▼"}
+          </span>
+        </button>
+        {advancedOpen ? (
+          <div
+            id={advancedId}
+            style={{
+              marginTop: 8,
+              padding: 12,
+              borderRadius: 10,
+              border: `1px solid ${t.border}`,
+              background: "#f8fafc",
+              fontSize: 12,
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            {explainability.confidenceReason ? (
+              <div>
+                <div style={{ fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>Confidence Detail</div>
+                <p style={{ margin: 0, color: t.textSecondary, lineHeight: 1.5 }}>{explainability.confidenceReason}</p>
+              </div>
+            ) : null}
+            <div>
+              <div style={{ fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>Source Event</div>
+              <div style={{ color: t.textPrimary }}>
+                {explainability.sourceEvent.eventType}
+                {explainability.sourceEvent.eventId ? ` (${explainability.sourceEvent.eventId})` : ""}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>Created By</div>
+              <div>{explainability.createdBy}</div>
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>Created From</div>
+              <div>
+                Event {explainability.createdFrom.eventId ?? "—"}, Message {explainability.createdFrom.messageId ?? "—"}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </section>
-  );
-}
-
-function RelatedList({
-  label,
-  items,
-  onSelectNodeId,
-}: {
-  readonly label: string;
-  readonly items: readonly StructureExplainabilityRelatedNode[];
-  readonly onSelectNodeId?: (nodeId: string) => void;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, marginBottom: 4 }}>{label}</div>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: t.textSecondary }}>
-        {items.map((r) => (
-          <li key={`${r.direction}-${r.nodeId}-${r.edgeType}`}>
-            {onSelectNodeId ? (
-              <button
-                type="button"
-                onClick={() => onSelectNodeId(r.nodeId)}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  padding: 0,
-                  color: t.primary,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  fontSize: 12,
-                }}
-              >
-                {r.title}
-              </button>
-            ) : (
-              r.title
-            )}{" "}
-            <span style={{ color: t.textMuted }}>
-              ({r.nodeType} · {r.edgeType} · {r.direction === "IN" ? "←" : "→"})
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ExplainabilityRelatedSections({
-  explainability,
-  onSelectNodeId,
-}: {
-  readonly explainability: StructureExplainability;
-  readonly onSelectNodeId?: (nodeId: string) => void;
-}) {
-  const art = explainability.relatedArtifacts;
-  const hasAny =
-    explainability.relatedNodes.length > 0 ||
-    art.features.length > 0 ||
-    art.screens.length > 0 ||
-    art.reviews.length > 0 ||
-    art.changeRequests.length > 0 ||
-    art.flows.length > 0 ||
-    art.tasks.length > 0;
-  if (!hasAny) return null;
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ fontSize: 11, fontWeight: 800, color: t.textSecondary }}>Related</div>
-      <RelatedList label="Related Nodes" items={explainability.relatedNodes} onSelectNodeId={onSelectNodeId} />
-      <RelatedList label="Related Features" items={art.features} onSelectNodeId={onSelectNodeId} />
-      <RelatedList label="Related Screens" items={art.screens} onSelectNodeId={onSelectNodeId} />
-      <RelatedList label="Related Reviews" items={art.reviews} onSelectNodeId={onSelectNodeId} />
-      <RelatedList label="Related Change Requests" items={art.changeRequests} onSelectNodeId={onSelectNodeId} />
-      <RelatedList label="Related Flows" items={art.flows} onSelectNodeId={onSelectNodeId} />
-      <RelatedList label="Related Tasks" items={art.tasks} onSelectNodeId={onSelectNodeId} />
-    </div>
   );
 }

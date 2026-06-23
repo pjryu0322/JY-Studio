@@ -7,10 +7,11 @@ import { uiTokens as t } from "@/components/ui/tokens";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { ProjectKnowledgeGraphCanvas } from "@/components/project-graph/ProjectKnowledgeGraphCanvas";
 import { ProjectKnowledgeGraphActivityPanel } from "@/components/project-graph/ProjectKnowledgeGraphActivityPanel";
-import {
-  ProjectGraphNodeDetailPanel,
-  ProjectGraphRelatedExplorerStrip,
-} from "@/components/project-graph/ProjectGraphNodeDetailPanel";
+import { ProjectKnowledgeGraphMobileFab } from "@/components/project-graph/ProjectKnowledgeGraphMobileFab";
+import { ProjectKnowledgeGraphNodeBottomSheet } from "@/components/project-graph/ProjectKnowledgeGraphNodeBottomSheet";
+import { ProjectKnowledgeGraphSummaryBadges } from "@/components/project-graph/ProjectKnowledgeGraphSummaryBadges";
+import { useGraphMobileUx } from "@/components/project-graph/useGraphMobileUx";
+import { ProjectGraphNodeDetailPanel } from "@/components/project-graph/ProjectGraphNodeDetailPanel";
 import { fetchProjectGraph, type ProjectGraphEdgeDto, type ProjectGraphNodeDto } from "@/lib/project-graph/projectGraphClient";
 import {
   loadProjectGraphActivitySummary,
@@ -26,6 +27,7 @@ import {
   parseGraphQuestionQuery,
 } from "@/lib/project-graph/projectGraphExploration";
 import { requirementsWorkspaceMainRowStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
+import { computeProjectGraphSummaryCounts } from "@/lib/project-graph/projectGraphSummaryCounts";
 
 const LIFECYCLE_OPTIONS = ["", "PROJECTED", "APPROVED", "CANDIDATE"] as const;
 
@@ -61,7 +63,8 @@ export function ProjectKnowledgeGraphWorkspace({
     ? String(initialSourceMessageId ?? searchParams?.get("sourceMessageId") ?? "").trim() || null
     : null;
   const { effectiveLayout } = useWorkspaceMode();
-  const isMobile = clientReady && effectiveLayout === "MOBILE";
+  const graphMobileUx = useGraphMobileUx();
+  const isMobileLayout = clientReady && effectiveLayout === "MOBILE";
 
   const [nodes, setNodes] = useState<ProjectGraphNodeDto[]>([]);
   const [edges, setEdges] = useState<ProjectGraphEdgeDto[]>([]);
@@ -192,9 +195,24 @@ export function ProjectKnowledgeGraphWorkspace({
     [selectedNodeId, adjacency],
   );
 
+  const summaryCounts = useMemo(() => computeProjectGraphSummaryCounts(nodes, edges), [nodes, edges]);
+
   const handleSelectNode = useCallback((id: string | null) => {
     setSelectedNodeId(id);
     if (id) setSelectedEdgeId(null);
+  }, []);
+
+  const handleSelectRelatedNodeId = useCallback(
+    (id: string) => {
+      handleSelectNode(id);
+      setFocusNodeId((prev) => prev ?? id);
+    },
+    [handleSelectNode],
+  );
+
+  const closeMobileNodeSheet = useCallback(() => {
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
   }, []);
 
   const handleFocusNode = useCallback(() => {
@@ -221,7 +239,7 @@ export function ProjectKnowledgeGraphWorkspace({
   const shell: CSSProperties = {
     ...requirementsWorkspaceMainRowStyle,
     display: "flex",
-    flexDirection: isMobile ? "column" : "row",
+    flexDirection: graphMobileUx || isMobileLayout ? "column" : "row",
     flex: 1,
     minHeight: 0,
     border: `1px solid ${t.border}`,
@@ -272,6 +290,7 @@ export function ProjectKnowledgeGraphWorkspace({
         />
       ) : null}
       <div style={toolbar}>
+        <ProjectKnowledgeGraphSummaryBadges counts={summaryCounts} />
         <input
           type="search"
           placeholder="노드·질문 검색 (예: 왜 생성되었는가?)"
@@ -331,7 +350,16 @@ export function ProjectKnowledgeGraphWorkspace({
       {loading ? <p style={{ padding: 12, margin: 0, color: t.textMuted, fontSize: 13 }}>그래프 불러오는 중…</p> : null}
 
       <div style={shell}>
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 280 }}>
+        <div
+          style={{
+            flex: graphMobileUx ? "7 1 0%" : "6 1 0%",
+            minWidth: 0,
+            minHeight: graphMobileUx ? 420 : 520,
+            display: "flex",
+            flexDirection: "column",
+            position: "relative",
+          }}
+        >
           <ProjectKnowledgeGraphCanvas
             nodes={filteredNodes}
             edges={filteredEdges}
@@ -342,15 +370,25 @@ export function ProjectKnowledgeGraphWorkspace({
             onSelectNode={handleSelectNode}
             onSelectEdge={setSelectedEdgeId}
             width={960}
-            height={520}
+            height={graphMobileUx ? 400 : 520}
           />
-          <ProjectGraphRelatedExplorerStrip
-            node={selectedNode}
-            onSelectRelatedNodeId={(id) => {
-              handleSelectNode(id);
-              setFocusNodeId((prev) => prev ?? id);
-            }}
-          />
+          {graphMobileUx ? (
+            <ProjectKnowledgeGraphMobileFab
+              onShowAll={handleCollapseFocus}
+              onFocusNode={handleFocusNode}
+              onRefresh={() => void reload()}
+              focusDisabled={!selectedNodeId}
+            />
+          ) : null}
+          {graphMobileUx ? (
+            <ProjectKnowledgeGraphNodeBottomSheet
+              open={Boolean(selectedNode)}
+              node={selectedNode}
+              impact={impact}
+              onClose={closeMobileNodeSheet}
+              onSelectRelatedNodeId={handleSelectRelatedNodeId}
+            />
+          ) : null}
           {selectedEdge ? (
             <div style={{ padding: "8px 12px", borderTop: `1px solid ${t.border}`, fontSize: 12, color: t.textSecondary }}>
               <strong>선택된 관계:</strong> {selectedEdge.edgeType} · {nodeTitleById.get(selectedEdge.fromNodeId) ?? selectedEdge.fromNodeId} →{" "}
@@ -358,17 +396,11 @@ export function ProjectKnowledgeGraphWorkspace({
             </div>
           ) : null}
         </div>
-        {!isMobile ? (
+        {!graphMobileUx ? (
           <ProjectGraphNodeDetailPanel
             node={selectedNode}
             impact={impact}
-            onSelectRelatedNodeId={(id) => handleSelectNode(id)}
-          />
-        ) : selectedNode ? (
-          <ProjectGraphNodeDetailPanel
-            node={selectedNode}
-            impact={impact}
-            onSelectRelatedNodeId={(id) => handleSelectNode(id)}
+            onSelectRelatedNodeId={handleSelectRelatedNodeId}
           />
         ) : null}
       </div>

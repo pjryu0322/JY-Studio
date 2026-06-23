@@ -1,11 +1,62 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { useEffect } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
-import { StructureExplainabilityPanel } from "@/components/project-structure/StructureExplainabilityPanel";
-import { ProjectGraphRelatedNodeExplorer } from "@/components/project-graph/ProjectGraphRelatedNodeExplorer";
+import { StructureExplainabilityPanel, StructureConfidenceBadge } from "@/components/project-structure/StructureExplainabilityPanel";
 import type { ProjectGraphNodeDto } from "@/lib/project-graph/projectGraphClient";
 import type { GraphImpactZones } from "@/lib/project-graph/projectGraphExploration";
+
+export function ProjectGraphNodeDetailBody({
+  node,
+  impact,
+  onSelectRelatedNodeId,
+  compact = false,
+}: {
+  readonly node: ProjectGraphNodeDto;
+  readonly impact: GraphImpactZones | null;
+  readonly onSelectRelatedNodeId: (nodeId: string) => void;
+  readonly compact?: boolean;
+}) {
+  return (
+    <>
+      <header style={{ marginBottom: 12 }}>
+        <h2 style={{ margin: "0 0 6px", fontSize: compact ? 17 : 16, fontWeight: 900, color: t.textPrimary }}>
+          {node.title}
+        </h2>
+        <div style={{ fontSize: 12, color: t.textMuted, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <span style={{ fontWeight: 800 }}>{node.nodeType}</span>
+          {node.lifecycleStatus ? <span>{node.lifecycleStatus}</span> : null}
+          {node.explainability ? (
+            <StructureConfidenceBadge
+              label={node.explainability.confidenceLabel}
+              percent={node.explainability.confidence}
+            />
+          ) : null}
+        </div>
+      </header>
+
+      <StructureExplainabilityPanel
+        explainability={node.explainability ?? null}
+        title="노드 생성 근거"
+        onSelectRelatedNodeId={onSelectRelatedNodeId}
+        compact={compact}
+      />
+
+      {impact && (impact.depth1.size > 0 || impact.depth2.size > 0) ? (
+        <details style={{ marginTop: 12, fontSize: 12 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 800, minHeight: 44, display: "flex", alignItems: "center" }}>
+            영향 분석 (고급)
+          </summary>
+          <div style={{ paddingTop: 8, color: t.textSecondary }}>
+            <div>Depth 1: {impact.depth1.size} nodes</div>
+            <div>Depth 2: {impact.depth2.size} nodes</div>
+          </div>
+        </details>
+      ) : null}
+    </>
+  );
+}
 
 export function ProjectGraphNodeDetailPanel({
   node,
@@ -19,6 +70,7 @@ export function ProjectGraphNodeDetailPanel({
   const panel: CSSProperties = {
     width: 380,
     maxWidth: "100%",
+    flex: "4 1 0%",
     flexShrink: 0,
     borderLeft: `1px solid ${t.border}`,
     padding: 16,
@@ -29,52 +81,15 @@ export function ProjectGraphNodeDetailPanel({
 
   if (!node) {
     return (
-      <aside style={panel} aria-label="Graph node detail">
-        <p style={{ margin: 0, fontSize: 13, color: t.textMuted }}>노드를 선택하면 상세와 Explainability가 표시됩니다.</p>
+      <aside style={panel} aria-label="그래프 노드 상세">
+        <p style={{ margin: 0, fontSize: 13, color: t.textMuted }}>노드를 선택하면 생성 근거와 관련 노드를 볼 수 있습니다.</p>
       </aside>
     );
   }
 
-  const related = node.explainability?.relatedNodes ?? [];
-
   return (
-    <aside style={panel} aria-label="Graph node detail">
-      <h2 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 800, color: t.textPrimary }}>{node.title}</h2>
-      <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 12 }}>
-        <span style={{ fontWeight: 700 }}>{node.nodeType}</span>
-        {node.lifecycleStatus ? (
-          <>
-            {" · "}
-            <span>{node.lifecycleStatus}</span>
-          </>
-        ) : null}
-      </div>
-      {node.summary ? (
-        <p style={{ margin: "0 0 12px", fontSize: 13, color: t.textSecondary, lineHeight: 1.5 }}>{node.summary}</p>
-      ) : null}
-
-      {impact && (impact.depth1.size > 0 || impact.depth2.size > 0) ? (
-        <div
-          style={{
-            marginBottom: 12,
-            padding: 10,
-            borderRadius: 8,
-            border: `1px solid ${t.border}`,
-            fontSize: 12,
-            background: t.surfaceInfoSoft,
-          }}
-        >
-          <div style={{ fontWeight: 800, marginBottom: 4 }}>영향 분석 (삭제 시뮬레이션 아님)</div>
-          <div>Depth 1: {impact.depth1.size} nodes</div>
-          <div>Depth 2: {impact.depth2.size} nodes</div>
-        </div>
-      ) : null}
-
-      <StructureExplainabilityPanel
-        explainability={node.explainability ?? null}
-        title="노드 생성 근거"
-        onSelectRelatedNodeId={onSelectRelatedNodeId}
-      />
+    <aside style={panel} aria-label="그래프 노드 상세">
+      <ProjectGraphNodeDetailBody node={node} impact={impact} onSelectRelatedNodeId={onSelectRelatedNodeId} />
     </aside>
   );
 }
@@ -86,13 +101,5 @@ export function ProjectGraphRelatedExplorerStrip({
   readonly node: ProjectGraphNodeDto | null;
   readonly onSelectRelatedNodeId: (nodeId: string) => void;
 }) {
-  if (!node) return null;
-  return (
-    <ProjectGraphRelatedNodeExplorer
-      centerNodeTitle={node.title}
-      centerNodeType={node.nodeType}
-      relatedNodes={node.explainability?.relatedNodes ?? []}
-      onSelectNodeId={onSelectRelatedNodeId}
-    />
-  );
+  return null;
 }
