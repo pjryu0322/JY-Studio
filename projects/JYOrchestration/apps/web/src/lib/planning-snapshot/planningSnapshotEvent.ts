@@ -2,8 +2,6 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { PROJECT_PROCESS_STAGES } from "@/lib/project-process/projectEventTypes";
 import { appendProjectEvent, type ProjectEventStoreClient } from "@/lib/project-process/projectEventStore";
-import { extractStructureCandidatesFromEventStore } from "@/lib/project-structure/projectStructureExtractor";
-import { trySyncProjectGraphProjection } from "@/lib/project-graph/projectGraphProjection";
 import type { PlanningSnapshotModel } from "@/lib/planning-snapshot/planningSnapshotModel";
 import { PLANNING_SNAPSHOT_EVENT_TYPE } from "@/lib/planning-snapshot/planningSnapshotModel";
 import { planningSnapshotPayloadFromModel } from "@/lib/planning-snapshot/planningSnapshotMapper";
@@ -38,13 +36,6 @@ export async function appendPlanningSnapshotCreatedEvent(
   });
 }
 
-/** Event Store → Structure Candidate → Graph projection */
-export async function projectPlanningSnapshotAfterEvent(projectId: string, eventIds?: readonly string[]) {
-  const pid = projectId.trim();
-  await extractStructureCandidatesFromEventStore(pid);
-  trySyncProjectGraphProjection(pid, eventIds);
-}
-
 export async function persistPlanningSnapshotIntegration(
   db: ProjectEventStoreClient,
   snapshot: PlanningSnapshotModel,
@@ -55,6 +46,5 @@ export async function persistPlanningSnapshotIntegration(
     select: { id: true },
   });
   const event = await appendPlanningSnapshotCreatedEvent(db, { snapshot });
-  await projectPlanningSnapshotAfterEvent(snapshot.projectId, [event.id]);
   return { eventId: event.id, created: !prior };
 }

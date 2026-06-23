@@ -2,8 +2,6 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { PROJECT_PROCESS_STAGES } from "@/lib/project-process/projectEventTypes";
 import { appendProjectEvent, type ProjectEventStoreClient } from "@/lib/project-process/projectEventStore";
-import { extractStructureCandidatesFromEventStore } from "@/lib/project-structure/projectStructureExtractor";
-import { trySyncProjectGraphProjection } from "@/lib/project-graph/projectGraphProjection";
 import type { PlanningProposalModel } from "@/lib/planning-proposal/planningProposalModel";
 import { PLANNING_PROPOSAL_EVENT_TYPE } from "@/lib/planning-proposal/planningProposalModel";
 import { planningProposalPayloadFromModel } from "@/lib/planning-proposal/planningProposalMapper";
@@ -44,12 +42,6 @@ export async function appendPlanningProposalApprovedEvent(
   });
 }
 
-export async function projectPlanningProposalAfterEvent(projectId: string, eventIds?: readonly string[]) {
-  const pid = projectId.trim();
-  await extractStructureCandidatesFromEventStore(pid);
-  trySyncProjectGraphProjection(pid, eventIds);
-}
-
 export async function persistPlanningProposalApproval(
   db: ProjectEventStoreClient,
   proposal: PlanningProposalModel,
@@ -64,6 +56,5 @@ export async function persistPlanningProposalApproval(
     select: { id: true },
   });
   const event = await appendPlanningProposalApprovedEvent(db, { proposal });
-  await projectPlanningProposalAfterEvent(proposal.projectId, [event.id]);
   return { eventId: event.id, created: !prior };
 }

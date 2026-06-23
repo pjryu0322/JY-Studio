@@ -15,10 +15,7 @@ import {
   PROJECT_GRAPH_EVENT_TYPES,
   PROJECT_GRAPH_NODE_TYPES,
 } from "@/lib/project-graph/projectGraphTypes";
-import { planProjectGraphProjectionFromPlanningSnapshot } from "@/lib/planning-snapshot/planningSnapshotGraphPlan";
-import { parsePlanningSnapshotFromEventPayload } from "@/lib/planning-snapshot/planningSnapshotStructurePlan";
-import { parsePlanningProposalFromEventPayload } from "@/lib/planning-proposal/planningProposalMapper";
-import { planProjectGraphProjectionFromPlanningProposal } from "@/lib/planning-proposal/planningProposalGraphPlan";
+import { projectGraphProjectionHandlers } from "@/lib/project-graph/projectGraphProjectionRegistry";
 
 export type ProjectGraphEventInput = Readonly<{
   readonly id: string;
@@ -64,6 +61,12 @@ function readString(payload: Record<string, unknown>, key: string): string {
 }
 
 export function planProjectGraphProjectionFromEvent(event: ProjectGraphEventInput): ProjectGraphProjectionPlan {
+  const registryHandler = projectGraphProjectionHandlers[event.eventType];
+  if (registryHandler) {
+    const handled = registryHandler(event);
+    if (handled) return handled;
+  }
+
   const payload = asPayloadRecord(event.payload);
   const nodes: ProjectGraphNodePlan[] = [];
   const edges: ProjectGraphEdgePlan[] = [];
@@ -225,28 +228,6 @@ export function planProjectGraphProjectionFromEvent(event: ProjectGraphEventInpu
           metadata: { reviewId },
           sourceEventId: event.id,
         });
-      }
-      break;
-    }
-    case PROJECT_GRAPH_EVENT_TYPES.PLANNING_SNAPSHOT_CREATED: {
-      const snapshot = parsePlanningSnapshotFromEventPayload(
-        event.projectId,
-        event.payload,
-        event.sourceMessageId,
-      );
-      if (snapshot) {
-        return planProjectGraphProjectionFromPlanningSnapshot(event.id, event.projectId, snapshot);
-      }
-      break;
-    }
-    case PROJECT_GRAPH_EVENT_TYPES.PLANNING_PROPOSAL_APPROVED: {
-      const proposal = parsePlanningProposalFromEventPayload(
-        event.projectId,
-        event.payload,
-        event.sourceMessageId,
-      );
-      if (proposal) {
-        return planProjectGraphProjectionFromPlanningProposal(event.id, event.projectId, proposal);
       }
       break;
     }

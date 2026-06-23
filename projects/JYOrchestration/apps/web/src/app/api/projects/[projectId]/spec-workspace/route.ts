@@ -20,11 +20,7 @@ import {
 import { trySyncTaskDraftsAfterSpecChange } from "@/lib/project-spec/trySyncTaskDraftsAfterSpecChange";
 import { isAllowedSpecWorkspaceModel } from "@/lib/project-spec/specWorkspaceModels";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { PROJECT_PROCESS_STAGES } from "@/lib/project-process/projectEventTypes";
-import { syncRequirementsConversationMessagesToEventStore } from "@/lib/project-process/projectEventStore";
-import { trySyncProjectGraphProjection } from "@/lib/project-graph/projectGraphProjection";
-import { integratePlanningSnapshotsAfterConversationSync } from "@/lib/planning-snapshot/planningSnapshotConversationIntegrate";
-import { integratePlanningProposalApprovalFromRequirementsState } from "@/lib/planning-proposal/planningProposalConversationIntegrate";
+import { runProjectKnowledgePipeline } from "@/lib/project-knowledge/projectKnowledgePipeline";
 import {
   mergeRequirementsStateJson,
   parseRequirementsStateJson,
@@ -715,53 +711,47 @@ export async function PATCH(
     }
 
     let eventStoreWarning: string | null = null;
-    if (body.requirementsConversationJson !== undefined && body.requirementsConversationJson !== null) {
-      try {
-        const nextConversationJson =
-          updated.requirementsConversationJson ?? body.requirementsConversationJson;
-        await syncRequirementsConversationMessagesToEventStore(prisma, {
-          projectId: id,
-          actorId: userId,
-          previousConversationJson,
-          nextConversationJson,
-          fallbackStage: PROJECT_PROCESS_STAGES.REQUIREMENTS_IDEATION,
-        });
-        trySyncProjectGraphProjection(id);
+    let knowledgeWarnings: string[] = [];
+    const runsConversation =
+      body.requirementsConversationJson !== undefined && body.requirementsConversationJson !== null;
+    const runsKnowledge =
+      runsConversation ||
+      body.requirementsStateJson !== undefined ||
+      body.requirementsConversationJson !== undefined;
 
-        const snapshotIntegration = await integratePlanningSnapshotsAfterConversationSync(prisma, {
-          projectId: id,
-          projectName: String(updated.name ?? "").trim(),
-          projectDescription: updated.description,
-          previousConversationJson,
-          nextConversationJson,
-          requirementsStateJson: updated.requirementsStateJson,
-        });
-        if (snapshotIntegration.integrated && snapshotIntegration.statePatch) {
-          const mergedState = mergeRequirementsStateJson(
-            parseRequirementsStateJson(updated.requirementsStateJson),
-            snapshotIntegration.statePatch,
-          );
-          updated = await prisma.project.update({
-            where: { id },
-            data: { requirementsStateJson: mergedState as Prisma.InputJsonValue },
-          });
-        }
+    if (runsKnowledge) {
+      const nextConversationJson = runsConversation
+        ? (updated.requirementsConversationJson ?? body.requirementsConversationJson)
+        : updated.requirementsConversationJson;
 
-      } catch (eventError) {
-        console.error("Project Event Store sync failed:", eventError);
+      const knowledgeResult = await runProjectKnowledgePipeline(prisma, {
+        projectId: id,
+        actorId: userId,
+        trigger: "requirements_saved",
+        previousConversationJson: runsConversation ? previousConversationJson : undefined,
+        nextConversationJson,
+        requirementsStateJson: updated.requirementsStateJson,
+        projectName: String(updated.name ?? "").trim(),
+        projectDescription: updated.description,
+        runConversationSync: runsConversation,
+        runProposalIntegration:
+          body.requirementsStateJson !== undefined || body.requirementsConversationJson !== undefined,
+      });
+
+      knowledgeWarnings = [...knowledgeResult.warnings];
+      if (knowledgeResult.warnings.includes("EVENT_STORE_SYNC_FAILED")) {
         eventStoreWarning = "EVENT_STORE_SYNC_FAILED";
       }
-    }
 
-    if (body.requirementsStateJson !== undefined || body.requirementsConversationJson !== undefined) {
-      try {
-        await integratePlanningProposalApprovalFromRequirementsState(prisma, {
-          projectId: id,
-          requirementsStateJson: updated.requirementsStateJson,
-          requirementsConversationJson: updated.requirementsConversationJson,
+      if (knowledgeResult.statePatch) {
+        const mergedState = mergeRequirementsStateJson(
+          parseRequirementsStateJson(updated.requirementsStateJson),
+          knowledgeResult.statePatch,
+        );
+        updated = await prisma.project.update({
+          where: { id },
+          data: { requirementsStateJson: mergedState as Prisma.InputJsonValue },
         });
-      } catch (proposalError) {
-        console.error("Planning proposal Event Store integration failed:", proposalError);
       }
     }
 
@@ -773,6 +763,7 @@ export async function PATCH(
         patchApplied,
         ...(patchDegraded ? { code: patchDegraded.code } : {}),
         ...(eventStoreWarning ? { eventStoreWarning } : {}),
+        ...(knowledgeWarnings.length ? { knowledgeWarnings } : {}),
         ...(specPromptConfigOut ? { specPromptConfig: specPromptConfigOut } : {}),
       },
     });
