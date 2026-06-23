@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { RequirementsMessage } from "@/lib/requirements/requirementsMessage";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
@@ -45,7 +45,8 @@ import {
 import { useChatTextSelectionToolbar } from "@/components/workspace/useChatTextSelectionToolbar";
 import { resolveInitialProposalQuickReplyAction } from "@/lib/requirements/preProjectSingleChatInitialProposal";
 import { normalizeRequirementsChatSelectionText } from "@/lib/requirements/requirementsChatSelection";
-import { buildKnowledgeGraphHref } from "@/lib/project-graph/projectGraphExploration";
+
+export type KnowledgeGraphMessageOpenInput = Readonly<{ readonly sourceMessageId: string }>;
 
 function aiCardShell(tone: "default" | "notice" | "error"): CSSProperties {
   const base = workspaceStandardChatBubbleShell("ai");
@@ -135,6 +136,7 @@ export function RequirementsChatPanel({
   onOpenPromptTimeline,
   onCopyAllCodeTaskPrompts,
   knowledgeGraphProjectId,
+  onOpenKnowledgeGraph,
   scrollToMessageId,
 }: {
   readonly messages: readonly RequirementsMessage[] | null;
@@ -176,8 +178,9 @@ export function RequirementsChatPanel({
   readonly onOpenPromptTimeline?: () => void;
   /** Quick Design 구현준비 메시지: 전체 CodeTask Cursor 프롬프트 일괄 복사 */
   readonly onCopyAllCodeTaskPrompts?: () => Promise<boolean>;
-  /** Graph ↔ Chat: 프로젝트 지식 그래프 링크 */
+  /** Graph ↔ Chat: 프로젝트 지식 그래프 (기본 Large Modal) */
   readonly knowledgeGraphProjectId?: string;
+  readonly onOpenKnowledgeGraph?: (input: KnowledgeGraphMessageOpenInput) => void;
   /** Graph에서 대화로 돌아올 때 스크롤할 메시지 ID */
   readonly scrollToMessageId?: string | null;
 }) {
@@ -531,14 +534,16 @@ export function RequirementsChatPanel({
                 aria-label="메시지 작업"
               >
                 {headerReplyBtn}
-                {knowledgeGraphProjectId && (mine || m.role === "human") ? (
-                  <Link
-                    href={buildKnowledgeGraphHref(knowledgeGraphProjectId, { sourceMessageId: m.id })}
-                    style={{ ...iconActionBtn, fontSize: 11, fontWeight: 800, textDecoration: "none", color: t.primary }}
+                {knowledgeGraphProjectId && onOpenKnowledgeGraph && (mine || m.role === "human") ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenKnowledgeGraph({ sourceMessageId: m.id })}
+                    style={{ ...iconActionBtn, fontSize: 11, fontWeight: 800, color: t.primary }}
                     title="구조 보기"
+                    aria-label="구조 보기"
                   >
                     구조
-                  </Link>
+                  </button>
                 ) : null}
                 {headerCopyBtn}
               </div>

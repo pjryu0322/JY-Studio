@@ -7,10 +7,12 @@ import { uiTokens as t } from "@/components/ui/tokens";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { ProjectKnowledgeGraphCanvas } from "@/components/project-graph/ProjectKnowledgeGraphCanvas";
 import { ProjectKnowledgeGraphActivityPanel } from "@/components/project-graph/ProjectKnowledgeGraphActivityPanel";
+import { FixedToast } from "@/components/ui/FixedToast";
 import { ProjectKnowledgeGraphMobileFab } from "@/components/project-graph/ProjectKnowledgeGraphMobileFab";
 import { ProjectKnowledgeGraphNodeBottomSheet } from "@/components/project-graph/ProjectKnowledgeGraphNodeBottomSheet";
 import { ProjectKnowledgeGraphSummaryBadges } from "@/components/project-graph/ProjectKnowledgeGraphSummaryBadges";
 import { useGraphMobileUx } from "@/components/project-graph/useGraphMobileUx";
+import { useProjectKnowledgeGraphToast } from "@/components/project-graph/useProjectKnowledgeGraphToast";
 import { ProjectGraphNodeDetailPanel } from "@/components/project-graph/ProjectGraphNodeDetailPanel";
 import { fetchProjectGraph, type ProjectGraphEdgeDto, type ProjectGraphNodeDto } from "@/lib/project-graph/projectGraphClient";
 import {
@@ -28,6 +30,7 @@ import {
 } from "@/lib/project-graph/projectGraphExploration";
 import { requirementsWorkspaceMainRowStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import { computeProjectGraphSummaryCounts } from "@/lib/project-graph/projectGraphSummaryCounts";
+import type { ProjectKnowledgeGraphLaunchContext } from "@/components/project-graph/projectKnowledgeGraphLaunchTypes";
 
 const LIFECYCLE_OPTIONS = ["", "PROJECTED", "APPROVED", "CANDIDATE"] as const;
 
@@ -43,10 +46,14 @@ export function ProjectKnowledgeGraphWorkspace({
   projectId,
   variant = "page",
   initialSourceMessageId = null,
+  onExit,
+  onLaunchContextChange,
 }: {
   readonly projectId: string;
   readonly variant?: "page" | "modal";
   readonly initialSourceMessageId?: string | null;
+  readonly onExit?: () => void;
+  readonly onLaunchContextChange?: (ctx: ProjectKnowledgeGraphLaunchContext) => void;
 }) {
   const searchParams = useSearchParams();
   const [clientReady, setClientReady] = useState(false);
@@ -81,6 +88,8 @@ export function ProjectKnowledgeGraphWorkspace({
   const [activitySummary, setActivitySummary] = useState<ProjectGraphActivitySummary | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState<string | null>(null);
+  const [centerOnNodeNonce, setCenterOnNodeNonce] = useState(0);
+  const { toastMessage, showToast } = useProjectKnowledgeGraphToast();
 
   const reloadActivity = useCallback(
     async (withSync: boolean) => {
@@ -146,6 +155,7 @@ export function ProjectKnowledgeGraphWorkspace({
       setFocusNodeId(focus);
       setSelectedNodeId(focus);
       setExpandedNodeIds(new Set(collectNeighbors(focus, buildUndirectedAdjacency(edges))));
+      setCenterOnNodeNonce((n) => n + 1);
       return;
     }
     if (sourceMessageId) {
@@ -154,9 +164,20 @@ export function ProjectKnowledgeGraphWorkspace({
         setFocusNodeId(ids[0]);
         setSelectedNodeId(ids[0]);
         setExpandedNodeIds(new Set(collectNeighbors(ids[0], buildUndirectedAdjacency(edges))));
+        setCenterOnNodeNonce((n) => n + 1);
       }
     }
   }, [clientReady, searchParams, nodes, edges]);
+
+  useEffect(() => {
+    if (!onLaunchContextChange) return;
+    onLaunchContextChange({
+      focusNodeId,
+      selectedNodeId,
+      activityView,
+      sourceMessageId: highlightSourceMessageId,
+    });
+  }, [onLaunchContextChange, focusNodeId, selectedNodeId, activityView, highlightSourceMessageId]);
 
   const adjacency = useMemo(() => buildUndirectedAdjacency(edges), [edges]);
   const edgeTypes = useMemo(() => [...new Set(edges.map((e) => e.edgeType))].sort(), [edges]);
@@ -216,25 +237,63 @@ export function ProjectKnowledgeGraphWorkspace({
   }, []);
 
   const handleFocusNode = useCallback(() => {
-    if (!selectedNodeId) return;
+    if (!selectedNodeId) {
+      showToast("노드를 먼저 선택하세요.");
+      return;
+    }
     setFocusNodeId(selectedNodeId);
     setExpandedNodeIds(new Set(collectNeighbors(selectedNodeId, adjacency)));
-  }, [selectedNodeId, adjacency]);
+    setCenterOnNodeNonce((n) => n + 1);
+    showToast("선택 노드 중심 이동");
+  }, [selectedNodeId, adjacency, showToast]);
 
   const handleExpandNeighbors = useCallback(() => {
-    if (!selectedNodeId) return;
+    if (!selectedNodeId) {
+      showToast("노드를 먼저 선택하세요.");
+      return;
+    }
+    const neighbors = collectNeighbors(selectedNodeId, adjacency);
+    let added = 0;
     setExpandedNodeIds((prev) => {
       const next = new Set(prev);
-      for (const n of collectNeighbors(selectedNodeId, adjacency)) next.add(n);
-      if (focusNodeId) next.add(focusNodeId);
+      for (const n of neighbors) {
+        if (!next.has(n)) added += 1;
+        next.add(n);
+      }
+      const focus = focusNodeId ?? selectedNodeId;
+      next.add(focus);
       return next;
     });
-  }, [selectedNodeId, adjacency, focusNodeId]);
+    if (!focusNodeId) setFocusNodeId(selectedNodeId);
+    showToast(added > 0 ? `+${added}개 노드 확장됨` : "인접 노드가 이미 표시 중입니다.");
+  }, [selectedNodeId, adjacency, focusNodeId, showToast]);
 
   const handleCollapseFocus = useCallback(() => {
+    if (!selectedNodeId) {
+      showToast("노드를 먼저 선택하세요.");
+      return;
+    }
     setFocusNodeId(null);
     setExpandedNodeIds(new Set());
-  }, []);
+    showToast("확장된 노드 접힘");
+  }, [selectedNodeId, showToast]);
+
+  const handleShowAllGraph = useCallback(() => {
+    setFocusNodeId(null);
+    setExpandedNodeIds(new Set());
+    showToast("확장된 노드 접힘");
+  }, [showToast]);
+
+  const requireSelectionAction = useCallback(
+    (action: () => void) => {
+      if (!selectedNodeId) {
+        showToast("노드를 먼저 선택하세요.");
+        return;
+      }
+      action();
+    },
+    [selectedNodeId, showToast],
+  );
 
   const shell: CSSProperties = {
     ...requirementsWorkspaceMainRowStyle,
@@ -268,15 +327,35 @@ export function ProjectKnowledgeGraphWorkspace({
   const btnStyle: CSSProperties = {
     fontSize: 12,
     fontWeight: 700,
-    padding: "6px 10px",
+    padding: graphMobileUx ? "10px 12px" : "6px 10px",
+    minHeight: graphMobileUx ? 44 : undefined,
+    minWidth: graphMobileUx ? 44 : undefined,
     borderRadius: 8,
     border: `1px solid ${t.border}`,
     background: t.bgPage,
     cursor: "pointer",
   };
 
+  const graphActionBtnStyle = (disabled: boolean): CSSProperties => ({
+    ...btnStyle,
+    opacity: disabled ? 0.45 : 1,
+    cursor: disabled ? "not-allowed" : "pointer",
+  });
+
+  const canvasHeight = graphMobileUx ? 400 : 520;
+  const canvasWidth = 960;
+  const centerOnNodeRequest =
+    selectedNodeId && centerOnNodeNonce > 0
+      ? { nodeId: selectedNodeId, nonce: centerOnNodeNonce }
+      : null;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      {toastMessage ? (
+        <FixedToast tone="success" aria-live="polite">
+          {toastMessage}
+        </FixedToast>
+      ) : null}
       {activityView ? (
         <ProjectKnowledgeGraphActivityPanel
           summary={activitySummary}
@@ -290,6 +369,17 @@ export function ProjectKnowledgeGraphWorkspace({
         />
       ) : null}
       <div style={toolbar}>
+        <div
+          style={{
+            flex: "1 1 100%",
+            fontSize: 12,
+            fontWeight: 700,
+            color: selectedNode ? t.textPrimary : t.textMuted,
+          }}
+          aria-live="polite"
+        >
+          {selectedNode ? `현재 선택: ${selectedNode.title}` : "선택된 노드 없음"}
+        </div>
         <ProjectKnowledgeGraphSummaryBadges counts={summaryCounts} />
         <input
           type="search"
@@ -328,13 +418,31 @@ export function ProjectKnowledgeGraphWorkspace({
             </option>
           ))}
         </select>
-        <button type="button" onClick={handleFocusNode} disabled={!selectedNodeId} style={btnStyle}>
+        <button
+          type="button"
+          onClick={() => requireSelectionAction(handleFocusNode)}
+          disabled={!selectedNodeId}
+          aria-label="선택 노드 중심 이동"
+          style={graphActionBtnStyle(!selectedNodeId)}
+        >
           Focus
         </button>
-        <button type="button" onClick={handleExpandNeighbors} disabled={!selectedNodeId} style={btnStyle}>
+        <button
+          type="button"
+          onClick={() => requireSelectionAction(handleExpandNeighbors)}
+          disabled={!selectedNodeId}
+          aria-label="인접 노드 확장"
+          style={graphActionBtnStyle(!selectedNodeId)}
+        >
           Neighbor Expand
         </button>
-        <button type="button" onClick={handleCollapseFocus} style={btnStyle}>
+        <button
+          type="button"
+          onClick={() => requireSelectionAction(handleCollapseFocus)}
+          disabled={!selectedNodeId}
+          aria-label="확장된 노드 접기"
+          style={graphActionBtnStyle(!selectedNodeId)}
+        >
           Collapse
         </button>
         <button type="button" onClick={() => void reload()} style={btnStyle}>
@@ -369,12 +477,13 @@ export function ProjectKnowledgeGraphWorkspace({
             impactZones={impact}
             onSelectNode={handleSelectNode}
             onSelectEdge={setSelectedEdgeId}
-            width={960}
-            height={graphMobileUx ? 400 : 520}
+            width={canvasWidth}
+            height={canvasHeight}
+            centerOnNodeRequest={centerOnNodeRequest}
           />
           {graphMobileUx ? (
             <ProjectKnowledgeGraphMobileFab
-              onShowAll={handleCollapseFocus}
+              onShowAll={handleShowAllGraph}
               onFocusNode={handleFocusNode}
               onRefresh={() => void reload()}
               focusDisabled={!selectedNodeId}
@@ -404,6 +513,31 @@ export function ProjectKnowledgeGraphWorkspace({
           />
         ) : null}
       </div>
+      {!isModal && onExit && graphMobileUx ? (
+        <button
+          type="button"
+          onClick={onExit}
+          aria-label="대화로 돌아가기"
+          style={{
+            position: "fixed",
+            left: 12,
+            right: 12,
+            bottom: 12,
+            zIndex: 55,
+            minHeight: 48,
+            borderRadius: 12,
+            border: `1px solid ${t.border}`,
+            background: t.bgPage,
+            fontSize: 14,
+            fontWeight: 800,
+            color: t.primary,
+            boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
+            cursor: "pointer",
+          }}
+        >
+          ← 대화로 돌아가기
+        </button>
+      ) : null}
     </div>
   );
 }

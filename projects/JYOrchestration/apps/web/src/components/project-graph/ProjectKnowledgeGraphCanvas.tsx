@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, WheelEvent } from "react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import {
   layoutProjectGraphNodes,
@@ -35,6 +35,7 @@ export function ProjectKnowledgeGraphCanvas({
   onSelectEdge,
   width,
   height,
+  centerOnNodeRequest,
 }: {
   readonly nodes: readonly ProjectGraphNodeUi[];
   readonly edges: readonly ProjectGraphEdgeUi[];
@@ -46,6 +47,8 @@ export function ProjectKnowledgeGraphCanvas({
   readonly onSelectEdge: (id: string | null) => void;
   readonly width: number;
   readonly height: number;
+  /** nonce가 바뀔 때마다 해당 노드를 뷰 중앙으로 이동·확대 */
+  readonly centerOnNodeRequest?: Readonly<{ readonly nodeId: string; readonly nonce: number }> | null;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -70,6 +73,19 @@ export function ProjectKnowledgeGraphCanvas({
     }
     return next;
   }, [layoutPositions, nodeOffsets, nodes]);
+
+  useEffect(() => {
+    const nodeId = String(centerOnNodeRequest?.nodeId ?? "").trim();
+    if (!nodeId || centerOnNodeRequest?.nonce == null) return;
+    const pos = positions.get(nodeId);
+    if (!pos) return;
+    const targetZoom = 1.35;
+    setZoom(targetZoom);
+    setPan({
+      x: width / 2 - pos.x * targetZoom,
+      y: height / 2 - pos.y * targetZoom,
+    });
+  }, [centerOnNodeRequest, positions, width, height]);
 
   const onWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();

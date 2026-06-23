@@ -16,6 +16,7 @@ import {
   requirementsWorkspaceShellStyle,
 } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import { RequirementsMemberInviteModal } from "@/components/requirements/RequirementsMemberInviteModal";
+import { ProjectKnowledgeGraphModal } from "@/components/project-graph/ProjectKnowledgeGraphModal";
 import { WorkspaceParticipantsModal } from "@/components/workspace/WorkspaceParticipantsModal";
 import { resolveParticipantContextKey, useWorkspaceParticipants } from "@/components/workspace/useWorkspaceParticipants";
 import { useRequirementsServiceFlowDraft } from "@/components/requirements/workspace/useRequirementsServiceFlowDraft";
@@ -401,6 +402,8 @@ export function RequirementsWorkspace({
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
   const [promptDrawerOpen, setPromptDrawerOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [knowledgeGraphModalOpen, setKnowledgeGraphModalOpen] = useState(false);
+  const [knowledgeGraphSourceMessageId, setKnowledgeGraphSourceMessageId] = useState<string | null>(null);
   const [membersModalOpen, setMembersModalOpen] = useState(false);
   const [resetConversationBusy, setResetConversationBusy] = useState(false);
   const [conversationResetNonce, setConversationResetNonce] = useState(0);
@@ -3879,6 +3882,10 @@ export function RequirementsWorkspace({
         onOrganizeRequirements={() => void onOrganizeRequirements()}
         onCopyAllCodeTaskPrompts={handleCopyAllCodeTaskPrompts}
         knowledgeGraphProjectId={resolvedProjectId || undefined}
+        onOpenKnowledgeGraph={({ sourceMessageId }) => {
+          setKnowledgeGraphSourceMessageId(sourceMessageId);
+          setKnowledgeGraphModalOpen(true);
+        }}
         scrollToMessageId={scrollToMessageIdFromGraph}
         organizeDisabled={busy || remoteLocked}
         draftDocTruthy={Boolean(draftDoc)}
@@ -4253,6 +4260,16 @@ export function RequirementsWorkspace({
           setOrganizeError(null);
           setError(null);
           void organizeStartGenerateFinalProposal();
+        }}
+      />
+
+      <ProjectKnowledgeGraphModal
+        open={knowledgeGraphModalOpen && Boolean(resolvedProjectId.trim())}
+        projectId={resolvedProjectId.trim()}
+        sourceMessageId={knowledgeGraphSourceMessageId}
+        onClose={() => {
+          setKnowledgeGraphModalOpen(false);
+          setKnowledgeGraphSourceMessageId(null);
         }}
       />
 

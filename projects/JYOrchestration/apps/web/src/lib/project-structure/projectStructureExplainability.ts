@@ -185,6 +185,9 @@ function buildExplainabilityReason(input: Readonly<{
   if (nt === "Idea" && input.eventType === "idea.created") {
     return "프로젝트 아이디어 설명이 Event Store에 기록되어 Idea 후보를 생성했습니다.";
   }
+  if (input.eventType === "planning.snapshot_created") {
+    return "이 노드는 AI 기획자의 초기 기획 정리 결과에서 생성되었습니다.";
+  }
   if (nt === "Problem" && input.inferred) {
     return "대화에서 문제·과제·불편 표현이 감지되어 Problem 후보를 생성했습니다.";
   }

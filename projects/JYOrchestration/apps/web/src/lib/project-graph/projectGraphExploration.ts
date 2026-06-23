@@ -164,13 +164,18 @@ export function findGraphNodeIdsForSourceMessageId(
 
 export function buildKnowledgeGraphHref(
   projectId: string,
-  input?: Readonly<{ readonly focusNodeId?: string; readonly sourceMessageId?: string }>,
+  input?: Readonly<{
+    readonly focusNodeId?: string;
+    readonly sourceMessageId?: string;
+    readonly view?: string;
+  }>,
 ): string {
   const pid = String(projectId).trim();
   const base = `/projects/${encodeURIComponent(pid)}/knowledge-graph`;
   const params = new URLSearchParams();
   if (input?.focusNodeId) params.set("focusNodeId", input.focusNodeId);
   if (input?.sourceMessageId) params.set("sourceMessageId", input.sourceMessageId);
+  if (input?.view) params.set("view", input.view);
   const qs = params.toString();
   return qs ? `${base}?${qs}` : base;
 }

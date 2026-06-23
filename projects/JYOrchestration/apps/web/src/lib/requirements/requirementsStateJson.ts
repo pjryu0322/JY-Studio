@@ -570,6 +570,8 @@ export type RequirementsStateJson = {
   originalProjectDescription?: string | null;
   /** Pre-Project 대화방에서 confirm-project로 승격된 프로젝트 */
   seededFromPreProjectChat?: boolean;
+  /** AI 기획자 초기 Planning Snapshot (Knowledge Graph 연동) */
+  planningSnapshotV1?: import("@/lib/planning-snapshot/planningSnapshotModel").PlanningSnapshotV1Wire | null;
   /** 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지용 슬롯 상태) */
   problemInterview?: ProblemInterviewState | null;
   /**
@@ -1339,6 +1341,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
     onboardingShown: typeof o.onboardingShown === "boolean" ? o.onboardingShown : undefined,
     seededFromPreProjectChat:
       typeof o.seededFromPreProjectChat === "boolean" ? o.seededFromPreProjectChat : undefined,
+    planningSnapshotV1:
+      o.planningSnapshotV1 && typeof o.planningSnapshotV1 === "object" && !Array.isArray(o.planningSnapshotV1)
+        ? (o.planningSnapshotV1 as RequirementsStateJson["planningSnapshotV1"])
+        : o.planningSnapshotV1 === null
+          ? null
+          : undefined,
     ideationStageCompletedAt:
       typeof o.ideationStageCompletedAt === "string" ? o.ideationStageCompletedAt : undefined,
     ideationConfirmedAssetId:

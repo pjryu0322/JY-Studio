@@ -34,6 +34,7 @@ export const PROJECT_GRAPH_EVENT_TYPES = {
   PROJECT_CREATED: "project.created",
   IDEA_CREATED: "idea.created",
   CONVERSATION_MESSAGE_CREATED: "conversation.message_created",
+  PLANNING_SNAPSHOT_CREATED: "planning.snapshot_created",
   FEATURE_CREATED: "feature.created",
   PROTOTYPE_CREATED: "prototype.created",
   REVIEW_COMPLETED: "review.completed",

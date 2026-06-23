@@ -4,6 +4,10 @@ import {
   type ProjectGraphEventInput,
 } from "@/lib/project-graph/projectGraphProjectionPlan";
 import { PROJECT_GRAPH_EVENT_TYPES } from "@/lib/project-graph/projectGraphTypes";
+import {
+  parsePlanningSnapshotFromEventPayload,
+  planStructureCandidatesFromPlanningSnapshot,
+} from "@/lib/planning-snapshot/planningSnapshotStructurePlan";
 import { STRUCTURE_CANDIDATE_NODE_TYPES } from "@/lib/project-structure/projectStructureTypes";
 
 export type StructureCandidateNodeDraft = Readonly<{
@@ -73,6 +77,17 @@ function inferProblemFromRequirement(summary: string): Omit<StructureCandidateNo
  * Event Store 기반 구조 후보 추출 (Graph Projection 미수정).
  */
 export function planStructureCandidatesFromEvent(event: ProjectGraphEventInput): StructureExtractionPlan {
+  if (event.eventType === PROJECT_GRAPH_EVENT_TYPES.PLANNING_SNAPSHOT_CREATED) {
+    const snapshot = parsePlanningSnapshotFromEventPayload(
+      event.projectId,
+      event.payload,
+      event.sourceMessageId,
+    );
+    if (snapshot) {
+      return planStructureCandidatesFromPlanningSnapshot(event.id, snapshot);
+    }
+  }
+
   const graphPlan = planProjectGraphProjectionFromEvent(event);
   const nodes: StructureCandidateNodeDraft[] = [];
   const edges: StructureCandidateEdgeDraft[] = [];

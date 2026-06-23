@@ -37,6 +37,24 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
+function formatActivityEventLine(eventType: string): string {
+  if (eventType === "planning.snapshot_created") return "Planning Snapshot 생성";
+  return `Event: ${eventType}`;
+}
+
+function formatActivityCandidateLine(nodeType: string, title: string, metadata: unknown): string {
+  const meta =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>)
+      : null;
+  if (meta?.planningSnapshot === true) {
+    if (nodeType === "Actor") return `Actor Candidate 생성 · ${title}`;
+    if (nodeType === "Feature") return `Feature Candidate 생성 · ${title}`;
+    return `Candidate 생성 · ${title}`;
+  }
+  return `Candidate: ${nodeType ? `${nodeType} · ` : ""}${title}`;
+}
+
 function payloadPreview(payload: unknown): string | undefined {
   if (payload == null) return undefined;
   try {
@@ -110,7 +128,7 @@ export async function loadProjectGraphActivitySummary(
       kind: "event",
       sortAt,
       at: sortAt,
-      line: `Event: ${eventType}`,
+      line: formatActivityEventLine(eventType),
       sourceMessageId: ev.sourceMessageId == null ? null : String(ev.sourceMessageId),
       detail: {
         eventType,
@@ -131,7 +149,11 @@ export async function loadProjectGraphActivitySummary(
       kind: "candidate",
       sortAt,
       at: sortAt,
-      line: `Candidate: ${nodeType ? `${nodeType} · ` : ""}${title}`,
+      line: formatActivityCandidateLine(
+        nodeType,
+        title,
+        c.metadata ?? c.meta,
+      ),
       sourceMessageId: c.sourceMessageId == null ? null : String(c.sourceMessageId),
       detail: {
         title,

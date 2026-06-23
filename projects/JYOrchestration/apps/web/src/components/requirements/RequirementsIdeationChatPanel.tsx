@@ -13,7 +13,8 @@ import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/require
 import type { RequirementsWorkspaceStage } from "@/lib/requirements/requirementsWorkspaceHelpers";
 import { requirementsIdeationChatPanelShellStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 
-export type RequirementsIdeationChatPanelProps = Readonly<{  conversationStatus: "idle" | "loading" | "loaded" | "error";
+export type RequirementsIdeationChatPanelProps = Readonly<{
+  conversationStatus: "idle" | "loading" | "loaded" | "error";
   /** 통합 타임라인(`requirementsConversation.messages` 전체) */
   chatMessages: readonly RequirementsMessage[];
   participantAiMemberId: WorkspaceAiMemberId;
@@ -63,10 +64,12 @@ export type RequirementsIdeationChatPanelProps = Readonly<{  conversationStatus
   /** CodeTask LLM 정제 요약 옆: 전체 프롬프트 클립보드 복사 */
   onCopyAllCodeTaskPrompts?: () => Promise<boolean>;
   knowledgeGraphProjectId?: string;
+  onOpenKnowledgeGraph?: (input: { readonly sourceMessageId: string }) => void;
   scrollToMessageId?: string | null;
 }>;
 
-export function RequirementsIdeationChatPanel({  conversationStatus,
+export function RequirementsIdeationChatPanel({
+  conversationStatus,
   chatMessages,
   participantAiMemberId,
   aiInvokePending,
@@ -105,6 +108,7 @@ export function RequirementsIdeationChatPanel({  conversationStatus,
   chatHeaderLeading,
   onCopyAllCodeTaskPrompts,
   knowledgeGraphProjectId,
+  onOpenKnowledgeGraph,
   scrollToMessageId,
 }: RequirementsIdeationChatPanelProps) {
   const showTypingIndicator = useMemo(() => {
@@ -184,7 +188,8 @@ export function RequirementsIdeationChatPanel({  conversationStatus,
   );
 
   return (
-    <div className="jyo-requirements-chat-panel-shell" style={requirementsIdeationChatPanelShellStyle}>      <RequirementsChatPanel
+    <div className="jyo-requirements-chat-panel-shell" style={requirementsIdeationChatPanelShellStyle}>
+      <RequirementsChatPanel
         messages={conversationStatus === "loaded" ? chatMessages : null}
         screenAiMemberId={participantAiMemberId}
         headerLeading={headerLeading}
@@ -205,6 +210,7 @@ export function RequirementsIdeationChatPanel({  conversationStatus,
         onOpenPromptTimeline={onOpenPromptTimeline}
         onCopyAllCodeTaskPrompts={onCopyAllCodeTaskPrompts}
         knowledgeGraphProjectId={knowledgeGraphProjectId}
+        onOpenKnowledgeGraph={onOpenKnowledgeGraph}
         scrollToMessageId={scrollToMessageId}
         onInsertComposerPrompt={onInsertComposerPrompt}
         onInterviewSuggestionPick={onInterviewSuggestionPick}

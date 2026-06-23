@@ -23,6 +23,11 @@ import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { PROJECT_PROCESS_STAGES } from "@/lib/project-process/projectEventTypes";
 import { syncRequirementsConversationMessagesToEventStore } from "@/lib/project-process/projectEventStore";
 import { trySyncProjectGraphProjection } from "@/lib/project-graph/projectGraphProjection";
+import { integratePlanningSnapshotsAfterConversationSync } from "@/lib/planning-snapshot/planningSnapshotConversationIntegrate";
+import {
+  mergeRequirementsStateJson,
+  parseRequirementsStateJson,
+} from "@/lib/requirements/requirementsStateJson";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
@@ -721,6 +726,25 @@ export async function PATCH(
           fallbackStage: PROJECT_PROCESS_STAGES.REQUIREMENTS_IDEATION,
         });
         trySyncProjectGraphProjection(id);
+
+        const snapshotIntegration = await integratePlanningSnapshotsAfterConversationSync(prisma, {
+          projectId: id,
+          projectName: String(updated.name ?? "").trim(),
+          projectDescription: updated.description,
+          previousConversationJson,
+          nextConversationJson,
+          requirementsStateJson: updated.requirementsStateJson,
+        });
+        if (snapshotIntegration.integrated && snapshotIntegration.statePatch) {
+          const mergedState = mergeRequirementsStateJson(
+            parseRequirementsStateJson(updated.requirementsStateJson),
+            snapshotIntegration.statePatch,
+          );
+          updated = await prisma.project.update({
+            where: { id },
+            data: { requirementsStateJson: mergedState as Prisma.InputJsonValue },
+          });
+        }
       } catch (eventError) {
         console.error("Project Event Store sync failed:", eventError);
         eventStoreWarning = "EVENT_STORE_SYNC_FAILED";
