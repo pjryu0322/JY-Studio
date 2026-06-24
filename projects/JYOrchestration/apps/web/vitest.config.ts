@@ -11,6 +11,7 @@ export default defineConfig({
       "tests/overlay/**/*.test.ts",
       "tests/overlay-ui/**/*.test.ts",
       "tests/components/**/*.test.tsx",
+      "tests/components/**/*.test.ts",
     ],
     fileParallelism: false,
     maxConcurrency: 1,
