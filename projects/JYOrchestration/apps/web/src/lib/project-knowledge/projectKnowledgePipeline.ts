@@ -10,9 +10,11 @@ import { runWithKnowledgeBusPublishSuppressed } from "@/lib/project-knowledge/kn
 import {
   appendKnowledgePipelineStep,
   completeKnowledgePipelineRun,
+  failKnowledgePipelineRun,
   startKnowledgePipelineRun,
 } from "@/lib/project-knowledge/projectKnowledgePipelineMonitor";
 import { buildKnowledgeActivityItems } from "@/lib/project-knowledge/projectKnowledgeActivityBuilder";
+import type { PipelineRunMetricsInput } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 export type ProjectKnowledgePipelineTrigger =
@@ -56,13 +58,14 @@ export async function runProjectKnowledgePipeline(
     let proposalIntegrated = false;
     let postProcessed = false;
     let statePatch: Partial<RequirementsStateJson> | undefined;
+    let metrics: PipelineRunMetricsInput | undefined;
 
     const projectId = String(input.projectId).trim();
     if (!projectId) {
       return { ok: false, warnings: ["MISSING_PROJECT_ID"] };
     }
 
-    const run = startKnowledgePipelineRun(projectId, input.trigger);
+    const run = await startKnowledgePipelineRun(projectId, input.trigger);
 
     const runConversation = input.runConversationSync !== false && input.nextConversationJson != null;
     const runProposal =
@@ -70,6 +73,7 @@ export async function runProjectKnowledgePipeline(
       (input.requirementsStateJson !== undefined || input.nextConversationJson != null);
 
     if (runConversation) {
+      const syncStarted = Date.now();
       try {
         await syncRequirementsConversationMessagesToEventStore(db, {
           projectId,
@@ -79,21 +83,18 @@ export async function runProjectKnowledgePipeline(
           fallbackStage: PROJECT_PROCESS_STAGES.REQUIREMENTS_IDEATION,
         });
         conversationSynced = true;
-        appendKnowledgePipelineStep(run.id, {
+        await appendKnowledgePipelineStep(run.id, {
           stage: "EVENT_SYNC",
           title: "Conversation Saved",
           ok: true,
+          durationMs: Date.now() - syncStarted,
         });
       } catch (error) {
         console.error("Project Event Store sync failed:", error);
         warnings.push("EVENT_STORE_SYNC_FAILED");
-        appendKnowledgePipelineStep(run.id, {
-          stage: "FAILED",
-          title: "Conversation Saved",
-          summary: "EVENT_STORE_SYNC_FAILED",
-          ok: false,
+        await failKnowledgePipelineRun(run.id, {
+          errorMessage: "EVENT_STORE_SYNC_FAILED",
         });
-        completeKnowledgePipelineRun(run.id, { failed: true });
         return { ok: false, pipelineRunId: run.id, warnings };
       }
 
@@ -110,10 +111,12 @@ export async function runProjectKnowledgePipeline(
           snapshotIntegrated = true;
           if (snapshotIntegration.eventId) eventIds.push(snapshotIntegration.eventId);
           if (snapshotIntegration.statePatch) statePatch = snapshotIntegration.statePatch;
-          appendKnowledgePipelineStep(run.id, {
+          await appendKnowledgePipelineStep(run.id, {
             stage: "ARTIFACT_INTEGRATION",
             title: "Snapshot Integrated",
             ok: true,
+            sourceEventId: snapshotIntegration.eventId,
+            sourceMessageId: snapshotIntegration.sourceMessageId,
           });
         }
       } catch (error) {
@@ -132,10 +135,11 @@ export async function runProjectKnowledgePipeline(
         if (proposalIntegration.integrated) {
           proposalIntegrated = true;
           if (proposalIntegration.eventId) eventIds.push(proposalIntegration.eventId);
-          appendKnowledgePipelineStep(run.id, {
+          await appendKnowledgePipelineStep(run.id, {
             stage: "ARTIFACT_INTEGRATION",
             title: "Proposal Approved",
             ok: true,
+            sourceEventId: proposalIntegration.eventId,
           });
         }
       } catch (error) {
@@ -153,22 +157,34 @@ export async function runProjectKnowledgePipeline(
         pipelineRunId: run.id,
       });
       postProcessed = post.ok;
+      metrics = post.metrics;
       if (post.candidateSync === "failed") warnings.push("STRUCTURE_CANDIDATE_SYNC_FAILED");
       if (post.graphSync === "failed") warnings.push("GRAPH_PROJECTION_SYNC_FAILED");
     }
 
     buildKnowledgeActivityItems({ warnings });
-    appendKnowledgePipelineStep(run.id, {
+    await appendKnowledgePipelineStep(run.id, {
       stage: "ACTIVITY_BUILD",
       title: "Activity Built",
       ok: warnings.length === 0,
     });
 
-    const failed = warnings.includes("EVENT_STORE_SYNC_FAILED") || warnings.includes("STRUCTURE_CANDIDATE_SYNC_FAILED");
-    completeKnowledgePipelineRun(run.id, {
-      failed,
-      summary: warnings.length ? warnings.join(", ") : undefined,
-    });
+    const failed =
+      warnings.includes("EVENT_STORE_SYNC_FAILED") ||
+      warnings.includes("STRUCTURE_CANDIDATE_SYNC_FAILED") ||
+      warnings.includes("GRAPH_PROJECTION_SYNC_FAILED");
+
+    if (failed) {
+      await failKnowledgePipelineRun(run.id, {
+        errorMessage: warnings.join(", "),
+        metrics,
+      });
+    } else {
+      await completeKnowledgePipelineRun(run.id, {
+        summary: warnings.length ? warnings.join(", ") : undefined,
+        metrics,
+      });
+    }
 
     const ok =
       warnings.length === 0 ||

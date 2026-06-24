@@ -32,7 +32,7 @@ import {
 import { requirementsWorkspaceMainRowStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import type { ProjectKnowledgeGraphLaunchContext } from "@/components/project-graph/projectKnowledgeGraphLaunchTypes";
 import { KnowledgePipelineMonitorPanel } from "@/components/project-graph/KnowledgePipelineMonitorPanel";
-import { fetchLatestKnowledgePipelineRun } from "@/lib/project-knowledge/projectKnowledgePipelineClient";
+import { fetchKnowledgePipelineRuns } from "@/lib/project-knowledge/projectKnowledgePipelineClient";
 import type { KnowledgePipelineRunRecord } from "@/lib/project-knowledge/projectKnowledgePipelineMonitor";
 
 const LIFECYCLE_OPTIONS = ["", "PROJECTED", "APPROVED", "CANDIDATE"] as const;
@@ -102,7 +102,7 @@ export function ProjectKnowledgeGraphWorkspace({
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pipelineRun, setPipelineRun] = useState<KnowledgePipelineRunRecord | null>(null);
+  const [pipelineRuns, setPipelineRuns] = useState<readonly KnowledgePipelineRunRecord[]>([]);
   const [pipelineLoading, setPipelineLoading] = useState(false);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [activitySummary, setActivitySummary] = useState<ProjectGraphActivitySummary | null>(null);
@@ -117,8 +117,8 @@ export function ProjectKnowledgeGraphWorkspace({
     setPipelineError(null);
     setPipelineLoading(true);
     try {
-      const run = await fetchLatestKnowledgePipelineRun(pid);
-      setPipelineRun(run);
+      const data = await fetchKnowledgePipelineRuns(pid, 20);
+      setPipelineRuns(data.recentRuns);
     } catch (e) {
       setPipelineError(e instanceof Error ? e.message : "파이프라인 기록을 불러오지 못했습니다.");
     } finally {
@@ -580,7 +580,7 @@ export function ProjectKnowledgeGraphWorkspace({
       {workspacePane === "knowledge" ? (
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
           <KnowledgePipelineMonitorPanel
-            run={pipelineRun}
+            runs={pipelineRuns}
             loading={pipelineLoading}
             error={pipelineError}
             onRefresh={() => void reloadPipelineMonitor()}

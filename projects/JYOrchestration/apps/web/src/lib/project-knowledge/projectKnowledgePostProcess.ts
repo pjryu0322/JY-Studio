@@ -1,6 +1,7 @@
 import { trySyncProjectGraphProjection } from "@/lib/project-graph/projectGraphProjection";
 import { extractStructureCandidatesFromEventStore } from "@/lib/project-structure/projectStructureExtractor";
 import { appendKnowledgePipelineStep } from "@/lib/project-knowledge/projectKnowledgePipelineMonitor";
+import type { PipelineRunMetricsInput } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
 
 export async function runProjectKnowledgePostProcess(input: {
   projectId: string;
@@ -12,6 +13,7 @@ export async function runProjectKnowledgePostProcess(input: {
   candidateSync?: "ok" | "failed";
   graphSync?: "queued" | "failed";
   errorCode?: string;
+  metrics?: PipelineRunMetricsInput;
 }> {
   const projectId = String(input.projectId ?? "").trim();
   if (!projectId) {
@@ -19,43 +21,62 @@ export async function runProjectKnowledgePostProcess(input: {
   }
 
   let candidateSync: "ok" | "failed" = "ok";
+  let metrics: PipelineRunMetricsInput | undefined;
+  const candidateStarted = Date.now();
   try {
-    await extractStructureCandidatesFromEventStore(projectId);
+    const stats = await extractStructureCandidatesFromEventStore(projectId);
+    metrics = {
+      eventCount: stats.eventCount,
+      candidateCount: stats.nodeCount,
+      nodeCount: stats.nodeCount,
+      edgeCount: stats.edgeCount,
+    };
     if (input.pipelineRunId) {
-      appendKnowledgePipelineStep(input.pipelineRunId, {
+      await appendKnowledgePipelineStep(input.pipelineRunId, {
         stage: "CANDIDATE_EXTRACTION",
         title: "Candidate Generated",
+        summary: `${stats.nodeCount} candidates`,
         ok: true,
+        durationMs: Date.now() - candidateStarted,
       });
     }
   } catch (error) {
     console.error("Project knowledge candidate sync failed:", input.reason ?? "post_process", error);
     candidateSync = "failed";
     if (input.pipelineRunId) {
-      appendKnowledgePipelineStep(input.pipelineRunId, {
+      await appendKnowledgePipelineStep(input.pipelineRunId, {
         stage: "CANDIDATE_EXTRACTION",
         title: "Candidate Generated",
         ok: false,
+        durationMs: Date.now() - candidateStarted,
       });
     }
   }
 
+  const graphStarted = Date.now();
   try {
     trySyncProjectGraphProjection(projectId, input.eventIds);
     if (input.pipelineRunId) {
-      appendKnowledgePipelineStep(input.pipelineRunId, {
+      const summary =
+        metrics?.nodeCount != null && metrics?.edgeCount != null
+          ? `${metrics.nodeCount} nodes · ${metrics.edgeCount} edges (queued sync)`
+          : "Graph projection queued";
+      await appendKnowledgePipelineStep(input.pipelineRunId, {
         stage: "GRAPH_PROJECTION",
         title: "Graph Synced",
+        summary,
         ok: candidateSync === "ok",
+        durationMs: Date.now() - graphStarted,
       });
     }
   } catch (error) {
     console.error("Project knowledge graph sync failed:", input.reason ?? "post_process", error);
     if (input.pipelineRunId) {
-      appendKnowledgePipelineStep(input.pipelineRunId, {
+      await appendKnowledgePipelineStep(input.pipelineRunId, {
         stage: "GRAPH_PROJECTION",
         title: "Graph Synced",
         ok: false,
+        durationMs: Date.now() - graphStarted,
       });
     }
     return {
@@ -63,6 +84,7 @@ export async function runProjectKnowledgePostProcess(input: {
       candidateSync,
       graphSync: "failed",
       errorCode: "GRAPH_SYNC_FAILED",
+      metrics,
     };
   }
 
@@ -70,5 +92,6 @@ export async function runProjectKnowledgePostProcess(input: {
     ok: candidateSync === "ok",
     candidateSync,
     graphSync: "queued",
+    metrics,
   };
 }

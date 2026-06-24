@@ -1,7 +1,7 @@
 import {
   pipelineStepsToActivityItems,
   type KnowledgePipelineRunRecord,
-} from "@/lib/project-knowledge/projectKnowledgePipelineMonitor";
+} from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
 
 export type ProjectKnowledgeActivityItem = {
   id: string;

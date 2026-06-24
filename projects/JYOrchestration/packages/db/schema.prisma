@@ -637,9 +637,66 @@ model Project {
   structureCandidateEdges ProjectStructureCandidateEdge[]
   structureLifecycleEntries ProjectNodeLifecycle[]
   structureMergeHistory ProjectMergeHistory[]
+  knowledgePipelineRuns ProjectKnowledgePipelineRun[]
 
   @@index([ownerUserId])
   @@map("projects")
+}
+
+/// Knowledge Pipeline Monitor: 실행 Run (Phase 5.6 영속화)
+model ProjectKnowledgePipelineRun {
+  id             String   @id @default(uuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  triggerType    String
+  /// RUNNING | COMPLETED | FAILED
+  status         String   @default("RUNNING")
+
+  startedAt      DateTime @default(now())
+  completedAt    DateTime?
+  durationMs     Int?
+
+  eventCount     Int?
+  candidateCount Int?
+  nodeCount      Int?
+  edgeCount      Int?
+
+  errorMessage   String?  @db.Text
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  steps          ProjectKnowledgePipelineStep[]
+
+  @@index([projectId, startedAt(sort: Desc)])
+  @@map("project_knowledge_pipeline_runs")
+}
+
+model ProjectKnowledgePipelineStep {
+  id              String   @id @default(uuid())
+  runId           String
+  run             ProjectKnowledgePipelineRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  stage           String
+  /// RUNNING | SUCCESS | FAILED
+  status          String   @default("SUCCESS")
+  title           String
+  summary         String?  @db.Text
+
+  sourceEventId   String?
+  sourceMessageId String?
+  metadata        Json?
+
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+  durationMs      Int?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([runId, startedAt(sort: Asc)])
+  @@map("project_knowledge_pipeline_steps")
 }
 
 model ProjectMessage {

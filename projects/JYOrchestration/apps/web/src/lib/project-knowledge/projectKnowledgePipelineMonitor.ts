@@ -1,148 +1,155 @@
-import type { ProjectKnowledgeActivityItem } from "@/lib/project-knowledge/projectKnowledgeActivityBuilder";
+import {
+  appendPipelineStep,
+  completePipelineRun,
+  createPipelineRun,
+  failPipelineRun,
+  findLatestPipelineRun,
+  findPipelineRuns,
+  loadPipelineRunById,
+  mapPipelineRunRow,
+} from "@/lib/project-knowledge/projectKnowledgePipelineRepository";
+import {
+  memoryAppendKnowledgePipelineStep,
+  memoryCompleteKnowledgePipelineRun,
+  memoryGetLatestKnowledgePipelineRun,
+  memoryListKnowledgePipelineRuns,
+  memoryStartKnowledgePipelineRun,
+} from "@/lib/project-knowledge/projectKnowledgePipelineMonitorMemory";
+import type {
+  KnowledgePipelineRunRecord,
+  KnowledgePipelineStage,
+  PipelineRunMetricsInput,
+} from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
 
-export type KnowledgePipelineStage =
-  | "EVENT_SYNC"
-  | "ARTIFACT_INTEGRATION"
-  | "CANDIDATE_EXTRACTION"
-  | "GRAPH_PROJECTION"
-  | "ACTIVITY_BUILD"
-  | "COMPLETED"
-  | "FAILED";
+export type {
+  KnowledgePipelineRunRecord,
+  KnowledgePipelineRunStatus,
+  KnowledgePipelineStage,
+  KnowledgePipelineStepRecord,
+  PipelineRunMetricsInput,
+} from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
+export { pipelineStepsToActivityItems, STAGE_USER_LABELS } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
 
-export type KnowledgePipelineStepRecord = Readonly<{
-  readonly id: string;
-  readonly stage: KnowledgePipelineStage;
-  readonly title: string;
-  readonly summary?: string;
-  readonly occurredAt: string;
-  readonly ok: boolean;
-}>;
+const dbRunIds = new Set<string>();
 
-export type KnowledgePipelineRunRecord = Readonly<{
-  readonly id: string;
-  readonly projectId: string;
-  readonly trigger: string;
-  readonly startedAt: string;
-  readonly completedAt?: string;
-  readonly currentStage: KnowledgePipelineStage;
-  readonly steps: readonly KnowledgePipelineStepRecord[];
-}>;
-
-const MAX_RUNS_PER_PROJECT = 8;
-const runsByProject = new Map<string, KnowledgePipelineRunRecord[]>();
-
-function nowIso(): string {
-  return new Date().toISOString();
+export function isPersistedPipelineRunId(runId: string): boolean {
+  return dbRunIds.has(runId);
 }
 
-function stepId(runId: string, stage: KnowledgePipelineStage): string {
-  return `${runId}:${stage}:${Date.now()}`;
+export async function startKnowledgePipelineRun(
+  projectId: string,
+  trigger: string,
+): Promise<KnowledgePipelineRunRecord> {
+  try {
+    const row = await createPipelineRun(projectId, trigger);
+    dbRunIds.add(row.id);
+    return mapPipelineRunRow(row, []);
+  } catch (error) {
+    console.error("Knowledge pipeline run DB create failed, using memory fallback:", error);
+    return memoryStartKnowledgePipelineRun(projectId, trigger);
+  }
 }
 
-export function startKnowledgePipelineRun(projectId: string, trigger: string): KnowledgePipelineRunRecord {
-  const pid = projectId.trim();
-  const run: KnowledgePipelineRunRecord = {
-    id: `run:${pid}:${Date.now()}`,
-    projectId: pid,
-    trigger,
-    startedAt: nowIso(),
-    currentStage: "EVENT_SYNC",
-    steps: [],
-  };
-  const list = runsByProject.get(pid) ?? [];
-  list.unshift(run);
-  runsByProject.set(pid, list.slice(0, MAX_RUNS_PER_PROJECT));
-  return run;
-}
-
-export function appendKnowledgePipelineStep(
+export async function appendKnowledgePipelineStep(
   runId: string,
   input: Readonly<{
     stage: KnowledgePipelineStage;
     title: string;
     summary?: string;
     ok?: boolean;
+    durationMs?: number;
+    sourceEventId?: string;
+    sourceMessageId?: string;
+    metadata?: Record<string, unknown>;
   }>,
-): KnowledgePipelineRunRecord | null {
-  for (const [pid, runs] of runsByProject.entries()) {
-    const idx = runs.findIndex((r) => r.id === runId);
-    if (idx < 0) continue;
-    const prev = runs[idx]!;
-    const step: KnowledgePipelineStepRecord = {
-      id: stepId(runId, input.stage),
-      stage: input.stage,
-      title: input.title,
-      summary: input.summary,
-      occurredAt: nowIso(),
-      ok: input.ok !== false,
-    };
-    const next: KnowledgePipelineRunRecord = {
-      ...prev,
-      currentStage: input.stage,
-      steps: [...prev.steps, step],
-    };
-    const copy = [...runs];
-    copy[idx] = next;
-    runsByProject.set(pid, copy);
-    return next;
+): Promise<KnowledgePipelineRunRecord | null> {
+  if (dbRunIds.has(runId)) {
+    try {
+      await appendPipelineStep(runId, input);
+      return loadPipelineRunById(runId);
+    } catch (error) {
+      console.error("Knowledge pipeline step DB append failed:", error);
+    }
   }
-  return null;
+  return memoryAppendKnowledgePipelineStep(runId, input);
 }
 
-export function completeKnowledgePipelineRun(
+export async function completeKnowledgePipelineRun(
   runId: string,
-  input?: Readonly<{ failed?: boolean; summary?: string }>,
-): KnowledgePipelineRunRecord | null {
-  const stage: KnowledgePipelineStage = input?.failed ? "FAILED" : "COMPLETED";
-  appendKnowledgePipelineStep(runId, {
-    stage,
-    title: input?.failed ? "Failed" : "Completed",
-    summary: input?.summary,
-    ok: !input?.failed,
-  });
-  for (const [pid, runs] of runsByProject.entries()) {
-    const idx = runs.findIndex((r) => r.id === runId);
-    if (idx < 0) continue;
-    const prev = runs[idx]!;
-    const next: KnowledgePipelineRunRecord = {
-      ...prev,
-      currentStage: stage,
-      completedAt: nowIso(),
-    };
-    const copy = [...runs];
-    copy[idx] = next;
-    runsByProject.set(pid, copy);
-    return next;
+  input?: Readonly<{ failed?: boolean; summary?: string; metrics?: PipelineRunMetricsInput }>,
+): Promise<KnowledgePipelineRunRecord | null> {
+  if (input?.failed) {
+    return failKnowledgePipelineRun(runId, { errorMessage: input.summary, metrics: input.metrics });
   }
-  return null;
+
+  if (dbRunIds.has(runId)) {
+    try {
+      await appendPipelineStep(runId, {
+        stage: "COMPLETED",
+        title: "Completed",
+        summary: input?.summary,
+        ok: true,
+      });
+      await completePipelineRun(runId, { metrics: input?.metrics, errorMessage: null });
+      return loadPipelineRunById(runId);
+    } catch (error) {
+      console.error("Knowledge pipeline run DB complete failed:", error);
+    }
+  }
+  return memoryCompleteKnowledgePipelineRun(runId, input);
 }
 
-export function getLatestKnowledgePipelineRun(projectId: string): KnowledgePipelineRunRecord | null {
-  const list = runsByProject.get(projectId.trim());
-  return list?.[0] ?? null;
+export async function failKnowledgePipelineRun(
+  runId: string,
+  input?: Readonly<{ errorMessage?: string; metrics?: PipelineRunMetricsInput }>,
+): Promise<KnowledgePipelineRunRecord | null> {
+  if (dbRunIds.has(runId)) {
+    try {
+      await appendPipelineStep(runId, {
+        stage: "FAILED",
+        title: "Failed",
+        summary: input?.errorMessage,
+        ok: false,
+      });
+      await failPipelineRun(runId, input);
+      return loadPipelineRunById(runId);
+    } catch (error) {
+      console.error("Knowledge pipeline run DB fail failed:", error);
+    }
+  }
+  return memoryCompleteKnowledgePipelineRun(runId, {
+    failed: true,
+    summary: input?.errorMessage,
+    metrics: input?.metrics,
+  });
 }
 
-export function listKnowledgePipelineRuns(projectId: string, limit = 5): readonly KnowledgePipelineRunRecord[] {
-  return (runsByProject.get(projectId.trim()) ?? []).slice(0, limit);
+export async function getLatestKnowledgePipelineRun(
+  projectId: string,
+): Promise<KnowledgePipelineRunRecord | null> {
+  try {
+    const latest = await findLatestPipelineRun(projectId);
+    if (latest) return latest;
+  } catch (error) {
+    console.error("Knowledge pipeline latest run DB read failed:", error);
+  }
+  return memoryGetLatestKnowledgePipelineRun(projectId);
 }
 
-const STAGE_USER_LABELS: Record<KnowledgePipelineStage, string> = {
-  EVENT_SYNC: "Conversation Saved",
-  ARTIFACT_INTEGRATION: "Snapshot / Proposal Integrated",
-  CANDIDATE_EXTRACTION: "Candidate Generated",
-  GRAPH_PROJECTION: "Graph Synced",
-  ACTIVITY_BUILD: "Activity Built",
-  COMPLETED: "Completed",
-  FAILED: "Failed",
-};
+export async function listKnowledgePipelineRuns(
+  projectId: string,
+  limit = 20,
+): Promise<readonly KnowledgePipelineRunRecord[]> {
+  try {
+    const rows = await findPipelineRuns(projectId, limit);
+    if (rows.length) return rows;
+  } catch (error) {
+    console.error("Knowledge pipeline runs DB list failed:", error);
+  }
+  return memoryListKnowledgePipelineRuns(projectId, limit);
+}
 
-export function pipelineStepsToActivityItems(run: KnowledgePipelineRunRecord): ProjectKnowledgeActivityItem[] {
-  return run.steps.map((step) => ({
-    id: step.id,
-    type: step.ok ? "graph" : "warning",
-    title: STAGE_USER_LABELS[step.stage] ?? step.title,
-    summary: step.summary ?? step.title,
-    occurredAt: step.occurredAt,
-    technicalDetail: { stage: step.stage, runId: run.id },
-  }));
+/** @deprecated sync alias for tests migrating to async */
+export function getLatestKnowledgePipelineRunSync(projectId: string): KnowledgePipelineRunRecord | null {
+  return memoryGetLatestKnowledgePipelineRun(projectId);
 }
