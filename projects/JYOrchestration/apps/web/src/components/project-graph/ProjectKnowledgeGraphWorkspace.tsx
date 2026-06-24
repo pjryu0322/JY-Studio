@@ -114,6 +114,11 @@ export function ProjectKnowledgeGraphWorkspace({
           loading={pipelineLoading}
           error={pipelineError}
           onRefresh={() => void reloadPipelineMonitor()}
+          traceNodeId={explorer.detailNodeId ?? explorer.selectedNodeId}
+          onOpenTrace={(nodeId) => {
+            explorer.openTraceForNode(nodeId);
+            setWorkspacePane("graph");
+          }}
         />
       ) : activityView ? (
         <ProjectKnowledgeGraphActivityPane

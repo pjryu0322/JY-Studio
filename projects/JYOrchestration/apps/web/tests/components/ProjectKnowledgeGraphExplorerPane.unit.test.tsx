@@ -58,6 +58,9 @@ const explorerStub = {
   buildMobileNodeMenuItems: () => [],
   actionSheetNode: null,
   setSelectedEdgeId: vi.fn(),
+  detailTab: "details" as const,
+  setDetailTab: vi.fn(),
+  openTraceForNode: vi.fn(),
 };
 
 describe("ProjectKnowledgeGraphExplorerPane", () => {

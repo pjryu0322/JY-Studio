@@ -21,3 +21,12 @@ export function knowledgeGraphHighlightSourceMessageId(input: {
   const id = String(input.initialSourceMessageId ?? input.sourceMessageIdQuery ?? "").trim();
   return id || null;
 }
+
+export function knowledgeGraphTraceNodeIdFromQuery(
+  clientReady: boolean,
+  traceNodeIdQuery: string | null | undefined,
+): string | null {
+  if (!clientReady) return null;
+  const id = String(traceNodeIdQuery ?? "").trim();
+  return id || null;
+}

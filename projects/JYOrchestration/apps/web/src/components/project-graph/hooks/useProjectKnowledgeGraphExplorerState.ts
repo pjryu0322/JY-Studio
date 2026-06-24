@@ -17,6 +17,7 @@ import {
   findGraphNodeIdsForSourceMessageId,
   parseGraphQuestionQuery,
 } from "@/lib/project-graph/projectGraphExploration";
+import type { ProjectGraphNodeDetailTab } from "@/components/project-graph/ProjectGraphNodeDetailPanel";
 
 export function useProjectKnowledgeGraphExplorerState(input: {
   readonly nodes: readonly ProjectGraphNodeDto[];
@@ -43,6 +44,21 @@ export function useProjectKnowledgeGraphExplorerState(input: {
   const [focusNodeId, setFocusNodeId] = useState<string | null>(null);
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set());
   const [centerOnNodeNonce, setCenterOnNodeNonce] = useState(0);
+  const [detailTab, setDetailTab] = useState<ProjectGraphNodeDetailTab>("details");
+
+  useEffect(() => {
+    if (!input.clientReady) return;
+    const traceNodeId = String(input.searchParams?.get("traceNodeId") ?? "").trim();
+    if (!traceNodeId || input.nodes.length === 0) return;
+    if (!input.nodes.some((n) => n.id === traceNodeId)) return;
+    setFocusNodeId((prev) => prev ?? traceNodeId);
+    setSelectedNodeId(traceNodeId);
+    setDetailNodeId(traceNodeId);
+    setDetailPanelOpen(true);
+    setDetailTab("trace");
+    setExpandedNodeIds(new Set(collectNeighbors(traceNodeId, buildUndirectedAdjacency(input.edges))));
+    setCenterOnNodeNonce((n) => n + 1);
+  }, [input.clientReady, input.searchParams, input.nodes, input.edges]);
 
   useEffect(() => {
     if (!input.clientReady) return;
@@ -141,6 +157,16 @@ export function useProjectKnowledgeGraphExplorerState(input: {
     setSelectedNodeId(id);
     setDetailNodeId(id);
     setSelectedEdgeId(null);
+  }, []);
+
+  const openTraceForNode = useCallback((nodeId: string) => {
+    const nid = String(nodeId ?? "").trim();
+    if (!nid) return;
+    setSelectedNodeId(nid);
+    setDetailNodeId(nid);
+    setDetailPanelOpen(true);
+    setDetailTab("trace");
+    setCenterOnNodeNonce((n) => n + 1);
   }, []);
 
   const handleSelectRelatedNodeId = useCallback(
@@ -397,6 +423,9 @@ export function useProjectKnowledgeGraphExplorerState(input: {
     buildMobileNodeMenuItems,
     actionSheetNode,
     setSelectedEdgeId,
+    detailTab,
+    setDetailTab,
+    openTraceForNode,
   };
 }
 

@@ -2,14 +2,20 @@
 
 import { useEffect } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
-import { ProjectGraphNodeDetailBody } from "@/components/project-graph/ProjectGraphNodeDetailPanel";
+import {
+  ProjectGraphNodeDetailBody,
+  type ProjectGraphNodeDetailTab,
+} from "@/components/project-graph/ProjectGraphNodeDetailPanel";
 import type { ProjectGraphNodeDto } from "@/lib/project-graph/projectGraphClient";
 import type { GraphImpactZones } from "@/lib/project-graph/projectGraphExploration";
 
 export function ProjectKnowledgeGraphNodeBottomSheet(p: {
   readonly open: boolean;
+  readonly projectId: string;
   readonly node: ProjectGraphNodeDto | null;
   readonly impact: GraphImpactZones | null;
+  readonly detailTab: ProjectGraphNodeDetailTab;
+  readonly onDetailTabChange: (tab: ProjectGraphNodeDetailTab) => void;
   readonly onClose: () => void;
   readonly onSelectRelatedNodeId: (nodeId: string) => void;
 }) {
@@ -116,10 +122,13 @@ export function ProjectKnowledgeGraphNodeBottomSheet(p: {
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "12px 16px 20px" }}>
           <ProjectGraphNodeDetailBody
+            projectId={p.projectId}
             node={p.node}
             impact={p.impact}
             onSelectRelatedNodeId={p.onSelectRelatedNodeId}
             compact
+            detailTab={p.detailTab}
+            onDetailTabChange={p.onDetailTabChange}
           />
         </div>
       </div>

@@ -229,8 +229,11 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
           {ex.graphMobileUx ? (
             <ProjectKnowledgeGraphNodeBottomSheet
               open={Boolean(ex.detailNode)}
+              projectId={p.projectId}
               node={ex.detailNode}
               impact={ex.detailImpact}
+              detailTab={ex.detailTab}
+              onDetailTabChange={ex.setDetailTab}
               onClose={ex.closeMobileNodeSheet}
               onSelectRelatedNodeId={ex.handleSelectRelatedNodeId}
             />
@@ -247,9 +250,12 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
         </div>
         {!ex.graphMobileUx && ex.detailPanelOpen ? (
           <ProjectGraphNodeDetailPanel
+            projectId={p.projectId}
             node={ex.detailNode}
             impact={ex.detailImpact}
             onSelectRelatedNodeId={ex.handleSelectRelatedNodeId}
+            detailTab={ex.detailTab}
+            onDetailTabChange={ex.setDetailTab}
           />
         ) : null}
       </div>

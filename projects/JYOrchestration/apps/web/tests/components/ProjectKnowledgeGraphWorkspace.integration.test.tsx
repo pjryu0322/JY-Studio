@@ -63,6 +63,9 @@ vi.mock("@/components/project-graph/hooks/useProjectKnowledgeGraphExplorerState"
     buildMobileNodeMenuItems: () => [],
     actionSheetNode: null,
     setSelectedEdgeId: vi.fn(),
+    detailTab: "details" as const,
+    setDetailTab: vi.fn(),
+    openTraceForNode: vi.fn(),
   }),
 }));
 
@@ -121,5 +124,13 @@ describe("ProjectKnowledgeGraphWorkspace integration", () => {
   it("focusNodeId query is consumed by explorer hook (search params contract)", () => {
     const params = new URLSearchParams("focusNodeId=node-abc");
     expect(params.get("focusNodeId")).toBe("node-abc");
+  });
+
+  it("traceNodeId query helper resolves id", async () => {
+    const { knowledgeGraphTraceNodeIdFromQuery } = await import(
+      "@/components/project-graph/projectKnowledgeGraphWorkspaceQuery"
+    );
+    expect(knowledgeGraphTraceNodeIdFromQuery(true, "node-123")).toBe("node-123");
+    expect(knowledgeGraphTraceNodeIdFromQuery(false, "node-123")).toBeNull();
   });
 });

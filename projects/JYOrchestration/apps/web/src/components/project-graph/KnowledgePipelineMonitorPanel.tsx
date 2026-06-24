@@ -177,6 +177,8 @@ export function KnowledgePipelineMonitorPanel(p: {
   readonly loading: boolean;
   readonly error: string | null;
   readonly onRefresh: () => void;
+  readonly traceNodeId?: string | null;
+  readonly onOpenTrace?: (nodeId: string) => void;
 }) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
@@ -233,6 +235,45 @@ export function KnowledgePipelineMonitorPanel(p: {
 
       {p.error ? (
         <p style={{ fontSize: 12, color: "#b91c1c", margin: 0 }}>{p.error}</p>
+      ) : null}
+
+      {p.onOpenTrace ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: `1px solid ${t.border}`,
+            background: "#f8fafc",
+          }}
+        >
+          <span style={{ fontSize: 12, color: t.textSecondary, flex: 1 }}>
+            {p.traceNodeId ? `선택 노드: ${p.traceNodeId}` : "그래프에서 노드를 선택하면 Trace를 열 수 있습니다."}
+          </span>
+          <button
+            type="button"
+            data-testid="knowledge-activity-open-trace"
+            disabled={!p.traceNodeId}
+            onClick={() => {
+              if (p.traceNodeId) p.onOpenTrace?.(p.traceNodeId);
+            }}
+            style={{
+              minHeight: 36,
+              padding: "6px 12px",
+              borderRadius: 8,
+              border: `1px solid ${t.border}`,
+              background: t.bgPage,
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: p.traceNodeId ? "pointer" : "not-allowed",
+              opacity: p.traceNodeId ? 1 : 0.6,
+            }}
+          >
+            Trace 보기
+          </button>
+        </div>
       ) : null}
 
       {!p.loading && !p.runs.length ? (
