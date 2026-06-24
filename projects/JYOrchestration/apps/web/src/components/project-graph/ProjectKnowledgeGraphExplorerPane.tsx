@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { ProjectKnowledgeGraphCanvas } from "@/components/project-graph/ProjectKnowledgeGraphCanvas";
@@ -14,6 +14,7 @@ import { requirementsWorkspaceMainRowStyle } from "@/components/requirements/req
 import {
   type ProjectKnowledgeGraphExplorerState,
 } from "@/components/project-graph/hooks/useProjectKnowledgeGraphExplorerState";
+import { ProjectKnowledgeReplayModal } from "@/components/project-graph/ProjectKnowledgeReplayModal";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 
 const LIFECYCLE_OPTIONS = ["", "PROJECTED", "APPROVED", "CANDIDATE"] as const;
@@ -43,6 +44,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
   const isMobileLayout = p.clientReady && effectiveLayout === "MOBILE";
   const isModal = p.variant === "modal";
   const ex = p.explorerState;
+  const [replayOpen, setReplayOpen] = useState(false);
 
   const shell: CSSProperties = {
     ...requirementsWorkspaceMainRowStyle,
@@ -159,6 +161,14 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
             {ex.detailPanelOpen ? "상세 숨기기" : "상세 보기"}
           </button>
         ) : null}
+        <button
+          type="button"
+          data-testid="knowledge-replay-open"
+          onClick={() => setReplayOpen(true)}
+          style={{ ...btnStyle, fontWeight: 800, color: t.primary }}
+        >
+          그래프 변화 보기
+        </button>
         <span style={{ fontSize: 11, color: t.textMuted }}>
           {ex.filteredNodes.length} nodes · {ex.filteredEdges.length} edges
           {ex.explorationQuery.kind === "question" ? " · 질문 모드" : ""}
@@ -285,6 +295,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
           ← 대화로 돌아가기
         </button>
       ) : null}
+      <ProjectKnowledgeReplayModal open={replayOpen} projectId={p.projectId} onClose={() => setReplayOpen(false)} />
     </div>
   );
 }

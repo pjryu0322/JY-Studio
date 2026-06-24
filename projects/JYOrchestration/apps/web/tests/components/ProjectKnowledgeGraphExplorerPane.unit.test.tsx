@@ -82,5 +82,7 @@ describe("ProjectKnowledgeGraphExplorerPane", () => {
     expect(html).toContain("project-knowledge-graph-explorer-pane");
     expect(html).toContain("선택된 노드 없음");
     expect(html).toContain("그래프 질문 검색");
+    expect(html).toContain("그래프 변화 보기");
+    expect(html).toContain("knowledge-replay-open");
   });
 });

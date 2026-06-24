@@ -16,6 +16,7 @@ import {
   startKnowledgePipelineStep,
 } from "@/lib/project-knowledge/projectKnowledgePipelineMonitor";
 import { buildKnowledgeActivityItems } from "@/lib/project-knowledge/projectKnowledgeActivityBuilder";
+import { recordKnowledgeGraphRevisionForMilestone } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
 import type { PipelineRunMetricsInput } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
 import type { RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
@@ -89,6 +90,10 @@ export async function runProjectKnowledgePipeline(
           fallbackStage: PROJECT_PROCESS_STAGES.REQUIREMENTS_IDEATION,
         });
         conversationSynced = true;
+        await recordKnowledgeGraphRevisionForMilestone({
+          projectId,
+          milestone: "conversation_sync",
+        });
         if (syncStepId) {
           await completeKnowledgePipelineStep(syncStepId, {
             durationMs: Date.now() - syncStarted,
@@ -119,6 +124,11 @@ export async function runProjectKnowledgePipeline(
           snapshotIntegrated = true;
           if (snapshotIntegration.eventId) eventIds.push(snapshotIntegration.eventId);
           if (snapshotIntegration.statePatch) statePatch = snapshotIntegration.statePatch;
+          await recordKnowledgeGraphRevisionForMilestone({
+            projectId,
+            milestone: "snapshot_integration",
+            sourceEventId: snapshotIntegration.eventId,
+          });
           const stepId = await startKnowledgePipelineStep(run.id, {
             stage: "ARTIFACT_INTEGRATION",
             title: "Snapshot Integrated",
@@ -143,6 +153,11 @@ export async function runProjectKnowledgePipeline(
         if (proposalIntegration.integrated) {
           proposalIntegrated = true;
           if (proposalIntegration.eventId) eventIds.push(proposalIntegration.eventId);
+          await recordKnowledgeGraphRevisionForMilestone({
+            projectId,
+            milestone: "proposal_approval",
+            sourceEventId: proposalIntegration.eventId,
+          });
           const stepId = await startKnowledgePipelineStep(run.id, {
             stage: "ARTIFACT_INTEGRATION",
             title: "Proposal Approved",

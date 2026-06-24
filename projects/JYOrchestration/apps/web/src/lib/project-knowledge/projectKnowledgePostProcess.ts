@@ -7,6 +7,7 @@ import {
 } from "@/lib/project-knowledge/projectKnowledgePipelineMonitor";
 import type { PipelineRunMetricsInput } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
 import { normalizePipelineRunMetrics } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
+import { recordKnowledgeGraphRevisionForMilestone } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
 
 export async function runProjectKnowledgePostProcess(input: {
   projectId: string;
@@ -77,6 +78,10 @@ export async function runProjectKnowledgePostProcess(input: {
         durationMs: Date.now() - graphStarted,
       });
     }
+    await recordKnowledgeGraphRevisionForMilestone({
+      projectId,
+      milestone: "graph_projection",
+    });
   } catch (error) {
     console.error("Project knowledge graph sync failed:", input.reason ?? "post_process", error);
     if (graphStepId) {

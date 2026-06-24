@@ -638,6 +638,7 @@ model Project {
   structureLifecycleEntries ProjectNodeLifecycle[]
   structureMergeHistory ProjectMergeHistory[]
   knowledgePipelineRuns ProjectKnowledgePipelineRun[]
+  knowledgeGraphRevisions ProjectKnowledgeGraphRevision[]
 
   @@index([ownerUserId])
   @@map("projects")
@@ -708,6 +709,27 @@ model ProjectKnowledgePipelineStep {
 
   @@index([runId, startedAt(sort: Asc)])
   @@map("project_knowledge_pipeline_steps")
+}
+
+/// Knowledge Graph Replay: 시점별 그래프 스냅샷 (Phase 5.9)
+model ProjectKnowledgeGraphRevision {
+  id             String   @id @default(uuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  revisionNumber Int
+  sourceEventId  String?
+  title          String
+  summary        String?  @db.Text
+  graphSnapshot  Json
+  nodeCount      Int
+  edgeCount      Int
+
+  createdAt      DateTime @default(now())
+
+  @@unique([projectId, revisionNumber])
+  @@index([projectId, createdAt(sort: Desc)])
+  @@map("project_knowledge_graph_revisions")
 }
 
 model ProjectMessage {
