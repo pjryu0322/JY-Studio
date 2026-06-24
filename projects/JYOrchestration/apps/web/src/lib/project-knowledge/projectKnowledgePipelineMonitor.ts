@@ -1,8 +1,11 @@
 import {
   appendPipelineStep,
   completePipelineRun,
+  completePipelineStep,
   createPipelineRun,
+  createPipelineStep,
   failPipelineRun,
+  failPipelineStep,
   findLatestPipelineRun,
   findPipelineRuns,
   loadPipelineRunById,
@@ -11,9 +14,12 @@ import {
 import {
   memoryAppendKnowledgePipelineStep,
   memoryCompleteKnowledgePipelineRun,
+  memoryCompleteKnowledgePipelineStep,
+  memoryFailKnowledgePipelineStep,
   memoryGetLatestKnowledgePipelineRun,
   memoryListKnowledgePipelineRuns,
   memoryStartKnowledgePipelineRun,
+  memoryStartKnowledgePipelineStep,
 } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorMemory";
 import type {
   KnowledgePipelineRunRecord,
@@ -22,13 +28,19 @@ import type {
 } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
 
 export type {
+  KnowledgePipelinePersistenceMode,
   KnowledgePipelineRunRecord,
   KnowledgePipelineRunStatus,
   KnowledgePipelineStage,
   KnowledgePipelineStepRecord,
+  KnowledgePipelineStepStatus,
   PipelineRunMetricsInput,
 } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
-export { pipelineStepsToActivityItems, STAGE_USER_LABELS } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
+export {
+  pipelineStepsToActivityItems,
+  STAGE_USER_LABELS,
+  normalizePipelineRunMetrics,
+} from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
 
 const dbRunIds = new Set<string>();
 
@@ -36,20 +48,75 @@ export function isPersistedPipelineRunId(runId: string): boolean {
   return dbRunIds.has(runId);
 }
 
+function isMemoryPipelineStepId(stepId: string): boolean {
+  return stepId.startsWith("run:") && stepId.includes(":step:");
+}
+
 export async function startKnowledgePipelineRun(
   projectId: string,
   trigger: string,
 ): Promise<KnowledgePipelineRunRecord> {
   try {
-    const row = await createPipelineRun(projectId, trigger);
+    const row = await createPipelineRun(projectId, trigger, "DATABASE");
     dbRunIds.add(row.id);
     return mapPipelineRunRow(row, []);
   } catch (error) {
     console.error("Knowledge pipeline run DB create failed, using memory fallback:", error);
-    return memoryStartKnowledgePipelineRun(projectId, trigger);
+    return memoryStartKnowledgePipelineRun(projectId, trigger, "MEMORY_FALLBACK");
   }
 }
 
+export async function startKnowledgePipelineStep(
+  runId: string,
+  input: Readonly<{
+    stage: KnowledgePipelineStage;
+    title: string;
+    sourceEventId?: string;
+    sourceMessageId?: string;
+  }>,
+): Promise<string | null> {
+  if (dbRunIds.has(runId)) {
+    try {
+      const row = await createPipelineStep(runId, input);
+      return row.id;
+    } catch (error) {
+      console.error("Knowledge pipeline step DB create failed:", error);
+    }
+  }
+  return memoryStartKnowledgePipelineStep(runId, input);
+}
+
+export async function completeKnowledgePipelineStep(
+  stepId: string,
+  input?: Readonly<{ summary?: string; durationMs?: number }>,
+): Promise<void> {
+  if (!isMemoryPipelineStepId(stepId)) {
+    try {
+      await completePipelineStep(stepId, input);
+      return;
+    } catch (error) {
+      console.error("Knowledge pipeline step DB complete failed:", error);
+    }
+  }
+  memoryCompleteKnowledgePipelineStep(stepId, input);
+}
+
+export async function failKnowledgePipelineStep(
+  stepId: string,
+  input?: Readonly<{ summary?: string; durationMs?: number }>,
+): Promise<void> {
+  if (!isMemoryPipelineStepId(stepId)) {
+    try {
+      await failPipelineStep(stepId, input);
+      return;
+    } catch (error) {
+      console.error("Knowledge pipeline step DB fail failed:", error);
+    }
+  }
+  memoryFailKnowledgePipelineStep(stepId, input);
+}
+
+/** @deprecated use startKnowledgePipelineStep + complete/fail */
 export async function appendKnowledgePipelineStep(
   runId: string,
   input: Readonly<{
@@ -74,6 +141,22 @@ export async function appendKnowledgePipelineStep(
   return memoryAppendKnowledgePipelineStep(runId, input);
 }
 
+async function finishTerminalRunStep(
+  runId: string,
+  input: Readonly<{ stage: "COMPLETED" | "FAILED"; title: string; summary?: string; ok: boolean }>,
+): Promise<void> {
+  const stepId = await startKnowledgePipelineStep(runId, {
+    stage: input.stage,
+    title: input.title,
+  });
+  if (!stepId) return;
+  if (input.ok) {
+    await completeKnowledgePipelineStep(stepId, { summary: input.summary });
+  } else {
+    await failKnowledgePipelineStep(stepId, { summary: input.summary });
+  }
+}
+
 export async function completeKnowledgePipelineRun(
   runId: string,
   input?: Readonly<{ failed?: boolean; summary?: string; metrics?: PipelineRunMetricsInput }>,
@@ -84,7 +167,7 @@ export async function completeKnowledgePipelineRun(
 
   if (dbRunIds.has(runId)) {
     try {
-      await appendPipelineStep(runId, {
+      await finishTerminalRunStep(runId, {
         stage: "COMPLETED",
         title: "Completed",
         summary: input?.summary,
@@ -105,7 +188,7 @@ export async function failKnowledgePipelineRun(
 ): Promise<KnowledgePipelineRunRecord | null> {
   if (dbRunIds.has(runId)) {
     try {
-      await appendPipelineStep(runId, {
+      await finishTerminalRunStep(runId, {
         stage: "FAILED",
         title: "Failed",
         summary: input?.errorMessage,

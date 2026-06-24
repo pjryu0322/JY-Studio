@@ -658,9 +658,20 @@ model ProjectKnowledgePipelineRun {
   durationMs     Int?
 
   eventCount     Int?
+  /// @deprecated use candidateNodeCount — kept for backward compatibility
   candidateCount Int?
+  /// @deprecated use graphNodeCount — kept for backward compatibility
   nodeCount      Int?
+  /// @deprecated use graphEdgeCount — kept for backward compatibility
   edgeCount      Int?
+
+  candidateNodeCount Int?
+  candidateEdgeCount Int?
+  graphNodeCount     Int?
+  graphEdgeCount     Int?
+
+  /// DATABASE | MEMORY_FALLBACK
+  persistenceMode    String   @default("DATABASE")
 
   errorMessage   String?  @db.Text
 

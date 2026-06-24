@@ -1,9 +1,11 @@
 import type {
+  KnowledgePipelinePersistenceMode,
   KnowledgePipelineRunRecord,
   KnowledgePipelineStage,
   KnowledgePipelineStepRecord,
   PipelineRunMetricsInput,
 } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
+import { normalizePipelineRunMetrics } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
 
 const MAX_RUNS_PER_PROJECT = 20;
 const runsByProject = new Map<string, KnowledgePipelineRunRecord[]>();
@@ -12,17 +14,41 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function stepId(runId: string, stage: KnowledgePipelineStage): string {
-  return `${runId}:${stage}:${Date.now()}`;
+function newStepId(runId: string, stage: KnowledgePipelineStage): string {
+  return `${runId}:step:${stage}:${Date.now()}`;
 }
 
-export function memoryStartKnowledgePipelineRun(projectId: string, trigger: string): KnowledgePipelineRunRecord {
+function updateRun(runId: string, updater: (run: KnowledgePipelineRunRecord) => KnowledgePipelineRunRecord): void {
+  for (const [pid, runs] of runsByProject.entries()) {
+    const idx = runs.findIndex((r) => r.id === runId);
+    if (idx < 0) continue;
+    const copy = [...runs];
+    copy[idx] = updater(copy[idx]!);
+    runsByProject.set(pid, copy);
+    return;
+  }
+}
+
+function memoryGetRunById(runId: string): KnowledgePipelineRunRecord | null {
+  for (const runs of runsByProject.values()) {
+    const hit = runs.find((r) => r.id === runId);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+export function memoryStartKnowledgePipelineRun(
+  projectId: string,
+  trigger: string,
+  persistenceMode: KnowledgePipelinePersistenceMode = "MEMORY_FALLBACK",
+): KnowledgePipelineRunRecord {
   const pid = projectId.trim();
   const run: KnowledgePipelineRunRecord = {
     id: `run:${pid}:${Date.now()}`,
     projectId: pid,
     trigger,
     status: "RUNNING",
+    persistenceMode,
     startedAt: nowIso(),
     currentStage: "EVENT_SYNC",
     steps: [],
@@ -31,6 +57,90 @@ export function memoryStartKnowledgePipelineRun(projectId: string, trigger: stri
   list.unshift(run);
   runsByProject.set(pid, list.slice(0, MAX_RUNS_PER_PROJECT));
   return run;
+}
+
+export function memoryStartKnowledgePipelineStep(
+  runId: string,
+  input: Readonly<{
+    stage: KnowledgePipelineStage;
+    title: string;
+    sourceEventId?: string;
+    sourceMessageId?: string;
+  }>,
+): string | null {
+  const stepId = newStepId(runId, input.stage);
+  const startedAt = nowIso();
+  const step: KnowledgePipelineStepRecord = {
+    id: stepId,
+    stage: input.stage,
+    title: input.title,
+    startedAt,
+    occurredAt: startedAt,
+    ok: false,
+    status: "RUNNING",
+  };
+  updateRun(runId, (prev) => ({
+    ...prev,
+    currentStage: input.stage,
+    steps: [...prev.steps, step],
+  }));
+  return stepId;
+}
+
+export function memoryCompleteKnowledgePipelineStep(
+  stepId: string,
+  input?: Readonly<{ summary?: string; durationMs?: number }>,
+): void {
+  const completedAt = nowIso();
+  for (const [pid, runs] of runsByProject.entries()) {
+    for (let i = 0; i < runs.length; i++) {
+      const run = runs[i]!;
+      const stepIdx = run.steps.findIndex((s) => s.id === stepId);
+      if (stepIdx < 0) continue;
+      const steps = [...run.steps];
+      const prev = steps[stepIdx]!;
+      steps[stepIdx] = {
+        ...prev,
+        summary: input?.summary ?? prev.summary,
+        status: "SUCCESS",
+        ok: true,
+        occurredAt: completedAt,
+        durationMs: input?.durationMs,
+      };
+      const copy = [...runs];
+      copy[i] = { ...run, steps };
+      runsByProject.set(pid, copy);
+      return;
+    }
+  }
+}
+
+export function memoryFailKnowledgePipelineStep(
+  stepId: string,
+  input?: Readonly<{ summary?: string; durationMs?: number }>,
+): void {
+  const completedAt = nowIso();
+  for (const [pid, runs] of runsByProject.entries()) {
+    for (let i = 0; i < runs.length; i++) {
+      const run = runs[i]!;
+      const stepIdx = run.steps.findIndex((s) => s.id === stepId);
+      if (stepIdx < 0) continue;
+      const steps = [...run.steps];
+      const prev = steps[stepIdx]!;
+      steps[stepIdx] = {
+        ...prev,
+        summary: input?.summary ?? prev.summary,
+        status: "FAILED",
+        ok: false,
+        occurredAt: completedAt,
+        durationMs: input?.durationMs,
+      };
+      const copy = [...runs];
+      copy[i] = { ...run, steps };
+      runsByProject.set(pid, copy);
+      return;
+    }
+  }
 }
 
 export function memoryAppendKnowledgePipelineStep(
@@ -43,30 +153,14 @@ export function memoryAppendKnowledgePipelineStep(
     durationMs?: number;
   }>,
 ): KnowledgePipelineRunRecord | null {
-  for (const [pid, runs] of runsByProject.entries()) {
-    const idx = runs.findIndex((r) => r.id === runId);
-    if (idx < 0) continue;
-    const prev = runs[idx]!;
-    const step: KnowledgePipelineStepRecord = {
-      id: stepId(runId, input.stage),
-      stage: input.stage,
-      title: input.title,
-      summary: input.summary,
-      occurredAt: nowIso(),
-      ok: input.ok !== false,
-      durationMs: input.durationMs,
-    };
-    const next: KnowledgePipelineRunRecord = {
-      ...prev,
-      currentStage: input.stage,
-      steps: [...prev.steps, step],
-    };
-    const copy = [...runs];
-    copy[idx] = next;
-    runsByProject.set(pid, copy);
-    return next;
+  const stepId = memoryStartKnowledgePipelineStep(runId, input);
+  if (!stepId) return null;
+  if (input.ok === false) {
+    memoryFailKnowledgePipelineStep(stepId, { summary: input.summary, durationMs: input.durationMs });
+  } else {
+    memoryCompleteKnowledgePipelineStep(stepId, { summary: input.summary, durationMs: input.durationMs });
   }
-  return null;
+  return memoryGetRunById(runId);
 }
 
 export function memoryCompleteKnowledgePipelineRun(
@@ -80,37 +174,38 @@ export function memoryCompleteKnowledgePipelineRun(
     summary: input?.summary,
     ok: !input?.failed,
   });
-  for (const [pid, runs] of runsByProject.entries()) {
-    const idx = runs.findIndex((r) => r.id === runId);
-    if (idx < 0) continue;
-    const prev = runs[idx]!;
+  const m = normalizePipelineRunMetrics(input?.metrics);
+  updateRun(runId, (prev) => {
     const completedAt = nowIso();
     const durationMs = Date.parse(completedAt) - Date.parse(prev.startedAt);
-    const next: KnowledgePipelineRunRecord = {
+    return {
       ...prev,
       status: input?.failed ? "FAILED" : "COMPLETED",
       currentStage: stage,
       completedAt,
       durationMs: Number.isFinite(durationMs) ? Math.max(0, durationMs) : undefined,
       errorMessage: input?.failed ? input.summary : undefined,
-      eventCount: input?.metrics?.eventCount,
-      candidateCount: input?.metrics?.candidateCount,
-      nodeCount: input?.metrics?.nodeCount,
-      edgeCount: input?.metrics?.edgeCount,
+      eventCount: m?.eventCount,
+      candidateCount: m?.candidateCount,
+      nodeCount: m?.nodeCount,
+      edgeCount: m?.edgeCount,
+      candidateNodeCount: m?.candidateNodeCount,
+      candidateEdgeCount: m?.candidateEdgeCount,
+      graphNodeCount: m?.graphNodeCount,
+      graphEdgeCount: m?.graphEdgeCount,
     };
-    const copy = [...runs];
-    copy[idx] = next;
-    runsByProject.set(pid, copy);
-    return next;
-  }
-  return null;
+  });
+  return memoryGetRunById(runId);
 }
 
 export function memoryGetLatestKnowledgePipelineRun(projectId: string): KnowledgePipelineRunRecord | null {
   return runsByProject.get(projectId.trim())?.[0] ?? null;
 }
 
-export function memoryListKnowledgePipelineRuns(projectId: string, limit = 20): readonly KnowledgePipelineRunRecord[] {
+export function memoryListKnowledgePipelineRuns(
+  projectId: string,
+  limit = 20,
+): readonly KnowledgePipelineRunRecord[] {
   return (runsByProject.get(projectId.trim()) ?? []).slice(0, limit);
 }
 

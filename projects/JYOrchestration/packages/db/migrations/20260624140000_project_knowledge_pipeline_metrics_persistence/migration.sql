@@ -1,0 +1,6 @@
+ALTER TABLE "project_knowledge_pipeline_runs"
+  ADD COLUMN IF NOT EXISTS "candidateNodeCount" INTEGER,
+  ADD COLUMN IF NOT EXISTS "candidateEdgeCount" INTEGER,
+  ADD COLUMN IF NOT EXISTS "graphNodeCount" INTEGER,
+  ADD COLUMN IF NOT EXISTS "graphEdgeCount" INTEGER,
+  ADD COLUMN IF NOT EXISTS "persistenceMode" TEXT NOT NULL DEFAULT 'DATABASE';

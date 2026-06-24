@@ -2,6 +2,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const createMock = vi.fn();
 const appendStepMock = vi.fn();
+const stepFindUniqueMock = vi.fn();
+const stepUpdateMock = vi.fn();
 const completeMock = vi.fn();
 const failMock = vi.fn();
 const findLatestMock = vi.fn();
@@ -19,6 +21,8 @@ vi.mock("@/lib/prisma", () => ({
     },
     projectKnowledgePipelineStep: {
       create: (...args: unknown[]) => appendStepMock(...args),
+      findUnique: (...args: unknown[]) => stepFindUniqueMock(...args),
+      update: (...args: unknown[]) => stepUpdateMock(...args),
     },
   },
 }));
@@ -26,8 +30,11 @@ vi.mock("@/lib/prisma", () => ({
 import {
   appendPipelineStep,
   completePipelineRun,
+  completePipelineStep,
   createPipelineRun,
+  createPipelineStep,
   failPipelineRun,
+  failPipelineStep,
   findLatestPipelineRun,
   findPipelineRuns,
   mapPipelineRunRow,
@@ -37,20 +44,26 @@ describe("projectKnowledgePipelineRepository", () => {
   beforeEach(() => {
     createMock.mockReset();
     appendStepMock.mockReset();
+    stepFindUniqueMock.mockReset();
+    stepUpdateMock.mockReset();
     completeMock.mockReset();
     failMock.mockReset();
     findLatestMock.mockReset();
     findManyMock.mockReset();
     findUniqueMock.mockReset();
+    const started = new Date("2026-06-24T04:00:00.000Z");
+    stepFindUniqueMock.mockResolvedValue({ id: "step-1", startedAt: started, summary: null });
+    stepUpdateMock.mockResolvedValue({ id: "step-1", status: "SUCCESS" });
   });
 
-  it("createPipelineRun delegates to prisma", async () => {
+  it("createPipelineRun sets persistenceMode DATABASE", async () => {
     const started = new Date("2026-06-24T04:00:00.000Z");
     createMock.mockResolvedValue({
       id: "run-1",
       projectId: "p1",
       triggerType: "requirements_saved",
       status: "RUNNING",
+      persistenceMode: "DATABASE",
       startedAt: started,
       completedAt: null,
       durationMs: null,
@@ -58,19 +71,56 @@ describe("projectKnowledgePipelineRepository", () => {
       candidateCount: null,
       nodeCount: null,
       edgeCount: null,
+      candidateNodeCount: null,
+      candidateEdgeCount: null,
+      graphNodeCount: null,
+      graphEdgeCount: null,
       errorMessage: null,
     });
     const row = await createPipelineRun("p1", "requirements_saved");
     expect(row.id).toBe("run-1");
-    expect(createMock).toHaveBeenCalled();
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ persistenceMode: "DATABASE" }),
+      }),
+    );
   });
 
-  it("appendPipelineStep creates step row", async () => {
+  it("appendPipelineStep creates step row and completes", async () => {
     appendStepMock.mockResolvedValue({ id: "step-1" });
     await appendPipelineStep("run-1", { stage: "EVENT_SYNC", title: "Conversation Saved", ok: true });
     expect(appendStepMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ runId: "run-1", stage: "EVENT_SYNC" }),
+        data: expect.objectContaining({ runId: "run-1", stage: "EVENT_SYNC", status: "RUNNING" }),
+      }),
+    );
+    expect(stepUpdateMock).toHaveBeenCalled();
+  });
+
+  it("createPipelineStep creates RUNNING step", async () => {
+    appendStepMock.mockResolvedValue({ id: "step-2" });
+    await createPipelineStep("run-1", { stage: "GRAPH_PROJECTION", title: "Graph Synced" });
+    expect(appendStepMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "RUNNING", completedAt: null }),
+      }),
+    );
+  });
+
+  it("completePipelineStep marks SUCCESS", async () => {
+    await completePipelineStep("step-1", { summary: "done", durationMs: 12 });
+    expect(stepUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "SUCCESS", summary: "done" }),
+      }),
+    );
+  });
+
+  it("failPipelineStep marks FAILED", async () => {
+    await failPipelineStep("step-1", { summary: "err" });
+    expect(stepUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "FAILED", summary: "err" }),
       }),
     );
   });
@@ -83,13 +133,18 @@ describe("projectKnowledgePipelineRepository", () => {
         projectId: "p1",
         triggerType: "requirements_saved",
         status: "COMPLETED",
+        persistenceMode: "DATABASE",
         startedAt: started,
         completedAt: started,
         durationMs: 100,
         eventCount: 2,
         candidateCount: 5,
-        nodeCount: 5,
+        nodeCount: 8,
         edgeCount: 3,
+        candidateNodeCount: 5,
+        candidateEdgeCount: 3,
+        graphNodeCount: 8,
+        graphEdgeCount: 3,
         errorMessage: null,
         createdAt: started,
         updatedAt: started,
@@ -116,6 +171,8 @@ describe("projectKnowledgePipelineRepository", () => {
     expect(mapped.steps).toHaveLength(1);
     expect(mapped.status).toBe("COMPLETED");
     expect(mapped.candidateCount).toBe(5);
+    expect(mapped.graphNodeCount).toBe(8);
+    expect(mapped.persistenceMode).toBe("DATABASE");
   });
 
   it("findLatestPipelineRun returns mapped run", async () => {
@@ -125,6 +182,7 @@ describe("projectKnowledgePipelineRepository", () => {
       projectId: "p1",
       triggerType: "requirements_saved",
       status: "COMPLETED",
+      persistenceMode: "DATABASE",
       startedAt: started,
       completedAt: started,
       durationMs: 10,

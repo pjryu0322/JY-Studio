@@ -23,8 +23,22 @@ describe("knowledgePipelineApi", () => {
   beforeEach(() => {
     getLatestMock.mockReset();
     listMock.mockReset();
-    getLatestMock.mockResolvedValue({ id: "run-latest", projectId: "p1", status: "COMPLETED", steps: [] });
-    listMock.mockResolvedValue([{ id: "run-latest", projectId: "p1", status: "COMPLETED", steps: [] }]);
+    getLatestMock.mockResolvedValue({
+      id: "run-latest",
+      projectId: "p1",
+      status: "COMPLETED",
+      persistenceMode: "DATABASE",
+      steps: [],
+    });
+    listMock.mockResolvedValue([
+      {
+        id: "run-latest",
+        projectId: "p1",
+        status: "COMPLETED",
+        persistenceMode: "DATABASE",
+        steps: [],
+      },
+    ]);
   });
 
   it("returns latestRun and recentRuns", async () => {
@@ -37,5 +51,12 @@ describe("knowledgePipelineApi", () => {
     expect(json.data?.latestRun?.id).toBe("run-latest");
     expect(json.data?.recentRuns?.length).toBe(1);
     expect(listMock).toHaveBeenCalledWith("p1", 20);
+  });
+
+  it("includes persistenceMode on latestRun", async () => {
+    const req = new NextRequest("http://localhost/api/projects/p1/knowledge-pipeline");
+    const res = await GET(req, { params: Promise.resolve({ projectId: "p1" }) });
+    const json = (await res.json()) as { data?: { latestRun?: { persistenceMode?: string } } };
+    expect(json.data?.latestRun?.persistenceMode).toBe("DATABASE");
   });
 });

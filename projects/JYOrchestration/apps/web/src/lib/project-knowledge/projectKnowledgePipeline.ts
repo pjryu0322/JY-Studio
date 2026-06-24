@@ -8,10 +8,12 @@ import { integratePlanningProposalApprovalFromRequirementsState } from "@/lib/pl
 import { runProjectKnowledgePostProcess } from "@/lib/project-knowledge/projectKnowledgePostProcess";
 import { runWithKnowledgeBusPublishSuppressed } from "@/lib/project-knowledge/knowledgeBusPublishContext";
 import {
-  appendKnowledgePipelineStep,
   completeKnowledgePipelineRun,
+  completeKnowledgePipelineStep,
   failKnowledgePipelineRun,
+  failKnowledgePipelineStep,
   startKnowledgePipelineRun,
+  startKnowledgePipelineStep,
 } from "@/lib/project-knowledge/projectKnowledgePipelineMonitor";
 import { buildKnowledgeActivityItems } from "@/lib/project-knowledge/projectKnowledgeActivityBuilder";
 import type { PipelineRunMetricsInput } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
@@ -74,6 +76,10 @@ export async function runProjectKnowledgePipeline(
 
     if (runConversation) {
       const syncStarted = Date.now();
+      const syncStepId = await startKnowledgePipelineStep(run.id, {
+        stage: "EVENT_SYNC",
+        title: "Conversation Saved",
+      });
       try {
         await syncRequirementsConversationMessagesToEventStore(db, {
           projectId,
@@ -83,15 +89,17 @@ export async function runProjectKnowledgePipeline(
           fallbackStage: PROJECT_PROCESS_STAGES.REQUIREMENTS_IDEATION,
         });
         conversationSynced = true;
-        await appendKnowledgePipelineStep(run.id, {
-          stage: "EVENT_SYNC",
-          title: "Conversation Saved",
-          ok: true,
-          durationMs: Date.now() - syncStarted,
-        });
+        if (syncStepId) {
+          await completeKnowledgePipelineStep(syncStepId, {
+            durationMs: Date.now() - syncStarted,
+          });
+        }
       } catch (error) {
         console.error("Project Event Store sync failed:", error);
         warnings.push("EVENT_STORE_SYNC_FAILED");
+        if (syncStepId) {
+          await failKnowledgePipelineStep(syncStepId, { durationMs: Date.now() - syncStarted });
+        }
         await failKnowledgePipelineRun(run.id, {
           errorMessage: "EVENT_STORE_SYNC_FAILED",
         });
@@ -111,13 +119,13 @@ export async function runProjectKnowledgePipeline(
           snapshotIntegrated = true;
           if (snapshotIntegration.eventId) eventIds.push(snapshotIntegration.eventId);
           if (snapshotIntegration.statePatch) statePatch = snapshotIntegration.statePatch;
-          await appendKnowledgePipelineStep(run.id, {
+          const stepId = await startKnowledgePipelineStep(run.id, {
             stage: "ARTIFACT_INTEGRATION",
             title: "Snapshot Integrated",
-            ok: true,
             sourceEventId: snapshotIntegration.eventId,
             sourceMessageId: snapshotIntegration.sourceMessageId,
           });
+          if (stepId) await completeKnowledgePipelineStep(stepId);
         }
       } catch (error) {
         console.error("Planning snapshot integration failed:", error);
@@ -135,12 +143,12 @@ export async function runProjectKnowledgePipeline(
         if (proposalIntegration.integrated) {
           proposalIntegrated = true;
           if (proposalIntegration.eventId) eventIds.push(proposalIntegration.eventId);
-          await appendKnowledgePipelineStep(run.id, {
+          const stepId = await startKnowledgePipelineStep(run.id, {
             stage: "ARTIFACT_INTEGRATION",
             title: "Proposal Approved",
-            ok: true,
             sourceEventId: proposalIntegration.eventId,
           });
+          if (stepId) await completeKnowledgePipelineStep(stepId);
         }
       } catch (error) {
         console.error("Planning proposal Event Store integration failed:", error);
@@ -163,11 +171,17 @@ export async function runProjectKnowledgePipeline(
     }
 
     buildKnowledgeActivityItems({ warnings });
-    await appendKnowledgePipelineStep(run.id, {
+    const activityStepId = await startKnowledgePipelineStep(run.id, {
       stage: "ACTIVITY_BUILD",
       title: "Activity Built",
-      ok: warnings.length === 0,
     });
+    if (activityStepId) {
+      if (warnings.length === 0) {
+        await completeKnowledgePipelineStep(activityStepId);
+      } else {
+        await failKnowledgePipelineStep(activityStepId, { summary: warnings.join(", ") });
+      }
+    }
 
     const failed =
       warnings.includes("EVENT_STORE_SYNC_FAILED") ||
