@@ -87,7 +87,7 @@ export function buildKnowledgeTraceLineage(input: KnowledgeTraceBuildInput): Pro
     steps.push({
       id: stepId("conversation", messageId ?? "unknown"),
       type: "conversation",
-      title: "[Conversation]",
+      title: "대화 내용",
       summary:
         messagePreview(input.conversationMessage) ??
         (ex.sourceConversation.excerpt !== "—" ? ex.sourceConversation.excerpt : "대화에서 도출된 요구"),
@@ -107,7 +107,7 @@ export function buildKnowledgeTraceLineage(input: KnowledgeTraceBuildInput): Pro
       steps.push({
         id: stepId("snapshot", event.id),
         type: "snapshot",
-        title: "[Snapshot]",
+        title: "초기 기획 정리",
         summary: snapshotTitle || "기획 스냅샷 생성",
         sourceEventId: event.id,
         sourceMessageId: event.sourceMessageId ?? undefined,
@@ -127,7 +127,7 @@ export function buildKnowledgeTraceLineage(input: KnowledgeTraceBuildInput): Pro
       steps.push({
         id: stepId("proposal", event.id),
         type: "proposal",
-        title: "[AI Proposal]",
+        title: "AI 추천안",
         summary: truncateConversationExcerpt(proposalSummary, 200),
         sourceEventId: event.id,
         sourceMessageId: readPayloadString(payload, "sourceMessageId") || event.sourceMessageId || undefined,
@@ -141,7 +141,7 @@ export function buildKnowledgeTraceLineage(input: KnowledgeTraceBuildInput): Pro
       steps.push({
         id: stepId("event", `${event.id}:approval`),
         type: "event",
-        title: "[User Approval]",
+        title: "사용자 승인",
         summary: acceptedBy === "USER" ? "추천안 승인" : `승인 주체: ${acceptedBy}`,
         sourceEventId: event.id,
         sourceMessageId: readPayloadString(payload, "acceptedByMessageId") || undefined,
@@ -154,7 +154,7 @@ export function buildKnowledgeTraceLineage(input: KnowledgeTraceBuildInput): Pro
       steps.push({
         id: stepId("conversation", event.id),
         type: "conversation",
-        title: "[Conversation]",
+        title: "대화 내용",
         summary: messagePreview(input.conversationMessage) ?? "대화 메시지 이벤트",
         sourceEventId: event.id,
         sourceMessageId: event.sourceMessageId ?? undefined,
@@ -168,7 +168,7 @@ export function buildKnowledgeTraceLineage(input: KnowledgeTraceBuildInput): Pro
     steps.push({
       id: stepId("candidate", c.id),
       type: "candidate",
-      title: "[Candidate]",
+      title: "구조 후보",
       summary: `${c.nodeType}: ${c.title}`,
       sourceEventId: c.sourceEventId ?? undefined,
       sourceArtifactId: c.id,
@@ -179,8 +179,8 @@ export function buildKnowledgeTraceLineage(input: KnowledgeTraceBuildInput): Pro
     steps.push({
       id: stepId("candidate", input.structureCandidateId),
       type: "candidate",
-      title: "[Candidate]",
-      summary: "Structure Candidate (상세 미조회)",
+      title: "구조 후보",
+      summary: "구조 후보 정보를 불러오지 못했습니다.",
       sourceArtifactId: input.structureCandidateId,
     });
   }
@@ -189,8 +189,8 @@ export function buildKnowledgeTraceLineage(input: KnowledgeTraceBuildInput): Pro
     steps.push({
       id: stepId("projection", input.node.sourceEventId),
       type: "projection",
-      title: "[Projection]",
-      summary: "Graph Projection 반영",
+      title: "그래프 반영",
+      summary: "지식 그래프에 반영됨",
       sourceEventId: input.node.sourceEventId,
       occurredAt: input.node.updatedAt.toISOString(),
     });
@@ -199,7 +199,7 @@ export function buildKnowledgeTraceLineage(input: KnowledgeTraceBuildInput): Pro
   steps.push({
     id: stepId("graph-node", input.node.id),
     type: "graph-node",
-    title: "[Node]",
+    title: "현재 항목",
     summary: input.node.title,
     occurredAt: input.node.createdAt.toISOString(),
     metadata: { nodeType: input.node.nodeType },

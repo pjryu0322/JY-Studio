@@ -69,7 +69,7 @@ describe("buildKnowledgeTraceLineage", () => {
       proposalSourceMessage: null,
     });
     expect(lineage.some((s) => s.type === "proposal")).toBe(true);
-    expect(lineage.some((s) => s.type === "event" && s.title.includes("Approval"))).toBe(true);
+    expect(lineage.some((s) => s.type === "event" && s.title === "사용자 승인")).toBe(true);
   });
 
   it("includes snapshot step for snapshot_created event", () => {

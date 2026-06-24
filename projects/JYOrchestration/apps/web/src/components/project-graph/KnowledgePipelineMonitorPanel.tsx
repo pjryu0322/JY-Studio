@@ -178,6 +178,7 @@ export function KnowledgePipelineMonitorPanel(p: {
   readonly error: string | null;
   readonly onRefresh: () => void;
   readonly traceNodeId?: string | null;
+  readonly traceNodeTitle?: string | null;
   readonly onOpenTrace?: (nodeId: string) => void;
 }) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -250,7 +251,11 @@ export function KnowledgePipelineMonitorPanel(p: {
           }}
         >
           <span style={{ fontSize: 12, color: t.textSecondary, flex: 1 }}>
-            {p.traceNodeId ? `선택 노드: ${p.traceNodeId}` : "그래프에서 노드를 선택하면 Trace를 열 수 있습니다."}
+            {p.traceNodeId && p.traceNodeTitle
+              ? `“${p.traceNodeTitle}”의 생성 과정을 확인할 수 있습니다.`
+              : p.traceNodeId
+                ? "선택한 항목의 생성 과정을 확인할 수 있습니다."
+                : "그래프에서 항목을 선택하면 생성 과정을 볼 수 있습니다."}
           </span>
           <button
             type="button"
@@ -271,7 +276,7 @@ export function KnowledgePipelineMonitorPanel(p: {
               opacity: p.traceNodeId ? 1 : 0.6,
             }}
           >
-            Trace 보기
+            생성 과정 보기
           </button>
         </div>
       ) : null}

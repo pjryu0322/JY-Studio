@@ -65,13 +65,13 @@ export function ProjectGraphNodeDetailBody({
         style={{ display: "flex", gap: 6, marginBottom: 12 }}
       >
         <button type="button" role="tab" aria-selected={detailTab === "details"} style={tabBtn(detailTab === "details")} onClick={() => onDetailTabChange("details")}>
-          Details
+          정보
         </button>
         <button type="button" role="tab" aria-selected={detailTab === "explainability"} style={tabBtn(detailTab === "explainability")} onClick={() => onDetailTabChange("explainability")}>
-          Explainability
+          생성 근거
         </button>
         <button type="button" role="tab" aria-selected={detailTab === "trace"} style={tabBtn(detailTab === "trace")} onClick={() => onDetailTabChange("trace")}>
-          Trace
+          생성 과정
         </button>
       </div>
 
@@ -141,7 +141,7 @@ export function ProjectGraphNodeDetailPanel({
     return (
       <aside style={panel} aria-label="그래프 노드 상세">
         <p style={{ margin: 0, fontSize: 13, color: t.textMuted }}>
-          노드를 더블클릭하면 생성 근거와 Trace 계보를 볼 수 있습니다.
+          노드를 더블클릭하면 생성 근거와 만들어진 과정을 볼 수 있습니다.
         </p>
       </aside>
     );

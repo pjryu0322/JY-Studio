@@ -115,6 +115,7 @@ export function ProjectKnowledgeGraphWorkspace({
           error={pipelineError}
           onRefresh={() => void reloadPipelineMonitor()}
           traceNodeId={explorer.detailNodeId ?? explorer.selectedNodeId}
+          traceNodeTitle={explorer.selectedNode?.title ?? explorer.detailNode?.title ?? null}
           onOpenTrace={(nodeId) => {
             explorer.openTraceForNode(nodeId);
             setWorkspacePane("graph");

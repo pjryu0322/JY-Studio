@@ -22,7 +22,7 @@ describe("knowledgeTraceApi", () => {
     buildTraceMock.mockReset();
     buildTraceMock.mockResolvedValue({
       nodeId: "node-1",
-      lineage: [{ id: "s1", type: "graph-node", title: "[Node]", summary: "N" }],
+      lineage: [{ id: "s1", type: "graph-node", title: "현재 항목", summary: "N" }],
       warnings: [],
     });
   });

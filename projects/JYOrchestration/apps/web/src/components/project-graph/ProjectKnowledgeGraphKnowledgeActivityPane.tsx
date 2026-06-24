@@ -9,6 +9,7 @@ export function ProjectKnowledgeGraphKnowledgeActivityPane(p: {
   readonly error: string | null;
   readonly onRefresh: () => void;
   readonly traceNodeId?: string | null;
+  readonly traceNodeTitle?: string | null;
   readonly onOpenTrace?: (nodeId: string) => void;
 }) {
   return (
@@ -22,6 +23,7 @@ export function ProjectKnowledgeGraphKnowledgeActivityPane(p: {
         error={p.error}
         onRefresh={p.onRefresh}
         traceNodeId={p.traceNodeId}
+        traceNodeTitle={p.traceNodeTitle}
         onOpenTrace={p.onOpenTrace}
       />
     </div>
