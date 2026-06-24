@@ -8,8 +8,29 @@ import {
   PROJECT_MESSAGE_SOURCES,
   PROJECT_PROCESS_STAGES,
 } from "@/lib/project-process/projectEventTypes";
+import { isKnowledgeBusPublishSuppressed } from "@/lib/project-knowledge/knowledgeBusPublishContext";
+import { publishKnowledgeEvent } from "@/lib/project-knowledge/projectKnowledgeEventBus";
+import { registerProjectKnowledgePipelineSubscriber } from "@/lib/project-knowledge/projectKnowledgePipelineSubscriber";
+import { bootstrapProjectKnowledgeArtifactAdapters } from "@/lib/project-knowledge/projectKnowledgeArtifactAdapterBootstrap";
+
+bootstrapProjectKnowledgeArtifactAdapters();
+registerProjectKnowledgePipelineSubscriber();
 
 export type ProjectEventStoreClient = Prisma.TransactionClient | typeof prisma;
+
+function notifyKnowledgeBusProjectEventAppended(
+  projectId: string,
+  event: { readonly id: string; readonly eventType: string },
+): void {
+  if (isKnowledgeBusPublishSuppressed()) return;
+  registerProjectKnowledgePipelineSubscriber();
+  void publishKnowledgeEvent({
+    kind: "project_event_appended",
+    projectId,
+    eventId: event.id,
+    eventType: event.eventType,
+  });
+}
 
 function assertNonEmpty(value: string, field: string): string {
   const s = String(value ?? "").trim();
@@ -114,7 +135,7 @@ export async function appendProjectEvent(
   }
 
   try {
-    return await db.projectEvent.create({
+    const created = await db.projectEvent.create({
       data: {
         projectId,
         eventType,
@@ -131,6 +152,8 @@ export async function appendProjectEvent(
         metadata: input.metadata == null ? undefined : (asJsonObject(input.metadata) as Prisma.InputJsonValue),
       },
     });
+    notifyKnowledgeBusProjectEventAppended(projectId, created);
+    return created;
   } catch (error) {
     if (idempotencyKey && isPrismaUniqueViolation(error)) {
       const existing = await db.projectEvent.findFirst({

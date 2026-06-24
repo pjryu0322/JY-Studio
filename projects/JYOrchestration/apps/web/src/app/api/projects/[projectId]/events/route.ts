@@ -3,7 +3,6 @@ import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
 import { prisma } from "@/lib/prisma";
 import { appendProjectEvent } from "@/lib/project-process/projectEventStore";
-import { trySyncProjectGraphProjection } from "@/lib/project-graph/projectGraphProjection";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
@@ -132,8 +131,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       payload: body?.payload ?? {},
       metadata: body?.metadata ?? null,
     });
-
-    trySyncProjectGraphProjection(pid, [event.id]);
 
     return NextResponse.json({
       success: true,

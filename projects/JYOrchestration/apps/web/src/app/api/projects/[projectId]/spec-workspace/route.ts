@@ -20,7 +20,7 @@ import {
 import { trySyncTaskDraftsAfterSpecChange } from "@/lib/project-spec/trySyncTaskDraftsAfterSpecChange";
 import { isAllowedSpecWorkspaceModel } from "@/lib/project-spec/specWorkspaceModels";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
-import { runProjectKnowledgePipeline } from "@/lib/project-knowledge/projectKnowledgePipeline";
+import { publishRequirementsSavedKnowledgeEvent } from "@/lib/project-knowledge/projectKnowledgePipelineSubscriber";
 import {
   mergeRequirementsStateJson,
   parseRequirementsStateJson,
@@ -724,18 +724,21 @@ export async function PATCH(
         ? (updated.requirementsConversationJson ?? body.requirementsConversationJson)
         : updated.requirementsConversationJson;
 
-      const knowledgeResult = await runProjectKnowledgePipeline(prisma, {
-        projectId: id,
-        actorId: userId,
-        trigger: "requirements_saved",
-        previousConversationJson: runsConversation ? previousConversationJson : undefined,
-        nextConversationJson,
-        requirementsStateJson: updated.requirementsStateJson,
-        projectName: String(updated.name ?? "").trim(),
-        projectDescription: updated.description,
-        runConversationSync: runsConversation,
-        runProposalIntegration:
-          body.requirementsStateJson !== undefined || body.requirementsConversationJson !== undefined,
+      const knowledgeResult = await publishRequirementsSavedKnowledgeEvent({
+        db: prisma,
+        pipelineInput: {
+          projectId: id,
+          actorId: userId,
+          trigger: "requirements_saved",
+          previousConversationJson: runsConversation ? previousConversationJson : undefined,
+          nextConversationJson,
+          requirementsStateJson: updated.requirementsStateJson,
+          projectName: String(updated.name ?? "").trim(),
+          projectDescription: updated.description,
+          runConversationSync: runsConversation,
+          runProposalIntegration:
+            body.requirementsStateJson !== undefined || body.requirementsConversationJson !== undefined,
+        },
       });
 
       knowledgeWarnings = [...knowledgeResult.warnings];

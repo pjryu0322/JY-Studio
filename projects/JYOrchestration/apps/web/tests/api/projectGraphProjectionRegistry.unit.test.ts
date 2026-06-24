@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { bootstrapProjectKnowledgeArtifactAdapters } from "@/lib/project-knowledge/projectKnowledgeArtifactAdapterBootstrap";
 import { projectGraphProjectionHandlers } from "@/lib/project-graph/projectGraphProjectionRegistry";
 import { planProjectGraphProjectionFromEvent } from "@/lib/project-graph/projectGraphProjectionPlan";
 import { PROJECT_GRAPH_EVENT_TYPES, PROJECT_GRAPH_NODE_TYPES } from "@/lib/project-graph/projectGraphTypes";
@@ -7,6 +8,8 @@ import type { PlanningSnapshotModel } from "@/lib/planning-snapshot/planningSnap
 import { planningProposalPayloadFromModel, buildPlanningProposalModel } from "@/lib/planning-proposal/planningProposalMapper";
 
 describe("projectGraphProjectionRegistry", () => {
+  bootstrapProjectKnowledgeArtifactAdapters();
+
   it("registers planning.snapshot_created handler", () => {
     expect(projectGraphProjectionHandlers[PROJECT_GRAPH_EVENT_TYPES.PLANNING_SNAPSHOT_CREATED]).toBeTypeOf("function");
   });

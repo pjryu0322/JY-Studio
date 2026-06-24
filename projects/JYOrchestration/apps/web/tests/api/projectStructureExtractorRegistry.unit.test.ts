@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { bootstrapProjectKnowledgeArtifactAdapters } from "@/lib/project-knowledge/projectKnowledgeArtifactAdapterBootstrap";
 import { structureCandidateHandlers } from "@/lib/project-structure/projectStructureExtractorRegistry";
 import { planStructureCandidatesFromEvent } from "@/lib/project-structure/projectStructureExtractorPlan";
 import { PROJECT_GRAPH_EVENT_TYPES } from "@/lib/project-graph/projectGraphTypes";
@@ -7,6 +8,8 @@ import type { PlanningSnapshotModel } from "@/lib/planning-snapshot/planningSnap
 import { buildPlanningProposalModel, planningProposalPayloadFromModel } from "@/lib/planning-proposal/planningProposalMapper";
 
 describe("projectStructureExtractorRegistry", () => {
+  bootstrapProjectKnowledgeArtifactAdapters();
+
   it("registers artifact event handlers", () => {
     expect(structureCandidateHandlers[PROJECT_GRAPH_EVENT_TYPES.PLANNING_SNAPSHOT_CREATED]).toBeTypeOf("function");
     expect(structureCandidateHandlers[PROJECT_GRAPH_EVENT_TYPES.PLANNING_PROPOSAL_APPROVED]).toBeTypeOf("function");

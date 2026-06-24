@@ -1,3 +1,8 @@
+import {
+  pipelineStepsToActivityItems,
+  type KnowledgePipelineRunRecord,
+} from "@/lib/project-knowledge/projectKnowledgePipelineMonitor";
+
 export type ProjectKnowledgeActivityItem = {
   id: string;
   type: "event" | "candidate" | "graph" | "warning";
@@ -12,10 +17,15 @@ export type ProjectKnowledgeActivityItem = {
 export type BuildKnowledgeActivityItemsInput = Readonly<{
   events?: readonly Record<string, unknown>[];
   warnings?: readonly string[];
+  pipelineRun?: KnowledgePipelineRunRecord | null;
 }>;
 
 export function buildKnowledgeActivityItems(input: BuildKnowledgeActivityItemsInput): ProjectKnowledgeActivityItem[] {
   const items: ProjectKnowledgeActivityItem[] = [];
+
+  if (input.pipelineRun) {
+    items.push(...pipelineStepsToActivityItems(input.pipelineRun));
+  }
 
   for (const event of input.events ?? []) {
     const id = String(event.id ?? "").trim();

@@ -31,6 +31,9 @@ import {
 } from "@/lib/project-graph/projectGraphExploration";
 import { requirementsWorkspaceMainRowStyle } from "@/components/requirements/requirementsWorkspaceLayoutStyles";
 import type { ProjectKnowledgeGraphLaunchContext } from "@/components/project-graph/projectKnowledgeGraphLaunchTypes";
+import { KnowledgePipelineMonitorPanel } from "@/components/project-graph/KnowledgePipelineMonitorPanel";
+import { fetchLatestKnowledgePipelineRun } from "@/lib/project-knowledge/projectKnowledgePipelineClient";
+import type { KnowledgePipelineRunRecord } from "@/lib/project-knowledge/projectKnowledgePipelineMonitor";
 
 const LIFECYCLE_OPTIONS = ["", "PROJECTED", "APPROVED", "CANDIDATE"] as const;
 
@@ -64,7 +67,7 @@ export function ProjectKnowledgeGraphWorkspace({
 
   const isModal = variant === "modal";
   const viewMode = clientReady ? String(searchParams?.get("view") ?? "").trim() : "";
-  type WorkspacePane = "graph" | "activity";
+  type WorkspacePane = "graph" | "activity" | "knowledge";
   const [workspacePane, setWorkspacePane] = useState<WorkspacePane>("graph");
 
   useEffect(() => {
@@ -99,11 +102,29 @@ export function ProjectKnowledgeGraphWorkspace({
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pipelineRun, setPipelineRun] = useState<KnowledgePipelineRunRecord | null>(null);
+  const [pipelineLoading, setPipelineLoading] = useState(false);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [activitySummary, setActivitySummary] = useState<ProjectGraphActivitySummary | null>(null);
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState<string | null>(null);
   const [centerOnNodeNonce, setCenterOnNodeNonce] = useState(0);
   const { toastMessage, showToast } = useProjectKnowledgeGraphToast();
+
+  const reloadPipelineMonitor = useCallback(async () => {
+    const pid = projectId.trim();
+    if (!pid) return;
+    setPipelineError(null);
+    setPipelineLoading(true);
+    try {
+      const run = await fetchLatestKnowledgePipelineRun(pid);
+      setPipelineRun(run);
+    } catch (e) {
+      setPipelineError(e instanceof Error ? e.message : "파이프라인 기록을 불러오지 못했습니다.");
+    } finally {
+      setPipelineLoading(false);
+    }
+  }, [projectId]);
 
   const reloadActivity = useCallback(
     async (withSync: boolean) => {
@@ -543,8 +564,29 @@ export function ProjectKnowledgeGraphWorkspace({
         >
           Activity
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={workspacePane === "knowledge"}
+          onClick={() => {
+            setWorkspacePane("knowledge");
+            void reloadPipelineMonitor();
+          }}
+          style={viewTabStyle(workspacePane === "knowledge")}
+        >
+          Knowledge Activity
+        </button>
       </div>
-      {activityView ? (
+      {workspacePane === "knowledge" ? (
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+          <KnowledgePipelineMonitorPanel
+            run={pipelineRun}
+            loading={pipelineLoading}
+            error={pipelineError}
+            onRefresh={() => void reloadPipelineMonitor()}
+          />
+        </div>
+      ) : activityView ? (
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
           <ProjectKnowledgeGraphActivityPanel
             projectId={projectId}
