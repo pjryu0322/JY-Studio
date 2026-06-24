@@ -3,8 +3,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("@/components/project-graph/ProjectKnowledgeGraphModalShell", () => ({
-  ProjectKnowledgeGraphModalShell: (p: { children: unknown; open: boolean }) =>
-    p.open ? createElement("div", { "data-testid": "replay-shell" }, p.children) : null,
+  ProjectKnowledgeGraphModalShell: (p: { children: unknown; open: boolean; title?: string }) =>
+    p.open
+      ? createElement("div", { "data-testid": "replay-shell", "data-title": p.title }, p.children)
+      : null,
 }));
 
 vi.mock("@/components/project-graph/useGraphMobileUx", () => ({
@@ -19,12 +21,9 @@ vi.mock("@/components/project-graph/ProjectKnowledgeReplayViewer", () => ({
   ProjectKnowledgeReplayViewer: () => createElement("div", { "data-testid": "mock-viewer" }),
 }));
 
-const fetchList = vi.fn();
-const fetchOne = vi.fn();
-
 vi.mock("@/lib/project-knowledge/projectKnowledgeGraphRevisionClient", () => ({
-  fetchKnowledgeGraphRevisions: (...args: unknown[]) => fetchList(...args),
-  fetchKnowledgeGraphRevision: (...args: unknown[]) => fetchOne(...args),
+  fetchKnowledgeGraphRevisions: vi.fn().mockResolvedValue([]),
+  fetchKnowledgeGraphRevision: vi.fn(),
 }));
 
 import { ProjectKnowledgeReplayModal } from "@/components/project-graph/ProjectKnowledgeReplayModal";
@@ -41,7 +40,7 @@ describe("ProjectKnowledgeReplayModal", () => {
     expect(html).not.toContain("replay-shell");
   });
 
-  it("renders open modal with slider", () => {
+  it("renders open modal with project change history UX", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectKnowledgeReplayModal, {
         open: true,
@@ -50,7 +49,15 @@ describe("ProjectKnowledgeReplayModal", () => {
       }),
     );
     expect(html).toContain("knowledge-replay-modal");
-    expect(html).toContain("knowledge-replay-slider");
-    expect(html).toContain("시점 이동");
+    expect(html).toContain("data-title=\"프로젝트 변화 이력\"");
+    expect(html).toContain("knowledge-replay-intro");
+    expect(html).toContain("변화 단계 선택");
+    expect(html).toContain("knowledge-replay-prev");
+    expect(html).toContain("knowledge-replay-next");
+    expect(html).toContain("knowledge-replay-latest");
+    expect(html).toContain("knowledge-replay-play");
+    expect(html).not.toContain("revisionId");
+    expect(html).not.toContain("eventId");
+    expect(html).not.toContain("nodeId");
   });
 });

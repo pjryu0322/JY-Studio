@@ -27,7 +27,7 @@ describe("diffKnowledgeGraphRevisions", () => {
     );
     const d = diffKnowledgeGraphRevisions(prev, next);
     expect(d.addedNodeCount).toBe(2);
-    expect(d.lines.some((l) => l.includes("+ 노드 2개"))).toBe(true);
+    expect(d.lines.some((l) => l.includes("+ 항목 2개"))).toBe(true);
   });
 
   it("counts removed nodes", () => {
@@ -41,7 +41,7 @@ describe("diffKnowledgeGraphRevisions", () => {
     const next = snap([{ entityKey: "a", nodeType: "Feature", title: "A", summary: null }], []);
     const d = diffKnowledgeGraphRevisions(prev, next);
     expect(d.removedNodeCount).toBe(1);
-    expect(d.lines.some((l) => l.includes("- 노드 1개"))).toBe(true);
+    expect(d.lines.some((l) => l.includes("- 항목 1개"))).toBe(true);
   });
 
   it("counts edge changes", () => {

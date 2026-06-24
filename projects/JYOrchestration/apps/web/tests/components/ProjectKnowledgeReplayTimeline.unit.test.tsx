@@ -14,10 +14,11 @@ describe("ProjectKnowledgeReplayTimeline", () => {
       }),
     );
     expect(html).toContain("knowledge-replay-empty");
-    expect(html).toContain("그래프 변화");
+    expect(html).toContain("아직 표시할 변화 이력이 없습니다.");
+    expect(html).toContain("기획 대화를 진행하거나");
   });
 
-  it("renders revision titles without technical ids", () => {
+  it("renders revision titles without technical ids and user-friendly diff", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectKnowledgeReplayTimeline, {
         revisions: [
@@ -33,12 +34,17 @@ describe("ProjectKnowledgeReplayTimeline", () => {
         ],
         selectedIndex: 0,
         onSelectIndex: () => {},
-        diffLines: ["+ 노드 2개 추가"],
+        diffLines: ["+ 항목 2개 추가", "+ 연결 3개 추가"],
+        changeHintsByIndex: ["항목 2개 추가 · 연결 3개 추가"],
       }),
     );
     expect(html).toContain("추천안 승인");
     expect(html).not.toContain("uuid-hidden");
     expect(html).toContain("knowledge-replay-diff");
-    expect(html).toContain("+ 노드 2개 추가");
+    expect(html).toContain("이번 변경");
+    expect(html).toContain("+ 항목 2개 추가");
+    expect(html).not.toContain("uuid-hidden");
+    expect(html).not.toContain("nodeId");
+    expect(html).not.toContain("revisionId");
   });
 });

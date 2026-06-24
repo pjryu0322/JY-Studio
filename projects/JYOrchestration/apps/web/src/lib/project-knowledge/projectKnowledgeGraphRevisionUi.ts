@@ -47,3 +47,20 @@ export function formatKnowledgeRevisionTimelineLabel(iso: string): string {
   const min = String(d.getMinutes()).padStart(2, "0");
   return `${mm}/${dd} ${hh}:${min}`;
 }
+
+export function formatKnowledgeRevisionTimeOnly(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${min}`;
+}
+
+/** Timeline card: "항목 2개 추가 · 연결 3개 추가" */
+export function formatKnowledgeRevisionChangeHintInline(lines: readonly string[]): string | null {
+  const filtered = lines.filter((line) => line !== "변화 없음");
+  if (filtered.length === 0) return null;
+  return filtered
+    .map((line) => line.replace(/^[+-]\s*/, ""))
+    .join(" · ");
+}

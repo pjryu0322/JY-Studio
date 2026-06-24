@@ -39,8 +39,8 @@ export function diffKnowledgeGraphRevisions(
   }
 
   const lines: string[] = [];
-  if (addedNodeCount > 0) lines.push(`+ 노드 ${addedNodeCount}개 추가`);
-  if (removedNodeCount > 0) lines.push(`- 노드 ${removedNodeCount}개 제거`);
+  if (addedNodeCount > 0) lines.push(`+ 항목 ${addedNodeCount}개 추가`);
+  if (removedNodeCount > 0) lines.push(`- 항목 ${removedNodeCount}개 제거`);
   if (addedEdgeCount > 0) lines.push(`+ 연결 ${addedEdgeCount}개 추가`);
   if (removedEdgeCount > 0) lines.push(`- 연결 ${removedEdgeCount}개 제거`);
   if (lines.length === 0) lines.push("변화 없음");

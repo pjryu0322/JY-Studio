@@ -12,12 +12,44 @@ import {
   fetchKnowledgeGraphRevisions,
 } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionClient";
 import { diffKnowledgeGraphRevisions } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionDiff";
-import { knowledgeGraphSnapshotToCanvasGraph } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionUi";
+import {
+  formatKnowledgeRevisionChangeHintInline,
+  knowledgeGraphSnapshotToCanvasGraph,
+} from "@/lib/project-knowledge/projectKnowledgeGraphRevisionUi";
+import {
+  KNOWLEDGE_REPLAY_AUTOPLAY_MS,
+  isReplayLatestDisabled,
+  isReplayNextDisabled,
+  isReplayPreviousDisabled,
+  replayAutoplayTick,
+  replayLatestIndex,
+  replayNextIndex,
+  replayPreviousIndex,
+} from "@/lib/project-knowledge/projectKnowledgeReplayNavigation";
 import type {
   KnowledgeGraphRevisionListItem,
   KnowledgeGraphRevisionSnapshot,
 } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionTypes";
 import type { ProjectGraphEdgeDto, ProjectGraphNodeDto } from "@/lib/project-graph/projectGraphClient";
+
+const navBtnStyle: CSSProperties = {
+  minHeight: 44,
+  minWidth: 44,
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: `1px solid ${t.border}`,
+  background: t.bgPage,
+  fontSize: 12,
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const summaryClamp: CSSProperties = {
+  display: "-webkit-box",
+  WebkitBoxOrient: "vertical",
+  overflow: "hidden",
+  WebkitLineClamp: 2,
+};
 
 export function ProjectKnowledgeReplayModal(p: {
   readonly open: boolean;
@@ -33,6 +65,22 @@ export function ProjectKnowledgeReplayModal(p: {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [timelineSheetOpen, setTimelineSheetOpen] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const pauseAutoplay = useCallback(() => setIsPlaying(false), []);
+
+  const selectIndex = useCallback(
+    (index: number) => {
+      pauseAutoplay();
+      setSelectedIndex(index);
+    },
+    [pauseAutoplay],
+  );
+
+  const handleClose = useCallback(() => {
+    pauseAutoplay();
+    p.onClose();
+  }, [p.onClose, pauseAutoplay]);
 
   const reloadList = useCallback(async () => {
     if (!p.open) return;
@@ -43,6 +91,7 @@ export function ProjectKnowledgeReplayModal(p: {
       setRevisions(items);
       setSelectedIndex(items.length > 0 ? items.length - 1 : 0);
       setSnapshotCache({});
+      setIsPlaying(false);
     } catch (error) {
       setListError(error instanceof Error ? error.message : "목록을 불러오지 못했습니다.");
       setRevisions([]);
@@ -54,6 +103,29 @@ export function ProjectKnowledgeReplayModal(p: {
   useEffect(() => {
     void reloadList();
   }, [reloadList]);
+
+  useEffect(() => {
+    if (!p.open) {
+      pauseAutoplay();
+    }
+  }, [p.open, pauseAutoplay]);
+
+  const loadRevisionSnapshot = useCallback(
+    (revisionId: string) => {
+      if (!revisionId) return;
+      void fetchKnowledgeGraphRevision(p.projectId, revisionId)
+        .then((detail) => {
+          setSnapshotCache((prev) => {
+            if (prev[revisionId]) return prev;
+            return { ...prev, [revisionId]: detail.graphSnapshot };
+          });
+        })
+        .catch(() => {
+          /* optional prefetch */
+        });
+    },
+    [p.projectId],
+  );
 
   useEffect(() => {
     if (!p.open || revisions.length === 0) return;
@@ -71,7 +143,7 @@ export function ProjectKnowledgeReplayModal(p: {
       })
       .catch((error) => {
         if (cancelled) return;
-        setDetailError(error instanceof Error ? error.message : "그래프를 불러오지 못했습니다.");
+        setDetailError(error instanceof Error ? error.message : "구조를 불러오지 못했습니다.");
       })
       .finally(() => {
         if (!cancelled) setDetailLoading(false);
@@ -81,6 +153,26 @@ export function ProjectKnowledgeReplayModal(p: {
       cancelled = true;
     };
   }, [p.open, p.projectId, revisions, selectedIndex, snapshotCache]);
+
+  useEffect(() => {
+    if (!p.open || selectedIndex <= 0) return;
+    const prevRev = revisions[selectedIndex - 1];
+    if (prevRev) loadRevisionSnapshot(prevRev.id);
+  }, [p.open, revisions, selectedIndex, loadRevisionSnapshot]);
+
+  useEffect(() => {
+    if (!isPlaying || !p.open || revisions.length === 0) return;
+    const timer = window.setInterval(() => {
+      setSelectedIndex((idx) => {
+        const tick = replayAutoplayTick(idx, revisions.length);
+        if (tick.stop) {
+          setIsPlaying(false);
+        }
+        return tick.nextIndex;
+      });
+    }, KNOWLEDGE_REPLAY_AUTOPLAY_MS);
+    return () => window.clearInterval(timer);
+  }, [isPlaying, p.open, revisions.length]);
 
   const selectedRevision = revisions[selectedIndex] ?? null;
   const previousRevision = selectedIndex > 0 ? revisions[selectedIndex - 1] ?? null : null;
@@ -92,6 +184,17 @@ export function ProjectKnowledgeReplayModal(p: {
     return diffKnowledgeGraphRevisions(previousSnapshot, currentSnapshot).lines;
   }, [currentSnapshot, previousSnapshot]);
 
+  const changeHintsByIndex = useMemo((): readonly (string | null)[] => {
+    return revisions.map((rev, index) => {
+      const snap = snapshotCache[rev.id];
+      if (!snap) return null;
+      const prevRev = index > 0 ? revisions[index - 1] : null;
+      const prevSnap = prevRev ? snapshotCache[prevRev.id] : null;
+      if (index > 0 && prevRev && !prevSnap) return null;
+      return formatKnowledgeRevisionChangeHintInline(diffKnowledgeGraphRevisions(prevSnap, snap).lines);
+    });
+  }, [revisions, snapshotCache]);
+
   const canvasGraph = useMemo((): { nodes: ProjectGraphNodeDto[]; edges: ProjectGraphEdgeDto[] } => {
     if (!currentSnapshot) return { nodes: [], edges: [] };
     return knowledgeGraphSnapshotToCanvasGraph(currentSnapshot);
@@ -99,6 +202,7 @@ export function ProjectKnowledgeReplayModal(p: {
 
   const maxIndex = Math.max(0, revisions.length - 1);
   const sliderDisabled = revisions.length <= 1;
+  const revisionCount = revisions.length;
 
   const bodyRow: CSSProperties = {
     display: "flex",
@@ -108,14 +212,98 @@ export function ProjectKnowledgeReplayModal(p: {
     gap: graphMobileUx ? 8 : 12,
   };
 
+  const diffForCard = diffLines.filter((line) => line !== "변화 없음");
+
   return (
-    <ProjectKnowledgeGraphModalShell open={p.open} title="그래프 변화 보기" onClose={p.onClose}>
+    <ProjectKnowledgeGraphModalShell open={p.open} title="프로젝트 변화 이력" onClose={handleClose}>
       <div data-testid="knowledge-replay-modal" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: 10 }}>
+        <p style={{ margin: 0, fontSize: 13, color: t.textSecondary, lineHeight: 1.45 }} data-testid="knowledge-replay-intro">
+          대화와 AI 추천안이 프로젝트 구조를 어떻게 바꿨는지 확인합니다.
+        </p>
+
         {listError ? <p style={{ margin: 0, color: "#b91c1c", fontSize: 13 }}>{listError}</p> : null}
-        {listLoading ? <p style={{ margin: 0, color: t.textMuted, fontSize: 13 }}>타임라인 불러오는 중…</p> : null}
+        {listLoading ? <p style={{ margin: 0, color: t.textMuted, fontSize: 13 }}>변화 이력 불러오는 중…</p> : null}
+
+        {selectedRevision ? (
+          <div
+            data-testid="knowledge-replay-summary-card"
+            style={{
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: `1px solid ${t.border}`,
+              background: "#f8fafc",
+            }}
+          >
+            <div style={{ fontSize: 11, fontWeight: 800, color: t.textMuted, marginBottom: 4 }}>현재 변화</div>
+            <div style={{ fontSize: 15, fontWeight: 900, color: t.textPrimary }}>{selectedRevision.title}</div>
+            {selectedRevision.summary ? (
+              <p style={{ margin: "8px 0 0", fontSize: 13, color: t.textSecondary, lineHeight: 1.45, ...summaryClamp }}>
+                {selectedRevision.summary}
+              </p>
+            ) : null}
+            <div style={{ marginTop: 8, fontSize: 12, color: t.textMuted }}>
+              항목 {selectedRevision.nodeCount}개 · 연결 {selectedRevision.edgeCount}개
+            </div>
+            {diffForCard.length > 0 ? (
+              <div
+                data-testid="knowledge-replay-summary-diff"
+                style={{
+                  marginTop: 10,
+                  fontSize: 12,
+                  color: t.textSecondary,
+                  ...(graphMobileUx ? { ...summaryClamp, WebkitLineClamp: 3 } : {}),
+                }}
+              >
+                <div style={{ fontWeight: 800, color: t.textPrimary, marginBottom: 4 }}>이번 변경</div>
+                {diffForCard.map((line) => (
+                  <div key={line}>{line}</div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <button
+            type="button"
+            data-testid="knowledge-replay-prev"
+            disabled={isReplayPreviousDisabled(selectedIndex)}
+            onClick={() => selectIndex(replayPreviousIndex(selectedIndex))}
+            style={navBtnStyle}
+          >
+            ◀ 이전 변화
+          </button>
+          <button
+            type="button"
+            data-testid="knowledge-replay-next"
+            disabled={isReplayNextDisabled(selectedIndex, revisionCount)}
+            onClick={() => selectIndex(replayNextIndex(selectedIndex, revisionCount))}
+            style={navBtnStyle}
+          >
+            다음 변화 ▶
+          </button>
+          <button
+            type="button"
+            data-testid="knowledge-replay-latest"
+            disabled={isReplayLatestDisabled(selectedIndex, revisionCount)}
+            onClick={() => selectIndex(replayLatestIndex(revisionCount))}
+            style={navBtnStyle}
+          >
+            최신 보기
+          </button>
+          <button
+            type="button"
+            data-testid={isPlaying ? "knowledge-replay-pause" : "knowledge-replay-play"}
+            disabled={revisionCount <= 1}
+            onClick={() => setIsPlaying((v) => !v)}
+            style={{ ...navBtnStyle, marginLeft: graphMobileUx ? 0 : "auto" }}
+          >
+            {isPlaying ? "⏸ 일시정지" : "▶ 재생"}
+          </button>
+        </div>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 700, color: t.textSecondary }}>
-          시점 이동
+          변화 단계 선택
           <input
             type="range"
             data-testid="knowledge-replay-slider"
@@ -124,7 +312,7 @@ export function ProjectKnowledgeReplayModal(p: {
             step={1}
             disabled={sliderDisabled}
             value={Math.min(selectedIndex, maxIndex)}
-            onChange={(e) => setSelectedIndex(Number(e.target.value))}
+            onChange={(e) => selectIndex(Number(e.target.value))}
             aria-valuetext={revisions[selectedIndex]?.title ?? ""}
           />
         </label>
@@ -134,8 +322,9 @@ export function ProjectKnowledgeReplayModal(p: {
             <ProjectKnowledgeReplayTimeline
               revisions={revisions}
               selectedIndex={selectedIndex}
-              onSelectIndex={setSelectedIndex}
+              onSelectIndex={selectIndex}
               diffLines={diffLines}
+              changeHintsByIndex={changeHintsByIndex}
             />
           ) : null}
           <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -154,7 +343,7 @@ export function ProjectKnowledgeReplayModal(p: {
                   cursor: "pointer",
                 }}
               >
-                {timelineSheetOpen ? "타임라인 접기" : "타임라인 보기"}
+                {timelineSheetOpen ? "변화 이력 닫기" : "변화 이력 보기"}
               </button>
             ) : null}
             <ProjectKnowledgeReplayViewer
@@ -188,11 +377,13 @@ export function ProjectKnowledgeReplayModal(p: {
               revisions={revisions}
               selectedIndex={selectedIndex}
               onSelectIndex={(idx) => {
-                setSelectedIndex(idx);
+                selectIndex(idx);
                 setTimelineSheetOpen(false);
               }}
               diffLines={diffLines}
+              changeHintsByIndex={changeHintsByIndex}
               compact
+              clampSummary
             />
           </div>
         ) : null}

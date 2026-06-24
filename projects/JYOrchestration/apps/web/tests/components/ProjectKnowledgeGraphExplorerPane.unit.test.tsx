@@ -84,5 +84,6 @@ describe("ProjectKnowledgeGraphExplorerPane", () => {
     expect(html).toContain("그래프 질문 검색");
     expect(html).toContain("그래프 변화 보기");
     expect(html).toContain("knowledge-replay-open");
+    expect(html).toContain("프로젝트 구조가 바뀐 과정을 확인합니다.");
   });
 });

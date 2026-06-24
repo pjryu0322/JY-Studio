@@ -164,6 +164,8 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
         <button
           type="button"
           data-testid="knowledge-replay-open"
+          title="프로젝트 구조가 바뀐 과정을 확인합니다."
+          aria-label="프로젝트 구조가 바뀐 과정을 확인합니다."
           onClick={() => setReplayOpen(true)}
           style={{ ...btnStyle, fontWeight: 800, color: t.primary }}
         >
