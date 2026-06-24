@@ -317,138 +317,147 @@ export function ProjectKnowledgeReplayModal(p: {
         ) : null}
 
         {!showEmptyState ? (
-        <>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          <button
-            type="button"
-            data-testid="knowledge-replay-prev"
-            aria-label="이전 변화 보기"
-            disabled={navDisabled(isReplayPreviousDisabled(selectedIndex))}
-            onClick={() => selectIndex(replayPreviousIndex(selectedIndex))}
-            style={navBtnStyle}
-          >
-            ◀ 이전 변화
-          </button>
-          <button
-            type="button"
-            data-testid="knowledge-replay-next"
-            aria-label="다음 변화 보기"
-            disabled={navDisabled(isReplayNextDisabled(selectedIndex, revisionCount))}
-            onClick={() => selectIndex(replayNextIndex(selectedIndex, revisionCount))}
-            style={navBtnStyle}
-          >
-            다음 변화 ▶
-          </button>
-          <button
-            type="button"
-            data-testid="knowledge-replay-latest"
-            aria-label="최신 변화 보기"
-            disabled={navDisabled(isReplayLatestDisabled(selectedIndex, revisionCount))}
-            onClick={() => selectIndex(replayLatestIndex(revisionCount))}
-            style={navBtnStyle}
-          >
-            최신 보기
-          </button>
-          <button
-            type="button"
-            data-testid={isPlaying ? "knowledge-replay-pause" : "knowledge-replay-play"}
-            aria-label={isPlaying ? "변화 이력 재생 일시정지" : "변화 이력 자동재생"}
-            disabled={revisionCount <= 1 || controlsBlocked}
-            onClick={handlePlayToggle}
-            style={{ ...navBtnStyle, marginLeft: graphMobileUx ? 0 : "auto" }}
-          >
-            {isPlaying ? "⏸ 일시정지" : "▶ 재생"}
-          </button>
-        </div>
-
-        <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 700, color: t.textSecondary }}>
-          변화 단계 선택
-          <input
-            type="range"
-            data-testid="knowledge-replay-slider"
-            min={0}
-            max={maxIndex}
-            step={1}
-            disabled={sliderBlocked}
-            value={Math.min(selectedIndex, maxIndex)}
-            onChange={(e) => selectIndex(Number(e.target.value))}
-            aria-valuetext={revisions[selectedIndex]?.title ?? ""}
-            aria-label="변화 단계 선택"
-          />
-        </label>
-
-        <div style={bodyRow}>
-          {!graphMobileUx ? (
-            <ProjectKnowledgeReplayTimeline
-              revisions={revisions}
-              selectedIndex={selectedIndex}
-              onSelectIndex={selectIndex}
-              diffLines={diffLines}
-              changeHintsByIndex={changeHintsByIndex}
-            />
-          ) : null}
-          <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-            {graphMobileUx ? (
+          <>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               <button
                 type="button"
-                data-testid="knowledge-replay-timeline-sheet-toggle"
-                aria-label={timelineSheetOpen ? "변화 이력 닫기" : "변화 이력 보기"}
-                onClick={() => setTimelineSheetOpen((v) => !v)}
+                data-testid="knowledge-replay-prev"
+                aria-label="이전 변화 보기"
+                disabled={navDisabled(isReplayPreviousDisabled(selectedIndex))}
+                onClick={() => selectIndex(replayPreviousIndex(selectedIndex))}
+                style={navBtnStyle}
+              >
+                ◀ 이전 변화
+              </button>
+              <button
+                type="button"
+                data-testid="knowledge-replay-next"
+                aria-label="다음 변화 보기"
+                disabled={navDisabled(isReplayNextDisabled(selectedIndex, revisionCount))}
+                onClick={() => selectIndex(replayNextIndex(selectedIndex, revisionCount))}
+                style={navBtnStyle}
+              >
+                다음 변화 ▶
+              </button>
+              <button
+                type="button"
+                data-testid="knowledge-replay-latest"
+                aria-label="최신 변화 보기"
+                disabled={navDisabled(isReplayLatestDisabled(selectedIndex, revisionCount))}
+                onClick={() => selectIndex(replayLatestIndex(revisionCount))}
+                style={navBtnStyle}
+              >
+                최신 보기
+              </button>
+              <button
+                type="button"
+                data-testid={isPlaying ? "knowledge-replay-pause" : "knowledge-replay-play"}
+                aria-label={isPlaying ? "변화 이력 재생 일시정지" : "변화 이력 자동재생"}
+                disabled={revisionCount <= 1 || controlsBlocked}
+                onClick={handlePlayToggle}
+                style={{ ...navBtnStyle, marginLeft: graphMobileUx ? 0 : "auto" }}
+              >
+                {isPlaying ? "⏸ 일시정지" : "▶ 재생"}
+              </button>
+            </div>
+
+            <label
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                fontSize: 12,
+                fontWeight: 700,
+                color: t.textSecondary,
+              }}
+            >
+              변화 단계 선택
+              <input
+                type="range"
+                data-testid="knowledge-replay-slider"
+                min={0}
+                max={maxIndex}
+                step={1}
+                disabled={sliderBlocked}
+                value={Math.min(selectedIndex, maxIndex)}
+                onChange={(e) => selectIndex(Number(e.target.value))}
+                aria-valuetext={revisions[selectedIndex]?.title ?? ""}
+                aria-label="변화 단계 선택"
+              />
+            </label>
+
+            <div style={bodyRow}>
+              {!graphMobileUx ? (
+                <ProjectKnowledgeReplayTimeline
+                  revisions={revisions}
+                  selectedIndex={selectedIndex}
+                  onSelectIndex={selectIndex}
+                  diffLines={diffLines}
+                  changeHintsByIndex={changeHintsByIndex}
+                />
+              ) : null}
+              <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                {graphMobileUx ? (
+                  <button
+                    type="button"
+                    data-testid="knowledge-replay-timeline-sheet-toggle"
+                    aria-label={timelineSheetOpen ? "변화 이력 닫기" : "변화 이력 보기"}
+                    onClick={() => setTimelineSheetOpen((v) => !v)}
+                    style={{
+                      minHeight: 44,
+                      borderRadius: 10,
+                      border: `1px solid ${t.border}`,
+                      background: t.bgPage,
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {timelineSheetOpen ? "변화 이력 닫기" : "변화 이력 보기"}
+                  </button>
+                ) : null}
+                <ProjectKnowledgeReplayViewer
+                  nodes={canvasGraph.nodes}
+                  edges={canvasGraph.edges}
+                  loading={detailLoading}
+                  error={detailError}
+                  graphMobileUx={graphMobileUx}
+                />
+              </div>
+            </div>
+
+            {graphMobileUx && timelineSheetOpen ? (
+              <div
+                data-testid="knowledge-replay-timeline-sheet"
                 style={{
-                  minHeight: 44,
-                  borderRadius: 10,
-                  border: `1px solid ${t.border}`,
-                  background: t.bgPage,
-                  fontWeight: 800,
-                  fontSize: 13,
-                  cursor: "pointer",
+                  position: "fixed",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  zIndex: 60,
+                  maxHeight: "45dvh",
+                  background: "#fff",
+                  borderTop: `1px solid ${t.border}`,
+                  boxShadow: "0 -12px 32px rgba(15,23,42,0.12)",
+                  display: "flex",
+                  flexDirection: "column",
                 }}
               >
-                {timelineSheetOpen ? "변화 이력 닫기" : "변화 이력 보기"}
-              </button>
+                <ProjectKnowledgeReplayTimeline
+                  revisions={revisions}
+                  selectedIndex={selectedIndex}
+                  onSelectIndex={(idx) => {
+                    selectIndex(idx);
+                    setTimelineSheetOpen(false);
+                  }}
+                  diffLines={diffLines}
+                  changeHintsByIndex={changeHintsByIndex}
+                  compact
+                  clampSummary
+                />
+              </div>
             ) : null}
-            <ProjectKnowledgeReplayViewer
-              nodes={canvasGraph.nodes}
-              edges={canvasGraph.edges}
-              loading={detailLoading}
-              error={detailError}
-              graphMobileUx={graphMobileUx}
-            />
-          </div>
-        </div>
-
-        {graphMobileUx && timelineSheetOpen ? (
-          <div
-            data-testid="knowledge-replay-timeline-sheet"
-            style={{
-              position: "fixed",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 60,
-              maxHeight: "45dvh",
-              background: "#fff",
-              borderTop: `1px solid ${t.border}`,
-              boxShadow: "0 -12px 32px rgba(15,23,42,0.12)",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            <ProjectKnowledgeReplayTimeline
-              revisions={revisions}
-              selectedIndex={selectedIndex}
-              onSelectIndex={(idx) => {
-                selectIndex(idx);
-                setTimelineSheetOpen(false);
-              }}
-              diffLines={diffLines}
-              changeHintsByIndex={changeHintsByIndex}
-              compact
-              clampSummary
-            />
-          </div>
-        ) : null}
-        </>
+          </>
         ) : null}
       </div>
     </ProjectKnowledgeGraphModalShell>

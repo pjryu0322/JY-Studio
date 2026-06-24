@@ -10,6 +10,7 @@ import { useProjectKnowledgeGraphData } from "@/components/project-graph/hooks/u
 import { useProjectKnowledgeGraphExplorerState } from "@/components/project-graph/hooks/useProjectKnowledgeGraphExplorerState";
 import { useProjectKnowledgeGraphActivity } from "@/components/project-graph/hooks/useProjectKnowledgeGraphActivity";
 import { useProjectKnowledgePipelineRuns } from "@/components/project-graph/hooks/useProjectKnowledgePipelineRuns";
+import { useProjectKnowledgeRuntimeStatus } from "@/components/project-graph/hooks/useProjectKnowledgeRuntimeStatus";
 import type { ProjectKnowledgeGraphPane } from "@/components/project-graph/projectKnowledgeGraphWorkspaceTypes";
 import type { ProjectKnowledgeGraphLaunchContext } from "@/components/project-graph/projectKnowledgeGraphLaunchTypes";
 import {
@@ -82,6 +83,13 @@ export function ProjectKnowledgeGraphWorkspace({
   const { pipelineRuns, pipelineLoading, pipelineError, reloadPipelineMonitor } =
     useProjectKnowledgePipelineRuns(projectId);
 
+  const {
+    summary: runtimeStatusSummary,
+    loading: runtimeStatusLoading,
+    error: runtimeStatusError,
+    reload: reloadRuntimeStatus,
+  } = useProjectKnowledgeRuntimeStatus(projectId, clientReady);
+
   useEffect(() => {
     if (!onLaunchContextChange) return;
     onLaunchContextChange({
@@ -142,10 +150,17 @@ export function ProjectKnowledgeGraphWorkspace({
           edges={edges}
           loading={loading}
           error={error}
-          reloadGraph={reload}
+          reloadGraph={async () => {
+            await reload();
+            await reloadRuntimeStatus();
+          }}
           variant={variant}
           onExit={onExit}
           explorerState={explorer}
+          runtimeStatusSummary={runtimeStatusSummary}
+          runtimeStatusLoading={runtimeStatusLoading}
+          runtimeStatusError={runtimeStatusError}
+          onReloadRuntimeStatus={() => void reloadRuntimeStatus()}
         />
       )}
     </div>

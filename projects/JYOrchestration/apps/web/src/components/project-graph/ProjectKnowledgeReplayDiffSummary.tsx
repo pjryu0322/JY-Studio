@@ -1,7 +1,6 @@
 "use client";
 
 import { uiTokens as t } from "@/components/ui/tokens";
-import { ProjectKnowledgeReplayDiffSummary } from "@/components/project-graph/ProjectKnowledgeReplayDiffSummary";
 import {
   formatKnowledgeRevisionDiffOverflowMessage,
   summarizeKnowledgeRevisionDiffLines,

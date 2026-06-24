@@ -15,6 +15,8 @@ import {
   type ProjectKnowledgeGraphExplorerState,
 } from "@/components/project-graph/hooks/useProjectKnowledgeGraphExplorerState";
 import { ProjectKnowledgeReplayModal } from "@/components/project-graph/ProjectKnowledgeReplayModal";
+import { ProjectKnowledgeRuntimeStatusCard } from "@/components/project-graph/ProjectKnowledgeRuntimeStatusCard";
+import type { KnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusTypes";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 
 const LIFECYCLE_OPTIONS = ["", "PROJECTED", "APPROVED", "CANDIDATE"] as const;
@@ -39,6 +41,10 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
   readonly variant: "page" | "modal";
   readonly onExit?: () => void;
   readonly explorerState: ProjectKnowledgeGraphExplorerState;
+  readonly runtimeStatusSummary?: KnowledgeRuntimeStatusSummary | null;
+  readonly runtimeStatusLoading?: boolean;
+  readonly runtimeStatusError?: string | null;
+  readonly onReloadRuntimeStatus?: () => void;
 }) {
   const { effectiveLayout } = useWorkspaceMode();
   const isMobileLayout = p.clientReady && effectiveLayout === "MOBILE";
@@ -100,6 +106,12 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
           {ex.toastMessage}
         </FixedToast>
       ) : null}
+      <ProjectKnowledgeRuntimeStatusCard
+        summary={p.runtimeStatusSummary ?? null}
+        loading={Boolean(p.runtimeStatusLoading)}
+        error={p.runtimeStatusError ?? null}
+        onRefresh={p.onReloadRuntimeStatus}
+      />
       <div style={toolbar}>
         <div
           style={{

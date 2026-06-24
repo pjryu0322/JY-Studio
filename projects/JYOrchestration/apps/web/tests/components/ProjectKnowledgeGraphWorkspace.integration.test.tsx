@@ -87,6 +87,22 @@ vi.mock("@/components/project-graph/hooks/useProjectKnowledgePipelineRuns", () =
   }),
 }));
 
+vi.mock("@/components/project-graph/hooks/useProjectKnowledgeRuntimeStatus", () => ({
+  useProjectKnowledgeRuntimeStatus: () => ({
+    summary: {
+      status: "READY",
+      statusLabel: "구조화 완료",
+      nodeCount: 3,
+      edgeCount: 2,
+      latestChangeTitle: "대화 저장",
+      latestChangedAt: "2026-06-24T10:00:00.000Z",
+    },
+    loading: false,
+    error: null,
+    reload: vi.fn(),
+  }),
+}));
+
 import { ProjectKnowledgeGraphWorkspace } from "@/components/project-graph/ProjectKnowledgeGraphWorkspace";
 
 describe("ProjectKnowledgeGraphWorkspace integration", () => {
@@ -96,6 +112,8 @@ describe("ProjectKnowledgeGraphWorkspace integration", () => {
     );
     expect(html).toContain("project-knowledge-graph-workspace");
     expect(html).toContain("project-knowledge-graph-tab-graph");
+    expect(html).toContain("knowledge-runtime-status-card");
+    expect(html).toContain("구조화 완료");
   });
 
   it("view=activity maps to activity pane query helper", () => {

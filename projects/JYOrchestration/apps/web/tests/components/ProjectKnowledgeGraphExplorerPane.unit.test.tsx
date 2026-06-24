@@ -77,6 +77,14 @@ describe("ProjectKnowledgeGraphExplorerPane", () => {
         reloadGraph: async () => {},
         variant: "page",
         explorerState: explorerStub as never,
+        runtimeStatusSummary: {
+          status: "READY",
+          statusLabel: "구조화 완료",
+          nodeCount: 2,
+          edgeCount: 1,
+        },
+        runtimeStatusLoading: false,
+        runtimeStatusError: null,
       }),
     );
     expect(html).toContain("project-knowledge-graph-explorer-pane");
@@ -85,5 +93,6 @@ describe("ProjectKnowledgeGraphExplorerPane", () => {
     expect(html).toContain("그래프 변화 보기");
     expect(html).toContain("knowledge-replay-open");
     expect(html).toContain("프로젝트 구조가 바뀐 과정을 확인합니다.");
+    expect(html).toContain("knowledge-runtime-status-card");
   });
 });

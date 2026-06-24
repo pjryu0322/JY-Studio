@@ -1,0 +1,80 @@
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+const { graphNodeCount, graphEdgeCount, candidateCount, getLatestRun, listRevisions } = vi.hoisted(() => ({
+  graphNodeCount: vi.fn(),
+  graphEdgeCount: vi.fn(),
+  candidateCount: vi.fn(),
+  getLatestRun: vi.fn(),
+  listRevisions: vi.fn(),
+}));
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    projectGraphNode: { count: graphNodeCount },
+    projectGraphEdge: { count: graphEdgeCount },
+    projectStructureCandidate: { count: candidateCount },
+  },
+}));
+
+vi.mock("@/lib/project-knowledge/projectKnowledgePipelineMonitor", () => ({
+  getLatestKnowledgePipelineRun: (...args: unknown[]) => getLatestRun(...args),
+}));
+
+vi.mock("@/lib/project-knowledge/projectKnowledgeGraphRevisionService", () => ({
+  listKnowledgeGraphRevisions: (...args: unknown[]) => listRevisions(...args),
+}));
+
+import { getKnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusService";
+
+describe("getKnowledgeRuntimeStatusSummary", () => {
+  beforeEach(() => {
+    graphNodeCount.mockReset();
+    graphEdgeCount.mockReset();
+    candidateCount.mockReset();
+    getLatestRun.mockReset();
+    listRevisions.mockReset();
+  });
+
+  it("aggregates counts and READY status", async () => {
+    graphNodeCount.mockResolvedValue(12);
+    graphEdgeCount.mockResolvedValue(10);
+    candidateCount.mockResolvedValue(0);
+    getLatestRun.mockResolvedValue({
+      status: "COMPLETED",
+      startedAt: "2026-06-24T05:00:00.000Z",
+      completedAt: "2026-06-24T05:32:00.000Z",
+      steps: [],
+    });
+    listRevisions.mockResolvedValue([
+      {
+        id: "hidden",
+        revisionNumber: 1,
+        title: "추천안 승인",
+        summary: null,
+        nodeCount: 12,
+        edgeCount: 10,
+        createdAt: "2026-06-24T05:32:00.000Z",
+      },
+    ]);
+
+    const summary = await getKnowledgeRuntimeStatusSummary("p1");
+    expect(summary.status).toBe("READY");
+    expect(summary.statusLabel).toBe("구조화 완료");
+    expect(summary.nodeCount).toBe(12);
+    expect(summary.edgeCount).toBe(10);
+    expect(summary.latestChangeTitle).toBe("추천안 승인");
+    expect(summary.latestChangedAt).toBe("2026-06-24T05:32:00.000Z");
+  });
+
+  it("returns STRUCTURING when latest run is RUNNING", async () => {
+    graphNodeCount.mockResolvedValue(0);
+    graphEdgeCount.mockResolvedValue(0);
+    candidateCount.mockResolvedValue(0);
+    getLatestRun.mockResolvedValue({ status: "RUNNING", startedAt: "2026-06-24T05:00:00.000Z", steps: [] });
+    listRevisions.mockResolvedValue([]);
+
+    const summary = await getKnowledgeRuntimeStatusSummary("p1");
+    expect(summary.status).toBe("STRUCTURING");
+    expect(summary.statusLabel).toBe("구조화 중");
+  });
+});

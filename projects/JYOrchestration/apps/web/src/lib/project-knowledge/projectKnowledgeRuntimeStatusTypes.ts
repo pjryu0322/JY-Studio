@@ -1,16 +1,20 @@
-/**
- * Phase 5.10 — Knowledge Runtime "구조화 상태" summary (design only; UI not wired yet).
- */
-export type KnowledgeRuntimeStructureStatus =
-  | "preparing"
-  | "structuring"
-  | "ready"
-  | "needs_review";
+import type { KnowledgePipelineRunStatus } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
+
+export type KnowledgeRuntimeStatus =
+  | "PREPARING"
+  | "STRUCTURING"
+  | "READY"
+  | "NEEDS_REVIEW"
+  | "ERROR";
 
 export type KnowledgeRuntimeStatusSummary = Readonly<{
-  readonly status: KnowledgeRuntimeStructureStatus;
+  readonly status: KnowledgeRuntimeStatus;
+  readonly statusLabel: string;
   readonly nodeCount: number;
   readonly edgeCount: number;
+  readonly candidateCount?: number;
   readonly latestChangeTitle?: string | null;
-  readonly lastAppliedAt?: string | null;
+  readonly latestChangedAt?: string | null;
+  readonly pipelineStatus?: KnowledgePipelineRunStatus | null;
+  readonly warnings?: readonly string[];
 }>;
