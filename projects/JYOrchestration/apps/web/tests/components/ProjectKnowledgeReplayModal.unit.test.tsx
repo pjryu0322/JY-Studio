@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -29,6 +29,10 @@ vi.mock("@/lib/project-knowledge/projectKnowledgeGraphRevisionClient", () => ({
 import { ProjectKnowledgeReplayModal } from "@/components/project-graph/ProjectKnowledgeReplayModal";
 
 describe("ProjectKnowledgeReplayModal", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("renders closed without shell", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectKnowledgeReplayModal, {
@@ -40,7 +44,7 @@ describe("ProjectKnowledgeReplayModal", () => {
     expect(html).not.toContain("replay-shell");
   });
 
-  it("renders open modal with project change history UX", () => {
+  it("renders intro and empty state on first paint", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectKnowledgeReplayModal, {
         open: true,
@@ -51,13 +55,9 @@ describe("ProjectKnowledgeReplayModal", () => {
     expect(html).toContain("knowledge-replay-modal");
     expect(html).toContain("data-title=\"프로젝트 변화 이력\"");
     expect(html).toContain("knowledge-replay-intro");
-    expect(html).toContain("변화 단계 선택");
-    expect(html).toContain("knowledge-replay-prev");
-    expect(html).toContain("knowledge-replay-next");
-    expect(html).toContain("knowledge-replay-latest");
-    expect(html).toContain("knowledge-replay-play");
+    expect(html).toContain("knowledge-replay-empty-state");
+    expect(html).toContain("아직 변화 이력이 없습니다.");
+    expect(html).not.toContain("knowledge-replay-prev");
     expect(html).not.toContain("revisionId");
-    expect(html).not.toContain("eventId");
-    expect(html).not.toContain("nodeId");
   });
 });

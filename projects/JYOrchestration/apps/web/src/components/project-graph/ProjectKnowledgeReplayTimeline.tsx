@@ -2,16 +2,11 @@
 
 import type { CSSProperties } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
+import { ProjectKnowledgeReplayDiffSummary } from "@/components/project-graph/ProjectKnowledgeReplayDiffSummary";
 import {
   formatKnowledgeRevisionTimeOnly,
 } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionUi";
 import type { KnowledgeGraphRevisionListItem } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionTypes";
-
-const clampStyle: CSSProperties = {
-  display: "-webkit-box",
-  WebkitBoxOrient: "vertical",
-  overflow: "hidden",
-};
 
 export function ProjectKnowledgeReplayTimeline(p: {
   readonly revisions: readonly KnowledgeGraphRevisionListItem[];
@@ -105,13 +100,9 @@ export function ProjectKnowledgeReplayTimeline(p: {
             background: "#f8fafc",
             fontSize: 12,
             color: t.textSecondary,
-            ...(p.clampSummary ? { ...clampStyle, WebkitLineClamp: 3 } : {}),
           }}
         >
-          <div style={{ fontWeight: 800, marginBottom: 6, color: t.textPrimary }}>이번 변경</div>
-          {diffBlockLines.map((line) => (
-            <div key={line}>{line}</div>
-          ))}
+          <ProjectKnowledgeReplayDiffSummary lines={diffBlockLines} testId="knowledge-replay-diff-inner" />
         </div>
       ) : null}
     </div>

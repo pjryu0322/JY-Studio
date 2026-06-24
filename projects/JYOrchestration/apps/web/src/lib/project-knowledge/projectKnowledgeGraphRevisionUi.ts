@@ -64,3 +64,24 @@ export function formatKnowledgeRevisionChangeHintInline(lines: readonly string[]
     .map((line) => line.replace(/^[+-]\s*/, ""))
     .join(" · ");
 }
+
+export const KNOWLEDGE_REVISION_DIFF_MAX_VISIBLE_LINES = 3;
+
+export function summarizeKnowledgeRevisionDiffLines(
+  lines: readonly string[],
+  maxVisible = KNOWLEDGE_REVISION_DIFF_MAX_VISIBLE_LINES,
+): Readonly<{ readonly visibleLines: readonly string[]; readonly overflowCount: number }> {
+  const filtered = lines.filter((line) => line !== "변화 없음");
+  if (filtered.length <= maxVisible) {
+    return { visibleLines: filtered, overflowCount: 0 };
+  }
+  return {
+    visibleLines: filtered.slice(0, maxVisible),
+    overflowCount: filtered.length - maxVisible,
+  };
+}
+
+export function formatKnowledgeRevisionDiffOverflowMessage(overflowCount: number): string | null {
+  if (overflowCount <= 0) return null;
+  return `외 ${overflowCount}개 변경 더 있음`;
+}

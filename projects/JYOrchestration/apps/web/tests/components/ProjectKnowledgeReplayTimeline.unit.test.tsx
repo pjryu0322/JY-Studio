@@ -47,4 +47,33 @@ describe("ProjectKnowledgeReplayTimeline", () => {
     expect(html).not.toContain("nodeId");
     expect(html).not.toContain("revisionId");
   });
+
+  it("truncates long diff lists", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeReplayTimeline, {
+        revisions: [
+          {
+            id: "r1",
+            revisionNumber: 1,
+            title: "대화 저장",
+            summary: null,
+            nodeCount: 1,
+            edgeCount: 0,
+            createdAt: "2026-06-24T10:10:00.000Z",
+          },
+        ],
+        selectedIndex: 0,
+        onSelectIndex: () => {},
+        diffLines: [
+          "+ 항목 1개 추가",
+          "+ 연결 1개 추가",
+          "+ 항목 2개 추가",
+          "- 항목 1개 제거",
+          "+ 연결 2개 추가",
+        ],
+      }),
+    );
+    expect(html).toContain("knowledge-replay-diff-overflow");
+    expect(html).toContain("외 2개 변경 더 있음");
+  });
 });

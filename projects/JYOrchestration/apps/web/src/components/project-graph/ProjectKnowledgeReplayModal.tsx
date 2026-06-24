@@ -12,12 +12,14 @@ import {
   fetchKnowledgeGraphRevisions,
 } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionClient";
 import { diffKnowledgeGraphRevisions } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionDiff";
+import { ProjectKnowledgeReplayDiffSummary } from "@/components/project-graph/ProjectKnowledgeReplayDiffSummary";
 import {
   formatKnowledgeRevisionChangeHintInline,
   knowledgeGraphSnapshotToCanvasGraph,
 } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionUi";
 import {
   KNOWLEDGE_REPLAY_AUTOPLAY_MS,
+  isReplayControlsBlocked,
   isReplayLatestDisabled,
   isReplayNextDisabled,
   isReplayPreviousDisabled,
@@ -25,6 +27,7 @@ import {
   replayLatestIndex,
   replayNextIndex,
   replayPreviousIndex,
+  resolveReplayAutoplayStartIndex,
 } from "@/lib/project-knowledge/projectKnowledgeReplayNavigation";
 import type {
   KnowledgeGraphRevisionListItem,
@@ -203,6 +206,21 @@ export function ProjectKnowledgeReplayModal(p: {
   const maxIndex = Math.max(0, revisions.length - 1);
   const sliderDisabled = revisions.length <= 1;
   const revisionCount = revisions.length;
+  const controlsBlocked = isReplayControlsBlocked({ listLoading, detailLoading, revisionCount });
+  const showEmptyState = !listLoading && !listError && revisionCount === 0;
+
+  const handlePlayToggle = useCallback(() => {
+    if (isPlaying) {
+      pauseAutoplay();
+      return;
+    }
+    if (revisionCount <= 1 || controlsBlocked) return;
+    const startIndex = resolveReplayAutoplayStartIndex(selectedIndex, revisionCount);
+    if (startIndex !== selectedIndex) {
+      setSelectedIndex(startIndex);
+    }
+    setIsPlaying(true);
+  }, [isPlaying, pauseAutoplay, revisionCount, controlsBlocked, selectedIndex]);
 
   const bodyRow: CSSProperties = {
     display: "flex",
@@ -214,6 +232,9 @@ export function ProjectKnowledgeReplayModal(p: {
 
   const diffForCard = diffLines.filter((line) => line !== "변화 없음");
 
+  const navDisabled = (base: boolean) => base || controlsBlocked;
+  const sliderBlocked = sliderDisabled || controlsBlocked;
+
   return (
     <ProjectKnowledgeGraphModalShell open={p.open} title="프로젝트 변화 이력" onClose={handleClose}>
       <div data-testid="knowledge-replay-modal" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, gap: 10 }}>
@@ -224,7 +245,43 @@ export function ProjectKnowledgeReplayModal(p: {
         {listError ? <p style={{ margin: 0, color: "#b91c1c", fontSize: 13 }}>{listError}</p> : null}
         {listLoading ? <p style={{ margin: 0, color: t.textMuted, fontSize: 13 }}>변화 이력 불러오는 중…</p> : null}
 
-        {selectedRevision ? (
+        {showEmptyState ? (
+          <div
+            data-testid="knowledge-replay-empty-state"
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              padding: "24px 16px",
+              borderRadius: 12,
+              border: `1px dashed ${t.border}`,
+              background: "#f8fafc",
+              minHeight: graphMobileUx ? 200 : 280,
+              gap: 12,
+            }}
+          >
+            <div style={{ fontSize: 16, fontWeight: 900, color: t.textPrimary }}>아직 변화 이력이 없습니다.</div>
+            <p style={{ margin: 0, fontSize: 13, color: t.textSecondary, lineHeight: 1.55, maxWidth: 360 }}>
+              기획 대화를 진행하거나 AI 추천안을 적용하면
+              <br />
+              프로젝트 구조가 바뀐 과정이 이곳에 표시됩니다.
+            </p>
+            <button
+              type="button"
+              data-testid="knowledge-replay-empty-confirm"
+              aria-label="확인하고 닫기"
+              onClick={handleClose}
+              style={{ ...navBtnStyle, minWidth: 120 }}
+            >
+              확인
+            </button>
+          </div>
+        ) : null}
+
+        {!showEmptyState && selectedRevision ? (
           <div
             data-testid="knowledge-replay-summary-card"
             style={{
@@ -251,23 +308,22 @@ export function ProjectKnowledgeReplayModal(p: {
                   marginTop: 10,
                   fontSize: 12,
                   color: t.textSecondary,
-                  ...(graphMobileUx ? { ...summaryClamp, WebkitLineClamp: 3 } : {}),
                 }}
               >
-                <div style={{ fontWeight: 800, color: t.textPrimary, marginBottom: 4 }}>이번 변경</div>
-                {diffForCard.map((line) => (
-                  <div key={line}>{line}</div>
-                ))}
+                <ProjectKnowledgeReplayDiffSummary lines={diffForCard} />
               </div>
             ) : null}
           </div>
         ) : null}
 
+        {!showEmptyState ? (
+        <>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           <button
             type="button"
             data-testid="knowledge-replay-prev"
-            disabled={isReplayPreviousDisabled(selectedIndex)}
+            aria-label="이전 변화 보기"
+            disabled={navDisabled(isReplayPreviousDisabled(selectedIndex))}
             onClick={() => selectIndex(replayPreviousIndex(selectedIndex))}
             style={navBtnStyle}
           >
@@ -276,7 +332,8 @@ export function ProjectKnowledgeReplayModal(p: {
           <button
             type="button"
             data-testid="knowledge-replay-next"
-            disabled={isReplayNextDisabled(selectedIndex, revisionCount)}
+            aria-label="다음 변화 보기"
+            disabled={navDisabled(isReplayNextDisabled(selectedIndex, revisionCount))}
             onClick={() => selectIndex(replayNextIndex(selectedIndex, revisionCount))}
             style={navBtnStyle}
           >
@@ -285,7 +342,8 @@ export function ProjectKnowledgeReplayModal(p: {
           <button
             type="button"
             data-testid="knowledge-replay-latest"
-            disabled={isReplayLatestDisabled(selectedIndex, revisionCount)}
+            aria-label="최신 변화 보기"
+            disabled={navDisabled(isReplayLatestDisabled(selectedIndex, revisionCount))}
             onClick={() => selectIndex(replayLatestIndex(revisionCount))}
             style={navBtnStyle}
           >
@@ -294,8 +352,9 @@ export function ProjectKnowledgeReplayModal(p: {
           <button
             type="button"
             data-testid={isPlaying ? "knowledge-replay-pause" : "knowledge-replay-play"}
-            disabled={revisionCount <= 1}
-            onClick={() => setIsPlaying((v) => !v)}
+            aria-label={isPlaying ? "변화 이력 재생 일시정지" : "변화 이력 자동재생"}
+            disabled={revisionCount <= 1 || controlsBlocked}
+            onClick={handlePlayToggle}
             style={{ ...navBtnStyle, marginLeft: graphMobileUx ? 0 : "auto" }}
           >
             {isPlaying ? "⏸ 일시정지" : "▶ 재생"}
@@ -310,10 +369,11 @@ export function ProjectKnowledgeReplayModal(p: {
             min={0}
             max={maxIndex}
             step={1}
-            disabled={sliderDisabled}
+            disabled={sliderBlocked}
             value={Math.min(selectedIndex, maxIndex)}
             onChange={(e) => selectIndex(Number(e.target.value))}
             aria-valuetext={revisions[selectedIndex]?.title ?? ""}
+            aria-label="변화 단계 선택"
           />
         </label>
 
@@ -332,6 +392,7 @@ export function ProjectKnowledgeReplayModal(p: {
               <button
                 type="button"
                 data-testid="knowledge-replay-timeline-sheet-toggle"
+                aria-label={timelineSheetOpen ? "변화 이력 닫기" : "변화 이력 보기"}
                 onClick={() => setTimelineSheetOpen((v) => !v)}
                 style={{
                   minHeight: 44,
@@ -386,6 +447,8 @@ export function ProjectKnowledgeReplayModal(p: {
               clampSummary
             />
           </div>
+        ) : null}
+        </>
         ) : null}
       </div>
     </ProjectKnowledgeGraphModalShell>

@@ -38,3 +38,20 @@ export function replayAutoplayTick(
   }
   return { nextIndex: selectedIndex + 1, stop: false };
 }
+
+/**
+ * When starting autoplay from the latest step, replay from the first change.
+ */
+export function resolveReplayAutoplayStartIndex(selectedIndex: number, revisionCount: number): number {
+  if (revisionCount <= 0) return 0;
+  if (selectedIndex >= revisionCount - 1) return 0;
+  return selectedIndex;
+}
+
+export function isReplayControlsBlocked(input: Readonly<{
+  readonly listLoading: boolean;
+  readonly detailLoading: boolean;
+  readonly revisionCount: number;
+}>): boolean {
+  return input.listLoading || input.detailLoading || input.revisionCount === 0;
+}
