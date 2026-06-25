@@ -22,7 +22,7 @@ describe("resolveReferencePlanningNoticeCandidate", () => {
       nowIso,
     });
     expect(candidate?.kind).toBe("LEGACY_MISSING");
-    expect(candidate?.body).toContain("현재 프로젝트");
+    expect(candidate?.body).toContain("참조 프로젝트를 수정하지 않고");
   });
 
   it("skips legacy notice when already shown", () => {

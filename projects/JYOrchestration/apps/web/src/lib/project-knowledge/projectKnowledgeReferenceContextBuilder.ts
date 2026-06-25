@@ -1,6 +1,10 @@
 import type { KnowledgeGraphRevisionSnapshot } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionTypes";
 import { buildReusableAssetsFromReferenceSnapshot } from "@/lib/project-knowledge/projectKnowledgeReferenceSnapshotAssets";
 
+/**
+ * @deprecated Prefer `materializedReferenceContextV1` via `buildReferencePromptContextForProjectTurn`.
+ * Do not load source Graph Snapshots at AI prompt time.
+ */
 export type ProjectReferencePlanningContext = Readonly<{
   readonly hasReference: boolean;
   readonly referenceCount: number;
@@ -17,6 +21,9 @@ function bulletLines(items: readonly string[], max = 12): string {
   return slice.map((t) => `- ${t}`).join("\n");
 }
 
+/**
+ * @deprecated Prefer materialized reference context. Snapshot-array prompt assembly is legacy-only.
+ */
 export function buildProjectReferencePlanningContext(
   snapshots: readonly KnowledgeGraphRevisionSnapshot[],
 ): ProjectReferencePlanningContext {
@@ -66,6 +73,9 @@ export function buildProjectReferencePlanningContext(
   };
 }
 
+/**
+ * @deprecated Prefer `formatReferencePromptContextSectionText` with materialized context.
+ */
 export function formatProjectReferencePlanningContextForPrompt(
   context: ProjectReferencePlanningContext,
 ): string {
@@ -112,18 +122,4 @@ export {
   buildReferencePlanningContextPrepareSuccessMessageMeta,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 
-export function buildReferenceInfoViewMessageBody(
-  summary: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionSummaryV1,
-): string {
-  const statusLabel = summary.readiness === "VERIFIED" ? "VERIFIED" : "READY";
-  return `선택된 참조 프로젝트 정보입니다.
-
-프로젝트: ${summary.sourceProjectTitle}
-저장본: ${summary.snapshotTitle}
-상태: ${statusLabel}
-구성: Actor ${summary.actorCount}개 · Flow ${summary.serviceFlowCount}개 · Feature ${summary.featureCount}개 · Graph ${summary.graphReusableNodeCount}개
-
-이 정보는 복사가 아니라 새 프로젝트 기획을 위한 참고 자료로만 사용됩니다.
-
-대화 내용과 관련 있는 항목만 기획 컨텍스트로 주입됩니다.`;
-}
+export { buildReferenceInfoViewMessageBody } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";

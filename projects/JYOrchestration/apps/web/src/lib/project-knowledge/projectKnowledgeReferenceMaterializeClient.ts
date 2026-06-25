@@ -1,16 +1,15 @@
 import {
-  REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT,
-  REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_DEFAULT_BODY,
   buildReferenceContextPrepareFailureNoticeBody,
   referenceContextPrepareFailureNoticeChips,
   resolveReferenceContextPrepareFailureActionPolicy,
-  type ReferenceContextPrepareFailureStatus,
-  type ReferenceContextPrepareFailureActionPolicy,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_DEFAULT_BODY,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 import { buildReferenceMaterializeApiPath } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 
-export type ReferenceMaterializeFailureStatus = ReferenceContextPrepareFailureStatus;
-export type ReferenceMaterializeFailureActionPolicy = ReferenceContextPrepareFailureActionPolicy;
+export type ReferenceMaterializeFailureStatus =
+  import("@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy").ReferenceContextPrepareFailureStatus;
+export type ReferenceMaterializeFailureActionPolicy =
+  import("@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy").ReferenceContextPrepareFailureActionPolicy;
 
 export type ReferenceMaterializeClientResult =
   | { readonly ok: true; readonly status: "MATERIALIZED" | "ALREADY_MATERIALIZED" }

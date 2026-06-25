@@ -1,3 +1,7 @@
+/**
+ * Internal operations API only — not part of the default user reference flow.
+ * Do not call from project create or ideation planning UX.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { canAccessPlatformAdminConsole } from "@/lib/admin/platformAdmin";

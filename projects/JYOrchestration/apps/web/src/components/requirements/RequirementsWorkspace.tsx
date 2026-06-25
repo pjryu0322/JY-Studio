@@ -47,8 +47,8 @@ import {
 } from "@/lib/requirements/ideationDeliverables";
 import { ideationChecklistComplete } from "@/lib/requirements/ideationChecklist";
 import { filterIdeationConversationMessages, isServiceFlowWorkshopMessage } from "@/lib/requirements/serviceFlowConversation";
-import { useResolveReferencePlanningNotice } from "@/components/requirements/useReferencePlanningNotice";
-import { useReferencePlanningActions } from "@/components/requirements/useReferencePlanningActions";
+import { useReferencePlanningNotices } from "@/components/requirements/workspace/useReferencePlanningNotices";
+import { useReferencePlanningActions } from "@/components/requirements/workspace/useReferencePlanningActions";
 import { readReferencePlanningDisplaySummaryFromState } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
@@ -1174,8 +1174,7 @@ export function RequirementsWorkspace({
     enrichRequirementsStateBeforePersist: enrichPlanningDataSlotsOnPersist,
   });
 
-  const resolveReferencePlanningNotice = useResolveReferencePlanningNotice();
-  const referencePlanningActions = useReferencePlanningActions({
+  const { handleReferencePlanningChip } = useReferencePlanningActions({
     projectId: resolvedProjectId,
     room,
     stateJsonRef,
@@ -1184,6 +1183,19 @@ export function RequirementsWorkspace({
     setFetchNonce,
     showSuccessToast,
     showErrorToast,
+  });
+
+  useReferencePlanningNotices({
+    conversationStatus,
+    resolvedProjectId,
+    loadedConversationProjectId,
+    project,
+    room,
+    onboardingAppliedKey,
+    onboardingKey,
+    conversationResetNonce,
+    consumedResetSeedNonce: consumedResetSeedNonceRef.current,
+    persistRemote,
   });
 
   const appendSingleChatPromptTimeline = useCallback(
@@ -1506,31 +1518,6 @@ export function RequirementsWorkspace({
 
     if (!forceRegeneratePlanningSummary && onboardingAppliedKey === onboardingKey) return;
     const existing = room.requirementsConversation.messages;
-
-    const referenceNotice = resolveReferencePlanningNotice({
-      workspaceState,
-      existingMessages: existing,
-    });
-    if (referenceNotice) {
-      void (async () => {
-        const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
-          newChatMessage({
-            role: "ai",
-            body: referenceNotice.body,
-            speakerType: "AI",
-            speakerId: VIRTUAL_AI_PLANNER_ID,
-            speakerName: IDEATION_AI_DISPLAY_NAME,
-            messageType: "NOTICE",
-            meta: referenceNotice.meta,
-          }),
-        ]);
-        await persistRemote({
-          requirementsConversationJson: nextRoom,
-          requirementsStateJson: mergeRequirementsStateJson(workspaceState, referenceNotice.patchState),
-        });
-      })();
-      return;
-    }
 
     if (!forceRegeneratePlanningSummary) {
       if (hasPreProjectPlanningSummaryMessage(existing)) {
@@ -1872,7 +1859,6 @@ export function RequirementsWorkspace({
     room,
     persistRemote,
     conversationResetNonce,
-    resolveReferencePlanningNotice,
     slotDefsForProgress,
     orchestrationAlignedState,
   ]);
@@ -3459,8 +3445,7 @@ export function RequirementsWorkspace({
   const handleFastPlanDraftSuggestionPick = useCallback(
     (label: string) => {
       const trimmed = normalizeFastPlanDraftChipLabel(label);
-      if (referencePlanningActions.canHandle(trimmed)) {
-        referencePlanningActions.handle(trimmed);
+      if (handleReferencePlanningChip(trimmed).handled) {
         return;
       }
       if (
@@ -3594,7 +3579,7 @@ export function RequirementsWorkspace({
       resolvedProjectId,
       showErrorToast,
       showSuccessToast,
-      referencePlanningActions,
+      handleReferencePlanningChip,
       handlePlanningImplementationSeedChip,
       handleImplementationCandidateRefineCta,
       latestImplementationCandidateRefineApplyMeta,

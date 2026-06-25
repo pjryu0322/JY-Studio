@@ -203,3 +203,24 @@ export const REFERENCE_PLANNING_CHIP_LABELS = new Set<string>([
 export function isReferencePlanningChipLabel(label: string): boolean {
   return REFERENCE_PLANNING_CHIP_LABELS.has(String(label ?? "").trim());
 }
+
+export function buildReferenceInfoViewMessageBody(summary: ProjectReferenceSelectionSummaryV1): string {
+  const statusLabel = summary.readiness === "VERIFIED" ? "VERIFIED" : "READY";
+  return `선택된 참조 프로젝트 정보입니다.
+
+프로젝트: ${summary.sourceProjectTitle}
+저장본: ${summary.snapshotTitle}
+상태: ${statusLabel}
+구성: Actor ${summary.actorCount}개 · Flow ${summary.serviceFlowCount}개 · Feature ${summary.featureCount}개 · Graph ${summary.graphReusableNodeCount}개
+
+이 정보는 복사가 아니라 새 프로젝트 기획을 위한 참고 자료로만 사용됩니다.
+
+대화 내용과 관련 있는 항목만 기획 컨텍스트로 주입됩니다.`;
+}
+
+/** @deprecated use referenceContextPrepareFailureNoticeChips */
+export const referenceMaterializeFailureNoticeChips = referenceContextPrepareFailureNoticeChips;
+/** @deprecated use resolveReferenceContextPrepareFailureActionPolicy */
+export const resolveReferenceMaterializeFailureActionPolicy = resolveReferenceContextPrepareFailureActionPolicy;
+/** @deprecated use buildReferenceContextPrepareFailureNoticeBody */
+export const buildReferenceMaterializeFailureNoticeBody = buildReferenceContextPrepareFailureNoticeBody;

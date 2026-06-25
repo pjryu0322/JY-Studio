@@ -43,7 +43,7 @@ export function assertMvpReferenceSnapshotIdCount(ids: readonly string[]): void 
   }
 }
 
-export async function validateReferenceSnapshotSelectionForUser(input: Readonly<{
+export async function prepareReferenceSnapshotSelectionForUser(input: Readonly<{
   readonly userId: string;
   readonly referenceSnapshotIds: readonly string[];
 }>): Promise<Readonly<{
@@ -129,3 +129,11 @@ export async function validateReferenceSnapshotSelectionForUser(input: Readonly<
     materializedReferenceContextV1,
   };
 }
+
+/**
+ * Validates a source Graph Snapshot for the user and builds target-project `materializedReferenceContextV1`.
+ * Used at project create and legacy context preparation — not for per-turn prompt revision reads.
+ *
+ * @deprecated Prefer the name `prepareReferenceSnapshotSelectionForUser`.
+ */
+export const validateReferenceSnapshotSelectionForUser = prepareReferenceSnapshotSelectionForUser;
