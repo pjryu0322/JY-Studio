@@ -101,6 +101,7 @@ export function ProjectReferencePicker({ disabled, selection, onSelectionChange 
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [purpose, setPurpose] = useState<"all" | "candidate" | "package">("all");
+  const [sort, setSort] = useState<"recent" | "name">("recent");
 
   const loadLibrary = useCallback(async () => {
     setLoading(true);
@@ -109,7 +110,7 @@ export function ProjectReferencePicker({ disabled, selection, onSelectionChange 
       const params = new URLSearchParams();
       if (q.trim()) params.set("q", q.trim());
       if (purpose !== "all") params.set("purpose", purpose);
-      params.set("sort", "recent");
+      params.set("sort", sort);
       params.set("limit", "50");
       const res = await fetch(`/api/projects/reference-library?${params.toString()}`, { credentials: "include" });
       const json = (await res.json()) as ApiListResponse;
@@ -125,7 +126,7 @@ export function ProjectReferencePicker({ disabled, selection, onSelectionChange 
     } finally {
       setLoading(false);
     }
-  }, [q, purpose]);
+  }, [q, purpose, sort]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -226,6 +227,15 @@ export function ProjectReferencePicker({ disabled, selection, onSelectionChange 
                 <option value="all">전체</option>
                 <option value="candidate">참조 가능</option>
                 <option value="package">검증된 참조</option>
+              </select>
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as typeof sort)}
+                className="h-9 rounded-md border border-neutral-300 px-2 text-sm"
+                data-testid="reference-library-sort"
+              >
+                <option value="recent">최근 생성/저장본</option>
+                <option value="name">이름순</option>
               </select>
               <Button type="button" variant="secondary" size="sm" onClick={() => void loadLibrary()}>
                 검색

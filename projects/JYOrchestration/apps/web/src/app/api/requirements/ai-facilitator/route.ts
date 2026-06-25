@@ -502,6 +502,7 @@ export async function POST(request: NextRequest) {
         orchestrationLazyInit,
         ...(quickActionLabel ? { quickActionLabel } : {}),
         ...(proposalDecision ? { proposalDecision } : {}),
+        referencePlanningContextBlock: referencePlanningContextBlock || undefined,
       });
 
       let usedFallback = false;

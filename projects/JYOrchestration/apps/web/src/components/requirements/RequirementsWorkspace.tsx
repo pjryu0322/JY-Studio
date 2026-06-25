@@ -50,11 +50,20 @@ import { filterIdeationConversationMessages, isServiceFlowWorkshopMessage } from
 import {
   buildReferencePlanningWelcomeBody,
   buildReferencePlanningWelcomeMessageMeta,
+  buildReferenceInfoViewMessageBody,
   REFERENCE_PLANNING_CHIP_CLEAR,
   REFERENCE_PLANNING_CHIP_CONTINUE,
   REFERENCE_PLANNING_CHIP_VIEW,
+  REFERENCE_PLANNING_CLEAR_NOTICE_BODY,
+  REFERENCE_PLANNING_CLEAR_NOTICE_INTERNAL_TYPE,
+  REFERENCE_PLANNING_INFO_VIEW_INTERNAL_TYPE,
   REFERENCE_PLANNING_WELCOME_INTERNAL_TYPE,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningWelcome";
+import {
+  buildReferenceClearSelectionApiPath,
+  clearReferenceSelectionStatePatch,
+  readReferenceSelectionSummaryFromState,
+} from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
   normalizeIdeationBootstrapDisplayMessage,
@@ -3461,7 +3470,7 @@ export function RequirementsWorkspace({
         if (!pid) return;
         void (async () => {
           try {
-            const res = await fetch(`/api/projects/${pid}/reference-selection`, {
+            const res = await fetch(buildReferenceClearSelectionApiPath(pid), {
               method: "DELETE",
               credentials: "include",
             });
@@ -3470,12 +3479,23 @@ export function RequirementsWorkspace({
               showErrorToast(json.message ?? "참조 해제에 실패했습니다.");
               return;
             }
-            await persistStateJsonOnly({
-              referenceSelectionV1: null,
-              referenceSelectionSummaryV1: null,
-              referenceSelectionWelcomeShownAt: null,
-            });
-            showSuccessToast("참조 프로젝트 선택을 해제했습니다.");
+            const cleared = await persistStateJsonOnly(clearReferenceSelectionStatePatch());
+            if (!cleared) {
+              showErrorToast("참조 해제 상태 저장에 실패했습니다.");
+              return;
+            }
+            const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
+              newChatMessage({
+                role: "ai",
+                body: REFERENCE_PLANNING_CLEAR_NOTICE_BODY,
+                speakerType: "AI",
+                speakerId: VIRTUAL_AI_PLANNER_ID,
+                speakerName: IDEATION_AI_DISPLAY_NAME,
+                messageType: "NOTICE",
+                meta: { internalType: REFERENCE_PLANNING_CLEAR_NOTICE_INTERNAL_TYPE },
+              }),
+            ]);
+            await persistRemote(nextRoom, {}, {});
           } catch {
             showErrorToast("참조 해제에 실패했습니다.");
           }
@@ -3483,16 +3503,30 @@ export function RequirementsWorkspace({
         return;
       }
       if (trimmed === REFERENCE_PLANNING_CHIP_VIEW) {
-        const summary = stateJsonRef.current.referenceSelectionSummaryV1;
-        if (summary) {
-          showSuccessToast(
-            `${summary.sourceProjectTitle} · ${summary.snapshotTitle} (Actor ${summary.actorCount} · Flow ${summary.serviceFlowCount} · Feature ${summary.featureCount})`,
-          );
+        const summary = readReferenceSelectionSummaryFromState(stateJsonRef.current);
+        if (!summary) {
+          showErrorToast("표시할 참조 정보가 없습니다.");
+          return;
         }
+        const pid = resolvedProjectId.trim();
+        if (!pid) return;
+        void (async () => {
+          const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
+            newChatMessage({
+              role: "ai",
+              body: buildReferenceInfoViewMessageBody(summary),
+              speakerType: "AI",
+              speakerId: VIRTUAL_AI_PLANNER_ID,
+              speakerName: IDEATION_AI_DISPLAY_NAME,
+              messageType: "NOTICE",
+              meta: { internalType: REFERENCE_PLANNING_INFO_VIEW_INTERNAL_TYPE },
+            }),
+          ]);
+          await persistRemote(nextRoom, {}, {});
+        })();
         return;
       }
       if (trimmed === REFERENCE_PLANNING_CHIP_CONTINUE) {
-        insertComposerPrompt(REFERENCE_PLANNING_CHIP_CONTINUE);
         return;
       }
       if (
@@ -3626,6 +3660,9 @@ export function RequirementsWorkspace({
       resolvedProjectId,
       showErrorToast,
       showSuccessToast,
+      persistStateJsonOnly,
+      persistRemote,
+      room,
       handlePlanningImplementationSeedChip,
       handleImplementationCandidateRefineCta,
       latestImplementationCandidateRefineApplyMeta,

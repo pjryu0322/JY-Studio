@@ -100,3 +100,22 @@ Actor ${summary.actorCount}개 · Flow ${summary.serviceFlowCount}개 · Feature
 export const REFERENCE_PLANNING_CHIP_VIEW = "참조 정보 보기";
 export const REFERENCE_PLANNING_CHIP_CLEAR = "참조 해제";
 export const REFERENCE_PLANNING_CHIP_CONTINUE = "계속 진행";
+
+export const REFERENCE_PLANNING_INFO_VIEW_INTERNAL_TYPE = "reference-snapshot-planning-info-view" as const;
+export const REFERENCE_PLANNING_CLEAR_NOTICE_INTERNAL_TYPE = "reference-snapshot-planning-clear-notice" as const;
+
+export const REFERENCE_PLANNING_CLEAR_NOTICE_BODY = "참조 프로젝트 선택을 해제했습니다.";
+
+export function buildReferenceInfoViewMessageBody(
+  summary: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionSummaryV1,
+): string {
+  const statusLabel = summary.readiness === "VERIFIED" ? "VERIFIED" : "READY";
+  return `선택된 참조 프로젝트 정보입니다.
+
+프로젝트: ${summary.sourceProjectTitle}
+저장본: ${summary.snapshotTitle}
+상태: ${statusLabel}
+구성: Actor ${summary.actorCount}개 · Flow ${summary.serviceFlowCount}개 · Feature ${summary.featureCount}개 · Graph ${summary.graphReusableNodeCount}개
+
+이 정보는 복사가 아니라 새 프로젝트 기획을 위한 참고 자료로만 사용됩니다.`;
+}

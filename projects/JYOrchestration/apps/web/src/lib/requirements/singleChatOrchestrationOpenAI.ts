@@ -268,6 +268,16 @@ ${input.baseSlotCatalogJson.slice(0, 12000)}
   };
 }
 
+export function mergeReferencePlanningContextIntoOrchestrationProjectDescription(
+  projectDescription: string,
+  referencePlanningContextBlock?: string | null,
+): string {
+  const referenceBlock = String(referencePlanningContextBlock ?? "").trim().slice(0, 6000);
+  const base = String(projectDescription ?? "").trim();
+  if (!referenceBlock) return base;
+  return `${base}\n\n${referenceBlock}`.trim().slice(0, 12_000);
+}
+
 export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   readonly projectName: string;
   readonly projectDescription: string;
@@ -283,6 +293,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   readonly priorScreenHandoff?: string;
   readonly orchestrationWakeupReason?: string;
   readonly orchestrationLazyInit?: boolean;
+  /** 아이디어 구체화 참조 스냅샷 컨텍스트(6000자 이내) */
+  readonly referencePlanningContextBlock?: string;
   /** 인터뷰/오케스트레이션 QuickAction 칩(추천안 적용 등) */
   readonly quickActionLabel?: string | null;
   /** proposal 승인 신호(칩 라벨과 별도 전달 가능) */
@@ -307,7 +319,17 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
 
   const slotExpansionPhase = computeSlotExpansionPhaseFromState(input.baseState, input.definitions);
 
-  const route = await runPlannerRouteTurnOpenAI({ ...input, userMessage: userMessageForLlm, slotExpansionPhase });
+  const projectDescriptionForOrchestration = mergeReferencePlanningContextIntoOrchestrationProjectDescription(
+    input.projectDescription,
+    input.referencePlanningContextBlock,
+  );
+  const orchestrationLlmInput = { ...input, projectDescription: projectDescriptionForOrchestration };
+
+  const route = await runPlannerRouteTurnOpenAI({
+    ...orchestrationLlmInput,
+    userMessage: userMessageForLlm,
+    slotExpansionPhase,
+  });
   if (!route.ok) return route;
 
   promptChunks.push(route.promptText);
@@ -392,7 +414,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     const sp = await runSpecialistGroupTurnOpenAI({
       groupLabel: "flow-analyst",
       projectName: input.projectName,
-      projectDescription: input.projectDescription,
+      projectDescription: orchestrationLlmInput.projectDescription,
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions,
@@ -417,7 +439,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     const sp = await runSpecialistGroupTurnOpenAI({
       groupLabel: "feature-designer",
       projectName: input.projectName,
-      projectDescription: input.projectDescription,
+      projectDescription: orchestrationLlmInput.projectDescription,
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions: input.definitions,
@@ -442,7 +464,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     const sp = await runSpecialistGroupTurnOpenAI({
       groupLabel: "security-reviewer",
       projectName: input.projectName,
-      projectDescription: input.projectDescription,
+      projectDescription: orchestrationLlmInput.projectDescription,
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions,
@@ -469,7 +491,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const plannerStable = isPlannerStableEnough(state, definitions);
   const merge = await runPlannerMergeTurnOpenAI({
     projectName: input.projectName,
-    projectDescription: input.projectDescription,
+    projectDescription: orchestrationLlmInput.projectDescription,
     userMessage: userMessageForLlm,
     dialogueExcerpt: input.dialogueExcerpt,
     state,
@@ -934,7 +956,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     const sp = await runSpecialistGroupTurnOpenAI({
       groupLabel: "feature-designer",
       projectName: input.projectName,
-      projectDescription: input.projectDescription,
+      projectDescription: orchestrationLlmInput.projectDescription,
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions,
@@ -956,7 +978,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
 
   const buildCoordinatorFallbackProposal = (): string => {
     const pn = input.projectName.trim() || "이 서비스";
-    const pd = input.projectDescription.trim();
+    const pd = orchestrationLlmInput.projectDescription.trim();
     const digest = specialistDigest.trim().slice(0, 600);
     const lines: string[] = [`${pn} 방향으로 정리해 보았습니다.`];
     if (pd) lines.push("", `이해한 배경: ${pd.slice(0, 280)}`);
@@ -1075,7 +1097,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     });
     const nextStage = await runProposalAcceptedNextStageOpenAI({
       projectName: input.projectName,
-      projectDescription: input.projectDescription,
+      projectDescription: orchestrationLlmInput.projectDescription,
       acceptedProposalSnapshot: snapshot,
       dialogueExcerpt: input.dialogueExcerpt,
       state,
@@ -1105,7 +1127,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   } else if (apiKey) {
     const synthesis = await runCoordinatorSynthesisTurnOpenAI({
       projectName: input.projectName,
-      projectDescription: input.projectDescription,
+      projectDescription: orchestrationLlmInput.projectDescription,
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       specialistDigest,
@@ -1142,7 +1164,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
           nextQuestionRetryReason = "repeated_question_retry";
           const retry = await runCoordinatorSynthesisTurnOpenAI({
             projectName: input.projectName,
-            projectDescription: input.projectDescription,
+            projectDescription: orchestrationLlmInput.projectDescription,
             userMessage: `${userMessageForLlm}\n\n[repeat-guard] 직전과 같은 의미로 다시 묻지 말고, proposal-first(예상 흐름·액터 초안)로 다른 세부를 제안하세요.`,
             synthesisRetryHint:
               "직전 출력이 반복·question-first였을 수 있음. 예상 흐름·액터 초안을 갱신하고 수정·선택만 요청.",

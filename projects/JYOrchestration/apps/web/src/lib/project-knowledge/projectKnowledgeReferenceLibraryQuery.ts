@@ -120,7 +120,6 @@ export async function listReferenceLibraryItems(input: Readonly<{
 
   for (const row of revisions) {
     if (seenProject.has(row.projectId)) continue;
-    seenProject.add(row.projectId);
 
     const item = buildItemFromRow(row);
     if (!item) continue;
@@ -129,6 +128,7 @@ export async function listReferenceLibraryItems(input: Readonly<{
     if (purposeFilter === "package" && item.snapshotPurpose !== "REFERENCE_PACKAGE") continue;
     if (!matchesQuery(item, q)) continue;
 
+    seenProject.add(row.projectId);
     items.push(item);
   }
 
