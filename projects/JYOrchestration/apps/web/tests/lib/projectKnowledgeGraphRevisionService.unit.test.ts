@@ -34,8 +34,10 @@ vi.mock("@/lib/project-graph/projectGraphQuery", () => ({
 import {
   createKnowledgeGraphRevision,
   getLatestKnowledgeGraphRevision,
+  getLatestReferenceKnowledgeGraphRevision,
   listKnowledgeGraphRevisions,
   loadKnowledgeGraphRevision,
+  loadLatestReferenceKnowledgeGraphRevision,
 } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
 
 describe("projectKnowledgeGraphRevisionService", () => {
@@ -125,6 +127,94 @@ describe("projectKnowledgeGraphRevisionService", () => {
         orderBy: { revisionNumber: "desc" },
       }),
     );
+  });
+
+  it("getLatestReferenceKnowledgeGraphRevision skips REPLAY and picks REFERENCE_CANDIDATE", async () => {
+    findMany.mockResolvedValue([
+      {
+        id: "r2",
+        revisionNumber: 2,
+        title: "그래프 반영",
+        summary: null,
+        nodeCount: 1,
+        edgeCount: 0,
+        createdAt: new Date(),
+        graphSnapshot: { purpose: "REPLAY", nodes: [], edges: [] },
+      },
+      {
+        id: "r1",
+        revisionNumber: 1,
+        title: "추천안 승인",
+        summary: null,
+        nodeCount: 1,
+        edgeCount: 0,
+        createdAt: new Date(),
+        graphSnapshot: { purpose: "REFERENCE_CANDIDATE", nodes: [], edges: [] },
+      },
+    ]);
+    const ref = await getLatestReferenceKnowledgeGraphRevision("p1");
+    expect(ref?.id).toBe("r1");
+    expect(ref?.revisionNumber).toBe(1);
+  });
+
+  it("getLatestReferenceKnowledgeGraphRevision returns REFERENCE_PACKAGE when latest reference", async () => {
+    findMany.mockResolvedValue([
+      {
+        id: "r3",
+        revisionNumber: 3,
+        title: "패키지",
+        summary: null,
+        nodeCount: 1,
+        edgeCount: 0,
+        createdAt: new Date(),
+        graphSnapshot: { purpose: "REFERENCE_PACKAGE", nodes: [], edges: [] },
+      },
+    ]);
+    const ref = await getLatestReferenceKnowledgeGraphRevision("p1");
+    expect(ref?.revisionNumber).toBe(3);
+  });
+
+  it("getLatestReferenceKnowledgeGraphRevision returns null when only REPLAY revisions", async () => {
+    findMany.mockResolvedValue([
+      {
+        id: "r1",
+        revisionNumber: 1,
+        title: "그래프 반영",
+        summary: null,
+        nodeCount: 0,
+        edgeCount: 0,
+        createdAt: new Date(),
+        graphSnapshot: { purpose: "REPLAY", nodes: [], edges: [] },
+      },
+    ]);
+    expect(await getLatestReferenceKnowledgeGraphRevision("p1")).toBeNull();
+  });
+
+  it("loadLatestReferenceKnowledgeGraphRevision loads detail for reference revision", async () => {
+    findMany.mockResolvedValue([
+      {
+        id: "ref-1",
+        revisionNumber: 5,
+        title: "참조",
+        summary: null,
+        nodeCount: 1,
+        edgeCount: 0,
+        createdAt: new Date(),
+        graphSnapshot: { purpose: "REFERENCE_CANDIDATE", nodes: [], edges: [] },
+      },
+    ]);
+    findFirst.mockResolvedValue({
+      id: "ref-1",
+      revisionNumber: 5,
+      title: "참조",
+      summary: null,
+      nodeCount: 1,
+      edgeCount: 0,
+      createdAt: new Date(),
+      graphSnapshot: { purpose: "REFERENCE_CANDIDATE", nodes: [{ entityKey: "a", nodeType: "Feature", title: "F" }], edges: [] },
+    });
+    const detail = await loadLatestReferenceKnowledgeGraphRevision("p1");
+    expect(detail?.graphSnapshot.purpose).toBe("REFERENCE_CANDIDATE");
   });
 
   it("loadKnowledgeGraphRevision returns null when missing", async () => {

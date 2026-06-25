@@ -111,3 +111,28 @@ describe("assessReferenceSafety unified detector", () => {
     expect(s.safeForReference).toBe(false);
   });
 });
+
+describe("reusableAs propagation", () => {
+  it("keeps FEATURE in toReferenceEligibilityNodeInput from metadata.reference", () => {
+    const mapped = toReferenceEligibilityNodeInput({
+      nodeType: "Custom",
+      title: "기능",
+      metadata: {
+        reference: {
+          lifecycle: "USER_APPROVED",
+          provenance: { createdFrom: "USER_APPROVAL" },
+          reusable: true,
+          reusableAs: ["FEATURE"],
+          sensitivity: {
+            containsPersonalData: false,
+            containsConfidentialData: false,
+            containsRawConversation: false,
+            containsInternalIds: false,
+            safeForReference: true,
+          },
+        },
+      },
+    });
+    expect(mapped.reusableAs).toContain("FEATURE");
+  });
+});

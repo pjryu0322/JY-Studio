@@ -1,6 +1,7 @@
 import { getProjectGraphSnapshotWithExplainability } from "@/lib/project-graph/projectGraphSnapshotEnrich";
 import {
   loadLatestKnowledgeGraphRevision,
+  loadLatestReferenceKnowledgeGraphRevision,
 } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
 import { normalizeGraphSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeReferenceNormalize";
 import {
@@ -9,6 +10,7 @@ import {
 } from "@/lib/project-knowledge/projectKnowledgeReferenceEligibilityService";
 import { toReferenceEligibilityNodeInput } from "@/lib/project-knowledge/projectKnowledgeReferenceNodeMeta";
 import type {
+  KnowledgeNodeReusableAs,
   ReferenceEligibility,
   ReferencePackageCandidate,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
@@ -28,12 +30,12 @@ export type ProjectReferenceAssessment = Readonly<{
   readonly reusableNodes: ReadonlyArray<{
     readonly title: string;
     readonly nodeType: string;
-    readonly reusableAs: readonly string[];
+    readonly reusableAs: readonly KnowledgeNodeReusableAs[];
   }>;
   readonly exclusions: readonly string[];
 }>;
 
-function snapshotFlagsFromLatestRevision(
+function snapshotFlagsFromLatestReferenceRevision(
   detail: KnowledgeGraphRevisionDetail | null,
 ): Readonly<{ readonly hasReferenceCandidateSnapshot: boolean; readonly hasReferencePackageSnapshot: boolean }> {
   if (!detail) {
@@ -68,6 +70,33 @@ function graphNodeToReferenceInput(node: {
   };
 }
 
+function fallbackReusableAsFromNodeType(nodeType: string): readonly KnowledgeNodeReusableAs[] {
+  const t = nodeType.trim();
+  if (/actor/i.test(t)) return ["ACTOR"];
+  if (/flow/i.test(t)) return ["SERVICE_FLOW"];
+  if (/feature/i.test(t)) return ["FEATURE"];
+  if (/decision/i.test(t)) return ["DECISION"];
+  return [];
+}
+
+function classifyReusableNodeAssets(
+  node: ProjectReferenceAssessment["reusableNodes"][number],
+  buckets: {
+    actors: string[];
+    serviceFlows: string[];
+    features: string[];
+    decisions: string[];
+  },
+): void {
+  const reusableAs =
+    node.reusableAs.length > 0 ? node.reusableAs : fallbackReusableAsFromNodeType(node.nodeType);
+
+  if (reusableAs.includes("ACTOR")) buckets.actors.push(node.title);
+  if (reusableAs.includes("SERVICE_FLOW")) buckets.serviceFlows.push(node.title);
+  if (reusableAs.includes("FEATURE")) buckets.features.push(node.title);
+  if (reusableAs.includes("DECISION")) buckets.decisions.push(node.title);
+}
+
 export async function buildProjectReferenceAssessment(
   projectId: string,
 ): Promise<ProjectReferenceAssessment> {
@@ -85,9 +114,10 @@ export async function buildProjectReferenceAssessment(
     };
   }
 
-  const [graph, latestDetail] = await Promise.all([
+  const [graph, latestDetail, latestReferenceDetail] = await Promise.all([
     getProjectGraphSnapshotWithExplainability(pid, { limit: 500 }),
     loadLatestKnowledgeGraphRevision(pid),
+    loadLatestReferenceKnowledgeGraphRevision(pid),
   ]);
 
   const latestRevision = latestDetail
@@ -102,7 +132,7 @@ export async function buildProjectReferenceAssessment(
       }
     : null;
 
-  const flags = snapshotFlagsFromLatestRevision(latestDetail);
+  const flags = snapshotFlagsFromLatestReferenceRevision(latestReferenceDetail);
   const metrics: ReferenceEligibilityNodeMetrics[] = graph.nodes.map((n) => {
     const mapped = toReferenceEligibilityNodeInput(graphNodeToReferenceInput(n));
     return {
@@ -127,7 +157,7 @@ export async function buildProjectReferenceAssessment(
     reusableNodes.push({
       title: n.title.trim(),
       nodeType: n.nodeType,
-      reusableAs: [],
+      reusableAs: mapped.reusableAs,
     });
   }
 
@@ -135,7 +165,7 @@ export async function buildProjectReferenceAssessment(
     projectId: pid,
     graphNodeCount: graph.nodes.length,
     graphEdgeCount: graph.edges.length,
-    latestReferenceRevision: latestDetail,
+    latestReferenceRevision: latestReferenceDetail,
     latestRevision,
     eligibility,
     reusableNodes,
@@ -150,18 +180,11 @@ export async function getProjectReferenceEligibility(projectId: string): Promise
 
 export async function buildReferencePackageCandidate(projectId: string): Promise<ReferencePackageCandidate> {
   const assessment = await buildProjectReferenceAssessment(projectId);
-  const { eligibility, latestRevision, reusableNodes, exclusions } = assessment;
+  const { eligibility, latestReferenceRevision, reusableNodes, exclusions } = assessment;
 
-  const actors: string[] = [];
-  const serviceFlows: string[] = [];
-  const features: string[] = [];
-  const decisions: string[] = [];
-
+  const buckets = { actors: [] as string[], serviceFlows: [] as string[], features: [] as string[], decisions: [] as string[] };
   for (const n of reusableNodes) {
-    if (/actor/i.test(n.nodeType)) actors.push(n.title);
-    else if (/flow/i.test(n.nodeType)) serviceFlows.push(n.title);
-    else if (/feature/i.test(n.nodeType)) features.push(n.title);
-    else if (/decision/i.test(n.nodeType)) decisions.push(n.title);
+    classifyReusableNodeAssets(n, buckets);
   }
 
   const unique = (items: string[]) => [...new Set(items)].slice(0, 20);
@@ -176,18 +199,18 @@ export async function buildReferencePackageCandidate(projectId: string): Promise
 
   return {
     projectId: assessment.projectId,
-    ...(latestRevision ? { sourceRevisionId: latestRevision.id } : {}),
+    ...(latestReferenceRevision ? { sourceRevisionId: latestReferenceRevision.id } : {}),
     readiness,
     summary:
       readiness === "READY" || readiness === "VERIFIED"
         ? "승인된 구조 요약을 참조 패키지 후보로 정리했습니다."
         : "참조 패키지 후보로 사용하기에 구조가 아직 부족합니다.",
     reusableAssets: {
-      actors: unique(actors),
-      serviceFlows: unique(serviceFlows),
-      features: unique(features),
+      actors: unique(buckets.actors),
+      serviceFlows: unique(buckets.serviceFlows),
+      features: unique(buckets.features),
       graphSummary: `항목 ${eligibility.counts.reusableGraphNodes}개 · 연결 가능 구조`,
-      decisions: unique(decisions),
+      decisions: unique(buckets.decisions),
     },
     exclusions,
     blockingIssues: [...eligibility.blockingIssues],

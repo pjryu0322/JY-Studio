@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { graphSnapshotPurposeFromMilestone } from "@/lib/project-knowledge/projectKnowledgeReferenceNormalize";
+import { graphSnapshotPurposeFromMilestone, normalizeGraphSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeReferenceNormalize";
 import {
   captureKnowledgeGraphRevisionSnapshot,
   parseKnowledgeGraphRevisionSnapshot,
@@ -142,6 +142,51 @@ export async function loadLatestKnowledgeGraphRevision(
   projectId: string,
 ): Promise<KnowledgeGraphRevisionDetail | null> {
   const latest = await getLatestKnowledgeGraphRevision(projectId);
+  if (!latest) return null;
+  return loadKnowledgeGraphRevision(projectId, latest.id);
+}
+
+/** Scan recent revisions (desc) for REFERENCE_CANDIDATE / REFERENCE_PACKAGE purpose only. */
+const LATEST_REFERENCE_REVISION_SCAN_LIMIT = 100;
+
+function isReferencePurposeSnapshot(raw: unknown): boolean {
+  const purpose = normalizeGraphSnapshotPurpose(parseKnowledgeGraphRevisionSnapshot(raw).purpose);
+  return purpose === "REFERENCE_CANDIDATE" || purpose === "REFERENCE_PACKAGE";
+}
+
+export async function getLatestReferenceKnowledgeGraphRevision(
+  projectId: string,
+): Promise<KnowledgeGraphRevisionListItem | null> {
+  const pid = String(projectId ?? "").trim();
+  if (!pid) return null;
+
+  const rows = await prisma.projectKnowledgeGraphRevision.findMany({
+    where: { projectId: pid },
+    orderBy: { revisionNumber: "desc" },
+    take: LATEST_REFERENCE_REVISION_SCAN_LIMIT,
+    select: {
+      id: true,
+      revisionNumber: true,
+      title: true,
+      summary: true,
+      nodeCount: true,
+      edgeCount: true,
+      createdAt: true,
+      graphSnapshot: true,
+    },
+  });
+
+  for (const row of rows) {
+    if (!isReferencePurposeSnapshot(row.graphSnapshot)) continue;
+    return toListItem(row);
+  }
+  return null;
+}
+
+export async function loadLatestReferenceKnowledgeGraphRevision(
+  projectId: string,
+): Promise<KnowledgeGraphRevisionDetail | null> {
+  const latest = await getLatestReferenceKnowledgeGraphRevision(projectId);
   if (!latest) return null;
   return loadKnowledgeGraphRevision(projectId, latest.id);
 }

@@ -46,7 +46,6 @@ function parseKnowledgeReference(raw: unknown): KnowledgeNodeReferenceView | und
   return {
     lifecycleLabel: lifecycleLabel || "작성 중",
     provenanceLabel: provenanceLabel || "시스템에서 생성됨",
-    reusable: reusableLabel.includes("가능"),
     reusable,
     reusableLabel: reusableLabel || (reusable ? "참조 사용 가능" : "참조 사용 불가"),
     verificationLabel: verificationLabel || "검증 대기",

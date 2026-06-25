@@ -134,6 +134,7 @@ export function toReferenceEligibilityNodeInput(
   title: string;
   summary: string | null;
   reusable: boolean;
+  reusableAs: readonly KnowledgeNodeReusableAs[];
   safeForReference: boolean;
 }> {
   const stored = parseProjectGraphNodeReferenceMetadata(node.metadata);
@@ -144,6 +145,7 @@ export function toReferenceEligibilityNodeInput(
       title: node.title,
       summary: node.summary ?? null,
       reusable: stored.reusable,
+      reusableAs: [...stored.reusableAs],
       safeForReference: stored.sensitivity.safeForReference,
     };
   }
@@ -163,6 +165,7 @@ export function toReferenceEligibilityNodeInput(
     title: node.title,
     summary: node.summary ?? null,
     reusable: reusability.reusable,
+    reusableAs: [...reusability.reusableAs],
     safeForReference: sensitivity.safeForReference,
   };
 }
