@@ -95,6 +95,7 @@ describe("buildReferencePromptContextForProjectTurn (materialized)", () => {
     });
     expect(section.hasReference).toBe(false);
     expect(section.referenceContextSource).toBe("LEGACY_MISSING");
+    expect(section.promptText).toBe("");
     expect(section.diagnostics.selectionReason).toBe("materialized_context_missing");
     expect(prisma.projectKnowledgeGraphRevision.findUnique).not.toHaveBeenCalled();
   });

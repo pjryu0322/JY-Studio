@@ -6,10 +6,12 @@ import {
 import {
   buildReferenceClearSelectionApiPath,
   clearReferenceSelectionStatePatch,
+  isReferenceContextLegacyMissing,
   readReferenceSelectionSummaryFromState,
   shouldSendReferencePlanningContinueToAi,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 import { resolveReferencePromptContextBlockForOrchestration } from "@/lib/requirements/singleChatOrchestrationOpenAI";
+import { buildMaterializedReferenceContextFromSnapshot } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
 
 describe("reference planning chip helpers", () => {
   it("builds DELETE reference-selection API path", () => {
@@ -57,6 +59,38 @@ describe("reference planning chip helpers", () => {
       },
     });
     expect(summary?.readiness).toBe("VERIFIED");
+  });
+
+  it("detects legacy missing materialized context", () => {
+    expect(
+      isReferenceContextLegacyMissing({
+        referenceSelectionV1: {
+          referenceSnapshotIds: ["snap"],
+          selectedAt: "2026-06-01T00:00:00.000Z",
+          source: "USER_SELECTED",
+        },
+      }),
+    ).toBe(true);
+    const materialized = buildMaterializedReferenceContextFromSnapshot({
+      sourceProjectTitle: "P",
+      snapshotTitle: "S",
+      snapshotPurpose: "REFERENCE_CANDIDATE",
+      graphSnapshot: {
+        purpose: "REFERENCE_CANDIDATE",
+        nodes: [],
+        edges: [],
+      },
+    });
+    expect(
+      isReferenceContextLegacyMissing({
+        referenceSelectionV1: {
+          referenceSnapshotIds: ["snap"],
+          selectedAt: "2026-06-01T00:00:00.000Z",
+          source: "USER_SELECTED",
+        },
+        materializedReferenceContextV1: materialized,
+      }),
+    ).toBe(false);
   });
 });
 
