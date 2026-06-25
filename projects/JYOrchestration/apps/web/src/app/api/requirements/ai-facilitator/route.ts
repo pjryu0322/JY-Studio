@@ -19,10 +19,7 @@ import { isPromptTimelineDebugServer, runWithPromptTimelineProject } from "@/lib
 import { recordIdeationBootstrapOpenAi } from "@/lib/debug/promptTimelineStore";
 import { runBootstrapProposalFallbackSynthesisOpenAI } from "@/lib/requirements/bootstrapProposalFallbackSynthesis";
 import { hasProposalFirstStructure } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
-import {
-  buildIdeationBootstrapDescriptionProposalSkeleton,
-  buildSingleChatPromptTimelineEntry,
-} from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
+import { loadReferencePlanningContextPromptBlockForProject } from "@/lib/project-knowledge/projectKnowledgeReferenceSelectionState";
 import {
   pickConfiguredModelOverrideFromAgents,
   resolveServicePlanningOrchestrationContext,
@@ -265,6 +262,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const referencePlanningContextBlock = projectId
+      ? await loadReferencePlanningContextPromptBlockForProject(projectId)
+      : "";
+
     const workspaceScreenForBootstrap = parseWorkspaceScreenForBody(body.workspaceScreenKey);
     const workspaceScreenForChat = bootstrapInterview ? workspaceScreenForBootstrap : parseWorkspaceScreenForBody(body.workspaceScreenKey);
 
@@ -307,6 +308,7 @@ export async function POST(request: NextRequest) {
         responseStyle: "brief",
         priorScreenHandoff: priorScreenHandoff || undefined,
         participatingAgentsPromptBlock: agentCtxChat.promptBlock,
+        referencePlanningContextBlock: referencePlanningContextBlock || undefined,
       });
       if (!sum.ok) {
         return NextResponse.json({ success: false, code: sum.code, message: sum.message }, { status: 502 });
@@ -678,6 +680,7 @@ export async function POST(request: NextRequest) {
               projectId: projectId || null,
               configuredModelOverride: configuredModelOverrideBoot,
             },
+            referencePlanningContextBlock: referencePlanningContextBlock || undefined,
           });
         });
       } catch (e) {
@@ -699,6 +702,7 @@ export async function POST(request: NextRequest) {
         senderSummary: senderSummary || undefined,
         priorScreenHandoff: priorScreenHandoff || undefined,
         participatingAgentsPromptBlock: agentCtxChat.promptBlock,
+        referencePlanningContextBlock: referencePlanningContextBlock || undefined,
       });
     }
     if (!result.ok) {

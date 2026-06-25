@@ -157,6 +157,10 @@ import type {
 } from "@/lib/harness/reviewSecurity/reviewSecurityIssueTypes";
 import { coerceRequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import {
+  parseProjectReferenceSelectionSummaryV1,
+  parseProjectReferenceSelectionV1,
+} from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import {
   parseAlternativeProposalPayloadWire,
@@ -572,6 +576,12 @@ export type RequirementsStateJson = {
   seededFromPreProjectChat?: boolean;
   /** AI 기획자 초기 Planning Snapshot (Knowledge Graph 연동) */
   planningSnapshotV1?: import("@/lib/planning-snapshot/planningSnapshotModel").PlanningSnapshotV1Wire | null;
+  /** Phase 6: 사용자가 선택한 Reference Snapshot (MVP 최대 1개) */
+  referenceSelectionV1?: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionV1 | null;
+  /** Phase 6: Reference Picker 표시용 요약(내부 snapshot id 비노출) */
+  referenceSelectionSummaryV1?: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionSummaryV1 | null;
+  /** Reference welcome 안내 메시지 1회 표시 시각 */
+  referenceSelectionWelcomeShownAt?: string | null;
   /** 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지용 슬롯 상태) */
   problemInterview?: ProblemInterviewState | null;
   /**
@@ -1345,6 +1355,24 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
       o.planningSnapshotV1 && typeof o.planningSnapshotV1 === "object" && !Array.isArray(o.planningSnapshotV1)
         ? (o.planningSnapshotV1 as RequirementsStateJson["planningSnapshotV1"])
         : o.planningSnapshotV1 === null
+          ? null
+          : undefined,
+    referenceSelectionV1:
+      "referenceSelectionV1" in o
+        ? o.referenceSelectionV1 === null
+          ? null
+          : parseProjectReferenceSelectionV1(o.referenceSelectionV1) ?? null
+        : undefined,
+    referenceSelectionSummaryV1:
+      "referenceSelectionSummaryV1" in o
+        ? o.referenceSelectionSummaryV1 === null
+          ? null
+          : parseProjectReferenceSelectionSummaryV1(o.referenceSelectionSummaryV1) ?? null
+        : undefined,
+    referenceSelectionWelcomeShownAt:
+      typeof o.referenceSelectionWelcomeShownAt === "string"
+        ? o.referenceSelectionWelcomeShownAt
+        : o.referenceSelectionWelcomeShownAt === null
           ? null
           : undefined,
     ideationStageCompletedAt:

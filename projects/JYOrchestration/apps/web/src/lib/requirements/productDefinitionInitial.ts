@@ -34,6 +34,8 @@ export function buildInitialRequirementsStateForNewProject(input: Readonly<{
   readonly name: string;
   readonly description: string | null;
   readonly projectFromChatDraft?: ProjectFromChatDraftPayloadV1 | null;
+  readonly referenceSelection?: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionV1 | null;
+  readonly referenceSelectionSummary?: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionSummaryV1 | null;
   readonly nowIso?: string;
 }>): RequirementsStateJson {
   const now = input.nowIso ?? new Date().toISOString();
@@ -58,6 +60,12 @@ export function buildInitialRequirementsStateForNewProject(input: Readonly<{
     if (Array.isArray(draft.featureCandidates) && draft.featureCandidates.length) {
       patch.priorityFeatures = draft.featureCandidates.map((s) => String(s)).join("\n");
     }
+  }
+  if (input.referenceSelection) {
+    patch.referenceSelectionV1 = input.referenceSelection;
+  }
+  if (input.referenceSelectionSummary) {
+    patch.referenceSelectionSummaryV1 = input.referenceSelectionSummary;
   }
   return mergeRequirementsStateJson({}, patch);
 }

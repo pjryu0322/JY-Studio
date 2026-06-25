@@ -17,6 +17,10 @@ import {
 } from "@/lib/ui/workspaceMode";
 import { APP_FLOW_LAST_PROJECT_KEY, appFlowStepHref } from "@/lib/workflow/flow-state";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
+import {
+  ProjectReferencePicker,
+  type ProjectReferencePickerSelection,
+} from "@/components/project-create/ProjectReferencePicker";
 
 function ProjectCardPreviewIcon() {
   return (
@@ -230,6 +234,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [referenceSelection, setReferenceSelection] = useState<ProjectReferencePickerSelection | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [editDescTarget, setEditDescTarget] = useState<{ id: string; name: string } | null>(null);
   const [editDescValue, setEditDescValue] = useState("");
@@ -321,6 +326,9 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
           repoUrl: null,
           defaultBranch,
           includeDefaultAiPlanner: readAiFacilitatorAutoJoin(),
+          ...(referenceSelection
+            ? { referenceSnapshotIds: [referenceSelection.referenceSnapshotId] }
+            : {}),
         }),
       });
 
@@ -336,6 +344,7 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
 
       setName("");
       setDescription("");
+      setReferenceSelection(null);
       // 전체 목록 재조회 대신, 즉시 리스트에 반영(체감 속도 향상) + 캐시 갱신
       setProjects((cur) => {
         const next: Project[] = [
@@ -568,6 +577,12 @@ export function WorkspaceHomeProjectsView(props: { readonly embed?: boolean } = 
               </Button>
             </div>
           </div>
+
+          <ProjectReferencePicker
+            disabled={submitting}
+            selection={referenceSelection}
+            onSelectionChange={setReferenceSelection}
+          />
 
           <div className="relative">
             <textarea

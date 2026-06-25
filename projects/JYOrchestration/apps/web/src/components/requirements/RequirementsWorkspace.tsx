@@ -48,6 +48,14 @@ import {
 import { ideationChecklistComplete } from "@/lib/requirements/ideationChecklist";
 import { filterIdeationConversationMessages, isServiceFlowWorkshopMessage } from "@/lib/requirements/serviceFlowConversation";
 import {
+  buildReferencePlanningWelcomeBody,
+  buildReferencePlanningWelcomeMessageMeta,
+  REFERENCE_PLANNING_CHIP_CLEAR,
+  REFERENCE_PLANNING_CHIP_CONTINUE,
+  REFERENCE_PLANNING_CHIP_VIEW,
+  REFERENCE_PLANNING_WELCOME_INTERNAL_TYPE,
+} from "@/lib/project-knowledge/projectKnowledgeReferencePlanningWelcome";
+import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
   normalizeIdeationBootstrapDisplayMessage,
 } from "@/lib/requirements/ideationInterviewBootstrap";
@@ -1491,6 +1499,36 @@ export function RequirementsWorkspace({
 
     if (!forceRegeneratePlanningSummary && onboardingAppliedKey === onboardingKey) return;
     const existing = room.requirementsConversation.messages;
+
+    const refSummary = workspaceState.referenceSelectionSummaryV1;
+    if (
+      refSummary &&
+      !workspaceState.referenceSelectionWelcomeShownAt &&
+      !existing.some((m) => m.meta?.internalType === REFERENCE_PLANNING_WELCOME_INTERNAL_TYPE)
+    ) {
+      void (async () => {
+        const nowIso = new Date().toISOString();
+        const meta = buildReferencePlanningWelcomeMessageMeta(refSummary);
+        const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
+          newChatMessage({
+            role: "ai",
+            body: buildReferencePlanningWelcomeBody(refSummary),
+            speakerType: "AI",
+            speakerId: VIRTUAL_AI_PLANNER_ID,
+            speakerName: IDEATION_AI_DISPLAY_NAME,
+            messageType: "NOTICE",
+            meta,
+          }),
+        ]);
+        await persistRemote({
+          requirementsConversationJson: nextRoom,
+          requirementsStateJson: mergeRequirementsStateJson(workspaceState, {
+            referenceSelectionWelcomeShownAt: nowIso,
+          }),
+        });
+      })();
+      return;
+    }
 
     if (!forceRegeneratePlanningSummary) {
       if (hasPreProjectPlanningSummaryMessage(existing)) {
@@ -3418,6 +3456,45 @@ export function RequirementsWorkspace({
   const handleFastPlanDraftSuggestionPick = useCallback(
     (label: string) => {
       const trimmed = normalizeFastPlanDraftChipLabel(label);
+      if (trimmed === REFERENCE_PLANNING_CHIP_CLEAR) {
+        const pid = resolvedProjectId.trim();
+        if (!pid) return;
+        void (async () => {
+          try {
+            const res = await fetch(`/api/projects/${pid}/reference-selection`, {
+              method: "DELETE",
+              credentials: "include",
+            });
+            const json = (await res.json()) as { success?: boolean; message?: string };
+            if (!res.ok || !json.success) {
+              showErrorToast(json.message ?? "참조 해제에 실패했습니다.");
+              return;
+            }
+            await persistStateJsonOnly({
+              referenceSelectionV1: null,
+              referenceSelectionSummaryV1: null,
+              referenceSelectionWelcomeShownAt: null,
+            });
+            showSuccessToast("참조 프로젝트 선택을 해제했습니다.");
+          } catch {
+            showErrorToast("참조 해제에 실패했습니다.");
+          }
+        })();
+        return;
+      }
+      if (trimmed === REFERENCE_PLANNING_CHIP_VIEW) {
+        const summary = stateJsonRef.current.referenceSelectionSummaryV1;
+        if (summary) {
+          showSuccessToast(
+            `${summary.sourceProjectTitle} · ${summary.snapshotTitle} (Actor ${summary.actorCount} · Flow ${summary.serviceFlowCount} · Feature ${summary.featureCount})`,
+          );
+        }
+        return;
+      }
+      if (trimmed === REFERENCE_PLANNING_CHIP_CONTINUE) {
+        insertComposerPrompt(REFERENCE_PLANNING_CHIP_CONTINUE);
+        return;
+      }
       if (
         trimmed === IMPLEMENTATION_STAGE_NAVIGATE_LABEL ||
         trimmed === IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL

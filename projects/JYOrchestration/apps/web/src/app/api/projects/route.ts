@@ -5,10 +5,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUserIdFromRequest } from "@/lib/auth/requestUser";
 import { projectPrototypeCardMeta } from "@/lib/project/projectPrototypeCardMeta";
-import {
-  createProject,
+import { createProject,
   listProjectsOrderedByCreatedDesc,
 } from "@/lib/service/projectService";
+import {
+  assertMvpReferenceSnapshotIdCount,
+  normalizeReferenceSnapshotIds,
+  ReferenceSnapshotSelectionValidationError,
+  validateReferenceSnapshotSelectionForUser,
+} from "@/lib/project-knowledge/projectKnowledgeReferenceSelectionValidation";
 
 type ApiSuccess<T> = {
   success: true;
@@ -87,6 +92,34 @@ export async function POST(request: NextRequest) {
       return fail("프로젝트명은 필수입니다.", 400);
     }
 
+    const referenceSnapshotIds = normalizeReferenceSnapshotIds(payload.referenceSnapshotIds);
+    try {
+      assertMvpReferenceSnapshotIdCount(referenceSnapshotIds);
+    } catch (error) {
+      if (error instanceof ReferenceSnapshotSelectionValidationError) {
+        return fail(error.message, error.status);
+      }
+      throw error;
+    }
+
+    let referenceSelection = null;
+    let referenceSelectionSummary = null;
+    if (referenceSnapshotIds.length > 0) {
+      try {
+        const validated = await validateReferenceSnapshotSelectionForUser({
+          userId,
+          referenceSnapshotIds,
+        });
+        referenceSelection = validated.selection;
+        referenceSelectionSummary = validated.summary;
+      } catch (error) {
+        if (error instanceof ReferenceSnapshotSelectionValidationError) {
+          return fail(error.message, error.status);
+        }
+        throw error;
+      }
+    }
+
     const project = await createProject({
       name,
       description,
@@ -95,6 +128,8 @@ export async function POST(request: NextRequest) {
       defaultBranch,
       ownerUserId: userId,
       includeDefaultAiPlanner,
+      referenceSelection,
+      referenceSelectionSummary,
     });
 
     return ok("프로젝트가 생성되었습니다.", project, 201);
