@@ -722,6 +722,8 @@ model ProjectKnowledgeGraphRevision {
   title          String
   summary        String?  @db.Text
   graphSnapshot  Json
+  /// REPLAY | TRACE | APPROVAL | REFERENCE_CANDIDATE | REFERENCE_PACKAGE
+  snapshotPurpose String @default("REPLAY")
   nodeCount      Int
   edgeCount      Int
 
@@ -729,6 +731,7 @@ model ProjectKnowledgeGraphRevision {
 
   @@unique([projectId, revisionNumber])
   @@index([projectId, createdAt(sort: Desc)])
+  @@index([projectId, snapshotPurpose, revisionNumber(sort: Desc)])
   @@map("project_knowledge_graph_revisions")
 }
 

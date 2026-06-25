@@ -1,4 +1,11 @@
-import type { GraphSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
+import type { GraphSnapshotPurpose, KnowledgeNodeLifecycle, KnowledgeNodeReusableAs } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
+
+export type KnowledgeGraphRevisionSnapshotNodeReference = Readonly<{
+  readonly lifecycle: KnowledgeNodeLifecycle;
+  readonly reusable: boolean;
+  readonly reusableAs: readonly KnowledgeNodeReusableAs[];
+  readonly safeForReference: boolean;
+}>;
 
 export type KnowledgeGraphRevisionSnapshotNode = Readonly<{
   readonly entityKey: string;
@@ -6,6 +13,7 @@ export type KnowledgeGraphRevisionSnapshotNode = Readonly<{
   readonly title: string;
   readonly summary: string | null;
   readonly lifecycleStatus?: string;
+  readonly reference?: KnowledgeGraphRevisionSnapshotNodeReference;
 }>;
 
 export type KnowledgeGraphRevisionSnapshotEdge = Readonly<{

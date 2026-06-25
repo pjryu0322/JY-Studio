@@ -3,12 +3,17 @@ import {
   loadLatestKnowledgeGraphRevision,
   loadLatestReferenceKnowledgeGraphRevision,
 } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
+import { ensureProjectReferenceMetadataReady } from "@/lib/project-knowledge/projectKnowledgeReferenceBackfillService";
 import { normalizeGraphSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeReferenceNormalize";
 import {
   computeReferenceEligibility,
   type ReferenceEligibilityNodeMetrics,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceEligibilityService";
 import { toReferenceEligibilityNodeInput } from "@/lib/project-knowledge/projectKnowledgeReferenceNodeMeta";
+import {
+  buildReusableAssetsFromReferenceSnapshot,
+  emptyReferencePackageReusableAssets,
+} from "@/lib/project-knowledge/projectKnowledgeReferenceSnapshotAssets";
 import type {
   KnowledgeNodeReusableAs,
   ReferenceEligibility,
@@ -32,6 +37,7 @@ export type ProjectReferenceAssessment = Readonly<{
     readonly nodeType: string;
     readonly reusableAs: readonly KnowledgeNodeReusableAs[];
   }>;
+  readonly snapshotReusableAssets?: ReferencePackageCandidate["reusableAssets"];
   readonly exclusions: readonly string[];
 }>;
 
@@ -68,33 +74,6 @@ function graphNodeToReferenceInput(node: {
     lifecycleStatus: node.lifecycleStatus,
     explainability: node.explainability as never,
   };
-}
-
-function fallbackReusableAsFromNodeType(nodeType: string): readonly KnowledgeNodeReusableAs[] {
-  const t = nodeType.trim();
-  if (/actor/i.test(t)) return ["ACTOR"];
-  if (/flow/i.test(t)) return ["SERVICE_FLOW"];
-  if (/feature/i.test(t)) return ["FEATURE"];
-  if (/decision/i.test(t)) return ["DECISION"];
-  return [];
-}
-
-function classifyReusableNodeAssets(
-  node: ProjectReferenceAssessment["reusableNodes"][number],
-  buckets: {
-    actors: string[];
-    serviceFlows: string[];
-    features: string[];
-    decisions: string[];
-  },
-): void {
-  const reusableAs =
-    node.reusableAs.length > 0 ? node.reusableAs : fallbackReusableAsFromNodeType(node.nodeType);
-
-  if (reusableAs.includes("ACTOR")) buckets.actors.push(node.title);
-  if (reusableAs.includes("SERVICE_FLOW")) buckets.serviceFlows.push(node.title);
-  if (reusableAs.includes("FEATURE")) buckets.features.push(node.title);
-  if (reusableAs.includes("DECISION")) buckets.decisions.push(node.title);
 }
 
 export async function buildProjectReferenceAssessment(
@@ -161,6 +140,15 @@ export async function buildProjectReferenceAssessment(
     });
   }
 
+  const snapshotReusableAssets =
+    latestReferenceDetail &&
+    (eligibility.level === "SNAPSHOT_READY" || eligibility.level === "VERIFIED")
+      ? buildReusableAssetsFromReferenceSnapshot(
+          latestReferenceDetail.graphSnapshot,
+          eligibility.counts.reusableGraphNodes,
+        )
+      : undefined;
+
   return {
     projectId: pid,
     graphNodeCount: graph.nodes.length,
@@ -169,6 +157,7 @@ export async function buildProjectReferenceAssessment(
     latestRevision,
     eligibility,
     reusableNodes,
+    snapshotReusableAssets,
     exclusions: [...new Set(exclusions)].slice(0, 8),
   };
 }
@@ -179,15 +168,12 @@ export async function getProjectReferenceEligibility(projectId: string): Promise
 }
 
 export async function buildReferencePackageCandidate(projectId: string): Promise<ReferencePackageCandidate> {
-  const assessment = await buildProjectReferenceAssessment(projectId);
-  const { eligibility, latestReferenceRevision, reusableNodes, exclusions } = assessment;
+  const pid = String(projectId ?? "").trim();
+  await ensureProjectReferenceMetadataReady(pid);
 
-  const buckets = { actors: [] as string[], serviceFlows: [] as string[], features: [] as string[], decisions: [] as string[] };
-  for (const n of reusableNodes) {
-    classifyReusableNodeAssets(n, buckets);
-  }
+  const assessment = await buildProjectReferenceAssessment(pid);
+  const { eligibility, latestReferenceRevision, exclusions } = assessment;
 
-  const unique = (items: string[]) => [...new Set(items)].slice(0, 20);
   const readiness =
     eligibility.level === "VERIFIED"
       ? "VERIFIED"
@@ -197,21 +183,26 @@ export async function buildReferencePackageCandidate(projectId: string): Promise
           ? "PARTIAL"
           : "NOT_READY";
 
+  const hasSnapshotAssets =
+    latestReferenceRevision &&
+    (eligibility.level === "SNAPSHOT_READY" || eligibility.level === "VERIFIED");
+
+  const reusableAssets = hasSnapshotAssets
+    ? buildReusableAssetsFromReferenceSnapshot(
+        latestReferenceRevision.graphSnapshot,
+        eligibility.counts.reusableGraphNodes,
+      )
+    : emptyReferencePackageReusableAssets("참조 저장본 생성 후 패키지 후보를 만들 수 있습니다.");
+
   return {
     projectId: assessment.projectId,
     ...(latestReferenceRevision ? { sourceRevisionId: latestReferenceRevision.id } : {}),
     readiness,
     summary:
       readiness === "READY" || readiness === "VERIFIED"
-        ? "승인된 구조 요약을 참조 패키지 후보로 정리했습니다."
+        ? "승인된 참조 저장본을 기준으로 패키지 후보를 정리했습니다."
         : "참조 패키지 후보로 사용하기에 구조가 아직 부족합니다.",
-    reusableAssets: {
-      actors: unique(buckets.actors),
-      serviceFlows: unique(buckets.serviceFlows),
-      features: unique(buckets.features),
-      graphSummary: `항목 ${eligibility.counts.reusableGraphNodes}개 · 연결 가능 구조`,
-      decisions: unique(buckets.decisions),
-    },
+    reusableAssets,
     exclusions,
     blockingIssues: [...eligibility.blockingIssues],
   };

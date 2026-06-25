@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { backfillKnowledgeGraphRevisionSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
 import {
   mergeGraphNodeMetadataWithReference,
   parseProjectGraphNodeReferenceMetadata,
@@ -37,6 +38,23 @@ export async function backfillProjectGraphNodeReferenceMetadata(
     },
   });
 
+  const candidateIds = [
+    ...new Set(
+      nodes
+        .map((n) => readMetaString(n.metadata, "structureCandidateId"))
+        .filter(Boolean),
+    ),
+  ];
+
+  const candidates =
+    candidateIds.length === 0
+      ? []
+      : await prisma.projectStructureCandidate.findMany({
+          where: { projectId: pid, id: { in: candidateIds } },
+          select: { id: true, lifecycleStatus: true },
+        });
+  const lifecycleByCandidateId = new Map(candidates.map((c) => [c.id, c.lifecycleStatus]));
+
   let updated = 0;
   for (const node of nodes) {
     if (parseProjectGraphNodeReferenceMetadata(node.metadata)) continue;
@@ -44,11 +62,7 @@ export async function backfillProjectGraphNodeReferenceMetadata(
     const structureCandidateId = readMetaString(node.metadata, "structureCandidateId");
     let lifecycleStatus: string | undefined;
     if (structureCandidateId) {
-      const candidate = await prisma.projectStructureCandidate.findFirst({
-        where: { projectId: pid, id: structureCandidateId },
-        select: { lifecycleStatus: true },
-      });
-      if (candidate) lifecycleStatus = candidate.lifecycleStatus;
+      lifecycleStatus = lifecycleByCandidateId.get(structureCandidateId);
     } else if (String(node.projectionKey ?? "").startsWith("approved-candidate:")) {
       lifecycleStatus = "APPROVED";
     }
@@ -71,4 +85,32 @@ export async function backfillProjectGraphNodeReferenceMetadata(
   }
 
   return { scanned: nodes.length, updated };
+}
+
+export async function ensureProjectReferenceMetadataReady(projectId: string): Promise<void> {
+  const pid = String(projectId ?? "").trim();
+  if (!pid) return;
+
+  const sample = await prisma.projectGraphNode.findMany({
+    where: { projectId: pid },
+    take: 40,
+    select: { metadata: true },
+  });
+
+  const needsNodeBackfill = sample.some((n) => !parseProjectGraphNodeReferenceMetadata(n.metadata));
+  if (needsNodeBackfill) {
+    await backfillProjectGraphNodeReferenceMetadata(pid, { limitNodes: 500 });
+  }
+
+  await backfillKnowledgeGraphRevisionSnapshotPurpose(pid, { limit: 100 });
+}
+
+export async function runProjectReferenceBackfill(projectId: string): Promise<{
+  readonly graphNodes: { scanned: number; updated: number };
+  readonly revisions: { scanned: number; updated: number };
+}> {
+  const pid = String(projectId ?? "").trim();
+  const graphNodes = await backfillProjectGraphNodeReferenceMetadata(pid, { limitNodes: 500 });
+  const revisions = await backfillKnowledgeGraphRevisionSnapshotPurpose(pid, { limit: 200 });
+  return { graphNodes, revisions };
 }

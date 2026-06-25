@@ -10,6 +10,8 @@ import type {
   KnowledgeGraphRevisionMilestone,
 } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionTypes";
 
+const REFERENCE_SNAPSHOT_PURPOSES = ["REFERENCE_CANDIDATE", "REFERENCE_PACKAGE"] as const;
+
 const MILESTONE_COPY: Record<
   KnowledgeGraphRevisionMilestone,
   Readonly<{ title: string; summary: string }>
@@ -80,6 +82,7 @@ export async function createKnowledgeGraphRevision(
       title,
       summary,
       graphSnapshot: snapshot as object,
+      snapshotPurpose: purpose,
       nodeCount,
       edgeCount,
     },
@@ -146,24 +149,18 @@ export async function loadLatestKnowledgeGraphRevision(
   return loadKnowledgeGraphRevision(projectId, latest.id);
 }
 
-/** Scan recent revisions (desc) for REFERENCE_CANDIDATE / REFERENCE_PACKAGE purpose only. */
-const LATEST_REFERENCE_REVISION_SCAN_LIMIT = 100;
-
-function isReferencePurposeSnapshot(raw: unknown): boolean {
-  const purpose = normalizeGraphSnapshotPurpose(parseKnowledgeGraphRevisionSnapshot(raw).purpose);
-  return purpose === "REFERENCE_CANDIDATE" || purpose === "REFERENCE_PACKAGE";
-}
-
 export async function getLatestReferenceKnowledgeGraphRevision(
   projectId: string,
 ): Promise<KnowledgeGraphRevisionListItem | null> {
   const pid = String(projectId ?? "").trim();
   if (!pid) return null;
 
-  const rows = await prisma.projectKnowledgeGraphRevision.findMany({
-    where: { projectId: pid },
+  const row = await prisma.projectKnowledgeGraphRevision.findFirst({
+    where: {
+      projectId: pid,
+      snapshotPurpose: { in: [...REFERENCE_SNAPSHOT_PURPOSES] },
+    },
     orderBy: { revisionNumber: "desc" },
-    take: LATEST_REFERENCE_REVISION_SCAN_LIMIT,
     select: {
       id: true,
       revisionNumber: true,
@@ -172,15 +169,10 @@ export async function getLatestReferenceKnowledgeGraphRevision(
       nodeCount: true,
       edgeCount: true,
       createdAt: true,
-      graphSnapshot: true,
     },
   });
 
-  for (const row of rows) {
-    if (!isReferencePurposeSnapshot(row.graphSnapshot)) continue;
-    return toListItem(row);
-  }
-  return null;
+  return row ? toListItem(row) : null;
 }
 
 export async function loadLatestReferenceKnowledgeGraphRevision(
@@ -208,6 +200,36 @@ export async function loadKnowledgeGraphRevision(
     ...toListItem(row),
     graphSnapshot: parseKnowledgeGraphRevisionSnapshot(row.graphSnapshot),
   };
+}
+
+export async function backfillKnowledgeGraphRevisionSnapshotPurpose(
+  projectId?: string,
+  options?: Readonly<{ readonly limit?: number }>,
+): Promise<{ readonly scanned: number; readonly updated: number }> {
+  const limit = Math.min(500, Math.max(1, options?.limit ?? 200));
+  const pid = projectId?.trim();
+
+  const rows = await prisma.projectKnowledgeGraphRevision.findMany({
+    where: pid ? { projectId: pid } : undefined,
+    orderBy: { revisionNumber: "desc" },
+    take: limit,
+    select: { id: true, graphSnapshot: true, snapshotPurpose: true },
+  });
+
+  let updated = 0;
+  for (const row of rows) {
+    const fromJson = normalizeGraphSnapshotPurpose(
+      parseKnowledgeGraphRevisionSnapshot(row.graphSnapshot).purpose,
+    );
+    if (row.snapshotPurpose === fromJson) continue;
+    await prisma.projectKnowledgeGraphRevision.update({
+      where: { id: row.id },
+      data: { snapshotPurpose: fromJson },
+    });
+    updated += 1;
+  }
+
+  return { scanned: rows.length, updated };
 }
 
 export async function recordKnowledgeGraphRevisionForMilestone(

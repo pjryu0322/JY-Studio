@@ -1,11 +1,60 @@
 import { getProjectGraphSnapshot } from "@/lib/project-graph/projectGraphQuery";
 import { normalizeGraphSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeReferenceNormalize";
+import {
+  buildFallbackProjectGraphNodeReferenceMetadata,
+  parseProjectGraphNodeReferenceMetadata,
+} from "@/lib/project-knowledge/projectKnowledgeReferenceMetadata";
 import type { GraphSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
 import type {
   KnowledgeGraphRevisionSnapshot,
   KnowledgeGraphRevisionSnapshotEdge,
   KnowledgeGraphRevisionSnapshotNode,
+  KnowledgeGraphRevisionSnapshotNodeReference,
 } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionTypes";
+
+function snapshotReferenceFromGraphNode(node: {
+  nodeType: string;
+  title: string;
+  summary: string | null;
+  metadata: unknown;
+  projectionKey: string;
+  sourceEventId?: string | null;
+}): KnowledgeGraphRevisionSnapshotNodeReference | undefined {
+  const stored = parseProjectGraphNodeReferenceMetadata(node.metadata);
+  const meta =
+    stored ??
+    buildFallbackProjectGraphNodeReferenceMetadata({
+      nodeType: node.nodeType,
+      title: node.title,
+      summary: node.summary,
+      projectionKey: node.projectionKey,
+      sourceEventId: node.sourceEventId,
+      structureCandidateId: null,
+    });
+
+  return {
+    lifecycle: meta.lifecycle,
+    reusable: meta.reusable,
+    reusableAs: [...meta.reusableAs],
+    safeForReference: meta.sensitivity.safeForReference,
+  };
+}
+
+function parseSnapshotNodeReference(raw: unknown): KnowledgeGraphRevisionSnapshotNodeReference | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const lifecycle = String(r.lifecycle ?? "").trim().toUpperCase();
+  if (!lifecycle) return undefined;
+  const reusableAsRaw = Array.isArray(r.reusableAs) ? r.reusableAs : [];
+  const reusableAs = reusableAsRaw.map((x) => String(x).trim().toUpperCase()) as KnowledgeGraphRevisionSnapshotNodeReference["reusableAs"];
+
+  return {
+    lifecycle: lifecycle as KnowledgeGraphRevisionSnapshotNodeReference["lifecycle"],
+    reusable: Boolean(r.reusable),
+    reusableAs,
+    safeForReference: Boolean(r.safeForReference),
+  };
+}
 
 export async function captureKnowledgeGraphRevisionSnapshot(
   projectId: string,
@@ -23,6 +72,7 @@ export async function captureKnowledgeGraphRevisionSnapshot(
       nodeType: node.nodeType,
       title: node.title,
       summary: node.summary ? String(node.summary) : null,
+      reference: snapshotReferenceFromGraphNode(node),
     });
   }
 
@@ -56,12 +106,14 @@ export function parseKnowledgeGraphRevisionSnapshot(raw: unknown): KnowledgeGrap
     const n = item as Record<string, unknown>;
     const entityKey = String(n.entityKey ?? "").trim();
     if (!entityKey) continue;
+    const reference = parseSnapshotNodeReference(n.reference);
     nodes.push({
       entityKey,
       nodeType: String(n.nodeType ?? ""),
       title: String(n.title ?? ""),
       summary: n.summary == null ? null : String(n.summary),
       lifecycleStatus: n.lifecycleStatus == null ? undefined : String(n.lifecycleStatus),
+      ...(reference ? { reference } : {}),
     });
   }
 
