@@ -21,6 +21,7 @@ export async function runSpecialistGroupTurnOpenAI(input: {
   readonly allowedOwners: Set<string>;
   /** phase&lt;3 이면 [대상 슬롯]에서 dependsOn 생략 */
   readonly slotExpansionPhase?: SlotExpansionPhase;
+  readonly referencePromptContextBlock?: string;
 }): Promise<
   Readonly<{
     ok: boolean;
@@ -79,6 +80,7 @@ export async function runSpecialistGroupTurnOpenAI(input: {
 출력: { "updatedSlots": [ { "slotKey", "status": "candidate", "value", "confidence", "ownerAgent" } ] }`;
 
   const user = `[프로젝트] ${input.projectName.trim()}
+${(input.referencePromptContextBlock ?? "").trim().slice(0, 6000)}
 [대화 발췌] ${input.dialogueExcerpt.trim().slice(0, 8000)}
 [사용자] ${input.userMessage.trim()}
 [대상 슬롯] ${targetCatalog}

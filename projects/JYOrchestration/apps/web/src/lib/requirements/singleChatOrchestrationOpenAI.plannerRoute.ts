@@ -44,6 +44,7 @@ export async function runPlannerRouteTurnOpenAI(input: {
   readonly priorScreenHandoff?: string;
   /** 슬롯 정의 JSON 범위·dependsOn 포함 여부. 미지정 시 3(전체). */
   readonly slotExpansionPhase?: SlotExpansionPhase;
+  readonly referencePromptContextBlock?: string;
 }): Promise<PlannerRouteTurnResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) return { ok: false, code: "NO_KEY", message: "OPENAI_API_KEY가 서버에 설정되어 있지 않습니다." };
@@ -69,6 +70,7 @@ export async function runPlannerRouteTurnOpenAI(input: {
   const handoffBlock = (input.priorScreenHandoff ?? "").trim()
     ? `\n[이전 화면 맥락]\n${(input.priorScreenHandoff ?? "").trim().slice(0, 3000)}`
     : "";
+  const referenceBlock = (input.referencePromptContextBlock ?? "").trim().slice(0, 6000);
 
   const system = `${workspaceAiMemberSystemPrefix("ideation")}${agentInsert}
 당신은 SingleChat 내부 **planner 라우터**입니다. 사용자에게 직접 말하지 않습니다. JSON만 출력.
@@ -107,7 +109,7 @@ export async function runPlannerRouteTurnOpenAI(input: {
 }`;
 
   const user = `[프로젝트] ${input.projectName.trim()} / ${input.projectDescription.trim().slice(0, 600)}
-유형: ${String(input.projectType ?? "").trim() || "—"}${handoffBlock}
+유형: ${String(input.projectType ?? "").trim() || "—"}${handoffBlock}${referenceBlock ? `\n${referenceBlock}` : ""}
 [활성 역할] ${rolesLine}
 [슬롯 정의] ${catalogJson}
 [현재 슬롯] ${slotsJson}

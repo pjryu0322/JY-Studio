@@ -9,7 +9,7 @@ import {
   readReferenceSelectionSummaryFromState,
   shouldSendReferencePlanningContinueToAi,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
-import { mergeReferencePlanningContextIntoOrchestrationProjectDescription } from "@/lib/requirements/singleChatOrchestrationOpenAI";
+import { resolveReferencePromptContextBlockForOrchestration } from "@/lib/requirements/singleChatOrchestrationOpenAI";
 
 describe("reference planning chip helpers", () => {
   it("builds DELETE reference-selection API path", () => {
@@ -59,15 +59,16 @@ describe("reference planning chip helpers", () => {
   });
 });
 
-describe("mergeReferencePlanningContextIntoOrchestrationProjectDescription", () => {
-  it("appends reference block for orchestration prompts", () => {
-    const merged = mergeReferencePlanningContextIntoOrchestrationProjectDescription("새 프로젝트", "[참조 프로젝트 정보]\nActor");
-    expect(merged).toContain("새 프로젝트");
-    expect(merged).toContain("[참조 프로젝트 정보]");
+describe("resolveReferencePromptContextBlockForOrchestration", () => {
+  it("wraps reference context as separate section without touching projectDescription", () => {
+    const block = resolveReferencePromptContextBlockForOrchestration({
+      referencePromptContextBlock: "[참조 프로젝트 컨텍스트]\nActor",
+    });
+    expect(block).toContain("[reference_context]");
+    expect(block).toContain("Actor");
   });
 
-  it("returns base description when reference block is empty", () => {
-    expect(mergeReferencePlanningContextIntoOrchestrationProjectDescription("desc", "")).toBe("desc");
-    expect(mergeReferencePlanningContextIntoOrchestrationProjectDescription("desc", undefined)).toBe("desc");
+  it("returns empty when no reference block", () => {
+    expect(resolveReferencePromptContextBlockForOrchestration({})).toBe("");
   });
 });

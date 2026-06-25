@@ -231,6 +231,12 @@ export type RequirementsPromptTimelineEntry = {
   contextBlocks?: RequirementsPromptTimelineContextBlocks;
   domainContextInjected?: readonly string[];
   domainContextReason?: string;
+  referenceContextInjected?: boolean;
+  referenceContextMode?: "SUMMARY" | "RELEVANT_NODES" | "SUMMARY_AND_RELEVANT_NODES";
+  referenceContextSelectedNodeCount?: number;
+  referenceContextCandidateNodeCount?: number;
+  referenceContextSourceSnapshotCount?: number;
+  referenceContextSelectionReason?: string;
   roomId?: string;
   /** 사용자 표시 절차 그룹(예: 서비스 기획) */
   stageGroup?: string;

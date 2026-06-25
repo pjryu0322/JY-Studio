@@ -19,6 +19,7 @@ export async function runPlannerMergeTurnOpenAI(input: {
   readonly plannerStable: boolean;
   readonly participatingAgentsPromptBlock: string;
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly referencePromptContextBlock?: string;
 }): Promise<PlannerMergeTurnResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) return { ok: false, code: "NO_KEY", message: "NO_KEY" };
@@ -56,6 +57,7 @@ ${stableLine}
 }`;
 
   const user = `[프로젝트] ${input.projectName}
+${(input.referencePromptContextBlock ?? "").trim().slice(0, 6000)}
 [사용자] ${input.userMessage.trim()}
 [발췌] ${input.dialogueExcerpt.trim().slice(0, 6000)}
 [전문가 요약(내부)] ${input.specialistDigest.slice(0, 4000) || "(없음)"}

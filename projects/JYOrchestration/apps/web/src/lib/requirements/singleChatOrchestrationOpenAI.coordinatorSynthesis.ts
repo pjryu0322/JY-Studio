@@ -24,6 +24,7 @@ export type CoordinatorSynthesisInput = Readonly<{
   ownerPersistenceReason: string | null;
   quickActionLabel: string | null;
   quickActionKind: SingleChatQuickActionKind | null;
+  referencePromptContextBlock?: string;
   /** repeat-guard / proposal-first 재시도 시 추가 지시 */
   synthesisRetryHint?: string | null;
 }>;
@@ -112,6 +113,7 @@ ${COORDINATOR_SYNTHESIS_RULES}`;
 
   const user = `[프로젝트] ${input.projectName.trim()}
 [프로젝트 설명] ${input.projectDescription.trim().slice(0, 900)}
+${(input.referencePromptContextBlock ?? "").trim().slice(0, 6000)}
 [최근 사용자 발화] ${input.userMessage.trim().slice(0, 1600)}
 ${quickBlock ? `${quickBlock}\n` : ""}${retryBlock}[대화 발췌] ${input.dialogueExcerpt.trim().slice(0, 7000)}
 [내부 specialist 요약 — 사용자에게 그대로 노출·질문 문장으로 바꾸지 말 것]

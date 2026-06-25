@@ -26,6 +26,7 @@ import { postOpenAiChatCompletion } from "@/lib/ai/openAiChatCompletions";
 import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import { safeJsonParse } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
+import { wrapReferenceContextForOrchestrationLlm } from "@/lib/project-knowledge/projectKnowledgeReferencePromptContext";
 import { runProposalAcceptedNextStageOpenAI, buildProposalAcceptedNextStageFallback } from "@/lib/requirements/singleChatProposalAcceptedNextStage";
 import {
   hashProposalResponse,
@@ -268,6 +269,7 @@ ${input.baseSlotCatalogJson.slice(0, 12000)}
   };
 }
 
+/** @deprecated Do not merge reference context into projectDescription; use referencePromptContextBlock. */
 export function mergeReferencePlanningContextIntoOrchestrationProjectDescription(
   projectDescription: string,
   referencePlanningContextBlock?: string | null,
@@ -276,6 +278,16 @@ export function mergeReferencePlanningContextIntoOrchestrationProjectDescription
   const base = String(projectDescription ?? "").trim();
   if (!referenceBlock) return base;
   return `${base}\n\n${referenceBlock}`.trim().slice(0, 12_000);
+}
+
+export function resolveReferencePromptContextBlockForOrchestration(input: Readonly<{
+  readonly referencePromptContextBlock?: string;
+  readonly referencePlanningContextBlock?: string;
+}>): string {
+  const raw = String(input.referencePromptContextBlock ?? input.referencePlanningContextBlock ?? "").trim();
+  if (!raw) return "";
+  if (raw.startsWith("[reference_context]")) return raw.slice(0, 6200);
+  return wrapReferenceContextForOrchestrationLlm(raw);
 }
 
 export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
@@ -293,7 +305,9 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   readonly priorScreenHandoff?: string;
   readonly orchestrationWakeupReason?: string;
   readonly orchestrationLazyInit?: boolean;
-  /** 아이디어 구체화 참조 스냅샷 컨텍스트(6000자 이내) */
+  /** Reference Snapshot prompt section ([reference_context], 6000자 이내) */
+  readonly referencePromptContextBlock?: string;
+  /** @deprecated alias of referencePromptContextBlock */
   readonly referencePlanningContextBlock?: string;
   /** 인터뷰/오케스트레이션 QuickAction 칩(추천안 적용 등) */
   readonly quickActionLabel?: string | null;
@@ -319,14 +333,11 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
 
   const slotExpansionPhase = computeSlotExpansionPhaseFromState(input.baseState, input.definitions);
 
-  const projectDescriptionForOrchestration = mergeReferencePlanningContextIntoOrchestrationProjectDescription(
-    input.projectDescription,
-    input.referencePlanningContextBlock,
-  );
-  const orchestrationLlmInput = { ...input, projectDescription: projectDescriptionForOrchestration };
+  const referencePromptContextBlock = resolveReferencePromptContextBlockForOrchestration(input);
 
   const route = await runPlannerRouteTurnOpenAI({
-    ...orchestrationLlmInput,
+    ...input,
+    referencePromptContextBlock,
     userMessage: userMessageForLlm,
     slotExpansionPhase,
   });
@@ -414,7 +425,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     const sp = await runSpecialistGroupTurnOpenAI({
       groupLabel: "flow-analyst",
       projectName: input.projectName,
-      projectDescription: orchestrationLlmInput.projectDescription,
+      projectDescription: input.projectDescription,
+      referencePromptContextBlock,
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions,
@@ -439,7 +451,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     const sp = await runSpecialistGroupTurnOpenAI({
       groupLabel: "feature-designer",
       projectName: input.projectName,
-      projectDescription: orchestrationLlmInput.projectDescription,
+      projectDescription: input.projectDescription,
+      referencePromptContextBlock,
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions: input.definitions,
@@ -464,7 +477,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     const sp = await runSpecialistGroupTurnOpenAI({
       groupLabel: "security-reviewer",
       projectName: input.projectName,
-      projectDescription: orchestrationLlmInput.projectDescription,
+      projectDescription: input.projectDescription,
+      referencePromptContextBlock,
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions,
@@ -491,7 +505,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const plannerStable = isPlannerStableEnough(state, definitions);
   const merge = await runPlannerMergeTurnOpenAI({
     projectName: input.projectName,
-    projectDescription: orchestrationLlmInput.projectDescription,
+    projectDescription: input.projectDescription,
+    referencePromptContextBlock,
     userMessage: userMessageForLlm,
     dialogueExcerpt: input.dialogueExcerpt,
     state,
@@ -956,7 +971,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     const sp = await runSpecialistGroupTurnOpenAI({
       groupLabel: "feature-designer",
       projectName: input.projectName,
-      projectDescription: orchestrationLlmInput.projectDescription,
+      projectDescription: input.projectDescription,
+      referencePromptContextBlock,
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions,
@@ -978,7 +994,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
 
   const buildCoordinatorFallbackProposal = (): string => {
     const pn = input.projectName.trim() || "이 서비스";
-    const pd = orchestrationLlmInput.projectDescription.trim();
+    const pd = input.projectDescription.trim();
     const digest = specialistDigest.trim().slice(0, 600);
     const lines: string[] = [`${pn} 방향으로 정리해 보았습니다.`];
     if (pd) lines.push("", `이해한 배경: ${pd.slice(0, 280)}`);
@@ -1097,7 +1113,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     });
     const nextStage = await runProposalAcceptedNextStageOpenAI({
       projectName: input.projectName,
-      projectDescription: orchestrationLlmInput.projectDescription,
+      projectDescription: input.projectDescription,
+      referencePromptContextBlock,
       acceptedProposalSnapshot: snapshot,
       dialogueExcerpt: input.dialogueExcerpt,
       state,
@@ -1127,7 +1144,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   } else if (apiKey) {
     const synthesis = await runCoordinatorSynthesisTurnOpenAI({
       projectName: input.projectName,
-      projectDescription: orchestrationLlmInput.projectDescription,
+      projectDescription: input.projectDescription,
+      referencePromptContextBlock,
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       specialistDigest,
@@ -1164,7 +1182,8 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
           nextQuestionRetryReason = "repeated_question_retry";
           const retry = await runCoordinatorSynthesisTurnOpenAI({
             projectName: input.projectName,
-            projectDescription: orchestrationLlmInput.projectDescription,
+            projectDescription: input.projectDescription,
+      referencePromptContextBlock,
             userMessage: `${userMessageForLlm}\n\n[repeat-guard] 직전과 같은 의미로 다시 묻지 말고, proposal-first(예상 흐름·액터 초안)로 다른 세부를 제안하세요.`,
             synthesisRetryHint:
               "직전 출력이 반복·question-first였을 수 있음. 예상 흐름·액터 초안을 갱신하고 수정·선택만 요청.",

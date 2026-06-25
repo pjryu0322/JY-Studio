@@ -12,6 +12,7 @@ import {
   type ProjectReferenceSelectionV1,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
 import { parseRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+import { buildReferencePromptContextForProjectTurn } from "@/lib/project-knowledge/projectKnowledgeReferencePromptContext";
 
 export {
   parseProjectReferenceSelectionSummaryV1,
@@ -55,15 +56,23 @@ export async function buildProjectReferencePlanningContextFromState(
 
 export async function loadReferencePlanningContextPromptBlockForProject(
   projectId: string,
+  options?: Readonly<{
+    readonly userMessage?: string;
+    readonly projectName?: string | null;
+    readonly projectDescription?: string | null;
+  }>,
 ): Promise<string> {
-  const pid = String(projectId ?? "").trim();
-  if (!pid) return "";
-
-  const row = await prisma.project.findUnique({
-    where: { id: pid },
-    select: { requirementsStateJson: true },
+  const section = await buildReferencePromptContextForProjectTurn({
+    projectId,
+    userMessage: options?.userMessage ?? "",
+    projectName: options?.projectName,
+    projectDescription: options?.projectDescription,
   });
-  const state = parseRequirementsStateJson(row?.requirementsStateJson);
-  const context = await buildProjectReferencePlanningContextFromState(state);
-  return formatProjectReferencePlanningContextForPrompt(context);
+  return section.promptText;
 }
+
+export {
+  buildReferencePromptContextForProjectTurn,
+  referencePromptContextTimelineFields,
+  wrapReferenceContextForOrchestrationLlm,
+} from "@/lib/project-knowledge/projectKnowledgeReferencePromptContext";

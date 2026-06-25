@@ -94,7 +94,9 @@ export function buildReferencePlanningWelcomeMessageBody(
 이 정보는 복사가 아니라 새 프로젝트 기획을 돕기 위한 참고 자료로만 사용됩니다.
 액터, 서비스 흐름, 기능 구조를 참고하되 현재 프로젝트 설명에 맞게 다시 구체화하겠습니다.
 
-Actor ${summary.actorCount}개 · Flow ${summary.serviceFlowCount}개 · Feature ${summary.featureCount}개 · Graph ${summary.graphReusableNodeCount}개`;
+Actor ${summary.actorCount}개 · Flow ${summary.serviceFlowCount}개 · Feature ${summary.featureCount}개 · Graph ${summary.graphReusableNodeCount}개
+
+선택한 참조 정보는 모든 답변에 그대로 복사되지 않고, 대화 내용과 관련 있는 항목만 기획 컨텍스트로 사용됩니다.`;
 }
 
 export const REFERENCE_PLANNING_CHIP_VIEW = "참조 정보 보기";
@@ -117,5 +119,7 @@ export function buildReferenceInfoViewMessageBody(
 상태: ${statusLabel}
 구성: Actor ${summary.actorCount}개 · Flow ${summary.serviceFlowCount}개 · Feature ${summary.featureCount}개 · Graph ${summary.graphReusableNodeCount}개
 
-이 정보는 복사가 아니라 새 프로젝트 기획을 위한 참고 자료로만 사용됩니다.`;
+이 정보는 복사가 아니라 새 프로젝트 기획을 위한 참고 자료로만 사용됩니다.
+
+대화 내용과 관련 있는 항목만 기획 컨텍스트로 주입됩니다.`;
 }

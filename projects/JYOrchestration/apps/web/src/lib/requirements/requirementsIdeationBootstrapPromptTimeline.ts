@@ -232,6 +232,27 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     ...(typeof r.domainContextReason === "string" && r.domainContextReason.trim()
       ? { domainContextReason: r.domainContextReason.trim().slice(0, 120) }
       : {}),
+    ...(typeof r.referenceContextInjected === "boolean"
+      ? { referenceContextInjected: r.referenceContextInjected }
+      : {}),
+    ...(r.referenceContextMode === "SUMMARY" ||
+    r.referenceContextMode === "RELEVANT_NODES" ||
+    r.referenceContextMode === "SUMMARY_AND_RELEVANT_NODES"
+      ? { referenceContextMode: r.referenceContextMode }
+      : {}),
+    ...(typeof r.referenceContextSelectedNodeCount === "number" && Number.isFinite(r.referenceContextSelectedNodeCount)
+      ? { referenceContextSelectedNodeCount: Math.max(0, Math.floor(r.referenceContextSelectedNodeCount)) }
+      : {}),
+    ...(typeof r.referenceContextCandidateNodeCount === "number" && Number.isFinite(r.referenceContextCandidateNodeCount)
+      ? { referenceContextCandidateNodeCount: Math.max(0, Math.floor(r.referenceContextCandidateNodeCount)) }
+      : {}),
+    ...(typeof r.referenceContextSourceSnapshotCount === "number" &&
+    Number.isFinite(r.referenceContextSourceSnapshotCount)
+      ? { referenceContextSourceSnapshotCount: Math.max(0, Math.floor(r.referenceContextSourceSnapshotCount)) }
+      : {}),
+    ...(typeof r.referenceContextSelectionReason === "string" && r.referenceContextSelectionReason.trim()
+      ? { referenceContextSelectionReason: r.referenceContextSelectionReason.trim().slice(0, 200) }
+      : {}),
     ...(typeof r.roomId === "string" && r.roomId.trim() ? { roomId: r.roomId.trim().slice(0, 64) } : {}),
     ...(selectedAgents.length ? { selectedAgents } : {}),
     ...(typeof r.promptText === "string" ? { promptText: r.promptText } : {}),
@@ -826,6 +847,12 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly overlayPolicyDriftWarnings?: readonly OverlayPolicyWarning[];
   readonly harnessPromptAssemblyPreview?: HarnessPromptAssemblyPreview;
   readonly harnessPromptPreviewDiff?: HarnessPromptPreviewDiff;
+  readonly referenceContextInjected?: boolean;
+  readonly referenceContextMode?: "SUMMARY" | "RELEVANT_NODES" | "SUMMARY_AND_RELEVANT_NODES";
+  readonly referenceContextSelectedNodeCount?: number;
+  readonly referenceContextCandidateNodeCount?: number;
+  readonly referenceContextSourceSnapshotCount?: number;
+  readonly referenceContextSelectionReason?: string;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -1074,6 +1101,22 @@ export function buildSingleChatPromptTimelineEntry(params: {
       : {}),
     ...(params.harnessPromptPreviewDiff
       ? { harnessPromptPreviewDiff: params.harnessPromptPreviewDiff }
+      : {}),
+    ...(typeof params.referenceContextInjected === "boolean"
+      ? { referenceContextInjected: params.referenceContextInjected }
+      : {}),
+    ...(params.referenceContextMode ? { referenceContextMode: params.referenceContextMode } : {}),
+    ...(typeof params.referenceContextSelectedNodeCount === "number"
+      ? { referenceContextSelectedNodeCount: params.referenceContextSelectedNodeCount }
+      : {}),
+    ...(typeof params.referenceContextCandidateNodeCount === "number"
+      ? { referenceContextCandidateNodeCount: params.referenceContextCandidateNodeCount }
+      : {}),
+    ...(typeof params.referenceContextSourceSnapshotCount === "number"
+      ? { referenceContextSourceSnapshotCount: params.referenceContextSourceSnapshotCount }
+      : {}),
+    ...(params.referenceContextSelectionReason
+      ? { referenceContextSelectionReason: params.referenceContextSelectionReason.slice(0, 200) }
       : {}),
   };
 }

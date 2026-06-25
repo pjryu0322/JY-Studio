@@ -508,6 +508,7 @@ export async function runRequirementsFacilitatorOpenAI(input: {
   participatingAgentsPromptBlock?: string;
   /** Phase 6: Reference Snapshot planning context (sanitized) */
   referencePlanningContextBlock?: string;
+  referencePromptContextBlock?: string;
 }): Promise<RequirementsFacilitatorOpenAiResult> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
@@ -533,8 +534,8 @@ export async function runRequirementsFacilitatorOpenAI(input: {
   const handoffBlock = (input.priorScreenHandoff ?? "").trim()
     ? `\n\n[이전 화면에서 넘어온 맥락]\n${(input.priorScreenHandoff ?? "").trim().slice(0, 4000)}`
     : "";
-  const referenceBlock = (input.referencePlanningContextBlock ?? "").trim()
-    ? `\n\n${(input.referencePlanningContextBlock ?? "").trim().slice(0, 6000)}`
+  const referenceBlock = (input.referencePromptContextBlock ?? input.referencePlanningContextBlock ?? "").trim()
+    ? `\n${String(input.referencePromptContextBlock ?? input.referencePlanningContextBlock ?? "").trim().slice(0, 6000)}`
     : "";
 
   const agentInsert = (input.participatingAgentsPromptBlock ?? "").trim()
@@ -553,8 +554,8 @@ export async function runRequirementsFacilitatorOpenAI(input: {
 
 [프로젝트]
 - 이름: ${projectName || "(이름 없음)"}
-- 설명: ${projectDescription || "(설명 없음)"}${referenceBlock}
-
+- 설명: ${projectDescription || "(설명 없음)"}
+${referenceBlock}
 [현재 단계]
 - Requirements(요구사항)${handoffBlock}
 
@@ -754,6 +755,7 @@ export async function runRequirementsSingleChatBootstrapOpenAI(input: {
     configuredModelOverride?: string | null;
   }>;
   referencePlanningContextBlock?: string;
+  referencePromptContextBlock?: string;
 }): Promise<RequirementsSingleChatBootstrapOpenAIResult> {
   const model = resolveOpenAiModelFromEnv();
   const configuredOverride = String(input.diagnosticMeta?.configuredModelOverride ?? "").trim() || null;
@@ -796,8 +798,8 @@ export async function runRequirementsSingleChatBootstrapOpenAI(input: {
   const pn = input.projectName.trim() || "(이름 없음)";
   const pd = input.projectDescription.trim() || "(설명 없음)";
   const pt = String(input.projectType ?? "").trim() || "(유형 미지정)";
-  const referenceBlock = (input.referencePlanningContextBlock ?? "").trim()
-    ? `\n\n${(input.referencePlanningContextBlock ?? "").trim().slice(0, 6000)}`
+  const referenceBlock = (input.referencePromptContextBlock ?? input.referencePlanningContextBlock ?? "").trim()
+    ? `\n${String(input.referencePromptContextBlock ?? input.referencePlanningContextBlock ?? "").trim().slice(0, 6000)}`
     : "";
   const baseCatalog = String(input.baseSlotCatalogJson ?? "").trim();
 
@@ -895,7 +897,8 @@ JSON 스키마(마크다운·코드펜스 금지 — proposalDraft가 primary, q
   const user = `[project]
 name: ${pn}
 type: ${pt}
-description: ${pd.slice(0, 1400)}${referenceBlock}
+description: ${pd.slice(0, 1400)}
+${referenceBlock}
 
 ${axisBlock}
 

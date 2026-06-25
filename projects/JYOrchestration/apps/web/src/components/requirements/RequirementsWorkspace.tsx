@@ -3962,8 +3962,18 @@ export function RequirementsWorkspace({
     return ok;
   }, [resolvedProjectId, showErrorToast, showSuccessToast]);
 
+  const refPlanningSummaryActive = readReferenceSelectionSummaryFromState(persistedPromptState);
+
   const ideationStage = (
     <div key="ideation" style={{ display: "contents" }}>
+      {refPlanningSummaryActive ? (
+        <p
+          className="mx-3 mb-1 text-xs font-medium text-neutral-600"
+          data-testid="reference-planning-active-badge"
+        >
+          참조 적용 중: {refPlanningSummaryActive.sourceProjectTitle}
+        </p>
+      ) : null}
       <RequirementsIdeationChatPanel
         conversationStatus={conversationStatus}
         chatMessages={conversationMessages}

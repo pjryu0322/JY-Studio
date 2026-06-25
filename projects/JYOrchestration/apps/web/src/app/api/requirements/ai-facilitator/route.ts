@@ -19,7 +19,11 @@ import { isPromptTimelineDebugServer, runWithPromptTimelineProject } from "@/lib
 import { recordIdeationBootstrapOpenAi } from "@/lib/debug/promptTimelineStore";
 import { runBootstrapProposalFallbackSynthesisOpenAI } from "@/lib/requirements/bootstrapProposalFallbackSynthesis";
 import { hasProposalFirstStructure } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
-import { loadReferencePlanningContextPromptBlockForProject } from "@/lib/project-knowledge/projectKnowledgeReferenceSelectionState";
+import {
+  buildReferencePromptContextForProjectTurn,
+  referencePromptContextTimelineFields,
+  wrapReferenceContextForOrchestrationLlm,
+} from "@/lib/project-knowledge/projectKnowledgeReferencePromptContext";
 import {
   pickConfiguredModelOverrideFromAgents,
   resolveServicePlanningOrchestrationContext,
@@ -262,9 +266,33 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const referencePlanningContextBlock = projectId
-      ? await loadReferencePlanningContextPromptBlockForProject(projectId)
+    const referencePromptContextSection = projectId
+      ? await buildReferencePromptContextForProjectTurn({
+          projectId,
+          userMessage: bootstrapInterview ? "" : userMessage,
+          projectName,
+          projectDescription,
+        })
+      : {
+          hasReference: false,
+          sourceSnapshotIds: [],
+          mode: "SUMMARY" as const,
+          summarySections: [],
+          selectedNodes: [],
+          promptText: "",
+          diagnostics: {
+            selectedNodeCount: 0,
+            candidateNodeCount: 0,
+            selectionQuery: "",
+            selectionReason: "no_project",
+          },
+        };
+    const referencePromptContextBlock = referencePromptContextSection.hasReference
+      ? wrapReferenceContextForOrchestrationLlm(referencePromptContextSection.promptText)
       : "";
+    const referenceContextTimelineMeta = referencePromptContextTimelineFields(referencePromptContextSection);
+    /** @deprecated alias — use referencePromptContextBlock */
+    const referencePlanningContextBlock = referencePromptContextBlock;
 
     const workspaceScreenForBootstrap = parseWorkspaceScreenForBody(body.workspaceScreenKey);
     const workspaceScreenForChat = bootstrapInterview ? workspaceScreenForBootstrap : parseWorkspaceScreenForBody(body.workspaceScreenKey);
@@ -328,6 +356,7 @@ export async function POST(request: NextRequest) {
         createdAtIso: sum.calledAt ?? new Date().toISOString(),
         routingDecision: "conversation_summary",
         orchestratorAgent: "summarizer",
+        ...referenceContextTimelineMeta,
       });
       return NextResponse.json({
         success: true,
@@ -502,6 +531,7 @@ export async function POST(request: NextRequest) {
         orchestrationLazyInit,
         ...(quickActionLabel ? { quickActionLabel } : {}),
         ...(proposalDecision ? { proposalDecision } : {}),
+        referencePromptContextBlock: referencePromptContextBlock || undefined,
         referencePlanningContextBlock: referencePlanningContextBlock || undefined,
       });
 
@@ -545,6 +575,7 @@ export async function POST(request: NextRequest) {
         routingDecision: turnOk.meta.routingDecision,
         matchedSlots: [...turnOk.meta.matchedSlots],
         updatedSlots: [...turnOk.meta.updatedSlotKeys],
+        ...referenceContextTimelineMeta,
         ...(typeof (turnOk.meta as any).updatedSlotCount === "number" ? { updatedSlotCount: (turnOk.meta as any).updatedSlotCount } : {}),
         ...(typeof (turnOk.meta as any).currentPhase === "number" ? { currentPhase: (turnOk.meta as any).currentPhase } : {}),
         ...(typeof (turnOk.meta as any).nextQuestionOwnerAgent === "string"
@@ -682,6 +713,7 @@ export async function POST(request: NextRequest) {
               configuredModelOverride: configuredModelOverrideBoot,
             },
             referencePlanningContextBlock: referencePlanningContextBlock || undefined,
+            referencePromptContextBlock: referencePromptContextBlock || undefined,
           });
         });
       } catch (e) {
@@ -1055,6 +1087,7 @@ export async function POST(request: NextRequest) {
       orchestratorAgent: "planner",
       delegatedAgents: [],
       fallback: false,
+      ...referenceContextTimelineMeta,
       interviewQuestion: replyTrim,
       ...(bootSug?.length ? { interviewSuggestions: bootSug } : {}),
       ...(bootstrapSugSource ? { interviewSuggestionsSource: bootstrapSugSource } : {}),

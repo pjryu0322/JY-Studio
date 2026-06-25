@@ -73,7 +73,7 @@ export function ProjectReferenceSelectionSummary(props: Readonly<{
   return (
     <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3" data-testid="reference-selection-summary">
       <p className="text-xs text-neutral-600">
-        선택한 프로젝트는 그대로 복사되지 않고, 새 프로젝트 기획 시 참고 정보로만 사용됩니다.
+        선택한 프로젝트는 그대로 복사되지 않고, 새 프로젝트 기획 시 참고 정보로만 사용됩니다. 기획 대화에서 참조됩니다.
       </p>
       <p className="mt-2 text-sm font-bold text-neutral-900">{item.projectTitle}</p>
       <p className="text-xs text-neutral-600">{item.snapshotTitle}</p>
@@ -143,6 +143,7 @@ export function ProjectReferencePicker({ disabled, selection, onSelectionChange 
         <p className="mt-1">{detail.snapshotTitle}</p>
         <p className="mt-2">{readinessLabel(detail.readiness)}</p>
         <p className="mt-2 text-neutral-600">복사되지 않고 참고 정보로만 사용됩니다.</p>
+        <p className="mt-1 text-neutral-500">관련 항목은 대화 내용에 따라 일부만 주입됩니다.</p>
         {detail.reusableAssets.actors.length ? (
           <p className="mt-2">Actor: {detail.reusableAssets.actors.slice(0, 6).join(", ")}</p>
         ) : null}
