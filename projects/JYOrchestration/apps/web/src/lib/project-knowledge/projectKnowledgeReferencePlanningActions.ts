@@ -19,11 +19,14 @@ export function buildReferenceMaterializeApiPath(projectId: string): string {
 
 export {
   REFERENCE_PLANNING_CHIP_MATERIALIZE,
+  REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT,
   REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_BODY,
   REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY,
   REFERENCE_PLANNING_MATERIALIZE_SUCCESS_INTERNAL_TYPE,
   REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE,
-} from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
+  REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE,
+} from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 
 export function clearReferenceSelectionStatePatch(): Pick<
   RequirementsStateJson,
@@ -86,7 +89,3 @@ export function isReferenceContextLegacyMissing(
   if (!selection) return false;
   return !parseMaterializedReferenceContextV1(state?.materializedReferenceContextV1);
 }
-
-/** UI·운영 진단용 — 자동 materialize 없음 */
-export const REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE =
-  "선택된 참조 정보가 이전 형식으로 저장되어 있습니다. 참조 프로젝트는 수정하지 않고, 현재 프로젝트에 AI 기획용 참조 컨텍스트만 준비할 수 있습니다.";

@@ -1,3 +1,8 @@
+/**
+ * Internal operations helper only.
+ * Not part of the default user reference flow.
+ * Do not expose batch/materialize terminology in user-facing planning UX.
+ */
 import { prisma } from "@/lib/prisma";
 import { PROJECT_LIFECYCLE_ACTIVE } from "@/lib/project/projectLifecycle";
 import { isReferenceContextLegacyMissing } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";

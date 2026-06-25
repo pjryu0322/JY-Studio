@@ -85,47 +85,32 @@ ${body}
 - 참조 프로젝트의 내부 ID, 대화 원문, 개인 메모는 사용하지 않는다.`;
 }
 
-export const REFERENCE_PLANNING_WELCOME_INTERNAL_TYPE = "reference-snapshot-planning-welcome" as const;
-
-export function buildReferencePlanningWelcomeMessageBody(
-  summary: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionSummaryV1,
-): string {
-  return `선택한 참조 프로젝트(${summary.sourceProjectTitle} · ${summary.snapshotTitle})의 구조 정보를 불러왔습니다.
-선택한 참조 정보는 새 프로젝트 내부에 안전한 참고 컨텍스트로 저장되었습니다.
-이 정보는 복사가 아니라 새 프로젝트 기획을 돕기 위한 참고 자료로만 사용됩니다.
-원본 프로젝트를 그대로 복사하지 않으며, 대화 내용과 관련 있는 항목만 기획 컨텍스트로 사용됩니다.
-액터, 서비스 흐름, 기능 구조를 참고하되 현재 프로젝트 설명에 맞게 다시 구체화하겠습니다.
-
-Actor ${summary.actorCount}개 · Flow ${summary.serviceFlowCount}개 · Feature ${summary.featureCount}개 · Graph ${summary.graphReusableNodeCount}개
-
-선택한 참조 정보는 모든 답변에 그대로 복사되지 않고, 대화 내용과 관련 있는 항목만 기획 컨텍스트로 사용됩니다.`;
-}
-
-export const REFERENCE_PLANNING_CHIP_VIEW = "참조 정보 보기";
-export const REFERENCE_PLANNING_CHIP_CLEAR = "참조 해제";
-export const REFERENCE_PLANNING_CHIP_CONTINUE = "계속 진행";
-export const REFERENCE_PLANNING_CHIP_MATERIALIZE = "참조 컨텍스트 준비" as const;
-
-export const REFERENCE_PLANNING_INFO_VIEW_INTERNAL_TYPE = "reference-snapshot-planning-info-view" as const;
-export const REFERENCE_PLANNING_CLEAR_NOTICE_INTERNAL_TYPE = "reference-snapshot-planning-clear-notice" as const;
-export const REFERENCE_PLANNING_LEGACY_MISSING_INTERNAL_TYPE =
-  "reference-snapshot-planning-legacy-missing" as const;
-export const REFERENCE_PLANNING_MATERIALIZE_SUCCESS_INTERNAL_TYPE =
-  "reference-snapshot-planning-materialize-success" as const;
-export const REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE =
-  "reference-snapshot-planning-materialize-failed" as const;
-
-export const REFERENCE_PLANNING_CLEAR_NOTICE_BODY = "참조 프로젝트 선택을 해제했습니다.";
-
-export const REFERENCE_PLANNING_LEGACY_MISSING_BODY = `선택된 참조 정보가 이전 형식으로 저장되어 있습니다.
-참조 프로젝트를 수정하지 않고, 현재 프로젝트 안에 AI 기획용 참조 컨텍스트만 준비할 수 있습니다.`;
-
-export const REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY = `참조 컨텍스트를 현재 프로젝트에 준비했습니다.
-참조 프로젝트와 원본 그래프 스냅샷은 수정되지 않습니다.
-이후 AI 기획자는 현재 프로젝트에 저장된 참조 컨텍스트만 사용합니다.`;
-
-export const REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY = `참조 컨텍스트를 현재 프로젝트에 준비할 수 없습니다.
-다시 시도하거나 참조를 해제해 주세요.`;
+export {
+  REFERENCE_PLANNING_WELCOME_INTERNAL_TYPE,
+  REFERENCE_PLANNING_CHIP_VIEW,
+  REFERENCE_PLANNING_CHIP_CLEAR,
+  REFERENCE_PLANNING_CHIP_CONTINUE,
+  REFERENCE_PLANNING_CHIP_MATERIALIZE,
+  REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT,
+  REFERENCE_PLANNING_INFO_VIEW_INTERNAL_TYPE,
+  REFERENCE_PLANNING_CLEAR_NOTICE_INTERNAL_TYPE,
+  REFERENCE_PLANNING_LEGACY_MISSING_INTERNAL_TYPE,
+  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_INTERNAL_TYPE,
+  REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_INTERNAL_TYPE,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_INTERNAL_TYPE,
+  REFERENCE_PLANNING_CLEAR_NOTICE_BODY,
+  REFERENCE_PLANNING_LEGACY_MISSING_BODY,
+  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY,
+  REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_BODY,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_DEFAULT_BODY,
+  buildReferencePlanningWelcomeMessageBody,
+  buildReferencePlanningWelcomeMessageMeta,
+  buildReferencePlanningLegacyMissingMessageMeta,
+  buildReferencePlanningMaterializeSuccessMessageMeta,
+  buildReferencePlanningContextPrepareSuccessMessageMeta,
+} from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 
 export function buildReferenceInfoViewMessageBody(
   summary: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionSummaryV1,

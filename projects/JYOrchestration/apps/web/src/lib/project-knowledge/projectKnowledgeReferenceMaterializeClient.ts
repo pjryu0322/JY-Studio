@@ -1,19 +1,16 @@
 import {
-  REFERENCE_PLANNING_CHIP_CLEAR,
-  REFERENCE_PLANNING_CHIP_MATERIALIZE,
-  REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY,
-} from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
+  REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_DEFAULT_BODY,
+  buildReferenceContextPrepareFailureNoticeBody,
+  referenceContextPrepareFailureNoticeChips,
+  resolveReferenceContextPrepareFailureActionPolicy,
+  type ReferenceContextPrepareFailureStatus,
+  type ReferenceContextPrepareFailureActionPolicy,
+} from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 import { buildReferenceMaterializeApiPath } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 
-export type ReferenceMaterializeFailureStatus =
-  | "SOURCE_PERMISSION_DENIED"
-  | "SOURCE_UNAVAILABLE"
-  | "SNAPSHOT_NOT_READY"
-  | "INVALID_SELECTION"
-  | "NO_REFERENCE_SELECTION"
-  | "UNKNOWN";
-
-export type ReferenceMaterializeFailureActionPolicy = "RETRY_AND_CLEAR" | "CLEAR_ONLY" | "NONE";
+export type ReferenceMaterializeFailureStatus = ReferenceContextPrepareFailureStatus;
+export type ReferenceMaterializeFailureActionPolicy = ReferenceContextPrepareFailureActionPolicy;
 
 export type ReferenceMaterializeClientResult =
   | { readonly ok: true; readonly status: "MATERIALIZED" | "ALREADY_MATERIALIZED" }
@@ -24,63 +21,15 @@ export type ReferenceMaterializeClientResult =
       readonly failureNoticeChips: readonly string[];
     };
 
-export function resolveReferenceMaterializeFailureActionPolicy(
-  status: ReferenceMaterializeFailureStatus,
-): ReferenceMaterializeFailureActionPolicy {
-  switch (status) {
-    case "SOURCE_PERMISSION_DENIED":
-    case "SOURCE_UNAVAILABLE":
-    case "INVALID_SELECTION":
-      return "CLEAR_ONLY";
-    case "SNAPSHOT_NOT_READY":
-    case "UNKNOWN":
-      return "RETRY_AND_CLEAR";
-    case "NO_REFERENCE_SELECTION":
-      return "NONE";
-    default:
-      return "RETRY_AND_CLEAR";
-  }
-}
-
-export function referenceMaterializeFailureNoticeChips(
-  status: ReferenceMaterializeFailureStatus,
-): readonly string[] {
-  const policy = resolveReferenceMaterializeFailureActionPolicy(status);
-  if (policy === "RETRY_AND_CLEAR") {
-    return [REFERENCE_PLANNING_CHIP_MATERIALIZE, REFERENCE_PLANNING_CHIP_CLEAR];
-  }
-  if (policy === "CLEAR_ONLY") {
-    return [REFERENCE_PLANNING_CHIP_CLEAR];
-  }
-  return [];
-}
-
-export function buildReferenceMaterializeFailureNoticeBody(
-  status: ReferenceMaterializeFailureStatus,
-  serverMessage?: string | null,
-): string {
-  const trimmed = String(serverMessage ?? "").trim();
-  switch (status) {
-    case "SOURCE_PERMISSION_DENIED":
-      return trimmed || "이전 참조 프로젝트에 접근할 권한이 없습니다. 참조를 해제해 주세요.";
-    case "SOURCE_UNAVAILABLE":
-      return trimmed || "참조 저장본을 다시 확인할 수 없습니다. 참조를 해제해 주세요.";
-    case "SNAPSHOT_NOT_READY":
-      return trimmed || "참조 저장본이 아직 준비되지 않았습니다. 다시 시도하거나 참조를 해제해 주세요.";
-    case "INVALID_SELECTION":
-      return trimmed || "저장된 참조 선택 정보가 올바르지 않습니다. 참조를 해제해 주세요.";
-    case "NO_REFERENCE_SELECTION":
-      return trimmed || "저장된 참조 선택이 없습니다.";
-    default:
-      return trimmed || REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY;
-  }
-}
+export const resolveReferenceMaterializeFailureActionPolicy = resolveReferenceContextPrepareFailureActionPolicy;
+export const referenceMaterializeFailureNoticeChips = referenceContextPrepareFailureNoticeChips;
+export const buildReferenceMaterializeFailureNoticeBody = buildReferenceContextPrepareFailureNoticeBody;
 
 /** @deprecated use referenceMaterializeFailureNoticeChips */
 export function shouldSuggestReferenceClearAfterMaterializeFailure(
   status: ReferenceMaterializeFailureStatus,
 ): boolean {
-  return referenceMaterializeFailureNoticeChips(status).includes(REFERENCE_PLANNING_CHIP_CLEAR);
+  return referenceMaterializeFailureNoticeChips(status).includes("참조 해제");
 }
 
 export function parseReferenceMaterializeFailureStatus(raw: unknown): ReferenceMaterializeFailureStatus {
@@ -159,5 +108,7 @@ export async function postReferenceMaterializeForProject(
   return parseReferenceMaterializeApiResponse({ ok: res.ok, status: res.status, json });
 }
 
-/** @deprecated use referenceMaterializeFailureNoticeChips */
-export const REFERENCE_MATERIALIZE_FAILURE_NOTICE_CHIPS = [REFERENCE_PLANNING_CHIP_CLEAR] as const;
+/** @deprecated */
+export const REFERENCE_MATERIALIZE_FAILURE_NOTICE_CHIPS = ["참조 해제"] as const;
+
+export { REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_DEFAULT_BODY as REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY };

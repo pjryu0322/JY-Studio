@@ -10,6 +10,7 @@ export type MaterializedReferenceContextV1 = Readonly<{
     readonly sourceProjectTitle: string;
     readonly snapshotTitle: string;
     readonly snapshotPurpose: "REFERENCE_CANDIDATE" | "REFERENCE_PACKAGE";
+    /** Internal audit only. Never expose to prompt, UI, or public API response. */
     readonly sourceSnapshotId?: string;
   }>;
   readonly policy: Readonly<{

@@ -47,36 +47,9 @@ import {
 } from "@/lib/requirements/ideationDeliverables";
 import { ideationChecklistComplete } from "@/lib/requirements/ideationChecklist";
 import { filterIdeationConversationMessages, isServiceFlowWorkshopMessage } from "@/lib/requirements/serviceFlowConversation";
-import {
-  buildReferencePlanningWelcomeBody,
-  buildReferencePlanningWelcomeMessageMeta,
-  buildReferencePlanningLegacyMissingBody,
-  buildReferencePlanningLegacyMissingMessageMeta,
-  buildReferencePlanningMaterializeSuccessMessageMeta,
-  REFERENCE_PLANNING_CHIP_CLEAR,
-  REFERENCE_PLANNING_CHIP_CONTINUE,
-  REFERENCE_PLANNING_CHIP_MATERIALIZE,
-  REFERENCE_PLANNING_CHIP_VIEW,
-  REFERENCE_PLANNING_CLEAR_NOTICE_BODY,
-  REFERENCE_PLANNING_CLEAR_NOTICE_INTERNAL_TYPE,
-  REFERENCE_PLANNING_INFO_VIEW_INTERNAL_TYPE,
-  REFERENCE_PLANNING_LEGACY_MISSING_INTERNAL_TYPE,
-  REFERENCE_PLANNING_WELCOME_INTERNAL_TYPE,
-} from "@/lib/project-knowledge/projectKnowledgeReferencePlanningWelcome";
-import {
-  buildReferenceClearSelectionApiPath,
-  clearReferenceSelectionStatePatch,
-  buildReferenceInfoViewBodyFromState,
-  isReferenceContextLegacyMissing,
-  readReferencePlanningDisplaySummaryFromState,
-} from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
-import {
-  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY,
-  REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE,
-} from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
-import {
-  postReferenceMaterializeForProject,
-} from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializeClient";
+import { useResolveReferencePlanningNotice } from "@/components/requirements/useReferencePlanningNotice";
+import { useReferencePlanningActions } from "@/components/requirements/useReferencePlanningActions";
+import { readReferencePlanningDisplaySummaryFromState } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
   normalizeIdeationBootstrapDisplayMessage,
@@ -1201,6 +1174,18 @@ export function RequirementsWorkspace({
     enrichRequirementsStateBeforePersist: enrichPlanningDataSlotsOnPersist,
   });
 
+  const resolveReferencePlanningNotice = useResolveReferencePlanningNotice();
+  const referencePlanningActions = useReferencePlanningActions({
+    projectId: resolvedProjectId,
+    room,
+    stateJsonRef,
+    persistStateJsonOnly,
+    persistRemote,
+    setFetchNonce,
+    showSuccessToast,
+    showErrorToast,
+  });
+
   const appendSingleChatPromptTimeline = useCallback(
     (entry: RequirementsPromptTimelineEntry) => {
       void persistStateJsonOnly({
@@ -1522,60 +1507,26 @@ export function RequirementsWorkspace({
     if (!forceRegeneratePlanningSummary && onboardingAppliedKey === onboardingKey) return;
     const existing = room.requirementsConversation.messages;
 
-    if (
-      isReferenceContextLegacyMissing(workspaceState) &&
-      !existing.some((m) => m.meta?.internalType === REFERENCE_PLANNING_LEGACY_MISSING_INTERNAL_TYPE)
-    ) {
+    const referenceNotice = resolveReferencePlanningNotice({
+      workspaceState,
+      existingMessages: existing,
+    });
+    if (referenceNotice) {
       void (async () => {
-        const nowIso = new Date().toISOString();
-        const meta = buildReferencePlanningLegacyMissingMessageMeta();
         const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
           newChatMessage({
             role: "ai",
-            body: buildReferencePlanningLegacyMissingBody(),
+            body: referenceNotice.body,
             speakerType: "AI",
             speakerId: VIRTUAL_AI_PLANNER_ID,
             speakerName: IDEATION_AI_DISPLAY_NAME,
             messageType: "NOTICE",
-            meta,
+            meta: referenceNotice.meta,
           }),
         ]);
         await persistRemote({
           requirementsConversationJson: nextRoom,
-          requirementsStateJson: mergeRequirementsStateJson(workspaceState, {
-            referenceSelectionWelcomeShownAt: nowIso,
-          }),
-        });
-      })();
-      return;
-    }
-
-    const refSummary = workspaceState.referenceSelectionSummaryV1;
-    if (
-      refSummary &&
-      !workspaceState.referenceSelectionWelcomeShownAt &&
-      !isReferenceContextLegacyMissing(workspaceState) &&
-      !existing.some((m) => m.meta?.internalType === REFERENCE_PLANNING_WELCOME_INTERNAL_TYPE)
-    ) {
-      void (async () => {
-        const nowIso = new Date().toISOString();
-        const meta = buildReferencePlanningWelcomeMessageMeta(refSummary);
-        const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
-          newChatMessage({
-            role: "ai",
-            body: buildReferencePlanningWelcomeBody(refSummary),
-            speakerType: "AI",
-            speakerId: VIRTUAL_AI_PLANNER_ID,
-            speakerName: IDEATION_AI_DISPLAY_NAME,
-            messageType: "NOTICE",
-            meta,
-          }),
-        ]);
-        await persistRemote({
-          requirementsConversationJson: nextRoom,
-          requirementsStateJson: mergeRequirementsStateJson(workspaceState, {
-            referenceSelectionWelcomeShownAt: nowIso,
-          }),
+          requirementsStateJson: mergeRequirementsStateJson(workspaceState, referenceNotice.patchState),
         });
       })();
       return;
@@ -1921,6 +1872,7 @@ export function RequirementsWorkspace({
     room,
     persistRemote,
     conversationResetNonce,
+    resolveReferencePlanningNotice,
     slotDefsForProgress,
     orchestrationAlignedState,
   ]);
@@ -3507,116 +3459,8 @@ export function RequirementsWorkspace({
   const handleFastPlanDraftSuggestionPick = useCallback(
     (label: string) => {
       const trimmed = normalizeFastPlanDraftChipLabel(label);
-      if (trimmed === REFERENCE_PLANNING_CHIP_CLEAR) {
-        const pid = resolvedProjectId.trim();
-        if (!pid) return;
-        void (async () => {
-          try {
-            const res = await fetch(buildReferenceClearSelectionApiPath(pid), {
-              method: "DELETE",
-              credentials: "include",
-            });
-            const json = (await res.json()) as { success?: boolean; message?: string };
-            if (!res.ok || !json.success) {
-              showErrorToast(json.message ?? "참조 해제에 실패했습니다.");
-              return;
-            }
-            const cleared = await persistStateJsonOnly(clearReferenceSelectionStatePatch());
-            if (!cleared) {
-              showErrorToast("참조 해제 상태 저장에 실패했습니다.");
-              return;
-            }
-            const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
-              newChatMessage({
-                role: "ai",
-                body: REFERENCE_PLANNING_CLEAR_NOTICE_BODY,
-                speakerType: "AI",
-                speakerId: VIRTUAL_AI_PLANNER_ID,
-                speakerName: IDEATION_AI_DISPLAY_NAME,
-                messageType: "NOTICE",
-                meta: { internalType: REFERENCE_PLANNING_CLEAR_NOTICE_INTERNAL_TYPE },
-              }),
-            ]);
-            await persistRemote(nextRoom, {}, {});
-          } catch {
-            showErrorToast("참조 해제에 실패했습니다.");
-          }
-        })();
-        return;
-      }
-      if (trimmed === REFERENCE_PLANNING_CHIP_VIEW) {
-        const viewBody = buildReferenceInfoViewBodyFromState(stateJsonRef.current);
-        if (!viewBody) {
-          showErrorToast("표시할 참조 정보가 없습니다.");
-          return;
-        }
-        const pid = resolvedProjectId.trim();
-        if (!pid) return;
-        void (async () => {
-          const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
-            newChatMessage({
-              role: "ai",
-              body: viewBody,
-              speakerType: "AI",
-              speakerId: VIRTUAL_AI_PLANNER_ID,
-              speakerName: IDEATION_AI_DISPLAY_NAME,
-              messageType: "NOTICE",
-              meta: { internalType: REFERENCE_PLANNING_INFO_VIEW_INTERNAL_TYPE },
-            }),
-          ]);
-          await persistRemote(nextRoom, {}, {});
-        })();
-        return;
-      }
-      if (trimmed === REFERENCE_PLANNING_CHIP_CONTINUE) {
-        return;
-      }
-      if (trimmed === REFERENCE_PLANNING_CHIP_MATERIALIZE) {
-        const pid = resolvedProjectId.trim();
-        if (!pid) return;
-        void (async () => {
-          try {
-            const outcome = await postReferenceMaterializeForProject(pid);
-            if (outcome.ok) {
-              setFetchNonce((n) => n + 1);
-              const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
-                newChatMessage({
-                  role: "ai",
-                  body: REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY,
-                  speakerType: "AI",
-                  speakerId: VIRTUAL_AI_PLANNER_ID,
-                  speakerName: IDEATION_AI_DISPLAY_NAME,
-                  messageType: "NOTICE",
-                  meta: buildReferencePlanningMaterializeSuccessMessageMeta(),
-                }),
-              ]);
-              await persistRemote(nextRoom, {}, {});
-              showSuccessToast("참조 컨텍스트를 준비했습니다.");
-              return;
-            }
-            const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
-              newChatMessage({
-                role: "ai",
-                body: outcome.noticeBody,
-                speakerType: "AI",
-                speakerId: VIRTUAL_AI_PLANNER_ID,
-                speakerName: IDEATION_AI_DISPLAY_NAME,
-                messageType: "NOTICE",
-                meta: {
-                  internalType: REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE,
-                  interviewSuggestions:
-                    outcome.failureNoticeChips.length > 0
-                      ? [...outcome.failureNoticeChips]
-                      : undefined,
-                },
-              }),
-            ]);
-            await persistRemote(nextRoom, {}, {});
-            showErrorToast(outcome.noticeBody.split("\n")[0] ?? "참조 컨텍스트 준비에 실패했습니다.");
-          } catch {
-            showErrorToast("참조 컨텍스트 준비에 실패했습니다.");
-          }
-        })();
+      if (referencePlanningActions.canHandle(trimmed)) {
+        referencePlanningActions.handle(trimmed);
         return;
       }
       if (
@@ -3750,10 +3594,7 @@ export function RequirementsWorkspace({
       resolvedProjectId,
       showErrorToast,
       showSuccessToast,
-      persistStateJsonOnly,
-      persistRemote,
-      room,
-      setFetchNonce,
+      referencePlanningActions,
       handlePlanningImplementationSeedChip,
       handleImplementationCandidateRefineCta,
       latestImplementationCandidateRefineApplyMeta,

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  REFERENCE_PLANNING_CHIP_MATERIALIZE,
+  REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT,
   REFERENCE_PLANNING_LEGACY_MISSING_BODY,
-  REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY,
-  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY,
-} from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
+  REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_DEFAULT_BODY,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_BODY,
+  REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE,
+} from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 import {
   buildReferenceMaterializeFailureNoticeBody,
   parseReferenceMaterializeApiResponse,
@@ -12,13 +13,12 @@ import {
   resolveReferenceMaterializeFailureActionPolicy,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializeClient";
 import { buildReferenceMaterializeApiPath } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
-import { REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 
 const USER_FACING_COPY = [
-  REFERENCE_PLANNING_CHIP_MATERIALIZE,
+  REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT,
   REFERENCE_PLANNING_LEGACY_MISSING_BODY,
-  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY,
-  REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_BODY,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_DEFAULT_BODY,
   REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE,
 ];
 
@@ -33,9 +33,9 @@ describe("projectKnowledgeReferenceMaterializeClient", () => {
       assertNoDeprecatedReferenceUxTerms(text);
     }
     expect(REFERENCE_PLANNING_LEGACY_MISSING_BODY).toContain("현재 프로젝트");
-    expect(REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY).toContain("현재 프로젝트");
-    expect(REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY).toContain("수정되지 않습니다");
-    expect(REFERENCE_PLANNING_CHIP_MATERIALIZE).toBe("참조 컨텍스트 준비");
+    expect(REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_BODY).toContain("현재 프로젝트");
+    expect(REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_BODY).toContain("수정되지 않습니다");
+    expect(REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT).toBe("참조 컨텍스트 준비");
   });
 
   it("parses materialize success response", () => {
@@ -72,7 +72,7 @@ describe("projectKnowledgeReferenceMaterializeClient", () => {
     expect(buildReferenceMaterializeFailureNoticeBody("SNAPSHOT_NOT_READY")).toContain("준비되지");
     expect(resolveReferenceMaterializeFailureActionPolicy("SNAPSHOT_NOT_READY")).toBe("RETRY_AND_CLEAR");
     expect(referenceMaterializeFailureNoticeChips("SNAPSHOT_NOT_READY")).toContain(
-      REFERENCE_PLANNING_CHIP_MATERIALIZE,
+      REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT,
     );
     expect(resolveReferenceMaterializeFailureActionPolicy("SOURCE_UNAVAILABLE")).toBe("CLEAR_ONLY");
     expect(referenceMaterializeFailureNoticeChips("INVALID_SELECTION")).toEqual(["참조 해제"]);
