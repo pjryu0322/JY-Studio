@@ -2,6 +2,7 @@ import {
   toStructureExplainability,
   type StructureExplainability,
 } from "@/lib/project-structure/structureExplainabilityModel";
+import type { KnowledgeNodeReferenceView } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
 
 export type ProjectGraphNodeDto = Readonly<{
   readonly id: string;
@@ -10,6 +11,7 @@ export type ProjectGraphNodeDto = Readonly<{
   readonly summary: string | null;
   readonly lifecycleStatus?: string;
   readonly explainability?: StructureExplainability;
+  readonly knowledgeReference?: KnowledgeNodeReferenceView;
 }>;
 
 export type ProjectGraphEdgeDto = Readonly<{
@@ -30,6 +32,22 @@ function parseExplainability(raw: unknown): StructureExplainability | undefined 
   }
 }
 
+function parseKnowledgeReference(raw: unknown): KnowledgeNodeReferenceView | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const lifecycleLabel = String(r.lifecycleLabel ?? "").trim();
+  const provenanceLabel = String(r.provenanceLabel ?? "").trim();
+  const reusableLabel = String(r.reusableLabel ?? "").trim();
+  const verificationLabel = String(r.verificationLabel ?? "").trim();
+  if (!lifecycleLabel && !provenanceLabel) return undefined;
+  return {
+    lifecycleLabel: lifecycleLabel || "작성 중",
+    provenanceLabel: provenanceLabel || "시스템에서 생성됨",
+    reusableLabel: reusableLabel || "참조 사용 불가",
+    verificationLabel: verificationLabel || "검증 대기",
+  };
+}
+
 function parseNode(raw: unknown): ProjectGraphNodeDto | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const n = raw as Record<string, unknown>;
@@ -42,6 +60,7 @@ function parseNode(raw: unknown): ProjectGraphNodeDto | null {
     summary: n.summary == null ? null : String(n.summary),
     lifecycleStatus: n.lifecycleStatus == null ? undefined : String(n.lifecycleStatus),
     explainability: parseExplainability(n.explainability),
+    knowledgeReference: parseKnowledgeReference(n.knowledgeReference),
   };
 }
 

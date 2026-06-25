@@ -32,6 +32,7 @@ describe("ProjectKnowledgeRuntimeStatusCard", () => {
           edgeCount: 10,
           latestChangeTitle: "추천안 승인",
           latestChangedAt: "2026-06-24T14:32:00.000Z",
+          referenceEligibilityLabel: "참조 가능",
         },
         loading: false,
         error: null,
@@ -41,6 +42,26 @@ describe("ProjectKnowledgeRuntimeStatusCard", () => {
     expect(html).toContain("항목 12개 · 연결 10개");
     expect(html).toContain("최근 변경: 추천안 승인");
     expect(html).toContain("마지막 반영:");
+    expect(html).toContain("참조 준비: 참조 가능");
+  });
+
+  it("shows partial reference hint", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeRuntimeStatusCard, {
+        summary: {
+          status: "READY",
+          statusLabel: "구조화 완료",
+          nodeCount: 4,
+          edgeCount: 3,
+          referenceEligibilityLabel: "일부 참조 가능",
+          referenceEligibilityHint: "승인된 기능과 흐름이 더 필요할 수 있습니다.",
+        },
+        loading: false,
+        error: null,
+      }),
+    );
+    expect(html).toContain("참조 준비: 일부 참조 가능");
+    expect(html).toContain("승인된 기능과 흐름이 더 필요할 수 있습니다.");
   });
 
   it("shows error state", () => {

@@ -77,6 +77,40 @@ export function ProjectGraphNodeDetailBody({
 
       {detailTab === "details" ? (
         <>
+          {node.knowledgeReference ? (
+            <dl
+              data-testid="project-graph-node-reference-meta"
+              style={{
+                margin: "0 0 12px",
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: `1px solid ${t.border}`,
+                background: "#f8fafc",
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 6, color: t.textPrimary }}>참조·검증</div>
+              <div style={{ display: "grid", gap: 4, color: t.textSecondary }}>
+                <div>
+                  <span style={{ fontWeight: 700, color: t.textMuted }}>상태 </span>
+                  {node.knowledgeReference.lifecycleLabel}
+                </div>
+                <div>
+                  <span style={{ fontWeight: 700, color: t.textMuted }}>생성 근거 </span>
+                  {node.knowledgeReference.provenanceLabel}
+                </div>
+                <div>
+                  <span style={{ fontWeight: 700, color: t.textMuted }}>참조 사용 </span>
+                  {node.knowledgeReference.reusableLabel.includes("가능") ? "가능" : "불가"}
+                </div>
+                <div>
+                  <span style={{ fontWeight: 700, color: t.textMuted }}>검증 상태 </span>
+                  {node.knowledgeReference.verificationLabel}
+                </div>
+              </div>
+            </dl>
+          ) : null}
           {node.summary ? (
             <p style={{ margin: "0 0 12px", fontSize: 12, color: t.textSecondary, lineHeight: 1.5 }}>{node.summary}</p>
           ) : null}

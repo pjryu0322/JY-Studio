@@ -1,4 +1,6 @@
 import { getProjectGraphSnapshot } from "@/lib/project-graph/projectGraphQuery";
+import { normalizeGraphSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeReferenceNormalize";
+import type { GraphSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
 import type {
   KnowledgeGraphRevisionSnapshot,
   KnowledgeGraphRevisionSnapshotEdge,
@@ -7,6 +9,7 @@ import type {
 
 export async function captureKnowledgeGraphRevisionSnapshot(
   projectId: string,
+  purpose: GraphSnapshotPurpose = "REPLAY",
 ): Promise<KnowledgeGraphRevisionSnapshot> {
   const { nodes, edges } = await getProjectGraphSnapshot(projectId, { limit: 500 });
   const entityKeyByNodeId = new Map<string, string>();
@@ -35,14 +38,15 @@ export async function captureKnowledgeGraphRevisionSnapshot(
     });
   }
 
-  return { nodes: snapshotNodes, edges: snapshotEdges };
+  return { purpose, nodes: snapshotNodes, edges: snapshotEdges };
 }
 
 export function parseKnowledgeGraphRevisionSnapshot(raw: unknown): KnowledgeGraphRevisionSnapshot {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return { nodes: [], edges: [] };
+    return { purpose: "REPLAY", nodes: [], edges: [] };
   }
   const o = raw as Record<string, unknown>;
+  const purpose = normalizeGraphSnapshotPurpose(o.purpose);
   const nodesRaw = Array.isArray(o.nodes) ? o.nodes : [];
   const edgesRaw = Array.isArray(o.edges) ? o.edges : [];
 
@@ -75,5 +79,5 @@ export function parseKnowledgeGraphRevisionSnapshot(raw: unknown): KnowledgeGrap
     });
   }
 
-  return { nodes, edges };
+  return { purpose, nodes, edges };
 }

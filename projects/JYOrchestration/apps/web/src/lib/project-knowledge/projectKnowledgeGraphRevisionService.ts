@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { captureKnowledgeGraphRevisionSnapshot, parseKnowledgeGraphRevisionSnapshot } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionSnapshot";
+import { graphSnapshotPurposeFromMilestone } from "@/lib/project-knowledge/projectKnowledgeReferenceNormalize";
+import {
+  captureKnowledgeGraphRevisionSnapshot,
+  parseKnowledgeGraphRevisionSnapshot,
+} from "@/lib/project-knowledge/projectKnowledgeGraphRevisionSnapshot";
 import type {
   KnowledgeGraphRevisionDetail,
   KnowledgeGraphRevisionListItem,
@@ -54,7 +58,8 @@ export async function createKnowledgeGraphRevision(
   const title = String(input.titleOverride ?? copy.title).trim() || copy.title;
   const summary = String(input.summaryOverride ?? copy.summary).trim() || copy.summary;
 
-  const snapshot = await captureKnowledgeGraphRevisionSnapshot(projectId);
+  const purpose = graphSnapshotPurposeFromMilestone(input.milestone);
+  const snapshot = await captureKnowledgeGraphRevisionSnapshot(projectId, purpose);
   const nodeCount = snapshot.nodes.length;
   const edgeCount = snapshot.edges.length;
 

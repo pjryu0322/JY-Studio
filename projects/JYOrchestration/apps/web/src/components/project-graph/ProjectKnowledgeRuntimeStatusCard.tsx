@@ -75,6 +75,14 @@ export function ProjectKnowledgeRuntimeStatusCard(p: {
       <div style={{ marginTop: 6, color: t.textSecondary }}>
         항목 {p.summary.nodeCount}개 · 연결 {p.summary.edgeCount}개
       </div>
+      {p.summary.referenceEligibilityLabel ? (
+        <div style={{ marginTop: 6, color: t.textSecondary }}>
+          참조 준비: {p.summary.referenceEligibilityLabel}
+          {p.summary.referenceEligibilityHint ? (
+            <div style={{ marginTop: 4, fontSize: 11, color: t.textMuted }}>{p.summary.referenceEligibilityHint}</div>
+          ) : null}
+        </div>
+      ) : null}
       {p.summary.latestChangeTitle ? (
         <div style={{ marginTop: 4, color: t.textSecondary }}>
           최근 변경: {p.summary.latestChangeTitle}

@@ -64,4 +64,34 @@ describe("ProjectGraphNodeDetailPanel tabs", () => {
     expect(html).toContain("생성 과정");
     expect(html).not.toContain(">Trace<");
   });
+
+  it("shows reference meta on details tab without technical ids", async () => {
+    const { ProjectGraphNodeDetailBody } = await import("@/components/project-graph/ProjectGraphNodeDetailPanel");
+    const html = renderToStaticMarkup(
+      createElement(ProjectGraphNodeDetailBody, {
+        projectId: "p1",
+        node: {
+          id: "n1",
+          nodeType: "Actor",
+          title: "고객",
+          summary: "주요 사용자",
+          knowledgeReference: {
+            lifecycleLabel: "사용자 승인됨",
+            provenanceLabel: "AI가 제안함",
+            reusableLabel: "참조 사용 가능",
+            verificationLabel: "승인 완료",
+          },
+        },
+        impact: null,
+        onSelectRelatedNodeId: vi.fn(),
+        detailTab: "details",
+        onDetailTabChange: vi.fn(),
+      }),
+    );
+    expect(html).toContain("project-graph-node-reference-meta");
+    expect(html).toContain("생성 근거");
+    expect(html).toContain("참조 사용");
+    expect(html).toContain("가능");
+    expect(html).not.toMatch(/revisionId|eventId/i);
+  });
 });

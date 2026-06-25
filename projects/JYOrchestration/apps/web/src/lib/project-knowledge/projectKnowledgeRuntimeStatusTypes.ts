@@ -1,4 +1,5 @@
 import type { KnowledgePipelineRunStatus } from "@/lib/project-knowledge/projectKnowledgePipelineMonitorTypes";
+import type { ReferenceEligibilityLevel } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
 
 export type KnowledgeRuntimeStatus =
   | "PREPARING"
@@ -17,4 +18,8 @@ export type KnowledgeRuntimeStatusSummary = Readonly<{
   readonly latestChangedAt?: string | null;
   readonly pipelineStatus?: KnowledgePipelineRunStatus | null;
   readonly warnings?: readonly string[];
+  readonly referenceEligibilityLevel?: ReferenceEligibilityLevel;
+  readonly referenceEligibilityLabel?: string;
+  /** User-facing hint when reference is partial or blocked (no internal enums). */
+  readonly referenceEligibilityHint?: string;
 }>;

@@ -24,6 +24,12 @@ vi.mock("@/lib/project-knowledge/projectKnowledgeGraphRevisionService", () => ({
   listKnowledgeGraphRevisions: (...args: unknown[]) => listRevisions(...args),
 }));
 
+const getReferenceEligibility = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/project-knowledge/projectKnowledgeReferenceCandidateService", () => ({
+  getProjectReferenceEligibility: (...args: unknown[]) => getReferenceEligibility(...args),
+}));
+
 import { getKnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusService";
 
 describe("getKnowledgeRuntimeStatusSummary", () => {
@@ -33,6 +39,19 @@ describe("getKnowledgeRuntimeStatusSummary", () => {
     candidateCount.mockReset();
     getLatestRun.mockReset();
     listRevisions.mockReset();
+    getReferenceEligibility.mockReset();
+    getReferenceEligibility.mockResolvedValue({
+      eligible: false,
+      level: "NONE",
+      reasons: [],
+      blockingIssues: [],
+      counts: {
+        reusableActors: 0,
+        reusableServiceFlows: 0,
+        reusableFeatures: 0,
+        reusableGraphNodes: 0,
+      },
+    });
   });
 
   it("aggregates counts and READY status", async () => {
@@ -64,6 +83,7 @@ describe("getKnowledgeRuntimeStatusSummary", () => {
     expect(summary.edgeCount).toBe(10);
     expect(summary.latestChangeTitle).toBe("추천안 승인");
     expect(summary.latestChangedAt).toBe("2026-06-24T05:32:00.000Z");
+    expect(summary.referenceEligibilityLabel).toBe("참조 준비 안 됨");
   });
 
   it("returns STRUCTURING when latest run is RUNNING", async () => {

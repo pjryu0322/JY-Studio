@@ -1,11 +1,23 @@
 import { prisma } from "@/lib/prisma";
 import { getLatestKnowledgePipelineRun } from "@/lib/project-knowledge/projectKnowledgePipelineMonitor";
 import { listKnowledgeGraphRevisions } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
+import { getProjectReferenceEligibility } from "@/lib/project-knowledge/projectKnowledgeReferenceCandidateService";
+import { REFERENCE_ELIGIBILITY_USER_LABELS } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
 import {
   knowledgeRuntimeStatusLabel,
   resolveKnowledgeRuntimeStatus,
 } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusResolve";
-import type { KnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusTypes";
+import type { ReferenceEligibility } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
+
+function pickReferenceEligibilityHint(eligibility: ReferenceEligibility): string | undefined {
+  if (eligibility.level === "PARTIAL") {
+    return eligibility.reasons[0] ?? "승인된 기능과 흐름이 더 필요할 수 있습니다.";
+  }
+  if (eligibility.level === "NONE") {
+    return eligibility.blockingIssues[0] ?? eligibility.reasons[0];
+  }
+  return undefined;
+}
 
 export async function getKnowledgeRuntimeStatusSummary(
   projectId: string,
@@ -20,7 +32,8 @@ export async function getKnowledgeRuntimeStatusSummary(
     };
   }
 
-  const [nodeCount, edgeCount, pendingReviewCandidateCount, latestRun, revisions] = await Promise.all([
+  const [nodeCount, edgeCount, pendingReviewCandidateCount, latestRun, revisions, referenceEligibility] =
+    await Promise.all([
     prisma.projectGraphNode.count({ where: { projectId: pid } }),
     prisma.projectGraphEdge.count({ where: { projectId: pid } }),
     prisma.projectStructureCandidate.count({
@@ -28,6 +41,7 @@ export async function getKnowledgeRuntimeStatusSummary(
     }),
     getLatestKnowledgePipelineRun(pid),
     listKnowledgeGraphRevisions(pid, { limit: 50 }),
+    getProjectReferenceEligibility(pid),
   ]);
 
   const latestRevision = revisions.length > 0 ? revisions[revisions.length - 1] : null;
@@ -58,6 +72,9 @@ export async function getKnowledgeRuntimeStatusSummary(
     latestChangeTitle: latestRevision?.title ?? null,
     latestChangedAt,
     pipelineStatus,
+    referenceEligibilityLevel: referenceEligibility.level,
+    referenceEligibilityLabel: REFERENCE_ELIGIBILITY_USER_LABELS[referenceEligibility.level],
+    referenceEligibilityHint: pickReferenceEligibilityHint(referenceEligibility),
     ...(warnings.length ? { warnings } : {}),
   };
 }
