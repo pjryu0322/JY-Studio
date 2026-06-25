@@ -50,7 +50,6 @@ import { filterIdeationConversationMessages, isServiceFlowWorkshopMessage } from
 import {
   buildReferencePlanningWelcomeBody,
   buildReferencePlanningWelcomeMessageMeta,
-  buildReferenceInfoViewMessageBody,
   REFERENCE_PLANNING_CHIP_CLEAR,
   REFERENCE_PLANNING_CHIP_CONTINUE,
   REFERENCE_PLANNING_CHIP_VIEW,
@@ -62,7 +61,8 @@ import {
 import {
   buildReferenceClearSelectionApiPath,
   clearReferenceSelectionStatePatch,
-  readReferenceSelectionSummaryFromState,
+  buildReferenceInfoViewBodyFromState,
+  readReferencePlanningDisplaySummaryFromState,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
@@ -3503,8 +3503,8 @@ export function RequirementsWorkspace({
         return;
       }
       if (trimmed === REFERENCE_PLANNING_CHIP_VIEW) {
-        const summary = readReferenceSelectionSummaryFromState(stateJsonRef.current);
-        if (!summary) {
+        const viewBody = buildReferenceInfoViewBodyFromState(stateJsonRef.current);
+        if (!viewBody) {
           showErrorToast("표시할 참조 정보가 없습니다.");
           return;
         }
@@ -3514,7 +3514,7 @@ export function RequirementsWorkspace({
           const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
             newChatMessage({
               role: "ai",
-              body: buildReferenceInfoViewMessageBody(summary),
+              body: viewBody,
               speakerType: "AI",
               speakerId: VIRTUAL_AI_PLANNER_ID,
               speakerName: IDEATION_AI_DISPLAY_NAME,
@@ -3962,7 +3962,7 @@ export function RequirementsWorkspace({
     return ok;
   }, [resolvedProjectId, showErrorToast, showSuccessToast]);
 
-  const refPlanningSummaryActive = readReferenceSelectionSummaryFromState(persistedPromptState);
+  const refPlanningSummaryActive = readReferencePlanningDisplaySummaryFromState(persistedPromptState);
 
   const ideationStage = (
     <div key="ideation" style={{ display: "contents" }}>

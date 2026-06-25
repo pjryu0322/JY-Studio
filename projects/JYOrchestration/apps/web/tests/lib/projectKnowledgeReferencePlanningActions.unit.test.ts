@@ -21,6 +21,7 @@ describe("reference planning chip helpers", () => {
       referenceSelectionV1: null,
       referenceSelectionSummaryV1: null,
       referenceSelectionWelcomeShownAt: null,
+      materializedReferenceContextV1: null,
     });
   });
 

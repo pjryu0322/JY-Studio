@@ -161,6 +161,7 @@ import {
   parseProjectReferenceSelectionSummaryV1,
   parseProjectReferenceSelectionV1,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
+import { parseMaterializedReferenceContextV1 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import {
   parseAlternativeProposalPayloadWire,
@@ -237,6 +238,7 @@ export type RequirementsPromptTimelineEntry = {
   referenceContextCandidateNodeCount?: number;
   referenceContextSourceSnapshotCount?: number;
   referenceContextSelectionReason?: string;
+  referenceContextSource?: "MATERIALIZED" | "NONE" | "LEGACY_MISSING";
   roomId?: string;
   /** 사용자 표시 절차 그룹(예: 서비스 기획) */
   stageGroup?: string;
@@ -588,6 +590,8 @@ export type RequirementsStateJson = {
   referenceSelectionSummaryV1?: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionSummaryV1 | null;
   /** Reference welcome 안내 메시지 1회 표시 시각 */
   referenceSelectionWelcomeShownAt?: string | null;
+  /** Phase 6.6: 선택 시점에 materialize된 참조 컨텍스트(prompt source of truth) */
+  materializedReferenceContextV1?: import("@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext").MaterializedReferenceContextV1 | null;
   /** 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지용 슬롯 상태) */
   problemInterview?: ProblemInterviewState | null;
   /**
@@ -1381,6 +1385,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         : o.referenceSelectionWelcomeShownAt === null
           ? null
           : undefined,
+    materializedReferenceContextV1:
+      "materializedReferenceContextV1" in o
+        ? o.materializedReferenceContextV1 === null
+          ? null
+          : parseMaterializedReferenceContextV1(o.materializedReferenceContextV1) ?? null
+        : undefined,
     ideationStageCompletedAt:
       typeof o.ideationStageCompletedAt === "string" ? o.ideationStageCompletedAt : undefined,
     ideationConfirmedAssetId:

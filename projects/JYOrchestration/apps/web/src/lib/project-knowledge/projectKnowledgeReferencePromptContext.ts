@@ -1,17 +1,13 @@
 import { prisma } from "@/lib/prisma";
-import { loadKnowledgeGraphRevision } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionQuery";
-import type { KnowledgeGraphRevisionSnapshot } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionTypes";
-import {
-  buildProjectReferencePlanningContext,
-} from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
-import { selectReferenceContextNodes } from "@/lib/project-knowledge/projectKnowledgeReferenceNodeSelector";
-import {
-  parseProjectReferenceSelectionV1,
-} from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
+import type { MaterializedReferenceContextV1 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
+import { parseMaterializedReferenceContextV1 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
+import { selectMaterializedReferenceContextNodes } from "@/lib/project-knowledge/projectKnowledgeReferenceNodeSelector";
+import { parseProjectReferenceSelectionV1 } from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 
 export type ReferencePromptContextMode = "SUMMARY" | "RELEVANT_NODES" | "SUMMARY_AND_RELEVANT_NODES";
+export type ReferencePromptContextSource = "MATERIALIZED" | "NONE" | "LEGACY_MISSING";
 
 export type ReferencePromptContextNode = Readonly<{
   readonly title: string;
@@ -23,6 +19,7 @@ export type ReferencePromptContextNode = Readonly<{
 
 export type ReferencePromptContextSection = Readonly<{
   readonly hasReference: boolean;
+  readonly referenceContextSource: ReferencePromptContextSource;
   readonly sourceSnapshotIds: readonly string[];
   readonly mode: ReferencePromptContextMode;
   readonly summarySections: readonly {
@@ -41,6 +38,7 @@ export type ReferencePromptContextSection = Readonly<{
 
 const EMPTY_SECTION: ReferencePromptContextSection = {
   hasReference: false,
+  referenceContextSource: "NONE",
   sourceSnapshotIds: [],
   mode: "SUMMARY",
   summarySections: [],
@@ -100,60 +98,36 @@ export function referencePromptContextTimelineFields(
   | "referenceContextCandidateNodeCount"
   | "referenceContextSourceSnapshotCount"
   | "referenceContextSelectionReason"
+  | "referenceContextSource"
 > {
   if (!section.hasReference) {
-    return { referenceContextInjected: false };
+    return {
+      referenceContextInjected: false,
+      referenceContextSource: section.referenceContextSource,
+      ...(section.referenceContextSource === "LEGACY_MISSING"
+        ? { referenceContextSelectionReason: section.diagnostics.selectionReason }
+        : {}),
+    };
   }
   return {
     referenceContextInjected: true,
     referenceContextMode: section.mode,
     referenceContextSelectedNodeCount: section.diagnostics.selectedNodeCount,
     referenceContextCandidateNodeCount: section.diagnostics.candidateNodeCount,
-    referenceContextSourceSnapshotCount: section.sourceSnapshotIds.length,
+    referenceContextSourceSnapshotCount: section.sourceSnapshotIds.length ? 1 : 0,
     referenceContextSelectionReason: section.diagnostics.selectionReason.slice(0, 200),
+    referenceContextSource: section.referenceContextSource,
   };
 }
 
-async function loadSnapshotsForSelection(
-  snapshotIds: readonly string[],
-): Promise<KnowledgeGraphRevisionSnapshot[]> {
-  const snapshots: KnowledgeGraphRevisionSnapshot[] = [];
-  for (const snapshotId of snapshotIds) {
-    const revision = await prisma.projectKnowledgeGraphRevision.findUnique({
-      where: { id: snapshotId },
-      select: { id: true, projectId: true },
-    });
-    if (!revision) continue;
-    const detail = await loadKnowledgeGraphRevision(revision.projectId, revision.id);
-    if (detail?.graphSnapshot) snapshots.push(detail.graphSnapshot);
-  }
-  return snapshots;
-}
-
-export async function buildReferencePromptContextForProjectTurn(input: Readonly<{
-  readonly projectId: string;
+export function buildReferencePromptContextSectionFromMaterialized(input: Readonly<{
+  readonly materialized: MaterializedReferenceContextV1;
   readonly userMessage?: string;
   readonly projectName?: string | null;
   readonly projectDescription?: string | null;
   readonly maxNodes?: number;
-}>): Promise<ReferencePromptContextSection> {
-  const pid = String(input.projectId ?? "").trim();
-  if (!pid) return EMPTY_SECTION;
-
-  const row = await prisma.project.findUnique({
-    where: { id: pid },
-    select: { requirementsStateJson: true },
-  });
-  const state = parseRequirementsStateJson(row?.requirementsStateJson);
-  const selection = parseProjectReferenceSelectionV1(state?.referenceSelectionV1);
-  if (!selection?.referenceSnapshotIds.length) return EMPTY_SECTION;
-
-  const snapshotIds = [...selection.referenceSnapshotIds];
-  const graphSnapshots = await loadSnapshotsForSelection(snapshotIds);
-  if (!graphSnapshots.length) return EMPTY_SECTION;
-
-  const planning = buildProjectReferencePlanningContext(graphSnapshots);
-  const summarySections = planning.sections;
+}>): ReferencePromptContextSection {
+  const summarySections = input.materialized.sections;
   const userMessage = String(input.userMessage ?? "").trim();
 
   let selectedNodes: readonly ReferencePromptContextNode[] = [];
@@ -162,11 +136,11 @@ export async function buildReferencePromptContextForProjectTurn(input: Readonly<
   let selectionReason = "summary_only";
 
   if (userMessage) {
-    const picked = selectReferenceContextNodes({
+    const picked = selectMaterializedReferenceContextNodes({
       userMessage,
       projectName: input.projectName,
       projectDescription: input.projectDescription,
-      snapshots: graphSnapshots,
+      materializedContext: input.materialized,
       maxNodes: input.maxNodes,
     });
     selectedNodes = picked.selectedNodes;
@@ -186,7 +160,8 @@ export async function buildReferencePromptContextForProjectTurn(input: Readonly<
 
   return {
     hasReference: true,
-    sourceSnapshotIds: snapshotIds,
+    referenceContextSource: "MATERIALIZED",
+    sourceSnapshotIds: [],
     mode,
     summarySections,
     selectedNodes,
@@ -198,4 +173,58 @@ export async function buildReferencePromptContextForProjectTurn(input: Readonly<
       selectionReason,
     },
   };
+}
+
+export async function buildReferencePromptContextForProjectTurn(input: Readonly<{
+  readonly projectId: string;
+  readonly userMessage?: string;
+  readonly projectName?: string | null;
+  readonly projectDescription?: string | null;
+  readonly maxNodes?: number;
+  /** 테스트·오프라인: state를 직접 주입하면 DB 조회를 생략한다 */
+  readonly requirementsStateJson?: unknown;
+}>): Promise<ReferencePromptContextSection> {
+  const pid = String(input.projectId ?? "").trim();
+  if (!pid && input.requirementsStateJson === undefined) return EMPTY_SECTION;
+
+  let state = input.requirementsStateJson !== undefined
+    ? parseRequirementsStateJson(input.requirementsStateJson)
+    : null;
+
+  if (state === null && pid) {
+    const row = await prisma.project.findUnique({
+      where: { id: pid },
+      select: { requirementsStateJson: true },
+    });
+    state = parseRequirementsStateJson(row?.requirementsStateJson);
+  }
+
+  const materialized =
+    parseMaterializedReferenceContextV1(state?.materializedReferenceContextV1) ??
+    null;
+
+  if (!materialized) {
+    const hasLegacySelection = Boolean(parseProjectReferenceSelectionV1(state?.referenceSelectionV1));
+    if (hasLegacySelection) {
+      return {
+        ...EMPTY_SECTION,
+        referenceContextSource: "LEGACY_MISSING",
+        diagnostics: {
+          selectedNodeCount: 0,
+          candidateNodeCount: 0,
+          selectionQuery: "",
+          selectionReason: "materialized_context_missing",
+        },
+      };
+    }
+    return EMPTY_SECTION;
+  }
+
+  return buildReferencePromptContextSectionFromMaterialized({
+    materialized,
+    userMessage: input.userMessage,
+    projectName: input.projectName,
+    projectDescription: input.projectDescription,
+    maxNodes: input.maxNodes,
+  });
 }

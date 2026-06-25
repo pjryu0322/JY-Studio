@@ -106,6 +106,7 @@ export type CreateProjectInput = {
   /** Phase 6: 생성 시 선택한 Reference Snapshot (MVP 최대 1개) */
   referenceSelection?: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionV1 | null;
   referenceSelectionSummary?: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionSummaryV1 | null;
+  materializedReferenceContextV1?: import("@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext").MaterializedReferenceContextV1 | null;
 };
 
 export async function createProject(input: CreateProjectInput) {
@@ -118,6 +119,7 @@ export async function createProject(input: CreateProjectInput) {
       projectFromChatDraft: input.projectFromChatDraft ?? null,
       referenceSelection: input.referenceSelection ?? null,
       referenceSelectionSummary: input.referenceSelectionSummary ?? null,
+      materializedReferenceContextV1: input.materializedReferenceContextV1 ?? null,
       nowIso,
     });
     const project = await tx.project.create({

@@ -35,6 +35,8 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
     const next = mergeRequirementsStateJson(state, {
       referenceSelectionV1: null,
       referenceSelectionSummaryV1: null,
+      referenceSelectionWelcomeShownAt: null,
+      materializedReferenceContextV1: null,
     });
 
     await prisma.project.update({

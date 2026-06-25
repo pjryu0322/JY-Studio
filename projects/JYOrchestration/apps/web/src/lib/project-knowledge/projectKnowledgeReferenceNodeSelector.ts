@@ -113,6 +113,102 @@ function buildSelectionReason(title: string, userMessage: string): string {
   return "사용자 입력·프로젝트 설명과 키워드가 겹침";
 }
 
+export function selectMaterializedReferenceContextNodes(input: Readonly<{
+  readonly userMessage: string;
+  readonly projectName?: string | null;
+  readonly projectDescription?: string | null;
+  readonly materializedContext: import("@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext").MaterializedReferenceContextV1;
+  readonly maxNodes?: number;
+}>): SelectReferenceContextNodesResult {
+  const maxNodes = Math.min(12, Math.max(1, input.maxNodes ?? 8));
+  const userMessage = String(input.userMessage ?? "").trim();
+  const selectionQuery = userMessage.slice(0, 500);
+  if (!userMessage) {
+    return {
+      selectedNodes: [],
+      candidateNodeCount: 0,
+      selectionQuery,
+      selectionReason: "사용자 입력 없음",
+    };
+  }
+  const userBlob = normalizeMatchText(userMessage);
+  const userTokens = tokenizeForMatch(userMessage);
+  const projectTokens = tokenizeForMatch(
+    `${input.projectName ?? ""} ${input.projectDescription ?? ""}`,
+  );
+
+  const scored: Array<ReferencePromptContextNode & { category: string; sortScore: number }> = [];
+
+  for (const node of input.materializedContext.nodes) {
+    const title = String(node.title ?? "").trim();
+    if (!title) continue;
+    if (!assessReferenceSafety({ title, summary: node.summary ?? null }).safeForReference) continue;
+    const reusableAs = [...node.reusableAs];
+    if (!reusableAs.length) continue;
+
+    const sortScore = scoreNode({
+      title,
+      summary: node.summary ?? null,
+      reusableAs,
+      userTokens,
+      projectTokens,
+      userBlob,
+    });
+    if (sortScore <= 0) continue;
+
+    const category = nodeCategory(node.nodeType, reusableAs);
+    scored.push({
+      title: title.slice(0, 120),
+      nodeType: String(node.nodeType ?? "").trim().slice(0, 40) || category,
+      reusableAs,
+      reason: buildSelectionReason(title, userMessage || input.projectDescription || ""),
+      score: Math.round(sortScore * 100) / 100,
+      category,
+      sortScore,
+    });
+  }
+
+  const candidateNodeCount = scored.length;
+  if (!candidateNodeCount) {
+    return {
+      selectedNodes: [],
+      candidateNodeCount: 0,
+      selectionQuery,
+      selectionReason: "관련 키워드와 매칭되는 안전한 노드 없음",
+    };
+  }
+
+  scored.sort((a, b) => b.sortScore - a.sortScore);
+
+  const categoryCounts: Record<string, number> = {};
+  const selected: ReferencePromptContextNode[] = [];
+
+  for (const row of scored) {
+    if (selected.length >= maxNodes) break;
+    const cap = CATEGORY_CAPS[row.category] ?? CATEGORY_CAPS.Other;
+    const used = categoryCounts[row.category] ?? 0;
+    if (used >= cap) continue;
+    categoryCounts[row.category] = used + 1;
+    selected.push({
+      title: row.title,
+      nodeType: row.nodeType,
+      reusableAs: row.reusableAs,
+      reason: row.reason,
+      score: row.score,
+    });
+  }
+
+  return {
+    selectedNodes: selected,
+    candidateNodeCount,
+    selectionQuery,
+    selectionReason:
+      selected.length > 0
+        ? `키워드 매칭 상위 ${selected.length}개 노드 선택`
+        : "카테고리 상한으로 선택 가능한 노드 없음",
+  };
+}
+
 export function selectReferenceContextNodes(
   input: SelectReferenceContextNodesInput,
 ): SelectReferenceContextNodesResult {

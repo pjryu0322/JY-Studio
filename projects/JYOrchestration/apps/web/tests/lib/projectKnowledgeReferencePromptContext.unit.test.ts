@@ -43,7 +43,8 @@ describe("reference prompt context section", () => {
   it("emits timeline diagnostics when reference is active", () => {
     const fields = referencePromptContextTimelineFields({
       hasReference: true,
-      sourceSnapshotIds: ["internal-only"],
+      referenceContextSource: "MATERIALIZED",
+      sourceSnapshotIds: [],
       mode: "SUMMARY_AND_RELEVANT_NODES",
       summarySections: [],
       selectedNodes: [],
@@ -56,7 +57,6 @@ describe("reference prompt context section", () => {
       },
     });
     expect(fields.referenceContextInjected).toBe(true);
-    expect(fields.referenceContextSelectedNodeCount).toBe(2);
-    expect(JSON.stringify(fields)).not.toContain("internal-only");
+    expect(fields.referenceContextSource).toBe("MATERIALIZED");
   });
 });

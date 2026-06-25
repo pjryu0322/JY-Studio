@@ -104,6 +104,7 @@ export async function POST(request: NextRequest) {
 
     let referenceSelection = null;
     let referenceSelectionSummary = null;
+    let materializedReferenceContextV1 = null;
     if (referenceSnapshotIds.length > 0) {
       try {
         const validated = await validateReferenceSnapshotSelectionForUser({
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
         });
         referenceSelection = validated.selection;
         referenceSelectionSummary = validated.summary;
+        materializedReferenceContextV1 = validated.materializedReferenceContextV1;
       } catch (error) {
         if (error instanceof ReferenceSnapshotSelectionValidationError) {
           return fail(error.message, error.status);
@@ -130,6 +132,7 @@ export async function POST(request: NextRequest) {
       includeDefaultAiPlanner,
       referenceSelection,
       referenceSelectionSummary,
+      materializedReferenceContextV1,
     });
 
     return ok("프로젝트가 생성되었습니다.", project, 201);

@@ -14,6 +14,7 @@ import {
   PRODUCT_DEFINITION_ARTIFACT_TYPE,
   upsertProductDefinitionArtifact,
 } from "@/lib/requirements/productDefinitionArtifact";
+import { buildMaterializedReferenceContextFromSnapshot } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
 import {
   buildInitialProductDefinitionForProject,
   buildInitialRequirementsStateForNewProject,
@@ -125,6 +126,54 @@ describe("productDefinitionV1", () => {
       "2026-06-03T00:00:00.000Z",
     );
     expect(upserted.find((a) => a.id === PRODUCT_DEFINITION_ARTIFACT_ID)?.content).toContain("Product Definition");
+  });
+
+  it("buildInitialRequirementsStateForNewProject stores materializedReferenceContextV1", () => {
+    const materialized = buildMaterializedReferenceContextFromSnapshot({
+      sourceProjectTitle: "Src",
+      snapshotTitle: "Snap",
+      snapshotPurpose: "REFERENCE_CANDIDATE",
+      sourceSnapshotId: "hidden-id",
+      graphSnapshot: {
+        purpose: "REFERENCE_CANDIDATE",
+        nodes: [
+          {
+            entityKey: "k1",
+            nodeType: "Actor",
+            title: "고객",
+            summary: null,
+            reference: {
+              lifecycle: "USER_APPROVED",
+              reusable: true,
+              reusableAs: ["ACTOR"],
+              safeForReference: true,
+            },
+          },
+        ],
+        edges: [],
+      },
+    });
+    const st = buildInitialRequirementsStateForNewProject({
+      name: "New",
+      description: "Desc",
+      referenceSelection: {
+        referenceSnapshotIds: ["hidden-id"],
+        selectedAt: "2026-06-03T00:00:00.000Z",
+        source: "USER_SELECTED",
+      },
+      referenceSelectionSummary: {
+        sourceProjectTitle: "Src",
+        snapshotTitle: "Snap",
+        readiness: "READY",
+        actorCount: 1,
+        serviceFlowCount: 0,
+        featureCount: 0,
+        graphReusableNodeCount: 1,
+      },
+      materializedReferenceContextV1: materialized,
+    });
+    expect(st.materializedReferenceContextV1?.nodes).toHaveLength(1);
+    expect(JSON.stringify(st.materializedReferenceContextV1?.nodes)).not.toContain("k1");
   });
 
   it("formatProductDefinitionPlanningContext caps at 20 lines and 300 chars per line", () => {

@@ -91,7 +91,9 @@ export function buildReferencePlanningWelcomeMessageBody(
   summary: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionSummaryV1,
 ): string {
   return `선택한 참조 프로젝트(${summary.sourceProjectTitle} · ${summary.snapshotTitle})의 구조 정보를 불러왔습니다.
+선택한 참조 정보는 새 프로젝트 내부에 안전한 참고 컨텍스트로 저장되었습니다.
 이 정보는 복사가 아니라 새 프로젝트 기획을 돕기 위한 참고 자료로만 사용됩니다.
+원본 프로젝트를 그대로 복사하지 않으며, 대화 내용과 관련 있는 항목만 기획 컨텍스트로 사용됩니다.
 액터, 서비스 흐름, 기능 구조를 참고하되 현재 프로젝트 설명에 맞게 다시 구체화하겠습니다.
 
 Actor ${summary.actorCount}개 · Flow ${summary.serviceFlowCount}개 · Feature ${summary.featureCount}개 · Graph ${summary.graphReusableNodeCount}개

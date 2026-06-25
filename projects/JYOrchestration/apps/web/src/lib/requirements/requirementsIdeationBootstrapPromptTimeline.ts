@@ -253,6 +253,11 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     ...(typeof r.referenceContextSelectionReason === "string" && r.referenceContextSelectionReason.trim()
       ? { referenceContextSelectionReason: r.referenceContextSelectionReason.trim().slice(0, 200) }
       : {}),
+    ...(r.referenceContextSource === "MATERIALIZED" ||
+    r.referenceContextSource === "NONE" ||
+    r.referenceContextSource === "LEGACY_MISSING"
+      ? { referenceContextSource: r.referenceContextSource }
+      : {}),
     ...(typeof r.roomId === "string" && r.roomId.trim() ? { roomId: r.roomId.trim().slice(0, 64) } : {}),
     ...(selectedAgents.length ? { selectedAgents } : {}),
     ...(typeof r.promptText === "string" ? { promptText: r.promptText } : {}),
@@ -853,6 +858,7 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly referenceContextCandidateNodeCount?: number;
   readonly referenceContextSourceSnapshotCount?: number;
   readonly referenceContextSelectionReason?: string;
+  readonly referenceContextSource?: "MATERIALIZED" | "NONE" | "LEGACY_MISSING";
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -1118,6 +1124,7 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.referenceContextSelectionReason
       ? { referenceContextSelectionReason: params.referenceContextSelectionReason.slice(0, 200) }
       : {}),
+    ...(params.referenceContextSource ? { referenceContextSource: params.referenceContextSource } : {}),
   };
 }
 

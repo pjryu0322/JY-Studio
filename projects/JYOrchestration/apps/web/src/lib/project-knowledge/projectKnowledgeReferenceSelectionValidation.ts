@@ -10,8 +10,9 @@ import type {
   ReferenceLibrarySnapshotPurpose,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
 import { buildReferenceEligibilityMetricsFromSnapshot } from "@/lib/project-knowledge/projectKnowledgeReferenceSnapshotEligibility";
-import { buildReusableAssetsFromReferenceSnapshot } from "@/lib/project-knowledge/projectKnowledgeReferenceSnapshotAssets";
 import { normalizeGraphSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeReferenceNormalize";
+import { buildMaterializedReferenceContextFromSnapshot } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
+import type { MaterializedReferenceContextV1 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
 import { PROJECT_LIFECYCLE_ACTIVE } from "@/lib/project/projectLifecycle";
 
 const ALLOWED_SNAPSHOT_PURPOSES = new Set<ReferenceLibrarySnapshotPurpose>([
@@ -48,6 +49,7 @@ export async function validateReferenceSnapshotSelectionForUser(input: Readonly<
 }>): Promise<Readonly<{
   readonly selection: ProjectReferenceSelectionV1;
   readonly summary: ProjectReferenceSelectionSummaryV1;
+  readonly materializedReferenceContextV1: MaterializedReferenceContextV1;
 }>> {
   const userId = String(input.userId ?? "").trim();
   const ids = normalizeReferenceSnapshotIds(input.referenceSnapshotIds);
@@ -98,8 +100,16 @@ export async function validateReferenceSnapshotSelectionForUser(input: Readonly<
     throw new ReferenceSnapshotSelectionValidationError("참조 저장본이 아직 준비되지 않았습니다.", 400);
   }
 
-  const assets = buildReusableAssetsFromReferenceSnapshot(snapshot);
   const readiness: ReferenceLibraryReadiness = purpose === "REFERENCE_PACKAGE" ? "VERIFIED" : "READY";
+  const typedPurpose = purpose as ReferenceLibrarySnapshotPurpose;
+
+  const materializedReferenceContextV1 = buildMaterializedReferenceContextFromSnapshot({
+    sourceProjectTitle: revision.project.name,
+    snapshotTitle: revision.title,
+    snapshotPurpose: typedPurpose,
+    sourceSnapshotId: revision.id,
+    graphSnapshot: snapshot,
+  });
 
   return {
     selection: {
@@ -111,10 +121,11 @@ export async function validateReferenceSnapshotSelectionForUser(input: Readonly<
       sourceProjectTitle: revision.project.name,
       snapshotTitle: revision.title,
       readiness,
-      actorCount: assets.actors.length,
-      serviceFlowCount: assets.serviceFlows.length,
-      featureCount: assets.features.length,
-      graphReusableNodeCount: eligibility.counts.reusableGraphNodes,
+      actorCount: materializedReferenceContextV1.summary.actorCount,
+      serviceFlowCount: materializedReferenceContextV1.summary.serviceFlowCount,
+      featureCount: materializedReferenceContextV1.summary.featureCount,
+      graphReusableNodeCount: materializedReferenceContextV1.summary.graphReusableNodeCount,
     },
+    materializedReferenceContextV1,
   };
 }
