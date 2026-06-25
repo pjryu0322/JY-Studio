@@ -17,7 +17,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("@/lib/project-knowledge/projectKnowledgeGraphRevisionService", () => ({
+vi.mock("@/lib/project-knowledge/projectKnowledgeGraphRevisionBackfillService", () => ({
   backfillKnowledgeGraphRevisionSnapshotPurpose: vi.fn().mockResolvedValue({ scanned: 0, updated: 0 }),
 }));
 

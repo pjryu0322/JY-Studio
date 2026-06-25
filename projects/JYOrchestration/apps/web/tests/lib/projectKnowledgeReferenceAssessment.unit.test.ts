@@ -102,6 +102,7 @@ describe("buildProjectReferenceAssessment", () => {
   it("returns READY_FOR_SNAPSHOT when no latestReferenceRevision", async () => {
     loadLatestReference.mockResolvedValue(null);
     const assessment = await buildProjectReferenceAssessment("p1");
+    expect(assessment.source).toBe("LIVE_GRAPH");
     expect(assessment.eligibility.level).toBe("READY_FOR_SNAPSHOT");
     expect(assessment.eligibility.eligible).toBe(false);
     expect(assessment.latestRevision?.id).toBe("replay-latest");
@@ -117,9 +118,25 @@ describe("buildProjectReferenceAssessment", () => {
       nodeCount: 3,
       edgeCount: 0,
       createdAt: "2026-06-24T10:00:00.000Z",
-      graphSnapshot: { purpose: "REFERENCE_CANDIDATE", nodes: [], edges: [] },
+      graphSnapshot: {
+        purpose: "REFERENCE_CANDIDATE",
+        nodes: approvedNodes.map((n, i) => ({
+          entityKey: `snap-${i}`,
+          nodeType: n.nodeType,
+          title: n.title,
+          summary: null,
+          reference: {
+            lifecycle: "USER_APPROVED" as const,
+            reusable: true,
+            reusableAs: (n.metadata as { reference: { reusableAs: string[] } }).reference.reusableAs,
+            safeForReference: true,
+          },
+        })),
+        edges: [],
+      },
     });
     const assessment = await buildProjectReferenceAssessment("p1");
+    expect(assessment.source).toBe("REFERENCE_SNAPSHOT");
     expect(assessment.eligibility.level).toBe("SNAPSHOT_READY");
     expect(assessment.eligibility.eligible).toBe(true);
     expect(assessment.latestRevision?.id).not.toBe(assessment.latestReferenceRevision?.id);
@@ -134,9 +151,25 @@ describe("buildProjectReferenceAssessment", () => {
       nodeCount: 3,
       edgeCount: 0,
       createdAt: "2026-06-24T11:00:00.000Z",
-      graphSnapshot: { purpose: "REFERENCE_PACKAGE", nodes: [], edges: [] },
+      graphSnapshot: {
+        purpose: "REFERENCE_PACKAGE",
+        nodes: approvedNodes.map((n, i) => ({
+          entityKey: `pkg-${i}`,
+          nodeType: n.nodeType,
+          title: n.title,
+          summary: null,
+          reference: {
+            lifecycle: "USER_APPROVED" as const,
+            reusable: true,
+            reusableAs: (n.metadata as { reference: { reusableAs: string[] } }).reference.reusableAs,
+            safeForReference: true,
+          },
+        })),
+        edges: [],
+      },
     });
     const assessment = await buildProjectReferenceAssessment("p1");
+    expect(assessment.source).toBe("REFERENCE_SNAPSHOT");
     expect(assessment.eligibility.level).toBe("VERIFIED");
   });
 });

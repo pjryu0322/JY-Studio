@@ -14,7 +14,7 @@ vi.mock("@/lib/project-knowledge/projectKnowledgeGraphRevisionService", () => ({
   loadLatestReferenceKnowledgeGraphRevision: (...args: unknown[]) => loadLatestReference(...args),
 }));
 
-vi.mock("@/lib/project-knowledge/projectKnowledgeReferenceBackfillService", () => ({
+vi.mock("@/lib/project-knowledge/projectKnowledgeReferenceEnsureService", () => ({
   ensureProjectReferenceMetadataReady: (...args: unknown[]) => ensureReady(...args),
 }));
 
@@ -261,6 +261,7 @@ describe("buildReferencePackageCandidate snapshot source", () => {
     expect(assessment.eligibility.level).toBe("PARTIAL");
     expect(assessment.eligibility.counts.reusableGraphNodes).toBe(1);
     expect(assessment.eligibility.eligible).toBe(false);
+    expect(assessment.source).toBe("REFERENCE_SNAPSHOT");
   });
 
   it("can reach SNAPSHOT_READY from snapshot alone when live graph is empty", async () => {
@@ -280,6 +281,7 @@ describe("buildReferencePackageCandidate snapshot source", () => {
     const assessment = await buildProjectReferenceAssessment("p1");
     expect(assessment.eligibility.level).toBe("SNAPSHOT_READY");
     expect(assessment.eligibility.eligible).toBe(true);
+    expect(assessment.source).toBe("REFERENCE_SNAPSHOT");
   });
 
   it("without reference revision stays READY_FOR_SNAPSHOT not selectable even when live graph is rich", async () => {
@@ -287,5 +289,6 @@ describe("buildReferencePackageCandidate snapshot source", () => {
     const assessment = await buildProjectReferenceAssessment("p1");
     expect(assessment.eligibility.level).toBe("READY_FOR_SNAPSHOT");
     expect(assessment.eligibility.eligible).toBe(false);
+    expect(assessment.source).toBe("LIVE_GRAPH");
   });
 });
