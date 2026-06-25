@@ -52,6 +52,7 @@ import {
   buildReferencePlanningWelcomeMessageMeta,
   buildReferencePlanningLegacyMissingBody,
   buildReferencePlanningLegacyMissingMessageMeta,
+  buildReferencePlanningMaterializeSuccessMessageMeta,
   REFERENCE_PLANNING_CHIP_CLEAR,
   REFERENCE_PLANNING_CHIP_CONTINUE,
   REFERENCE_PLANNING_CHIP_MATERIALIZE,
@@ -71,12 +72,10 @@ import {
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 import {
   REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY,
-  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_INTERNAL_TYPE,
   REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
 import {
   postReferenceMaterializeForProject,
-  REFERENCE_MATERIALIZE_FAILURE_NOTICE_CHIPS,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializeClient";
 import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
@@ -3588,11 +3587,11 @@ export function RequirementsWorkspace({
                   speakerId: VIRTUAL_AI_PLANNER_ID,
                   speakerName: IDEATION_AI_DISPLAY_NAME,
                   messageType: "NOTICE",
-                  meta: { internalType: REFERENCE_PLANNING_MATERIALIZE_SUCCESS_INTERNAL_TYPE },
+                  meta: buildReferencePlanningMaterializeSuccessMessageMeta(),
                 }),
               ]);
               await persistRemote(nextRoom, {}, {});
-              showSuccessToast("참조 정보를 보정했습니다.");
+              showSuccessToast("참조 컨텍스트를 준비했습니다.");
               return;
             }
             const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
@@ -3605,16 +3604,17 @@ export function RequirementsWorkspace({
                 messageType: "NOTICE",
                 meta: {
                   internalType: REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE,
-                  interviewSuggestions: outcome.suggestClear
-                    ? [...REFERENCE_MATERIALIZE_FAILURE_NOTICE_CHIPS]
-                    : undefined,
+                  interviewSuggestions:
+                    outcome.failureNoticeChips.length > 0
+                      ? [...outcome.failureNoticeChips]
+                      : undefined,
                 },
               }),
             ]);
             await persistRemote(nextRoom, {}, {});
-            showErrorToast(outcome.noticeBody.split("\n")[0] ?? "참조 보정에 실패했습니다.");
+            showErrorToast(outcome.noticeBody.split("\n")[0] ?? "참조 컨텍스트 준비에 실패했습니다.");
           } catch {
-            showErrorToast("참조 보정에 실패했습니다.");
+            showErrorToast("참조 컨텍스트 준비에 실패했습니다.");
           }
         })();
         return;

@@ -95,4 +95,30 @@ describe("buildMaterializedReferenceContextFromSnapshot", () => {
     expect(roundtrip?.policy.usage).toBe("REFERENCE_ONLY");
     expect(roundtrip?.version).toBe(1);
   });
+
+  it("materialized context is independent from later snapshot mutations", () => {
+    const snapshot = safeSnapshot();
+    const ctx = buildMaterializedReferenceContextFromSnapshot({
+      sourceProjectTitle: "A",
+      snapshotTitle: "Snap",
+      snapshotPurpose: "REFERENCE_CANDIDATE",
+      graphSnapshot: snapshot,
+    });
+    const actorTitleBefore = ctx.nodes[0]?.title;
+    snapshot.nodes[0]!.title = "변경된 액터";
+    snapshot.nodes.push({
+      entityKey: "new",
+      nodeType: "Actor",
+      title: "추가 액터",
+      summary: null,
+      reference: {
+        lifecycle: "USER_APPROVED",
+        reusable: true,
+        reusableAs: ["ACTOR"],
+        safeForReference: true,
+      },
+    });
+    expect(ctx.nodes[0]?.title).toBe(actorTitleBefore);
+    expect(ctx.nodes.length).toBe(2);
+  });
 });

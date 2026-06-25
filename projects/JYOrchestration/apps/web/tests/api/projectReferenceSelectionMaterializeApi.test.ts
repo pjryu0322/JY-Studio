@@ -129,7 +129,7 @@ describe("projectReferenceSelectionMaterializeApi", () => {
       status: "SOURCE_UNAVAILABLE",
       projectId: "p1",
       referenceContextSource: "LEGACY_MISSING",
-      message: "참조 저장본을 다시 확인할 수 없습니다. 참조 프로젝트를 다시 선택해 주세요.",
+      message: "참조 저장본을 다시 확인할 수 없습니다. 참조를 해제해 주세요.",
     });
     const req = new NextRequest("http://localhost/api/projects/p1/reference-selection/materialize", {
       method: "POST",

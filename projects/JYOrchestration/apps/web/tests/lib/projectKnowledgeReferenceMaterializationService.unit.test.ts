@@ -5,11 +5,30 @@ const permissionMock = vi.fn();
 const findUniqueMock = vi.fn();
 const updateMock = vi.fn();
 
+const revisionUpdateMock = vi.fn();
+const revisionCreateMock = vi.fn();
+const graphNodeUpdateMock = vi.fn();
+const graphNodeUpdateManyMock = vi.fn();
+const graphEdgeUpdateMock = vi.fn();
+const graphEdgeUpdateManyMock = vi.fn();
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     project: {
       findUnique: (...args: unknown[]) => findUniqueMock(...args),
       update: (...args: unknown[]) => updateMock(...args),
+    },
+    projectKnowledgeGraphRevision: {
+      update: (...args: unknown[]) => revisionUpdateMock(...args),
+      create: (...args: unknown[]) => revisionCreateMock(...args),
+    },
+    projectGraphNode: {
+      update: (...args: unknown[]) => graphNodeUpdateMock(...args),
+      updateMany: (...args: unknown[]) => graphNodeUpdateManyMock(...args),
+    },
+    projectGraphEdge: {
+      update: (...args: unknown[]) => graphEdgeUpdateMock(...args),
+      updateMany: (...args: unknown[]) => graphEdgeUpdateManyMock(...args),
     },
   },
 }));
@@ -79,6 +98,12 @@ describe("materializeReferenceContextForProject", () => {
     permissionMock.mockReset();
     findUniqueMock.mockReset();
     updateMock.mockReset();
+    revisionUpdateMock.mockReset();
+    revisionCreateMock.mockReset();
+    graphNodeUpdateMock.mockReset();
+    graphNodeUpdateManyMock.mockReset();
+    graphEdgeUpdateMock.mockReset();
+    graphEdgeUpdateManyMock.mockReset();
     permissionMock.mockResolvedValue(undefined);
   });
 
@@ -140,6 +165,15 @@ describe("materializeReferenceContextForProject", () => {
     if (result.status !== "MATERIALIZED") throw new Error("expected MATERIALIZED");
     expect(result.counts.graphReusableNodeCount).toBe(1);
     expect(updateMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "p1" } }),
+    );
+    expect(revisionUpdateMock).not.toHaveBeenCalled();
+    expect(revisionCreateMock).not.toHaveBeenCalled();
+    expect(graphNodeUpdateMock).not.toHaveBeenCalled();
+    expect(graphNodeUpdateManyMock).not.toHaveBeenCalled();
+    expect(graphEdgeUpdateMock).not.toHaveBeenCalled();
+    expect(graphEdgeUpdateManyMock).not.toHaveBeenCalled();
     const updateArg = updateMock.mock.calls[0]?.[0] as {
       data?: { requirementsStateJson?: { materializedReferenceContextV1?: unknown } };
     };

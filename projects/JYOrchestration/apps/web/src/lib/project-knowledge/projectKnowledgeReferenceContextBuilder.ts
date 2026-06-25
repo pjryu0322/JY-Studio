@@ -104,7 +104,7 @@ Actor ${summary.actorCount}개 · Flow ${summary.serviceFlowCount}개 · Feature
 export const REFERENCE_PLANNING_CHIP_VIEW = "참조 정보 보기";
 export const REFERENCE_PLANNING_CHIP_CLEAR = "참조 해제";
 export const REFERENCE_PLANNING_CHIP_CONTINUE = "계속 진행";
-export const REFERENCE_PLANNING_CHIP_MATERIALIZE = "참조 보정" as const;
+export const REFERENCE_PLANNING_CHIP_MATERIALIZE = "참조 컨텍스트 준비" as const;
 
 export const REFERENCE_PLANNING_INFO_VIEW_INTERNAL_TYPE = "reference-snapshot-planning-info-view" as const;
 export const REFERENCE_PLANNING_CLEAR_NOTICE_INTERNAL_TYPE = "reference-snapshot-planning-clear-notice" as const;
@@ -117,15 +117,15 @@ export const REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE =
 
 export const REFERENCE_PLANNING_CLEAR_NOTICE_BODY = "참조 프로젝트 선택을 해제했습니다.";
 
-export const REFERENCE_PLANNING_LEGACY_MISSING_BODY = `선택된 참조 정보가 이전 형식으로 저장되어 있어 AI 기획 컨텍스트로 바로 사용할 수 없습니다.
-참조 정보를 현재 프로젝트에 안전한 참고 컨텍스트로 보정할 수 있습니다.`;
+export const REFERENCE_PLANNING_LEGACY_MISSING_BODY = `선택된 참조 정보가 이전 형식으로 저장되어 있습니다.
+참조 프로젝트를 수정하지 않고, 현재 프로젝트 안에 AI 기획용 참조 컨텍스트만 준비할 수 있습니다.`;
 
-export const REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY = `참조 정보를 현재 프로젝트의 안전한 참고 컨텍스트로 보정했습니다.
-이후 AI 기획자는 원본 프로젝트를 다시 조회하지 않고, 현재 프로젝트에 저장된 참조 컨텍스트만 사용합니다.`;
+export const REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY = `참조 컨텍스트를 현재 프로젝트에 준비했습니다.
+참조 프로젝트와 원본 그래프 스냅샷은 수정되지 않습니다.
+이후 AI 기획자는 현재 프로젝트에 저장된 참조 컨텍스트만 사용합니다.`;
 
-export const REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY = `참조 정보를 보정할 수 없습니다.
-이전 참조 프로젝트에 접근할 수 없거나 저장본을 다시 확인할 수 없습니다.
-참조를 해제하거나 새 참조 프로젝트를 다시 선택해 주세요.`;
+export const REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY = `참조 컨텍스트를 현재 프로젝트에 준비할 수 없습니다.
+다시 시도하거나 참조를 해제해 주세요.`;
 
 export function buildReferenceInfoViewMessageBody(
   summary: import("@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes").ProjectReferenceSelectionSummaryV1,

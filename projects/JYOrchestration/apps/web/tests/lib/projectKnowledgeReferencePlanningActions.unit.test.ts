@@ -105,6 +105,9 @@ describe("reference planning chip helpers", () => {
     expect(REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE).not.toMatch(
       /sourceSnapshotId|revisionId|entityKey/i,
     );
+    expect(REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE).not.toContain("보정");
+    expect(REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE).not.toContain("재선택");
+    expect(REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE).toContain("현재 프로젝트");
   });
 });
 

@@ -1,5 +1,6 @@
 import {
   REFERENCE_PLANNING_CHIP_CLEAR,
+  REFERENCE_PLANNING_CHIP_MATERIALIZE,
   REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
 import { buildReferenceMaterializeApiPath } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
@@ -12,14 +13,47 @@ export type ReferenceMaterializeFailureStatus =
   | "NO_REFERENCE_SELECTION"
   | "UNKNOWN";
 
+export type ReferenceMaterializeFailureActionPolicy = "RETRY_AND_CLEAR" | "CLEAR_ONLY" | "NONE";
+
 export type ReferenceMaterializeClientResult =
   | { readonly ok: true; readonly status: "MATERIALIZED" | "ALREADY_MATERIALIZED" }
   | {
       readonly ok: false;
       readonly status: ReferenceMaterializeFailureStatus;
       readonly noticeBody: string;
-      readonly suggestClear: boolean;
+      readonly failureNoticeChips: readonly string[];
     };
+
+export function resolveReferenceMaterializeFailureActionPolicy(
+  status: ReferenceMaterializeFailureStatus,
+): ReferenceMaterializeFailureActionPolicy {
+  switch (status) {
+    case "SOURCE_PERMISSION_DENIED":
+    case "SOURCE_UNAVAILABLE":
+    case "INVALID_SELECTION":
+      return "CLEAR_ONLY";
+    case "SNAPSHOT_NOT_READY":
+    case "UNKNOWN":
+      return "RETRY_AND_CLEAR";
+    case "NO_REFERENCE_SELECTION":
+      return "NONE";
+    default:
+      return "RETRY_AND_CLEAR";
+  }
+}
+
+export function referenceMaterializeFailureNoticeChips(
+  status: ReferenceMaterializeFailureStatus,
+): readonly string[] {
+  const policy = resolveReferenceMaterializeFailureActionPolicy(status);
+  if (policy === "RETRY_AND_CLEAR") {
+    return [REFERENCE_PLANNING_CHIP_MATERIALIZE, REFERENCE_PLANNING_CHIP_CLEAR];
+  }
+  if (policy === "CLEAR_ONLY") {
+    return [REFERENCE_PLANNING_CHIP_CLEAR];
+  }
+  return [];
+}
 
 export function buildReferenceMaterializeFailureNoticeBody(
   status: ReferenceMaterializeFailureStatus,
@@ -28,25 +62,13 @@ export function buildReferenceMaterializeFailureNoticeBody(
   const trimmed = String(serverMessage ?? "").trim();
   switch (status) {
     case "SOURCE_PERMISSION_DENIED":
-      return (
-        trimmed ||
-        "이전 참조 프로젝트에 접근할 권한이 없습니다. 참조를 해제하거나 새 참조 프로젝트를 다시 선택해 주세요."
-      );
+      return trimmed || "이전 참조 프로젝트에 접근할 권한이 없습니다. 참조를 해제해 주세요.";
     case "SOURCE_UNAVAILABLE":
-      return (
-        trimmed ||
-        "참조 저장본을 다시 확인할 수 없습니다. 참조를 해제하거나 새 참조 프로젝트를 다시 선택해 주세요."
-      );
+      return trimmed || "참조 저장본을 다시 확인할 수 없습니다. 참조를 해제해 주세요.";
     case "SNAPSHOT_NOT_READY":
-      return (
-        trimmed ||
-        "참조 저장본이 아직 준비되지 않았습니다. 참조를 해제하거나 나중에 다시 시도해 주세요."
-      );
+      return trimmed || "참조 저장본이 아직 준비되지 않았습니다. 다시 시도하거나 참조를 해제해 주세요.";
     case "INVALID_SELECTION":
-      return (
-        trimmed ||
-        "저장된 참조 선택 정보가 올바르지 않습니다. 참조를 해제하거나 새 참조 프로젝트를 다시 선택해 주세요."
-      );
+      return trimmed || "저장된 참조 선택 정보가 올바르지 않습니다. 참조를 해제해 주세요.";
     case "NO_REFERENCE_SELECTION":
       return trimmed || "저장된 참조 선택이 없습니다.";
     default:
@@ -54,15 +76,11 @@ export function buildReferenceMaterializeFailureNoticeBody(
   }
 }
 
+/** @deprecated use referenceMaterializeFailureNoticeChips */
 export function shouldSuggestReferenceClearAfterMaterializeFailure(
   status: ReferenceMaterializeFailureStatus,
 ): boolean {
-  return (
-    status === "SOURCE_PERMISSION_DENIED" ||
-    status === "SOURCE_UNAVAILABLE" ||
-    status === "SNAPSHOT_NOT_READY" ||
-    status === "INVALID_SELECTION"
-  );
+  return referenceMaterializeFailureNoticeChips(status).includes(REFERENCE_PLANNING_CHIP_CLEAR);
 }
 
 export function parseReferenceMaterializeFailureStatus(raw: unknown): ReferenceMaterializeFailureStatus {
@@ -109,7 +127,7 @@ export function parseReferenceMaterializeApiResponse(input: Readonly<{
     ok: false,
     status: failureStatus,
     noticeBody,
-    suggestClear: shouldSuggestReferenceClearAfterMaterializeFailure(failureStatus),
+    failureNoticeChips: referenceMaterializeFailureNoticeChips(failureStatus),
   };
 }
 
@@ -123,7 +141,7 @@ export async function postReferenceMaterializeForProject(
       ok: false,
       status: "UNKNOWN",
       noticeBody: "프로젝트 정보가 없습니다.",
-      suggestClear: false,
+      failureNoticeChips: [],
     };
   }
   const res = await fetch(buildReferenceMaterializeApiPath(pid), {
@@ -141,4 +159,5 @@ export async function postReferenceMaterializeForProject(
   return parseReferenceMaterializeApiResponse({ ok: res.ok, status: res.status, json });
 }
 
+/** @deprecated use referenceMaterializeFailureNoticeChips */
 export const REFERENCE_MATERIALIZE_FAILURE_NOTICE_CHIPS = [REFERENCE_PLANNING_CHIP_CLEAR] as const;

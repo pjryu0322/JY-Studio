@@ -92,7 +92,7 @@ function mapValidationError(
       status: "SOURCE_UNAVAILABLE",
       projectId,
       referenceContextSource: "LEGACY_MISSING",
-      message: "참조 저장본을 다시 확인할 수 없습니다. 참조 프로젝트를 다시 선택해 주세요.",
+      message: "참조 저장본을 다시 확인할 수 없습니다. 참조를 해제해 주세요.",
     };
   }
   if (error.message.includes("준비되지")) {
@@ -111,6 +111,14 @@ function mapValidationError(
   };
 }
 
+/**
+ * Legacy `referenceSelectionV1`만 있는 target project(B)에
+ * AI 프롬프트용 `materializedReferenceContextV1`를 준비한다.
+ *
+ * Graph Snapshot은 source project(A)의 특정 시점 불변 고정본이며 읽기 전용으로만 사용한다.
+ * source project, source working graph, source graph snapshot, source revision은 update하지 않는다.
+ * update 대상은 target project `requirementsStateJson`뿐이다.
+ */
 export async function materializeReferenceContextForProject(input: Readonly<{
   readonly projectId: string;
   readonly userId: string;

@@ -143,6 +143,11 @@ function countByReusableAs(nodes: readonly MaterializedReferenceContextV1["nodes
   return { actorCount, serviceFlowCount, featureCount, decisionCount, constraintCount };
 }
 
+/**
+ * Source project(A) Graph Snapshot에서 안전한 reusable 정보만 추출해
+ * target project(B)에 저장할 Materialized Reference Context를 만든다.
+ * 반환값은 snapshot 입력과 분리된 복사본이며, A의 이후 변경은 B에 자동 반영되지 않는다.
+ */
 export function buildMaterializedReferenceContextFromSnapshot(input: Readonly<{
   readonly sourceProjectTitle: string;
   readonly snapshotTitle: string;
