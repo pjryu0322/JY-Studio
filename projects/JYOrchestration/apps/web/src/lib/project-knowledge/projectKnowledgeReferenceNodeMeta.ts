@@ -1,5 +1,10 @@
 import type { StructureExplainability } from "@/lib/project-structure/structureExplainabilityModel";
 import {
+  buildFallbackProjectGraphNodeReferenceMetadata,
+  buildProjectGraphNodeReferenceViewFromMetadata,
+  parseProjectGraphNodeReferenceMetadata,
+} from "@/lib/project-knowledge/projectKnowledgeReferenceMetadata";
+import {
   knowledgeNodeLifecycleUserLabel,
   normalizeKnowledgeNodeLifecycle,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceNormalize";
@@ -11,7 +16,7 @@ import type {
   KnowledgeNodeReusableAs,
   KnowledgeNodeReusability,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
-import { assessKnowledgeNodeSensitivity } from "@/lib/project-knowledge/projectKnowledgeSanitizationService";
+import { assessReferenceSafety } from "@/lib/project-knowledge/projectKnowledgeSanitizationService";
 
 export type KnowledgeReferenceNodeInput = Readonly<{
   readonly nodeType: string;
@@ -19,6 +24,8 @@ export type KnowledgeReferenceNodeInput = Readonly<{
   readonly summary?: string | null;
   readonly lifecycleStatus?: string | null;
   readonly projectionKey?: string | null;
+  readonly metadata?: unknown;
+  readonly sourceEventId?: string | null;
   readonly explainability?: StructureExplainability | null;
 }>;
 
@@ -78,7 +85,7 @@ function reusableAsForNodeType(nodeType: string): KnowledgeNodeReusableAs[] {
 
 export function computeKnowledgeNodeReusability(
   lifecycle: KnowledgeNodeLifecycle,
-  sensitivity: ReturnType<typeof assessKnowledgeNodeSensitivity>,
+  sensitivity: ReturnType<typeof assessReferenceSafety>,
   nodeType: string,
 ): KnowledgeNodeReusability {
   const approvedLike =
@@ -103,30 +110,20 @@ export function computeKnowledgeNodeReusability(
 }
 
 export function buildKnowledgeNodeReferenceView(input: KnowledgeReferenceNodeInput): KnowledgeNodeReferenceView {
-  const lifecycle = normalizeKnowledgeNodeLifecycle(input);
-  const provenance = inferKnowledgeNodeProvenance(input, lifecycle);
+  const stored = parseProjectGraphNodeReferenceMetadata(input.metadata);
   const excerpt = input.explainability?.sourceConversation?.excerpt ?? "";
-  const sensitivity = assessKnowledgeNodeSensitivity({
-    title: input.title,
-    summary: input.summary,
-    containsConversationExcerpt: excerpt.length > 80,
-    containsPersonalMemo: /메모|personal|private/i.test(`${input.title} ${input.summary ?? ""}`),
-  });
-  const reusability = computeKnowledgeNodeReusability(lifecycle, sensitivity, input.nodeType);
-
-  let verificationLabel = "검증 대기";
-  if (lifecycle === "VERIFIED" || lifecycle === "REFERENCE_READY") {
-    verificationLabel = "검증 완료";
-  } else if (lifecycle === "USER_APPROVED") {
-    verificationLabel = "승인 완료";
-  }
-
-  return {
-    lifecycleLabel: knowledgeNodeLifecycleUserLabel(lifecycle),
-    provenanceLabel: knowledgeProvenanceUserLabel(provenance.createdFrom),
-    reusableLabel: reusability.reusable ? "참조 사용 가능" : "참조 사용 불가",
-    verificationLabel,
-  };
+  const meta =
+    stored ??
+    buildFallbackProjectGraphNodeReferenceMetadata({
+      nodeType: input.nodeType,
+      title: input.title,
+      summary: input.summary,
+      lifecycleStatus: input.lifecycleStatus,
+      projectionKey: input.projectionKey,
+      sourceEventId: input.sourceEventId ?? input.explainability?.createdFrom?.eventId ?? null,
+      containsConversationExcerpt: excerpt.length > 80,
+    });
+  return buildProjectGraphNodeReferenceViewFromMetadata(meta);
 }
 
 export function toReferenceEligibilityNodeInput(
@@ -139,11 +136,25 @@ export function toReferenceEligibilityNodeInput(
   reusable: boolean;
   safeForReference: boolean;
 }> {
+  const stored = parseProjectGraphNodeReferenceMetadata(node.metadata);
+  if (stored) {
+    return {
+      lifecycle: stored.lifecycle,
+      nodeType: node.nodeType,
+      title: node.title,
+      summary: node.summary ?? null,
+      reusable: stored.reusable,
+      safeForReference: stored.sensitivity.safeForReference,
+    };
+  }
+
   const lifecycle = normalizeKnowledgeNodeLifecycle(node);
-  const sensitivity = assessKnowledgeNodeSensitivity({
+  const excerpt = node.explainability?.sourceConversation?.excerpt ?? "";
+  const sensitivity = assessReferenceSafety({
     title: node.title,
     summary: node.summary,
-    containsConversationExcerpt: Boolean(node.explainability?.sourceConversation?.excerpt),
+    containsConversationExcerpt: excerpt.length > 80,
+    containsPersonalMemo: /메모|personal|private/i.test(`${node.title} ${node.summary ?? ""}`),
   });
   const reusability = computeKnowledgeNodeReusability(lifecycle, sensitivity, node.nodeType);
   return {
@@ -155,3 +166,6 @@ export function toReferenceEligibilityNodeInput(
     safeForReference: sensitivity.safeForReference,
   };
 }
+
+// Re-export for tests
+export { knowledgeNodeLifecycleUserLabel };

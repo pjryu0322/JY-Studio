@@ -1,12 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { graphNodeCount, graphEdgeCount, candidateCount, getLatestRun, listRevisions } = vi.hoisted(() => ({
-  graphNodeCount: vi.fn(),
-  graphEdgeCount: vi.fn(),
-  candidateCount: vi.fn(),
-  getLatestRun: vi.fn(),
-  listRevisions: vi.fn(),
-}));
+const { graphNodeCount, graphEdgeCount, candidateCount, getLatestRun, getLatestRevision, buildAssessment } =
+  vi.hoisted(() => ({
+    graphNodeCount: vi.fn(),
+    graphEdgeCount: vi.fn(),
+    candidateCount: vi.fn(),
+    getLatestRun: vi.fn(),
+    getLatestRevision: vi.fn(),
+    buildAssessment: vi.fn(),
+  }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -21,13 +23,11 @@ vi.mock("@/lib/project-knowledge/projectKnowledgePipelineMonitor", () => ({
 }));
 
 vi.mock("@/lib/project-knowledge/projectKnowledgeGraphRevisionService", () => ({
-  listKnowledgeGraphRevisions: (...args: unknown[]) => listRevisions(...args),
+  getLatestKnowledgeGraphRevision: (...args: unknown[]) => getLatestRevision(...args),
 }));
 
-const getReferenceEligibility = vi.hoisted(() => vi.fn());
-
 vi.mock("@/lib/project-knowledge/projectKnowledgeReferenceCandidateService", () => ({
-  getProjectReferenceEligibility: (...args: unknown[]) => getReferenceEligibility(...args),
+  buildProjectReferenceAssessment: (...args: unknown[]) => buildAssessment(...args),
 }));
 
 import { getKnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusService";
@@ -38,19 +38,28 @@ describe("getKnowledgeRuntimeStatusSummary", () => {
     graphEdgeCount.mockReset();
     candidateCount.mockReset();
     getLatestRun.mockReset();
-    listRevisions.mockReset();
-    getReferenceEligibility.mockReset();
-    getReferenceEligibility.mockResolvedValue({
-      eligible: false,
-      level: "NONE",
-      reasons: [],
-      blockingIssues: [],
-      counts: {
-        reusableActors: 0,
-        reusableServiceFlows: 0,
-        reusableFeatures: 0,
-        reusableGraphNodes: 0,
+    getLatestRevision.mockReset();
+    buildAssessment.mockReset();
+    buildAssessment.mockResolvedValue({
+      projectId: "p1",
+      graphNodeCount: 12,
+      graphEdgeCount: 10,
+      latestReferenceRevision: null,
+      latestRevision: null,
+      eligibility: {
+        eligible: false,
+        level: "NONE",
+        reasons: [],
+        blockingIssues: [],
+        counts: {
+          reusableActors: 0,
+          reusableServiceFlows: 0,
+          reusableFeatures: 0,
+          reusableGraphNodes: 0,
+        },
       },
+      reusableNodes: [],
+      exclusions: [],
     });
   });
 
@@ -64,17 +73,15 @@ describe("getKnowledgeRuntimeStatusSummary", () => {
       completedAt: "2026-06-24T05:32:00.000Z",
       steps: [],
     });
-    listRevisions.mockResolvedValue([
-      {
-        id: "hidden",
-        revisionNumber: 1,
-        title: "추천안 승인",
-        summary: null,
-        nodeCount: 12,
-        edgeCount: 10,
-        createdAt: "2026-06-24T05:32:00.000Z",
-      },
-    ]);
+    getLatestRevision.mockResolvedValue({
+      id: "hidden",
+      revisionNumber: 1,
+      title: "추천안 승인",
+      summary: null,
+      nodeCount: 12,
+      edgeCount: 10,
+      createdAt: "2026-06-24T05:32:00.000Z",
+    });
 
     const summary = await getKnowledgeRuntimeStatusSummary("p1");
     expect(summary.status).toBe("READY");
@@ -84,6 +91,7 @@ describe("getKnowledgeRuntimeStatusSummary", () => {
     expect(summary.latestChangeTitle).toBe("추천안 승인");
     expect(summary.latestChangedAt).toBe("2026-06-24T05:32:00.000Z");
     expect(summary.referenceEligibilityLabel).toBe("참조 준비 안 됨");
+    expect(buildAssessment).toHaveBeenCalledWith("p1");
   });
 
   it("returns STRUCTURING when latest run is RUNNING", async () => {
@@ -91,7 +99,7 @@ describe("getKnowledgeRuntimeStatusSummary", () => {
     graphEdgeCount.mockResolvedValue(0);
     candidateCount.mockResolvedValue(0);
     getLatestRun.mockResolvedValue({ status: "RUNNING", startedAt: "2026-06-24T05:00:00.000Z", steps: [] });
-    listRevisions.mockResolvedValue([]);
+    getLatestRevision.mockResolvedValue(null);
 
     const summary = await getKnowledgeRuntimeStatusSummary("p1");
     expect(summary.status).toBe("STRUCTURING");

@@ -16,6 +16,8 @@ export async function getProjectGraphSnapshotWithExplainability(
       summary: n.summary,
       lifecycleStatus: n.lifecycleStatus,
       projectionKey: n.projectionKey,
+      metadata: n.metadata,
+      sourceEventId: n.sourceEventId,
       explainability: n.explainability,
     }),
   }));

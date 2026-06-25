@@ -1,22 +1,28 @@
 import { prisma } from "@/lib/prisma";
 import { getLatestKnowledgePipelineRun } from "@/lib/project-knowledge/projectKnowledgePipelineMonitor";
-import { listKnowledgeGraphRevisions } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
-import { getProjectReferenceEligibility } from "@/lib/project-knowledge/projectKnowledgeReferenceCandidateService";
+import { getLatestKnowledgeGraphRevision } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
+import { buildProjectReferenceAssessment } from "@/lib/project-knowledge/projectKnowledgeReferenceCandidateService";
 import { REFERENCE_ELIGIBILITY_USER_LABELS } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
 import {
   knowledgeRuntimeStatusLabel,
   resolveKnowledgeRuntimeStatus,
 } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusResolve";
+import type { KnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusTypes";
 import type { ReferenceEligibility } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
 
 function pickReferenceEligibilityHint(eligibility: ReferenceEligibility): string | undefined {
-  if (eligibility.level === "PARTIAL") {
-    return eligibility.reasons[0] ?? "승인된 기능과 흐름이 더 필요할 수 있습니다.";
+  switch (eligibility.level) {
+    case "PARTIAL":
+      return eligibility.reasons[0] ?? "승인된 기능과 흐름이 더 필요합니다.";
+    case "NONE":
+      return eligibility.blockingIssues[0] ?? eligibility.reasons[0];
+    case "READY_FOR_SNAPSHOT":
+      return eligibility.reasons[0] ?? "참조 저장본을 만들면 새 프로젝트에서 참고할 수 있습니다.";
+    case "SNAPSHOT_READY":
+      return eligibility.reasons[0] ?? "승인된 참조 저장본이 있어 새 프로젝트에서 참고할 수 있습니다.";
+    default:
+      return undefined;
   }
-  if (eligibility.level === "NONE") {
-    return eligibility.blockingIssues[0] ?? eligibility.reasons[0];
-  }
-  return undefined;
 }
 
 export async function getKnowledgeRuntimeStatusSummary(
@@ -32,19 +38,19 @@ export async function getKnowledgeRuntimeStatusSummary(
     };
   }
 
-  const [nodeCount, edgeCount, pendingReviewCandidateCount, latestRun, revisions, referenceEligibility] =
+  const [nodeCount, edgeCount, pendingReviewCandidateCount, latestRun, latestRevision, referenceAssessment] =
     await Promise.all([
-    prisma.projectGraphNode.count({ where: { projectId: pid } }),
-    prisma.projectGraphEdge.count({ where: { projectId: pid } }),
-    prisma.projectStructureCandidate.count({
-      where: { projectId: pid, lifecycleStatus: "CANDIDATE" },
-    }),
-    getLatestKnowledgePipelineRun(pid),
-    listKnowledgeGraphRevisions(pid, { limit: 50 }),
-    getProjectReferenceEligibility(pid),
-  ]);
+      prisma.projectGraphNode.count({ where: { projectId: pid } }),
+      prisma.projectGraphEdge.count({ where: { projectId: pid } }),
+      prisma.projectStructureCandidate.count({
+        where: { projectId: pid, lifecycleStatus: "CANDIDATE" },
+      }),
+      getLatestKnowledgePipelineRun(pid),
+      getLatestKnowledgeGraphRevision(pid),
+      buildProjectReferenceAssessment(pid),
+    ]);
 
-  const latestRevision = revisions.length > 0 ? revisions[revisions.length - 1] : null;
+  const referenceEligibility = referenceAssessment.eligibility;
   const pipelineStatus = latestRun?.status ?? null;
 
   const status = resolveKnowledgeRuntimeStatus({

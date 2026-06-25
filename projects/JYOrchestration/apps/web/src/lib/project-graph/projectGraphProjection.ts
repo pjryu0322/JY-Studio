@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { mergeGraphNodeMetadataWithReference } from "@/lib/project-knowledge/projectKnowledgeReferenceMetadata";
 import {
   planProjectGraphProjectionFromEvent,
   type ProjectGraphEventInput,
@@ -80,6 +81,15 @@ async function upsertNodeFromPlan(
   if (existing) return existing;
 
   try {
+    const metadata = mergeGraphNodeMetadataWithReference(plan.metadata, {
+      nodeType: plan.nodeType,
+      title: plan.title,
+      summary: plan.summary,
+      projectionKey: plan.projectionKey,
+      sourceEventId: plan.sourceEventId,
+      lifecycleStatus: String(plan.metadata.structureCandidateLifecycle ?? plan.metadata.lifecycleStatus ?? ""),
+      structureCandidateId: String(plan.metadata.structureCandidateId ?? "").trim() || null,
+    });
     return await runWithSavepoint(db, plan.projectionKey, () =>
       db.projectGraphNode.create({
         data: {
@@ -89,7 +99,7 @@ async function upsertNodeFromPlan(
           nodeType: plan.nodeType,
           title: plan.title,
           summary: plan.summary,
-          metadata: plan.metadata as Prisma.InputJsonValue,
+          metadata: metadata as Prisma.InputJsonValue,
           sourceEventId: plan.sourceEventId,
         },
       }),

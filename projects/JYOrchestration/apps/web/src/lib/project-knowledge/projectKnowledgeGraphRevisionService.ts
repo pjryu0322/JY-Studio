@@ -115,6 +115,37 @@ export async function listKnowledgeGraphRevisions(
   return rows.map(toListItem);
 }
 
+export async function getLatestKnowledgeGraphRevision(
+  projectId: string,
+): Promise<KnowledgeGraphRevisionListItem | null> {
+  const pid = String(projectId ?? "").trim();
+  if (!pid) return null;
+
+  const row = await prisma.projectKnowledgeGraphRevision.findFirst({
+    where: { projectId: pid },
+    orderBy: { revisionNumber: "desc" },
+    select: {
+      id: true,
+      revisionNumber: true,
+      title: true,
+      summary: true,
+      nodeCount: true,
+      edgeCount: true,
+      createdAt: true,
+    },
+  });
+
+  return row ? toListItem(row) : null;
+}
+
+export async function loadLatestKnowledgeGraphRevision(
+  projectId: string,
+): Promise<KnowledgeGraphRevisionDetail | null> {
+  const latest = await getLatestKnowledgeGraphRevision(projectId);
+  if (!latest) return null;
+  return loadKnowledgeGraphRevision(projectId, latest.id);
+}
+
 export async function loadKnowledgeGraphRevision(
   projectId: string,
   revisionId: string,

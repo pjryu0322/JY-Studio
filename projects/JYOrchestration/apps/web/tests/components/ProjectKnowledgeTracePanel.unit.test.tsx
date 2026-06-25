@@ -78,6 +78,7 @@ describe("ProjectGraphNodeDetailPanel tabs", () => {
           knowledgeReference: {
             lifecycleLabel: "사용자 승인됨",
             provenanceLabel: "AI가 제안함",
+            reusable: true,
             reusableLabel: "참조 사용 가능",
             verificationLabel: "승인 완료",
           },

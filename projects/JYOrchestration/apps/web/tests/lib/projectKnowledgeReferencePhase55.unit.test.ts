@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { parseKnowledgeGraphRevisionSnapshot } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionSnapshot";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { computeReferenceEligibility } from "@/lib/project-knowledge/projectKnowledgeReferenceEligibilityService";
+import { parseKnowledgeGraphRevisionSnapshot } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionSnapshot";
 import {
   graphSnapshotPurposeFromMilestone,
   normalizeGraphSnapshotPurpose,
@@ -9,6 +9,7 @@ import {
 import { buildKnowledgeNodeReferenceView, computeKnowledgeNodeReusability } from "@/lib/project-knowledge/projectKnowledgeReferenceNodeMeta";
 import {
   assessKnowledgeNodeSensitivity,
+  assessReferenceSafety,
   isTextSafeForReferencePackage,
 } from "@/lib/project-knowledge/projectKnowledgeSanitizationService";
 
@@ -54,6 +55,21 @@ describe("graph snapshot purpose", () => {
     const snap = parseKnowledgeGraphRevisionSnapshot({ nodes: [], edges: [] });
     expect(snap.purpose).toBe("REPLAY");
   });
+
+  it("does not treat REPLAY snapshot as reference by purpose alone", () => {
+    const snap = parseKnowledgeGraphRevisionSnapshot({ purpose: "REPLAY", nodes: [], edges: [] });
+    expect(snap.purpose).toBe("REPLAY");
+    const nodes = [
+      { lifecycle: "USER_APPROVED", nodeType: "Actor", reusable: true, safeForReference: true },
+      { lifecycle: "USER_APPROVED", nodeType: "ServiceFlow", reusable: true, safeForReference: true },
+      { lifecycle: "USER_APPROVED", nodeType: "Feature", reusable: true, safeForReference: true },
+    ];
+    const eligibility = computeReferenceEligibility(nodes, {
+      hasReferenceCandidateSnapshot: false,
+      hasReferencePackageSnapshot: false,
+    });
+    expect(eligibility.level).toBe("READY_FOR_SNAPSHOT");
+  });
 });
 
 describe("computeReferenceEligibility", () => {
@@ -87,21 +103,22 @@ describe("computeReferenceEligibility", () => {
     expect(result.level).toBe("PARTIAL");
   });
 
-  it("returns READY when thresholds met without verified snapshot", () => {
+  it("returns READY_FOR_SNAPSHOT when thresholds met without snapshot", () => {
     const result = computeReferenceEligibility(
       [approvedActor, approvedFlow, approvedFeature, approvedActor],
-      { hasReferenceCandidateSnapshot: false },
+      { hasReferenceCandidateSnapshot: false, hasReferencePackageSnapshot: false },
     );
-    expect(result.level).toBe("READY");
-    expect(result.eligible).toBe(true);
+    expect(result.level).toBe("READY_FOR_SNAPSHOT");
+    expect(result.eligible).toBe(false);
   });
 
-  it("returns VERIFIED when READY and reference snapshot exists", () => {
+  it("returns SNAPSHOT_READY when reference candidate snapshot exists", () => {
     const result = computeReferenceEligibility(
       [approvedActor, approvedFlow, approvedFeature],
-      { hasReferenceCandidateSnapshot: true },
+      { hasReferenceCandidateSnapshot: true, hasReferencePackageSnapshot: false },
     );
-    expect(result.level).toBe("VERIFIED");
+    expect(result.level).toBe("SNAPSHOT_READY");
+    expect(result.eligible).toBe(true);
   });
 });
 
@@ -114,7 +131,7 @@ describe("buildKnowledgeNodeReferenceView", () => {
       lifecycleStatus: "PROJECTED",
     });
     expect(view.lifecycleLabel).toBe("사용자 승인됨");
-    expect(view.reusableLabel).toBe("참조 사용 가능");
+    expect(view.reusable).toBe(true);
     expect(JSON.stringify(view)).not.toMatch(/revisionId|eventId/i);
   });
 
@@ -124,11 +141,11 @@ describe("buildKnowledgeNodeReferenceView", () => {
       title: "초안 기능",
       lifecycleStatus: "CANDIDATE",
     });
-    expect(view.reusableLabel).toBe("참조 사용 불가");
+    expect(view.reusable).toBe(false);
   });
 
   it("blocks reusability when raw conversation excerpt is present", () => {
-    const sensitivity = assessKnowledgeNodeSensitivity({
+    const sensitivity = assessReferenceSafety({
       title: "Actor",
       summary: null,
       containsConversationExcerpt: true,

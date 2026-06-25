@@ -53,14 +53,14 @@ describe("ProjectKnowledgeRuntimeStatusCard", () => {
           statusLabel: "구조화 완료",
           nodeCount: 4,
           edgeCount: 3,
-          referenceEligibilityLabel: "일부 참조 가능",
+          referenceEligibilityLabel: "일부 구조만 준비됨",
           referenceEligibilityHint: "승인된 기능과 흐름이 더 필요할 수 있습니다.",
         },
         loading: false,
         error: null,
       }),
     );
-    expect(html).toContain("참조 준비: 일부 참조 가능");
+    expect(html).toContain("참조 준비: 일부 구조만 준비됨");
     expect(html).toContain("승인된 기능과 흐름이 더 필요할 수 있습니다.");
   });
 

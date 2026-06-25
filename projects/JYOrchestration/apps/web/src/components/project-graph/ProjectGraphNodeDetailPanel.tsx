@@ -102,7 +102,7 @@ export function ProjectGraphNodeDetailBody({
                 </div>
                 <div>
                   <span style={{ fontWeight: 700, color: t.textMuted }}>참조 사용 </span>
-                  {node.knowledgeReference.reusableLabel.includes("가능") ? "가능" : "불가"}
+                  {node.knowledgeReference.reusable ? "가능" : "불가"}
                 </div>
                 <div>
                   <span style={{ fontWeight: 700, color: t.textMuted }}>검증 상태 </span>

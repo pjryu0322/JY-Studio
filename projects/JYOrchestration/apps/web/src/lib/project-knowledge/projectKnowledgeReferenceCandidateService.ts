@@ -1,6 +1,7 @@
 import { getProjectGraphSnapshotWithExplainability } from "@/lib/project-graph/projectGraphSnapshotEnrich";
-import { listKnowledgeGraphRevisions, loadKnowledgeGraphRevision } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
-import { parseKnowledgeGraphRevisionSnapshot } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionSnapshot";
+import {
+  loadLatestKnowledgeGraphRevision,
+} from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
 import { normalizeGraphSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeReferenceNormalize";
 import {
   computeReferenceEligibility,
@@ -11,47 +12,99 @@ import type {
   ReferenceEligibility,
   ReferencePackageCandidate,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
-import type { KnowledgeGraphRevisionListItem } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionTypes";
+import type {
+  KnowledgeGraphRevisionDetail,
+  KnowledgeGraphRevisionListItem,
+} from "@/lib/project-knowledge/projectKnowledgeGraphRevisionTypes";
 import { isTextSafeForReferencePackage } from "@/lib/project-knowledge/projectKnowledgeSanitizationService";
 
-function revisionHasReferenceSnapshotPurpose(
-  revision: KnowledgeGraphRevisionListItem,
-  snap: ReturnType<typeof parseKnowledgeGraphRevisionSnapshot>,
-): boolean {
-  const purpose = normalizeGraphSnapshotPurpose(snap.purpose);
-  if (purpose === "REFERENCE_CANDIDATE" || purpose === "REFERENCE_PACKAGE") {
-    return true;
+export type ProjectReferenceAssessment = Readonly<{
+  readonly projectId: string;
+  readonly graphNodeCount: number;
+  readonly graphEdgeCount: number;
+  readonly latestReferenceRevision: KnowledgeGraphRevisionDetail | null;
+  readonly latestRevision: KnowledgeGraphRevisionListItem | null;
+  readonly eligibility: ReferenceEligibility;
+  readonly reusableNodes: ReadonlyArray<{
+    readonly title: string;
+    readonly nodeType: string;
+    readonly reusableAs: readonly string[];
+  }>;
+  readonly exclusions: readonly string[];
+}>;
+
+function snapshotFlagsFromLatestRevision(
+  detail: KnowledgeGraphRevisionDetail | null,
+): Readonly<{ readonly hasReferenceCandidateSnapshot: boolean; readonly hasReferencePackageSnapshot: boolean }> {
+  if (!detail) {
+    return { hasReferenceCandidateSnapshot: false, hasReferencePackageSnapshot: false };
   }
-  const title = String(revision.title ?? "").trim();
-  return title === "그래프 반영" || title === "추천안 승인";
+  const purpose = normalizeGraphSnapshotPurpose(detail.graphSnapshot.purpose);
+  return {
+    hasReferenceCandidateSnapshot: purpose === "REFERENCE_CANDIDATE",
+    hasReferencePackageSnapshot: purpose === "REFERENCE_PACKAGE",
+  };
 }
 
-async function loadLatestReferenceSnapshotFlag(projectId: string): Promise<boolean> {
-  const revisions = await listKnowledgeGraphRevisions(projectId, { limit: 50 });
-  const latest = revisions[revisions.length - 1];
-  if (!latest) return false;
-  const detail = await loadKnowledgeGraphRevision(projectId, latest.id);
-  if (!detail) return false;
-  const snap = parseKnowledgeGraphRevisionSnapshot(detail.graphSnapshot);
-  return revisionHasReferenceSnapshotPurpose(latest, snap);
+function graphNodeToReferenceInput(node: {
+  nodeType: string;
+  title: string;
+  summary: string | null;
+  metadata: unknown;
+  projectionKey: string;
+  sourceEventId?: string | null;
+  lifecycleStatus?: string;
+  explainability?: unknown;
+}) {
+  return {
+    nodeType: node.nodeType,
+    title: node.title,
+    summary: node.summary,
+    metadata: node.metadata,
+    projectionKey: node.projectionKey,
+    sourceEventId: node.sourceEventId,
+    lifecycleStatus: node.lifecycleStatus,
+    explainability: node.explainability as never,
+  };
 }
 
-export async function getProjectReferenceEligibility(projectId: string): Promise<ReferenceEligibility> {
+export async function buildProjectReferenceAssessment(
+  projectId: string,
+): Promise<ProjectReferenceAssessment> {
   const pid = String(projectId ?? "").trim();
   if (!pid) {
-    return computeReferenceEligibility([], { hasReferenceCandidateSnapshot: false });
+    return {
+      projectId: "",
+      graphNodeCount: 0,
+      graphEdgeCount: 0,
+      latestReferenceRevision: null,
+      latestRevision: null,
+      eligibility: computeReferenceEligibility([]),
+      reusableNodes: [],
+      exclusions: [],
+    };
   }
 
-  const graph = await getProjectGraphSnapshotWithExplainability(pid, { limit: 500 });
+  const [graph, latestDetail] = await Promise.all([
+    getProjectGraphSnapshotWithExplainability(pid, { limit: 500 }),
+    loadLatestKnowledgeGraphRevision(pid),
+  ]);
+
+  const latestRevision = latestDetail
+    ? {
+        id: latestDetail.id,
+        revisionNumber: latestDetail.revisionNumber,
+        title: latestDetail.title,
+        summary: latestDetail.summary,
+        nodeCount: latestDetail.nodeCount,
+        edgeCount: latestDetail.edgeCount,
+        createdAt: latestDetail.createdAt,
+      }
+    : null;
+
+  const flags = snapshotFlagsFromLatestRevision(latestDetail);
   const metrics: ReferenceEligibilityNodeMetrics[] = graph.nodes.map((n) => {
-    const mapped = toReferenceEligibilityNodeInput({
-      nodeType: n.nodeType,
-      title: n.title,
-      summary: n.summary,
-      lifecycleStatus: (n as { lifecycleStatus?: string }).lifecycleStatus,
-      projectionKey: n.projectionKey,
-      explainability: (n as { explainability?: never }).explainability,
-    });
+    const mapped = toReferenceEligibilityNodeInput(graphNodeToReferenceInput(n));
     return {
       lifecycle: mapped.lifecycle,
       nodeType: mapped.nodeType,
@@ -60,60 +113,70 @@ export async function getProjectReferenceEligibility(projectId: string): Promise
     };
   });
 
-  const hasReferenceCandidateSnapshot = await loadLatestReferenceSnapshotFlag(pid);
+  const eligibility = computeReferenceEligibility(metrics, flags);
+  const reusableNodes: ProjectReferenceAssessment["reusableNodes"][number][] = [];
+  const exclusions: string[] = [];
 
-  return computeReferenceEligibility(metrics, { hasReferenceCandidateSnapshot });
+  for (const n of graph.nodes) {
+    const mapped = toReferenceEligibilityNodeInput(graphNodeToReferenceInput(n));
+    if (!mapped.reusable || !mapped.safeForReference) {
+      exclusions.push("미승인 또는 참조 제외 항목이 정리되었습니다.");
+      continue;
+    }
+    if (!isTextSafeForReferencePackage(n.title)) continue;
+    reusableNodes.push({
+      title: n.title.trim(),
+      nodeType: n.nodeType,
+      reusableAs: [],
+    });
+  }
+
+  return {
+    projectId: pid,
+    graphNodeCount: graph.nodes.length,
+    graphEdgeCount: graph.edges.length,
+    latestReferenceRevision: latestDetail,
+    latestRevision,
+    eligibility,
+    reusableNodes,
+    exclusions: [...new Set(exclusions)].slice(0, 8),
+  };
+}
+
+export async function getProjectReferenceEligibility(projectId: string): Promise<ReferenceEligibility> {
+  const assessment = await buildProjectReferenceAssessment(projectId);
+  return assessment.eligibility;
 }
 
 export async function buildReferencePackageCandidate(projectId: string): Promise<ReferencePackageCandidate> {
-  const pid = String(projectId ?? "").trim();
-  const eligibility = await getProjectReferenceEligibility(pid);
-  const exclusions: string[] = [];
-  const blockingIssues = [...eligibility.blockingIssues];
+  const assessment = await buildProjectReferenceAssessment(projectId);
+  const { eligibility, latestRevision, reusableNodes, exclusions } = assessment;
 
-  const graph = await getProjectGraphSnapshotWithExplainability(pid, { limit: 500 });
   const actors: string[] = [];
   const serviceFlows: string[] = [];
   const features: string[] = [];
   const decisions: string[] = [];
 
-  for (const n of graph.nodes) {
-    const mapped = toReferenceEligibilityNodeInput({
-      nodeType: n.nodeType,
-      title: n.title,
-      summary: n.summary,
-      lifecycleStatus: (n as { lifecycleStatus?: string }).lifecycleStatus,
-      projectionKey: n.projectionKey,
-      explainability: (n as { explainability?: never }).explainability,
-    });
-    if (!mapped.reusable || !mapped.safeForReference) {
-      exclusions.push("미승인 또는 참조 제외 항목이 정리되었습니다.");
-      continue;
-    }
-    const label = n.title.trim();
-    if (!isTextSafeForReferencePackage(label)) continue;
-    if (/actor/i.test(n.nodeType)) actors.push(label);
-    else if (/flow/i.test(n.nodeType)) serviceFlows.push(label);
-    else if (/feature/i.test(n.nodeType)) features.push(label);
-    else if (/decision/i.test(n.nodeType)) decisions.push(label);
+  for (const n of reusableNodes) {
+    if (/actor/i.test(n.nodeType)) actors.push(n.title);
+    else if (/flow/i.test(n.nodeType)) serviceFlows.push(n.title);
+    else if (/feature/i.test(n.nodeType)) features.push(n.title);
+    else if (/decision/i.test(n.nodeType)) decisions.push(n.title);
   }
 
   const unique = (items: string[]) => [...new Set(items)].slice(0, 20);
   const readiness =
     eligibility.level === "VERIFIED"
       ? "VERIFIED"
-      : eligibility.level === "READY"
+      : eligibility.level === "SNAPSHOT_READY"
         ? "READY"
         : eligibility.level === "PARTIAL"
           ? "PARTIAL"
           : "NOT_READY";
 
-  const revisions = await listKnowledgeGraphRevisions(pid, { limit: 50 });
-  const latest = revisions[revisions.length - 1];
-
   return {
-    projectId: pid,
-    ...(latest ? { sourceRevisionId: latest.id } : {}),
+    projectId: assessment.projectId,
+    ...(latestRevision ? { sourceRevisionId: latestRevision.id } : {}),
     readiness,
     summary:
       readiness === "READY" || readiness === "VERIFIED"
@@ -126,7 +189,7 @@ export async function buildReferencePackageCandidate(projectId: string): Promise
       graphSummary: `항목 ${eligibility.counts.reusableGraphNodes}개 · 연결 가능 구조`,
       decisions: unique(decisions),
     },
-    exclusions: [...new Set(exclusions)].slice(0, 8),
-    blockingIssues,
+    exclusions,
+    blockingIssues: [...eligibility.blockingIssues],
   };
 }

@@ -39,11 +39,16 @@ function parseKnowledgeReference(raw: unknown): KnowledgeNodeReferenceView | und
   const provenanceLabel = String(r.provenanceLabel ?? "").trim();
   const reusableLabel = String(r.reusableLabel ?? "").trim();
   const verificationLabel = String(r.verificationLabel ?? "").trim();
+  const reusableRaw = r.reusable;
+  const reusable =
+    typeof reusableRaw === "boolean" ? reusableRaw : reusableLabel.includes("가능");
   if (!lifecycleLabel && !provenanceLabel) return undefined;
   return {
     lifecycleLabel: lifecycleLabel || "작성 중",
     provenanceLabel: provenanceLabel || "시스템에서 생성됨",
-    reusableLabel: reusableLabel || "참조 사용 불가",
+    reusable: reusableLabel.includes("가능"),
+    reusable,
+    reusableLabel: reusableLabel || (reusable ? "참조 사용 가능" : "참조 사용 불가"),
     verificationLabel: verificationLabel || "검증 대기",
   };
 }

@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { mergeGraphNodeMetadataWithReference } from "@/lib/project-knowledge/projectKnowledgeReferenceMetadata";
 import { setCandidateLifecycleStatus } from "@/lib/project-structure/projectStructureLifecycle";
 import { STRUCTURE_NODE_LIFECYCLE } from "@/lib/project-structure/projectStructureTypes";
 
@@ -110,6 +110,21 @@ export async function applyApprovedCandidateToGraph(
   }
 
   try {
+    const metadata = mergeGraphNodeMetadataWithReference(
+      {
+        structureCandidateId: candidate.id,
+        approved: true,
+      },
+      {
+        nodeType: candidate.nodeType,
+        title: candidate.title,
+        summary: candidate.summary,
+        projectionKey,
+        sourceEventId: candidate.sourceEventId,
+        lifecycleStatus: "APPROVED",
+        structureCandidateId: candidate.id,
+      },
+    );
     const node = await tx.projectGraphNode.create({
       data: {
         projectId: input.projectId,
@@ -118,10 +133,7 @@ export async function applyApprovedCandidateToGraph(
         nodeType: candidate.nodeType,
         title: candidate.title,
         summary: candidate.summary,
-        metadata: {
-          structureCandidateId: candidate.id,
-          approved: true,
-        } as Prisma.InputJsonValue,
+        metadata: metadata as Prisma.InputJsonValue,
         sourceEventId: candidate.sourceEventId,
       },
     });

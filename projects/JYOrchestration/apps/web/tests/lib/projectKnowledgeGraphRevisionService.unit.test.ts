@@ -33,6 +33,7 @@ vi.mock("@/lib/project-graph/projectGraphQuery", () => ({
 
 import {
   createKnowledgeGraphRevision,
+  getLatestKnowledgeGraphRevision,
   listKnowledgeGraphRevisions,
   loadKnowledgeGraphRevision,
 } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
@@ -104,6 +105,26 @@ describe("projectKnowledgeGraphRevisionService", () => {
     const detail = await loadKnowledgeGraphRevision("p1", "r1");
     expect(detail?.title).toBe("그래프 반영");
     expect(detail?.graphSnapshot.nodes).toEqual([]);
+  });
+
+  it("getLatestKnowledgeGraphRevision uses desc order", async () => {
+    findFirst.mockResolvedValue({
+      id: "r60",
+      revisionNumber: 60,
+      title: "최신",
+      summary: null,
+      nodeCount: 1,
+      edgeCount: 0,
+      createdAt: new Date("2026-06-25T00:00:00.000Z"),
+    });
+    const latest = await getLatestKnowledgeGraphRevision("p1");
+    expect(latest?.revisionNumber).toBe(60);
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectId: "p1" },
+        orderBy: { revisionNumber: "desc" },
+      }),
+    );
   });
 
   it("loadKnowledgeGraphRevision returns null when missing", async () => {

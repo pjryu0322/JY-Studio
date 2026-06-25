@@ -11,6 +11,8 @@ vi.mock("@/lib/project-graph/projectGraphSnapshotEnrich", () => ({
 vi.mock("@/lib/project-knowledge/projectKnowledgeGraphRevisionService", () => ({
   listKnowledgeGraphRevisions: (...args: unknown[]) => listRevisions(...args),
   loadKnowledgeGraphRevision: (...args: unknown[]) => loadRevision(...args),
+  getLatestKnowledgeGraphRevision: (...args: unknown[]) => listRevisions(...args).then((r) => r[r.length - 1] ?? null),
+  loadLatestKnowledgeGraphRevision: (...args: unknown[]) => loadRevision(...args),
 }));
 
 import { buildReferencePackageCandidate } from "@/lib/project-knowledge/projectKnowledgeReferenceCandidateService";

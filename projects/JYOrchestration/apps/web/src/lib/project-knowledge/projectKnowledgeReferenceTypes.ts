@@ -53,7 +53,12 @@ export type GraphSnapshotPurpose =
   | "REFERENCE_CANDIDATE"
   | "REFERENCE_PACKAGE";
 
-export type ReferenceEligibilityLevel = "NONE" | "PARTIAL" | "READY" | "VERIFIED";
+export type ReferenceEligibilityLevel =
+  | "NONE"
+  | "PARTIAL"
+  | "READY_FOR_SNAPSHOT"
+  | "SNAPSHOT_READY"
+  | "VERIFIED";
 
 export type ReferenceEligibility = Readonly<{
   readonly eligible: boolean;
@@ -90,13 +95,15 @@ export type ReferencePackageCandidate = Readonly<{
 export type KnowledgeNodeReferenceView = Readonly<{
   readonly lifecycleLabel: string;
   readonly provenanceLabel: string;
+  readonly reusable: boolean;
   readonly reusableLabel: string;
   readonly verificationLabel: string;
 }>;
 
 export const REFERENCE_ELIGIBILITY_USER_LABELS: Record<ReferenceEligibilityLevel, string> = {
   NONE: "참조 준비 안 됨",
-  PARTIAL: "일부 참조 가능",
-  READY: "참조 가능",
+  PARTIAL: "일부 구조만 준비됨",
+  READY_FOR_SNAPSHOT: "참조 저장본 생성 가능",
+  SNAPSHOT_READY: "참조 가능",
   VERIFIED: "검증된 참조 가능",
 };
