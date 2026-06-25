@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { requireProjectPermission } from "@/lib/auth/rbacGuard";
 import { ProjectAccessDeniedError } from "@/lib/rbac/projectAccessDenied";
 import { parseKnowledgeGraphRevisionSnapshot } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionSnapshot";
+import type { KnowledgeGraphRevisionSnapshot } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionTypes";
 import { computeReferenceEligibility } from "@/lib/project-knowledge/projectKnowledgeReferenceEligibilityService";
 import type {
   ProjectReferenceSelectionSummaryV1,
@@ -43,22 +44,25 @@ export function assertMvpReferenceSnapshotIdCount(ids: readonly string[]): void 
   }
 }
 
-export async function prepareReferenceSnapshotSelectionForUser(input: Readonly<{
-  readonly userId: string;
-  readonly referenceSnapshotIds: readonly string[];
-}>): Promise<Readonly<{
-  readonly selection: ProjectReferenceSelectionV1;
-  readonly summary: ProjectReferenceSelectionSummaryV1;
-  readonly materializedReferenceContextV1: MaterializedReferenceContextV1;
-}>> {
-  const userId = String(input.userId ?? "").trim();
-  const ids = normalizeReferenceSnapshotIds(input.referenceSnapshotIds);
-  if (ids.length === 0) {
-    throw new ReferenceSnapshotSelectionValidationError("참조 저장본을 선택해 주세요.", 400);
-  }
-  assertMvpReferenceSnapshotIdCount(ids);
+type LoadedReferenceSnapshotRevision = Readonly<{
+  readonly id: string;
+  readonly title: string;
+  readonly snapshotPurpose: string;
+  readonly graphSnapshot: unknown;
+  readonly projectId: string;
+  readonly project: { readonly id: string; readonly name: string; readonly status: string };
+}>;
 
-  const snapshotId = ids[0]!;
+/** Read-only source snapshot checks (permission, purpose, eligibility). Does not mutate source project/graph. */
+async function assertReferenceSnapshotSelectable(
+  userId: string,
+  snapshotId: string,
+): Promise<Readonly<{
+  revision: LoadedReferenceSnapshotRevision;
+  snapshot: KnowledgeGraphRevisionSnapshot;
+  typedPurpose: ReferenceLibrarySnapshotPurpose;
+  readiness: ReferenceLibraryReadiness;
+}>> {
   const revision = await prisma.projectKnowledgeGraphRevision.findUnique({
     where: { id: snapshotId },
     select: {
@@ -103,24 +107,38 @@ export async function prepareReferenceSnapshotSelectionForUser(input: Readonly<{
   const readiness: ReferenceLibraryReadiness = purpose === "REFERENCE_PACKAGE" ? "VERIFIED" : "READY";
   const typedPurpose = purpose as ReferenceLibrarySnapshotPurpose;
 
+  return { revision, snapshot, typedPurpose, readiness };
+}
+
+/** Builds target-project selection + independent materialized copy from a validated source snapshot. */
+function buildPreparedReferenceSelectionFromRevision(input: Readonly<{
+  revision: LoadedReferenceSnapshotRevision;
+  snapshot: KnowledgeGraphRevisionSnapshot;
+  typedPurpose: ReferenceLibrarySnapshotPurpose;
+  readiness: ReferenceLibraryReadiness;
+}>): Readonly<{
+  selection: ProjectReferenceSelectionV1;
+  summary: ProjectReferenceSelectionSummaryV1;
+  materializedReferenceContextV1: MaterializedReferenceContextV1;
+}> {
   const materializedReferenceContextV1 = buildMaterializedReferenceContextFromSnapshot({
-    sourceProjectTitle: revision.project.name,
-    snapshotTitle: revision.title,
-    snapshotPurpose: typedPurpose,
-    sourceSnapshotId: revision.id,
-    graphSnapshot: snapshot,
+    sourceProjectTitle: input.revision.project.name,
+    snapshotTitle: input.revision.title,
+    snapshotPurpose: input.typedPurpose,
+    sourceSnapshotId: input.revision.id,
+    graphSnapshot: input.snapshot,
   });
 
   return {
     selection: {
-      referenceSnapshotIds: [revision.id],
+      referenceSnapshotIds: [input.revision.id],
       selectedAt: new Date().toISOString(),
       source: "USER_SELECTED",
     },
     summary: {
-      sourceProjectTitle: revision.project.name,
-      snapshotTitle: revision.title,
-      readiness,
+      sourceProjectTitle: input.revision.project.name,
+      snapshotTitle: input.revision.title,
+      readiness: input.readiness,
       actorCount: materializedReferenceContextV1.summary.actorCount,
       serviceFlowCount: materializedReferenceContextV1.summary.serviceFlowCount,
       featureCount: materializedReferenceContextV1.summary.featureCount,
@@ -131,9 +149,33 @@ export async function prepareReferenceSnapshotSelectionForUser(input: Readonly<{
 }
 
 /**
- * Validates a source Graph Snapshot for the user and builds target-project `materializedReferenceContextV1`.
- * Used at project create and legacy context preparation — not for per-turn prompt revision reads.
+ * Project create and legacy context preparation facade: validates a read-only source Graph Snapshot,
+ * then builds `materializedReferenceContextV1` as an independent copy for the **target** project only.
  *
- * @deprecated Prefer the name `prepareReferenceSnapshotSelectionForUser`.
+ * Do not call from per-turn AI prompt injection — use `buildReferencePromptContextForProjectTurn` instead.
+ * Never updates the source project, working graph, snapshot, or revision.
+ */
+export async function prepareReferenceSnapshotSelectionForUser(input: Readonly<{
+  readonly userId: string;
+  readonly referenceSnapshotIds: readonly string[];
+}>): Promise<Readonly<{
+  readonly selection: ProjectReferenceSelectionV1;
+  readonly summary: ProjectReferenceSelectionSummaryV1;
+  readonly materializedReferenceContextV1: MaterializedReferenceContextV1;
+}>> {
+  const userId = String(input.userId ?? "").trim();
+  const ids = normalizeReferenceSnapshotIds(input.referenceSnapshotIds);
+  if (ids.length === 0) {
+    throw new ReferenceSnapshotSelectionValidationError("참조 저장본을 선택해 주세요.", 400);
+  }
+  assertMvpReferenceSnapshotIdCount(ids);
+
+  const snapshotId = ids[0]!;
+  const validated = await assertReferenceSnapshotSelectable(userId, snapshotId);
+  return buildPreparedReferenceSelectionFromRevision(validated);
+}
+
+/**
+ * @deprecated Prefer `prepareReferenceSnapshotSelectionForUser`.
  */
 export const validateReferenceSnapshotSelectionForUser = prepareReferenceSnapshotSelectionForUser;

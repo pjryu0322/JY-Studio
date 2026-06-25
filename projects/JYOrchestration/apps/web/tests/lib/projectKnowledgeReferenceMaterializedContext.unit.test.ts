@@ -96,6 +96,66 @@ describe("buildMaterializedReferenceContextFromSnapshot", () => {
     expect(roundtrip?.version).toBe(1);
   });
 
+  it("excludes uuid-like titles from prompt sections", () => {
+    const ctx = buildMaterializedReferenceContextFromSnapshot({
+      sourceProjectTitle: "P",
+      snapshotTitle: "S",
+      snapshotPurpose: "REFERENCE_CANDIDATE",
+      graphSnapshot: {
+        purpose: "REFERENCE_CANDIDATE",
+        nodes: [
+          {
+            entityKey: "1",
+            nodeType: "Feature",
+            title: "550e8400-e29b-41d4-a716-446655440000",
+            summary: null,
+            reference: {
+              lifecycle: "USER_APPROVED",
+              reusable: true,
+              reusableAs: ["FEATURE"],
+              safeForReference: true,
+            },
+          },
+          {
+            entityKey: "2",
+            nodeType: "Actor",
+            title: "고객",
+            summary: null,
+            reference: {
+              lifecycle: "USER_APPROVED",
+              reusable: true,
+              reusableAs: ["ACTOR"],
+              safeForReference: true,
+            },
+          },
+        ],
+        edges: [],
+      },
+    });
+    const text = formatReferencePromptContextSectionText({
+      summarySections: ctx.sections,
+      selectedNodes: [],
+    });
+    expect(text).toContain("고객");
+    expect(text).not.toContain("550e8400-e29b-41d4-a716-446655440000");
+    expect(text).not.toMatch(/eventId|revisionId|nodeId|pipelineRunId/i);
+  });
+
+  it("prompt section includes reference reinterpret guidance", () => {
+    const ctx = buildMaterializedReferenceContextFromSnapshot({
+      sourceProjectTitle: "P",
+      snapshotTitle: "S",
+      snapshotPurpose: "REFERENCE_CANDIDATE",
+      graphSnapshot: safeSnapshot(),
+    });
+    const text = formatReferencePromptContextSectionText({
+      summarySections: ctx.sections,
+      selectedNodes: [],
+    });
+    expect(text).toContain("복사하기 위한 것이 아니라");
+    expect(text).not.toContain("raw conversation");
+  });
+
   it("materialized context is independent from later snapshot mutations", () => {
     const snapshot = safeSnapshot();
     const ctx = buildMaterializedReferenceContextFromSnapshot({

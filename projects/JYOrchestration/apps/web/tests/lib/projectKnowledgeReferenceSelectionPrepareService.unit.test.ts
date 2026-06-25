@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  buildMaterializedReferenceContextFromSnapshot,
+  parseMaterializedReferenceContextV1,
+  type MaterializedReferenceContextV1,
+} from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
 
 const prepareMock = vi.fn();
 
@@ -13,6 +18,31 @@ vi.mock("@/lib/project-knowledge/projectKnowledgeReferenceSelectionValidation", 
 
 import { ReferenceSnapshotSelectionValidationError } from "@/lib/project-knowledge/projectKnowledgeReferenceSelectionValidation";
 import { prepareReferenceSelectionForProjectCreate } from "@/lib/project-knowledge/projectKnowledgeReferenceSelectionPrepareService";
+
+const sampleMaterialized = buildMaterializedReferenceContextFromSnapshot({
+  sourceProjectTitle: "A",
+  snapshotTitle: "S",
+  snapshotPurpose: "REFERENCE_CANDIDATE",
+  sourceSnapshotId: "revision-internal-only",
+  graphSnapshot: {
+    purpose: "REFERENCE_CANDIDATE",
+    nodes: [
+      {
+        entityKey: "ek1",
+        nodeType: "Actor",
+        title: "고객",
+        summary: "주문 담당",
+        reference: {
+          lifecycle: "USER_APPROVED",
+          reusable: true,
+          reusableAs: ["ACTOR"],
+          safeForReference: true,
+        },
+      },
+    ],
+    edges: [],
+  },
+});
 
 describe("prepareReferenceSelectionForProjectCreate", () => {
   beforeEach(() => {
@@ -43,6 +73,8 @@ describe("prepareReferenceSelectionForProjectCreate", () => {
   });
 
   it("maps prepare result to create payload without internal ids", async () => {
+    expect(parseMaterializedReferenceContextV1(sampleMaterialized)).not.toBeNull();
+
     prepareMock.mockResolvedValue({
       selection: {
         referenceSnapshotIds: ["public-snap-id"],
@@ -53,19 +85,12 @@ describe("prepareReferenceSelectionForProjectCreate", () => {
         sourceProjectTitle: "A",
         snapshotTitle: "S",
         readiness: "READY",
-        actorCount: 1,
-        serviceFlowCount: 0,
-        featureCount: 0,
-        graphReusableNodeCount: 1,
+        actorCount: sampleMaterialized.summary.actorCount,
+        serviceFlowCount: sampleMaterialized.summary.serviceFlowCount,
+        featureCount: sampleMaterialized.summary.featureCount,
+        graphReusableNodeCount: sampleMaterialized.summary.graphReusableNodeCount,
       },
-      materializedReferenceContextV1: {
-        version: 1,
-        sourceProjectTitle: "A",
-        snapshotTitle: "S",
-        snapshotPurpose: "REFERENCE_CANDIDATE",
-        preparedAt: "2026-06-03T00:00:00.000Z",
-        graph: { purpose: "REFERENCE_CANDIDATE", nodes: [], edges: [] },
-      },
+      materializedReferenceContextV1: sampleMaterialized satisfies MaterializedReferenceContextV1,
     });
 
     const result = await prepareReferenceSelectionForProjectCreate({
@@ -83,9 +108,15 @@ describe("prepareReferenceSelectionForProjectCreate", () => {
       source: "USER_SELECTED",
     });
     expect(result.referenceSelectionSummary?.sourceProjectTitle).toBe("A");
-    expect(result.materializedReferenceContextV1?.sourceProjectTitle).toBe("A");
-    expect(JSON.stringify(result)).not.toContain("sourceSnapshotId");
-    expect(JSON.stringify(result)).not.toContain("entityKey");
+    expect(result.materializedReferenceContextV1?.source.sourceProjectTitle).toBe("A");
+    expect(parseMaterializedReferenceContextV1(result.materializedReferenceContextV1)).not.toBeNull();
+    const publicFacingJson = JSON.stringify({
+      referenceSelection: result.referenceSelection,
+      referenceSelectionSummary: result.referenceSelectionSummary,
+    });
+    expect(publicFacingJson).not.toContain("sourceSnapshotId");
+    expect(publicFacingJson).not.toContain("revision-internal-only");
+    expect(JSON.stringify(result.materializedReferenceContextV1?.nodes)).not.toContain("entityKey");
     expect(JSON.stringify(result)).not.toContain("revisionId");
   });
 });

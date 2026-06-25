@@ -23,7 +23,7 @@ import {
   buildReferencePlanningWelcomeMessageBody,
   REFERENCE_PLANNING_LEGACY_MISSING_BODY,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
-import { buildReferenceInfoViewMessageBody } from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
+import { buildReferenceInfoViewMessageBody } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 
 export { buildReferenceInfoViewMessageBody };
 

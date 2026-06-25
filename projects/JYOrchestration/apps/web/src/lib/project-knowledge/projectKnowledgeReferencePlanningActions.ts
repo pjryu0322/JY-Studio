@@ -5,7 +5,7 @@ import {
   type ProjectReferenceSelectionSummaryV1,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
 import { parseMaterializedReferenceContextV1 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
-import { buildReferenceInfoViewMessageBody } from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
+import { buildReferenceInfoViewMessageBody } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 
 export function buildReferenceClearSelectionApiPath(projectId: string): string {
   const pid = String(projectId ?? "").trim();

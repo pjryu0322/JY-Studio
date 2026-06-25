@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildReferenceInfoViewMessageBody,
   REFERENCE_PLANNING_CHIP_CONTINUE,
-} from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
+} from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 import {
   buildReferenceClearSelectionApiPath,
   buildReferenceMaterializeApiPath,

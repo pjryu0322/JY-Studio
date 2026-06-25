@@ -16,6 +16,7 @@ describe("projectKnowledgeReferencePlanningUiPolicy", () => {
       expect(text).not.toContain("재선택");
       expect(text.toLowerCase()).not.toContain("batch");
       expect(text.toLowerCase()).not.toContain("materialize");
+      expect(text).not.toContain("materialize-missing");
     }
     expect(REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_BODY).toContain("현재 프로젝트");
     expect(REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_BODY).toContain("수정되지 않습니다");
