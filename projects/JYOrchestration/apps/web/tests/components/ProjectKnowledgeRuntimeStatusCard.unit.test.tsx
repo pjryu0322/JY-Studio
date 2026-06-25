@@ -4,6 +4,26 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ProjectKnowledgeRuntimeStatusCard } from "@/components/project-graph/ProjectKnowledgeRuntimeStatusCard";
 
 describe("ProjectKnowledgeRuntimeStatusCard", () => {
+  it("includes graphRegenerationMessage in reset state", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeRuntimeStatusCard, {
+        summary: {
+          status: "PREPARING",
+          statusLabel: "준비 중",
+          nodeCount: 0,
+          edgeCount: 0,
+          lastPlanningGraphResetAt: "2026-06-25T11:00:00.000Z",
+          graphRegenerationMessage:
+            "기획 초기화 후 아직 생성된 Knowledge Graph가 없습니다. AI 기획자 응답이나 사용자의 선택이 반영되면 새 그래프가 생성됩니다.",
+        },
+        loading: false,
+        error: null,
+      }),
+    );
+    expect(html).toContain("마지막 초기화:");
+    expect(html).toContain("기획 초기화 후");
+  });
+
   it("shows preparing empty copy", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectKnowledgeRuntimeStatusCard, {

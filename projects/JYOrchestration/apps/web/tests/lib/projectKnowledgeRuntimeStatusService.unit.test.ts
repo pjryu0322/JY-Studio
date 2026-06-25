@@ -1,10 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { graphNodeCount, graphEdgeCount, candidateCount, getLatestRun, getLatestRevision, buildAssessment } =
+const { graphNodeCount, graphEdgeCount, candidateCount, graphNodeFindFirst, projectFindUnique, getLatestRun, getLatestRevision, buildAssessment } =
   vi.hoisted(() => ({
     graphNodeCount: vi.fn(),
     graphEdgeCount: vi.fn(),
     candidateCount: vi.fn(),
+    graphNodeFindFirst: vi.fn(),
+    projectFindUnique: vi.fn(),
     getLatestRun: vi.fn(),
     getLatestRevision: vi.fn(),
     buildAssessment: vi.fn(),
@@ -12,9 +14,10 @@ const { graphNodeCount, graphEdgeCount, candidateCount, getLatestRun, getLatestR
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    projectGraphNode: { count: graphNodeCount },
+    projectGraphNode: { count: graphNodeCount, findFirst: graphNodeFindFirst },
     projectGraphEdge: { count: graphEdgeCount },
     projectStructureCandidate: { count: candidateCount },
+    project: { findUnique: projectFindUnique },
   },
 }));
 
@@ -37,9 +40,13 @@ describe("getKnowledgeRuntimeStatusSummary", () => {
     graphNodeCount.mockReset();
     graphEdgeCount.mockReset();
     candidateCount.mockReset();
+    graphNodeFindFirst.mockReset();
+    projectFindUnique.mockReset();
     getLatestRun.mockReset();
     getLatestRevision.mockReset();
     buildAssessment.mockReset();
+    graphNodeFindFirst.mockResolvedValue(null);
+    projectFindUnique.mockResolvedValue({ requirementsStateJson: null });
     buildAssessment.mockResolvedValue({
       projectId: "p1",
       graphNodeCount: 12,

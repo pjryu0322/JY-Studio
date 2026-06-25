@@ -63,5 +63,3 @@ export async function publishRequirementsSavedKnowledgeEvent(input: {
     }
   );
 }
-
-registerProjectKnowledgePipelineSubscriber();

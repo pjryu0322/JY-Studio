@@ -1,4 +1,9 @@
 import { parsePlanningSnapshotFromEventPayload } from "@/lib/planning-snapshot/planningSnapshotStructurePlan";
+import {
+  PLANNING_GRAPH_RESET_EVENT_TYPE,
+  formatPlanningGraphResetActivityLine,
+  parsePlanningGraphResetEventPayload,
+} from "@/lib/project-graph/planningGraphResetEvent";
 import { PLANNING_SNAPSHOT_EVENT_TYPE } from "@/lib/planning-snapshot/planningSnapshotModel";
 import { PLANNING_PROPOSAL_EVENT_TYPE } from "@/lib/planning-proposal/planningProposalModel";
 import { buildRequirementsConversationHref } from "@/lib/project-structure/projectStructureExplainability";
@@ -61,7 +66,11 @@ function rawPayloadJson(payload: unknown): string | undefined {
   }
 }
 
-function formatEventLine(eventType: string): string {
+function formatEventLine(eventType: string, payload: unknown): string {
+  if (eventType === PLANNING_GRAPH_RESET_EVENT_TYPE) {
+    const parsed = parsePlanningGraphResetEventPayload(payload);
+    if (parsed) return formatPlanningGraphResetActivityLine(parsed);
+  }
   if (eventType === PLANNING_SNAPSHOT_EVENT_TYPE) return "Planning Snapshot 생성";
   if (eventType === PLANNING_PROPOSAL_EVENT_TYPE) return "AI 기획자 추천안 승인";
   if (eventType === "conversation.message_created") return "원본 대화 저장";
@@ -186,6 +195,8 @@ export function buildProjectGraphActivityFeed(input: ActivityFeedBuildInput): re
     const eventType = String(ev.eventType ?? "event");
     const sourceMessageId = ev.sourceMessageId == null ? null : String(ev.sourceMessageId);
     const isSnapshot = eventType === PLANNING_SNAPSHOT_EVENT_TYPE;
+    const isPlanningGraphReset = eventType === PLANNING_GRAPH_RESET_EVENT_TYPE;
+    const resetPayload = isPlanningGraphReset ? parsePlanningGraphResetEventPayload(ev.payload) : null;
 
     rows.push({
       id: `event:${String(ev.id ?? sortAt)}`,
@@ -193,11 +204,18 @@ export function buildProjectGraphActivityFeed(input: ActivityFeedBuildInput): re
       sortAt,
       sortOrder: order++,
       at: formatTime(sortAt),
-      line: formatEventLine(eventType),
+      line: formatEventLine(eventType, ev.payload),
       sourceMessageId,
       detail: isSnapshot
         ? buildPlanningSnapshotDetail(projectId, ev, input.candidates, input.graphNodes, input.graphEdges)
-        : {
+        : isPlanningGraphReset && resetPayload
+          ? {
+              view: "planning_graph_reset",
+              eventType,
+              title: "기획 초기화",
+              summary: formatPlanningGraphResetActivityLine(resetPayload),
+            }
+          : {
             view: "default",
             eventType,
             stage: ev.stage == null ? undefined : String(ev.stage),

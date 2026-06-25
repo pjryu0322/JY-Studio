@@ -21,7 +21,7 @@ function maskPasswordForStorage(_password: string): string {
   return "••••••••";
 }
 
-function executionSetupCreateDefaults(projectId: string) {
+export function executionSetupCreateDefaults(projectId: string) {
   return {
     projectId,
     gitRepoUrl: "",

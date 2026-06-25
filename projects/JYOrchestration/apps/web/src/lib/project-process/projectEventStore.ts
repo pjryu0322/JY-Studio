@@ -14,7 +14,6 @@ import { registerProjectKnowledgePipelineSubscriber } from "@/lib/project-knowle
 import { bootstrapProjectKnowledgeArtifactAdapters } from "@/lib/project-knowledge/projectKnowledgeArtifactAdapterBootstrap";
 
 bootstrapProjectKnowledgeArtifactAdapters();
-registerProjectKnowledgePipelineSubscriber();
 
 export type ProjectEventStoreClient = Prisma.TransactionClient | typeof prisma;
 

@@ -78,7 +78,9 @@ export async function resetProjectDownstreamFromPlanning(input: {
     now: input.now,
   });
 
-  const knowledgeGraph = await resetProjectKnowledgeGraphForPlanning(projectId);
+  const knowledgeGraph = await resetProjectKnowledgeGraphForPlanning(projectId, {
+    reason: input.reason,
+  });
 
   const deleted = await prisma.$transaction(async (tx) => {
     const counts = await deleteDownstreamRuntimeForProject(tx, projectId);

@@ -162,6 +162,7 @@ import {
   parseProjectReferenceSelectionV1,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
 import { parseMaterializedReferenceContextV1 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
+import { parsePlanningKnowledgeGraphTraceV1 } from "@/lib/project-graph/planningKnowledgeGraphTraceV1";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import {
   parseAlternativeProposalPayloadWire,
@@ -592,6 +593,8 @@ export type RequirementsStateJson = {
   referenceSelectionWelcomeShownAt?: string | null;
   /** Phase 6.6: 선택 시점에 materialize된 참조 컨텍스트(prompt source of truth) */
   materializedReferenceContextV1?: import("@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext").MaterializedReferenceContextV1 | null;
+  /** 기획 Knowledge Graph 초기화·재생성 추적(그래프 노드가 아님) */
+  planningKnowledgeGraphTraceV1?: import("@/lib/project-graph/planningKnowledgeGraphTraceV1").PlanningKnowledgeGraphTraceV1 | null;
   /** 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지용 슬롯 상태) */
   problemInterview?: ProblemInterviewState | null;
   /**
@@ -1390,6 +1393,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         ? o.materializedReferenceContextV1 === null
           ? null
           : parseMaterializedReferenceContextV1(o.materializedReferenceContextV1) ?? null
+        : undefined,
+    planningKnowledgeGraphTraceV1:
+      "planningKnowledgeGraphTraceV1" in o
+        ? o.planningKnowledgeGraphTraceV1 === null
+          ? null
+          : parsePlanningKnowledgeGraphTraceV1(o.planningKnowledgeGraphTraceV1) ?? null
         : undefined,
     ideationStageCompletedAt:
       typeof o.ideationStageCompletedAt === "string" ? o.ideationStageCompletedAt : undefined,

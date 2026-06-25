@@ -17,6 +17,7 @@ import {
   loadPlanningDatabaseSettingsForProject,
   loadPlanningDatabaseSettingsRawForProject,
   resolvePlanningPostgresPassword,
+  executionSetupCreateDefaults,
 } from "@/lib/planning/planningDatabaseSettingsService";
 import { resolveJyprojectsPgConnectionForProvisioning } from "@/lib/planning/jyprojectsPgConnection.server";
 import {
@@ -114,7 +115,7 @@ async function persistQuickDesignPlanningConfirmState(input: Readonly<{
       await prisma.executionSetup.upsert({
         where: { projectId: input.projectId },
         create: {
-          projectId: input.projectId,
+          ...executionSetupCreateDefaults(input.projectId),
           planningDatabaseSettingsJson: { ...prior, ...input.dbSettingsPatch },
         },
         update: {

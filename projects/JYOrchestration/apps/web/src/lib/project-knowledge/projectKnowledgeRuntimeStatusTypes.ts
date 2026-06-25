@@ -22,4 +22,7 @@ export type KnowledgeRuntimeStatusSummary = Readonly<{
   readonly referenceEligibilityLabel?: string;
   /** User-facing hint when reference is partial or blocked (no internal enums). */
   readonly referenceEligibilityHint?: string;
+  readonly lastPlanningGraphResetAt?: string | null;
+  readonly graphRegenerationMessage?: string;
+  readonly graphRegenerationHint?: "empty_after_reset" | "regenerated_after_reset" | "stale_or_unknown";
 }>;

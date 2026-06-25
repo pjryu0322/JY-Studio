@@ -9,6 +9,7 @@ import {
 import {
   loadPlanningDatabaseSettingsRawForProject,
   resolvePlanningPostgresPassword,
+  executionSetupCreateDefaults,
 } from "@/lib/planning/planningDatabaseSettingsService";
 import { parsePlanningDataSlotsV1 } from "@/lib/planning/planningDataSlotsV1";
 import { provisionImplementationSampleStore } from "@/lib/planning/provisionProjectStageDataStores";
@@ -53,7 +54,10 @@ async function persistSettingsPatch(projectId: string, patch: Partial<PlanningDa
       : {};
   await prisma.executionSetup.upsert({
     where: { projectId },
-    create: { projectId, planningDatabaseSettingsJson: { ...prior, ...patch } },
+    create: {
+      ...executionSetupCreateDefaults(projectId),
+      planningDatabaseSettingsJson: { ...prior, ...patch },
+    },
     update: { planningDatabaseSettingsJson: { ...prior, ...patch } },
   });
 }

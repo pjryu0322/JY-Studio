@@ -9,6 +9,12 @@ import {
 } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusResolve";
 import type { KnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusTypes";
 import type { ReferenceEligibility } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
+import {
+  parsePlanningKnowledgeGraphTraceV1,
+  resolvePlanningKnowledgeGraphRegenerationHint,
+  planningKnowledgeGraphRegenerationUserMessage,
+} from "@/lib/project-graph/planningKnowledgeGraphTraceV1";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 
 function pickReferenceEligibilityHint(eligibility: ReferenceEligibility): string | undefined {
   switch (eligibility.level) {
@@ -38,7 +44,7 @@ export async function getKnowledgeRuntimeStatusSummary(
     };
   }
 
-  const [nodeCount, edgeCount, pendingReviewCandidateCount, latestRun, latestRevision, referenceAssessment] =
+  const [nodeCount, edgeCount, pendingReviewCandidateCount, latestRun, latestRevision, referenceAssessment, projectRow, latestGraphNode] =
     await Promise.all([
       prisma.projectGraphNode.count({ where: { projectId: pid } }),
       prisma.projectGraphEdge.count({ where: { projectId: pid } }),
@@ -48,7 +54,19 @@ export async function getKnowledgeRuntimeStatusSummary(
       getLatestKnowledgePipelineRun(pid),
       getLatestKnowledgeGraphRevision(pid),
       buildProjectReferenceAssessment(pid),
+      prisma.project.findUnique({
+        where: { id: pid },
+        select: { requirementsStateJson: true },
+      }),
+      prisma.projectGraphNode.findFirst({
+        where: { projectId: pid },
+        orderBy: { updatedAt: "desc" },
+        select: { updatedAt: true },
+      }),
     ]);
+
+  const state = parseRequirementsStateJson(projectRow?.requirementsStateJson);
+  const graphTrace = parsePlanningKnowledgeGraphTraceV1(state.planningKnowledgeGraphTraceV1);
 
   const referenceEligibility = referenceAssessment.eligibility;
   const pipelineStatus = latestRun?.status ?? null;
@@ -60,8 +78,19 @@ export async function getKnowledgeRuntimeStatusSummary(
     pendingReviewCandidateCount,
   });
 
-  const latestChangedAt =
-    latestRevision?.createdAt ?? latestRun?.completedAt ?? latestRun?.startedAt ?? null;
+  const lastGraphAppliedAt =
+    latestGraphNode?.updatedAt?.toISOString() ??
+    latestRevision?.createdAt ??
+    latestRun?.completedAt ??
+    latestRun?.startedAt ??
+    null;
+
+  const regenerationHint = resolvePlanningKnowledgeGraphRegenerationHint({
+    trace: graphTrace,
+    nodeCount,
+    edgeCount,
+    lastGraphAppliedAt,
+  });
 
   const warnings: string[] = [];
   if (pipelineStatus === "FAILED" && latestRun?.steps?.length) {
@@ -76,11 +105,14 @@ export async function getKnowledgeRuntimeStatusSummary(
     edgeCount,
     candidateCount: pendingReviewCandidateCount > 0 ? pendingReviewCandidateCount : undefined,
     latestChangeTitle: latestRevision?.title ?? null,
-    latestChangedAt,
+    latestChangedAt: lastGraphAppliedAt,
     pipelineStatus,
     referenceEligibilityLevel: referenceEligibility.level,
     referenceEligibilityLabel: REFERENCE_ELIGIBILITY_USER_LABELS[referenceEligibility.level],
     referenceEligibilityHint: pickReferenceEligibilityHint(referenceEligibility),
+    lastPlanningGraphResetAt: graphTrace?.lastPlanningGraphResetAt ?? null,
+    graphRegenerationMessage: planningKnowledgeGraphRegenerationUserMessage(regenerationHint),
+    graphRegenerationHint: regenerationHint,
     ...(warnings.length ? { warnings } : {}),
   };
 }

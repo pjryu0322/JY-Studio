@@ -7,6 +7,7 @@ export const PROJECT_EVENT_TYPES = {
   PLANNING_PROPOSAL_CREATED: "planning.proposal_created",
   PLANNING_PROPOSAL_APPROVED: "planning.proposal_approved",
   PLANNING_PROPOSAL_REVISED: "planning.proposal_revised",
+  PLANNING_GRAPH_RESET: "planning_graph_reset",
 } as const;
 
 export type ProjectEventType = (typeof PROJECT_EVENT_TYPES)[keyof typeof PROJECT_EVENT_TYPES];

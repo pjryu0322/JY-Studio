@@ -38,6 +38,8 @@ describe("requirementsConversationReset", () => {
     expect(reset.featurePlanningSlotsV1).toBeNull();
     expect(reset.fastPlanDraftV1).toBeNull();
     expect(reset.singleChatOrchestrationV1).toBeNull();
+    expect(reset.planningKnowledgeGraphTraceV1?.lastPlanningGraphResetAt).toBe(nowIso);
+    expect(reset.planningKnowledgeGraphTraceV1?.lastGraphAppliedAt).toBeNull();
     expect(reset.implementationSeedV1).toBeNull();
     expect(reset.prototypeExecutionSingleChatV1).toBeNull();
     expect(reset.promptTimeline?.some((e) => e.action === "planning_reset_cleared_implementation_derivatives")).toBe(

@@ -150,6 +150,7 @@ import { postWorkNoteSummarize } from "@/lib/worknote/workNotesSummarizeApi";
 import { credentialsIncludeFetch } from "@/lib/http/credentialsIncludeFetch";
 import { sessionUserFromAuthMe, type AuthMeDataWire } from "@/lib/user/platformProfile";
 import { postPlanningResetCascade } from "@/lib/requirements/planningResetCascadeClient";
+import { emitProjectKnowledgeGraphResetBroadcast } from "@/lib/project-graph/projectKnowledgeGraphResetBroadcast";
 import { PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE } from "@/lib/requirements/resetDerivedImplementationState";
 import {
   buildRequirementsConversationResetStateJson,
@@ -1901,7 +1902,18 @@ export function RequirementsWorkspace({
       if (!cascade.success) {
         throw new Error(cascade.message ?? "기획 초기화 시 구현 Runtime 정리에 실패했습니다.");
       }
-      const resetState = buildRequirementsConversationResetStateJson(stateJsonRef.current, nowIso);
+      const resetAt = cascade.result?.knowledgeGraph.resetAt ?? nowIso;
+      if (typeof window !== "undefined") {
+        emitProjectKnowledgeGraphResetBroadcast({
+          type: "project-knowledge-graph-reset",
+          projectId: pid,
+          resetAt,
+          reason: "planning_reset",
+        });
+      }
+      const resetState = buildRequirementsConversationResetStateJson(stateJsonRef.current, nowIso, {
+        planningGraphResetReason: "planning_reset",
+      });
       stateJsonRef.current = resetState;
       setServiceFlow(null);
       setPromptTimelineUi([]);

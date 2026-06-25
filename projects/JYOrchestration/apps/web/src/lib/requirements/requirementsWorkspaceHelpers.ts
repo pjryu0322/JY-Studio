@@ -18,6 +18,10 @@ import type { IdeationDeliverableAsset } from "@/lib/requirements/ideationDelive
 import type { ProjectArtifact } from "@/lib/requirements/projectArtifactTypes";
 import type { SingleChatOrchestrationStatusCounts } from "@/lib/requirements/singleChatOrchestrationSlots";
 import type { RequirementsSingleChatOrchestrationStateV1 } from "@/lib/requirements/singleChatOrchestrationTypes";
+import {
+  buildPlanningKnowledgeGraphTraceAfterReset,
+} from "@/lib/project-graph/planningKnowledgeGraphTraceV1";
+import type { PlanningResetCascadeReason } from "@/lib/requirements/planningResetCascadeService";
 
 export type RequirementsWorkspaceStage = "product-definition" | "ideation" | "service-flow" | "feature-planning" | "implementation";
 
@@ -200,7 +204,9 @@ export function planningWorkspaceHasResettableContent(input: {
 export function buildRequirementsConversationResetStateJson(
   base: RequirementsStateJson,
   nowIso: string,
+  options?: Readonly<{ readonly planningGraphResetReason?: PlanningResetCascadeReason }>,
 ): RequirementsStateJson {
+  const planningGraphResetReason = options?.planningGraphResetReason ?? "planning_reset";
   const planningCleared: RequirementsStateJson = {
     originalProjectDescription: base.originalProjectDescription ?? null,
     seededFromPreProjectChat: base.seededFromPreProjectChat,
@@ -230,6 +236,10 @@ export function buildRequirementsConversationResetStateJson(
     promptTimeline: [],
     lastUserDraftText: "",
     lastPromptView: null,
+    planningKnowledgeGraphTraceV1: buildPlanningKnowledgeGraphTraceAfterReset({
+      nowIso,
+      reason: planningGraphResetReason,
+    }),
   };
   return clearDerivedImplementationStateFromRequirementsJson(planningCleared, {
     nowIso,

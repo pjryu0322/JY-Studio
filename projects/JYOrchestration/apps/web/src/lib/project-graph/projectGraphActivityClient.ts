@@ -20,7 +20,7 @@ export type PlanningSnapshotActivityContext = Readonly<{
 }>;
 
 export type ProjectGraphActivityFeedDetail = Readonly<{
-  readonly view?: "planning_snapshot" | "group_summary" | "default";
+  readonly view?: "planning_snapshot" | "group_summary" | "default" | "planning_graph_reset";
   readonly eventType?: string;
   readonly stage?: string;
   readonly lifecycleStatus?: string;

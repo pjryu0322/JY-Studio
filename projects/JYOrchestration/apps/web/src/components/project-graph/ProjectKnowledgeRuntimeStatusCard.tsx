@@ -49,21 +49,29 @@ export function ProjectKnowledgeRuntimeStatusCard(p: {
   }
 
   if (!p.summary || (p.summary.status === "PREPARING" && p.summary.nodeCount === 0)) {
+    const resetTime = p.summary?.lastPlanningGraphResetAt
+      ? formatKnowledgeRevisionTimeOnly(p.summary.lastPlanningGraphResetAt)
+      : null;
     return (
       <div data-testid="knowledge-runtime-status-card" style={cardStyle}>
         <div style={{ fontWeight: 800, color: t.textPrimary }}>구조화 상태</div>
         <div style={{ marginTop: 6, fontWeight: 800, color: t.textSecondary }}>
           {p.summary?.statusLabel ?? "준비 중"}
         </div>
+        {resetTime ? (
+          <div style={{ marginTop: 6, color: t.textMuted }}>마지막 초기화: {resetTime}</div>
+        ) : null}
         <p style={{ margin: "8px 0 0", color: t.textMuted }}>
-          아직 구조화된 항목이 없습니다.
-          <br />
-          기획 대화를 진행하면 구조화 상태가 표시됩니다.
+          {p.summary?.graphRegenerationMessage ??
+            "아직 구조화된 항목이 없습니다. 기획 대화를 진행하면 구조화 상태가 표시됩니다."}
         </p>
       </div>
     );
   }
 
+  const lastReset = p.summary.lastPlanningGraphResetAt
+    ? formatKnowledgeRevisionTimeOnly(p.summary.lastPlanningGraphResetAt)
+    : null;
   const lastApplied = p.summary.latestChangedAt
     ? formatKnowledgeRevisionTimeOnly(p.summary.latestChangedAt)
     : null;
@@ -75,6 +83,15 @@ export function ProjectKnowledgeRuntimeStatusCard(p: {
       <div style={{ marginTop: 6, color: t.textSecondary }}>
         항목 {p.summary.nodeCount}개 · 연결 {p.summary.edgeCount}개
       </div>
+      {lastReset ? (
+        <div style={{ marginTop: 4, color: t.textMuted }}>마지막 초기화: {lastReset}</div>
+      ) : null}
+      {lastApplied ? (
+        <div style={{ marginTop: 2, color: t.textMuted }}>마지막 반영: {lastApplied}</div>
+      ) : null}
+      {p.summary.graphRegenerationMessage ? (
+        <div style={{ marginTop: 6, color: t.textSecondary }}>{p.summary.graphRegenerationMessage}</div>
+      ) : null}
       {p.summary.referenceEligibilityLabel ? (
         <div style={{ marginTop: 6, color: t.textSecondary }}>
           참조 준비: {p.summary.referenceEligibilityLabel}
@@ -87,9 +104,6 @@ export function ProjectKnowledgeRuntimeStatusCard(p: {
         <div style={{ marginTop: 4, color: t.textSecondary }}>
           최근 변경: {p.summary.latestChangeTitle}
         </div>
-      ) : null}
-      {lastApplied ? (
-        <div style={{ marginTop: 2, color: t.textMuted }}>마지막 반영: {lastApplied}</div>
       ) : null}
       {p.onRefresh ? (
         <button
