@@ -5,10 +5,12 @@ import {
 } from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
 import {
   buildReferenceClearSelectionApiPath,
+  buildReferenceMaterializeApiPath,
   clearReferenceSelectionStatePatch,
   isReferenceContextLegacyMissing,
   readReferenceSelectionSummaryFromState,
   shouldSendReferencePlanningContinueToAi,
+  REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 import { resolveReferencePromptContextBlockForOrchestration } from "@/lib/requirements/singleChatOrchestrationOpenAI";
 import { buildMaterializedReferenceContextFromSnapshot } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
@@ -16,6 +18,12 @@ import { buildMaterializedReferenceContextFromSnapshot } from "@/lib/project-kno
 describe("reference planning chip helpers", () => {
   it("builds DELETE reference-selection API path", () => {
     expect(buildReferenceClearSelectionApiPath("proj-1")).toBe("/api/projects/proj-1/reference-selection");
+  });
+
+  it("builds POST reference-selection materialize API path", () => {
+    expect(buildReferenceMaterializeApiPath("proj-1")).toBe(
+      "/api/projects/proj-1/reference-selection/materialize",
+    );
   });
 
   it("clears reference selection fields in state patch", () => {
@@ -91,6 +99,12 @@ describe("reference planning chip helpers", () => {
         materializedReferenceContextV1: materialized,
       }),
     ).toBe(false);
+  });
+
+  it("legacy diagnostic message avoids internal id wording", () => {
+    expect(REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE).not.toMatch(
+      /sourceSnapshotId|revisionId|entityKey/i,
+    );
   });
 });
 

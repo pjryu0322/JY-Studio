@@ -12,6 +12,19 @@ export function buildReferenceClearSelectionApiPath(projectId: string): string {
   return `/api/projects/${encodeURIComponent(pid)}/reference-selection`;
 }
 
+export function buildReferenceMaterializeApiPath(projectId: string): string {
+  const pid = String(projectId ?? "").trim();
+  return `/api/projects/${encodeURIComponent(pid)}/reference-selection/materialize`;
+}
+
+export {
+  REFERENCE_PLANNING_CHIP_MATERIALIZE,
+  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY,
+  REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY,
+  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_INTERNAL_TYPE,
+  REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE,
+} from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
+
 export function clearReferenceSelectionStatePatch(): Pick<
   RequirementsStateJson,
   | "referenceSelectionV1"

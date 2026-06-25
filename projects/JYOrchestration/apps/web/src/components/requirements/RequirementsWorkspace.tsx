@@ -50,20 +50,34 @@ import { filterIdeationConversationMessages, isServiceFlowWorkshopMessage } from
 import {
   buildReferencePlanningWelcomeBody,
   buildReferencePlanningWelcomeMessageMeta,
+  buildReferencePlanningLegacyMissingBody,
+  buildReferencePlanningLegacyMissingMessageMeta,
   REFERENCE_PLANNING_CHIP_CLEAR,
   REFERENCE_PLANNING_CHIP_CONTINUE,
+  REFERENCE_PLANNING_CHIP_MATERIALIZE,
   REFERENCE_PLANNING_CHIP_VIEW,
   REFERENCE_PLANNING_CLEAR_NOTICE_BODY,
   REFERENCE_PLANNING_CLEAR_NOTICE_INTERNAL_TYPE,
   REFERENCE_PLANNING_INFO_VIEW_INTERNAL_TYPE,
+  REFERENCE_PLANNING_LEGACY_MISSING_INTERNAL_TYPE,
   REFERENCE_PLANNING_WELCOME_INTERNAL_TYPE,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningWelcome";
 import {
   buildReferenceClearSelectionApiPath,
   clearReferenceSelectionStatePatch,
   buildReferenceInfoViewBodyFromState,
+  isReferenceContextLegacyMissing,
   readReferencePlanningDisplaySummaryFromState,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
+import {
+  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY,
+  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_INTERNAL_TYPE,
+  REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE,
+} from "@/lib/project-knowledge/projectKnowledgeReferenceContextBuilder";
+import {
+  postReferenceMaterializeForProject,
+  REFERENCE_MATERIALIZE_FAILURE_NOTICE_CHIPS,
+} from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializeClient";
 import {
   IDEATION_INTERVIEW_BOOTSTRAP_INTERNAL_TYPE,
   normalizeIdeationBootstrapDisplayMessage,
@@ -1509,10 +1523,39 @@ export function RequirementsWorkspace({
     if (!forceRegeneratePlanningSummary && onboardingAppliedKey === onboardingKey) return;
     const existing = room.requirementsConversation.messages;
 
+    if (
+      isReferenceContextLegacyMissing(workspaceState) &&
+      !existing.some((m) => m.meta?.internalType === REFERENCE_PLANNING_LEGACY_MISSING_INTERNAL_TYPE)
+    ) {
+      void (async () => {
+        const nowIso = new Date().toISOString();
+        const meta = buildReferencePlanningLegacyMissingMessageMeta();
+        const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
+          newChatMessage({
+            role: "ai",
+            body: buildReferencePlanningLegacyMissingBody(),
+            speakerType: "AI",
+            speakerId: VIRTUAL_AI_PLANNER_ID,
+            speakerName: IDEATION_AI_DISPLAY_NAME,
+            messageType: "NOTICE",
+            meta,
+          }),
+        ]);
+        await persistRemote({
+          requirementsConversationJson: nextRoom,
+          requirementsStateJson: mergeRequirementsStateJson(workspaceState, {
+            referenceSelectionWelcomeShownAt: nowIso,
+          }),
+        });
+      })();
+      return;
+    }
+
     const refSummary = workspaceState.referenceSelectionSummaryV1;
     if (
       refSummary &&
       !workspaceState.referenceSelectionWelcomeShownAt &&
+      !isReferenceContextLegacyMissing(workspaceState) &&
       !existing.some((m) => m.meta?.internalType === REFERENCE_PLANNING_WELCOME_INTERNAL_TYPE)
     ) {
       void (async () => {
@@ -3529,6 +3572,53 @@ export function RequirementsWorkspace({
       if (trimmed === REFERENCE_PLANNING_CHIP_CONTINUE) {
         return;
       }
+      if (trimmed === REFERENCE_PLANNING_CHIP_MATERIALIZE) {
+        const pid = resolvedProjectId.trim();
+        if (!pid) return;
+        void (async () => {
+          try {
+            const outcome = await postReferenceMaterializeForProject(pid);
+            if (outcome.ok) {
+              setFetchNonce((n) => n + 1);
+              const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
+                newChatMessage({
+                  role: "ai",
+                  body: REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY,
+                  speakerType: "AI",
+                  speakerId: VIRTUAL_AI_PLANNER_ID,
+                  speakerName: IDEATION_AI_DISPLAY_NAME,
+                  messageType: "NOTICE",
+                  meta: { internalType: REFERENCE_PLANNING_MATERIALIZE_SUCCESS_INTERNAL_TYPE },
+                }),
+              ]);
+              await persistRemote(nextRoom, {}, {});
+              showSuccessToast("참조 정보를 보정했습니다.");
+              return;
+            }
+            const nextRoom = patchRequirementsRoomConversationMessages(room, pid, [
+              newChatMessage({
+                role: "ai",
+                body: outcome.noticeBody,
+                speakerType: "AI",
+                speakerId: VIRTUAL_AI_PLANNER_ID,
+                speakerName: IDEATION_AI_DISPLAY_NAME,
+                messageType: "NOTICE",
+                meta: {
+                  internalType: REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE,
+                  interviewSuggestions: outcome.suggestClear
+                    ? [...REFERENCE_MATERIALIZE_FAILURE_NOTICE_CHIPS]
+                    : undefined,
+                },
+              }),
+            ]);
+            await persistRemote(nextRoom, {}, {});
+            showErrorToast(outcome.noticeBody.split("\n")[0] ?? "참조 보정에 실패했습니다.");
+          } catch {
+            showErrorToast("참조 보정에 실패했습니다.");
+          }
+        })();
+        return;
+      }
       if (
         trimmed === IMPLEMENTATION_STAGE_NAVIGATE_LABEL ||
         trimmed === IMPLEMENTATION_WORK_PLAN_DRAFT_GENERATE_LABEL
@@ -3663,6 +3753,7 @@ export function RequirementsWorkspace({
       persistStateJsonOnly,
       persistRemote,
       room,
+      setFetchNonce,
       handlePlanningImplementationSeedChip,
       handleImplementationCandidateRefineCta,
       latestImplementationCandidateRefineApplyMeta,

@@ -74,7 +74,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       if (isFailureResult(result)) {
         return NextResponse.json(
-          { success: false, message: result.message },
+          {
+            success: false,
+            message: result.message,
+            data: {
+              status: result.status,
+              referenceContextSource: result.referenceContextSource,
+            },
+          },
           { status: result.status === "SOURCE_PERMISSION_DENIED" ? 403 : 400 },
         );
       }
