@@ -9,6 +9,10 @@ import {
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 
 describe("projectKnowledgeReferencePlanningUiPolicy", () => {
+  it("prepare-context chip label is the canonical user-facing label", () => {
+    expect(REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT).toBe("참조 컨텍스트 준비");
+  });
+
   it("user-facing copy avoids banned terms", () => {
     for (const text of REFERENCE_PLANNING_USER_FACING_COPY) {
       assertReferencePlanningUserFacingCopyAllowed(text);

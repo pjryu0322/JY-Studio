@@ -13,7 +13,7 @@ import {
   buildReferenceInfoViewBodyFromState,
   clearReferenceSelectionStatePatch,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
-import { postReferenceMaterializeForProject } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializeClient";
+import { postReferencePrepareContextForProject } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializeClient";
 import {
   REFERENCE_PLANNING_CHIP_CLEAR,
   REFERENCE_PLANNING_CHIP_CONTINUE,
@@ -129,7 +129,7 @@ export function useReferencePlanningActions(input: UseReferencePlanningActionsIn
       if (trimmed === REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT) {
         void (async () => {
           try {
-            const outcome = await postReferenceMaterializeForProject(pid);
+            const outcome = await postReferencePrepareContextForProject(pid);
             if (outcome.ok) {
               input.setFetchNonce((n) => n + 1);
               const nextRoom = appendReferenceAiNotice(

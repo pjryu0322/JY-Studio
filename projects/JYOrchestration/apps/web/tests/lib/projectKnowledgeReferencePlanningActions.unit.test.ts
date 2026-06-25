@@ -5,6 +5,7 @@ import {
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 import {
   buildReferenceClearSelectionApiPath,
+  buildReferencePrepareContextApiPath,
   buildReferenceMaterializeApiPath,
   clearReferenceSelectionStatePatch,
   isReferenceContextLegacyMissing,
@@ -20,10 +21,11 @@ describe("reference planning chip helpers", () => {
     expect(buildReferenceClearSelectionApiPath("proj-1")).toBe("/api/projects/proj-1/reference-selection");
   });
 
-  it("builds POST reference-selection materialize API path", () => {
-    expect(buildReferenceMaterializeApiPath("proj-1")).toBe(
+  it("builds POST reference-selection prepare-context API path", () => {
+    expect(buildReferencePrepareContextApiPath("proj-1")).toBe(
       "/api/projects/proj-1/reference-selection/materialize",
     );
+    expect(buildReferenceMaterializeApiPath("proj-1")).toBe(buildReferencePrepareContextApiPath("proj-1"));
   });
 
   it("clears reference selection fields in state patch", () => {

@@ -1,18 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildReferenceContextPrepareFailureNoticeBody,
   REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT,
   REFERENCE_PLANNING_LEGACY_MISSING_BODY,
   REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_DEFAULT_BODY,
   REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_BODY,
   REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE,
+  referenceContextPrepareFailureNoticeChips,
+  resolveReferenceContextPrepareFailureActionPolicy,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 import {
-  buildReferenceMaterializeFailureNoticeBody,
+  parseReferencePrepareContextApiResponse,
   parseReferenceMaterializeApiResponse,
-  referenceMaterializeFailureNoticeChips,
-  resolveReferenceMaterializeFailureActionPolicy,
+  postReferenceMaterializeForProject,
+  postReferencePrepareContextForProject,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializeClient";
-import { buildReferenceMaterializeApiPath } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
+import {
+  buildReferencePrepareContextApiPath,
+  buildReferenceMaterializeApiPath,
+} from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 
 const USER_FACING_COPY = [
   REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT,
@@ -25,10 +31,12 @@ const USER_FACING_COPY = [
 function assertNoDeprecatedReferenceUxTerms(text: string): void {
   expect(text).not.toContain("보정");
   expect(text).not.toContain("재선택");
+  expect(text.toLowerCase()).not.toContain("batch");
+  expect(text.toLowerCase()).not.toContain("materialize");
 }
 
 describe("projectKnowledgeReferenceMaterializeClient", () => {
-  it("user-facing copy avoids 보정/재선택 and states target-project boundary", () => {
+  it("user-facing copy avoids banned terms and states target-project boundary", () => {
     for (const text of USER_FACING_COPY) {
       assertNoDeprecatedReferenceUxTerms(text);
     }
@@ -38,8 +46,8 @@ describe("projectKnowledgeReferenceMaterializeClient", () => {
     expect(REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT).toBe("참조 컨텍스트 준비");
   });
 
-  it("parses materialize success response", () => {
-    const result = parseReferenceMaterializeApiResponse({
+  it("parses prepare-context success response", () => {
+    const result = parseReferencePrepareContextApiResponse({
       ok: true,
       status: 200,
       json: {
@@ -51,7 +59,7 @@ describe("projectKnowledgeReferenceMaterializeClient", () => {
   });
 
   it("parses failure with status and failure notice chips", () => {
-    const result = parseReferenceMaterializeApiResponse({
+    const result = parseReferencePrepareContextApiResponse({
       ok: false,
       status: 400,
       json: {
@@ -69,18 +77,34 @@ describe("projectKnowledgeReferenceMaterializeClient", () => {
   });
 
   it("maps failure statuses to user-facing bodies and chip policy", () => {
-    expect(buildReferenceMaterializeFailureNoticeBody("SNAPSHOT_NOT_READY")).toContain("준비되지");
-    expect(resolveReferenceMaterializeFailureActionPolicy("SNAPSHOT_NOT_READY")).toBe("RETRY_AND_CLEAR");
-    expect(referenceMaterializeFailureNoticeChips("SNAPSHOT_NOT_READY")).toContain(
+    expect(buildReferenceContextPrepareFailureNoticeBody("SNAPSHOT_NOT_READY")).toContain("준비되지");
+    expect(resolveReferenceContextPrepareFailureActionPolicy("SNAPSHOT_NOT_READY")).toBe("RETRY_AND_CLEAR");
+    expect(referenceContextPrepareFailureNoticeChips("SNAPSHOT_NOT_READY")).toContain(
       REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT,
     );
-    expect(resolveReferenceMaterializeFailureActionPolicy("SOURCE_UNAVAILABLE")).toBe("CLEAR_ONLY");
-    expect(referenceMaterializeFailureNoticeChips("INVALID_SELECTION")).toEqual(["참조 해제"]);
+    expect(resolveReferenceContextPrepareFailureActionPolicy("SOURCE_UNAVAILABLE")).toBe("CLEAR_ONLY");
+    expect(referenceContextPrepareFailureNoticeChips("INVALID_SELECTION")).toEqual(["참조 해제"]);
   });
 
-  it("buildReferenceMaterializeApiPath returns encoded path", () => {
-    expect(buildReferenceMaterializeApiPath("p1")).toBe(
+  it("buildReferencePrepareContextApiPath returns legacy-compatible path", () => {
+    expect(buildReferencePrepareContextApiPath("p1")).toBe(
       "/api/projects/p1/reference-selection/materialize",
+    );
+    expect(buildReferenceMaterializeApiPath("p1")).toBe(buildReferencePrepareContextApiPath("p1"));
+  });
+
+  it("deprecated postReferenceMaterializeForProject aliases prepare-context client", () => {
+    expect(postReferenceMaterializeForProject).toBe(postReferencePrepareContextForProject);
+  });
+
+  it("deprecated parseReferenceMaterializeApiResponse aliases prepare-context parser", () => {
+    const payload = {
+      ok: true,
+      status: 200,
+      json: { success: true, data: { status: "ALREADY_MATERIALIZED" } },
+    };
+    expect(parseReferenceMaterializeApiResponse(payload)).toEqual(
+      parseReferencePrepareContextApiResponse(payload),
     );
   });
 

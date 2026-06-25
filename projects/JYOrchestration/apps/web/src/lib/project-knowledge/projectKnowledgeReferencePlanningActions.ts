@@ -12,19 +12,23 @@ export function buildReferenceClearSelectionApiPath(projectId: string): string {
   return `/api/projects/${encodeURIComponent(pid)}/reference-selection`;
 }
 
-export function buildReferenceMaterializeApiPath(projectId: string): string {
+/** POST legacy path segment `materialize` — compatibility only; prefer this helper name in new code. */
+export function buildReferencePrepareContextApiPath(projectId: string): string {
   const pid = String(projectId ?? "").trim();
   return `/api/projects/${encodeURIComponent(pid)}/reference-selection/materialize`;
 }
 
+/** @deprecated use `buildReferencePrepareContextApiPath` */
+export function buildReferenceMaterializeApiPath(projectId: string): string {
+  return buildReferencePrepareContextApiPath(projectId);
+}
+
 export {
-  REFERENCE_PLANNING_CHIP_MATERIALIZE,
   REFERENCE_PLANNING_CHIP_PREPARE_CONTEXT,
-  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_BODY,
   REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_BODY,
-  REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY,
-  REFERENCE_PLANNING_MATERIALIZE_SUCCESS_INTERNAL_TYPE,
-  REFERENCE_PLANNING_MATERIALIZE_FAILED_INTERNAL_TYPE,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_DEFAULT_BODY,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_SUCCESS_INTERNAL_TYPE,
+  REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_INTERNAL_TYPE,
   REFERENCE_CONTEXT_LEGACY_MISSING_DIAGNOSTIC_MESSAGE,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
 

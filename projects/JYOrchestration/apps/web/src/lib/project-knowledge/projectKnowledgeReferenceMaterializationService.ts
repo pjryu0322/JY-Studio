@@ -11,7 +11,7 @@ import {
 import {
   normalizeReferenceSnapshotIds,
   ReferenceSnapshotSelectionValidationError,
-  validateReferenceSnapshotSelectionForUser,
+  prepareReferenceSnapshotSelectionForUser,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceSelectionValidation";
 import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
@@ -182,7 +182,7 @@ export async function materializeReferenceContextForProject(input: Readonly<{
   }
 
   try {
-    const validated = await validateReferenceSnapshotSelectionForUser({
+    const validated = await prepareReferenceSnapshotSelectionForUser({
       userId,
       referenceSnapshotIds: ids,
     });

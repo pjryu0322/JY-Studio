@@ -2,36 +2,33 @@ import {
   buildReferenceContextPrepareFailureNoticeBody,
   referenceContextPrepareFailureNoticeChips,
   resolveReferenceContextPrepareFailureActionPolicy,
-  REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_DEFAULT_BODY,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy";
-import { buildReferenceMaterializeApiPath } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
+import { buildReferencePrepareContextApiPath } from "@/lib/project-knowledge/projectKnowledgeReferencePlanningActions";
 
-export type ReferenceMaterializeFailureStatus =
+export type ReferencePrepareContextFailureStatus =
   import("@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy").ReferenceContextPrepareFailureStatus;
-export type ReferenceMaterializeFailureActionPolicy =
+export type ReferencePrepareContextFailureActionPolicy =
   import("@/lib/project-knowledge/projectKnowledgeReferencePlanningUiPolicy").ReferenceContextPrepareFailureActionPolicy;
 
-export type ReferenceMaterializeClientResult =
+export type ReferencePrepareContextClientResult =
   | { readonly ok: true; readonly status: "MATERIALIZED" | "ALREADY_MATERIALIZED" }
   | {
       readonly ok: false;
-      readonly status: ReferenceMaterializeFailureStatus;
+      readonly status: ReferencePrepareContextFailureStatus;
       readonly noticeBody: string;
       readonly failureNoticeChips: readonly string[];
     };
 
-export const resolveReferenceMaterializeFailureActionPolicy = resolveReferenceContextPrepareFailureActionPolicy;
-export const referenceMaterializeFailureNoticeChips = referenceContextPrepareFailureNoticeChips;
-export const buildReferenceMaterializeFailureNoticeBody = buildReferenceContextPrepareFailureNoticeBody;
+/** @deprecated use `ReferencePrepareContextClientResult` */
+export type ReferenceMaterializeClientResult = ReferencePrepareContextClientResult;
 
-/** @deprecated use referenceMaterializeFailureNoticeChips */
-export function shouldSuggestReferenceClearAfterMaterializeFailure(
-  status: ReferenceMaterializeFailureStatus,
-): boolean {
-  return referenceMaterializeFailureNoticeChips(status).includes("참조 해제");
-}
+/** @deprecated use `ReferencePrepareContextFailureStatus` */
+export type ReferenceMaterializeFailureStatus = ReferencePrepareContextFailureStatus;
 
-export function parseReferenceMaterializeFailureStatus(raw: unknown): ReferenceMaterializeFailureStatus {
+/** @deprecated use `ReferencePrepareContextFailureActionPolicy` */
+export type ReferenceMaterializeFailureActionPolicy = ReferencePrepareContextFailureActionPolicy;
+
+export function parseReferencePrepareContextFailureStatus(raw: unknown): ReferencePrepareContextFailureStatus {
   const s = String(raw ?? "").trim();
   if (s === "SOURCE_PERMISSION_DENIED") return "SOURCE_PERMISSION_DENIED";
   if (s === "SOURCE_UNAVAILABLE") return "SOURCE_UNAVAILABLE";
@@ -41,11 +38,14 @@ export function parseReferenceMaterializeFailureStatus(raw: unknown): ReferenceM
   return "UNKNOWN";
 }
 
-export function parseReferenceMaterializeApiResponse(input: Readonly<{
+/** @deprecated use `parseReferencePrepareContextFailureStatus` */
+export const parseReferenceMaterializeFailureStatus = parseReferencePrepareContextFailureStatus;
+
+export function parseReferencePrepareContextApiResponse(input: Readonly<{
   readonly ok: boolean;
   readonly status: number;
   readonly json: unknown;
-}>): ReferenceMaterializeClientResult {
+}>): ReferencePrepareContextClientResult {
   const payload = input.json && typeof input.json === "object" && !Array.isArray(input.json)
     ? (input.json as Record<string, unknown>)
     : {};
@@ -66,23 +66,26 @@ export function parseReferenceMaterializeApiResponse(input: Readonly<{
     }
   }
 
-  let failureStatus = parseReferenceMaterializeFailureStatus(data.status);
+  let failureStatus = parseReferencePrepareContextFailureStatus(data.status);
   if (failureStatus === "UNKNOWN" && input.status === 403) {
     failureStatus = "SOURCE_PERMISSION_DENIED";
   }
-  const noticeBody = buildReferenceMaterializeFailureNoticeBody(failureStatus, message);
+  const noticeBody = buildReferenceContextPrepareFailureNoticeBody(failureStatus, message);
   return {
     ok: false,
     status: failureStatus,
     noticeBody,
-    failureNoticeChips: referenceMaterializeFailureNoticeChips(failureStatus),
+    failureNoticeChips: referenceContextPrepareFailureNoticeChips(failureStatus),
   };
 }
 
-export async function postReferenceMaterializeForProject(
+/** @deprecated use `parseReferencePrepareContextApiResponse` */
+export const parseReferenceMaterializeApiResponse = parseReferencePrepareContextApiResponse;
+
+export async function postReferencePrepareContextForProject(
   projectId: string,
   options?: Readonly<{ dryRun?: boolean }>,
-): Promise<ReferenceMaterializeClientResult> {
+): Promise<ReferencePrepareContextClientResult> {
   const pid = String(projectId ?? "").trim();
   if (!pid) {
     return {
@@ -92,7 +95,7 @@ export async function postReferenceMaterializeForProject(
       failureNoticeChips: [],
     };
   }
-  const res = await fetch(buildReferenceMaterializeApiPath(pid), {
+  const res = await fetch(buildReferencePrepareContextApiPath(pid), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -104,10 +107,24 @@ export async function postReferenceMaterializeForProject(
   } catch {
     json = {};
   }
-  return parseReferenceMaterializeApiResponse({ ok: res.ok, status: res.status, json });
+  return parseReferencePrepareContextApiResponse({ ok: res.ok, status: res.status, json });
 }
 
-/** @deprecated */
-export const REFERENCE_MATERIALIZE_FAILURE_NOTICE_CHIPS = ["참조 해제"] as const;
+/** @deprecated use `postReferencePrepareContextForProject` */
+export const postReferenceMaterializeForProject = postReferencePrepareContextForProject;
 
-export { REFERENCE_PLANNING_CONTEXT_PREPARE_FAILED_DEFAULT_BODY as REFERENCE_PLANNING_MATERIALIZE_FAILED_DEFAULT_BODY };
+/** @deprecated use `referenceContextPrepareFailureNoticeChips` */
+export const referenceMaterializeFailureNoticeChips = referenceContextPrepareFailureNoticeChips;
+
+/** @deprecated use `resolveReferenceContextPrepareFailureActionPolicy` */
+export const resolveReferenceMaterializeFailureActionPolicy = resolveReferenceContextPrepareFailureActionPolicy;
+
+/** @deprecated use `buildReferenceContextPrepareFailureNoticeBody` */
+export const buildReferenceMaterializeFailureNoticeBody = buildReferenceContextPrepareFailureNoticeBody;
+
+/** @deprecated use `referenceContextPrepareFailureNoticeChips` */
+export function shouldSuggestReferenceClearAfterMaterializeFailure(
+  status: ReferencePrepareContextFailureStatus,
+): boolean {
+  return referenceContextPrepareFailureNoticeChips(status).includes("참조 해제");
+}

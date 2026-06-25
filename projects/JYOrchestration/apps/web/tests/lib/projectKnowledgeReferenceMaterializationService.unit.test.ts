@@ -42,7 +42,7 @@ vi.mock("@/lib/project-knowledge/projectKnowledgeReferenceSelectionValidation", 
     await importOriginal<typeof import("@/lib/project-knowledge/projectKnowledgeReferenceSelectionValidation")>();
   return {
     ...actual,
-    validateReferenceSnapshotSelectionForUser: (...args: unknown[]) => validateMock(...args),
+    prepareReferenceSnapshotSelectionForUser: (...args: unknown[]) => validateMock(...args),
   };
 });
 
