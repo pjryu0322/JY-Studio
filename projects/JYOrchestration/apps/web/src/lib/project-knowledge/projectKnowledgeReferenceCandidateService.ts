@@ -14,6 +14,7 @@ import {
   buildReusableAssetsFromReferenceSnapshot,
   emptyReferencePackageReusableAssets,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceSnapshotAssets";
+import { buildReferenceEligibilityMetricsFromSnapshot } from "@/lib/project-knowledge/projectKnowledgeReferenceSnapshotEligibility";
 import type {
   KnowledgeNodeReusableAs,
   ReferenceEligibility,
@@ -112,15 +113,18 @@ export async function buildProjectReferenceAssessment(
     : null;
 
   const flags = snapshotFlagsFromLatestReferenceRevision(latestReferenceDetail);
-  const metrics: ReferenceEligibilityNodeMetrics[] = graph.nodes.map((n) => {
-    const mapped = toReferenceEligibilityNodeInput(graphNodeToReferenceInput(n));
-    return {
-      lifecycle: mapped.lifecycle,
-      nodeType: mapped.nodeType,
-      reusable: mapped.reusable,
-      safeForReference: mapped.safeForReference,
-    };
-  });
+  const metrics: ReferenceEligibilityNodeMetrics[] =
+    latestReferenceDetail != null
+      ? buildReferenceEligibilityMetricsFromSnapshot(latestReferenceDetail.graphSnapshot)
+      : graph.nodes.map((n) => {
+        const mapped = toReferenceEligibilityNodeInput(graphNodeToReferenceInput(n));
+        return {
+          lifecycle: mapped.lifecycle,
+          nodeType: mapped.nodeType,
+          reusable: mapped.reusable,
+          safeForReference: mapped.safeForReference,
+        };
+      });
 
   const eligibility = computeReferenceEligibility(metrics, flags);
   const reusableNodes: ProjectReferenceAssessment["reusableNodes"][number][] = [];
@@ -143,10 +147,7 @@ export async function buildProjectReferenceAssessment(
   const snapshotReusableAssets =
     latestReferenceDetail &&
     (eligibility.level === "SNAPSHOT_READY" || eligibility.level === "VERIFIED")
-      ? buildReusableAssetsFromReferenceSnapshot(
-          latestReferenceDetail.graphSnapshot,
-          eligibility.counts.reusableGraphNodes,
-        )
+      ? buildReusableAssetsFromReferenceSnapshot(latestReferenceDetail.graphSnapshot)
       : undefined;
 
   return {
@@ -188,10 +189,7 @@ export async function buildReferencePackageCandidate(projectId: string): Promise
     (eligibility.level === "SNAPSHOT_READY" || eligibility.level === "VERIFIED");
 
   const reusableAssets = hasSnapshotAssets
-    ? buildReusableAssetsFromReferenceSnapshot(
-        latestReferenceRevision.graphSnapshot,
-        eligibility.counts.reusableGraphNodes,
-      )
+    ? buildReusableAssetsFromReferenceSnapshot(latestReferenceRevision.graphSnapshot)
     : emptyReferencePackageReusableAssets("참조 저장본 생성 후 패키지 후보를 만들 수 있습니다.");
 
   return {

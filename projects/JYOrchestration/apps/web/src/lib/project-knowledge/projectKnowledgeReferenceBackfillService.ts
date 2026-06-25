@@ -102,7 +102,7 @@ export async function ensureProjectReferenceMetadataReady(projectId: string): Pr
     await backfillProjectGraphNodeReferenceMetadata(pid, { limitNodes: 500 });
   }
 
-  await backfillKnowledgeGraphRevisionSnapshotPurpose(pid, { limit: 100 });
+  await backfillKnowledgeGraphRevisionSnapshotPurpose(pid);
 }
 
 export async function runProjectReferenceBackfill(projectId: string): Promise<{
@@ -111,6 +111,6 @@ export async function runProjectReferenceBackfill(projectId: string): Promise<{
 }> {
   const pid = String(projectId ?? "").trim();
   const graphNodes = await backfillProjectGraphNodeReferenceMetadata(pid, { limitNodes: 500 });
-  const revisions = await backfillKnowledgeGraphRevisionSnapshotPurpose(pid, { limit: 200 });
+  const revisions = await backfillKnowledgeGraphRevisionSnapshotPurpose(pid);
   return { graphNodes, revisions };
 }

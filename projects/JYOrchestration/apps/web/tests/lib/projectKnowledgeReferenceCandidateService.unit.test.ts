@@ -203,4 +203,89 @@ describe("buildReferencePackageCandidate snapshot source", () => {
     await buildReferencePackageCandidate("p1");
     expect(ensureReady).toHaveBeenCalledWith("p1");
   });
+
+  it("uses snapshot metrics for eligibility when reference revision exists even if live graph is richer", async () => {
+    const manyLiveNodes = Array.from({ length: 10 }, (_, i) => ({
+      nodeType: "Actor",
+      title: `라이브 Actor ${i}`,
+      summary: null,
+      metadata: {
+        reference: {
+          lifecycle: "USER_APPROVED",
+          provenance: { createdFrom: "USER_APPROVAL" },
+          reusable: true,
+          reusableAs: ["ACTOR"],
+          sensitivity: {
+            containsPersonalData: false,
+            containsConfidentialData: false,
+            containsRawConversation: false,
+            containsInternalIds: false,
+            safeForReference: true,
+          },
+        },
+      },
+      projectionKey: `live-${i}`,
+    }));
+
+    graphMock.mockResolvedValue({ nodes: manyLiveNodes, edges: [] });
+
+    loadLatestReference.mockResolvedValue({
+      id: "ref-partial",
+      revisionNumber: 3,
+      title: "추천안 승인",
+      summary: null,
+      nodeCount: 1,
+      edgeCount: 0,
+      createdAt: "2026-06-24T10:00:00.000Z",
+      graphSnapshot: {
+        purpose: "REFERENCE_CANDIDATE",
+        nodes: [
+          {
+            entityKey: "only",
+            nodeType: "Actor",
+            title: "스냅샷 Actor",
+            summary: null,
+            reference: {
+              lifecycle: "USER_APPROVED",
+              reusable: true,
+              reusableAs: ["ACTOR"],
+              safeForReference: true,
+            },
+          },
+        ],
+        edges: [],
+      },
+    });
+
+    const assessment = await buildProjectReferenceAssessment("p1");
+    expect(assessment.eligibility.level).toBe("PARTIAL");
+    expect(assessment.eligibility.counts.reusableGraphNodes).toBe(1);
+    expect(assessment.eligibility.eligible).toBe(false);
+  });
+
+  it("can reach SNAPSHOT_READY from snapshot alone when live graph is empty", async () => {
+    graphMock.mockResolvedValue({ nodes: [], edges: [] });
+
+    loadLatestReference.mockResolvedValue({
+      id: "ref-ready",
+      revisionNumber: 4,
+      title: "추천안 승인",
+      summary: null,
+      nodeCount: 3,
+      edgeCount: 0,
+      createdAt: "2026-06-24T10:00:00.000Z",
+      graphSnapshot: referenceSnapshot,
+    });
+
+    const assessment = await buildProjectReferenceAssessment("p1");
+    expect(assessment.eligibility.level).toBe("SNAPSHOT_READY");
+    expect(assessment.eligibility.eligible).toBe(true);
+  });
+
+  it("without reference revision stays READY_FOR_SNAPSHOT not selectable even when live graph is rich", async () => {
+    loadLatestReference.mockResolvedValue(null);
+    const assessment = await buildProjectReferenceAssessment("p1");
+    expect(assessment.eligibility.level).toBe("READY_FOR_SNAPSHOT");
+    expect(assessment.eligibility.eligible).toBe(false);
+  });
 });

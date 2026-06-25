@@ -15,18 +15,20 @@ const uniqueLimit = (items: string[]) => [...new Set(items)].slice(0, 20);
 
 export function buildReusableAssetsFromReferenceSnapshot(
   snapshot: KnowledgeGraphRevisionSnapshot,
-  reusableGraphNodeCount?: number,
 ): ReferencePackageCandidate["reusableAssets"] {
   const actors: string[] = [];
   const serviceFlows: string[] = [];
   const features: string[] = [];
   const decisions: string[] = [];
+  let reusableNodeCount = 0;
 
   for (const node of snapshot.nodes) {
     const ref = node.reference;
     if (!ref?.reusable || !ref.safeForReference) continue;
     const title = String(node.title ?? "").trim();
     if (!isTextSafeForReferencePackage(title)) continue;
+
+    reusableNodeCount += 1;
 
     const reusableAs =
       ref.reusableAs.length > 0 ? ref.reusableAs : fallbackReusableAsFromNodeType(node.nodeType);
@@ -37,9 +39,7 @@ export function buildReusableAssetsFromReferenceSnapshot(
     if (reusableAs.includes("DECISION")) decisions.push(title);
   }
 
-  const count =
-    reusableGraphNodeCount ??
-    snapshot.nodes.filter((n) => n.reference?.reusable && n.reference?.safeForReference).length;
+  const count = reusableNodeCount;
 
   return {
     actors: uniqueLimit(actors),

@@ -154,16 +154,58 @@ describe("projectKnowledgeGraphRevisionService", () => {
     findMany.mockResolvedValue([
       {
         id: "r1",
+        revisionNumber: 5,
         snapshotPurpose: "REPLAY",
         graphSnapshot: { purpose: "REFERENCE_CANDIDATE", nodes: [], edges: [] },
       },
     ]);
     update.mockResolvedValue({});
     const result = await backfillKnowledgeGraphRevisionSnapshotPurpose("p1");
+    expect(result.scanned).toBe(1);
     expect(result.updated).toBe(1);
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { snapshotPurpose: "REFERENCE_CANDIDATE" },
+      }),
+    );
+  });
+
+  it("backfillKnowledgeGraphRevisionSnapshotPurpose paginates when more than batchSize revisions", async () => {
+    const batch1 = Array.from({ length: 2 }, (_, i) => ({
+      id: `r${i + 1}`,
+      revisionNumber: 10 - i,
+      snapshotPurpose: "REPLAY",
+      graphSnapshot: { purpose: "REPLAY", nodes: [], edges: [] },
+    }));
+    const batch2 = [
+      {
+        id: "r3",
+        revisionNumber: 7,
+        snapshotPurpose: "REPLAY",
+        graphSnapshot: { purpose: "REFERENCE_CANDIDATE", nodes: [], edges: [] },
+      },
+    ];
+
+    findMany.mockResolvedValueOnce(batch1).mockResolvedValueOnce(batch2);
+
+    update.mockResolvedValue({});
+
+    const result = await backfillKnowledgeGraphRevisionSnapshotPurpose("p1", {
+      batchSize: 2,
+      maxBatches: 10,
+    });
+
+    expect(result.scanned).toBe(3);
+    expect(result.updated).toBe(1);
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          projectId: "p1",
+          revisionNumber: { lt: 9 },
+        }),
+        take: 2,
       }),
     );
   });
