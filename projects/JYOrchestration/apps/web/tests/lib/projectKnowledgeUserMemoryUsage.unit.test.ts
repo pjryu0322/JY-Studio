@@ -7,6 +7,7 @@ import {
   hashPromptSectionForMemoryUsage,
   hashUserIdForMemoryUsage,
   summarizeUserProjectKnowledgeMemoryUsage,
+  sanitizeUserProjectKnowledgeMemoryUsageSummaryForApi,
   usageEventDedupeKey,
 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsage";
 import { DEFAULT_USER_PROJECT_KNOWLEDGE_MEMORY_CONTROL_V1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
@@ -143,5 +144,99 @@ describe("projectKnowledgeUserMemoryUsage", () => {
       promptTimelineEntryId: "tl-off",
     });
     expect(events[0]?.outcome).toBe("skipped_disabled");
+  });
+
+  it("summarize picks latest lastUsedAt regardless of event order", () => {
+    const older = buildUserProjectKnowledgeMemoryUsageEvent({
+      projectId: "p1",
+      surface: "single_chat",
+      agent: "planner",
+      outcome: "injected",
+      itemCount: 1,
+      sourceProjectCount: 1,
+      controlEnabled: true,
+      agentEnabled: true,
+      promptTimelineEntryId: "a",
+      nowIso: "2026-06-01T00:00:00.000Z",
+    });
+    const newer = buildUserProjectKnowledgeMemoryUsageEvent({
+      projectId: "p1",
+      surface: "single_chat",
+      agent: "planner",
+      outcome: "injected",
+      itemCount: 5,
+      sourceProjectCount: 2,
+      controlEnabled: true,
+      agentEnabled: true,
+      promptTimelineEntryId: "b",
+      nowIso: "2026-06-03T00:00:00.000Z",
+    });
+    const state = appendUserProjectKnowledgeMemoryUsageEvents({
+      current: undefined,
+      events: [newer, older],
+    });
+    const summary = summarizeUserProjectKnowledgeMemoryUsage({ state });
+    expect(summary.byAgent.planner.lastUsedAt).toBe("2026-06-03T00:00:00.000Z");
+    expect(summary.byAgent.planner.lastItemCount).toBe(5);
+  });
+
+  it("recentEvents are newest first", () => {
+    const e1 = buildUserProjectKnowledgeMemoryUsageEvent({
+      projectId: "p1",
+      surface: "single_chat",
+      agent: "planner",
+      outcome: "skipped_empty",
+      itemCount: 0,
+      sourceProjectCount: 0,
+      controlEnabled: true,
+      agentEnabled: true,
+      promptTimelineEntryId: "1",
+      nowIso: "2026-06-01T00:00:00.000Z",
+    });
+    const e2 = buildUserProjectKnowledgeMemoryUsageEvent({
+      projectId: "p1",
+      surface: "single_chat",
+      agent: "developer",
+      outcome: "skipped_empty",
+      itemCount: 0,
+      sourceProjectCount: 0,
+      controlEnabled: true,
+      agentEnabled: true,
+      promptTimelineEntryId: "2",
+      nowIso: "2026-06-03T00:00:00.000Z",
+    });
+    const state = appendUserProjectKnowledgeMemoryUsageEvents({ current: undefined, events: [e1, e2] });
+    const summary = summarizeUserProjectKnowledgeMemoryUsage({ state, limit: 10 });
+    expect(summary.recentEvents[0]?.at).toBe("2026-06-03T00:00:00.000Z");
+    expect(summary.recentEvents[1]?.at).toBe("2026-06-01T00:00:00.000Z");
+  });
+
+  it("sanitize strips internal execution ids from recentEvents", () => {
+    const event = buildUserProjectKnowledgeMemoryUsageEvent({
+      projectId: "project-secret",
+      userId: "user-raw",
+      surface: "codetask_prompt",
+      agent: "developer",
+      outcome: "injected",
+      itemCount: 1,
+      sourceProjectCount: 1,
+      controlEnabled: true,
+      agentEnabled: true,
+      promptSectionMarkdown: "markdown",
+      promptTimelineEntryId: "timeline-secret",
+      codeTaskId: "codetask-secret",
+      runId: "run-secret",
+    });
+    const state = appendUserProjectKnowledgeMemoryUsageEvents({ current: undefined, events: [event] });
+    const summary = summarizeUserProjectKnowledgeMemoryUsage({ state });
+    const api = sanitizeUserProjectKnowledgeMemoryUsageSummaryForApi(summary);
+    const json = JSON.stringify(api);
+    expect(json).not.toContain("project-secret");
+    expect(json).not.toContain("timeline-secret");
+    expect(json).not.toContain("codetask-secret");
+    expect(json).not.toContain("run-secret");
+    expect(api.recentEvents[0]).not.toHaveProperty("id");
+    expect(api.recentEvents[0]).not.toHaveProperty("promptSectionHash");
+    expect(api.recentEvents[0]).not.toHaveProperty("projectId");
   });
 });

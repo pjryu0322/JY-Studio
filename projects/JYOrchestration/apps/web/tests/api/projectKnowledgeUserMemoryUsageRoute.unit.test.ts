@@ -34,15 +34,19 @@ describe("projectKnowledgeUserMemoryUsageRoute", () => {
           version: "user_project_knowledge_memory_usage_event_v1",
           id: "e1",
           at: "2026-06-03T00:00:00.000Z",
-          projectId: "p1",
-          surface: "single_chat",
-          agent: "planner",
+          projectId: "project-secret",
+          userIdHash: "user-secret",
+          surface: "codetask_prompt",
+          agent: "developer",
           outcome: "injected",
           itemCount: 2,
           sourceProjectCount: 1,
           controlEnabled: true,
           agentEnabled: true,
-          promptSectionHash: "abc123",
+          promptSectionHash: "prompt-secret",
+          promptTimelineEntryId: "timeline-secret",
+          codeTaskId: "codetask-secret",
+          runId: "run-secret",
         },
       ],
     });
@@ -80,7 +84,14 @@ describe("projectKnowledgeUserMemoryUsageRoute", () => {
     expect(text).toContain('"success":true');
     expect(text).not.toContain("sourceProjectId");
     expect(text).not.toContain("sourceNodeId");
-    const json = JSON.parse(text) as { summary: { injectedEvents: number } };
+    expect(text).not.toContain("project-secret");
+    expect(text).not.toContain("user-secret");
+    expect(text).not.toContain("timeline-secret");
+    expect(text).not.toContain("codetask-secret");
+    expect(text).not.toContain("run-secret");
+    expect(text).not.toContain("prompt-secret");
+    const json = JSON.parse(text) as { summary: { injectedEvents: number; recentEvents: unknown[] } };
     expect(json.summary.injectedEvents).toBe(1);
+    expect(JSON.stringify(json.summary.recentEvents[0] ?? {})).not.toContain("e1");
   });
 });

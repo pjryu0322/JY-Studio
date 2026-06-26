@@ -57,6 +57,25 @@ export type UserProjectKnowledgeMemoryUsageSummaryV1 = Readonly<{
   readonly recentEvents: readonly UserProjectKnowledgeMemoryUsageEventV1[];
 }>;
 
+export type UserProjectKnowledgeMemoryUsageApiEventV1 = Readonly<{
+  readonly at: string;
+  readonly surface: UserProjectKnowledgeMemoryUsageSurface;
+  readonly agent: ProjectKnowledgeAgent;
+  readonly outcome: UserProjectKnowledgeMemoryUsageOutcome;
+  readonly itemCount: number;
+  readonly sourceProjectCount: number;
+  readonly controlEnabled: boolean;
+  readonly agentEnabled: boolean;
+}>;
+
+export type UserProjectKnowledgeMemoryUsageApiSummaryV1 = Readonly<{
+  readonly totalEvents: number;
+  readonly injectedEvents: number;
+  readonly skippedEvents: number;
+  readonly byAgent: UserProjectKnowledgeMemoryUsageSummaryV1["byAgent"];
+  readonly recentEvents: readonly UserProjectKnowledgeMemoryUsageApiEventV1[];
+}>;
+
 /** Future effectiveness proxies (not computed in Phase 7): retry reduction, pin/ignore rate, etc. */
 
 export const DEFAULT_USER_PROJECT_KNOWLEDGE_MEMORY_USAGE_MAX_EVENTS = 100;

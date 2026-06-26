@@ -27,7 +27,9 @@ import {
 import { prepareSameUserProjectKnowledgeMemoryPromptContexts } from "@/lib/project-knowledge/projectKnowledgeUserMemoryService";
 import { loadUserProjectKnowledgeMemoryControlForProject } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlProjectPersistence";
 import type { UserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
-import { recordSingleChatUserMemoryUsageForProject } from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsageRecording";
+import {
+  fireAndForgetSingleChatUserMemoryUsage,
+} from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsageRecording";
 import { buildUserProjectKnowledgeMemoryTimelineSummaries } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
 import {
   pickConfiguredModelOverrideFromAgents,
@@ -707,22 +709,14 @@ export async function POST(request: NextRequest) {
         ...overlayAugments,
       });
 
-      if (
-        projectId &&
-        userMemoryPrepared &&
-        userMemoryControlLoaded &&
-        userMemoryTimelineMeta?.length
-      ) {
-        void recordSingleChatUserMemoryUsageForProject({
+      if (projectId && userMemoryPrepared && userMemoryControlLoaded && !usedFallback) {
+        fireAndForgetSingleChatUserMemoryUsage({
           projectId,
           userId,
+          prepared: userMemoryPrepared,
           control: userMemoryControlLoaded,
-          memoryControlEnabled: userMemoryPrepared.memoryControlEnabled,
           summaries: userMemoryTimelineMeta,
-          byAgent: userMemoryPrepared.byAgent,
           promptTrace: facilitatorPromptTrace,
-        }).catch((err) => {
-          console.error("[user_project_knowledge_memory_usage_record_failed]", err);
         });
       }
 
@@ -1142,6 +1136,7 @@ export async function POST(request: NextRequest) {
       delegatedAgents: [],
       fallback: false,
       ...referenceContextTimelineMeta,
+      ...userMemoryTimelineTraceFields,
       interviewQuestion: replyTrim,
       ...(bootSug?.length ? { interviewSuggestions: bootSug } : {}),
       ...(bootstrapSugSource ? { interviewSuggestionsSource: bootstrapSugSource } : {}),
@@ -1263,8 +1258,25 @@ export async function POST(request: NextRequest) {
             model: result.model,
             provider: result.provider ?? "openai",
             createdAtIso: result.calledAt ?? new Date().toISOString(),
+            ...userMemoryTimelineTraceFields,
           })
         : null;
+
+    if (result.ok) {
+      const promptTraceForUsage = bootstrapInterview ? bootstrapPromptTrace : facilitatorPromptTrace;
+      const isFallbackTrace =
+        promptTraceForUsage?.source === "fallback" || promptTraceForUsage?.fallback === true;
+      if (!isFallbackTrace) {
+        fireAndForgetSingleChatUserMemoryUsage({
+          projectId,
+          userId,
+          prepared: userMemoryPrepared,
+          control: userMemoryControlLoaded,
+          summaries: userMemoryTimelineMeta,
+          promptTrace: promptTraceForUsage,
+        });
+      }
+    }
 
     const bootInterviewSug =
       bootstrapInterview && result.ok && Array.isArray((result as any).suggestions) && (result as any).suggestions.length

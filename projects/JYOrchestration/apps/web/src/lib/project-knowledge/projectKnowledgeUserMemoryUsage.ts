@@ -11,6 +11,8 @@ import {
   type UserProjectKnowledgeMemoryUsageEventV1,
   type UserProjectKnowledgeMemoryUsageOutcome,
   type UserProjectKnowledgeMemoryUsageStateV1,
+  type UserProjectKnowledgeMemoryUsageApiEventV1,
+  type UserProjectKnowledgeMemoryUsageApiSummaryV1,
   type UserProjectKnowledgeMemoryUsageSummaryV1,
   type UserProjectKnowledgeMemoryUsageSurface,
 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsageTypes";
@@ -289,6 +291,22 @@ function emptyAgentUsageSummary(): UserProjectKnowledgeMemoryUsageSummaryV1["byA
   return { injectedCount: 0, lastItemCount: 0 };
 }
 
+function isLaterIso(a?: string, b?: string): boolean {
+  if (!a) return false;
+  if (!b) return true;
+  const at = Date.parse(a);
+  const bt = Date.parse(b);
+  if (Number.isFinite(at) && Number.isFinite(bt)) return at > bt;
+  return a > b;
+}
+
+function compareEventAtDesc(a: UserProjectKnowledgeMemoryUsageEventV1, b: UserProjectKnowledgeMemoryUsageEventV1): number {
+  const at = Date.parse(a.at);
+  const bt = Date.parse(b.at);
+  if (Number.isFinite(at) && Number.isFinite(bt)) return bt - at;
+  return b.at.localeCompare(a.at);
+}
+
 export function summarizeUserProjectKnowledgeMemoryUsage(input: {
   readonly state: unknown;
   readonly limit?: number;
@@ -307,17 +325,18 @@ export function summarizeUserProjectKnowledgeMemoryUsage(input: {
     if (event.outcome === "injected") {
       injectedEvents += 1;
       const row = byAgent[event.agent];
+      const useLatest = isLaterIso(event.at, row.lastUsedAt);
       byAgent[event.agent] = {
         injectedCount: row.injectedCount + 1,
-        lastUsedAt: event.at,
-        lastItemCount: event.itemCount,
+        lastUsedAt: useLatest ? event.at : row.lastUsedAt,
+        lastItemCount: useLatest ? event.itemCount : row.lastItemCount,
       };
     } else {
       skippedEvents += 1;
     }
   }
 
-  const recentEvents = normalized.events.slice(-limit).reverse();
+  const recentEvents = [...normalized.events].sort(compareEventAtDesc).slice(0, limit);
 
   return {
     totalEvents: normalized.events.length,
@@ -328,15 +347,30 @@ export function summarizeUserProjectKnowledgeMemoryUsage(input: {
   };
 }
 
+export function toUserProjectKnowledgeMemoryUsageApiEvent(
+  event: UserProjectKnowledgeMemoryUsageEventV1,
+): UserProjectKnowledgeMemoryUsageApiEventV1 {
+  return {
+    at: event.at,
+    surface: event.surface,
+    agent: event.agent,
+    outcome: event.outcome,
+    itemCount: event.itemCount,
+    sourceProjectCount: event.sourceProjectCount,
+    controlEnabled: event.controlEnabled,
+    agentEnabled: event.agentEnabled,
+  };
+}
+
 export function sanitizeUserProjectKnowledgeMemoryUsageSummaryForApi(
   summary: UserProjectKnowledgeMemoryUsageSummaryV1,
-): UserProjectKnowledgeMemoryUsageSummaryV1 {
+): UserProjectKnowledgeMemoryUsageApiSummaryV1 {
   return {
-    ...summary,
-    recentEvents: summary.recentEvents.map((event) => {
-      const { projectId: _p, userIdHash: _u, ...rest } = event;
-      return rest as UserProjectKnowledgeMemoryUsageEventV1;
-    }),
+    totalEvents: summary.totalEvents,
+    injectedEvents: summary.injectedEvents,
+    skippedEvents: summary.skippedEvents,
+    byAgent: summary.byAgent,
+    recentEvents: summary.recentEvents.map(toUserProjectKnowledgeMemoryUsageApiEvent),
   };
 }
 
