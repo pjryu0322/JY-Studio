@@ -31,6 +31,7 @@ export function ProjectGraphNodeDetailBody({
   compact = false,
   detailTab,
   onDetailTabChange,
+  agentViewReason,
 }: {
   readonly projectId: string;
   readonly node: ProjectGraphNodeDto;
@@ -39,6 +40,7 @@ export function ProjectGraphNodeDetailBody({
   readonly compact?: boolean;
   readonly detailTab: ProjectGraphNodeDetailTab;
   readonly onDetailTabChange: (tab: ProjectGraphNodeDetailTab) => void;
+  readonly agentViewReason?: string;
 }) {
   return (
     <>
@@ -77,6 +79,25 @@ export function ProjectGraphNodeDetailBody({
 
       {detailTab === "details" ? (
         <>
+          {agentViewReason ? (
+            <div
+              data-testid="project-graph-agent-view-reason"
+              style={{
+                margin: "0 0 12px",
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: `1px solid ${t.border}`,
+                background: "#eff6ff",
+                fontSize: 12,
+                lineHeight: 1.5,
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 4, color: t.textPrimary }}>
+                이 Agent View에서 중요한 이유
+              </div>
+              <div style={{ color: t.textSecondary }}>{agentViewReason}</div>
+            </div>
+          ) : null}
           {node.knowledgeReference ? (
             <dl
               data-testid="project-graph-node-reference-meta"
@@ -151,6 +172,7 @@ export function ProjectGraphNodeDetailPanel({
   onSelectRelatedNodeId,
   detailTab,
   onDetailTabChange,
+  agentViewReason,
 }: {
   readonly projectId: string;
   readonly node: ProjectGraphNodeDto | null;
@@ -158,6 +180,7 @@ export function ProjectGraphNodeDetailPanel({
   readonly onSelectRelatedNodeId: (nodeId: string) => void;
   readonly detailTab: ProjectGraphNodeDetailTab;
   readonly onDetailTabChange: (tab: ProjectGraphNodeDetailTab) => void;
+  readonly agentViewReason?: string;
 }) {
   const panel: CSSProperties = {
     width: 380,
@@ -190,6 +213,7 @@ export function ProjectGraphNodeDetailPanel({
         onSelectRelatedNodeId={onSelectRelatedNodeId}
         detailTab={detailTab}
         onDetailTabChange={onDetailTabChange}
+        agentViewReason={agentViewReason}
       />
     </aside>
   );

@@ -24,6 +24,7 @@ describe("ProjectKnowledgeReplayViewer", () => {
     expect(html).toContain("knowledge-replay-viewer");
     expect(html).toContain("knowledge-replay-graph-stage");
     expect(html).toContain("knowledge-replay-frame-current");
+    expect(html).toContain("knowledge-graph-agent-view-tabs");
     expect(html).toContain("mock-canvas");
   });
 

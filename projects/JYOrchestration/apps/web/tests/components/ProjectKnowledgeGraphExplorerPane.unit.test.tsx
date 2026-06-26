@@ -95,6 +95,8 @@ describe("ProjectKnowledgeGraphExplorerPane", () => {
     expect(html).toContain("knowledge-replay-open");
     expect(html).toContain("프로젝트 구조가 바뀐 과정을 확인합니다.");
     expect(html).toContain("knowledge-runtime-status-card");
+    expect(html).toContain("knowledge-graph-agent-view-tabs");
+    expect(html).toContain("기획자");
   });
 
   it("keeps user mode summary on mobile layout", () => {

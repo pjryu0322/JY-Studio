@@ -1,8 +1,9 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ProjectKnowledgeGraphCanvas } from "@/components/project-graph/ProjectKnowledgeGraphCanvas";
+import { ProjectKnowledgeAgentGraphViewTabs } from "@/components/project-graph/ProjectKnowledgeAgentGraphViewTabs";
 import { useMediaQuery } from "@/components/ui/useMediaQuery";
 import {
   createReplayGraphFrame,
@@ -10,6 +11,8 @@ import {
   type ReplayGraphFrame,
 } from "@/lib/project-graph/projectKnowledgeReplayViewerTransition";
 import type { ProjectGraphEdgeDto, ProjectGraphNodeDto } from "@/lib/project-graph/projectGraphClient";
+import type { ProjectKnowledgeGraphView } from "@/lib/project-knowledge/projectKnowledgeAgentGraphProjection";
+import { applyAgentGraphViewLayer } from "@/lib/project-knowledge/projectKnowledgeAgentGraphViewUi";
 import { uiTokens as t } from "@/components/ui/tokens";
 
 const loadingBadgeStyle: CSSProperties = {
@@ -41,6 +44,49 @@ const errorBadgeStyle: CSSProperties = {
   fontWeight: 700,
 };
 
+function ReplayGraphCanvasLayer(p: {
+  readonly nodes: readonly ProjectGraphNodeDto[];
+  readonly edges: readonly ProjectGraphEdgeDto[];
+  readonly graphView: ProjectKnowledgeGraphView;
+  readonly height: number;
+}) {
+  const agentLayer = useMemo(
+    () =>
+      applyAgentGraphViewLayer({
+        canonicalNodes: p.nodes,
+        canonicalEdges: p.edges,
+        displayNodes: p.nodes,
+        displayEdges: p.edges,
+        graphView: p.graphView,
+        includeNeighborContext: true,
+      }),
+    [p.nodes, p.edges, p.graphView],
+  );
+
+  const agentNodeVisualState =
+    agentLayer.graphView === "all" ? undefined : agentLayer.agentNodeVisualState;
+
+  return (
+    <ProjectKnowledgeGraphCanvas
+      nodes={agentLayer.nodes}
+      edges={agentLayer.edges}
+      agentNodeVisualState={agentNodeVisualState}
+      selectedNodeId={null}
+      selectedEdgeId={null}
+      highlightNodeIds={new Set<string>()}
+      impactZones={null}
+      onSelectNode={() => {}}
+      onOpenNodeDetail={() => {}}
+      onSelectEdge={() => {}}
+      width={960}
+      height={p.height}
+      centerOnNodeRequest={null}
+      treeLayoutRootId={null}
+      viewResetNonce={0}
+    />
+  );
+}
+
 export function ProjectKnowledgeReplayViewer(p: {
   readonly nodes: readonly ProjectGraphNodeDto[];
   readonly edges: readonly ProjectGraphEdgeDto[];
@@ -51,6 +97,7 @@ export function ProjectKnowledgeReplayViewer(p: {
 }) {
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const transitionTokenRef = useRef(0);
+  const [graphView, setGraphView] = useState<ProjectKnowledgeGraphView>("all");
 
   const [currentFrame, setCurrentFrame] = useState<ReplayGraphFrame>(() =>
     createReplayGraphFrame({ frameKey: p.frameKey, nodes: p.nodes, edges: p.edges }),
@@ -132,30 +179,45 @@ export function ProjectKnowledgeReplayViewer(p: {
     opacity: transitioning ? 1 : 0,
   };
 
-  const canvasProps = {
-    selectedNodeId: null as string | null,
-    selectedEdgeId: null as string | null,
-    highlightNodeIds: new Set<string>(),
-    impactZones: null,
-    onSelectNode: () => {},
-    onOpenNodeDetail: () => {},
-    onSelectEdge: () => {},
-    width: 960,
-    height,
-    centerOnNodeRequest: null,
-    treeLayoutRootId: null,
-    viewResetNonce: 0,
-  };
+  const agentEmpty = useMemo(() => {
+    if (graphView === "all" || p.nodes.length === 0) return false;
+    const layer = applyAgentGraphViewLayer({
+      canonicalNodes: p.nodes,
+      canonicalEdges: p.edges,
+      displayNodes: p.nodes,
+      displayEdges: p.edges,
+      graphView,
+      includeNeighborContext: true,
+    });
+    return layer.nodes.length === 0;
+  }, [graphView, p.nodes, p.edges]);
 
   return (
     <div data-testid="knowledge-replay-viewer" style={shell}>
+      <div style={{ padding: "8px 10px", borderBottom: `1px solid ${t.border}` }}>
+        <ProjectKnowledgeAgentGraphViewTabs value={graphView} onChange={setGraphView} />
+      </div>
+      {agentEmpty ? (
+        <div
+          data-testid="agent-graph-view-empty"
+          style={{
+            padding: "10px 12px",
+            fontSize: 12,
+            color: t.textSecondary,
+            lineHeight: 1.45,
+            borderBottom: `1px solid ${t.border}`,
+          }}
+        >
+          이 Agent View에 표시할 지식이 아직 없습니다.
+        </div>
+      ) : null}
       <div data-testid="knowledge-replay-graph-stage" style={graphStage}>
         <div data-testid="knowledge-replay-frame-current" style={currentLayerStyle}>
-          <ProjectKnowledgeGraphCanvas nodes={currentFrame.nodes} edges={currentFrame.edges} {...canvasProps} />
+          <ReplayGraphCanvasLayer nodes={currentFrame.nodes} edges={currentFrame.edges} graphView={graphView} height={height} />
         </div>
         {nextFrame ? (
           <div data-testid="knowledge-replay-frame-next" style={nextLayerStyle}>
-            <ProjectKnowledgeGraphCanvas nodes={nextFrame.nodes} edges={nextFrame.edges} {...canvasProps} />
+            <ReplayGraphCanvasLayer nodes={nextFrame.nodes} edges={nextFrame.edges} graphView={graphView} height={height} />
           </div>
         ) : null}
         {p.error ? <p style={errorBadgeStyle}>{p.error}</p> : null}

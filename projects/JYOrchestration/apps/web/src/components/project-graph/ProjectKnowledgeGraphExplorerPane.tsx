@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { ProjectKnowledgeGraphCanvas } from "@/components/project-graph/ProjectKnowledgeGraphCanvas";
@@ -18,6 +18,9 @@ import { ProjectKnowledgeReplayModal } from "@/components/project-graph/ProjectK
 import { ProjectKnowledgeRuntimeStatusCard } from "@/components/project-graph/ProjectKnowledgeRuntimeStatusCard";
 import type { KnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusTypes";
 import type { ReadonlyURLSearchParams } from "next/navigation";
+import { ProjectKnowledgeAgentGraphViewTabs } from "@/components/project-graph/ProjectKnowledgeAgentGraphViewTabs";
+import type { ProjectKnowledgeGraphView } from "@/lib/project-knowledge/projectKnowledgeAgentGraphProjection";
+import { applyAgentGraphViewLayer } from "@/lib/project-knowledge/projectKnowledgeAgentGraphViewUi";
 
 const LIFECYCLE_OPTIONS = ["", "PROJECTED", "APPROVED", "CANDIDATE"] as const;
 
@@ -56,7 +59,30 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
   const ex = p.explorerState;
   const [replayOpen, setReplayOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [graphView, setGraphView] = useState<ProjectKnowledgeGraphView>("all");
   const userUx = (p.uxMode ?? "user") === "user";
+
+  const agentLayer = useMemo(
+    () =>
+      applyAgentGraphViewLayer({
+        canonicalNodes: p.nodes,
+        canonicalEdges: p.edges,
+        displayNodes: ex.filteredNodes,
+        displayEdges: ex.filteredEdges,
+        graphView,
+        includeNeighborContext: true,
+      }),
+    [p.nodes, p.edges, ex.filteredNodes, ex.filteredEdges, graphView],
+  );
+
+  const canvasNodes = agentLayer.nodes;
+  const canvasEdges = agentLayer.edges;
+  const agentNodeVisualState =
+    agentLayer.graphView === "all" ? undefined : agentLayer.agentNodeVisualState;
+  const agentViewReason =
+    agentLayer.graphView !== "all" && ex.detailNode
+      ? agentLayer.projection.reasonByNodeId[ex.detailNode.id]
+      : undefined;
 
   const shell: CSSProperties = {
     ...requirementsWorkspaceMainRowStyle,
@@ -154,6 +180,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
         </details>
       ) : null}
       <div style={toolbar}>
+        <ProjectKnowledgeAgentGraphViewTabs value={graphView} onChange={setGraphView} />
         <div
           style={{
             flex: "1 1 100%",
@@ -240,14 +267,44 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
           그래프 변화 보기
         </button>
         <span style={{ fontSize: 11, color: t.textMuted }}>
-          {ex.filteredNodes.length} nodes · {ex.filteredEdges.length} edges
+          {canvasNodes.length} nodes · {canvasEdges.length} edges
           {ex.explorationQuery.kind === "question" ? " · 질문 모드" : ""}
+          {agentLayer.graphView !== "all" ? " · Agent View" : ""}
         </span>
       </div>
 
       {p.error ? <p style={{ padding: 12, margin: 0, color: "#b91c1c", fontSize: 13 }}>{p.error}</p> : null}
       {p.loading ? (
         <p style={{ padding: 12, margin: 0, color: t.textMuted, fontSize: 13 }}>그래프 불러오는 중…</p>
+      ) : null}
+      {!p.loading && !p.error && p.nodes.length === 0 ? (
+        <p style={{ padding: 12, margin: 0, color: t.textMuted, fontSize: 13 }} data-testid="knowledge-graph-empty-all">
+          아직 생성된 프로젝트 지식이 없습니다.
+        </p>
+      ) : null}
+      {!p.loading &&
+      !p.error &&
+      p.nodes.length > 0 &&
+      agentLayer.graphView !== "all" &&
+      canvasNodes.length === 0 ? (
+        <div
+          data-testid="agent-graph-view-empty"
+          style={{
+            padding: "12px 14px",
+            margin: "0 0 8px",
+            borderRadius: 10,
+            border: `1px dashed ${t.border}`,
+            background: "#f8fafc",
+            fontSize: 13,
+            color: t.textSecondary,
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontWeight: 800, color: t.textPrimary, marginBottom: 4 }}>
+            이 Agent View에 표시할 지식이 아직 없습니다.
+          </div>
+          프로젝트 지식에 Agent relevance가 생성되면 이곳에 표시됩니다.
+        </div>
       ) : null}
 
       <div style={shell}>
@@ -262,8 +319,9 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
           }}
         >
           <ProjectKnowledgeGraphCanvas
-            nodes={ex.filteredNodes}
-            edges={ex.filteredEdges}
+            nodes={canvasNodes}
+            edges={canvasEdges}
+            agentNodeVisualState={agentNodeVisualState}
             selectedNodeId={ex.selectedNodeId}
             selectedEdgeId={ex.selectedEdgeId}
             highlightNodeIds={ex.explored.highlightIds}
@@ -316,6 +374,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
               onDetailTabChange={ex.setDetailTab}
               onClose={ex.closeMobileNodeSheet}
               onSelectRelatedNodeId={ex.handleSelectRelatedNodeId}
+              agentViewReason={agentViewReason}
             />
           ) : null}
           {ex.selectedEdge ? (
@@ -336,6 +395,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
             onSelectRelatedNodeId={ex.handleSelectRelatedNodeId}
             detailTab={ex.detailTab}
             onDetailTabChange={ex.setDetailTab}
+            agentViewReason={agentViewReason}
           />
         ) : null}
       </div>

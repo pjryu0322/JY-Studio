@@ -18,6 +18,7 @@ export function ProjectKnowledgeGraphNodeBottomSheet(p: {
   readonly onDetailTabChange: (tab: ProjectGraphNodeDetailTab) => void;
   readonly onClose: () => void;
   readonly onSelectRelatedNodeId: (nodeId: string) => void;
+  readonly agentViewReason?: string;
 }) {
   useEffect(() => {
     if (!p.open) return;
@@ -129,6 +130,7 @@ export function ProjectKnowledgeGraphNodeBottomSheet(p: {
             compact
             detailTab={p.detailTab}
             onDetailTabChange={p.onDetailTabChange}
+            agentViewReason={p.agentViewReason}
           />
         </div>
       </div>
