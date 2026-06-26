@@ -3,6 +3,8 @@ import {
   type StructureExplainability,
 } from "@/lib/project-structure/structureExplainabilityModel";
 import type { KnowledgeNodeReferenceView } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
+import type { AgentRelevance } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
+import { normalizeAgentRelevance } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
 
 export type ProjectGraphNodeDto = Readonly<{
   readonly id: string;
@@ -12,6 +14,8 @@ export type ProjectGraphNodeDto = Readonly<{
   readonly lifecycleStatus?: string;
   readonly explainability?: StructureExplainability;
   readonly knowledgeReference?: KnowledgeNodeReferenceView;
+  /** Phase 7: optional agent view hints (replay / projection). */
+  readonly agentRelevance?: AgentRelevance;
 }>;
 
 export type ProjectGraphEdgeDto = Readonly<{
@@ -57,6 +61,9 @@ function parseNode(raw: unknown): ProjectGraphNodeDto | null {
   const n = raw as Record<string, unknown>;
   const id = String(n.id ?? "").trim();
   if (!id) return null;
+  const agentRelevanceRaw = n.agentRelevance;
+  const agentRelevance =
+    agentRelevanceRaw != null ? normalizeAgentRelevance(agentRelevanceRaw) : {};
   return {
     id,
     nodeType: String(n.nodeType ?? ""),
@@ -65,6 +72,7 @@ function parseNode(raw: unknown): ProjectGraphNodeDto | null {
     lifecycleStatus: n.lifecycleStatus == null ? undefined : String(n.lifecycleStatus),
     explainability: parseExplainability(n.explainability),
     knowledgeReference: parseKnowledgeReference(n.knowledgeReference),
+    ...(Object.keys(agentRelevance).length > 0 ? { agentRelevance } : {}),
   };
 }
 

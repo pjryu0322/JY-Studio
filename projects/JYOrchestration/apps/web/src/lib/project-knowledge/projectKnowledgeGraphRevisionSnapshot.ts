@@ -4,7 +4,7 @@ import {
   buildFallbackProjectGraphNodeReferenceMetadata,
   parseProjectGraphNodeReferenceMetadata,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceMetadata";
-import { parseAgentRelevanceFromGraphNodeMetadata, normalizeAgentRelevance } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
+import { normalizeAgentRelevance, resolveAgentRelevanceFromNode } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
 import type { GraphSnapshotPurpose } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
 import type {
   KnowledgeGraphRevisionSnapshot,
@@ -68,7 +68,13 @@ export async function captureKnowledgeGraphRevisionSnapshot(
   for (const node of nodes) {
     const entityKey = String(node.entityKey ?? "").trim() || node.id;
     entityKeyByNodeId.set(node.id, entityKey);
-    const agentRelevance = parseAgentRelevanceFromGraphNodeMetadata(node.metadata);
+    const agentRelevance = resolveAgentRelevanceFromNode({
+      metadata: node.metadata,
+      agentRelevance:
+        node && typeof node === "object" && "agentRelevance" in node
+          ? (node as { agentRelevance?: unknown }).agentRelevance
+          : undefined,
+    });
     snapshotNodes.push({
       entityKey,
       nodeType: node.nodeType,

@@ -1,4 +1,5 @@
 import type { ProjectGraphEdgeDto, ProjectGraphNodeDto } from "@/lib/project-graph/projectGraphClient";
+import { normalizeAgentRelevance } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
 import type { KnowledgeGraphRevisionSnapshot } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionTypes";
 
 export function knowledgeGraphSnapshotToCanvasGraph(snapshot: KnowledgeGraphRevisionSnapshot): {
@@ -11,12 +12,14 @@ export function knowledgeGraphSnapshotToCanvasGraph(snapshot: KnowledgeGraphRevi
   for (const n of snapshot.nodes) {
     const id = `rev:${n.entityKey}`;
     entityToCanvasId.set(n.entityKey, id);
+    const agentRelevance = n.agentRelevance ? normalizeAgentRelevance(n.agentRelevance) : {};
     nodes.push({
       id,
       nodeType: n.nodeType,
       title: n.title,
       summary: n.summary,
       lifecycleStatus: n.lifecycleStatus,
+      ...(Object.keys(agentRelevance).length > 0 ? { agentRelevance } : {}),
     });
   }
 

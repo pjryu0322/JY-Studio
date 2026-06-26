@@ -30,14 +30,25 @@ export type AgentKnowledgeUse = Readonly<{
 
 export type AgentRelevance = Partial<Record<ProjectKnowledgeAgent, AgentKnowledgeUse>>;
 
+/** Minimum relevance for Graph projection visibility hints. */
+export const DEFAULT_AGENT_RELEVANCE_THRESHOLD = 0.2;
+/** Minimum relevance for prompt / memory injection candidates. */
+export const DEFAULT_AGENT_PROMPT_RELEVANCE_THRESHOLD = 0.5;
+
 const AGENT_SET = new Set<string>(PROJECT_KNOWLEDGE_AGENTS);
 const USE_AS_SET = new Set<string>(AGENT_KNOWLEDGE_USE_AS);
 
-const PROMPT_SUMMARY_MAX_LEN = 480;
+const DEFAULT_AGENT_TEXT_MAX_LEN = 480;
+const DEFAULT_AGENT_REASON_MAX_LEN = 240;
 
-const SENSITIVE_PROMPT_PATTERNS: readonly RegExp[] = [
+const SENSITIVE_AGENT_TEXT_PATTERNS: readonly RegExp[] = [
   /\bsk-[a-zA-Z0-9]{8,}\b/,
+  /\bsk-proj-[a-zA-Z0-9_-]{8,}\b/i,
+  /\bghp_[a-zA-Z0-9]{20,}\b/,
+  /\bgithub_pat_[a-zA-Z0-9_]{20,}\b/i,
+  /\bxox[baprs]-[a-zA-Z0-9-]{10,}\b/i,
   /\bBearer\s+[a-zA-Z0-9._-]+\b/i,
+  /\bAuthorization:\s*Bearer\s+/i,
   /\b(api[_-]?key|secret|token|password)\s*[:=]/i,
   /\bprovider[_-]?key\b/i,
   /-----BEGIN [A-Z ]+-----/,
@@ -66,29 +77,35 @@ function parseUseAs(raw: unknown): AgentKnowledgeUseAs {
   return "context";
 }
 
-export function sanitizeAgentPromptSummary(summary: unknown): string {
-  const text = String(summary ?? "").trim().replace(/\s+/g, " ");
+export function sanitizeAgentKnowledgeText(value: unknown, maxLen = DEFAULT_AGENT_TEXT_MAX_LEN): string {
+  const text = String(value ?? "").trim().replace(/\s+/g, " ");
   if (!text) return "";
-  for (const pattern of SENSITIVE_PROMPT_PATTERNS) {
+  for (const pattern of SENSITIVE_AGENT_TEXT_PATTERNS) {
     if (pattern.test(text)) return "";
   }
-  if (text.length > PROMPT_SUMMARY_MAX_LEN) {
-    return `${text.slice(0, PROMPT_SUMMARY_MAX_LEN - 1)}…`;
+  if (text.length > maxLen) {
+    return `${text.slice(0, maxLen - 1)}…`;
   }
   return text;
+}
+
+/** @deprecated Use sanitizeAgentKnowledgeText — kept for existing imports. */
+export function sanitizeAgentPromptSummary(summary: unknown): string {
+  return sanitizeAgentKnowledgeText(summary, DEFAULT_AGENT_TEXT_MAX_LEN);
 }
 
 function normalizeAgentKnowledgeUse(raw: unknown): AgentKnowledgeUse | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
-  const promptSummary = sanitizeAgentPromptSummary(o.promptSummary);
-  const reason = String(o.reason ?? "").trim().slice(0, 240);
-  if (!promptSummary && !reason) return null;
+  const reason = sanitizeAgentKnowledgeText(o.reason, DEFAULT_AGENT_REASON_MAX_LEN);
+  const promptSummaryRaw = sanitizeAgentKnowledgeText(o.promptSummary, DEFAULT_AGENT_TEXT_MAX_LEN);
+  const promptSummary = promptSummaryRaw || reason;
+  if (!promptSummary) return null;
   return {
     relevance: clampRelevance(o.relevance),
     useAs: parseUseAs(o.useAs),
     reason,
-    promptSummary: promptSummary || reason,
+    promptSummary,
   };
 }
 
@@ -148,7 +165,8 @@ export type AgentRelevanceNodeLike = Readonly<{
 export function resolveAgentRelevanceFromNode(node: AgentRelevanceNodeLike | null | undefined): AgentRelevance {
   if (!node) return {};
   if (node.agentRelevance != null) {
-    return normalizeAgentRelevance(node.agentRelevance);
+    const fromTop = normalizeAgentRelevance(node.agentRelevance);
+    if (Object.keys(fromTop).length > 0) return fromTop;
   }
   return parseAgentRelevanceFromGraphNodeMetadata(node.metadata);
 }
@@ -164,11 +182,25 @@ export function getAgentRelevance(
 export function hasAgentRelevance(
   node: AgentRelevanceNodeLike | null | undefined,
   agent: ProjectKnowledgeAgent,
-  minRelevance = 0,
+  minRelevance = DEFAULT_AGENT_RELEVANCE_THRESHOLD,
 ): boolean {
   const use = getAgentRelevance(node, agent);
   if (!use) return false;
-  return use.relevance >= clampRelevance(minRelevance);
+  const threshold = clampRelevance(minRelevance);
+  if (threshold <= 0) return use.relevance > 0;
+  return use.relevance >= threshold;
+}
+
+export function isAgentPromptRelevant(
+  node: AgentRelevanceNodeLike | null | undefined,
+  agent: ProjectKnowledgeAgent,
+  minRelevance = DEFAULT_AGENT_PROMPT_RELEVANCE_THRESHOLD,
+): boolean {
+  if (!hasAgentRelevance(node, agent, minRelevance)) return false;
+  const use = getAgentRelevance(node, agent);
+  if (!use) return false;
+  const text = sanitizeAgentKnowledgeText(use.promptSummary) || sanitizeAgentKnowledgeText(use.reason);
+  return text.length > 0;
 }
 
 export function getAgentPromptSummary(
@@ -177,9 +209,9 @@ export function getAgentPromptSummary(
 ): string {
   const use = getAgentRelevance(node, agent);
   if (!use) return "";
-  const summary = sanitizeAgentPromptSummary(use.promptSummary);
+  const summary = sanitizeAgentKnowledgeText(use.promptSummary);
   if (summary) return summary;
-  return sanitizeAgentPromptSummary(use.reason);
+  return sanitizeAgentKnowledgeText(use.reason);
 }
 
 export function emptyAgentRelevance(): AgentRelevance {

@@ -4,10 +4,12 @@ import {
   getAgentPromptSummary,
   getAgentRelevance,
   hasAgentRelevance,
+  isAgentPromptRelevant,
   mergeAgentRelevanceIntoGraphNodeMetadata,
   normalizeAgentRelevance,
   parseAgentRelevanceFromGraphNodeMetadata,
   resolveAgentRelevanceFromNode,
+  sanitizeAgentKnowledgeText,
   sanitizeAgentPromptSummary,
 } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
 
@@ -77,7 +79,7 @@ describe("projectKnowledgeAgentRelevance", () => {
     expect(hasAgentRelevance({ agentRelevance: fromMeta }, "security", 0.5)).toBe(true);
   });
 
-  it("falls back promptSummary from reason", () => {
+  it("falls back promptSummary from sanitized reason", () => {
     const node = {
       metadata: {
         agentRelevance: {
@@ -92,6 +94,41 @@ describe("projectKnowledgeAgentRelevance", () => {
   it("strips sensitive promptSummary content", () => {
     expect(sanitizeAgentPromptSummary("api_key=sk-live-abcdef1234567890")).toBe("");
     expect(sanitizeAgentPromptSummary("일반적인 구조 요약")).toBe("일반적인 구조 요약");
+  });
+
+  it("strips sensitive reason before fallback promptSummary", () => {
+    const out = normalizeAgentRelevance({
+      developer: {
+        relevance: 0.9,
+        useAs: "implementation_hint",
+        reason: "api_key=sk-live-abcdef1234567890",
+        promptSummary: "",
+      },
+    });
+
+    expect(out.developer).toBeUndefined();
+  });
+
+  it("does not treat zero relevance as prompt eligible", () => {
+    const node = {
+      agentRelevance: {
+        planner: {
+          relevance: 0,
+          useAs: "context",
+          reason: "관련 없음",
+          promptSummary: "관련 없음",
+        },
+      },
+    };
+
+    expect(isAgentPromptRelevant(node, "planner")).toBe(false);
+    expect(hasAgentRelevance(node, "planner")).toBe(false);
+  });
+
+  it("detects common provider token patterns in reason and promptSummary", () => {
+    expect(sanitizeAgentPromptSummary("Authorization: Bearer abc.def.ghi")).toBe("");
+    expect(sanitizeAgentKnowledgeText("github_pat_abcdef123456789012345678")).toBe("");
+    expect(sanitizeAgentPromptSummary("일반 설계 요약")).toBe("일반 설계 요약");
   });
 
   it("merges agentRelevance into graph metadata", () => {
