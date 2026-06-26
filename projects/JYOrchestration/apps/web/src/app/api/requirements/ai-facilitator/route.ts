@@ -26,6 +26,8 @@ import {
 } from "@/lib/project-knowledge/projectKnowledgeReferencePromptContext";
 import { prepareSameUserProjectKnowledgeMemoryPromptContexts } from "@/lib/project-knowledge/projectKnowledgeUserMemoryService";
 import { loadUserProjectKnowledgeMemoryControlForProject } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlProjectPersistence";
+import type { UserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
+import { recordSingleChatUserMemoryUsageForProject } from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsageRecording";
 import { buildUserProjectKnowledgeMemoryTimelineSummaries } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
 import {
   pickConfiguredModelOverrideFromAgents,
@@ -297,9 +299,12 @@ export async function POST(request: NextRequest) {
     /** @deprecated alias — use referencePromptContextBlock */
     const referencePlanningContextBlock = referencePromptContextBlock;
 
+    let userMemoryControlLoaded: UserProjectKnowledgeMemoryControlV1 | null = null;
+
     const userMemoryPrepared = projectId
       ? await (async () => {
           const control = await loadUserProjectKnowledgeMemoryControlForProject(projectId);
+          userMemoryControlLoaded = control;
           return prepareSameUserProjectKnowledgeMemoryPromptContexts({
             userId,
             targetProjectId: projectId,
@@ -701,6 +706,25 @@ export async function POST(request: NextRequest) {
           : {}),
         ...overlayAugments,
       });
+
+      if (
+        projectId &&
+        userMemoryPrepared &&
+        userMemoryControlLoaded &&
+        userMemoryTimelineMeta?.length
+      ) {
+        void recordSingleChatUserMemoryUsageForProject({
+          projectId,
+          userId,
+          control: userMemoryControlLoaded,
+          memoryControlEnabled: userMemoryPrepared.memoryControlEnabled,
+          summaries: userMemoryTimelineMeta,
+          byAgent: userMemoryPrepared.byAgent,
+          promptTrace: facilitatorPromptTrace,
+        }).catch((err) => {
+          console.error("[user_project_knowledge_memory_usage_record_failed]", err);
+        });
+      }
 
       return NextResponse.json({
         success: true,

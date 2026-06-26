@@ -25,6 +25,7 @@ import { parseImplementationCodeTaskPlanV1 } from "@/lib/prototype/implementatio
 import { mergeOrchestrationPersistPatches } from "@/lib/prototype/orchestrationPatchMerge";
 import type { PrototypeExecutionOrchestrationPersistInput } from "@/lib/prototype/prototypeExecutionTaskPlanPersist";
 import type { ServerQuickRunContinuationResult } from "@/lib/prototype/serverQuickRunContinuationTypes";
+import { recordCodeTaskDeveloperMemoryUsageForProject } from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsageRecording";
 import { persistTaskCursorOrchestrationToProject } from "@/lib/prototype/taskCursorJobStateSync";
 import { appendPromptTimelineEntries } from "@/lib/prototype/implementationTaskListWipPrep";
 import { parseImplementationTaskListV1 } from "@/lib/requirements/implementationTaskList";
@@ -469,12 +470,16 @@ export async function dispatchNextExecutionUnitOnServer(input: {
   let developerMemoryTimeline:
     | import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").UserProjectKnowledgeMemoryTimelineSummary
     | null = null;
+  let developerMemoryPrepared:
+    | Awaited<ReturnType<typeof prepareCodeTaskDeveloperPromptAugmentation>>
+    | null = null;
   const actorUserId = String(input.actorUserId ?? "").trim();
   if (actorUserId) {
     const prepared = await prepareCodeTaskDeveloperPromptAugmentation({
       userId: actorUserId,
       targetProjectId: pid,
     });
+    developerMemoryPrepared = prepared;
     codeTaskDeveloperPromptAugmentation = prepared.augmentation;
     developerMemoryTimeline = prepared.developerMemoryTimeline;
   }
@@ -496,6 +501,22 @@ export async function dispatchNextExecutionUnitOnServer(input: {
   });
 
   timelineEntries.push(...dispatch.timelineEntries);
+
+  if (actorUserId && developerMemoryPrepared?.control) {
+    void recordCodeTaskDeveloperMemoryUsageForProject({
+      projectId: pid,
+      userId: actorUserId,
+      control: developerMemoryPrepared.control,
+      memoryControlEnabled: developerMemoryPrepared.memoryControlEnabled,
+      developerSummary: developerMemoryTimeline,
+      developerContextMarkdown: codeTaskDeveloperPromptAugmentation?.developerMemoryContext?.markdown,
+      codeTaskId: unit.codeTaskId,
+      runId: history.runId,
+      nowIso,
+    }).catch((err) => {
+      console.error("[codetask_user_memory_usage_record_failed]", err);
+    });
+  }
 
   let orchestrationPatch = mergeOrchestrationPersistPatches(
     baseDispatchPatch,

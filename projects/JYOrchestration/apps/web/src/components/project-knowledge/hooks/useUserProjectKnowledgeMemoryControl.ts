@@ -5,6 +5,7 @@ import type { ProjectKnowledgeAgent } from "@/lib/project-knowledge/projectKnowl
 import type { UserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
 import type { UserProjectKnowledgeMemoryPreviewV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPreviewService";
 import type { UserMemoryControlAction } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlActionService";
+import type { UserProjectKnowledgeMemoryUsageSummaryV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsageTypes";
 
 type ControlResponse = {
   readonly success: boolean;
@@ -17,18 +18,49 @@ type PreviewResponse = UserProjectKnowledgeMemoryPreviewV1 & {
   readonly message?: string;
 };
 
+type UsageResponse = {
+  readonly success: boolean;
+  readonly summary?: UserProjectKnowledgeMemoryUsageSummaryV1;
+  readonly message?: string;
+};
+
 export function useUserProjectKnowledgeMemoryControl(projectId: string) {
   const pid = projectId.trim();
   const [control, setControl] = useState<UserProjectKnowledgeMemoryControlV1 | null>(null);
   const [preview, setPreview] = useState<UserProjectKnowledgeMemoryPreviewV1 | null>(null);
+  const [usageSummary, setUsageSummary] = useState<UserProjectKnowledgeMemoryUsageSummaryV1 | null>(null);
+  const [usageError, setUsageError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const reloadUsage = useCallback(async () => {
+    if (!pid) {
+      setUsageSummary(null);
+      return;
+    }
+    setUsageError(null);
+    try {
+      const q = encodeURIComponent(pid);
+      const res = await fetch(`/api/project-knowledge/user-memory-usage?projectId=${q}`, {
+        credentials: "include",
+      });
+      const json = (await res.json()) as UsageResponse;
+      if (!res.ok || !json.success || !json.summary) {
+        throw new Error(json.message ?? "사용 이력을 불러오지 못했습니다.");
+      }
+      setUsageSummary(json.summary);
+    } catch (e) {
+      setUsageSummary(null);
+      setUsageError(e instanceof Error ? e.message : "사용 이력 조회 실패");
+    }
+  }, [pid]);
 
   const reload = useCallback(async () => {
     if (!pid) {
       setControl(null);
       setPreview(null);
+      setUsageSummary(null);
       return;
     }
     setLoading(true);
@@ -50,12 +82,13 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
       setControl(controlJson.control);
       const { success: _s, message: _m, ...previewBody } = previewJson;
       setPreview(previewBody);
+      void reloadUsage();
     } catch (e) {
       setError(e instanceof Error ? e.message : "불러오기 실패");
     } finally {
       setLoading(false);
     }
-  }, [pid]);
+  }, [pid, reloadUsage]);
 
   useEffect(() => {
     void reload();
@@ -139,10 +172,13 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
   return {
     control,
     preview,
+    usageSummary,
+    usageError,
     loading,
     saving,
     error,
     reload,
+    reloadUsage,
     setEnabled,
     setAgentEnabled,
     togglePin,

@@ -164,6 +164,7 @@ import {
 } from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
 import { parseMaterializedReferenceContextV1 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
 import { parseUserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
+import { parseUserProjectKnowledgeMemoryUsageStateV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsage";
 import { parsePlanningKnowledgeGraphTraceV1 } from "@/lib/project-graph/planningKnowledgeGraphTraceV1";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import {
@@ -600,6 +601,7 @@ export type RequirementsStateJson = {
   materializedReferenceContextV1?: import("@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext").MaterializedReferenceContextV1 | null;
   /** Phase 7: same-user project knowledge memory control */
   userProjectKnowledgeMemoryControlV1?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes").UserProjectKnowledgeMemoryControlV1 | null;
+  userProjectKnowledgeMemoryUsageStateV1?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryUsageTypes").UserProjectKnowledgeMemoryUsageStateV1 | null;
   /** 기획 Knowledge Graph 초기화·재생성 추적(그래프 노드가 아님) */
   planningKnowledgeGraphTraceV1?: import("@/lib/project-graph/planningKnowledgeGraphTraceV1").PlanningKnowledgeGraphTraceV1 | null;
   /** 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지용 슬롯 상태) */
@@ -1406,6 +1408,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         ? o.userProjectKnowledgeMemoryControlV1 === null
           ? null
           : parseUserProjectKnowledgeMemoryControlV1(o.userProjectKnowledgeMemoryControlV1) ?? null
+        : undefined,
+    userProjectKnowledgeMemoryUsageStateV1:
+      "userProjectKnowledgeMemoryUsageStateV1" in o
+        ? o.userProjectKnowledgeMemoryUsageStateV1 === null
+          ? null
+          : parseUserProjectKnowledgeMemoryUsageStateV1(o.userProjectKnowledgeMemoryUsageStateV1) ?? null
         : undefined,
     planningKnowledgeGraphTraceV1:
       "planningKnowledgeGraphTraceV1" in o

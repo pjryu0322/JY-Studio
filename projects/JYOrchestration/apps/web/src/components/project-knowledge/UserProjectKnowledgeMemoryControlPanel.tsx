@@ -21,6 +21,7 @@ export function UserProjectKnowledgeMemoryControlPanel(p: { readonly projectId: 
   const {
     control,
     preview,
+    usageSummary,
     loading,
     saving,
     error,
@@ -123,6 +124,23 @@ export function UserProjectKnowledgeMemoryControlPanel(p: { readonly projectId: 
         </div>
       ) : (
         <>
+          {usageSummary ? (
+            <div
+              data-testid="user-memory-usage-summary"
+              style={{ marginTop: 10, fontSize: 11, color: t.textSecondary, lineHeight: 1.5 }}
+            >
+              <span style={{ fontWeight: 800, color: t.textPrimary }}>최근 사용</span>
+              {" · "}
+              {usageSummary.injectedEvents}회 참조
+              {usageSummary.byAgent.developer.lastUsedAt ? (
+                <>
+                  {" · "}
+                  개발자 최근 {usageSummary.byAgent.developer.lastItemCount}개 (
+                  {new Date(usageSummary.byAgent.developer.lastUsedAt).toLocaleString("ko-KR")})
+                </>
+              ) : null}
+            </div>
+          ) : null}
           {preview ? (
             <div
               data-testid="user-memory-agent-summary"

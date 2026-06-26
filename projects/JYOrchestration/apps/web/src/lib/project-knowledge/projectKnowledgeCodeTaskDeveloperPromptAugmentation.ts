@@ -9,10 +9,13 @@ import {
 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
 import { prepareSameUserProjectKnowledgeMemoryPromptContexts } from "@/lib/project-knowledge/projectKnowledgeUserMemoryService";
 import { loadUserProjectKnowledgeMemoryControlForProject } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlProjectPersistence";
+import type { UserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
 
 export type PreparedCodeTaskDeveloperPromptAugmentation = Readonly<{
   readonly augmentation: CodeTaskDeveloperPromptAugmentation;
   readonly developerMemoryTimeline: UserProjectKnowledgeMemoryTimelineSummary | null;
+  readonly memoryControlEnabled: boolean;
+  readonly control: UserProjectKnowledgeMemoryControlV1 | null;
 }>;
 
 export async function prepareCodeTaskDeveloperPromptAugmentation(input: {
@@ -24,8 +27,15 @@ export async function prepareCodeTaskDeveloperPromptAugmentation(input: {
   const userId = input.userId.trim();
   const targetProjectId = input.targetProjectId.trim();
   if (!userId || !targetProjectId) {
-    return { augmentation: {}, developerMemoryTimeline: null };
+    return {
+      augmentation: {},
+      developerMemoryTimeline: null,
+      memoryControlEnabled: true,
+      control: null,
+    };
   }
+
+  const control = await loadUserProjectKnowledgeMemoryControlForProject(targetProjectId);
 
   const [referenceSection, memoryPrepared] = await Promise.all([
     buildReferencePromptContextForProjectTurn({
@@ -34,14 +44,11 @@ export async function prepareCodeTaskDeveloperPromptAugmentation(input: {
       projectName: input.projectName,
       projectDescription: input.projectDescription,
     }),
-    (async () => {
-      const control = await loadUserProjectKnowledgeMemoryControlForProject(targetProjectId);
-      return prepareSameUserProjectKnowledgeMemoryPromptContexts({
-        userId,
-        targetProjectId,
-        control,
-      });
-    })(),
+    prepareSameUserProjectKnowledgeMemoryPromptContexts({
+      userId,
+      targetProjectId,
+      control,
+    }),
   ]);
 
   const referencePromptContextBlock = referenceSection.hasReference
@@ -55,5 +62,7 @@ export async function prepareCodeTaskDeveloperPromptAugmentation(input: {
       developerMemoryContext,
     },
     developerMemoryTimeline: developerUserProjectKnowledgeMemoryTimelineSummary(developerMemoryContext),
+    memoryControlEnabled: memoryPrepared.memoryControlEnabled,
+    control,
   };
 }

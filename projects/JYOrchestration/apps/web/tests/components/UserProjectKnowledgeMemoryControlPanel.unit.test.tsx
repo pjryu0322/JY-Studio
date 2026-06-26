@@ -60,10 +60,29 @@ const hookState = {
       security: { enabled: true, itemCount: 0, items: [] },
     },
   },
+  usageSummary: {
+    totalEvents: 3,
+    injectedEvents: 2,
+    skippedEvents: 1,
+    byAgent: {
+      planner: { injectedCount: 1, lastItemCount: 1, lastUsedAt: "2026-06-03T00:00:00.000Z" },
+      analyst: { injectedCount: 0, lastItemCount: 0 },
+      developer: {
+        injectedCount: 1,
+        lastItemCount: 3,
+        lastUsedAt: "2026-06-03T01:00:00.000Z",
+      },
+      reviewer: { injectedCount: 0, lastItemCount: 0 },
+      security: { injectedCount: 0, lastItemCount: 0 },
+    },
+    recentEvents: [],
+  },
+  usageError: null as string | null,
   loading: false,
   saving: false,
   error: null as string | null,
   reload: vi.fn(),
+  reloadUsage: vi.fn(),
   setEnabled: vi.fn(),
   setAgentEnabled: vi.fn(),
   togglePin: vi.fn(),
@@ -108,6 +127,15 @@ describe("UserProjectKnowledgeMemoryControlPanel", () => {
     expect(html).not.toContain(rawItemId);
     expect(html).not.toContain("secret-project");
     expect(html).not.toContain("secret-node");
+  });
+
+  it("shows usage summary when available", () => {
+    const html = renderToStaticMarkup(
+      createElement(UserProjectKnowledgeMemoryControlPanel, { projectId: "p1" }),
+    );
+    expect(html).toContain('data-testid="user-memory-usage-summary"');
+    expect(html).toContain("2회 참조");
+    expect(html).toContain("개발자 최근 3개");
   });
 
   it("shows ignored section and unignore control", () => {
