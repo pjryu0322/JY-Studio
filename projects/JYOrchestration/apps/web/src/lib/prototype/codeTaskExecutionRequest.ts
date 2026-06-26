@@ -87,6 +87,7 @@ function resolveDeveloperPromptForCodeTask(input: {
   readonly baseBranch: string;
   readonly allowedPathGlobs?: readonly string[];
   readonly nowIso: string;
+  readonly developerPromptAugmentation?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").CodeTaskDeveloperPromptAugmentation | null;
 }): BuildCodeTaskDeveloperPromptResultLike {
   const allowedPathGlobs = resolveEffectiveAllowedPathGlobs({
     allowedPathGlobs: input.allowedPathGlobs,
@@ -101,6 +102,7 @@ function resolveDeveloperPromptForCodeTask(input: {
       targetRepoFullName: input.targetRepository.repoFullName,
       baseBranch: input.baseBranch,
       allowedPathGlobs,
+      developerPromptAugmentation: input.developerPromptAugmentation,
     })
   ) {
     const stored = input.run.developerPrompt!.trim();
@@ -127,6 +129,7 @@ function resolveDeveloperPromptForCodeTask(input: {
     parentTask: input.parentTask,
     allowedPathGlobs: input.allowedPathGlobs,
     nowIso: input.nowIso,
+    developerPromptAugmentation: input.developerPromptAugmentation,
   });
   return {
     prompt: generated.content,
@@ -155,6 +158,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
   readonly nowIso?: string;
   readonly codeTaskConflictPlan?: CodeTaskConflictPlanV1 | null;
   readonly codeTaskPlan?: ImplementationCodeTaskPlanV1 | null;
+  readonly developerPromptAugmentation?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").CodeTaskDeveloperPromptAugmentation | null;
 }): BuildCodeTaskCursorExecutionRequestResult {
   const now = input.nowIso ?? new Date().toISOString();
 
@@ -237,6 +241,7 @@ export function tryBuildCodeTaskCursorExecutionRequest(input: {
     baseBranch: input.baseBranch,
     allowedPathGlobs: input.allowedPathGlobs,
     nowIso: now,
+    developerPromptAugmentation: input.developerPromptAugmentation,
   });
 
   const stageBlock = assertStageTwoDeveloperPromptAllowed({ prompt: promptResult.prompt });

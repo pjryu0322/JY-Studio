@@ -37,6 +37,8 @@ import {
   buildWorkResultReportFormatSections,
   requiresRouteEntryGuardInPrompt,
 } from "@/lib/prototype/codeTaskDeveloperPromptTemplate";
+import type { CodeTaskDeveloperPromptAugmentation } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
+import { finalizeCodeTaskDeveloperPromptWithAugmentation } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
 
 export type BuildCodeTaskDeveloperPromptResult = Readonly<{
   readonly prompt: string;
@@ -315,6 +317,7 @@ export function buildCodeTaskDeveloperPromptDetailed(input: {
   readonly allowedPathGlobs?: readonly string[];
   readonly targetRepoKind?: CodeTaskPromptTargetRepoKind;
   readonly templateId?: string;
+  readonly developerPromptAugmentation?: CodeTaskDeveloperPromptAugmentation | null;
 }): BuildCodeTaskDeveloperPromptResult {
   const repoKind = input.targetRepoKind ?? "generated_project";
   const repoFullName = input.targetRepository.repoFullName.trim();
@@ -341,22 +344,25 @@ export function buildCodeTaskDeveloperPromptDetailed(input: {
     allowedPathGlobs: input.allowedPathGlobs,
   });
 
-  const prompt =
-    repoKind === "generated_project"
-      ? buildGeneratedProjectPrompt({
-          codeTask: input.codeTask,
-          parentTask: input.parentTask,
-          promptContext: input.promptContext,
-          target,
-          sanitizedCandidates: sanitized,
-          templateId: input.templateId,
-        })
-      : buildPlatformProjectPrompt({
-          codeTask: input.codeTask,
-          parentTask: input.parentTask,
-          target,
-          sanitizedCandidates: sanitized,
-        });
+  const prompt = finalizeCodeTaskDeveloperPromptWithAugmentation({
+    basePrompt:
+      repoKind === "generated_project"
+        ? buildGeneratedProjectPrompt({
+            codeTask: input.codeTask,
+            parentTask: input.parentTask,
+            promptContext: input.promptContext,
+            target,
+            sanitizedCandidates: sanitized,
+            templateId: input.templateId,
+          })
+        : buildPlatformProjectPrompt({
+            codeTask: input.codeTask,
+            parentTask: input.parentTask,
+            target,
+            sanitizedCandidates: sanitized,
+          }),
+    augmentation: input.developerPromptAugmentation,
+  });
 
   return {
     prompt,
@@ -376,6 +382,7 @@ export function buildStageTwoCodeTaskDeveloperPrompt(input: {
   readonly allowedPathGlobs?: readonly string[];
   readonly templateId?: string;
   readonly nowIso: string;
+  readonly developerPromptAugmentation?: CodeTaskDeveloperPromptAugmentation | null;
 }): GeneratedCodeTaskPromptV1 {
   void input.projectId;
   void input.nowIso;
@@ -414,6 +421,7 @@ export function buildStageTwoCodeTaskDeveloperPrompt(input: {
     allowedPathGlobs: input.allowedPathGlobs,
     targetRepoKind: "generated_project",
     templateId: input.templateId,
+    developerPromptAugmentation: input.developerPromptAugmentation,
   });
 
   const quality = evaluateStageTwoDeveloperPromptReadiness({

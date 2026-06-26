@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { buildTaskCursorTimelineEntry } from "@/lib/prototype/taskCursorExecution";
+import type { UserProjectKnowledgeMemoryTimelineSummary } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
 
 export const CODE_TASK_DEVELOPER_PROMPT_VERSION = "v1" as const;
 
@@ -59,6 +60,7 @@ export function buildCodeTaskPromptBuiltTimelineEntry(input: {
   readonly targetRepository?: string;
   readonly baseBranch?: string;
   readonly nowIso?: string;
+  readonly userProjectKnowledgeMemoryContexts?: readonly UserProjectKnowledgeMemoryTimelineSummary[];
 }): RequirementsPromptTimelineEntry {
   const developerPromptHash = formatDeveloperPromptHashSha256(input.developerPrompt);
   const entry = buildTaskCursorTimelineEntry({
@@ -74,6 +76,9 @@ export function buildCodeTaskPromptBuiltTimelineEntry(input: {
   });
   return {
     ...entry,
+    ...(input.userProjectKnowledgeMemoryContexts?.length
+      ? { userProjectKnowledgeMemoryContexts: input.userProjectKnowledgeMemoryContexts }
+      : {}),
     responseText: [
       entry.responseText,
       `codeTaskId=${input.codeTaskId.trim()}`,

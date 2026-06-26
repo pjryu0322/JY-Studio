@@ -7,6 +7,8 @@ import {
 } from "@/lib/prototype/codeTaskDeveloperPromptDelivery";
 import { validateCodeTaskDeveloperPromptSafety } from "@/lib/prototype/codeTaskDeveloperPromptSafety";
 import { resolveEffectiveAllowedPathGlobs } from "@/lib/prototype/codeTaskPromptPathPolicy";
+import type { CodeTaskDeveloperPromptAugmentation } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
+import { storedDeveloperPromptMissingAugmentation } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
 
 export type CodeTaskDeveloperPromptMeta = Readonly<{
   readonly promptContextUpdatedAt?: string;
@@ -67,10 +69,19 @@ export function shouldReuseStoredDeveloperPrompt(input: {
   readonly targetRepoFullName: string;
   readonly baseBranch: string;
   readonly allowedPathGlobs?: readonly string[];
+  readonly developerPromptAugmentation?: CodeTaskDeveloperPromptAugmentation | null;
 }): boolean {
   const stored = input.run.developerPrompt?.trim();
   if (!stored) return false;
   if (developerPromptContainsPlatformTrackingSections(stored)) return false;
+  if (
+    storedDeveloperPromptMissingAugmentation({
+      storedPrompt: stored,
+      augmentation: input.developerPromptAugmentation,
+    })
+  ) {
+    return false;
+  }
 
   const meta = parseCodeTaskDeveloperPromptMeta(
     (input.run as CodeTaskExecutionRunV1 & { developerPromptMeta?: unknown }).developerPromptMeta,

@@ -74,6 +74,7 @@ import {
 } from "@/lib/prototype/resolveRuntimeCodeTaskDeveloperPromptForExecute";
 import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { evaluateImplementationDatabaseRequiredExecutionBlock } from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
+import { prepareCodeTaskDeveloperPromptAugmentation } from "@/lib/project-knowledge/projectKnowledgeCodeTaskDeveloperPromptAugmentation";
 
 type Body = {
   readonly projectId?: string;
@@ -253,6 +254,10 @@ export async function POST(request: NextRequest) {
     }
 
     const nowIso = new Date().toISOString();
+    const codeTaskDeveloperPromptAugmentationPrepared = await prepareCodeTaskDeveloperPromptAugmentation({
+      userId,
+      targetProjectId: projectId,
+    });
     let execution = buildTaskCursorExecutionRequest({
       projectId,
       taskId,
@@ -312,6 +317,7 @@ export async function POST(request: NextRequest) {
         baseBranch: context.baseBranch,
         allowedPathGlobs: context.allowedPathGlobs,
         scopedWorkItem: codeTaskWorkItemEarly ?? scopedWorkItems[0] ?? null,
+        developerPromptAugmentation: codeTaskDeveloperPromptAugmentationPrepared.augmentation,
       });
       if (!resolved.ok) {
         const blockMessage =

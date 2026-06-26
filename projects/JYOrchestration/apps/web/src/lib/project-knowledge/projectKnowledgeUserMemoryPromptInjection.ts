@@ -94,3 +94,89 @@ export function orchestrationPromptContextForAgent(input: {
 export function agentMemorySectionMarker(agent: ProjectKnowledgeAgent): string {
   return userProjectKnowledgeAgentSectionTitle(agent);
 }
+
+export type CodeTaskDeveloperPromptAugmentation = Readonly<{
+  readonly referencePromptContextBlock?: string;
+  readonly developerMemoryContext?: UserProjectKnowledgeAgentPromptContext | null;
+}>;
+
+export function buildDeveloperMemoryPromptBlock(input: {
+  readonly developerMemoryContext?: UserProjectKnowledgeAgentPromptContext | null;
+}): string {
+  const ctx = input.developerMemoryContext;
+  if (!ctx || ctx.agent !== "developer") return "";
+  return appendUserProjectKnowledgeMemorySection({
+    basePrompt: "",
+    context: ctx,
+  }).trim();
+}
+
+export function implementationPromptContextWithDeveloperMemory(input: {
+  readonly basePrompt: string;
+  readonly developerMemoryContext?: UserProjectKnowledgeAgentPromptContext | null;
+}): string {
+  const ctx =
+    input.developerMemoryContext?.agent === "developer" ? input.developerMemoryContext : null;
+  return appendUserProjectKnowledgeMemorySection({
+    basePrompt: input.basePrompt,
+    context: ctx,
+  });
+}
+
+export function finalizeCodeTaskDeveloperPromptWithAugmentation(input: {
+  readonly basePrompt: string;
+  readonly augmentation?: CodeTaskDeveloperPromptAugmentation | null;
+}): string {
+  const base = input.basePrompt.trim();
+  const augmentation = input.augmentation;
+  if (!augmentation) return base;
+
+  const developerContext =
+    augmentation.developerMemoryContext?.agent === "developer"
+      ? augmentation.developerMemoryContext
+      : null;
+
+  const tail = composeProjectTurnContextBlocks({
+    referencePromptContextBlock: augmentation.referencePromptContextBlock,
+    userMemoryContext: developerContext,
+  }).trim();
+  if (!tail) return base;
+
+  if (base.includes(tail)) return base;
+  return `${base}\n\n${tail}`.trim();
+}
+
+export function developerUserProjectKnowledgeMemoryTimelineSummary(
+  developerMemoryContext: UserProjectKnowledgeAgentPromptContext | null | undefined,
+): UserProjectKnowledgeMemoryTimelineSummary | null {
+  if (!developerMemoryContext) return null;
+  const itemCount = developerMemoryContext.itemCount ?? 0;
+  return {
+    kind: "user_project_knowledge_memory_context",
+    agent: "developer",
+    itemCount,
+    sourceProjectCount: developerMemoryContext.sourceProjectCount ?? 0,
+    injected: itemCount > 0,
+  };
+}
+
+export function storedDeveloperPromptMissingAugmentation(input: {
+  readonly storedPrompt: string;
+  readonly augmentation?: CodeTaskDeveloperPromptAugmentation | null;
+}): boolean {
+  const prompt = input.storedPrompt.trim();
+  const aug = input.augmentation;
+  if (!aug) return false;
+
+  const ref = String(aug.referencePromptContextBlock ?? "").trim();
+  if (ref && !prompt.includes("[reference_context]")) {
+    return true;
+  }
+
+  const devCount = aug.developerMemoryContext?.itemCount ?? 0;
+  if (devCount > 0 && !prompt.includes(userProjectKnowledgeAgentSectionTitle("developer"))) {
+    return true;
+  }
+
+  return false;
+}

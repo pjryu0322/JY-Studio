@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
       completedTaskId,
       completedCodeTaskId: body.completedCodeTaskId,
       sourceCommitSha: execution?.commitSha,
+      actorUserId: userId,
     });
 
     if (continuation.orchestrationPatch) {

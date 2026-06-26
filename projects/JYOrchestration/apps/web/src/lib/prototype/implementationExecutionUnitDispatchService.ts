@@ -34,6 +34,7 @@ import {
   type RequirementsPromptTimelineEntry,
   type RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
+import { prepareCodeTaskDeveloperPromptAugmentation } from "@/lib/project-knowledge/projectKnowledgeCodeTaskDeveloperPromptAugmentation";
 import { evaluateImplementationDatabaseRequiredExecutionBlock } from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
 import { prisma } from "@/lib/prisma";
 
@@ -113,6 +114,7 @@ export async function dispatchNextExecutionUnitOnServer(input: {
   readonly sourceCommitSha?: string | null;
   readonly requirementsOverlay?: Partial<RequirementsStateJson> | null;
   readonly nowIso?: string;
+  readonly actorUserId?: string | null;
 }): Promise<DispatchNextExecutionUnitResultV1> {
   const pid = input.projectId.trim();
   const nowIso = input.nowIso ?? new Date().toISOString();
@@ -460,6 +462,23 @@ export async function dispatchNextExecutionUnitOnServer(input: {
   }
 
   const triggerKey = `execution_unit:${unit.unitId}:${input.sourceCommitSha ?? ""}:${nowIso}`;
+
+  let codeTaskDeveloperPromptAugmentation:
+    | import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").CodeTaskDeveloperPromptAugmentation
+    | null = null;
+  let developerMemoryTimeline:
+    | import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").UserProjectKnowledgeMemoryTimelineSummary
+    | null = null;
+  const actorUserId = String(input.actorUserId ?? "").trim();
+  if (actorUserId) {
+    const prepared = await prepareCodeTaskDeveloperPromptAugmentation({
+      userId: actorUserId,
+      targetProjectId: pid,
+    });
+    codeTaskDeveloperPromptAugmentation = prepared.augmentation;
+    developerMemoryTimeline = prepared.developerMemoryTimeline;
+  }
+
   const dispatch = await dispatchExecutionUnitWithCursor({
     projectId: pid,
     unit,
@@ -472,6 +491,8 @@ export async function dispatchNextExecutionUnitOnServer(input: {
     runId: history.runId,
     triggerKey,
     nowIso,
+    codeTaskDeveloperPromptAugmentation,
+    developerMemoryTimeline,
   });
 
   timelineEntries.push(...dispatch.timelineEntries);

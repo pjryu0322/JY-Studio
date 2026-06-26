@@ -212,6 +212,7 @@ export async function POST(request: NextRequest) {
           completedCodeTaskId,
           sourceCommitSha: execution.commitSha,
           requirementsOverlay,
+          actorUserId: userId,
         });
         if (continuation.orchestrationPatch) {
           orchestrationPatch = {

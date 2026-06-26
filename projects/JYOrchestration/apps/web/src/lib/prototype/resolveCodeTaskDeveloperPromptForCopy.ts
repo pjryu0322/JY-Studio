@@ -96,6 +96,7 @@ export function resolveGeneratedStageTwoDeveloperPromptForCopy(input: {
   readonly allowedPathGlobs?: readonly string[];
   readonly codeTaskPromptContextMapV1?: CodeTaskPromptContextMapV1 | null;
   readonly nowIso?: string;
+  readonly developerPromptAugmentation?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").CodeTaskDeveloperPromptAugmentation | null;
 }): Readonly<{ readonly ok: boolean; readonly generated?: import("@/lib/prototype/generatedCodeTaskPrompt").GeneratedCodeTaskPromptV1; readonly reason?: string }> {
   const base = resolveCodeTaskDeveloperPromptForCopy(input);
   if (!base.ok || !base.prompt) {
@@ -134,6 +135,7 @@ export function resolveGeneratedStageTwoDeveloperPromptForCopy(input: {
     parentTask: target.parentTask,
     allowedPathGlobs: input.allowedPathGlobs,
     nowIso: input.nowIso ?? new Date().toISOString(),
+    developerPromptAugmentation: input.developerPromptAugmentation,
   });
   if (!generated.quality.ready) {
     if (generated.quality.missing.some((m) => m.includes("branch_plan_base"))) {
@@ -155,6 +157,7 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
   readonly baseBranch: string;
   readonly allowedPathGlobs?: readonly string[];
   readonly codeTaskPromptContextMapV1?: CodeTaskPromptContextMapV1 | null;
+  readonly developerPromptAugmentation?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").CodeTaskDeveloperPromptAugmentation | null;
 }): Readonly<{ readonly ok: boolean; readonly prompt?: string; readonly reason?: string }> {
   const codeTaskId = input.codeTaskId.trim();
   if (!codeTaskId) {
@@ -206,6 +209,7 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
       targetRepoFullName: input.targetRepository.repoFullName,
       baseBranch: input.baseBranch,
       allowedPathGlobs: input.allowedPathGlobs,
+      developerPromptAugmentation: input.developerPromptAugmentation,
     })
   ) {
     const stored = run.developerPrompt!.trim();
@@ -275,6 +279,7 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
     parentTask: target.parentTask,
     allowedPathGlobs: input.allowedPathGlobs,
     nowIso: new Date().toISOString(),
+    developerPromptAugmentation: input.developerPromptAugmentation,
   });
   if (!generated.quality.ready) {
     if (generated.quality.missing.some((m) => m.includes("branch_plan_base"))) {

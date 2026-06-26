@@ -34,6 +34,7 @@ import {
 } from "@/lib/prototype/codeTaskRunTargetCanonical";
 import { parseCodeTaskBranchPlanV1 } from "@/lib/prototype/implementationBranchPlan";
 import { buildImplementationExecutionLogTimelineEntry } from "@/lib/prototype/implementationExecutionLogTimeline";
+import { buildCodeTaskPromptBuiltTimelineEntry } from "@/lib/prototype/codeTaskDeveloperPromptDelivery";
 import type { RequirementsPromptTimelineEntry } from "@/lib/requirements/requirementsStateJson";
 import { getImplementationRuntimeBundle } from "@/lib/runtime/implementationRuntime/implementationRuntimeRepository";
 import { dispatchNextQueuedImplementationRuntimeRun } from "@/lib/runtime/implementationRuntime/implementationRuntimeExecutionService";
@@ -89,6 +90,8 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
   readonly codeTaskPromptContextMapV1?: CodeTaskPromptContextMapV1 | null;
   readonly existingTaskCursor?: TaskCursorExecutionV1 | null;
   readonly nowIso?: string;
+  readonly codeTaskDeveloperPromptAugmentation?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").CodeTaskDeveloperPromptAugmentation | null;
+  readonly developerMemoryTimeline?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").UserProjectKnowledgeMemoryTimelineSummary | null;
 }): PrepareSelectedCodeTaskCursorExecutionResult {
   const run = findDispatchableRunForCodeTask(input.runs, input.queueDispatch.codeTaskId);
   if (!run) {
@@ -180,11 +183,29 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
     nowIso,
     codeTaskConflictPlan: planWithBoundaries?.codeTaskConflictPlanV1 ?? null,
     codeTaskPlan: planWithBoundaries,
+    developerPromptAugmentation: input.codeTaskDeveloperPromptAugmentation,
   });
   if (!builtResult.ok) {
     return { ok: false, outcome: "blocked", message: builtResult.message };
   }
   const built = builtResult.built;
+  const tupleTimeline: RequirementsPromptTimelineEntry[] = [];
+  if (input.developerMemoryTimeline) {
+    tupleTimeline.push(
+      buildCodeTaskPromptBuiltTimelineEntry({
+        projectId: input.projectId,
+        processTaskId: dispatchTarget.parentTaskId,
+        codeTaskId: dispatchTarget.codeTask.codeTaskId,
+        runId: built.run.runId,
+        developerPrompt: built.developerPrompt,
+        workBranch: built.run.workBranch,
+        targetRepository: input.targetRepository.repoFullName,
+        baseBranch: input.baseBranch,
+        nowIso,
+        userProjectKnowledgeMemoryContexts: [input.developerMemoryTimeline],
+      }),
+    );
+  }
   const canonicalRun = patchCodeTaskExecutionRunWithCanonicalTarget({
     run: built.run,
     codeTask: dispatchTarget.codeTask,
@@ -197,7 +218,6 @@ export function prepareSelectedCodeTaskCursorExecution(input: {
       codeTaskId: dispatchTarget.codeTask.codeTaskId,
       branchGroup: canonicalTarget?.branchGroup ?? null,
     });
-  const tupleTimeline: RequirementsPromptTimelineEntry[] = [];
   if (
     canonicalTarget &&
     (built.run.processTaskId !== canonicalRun.processTaskId ||

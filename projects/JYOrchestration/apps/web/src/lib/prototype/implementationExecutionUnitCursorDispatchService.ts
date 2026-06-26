@@ -120,6 +120,8 @@ export async function dispatchExecutionUnitWithCursor(input: {
   readonly runId: string;
   readonly triggerKey: string;
   readonly nowIso: string;
+  readonly codeTaskDeveloperPromptAugmentation?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").CodeTaskDeveloperPromptAugmentation | null;
+  readonly developerMemoryTimeline?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").UserProjectKnowledgeMemoryTimelineSummary | null;
 }): Promise<DispatchExecutionUnitWithCursorResultV1> {
   const pid = input.projectId.trim();
   const nowIso = input.nowIso;
@@ -193,6 +195,8 @@ export async function dispatchExecutionUnitWithCursor(input: {
     ),
     existingTaskCursor: null,
     nowIso,
+    codeTaskDeveloperPromptAugmentation: input.codeTaskDeveloperPromptAugmentation,
+    developerMemoryTimeline: input.developerMemoryTimeline,
   });
 
   if (!prep.ok) {

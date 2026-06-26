@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { buildCodeTaskDeveloperPromptDetailed } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
+import { buildCodeTaskDeveloperPromptDetailed, buildStageTwoCodeTaskDeveloperPrompt } from "@/lib/prototype/buildCodeTaskDeveloperPrompt";
 import {
   assertStageTwoDeveloperPromptAllowed,
   STAGE_TWO_CURSOR_BLOCK_MESSAGE,
@@ -56,6 +56,7 @@ export type ResolveRuntimeCodeTaskDeveloperPromptForExecuteInput = Readonly<{
   readonly baseBranch: string;
   readonly allowedPathGlobs?: readonly string[];
   readonly scopedWorkItem?: CursorWorkItem | null;
+  readonly developerPromptAugmentation?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").CodeTaskDeveloperPromptAugmentation | null;
 }>;
 
 export type ResolveRuntimeCodeTaskDeveloperPromptForExecuteResult =
@@ -199,6 +200,7 @@ export function resolveRuntimeCodeTaskDeveloperPromptForExecute(
       targetRepoFullName: input.targetRepository.repoFullName,
       baseBranch: input.baseBranch,
       allowedPathGlobs,
+      developerPromptAugmentation: input.developerPromptAugmentation,
     })
   ) {
     const prompt = run.developerPrompt.trim();
@@ -259,6 +261,7 @@ export function resolveRuntimeCodeTaskDeveloperPromptForExecute(
     parentTask,
     allowedPathGlobs: input.allowedPathGlobs,
     nowIso: new Date().toISOString(),
+    developerPromptAugmentation: input.developerPromptAugmentation,
   });
   const prompt = generated.content.trim();
   if (!prompt || !generated.quality.ready) {
