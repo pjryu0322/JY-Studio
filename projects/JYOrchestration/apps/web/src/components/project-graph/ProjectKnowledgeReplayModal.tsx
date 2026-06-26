@@ -419,6 +419,7 @@ export function ProjectKnowledgeReplayModal(p: {
                 <ProjectKnowledgeReplayViewer
                   nodes={canvasGraph.nodes}
                   edges={canvasGraph.edges}
+                  frameKey={selectedRevision?.id ?? String(selectedIndex)}
                   loading={detailLoading}
                   error={detailError}
                   graphMobileUx={graphMobileUx}
