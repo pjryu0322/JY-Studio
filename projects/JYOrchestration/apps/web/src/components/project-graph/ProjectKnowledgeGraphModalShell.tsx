@@ -5,7 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useGraphMobileUx } from "@/components/project-graph/useGraphMobileUx";
 import { usePlatformRailCollapsed } from "@/components/layout/platformTopNav/usePlatformRailCollapsed";
-import { platformRailOverlayLeftInsetPx } from "@/lib/layout/platformTopNavConstants";
+import {
+  computeKnowledgeGraphModalRailInset,
+  knowledgeGraphModalShellDesktopStyles,
+} from "@/lib/project-graph/projectKnowledgeGraphModalRailLayout";
 import { uiTokens as t } from "@/components/ui/tokens";
 
 const FOCUSABLE =
@@ -71,8 +74,12 @@ export function ProjectKnowledgeGraphModalShell(p: {
   }, [p.open]);
 
   const fullscreen = graphMobileUx;
-  const railInset =
-    p.preservePlatformRail && !fullscreen ? platformRailOverlayLeftInsetPx(railCollapsed) : 0;
+  const railInset = computeKnowledgeGraphModalRailInset({
+    preservePlatformRail: p.preservePlatformRail,
+    fullscreen,
+    railCollapsed,
+  });
+  const desktopLayout = knowledgeGraphModalShellDesktopStyles(railInset);
 
   useEffect(() => {
     if (!portalReady || typeof document === "undefined") return;
@@ -93,9 +100,7 @@ export function ProjectKnowledgeGraphModalShell(p: {
       data-testid="project-knowledge-graph-modal-backdrop"
       data-rail-inset={railInset > 0 ? String(railInset) : undefined}
       style={{
-        position: "fixed",
-        ...(railInset > 0 ? { left: railInset, top: 0, right: 0, bottom: 0 } : { inset: 0 }),
-        zIndex: 48,
+        ...desktopLayout.backdrop,
         background: "rgba(15,23,42,0.45)",
       }}
       onClick={p.onClose}
@@ -107,24 +112,15 @@ export function ProjectKnowledgeGraphModalShell(p: {
         aria-label={p.title}
         onClick={(ev) => ev.stopPropagation()}
         style={{
-          position: "fixed",
           ...(fullscreen
-            ? { inset: 0, width: "100vw", height: "100dvh", borderRadius: 0 }
-            : railInset > 0
-              ? {
-                  left: railInset + 16,
-                  top: 16,
-                  right: 16,
-                  bottom: 16,
-                  borderRadius: 16,
-                }
-              : {
-                  left: "5vw",
-                  top: "5vh",
-                  width: "90vw",
-                  height: "90vh",
-                  borderRadius: 16,
-                }),
+            ? {
+                position: "fixed",
+                inset: 0,
+                width: "100vw",
+                height: "100dvh",
+                borderRadius: 0,
+              }
+            : desktopLayout.dialog),
           display: "flex",
           flexDirection: "column",
           background: "#fff",

@@ -111,6 +111,7 @@ export function ProjectRailSecondaryTools({
             open={knowledgeGraphModalOpen}
             projectId={effectiveProjectId}
             sourceMessageId={sourceMessageId}
+            preservePlatformRail
             onClose={() => setKnowledgeGraphModalOpen(false)}
           />
         </>

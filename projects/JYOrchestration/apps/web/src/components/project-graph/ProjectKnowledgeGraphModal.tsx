@@ -13,6 +13,8 @@ export function ProjectKnowledgeGraphModal(p: {
   readonly sourceMessageId?: string | null;
   readonly focusNodeId?: string | null;
   readonly view?: "activity" | "graph" | null;
+  /** 레일에서 연 modal만 true — 본문 영역에만 overlay */
+  readonly preservePlatformRail?: boolean;
   readonly onClose: () => void;
 }) {
   const pid = p.projectId.trim();
@@ -38,7 +40,7 @@ export function ProjectKnowledgeGraphModal(p: {
     <ProjectKnowledgeGraphModalShell
       open={p.open}
       title="프로젝트 지식 그래프"
-      preservePlatformRail
+      preservePlatformRail={p.preservePlatformRail}
       onClose={p.onClose}
       onOpenNewWindow={handleOpenNewWindow}
     >
