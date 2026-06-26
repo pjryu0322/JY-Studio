@@ -26,6 +26,8 @@ import {
 export const PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE =
   "대화 내역을 모두 삭제하고 서비스 기획을 다시 시작할까요?\n\n" +
   "기획단계를 초기화하면 기존 기획 산출물을 기반으로 만들어진 구현 준비 데이터와 구현 실행 기록이 함께 초기화됩니다.\n" +
+  "지식 그래프, 변화 이력, Knowledge Activity(지식 파이프라인) 기록, 현재 프로젝트의 참조 후보 스냅샷도 함께 초기화됩니다.\n" +
+  "이미 다른 프로젝트에 준비된 참조 컨텍스트에는 영향을 주지 않습니다.\n" +
   "구현 Seed, Task/WorkItem/CodeTask, Cursor 실행 상태, GitHub 확인 기록, 실행 큐, 구현 로그가 삭제됩니다.\n" +
   "환경설정과 Git/Code Agent 연결 정보는 유지됩니다.\n\n" +
   "이 작업은 되돌릴 수 없습니다.";

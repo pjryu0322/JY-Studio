@@ -17,6 +17,9 @@ export type ProjectKnowledgeGraphResetResult = Readonly<{
   readonly deletedStructureCandidateEdges: number;
   readonly deletedGraphNodes: number;
   readonly deletedGraphEdges: number;
+  /** REPLAY/REFERENCE 등 snapshotPurpose 전부 — 다른 프로젝트 materialized 참조에는 영향 없음 */
+  readonly deletedKnowledgeGraphRevisions: number;
+  readonly deletedKnowledgePipelineRuns: number;
   readonly optionalTablesSkipped: boolean;
   readonly resetAt: string;
   readonly resetEventId: string | null;
@@ -24,6 +27,8 @@ export type ProjectKnowledgeGraphResetResult = Readonly<{
 
 /**
  * 기획 초기화 등 — Event Store, Structure Candidate, Graph Projection을 프로젝트 단위로 비운다.
+ * 변화 이력(revision)·Knowledge Pipeline run도 삭제한다(REFERENCE 스냅샷 포함).
+ * 다른 프로젝트에 materialized된 참조 컨텍스트는 변경하지 않는다.
  * 삭제 후 planning_graph_reset marker event만 기록한다(그래프 노드로 표현하지 않음).
  */
 export async function resetProjectKnowledgeGraphForPlanning(
@@ -51,6 +56,13 @@ export async function resetProjectKnowledgeGraphForPlanning(
     prisma.projectStructureCandidate.deleteMany({ where: { projectId: pid } }),
   );
 
+  const graphRevisions = await prisma.projectKnowledgeGraphRevision.deleteMany({
+    where: { projectId: pid },
+  });
+  const pipelineRuns = await prisma.projectKnowledgePipelineRun.deleteMany({
+    where: { projectId: pid },
+  });
+
   const optionalTablesSkipped =
     candidateEdges === "missing_table" || candidates === "missing_table";
 
@@ -66,6 +78,8 @@ export async function resetProjectKnowledgeGraphForPlanning(
     deletedStructureCandidateEdges: candidateEdges === "missing_table" ? 0 : candidateEdges.count,
     deletedGraphNodes: graphNodes.count,
     deletedGraphEdges: graphEdges.count,
+    deletedKnowledgeGraphRevisions: graphRevisions.count,
+    deletedKnowledgePipelineRuns: pipelineRuns.count,
     optionalTablesSkipped,
   };
 
@@ -78,6 +92,8 @@ export async function resetProjectKnowledgeGraphForPlanning(
     deletedProjectMessages: deletedCounts.deletedProjectMessages,
     deletedStructureCandidates: deletedCounts.deletedStructureCandidates,
     deletedStructureCandidateEdges: deletedCounts.deletedStructureCandidateEdges,
+    deletedKnowledgeGraphRevisions: deletedCounts.deletedKnowledgeGraphRevisions,
+    deletedKnowledgePipelineRuns: deletedCounts.deletedKnowledgePipelineRuns,
   });
 
   let resetEventId: string | null = null;

@@ -12,6 +12,8 @@ export type PlanningGraphResetEventPayload = Readonly<{
   readonly deletedProjectMessages: number;
   readonly deletedStructureCandidates: number;
   readonly deletedStructureCandidateEdges: number;
+  readonly deletedKnowledgeGraphRevisions?: number;
+  readonly deletedKnowledgePipelineRuns?: number;
 }>;
 
 export function buildPlanningGraphResetEventPayload(input: Readonly<{
@@ -23,6 +25,8 @@ export function buildPlanningGraphResetEventPayload(input: Readonly<{
   readonly deletedProjectMessages: number;
   readonly deletedStructureCandidates: number;
   readonly deletedStructureCandidateEdges: number;
+  readonly deletedKnowledgeGraphRevisions?: number;
+  readonly deletedKnowledgePipelineRuns?: number;
 }>): PlanningGraphResetEventPayload {
   return {
     eventType: PLANNING_GRAPH_RESET_EVENT_TYPE,
@@ -34,6 +38,8 @@ export function buildPlanningGraphResetEventPayload(input: Readonly<{
     deletedProjectMessages: input.deletedProjectMessages,
     deletedStructureCandidates: input.deletedStructureCandidates,
     deletedStructureCandidateEdges: input.deletedStructureCandidateEdges,
+    deletedKnowledgeGraphRevisions: input.deletedKnowledgeGraphRevisions,
+    deletedKnowledgePipelineRuns: input.deletedKnowledgePipelineRuns,
   };
 }
 
@@ -59,6 +65,12 @@ export function parsePlanningGraphResetEventPayload(raw: unknown): PlanningGraph
     deletedProjectMessages: Number(o.deletedProjectMessages) || 0,
     deletedStructureCandidates: Number(o.deletedStructureCandidates) || 0,
     deletedStructureCandidateEdges: Number(o.deletedStructureCandidateEdges) || 0,
+    ...(o.deletedKnowledgeGraphRevisions != null
+      ? { deletedKnowledgeGraphRevisions: Number(o.deletedKnowledgeGraphRevisions) || 0 }
+      : {}),
+    ...(o.deletedKnowledgePipelineRuns != null
+      ? { deletedKnowledgePipelineRuns: Number(o.deletedKnowledgePipelineRuns) || 0 }
+      : {}),
   };
 }
 

@@ -59,7 +59,11 @@ describe("resetProjectDownstreamFromPlanning", () => {
       deletedStructureCandidateEdges: 1,
       deletedGraphNodes: 4,
       deletedGraphEdges: 6,
+      deletedKnowledgeGraphRevisions: 2,
+      deletedKnowledgePipelineRuns: 1,
       optionalTablesSkipped: false,
+      resetAt: "2026-06-25T11:00:00.000Z",
+      resetEventId: "ev-1",
     });
   });
 
@@ -80,7 +84,7 @@ describe("resetProjectDownstreamFromPlanning", () => {
     expect(result.resetTaskCursorJobs).toBe(4);
     expect(result.githubResourcesDeleted).toBe(false);
     expect(result.resetStateKeys.length).toBeGreaterThan(0);
-    expect(resetKgMock).toHaveBeenCalledWith("p1");
+    expect(resetKgMock).toHaveBeenCalledWith("p1", { reason: "planning_reset" });
     expect(result.knowledgeGraph.deletedProjectEvents).toBe(3);
   });
 

@@ -462,6 +462,10 @@ describe("resetDerivedImplementationState", () => {
     expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("실행 큐");
     expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("환경설정");
     expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("Git/Code Agent");
+    expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("지식 그래프");
+    expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("변화 이력");
+    expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("Knowledge Activity");
+    expect(PLANNING_RESET_CONVERSATION_CONFIRM_MESSAGE).toContain("참조 컨텍스트");
   });
 
   it("dedupes planning reset cleared implementation trace", () => {

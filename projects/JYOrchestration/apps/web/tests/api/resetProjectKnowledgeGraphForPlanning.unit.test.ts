@@ -9,6 +9,8 @@ const deleteManyMocks = {
   message: vi.fn(),
   nodeLifecycle: vi.fn(),
   mergeHistory: vi.fn(),
+  knowledgeGraphRevision: vi.fn(),
+  knowledgePipelineRun: vi.fn(),
 };
 
 const appendEventMock = vi.fn();
@@ -23,6 +25,12 @@ vi.mock("@/lib/prisma", () => ({
     projectMergeHistory: { deleteMany: (...a: unknown[]) => deleteManyMocks.mergeHistory(...a) },
     projectEvent: { deleteMany: (...a: unknown[]) => deleteManyMocks.event(...a) },
     projectMessage: { deleteMany: (...a: unknown[]) => deleteManyMocks.message(...a) },
+    projectKnowledgeGraphRevision: {
+      deleteMany: (...a: unknown[]) => deleteManyMocks.knowledgeGraphRevision(...a),
+    },
+    projectKnowledgePipelineRun: {
+      deleteMany: (...a: unknown[]) => deleteManyMocks.knowledgePipelineRun(...a),
+    },
     $transaction: (ops: Promise<{ count: number }>[]) => Promise.all(ops),
   },
 }));
@@ -52,14 +60,18 @@ describe("resetProjectKnowledgeGraphForPlanning", () => {
     appendEventMock.mockResolvedValue({ id: "reset-event-1" });
   });
 
-  it("clears graph, candidates, and event store for project", async () => {
+  it("clears graph, candidates, knowledge history, and event store for project", async () => {
     const result = await resetProjectKnowledgeGraphForPlanning("proj-1", { reason: "planning_reset" });
+    expect(deleteManyMocks.knowledgeGraphRevision).toHaveBeenCalledWith({ where: { projectId: "proj-1" } });
+    expect(deleteManyMocks.knowledgePipelineRun).toHaveBeenCalledWith({ where: { projectId: "proj-1" } });
     expect(deleteManyMocks.event).toHaveBeenCalledWith({ where: { projectId: "proj-1" } });
     expect(deleteManyMocks.message).toHaveBeenCalledWith({ where: { projectId: "proj-1" } });
     expect(deleteManyMocks.graphNode).toHaveBeenCalled();
     expect(deleteManyMocks.graphEdge).toHaveBeenCalled();
     expect(deleteManyMocks.candidate).toHaveBeenCalled();
     expect(result.deletedProjectEvents).toBeGreaterThan(0);
+    expect(result.deletedKnowledgeGraphRevisions).toBeGreaterThan(0);
+    expect(result.deletedKnowledgePipelineRuns).toBeGreaterThan(0);
     expect(result.resetEventId).toBe("reset-event-1");
     expect(result.resetAt).toBeTruthy();
   });
@@ -70,6 +82,8 @@ describe("resetProjectKnowledgeGraphForPlanning", () => {
     const call = appendEventMock.mock.calls[0]?.[1] as { eventType?: string; payload?: Record<string, unknown> };
     expect(call?.eventType).toBe(PLANNING_GRAPH_RESET_EVENT_TYPE);
     expect(call?.payload?.deletedGraphNodes).toBe(1);
+    expect(call?.payload?.deletedKnowledgeGraphRevisions).toBe(1);
+    expect(call?.payload?.deletedKnowledgePipelineRuns).toBe(1);
     expect(call?.payload?.eventType).toBe(PLANNING_GRAPH_RESET_EVENT_TYPE);
   });
 });
