@@ -1,3 +1,4 @@
+import type { AgentRelevance } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
 import type { GraphSnapshotPurpose, KnowledgeNodeLifecycle, KnowledgeNodeReusableAs } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
 
 export type KnowledgeGraphRevisionSnapshotNodeReference = Readonly<{
@@ -14,6 +15,8 @@ export type KnowledgeGraphRevisionSnapshotNode = Readonly<{
   readonly summary: string | null;
   readonly lifecycleStatus?: string;
   readonly reference?: KnowledgeGraphRevisionSnapshotNodeReference;
+  /** Phase 7: optional agent view hints; omitted on legacy revisions. */
+  readonly agentRelevance?: AgentRelevance;
 }>;
 
 export type KnowledgeGraphRevisionSnapshotEdge = Readonly<{
