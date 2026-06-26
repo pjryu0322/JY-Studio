@@ -4,7 +4,7 @@ import {
 } from "@/lib/project-structure/structureExplainabilityModel";
 import type { KnowledgeNodeReferenceView } from "@/lib/project-knowledge/projectKnowledgeReferenceTypes";
 import type { AgentRelevance } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
-import { normalizeAgentRelevance } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
+import { resolveAgentRelevanceFromNode } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
 
 export type ProjectGraphNodeDto = Readonly<{
   readonly id: string;
@@ -61,9 +61,10 @@ function parseNode(raw: unknown): ProjectGraphNodeDto | null {
   const n = raw as Record<string, unknown>;
   const id = String(n.id ?? "").trim();
   if (!id) return null;
-  const agentRelevanceRaw = n.agentRelevance;
-  const agentRelevance =
-    agentRelevanceRaw != null ? normalizeAgentRelevance(agentRelevanceRaw) : {};
+  const agentRelevance = resolveAgentRelevanceFromNode({
+    agentRelevance: n.agentRelevance,
+    metadata: n.metadata,
+  });
   return {
     id,
     nodeType: String(n.nodeType ?? ""),
