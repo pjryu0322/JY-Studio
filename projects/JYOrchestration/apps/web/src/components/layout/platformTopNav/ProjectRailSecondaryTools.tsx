@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { ProjectKnowledgeGraphModal } from "@/components/project-graph/ProjectKnowledgeGraphModal";
+import { ProjectKnowledgePacksModal } from "@/components/knowledge-packs/ProjectKnowledgePacksModal";
 import { ProjectRailCountBadge } from "@/components/layout/ProjectRailCountBadge";
 import type { PlatformTopNavMeState } from "@/components/layout/platformTopNav/usePlatformTopNavAuth";
 import {
@@ -42,6 +43,7 @@ export function ProjectRailSecondaryTools({
     pathOnly.startsWith(`/projects/${encodeURIComponent(effectiveProjectId)}/knowledge-graph`);
   const sourceMessageId = String(searchParams?.get("sourceMessageId") ?? "").trim() || null;
   const [knowledgeGraphModalOpen, setKnowledgeGraphModalOpen] = useState(false);
+  const [knowledgePacksModalOpen, setKnowledgePacksModalOpen] = useState(false);
   /** `/api/auth/me` 지연 시에도 지식팩 진입은 보이게(미로그인 확정 시에만 숨김). */
   const showKnowledgePacksLink = !meReady || Boolean(me);
 
@@ -117,30 +119,47 @@ export function ProjectRailSecondaryTools({
         </>
       ) : null}
       {showKnowledgePacksLink ? (
-        <Link
-          href="/knowledge-packs"
-          prefetch={false}
-          data-testid="platform-knowledge-packs-rail-project"
-          aria-label="지식팩 · AI 개발 기준"
-          title="지식팩 — Grid 등 AI개발자 참조 기준"
-          style={{
-            ...platformRailNavTextCell,
-            ...(knowledgePacksActive ? platformRailMessengerActiveShell : {}),
-            textDecoration: "none",
-            color: "inherit",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 4,
-          }}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-          </svg>
-          <span style={knowledgePacksActive ? platformRailMessengerActiveText : platformRailNavPrimaryText}>지식팩</span>
-        </Link>
+        <>
+          <button
+            type="button"
+            data-testid="platform-knowledge-packs-rail-project"
+            aria-label="지식팩 · 현재 프로젝트 AI 개발 기준"
+            title="프로젝트 지식팩"
+            onClick={() => setKnowledgePacksModalOpen(true)}
+            style={{
+              ...platformRailNavTextCell,
+              ...(knowledgePacksActive || knowledgePacksModalOpen ? platformRailMessengerActiveShell : {}),
+              border: "none",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 4,
+              font: "inherit",
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+            <span
+              style={
+                knowledgePacksActive || knowledgePacksModalOpen
+                  ? platformRailMessengerActiveText
+                  : platformRailNavPrimaryText
+              }
+            >
+              지식팩
+            </span>
+          </button>
+          <ProjectKnowledgePacksModal
+            open={knowledgePacksModalOpen}
+            projectId={effectiveProjectId}
+            preservePlatformRail
+            onClose={() => setKnowledgePacksModalOpen(false)}
+          />
+        </>
       ) : null}
       {Boolean(me) ? <ProjectRailRecommendationButton effectiveProjectId={effectiveProjectId} /> : null}
       {Boolean(me) && isPromptTimelineDebugClient() ? (

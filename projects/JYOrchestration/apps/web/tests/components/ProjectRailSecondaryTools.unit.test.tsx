@@ -34,6 +34,16 @@ vi.mock("@/components/project-graph/ProjectKnowledgeGraphModal", () => ({
     }),
 }));
 
+vi.mock("@/components/knowledge-packs/ProjectKnowledgePacksModal", () => ({
+  ProjectKnowledgePacksModal: (p: { preservePlatformRail?: boolean; open?: boolean; projectId?: string }) =>
+    createElement("div", {
+      "data-testid": "mock-knowledge-packs-modal",
+      "data-open": p.open ? "true" : "false",
+      "data-preserve-platform-rail": p.preservePlatformRail ? "true" : "false",
+      "data-project-id": p.projectId,
+    }),
+}));
+
 import { ProjectRailSecondaryTools } from "@/components/layout/platformTopNav/ProjectRailSecondaryTools";
 
 describe("ProjectRailSecondaryTools", () => {
@@ -50,5 +60,24 @@ describe("ProjectRailSecondaryTools", () => {
     );
     expect(html).toContain("platform-knowledge-graph-rail-project");
     expect(html).toContain('data-preserve-platform-rail="true"');
+  });
+
+  it("uses button for knowledge packs rail item without /knowledge-packs href", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectRailSecondaryTools, {
+        effectiveProjectId: "proj-1",
+        compactToolbar: false,
+        meReady: false,
+        me: null,
+        projectMembersCount: 0,
+        projectWorkNotesCount: 0,
+      }),
+    );
+    expect(html).toContain('data-testid="platform-knowledge-packs-rail-project"');
+    expect(html).toMatch(/<button[^>]*data-testid="platform-knowledge-packs-rail-project"/);
+    expect(html).not.toMatch(/href="\/knowledge-packs"[^>]*data-testid="platform-knowledge-packs-rail-project"/);
+    expect(html).not.toContain('href="/knowledge-packs"');
+    expect(html).toContain("mock-knowledge-packs-modal");
+    expect(html).toContain('data-project-id="proj-1"');
   });
 });
