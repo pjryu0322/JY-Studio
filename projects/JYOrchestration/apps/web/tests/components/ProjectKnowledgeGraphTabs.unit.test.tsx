@@ -1,15 +1,15 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ProjectKnowledgeGraphTabs } from "@/components/project-graph/ProjectKnowledgeGraphTabs";
 
 describe("ProjectKnowledgeGraphTabs", () => {
-  it("renders graph, activity, and knowledge tabs", () => {
+  it("renders diagnostic English tabs in diagnostic mode", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectKnowledgeGraphTabs, {
         activePane: "graph",
         onPaneChange: vi.fn(),
-        showDiagnosticTabs: true,
+        mode: "diagnostic",
       }),
     );
     expect(html).toContain("project-knowledge-graph-tabs");
@@ -23,7 +23,7 @@ describe("ProjectKnowledgeGraphTabs", () => {
       createElement(ProjectKnowledgeGraphTabs, {
         activePane: "activity",
         onPaneChange: vi.fn(),
-        showDiagnosticTabs: true,
+        mode: "diagnostic",
       }),
     );
     expect(html).toContain('aria-selected="true"');
@@ -35,9 +35,27 @@ describe("ProjectKnowledgeGraphTabs", () => {
       createElement(ProjectKnowledgeGraphTabs, {
         activePane: "graph",
         onPaneChange: vi.fn(),
+        mode: "user",
+        diagnosticsOpen: false,
       }),
     );
     expect(html).toBe("");
+  });
+
+  it("renders Korean user tabs when diagnostics are open", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeGraphTabs, {
+        activePane: "activity",
+        onPaneChange: vi.fn(),
+        mode: "user",
+        diagnosticsOpen: true,
+      }),
+    );
+    expect(html).toContain("구조");
+    expect(html).toContain("변경 로그");
+    expect(html).toContain("생성 과정");
+    expect(html).not.toContain("Knowledge Activity");
+    expect(html).not.toContain(">Activity<");
   });
 
   it("invokes knowledge pane callback on knowledge tab select", () => {
@@ -47,7 +65,7 @@ describe("ProjectKnowledgeGraphTabs", () => {
       activePane: "graph",
       onPaneChange,
       onKnowledgePaneSelect: onKnowledge,
-      showDiagnosticTabs: true,
+      mode: "diagnostic",
     });
     expect(el.props.onKnowledgePaneSelect).toBe(onKnowledge);
   });

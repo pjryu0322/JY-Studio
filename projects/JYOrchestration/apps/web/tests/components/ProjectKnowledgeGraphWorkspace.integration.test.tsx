@@ -123,6 +123,23 @@ describe("ProjectKnowledgeGraphWorkspace integration", () => {
     expect(html).not.toContain("Knowledge Activity");
   });
 
+  it("renders diagnostic mode tabs", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeGraphWorkspace, { projectId: "p1", variant: "page", uxMode: "diagnostic" }),
+    );
+    expect(html).toContain('data-knowledge-graph-ux-mode="diagnostic"');
+    expect(html).toContain("project-knowledge-graph-tab-activity");
+    expect(html).toContain("Knowledge Activity");
+  });
+
+  it("hides internal diagnostic strings in default user mode", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeGraphWorkspace, { projectId: "p1", variant: "page" }),
+    );
+    expect(html).not.toContain("Persistence: DATABASE");
+    expect(html).not.toContain("Candidate Nodes");
+  });
+
   it("view=activity maps to activity pane query helper", () => {
     expect(knowledgeGraphPaneFromViewQuery("activity")).toBe("activity");
     expect(knowledgeGraphPaneFromViewQuery("")).toBe("graph");

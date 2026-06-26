@@ -85,7 +85,7 @@ describe("ProjectKnowledgeGraphExplorerPane", () => {
         },
         runtimeStatusLoading: false,
         runtimeStatusError: null,
-        simplifiedUserUx: false,
+        uxMode: "diagnostic",
       }),
     );
     expect(html).toContain("project-knowledge-graph-explorer-pane");
@@ -95,5 +95,53 @@ describe("ProjectKnowledgeGraphExplorerPane", () => {
     expect(html).toContain("knowledge-replay-open");
     expect(html).toContain("프로젝트 구조가 바뀐 과정을 확인합니다.");
     expect(html).toContain("knowledge-runtime-status-card");
+  });
+
+  it("keeps user mode summary on mobile layout", () => {
+    const mobileStub = { ...explorerStub, graphMobileUx: true };
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeGraphExplorerPane, {
+        projectId: "p1",
+        clientReady: true,
+        searchParams: null,
+        nodes: [],
+        edges: [],
+        loading: false,
+        error: null,
+        reloadGraph: async () => {},
+        variant: "page",
+        explorerState: mobileStub as never,
+        uxMode: "user",
+        runtimeStatusSummary: {
+          status: "READY",
+          statusLabel: "구조화 완료",
+          nodeCount: 2,
+          edgeCount: 1,
+        },
+      }),
+    );
+    expect(html).toContain("현재 프로젝트 구조");
+    expect(html).not.toContain("Knowledge Activity");
+    expect(html).not.toContain("Persistence: DATABASE");
+  });
+
+  it("collapses filters in user mode until toggle", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeGraphExplorerPane, {
+        projectId: "p1",
+        clientReady: true,
+        searchParams: null,
+        nodes: [],
+        edges: [],
+        loading: false,
+        error: null,
+        reloadGraph: async () => {},
+        variant: "page",
+        explorerState: explorerStub as never,
+        uxMode: "user",
+      }),
+    );
+    expect(html).toContain("knowledge-graph-filters-toggle");
+    expect(html).not.toContain('aria-label="그래프 질문 검색"');
   });
 });

@@ -12,6 +12,13 @@ function formatDuration(ms: number | undefined): string {
   return `${Math.round(ms)}ms`;
 }
 
+function formatUserPipelineCompletedTime(run: KnowledgePipelineRunRecord): string {
+  const iso = run.completedAt ?? run.startedAt;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
 function formatRunListLabel(run: KnowledgePipelineRunRecord): string {
   const time = new Date(run.completedAt ?? run.startedAt).toLocaleTimeString("ko-KR", {
     hour: "2-digit",
@@ -246,6 +253,28 @@ export function KnowledgePipelineMonitorPanel(p: {
         <p style={{ fontSize: 12, color: "#b91c1c", margin: 0 }}>{p.error}</p>
       ) : null}
 
+      {userMode && selectedRun ? (
+        <div
+          data-testid="knowledge-pipeline-user-summary"
+          style={{
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: `1px solid ${t.border}`,
+            background: "#f8fafc",
+            fontSize: 12,
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ color: t.textSecondary }}>
+            최근 생성 완료: {formatUserPipelineCompletedTime(selectedRun)}
+          </div>
+          <div style={{ marginTop: 4, fontWeight: 800, color: t.textPrimary }}>
+            정리된 항목 {metricValue(selectedRun.graphNodeCount ?? selectedRun.nodeCount)}개 · 연결{" "}
+            {metricValue(selectedRun.graphEdgeCount ?? selectedRun.edgeCount)}개
+          </div>
+        </div>
+      ) : null}
+
       {p.onOpenTrace ? (
         <div
           style={{
@@ -378,7 +407,7 @@ export function KnowledgePipelineMonitorPanel(p: {
                 {item.summary ? (
                   <div style={{ fontSize: 12, color: t.textSecondary, marginTop: 4 }}>{item.summary}</div>
                 ) : null}
-                {item.occurredAt ? (
+                {!userMode && item.occurredAt ? (
                   <div style={{ fontSize: 11, color: t.textMuted, marginTop: 4 }}>
                     {new Date(item.occurredAt).toLocaleString("ko-KR")}
                   </div>

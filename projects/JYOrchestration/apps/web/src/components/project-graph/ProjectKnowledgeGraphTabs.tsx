@@ -3,6 +3,12 @@
 import type { CSSProperties } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import type { ProjectKnowledgeGraphPane } from "@/components/project-graph/projectKnowledgeGraphWorkspaceTypes";
+import {
+  knowledgeGraphPaneTitle,
+  knowledgeGraphTabsUseDiagnosticLabels,
+  knowledgeGraphTabsVisible,
+  type ProjectKnowledgeGraphUxMode,
+} from "@/components/project-graph/projectKnowledgeGraphUxMode";
 
 const viewTabStyle = (active: boolean): CSSProperties => ({
   minHeight: 44,
@@ -21,50 +27,64 @@ export function ProjectKnowledgeGraphTabs(props: {
   readonly activePane: ProjectKnowledgeGraphPane;
   readonly onPaneChange: (pane: ProjectKnowledgeGraphPane) => void;
   readonly onKnowledgePaneSelect?: () => void;
-  readonly showDiagnosticTabs?: boolean;
+  readonly mode?: ProjectKnowledgeGraphUxMode;
+  readonly diagnosticsOpen?: boolean;
 }) {
-  if (!props.showDiagnosticTabs) {
+  const mode = props.mode ?? "user";
+  const diagnosticsOpen = props.diagnosticsOpen === true;
+
+  if (!knowledgeGraphTabsVisible({ mode, diagnosticsOpen })) {
     return null;
   }
+
+  const english = knowledgeGraphTabsUseDiagnosticLabels(mode);
+  const graphLabel = english ? "그래프" : "구조";
+  const activityLabel = english ? "Activity" : knowledgeGraphPaneTitle("activity");
+  const knowledgeLabel = english ? "Knowledge Activity" : knowledgeGraphPaneTitle("knowledge");
+
+  const tabPane =
+    props.activePane === "diagnostic" ? "activity" : props.activePane;
+
   return (
     <div
       role="tablist"
       aria-label="지식 그래프 보기"
       data-testid="project-knowledge-graph-tabs"
+      data-knowledge-graph-tabs-mode={mode}
       style={{ display: "flex", gap: 8, padding: "0 0 10px", flexShrink: 0 }}
     >
       <button
         type="button"
         role="tab"
-        aria-selected={props.activePane === "graph"}
+        aria-selected={tabPane === "graph"}
         data-testid="project-knowledge-graph-tab-graph"
         onClick={() => props.onPaneChange("graph")}
-        style={viewTabStyle(props.activePane === "graph")}
+        style={viewTabStyle(tabPane === "graph")}
       >
-        그래프
+        {graphLabel}
       </button>
       <button
         type="button"
         role="tab"
-        aria-selected={props.activePane === "activity"}
+        aria-selected={tabPane === "activity"}
         data-testid="project-knowledge-graph-tab-activity"
         onClick={() => props.onPaneChange("activity")}
-        style={viewTabStyle(props.activePane === "activity")}
+        style={viewTabStyle(tabPane === "activity")}
       >
-        Activity
+        {activityLabel}
       </button>
       <button
         type="button"
         role="tab"
-        aria-selected={props.activePane === "knowledge"}
+        aria-selected={tabPane === "knowledge"}
         data-testid="project-knowledge-graph-tab-knowledge"
         onClick={() => {
           props.onPaneChange("knowledge");
           props.onKnowledgePaneSelect?.();
         }}
-        style={viewTabStyle(props.activePane === "knowledge")}
+        style={viewTabStyle(tabPane === "knowledge")}
       >
-        Knowledge Activity
+        {knowledgeLabel}
       </button>
     </div>
   );

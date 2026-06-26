@@ -123,54 +123,6 @@ export function ProjectKnowledgeGraphActivityPanel(p: {
               {selectedRow ? (
                 <ActivityFeedDetail row={selectedRow} projectId={p.projectId.trim()} userMode={userMode} />
               ) : null}
-
-              {userMode ? (
-                <details data-testid="knowledge-activity-detail-log" style={{ marginTop: 12 }}>
-                  <summary
-                    style={{
-                      cursor: "pointer",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: t.textSecondary,
-                      minHeight: 36,
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
-                    상세 로그 보기
-                  </summary>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
-                      gap: 8,
-                      marginTop: 10,
-                      fontSize: 12,
-                    }}
-                  >
-                    <Stat label="Event" value={s.eventCount} />
-                    <Stat label="Candidate" value={s.candidateCount} />
-                    <Stat label="Conflict" value={s.conflictCount} />
-                  </div>
-                  <ul
-                    style={{
-                      margin: "10px 0 0",
-                      padding: 0,
-                      listStyle: "none",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                    }}
-                  >
-                    {s.feed.map((row) => (
-                      <li key={`raw-${row.id}`} style={{ fontSize: 11, color: t.textMuted }}>
-                        <span style={{ marginRight: 8 }}>{row.at}</span>
-                        {row.line}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ) : null}
             </>
           ) : null}
         </>

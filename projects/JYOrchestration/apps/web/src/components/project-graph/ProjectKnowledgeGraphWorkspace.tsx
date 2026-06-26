@@ -15,8 +15,11 @@ import { useProjectKnowledgePipelineRuns } from "@/components/project-graph/hook
 import { useProjectKnowledgeRuntimeStatus } from "@/components/project-graph/hooks/useProjectKnowledgeRuntimeStatus";
 import type { ProjectKnowledgeGraphPane } from "@/components/project-graph/projectKnowledgeGraphWorkspaceTypes";
 import type { ProjectKnowledgeGraphLaunchContext } from "@/components/project-graph/projectKnowledgeGraphLaunchTypes";
-import { shouldShowKnowledgeGraphDiagnostics } from "@/components/project-graph/projectKnowledgeGraphUxMode";
-import { isPromptTimelineDebugClient } from "@/lib/debug/promptTimelineClientFlag";
+import {
+  isKnowledgeGraphUserSurface,
+  knowledgeGraphTabsVisible,
+  type ProjectKnowledgeGraphUxMode,
+} from "@/components/project-graph/projectKnowledgeGraphUxMode";
 import {
   knowledgeGraphHighlightSourceMessageId,
   knowledgeGraphPaneFromViewQuery,
@@ -26,18 +29,22 @@ import {
 export function ProjectKnowledgeGraphWorkspace({
   projectId,
   variant = "page",
+  uxMode = "user",
   initialSourceMessageId = null,
   onExit,
   onLaunchContextChange,
 }: {
   readonly projectId: string;
   readonly variant?: "page" | "modal";
+  readonly uxMode?: ProjectKnowledgeGraphUxMode;
   readonly initialSourceMessageId?: string | null;
   readonly onExit?: () => void;
   readonly onLaunchContextChange?: (ctx: ProjectKnowledgeGraphLaunchContext) => void;
 }) {
   const searchParams = useSearchParams();
   const [clientReady, setClientReady] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+
   useEffect(() => {
     setClientReady(true);
   }, []);
@@ -45,13 +52,16 @@ export function ProjectKnowledgeGraphWorkspace({
   const isModal = variant === "modal";
   const viewMode = clientReady ? String(searchParams?.get("view") ?? "").trim() : "";
   const [workspacePane, setWorkspacePane] = useState<ProjectKnowledgeGraphPane>("graph");
-  const showDiagnosticTabs = shouldShowKnowledgeGraphDiagnostics({
-    devMode: isPromptTimelineDebugClient(),
-  });
+  const userSurface = isKnowledgeGraphUserSurface(uxMode);
+  const tabsVisible = knowledgeGraphTabsVisible({ mode: uxMode, diagnosticsOpen });
 
   useEffect(() => {
     if (!clientReady) return;
-    setWorkspacePane(knowledgeGraphPaneFromViewQuery(viewMode));
+    const pane = knowledgeGraphPaneFromViewQuery(viewMode);
+    setWorkspacePane(pane);
+    if (pane !== "graph") {
+      setDiagnosticsOpen(true);
+    }
   }, [clientReady, viewMode]);
 
   const activityView = workspacePane === "activity" || workspacePane === "diagnostic";
@@ -97,7 +107,7 @@ export function ProjectKnowledgeGraphWorkspace({
     reload: reloadRuntimeStatus,
   } = useProjectKnowledgeRuntimeStatus(projectId, clientReady);
 
-  const activityUserMode = !showDiagnosticTabs && workspacePane === "activity";
+  const activityUserMode = userSurface && workspacePane === "activity";
 
   useEffect(() => {
     if (!onLaunchContextChange) return;
@@ -115,30 +125,60 @@ export function ProjectKnowledgeGraphWorkspace({
     highlightSourceMessageId,
   ]);
 
+  const openDiagnosticsSurface = () => setDiagnosticsOpen(true);
+
   const openActivityPane = () => {
+    openDiagnosticsSurface();
     setWorkspacePane("activity");
     void reloadActivity(true);
   };
 
   const openKnowledgePane = () => {
+    openDiagnosticsSurface();
     setWorkspacePane("knowledge");
     void reloadPipelineMonitor();
   };
 
-  const goToGraph = () => setWorkspacePane("graph");
+  const openDiagnosticPane = () => {
+    openDiagnosticsSurface();
+    setWorkspacePane("diagnostic");
+    void reloadActivity(true);
+    void reloadPipelineMonitor();
+  };
+
+  const goToGraph = () => {
+    setWorkspacePane("graph");
+    setDiagnosticsOpen(false);
+  };
+
+  const showUserTitle = userSurface && workspacePane === "graph" && !tabsVisible;
+  const showUserNav =
+    userSurface &&
+    workspacePane !== "graph" &&
+    (workspacePane === "diagnostic" || !tabsVisible);
 
   return (
     <div
       data-testid="project-knowledge-graph-workspace"
+      data-knowledge-graph-ux-mode={uxMode}
       style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
     >
       <ProjectKnowledgeGraphTabs
-        activePane={workspacePane === "diagnostic" ? "activity" : workspacePane}
-        onPaneChange={setWorkspacePane}
+        activePane={workspacePane}
+        onPaneChange={(pane) => {
+          if (pane === "knowledge") {
+            void reloadPipelineMonitor();
+          }
+          if (pane === "activity") {
+            void reloadActivity(true);
+          }
+          setWorkspacePane(pane);
+        }}
         onKnowledgePaneSelect={() => void reloadPipelineMonitor()}
-        showDiagnosticTabs={showDiagnosticTabs}
+        mode={uxMode}
+        diagnosticsOpen={diagnosticsOpen}
       />
-      {!showDiagnosticTabs && workspacePane === "graph" ? (
+      {showUserTitle ? (
         <div
           data-testid="project-knowledge-graph-user-title"
           style={{ fontSize: 15, fontWeight: 900, color: t.textPrimary, padding: "0 0 8px", flexShrink: 0 }}
@@ -146,11 +186,8 @@ export function ProjectKnowledgeGraphWorkspace({
           프로젝트 구조
         </div>
       ) : null}
-      {!showDiagnosticTabs && workspacePane !== "graph" ? (
-        <ProjectKnowledgeGraphUserNavBar
-          pane={workspacePane}
-          onBack={goToGraph}
-        />
+      {showUserNav ? (
+        <ProjectKnowledgeGraphUserNavBar pane={workspacePane} onBack={goToGraph} />
       ) : null}
       {workspacePane === "knowledge" ? (
         <ProjectKnowledgeGraphKnowledgeActivityPane
@@ -163,11 +200,10 @@ export function ProjectKnowledgeGraphWorkspace({
           onOpenTrace={(nodeId) => {
             explorer.openTraceForNode(nodeId);
             setWorkspacePane("graph");
+            setDiagnosticsOpen(false);
           }}
-          userMode={!showDiagnosticTabs}
-          onShowDiagnostics={
-            !showDiagnosticTabs ? () => setWorkspacePane("diagnostic") : undefined
-          }
+          userMode={userSurface}
+          onShowDiagnostics={userSurface ? openDiagnosticPane : undefined}
         />
       ) : workspacePane === "diagnostic" ? (
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -226,10 +262,8 @@ export function ProjectKnowledgeGraphWorkspace({
           onReloadRuntimeStatus={() => void reloadRuntimeStatus()}
           onOpenChangeLog={openActivityPane}
           onOpenKnowledgeLog={openKnowledgePane}
-          onOpenDiagnosticLog={
-            isPromptTimelineDebugClient() ? () => setWorkspacePane("diagnostic") : undefined
-          }
-          simplifiedUserUx={!showDiagnosticTabs}
+          onOpenDiagnosticLog={userSurface ? openDiagnosticPane : undefined}
+          uxMode={uxMode}
         />
       )}
     </div>

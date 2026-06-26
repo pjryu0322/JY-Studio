@@ -48,7 +48,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
   readonly onOpenChangeLog?: () => void;
   readonly onOpenKnowledgeLog?: () => void;
   readonly onOpenDiagnosticLog?: () => void;
-  readonly simplifiedUserUx?: boolean;
+  readonly uxMode?: "user" | "diagnostic";
 }) {
   const { effectiveLayout } = useWorkspaceMode();
   const isMobileLayout = p.clientReady && effectiveLayout === "MOBILE";
@@ -56,7 +56,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
   const ex = p.explorerState;
   const [replayOpen, setReplayOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const userUx = p.simplifiedUserUx !== false;
+  const userUx = (p.uxMode ?? "user") === "user";
 
   const shell: CSSProperties = {
     ...requirementsWorkspaceMainRowStyle,
@@ -147,7 +147,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
             ) : null}
             {p.onOpenDiagnosticLog ? (
               <button type="button" onClick={p.onOpenDiagnosticLog} style={btnStyle}>
-                개발자 진단
+                진단 정보
               </button>
             ) : null}
           </div>

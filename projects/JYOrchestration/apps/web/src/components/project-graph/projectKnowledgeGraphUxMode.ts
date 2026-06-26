@@ -1,9 +1,18 @@
-export type KnowledgeGraphUxMode = "user" | "diagnostic";
+export type ProjectKnowledgeGraphUxMode = "user" | "diagnostic";
 
-export function shouldShowKnowledgeGraphDiagnostics(input: {
-  readonly devMode: boolean;
+/** @deprecated Use ProjectKnowledgeGraphUxMode */
+export type KnowledgeGraphUxMode = ProjectKnowledgeGraphUxMode;
+
+export function knowledgeGraphTabsVisible(input: {
+  readonly mode: ProjectKnowledgeGraphUxMode;
+  readonly diagnosticsOpen: boolean;
 }): boolean {
-  return input.devMode;
+  if (input.mode === "diagnostic") return true;
+  return input.diagnosticsOpen;
+}
+
+export function knowledgeGraphTabsUseDiagnosticLabels(mode: ProjectKnowledgeGraphUxMode): boolean {
+  return mode === "diagnostic";
 }
 
 export function knowledgeGraphPaneTitle(pane: "graph" | "activity" | "knowledge" | "diagnostic"): string {
@@ -15,6 +24,10 @@ export function knowledgeGraphPaneTitle(pane: "graph" | "activity" | "knowledge"
     case "knowledge":
       return "생성 과정";
     case "diagnostic":
-      return "개발자 진단";
+      return "진단 정보";
   }
+}
+
+export function isKnowledgeGraphUserSurface(mode: ProjectKnowledgeGraphUxMode): boolean {
+  return mode === "user";
 }
