@@ -50,6 +50,7 @@ function logCopyExecutePromptHashMismatchIfNeeded(input: {
   readonly targetRepository: ProjectTargetRepository;
   readonly baseBranch: string;
   readonly allowedPathGlobs?: readonly string[];
+  readonly developerPromptAugmentation?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").CodeTaskDeveloperPromptAugmentation | null;
 }): void {
   const canonical = buildCodeTaskDeveloperPromptDetailed({
     codeTask: input.codeTask,
@@ -59,6 +60,7 @@ function logCopyExecutePromptHashMismatchIfNeeded(input: {
     baseBranch: input.baseBranch,
     allowedPathGlobs: input.allowedPathGlobs,
     targetRepoKind: TARGET_REPO_KIND,
+    developerPromptAugmentation: input.developerPromptAugmentation,
   }).prompt.trim();
   const copyHash = fingerprintRuntimeDeveloperPrompt(input.copyPrompt);
   const executeHash = fingerprintRuntimeDeveloperPrompt(canonical);
@@ -258,6 +260,7 @@ export function resolveCodeTaskDeveloperPromptForCopy(input: {
         targetRepository: input.targetRepository,
         baseBranch: input.baseBranch,
         allowedPathGlobs: input.allowedPathGlobs,
+        developerPromptAugmentation: input.developerPromptAugmentation,
       });
       return { ok: true, prompt: stored };
     }

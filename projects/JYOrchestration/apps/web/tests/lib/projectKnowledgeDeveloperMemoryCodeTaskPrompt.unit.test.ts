@@ -161,4 +161,24 @@ describe("buildCodeTaskDeveloperPromptDetailed with augmentation", () => {
     }).prompt;
     expect(withAug).toBe(plain);
   });
+
+  it("canonical prompts match when the same augmentation is applied", () => {
+    const ctx = developerContextWithItems();
+    const augmentation = { developerMemoryContext: ctx };
+    const a = buildCodeTaskDeveloperPromptDetailed({
+      codeTask,
+      targetRepository,
+      baseBranch: "main",
+      targetRepoKind: "generated_project",
+      developerPromptAugmentation: augmentation,
+    }).prompt;
+    const b = buildCodeTaskDeveloperPromptDetailed({
+      codeTask,
+      targetRepository,
+      baseBranch: "main",
+      targetRepoKind: "generated_project",
+      developerPromptAugmentation: augmentation,
+    }).prompt;
+    expect(a).toBe(b);
+  });
 });

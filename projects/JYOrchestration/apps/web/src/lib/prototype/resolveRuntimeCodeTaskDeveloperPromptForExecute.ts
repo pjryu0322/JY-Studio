@@ -36,6 +36,7 @@ import {
   parseImplementationTaskListV1,
   type ImplementationTaskV1,
 } from "@/lib/requirements/implementationTaskList";
+import { storedDeveloperPromptMissingAugmentation } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
 
 export type RuntimeDeveloperPromptSource = "request_body" | "db_run" | "runtime_rebuilt";
 
@@ -147,7 +148,14 @@ export function resolveRuntimeCodeTaskDeveloperPromptForExecute(
   const bodyPrompt = String(input.developerPrompt ?? "").trim();
   const bodyFingerprint = String(input.developerPromptFingerprint ?? "").trim();
 
-  if (bodyPrompt) {
+  const bodyPromptMissingAugmentation =
+    Boolean(bodyPrompt) &&
+    storedDeveloperPromptMissingAugmentation({
+      storedPrompt: bodyPrompt,
+      augmentation: input.developerPromptAugmentation,
+    });
+
+  if (bodyPrompt && !bodyPromptMissingAugmentation) {
     const stageBlock = assertStageTwoDeveloperPromptAllowed({ prompt: bodyPrompt });
     if (!stageBlock.ok) {
       return {

@@ -33,12 +33,32 @@ import {
   IMPLEMENTATION_DATABASE_REQUIRED_BLOCK_REASON,
 } from "@/lib/prototype/implementationPlanningDatabaseExecutionGuard";
 
+/** Maps db-queued advance input to execution-unit dispatch (actorUserId forwarded when present). */
+export function mapDbQueuedAdvanceToNextExecutionUnitDispatchInput(input: {
+  readonly projectId: string;
+  readonly actorUserId?: string | null;
+  readonly nowIso?: string;
+}): Readonly<{
+  readonly projectId: string;
+  readonly nowIso?: string;
+  readonly actorUserId?: string;
+}> {
+  const projectId = input.projectId.trim();
+  const actorUserId = String(input.actorUserId ?? "").trim();
+  return {
+    projectId,
+    ...(input.nowIso ? { nowIso: input.nowIso } : {}),
+    ...(actorUserId ? { actorUserId } : {}),
+  };
+}
+
 /**
  * P3-M71/E — materialize DB queued runtime (if needed) then dispatch via ExecutionUnit scheduler.
  * Replaces legacy `dispatchQuickRunContinuationOnServer` in db-queued auto-advance paths.
  */
 export async function dispatchDbQueuedAutoAdvanceOnServer(input: {
   readonly projectId: string;
+  readonly actorUserId?: string | null;
   readonly nowIso?: string;
 }): Promise<ServerQuickRunContinuationResult> {
   const pid = input.projectId.trim();
@@ -178,10 +198,13 @@ export async function dispatchDbQueuedAutoAdvanceOnServer(input: {
     bundle = await getImplementationRuntimeBundle(pid);
   }
 
-  const direct = await dispatchNextExecutionUnitOnServer({
-    projectId: pid,
-    nowIso,
-  });
+  const direct = await dispatchNextExecutionUnitOnServer(
+    mapDbQueuedAdvanceToNextExecutionUnitDispatchInput({
+      projectId: pid,
+      actorUserId: input.actorUserId,
+      nowIso,
+    }),
+  );
 
   const mapped = mapDispatchNextExecutionUnitToServerResult(direct);
   const mergedTimeline = appendPromptTimelineEntries(

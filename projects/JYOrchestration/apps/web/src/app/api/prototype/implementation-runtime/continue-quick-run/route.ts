@@ -55,7 +55,10 @@ export async function POST(request: NextRequest) {
     const mode = String(body.mode ?? "").trim();
 
     if (DB_QUEUED_MODES.has(mode)) {
-      const continuation = await dispatchDbQueuedAutoAdvanceOnServer({ projectId });
+      const continuation = await dispatchDbQueuedAutoAdvanceOnServer({
+        projectId,
+        actorUserId: userId,
+      });
       if (continuation.orchestrationPatch) {
         await persistTaskCursorOrchestrationToProject({
           projectId,

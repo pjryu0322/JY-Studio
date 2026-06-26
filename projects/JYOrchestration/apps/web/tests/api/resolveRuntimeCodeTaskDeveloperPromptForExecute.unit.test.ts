@@ -4,6 +4,12 @@ import {
   resolveRuntimeCodeTaskDeveloperPromptForExecute,
 } from "@/lib/prototype/resolveRuntimeCodeTaskDeveloperPromptForExecute";
 import { buildCodeTaskWorkBranch } from "@/lib/prototype/taskCursorExecution";
+import { buildUserProjectKnowledgeAgentPromptContext } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptContext";
+import {
+  finalizeCodeTaskDeveloperPromptWithAugmentation,
+  storedDeveloperPromptMissingAugmentation,
+} from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
+import type { UserProjectKnowledgeMemoryItem } from "@/lib/project-knowledge/projectKnowledgeUserMemoryTypes";
 
 const CODE_TASK_ID = "CODE-APP-SHELL-001";
 const WORK_BRANCH = buildCodeTaskWorkBranch(CODE_TASK_ID);
@@ -47,10 +53,15 @@ function minimalRuntimePrompt(codeTaskId: string, workBranch: string, baseBranch
     "## 완료 기준",
     "- done",
     "",
+    "## 작업 결과 보고 형식",
+    "- 변경 요약: (작업 후 기록)",
+    "",
     "requiresIntegrationChange",
     "핵심 사용자: primary end users of the feature",
   ].join("\n");
 }
+
+import { assertStageTwoDeveloperPromptAllowed } from "@/lib/prototype/codeTaskDeveloperPromptQualityGate";
 
 describe("resolveRuntimeCodeTaskDeveloperPromptForExecute", () => {
   const targetRepository = {
@@ -145,6 +156,11 @@ describe("resolveRuntimeCodeTaskDeveloperPromptForExecute", () => {
     },
   };
 
+  it("minimalRuntimePrompt fixture passes stage-two gate", () => {
+    const prompt = minimalRuntimePrompt(CODE_TASK_ID, WORK_BRANCH);
+    expect(assertStageTwoDeveloperPromptAllowed({ prompt }).ok).toBe(true);
+  });
+
   it("uses request body developerPrompt when provided", () => {
     const prompt = minimalRuntimePrompt(CODE_TASK_ID, WORK_BRANCH);
     const resolved = resolveRuntimeCodeTaskDeveloperPromptForExecute({
@@ -214,5 +230,82 @@ describe("resolveRuntimeCodeTaskDeveloperPromptForExecute", () => {
       workBranch: WORK_BRANCH,
     });
     expect(resolved.ok).toBe(true);
+  });
+
+  function developerAugmentationWithItems() {
+    const item: UserProjectKnowledgeMemoryItem = {
+      id: "p9:n9:developer",
+      sourceProjectId: "p9",
+      sourceNodeId: "n9",
+      nodeType: "Feature",
+      title: "T",
+      summary: "S",
+      lifecycle: "AUTO_CAPTURED",
+      scope: "same_user",
+      agent: "developer",
+      relevance: 0.9,
+      useAs: "implementation_hint",
+      reason: "r",
+      promptSummary: "Prior project layout hint",
+    };
+    const developerMemoryContext = buildUserProjectKnowledgeAgentPromptContext({
+      agent: "developer",
+      items: [item],
+    });
+    return { developerMemoryContext };
+  }
+
+  it("rebuilds when body prompt omits required developer memory augmentation", () => {
+    const bodyOnly = minimalRuntimePrompt(CODE_TASK_ID, WORK_BRANCH);
+    expect(
+      storedDeveloperPromptMissingAugmentation({
+        storedPrompt: bodyOnly,
+        augmentation: developerAugmentationWithItems(),
+      }),
+    ).toBe(true);
+
+    const resolved = resolveRuntimeCodeTaskDeveloperPromptForExecute({
+      projectId: "p1",
+      codeTaskId: CODE_TASK_ID,
+      taskId: "TASK-1",
+      developerPrompt: bodyOnly,
+      developerPromptFingerprint: fingerprintRuntimeDeveloperPrompt(bodyOnly),
+      requirementsStateJson,
+      targetRepository,
+      baseBranch: "main",
+      workBranch: WORK_BRANCH,
+      developerPromptAugmentation: developerAugmentationWithItems(),
+    });
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.promptSource).toBe("runtime_rebuilt");
+    expect(resolved.prompt).toContain("[User Project Knowledge for Developer]");
+    expect(resolved.prompt).toContain("Prior project layout hint");
+    expect(resolved.prompt).not.toContain("p9:n9:developer");
+  });
+
+  it("allows request_body when developer memory is already in body prompt", () => {
+    const bodyOnly = minimalRuntimePrompt(CODE_TASK_ID, WORK_BRANCH);
+    const augmentation = developerAugmentationWithItems();
+    const augmented = finalizeCodeTaskDeveloperPromptWithAugmentation({
+      basePrompt: bodyOnly,
+      augmentation,
+    });
+    const resolved = resolveRuntimeCodeTaskDeveloperPromptForExecute({
+      projectId: "p1",
+      codeTaskId: CODE_TASK_ID,
+      taskId: "TASK-1",
+      developerPrompt: augmented,
+      developerPromptFingerprint: fingerprintRuntimeDeveloperPrompt(augmented),
+      requirementsStateJson,
+      targetRepository,
+      baseBranch: "main",
+      workBranch: WORK_BRANCH,
+      developerPromptAugmentation: augmentation,
+    });
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.promptSource).toBe("request_body");
+    expect(resolved.prompt).toBe(augmented);
   });
 });
