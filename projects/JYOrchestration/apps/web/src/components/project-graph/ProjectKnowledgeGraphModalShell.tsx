@@ -7,7 +7,9 @@ import { useGraphMobileUx } from "@/components/project-graph/useGraphMobileUx";
 import { usePlatformRailCollapsed } from "@/components/layout/platformTopNav/usePlatformRailCollapsed";
 import {
   computeKnowledgeGraphModalRailInset,
+  knowledgeGraphModalShellBackdropStyles,
   knowledgeGraphModalShellDesktopStyles,
+  knowledgeGraphModalShellFullscreenDialogStyles,
 } from "@/lib/project-graph/projectKnowledgeGraphModalRailLayout";
 import { uiTokens as t } from "@/components/ui/tokens";
 
@@ -76,9 +78,9 @@ export function ProjectKnowledgeGraphModalShell(p: {
   const fullscreen = graphMobileUx;
   const railInset = computeKnowledgeGraphModalRailInset({
     preservePlatformRail: p.preservePlatformRail,
-    fullscreen,
     railCollapsed,
   });
+  const backdropStyle = knowledgeGraphModalShellBackdropStyles(railInset);
   const desktopLayout = knowledgeGraphModalShellDesktopStyles(railInset);
 
   useEffect(() => {
@@ -100,7 +102,7 @@ export function ProjectKnowledgeGraphModalShell(p: {
       data-testid="project-knowledge-graph-modal-backdrop"
       data-rail-inset={railInset > 0 ? String(railInset) : undefined}
       style={{
-        ...desktopLayout.backdrop,
+        ...backdropStyle,
         background: "rgba(15,23,42,0.45)",
       }}
       onClick={p.onClose}
@@ -113,13 +115,7 @@ export function ProjectKnowledgeGraphModalShell(p: {
         onClick={(ev) => ev.stopPropagation()}
         style={{
           ...(fullscreen
-            ? {
-                position: "fixed",
-                inset: 0,
-                width: "100vw",
-                height: "100dvh",
-                borderRadius: 0,
-              }
+            ? knowledgeGraphModalShellFullscreenDialogStyles(railInset)
             : desktopLayout.dialog),
           display: "flex",
           flexDirection: "column",

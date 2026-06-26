@@ -1,20 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSessionUserId } from "@/lib/auth/requireSession";
 import { rbacErrorResponse } from "@/lib/rbac/handleApiRbac";
+import { respondKnowledgeGraphRevisionDetail } from "@/lib/project-knowledge/knowledgeGraphRevisionDetailRouteHandler";
 import { listKnowledgeGraphRevisions } from "@/lib/project-knowledge/projectKnowledgeGraphRevisionService";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 
 type RouteContext = { readonly params: Promise<{ projectId: string }> };
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { projectId } = await context.params;
     const pid = String(projectId ?? "").trim();
+    const revisionId = String(request.nextUrl.searchParams.get("revisionId") ?? "").trim();
+    if (revisionId) {
+      return respondKnowledgeGraphRevisionDetail(request, pid, revisionId);
+    }
+
     if (!pid) {
       return NextResponse.json({ success: false, message: "projectId가 필요합니다." }, { status: 400 });
     }
 
-    const userId = await requireSessionUserId(_request);
+    const userId = await requireSessionUserId(request);
     if (userId instanceof NextResponse) return userId;
 
     try {

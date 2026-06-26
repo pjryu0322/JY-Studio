@@ -45,6 +45,26 @@ describe("knowledgeGraphRevisionsApi", () => {
     expect(json.data?.revisions).toHaveLength(1);
   });
 
+  it("loads revision detail via revisionId query on list route", async () => {
+    loadMock.mockResolvedValue({
+      id: "r1",
+      revisionNumber: 1,
+      title: "그래프 반영",
+      summary: null,
+      nodeCount: 1,
+      edgeCount: 0,
+      createdAt: "2026-06-24T10:13:00.000Z",
+      graphSnapshot: { nodes: [], edges: [] },
+    });
+    const req = new NextRequest(
+      "http://localhost/api/projects/p1/knowledge-graph/revisions?revisionId=r1",
+    );
+    const res = await listGET(req, { params: Promise.resolve({ projectId: "p1" }) });
+    expect(res.status).toBe(200);
+    expect(listMock).not.toHaveBeenCalled();
+    expect(loadMock).toHaveBeenCalledWith("p1", "r1");
+  });
+
   it("loads revision detail", async () => {
     loadMock.mockResolvedValue({
       id: "r1",
