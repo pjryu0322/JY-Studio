@@ -81,13 +81,14 @@ export function buildAgentGraphProjection(input: BuildAgentGraphProjectionInput)
     return emptyProjection(view, view === "all" ? undefined : view);
   }
 
-  const allNodeIds = uniquePreserveOrder(nodes.map((n) => n.id));
   const nodeById = new Map<string, ProjectGraphNodeDto>();
   for (const node of nodes) {
     if (!nodeById.has(node.id)) {
       nodeById.set(node.id, node);
     }
   }
+  const canonicalNodes = Array.from(nodeById.values());
+  const allNodeIds = canonicalNodes.map((n) => n.id);
 
   if (view === "all") {
     const visibleEdgeIds = uniquePreserveOrder(edges.map((e) => e.id));
@@ -108,32 +109,30 @@ export function buildAgentGraphProjection(input: BuildAgentGraphProjectionInput)
   const highlightedNodeIds: string[] = [];
   const reasonByNodeId: Record<string, string> = {};
 
-  for (const node of nodes) {
+  for (const node of canonicalNodes) {
     if (!hasAgentRelevance(node, agent, threshold)) continue;
-    if (highlightedNodeIds.includes(node.id)) continue;
     highlightedNodeIds.push(node.id);
     const reason = buildReasonForNode(node, agent);
     if (reason) reasonByNodeId[node.id] = reason;
   }
 
   const highlightedSet = new Set(highlightedNodeIds);
-  let visibleNodeIds = [...highlightedNodeIds];
+  const visibleNodeIdSet = new Set(highlightedNodeIds);
 
   if (includeNeighborContext && highlightedSet.size > 0) {
-    const neighborIds: string[] = [];
     for (const edge of edges) {
       const fromHighlighted = highlightedSet.has(edge.fromNodeId);
       const toHighlighted = highlightedSet.has(edge.toNodeId);
       if (fromHighlighted && !toHighlighted && nodeById.has(edge.toNodeId)) {
-        neighborIds.push(edge.toNodeId);
+        visibleNodeIdSet.add(edge.toNodeId);
       }
       if (toHighlighted && !fromHighlighted && nodeById.has(edge.fromNodeId)) {
-        neighborIds.push(edge.fromNodeId);
+        visibleNodeIdSet.add(edge.fromNodeId);
       }
     }
-    visibleNodeIds = uniquePreserveOrder([...visibleNodeIds, ...neighborIds]);
   }
 
+  const visibleNodeIds = allNodeIds.filter((id) => visibleNodeIdSet.has(id));
   const visibleSet = new Set(visibleNodeIds);
   const mutedNodeIds = visibleNodeIds.filter((id) => !highlightedSet.has(id));
 
@@ -147,10 +146,10 @@ export function buildAgentGraphProjection(input: BuildAgentGraphProjectionInput)
   return {
     view,
     agent,
-    visibleNodeIds: uniquePreserveOrder(visibleNodeIds),
+    visibleNodeIds,
     visibleEdgeIds: uniquePreserveOrder(visibleEdgeIds),
-    highlightedNodeIds: uniquePreserveOrder(highlightedNodeIds),
-    mutedNodeIds: uniquePreserveOrder(mutedNodeIds),
+    highlightedNodeIds,
+    mutedNodeIds,
     reasonByNodeId,
   };
 }

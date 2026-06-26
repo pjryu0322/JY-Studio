@@ -190,4 +190,71 @@ describe("projectKnowledgeAgentGraphProjection", () => {
     expect(projection.highlightedNodeIds).toEqual(["dup"]);
     expect(projection.reasonByNodeId.dup).toBe("first");
   });
+
+  it("uses first duplicate node when later duplicate has higher relevance", () => {
+    const nodes = [
+      node("dup", {
+        planner: {
+          relevance: 0.1,
+          useAs: "context",
+          reason: "first-low",
+          promptSummary: "first-low",
+        },
+      }),
+      node("dup", {
+        planner: {
+          relevance: 0.9,
+          useAs: "context",
+          reason: "second-high",
+          promptSummary: "second-high",
+        },
+      }),
+    ];
+
+    const projection = buildAgentGraphProjection({
+      nodes,
+      edges: [],
+      view: "planner",
+      relevanceThreshold: 0.5,
+      includeNeighborContext: false,
+    });
+
+    expect(projection.highlightedNodeIds).toEqual([]);
+    expect(projection.reasonByNodeId.dup).toBeUndefined();
+  });
+
+  it("orders visibleNodeIds by canonical input order with neighbor before highlight", () => {
+    const nodes = [
+      node("neighbor-before"),
+      node("highlighted", {
+        planner: { relevance: 0.9, useAs: "context", reason: "r", promptSummary: "p" },
+      }),
+      node("after"),
+    ];
+    const edges = [edge("e1", "highlighted", "neighbor-before")];
+    const projection = buildAgentGraphProjection({ nodes, edges, view: "planner" });
+
+    expect(projection.visibleNodeIds).toEqual(["neighbor-before", "highlighted"]);
+    expect(projection.highlightedNodeIds).toEqual(["highlighted"]);
+    expect(projection.mutedNodeIds).toEqual(["neighbor-before"]);
+  });
+
+  it("orders highlightedNodeIds by canonical input order", () => {
+    const nodes = [
+      node("b", {
+        planner: { relevance: 0.9, useAs: "context", reason: "b", promptSummary: "b" },
+      }),
+      node("a", {
+        planner: { relevance: 0.9, useAs: "context", reason: "a", promptSummary: "a" },
+      }),
+    ];
+    const projection = buildAgentGraphProjection({
+      nodes,
+      edges: [],
+      view: "planner",
+      includeNeighborContext: false,
+    });
+
+    expect(projection.highlightedNodeIds).toEqual(["b", "a"]);
+  });
 });
