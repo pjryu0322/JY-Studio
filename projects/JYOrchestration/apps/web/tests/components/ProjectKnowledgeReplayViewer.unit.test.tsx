@@ -11,6 +11,7 @@ vi.mock("@/components/ui/useMediaQuery", () => ({
 }));
 
 import { ProjectKnowledgeReplayViewer } from "@/components/project-graph/ProjectKnowledgeReplayViewer";
+import { computeReplayAgentViewEmpty } from "@/lib/project-knowledge/projectKnowledgeAgentGraphViewUi";
 
 describe("ProjectKnowledgeReplayViewer", () => {
   it("renders viewer shell and graph stage", () => {
@@ -41,5 +42,11 @@ describe("ProjectKnowledgeReplayViewer", () => {
     expect(html).toContain("다음 변화 준비 중");
     expect(html).toContain("mock-canvas");
     expect(html).not.toContain("해당 시점 그래프 불러오는 중");
+  });
+
+  it("computes agent empty from frame nodes for planner view", () => {
+    const legacy = [{ id: "a", nodeType: "Feature", title: "기능", summary: null }];
+    expect(computeReplayAgentViewEmpty("planner", legacy, [])).toBe(true);
+    expect(computeReplayAgentViewEmpty("all", legacy, [])).toBe(false);
   });
 });

@@ -12,7 +12,7 @@ import {
 } from "@/lib/project-graph/projectKnowledgeReplayViewerTransition";
 import type { ProjectGraphEdgeDto, ProjectGraphNodeDto } from "@/lib/project-graph/projectGraphClient";
 import type { ProjectKnowledgeGraphView } from "@/lib/project-knowledge/projectKnowledgeAgentGraphProjection";
-import { applyAgentGraphViewLayer } from "@/lib/project-knowledge/projectKnowledgeAgentGraphViewUi";
+import { applyAgentGraphViewLayer, computeReplayAgentViewEmpty } from "@/lib/project-knowledge/projectKnowledgeAgentGraphViewUi";
 import { uiTokens as t } from "@/components/ui/tokens";
 
 const loadingBadgeStyle: CSSProperties = {
@@ -179,18 +179,10 @@ export function ProjectKnowledgeReplayViewer(p: {
     opacity: transitioning ? 1 : 0,
   };
 
-  const agentEmpty = useMemo(() => {
-    if (graphView === "all" || p.nodes.length === 0) return false;
-    const layer = applyAgentGraphViewLayer({
-      canonicalNodes: p.nodes,
-      canonicalEdges: p.edges,
-      displayNodes: p.nodes,
-      displayEdges: p.edges,
-      graphView,
-      includeNeighborContext: true,
-    });
-    return layer.nodes.length === 0;
-  }, [graphView, p.nodes, p.edges]);
+  const agentEmpty = useMemo(
+    () => computeReplayAgentViewEmpty(graphView, currentFrame.nodes, currentFrame.edges),
+    [graphView, currentFrame],
+  );
 
   return (
     <div data-testid="knowledge-replay-viewer" style={shell}>

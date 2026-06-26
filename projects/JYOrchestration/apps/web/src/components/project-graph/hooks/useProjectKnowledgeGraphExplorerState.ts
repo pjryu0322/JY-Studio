@@ -159,6 +159,19 @@ export function useProjectKnowledgeGraphExplorerState(input: {
     setSelectedEdgeId(null);
   }, []);
 
+  const clearGraphSelection = useCallback(() => {
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+  }, []);
+
+  const clearGraphDetail = useCallback(() => {
+    setDetailNodeId(null);
+  }, []);
+
+  const clearSelectedEdge = useCallback(() => {
+    setSelectedEdgeId(null);
+  }, []);
+
   const openTraceForNode = useCallback((nodeId: string) => {
     const nid = String(nodeId ?? "").trim();
     if (!nid) return;
@@ -426,6 +439,9 @@ export function useProjectKnowledgeGraphExplorerState(input: {
     detailTab,
     setDetailTab,
     openTraceForNode,
+    clearGraphSelection,
+    clearGraphDetail,
+    clearSelectedEdge,
   };
 }
 

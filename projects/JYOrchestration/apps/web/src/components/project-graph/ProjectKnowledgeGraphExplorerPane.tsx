@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { uiTokens as t } from "@/components/ui/tokens";
 import { useWorkspaceMode } from "@/components/layout/WorkspaceModeContext";
 import { ProjectKnowledgeGraphCanvas } from "@/components/project-graph/ProjectKnowledgeGraphCanvas";
@@ -20,7 +20,7 @@ import type { KnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/proj
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { ProjectKnowledgeAgentGraphViewTabs } from "@/components/project-graph/ProjectKnowledgeAgentGraphViewTabs";
 import type { ProjectKnowledgeGraphView } from "@/lib/project-knowledge/projectKnowledgeAgentGraphProjection";
-import { applyAgentGraphViewLayer } from "@/lib/project-knowledge/projectKnowledgeAgentGraphViewUi";
+import { applyAgentGraphViewLayer, buildAgentViewExplorerPresentation } from "@/lib/project-knowledge/projectKnowledgeAgentGraphViewUi";
 
 const LIFECYCLE_OPTIONS = ["", "PROJECTED", "APPROVED", "CANDIDATE"] as const;
 
@@ -79,10 +79,66 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
   const canvasEdges = agentLayer.edges;
   const agentNodeVisualState =
     agentLayer.graphView === "all" ? undefined : agentLayer.agentNodeVisualState;
-  const agentViewReason =
-    agentLayer.graphView !== "all" && ex.detailNode
-      ? agentLayer.projection.reasonByNodeId[ex.detailNode.id]
-      : undefined;
+
+  const visibleNodeIdsKey = agentLayer.projection.visibleNodeIds.join("|");
+  const visibleEdgeIdsKey = agentLayer.projection.visibleEdgeIds.join("|");
+
+  useEffect(() => {
+    if (agentLayer.graphView === "all") return;
+    const visibleNodeIdSet = new Set(agentLayer.projection.visibleNodeIds);
+    const visibleEdgeIdSet = new Set(agentLayer.projection.visibleEdgeIds);
+
+    if (ex.selectedNodeId && !visibleNodeIdSet.has(ex.selectedNodeId)) {
+      ex.clearGraphSelection();
+    }
+
+    if (ex.detailNode?.id && !visibleNodeIdSet.has(ex.detailNode.id)) {
+      ex.clearGraphDetail();
+    }
+
+    if (ex.selectedEdgeId && !visibleEdgeIdSet.has(ex.selectedEdgeId)) {
+      ex.clearSelectedEdge();
+    }
+  }, [
+    agentLayer.graphView,
+    agentLayer.projection.visibleNodeIds,
+    agentLayer.projection.visibleEdgeIds,
+    visibleNodeIdsKey,
+    visibleEdgeIdsKey,
+    ex.selectedNodeId,
+    ex.detailNode,
+    ex.selectedEdgeId,
+    ex.clearGraphSelection,
+    ex.clearGraphDetail,
+    ex.clearSelectedEdge,
+  ]);
+
+  const agentPresentation = useMemo(
+    () =>
+      buildAgentViewExplorerPresentation({
+        graphView: agentLayer.graphView,
+        visibleNodeIds: agentLayer.projection.visibleNodeIds,
+        visibleEdgeIds: agentLayer.projection.visibleEdgeIds,
+        selectedNode: ex.selectedNode,
+        selectedNodeId: ex.selectedNodeId,
+        detailNode: ex.detailNode,
+        selectedEdgeId: ex.selectedEdgeId,
+        reasonByNodeId: agentLayer.projection.reasonByNodeId,
+      }),
+    [
+      agentLayer.graphView,
+      agentLayer.projection.visibleNodeIds,
+      agentLayer.projection.visibleEdgeIds,
+      agentLayer.projection.reasonByNodeId,
+      ex.selectedNode,
+      ex.selectedNodeId,
+      ex.detailNode,
+      ex.selectedEdgeId,
+    ],
+  );
+
+  const projectedDetailNode = agentPresentation.projectedDetailNode;
+  const agentViewReason = agentPresentation.agentViewReason;
 
   const shell: CSSProperties = {
     ...requirementsWorkspaceMainRowStyle,
@@ -186,11 +242,11 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
             flex: "1 1 100%",
             fontSize: 12,
             fontWeight: 700,
-            color: ex.selectedNode ? t.textPrimary : t.textMuted,
+            color: agentPresentation.selectedNodeLabel === "선택된 노드 없음" ? t.textMuted : t.textPrimary,
           }}
           aria-live="polite"
         >
-          {ex.selectedNode ? `현재 선택: ${ex.selectedNode.title}` : "선택된 노드 없음"}
+          {agentPresentation.selectedNodeLabel}
         </div>
         {userUx ? (
           <button
@@ -322,8 +378,8 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
             nodes={canvasNodes}
             edges={canvasEdges}
             agentNodeVisualState={agentNodeVisualState}
-            selectedNodeId={ex.selectedNodeId}
-            selectedEdgeId={ex.selectedEdgeId}
+            selectedNodeId={agentPresentation.canvasSelectedNodeId}
+            selectedEdgeId={agentPresentation.canvasSelectedEdgeId}
             highlightNodeIds={ex.explored.highlightIds}
             impactZones={ex.selectionImpact}
             onSelectNode={ex.handleSelectNode}
@@ -366,9 +422,9 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
           ) : null}
           {ex.graphMobileUx ? (
             <ProjectKnowledgeGraphNodeBottomSheet
-              open={Boolean(ex.detailNode)}
+              open={Boolean(projectedDetailNode)}
               projectId={p.projectId}
-              node={ex.detailNode}
+              node={projectedDetailNode}
               impact={ex.detailImpact}
               detailTab={ex.detailTab}
               onDetailTabChange={ex.setDetailTab}
@@ -377,7 +433,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
               agentViewReason={agentViewReason}
             />
           ) : null}
-          {ex.selectedEdge ? (
+          {agentPresentation.showSelectedEdge && ex.selectedEdge ? (
             <div
               style={{ padding: "8px 12px", borderTop: `1px solid ${t.border}`, fontSize: 12, color: t.textSecondary }}
             >
@@ -390,7 +446,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
         {!ex.graphMobileUx && ex.detailPanelOpen ? (
           <ProjectGraphNodeDetailPanel
             projectId={p.projectId}
-            node={ex.detailNode}
+            node={projectedDetailNode}
             impact={ex.detailImpact}
             onSelectRelatedNodeId={ex.handleSelectRelatedNodeId}
             detailTab={ex.detailTab}

@@ -66,6 +66,9 @@ vi.mock("@/components/project-graph/hooks/useProjectKnowledgeGraphExplorerState"
     detailTab: "details" as const,
     setDetailTab: vi.fn(),
     openTraceForNode: vi.fn(),
+    clearGraphSelection: vi.fn(),
+    clearGraphDetail: vi.fn(),
+    clearSelectedEdge: vi.fn(),
   }),
 }));
 
