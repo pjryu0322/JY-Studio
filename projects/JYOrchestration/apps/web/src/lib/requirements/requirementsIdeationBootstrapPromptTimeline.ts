@@ -293,6 +293,9 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
             .filter((x): x is NonNullable<typeof x> => x != null),
         }
       : {}),
+    ...(typeof r.userProjectKnowledgeMemoryControlEnabled === "boolean"
+      ? { userProjectKnowledgeMemoryControlEnabled: r.userProjectKnowledgeMemoryControlEnabled }
+      : {}),
     ...(typeof r.roomId === "string" && r.roomId.trim() ? { roomId: r.roomId.trim().slice(0, 64) } : {}),
     ...(selectedAgents.length ? { selectedAgents } : {}),
     ...(typeof r.promptText === "string" ? { promptText: r.promptText } : {}),
@@ -895,6 +898,7 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly referenceContextSelectionReason?: string;
   readonly referenceContextSource?: "MATERIALIZED" | "NONE" | "LEGACY_MISSING";
   readonly userProjectKnowledgeMemoryContexts?: readonly import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").UserProjectKnowledgeMemoryTimelineSummary[];
+  readonly userProjectKnowledgeMemoryControlEnabled?: boolean;
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -1163,6 +1167,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
     ...(params.referenceContextSource ? { referenceContextSource: params.referenceContextSource } : {}),
     ...(params.userProjectKnowledgeMemoryContexts?.length
       ? { userProjectKnowledgeMemoryContexts: params.userProjectKnowledgeMemoryContexts }
+      : {}),
+    ...(params.userProjectKnowledgeMemoryControlEnabled === false
+      ? { userProjectKnowledgeMemoryControlEnabled: false }
       : {}),
   };
 }

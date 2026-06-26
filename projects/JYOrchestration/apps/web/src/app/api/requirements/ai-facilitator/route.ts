@@ -25,6 +25,7 @@ import {
   wrapReferenceContextForOrchestrationLlm,
 } from "@/lib/project-knowledge/projectKnowledgeReferencePromptContext";
 import { prepareSameUserProjectKnowledgeMemoryPromptContexts } from "@/lib/project-knowledge/projectKnowledgeUserMemoryService";
+import { loadUserProjectKnowledgeMemoryControlForProject } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlProjectPersistence";
 import { buildUserProjectKnowledgeMemoryTimelineSummaries } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
 import {
   pickConfiguredModelOverrideFromAgents,
@@ -297,14 +298,29 @@ export async function POST(request: NextRequest) {
     const referencePlanningContextBlock = referencePromptContextBlock;
 
     const userMemoryPrepared = projectId
-      ? await prepareSameUserProjectKnowledgeMemoryPromptContexts({
-          userId,
-          targetProjectId: projectId,
-        })
+      ? await (async () => {
+          const control = await loadUserProjectKnowledgeMemoryControlForProject(projectId);
+          return prepareSameUserProjectKnowledgeMemoryPromptContexts({
+            userId,
+            targetProjectId: projectId,
+            control,
+          });
+        })()
       : null;
     const userMemoryTimelineMeta = userMemoryPrepared
       ? buildUserProjectKnowledgeMemoryTimelineSummaries(userMemoryPrepared.byAgent)
       : undefined;
+    const userMemoryTimelineTraceFields =
+      userMemoryPrepared == null
+        ? {}
+        : {
+            ...(userMemoryTimelineMeta?.length
+              ? { userProjectKnowledgeMemoryContexts: userMemoryTimelineMeta }
+              : {}),
+            ...(userMemoryPrepared.memoryControlEnabled === false
+              ? { userProjectKnowledgeMemoryControlEnabled: false as const }
+              : {}),
+          };
 
     const workspaceScreenForBootstrap = parseWorkspaceScreenForBody(body.workspaceScreenKey);
     const workspaceScreenForChat = bootstrapInterview ? workspaceScreenForBootstrap : parseWorkspaceScreenForBody(body.workspaceScreenKey);
@@ -589,9 +605,7 @@ export async function POST(request: NextRequest) {
         matchedSlots: [...turnOk.meta.matchedSlots],
         updatedSlots: [...turnOk.meta.updatedSlotKeys],
         ...referenceContextTimelineMeta,
-        ...(userMemoryTimelineMeta?.length
-          ? { userProjectKnowledgeMemoryContexts: userMemoryTimelineMeta }
-          : {}),
+        ...userMemoryTimelineTraceFields,
         ...(typeof (turnOk.meta as any).updatedSlotCount === "number" ? { updatedSlotCount: (turnOk.meta as any).updatedSlotCount } : {}),
         ...(typeof (turnOk.meta as any).currentPhase === "number" ? { currentPhase: (turnOk.meta as any).currentPhase } : {}),
         ...(typeof (turnOk.meta as any).nextQuestionOwnerAgent === "string"

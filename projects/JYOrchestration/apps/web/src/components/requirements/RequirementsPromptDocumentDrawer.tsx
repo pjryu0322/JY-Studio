@@ -11,6 +11,7 @@ import {
 } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import { pickOrchestrationPromptTimelineEntries } from "@/lib/requirements/requirementsOrchestrationTimelineView";
 import { buildFoldedOrchestrationTimeline } from "@/lib/requirements/requirementsOrchestrationTimelineFolding";
+import { formatUserProjectKnowledgeMemoryTimelineBlock } from "@/lib/project-knowledge/projectKnowledgeUserMemoryTimelineUi";
 import {
   hasExecutionLogTimelineEntries,
   pickExecutionLogTimelineEntries,
@@ -218,6 +219,18 @@ function buildPromptTimelineMarkdown(entries: readonly RequirementsPromptTimelin
         `- **rejectedDynamicSlots**: ${row.rejectedDynamicSlots.map((r) => `${r.slotKey}(${r.reason})`).join("; ")}`
       );
     }
+    const memoryBlock = formatUserProjectKnowledgeMemoryTimelineBlock({
+      enabled: row.userProjectKnowledgeMemoryControlEnabled !== false,
+      contexts: row.userProjectKnowledgeMemoryContexts,
+    });
+    if (memoryBlock) {
+      lines.push("");
+      lines.push("### User Project Knowledge Memory");
+      lines.push("");
+      lines.push("```text");
+      lines.push(memoryBlock);
+      lines.push("```");
+    }
     lines.push("");
     lines.push(`### 플랫폼 → OpenAI`);
     lines.push("");
@@ -317,7 +330,8 @@ export function RequirementsPromptDocumentDrawer({
   readonly initialTab?: PromptTimelineDrawerTab;
   /** 실행 로그 탭 항목만 promptTimeline에서 제거 (DB 저장은 호출 측) */
   readonly onClearExecutionLog?: () => void | Promise<void>;
-}) {  const [tab, setTab] = useState<PromptTimelineDrawerTab>("prompt");
+}) {
+  const [tab, setTab] = useState<PromptTimelineDrawerTab>("prompt");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [copyToastMessage, setCopyToastMessage] = useState<string | null>(null);
   const copyToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -490,7 +504,8 @@ export function RequirementsPromptDocumentDrawer({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div style={panel} onMouseDown={(e) => e.stopPropagation()}>        {copyToastMessage ? (
+      <div style={panel} onMouseDown={(e) => e.stopPropagation()}>
+        {copyToastMessage ? (
           <div
             role="status"
             aria-live="polite"
@@ -930,6 +945,32 @@ export function RequirementsPromptDocumentDrawer({
                                   </div>
                                 ) : null}
                               </div>
+
+                              {(() => {
+                                const memoryUiBlock = formatUserProjectKnowledgeMemoryTimelineBlock({
+                                  enabled: row.userProjectKnowledgeMemoryControlEnabled !== false,
+                                  contexts: row.userProjectKnowledgeMemoryContexts,
+                                });
+                                if (!memoryUiBlock) return null;
+                                return (
+                                  <pre
+                                    data-testid="user-memory-timeline-block"
+                                    style={{
+                                      margin: "0 0 10px",
+                                      padding: "8px 10px",
+                                      borderRadius: 8,
+                                      border: "1px solid #e2e8f0",
+                                      background: "#f0fdf4",
+                                      fontSize: 11,
+                                      lineHeight: 1.5,
+                                      whiteSpace: "pre-wrap",
+                                      color: "#14532d",
+                                    }}
+                                  >
+                                    {memoryUiBlock}
+                                  </pre>
+                                );
+                              })()}
 
                               <div style={{ ...labelSm, marginTop: 4 }}>플랫폼 → OpenAI</div>
                               <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 12 }}>

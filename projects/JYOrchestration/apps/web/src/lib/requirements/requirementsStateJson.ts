@@ -163,6 +163,7 @@ import {
   parseProjectReferenceSelectionV1,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
 import { parseMaterializedReferenceContextV1 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
+import { parseUserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
 import { parsePlanningKnowledgeGraphTraceV1 } from "@/lib/project-graph/planningKnowledgeGraphTraceV1";
 import { parseRequirementsSingleChatOrchestrationV1 } from "@/lib/requirements/singleChatOrchestrationStateWire";
 import {
@@ -242,6 +243,8 @@ export type RequirementsPromptTimelineEntry = {
   referenceContextSelectionReason?: string;
   referenceContextSource?: "MATERIALIZED" | "NONE" | "LEGACY_MISSING";
   userProjectKnowledgeMemoryContexts?: readonly UserProjectKnowledgeMemoryTimelineSummary[];
+  /** false면 same-user memory 자동 반영이 꺼진 턴 */
+  userProjectKnowledgeMemoryControlEnabled?: boolean;
   roomId?: string;
   /** 사용자 표시 절차 그룹(예: 서비스 기획) */
   stageGroup?: string;
@@ -595,6 +598,8 @@ export type RequirementsStateJson = {
   referenceSelectionWelcomeShownAt?: string | null;
   /** Phase 6.6: 선택 시점에 materialize된 참조 컨텍스트(prompt source of truth) */
   materializedReferenceContextV1?: import("@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext").MaterializedReferenceContextV1 | null;
+  /** Phase 7: same-user project knowledge memory control */
+  userProjectKnowledgeMemoryControlV1?: import("@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes").UserProjectKnowledgeMemoryControlV1 | null;
   /** 기획 Knowledge Graph 초기화·재생성 추적(그래프 노드가 아님) */
   planningKnowledgeGraphTraceV1?: import("@/lib/project-graph/planningKnowledgeGraphTraceV1").PlanningKnowledgeGraphTraceV1 | null;
   /** 아이디어 구체화: 문제정의 인터뷰(반복 질문 방지용 슬롯 상태) */
@@ -1395,6 +1400,12 @@ export function parseRequirementsStateJson(raw: unknown): RequirementsStateJson 
         ? o.materializedReferenceContextV1 === null
           ? null
           : parseMaterializedReferenceContextV1(o.materializedReferenceContextV1) ?? null
+        : undefined,
+    userProjectKnowledgeMemoryControlV1:
+      "userProjectKnowledgeMemoryControlV1" in o
+        ? o.userProjectKnowledgeMemoryControlV1 === null
+          ? null
+          : parseUserProjectKnowledgeMemoryControlV1(o.userProjectKnowledgeMemoryControlV1) ?? null
         : undefined,
     planningKnowledgeGraphTraceV1:
       "planningKnowledgeGraphTraceV1" in o

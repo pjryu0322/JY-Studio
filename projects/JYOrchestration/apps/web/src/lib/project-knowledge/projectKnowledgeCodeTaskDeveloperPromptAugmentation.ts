@@ -8,6 +8,7 @@ import {
   type UserProjectKnowledgeMemoryTimelineSummary,
 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
 import { prepareSameUserProjectKnowledgeMemoryPromptContexts } from "@/lib/project-knowledge/projectKnowledgeUserMemoryService";
+import { loadUserProjectKnowledgeMemoryControlForProject } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlProjectPersistence";
 
 export type PreparedCodeTaskDeveloperPromptAugmentation = Readonly<{
   readonly augmentation: CodeTaskDeveloperPromptAugmentation;
@@ -33,10 +34,14 @@ export async function prepareCodeTaskDeveloperPromptAugmentation(input: {
       projectName: input.projectName,
       projectDescription: input.projectDescription,
     }),
-    prepareSameUserProjectKnowledgeMemoryPromptContexts({
-      userId,
-      targetProjectId,
-    }),
+    (async () => {
+      const control = await loadUserProjectKnowledgeMemoryControlForProject(targetProjectId);
+      return prepareSameUserProjectKnowledgeMemoryPromptContexts({
+        userId,
+        targetProjectId,
+        control,
+      });
+    })(),
   ]);
 
   const referencePromptContextBlock = referenceSection.hasReference

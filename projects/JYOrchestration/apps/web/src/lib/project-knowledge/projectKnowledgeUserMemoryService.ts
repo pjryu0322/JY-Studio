@@ -9,6 +9,13 @@ import type {
   UserProjectKnowledgeAgentPromptContext,
   UserProjectKnowledgeMemorySourceProject,
 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryTypes";
+import type { UserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
+import { normalizeUserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
+import {
+  applyAgentEnabledToMemoryContexts,
+  applyUserProjectKnowledgeMemoryControlToPrepareInput,
+  emptyUserProjectKnowledgeMemoryContextsByAgent,
+} from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlService";
 
 export async function prepareUserProjectKnowledgeMemoryContext(input: {
   readonly userId: string;
@@ -58,11 +65,32 @@ export async function prepareSameUserProjectKnowledgeMemoryPromptContexts(input:
   readonly maxItemsPerAgent?: number;
   readonly minRelevance?: number;
   readonly limitProjects?: number;
+  readonly control?: UserProjectKnowledgeMemoryControlV1 | null;
 }): Promise<{
   readonly byAgent: Readonly<Record<ProjectKnowledgeAgent, UserProjectKnowledgeAgentPromptContext>>;
   readonly totalItemCount: number;
   readonly sourceProjectCount: number;
+  readonly memoryControlEnabled: boolean;
 }> {
+  const control = normalizeUserProjectKnowledgeMemoryControlV1(input.control);
+  const apply = applyUserProjectKnowledgeMemoryControlToPrepareInput({
+    control,
+    base: {
+      excludedSourceProjectIds: input.excludedSourceProjectIds,
+      ignoredMemoryItemIds: input.ignoredMemoryItemIds,
+      pinnedMemoryItemIds: input.pinnedMemoryItemIds,
+    },
+  });
+
+  if (apply.disabled) {
+    return {
+      byAgent: emptyUserProjectKnowledgeMemoryContextsByAgent(),
+      totalItemCount: 0,
+      sourceProjectCount: 0,
+      memoryControlEnabled: false,
+    };
+  }
+
   const sourceProjects = await listSameUserProjectKnowledgeMemorySources({
     userId: input.userId,
     targetProjectId: input.targetProjectId,
@@ -73,16 +101,23 @@ export async function prepareSameUserProjectKnowledgeMemoryPromptContexts(input:
     userId: input.userId,
     targetProjectId: input.targetProjectId,
     sourceProjects,
-    excludedSourceProjectIds: input.excludedSourceProjectIds,
-    ignoredMemoryItemIds: input.ignoredMemoryItemIds,
-    pinnedMemoryItemIds: input.pinnedMemoryItemIds,
+    excludedSourceProjectIds: apply.excludedSourceProjectIds,
+    ignoredMemoryItemIds: apply.ignoredMemoryItemIds,
+    pinnedMemoryItemIds: apply.pinnedMemoryItemIds,
     maxItemsPerAgent: input.maxItemsPerAgent,
     minRelevance: input.minRelevance,
   });
 
+  const byAgent = applyAgentEnabledToMemoryContexts({ control, byAgent: prepared.byAgent });
+  const totalItemCount = PROJECT_KNOWLEDGE_AGENTS.reduce(
+    (sum, agent) => sum + (byAgent[agent]?.itemCount ?? 0),
+    0,
+  );
+
   return {
-    byAgent: prepared.byAgent,
-    totalItemCount: prepared.totalItemCount,
+    byAgent,
+    totalItemCount,
     sourceProjectCount: sourceProjects.length,
+    memoryControlEnabled: true,
   };
 }
