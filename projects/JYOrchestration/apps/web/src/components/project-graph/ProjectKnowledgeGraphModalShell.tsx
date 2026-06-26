@@ -1,22 +1,35 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useGraphMobileUx } from "@/components/project-graph/useGraphMobileUx";
+import { usePlatformRailCollapsed } from "@/components/layout/platformTopNav/usePlatformRailCollapsed";
+import { platformRailOverlayLeftInsetPx } from "@/lib/layout/platformTopNavConstants";
 import { uiTokens as t } from "@/components/ui/tokens";
 
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+const PRESERVE_RAIL_MODAL_HTML_ATTR = "data-jyo-preserve-platform-rail-modal";
 
 export function ProjectKnowledgeGraphModalShell(p: {
   readonly open: boolean;
   readonly title: string;
   readonly onClose: () => void;
   readonly onOpenNewWindow?: () => void;
+  /** true면 플랫폼 좌측 레일 영역은 dim/클릭 차단 없이 유지 */
+  readonly preservePlatformRail?: boolean;
   readonly children: ReactNode;
 }) {
   const graphMobileUx = useGraphMobileUx();
+  const [railCollapsed] = usePlatformRailCollapsed();
+  const [portalReady, setPortalReady] = useState(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   useEffect(() => {
     if (!p.open) return;
@@ -57,16 +70,31 @@ export function ProjectKnowledgeGraphModalShell(p: {
     return () => el.removeEventListener("keydown", onKeyDown);
   }, [p.open]);
 
-  if (!p.open) return null;
-
   const fullscreen = graphMobileUx;
+  const railInset =
+    p.preservePlatformRail && !fullscreen ? platformRailOverlayLeftInsetPx(railCollapsed) : 0;
 
-  return (
+  useEffect(() => {
+    if (!portalReady || typeof document === "undefined") return;
+    const root = document.documentElement;
+    if (p.open && p.preservePlatformRail && railInset > 0) {
+      root.setAttribute(PRESERVE_RAIL_MODAL_HTML_ATTR, "1");
+      return () => root.removeAttribute(PRESERVE_RAIL_MODAL_HTML_ATTR);
+    }
+    root.removeAttribute(PRESERVE_RAIL_MODAL_HTML_ATTR);
+    return undefined;
+  }, [p.open, p.preservePlatformRail, portalReady, railInset]);
+
+  if (!p.open || !portalReady || typeof document === "undefined") return null;
+
+  const modalTree = (
     <div
       role="presentation"
+      data-testid="project-knowledge-graph-modal-backdrop"
+      data-rail-inset={railInset > 0 ? String(railInset) : undefined}
       style={{
         position: "fixed",
-        inset: 0,
+        ...(railInset > 0 ? { left: railInset, top: 0, right: 0, bottom: 0 } : { inset: 0 }),
         zIndex: 48,
         background: "rgba(15,23,42,0.45)",
       }}
@@ -82,13 +110,21 @@ export function ProjectKnowledgeGraphModalShell(p: {
           position: "fixed",
           ...(fullscreen
             ? { inset: 0, width: "100vw", height: "100dvh", borderRadius: 0 }
-            : {
-                left: "5vw",
-                top: "5vh",
-                width: "90vw",
-                height: "90vh",
-                borderRadius: 16,
-              }),
+            : railInset > 0
+              ? {
+                  left: railInset + 16,
+                  top: 16,
+                  right: 16,
+                  bottom: 16,
+                  borderRadius: 16,
+                }
+              : {
+                  left: "5vw",
+                  top: "5vh",
+                  width: "90vw",
+                  height: "90vh",
+                  borderRadius: 16,
+                }),
           display: "flex",
           flexDirection: "column",
           background: "#fff",
@@ -132,6 +168,8 @@ export function ProjectKnowledgeGraphModalShell(p: {
       </div>
     </div>
   );
+
+  return createPortal(modalTree, document.body);
 }
 
 const headerBtnStyle: CSSProperties = {

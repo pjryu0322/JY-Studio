@@ -38,6 +38,7 @@ export function ProjectKnowledgeGraphModal(p: {
     <ProjectKnowledgeGraphModalShell
       open={p.open}
       title="프로젝트 지식 그래프"
+      preservePlatformRail
       onClose={p.onClose}
       onOpenNewWindow={handleOpenNewWindow}
     >

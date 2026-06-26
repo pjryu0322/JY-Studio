@@ -25,6 +25,11 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/** 지식 그래프 모달(레일 유지): dim/패널보다 플랫폼 좌측 레일을 위에 둠 */
+html[data-jyo-preserve-platform-rail-modal="1"] [aria-label="플랫폼 내비게이션"] {
+  z-index: 51;
+}
+
 /* Dev-only: hide Next.js dev build indicator (bottom-left "N"). */
 #__next-build-watcher,
 #__next-prerender-indicator {

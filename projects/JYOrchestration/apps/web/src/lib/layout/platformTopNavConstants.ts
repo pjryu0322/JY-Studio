@@ -8,6 +8,11 @@ export const PLATFORM_RAIL_WIDTH_PX = 78;
 /** 접힘 시 화면 좌측 경계에 남기는 펼치기 탭 폭(화살표 전용) */
 export const PLATFORM_RAIL_EXPAND_TAB_W = 22;
 
+/** 지식 그래프 등 레일 위 모달 — dim/패널이 레일을 덮지 않도록 좌측 inset */
+export function platformRailOverlayLeftInsetPx(railCollapsed: boolean): number {
+  return railCollapsed ? PLATFORM_RAIL_EXPAND_TAB_W : PLATFORM_RAIL_WIDTH_PX;
+}
+
 export const platformRailIconLinkStyle: CSSProperties = {
   width: 36,
   height: 36,
