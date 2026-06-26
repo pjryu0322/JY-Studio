@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { ProjectKnowledgeAgent } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
 import type { UserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
 import type { UserProjectKnowledgeMemoryPreviewV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPreviewService";
+import type { UserMemoryControlAction } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlActionService";
 
 type ControlResponse = {
   readonly success: boolean;
@@ -59,8 +61,8 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
     void reload();
   }, [reload]);
 
-  const patchControl = useCallback(
-    async (patch: Partial<UserProjectKnowledgeMemoryControlV1>) => {
+  const sendAction = useCallback(
+    async (action: UserMemoryControlAction) => {
       if (!pid) return;
       setSaving(true);
       setError(null);
@@ -69,7 +71,7 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
           method: "PATCH",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId: pid, patch }),
+          body: JSON.stringify({ projectId: pid, action }),
         });
         const json = (await res.json()) as ControlResponse;
         if (!res.ok || !json.success || !json.control) {
@@ -89,63 +91,49 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
 
   const setEnabled = useCallback(
     async (enabled: boolean) => {
-      await patchControl({ enabled });
+      await sendAction({ type: "SET_ENABLED", enabled });
     },
-    [patchControl],
+    [sendAction],
+  );
+
+  const setAgentEnabled = useCallback(
+    async (agent: ProjectKnowledgeAgent, enabled: boolean) => {
+      await sendAction({ type: "SET_AGENT_ENABLED", agent, enabled });
+    },
+    [sendAction],
   );
 
   const togglePin = useCallback(
-    async (displayId: string, pinned: boolean) => {
-      if (!control) return;
-      const id = displayId.trim();
+    async (actionId: string, pinned: boolean) => {
+      const id = actionId.trim();
       if (!id) return;
-      const pinnedSet = new Set(control.pinnedMemoryItemIds);
-      const ignoredSet = new Set(control.ignoredMemoryItemIds);
-      if (pinned) {
-        pinnedSet.add(id);
-        ignoredSet.delete(id);
-      } else {
-        pinnedSet.delete(id);
-      }
-      await patchControl({
-        pinnedMemoryItemIds: [...pinnedSet],
-        ignoredMemoryItemIds: [...ignoredSet],
+      await sendAction({
+        type: pinned ? "PIN_MEMORY_ITEM" : "UNPIN_MEMORY_ITEM",
+        actionId: id,
       });
     },
-    [control, patchControl],
+    [sendAction],
   );
 
   const toggleIgnore = useCallback(
-    async (displayId: string, ignored: boolean) => {
-      if (!control) return;
-      const id = displayId.trim();
+    async (actionId: string, ignored: boolean) => {
+      const id = actionId.trim();
       if (!id) return;
-      const pinnedSet = new Set(control.pinnedMemoryItemIds);
-      const ignoredSet = new Set(control.ignoredMemoryItemIds);
-      if (ignored) {
-        ignoredSet.add(id);
-        pinnedSet.delete(id);
-      } else {
-        ignoredSet.delete(id);
-      }
-      await patchControl({
-        pinnedMemoryItemIds: [...pinnedSet],
-        ignoredMemoryItemIds: [...ignoredSet],
+      await sendAction({
+        type: ignored ? "IGNORE_MEMORY_ITEM" : "UNIGNORE_MEMORY_ITEM",
+        actionId: id,
       });
     },
-    [control, patchControl],
+    [sendAction],
   );
 
   const excludeSourceProject = useCallback(
     async (sourceProjectActionId: string) => {
-      if (!control) return;
       const id = sourceProjectActionId.trim();
       if (!id) return;
-      const set = new Set(control.excludedSourceProjectIds);
-      set.add(id);
-      await patchControl({ excludedSourceProjectIds: [...set] });
+      await sendAction({ type: "EXCLUDE_SOURCE_PROJECT", actionId: id });
     },
-    [control, patchControl],
+    [sendAction],
   );
 
   return {
@@ -156,6 +144,7 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
     error,
     reload,
     setEnabled,
+    setAgentEnabled,
     togglePin,
     toggleIgnore,
     excludeSourceProject,

@@ -2,6 +2,9 @@ import { createElement } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { UserProjectKnowledgeMemoryControlPanel } from "@/components/project-knowledge/UserProjectKnowledgeMemoryControlPanel";
+import { buildUserProjectKnowledgeMemoryItemId } from "@/lib/project-knowledge/projectKnowledgeUserMemoryCollector";
+
+const rawItemId = buildUserProjectKnowledgeMemoryItemId("secret-project", "secret-node", "planner");
 
 const hookState = {
   control: {
@@ -13,10 +16,44 @@ const hookState = {
   },
   preview: {
     enabled: true,
-    sourceProjectCount: 0,
-    totalItemCount: 0,
+    sourceProjectCount: 1,
+    totalItemCount: 1,
     byAgent: {
-      planner: { enabled: true, itemCount: 0, items: [] },
+      planner: {
+        enabled: true,
+        itemCount: 1,
+        items: [
+          {
+            actionId: "mem_opaque_token_001",
+            sourceProjectActionId: "src_opaque_token_001",
+            title: "Sample title",
+            promptSummary: "Sample summary",
+            useAs: "mvp_scope",
+            relevance: 0.8,
+            lifecycle: "AUTO_CAPTURED" as const,
+            pinned: false,
+            ignored: false,
+            agent: "planner" as const,
+            nodeType: "Feature",
+            sourceProjectTitle: "이전 프로젝트",
+          },
+        ],
+        ignoredItems: [
+          {
+            actionId: "mem_opaque_ignored",
+            title: "Ignored title",
+            promptSummary: "Ignored summary",
+            useAs: "context",
+            relevance: 0.5,
+            lifecycle: "IGNORED" as const,
+            pinned: false,
+            ignored: true,
+            agent: "planner" as const,
+            nodeType: "Feature",
+            sourceProjectTitle: "이전 프로젝트",
+          },
+        ],
+      },
       analyst: { enabled: true, itemCount: 0, items: [] },
       developer: { enabled: true, itemCount: 0, items: [] },
       reviewer: { enabled: true, itemCount: 0, items: [] },
@@ -28,6 +65,7 @@ const hookState = {
   error: null as string | null,
   reload: vi.fn(),
   setEnabled: vi.fn(),
+  setAgentEnabled: vi.fn(),
   togglePin: vi.fn(),
   toggleIgnore: vi.fn(),
   excludeSourceProject: vi.fn(),
@@ -49,8 +87,9 @@ describe("UserProjectKnowledgeMemoryControlPanel", () => {
       createElement(UserProjectKnowledgeMemoryControlPanel, { projectId: "p1" }),
     );
     expect(html).toContain('data-testid="user-memory-control-panel"');
-    expect(html).toContain('data-testid="user-memory-control-enabled"');
     expect(html).toContain('data-testid="user-memory-agent-summary"');
+    expect(html).toContain('data-testid="user-memory-agent-toggles"');
+    expect(html).toContain("기획자");
   });
 
   it("shows disabled message when memory off", () => {
@@ -59,5 +98,24 @@ describe("UserProjectKnowledgeMemoryControlPanel", () => {
       createElement(UserProjectKnowledgeMemoryControlPanel, { projectId: "p1" }),
     );
     expect(html).toContain('data-testid="user-memory-control-disabled-msg"');
+    expect(html).not.toContain('data-testid="user-memory-agent-toggles"');
+  });
+
+  it("does not expose raw memory item id in HTML", () => {
+    const html = renderToStaticMarkup(
+      createElement(UserProjectKnowledgeMemoryControlPanel, { projectId: "p1" }),
+    );
+    expect(html).not.toContain(rawItemId);
+    expect(html).not.toContain("secret-project");
+    expect(html).not.toContain("secret-node");
+  });
+
+  it("shows ignored section and unignore control", () => {
+    const html = renderToStaticMarkup(
+      createElement(UserProjectKnowledgeMemoryControlPanel, { projectId: "p1" }),
+    );
+    expect(html).toContain('data-testid="user-memory-ignored-section-planner"');
+    expect(html).toContain('data-testid="user-memory-unignore-ignored-planner-0"');
+    expect(html).toContain("무시한 항목");
   });
 });

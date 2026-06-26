@@ -26,6 +26,7 @@ export function UserProjectKnowledgeMemoryControlPanel(p: { readonly projectId: 
     error,
     reload,
     setEnabled,
+    setAgentEnabled,
     togglePin,
     toggleIgnore,
     excludeSourceProject,
@@ -82,6 +83,40 @@ export function UserProjectKnowledgeMemoryControlPanel(p: { readonly projectId: 
         />
         과거 프로젝트 지식 자동 반영
       </label>
+      {enabled ? (
+        <div data-testid="user-memory-agent-toggles" style={{ marginTop: 10 }}>
+          <div style={{ fontWeight: 800, fontSize: 11, color: t.textPrimary, marginBottom: 6 }}>
+            AI 멤버별 반영
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {PROJECT_KNOWLEDGE_AGENTS.map((agent) => {
+              const agentOn = control?.agentEnabled?.[agent] !== false;
+              return (
+                <label
+                  key={agent}
+                  data-testid={`user-memory-agent-toggle-${agent}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: saving ? "wait" : "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={agentOn}
+                    disabled={saving || !enabled}
+                    onChange={(e) => void setAgentEnabled(agent, e.target.checked)}
+                  />
+                  {USER_PROJECT_KNOWLEDGE_MEMORY_AGENT_LABELS_KO[agent]}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       {!enabled ? (
         <div data-testid="user-memory-control-disabled-msg" style={{ marginTop: 8, color: t.textMuted }}>
           현재 프로젝트에서는 과거 프로젝트 지식을 자동 반영하지 않습니다.

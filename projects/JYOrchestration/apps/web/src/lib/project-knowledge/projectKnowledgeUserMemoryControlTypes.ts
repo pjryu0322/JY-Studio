@@ -106,7 +106,7 @@ export function patchUserProjectKnowledgeMemoryControlV1(
         : base.pinnedMemoryItemIds,
     agentEnabled:
       patch.agentEnabled !== undefined
-        ? parseAgentEnabled(patch.agentEnabled) ?? base.agentEnabled
+        ? { ...base.agentEnabled, ...(parseAgentEnabled(patch.agentEnabled) ?? {}) }
         : base.agentEnabled,
     updatedAt: now,
   };

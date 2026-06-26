@@ -159,3 +159,53 @@ export function collectUserProjectKnowledgeMemory(
     totalItemCount,
   };
 }
+
+/** Ignored-id recovery: scan sources without ignore filter; match explicit item ids only. */
+export function findUserProjectKnowledgeMemoryItemsByIds(
+  input: CollectUserProjectKnowledgeMemoryInput & { readonly itemIds: readonly string[] },
+): UserProjectKnowledgeMemoryItem[] {
+  const wanted = new Set(
+    (input.itemIds ?? []).map((x) => String(x ?? "").trim()).filter(Boolean),
+  );
+  if (!wanted.size) return [];
+
+  const minRelevance = input.minRelevance ?? DEFAULT_AGENT_PROMPT_RELEVANCE_THRESHOLD;
+  const excludedSet = new Set(input.excludedSourceProjectIds ?? []);
+  const pinnedSet = new Set(input.pinnedMemoryItemIds ?? []);
+  const agents = input.agent ? [input.agent] : [...PROJECT_KNOWLEDGE_AGENTS];
+  const out: UserProjectKnowledgeMemoryItem[] = [];
+
+  for (const source of input.sourceProjects) {
+    if (source.ownerUserId !== input.userId) continue;
+    if (input.targetProjectId && source.projectId === input.targetProjectId) continue;
+    if (excludedSet.has(source.projectId)) continue;
+
+    const projectTitle = source.projectTitle
+      ? sanitizeAgentKnowledgeText(source.projectTitle)
+      : undefined;
+
+    for (const node of source.nodes) {
+      for (const agent of agents) {
+        if (!isAgentPromptRelevant(node, agent, minRelevance)) continue;
+        const id = buildUserProjectKnowledgeMemoryItemId(source.projectId, node.id, agent);
+        if (!wanted.has(id)) continue;
+
+        const lifecycle: UserProjectKnowledgeMemoryLifecycle = pinnedSet.has(id)
+          ? "PINNED"
+          : "IGNORED";
+
+        const item = createMemoryItem({
+          sourceProjectId: source.projectId,
+          sourceProjectTitle: projectTitle || undefined,
+          sourceUpdatedAt: source.updatedAt,
+          node,
+          agent,
+          lifecycle,
+        });
+        if (item) out.push(item);
+      }
+    }
+  }
+
+  return out;
+}
