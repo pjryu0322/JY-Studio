@@ -27,6 +27,12 @@ import { resolveOpenAiModelFromEnv } from "@/lib/ai/openAiEnv";
 import { workspaceAiMemberSystemPrefix } from "@/lib/ai-member/platformAiMembers";
 import { safeJsonParse } from "@/lib/requirements/singleChatOrchestrationOpenAI.shared";
 import { wrapReferenceContextForOrchestrationLlm } from "@/lib/project-knowledge/projectKnowledgeReferencePromptContext";
+import type { ProjectKnowledgeAgent } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
+import type { UserProjectKnowledgeAgentPromptContext } from "@/lib/project-knowledge/projectKnowledgeUserMemoryTypes";
+import {
+  orchestrationPromptContextForAgent,
+  specialistGroupProjectKnowledgeAgent,
+} from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
 import { runProposalAcceptedNextStageOpenAI, buildProposalAcceptedNextStageFallback } from "@/lib/requirements/singleChatProposalAcceptedNextStage";
 import {
   hashProposalResponse,
@@ -309,6 +315,9 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   readonly referencePromptContextBlock?: string;
   /** @deprecated alias of referencePromptContextBlock */
   readonly referencePlanningContextBlock?: string;
+  readonly userProjectKnowledgeMemoryByAgent?: Readonly<
+    Partial<Record<ProjectKnowledgeAgent, UserProjectKnowledgeAgentPromptContext>>
+  >;
   /** 인터뷰/오케스트레이션 QuickAction 칩(추천안 적용 등) */
   readonly quickActionLabel?: string | null;
   /** proposal 승인 신호(칩 라벨과 별도 전달 가능) */
@@ -334,10 +343,17 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const slotExpansionPhase = computeSlotExpansionPhaseFromState(input.baseState, input.definitions);
 
   const referencePromptContextBlock = resolveReferencePromptContextBlockForOrchestration(input);
+  const memoryByAgent = input.userProjectKnowledgeMemoryByAgent;
+  const plannerPromptContextBlock = orchestrationPromptContextForAgent({
+    referencePromptContextBlock,
+    userProjectKnowledgeMemoryByAgent: memoryByAgent,
+    agent: "planner",
+  });
+  const coordinatorPlannerContextBlock = plannerPromptContextBlock;
 
   const route = await runPlannerRouteTurnOpenAI({
     ...input,
-    referencePromptContextBlock,
+    referencePromptContextBlock: plannerPromptContextBlock,
     userMessage: userMessageForLlm,
     slotExpansionPhase,
   });
@@ -426,7 +442,11 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       groupLabel: "flow-analyst",
       projectName: input.projectName,
       projectDescription: input.projectDescription,
-      referencePromptContextBlock,
+      referencePromptContextBlock: orchestrationPromptContextForAgent({
+        referencePromptContextBlock,
+        userProjectKnowledgeMemoryByAgent: memoryByAgent,
+        agent: specialistGroupProjectKnowledgeAgent("flow-analyst"),
+      }),
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions,
@@ -452,7 +472,11 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       groupLabel: "feature-designer",
       projectName: input.projectName,
       projectDescription: input.projectDescription,
-      referencePromptContextBlock,
+      referencePromptContextBlock: orchestrationPromptContextForAgent({
+        referencePromptContextBlock,
+        userProjectKnowledgeMemoryByAgent: memoryByAgent,
+        agent: specialistGroupProjectKnowledgeAgent("feature-designer"),
+      }),
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions: input.definitions,
@@ -478,7 +502,11 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       groupLabel: "security-reviewer",
       projectName: input.projectName,
       projectDescription: input.projectDescription,
-      referencePromptContextBlock,
+      referencePromptContextBlock: orchestrationPromptContextForAgent({
+        referencePromptContextBlock,
+        userProjectKnowledgeMemoryByAgent: memoryByAgent,
+        agent: specialistGroupProjectKnowledgeAgent("security-reviewer"),
+      }),
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions,
@@ -506,7 +534,11 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
   const merge = await runPlannerMergeTurnOpenAI({
     projectName: input.projectName,
     projectDescription: input.projectDescription,
-    referencePromptContextBlock,
+    referencePromptContextBlock: orchestrationPromptContextForAgent({
+      referencePromptContextBlock,
+      userProjectKnowledgeMemoryByAgent: memoryByAgent,
+      agent: "reviewer",
+    }),
     userMessage: userMessageForLlm,
     dialogueExcerpt: input.dialogueExcerpt,
     state,
@@ -972,7 +1004,11 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
       groupLabel: "feature-designer",
       projectName: input.projectName,
       projectDescription: input.projectDescription,
-      referencePromptContextBlock,
+      referencePromptContextBlock: orchestrationPromptContextForAgent({
+        referencePromptContextBlock,
+        userProjectKnowledgeMemoryByAgent: memoryByAgent,
+        agent: "developer",
+      }),
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       definitions,
@@ -1114,7 +1150,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     const nextStage = await runProposalAcceptedNextStageOpenAI({
       projectName: input.projectName,
       projectDescription: input.projectDescription,
-      referencePromptContextBlock,
+      referencePromptContextBlock: coordinatorPlannerContextBlock,
       acceptedProposalSnapshot: snapshot,
       dialogueExcerpt: input.dialogueExcerpt,
       state,
@@ -1145,7 +1181,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
     const synthesis = await runCoordinatorSynthesisTurnOpenAI({
       projectName: input.projectName,
       projectDescription: input.projectDescription,
-      referencePromptContextBlock,
+      referencePromptContextBlock: coordinatorPlannerContextBlock,
       userMessage: userMessageForLlm,
       dialogueExcerpt: input.dialogueExcerpt,
       specialistDigest,
@@ -1183,7 +1219,7 @@ export async function runSelectiveMultiAgentOrchestrationOpenAI(input: {
           const retry = await runCoordinatorSynthesisTurnOpenAI({
             projectName: input.projectName,
             projectDescription: input.projectDescription,
-      referencePromptContextBlock,
+            referencePromptContextBlock: coordinatorPlannerContextBlock,
             userMessage: `${userMessageForLlm}\n\n[repeat-guard] 직전과 같은 의미로 다시 묻지 말고, proposal-first(예상 흐름·액터 초안)로 다른 세부를 제안하세요.`,
             synthesisRetryHint:
               "직전 출력이 반복·question-first였을 수 있음. 예상 흐름·액터 초안을 갱신하고 수정·선택만 요청.",

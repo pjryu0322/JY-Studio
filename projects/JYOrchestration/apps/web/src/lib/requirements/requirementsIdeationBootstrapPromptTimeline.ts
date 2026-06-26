@@ -258,6 +258,41 @@ export function coerceRequirementsPromptTimelineEntry(raw: unknown): Requirement
     r.referenceContextSource === "LEGACY_MISSING"
       ? { referenceContextSource: r.referenceContextSource }
       : {}),
+    ...(Array.isArray(r.userProjectKnowledgeMemoryContexts)
+      ? {
+          userProjectKnowledgeMemoryContexts: r.userProjectKnowledgeMemoryContexts
+            .map((row) => {
+              if (!row || typeof row !== "object") return null;
+              const o = row as Record<string, unknown>;
+              const agent = String(o.agent ?? "").trim();
+              if (
+                agent !== "planner" &&
+                agent !== "analyst" &&
+                agent !== "developer" &&
+                agent !== "reviewer" &&
+                agent !== "security"
+              ) {
+                return null;
+              }
+              const itemCount =
+                typeof o.itemCount === "number" && Number.isFinite(o.itemCount)
+                  ? Math.max(0, Math.floor(o.itemCount))
+                  : 0;
+              const sourceProjectCount =
+                typeof o.sourceProjectCount === "number" && Number.isFinite(o.sourceProjectCount)
+                  ? Math.max(0, Math.floor(o.sourceProjectCount))
+                  : 0;
+              return {
+                kind: "user_project_knowledge_memory_context" as const,
+                agent,
+                itemCount,
+                sourceProjectCount,
+                injected: Boolean(o.injected),
+              };
+            })
+            .filter((x): x is NonNullable<typeof x> => x != null),
+        }
+      : {}),
     ...(typeof r.roomId === "string" && r.roomId.trim() ? { roomId: r.roomId.trim().slice(0, 64) } : {}),
     ...(selectedAgents.length ? { selectedAgents } : {}),
     ...(typeof r.promptText === "string" ? { promptText: r.promptText } : {}),
@@ -859,6 +894,7 @@ export function buildSingleChatPromptTimelineEntry(params: {
   readonly referenceContextSourceSnapshotCount?: number;
   readonly referenceContextSelectionReason?: string;
   readonly referenceContextSource?: "MATERIALIZED" | "NONE" | "LEGACY_MISSING";
+  readonly userProjectKnowledgeMemoryContexts?: readonly import("@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection").UserProjectKnowledgeMemoryTimelineSummary[];
 }): RequirementsPromptTimelineEntry {
   const agents = selectedAgentsForTimeline(params.selectedAgents);
   return {
@@ -1125,6 +1161,9 @@ export function buildSingleChatPromptTimelineEntry(params: {
       ? { referenceContextSelectionReason: params.referenceContextSelectionReason.slice(0, 200) }
       : {}),
     ...(params.referenceContextSource ? { referenceContextSource: params.referenceContextSource } : {}),
+    ...(params.userProjectKnowledgeMemoryContexts?.length
+      ? { userProjectKnowledgeMemoryContexts: params.userProjectKnowledgeMemoryContexts }
+      : {}),
   };
 }
 

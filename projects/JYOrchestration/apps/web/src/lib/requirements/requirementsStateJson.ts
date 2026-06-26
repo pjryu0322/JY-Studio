@@ -1,4 +1,5 @@
 import type { FeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
+import type { UserProjectKnowledgeMemoryTimelineSummary } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
 import { parseFeaturePlanningSlotsArtifactV1 } from "@/lib/featurePlanning/featurePlanningSlotsArtifact";
 import type { SampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
 import { parseSampleDataSpecV1 } from "@/lib/featurePlanning/sampleDataSpecV1";
@@ -240,6 +241,7 @@ export type RequirementsPromptTimelineEntry = {
   referenceContextSourceSnapshotCount?: number;
   referenceContextSelectionReason?: string;
   referenceContextSource?: "MATERIALIZED" | "NONE" | "LEGACY_MISSING";
+  userProjectKnowledgeMemoryContexts?: readonly UserProjectKnowledgeMemoryTimelineSummary[];
   roomId?: string;
   /** 사용자 표시 절차 그룹(예: 서비스 기획) */
   stageGroup?: string;
