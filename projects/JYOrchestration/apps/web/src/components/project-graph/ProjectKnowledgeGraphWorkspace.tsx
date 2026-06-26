@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { uiTokens as t } from "@/components/ui/tokens";
 import { ProjectKnowledgeGraphTabs } from "@/components/project-graph/ProjectKnowledgeGraphTabs";
 import { ProjectKnowledgeGraphExplorerPane } from "@/components/project-graph/ProjectKnowledgeGraphExplorerPane";
 import { ProjectKnowledgeGraphActivityPane } from "@/components/project-graph/ProjectKnowledgeGraphActivityPane";
 import { ProjectKnowledgeGraphKnowledgeActivityPane } from "@/components/project-graph/ProjectKnowledgeGraphKnowledgeActivityPane";
+import { ProjectKnowledgeGraphUserNavBar } from "@/components/project-graph/ProjectKnowledgeGraphUserNavBar";
 import { useProjectKnowledgeGraphData } from "@/components/project-graph/hooks/useProjectKnowledgeGraphData";
 import { useProjectKnowledgeGraphExplorerState } from "@/components/project-graph/hooks/useProjectKnowledgeGraphExplorerState";
 import { useProjectKnowledgeGraphActivity } from "@/components/project-graph/hooks/useProjectKnowledgeGraphActivity";
@@ -13,6 +15,8 @@ import { useProjectKnowledgePipelineRuns } from "@/components/project-graph/hook
 import { useProjectKnowledgeRuntimeStatus } from "@/components/project-graph/hooks/useProjectKnowledgeRuntimeStatus";
 import type { ProjectKnowledgeGraphPane } from "@/components/project-graph/projectKnowledgeGraphWorkspaceTypes";
 import type { ProjectKnowledgeGraphLaunchContext } from "@/components/project-graph/projectKnowledgeGraphLaunchTypes";
+import { shouldShowKnowledgeGraphDiagnostics } from "@/components/project-graph/projectKnowledgeGraphUxMode";
+import { isPromptTimelineDebugClient } from "@/lib/debug/promptTimelineClientFlag";
 import {
   knowledgeGraphHighlightSourceMessageId,
   knowledgeGraphPaneFromViewQuery,
@@ -41,13 +45,16 @@ export function ProjectKnowledgeGraphWorkspace({
   const isModal = variant === "modal";
   const viewMode = clientReady ? String(searchParams?.get("view") ?? "").trim() : "";
   const [workspacePane, setWorkspacePane] = useState<ProjectKnowledgeGraphPane>("graph");
+  const showDiagnosticTabs = shouldShowKnowledgeGraphDiagnostics({
+    devMode: isPromptTimelineDebugClient(),
+  });
 
   useEffect(() => {
     if (!clientReady) return;
     setWorkspacePane(knowledgeGraphPaneFromViewQuery(viewMode));
   }, [clientReady, viewMode]);
 
-  const activityView = workspacePane === "activity";
+  const activityView = workspacePane === "activity" || workspacePane === "diagnostic";
   const syncOnEntry = knowledgeGraphSyncOnEntry({
     clientReady,
     isModal,
@@ -90,21 +97,35 @@ export function ProjectKnowledgeGraphWorkspace({
     reload: reloadRuntimeStatus,
   } = useProjectKnowledgeRuntimeStatus(projectId, clientReady);
 
+  const activityUserMode = !showDiagnosticTabs && workspacePane === "activity";
+
   useEffect(() => {
     if (!onLaunchContextChange) return;
     onLaunchContextChange({
       focusNodeId: explorer.focusNodeId,
       selectedNodeId: explorer.selectedNodeId,
-      activityView,
+      activityView: workspacePane === "activity",
       sourceMessageId: highlightSourceMessageId,
     });
   }, [
     onLaunchContextChange,
     explorer.focusNodeId,
     explorer.selectedNodeId,
-    activityView,
+    workspacePane,
     highlightSourceMessageId,
   ]);
+
+  const openActivityPane = () => {
+    setWorkspacePane("activity");
+    void reloadActivity(true);
+  };
+
+  const openKnowledgePane = () => {
+    setWorkspacePane("knowledge");
+    void reloadPipelineMonitor();
+  };
+
+  const goToGraph = () => setWorkspacePane("graph");
 
   return (
     <div
@@ -112,10 +133,25 @@ export function ProjectKnowledgeGraphWorkspace({
       style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
     >
       <ProjectKnowledgeGraphTabs
-        activePane={workspacePane}
+        activePane={workspacePane === "diagnostic" ? "activity" : workspacePane}
         onPaneChange={setWorkspacePane}
         onKnowledgePaneSelect={() => void reloadPipelineMonitor()}
+        showDiagnosticTabs={showDiagnosticTabs}
       />
+      {!showDiagnosticTabs && workspacePane === "graph" ? (
+        <div
+          data-testid="project-knowledge-graph-user-title"
+          style={{ fontSize: 15, fontWeight: 900, color: t.textPrimary, padding: "0 0 8px", flexShrink: 0 }}
+        >
+          프로젝트 구조
+        </div>
+      ) : null}
+      {!showDiagnosticTabs && workspacePane !== "graph" ? (
+        <ProjectKnowledgeGraphUserNavBar
+          pane={workspacePane}
+          onBack={goToGraph}
+        />
+      ) : null}
       {workspacePane === "knowledge" ? (
         <ProjectKnowledgeGraphKnowledgeActivityPane
           runs={pipelineRuns}
@@ -128,7 +164,33 @@ export function ProjectKnowledgeGraphWorkspace({
             explorer.openTraceForNode(nodeId);
             setWorkspacePane("graph");
           }}
+          userMode={!showDiagnosticTabs}
+          onShowDiagnostics={
+            !showDiagnosticTabs ? () => setWorkspacePane("diagnostic") : undefined
+          }
         />
+      ) : workspacePane === "diagnostic" ? (
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12 }}>
+          <ProjectKnowledgeGraphActivityPane
+            projectId={projectId}
+            summary={activitySummary}
+            loading={activityLoading}
+            error={activityError}
+            highlightSourceMessageId={highlightSourceMessageId}
+            userMode={false}
+            onRefresh={() => {
+              void reloadActivity(true);
+              void reload();
+            }}
+          />
+          <ProjectKnowledgeGraphKnowledgeActivityPane
+            runs={pipelineRuns}
+            loading={pipelineLoading}
+            error={pipelineError}
+            onRefresh={() => void reloadPipelineMonitor()}
+            userMode={false}
+          />
+        </div>
       ) : activityView ? (
         <ProjectKnowledgeGraphActivityPane
           projectId={projectId}
@@ -136,6 +198,7 @@ export function ProjectKnowledgeGraphWorkspace({
           loading={activityLoading}
           error={activityError}
           highlightSourceMessageId={highlightSourceMessageId}
+          userMode={activityUserMode}
           onRefresh={() => {
             void reloadActivity(true);
             void reload();
@@ -161,6 +224,12 @@ export function ProjectKnowledgeGraphWorkspace({
           runtimeStatusLoading={runtimeStatusLoading}
           runtimeStatusError={runtimeStatusError}
           onReloadRuntimeStatus={() => void reloadRuntimeStatus()}
+          onOpenChangeLog={openActivityPane}
+          onOpenKnowledgeLog={openKnowledgePane}
+          onOpenDiagnosticLog={
+            isPromptTimelineDebugClient() ? () => setWorkspacePane("diagnostic") : undefined
+          }
+          simplifiedUserUx={!showDiagnosticTabs}
         />
       )}
     </div>

@@ -1,3 +1,3 @@
-export type ProjectKnowledgeGraphPane = "graph" | "activity" | "knowledge";
+export type ProjectKnowledgeGraphPane = "graph" | "activity" | "knowledge" | "diagnostic";
 
 export type ProjectKnowledgeGraphWorkspaceVariant = "page" | "modal";

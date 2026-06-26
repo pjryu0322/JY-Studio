@@ -11,7 +11,10 @@ export function ProjectKnowledgeGraphKnowledgeActivityPane(p: {
   readonly traceNodeId?: string | null;
   readonly traceNodeTitle?: string | null;
   readonly onOpenTrace?: (nodeId: string) => void;
+  readonly userMode?: boolean;
+  readonly onShowDiagnostics?: () => void;
 }) {
+  const userMode = p.userMode !== false;
   return (
     <div
       data-testid="project-knowledge-graph-knowledge-activity-pane"
@@ -25,6 +28,8 @@ export function ProjectKnowledgeGraphKnowledgeActivityPane(p: {
         traceNodeId={p.traceNodeId}
         traceNodeTitle={p.traceNodeTitle}
         onOpenTrace={p.onOpenTrace}
+        displayMode={userMode ? "user" : "diagnostic"}
+        onShowDiagnostics={p.onShowDiagnostics}
       />
     </div>
   );

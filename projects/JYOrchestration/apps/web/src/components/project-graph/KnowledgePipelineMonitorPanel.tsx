@@ -180,7 +180,11 @@ export function KnowledgePipelineMonitorPanel(p: {
   readonly traceNodeId?: string | null;
   readonly traceNodeTitle?: string | null;
   readonly onOpenTrace?: (nodeId: string) => void;
+  readonly displayMode?: "user" | "diagnostic";
+  readonly onShowDiagnostics?: () => void;
 }) {
+  const displayMode = p.displayMode ?? "diagnostic";
+  const userMode = displayMode === "user";
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   const selectedRun = useMemo(() => {
@@ -207,13 +211,17 @@ export function KnowledgePipelineMonitorPanel(p: {
     <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "4px 2px 16px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 900, color: t.textPrimary }}>Knowledge Activity</div>
+          <div style={{ fontSize: 14, fontWeight: 900, color: t.textPrimary }}>
+            {userMode ? "생성 과정" : "Knowledge Activity"}
+          </div>
           <div style={{ fontSize: 12, color: t.textMuted, marginTop: 4 }}>
-            Graph 생성 파이프라인 실행 이력
+            {userMode ? "프로젝트 구조가 만들어진 순서를 요약합니다." : "Graph 생성 파이프라인 실행 이력"}
           </div>
-          <div style={{ marginTop: 8 }}>
-            <PersistenceBadge mode={headerPersistenceMode} />
-          </div>
+          {!userMode ? (
+            <div style={{ marginTop: 8 }}>
+              <PersistenceBadge mode={headerPersistenceMode} />
+            </div>
+          ) : null}
         </div>
         <button
           type="button"
@@ -287,9 +295,9 @@ export function KnowledgePipelineMonitorPanel(p: {
         </p>
       ) : null}
 
-      {selectedRun ? <RunSummary run={selectedRun} /> : null}
+      {selectedRun && !userMode ? <RunSummary run={selectedRun} /> : null}
 
-      {p.runs.length > 1 ? (
+      {!userMode && p.runs.length > 1 ? (
         <div>
           <div style={{ fontSize: 12, fontWeight: 800, color: t.textSecondary, marginBottom: 6 }}>
             최근 실행 ({p.runs.length})
@@ -365,7 +373,7 @@ export function KnowledgePipelineMonitorPanel(p: {
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: t.textPrimary }}>{item.title}</div>
-                  <StepStatusBadge status={stepStatus} />
+                  {!userMode ? <StepStatusBadge status={stepStatus} /> : null}
                 </div>
                 {item.summary ? (
                   <div style={{ fontSize: 12, color: t.textSecondary, marginTop: 4 }}>{item.summary}</div>
@@ -381,7 +389,28 @@ export function KnowledgePipelineMonitorPanel(p: {
         })}
       </ol>
 
-      {p.runs.length ? <OpsDiagnosticsSection runs={p.runs} /> : null}
+      {userMode && p.onShowDiagnostics ? (
+        <button
+          type="button"
+          data-testid="knowledge-pipeline-show-diagnostics"
+          onClick={p.onShowDiagnostics}
+          style={{
+            alignSelf: "flex-start",
+            minHeight: 36,
+            padding: "6px 12px",
+            borderRadius: 8,
+            border: `1px solid ${t.border}`,
+            background: t.bgPage,
+            fontSize: 12,
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          진단 정보 보기
+        </button>
+      ) : null}
+
+      {!userMode && p.runs.length ? <OpsDiagnosticsSection runs={p.runs} /> : null}
     </div>
   );
 }

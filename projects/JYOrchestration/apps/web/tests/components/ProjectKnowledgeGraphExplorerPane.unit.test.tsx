@@ -85,6 +85,7 @@ describe("ProjectKnowledgeGraphExplorerPane", () => {
         },
         runtimeStatusLoading: false,
         runtimeStatusError: null,
+        simplifiedUserUx: false,
       }),
     );
     expect(html).toContain("project-knowledge-graph-explorer-pane");

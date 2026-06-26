@@ -10,6 +10,7 @@ export function ProjectKnowledgeGraphActivityPane(p: {
   readonly error: string | null;
   readonly highlightSourceMessageId: string | null;
   readonly onRefresh: () => void;
+  readonly userMode?: boolean;
 }) {
   return (
     <div
@@ -23,6 +24,7 @@ export function ProjectKnowledgeGraphActivityPane(p: {
         error={p.error}
         highlightSourceMessageId={p.highlightSourceMessageId}
         showTimeline
+        userMode={p.userMode}
         onRefresh={p.onRefresh}
       />
     </div>

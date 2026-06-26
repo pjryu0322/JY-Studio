@@ -20,7 +20,7 @@ describe("ProjectKnowledgeRuntimeStatusCard", () => {
         error: null,
       }),
     );
-    expect(html).toContain("마지막 초기화:");
+    expect(html).toContain("초기화:");
     expect(html).toContain("기획 초기화 후");
   });
 
@@ -42,7 +42,7 @@ describe("ProjectKnowledgeRuntimeStatusCard", () => {
     expect(html).not.toContain("pipelineRunId");
   });
 
-  it("shows ready summary without technical ids", () => {
+  it("shows ready user summary without reference fields", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectKnowledgeRuntimeStatusCard, {
         summary: {
@@ -58,14 +58,36 @@ describe("ProjectKnowledgeRuntimeStatusCard", () => {
         error: null,
       }),
     );
-    expect(html).toContain("구조화 완료");
+    expect(html).toContain("현재 프로젝트 구조");
     expect(html).toContain("항목 12개 · 연결 10개");
-    expect(html).toContain("최근 변경: 추천안 승인");
-    expect(html).toContain("마지막 반영:");
-    expect(html).toContain("참조 준비: 참조 가능");
+    expect(html).toContain("최근 반영:");
+    expect(html).not.toContain("참조 준비");
+    expect(html).not.toContain("최근 변경:");
   });
 
-  it("shows partial reference hint", () => {
+  it("shows diagnostic ready summary with reference fields", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeRuntimeStatusCard, {
+        variant: "diagnostic",
+        summary: {
+          status: "READY",
+          statusLabel: "구조화 완료",
+          nodeCount: 12,
+          edgeCount: 10,
+          latestChangeTitle: "추천안 승인",
+          latestChangedAt: "2026-06-24T14:32:00.000Z",
+          referenceEligibilityLabel: "참조 가능",
+        },
+        loading: false,
+        error: null,
+      }),
+    );
+    expect(html).toContain("구조화 완료");
+    expect(html).toContain("참조 준비: 참조 가능");
+    expect(html).toContain("최근 변경: 추천안 승인");
+  });
+
+  it("shows partial reference hint in user mode as attention copy", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectKnowledgeRuntimeStatusCard, {
         summary: {
@@ -80,8 +102,9 @@ describe("ProjectKnowledgeRuntimeStatusCard", () => {
         error: null,
       }),
     );
-    expect(html).toContain("참조 준비: 일부 구조만 준비됨");
+    expect(html).toContain("프로젝트 구조를 더 정리해야 합니다.");
     expect(html).toContain("승인된 기능과 흐름이 더 필요할 수 있습니다.");
+    expect(html).not.toContain("참조 준비:");
   });
 
   it("shows error state", () => {

@@ -9,6 +9,7 @@ describe("ProjectKnowledgeGraphTabs", () => {
       createElement(ProjectKnowledgeGraphTabs, {
         activePane: "graph",
         onPaneChange: vi.fn(),
+        showDiagnosticTabs: true,
       }),
     );
     expect(html).toContain("project-knowledge-graph-tabs");
@@ -22,10 +23,21 @@ describe("ProjectKnowledgeGraphTabs", () => {
       createElement(ProjectKnowledgeGraphTabs, {
         activePane: "activity",
         onPaneChange: vi.fn(),
+        showDiagnosticTabs: true,
       }),
     );
     expect(html).toContain('aria-selected="true"');
     expect(html).toContain("project-knowledge-graph-tab-activity");
+  });
+
+  it("hides tabs in default user mode", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeGraphTabs, {
+        activePane: "graph",
+        onPaneChange: vi.fn(),
+      }),
+    );
+    expect(html).toBe("");
   });
 
   it("invokes knowledge pane callback on knowledge tab select", () => {
@@ -35,6 +47,7 @@ describe("ProjectKnowledgeGraphTabs", () => {
       activePane: "graph",
       onPaneChange,
       onKnowledgePaneSelect: onKnowledge,
+      showDiagnosticTabs: true,
     });
     expect(el.props.onKnowledgePaneSelect).toBe(onKnowledge);
   });

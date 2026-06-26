@@ -45,12 +45,18 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
   readonly runtimeStatusLoading?: boolean;
   readonly runtimeStatusError?: string | null;
   readonly onReloadRuntimeStatus?: () => void;
+  readonly onOpenChangeLog?: () => void;
+  readonly onOpenKnowledgeLog?: () => void;
+  readonly onOpenDiagnosticLog?: () => void;
+  readonly simplifiedUserUx?: boolean;
 }) {
   const { effectiveLayout } = useWorkspaceMode();
   const isMobileLayout = p.clientReady && effectiveLayout === "MOBILE";
   const isModal = p.variant === "modal";
   const ex = p.explorerState;
   const [replayOpen, setReplayOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const userUx = p.simplifiedUserUx !== false;
 
   const shell: CSSProperties = {
     ...requirementsWorkspaceMainRowStyle,
@@ -111,7 +117,42 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
         loading={Boolean(p.runtimeStatusLoading)}
         error={p.runtimeStatusError ?? null}
         onRefresh={p.onReloadRuntimeStatus}
+        variant={userUx ? "user" : "diagnostic"}
+        onOpenChangeLog={userUx ? p.onOpenChangeLog : undefined}
       />
+      {userUx ? (
+        <details data-testid="knowledge-graph-detail-logs" style={{ margin: "0 0 8px", fontSize: 12 }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              fontWeight: 800,
+              color: t.textSecondary,
+              minHeight: 36,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            상세 로그 보기
+          </summary>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+            {p.onOpenChangeLog ? (
+              <button type="button" onClick={p.onOpenChangeLog} style={btnStyle}>
+                변경 로그
+              </button>
+            ) : null}
+            {p.onOpenKnowledgeLog ? (
+              <button type="button" onClick={p.onOpenKnowledgeLog} style={btnStyle}>
+                생성 과정
+              </button>
+            ) : null}
+            {p.onOpenDiagnosticLog ? (
+              <button type="button" onClick={p.onOpenDiagnosticLog} style={btnStyle}>
+                개발자 진단
+              </button>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
       <div style={toolbar}>
         <div
           style={{
@@ -124,6 +165,19 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
         >
           {ex.selectedNode ? `현재 선택: ${ex.selectedNode.title}` : "선택된 노드 없음"}
         </div>
+        {userUx ? (
+          <button
+            type="button"
+            data-testid="knowledge-graph-filters-toggle"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((v) => !v)}
+            style={btnStyle}
+          >
+            필터
+          </button>
+        ) : null}
+        {(!userUx || filtersOpen) ? (
+          <>
         <input
           type="search"
           placeholder="노드·질문 검색 (예: 왜 생성되었는가?)"
@@ -163,6 +217,8 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
             </option>
           ))}
         </select>
+          </>
+        ) : null}
         {!ex.graphMobileUx ? (
           <button
             type="button"

@@ -21,7 +21,11 @@ export function ProjectKnowledgeGraphTabs(props: {
   readonly activePane: ProjectKnowledgeGraphPane;
   readonly onPaneChange: (pane: ProjectKnowledgeGraphPane) => void;
   readonly onKnowledgePaneSelect?: () => void;
+  readonly showDiagnosticTabs?: boolean;
 }) {
+  if (!props.showDiagnosticTabs) {
+    return null;
+  }
   return (
     <div
       role="tablist"

@@ -7,6 +7,7 @@ import type {
   ProjectGraphActivityFeedRow,
   ProjectGraphActivitySummary,
 } from "@/lib/project-graph/projectGraphActivityClient";
+import { toUserFriendlyGraphActivityLine } from "@/lib/project-graph/projectKnowledgeGraphActivityUserText";
 
 export function ProjectKnowledgeGraphActivityPanel(p: {
   readonly projectId: string;
@@ -15,10 +16,12 @@ export function ProjectKnowledgeGraphActivityPanel(p: {
   readonly error: string | null;
   readonly highlightSourceMessageId: string | null;
   readonly showTimeline?: boolean;
+  readonly userMode?: boolean;
   readonly onRefresh: () => void;
 }) {
   const s = p.summary;
   const showTimeline = p.showTimeline !== false;
+  const userMode = p.userMode !== false;
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
 
   const selectedRow = useMemo(
@@ -38,7 +41,9 @@ export function ProjectKnowledgeGraphActivityPanel(p: {
       }}
     >
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 10 }}>
-        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: t.textPrimary }}>Knowledge Graph 생성 현황</h2>
+        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: t.textPrimary }}>
+          {userMode ? "최근 반영 내용" : "Knowledge Graph 생성 현황"}
+        </h2>
         <button
           type="button"
           onClick={p.onRefresh}
@@ -59,33 +64,39 @@ export function ProjectKnowledgeGraphActivityPanel(p: {
       </div>
 
       <p style={{ margin: "0 0 10px", fontSize: 11, color: t.textMuted, lineHeight: 1.45 }}>
-        Activity 항목을 선택하면 요약과 생성 결과를 확인할 수 있습니다.
+        {userMode
+          ? "최근에 프로젝트 구조에 반영된 내용입니다."
+          : "Activity 항목을 선택하면 요약과 생성 결과를 확인할 수 있습니다."}
       </p>
 
       {p.error ? <p style={{ margin: "0 0 8px", color: "#b91c1c", fontSize: 12 }}>{p.error}</p> : null}
 
       {s ? (
         <>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
-              gap: 8,
-              marginBottom: 12,
-              fontSize: 12,
-            }}
-          >
-            <Stat label="Event" value={s.eventCount} />
-            <Stat label="Candidate" value={s.candidateCount} />
-            <Stat label="Approved Node" value={s.approvedNodeCount} />
-            <Stat label="Graph Edge" value={s.edgeCount} />
-            <Stat label="Conflict" value={s.conflictCount} />
-            <Stat label="마지막 동기화" value={s.lastSyncedAt ? formatSynced(s.lastSyncedAt) : "—"} text />
-          </div>
+          {!userMode ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
+                gap: 8,
+                marginBottom: 12,
+                fontSize: 12,
+              }}
+            >
+              <Stat label="Event" value={s.eventCount} />
+              <Stat label="Candidate" value={s.candidateCount} />
+              <Stat label="Approved Node" value={s.approvedNodeCount} />
+              <Stat label="Graph Edge" value={s.edgeCount} />
+              <Stat label="Conflict" value={s.conflictCount} />
+              <Stat label="마지막 동기화" value={s.lastSyncedAt ? formatSynced(s.lastSyncedAt) : "—"} text />
+            </div>
+          ) : null}
 
           {showTimeline ? (
             <>
-              <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6, color: t.textSecondary }}>Activity</div>
+              {!userMode ? (
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6, color: t.textSecondary }}>Activity</div>
+              ) : null}
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
                 {s.feed.length === 0 ? (
                   <li style={{ fontSize: 12, color: t.textMuted }}>표시할 활동이 없습니다.</li>
@@ -94,6 +105,7 @@ export function ProjectKnowledgeGraphActivityPanel(p: {
                     <ActivityFeedRowButton
                       key={row.id}
                       row={row}
+                      displayLine={userMode ? toUserFriendlyGraphActivityLine(row) : row.line}
                       selected={selectedFeedId === row.id}
                       highlight={
                         Boolean(
@@ -109,7 +121,55 @@ export function ProjectKnowledgeGraphActivityPanel(p: {
               </ul>
 
               {selectedRow ? (
-                <ActivityFeedDetail row={selectedRow} projectId={p.projectId.trim()} />
+                <ActivityFeedDetail row={selectedRow} projectId={p.projectId.trim()} userMode={userMode} />
+              ) : null}
+
+              {userMode ? (
+                <details data-testid="knowledge-activity-detail-log" style={{ marginTop: 12 }}>
+                  <summary
+                    style={{
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: t.textSecondary,
+                      minHeight: 36,
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    상세 로그 보기
+                  </summary>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
+                      gap: 8,
+                      marginTop: 10,
+                      fontSize: 12,
+                    }}
+                  >
+                    <Stat label="Event" value={s.eventCount} />
+                    <Stat label="Candidate" value={s.candidateCount} />
+                    <Stat label="Conflict" value={s.conflictCount} />
+                  </div>
+                  <ul
+                    style={{
+                      margin: "10px 0 0",
+                      padding: 0,
+                      listStyle: "none",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                    }}
+                  >
+                    {s.feed.map((row) => (
+                      <li key={`raw-${row.id}`} style={{ fontSize: 11, color: t.textMuted }}>
+                        <span style={{ marginRight: 8 }}>{row.at}</span>
+                        {row.line}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               ) : null}
             </>
           ) : null}
@@ -123,6 +183,7 @@ export function ProjectKnowledgeGraphActivityPanel(p: {
 
 function ActivityFeedRowButton(p: {
   readonly row: ProjectGraphActivityFeedRow;
+  readonly displayLine: string;
   readonly selected: boolean;
   readonly highlight: boolean;
   readonly onSelect: () => void;
@@ -146,26 +207,31 @@ function ActivityFeedRowButton(p: {
         }}
       >
         <span style={{ color: t.textMuted, marginRight: 8 }}>{p.row.at}</span>
-        {p.row.line}
+        {p.displayLine}
       </button>
     </li>
   );
 }
 
-function ActivityFeedDetail(p: { readonly row: ProjectGraphActivityFeedRow; readonly projectId: string }) {
+function ActivityFeedDetail(p: {
+  readonly row: ProjectGraphActivityFeedRow;
+  readonly projectId: string;
+  readonly userMode?: boolean;
+}) {
   const { row } = p;
   if (row.detail.view === "planning_snapshot" && row.detail.planningSnapshot) {
-    return <PlanningSnapshotActivityDetail row={row} snapshot={row.detail.planningSnapshot} />;
+    return <PlanningSnapshotActivityDetail row={row} snapshot={row.detail.planningSnapshot} userMode={p.userMode} />;
   }
   if (row.detail.view === "group_summary" && row.detail.groupSummary) {
     return <GroupSummaryActivityDetail row={row} projectId={p.projectId} />;
   }
-  return <DefaultActivityFeedDetail row={row} />;
+  return <DefaultActivityFeedDetail row={row} userMode={p.userMode} />;
 }
 
 function PlanningSnapshotActivityDetail(p: {
   readonly row: ProjectGraphActivityFeedRow;
   readonly snapshot: NonNullable<ProjectGraphActivityFeedRow["detail"]["planningSnapshot"]>;
+  readonly userMode?: boolean;
 }) {
   const snap = p.snapshot;
   const counts = snap.candidateCountsByType;
@@ -222,7 +288,7 @@ function PlanningSnapshotActivityDetail(p: {
           ) : null}
         </div>
 
-        <DeveloperDetailsAccordion row={p.row} />
+        {!p.userMode ? <DeveloperDetailsAccordion row={p.row} /> : null}
       </div>
     </div>
   );
@@ -245,21 +311,28 @@ function GroupSummaryActivityDetail(p: { readonly row: ProjectGraphActivityFeedR
   );
 }
 
-function DefaultActivityFeedDetail({ row }: { readonly row: ProjectGraphActivityFeedRow }) {
+function DefaultActivityFeedDetail({
+  row,
+  userMode,
+}: {
+  readonly row: ProjectGraphActivityFeedRow;
+  readonly userMode?: boolean;
+}) {
   const d = row.detail;
+  const headline = userMode ? toUserFriendlyGraphActivityLine(row) : row.line;
   return (
     <div data-testid="project-knowledge-graph-activity-detail" style={detailShellStyle}>
-      <div style={{ fontWeight: 900, marginBottom: 8, color: t.textPrimary }}>{row.line}</div>
+      <div style={{ fontWeight: 900, marginBottom: 8, color: t.textPrimary }}>{headline}</div>
       {d.title ? <p style={{ margin: "0 0 6px", color: t.textPrimary }}>{d.title}</p> : null}
       {d.summary ? (
         <p style={{ margin: "0 0 8px", color: t.textSecondary, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{d.summary}</p>
       ) : null}
-      {d.lifecycleStatus ? (
+      {d.lifecycleStatus && !userMode ? (
         <p style={{ margin: 0, fontSize: 12, color: t.textMuted }}>
           상태: <strong>{d.lifecycleStatus}</strong>
         </p>
       ) : null}
-      <DeveloperDetailsAccordion row={row} />
+      {!userMode ? <DeveloperDetailsAccordion row={row} /> : null}
     </div>
   );
 }

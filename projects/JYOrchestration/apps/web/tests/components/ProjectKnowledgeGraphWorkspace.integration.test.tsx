@@ -103,17 +103,24 @@ vi.mock("@/components/project-graph/hooks/useProjectKnowledgeRuntimeStatus", () 
   }),
 }));
 
+vi.mock("@/lib/debug/promptTimelineClientFlag", () => ({
+  isPromptTimelineDebugClient: () => false,
+}));
+
 import { ProjectKnowledgeGraphWorkspace } from "@/components/project-graph/ProjectKnowledgeGraphWorkspace";
 
 describe("ProjectKnowledgeGraphWorkspace integration", () => {
-  it("renders workspace shell and graph tab by default markup", () => {
+  it("renders workspace shell and user-facing graph summary by default", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectKnowledgeGraphWorkspace, { projectId: "p1", variant: "page" }),
     );
     expect(html).toContain("project-knowledge-graph-workspace");
-    expect(html).toContain("project-knowledge-graph-tab-graph");
+    expect(html).toContain("project-knowledge-graph-user-title");
+    expect(html).toContain("프로젝트 구조");
     expect(html).toContain("knowledge-runtime-status-card");
-    expect(html).toContain("구조화 완료");
+    expect(html).toContain("현재 프로젝트 구조");
+    expect(html).not.toContain("project-knowledge-graph-tab-activity");
+    expect(html).not.toContain("Knowledge Activity");
   });
 
   it("view=activity maps to activity pane query helper", () => {
