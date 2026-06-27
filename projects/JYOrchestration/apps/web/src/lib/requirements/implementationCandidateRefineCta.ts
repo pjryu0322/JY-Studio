@@ -2,7 +2,6 @@ import {
   IMPLEMENTATION_STAGE_NAVIGATE_LABEL,
   PLANNING_DATABASE_SETUP_LABEL,
 } from "@/lib/requirements/implementationUxLabels";
-import type { ImplementationCandidateRefineResultItem } from "@/lib/requirements/implementationCandidateRefineResult";
 
 export const IMPLEMENTATION_SEED_CONFIRM_CTA_LABEL = "Implementation Seed 확정" as const;
 
@@ -104,21 +103,8 @@ export function implementationSeedConfirmResultChips(input: {
 
 export function isImplementationCandidateRefineApplyResultCtaLabel(label: string): boolean {
   const t = String(label ?? "").trim();
-  if (t === IMPLEMENTATION_STAGE_NAVIGATE_LABEL) return true;
+  if (t === IMPLEMENTATION_STAGE_NAVIGATE_LABEL || t === IMPLEMENTATION_SEED_CONFIRM_CTA_LABEL) {
+    return true;
+  }
   return implementationCandidateRefineApplyResultChips().includes(t);
-}
-
-export function buildNeedsConfirmationOnlyViewMessage(
-  items: readonly ImplementationCandidateRefineResultItem[],
-): string | null {
-  const pending = items.filter((i) => i.nextActionLabel === "추가 확인");
-  if (!pending.length) return null;
-  const lines = pending.map((i) => `- ${i.label}: ${i.refinedValue}`);
-  return [
-    "추가 확인이 필요한 기획정보 후보 항목입니다.",
-    "",
-    ...lines,
-    "",
-    "항목별 수정 또는 다시 검토를 선택해 주세요.",
-  ].join("\n");
 }
