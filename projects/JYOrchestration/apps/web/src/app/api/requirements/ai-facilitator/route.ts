@@ -57,12 +57,14 @@ import { resolveImplementationCandidateGapKeys } from "@/lib/requirements/implem
 import {
   IMPLEMENTATION_CANDIDATE_REFINE_APPLY_RESULT_INTERNAL_TYPE,
   IMPLEMENTATION_CANDIDATE_REFINE_RESULT_INTERNAL_TYPE,
+  IMPLEMENTATION_SEED_CONFIRM_RESULT_INTERNAL_TYPE,
   mergeImplementationCandidateRefineRequest,
   refineRequestKind,
   type ImplementationCandidateRefineRequestWire,
 } from "@/lib/requirements/implementationCandidateRefineRequest";
 import {
   runImplementationCandidateRefineApplyTurn,
+  runImplementationCandidateRefineConfirmSeedTurn,
   runImplementationCandidateRefineTurn,
 } from "@/lib/requirements/implementationCandidateRefineResult";
 import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
@@ -403,7 +405,12 @@ export async function POST(request: NextRequest) {
       const refineWire: ImplementationCandidateRefineRequestWire | null = refineWireRaw?.mode
         ? {
             mode: refineWireRaw.mode,
-            kind: refineWireRaw.kind === "apply" ? "apply" : "review",
+            kind:
+              refineWireRaw.kind === "apply"
+                ? "apply"
+                : refineWireRaw.kind === "confirm_seed"
+                  ? "confirm_seed"
+                  : "review",
             keys: (refineWireRaw.keys ?? []).map((k) => String(k).trim()).filter(Boolean) as ImplementationSeedGapKey[],
             labels: (refineWireRaw.labels ?? []).map((l) => String(l).trim()).filter(Boolean),
             requestedAt: String(refineWireRaw.requestedAt ?? nowIso),
@@ -427,6 +434,7 @@ export async function POST(request: NextRequest) {
             orchestration: baseState,
             definitions: defs,
             autoCandidateGenerated: true,
+            nowIso,
           });
           const facilitatorPromptTrace = buildSingleChatPromptTimelineEntry({
             action: "implementation_candidate_refine_apply",
@@ -455,6 +463,47 @@ export async function POST(request: NextRequest) {
                   remainingKeys: [...applyTurn.remainingKeys],
                   needsConfirmationKeys: [...applyTurn.needsConfirmationKeys],
                   summary: applyTurn.summary,
+                },
+              },
+            },
+          });
+        }
+
+        if (kind === "confirm_seed") {
+          const confirmKeys =
+            refineRequest.keys.length > 0 ? refineRequest.keys : fallbackCandidateKeys;
+          const confirmTurn = runImplementationCandidateRefineConfirmSeedTurn({
+            keys: confirmKeys,
+            orchestration: baseState,
+            definitions: defs,
+            nowIso,
+          });
+          const facilitatorPromptTrace = buildSingleChatPromptTimelineEntry({
+            action: "implementation_seed_confirmed",
+            source: "internal",
+            timelineStage: orchCtxForTurn.timelineStage,
+            stageGroup: orchCtxForTurn.stageGroup,
+            workspaceScreenKey: orchCtxForTurn.workspaceScreenKey,
+            selectedAgents: orchCtxForTurn.selectedAgents,
+            responseText: confirmTurn.assistantMessage.slice(0, 800),
+            routingDecision: "implementation_seed_confirm",
+            createdAtIso: nowIso,
+          });
+          return NextResponse.json({
+            success: true,
+            data: {
+              reply: confirmTurn.assistantMessage,
+              interviewSuggestions: [...confirmTurn.interviewSuggestions],
+              singleChatOrchestrationV1: confirmTurn.nextState,
+              promptTrace: facilitatorPromptTrace,
+              messageMeta: {
+                internalType: IMPLEMENTATION_SEED_CONFIRM_RESULT_INTERNAL_TYPE,
+                implementationSeedConfirmResult: {
+                  confirmedKeys: [...confirmTurn.confirmedKeys],
+                  remainingRequiredKeys: [...confirmTurn.remainingRequiredKeys],
+                  warningKeys: [...confirmTurn.warningKeys],
+                  seedReady: confirmTurn.seedReady,
+                  summary: confirmTurn.summary,
                 },
               },
             },

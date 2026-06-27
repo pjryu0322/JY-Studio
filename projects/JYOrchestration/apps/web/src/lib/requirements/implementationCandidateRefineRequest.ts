@@ -11,9 +11,12 @@ export const IMPLEMENTATION_CANDIDATE_REFINE_RESULT_INTERNAL_TYPE =
 export const IMPLEMENTATION_CANDIDATE_REFINE_APPLY_RESULT_INTERNAL_TYPE =
   "implementation_candidate_refine_apply_result" as const;
 
+export const IMPLEMENTATION_SEED_CONFIRM_RESULT_INTERNAL_TYPE =
+  "implementation_seed_confirm_result" as const;
+
 export type ImplementationCandidateRefineMode = "all" | "selected";
 
-export type ImplementationCandidateRefineRequestKind = "review" | "apply";
+export type ImplementationCandidateRefineRequestKind = "review" | "apply" | "confirm_seed";
 
 export type ImplementationCandidateRefineRequestWire = Readonly<{
   readonly mode: ImplementationCandidateRefineMode;
@@ -33,10 +36,20 @@ const APPLY_SELECTED_PREFIXES = [
 
 const REVIEW_SELECTED_PREFIX = "다음 기획정보 후보 항목을 보완해 주세요:";
 
+const CONFIRM_SEED_PREFIXES = [
+  "Implementation Seed 확정",
+  "구현 Seed 확정",
+  "Seed 확정",
+  "현재 안으로 Seed 확정",
+  "확정하고 구현단계로 이동",
+] as const;
+
 export function refineRequestKind(
   wire: ImplementationCandidateRefineRequestWire,
 ): ImplementationCandidateRefineRequestKind {
-  return wire.kind === "apply" ? "apply" : "review";
+  if (wire.kind === "apply") return "apply";
+  if (wire.kind === "confirm_seed") return "confirm_seed";
+  return "review";
 }
 
 export function isImplementationCandidateRefineApplyPrompt(text: string): boolean {
@@ -54,8 +67,32 @@ export function isImplementationCandidateRefineReviewPrompt(text: string): boole
   return false;
 }
 
+export function isImplementationCandidateRefineConfirmSeedPrompt(text: string): boolean {
+  const t = String(text ?? "").trim();
+  if (!t) return false;
+  return CONFIRM_SEED_PREFIXES.some((p) => t === p || t.startsWith(p));
+}
+
+export function parseImplementationCandidateRefineConfirmSeedFromUserMessage(
+  text: string,
+): ImplementationCandidateRefineRequestWire | null {
+  const t = String(text ?? "").trim();
+  if (!isImplementationCandidateRefineConfirmSeedPrompt(t)) return null;
+  return {
+    mode: "all",
+    kind: "confirm_seed",
+    keys: [],
+    labels: [],
+    requestedAt: new Date().toISOString(),
+  };
+}
+
 export function isImplementationCandidateRefinePrompt(text: string): boolean {
-  return isImplementationCandidateRefineApplyPrompt(text) || isImplementationCandidateRefineReviewPrompt(text);
+  return (
+    isImplementationCandidateRefineApplyPrompt(text) ||
+    isImplementationCandidateRefineReviewPrompt(text) ||
+    isImplementationCandidateRefineConfirmSeedPrompt(text)
+  );
 }
 
 function parseLabelsFromTail(tail: string): { readonly labels: string[]; readonly keys: ImplementationSeedGapKey[] } {
@@ -115,6 +152,7 @@ export function parseImplementationCandidateRefineFromUserMessage(
   text: string,
 ): ImplementationCandidateRefineRequestWire | null {
   return (
+    parseImplementationCandidateRefineConfirmSeedFromUserMessage(text) ??
     parseImplementationCandidateRefineApplyFromUserMessage(text) ??
     parseImplementationCandidateRefineReviewFromUserMessage(text)
   );
@@ -188,6 +226,9 @@ export function buildRefineSelectedImplementationCandidatesPromptFromWire(
     }
     const list = wire.labels.join(", ");
     return `${APPLY_SELECTED_PREFIXES[0]} ${list}`;
+  }
+  if (wire.kind === "confirm_seed") {
+    return CONFIRM_SEED_PREFIXES[0];
   }
   if (wire.mode === "all") return REFINE_ALL_IMPLEMENTATION_CANDIDATES_PROMPT;
   return buildRefineSelectedImplementationCandidatesPrompt(wire.labels);

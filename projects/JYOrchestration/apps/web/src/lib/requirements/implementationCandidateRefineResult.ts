@@ -3,10 +3,12 @@ import {
   implementationCandidateLabelForKey,
   resolveImplementationCandidateGapKeys,
 } from "@/lib/requirements/implementationCandidateLabels";
-import { implementationCandidateRefineApplyResultChips } from "@/lib/requirements/implementationCandidateRefineCta";
+import { implementationCandidateRefineApplyResultChips, implementationSeedConfirmResultChips } from "@/lib/requirements/implementationCandidateRefineCta";
 import type { ImplementationCandidateRefineMode } from "@/lib/requirements/implementationCandidateRefineRequest";
 import {
+  evaluateImplementationSeedReadiness,
   IMPLEMENTATION_SEED_RECOMMENDED_GAP_KEYS,
+  IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS,
   IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP,
   resolveImplementationSeedSlotSnapshots,
   type ImplementationSeedGapKey,
@@ -322,9 +324,14 @@ export function formatImplementationCandidateRefineApplyResultMessage(input: {
     ...(appliedLines.length ? appliedLines : ["- (적용된 항목 없음)"]),
     "",
     "아직 검토·확정이 필요한 항목:",
-    ...(remainingLines.length ? remainingLines : ["- (별도 검토 항목 없음)"]),
+    ...(remainingLines.length
+      ? remainingLines
+      : [
+          "- 별도 검토 항목은 없습니다.",
+          "- 다음 단계로 Implementation Seed를 확정해 주세요.",
+        ]),
     "",
-    "보완안 partial 반영은 구현 Seed 확정을 대체하지 않습니다. 구현 작업안 초안 생성 전 Seed 후보를 확정해 주세요.",
+    "보완안 partial 반영은 구현 Seed 확정을 대체하지 않습니다. 다음 작업에서 Implementation Seed 확정을 선택해 주세요.",
     "",
     "다음 작업을 선택해 주세요.",
   ].join("\n");
@@ -336,6 +343,7 @@ export function runImplementationCandidateRefineApplyTurn(input: {
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly autoCandidateGenerated?: boolean;
+  readonly nowIso: string;
 }): Readonly<{
   readonly assistantMessage: string;
   readonly interviewSuggestions: readonly string[];
@@ -345,8 +353,24 @@ export function runImplementationCandidateRefineApplyTurn(input: {
   readonly summary: ImplementationCandidateRefineApplySummary;
   readonly nextState: RequirementsSingleChatOrchestrationStateV1;
 }> {
-  const allKeys = resolveImplementationCandidateGapKeys({
+  const patchedOrchestration = buildApplyImplementationCandidateRefinePatches({
+    keys:
+      input.appliedKeys.length > 0
+        ? input.appliedKeys
+        : input.mode === "all"
+          ? resolveImplementationCandidateGapKeys({
+              orchestration: input.orchestration,
+              definitions: input.definitions,
+              autoCandidateGenerated: input.autoCandidateGenerated ?? true,
+            })
+          : [],
     orchestration: input.orchestration,
+    definitions: input.definitions,
+    nowIso: input.nowIso,
+  });
+
+  const allKeys = resolveImplementationCandidateGapKeys({
+    orchestration: patchedOrchestration,
     definitions: input.definitions,
     autoCandidateGenerated: input.autoCandidateGenerated ?? true,
   });
@@ -361,7 +385,7 @@ export function runImplementationCandidateRefineApplyTurn(input: {
   const appliedSet = new Set(appliedKeysResolved);
   const reviewItems = buildImplementationCandidateRefineResultItems({
     keys: allKeys,
-    orchestration: input.orchestration,
+    orchestration: patchedOrchestration,
     definitions: input.definitions,
   });
 
@@ -375,7 +399,7 @@ export function runImplementationCandidateRefineApplyTurn(input: {
   for (const gapKey of appliedKeysResolved) {
     const suffix = IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP[gapKey];
     const slotKey = findOrchestrationSlotKeysBySuffix(input.definitions, suffix)[0];
-    const row = slotKey ? input.orchestration.slots[slotKey] : null;
+    const row = slotKey ? patchedOrchestration.slots[slotKey] : null;
     const status = String(row?.status ?? "").trim().toLowerCase();
     if (status === "partial" || row?.staleReason === "implementation_candidate_refine_applied") {
       appliedCount += 1;
@@ -392,6 +416,11 @@ export function runImplementationCandidateRefineApplyTurn(input: {
     needsConfirmationCount: needsConfirmationRemaining,
   };
 
+  const seedGate = evaluateImplementationSeedReadiness({
+    orchestration: patchedOrchestration,
+    definitions: input.definitions,
+  });
+
   const assistantMessage = formatImplementationCandidateRefineApplyResultMessage({
     mode: input.mode,
     appliedKeys: appliedKeysResolved,
@@ -401,11 +430,201 @@ export function runImplementationCandidateRefineApplyTurn(input: {
 
   return {
     assistantMessage,
-    interviewSuggestions: implementationCandidateRefineApplyResultChips(),
+    interviewSuggestions: implementationCandidateRefineApplyResultChips({ seedReady: seedGate.ready }),
     appliedKeys: appliedKeysResolved,
     remainingKeys,
     needsConfirmationKeys,
     summary,
-    nextState: input.orchestration,
+    nextState: patchedOrchestration,
+  };
+}
+
+export function buildConfirmImplementationSeedCandidatePatches(input: {
+  readonly keys: readonly ImplementationSeedGapKey[];
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly nowIso: string;
+}): Readonly<{
+  readonly state: RequirementsSingleChatOrchestrationStateV1;
+  readonly confirmedKeys: readonly ImplementationSeedGapKey[];
+}> {
+  const targetKeys =
+    input.keys.length > 0 ? [...input.keys] : [...IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS];
+  const patches: SlotPatchInput[] = [];
+  const confirmedKeys: ImplementationSeedGapKey[] = [];
+
+  for (const gapKey of targetKeys) {
+    const suffix = IMPLEMENTATION_SEED_SLOT_SUFFIX_BY_GAP[gapKey];
+    const slotKey = findOrchestrationSlotKeysBySuffix(input.definitions, suffix)[0];
+    if (!slotKey) continue;
+    const row = input.orchestration.slots[slotKey];
+    if (!row) continue;
+    const value = String(row.value ?? "").trim();
+    if (!value) continue;
+    const status = String(row.status ?? "").trim().toLowerCase();
+    if (status !== "candidate" && status !== "partial" && status !== "confirmed") continue;
+    if (status === "confirmed") {
+      confirmedKeys.push(gapKey);
+      continue;
+    }
+    patches.push({
+      slotKey,
+      status: "confirmed",
+      value,
+      staleReason: "implementation_seed_confirmed",
+    });
+    confirmedKeys.push(gapKey);
+  }
+
+  if (!patches.length) {
+    return { state: input.orchestration, confirmedKeys };
+  }
+  const state = mergeOrchestrationSlotPatches({
+    base: input.orchestration,
+    patches,
+    nowIso: input.nowIso,
+    definitions: input.definitions,
+  });
+  return { state, confirmedKeys };
+}
+
+export type ImplementationSeedConfirmSummary = Readonly<{
+  readonly targetCount: number;
+  readonly confirmedCount: number;
+  readonly remainingRequiredKeys: readonly ImplementationSeedGapKey[];
+  readonly warningKeys: readonly ImplementationSeedGapKey[];
+  readonly seedReady: boolean;
+}>;
+
+export function formatImplementationSeedConfirmResultMessage(input: {
+  readonly confirmedKeys: readonly ImplementationSeedGapKey[];
+  readonly remainingRequiredKeys: readonly ImplementationSeedGapKey[];
+  readonly warningKeys: readonly ImplementationSeedGapKey[];
+  readonly seedReady: boolean;
+  readonly dbReady?: boolean | null;
+  readonly hasNeedsConfirmationWarnings?: boolean;
+}): string {
+  const confirmedLines = input.confirmedKeys.map(
+    (key) => `- ${implementationCandidateLabelForKey(key)}`,
+  );
+  const warningLines = input.warningKeys.map(
+    (key) => `- ${implementationCandidateLabelForKey(key)}`,
+  );
+  const remainingLines = input.remainingRequiredKeys.map(
+    (key) => `- ${implementationCandidateLabelForKey(key)}`,
+  );
+
+  const seedStatusLine = input.seedReady
+    ? "- 필수 항목: 충족"
+    : `- 필수 항목: 미충족 (${remainingLines.length}개 부족)`;
+
+  const moveLines: string[] = ["구현단계 이동 가능 여부:"];
+  if (input.seedReady) {
+    moveLines.push("- Seed: 준비됨");
+  } else {
+    moveLines.push("- Seed: 확정 필요 — 구현단계 이동 불가");
+  }
+  if (input.dbReady === false) {
+    moveLines.push("- DB: 준비 필요");
+    moveLines.push("");
+    moveLines.push("프로젝트 DB 설정을 확인한 뒤 구현단계로 이동할 수 있습니다.");
+  } else if (input.dbReady === true) {
+    moveLines.push("- DB: 준비됨");
+  }
+
+  const riskNote =
+    input.hasNeedsConfirmationWarnings && input.seedReady
+      ? [
+          "",
+          "일부 항목은 추가 확인 권장 상태입니다. 현재 안으로 확정하면 구현 작업안 생성에 사용됩니다.",
+        ]
+      : [];
+
+  return [
+    "Implementation Seed 확정 결과입니다.",
+    "",
+    "확정 항목:",
+    ...(confirmedLines.length ? confirmedLines : ["- (확정된 항목 없음)"]),
+    "",
+    "Seed 상태:",
+    seedStatusLine,
+    ...(warningLines.length
+      ? ["- 추가 확인 권장:", ...warningLines]
+      : []),
+    "",
+    ...moveLines,
+    ...riskNote,
+    "",
+    "다음 작업을 선택해 주세요.",
+  ].join("\n");
+}
+
+export function runImplementationCandidateRefineConfirmSeedTurn(input: {
+  readonly keys: readonly ImplementationSeedGapKey[];
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly nowIso: string;
+  readonly dbReady?: boolean | null;
+}): Readonly<{
+  readonly assistantMessage: string;
+  readonly interviewSuggestions: readonly string[];
+  readonly confirmedKeys: readonly ImplementationSeedGapKey[];
+  readonly remainingRequiredKeys: readonly ImplementationSeedGapKey[];
+  readonly warningKeys: readonly ImplementationSeedGapKey[];
+  readonly summary: ImplementationSeedConfirmSummary;
+  readonly nextState: RequirementsSingleChatOrchestrationStateV1;
+  readonly seedReady: boolean;
+}> {
+  const { state: nextState, confirmedKeys } = buildConfirmImplementationSeedCandidatePatches({
+    keys: input.keys,
+    orchestration: input.orchestration,
+    definitions: input.definitions,
+    nowIso: input.nowIso,
+  });
+
+  const seedGate = evaluateImplementationSeedReadiness({
+    orchestration: nextState,
+    definitions: input.definitions,
+  });
+
+  const reviewItems = buildImplementationCandidateRefineResultItems({
+    keys: [...IMPLEMENTATION_SEED_RECOMMENDED_GAP_KEYS],
+    orchestration: nextState,
+    definitions: input.definitions,
+  });
+  const warningKeys = reviewItems
+    .filter((i) => i.nextActionLabel === "추가 확인")
+    .map((i) => i.key);
+  const hasNeedsConfirmationWarnings = warningKeys.length > 0;
+
+  const summary: ImplementationSeedConfirmSummary = {
+    targetCount: input.keys.length || IMPLEMENTATION_SEED_REQUIRED_GAP_KEYS.length,
+    confirmedCount: confirmedKeys.length,
+    remainingRequiredKeys: seedGate.missing,
+    warningKeys,
+    seedReady: seedGate.ready,
+  };
+
+  const assistantMessage = formatImplementationSeedConfirmResultMessage({
+    confirmedKeys,
+    remainingRequiredKeys: seedGate.missing,
+    warningKeys,
+    seedReady: seedGate.ready,
+    dbReady: input.dbReady,
+    hasNeedsConfirmationWarnings,
+  });
+
+  return {
+    assistantMessage,
+    interviewSuggestions: implementationSeedConfirmResultChips({
+      seedReady: seedGate.ready,
+      dbReady: input.dbReady,
+    }),
+    confirmedKeys,
+    remainingRequiredKeys: seedGate.missing,
+    warningKeys,
+    summary,
+    nextState,
+    seedReady: seedGate.ready,
   };
 }

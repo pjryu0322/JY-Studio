@@ -269,7 +269,10 @@ import {
 } from "@/lib/requirements/implementationUxLabels";
 import { ProjectExecutionEnvironmentModal } from "@/components/project/ProjectExecutionEnvironmentModal";
 import type { PrototypeEnvModalRowKey } from "@/lib/project/prototypeEnvSettingsModalRows";
-import { buildApplyImplementationCandidateRefinePatches } from "@/lib/requirements/implementationCandidateRefineResult";
+import {
+  buildApplyImplementationCandidateRefinePatches,
+} from "@/lib/requirements/implementationCandidateRefineResult";
+import { IMPLEMENTATION_SEED_CONFIRM_CTA_LABEL } from "@/lib/requirements/implementationCandidateRefineCta";
 import type { ImplementationSeedGapKey } from "@/lib/requirements/implementationSeed";
 import { ImplementationCandidateRefineDrawer } from "@/components/requirements/ImplementationCandidateRefineDrawer";
 import { buildSlotCandidatePatchesFromFastPlanDrafts } from "@/lib/requirements/fastPlanDraftSlotPatch";
@@ -3370,6 +3373,17 @@ export function RequirementsWorkspace({
       const reviewMeta = latestImplementationCandidateRefineMeta;
       const applyMeta = latestImplementationCandidateRefineApplyMeta;
       const orch = orchestrationAlignedState ?? orchestrationUiState;
+      if (action === "confirm_seed") {
+        implementationCandidateRefineRequestRef.current = {
+          mode: "all",
+          kind: "confirm_seed",
+          keys: [],
+          labels: [],
+          requestedAt: new Date().toISOString(),
+        };
+        insertComposerPrompt(IMPLEMENTATION_SEED_CONFIRM_CTA_LABEL);
+        return;
+      }
       if (action === "review_later") {
         setImplementationRefineDrawerOpen(false);
         setImplementationRefineFilterNeedsConfirmationOnly(false);

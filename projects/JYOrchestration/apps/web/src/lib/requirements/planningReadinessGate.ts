@@ -67,6 +67,154 @@ export type ImplementationSeedGateReadiness = ImplementationSeedReadiness & Read
   readonly reason: string | null;
 }>;
 
+export type GenerationReadinessBlockerKind =
+  | "implementation_seed"
+  | "database"
+  | "artifact"
+  | "planning_slot";
+
+export type GenerationReadinessBlocker = Readonly<{
+  readonly kind: GenerationReadinessBlockerKind;
+  readonly status: "blocked" | "ready" | "warning";
+  readonly title: string;
+  readonly message: string;
+  readonly actionLabel?: string;
+  readonly actionKind?:
+    | "CONFIRM_IMPLEMENTATION_SEED"
+    | "OPEN_PLANNING_DATABASE_SETTINGS"
+    | "VIEW_MISSING_ITEMS";
+}>;
+
+export function buildImplementationStartReadinessBlockers(input: {
+  readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
+  readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
+  readonly projectArtifacts?: readonly ProjectArtifact[] | null;
+  readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
+  readonly databaseReady?: boolean | null;
+  readonly databaseMessage?: string | null;
+}): readonly GenerationReadinessBlocker[] {
+  const slots = evaluatePlanningToGenerationReadiness(input);
+  const requiredTypes = resolveRequiredImplementationArtifactTypes(input);
+  const artifacts = evaluateRequiredImplementationArtifacts({
+    projectArtifacts: input.projectArtifacts,
+    requiredTypes,
+    artifactOrchestrationV1: input.artifactOrchestrationV1,
+  });
+  const seedReadiness = evaluateImplementationSeedReadiness({
+    orchestration: input.orchestration,
+    definitions: input.definitions,
+  });
+
+  const blockers: GenerationReadinessBlocker[] = [];
+
+  if (!slots.ready) {
+    blockers.push({
+      kind: "planning_slot",
+      status: "blocked",
+      title: "기획 필수 슬롯",
+      message: slots.reason ?? "필수 기획 슬롯이 확정되지 않았습니다.",
+      actionKind: "VIEW_MISSING_ITEMS",
+    });
+  }
+
+  blockers.push({
+    kind: "implementation_seed",
+    status: seedReadiness.ready ? "ready" : "blocked",
+    title: "Implementation Seed",
+    message: seedReadiness.ready
+      ? "Implementation Seed가 준비되었습니다."
+      : seedReadiness.missing.length
+        ? `Implementation Seed 확정이 필요합니다. (필수 ${seedReadiness.missing.length}개 미충족)`
+        : "Implementation Seed 확정이 필요합니다. 후보·partial 상태 항목을 확정해 주세요.",
+    actionLabel: seedReadiness.ready ? undefined : "Implementation Seed 확정",
+    actionKind: seedReadiness.ready ? undefined : "CONFIRM_IMPLEMENTATION_SEED",
+  });
+
+  if (input.databaseReady === false) {
+    blockers.push({
+      kind: "database",
+      status: "blocked",
+      title: "프로젝트 DB",
+      message:
+        input.databaseMessage ??
+        "프로젝트 DB 설정이 완료되지 않아 구현단계로 이동할 수 없습니다.",
+      actionLabel: "데이터베이스 설정하기",
+      actionKind: "OPEN_PLANNING_DATABASE_SETTINGS",
+    });
+  } else if (input.databaseReady === true) {
+    blockers.push({
+      kind: "database",
+      status: "ready",
+      title: "프로젝트 DB",
+      message: "프로젝트 DB가 준비되었습니다.",
+    });
+  }
+
+  if (!artifacts.ready) {
+    const artMsg = artifacts.missingRequiredArtifactLabels.length
+      ? `필수 산출물이 아직 준비되지 않았습니다. 부족: ${artifacts.missingRequiredArtifactLabels.slice(0, 5).join(", ")}`
+      : "필수 산출물이 아직 준비되지 않았습니다.";
+    blockers.push({
+      kind: "artifact",
+      status: "blocked",
+      title: "필수 산출물",
+      message: artMsg,
+      actionKind: "VIEW_MISSING_ITEMS",
+    });
+  }
+
+  return blockers;
+}
+
+export function formatImplementationStartReadinessUserMessage(
+  blockers: readonly GenerationReadinessBlocker[],
+): string {
+  const blocked = blockers.filter((b) => b.status === "blocked");
+  if (!blocked.length) {
+    return "구현단계로 이동할 수 있습니다.";
+  }
+
+  const seedBlocked = blocked.some((b) => b.kind === "implementation_seed");
+  const dbBlocked = blocked.some((b) => b.kind === "database");
+  if (seedBlocked && dbBlocked) {
+    const lines = [
+      "구현단계 이동 전 확인이 필요합니다.",
+      "",
+      "1. Implementation Seed",
+      "- 상태: 미확정",
+      "- 필요한 작업: Implementation Seed 확정",
+      "",
+      "2. 프로젝트 DB",
+      "- 상태: 준비 실패",
+      "- 필요한 작업: DB 설정 열기",
+      "",
+      "Seed를 먼저 확정한 뒤 DB 설정을 확인해 주세요.",
+    ];
+    return lines.join("\n");
+  }
+
+  if (seedBlocked && !dbBlocked) {
+    return [
+      "Implementation Seed 확정이 필요합니다.",
+      blocked.find((b) => b.kind === "implementation_seed")?.message ?? "",
+      "",
+      "채팅에서 Implementation Seed 확정을 선택해 주세요.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  if (dbBlocked && !seedBlocked) {
+    return [
+      "Implementation Seed는 준비되었습니다.",
+      "프로젝트 DB 설정이 완료되지 않아 구현단계로 이동할 수 없습니다.",
+      "데이터베이스 설정하기에서 연결을 확인해 주세요.",
+    ].join("\n");
+  }
+
+  return blocked.map((b) => b.message).join(" ");
+}
+
 export function evaluatePlanningMinimumReadiness(input: {
   readonly orchestration: RequirementsSingleChatOrchestrationStateV1 | null | undefined;
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
@@ -143,6 +291,8 @@ export function evaluateImplementationStartReadiness(input: {
   readonly definitions: readonly SingleChatOrchestrationSlotDefinition[];
   readonly projectArtifacts?: readonly ProjectArtifact[] | null;
   readonly artifactOrchestrationV1?: ArtifactOrchestrationStateV1 | null;
+  readonly databaseReady?: boolean | null;
+  readonly databaseMessage?: string | null;
 }): ImplementationStartReadiness {
   const slots = evaluatePlanningToGenerationReadiness(input);
   const requiredTypes = resolveRequiredImplementationArtifactTypes(input);
@@ -158,6 +308,17 @@ export function evaluateImplementationStartReadiness(input: {
   });
 
   if (slots.ready && artifacts.ready && seedReadiness.ready) {
+    if (input.databaseReady === false) {
+      const blockers = buildImplementationStartReadinessBlockers(input);
+      return {
+        ready: false,
+        missingRequiredSlotKeys: [],
+        missingRequiredLabels: [],
+        missingRequiredArtifactTypes: [],
+        missingRequiredArtifactLabels: [],
+        reason: formatImplementationStartReadinessUserMessage(blockers),
+      };
+    }
     return {
       ready: true,
       missingRequiredSlotKeys: [],
@@ -176,10 +337,14 @@ export function evaluateImplementationStartReadiness(input: {
       ...seedReadiness.warnings,
     ];
     const preview = seedLabels.slice(0, 6).join(", ");
+    const blockers = buildImplementationStartReadinessBlockers(input);
+    const splitReason = formatImplementationStartReadinessUserMessage(blockers);
     parts.push(
-      preview.length
-        ? `구현 단계로 이동하려면 Implementation Seed가 준비되어야 합니다. 부족: ${preview}`
-        : "구현 단계로 이동하려면 Implementation Seed가 준비되어야 합니다.",
+      splitReason.length > 40
+        ? splitReason
+        : preview.length
+          ? `구현 단계로 이동하려면 Implementation Seed가 준비되어야 합니다. 부족: ${preview} — Implementation Seed 확정이 필요합니다.`
+          : "구현 단계로 이동하려면 Implementation Seed 확정이 필요합니다.",
     );
   }
   if (!artifacts.ready) {

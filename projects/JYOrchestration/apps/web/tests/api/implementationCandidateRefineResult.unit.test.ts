@@ -7,11 +7,15 @@ import {
 } from "@/lib/requirements/implementationCandidateRefineRequest";
 import { implementationCandidateRefineApplyResultChips } from "@/lib/requirements/implementationCandidateRefineCta";
 import {
+  buildConfirmImplementationSeedCandidatePatches,
   buildImplementationCandidateRefineResultItems,
   formatImplementationCandidateRefineResultMessage,
   runImplementationCandidateRefineApplyTurn,
+  runImplementationCandidateRefineConfirmSeedTurn,
   runImplementationCandidateRefineTurn,
 } from "@/lib/requirements/implementationCandidateRefineResult";
+import { IMPLEMENTATION_SEED_CONFIRM_CTA_LABEL } from "@/lib/requirements/implementationCandidateRefineCta";
+import { evaluateImplementationSeedReadiness } from "@/lib/requirements/implementationSeed";
 import { isUiInstructionLikePlanningValue } from "@/lib/requirements/uiInstructionLikePlanningValue";
 import {
   buildDynamicServicePlanningSlotDefinitions,
@@ -137,6 +141,12 @@ describe("implementationCandidateRefineResult", () => {
     expect(msg).toContain("전체 검토 결과");
   });
 
+  it("detects confirm seed prompts", () => {
+    expect(isImplementationCandidateRefinePrompt("Implementation Seed 확정")).toBe(true);
+    const parsed = parseImplementationCandidateRefineFromUserMessage("Implementation Seed 확정");
+    expect(parsed?.kind).toBe("confirm_seed");
+  });
+
   it("formats apply result with dedicated chips", () => {
     const definitions = buildDynamicServicePlanningSlotDefinitions({
       projectId: "p3",
@@ -157,14 +167,104 @@ describe("implementationCandidateRefineResult", () => {
       orchestration,
       definitions,
       autoCandidateGenerated: true,
+      nowIso,
     });
 
     expect(turn.assistantMessage).toContain("선택 보완안 적용 결과");
     expect(turn.assistantMessage).toContain("적용 항목:");
-    expect(turn.assistantMessage).toContain("아직 검토·확정이 필요한 항목:");
-    expect(turn.assistantMessage).toContain("Implementation Seed 확정");
+    expect(turn.assistantMessage).toContain("Implementation Seed");
+    expect(turn.assistantMessage).toContain("Implementation Seed 확정을 선택해");
     expect(turn.appliedKeys).toHaveLength(2);
-    expect(implementationCandidateRefineApplyResultChips()).toContain("구현단계로 이동");
+    expect(turn.nextState).not.toBe(orchestration);
+    expect(implementationCandidateRefineApplyResultChips({ seedReady: false })).toContain(
+      IMPLEMENTATION_SEED_CONFIRM_CTA_LABEL,
+    );
+    expect(implementationCandidateRefineApplyResultChips({ seedReady: false })).not.toContain(
+      "구현단계로 이동",
+    );
     expect(turn.interviewSuggestions).not.toContain("추천안 적용");
+  });
+
+  it("apply turn patches slots to partial", () => {
+    const definitions = buildDynamicServicePlanningSlotDefinitions({
+      projectId: "p4",
+      projectName: "회의록",
+    });
+    let orchestration = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+    const patch = buildImplementationSeedCandidateSlotPatches({
+      orchestration,
+      definitions,
+      projectName: "회의록",
+      nowIso,
+    });
+    orchestration = { ...orchestration, slots: patch.slots, updatedAt: nowIso };
+
+    const turn = runImplementationCandidateRefineApplyTurn({
+      mode: "all",
+      appliedKeys: [],
+      orchestration,
+      definitions,
+      autoCandidateGenerated: true,
+      nowIso,
+    });
+    const suffix = ".flow.actorFunctionMatrix";
+    const slotKey = Object.keys(turn.nextState.slots).find((k) => k.endsWith(suffix));
+    expect(slotKey).toBeTruthy();
+    expect(turn.nextState.slots[slotKey!]?.status).toBe("partial");
+  });
+
+  it("confirm_seed promotes candidate/partial required slots to confirmed", () => {
+    const definitions = buildDynamicServicePlanningSlotDefinitions({
+      projectId: "p5",
+      projectName: "회의록",
+    });
+    let orchestration = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+    const patch = buildImplementationSeedCandidateSlotPatches({
+      orchestration,
+      definitions,
+      projectName: "회의록",
+      nowIso,
+    });
+    orchestration = { ...orchestration, slots: patch.slots, updatedAt: nowIso };
+
+    const applyTurn = runImplementationCandidateRefineApplyTurn({
+      mode: "all",
+      appliedKeys: [],
+      orchestration,
+      definitions,
+      autoCandidateGenerated: true,
+      nowIso,
+    });
+
+    const confirmTurn = runImplementationCandidateRefineConfirmSeedTurn({
+      keys: [],
+      orchestration: applyTurn.nextState,
+      definitions,
+      nowIso,
+    });
+
+    expect(confirmTurn.assistantMessage).toContain("Implementation Seed 확정 결과");
+    const readiness = evaluateImplementationSeedReadiness({
+      orchestration: confirmTurn.nextState,
+      definitions,
+    });
+    expect(readiness.ready).toBe(true);
+    expect(confirmTurn.interviewSuggestions).toContain("구현단계로 이동");
+  });
+
+  it("does not confirm empty value slots", () => {
+    const definitions = buildDynamicServicePlanningSlotDefinitions({
+      projectId: "p6",
+      projectName: "회의록",
+    });
+    const orchestration = initialOrchestrationStateFromDefinitions(definitions, nowIso);
+    const { state, confirmedKeys } = buildConfirmImplementationSeedCandidatePatches({
+      keys: ["data_entities"],
+      orchestration,
+      definitions,
+      nowIso,
+    });
+    expect(confirmedKeys).toHaveLength(0);
+    expect(state).toBe(orchestration);
   });
 });
