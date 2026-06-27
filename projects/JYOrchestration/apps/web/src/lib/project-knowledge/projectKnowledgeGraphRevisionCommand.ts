@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { graphSnapshotPurposeFromMilestone } from "@/lib/project-knowledge/projectKnowledgeReferenceNormalize";
 import {
@@ -27,6 +28,21 @@ export type CreateKnowledgeGraphRevisionInput = Readonly<{
   readonly summaryOverride?: string | null;
 }>;
 
+const MAX_REVISION_NUMBER_ALLOCATION_ATTEMPTS = 5;
+
+async function nextKnowledgeGraphRevisionNumber(projectId: string): Promise<number> {
+  const last = await prisma.projectKnowledgeGraphRevision.findFirst({
+    where: { projectId },
+    orderBy: { revisionNumber: "desc" },
+    select: { revisionNumber: true },
+  });
+  return (last?.revisionNumber ?? 0) + 1;
+}
+
+function isRevisionNumberUniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
+
 export async function createKnowledgeGraphRevision(
   input: CreateKnowledgeGraphRevisionInput,
 ): Promise<KnowledgeGraphRevisionListItem | null> {
@@ -42,30 +58,34 @@ export async function createKnowledgeGraphRevision(
   const nodeCount = snapshot.nodes.length;
   const edgeCount = snapshot.edges.length;
 
-  const last = await prisma.projectKnowledgeGraphRevision.findFirst({
-    where: { projectId },
-    orderBy: { revisionNumber: "desc" },
-    select: { revisionNumber: true },
-  });
-  const revisionNumber = (last?.revisionNumber ?? 0) + 1;
-
   const sourceEventId = input.sourceEventId?.trim() || null;
 
-  const created = await prisma.projectKnowledgeGraphRevision.create({
-    data: {
-      projectId,
-      revisionNumber,
-      sourceEventId,
-      title,
-      summary,
-      graphSnapshot: snapshot as object,
-      snapshotPurpose: purpose,
-      nodeCount,
-      edgeCount,
-    },
-  });
+  for (let attempt = 0; attempt < MAX_REVISION_NUMBER_ALLOCATION_ATTEMPTS; attempt += 1) {
+    const revisionNumber = await nextKnowledgeGraphRevisionNumber(projectId);
+    try {
+      const created = await prisma.projectKnowledgeGraphRevision.create({
+        data: {
+          projectId,
+          revisionNumber,
+          sourceEventId,
+          title,
+          summary,
+          graphSnapshot: snapshot as object,
+          snapshotPurpose: purpose,
+          nodeCount,
+          edgeCount,
+        },
+      });
+      return toKnowledgeGraphRevisionListItem(created);
+    } catch (error) {
+      if (isRevisionNumberUniqueViolation(error) && attempt < MAX_REVISION_NUMBER_ALLOCATION_ATTEMPTS - 1) {
+        continue;
+      }
+      throw error;
+    }
+  }
 
-  return toKnowledgeGraphRevisionListItem(created);
+  return null;
 }
 
 export async function recordKnowledgeGraphRevisionForMilestone(

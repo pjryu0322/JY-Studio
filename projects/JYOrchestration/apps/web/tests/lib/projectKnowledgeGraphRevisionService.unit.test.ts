@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { Prisma } from "@prisma/client";
 
 const { findFirst, create, findMany, update } = vi.hoisted(() => ({
   findFirst: vi.fn(),
@@ -78,6 +79,34 @@ describe("projectKnowledgeGraphRevisionService", () => {
         }),
       }),
     );
+  });
+
+  it("createKnowledgeGraphRevision retries on revisionNumber unique conflict", async () => {
+    findFirst
+      .mockResolvedValueOnce({ revisionNumber: 1 })
+      .mockResolvedValueOnce({ revisionNumber: 2 });
+    const uniqueError = new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "test",
+    });
+    create.mockRejectedValueOnce(uniqueError).mockResolvedValueOnce({
+      id: "rev-3",
+      revisionNumber: 3,
+      title: "그래프 반영",
+      summary: "요약",
+      nodeCount: 1,
+      edgeCount: 0,
+      createdAt: new Date("2026-06-24T10:10:00.000Z"),
+    });
+
+    const item = await createKnowledgeGraphRevision({
+      projectId: "p1",
+      milestone: "graph_projection",
+    });
+
+    expect(item?.revisionNumber).toBe(3);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(findFirst).toHaveBeenCalledTimes(2);
   });
 
   it("listKnowledgeGraphRevisions returns ordered items", async () => {

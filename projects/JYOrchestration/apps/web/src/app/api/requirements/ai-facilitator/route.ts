@@ -20,6 +20,7 @@ import { recordIdeationBootstrapOpenAi } from "@/lib/debug/promptTimelineStore";
 import { runBootstrapProposalFallbackSynthesisOpenAI } from "@/lib/requirements/bootstrapProposalFallbackSynthesis";
 import { hasProposalFirstStructure } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
 import { prepareRequirementsTurnKnowledgeContext } from "@/lib/requirements/requirementsTurnKnowledgeContext";
+import { buildSingleChatPromptTimelineEntry } from "@/lib/requirements/requirementsIdeationBootstrapPromptTimeline";
 import {
   fireAndForgetSingleChatUserMemoryUsage,
 } from "@/lib/project-knowledge/userMemoryFacade";
