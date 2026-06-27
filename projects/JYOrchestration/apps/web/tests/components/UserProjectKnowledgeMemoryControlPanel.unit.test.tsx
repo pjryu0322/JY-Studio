@@ -83,6 +83,12 @@ const hookState = {
   error: null as string | null,
   reload: vi.fn(),
   reloadUsage: vi.fn(),
+  reloadStalePreview: vi.fn(),
+  stalePreview: {
+    version: "user_project_knowledge_memory_stale_state_v1" as const,
+    candidateCount: 0,
+    candidates: [],
+  },
   setEnabled: vi.fn(),
   setAgentEnabled: vi.fn(),
   togglePin: vi.fn(),

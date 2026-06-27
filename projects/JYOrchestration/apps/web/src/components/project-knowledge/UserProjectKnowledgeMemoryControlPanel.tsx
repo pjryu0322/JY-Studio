@@ -5,6 +5,7 @@ import { uiTokens as t } from "@/components/ui/tokens";
 import { PROJECT_KNOWLEDGE_AGENTS } from "@/lib/project-knowledge/projectKnowledgeAgentRelevance";
 import { USER_PROJECT_KNOWLEDGE_MEMORY_AGENT_LABELS_KO } from "@/lib/project-knowledge/projectKnowledgeUserMemoryTimelineUi";
 import { useUserProjectKnowledgeMemoryControl } from "@/components/project-knowledge/hooks/useUserProjectKnowledgeMemoryControl";
+import { UserProjectKnowledgeMemoryStalePreview } from "@/components/project-knowledge/UserProjectKnowledgeMemoryStalePreview";
 import { UserProjectKnowledgeMemoryPreviewList } from "@/components/project-knowledge/UserProjectKnowledgeMemoryPreviewList";
 
 const cardStyle: CSSProperties = {
@@ -22,6 +23,7 @@ export function UserProjectKnowledgeMemoryControlPanel(p: { readonly projectId: 
     control,
     preview,
     usageSummary,
+    stalePreview,
     loading,
     saving,
     error,
@@ -157,6 +159,12 @@ export function UserProjectKnowledgeMemoryControlPanel(p: { readonly projectId: 
               </span>
             </div>
           ) : null}
+          <UserProjectKnowledgeMemoryStalePreview
+            stalePreview={stalePreview}
+            saving={saving}
+            onPin={togglePin}
+            onIgnore={toggleIgnore}
+          />
           <UserProjectKnowledgeMemoryPreviewList
             preview={preview}
             saving={saving}

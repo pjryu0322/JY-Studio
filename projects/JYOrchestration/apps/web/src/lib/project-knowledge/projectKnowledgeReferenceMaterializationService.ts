@@ -1,19 +1,15 @@
 import { prisma } from "@/lib/prisma";
 import type { ProjectReferenceSelectionSummaryV1 } from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
 import {
-  parseProjectReferenceSelectionSummaryV1,
-  parseProjectReferenceSelectionV1,
-} from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
-import {
-  parseMaterializedReferenceContextV1,
-  type MaterializedReferenceContextV1,
-} from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
-import {
-  normalizeReferenceSnapshotIds,
-  ReferenceSnapshotSelectionValidationError,
-  prepareReferenceSnapshotSelectionForUser,
-} from "@/lib/project-knowledge/projectKnowledgeReferenceSelectionValidation";
-import { mergeRequirementsStateJson, parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
+  getMaterializedReferenceContextFromRequirementsState,
+  getReferenceSelectionFromRequirementsState,
+  getReferenceSelectionSummaryFromRequirementsState,
+  setMaterializedReferenceContextInRequirementsState,
+  setReferenceSelectionInRequirementsState,
+  setReferenceSelectionSummaryInRequirementsState,
+} from "@/lib/project-state/projectKnowledgeRequirementsStateAdapter";
+import type { MaterializedReferenceContextV1 } from "@/lib/project-knowledge/projectKnowledgeReferenceMaterializedContext";
+import { parseRequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { requireProjectPermissionById } from "@/lib/service/taskOwnershipGuard";
 import type { Prisma } from "@prisma/client";
 
@@ -141,10 +137,10 @@ export async function materializeReferenceContextForProject(input: Readonly<{
   }
 
   const state = parseRequirementsStateJson(row.requirementsStateJson);
-  const existingMaterialized = parseMaterializedReferenceContextV1(state.materializedReferenceContextV1);
+  const existingMaterialized = getMaterializedReferenceContextFromRequirementsState(state);
   if (existingMaterialized) {
     const summary =
-      parseProjectReferenceSelectionSummaryV1(state.referenceSelectionSummaryV1) ??
+      getReferenceSelectionSummaryFromRequirementsState(state) ??
       summaryFromMaterialized(existingMaterialized);
     return {
       status: "ALREADY_MATERIALIZED",
@@ -154,7 +150,7 @@ export async function materializeReferenceContextForProject(input: Readonly<{
     };
   }
 
-  const selection = parseProjectReferenceSelectionV1(state.referenceSelectionV1);
+  const selection = getReferenceSelectionFromRequirementsState(state);
   if (!selection) {
     return {
       status: "NO_REFERENCE_SELECTION",
@@ -188,11 +184,9 @@ export async function materializeReferenceContextForProject(input: Readonly<{
     });
 
     if (!input.dryRun) {
-      const next = mergeRequirementsStateJson(state, {
-        referenceSelectionV1: validated.selection,
-        referenceSelectionSummaryV1: validated.summary,
-        materializedReferenceContextV1: validated.materializedReferenceContextV1,
-      });
+      let next = setReferenceSelectionInRequirementsState(state, validated.selection);
+      next = setReferenceSelectionSummaryInRequirementsState(next, validated.summary);
+      next = setMaterializedReferenceContextInRequirementsState(next, validated.materializedReferenceContextV1);
       await prisma.project.update({
         where: { id: projectId },
         data: { requirementsStateJson: next as Prisma.InputJsonValue },

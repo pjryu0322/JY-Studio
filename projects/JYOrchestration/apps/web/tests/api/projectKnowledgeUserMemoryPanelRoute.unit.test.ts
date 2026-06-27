@@ -67,6 +67,11 @@ describe("projectKnowledgeUserMemoryPanelRoute", () => {
           },
         ],
       },
+      stalePreview: {
+        version: "user_project_knowledge_memory_stale_state_v1",
+        candidateCount: 0,
+        candidates: [],
+      },
     });
   });
 

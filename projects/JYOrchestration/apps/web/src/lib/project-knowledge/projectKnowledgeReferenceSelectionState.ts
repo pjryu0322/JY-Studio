@@ -1,10 +1,11 @@
-import { prisma } from "@/lib/prisma";
-import {
-  parseProjectReferenceSelectionSummaryV1,
-  parseProjectReferenceSelectionV1,
-  type ProjectReferenceSelectionSummaryV1,
-  type ProjectReferenceSelectionV1,
+import type {
+  ProjectReferenceSelectionSummaryV1,
+  ProjectReferenceSelectionV1,
 } from "@/lib/project-knowledge/projectKnowledgeReferenceLibraryTypes";
+import {
+  getReferenceSelectionFromRequirementsState,
+  getReferenceSelectionSummaryFromRequirementsState,
+} from "@/lib/project-state/projectKnowledgeRequirementsStateAdapter";
 import { parseRequirementsStateJson, type RequirementsStateJson } from "@/lib/requirements/requirementsStateJson";
 import { buildReferencePromptContextForProjectTurn } from "@/lib/project-knowledge/projectKnowledgeReferencePromptContext";
 
@@ -20,8 +21,8 @@ export function readReferenceSelectionFromRequirementsState(
   summary: ProjectReferenceSelectionSummaryV1 | null;
 }> {
   return {
-    selection: parseProjectReferenceSelectionV1(state?.referenceSelectionV1),
-    summary: parseProjectReferenceSelectionSummaryV1(state?.referenceSelectionSummaryV1),
+    selection: getReferenceSelectionFromRequirementsState(state),
+    summary: getReferenceSelectionSummaryFromRequirementsState(state),
   };
 }
 

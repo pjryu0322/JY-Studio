@@ -13,11 +13,14 @@ type ControlResponse = {
   readonly message?: string;
 };
 
+import type { UserProjectKnowledgeMemoryStalePreviewV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryStaleTypes";
+
 type PanelResponse = {
   readonly success: boolean;
   readonly control?: UserProjectKnowledgeMemoryControlV1;
   readonly preview?: UserProjectKnowledgeMemoryPreviewV1;
   readonly usageSummary?: UserProjectKnowledgeMemoryUsageApiSummaryV1;
+  readonly stalePreview?: UserProjectKnowledgeMemoryStalePreviewV1;
   readonly message?: string;
 };
 
@@ -32,6 +35,7 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
   const [control, setControl] = useState<UserProjectKnowledgeMemoryControlV1 | null>(null);
   const [preview, setPreview] = useState<UserProjectKnowledgeMemoryPreviewV1 | null>(null);
   const [usageSummary, setUsageSummary] = useState<UserProjectKnowledgeMemoryUsageApiSummaryV1 | null>(null);
+  const [stalePreview, setStalePreview] = useState<UserProjectKnowledgeMemoryStalePreviewV1 | null>(null);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -59,11 +63,32 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
     }
   }, [pid]);
 
+  const reloadStalePreview = useCallback(async () => {
+    if (!pid) {
+      setStalePreview(null);
+      return;
+    }
+    try {
+      const q = encodeURIComponent(pid);
+      const res = await fetch(`/api/project-knowledge/user-memory-stale-preview?projectId=${q}`, {
+        credentials: "include",
+      });
+      const json = (await res.json()) as { success: boolean; preview?: UserProjectKnowledgeMemoryStalePreviewV1 };
+      if (!res.ok || !json.success || !json.preview) {
+        throw new Error("정리 후보를 불러오지 못했습니다.");
+      }
+      setStalePreview(json.preview);
+    } catch {
+      setStalePreview(null);
+    }
+  }, [pid]);
+
   const reload = useCallback(async () => {
     if (!pid) {
       setControl(null);
       setPreview(null);
       setUsageSummary(null);
+      setStalePreview(null);
       return;
     }
     setLoading(true);
@@ -75,12 +100,13 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
         credentials: "include",
       });
       const json = (await res.json()) as PanelResponse;
-      if (!res.ok || !json.success || !json.control || !json.preview || !json.usageSummary) {
+      if (!res.ok || !json.success || !json.control || !json.preview || !json.usageSummary || !json.stalePreview) {
         throw new Error(json.message ?? "불러오기에 실패했습니다.");
       }
       setControl(json.control);
       setPreview(json.preview);
       setUsageSummary(json.usageSummary);
+      setStalePreview(json.stalePreview);
     } catch (e) {
       setError(e instanceof Error ? e.message : "불러오기 실패");
       setUsageSummary(null);
@@ -172,12 +198,14 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
     control,
     preview,
     usageSummary,
+    stalePreview,
     usageError,
     loading,
     saving,
     error,
     reload,
     reloadUsage,
+    reloadStalePreview,
     setEnabled,
     setAgentEnabled,
     togglePin,
