@@ -19,18 +19,10 @@ import { isPromptTimelineDebugServer, runWithPromptTimelineProject } from "@/lib
 import { recordIdeationBootstrapOpenAi } from "@/lib/debug/promptTimelineStore";
 import { runBootstrapProposalFallbackSynthesisOpenAI } from "@/lib/requirements/bootstrapProposalFallbackSynthesis";
 import { hasProposalFirstStructure } from "@/lib/requirements/requirementsBootstrapInterviewQuality";
-import {
-  buildReferencePromptContextForProjectTurn,
-  referencePromptContextTimelineFields,
-  wrapReferenceContextForOrchestrationLlm,
-} from "@/lib/project-knowledge/projectKnowledgeReferencePromptContext";
-import { prepareSameUserProjectKnowledgeMemoryPromptContexts } from "@/lib/project-knowledge/projectKnowledgeUserMemoryService";
-import { loadUserProjectKnowledgeMemoryControlForProject } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlProjectPersistence";
-import type { UserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
+import { prepareRequirementsTurnKnowledgeContext } from "@/lib/requirements/requirementsTurnKnowledgeContext";
 import {
   fireAndForgetSingleChatUserMemoryUsage,
-} from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsageRecording";
-import { buildUserProjectKnowledgeMemoryTimelineSummaries } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPromptInjection";
+} from "@/lib/project-knowledge/userMemoryFacade";
 import {
   pickConfiguredModelOverrideFromAgents,
   resolveServicePlanningOrchestrationContext,
@@ -273,61 +265,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const referencePromptContextSection = projectId
-      ? await buildReferencePromptContextForProjectTurn({
-          projectId,
-          userMessage: bootstrapInterview ? "" : userMessage,
-          projectName,
-          projectDescription,
-        })
-      : {
-          hasReference: false,
-          sourceSnapshotIds: [],
-          mode: "SUMMARY" as const,
-          summarySections: [],
-          selectedNodes: [],
-          promptText: "",
-          diagnostics: {
-            selectedNodeCount: 0,
-            candidateNodeCount: 0,
-            selectionQuery: "",
-            selectionReason: "no_project",
-          },
-        };
-    const referencePromptContextBlock = referencePromptContextSection.hasReference
-      ? wrapReferenceContextForOrchestrationLlm(referencePromptContextSection.promptText)
-      : "";
-    const referenceContextTimelineMeta = referencePromptContextTimelineFields(referencePromptContextSection);
+    const knowledgeContext = await prepareRequirementsTurnKnowledgeContext({
+      projectId,
+      userId,
+      userMessage: bootstrapInterview ? "" : userMessage,
+      projectName,
+      projectDescription,
+      bootstrapInterview,
+    });
+    const referencePromptContextBlock = knowledgeContext.referencePromptContextBlock;
     /** @deprecated alias — use referencePromptContextBlock */
-    const referencePlanningContextBlock = referencePromptContextBlock;
-
-    let userMemoryControlLoaded: UserProjectKnowledgeMemoryControlV1 | null = null;
-
-    const userMemoryPrepared = projectId
-      ? await (async () => {
-          const control = await loadUserProjectKnowledgeMemoryControlForProject(projectId);
-          userMemoryControlLoaded = control;
-          return prepareSameUserProjectKnowledgeMemoryPromptContexts({
-            userId,
-            targetProjectId: projectId,
-            control,
-          });
-        })()
-      : null;
-    const userMemoryTimelineMeta = userMemoryPrepared
-      ? buildUserProjectKnowledgeMemoryTimelineSummaries(userMemoryPrepared.byAgent)
-      : undefined;
-    const userMemoryTimelineTraceFields =
-      userMemoryPrepared == null
-        ? {}
-        : {
-            ...(userMemoryTimelineMeta?.length
-              ? { userProjectKnowledgeMemoryContexts: userMemoryTimelineMeta }
-              : {}),
-            ...(userMemoryPrepared.memoryControlEnabled === false
-              ? { userProjectKnowledgeMemoryControlEnabled: false as const }
-              : {}),
-          };
+    const referencePlanningContextBlock = knowledgeContext.referencePlanningContextBlock;
+    const referenceContextTimelineMeta = knowledgeContext.referenceTimelineMeta;
+    const userMemoryPrepared = knowledgeContext.userMemoryPrepared;
+    const userMemoryControlLoaded = knowledgeContext.userMemoryControl;
+    const userMemoryTimelineMeta = knowledgeContext.userMemoryTimelineMeta;
+    const userMemoryTimelineTraceFields = knowledgeContext.userMemoryTimelineTraceFields;
 
     const workspaceScreenForBootstrap = parseWorkspaceScreenForBody(body.workspaceScreenKey);
     const workspaceScreenForChat = bootstrapInterview ? workspaceScreenForBootstrap : parseWorkspaceScreenForBody(body.workspaceScreenKey);

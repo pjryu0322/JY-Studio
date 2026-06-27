@@ -16,7 +16,7 @@ import {
 } from "@/components/project-graph/hooks/useProjectKnowledgeGraphExplorerState";
 import { ProjectKnowledgeReplayModal } from "@/components/project-graph/ProjectKnowledgeReplayModal";
 import { ProjectKnowledgeRuntimeStatusCard } from "@/components/project-graph/ProjectKnowledgeRuntimeStatusCard";
-import { UserProjectKnowledgeMemoryControlPanel } from "@/components/project-knowledge/UserProjectKnowledgeMemoryControlPanel";
+import { ProjectKnowledgeMemoryControlSection } from "@/components/project-graph/ProjectKnowledgeMemoryControlSection";
 import type { KnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusTypes";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { ProjectKnowledgeAgentGraphViewTabs } from "@/components/project-graph/ProjectKnowledgeAgentGraphViewTabs";
@@ -203,7 +203,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
         variant={userUx ? "user" : "diagnostic"}
         onOpenChangeLog={userUx ? p.onOpenChangeLog : undefined}
       />
-      {userUx ? <UserProjectKnowledgeMemoryControlPanel projectId={p.projectId} /> : null}
+      <ProjectKnowledgeMemoryControlSection projectId={p.projectId} visible={userUx} />
       {userUx ? (
         <details data-testid="knowledge-graph-detail-logs" style={{ margin: "0 0 8px", fontSize: 12 }}>
           <summary

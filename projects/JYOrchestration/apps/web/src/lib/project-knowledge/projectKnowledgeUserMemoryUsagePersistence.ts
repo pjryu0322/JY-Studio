@@ -1,13 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import {
-  mergeRequirementsStateJson,
   parseRequirementsStateJson,
   type RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
 import {
-  appendUserProjectKnowledgeMemoryUsageEvents,
-  normalizeUserProjectKnowledgeMemoryUsageStateV1,
-} from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsage";
+  appendUserMemoryUsageEventsToRequirementsState,
+  getUserMemoryUsageStateFromRequirementsState,
+} from "@/lib/project-state/projectKnowledgeRequirementsStateAdapter";
 import type {
   UserProjectKnowledgeMemoryUsageEventV1,
   UserProjectKnowledgeMemoryUsageStateV1,
@@ -17,7 +16,7 @@ import type { Prisma } from "@prisma/client";
 export function readUserProjectKnowledgeMemoryUsageStateFromRequirementsState(
   state: RequirementsStateJson | null | undefined,
 ): UserProjectKnowledgeMemoryUsageStateV1 {
-  return normalizeUserProjectKnowledgeMemoryUsageStateV1(state?.userProjectKnowledgeMemoryUsageStateV1);
+  return getUserMemoryUsageStateFromRequirementsState(state);
 }
 
 export async function appendUserProjectKnowledgeMemoryUsageEventForProject(input: {
@@ -44,14 +43,8 @@ export async function appendUserProjectKnowledgeMemoryUsageEventsForProject(inpu
     select: { requirementsStateJson: true },
   });
   const state = parseRequirementsStateJson(row?.requirementsStateJson) ?? {};
-  const current = readUserProjectKnowledgeMemoryUsageStateFromRequirementsState(state);
-  const nextUsage = appendUserProjectKnowledgeMemoryUsageEvents({
-    current,
-    events: input.events,
-  });
-  const next = mergeRequirementsStateJson(state, {
-    userProjectKnowledgeMemoryUsageStateV1: nextUsage,
-  });
+  const next = appendUserMemoryUsageEventsToRequirementsState(state, input.events);
+  const nextUsage = getUserMemoryUsageStateFromRequirementsState(next);
   await prisma.project.update({
     where: { id: pid },
     data: { requirementsStateJson: next as Prisma.InputJsonValue },

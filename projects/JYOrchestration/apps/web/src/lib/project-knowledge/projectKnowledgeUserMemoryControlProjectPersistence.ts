@@ -1,9 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import {
-  mergeRequirementsStateJson,
   parseRequirementsStateJson,
   type RequirementsStateJson,
 } from "@/lib/requirements/requirementsStateJson";
+import {
+  getUserMemoryControlFromRequirementsState,
+  setUserMemoryControlInRequirementsState,
+} from "@/lib/project-state/projectKnowledgeRequirementsStateAdapter";
 import type { UserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
 import {
   normalizeUserProjectKnowledgeMemoryControlV1,
@@ -14,7 +17,7 @@ import type { Prisma } from "@prisma/client";
 export function readUserProjectKnowledgeMemoryControlFromState(
   state: RequirementsStateJson | null | undefined,
 ): UserProjectKnowledgeMemoryControlV1 {
-  return normalizeUserProjectKnowledgeMemoryControlV1(state?.userProjectKnowledgeMemoryControlV1);
+  return getUserMemoryControlFromRequirementsState(state);
 }
 
 export async function loadUserProjectKnowledgeMemoryControlForProject(
@@ -40,9 +43,7 @@ export async function saveUserProjectKnowledgeMemoryControlForProject(input: {
     select: { requirementsStateJson: true },
   });
   const state = parseRequirementsStateJson(row?.requirementsStateJson) ?? {};
-  const next = mergeRequirementsStateJson(state, {
-    userProjectKnowledgeMemoryControlV1: input.control,
-  });
+  const next = setUserMemoryControlInRequirementsState(state, input.control);
   await prisma.project.update({
     where: { id: pid },
     data: { requirementsStateJson: next as Prisma.InputJsonValue },

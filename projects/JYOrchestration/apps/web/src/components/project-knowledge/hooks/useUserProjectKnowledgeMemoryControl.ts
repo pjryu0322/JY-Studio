@@ -5,7 +5,7 @@ import type { ProjectKnowledgeAgent } from "@/lib/project-knowledge/projectKnowl
 import type { UserProjectKnowledgeMemoryControlV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlTypes";
 import type { UserProjectKnowledgeMemoryPreviewV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryPreviewService";
 import type { UserMemoryControlAction } from "@/lib/project-knowledge/projectKnowledgeUserMemoryControlActionService";
-import type { UserProjectKnowledgeMemoryUsageSummaryV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsageTypes";
+import type { UserProjectKnowledgeMemoryUsageApiSummaryV1 } from "@/lib/project-knowledge/projectKnowledgeUserMemoryUsageTypes";
 
 type ControlResponse = {
   readonly success: boolean;
@@ -13,14 +13,17 @@ type ControlResponse = {
   readonly message?: string;
 };
 
-type PreviewResponse = UserProjectKnowledgeMemoryPreviewV1 & {
+type PanelResponse = {
   readonly success: boolean;
+  readonly control?: UserProjectKnowledgeMemoryControlV1;
+  readonly preview?: UserProjectKnowledgeMemoryPreviewV1;
+  readonly usageSummary?: UserProjectKnowledgeMemoryUsageApiSummaryV1;
   readonly message?: string;
 };
 
 type UsageResponse = {
   readonly success: boolean;
-  readonly summary?: UserProjectKnowledgeMemoryUsageSummaryV1;
+  readonly summary?: UserProjectKnowledgeMemoryUsageApiSummaryV1;
   readonly message?: string;
 };
 
@@ -28,7 +31,7 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
   const pid = projectId.trim();
   const [control, setControl] = useState<UserProjectKnowledgeMemoryControlV1 | null>(null);
   const [preview, setPreview] = useState<UserProjectKnowledgeMemoryPreviewV1 | null>(null);
-  const [usageSummary, setUsageSummary] = useState<UserProjectKnowledgeMemoryUsageSummaryV1 | null>(null);
+  const [usageSummary, setUsageSummary] = useState<UserProjectKnowledgeMemoryUsageApiSummaryV1 | null>(null);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -65,30 +68,26 @@ export function useUserProjectKnowledgeMemoryControl(projectId: string) {
     }
     setLoading(true);
     setError(null);
+    setUsageError(null);
     try {
       const q = encodeURIComponent(pid);
-      const [controlRes, previewRes] = await Promise.all([
-        fetch(`/api/project-knowledge/user-memory-control?projectId=${q}`, { credentials: "include" }),
-        fetch(`/api/project-knowledge/user-memory-preview?projectId=${q}`, { credentials: "include" }),
-      ]);
-      const controlJson = (await controlRes.json()) as ControlResponse;
-      const previewJson = (await previewRes.json()) as PreviewResponse;
-      if (!controlRes.ok || !controlJson.success || !controlJson.control) {
-        throw new Error(controlJson.message ?? "설정을 불러오지 못했습니다.");
+      const res = await fetch(`/api/project-knowledge/user-memory-panel?projectId=${q}`, {
+        credentials: "include",
+      });
+      const json = (await res.json()) as PanelResponse;
+      if (!res.ok || !json.success || !json.control || !json.preview || !json.usageSummary) {
+        throw new Error(json.message ?? "불러오기에 실패했습니다.");
       }
-      if (!previewRes.ok || !previewJson.success) {
-        throw new Error(previewJson.message ?? "미리보기를 불러오지 못했습니다.");
-      }
-      setControl(controlJson.control);
-      const { success: _s, message: _m, ...previewBody } = previewJson;
-      setPreview(previewBody);
-      void reloadUsage();
+      setControl(json.control);
+      setPreview(json.preview);
+      setUsageSummary(json.usageSummary);
     } catch (e) {
       setError(e instanceof Error ? e.message : "불러오기 실패");
+      setUsageSummary(null);
     } finally {
       setLoading(false);
     }
-  }, [pid, reloadUsage]);
+  }, [pid]);
 
   useEffect(() => {
     void reload();

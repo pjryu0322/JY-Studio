@@ -138,6 +138,16 @@ describe("UserProjectKnowledgeMemoryControlPanel", () => {
     expect(html).toContain("개발자 최근 3개");
   });
 
+  it("renders control preview and usage from integrated hook state", () => {
+    expect(hookState.preview?.totalItemCount).toBe(1);
+    expect(hookState.usageSummary?.injectedEvents).toBe(2);
+    const html = renderToStaticMarkup(
+      createElement(UserProjectKnowledgeMemoryControlPanel, { projectId: "p1" }),
+    );
+    expect(html).toContain('data-testid="user-memory-control-panel"');
+    expect(html).toContain('data-testid="user-memory-usage-summary"');
+  });
+
   it("shows ignored section and unignore control", () => {
     const html = renderToStaticMarkup(
       createElement(UserProjectKnowledgeMemoryControlPanel, { projectId: "p1" }),
