@@ -17,6 +17,11 @@ import {
 import { ProjectKnowledgeReplayModal } from "@/components/project-graph/ProjectKnowledgeReplayModal";
 import { ProjectKnowledgeRuntimeStatusCard } from "@/components/project-graph/ProjectKnowledgeRuntimeStatusCard";
 import { ProjectKnowledgeMemoryControlSection } from "@/components/project-graph/ProjectKnowledgeMemoryControlSection";
+import { ProjectKnowledgeGraphSummaryBar } from "@/components/project-graph/ProjectKnowledgeGraphSummaryBar";
+import { ProjectKnowledgeGraphActionBar } from "@/components/project-graph/ProjectKnowledgeGraphActionBar";
+import { ProjectKnowledgeMemorySettingsDrawer } from "@/components/project-graph/ProjectKnowledgeMemorySettingsDrawer";
+import { ProjectKnowledgeGraphLogDrawer } from "@/components/project-graph/ProjectKnowledgeGraphLogDrawer";
+import { useProjectKnowledgeMemoryCompactHint } from "@/components/project-graph/useProjectKnowledgeMemoryCompactHint";
 import type { KnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusTypes";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { ProjectKnowledgeAgentGraphViewTabs } from "@/components/project-graph/ProjectKnowledgeAgentGraphViewTabs";
@@ -60,8 +65,11 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
   const ex = p.explorerState;
   const [replayOpen, setReplayOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [memorySettingsOpen, setMemorySettingsOpen] = useState(false);
+  const [logDrawerOpen, setLogDrawerOpen] = useState(false);
   const [graphView, setGraphView] = useState<ProjectKnowledgeGraphView>("all");
   const userUx = (p.uxMode ?? "user") === "user";
+  const memoryHint = useProjectKnowledgeMemoryCompactHint(p.projectId);
 
   const agentLayer = useMemo(
     () =>
@@ -184,6 +192,25 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
 
   const canvasHeight = ex.graphMobileUx ? 400 : 520;
   const canvasWidth = 960;
+  const canvasRegionMinHeight = ex.graphMobileUx || isMobileLayout ? 360 : 420;
+
+  const agentTabsRow: CSSProperties = {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    padding: "8px 12px",
+    borderBottom: `1px solid ${t.border}`,
+    alignItems: "center",
+    flexShrink: 0,
+  };
+
+  const canvasRegionStyle: CSSProperties = {
+    flex: 1,
+    minHeight: canvasRegionMinHeight,
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+  };
 
   return (
     <div
@@ -195,50 +222,71 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
           {ex.toastMessage}
         </FixedToast>
       ) : null}
-      <ProjectKnowledgeRuntimeStatusCard
-        summary={p.runtimeStatusSummary ?? null}
-        loading={Boolean(p.runtimeStatusLoading)}
-        error={p.runtimeStatusError ?? null}
-        onRefresh={p.onReloadRuntimeStatus}
-        variant={userUx ? "user" : "diagnostic"}
-        onOpenChangeLog={userUx ? p.onOpenChangeLog : undefined}
-      />
-      <ProjectKnowledgeMemoryControlSection projectId={p.projectId} visible={userUx} />
       {userUx ? (
-        <details data-testid="knowledge-graph-detail-logs" style={{ margin: "0 0 8px", fontSize: 12 }}>
-          <summary
-            style={{
-              cursor: "pointer",
-              fontWeight: 800,
-              color: t.textSecondary,
-              minHeight: 36,
-              display: "flex",
-              alignItems: "center",
-            }}
-          >
-            상세 로그 보기
-          </summary>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-            {p.onOpenChangeLog ? (
-              <button type="button" onClick={p.onOpenChangeLog} style={btnStyle}>
-                변경 로그
-              </button>
-            ) : null}
-            {p.onOpenKnowledgeLog ? (
-              <button type="button" onClick={p.onOpenKnowledgeLog} style={btnStyle}>
-                생성 과정
-              </button>
-            ) : null}
-            {p.onOpenDiagnosticLog ? (
-              <button type="button" onClick={p.onOpenDiagnosticLog} style={btnStyle}>
-                진단 정보
-              </button>
-            ) : null}
-          </div>
-        </details>
-      ) : null}
-      <div style={toolbar}>
+        <>
+          <ProjectKnowledgeGraphSummaryBar
+            summary={p.runtimeStatusSummary ?? null}
+            loading={Boolean(p.runtimeStatusLoading)}
+            error={p.runtimeStatusError ?? null}
+          />
+          <ProjectKnowledgeGraphActionBar
+            memoryHint={memoryHint}
+            onOpenChangeLog={p.onOpenChangeLog}
+            onRefresh={p.onReloadRuntimeStatus}
+            onOpenMemorySettings={() => setMemorySettingsOpen(true)}
+            onOpenLog={() => setLogDrawerOpen(true)}
+            compact={ex.graphMobileUx || isMobileLayout}
+          />
+        </>
+      ) : (
+        <>
+          <ProjectKnowledgeRuntimeStatusCard
+            summary={p.runtimeStatusSummary ?? null}
+            loading={Boolean(p.runtimeStatusLoading)}
+            error={p.runtimeStatusError ?? null}
+            onRefresh={p.onReloadRuntimeStatus}
+            variant="diagnostic"
+            onOpenChangeLog={p.onOpenChangeLog}
+          />
+          <ProjectKnowledgeMemoryControlSection projectId={p.projectId} visible />
+          <details data-testid="knowledge-graph-detail-logs" style={{ margin: "0 0 8px", fontSize: 12 }}>
+            <summary
+              style={{
+                cursor: "pointer",
+                fontWeight: 800,
+                color: t.textSecondary,
+                minHeight: 36,
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              상세 로그 보기
+            </summary>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+              {p.onOpenChangeLog ? (
+                <button type="button" onClick={p.onOpenChangeLog} style={btnStyle}>
+                  변경 로그
+                </button>
+              ) : null}
+              {p.onOpenKnowledgeLog ? (
+                <button type="button" onClick={p.onOpenKnowledgeLog} style={btnStyle}>
+                  생성 과정
+                </button>
+              ) : null}
+              {p.onOpenDiagnosticLog ? (
+                <button type="button" onClick={p.onOpenDiagnosticLog} style={btnStyle}>
+                  진단 정보
+                </button>
+              ) : null}
+            </div>
+          </details>
+        </>
+      )}
+      <div style={agentTabsRow}>
         <ProjectKnowledgeAgentGraphViewTabs value={graphView} onChange={setGraphView} />
+      </div>
+      {!userUx ? (
+      <div style={toolbar}>
         <div
           style={{
             flex: "1 1 100%",
@@ -250,18 +298,16 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
         >
           {agentPresentation.selectedNodeLabel}
         </div>
-        {userUx ? (
-          <button
-            type="button"
-            data-testid="knowledge-graph-filters-toggle"
-            aria-expanded={filtersOpen}
-            onClick={() => setFiltersOpen((v) => !v)}
-            style={btnStyle}
-          >
-            필터
-          </button>
-        ) : null}
-        {(!userUx || filtersOpen) ? (
+        <button
+          type="button"
+          data-testid="knowledge-graph-filters-toggle"
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((v) => !v)}
+          style={btnStyle}
+        >
+          필터
+        </button>
+        {filtersOpen ? (
           <>
         <input
           type="search"
@@ -317,8 +363,8 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
         <button
           type="button"
           data-testid="knowledge-replay-open"
-          title="프로젝트 구조가 바뀐 과정을 확인합니다."
-          aria-label="프로젝트 구조가 바뀐 과정을 확인합니다."
+          title="그래프 변화 과정을 확인합니다."
+          aria-label="그래프 변화 과정을 확인합니다."
           onClick={() => setReplayOpen(true)}
           style={{ ...btnStyle, fontWeight: 800, color: t.primary }}
         >
@@ -330,6 +376,43 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
           {agentLayer.graphView !== "all" ? " · Agent View" : ""}
         </span>
       </div>
+      ) : (
+        <div
+          style={{
+            ...toolbar,
+            borderBottom: `1px solid ${t.border}`,
+          }}
+        >
+          <input
+            type="search"
+            placeholder="노드·질문 검색"
+            value={ex.search}
+            onChange={(e) => ex.setSearch(e.target.value)}
+            list="graph-question-hints-user"
+            style={{ ...inputStyle, flex: "1 1 160px", maxWidth: 280 }}
+            aria-label="그래프 질문 검색"
+          />
+          <datalist id="graph-question-hints-user">
+            {QUESTION_HINTS.map((q) => (
+              <option key={q} value={q} />
+            ))}
+          </datalist>
+          {!ex.graphMobileUx ? (
+            <button
+              type="button"
+              onClick={() => ex.setDetailPanelOpen((v) => !v)}
+              aria-pressed={ex.detailPanelOpen}
+              style={btnStyle}
+            >
+              {ex.detailPanelOpen ? "상세 숨기기" : "상세 보기"}
+            </button>
+          ) : null}
+          <span style={{ fontSize: 11, color: t.textMuted }}>
+            {canvasNodes.length} nodes · {canvasEdges.length} edges
+            {agentLayer.graphView !== "all" ? " · Agent View" : ""}
+          </span>
+        </div>
+      )}
 
       {p.error ? <p style={{ padding: 12, margin: 0, color: "#b91c1c", fontSize: 13 }}>{p.error}</p> : null}
       {p.loading ? (
@@ -365,12 +448,13 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
         </div>
       ) : null}
 
-      <div style={shell}>
+      <div data-testid="knowledge-graph-canvas-region" style={canvasRegionStyle}>
+      <div style={{ ...shell, flex: 1, minHeight: canvasRegionMinHeight }}>
         <div
           style={{
             flex: ex.graphMobileUx ? "7 1 0%" : "6 1 0%",
             minWidth: 0,
-            minHeight: ex.graphMobileUx ? 420 : 520,
+            minHeight: canvasRegionMinHeight,
             display: "flex",
             flexDirection: "column",
             position: "relative",
@@ -457,6 +541,23 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
           />
         ) : null}
       </div>
+      </div>
+      {userUx ? (
+        <div
+          data-testid="knowledge-graph-selection-summary"
+          style={{
+            padding: "8px 12px",
+            fontSize: 12,
+            fontWeight: 700,
+            color: agentPresentation.selectedNodeLabel === "선택된 노드 없음" ? t.textMuted : t.textPrimary,
+            borderTop: `1px solid ${t.border}`,
+            flexShrink: 0,
+          }}
+          aria-live="polite"
+        >
+          {agentPresentation.selectedNodeLabel}
+        </div>
+      ) : null}
       {!isModal && p.onExit && ex.graphMobileUx ? (
         <button
           type="button"
@@ -484,6 +585,24 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
         </button>
       ) : null}
       <ProjectKnowledgeReplayModal open={replayOpen} projectId={p.projectId} onClose={() => setReplayOpen(false)} />
+      {userUx ? (
+        <>
+          <ProjectKnowledgeMemorySettingsDrawer
+            projectId={p.projectId}
+            open={memorySettingsOpen}
+            onClose={() => setMemorySettingsOpen(false)}
+          />
+          <ProjectKnowledgeGraphLogDrawer
+            open={logDrawerOpen}
+            onClose={() => setLogDrawerOpen(false)}
+            runtimeSummary={p.runtimeStatusSummary ?? null}
+            onOpenChangeLog={p.onOpenChangeLog}
+            onOpenKnowledgeLog={p.onOpenKnowledgeLog}
+            onOpenDiagnosticLog={p.onOpenDiagnosticLog}
+            onOpenGraphReplay={() => setReplayOpen(true)}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

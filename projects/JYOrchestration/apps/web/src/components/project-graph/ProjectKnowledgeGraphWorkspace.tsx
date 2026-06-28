@@ -151,7 +151,6 @@ export function ProjectKnowledgeGraphWorkspace({
     setDiagnosticsOpen(false);
   };
 
-  const showUserTitle = userSurface && workspacePane === "graph" && !tabsVisible;
   const showUserNav =
     userSurface &&
     workspacePane !== "graph" &&
@@ -178,14 +177,6 @@ export function ProjectKnowledgeGraphWorkspace({
         mode={uxMode}
         diagnosticsOpen={diagnosticsOpen}
       />
-      {showUserTitle ? (
-        <div
-          data-testid="project-knowledge-graph-user-title"
-          style={{ fontSize: 15, fontWeight: 900, color: t.textPrimary, padding: "0 0 8px", flexShrink: 0 }}
-        >
-          프로젝트 구조
-        </div>
-      ) : null}
       {showUserNav ? (
         <ProjectKnowledgeGraphUserNavBar pane={workspacePane} onBack={goToGraph} />
       ) : null}

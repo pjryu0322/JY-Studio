@@ -110,6 +110,10 @@ vi.mock("@/lib/debug/promptTimelineClientFlag", () => ({
   isPromptTimelineDebugClient: () => false,
 }));
 
+vi.mock("@/components/project-graph/useProjectKnowledgeMemoryCompactHint", () => ({
+  useProjectKnowledgeMemoryCompactHint: () => "과거 지식: 참조 항목 없음",
+}));
+
 import { ProjectKnowledgeGraphWorkspace } from "@/components/project-graph/ProjectKnowledgeGraphWorkspace";
 
 describe("ProjectKnowledgeGraphWorkspace integration", () => {
@@ -118,10 +122,9 @@ describe("ProjectKnowledgeGraphWorkspace integration", () => {
       createElement(ProjectKnowledgeGraphWorkspace, { projectId: "p1", variant: "page" }),
     );
     expect(html).toContain("project-knowledge-graph-workspace");
-    expect(html).toContain("project-knowledge-graph-user-title");
-    expect(html).toContain("프로젝트 구조");
-    expect(html).toContain("knowledge-runtime-status-card");
-    expect(html).toContain("현재 프로젝트 구조");
+    expect(html).toContain("knowledge-graph-summary-bar");
+    expect(html).not.toContain("project-knowledge-graph-user-title");
+    expect(html).not.toContain("현재 프로젝트 구조");
     expect(html).not.toContain("project-knowledge-graph-tab-activity");
     expect(html).not.toContain("Knowledge Activity");
   });

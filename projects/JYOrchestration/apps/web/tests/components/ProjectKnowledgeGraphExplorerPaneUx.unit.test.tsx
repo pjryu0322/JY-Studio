@@ -41,7 +41,7 @@ const explorerStub = {
   edgeTypeFilter: "",
   setEdgeTypeFilter: vi.fn(),
   nodeTypes: [],
-  filteredNodes: [],
+  filteredNodes: [{ id: "n1", title: "A", nodeType: "FEATURE", lifecycle: "APPROVED" }],
   filteredEdges: [],
   explored: { nodes: [], highlightIds: new Set() },
   explorationQuery: { kind: "none" as const },
@@ -55,10 +55,7 @@ const explorerStub = {
   handleSelectRelatedNodeId: vi.fn(),
   closeMobileNodeSheet: vi.fn(),
   nodeContextMenuItems: [],
-  canvasMenuItems: [
-    { id: "focus", label: "Focus", onSelect: vi.fn() },
-    { id: "neighbors", label: "이웃 노드 보기", onSelect: vi.fn() },
-  ],
+  canvasMenuItems: [{ id: "focus", label: "Focus", onSelect: vi.fn() }],
   buildMobileNodeMenuItems: () => [],
   actionSheetNode: null,
   setSelectedEdgeId: vi.fn(),
@@ -70,72 +67,72 @@ const explorerStub = {
   clearSelectedEdge: vi.fn(),
 };
 
-describe("ProjectKnowledgeGraphExplorerPane", () => {
-  it("renders explorer shell and context menu labels", () => {
+describe("ProjectKnowledgeGraphExplorerPane UX", () => {
+  it("uses compact summary and action bar without duplicate structure titles", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectKnowledgeGraphExplorerPane, {
         projectId: "p1",
         clientReady: true,
         searchParams: null,
-        nodes: [],
+        nodes: [{ id: "n1", title: "A", nodeType: "FEATURE", lifecycle: "APPROVED" }],
         edges: [],
         loading: false,
         error: null,
         reloadGraph: async () => {},
         variant: "page",
         explorerState: explorerStub as never,
-        runtimeStatusSummary: {
-          status: "READY",
-          statusLabel: "구조화 완료",
-          nodeCount: 2,
-          edgeCount: 1,
-        },
-        runtimeStatusLoading: false,
-        runtimeStatusError: null,
-        uxMode: "diagnostic",
-      }),
-    );
-    expect(html).toContain("project-knowledge-graph-explorer-pane");
-    expect(html).toContain("선택된 노드 없음");
-    expect(html).toContain("knowledge-graph-filters-toggle");
-    expect(html).toContain("그래프 변화 보기");
-    expect(html).toContain("knowledge-replay-open");
-    expect(html).not.toContain("프로젝트 구조가 바뀐");
-    expect(html).toContain("knowledge-runtime-status-card");
-    expect(html).toContain("knowledge-graph-agent-view-tabs");
-    expect(html).toContain("기획자");
-  });
-
-  it("keeps user mode summary on mobile layout", () => {
-    const mobileStub = { ...explorerStub, graphMobileUx: true };
-    const html = renderToStaticMarkup(
-      createElement(ProjectKnowledgeGraphExplorerPane, {
-        projectId: "p1",
-        clientReady: true,
-        searchParams: null,
-        nodes: [],
-        edges: [],
-        loading: false,
-        error: null,
-        reloadGraph: async () => {},
-        variant: "page",
-        explorerState: mobileStub as never,
         uxMode: "user",
         runtimeStatusSummary: {
-          status: "READY",
-          statusLabel: "구조화 완료",
-          nodeCount: 2,
-          edgeCount: 1,
+          status: "NEEDS_REVIEW",
+          statusLabel: "검토 필요",
+          nodeCount: 21,
+          edgeCount: 24,
+          latestChangedAt: "2026-06-27T02:36:00.000Z",
         },
+        onOpenChangeLog: vi.fn(),
+        onOpenKnowledgeLog: vi.fn(),
+        onOpenDiagnosticLog: vi.fn(),
+        onReloadRuntimeStatus: vi.fn(),
       }),
     );
     expect(html).toContain("knowledge-graph-summary-bar");
+    expect(html).toContain("knowledge-graph-action-bar");
     expect(html).not.toContain("현재 프로젝트 구조");
-    expect(html).not.toContain("Knowledge Activity");
-    expect(html).not.toContain("Persistence: DATABASE");
+    expect(html).not.toContain("project-knowledge-graph-user-title");
+    expect(html).not.toContain("user-memory-control-enabled");
+    expect(html).not.toContain("상세 로그 보기");
+    expect(html).not.toContain("knowledge-log-tab-changes");
   });
 
-  it("shows compact search in user mode without filter toggle", () => {
+  it("places canvas region after agent tabs", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeGraphExplorerPane, {
+        projectId: "p1",
+        clientReady: true,
+        searchParams: null,
+        nodes: [{ id: "n1", title: "A", nodeType: "FEATURE", lifecycle: "APPROVED" }],
+        edges: [],
+        loading: false,
+        error: null,
+        reloadGraph: async () => {},
+        variant: "page",
+        explorerState: explorerStub as never,
+        uxMode: "user",
+        runtimeStatusSummary: {
+          status: "READY",
+          statusLabel: "완료",
+          nodeCount: 1,
+          edgeCount: 0,
+        },
+      }),
+    );
+    const tabsIdx = html.indexOf("knowledge-graph-agent-view-tabs");
+    const canvasIdx = html.indexOf("knowledge-graph-canvas-region");
+    expect(tabsIdx).toBeGreaterThan(-1);
+    expect(canvasIdx).toBeGreaterThan(tabsIdx);
+  });
+
+  it("exposes memory settings and log entry buttons on the default surface", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectKnowledgeGraphExplorerPane, {
         projectId: "p1",
@@ -151,15 +148,16 @@ describe("ProjectKnowledgeGraphExplorerPane", () => {
         uxMode: "user",
         runtimeStatusSummary: {
           status: "READY",
-          statusLabel: "구조화 완료",
-          nodeCount: 2,
-          edgeCount: 1,
+          statusLabel: "완료",
+          nodeCount: 0,
+          edgeCount: 0,
         },
+        onReloadRuntimeStatus: vi.fn(),
       }),
     );
-    expect(html).not.toContain("knowledge-graph-filters-toggle");
-    expect(html).toContain('aria-label="그래프 질문 검색"');
-    expect(html).not.toContain("user-memory-control-enabled");
-    expect(html).not.toContain("상세 로그 보기");
+    expect(html).toContain("knowledge-memory-settings-open");
+    expect(html).toContain("knowledge-graph-log-open");
+    expect(html).toContain("지식 반영 설정");
+    expect(html).toContain("로그");
   });
 });

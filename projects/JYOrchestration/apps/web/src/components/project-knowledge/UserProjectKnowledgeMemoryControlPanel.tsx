@@ -18,7 +18,10 @@ const cardStyle: CSSProperties = {
   marginBottom: 8,
 };
 
-export function UserProjectKnowledgeMemoryControlPanel(p: { readonly projectId: string }) {
+export function UserProjectKnowledgeMemoryControlPanel(p: {
+  readonly projectId: string;
+  readonly embedded?: boolean;
+}) {
   const {
     control,
     preview,
@@ -37,7 +40,7 @@ export function UserProjectKnowledgeMemoryControlPanel(p: { readonly projectId: 
 
   if (loading && !control) {
     return (
-      <div data-testid="user-memory-control-panel" style={cardStyle} aria-live="polite">
+      <div data-testid="user-memory-control-panel" style={p.embedded ? { fontSize: 12 } : cardStyle} aria-live="polite">
         <div style={{ fontWeight: 800, color: t.textPrimary }}>과거 프로젝트 지식</div>
         <div style={{ marginTop: 4, color: t.textMuted }}>불러오는 중…</div>
       </div>
@@ -45,9 +48,12 @@ export function UserProjectKnowledgeMemoryControlPanel(p: { readonly projectId: 
   }
 
   const enabled = control?.enabled !== false;
+  const shellStyle: CSSProperties = p.embedded
+    ? { fontSize: 12, lineHeight: 1.45 }
+    : cardStyle;
 
   return (
-    <div data-testid="user-memory-control-panel" style={cardStyle}>
+    <div data-testid="user-memory-control-panel" style={shellStyle}>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
         <div style={{ fontWeight: 800, color: t.textPrimary }}>과거 프로젝트 지식</div>
         <button
