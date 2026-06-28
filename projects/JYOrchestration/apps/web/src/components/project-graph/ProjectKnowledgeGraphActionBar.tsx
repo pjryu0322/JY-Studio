@@ -29,14 +29,10 @@ export function ProjectKnowledgeGraphActionBar(p: {
   readonly onRefresh?: () => void;
   readonly onOpenMemorySettings?: () => void;
   readonly onOpenLog?: () => void;
-  readonly memoryHint?: string | null;
   readonly compact?: boolean;
 }) {
   return (
     <div data-testid="knowledge-graph-action-bar" style={barStyle}>
-      {p.memoryHint && !p.compact ? (
-        <span style={{ fontSize: 11, color: t.textMuted, flex: "1 1 140px" }}>{p.memoryHint}</span>
-      ) : null}
       {p.onOpenChangeLog ? (
         <button
           type="button"

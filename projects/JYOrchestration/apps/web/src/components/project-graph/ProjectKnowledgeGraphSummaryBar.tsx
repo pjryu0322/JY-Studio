@@ -30,6 +30,7 @@ export function ProjectKnowledgeGraphSummaryBar(p: {
   readonly error: string | null;
   readonly displayNodeCount?: number;
   readonly displayEdgeCount?: number;
+  readonly viewLabel?: string;
 }) {
   if (p.loading) {
     return (
@@ -48,6 +49,17 @@ export function ProjectKnowledgeGraphSummaryBar(p: {
   }
 
   if (!p.summary || (p.summary.status === "PREPARING" && p.summary.nodeCount === 0)) {
+    const countLabel = p.viewLabel ?? "현재 보기";
+    if (p.displayNodeCount !== undefined && p.displayEdgeCount !== undefined) {
+      return (
+        <div data-testid="knowledge-graph-summary-bar" style={barStyle}>
+          <span>
+            <strong style={{ color: t.textPrimary, fontWeight: 800 }}>상태:</strong> 준비 중 · {countLabel}{" "}
+            {p.displayNodeCount} nodes · {p.displayEdgeCount} edges
+          </span>
+        </div>
+      );
+    }
     return (
       <div data-testid="knowledge-graph-summary-bar" style={barStyle}>
         <span>
@@ -59,6 +71,7 @@ export function ProjectKnowledgeGraphSummaryBar(p: {
 
   const nodeCount = p.displayNodeCount ?? p.summary.nodeCount;
   const edgeCount = p.displayEdgeCount ?? p.summary.edgeCount;
+  const countLabel = p.viewLabel ?? "현재 보기";
   const lastApplied = p.summary.latestChangedAt
     ? formatKnowledgeRevisionTimeOnly(p.summary.latestChangedAt)
     : null;
@@ -69,7 +82,7 @@ export function ProjectKnowledgeGraphSummaryBar(p: {
       <span>
         <strong style={{ color: t.textPrimary, fontWeight: 800 }}>상태:</strong> {status}
         {" · "}
-        {nodeCount} nodes · {edgeCount} edges
+        {countLabel} {nodeCount} nodes · {edgeCount} edges
         {lastApplied ? ` · 최근 반영 ${lastApplied}` : ""}
       </span>
     </div>

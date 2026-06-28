@@ -110,10 +110,6 @@ vi.mock("@/lib/debug/promptTimelineClientFlag", () => ({
   isPromptTimelineDebugClient: () => false,
 }));
 
-vi.mock("@/components/project-graph/useProjectKnowledgeMemoryCompactHint", () => ({
-  useProjectKnowledgeMemoryCompactHint: () => "과거 지식: 참조 항목 없음",
-}));
-
 import { ProjectKnowledgeGraphWorkspace } from "@/components/project-graph/ProjectKnowledgeGraphWorkspace";
 
 describe("ProjectKnowledgeGraphWorkspace integration", () => {

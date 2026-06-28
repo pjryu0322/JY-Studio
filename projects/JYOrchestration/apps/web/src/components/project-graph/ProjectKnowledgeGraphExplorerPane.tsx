@@ -21,7 +21,7 @@ import { ProjectKnowledgeGraphSummaryBar } from "@/components/project-graph/Proj
 import { ProjectKnowledgeGraphActionBar } from "@/components/project-graph/ProjectKnowledgeGraphActionBar";
 import { ProjectKnowledgeMemorySettingsDrawer } from "@/components/project-graph/ProjectKnowledgeMemorySettingsDrawer";
 import { ProjectKnowledgeGraphLogDrawer } from "@/components/project-graph/ProjectKnowledgeGraphLogDrawer";
-import { useProjectKnowledgeMemoryCompactHint } from "@/components/project-graph/useProjectKnowledgeMemoryCompactHint";
+import { runUserKnowledgeGraphRefresh } from "@/components/project-graph/projectKnowledgeGraphUserRefresh";
 import type { KnowledgeRuntimeStatusSummary } from "@/lib/project-knowledge/projectKnowledgeRuntimeStatusTypes";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { ProjectKnowledgeAgentGraphViewTabs } from "@/components/project-graph/ProjectKnowledgeAgentGraphViewTabs";
@@ -69,7 +69,6 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
   const [logDrawerOpen, setLogDrawerOpen] = useState(false);
   const [graphView, setGraphView] = useState<ProjectKnowledgeGraphView>("all");
   const userUx = (p.uxMode ?? "user") === "user";
-  const memoryHint = useProjectKnowledgeMemoryCompactHint(p.projectId);
 
   const agentLayer = useMemo(
     () =>
@@ -86,6 +85,7 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
 
   const canvasNodes = agentLayer.nodes;
   const canvasEdges = agentLayer.edges;
+  const summaryViewLabel = agentLayer.graphView === "all" ? "전체" : "현재 보기";
   const agentNodeVisualState =
     agentLayer.graphView === "all" ? undefined : agentLayer.agentNodeVisualState;
 
@@ -228,11 +228,13 @@ export function ProjectKnowledgeGraphExplorerPane(p: {
             summary={p.runtimeStatusSummary ?? null}
             loading={Boolean(p.runtimeStatusLoading)}
             error={p.runtimeStatusError ?? null}
+            displayNodeCount={canvasNodes.length}
+            displayEdgeCount={canvasEdges.length}
+            viewLabel={summaryViewLabel}
           />
           <ProjectKnowledgeGraphActionBar
-            memoryHint={memoryHint}
             onOpenChangeLog={p.onOpenChangeLog}
-            onRefresh={p.onReloadRuntimeStatus}
+            onRefresh={() => runUserKnowledgeGraphRefresh(p.reloadGraph)}
             onOpenMemorySettings={() => setMemorySettingsOpen(true)}
             onOpenLog={() => setLogDrawerOpen(true)}
             compact={ex.graphMobileUx || isMobileLayout}

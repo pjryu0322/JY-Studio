@@ -2,13 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ProjectKnowledgeGraphExplorerPane } from "@/components/project-graph/ProjectKnowledgeGraphExplorerPane";
+import { ProjectKnowledgeGraphLogDrawer } from "@/components/project-graph/ProjectKnowledgeGraphLogDrawer";
 
 vi.mock("@/components/layout/WorkspaceModeContext", () => ({
   useWorkspaceMode: () => ({ effectiveLayout: "DESKTOP" }),
-}));
-
-vi.mock("@/components/project-graph/useProjectKnowledgeMemoryCompactHint", () => ({
-  useProjectKnowledgeMemoryCompactHint: () => "과거 지식: 참조 항목 없음",
 }));
 
 const explorerStub = {
@@ -97,9 +94,11 @@ describe("ProjectKnowledgeGraphExplorerPane UX", () => {
     );
     expect(html).toContain("knowledge-graph-summary-bar");
     expect(html).toContain("knowledge-graph-action-bar");
+    expect(html).toContain("전체 1 nodes · 0 edges");
+    expect(html).not.toContain("21 nodes");
     expect(html).not.toContain("현재 프로젝트 구조");
-    expect(html).not.toContain("project-knowledge-graph-user-title");
     expect(html).not.toContain("user-memory-control-enabled");
+    expect(html).not.toContain("과거 지식: 참조");
     expect(html).not.toContain("상세 로그 보기");
     expect(html).not.toContain("knowledge-log-tab-changes");
   });
@@ -159,5 +158,25 @@ describe("ProjectKnowledgeGraphExplorerPane UX", () => {
     expect(html).toContain("knowledge-graph-log-open");
     expect(html).toContain("지식 반영 설정");
     expect(html).toContain("로그");
+    expect(html).not.toContain("과거 지식:");
+  });
+});
+
+describe("ProjectKnowledgeGraphLogDrawer", () => {
+  it("renders tabs and close control when open", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProjectKnowledgeGraphLogDrawer, {
+        open: true,
+        onClose: vi.fn(),
+        onOpenChangeLog: vi.fn(),
+        onOpenGraphReplay: vi.fn(),
+      }),
+    );
+    expect(html).toContain("knowledge-graph-log-drawer");
+    expect(html).toContain("knowledge-log-tab-changes");
+    expect(html).toContain("knowledge-log-tab-knowledge");
+    expect(html).toContain("knowledge-log-tab-diagnostics");
+    expect(html).toContain("knowledge-graph-log-close");
+    expect(html).toContain("knowledge-log-open-replay");
   });
 });

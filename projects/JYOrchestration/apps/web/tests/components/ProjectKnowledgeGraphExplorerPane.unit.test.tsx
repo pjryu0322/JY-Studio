@@ -7,10 +7,6 @@ vi.mock("@/components/layout/WorkspaceModeContext", () => ({
   useWorkspaceMode: () => ({ effectiveLayout: "DESKTOP" }),
 }));
 
-vi.mock("@/components/project-graph/useProjectKnowledgeMemoryCompactHint", () => ({
-  useProjectKnowledgeMemoryCompactHint: () => "과거 지식: 참조 항목 없음",
-}));
-
 const explorerStub = {
   graphMobileUx: false,
   toastMessage: null,
