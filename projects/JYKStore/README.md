@@ -175,6 +175,31 @@ Provider Center는 지식팩 제공자가 프로필을 등록하고 지식팩 �
 - 파일 업로드와 자동 청킹은 Phase P8에서 구현합니다.
 - DRAFT/REVIEWING 지식팩은 일반 카탈로그와 Context API에 노출되지 않습니다.
 
+## Context API Test Console
+
+JYKStore는 지식팩 연동 화면에서 Context API 테스트 콘솔을 제공합니다.
+
+테스트 위치:
+
+- `/my-packs/[packId]/connect`
+
+확인 가능한 항목:
+
+- API Key 유효성
+- `context:read` scope 여부
+- packId 유효성
+- HTTP status
+- requestId
+- chunkCount
+- 응답 JSON
+
+보안 정책:
+
+- API Key 원문은 테스트 입력 중 React state에만 보관합니다.
+- API Key 원문은 LocalStorage/sessionStorage에 저장하지 않습니다.
+- API Key 원문은 URL query로 전달하지 않습니다.
+- 새로고침하면 입력한 API Key는 사라집니다.
+
 ## 아직 구현하지 않은 기능
 
 - Vector DB/RAG 검색

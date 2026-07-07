@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCard";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderSourceDocumentForm } from "@/components/ProviderSourceDocumentForm";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
@@ -102,6 +103,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         </div>
         <ProviderPackStatusBadge status={pack.status} />
       </div>
+
+      <ProviderPackReadinessCard pack={pack} />
 
       {pack.status === "REVIEWING" ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">

@@ -5,6 +5,7 @@ import type { KnowledgePack } from "@/types/pack";
 import { AddToMyPacksButton } from "@/components/AddToMyPacksButton";
 import { CodeSnippet } from "@/components/CodeSnippet";
 import { ConnectInfoCard } from "@/components/ConnectInfoCard";
+import { ContextApiTestPanel } from "@/components/ContextApiTestPanel";
 import { IntegrationStepCard } from "@/components/IntegrationStepCard";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { useMyPacks } from "@/hooks/useMyPacks";
@@ -101,7 +102,11 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
         <ConnectInfoCard label="Endpoint" value={endpoint} />
       </IntegrationStepCard>
 
-      <IntegrationStepCard step={4} title="예시 코드 복사">
+      <IntegrationStepCard step={4} title="Context API 테스트">
+        <ContextApiTestPanel packId={pack.packId} packName={pack.name} />
+      </IntegrationStepCard>
+
+      <IntegrationStepCard step={5} title="예시 코드 복사">
         <div className="space-y-4">
           <CodeSnippet title="cURL" language="bash" code={createCurlExample(pack.packId)} />
           <CodeSnippet
@@ -114,7 +119,7 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
         </div>
       </IntegrationStepCard>
 
-      <IntegrationStepCard step={5} title="AI 도구용 Prompt 복사">
+      <IntegrationStepCard step={6} title="AI 도구용 Prompt 복사">
         <div className="space-y-4">
           <CodeSnippet
             title="Cursor Prompt"
