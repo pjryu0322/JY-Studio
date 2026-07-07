@@ -45,7 +45,7 @@ export function AdminPlanOverviewPanel() {
 
           <dl className="grid grid-cols-2 gap-2">
             <MetricCard label="총 API Key" value={overview.totalApiKeys.toLocaleString("ko-KR")} />
-            <MetricCard label="추정 client 수" value={overview.totalClientsApprox.toLocaleString("ko-KR")} />
+            <MetricCard label="고유 API Key 수" value={overview.totalClientsApprox.toLocaleString("ko-KR")} />
             <MetricCard label="오늘 Context 요청" value={overview.totalContextRequestsToday.toLocaleString("ko-KR")} />
             <MetricCard label="이번 달 Context 요청" value={overview.totalContextRequestsMonth.toLocaleString("ko-KR")} />
           </dl>

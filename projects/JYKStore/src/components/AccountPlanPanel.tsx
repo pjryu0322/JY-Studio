@@ -5,6 +5,7 @@ import { FreePlanPolicyCard } from "@/components/FreePlanPolicyCard";
 import { UsageAllowanceCard } from "@/components/UsageAllowanceCard";
 import { fetchAccountPlanSummary } from "@/lib/billing-api";
 import type { PlanUsageSummaryDto } from "@/lib/billing-dto";
+import { maskId } from "@/lib/masking";
 
 export function AccountPlanPanel() {
   const [summary, setSummary] = useState<PlanUsageSummaryDto | null>(null);
@@ -58,7 +59,7 @@ export function AccountPlanPanel() {
 
           <p className="text-xs text-store-muted">
             기기/계정별 상세 사용량은 향후 로그인/계정 기능에서 제공됩니다. 현재 clientId는 화면 식별용으로만
-            표시됩니다: <span className="font-mono">{summary.clientId}</span>
+            표시됩니다: <span className="font-mono">{maskId(summary.clientId)}</span>
           </p>
         </>
       ) : null}

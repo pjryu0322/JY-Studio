@@ -213,3 +213,134 @@ try {
     throw error;
   }
 }`;
+
+export const retrievalMetadataFilterKeys = [
+  "category",
+  "feature",
+  "apiName",
+  "documentType",
+  "securityLevel",
+  "environment",
+  "framework",
+  "programmingLanguage (alias: language)",
+  "productName",
+  "productVersion (alias: version)",
+  "sourceOrganization",
+  "licenseType",
+  "verificationStatus",
+  "releaseVersion",
+  "referenceType",
+] as const;
+
+export const retrievalApiErrorCodes = [
+  { status: 401, code: "UNAUTHORIZED", description: "API Key가 없거나 유효하지 않습니다." },
+  { status: 403, code: "FORBIDDEN", description: "API Key scope가 부족합니다." },
+  { status: 400, code: "INVALID_RETRIEVAL_REQUEST", description: "요청 body/filter/topK가 올바르지 않습니다." },
+  { status: 404, code: "PACK_NOT_FOUND", description: "공개된 지식팩을 찾을 수 없습니다." },
+  { status: 500, code: "INTERNAL_SERVER_ERROR", description: "서버 처리 중 오류가 발생했습니다." },
+] as const;
+
+export const retrievalRequestBody = `{
+  "knowledgePackId": "${samplePackId}",
+  "query": "Callback 예제를 생성",
+  "filters": {
+    "documentType": "SAMPLE_CODE",
+    "programmingLanguage": "Java",
+    "framework": "Spring Boot",
+    "securityLevel": "PUBLIC"
+  },
+  "topK": 8,
+  "includeMetadata": true
+}`;
+
+export const retrievalCurlExample = `curl -X POST "${apiBaseUrls.development}/api/v1/retrieval/query" \\
+  -H "Authorization: Bearer ${sampleApiKey}" \\
+  -H "Content-Type: application/json" \\
+  --data '{
+    "knowledgePackId": "${samplePackId}",
+    "query": "Callback 예제를 생성",
+    "filters": {
+      "documentType": "SAMPLE_CODE",
+      "programmingLanguage": "Java",
+      "framework": "Spring Boot"
+    },
+    "topK": 8,
+    "includeMetadata": true
+  }'`;
+
+export const retrievalFetchExample = `const res = await fetch(
+  "${apiBaseUrls.development}/api/v1/retrieval/query",
+  {
+    method: "POST",
+    headers: {
+      Authorization: \`Bearer \${process.env.JYKSTORE_API_KEY}\`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      knowledgePackId: "${samplePackId}",
+      query: "Callback 예제를 생성",
+      filters: {
+        documentType: "SAMPLE_CODE",
+        programmingLanguage: "Java",
+        framework: "Spring Boot",
+      },
+      topK: 8,
+      includeMetadata: true,
+    }),
+  },
+);
+
+if (!res.ok) {
+  throw new Error(\`Retrieval API error: \${res.status}\`);
+}
+
+const data = await res.json();
+console.log(data);`;
+
+export const retrievalResponseExample = `{
+  "contexts": [
+    {
+      "chunkId": "ck_xxx",
+      "knowledgePackId": "${samplePackId}",
+      "title": "Callback 예제",
+      "content": "...",
+      "score": 75,
+      "matchReasons": ["query:callback", "metadata:framework"],
+      "metadata": {
+        "category": "Callback",
+        "framework": "Spring Boot",
+        "programmingLanguage": "Java",
+        "documentType": "SAMPLE_CODE",
+        "securityLevel": "PUBLIC"
+      },
+      "references": [
+        {
+          "type": "SOURCE_DOCUMENT",
+          "title": "간편인증 연동 매뉴얼",
+          "sourceDocumentId": "doc_xxx"
+        }
+      ]
+    }
+  ],
+  "usage": {
+    "requestId": "req_xxx",
+    "contextCount": 1,
+    "topK": 8,
+    "usedFilters": {
+      "framework": "Spring Boot"
+    }
+  }
+}`;
+
+export const retrievalErrorResponseExample = `{
+  "error": {
+    "code": "INVALID_RETRIEVAL_REQUEST",
+    "message": "Invalid retrieval request.",
+    "details": [
+      "Unknown filter key: foo"
+    ]
+  },
+  "usage": {
+    "requestId": "req_xxx"
+  }
+}`;

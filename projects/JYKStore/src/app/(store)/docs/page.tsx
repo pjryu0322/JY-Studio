@@ -8,6 +8,11 @@ const DOC_LINKS = [
     href: ROUTES.contextApiDocs,
   },
   {
+    title: "Metadata Retrieval API",
+    description: "Metadata Filter 기반 고급 context 검색 API 문서",
+    href: ROUTES.retrievalApiDocs,
+  },
+  {
     title: "API 개요 / API Key",
     description: "Base URL, 인증 방식, API Key 보안 정책",
     href: ROUTES.apiDocs,

@@ -77,6 +77,27 @@ export default function ApiDocsPage() {
       </section>
 
       <section className="space-y-3 rounded-2xl border border-store-border bg-white p-4 shadow-card">
+        <h2 className="text-sm font-bold text-slate-900">Metadata Retrieval API</h2>
+        <p className="text-sm text-slate-700">
+          metadata filter, topK, includeMetadata를 명시적으로 제어하는 고급 검색 API입니다. Keyword + Metadata
+          Ranking 기반이며 Vector/Embedding은 아직 적용되지 않습니다.
+        </p>
+        <div className="rounded-xl border border-store-border p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white">POST</span>
+            <code className="text-xs text-slate-900">/api/v1/retrieval/query</code>
+          </div>
+          <p className="mt-1 text-xs text-store-muted">Metadata Filter 기반 Context 후보 검색</p>
+        </div>
+        <Link
+          href={ROUTES.retrievalApiDocs}
+          className="inline-flex min-h-[44px] items-center text-sm font-bold text-store-accent"
+        >
+          Retrieval API 상세 문서 →
+        </Link>
+      </section>
+
+      <section className="space-y-3 rounded-2xl border border-store-border bg-white p-4 shadow-card">
         <h2 className="text-sm font-bold text-slate-900">에러 응답 형식</h2>
         <DocsCodeBlock code={errorResponseExample} language="json" />
         <table className="w-full border-collapse text-left text-xs">

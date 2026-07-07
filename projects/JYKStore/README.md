@@ -400,6 +400,37 @@ JYKStore는 현재 전체 무료 정책을 기본으로 합니다.
 - 현재 P12는 DB billing model이 아니라 Free Plan policy foundation입니다.
 - 실제 결제/청구/사용자별 plan assignment는 향후 별도 단계에서 확장합니다.
 
+## Knowledge Retrieval Engine Foundation
+
+JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retrieval Provider입니다.
+
+- Metadata Filter 기반 Retrieval API 추가
+- `POST /api/v1/retrieval/query`
+- Context API는 간단한 context 제공용으로 유지
+- Retrieval API는 metadata 기반 고급 검색 제어용
+- Chunk metadata(JSON) 필드 추가로 metadata filter 지원
+- 검색 결과는 Keyword + Metadata Ranking 기반 (Vector/Embedding 미적용)
+
+위치:
+
+- `/docs/api/retrieval`
+- `POST /api/v1/retrieval/query`
+
+요청 필드:
+
+- `knowledgePackId` (필수)
+- `query` (선택, keyword ranking)
+- `filters` (선택, 허용된 metadata key만 허용, 그 외 key는 400)
+- `topK` (선택, 기본 8, 1~20)
+- `includeMetadata` (선택, 기본 true)
+
+정책:
+
+- P13은 Vector DB/Embedding/RAG/LLM 호출을 포함하지 않습니다.
+- 비활성 chunk는 Retrieval API에서도 노출하지 않습니다.
+- API 인증은 Context API와 동일하게 Bearer API Key를 사용합니다.
+- packId 전용 API Key 권한은 P13에서 구현하지 않으며 향후 확장 예정입니다.
+
 ## 아직 구현하지 않은 기능
 
 - Vector DB/RAG 검색
@@ -408,9 +439,9 @@ JYKStore는 현재 전체 무료 정책을 기본으로 합니다.
 
 ## 다음 단계
 
-1. Phase P13: Knowledge Retrieval Engine Foundation
-   - Knowledge Pack metadata schema 확장
-   - Chunk metadata 확장
-   - Retrieval API v1 설계
-   - Metadata Filter 기반 검색 구조 정리
-   - Vector/Embedding은 P14에서 분리 검토
+1. Phase P14: Vector Retrieval Extension
+   - Embedding 생성 파이프라인
+   - Vector DB 연동
+   - Metadata Filter → Vector Search → Ranking
+   - Keyword ranking과 hybrid ranking
+   - Vector Search 단독 의존 금지

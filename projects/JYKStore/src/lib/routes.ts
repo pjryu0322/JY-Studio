@@ -19,6 +19,7 @@ export const ROUTES = {
   docs: "/docs",
   apiDocs: "/docs/api",
   contextApiDocs: "/docs/api/context",
+  retrievalApiDocs: "/docs/api/retrieval",
   sdkDocs: "/docs/sdk",
 } as const;
 
