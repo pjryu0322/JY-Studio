@@ -201,11 +201,18 @@ export async function buildMcpReadyManifest(packId: string): Promise<McpReadyMan
     resources: [
       {
         name: "rag-jsonl-export",
-        path: `/api/v1/admin/packs/${pack.packId}/exports/rag-jsonl`,
+        path: `/api/v1/exports/rag-jsonl?knowledgePackId=${pack.packId}`,
+        auth: "Bearer API Key",
       },
       {
         name: "graph-json-export",
-        path: `/api/v1/admin/packs/${pack.packId}/exports/graph`,
+        path: `/api/v1/exports/graph?knowledgePackId=${pack.packId}`,
+        auth: "Bearer API Key",
+      },
+      {
+        name: "package-json-export",
+        path: `/api/v1/exports/package?knowledgePackId=${pack.packId}`,
+        auth: "Bearer API Key",
       },
     ],
   };

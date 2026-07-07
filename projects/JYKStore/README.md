@@ -468,16 +468,21 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
   - edge type: `PACK_HAS_VERSION` / `VERSION_HAS_SOURCE_DOCUMENT` / `VERSION_HAS_CHUNK` / `SOURCE_DOCUMENT_HAS_CHUNK` / `CHUNK_HAS_TAG` / `CHUNK_HAS_METADATA` / `CHUNK_REFERENCES_SOURCE_DOCUMENT`
   - deterministic externalId(`pack:` / `version:` / `chunk:` / `tag:` / `metadata:` 등)로 중복 생성을 방지하며, metadata는 허용 canonical key + string/string[] 값만(민감 key 제외) graph에 반영합니다.
   - graph rebuild는 transaction 기반으로 기존 `AUTO_DETERMINISTIC` node/edge를 삭제 후 재생성합니다. 기존 pack/version/source/chunk/embedding 데이터는 수정하지 않습니다.
+- **외부 AI 호출 방향 정리**: JYKStore 서버는 OpenAI/Claude/Gemini/EXAONE 같은 외부 AI Provider를 **직접 호출하지 않습니다.** 반대로 외부 AI 도구·LLM Agent·OpenAI GPTs·Cursor/Copilot·타 플랫폼이 JYKStore public API를 Bearer API Key로 호출해 context/graph/export data를 가져가는 구조는 지원합니다.
 - **Graph API**
   - `GET /api/v1/admin/packs/{packId}/graph` — graph summary (node/edge count, type별 count)
   - `POST /api/v1/admin/packs/{packId}/graph/rebuild` — deterministic rebuild
-  - `POST /api/v1/graph/query` — API Key(`context:read` scope) 인증. label/summary/externalId contains 검색으로 node/edge 조회. graph traversal·semantic search·답변 생성은 하지 않습니다.
+  - `POST /api/v1/graph/query` — (public) API Key(`context:read` scope) 인증. label/summary/externalId contains 검색으로 node/edge 조회. graph traversal·semantic search·답변 생성은 하지 않습니다.
 - **Export Foundation** (신규 라이브러리 없이 JSON/JSONL 응답 기반)
-  - `GET /api/v1/admin/packs/{packId}/exports/package` — `JYKSTORE_PACKAGE_JSON` (pack/version/chunk/graph 메타, raw embedding vector 제외)
-  - `GET /api/v1/admin/packs/{packId}/exports/rag-jsonl` — 외부 RAG 시스템에 import 가능한 line-delimited JSON (활성 chunk 기준)
-  - `GET /api/v1/admin/packs/{packId}/exports/graph` — `JYKSTORE_GRAPH_JSON`
-  - `GET /api/v1/admin/packs/{packId}/exports/mcp-manifest` — `JYKSTORE_MCP_READY_MANIFEST`. **실제 MCP Server가 아니라** 향후 MCP 연계용 manifest이며 실제 API Key를 포함하지 않습니다.
-  - Export/Graph에는 API Key, 사용자 정보, 과금 정보, audit log 등 민감 정보를 포함하지 않습니다.
+  - Public API (외부 클라이언트 호출용, Bearer API Key `context:read`):
+    - `GET /api/v1/exports/package?knowledgePackId={packId}` — `JYKSTORE_PACKAGE_JSON`
+    - `GET /api/v1/exports/rag-jsonl?knowledgePackId={packId}` — 외부 RAG 시스템 import용 line-delimited JSON
+    - `GET /api/v1/exports/graph?knowledgePackId={packId}` — `JYKSTORE_GRAPH_JSON`
+    - `GET /api/v1/exports/mcp-manifest?knowledgePackId={packId}` — `JYKSTORE_MCP_READY_MANIFEST`
+    - `knowledgePackId`가 없거나 비어 있으면 400(`INVALID_EXPORT_REQUEST`), 인증 실패 시 401/403을 반환합니다.
+  - Admin UI API (관리자 화면 다운로드용): `GET /api/v1/admin/packs/{packId}/exports/{package|rag-jsonl|graph|mcp-manifest}`
+  - **MCP-ready Manifest는 실제 MCP Server가 아니라** 외부 Agent/MCP wrapper가 JYKStore API 호출 시 참조하는 계약서(manifest)이며 실제 API Key를 포함하지 않습니다.
+  - package export는 raw embedding vector 제외, chunk content/metadata는 포함. Export/Graph에는 API Key, 사용자 정보, 과금 정보, audit log 등 민감 정보를 포함하지 않습니다.
 - **Admin UX**: 검수 상세 화면에 `KnowledgeGraphPanel`(graph 상태/type별 count/rebuild), `ExportPanel`(4종 export 다운로드)을 추가했습니다. 시각화 라이브러리는 추가하지 않고 table/list UX로 제공합니다.
 - JYKStore는 여전히 **답변을 생성하지 않고 context / graph / export data만 제공**합니다.
 

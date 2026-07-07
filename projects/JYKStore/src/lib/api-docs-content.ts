@@ -412,3 +412,29 @@ export const graphQueryErrorResponseExample = `{
     "requestId": "req_xxx"
   }
 }`;
+
+export const publicExportCurlExamples = `# Package Export JSON
+curl "${apiBaseUrls.development}/api/v1/exports/package?knowledgePackId=${samplePackId}" \\
+  -H "Authorization: Bearer ${sampleApiKey}"
+
+# RAG Export JSONL
+curl "${apiBaseUrls.development}/api/v1/exports/rag-jsonl?knowledgePackId=${samplePackId}" \\
+  -H "Authorization: Bearer ${sampleApiKey}"
+
+# Graph Export JSON
+curl "${apiBaseUrls.development}/api/v1/exports/graph?knowledgePackId=${samplePackId}" \\
+  -H "Authorization: Bearer ${sampleApiKey}"
+
+# MCP-ready Manifest JSON
+curl "${apiBaseUrls.development}/api/v1/exports/mcp-manifest?knowledgePackId=${samplePackId}" \\
+  -H "Authorization: Bearer ${sampleApiKey}"`;
+
+export const publicExportErrorResponseExample = `{
+  "error": {
+    "code": "INVALID_EXPORT_REQUEST",
+    "message": "knowledgePackId query parameter is required."
+  },
+  "usage": {
+    "requestId": "req_xxx"
+  }
+}`;

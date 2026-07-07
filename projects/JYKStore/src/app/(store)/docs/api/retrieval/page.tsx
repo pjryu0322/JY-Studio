@@ -205,6 +205,13 @@ export default function RetrievalApiDocsPage() {
           JYKStore는 답변을 생성하지 않고 context / graph / export data만 제공하며, 답변 생성은 외부 AI 도구/LLM이
           수행합니다.
         </p>
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          JYKStore 서버는 OpenAI/Claude/Gemini 같은 외부 AI Provider를 직접 호출하지 않습니다. 반대로 외부 AI 도구·LLM
+          Agent·OpenAI GPTs·Cursor/Copilot·타 플랫폼이 아래 public API를 <span className="font-semibold">Bearer API
+          Key</span>로 호출해 context / graph / export data를 가져가는 구조는 지원합니다.
+        </p>
+
+        <h3 className="text-xs font-bold text-slate-900">Public API (외부 클라이언트 호출용)</h3>
         <ul className="list-disc space-y-2 pl-5 text-sm text-slate-700">
           <li>
             <span className="font-semibold">Graph Query API</span> —{" "}
@@ -215,24 +222,39 @@ export default function RetrievalApiDocsPage() {
           </li>
           <li>
             <span className="font-semibold">Package Export JSON</span> —{" "}
-            <code className="font-mono text-xs">GET /api/v1/admin/packs/&#123;packId&#125;/exports/package</code>. pack /
+            <code className="font-mono text-xs">GET /api/v1/exports/package?knowledgePackId=&#123;packId&#125;</code>. pack /
             version / chunk / graph 메타를 포함하며 raw embedding vector는 제외합니다.
           </li>
           <li>
             <span className="font-semibold">RAG Export JSONL</span> —{" "}
-            <code className="font-mono text-xs">GET /api/v1/admin/packs/&#123;packId&#125;/exports/rag-jsonl</code>. 외부
+            <code className="font-mono text-xs">GET /api/v1/exports/rag-jsonl?knowledgePackId=&#123;packId&#125;</code>. 외부
             RAG 시스템에 import 가능한 line-delimited JSON export입니다. 활성 chunk 1개 = 1 line.
           </li>
           <li>
             <span className="font-semibold">Graph Export JSON</span> —{" "}
-            <code className="font-mono text-xs">GET /api/v1/admin/packs/&#123;packId&#125;/exports/graph</code>.
+            <code className="font-mono text-xs">GET /api/v1/exports/graph?knowledgePackId=&#123;packId&#125;</code>.
           </li>
           <li>
             <span className="font-semibold">MCP-ready Manifest</span> —{" "}
-            <code className="font-mono text-xs">GET /api/v1/admin/packs/&#123;packId&#125;/exports/mcp-manifest</code>. 실제
-            MCP Server가 아니라 향후 MCP 연계를 위한 manifest이며, 실제 API Key를 포함하지 않습니다.
+            <code className="font-mono text-xs">GET /api/v1/exports/mcp-manifest?knowledgePackId=&#123;packId&#125;</code>.
+            실제 MCP Server가 아니라 향후 MCP 연계를 위한 manifest(계약서)이며, 실제 API Key를 포함하지 않습니다.
           </li>
         </ul>
+        <p className="text-xs text-store-muted">
+          Public export API는 모두 <code className="font-mono">Authorization: Bearer &lt;JYKStore API Key&gt;</code> 인증을
+          사용합니다. <code className="font-mono">knowledgePackId</code> 쿼리 파라미터가 없거나 비어 있으면 400(
+          <code className="font-mono">INVALID_EXPORT_REQUEST</code>), 인증 실패 시 401/403을 반환합니다.
+        </p>
+
+        <h3 className="text-xs font-bold text-slate-900">Admin UI API (관리자 화면 다운로드용)</h3>
+        <p className="text-xs text-store-muted">
+          Admin 검수 화면에서는 동일한 export를{" "}
+          <code className="font-mono">GET /api/v1/admin/packs/&#123;packId&#125;/exports/&#123;package|rag-jsonl|graph|mcp-manifest&#125;</code>{" "}
+          경로로 제공하며, graph summary/rebuild는{" "}
+          <code className="font-mono">/api/v1/admin/packs/&#123;packId&#125;/graph</code>,{" "}
+          <code className="font-mono">/graph/rebuild</code>를 사용합니다.
+        </p>
+
         <ul className="list-disc space-y-1 pl-5 text-xs text-store-muted">
           <li>Graph는 외부 LLM 없이 DB 데이터 기반 deterministic rebuild로 생성됩니다.</li>
           <li>Export/Graph에는 API Key, 사용자 정보, 과금 정보, audit log 등 민감 정보를 포함하지 않습니다.</li>

@@ -98,6 +98,7 @@ export type McpReadyManifestTool = {
 export type McpReadyManifestResource = {
   name: string;
   path: string;
+  auth: string;
 };
 
 export type McpReadyManifestDto = {
