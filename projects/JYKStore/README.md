@@ -41,10 +41,7 @@ http://localhost:3004
 
 ## Phase 3 구현 범위
 
-- 내 지식팩 추가
-- localStorage 기반 내 지식팩 상태 유지
-- 내 지식팩 목록
-- 연동하기 화면
+- 내 지식팩 추가·목록·연동하기 UX (저장은 Phase P2에서 서버 DB로 전환)
 - Pack ID / Endpoint / Mock API Key 복사
 - cURL, JavaScript, Java/Spring, Python 예시 코드 복사
 - Cursor Prompt, Generic LLM Prompt 예시 복사
@@ -73,12 +70,19 @@ npm run db:studio
 ### 제품화 데이터 원칙
 
 - 내 지식팩, API Key, 사용량, 지식팩 버전, 원천자료, 청크는 서버 DB에 저장합니다.
-- LocalStorage는 제품 데이터 저장소로 사용하지 않습니다. (UI는 후속 Phase에서 전환)
+- 내 지식팩은 `PackInstallation`과 anonymous `clientId` cookie로 관리합니다.
 - 기존 mock 데이터는 후속 단계에서 DB/API 조회로 제거합니다.
+
+## Phase P2 구현 범위
+
+- anonymous `clientId` httpOnly cookie
+- `GET/POST /api/v1/my-packs`, `DELETE /api/v1/my-packs/[packId]`
+- `PackInstallation` DB 저장
+- `MyPacksProvider` 및 API 기반 `useMyPacks`
 
 ## 아직 구현하지 않은 기능
 
-- UI의 내 지식팩·목록/상세 DB 조회 전환
+- UI의 지식팩 목록/상세/검색 DB 조회 전환
 - 실제 API Key 서버 발급
 - Context API Route
 - 로그인/회원 관리
@@ -86,6 +90,5 @@ npm run db:studio
 
 ## 다음 단계
 
-1. Phase P2: 내 지식팩 LocalStorage 제거 및 서버 DB 저장 전환
-2. Phase P3: UI 목록/상세 DB·API 조회 전환
-3. API Key 발급 Mock 및 Context API Mock 구현
+1. Phase P3: 지식팩 목록/상세/검색 DB·API 조회 전환
+2. API Key 발급 Mock 및 Context API Mock 구현

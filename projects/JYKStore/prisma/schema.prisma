@@ -204,6 +204,8 @@ model PackInstallation {
   pack         KnowledgePack @relation(fields: [packId], references: [packId], onDelete: Cascade)
 
   @@unique([clientId, packId])
+  @@unique([userId, packId])
+  @@unique([organizationId, packId])
   @@index([clientId])
   @@index([userId])
   @@index([organizationId])

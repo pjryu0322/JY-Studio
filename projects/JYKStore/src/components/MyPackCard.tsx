@@ -13,7 +13,10 @@ export function MyPackCard({ pack }: { readonly pack: KnowledgePack }) {
 
   const onRemove = () => {
     const ok = window.confirm("이 지식팩을 내 지식팩에서 제거할까요?");
-    if (ok) removeMyPack(pack.packId);
+    if (!ok) return;
+    void removeMyPack(pack.packId).catch(() => {
+      window.alert("지식팩을 제거하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    });
   };
 
   return (

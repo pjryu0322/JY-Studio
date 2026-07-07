@@ -20,7 +20,9 @@ export function AddToMyPacksButton({ packId, variant = "card" }: AddToMyPacksBut
     (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      addMyPack(packId);
+      void addMyPack(packId).catch(() => {
+        window.alert("내 지식팩에 추가하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+      });
     },
     [addMyPack, packId],
   );
