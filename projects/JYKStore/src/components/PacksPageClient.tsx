@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useMemo } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { PackList } from "@/components/PackList";
-import { mockPacks } from "@/data/mock-packs";
+import type { KnowledgePack } from "@/types/pack";
 import { filterPacks, sortPacksForBrowse } from "@/lib/pack-utils";
 import { ROUTES, searchPath } from "@/lib/routes";
 
@@ -17,7 +18,7 @@ const BROWSE_FILTERS = [
 
 const CATEGORY_CHIPS = ["전체", "인증", "프레임워크", "API", "UI", "리포팅"] as const;
 
-export function PacksPageClient() {
+export function PacksPageClient({ initialPacks }: { readonly initialPacks: readonly KnowledgePack[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const filter = (searchParams.get("filter") as "all" | "verified" | "free" | "popular") || "all";
@@ -41,7 +42,7 @@ export function PacksPageClient() {
   };
 
   const packs = useMemo(() => {
-    let list = sortPacksForBrowse(mockPacks);
+    let list = sortPacksForBrowse(initialPacks);
     list = filterPacks(list, filter);
     if (categoryChip && categoryChip !== "전체") {
       list = list.filter(
@@ -51,7 +52,7 @@ export function PacksPageClient() {
       );
     }
     return list;
-  }, [filter, categoryChip]);
+  }, [initialPacks, filter, categoryChip]);
 
   return (
     <div className="space-y-6">
@@ -103,7 +104,16 @@ export function PacksPageClient() {
         })}
       </div>
 
-      <PackList packs={packs} />
+      {packs.length === 0 ? (
+        <EmptyState
+          title="표시할 지식팩이 없습니다."
+          description="다른 필터를 선택하거나 검색에서 지식팩을 찾아보세요."
+          ctaLabel="검색하기"
+          ctaHref={ROUTES.search}
+        />
+      ) : (
+        <PackList packs={packs} />
+      )}
     </div>
   );
 }

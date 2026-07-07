@@ -1,22 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { FormEvent, useCallback } from "react";
 import { PackList } from "@/components/PackList";
 import { SearchFilterChips } from "@/components/SearchFilterChips";
 import { NotFoundState } from "@/components/NotFoundState";
-import { POPULAR_SEARCH_TERMS } from "@/data/mock-packs";
-import { applySearchFilters, getPublishedPacks, searchPacks } from "@/lib/pack-utils";
+import type { KnowledgePack } from "@/types/pack";
+import { POPULAR_SEARCH_TERMS } from "@/lib/popular-search-terms";
 import { ROUTES, searchPath } from "@/lib/routes";
 
 const RESULT_CHIPS = ["전체", "인증", "API", "Java", "Spring", "검증됨", "무료"] as const;
 
-export function SearchPageClient() {
+export function SearchPageClient(p: {
+  readonly query: string;
+  readonly chip?: string;
+  readonly results: readonly KnowledgePack[];
+  readonly recommended: readonly KnowledgePack[];
+}) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const query = searchParams.get("q") ?? "";
-  const chip = searchParams.get("chip") ?? undefined;
+  const hasQuery = p.query.trim().length > 0;
 
   const onSubmit = useCallback(
     (e: FormEvent<HTMLFormElement>) => {
@@ -28,13 +31,6 @@ export function SearchPageClient() {
     [router],
   );
 
-  const hasQuery = query.trim().length > 0;
-  let results = hasQuery ? searchPacks(query) : [];
-  if (hasQuery) {
-    results = applySearchFilters(results, { chip });
-  }
-  const recommended = getPublishedPacks().slice(0, 3);
-
   return (
     <div className="space-y-6">
       <form onSubmit={onSubmit}>
@@ -45,7 +41,7 @@ export function SearchPageClient() {
           id="pack-search"
           name="q"
           type="search"
-          defaultValue={query}
+          defaultValue={p.query}
           placeholder="어떤 지식팩이 필요하신가요?"
           className="min-h-[44px] w-full rounded-xl border border-store-border bg-white px-4 text-sm text-slate-900 placeholder:text-store-muted shadow-sm"
         />
@@ -69,19 +65,19 @@ export function SearchPageClient() {
           </section>
           <section>
             <h2 className="mb-3 px-1 text-lg font-bold text-slate-900">추천 지식팩</h2>
-            <PackList packs={recommended} />
+            <PackList packs={p.recommended} />
           </section>
         </>
       ) : (
         <>
           <div className="px-1">
             <p className="text-sm text-store-muted">
-              <span className="font-semibold text-slate-900">「{query}」</span> 검색 결과{" "}
-              <span className="font-semibold text-store-accent">{results.length}</span>개
+              <span className="font-semibold text-slate-900">「{p.query}」</span> 검색 결과{" "}
+              <span className="font-semibold text-store-accent">{p.results.length}</span>개
             </p>
           </div>
-          <SearchFilterChips query={query} activeChip={chip} chips={RESULT_CHIPS} />
-          {results.length === 0 ? (
+          <SearchFilterChips query={p.query} activeChip={p.chip} chips={RESULT_CHIPS} />
+          {p.results.length === 0 ? (
             <NotFoundState
               title="검색 결과가 없습니다."
               description="다른 키워드로 검색하거나 카테고리에서 지식팩을 찾아보세요."
@@ -89,7 +85,7 @@ export function SearchPageClient() {
               ctaHref={ROUTES.packs}
             />
           ) : (
-            <PackList packs={results} />
+            <PackList packs={p.results} />
           )}
         </>
       )}

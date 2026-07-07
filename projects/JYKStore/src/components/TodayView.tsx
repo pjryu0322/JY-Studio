@@ -1,22 +1,10 @@
-"use client";
-
 import { PackList } from "@/components/PackList";
 import { SectionHeader } from "@/components/SectionHeader";
-import {
-  getNewPacks,
-  getPopularPacks,
-  getPublishedPacks,
-  getQuickConnectPacks,
-} from "@/lib/pack-utils";
-import { mockPacks } from "@/data/mock-packs";
+import type { TodayFeaturedPacks } from "@/lib/pack-catalog-service";
 import { ROUTES, categoryDetailPath } from "@/lib/routes";
 
-export function TodayView() {
-  const todayPick = mockPacks.find((p) => p.packId === "easy-auth") ?? mockPacks[0];
-  const quickConnect = getQuickConnectPacks(mockPacks);
-  const popular = getPopularPacks(mockPacks);
-  const newest = getNewPacks(mockPacks);
-  const published = getPublishedPacks();
+export function TodayView({ featured }: { readonly featured: TodayFeaturedPacks }) {
+  const { todayPick, quickConnect, popular, newest, categoryFeatured } = featured;
 
   return (
     <div className="space-y-8">
@@ -29,27 +17,40 @@ export function TodayView() {
         />
         <PackList packs={[todayPick]} />
       </section>
-      <section>
-        <SectionHeader title="빠르게 연동 가능한 지식팩" subtitle="JYK Verified · 공개" />
-        <PackList packs={quickConnect} />
-      </section>
-      <section>
-        <SectionHeader title="인기 지식팩" subtitle="많이 활용된 지식팩" actionLabel="전체 보기" actionHref={ROUTES.packs} />
-        <PackList packs={popular} />
-      </section>
-      <section>
-        <SectionHeader title="신규 지식팩" subtitle="최근 업데이트" />
-        <PackList packs={newest} />
-      </section>
-      <section>
-        <SectionHeader
-          title="카테고리별 추천"
-          subtitle="인증 · 프레임워크"
-          actionLabel="전체 보기"
-          actionHref={categoryDetailPath("auth")}
-        />
-        <PackList packs={published.slice(0, 2)} />
-      </section>
+      {quickConnect.length > 0 ? (
+        <section>
+          <SectionHeader title="빠르게 연동 가능한 지식팩" subtitle="JYK Verified · 공개" />
+          <PackList packs={quickConnect} />
+        </section>
+      ) : null}
+      {popular.length > 0 ? (
+        <section>
+          <SectionHeader
+            title="인기 지식팩"
+            subtitle="많이 활용된 지식팩"
+            actionLabel="전체 보기"
+            actionHref={ROUTES.packs}
+          />
+          <PackList packs={popular} />
+        </section>
+      ) : null}
+      {newest.length > 0 ? (
+        <section>
+          <SectionHeader title="신규 지식팩" subtitle="최근 업데이트" />
+          <PackList packs={newest} />
+        </section>
+      ) : null}
+      {categoryFeatured.length > 0 ? (
+        <section>
+          <SectionHeader
+            title="카테고리별 추천"
+            subtitle="인증 · 프레임워크"
+            actionLabel="전체 보기"
+            actionHref={categoryDetailPath("auth")}
+          />
+          <PackList packs={categoryFeatured} />
+        </section>
+      ) : null}
     </div>
   );
 }

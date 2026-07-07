@@ -2,12 +2,7 @@ import { InstallationStatus, PackStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toKnowledgePackDto, type PrismaKnowledgePackWithVersion } from "@/lib/pack-dto";
 
-export const knowledgePackInclude = {
-  category: true,
-  versions: {
-    orderBy: { createdAt: "desc" as const },
-  },
-};
+import { packCatalogInclude } from "@/lib/pack-catalog-service";
 
 export async function listActiveMyPacksForClient(clientId: string) {
   const installations = await prisma.packInstallation.findMany({
@@ -17,7 +12,7 @@ export async function listActiveMyPacksForClient(clientId: string) {
     },
     include: {
       pack: {
-        include: knowledgePackInclude,
+        include: packCatalogInclude,
       },
     },
     orderBy: { updatedAt: "desc" },
@@ -32,7 +27,7 @@ export async function listActiveMyPacksForClient(clientId: string) {
 export async function findPublishedPack(packId: string) {
   return prisma.knowledgePack.findUnique({
     where: { packId },
-    include: knowledgePackInclude,
+    include: packCatalogInclude,
   });
 }
 

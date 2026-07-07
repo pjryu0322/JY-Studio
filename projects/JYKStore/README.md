@@ -80,9 +80,14 @@ npm run db:studio
 - `PackInstallation` DB 저장
 - `MyPacksProvider` 및 API 기반 `useMyPacks`
 
+## Pack Catalog DB 전환
+
+- 지식팩 목록, 상세, 카테고리, 검색은 DB 기준으로 조회합니다.
+- `mock-packs.ts`, `mock-categories.ts`는 seed 호환용으로만 유지합니다.
+- 일반 사용자 화면에는 `PUBLISHED`, `VERIFIED` 상태 지식팩만 노출합니다.
+
 ## 아직 구현하지 않은 기능
 
-- UI의 지식팩 목록/상세/검색 DB 조회 전환
 - 실제 API Key 서버 발급
 - Context API Route
 - 로그인/회원 관리
@@ -90,5 +95,5 @@ npm run db:studio
 
 ## 다음 단계
 
-1. Phase P3: 지식팩 목록/상세/검색 DB·API 조회 전환
-2. API Key 발급 Mock 및 Context API Mock 구현
+1. Phase P4: API Key 제품화
+2. Context API Mock 구현

@@ -1,52 +1,14 @@
-import { mockPacks } from "@/data/mock-packs";
 import type { KnowledgePack } from "@/types/pack";
 
-export function getPublishedPacks(): KnowledgePack[] {
-  return mockPacks.filter((pack) => pack.status === "PUBLISHED");
+export function getQuickConnectPacks(packs: readonly KnowledgePack[]): KnowledgePack[] {
+  return packs.filter((p) => p.isVerified);
 }
 
-export function getPackById(packId: string): KnowledgePack | undefined {
-  return mockPacks.find((pack) => pack.packId === packId);
-}
-
-export function getPacksByCategoryId(categoryId: string): KnowledgePack[] {
-  return mockPacks.filter((pack) => pack.categoryId === categoryId);
-}
-
-export function searchPacks(query: string): KnowledgePack[] {
-  const keyword = query.trim().toLowerCase();
-
-  if (!keyword) {
-    return mockPacks;
-  }
-
-  return mockPacks.filter((pack) => {
-    const target = [
-      pack.name,
-      pack.description,
-      pack.shortDescription,
-      pack.category,
-      pack.provider,
-      ...pack.tags,
-      ...pack.features,
-      ...pack.includedKnowledge,
-    ]
-      .join(" ")
-      .toLowerCase();
-
-    return target.includes(keyword);
-  });
-}
-
-export function getQuickConnectPacks(packs: readonly KnowledgePack[] = mockPacks): KnowledgePack[] {
-  return packs.filter((p) => p.status === "PUBLISHED" && p.isVerified);
-}
-
-export function getPopularPacks(packs: readonly KnowledgePack[] = mockPacks): KnowledgePack[] {
+export function getPopularPacks(packs: readonly KnowledgePack[]): KnowledgePack[] {
   return [...packs].sort((a, b) => b.usageCount - a.usageCount).slice(0, 4);
 }
 
-export function getNewPacks(packs: readonly KnowledgePack[] = mockPacks): KnowledgePack[] {
+export function getNewPacks(packs: readonly KnowledgePack[]): KnowledgePack[] {
   return [...packs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3);
 }
 
@@ -96,7 +58,12 @@ export function applySearchFilters(
     } else if (chip === "인증") {
       result = result.filter((p) => p.categoryId === "auth" || p.category.includes("인증"));
     } else if (chip === "API") {
-      result = result.filter((p) => p.categoryId === "api" || p.category === "API" || p.tags.some((t) => t.includes("API")));
+      result = result.filter(
+        (p) =>
+          p.categoryId === "api" ||
+          p.category === "API" ||
+          p.tags.some((t) => t.includes("API")),
+      );
     } else {
       const lower = chip.toLowerCase();
       result = result.filter(

@@ -18,9 +18,7 @@ export function CategoryCard(p: {
         <p className="text-sm font-semibold text-slate-900">{p.category.name}</p>
         <p className="line-clamp-2 text-xs text-store-muted">{p.category.description}</p>
       </div>
-      <span className="shrink-0 text-xs font-medium text-store-muted">
-        {p.packCount > 0 ? `${p.packCount}개` : "준비 중"}
-      </span>
+      <span className="shrink-0 text-xs font-medium text-store-muted">공개 {p.packCount}개</span>
     </Link>
   );
 }

@@ -1,0 +1,168 @@
+import { PackStatus, type Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { toKnowledgePackDto, type PrismaKnowledgePackWithVersion } from "@/lib/pack-dto";
+import { applySearchFilters } from "@/lib/pack-utils";
+import type { KnowledgePack, StoreCategory } from "@/types/pack";
+
+export const packCatalogInclude = {
+  category: true,
+  versions: {
+    orderBy: { createdAt: "desc" as const },
+  },
+} as const;
+
+const publishedStatuses = [PackStatus.PUBLISHED, PackStatus.VERIFIED] as const;
+
+const publishedPackWhere: Prisma.KnowledgePackWhereInput = {
+  status: { in: [...publishedStatuses] },
+};
+
+const catalogOrderBy: Prisma.KnowledgePackOrderByWithRelationInput[] = [
+  { isVerified: "desc" },
+  { usageCount: "desc" },
+  { rating: "desc" },
+  { updatedAt: "desc" },
+];
+
+function mapRows(rows: PrismaKnowledgePackWithVersion[]): KnowledgePack[] {
+  return rows.map(toKnowledgePackDto);
+}
+
+function toStoreCategory(row: {
+  categoryId: string;
+  name: string;
+  description: string;
+  icon: string;
+}): StoreCategory {
+  return {
+    categoryId: row.categoryId,
+    name: row.name,
+    description: row.description,
+    icon: row.icon,
+  };
+}
+
+export async function listPublishedPacks(): Promise<KnowledgePack[]> {
+  const rows = await prisma.knowledgePack.findMany({
+    where: publishedPackWhere,
+    include: packCatalogInclude,
+    orderBy: catalogOrderBy,
+  });
+  return mapRows(rows);
+}
+
+export async function getPublishedPackById(packId: string): Promise<KnowledgePack | null> {
+  const row = await prisma.knowledgePack.findFirst({
+    where: {
+      packId,
+      ...publishedPackWhere,
+    },
+    include: packCatalogInclude,
+  });
+
+  return row ? toKnowledgePackDto(row) : null;
+}
+
+export async function listPublishedPacksByCategory(categoryId: string): Promise<KnowledgePack[]> {
+  const rows = await prisma.knowledgePack.findMany({
+    where: {
+      categoryId,
+      ...publishedPackWhere,
+    },
+    include: packCatalogInclude,
+    orderBy: catalogOrderBy,
+  });
+  return mapRows(rows);
+}
+
+export type CategoryWithPublishedCount = StoreCategory & {
+  publishedCount: number;
+};
+
+export async function listCategoriesWithPublishedCounts(): Promise<CategoryWithPublishedCount[]> {
+  const [categories, counts] = await Promise.all([
+    prisma.packCategory.findMany({ orderBy: { name: "asc" } }),
+    prisma.knowledgePack.groupBy({
+      by: ["categoryId"],
+      where: publishedPackWhere,
+      _count: { _all: true },
+    }),
+  ]);
+
+  const countByCategory = new Map(counts.map((row) => [row.categoryId, row._count._all]));
+
+  return categories.map((category) => ({
+    ...toStoreCategory(category),
+    publishedCount: countByCategory.get(category.categoryId) ?? 0,
+  }));
+}
+
+export async function getCategoryById(categoryId: string): Promise<StoreCategory | null> {
+  const category = await prisma.packCategory.findUnique({
+    where: { categoryId },
+  });
+  return category ? toStoreCategory(category) : null;
+}
+
+export async function searchPublishedPacks(params: {
+  query?: string;
+  chip?: string;
+}): Promise<KnowledgePack[]> {
+  const query = params.query?.trim() ?? "";
+  if (!query) {
+    return listPublishedPacks();
+  }
+
+  const rows = await prisma.knowledgePack.findMany({
+    where: {
+      ...publishedPackWhere,
+      OR: [
+        { name: { contains: query, mode: "insensitive" } },
+        { description: { contains: query, mode: "insensitive" } },
+        { shortDescription: { contains: query, mode: "insensitive" } },
+        { providerName: { contains: query, mode: "insensitive" } },
+        { tags: { has: query } },
+        { category: { name: { contains: query, mode: "insensitive" } } },
+      ],
+    },
+    include: packCatalogInclude,
+    orderBy: catalogOrderBy,
+  });
+
+  let packs = mapRows(rows);
+  packs = applySearchFilters(packs, { chip: params.chip });
+  return packs;
+}
+
+export type TodayFeaturedPacks = {
+  todayPick: KnowledgePack;
+  quickConnect: KnowledgePack[];
+  popular: KnowledgePack[];
+  newest: KnowledgePack[];
+  categoryFeatured: KnowledgePack[];
+};
+
+export async function listTodayFeaturedPacks(): Promise<TodayFeaturedPacks | null> {
+  const published = await listPublishedPacks();
+  if (!published.length) {
+    return null;
+  }
+
+  const todayPick =
+    published.find((pack) => pack.packId === "easy-auth") ?? published[0];
+
+  const quickConnect = published.filter((p) => p.isVerified).slice(0, 4);
+  const popular = [...published].sort((a, b) => b.usageCount - a.usageCount).slice(0, 4);
+  const newest = [...published]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 3);
+  const categoryFeatured = published.filter((p) => p.categoryId === "auth").slice(0, 2);
+
+  return {
+    todayPick,
+    quickConnect,
+    popular,
+    newest,
+    categoryFeatured,
+  };
+}

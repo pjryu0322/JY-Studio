@@ -1,3 +1,7 @@
+/**
+ * seed 호환용 Mock 카테고리 데이터입니다.
+ * 사용자 화면에서는 DB 조회(pack-catalog-service)를 사용합니다.
+ */
 import type { StoreCategory } from "@/types/pack";
 
 export const mockCategories: StoreCategory[] = [

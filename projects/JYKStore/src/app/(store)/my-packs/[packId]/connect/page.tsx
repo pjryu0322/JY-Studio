@@ -1,7 +1,9 @@
 import { ConnectPageClient } from "@/components/ConnectPageClient";
 import { NotFoundState } from "@/components/NotFoundState";
-import { getPackById } from "@/lib/pack-utils";
+import { getPublishedPackById } from "@/lib/pack-catalog-service";
 import { ROUTES } from "@/lib/routes";
+
+export const dynamic = "force-dynamic";
 
 type PageProps = {
   params: Promise<{ packId: string }>;
@@ -9,7 +11,7 @@ type PageProps = {
 
 export default async function MyPackConnectPage({ params }: PageProps) {
   const { packId } = await params;
-  const pack = getPackById(packId);
+  const pack = await getPublishedPackById(packId);
 
   if (!pack) {
     return (
