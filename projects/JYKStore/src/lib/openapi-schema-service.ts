@@ -8,7 +8,7 @@ import {
 const DEFAULT_EXAMPLE_PACK_ID = "easy-auth";
 
 const COMMON_DESCRIPTION =
-  "Public API schema for external AI agents, GPT Actions, Gemini function calling wrappers, Cursor/MCP wrappers, and integration clients. JYKStore returns verified knowledge pack context and exports; it does not generate answers.";
+  "Public API schema for external AI agents, GPT Actions, Gemini function calling wrappers, Cursor/MCP wrappers, and integration clients. JYKStore returns verified knowledge pack context and exports; it does not generate answers. Only PUBLISHED or VERIFIED knowledge packs are returned; other packs are treated as PACK_NOT_FOUND (404). All operations use a Bearer API Key and no API key is ever included in this schema.";
 
 function bearerSecurity() {
   return [{ BearerAuth: [] as string[] }];
@@ -27,7 +27,9 @@ function errorResponse(description: string) {
 
 function commonErrorResponses() {
   return {
-    "400": errorResponse("Invalid request. code: INVALID_RETRIEVAL_REQUEST / INVALID_GRAPH_QUERY_REQUEST / INVALID_EXPORT_REQUEST"),
+    "400": errorResponse(
+      "Invalid request. code: INVALID_RETRIEVAL_REQUEST / INVALID_GRAPH_QUERY_REQUEST / INVALID_EXPORT_REQUEST",
+    ),
     "401": errorResponse("Unauthorized. code: UNAUTHORIZED"),
     "403": errorResponse("Forbidden. code: FORBIDDEN"),
     "404": errorResponse("Knowledge pack not found or not public. code: PACK_NOT_FOUND"),
@@ -43,6 +45,13 @@ function knowledgePackIdQueryParam(examplePackId: string) {
     description: "Target knowledge pack id. Only PUBLISHED or VERIFIED packs are returned.",
     schema: { type: "string" },
     example: examplePackId,
+  };
+}
+
+function jsonResponse(ref: string, description: string) {
+  return {
+    description,
+    content: { "application/json": { schema: { $ref: ref } } },
   };
 }
 
@@ -108,13 +117,7 @@ function buildComponents() {
           },
           references: {
             type: "array",
-            items: {
-              type: "object",
-              properties: {
-                type: { type: "string" },
-                title: { type: "string" },
-              },
-            },
+            items: { $ref: "#/components/schemas/Reference" },
           },
         },
       },
@@ -196,15 +199,186 @@ function buildComponents() {
           },
         },
       },
+      KnowledgeGraphSummary: {
+        type: "object",
+        properties: {
+          packId: { type: "string" },
+          versionId: { type: "string", nullable: true },
+          nodeCount: { type: "integer" },
+          edgeCount: { type: "integer" },
+          nodeTypeCounts: { type: "object", additionalProperties: { type: "integer" } },
+          edgeTypeCounts: { type: "object", additionalProperties: { type: "integer" } },
+        },
+      },
+      Reference: {
+        type: "object",
+        properties: {
+          type: { type: "string" },
+          title: { type: "string" },
+        },
+      },
+      PackageExportManifest: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          knowledgePackId: { type: "string" },
+          version: { type: "string", nullable: true },
+          capabilities: { type: "array", items: { type: "string" } },
+        },
+      },
+      PackageExportPack: {
+        type: "object",
+        properties: {
+          packId: { type: "string" },
+          name: { type: "string" },
+          category: { type: "string" },
+          providerName: { type: "string" },
+          status: { type: "string" },
+          shortDescription: { type: "string" },
+          description: { type: "string" },
+          tags: { type: "array", items: { type: "string" } },
+        },
+      },
+      PackageExportVersion: {
+        type: "object",
+        nullable: true,
+        properties: {
+          id: { type: "string" },
+          version: { type: "string" },
+          overview: { type: "string" },
+          versionSummary: { type: "string" },
+          features: { type: "array", items: { type: "string" } },
+          includedKnowledge: { type: "array", items: { type: "string" } },
+          supportedEnvironments: { type: "array", items: { type: "string" } },
+          targetUsers: { type: "array", items: { type: "string" } },
+          useCases: { type: "array", items: { type: "string" } },
+        },
+      },
+      PackageExportSourceDocument: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          title: { type: "string" },
+          sourceType: { type: "string" },
+          sourceUrl: { type: "string", nullable: true },
+        },
+      },
+      PackageExportChunk: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          chunkType: { type: "string" },
+          title: { type: "string" },
+          content: { type: "string" },
+          section: { type: "string", nullable: true },
+          tags: { type: "array", items: { type: "string" } },
+          metadata: { type: "object", additionalProperties: true, nullable: true },
+          sortOrder: { type: "integer" },
+          sourceDocumentId: { type: "string", nullable: true },
+        },
+      },
+      PackageExportGraph: {
+        type: "object",
+        properties: {
+          summary: { $ref: "#/components/schemas/KnowledgeGraphSummary" },
+          nodes: { type: "array", items: { $ref: "#/components/schemas/GraphNode" } },
+          edges: { type: "array", items: { $ref: "#/components/schemas/GraphEdge" } },
+        },
+      },
+      PackageExportEmbedding: {
+        type: "object",
+        properties: {
+          provider: { type: "string" },
+          model: { type: "string" },
+          dimension: { type: "integer" },
+          includeVectors: { type: "boolean" },
+        },
+      },
+      PackageExport: {
+        type: "object",
+        properties: {
+          exportType: { type: "string", enum: ["JYKSTORE_PACKAGE_JSON"] },
+          exportVersion: { type: "string" },
+          generatedAt: { type: "string" },
+          manifest: { $ref: "#/components/schemas/PackageExportManifest" },
+          pack: { $ref: "#/components/schemas/PackageExportPack" },
+          version: { $ref: "#/components/schemas/PackageExportVersion" },
+          sourceDocuments: {
+            type: "array",
+            items: { $ref: "#/components/schemas/PackageExportSourceDocument" },
+          },
+          chunks: { type: "array", items: { $ref: "#/components/schemas/PackageExportChunk" } },
+          graph: { $ref: "#/components/schemas/PackageExportGraph" },
+          embedding: { $ref: "#/components/schemas/PackageExportEmbedding" },
+        },
+      },
+      GraphExport: {
+        type: "object",
+        properties: {
+          exportType: { type: "string", enum: ["JYKSTORE_GRAPH_JSON"] },
+          exportVersion: { type: "string" },
+          generatedAt: { type: "string" },
+          knowledgePackId: { type: "string" },
+          summary: { $ref: "#/components/schemas/KnowledgeGraphSummary" },
+          nodes: { type: "array", items: { $ref: "#/components/schemas/GraphNode" } },
+          edges: { type: "array", items: { $ref: "#/components/schemas/GraphEdge" } },
+        },
+      },
+      RagJsonlLine: {
+        type: "object",
+        description: "One active chunk record. RAG JSONL response is one such object per line.",
+        properties: {
+          id: { type: "string" },
+          knowledgePackId: { type: "string" },
+          version: { type: "string" },
+          title: { type: "string" },
+          text: { type: "string" },
+          metadata: { type: "object", additionalProperties: true },
+          references: { type: "array", items: { $ref: "#/components/schemas/Reference" } },
+        },
+      },
+      McpReadyManifestTool: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          description: { type: "string" },
+          method: { type: "string" },
+          path: { type: "string" },
+          auth: { type: "string" },
+        },
+      },
+      McpReadyManifestResource: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          path: { type: "string" },
+          auth: { type: "string" },
+        },
+      },
+      McpReadyManifest: {
+        type: "object",
+        properties: {
+          manifestType: { type: "string", enum: ["JYKSTORE_MCP_READY_MANIFEST"] },
+          manifestVersion: { type: "string" },
+          knowledgePackId: { type: "string" },
+          baseUrlPlaceholder: { type: "string" },
+          note: { type: "string" },
+          tools: { type: "array", items: { $ref: "#/components/schemas/McpReadyManifestTool" } },
+          resources: {
+            type: "array",
+            items: { $ref: "#/components/schemas/McpReadyManifestResource" },
+          },
+        },
+      },
     },
   };
 }
 
-function buildPaths(examplePackId: string) {
-  return {
+function buildPaths(examplePackId: string, includeDiscovery: boolean) {
+  const paths: Record<string, unknown> = {
     "/api/v1/retrieval/query": {
       post: {
-        operationId: "queryJYKStoreRetrievalContext",
+        operationId: "queryKnowledgePackContext",
         summary: "Query JYKStore knowledge pack contexts",
         description:
           "Return ranked context candidates from a JYKStore knowledge pack. JYKStore returns context only and does not generate answers.",
@@ -226,21 +400,14 @@ function buildPaths(examplePackId: string) {
           },
         },
         responses: {
-          "200": {
-            description: "Ranked context candidates.",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/RetrievalResponse" },
-              },
-            },
-          },
+          "200": jsonResponse("#/components/schemas/RetrievalResponse", "Ranked context candidates."),
           ...commonErrorResponses(),
         },
       },
     },
     "/api/v1/graph/query": {
       post: {
-        operationId: "queryJYKStoreKnowledgeGraph",
+        operationId: "queryKnowledgePackGraph",
         summary: "Query JYKStore knowledge graph nodes and edges",
         description:
           "Return graph nodes and edges from a JYKStore knowledge pack. Deterministic graph, no traversal or answer generation.",
@@ -261,42 +428,35 @@ function buildPaths(examplePackId: string) {
           },
         },
         responses: {
-          "200": {
-            description: "Graph nodes and edges.",
-            content: {
-              "application/json": {
-                schema: { $ref: "#/components/schemas/GraphQueryResponse" },
-              },
-            },
-          },
+          "200": jsonResponse("#/components/schemas/GraphQueryResponse", "Graph nodes and edges."),
           ...commonErrorResponses(),
         },
       },
     },
     "/api/v1/exports/package": {
       get: {
-        operationId: "exportJYKStorePackageJson",
+        operationId: "exportKnowledgePackPackage",
         summary: "Export a JYKStore knowledge pack as package JSON",
         security: bearerSecurity(),
         parameters: [knowledgePackIdQueryParam(examplePackId)],
         responses: {
-          "200": {
-            description: "JYKSTORE_PACKAGE_JSON export.",
-            content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
-          },
+          "200": jsonResponse("#/components/schemas/PackageExport", "JYKSTORE_PACKAGE_JSON export."),
           ...commonErrorResponses(),
         },
       },
     },
     "/api/v1/exports/rag-jsonl": {
       get: {
-        operationId: "exportJYKStoreRagJsonl",
+        operationId: "exportKnowledgePackRagJsonl",
         summary: "Export active chunks as RAG JSONL (line-delimited JSON)",
+        description:
+          "Line-delimited JSON. Each line is one active chunk record with id, knowledgePackId, version, title, text, metadata, references. Each line conforms to RagJsonlLine.",
         security: bearerSecurity(),
         parameters: [knowledgePackIdQueryParam(examplePackId)],
         responses: {
           "200": {
-            description: "Line-delimited JSON. One active chunk per line.",
+            description:
+              "Line-delimited JSON. One active chunk per line; each line conforms to RagJsonlLine.",
             content: { "application/x-ndjson": { schema: { type: "string" } } },
           },
           ...commonErrorResponses(),
@@ -305,28 +465,41 @@ function buildPaths(examplePackId: string) {
     },
     "/api/v1/exports/graph": {
       get: {
-        operationId: "exportJYKStoreGraphJson",
+        operationId: "exportKnowledgePackGraph",
         summary: "Export the deterministic knowledge graph as JSON",
         security: bearerSecurity(),
         parameters: [knowledgePackIdQueryParam(examplePackId)],
         responses: {
-          "200": {
-            description: "JYKSTORE_GRAPH_JSON export.",
-            content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
-          },
+          "200": jsonResponse("#/components/schemas/GraphExport", "JYKSTORE_GRAPH_JSON export."),
           ...commonErrorResponses(),
         },
       },
     },
     "/api/v1/exports/mcp-manifest": {
       get: {
-        operationId: "exportJYKStoreMcpReadyManifest",
+        operationId: "exportKnowledgePackMcpManifest",
         summary: "Export an MCP-ready manifest (not a running MCP server)",
         security: bearerSecurity(),
         parameters: [knowledgePackIdQueryParam(examplePackId)],
         responses: {
+          "200": jsonResponse(
+            "#/components/schemas/McpReadyManifest",
+            "JYKSTORE_MCP_READY_MANIFEST. Contract for MCP wrappers to call JYKStore Public API. Not a running MCP server and no API key included.",
+          ),
+          ...commonErrorResponses(),
+        },
+      },
+    },
+    "/api/v1/exports/openapi": {
+      get: {
+        operationId: "exportKnowledgePackOpenApi",
+        summary: "Export a pack-specific OpenAPI 3.1 schema",
+        description: "OpenAPI 3.1 document for the given JYKStore knowledge pack. Does not include API keys.",
+        security: bearerSecurity(),
+        parameters: [knowledgePackIdQueryParam(examplePackId)],
+        responses: {
           "200": {
-            description: "JYKSTORE_MCP_READY_MANIFEST. Contract for MCP wrappers, no API key included.",
+            description: "OpenAPI 3.1 document for JYKStore Public API. Does not include API keys.",
             content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
           },
           ...commonErrorResponses(),
@@ -334,6 +507,25 @@ function buildPaths(examplePackId: string) {
       },
     },
   };
+
+  if (includeDiscovery) {
+    paths["/api/v1/openapi.json"] = {
+      get: {
+        operationId: "getJYKStoreOpenApiSchema",
+        summary: "Get the common JYKStore Public API OpenAPI schema",
+        description:
+          "Schema discovery endpoint. No authentication required. OpenAPI 3.1 document for JYKStore Public API. Does not include API keys.",
+        responses: {
+          "200": {
+            description: "OpenAPI 3.1 document for JYKStore Public API. Does not include API keys.",
+            content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+          },
+        },
+      },
+    };
+  }
+
+  return paths;
 }
 
 /**
@@ -353,6 +545,9 @@ export function buildOpenApiSchema(options: OpenApiBuildOptions = {}): OpenApiDo
       `Public API schema for the "${options.packName ?? options.packId}" JYKStore knowledge pack. JYKStore returns verified knowledge pack context and exports; it does not generate answers.`
     : COMMON_DESCRIPTION;
 
+  // 공통 schema에는 discovery endpoint(/api/v1/openapi.json)를 포함한다.
+  const includeDiscovery = !options.packId;
+
   return {
     openapi: OPENAPI_SPEC_VERSION,
     info: {
@@ -365,7 +560,7 @@ export function buildOpenApiSchema(options: OpenApiBuildOptions = {}): OpenApiDo
       { url: "http://localhost:3004", description: "Local development" },
     ],
     security: bearerSecurity(),
-    paths: buildPaths(examplePackId),
+    paths: buildPaths(examplePackId, includeDiscovery),
     components: buildComponents(),
   };
 }

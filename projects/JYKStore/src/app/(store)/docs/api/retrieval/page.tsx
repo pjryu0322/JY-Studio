@@ -285,6 +285,48 @@ export default function RetrievalApiDocsPage() {
           Public API를 연동할 수 있습니다. 외부 클라이언트가 context/graph/export data를 받아 답변을 생성하며,
           JYKStore는 답변을 생성하지 않고 외부 LLM Provider API를 직접 호출하지 않습니다.
         </p>
+
+        <h3 className="text-xs font-bold text-slate-900">외부 AI 도구 연동 방법</h3>
+
+        <p className="text-sm font-semibold text-slate-800">1. Custom GPT Actions 연동</p>
+        <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-700">
+          <li>JYKStore에서 공개 상태(PUBLISHED/VERIFIED)의 지식팩 packId를 확인합니다.</li>
+          <li>API Key를 발급하고 <code className="font-mono text-xs">context:read</code> scope를 부여합니다.</li>
+          <li>
+            Custom GPT Actions 설정에서 OpenAPI schema를 등록합니다. 공통 schema는{" "}
+            <code className="font-mono text-xs">GET /api/v1/openapi.json</code>, 지식팩 특화 schema는{" "}
+            <code className="font-mono text-xs">GET /api/v1/exports/openapi?knowledgePackId=&#123;packId&#125;</code>.
+          </li>
+          <li>Authentication은 Bearer API Key로 설정합니다.</li>
+          <li>
+            테스트 질의에서 <code className="font-mono text-xs">queryKnowledgePackContext</code> operation을 호출합니다.
+          </li>
+          <li>GPT는 JYKStore가 반환한 contexts를 근거로 답변을 생성합니다.</li>
+        </ol>
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          JYKStore API Key를 브라우저 localStorage/sessionStorage에 저장하지 않습니다. JYKStore는 답변을 생성하지 않고
+          context만 반환하며, 답변 생성은 Custom GPT가 수행합니다.
+        </p>
+        <div>
+          <p className="text-xs font-semibold text-slate-700">GPT Actions 테스트 질문 예시</p>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-store-muted">
+            <li>간편인증 Callback 오류 처리 방법을 지식팩에서 찾아줘.</li>
+            <li>Spring Boot 기준으로 간편인증 요청 API 예제를 찾아줘.</li>
+            <li>운영환경 전환 시 확인해야 할 설정값을 지식팩에서 찾아줘.</li>
+          </ul>
+        </div>
+
+        <p className="text-sm font-semibold text-slate-800">2. Gemini Function Calling wrapper 연동</p>
+        <p className="text-sm text-slate-700">
+          Gemini 연동은 애플리케이션 레이어에서 JYKStore OpenAPI schema를 function declaration 또는 tool wrapper로
+          변환해 사용하는 방식입니다. JYKStore는 Gemini API를 직접 호출하지 않습니다.
+        </p>
+
+        <p className="text-sm font-semibold text-slate-800">3. Cursor / MCP wrapper 준비</p>
+        <p className="text-sm text-slate-700">
+          Cursor 연동은 현재 OpenAPI schema 또는 MCP-ready manifest를 기반으로 별도 wrapper를 구성하는 방식입니다.
+          실제 JYKStore MCP Server는 P16 이후 구현 대상입니다.
+        </p>
       </section>
     </div>
   );

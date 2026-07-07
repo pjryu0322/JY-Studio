@@ -506,6 +506,16 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
   - Cursor / MCP wrapper: OpenAPI + MCP-ready manifest까지 제공하며, 실제 MCP Server runtime은 P16에서 구현합니다.
 - JYKStore는 여전히 답변을 생성하지 않고 외부 LLM Provider API를 직접 호출하지 않습니다.
 
+### P15.3 — OpenAPI Schema & External AI Actions Docs Polish
+
+- **Export response schema 정교화**: OpenAPI `components.schemas`에 `PackageExport`(+ manifest/pack/version/sourceDocument/chunk/graph/embedding 하위 schema), `GraphExport`, `KnowledgeGraphSummary`, `RagJsonlLine`, `McpReadyManifest`(+ tool/resource) schema를 추가하고, `/exports/package`·`/exports/graph`·`/exports/mcp-manifest`의 200 응답을 `additionalProperties` 대신 구체 schema(`$ref`)로 연결했습니다. `rag-jsonl`은 `application/x-ndjson` string을 유지하되 description에서 `RagJsonlLine` 준수를 명시합니다.
+- **operationId 정리**(외부 AI tool 친화적 camelCase): `queryKnowledgePackContext`, `queryKnowledgePackGraph`, `exportKnowledgePackPackage`, `exportKnowledgePackRagJsonl`, `exportKnowledgePackGraph`, `exportKnowledgePackMcpManifest`, `exportKnowledgePackOpenApi`, (discovery) `getJYKStoreOpenApiSchema`.
+- **외부 AI 도구 연동 방법 문서화**(README/`docs/api/retrieval`):
+  1. **Custom GPT Actions**: 공개 pack packId 확인 → API Key(`context:read`) 발급 → OpenAPI schema(`/api/v1/openapi.json` 또는 `/api/v1/exports/openapi?knowledgePackId=...`) 등록 → Bearer 인증 설정 → `queryKnowledgePackContext` 호출 → GPT가 반환된 contexts로 답변 생성. API Key는 브라우저 스토리지에 저장하지 않습니다.
+  2. **Gemini Function Calling**: 애플리케이션 레이어에서 OpenAPI schema를 function declaration/tool wrapper로 변환해 사용. JYKStore는 Gemini API를 직접 호출하지 않습니다.
+  3. **Cursor / MCP wrapper**: OpenAPI schema 또는 MCP-ready manifest 기반 wrapper 구성. 실제 JYKStore MCP Server는 P16 이후 구현 대상입니다.
+- 보안 문구 유지: Public API는 PUBLISHED/VERIFIED pack만 반환(비공개는 404 `PACK_NOT_FOUND`), 모든 operation은 Bearer API Key 사용, API Key 원문은 schema/manifest/export 응답에 포함하지 않음.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

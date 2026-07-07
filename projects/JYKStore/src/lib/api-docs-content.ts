@@ -471,3 +471,35 @@ export const openApiIntegrationNotes = [
   "Custom GPT Actions / Gemini function calling / Cursor·MCP wrapper에 위 schema를 등록해 JYKStore Public API를 연동할 수 있습니다.",
   "외부 AI 클라이언트가 JYKStore에서 context/graph/export를 받아 답변을 생성합니다. JYKStore는 답변을 생성하지 않으며 외부 LLM Provider API를 직접 호출하지 않습니다.",
 ];
+
+export const gptActionsSetupSteps = [
+  "JYKStore에서 공개 상태(PUBLISHED/VERIFIED)의 지식팩 packId를 확인합니다.",
+  "API Key를 발급하고 context:read scope를 부여합니다.",
+  "Custom GPT Actions 설정에서 OpenAPI schema를 등록합니다. 공통: GET /api/v1/openapi.json, 지식팩 특화: GET /api/v1/exports/openapi?knowledgePackId={packId}.",
+  "Authentication은 Bearer API Key로 설정합니다.",
+  "테스트 질의에서 queryKnowledgePackContext operation을 호출합니다.",
+  "GPT는 JYKStore가 반환한 contexts를 근거로 답변을 생성합니다.",
+];
+
+export const gptActionsTestQuestions = [
+  "간편인증 Callback 오류 처리 방법을 지식팩에서 찾아줘.",
+  "Spring Boot 기준으로 간편인증 요청 API 예제를 찾아줘.",
+  "운영환경 전환 시 확인해야 할 설정값을 지식팩에서 찾아줘.",
+];
+
+export const geminiWrapperNote =
+  "Gemini 연동은 애플리케이션 레이어에서 JYKStore OpenAPI schema를 function declaration 또는 tool wrapper로 변환해 사용하는 방식입니다. JYKStore는 Gemini API를 직접 호출하지 않습니다.";
+
+export const cursorWrapperNote =
+  "Cursor 연동은 현재 OpenAPI schema 또는 MCP-ready manifest를 기반으로 별도 wrapper를 구성하는 방식입니다. 실제 JYKStore MCP Server는 P16 이후 구현 대상입니다.";
+
+export const openApiKnownOperationIds = [
+  "queryKnowledgePackContext",
+  "queryKnowledgePackGraph",
+  "exportKnowledgePackPackage",
+  "exportKnowledgePackRagJsonl",
+  "exportKnowledgePackGraph",
+  "exportKnowledgePackMcpManifest",
+  "exportKnowledgePackOpenApi",
+  "getJYKStoreOpenApiSchema",
+];
