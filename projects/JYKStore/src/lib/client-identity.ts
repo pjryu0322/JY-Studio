@@ -26,18 +26,11 @@ export function attachClientIdCookie(response: NextResponse, clientId: string) {
   return response;
 }
 
-export function withClientIdCookie<T>(
-  request: NextRequest,
+export function jsonWithClientIdCookie<T>(
   body: T,
+  clientId: string,
   init?: { status?: number },
 ): NextResponse {
-  const existing = getClientIdFromRequest(request);
-  const clientId = existing ?? createClientId();
   const response = NextResponse.json(body, { status: init?.status ?? 200 });
-
-  if (!existing) {
-    attachClientIdCookie(response, clientId);
-  }
-
-  return response;
+  return attachClientIdCookie(response, clientId);
 }
