@@ -248,4 +248,8 @@ JYKStore는 지식팩 연동 화면에서 선택한 지식팩 기준으로 API K
 
 ## 다음 단계
 
-1. Phase P6: Provider Center 또는 Context API 운영 보강
+1. Phase P7: Admin 검증 체계
+   - REVIEWING 지식팩 목록 조회
+   - 검수 상세 화면
+   - 승인/반려 처리
+   - 검수 메모 및 AuditLog 기록

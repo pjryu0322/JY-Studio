@@ -46,8 +46,8 @@ export function SelectedPackApiKeyIssuePanel({
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-bold text-amber-950">API Key가 발급되었습니다</p>
           <p className="mt-2 text-xs leading-relaxed text-amber-900">
-            API Key는 이번에만 표시됩니다. 복사해 두세요. 방금 발급한 Key가 아래 Context API 테스트 패널에 자동
-            입력되었습니다.
+            API Key는 이번에만 표시됩니다. 복사한 뒤 숨길 수 있습니다. 숨긴 뒤에도 아래 Context API 테스트 패널에는 이미
+            반영되어 있습니다.
           </p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
             <code className="min-w-0 flex-1 break-all rounded-xl bg-white px-3 py-2 text-xs text-slate-800">
@@ -55,6 +55,13 @@ export function SelectedPackApiKeyIssuePanel({
             </code>
             <CopyButton value={plainKeyOnce} label="Key 복사" className="w-full sm:w-auto" />
           </div>
+          <button
+            type="button"
+            onClick={() => setPlainKeyOnce(null)}
+            className="mt-3 min-h-[44px] w-full rounded-xl bg-white px-4 text-sm font-semibold text-slate-800 active:bg-slate-50"
+          >
+            확인했습니다 / Key 숨기기
+          </button>
         </div>
       ) : (
         <button
