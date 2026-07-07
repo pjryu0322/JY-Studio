@@ -1,8 +1,13 @@
-import Link from "next/link";
-import { countPacksInCategory, mockPacks, STORE_CATEGORIES } from "@/data/mock-packs";
-import { ROUTES } from "@/lib/routes";
+import { CategoryCard } from "@/components/CategoryCard";
+import { mockCategories } from "@/data/mock-categories";
+import { mockPacks } from "@/data/mock-packs";
 
 export default function CategoriesPage() {
+  const countByCategory = new Map<string, number>();
+  for (const pack of mockPacks) {
+    countByCategory.set(pack.categoryId, (countByCategory.get(pack.categoryId) ?? 0) + 1);
+  }
+
   return (
     <div className="space-y-4">
       <div className="px-1">
@@ -10,20 +15,11 @@ export default function CategoriesPage() {
         <p className="mt-1 text-sm text-store-muted">분야별로 지식팩을 찾아보세요.</p>
       </div>
       <ul className="grid gap-3">
-        {STORE_CATEGORIES.map((category) => {
-          const count = countPacksInCategory(mockPacks, category);
-          return (
-            <li key={category}>
-              <Link
-                href={ROUTES.search}
-                className="flex min-h-[44px] items-center justify-between gap-3 rounded-2xl border border-store-border bg-white px-4 py-3 shadow-card active:bg-slate-50"
-              >
-                <span className="text-sm font-semibold text-slate-900">{category}</span>
-                <span className="text-xs text-store-muted">{count > 0 ? `${count}개` : "준비 중"}</span>
-              </Link>
-            </li>
-          );
-        })}
+        {mockCategories.map((category) => (
+          <li key={category.categoryId}>
+            <CategoryCard category={category} packCount={countByCategory.get(category.categoryId) ?? 0} />
+          </li>
+        ))}
       </ul>
     </div>
   );

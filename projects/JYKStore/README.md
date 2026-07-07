@@ -32,11 +32,26 @@ http://localhost:3004
 - 계정 화면 Scaffold
 - Mock 지식팩 데이터
 
+## Phase 2 구현 범위
+
+- 전체 지식팩 목록
+- 지식팩 상세 화면
+- 카테고리별 지식팩 목록
+- Mock 데이터 기반 검색
+- 앱스토어형 지식팩 상세 UX
+
+## 아직 구현하지 않은 기능
+
+- 내 지식팩 실제 추가 저장
+- API Key 발급
+- Context API
+- DB 연동
+- Provider/Admin 실제 기능
+
 ## 다음 단계
 
-1. 지식팩 목록/상세
-2. 내 지식팩 추가
-3. 연동하기 화면
-4. API Key 발급
-5. Context API Mock
-6. Provider/Admin 분리
+1. 내 지식팩 추가
+2. 연동하기 화면
+3. API Key 발급
+4. Context API Mock
+5. Provider/Admin 분리

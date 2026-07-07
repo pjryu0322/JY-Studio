@@ -5,7 +5,24 @@ export const ROUTES = {
   categories: "/categories",
   myPacks: "/my-packs",
   account: "/account",
+  packs: "/packs",
 } as const;
+
+export function packDetailPath(packId: string): string {
+  return `/packs/${packId}`;
+}
+
+export function categoryDetailPath(categoryId: string): string {
+  return `/categories/${categoryId}`;
+}
+
+export function searchPath(query?: string, chip?: string): string {
+  const params = new URLSearchParams();
+  if (query?.trim()) params.set("q", query.trim());
+  if (chip?.trim()) params.set("chip", chip.trim());
+  const qs = params.toString();
+  return qs ? `${ROUTES.search}?${qs}` : ROUTES.search;
+}
 
 export type BottomTabKey = "today" | "search" | "categories" | "myPacks" | "account";
 
@@ -33,7 +50,7 @@ export function bottomTabActive(key: BottomTabKey, pathname: string): boolean {
     case "search":
       return pathname === ROUTES.search;
     case "categories":
-      return pathname === ROUTES.categories;
+      return pathname === ROUTES.categories || pathname.startsWith("/categories/");
     case "myPacks":
       return pathname === ROUTES.myPacks;
     case "account":
