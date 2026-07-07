@@ -1,5 +1,7 @@
 import type { KnowledgeChunk } from "@prisma/client";
 
+export type KnowledgeChunkMetadata = Record<string, unknown>;
+
 export type KnowledgeChunkDto = {
   id: string;
   versionId: string;
@@ -9,6 +11,7 @@ export type KnowledgeChunkDto = {
   content: string;
   section: string | null;
   tags: string[];
+  metadata: KnowledgeChunkMetadata | null;
   sortOrder: number;
   isActive: boolean;
   createdAt: string;
@@ -32,6 +35,7 @@ export type CreateKnowledgeChunkInput = {
   content: string;
   section?: string | null;
   tags?: string[];
+  metadata?: KnowledgeChunkMetadata | null;
   sortOrder?: number;
 };
 
@@ -40,6 +44,7 @@ export type UpdateKnowledgeChunkInput = {
   content?: string;
   section?: string | null;
   tags?: string[];
+  metadata?: KnowledgeChunkMetadata | null;
   sortOrder?: number;
   isActive?: boolean;
 };
@@ -58,6 +63,13 @@ export type PackChunksListResponse = {
   }[];
 };
 
+function toMetadataRecord(value: unknown): KnowledgeChunkMetadata | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as KnowledgeChunkMetadata;
+  }
+  return null;
+}
+
 export function toKnowledgeChunkDto(chunk: KnowledgeChunk): KnowledgeChunkDto {
   return {
     id: chunk.id,
@@ -68,6 +80,7 @@ export function toKnowledgeChunkDto(chunk: KnowledgeChunk): KnowledgeChunkDto {
     content: chunk.content,
     section: chunk.section,
     tags: [...chunk.tags],
+    metadata: toMetadataRecord(chunk.metadata),
     sortOrder: chunk.sortOrder,
     isActive: chunk.isActive,
     createdAt: chunk.createdAt.toISOString(),

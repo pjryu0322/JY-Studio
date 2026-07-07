@@ -27,6 +27,7 @@ export async function createPackChunkApi(
     content: string;
     section?: string | null;
     tags?: string[];
+    metadata?: Record<string, unknown> | null;
     sortOrder?: number;
   },
 ): Promise<{ chunk: KnowledgeChunkDto; summary: ChunkPipelineSummaryDto }> {
@@ -66,6 +67,7 @@ export async function updatePackChunkApi(
     content?: string;
     section?: string | null;
     tags?: string[];
+    metadata?: Record<string, unknown> | null;
     sortOrder?: number;
     isActive?: boolean;
   },

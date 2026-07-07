@@ -426,7 +426,12 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
 
 정책:
 
-- P13은 Vector DB/Embedding/RAG/LLM 호출을 포함하지 않습니다.
+- filters는 점수 가산 조건이 아니라 후보 제한(AND) 조건입니다. filters가 지정되면 모든 metadata 조건을 만족한 chunk만 ranking 대상이 됩니다.
+- query가 있어도 metadata filter를 통과하지 못한 chunk는 결과에 포함되지 않습니다.
+- metadata는 허용된 key만, string 또는 string[] 값으로만 저장/조회합니다. alias(`language`, `version`)는 canonical key로 정규화합니다.
+- chunk metadata는 Admin Chunk Manager에서 JSON으로 입력·수정·조회할 수 있습니다.
+- Retrieval API request는 잘못된 타입/필드일 경우 400 `INVALID_RETRIEVAL_REQUEST`로 응답합니다.
+- P13/P13.1은 Vector DB/Embedding/RAG/LLM 호출을 포함하지 않습니다.
 - 비활성 chunk는 Retrieval API에서도 노출하지 않습니다.
 - API 인증은 Context API와 동일하게 Bearer API Key를 사용합니다.
 - packId 전용 API Key 권한은 P13에서 구현하지 않으며 향후 확장 예정입니다.

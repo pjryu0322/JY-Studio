@@ -99,6 +99,28 @@ export function scoreMetadata(
   return { score, reasons };
 }
 
+export function matchesMetadataFilterValue(value: unknown, filterValue: string): boolean {
+  return matchMetadataField(value, filterValue) > 0;
+}
+
+export function matchesAllMetadataFilters(
+  metadata: Record<string, unknown> | null | undefined,
+  filters: RetrievalFilters,
+): boolean {
+  const activeKeys = CANONICAL_FILTER_KEYS.filter((key) => Boolean(filters[key]));
+  if (activeKeys.length === 0) return true;
+  if (!metadata) return false;
+
+  for (const key of activeKeys) {
+    const filterValue = filters[key]!;
+    const read = readMetadataValue(metadata, key);
+    if (!read) return false;
+    if (!matchesMetadataFilterValue(read.value, filterValue)) return false;
+  }
+
+  return true;
+}
+
 export function scoreRetrievalChunk(input: {
   chunk: KeywordScorableChunk & { metadata?: Record<string, unknown> | null };
   tokens: string[];

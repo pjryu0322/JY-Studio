@@ -133,6 +133,9 @@ export function RetrievalTestPanel() {
           rows={5}
           className="mt-2 w-full rounded-xl border border-store-border px-3 py-2 font-mono text-xs"
         />
+        <p className="mt-1 text-[11px] text-store-muted">
+          filters는 AND 조건입니다. 모든 조건을 만족한 chunk만 결과에 포함됩니다.
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-4">

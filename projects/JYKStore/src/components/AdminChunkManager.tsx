@@ -11,6 +11,13 @@ import {
 } from "@/lib/chunk-pipeline-api";
 import { includesNormalized, tokenizeSearchQuery } from "@/lib/search-utils";
 
+const METADATA_PLACEHOLDER = `{
+  "documentType": "SAMPLE_CODE",
+  "programmingLanguage": "Java",
+  "framework": "Spring Boot",
+  "securityLevel": "PUBLIC"
+}`;
+
 function parseTagsText(value: string): string[] {
   return Array.from(
     new Set(
@@ -20,6 +27,30 @@ function parseTagsText(value: string): string[] {
         .filter(Boolean),
     ),
   );
+}
+
+function parseMetadataText(
+  value: string,
+): { ok: true; metadata: Record<string, unknown> | null } | { ok: false; error: string } {
+  const trimmed = value.trim();
+  if (!trimmed) return { ok: true, metadata: null };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { ok: false, error: "metadata JSON을 파싱하지 못했습니다." };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, error: "metadata는 JSON object여야 합니다." };
+  }
+  return { ok: true, metadata: parsed as Record<string, unknown> };
+}
+
+function formatMetadataSummary(metadata: Record<string, unknown> | null): string {
+  if (!metadata) return "";
+  return Object.entries(metadata)
+    .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join("/") : String(value)}`)
+    .join(" · ");
 }
 
 export function AdminChunkManager({ packId }: { readonly packId: string }) {
@@ -34,6 +65,7 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
   const [manualTitle, setManualTitle] = useState("");
   const [manualContent, setManualContent] = useState("");
   const [manualSection, setManualSection] = useState("");
+  const [manualMetadataText, setManualMetadataText] = useState("");
   const [creating, setCreating] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -41,6 +73,7 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
   const [editContent, setEditContent] = useState("");
   const [editSection, setEditSection] = useState("");
   const [editTagsText, setEditTagsText] = useState("");
+  const [editMetadataText, setEditMetadataText] = useState("");
   const [editSortOrder, setEditSortOrder] = useState("");
   const [editIsActive, setEditIsActive] = useState(true);
 
@@ -83,19 +116,28 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
   const onCreateManual = async (e: FormEvent) => {
     e.preventDefault();
     if (!versionId) return;
-    setCreating(true);
     setError(null);
+
+    const metadataResult = parseMetadataText(manualMetadataText);
+    if (!metadataResult.ok) {
+      setError(metadataResult.error);
+      return;
+    }
+
+    setCreating(true);
     try {
       await createPackChunkApi(packId, {
         versionId,
         title: manualTitle,
         content: manualContent,
         section: manualSection.trim() || undefined,
+        metadata: metadataResult.metadata,
         chunkType: "MANUAL",
       });
       setManualTitle("");
       setManualContent("");
       setManualSection("");
+      setManualMetadataText("");
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "청크를 만들지 못했습니다.");
@@ -110,6 +152,7 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
     setEditContent(chunk.content);
     setEditSection(chunk.section ?? "");
     setEditTagsText(chunk.tags.join(", "));
+    setEditMetadataText(chunk.metadata ? JSON.stringify(chunk.metadata, null, 2) : "");
     setEditSortOrder(String(chunk.sortOrder));
     setEditIsActive(chunk.isActive);
   };
@@ -117,6 +160,13 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
   const saveEdit = async () => {
     if (!editingId) return;
     setError(null);
+
+    const metadataResult = parseMetadataText(editMetadataText);
+    if (!metadataResult.ok) {
+      setError(metadataResult.error);
+      return;
+    }
+
     try {
       const parsedSortOrder = Number(editSortOrder);
       await updatePackChunkApi(packId, editingId, {
@@ -124,6 +174,7 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
         content: editContent,
         section: editSection.trim() || null,
         tags: parseTagsText(editTagsText),
+        metadata: metadataResult.metadata,
         sortOrder: Number.isFinite(parsedSortOrder) ? parsedSortOrder : undefined,
         isActive: editIsActive,
       });
@@ -265,6 +316,16 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
           className="w-full rounded-xl border border-store-border px-3 py-2 text-sm"
           required
         />
+        <textarea
+          value={manualMetadataText}
+          onChange={(e) => setManualMetadataText(e.target.value)}
+          placeholder={METADATA_PLACEHOLDER}
+          rows={4}
+          className="w-full rounded-xl border border-store-border px-3 py-2 font-mono text-xs"
+        />
+        <p className="text-[11px] text-store-muted">
+          metadata(JSON, 선택): 허용된 key만 저장됩니다. Retrieval API filter의 AND 조건으로 사용됩니다.
+        </p>
         <button
           type="submit"
           disabled={creating}
@@ -301,12 +362,14 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
               editContent={editContent}
               editSection={editSection}
               editTagsText={editTagsText}
+              editMetadataText={editMetadataText}
               editSortOrder={editSortOrder}
               editIsActive={editIsActive}
               onEditTitle={setEditTitle}
               onEditContent={setEditContent}
               onEditSection={setEditSection}
               onEditTagsText={setEditTagsText}
+              onEditMetadataText={setEditMetadataText}
               onEditSortOrder={setEditSortOrder}
               onEditIsActive={setEditIsActive}
               onStartEdit={() => startEdit(chunk)}
@@ -328,12 +391,14 @@ function ChunkCard({
   editContent,
   editSection,
   editTagsText,
+  editMetadataText,
   editSortOrder,
   editIsActive,
   onEditTitle,
   onEditContent,
   onEditSection,
   onEditTagsText,
+  onEditMetadataText,
   onEditSortOrder,
   onEditIsActive,
   onStartEdit,
@@ -347,12 +412,14 @@ function ChunkCard({
   editContent: string;
   editSection: string;
   editTagsText: string;
+  editMetadataText: string;
   editSortOrder: string;
   editIsActive: boolean;
   onEditTitle: (v: string) => void;
   onEditContent: (v: string) => void;
   onEditSection: (value: string) => void;
   onEditTagsText: (value: string) => void;
+  onEditMetadataText: (value: string) => void;
   onEditSortOrder: (value: string) => void;
   onEditIsActive: (value: boolean) => void;
   onStartEdit: () => void;
@@ -387,6 +454,16 @@ function ChunkCard({
             placeholder="tags, comma-separated"
             className="min-h-[44px] w-full rounded-lg border border-store-border px-2 text-sm"
           />
+          <textarea
+            value={editMetadataText}
+            onChange={(e) => onEditMetadataText(e.target.value)}
+            placeholder={METADATA_PLACEHOLDER}
+            rows={4}
+            className="w-full rounded-lg border border-store-border px-2 py-1 font-mono text-xs"
+          />
+          <p className="text-[11px] text-store-muted">
+            metadata(JSON): 비우면 metadata가 제거됩니다.
+          </p>
           <input
             value={editSortOrder}
             onChange={(e) => onEditSortOrder(e.target.value)}
@@ -434,6 +511,11 @@ function ChunkCard({
                 </span>
               ))}
             </div>
+          ) : null}
+          {chunk.metadata && Object.keys(chunk.metadata).length > 0 ? (
+            <p className="mt-2 rounded-lg bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
+              metadata · {formatMetadataSummary(chunk.metadata)}
+            </p>
           ) : null}
           <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap text-xs text-slate-700">{chunk.content}</pre>
           <div className="mt-2 flex gap-2">

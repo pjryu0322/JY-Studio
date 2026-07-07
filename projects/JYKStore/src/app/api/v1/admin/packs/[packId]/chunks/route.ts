@@ -14,6 +14,7 @@ async function parseJsonBody(request: NextRequest) {
       content?: string;
       section?: string | null;
       tags?: string[];
+      metadata?: Record<string, unknown> | null;
       sortOrder?: number;
     };
   } catch {
@@ -60,6 +61,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       content: body.content ?? "",
       section: body.section,
       tags: body.tags,
+      metadata: body.metadata,
       sortOrder: body.sortOrder,
     });
 

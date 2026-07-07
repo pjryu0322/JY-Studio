@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateApiKey, requireApiKeyScope } from "@/lib/api-key-auth";
 import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
 import {
+  DEFAULT_TOP_K,
   RETRIEVAL_QUERY_MAX_LENGTH,
   type RetrievalRequestBody,
 } from "@/lib/retrieval-dto";
@@ -80,38 +81,30 @@ export async function POST(request: NextRequest) {
       return validationError(requestId, ["Request body must be valid JSON."]);
     }
 
-    const knowledgePackId = body.knowledgePackId?.trim();
-    if (!knowledgePackId) {
-      await recordApiUsage({
-        requestId,
-        apiKeyId,
-        endpoint,
-        method,
-        statusCode: 400,
-        latencyMs: Date.now() - startedAt,
-        metadata: { reason: "MISSING_PACK_ID" },
-      });
-      return validationError(requestId, ["knowledgePackId is required."]);
+    const details: string[] = [];
+
+    const packIdValid =
+      typeof body.knowledgePackId === "string" && body.knowledgePackId.trim().length > 0;
+    if (!packIdValid) {
+      details.push("knowledgePackId must be a non-empty string.");
+    } else {
+      packId = (body.knowledgePackId as string).trim();
     }
-    packId = knowledgePackId;
+
+    if (body.query !== undefined && typeof body.query !== "string") {
+      details.push("query must be a string.");
+    }
+    if (body.includeMetadata !== undefined && typeof body.includeMetadata !== "boolean") {
+      details.push("includeMetadata must be a boolean.");
+    }
 
     const topKResult = normalizeTopK(body.topK);
-    if (!topKResult.ok) {
-      await recordApiUsage({
-        requestId,
-        apiKeyId,
-        packId,
-        endpoint,
-        method,
-        statusCode: 400,
-        latencyMs: Date.now() - startedAt,
-        metadata: { reason: "INVALID_TOP_K" },
-      });
-      return validationError(requestId, [topKResult.error]);
-    }
+    if (!topKResult.ok) details.push(topKResult.error);
 
     const filterResult = validateAndNormalizeFilters(body.filters);
-    if (!filterResult.ok) {
+    if (!filterResult.ok) details.push(...filterResult.errors);
+
+    if (details.length > 0) {
       await recordApiUsage({
         requestId,
         apiKeyId,
@@ -120,20 +113,23 @@ export async function POST(request: NextRequest) {
         method,
         statusCode: 400,
         latencyMs: Date.now() - startedAt,
-        metadata: { reason: "INVALID_FILTERS" },
+        metadata: { reason: "INVALID_RETRIEVAL_REQUEST" },
       });
-      return validationError(requestId, filterResult.errors);
+      return validationError(requestId, details);
     }
 
-    const query = body.query?.trim() || undefined;
+    const knowledgePackId = (body.knowledgePackId as string).trim();
+    const topK = topKResult.ok ? topKResult.topK : DEFAULT_TOP_K;
+    const filters = filterResult.ok ? filterResult.filters : {};
+    const query = typeof body.query === "string" ? body.query.trim() || undefined : undefined;
     const safeQuery = query?.slice(0, RETRIEVAL_QUERY_MAX_LENGTH);
     const includeMetadata = body.includeMetadata === undefined ? true : Boolean(body.includeMetadata);
 
     const result = await retrieveContexts({
       knowledgePackId,
       query,
-      filters: filterResult.filters,
-      topK: topKResult.topK,
+      filters,
+      topK,
       includeMetadata,
       requestId,
     });
@@ -165,9 +161,9 @@ export async function POST(request: NextRequest) {
       metadata: {
         chunkCount: result.usage.contextCount,
         query: safeQuery,
-        topK: topKResult.topK,
+        topK,
         includeMetadata,
-        filterKeys: Object.keys(filterResult.filters),
+        filterKeys: Object.keys(filters),
         searchMode: query ? "keyword-metadata-ranking" : "metadata-ranking",
       },
     });

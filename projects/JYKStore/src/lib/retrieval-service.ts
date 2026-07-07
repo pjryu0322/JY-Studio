@@ -5,7 +5,7 @@ import {
   type RetrievalFilters,
   type RetrievalResponseDto,
 } from "@/lib/retrieval-dto";
-import { scoreRetrievalChunk } from "@/lib/retrieval-ranking";
+import { matchesAllMetadataFilters, scoreRetrievalChunk } from "@/lib/retrieval-ranking";
 import { tokenizeSearchQuery } from "@/lib/search-utils";
 
 const publishedStatuses = [PackStatus.PUBLISHED, PackStatus.VERIFIED] as const;
@@ -49,7 +49,6 @@ export async function retrieveContexts(input: {
   const searchQuery = input.query?.trim() ?? "";
   const tokens = tokenizeSearchQuery(searchQuery);
   const filterKeys = Object.keys(input.filters);
-  const hasSignal = tokens.length > 0 || filterKeys.length > 0;
 
   const candidates = await prisma.knowledgeChunk.findMany({
     where: {
@@ -63,7 +62,16 @@ export async function retrieveContexts(input: {
     take: CANDIDATE_LIMIT,
   });
 
-  const scored = candidates.map((chunk) => {
+  // filters는 점수 가산 조건이 아니라 후보 제한(AND) 조건이다.
+  // filters가 지정되면 모든 metadata 조건을 만족한 chunk만 ranking 대상이 된다.
+  const metadataFiltered =
+    filterKeys.length > 0
+      ? candidates.filter((chunk) =>
+          matchesAllMetadataFilters(toMetadataRecord(chunk.metadata), input.filters),
+        )
+      : candidates;
+
+  const scored = metadataFiltered.map((chunk) => {
     const metadataRecord = toMetadataRecord(chunk.metadata);
     const result = scoreRetrievalChunk({
       chunk: { ...chunk, metadata: metadataRecord },
@@ -73,16 +81,24 @@ export async function retrieveContexts(input: {
     return { chunk, metadataRecord, ...result };
   });
 
+  const byScore = (
+    a: (typeof scored)[number],
+    b: (typeof scored)[number],
+  ) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.chunk.sortOrder !== b.chunk.sortOrder) return a.chunk.sortOrder - b.chunk.sortOrder;
+    return a.chunk.createdAt.getTime() - b.chunk.createdAt.getTime();
+  };
+
   let selected = scored;
-  if (hasSignal) {
-    selected = scored
-      .filter((item) => item.score > 0)
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        if (a.chunk.sortOrder !== b.chunk.sortOrder) return a.chunk.sortOrder - b.chunk.sortOrder;
-        return a.chunk.createdAt.getTime() - b.chunk.createdAt.getTime();
-      });
+  if (filterKeys.length > 0) {
+    // metadata filter를 통과한 chunk는 keyword score가 0이어도 포함하고 score 기준으로 정렬한다.
+    selected = [...scored].sort(byScore);
+  } else if (tokens.length > 0) {
+    // keyword 전용: 실제로 매칭된 chunk만 반환한다.
+    selected = scored.filter((item) => item.score > 0).sort(byScore);
   }
+  // filters/query 모두 없으면 sortOrder/createdAt 순서를 그대로 사용한다.
   selected = selected.slice(0, input.topK);
 
   const contexts: RetrievalContextDto[] = selected.map((item) => {

@@ -76,9 +76,22 @@ export default function RetrievalApiDocsPage() {
         <DocsCodeBlock code={retrievalFetchExample} language="typescript" />
       </section>
 
+      <section className="space-y-2 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+        <h2 className="text-sm font-bold text-amber-950">filters 동작 기준 (중요)</h2>
+        <ul className="list-disc space-y-1 pl-5 text-sm text-amber-900">
+          <li>filters는 점수 가산 조건이 아니라 후보 제한(AND) 조건입니다.</li>
+          <li>filters가 지정되면 모든 metadata 조건을 만족한 chunk만 ranking 대상이 됩니다.</li>
+          <li>query가 있어도 metadata filter를 통과하지 못한 chunk는 결과에 포함되지 않습니다.</li>
+          <li>filters가 지정됐는데 metadata가 없는 chunk는 결과에서 제외됩니다.</li>
+          <li>metadata value는 string 또는 string[]만 사용합니다.</li>
+        </ul>
+      </section>
+
       <section className="space-y-2 rounded-2xl border border-store-border bg-white p-4 shadow-card">
         <h2 className="text-sm font-bold text-slate-900">Metadata filter key</h2>
-        <p className="text-sm text-slate-700">아래 key만 허용됩니다. 그 외 key는 400 오류로 처리됩니다.</p>
+        <p className="text-sm text-slate-700">
+          아래 key만 허용됩니다. 그 외 key는 400 오류로 처리됩니다. alias key는 canonical key로 정규화됩니다.
+        </p>
         <ul className="flex flex-wrap gap-1">
           {retrievalMetadataFilterKeys.map((key) => (
             <li

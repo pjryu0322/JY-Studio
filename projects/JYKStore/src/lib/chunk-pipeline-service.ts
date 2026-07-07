@@ -1,12 +1,14 @@
-import { AuditAction } from "@prisma/client";
+import { AuditAction, Prisma } from "@prisma/client";
 import { truncateContentPreview } from "@/lib/admin-review-dto";
 import {
   toKnowledgeChunkDto,
   type ChunkPipelineSummaryDto,
+  type KnowledgeChunkMetadata,
   type PackChunksListResponse,
 } from "@/lib/chunk-pipeline-dto";
 import { prisma } from "@/lib/prisma";
 import { recordProviderAudit } from "@/lib/provider-audit";
+import { validateAndNormalizeChunkMetadata } from "@/lib/retrieval-metadata";
 
 const TITLE_MIN = 2;
 const TITLE_MAX = 120;
@@ -158,6 +160,7 @@ export async function createKnowledgeChunk(input: {
   content: string;
   section?: string | null;
   tags?: string[];
+  metadata?: KnowledgeChunkMetadata | null;
   sortOrder?: number;
 }) {
   const pack = await prisma.knowledgePack.findUnique({ where: { packId: input.packId } });
@@ -175,6 +178,11 @@ export async function createKnowledgeChunk(input: {
   const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean);
   if (tags.length > MAX_TAGS) {
     return { error: "VALIDATION" as const, message: `태그는 최대 ${MAX_TAGS}개까지 등록할 수 있습니다.` };
+  }
+
+  const metadataResult = validateAndNormalizeChunkMetadata(input.metadata);
+  if (!metadataResult.ok) {
+    return { error: "VALIDATION" as const, message: metadataResult.errors.join("\n") };
   }
 
   if (input.sourceDocumentId) {
@@ -196,6 +204,7 @@ export async function createKnowledgeChunk(input: {
       content: input.content.trim(),
       section: input.section?.trim() || null,
       tags,
+      metadata: metadataResult.metadata ?? Prisma.JsonNull,
       sortOrder,
       isActive: true,
     },
@@ -219,6 +228,7 @@ export async function updateKnowledgeChunk(input: {
   content?: string;
   section?: string | null;
   tags?: string[];
+  metadata?: KnowledgeChunkMetadata | null;
   sortOrder?: number;
   isActive?: boolean;
 }) {
@@ -242,6 +252,15 @@ export async function updateKnowledgeChunk(input: {
     return { error: "VALIDATION" as const, message: `태그는 최대 ${MAX_TAGS}개까지 등록할 수 있습니다.` };
   }
 
+  let metadata: Prisma.InputJsonValue | typeof Prisma.JsonNull | undefined = undefined;
+  if (input.metadata !== undefined) {
+    const metadataResult = validateAndNormalizeChunkMetadata(input.metadata);
+    if (!metadataResult.ok) {
+      return { error: "VALIDATION" as const, message: metadataResult.errors.join("\n") };
+    }
+    metadata = metadataResult.metadata ?? Prisma.JsonNull;
+  }
+
   const updated = await prisma.knowledgeChunk.update({
     where: { id: chunk.id },
     data: {
@@ -249,6 +268,7 @@ export async function updateKnowledgeChunk(input: {
       content: input.content?.trim(),
       section: input.section === undefined ? undefined : input.section?.trim() || null,
       tags: tags ?? undefined,
+      metadata,
       sortOrder: input.sortOrder,
       isActive: input.isActive,
     },

@@ -11,6 +11,7 @@ async function parseJsonBody(request: NextRequest) {
       content?: string;
       section?: string | null;
       tags?: string[];
+      metadata?: Record<string, unknown> | null;
       sortOrder?: number;
       isActive?: boolean;
     };
