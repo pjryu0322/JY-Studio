@@ -61,6 +61,10 @@ export const getContextFetchExample = `const res = await fetch(
   },
 );
 
+if (!res.ok) {
+  throw new Error(\`Context API error: \${res.status}\`);
+}
+
 const data = await res.json();
 console.log(data);`;
 

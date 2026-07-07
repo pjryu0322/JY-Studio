@@ -6,7 +6,7 @@ import {
   runContextApiTest,
   type ContextApiTestResult,
 } from "@/lib/context-api-test-client";
-import { ROUTES } from "@/lib/routes";
+import { ROUTES, contextApiDocsPath } from "@/lib/routes";
 
 export function ContextApiTestPanel({
   packId,
@@ -71,7 +71,7 @@ export function ContextApiTestPanel({
       <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-slate-700">
         API 연동 전 Context API 문서와 TypeScript SDK 샘플을 확인하세요.
         <div className="mt-2 flex flex-wrap gap-3">
-          <Link href={ROUTES.contextApiDocs} className="font-semibold text-store-accent">
+          <Link href={contextApiDocsPath(packId)} className="font-semibold text-store-accent">
             Context API 문서 →
           </Link>
           <Link href={ROUTES.sdkDocs} className="font-semibold text-store-accent">

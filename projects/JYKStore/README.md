@@ -345,6 +345,34 @@ JYKStore는 지식팩을 외부 서비스에서 사용할 수 있도록 Context 
 - API Key는 서버 환경변수에 저장해야 합니다.
 - API Key를 LocalStorage/sessionStorage 또는 URL query에 저장하거나 전달하지 않습니다.
 
+## 보안·운영·관측성
+
+JYKStore는 내부 운영자가 API 사용량, AuditLog, Health 상태를 확인할 수 있는 운영 콘솔을 제공합니다.
+
+위치:
+
+- `/admin/ops`
+- `/admin/ops/usage`
+- `/admin/ops/audit`
+- `/admin/ops/health`
+
+현재 단계:
+
+- API UsageLog summary
+- UsageLog 목록 조회
+- AuditLog 목록 조회
+- DB/Context API Health 상태
+- 오류율 및 평균 latency 확인
+- endpoint별 호출 수 확인
+- soft rate limit 정책 표시
+
+정책:
+
+- 현재 Admin Ops Console은 MVP 내부 운영 도구입니다.
+- 실제 운영 환경에서는 관리자 인증과 권한 제어가 필요합니다.
+- API Key 원문과 Authorization header는 저장하거나 표시하지 않습니다.
+- 현재 rate limit은 전체 무료 정책에 맞춰 soft policy로 표시하며 API 호출을 차단하지 않습니다.
+
 ## 아직 구현하지 않은 기능
 
 - Vector DB/RAG 검색
@@ -353,8 +381,8 @@ JYKStore는 지식팩을 외부 서비스에서 사용할 수 있도록 Context 
 
 ## 다음 단계
 
-1. Phase P11: 보안·운영·관측성
-   - API rate limit 정책
-   - AuditLog/UsageLog 조회 화면
-   - 운영 상태 점검
-   - 오류/성능 관측성 보강
+1. Phase P12: Free Plan & Billing Foundation
+   - 전체 무료 기본 플랜 적용
+   - 플랜/사용량 구조 기반 구현
+   - 무료 이용 상태 표시
+   - 향후 유료화 확장 필드 준비

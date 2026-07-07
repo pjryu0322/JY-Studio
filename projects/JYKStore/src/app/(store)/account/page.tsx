@@ -14,7 +14,7 @@ const ACCOUNT_ITEMS = [
     href: ROUTES.docs,
     status: null,
   },
-  { title: "사용량 확인", description: "지식팩 호출 및 사용량", href: null, status: "준비 중" },
+  { title: "운영 사용량 확인", description: "API UsageLog 및 호출 상태 (내부 운영용)", href: ROUTES.adminOpsUsage, status: null },
   {
     title: "지식팩 제공자 센터",
     description: "제공자 등록 및 지식팩 관리",

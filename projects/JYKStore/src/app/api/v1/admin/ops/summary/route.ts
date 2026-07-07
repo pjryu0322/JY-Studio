@@ -1,0 +1,18 @@
+import { NextRequest } from "next/server";
+import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import type { OpsRange } from "@/lib/ops-dto";
+import { getOpsSummary } from "@/lib/ops-service";
+
+export async function GET(request: NextRequest) {
+  const clientId = ensureClientId(request);
+
+  try {
+    const rawRange = request.nextUrl.searchParams.get("range");
+    const range: OpsRange = rawRange === "7d" ? "7d" : "24h";
+    const summary = await getOpsSummary(range);
+    return jsonWithClientIdCookie({ clientId, summary }, clientId);
+  } catch (error) {
+    console.error("GET /api/v1/admin/ops/summary failed", error);
+    return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
+  }
+}
