@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start -p 3004",
     "lint": "next lint",
+    "test": "node --import tsx --test src/__tests__/chunk-ui-utils.test.ts src/__tests__/retrieval-filter-metadata.test.ts src/__tests__/retrieval-ranking.test.ts src/__tests__/embedding-vector.test.ts src/__tests__/knowledge-graph-planner.test.ts src/__tests__/openapi-schema.test.ts src/__tests__/export-shared.test.ts",
+    "test:unit": "node --import tsx --test src/__tests__/chunk-ui-utils.test.ts src/__tests__/retrieval-filter-metadata.test.ts src/__tests__/retrieval-ranking.test.ts src/__tests__/embedding-vector.test.ts src/__tests__/knowledge-graph-planner.test.ts src/__tests__/openapi-schema.test.ts src/__tests__/export-shared.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
