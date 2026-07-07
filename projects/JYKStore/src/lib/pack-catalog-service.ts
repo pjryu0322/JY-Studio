@@ -109,8 +109,11 @@ export async function searchPublishedPacks(params: {
   chip?: string;
 }): Promise<KnowledgePack[]> {
   const query = params.query?.trim() ?? "";
+  const chip = params.chip?.trim() ?? "";
+
   if (!query) {
-    return listPublishedPacks();
+    const packs = await listPublishedPacks();
+    return applySearchFilters(packs, { chip });
   }
 
   const rows = await prisma.knowledgePack.findMany({
@@ -129,9 +132,8 @@ export async function searchPublishedPacks(params: {
     orderBy: catalogOrderBy,
   });
 
-  let packs = mapRows(rows);
-  packs = applySearchFilters(packs, { chip: params.chip });
-  return packs;
+  const packs = mapRows(rows);
+  return applySearchFilters(packs, { chip });
 }
 
 export type TodayFeaturedPacks = {

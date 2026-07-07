@@ -84,7 +84,13 @@ npm run db:studio
 
 - 지식팩 목록, 상세, 카테고리, 검색은 DB 기준으로 조회합니다.
 - `mock-packs.ts`, `mock-categories.ts`는 seed 호환용으로만 유지합니다.
+
+### Pack Catalog 공개/설치 정책
+
 - 일반 사용자 화면에는 `PUBLISHED`, `VERIFIED` 상태 지식팩만 노출합니다.
+- 내 지식팩 추가도 `PUBLISHED`, `VERIFIED` 상태만 허용합니다.
+- `DRAFT`, `REVIEWING`, `DEPRECATED`, `SUSPENDED` 상태는 일반 사용자 화면과 설치 대상에서 제외합니다.
+- 검색은 검색어 없이 chip만 선택해도 DB 기준으로 필터링됩니다.
 
 ## 아직 구현하지 않은 기능
 

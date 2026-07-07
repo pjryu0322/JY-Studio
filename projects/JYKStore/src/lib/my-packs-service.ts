@@ -4,6 +4,12 @@ import { toKnowledgePackDto, type PrismaKnowledgePackWithVersion } from "@/lib/p
 
 import { packCatalogInclude } from "@/lib/pack-catalog-service";
 
+const installablePackStatuses: PackStatus[] = [PackStatus.PUBLISHED, PackStatus.VERIFIED];
+
+function isInstallablePackStatus(status: PackStatus) {
+  return installablePackStatuses.includes(status);
+}
+
 export async function listActiveMyPacksForClient(clientId: string) {
   const installations = await prisma.packInstallation.findMany({
     where: {
@@ -38,7 +44,7 @@ export async function addPackInstallationForClient(clientId: string, packId: str
     return { error: "NOT_FOUND" as const };
   }
 
-  if (pack.status !== PackStatus.PUBLISHED) {
+  if (!isInstallablePackStatus(pack.status)) {
     return { error: "NOT_PUBLISHED" as const, pack };
   }
 

@@ -11,11 +11,12 @@ type PageProps = {
 async function SearchPageContent({ searchParams }: PageProps) {
   const { q, chip } = await searchParams;
   const query = q?.trim() ?? "";
-  const hasQuery = query.length > 0;
+  const selectedChip = chip?.trim() ?? "";
+  const hasSearchIntent = query.length > 0 || selectedChip.length > 0;
 
   const [recommended, results] = await Promise.all([
-    hasQuery ? Promise.resolve([]) : listPublishedPacks().then((packs) => packs.slice(0, 3)),
-    hasQuery ? searchPublishedPacks({ query, chip }) : Promise.resolve([]),
+    hasSearchIntent ? Promise.resolve([]) : listPublishedPacks().then((packs) => packs.slice(0, 3)),
+    hasSearchIntent ? searchPublishedPacks({ query, chip: selectedChip }) : Promise.resolve([]),
   ]);
 
   return (

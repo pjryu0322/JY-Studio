@@ -19,7 +19,8 @@ export function SearchPageClient(p: {
   readonly recommended: readonly KnowledgePack[];
 }) {
   const router = useRouter();
-  const hasQuery = p.query.trim().length > 0;
+  const selectedChip = p.chip?.trim() ?? "";
+  const hasSearchIntent = p.query.trim().length > 0 || selectedChip.length > 0;
 
   const onSubmit = useCallback(
     (e: FormEvent<HTMLFormElement>) => {
@@ -47,7 +48,7 @@ export function SearchPageClient(p: {
         />
       </form>
 
-      {!hasQuery ? (
+      {!hasSearchIntent ? (
         <>
           <section>
             <h2 className="mb-3 px-1 text-sm font-bold text-slate-900">인기 검색어</h2>
@@ -72,7 +73,15 @@ export function SearchPageClient(p: {
         <>
           <div className="px-1">
             <p className="text-sm text-store-muted">
-              <span className="font-semibold text-slate-900">「{p.query}」</span> 검색 결과{" "}
+              {p.query.trim().length > 0 ? (
+                <>
+                  <span className="font-semibold text-slate-900">「{p.query}」</span> 검색 결과{" "}
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-slate-900">「{selectedChip}」</span> 필터 결과{" "}
+                </>
+              )}
               <span className="font-semibold text-store-accent">{p.results.length}</span>개
             </p>
           </div>

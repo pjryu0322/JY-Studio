@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     if (result.error === "NOT_PUBLISHED") {
       return jsonWithClientIdCookie(
-        { error: "공개된 지식팩만 내 지식팩에 추가할 수 있습니다." },
+        { error: "공개 또는 검증된 지식팩만 내 지식팩에 추가할 수 있습니다." },
         clientId,
         { status: 409 },
       );
