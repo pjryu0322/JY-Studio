@@ -357,3 +357,58 @@ export const retrievalErrorResponseExample = `{
     "requestId": "req_xxx"
   }
 }`;
+
+export const graphQueryRequestBody = `{
+  "knowledgePackId": "${samplePackId}",
+  "query": "callback",
+  "nodeTypes": ["CHUNK", "METADATA_VALUE"],
+  "edgeTypes": ["CHUNK_HAS_METADATA"],
+  "limit": 50,
+  "includeEdges": true
+}`;
+
+export const graphQueryCurlExample = `curl -X POST "${apiBaseUrls.development}/api/v1/graph/query" \\
+  -H "Authorization: Bearer ${sampleApiKey}" \\
+  -H "Content-Type: application/json" \\
+  --data '{
+    "knowledgePackId": "${samplePackId}",
+    "query": "callback",
+    "nodeTypes": ["CHUNK", "METADATA_VALUE"],
+    "limit": 50,
+    "includeEdges": true
+  }'`;
+
+export const graphQueryResponseExample = `{
+  "nodes": [
+    {
+      "id": "node_xxx",
+      "packId": "${samplePackId}",
+      "versionId": "ver_xxx",
+      "nodeType": "CHUNK",
+      "externalId": "chunk:chunk_xxx",
+      "label": "Callback 처리",
+      "summary": "...",
+      "metadata": null
+    }
+  ],
+  "edges": [],
+  "usage": {
+    "requestId": "req_xxx",
+    "nodeCount": 1,
+    "edgeCount": 0,
+    "limit": 50
+  }
+}`;
+
+export const graphQueryErrorResponseExample = `{
+  "error": {
+    "code": "INVALID_GRAPH_QUERY_REQUEST",
+    "message": "Invalid graph query request.",
+    "details": [
+      "knowledgePackId must be a non-empty string."
+    ]
+  },
+  "usage": {
+    "requestId": "req_xxx"
+  }
+}`;

@@ -197,6 +197,47 @@ export default function RetrievalApiDocsPage() {
         <h2 className="text-sm font-bold text-slate-900">테스트 콘솔</h2>
         <RetrievalTestPanel />
       </section>
+
+      <section className="space-y-3 rounded-2xl border border-store-border bg-white p-4 shadow-card">
+        <h2 className="text-sm font-bold text-slate-900">Knowledge Graph / Export (P15 foundation)</h2>
+        <p className="text-sm text-store-muted">
+          JYKStore는 지식팩을 다양한 AI 도구와 연계할 수 있도록 knowledge graph와 export를 제공합니다.
+          JYKStore는 답변을 생성하지 않고 context / graph / export data만 제공하며, 답변 생성은 외부 AI 도구/LLM이
+          수행합니다.
+        </p>
+        <ul className="list-disc space-y-2 pl-5 text-sm text-slate-700">
+          <li>
+            <span className="font-semibold">Graph Query API</span> —{" "}
+            <code className="font-mono text-xs">POST /api/v1/graph/query</code> (Bearer API Key,{" "}
+            <code className="font-mono text-xs">context:read</code> scope). knowledgePackId 기준으로 node/edge를
+            조회합니다. label/summary/externalId contains 검색이며, graph traversal·semantic search·답변 생성은
+            하지 않습니다.
+          </li>
+          <li>
+            <span className="font-semibold">Package Export JSON</span> —{" "}
+            <code className="font-mono text-xs">GET /api/v1/admin/packs/&#123;packId&#125;/exports/package</code>. pack /
+            version / chunk / graph 메타를 포함하며 raw embedding vector는 제외합니다.
+          </li>
+          <li>
+            <span className="font-semibold">RAG Export JSONL</span> —{" "}
+            <code className="font-mono text-xs">GET /api/v1/admin/packs/&#123;packId&#125;/exports/rag-jsonl</code>. 외부
+            RAG 시스템에 import 가능한 line-delimited JSON export입니다. 활성 chunk 1개 = 1 line.
+          </li>
+          <li>
+            <span className="font-semibold">Graph Export JSON</span> —{" "}
+            <code className="font-mono text-xs">GET /api/v1/admin/packs/&#123;packId&#125;/exports/graph</code>.
+          </li>
+          <li>
+            <span className="font-semibold">MCP-ready Manifest</span> —{" "}
+            <code className="font-mono text-xs">GET /api/v1/admin/packs/&#123;packId&#125;/exports/mcp-manifest</code>. 실제
+            MCP Server가 아니라 향후 MCP 연계를 위한 manifest이며, 실제 API Key를 포함하지 않습니다.
+          </li>
+        </ul>
+        <ul className="list-disc space-y-1 pl-5 text-xs text-store-muted">
+          <li>Graph는 외부 LLM 없이 DB 데이터 기반 deterministic rebuild로 생성됩니다.</li>
+          <li>Export/Graph에는 API Key, 사용자 정보, 과금 정보, audit log 등 민감 정보를 포함하지 않습니다.</li>
+        </ul>
+      </section>
     </div>
   );
 }

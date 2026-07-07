@@ -166,6 +166,8 @@ model KnowledgePack {
   installations PackInstallation[]
   usageLogs     ApiUsageLog[]
   reviews       PackReview[]
+  graphNodes    KnowledgeGraphNode[]
+  graphEdges    KnowledgeGraphEdge[]
 
   @@index([status])
   @@index([categoryId])
@@ -210,6 +212,8 @@ model KnowledgePackVersion {
   sourceDocuments SourceDocument[]
   chunks          KnowledgeChunk[]
   embeddings      KnowledgeChunkEmbedding[]
+  graphNodes      KnowledgeGraphNode[]
+  graphEdges      KnowledgeGraphEdge[]
 
   @@unique([packId, version])
   @@index([packId])
@@ -273,6 +277,59 @@ model KnowledgeChunkEmbedding {
   @@index([versionId])
   @@index([provider, model])
   @@index([contentHash])
+}
+
+model KnowledgeGraphNode {
+  id         String   @id @default(cuid())
+  packId     String
+  versionId  String?
+  nodeType   String
+  externalId String
+  label      String
+  summary    String?
+  metadata   Json?
+  source     String   @default("AUTO_DETERMINISTIC")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  pack    KnowledgePack         @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version KnowledgePackVersion? @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  outgoing KnowledgeGraphEdge[] @relation("GraphEdgeFrom")
+  incoming KnowledgeGraphEdge[] @relation("GraphEdgeTo")
+
+  @@unique([packId, externalId])
+  @@index([packId])
+  @@index([versionId])
+  @@index([nodeType])
+  @@index([source])
+}
+
+model KnowledgeGraphEdge {
+  id         String   @id @default(cuid())
+  packId     String
+  versionId  String?
+  edgeType   String
+  fromNodeId String
+  toNodeId   String
+  weight     Float    @default(1)
+  metadata   Json?
+  source     String   @default("AUTO_DETERMINISTIC")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  pack    KnowledgePack         @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version KnowledgePackVersion? @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  from    KnowledgeGraphNode    @relation("GraphEdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  to      KnowledgeGraphNode    @relation("GraphEdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([packId, edgeType, fromNodeId, toNodeId])
+  @@index([packId])
+  @@index([versionId])
+  @@index([edgeType])
+  @@index([fromNodeId])
+  @@index([toNodeId])
+  @@index([source])
 }
 
 model PackInstallation {

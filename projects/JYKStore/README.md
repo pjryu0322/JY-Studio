@@ -461,16 +461,34 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
 - hybrid는 embedding이 있는 chunk에 vector similarity를 가산하고, embedding이 없으면 keyword/metadata score로 fallback합니다. embedding 미생성 상태에서도 Retrieval API는 실패하지 않습니다.
 - embedding contentHash는 title/content/section/tags 기준으로만 계산합니다. metadata는 filter 조건으로만 사용되므로 embedding stale 판정에서 제외합니다. (metadata만 변경해도 stale로 표시되지 않음)
 
+### P15 — Knowledge Graph / Export Foundation
+
+- **Knowledge Graph Foundation**: `KnowledgeGraphNode` / `KnowledgeGraphEdge` 모델을 추가하고, 기존 pack/version/source/chunk/tag/metadata를 deterministic 방식으로 node/edge 그래프로 재구성합니다. 외부 LLM/AI 호출 없이 DB 데이터만 사용합니다.
+  - node type: `PACK` / `VERSION` / `SOURCE_DOCUMENT` / `CHUNK` / `TAG` / `METADATA_VALUE`
+  - edge type: `PACK_HAS_VERSION` / `VERSION_HAS_SOURCE_DOCUMENT` / `VERSION_HAS_CHUNK` / `SOURCE_DOCUMENT_HAS_CHUNK` / `CHUNK_HAS_TAG` / `CHUNK_HAS_METADATA` / `CHUNK_REFERENCES_SOURCE_DOCUMENT`
+  - deterministic externalId(`pack:` / `version:` / `chunk:` / `tag:` / `metadata:` 등)로 중복 생성을 방지하며, metadata는 허용 canonical key + string/string[] 값만(민감 key 제외) graph에 반영합니다.
+  - graph rebuild는 transaction 기반으로 기존 `AUTO_DETERMINISTIC` node/edge를 삭제 후 재생성합니다. 기존 pack/version/source/chunk/embedding 데이터는 수정하지 않습니다.
+- **Graph API**
+  - `GET /api/v1/admin/packs/{packId}/graph` — graph summary (node/edge count, type별 count)
+  - `POST /api/v1/admin/packs/{packId}/graph/rebuild` — deterministic rebuild
+  - `POST /api/v1/graph/query` — API Key(`context:read` scope) 인증. label/summary/externalId contains 검색으로 node/edge 조회. graph traversal·semantic search·답변 생성은 하지 않습니다.
+- **Export Foundation** (신규 라이브러리 없이 JSON/JSONL 응답 기반)
+  - `GET /api/v1/admin/packs/{packId}/exports/package` — `JYKSTORE_PACKAGE_JSON` (pack/version/chunk/graph 메타, raw embedding vector 제외)
+  - `GET /api/v1/admin/packs/{packId}/exports/rag-jsonl` — 외부 RAG 시스템에 import 가능한 line-delimited JSON (활성 chunk 기준)
+  - `GET /api/v1/admin/packs/{packId}/exports/graph` — `JYKSTORE_GRAPH_JSON`
+  - `GET /api/v1/admin/packs/{packId}/exports/mcp-manifest` — `JYKSTORE_MCP_READY_MANIFEST`. **실제 MCP Server가 아니라** 향후 MCP 연계용 manifest이며 실제 API Key를 포함하지 않습니다.
+  - Export/Graph에는 API Key, 사용자 정보, 과금 정보, audit log 등 민감 정보를 포함하지 않습니다.
+- **Admin UX**: 검수 상세 화면에 `KnowledgeGraphPanel`(graph 상태/type별 count/rebuild), `ExportPanel`(4종 export 다운로드)을 추가했습니다. 시각화 라이브러리는 추가하지 않고 table/list UX로 제공합니다.
+- JYKStore는 여전히 **답변을 생성하지 않고 context / graph / export data만 제공**합니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - pgvector 기반 vector index
+- 실제 MCP Server 실행(stdio/websocket/sse runtime) 및 graph traversal/semantic graph search
 - 로그인/회원 관리
 - 관리자 인증 및 권한 제어
 
 ## 다음 단계
 
-1. Phase P15: Knowledge Graph / Export Expansion
-   - Knowledge Graph 구조 탐색
-   - RAG/Package Export 검토
-   - external embedding provider 및 vector index 확장 검토
+1. Phase P16: 이후 단계에서 external embedding provider, vector index, MCP server runtime, graph traversal 확장을 검토합니다.

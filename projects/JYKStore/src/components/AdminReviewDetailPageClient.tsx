@@ -5,6 +5,8 @@ import { AdminChunkManager } from "@/components/AdminChunkManager";
 import { AdminReviewDecisionPanel } from "@/components/AdminReviewDecisionPanel";
 import { AdminReviewPackSummary } from "@/components/AdminReviewPackSummary";
 import { AdminReviewSourceDocuments } from "@/components/AdminReviewSourceDocuments";
+import { ExportPanel } from "@/components/ExportPanel";
+import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import { fetchAdminReviewDetail } from "@/lib/admin-review-api";
 
@@ -46,6 +48,10 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
       <AdminReviewPackSummary detail={detail} />
       <AdminReviewSourceDocuments versions={detail.versions} />
       <AdminChunkManager packId={packId} />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <KnowledgeGraphPanel packId={packId} />
+        <ExportPanel packId={packId} />
+      </div>
       <AdminReviewDecisionPanel packId={packId} detail={detail} onUpdated={setDetail} />
     </div>
   );
