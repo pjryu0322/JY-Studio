@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
 import { authenticateApiKey, requireApiKeyScope } from "@/lib/api-key-auth";
 import { getPackContext, parseContextLimit } from "@/lib/context-service";
+import { tokenizeSearchQuery } from "@/lib/search-utils";
 
 type RouteContext = {
   params: Promise<{ packId: string }>;
@@ -136,9 +137,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       latencyMs: Date.now() - startedAt,
       metadata: {
         chunkCount: result.usage.chunkCount,
-        query: q,
+        query: q?.slice(0, 100),
         limit,
         includeMetadata,
+        searchMode: q ? "keyword-ranking" : "default",
+        queryTokenCount: tokenizeSearchQuery(q).length,
+        returnedCount: result.usage.chunkCount,
       },
     });
 

@@ -1,7 +1,9 @@
 import { PackStatus, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toKnowledgePackDto, type PrismaKnowledgePackWithVersion } from "@/lib/pack-dto";
+import { rankPacks } from "@/lib/pack-search-service";
 import { applySearchFilters } from "@/lib/pack-utils";
+import { tokenizeSearchQuery } from "@/lib/search-utils";
 import type { KnowledgePack, StoreCategory } from "@/types/pack";
 
 export const packCatalogInclude = {
@@ -116,23 +118,37 @@ export async function searchPublishedPacks(params: {
     return applySearchFilters(packs, { chip });
   }
 
+  const tokens = tokenizeSearchQuery(query);
+  const orConditions: Prisma.KnowledgePackWhereInput[] =
+    tokens.length > 0
+      ? tokens.flatMap((token) => [
+          { name: { contains: token, mode: "insensitive" as const } },
+          { packId: { contains: token, mode: "insensitive" as const } },
+          { description: { contains: token, mode: "insensitive" as const } },
+          { shortDescription: { contains: token, mode: "insensitive" as const } },
+          { providerName: { contains: token, mode: "insensitive" as const } },
+          { tags: { has: token } },
+          { category: { name: { contains: token, mode: "insensitive" as const } } },
+        ])
+      : [
+          { name: { contains: query, mode: "insensitive" as const } },
+          { description: { contains: query, mode: "insensitive" as const } },
+          { shortDescription: { contains: query, mode: "insensitive" as const } },
+          { providerName: { contains: query, mode: "insensitive" as const } },
+          { tags: { has: query } },
+          { category: { name: { contains: query, mode: "insensitive" as const } } },
+        ];
+
   const rows = await prisma.knowledgePack.findMany({
     where: {
       ...publishedPackWhere,
-      OR: [
-        { name: { contains: query, mode: "insensitive" } },
-        { description: { contains: query, mode: "insensitive" } },
-        { shortDescription: { contains: query, mode: "insensitive" } },
-        { providerName: { contains: query, mode: "insensitive" } },
-        { tags: { has: query } },
-        { category: { name: { contains: query, mode: "insensitive" } } },
-      ],
+      OR: orConditions,
     },
     include: packCatalogInclude,
     orderBy: catalogOrderBy,
   });
 
-  const packs = mapRows(rows);
+  const packs = rankPacks(mapRows(rows), query);
   return applySearchFilters(packs, { chip });
 }
 

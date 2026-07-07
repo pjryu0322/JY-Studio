@@ -118,9 +118,14 @@ export function ContextApiTestPanel({
           id="context-test-query"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="예: callback"
+          placeholder="예: callback 오류, 인증 요청, 토큰 만료"
           className="mt-2 min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
         />
+        <p className="mt-2 text-xs text-store-muted">
+          query를 입력하면 title/content/section/tags/chunkType 기준으로 chunk ranking이 적용됩니다.
+          includeMetadata=true일 때 응답 JSON에서 각 chunk의 <span className="font-semibold">score</span>와{" "}
+          <span className="font-semibold">matchReasons</span>를 확인할 수 있습니다.
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-4">

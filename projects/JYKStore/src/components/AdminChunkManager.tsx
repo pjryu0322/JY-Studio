@@ -9,6 +9,7 @@ import {
   generateChunksFromDocumentApi,
   updatePackChunkApi,
 } from "@/lib/chunk-pipeline-api";
+import { includesNormalized, normalizeSearchText } from "@/lib/search-utils";
 
 function parseTagsText(value: string): string[] {
   return Array.from(
@@ -42,6 +43,8 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
   const [editTagsText, setEditTagsText] = useState("");
   const [editSortOrder, setEditSortOrder] = useState("");
   const [editIsActive, setEditIsActive] = useState(true);
+
+  const [chunkQuery, setChunkQuery] = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -147,6 +150,14 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
   }
 
   const summary = data?.summary;
+  const normalizedChunkQuery = normalizeSearchText(chunkQuery);
+  const visibleChunks = normalizedChunkQuery
+    ? (data?.chunks ?? []).filter((chunk) =>
+        [chunk.title, chunk.content, chunk.section, chunk.chunkType, ...chunk.tags].some((field) =>
+          includesNormalized(field, normalizedChunkQuery),
+        ),
+      )
+    : (data?.chunks ?? []);
 
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
@@ -264,10 +275,18 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
 
       <div className="space-y-2">
         <p className="text-xs font-bold text-slate-800">chunk 목록</p>
+        <input
+          value={chunkQuery}
+          onChange={(e) => setChunkQuery(e.target.value)}
+          placeholder="chunk 검색: callback, 오류코드, 인증 요청..."
+          className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
+        />
         {!data?.chunks.length ? (
           <p className="text-sm text-store-muted">등록된 chunk가 없습니다.</p>
+        ) : visibleChunks.length === 0 ? (
+          <p className="text-sm text-store-muted">검색 조건에 맞는 chunk가 없습니다.</p>
         ) : (
-          data.chunks.map((chunk) => (
+          visibleChunks.map((chunk) => (
             <ChunkCard
               key={chunk.id}
               chunk={chunk}

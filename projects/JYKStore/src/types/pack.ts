@@ -46,6 +46,13 @@ export type KnowledgePack = {
   useCases: string[];
   versionHistory: KnowledgePackVersionEntry[];
   providerInfo: KnowledgePackProviderInfo;
+  searchScore?: number;
+  matchReasons?: {
+    field: string;
+    token: string;
+    weight: number;
+    reason: string;
+  }[];
 };
 
 export type StoreCategory = {

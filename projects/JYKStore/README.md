@@ -298,6 +298,25 @@ JYKStore는 SourceDocument content를 KnowledgeChunk로 변환해 Context API에
 - SourceDocument content가 없는 경우 chunk를 생성할 수 없습니다.
 - 파일 업로드, PDF parsing, embedding, Vector DB/RAG는 아직 제공하지 않습니다.
 
+## 검색 고도화
+
+JYKStore는 DB 기반 keyword/ranking 검색을 제공합니다.
+
+현재 단계:
+
+- 지식팩 카탈로그 keyword ranking
+- Context API query ranking
+- chunk title/content/section/tags/chunkType 가중치 적용
+- Context API metadata에 score/matchReasons 제공
+- Admin Chunk Manager에서 chunk 검색 지원
+
+정책:
+
+- 현재 검색은 DB 기반 keyword/ranking 방식입니다.
+- Vector DB, embedding, RAG 검색은 아직 제공하지 않습니다.
+- 검색 ranking은 설명 가능한 score와 matchReasons를 우선합니다.
+- `includeMetadata=false`이면 score/matchReasons/source 등 metadata성 정보는 응답에서 제외됩니다.
+
 ## 아직 구현하지 않은 기능
 
 - Vector DB/RAG 검색
@@ -306,8 +325,8 @@ JYKStore는 SourceDocument content를 KnowledgeChunk로 변환해 Context API에
 
 ## 다음 단계
 
-1. Phase P9: 검색 고도화
-   - 지식팩 검색 품질 개선
-   - Context API query 품질 개선
-   - chunk 기반 keyword/ranking 개선
-   - 향후 Vector/RAG 확장 준비
+1. Phase P10: API 문서/SDK
+   - Context API 사용 문서 정리
+   - API Key 발급/폐기 문서화
+   - JavaScript/TypeScript 샘플
+   - 서버 연동 예제

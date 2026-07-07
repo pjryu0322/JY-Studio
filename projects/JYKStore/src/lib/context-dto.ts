@@ -1,16 +1,23 @@
 import type { KnowledgeChunk, KnowledgePack, PackCategory, SourceDocument } from "@prisma/client";
+import type { SearchScoreReason } from "@/lib/search-utils";
 
 export type ContextChunkDto = {
   chunkId: string;
   title: string;
   content: string;
   chunkType: string;
-  source: {
+  section?: string | null;
+  tags?: string[];
+  source?: {
     documentId: string;
     title: string;
     sourceType: string;
   } | null;
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    sortOrder?: number;
+    score?: number;
+    matchReasons?: SearchScoreReason[];
+  };
 };
 
 export type PackContextResponseDto = {
@@ -37,12 +44,18 @@ type ChunkWithSource = KnowledgeChunk & {
   sourceDocument: SourceDocument | null;
 };
 
+export type RankedContextChunk = {
+  chunk: ChunkWithSource;
+  score?: number;
+  matchReasons?: SearchScoreReason[];
+};
+
 export function buildPackContextResponse(input: {
   pack: KnowledgePack & { category: PackCategory };
   versionLabel: string;
   summary: string;
   instructions: string[];
-  chunks: ChunkWithSource[];
+  chunks: RankedContextChunk[];
   includeMetadata: boolean;
   requestId: string;
 }): PackContextResponseDto {
@@ -58,7 +71,7 @@ export function buildPackContextResponse(input: {
     context: {
       summary: input.summary,
       instructions: input.instructions,
-      chunks: input.chunks.map((chunk) => toContextChunkDto(chunk, input.includeMetadata)),
+      chunks: input.chunks.map((ranked) => toContextChunkDto(ranked, input.includeMetadata)),
     },
     usage: {
       requestId: input.requestId,
@@ -67,28 +80,35 @@ export function buildPackContextResponse(input: {
   };
 }
 
-function toContextChunkDto(chunk: ChunkWithSource, includeMetadata: boolean): ContextChunkDto {
+function toContextChunkDto(ranked: RankedContextChunk, includeMetadata: boolean): ContextChunkDto {
+  const { chunk } = ranked;
   const dto: ContextChunkDto = {
     chunkId: chunk.id,
     title: chunk.title,
     content: chunk.content,
     chunkType: chunk.chunkType,
-    source: chunk.sourceDocument
-      ? {
-          documentId: chunk.sourceDocument.id,
-          title: chunk.sourceDocument.title,
-          sourceType: chunk.sourceDocument.sourceType,
-        }
-      : null,
   };
 
-  if (includeMetadata) {
-    dto.metadata = {
-      section: chunk.section,
-      tags: chunk.tags,
-      sortOrder: chunk.sortOrder,
-    };
+  if (!includeMetadata) {
+    return dto;
   }
+
+  dto.section = chunk.section;
+  dto.tags = [...chunk.tags];
+  dto.source = chunk.sourceDocument
+    ? {
+        documentId: chunk.sourceDocument.id,
+        title: chunk.sourceDocument.title,
+        sourceType: chunk.sourceDocument.sourceType,
+      }
+    : null;
+  dto.metadata = {
+    sortOrder: chunk.sortOrder,
+    ...(ranked.score !== undefined ? { score: ranked.score } : {}),
+    ...(ranked.matchReasons && ranked.matchReasons.length > 0
+      ? { matchReasons: ranked.matchReasons }
+      : {}),
+  };
 
   return dto;
 }

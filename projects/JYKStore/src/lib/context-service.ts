@@ -1,7 +1,9 @@
 import { PackStatus } from "@prisma/client";
+import { rankKnowledgeChunks } from "@/lib/chunk-search-service";
 import { buildPackContextResponse } from "@/lib/context-dto";
-import type { PackContextResponseDto } from "@/lib/context-dto";
+import type { PackContextResponseDto, RankedContextChunk } from "@/lib/context-dto";
 import { prisma } from "@/lib/prisma";
+import { tokenizeSearchQuery } from "@/lib/search-utils";
 
 const publishedStatuses = [PackStatus.PUBLISHED, PackStatus.VERIFIED] as const;
 
@@ -40,18 +42,21 @@ export async function getPackContext(input: {
   const searchQuery = input.query?.trim() ?? "";
   const limit = input.limit ?? 20;
   const includeMetadata = input.includeMetadata ?? true;
+  const tokens = tokenizeSearchQuery(searchQuery);
 
-  const chunks = await prisma.knowledgeChunk.findMany({
+  const candidates = await prisma.knowledgeChunk.findMany({
     where: {
       versionId: version.id,
       isActive: true,
-      ...(searchQuery
+      ...(tokens.length > 0
         ? {
-            OR: [
-              { title: { contains: searchQuery, mode: "insensitive" } },
-              { content: { contains: searchQuery, mode: "insensitive" } },
-              { chunkType: { contains: searchQuery, mode: "insensitive" } },
-            ],
+            OR: tokens.flatMap((token) => [
+              { title: { contains: token, mode: "insensitive" as const } },
+              { content: { contains: token, mode: "insensitive" as const } },
+              { section: { contains: token, mode: "insensitive" as const } },
+              { chunkType: { contains: token, mode: "insensitive" as const } },
+              { tags: { has: token } },
+            ]),
           }
         : {}),
     },
@@ -59,8 +64,22 @@ export async function getPackContext(input: {
       sourceDocument: true,
     },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    take: limit,
+    take: tokens.length > 0 ? Math.max(limit * 5, 50) : limit,
   });
+
+  let rankedChunks: RankedContextChunk[];
+  if (tokens.length > 0) {
+    rankedChunks = rankKnowledgeChunks(candidates, searchQuery)
+      .filter((ranked) => ranked.score > 0)
+      .slice(0, limit)
+      .map((ranked) => ({
+        chunk: ranked.item,
+        score: ranked.score,
+        matchReasons: ranked.matchReasons,
+      }));
+  } else {
+    rankedChunks = candidates.map((chunk) => ({ chunk }));
+  }
 
   const summary = version.overview || pack.shortDescription;
   const instructions = version.features.length > 0 ? version.features.slice(0, 5) : DEFAULT_INSTRUCTIONS;
@@ -70,7 +89,7 @@ export async function getPackContext(input: {
     versionLabel: version.version,
     summary,
     instructions,
-    chunks,
+    chunks: rankedChunks,
     includeMetadata,
     requestId: input.requestId,
   });
