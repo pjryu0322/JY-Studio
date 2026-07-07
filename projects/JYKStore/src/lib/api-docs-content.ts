@@ -339,8 +339,9 @@ export const retrievalResponseExample = `{
     "retrievalMode": "hybrid",
     "embeddingProvider": "local-hash",
     "embeddingModel": "local-hash-v1",
-    "scannedCandidateCount": 500,
-    "filteredCandidateCount": 12
+    "scannedCandidateCount": 620,
+    "filteredCandidateCount": 12,
+    "candidateCollectionMode": "query-scan"
   }
 }`;
 

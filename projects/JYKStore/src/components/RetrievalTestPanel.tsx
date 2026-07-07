@@ -212,11 +212,35 @@ export function RetrievalTestPanel() {
             </div>
             <div className="flex justify-between gap-2">
               <dt className="text-store-muted">requestId</dt>
-              <dd className="truncate font-mono text-xs text-slate-800">{result.requestId ?? "—"}</dd>
+              <dd className="truncate font-mono text-xs text-slate-800">{result.usage.requestId ?? "—"}</dd>
             </div>
             <div className="flex justify-between gap-2">
               <dt className="text-store-muted">contextCount</dt>
-              <dd className="font-semibold text-slate-900">{result.contextCount ?? "—"}</dd>
+              <dd className="font-semibold text-slate-900">{result.usage.contextCount ?? "—"}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-store-muted">retrievalMode</dt>
+              <dd className="font-semibold text-slate-900">{result.usage.retrievalMode ?? "—"}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-store-muted">candidateCollectionMode</dt>
+              <dd className="font-mono text-xs text-slate-800">
+                {result.usage.candidateCollectionMode ?? "—"}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-store-muted">scanned / filtered</dt>
+              <dd className="font-semibold text-slate-900">
+                {result.usage.scannedCandidateCount ?? "—"} / {result.usage.filteredCandidateCount ?? "—"}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-store-muted">embedding</dt>
+              <dd className="font-mono text-xs text-slate-800">
+                {result.usage.embeddingProvider
+                  ? `${result.usage.embeddingProvider} / ${result.usage.embeddingModel ?? "—"}`
+                  : "—"}
+              </dd>
             </div>
             <div className="flex justify-between gap-2">
               <dt className="text-store-muted">응답 시간</dt>

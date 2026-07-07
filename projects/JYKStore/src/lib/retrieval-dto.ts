@@ -76,6 +76,8 @@ export type RetrievalContextDto = {
   references?: RetrievalReference[];
 };
 
+export type CandidateCollectionMode = "default-page" | "metadata-filter" | "query-scan";
+
 export type RetrievalResponseDto = {
   contexts: RetrievalContextDto[];
   usage: {
@@ -88,6 +90,7 @@ export type RetrievalResponseDto = {
     embeddingModel?: string;
     scannedCandidateCount: number;
     filteredCandidateCount: number;
+    candidateCollectionMode: CandidateCollectionMode;
   };
 };
 

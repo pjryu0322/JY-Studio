@@ -6,6 +6,7 @@ import {
 import { embedText } from "@/lib/embedding-service";
 import { prisma } from "@/lib/prisma";
 import {
+  type CandidateCollectionMode,
   type RetrievalContextDto,
   type RetrievalFilters,
   type RetrievalMode,
@@ -48,21 +49,33 @@ async function loadCandidatePage(versionId: string, cursor: string | undefined) 
   });
 }
 
-async function collectCandidates(
-  versionId: string,
-  filters: RetrievalFilters,
-  hasFilters: boolean,
-): Promise<{ collected: CandidateChunk[]; scanned: number }> {
-  // filter가 없으면 기존과 동일하게 단일 page만 조회한다.
-  if (!hasFilters) {
+type CandidateCollectInput = {
+  versionId: string;
+  filters: RetrievalFilters;
+  hasFilters: boolean;
+  hasQuery: boolean;
+};
+
+async function collectCandidates(input: CandidateCollectInput): Promise<{
+  collected: CandidateChunk[];
+  scanned: number;
+  collectionMode: CandidateCollectionMode;
+}> {
+  const { versionId, filters, hasFilters, hasQuery } = input;
+
+  // filters도 query도 없으면 기본 목록 조회 성격이므로 첫 page만 반환한다. (전체 scan 안 함)
+  if (!hasFilters && !hasQuery) {
     const page = await loadCandidatePage(versionId, undefined);
-    return { collected: page, scanned: page.length };
+    return { collected: page, scanned: page.length, collectionMode: "default-page" };
   }
 
   const collected: CandidateChunk[] = [];
   let scanned = 0;
   let cursor: string | undefined;
 
+  // filters가 있으면 metadata AND filter를 page별로 선적용한다.
+  // filters가 없고 query가 있으면 scan한 active chunk 전체를 ranking 후보로 넘긴다.
+  // 두 경우 모두 첫 500개에 한정하지 않고 MAX_CANDIDATE_SCAN까지 paging scan한다.
   while (scanned < MAX_CANDIDATE_SCAN && collected.length < MAX_FILTERED_CANDIDATES) {
     const page = await loadCandidatePage(versionId, cursor);
     if (page.length === 0) break;
@@ -71,16 +84,21 @@ async function collectCandidates(
     cursor = page[page.length - 1]!.id;
 
     for (const chunk of page) {
-      if (matchesAllMetadataFilters(toMetadataRecord(chunk.metadata), filters)) {
-        collected.push(chunk);
-        if (collected.length >= MAX_FILTERED_CANDIDATES) break;
+      if (hasFilters && !matchesAllMetadataFilters(toMetadataRecord(chunk.metadata), filters)) {
+        continue;
       }
+      collected.push(chunk);
+      if (collected.length >= MAX_FILTERED_CANDIDATES) break;
     }
 
     if (page.length < CANDIDATE_PAGE_SIZE) break;
   }
 
-  return { collected, scanned };
+  return {
+    collected,
+    scanned,
+    collectionMode: hasFilters ? "metadata-filter" : "query-scan",
+  };
 }
 
 export async function retrieveContexts(input: {
@@ -115,9 +133,16 @@ export async function retrieveContexts(input: {
   const tokens = tokenizeSearchQuery(searchQuery);
   const filterKeys = Object.keys(input.filters);
   const hasFilters = filterKeys.length > 0;
+  const hasQuery = tokens.length > 0;
 
   // 1) metadata filter는 항상 vector/hybrid ranking보다 먼저 적용된다.
-  const { collected, scanned } = await collectCandidates(version.id, input.filters, hasFilters);
+  //    query-only/hybrid 검색도 첫 500개에 한정하지 않고 paging scan한다.
+  const { collected, scanned, collectionMode } = await collectCandidates({
+    versionId: version.id,
+    filters: input.filters,
+    hasFilters,
+    hasQuery,
+  });
 
   const scored = collected.map((chunk) => {
     const metadataRecord = toMetadataRecord(chunk.metadata);
@@ -139,6 +164,9 @@ export async function retrieveContexts(input: {
   });
 
   // 2) hybrid mode: query가 있으면 vector similarity를 결합한다.
+  //    - embedding이 있는 chunk에만 vector similarity를 추가 가산한다.
+  //    - embedding이 없는 chunk는 keyword/metadata score만으로 ranking된다. (fallback)
+  //    - embedding 미생성 상태에서도 Retrieval API는 실패하지 않는다.
   const useHybrid = input.retrievalMode === "hybrid" && tokens.length > 0;
   let embeddingProvider: string | undefined;
   let embeddingModel: string | undefined;
@@ -243,6 +271,7 @@ export async function retrieveContexts(input: {
       embeddingModel,
       scannedCandidateCount: scanned,
       filteredCandidateCount: collected.length,
+      candidateCollectionMode: collectionMode,
     },
   };
 }

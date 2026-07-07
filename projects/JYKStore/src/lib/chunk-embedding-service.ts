@@ -28,19 +28,20 @@ function stableStringify(value: unknown): string {
   return String(value);
 }
 
+// P14.1: embedding contentHash는 title/content/section/tags 기준으로만 계산한다.
+// metadata는 Retrieval filter 조건으로만 사용되고 embedding vector text에는 포함되지 않으므로
+// stale 판정에서도 제외한다. (metadata만 변경해도 embedding rebuild가 유도되지 않도록)
 export function computeChunkContentHash(chunk: {
   title: string;
   content: string;
   section: string | null;
   tags: string[];
-  metadata: unknown;
 }): string {
   const payload = stableStringify({
     title: chunk.title,
     content: chunk.content,
     section: chunk.section ?? "",
     tags: [...chunk.tags].sort(),
-    metadata: chunk.metadata ?? null,
   });
   return crypto.createHash("sha256").update(payload).digest("hex");
 }

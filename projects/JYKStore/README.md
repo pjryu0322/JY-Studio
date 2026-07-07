@@ -453,6 +453,14 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
 - hybrid score = keywordScore + metadataScore + cosineSimilarity × 100. embedding이 없는 chunk는 keyword/metadata score로 fallback합니다.
 - P14는 외부 LLM/embedding API 호출, pgvector, RAG/답변 생성을 포함하지 않습니다.
 
+### P14.1 — Retrieval Quality Polish
+
+- query-only / hybrid 검색도 첫 500개 chunk에 한정하지 않고 candidate paging scan(최대 5,000개)을 수행합니다.
+- filters는 metadata AND 조건으로 ranking 전에 선적용됩니다.
+- candidate 수집 방식을 `candidateCollectionMode`(`default-page` / `metadata-filter` / `query-scan`)로 usage에 기록합니다. `scannedCandidateCount`/`filteredCandidateCount`도 함께 기록됩니다.
+- hybrid는 embedding이 있는 chunk에 vector similarity를 가산하고, embedding이 없으면 keyword/metadata score로 fallback합니다. embedding 미생성 상태에서도 Retrieval API는 실패하지 않습니다.
+- embedding contentHash는 title/content/section/tags 기준으로만 계산합니다. metadata는 filter 조건으로만 사용되므로 embedding stale 판정에서 제외합니다. (metadata만 변경해도 stale로 표시되지 않음)
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
@@ -462,7 +470,7 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
 
 ## 다음 단계
 
-1. Phase P15: 외부 embedding provider 및 vector index 확장 (선택)
-   - external embedding provider interface 연동
-   - pgvector 등 vector index 도입 검토
-   - hybrid ranking 가중치 튜닝
+1. Phase P15: Knowledge Graph / Export Expansion
+   - Knowledge Graph 구조 탐색
+   - RAG/Package Export 검토
+   - external embedding provider 및 vector index 확장 검토

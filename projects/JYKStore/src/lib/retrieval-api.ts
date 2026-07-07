@@ -8,25 +8,61 @@ export type RetrievalApiTestInput = {
   retrievalMode?: "keyword" | "hybrid";
 };
 
+export type RetrievalApiUsageSummary = {
+  requestId: string | null;
+  contextCount: number | null;
+  retrievalMode: string | null;
+  scannedCandidateCount: number | null;
+  filteredCandidateCount: number | null;
+  candidateCollectionMode: string | null;
+  embeddingProvider: string | null;
+  embeddingModel: string | null;
+};
+
 export type RetrievalApiTestResult = {
   ok: boolean;
   status: number;
   statusText: string;
-  requestId: string | null;
-  contextCount: number | null;
+  usage: RetrievalApiUsageSummary;
   elapsedMs: number;
   responseBody: unknown;
   errorMessage: string | null;
 };
 
-function extractUsage(body: unknown): { requestId: string | null; contextCount: number | null } {
-  if (!body || typeof body !== "object") {
-    return { requestId: null, contextCount: null };
-  }
-  const usage = (body as { usage?: { requestId?: string; contextCount?: number } }).usage;
-  const requestId = typeof usage?.requestId === "string" ? usage.requestId : null;
-  const contextCount = typeof usage?.contextCount === "number" ? usage.contextCount : null;
-  return { requestId, contextCount };
+function str(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function num(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function extractUsage(body: unknown): RetrievalApiUsageSummary {
+  const empty: RetrievalApiUsageSummary = {
+    requestId: null,
+    contextCount: null,
+    retrievalMode: null,
+    scannedCandidateCount: null,
+    filteredCandidateCount: null,
+    candidateCollectionMode: null,
+    embeddingProvider: null,
+    embeddingModel: null,
+  };
+  if (!body || typeof body !== "object") return empty;
+
+  const usage = (body as { usage?: Record<string, unknown> }).usage;
+  if (!usage) return empty;
+
+  return {
+    requestId: str(usage.requestId),
+    contextCount: num(usage.contextCount),
+    retrievalMode: str(usage.retrievalMode),
+    scannedCandidateCount: num(usage.scannedCandidateCount),
+    filteredCandidateCount: num(usage.filteredCandidateCount),
+    candidateCollectionMode: str(usage.candidateCollectionMode),
+    embeddingProvider: str(usage.embeddingProvider),
+    embeddingModel: str(usage.embeddingModel),
+  };
 }
 
 function extractErrorMessage(body: unknown): string | null {
@@ -65,14 +101,11 @@ export async function runRetrievalApiTest(input: RetrievalApiTestInput): Promise
     responseBody = null;
   }
 
-  const { requestId, contextCount } = extractUsage(responseBody);
-
   return {
     ok: response.ok,
     status: response.status,
     statusText: response.statusText,
-    requestId,
-    contextCount,
+    usage: extractUsage(responseBody),
     elapsedMs,
     responseBody,
     errorMessage: response.ok ? null : extractErrorMessage(responseBody),

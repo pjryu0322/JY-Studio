@@ -181,6 +181,7 @@ export async function POST(request: NextRequest) {
         embeddingModel: result.usage.embeddingModel,
         scannedCandidateCount: result.usage.scannedCandidateCount,
         filteredCandidateCount: result.usage.filteredCandidateCount,
+        candidateCollectionMode: result.usage.candidateCollectionMode,
       },
     });
 

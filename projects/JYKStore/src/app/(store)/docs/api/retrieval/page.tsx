@@ -118,14 +118,46 @@ export default function RetrievalApiDocsPage() {
           <li>처리 순서: metadata filter(AND) → keyword score → (hybrid) vector similarity → topK.</li>
           <li>metadata filter는 항상 vector/hybrid ranking보다 먼저 적용됩니다.</li>
           <li>
-            hybrid score = keywordScore + metadataScore + cosineSimilarity × 100. embedding이 없는 chunk는
-            keyword/metadata score로 fallback합니다.
+            hybrid score = keywordScore + metadataScore + cosineSimilarity × 100. embedding이 있는 chunk에만
+            vector similarity가 가산됩니다.
+          </li>
+          <li>
+            embedding이 없는 chunk는 keyword/metadata score로만 ranking됩니다. embedding 미생성 상태에서도
+            Retrieval API는 실패하지 않습니다.
+          </li>
+          <li>
+            정확한 hybrid 결과를 위해서는 Admin Chunk Manager의 &quot;embedding 재생성&quot;을 먼저 실행해야
+            합니다.
           </li>
           <li>
             embedding은 local-hash-v1 provider로 생성합니다. 외부 embedding API 호출이 아니라 dev/foundation
-            provider이며, Admin Chunk Manager의 &quot;embedding 재생성&quot;으로 미리 생성해야 합니다.
+            provider입니다.
           </li>
           <li>Vector DB/pgvector/외부 embedding provider는 향후 확장 예정입니다.</li>
+        </ul>
+      </section>
+
+      <section className="space-y-2 rounded-2xl border border-store-border bg-white p-4 shadow-card">
+        <h2 className="text-sm font-bold text-slate-900">Candidate 수집 / stale 판정 (P14.1)</h2>
+        <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
+          <li>
+            <code className="font-mono text-xs">candidateCollectionMode</code>:
+            <span className="font-mono text-xs"> default-page</span>(filter·query 없음),
+            <span className="font-mono text-xs"> metadata-filter</span>(filter 있음),
+            <span className="font-mono text-xs"> query-scan</span>(filter 없고 query 있음).
+          </li>
+          <li>
+            query가 있으면 filter가 없어도 첫 500개에 한정하지 않고 candidate를 paging scan합니다.
+            (최대 5,000개)
+          </li>
+          <li>
+            <code className="font-mono text-xs">scannedCandidateCount</code>는 실제 scan한 chunk 수,
+            <code className="font-mono text-xs"> filteredCandidateCount</code>는 ranking 후보로 넘긴 수입니다.
+          </li>
+          <li>
+            embedding contentHash는 title/content/section/tags 기준으로 계산합니다. metadata는 filter 조건으로만
+            사용되며 embedding stale 판정에는 포함하지 않습니다.
+          </li>
         </ul>
       </section>
 
