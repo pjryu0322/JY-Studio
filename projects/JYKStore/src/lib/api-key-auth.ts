@@ -6,6 +6,27 @@ export type ApiKeyAuthResult =
   | { ok: true; apiKeyId: string; clientId: string | null; scopes: string[] }
   | { ok: false; status: 401 | 403; error: string };
 
+export function hasRequiredScope(scopes: readonly string[], requiredScope: string) {
+  return scopes.includes("*") || scopes.includes(requiredScope);
+}
+
+export function requireApiKeyScope(
+  auth: ApiKeyAuthResult,
+  requiredScope: string,
+): ApiKeyAuthResult {
+  if (!auth.ok) {
+    return auth;
+  }
+  if (!hasRequiredScope(auth.scopes, requiredScope)) {
+    return {
+      ok: false,
+      status: 403,
+      error: `'${requiredScope}' scope가 필요합니다.`,
+    };
+  }
+  return auth;
+}
+
 export function extractBearerToken(request: Request): string | null {
   const header = request.headers.get("authorization");
   if (!header) return null;

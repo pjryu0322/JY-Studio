@@ -9,21 +9,21 @@ import { IntegrationStepCard } from "@/components/IntegrationStepCard";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { useMyPacks } from "@/hooks/useMyPacks";
 import {
-  MOCK_API_KEY,
+  API_KEY_PLACEHOLDER,
   createCurlExample,
   createCursorPromptExample,
   createGenericLlmPromptExample,
   createJavaScriptExample,
   createJavaSpringExample,
   createPythonExample,
-  getContextEndpoint,
+  getPackContextEndpoint,
 } from "@/lib/integration-examples";
 import { ROUTES } from "@/lib/routes";
 
 export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
   const { mounted, isMyPack } = useMyPacks();
   const inLibrary = mounted && isMyPack(pack.packId);
-  const endpoint = getContextEndpoint();
+  const endpoint = getPackContextEndpoint(pack.packId, { limit: 10 });
 
   return (
     <div className="space-y-4 pb-4">
@@ -69,7 +69,7 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
           이 화면에서 외부 AI 도구나 서비스에 연결할 때 필요한 정보를 복사할 수 있습니다.
         </p>
         <p className="mt-2 text-xs text-store-muted">
-          API Key는 계정 메뉴에서 발급할 수 있습니다. Context API 응답은 다음 단계에서 연결됩니다.
+          API Key를 발급한 뒤 Context API로 지식팩 청크를 조회할 수 있습니다.
         </p>
         <Link
           href={ROUTES.apiKeys}
@@ -81,9 +81,9 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
 
       <IntegrationStepCard step={1} title="API Key 확인">
         <ConnectInfoCard
-          label="예시 API Key (연동 코드용)"
-          value={MOCK_API_KEY}
-          hint="실제 Key는 API Key 관리에서 발급하세요. 예시 코드에는 아래 Mock 값이 들어 있습니다."
+          label="Authorization 헤더"
+          value={`Bearer ${API_KEY_PLACEHOLDER}`}
+          hint="API Key 관리에서 발급한 Key를 Bearer 토큰으로 사용합니다."
         />
         <Link
           href={ROUTES.apiKeys}

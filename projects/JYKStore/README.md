@@ -98,14 +98,45 @@ npm run db:studio
 - DB에는 `keyPrefix`, `keyHash`만 저장합니다.
 - API Key 원문은 LocalStorage/sessionStorage에 저장하지 않습니다.
 - 폐기된 API Key는 인증에 사용할 수 없습니다.
-- 다음 Phase의 Context API는 `Authorization: Bearer <API_KEY>` 방식으로 인증합니다.
+- Context API는 `Authorization: Bearer <API_KEY>` 방식으로 인증합니다.
+
+## Context API
+
+외부 AI 도구는 API Key를 사용해 지식팩 context를 조회할 수 있습니다.
+
+### 인증
+
+```http
+Authorization: Bearer <JYKSTORE_API_KEY>
+```
+
+### Context 조회
+
+```bash
+curl -X GET "http://localhost:3004/api/v1/packs/easy-auth/context?limit=10" \
+  -H "Authorization: Bearer <JYKSTORE_API_KEY>"
+```
+
+### 응답
+
+- pack metadata
+- context summary
+- ordered knowledge chunks
+- requestId
+- chunkCount
+
+### 제한
+
+- 현재 단계는 DB 기반 chunk 조회입니다.
+- Vector DB/RAG 검색은 이후 Phase에서 제공합니다.
+- API Key에는 `context:read` scope가 필요합니다.
 
 ## 아직 구현하지 않은 기능
 
-- Context API Route
+- Vector DB/RAG 검색
 - 로그인/회원 관리
 - Provider/Admin 실제 기능
 
 ## 다음 단계
 
-1. Phase P5: Context API 제품화
+1. Phase P6: Provider Center 또는 Context API 운영 보강

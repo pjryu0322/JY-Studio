@@ -1,93 +1,85 @@
 export const JYKSTORE_API_BASE_URL = "http://localhost:3004";
-export const MOCK_API_KEY = "jyk_live_mock_xxxxxxxxxxxxx";
+export const API_KEY_PLACEHOLDER = "<YOUR_JYKSTORE_API_KEY>";
 
-export function getContextEndpoint() {
-  return `${JYKSTORE_API_BASE_URL}/api/v1/context`;
+/** @deprecated 예시 호환용. packId를 지정하면 실제 Context API URL을 반환합니다. */
+export const MOCK_API_KEY = API_KEY_PLACEHOLDER;
+
+export function getPackContextEndpoint(
+  packId: string,
+  options?: { limit?: number; q?: string; includeMetadata?: boolean },
+) {
+  const url = new URL(`${JYKSTORE_API_BASE_URL}/api/v1/packs/${encodeURIComponent(packId)}/context`);
+  if (options?.limit !== undefined) {
+    url.searchParams.set("limit", String(options.limit));
+  }
+  if (options?.q?.trim()) {
+    url.searchParams.set("q", options.q.trim());
+  }
+  if (options?.includeMetadata === false) {
+    url.searchParams.set("includeMetadata", "false");
+  }
+  return url.toString();
+}
+
+export function getContextEndpoint(packId?: string) {
+  if (packId) {
+    return getPackContextEndpoint(packId, { limit: 10 });
+  }
+  return `${JYKSTORE_API_BASE_URL}/api/v1/packs/{packId}/context`;
 }
 
 export function createCurlExample(packId: string) {
-  return `curl -X POST "${getContextEndpoint()}" \\
-  -H "Authorization: Bearer ${MOCK_API_KEY}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "packIds": ["${packId}"],
-    "query": "이 지식팩을 기준으로 연동 방법을 알려줘",
-    "target": "llm",
-    "maxChunks": 5
-  }'`;
+  const url = getPackContextEndpoint(packId, { limit: 10 });
+  return `curl -X GET "${url}" \\
+  -H "Authorization: Bearer ${API_KEY_PLACEHOLDER}"`;
 }
 
 export function createJavaScriptExample(packId: string) {
-  return `const response = await fetch("${getContextEndpoint()}", {
-  method: "POST",
+  const url = getPackContextEndpoint(packId, { limit: 10 });
+  return `const response = await fetch("${url}", {
   headers: {
-    "Authorization": "Bearer ${MOCK_API_KEY}",
-    "Content-Type": "application/json"
+    Authorization: \`Bearer \${process.env.JYKSTORE_API_KEY}\`,
   },
-  body: JSON.stringify({
-    packIds: ["${packId}"],
-    query: "이 지식팩을 기준으로 연동 방법을 알려줘",
-    target: "llm",
-    maxChunks: 5
-  })
 });
 
-const context = await response.json();
-console.log(context.promptBlock);`;
+const context = await response.json();`;
 }
 
 export function createJavaSpringExample(packId: string) {
-  return `WebClient client = WebClient.builder()
-    .baseUrl("${JYKSTORE_API_BASE_URL}")
-    .defaultHeader("Authorization", "Bearer ${MOCK_API_KEY}")
-    .build();
-
-Map<String, Object> body = Map.of(
-    "packIds", List.of("${packId}"),
-    "query", "이 지식팩을 기준으로 연동 방법을 알려줘",
-    "target", "llm",
-    "maxChunks", 5
-);
-
-String response = client.post()
-    .uri("/api/v1/context")
-    .contentType(MediaType.APPLICATION_JSON)
-    .bodyValue(body)
+  const url = getPackContextEndpoint(packId, { limit: 10 });
+  return `String response = WebClient.create()
+    .get()
+    .uri("${url}")
+    .header("Authorization", "Bearer " + System.getenv("JYKSTORE_API_KEY"))
     .retrieve()
     .bodyToMono(String.class)
     .block();`;
 }
 
 export function createPythonExample(packId: string) {
-  return `import requests
+  const url = getPackContextEndpoint(packId, { limit: 10 });
+  return `import os
+import requests
 
-response = requests.post(
-    "${getContextEndpoint()}",
+response = requests.get(
+    "${url}",
     headers={
-        "Authorization": "Bearer ${MOCK_API_KEY}",
-        "Content-Type": "application/json",
-    },
-    json={
-        "packIds": ["${packId}"],
-        "query": "이 지식팩을 기준으로 연동 방법을 알려줘",
-        "target": "llm",
-        "maxChunks": 5,
+        "Authorization": f"Bearer {os.environ['JYKSTORE_API_KEY']}",
     },
 )
 
-context = response.json()
-print(context["promptBlock"])`;
+context = response.json()`;
 }
 
 export function createCursorPromptExample(packId: string, packName: string) {
+  const endpoint = getPackContextEndpoint(packId, { limit: 10 });
   return `JYKStore의 ${packName}(${packId}) 지식팩을 기준으로 작업해줘.
 
 작업 전 다음 Context API를 호출해 관련 지식을 확인해:
-- Endpoint: ${getContextEndpoint()}
-- packIds: ["${packId}"]
-- target: "cursor"
+- GET ${endpoint}
+- Authorization: Bearer <YOUR_JYKSTORE_API_KEY>
 
-반환된 promptBlock과 citations를 근거로 구현하고,
+반환된 context.chunks와 pack metadata를 근거로 구현하고,
 지식팩에 없는 내용은 임의로 추정하지 말아줘.`;
 }
 
@@ -98,6 +90,6 @@ export function createGenericLlmPromptExample(packId: string, packName: string) 
 - 이름: ${packName}
 - Pack ID: ${packId}
 
-Context API에서 반환된 promptBlock을 우선 근거로 답변하고,
+Context API에서 반환된 context.summary와 chunks를 우선 근거로 답변하고,
 출처가 없는 내용은 추정이라고 명시하세요.`;
 }
