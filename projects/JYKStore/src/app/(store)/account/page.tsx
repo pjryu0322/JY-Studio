@@ -8,6 +8,12 @@ const ACCOUNT_ITEMS = [
     href: ROUTES.apiKeys,
     status: null,
   },
+  {
+    title: "문서",
+    description: "API 문서 및 SDK 샘플",
+    href: ROUTES.docs,
+    status: null,
+  },
   { title: "사용량 확인", description: "지식팩 호출 및 사용량", href: null, status: "준비 중" },
   {
     title: "지식팩 제공자 센터",

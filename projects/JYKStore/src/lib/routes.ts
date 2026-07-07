@@ -10,7 +10,17 @@ export const ROUTES = {
   provider: "/provider",
   providerPackNew: "/provider/packs/new",
   admin: "/admin",
+  docs: "/docs",
+  apiDocs: "/docs/api",
+  contextApiDocs: "/docs/api/context",
+  sdkDocs: "/docs/sdk",
 } as const;
+
+export function contextApiDocsPath(packId?: string): string {
+  return packId
+    ? `/docs/api/context?packId=${encodeURIComponent(packId)}`
+    : "/docs/api/context";
+}
 
 export function packDetailPath(packId: string): string {
   return `/packs/${packId}`;

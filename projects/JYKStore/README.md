@@ -319,6 +319,32 @@ JYKStore는 DB 기반 keyword/ranking 검색을 제공합니다.
 - 검색 ranking은 설명 가능한 score와 matchReasons를 우선합니다.
 - `includeMetadata=false`이면 score/matchReasons/source 등 metadata성 정보는 응답에서 제외됩니다.
 
+## API 문서/SDK
+
+JYKStore는 지식팩을 외부 서비스에서 사용할 수 있도록 Context API 문서와 TypeScript SDK 샘플을 제공합니다.
+
+위치:
+
+- `/docs`
+- `/docs/api`
+- `/docs/api/context`
+- `/docs/sdk`
+
+현재 단계:
+
+- Context API GET/POST 사용 문서
+- API Key 인증 방식 문서
+- 요청/응답 JSON 예제
+- 오류 코드 표
+- curl/fetch 예제
+- TypeScript SDK 샘플 (`sdk/typescript/`)
+
+정책:
+
+- SDK는 현재 npm package가 아니라 복사해 사용할 수 있는 샘플 코드입니다.
+- API Key는 서버 환경변수에 저장해야 합니다.
+- API Key를 LocalStorage/sessionStorage 또는 URL query에 저장하거나 전달하지 않습니다.
+
 ## 아직 구현하지 않은 기능
 
 - Vector DB/RAG 검색
@@ -327,8 +353,8 @@ JYKStore는 DB 기반 keyword/ranking 검색을 제공합니다.
 
 ## 다음 단계
 
-1. Phase P10: API 문서/SDK
-   - Context API 사용 문서 정리
-   - API Key 발급/폐기 문서화
-   - JavaScript/TypeScript 샘플
-   - 서버 연동 예제
+1. Phase P11: 보안·운영·관측성
+   - API rate limit 정책
+   - AuditLog/UsageLog 조회 화면
+   - 운영 상태 점검
+   - 오류/성능 관측성 보강

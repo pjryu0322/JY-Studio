@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import {
   runContextApiTest,
   type ContextApiTestResult,
 } from "@/lib/context-api-test-client";
+import { ROUTES } from "@/lib/routes";
 
 export function ContextApiTestPanel({
   packId,
@@ -65,6 +67,18 @@ export function ContextApiTestPanel({
         <span className="font-semibold text-slate-800">{packName}</span> ({packId})의 Context API 응답을
         확인합니다. API Key는 이 화면에서만 사용되며 새로고침 시 사라집니다.
       </p>
+
+      <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-slate-700">
+        API 연동 전 Context API 문서와 TypeScript SDK 샘플을 확인하세요.
+        <div className="mt-2 flex flex-wrap gap-3">
+          <Link href={ROUTES.contextApiDocs} className="font-semibold text-store-accent">
+            Context API 문서 →
+          </Link>
+          <Link href={ROUTES.sdkDocs} className="font-semibold text-store-accent">
+            TypeScript SDK 샘플 →
+          </Link>
+        </div>
+      </div>
 
       <div>
         <label className="text-xs font-semibold text-slate-700" htmlFor="context-test-api-key">
