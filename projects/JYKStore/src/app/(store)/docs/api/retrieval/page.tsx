@@ -245,6 +245,11 @@ export default function RetrievalApiDocsPage() {
           사용합니다. <code className="font-mono">knowledgePackId</code> 쿼리 파라미터가 없거나 비어 있으면 400(
           <code className="font-mono">INVALID_EXPORT_REQUEST</code>), 인증 실패 시 401/403을 반환합니다.
         </p>
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          모든 public API(Retrieval / Graph Query / Export)는 <span className="font-semibold">PUBLISHED 또는
+          VERIFIED</span> 상태의 지식팩만 반환합니다. DRAFT / REVIEW / REJECTED / ARCHIVED 등 비공개 상태의 지식팩은
+          존재 여부를 노출하지 않기 위해 <code className="font-mono">PACK_NOT_FOUND</code>(404)로 처리됩니다.
+        </p>
 
         <h3 className="text-xs font-bold text-slate-900">Admin UI API (관리자 화면 다운로드용)</h3>
         <p className="text-xs text-store-muted">

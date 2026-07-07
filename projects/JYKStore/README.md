@@ -486,6 +486,14 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
 - **Admin UX**: 검수 상세 화면에 `KnowledgeGraphPanel`(graph 상태/type별 count/rebuild), `ExportPanel`(4종 export 다운로드)을 추가했습니다. 시각화 라이브러리는 추가하지 않고 table/list UX로 제공합니다.
 - JYKStore는 여전히 **답변을 생성하지 않고 context / graph / export data만 제공**합니다.
 
+### P15.1 — Public API Security Polish
+
+- 모든 public API(Retrieval / Graph Query / Export)는 **`PUBLISHED` 또는 `VERIFIED` 상태의 지식팩만** 반환합니다. `DRAFT` / `REVIEW` / `REJECTED` / `ARCHIVED` 등 비공개 상태는 존재 여부를 노출하지 않기 위해 `PACK_NOT_FOUND`(404)로 처리합니다(403 미사용).
+  - 공개 상태 기준은 `src/lib/knowledge-pack-public.ts`의 `PUBLIC_PACK_STATUSES`로 통일했으며, Retrieval API의 published 기준과 동일합니다.
+  - 적용 함수: `queryKnowledgeGraph`, `exportKnowledgeGraph`, `buildPackageExport`, `buildRagJsonlExport`, `buildGraphExport`(exportKnowledgeGraph 경유), `buildMcpReadyManifest`.
+  - Admin graph summary/rebuild(`/api/v1/admin/packs/{packId}/graph`, `/graph/rebuild`)는 내부 관리 기능이므로 기존 client cookie 흐름을 유지합니다(DRAFT 상태에서도 rebuild 가능).
+- **MCP-ready manifest self resource**: `resources`에 자기 자신(`mcp-manifest`, `/api/v1/exports/mcp-manifest?knowledgePackId=...`, `Bearer API Key`)을 추가했습니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

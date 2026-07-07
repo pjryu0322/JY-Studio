@@ -438,3 +438,22 @@ export const publicExportErrorResponseExample = `{
     "requestId": "req_xxx"
   }
 }`;
+
+export const publicApiVisibilityNotes = [
+  "Public Retrieval / Graph / Export API는 외부 AI/Agent/플랫폼 호출용 API입니다.",
+  "모든 public API는 Bearer API Key와 context:read scope가 필요합니다.",
+  "Public API는 PUBLISHED 또는 VERIFIED 상태의 지식팩만 반환합니다.",
+  "DRAFT/REVIEW/REJECTED/ARCHIVED 등 비공개 상태 지식팩은 PACK_NOT_FOUND(404)로 처리됩니다.",
+  "JYKStore는 외부 LLM Provider API를 직접 호출하지 않으며, context/export/graph 데이터만 반환합니다.",
+  "답변 생성은 GPT/Gemini/Cursor/Agent 등 외부 클라이언트가 수행합니다.",
+];
+
+export const publicPackNotFoundResponseExample = `{
+  "error": {
+    "code": "PACK_NOT_FOUND",
+    "message": "지식팩을 찾을 수 없습니다."
+  },
+  "usage": {
+    "requestId": "req_xxx"
+  }
+}`;

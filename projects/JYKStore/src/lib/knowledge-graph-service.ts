@@ -10,6 +10,7 @@ import {
   type KnowledgeGraphSummaryDto,
 } from "@/lib/knowledge-graph-dto";
 import { validateAndNormalizeChunkMetadata } from "@/lib/retrieval-metadata";
+import { PUBLIC_PACK_STATUSES } from "@/lib/knowledge-pack-public";
 
 function toRecord(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -330,8 +331,12 @@ export async function queryKnowledgeGraph(input: {
   includeEdges: boolean;
   requestId: string;
 }): Promise<KnowledgeGraphQueryResponseDto | null> {
-  const pack = await prisma.knowledgePack.findUnique({
-    where: { packId: input.knowledgePackId },
+  // public graph query: PUBLISHED/VERIFIED pack만 허용한다. 비공개 pack이면 null(404).
+  const pack = await prisma.knowledgePack.findFirst({
+    where: {
+      packId: input.knowledgePackId,
+      status: { in: [...PUBLIC_PACK_STATUSES] },
+    },
     select: { packId: true },
   });
   if (!pack) return null;
@@ -388,11 +393,18 @@ export async function queryKnowledgeGraph(input: {
   };
 }
 
+// public export에서 호출된다. PUBLISHED/VERIFIED pack만 허용한다.
 export async function exportKnowledgeGraph(packId: string): Promise<{
   summary: KnowledgeGraphSummaryDto;
   nodes: KnowledgeGraphNodeDto[];
   edges: KnowledgeGraphEdgeDto[];
 } | null> {
+  const publicPack = await prisma.knowledgePack.findFirst({
+    where: { packId, status: { in: [...PUBLIC_PACK_STATUSES] } },
+    select: { packId: true },
+  });
+  if (!publicPack) return null;
+
   const summary = await getKnowledgeGraphSummary(packId);
   if (!summary) return null;
 

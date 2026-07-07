@@ -13,6 +13,7 @@ import {
   type PackageExportDto,
 } from "@/lib/knowledge-export-dto";
 import { validateAndNormalizeChunkMetadata } from "@/lib/retrieval-metadata";
+import { PUBLIC_PACK_STATUSES } from "@/lib/knowledge-pack-public";
 
 function safeMetadata(raw: unknown): Record<string, unknown> | null {
   // 저장된 metadata를 canonical/민감 key 제거 후에만 export한다.
@@ -38,8 +39,9 @@ async function loadLatestVersion(packId: string) {
 }
 
 export async function buildPackageExport(packId: string): Promise<PackageExportDto | null> {
-  const pack = await prisma.knowledgePack.findUnique({
-    where: { packId },
+  // public export: PUBLISHED/VERIFIED pack만 허용한다. 비공개 pack이면 null(404).
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, status: { in: [...PUBLIC_PACK_STATUSES] } },
     select: {
       packId: true,
       name: true,
@@ -123,8 +125,9 @@ export async function buildPackageExport(packId: string): Promise<PackageExportD
 }
 
 export async function buildRagJsonlExport(packId: string): Promise<string | null> {
-  const pack = await prisma.knowledgePack.findUnique({
-    where: { packId },
+  // public export: PUBLISHED/VERIFIED pack만 허용한다. 비공개 pack이면 null(404).
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, status: { in: [...PUBLIC_PACK_STATUSES] } },
     select: { packId: true },
   });
   if (!pack) return null;
@@ -170,8 +173,9 @@ export async function buildGraphExport(packId: string): Promise<GraphExportDto |
 }
 
 export async function buildMcpReadyManifest(packId: string): Promise<McpReadyManifestDto | null> {
-  const pack = await prisma.knowledgePack.findUnique({
-    where: { packId },
+  // public export: PUBLISHED/VERIFIED pack만 허용한다. 비공개 pack이면 null(404).
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, status: { in: [...PUBLIC_PACK_STATUSES] } },
     select: { packId: true },
   });
   if (!pack) return null;
@@ -212,6 +216,11 @@ export async function buildMcpReadyManifest(packId: string): Promise<McpReadyMan
       {
         name: "package-json-export",
         path: `/api/v1/exports/package?knowledgePackId=${pack.packId}`,
+        auth: "Bearer API Key",
+      },
+      {
+        name: "mcp-manifest",
+        path: `/api/v1/exports/mcp-manifest?knowledgePackId=${pack.packId}`,
         auth: "Bearer API Key",
       },
     ],
