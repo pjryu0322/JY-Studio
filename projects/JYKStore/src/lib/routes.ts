@@ -12,6 +12,10 @@ export function packDetailPath(packId: string): string {
   return `/packs/${packId}`;
 }
 
+export function myPackConnectPath(packId: string): string {
+  return `/my-packs/${packId}/connect`;
+}
+
 export function categoryDetailPath(categoryId: string): string {
   return `/categories/${categoryId}`;
 }
@@ -52,7 +56,7 @@ export function bottomTabActive(key: BottomTabKey, pathname: string): boolean {
     case "categories":
       return pathname === ROUTES.categories || pathname.startsWith("/categories/");
     case "myPacks":
-      return pathname === ROUTES.myPacks;
+      return pathname === ROUTES.myPacks || pathname.startsWith(`${ROUTES.myPacks}/`);
     case "account":
       return pathname === ROUTES.account;
     default:

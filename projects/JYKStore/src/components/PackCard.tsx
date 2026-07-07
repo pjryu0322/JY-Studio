@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { KnowledgePack } from "@/types/pack";
+import { AddToMyPacksButton } from "@/components/AddToMyPacksButton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { packDetailPath } from "@/lib/routes";
@@ -16,11 +17,7 @@ function formatRating(rating: number): string {
   return rating.toFixed(1);
 }
 
-export function PackCard(p: {
-  readonly pack: KnowledgePack;
-  readonly onAddToLibrary?: (packId: string) => void;
-}) {
-  const { pack } = p;
+export function PackCard({ pack }: { readonly pack: KnowledgePack }) {
   const detailHref = packDetailPath(pack.packId);
 
   return (
@@ -58,20 +55,7 @@ export function PackCard(p: {
         </div>
       </Link>
       <div className="px-3 pb-3">
-        <button
-          type="button"
-          className="min-h-[44px] w-full rounded-xl bg-store-accent px-4 text-sm font-bold text-white active:opacity-90"
-          onClick={(e) => {
-            e.preventDefault();
-            if (p.onAddToLibrary) {
-              p.onAddToLibrary(pack.packId);
-            } else {
-              window.alert("Phase 3에서 내 지식팩 추가 기능이 연결됩니다.");
-            }
-          }}
-        >
-          내 지식팩에 추가
-        </button>
+        <AddToMyPacksButton packId={pack.packId} variant="card" />
       </div>
     </article>
   );

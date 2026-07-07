@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback } from "react";
 import { PackList } from "@/components/PackList";
 import { SectionHeader } from "@/components/SectionHeader";
 import {
@@ -19,10 +18,6 @@ export function TodayView() {
   const newest = getNewPacks(mockPacks);
   const published = getPublishedPacks();
 
-  const handleAdd = useCallback(() => {
-    window.alert("Phase 3에서 내 지식팩 추가 기능이 연결됩니다.");
-  }, []);
-
   return (
     <div className="space-y-8">
       <section>
@@ -32,19 +27,19 @@ export function TodayView() {
           actionLabel="전체 보기"
           actionHref={ROUTES.packs}
         />
-        <PackList packs={[todayPick]} onAddToLibrary={handleAdd} />
+        <PackList packs={[todayPick]} />
       </section>
       <section>
         <SectionHeader title="빠르게 연동 가능한 지식팩" subtitle="JYK Verified · 공개" />
-        <PackList packs={quickConnect} onAddToLibrary={handleAdd} />
+        <PackList packs={quickConnect} />
       </section>
       <section>
         <SectionHeader title="인기 지식팩" subtitle="많이 활용된 지식팩" actionLabel="전체 보기" actionHref={ROUTES.packs} />
-        <PackList packs={popular} onAddToLibrary={handleAdd} />
+        <PackList packs={popular} />
       </section>
       <section>
         <SectionHeader title="신규 지식팩" subtitle="최근 업데이트" />
-        <PackList packs={newest} onAddToLibrary={handleAdd} />
+        <PackList packs={newest} />
       </section>
       <section>
         <SectionHeader
@@ -53,7 +48,7 @@ export function TodayView() {
           actionLabel="전체 보기"
           actionHref={categoryDetailPath("auth")}
         />
-        <PackList packs={published.slice(0, 2)} onAddToLibrary={handleAdd} />
+        <PackList packs={published.slice(0, 2)} />
       </section>
     </div>
   );

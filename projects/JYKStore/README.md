@@ -28,7 +28,6 @@ http://localhost:3004
 - 모바일 앱스토어형 Today 화면
 - 검색 진입 화면
 - 카테고리 화면
-- 내 지식팩 Empty State
 - 계정 화면 Scaffold
 - Mock 지식팩 데이터
 
@@ -40,18 +39,25 @@ http://localhost:3004
 - Mock 데이터 기반 검색
 - 앱스토어형 지식팩 상세 UX
 
+## Phase 3 구현 범위
+
+- 내 지식팩 추가
+- localStorage 기반 내 지식팩 상태 유지
+- 내 지식팩 목록
+- 연동하기 화면
+- Pack ID / Endpoint / Mock API Key 복사
+- cURL, JavaScript, Java/Spring, Python 예시 코드 복사
+- Cursor Prompt, Generic LLM Prompt 예시 복사
+
 ## 아직 구현하지 않은 기능
 
-- 내 지식팩 실제 추가 저장
-- API Key 발급
-- Context API
-- DB 연동
+- 실제 API Key 서버 발급
+- Context API Route
+- DB 저장
+- 로그인/회원 관리
 - Provider/Admin 실제 기능
 
 ## 다음 단계
 
-1. 내 지식팩 추가
-2. 연동하기 화면
-3. API Key 발급
-4. Context API Mock
-5. Provider/Admin 분리
+1. Phase 4: API Key 발급 Mock 및 Context API Mock 구현
+2. Provider/Admin 분리

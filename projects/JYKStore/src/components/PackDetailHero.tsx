@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import type { KnowledgePack } from "@/types/pack";
-import { VerifiedBadge } from "@/components/VerifiedBadge";
-import { StatusBadge } from "@/components/StatusBadge";
+import { AddToMyPacksButton } from "@/components/AddToMyPacksButton";
+import { ConnectActionButton } from "@/components/ConnectActionButton";
 import { PackMetaGrid } from "@/components/PackMetaGrid";
+import { StatusBadge } from "@/components/StatusBadge";
+import { VerifiedBadge } from "@/components/VerifiedBadge";
+import { useMyPacks } from "@/hooks/useMyPacks";
 import { ROUTES } from "@/lib/routes";
 
-const PHASE3_ADD_MSG = "Phase 3에서 내 지식팩 추가 기능이 연결됩니다.";
-const PHASE3_CONNECT_MSG =
-  "Phase 3에서 연동 가이드 화면이 연결됩니다. 내 지식팩에서 Pack ID와 API 예시를 확인할 수 있습니다.";
-
 export function PackDetailHero({ pack }: { readonly pack: KnowledgePack }) {
+  const { mounted, isMyPack } = useMyPacks();
+  const added = mounted && isMyPack(pack.packId);
+
   return (
     <div className="space-y-4">
       <Link href={ROUTES.packs} className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent">
@@ -38,21 +40,14 @@ export function PackDetailHero({ pack }: { readonly pack: KnowledgePack }) {
         <div className="mt-4">
           <PackMetaGrid pack={pack} />
         </div>
+        <p className="mt-4 text-xs leading-relaxed text-store-muted">
+          내 지식팩에 추가하면 연동에 필요한 정보를 바로 확인할 수 있습니다.
+        </p>
         <div className="mt-4 flex flex-col gap-2">
-          <button
-            type="button"
-            className="min-h-[44px] w-full rounded-xl bg-store-accent px-4 text-sm font-bold text-white active:opacity-90"
-            onClick={() => window.alert(PHASE3_ADD_MSG)}
-          >
-            내 지식팩에 추가
-          </button>
-          <button
-            type="button"
-            className="min-h-[44px] w-full rounded-xl border border-store-border bg-white px-4 text-sm font-bold text-store-accent active:bg-slate-50"
-            onClick={() => window.alert(PHASE3_CONNECT_MSG)}
-          >
-            연동 가이드 보기
-          </button>
+          <AddToMyPacksButton packId={pack.packId} variant="detail" />
+          {!added ? (
+            <ConnectActionButton packId={pack.packId} label="연동 가이드 보기" />
+          ) : null}
         </div>
       </div>
     </div>
