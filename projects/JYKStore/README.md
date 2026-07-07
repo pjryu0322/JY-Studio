@@ -157,6 +157,24 @@ Context API 호출은 `ApiUsageLog`에 기록됩니다.
 
 오류 응답의 `usage.requestId`와 DB의 `ApiUsageLog.requestId`를 통해 문제를 추적할 수 있습니다.
 
+## Provider Center
+
+Provider Center는 지식팩 제공자가 프로필을 등록하고 지식팩 초안을 작성하는 공간입니다.
+
+현재 단계:
+
+- clientId cookie 기준 임시 제공자 식별
+- ProviderProfile 등록/수정
+- DRAFT 지식팩 생성
+- SourceDocument 메타데이터 등록
+- REVIEWING 상태로 검수 요청
+
+제한:
+
+- Admin 승인/반려는 Phase P7에서 구현합니다.
+- 파일 업로드와 자동 청킹은 Phase P8에서 구현합니다.
+- DRAFT/REVIEWING 지식팩은 일반 카탈로그와 Context API에 노출되지 않습니다.
+
 ## 아직 구현하지 않은 기능
 
 - Vector DB/RAG 검색

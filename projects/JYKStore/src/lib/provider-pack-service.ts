@@ -1,0 +1,513 @@
+import {
+  AuditAction,
+  PackPricing,
+  PackStatus,
+  ProviderType,
+} from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { recordProviderAudit } from "@/lib/provider-audit";
+import {
+  toProviderPackDetail,
+  toProviderPackListItem,
+  type ProviderPackDetailDto,
+} from "@/lib/provider-pack-dto";
+
+const PACK_ID_PATTERN = /^[a-z0-9-]{3,60}$/;
+
+export type CreateProviderPackInput = {
+  packId: string;
+  name: string;
+  categoryId: string;
+  shortDescription: string;
+  description: string;
+  tags?: string[];
+  version?: string;
+};
+
+export type UpdateProviderPackInput = {
+  name?: string;
+  categoryId?: string;
+  shortDescription?: string;
+  description?: string;
+  tags?: string[];
+  icon?: string;
+  pricing?: PackPricing;
+  versionOverview?: string;
+  versionFeatures?: string[];
+  versionIncludedKnowledge?: string[];
+  versionSupportedEnvironments?: string[];
+  versionTargetUsers?: string[];
+  versionUseCases?: string[];
+  versionSummary?: string;
+};
+
+export type CreatePackVersionInput = {
+  version: string;
+  overview?: string;
+  features?: string[];
+  includedKnowledge?: string[];
+  supportedEnvironments?: string[];
+  targetUsers?: string[];
+  useCases?: string[];
+  versionSummary?: string;
+};
+
+export type CreateSourceDocumentInput = {
+  title: string;
+  sourceType: string;
+  sourceUrl?: string;
+  content?: string;
+  checksum?: string | null;
+};
+
+const packDetailInclude = {
+  versions: {
+    orderBy: { createdAt: "desc" as const },
+    include: {
+      sourceDocuments: {
+        orderBy: { createdAt: "desc" as const },
+      },
+    },
+  },
+} as const;
+
+function validateCreatePackInput(input: CreateProviderPackInput): string | null {
+  const packId = input.packId.trim();
+  const name = input.name.trim();
+  const categoryId = input.categoryId.trim();
+  const shortDescription = input.shortDescription.trim();
+  const description = input.description.trim();
+  const tags = input.tags ?? [];
+  const version = (input.version?.trim() || "0.1.0").trim();
+
+  if (!PACK_ID_PATTERN.test(packId)) {
+    return "packId는 영문 소문자, 숫자, 하이픈만 3~60자로 입력해 주세요.";
+  }
+  if (!categoryId) {
+    return "카테고리가 필요합니다.";
+  }
+  if (name.length < 2 || name.length > 100) {
+    return "이름은 2~100자로 입력해 주세요.";
+  }
+  if (shortDescription.length < 10 || shortDescription.length > 160) {
+    return "짧은 설명은 10~160자로 입력해 주세요.";
+  }
+  if (description.length < 20 || description.length > 1000) {
+    return "설명은 20~1000자로 입력해 주세요.";
+  }
+  if (tags.length > 10) {
+    return "태그는 최대 10개까지 등록할 수 있습니다.";
+  }
+  if (!version) {
+    return "버전이 필요합니다.";
+  }
+
+  return null;
+}
+
+async function assertCategoryExists(categoryId: string) {
+  const category = await prisma.packCategory.findUnique({
+    where: { categoryId },
+  });
+  return Boolean(category);
+}
+
+export async function listProviderPacksForClient(clientId: string) {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return [];
+  }
+
+  const packs = await prisma.knowledgePack.findMany({
+    where: { providerProfileId: profile.id },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  return packs.map(toProviderPackListItem);
+}
+
+export async function createProviderPackForClient(
+  clientId: string,
+  input: CreateProviderPackInput,
+) {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const validationMessage = validateCreatePackInput(input);
+  if (validationMessage) {
+    return { error: "VALIDATION" as const, message: validationMessage };
+  }
+
+  const packId = input.packId.trim();
+  const categoryId = input.categoryId.trim();
+
+  if (!(await assertCategoryExists(categoryId))) {
+    return { error: "CATEGORY_NOT_FOUND" as const };
+  }
+
+  const existing = await prisma.knowledgePack.findUnique({ where: { packId } });
+  if (existing) {
+    return { error: "PACK_ID_EXISTS" as const };
+  }
+
+  const name = input.name.trim();
+  const shortDescription = input.shortDescription.trim();
+  const description = input.description.trim();
+  const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean);
+  const versionLabel = (input.version?.trim() || "0.1.0").trim();
+
+  const pack = await prisma.knowledgePack.create({
+    data: {
+      packId,
+      name,
+      categoryId,
+      providerName: profile.displayName,
+      providerType: ProviderType.COMMUNITY,
+      providerProfileId: profile.id,
+      status: PackStatus.DRAFT,
+      pricing: PackPricing.FREE,
+      icon: "📦",
+      shortDescription,
+      description,
+      tags,
+      versions: {
+        create: {
+          version: versionLabel,
+          overview: shortDescription,
+          features: [],
+          includedKnowledge: [],
+          supportedEnvironments: [],
+          targetUsers: [],
+          useCases: [],
+          versionSummary: `초안 ${versionLabel}`,
+        },
+      },
+    },
+    include: packDetailInclude,
+  });
+
+  await recordProviderAudit({
+    action: AuditAction.PROVIDER_PACK_CREATE,
+    entityType: "KnowledgePack",
+    entityId: pack.packId,
+    metadata: { providerProfileId: profile.id },
+  });
+
+  return { pack: toProviderPackDetail(pack) };
+}
+
+export async function getProviderPackForClient(
+  clientId: string,
+  packId: string,
+): Promise<ProviderPackDetailDto | null> {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return null;
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: {
+      packId,
+      providerProfileId: profile.id,
+    },
+    include: packDetailInclude,
+  });
+
+  return pack ? toProviderPackDetail(pack) : null;
+}
+
+export async function updateProviderPackForClient(
+  clientId: string,
+  packId: string,
+  input: UpdateProviderPackInput,
+) {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+    include: {
+      versions: { orderBy: { createdAt: "desc" }, take: 1 },
+    },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_EDITABLE" as const };
+  }
+
+  if (input.categoryId) {
+    if (!(await assertCategoryExists(input.categoryId.trim()))) {
+      return { error: "CATEGORY_NOT_FOUND" as const };
+    }
+  }
+
+  const data: {
+    name?: string;
+    categoryId?: string;
+    shortDescription?: string;
+    description?: string;
+    tags?: string[];
+    icon?: string;
+    pricing?: PackPricing;
+  } = {};
+
+  if (input.name !== undefined) data.name = input.name.trim();
+  if (input.categoryId !== undefined) data.categoryId = input.categoryId.trim();
+  if (input.shortDescription !== undefined) data.shortDescription = input.shortDescription.trim();
+  if (input.description !== undefined) data.description = input.description.trim();
+  if (input.tags !== undefined) data.tags = input.tags.map((t) => t.trim()).filter(Boolean);
+  if (input.icon !== undefined) data.icon = input.icon.trim() || "📦";
+  if (input.pricing !== undefined) data.pricing = input.pricing;
+
+  await prisma.knowledgePack.update({
+    where: { packId },
+    data,
+  });
+
+  const latestVersion = pack.versions[0];
+  if (latestVersion) {
+    const versionData: {
+      overview?: string;
+      features?: string[];
+      includedKnowledge?: string[];
+      supportedEnvironments?: string[];
+      targetUsers?: string[];
+      useCases?: string[];
+      versionSummary?: string;
+    } = {};
+
+    if (input.versionOverview !== undefined) versionData.overview = input.versionOverview.trim();
+    if (input.versionFeatures !== undefined) versionData.features = input.versionFeatures;
+    if (input.versionIncludedKnowledge !== undefined) {
+      versionData.includedKnowledge = input.versionIncludedKnowledge;
+    }
+    if (input.versionSupportedEnvironments !== undefined) {
+      versionData.supportedEnvironments = input.versionSupportedEnvironments;
+    }
+    if (input.versionTargetUsers !== undefined) versionData.targetUsers = input.versionTargetUsers;
+    if (input.versionUseCases !== undefined) versionData.useCases = input.versionUseCases;
+    if (input.versionSummary !== undefined) versionData.versionSummary = input.versionSummary.trim();
+
+    if (Object.keys(versionData).length > 0) {
+      await prisma.knowledgePackVersion.update({
+        where: { id: latestVersion.id },
+        data: versionData,
+      });
+    }
+  }
+
+  await recordProviderAudit({
+    action: AuditAction.PROVIDER_PACK_UPDATE,
+    entityType: "KnowledgePack",
+    entityId: packId,
+  });
+
+  const updated = await getProviderPackForClient(clientId, packId);
+  return { pack: updated! };
+}
+
+export async function createProviderPackVersionForClient(
+  clientId: string,
+  packId: string,
+  input: CreatePackVersionInput,
+) {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_EDITABLE" as const };
+  }
+
+  const version = input.version.trim();
+  if (!version) {
+    return { error: "VALIDATION" as const, message: "버전이 필요합니다." };
+  }
+
+  const duplicate = await prisma.knowledgePackVersion.findUnique({
+    where: { packId_version: { packId, version } },
+  });
+
+  if (duplicate) {
+    return { error: "VERSION_EXISTS" as const };
+  }
+
+  await prisma.knowledgePackVersion.create({
+    data: {
+      packId,
+      version,
+      overview: input.overview?.trim() || pack.shortDescription,
+      features: input.features ?? [],
+      includedKnowledge: input.includedKnowledge ?? [],
+      supportedEnvironments: input.supportedEnvironments ?? [],
+      targetUsers: input.targetUsers ?? [],
+      useCases: input.useCases ?? [],
+      versionSummary: input.versionSummary?.trim() || version,
+    },
+  });
+
+  await recordProviderAudit({
+    action: AuditAction.PROVIDER_PACK_VERSION_CREATE,
+    entityType: "KnowledgePack",
+    entityId: packId,
+    metadata: { version },
+  });
+
+  const detail = await getProviderPackForClient(clientId, packId);
+  return { pack: detail! };
+}
+
+export async function createSourceDocumentForProviderPack(
+  clientId: string,
+  packId: string,
+  input: CreateSourceDocumentInput,
+) {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+    include: {
+      versions: { orderBy: { createdAt: "desc" }, take: 1 },
+    },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_EDITABLE" as const };
+  }
+
+  const title = input.title.trim();
+  const sourceType = input.sourceType.trim();
+
+  if (!title) {
+    return { error: "VALIDATION" as const, message: "제목이 필요합니다." };
+  }
+  if (!sourceType) {
+    return { error: "VALIDATION" as const, message: "sourceType이 필요합니다." };
+  }
+
+  const version = pack.versions[0];
+  if (!version) {
+    return { error: "VERSION_REQUIRED" as const };
+  }
+
+  const doc = await prisma.sourceDocument.create({
+    data: {
+      versionId: version.id,
+      title,
+      sourceType,
+      sourceUrl: input.sourceUrl?.trim() || null,
+      content: input.content?.trim() || null,
+      checksum: input.checksum ?? null,
+    },
+  });
+
+  await recordProviderAudit({
+    action: AuditAction.PROVIDER_SOURCE_DOCUMENT_CREATE,
+    entityType: "SourceDocument",
+    entityId: doc.id,
+    metadata: { packId },
+  });
+
+  const detail = await getProviderPackForClient(clientId, packId);
+  return { pack: detail! };
+}
+
+export async function submitProviderPackForReview(clientId: string, packId: string) {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+    include: {
+      versions: {
+        include: { sourceDocuments: true },
+        orderBy: { createdAt: "desc" },
+      },
+    },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_DRAFT" as const };
+  }
+
+  if (!pack.categoryId || !pack.shortDescription.trim() || !pack.description.trim()) {
+    return { error: "INCOMPLETE" as const, message: "카테고리와 설명을 확인해 주세요." };
+  }
+
+  if (pack.versions.length === 0) {
+    return { error: "INCOMPLETE" as const, message: "버전이 최소 1개 필요합니다." };
+  }
+
+  const hasSourceDocument = pack.versions.some((v) => v.sourceDocuments.length > 0);
+  if (!hasSourceDocument) {
+    return {
+      error: "INCOMPLETE" as const,
+      message: "원천 문서(SourceDocument)를 최소 1개 등록해 주세요.",
+    };
+  }
+
+  await prisma.knowledgePack.update({
+    where: { packId },
+    data: { status: PackStatus.REVIEWING },
+  });
+
+  await recordProviderAudit({
+    action: AuditAction.PROVIDER_PACK_SUBMIT,
+    entityType: "KnowledgePack",
+    entityId: packId,
+  });
+
+  const detail = await getProviderPackForClient(clientId, packId);
+  return { pack: detail! };
+}

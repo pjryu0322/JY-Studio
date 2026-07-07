@@ -9,7 +9,12 @@ const ACCOUNT_ITEMS = [
     status: null,
   },
   { title: "사용량 확인", description: "지식팩 호출 및 사용량", href: null, status: "준비 중" },
-  { title: "지식팩 제공자 센터", description: "제공자 등록 및 지식팩 관리", href: null, status: "준비 중" },
+  {
+    title: "지식팩 제공자 센터",
+    description: "제공자 등록 및 지식팩 관리",
+    href: ROUTES.provider,
+    status: null,
+  },
   { title: "관리자 콘솔", description: "검수 및 운영 도구", href: null, status: "준비 중" },
   { title: "설정", description: "알림 및 계정 설정", href: null, status: "준비 중" },
 ] as const;

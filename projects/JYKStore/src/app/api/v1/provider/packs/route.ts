@@ -1,0 +1,70 @@
+import { NextRequest } from "next/server";
+import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import {
+  createProviderPackForClient,
+  listProviderPacksForClient,
+} from "@/lib/provider-pack-service";
+
+export async function GET(request: NextRequest) {
+  const clientId = ensureClientId(request);
+
+  try {
+    const items = await listProviderPacksForClient(clientId);
+    return jsonWithClientIdCookie({ clientId, items }, clientId);
+  } catch (error) {
+    console.error("GET /api/v1/provider/packs failed", error);
+    return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const clientId = ensureClientId(request);
+
+  try {
+    const body = (await request.json()) as {
+      packId?: string;
+      name?: string;
+      categoryId?: string;
+      shortDescription?: string;
+      description?: string;
+      tags?: string[];
+      version?: string;
+    };
+
+    const result = await createProviderPackForClient(clientId, {
+      packId: body.packId ?? "",
+      name: body.name ?? "",
+      categoryId: body.categoryId ?? "",
+      shortDescription: body.shortDescription ?? "",
+      description: body.description ?? "",
+      tags: body.tags,
+      version: body.version,
+    });
+
+    if (result.error === "PROFILE_REQUIRED") {
+      return jsonWithClientIdCookie(
+        { error: "제공자 프로필을 먼저 등록해 주세요." },
+        clientId,
+        { status: 400 },
+      );
+    }
+    if (result.error === "PACK_ID_EXISTS") {
+      return jsonWithClientIdCookie({ error: "이미 사용 중인 packId입니다." }, clientId, {
+        status: 409,
+      });
+    }
+    if (result.error === "CATEGORY_NOT_FOUND") {
+      return jsonWithClientIdCookie({ error: "카테고리를 찾을 수 없습니다." }, clientId, {
+        status: 400,
+      });
+    }
+    if (result.error === "VALIDATION") {
+      return jsonWithClientIdCookie({ error: result.message }, clientId, { status: 400 });
+    }
+
+    return jsonWithClientIdCookie({ clientId, pack: result.pack }, clientId);
+  } catch (error) {
+    console.error("POST /api/v1/provider/packs failed", error);
+    return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
+  }
+}

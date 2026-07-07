@@ -49,6 +49,34 @@ enum AuditAction {
   REMOVE
   API_KEY_CREATE
   API_KEY_REVOKE
+  PROVIDER_PROFILE_UPSERT
+  PROVIDER_PACK_CREATE
+  PROVIDER_PACK_UPDATE
+  PROVIDER_PACK_VERSION_CREATE
+  PROVIDER_SOURCE_DOCUMENT_CREATE
+  PROVIDER_PACK_SUBMIT
+}
+
+model ProviderProfile {
+  id             String   @id @default(cuid())
+  clientId       String?  @unique
+  userId         String?
+  organizationId String?
+  displayName    String
+  description    String
+  websiteUrl     String?
+  contactEmail   String?
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  packs        KnowledgePack[]
+
+  @@index([userId])
+  @@index([organizationId])
+  @@index([status])
 }
 
 model User {
@@ -62,6 +90,7 @@ model User {
   installations PackInstallation[]
   apiKeys       ApiKey[]
   auditLogs     AuditLog[]
+  providerProfiles ProviderProfile[]
 }
 
 model Organization {
@@ -74,6 +103,7 @@ model Organization {
   members       OrganizationMember[]
   installations PackInstallation[]
   apiKeys       ApiKey[]
+  providerProfiles ProviderProfile[]
 }
 
 model OrganizationMember {
@@ -102,13 +132,14 @@ model PackCategory {
 }
 
 model KnowledgePack {
-  id               String       @id @default(cuid())
-  packId           String       @unique
-  name             String
-  categoryId       String
-  providerName     String
-  providerType     ProviderType
-  status           PackStatus
+  id                String       @id @default(cuid())
+  packId            String       @unique
+  name              String
+  categoryId        String
+  providerName      String
+  providerType      ProviderType
+  providerProfileId String?
+  status            PackStatus
   pricing          PackPricing
   icon             String
   shortDescription String
@@ -121,13 +152,15 @@ model KnowledgePack {
   updatedAt        DateTime     @updatedAt
   publishedAt      DateTime?
 
-  category      PackCategory           @relation(fields: [categoryId], references: [categoryId])
-  versions      KnowledgePackVersion[]
+  category        PackCategory           @relation(fields: [categoryId], references: [categoryId])
+  providerProfile ProviderProfile?       @relation(fields: [providerProfileId], references: [id], onDelete: SetNull)
+  versions        KnowledgePackVersion[]
   installations PackInstallation[]
   usageLogs     ApiUsageLog[]
 
   @@index([status])
   @@index([categoryId])
+  @@index([providerProfileId])
 }
 
 model KnowledgePackVersion {
