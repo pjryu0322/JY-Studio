@@ -27,6 +27,13 @@ export type ChunkPipelineSummaryDto = {
   inactiveChunkCount: number;
 };
 
+export type BulkMetadataMode = "merge" | "replace" | "clear";
+
+export type BulkMetadataResult = {
+  updatedCount: number;
+  summary: ChunkPipelineSummaryDto;
+};
+
 export type CreateKnowledgeChunkInput = {
   versionId: string;
   sourceDocumentId?: string | null;

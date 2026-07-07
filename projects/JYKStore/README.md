@@ -431,22 +431,38 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
 - metadata는 허용된 key만, string 또는 string[] 값으로만 저장/조회합니다. alias(`language`, `version`)는 canonical key로 정규화합니다.
 - chunk metadata는 Admin Chunk Manager에서 JSON으로 입력·수정·조회할 수 있습니다.
 - Retrieval API request는 잘못된 타입/필드일 경우 400 `INVALID_RETRIEVAL_REQUEST`로 응답합니다.
-- P13/P13.1은 Vector DB/Embedding/RAG/LLM 호출을 포함하지 않습니다.
 - 비활성 chunk는 Retrieval API에서도 노출하지 않습니다.
 - API 인증은 Context API와 동일하게 Bearer API Key를 사용합니다.
-- packId 전용 API Key 권한은 P13에서 구현하지 않으며 향후 확장 예정입니다.
+- packId 전용 API Key 권한은 향후 확장 예정입니다.
+
+### P13.2 — Metadata 일괄 편집 / 후보 limit 개선
+
+- Admin Chunk Manager에서 chunk를 선택해 metadata를 일괄 적용할 수 있습니다. (`PATCH /api/v1/admin/packs/{packId}/chunks/bulk-metadata`)
+- 적용 모드: `merge`(병합) / `replace`(교체) / `clear`(제거). sensitive/허용 외 key는 저장되지 않습니다.
+- Retrieval 후보 수집을 paging 방식으로 개선해 metadata filter 조건이 앞쪽 500개 밖에 있어도 누락을 완화합니다.
+- usage log에 `scannedCandidateCount`, `filteredCandidateCount`를 남깁니다.
+
+### P14 — Vector Retrieval Extension (foundation)
+
+- `KnowledgeChunkEmbedding` 모델 추가 (chunk별 vector 저장, JSONB).
+- local-hash embedding provider(`local-hash-v1`)로 deterministic vector를 생성합니다. **외부 embedding API 호출이 아니라 dev/foundation provider입니다.**
+- Admin Chunk Manager의 embedding 상태 카드에서 missing/stale embedding을 확인하고 재생성할 수 있습니다. (`GET /api/v1/admin/packs/{packId}/embeddings`, `POST .../embeddings/rebuild`)
+- chunk의 title/content/section/tags/metadata 기준 `contentHash`로 stale embedding을 판정합니다.
+- Retrieval API는 `retrievalMode`(`keyword` | `hybrid`)를 지원합니다. 미지정 시 query가 있으면 hybrid로 동작합니다.
+- 처리 순서: metadata filter(AND) → keyword score → (hybrid) vector similarity → topK. metadata filter는 항상 vector ranking보다 먼저 적용됩니다.
+- hybrid score = keywordScore + metadataScore + cosineSimilarity × 100. embedding이 없는 chunk는 keyword/metadata score로 fallback합니다.
+- P14는 외부 LLM/embedding API 호출, pgvector, RAG/답변 생성을 포함하지 않습니다.
 
 ## 아직 구현하지 않은 기능
 
-- Vector DB/RAG 검색
+- 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
+- pgvector 기반 vector index
 - 로그인/회원 관리
 - 관리자 인증 및 권한 제어
 
 ## 다음 단계
 
-1. Phase P14: Vector Retrieval Extension
-   - Embedding 생성 파이프라인
-   - Vector DB 연동
-   - Metadata Filter → Vector Search → Ranking
-   - Keyword ranking과 hybrid ranking
-   - Vector Search 단독 의존 금지
+1. Phase P15: 외부 embedding provider 및 vector index 확장 (선택)
+   - external embedding provider interface 연동
+   - pgvector 등 vector index 도입 검토
+   - hybrid ranking 가중치 튜닝

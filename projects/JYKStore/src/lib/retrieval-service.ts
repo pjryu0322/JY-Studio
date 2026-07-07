@@ -1,16 +1,33 @@
 import { PackStatus } from "@prisma/client";
+import {
+  DEFAULT_EMBEDDING_MODEL,
+  DEFAULT_EMBEDDING_PROVIDER,
+} from "@/lib/embedding-dto";
+import { embedText } from "@/lib/embedding-service";
 import { prisma } from "@/lib/prisma";
 import {
   type RetrievalContextDto,
   type RetrievalFilters,
+  type RetrievalMode,
   type RetrievalResponseDto,
 } from "@/lib/retrieval-dto";
 import { matchesAllMetadataFilters, scoreRetrievalChunk } from "@/lib/retrieval-ranking";
 import { tokenizeSearchQuery } from "@/lib/search-utils";
+import { clampedCosineSimilarity, isValidVector } from "@/lib/vector-similarity";
 
 const publishedStatuses = [PackStatus.PUBLISHED, PackStatus.VERIFIED] as const;
 
-const CANDIDATE_LIMIT = 500;
+// P13.2: 후보 수집 paging 상수. filter가 있을 때 앞쪽 500개 밖 조건 누락을 완화한다.
+const CANDIDATE_PAGE_SIZE = 500;
+const MAX_CANDIDATE_SCAN = 5000;
+const MAX_FILTERED_CANDIDATES = 1000;
+
+// P14: hybrid ranking 가중치. keyword/metadata score에 vector similarity를 결합한다.
+const HYBRID_WEIGHTS = {
+  keyword: 1,
+  metadata: 1,
+  vector: 100,
+} as const;
 
 function toMetadataRecord(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -19,15 +36,63 @@ function toMetadataRecord(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
+type CandidateChunk = Awaited<ReturnType<typeof loadCandidatePage>>[number];
+
+async function loadCandidatePage(versionId: string, cursor: string | undefined) {
+  return prisma.knowledgeChunk.findMany({
+    where: { versionId, isActive: true },
+    include: { sourceDocument: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    take: CANDIDATE_PAGE_SIZE,
+    ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+  });
+}
+
+async function collectCandidates(
+  versionId: string,
+  filters: RetrievalFilters,
+  hasFilters: boolean,
+): Promise<{ collected: CandidateChunk[]; scanned: number }> {
+  // filter가 없으면 기존과 동일하게 단일 page만 조회한다.
+  if (!hasFilters) {
+    const page = await loadCandidatePage(versionId, undefined);
+    return { collected: page, scanned: page.length };
+  }
+
+  const collected: CandidateChunk[] = [];
+  let scanned = 0;
+  let cursor: string | undefined;
+
+  while (scanned < MAX_CANDIDATE_SCAN && collected.length < MAX_FILTERED_CANDIDATES) {
+    const page = await loadCandidatePage(versionId, cursor);
+    if (page.length === 0) break;
+
+    scanned += page.length;
+    cursor = page[page.length - 1]!.id;
+
+    for (const chunk of page) {
+      if (matchesAllMetadataFilters(toMetadataRecord(chunk.metadata), filters)) {
+        collected.push(chunk);
+        if (collected.length >= MAX_FILTERED_CANDIDATES) break;
+      }
+    }
+
+    if (page.length < CANDIDATE_PAGE_SIZE) break;
+  }
+
+  return { collected, scanned };
+}
+
 export async function retrieveContexts(input: {
   knowledgePackId: string;
   query?: string;
   filters: RetrievalFilters;
   topK: number;
   includeMetadata: boolean;
+  retrievalMode: RetrievalMode;
   requestId: string;
 }): Promise<RetrievalResponseDto | null> {
-  // NOTE: packId 전용 API Key 권한은 P13에서 구현하지 않는다. (P14 이후 확장 예정)
+  // NOTE: packId 전용 API Key 권한은 향후 확장 예정이다.
   const pack = await prisma.knowledgePack.findFirst({
     where: {
       packId: input.knowledgePackId,
@@ -45,57 +110,86 @@ export async function retrieveContexts(input: {
     return null;
   }
 
-  const version = pack.versions[0];
+  const version = pack.versions[0]!;
   const searchQuery = input.query?.trim() ?? "";
   const tokens = tokenizeSearchQuery(searchQuery);
   const filterKeys = Object.keys(input.filters);
+  const hasFilters = filterKeys.length > 0;
 
-  const candidates = await prisma.knowledgeChunk.findMany({
-    where: {
-      versionId: version.id,
-      isActive: true,
-    },
-    include: {
-      sourceDocument: true,
-    },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    take: CANDIDATE_LIMIT,
-  });
+  // 1) metadata filter는 항상 vector/hybrid ranking보다 먼저 적용된다.
+  const { collected, scanned } = await collectCandidates(version.id, input.filters, hasFilters);
 
-  // filters는 점수 가산 조건이 아니라 후보 제한(AND) 조건이다.
-  // filters가 지정되면 모든 metadata 조건을 만족한 chunk만 ranking 대상이 된다.
-  const metadataFiltered =
-    filterKeys.length > 0
-      ? candidates.filter((chunk) =>
-          matchesAllMetadataFilters(toMetadataRecord(chunk.metadata), input.filters),
-        )
-      : candidates;
-
-  const scored = metadataFiltered.map((chunk) => {
+  const scored = collected.map((chunk) => {
     const metadataRecord = toMetadataRecord(chunk.metadata);
     const result = scoreRetrievalChunk({
       chunk: { ...chunk, metadata: metadataRecord },
       tokens,
       filters: input.filters,
     });
-    return { chunk, metadataRecord, ...result };
+    return {
+      chunk,
+      metadataRecord,
+      keywordScore: result.keywordScore,
+      metadataScore: result.metadataScore,
+      vectorScore: 0,
+      vectorSimilarity: 0,
+      score: result.score,
+      matchReasons: [...result.matchReasons],
+    };
   });
 
-  const byScore = (
-    a: (typeof scored)[number],
-    b: (typeof scored)[number],
-  ) => {
+  // 2) hybrid mode: query가 있으면 vector similarity를 결합한다.
+  const useHybrid = input.retrievalMode === "hybrid" && tokens.length > 0;
+  let embeddingProvider: string | undefined;
+  let embeddingModel: string | undefined;
+
+  if (useHybrid && scored.length > 0) {
+    embeddingProvider = DEFAULT_EMBEDDING_PROVIDER;
+    embeddingModel = DEFAULT_EMBEDDING_MODEL;
+
+    const queryEmbedding = embedText({ text: searchQuery });
+    const chunkIds = scored.map((item) => item.chunk.id);
+
+    const embeddings = await prisma.knowledgeChunkEmbedding.findMany({
+      where: { chunkId: { in: chunkIds }, provider: embeddingProvider, model: embeddingModel },
+      select: { chunkId: true, vector: true },
+    });
+    const vectorByChunk = new Map<string, number[]>();
+    for (const row of embeddings) {
+      if (isValidVector(row.vector)) {
+        vectorByChunk.set(row.chunkId, row.vector);
+      }
+    }
+
+    for (const item of scored) {
+      const chunkVector = vectorByChunk.get(item.chunk.id);
+      if (!chunkVector) {
+        // embedding이 없는 candidate는 keyword/metadata score로 fallback한다.
+        continue;
+      }
+      const similarity = clampedCosineSimilarity(queryEmbedding.vector, chunkVector);
+      const vectorScore = similarity * HYBRID_WEIGHTS.vector;
+      item.vectorSimilarity = similarity;
+      item.vectorScore = vectorScore;
+      item.score += vectorScore;
+      if (similarity > 0) {
+        item.matchReasons.push("vector:similarity");
+      }
+    }
+  }
+
+  const byScore = (a: (typeof scored)[number], b: (typeof scored)[number]) => {
     if (b.score !== a.score) return b.score - a.score;
     if (a.chunk.sortOrder !== b.chunk.sortOrder) return a.chunk.sortOrder - b.chunk.sortOrder;
     return a.chunk.createdAt.getTime() - b.chunk.createdAt.getTime();
   };
 
   let selected = scored;
-  if (filterKeys.length > 0) {
-    // metadata filter를 통과한 chunk는 keyword score가 0이어도 포함하고 score 기준으로 정렬한다.
+  if (hasFilters) {
+    // metadata filter를 통과한 chunk는 keyword/vector score가 0이어도 포함하고 score 기준으로 정렬한다.
     selected = [...scored].sort(byScore);
   } else if (tokens.length > 0) {
-    // keyword 전용: 실제로 매칭된 chunk만 반환한다.
+    // keyword/hybrid 전용: 실제로 매칭된 chunk만 반환한다.
     selected = scored.filter((item) => item.score > 0).sort(byScore);
   }
   // filters/query 모두 없으면 sortOrder/createdAt 순서를 그대로 사용한다.
@@ -113,6 +207,15 @@ export async function retrieveContexts(input: {
 
     if (input.includeMetadata) {
       context.metadata = item.metadataRecord ?? {};
+    }
+
+    if (useHybrid) {
+      context.scoreDetail = {
+        keywordScore: item.keywordScore,
+        metadataScore: item.metadataScore,
+        vectorScore: item.vectorScore,
+        vectorSimilarity: item.vectorSimilarity,
+      };
     }
 
     if (item.chunk.sourceDocument) {
@@ -135,6 +238,11 @@ export async function retrieveContexts(input: {
       contextCount: contexts.length,
       topK: input.topK,
       usedFilters: input.filters,
+      retrievalMode: useHybrid ? "hybrid" : "keyword",
+      embeddingProvider,
+      embeddingModel,
+      scannedCandidateCount: scanned,
+      filteredCandidateCount: collected.length,
     },
   };
 }

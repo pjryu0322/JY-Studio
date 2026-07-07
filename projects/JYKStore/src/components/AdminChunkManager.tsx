@@ -1,14 +1,20 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import type { KnowledgeChunkDto, PackChunksListResponse } from "@/lib/chunk-pipeline-dto";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  BulkMetadataMode,
+  KnowledgeChunkDto,
+  PackChunksListResponse,
+} from "@/lib/chunk-pipeline-dto";
 import {
+  bulkUpdateChunkMetadataApi,
   createPackChunkApi,
   deactivatePackChunkApi,
   fetchPackChunks,
   generateChunksFromDocumentApi,
   updatePackChunkApi,
 } from "@/lib/chunk-pipeline-api";
+import { EmbeddingStatusPanel } from "@/components/EmbeddingStatusPanel";
 import { includesNormalized, tokenizeSearchQuery } from "@/lib/search-utils";
 
 const METADATA_PLACEHOLDER = `{
@@ -78,6 +84,11 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
   const [editIsActive, setEditIsActive] = useState(true);
 
   const [chunkQuery, setChunkQuery] = useState("");
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkMode, setBulkMode] = useState<BulkMetadataMode>("merge");
+  const [bulkMetadataText, setBulkMetadataText] = useState("");
+  const [bulkApplying, setBulkApplying] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -196,20 +207,69 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
     }
   };
 
+  const chunkQueryTokens = tokenizeSearchQuery(chunkQuery);
+  const visibleChunks = useMemo(() => {
+    const all = data?.chunks ?? [];
+    if (chunkQueryTokens.length === 0) return all;
+    return all.filter((chunk) => {
+      const fields = [chunk.title, chunk.content, chunk.section, chunk.chunkType, ...chunk.tags];
+      return chunkQueryTokens.some((token) =>
+        fields.some((field) => includesNormalized(field, token)),
+      );
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.chunks, chunkQuery]);
+
+  const toggleSelect = (chunkId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(chunkId)) next.delete(chunkId);
+      else next.add(chunkId);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelectedIds(new Set(visibleChunks.map((chunk) => chunk.id)));
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const onApplyBulkMetadata = async () => {
+    const chunkIds = Array.from(selectedIds);
+    if (chunkIds.length === 0) {
+      setError("선택된 chunk가 없습니다.");
+      return;
+    }
+    setError(null);
+
+    let metadata: Record<string, unknown> | null = null;
+    if (bulkMode !== "clear") {
+      const parsed = parseMetadataText(bulkMetadataText);
+      if (!parsed.ok) {
+        setError(parsed.error);
+        return;
+      }
+      metadata = parsed.metadata;
+    }
+
+    setBulkApplying(true);
+    try {
+      await bulkUpdateChunkMetadataApi(packId, { chunkIds, mode: bulkMode, metadata });
+      clearSelection();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "일괄 적용에 실패했습니다.");
+    } finally {
+      setBulkApplying(false);
+    }
+  };
+
   if (loading && !data) {
     return <p className="text-sm text-store-muted">청크 정보 불러오는 중…</p>;
   }
 
   const summary = data?.summary;
-  const chunkQueryTokens = tokenizeSearchQuery(chunkQuery);
-  const visibleChunks = chunkQueryTokens.length
-    ? (data?.chunks ?? []).filter((chunk) => {
-        const fields = [chunk.title, chunk.content, chunk.section, chunk.chunkType, ...chunk.tags];
-        return chunkQueryTokens.some((token) =>
-          fields.some((field) => includesNormalized(field, token)),
-        );
-      })
-    : (data?.chunks ?? []);
 
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
@@ -348,6 +408,58 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
             검색 token {chunkQueryTokens.length}개 기준 {visibleChunks.length}개 chunk가 표시됩니다.
           </p>
         ) : null}
+
+        <div className="space-y-2 rounded-xl border border-dashed border-store-border p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-bold text-slate-800">metadata 일괄 편집</p>
+            <span className="text-[11px] text-store-muted">선택 {selectedIds.size}개</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              className="min-h-[36px] rounded-lg border border-store-border px-3 text-xs font-semibold"
+            >
+              검색 결과 전체 선택
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="min-h-[36px] rounded-lg border border-store-border px-3 text-xs font-semibold"
+            >
+              선택 해제
+            </button>
+          </div>
+          <select
+            value={bulkMode}
+            onChange={(e) => setBulkMode(e.target.value as BulkMetadataMode)}
+            className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
+          >
+            <option value="merge">merge (기존 metadata에 병합)</option>
+            <option value="replace">replace (기존 metadata 교체)</option>
+            <option value="clear">clear (metadata 제거)</option>
+          </select>
+          {bulkMode !== "clear" ? (
+            <textarea
+              value={bulkMetadataText}
+              onChange={(e) => setBulkMetadataText(e.target.value)}
+              placeholder={METADATA_PLACEHOLDER}
+              rows={4}
+              className="w-full rounded-xl border border-store-border px-3 py-2 font-mono text-xs"
+            />
+          ) : (
+            <p className="text-[11px] text-store-muted">선택 chunk의 metadata를 제거합니다.</p>
+          )}
+          <button
+            type="button"
+            onClick={() => void onApplyBulkMetadata()}
+            disabled={bulkApplying || selectedIds.size === 0}
+            className="min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
+          >
+            {bulkApplying ? "적용 중…" : `선택 ${selectedIds.size}개에 일괄 적용`}
+          </button>
+        </div>
+
         {!data?.chunks.length ? (
           <p className="text-sm text-store-muted">등록된 chunk가 없습니다.</p>
         ) : visibleChunks.length === 0 ? (
@@ -357,6 +469,8 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
             <ChunkCard
               key={chunk.id}
               chunk={chunk}
+              selected={selectedIds.has(chunk.id)}
+              onToggleSelect={() => toggleSelect(chunk.id)}
               editing={editingId === chunk.id}
               editTitle={editTitle}
               editContent={editContent}
@@ -380,12 +494,16 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
           ))
         )}
       </div>
+
+      <EmbeddingStatusPanel packId={packId} />
     </section>
   );
 }
 
 function ChunkCard({
   chunk,
+  selected,
+  onToggleSelect,
   editing,
   editTitle,
   editContent,
@@ -407,6 +525,8 @@ function ChunkCard({
   onDeactivate,
 }: {
   chunk: KnowledgeChunkDto;
+  selected: boolean;
+  onToggleSelect: () => void;
   editing: boolean;
   editTitle: string;
   editContent: string;
@@ -492,6 +612,13 @@ function ChunkCard({
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              className="h-4 w-4"
+              aria-label="chunk 선택"
+            />
             <p className="font-semibold text-slate-900">{chunk.title}</p>
             <span className="text-[10px] text-store-muted">{chunk.chunkType}</span>
             {!chunk.isActive ? <span className="text-[10px] font-bold text-red-700">비활성</span> : null}

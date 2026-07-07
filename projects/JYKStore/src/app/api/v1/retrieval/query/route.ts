@@ -3,7 +3,9 @@ import { authenticateApiKey, requireApiKeyScope } from "@/lib/api-key-auth";
 import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
 import {
   DEFAULT_TOP_K,
+  RETRIEVAL_MODES,
   RETRIEVAL_QUERY_MAX_LENGTH,
+  type RetrievalMode,
   type RetrievalRequestBody,
 } from "@/lib/retrieval-dto";
 import { normalizeTopK, validateAndNormalizeFilters } from "@/lib/retrieval-filter";
@@ -97,6 +99,12 @@ export async function POST(request: NextRequest) {
     if (body.includeMetadata !== undefined && typeof body.includeMetadata !== "boolean") {
       details.push("includeMetadata must be a boolean.");
     }
+    if (
+      body.retrievalMode !== undefined &&
+      !RETRIEVAL_MODES.includes(body.retrievalMode as RetrievalMode)
+    ) {
+      details.push("retrievalMode must be one of: keyword, hybrid.");
+    }
 
     const topKResult = normalizeTopK(body.topK);
     if (!topKResult.ok) details.push(topKResult.error);
@@ -124,6 +132,9 @@ export async function POST(request: NextRequest) {
     const query = typeof body.query === "string" ? body.query.trim() || undefined : undefined;
     const safeQuery = query?.slice(0, RETRIEVAL_QUERY_MAX_LENGTH);
     const includeMetadata = body.includeMetadata === undefined ? true : Boolean(body.includeMetadata);
+    // 기본값: query가 있으면 hybrid, 없으면 keyword/metadata ranking.
+    const retrievalMode: RetrievalMode =
+      (body.retrievalMode as RetrievalMode | undefined) ?? (query ? "hybrid" : "keyword");
 
     const result = await retrieveContexts({
       knowledgePackId,
@@ -131,6 +142,7 @@ export async function POST(request: NextRequest) {
       filters,
       topK,
       includeMetadata,
+      retrievalMode,
       requestId,
     });
 
@@ -164,7 +176,11 @@ export async function POST(request: NextRequest) {
         topK,
         includeMetadata,
         filterKeys: Object.keys(filters),
-        searchMode: query ? "keyword-metadata-ranking" : "metadata-ranking",
+        retrievalMode: result.usage.retrievalMode,
+        embeddingProvider: result.usage.embeddingProvider,
+        embeddingModel: result.usage.embeddingModel,
+        scannedCandidateCount: result.usage.scannedCandidateCount,
+        filteredCandidateCount: result.usage.filteredCandidateCount,
       },
     });
 

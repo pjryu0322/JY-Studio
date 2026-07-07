@@ -38,18 +38,30 @@ export const ALLOWED_FILTER_KEYS = new Set<string>([
 
 export type RetrievalFilters = Partial<Record<CanonicalFilterKey, string>>;
 
+export type RetrievalMode = "keyword" | "hybrid";
+
+export const RETRIEVAL_MODES: RetrievalMode[] = ["keyword", "hybrid"];
+
 export type RetrievalRequestBody = {
   knowledgePackId?: string;
   query?: string;
   filters?: Record<string, unknown>;
   topK?: number;
   includeMetadata?: boolean;
+  retrievalMode?: RetrievalMode;
 };
 
 export type RetrievalReference = {
   type: string;
   title: string;
   sourceDocumentId: string;
+};
+
+export type RetrievalScoreDetail = {
+  keywordScore: number;
+  metadataScore: number;
+  vectorScore: number;
+  vectorSimilarity: number;
 };
 
 export type RetrievalContextDto = {
@@ -60,6 +72,7 @@ export type RetrievalContextDto = {
   score: number;
   matchReasons: string[];
   metadata?: Record<string, unknown>;
+  scoreDetail?: RetrievalScoreDetail;
   references?: RetrievalReference[];
 };
 
@@ -70,6 +83,11 @@ export type RetrievalResponseDto = {
     contextCount: number;
     topK: number;
     usedFilters: RetrievalFilters;
+    retrievalMode: RetrievalMode;
+    embeddingProvider?: string;
+    embeddingModel?: string;
+    scannedCandidateCount: number;
+    filteredCandidateCount: number;
   };
 };
 

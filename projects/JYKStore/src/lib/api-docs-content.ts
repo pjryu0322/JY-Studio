@@ -250,7 +250,8 @@ export const retrievalRequestBody = `{
     "securityLevel": "PUBLIC"
   },
   "topK": 8,
-  "includeMetadata": true
+  "includeMetadata": true,
+  "retrievalMode": "hybrid"
 }`;
 
 export const retrievalCurlExample = `curl -X POST "${apiBaseUrls.development}/api/v1/retrieval/query" \\
@@ -304,14 +305,20 @@ export const retrievalResponseExample = `{
       "knowledgePackId": "${samplePackId}",
       "title": "Callback 예제",
       "content": "...",
-      "score": 75,
-      "matchReasons": ["query:callback", "metadata:framework"],
+      "score": 122,
+      "matchReasons": ["query:callback", "metadata:framework", "vector:similarity"],
       "metadata": {
         "category": "Callback",
         "framework": "Spring Boot",
         "programmingLanguage": "Java",
         "documentType": "SAMPLE_CODE",
         "securityLevel": "PUBLIC"
+      },
+      "scoreDetail": {
+        "keywordScore": 40,
+        "metadataScore": 30,
+        "vectorScore": 52,
+        "vectorSimilarity": 0.52
       },
       "references": [
         {
@@ -328,7 +335,12 @@ export const retrievalResponseExample = `{
     "topK": 8,
     "usedFilters": {
       "framework": "Spring Boot"
-    }
+    },
+    "retrievalMode": "hybrid",
+    "embeddingProvider": "local-hash",
+    "embeddingModel": "local-hash-v1",
+    "scannedCandidateCount": 500,
+    "filteredCandidateCount": 12
   }
 }`;
 

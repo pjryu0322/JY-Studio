@@ -13,6 +13,7 @@ export function RetrievalTestPanel() {
   );
   const [topK, setTopK] = useState(8);
   const [includeMetadata, setIncludeMetadata] = useState(true);
+  const [retrievalMode, setRetrievalMode] = useState<"auto" | "keyword" | "hybrid">("auto");
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<RetrievalApiTestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +57,7 @@ export function RetrievalTestPanel() {
         filters,
         topK,
         includeMetadata,
+        retrievalMode: retrievalMode === "auto" ? undefined : retrievalMode,
       });
       setResult(testResult);
     } catch {
@@ -156,6 +158,21 @@ export function RetrievalTestPanel() {
             ))}
           </select>
         </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-700" htmlFor="retrieval-mode">
+            retrievalMode
+          </label>
+          <select
+            id="retrieval-mode"
+            value={retrievalMode}
+            onChange={(e) => setRetrievalMode(e.target.value as "auto" | "keyword" | "hybrid")}
+            className="mt-2 min-h-[44px] rounded-xl border border-store-border px-3 text-sm"
+          >
+            <option value="auto">auto (query 있으면 hybrid)</option>
+            <option value="keyword">keyword</option>
+            <option value="hybrid">hybrid</option>
+          </select>
+        </div>
         <label className="flex min-h-[44px] items-end gap-2 pb-2 text-sm text-slate-700">
           <input
             type="checkbox"
@@ -166,6 +183,10 @@ export function RetrievalTestPanel() {
           includeMetadata
         </label>
       </div>
+      <p className="text-[11px] text-store-muted">
+        hybrid는 local-hash embedding 기반 vector similarity를 keyword/metadata score와 결합합니다.
+        (외부 embedding API 아님 · dev/foundation provider)
+      </p>
 
       {error ? (
         <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>

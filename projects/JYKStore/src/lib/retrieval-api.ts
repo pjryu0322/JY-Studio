@@ -5,6 +5,7 @@ export type RetrievalApiTestInput = {
   filters?: Record<string, unknown>;
   topK?: number;
   includeMetadata?: boolean;
+  retrievalMode?: "keyword" | "hybrid";
 };
 
 export type RetrievalApiTestResult = {
@@ -45,6 +46,7 @@ export async function runRetrievalApiTest(input: RetrievalApiTestInput): Promise
   if (input.query?.trim()) body.query = input.query.trim();
   if (input.filters && Object.keys(input.filters).length > 0) body.filters = input.filters;
   if (typeof input.topK === "number") body.topK = input.topK;
+  if (input.retrievalMode) body.retrievalMode = input.retrievalMode;
 
   const response = await fetch("/api/v1/retrieval/query", {
     method: "POST",

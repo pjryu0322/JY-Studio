@@ -2,6 +2,7 @@ import { AuditAction, Prisma } from "@prisma/client";
 import { truncateContentPreview } from "@/lib/admin-review-dto";
 import {
   toKnowledgeChunkDto,
+  type BulkMetadataMode,
   type ChunkPipelineSummaryDto,
   type KnowledgeChunkMetadata,
   type PackChunksListResponse,
@@ -283,6 +284,71 @@ export async function updateKnowledgeChunk(input: {
 
   const list = await listPackChunks(input.packId);
   return { chunk: toKnowledgeChunkDto(updated), summary: list!.summary };
+}
+
+export async function bulkUpdateChunkMetadata(input: {
+  packId: string;
+  chunkIds: string[];
+  mode: BulkMetadataMode;
+  metadata?: KnowledgeChunkMetadata | null;
+}) {
+  const ids = Array.from(
+    new Set((input.chunkIds ?? []).map((id) => id.trim()).filter(Boolean)),
+  );
+  if (ids.length === 0) {
+    return { error: "VALIDATION" as const, message: "선택된 chunk가 없습니다." };
+  }
+
+  let normalized: Record<string, string | string[]> | null = null;
+  if (input.mode !== "clear") {
+    const result = validateAndNormalizeChunkMetadata(input.metadata);
+    if (!result.ok) {
+      return { error: "VALIDATION" as const, message: result.errors.join("\n") };
+    }
+    normalized = result.metadata;
+    if (input.mode === "merge" && !normalized) {
+      return { error: "VALIDATION" as const, message: "병합할 metadata가 없습니다." };
+    }
+  }
+
+  const chunks = await prisma.knowledgeChunk.findMany({
+    where: { id: { in: ids }, version: { packId: input.packId } },
+  });
+  if (chunks.length === 0) return { error: "NOT_FOUND" as const };
+
+  let updatedCount = 0;
+  await prisma.$transaction(async (tx) => {
+    for (const chunk of chunks) {
+      let nextMetadata: Prisma.InputJsonValue | typeof Prisma.JsonNull;
+      if (input.mode === "clear") {
+        nextMetadata = Prisma.JsonNull;
+      } else if (input.mode === "replace") {
+        nextMetadata = normalized ?? Prisma.JsonNull;
+      } else {
+        const existing =
+          chunk.metadata && typeof chunk.metadata === "object" && !Array.isArray(chunk.metadata)
+            ? (chunk.metadata as Record<string, unknown>)
+            : {};
+        nextMetadata = { ...existing, ...(normalized ?? {}) } as Prisma.InputJsonValue;
+      }
+
+      await tx.knowledgeChunk.update({
+        where: { id: chunk.id },
+        data: { metadata: nextMetadata },
+      });
+      updatedCount += 1;
+    }
+  });
+
+  await recordProviderAudit({
+    action: AuditAction.ADMIN_CHUNK_UPDATE,
+    entityType: "KnowledgeChunk",
+    entityId: input.packId,
+    metadata: { packId: input.packId, chunkCount: updatedCount, mode: input.mode, bulk: true },
+  });
+
+  const list = await listPackChunks(input.packId);
+  return { updatedCount, summary: list!.summary };
 }
 
 export async function deactivateKnowledgeChunk(input: { packId: string; chunkId: string }) {

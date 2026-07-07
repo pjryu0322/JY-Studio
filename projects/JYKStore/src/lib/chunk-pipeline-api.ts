@@ -1,4 +1,9 @@
-import type { ChunkPipelineSummaryDto, KnowledgeChunkDto, PackChunksListResponse } from "@/lib/chunk-pipeline-dto";
+import type {
+  BulkMetadataMode,
+  ChunkPipelineSummaryDto,
+  KnowledgeChunkDto,
+  PackChunksListResponse,
+} from "@/lib/chunk-pipeline-dto";
 
 async function parseErrorMessage(response: Response): Promise<string> {
   try {
@@ -83,6 +88,27 @@ export async function updatePackChunkApi(
   );
   if (!response.ok) throw new Error(await parseErrorMessage(response));
   return (await response.json()) as { chunk: KnowledgeChunkDto; summary: ChunkPipelineSummaryDto };
+}
+
+export async function bulkUpdateChunkMetadataApi(
+  packId: string,
+  body: {
+    chunkIds: string[];
+    mode: BulkMetadataMode;
+    metadata?: Record<string, unknown> | null;
+  },
+): Promise<{ updatedCount: number; summary: ChunkPipelineSummaryDto }> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/chunks/bulk-metadata`,
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) throw new Error(await parseErrorMessage(response));
+  return (await response.json()) as { updatedCount: number; summary: ChunkPipelineSummaryDto };
 }
 
 export async function deactivatePackChunkApi(

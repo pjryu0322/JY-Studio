@@ -26,8 +26,8 @@ export default function RetrievalApiDocsPage() {
       <div className="px-1">
         <h1 className="text-lg font-bold text-slate-900">Metadata Retrieval API</h1>
         <p className="mt-1 text-sm text-store-muted">
-          Metadata Filter 기반 Context 검색 API입니다. Knowledge Retrieval Engine Foundation 단계로, Keyword +
-          Metadata Ranking을 사용합니다.
+          Metadata Filter 기반 Context 검색 API입니다. Metadata AND Filter → Keyword Ranking을 기본으로 하며,
+          P14부터 local-hash embedding 기반 hybrid ranking을 선택할 수 있습니다.
         </p>
       </div>
 
@@ -39,7 +39,10 @@ export default function RetrievalApiDocsPage() {
             Retrieval API: metadata filter, topK, includeMetadata를 명시적으로 제어하는 고급 검색 API입니다.
           </li>
           <li>JYKStore는 답변을 생성하지 않고 context 후보만 반환합니다.</li>
-          <li>P13은 Vector/Embedding/RAG/LLM 호출을 포함하지 않습니다. (P14에서 hybrid ranking으로 확장 예정)</li>
+          <li>
+            P14 hybrid ranking은 local-hash embedding(dev/foundation provider)만 사용하며 외부 embedding/LLM API를
+            호출하지 않습니다.
+          </li>
         </ul>
       </section>
 
@@ -63,11 +66,16 @@ export default function RetrievalApiDocsPage() {
         <DocsCodeBlock code={retrievalRequestBody} language="json" />
 
         <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700">
-          <li>knowledgePackId: 필수</li>
-          <li>query: 선택 (있으면 keyword ranking 적용)</li>
-          <li>filters: 선택 (허용되지 않은 key는 400 오류)</li>
+          <li>knowledgePackId: 필수 (string)</li>
+          <li>query: 선택 (string, 있으면 keyword ranking 적용)</li>
+          <li>filters: 선택 (object, 허용되지 않은 key는 400 오류)</li>
           <li>topK: 선택, 기본 8, 최소 1, 최대 20</li>
-          <li>includeMetadata: 선택, 기본 true</li>
+          <li>includeMetadata: 선택, 기본 true (boolean)</li>
+          <li>
+            retrievalMode: 선택 (&quot;keyword&quot; | &quot;hybrid&quot;). 미지정 시 query가 있으면 hybrid,
+            없으면 keyword로 동작합니다.
+          </li>
+          <li>잘못된 타입/필드는 400 INVALID_RETRIEVAL_REQUEST로 응답합니다.</li>
         </ul>
 
         <h3 className="text-xs font-bold text-slate-800">curl 예제</h3>
@@ -101,6 +109,23 @@ export default function RetrievalApiDocsPage() {
               {key}
             </li>
           ))}
+        </ul>
+      </section>
+
+      <section className="space-y-2 rounded-2xl border border-store-border bg-white p-4 shadow-card">
+        <h2 className="text-sm font-bold text-slate-900">Hybrid ranking (P14 foundation)</h2>
+        <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
+          <li>처리 순서: metadata filter(AND) → keyword score → (hybrid) vector similarity → topK.</li>
+          <li>metadata filter는 항상 vector/hybrid ranking보다 먼저 적용됩니다.</li>
+          <li>
+            hybrid score = keywordScore + metadataScore + cosineSimilarity × 100. embedding이 없는 chunk는
+            keyword/metadata score로 fallback합니다.
+          </li>
+          <li>
+            embedding은 local-hash-v1 provider로 생성합니다. 외부 embedding API 호출이 아니라 dev/foundation
+            provider이며, Admin Chunk Manager의 &quot;embedding 재생성&quot;으로 미리 생성해야 합니다.
+          </li>
+          <li>Vector DB/pgvector/외부 embedding provider는 향후 확장 예정입니다.</li>
         </ul>
       </section>
 

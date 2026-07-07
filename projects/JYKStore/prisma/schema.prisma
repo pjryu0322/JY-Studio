@@ -209,6 +209,7 @@ model KnowledgePackVersion {
   pack            KnowledgePack    @relation(fields: [packId], references: [packId], onDelete: Cascade)
   sourceDocuments SourceDocument[]
   chunks          KnowledgeChunk[]
+  embeddings      KnowledgeChunkEmbedding[]
 
   @@unique([packId, version])
   @@index([packId])
@@ -246,10 +247,32 @@ model KnowledgeChunk {
 
   version        KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
   sourceDocument SourceDocument?      @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  embeddings     KnowledgeChunkEmbedding[]
 
   @@index([versionId])
   @@index([chunkType])
   @@index([isActive])
+}
+
+model KnowledgeChunkEmbedding {
+  id          String   @id @default(cuid())
+  chunkId     String
+  versionId   String
+  provider    String
+  model       String
+  dimension   Int
+  vector      Json
+  contentHash String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  chunk   KnowledgeChunk       @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([chunkId, provider, model])
+  @@index([versionId])
+  @@index([provider, model])
+  @@index([contentHash])
 }
 
 model PackInstallation {
