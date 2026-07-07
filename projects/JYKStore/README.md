@@ -284,6 +284,7 @@ JYKStore는 SourceDocument content를 KnowledgeChunk로 변환해 Context API에
 - chunk 수정
 - chunk 비활성화
 - Admin Console에서 chunk 품질 확인
+- Admin Console에서 chunk의 section, tags, sortOrder, 활성 상태를 수정할 수 있습니다.
 - Context API는 활성 chunk만 반환
 
 위치:

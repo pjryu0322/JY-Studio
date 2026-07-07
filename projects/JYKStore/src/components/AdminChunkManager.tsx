@@ -10,6 +10,17 @@ import {
   updatePackChunkApi,
 } from "@/lib/chunk-pipeline-api";
 
+function parseTagsText(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 export function AdminChunkManager({ packId }: { readonly packId: string }) {
   const [data, setData] = useState<PackChunksListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,6 +38,10 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
+  const [editSection, setEditSection] = useState("");
+  const [editTagsText, setEditTagsText] = useState("");
+  const [editSortOrder, setEditSortOrder] = useState("");
+  const [editIsActive, setEditIsActive] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -90,13 +105,25 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
     setEditingId(chunk.id);
     setEditTitle(chunk.title);
     setEditContent(chunk.content);
+    setEditSection(chunk.section ?? "");
+    setEditTagsText(chunk.tags.join(", "));
+    setEditSortOrder(String(chunk.sortOrder));
+    setEditIsActive(chunk.isActive);
   };
 
   const saveEdit = async () => {
     if (!editingId) return;
     setError(null);
     try {
-      await updatePackChunkApi(packId, editingId, { title: editTitle, content: editContent });
+      const parsedSortOrder = Number(editSortOrder);
+      await updatePackChunkApi(packId, editingId, {
+        title: editTitle,
+        content: editContent,
+        section: editSection.trim() || null,
+        tags: parseTagsText(editTagsText),
+        sortOrder: Number.isFinite(parsedSortOrder) ? parsedSortOrder : undefined,
+        isActive: editIsActive,
+      });
       setEditingId(null);
       await refresh();
     } catch (err) {
@@ -247,8 +274,16 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
               editing={editingId === chunk.id}
               editTitle={editTitle}
               editContent={editContent}
+              editSection={editSection}
+              editTagsText={editTagsText}
+              editSortOrder={editSortOrder}
+              editIsActive={editIsActive}
               onEditTitle={setEditTitle}
               onEditContent={setEditContent}
+              onEditSection={setEditSection}
+              onEditTagsText={setEditTagsText}
+              onEditSortOrder={setEditSortOrder}
+              onEditIsActive={setEditIsActive}
               onStartEdit={() => startEdit(chunk)}
               onSaveEdit={() => void saveEdit()}
               onCancelEdit={() => setEditingId(null)}
@@ -266,8 +301,16 @@ function ChunkCard({
   editing,
   editTitle,
   editContent,
+  editSection,
+  editTagsText,
+  editSortOrder,
+  editIsActive,
   onEditTitle,
   onEditContent,
+  onEditSection,
+  onEditTagsText,
+  onEditSortOrder,
+  onEditIsActive,
   onStartEdit,
   onSaveEdit,
   onCancelEdit,
@@ -277,8 +320,16 @@ function ChunkCard({
   editing: boolean;
   editTitle: string;
   editContent: string;
+  editSection: string;
+  editTagsText: string;
+  editSortOrder: string;
+  editIsActive: boolean;
   onEditTitle: (v: string) => void;
   onEditContent: (v: string) => void;
+  onEditSection: (value: string) => void;
+  onEditTagsText: (value: string) => void;
+  onEditSortOrder: (value: string) => void;
+  onEditIsActive: (value: boolean) => void;
   onStartEdit: () => void;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
@@ -299,6 +350,34 @@ function ChunkCard({
             rows={4}
             className="w-full rounded-lg border border-store-border px-2 py-1 text-sm"
           />
+          <input
+            value={editSection}
+            onChange={(e) => onEditSection(e.target.value)}
+            placeholder="section"
+            className="min-h-[44px] w-full rounded-lg border border-store-border px-2 text-sm"
+          />
+          <input
+            value={editTagsText}
+            onChange={(e) => onEditTagsText(e.target.value)}
+            placeholder="tags, comma-separated"
+            className="min-h-[44px] w-full rounded-lg border border-store-border px-2 text-sm"
+          />
+          <input
+            value={editSortOrder}
+            onChange={(e) => onEditSortOrder(e.target.value)}
+            placeholder="sortOrder"
+            inputMode="numeric"
+            className="min-h-[44px] w-full rounded-lg border border-store-border px-2 text-sm"
+          />
+          <label className="flex min-h-[44px] items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={editIsActive}
+              onChange={(e) => onEditIsActive(e.target.checked)}
+              className="h-4 w-4"
+            />
+            활성 chunk
+          </label>
           <div className="flex gap-2">
             <button type="button" onClick={onSaveEdit} className="min-h-[44px] flex-1 rounded-lg bg-store-accent text-sm font-bold text-white">
               저장
@@ -316,9 +395,21 @@ function ChunkCard({
             {!chunk.isActive ? <span className="text-[10px] font-bold text-red-700">비활성</span> : null}
           </div>
           <p className="text-xs text-store-muted">
-            order {chunk.sortOrder}
-            {chunk.section ? ` · ${chunk.section}` : ""}
+            sortOrder {chunk.sortOrder}
+            {chunk.section ? ` · section: ${chunk.section}` : ""}
           </p>
+          {chunk.tags.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {chunk.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap text-xs text-slate-700">{chunk.content}</pre>
           <div className="mt-2 flex gap-2">
             <button type="button" onClick={onStartEdit} className="min-h-[44px] flex-1 rounded-lg border border-store-border text-xs font-semibold">

@@ -111,7 +111,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
       {pack.status === "REVIEWING" ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          검수 요청이 접수되었습니다. Admin 승인/반려는 다음 Phase에서 제공됩니다.
+          검수 요청이 접수되었습니다. Admin Console에서 승인/반려가 처리됩니다.
         </div>
       ) : null}
 

@@ -4,6 +4,23 @@ import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 
 type RouteContext = { params: Promise<{ packId: string }> };
 
+async function parseJsonBody(request: NextRequest) {
+  try {
+    return (await request.json()) as {
+      versionId?: string;
+      sourceDocumentId?: string | null;
+      chunkType?: string;
+      title?: string;
+      content?: string;
+      section?: string | null;
+      tags?: string[];
+      sortOrder?: number;
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
   const { packId } = await context.params;
@@ -25,16 +42,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { packId } = await context.params;
 
   try {
-    const body = (await request.json()) as {
-      versionId?: string;
-      sourceDocumentId?: string | null;
-      chunkType?: string;
-      title?: string;
-      content?: string;
-      section?: string | null;
-      tags?: string[];
-      sortOrder?: number;
-    };
+    const body = await parseJsonBody(request);
+    if (!body) {
+      return jsonWithClientIdCookie(
+        { error: "요청 본문이 올바른 JSON이 아닙니다." },
+        clientId,
+        { status: 400 },
+      );
+    }
 
     const result = await createKnowledgeChunk({
       packId: packId?.trim() ?? "",

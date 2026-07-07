@@ -4,12 +4,9 @@ import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 
 type RouteContext = { params: Promise<{ packId: string; chunkId: string }> };
 
-export async function PATCH(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
-  const { packId, chunkId } = await context.params;
-
+async function parseJsonBody(request: NextRequest) {
   try {
-    const body = (await request.json()) as {
+    return (await request.json()) as {
       title?: string;
       content?: string;
       section?: string | null;
@@ -17,6 +14,24 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       sortOrder?: number;
       isActive?: boolean;
     };
+  } catch {
+    return null;
+  }
+}
+
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  const clientId = ensureClientId(request);
+  const { packId, chunkId } = await context.params;
+
+  try {
+    const body = await parseJsonBody(request);
+    if (!body) {
+      return jsonWithClientIdCookie(
+        { error: "요청 본문이 올바른 JSON이 아닙니다." },
+        clientId,
+        { status: 400 },
+      );
+    }
 
     const result = await updateKnowledgeChunk({
       packId: packId?.trim() ?? "",
