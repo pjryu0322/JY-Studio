@@ -264,6 +264,27 @@ export default function RetrievalApiDocsPage() {
           <li>Graph는 외부 LLM 없이 DB 데이터 기반 deterministic rebuild로 생성됩니다.</li>
           <li>Export/Graph에는 API Key, 사용자 정보, 과금 정보, audit log 등 민감 정보를 포함하지 않습니다.</li>
         </ul>
+
+        <h3 className="text-xs font-bold text-slate-900">OpenAPI schema (P15.2)</h3>
+        <ul className="list-disc space-y-2 pl-5 text-sm text-slate-700">
+          <li>
+            <span className="font-semibold">공통 schema</span> —{" "}
+            <code className="font-mono text-xs">GET /api/v1/openapi.json</code>. JYKStore Public API 전체(OpenAPI
+            3.1)를 반환하는 discovery endpoint로 인증이 필요 없습니다. schema 내 각 operation에는 Bearer 보안
+            스키마가 명시됩니다.
+          </li>
+          <li>
+            <span className="font-semibold">Pack 특화 schema</span> —{" "}
+            <code className="font-mono text-xs">GET /api/v1/exports/openapi?knowledgePackId=&#123;packId&#125;</code>.
+            Bearer API Key(<code className="font-mono text-xs">context:read</code>) 인증이 필요하고 PUBLISHED/VERIFIED
+            pack만 반환합니다. <code className="font-mono text-xs">info.title</code>과 example에 해당 packId가 반영됩니다.
+          </li>
+        </ul>
+        <p className="text-xs text-store-muted">
+          Custom GPT Actions, Gemini function calling, Cursor/MCP wrapper 등 외부 AI 도구에 위 schema를 등록해 JYKStore
+          Public API를 연동할 수 있습니다. 외부 클라이언트가 context/graph/export data를 받아 답변을 생성하며,
+          JYKStore는 답변을 생성하지 않고 외부 LLM Provider API를 직접 호출하지 않습니다.
+        </p>
       </section>
     </div>
   );

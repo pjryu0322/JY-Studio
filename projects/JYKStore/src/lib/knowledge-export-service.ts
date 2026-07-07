@@ -14,6 +14,8 @@ import {
 } from "@/lib/knowledge-export-dto";
 import { validateAndNormalizeChunkMetadata } from "@/lib/retrieval-metadata";
 import { PUBLIC_PACK_STATUSES } from "@/lib/knowledge-pack-public";
+import { buildOpenApiSchema } from "@/lib/openapi-schema-service";
+import type { OpenApiDocument } from "@/lib/openapi-dto";
 
 function safeMetadata(raw: unknown): Record<string, unknown> | null {
   // 저장된 metadata를 canonical/민감 key 제거 후에만 export한다.
@@ -170,6 +172,21 @@ export async function buildGraphExport(packId: string): Promise<GraphExportDto |
     nodes: graph.nodes,
     edges: graph.edges,
   };
+}
+
+// public openapi export: PUBLISHED/VERIFIED pack만 허용한다. 비공개 pack이면 null(404).
+export async function buildPackOpenApiExport(packId: string): Promise<OpenApiDocument | null> {
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, status: { in: [...PUBLIC_PACK_STATUSES] } },
+    select: { packId: true, name: true, shortDescription: true },
+  });
+  if (!pack) return null;
+
+  return buildOpenApiSchema({
+    packId: pack.packId,
+    packName: pack.name,
+    packDescription: pack.shortDescription,
+  });
 }
 
 export async function buildMcpReadyManifest(packId: string): Promise<McpReadyManifestDto | null> {

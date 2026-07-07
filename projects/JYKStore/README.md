@@ -494,6 +494,18 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
   - Admin graph summary/rebuild(`/api/v1/admin/packs/{packId}/graph`, `/graph/rebuild`)는 내부 관리 기능이므로 기존 client cookie 흐름을 유지합니다(DRAFT 상태에서도 rebuild 가능).
 - **MCP-ready manifest self resource**: `resources`에 자기 자신(`mcp-manifest`, `/api/v1/exports/mcp-manifest?knowledgePackId=...`, `Bearer API Key`)을 추가했습니다.
 
+### P15.2 — OpenAPI Schema Export
+
+- 외부 GPT Actions / Gemini function calling / Cursor·MCP wrapper / 일반 Agent가 JYKStore Public API를 쉽게 연동할 수 있도록 OpenAPI 3.1 schema를 제공합니다.
+  - `GET /api/v1/openapi.json` — JYKStore Public API 공통 schema. **schema discovery 용도로 인증이 필요 없습니다.** schema 내 각 operation에는 `BearerAuth`(http bearer, `bearerFormat: JYKStore API Key`) 보안 스키마가 명시됩니다.
+  - `GET /api/v1/exports/openapi?knowledgePackId={packId}` — 특정 지식팩 특화 schema. Bearer API Key(`context:read`) 인증이 필요하고 PUBLISHED/VERIFIED pack만 반환하며(비공개는 `PACK_NOT_FOUND` 404), `info.title`/example에 packId가 반영됩니다.
+  - 포함 paths: `POST /api/v1/retrieval/query`, `POST /api/v1/graph/query`, `GET /api/v1/exports/{package,rag-jsonl,graph,mcp-manifest}`.
+- schema에는 실제 API Key를 포함하지 않고 dummy(`jyk_live_xxx`)만 사용하며, API Key는 Authorization 헤더로만 문서화합니다.
+- 연동 예:
+  - Custom GPT Actions / Gemini function calling: 위 schema를 등록해 JYKStore API를 호출하고 반환된 context로 답변을 생성합니다.
+  - Cursor / MCP wrapper: OpenAPI + MCP-ready manifest까지 제공하며, 실제 MCP Server runtime은 P16에서 구현합니다.
+- JYKStore는 여전히 답변을 생성하지 않고 외부 LLM Provider API를 직접 호출하지 않습니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

@@ -457,3 +457,17 @@ export const publicPackNotFoundResponseExample = `{
     "requestId": "req_xxx"
   }
 }`;
+
+export const openApiCurlExamples = `# 공통 OpenAPI schema (인증 불필요, schema discovery)
+curl "${apiBaseUrls.development}/api/v1/openapi.json"
+
+# 특정 지식팩 특화 OpenAPI schema export (Bearer API Key 필요)
+curl "${apiBaseUrls.development}/api/v1/exports/openapi?knowledgePackId=${samplePackId}" \\
+  -H "Authorization: Bearer ${sampleApiKey}"`;
+
+export const openApiIntegrationNotes = [
+  "GET /api/v1/openapi.json — JYKStore Public API 공통 OpenAPI 3.1 schema (인증 없이 discovery 가능, operation에는 Bearer 보안 스키마 명시).",
+  "GET /api/v1/exports/openapi?knowledgePackId=... — 특정 지식팩 특화 schema. Bearer API Key(context:read) 필요, PUBLISHED/VERIFIED pack만 반환.",
+  "Custom GPT Actions / Gemini function calling / Cursor·MCP wrapper에 위 schema를 등록해 JYKStore Public API를 연동할 수 있습니다.",
+  "외부 AI 클라이언트가 JYKStore에서 context/graph/export를 받아 답변을 생성합니다. JYKStore는 답변을 생성하지 않으며 외부 LLM Provider API를 직접 호출하지 않습니다.",
+];
