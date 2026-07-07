@@ -33,6 +33,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const startedAt = Date.now();
   const requestId = createRequestId();
   const endpoint = request.nextUrl.pathname;
+  const method = request.method;
 
   let apiKeyId: string | null = null;
   let packId = "";
@@ -45,6 +46,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         requestId,
         apiKeyId: null,
         endpoint,
+        method,
         statusCode: auth.status,
         latencyMs: Date.now() - startedAt,
         metadata: { reason: code },
@@ -62,6 +64,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         requestId,
         apiKeyId,
         endpoint,
+        method,
         statusCode: 400,
         latencyMs: Date.now() - startedAt,
         metadata: { reason: "INVALID_REQUEST" },
@@ -87,6 +90,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         apiKeyId,
         packId,
         endpoint,
+        method,
         query: q,
         statusCode: 404,
         latencyMs: Date.now() - startedAt,
@@ -100,10 +104,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
       apiKeyId,
       packId,
       endpoint,
+      method,
       query: q,
       statusCode: 200,
       latencyMs: Date.now() - startedAt,
-      metadata: { chunkCount: result.usage.chunkCount, query: q, limit },
+      metadata: {
+        chunkCount: result.usage.chunkCount,
+        query: q,
+        limit,
+        includeMetadata,
+      },
     });
 
     return NextResponse.json(result);
@@ -114,6 +124,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       apiKeyId,
       packId: packId || undefined,
       endpoint,
+      method,
       statusCode: 500,
       latencyMs: Date.now() - startedAt,
       metadata: { error: "INTERNAL_SERVER_ERROR" },

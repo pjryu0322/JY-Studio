@@ -14,6 +14,12 @@ type ErrorCode =
   | "INVALID_REQUEST"
   | "INTERNAL_SERVER_ERROR";
 
+type ContextQueryBody = {
+  query?: string;
+  limit?: number;
+  includeMetadata?: boolean;
+};
+
 function jsonError(requestId: string, code: ErrorCode, message: string, status: number) {
   return NextResponse.json(
     {
@@ -24,10 +30,19 @@ function jsonError(requestId: string, code: ErrorCode, message: string, status: 
   );
 }
 
+async function parseJsonBody(request: NextRequest): Promise<ContextQueryBody | null> {
+  try {
+    return (await request.json()) as ContextQueryBody;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const startedAt = Date.now();
   const requestId = createRequestId();
   const endpoint = request.nextUrl.pathname;
+  const method = request.method;
 
   let apiKeyId: string | null = null;
   let packId = "";
@@ -40,6 +55,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         requestId,
         apiKeyId: null,
         endpoint,
+        method,
         statusCode: auth.status,
         latencyMs: Date.now() - startedAt,
         metadata: { reason: code },
@@ -53,14 +69,32 @@ export async function POST(request: NextRequest, context: RouteContext) {
     packId = routePackId?.trim() ?? "";
 
     if (!packId) {
+      await recordApiUsage({
+        requestId,
+        apiKeyId,
+        endpoint,
+        method,
+        statusCode: 400,
+        latencyMs: Date.now() - startedAt,
+        metadata: { reason: "INVALID_REQUEST" },
+      });
       return jsonError(requestId, "INVALID_REQUEST", "packId가 필요합니다.", 400);
     }
 
-    const body = (await request.json()) as {
-      query?: string;
-      limit?: number;
-      includeMetadata?: boolean;
-    };
+    const body = await parseJsonBody(request);
+    if (!body) {
+      await recordApiUsage({
+        requestId,
+        apiKeyId,
+        packId,
+        endpoint,
+        method,
+        statusCode: 400,
+        latencyMs: Date.now() - startedAt,
+        metadata: { reason: "INVALID_JSON" },
+      });
+      return jsonError(requestId, "INVALID_REQUEST", "요청 본문이 올바른 JSON이 아닙니다.", 400);
+    }
 
     const q = body.query?.trim() ?? undefined;
     const limit =
@@ -82,10 +116,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
         apiKeyId,
         packId,
         endpoint,
+        method,
         query: q,
         statusCode: 404,
         latencyMs: Date.now() - startedAt,
-        metadata: { reason: "PACK_NOT_FOUND" },
+        metadata: { reason: "PACK_NOT_FOUND", packId },
       });
       return jsonError(requestId, "PACK_NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
     }
@@ -95,10 +130,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
       apiKeyId,
       packId,
       endpoint,
+      method,
       query: q,
       statusCode: 200,
       latencyMs: Date.now() - startedAt,
-      metadata: { chunkCount: result.usage.chunkCount, query: q, limit },
+      metadata: {
+        chunkCount: result.usage.chunkCount,
+        query: q,
+        limit,
+        includeMetadata,
+      },
     });
 
     return NextResponse.json(result);
@@ -109,6 +150,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       apiKeyId,
       packId: packId || undefined,
       endpoint,
+      method,
       statusCode: 500,
       latencyMs: Date.now() - startedAt,
       metadata: { error: "INTERNAL_SERVER_ERROR" },

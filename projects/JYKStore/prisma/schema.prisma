@@ -242,10 +242,13 @@ model ApiUsageLog {
   apiKeyId   String?
   packId     String?
   endpoint   String
+  method     String?
   target     String?
   query      String?
   usedChunks Int      @default(0)
   statusCode Int
+  latencyMs  Int?
+  metadata   Json?
   createdAt  DateTime @default(now())
 
   apiKey ApiKey?        @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
@@ -253,6 +256,7 @@ model ApiUsageLog {
 
   @@index([apiKeyId])
   @@index([packId])
+  @@index([statusCode])
   @@index([createdAt])
 }
 

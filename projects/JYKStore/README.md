@@ -131,6 +131,32 @@ curl -X GET "http://localhost:3004/api/v1/packs/easy-auth/context?limit=10" \
 - Vector DB/RAG 검색은 이후 Phase에서 제공합니다.
 - API Key에는 `context:read` scope가 필요합니다.
 
+## Context API Usage Logging
+
+Context API 호출은 `ApiUsageLog`에 기록됩니다.
+
+기록 항목:
+
+- requestId
+- apiKeyId
+- packId
+- endpoint
+- method
+- query
+- usedChunks
+- statusCode
+- latencyMs
+- metadata
+
+보안 정책:
+
+- API Key 원문은 로그에 저장하지 않습니다.
+- Authorization 헤더 전체는 로그에 저장하지 않습니다.
+- keyHash는 응답과 로그에 저장하지 않습니다.
+- 민감한 metadata key는 `[REDACTED]` 처리합니다.
+
+오류 응답의 `usage.requestId`와 DB의 `ApiUsageLog.requestId`를 통해 문제를 추적할 수 있습니다.
+
 ## 아직 구현하지 않은 기능
 
 - Vector DB/RAG 검색

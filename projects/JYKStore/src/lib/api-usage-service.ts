@@ -1,8 +1,47 @@
 import crypto from "crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+
+const SENSITIVE_METADATA_KEYS = [
+  "authorization",
+  "apiKey",
+  "api_key",
+  "plainKey",
+  "plain_key",
+  "token",
+  "bearer",
+  "keyHash",
+  "key_hash",
+  "secret",
+  "password",
+];
 
 export function createRequestId() {
   return `req_${crypto.randomUUID()}`;
+}
+
+export function sanitizeUsageMetadata(
+  metadata?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!metadata) return undefined;
+
+  const result: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(metadata)) {
+    const normalized = key.toLowerCase();
+    const sensitive = SENSITIVE_METADATA_KEYS.some((item) => normalized.includes(item.toLowerCase()));
+
+    if (sensitive) {
+      result[key] = "[REDACTED]";
+      continue;
+    }
+
+    if (value === undefined) continue;
+
+    result[key] = value;
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 export async function recordApiUsage(input: {
@@ -10,14 +49,16 @@ export async function recordApiUsage(input: {
   apiKeyId: string | null;
   packId?: string;
   endpoint: string;
+  method?: string;
   target?: string;
   query?: string;
   statusCode: number;
   latencyMs: number;
   metadata?: Record<string, unknown>;
 }) {
+  const sanitizedMetadata = sanitizeUsageMetadata(input.metadata);
   const chunkCount =
-    typeof input.metadata?.chunkCount === "number" ? input.metadata.chunkCount : undefined;
+    typeof sanitizedMetadata?.chunkCount === "number" ? sanitizedMetadata.chunkCount : undefined;
 
   await prisma.apiUsageLog.create({
     data: {
@@ -25,10 +66,13 @@ export async function recordApiUsage(input: {
       apiKeyId: input.apiKeyId,
       packId: input.packId,
       endpoint: input.endpoint,
-      target: input.target ?? reasonFromMetadata(input.metadata),
-      query: input.query ?? stringFromMetadata(input.metadata?.query),
+      method: input.method,
+      target: input.target ?? reasonFromMetadata(sanitizedMetadata),
+      query: input.query ?? stringFromMetadata(sanitizedMetadata?.query),
       usedChunks: chunkCount ?? 0,
       statusCode: input.statusCode,
+      latencyMs: input.latencyMs,
+      metadata: sanitizedMetadata as Prisma.InputJsonValue | undefined,
     },
   });
 }
