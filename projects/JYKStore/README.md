@@ -171,7 +171,7 @@ Provider Center는 지식팩 제공자가 프로필을 등록하고 지식팩 �
 
 제한:
 
-- Admin 승인/반려는 Phase P7에서 구현합니다.
+- Admin 승인/반려는 Admin Console에서 처리합니다.
 - 파일 업로드와 자동 청킹은 Phase P8에서 구현합니다.
 - DRAFT/REVIEWING 지식팩은 일반 카탈로그와 Context API에 노출되지 않습니다.
 
