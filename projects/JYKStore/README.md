@@ -309,6 +309,8 @@ JYKStore는 DB 기반 keyword/ranking 검색을 제공합니다.
 - chunk title/content/section/tags/chunkType 가중치 적용
 - Context API metadata에 score/matchReasons 제공
 - Admin Chunk Manager에서 chunk 검색 지원
+- Admin Chunk Manager 검색은 공백 기준 token 검색을 지원합니다.
+- Context API usage log의 query는 100자 이하로 제한해 저장합니다.
 
 정책:
 

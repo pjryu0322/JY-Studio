@@ -98,6 +98,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const q = body.query?.trim() ?? undefined;
+    const safeQuery = q?.slice(0, 100);
     const limit =
       typeof body.limit === "number" ? parseContextLimit(String(body.limit)) : parseContextLimit(null);
     const includeMetadata =
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         packId,
         endpoint,
         method,
-        query: q,
+        query: safeQuery,
         statusCode: 404,
         latencyMs: Date.now() - startedAt,
         metadata: { reason: "PACK_NOT_FOUND", packId },
@@ -132,12 +133,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       packId,
       endpoint,
       method,
-      query: q,
+      query: safeQuery,
       statusCode: 200,
       latencyMs: Date.now() - startedAt,
       metadata: {
         chunkCount: result.usage.chunkCount,
-        query: q?.slice(0, 100),
+        query: safeQuery,
         limit,
         includeMetadata,
         searchMode: q ? "keyword-ranking" : "default",

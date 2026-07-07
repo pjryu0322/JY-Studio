@@ -9,7 +9,7 @@ import {
   generateChunksFromDocumentApi,
   updatePackChunkApi,
 } from "@/lib/chunk-pipeline-api";
-import { includesNormalized, normalizeSearchText } from "@/lib/search-utils";
+import { includesNormalized, tokenizeSearchQuery } from "@/lib/search-utils";
 
 function parseTagsText(value: string): string[] {
   return Array.from(
@@ -150,13 +150,14 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
   }
 
   const summary = data?.summary;
-  const normalizedChunkQuery = normalizeSearchText(chunkQuery);
-  const visibleChunks = normalizedChunkQuery
-    ? (data?.chunks ?? []).filter((chunk) =>
-        [chunk.title, chunk.content, chunk.section, chunk.chunkType, ...chunk.tags].some((field) =>
-          includesNormalized(field, normalizedChunkQuery),
-        ),
-      )
+  const chunkQueryTokens = tokenizeSearchQuery(chunkQuery);
+  const visibleChunks = chunkQueryTokens.length
+    ? (data?.chunks ?? []).filter((chunk) => {
+        const fields = [chunk.title, chunk.content, chunk.section, chunk.chunkType, ...chunk.tags];
+        return chunkQueryTokens.some((token) =>
+          fields.some((field) => includesNormalized(field, token)),
+        );
+      })
     : (data?.chunks ?? []);
 
   return (
@@ -281,6 +282,11 @@ export function AdminChunkManager({ packId }: { readonly packId: string }) {
           placeholder="chunk 검색: callback, 오류코드, 인증 요청..."
           className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
         />
+        {chunkQueryTokens.length > 0 ? (
+          <p className="text-xs text-store-muted">
+            검색 token {chunkQueryTokens.length}개 기준 {visibleChunks.length}개 chunk가 표시됩니다.
+          </p>
+        ) : null}
         {!data?.chunks.length ? (
           <p className="text-sm text-store-muted">등록된 chunk가 없습니다.</p>
         ) : visibleChunks.length === 0 ? (
