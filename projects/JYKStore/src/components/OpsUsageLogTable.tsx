@@ -18,6 +18,7 @@ export function OpsUsageLogTable() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusFilter>("");
   const [endpoint, setEndpoint] = useState("");
+  const [packId, setPackId] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -27,6 +28,7 @@ export function OpsUsageLogTable() {
       const data = await fetchOpsUsageLogs({
         status: status || undefined,
         endpoint: endpoint.trim() || undefined,
+        packId: packId.trim() || undefined,
         limit: 100,
       });
       setItems(data);
@@ -35,7 +37,7 @@ export function OpsUsageLogTable() {
     } finally {
       setLoading(false);
     }
-  }, [status, endpoint]);
+  }, [status, endpoint, packId]);
 
   useEffect(() => {
     void refresh();
@@ -60,6 +62,12 @@ export function OpsUsageLogTable() {
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}
           placeholder="endpoint 필터"
+          className="min-h-[36px] flex-1 rounded-xl border border-store-border px-3 text-xs"
+        />
+        <input
+          value={packId}
+          onChange={(e) => setPackId(e.target.value)}
+          placeholder="packId 필터"
           className="min-h-[36px] flex-1 rounded-xl border border-store-border px-3 text-xs"
         />
       </div>

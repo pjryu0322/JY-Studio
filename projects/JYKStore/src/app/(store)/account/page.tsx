@@ -14,6 +14,12 @@ const ACCOUNT_ITEMS = [
     href: ROUTES.docs,
     status: null,
   },
+  {
+    title: "이용 플랜",
+    description: "현재 무료 이용 상태 및 사용량",
+    href: ROUTES.accountPlan,
+    status: null,
+  },
   { title: "운영 사용량 확인", description: "API UsageLog 및 호출 상태 (내부 운영용)", href: ROUTES.adminOpsUsage, status: null },
   {
     title: "지식팩 제공자 센터",

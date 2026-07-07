@@ -1,11 +1,12 @@
+import { FREE_PLAN_POLICY } from "@/lib/plan-policy";
+
 export const RATE_LIMIT_POLICY = {
-  plan: "FREE",
-  enforcement: "SOFT",
-  blockingEnabled: false,
-  perMinuteWarning: 120,
-  perDayWarning: 10000,
-  description:
-    "현재 JYKStore는 전체 무료 정책이며, 초과 시 차단하지 않고 운영 참고용으로만 표시합니다.",
+  plan: FREE_PLAN_POLICY.planName.toUpperCase(),
+  enforcement: FREE_PLAN_POLICY.enforcement,
+  blockingEnabled: FREE_PLAN_POLICY.blockingEnabled,
+  perMinuteWarning: FREE_PLAN_POLICY.contextApiMinuteWarning,
+  perDayWarning: FREE_PLAN_POLICY.contextApiDailyWarning,
+  description: FREE_PLAN_POLICY.description,
 } as const;
 
 export type RateLimitPolicyDto = {

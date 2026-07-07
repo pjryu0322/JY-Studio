@@ -14,6 +14,7 @@ const OPS_LINKS = [
   { title: "Usage Log", description: "API 호출 로그", href: ROUTES.adminOpsUsage },
   { title: "Audit Log", description: "감사 로그", href: ROUTES.adminOpsAudit },
   { title: "Health", description: "DB/Context API 상태", href: ROUTES.adminOpsHealth },
+  { title: "Plan / Billing", description: "무료 플랜 및 사용량 기준", href: ROUTES.adminOpsPlans },
 ] as const;
 
 export function OpsSummaryPanel() {

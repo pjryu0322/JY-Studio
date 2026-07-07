@@ -373,6 +373,33 @@ JYKStore는 내부 운영자가 API 사용량, AuditLog, Health 상태를 확인
 - API Key 원문과 Authorization header는 저장하거나 표시하지 않습니다.
 - 현재 rate limit은 전체 무료 정책에 맞춰 soft policy로 표시하며 API 호출을 차단하지 않습니다.
 
+## Free Plan & Billing Foundation
+
+JYKStore는 현재 전체 무료 정책을 기본으로 합니다.
+
+위치:
+
+- `/account/plan`
+- `/admin/ops/plans`
+
+현재 단계:
+
+- Free Plan policy
+- 전체 무료 이용 상태 표시
+- Context API 사용량 summary
+- soft warning 기준 표시
+- billing/payment disabled 상태 표시
+- 향후 유료화 확장 필드 준비
+
+정책:
+
+- 현재 모든 사용자는 Free Plan입니다.
+- API 호출은 사용량 초과로 차단하지 않습니다.
+- 실제 결제, 카드 등록, PG 연동은 제공하지 않습니다.
+- 사용량은 운영 참고용으로만 집계합니다.
+- 현재 P12는 DB billing model이 아니라 Free Plan policy foundation입니다.
+- 실제 결제/청구/사용자별 plan assignment는 향후 별도 단계에서 확장합니다.
+
 ## 아직 구현하지 않은 기능
 
 - Vector DB/RAG 검색
@@ -381,8 +408,9 @@ JYKStore는 내부 운영자가 API 사용량, AuditLog, Health 상태를 확인
 
 ## 다음 단계
 
-1. Phase P12: Free Plan & Billing Foundation
-   - 전체 무료 기본 플랜 적용
-   - 플랜/사용량 구조 기반 구현
-   - 무료 이용 상태 표시
-   - 향후 유료화 확장 필드 준비
+1. Phase P13: Knowledge Retrieval Engine Foundation
+   - Knowledge Pack metadata schema 확장
+   - Chunk metadata 확장
+   - Retrieval API v1 설계
+   - Metadata Filter 기반 검색 구조 정리
+   - Vector/Embedding은 P14에서 분리 검토

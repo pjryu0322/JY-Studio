@@ -1,4 +1,4 @@
-import { PackStatus, type Prisma } from "@prisma/client";
+import { AuditAction, PackStatus, type Prisma } from "@prisma/client";
 import { maskId, sanitizeMetadata, truncateText } from "@/lib/masking";
 import type {
   OpsAuditLogItemDto,
@@ -13,6 +13,14 @@ import { getRateLimitPolicyDto } from "@/lib/rate-limit-policy";
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
 const QUERY_MAX_LENGTH = 100;
+
+const AUDIT_ACTION_VALUES = new Set<string>(Object.values(AuditAction));
+
+function normalizeAuditAction(value: string | null | undefined): AuditAction | undefined {
+  const action = value?.trim();
+  if (!action) return undefined;
+  return AUDIT_ACTION_VALUES.has(action) ? (action as AuditAction) : undefined;
+}
 
 function clampLimit(limit?: number): number {
   if (typeof limit !== "number" || !Number.isFinite(limit)) return DEFAULT_LIMIT;
@@ -164,8 +172,9 @@ export async function listOpsAuditLogs(input?: {
 }): Promise<OpsAuditLogItemDto[]> {
   const where: Prisma.AuditLogWhereInput = {};
 
-  if (input?.action?.trim()) {
-    where.action = input.action.trim() as Prisma.AuditLogWhereInput["action"];
+  const action = normalizeAuditAction(input?.action);
+  if (action) {
+    where.action = action;
   }
   if (input?.entityType?.trim()) {
     where.entityType = { contains: input.entityType.trim(), mode: "insensitive" };

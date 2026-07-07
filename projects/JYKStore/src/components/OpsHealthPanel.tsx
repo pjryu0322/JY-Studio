@@ -68,7 +68,7 @@ export function OpsHealthPanel() {
       <div className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
         <h2 className="text-sm font-bold text-slate-900">데이터 현황</h2>
         <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
-          <div>PUBLISHED pack: {data.data.publishedPackCount}</div>
+          <div>공개 pack: {data.data.publishedPackCount}</div>
           <div>REVIEWING pack: {data.data.reviewingPackCount}</div>
           <div>active chunk: {data.data.activeChunkCount}</div>
           <div>API Key: {data.data.apiKeyCount}</div>
