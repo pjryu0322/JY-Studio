@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { AdminChunkManager } from "@/components/AdminChunkManager";
 import { AdminReviewDecisionPanel } from "@/components/AdminReviewDecisionPanel";
 import { AdminReviewPackSummary } from "@/components/AdminReviewPackSummary";
 import { AdminReviewSourceDocuments } from "@/components/AdminReviewSourceDocuments";
@@ -44,6 +45,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
       ) : null}
       <AdminReviewPackSummary detail={detail} />
       <AdminReviewSourceDocuments versions={detail.versions} />
+      <AdminChunkManager packId={packId} />
       <AdminReviewDecisionPanel packId={packId} detail={detail} onUpdated={setDetail} />
     </div>
   );

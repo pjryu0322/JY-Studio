@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { ProviderPackChunkSummaryCard } from "@/components/ProviderPackChunkSummaryCard";
 import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCard";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderSourceDocumentForm } from "@/components/ProviderSourceDocumentForm";
@@ -105,6 +106,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       </div>
 
       <ProviderPackReadinessCard pack={pack} />
+
+      <ProviderPackChunkSummaryCard packId={packId} />
 
       {pack.status === "REVIEWING" ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">

@@ -273,6 +273,30 @@ JYKStore는 Provider Center에서 제출된 REVIEWING 지식팩을 Admin Console
 - 현재 Admin Console은 MVP 내부 검증 도구입니다.
 - 실제 운영 환경에서는 관리자 인증과 권한 제어가 필요합니다.
 
+## Ingestion & Chunk Pipeline
+
+JYKStore는 SourceDocument content를 KnowledgeChunk로 변환해 Context API에서 사용할 수 있도록 관리합니다.
+
+현재 단계:
+
+- SourceDocument content 기반 규칙 청킹
+- 수동 chunk 생성
+- chunk 수정
+- chunk 비활성화
+- Admin Console에서 chunk 품질 확인
+- Context API는 활성 chunk만 반환
+
+위치:
+
+- `/admin/reviews/[packId]`
+
+정책:
+
+- `KnowledgeChunk.isActive = true`인 chunk만 Context API에 노출됩니다.
+- 비활성 chunk는 삭제하지 않고 Context API에서 제외합니다.
+- SourceDocument content가 없는 경우 chunk를 생성할 수 없습니다.
+- 파일 업로드, PDF parsing, embedding, Vector DB/RAG는 아직 제공하지 않습니다.
+
 ## 아직 구현하지 않은 기능
 
 - Vector DB/RAG 검색
@@ -281,8 +305,8 @@ JYKStore는 Provider Center에서 제출된 REVIEWING 지식팩을 Admin Console
 
 ## 다음 단계
 
-1. Phase P8: Ingestion & Chunk Pipeline
-   - SourceDocument 기반 청킹
-   - KnowledgeChunk 생성/관리
-   - 수동/반자동 청킹 검수
-   - 공개 지식팩 Context 품질 개선
+1. Phase P9: 검색 고도화
+   - 지식팩 검색 품질 개선
+   - Context API query 품질 개선
+   - chunk 기반 keyword/ranking 개선
+   - 향후 Vector/RAG 확장 준비
