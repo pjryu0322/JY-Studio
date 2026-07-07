@@ -1,13 +1,17 @@
 "use client";
 
-import type { KnowledgePack } from "@/types/knowledge-pack";
+import type { KnowledgePack } from "@/types/pack";
 import { StatusBadge } from "@/components/StatusBadge";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 
 function formatUsage(n: number): string {
-  if (n >= 10000) return `${(n / 1000).toFixed(1)}k`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
+}
+
+function formatRating(rating: number): string {
+  if (rating <= 0) return "—";
+  return rating.toFixed(1);
 }
 
 export function PackCard(p: {
@@ -18,24 +22,22 @@ export function PackCard(p: {
   return (
     <article className="flex gap-3 rounded-2xl border border-store-border bg-store-card p-3 shadow-card">
       <div
-        className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-800 to-slate-600 text-xs font-bold text-white"
+        className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 text-2xl"
         aria-hidden
       >
-        {pack.iconLabel.slice(0, 4)}
+        {pack.icon}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <h3 className="truncate text-sm font-bold text-slate-900">{pack.name}</h3>
-          {pack.verified ? <VerifiedBadge /> : null}
+          {pack.isVerified ? <VerifiedBadge /> : null}
           <StatusBadge status={pack.status} />
         </div>
-        {pack.provider ? (
-          <p className="mt-0.5 text-xs text-store-muted">{pack.provider}</p>
-        ) : null}
+        <p className="mt-0.5 text-xs text-store-muted">{pack.provider}</p>
         <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">{pack.description}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-store-muted">
           <span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700">{pack.category}</span>
-          <span>★ {pack.rating.toFixed(1)}</span>
+          <span>★ {formatRating(pack.rating)}</span>
           <span>· {formatUsage(pack.usageCount)} 사용</span>
           <span>· v{pack.version}</span>
         </div>
