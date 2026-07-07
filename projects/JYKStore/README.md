@@ -200,6 +200,46 @@ JYKStore는 지식팩 연동 화면에서 Context API 테스트 콘솔을 제공
 - API Key 원문은 URL query로 전달하지 않습니다.
 - 새로고침하면 입력한 API Key는 사라집니다.
 
+## Selected Pack API Key Issue & Test Console
+
+JYKStore는 지식팩 연동 화면에서 선택한 지식팩 기준으로 API Key를 발급하고 Context API를 테스트할 수 있습니다.
+
+위치:
+
+- `/my-packs/[packId]/connect`
+
+흐름:
+
+1. 지식팩을 내 지식팩에 추가합니다.
+2. 연동 화면으로 이동합니다.
+3. “이 지식팩 연동용 API Key 발급”을 선택합니다.
+4. 발급된 API Key를 복사합니다.
+5. 같은 화면의 Context API 테스트 패널에서 바로 호출합니다.
+
+확인 가능한 항목:
+
+- API Key 유효성
+- `context:read` scope 여부
+- packId 유효성
+- HTTP status
+- requestId
+- chunkCount
+- elapsedMs
+- 응답 JSON
+
+보안 정책:
+
+- API Key 원문은 생성 직후 1회만 표시합니다.
+- 테스트 패널의 API Key는 React state에만 보관합니다.
+- API Key 원문은 LocalStorage/sessionStorage에 저장하지 않습니다.
+- API Key 원문은 URL query로 전달하지 않습니다.
+- 새로고침하면 입력한 API Key는 사라집니다.
+
+제한:
+
+- 현재 API Key는 clientId 기준이며 packId 전용 권한 바인딩은 아닙니다.
+- packId 전용 API Key 정책은 이후 별도 Phase에서 검토합니다.
+
 ## 아직 구현하지 않은 기능
 
 - Vector DB/RAG 검색

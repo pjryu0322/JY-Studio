@@ -18,8 +18,8 @@ export function ApiKeyCreatedSecret({
         아래 Key는 이번에만 표시됩니다. 안전한 곳에 복사해 두세요. 새로고침하면 다시 볼 수 없습니다.
       </p>
       <p className="mt-2 text-xs leading-relaxed text-amber-900">
-        복사한 Key는 지식팩 연동 화면의 Context API 테스트 패널에서 바로 확인할 수 있습니다. 지식팩을 선택한 뒤
-        연동 화면에서 테스트하세요.
+        복사한 Key는 지식팩 연동 화면의 Context API 테스트 패널에서 사용할 수 있습니다. 선택한 지식팩 화면에서는
+        연동용 API Key를 바로 발급하고 테스트할 수도 있습니다.
       </p>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
         <code className="min-w-0 flex-1 break-all rounded-xl bg-white px-3 py-2 text-xs text-slate-800">

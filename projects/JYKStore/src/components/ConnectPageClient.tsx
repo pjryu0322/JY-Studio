@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import type { KnowledgePack } from "@/types/pack";
 import { AddToMyPacksButton } from "@/components/AddToMyPacksButton";
 import { CodeSnippet } from "@/components/CodeSnippet";
 import { ConnectInfoCard } from "@/components/ConnectInfoCard";
 import { ContextApiTestPanel } from "@/components/ContextApiTestPanel";
 import { IntegrationStepCard } from "@/components/IntegrationStepCard";
+import { SelectedPackApiKeyIssuePanel } from "@/components/SelectedPackApiKeyIssuePanel";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
 import { useMyPacks } from "@/hooks/useMyPacks";
 import {
@@ -25,6 +27,7 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
   const { mounted, isMyPack } = useMyPacks();
   const inLibrary = mounted && isMyPack(pack.packId);
   const endpoint = getPackContextEndpoint(pack.packId, { limit: 10 });
+  const [issuedApiKey, setIssuedApiKey] = useState<string | undefined>(undefined);
 
   return (
     <div className="space-y-4 pb-4">
@@ -67,31 +70,29 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
 
       <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
         <p className="text-sm leading-relaxed text-slate-800">
-          이 화면에서 외부 AI 도구나 서비스에 연결할 때 필요한 정보를 복사할 수 있습니다.
-        </p>
-        <p className="mt-2 text-xs text-store-muted">
-          API Key를 발급한 뒤 Context API로 지식팩 청크를 조회할 수 있습니다.
+          이 화면에서 연동용 API Key를 발급하고, 같은 화면에서 Context API 응답을 바로 확인할 수 있습니다.
         </p>
         <Link
           href={ROUTES.apiKeys}
           className="mt-3 inline-flex min-h-[44px] items-center text-sm font-bold text-store-accent"
         >
-          API Key 관리 →
+          API Key 전체 관리 →
         </Link>
       </div>
 
-      <IntegrationStepCard step={1} title="API Key 확인">
-        <ConnectInfoCard
-          label="Authorization 헤더"
-          value={`Bearer ${API_KEY_PLACEHOLDER}`}
-          hint="API Key 관리에서 발급한 Key를 Bearer 토큰으로 사용합니다."
+      <IntegrationStepCard step={1} title="API Key 발급">
+        <SelectedPackApiKeyIssuePanel
+          packId={pack.packId}
+          packName={pack.name}
+          onIssued={setIssuedApiKey}
         />
-        <Link
-          href={ROUTES.apiKeys}
-          className="mt-2 inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-        >
-          API Key 발급하기
-        </Link>
+        <div className="mt-4">
+          <ConnectInfoCard
+            label="Authorization 헤더 형식"
+            value={`Bearer ${API_KEY_PLACEHOLDER}`}
+            hint="발급한 Key를 Bearer 토큰으로 Context API에 전달합니다."
+          />
+        </div>
       </IntegrationStepCard>
 
       <IntegrationStepCard step={2} title="Pack ID 확인">
@@ -103,7 +104,11 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
       </IntegrationStepCard>
 
       <IntegrationStepCard step={4} title="Context API 테스트">
-        <ContextApiTestPanel packId={pack.packId} packName={pack.name} />
+        <ContextApiTestPanel
+          packId={pack.packId}
+          packName={pack.name}
+          initialApiKey={issuedApiKey}
+        />
       </IntegrationStepCard>
 
       <IntegrationStepCard step={5} title="예시 코드 복사">

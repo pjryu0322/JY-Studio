@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import {
   runContextApiTest,
   type ContextApiTestResult,
@@ -9,11 +9,13 @@ import {
 export function ContextApiTestPanel({
   packId,
   packName,
+  initialApiKey,
 }: {
   readonly packId: string;
   readonly packName: string;
+  readonly initialApiKey?: string;
 }) {
-  const [apiKey, setApiKey] = useState("");
+  const [apiKey, setApiKey] = useState(initialApiKey ?? "");
   const [showKey, setShowKey] = useState(false);
   const [method, setMethod] = useState<"GET" | "POST">("GET");
   const [query, setQuery] = useState("");
@@ -23,13 +25,19 @@ export function ContextApiTestPanel({
   const [result, setResult] = useState<ContextApiTestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (initialApiKey) {
+      setApiKey(initialApiKey);
+    }
+  }, [initialApiKey]);
+
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
     setResult(null);
 
     if (!apiKey.trim()) {
-      setError("API Key를 입력해 주세요.");
+      setError("API Key를 입력하거나 위에서 새 API Key를 발급해 주세요.");
       return;
     }
 
