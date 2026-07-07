@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateApiKey, requireApiKeyScope } from "@/lib/api-key-auth";
-import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
 import {
   GRAPH_QUERY_DEFAULT_LIMIT,
   GRAPH_QUERY_MAX_LIMIT,
@@ -8,35 +6,25 @@ import {
   type KnowledgeGraphQueryRequestBody,
 } from "@/lib/knowledge-graph-dto";
 import { queryKnowledgeGraph } from "@/lib/knowledge-graph-service";
-
-type AuthErrorCode = "UNAUTHORIZED" | "FORBIDDEN";
+import {
+  apiErrorResponse,
+  createPublicApiContext,
+  internalServerErrorResponse,
+  parseJsonBodySafe,
+  recordPublicApiUsage,
+  requireContextReadApiKey,
+  validationErrorResponse,
+} from "@/lib/public-api-handler";
 
 const QUERY_MAX_LENGTH = 200;
 
 function validationError(requestId: string, details: string[]) {
-  return NextResponse.json(
-    {
-      error: {
-        code: "INVALID_GRAPH_QUERY_REQUEST",
-        message: "Invalid graph query request.",
-        details,
-      },
-      usage: { requestId },
-    },
-    { status: 400 },
+  return validationErrorResponse(
+    requestId,
+    "INVALID_GRAPH_QUERY_REQUEST",
+    "Invalid graph query request.",
+    details,
   );
-}
-
-function simpleError(requestId: string, code: string, message: string, status: number) {
-  return NextResponse.json({ error: { code, message }, usage: { requestId } }, { status });
-}
-
-async function parseJsonBody(request: NextRequest): Promise<KnowledgeGraphQueryRequestBody | null> {
-  try {
-    return (await request.json()) as KnowledgeGraphQueryRequestBody;
-  } catch {
-    return null;
-  }
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -44,45 +32,19 @@ function isStringArray(value: unknown): value is string[] {
 }
 
 export async function POST(request: NextRequest) {
-  const startedAt = Date.now();
-  const requestId = createRequestId();
-  const endpoint = request.nextUrl.pathname;
-  const method = request.method;
-
-  let apiKeyId: string | null = null;
-  let packId: string | undefined;
+  const context = createPublicApiContext(request);
+  const { requestId } = context;
 
   try {
-    const auth = requireApiKeyScope(await authenticateApiKey(request), "context:read");
-    if (!auth.ok) {
-      const code: AuthErrorCode = auth.status === 403 ? "FORBIDDEN" : "UNAUTHORIZED";
-      await recordApiUsage({
-        requestId,
-        apiKeyId: null,
-        endpoint,
-        method,
-        statusCode: auth.status,
-        latencyMs: Date.now() - startedAt,
-        metadata: { reason: code },
-      });
-      return simpleError(requestId, code, auth.error, auth.status);
-    }
+    const auth = await requireContextReadApiKey(context);
+    if (!auth.ok) return auth.response;
 
-    apiKeyId = auth.apiKeyId;
-
-    const body = await parseJsonBody(request);
-    if (!body) {
-      await recordApiUsage({
-        requestId,
-        apiKeyId,
-        endpoint,
-        method,
-        statusCode: 400,
-        latencyMs: Date.now() - startedAt,
-        metadata: { reason: "INVALID_JSON" },
-      });
+    const parsed = await parseJsonBodySafe<KnowledgeGraphQueryRequestBody>(request);
+    if (!parsed.ok) {
+      await recordPublicApiUsage(context, { statusCode: 400, metadata: { reason: "INVALID_JSON" } });
       return validationError(requestId, ["Request body must be valid JSON."]);
     }
+    const body = parsed.body;
 
     const details: string[] = [];
 
@@ -91,7 +53,7 @@ export async function POST(request: NextRequest) {
     if (!packIdValid) {
       details.push("knowledgePackId must be a non-empty string.");
     } else {
-      packId = (body.knowledgePackId as string).trim();
+      context.packId = (body.knowledgePackId as string).trim();
     }
 
     if (body.query !== undefined && typeof body.query !== "string") {
@@ -119,14 +81,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (details.length > 0) {
-      await recordApiUsage({
-        requestId,
-        apiKeyId,
-        packId,
-        endpoint,
-        method,
+      await recordPublicApiUsage(context, {
         statusCode: 400,
-        latencyMs: Date.now() - startedAt,
         metadata: { reason: "INVALID_GRAPH_QUERY_REQUEST" },
       });
       return validationError(requestId, details);
@@ -150,29 +106,17 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result) {
-      await recordApiUsage({
-        requestId,
-        apiKeyId,
-        packId,
-        endpoint,
-        method,
-        query: safeQuery,
+      await recordPublicApiUsage(context, {
         statusCode: 404,
-        latencyMs: Date.now() - startedAt,
-        metadata: { reason: "PACK_NOT_FOUND", packId },
+        query: safeQuery,
+        metadata: { reason: "PACK_NOT_FOUND", packId: context.packId },
       });
-      return simpleError(requestId, "PACK_NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
+      return apiErrorResponse(requestId, "PACK_NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
     }
 
-    await recordApiUsage({
-      requestId,
-      apiKeyId,
-      packId,
-      endpoint,
-      method,
-      query: safeQuery,
+    await recordPublicApiUsage(context, {
       statusCode: 200,
-      latencyMs: Date.now() - startedAt,
+      query: safeQuery,
       metadata: {
         query: safeQuery,
         nodeCount: result.usage.nodeCount,
@@ -186,16 +130,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("POST /api/v1/graph/query failed", error);
-    await recordApiUsage({
-      requestId,
-      apiKeyId,
-      packId,
-      endpoint,
-      method,
+    await recordPublicApiUsage(context, {
       statusCode: 500,
-      latencyMs: Date.now() - startedAt,
       metadata: { error: "INTERNAL_SERVER_ERROR" },
     });
-    return simpleError(requestId, "INTERNAL_SERVER_ERROR", "서버 오류가 발생했습니다.", 500);
+    return internalServerErrorResponse(requestId);
   }
 }
