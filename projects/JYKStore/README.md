@@ -92,14 +92,20 @@ npm run db:studio
 - `DRAFT`, `REVIEWING`, `DEPRECATED`, `SUSPENDED` 상태는 일반 사용자 화면과 설치 대상에서 제외합니다.
 - 검색은 검색어 없이 chip만 선택해도 DB 기준으로 필터링됩니다.
 
+## API Key 정책
+
+- API Key 원문은 생성 직후 1회만 표시합니다.
+- DB에는 `keyPrefix`, `keyHash`만 저장합니다.
+- API Key 원문은 LocalStorage/sessionStorage에 저장하지 않습니다.
+- 폐기된 API Key는 인증에 사용할 수 없습니다.
+- 다음 Phase의 Context API는 `Authorization: Bearer <API_KEY>` 방식으로 인증합니다.
+
 ## 아직 구현하지 않은 기능
 
-- 실제 API Key 서버 발급
 - Context API Route
 - 로그인/회원 관리
 - Provider/Admin 실제 기능
 
 ## 다음 단계
 
-1. Phase P4: API Key 제품화
-2. Context API Mock 구현
+1. Phase P5: Context API 제품화

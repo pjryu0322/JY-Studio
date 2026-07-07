@@ -5,6 +5,7 @@ export const ROUTES = {
   categories: "/categories",
   myPacks: "/my-packs",
   account: "/account",
+  apiKeys: "/api-keys",
   packs: "/packs",
 } as const;
 
@@ -58,7 +59,7 @@ export function bottomTabActive(key: BottomTabKey, pathname: string): boolean {
     case "myPacks":
       return pathname === ROUTES.myPacks || pathname.startsWith(`${ROUTES.myPacks}/`);
     case "account":
-      return pathname === ROUTES.account;
+      return pathname === ROUTES.account || pathname === ROUTES.apiKeys;
     default:
       return false;
   }

@@ -69,16 +69,28 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
           이 화면에서 외부 AI 도구나 서비스에 연결할 때 필요한 정보를 복사할 수 있습니다.
         </p>
         <p className="mt-2 text-xs text-store-muted">
-          실제 API Key 발급과 Context API 응답은 Phase 4에서 연결됩니다.
+          API Key는 계정 메뉴에서 발급할 수 있습니다. Context API 응답은 다음 단계에서 연결됩니다.
         </p>
+        <Link
+          href={ROUTES.apiKeys}
+          className="mt-3 inline-flex min-h-[44px] items-center text-sm font-bold text-store-accent"
+        >
+          API Key 관리 →
+        </Link>
       </div>
 
       <IntegrationStepCard step={1} title="API Key 확인">
         <ConnectInfoCard
-          label="API Key"
+          label="예시 API Key (연동 코드용)"
           value={MOCK_API_KEY}
-          hint="실제 API Key 발급은 다음 단계에서 연결됩니다."
+          hint="실제 Key는 API Key 관리에서 발급하세요. 예시 코드에는 아래 Mock 값이 들어 있습니다."
         />
+        <Link
+          href={ROUTES.apiKeys}
+          className="mt-2 inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
+        >
+          API Key 발급하기
+        </Link>
       </IntegrationStepCard>
 
       <IntegrationStepCard step={2} title="Pack ID 확인">
