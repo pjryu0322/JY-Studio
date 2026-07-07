@@ -1,3 +1,8 @@
+/**
+ * 화면 임시 호환용 Mock 지식팩 데이터입니다.
+ * 제품 데이터의 기준은 DB seed(prisma/seed.ts)와 Prisma schema입니다.
+ * 후속 Phase P3에서 UI 조회를 DB/API 기반으로 전환하며 mock-packs 직접 사용을 제거합니다.
+ */
 import type { KnowledgePack } from "@/types/pack";
 
 export const mockPacks: KnowledgePack[] = [

@@ -49,15 +49,43 @@ http://localhost:3004
 - cURL, JavaScript, Java/Spring, Python 예시 코드 복사
 - Cursor Prompt, Generic LLM Prompt 예시 복사
 
+## Database Foundation
+
+JYKStore는 제품 데이터 저장소로 PostgreSQL을 사용합니다.
+
+### 환경변수
+
+```env
+DATABASE_URL="postgresql://jykstore:jykstore@localhost:5432/JYKStore?schema=public"
+```
+
+`.env.example`을 참고해 `projects/JYKStore/.env`에 `DATABASE_URL`을 설정한 뒤 마이그레이션과 seed를 실행합니다.
+
+### Prisma 명령
+
+```bash
+npm run db:generate
+npm run db:migrate
+npm run db:seed
+npm run db:studio
+```
+
+### 제품화 데이터 원칙
+
+- 내 지식팩, API Key, 사용량, 지식팩 버전, 원천자료, 청크는 서버 DB에 저장합니다.
+- LocalStorage는 제품 데이터 저장소로 사용하지 않습니다. (UI는 후속 Phase에서 전환)
+- 기존 mock 데이터는 후속 단계에서 DB/API 조회로 제거합니다.
+
 ## 아직 구현하지 않은 기능
 
+- UI의 내 지식팩·목록/상세 DB 조회 전환
 - 실제 API Key 서버 발급
 - Context API Route
-- DB 저장
 - 로그인/회원 관리
 - Provider/Admin 실제 기능
 
 ## 다음 단계
 
-1. Phase 4: API Key 발급 Mock 및 Context API Mock 구현
-2. Provider/Admin 분리
+1. Phase P2: 내 지식팩 LocalStorage 제거 및 서버 DB 저장 전환
+2. Phase P3: UI 목록/상세 DB·API 조회 전환
+3. API Key 발급 Mock 및 Context API Mock 구현

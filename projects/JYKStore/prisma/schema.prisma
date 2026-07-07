@@ -1,0 +1,271 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PackStatus {
+  DRAFT
+  REVIEWING
+  VERIFIED
+  PUBLISHED
+  DEPRECATED
+  SUSPENDED
+}
+
+enum PackPricing {
+  FREE
+  PAID
+  ENTERPRISE
+}
+
+enum ProviderType {
+  JYK_VERIFIED
+  OFFICIAL
+  COMMUNITY
+}
+
+enum InstallationStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  PUBLISH
+  DEPRECATE
+  SUSPEND
+  INSTALL
+  REMOVE
+  API_KEY_CREATE
+  API_KEY_REVOKE
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String?  @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships   OrganizationMember[]
+  installations PackInstallation[]
+  apiKeys       ApiKey[]
+  auditLogs     AuditLog[]
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members       OrganizationMember[]
+  installations PackInstallation[]
+  apiKeys       ApiKey[]
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  role           String
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
+model PackCategory {
+  id          String   @id @default(cuid())
+  categoryId  String   @unique
+  name        String
+  description String
+  icon        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  packs KnowledgePack[]
+}
+
+model KnowledgePack {
+  id               String       @id @default(cuid())
+  packId           String       @unique
+  name             String
+  categoryId       String
+  providerName     String
+  providerType     ProviderType
+  status           PackStatus
+  pricing          PackPricing
+  icon             String
+  shortDescription String
+  description      String
+  tags             String[]
+  rating           Float        @default(0)
+  usageCount       Int          @default(0)
+  isVerified       Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  publishedAt      DateTime?
+
+  category      PackCategory           @relation(fields: [categoryId], references: [categoryId])
+  versions      KnowledgePackVersion[]
+  installations PackInstallation[]
+  usageLogs     ApiUsageLog[]
+
+  @@index([status])
+  @@index([categoryId])
+}
+
+model KnowledgePackVersion {
+  id                    String   @id @default(cuid())
+  packId                String
+  version               String
+  overview              String
+  features              String[]
+  includedKnowledge     String[]
+  supportedEnvironments String[]
+  targetUsers           String[]
+  useCases              String[]
+  versionSummary        String
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  pack            KnowledgePack    @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  sourceDocuments SourceDocument[]
+  chunks          KnowledgeChunk[]
+
+  @@unique([packId, version])
+  @@index([packId])
+}
+
+model SourceDocument {
+  id         String   @id @default(cuid())
+  versionId  String
+  title      String
+  sourceType String
+  sourceUrl  String?
+  content    String?
+  checksum   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  chunks  KnowledgeChunk[]
+}
+
+model KnowledgeChunk {
+  id               String   @id @default(cuid())
+  versionId        String
+  sourceDocumentId String?
+  chunkType        String
+  title            String
+  content          String
+  section          String?
+  tags             String[]
+  sortOrder        Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  version        KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  sourceDocument SourceDocument?      @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([versionId])
+  @@index([chunkType])
+  @@index([isActive])
+}
+
+model PackInstallation {
+  id             String             @id @default(cuid())
+  clientId       String?
+  userId         String?
+  organizationId String?
+  packId         String
+  status         InstallationStatus @default(ACTIVE)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  pack         KnowledgePack @relation(fields: [packId], references: [packId], onDelete: Cascade)
+
+  @@unique([clientId, packId])
+  @@index([clientId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([packId])
+}
+
+model ApiKey {
+  id             String       @id @default(cuid())
+  clientId       String?
+  userId         String?
+  organizationId String?
+  name           String
+  keyPrefix      String
+  keyHash        String
+  scopes         String[]
+  status         ApiKeyStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  lastUsedAt     DateTime?
+  revokedAt      DateTime?
+
+  user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  usageLogs ApiUsageLog[]
+
+  @@index([clientId])
+  @@index([keyPrefix])
+  @@index([status])
+}
+
+model ApiUsageLog {
+  id         String   @id @default(cuid())
+  requestId  String   @unique
+  apiKeyId   String?
+  packId     String?
+  endpoint   String
+  target     String?
+  query      String?
+  usedChunks Int      @default(0)
+  statusCode Int
+  createdAt  DateTime @default(now())
+
+  apiKey ApiKey?        @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  pack   KnowledgePack? @relation(fields: [packId], references: [packId], onDelete: SetNull)
+
+  @@index([apiKeyId])
+  @@index([packId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  actorUserId String?
+  action      AuditAction
+  entityType  String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+
+  actorUser User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
