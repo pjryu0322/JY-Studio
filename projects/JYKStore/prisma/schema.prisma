@@ -55,6 +55,10 @@ enum AuditAction {
   PROVIDER_PACK_VERSION_CREATE
   PROVIDER_SOURCE_DOCUMENT_CREATE
   PROVIDER_PACK_SUBMIT
+  ADMIN_REVIEW_CREATE
+  ADMIN_REVIEW_UPDATE
+  ADMIN_PACK_APPROVE
+  ADMIN_PACK_REJECT
 }
 
 model ProviderProfile {
@@ -157,10 +161,31 @@ model KnowledgePack {
   versions        KnowledgePackVersion[]
   installations PackInstallation[]
   usageLogs     ApiUsageLog[]
+  reviews       PackReview[]
 
   @@index([status])
   @@index([categoryId])
   @@index([providerProfileId])
+}
+
+model PackReview {
+  id               String    @id @default(cuid())
+  packId           String
+  reviewerClientId String?
+  status           String
+  decision         String?
+  memo             String?
+  rejectionReason  String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  decidedAt        DateTime?
+
+  pack KnowledgePack @relation(fields: [packId], references: [packId], onDelete: Cascade)
+
+  @@index([packId])
+  @@index([status])
+  @@index([decision])
+  @@index([createdAt])
 }
 
 model KnowledgePackVersion {

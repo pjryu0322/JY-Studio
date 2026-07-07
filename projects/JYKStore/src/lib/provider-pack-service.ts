@@ -497,15 +497,30 @@ export async function submitProviderPackForReview(clientId: string, packId: stri
     };
   }
 
-  await prisma.knowledgePack.update({
-    where: { packId },
-    data: { status: PackStatus.REVIEWING },
-  });
+  await prisma.$transaction([
+    prisma.knowledgePack.update({
+      where: { packId },
+      data: { status: PackStatus.REVIEWING },
+    }),
+    prisma.packReview.create({
+      data: {
+        packId,
+        status: "PENDING",
+      },
+    }),
+  ]);
 
   await recordProviderAudit({
     action: AuditAction.PROVIDER_PACK_SUBMIT,
     entityType: "KnowledgePack",
     entityId: packId,
+  });
+
+  await recordProviderAudit({
+    action: AuditAction.ADMIN_REVIEW_CREATE,
+    entityType: "PackReview",
+    entityId: packId,
+    metadata: { packId, status: "PENDING" },
   });
 
   const detail = await getProviderPackForClient(clientId, packId);

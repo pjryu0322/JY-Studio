@@ -9,6 +9,7 @@ export const ROUTES = {
   packs: "/packs",
   provider: "/provider",
   providerPackNew: "/provider/packs/new",
+  admin: "/admin",
 } as const;
 
 export function packDetailPath(packId: string): string {
@@ -21,6 +22,10 @@ export function myPackConnectPath(packId: string): string {
 
 export function providerPackDetailPath(packId: string): string {
   return `/provider/packs/${packId}`;
+}
+
+export function adminReviewDetailPath(packId: string): string {
+  return `/admin/reviews/${packId}`;
 }
 
 export function categoryDetailPath(categoryId: string): string {
@@ -65,7 +70,7 @@ export function bottomTabActive(key: BottomTabKey, pathname: string): boolean {
     case "myPacks":
       return pathname === ROUTES.myPacks || pathname.startsWith(`${ROUTES.myPacks}/`);
     case "account":
-      return pathname === ROUTES.account || pathname === ROUTES.apiKeys || pathname.startsWith("/provider");
+      return pathname === ROUTES.account || pathname === ROUTES.apiKeys || pathname.startsWith("/provider") || pathname.startsWith("/admin");
     default:
       return false;
   }

@@ -1,0 +1,55 @@
+import { NextRequest } from "next/server";
+import { approvePackReview } from "@/lib/admin-review-service";
+import { ensureClientId, getClientIdFromRequest, jsonWithClientIdCookie } from "@/lib/client-identity";
+
+type RouteContext = {
+  params: Promise<{ packId: string }>;
+};
+
+async function parseJsonBody(request: NextRequest) {
+  try {
+    return (await request.json()) as { memo?: string; publishAsVerified?: boolean };
+  } catch {
+    return null;
+  }
+}
+
+export async function POST(request: NextRequest, context: RouteContext) {
+  const clientId = ensureClientId(request);
+  const { packId } = await context.params;
+
+  try {
+    const body = await parseJsonBody(request);
+    if (!body) {
+      return jsonWithClientIdCookie({ error: "요청 본문이 올바른 JSON이 아닙니다." }, clientId, {
+        status: 400,
+      });
+    }
+
+    const result = await approvePackReview({
+      packId: packId?.trim() ?? "",
+      reviewerClientId: getClientIdFromRequest(request) ?? clientId,
+      memo: body.memo,
+      publishAsVerified: body.publishAsVerified,
+    });
+
+    if (result.error === "NOT_FOUND") {
+      return jsonWithClientIdCookie({ error: "지식팩을 찾을 수 없습니다." }, clientId, { status: 404 });
+    }
+    if (result.error === "NOT_REVIEWING") {
+      return jsonWithClientIdCookie(
+        { error: "검수 중(REVIEWING) 상태의 지식팩만 승인할 수 있습니다." },
+        clientId,
+        { status: 409 },
+      );
+    }
+    if (result.error === "INCOMPLETE") {
+      return jsonWithClientIdCookie({ error: result.message }, clientId, { status: 400 });
+    }
+
+    return jsonWithClientIdCookie({ clientId, detail: result.detail }, clientId);
+  } catch (error) {
+    console.error("POST /api/v1/admin/reviews/[packId]/approve failed", error);
+    return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
+  }
+}

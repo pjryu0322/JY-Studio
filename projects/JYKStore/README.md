@@ -240,16 +240,49 @@ JYKStore는 지식팩 연동 화면에서 선택한 지식팩 기준으로 API K
 - 현재 API Key는 clientId 기준이며 packId 전용 권한 바인딩은 아닙니다.
 - packId 전용 API Key 정책은 이후 별도 Phase에서 검토합니다.
 
+## Admin 검증 체계
+
+JYKStore는 Provider Center에서 제출된 REVIEWING 지식팩을 Admin Console에서 검수할 수 있습니다.
+
+위치:
+
+- `/admin`
+- `/admin/reviews/[packId]`
+
+현재 단계:
+
+- REVIEWING 지식팩 목록 조회
+- 검수 상세 확인
+- SourceDocument preview 확인
+- 승인 처리
+- 반려 처리
+- 검수 메모 및 AuditLog 기록
+
+상태 전환:
+
+- 승인: `REVIEWING → PUBLISHED` (또는 `VERIFIED`)
+- 반려: `REVIEWING → DRAFT`
+
+노출 정책:
+
+- `PUBLISHED`, `VERIFIED` 지식팩만 일반 카탈로그와 Context API에 노출됩니다.
+- `DRAFT`, `REVIEWING` 지식팩은 일반 카탈로그와 Context API에 노출되지 않습니다.
+
+제한:
+
+- 현재 Admin Console은 MVP 내부 검증 도구입니다.
+- 실제 운영 환경에서는 관리자 인증과 권한 제어가 필요합니다.
+
 ## 아직 구현하지 않은 기능
 
 - Vector DB/RAG 검색
 - 로그인/회원 관리
-- Provider/Admin 실제 기능
+- 관리자 인증 및 권한 제어
 
 ## 다음 단계
 
-1. Phase P7: Admin 검증 체계
-   - REVIEWING 지식팩 목록 조회
-   - 검수 상세 화면
-   - 승인/반려 처리
-   - 검수 메모 및 AuditLog 기록
+1. Phase P8: Ingestion & Chunk Pipeline
+   - SourceDocument 기반 청킹
+   - KnowledgeChunk 생성/관리
+   - 수동/반자동 청킹 검수
+   - 공개 지식팩 Context 품질 개선

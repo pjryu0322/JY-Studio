@@ -15,7 +15,7 @@ const ACCOUNT_ITEMS = [
     href: ROUTES.provider,
     status: null,
   },
-  { title: "관리자 콘솔", description: "검수 및 운영 도구", href: null, status: "준비 중" },
+  { title: "관리자 콘솔", description: "검수 및 운영 도구", href: ROUTES.admin, status: null },
   { title: "설정", description: "알림 및 계정 설정", href: null, status: "준비 중" },
 ] as const;
 
