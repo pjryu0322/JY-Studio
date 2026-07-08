@@ -16,6 +16,7 @@ import {
   parseJsonBodySafe,
   recordPublicApiUsage,
   requireContextReadApiKey,
+  requireQuota,
   validationErrorResponse,
 } from "@/lib/public-api-handler";
 
@@ -35,6 +36,9 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await requireContextReadApiKey(context);
     if (!auth.ok) return auth.response;
+
+    const quota = await requireQuota(context);
+    if (!quota.ok) return quota.response;
 
     const parsed = await parseJsonBodySafe<RetrievalRequestBody>(request);
     if (!parsed.ok) {

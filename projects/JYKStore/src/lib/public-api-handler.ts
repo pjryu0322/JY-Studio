@@ -5,9 +5,12 @@ import {
 } from "@/lib/api-key-auth";
 import { PUBLIC_API_REQUIRED_SCOPE } from "@/lib/api-key-service";
 import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
+import {
+  checkQuota,
+  type QuotaCheckResult,
+} from "@/lib/quota-service";
 
 // 외부 AI/Agent/플랫폼이 호출하는 Public API route의 공통 처리 helper.
-// 동작/응답/인증 정책은 기존 route와 동일하게 유지한다.
 
 export type PublicApiContext = {
   request: NextRequest;
@@ -16,7 +19,9 @@ export type PublicApiContext = {
   endpoint: string;
   method: string;
   apiKeyId: string | null;
+  clientId: string | null;
   packId?: string;
+  quota?: QuotaCheckResult;
 };
 
 export type PublicApiErrorCode =
@@ -25,6 +30,7 @@ export type PublicApiErrorCode =
   | "API_KEY_REVOKED"
   | "API_KEY_EXPIRED"
   | "INSUFFICIENT_SCOPE"
+  | "QUOTA_EXCEEDED"
   | "INVALID_JSON"
   | "INVALID_RETRIEVAL_REQUEST"
   | "INVALID_GRAPH_QUERY_REQUEST"
@@ -40,6 +46,7 @@ export function mapAuthFailureToPublicCode(
 > {
   return code;
 }
+
 export function createPublicApiContext(request: NextRequest): PublicApiContext {
   return {
     request,
@@ -48,13 +55,10 @@ export function createPublicApiContext(request: NextRequest): PublicApiContext {
     endpoint: request.nextUrl.pathname,
     method: request.method,
     apiKeyId: null,
+    clientId: null,
   };
 }
 
-/**
- * 명시적 requestId/startedAt로 context를 구성한다.
- * (기존 route가 자체적으로 requestId/startedAt를 관리하는 경우 호환용)
- */
 export function toPublicApiContext(
   request: NextRequest,
   requestId: string,
@@ -67,6 +71,7 @@ export function toPublicApiContext(
     endpoint: request.nextUrl.pathname,
     method: request.method,
     apiKeyId: null,
+    clientId: null,
   };
 }
 
@@ -76,10 +81,25 @@ export function apiErrorResponse(
   message: string,
   status: number,
   details?: string[],
+  extra?: {
+    reason?: string;
+    retryAfterSeconds?: number;
+    quota?: Record<string, unknown>;
+  },
 ): NextResponse {
   const error: Record<string, unknown> = { code, message };
   if (details) error.details = details;
-  return NextResponse.json({ error, usage: { requestId } }, { status });
+  if (extra?.reason) error.reason = extra.reason;
+  if (typeof extra?.retryAfterSeconds === "number") {
+    error.retryAfterSeconds = extra.retryAfterSeconds;
+  }
+  const usage: Record<string, unknown> = { requestId };
+  if (extra?.quota) usage.quota = extra.quota;
+  const headers: Record<string, string> = {};
+  if (typeof extra?.retryAfterSeconds === "number") {
+    headers["Retry-After"] = String(extra.retryAfterSeconds);
+  }
+  return NextResponse.json({ error, usage }, { status, headers });
 }
 
 export function validationErrorResponse(
@@ -107,27 +127,39 @@ export async function recordPublicApiUsage(
     metadata?: Record<string, unknown>;
   },
 ): Promise<void> {
+  const quotaMeta =
+    context.quota && context.quota.ok
+      ? {
+          quotaWarning: context.quota.warning,
+          quotaMinuteCount: context.quota.usage.minuteCount,
+          quotaDayCount: context.quota.usage.dayCount,
+        }
+      : context.quota && !context.quota.ok
+        ? {
+            reason: "QUOTA_EXCEEDED",
+            quotaReason: context.quota.reason,
+            quotaMinuteCount: context.quota.usage.minuteCount,
+            quotaDayCount: context.quota.usage.dayCount,
+          }
+        : {};
+
   await recordApiUsage({
     requestId: context.requestId,
     apiKeyId: context.apiKeyId,
+    clientId: context.clientId,
     packId: context.packId,
     endpoint: context.endpoint,
     method: context.method,
     query: input.query,
     statusCode: input.statusCode,
     latencyMs: Date.now() - context.startedAt,
-    metadata: input.metadata,
+    metadata: { ...quotaMeta, ...input.metadata },
   });
 }
 
-/**
- * Bearer API Key + context:read scope 인증.
- * 실패 시 usage log를 남기고 error response를 반환한다.
- * 성공 시 context.apiKeyId를 세팅한다.
- */
 export async function requireContextReadApiKey(
   context: PublicApiContext,
-): Promise<{ ok: true; apiKeyId: string } | { ok: false; response: NextResponse }> {
+): Promise<{ ok: true; apiKeyId: string; clientId: string | null } | { ok: false; response: NextResponse }> {
   const auth = await authenticateApiKey(context.request, {
     requiredScope: PUBLIC_API_REQUIRED_SCOPE,
     requestId: context.requestId,
@@ -144,7 +176,67 @@ export async function requireContextReadApiKey(
     };
   }
   context.apiKeyId = auth.apiKeyId;
-  return { ok: true, apiKeyId: auth.apiKeyId };
+  context.clientId = auth.clientId;
+  return { ok: true, apiKeyId: auth.apiKeyId, clientId: auth.clientId };
+}
+
+/**
+ * Quota gate after successful API key auth.
+ * Does not run when apiKeyId is missing.
+ */
+export async function requireQuota(
+  context: PublicApiContext,
+): Promise<{ ok: true; quota: QuotaCheckResult } | { ok: false; response: NextResponse }> {
+  if (!context.apiKeyId) {
+    await recordPublicApiUsage(context, {
+      statusCode: 500,
+      metadata: { reason: "INTERNAL_SERVER_ERROR", detail: "missing_api_key_for_quota" },
+    });
+    return {
+      ok: false,
+      response: internalServerErrorResponse(context.requestId),
+    };
+  }
+
+  const quota = await checkQuota({
+    clientId: context.clientId,
+    apiKeyId: context.apiKeyId,
+    endpoint: context.endpoint,
+    method: context.method,
+  });
+  context.quota = quota;
+
+  if (!quota.ok) {
+    await recordPublicApiUsage(context, {
+      statusCode: 429,
+      metadata: {
+        reason: "QUOTA_EXCEEDED",
+        quotaReason: quota.reason,
+      },
+    });
+    return {
+      ok: false,
+      response: apiErrorResponse(
+        context.requestId,
+        "QUOTA_EXCEEDED",
+        quota.message,
+        429,
+        undefined,
+        {
+          reason: quota.reason,
+          retryAfterSeconds: quota.retryAfterSeconds,
+          quota: {
+            minuteCount: quota.usage.minuteCount,
+            perMinuteLimit: quota.usage.perMinuteLimit,
+            dayCount: quota.usage.dayCount,
+            perDayLimit: quota.usage.perDayLimit,
+          },
+        },
+      ),
+    };
+  }
+
+  return { ok: true, quota };
 }
 
 export async function parseJsonBodySafe<T>(

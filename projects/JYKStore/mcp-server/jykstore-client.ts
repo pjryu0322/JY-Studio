@@ -82,27 +82,52 @@ export function normalizeHttpError(input: {
     parsed = null;
   }
 
+  const errorObj =
+    parsed?.error && typeof parsed.error === "object" && !Array.isArray(parsed.error)
+      ? (parsed.error as Record<string, unknown>)
+      : null;
+  const usageObj =
+    parsed?.usage && typeof parsed.usage === "object" && !Array.isArray(parsed.usage)
+      ? (parsed.usage as Record<string, unknown>)
+      : null;
+
   const code =
+    (typeof errorObj?.code === "string" && errorObj.code) ||
     (typeof parsed?.code === "string" && parsed.code) ||
     (typeof parsed?.error === "string" && parsed.error) ||
     "JYKSTORE_MCP_HTTP_ERROR";
   const message =
+    (typeof errorObj?.message === "string" && errorObj.message) ||
     (typeof parsed?.message === "string" && parsed.message) ||
     (typeof parsed?.error === "string" && parsed.error !== code ? parsed.error : null) ||
     `JYKStore Public API request failed with HTTP ${input.status}.`;
   const requestId =
-    typeof parsed?.requestId === "string"
-      ? parsed.requestId
-      : typeof parsed?.request_id === "string"
-        ? parsed.request_id
-        : undefined;
+    (typeof usageObj?.requestId === "string" && usageObj.requestId) ||
+    (typeof parsed?.requestId === "string" && parsed.requestId) ||
+    (typeof parsed?.request_id === "string" && parsed.request_id) ||
+    undefined;
+
+  let details: Record<string, unknown> | undefined = parsed
+    ? { ...parsed }
+    : input.bodyText
+      ? { body: input.bodyText.slice(0, 500) }
+      : undefined;
+
+  if (details && errorObj) {
+    if (typeof errorObj.reason === "string") {
+      details.reason = errorObj.reason;
+    }
+    if (typeof errorObj.retryAfterSeconds === "number") {
+      details.retryAfterSeconds = errorObj.retryAfterSeconds;
+    }
+  }
 
   return {
     code,
     message,
     status: input.status,
     requestId,
-    details: parsed ?? (input.bodyText ? { body: input.bodyText.slice(0, 500) } : undefined),
+    details,
   };
 }
 

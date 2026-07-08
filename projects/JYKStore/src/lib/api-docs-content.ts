@@ -25,6 +25,12 @@ export const contextApiErrorCodes = [
   { status: 403, code: "API_KEY_EXPIRED", description: "만료된 API Key입니다." },
   { status: 403, code: "INSUFFICIENT_SCOPE", description: "필요한 scope(context:read)가 없습니다." },
   { status: 403, code: "FORBIDDEN", description: "요청이 거부되었습니다." },
+  {
+    status: 429,
+    code: "QUOTA_EXCEEDED",
+    description:
+      "API Key clientId 기준 per-minute/per-day quota를 초과했습니다. retryAfterSeconds 후 재시도하세요.",
+  },
   { status: 404, code: "PACK_NOT_FOUND", description: "공개된 지식팩을 찾을 수 없습니다." },
   { status: 400, code: "INVALID_REQUEST", description: "요청 본문 또는 파라미터가 올바르지 않습니다." },
   { status: 500, code: "INTERNAL_SERVER_ERROR", description: "서버 처리 중 오류가 발생했습니다." },
@@ -246,6 +252,12 @@ export const retrievalApiErrorCodes = [
   { status: 403, code: "API_KEY_EXPIRED", description: "만료된 API Key입니다." },
   { status: 403, code: "INSUFFICIENT_SCOPE", description: "필요한 scope(context:read)가 없습니다." },
   { status: 403, code: "FORBIDDEN", description: "요청이 거부되었습니다." },
+  {
+    status: 429,
+    code: "QUOTA_EXCEEDED",
+    description:
+      "API Key clientId 기준 per-minute/per-day quota를 초과했습니다. retryAfterSeconds 후 재시도하세요.",
+  },
   { status: 400, code: "INVALID_RETRIEVAL_REQUEST", description: "요청 body/filter/topK가 올바르지 않습니다." },
   { status: 404, code: "PACK_NOT_FOUND", description: "공개된 지식팩을 찾을 수 없습니다." },
   { status: 500, code: "INTERNAL_SERVER_ERROR", description: "서버 처리 중 오류가 발생했습니다." },

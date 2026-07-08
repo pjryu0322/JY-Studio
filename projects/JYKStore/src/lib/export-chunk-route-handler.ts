@@ -31,6 +31,7 @@ export async function handleExportChunkRequest(
       await recordApiUsage({
         requestId,
         apiKeyId: resolved.apiKeyId,
+        clientId: resolved.clientId,
         packId: resolved.packId,
         endpoint,
         method,
@@ -64,6 +65,7 @@ export async function handleExportChunkRequest(
         await recordApiUsage({
           requestId,
           apiKeyId: resolved.apiKeyId,
+          clientId: resolved.clientId,
           packId: knowledgePackId,
           endpoint,
           method,
@@ -85,6 +87,7 @@ export async function handleExportChunkRequest(
       await recordApiUsage({
         requestId,
         apiKeyId: resolved.apiKeyId,
+        clientId: resolved.clientId,
         packId: knowledgePackId,
         endpoint,
         method,
@@ -98,6 +101,7 @@ export async function handleExportChunkRequest(
     await recordApiUsage({
       requestId,
       apiKeyId: resolved.apiKeyId,
+      clientId: resolved.clientId,
       packId: knowledgePackId,
       endpoint,
       method,

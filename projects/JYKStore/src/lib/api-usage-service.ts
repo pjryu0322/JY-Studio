@@ -8,6 +8,8 @@ const SENSITIVE_METADATA_KEYS = [
   "api_key",
   "plainKey",
   "plain_key",
+  "rawKey",
+  "raw_key",
   "token",
   "bearer",
   "keyHash",
@@ -47,6 +49,8 @@ export function sanitizeUsageMetadata(
 export async function recordApiUsage(input: {
   requestId: string;
   apiKeyId: string | null;
+  clientId?: string | null;
+  tenantKey?: string | null;
   packId?: string;
   endpoint: string;
   method?: string;
@@ -59,11 +63,13 @@ export async function recordApiUsage(input: {
   const sanitizedMetadata = sanitizeUsageMetadata(input.metadata);
   const chunkCount =
     typeof sanitizedMetadata?.chunkCount === "number" ? sanitizedMetadata.chunkCount : undefined;
+  const clientId = input.clientId?.trim() || input.tenantKey?.trim() || null;
 
   await prisma.apiUsageLog.create({
     data: {
       requestId: input.requestId,
       apiKeyId: input.apiKeyId,
+      clientId,
       packId: input.packId,
       endpoint: input.endpoint,
       method: input.method,

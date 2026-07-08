@@ -17,6 +17,7 @@ export const ROUTES = {
   adminOpsHealth: "/admin/ops/health",
   adminOpsPlans: "/admin/ops/plans",
   adminOpsApiKeys: "/admin/ops/api-keys",
+  adminOpsQuota: "/admin/ops/quota",
   docs: "/docs",
   apiDocs: "/docs/api",
   contextApiDocs: "/docs/api/context",

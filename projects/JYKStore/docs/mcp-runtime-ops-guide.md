@@ -225,10 +225,18 @@ npm test
 
 These tests cover registration snapshots, HTTP JSON-RPC runtime (mocked Public API), and stdio smoke startup. They do not require a live database for MCP runtime coverage when using the mock helpers.
 
+## Public API quota (P24/P25)
+
+- Public API quota는 인증된 API Key의 `clientId`(없으면 `apiKeyId`)를 tenantKey로 사용한다.
+- 기본 FREE: per-minute 30 / per-day 1000 (`JYKSTORE_QUOTA_*`로 override).
+- 초과 시 Public API는 `429 QUOTA_EXCEEDED` + `retryAfterSeconds`를 반환한다.
+- MCP Server는 quota를 DB에서 직접 계산하지 않고 Public API 429를 그대로 중계한다.
+- `QUOTA_EXCEEDED` 발생 시 `topK`/`limitBytes` 축소 또는 호출 빈도를 낮춘다.
+- Admin quota page `/admin/ops/quota`에서 client별 사용량·429를 확인한다 (Admin Ops Token 필요).
+
 ## Out of scope (later)
 
-- P24/P25 Multi-tenant Gateway & Quota
 - OAuth / remote MCP auth
-- per-client rate limit / quota
-- tenant-isolated MCP gateway
+- Paid billing / payment charge
+- tenant-isolated MCP gateway beyond Public API quota
 - Web Streams true streaming

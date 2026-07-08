@@ -3,6 +3,7 @@ import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
 import { authenticateApiKey } from "@/lib/api-key-auth";
 import { PUBLIC_API_REQUIRED_SCOPE } from "@/lib/api-key-service";
 import { getPackContext, parseContextLimit } from "@/lib/context-service";
+import { checkQuota } from "@/lib/quota-service";
 import { tokenizeSearchQuery } from "@/lib/search-utils";
 import { logSafeRouteError } from "@/lib/safe-logging";
 
@@ -16,6 +17,7 @@ type ErrorCode =
   | "API_KEY_REVOKED"
   | "API_KEY_EXPIRED"
   | "INSUFFICIENT_SCOPE"
+  | "QUOTA_EXCEEDED"
   | "PACK_NOT_FOUND"
   | "INVALID_REQUEST"
   | "INTERNAL_SERVER_ERROR";
@@ -51,6 +53,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const method = request.method;
 
   let apiKeyId: string | null = null;
+  let clientId: string | null = null;
   let packId = "";
 
   try {
@@ -62,6 +65,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       await recordApiUsage({
         requestId,
         apiKeyId: null,
+        clientId: null,
         endpoint,
         method,
         statusCode: auth.status,
@@ -72,6 +76,49 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     apiKeyId = auth.apiKeyId;
+    clientId = auth.clientId;
+
+    const quota = await checkQuota({
+      clientId: auth.clientId,
+      apiKeyId: auth.apiKeyId,
+      endpoint,
+      method,
+    });
+    if (!quota.ok) {
+      await recordApiUsage({
+        requestId,
+        apiKeyId,
+        clientId,
+        endpoint,
+        method,
+        statusCode: 429,
+        latencyMs: Date.now() - startedAt,
+        metadata: { reason: "QUOTA_EXCEEDED" },
+      });
+      return NextResponse.json(
+        {
+          error: {
+            code: "QUOTA_EXCEEDED" as const,
+            message: quota.message,
+            reason: quota.reason,
+            retryAfterSeconds: quota.retryAfterSeconds,
+          },
+          usage: {
+            requestId,
+            quota: {
+              minuteCount: quota.usage.minuteCount,
+              perMinuteLimit: quota.usage.perMinuteLimit,
+              dayCount: quota.usage.dayCount,
+              perDayLimit: quota.usage.perDayLimit,
+            },
+          },
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(quota.retryAfterSeconds) },
+        },
+      );
+    }
 
     const { packId: routePackId } = await context.params;
     packId = routePackId?.trim() ?? "";
@@ -80,6 +127,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       await recordApiUsage({
         requestId,
         apiKeyId,
+        clientId,
         endpoint,
         method,
         statusCode: 400,
@@ -94,6 +142,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       await recordApiUsage({
         requestId,
         apiKeyId,
+        clientId,
         packId,
         endpoint,
         method,
@@ -123,6 +172,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       await recordApiUsage({
         requestId,
         apiKeyId,
+        clientId,
         packId,
         endpoint,
         method,
@@ -137,6 +187,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     await recordApiUsage({
       requestId,
       apiKeyId,
+      clientId,
       packId,
       endpoint,
       method,
@@ -166,6 +217,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     await recordApiUsage({
       requestId,
       apiKeyId,
+      clientId,
       packId: packId || undefined,
       endpoint,
       method,

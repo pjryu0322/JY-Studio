@@ -736,11 +736,21 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - Admin Ops Token은 환경변수와 `X-JYKStore-Admin-Token` header로만 사용하며, localStorage/sessionStorage에 저장하지 않습니다.
 - OAuth/SSO/remote MCP auth는 후속 단계로 유지합니다.
 
+### P24/P25 — Multi-tenant Gateway & Quota
+
+- Public API 요청을 clientId/apiKeyId 기준으로 quota gate에 연결했습니다.
+- 기본 FREE quota 정책을 per-minute/per-day 기준으로 적용했습니다.
+- quota 초과 시 429 `QUOTA_EXCEEDED`를 반환합니다.
+- UsageLog에 clientId/tenantKey와 quota metadata를 기록합니다.
+- Admin quota summary API/UI를 추가했습니다.
+- MCP Server는 별도 DB 접근 없이 Public API quota 결과를 그대로 중계합니다.
+- OAuth/remote MCP auth와 유료 결제/과금은 후속 단계로 유지합니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22~P22.6/P26 완료), Auth & API Key Hardening(P23/P27~P23.1 완료)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22~P22.6/P26 완료), Auth & API Key Hardening(P23/P27~P23.1 완료), Multi-tenant Gateway & Quota(P24/P25 완료)
 - Web Streams true streaming, OAuth / remote MCP auth 등은 후속 개선
 - pgvector 기반 vector index
 - 로그인/회원 관리
@@ -748,6 +758,6 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 
 ## 다음 단계
 
-1. P24/P25 Multi-tenant Gateway & Quota
-2. OAuth / remote MCP auth
-3. True upstream stream response using Web Streams.
+1. OAuth / remote MCP auth
+2. True upstream stream response using Web Streams
+3. Production deployment hardening

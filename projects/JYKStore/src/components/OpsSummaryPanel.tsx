@@ -11,6 +11,7 @@ function formatPercent(rate: number): string {
 }
 
 const OPS_LINKS = [
+  { title: "Quota", description: "client별 사용량/429", href: ROUTES.adminOpsQuota },
   { title: "API Keys", description: "발급·폐기·상태", href: ROUTES.adminOpsApiKeys },
   { title: "Usage Log", description: "API 호출 로그", href: ROUTES.adminOpsUsage },
   { title: "Audit Log", description: "감사 로그", href: ROUTES.adminOpsAudit },

@@ -18,12 +18,13 @@ export async function GET(request: NextRequest) {
     const resolved = await resolvePublicExportRequest(request, requestId, startedAt);
     if (!resolved.ok) return resolved.response;
 
-    const { apiKeyId, packId } = resolved;
+    const { apiKeyId, clientId, packId } = resolved;
     const data = await buildGraphExport(packId);
     if (!data) {
       await recordApiUsage({
         requestId,
         apiKeyId,
+        clientId,
         packId,
         endpoint,
         method,
@@ -37,6 +38,7 @@ export async function GET(request: NextRequest) {
     await recordApiUsage({
       requestId,
       apiKeyId,
+      clientId,
       packId,
       endpoint,
       method,

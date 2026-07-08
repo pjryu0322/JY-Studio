@@ -497,6 +497,7 @@ model ApiUsageLog {
   id         String   @id @default(cuid())
   requestId  String   @unique
   apiKeyId   String?
+  clientId   String?
   packId     String?
   endpoint   String
   method     String?
@@ -512,9 +513,12 @@ model ApiUsageLog {
   pack   KnowledgePack? @relation(fields: [packId], references: [packId], onDelete: SetNull)
 
   @@index([apiKeyId])
+  @@index([clientId])
   @@index([packId])
   @@index([statusCode])
   @@index([createdAt])
+  @@index([clientId, createdAt])
+  @@index([statusCode, createdAt])
 }
 
 model SourceValidationReport {

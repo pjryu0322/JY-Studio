@@ -22,6 +22,9 @@ export function commonErrorResponses() {
       "Forbidden. code: FORBIDDEN / API_KEY_REVOKED / API_KEY_EXPIRED / INSUFFICIENT_SCOPE",
     ),
     "404": errorResponse("Knowledge pack not found or not public. code: PACK_NOT_FOUND"),
+    "429": errorResponse(
+      "Quota exceeded for API Key clientId tenant. code: QUOTA_EXCEEDED (retryAfterSeconds)",
+    ),
     "500": errorResponse("Internal server error. code: INTERNAL_SERVER_ERROR"),
   };
 }

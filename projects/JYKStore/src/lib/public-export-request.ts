@@ -5,15 +5,22 @@ import {
   packNotFoundResponse,
   recordPublicApiUsage,
   requireContextReadApiKey,
+  requireQuota,
   toPublicApiContext,
 } from "@/lib/public-api-handler";
 
-type ResolveSuccess = { ok: true; apiKeyId: string; packId: string };
+type ResolveSuccess = {
+  ok: true;
+  apiKeyId: string;
+  clientId: string | null;
+  packId: string;
+};
 type ResolveFailure = { ok: false; response: NextResponse };
 
 /**
  * 외부 AI/Agent/플랫폼이 호출하는 public export API의 공통 인증/검증 처리.
  * - Bearer API Key(context:read scope) 인증
+ * - clientId 기준 quota gate
  * - knowledgePackId query parameter 검증 (없거나 빈 문자열이면 400)
  * 인증/검증 실패 시 usage log를 남기고 error response를 반환한다.
  *
@@ -29,6 +36,11 @@ export async function resolvePublicExportRequest(
   const auth = await requireContextReadApiKey(context);
   if (!auth.ok) {
     return { ok: false, response: auth.response };
+  }
+
+  const quota = await requireQuota(context);
+  if (!quota.ok) {
+    return { ok: false, response: quota.response };
   }
 
   const rawPackId = request.nextUrl.searchParams.get("knowledgePackId");
@@ -49,7 +61,12 @@ export async function resolvePublicExportRequest(
     };
   }
 
-  return { ok: true, apiKeyId: auth.apiKeyId, packId };
+  return {
+    ok: true,
+    apiKeyId: auth.apiKeyId,
+    clientId: auth.clientId,
+    packId,
+  };
 }
 
 export function publicExportNotFound(requestId: string) {

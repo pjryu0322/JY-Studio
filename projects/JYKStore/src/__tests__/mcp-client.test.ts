@@ -35,6 +35,29 @@ describe("mcp client helpers", () => {
     assert.equal(normalized.status, 404);
   });
 
+  it("propagates Public API 429 QUOTA_EXCEEDED without leaking API key", () => {
+    const normalized = normalizeHttpError({
+      status: 429,
+      bodyText: JSON.stringify({
+        error: {
+          code: "QUOTA_EXCEEDED",
+          message: "API quota를 초과했습니다.",
+          reason: "PER_MINUTE",
+          retryAfterSeconds: 42,
+        },
+        usage: { requestId: "req_quota" },
+      }),
+    });
+    assert.equal(normalized.code, "QUOTA_EXCEEDED");
+    assert.equal(normalized.status, 429);
+    assert.equal(normalized.requestId, "req_quota");
+    const details = normalized.details as Record<string, unknown> | undefined;
+    assert.equal(details?.reason, "PER_MINUTE");
+    assert.equal(details?.retryAfterSeconds, 42);
+    assert.ok(!JSON.stringify(normalized).includes("jyk_live_"));
+    assert.ok(!JSON.stringify(normalized).includes("Bearer"));
+  });
+
   it("enforces response size guard", () => {
     assert.doesNotThrow(() => assertResponseSize(10, 100));
     assert.throws(
