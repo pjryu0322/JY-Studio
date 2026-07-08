@@ -90,11 +90,25 @@ describe("safe logging", () => {
         path: "/api/v1/packs/pack/context",
         error: new Error("Authorization: Bearer context-secret"),
       });
+      logSafeRouteError({
+        scope: "retrieval",
+        method: "POST",
+        path: "/api/v1/retrieval/query",
+        requestId: "req_retrieval",
+        error: new Error("jyk_live_secret rawKey leak Bearer token"),
+      });
+      logSafeRouteError({
+        scope: "graph",
+        method: "POST",
+        path: "/api/v1/graph/query",
+        requestId: "req_graph",
+        error: new Error("DATABASE_URL=postgresql://user:pass@host/db"),
+      });
     } finally {
       console.error = original;
     }
 
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 6);
     for (const call of calls) {
       assert.equal(call.length, 1);
       const line = String(call[0]);
@@ -103,9 +117,13 @@ describe("safe logging", () => {
       assert.ok(!line.includes("user:pass"));
       assert.ok(!line.includes("leaked-token"));
       assert.ok(!line.includes("context-secret"));
+      assert.ok(!line.includes("jyk_live_secret"));
+      assert.ok(!line.includes("user:pass"));
     }
     assert.ok(String(calls[1]![0]).includes("scope=api-key"));
     assert.ok(String(calls[2]![0]).includes("scope=admin-api-key"));
     assert.ok(String(calls[3]![0]).includes("scope=context"));
+    assert.ok(String(calls[4]![0]).includes("scope=retrieval"));
+    assert.ok(String(calls[5]![0]).includes("scope=graph"));
   });
 });

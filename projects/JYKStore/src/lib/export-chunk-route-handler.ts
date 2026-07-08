@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
+import { createRequestId } from "@/lib/api-usage-service";
 import {
   parseExportChunkRequestFromSearchParams,
   type ExportChunkKind,
@@ -9,6 +9,7 @@ import { apiErrorResponse } from "@/lib/public-api-handler";
 import {
   publicExportNotFound,
   publicExportServerError,
+  recordPublicExportUsage,
   resolvePublicExportRequest,
 } from "@/lib/public-export-request";
 import { logSafeRouteError } from "@/lib/safe-logging";
@@ -26,17 +27,20 @@ export async function handleExportChunkRequest(
     const resolved = await resolvePublicExportRequest(request, requestId, startedAt);
     if (!resolved.ok) return resolved.response;
 
+    const { apiKeyId, clientId, packId: resolvedPackId, quota } = resolved;
+
     const parsed = parseExportChunkRequestFromSearchParams(request.nextUrl.searchParams);
     if (!parsed.ok) {
-      await recordApiUsage({
+      await recordPublicExportUsage({
         requestId,
-        apiKeyId: resolved.apiKeyId,
-        clientId: resolved.clientId,
-        packId: resolved.packId,
+        apiKeyId,
+        clientId,
+        packId: resolvedPackId,
         endpoint,
         method,
         statusCode: 400,
         latencyMs: Date.now() - startedAt,
+        quota,
         metadata: { reason: "INVALID_EXPORT_CHUNK_REQUEST", errors: parsed.errors },
       });
       return apiErrorResponse(
@@ -49,7 +53,7 @@ export async function handleExportChunkRequest(
 
     // Prefer auth-resolved packId (same source as full export); keep parse for offset/limitBytes.
     const { offset, limitBytes } = parsed.request;
-    const knowledgePackId = resolved.packId;
+    const knowledgePackId = resolvedPackId;
 
     let chunk;
     try {
@@ -62,15 +66,16 @@ export async function handleExportChunkRequest(
       });
     } catch (error) {
       if (error instanceof ExportChunkRangeError) {
-        await recordApiUsage({
+        await recordPublicExportUsage({
           requestId,
-          apiKeyId: resolved.apiKeyId,
-          clientId: resolved.clientId,
+          apiKeyId,
+          clientId,
           packId: knowledgePackId,
           endpoint,
           method,
           statusCode: 400,
           latencyMs: Date.now() - startedAt,
+          quota,
           metadata: { reason: "INVALID_EXPORT_CHUNK_REQUEST", code: error.code },
         });
         return apiErrorResponse(
@@ -84,29 +89,31 @@ export async function handleExportChunkRequest(
     }
 
     if (chunk === null) {
-      await recordApiUsage({
+      await recordPublicExportUsage({
         requestId,
-        apiKeyId: resolved.apiKeyId,
-        clientId: resolved.clientId,
+        apiKeyId,
+        clientId,
         packId: knowledgePackId,
         endpoint,
         method,
         statusCode: 404,
         latencyMs: Date.now() - startedAt,
+        quota,
         metadata: { reason: "PACK_NOT_FOUND", packId: knowledgePackId },
       });
       return publicExportNotFound(requestId);
     }
 
-    await recordApiUsage({
+    await recordPublicExportUsage({
       requestId,
-      apiKeyId: resolved.apiKeyId,
-      clientId: resolved.clientId,
+      apiKeyId,
+      clientId,
       packId: knowledgePackId,
       endpoint,
       method,
       statusCode: 200,
       latencyMs: Date.now() - startedAt,
+      quota,
       query: `export:${exportType}:chunk`,
       metadata: {
         exportType,

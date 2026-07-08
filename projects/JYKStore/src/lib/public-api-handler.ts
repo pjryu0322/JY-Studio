@@ -119,6 +119,17 @@ export function internalServerErrorResponse(requestId: string): NextResponse {
   return apiErrorResponse(requestId, "INTERNAL_SERVER_ERROR", "서버 오류가 발생했습니다.", 500);
 }
 
+export function buildQuotaUsageMetadata(quota?: QuotaCheckResult): Record<string, unknown> {
+  if (!quota || !quota.ok) return {};
+  return {
+    quotaWarning: quota.warning,
+    quotaMinuteCount: quota.usage.minuteCount,
+    quotaDayCount: quota.usage.dayCount,
+    quotaPerMinuteLimit: quota.usage.perMinuteLimit,
+    quotaPerDayLimit: quota.usage.perDayLimit,
+  };
+}
+
 export async function recordPublicApiUsage(
   context: PublicApiContext,
   input: {
@@ -129,17 +140,15 @@ export async function recordPublicApiUsage(
 ): Promise<void> {
   const quotaMeta =
     context.quota && context.quota.ok
-      ? {
-          quotaWarning: context.quota.warning,
-          quotaMinuteCount: context.quota.usage.minuteCount,
-          quotaDayCount: context.quota.usage.dayCount,
-        }
+      ? buildQuotaUsageMetadata(context.quota)
       : context.quota && !context.quota.ok
         ? {
             reason: "QUOTA_EXCEEDED",
             quotaReason: context.quota.reason,
             quotaMinuteCount: context.quota.usage.minuteCount,
             quotaDayCount: context.quota.usage.dayCount,
+            quotaPerMinuteLimit: context.quota.usage.perMinuteLimit,
+            quotaPerDayLimit: context.quota.usage.perDayLimit,
           }
         : {};
 

@@ -9,6 +9,7 @@ import {
 } from "@/lib/retrieval-dto";
 import { normalizeTopK, validateAndNormalizeFilters } from "@/lib/retrieval-filter";
 import { retrieveContexts } from "@/lib/retrieval-service";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import {
   apiErrorResponse,
   createPublicApiContext,
@@ -135,7 +136,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error("POST /api/v1/retrieval/query failed", error);
+    logSafeRouteError({
+      scope: "retrieval",
+      method: "POST",
+      path: context.endpoint,
+      requestId,
+      error,
+    });
     await recordPublicApiUsage(context, {
       statusCode: 500,
       metadata: { error: "INTERNAL_SERVER_ERROR" },

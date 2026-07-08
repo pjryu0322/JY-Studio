@@ -1,130 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
-import { authenticateApiKey } from "@/lib/api-key-auth";
-import { PUBLIC_API_REQUIRED_SCOPE } from "@/lib/api-key-service";
 import { getPackContext, parseContextLimit, parseIncludeMetadata } from "@/lib/context-service";
-import { checkQuota } from "@/lib/quota-service";
+import {
+  apiErrorResponse,
+  createPublicApiContext,
+  internalServerErrorResponse,
+  recordPublicApiUsage,
+  requireContextReadApiKey,
+  requireQuota,
+} from "@/lib/public-api-handler";
 import { logSafeRouteError } from "@/lib/safe-logging";
 
 type RouteContext = {
   params: Promise<{ packId: string }>;
 };
 
-type ErrorCode =
-  | "UNAUTHORIZED"
-  | "FORBIDDEN"
-  | "API_KEY_REVOKED"
-  | "API_KEY_EXPIRED"
-  | "INSUFFICIENT_SCOPE"
-  | "QUOTA_EXCEEDED"
-  | "PACK_NOT_FOUND"
-  | "INVALID_REQUEST"
-  | "INTERNAL_SERVER_ERROR";
-
-function jsonError(
-  requestId: string,
-  code: ErrorCode,
-  message: string,
-  status: number,
-) {
-  return NextResponse.json(
-    {
-      error: { code, message },
-      usage: { requestId },
-    },
-    { status },
-  );
-}
-
-export async function GET(request: NextRequest, context: RouteContext) {
-  const startedAt = Date.now();
-  const requestId = createRequestId();
-  const endpoint = request.nextUrl.pathname;
-  const method = request.method;
-
-  let apiKeyId: string | null = null;
-  let clientId: string | null = null;
-  let packId = "";
+export async function GET(request: NextRequest, routeContext: RouteContext) {
+  const publicContext = createPublicApiContext(request);
+  const { requestId } = publicContext;
 
   try {
-    const auth = await authenticateApiKey(request, {
-      requiredScope: PUBLIC_API_REQUIRED_SCOPE,
-      requestId,
-    });
-    if (!auth.ok) {
-      await recordApiUsage({
-        requestId,
-        apiKeyId: null,
-        clientId: null,
-        endpoint,
-        method,
-        statusCode: auth.status,
-        latencyMs: Date.now() - startedAt,
-        metadata: { reason: auth.code },
-      });
-      return jsonError(requestId, auth.code, auth.error, auth.status);
-    }
+    const auth = await requireContextReadApiKey(publicContext);
+    if (!auth.ok) return auth.response;
 
-    apiKeyId = auth.apiKeyId;
-    clientId = auth.clientId;
+    const quota = await requireQuota(publicContext);
+    if (!quota.ok) return quota.response;
 
-    const quota = await checkQuota({
-      clientId: auth.clientId,
-      apiKeyId: auth.apiKeyId,
-      endpoint,
-      method,
-    });
-    if (!quota.ok) {
-      await recordApiUsage({
-        requestId,
-        apiKeyId,
-        clientId,
-        endpoint,
-        method,
-        statusCode: 429,
-        latencyMs: Date.now() - startedAt,
-        metadata: { reason: "QUOTA_EXCEEDED" },
-      });
-      return NextResponse.json(
-        {
-          error: {
-            code: "QUOTA_EXCEEDED" as const,
-            message: quota.message,
-            reason: quota.reason,
-            retryAfterSeconds: quota.retryAfterSeconds,
-          },
-          usage: {
-            requestId,
-            quota: {
-              minuteCount: quota.usage.minuteCount,
-              perMinuteLimit: quota.usage.perMinuteLimit,
-              dayCount: quota.usage.dayCount,
-              perDayLimit: quota.usage.perDayLimit,
-            },
-          },
-        },
-        {
-          status: 429,
-          headers: { "Retry-After": String(quota.retryAfterSeconds) },
-        },
-      );
-    }
-
-    const { packId: routePackId } = await context.params;
-    packId = routePackId?.trim() ?? "";
+    const { packId: routePackId } = await routeContext.params;
+    const packId = routePackId?.trim() ?? "";
+    publicContext.packId = packId || undefined;
 
     if (!packId) {
-      await recordApiUsage({
-        requestId,
-        apiKeyId,
-        clientId,
-        endpoint,
-        method,
+      await recordPublicApiUsage(publicContext, {
         statusCode: 400,
-        latencyMs: Date.now() - startedAt,
         metadata: { reason: "INVALID_REQUEST" },
       });
-      return jsonError(requestId, "INVALID_REQUEST", "packId가 필요합니다.", 400);
+      return apiErrorResponse(requestId, "INVALID_REQUEST", "packId가 필요합니다.", 400);
     }
 
     const q = request.nextUrl.searchParams.get("q")?.trim() ?? undefined;
@@ -140,31 +50,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
     });
 
     if (!result) {
-      await recordApiUsage({
-        requestId,
-        apiKeyId,
-        clientId,
-        packId,
-        endpoint,
-        method,
-        query: q,
+      await recordPublicApiUsage(publicContext, {
         statusCode: 404,
-        latencyMs: Date.now() - startedAt,
+        query: q,
         metadata: { reason: "PACK_NOT_FOUND", packId },
       });
-      return jsonError(requestId, "PACK_NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
+      return apiErrorResponse(requestId, "PACK_NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
     }
 
-    await recordApiUsage({
-      requestId,
-      apiKeyId,
-      clientId,
-      packId,
-      endpoint,
-      method,
-      query: q,
+    await recordPublicApiUsage(publicContext, {
       statusCode: 200,
-      latencyMs: Date.now() - startedAt,
+      query: q,
       metadata: {
         chunkCount: result.usage.chunkCount,
         query: q,
@@ -178,21 +74,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
     logSafeRouteError({
       scope: "context",
       method: "GET",
-      path: endpoint,
+      path: publicContext.endpoint,
       requestId,
       error,
     });
-    await recordApiUsage({
-      requestId,
-      apiKeyId,
-      clientId,
-      packId: packId || undefined,
-      endpoint,
-      method,
+    await recordPublicApiUsage(publicContext, {
       statusCode: 500,
-      latencyMs: Date.now() - startedAt,
       metadata: { error: "INTERNAL_SERVER_ERROR" },
     });
-    return jsonError(requestId, "INTERNAL_SERVER_ERROR", "서버 오류가 발생했습니다.", 500);
+    return internalServerErrorResponse(requestId);
   }
 }

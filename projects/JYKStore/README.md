@@ -746,6 +746,13 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - MCP Server는 별도 DB 접근 없이 Public API quota 결과를 그대로 중계합니다.
 - OAuth/remote MCP auth와 유료 결제/과금은 후속 단계로 유지합니다.
 
+### P24.1 — Public API Gateway Logging & Quota Metadata Polish
+
+- retrieval/query와 graph/query route의 raw error logging을 safe logging으로 통일했습니다.
+- context GET/POST route의 auth/quota/usage logging을 Public API gateway helper로 정리했습니다.
+- export full/chunk UsageLog에도 quota warning/count metadata가 일관되게 기록되도록 보정했습니다.
+- Public API success response shape와 MCP tools/resources는 변경하지 않았습니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

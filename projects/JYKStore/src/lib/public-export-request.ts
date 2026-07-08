@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { recordApiUsage } from "@/lib/api-usage-service";
 import {
   apiErrorResponse,
+  buildQuotaUsageMetadata,
   internalServerErrorResponse,
   packNotFoundResponse,
   recordPublicApiUsage,
@@ -8,12 +10,14 @@ import {
   requireQuota,
   toPublicApiContext,
 } from "@/lib/public-api-handler";
+import type { QuotaCheckResult } from "@/lib/quota-service";
 
 type ResolveSuccess = {
   ok: true;
   apiKeyId: string;
   clientId: string | null;
   packId: string;
+  quota?: QuotaCheckResult;
 };
 type ResolveFailure = { ok: false; response: NextResponse };
 
@@ -66,7 +70,35 @@ export async function resolvePublicExportRequest(
     apiKeyId: auth.apiKeyId,
     clientId: auth.clientId,
     packId,
+    quota: quota.quota,
   };
+}
+
+export async function recordPublicExportUsage(input: {
+  requestId: string;
+  apiKeyId: string;
+  clientId: string | null;
+  packId?: string;
+  endpoint: string;
+  method: string;
+  statusCode: number;
+  latencyMs: number;
+  query?: string;
+  metadata?: Record<string, unknown>;
+  quota?: QuotaCheckResult;
+}): Promise<void> {
+  await recordApiUsage({
+    requestId: input.requestId,
+    apiKeyId: input.apiKeyId,
+    clientId: input.clientId,
+    packId: input.packId,
+    endpoint: input.endpoint,
+    method: input.method,
+    query: input.query,
+    statusCode: input.statusCode,
+    latencyMs: input.latencyMs,
+    metadata: { ...buildQuotaUsageMetadata(input.quota), ...input.metadata },
+  });
 }
 
 export function publicExportNotFound(requestId: string) {
