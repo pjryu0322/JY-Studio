@@ -510,7 +510,7 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
 - schema에는 실제 API Key를 포함하지 않고 dummy(`jyk_live_xxx`)만 사용하며, API Key는 Authorization 헤더로만 문서화합니다.
 - 연동 예:
   - Custom GPT Actions / Gemini function calling: 위 schema를 등록해 JYKStore API를 호출하고 반환된 context로 답변을 생성합니다.
-  - Cursor / MCP wrapper: OpenAPI + MCP-ready manifest까지 제공하며, 실제 MCP Server runtime은 P16에서 구현합니다.
+  - Cursor / MCP wrapper: OpenAPI schema 또는 MCP-ready manifest 기반 wrapper 구성이 가능합니다. **현재 제공**: MCP-ready manifest. **아직 미제공**: 실제 MCP Server runtime. **후속 예정**: P22 MCP Server Bridge.
 - JYKStore는 여전히 답변을 생성하지 않고 외부 LLM Provider API를 직접 호출하지 않습니다.
 
 ### P15.3 — OpenAPI Schema & External AI Actions Docs Polish
