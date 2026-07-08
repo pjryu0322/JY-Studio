@@ -60,6 +60,18 @@ export type RetrievalEvaluationRunAggregate = {
   failCaseCount: number;
   hitRate: number;
   meanReciprocalRank: number;
+  caseHitRate: number;
+  caseMeanReciprocalRank: number;
+  evaluatedResultCount: number;
+  passResultCount: number;
+  warningResultCount: number;
+  failResultCount: number;
+  resultHitRate: number;
+  resultMeanReciprocalRank: number;
+  modeMetrics: {
+    keyword: RetrievalEvaluationModeMetric;
+    hybrid: RetrievalEvaluationModeMetric;
+  };
   averageTopRank: number | null;
   averageScore: number;
   totalScore: number;
@@ -68,6 +80,26 @@ export type RetrievalEvaluationRunAggregate = {
   summary: string;
   issues: RetrievalEvaluationIssueDraft[];
   results: RetrievalEvaluationCaseResultDraft[];
+};
+
+export type RetrievalEvaluationModeMetric = {
+  evaluatedResultCount: number;
+  passCount: number;
+  warningCount: number;
+  failCount: number;
+  hitRate: number;
+  meanReciprocalRank: number;
+  averageTopRank: number | null;
+  averageScore: number;
+};
+
+export type RetrievalEvaluationResultAggregate = {
+  evaluatedResultCount: number;
+  passResultCount: number;
+  warningResultCount: number;
+  failResultCount: number;
+  resultHitRate: number;
+  resultMeanReciprocalRank: number;
 };
 
 export const MIN_RETRIEVAL_EVAL_CASES = 5;

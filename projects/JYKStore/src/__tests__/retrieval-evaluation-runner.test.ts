@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  aggregateCaseStatus,
   aggregateRetrievalEvaluationResults,
+  canRunAdminRetrievalEvaluationForStatus,
+  computeModeMetric,
   evaluateRetrievalCaseAgainstCandidates,
 } from "@/lib/retrieval-evaluation/retrieval-evaluation-runner";
 import type {
   RetrievalEvaluationCandidate,
   RetrievalEvaluationCaseInput,
+  RetrievalEvaluationCaseResultDraft,
 } from "@/lib/retrieval-evaluation/retrieval-evaluation-types";
 
 function baseCase(
@@ -38,6 +42,28 @@ function candidate(
     tags: ["auth"],
     metadata: null,
     score: 10,
+    ...overrides,
+  };
+}
+
+function draft(
+  overrides: Partial<RetrievalEvaluationCaseResultDraft>,
+): RetrievalEvaluationCaseResultDraft {
+  return {
+    caseId: "case-1",
+    retrievalMode: "keyword",
+    query: "q",
+    status: "PASS",
+    topK: 5,
+    hit: true,
+    firstHitRank: 1,
+    reciprocalRank: 1,
+    bestScore: 10,
+    matchedChunkIds: ["chunk-1"],
+    matchedSourceIds: [],
+    returnedChunkIds: ["chunk-1"],
+    returnedSourceIds: [],
+    issueCodes: [],
     ...overrides,
   };
 }
@@ -95,7 +121,7 @@ describe("retrieval evaluation runner", () => {
     assert.equal(result.reciprocalRank, 0);
   });
 
-  it("aggregates hitRate MRR totalScore and mixed results", () => {
+  it("separates case counts from result counts for mixed modes", () => {
     const cases = [
       baseCase({ id: "c1" }),
       baseCase({ id: "c2", expectedChunkIds: ["missing"] }),
@@ -123,11 +149,74 @@ describe("retrieval evaluation runner", () => {
       }),
     ];
     const agg = aggregateRetrievalEvaluationResults({ cases, results });
-    assert.equal(agg.retrievalMode, "mixed");
-    assert.equal(agg.evaluatedCaseCount, 4);
-    assert.ok(agg.hitRate === 0.5);
-    assert.ok(agg.meanReciprocalRank > 0);
-    assert.ok(agg.totalScore >= 0 && agg.totalScore <= 100);
+    assert.equal(agg.totalCaseCount, 2);
+    assert.equal(agg.evaluatedCaseCount, 2);
+    assert.equal(agg.evaluatedResultCount, 4);
+    assert.equal(agg.failCaseCount, 1);
+    assert.equal(agg.passCaseCount, 1);
+    assert.ok(agg.caseHitRate === 0.5);
+    assert.ok(agg.resultHitRate === 0.5);
     assert.equal(agg.status, "FAIL");
+  });
+
+  it("treats keyword PASS + hybrid FAIL as case WARNING with divergence", () => {
+    const status = aggregateCaseStatus([
+      draft({ retrievalMode: "keyword", status: "PASS", hit: true }),
+      draft({
+        retrievalMode: "hybrid",
+        status: "FAIL",
+        hit: false,
+        firstHitRank: null,
+        reciprocalRank: 0,
+      }),
+    ]);
+    assert.equal(status.status, "WARNING");
+    assert.equal(status.hasModeDivergence, true);
+  });
+
+  it("marks case FAIL when both modes FAIL", () => {
+    const status = aggregateCaseStatus([
+      draft({
+        retrievalMode: "keyword",
+        status: "FAIL",
+        hit: false,
+        reciprocalRank: 0,
+      }),
+      draft({
+        retrievalMode: "hybrid",
+        status: "FAIL",
+        hit: false,
+        reciprocalRank: 0,
+      }),
+    ]);
+    assert.equal(status.status, "FAIL");
+  });
+
+  it("computes mode metrics for keyword and hybrid", () => {
+    const results = [
+      draft({ retrievalMode: "keyword", status: "PASS", hit: true, reciprocalRank: 1 }),
+      draft({
+        retrievalMode: "keyword",
+        caseId: "c2",
+        status: "FAIL",
+        hit: false,
+        reciprocalRank: 0,
+      }),
+      draft({ retrievalMode: "hybrid", status: "WARNING", hit: true, reciprocalRank: 0.25 }),
+    ];
+    const keyword = computeModeMetric(results.filter((r) => r.retrievalMode === "keyword"));
+    const hybrid = computeModeMetric(results.filter((r) => r.retrievalMode === "hybrid"));
+    assert.equal(keyword.passCount, 1);
+    assert.equal(keyword.failCount, 1);
+    assert.equal(keyword.hitRate, 0.5);
+    assert.equal(hybrid.warningCount, 1);
+    assert.equal(hybrid.hitRate, 1);
+  });
+
+  it("restricts admin retrieval evaluation to DRAFT/REVIEWING", () => {
+    assert.equal(canRunAdminRetrievalEvaluationForStatus("DRAFT"), true);
+    assert.equal(canRunAdminRetrievalEvaluationForStatus("REVIEWING"), true);
+    assert.equal(canRunAdminRetrievalEvaluationForStatus("PUBLISHED"), false);
+    assert.equal(canRunAdminRetrievalEvaluationForStatus("VERIFIED"), false);
   });
 });

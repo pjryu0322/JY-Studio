@@ -3,6 +3,7 @@ import type {
   RetrievalEvaluationCaseInput,
   RetrievalEvaluationCaseResultDraft,
   RetrievalEvaluationIssueDraft,
+  RetrievalEvaluationModeMetric,
   RetrievalEvaluationRunAggregate,
   RetrievalEvaluationStatus,
 } from "@/lib/retrieval-evaluation/retrieval-evaluation-types";
@@ -145,26 +146,120 @@ export function evaluateRetrievalCaseAgainstCandidates(input: {
   };
 }
 
-export function aggregateRetrievalEvaluationResults(input: {
-  cases: RetrievalEvaluationCaseInput[];
-  results: RetrievalEvaluationCaseResultDraft[];
-}): RetrievalEvaluationRunAggregate {
-  const results = input.results;
-  const evaluatedCaseCount = results.length;
-  const uniqueCaseIds = new Set(input.cases.map((c) => c.id));
-  const totalCaseCount = uniqueCaseIds.size;
+export function aggregateCaseStatus(
+  resultsByCase: RetrievalEvaluationCaseResultDraft[],
+): {
+  status: RetrievalEvaluationStatus;
+  hit: boolean;
+  bestFirstHitRank: number | null;
+  bestReciprocalRank: number;
+  bestScore: number;
+  hasModeDivergence: boolean;
+} {
+  if (resultsByCase.length === 0) {
+    return {
+      status: "FAIL",
+      hit: false,
+      bestFirstHitRank: null,
+      bestReciprocalRank: 0,
+      bestScore: 0,
+      hasModeDivergence: false,
+    };
+  }
 
-  const passCaseCount = results.filter((r) => r.status === "PASS").length;
-  const warningCaseCount = results.filter((r) => r.status === "WARNING").length;
-  const failCaseCount = results.filter((r) => r.status === "FAIL").length;
+  const statuses = resultsByCase.map((r) => r.status);
+  const allFail = statuses.every((s) => s === "FAIL");
+  const anyPass = statuses.some((s) => s === "PASS");
+  const anyFail = statuses.some((s) => s === "FAIL");
+  const anyWarning = statuses.some((s) => s === "WARNING");
 
+  const keyword = resultsByCase.find((r) => r.retrievalMode === "keyword");
+  const hybrid = resultsByCase.find((r) => r.retrievalMode === "hybrid");
+  const hasModeDivergence = Boolean(
+    keyword && hybrid && (keyword.status === "FAIL") !== (hybrid.status === "FAIL"),
+  );
+
+  let status: RetrievalEvaluationStatus;
+  if (allFail) {
+    status = "FAIL";
+  } else if (hasModeDivergence || anyFail || (anyWarning && !anyPass) || (anyPass && anyFail)) {
+    status = "WARNING";
+  } else if (anyPass && !anyFail) {
+    // PASS only if at least one PASS and no FAIL; WARNING siblings ok → still WARNING if any WARNING
+    status = anyWarning ? "WARNING" : "PASS";
+  } else {
+    status = "WARNING";
+  }
+
+  // Conservative policy from prompt:
+  // PASS + FAIL → WARNING; both PASS → PASS; both FAIL → FAIL
+  if (keyword && hybrid) {
+    if (keyword.status === "FAIL" && hybrid.status === "FAIL") status = "FAIL";
+    else if (keyword.status === "PASS" && hybrid.status === "PASS") status = "PASS";
+    else if (
+      (keyword.status === "PASS" && hybrid.status === "FAIL") ||
+      (keyword.status === "FAIL" && hybrid.status === "PASS") ||
+      (keyword.status === "WARNING" && hybrid.status === "FAIL") ||
+      (keyword.status === "FAIL" && hybrid.status === "WARNING")
+    ) {
+      status = "WARNING";
+    }
+  }
+
+  const hitResults = resultsByCase.filter((r) => r.hit);
+  const hit = hitResults.length > 0;
+  let bestFirstHitRank: number | null = null;
+  let bestReciprocalRank = 0;
+  let bestScore = 0;
+  for (const r of hitResults) {
+    if (r.reciprocalRank >= bestReciprocalRank) {
+      bestReciprocalRank = r.reciprocalRank;
+      bestFirstHitRank = r.firstHitRank;
+      bestScore = r.bestScore;
+    }
+  }
+
+  // If hit but all hits have rank > 3 and no PASS mode → WARNING already covered
+  if (hit && hitResults.every((r) => (r.firstHitRank ?? 99) > 3) && !anyPass) {
+    status = status === "FAIL" ? "FAIL" : "WARNING";
+  }
+
+  return {
+    status,
+    hit,
+    bestFirstHitRank,
+    bestReciprocalRank,
+    bestScore,
+    hasModeDivergence,
+  };
+}
+
+function emptyModeMetric(): RetrievalEvaluationModeMetric {
+  return {
+    evaluatedResultCount: 0,
+    passCount: 0,
+    warningCount: 0,
+    failCount: 0,
+    hitRate: 0,
+    meanReciprocalRank: 0,
+    averageTopRank: null,
+    averageScore: 0,
+  };
+}
+
+export function computeModeMetric(
+  results: RetrievalEvaluationCaseResultDraft[],
+): RetrievalEvaluationModeMetric {
+  const evaluatedResultCount = results.length;
+  if (evaluatedResultCount === 0) return emptyModeMetric();
+
+  const passCount = results.filter((r) => r.status === "PASS").length;
+  const warningCount = results.filter((r) => r.status === "WARNING").length;
+  const failCount = results.filter((r) => r.status === "FAIL").length;
   const hitCount = results.filter((r) => r.hit).length;
-  const hitRate = evaluatedCaseCount > 0 ? hitCount / evaluatedCaseCount : 0;
+  const hitRate = hitCount / evaluatedResultCount;
   const meanReciprocalRank =
-    evaluatedCaseCount > 0
-      ? results.reduce((sum, r) => sum + r.reciprocalRank, 0) / evaluatedCaseCount
-      : 0;
-
+    results.reduce((sum, r) => sum + r.reciprocalRank, 0) / evaluatedResultCount;
   const hitRanks = results
     .filter((r) => r.firstHitRank != null)
     .map((r) => r.firstHitRank!);
@@ -172,14 +267,91 @@ export function aggregateRetrievalEvaluationResults(input: {
     hitRanks.length > 0
       ? hitRanks.reduce((sum, r) => sum + r, 0) / hitRanks.length
       : null;
-
   const hitScores = results.filter((r) => r.hit).map((r) => r.bestScore);
   const averageScore =
     hitScores.length > 0
       ? hitScores.reduce((sum, s) => sum + s, 0) / hitScores.length
       : 0;
 
-  const totalScore = clampScore(hitRate * 70 + meanReciprocalRank * 30);
+  return {
+    evaluatedResultCount,
+    passCount,
+    warningCount,
+    failCount,
+    hitRate,
+    meanReciprocalRank,
+    averageTopRank,
+    averageScore,
+  };
+}
+
+export function aggregateRetrievalEvaluationResults(input: {
+  cases: RetrievalEvaluationCaseInput[];
+  results: RetrievalEvaluationCaseResultDraft[];
+}): RetrievalEvaluationRunAggregate {
+  const results = input.results;
+  const uniqueCaseIds = [...new Set(input.cases.map((c) => c.id))];
+  const totalCaseCount = uniqueCaseIds.length;
+
+  const byCase = new Map<string, RetrievalEvaluationCaseResultDraft[]>();
+  for (const caseId of uniqueCaseIds) {
+    byCase.set(caseId, []);
+  }
+  for (const result of results) {
+    const list = byCase.get(result.caseId) ?? [];
+    list.push(result);
+    byCase.set(result.caseId, list);
+  }
+
+  const caseAggregates = uniqueCaseIds.map((caseId) =>
+    aggregateCaseStatus(byCase.get(caseId) ?? []),
+  );
+
+  const evaluatedCaseCount = caseAggregates.length;
+  const passCaseCount = caseAggregates.filter((c) => c.status === "PASS").length;
+  const warningCaseCount = caseAggregates.filter((c) => c.status === "WARNING").length;
+  const failCaseCount = caseAggregates.filter((c) => c.status === "FAIL").length;
+
+  const caseHitCount = caseAggregates.filter((c) => c.hit).length;
+  const caseHitRate = evaluatedCaseCount > 0 ? caseHitCount / evaluatedCaseCount : 0;
+  const caseMeanReciprocalRank =
+    evaluatedCaseCount > 0
+      ? caseAggregates.reduce((sum, c) => sum + c.bestReciprocalRank, 0) / evaluatedCaseCount
+      : 0;
+
+  const caseHitRanks = caseAggregates
+    .filter((c) => c.bestFirstHitRank != null)
+    .map((c) => c.bestFirstHitRank!);
+  const averageTopRank =
+    caseHitRanks.length > 0
+      ? caseHitRanks.reduce((sum, r) => sum + r, 0) / caseHitRanks.length
+      : null;
+  const caseHitScores = caseAggregates.filter((c) => c.hit).map((c) => c.bestScore);
+  const averageScore =
+    caseHitScores.length > 0
+      ? caseHitScores.reduce((sum, s) => sum + s, 0) / caseHitScores.length
+      : 0;
+
+  const evaluatedResultCount = results.length;
+  const passResultCount = results.filter((r) => r.status === "PASS").length;
+  const warningResultCount = results.filter((r) => r.status === "WARNING").length;
+  const failResultCount = results.filter((r) => r.status === "FAIL").length;
+  const resultHitCount = results.filter((r) => r.hit).length;
+  const resultHitRate =
+    evaluatedResultCount > 0 ? resultHitCount / evaluatedResultCount : 0;
+  const resultMeanReciprocalRank =
+    evaluatedResultCount > 0
+      ? results.reduce((sum, r) => sum + r.reciprocalRank, 0) / evaluatedResultCount
+      : 0;
+
+  const keywordResults = results.filter((r) => r.retrievalMode === "keyword");
+  const hybridResults = results.filter((r) => r.retrievalMode === "hybrid");
+  const modeMetrics = {
+    keyword: computeModeMetric(keywordResults),
+    hybrid: computeModeMetric(hybridResults),
+  };
+
+  const totalScore = clampScore(caseHitRate * 70 + caseMeanReciprocalRank * 30);
 
   const issues: RetrievalEvaluationIssueDraft[] = [];
 
@@ -192,28 +364,22 @@ export function aggregateRetrievalEvaluationResults(input: {
     });
   }
 
-  if (hitRate < 0.7) {
+  if (caseHitRate < 0.7) {
     issues.push({
       severity: "BLOCKER",
       code: "RETRIEVAL_LOW_HIT_RATE",
-      message: `hitRate(${hitRate.toFixed(2)})가 0.70 미만입니다.`,
+      message: `caseHitRate(${caseHitRate.toFixed(2)})가 0.70 미만입니다.`,
     });
   }
 
-  if (meanReciprocalRank < 0.4 && evaluatedCaseCount >= MIN_RETRIEVAL_EVAL_CASES) {
+  if (caseMeanReciprocalRank < 0.4 && evaluatedCaseCount >= MIN_RETRIEVAL_EVAL_CASES) {
     issues.push({
       severity: "WARNING",
       code: "RETRIEVAL_LOW_MRR",
-      message: `meanReciprocalRank(${meanReciprocalRank.toFixed(2)})가 낮습니다.`,
+      message: `caseMeanReciprocalRank(${caseMeanReciprocalRank.toFixed(2)})가 낮습니다.`,
     });
   }
 
-  const byCase = new Map<string, RetrievalEvaluationCaseResultDraft[]>();
-  for (const result of results) {
-    const list = byCase.get(result.caseId) ?? [];
-    list.push(result);
-    byCase.set(result.caseId, list);
-  }
   let divergence = 0;
   let compared = 0;
   for (const list of byCase.values()) {
@@ -221,11 +387,10 @@ export function aggregateRetrievalEvaluationResults(input: {
     const hybrid = list.find((r) => r.retrievalMode === "hybrid");
     if (!keyword || !hybrid) continue;
     compared += 1;
-    const kFail = keyword.status === "FAIL";
-    const hFail = hybrid.status === "FAIL";
-    if (kFail !== hFail) divergence += 1;
+    if ((keyword.status === "FAIL") !== (hybrid.status === "FAIL")) divergence += 1;
   }
-  if (compared > 0 && divergence / compared >= 0.3) {
+  const hasDivergenceWarning = compared > 0 && divergence / compared >= 0.3;
+  if (hasDivergenceWarning) {
     issues.push({
       severity: "WARNING",
       code: "RETRIEVAL_MODE_DIVERGENCE",
@@ -253,19 +418,21 @@ export function aggregateRetrievalEvaluationResults(input: {
   let status: RetrievalEvaluationStatus;
   if (
     evaluatedCaseCount < MIN_RETRIEVAL_EVAL_CASES ||
-    hitRate < 0.7 ||
+    caseHitRate < 0.7 ||
     totalScore < 70 ||
     blockingIssueCount > 0
   ) {
     status = "FAIL";
   } else if (
-    (hitRate >= 0.7 && hitRate < 0.85) ||
+    (caseHitRate >= 0.7 && caseHitRate < 0.85) ||
     (totalScore >= 70 && totalScore < 85) ||
     failCaseCount > 0 ||
+    warningCaseCount > 0 ||
+    hasDivergenceWarning ||
     warningIssueCount > 0
   ) {
     status = "WARNING";
-  } else if (hitRate >= 0.85 && totalScore >= 85) {
+  } else if (caseHitRate >= 0.85 && totalScore >= 85 && failCaseCount === 0) {
     status = "PASS";
   } else {
     status = "WARNING";
@@ -273,9 +440,10 @@ export function aggregateRetrievalEvaluationResults(input: {
 
   const summary = [
     `검색 품질 ${status} (총점 ${totalScore})`,
-    `hitRate ${(hitRate * 100).toFixed(0)}%`,
-    `MRR ${meanReciprocalRank.toFixed(2)}`,
-    `평가 ${evaluatedCaseCount}건 (P ${passCaseCount}/W ${warningCaseCount}/F ${failCaseCount})`,
+    `caseHit ${(caseHitRate * 100).toFixed(0)}%`,
+    `caseMRR ${caseMeanReciprocalRank.toFixed(2)}`,
+    `케이스 ${evaluatedCaseCount}/${totalCaseCount} (P ${passCaseCount}/W ${warningCaseCount}/F ${failCaseCount})`,
+    `결과 ${evaluatedResultCount}`,
   ].join(" · ");
 
   return {
@@ -286,8 +454,17 @@ export function aggregateRetrievalEvaluationResults(input: {
     passCaseCount,
     warningCaseCount,
     failCaseCount,
-    hitRate,
-    meanReciprocalRank,
+    hitRate: caseHitRate,
+    meanReciprocalRank: caseMeanReciprocalRank,
+    caseHitRate,
+    caseMeanReciprocalRank,
+    evaluatedResultCount,
+    passResultCount,
+    warningResultCount,
+    failResultCount,
+    resultHitRate,
+    resultMeanReciprocalRank,
+    modeMetrics,
     averageTopRank,
     averageScore,
     totalScore,
@@ -306,4 +483,8 @@ export function modesForCase(
   if (mode === "keyword") return ["keyword"];
   if (mode === "hybrid") return ["hybrid"];
   return ["keyword", "hybrid"];
+}
+
+export function canRunAdminRetrievalEvaluationForStatus(status: string): boolean {
+  return status === "DRAFT" || status === "REVIEWING";
 }

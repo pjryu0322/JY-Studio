@@ -19,6 +19,7 @@ import {
   runRetrievalEvaluationForPack,
 } from "@/lib/retrieval-evaluation/retrieval-evaluation-service";
 import { loadRetrievalEvaluationSummaryForPack } from "@/lib/retrieval-evaluation/retrieval-evaluation-freshness";
+import { canRunAdminRetrievalEvaluationForStatus } from "@/lib/retrieval-evaluation/retrieval-evaluation-runner";
 import {
   validateAllSourceDocumentsForPack,
   validateAndPersistSourceDocument,
@@ -214,6 +215,13 @@ export async function generateAdminPackRetrievalEvaluationCases(input: {
     return { error: "NOT_FOUND" as const };
   }
 
+  if (!canRunAdminRetrievalEvaluationForStatus(pack.status)) {
+    return {
+      error: "NOT_EDITABLE" as const,
+      message: "검색 품질 평가는 DRAFT 또는 REVIEWING 상태에서만 실행할 수 있습니다.",
+    };
+  }
+
   const result = await generateRetrievalEvaluationCasesForPack({
     packId,
     actorClientId: input.reviewerClientId,
@@ -236,6 +244,13 @@ export async function runAdminPackRetrievalEvaluation(input: {
   const pack = await prisma.knowledgePack.findUnique({ where: { packId } });
   if (!pack) {
     return { error: "NOT_FOUND" as const };
+  }
+
+  if (!canRunAdminRetrievalEvaluationForStatus(pack.status)) {
+    return {
+      error: "NOT_EDITABLE" as const,
+      message: "검색 품질 평가는 DRAFT 또는 REVIEWING 상태에서만 실행할 수 있습니다.",
+    };
   }
 
   const result = await runRetrievalEvaluationForPack({

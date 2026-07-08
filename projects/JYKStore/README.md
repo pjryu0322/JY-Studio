@@ -623,11 +623,19 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - 제출/승인 gate에 retrieval evaluation 반영.
 - P21 Release Gate Hardening은 후속 단계.
 
+### P20.1 — Retrieval Evaluation Aggregation Polish
+
+- mixed mode 평가에서 **케이스 기준 지표**와 **결과 기준 지표**를 분리했습니다.
+- UI에서 “케이스 수”와 “keyword/hybrid 결과 수”를 별도로 표시합니다.
+- keyword/hybrid mode별 hitRate, MRR, PASS/WARNING/FAIL 요약을 제공합니다.
+- Admin 검색 품질 평가 실행은 DRAFT/REVIEWING 상태로 제한합니다.
+- DB schema/public API 계약 변경 없음.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20 완료), release gate hardening(P21)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21)
 - pgvector 기반 vector index
 - 실제 MCP Server 실행(stdio/websocket/sse runtime) 및 graph traversal/semantic graph search
 - 로그인/회원 관리

@@ -20,6 +20,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           status: 404,
         });
       }
+      if (result.error === "NOT_EDITABLE") {
+        return jsonWithClientIdCookie({ error: result.message }, clientId, { status: 409 });
+      }
       if (result.error === "INCOMPLETE") {
         return jsonWithClientIdCookie({ error: result.message }, clientId, { status: 400 });
       }

@@ -8,10 +8,15 @@ export type RetrievalEvaluationIssueDto = {
   hint: string | null;
 };
 
-export type RetrievalEvaluationModeCountDto = {
+export type RetrievalEvaluationModeSummaryDto = {
+  evaluatedResultCount: number;
   pass: number;
   warning: number;
   fail: number;
+  hitRate: number;
+  meanReciprocalRank: number;
+  averageTopRank: number | null;
+  averageScore: number;
 };
 
 export type RetrievalEvaluationFailedResultDto = {
@@ -20,6 +25,8 @@ export type RetrievalEvaluationFailedResultDto = {
   query: string;
   status: string;
   issueCodes: string[];
+  firstHitRank?: number | null;
+  hit?: boolean;
 };
 
 export type RetrievalEvaluationRunDto = {
@@ -34,8 +41,18 @@ export type RetrievalEvaluationRunDto = {
   passCaseCount: number;
   warningCaseCount: number;
   failCaseCount: number;
+  /** Case-level hit rate (same as caseHitRate). */
   hitRate: number;
+  /** Case-level MRR (same as caseMeanReciprocalRank). */
   meanReciprocalRank: number;
+  caseHitRate: number;
+  caseMeanReciprocalRank: number;
+  evaluatedResultCount: number;
+  passResultCount: number;
+  warningResultCount: number;
+  failResultCount: number;
+  resultHitRate: number;
+  resultMeanReciprocalRank: number;
   averageTopRank: number | null;
   averageScore: number;
   totalScore: number;
@@ -45,9 +62,9 @@ export type RetrievalEvaluationRunDto = {
   checkedBy: string;
   checkedAt: string;
   issues: RetrievalEvaluationIssueDto[];
-  modeSummary?: {
-    keyword: RetrievalEvaluationModeCountDto;
-    hybrid: RetrievalEvaluationModeCountDto;
+  modeSummary: {
+    keyword: RetrievalEvaluationModeSummaryDto;
+    hybrid: RetrievalEvaluationModeSummaryDto;
   };
   failedResults?: RetrievalEvaluationFailedResultDto[];
 };

@@ -23,6 +23,14 @@ function freshnessLabel(status: string | undefined): string | null {
   return null;
 }
 
+function pct(value: number): string {
+  return `${(value * 100).toFixed(0)}%`;
+}
+
+function mrr(value: number): string {
+  return value.toFixed(2);
+}
+
 export function RetrievalEvaluationPanel({
   packId,
   retrievalEvaluation,
@@ -138,10 +146,10 @@ export function RetrievalEvaluationPanel({
           <p className="mt-2 text-xs text-store-muted whitespace-pre-wrap">{latestRun.summary}</p>
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {[
-              ["총점", latestRun.totalScore],
-              ["평균 점수", latestRun.averageScore],
-              ["Hit Rate", latestRun.hitRate],
-              ["MRR", latestRun.meanReciprocalRank],
+              ["총점", String(latestRun.totalScore)],
+              ["Case Hit Rate", pct(latestRun.caseHitRate)],
+              ["Case MRR", mrr(latestRun.caseMeanReciprocalRank)],
+              ["Result Hit Rate", pct(latestRun.resultHitRate)],
             ].map(([label, score]) => (
               <div
                 key={label}
@@ -153,13 +161,42 @@ export function RetrievalEvaluationPanel({
             ))}
           </div>
           <ul className="mt-3 grid grid-cols-1 gap-1 text-xs text-slate-800 sm:grid-cols-2">
-            <li>통과: {latestRun.passCaseCount}</li>
-            <li>주의: {latestRun.warningCaseCount}</li>
-            <li>실패: {latestRun.failCaseCount}</li>
             <li>
-              평가: {latestRun.evaluatedCaseCount}/{latestRun.totalCaseCount}
+              케이스: {latestRun.evaluatedCaseCount}/{latestRun.totalCaseCount}
+            </li>
+            <li>
+              결과: {latestRun.evaluatedResultCount}개
+              {latestRun.modeSummary
+                ? `(keyword ${latestRun.modeSummary.keyword.evaluatedResultCount}, hybrid ${latestRun.modeSummary.hybrid.evaluatedResultCount})`
+                : null}
+            </li>
+            <li>케이스 통과/주의/실패: {latestRun.passCaseCount}/{latestRun.warningCaseCount}/{latestRun.failCaseCount}</li>
+            <li>
+              결과 통과/주의/실패: {latestRun.passResultCount}/{latestRun.warningResultCount}/
+              {latestRun.failResultCount}
             </li>
           </ul>
+
+          {latestRun.modeSummary ? (
+            <div className="mt-3 grid grid-cols-1 gap-2">
+              <p className="text-xs font-bold text-slate-900">Mode별 결과</p>
+              {(
+                [
+                  ["keyword", latestRun.modeSummary.keyword],
+                  ["hybrid", latestRun.modeSummary.hybrid],
+                ] as const
+              ).map(([mode, metric]) => (
+                <div
+                  key={mode}
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800"
+                >
+                  <span className="font-semibold">{mode}</span>: P {metric.pass} / W {metric.warning}{" "}
+                  / F {metric.fail} · Hit {pct(metric.hitRate)} · MRR {mrr(metric.meanReciprocalRank)}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
           {latestRun.issues.length > 0 ? (
             <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-bold text-slate-900">주요 이슈</p>
@@ -183,12 +220,17 @@ export function RetrievalEvaluationPanel({
             <div className="mt-3 rounded-xl border border-red-100 bg-red-50 p-3">
               <p className="text-xs font-bold text-red-900">실패 샘플</p>
               <ul className="mt-2 max-h-40 space-y-1 overflow-auto">
-                {latestRun.failedResults.slice(0, 5).map((item) => (
-                  <li key={`${item.caseId}-${item.retrievalMode}`} className="text-xs text-red-800">
+                {latestRun.failedResults.slice(0, 10).map((item) => (
+                  <li key={`${item.caseId}-${item.retrievalMode}`} className="text-xs break-words text-red-800">
                     [{item.retrievalMode}] {item.query}
                     {item.issueCodes.length > 0 ? (
-                      <span className="text-store-muted"> ({item.issueCodes.join(", ")})</span>
+                      <span className="text-store-muted"> — {item.issueCodes.join(", ")}</span>
                     ) : null}
+                    {item.firstHitRank != null ? (
+                      <span className="text-store-muted"> (rank {item.firstHitRank})</span>
+                    ) : (
+                      <span className="text-store-muted"> (miss)</span>
+                    )}
                   </li>
                 ))}
               </ul>

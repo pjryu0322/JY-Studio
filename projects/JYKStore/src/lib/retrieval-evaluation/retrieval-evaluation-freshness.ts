@@ -258,8 +258,26 @@ async function loadLatestSourceValidationCheckedAt(
   return latestActivityIso([...latestByDoc.values()]);
 }
 
-function emptyModeCounts(): { pass: number; warning: number; fail: number } {
-  return { pass: 0, warning: 0, fail: 0 };
+function emptyModeSummary(): {
+  evaluatedResultCount: number;
+  pass: number;
+  warning: number;
+  fail: number;
+  hitRate: number;
+  meanReciprocalRank: number;
+  averageTopRank: number | null;
+  averageScore: number;
+} {
+  return {
+    evaluatedResultCount: 0,
+    pass: 0,
+    warning: 0,
+    fail: 0,
+    hitRate: 0,
+    meanReciprocalRank: 0,
+    averageTopRank: null,
+    averageScore: 0,
+  };
 }
 
 function mapRunDto(run: {
@@ -296,33 +314,82 @@ function mapRunDto(run: {
     retrievalMode: string;
     query: string;
     status: string;
+    hit: boolean;
+    firstHitRank: number | null;
+    reciprocalRank: number;
+    bestScore: number;
     issueCodes: string[];
   }[];
 }): NonNullable<RetrievalEvaluationSummaryDto["latestRun"]> {
-  const modeSummary = {
-    keyword: emptyModeCounts(),
-    hybrid: emptyModeCounts(),
+  const results = run.results ?? [];
+
+  const keywordResults = results.filter((r) => r.retrievalMode === "keyword");
+  const hybridResults = results.filter((r) => r.retrievalMode === "hybrid");
+
+  const mapMode = (
+    modeResults: typeof results,
+  ): NonNullable<
+    NonNullable<RetrievalEvaluationSummaryDto["latestRun"]>["modeSummary"]
+  >["keyword"] => {
+    if (modeResults.length === 0) return emptyModeSummary();
+    const pass = modeResults.filter((r) => r.status === "PASS").length;
+    const warning = modeResults.filter((r) => r.status === "WARNING").length;
+    const fail = modeResults.filter((r) => r.status === "FAIL").length;
+    const hits = modeResults.filter((r) => r.hit);
+    const hitRanks = hits
+      .map((r) => r.firstHitRank)
+      .filter((rank): rank is number => rank != null);
+    return {
+      evaluatedResultCount: modeResults.length,
+      pass,
+      warning,
+      fail,
+      hitRate: hits.length / modeResults.length,
+      meanReciprocalRank:
+        modeResults.reduce((sum, r) => sum + r.reciprocalRank, 0) / modeResults.length,
+      averageTopRank:
+        hitRanks.length > 0
+          ? hitRanks.reduce((sum, rank) => sum + rank, 0) / hitRanks.length
+          : null,
+      averageScore:
+        hits.length > 0
+          ? hits.reduce((sum, r) => sum + r.bestScore, 0) / hits.length
+          : 0,
+    };
   };
+
+  const modeSummary = {
+    keyword: mapMode(keywordResults),
+    hybrid: mapMode(hybridResults),
+  };
+
+  const evaluatedResultCount = results.length;
+  const passResultCount = results.filter((r) => r.status === "PASS").length;
+  const warningResultCount = results.filter((r) => r.status === "WARNING").length;
+  const failResultCount = results.filter((r) => r.status === "FAIL").length;
+  const resultHits = results.filter((r) => r.hit);
+  const resultHitRate =
+    evaluatedResultCount > 0 ? resultHits.length / evaluatedResultCount : 0;
+  const resultMeanReciprocalRank =
+    evaluatedResultCount > 0
+      ? results.reduce((sum, r) => sum + r.reciprocalRank, 0) / evaluatedResultCount
+      : 0;
+
   const failedResults: NonNullable<
     RetrievalEvaluationSummaryDto["latestRun"]
   >["failedResults"] = [];
 
-  for (const result of run.results ?? []) {
-    const bucket =
-      result.retrievalMode === "hybrid" ? modeSummary.hybrid : modeSummary.keyword;
-    if (result.status === "PASS") bucket.pass += 1;
-    else if (result.status === "WARNING") bucket.warning += 1;
-    else bucket.fail += 1;
-
-    if (result.status === "FAIL") {
-      failedResults.push({
-        caseId: result.caseId,
-        retrievalMode: result.retrievalMode,
-        query: result.query,
-        status: result.status,
-        issueCodes: result.issueCodes,
-      });
-    }
+  for (const result of results) {
+    if (result.status !== "FAIL") continue;
+    failedResults.push({
+      caseId: result.caseId,
+      retrievalMode: result.retrievalMode,
+      query: result.query,
+      status: result.status,
+      issueCodes: result.issueCodes,
+      firstHitRank: result.firstHitRank,
+      hit: result.hit,
+    });
   }
 
   return {
@@ -339,6 +406,14 @@ function mapRunDto(run: {
     failCaseCount: run.failCaseCount,
     hitRate: run.hitRate,
     meanReciprocalRank: run.meanReciprocalRank,
+    caseHitRate: run.hitRate,
+    caseMeanReciprocalRank: run.meanReciprocalRank,
+    evaluatedResultCount,
+    passResultCount,
+    warningResultCount,
+    failResultCount,
+    resultHitRate,
+    resultMeanReciprocalRank,
     averageTopRank: run.averageTopRank,
     averageScore: run.averageScore,
     totalScore: run.totalScore,
@@ -372,6 +447,10 @@ export async function getLatestRetrievalEvaluationRun(packId: string) {
           retrievalMode: true,
           query: true,
           status: true,
+          hit: true,
+          firstHitRank: true,
+          reciprocalRank: true,
+          bestScore: true,
           issueCodes: true,
         },
       },
