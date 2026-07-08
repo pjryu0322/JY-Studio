@@ -667,11 +667,20 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - Graph query maxLength는 기존 2000자를 유지합니다.
 - DB schema/public API 계약/dependency 변경 없음.
 
+### P22.2 — Retrieval Query Length Expansion
+
+- Public Retrieval API `RETRIEVAL_QUERY_MAX_LENGTH`를 2000자로 확장했습니다.
+- MCP / OpenAPI / Retrieval Test UI / docs를 동일한 2000자 계약으로 정렬했습니다.
+- MCP는 Public API 상수를 재사용하므로 별도 maxLength 하드코딩이 없습니다.
+- Graph query maxLength 2000은 유지합니다.
+- 검색 ranking 알고리즘은 변경하지 않았습니다.
+- DB schema/dependency 변경 없음. Public API 응답 구조 변경 없음.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22/P22.1 완료)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22/P22.1/P22.2 완료)
 - MCP HTTP streaming export / OAuth 등은 후속 개선
 - pgvector 기반 vector index
 - 로그인/회원 관리

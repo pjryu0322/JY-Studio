@@ -4,7 +4,29 @@ export const DEFAULT_TOP_K = 8;
 export const MIN_TOP_K = 1;
 export const MAX_TOP_K = 20;
 
-export const RETRIEVAL_QUERY_MAX_LENGTH = 100;
+export const RETRIEVAL_QUERY_MAX_LENGTH = 2000;
+
+export function validateRetrievalQueryLength(
+  query: unknown,
+): { ok: true; query: string | undefined } | { ok: false; error: string } {
+  if (query === undefined || query === null) {
+    return { ok: true, query: undefined };
+  }
+  if (typeof query !== "string") {
+    return { ok: false, error: "query must be a string." };
+  }
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return { ok: true, query: undefined };
+  }
+  if (trimmed.length > RETRIEVAL_QUERY_MAX_LENGTH) {
+    return {
+      ok: false,
+      error: `query must be at most ${RETRIEVAL_QUERY_MAX_LENGTH} characters.`,
+    };
+  }
+  return { ok: true, query: trimmed };
+}
 
 export const CANONICAL_FILTER_KEYS = [
   "category",

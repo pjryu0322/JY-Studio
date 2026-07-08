@@ -89,3 +89,13 @@ test("schema JSON contains no direct external AI call or leaked credentials", ()
   assert.ok(!/sk-[A-Za-z0-9]{10,}/.test(json), "no provider-style key literal");
   assert.ok(!/Authorization:\s*Bearer\s+\S+/.test(json), "no literal Authorization header value");
 });
+
+test("RetrievalRequest.query maxLength matches Public API contract", () => {
+  const doc = buildOpenApiSchema();
+  const components = doc.components as AnyRecord;
+  const schemas = components.schemas as AnyRecord;
+  const retrievalRequest = schemas.RetrievalRequest as AnyRecord;
+  const properties = retrievalRequest.properties as AnyRecord;
+  const query = properties.query as AnyRecord;
+  assert.equal(query.maxLength, 2000);
+});

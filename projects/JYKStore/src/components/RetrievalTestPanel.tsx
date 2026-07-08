@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { runRetrievalApiTest, type RetrievalApiTestResult } from "@/lib/retrieval-api";
+import { RETRIEVAL_QUERY_MAX_LENGTH } from "@/lib/retrieval-dto";
 
 export function RetrievalTestPanel() {
   const [apiKey, setApiKey] = useState("");
@@ -113,15 +114,21 @@ export function RetrievalTestPanel() {
 
       <div>
         <label className="text-xs font-semibold text-slate-700" htmlFor="retrieval-query">
-          query (선택)
+          query (선택, 최대 {RETRIEVAL_QUERY_MAX_LENGTH}자)
         </label>
-        <input
+        <textarea
           id="retrieval-query"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="예: Callback 예제를 보여줘"
-          className="mt-2 min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
+          maxLength={RETRIEVAL_QUERY_MAX_LENGTH}
+          rows={4}
+          placeholder="예: Callback 예제를 보여줘 / 인증 요청 API 연동 시 전문·오류코드·환경 차이를 확인할 context"
+          className="mt-2 w-full rounded-xl border border-store-border px-3 py-2 text-sm"
         />
+        <p className="mt-1 text-[11px] text-store-muted">
+          긴 query는 retrieval intent 전달용입니다. 핵심 의도와 metadata filters를 함께 쓰면 더
+          정확합니다.
+        </p>
       </div>
 
       <div>

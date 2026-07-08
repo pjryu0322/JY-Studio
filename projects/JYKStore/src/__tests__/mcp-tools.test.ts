@@ -38,31 +38,41 @@ describe("mcp tools validation", () => {
     assert.equal(parsed.topK, 5);
   });
 
-  it("aligns retrieval query max length with Public API contract", () => {
-    const okQuery = "a".repeat(100);
+  it("aligns MCP retrieval query max length with expanded Public API contract", () => {
+    const okQuery = "a".repeat(2000);
     const parsed = parseRetrievalToolInput({
       knowledgePackId: "pack-1",
       query: okQuery,
     });
-    assert.equal(parsed.query.length, 100);
+    assert.equal(parsed.query.length, 2000);
 
     assert.throws(
       () =>
         parseRetrievalToolInput({
           knowledgePackId: "pack-1",
-          query: "a".repeat(101),
+          query: "a".repeat(2001),
         }),
       (error: unknown) =>
         error instanceof McpBridgeError && error.code === "JYKSTORE_MCP_INVALID_INPUT",
     );
   });
 
-  it("keeps graph query max independent from retrieval query max", () => {
+  it("keeps graph query max independent and allows 2000 chars", () => {
     const parsed = parseGraphToolInput({
       knowledgePackId: "pack-1",
-      query: "a".repeat(101),
+      query: "a".repeat(2000),
     });
-    assert.equal(parsed.query?.length, 101);
+    assert.equal(parsed.query?.length, 2000);
+
+    assert.throws(
+      () =>
+        parseGraphToolInput({
+          knowledgePackId: "pack-1",
+          query: "a".repeat(2001),
+        }),
+      (error: unknown) =>
+        error instanceof McpBridgeError && error.code === "JYKSTORE_MCP_INVALID_INPUT",
+    );
   });
 
   it("applies graph limit default and max", () => {

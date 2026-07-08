@@ -1,4 +1,5 @@
 import { BEARER_SECURITY_SCHEME } from "./openapi-security";
+import { RETRIEVAL_QUERY_MAX_LENGTH } from "@/lib/retrieval-dto";
 
 export function buildComponents() {
   return {
@@ -30,7 +31,11 @@ export function buildComponents() {
         required: ["knowledgePackId"],
         properties: {
           knowledgePackId: { type: "string" },
-          query: { type: "string" },
+          query: {
+            type: "string",
+            maxLength: RETRIEVAL_QUERY_MAX_LENGTH,
+            description: `Search query or retrieval intent. Up to ${RETRIEVAL_QUERY_MAX_LENGTH} characters.`,
+          },
           filters: { type: "object", additionalProperties: true },
           topK: { type: "integer", minimum: 1, maximum: 20 },
           includeMetadata: { type: "boolean" },

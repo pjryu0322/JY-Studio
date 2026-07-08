@@ -91,8 +91,8 @@ Same shape as Cursor local MCP `mcpServers` entry (stdio + env). Replace `cwd` a
 
 - Optional `JYKSTORE_MCP_ALLOWED_PACK_IDS` allowlist (comma-separated)
 - Input validation (`JYKSTORE_MCP_INVALID_INPUT`)
-- `jykstore_retrieval_query.query`는 JYKStore Public Retrieval API와 동일하게 최대 100자입니다.
-- 더 긴 설명이 필요한 경우 query를 핵심 검색어 중심으로 줄이고, metadataFilters를 함께 사용하세요.
+- `jykstore_retrieval_query.query`는 JYKStore Public Retrieval API와 동일하게 최대 2000자입니다.
+- 긴 query는 AI Agent의 retrieval intent를 전달하기 위한 용도입니다. 정확한 검색을 위해 핵심 의도와 metadataFilters를 함께 사용하는 것을 권장합니다.
 - Response size guard (default 2MB → `JYKSTORE_MCP_RESPONSE_TOO_LARGE`)
 - Public API auth/visibility remain authoritative
 

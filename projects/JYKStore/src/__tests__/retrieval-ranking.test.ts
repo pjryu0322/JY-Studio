@@ -91,3 +91,12 @@ test("scoreRetrievalChunk returns score 0 when no tokens and no filters", () => 
   assert.equal(result.metadataScore, 0);
   assert.deepEqual(result.matchReasons, []);
 });
+
+test("RETRIEVAL_QUERY_MAX_LENGTH is expanded to 2000", async () => {
+  const { RETRIEVAL_QUERY_MAX_LENGTH, validateRetrievalQueryLength } = await import(
+    "@/lib/retrieval-dto"
+  );
+  assert.equal(RETRIEVAL_QUERY_MAX_LENGTH, 2000);
+  assert.equal(validateRetrievalQueryLength("a".repeat(2000)).ok, true);
+  assert.equal(validateRetrievalQueryLength("a".repeat(2001)).ok, false);
+});

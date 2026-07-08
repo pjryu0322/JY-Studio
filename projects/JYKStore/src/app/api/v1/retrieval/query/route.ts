@@ -3,6 +3,7 @@ import {
   DEFAULT_TOP_K,
   RETRIEVAL_MODES,
   RETRIEVAL_QUERY_MAX_LENGTH,
+  validateRetrievalQueryLength,
   type RetrievalMode,
   type RetrievalRequestBody,
 } from "@/lib/retrieval-dto";
@@ -52,9 +53,6 @@ export async function POST(request: NextRequest) {
       context.packId = (body.knowledgePackId as string).trim();
     }
 
-    if (body.query !== undefined && typeof body.query !== "string") {
-      details.push("query must be a string.");
-    }
     if (body.includeMetadata !== undefined && typeof body.includeMetadata !== "boolean") {
       details.push("includeMetadata must be a boolean.");
     }
@@ -63,6 +61,11 @@ export async function POST(request: NextRequest) {
       !RETRIEVAL_MODES.includes(body.retrievalMode as RetrievalMode)
     ) {
       details.push("retrievalMode must be one of: keyword, hybrid.");
+    }
+
+    const queryResult = validateRetrievalQueryLength(body.query);
+    if (!queryResult.ok) {
+      details.push(queryResult.error);
     }
 
     const topKResult = normalizeTopK(body.topK);
@@ -82,7 +85,7 @@ export async function POST(request: NextRequest) {
     const knowledgePackId = (body.knowledgePackId as string).trim();
     const topK = topKResult.ok ? topKResult.topK : DEFAULT_TOP_K;
     const filters = filterResult.ok ? filterResult.filters : {};
-    const query = typeof body.query === "string" ? body.query.trim() || undefined : undefined;
+    const query = queryResult.ok ? queryResult.query : undefined;
     const safeQuery = query?.slice(0, RETRIEVAL_QUERY_MAX_LENGTH);
     const includeMetadata = body.includeMetadata === undefined ? true : Boolean(body.includeMetadata);
     // 기본값: query가 있으면 hybrid, 없으면 keyword/metadata ranking.

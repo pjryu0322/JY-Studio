@@ -67,7 +67,7 @@ export default function RetrievalApiDocsPage() {
 
         <ul className="list-disc space-y-1 pl-5 text-xs text-slate-700">
           <li>knowledgePackId: 필수 (string)</li>
-          <li>query: 선택 (string, 있으면 keyword ranking 적용)</li>
+          <li>query: 선택 (string, 최대 2000자, 있으면 keyword ranking 적용)</li>
           <li>filters: 선택 (object, 허용되지 않은 key는 400 오류)</li>
           <li>topK: 선택, 기본 8, 최소 1, 최대 20</li>
           <li>includeMetadata: 선택, 기본 true (boolean)</li>
