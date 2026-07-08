@@ -604,11 +604,19 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - **Pipeline**: `CHUNK_QUALITY_EVALUATE`, `CHUNK_EVALUATING` step.
 - P20 Retrieval Evaluation은 후속 단계.
 
+### P19.1 — Chunk Quality Precision Polish
+
+- exact duplicate뿐 아니라 **near-duplicate** chunk를 deterministic rule로 감지합니다.
+- 같은 sourceDocument/section bucket 내 word shingle Jaccard, prefix overlap, title+section signal을 활용합니다.
+- duplicate issue code를 세분화하고 hint에 비교 chunk와 유사도 요약을 표시합니다.
+- structure alignment 테스트를 보강했습니다.
+- DB schema/public API 변경 없음.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19 완료), 검색 품질 평가(P20), release gate hardening(P21)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20), release gate hardening(P21)
 - pgvector 기반 vector index
 - 실제 MCP Server 실행(stdio/websocket/sse runtime) 및 graph traversal/semantic graph search
 - 로그인/회원 관리

@@ -23,6 +23,12 @@ function freshnessLabel(status: string | undefined): string | null {
   return null;
 }
 
+function issueCategoryLabel(code: string): string | null {
+  if (code.startsWith("CHUNK_DUPLICATE_")) return "중복";
+  if (code.startsWith("CHUNK_STRUCTURE_")) return "구조 정렬";
+  return null;
+}
+
 export function ChunkQualityPanel({
   packId,
   chunkQuality,
@@ -139,15 +145,26 @@ export function ChunkQualityPanel({
             <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs font-bold text-slate-900">주요 이슈</p>
               <ul className="mt-2 max-h-48 space-y-1 overflow-auto">
-                {report.issues.slice(0, 10).map((issue, index) => (
+                {report.issues.slice(0, 10).map((issue, index) => {
+                  const category = issueCategoryLabel(issue.code);
+                  return (
                   <li
                     key={`${issue.code}-${index}`}
                     className={`whitespace-pre-wrap text-xs ${issue.severity === "BLOCKER" ? "text-red-800" : "text-amber-800"}`}
                   >
-                    <span className="font-mono text-[10px]">{issue.severity}</span> {issue.code}:{" "}
-                    {issue.message}
+                    <span className="font-mono text-[10px]">{issue.severity}</span>
+                    {category ? (
+                      <span className="ml-1 rounded bg-slate-200 px-1 py-0.5 text-[10px] font-semibold text-slate-800">
+                        {category}
+                      </span>
+                    ) : null}{" "}
+                    {issue.code}: {issue.message}
+                    {issue.hint ? (
+                      <span className="text-store-muted"> — {issue.hint}</span>
+                    ) : null}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
           ) : null}
