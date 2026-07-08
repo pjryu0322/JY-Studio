@@ -612,11 +612,22 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - structure alignment 테스트를 보강했습니다.
 - DB schema/public API 변경 없음.
 
+### P20 — Retrieval Evaluation
+
+- **RetrievalEvaluationSet / Case / Run / Result / Issue** 모델 추가.
+- expected chunk/source/section/tag/metadata 기반 deterministic retrieval 평가.
+- keyword/hybrid mode를 기존 retrieval service로 내부 평가(DRAFT 포함).
+- hitRate, MRR, firstHitRank, totalScore 산출.
+- Retrieval evaluation freshness guard 적용.
+- Provider/Admin UI에서 case 생성 및 평가 실행.
+- 제출/승인 gate에 retrieval evaluation 반영.
+- P21 Release Gate Hardening은 후속 단계.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20), release gate hardening(P21)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20 완료), release gate hardening(P21)
 - pgvector 기반 vector index
 - 실제 MCP Server 실행(stdio/websocket/sse runtime) 및 graph traversal/semantic graph search
 - 로그인/회원 관리
@@ -624,5 +635,5 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 
 ## 다음 단계
 
-1. Phase P20: Retrieval Evaluation.
+1. Phase P21: Release Gate Hardening.
 2. Phase P22: MCP Server Bridge(runtime) — 현재는 MCP-ready manifest만 제공합니다.

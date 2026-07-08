@@ -15,9 +15,12 @@ import {
   validateSourceDocumentApi,
   evaluateProviderStructureQualityApi,
   evaluateProviderChunkQualityApi,
+  generateProviderRetrievalEvaluationCasesApi,
+  runProviderRetrievalEvaluationApi,
 } from "@/lib/provider-center-api";
 import { StructureQualityPanel } from "@/components/StructureQualityPanel";
 import { ChunkQualityPanel } from "@/components/ChunkQualityPanel";
+import { RetrievalEvaluationPanel } from "@/components/RetrievalEvaluationPanel";
 import { getSourceFormatLabel, getSourceTypeLabel } from "@/lib/source-type-dto";
 
 export function ProviderPackEditor({ packId }: { readonly packId: string }) {
@@ -146,6 +149,20 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         editable={editable}
         onEvaluate={async () => {
           const data = await evaluateProviderChunkQualityApi(packId);
+          setPack(data.pack);
+        }}
+      />
+
+      <RetrievalEvaluationPanel
+        packId={packId}
+        retrievalEvaluation={pack.retrievalEvaluation}
+        editable={editable}
+        onGenerate={async (replace) => {
+          const data = await generateProviderRetrievalEvaluationCasesApi(packId, replace);
+          setPack(data.pack);
+        }}
+        onRun={async () => {
+          const data = await runProviderRetrievalEvaluationApi(packId);
           setPack(data.pack);
         }}
       />

@@ -129,6 +129,12 @@ export function AdminReviewDecisionPanel({
         </div>
       ) : null}
 
+      {detail.readiness.retrievalEvaluationMessage ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          {detail.readiness.retrievalEvaluationMessage}
+        </div>
+      ) : null}
+
       {(detail.readiness.structureCoverageStatus === "WARNING" ||
         detail.readiness.knowledgeQualityStatus === "WARNING") &&
       detail.readiness.canApprove ? (
@@ -143,8 +149,15 @@ export function AdminReviewDecisionPanel({
         </div>
       ) : null}
 
+      {detail.readiness.retrievalEvaluationStatus === "WARNING" &&
+      detail.readiness.canApprove ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+          검색 품질 평가가 WARNING입니다. 승인은 가능하지만 보완을 권장합니다.
+        </div>
+      ) : null}
+
       <p className="text-xs leading-relaxed text-store-muted">
-        검색 품질 게이트는 P20에서, 릴리스 gate 강화는 P21에서 추가될 예정입니다.
+        릴리스 gate 강화는 P21에서 추가될 예정입니다.
       </p>
 
       {detail.latestReview?.rejectionReason ? (

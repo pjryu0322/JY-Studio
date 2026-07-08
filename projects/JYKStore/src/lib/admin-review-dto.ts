@@ -2,6 +2,7 @@ import type { KnowledgePack, KnowledgePackVersion, PackReview, SourceDocument } 
 import type { SourceValidationReportDto } from "@/lib/source-validation-dto";
 import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
 import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-dto";
+import type { RetrievalEvaluationSummaryDto } from "@/lib/retrieval-evaluation/retrieval-evaluation-dto";
 import {
   chunkQualityGateSnapshotFromSummary,
   getChunkQualityBlockingMessage,
@@ -16,6 +17,11 @@ import {
   meetsStructureQualityGate,
   structureQualityGateSnapshotFromSummary,
 } from "@/lib/structure-quality/structure-quality-readiness";
+import {
+  getRetrievalEvaluationBlockingMessage,
+  meetsRetrievalEvaluationGate,
+  retrievalEvaluationGateSnapshotFromSummary,
+} from "@/lib/retrieval-evaluation/retrieval-evaluation-readiness";
 
 export type AdminReviewListItemDto = {
   packId: string;
@@ -107,9 +113,12 @@ export type AdminReviewDetailDto = {
     structureQualityMessage: string | null;
     chunkQualityStatus: string | null;
     chunkQualityMessage: string | null;
+    retrievalEvaluationStatus: string | null;
+    retrievalEvaluationMessage: string | null;
   };
   structureQuality: StructureQualitySummaryDto | null;
   chunkQuality: ChunkQualitySummaryDto | null;
+  retrievalEvaluation: RetrievalEvaluationSummaryDto | null;
 };
 
 const CONTENT_PREVIEW_MAX = 800;
@@ -165,6 +174,8 @@ function computeReadiness(pack: PackWithDetail) {
     structureQualityMessage: null,
     chunkQualityStatus: null,
     chunkQualityMessage: null,
+    retrievalEvaluationStatus: null,
+    retrievalEvaluationMessage: null,
   };
 }
 
@@ -258,6 +269,7 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
     readiness,
     structureQuality: null,
     chunkQuality: null,
+    retrievalEvaluation: null,
   };
 }
 
@@ -298,6 +310,29 @@ export function applyChunkQualityToAdminDetail(
       canApprove: detail.readiness.canApprove && gateOk,
       chunkQualityStatus: snapshot.reportStatus,
       chunkQualityMessage,
+    },
+  };
+}
+
+export function applyRetrievalEvaluationToAdminDetail(
+  detail: AdminReviewDetailDto,
+  retrievalEvaluation: RetrievalEvaluationSummaryDto | null,
+): AdminReviewDetailDto {
+  const snapshot = retrievalEvaluationGateSnapshotFromSummary(retrievalEvaluation);
+  const gateOk = meetsRetrievalEvaluationGate(snapshot);
+  const retrievalEvaluationMessage = getRetrievalEvaluationBlockingMessage(
+    snapshot,
+    retrievalEvaluation,
+  );
+
+  return {
+    ...detail,
+    retrievalEvaluation,
+    readiness: {
+      ...detail.readiness,
+      canApprove: detail.readiness.canApprove && gateOk,
+      retrievalEvaluationStatus: snapshot.reportStatus,
+      retrievalEvaluationMessage,
     },
   };
 }

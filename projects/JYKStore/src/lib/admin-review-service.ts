@@ -5,6 +5,7 @@ import {
   enrichAdminReviewDetailWithValidationReports,
   applyStructureQualityToAdminDetail,
   applyChunkQualityToAdminDetail,
+  applyRetrievalEvaluationToAdminDetail,
   type AdminReviewDetailDto,
 } from "@/lib/admin-review-dto";
 import {
@@ -13,6 +14,11 @@ import {
 import { loadStructureQualitySummaryForPack } from "@/lib/structure-quality/structure-quality-freshness";
 import { evaluatePackChunkQuality } from "@/lib/chunk-quality/chunk-quality-evaluate-service";
 import { loadChunkQualitySummaryForPack } from "@/lib/chunk-quality/chunk-quality-freshness";
+import {
+  generateRetrievalEvaluationCasesForPack,
+  runRetrievalEvaluationForPack,
+} from "@/lib/retrieval-evaluation/retrieval-evaluation-service";
+import { loadRetrievalEvaluationSummaryForPack } from "@/lib/retrieval-evaluation/retrieval-evaluation-freshness";
 import {
   validateAllSourceDocumentsForPack,
   validateAndPersistSourceDocument,
@@ -79,7 +85,9 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
   const structureQuality = await loadStructureQualitySummaryForPack(packId);
   const withStructure = applyStructureQualityToAdminDetail(withValidation, structureQuality);
   const chunkQuality = await loadChunkQualitySummaryForPack(packId);
-  return applyChunkQualityToAdminDetail(withStructure, chunkQuality);
+  const withChunk = applyChunkQualityToAdminDetail(withStructure, chunkQuality);
+  const retrievalEvaluation = await loadRetrievalEvaluationSummaryForPack(packId);
+  return applyRetrievalEvaluationToAdminDetail(withChunk, retrievalEvaluation);
 }
 
 export async function validateAdminPackSourceDocuments(input: {
@@ -173,6 +181,76 @@ export async function evaluateAdminPackChunkQuality(input: {
   return { detail: detail!, evaluation: result };
 }
 
+function mapAdminRetrievalEvaluationServiceError(
+  result:
+    | { error: "NOT_FOUND" }
+    | { error: "NO_VERSION" }
+    | { error: "CHUNK_QUALITY_NOT_READY"; message: string }
+    | { error: "STRUCTURE_QUALITY_NOT_READY"; message: string }
+    | { error: "NO_ACTIVE_CHUNKS"; message: string }
+    | { error: "INCOMPLETE"; code: "CASES_EMPTY"; message: string }
+    | { error: "RETRIEVAL_EVAL_CASES_MISSING"; message: string },
+) {
+  if (result.error === "NOT_FOUND") {
+    return { error: "NOT_FOUND" as const };
+  }
+  if (result.error === "NO_VERSION") {
+    return { error: "INCOMPLETE" as const, message: "버전이 없습니다." };
+  }
+  return {
+    error: "INCOMPLETE" as const,
+    message: result.message,
+  };
+}
+
+export async function generateAdminPackRetrievalEvaluationCases(input: {
+  packId: string;
+  reviewerClientId?: string;
+  replace?: boolean;
+}) {
+  const packId = input.packId.trim();
+  const pack = await prisma.knowledgePack.findUnique({ where: { packId } });
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  const result = await generateRetrievalEvaluationCasesForPack({
+    packId,
+    actorClientId: input.reviewerClientId,
+    replace: input.replace,
+  });
+
+  if ("error" in result) {
+    return mapAdminRetrievalEvaluationServiceError(result);
+  }
+
+  const detail = await getAdminReviewDetail(packId);
+  return { detail: detail!, evaluation: result };
+}
+
+export async function runAdminPackRetrievalEvaluation(input: {
+  packId: string;
+  reviewerClientId?: string;
+}) {
+  const packId = input.packId.trim();
+  const pack = await prisma.knowledgePack.findUnique({ where: { packId } });
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  const result = await runRetrievalEvaluationForPack({
+    packId,
+    actorClientId: input.reviewerClientId,
+  });
+
+  if ("error" in result) {
+    return mapAdminRetrievalEvaluationServiceError(result);
+  }
+
+  const detail = await getAdminReviewDetail(packId);
+  return { detail: detail!, evaluation: result };
+}
+
 function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null {
   if (!detail.readiness.canApprove) {
     if (detail.pack.status !== "REVIEWING") {
@@ -189,6 +267,9 @@ function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null 
     }
     if (detail.readiness.chunkQualityMessage) {
       return detail.readiness.chunkQualityMessage;
+    }
+    if (detail.readiness.retrievalEvaluationMessage) {
+      return detail.readiness.retrievalEvaluationMessage;
     }
     return "승인에 필요한 버전·원천 문서·설명을 확인해 주세요.";
   }

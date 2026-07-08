@@ -244,6 +244,10 @@ model KnowledgePack {
   structureCoverageReports StructureCoverageReport[]
   knowledgeQualityReports  KnowledgeQualityReport[]
   chunkQualityReports      ChunkQualityReport[]
+  retrievalEvaluationSets    RetrievalEvaluationSet[]
+  retrievalEvaluationRuns    RetrievalEvaluationRun[]
+  retrievalEvaluationCases   RetrievalEvaluationCase[]
+  retrievalEvaluationResults RetrievalEvaluationResult[]
 
   @@index([status])
   @@index([categoryId])
@@ -295,6 +299,10 @@ model KnowledgePackVersion {
   structureCoverageReports StructureCoverageReport[]
   knowledgeQualityReports  KnowledgeQualityReport[]
   chunkQualityReports      ChunkQualityReport[]
+  retrievalEvaluationSets    RetrievalEvaluationSet[]
+  retrievalEvaluationRuns    RetrievalEvaluationRun[]
+  retrievalEvaluationCases   RetrievalEvaluationCase[]
+  retrievalEvaluationResults RetrievalEvaluationResult[]
 
   @@unique([packId, version])
   @@index([packId])
@@ -755,6 +763,144 @@ model ChunkQualityChunkMetric {
   @@index([chunkId])
   @@index([sourceDocumentId])
   @@index([status])
+}
+
+model RetrievalEvaluationSet {
+  id          String   @id @default(cuid())
+  packId      String
+  versionId   String
+  name        String
+  description String?
+  status      String   @default("ACTIVE")
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  cases   RetrievalEvaluationCase[]
+  runs    RetrievalEvaluationRun[]
+
+  @@index([packId])
+  @@index([versionId])
+  @@index([status])
+}
+
+model RetrievalEvaluationCase {
+  id                        String   @id @default(cuid())
+  setId                     String
+  packId                    String
+  versionId                 String
+  query                     String
+  mode                      String   @default("both")
+  topK                      Int      @default(5)
+  expectedChunkIds          String[]
+  expectedSourceDocumentIds String[]
+  expectedSections          String[]
+  expectedTags              String[]
+  expectedMetadata          Json?
+  weight                    Int      @default(1)
+  isActive                  Boolean  @default(true)
+  createdBy                 String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  set     RetrievalEvaluationSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  pack    KnowledgePack          @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version KnowledgePackVersion   @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  results RetrievalEvaluationResult[]
+
+  @@index([setId])
+  @@index([packId])
+  @@index([versionId])
+  @@index([isActive])
+}
+
+model RetrievalEvaluationRun {
+  id                         String   @id @default(cuid())
+  setId                      String
+  packId                     String
+  versionId                  String
+  status                     String
+  retrievalMode              String
+  totalCaseCount             Int      @default(0)
+  evaluatedCaseCount         Int      @default(0)
+  passCaseCount              Int      @default(0)
+  warningCaseCount           Int      @default(0)
+  failCaseCount              Int      @default(0)
+  hitRate                    Float    @default(0)
+  meanReciprocalRank         Float    @default(0)
+  averageTopRank             Float?
+  averageScore               Float    @default(0)
+  totalScore                 Int      @default(0)
+  blockingIssueCount         Int      @default(0)
+  warningIssueCount          Int      @default(0)
+  summary                    String
+  checkedBy                  String   @default("SYSTEM_RULE")
+  checkedAt                  DateTime @default(now())
+  createdAt                  DateTime @default(now())
+
+  set     RetrievalEvaluationSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  pack    KnowledgePack          @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version KnowledgePackVersion   @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  results RetrievalEvaluationResult[]
+  issues  RetrievalEvaluationIssue[]
+
+  @@index([setId])
+  @@index([packId])
+  @@index([versionId])
+  @@index([status])
+  @@index([checkedAt])
+}
+
+model RetrievalEvaluationResult {
+  id                 String   @id @default(cuid())
+  runId              String
+  caseId             String
+  packId             String
+  versionId          String
+  retrievalMode      String
+  query              String
+  status             String
+  topK               Int
+  hit                Boolean  @default(false)
+  firstHitRank       Int?
+  reciprocalRank     Float    @default(0)
+  bestScore          Float    @default(0)
+  matchedChunkIds    String[]
+  matchedSourceIds   String[]
+  returnedChunkIds   String[]
+  returnedSourceIds  String[]
+  issueCodes         String[]
+  createdAt          DateTime @default(now())
+
+  run     RetrievalEvaluationRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  case    RetrievalEvaluationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  pack    KnowledgePack           @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version KnowledgePackVersion   @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([caseId])
+  @@index([packId])
+  @@index([versionId])
+  @@index([status])
+}
+
+model RetrievalEvaluationIssue {
+  id        String   @id @default(cuid())
+  runId     String
+  severity  String
+  code      String
+  message   String
+  field     String?
+  hint      String?
+  createdAt DateTime @default(now())
+
+  run RetrievalEvaluationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([severity])
+  @@index([code])
 }
 
 model PipelineRun {

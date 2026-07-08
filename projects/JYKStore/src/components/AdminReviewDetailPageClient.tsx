@@ -8,9 +8,16 @@ import { AdminReviewSourceDocuments } from "@/components/AdminReviewSourceDocume
 import { ExportPanel } from "@/components/ExportPanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
-import { fetchAdminReviewDetail, evaluateAdminStructureQualityApi, evaluateAdminChunkQualityApi } from "@/lib/admin-review-api";
+import {
+  fetchAdminReviewDetail,
+  evaluateAdminStructureQualityApi,
+  evaluateAdminChunkQualityApi,
+  generateAdminRetrievalEvaluationCasesApi,
+  runAdminRetrievalEvaluationApi,
+} from "@/lib/admin-review-api";
 import { StructureQualityPanel } from "@/components/StructureQualityPanel";
 import { ChunkQualityPanel } from "@/components/ChunkQualityPanel";
+import { RetrievalEvaluationPanel } from "@/components/RetrievalEvaluationPanel";
 
 export function AdminReviewDetailPageClient({ packId }: { readonly packId: string }) {
   const [loading, setLoading] = useState(true);
@@ -63,6 +70,19 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         editable
         onEvaluate={async () => {
           const data = await evaluateAdminChunkQualityApi(packId);
+          setDetail(data.detail);
+        }}
+      />
+      <RetrievalEvaluationPanel
+        packId={packId}
+        retrievalEvaluation={detail.retrievalEvaluation}
+        editable
+        onGenerate={async (replace) => {
+          const data = await generateAdminRetrievalEvaluationCasesApi(packId, replace);
+          setDetail(data.detail);
+        }}
+        onRun={async () => {
+          const data = await runAdminRetrievalEvaluationApi(packId);
           setDetail(data.detail);
         }}
       />

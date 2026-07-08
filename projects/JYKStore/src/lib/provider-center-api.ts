@@ -187,6 +187,41 @@ export async function evaluateProviderChunkQualityApi(
   return (await response.json()) as ProviderPackDetailResponse;
 }
 
+export async function generateProviderRetrievalEvaluationCasesApi(
+  packId: string,
+  replace?: boolean,
+): Promise<ProviderPackDetailResponse> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/retrieval-evaluation/cases/generate`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(replace === undefined ? {} : { replace }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as ProviderPackDetailResponse;
+}
+
+export async function runProviderRetrievalEvaluationApi(
+  packId: string,
+): Promise<ProviderPackDetailResponse> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/retrieval-evaluation/run`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as ProviderPackDetailResponse;
+}
+
 export async function validateSourceDocumentApi(
   packId: string,
   sourceDocumentId: string,

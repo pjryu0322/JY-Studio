@@ -1,3 +1,4 @@
+import { prisma } from "@/lib/prisma";
 import type {
   RetrievalFilters,
   RetrievalMode,
@@ -12,6 +13,8 @@ import {
   selectRetrievalCandidates,
 } from "@/lib/retrieval/retrieval-response-mapper";
 import { scoreRetrievalCandidates } from "@/lib/retrieval/retrieval-score-service";
+import type { RetrievalEvaluationCandidate } from "@/lib/retrieval-evaluation/retrieval-evaluation-types";
+import { toMetadataRecord } from "@/lib/retrieval/retrieval-types";
 
 /**
  * Retrieval orchestration facade.
@@ -36,16 +39,36 @@ export async function retrieveContexts(input: {
     return null;
   }
 
+  return retrieveContextsForVersion({
+    packId: packContext.packId,
+    versionId: packContext.versionId,
+    query: input.query,
+    filters: input.filters,
+    topK: input.topK,
+    includeMetadata: input.includeMetadata,
+    retrievalMode: input.retrievalMode,
+    requestId: input.requestId,
+  });
+}
+
+async function retrieveContextsForVersion(input: {
+  packId: string;
+  versionId: string;
+  query?: string;
+  filters: RetrievalFilters;
+  topK: number;
+  includeMetadata: boolean;
+  retrievalMode: RetrievalMode;
+  requestId: string;
+}): Promise<RetrievalResponseDto> {
   const searchQuery = input.query?.trim() ?? "";
   const tokens = tokenizeSearchQuery(searchQuery);
   const filterKeys = Object.keys(input.filters);
   const hasFilters = filterKeys.length > 0;
   const hasQuery = tokens.length > 0;
 
-  // metadata filter는 항상 vector/hybrid ranking보다 먼저 적용된다.
-  // query-only/hybrid 검색도 첫 500개에 한정하지 않고 paging scan한다.
   const { collected, scanned, collectionMode } = await collectRetrievalCandidates({
-    versionId: packContext.versionId,
+    versionId: input.versionId,
     filters: input.filters,
     hasFilters,
     hasQuery,
@@ -57,7 +80,6 @@ export async function retrieveContexts(input: {
     filters: input.filters,
   });
 
-  // hybrid mode: query가 있으면 vector similarity를 결합한다.
   const useHybrid = input.retrievalMode === "hybrid" && tokens.length > 0;
   let embeddingProvider: string | undefined;
   let embeddingModel: string | undefined;
@@ -76,7 +98,7 @@ export async function retrieveContexts(input: {
 
   return mapRetrievalResponse({
     selected,
-    packId: packContext.packId,
+    packId: input.packId,
     includeMetadata: input.includeMetadata,
     useHybrid,
     topK: input.topK,
@@ -87,5 +109,55 @@ export async function retrieveContexts(input: {
     scanned,
     filteredCount: collected.length,
     collectionMode,
+  });
+}
+
+/**
+ * Internal retrieval for evaluation gates. Works for DRAFT/REVIEWING packs
+ * (not limited to public statuses). Does not change public API response shape.
+ */
+export async function runRetrievalForEvaluation(input: {
+  knowledgePackId: string;
+  versionId: string;
+  query: string;
+  retrievalMode: RetrievalMode;
+  topK: number;
+}): Promise<RetrievalEvaluationCandidate[]> {
+  const response = await retrieveContextsForVersion({
+    packId: input.knowledgePackId,
+    versionId: input.versionId,
+    query: input.query,
+    filters: {},
+    topK: input.topK,
+    includeMetadata: true,
+    retrievalMode: input.retrievalMode,
+    requestId: `eval-${Date.now()}`,
+  });
+
+  const chunkIds = response.contexts.map((c) => c.chunkId);
+  const chunks = await prisma.knowledgeChunk.findMany({
+    where: { id: { in: chunkIds } },
+    select: {
+      id: true,
+      section: true,
+      tags: true,
+      sourceDocumentId: true,
+      metadata: true,
+    },
+  });
+  const byId = new Map(chunks.map((c) => [c.id, c]));
+
+  return response.contexts.map((ctx) => {
+    const chunk = byId.get(ctx.chunkId);
+    const refSourceId = ctx.references?.[0]?.sourceDocumentId ?? null;
+    return {
+      chunkId: ctx.chunkId,
+      sourceDocumentId: chunk?.sourceDocumentId ?? refSourceId,
+      title: ctx.title,
+      section: chunk?.section ?? null,
+      tags: chunk?.tags ?? [],
+      metadata: toMetadataRecord(chunk?.metadata) ?? ctx.metadata ?? null,
+      score: ctx.score,
+    };
   });
 }

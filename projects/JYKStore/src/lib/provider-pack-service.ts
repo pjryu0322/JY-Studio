@@ -33,6 +33,16 @@ import {
   meetsChunkQualityGate,
 } from "@/lib/chunk-quality/chunk-quality-readiness";
 import {
+  generateRetrievalEvaluationCasesForPack,
+  runRetrievalEvaluationForPack,
+} from "@/lib/retrieval-evaluation/retrieval-evaluation-service";
+import { loadRetrievalEvaluationSummaryForPack } from "@/lib/retrieval-evaluation/retrieval-evaluation-freshness";
+import {
+  getRetrievalEvaluationBlockingMessage,
+  meetsRetrievalEvaluationGate,
+  retrievalEvaluationGateSnapshotFromSummary,
+} from "@/lib/retrieval-evaluation/retrieval-evaluation-readiness";
+import {
   getStructureQualityBlockingMessage,
   meetsStructureQualityGate,
   structureQualityGateSnapshotFromSummary,
@@ -297,11 +307,13 @@ async function mapProviderPackDetailWithValidation(
   }
   const structureQuality = await loadStructureQualitySummaryForPack(pack.packId);
   const chunkQuality = await loadChunkQualitySummaryForPack(pack.packId);
+  const retrievalEvaluation = await loadRetrievalEvaluationSummaryForPack(pack.packId);
 
   return toProviderPackDetail(pack, overlays, {
     structureTemplateKey: pack.structureTemplateKey,
     structureQuality,
     chunkQuality,
+    retrievalEvaluation,
   });
 }
 
@@ -798,6 +810,16 @@ export async function submitProviderPackForReview(clientId: string, packId: stri
     };
   }
 
+  const retrievalEvaluation = await loadRetrievalEvaluationSummaryForPack(packId);
+  const retrievalGate = retrievalEvaluationGateSnapshotFromSummary(retrievalEvaluation);
+  if (!meetsRetrievalEvaluationGate(retrievalGate)) {
+    const message = getRetrievalEvaluationBlockingMessage(retrievalGate, retrievalEvaluation);
+    return {
+      error: "INCOMPLETE" as const,
+      message: message ?? "검색 품질 평가를 먼저 실행해 주세요.",
+    };
+  }
+
   const onlyEtc = allDocs.every((d) => d.sourceType === "ETC");
   const submitNote = onlyEtc
     ? "모든 원천 문서 유형이 '기타(ETC)'입니다. 자료 유형을 구체적으로 분류하면 검수 품질이 향상됩니다."
@@ -955,6 +977,101 @@ export async function evaluateProviderPackChunkQuality(clientId: string, packId:
       error: "INCOMPLETE" as const,
       message: result.message,
     };
+  }
+
+  const detail = await getProviderPackForClient(clientId, packId);
+  return { pack: detail!, evaluation: result };
+}
+
+function mapRetrievalEvaluationServiceError(
+  result:
+    | { error: "NOT_FOUND" }
+    | { error: "NO_VERSION" }
+    | { error: "CHUNK_QUALITY_NOT_READY"; message: string }
+    | { error: "STRUCTURE_QUALITY_NOT_READY"; message: string }
+    | { error: "NO_ACTIVE_CHUNKS"; message: string }
+    | { error: "INCOMPLETE"; code: "CASES_EMPTY"; message: string }
+    | { error: "RETRIEVAL_EVAL_CASES_MISSING"; message: string },
+) {
+  if (result.error === "NOT_FOUND") {
+    return { error: "NOT_FOUND" as const };
+  }
+  if (result.error === "NO_VERSION") {
+    return { error: "INCOMPLETE" as const, message: "버전이 없습니다." };
+  }
+  return {
+    error: "INCOMPLETE" as const,
+    message: result.message,
+  };
+}
+
+export async function generateProviderPackRetrievalEvaluationCases(
+  clientId: string,
+  packId: string,
+  replace?: boolean,
+) {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_EDITABLE" as const };
+  }
+
+  const result = await generateRetrievalEvaluationCasesForPack({
+    packId,
+    actorClientId: clientId,
+    replace,
+  });
+
+  if ("error" in result) {
+    return mapRetrievalEvaluationServiceError(result);
+  }
+
+  const detail = await getProviderPackForClient(clientId, packId);
+  return { pack: detail!, evaluation: result };
+}
+
+export async function runProviderPackRetrievalEvaluation(clientId: string, packId: string) {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_EDITABLE" as const };
+  }
+
+  const result = await runRetrievalEvaluationForPack({
+    packId,
+    actorClientId: clientId,
+  });
+
+  if ("error" in result) {
+    return mapRetrievalEvaluationServiceError(result);
   }
 
   const detail = await getProviderPackForClient(clientId, packId);

@@ -15,6 +15,11 @@ import {
   getChunkQualityBlockingMessage,
   meetsChunkQualityGate,
 } from "@/lib/chunk-quality/chunk-quality-readiness";
+import {
+  getRetrievalEvaluationBlockingMessage,
+  meetsRetrievalEvaluationGate,
+  retrievalEvaluationGateSnapshotFromSummary,
+} from "@/lib/retrieval-evaluation/retrieval-evaluation-readiness";
 
 export function ProviderPackReadinessCard({
   pack,
@@ -36,13 +41,21 @@ export function ProviderPackReadinessCard({
   );
   const chunkGate = chunkQualityGateSnapshotFromSummary(pack.chunkQuality ?? null);
   const chunkBlockMessage = getChunkQualityBlockingMessage(chunkGate, pack.chunkQuality);
+  const retrievalGate = retrievalEvaluationGateSnapshotFromSummary(
+    pack.retrievalEvaluation ?? null,
+  );
+  const retrievalBlockMessage = getRetrievalEvaluationBlockingMessage(
+    retrievalGate,
+    pack.retrievalEvaluation,
+  );
   const canSubmit =
     isDraft &&
     versionCount > 0 &&
     sourceDocumentCount > 0 &&
     meetsSourceValidationSubmitGate(validation) &&
     meetsStructureQualityGate(structureGate) &&
-    meetsChunkQualityGate(chunkGate);
+    meetsChunkQualityGate(chunkGate) &&
+    meetsRetrievalEvaluationGate(retrievalGate);
 
   const typeCoverage = docs.reduce<Record<string, number>>((acc, doc) => {
     acc[doc.sourceType] = (acc[doc.sourceType] ?? 0) + 1;
@@ -158,6 +171,18 @@ export function ProviderPackReadinessCard({
       {meetsChunkQualityGate(chunkGate) && chunkGate.reportStatus === "WARNING" ? (
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
           청킹 품질이 WARNING입니다. 제출은 가능하나 보완을 권장합니다.
+        </p>
+      ) : null}
+      {!meetsRetrievalEvaluationGate(retrievalGate) ? (
+        <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+          {retrievalBlockMessage ??
+            "검색 품질 평가를 실행하고 FAIL 결과가 없어야 검수 요청을 제출할 수 있습니다."}
+        </p>
+      ) : null}
+      {meetsRetrievalEvaluationGate(retrievalGate) &&
+      retrievalGate.reportStatus === "WARNING" ? (
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
+          검색 품질 평가가 WARNING입니다. 제출은 가능하나 보완을 권장합니다.
         </p>
       ) : null}
     </section>

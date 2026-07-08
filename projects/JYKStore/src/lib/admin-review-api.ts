@@ -123,3 +123,38 @@ export async function evaluateAdminChunkQualityApi(
   }
   return (await response.json()) as AdminReviewDetailResponse;
 }
+
+export async function generateAdminRetrievalEvaluationCasesApi(
+  packId: string,
+  replace?: boolean,
+): Promise<AdminReviewDetailResponse> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/retrieval-evaluation/cases/generate`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(replace === undefined ? {} : { replace }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminReviewDetailResponse;
+}
+
+export async function runAdminRetrievalEvaluationApi(
+  packId: string,
+): Promise<AdminReviewDetailResponse> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/retrieval-evaluation/run`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminReviewDetailResponse;
+}
