@@ -1,4 +1,8 @@
+import { RETRIEVAL_QUERY_MAX_LENGTH } from "../src/lib/retrieval-dto";
 import { mcpError } from "./errors.js";
+
+/** Keep in sync with Public Retrieval API `RETRIEVAL_QUERY_MAX_LENGTH`. */
+export const MCP_RETRIEVAL_QUERY_MAX_LENGTH = RETRIEVAL_QUERY_MAX_LENGTH;
 
 export type RetrievalToolInput = {
   knowledgePackId: string;
@@ -151,7 +155,10 @@ export function parseRetrievalToolInput(raw: unknown): RetrievalToolInput {
   }
   return {
     knowledgePackId: requireKnowledgePackId(body.knowledgePackId),
-    query: parseQuery(body.query, { required: true, maxLength: 2000 })!,
+    query: parseQuery(body.query, {
+      required: true,
+      maxLength: MCP_RETRIEVAL_QUERY_MAX_LENGTH,
+    })!,
     topK: parseTopK(body.topK),
     retrievalMode: parseRetrievalMode(body.retrievalMode),
     metadataFilters: parseMetadataFilters(body.metadataFilters),

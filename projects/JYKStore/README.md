@@ -660,11 +660,18 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - P15 MCP-ready manifest는 계약 문서이고, P22는 실행 runtime bridge입니다. 자세한 설정은 `mcp-server/README.md`를 참고하세요.
 - 외부 AI provider 호출 없음. Public API 계약 변경 없음.
 
+### P22.1 — MCP Contract Alignment
+
+- MCP retrieval query maxLength를 Public Retrieval API 계약과 동일하게 100자로 정렬했습니다.
+- MCP server zod schema, tool definition schema, pure validation을 동일한 상수 기준으로 맞췄습니다.
+- Graph query maxLength는 기존 2000자를 유지합니다.
+- DB schema/public API 계약/dependency 변경 없음.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22 완료)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22/P22.1 완료)
 - MCP HTTP streaming export / OAuth 등은 후속 개선
 - pgvector 기반 vector index
 - 로그인/회원 관리

@@ -38,6 +38,33 @@ describe("mcp tools validation", () => {
     assert.equal(parsed.topK, 5);
   });
 
+  it("aligns retrieval query max length with Public API contract", () => {
+    const okQuery = "a".repeat(100);
+    const parsed = parseRetrievalToolInput({
+      knowledgePackId: "pack-1",
+      query: okQuery,
+    });
+    assert.equal(parsed.query.length, 100);
+
+    assert.throws(
+      () =>
+        parseRetrievalToolInput({
+          knowledgePackId: "pack-1",
+          query: "a".repeat(101),
+        }),
+      (error: unknown) =>
+        error instanceof McpBridgeError && error.code === "JYKSTORE_MCP_INVALID_INPUT",
+    );
+  });
+
+  it("keeps graph query max independent from retrieval query max", () => {
+    const parsed = parseGraphToolInput({
+      knowledgePackId: "pack-1",
+      query: "a".repeat(101),
+    });
+    assert.equal(parsed.query?.length, 101);
+  });
+
   it("applies graph limit default and max", () => {
     const parsed = parseGraphToolInput({ knowledgePackId: "pack-1" });
     assert.equal(parsed.limit, 50);

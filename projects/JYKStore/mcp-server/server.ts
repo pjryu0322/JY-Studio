@@ -5,6 +5,7 @@ import { z } from "zod";
 import { loadMcpServerConfig, maskApiKey, type McpServerConfig } from "./config.js";
 import { JYKStoreClient } from "./jykstore-client.js";
 import { handleResourceRead } from "./resource-handlers.js";
+import { MCP_RETRIEVAL_QUERY_MAX_LENGTH } from "./schemas.js";
 import { handleMcpToolCall } from "./tool-handlers.js";
 
 const packIdSchema = z.string().min(1).max(100);
@@ -28,7 +29,7 @@ export function createBridgeServer(client: JYKStoreClient, allowedPackIds: strin
         "Search validated context chunks from a JYKStore knowledge pack via Public Retrieval API. Returns raw JSON context, not a generated answer.",
       inputSchema: {
         knowledgePackId: packIdSchema,
-        query: z.string().min(1).max(2000),
+        query: z.string().min(1).max(MCP_RETRIEVAL_QUERY_MAX_LENGTH),
         topK: z.number().int().min(1).max(20).optional(),
         retrievalMode: z.enum(["keyword", "hybrid"]).optional(),
         metadataFilters: z.record(z.string(), metadataValueSchema).optional(),

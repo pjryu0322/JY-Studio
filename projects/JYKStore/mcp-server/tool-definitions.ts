@@ -1,3 +1,5 @@
+import { MCP_RETRIEVAL_QUERY_MAX_LENGTH } from "./schemas.js";
+
 export const MCP_TOOL_NAMES = [
   "jykstore_retrieval_query",
   "jykstore_graph_query",
@@ -41,9 +43,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         knowledgePackId: packIdProperty,
         query: {
           type: "string",
-          description: "Search query text",
+          description: `Search query text (1-${MCP_RETRIEVAL_QUERY_MAX_LENGTH} characters)`,
           minLength: 1,
-          maxLength: 2000,
+          maxLength: MCP_RETRIEVAL_QUERY_MAX_LENGTH,
         },
         topK: {
           type: "integer",
