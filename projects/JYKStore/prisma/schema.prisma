@@ -239,6 +239,7 @@ model KnowledgePack {
   graphEdges    KnowledgeGraphEdge[]
   pipelineRuns     PipelineRun[]
   pipelineStepLogs PipelineStepLog[]
+  sourceValidationReports SourceValidationReport[]
 
   @@index([status])
   @@index([categoryId])
@@ -286,6 +287,7 @@ model KnowledgePackVersion {
   embeddings      KnowledgeChunkEmbedding[]
   graphNodes      KnowledgeGraphNode[]
   graphEdges      KnowledgeGraphEdge[]
+  sourceValidationReports SourceValidationReport[]
 
   @@unique([packId, version])
   @@index([packId])
@@ -315,6 +317,7 @@ model SourceDocument {
 
   version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
   chunks  KnowledgeChunk[]
+  validationReports SourceValidationReport[]
 
   @@index([versionId])
   @@index([sourceType])
@@ -488,6 +491,52 @@ model ApiUsageLog {
   @@index([packId])
   @@index([statusCode])
   @@index([createdAt])
+}
+
+model SourceValidationReport {
+  id                 String                 @id @default(cuid())
+  sourceDocumentId   String
+  packId             String
+  versionId          String
+  sourceType         SourceType
+  sourceFormat       SourceFormat
+  status             SourceValidationStatus
+  score              Int                    @default(0)
+  summary            String
+  issueCount         Int                    @default(0)
+  blockingIssueCount Int                    @default(0)
+  warningIssueCount  Int                    @default(0)
+  checkedBy          String                 @default("SYSTEM_RULE")
+  checkedAt          DateTime               @default(now())
+  createdAt          DateTime               @default(now())
+
+  sourceDocument SourceDocument       @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  pack           KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version        KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  issues         SourceValidationIssue[]
+
+  @@index([sourceDocumentId])
+  @@index([packId])
+  @@index([versionId])
+  @@index([status])
+  @@index([checkedAt])
+}
+
+model SourceValidationIssue {
+  id        String   @id @default(cuid())
+  reportId  String
+  severity  String
+  code      String
+  message   String
+  field     String?
+  hint      String?
+  createdAt DateTime @default(now())
+
+  report SourceValidationReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([severity])
+  @@index([code])
 }
 
 model PipelineRun {

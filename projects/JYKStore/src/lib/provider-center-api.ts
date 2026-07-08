@@ -154,3 +154,20 @@ export async function submitProviderPackApi(packId: string): Promise<ProviderPac
   }
   return (await response.json()) as ProviderPackDetailResponse;
 }
+
+export async function validateSourceDocumentApi(
+  packId: string,
+  sourceDocumentId: string,
+): Promise<ProviderPackDetailResponse & { report?: unknown }> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/source-documents/${encodeURIComponent(sourceDocumentId)}/validate`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as ProviderPackDetailResponse & { report?: unknown };
+}

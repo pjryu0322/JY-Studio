@@ -1,4 +1,5 @@
 import type { KnowledgePack, KnowledgePackVersion, PackReview, SourceDocument } from "@prisma/client";
+import type { SourceValidationReportDto } from "@/lib/source-validation-dto";
 import {
   canApproveReviewReadiness,
   countSourceValidationFromStatuses,
@@ -53,6 +54,16 @@ export type AdminReviewDetailDto = {
       documentVersion: string | null;
       validationStatus: string;
       validationSummary: string | null;
+      validationScore: number | null;
+      blockingIssueCount: number;
+      warningIssueCount: number;
+      validationIssues: {
+        severity: string;
+        code: string;
+        message: string;
+        field: string | null;
+        hint: string | null;
+      }[];
       contentPreview: string | null;
       createdAt: string;
     }[];
@@ -201,6 +212,10 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
         documentVersion: doc.documentVersion,
         validationStatus: doc.validationStatus,
         validationSummary: doc.validationSummary,
+        validationScore: null,
+        blockingIssueCount: 0,
+        warningIssueCount: 0,
+        validationIssues: [],
         contentPreview: truncateContentPreview(doc.content),
         createdAt: doc.createdAt.toISOString(),
       })),
@@ -217,5 +232,34 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
         }
       : null,
     readiness,
+  };
+}
+
+export function enrichAdminReviewDetailWithValidationReports(
+  detail: AdminReviewDetailDto,
+  reports: Record<string, SourceValidationReportDto>,
+): AdminReviewDetailDto {
+  return {
+    ...detail,
+    versions: detail.versions.map((version) => ({
+      ...version,
+      sourceDocuments: version.sourceDocuments.map((doc) => {
+        const report = reports[doc.id];
+        return {
+          ...doc,
+          validationScore: report?.score ?? doc.validationScore,
+          blockingIssueCount: report?.blockingIssueCount ?? doc.blockingIssueCount,
+          warningIssueCount: report?.warningIssueCount ?? doc.warningIssueCount,
+          validationIssues:
+            report?.issues.map((issue) => ({
+              severity: issue.severity,
+              code: issue.code,
+              message: issue.message,
+              field: issue.field,
+              hint: issue.hint,
+            })) ?? doc.validationIssues,
+        };
+      }),
+    })),
   };
 }

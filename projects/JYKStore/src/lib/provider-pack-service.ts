@@ -22,6 +22,12 @@ import {
   meetsSourceValidationSubmitGate,
 } from "@/lib/source-validation-readiness";
 import {
+  loadLatestValidationSummariesByDocumentIds,
+  persistSourceValidationResult,
+  validateAndPersistSourceDocument,
+} from "@/lib/source-validation/source-validation-report-service";
+import { validateSourceDocumentContent } from "@/lib/source-validation/source-validation-runner";
+import {
   toProviderPackDetail,
   toProviderPackListItem,
   type ProviderPackDetailDto,
@@ -245,7 +251,30 @@ export async function getProviderPackForClient(
     include: packDetailInclude,
   });
 
-  return pack ? toProviderPackDetail(pack) : null;
+  return pack ? await mapProviderPackDetailWithValidation(pack) : null;
+}
+
+async function mapProviderPackDetailWithValidation(
+  pack: NonNullable<Awaited<ReturnType<typeof prisma.knowledgePack.findFirst>>> & {
+    versions: (import("@prisma/client").KnowledgePackVersion & {
+      sourceDocuments: import("@prisma/client").SourceDocument[];
+    })[];
+  },
+) {
+  const docIds = pack.versions.flatMap((v) => v.sourceDocuments.map((d) => d.id));
+  const summaries = await loadLatestValidationSummariesByDocumentIds(docIds);
+  const overlays: Record<
+    string,
+    { validationScore: number | null; blockingIssueCount: number; warningIssueCount: number }
+  > = {};
+  for (const [id, summary] of Object.entries(summaries)) {
+    overlays[id] = {
+      validationScore: summary.score,
+      blockingIssueCount: summary.blockingIssueCount,
+      warningIssueCount: summary.warningIssueCount,
+    };
+  }
+  return toProviderPackDetail(pack, overlays);
 }
 
 export async function updateProviderPackForClient(
@@ -454,7 +483,32 @@ export async function createSourceDocumentForProviderPack(
     return { error: "VERSION_REQUIRED" as const };
   }
 
-  const validation = evaluateSourceValidation({
+  const siblingDocs = await prisma.sourceDocument.findMany({
+    where: { versionId: version.id },
+    select: { checksum: true },
+  });
+  const siblingChecksums = siblingDocs
+    .map((d) => d.checksum?.trim())
+    .filter((c): c is string => Boolean(c));
+
+  const fullValidation = validateSourceDocumentContent(
+    {
+      title,
+      sourceType,
+      sourceFormat,
+      content: input.content,
+      sourceUrl: input.sourceUrl,
+      productVersion: input.productVersion,
+      checksum: input.checksum,
+    },
+    { packId, versionId: version.id, siblingChecksums },
+  );
+
+  if (fullValidation.status === "FAIL") {
+    return { error: "VALIDATION" as const, message: fullValidation.summary };
+  }
+
+  const lightweight = evaluateSourceValidation({
     title,
     sourceType,
     sourceFormat,
@@ -462,9 +516,8 @@ export async function createSourceDocumentForProviderPack(
     sourceUrl: input.sourceUrl,
     productVersion: input.productVersion,
   });
-
-  if (validation.status === "FAIL") {
-    return { error: "VALIDATION" as const, message: validation.summary };
+  if (lightweight.status === "FAIL") {
+    return { error: "VALIDATION" as const, message: lightweight.summary };
   }
 
   const doc = await prisma.sourceDocument.create({
@@ -481,20 +534,29 @@ export async function createSourceDocumentForProviderPack(
       productVersion: input.productVersion?.trim() || null,
       documentVersion: input.documentVersion?.trim() || null,
       licenseStatus: input.licenseStatus?.trim() || null,
-      validationStatus: validation.status,
-      validationSummary: validation.summary,
+      validationStatus: fullValidation.status,
+      validationSummary: fullValidation.summary,
       registeredByClientId: clientId,
     },
+  });
+
+  await persistSourceValidationResult({
+    sourceDocument: doc,
+    packId,
+    result: fullValidation,
+    actorClientId: clientId,
+    triggerType: "SOURCE_DOCUMENT_REGISTERED",
+    recordPipeline: false,
   });
 
   await recordProviderAudit({
     action: AuditAction.PROVIDER_SOURCE_DOCUMENT_CREATE,
     entityType: "SourceDocument",
     entityId: doc.id,
-    metadata: { packId, sourceType, sourceFormat, validationStatus: validation.status },
+    metadata: { packId, sourceType, sourceFormat, validationStatus: fullValidation.status },
   });
 
-  await recordSourceRegisteredPipeline(packId, clientId, validation.status, sourceType);
+  await recordSourceRegisteredPipeline(packId, clientId, fullValidation.status, sourceType);
 
   const detail = await getProviderPackForClient(clientId, packId);
   return { pack: detail! };
@@ -723,4 +785,50 @@ export async function submitProviderPackForReview(clientId: string, packId: stri
 
   const detail = await getProviderPackForClient(clientId, packId);
   return { pack: detail! };
+}
+
+export async function validateProviderSourceDocument(
+  clientId: string,
+  packId: string,
+  sourceDocumentId: string,
+) {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_EDITABLE" as const };
+  }
+
+  const doc = await prisma.sourceDocument.findFirst({
+    where: { id: sourceDocumentId, version: { packId } },
+  });
+
+  if (!doc) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  const validation = await validateAndPersistSourceDocument(sourceDocumentId, {
+    actorClientId: clientId,
+    triggerType: "SOURCE_DOCUMENT_VALIDATE",
+  });
+
+  if ("error" in validation) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  const detail = await getProviderPackForClient(clientId, packId);
+  return { pack: detail!, report: validation.report };
 }

@@ -558,9 +558,22 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - `SOURCE_TYPE_OPTIONS`에서 `requiredFields`와 `recommendedFields`를 분리(`SAMPLE_CODE`의 `productVersion`은 권장).
 - pipeline 기록 실패 시 structured log(`[pipeline]`, packId, triggerType, targetStatus, error)를 남깁니다. main transaction rollback은 P21에서 재검토합니다.
 
+### P17 — Source Validation Foundation
+
+- **SourceValidationReport / SourceValidationIssue**: 원천 문서별 검증 실행 결과와 이슈 목록을 DB에 저장합니다.
+- **sourceType/sourceFormat별 deterministic validation**: API 스펙·OpenAPI·오류 코드표·콜백 가이드·샘플 코드 등 유형별 규칙과 공통 정합성 검사를 수행합니다.
+- **checksum 중복 검증**, **sourceUrl 형식 검증**(`new URL()`, 외부 fetch 없음), **content 최소 길이** 등 품질 힌트를 제공합니다.
+- **민감정보/비밀키 패턴 1차 검출**: regex 기반 BLOCKER/WARNING(이메일·전화 등).
+- **legacy `NOT_CHECKED` 재검증**: Provider·Admin API 및 UI에서 단건/전체 재검증 후 `validationStatus`/`validationSummary`를 갱신합니다.
+- **Provider/Admin 검증 report UI**: 점수·이슈 건수·이슈 목록 표시, 재검증 버튼.
+- **FAIL / NOT_CHECKED gate 유지**(P16.1): 제출·승인 차단 정책 동일, `WARNING` 허용.
+- **외부 AI/LLM/API 호출 없음**, Public Retrieval/Graph/Export/OpenAPI 계약 변경 없음.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
+- 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
+- 고급 구조화 품질 검증(P18), 청킹 품질 평가(P19), 검색 품질 평가(P20), release gate hardening(P21)
 - pgvector 기반 vector index
 - 실제 MCP Server 실행(stdio/websocket/sse runtime) 및 graph traversal/semantic graph search
 - 로그인/회원 관리
@@ -568,5 +581,5 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 
 ## 다음 단계
 
-1. Phase P17: Source Validation Foundation(유형별 validator, legacy NOT_CHECKED 재검증 등).
+1. Phase P18: Structure Coverage & Knowledge Quality.
 2. Phase P22: MCP Server Bridge(runtime) — 현재는 MCP-ready manifest만 제공합니다.

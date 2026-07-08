@@ -46,7 +46,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
       ) : null}
       <AdminReviewPackSummary detail={detail} />
-      <AdminReviewSourceDocuments versions={detail.versions} />
+      <AdminReviewSourceDocuments packId={packId} versions={detail.versions} onValidated={setDetail} />
       <AdminChunkManager packId={packId} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <KnowledgeGraphPanel packId={packId} />

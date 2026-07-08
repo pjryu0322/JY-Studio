@@ -20,8 +20,38 @@ export type ProviderSourceDocumentDto = {
   documentVersion: string | null;
   validationStatus: string;
   validationSummary: string | null;
+  validationScore: number | null;
+  blockingIssueCount: number;
+  warningIssueCount: number;
   createdAt: string;
 };
+
+export type ProviderSourceDocumentValidationOverlay = {
+  validationScore: number | null;
+  blockingIssueCount: number;
+  warningIssueCount: number;
+};
+
+function mapSourceDocument(
+  doc: SourceDocument,
+  overlay?: ProviderSourceDocumentValidationOverlay,
+): ProviderSourceDocumentDto {
+  return {
+    id: doc.id,
+    title: doc.title,
+    sourceType: doc.sourceType,
+    sourceFormat: doc.sourceFormat,
+    sourceUrl: doc.sourceUrl,
+    productVersion: doc.productVersion,
+    documentVersion: doc.documentVersion,
+    validationStatus: doc.validationStatus,
+    validationSummary: doc.validationSummary,
+    validationScore: overlay?.validationScore ?? null,
+    blockingIssueCount: overlay?.blockingIssueCount ?? 0,
+    warningIssueCount: overlay?.warningIssueCount ?? 0,
+    createdAt: doc.createdAt.toISOString(),
+  };
+}
 
 export type ProviderPackVersionDto = {
   id: string;
@@ -53,23 +83,9 @@ export type ProviderPackDetailDto = {
   updatedAt: string;
 };
 
-function mapSourceDocument(doc: SourceDocument): ProviderSourceDocumentDto {
-  return {
-    id: doc.id,
-    title: doc.title,
-    sourceType: doc.sourceType,
-    sourceFormat: doc.sourceFormat,
-    sourceUrl: doc.sourceUrl,
-    productVersion: doc.productVersion,
-    documentVersion: doc.documentVersion,
-    validationStatus: doc.validationStatus,
-    validationSummary: doc.validationSummary,
-    createdAt: doc.createdAt.toISOString(),
-  };
-}
-
 function mapVersion(
   version: KnowledgePackVersion & { sourceDocuments: SourceDocument[] },
+  overlays?: Record<string, ProviderSourceDocumentValidationOverlay>,
 ): ProviderPackVersionDto {
   return {
     id: version.id,
@@ -81,7 +97,9 @@ function mapVersion(
     targetUsers: version.targetUsers,
     useCases: version.useCases,
     versionSummary: version.versionSummary,
-    sourceDocuments: version.sourceDocuments.map(mapSourceDocument),
+    sourceDocuments: version.sourceDocuments.map((doc) =>
+      mapSourceDocument(doc, overlays?.[doc.id]),
+    ),
   };
 }
 
@@ -101,6 +119,7 @@ export function toProviderPackDetail(
   pack: KnowledgePack & {
     versions: (KnowledgePackVersion & { sourceDocuments: SourceDocument[] })[];
   },
+  validationOverlays?: Record<string, ProviderSourceDocumentValidationOverlay>,
 ): ProviderPackDetailDto {
   return {
     packId: pack.packId,
@@ -115,7 +134,7 @@ export function toProviderPackDetail(
     icon: pack.icon,
     pricing: pack.pricing,
     providerName: pack.providerName,
-    versions: pack.versions.map(mapVersion),
+    versions: pack.versions.map((v) => mapVersion(v, validationOverlays)),
     updatedAt: pack.updatedAt.toISOString(),
   };
 }

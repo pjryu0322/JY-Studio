@@ -2,8 +2,14 @@ import { AuditAction, PackStatus, PipelineStatus } from "@prisma/client";
 import {
   toAdminReviewDetail,
   toAdminReviewListItem,
+  enrichAdminReviewDetailWithValidationReports,
   type AdminReviewDetailDto,
 } from "@/lib/admin-review-dto";
+import {
+  validateAllSourceDocumentsForPack,
+  validateAndPersistSourceDocument,
+  loadLatestReportsByDocumentIds,
+} from "@/lib/source-validation/source-validation-report-service";
 import {
   completePipelineStep,
   createPipelineRun,
@@ -58,7 +64,43 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
 
   if (!pack) return null;
 
-  return toAdminReviewDetail(pack);
+  const detail = toAdminReviewDetail(pack);
+  const docIds = detail.versions.flatMap((v) => v.sourceDocuments.map((d) => d.id));
+  const reports = await loadLatestReportsByDocumentIds(docIds);
+  return enrichAdminReviewDetailWithValidationReports(detail, reports);
+}
+
+export async function validateAdminPackSourceDocuments(input: {
+  packId: string;
+  sourceDocumentId?: string;
+  reviewerClientId?: string;
+}) {
+  const packId = input.packId.trim();
+  const pack = await prisma.knowledgePack.findUnique({ where: { packId } });
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (input.sourceDocumentId?.trim()) {
+    const sourceDocumentId = input.sourceDocumentId.trim();
+    const doc = await prisma.sourceDocument.findFirst({
+      where: { id: sourceDocumentId, version: { packId } },
+    });
+    if (!doc) {
+      return { error: "NOT_FOUND" as const, message: "원천 문서를 찾을 수 없습니다." };
+    }
+    await validateAndPersistSourceDocument(sourceDocumentId, {
+      actorClientId: input.reviewerClientId,
+      triggerType: "SOURCE_DOCUMENT_VALIDATE",
+    });
+  } else {
+    await validateAllSourceDocumentsForPack(packId, {
+      actorClientId: input.reviewerClientId,
+    });
+  }
+
+  const detail = await getAdminReviewDetail(packId);
+  return { detail: detail! };
 }
 
 function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null {

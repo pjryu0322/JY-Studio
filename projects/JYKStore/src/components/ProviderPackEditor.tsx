@@ -11,6 +11,7 @@ import {
   fetchProviderPack,
   submitProviderPackApi,
   updateProviderPackApi,
+  validateSourceDocumentApi,
 } from "@/lib/provider-center-api";
 import { getSourceFormatLabel, getSourceTypeLabel } from "@/lib/source-type-dto";
 
@@ -20,6 +21,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [validatingDocId, setValidatingDocId] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [shortDescription, setShortDescription] = useState("");
@@ -66,6 +68,20 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setError(err instanceof Error ? err.message : "저장하지 못했습니다.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const onRevalidateDoc = async (sourceDocumentId: string) => {
+    if (!editable) return;
+    setValidatingDocId(sourceDocumentId);
+    setError(null);
+    try {
+      const data = await validateSourceDocumentApi(packId, sourceDocumentId);
+      setPack(data.pack);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "재검증에 실패했습니다.");
+    } finally {
+      setValidatingDocId(null);
     }
   };
 
@@ -188,13 +204,28 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           <ul className="mt-3 space-y-2">
             {allDocs.map((doc) => (
               <li key={doc.id} className="rounded-xl border border-store-border px-3 py-2 text-sm">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-semibold text-slate-900">{doc.title}</p>
-                  <SourceValidationBadge status={doc.validationStatus} />
+                  <div className="flex items-center gap-2">
+                    <SourceValidationBadge status={doc.validationStatus} />
+                    {editable ? (
+                      <button
+                        type="button"
+                        disabled={validatingDocId === doc.id}
+                        onClick={() => void onRevalidateDoc(doc.id)}
+                        className="rounded-lg border border-store-border px-2 py-1 text-[11px] font-semibold disabled:opacity-50"
+                      >
+                        {validatingDocId === doc.id ? "검증 중…" : "재검증"}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 <p className="text-xs text-store-muted">
                   {getSourceTypeLabel(doc.sourceType)} · {getSourceFormatLabel(doc.sourceFormat)}
                   {doc.sourceUrl ? ` · ${doc.sourceUrl}` : ""}
+                  {doc.validationScore != null ? ` · 점수 ${doc.validationScore}` : ""}
+                  {doc.blockingIssueCount > 0 ? ` · 차단 ${doc.blockingIssueCount}` : ""}
+                  {doc.warningIssueCount > 0 ? ` · 주의 ${doc.warningIssueCount}` : ""}
                 </p>
                 {doc.validationSummary && doc.validationStatus !== "PASS" ? (
                   <p className="mt-1 text-xs text-amber-700">{doc.validationSummary}</p>

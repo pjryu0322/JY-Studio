@@ -72,3 +72,22 @@ export async function rejectAdminReview(
   }
   return (await response.json()) as AdminReviewDetailResponse;
 }
+
+export async function validateAdminPackSourcesApi(
+  packId: string,
+  input?: { sourceDocumentId?: string },
+): Promise<AdminReviewDetailResponse> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/source-documents/validate`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input ?? {}),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminReviewDetailResponse;
+}
