@@ -22,7 +22,7 @@ import {
   meetsSourceValidationSubmitGate,
 } from "@/lib/source-validation-readiness";
 import {
-  loadLatestValidationSummariesByDocumentIds,
+  loadLatestReportsByDocumentIds,
   persistSourceValidationResult,
   validateAndPersistSourceDocument,
 } from "@/lib/source-validation/source-validation-report-service";
@@ -31,6 +31,7 @@ import {
   toProviderPackDetail,
   toProviderPackListItem,
   type ProviderPackDetailDto,
+  type ProviderSourceDocumentValidationOverlay,
 } from "@/lib/provider-pack-dto";
 
 const PACK_ID_PATTERN = /^[a-z0-9-]{3,60}$/;
@@ -262,16 +263,20 @@ async function mapProviderPackDetailWithValidation(
   },
 ) {
   const docIds = pack.versions.flatMap((v) => v.sourceDocuments.map((d) => d.id));
-  const summaries = await loadLatestValidationSummariesByDocumentIds(docIds);
-  const overlays: Record<
-    string,
-    { validationScore: number | null; blockingIssueCount: number; warningIssueCount: number }
-  > = {};
-  for (const [id, summary] of Object.entries(summaries)) {
+  const reports = await loadLatestReportsByDocumentIds(docIds);
+  const overlays: Record<string, ProviderSourceDocumentValidationOverlay> = {};
+  for (const [id, report] of Object.entries(reports)) {
     overlays[id] = {
-      validationScore: summary.score,
-      blockingIssueCount: summary.blockingIssueCount,
-      warningIssueCount: summary.warningIssueCount,
+      validationScore: report.score,
+      blockingIssueCount: report.blockingIssueCount,
+      warningIssueCount: report.warningIssueCount,
+      validationIssues: report.issues.slice(0, 10).map((issue) => ({
+        severity: issue.severity,
+        code: issue.code,
+        message: issue.message,
+        field: issue.field,
+        hint: issue.hint,
+      })),
     };
   }
   return toProviderPackDetail(pack, overlays);

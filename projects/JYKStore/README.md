@@ -569,6 +569,13 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - **FAIL / NOT_CHECKED gate 유지**(P16.1): 제출·승인 차단 정책 동일, `WARNING` 허용.
 - **외부 AI/LLM/API 호출 없음**, Public Retrieval/Graph/Export/OpenAPI 계약 변경 없음.
 
+### P17.1 — Source Validation Precision & UI Polish
+
+- **민감정보 패턴 정밀화**: OAuth/API 문서의 `client_secret`·`access_token`·`refresh_token` 필드명 설명은 BLOCKER 오탐을 줄이고 WARNING으로 안내. 실제 값 할당·PRIVATE KEY·Bearer 토큰 등은 BLOCKER 유지.
+- **Provider issue 상세**: 원천 문서 목록에 최신 검증 이슈(severity/code/message/hint) 표시, `SourceValidationReportPanel` 재사용.
+- **전체 재검증 pipeline**: pack 단위 1회 `PipelineRun`만 기록(문서별 `recordPipeline: false`), summary에 total/pass/warning/fail 집계.
+- **checksum duplicate 테스트** 및 **재검증 버튼** 모바일 `min-h-[44px]` 보정.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

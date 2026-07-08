@@ -117,4 +117,23 @@ describe("source validation rules", () => {
     assert.ok(result.issues.some((i) => i.code === "CALLBACK_RETRY_HINT"));
     assert.ok(result.issues.some((i) => i.code === "CALLBACK_SECURITY_HINT"));
   });
+
+  it("warns when checksum duplicates a sibling in the same version", () => {
+    const result = validateSourceDocumentContent(
+      baseDoc({ checksum: "abc123checksum" }),
+      { packId: "pack-1", versionId: "ver-1", siblingChecksums: ["abc123checksum"] },
+    );
+    assert.ok(result.issues.some((i) => i.code === "CHECKSUM_DUPLICATE"));
+  });
+
+  it("does not warn on checksum duplicate when checksum is absent", () => {
+    const result = validateSourceDocumentContent(
+      baseDoc({ checksum: null }),
+      { packId: "pack-1", versionId: "ver-1", siblingChecksums: ["abc123checksum"] },
+    );
+    assert.equal(
+      result.issues.some((i) => i.code === "CHECKSUM_DUPLICATE"),
+      false,
+    );
+  });
 });

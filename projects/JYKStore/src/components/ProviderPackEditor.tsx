@@ -6,6 +6,7 @@ import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCar
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderSourceDocumentForm } from "@/components/ProviderSourceDocumentForm";
 import { SourceValidationBadge } from "@/components/SourceValidationBadge";
+import { SourceValidationReportPanel } from "@/components/SourceValidationReportPanel";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import {
   fetchProviderPack,
@@ -213,7 +214,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
                         type="button"
                         disabled={validatingDocId === doc.id}
                         onClick={() => void onRevalidateDoc(doc.id)}
-                        className="rounded-lg border border-store-border px-2 py-1 text-[11px] font-semibold disabled:opacity-50"
+                        className="min-h-[44px] rounded-lg border border-store-border px-3 text-xs font-semibold disabled:opacity-50 sm:min-h-0 sm:px-2 sm:py-1 sm:text-[11px]"
                       >
                         {validatingDocId === doc.id ? "검증 중…" : "재검증"}
                       </button>
@@ -230,6 +231,13 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
                 {doc.validationSummary && doc.validationStatus !== "PASS" ? (
                   <p className="mt-1 text-xs text-amber-700">{doc.validationSummary}</p>
                 ) : null}
+                <SourceValidationReportPanel
+                  score={doc.validationScore}
+                  blockingIssueCount={doc.blockingIssueCount}
+                  warningIssueCount={doc.warningIssueCount}
+                  issues={doc.validationIssues}
+                  maxVisibleIssues={10}
+                />
               </li>
             ))}
           </ul>

@@ -23,6 +23,13 @@ export type ProviderSourceDocumentDto = {
   validationScore: number | null;
   blockingIssueCount: number;
   warningIssueCount: number;
+  validationIssues: {
+    severity: string;
+    code: string;
+    message: string;
+    field: string | null;
+    hint: string | null;
+  }[];
   createdAt: string;
 };
 
@@ -30,6 +37,7 @@ export type ProviderSourceDocumentValidationOverlay = {
   validationScore: number | null;
   blockingIssueCount: number;
   warningIssueCount: number;
+  validationIssues: ProviderSourceDocumentDto["validationIssues"];
 };
 
 function mapSourceDocument(
@@ -49,6 +57,7 @@ function mapSourceDocument(
     validationScore: overlay?.validationScore ?? null,
     blockingIssueCount: overlay?.blockingIssueCount ?? 0,
     warningIssueCount: overlay?.warningIssueCount ?? 0,
+    validationIssues: overlay?.validationIssues ?? [],
     createdAt: doc.createdAt.toISOString(),
   };
 }

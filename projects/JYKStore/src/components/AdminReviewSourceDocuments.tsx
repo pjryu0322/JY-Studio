@@ -46,7 +46,7 @@ export function AdminReviewSourceDocuments({
           type="button"
           disabled={validatingAll || busyId !== null}
           onClick={() => void runValidate()}
-          className="min-h-[36px] rounded-lg border border-store-border px-3 text-xs font-semibold text-slate-800 disabled:opacity-50"
+          className="min-h-[44px] w-full rounded-lg border border-store-border px-3 text-xs font-semibold text-slate-800 disabled:opacity-50 sm:w-auto"
         >
           {validatingAll ? "전체 검증 중…" : "전체 재검증"}
         </button>
@@ -71,7 +71,7 @@ export function AdminReviewSourceDocuments({
                           type="button"
                           disabled={busyId === doc.id || validatingAll}
                           onClick={() => void runValidate(doc.id)}
-                          className="rounded-lg border border-store-border bg-white px-2 py-1 text-[11px] font-semibold disabled:opacity-50"
+                          className="min-h-[44px] rounded-lg border border-store-border bg-white px-3 text-xs font-semibold disabled:opacity-50 sm:min-h-0 sm:px-2 sm:py-1 sm:text-[11px]"
                         >
                           {busyId === doc.id ? "검증 중…" : "재검증"}
                         </button>

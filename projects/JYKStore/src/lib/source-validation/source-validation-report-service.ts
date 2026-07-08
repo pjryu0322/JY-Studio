@@ -68,6 +68,7 @@ async function recordSourceValidationPipeline(
   actorClientId: string | undefined,
   validationStatus: string,
   triggerType: string,
+  options?: { pipelineSummary?: string; pipelineDetails?: Record<string, unknown> },
 ) {
   const targetStatus = PipelineStatus.SOURCE_VALIDATING;
   const stepStatus =
@@ -86,13 +87,13 @@ async function recordSourceValidationPipeline(
         runId: run.runId,
         step: PipelineStatus.SOURCE_VALIDATING,
         status: stepStatus,
-        message: `원천 자료 검증 (${triggerType})`,
-        details: { validationStatus },
+        message: options?.pipelineSummary ?? `원천 자료 검증 (${triggerType})`,
+        details: options?.pipelineDetails ?? { validationStatus },
       });
       await finishPipelineRun({
         runId: run.runId,
         status: stepStatus,
-        summary: "원천 자료 검증 완료",
+        summary: options?.pipelineSummary ?? "원천 자료 검증 완료",
       });
     } else {
       logPipelineRecordFailure("recordSourceValidationPipeline", {
@@ -200,7 +201,7 @@ async function loadSiblingChecksums(versionId: string, excludeDocumentId?: strin
 
 export async function validateAndPersistSourceDocument(
   sourceDocumentId: string,
-  options?: { actorClientId?: string; triggerType?: string },
+  options?: { actorClientId?: string; triggerType?: string; recordPipeline?: boolean },
 ): Promise<
   | { ok: true; result: SourceValidationRunResult; report: SourceValidationReportDto }
   | { error: "NOT_FOUND" }
@@ -236,6 +237,7 @@ export async function validateAndPersistSourceDocument(
     result,
     actorClientId: options?.actorClientId,
     triggerType: options?.triggerType,
+    recordPipeline: options?.recordPipeline,
   });
 
   const report = await getLatestSourceValidationReport(sourceDocumentId);
@@ -252,15 +254,54 @@ export async function validateAllSourceDocumentsForPack(
   });
 
   const reports: SourceValidationReportDto[] = [];
+  let passCount = 0;
+  let warningCount = 0;
+  let failCount = 0;
+
   for (const doc of docs) {
     const res = await validateAndPersistSourceDocument(doc.id, {
       actorClientId: options?.actorClientId,
       triggerType: "SOURCE_DOCUMENT_VALIDATE_ALL",
+      recordPipeline: false,
     });
     if (!("error" in res)) {
       reports.push(res.report);
+      if (res.result.status === "FAIL") {
+        failCount += 1;
+      } else if (res.result.status === "WARNING") {
+        warningCount += 1;
+      } else {
+        passCount += 1;
+      }
     }
   }
+
+  const total = reports.length;
+  let aggregateStatus = "PASS";
+  if (failCount > 0) {
+    aggregateStatus = "FAIL";
+  } else if (warningCount > 0) {
+    aggregateStatus = "WARNING";
+  }
+
+  const pipelineSummary = `원천 자료 전체 검증 완료: total=${total}, pass=${passCount}, warning=${warningCount}, fail=${failCount}`;
+
+  await recordSourceValidationPipeline(
+    packId,
+    options?.actorClientId,
+    aggregateStatus,
+    "SOURCE_DOCUMENT_VALIDATE_ALL",
+    {
+      pipelineSummary,
+      pipelineDetails: {
+        validationStatus: aggregateStatus,
+        total,
+        pass: passCount,
+        warning: warningCount,
+        fail: failCount,
+      },
+    },
+  );
 
   return { validatedCount: reports.length, reports };
 }
