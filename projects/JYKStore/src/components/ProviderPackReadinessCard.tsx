@@ -5,7 +5,11 @@ import {
   countSourceValidationFromStatuses,
   meetsSourceValidationSubmitGate,
 } from "@/lib/source-validation-readiness";
-import { meetsStructureQualityGate } from "@/lib/structure-quality/structure-quality-readiness";
+import {
+  getStructureQualityBlockingMessage,
+  meetsStructureQualityGate,
+  structureQualityGateSnapshotFromSummary,
+} from "@/lib/structure-quality/structure-quality-readiness";
 
 export function ProviderPackReadinessCard({
   pack,
@@ -20,10 +24,11 @@ export function ProviderPackReadinessCard({
   const isDraft = pack.status === "DRAFT";
   const isReviewing = pack.status === "REVIEWING";
   const isPublic = pack.status === "PUBLISHED" || pack.status === "VERIFIED";
-  const structureGate = {
-    structureCoverageStatus: pack.structureQuality?.structureCoverage?.status ?? null,
-    knowledgeQualityStatus: pack.structureQuality?.knowledgeQuality?.status ?? null,
-  };
+  const structureGate = structureQualityGateSnapshotFromSummary(pack.structureQuality ?? null);
+  const structureBlockMessage = getStructureQualityBlockingMessage(
+    structureGate,
+    pack.structureQuality,
+  );
   const canSubmit =
     isDraft &&
     versionCount > 0 &&
@@ -126,11 +131,13 @@ export function ProviderPackReadinessCard({
       ) : null}
       {!meetsStructureQualityGate(structureGate) ? (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-800">
-          구조/품질 점검을 실행하고 FAIL 결과가 없어야 검수 요청을 제출할 수 있습니다.
+          {structureBlockMessage ??
+            "구조/품질 점검을 실행하고 FAIL 결과가 없어야 검수 요청을 제출할 수 있습니다."}
         </p>
       ) : null}
-      {structureGate.structureCoverageStatus === "WARNING" ||
-      structureGate.knowledgeQualityStatus === "WARNING" ? (
+      {meetsStructureQualityGate(structureGate) &&
+      (structureGate.structureCoverageStatus === "WARNING" ||
+        structureGate.knowledgeQualityStatus === "WARNING") ? (
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
           구조 커버리지 또는 지식 품질이 WARNING입니다. 제출은 가능하나 보완을 권장합니다.
         </p>

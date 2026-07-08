@@ -55,7 +55,6 @@ export async function ensureStructureTemplatesSeeded(): Promise<void> {
 }
 
 export async function getStructureTemplateWithSections(templateKey: string) {
-  await ensureStructureTemplatesSeeded();
   const template = await prisma.knowledgeStructureTemplate.findUnique({
     where: { templateKey },
     include: {

@@ -7,11 +7,9 @@ import {
   type AdminReviewDetailDto,
 } from "@/lib/admin-review-dto";
 import {
-  getLatestKnowledgeQualityReport,
-  getLatestStructureCoverageReport,
   evaluatePackStructureQuality,
 } from "@/lib/structure-quality/structure-quality-evaluate-service";
-import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
+import { loadStructureQualitySummaryForPack } from "@/lib/structure-quality/structure-quality-freshness";
 import {
   validateAllSourceDocumentsForPack,
   validateAndPersistSourceDocument,
@@ -75,21 +73,7 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
   const docIds = detail.versions.flatMap((v) => v.sourceDocuments.map((d) => d.id));
   const reports = await loadLatestReportsByDocumentIds(docIds);
   const withValidation = enrichAdminReviewDetailWithValidationReports(detail, reports);
-  const [structureCoverage, knowledgeQuality] = await Promise.all([
-    getLatestStructureCoverageReport(packId),
-    getLatestKnowledgeQualityReport(packId),
-  ]);
-  const structureQuality: StructureQualitySummaryDto | null =
-    structureCoverage || knowledgeQuality
-      ? {
-          structureTemplateKey:
-            pack.structureTemplateKey ?? structureCoverage?.templateKey ?? "",
-          structureTemplateName:
-            structureCoverage?.templateName ?? pack.structureTemplateKey ?? "—",
-          structureCoverage,
-          knowledgeQuality,
-        }
-      : null;
+  const structureQuality = await loadStructureQualitySummaryForPack(packId);
   return applyStructureQualityToAdminDetail(withValidation, structureQuality);
 }
 

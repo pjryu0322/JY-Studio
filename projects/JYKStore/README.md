@@ -587,11 +587,19 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - **Pipeline**: pack당 1회 `STRUCTURE_QUALITY_EVALUATE`, `STRUCTURE_VALIDATING` + `KNOWLEDGE_CHECKING` step.
 - P19 Chunk Quality, P20 Retrieval Evaluation, P21 Release Gate는 후속 단계.
 
+### P18.1 — Structure Quality Stale Guard
+
+- **StructureCoverageReport / KnowledgeQualityReport** 최신성 판정(`MISSING` / `STALE` / `CURRENT`).
+- **SourceDocument** 변경, **SourceValidationReport** 갱신, 최신 **version** 변경, **template** 변경 시 stale 처리.
+- stale report는 검수 **제출·승인** gate에서 차단; `CURRENT`이면 WARNING은 허용.
+- Provider/Admin UI에 재평가 필요 사유 표시.
+- P19 Chunk Quality Evaluation 전 필수 안정화 단계.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18), 청킹 품질 평가(P19), 검색 품질 평가(P20), release gate hardening(P21)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19), 검색 품질 평가(P20), release gate hardening(P21)
 - pgvector 기반 vector index
 - 실제 MCP Server 실행(stdio/websocket/sse runtime) 및 graph traversal/semantic graph search
 - 로그인/회원 관리

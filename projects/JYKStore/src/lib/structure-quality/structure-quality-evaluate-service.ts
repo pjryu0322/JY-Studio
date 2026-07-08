@@ -5,6 +5,7 @@ import type {
 } from "@/lib/structure-quality/structure-quality-dto";
 import { runKnowledgeQuality } from "@/lib/structure-quality/knowledge-quality-runner";
 import { runStructureCoverage } from "@/lib/structure-quality/structure-coverage-runner";
+import { getStructureTemplateDefinition } from "@/lib/structure-quality/structure-template-definitions";
 import { selectStructureTemplateKey } from "@/lib/structure-quality/structure-template-selector";
 import { getStructureTemplateWithSections } from "@/lib/structure-quality/structure-template-service";
 import type { StructureCoverageDocumentInput } from "@/lib/structure-quality/structure-quality-types";
@@ -218,8 +219,8 @@ export async function getLatestStructureCoverageReport(
     include: { items: { orderBy: { sectionKey: "asc" } } },
   });
   if (!report) return null;
-  const template = await getStructureTemplateWithSections(report.templateKey);
-  return mapCoverageReport(report, template?.name ?? report.templateKey);
+  const def = getStructureTemplateDefinition(report.templateKey);
+  return mapCoverageReport(report, def?.name ?? report.templateKey);
 }
 
 export async function getLatestKnowledgeQualityReport(

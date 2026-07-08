@@ -38,6 +38,21 @@ export function StructureQualityPanel({
 
   const coverage = structureQuality?.structureCoverage;
   const quality = structureQuality?.knowledgeQuality;
+  const freshness = structureQuality?.freshness;
+  const freshnessLabel =
+    freshness?.status === "CURRENT"
+      ? "최신"
+      : freshness?.status === "STALE"
+        ? "재평가 필요"
+        : freshness?.status === "MISSING"
+          ? "미실행"
+          : null;
+  const freshnessClass =
+    freshness?.status === "CURRENT"
+      ? "text-emerald-800 bg-emerald-50 border-emerald-200"
+      : freshness?.status === "STALE"
+        ? "text-amber-900 bg-amber-50 border-amber-200"
+        : "text-slate-700 bg-slate-50 border-slate-200";
   const missingRequired =
     coverage?.items.filter((item) => item.required && !item.covered) ?? [];
 
@@ -63,6 +78,35 @@ export function StructureQualityPanel({
         템플릿: {structureQuality?.structureTemplateName ?? "—"} (
         {structureQuality?.structureTemplateKey ?? "미지정"})
       </p>
+      {freshnessLabel ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span
+            className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${freshnessClass}`}
+          >
+            최신성: {freshnessLabel}
+          </span>
+          {freshness?.latestVersionId ? (
+            <span className="text-[10px] text-store-muted">
+              버전 ID: {freshness.latestVersionId.slice(0, 8)}…
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      {freshness?.status === "STALE" && freshness.reason ? (
+        <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
+          {freshness.reason}
+        </p>
+      ) : null}
+      {freshness?.status === "MISSING" && freshness.reason ? (
+        <p className="mt-2 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+          {freshness.reason}
+        </p>
+      ) : null}
+      {(coverage?.checkedAt || quality?.checkedAt) && freshness?.status === "CURRENT" ? (
+        <p className="mt-1 text-[10px] text-store-muted">
+          점검 시각 — 구조: {coverage?.checkedAt ?? "—"} · 품질: {quality?.checkedAt ?? "—"}
+        </p>
+      ) : null}
       {error ? <p className="mt-2 text-xs text-red-700">{error}</p> : null}
 
       {!coverage && !quality ? (

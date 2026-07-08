@@ -22,14 +22,13 @@ import {
   meetsSourceValidationSubmitGate,
 } from "@/lib/source-validation-readiness";
 import {
-  getLatestKnowledgeQualityReport,
-  getLatestStructureCoverageReport,
   evaluatePackStructureQuality,
 } from "@/lib/structure-quality/structure-quality-evaluate-service";
-import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
+import { loadStructureQualitySummaryForPack } from "@/lib/structure-quality/structure-quality-freshness";
 import {
   getStructureQualityBlockingMessage,
   meetsStructureQualityGate,
+  structureQualityGateSnapshotFromSummary,
 } from "@/lib/structure-quality/structure-quality-readiness";
 import { validateSourceDocumentContent } from "@/lib/source-validation/source-validation-runner";
 import {
@@ -289,20 +288,7 @@ async function mapProviderPackDetailWithValidation(
       })),
     };
   }
-  const [structureCoverage, knowledgeQuality] = await Promise.all([
-    getLatestStructureCoverageReport(pack.packId),
-    getLatestKnowledgeQualityReport(pack.packId),
-  ]);
-  const structureQuality: StructureQualitySummaryDto | null =
-    structureCoverage || knowledgeQuality
-      ? {
-          structureTemplateKey: pack.structureTemplateKey ?? structureCoverage?.templateKey ?? "",
-          structureTemplateName:
-            structureCoverage?.templateName ?? pack.structureTemplateKey ?? "—",
-          structureCoverage,
-          knowledgeQuality,
-        }
-      : null;
+  const structureQuality = await loadStructureQualitySummaryForPack(pack.packId);
 
   return toProviderPackDetail(pack, overlays, {
     structureTemplateKey: pack.structureTemplateKey,
@@ -783,16 +769,10 @@ export async function submitProviderPackForReview(clientId: string, packId: stri
     };
   }
 
-  const [structureCoverage, knowledgeQuality] = await Promise.all([
-    getLatestStructureCoverageReport(packId),
-    getLatestKnowledgeQualityReport(packId),
-  ]);
-  const structureGate = {
-    structureCoverageStatus: structureCoverage?.status ?? null,
-    knowledgeQualityStatus: knowledgeQuality?.status ?? null,
-  };
+  const structureQuality = await loadStructureQualitySummaryForPack(packId);
+  const structureGate = structureQualityGateSnapshotFromSummary(structureQuality);
   if (!meetsStructureQualityGate(structureGate)) {
-    const message = getStructureQualityBlockingMessage(structureGate);
+    const message = getStructureQualityBlockingMessage(structureGate, structureQuality);
     return {
       error: "INCOMPLETE" as const,
       message: message ?? "구조/품질 점검을 먼저 실행해 주세요.",

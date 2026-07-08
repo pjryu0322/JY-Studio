@@ -1,3 +1,5 @@
+import type { StructureQualityFreshnessSnapshot } from "@/lib/structure-quality/structure-quality-freshness";
+
 export type StructureCoverageItemDto = {
   sectionKey: string;
   title: string;
@@ -59,4 +61,5 @@ export type StructureQualitySummaryDto = {
   structureTemplateName: string;
   structureCoverage: StructureCoverageReportDto | null;
   knowledgeQuality: KnowledgeQualityReportDto | null;
+  freshness: StructureQualityFreshnessSnapshot;
 };

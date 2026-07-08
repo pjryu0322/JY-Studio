@@ -8,6 +8,7 @@ import {
 import {
   getStructureQualityBlockingMessage,
   meetsStructureQualityGate,
+  structureQualityGateSnapshotFromSummary,
 } from "@/lib/structure-quality/structure-quality-readiness";
 
 export type AdminReviewListItemDto = {
@@ -252,12 +253,9 @@ export function applyStructureQualityToAdminDetail(
   detail: AdminReviewDetailDto,
   structureQuality: StructureQualitySummaryDto | null,
 ): AdminReviewDetailDto {
-  const snapshot = {
-    structureCoverageStatus: structureQuality?.structureCoverage?.status ?? null,
-    knowledgeQualityStatus: structureQuality?.knowledgeQuality?.status ?? null,
-  };
+  const snapshot = structureQualityGateSnapshotFromSummary(structureQuality);
   const gateOk = meetsStructureQualityGate(snapshot);
-  const structureQualityMessage = getStructureQualityBlockingMessage(snapshot);
+  const structureQualityMessage = getStructureQualityBlockingMessage(snapshot, structureQuality);
 
   return {
     ...detail,
