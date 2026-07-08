@@ -1,5 +1,6 @@
 import {
   commonErrorResponses,
+  exportChunkQueryParams,
   graphQueryRequestExample,
   jsonResponse,
   knowledgePackIdQueryParam,
@@ -91,6 +92,57 @@ export function buildPaths(examplePackId: string, includeDiscovery: boolean) {
         parameters: [knowledgePackIdQueryParam(examplePackId)],
         responses: {
           "200": jsonResponse("#/components/schemas/GraphExport", "JYKSTORE_GRAPH_JSON export."),
+          ...commonErrorResponses(),
+        },
+      },
+    },
+    "/api/v1/exports/package/chunk": {
+      get: {
+        operationId: "exportKnowledgePackPackageChunk",
+        summary: "Read a byte chunk of package JSON export",
+        description:
+          "Returns a UTF-8-safe byte slice of the package export. Use nextOffset/hasMore to continue. Large exports should prefer this over downloading the full package.",
+        security: bearerSecurity(),
+        parameters: exportChunkQueryParams(examplePackId),
+        responses: {
+          "200": jsonResponse(
+            "#/components/schemas/ExportChunkResponse",
+            "UTF-8-safe export chunk.",
+          ),
+          ...commonErrorResponses(),
+        },
+      },
+    },
+    "/api/v1/exports/rag-jsonl/chunk": {
+      get: {
+        operationId: "exportKnowledgePackRagJsonlChunk",
+        summary: "Read a byte chunk of RAG JSONL export",
+        description:
+          "Returns a UTF-8-safe byte slice of the rag-jsonl export. Prefer for large packs.",
+        security: bearerSecurity(),
+        parameters: exportChunkQueryParams(examplePackId),
+        responses: {
+          "200": jsonResponse(
+            "#/components/schemas/ExportChunkResponse",
+            "UTF-8-safe export chunk.",
+          ),
+          ...commonErrorResponses(),
+        },
+      },
+    },
+    "/api/v1/exports/graph/chunk": {
+      get: {
+        operationId: "exportKnowledgePackGraphChunk",
+        summary: "Read a byte chunk of graph JSON export",
+        description:
+          "Returns a UTF-8-safe byte slice of the graph export. Prefer for large packs.",
+        security: bearerSecurity(),
+        parameters: exportChunkQueryParams(examplePackId),
+        responses: {
+          "200": jsonResponse(
+            "#/components/schemas/ExportChunkResponse",
+            "UTF-8-safe export chunk.",
+          ),
           ...commonErrorResponses(),
         },
       },

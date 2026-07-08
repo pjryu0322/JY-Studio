@@ -270,6 +270,45 @@ export function buildComponents() {
           edges: { type: "array", items: { $ref: "#/components/schemas/GraphEdge" } },
         },
       },
+      ExportChunkResponse: {
+        type: "object",
+        description:
+          "UTF-8-safe byte chunk of a Public API export. Continue with nextOffset while hasMore is true.",
+        required: [
+          "knowledgePackId",
+          "exportType",
+          "offset",
+          "limitBytes",
+          "nextOffset",
+          "hasMore",
+          "byteLength",
+          "totalBytes",
+          "mimeType",
+          "content",
+        ],
+        properties: {
+          knowledgePackId: { type: "string" },
+          exportType: {
+            type: "string",
+            enum: ["package", "rag-jsonl", "graph"],
+          },
+          offset: { type: "integer", minimum: 0 },
+          limitBytes: {
+            type: "integer",
+            minimum: 1024,
+            maximum: 1_000_000,
+          },
+          nextOffset: { type: "integer", minimum: 0 },
+          hasMore: { type: "boolean" },
+          byteLength: { type: "integer", minimum: 0 },
+          totalBytes: { type: "integer", minimum: 0 },
+          mimeType: { type: "string" },
+          content: {
+            type: "string",
+            description: "UTF-8 text slice for this byte range.",
+          },
+        },
+      },
       RagJsonlLine: {
         type: "object",
         description: "One active chunk record. RAG JSONL response is one such object per line.",

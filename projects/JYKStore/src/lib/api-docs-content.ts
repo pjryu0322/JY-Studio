@@ -425,6 +425,10 @@ curl "${apiBaseUrls.development}/api/v1/exports/rag-jsonl?knowledgePackId=${samp
 curl "${apiBaseUrls.development}/api/v1/exports/graph?knowledgePackId=${samplePackId}" \\
   -H "Authorization: Bearer ${sampleApiKey}"
 
+# RAG Export JSONL chunk (large packs)
+curl "${apiBaseUrls.development}/api/v1/exports/rag-jsonl/chunk?knowledgePackId=${samplePackId}&offset=0&limitBytes=256000" \\
+  -H "Authorization: Bearer ${sampleApiKey}"
+
 # MCP-ready Manifest JSON
 curl "${apiBaseUrls.development}/api/v1/exports/mcp-manifest?knowledgePackId=${samplePackId}" \\
   -H "Authorization: Bearer ${sampleApiKey}"`;
@@ -499,6 +503,9 @@ export const openApiKnownOperationIds = [
   "exportKnowledgePackPackage",
   "exportKnowledgePackRagJsonl",
   "exportKnowledgePackGraph",
+  "exportKnowledgePackPackageChunk",
+  "exportKnowledgePackRagJsonlChunk",
+  "exportKnowledgePackGraphChunk",
   "exportKnowledgePackMcpManifest",
   "exportKnowledgePackOpenApi",
   "getJYKStoreOpenApiSchema",

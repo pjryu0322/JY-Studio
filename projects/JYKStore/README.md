@@ -694,18 +694,28 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - API key, Authorization header, request/response body, stack trace가 운영 로그에 직접 남지 않도록 보정했습니다.
 - 기존 tools/resources/Public API 응답 구조 변경 없음.
 
+### P22.4/P22.5 — Streaming Export Foundation
+
+- Public API export chunk endpoints를 추가했습니다.
+- package/rag-jsonl/graph export를 offset/limitBytes 단위로 조회할 수 있습니다.
+- MCP chunked export tools가 MCP server 내부 chunking 대신 Public API chunk endpoints를 호출하도록 전환했습니다.
+- MCP resource query string chunking도 Public API chunk endpoint를 사용합니다.
+- 기존 full export endpoints/tools/resources는 유지됩니다.
+- Public API visibility/security 정책은 기존 export와 동일합니다.
+- DB schema/dependency 변경 없음. 외부 AI 호출 없음.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22~P22.3.1 완료)
-- Upstream Public API range/streaming export, true streaming, OAuth / remote MCP auth 등은 후속 개선
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22~P22.5 완료)
+- Web Streams true streaming, OAuth / remote MCP auth 등은 후속 개선
 - pgvector 기반 vector index
 - 로그인/회원 관리
 - 관리자 인증 및 권한 제어
 
 ## 다음 단계
 
-1. Upstream Public API range/streaming export 및 true streaming resource response.
+1. Full MCP HTTP JSON-RPC integration test 및 운영 배포 가이드.
 2. OAuth / remote MCP auth / multi-tenant MCP gateway.
-3. Full MCP HTTP JSON-RPC integration test.
+3. True upstream stream response using Web Streams.

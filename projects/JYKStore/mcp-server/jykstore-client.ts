@@ -10,6 +10,19 @@ export type JYKStoreClientConfig = {
   fetchImpl?: typeof fetch;
 };
 
+export type PublicExportChunkResponse = {
+  knowledgePackId: string;
+  exportType: "package" | "rag-jsonl" | "graph";
+  offset: number;
+  limitBytes: number;
+  nextOffset: number;
+  hasMore: boolean;
+  byteLength: number;
+  totalBytes: number;
+  mimeType: string;
+  content: string;
+};
+
 export type AuthHeaders = {
   Authorization: string;
   "Content-Type": string;
@@ -174,6 +187,22 @@ export class JYKStoreClient {
   ): Promise<T> {
     const text = await this.getExportSourceText(path, query);
     return JSON.parse(text) as T;
+  }
+
+  /**
+   * Fetch a Public API export chunk (uses maxResponseBytes, not maxExportSourceBytes).
+   */
+  async getExportChunk(
+    exportType: "package" | "rag-jsonl" | "graph",
+    query: { knowledgePackId: string; offset: number; limitBytes: number },
+  ): Promise<PublicExportChunkResponse> {
+    const path =
+      exportType === "package"
+        ? "/api/v1/exports/package/chunk"
+        : exportType === "rag-jsonl"
+          ? "/api/v1/exports/rag-jsonl/chunk"
+          : "/api/v1/exports/graph/chunk";
+    return this.getJson<PublicExportChunkResponse>(path, query);
   }
 
   private async request(

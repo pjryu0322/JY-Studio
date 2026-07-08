@@ -63,4 +63,40 @@ describe("mcp client helpers", () => {
         error.requestId === "r1",
     );
   });
+
+  it("getExportChunk calls Public API chunk path with maxResponseBytes", async () => {
+    let calledUrl = "";
+    const client = new JYKStoreClient({
+      baseUrl: "http://localhost:3004",
+      apiKey: "k",
+      fetchImpl: (async (input) => {
+        calledUrl = String(input);
+        return new Response(
+          JSON.stringify({
+            knowledgePackId: "pack-1",
+            exportType: "rag-jsonl",
+            offset: 0,
+            limitBytes: 256000,
+            nextOffset: 10,
+            hasMore: false,
+            byteLength: 10,
+            totalBytes: 10,
+            mimeType: "application/x-ndjson",
+            content: "abcdefghij",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }) as typeof fetch,
+    });
+
+    const chunk = await client.getExportChunk("rag-jsonl", {
+      knowledgePackId: "pack-1",
+      offset: 0,
+      limitBytes: 256000,
+    });
+    assert.ok(calledUrl.includes("/api/v1/exports/rag-jsonl/chunk"));
+    assert.ok(calledUrl.includes("offset=0"));
+    assert.ok(calledUrl.includes("limitBytes=256000"));
+    assert.equal(chunk.content, "abcdefghij");
+  });
 });

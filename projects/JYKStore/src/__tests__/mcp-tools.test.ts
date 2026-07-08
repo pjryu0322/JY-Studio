@@ -163,16 +163,29 @@ describe("mcp tools validation", () => {
   });
 
   it("returns rag-jsonl chunk with hasMore/nextOffset/content", async () => {
-    const source = `${"a".repeat(2000)}\n${"b".repeat(2000)}\n`;
+    let calledUrl = "";
+    const chunkPayload = {
+      knowledgePackId: "pack-1",
+      exportType: "rag-jsonl",
+      offset: 0,
+      limitBytes: 1024,
+      nextOffset: 1024,
+      hasMore: true,
+      byteLength: 1024,
+      totalBytes: 4001,
+      mimeType: "application/x-ndjson",
+      content: "a".repeat(1024),
+    };
     const client = new JYKStoreClient({
       baseUrl: "http://localhost:3004",
       apiKey: "test-key",
-      maxExportSourceBytes: 20_000_000,
-      fetchImpl: (async () =>
-        new Response(source, {
+      fetchImpl: (async (input) => {
+        calledUrl = String(input);
+        return new Response(JSON.stringify(chunkPayload), {
           status: 200,
-          headers: { "Content-Type": "application/x-ndjson" },
-        })) as typeof fetch,
+          headers: { "Content-Type": "application/json" },
+        });
+      }) as typeof fetch,
     });
     const result = await handleMcpToolCall({
       name: "jykstore_export_rag_jsonl_chunk",
@@ -180,6 +193,9 @@ describe("mcp tools validation", () => {
       client,
       allowedPackIds: [],
     });
+    assert.ok(calledUrl.includes("/api/v1/exports/rag-jsonl/chunk"));
+    assert.ok(calledUrl.includes("offset=0"));
+    assert.ok(calledUrl.includes("limitBytes=1024"));
     assert.equal(result.isError, undefined);
     const payload = JSON.parse(result.content[0]!.text) as {
       hasMore: boolean;
@@ -195,21 +211,89 @@ describe("mcp tools validation", () => {
     assert.equal(payload.content.length, 1024);
   });
 
-  it("rejects chunked export when final JSON exceeds maxResponseBytes", async () => {
+  it("calls package and graph chunk endpoints", async () => {
+    const urls: string[] = [];
+    const makePayload = (exportType: string) => ({
+      knowledgePackId: "pack-1",
+      exportType,
+      offset: 0,
+      limitBytes: 1024,
+      nextOffset: 10,
+      hasMore: false,
+      byteLength: 10,
+      totalBytes: 10,
+      mimeType: "application/json",
+      content: '{"ok":true}',
+    });
     const client = new JYKStoreClient({
       baseUrl: "http://localhost:3004",
       apiKey: "test-key",
-      maxResponseBytes: 1_500,
-      maxExportSourceBytes: 20_000,
-      fetchImpl: (async () =>
-        new Response('"'.repeat(2_000), {
+      fetchImpl: (async (input) => {
+        urls.push(String(input));
+        const url = String(input);
+        const exportType = url.includes("/package/chunk")
+          ? "package"
+          : url.includes("/graph/chunk")
+            ? "graph"
+            : "rag-jsonl";
+        return new Response(JSON.stringify(makePayload(exportType)), {
           status: 200,
-          headers: { "Content-Type": "application/x-ndjson" },
+          headers: { "Content-Type": "application/json" },
+        });
+      }) as typeof fetch,
+    });
+
+    await handleMcpToolCall({
+      name: "jykstore_export_package_chunk",
+      args: { knowledgePackId: "pack-1", offset: 0, limitBytes: 1024 },
+      client,
+      allowedPackIds: [],
+    });
+    await handleMcpToolCall({
+      name: "jykstore_export_graph_chunk",
+      args: { knowledgePackId: "pack-1", offset: 0, limitBytes: 1024 },
+      client,
+      allowedPackIds: [],
+    });
+
+    assert.ok(urls.some((u) => u.includes("/api/v1/exports/package/chunk")));
+    assert.ok(urls.some((u) => u.includes("/api/v1/exports/graph/chunk")));
+  });
+
+  it("rejects chunked export when final JSON exceeds maxResponseBytes", async () => {
+    // Compact API body fits; pretty-printed MCP wrapper exceeds the threshold.
+    const content = "a".repeat(3_000);
+    const chunkPayload = {
+      knowledgePackId: "pack-1",
+      exportType: "rag-jsonl" as const,
+      offset: 0,
+      limitBytes: 3_000,
+      nextOffset: 3_000,
+      hasMore: false,
+      byteLength: 3_000,
+      totalBytes: 3_000,
+      mimeType: "application/x-ndjson",
+      content,
+    };
+    const compactBytes = Buffer.byteLength(JSON.stringify(chunkPayload), "utf8");
+    const prettyBytes = Buffer.byteLength(JSON.stringify(chunkPayload, null, 2), "utf8");
+    const maxResponseBytes = Math.floor((compactBytes + prettyBytes) / 2);
+    assert.ok(compactBytes < maxResponseBytes);
+    assert.ok(prettyBytes > maxResponseBytes);
+
+    const client = new JYKStoreClient({
+      baseUrl: "http://localhost:3004",
+      apiKey: "test-key",
+      maxResponseBytes,
+      fetchImpl: (async () =>
+        new Response(JSON.stringify(chunkPayload), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
         })) as typeof fetch,
     });
     const result = await handleMcpToolCall({
       name: "jykstore_export_rag_jsonl_chunk",
-      args: { knowledgePackId: "pack-1", offset: 0, limitBytes: 2_000 },
+      args: { knowledgePackId: "pack-1", offset: 0, limitBytes: 3_000 },
       client,
       allowedPackIds: [],
     });

@@ -9,6 +9,9 @@ const REQUIRED_PROTECTED_PATHS = [
   "/api/v1/exports/package",
   "/api/v1/exports/rag-jsonl",
   "/api/v1/exports/graph",
+  "/api/v1/exports/package/chunk",
+  "/api/v1/exports/rag-jsonl/chunk",
+  "/api/v1/exports/graph/chunk",
   "/api/v1/exports/mcp-manifest",
   "/api/v1/exports/openapi",
 ];

@@ -77,6 +77,20 @@ Large exports can be read in chunks:
 - `jykstore_export_rag_jsonl_chunk`
 - `jykstore_export_graph_chunk`
 
+These tools call Public API chunk endpoints:
+
+```text
+GET /api/v1/exports/package/chunk
+GET /api/v1/exports/rag-jsonl/chunk
+GET /api/v1/exports/graph/chunk
+```
+
+P22.3 chunked export는 MCP server 내부 분할 안정화 단계였습니다.
+P22.4/P22.5부터 chunked export tools는 Public API chunk endpoints를 호출합니다.
+
+- MCP Server no longer needs to fetch the full package/rag-jsonl/graph export before returning a chunk.
+- Public API chunk endpoints remain authoritative for visibility and API key scope.
+
 Input:
 
 ```json
@@ -98,9 +112,6 @@ Response:
   "content": "..."
 }
 ```
-
-P22.3 chunked export는 Public API 응답을 MCP server에서 분할 반환하는 안정화 단계입니다.
-진정한 upstream streaming/range export는 후속 단계입니다.
 
 Chunked resource reads도 지원합니다:
 
@@ -158,10 +169,10 @@ Same shape as Cursor local MCP `mcpServers` entry (stdio + env). Replace `cwd` a
 
 ## Out of scope (later)
 
-- Upstream Public API range/streaming export
-- True streaming resource response
+- True upstream stream response using Web Streams
+- Full MCP HTTP JSON-RPC integration test
+- Production deployment guide
 - OAuth / remote MCP auth
 - Multi-tenant MCP gateway
-- Per-client rate limit
-- Full MCP HTTP JSON-RPC integration test
+- Per-client rate limit / quota hardening
 - External embedding providers

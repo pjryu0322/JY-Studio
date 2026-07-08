@@ -235,6 +235,14 @@ export default function RetrievalApiDocsPage() {
             <code className="font-mono text-xs">GET /api/v1/exports/graph?knowledgePackId=&#123;packId&#125;</code>.
           </li>
           <li>
+            <span className="font-semibold">Export Chunk APIs</span> —{" "}
+            <code className="font-mono text-xs">
+              GET /api/v1/exports/&#123;package|rag-jsonl|graph&#125;/chunk?knowledgePackId=&#123;packId&#125;&amp;offset=0&amp;limitBytes=256000
+            </code>
+            . 대용량 export는 <code className="font-mono text-xs">/chunk</code> endpoint를 사용해
+            offset/limitBytes 단위로 나누어 조회할 수 있습니다.
+          </li>
+          <li>
             <span className="font-semibold">MCP-ready Manifest</span> —{" "}
             <code className="font-mono text-xs">GET /api/v1/exports/mcp-manifest?knowledgePackId=&#123;packId&#125;</code>.
             실제 MCP Server가 아니라 향후 MCP 연계를 위한 manifest(계약서)이며, 실제 API Key를 포함하지 않습니다.
@@ -243,9 +251,9 @@ export default function RetrievalApiDocsPage() {
         <p className="text-xs text-store-muted">
           Public export API는 모두 <code className="font-mono">Authorization: Bearer &lt;JYKStore API Key&gt;</code> 인증을
           사용합니다. <code className="font-mono">knowledgePackId</code> 쿼리 파라미터가 없거나 비어 있으면 400(
-          <code className="font-mono">INVALID_EXPORT_REQUEST</code>), 인증 실패 시 401/403을 반환합니다.
-        </p>
-        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <code className="font-mono">INVALID_EXPORT_REQUEST</code>), chunk 파라미터 오류는 400(
+          <code className="font-mono">INVALID_EXPORT_CHUNK_REQUEST</code>), 인증 실패 시 401/403을 반환합니다.
+        </p>        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
           모든 public API(Retrieval / Graph Query / Export)는 <span className="font-semibold">PUBLISHED 또는
           VERIFIED</span> 상태의 지식팩만 반환합니다. DRAFT / REVIEW / REJECTED / ARCHIVED 등 비공개 상태의 지식팩은
           존재 여부를 노출하지 않기 위해 <code className="font-mono">PACK_NOT_FOUND</code>(404)로 처리됩니다.

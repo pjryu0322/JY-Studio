@@ -10,6 +10,9 @@ const REQUIRED_OPERATION_IDS = [
   "exportKnowledgePackPackage",
   "exportKnowledgePackRagJsonl",
   "exportKnowledgePackGraph",
+  "exportKnowledgePackPackageChunk",
+  "exportKnowledgePackRagJsonlChunk",
+  "exportKnowledgePackGraphChunk",
   "exportKnowledgePackMcpManifest",
   "exportKnowledgePackOpenApi",
   "getJYKStoreOpenApiSchema",
@@ -98,4 +101,30 @@ test("RetrievalRequest.query maxLength matches Public API contract", () => {
   const properties = retrievalRequest.properties as AnyRecord;
   const query = properties.query as AnyRecord;
   assert.equal(query.maxLength, 2000);
+});
+
+test("export chunk paths and ExportChunkResponse schema exist", () => {
+  const doc = buildOpenApiSchema();
+  const paths = doc.paths as AnyRecord;
+  for (const path of [
+    "/api/v1/exports/package/chunk",
+    "/api/v1/exports/rag-jsonl/chunk",
+    "/api/v1/exports/graph/chunk",
+  ]) {
+    assert.ok(paths[path], `missing path ${path}`);
+  }
+  const components = doc.components as AnyRecord;
+  const schemas = components.schemas as AnyRecord;
+  assert.ok(schemas.ExportChunkResponse, "ExportChunkResponse schema missing");
+  const exportChunk = schemas.ExportChunkResponse as AnyRecord;
+  const properties = exportChunk.properties as AnyRecord;
+  const limitBytes = properties.limitBytes as AnyRecord;
+  assert.equal(limitBytes.maximum, 1_000_000);
+
+  const ragChunk = paths["/api/v1/exports/rag-jsonl/chunk"] as AnyRecord;
+  const getOp = ragChunk.get as AnyRecord;
+  const parameters = getOp.parameters as AnyRecord[];
+  const limitParam = parameters.find((p) => p.name === "limitBytes") as AnyRecord;
+  const limitSchema = limitParam.schema as AnyRecord;
+  assert.equal(limitSchema.maximum, 1_000_000);
 });

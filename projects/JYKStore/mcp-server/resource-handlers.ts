@@ -1,6 +1,5 @@
 import { assertPackAllowed } from "./config.js";
-import { sliceUtf8TextByBytes } from "./chunking.js";
-import { formatToolError } from "./errors.js";
+import { formatToolError, mcpError } from "./errors.js";
 import { assertResponseSize, type JYKStoreClient } from "./jykstore-client.js";
 import {
   parseResourceUri,
@@ -23,28 +22,33 @@ async function loadPackExportText(input: {
   client: JYKStoreClient;
   kind: Exclude<ResourceKind, "global-openapi">;
   knowledgePackId: string;
-  useExportSourceLimit: boolean;
 }): Promise<string> {
-  const { client, kind, knowledgePackId, useExportSourceLimit } = input;
-  const getJson = useExportSourceLimit
-    ? client.getExportSourceJson.bind(client)
-    : client.getJson.bind(client);
-  const getText = useExportSourceLimit
-    ? client.getExportSourceText.bind(client)
-    : client.getText.bind(client);
+  const { client, kind, knowledgePackId } = input;
 
   switch (kind) {
     case "package":
-      return JSON.stringify(await getJson("/api/v1/exports/package", { knowledgePackId }), null, 2);
+      return JSON.stringify(
+        await client.getJson("/api/v1/exports/package", { knowledgePackId }),
+        null,
+        2,
+      );
     case "rag-jsonl":
-      return getText("/api/v1/exports/rag-jsonl", { knowledgePackId });
+      return client.getText("/api/v1/exports/rag-jsonl", { knowledgePackId });
     case "graph":
-      return JSON.stringify(await getJson("/api/v1/exports/graph", { knowledgePackId }), null, 2);
+      return JSON.stringify(
+        await client.getJson("/api/v1/exports/graph", { knowledgePackId }),
+        null,
+        2,
+      );
     case "openapi":
-      return JSON.stringify(await getJson("/api/v1/exports/openapi", { knowledgePackId }), null, 2);
+      return JSON.stringify(
+        await client.getJson("/api/v1/exports/openapi", { knowledgePackId }),
+        null,
+        2,
+      );
     case "mcp-manifest":
       return JSON.stringify(
-        await getJson("/api/v1/exports/mcp-manifest", { knowledgePackId }),
+        await client.getJson("/api/v1/exports/mcp-manifest", { knowledgePackId }),
         null,
         2,
       );
@@ -55,29 +59,10 @@ async function loadPackExportText(input: {
   }
 }
 
-function formatChunkResourceText(input: {
-  knowledgePackId: string;
-  exportType: string;
-  chunk: ExportChunkQuery;
-  sourceText: string;
-  mimeType: string;
-}): string {
-  const slice = sliceUtf8TextByBytes(input.sourceText, input.chunk.offset, input.chunk.limitBytes);
-  return JSON.stringify(
-    {
-      knowledgePackId: input.knowledgePackId,
-      exportType: input.exportType,
-      offset: input.chunk.offset,
-      limitBytes: input.chunk.limitBytes,
-      nextOffset: slice.nextOffset,
-      hasMore: slice.hasMore,
-      byteLength: slice.byteLength,
-      mimeType: input.mimeType,
-      content: slice.content,
-    },
-    null,
-    2,
-  );
+function isChunkableExportKind(
+  kind: Exclude<ResourceKind, "global-openapi">,
+): kind is "package" | "rag-jsonl" | "graph" {
+  return kind === "package" || kind === "rag-jsonl" || kind === "graph";
 }
 
 export async function handleResourceRead(input: {
@@ -104,37 +89,51 @@ export async function handleResourceRead(input: {
     const knowledgePackId = requireKnowledgePackId(parsed.knowledgePackId);
     assertPackAllowed(knowledgePackId, input.allowedPackIds);
 
-    const chunk = "chunk" in parsed ? parsed.chunk : undefined;
+    const chunk: ExportChunkQuery | undefined =
+      "chunk" in parsed ? parsed.chunk : undefined;
     const mimeType = resourceMimeType(parsed.kind);
-    const sourceText = await loadPackExportText({
-      client: input.client,
-      kind: parsed.kind,
-      knowledgePackId,
-      useExportSourceLimit: Boolean(chunk),
-    });
 
-    let text: string;
     if (chunk) {
-      text = formatChunkResourceText({
+      if (!isChunkableExportKind(parsed.kind)) {
+        throw mcpError(
+          "JYKSTORE_MCP_INVALID_INPUT",
+          `Chunk query is only supported for package, rag-jsonl, and graph resources (got ${parsed.kind}).`,
+        );
+      }
+
+      const apiChunk = await input.client.getExportChunk(parsed.kind, {
         knowledgePackId,
-        exportType: parsed.kind,
-        chunk,
-        sourceText,
-        mimeType,
+        offset: chunk.offset,
+        limitBytes: chunk.limitBytes,
       });
+      const text = JSON.stringify(apiChunk, null, 2);
       assertResponseSize(Buffer.byteLength(text, "utf8"), input.client.maxResponseBytes, {
         code: "JYKSTORE_MCP_RESPONSE_TOO_LARGE",
         hint: "Chunk resource response is too large after JSON encoding. Reduce limitBytes and retry from the same offset.",
       });
-    } else {
-      text = sourceText;
+
+      return {
+        contents: [
+          {
+            uri: input.uri,
+            mimeType: "application/json",
+            text,
+          },
+        ],
+      };
     }
+
+    const text = await loadPackExportText({
+      client: input.client,
+      kind: parsed.kind,
+      knowledgePackId,
+    });
 
     return {
       contents: [
         {
           uri: input.uri,
-          mimeType: chunk ? "application/json" : mimeType,
+          mimeType,
           text,
         },
       ],

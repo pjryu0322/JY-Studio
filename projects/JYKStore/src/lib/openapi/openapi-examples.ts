@@ -15,7 +15,7 @@ export function errorResponse(description: string) {
 export function commonErrorResponses() {
   return {
     "400": errorResponse(
-      "Invalid request. code: INVALID_RETRIEVAL_REQUEST / INVALID_GRAPH_QUERY_REQUEST / INVALID_EXPORT_REQUEST",
+      "Invalid request. code: INVALID_RETRIEVAL_REQUEST / INVALID_GRAPH_QUERY_REQUEST / INVALID_EXPORT_REQUEST / INVALID_EXPORT_CHUNK_REQUEST",
     ),
     "401": errorResponse("Unauthorized. code: UNAUTHORIZED"),
     "403": errorResponse("Forbidden. code: FORBIDDEN"),
@@ -40,6 +40,33 @@ export function knowledgePackIdQueryParam(examplePackId: string) {
     schema: { type: "string" },
     example: examplePackId,
   };
+}
+
+export function exportChunkQueryParams(examplePackId: string) {
+  return [
+    knowledgePackIdQueryParam(examplePackId),
+    {
+      name: "offset",
+      in: "query",
+      required: false,
+      description: "Byte offset into the full export (default 0).",
+      schema: { type: "integer", minimum: 0, default: 0 },
+      example: 0,
+    },
+    {
+      name: "limitBytes",
+      in: "query",
+      required: false,
+      description: "Max bytes to return in this chunk (default 256000, max 1000000).",
+      schema: {
+        type: "integer",
+        minimum: 1024,
+        maximum: 1_000_000,
+        default: 256_000,
+      },
+      example: 256_000,
+    },
+  ];
 }
 
 export function retrievalRequestExample(examplePackId: string) {

@@ -1,8 +1,19 @@
 import { RETRIEVAL_QUERY_MAX_LENGTH } from "../src/lib/retrieval-dto";
+import {
+  DEFAULT_EXPORT_CHUNK_LIMIT_BYTES,
+  MAX_EXPORT_CHUNK_LIMIT_BYTES,
+  MIN_EXPORT_CHUNK_LIMIT_BYTES,
+} from "../src/lib/export-chunk-dto";
 import { mcpError } from "./errors.js";
 
 /** Keep in sync with Public Retrieval API `RETRIEVAL_QUERY_MAX_LENGTH`. */
 export const MCP_RETRIEVAL_QUERY_MAX_LENGTH = RETRIEVAL_QUERY_MAX_LENGTH;
+
+export {
+  DEFAULT_EXPORT_CHUNK_LIMIT_BYTES,
+  MAX_EXPORT_CHUNK_LIMIT_BYTES,
+  MIN_EXPORT_CHUNK_LIMIT_BYTES,
+};
 
 export type RetrievalToolInput = {
   knowledgePackId: string;
@@ -23,10 +34,6 @@ export type GraphToolInput = {
 export type PackIdInput = {
   knowledgePackId: string;
 };
-
-export const DEFAULT_EXPORT_CHUNK_LIMIT_BYTES = 256_000;
-export const MIN_EXPORT_CHUNK_LIMIT_BYTES = 1_024;
-export const MAX_EXPORT_CHUNK_LIMIT_BYTES = 1_000_000;
 
 export type ExportChunkToolInput = {
   knowledgePackId: string;
