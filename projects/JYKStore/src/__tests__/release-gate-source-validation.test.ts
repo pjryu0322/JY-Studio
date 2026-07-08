@@ -89,12 +89,30 @@ describe("release gate source validation", () => {
   });
 
   it("WARNING section when document is WARNING", () => {
-    const { sectionStatus } = evaluateSourceValidationReleaseGate({
+    const { issues, sectionStatus } = evaluateSourceValidationReleaseGate({
       sourceDocuments: [doc({ validationStatus: "WARNING" })],
       latestReportsByDocumentId: {
         "doc-1": { status: "WARNING", checkedAt: "2026-07-08T12:00:00.000Z" },
       },
     });
     assert.equal(sectionStatus, "WARNING");
+    const warningIssue = issues.find((i) => i.code === "SOURCE_VALIDATION_WARNING");
+    assert.ok(warningIssue);
+    assert.equal(warningIssue?.severity, "WARNING");
+  });
+
+  it("emits SOURCE_VALIDATION_WARNING per WARNING document", () => {
+    const { issues, sectionStatus } = evaluateSourceValidationReleaseGate({
+      sourceDocuments: [
+        doc({ id: "doc-1", title: "A", validationStatus: "WARNING" }),
+        doc({ id: "doc-2", title: "B", validationStatus: "WARNING" }),
+      ],
+      latestReportsByDocumentId: {
+        "doc-1": { status: "WARNING", checkedAt: "2026-07-08T12:00:00.000Z" },
+        "doc-2": { status: "WARNING", checkedAt: "2026-07-08T12:00:00.000Z" },
+      },
+    });
+    assert.equal(sectionStatus, "WARNING");
+    assert.equal(issues.filter((i) => i.code === "SOURCE_VALIDATION_WARNING").length, 2);
   });
 });

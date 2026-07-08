@@ -111,6 +111,8 @@ export function evaluateSourceValidationReleaseGate(input: {
       continue;
     }
 
+    let hadDocBlocker = false;
+
     if (isAfterWithGrace(doc.updatedAt, report.checkedAt)) {
       issues.push({
         severity: "BLOCKER",
@@ -119,6 +121,7 @@ export function evaluateSourceValidationReleaseGate(input: {
         field,
         hint: "문서 수정 후 재검증하고 릴리스 게이트를 다시 실행해 주세요.",
       });
+      hadDocBlocker = true;
     }
 
     if (doc.validationStatus !== report.status) {
@@ -129,6 +132,17 @@ export function evaluateSourceValidationReleaseGate(input: {
         field,
         hint: "재검증을 실행해 문서 상태와 리포트를 맞춰 주세요.",
       });
+      hadDocBlocker = true;
+    }
+
+    if (!hadDocBlocker && doc.validationStatus === "WARNING") {
+      issues.push({
+        severity: "WARNING",
+        code: "SOURCE_VALIDATION_WARNING",
+        message: `원천 문서「${doc.title}」검증이 WARNING입니다.`,
+        field,
+        hint: "승인은 가능하지만 원천 문서 검증 경고를 확인해 주세요.",
+      });
     }
   }
 
@@ -136,8 +150,7 @@ export function evaluateSourceValidationReleaseGate(input: {
   if (hasBlocker) {
     return { issues, sectionStatus: "FAIL" };
   }
-  const hasWarningDoc = docs.some((d) => d.validationStatus === "WARNING");
-  if (hasWarningDoc) {
+  if (issues.some((i) => i.severity === "WARNING")) {
     return { issues, sectionStatus: "WARNING" };
   }
   return { issues, sectionStatus: "PASS" };

@@ -641,11 +641,19 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - Provider 제출 gate는 유지하고, Admin 승인 gate만 최종 release gate로 강화했습니다.
 - P22 MCP Server Bridge는 후속 단계입니다.
 
+### P21.1 — Release Gate Warning Polish
+
+- SourceDocument validationStatus가 WARNING인 경우 ReleaseGate 전체 status도 WARNING으로 반영합니다.
+- `SOURCE_VALIDATION_WARNING` issue를 추가해 Admin UI에서 원천 문서 경고를 확인할 수 있습니다.
+- WARNING은 승인 가능하되 보완 권장으로 표시됩니다.
+- README 다음 단계를 P22 MCP Server Bridge로 정정했습니다.
+- DB schema/public API 계약 변경 없음.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21 완료), 실제 MCP Server runtime(P22)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22)
 - pgvector 기반 vector index
 - 실제 MCP Server 실행(stdio/websocket/sse runtime) 및 graph traversal/semantic graph search
 - 로그인/회원 관리
@@ -653,5 +661,5 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 
 ## 다음 단계
 
-1. Phase P21: Release Gate Hardening.
-2. Phase P22: MCP Server Bridge(runtime) — 현재는 MCP-ready manifest만 제공합니다.
+1. Phase P22: MCP Server Bridge(runtime) — 현재는 MCP-ready manifest만 제공합니다.
+2. 이후: MCP client 설정 예시, Cursor/Claude 연동 문서, 운영 배포 가이드.
