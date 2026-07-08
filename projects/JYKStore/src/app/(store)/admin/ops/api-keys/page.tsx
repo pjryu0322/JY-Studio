@@ -20,8 +20,9 @@ export default function AdminOpsApiKeysPage() {
         </p>
       </div>
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-950">
-        MVP 내부 도구입니다. 실제 운영에서는 관리자 인증이 필요합니다. OAuth/원격 MCP auth는 후속
-        단계입니다.
+        Admin API Key 관리는 `JYKSTORE_ADMIN_OPS_TOKEN`과 헤더 `X-JYKStore-Admin-Token`으로 보호됩니다.
+        production에서는 서버 env에 토큰 설정이 필수이며, UI에 입력한 토큰은 브라우저 저장소에 저장하지 않습니다.
+        OAuth/SSO는 후속 단계입니다.
       </div>
       <AdminApiKeysPanel />
     </div>

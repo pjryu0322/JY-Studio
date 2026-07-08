@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createApiKeyForClient, listApiKeysForClient } from "@/lib/api-key-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { logSafeRouteError } from "@/lib/safe-logging";
 
 export async function GET(request: NextRequest) {
   const clientId = ensureClientId(request);
@@ -9,7 +10,12 @@ export async function GET(request: NextRequest) {
     const items = await listApiKeysForClient(clientId);
     return jsonWithClientIdCookie({ clientId, items }, clientId);
   } catch (error) {
-    console.error("GET /api/v1/api-keys failed", error);
+    logSafeRouteError({
+      scope: "api-key",
+      method: "GET",
+      path: "/api/v1/api-keys",
+      error,
+    });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }
@@ -53,15 +59,18 @@ export async function POST(request: NextRequest) {
     return jsonWithClientIdCookie(
       {
         clientId,
-        plainKey: result.plainKey,
         rawKey: result.rawKey,
-        item: result.apiKey,
         apiKey: result.apiKey,
       },
       clientId,
     );
   } catch (error) {
-    console.error("POST /api/v1/api-keys failed", error);
+    logSafeRouteError({
+      scope: "api-key",
+      method: "POST",
+      path: "/api/v1/api-keys",
+      error,
+    });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

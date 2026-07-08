@@ -7,12 +7,13 @@ export type ApiKeysListResponse = {
 
 export type ApiKeyCreateResponse = {
   clientId: string;
-  plainKey: string;
-  item: ApiKeyDto;
+  rawKey: string;
+  apiKey: ApiKeyDto;
 };
 
 export type ApiKeyRevokeResponse = {
   ok: true;
+  apiKey?: ApiKeyDto;
 };
 
 async function parseErrorMessage(response: Response): Promise<string> {

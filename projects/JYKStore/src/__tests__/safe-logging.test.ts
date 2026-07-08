@@ -71,18 +71,41 @@ describe("safe logging", () => {
         requestId: "req_1",
         error: new Error("Authorization: Bearer secret-token"),
       });
+      logSafeRouteError({
+        scope: "api-key",
+        method: "POST",
+        path: "/api/v1/api-keys",
+        requestId: "req_2",
+        error: new Error("rawKey=jyk_live_secret DATABASE_URL=postgresql://user:pass@host/db"),
+      });
+      logSafeRouteError({
+        scope: "admin-api-key",
+        method: "GET",
+        path: "/api/v1/admin/api-keys",
+        error: new Error("Bearer leaked-token"),
+      });
+      logSafeRouteError({
+        scope: "context",
+        method: "GET",
+        path: "/api/v1/packs/pack/context",
+        error: new Error("Authorization: Bearer context-secret"),
+      });
     } finally {
       console.error = original;
     }
 
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.length, 1);
-    const line = String(calls[0]![0]);
-    assert.ok(line.includes("scope=export-chunk"));
-    assert.ok(line.includes("method=GET"));
-    assert.ok(line.includes("path=/api/v1/exports/rag-jsonl/chunk"));
-    assert.ok(line.includes("requestId=req_1"));
-    assert.ok(line.includes("code="));
-    assert.ok(!line.includes("secret-token"));
+    assert.equal(calls.length, 4);
+    for (const call of calls) {
+      assert.equal(call.length, 1);
+      const line = String(call[0]);
+      assert.ok(!line.includes("secret-token"));
+      assert.ok(!line.includes("jyk_live_secret"));
+      assert.ok(!line.includes("user:pass"));
+      assert.ok(!line.includes("leaked-token"));
+      assert.ok(!line.includes("context-secret"));
+    }
+    assert.ok(String(calls[1]![0]).includes("scope=api-key"));
+    assert.ok(String(calls[2]![0]).includes("scope=admin-api-key"));
+    assert.ok(String(calls[3]![0]).includes("scope=context"));
   });
 });

@@ -3,6 +3,7 @@ import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
 import { authenticateApiKey } from "@/lib/api-key-auth";
 import { PUBLIC_API_REQUIRED_SCOPE } from "@/lib/api-key-service";
 import { getPackContext, parseContextLimit, parseIncludeMetadata } from "@/lib/context-service";
+import { logSafeRouteError } from "@/lib/safe-logging";
 
 type RouteContext = {
   params: Promise<{ packId: string }>;
@@ -124,7 +125,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error("GET /api/v1/packs/[packId]/context failed", error);
+    logSafeRouteError({
+      scope: "context",
+      method: "GET",
+      path: endpoint,
+      requestId,
+      error,
+    });
     await recordApiUsage({
       requestId,
       apiKeyId,

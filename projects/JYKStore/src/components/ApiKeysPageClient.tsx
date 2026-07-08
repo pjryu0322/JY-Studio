@@ -13,7 +13,7 @@ export function ApiKeysPageClient() {
   const [items, setItems] = useState<ApiKeyDto[]>([]);
   const [creating, setCreating] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
-  const [plainKeyOnce, setPlainKeyOnce] = useState<string | null>(null);
+  const [rawKeyOnce, setRawKeyOnce] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -40,8 +40,8 @@ export function ApiKeysPageClient() {
         name: input.name,
         expiresAt: input.expiresAt,
       });
-      setPlainKeyOnce(data.plainKey);
-      setItems((prev) => [data.item, ...prev]);
+      setRawKeyOnce(data.rawKey);
+      setItems((prev) => [data.apiKey, ...prev]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "API Key를 발급하지 못했습니다.");
     } finally {
@@ -70,8 +70,8 @@ export function ApiKeysPageClient() {
 
   return (
     <div className="space-y-4 pb-4">
-      {plainKeyOnce ? (
-        <ApiKeyCreatedSecret plainKey={plainKeyOnce} onDismiss={() => setPlainKeyOnce(null)} />
+      {rawKeyOnce ? (
+        <ApiKeyCreatedSecret rawKey={rawKeyOnce} onDismiss={() => setRawKeyOnce(null)} />
       ) : null}
 
       <ApiKeyCreateForm onCreate={onCreate} creating={creating} />

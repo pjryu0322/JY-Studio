@@ -131,7 +131,6 @@ export async function createApiKeyForClient(input: {
   });
 
   return {
-    plainKey,
     rawKey: plainKey,
     apiKey: toApiKeyDto(apiKey),
   };

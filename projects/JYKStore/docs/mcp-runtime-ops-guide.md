@@ -48,12 +48,14 @@ MCP server는 답변을 생성하지 않고, JYKStore Public API의 context/grap
 ## API Key create / rotate / revoke
 
 1. JYKStore UI (`/api-keys`) 또는 Provider Connect 패널에서 API Key를 생성한다.
-2. 생성 응답에만 표시되는 **raw key**를 MCP 서버 env `JYKSTORE_API_KEY`에 넣는다.
+2. 생성 응답의 **`rawKey`** 필드(1회만)를 MCP 서버 env `JYKSTORE_API_KEY`에 넣는다. (`plainKey` 필드는 사용하지 않음)
 3. MCP용 key에는 **`context:read` scope**가 필요하다 (기본 발급 scope에 포함).
 4. 목록/Admin에서는 `maskedKey`만 보인다. DB에는 hash만 저장된다.
 5. 유출·교체 시:
    - 새 key를 발급 → MCP env를 교체 → 기존 key를 revoke
 6. Admin 운영 콘솔 `/admin/ops/api-keys`에서 전체 key 상태·폐기 가능 (raw key 조회 불가).
+7. Admin API는 `JYKSTORE_ADMIN_OPS_TOKEN` 설정을 권장하며, **production에서는 필수**다.
+8. Admin UI에 입력한 token은 브라우저 저장소에 두지 않고, 요청 header `X-JYKStore-Admin-Token`으로만 전달한다.
 
 ## Local stdio run
 

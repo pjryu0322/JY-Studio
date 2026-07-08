@@ -8,8 +8,8 @@ export type IssueSelectedPackApiKeyInput = {
 
 export type IssueSelectedPackApiKeyResult = {
   clientId: string;
-  plainKey: string;
-  item: ApiKeyDto;
+  rawKey: string;
+  apiKey: ApiKeyDto;
 };
 
 const SELECTED_PACK_API_KEY_SCOPES = ["packs:read", "context:read", "usage:write"] as const;
@@ -46,7 +46,7 @@ export async function issueSelectedPackApiKey(
 
   return {
     clientId: data.clientId,
-    plainKey: data.plainKey,
-    item: data.item,
+    rawKey: data.rawKey,
+    apiKey: data.apiKey,
   };
 }

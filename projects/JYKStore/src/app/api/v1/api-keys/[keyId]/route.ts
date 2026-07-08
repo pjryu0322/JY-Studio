@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { revokeApiKeyForClient } from "@/lib/api-key-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { logSafeRouteError } from "@/lib/safe-logging";
 
 type RouteContext = {
   params: Promise<{ keyId: string }>;
@@ -25,7 +26,12 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
     return jsonWithClientIdCookie({ ok: true as const, apiKey: result.apiKey }, clientId);
   } catch (error) {
-    console.error("DELETE /api/v1/api-keys/[keyId] failed", error);
+    logSafeRouteError({
+      scope: "api-key",
+      method: "DELETE",
+      path: "/api/v1/api-keys/[keyId]",
+      error,
+    });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

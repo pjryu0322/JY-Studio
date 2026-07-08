@@ -11,19 +11,19 @@ export function SelectedPackApiKeyIssuePanel({
 }: {
   readonly packId: string;
   readonly packName: string;
-  readonly onIssued: (plainKey: string) => void;
+  readonly onIssued: (rawKey: string) => void;
 }) {
   const [issuing, setIssuing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [plainKeyOnce, setPlainKeyOnce] = useState<string | null>(null);
+  const [rawKeyOnce, setRawKeyOnce] = useState<string | null>(null);
 
   const onIssue = async () => {
     setIssuing(true);
     setError(null);
     try {
       const result = await issueSelectedPackApiKey({ packId, packName });
-      setPlainKeyOnce(result.plainKey);
-      onIssued(result.plainKey);
+      setRawKeyOnce(result.rawKey);
+      onIssued(result.rawKey);
     } catch (err) {
       setError(err instanceof Error ? err.message : "API Key를 발급하지 못했습니다.");
     } finally {
@@ -42,7 +42,7 @@ export function SelectedPackApiKeyIssuePanel({
         <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
       ) : null}
 
-      {plainKeyOnce ? (
+      {rawKeyOnce ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm font-bold text-amber-950">API Key가 발급되었습니다</p>
           <p className="mt-2 text-xs leading-relaxed text-amber-900">
@@ -51,13 +51,13 @@ export function SelectedPackApiKeyIssuePanel({
           </p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
             <code className="min-w-0 flex-1 break-all rounded-xl bg-white px-3 py-2 text-xs text-slate-800">
-              {plainKeyOnce}
+              {rawKeyOnce}
             </code>
-            <CopyButton value={plainKeyOnce} label="Key 복사" className="w-full sm:w-auto" />
+            <CopyButton value={rawKeyOnce} label="Key 복사" className="w-full sm:w-auto" />
           </div>
           <button
             type="button"
-            onClick={() => setPlainKeyOnce(null)}
+            onClick={() => setRawKeyOnce(null)}
             className="mt-3 min-h-[44px] w-full rounded-xl bg-white px-4 text-sm font-semibold text-slate-800 active:bg-slate-50"
           >
             확인했습니다 / Key 숨기기
