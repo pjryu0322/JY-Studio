@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { isOriginAllowed } from "./cors.js";
 import type { McpServerConfig } from "./config.js";
 import { createBridgeServer } from "./bridge.js";
+import { toSafeLogError } from "./errors.js";
 import { JYKStoreClient } from "./jykstore-client.js";
 
 export type StartedMcpHttpServer = {
@@ -153,7 +154,10 @@ export async function startHttpServer(
       await mcp.connect(transport);
       await transport.handleRequest(req, res);
     } catch (error) {
-      console.error("[jykstore-mcp] HTTP request failed", error);
+      const safeError = toSafeLogError(error);
+      console.error(
+        `[jykstore-mcp] HTTP request failed code=${safeError.code} status=${safeError.status ?? "-"} requestId=${safeError.requestId ?? "-"} message=${safeError.message}`,
+      );
       if (!res.headersSent) {
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(
@@ -198,7 +202,10 @@ export function attachHttpSignalHandlers(close: () => Promise<void>): void {
     void close()
       .then(() => process.exit(0))
       .catch((error) => {
-        console.error("[jykstore-mcp] shutdown failed", error);
+        const safeError = toSafeLogError(error);
+        console.error(
+          `[jykstore-mcp] shutdown failed code=${safeError.code} message=${safeError.message}`,
+        );
         process.exit(1);
       });
   };

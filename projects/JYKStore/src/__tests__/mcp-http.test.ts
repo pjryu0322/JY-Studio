@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { isOriginAllowed, parseAllowedOrigins } from "../../mcp-server/cors.ts";
+import { sanitizeLogMessage, toSafeLogError } from "../../mcp-server/errors.ts";
 import { startHttpServer, type StartedMcpHttpServer } from "../../mcp-server/http-server.ts";
 import type { McpServerConfig } from "../../mcp-server/config.ts";
 
@@ -102,5 +103,39 @@ describe("mcp http transport", () => {
     const started = await startHttpServer(testConfig());
     await started.close();
     await started.close();
+  });
+});
+
+describe("mcp safe error logging", () => {
+  it("returns only code/message/status/requestId", () => {
+    const safe = toSafeLogError({
+      code: "PACK_NOT_FOUND",
+      message: "Authorization: Bearer secret-token DATABASE_URL=postgresql://user:pass@host/db",
+      status: 404,
+      requestId: "req_1",
+      details: { body: "sensitive" },
+    });
+    assert.equal(safe.code, "PACK_NOT_FOUND");
+    assert.equal(safe.status, 404);
+    assert.equal(safe.requestId, "req_1");
+    assert.ok(!safe.message.includes("secret-token"));
+    assert.ok(!safe.message.includes("postgresql://user:pass"));
+    assert.equal("details" in safe, false);
+  });
+
+  it("masks Bearer tokens and truncates long messages", () => {
+    const masked = sanitizeLogMessage(`Bearer abcdefghijklmnop ${"x".repeat(400)}`);
+    assert.match(masked, /Bearer \*\*\*/);
+    assert.ok(!masked.includes("abcdefghijklmnop"));
+    assert.ok(masked.length <= 300);
+  });
+
+  it("masks DATABASE_URL and postgres connection strings", () => {
+    const masked = sanitizeLogMessage(
+      "fail JYKSTORE_API_KEY=supersecret DATABASE_URL=postgresql://user:pass@host/db",
+    );
+    assert.ok(!masked.includes("supersecret"));
+    assert.ok(!masked.includes("user:pass"));
+    assert.match(masked, /JYKSTORE_API_KEY=\*\*\*/);
   });
 });

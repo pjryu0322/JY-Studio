@@ -1,4 +1,5 @@
 import { loadMcpServerConfig, maskApiKey } from "./config.js";
+import { toSafeLogError } from "./errors.js";
 import { attachHttpSignalHandlers, startHttpServer } from "./http-server.js";
 import { startStdioServer } from "./stdio-server.js";
 
@@ -19,6 +20,9 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("[jykstore-mcp] failed to start", error);
+  const safeError = toSafeLogError(error);
+  console.error(
+    `[jykstore-mcp] failed to start code=${safeError.code} message=${safeError.message}`,
+  );
   process.exit(1);
 });

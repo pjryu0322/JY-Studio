@@ -151,6 +151,9 @@ Same shape as Cursor local MCP `mcpServers` entry (stdio + env). Replace `cwd` a
 - 긴 query는 AI Agent의 retrieval intent를 전달하기 위한 용도입니다. 정확한 검색을 위해 핵심 의도와 metadataFilters를 함께 사용하는 것을 권장합니다.
 - Response size guard (default 2MB → `JYKSTORE_MCP_RESPONSE_TOO_LARGE`)
 - Chunked export source guard (default 20MB → `JYKSTORE_MCP_EXPORT_TOO_LARGE`)
+- Chunked export final MCP response is also checked against `JYKSTORE_MCP_MAX_RESPONSE_BYTES`.
+- If a chunk response is too large after JSON encoding, reduce `limitBytes` and retry from the same `offset`.
+- HTTP error logs are sanitized and do not include API keys, Authorization headers, request bodies, response bodies, or stack traces by default.
 - Public API auth/visibility remain authoritative
 
 ## Out of scope (later)

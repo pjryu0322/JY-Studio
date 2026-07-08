@@ -1,7 +1,7 @@
 import { assertPackAllowed } from "./config.js";
 import { sliceUtf8TextByBytes } from "./chunking.js";
 import { formatToolError } from "./errors.js";
-import type { JYKStoreClient } from "./jykstore-client.js";
+import { assertResponseSize, type JYKStoreClient } from "./jykstore-client.js";
 import {
   parseResourceUri,
   resourceMimeType,
@@ -113,15 +113,22 @@ export async function handleResourceRead(input: {
       useExportSourceLimit: Boolean(chunk),
     });
 
-    const text = chunk
-      ? formatChunkResourceText({
-          knowledgePackId,
-          exportType: parsed.kind,
-          chunk,
-          sourceText,
-          mimeType,
-        })
-      : sourceText;
+    let text: string;
+    if (chunk) {
+      text = formatChunkResourceText({
+        knowledgePackId,
+        exportType: parsed.kind,
+        chunk,
+        sourceText,
+        mimeType,
+      });
+      assertResponseSize(Buffer.byteLength(text, "utf8"), input.client.maxResponseBytes, {
+        code: "JYKSTORE_MCP_RESPONSE_TOO_LARGE",
+        hint: "Chunk resource response is too large after JSON encoding. Reduce limitBytes and retry from the same offset.",
+      });
+    } else {
+      text = sourceText;
+    }
 
     return {
       contents: [

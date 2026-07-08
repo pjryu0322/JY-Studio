@@ -1,7 +1,7 @@
 import { assertPackAllowed } from "./config.js";
 import { sliceUtf8TextByBytes } from "./chunking.js";
 import { formatToolError, mcpError } from "./errors.js";
-import type { JYKStoreClient } from "./jykstore-client.js";
+import { assertResponseSize, type JYKStoreClient } from "./jykstore-client.js";
 import {
   parseExportChunkToolInput,
   parseGraphToolInput,
@@ -14,6 +14,17 @@ import type { McpToolName } from "./tool-definitions.js";
 
 function textResult(payload: unknown) {
   const text = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+  return {
+    content: [{ type: "text" as const, text }],
+  };
+}
+
+function guardedJsonTextResult(payload: unknown, maxResponseBytes: number) {
+  const text = JSON.stringify(payload, null, 2);
+  assertResponseSize(Buffer.byteLength(text, "utf8"), maxResponseBytes, {
+    code: "JYKSTORE_MCP_RESPONSE_TOO_LARGE",
+    hint: "Chunk response is too large after JSON encoding. Reduce limitBytes and retry from the same offset.",
+  });
   return {
     content: [{ type: "text" as const, text }],
   };
@@ -76,17 +87,20 @@ export async function handleChunkedExport(input: {
 
   const slice = sliceUtf8TextByBytes(source.text, parsed.offset, parsed.limitBytes);
 
-  return textResult({
-    knowledgePackId: parsed.knowledgePackId,
-    exportType: input.exportType,
-    offset: parsed.offset,
-    limitBytes: parsed.limitBytes,
-    nextOffset: slice.nextOffset,
-    hasMore: slice.hasMore,
-    byteLength: slice.byteLength,
-    mimeType: source.mimeType,
-    content: slice.content,
-  });
+  return guardedJsonTextResult(
+    {
+      knowledgePackId: parsed.knowledgePackId,
+      exportType: input.exportType,
+      offset: parsed.offset,
+      limitBytes: parsed.limitBytes,
+      nextOffset: slice.nextOffset,
+      hasMore: slice.hasMore,
+      byteLength: slice.byteLength,
+      mimeType: source.mimeType,
+      content: slice.content,
+    },
+    input.client.maxResponseBytes,
+  );
 }
 
 export async function handleMcpToolCall(input: {

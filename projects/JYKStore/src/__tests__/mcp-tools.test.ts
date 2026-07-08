@@ -194,4 +194,27 @@ describe("mcp tools validation", () => {
     assert.equal(payload.byteLength, 1024);
     assert.equal(payload.content.length, 1024);
   });
+
+  it("rejects chunked export when final JSON exceeds maxResponseBytes", async () => {
+    const client = new JYKStoreClient({
+      baseUrl: "http://localhost:3004",
+      apiKey: "test-key",
+      maxResponseBytes: 1_500,
+      maxExportSourceBytes: 20_000,
+      fetchImpl: (async () =>
+        new Response('"'.repeat(2_000), {
+          status: 200,
+          headers: { "Content-Type": "application/x-ndjson" },
+        })) as typeof fetch,
+    });
+    const result = await handleMcpToolCall({
+      name: "jykstore_export_rag_jsonl_chunk",
+      args: { knowledgePackId: "pack-1", offset: 0, limitBytes: 2_000 },
+      client,
+      allowedPackIds: [],
+    });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0]!.text, /JYKSTORE_MCP_RESPONSE_TOO_LARGE/);
+    assert.match(result.content[0]!.text, /Reduce limitBytes/);
+  });
 });

@@ -59,4 +59,26 @@ describe("mcp resources", () => {
     assert.equal(result.isError, true);
     assert.match(result.contents[0]!.text, /JYKSTORE_MCP_PACK_NOT_ALLOWED/);
   });
+
+  it("rejects chunked resource when final JSON exceeds maxResponseBytes", async () => {
+    const client = new JYKStoreClient({
+      baseUrl: "http://localhost:3004",
+      apiKey: "test-key",
+      maxResponseBytes: 1_500,
+      maxExportSourceBytes: 20_000,
+      fetchImpl: (async () =>
+        new Response('"'.repeat(2_000), {
+          status: 200,
+          headers: { "Content-Type": "application/x-ndjson" },
+        })) as typeof fetch,
+    });
+    const result = await handleResourceRead({
+      uri: "jykstore://packs/pack-1/rag-jsonl?offset=0&limitBytes=2000",
+      client,
+      allowedPackIds: [],
+    });
+    assert.equal(result.isError, true);
+    assert.match(result.contents[0]!.text, /JYKSTORE_MCP_RESPONSE_TOO_LARGE/);
+    assert.match(result.contents[0]!.text, /Reduce limitBytes/);
+  });
 });
