@@ -539,7 +539,7 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - **자료 형식 표준화(SourceFormat enum)**: `TEXT`/`MARKDOWN`/`HTML`/`PDF`/`DOCX`/`XLSX`/`CSV`/`JSON`/`YAML`/`OPENAPI_JSON`/`OPENAPI_YAML`/`CODE`/`URL`/`ETC`.
 - **SourceDocument 확장**: `sourceFormat`, `fileName`, `mimeType`, `productVersion`, `documentVersion`, `licenseStatus`, `validationStatus`(NOT_CHECKED/PASS/WARNING/FAIL), `validationSummary`, `registeredByClientId`, `registeredAt`를 저장합니다.
 - **기본 정합성 검증(deterministic)**: 등록 시 `title`·`sourceType` 필수, `content`/`sourceUrl` 중 하나 필수. 위반 시 `FAIL`로 등록을 차단합니다. `SAMPLE_CODE`의 `productVersion` 누락 등은 `WARNING`(등록 허용). 외부 AI/고급 검증은 P17에서 다룹니다.
-- **PipelineStatus**: `KnowledgePack.pipelineStatus`로 공정 상태를 관리합니다. 값: `SOURCE_REGISTERING`, `SOURCE_VALIDATING`, `STRUCTURING`, `STRUCTURE_VALIDATING`, `KNOWLEDGE_CHECKING`, `CHUNKING`, `CHUNK_EVALUATING`, `INDEXING`, `SEARCH_EVALUATING`, `READY_FOR_REVIEW`, `REVIEWING`, `APPROVED`, `PUBLISHED`, `FAILED`.
+- **PipelineStatus**: `KnowledgePack.pipelineStatus`로 공정 상태를 관리합니다. 값: `SOURCE_REGISTERING`, `SOURCE_VALIDATING`, `STRUCTURING`, `STRUCTURE_VALIDATING`, `KNOWLEDGE_CHECKING`, `CHUNKING`, `CHUNK_EVALUATING`, `INDEXING`, `SEARCH_EVALUATING`, `RELEASE_CHECKING`, `READY_FOR_REVIEW`, `REVIEWING`, `APPROVED`, `PUBLISHED`, `FAILED`.
 - **PipelineRun / PipelineStepLog**: 공정 실행과 단계별 로그를 기록합니다(triggerType: `SOURCE_DOCUMENT_REGISTERED`, `SUBMIT_FOR_REVIEW`, `ADMIN_APPROVE`, `ADMIN_REJECT`).
   - SourceDocument 등록 → `SOURCE_REGISTERING` 단계 기록, `pipelineStatus=SOURCE_REGISTERING`.
   - 검수 제출 → `READY_FOR_REVIEW`/`REVIEWING` 단계 기록, `pipelineStatus=REVIEWING`.
@@ -631,11 +631,21 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - Admin 검색 품질 평가 실행은 DRAFT/REVIEWING 상태로 제한합니다.
 - DB schema/public API 계약 변경 없음.
 
+### P21 — Release Gate Hardening
+
+- Source/Structure/Chunk/Retrieval 품질 gate를 최종 **Release Gate**로 통합했습니다.
+- Admin 승인 직전에 최신 Release Gate를 재평가하여 stale report 기반 공개를 차단합니다.
+- `SourceDocument.validationStatus`와 최신 `SourceValidationReport`의 존재/최신성/상태 일치를 검증합니다.
+- `ReleaseGateRun` / `ReleaseGateIssue`로 최종 품질 판정 이력을 저장합니다.
+- `ReleaseGatePanel`에서 BLOCKER/WARNING 항목을 확인할 수 있습니다.
+- Provider 제출 gate는 유지하고, Admin 승인 gate만 최종 release gate로 강화했습니다.
+- P22 MCP Server Bridge는 후속 단계입니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21 완료), 실제 MCP Server runtime(P22)
 - pgvector 기반 vector index
 - 실제 MCP Server 실행(stdio/websocket/sse runtime) 및 graph traversal/semantic graph search
 - 로그인/회원 관리

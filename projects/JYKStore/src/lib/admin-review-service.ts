@@ -6,6 +6,7 @@ import {
   applyStructureQualityToAdminDetail,
   applyChunkQualityToAdminDetail,
   applyRetrievalEvaluationToAdminDetail,
+  applyReleaseGateToAdminDetail,
   type AdminReviewDetailDto,
 } from "@/lib/admin-review-dto";
 import {
@@ -20,6 +21,12 @@ import {
 } from "@/lib/retrieval-evaluation/retrieval-evaluation-service";
 import { loadRetrievalEvaluationSummaryForPack } from "@/lib/retrieval-evaluation/retrieval-evaluation-freshness";
 import { canRunAdminRetrievalEvaluationForStatus } from "@/lib/retrieval-evaluation/retrieval-evaluation-runner";
+import { evaluateReleaseGateForPack, loadReleaseGateSummaryForPack } from "@/lib/release-gate/release-gate-service";
+import {
+  RELEASE_GATE_APPROVAL_BLOCKED_MESSAGE,
+  getFirstBlockerMessage,
+} from "@/lib/release-gate/release-gate-runner";
+import { releaseGateAllowsApprovalStatus } from "@/lib/release-gate/release-gate-readiness";
 import {
   validateAllSourceDocumentsForPack,
   validateAndPersistSourceDocument,
@@ -88,7 +95,9 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
   const chunkQuality = await loadChunkQualitySummaryForPack(packId);
   const withChunk = applyChunkQualityToAdminDetail(withStructure, chunkQuality);
   const retrievalEvaluation = await loadRetrievalEvaluationSummaryForPack(packId);
-  return applyRetrievalEvaluationToAdminDetail(withChunk, retrievalEvaluation);
+  const withRetrieval = applyRetrievalEvaluationToAdminDetail(withChunk, retrievalEvaluation);
+  const releaseGate = await loadReleaseGateSummaryForPack(packId);
+  return applyReleaseGateToAdminDetail(withRetrieval, releaseGate);
 }
 
 export async function validateAdminPackSourceDocuments(input: {
@@ -266,6 +275,33 @@ export async function runAdminPackRetrievalEvaluation(input: {
   return { detail: detail!, evaluation: result };
 }
 
+export async function evaluateAdminPackReleaseGate(input: {
+  packId: string;
+  reviewerClientId?: string;
+  targetStatus?: "PUBLISHED" | "VERIFIED";
+}) {
+  const packId = input.packId.trim();
+  const pack = await prisma.knowledgePack.findUnique({ where: { packId } });
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  const targetStatus = input.targetStatus ?? "PUBLISHED";
+  const result = await evaluateReleaseGateForPack({
+    packId,
+    actorClientId: input.reviewerClientId,
+    targetStatus,
+    persist: true,
+  });
+
+  if ("error" in result) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  const detail = await getAdminReviewDetail(packId);
+  return { detail: detail!, releaseGate: result.result };
+}
+
 function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null {
   if (!detail.readiness.canApprove) {
     if (detail.pack.status !== "REVIEWING") {
@@ -285,6 +321,9 @@ function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null 
     }
     if (detail.readiness.retrievalEvaluationMessage) {
       return detail.readiness.retrievalEvaluationMessage;
+    }
+    if (detail.readiness.releaseGateMessage) {
+      return detail.readiness.releaseGateMessage;
     }
     return "승인에 필요한 버전·원천 문서·설명을 확인해 주세요.";
   }
@@ -426,6 +465,30 @@ export async function approvePackReview(input: {
   }
 
   const publishAsVerified = Boolean(input.publishAsVerified);
+  const targetStatus = publishAsVerified ? "VERIFIED" : "PUBLISHED";
+
+  const gateResult = await evaluateReleaseGateForPack({
+    packId,
+    actorClientId: input.reviewerClientId,
+    targetStatus,
+    persist: true,
+    requireReviewingStatus: true,
+  });
+
+  if ("error" in gateResult) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (!releaseGateAllowsApprovalStatus(gateResult.result.status)) {
+    const blocker = getFirstBlockerMessage(gateResult.result.issues);
+    return {
+      error: "INCOMPLETE" as const,
+      message: blocker
+        ? `${RELEASE_GATE_APPROVAL_BLOCKED_MESSAGE} (${blocker})`
+        : RELEASE_GATE_APPROVAL_BLOCKED_MESSAGE,
+    };
+  }
+
   const nextStatus = publishAsVerified ? PackStatus.VERIFIED : PackStatus.PUBLISHED;
   const memo = input.memo?.trim() || null;
   const now = new Date();

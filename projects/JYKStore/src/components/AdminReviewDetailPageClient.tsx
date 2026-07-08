@@ -14,10 +14,12 @@ import {
   evaluateAdminChunkQualityApi,
   generateAdminRetrievalEvaluationCasesApi,
   runAdminRetrievalEvaluationApi,
+  evaluateAdminReleaseGateApi,
 } from "@/lib/admin-review-api";
 import { StructureQualityPanel } from "@/components/StructureQualityPanel";
 import { ChunkQualityPanel } from "@/components/ChunkQualityPanel";
 import { RetrievalEvaluationPanel } from "@/components/RetrievalEvaluationPanel";
+import { ReleaseGatePanel } from "@/components/ReleaseGatePanel";
 
 export function AdminReviewDetailPageClient({ packId }: { readonly packId: string }) {
   const [loading, setLoading] = useState(true);
@@ -83,6 +85,15 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         }}
         onRun={async () => {
           const data = await runAdminRetrievalEvaluationApi(packId);
+          setDetail(data.detail);
+        }}
+      />
+      <ReleaseGatePanel
+        packId={packId}
+        releaseGate={detail.releaseGate}
+        editable
+        onEvaluate={async () => {
+          const data = await evaluateAdminReleaseGateApi(packId);
           setDetail(data.detail);
         }}
       />

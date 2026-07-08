@@ -158,3 +158,22 @@ export async function runAdminRetrievalEvaluationApi(
   }
   return (await response.json()) as AdminReviewDetailResponse;
 }
+
+export async function evaluateAdminReleaseGateApi(
+  packId: string,
+  targetStatus?: "PUBLISHED" | "VERIFIED",
+): Promise<AdminReviewDetailResponse> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/release-gate/evaluate`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(targetStatus ? { targetStatus } : {}),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminReviewDetailResponse;
+}

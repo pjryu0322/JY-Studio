@@ -135,6 +135,18 @@ export function AdminReviewDecisionPanel({
         </div>
       ) : null}
 
+      {detail.readiness.releaseGateMessage ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          {detail.readiness.releaseGateMessage}
+        </div>
+      ) : null}
+
+      {detail.readiness.releaseGateStatus === "WARNING" && detail.readiness.canApprove ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+          릴리스 게이트가 WARNING입니다. 승인은 가능하지만 차단/경고 이슈를 확인해 주세요.
+        </div>
+      ) : null}
+
       {(detail.readiness.structureCoverageStatus === "WARNING" ||
         detail.readiness.knowledgeQualityStatus === "WARNING") &&
       detail.readiness.canApprove ? (
@@ -157,7 +169,7 @@ export function AdminReviewDecisionPanel({
       ) : null}
 
       <p className="text-xs leading-relaxed text-store-muted">
-        릴리스 gate 강화는 P21에서 추가될 예정입니다.
+        승인 시 릴리스 게이트가 최신 데이터 기준으로 자동 재평가됩니다.
       </p>
 
       {detail.latestReview?.rejectionReason ? (

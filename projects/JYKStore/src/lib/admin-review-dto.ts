@@ -3,6 +3,11 @@ import type { SourceValidationReportDto } from "@/lib/source-validation-dto";
 import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
 import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-dto";
 import type { RetrievalEvaluationSummaryDto } from "@/lib/retrieval-evaluation/retrieval-evaluation-dto";
+import type { ReleaseGateSummaryDto } from "@/lib/release-gate/release-gate-dto";
+import {
+  getReleaseGateApprovalMessage,
+  meetsReleaseGateForApproval,
+} from "@/lib/release-gate/release-gate-readiness";
 import {
   chunkQualityGateSnapshotFromSummary,
   getChunkQualityBlockingMessage,
@@ -115,10 +120,13 @@ export type AdminReviewDetailDto = {
     chunkQualityMessage: string | null;
     retrievalEvaluationStatus: string | null;
     retrievalEvaluationMessage: string | null;
+    releaseGateStatus: string | null;
+    releaseGateMessage: string | null;
   };
   structureQuality: StructureQualitySummaryDto | null;
   chunkQuality: ChunkQualitySummaryDto | null;
   retrievalEvaluation: RetrievalEvaluationSummaryDto | null;
+  releaseGate: ReleaseGateSummaryDto | null;
 };
 
 const CONTENT_PREVIEW_MAX = 800;
@@ -176,6 +184,8 @@ function computeReadiness(pack: PackWithDetail) {
     chunkQualityMessage: null,
     retrievalEvaluationStatus: null,
     retrievalEvaluationMessage: null,
+    releaseGateStatus: null,
+    releaseGateMessage: null,
   };
 }
 
@@ -270,6 +280,7 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
     structureQuality: null,
     chunkQuality: null,
     retrievalEvaluation: null,
+    releaseGate: null,
   };
 }
 
@@ -333,6 +344,26 @@ export function applyRetrievalEvaluationToAdminDetail(
       canApprove: detail.readiness.canApprove && gateOk,
       retrievalEvaluationStatus: snapshot.reportStatus,
       retrievalEvaluationMessage,
+    },
+  };
+}
+
+export function applyReleaseGateToAdminDetail(
+  detail: AdminReviewDetailDto,
+  releaseGate: ReleaseGateSummaryDto | null,
+): AdminReviewDetailDto {
+  const gateOk = meetsReleaseGateForApproval(releaseGate);
+  const releaseGateMessage = getReleaseGateApprovalMessage(releaseGate);
+  const releaseGateStatus = releaseGate?.latestRun?.status ?? null;
+
+  return {
+    ...detail,
+    releaseGate,
+    readiness: {
+      ...detail.readiness,
+      canApprove: detail.readiness.canApprove && gateOk,
+      releaseGateStatus,
+      releaseGateMessage,
     },
   };
 }

@@ -89,6 +89,7 @@ enum PipelineStatus {
   CHUNK_EVALUATING
   INDEXING
   SEARCH_EVALUATING
+  RELEASE_CHECKING
   READY_FOR_REVIEW
   REVIEWING
   APPROVED
@@ -130,6 +131,7 @@ enum AuditAction {
   ADMIN_CHUNK_UPDATE
   ADMIN_CHUNK_DEACTIVATE
   ADMIN_CHUNK_GENERATE
+  ADMIN_RELEASE_GATE_EVALUATE
 }
 
 model ProviderProfile {
@@ -248,6 +250,7 @@ model KnowledgePack {
   retrievalEvaluationRuns    RetrievalEvaluationRun[]
   retrievalEvaluationCases   RetrievalEvaluationCase[]
   retrievalEvaluationResults RetrievalEvaluationResult[]
+  releaseGateRuns          ReleaseGateRun[]
 
   @@index([status])
   @@index([categoryId])
@@ -897,6 +900,51 @@ model RetrievalEvaluationIssue {
   createdAt DateTime @default(now())
 
   run RetrievalEvaluationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([severity])
+  @@index([code])
+}
+
+model ReleaseGateRun {
+  id                 String   @id @default(cuid())
+  packId             String
+  versionId          String?
+  targetStatus       String
+  status             String
+  blockingIssueCount Int      @default(0)
+  warningIssueCount  Int      @default(0)
+  sourceStatus       String?
+  structureStatus    String?
+  chunkStatus        String?
+  retrievalStatus    String?
+  graphStatus        String?
+  summary            String
+  checkedBy          String   @default("SYSTEM_RULE")
+  checkedAt          DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  pack   KnowledgePack      @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  issues ReleaseGateIssue[]
+
+  @@index([packId])
+  @@index([versionId])
+  @@index([targetStatus])
+  @@index([status])
+  @@index([checkedAt])
+}
+
+model ReleaseGateIssue {
+  id        String   @id @default(cuid())
+  runId     String
+  severity  String
+  code      String
+  message   String
+  field     String?
+  hint      String?
+  createdAt DateTime @default(now())
+
+  run ReleaseGateRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId])
   @@index([severity])

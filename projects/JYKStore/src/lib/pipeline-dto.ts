@@ -38,6 +38,7 @@ export const PIPELINE_STATUS_LABELS: Record<PipelineStatus, string> = {
   CHUNK_EVALUATING: "청킹 품질 평가",
   INDEXING: "검색 데이터 구축",
   SEARCH_EVALUATING: "검색 품질 평가",
+  RELEASE_CHECKING: "릴리스 게이트 점검",
   READY_FOR_REVIEW: "검토 준비 완료",
   REVIEWING: "관리자 검토 중",
   APPROVED: "승인됨",
