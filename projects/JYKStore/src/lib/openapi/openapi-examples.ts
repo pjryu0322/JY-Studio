@@ -18,7 +18,9 @@ export function commonErrorResponses() {
       "Invalid request. code: INVALID_RETRIEVAL_REQUEST / INVALID_GRAPH_QUERY_REQUEST / INVALID_EXPORT_REQUEST / INVALID_EXPORT_CHUNK_REQUEST",
     ),
     "401": errorResponse("Unauthorized. code: UNAUTHORIZED"),
-    "403": errorResponse("Forbidden. code: FORBIDDEN"),
+    "403": errorResponse(
+      "Forbidden. code: FORBIDDEN / API_KEY_REVOKED / API_KEY_EXPIRED / INSUFFICIENT_SCOPE",
+    ),
     "404": errorResponse("Knowledge pack not found or not public. code: PACK_NOT_FOUND"),
     "500": errorResponse("Internal server error. code: INTERNAL_SERVER_ERROR"),
   };

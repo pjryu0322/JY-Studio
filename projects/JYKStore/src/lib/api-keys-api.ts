@@ -38,6 +38,7 @@ export async function fetchApiKeys(): Promise<ApiKeysListResponse> {
 export async function createApiKeyApi(input: {
   name: string;
   scopes?: string[];
+  expiresAt?: string | null;
 }): Promise<ApiKeyCreateResponse> {
   const response = await fetch("/api/v1/api-keys", {
     method: "POST",

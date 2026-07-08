@@ -21,7 +21,10 @@ export const contextApiEndpoints = [
 
 export const contextApiErrorCodes = [
   { status: 401, code: "UNAUTHORIZED", description: "API Key가 없거나 유효하지 않습니다." },
-  { status: 403, code: "FORBIDDEN", description: "API Key scope가 부족합니다." },
+  { status: 403, code: "API_KEY_REVOKED", description: "폐기된 API Key입니다." },
+  { status: 403, code: "API_KEY_EXPIRED", description: "만료된 API Key입니다." },
+  { status: 403, code: "INSUFFICIENT_SCOPE", description: "필요한 scope(context:read)가 없습니다." },
+  { status: 403, code: "FORBIDDEN", description: "요청이 거부되었습니다." },
   { status: 404, code: "PACK_NOT_FOUND", description: "공개된 지식팩을 찾을 수 없습니다." },
   { status: 400, code: "INVALID_REQUEST", description: "요청 본문 또는 파라미터가 올바르지 않습니다." },
   { status: 500, code: "INTERNAL_SERVER_ERROR", description: "서버 처리 중 오류가 발생했습니다." },
@@ -39,10 +42,15 @@ export const contextQueryParameters = [
 ] as const;
 
 export const securityPolicies = [
+  "API Key는 Bearer token으로 전달합니다 (Authorization: Bearer <rawKey>).",
+  "raw key 원문은 생성 시 1회만 확인할 수 있으며, DB에는 hash만 저장합니다.",
+  "목록/Admin UI에는 maskedKey(또는 keyPrefix)만 표시합니다. 분실 시 재발급이 필요합니다.",
+  "ACTIVE / REVOKED / EXPIRED 상태를 검증합니다. revoke·만료된 key는 사용할 수 없습니다.",
+  "현재 기본 Public API scope는 context:read입니다 (retrieval/graph/exports 포함). 향후 세분화 예정입니다.",
   "API Key는 서버 환경변수에 저장합니다.",
   "브라우저 localStorage/sessionStorage 저장을 금지합니다.",
   "URL query로 API Key를 전달하지 않습니다.",
-  "로그에 API Key 원문을 저장하지 않습니다.",
+  "로그에 API Key 원문·Authorization header를 저장하지 않습니다.",
   "유출 시 즉시 revoke 합니다.",
 ] as const;
 
@@ -234,7 +242,10 @@ export const retrievalMetadataFilterKeys = [
 
 export const retrievalApiErrorCodes = [
   { status: 401, code: "UNAUTHORIZED", description: "API Key가 없거나 유효하지 않습니다." },
-  { status: 403, code: "FORBIDDEN", description: "API Key scope가 부족합니다." },
+  { status: 403, code: "API_KEY_REVOKED", description: "폐기된 API Key입니다." },
+  { status: 403, code: "API_KEY_EXPIRED", description: "만료된 API Key입니다." },
+  { status: 403, code: "INSUFFICIENT_SCOPE", description: "필요한 scope(context:read)가 없습니다." },
+  { status: 403, code: "FORBIDDEN", description: "요청이 거부되었습니다." },
   { status: 400, code: "INVALID_RETRIEVAL_REQUEST", description: "요청 body/filter/topK가 올바르지 않습니다." },
   { status: 404, code: "PACK_NOT_FOUND", description: "공개된 지식팩을 찾을 수 없습니다." },
   { status: 500, code: "INTERNAL_SERVER_ERROR", description: "서버 처리 중 오류가 발생했습니다." },

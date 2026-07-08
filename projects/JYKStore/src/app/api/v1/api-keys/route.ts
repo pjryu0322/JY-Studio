@@ -18,7 +18,11 @@ export async function POST(request: NextRequest) {
   const clientId = ensureClientId(request);
 
   try {
-    const body = (await request.json()) as { name?: string; scopes?: string[] };
+    const body = (await request.json()) as {
+      name?: string;
+      scopes?: string[];
+      expiresAt?: string | null;
+    };
     const name = body.name?.trim() ?? "";
 
     if (!name) {
@@ -29,6 +33,7 @@ export async function POST(request: NextRequest) {
       clientId,
       name,
       scopes: body.scopes,
+      expiresAt: body.expiresAt,
     });
 
     if (result.error === "INVALID_NAME") {
@@ -39,11 +44,19 @@ export async function POST(request: NextRequest) {
       return jsonWithClientIdCookie({ error: "이름이 너무 깁니다." }, clientId, { status: 400 });
     }
 
+    if (result.error === "INVALID_EXPIRES_AT") {
+      return jsonWithClientIdCookie({ error: "만료일이 올바르지 않습니다." }, clientId, {
+        status: 400,
+      });
+    }
+
     return jsonWithClientIdCookie(
       {
         clientId,
         plainKey: result.plainKey,
+        rawKey: result.rawKey,
         item: result.apiKey,
+        apiKey: result.apiKey,
       },
       clientId,
     );

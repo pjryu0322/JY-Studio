@@ -10,6 +10,21 @@ export function getApiKeyPrefix(plainKey: string) {
   return plainKey.slice(0, 16);
 }
 
+/** Masked display form for UI/API lists. Never log the raw key. */
+export function maskApiKey(plainOrPrefix: string): string {
+  const value = plainOrPrefix.trim();
+  if (value.length <= 12) {
+    return `${value.slice(0, Math.min(4, value.length))}…`;
+  }
+  if (value.startsWith(API_KEY_PREFIX) && value.length > 16) {
+    return `${value.slice(0, 16)}…${value.slice(-4)}`;
+  }
+  // keyPrefix (16 chars) or truncated safe display
+  const head = value.slice(0, 12);
+  const tail = value.length >= 4 ? value.slice(-4) : "";
+  return tail ? `${head}…${tail}` : `${head}…`;
+}
+
 export function hashApiKey(plainKey: string) {
   const secret = process.env.JYKSTORE_API_KEY_SECRET;
   if (secret) {

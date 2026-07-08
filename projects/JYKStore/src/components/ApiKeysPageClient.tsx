@@ -32,11 +32,14 @@ export function ApiKeysPageClient() {
     void refresh();
   }, [refresh]);
 
-  const onCreate = useCallback(async (name: string) => {
+  const onCreate = useCallback(async (input: { name: string; expiresAt: string | null }) => {
     setCreating(true);
     setError(null);
     try {
-      const data = await createApiKeyApi({ name });
+      const data = await createApiKeyApi({
+        name: input.name,
+        expiresAt: input.expiresAt,
+      });
       setPlainKeyOnce(data.plainKey);
       setItems((prev) => [data.item, ...prev]);
     } catch (err) {

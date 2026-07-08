@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
-import { authenticateApiKey, requireApiKeyScope } from "@/lib/api-key-auth";
+import { authenticateApiKey } from "@/lib/api-key-auth";
+import { PUBLIC_API_REQUIRED_SCOPE } from "@/lib/api-key-service";
 import { getPackContext, parseContextLimit } from "@/lib/context-service";
 import { tokenizeSearchQuery } from "@/lib/search-utils";
 
@@ -11,6 +12,9 @@ type RouteContext = {
 type ErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
+  | "API_KEY_REVOKED"
+  | "API_KEY_EXPIRED"
+  | "INSUFFICIENT_SCOPE"
   | "PACK_NOT_FOUND"
   | "INVALID_REQUEST"
   | "INTERNAL_SERVER_ERROR";
@@ -49,9 +53,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
   let packId = "";
 
   try {
-    const auth = requireApiKeyScope(await authenticateApiKey(request), "context:read");
+    const auth = await authenticateApiKey(request, {
+      requiredScope: PUBLIC_API_REQUIRED_SCOPE,
+      requestId,
+    });
     if (!auth.ok) {
-      const code = auth.status === 403 ? "FORBIDDEN" : "UNAUTHORIZED";
       await recordApiUsage({
         requestId,
         apiKeyId: null,
@@ -59,9 +65,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         method,
         statusCode: auth.status,
         latencyMs: Date.now() - startedAt,
-        metadata: { reason: code },
+        metadata: { reason: auth.code },
       });
-      return jsonError(requestId, code, auth.error, auth.status);
+      return jsonError(requestId, auth.code, auth.error, auth.status);
     }
 
     apiKeyId = auth.apiKeyId;

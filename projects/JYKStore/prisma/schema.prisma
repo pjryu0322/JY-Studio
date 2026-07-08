@@ -36,6 +36,7 @@ enum InstallationStatus {
 enum ApiKeyStatus {
   ACTIVE
   REVOKED
+  EXPIRED
 }
 
 enum SourceType {
@@ -117,6 +118,9 @@ enum AuditAction {
   REMOVE
   API_KEY_CREATE
   API_KEY_REVOKE
+  API_KEY_VERIFY_FAILED
+  API_KEY_EXPIRED
+  API_KEY_SCOPE_DENIED
   PROVIDER_PROFILE_UPSERT
   PROVIDER_PACK_CREATE
   PROVIDER_PACK_UPDATE
@@ -477,6 +481,7 @@ model ApiKey {
   updatedAt      DateTime     @updatedAt
   lastUsedAt     DateTime?
   revokedAt      DateTime?
+  expiresAt      DateTime?
 
   user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -485,6 +490,7 @@ model ApiKey {
   @@index([clientId])
   @@index([keyPrefix])
   @@index([status])
+  @@index([expiresAt])
 }
 
 model ApiUsageLog {

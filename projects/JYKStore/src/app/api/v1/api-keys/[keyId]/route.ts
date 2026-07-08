@@ -23,7 +23,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return jsonWithClientIdCookie({ error: "API Key를 찾을 수 없습니다." }, clientId, { status: 404 });
     }
 
-    return jsonWithClientIdCookie({ ok: true as const }, clientId);
+    return jsonWithClientIdCookie({ ok: true as const, apiKey: result.apiKey }, clientId);
   } catch (error) {
     console.error("DELETE /api/v1/api-keys/[keyId] failed", error);
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });

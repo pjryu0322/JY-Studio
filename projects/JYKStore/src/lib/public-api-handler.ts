@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authenticateApiKey, requireApiKeyScope } from "@/lib/api-key-auth";
+import {
+  authenticateApiKey,
+  type PublicApiKeyErrorCode,
+} from "@/lib/api-key-auth";
+import { PUBLIC_API_REQUIRED_SCOPE } from "@/lib/api-key-service";
 import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
 
 // 외부 AI/Agent/플랫폼이 호출하는 Public API route의 공통 처리 helper.
@@ -18,6 +22,9 @@ export type PublicApiContext = {
 export type PublicApiErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
+  | "API_KEY_REVOKED"
+  | "API_KEY_EXPIRED"
+  | "INSUFFICIENT_SCOPE"
   | "INVALID_JSON"
   | "INVALID_RETRIEVAL_REQUEST"
   | "INVALID_GRAPH_QUERY_REQUEST"
@@ -25,6 +32,14 @@ export type PublicApiErrorCode =
   | "PACK_NOT_FOUND"
   | "INTERNAL_SERVER_ERROR";
 
+export function mapAuthFailureToPublicCode(
+  code: PublicApiKeyErrorCode,
+): Extract<
+  PublicApiErrorCode,
+  "UNAUTHORIZED" | "FORBIDDEN" | "API_KEY_REVOKED" | "API_KEY_EXPIRED" | "INSUFFICIENT_SCOPE"
+> {
+  return code;
+}
 export function createPublicApiContext(request: NextRequest): PublicApiContext {
   return {
     request,
@@ -113,11 +128,20 @@ export async function recordPublicApiUsage(
 export async function requireContextReadApiKey(
   context: PublicApiContext,
 ): Promise<{ ok: true; apiKeyId: string } | { ok: false; response: NextResponse }> {
-  const auth = requireApiKeyScope(await authenticateApiKey(context.request), "context:read");
+  const auth = await authenticateApiKey(context.request, {
+    requiredScope: PUBLIC_API_REQUIRED_SCOPE,
+    requestId: context.requestId,
+  });
   if (!auth.ok) {
-    const code: PublicApiErrorCode = auth.status === 403 ? "FORBIDDEN" : "UNAUTHORIZED";
-    await recordPublicApiUsage(context, { statusCode: auth.status, metadata: { reason: code } });
-    return { ok: false, response: apiErrorResponse(context.requestId, code, auth.error, auth.status) };
+    const code = mapAuthFailureToPublicCode(auth.code);
+    await recordPublicApiUsage(context, {
+      statusCode: auth.status,
+      metadata: { reason: code },
+    });
+    return {
+      ok: false,
+      response: apiErrorResponse(context.requestId, code, auth.error, auth.status),
+    };
   }
   context.apiKeyId = auth.apiKeyId;
   return { ok: true, apiKeyId: auth.apiKeyId };

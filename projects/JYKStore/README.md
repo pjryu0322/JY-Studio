@@ -719,11 +719,20 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - health/readiness, env, safe logging, reverse proxy, troubleshooting 기준을 문서화했습니다.
 - 인증/멀티테넌시/쿼터는 후속 P23/P27, P24/P25 범위로 유지합니다.
 
+### P23/P27 — Auth & API Key Hardening
+
+- API Key 생성/목록/회수 흐름을 정리했습니다.
+- API Key raw value는 생성 시 1회만 반환하고, 이후에는 maskedKey만 표시합니다.
+- Public API 인증에서 ACTIVE/REVOKED/EXPIRED 상태와 scope를 검증합니다.
+- API Key lastUsedAt을 갱신하고 UsageLog/AuditLog와 연결했습니다.
+- Provider/Admin API Key 관리 UI를 보강했습니다.
+- OAuth/remote MCP auth, multi-tenant gateway, rate limit/quota는 후속 단계로 유지합니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22~P22.6/P26 완료)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22~P22.6/P26 완료), Auth & API Key Hardening(P23/P27 완료)
 - Web Streams true streaming, OAuth / remote MCP auth 등은 후속 개선
 - pgvector 기반 vector index
 - 로그인/회원 관리
@@ -731,6 +740,6 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 
 ## 다음 단계
 
-1. P23/P27 Auth & API Key Hardening
-2. P24/P25 Multi-tenant Gateway & Quota
+1. P24/P25 Multi-tenant Gateway & Quota
+2. OAuth / remote MCP auth
 3. True upstream stream response using Web Streams.

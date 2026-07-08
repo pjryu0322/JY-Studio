@@ -45,6 +45,16 @@ MCP server는 답변을 생성하지 않고, JYKStore Public API의 context/grap
 - Browser `localStorage` / `sessionStorage`에 저장하지 않는다.
 - Docs/examples는 `<API_KEY>` placeholder만 사용한다.
 
+## API Key create / rotate / revoke
+
+1. JYKStore UI (`/api-keys`) 또는 Provider Connect 패널에서 API Key를 생성한다.
+2. 생성 응답에만 표시되는 **raw key**를 MCP 서버 env `JYKSTORE_API_KEY`에 넣는다.
+3. MCP용 key에는 **`context:read` scope**가 필요하다 (기본 발급 scope에 포함).
+4. 목록/Admin에서는 `maskedKey`만 보인다. DB에는 hash만 저장된다.
+5. 유출·교체 시:
+   - 새 key를 발급 → MCP env를 교체 → 기존 key를 revoke
+6. Admin 운영 콘솔 `/admin/ops/api-keys`에서 전체 key 상태·폐기 가능 (raw key 조회 불가).
+
 ## Local stdio run
 
 ```powershell
@@ -191,7 +201,10 @@ Logs may mask keys (for example `abcd…wxyz`) but must never print the full sec
 | Symptom / code | Likely cause | Action |
 | --- | --- | --- |
 | `PACK_NOT_FOUND` | Pack id wrong, not published/verified, or filtered by Public API | Confirm pack status in JYKStore; use a PUBLISHED/VERIFIED id |
-| `UNAUTHORIZED` / `FORBIDDEN` | Missing/invalid API key or insufficient scope | Rotate/reissue key with `context:read`; check `JYKSTORE_API_KEY` |
+| `UNAUTHORIZED` | Missing/invalid API key or unknown key | Re-check env; reissue key; never log raw key |
+| `API_KEY_REVOKED` | Key was revoked | Issue a new key and update MCP env; revoke is irreversible |
+| `API_KEY_EXPIRED` | `expiresAt` is in the past | Issue a new key (optionally with new expiry) and rotate env |
+| `INSUFFICIENT_SCOPE` / `FORBIDDEN` | Key lacks `context:read` (or request rejected) | Reissue with default scopes including `context:read` |
 | `JYKSTORE_MCP_RESPONSE_TOO_LARGE` | Tool/export response exceeds `JYKSTORE_MCP_MAX_RESPONSE_BYTES` | Lower `topK` / use chunk tools with smaller `limitBytes` |
 | `JYKSTORE_MCP_EXPORT_TOO_LARGE` | Full export source exceeds `JYKSTORE_MCP_MAX_EXPORT_SOURCE_BYTES` | Use chunked export tools; avoid full export for large packs |
 | `JYKSTORE_MCP_INVALID_INPUT` | Schema validation failed (pack id, query length, offset/limitBytes, etc.) | Fix tool arguments; retrieval `query` max is 2000 characters |
@@ -212,6 +225,8 @@ These tests cover registration snapshots, HTTP JSON-RPC runtime (mocked Public A
 
 ## Out of scope (later)
 
-- P23/P27 Auth & API Key Hardening / OAuth / remote MCP auth
 - P24/P25 Multi-tenant Gateway & Quota
-- True upstream stream response using Web Streams
+- OAuth / remote MCP auth
+- per-client rate limit / quota
+- tenant-isolated MCP gateway
+- Web Streams true streaming
