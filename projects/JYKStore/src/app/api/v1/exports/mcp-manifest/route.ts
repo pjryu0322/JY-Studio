@@ -6,6 +6,7 @@ import {
   publicExportServerError,
   resolvePublicExportRequest,
 } from "@/lib/public-export-request";
+import { logSafeRouteError } from "@/lib/safe-logging";
 
 export async function GET(request: NextRequest) {
   const startedAt = Date.now();
@@ -52,7 +53,13 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("GET /api/v1/exports/mcp-manifest failed", error);
+    logSafeRouteError({
+      scope: "export",
+      method,
+      path: endpoint,
+      requestId,
+      error,
+    });
     return publicExportServerError(requestId);
   }
 }

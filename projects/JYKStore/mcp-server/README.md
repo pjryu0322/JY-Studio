@@ -165,6 +165,7 @@ Same shape as Cursor local MCP `mcpServers` entry (stdio + env). Replace `cwd` a
 - Chunked export final MCP response is also checked against `JYKSTORE_MCP_MAX_RESPONSE_BYTES`.
 - If a chunk response is too large after JSON encoding, reduce `limitBytes` and retry from the same `offset`.
 - HTTP error logs are sanitized and do not include API keys, Authorization headers, request bodies, response bodies, or stack traces by default.
+- MCP and Public API export routes share the same safe logging policy.
 - Public API auth/visibility remain authoritative
 
 ## Out of scope (later)

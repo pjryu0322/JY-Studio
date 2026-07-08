@@ -11,6 +11,7 @@ import {
   publicExportServerError,
   resolvePublicExportRequest,
 } from "@/lib/public-export-request";
+import { logSafeRouteError } from "@/lib/safe-logging";
 
 export async function handleExportChunkRequest(
   request: NextRequest,
@@ -125,7 +126,13 @@ export async function handleExportChunkRequest(
       },
     });
   } catch (error) {
-    console.error(`GET ${endpoint} failed`, error);
+    logSafeRouteError({
+      scope: "export-chunk",
+      method,
+      path: endpoint,
+      requestId,
+      error,
+    });
     return publicExportServerError(requestId);
   }
 }

@@ -1,3 +1,11 @@
+import {
+  toSafeLogError as sharedToSafeLogError,
+  type SafeLogError,
+} from "../src/lib/safe-logging";
+
+export type { SafeLogError };
+export { sanitizeLogMessage } from "../src/lib/safe-logging";
+
 export type JYKStoreMcpError = {
   code: string;
   message: string;
@@ -73,49 +81,10 @@ export function formatToolError(error: unknown): {
   };
 }
 
-export type SafeLogError = {
-  code: string;
-  message: string;
-  status?: number;
-  requestId?: string;
-};
-
-/** Mask common secrets and truncate for operational logs. */
-export function sanitizeLogMessage(message: string): string {
-  return message
-    .replace(/Bearer\s+[^\s]+/gi, "Bearer ***")
-    .replace(/JYKSTORE_API_KEY=\S+/gi, "JYKSTORE_API_KEY=***")
-    .replace(/DATABASE_URL=\S+/gi, "DATABASE_URL=***")
-    .replace(/postgres(?:ql)?:\/\/[^\s]+/gi, "postgresql://***")
-    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "sk-***")
-    .slice(0, 300);
-}
-
-/**
- * Narrow unknown errors to safe log fields only.
- * Never includes details, bodies, headers, tokens, or stacks.
- */
+/** MCP-facing wrapper: preserve MCP default error code when code is absent. */
 export function toSafeLogError(error: unknown): SafeLogError {
-  if (error && typeof error === "object") {
-    const record = error as Record<string, unknown>;
-    const rawMessage =
-      typeof record.message === "string"
-        ? record.message
-        : error instanceof Error
-          ? error.message
-          : "Unexpected MCP error.";
-    return {
-      code: typeof record.code === "string" ? record.code : "JYKSTORE_MCP_INTERNAL_ERROR",
-      message: sanitizeLogMessage(rawMessage),
-      status: typeof record.status === "number" ? record.status : undefined,
-      requestId: typeof record.requestId === "string" ? record.requestId : undefined,
-    };
-  }
-
-  return {
-    code: "JYKSTORE_MCP_INTERNAL_ERROR",
-    message: sanitizeLogMessage(
-      typeof error === "string" ? error : "Unexpected MCP error.",
-    ),
-  };
+  return sharedToSafeLogError(error, {
+    defaultCode: "JYKSTORE_MCP_INTERNAL_ERROR",
+    defaultMessage: "Unexpected MCP error.",
+  });
 }
