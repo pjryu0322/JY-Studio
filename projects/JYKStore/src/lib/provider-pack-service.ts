@@ -13,9 +13,14 @@ import {
   completePipelineStep,
   createPipelineRun,
   finishPipelineRun,
+  logPipelineRecordFailure,
   updatePackPipelineStatus,
 } from "@/lib/pipeline-service";
 import { evaluateSourceValidation } from "@/lib/source-type-dto";
+import {
+  countSourceValidationFromStatuses,
+  meetsSourceValidationSubmitGate,
+} from "@/lib/source-validation-readiness";
 import {
   toProviderPackDetail,
   toProviderPackListItem,
@@ -501,10 +506,12 @@ async function recordSourceRegisteredPipeline(
   validationStatus: string,
   sourceType: string,
 ) {
+  const targetStatus = PipelineStatus.SOURCE_REGISTERING;
+  const triggerType = "SOURCE_DOCUMENT_REGISTERED";
   try {
     const run = await createPipelineRun({
       packId,
-      triggerType: "SOURCE_DOCUMENT_REGISTERED",
+      triggerType,
       triggeredByClientId: clientId,
       steps: [PipelineStatus.SOURCE_REGISTERING],
     });
@@ -522,15 +529,35 @@ async function recordSourceRegisteredPipeline(
         status: validationStatus === "WARNING" ? "WARNING" : "PASS",
         summary: "원천 문서 등록 처리 완료",
       });
+    } else {
+      logPipelineRecordFailure("recordSourceRegisteredPipeline", {
+        packId,
+        triggerType,
+        targetStatus,
+        error: run.error,
+      });
     }
 
-    await updatePackPipelineStatus({
+    const statusUpdate = await updatePackPipelineStatus({
       packId,
-      pipelineStatus: PipelineStatus.SOURCE_REGISTERING,
+      pipelineStatus: targetStatus,
       triggeredByClientId: clientId,
     });
+    if ("error" in statusUpdate) {
+      logPipelineRecordFailure("recordSourceRegisteredPipeline", {
+        packId,
+        triggerType,
+        targetStatus,
+        error: "updatePackPipelineStatus NOT_FOUND",
+      });
+    }
   } catch (error) {
-    console.error("recordSourceRegisteredPipeline failed", error);
+    logPipelineRecordFailure("recordSourceRegisteredPipeline", {
+      packId,
+      triggerType,
+      targetStatus,
+      error,
+    });
   }
 }
 
@@ -539,10 +566,12 @@ async function recordSubmitForReviewPipeline(
   clientId: string,
   note: string | null,
 ) {
+  const targetStatus = PipelineStatus.REVIEWING;
+  const triggerType = "SUBMIT_FOR_REVIEW";
   try {
     const run = await createPipelineRun({
       packId,
-      triggerType: "SUBMIT_FOR_REVIEW",
+      triggerType,
       triggeredByClientId: clientId,
       steps: [PipelineStatus.READY_FOR_REVIEW, PipelineStatus.REVIEWING],
     });
@@ -565,15 +594,35 @@ async function recordSubmitForReviewPipeline(
         status: "PASS",
         summary: "검수 요청 제출 완료",
       });
+    } else {
+      logPipelineRecordFailure("recordSubmitForReviewPipeline", {
+        packId,
+        triggerType,
+        targetStatus,
+        error: run.error,
+      });
     }
 
-    await updatePackPipelineStatus({
+    const statusUpdate = await updatePackPipelineStatus({
       packId,
-      pipelineStatus: PipelineStatus.REVIEWING,
+      pipelineStatus: targetStatus,
       triggeredByClientId: clientId,
     });
+    if ("error" in statusUpdate) {
+      logPipelineRecordFailure("recordSubmitForReviewPipeline", {
+        packId,
+        triggerType,
+        targetStatus,
+        error: "updatePackPipelineStatus NOT_FOUND",
+      });
+    }
   } catch (error) {
-    console.error("recordSubmitForReviewPipeline failed", error);
+    logPipelineRecordFailure("recordSubmitForReviewPipeline", {
+      packId,
+      triggerType,
+      targetStatus,
+      error,
+    });
   }
 }
 
@@ -621,11 +670,21 @@ export async function submitProviderPackForReview(clientId: string, packId: stri
     };
   }
 
-  const failedDocs = allDocs.filter((d) => d.validationStatus === "FAIL");
-  if (failedDocs.length > 0) {
+  const validationStatuses = allDocs.map((d) => d.validationStatus);
+  const validationCounts = countSourceValidationFromStatuses(validationStatuses);
+
+  if (!meetsSourceValidationSubmitGate(validationCounts)) {
+    if (validationCounts.failCount > 0) {
+      return {
+        error: "INCOMPLETE" as const,
+        message:
+          "검증에 실패(FAIL)한 원천 문서가 있어 제출할 수 없습니다. 해당 문서를 수정해 주세요.",
+      };
+    }
     return {
       error: "INCOMPLETE" as const,
-      message: "검증에 실패(FAIL)한 원천 문서가 있어 제출할 수 없습니다. 해당 문서를 수정해 주세요.",
+      message:
+        "검증되지 않은(NOT_CHECKED) 원천 문서가 있어 제출할 수 없습니다. 원천 문서를 다시 등록하거나 검증 상태를 갱신해 주세요.",
     };
   }
 

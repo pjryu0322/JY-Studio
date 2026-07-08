@@ -296,11 +296,18 @@ JYKStore는 SourceDocument content를 KnowledgeChunk로 변환해 Context API에
 - `KnowledgeChunk.isActive = true`인 chunk만 Context API에 노출됩니다.
 - 비활성 chunk는 삭제하지 않고 Context API에서 제외합니다.
 - SourceDocument content가 없는 경우 chunk를 생성할 수 없습니다.
-- 파일 업로드, PDF parsing, embedding, Vector DB/RAG는 아직 제공하지 않습니다.
+- 파일 업로드·PDF 파싱은 아직 제공하지 않습니다. 검색용 embedding은 local-hash foundation(P14)로 제공하며, 외부 embedding API·pgvector·RAG 답변 생성은 포함하지 않습니다.
 
 ## 검색 고도화
 
-JYKStore는 DB 기반 keyword/ranking 검색을 제공합니다.
+JYKStore는 DB 기반 keyword/metadata 검색과 local-hash embedding hybrid retrieval foundation을 제공합니다.
+
+현재 검색 구성:
+
+- keyword retrieval
+- metadata filter AND candidate 제한
+- local-hash embedding 기반 hybrid retrieval foundation (`KnowledgeChunkEmbedding`, `retrievalMode`: `keyword` | `hybrid`)
+- embedding rebuild Admin API/UI
 
 현재 단계:
 
@@ -314,8 +321,8 @@ JYKStore는 DB 기반 keyword/ranking 검색을 제공합니다.
 
 정책:
 
-- 현재 검색은 DB 기반 keyword/ranking 방식입니다.
-- Vector DB, embedding, RAG 검색은 아직 제공하지 않습니다.
+- hybrid ranking은 keyword/metadata score와 cosine similarity를 결합합니다(P14 foundation).
+- external embedding provider, pgvector index, answer generation(RAG)은 아직 제공하지 않습니다.
 - 검색 ranking은 설명 가능한 score와 matchReasons를 우선합니다.
 - `includeMetadata=false`이면 score/matchReasons/source 등 metadata성 정보는 응답에서 제외됩니다.
 
@@ -409,7 +416,7 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
 - Context API는 간단한 context 제공용으로 유지
 - Retrieval API는 metadata 기반 고급 검색 제어용
 - Chunk metadata(JSON) 필드 추가로 metadata filter 지원
-- 검색 결과는 Keyword + Metadata Ranking 기반 (Vector/Embedding 미적용)
+- 검색 결과는 keyword + metadata ranking과 hybrid vector similarity foundation(P14)을 지원합니다. external embedding provider·pgvector·답변 생성은 미포함입니다.
 
 위치:
 
@@ -513,12 +520,12 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
 - **외부 AI 도구 연동 방법 문서화**(README/`docs/api/retrieval`):
   1. **Custom GPT Actions**: 공개 pack packId 확인 → API Key(`context:read`) 발급 → OpenAPI schema(`/api/v1/openapi.json` 또는 `/api/v1/exports/openapi?knowledgePackId=...`) 등록 → Bearer 인증 설정 → `queryKnowledgePackContext` 호출 → GPT가 반환된 contexts로 답변 생성. API Key는 브라우저 스토리지에 저장하지 않습니다.
   2. **Gemini Function Calling**: 애플리케이션 레이어에서 OpenAPI schema를 function declaration/tool wrapper로 변환해 사용. JYKStore는 Gemini API를 직접 호출하지 않습니다.
-  3. **Cursor / MCP wrapper**: OpenAPI schema 또는 MCP-ready manifest 기반 wrapper 구성. 실제 JYKStore MCP Server는 P16 이후 구현 대상입니다.
+  3. **Cursor / MCP wrapper**: OpenAPI schema 또는 MCP-ready manifest 기반 wrapper 구성. **현재 제공**: MCP-ready manifest. **아직 미제공**: 실제 MCP Server runtime. **후속 예정**: P22 MCP Server Bridge.
 - 보안 문구 유지: Public API는 PUBLISHED/VERIFIED pack만 반환(비공개는 404 `PACK_NOT_FOUND`), 모든 operation은 Bearer API Key 사용, API Key 원문은 schema/manifest/export 응답에 포함하지 않음.
 
 ### P16 — Source Type & Pipeline Foundation
 
-JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발전시키기 위한 첫 기반 단계입니다.
+JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발전시키기 위한 **제품화 파이프라인 foundation** 단계입니다. P16은 source type/format, 기본 source validation status, pipeline status, pipeline run/step log 기반을 구현하며, 고급 source validation·structure quality·chunk quality·retrieval evaluation·release gate 완성은 **P17~P21**에서 진행합니다.
 
 **제품화 파이프라인 개요** (전체 목표 공정, P16은 상태/기록 기반만 구현):
 
@@ -539,10 +546,17 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
   - 관리자 승인 → `APPROVED`/`PUBLISHED` 단계 기록, `pipelineStatus=PUBLISHED`.
   - 반려 → `REVIEWING` FAIL 단계 기록, `pipelineStatus=SOURCE_REGISTERING`.
 - **Provider UI**: SourceDocument 등록 폼에 자료 유형/형식 선택과 유형별 설명, 부가 필드(URL/파일명/MIME/제품·문서 버전/라이선스/원문)를 추가했습니다. 상세 화면에 공정 상태·유형별 개수·검증 요약·검수 요청 가능 여부를 표시합니다.
-- **Admin UI**: 검수 상세의 readiness에 `pipelineStatus`, source validation 요약(pass/warning/fail/notChecked), `sourceTypeCoverage`를 추가했습니다. `validationStatus=FAIL` 문서가 하나라도 있으면 제출·승인이 제한됩니다(승인 버튼 비활성화). 구조화/청킹/검색 품질 gate는 P17~P21에서 강화 예정입니다.
+- **Admin UI**: 검수 상세의 readiness에 `pipelineStatus`, source validation 요약(pass/warning/fail/notChecked), `sourceTypeCoverage`를 추가했습니다. `validationStatus=FAIL` 또는 `NOT_CHECKED` 문서가 있으면 제출·승인이 제한됩니다. `WARNING`은 제출·승인 가능하나 UI에 주의로 표시합니다. 구조화/청킹/검색 품질 gate는 P17~P21에서 강화 예정입니다.
 - **Public API 영향 없음**: Retrieval / Graph / Export / OpenAPI public API의 path·응답 구조는 변경하지 않습니다. pipeline 필드는 Provider/Admin 내부 관리용입니다.
 
-**이후 단계(P17~P21) 예정**: P17 Source Validation(중복/URL/민감정보/유형별 리포트), P18 Structure Coverage & Knowledge Quality, P19 Chunk Quality Evaluation, P20 Retrieval Evaluation, P21 Release Gate & Approval Hardening, P22 MCP Server Bridge.
+**이후 단계 예정**: P17 Source Validation, P18 Structure Coverage & Knowledge Quality, P19 Chunk Quality Evaluation, P20 Retrieval Evaluation, P21 Release Gate & Approval Hardening, **P22 MCP Server Bridge**.
+
+### P16.1 — Documentation & Gate Polish
+
+- README·API docs의 검색/MCP 단계 설명을 P14 hybrid retrieval foundation 및 P22 MCP Server Bridge 계획에 맞게 정리했습니다.
+- 제출/승인 gate: `FAIL`·`NOT_CHECKED` 원천 문서는 차단, `WARNING`은 허용(주의 표시). legacy migrated `NOT_CHECKED` 방어 gate입니다.
+- `SOURCE_TYPE_OPTIONS`에서 `requiredFields`와 `recommendedFields`를 분리(`SAMPLE_CODE`의 `productVersion`은 권장).
+- pipeline 기록 실패 시 structured log(`[pipeline]`, packId, triggerType, targetStatus, error)를 남깁니다. main transaction rollback은 P21에서 재검토합니다.
 
 ## 아직 구현하지 않은 기능
 
@@ -554,4 +568,5 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 
 ## 다음 단계
 
-1. Phase P16: 이후 단계에서 external embedding provider, vector index, MCP server runtime, graph traversal 확장을 검토합니다.
+1. Phase P17: Source Validation Foundation(유형별 validator, legacy NOT_CHECKED 재검증 등).
+2. Phase P22: MCP Server Bridge(runtime) — 현재는 MCP-ready manifest만 제공합니다.

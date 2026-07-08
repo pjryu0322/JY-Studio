@@ -2,6 +2,24 @@ import { Prisma, type PipelineStatus, type PipelineStepStatus } from "@prisma/cl
 import { prisma } from "@/lib/prisma";
 import type { PipelineStatusDto } from "@/lib/pipeline-dto";
 
+export function logPipelineRecordFailure(
+  functionName: string,
+  context: {
+    packId: string;
+    triggerType: string;
+    targetStatus: PipelineStatus;
+    error: unknown;
+  },
+): void {
+  const message = context.error instanceof Error ? context.error.message : String(context.error);
+  console.error(`[pipeline] ${functionName} failed`, {
+    packId: context.packId,
+    triggerType: context.triggerType,
+    targetStatus: context.targetStatus,
+    error: message,
+  });
+}
+
 function countBy<T extends string>(values: T[]): Record<string, number> {
   const result: Record<string, number> = {};
   for (const value of values) {

@@ -76,17 +76,9 @@ export function AdminReviewDecisionPanel({
           <li>설명: {detail.readiness.hasRequiredDescription ? "충족" : "부족"}</li>
           <li>
             검증 요약: 통과 {detail.readiness.sourceValidation.passCount} · 주의{" "}
-            {detail.readiness.sourceValidation.warningCount} ·{" "}
-            <span
-              className={
-                detail.readiness.sourceValidation.failCount > 0
-                  ? "font-semibold text-red-700"
-                  : undefined
-              }
-            >
-              실패 {detail.readiness.sourceValidation.failCount}
-            </span>{" "}
-            · 미검사 {detail.readiness.sourceValidation.notCheckedCount}
+            {detail.readiness.sourceValidation.warningCount} · 실패{" "}
+            {detail.readiness.sourceValidation.failCount} · 미검사{" "}
+            {detail.readiness.sourceValidation.notCheckedCount}
           </li>
           <li>승인 가능: {detail.readiness.canApprove ? "예" : "아니오"}</li>
         </ul>
@@ -107,6 +99,21 @@ export function AdminReviewDecisionPanel({
       {detail.readiness.sourceValidation.failCount > 0 ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
           검증 실패(FAIL) 원천 문서가 있어 승인할 수 없습니다. 제공자에게 반려해 주세요.
+        </div>
+      ) : null}
+
+      {detail.readiness.sourceValidation.notCheckedCount > 0 ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          검증되지 않은(NOT_CHECKED) 원천 문서가 있어 승인할 수 없습니다. P17에서 legacy 문서
+          재검증 흐름이 추가될 예정입니다.
+        </div>
+      ) : null}
+
+      {detail.readiness.sourceValidation.warningCount > 0 &&
+      detail.readiness.sourceValidation.failCount === 0 &&
+      detail.readiness.sourceValidation.notCheckedCount === 0 ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+          주의(WARNING) 상태 원천 문서가 있습니다. 승인은 가능하지만 권장 항목을 확인해 주세요.
         </div>
       ) : null}
 

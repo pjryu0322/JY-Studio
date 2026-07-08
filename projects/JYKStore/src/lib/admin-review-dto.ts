@@ -1,4 +1,8 @@
 import type { KnowledgePack, KnowledgePackVersion, PackReview, SourceDocument } from "@prisma/client";
+import {
+  canApproveReviewReadiness,
+  countSourceValidationFromStatuses,
+} from "@/lib/source-validation-readiness";
 
 export type AdminReviewListItemDto = {
   packId: string;
@@ -99,24 +103,24 @@ function computeReadiness(pack: PackWithDetail) {
   const hasRequiredDescription =
     Boolean(pack.shortDescription.trim()) && Boolean(pack.description.trim());
 
-  const sourceValidation = {
-    passCount: docs.filter((d) => d.validationStatus === "PASS").length,
-    warningCount: docs.filter((d) => d.validationStatus === "WARNING").length,
-    failCount: docs.filter((d) => d.validationStatus === "FAIL").length,
-    notCheckedCount: docs.filter((d) => d.validationStatus === "NOT_CHECKED").length,
-  };
+  const sourceValidation = countSourceValidationFromStatuses(
+    docs.map((d) => d.validationStatus),
+  );
 
   const sourceTypeCoverage: Record<string, number> = {};
   for (const doc of docs) {
     sourceTypeCoverage[doc.sourceType] = (sourceTypeCoverage[doc.sourceType] ?? 0) + 1;
   }
 
-  const canApprove =
-    pack.status === "REVIEWING" &&
-    versionCount > 0 &&
-    sourceDocumentCount > 0 &&
-    hasRequiredDescription &&
-    sourceValidation.failCount === 0;
+  const canApprove = canApproveReviewReadiness(
+    {
+      isReviewing: pack.status === "REVIEWING",
+      versionCount,
+      sourceDocumentCount,
+      hasRequiredDescription,
+    },
+    sourceValidation,
+  );
 
   return {
     versionCount,

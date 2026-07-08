@@ -80,7 +80,7 @@ export default function ApiDocsPage() {
         <h2 className="text-sm font-bold text-slate-900">Metadata Retrieval API</h2>
         <p className="text-sm text-slate-700">
           metadata filter, topK, includeMetadata를 명시적으로 제어하는 고급 검색 API입니다. Keyword + Metadata
-          Ranking 기반이며 Vector/Embedding은 아직 적용되지 않습니다.
+          Keyword + metadata ranking과 local-hash hybrid retrieval foundation(P14)을 지원합니다. external embedding provider·pgvector·답변 생성은 포함하지 않습니다.
         </p>
         <div className="rounded-xl border border-store-border p-3">
           <div className="flex flex-wrap items-center gap-2">

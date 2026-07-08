@@ -6,7 +6,31 @@ export type SourceTypeOption = {
   description: string;
   recommendedFormats: SourceFormat[];
   requiredFields: string[];
+  recommendedFields?: string[];
 };
+
+const SOURCE_FIELD_LABELS: Record<string, string> = {
+  title: "제목",
+  content: "원문",
+  sourceUrl: "출처 URL",
+  productVersion: "제품 버전",
+};
+
+export function formatSourceTypeFieldHints(option: SourceTypeOption): {
+  requiredLabel: string;
+  recommendedLabel: string | null;
+} {
+  const required = option.requiredFields
+    .map((field) => SOURCE_FIELD_LABELS[field] ?? field)
+    .join(", ");
+  const recommended = (option.recommendedFields ?? [])
+    .map((field) => SOURCE_FIELD_LABELS[field] ?? field)
+    .join(", ");
+  return {
+    requiredLabel: required || "—",
+    recommendedLabel: recommended.length > 0 ? recommended : null,
+  };
+}
 
 export const SOURCE_TYPE_OPTIONS: readonly SourceTypeOption[] = [
   {
@@ -49,7 +73,8 @@ export const SOURCE_TYPE_OPTIONS: readonly SourceTypeOption[] = [
     label: "샘플 코드",
     description: "연동 예제 코드 또는 코드 조각",
     recommendedFormats: ["CODE", "TEXT", "MARKDOWN"],
-    requiredFields: ["title", "content", "productVersion"],
+    requiredFields: ["title", "content"],
+    recommendedFields: ["productVersion"],
   },
   {
     value: "FAQ",

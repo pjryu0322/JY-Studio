@@ -5,6 +5,7 @@ import { addSourceDocumentApi } from "@/lib/provider-center-api";
 import {
   SOURCE_FORMAT_OPTIONS,
   SOURCE_TYPE_OPTIONS,
+  formatSourceTypeFieldHints,
   getSourceFormatLabel,
 } from "@/lib/source-type-dto";
 
@@ -114,16 +115,24 @@ export function ProviderSourceDocumentForm({
         ))}
       </select>
       {selectedType ? (
-        <p className="mt-1 text-xs leading-relaxed text-store-muted">
-          {selectedType.description}
+        <div className="mt-1 space-y-1">
+          <p className="text-xs leading-relaxed text-store-muted">{selectedType.description}</p>
+          {(() => {
+            const hints = formatSourceTypeFieldHints(selectedType);
+            return (
+              <p className="text-xs text-slate-700">
+                필수: {hints.requiredLabel}
+                {hints.recommendedLabel ? ` · 권장: ${hints.recommendedLabel}` : ""}
+              </p>
+            );
+          })()}
           {selectedType.recommendedFormats.length > 0 ? (
-            <>
-              {" "}
-              · 권장 형식:{" "}
+            <p className="text-xs text-store-muted">
+              권장 형식:{" "}
               {selectedType.recommendedFormats.map((f) => getSourceFormatLabel(f)).join(", ")}
-            </>
+            </p>
           ) : null}
-        </p>
+        </div>
       ) : null}
 
       <label className="mt-3 block text-xs font-semibold text-slate-700" htmlFor="src-format">

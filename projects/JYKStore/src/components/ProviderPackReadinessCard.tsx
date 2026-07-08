@@ -1,6 +1,10 @@
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import { getPipelineStatusLabel } from "@/lib/pipeline-dto";
 import { getSourceTypeLabel } from "@/lib/source-type-dto";
+import {
+  countSourceValidationFromStatuses,
+  meetsSourceValidationSubmitGate,
+} from "@/lib/source-validation-readiness";
 
 export function ProviderPackReadinessCard({
   pack,
@@ -10,14 +14,16 @@ export function ProviderPackReadinessCard({
   const docs = pack.versions.flatMap((v) => v.sourceDocuments);
   const versionCount = pack.versions.length;
   const sourceDocumentCount = docs.length;
-  const failCount = docs.filter((d) => d.validationStatus === "FAIL").length;
-  const warningCount = docs.filter((d) => d.validationStatus === "WARNING").length;
-  const passCount = docs.filter((d) => d.validationStatus === "PASS").length;
+  const validation = countSourceValidationFromStatuses(docs.map((d) => d.validationStatus));
+  const { passCount, warningCount, failCount, notCheckedCount } = validation;
   const isDraft = pack.status === "DRAFT";
   const isReviewing = pack.status === "REVIEWING";
   const isPublic = pack.status === "PUBLISHED" || pack.status === "VERIFIED";
   const canSubmit =
-    isDraft && versionCount > 0 && sourceDocumentCount > 0 && failCount === 0;
+    isDraft &&
+    versionCount > 0 &&
+    sourceDocumentCount > 0 &&
+    meetsSourceValidationSubmitGate(validation);
 
   const typeCoverage = docs.reduce<Record<string, number>>((acc, doc) => {
     acc[doc.sourceType] = (acc[doc.sourceType] ?? 0) + 1;
@@ -66,10 +72,13 @@ export function ProviderPackReadinessCard({
           <span className="font-semibold text-slate-900">{sourceDocumentCount}개</span>
         </li>
         <li className="flex justify-between gap-2">
-          <span className="text-store-muted">검증 (통과/주의/실패)</span>
-          <span className="font-semibold text-slate-900">
-            {passCount}/{warningCount}/
-            <span className={failCount > 0 ? "text-red-700" : undefined}>{failCount}</span>
+          <span className="text-store-muted">검증 요약</span>
+          <span className="text-right text-xs font-semibold text-slate-900">
+            통과 {passCount} · 주의 {warningCount} · 실패{" "}
+            <span className={failCount > 0 ? "text-red-700" : undefined}>{failCount}</span> · 미검사{" "}
+            <span className={notCheckedCount > 0 ? "text-red-700" : undefined}>
+              {notCheckedCount}
+            </span>
           </span>
         </li>
         {isDraft ? (
@@ -96,6 +105,17 @@ export function ProviderPackReadinessCard({
       {failCount > 0 ? (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-800">
           검증 실패(FAIL) 문서가 있어 검수 요청을 제출할 수 없습니다.
+        </p>
+      ) : null}
+      {notCheckedCount > 0 ? (
+        <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+          검증되지 않은(NOT_CHECKED) 문서가 있어 검수 요청을 제출할 수 없습니다. 원천 문서를 다시
+          등록하거나 검증 상태를 갱신해 주세요.
+        </p>
+      ) : null}
+      {warningCount > 0 && failCount === 0 && notCheckedCount === 0 ? (
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
+          주의(WARNING) 상태 문서가 있습니다. 제출은 가능하지만 검수 전 권장 항목을 확인해 주세요.
         </p>
       ) : null}
     </section>

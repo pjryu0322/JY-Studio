@@ -8,10 +8,12 @@ import {
   completePipelineStep,
   createPipelineRun,
   finishPipelineRun,
+  logPipelineRecordFailure,
   updatePackPipelineStatus,
 } from "@/lib/pipeline-service";
 import { prisma } from "@/lib/prisma";
 import { recordProviderAudit } from "@/lib/provider-audit";
+import { getApprovalBlockingSourceValidationMessage } from "@/lib/source-validation-readiness";
 
 const listInclude = {
   versions: {
@@ -64,8 +66,11 @@ function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null 
     if (detail.pack.status !== "REVIEWING") {
       return "검수 중(REVIEWING) 상태의 지식팩만 승인할 수 있습니다.";
     }
-    if (detail.readiness.sourceValidation.failCount > 0) {
-      return "검증에 실패(FAIL)한 원천 문서가 있어 승인할 수 없습니다.";
+    const sourceBlock = getApprovalBlockingSourceValidationMessage(
+      detail.readiness.sourceValidation,
+    );
+    if (sourceBlock) {
+      return sourceBlock;
     }
     return "승인에 필요한 버전·원천 문서·설명을 확인해 주세요.";
   }
@@ -73,10 +78,12 @@ function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null 
 }
 
 async function recordApprovalPipeline(packId: string, reviewerClientId?: string) {
+  const targetStatus = PipelineStatus.PUBLISHED;
+  const triggerType = "ADMIN_APPROVE";
   try {
     const run = await createPipelineRun({
       packId,
-      triggerType: "ADMIN_APPROVE",
+      triggerType,
       triggeredByClientId: reviewerClientId,
       steps: [PipelineStatus.APPROVED, PipelineStatus.PUBLISHED],
     });
@@ -95,15 +102,35 @@ async function recordApprovalPipeline(packId: string, reviewerClientId?: string)
         message: "배포 처리 완료",
       });
       await finishPipelineRun({ runId: run.runId, status: "PASS", summary: "승인 및 배포 완료" });
+    } else {
+      logPipelineRecordFailure("recordApprovalPipeline", {
+        packId,
+        triggerType,
+        targetStatus,
+        error: run.error,
+      });
     }
 
-    await updatePackPipelineStatus({
+    const statusUpdate = await updatePackPipelineStatus({
       packId,
-      pipelineStatus: PipelineStatus.PUBLISHED,
+      pipelineStatus: targetStatus,
       triggeredByClientId: reviewerClientId,
     });
+    if ("error" in statusUpdate) {
+      logPipelineRecordFailure("recordApprovalPipeline", {
+        packId,
+        triggerType,
+        targetStatus,
+        error: "updatePackPipelineStatus NOT_FOUND",
+      });
+    }
   } catch (error) {
-    console.error("recordApprovalPipeline failed", error);
+    logPipelineRecordFailure("recordApprovalPipeline", {
+      packId,
+      triggerType,
+      targetStatus,
+      error,
+    });
   }
 }
 
@@ -112,10 +139,12 @@ async function recordRejectionPipeline(
   rejectionReason: string,
   reviewerClientId?: string,
 ) {
+  const targetStatus = PipelineStatus.SOURCE_REGISTERING;
+  const triggerType = "ADMIN_REJECT";
   try {
     const run = await createPipelineRun({
       packId,
-      triggerType: "ADMIN_REJECT",
+      triggerType,
       triggeredByClientId: reviewerClientId,
       steps: [PipelineStatus.REVIEWING],
     });
@@ -128,15 +157,35 @@ async function recordRejectionPipeline(
         message: rejectionReason,
       });
       await finishPipelineRun({ runId: run.runId, status: "FAIL", summary: "검수 반려" });
+    } else {
+      logPipelineRecordFailure("recordRejectionPipeline", {
+        packId,
+        triggerType,
+        targetStatus,
+        error: run.error,
+      });
     }
 
-    await updatePackPipelineStatus({
+    const statusUpdate = await updatePackPipelineStatus({
       packId,
-      pipelineStatus: PipelineStatus.SOURCE_REGISTERING,
+      pipelineStatus: targetStatus,
       triggeredByClientId: reviewerClientId,
     });
+    if ("error" in statusUpdate) {
+      logPipelineRecordFailure("recordRejectionPipeline", {
+        packId,
+        triggerType,
+        targetStatus,
+        error: "updatePackPipelineStatus NOT_FOUND",
+      });
+    }
   } catch (error) {
-    console.error("recordRejectionPipeline failed", error);
+    logPipelineRecordFailure("recordRejectionPipeline", {
+      packId,
+      triggerType,
+      targetStatus,
+      error,
+    });
   }
 }
 

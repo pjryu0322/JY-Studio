@@ -325,7 +325,7 @@ export default function RetrievalApiDocsPage() {
         <p className="text-sm font-semibold text-slate-800">3. Cursor / MCP wrapper 준비</p>
         <p className="text-sm text-slate-700">
           Cursor 연동은 현재 OpenAPI schema 또는 MCP-ready manifest를 기반으로 별도 wrapper를 구성하는 방식입니다.
-          실제 JYKStore MCP Server는 P16 이후 구현 대상입니다.
+          실제 JYKStore MCP Server runtime은 아직 제공하지 않습니다. MCP-ready manifest는 제공되며, P22 MCP Server Bridge에서 runtime을 다룹니다.
         </p>
       </section>
     </div>

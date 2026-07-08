@@ -491,7 +491,7 @@ export const geminiWrapperNote =
   "Gemini 연동은 애플리케이션 레이어에서 JYKStore OpenAPI schema를 function declaration 또는 tool wrapper로 변환해 사용하는 방식입니다. JYKStore는 Gemini API를 직접 호출하지 않습니다.";
 
 export const cursorWrapperNote =
-  "Cursor 연동은 현재 OpenAPI schema 또는 MCP-ready manifest를 기반으로 별도 wrapper를 구성하는 방식입니다. 실제 JYKStore MCP Server는 P16 이후 구현 대상입니다.";
+  "Cursor 연동은 현재 OpenAPI schema 또는 MCP-ready manifest를 기반으로 별도 wrapper를 구성하는 방식입니다. 현재 제공: MCP-ready manifest. 아직 미제공: 실제 MCP Server runtime. 후속 예정: P22 MCP Server Bridge.";
 
 export const openApiKnownOperationIds = [
   "queryKnowledgePackContext",
