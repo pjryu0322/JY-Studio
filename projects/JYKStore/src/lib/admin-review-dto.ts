@@ -1,6 +1,12 @@
 import type { KnowledgePack, KnowledgePackVersion, PackReview, SourceDocument } from "@prisma/client";
 import type { SourceValidationReportDto } from "@/lib/source-validation-dto";
 import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
+import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-dto";
+import {
+  chunkQualityGateSnapshotFromSummary,
+  getChunkQualityBlockingMessage,
+  meetsChunkQualityGate,
+} from "@/lib/chunk-quality/chunk-quality-readiness";
 import {
   canApproveReviewReadiness,
   countSourceValidationFromStatuses,
@@ -99,8 +105,11 @@ export type AdminReviewDetailDto = {
     structureCoverageStatus: string | null;
     knowledgeQualityStatus: string | null;
     structureQualityMessage: string | null;
+    chunkQualityStatus: string | null;
+    chunkQualityMessage: string | null;
   };
   structureQuality: StructureQualitySummaryDto | null;
+  chunkQuality: ChunkQualitySummaryDto | null;
 };
 
 const CONTENT_PREVIEW_MAX = 800;
@@ -154,6 +163,8 @@ function computeReadiness(pack: PackWithDetail) {
     structureCoverageStatus: null,
     knowledgeQualityStatus: null,
     structureQualityMessage: null,
+    chunkQualityStatus: null,
+    chunkQualityMessage: null,
   };
 }
 
@@ -246,6 +257,7 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
       : null,
     readiness,
     structureQuality: null,
+    chunkQuality: null,
   };
 }
 
@@ -266,6 +278,26 @@ export function applyStructureQualityToAdminDetail(
       structureCoverageStatus: snapshot.structureCoverageStatus,
       knowledgeQualityStatus: snapshot.knowledgeQualityStatus,
       structureQualityMessage,
+    },
+  };
+}
+
+export function applyChunkQualityToAdminDetail(
+  detail: AdminReviewDetailDto,
+  chunkQuality: ChunkQualitySummaryDto | null,
+): AdminReviewDetailDto {
+  const snapshot = chunkQualityGateSnapshotFromSummary(chunkQuality);
+  const gateOk = meetsChunkQualityGate(snapshot);
+  const chunkQualityMessage = getChunkQualityBlockingMessage(snapshot, chunkQuality);
+
+  return {
+    ...detail,
+    chunkQuality,
+    readiness: {
+      ...detail.readiness,
+      canApprove: detail.readiness.canApprove && gateOk,
+      chunkQualityStatus: snapshot.reportStatus,
+      chunkQualityMessage,
     },
   };
 }

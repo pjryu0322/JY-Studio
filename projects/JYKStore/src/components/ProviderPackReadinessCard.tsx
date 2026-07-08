@@ -10,6 +10,11 @@ import {
   meetsStructureQualityGate,
   structureQualityGateSnapshotFromSummary,
 } from "@/lib/structure-quality/structure-quality-readiness";
+import {
+  chunkQualityGateSnapshotFromSummary,
+  getChunkQualityBlockingMessage,
+  meetsChunkQualityGate,
+} from "@/lib/chunk-quality/chunk-quality-readiness";
 
 export function ProviderPackReadinessCard({
   pack,
@@ -29,12 +34,15 @@ export function ProviderPackReadinessCard({
     structureGate,
     pack.structureQuality,
   );
+  const chunkGate = chunkQualityGateSnapshotFromSummary(pack.chunkQuality ?? null);
+  const chunkBlockMessage = getChunkQualityBlockingMessage(chunkGate, pack.chunkQuality);
   const canSubmit =
     isDraft &&
     versionCount > 0 &&
     sourceDocumentCount > 0 &&
     meetsSourceValidationSubmitGate(validation) &&
-    meetsStructureQualityGate(structureGate);
+    meetsStructureQualityGate(structureGate) &&
+    meetsChunkQualityGate(chunkGate);
 
   const typeCoverage = docs.reduce<Record<string, number>>((acc, doc) => {
     acc[doc.sourceType] = (acc[doc.sourceType] ?? 0) + 1;
@@ -140,6 +148,16 @@ export function ProviderPackReadinessCard({
         structureGate.knowledgeQualityStatus === "WARNING") ? (
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
           구조 커버리지 또는 지식 품질이 WARNING입니다. 제출은 가능하나 보완을 권장합니다.
+        </p>
+      ) : null}
+      {!meetsChunkQualityGate(chunkGate) ? (
+        <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+          {chunkBlockMessage ?? "청킹 품질 점검을 실행하고 FAIL 결과가 없어야 검수 요청을 제출할 수 있습니다."}
+        </p>
+      ) : null}
+      {meetsChunkQualityGate(chunkGate) && chunkGate.reportStatus === "WARNING" ? (
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
+          청킹 품질이 WARNING입니다. 제출은 가능하나 보완을 권장합니다.
         </p>
       ) : null}
     </section>

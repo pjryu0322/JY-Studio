@@ -595,11 +595,20 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - Provider/Admin UI에 재평가 필요 사유 표시.
 - P19 Chunk Quality Evaluation 전 필수 안정화 단계.
 
+### P19 — Chunk Quality Evaluation
+
+- **KnowledgeChunk** 품질 평가 report(`ChunkQualityReport` / Issue / ChunkMetric) 추가.
+- **SourceDocument** coverage, traceability, size, duplicate, metadata, structure alignment 평가(규칙 기반, LLM 없음).
+- **ChunkQuality freshness** guard(`MISSING` / `STALE` / `CURRENT`).
+- Provider/Admin UI에서 청킹 품질 점검 및 재평가, 제출·승인 gate 반영.
+- **Pipeline**: `CHUNK_QUALITY_EVALUATE`, `CHUNK_EVALUATING` step.
+- P20 Retrieval Evaluation은 후속 단계.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19), 검색 품질 평가(P20), release gate hardening(P21)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19 완료), 검색 품질 평가(P20), release gate hardening(P21)
 - pgvector 기반 vector index
 - 실제 MCP Server 실행(stdio/websocket/sse runtime) 및 graph traversal/semantic graph search
 - 로그인/회원 관리
@@ -607,5 +616,5 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 
 ## 다음 단계
 
-1. Phase P19: Chunk Quality Evaluation.
+1. Phase P20: Retrieval Evaluation.
 2. Phase P22: MCP Server Bridge(runtime) — 현재는 MCP-ready manifest만 제공합니다.

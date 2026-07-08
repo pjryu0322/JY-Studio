@@ -8,8 +8,9 @@ import { AdminReviewSourceDocuments } from "@/components/AdminReviewSourceDocume
 import { ExportPanel } from "@/components/ExportPanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
-import { fetchAdminReviewDetail, evaluateAdminStructureQualityApi } from "@/lib/admin-review-api";
+import { fetchAdminReviewDetail, evaluateAdminStructureQualityApi, evaluateAdminChunkQualityApi } from "@/lib/admin-review-api";
 import { StructureQualityPanel } from "@/components/StructureQualityPanel";
+import { ChunkQualityPanel } from "@/components/ChunkQualityPanel";
 
 export function AdminReviewDetailPageClient({ packId }: { readonly packId: string }) {
   const [loading, setLoading] = useState(true);
@@ -53,6 +54,15 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         editable
         onEvaluate={async () => {
           const data = await evaluateAdminStructureQualityApi(packId);
+          setDetail(data.detail);
+        }}
+      />
+      <ChunkQualityPanel
+        packId={packId}
+        chunkQuality={detail.chunkQuality}
+        editable
+        onEvaluate={async () => {
+          const data = await evaluateAdminChunkQualityApi(packId);
           setDetail(data.detail);
         }}
       />

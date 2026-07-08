@@ -107,3 +107,19 @@ export async function evaluateAdminStructureQualityApi(
   }
   return (await response.json()) as AdminReviewDetailResponse;
 }
+
+export async function evaluateAdminChunkQualityApi(
+  packId: string,
+): Promise<AdminReviewDetailResponse> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/chunk-quality/evaluate`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminReviewDetailResponse;
+}

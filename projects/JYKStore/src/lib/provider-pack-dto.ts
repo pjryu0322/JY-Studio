@@ -1,5 +1,6 @@
 import type { KnowledgePack, KnowledgePackVersion, PackStatus, SourceDocument } from "@prisma/client";
 import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
+import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-dto";
 
 export type ProviderPackListItemDto = {
   packId: string;
@@ -91,6 +92,7 @@ export type ProviderPackDetailDto = {
   providerName: string;
   structureTemplateKey: string | null;
   structureQuality: StructureQualitySummaryDto | null;
+  chunkQuality: ChunkQualitySummaryDto | null;
   versions: ProviderPackVersionDto[];
   updatedAt: string;
 };
@@ -135,6 +137,7 @@ export function toProviderPackDetail(
   options?: {
     structureTemplateKey?: string | null;
     structureQuality?: StructureQualitySummaryDto | null;
+    chunkQuality?: ChunkQualitySummaryDto | null;
   },
 ): ProviderPackDetailDto {
   return {
@@ -152,6 +155,7 @@ export function toProviderPackDetail(
     providerName: pack.providerName,
     structureTemplateKey: options?.structureTemplateKey ?? pack.structureTemplateKey ?? null,
     structureQuality: options?.structureQuality ?? null,
+    chunkQuality: options?.chunkQuality ?? null,
     versions: pack.versions.map((v) => mapVersion(v, validationOverlays)),
     updatedAt: pack.updatedAt.toISOString(),
   };

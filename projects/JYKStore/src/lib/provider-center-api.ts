@@ -171,6 +171,22 @@ export async function evaluateProviderStructureQualityApi(
   return (await response.json()) as ProviderPackDetailResponse;
 }
 
+export async function evaluateProviderChunkQualityApi(
+  packId: string,
+): Promise<ProviderPackDetailResponse> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/chunk-quality/evaluate`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as ProviderPackDetailResponse;
+}
+
 export async function validateSourceDocumentApi(
   packId: string,
   sourceDocumentId: string,

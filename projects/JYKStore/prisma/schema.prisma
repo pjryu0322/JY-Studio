@@ -243,6 +243,7 @@ model KnowledgePack {
   sourceValidationReports SourceValidationReport[]
   structureCoverageReports StructureCoverageReport[]
   knowledgeQualityReports  KnowledgeQualityReport[]
+  chunkQualityReports      ChunkQualityReport[]
 
   @@index([status])
   @@index([categoryId])
@@ -293,6 +294,7 @@ model KnowledgePackVersion {
   sourceValidationReports SourceValidationReport[]
   structureCoverageReports StructureCoverageReport[]
   knowledgeQualityReports  KnowledgeQualityReport[]
+  chunkQualityReports      ChunkQualityReport[]
 
   @@unique([packId, version])
   @@index([packId])
@@ -672,6 +674,87 @@ model KnowledgeQualityIssue {
   @@index([reportId])
   @@index([severity])
   @@index([code])
+}
+
+model ChunkQualityReport {
+  id                         String   @id @default(cuid())
+  packId                     String
+  versionId                  String
+  status                     String
+  totalScore                 Int      @default(0)
+
+  coverageScore              Int      @default(0)
+  traceabilityScore          Int      @default(0)
+  sizeScore                  Int      @default(0)
+  duplicateScore             Int      @default(0)
+  metadataScore              Int      @default(0)
+  structureAlignmentScore    Int      @default(0)
+
+  activeChunkCount           Int      @default(0)
+  inactiveChunkCount         Int      @default(0)
+  sourceDocumentCount        Int      @default(0)
+  coveredSourceDocumentCount Int      @default(0)
+  orphanChunkCount           Int      @default(0)
+  missingSourceChunkCount    Int      @default(0)
+  shortChunkCount            Int      @default(0)
+  longChunkCount             Int      @default(0)
+  duplicateChunkCount        Int      @default(0)
+  chunkWithoutMetadataCount  Int      @default(0)
+
+  blockingIssueCount         Int      @default(0)
+  warningIssueCount          Int      @default(0)
+  summary                    String
+  checkedBy                  String   @default("SYSTEM_RULE")
+  checkedAt                  DateTime @default(now())
+  createdAt                  DateTime @default(now())
+
+  pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  issues  ChunkQualityIssue[]
+  metrics ChunkQualityChunkMetric[]
+
+  @@index([packId])
+  @@index([versionId])
+  @@index([status])
+  @@index([checkedAt])
+}
+
+model ChunkQualityIssue {
+  id        String   @id @default(cuid())
+  reportId  String
+  severity  String
+  code      String
+  message   String
+  field     String?
+  hint      String?
+  createdAt DateTime @default(now())
+
+  report ChunkQualityReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([severity])
+  @@index([code])
+}
+
+model ChunkQualityChunkMetric {
+  id               String   @id @default(cuid())
+  reportId         String
+  chunkId          String?
+  sourceDocumentId String?
+  title            String?
+  contentLength    Int      @default(0)
+  tokenEstimate    Int      @default(0)
+  status           String
+  score            Int      @default(0)
+  issues           String[]
+  createdAt        DateTime @default(now())
+
+  report ChunkQualityReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([chunkId])
+  @@index([sourceDocumentId])
+  @@index([status])
 }
 
 model PipelineRun {

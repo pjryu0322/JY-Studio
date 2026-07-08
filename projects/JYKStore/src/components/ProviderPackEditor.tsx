@@ -14,8 +14,10 @@ import {
   updateProviderPackApi,
   validateSourceDocumentApi,
   evaluateProviderStructureQualityApi,
+  evaluateProviderChunkQualityApi,
 } from "@/lib/provider-center-api";
 import { StructureQualityPanel } from "@/components/StructureQualityPanel";
+import { ChunkQualityPanel } from "@/components/ChunkQualityPanel";
 import { getSourceFormatLabel, getSourceTypeLabel } from "@/lib/source-type-dto";
 
 export function ProviderPackEditor({ packId }: { readonly packId: string }) {
@@ -134,6 +136,16 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         editable={editable}
         onEvaluate={async () => {
           const data = await evaluateProviderStructureQualityApi(packId);
+          setPack(data.pack);
+        }}
+      />
+
+      <ChunkQualityPanel
+        packId={packId}
+        chunkQuality={pack.chunkQuality}
+        editable={editable}
+        onEvaluate={async () => {
+          const data = await evaluateProviderChunkQualityApi(packId);
           setPack(data.pack);
         }}
       />

@@ -4,12 +4,15 @@ import {
   toAdminReviewListItem,
   enrichAdminReviewDetailWithValidationReports,
   applyStructureQualityToAdminDetail,
+  applyChunkQualityToAdminDetail,
   type AdminReviewDetailDto,
 } from "@/lib/admin-review-dto";
 import {
   evaluatePackStructureQuality,
 } from "@/lib/structure-quality/structure-quality-evaluate-service";
 import { loadStructureQualitySummaryForPack } from "@/lib/structure-quality/structure-quality-freshness";
+import { evaluatePackChunkQuality } from "@/lib/chunk-quality/chunk-quality-evaluate-service";
+import { loadChunkQualitySummaryForPack } from "@/lib/chunk-quality/chunk-quality-freshness";
 import {
   validateAllSourceDocumentsForPack,
   validateAndPersistSourceDocument,
@@ -74,7 +77,9 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
   const reports = await loadLatestReportsByDocumentIds(docIds);
   const withValidation = enrichAdminReviewDetailWithValidationReports(detail, reports);
   const structureQuality = await loadStructureQualitySummaryForPack(packId);
-  return applyStructureQualityToAdminDetail(withValidation, structureQuality);
+  const withStructure = applyStructureQualityToAdminDetail(withValidation, structureQuality);
+  const chunkQuality = await loadChunkQualitySummaryForPack(packId);
+  return applyChunkQualityToAdminDetail(withStructure, chunkQuality);
 }
 
 export async function validateAdminPackSourceDocuments(input: {
@@ -136,6 +141,38 @@ export async function evaluateAdminPackStructureQuality(input: {
   return { detail: detail!, evaluation: result };
 }
 
+export async function evaluateAdminPackChunkQuality(input: {
+  packId: string;
+  reviewerClientId?: string;
+}) {
+  const packId = input.packId.trim();
+  const pack = await prisma.knowledgePack.findUnique({ where: { packId } });
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  const result = await evaluatePackChunkQuality({
+    packId,
+    actorClientId: input.reviewerClientId,
+  });
+
+  if ("error" in result) {
+    if (result.error === "NOT_FOUND") {
+      return { error: "NOT_FOUND" as const };
+    }
+    if (result.error === "NO_VERSION") {
+      return { error: "INCOMPLETE" as const, message: "버전이 없습니다." };
+    }
+    return {
+      error: "INCOMPLETE" as const,
+      message: result.message,
+    };
+  }
+
+  const detail = await getAdminReviewDetail(packId);
+  return { detail: detail!, evaluation: result };
+}
+
 function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null {
   if (!detail.readiness.canApprove) {
     if (detail.pack.status !== "REVIEWING") {
@@ -149,6 +186,9 @@ function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null 
     }
     if (detail.readiness.structureQualityMessage) {
       return detail.readiness.structureQualityMessage;
+    }
+    if (detail.readiness.chunkQualityMessage) {
+      return detail.readiness.chunkQualityMessage;
     }
     return "승인에 필요한 버전·원천 문서·설명을 확인해 주세요.";
   }

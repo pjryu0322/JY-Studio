@@ -25,6 +25,13 @@ import {
   evaluatePackStructureQuality,
 } from "@/lib/structure-quality/structure-quality-evaluate-service";
 import { loadStructureQualitySummaryForPack } from "@/lib/structure-quality/structure-quality-freshness";
+import { evaluatePackChunkQuality } from "@/lib/chunk-quality/chunk-quality-evaluate-service";
+import { loadChunkQualitySummaryForPack } from "@/lib/chunk-quality/chunk-quality-freshness";
+import {
+  chunkQualityGateSnapshotFromSummary,
+  getChunkQualityBlockingMessage,
+  meetsChunkQualityGate,
+} from "@/lib/chunk-quality/chunk-quality-readiness";
 import {
   getStructureQualityBlockingMessage,
   meetsStructureQualityGate,
@@ -289,10 +296,12 @@ async function mapProviderPackDetailWithValidation(
     };
   }
   const structureQuality = await loadStructureQualitySummaryForPack(pack.packId);
+  const chunkQuality = await loadChunkQualitySummaryForPack(pack.packId);
 
   return toProviderPackDetail(pack, overlays, {
     structureTemplateKey: pack.structureTemplateKey,
     structureQuality,
+    chunkQuality,
   });
 }
 
@@ -779,6 +788,16 @@ export async function submitProviderPackForReview(clientId: string, packId: stri
     };
   }
 
+  const chunkQuality = await loadChunkQualitySummaryForPack(packId);
+  const chunkGate = chunkQualityGateSnapshotFromSummary(chunkQuality);
+  if (!meetsChunkQualityGate(chunkGate)) {
+    const message = getChunkQualityBlockingMessage(chunkGate, chunkQuality);
+    return {
+      error: "INCOMPLETE" as const,
+      message: message ?? "청킹 품질 점검을 먼저 실행해 주세요.",
+    };
+  }
+
   const onlyEtc = allDocs.every((d) => d.sourceType === "ETC");
   const submitNote = onlyEtc
     ? "모든 원천 문서 유형이 '기타(ETC)'입니다. 자료 유형을 구체적으로 분류하면 검수 품질이 향상됩니다."
@@ -893,6 +912,49 @@ export async function evaluateProviderPackStructureQuality(clientId: string, pac
       return { error: "NOT_FOUND" as const };
     }
     return { error: "INCOMPLETE" as const, message: "버전이 없습니다." };
+  }
+
+  const detail = await getProviderPackForClient(clientId, packId);
+  return { pack: detail!, evaluation: result };
+}
+
+export async function evaluateProviderPackChunkQuality(clientId: string, packId: string) {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_EDITABLE" as const };
+  }
+
+  const result = await evaluatePackChunkQuality({
+    packId,
+    actorClientId: clientId,
+  });
+
+  if ("error" in result) {
+    if (result.error === "NOT_FOUND") {
+      return { error: "NOT_FOUND" as const };
+    }
+    if (result.error === "NO_VERSION") {
+      return { error: "INCOMPLETE" as const, message: "버전이 없습니다." };
+    }
+    return {
+      error: "INCOMPLETE" as const,
+      message: result.message,
+    };
   }
 
   const detail = await getProviderPackForClient(clientId, packId);
