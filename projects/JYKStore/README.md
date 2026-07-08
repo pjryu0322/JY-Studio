@@ -649,17 +649,28 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - README 다음 단계를 P22 MCP Server Bridge로 정정했습니다.
 - DB schema/public API 계약 변경 없음.
 
+### P22 — MCP Server Bridge
+
+- JYKStore Public API를 MCP tools/resources로 노출하는 MCP Server runtime(`mcp-server/`)을 추가했습니다.
+- stdio transport 기반으로 MCP client에서 JYKStore 지식팩을 호출할 수 있습니다. HTTP transport도 선택 제공합니다.
+- MCP tools: `jykstore_retrieval_query`, `jykstore_graph_query`, `jykstore_export_package`, `jykstore_export_rag_jsonl`, `jykstore_export_graph`, `jykstore_export_openapi`, `jykstore_export_mcp_manifest`
+- MCP resources: `jykstore://packs/{knowledgePackId}/{package|rag-jsonl|graph|openapi|mcp-manifest}`, `jykstore://openapi`
+- MCP Server는 JYKStore Public API만 호출하며 DB를 직접 조회하지 않습니다.
+- JYKStore는 최종 답변을 생성하지 않고 검증된 context/export만 반환합니다.
+- P15 MCP-ready manifest는 계약 문서이고, P22는 실행 runtime bridge입니다. 자세한 설정은 `mcp-server/README.md`를 참고하세요.
+- 외부 AI provider 호출 없음. Public API 계약 변경 없음.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22 완료)
+- MCP HTTP streaming export / OAuth 등은 후속 개선
 - pgvector 기반 vector index
-- 실제 MCP Server 실행(stdio/websocket/sse runtime) 및 graph traversal/semantic graph search
 - 로그인/회원 관리
 - 관리자 인증 및 권한 제어
 
 ## 다음 단계
 
-1. Phase P22: MCP Server Bridge(runtime) — 현재는 MCP-ready manifest만 제공합니다.
-2. 이후: MCP client 설정 예시, Cursor/Claude 연동 문서, 운영 배포 가이드.
+1. MCP client 설정 예시 확장 및 운영 배포 가이드.
+2. MCP HTTP transport / streaming export / OAuth 후속 개선.

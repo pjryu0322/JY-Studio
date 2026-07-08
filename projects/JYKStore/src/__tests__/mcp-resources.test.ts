@@ -1,0 +1,53 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { parseResourceUri, resourceMimeType } from "../../mcp-server/schemas.ts";
+import { handleResourceRead } from "../../mcp-server/resource-handlers.ts";
+import { JYKStoreClient } from "../../mcp-server/jykstore-client.ts";
+import { McpBridgeError } from "../../mcp-server/errors.ts";
+
+describe("mcp resources", () => {
+  it("parses pack package resource", () => {
+    const parsed = parseResourceUri("jykstore://packs/my-pack/package");
+    assert.deepEqual(parsed, { kind: "package", knowledgePackId: "my-pack" });
+    assert.equal(resourceMimeType("package"), "application/json");
+  });
+
+  it("parses rag-jsonl resource", () => {
+    const parsed = parseResourceUri("jykstore://packs/my-pack/rag-jsonl");
+    assert.equal(parsed.kind, "rag-jsonl");
+    assert.equal(resourceMimeType("rag-jsonl"), "application/x-ndjson");
+  });
+
+  it("parses openapi resources", () => {
+    assert.deepEqual(parseResourceUri("jykstore://openapi"), { kind: "global-openapi" });
+    assert.deepEqual(parseResourceUri("jykstore://packs/p1/openapi"), {
+      kind: "openapi",
+      knowledgePackId: "p1",
+    });
+  });
+
+  it("rejects unknown resource", () => {
+    assert.throws(
+      () => parseResourceUri("jykstore://unknown"),
+      (error: unknown) =>
+        error instanceof McpBridgeError && error.code === "JYKSTORE_MCP_RESOURCE_NOT_FOUND",
+    );
+  });
+
+  it("applies pack allowlist on resource read", async () => {
+    const client = new JYKStoreClient({
+      baseUrl: "http://localhost:3004",
+      apiKey: "test-key",
+      fetchImpl: (async () => {
+        throw new Error("should not fetch");
+      }) as typeof fetch,
+    });
+    const result = await handleResourceRead({
+      uri: "jykstore://packs/blocked/package",
+      client,
+      allowedPackIds: ["allowed"],
+    });
+    assert.equal(result.isError, true);
+    assert.match(result.contents[0]!.text, /JYKSTORE_MCP_PACK_NOT_ALLOWED/);
+  });
+});
