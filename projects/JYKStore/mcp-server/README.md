@@ -32,6 +32,8 @@ JYKSTORE_MCP_MAX_EXPORT_SOURCE_BYTES=20000000
 
 Do not commit real API keys. Logs mask the key (`abcd…wxyz`).
 
+For operational deployment, see [`../docs/mcp-runtime-ops-guide.md`](../docs/mcp-runtime-ops-guide.md).
+
 ## Scripts
 
 ```powershell
@@ -44,6 +46,16 @@ npm run mcp:stdio
 # optional HTTP transport
 npm run mcp:http
 ```
+
+## Runtime verification
+
+```powershell
+npm run mcp:test
+npm run mcp:test:runtime
+npm test
+```
+
+`mcp:test` / `mcp:test:runtime` cover registration snapshots, HTTP JSON-RPC runtime (mocked Public API), and stdio smoke startup.
 
 ## HTTP transport
 
@@ -171,9 +183,7 @@ Same shape as Cursor local MCP `mcpServers` entry (stdio + env). Replace `cwd` a
 ## Out of scope (later)
 
 - True upstream stream response using Web Streams
-- Full MCP HTTP JSON-RPC integration test
-- Production deployment guide
-- OAuth / remote MCP auth
-- Multi-tenant MCP gateway
+- OAuth / remote MCP auth (P23/P27)
+- Multi-tenant MCP gateway & quota (P24/P25)
 - Per-client rate limit / quota hardening
 - External embedding providers

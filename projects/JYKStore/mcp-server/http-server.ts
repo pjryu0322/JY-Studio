@@ -63,7 +63,10 @@ function logHttpRequest(input: {
 
 export async function startHttpServer(
   config: McpServerConfig,
-  options?: { createBridge?: typeof createBridgeServer },
+  options?: {
+    createBridge?: typeof createBridgeServer;
+    fetchImpl?: typeof fetch;
+  },
 ): Promise<StartedMcpHttpServer> {
   const { StreamableHTTPServerTransport } = await import(
     "@modelcontextprotocol/sdk/server/streamableHttp.js"
@@ -142,6 +145,7 @@ export async function startHttpServer(
         maxResponseBytes: config.maxResponseBytes,
         maxExportSourceBytes: config.maxExportSourceBytes,
         allowedPackIds: config.allowedPackIds,
+        fetchImpl: options?.fetchImpl,
       });
       mcp = createBridge(client, config.allowedPackIds);
       const transport = new StreamableHTTPServerTransport({

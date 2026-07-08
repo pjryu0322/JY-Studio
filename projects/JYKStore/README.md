@@ -710,11 +710,20 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - API key, Authorization header, DATABASE_URL, request/response body, stack trace가 운영 로그에 직접 남지 않도록 보정했습니다.
 - 기존 export endpoints, MCP tools/resources, Public API response shape는 변경하지 않았습니다.
 
+### P22.6/P26 — MCP Runtime Verification & Ops Guide
+
+- MCP HTTP JSON-RPC runtime integration test를 추가했습니다.
+- stdio transport smoke test를 추가했습니다.
+- MCP tools/resources registration snapshot test를 추가했습니다.
+- 운영 배포 가이드를 `docs/mcp-runtime-ops-guide.md`에 정리했습니다.
+- health/readiness, env, safe logging, reverse proxy, troubleshooting 기준을 문서화했습니다.
+- 인증/멀티테넌시/쿼터는 후속 P23/P27, P24/P25 범위로 유지합니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22~P22.5.1 완료)
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22~P22.6/P26 완료)
 - Web Streams true streaming, OAuth / remote MCP auth 등은 후속 개선
 - pgvector 기반 vector index
 - 로그인/회원 관리
@@ -722,6 +731,6 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 
 ## 다음 단계
 
-1. Full MCP HTTP JSON-RPC integration test 및 운영 배포 가이드.
-2. OAuth / remote MCP auth / multi-tenant MCP gateway.
+1. P23/P27 Auth & API Key Hardening
+2. P24/P25 Multi-tenant Gateway & Quota
 3. True upstream stream response using Web Streams.
