@@ -516,6 +516,34 @@ JYKStore는 답변을 생성하지 않고 context를 반환하는 Context / Retr
   3. **Cursor / MCP wrapper**: OpenAPI schema 또는 MCP-ready manifest 기반 wrapper 구성. 실제 JYKStore MCP Server는 P16 이후 구현 대상입니다.
 - 보안 문구 유지: Public API는 PUBLISHED/VERIFIED pack만 반환(비공개는 404 `PACK_NOT_FOUND`), 모든 operation은 Bearer API Key 사용, API Key 원문은 schema/manifest/export 응답에 포함하지 않음.
 
+### P16 — Source Type & Pipeline Foundation
+
+JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발전시키기 위한 첫 기반 단계입니다.
+
+**제품화 파이프라인 개요** (전체 목표 공정, P16은 상태/기록 기반만 구현):
+
+```text
+자료 등록 → 자료 유형 분류 → 원문 정합성 검증 → 구조화 → 구조 커버리지 검증
+→ 지식 품질 검수 → 청킹 → 청킹 품질 평가 → 검색 데이터 구축 → 검색 품질 평가
+→ 검토 제출 → 관리자 승인 → PUBLISHED / VERIFIED → Retrieval API 제공
+```
+
+- **자료 유형 표준화(SourceType enum)**: `PRODUCT_MANUAL`, `INTEGRATION_GUIDE`, `API_SPEC`, `OPENAPI_SCHEMA`, `ERROR_CODE_TABLE`, `SAMPLE_CODE`, `FAQ`, `RELEASE_NOTE`, `SECURITY_GUIDE`, `TEST_ENV_GUIDE`, `OPERATION_GUIDE`, `CALLBACK_GUIDE`, `TROUBLESHOOTING`, `ETC`. 기존 자유 문자열 `sourceType`은 enum으로 마이그레이션하며 원문은 `legacySourceType`에 보존합니다(알 수 없는 값은 `ETC`).
+- **자료 형식 표준화(SourceFormat enum)**: `TEXT`/`MARKDOWN`/`HTML`/`PDF`/`DOCX`/`XLSX`/`CSV`/`JSON`/`YAML`/`OPENAPI_JSON`/`OPENAPI_YAML`/`CODE`/`URL`/`ETC`.
+- **SourceDocument 확장**: `sourceFormat`, `fileName`, `mimeType`, `productVersion`, `documentVersion`, `licenseStatus`, `validationStatus`(NOT_CHECKED/PASS/WARNING/FAIL), `validationSummary`, `registeredByClientId`, `registeredAt`를 저장합니다.
+- **기본 정합성 검증(deterministic)**: 등록 시 `title`·`sourceType` 필수, `content`/`sourceUrl` 중 하나 필수. 위반 시 `FAIL`로 등록을 차단합니다. `SAMPLE_CODE`의 `productVersion` 누락 등은 `WARNING`(등록 허용). 외부 AI/고급 검증은 P17에서 다룹니다.
+- **PipelineStatus**: `KnowledgePack.pipelineStatus`로 공정 상태를 관리합니다. 값: `SOURCE_REGISTERING`, `SOURCE_VALIDATING`, `STRUCTURING`, `STRUCTURE_VALIDATING`, `KNOWLEDGE_CHECKING`, `CHUNKING`, `CHUNK_EVALUATING`, `INDEXING`, `SEARCH_EVALUATING`, `READY_FOR_REVIEW`, `REVIEWING`, `APPROVED`, `PUBLISHED`, `FAILED`.
+- **PipelineRun / PipelineStepLog**: 공정 실행과 단계별 로그를 기록합니다(triggerType: `SOURCE_DOCUMENT_REGISTERED`, `SUBMIT_FOR_REVIEW`, `ADMIN_APPROVE`, `ADMIN_REJECT`).
+  - SourceDocument 등록 → `SOURCE_REGISTERING` 단계 기록, `pipelineStatus=SOURCE_REGISTERING`.
+  - 검수 제출 → `READY_FOR_REVIEW`/`REVIEWING` 단계 기록, `pipelineStatus=REVIEWING`.
+  - 관리자 승인 → `APPROVED`/`PUBLISHED` 단계 기록, `pipelineStatus=PUBLISHED`.
+  - 반려 → `REVIEWING` FAIL 단계 기록, `pipelineStatus=SOURCE_REGISTERING`.
+- **Provider UI**: SourceDocument 등록 폼에 자료 유형/형식 선택과 유형별 설명, 부가 필드(URL/파일명/MIME/제품·문서 버전/라이선스/원문)를 추가했습니다. 상세 화면에 공정 상태·유형별 개수·검증 요약·검수 요청 가능 여부를 표시합니다.
+- **Admin UI**: 검수 상세의 readiness에 `pipelineStatus`, source validation 요약(pass/warning/fail/notChecked), `sourceTypeCoverage`를 추가했습니다. `validationStatus=FAIL` 문서가 하나라도 있으면 제출·승인이 제한됩니다(승인 버튼 비활성화). 구조화/청킹/검색 품질 gate는 P17~P21에서 강화 예정입니다.
+- **Public API 영향 없음**: Retrieval / Graph / Export / OpenAPI public API의 path·응답 구조는 변경하지 않습니다. pipeline 필드는 Provider/Admin 내부 관리용입니다.
+
+**이후 단계(P17~P21) 예정**: P17 Source Validation(중복/URL/민감정보/유형별 리포트), P18 Structure Coverage & Knowledge Quality, P19 Chunk Quality Evaluation, P20 Retrieval Evaluation, P21 Release Gate & Approval Hardening, P22 MCP Server Bridge.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

@@ -3,6 +3,8 @@
 import { FormEvent, useState } from "react";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import { approveAdminReview, rejectAdminReview } from "@/lib/admin-review-api";
+import { getPipelineStatusLabel } from "@/lib/pipeline-dto";
+import { getSourceTypeLabel } from "@/lib/source-type-dto";
 
 export function AdminReviewDecisionPanel({
   packId,
@@ -68,12 +70,49 @@ export function AdminReviewDecisionPanel({
       <div className="rounded-xl bg-slate-50 p-3 text-sm">
         <p className="font-semibold text-slate-900">준비 상태</p>
         <ul className="mt-2 space-y-1 text-xs text-store-muted">
+          <li>공정 상태: {getPipelineStatusLabel(detail.readiness.pipelineStatus)}</li>
           <li>버전: {detail.readiness.versionCount}개</li>
           <li>원천 문서: {detail.readiness.sourceDocumentCount}개</li>
           <li>설명: {detail.readiness.hasRequiredDescription ? "충족" : "부족"}</li>
+          <li>
+            검증 요약: 통과 {detail.readiness.sourceValidation.passCount} · 주의{" "}
+            {detail.readiness.sourceValidation.warningCount} ·{" "}
+            <span
+              className={
+                detail.readiness.sourceValidation.failCount > 0
+                  ? "font-semibold text-red-700"
+                  : undefined
+              }
+            >
+              실패 {detail.readiness.sourceValidation.failCount}
+            </span>{" "}
+            · 미검사 {detail.readiness.sourceValidation.notCheckedCount}
+          </li>
           <li>승인 가능: {detail.readiness.canApprove ? "예" : "아니오"}</li>
         </ul>
+        {Object.keys(detail.readiness.sourceTypeCoverage).length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {Object.entries(detail.readiness.sourceTypeCoverage).map(([type, count]) => (
+              <span
+                key={type}
+                className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-700"
+              >
+                {getSourceTypeLabel(type)} {count}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
+
+      {detail.readiness.sourceValidation.failCount > 0 ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          검증 실패(FAIL) 원천 문서가 있어 승인할 수 없습니다. 제공자에게 반려해 주세요.
+        </div>
+      ) : null}
+
+      <p className="text-xs leading-relaxed text-store-muted">
+        구조화·청킹·검색 품질 게이트는 이후 단계(P17~P21)에서 승인 조건으로 추가될 예정입니다.
+      </p>
 
       {detail.latestReview?.rejectionReason ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">

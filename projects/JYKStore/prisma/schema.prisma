@@ -38,6 +38,73 @@ enum ApiKeyStatus {
   REVOKED
 }
 
+enum SourceType {
+  PRODUCT_MANUAL
+  INTEGRATION_GUIDE
+  API_SPEC
+  OPENAPI_SCHEMA
+  ERROR_CODE_TABLE
+  SAMPLE_CODE
+  FAQ
+  RELEASE_NOTE
+  SECURITY_GUIDE
+  TEST_ENV_GUIDE
+  OPERATION_GUIDE
+  CALLBACK_GUIDE
+  TROUBLESHOOTING
+  ETC
+}
+
+enum SourceFormat {
+  TEXT
+  MARKDOWN
+  HTML
+  PDF
+  DOCX
+  XLSX
+  CSV
+  JSON
+  YAML
+  OPENAPI_JSON
+  OPENAPI_YAML
+  CODE
+  URL
+  ETC
+}
+
+enum SourceValidationStatus {
+  NOT_CHECKED
+  PASS
+  WARNING
+  FAIL
+}
+
+enum PipelineStatus {
+  SOURCE_REGISTERING
+  SOURCE_VALIDATING
+  STRUCTURING
+  STRUCTURE_VALIDATING
+  KNOWLEDGE_CHECKING
+  CHUNKING
+  CHUNK_EVALUATING
+  INDEXING
+  SEARCH_EVALUATING
+  READY_FOR_REVIEW
+  REVIEWING
+  APPROVED
+  PUBLISHED
+  FAILED
+}
+
+enum PipelineStepStatus {
+  PENDING
+  RUNNING
+  PASS
+  WARNING
+  FAIL
+  SKIPPED
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -156,6 +223,8 @@ model KnowledgePack {
   rating           Float        @default(0)
   usageCount       Int          @default(0)
   isVerified       Boolean      @default(false)
+  pipelineStatus    PipelineStatus @default(SOURCE_REGISTERING)
+  pipelineUpdatedAt DateTime?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   publishedAt      DateTime?
@@ -168,10 +237,13 @@ model KnowledgePack {
   reviews       PackReview[]
   graphNodes    KnowledgeGraphNode[]
   graphEdges    KnowledgeGraphEdge[]
+  pipelineRuns     PipelineRun[]
+  pipelineStepLogs PipelineStepLog[]
 
   @@index([status])
   @@index([categoryId])
   @@index([providerProfileId])
+  @@index([pipelineStatus])
 }
 
 model PackReview {
@@ -220,18 +292,33 @@ model KnowledgePackVersion {
 }
 
 model SourceDocument {
-  id         String   @id @default(cuid())
-  versionId  String
-  title      String
-  sourceType String
-  sourceUrl  String?
-  content    String?
-  checksum   String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                   String                 @id @default(cuid())
+  versionId            String
+  title                String
+  sourceType           SourceType             @default(ETC)
+  legacySourceType     String?
+  sourceFormat         SourceFormat           @default(TEXT)
+  sourceUrl            String?
+  fileName             String?
+  mimeType             String?
+  content              String?
+  checksum             String?
+  productVersion       String?
+  documentVersion      String?
+  licenseStatus        String?
+  validationStatus     SourceValidationStatus @default(NOT_CHECKED)
+  validationSummary    String?
+  registeredByClientId String?
+  registeredAt         DateTime               @default(now())
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
   chunks  KnowledgeChunk[]
+
+  @@index([versionId])
+  @@index([sourceType])
+  @@index([validationStatus])
 }
 
 model KnowledgeChunk {
@@ -401,6 +488,49 @@ model ApiUsageLog {
   @@index([packId])
   @@index([statusCode])
   @@index([createdAt])
+}
+
+model PipelineRun {
+  id                  String             @id @default(cuid())
+  packId              String
+  status              PipelineStepStatus @default(RUNNING)
+  triggerType         String
+  triggeredByClientId String?
+  summary             String?
+  startedAt           DateTime           @default(now())
+  finishedAt          DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  pack  KnowledgePack     @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  steps PipelineStepLog[]
+
+  @@index([packId])
+  @@index([status])
+  @@index([triggerType])
+  @@index([startedAt])
+}
+
+model PipelineStepLog {
+  id         String             @id @default(cuid())
+  runId      String
+  packId     String
+  step       PipelineStatus
+  status     PipelineStepStatus @default(PENDING)
+  message    String?
+  details    Json?
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  run  PipelineRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  pack KnowledgePack @relation(fields: [packId], references: [packId], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([packId])
+  @@index([step])
+  @@index([status])
 }
 
 model AuditLog {

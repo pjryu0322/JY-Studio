@@ -2,10 +2,20 @@ import {
   AuditAction,
   PackPricing,
   PackStatus,
+  PipelineStatus,
   ProviderType,
+  type SourceFormat,
+  type SourceType,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { recordProviderAudit } from "@/lib/provider-audit";
+import {
+  completePipelineStep,
+  createPipelineRun,
+  finishPipelineRun,
+  updatePackPipelineStatus,
+} from "@/lib/pipeline-service";
+import { evaluateSourceValidation } from "@/lib/source-type-dto";
 import {
   toProviderPackDetail,
   toProviderPackListItem,
@@ -54,10 +64,16 @@ export type CreatePackVersionInput = {
 
 export type CreateSourceDocumentInput = {
   title: string;
-  sourceType: string;
+  sourceType: SourceType;
+  sourceFormat?: SourceFormat;
   sourceUrl?: string;
+  fileName?: string;
+  mimeType?: string;
   content?: string;
   checksum?: string | null;
+  productVersion?: string;
+  documentVersion?: string;
+  licenseStatus?: string;
 };
 
 const packDetailInclude = {
@@ -418,7 +434,8 @@ export async function createSourceDocumentForProviderPack(
   }
 
   const title = input.title.trim();
-  const sourceType = input.sourceType.trim();
+  const sourceType = input.sourceType;
+  const sourceFormat = input.sourceFormat ?? "TEXT";
 
   if (!title) {
     return { error: "VALIDATION" as const, message: "제목이 필요합니다." };
@@ -432,14 +449,36 @@ export async function createSourceDocumentForProviderPack(
     return { error: "VERSION_REQUIRED" as const };
   }
 
+  const validation = evaluateSourceValidation({
+    title,
+    sourceType,
+    sourceFormat,
+    content: input.content,
+    sourceUrl: input.sourceUrl,
+    productVersion: input.productVersion,
+  });
+
+  if (validation.status === "FAIL") {
+    return { error: "VALIDATION" as const, message: validation.summary };
+  }
+
   const doc = await prisma.sourceDocument.create({
     data: {
       versionId: version.id,
       title,
       sourceType,
+      sourceFormat,
       sourceUrl: input.sourceUrl?.trim() || null,
+      fileName: input.fileName?.trim() || null,
+      mimeType: input.mimeType?.trim() || null,
       content: input.content?.trim() || null,
       checksum: input.checksum ?? null,
+      productVersion: input.productVersion?.trim() || null,
+      documentVersion: input.documentVersion?.trim() || null,
+      licenseStatus: input.licenseStatus?.trim() || null,
+      validationStatus: validation.status,
+      validationSummary: validation.summary,
+      registeredByClientId: clientId,
     },
   });
 
@@ -447,11 +486,95 @@ export async function createSourceDocumentForProviderPack(
     action: AuditAction.PROVIDER_SOURCE_DOCUMENT_CREATE,
     entityType: "SourceDocument",
     entityId: doc.id,
-    metadata: { packId },
+    metadata: { packId, sourceType, sourceFormat, validationStatus: validation.status },
   });
+
+  await recordSourceRegisteredPipeline(packId, clientId, validation.status, sourceType);
 
   const detail = await getProviderPackForClient(clientId, packId);
   return { pack: detail! };
+}
+
+async function recordSourceRegisteredPipeline(
+  packId: string,
+  clientId: string,
+  validationStatus: string,
+  sourceType: string,
+) {
+  try {
+    const run = await createPipelineRun({
+      packId,
+      triggerType: "SOURCE_DOCUMENT_REGISTERED",
+      triggeredByClientId: clientId,
+      steps: [PipelineStatus.SOURCE_REGISTERING],
+    });
+
+    if ("runId" in run) {
+      await completePipelineStep({
+        runId: run.runId,
+        step: PipelineStatus.SOURCE_REGISTERING,
+        status: validationStatus === "WARNING" ? "WARNING" : "PASS",
+        message: `원천 문서 등록 (${sourceType})`,
+        details: { validationStatus },
+      });
+      await finishPipelineRun({
+        runId: run.runId,
+        status: validationStatus === "WARNING" ? "WARNING" : "PASS",
+        summary: "원천 문서 등록 처리 완료",
+      });
+    }
+
+    await updatePackPipelineStatus({
+      packId,
+      pipelineStatus: PipelineStatus.SOURCE_REGISTERING,
+      triggeredByClientId: clientId,
+    });
+  } catch (error) {
+    console.error("recordSourceRegisteredPipeline failed", error);
+  }
+}
+
+async function recordSubmitForReviewPipeline(
+  packId: string,
+  clientId: string,
+  note: string | null,
+) {
+  try {
+    const run = await createPipelineRun({
+      packId,
+      triggerType: "SUBMIT_FOR_REVIEW",
+      triggeredByClientId: clientId,
+      steps: [PipelineStatus.READY_FOR_REVIEW, PipelineStatus.REVIEWING],
+    });
+
+    if ("runId" in run) {
+      await completePipelineStep({
+        runId: run.runId,
+        step: PipelineStatus.READY_FOR_REVIEW,
+        status: "PASS",
+        message: note ?? "검토 준비 완료",
+      });
+      await completePipelineStep({
+        runId: run.runId,
+        step: PipelineStatus.REVIEWING,
+        status: "PASS",
+        message: "관리자 검토 대기열에 등록",
+      });
+      await finishPipelineRun({
+        runId: run.runId,
+        status: "PASS",
+        summary: "검수 요청 제출 완료",
+      });
+    }
+
+    await updatePackPipelineStatus({
+      packId,
+      pipelineStatus: PipelineStatus.REVIEWING,
+      triggeredByClientId: clientId,
+    });
+  } catch (error) {
+    console.error("recordSubmitForReviewPipeline failed", error);
+  }
 }
 
 export async function submitProviderPackForReview(clientId: string, packId: string) {
@@ -489,13 +612,27 @@ export async function submitProviderPackForReview(clientId: string, packId: stri
     return { error: "INCOMPLETE" as const, message: "버전이 최소 1개 필요합니다." };
   }
 
-  const hasSourceDocument = pack.versions.some((v) => v.sourceDocuments.length > 0);
+  const allDocs = pack.versions.flatMap((v) => v.sourceDocuments);
+  const hasSourceDocument = allDocs.length > 0;
   if (!hasSourceDocument) {
     return {
       error: "INCOMPLETE" as const,
       message: "원천 문서(SourceDocument)를 최소 1개 등록해 주세요.",
     };
   }
+
+  const failedDocs = allDocs.filter((d) => d.validationStatus === "FAIL");
+  if (failedDocs.length > 0) {
+    return {
+      error: "INCOMPLETE" as const,
+      message: "검증에 실패(FAIL)한 원천 문서가 있어 제출할 수 없습니다. 해당 문서를 수정해 주세요.",
+    };
+  }
+
+  const onlyEtc = allDocs.every((d) => d.sourceType === "ETC");
+  const submitNote = onlyEtc
+    ? "모든 원천 문서 유형이 '기타(ETC)'입니다. 자료 유형을 구체적으로 분류하면 검수 품질이 향상됩니다."
+    : null;
 
   await prisma.$transaction([
     prisma.knowledgePack.update({
@@ -509,6 +646,8 @@ export async function submitProviderPackForReview(clientId: string, packId: stri
       },
     }),
   ]);
+
+  await recordSubmitForReviewPipeline(packId, clientId, submitNote);
 
   await recordProviderAudit({
     action: AuditAction.PROVIDER_PACK_SUBMIT,

@@ -1,4 +1,6 @@
+import { SourceValidationBadge } from "@/components/SourceValidationBadge";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
+import { getSourceFormatLabel, getSourceTypeLabel } from "@/lib/source-type-dto";
 
 export function AdminReviewSourceDocuments({
   versions,
@@ -19,11 +21,18 @@ export function AdminReviewSourceDocuments({
               <ul className="mt-3 space-y-2">
                 {version.sourceDocuments.map((doc) => (
                   <li key={doc.id} className="rounded-lg bg-slate-50 p-3 text-sm">
-                    <p className="font-semibold text-slate-900">{doc.title}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold text-slate-900">{doc.title}</p>
+                      <SourceValidationBadge status={doc.validationStatus} />
+                    </div>
                     <p className="text-xs text-store-muted">
-                      {doc.sourceType}
+                      {getSourceTypeLabel(doc.sourceType)} · {getSourceFormatLabel(doc.sourceFormat)}
+                      {doc.productVersion ? ` · v${doc.productVersion}` : ""}
                       {doc.sourceUrl ? ` · ${doc.sourceUrl}` : ""}
                     </p>
+                    {doc.validationSummary && doc.validationStatus !== "PASS" ? (
+                      <p className="mt-1 text-xs text-amber-700">{doc.validationSummary}</p>
+                    ) : null}
                     {doc.contentPreview ? (
                       <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs text-slate-700">
                         {doc.contentPreview}

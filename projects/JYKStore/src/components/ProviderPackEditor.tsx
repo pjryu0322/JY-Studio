@@ -5,12 +5,14 @@ import { ProviderPackChunkSummaryCard } from "@/components/ProviderPackChunkSumm
 import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCard";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderSourceDocumentForm } from "@/components/ProviderSourceDocumentForm";
+import { SourceValidationBadge } from "@/components/SourceValidationBadge";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import {
   fetchProviderPack,
   submitProviderPackApi,
   updateProviderPackApi,
 } from "@/lib/provider-center-api";
+import { getSourceFormatLabel, getSourceTypeLabel } from "@/lib/source-type-dto";
 
 export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [pack, setPack] = useState<ProviderPackDetailDto | null>(null);
@@ -186,11 +188,17 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           <ul className="mt-3 space-y-2">
             {allDocs.map((doc) => (
               <li key={doc.id} className="rounded-xl border border-store-border px-3 py-2 text-sm">
-                <p className="font-semibold text-slate-900">{doc.title}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold text-slate-900">{doc.title}</p>
+                  <SourceValidationBadge status={doc.validationStatus} />
+                </div>
                 <p className="text-xs text-store-muted">
-                  {doc.sourceType}
+                  {getSourceTypeLabel(doc.sourceType)} · {getSourceFormatLabel(doc.sourceFormat)}
                   {doc.sourceUrl ? ` · ${doc.sourceUrl}` : ""}
                 </p>
+                {doc.validationSummary && doc.validationStatus !== "PASS" ? (
+                  <p className="mt-1 text-xs text-amber-700">{doc.validationSummary}</p>
+                ) : null}
               </li>
             ))}
           </ul>

@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { createSourceDocumentForProviderPack } from "@/lib/provider-pack-service";
+import { isSourceFormat, isSourceType } from "@/lib/source-type-dto";
+import type { SourceFormat, SourceType } from "@prisma/client";
 
 type RouteContext = {
   params: Promise<{ packId: string }>;
@@ -14,17 +16,57 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = (await request.json()) as {
       title?: string;
       sourceType?: string;
+      sourceFormat?: string;
       sourceUrl?: string;
+      fileName?: string;
+      mimeType?: string;
       content?: string;
       checksum?: string | null;
+      productVersion?: string;
+      documentVersion?: string;
+      licenseStatus?: string;
     };
+
+    const rawSourceType = (body.sourceType ?? "").trim();
+    if (!rawSourceType || !isSourceType(rawSourceType)) {
+      return jsonWithClientIdCookie(
+        { error: "유효하지 않은 자료 유형(sourceType)입니다." },
+        clientId,
+        { status: 400 },
+      );
+    }
+
+    const rawSourceFormat = (body.sourceFormat ?? "").trim();
+    if (rawSourceFormat && !isSourceFormat(rawSourceFormat)) {
+      return jsonWithClientIdCookie(
+        { error: "유효하지 않은 자료 형식(sourceFormat)입니다." },
+        clientId,
+        { status: 400 },
+      );
+    }
+
+    const content = body.content?.trim() ?? "";
+    const sourceUrl = body.sourceUrl?.trim() ?? "";
+    if (!content && !sourceUrl) {
+      return jsonWithClientIdCookie(
+        { error: "원문(content) 또는 출처 URL(sourceUrl) 중 하나는 필요합니다." },
+        clientId,
+        { status: 400 },
+      );
+    }
 
     const result = await createSourceDocumentForProviderPack(clientId, packId?.trim() ?? "", {
       title: body.title ?? "",
-      sourceType: body.sourceType ?? "",
+      sourceType: rawSourceType as SourceType,
+      sourceFormat: (rawSourceFormat || undefined) as SourceFormat | undefined,
       sourceUrl: body.sourceUrl,
+      fileName: body.fileName,
+      mimeType: body.mimeType,
       content: body.content,
       checksum: body.checksum,
+      productVersion: body.productVersion,
+      documentVersion: body.documentVersion,
+      licenseStatus: body.licenseStatus,
     });
 
     if (result.error === "NOT_FOUND") {

@@ -118,9 +118,15 @@ export async function addSourceDocumentApi(
   input: {
     title: string;
     sourceType: string;
+    sourceFormat?: string;
     sourceUrl?: string;
+    fileName?: string;
+    mimeType?: string;
     content?: string;
     checksum?: string | null;
+    productVersion?: string;
+    documentVersion?: string;
+    licenseStatus?: string;
   },
 ): Promise<ProviderPackDetailResponse> {
   const response = await fetch(

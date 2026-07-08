@@ -14,7 +14,12 @@ export type ProviderSourceDocumentDto = {
   id: string;
   title: string;
   sourceType: string;
+  sourceFormat: string;
   sourceUrl: string | null;
+  productVersion: string | null;
+  documentVersion: string | null;
+  validationStatus: string;
+  validationSummary: string | null;
   createdAt: string;
 };
 
@@ -36,6 +41,8 @@ export type ProviderPackDetailDto = {
   name: string;
   categoryId: string;
   status: PackStatus;
+  pipelineStatus: string;
+  pipelineUpdatedAt: string | null;
   shortDescription: string;
   description: string;
   tags: string[];
@@ -51,7 +58,12 @@ function mapSourceDocument(doc: SourceDocument): ProviderSourceDocumentDto {
     id: doc.id,
     title: doc.title,
     sourceType: doc.sourceType,
+    sourceFormat: doc.sourceFormat,
     sourceUrl: doc.sourceUrl,
+    productVersion: doc.productVersion,
+    documentVersion: doc.documentVersion,
+    validationStatus: doc.validationStatus,
+    validationSummary: doc.validationSummary,
     createdAt: doc.createdAt.toISOString(),
   };
 }
@@ -95,6 +107,8 @@ export function toProviderPackDetail(
     name: pack.name,
     categoryId: pack.categoryId,
     status: pack.status,
+    pipelineStatus: pack.pipelineStatus,
+    pipelineUpdatedAt: pack.pipelineUpdatedAt?.toISOString() ?? null,
     shortDescription: pack.shortDescription,
     description: pack.description,
     tags: pack.tags,

@@ -43,7 +43,12 @@ export type AdminReviewDetailDto = {
       id: string;
       title: string;
       sourceType: string;
+      sourceFormat: string;
       sourceUrl: string | null;
+      productVersion: string | null;
+      documentVersion: string | null;
+      validationStatus: string;
+      validationSummary: string | null;
       contentPreview: string | null;
       createdAt: string;
     }[];
@@ -62,6 +67,14 @@ export type AdminReviewDetailDto = {
     sourceDocumentCount: number;
     hasRequiredDescription: boolean;
     canApprove: boolean;
+    pipelineStatus: string;
+    sourceValidation: {
+      passCount: number;
+      warningCount: number;
+      failCount: number;
+      notCheckedCount: number;
+    };
+    sourceTypeCoverage: Record<string, number>;
   };
 };
 
@@ -80,21 +93,39 @@ type PackWithDetail = KnowledgePack & {
 };
 
 function computeReadiness(pack: PackWithDetail) {
+  const docs = pack.versions.flatMap((v) => v.sourceDocuments);
   const versionCount = pack.versions.length;
-  const sourceDocumentCount = pack.versions.flatMap((v) => v.sourceDocuments).length;
+  const sourceDocumentCount = docs.length;
   const hasRequiredDescription =
     Boolean(pack.shortDescription.trim()) && Boolean(pack.description.trim());
+
+  const sourceValidation = {
+    passCount: docs.filter((d) => d.validationStatus === "PASS").length,
+    warningCount: docs.filter((d) => d.validationStatus === "WARNING").length,
+    failCount: docs.filter((d) => d.validationStatus === "FAIL").length,
+    notCheckedCount: docs.filter((d) => d.validationStatus === "NOT_CHECKED").length,
+  };
+
+  const sourceTypeCoverage: Record<string, number> = {};
+  for (const doc of docs) {
+    sourceTypeCoverage[doc.sourceType] = (sourceTypeCoverage[doc.sourceType] ?? 0) + 1;
+  }
+
   const canApprove =
     pack.status === "REVIEWING" &&
     versionCount > 0 &&
     sourceDocumentCount > 0 &&
-    hasRequiredDescription;
+    hasRequiredDescription &&
+    sourceValidation.failCount === 0;
 
   return {
     versionCount,
     sourceDocumentCount,
     hasRequiredDescription,
     canApprove,
+    pipelineStatus: pack.pipelineStatus,
+    sourceValidation,
+    sourceTypeCoverage,
   };
 }
 
@@ -160,7 +191,12 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
         id: doc.id,
         title: doc.title,
         sourceType: doc.sourceType,
+        sourceFormat: doc.sourceFormat,
         sourceUrl: doc.sourceUrl,
+        productVersion: doc.productVersion,
+        documentVersion: doc.documentVersion,
+        validationStatus: doc.validationStatus,
+        validationSummary: doc.validationSummary,
         contentPreview: truncateContentPreview(doc.content),
         createdAt: doc.createdAt.toISOString(),
       })),

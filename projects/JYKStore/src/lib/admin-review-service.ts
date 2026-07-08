@@ -1,9 +1,15 @@
-import { AuditAction, PackStatus } from "@prisma/client";
+import { AuditAction, PackStatus, PipelineStatus } from "@prisma/client";
 import {
   toAdminReviewDetail,
   toAdminReviewListItem,
   type AdminReviewDetailDto,
 } from "@/lib/admin-review-dto";
+import {
+  completePipelineStep,
+  createPipelineRun,
+  finishPipelineRun,
+  updatePackPipelineStatus,
+} from "@/lib/pipeline-service";
 import { prisma } from "@/lib/prisma";
 import { recordProviderAudit } from "@/lib/provider-audit";
 
@@ -58,9 +64,80 @@ function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null 
     if (detail.pack.status !== "REVIEWING") {
       return "검수 중(REVIEWING) 상태의 지식팩만 승인할 수 있습니다.";
     }
+    if (detail.readiness.sourceValidation.failCount > 0) {
+      return "검증에 실패(FAIL)한 원천 문서가 있어 승인할 수 없습니다.";
+    }
     return "승인에 필요한 버전·원천 문서·설명을 확인해 주세요.";
   }
   return null;
+}
+
+async function recordApprovalPipeline(packId: string, reviewerClientId?: string) {
+  try {
+    const run = await createPipelineRun({
+      packId,
+      triggerType: "ADMIN_APPROVE",
+      triggeredByClientId: reviewerClientId,
+      steps: [PipelineStatus.APPROVED, PipelineStatus.PUBLISHED],
+    });
+
+    if ("runId" in run) {
+      await completePipelineStep({
+        runId: run.runId,
+        step: PipelineStatus.APPROVED,
+        status: "PASS",
+        message: "관리자 승인 완료",
+      });
+      await completePipelineStep({
+        runId: run.runId,
+        step: PipelineStatus.PUBLISHED,
+        status: "PASS",
+        message: "배포 처리 완료",
+      });
+      await finishPipelineRun({ runId: run.runId, status: "PASS", summary: "승인 및 배포 완료" });
+    }
+
+    await updatePackPipelineStatus({
+      packId,
+      pipelineStatus: PipelineStatus.PUBLISHED,
+      triggeredByClientId: reviewerClientId,
+    });
+  } catch (error) {
+    console.error("recordApprovalPipeline failed", error);
+  }
+}
+
+async function recordRejectionPipeline(
+  packId: string,
+  rejectionReason: string,
+  reviewerClientId?: string,
+) {
+  try {
+    const run = await createPipelineRun({
+      packId,
+      triggerType: "ADMIN_REJECT",
+      triggeredByClientId: reviewerClientId,
+      steps: [PipelineStatus.REVIEWING],
+    });
+
+    if ("runId" in run) {
+      await completePipelineStep({
+        runId: run.runId,
+        step: PipelineStatus.REVIEWING,
+        status: "FAIL",
+        message: rejectionReason,
+      });
+      await finishPipelineRun({ runId: run.runId, status: "FAIL", summary: "검수 반려" });
+    }
+
+    await updatePackPipelineStatus({
+      packId,
+      pipelineStatus: PipelineStatus.SOURCE_REGISTERING,
+      triggeredByClientId: reviewerClientId,
+    });
+  } catch (error) {
+    console.error("recordRejectionPipeline failed", error);
+  }
 }
 
 export async function approvePackReview(input: {
@@ -136,6 +213,8 @@ export async function approvePackReview(input: {
     entityId: packId,
     metadata: { publishAsVerified, memo },
   });
+
+  await recordApprovalPipeline(packId, input.reviewerClientId);
 
   const detail = await getAdminReviewDetail(packId);
   return { detail: detail! };
@@ -213,6 +292,8 @@ export async function rejectPackReview(input: {
     entityId: packId,
     metadata: { rejectionReason, memo },
   });
+
+  await recordRejectionPipeline(packId, rejectionReason, input.reviewerClientId);
 
   const detail = await getAdminReviewDetail(packId);
   return { detail: detail! };
