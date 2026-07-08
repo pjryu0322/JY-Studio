@@ -676,17 +676,28 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - 검색 ranking 알고리즘은 변경하지 않았습니다.
 - DB schema/dependency 변경 없음. Public API 응답 구조 변경 없음.
 
+### P22.3 — MCP HTTP Transport & Streaming Export Stabilization
+
+- MCP HTTP transport에 health/ready endpoint와 graceful shutdown을 추가했습니다.
+- API key를 노출하지 않는 readiness 응답을 제공합니다.
+- 큰 export를 위한 chunked export tools를 추가했습니다.
+- UTF-8 safe byte chunking을 적용했습니다.
+- 기존 stdio transport와 기존 tools/resources는 유지됩니다.
+- MCP Server는 계속 Public API만 호출하며 DB를 직접 조회하지 않습니다.
+- 외부 AI 호출 없음. Public API 응답 구조 변경 없음.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
 - 파일 업로드 parser(PDF/DOCX/XLSX 등) 및 외부 URL fetch/crawling
-- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22/P22.1/P22.2 완료)
-- MCP HTTP streaming export / OAuth 등은 후속 개선
+- 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22~P22.3 완료)
+- Upstream Public API range/streaming export, true streaming, OAuth / remote MCP auth 등은 후속 개선
 - pgvector 기반 vector index
 - 로그인/회원 관리
 - 관리자 인증 및 권한 제어
 
 ## 다음 단계
 
-1. MCP client 설정 예시 확장 및 운영 배포 가이드.
-2. MCP HTTP transport / streaming export / OAuth 후속 개선.
+1. Upstream Public API range/streaming export 및 true streaming resource response.
+2. OAuth / remote MCP auth / multi-tenant MCP gateway.
+3. Full MCP HTTP JSON-RPC integration test.

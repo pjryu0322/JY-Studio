@@ -25,6 +25,9 @@ JYKSTORE_API_KEY=<YOUR_JYKSTORE_API_KEY>
 JYKSTORE_MCP_TRANSPORT=stdio
 JYKSTORE_MCP_PORT=3014
 JYKSTORE_MCP_ALLOWED_PACK_IDS=
+JYKSTORE_MCP_ALLOWED_ORIGINS=
+JYKSTORE_MCP_MAX_RESPONSE_BYTES=2000000
+JYKSTORE_MCP_MAX_EXPORT_SOURCE_BYTES=20000000
 ```
 
 Do not commit real API keys. Logs mask the key (`abcd…wxyz`).
@@ -38,9 +41,21 @@ $env:JYKSTORE_BASE_URL="http://localhost:3004"
 $env:JYKSTORE_API_KEY="<YOUR_JYKSTORE_API_KEY>"
 
 npm run mcp:stdio
-# optional HTTP transport (experimental Streamable HTTP)
+# optional HTTP transport
 npm run mcp:http
 ```
+
+## HTTP transport
+
+- stdio is default.
+- HTTP transport is optional for remote MCP clients.
+- Endpoints:
+  - `GET /health`
+  - `GET /ready`
+  - MCP Streamable HTTP endpoint: `/`
+- API key is stored server-side in env and is never returned by health/ready.
+- Optional CORS via `JYKSTORE_MCP_ALLOWED_ORIGINS` (comma-separated). Empty allowlist ≈ localhost Origins only. `"*"` is for development only.
+- SIGINT / SIGTERM trigger graceful HTTP shutdown.
 
 ## Tools
 
@@ -53,6 +68,47 @@ npm run mcp:http
 - `jykstore_export_mcp_manifest` → `GET /api/v1/exports/mcp-manifest`
 
 Tools return Public API JSON/text **as-is**. No answer generation or summarization.
+
+## Chunked export tools
+
+Large exports can be read in chunks:
+
+- `jykstore_export_package_chunk`
+- `jykstore_export_rag_jsonl_chunk`
+- `jykstore_export_graph_chunk`
+
+Input:
+
+```json
+{
+  "knowledgePackId": "pack-id",
+  "offset": 0,
+  "limitBytes": 256000
+}
+```
+
+Response:
+
+```json
+{
+  "offset": 0,
+  "nextOffset": 256000,
+  "hasMore": true,
+  "byteLength": 256000,
+  "content": "..."
+}
+```
+
+P22.3 chunked export는 Public API 응답을 MCP server에서 분할 반환하는 안정화 단계입니다.
+진정한 upstream streaming/range export는 후속 단계입니다.
+
+Chunked resource reads도 지원합니다:
+
+```text
+jykstore://packs/{knowledgePackId}/rag-jsonl?offset=0&limitBytes=256000
+```
+
+Query string이 없으면 기존 full resource 동작을 유지합니다.
 
 ## Resources
 
@@ -94,11 +150,15 @@ Same shape as Cursor local MCP `mcpServers` entry (stdio + env). Replace `cwd` a
 - `jykstore_retrieval_query.query`는 JYKStore Public Retrieval API와 동일하게 최대 2000자입니다.
 - 긴 query는 AI Agent의 retrieval intent를 전달하기 위한 용도입니다. 정확한 검색을 위해 핵심 의도와 metadataFilters를 함께 사용하는 것을 권장합니다.
 - Response size guard (default 2MB → `JYKSTORE_MCP_RESPONSE_TOO_LARGE`)
+- Chunked export source guard (default 20MB → `JYKSTORE_MCP_EXPORT_TOO_LARGE`)
 - Public API auth/visibility remain authoritative
 
 ## Out of scope (later)
 
-- Streaming/chunked large exports
-- OAuth / admin auth redesign
-- MCP prompts
+- Upstream Public API range/streaming export
+- True streaming resource response
+- OAuth / remote MCP auth
+- Multi-tenant MCP gateway
+- Per-client rate limit
+- Full MCP HTTP JSON-RPC integration test
 - External embedding providers

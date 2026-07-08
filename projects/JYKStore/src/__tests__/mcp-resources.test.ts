@@ -18,6 +18,15 @@ describe("mcp resources", () => {
     assert.equal(resourceMimeType("rag-jsonl"), "application/x-ndjson");
   });
 
+  it("parses chunk query on resource URI", () => {
+    const parsed = parseResourceUri(
+      "jykstore://packs/my-pack/rag-jsonl?offset=0&limitBytes=256000",
+    );
+    assert.equal(parsed.kind, "rag-jsonl");
+    if (parsed.kind === "global-openapi") throw new Error("unexpected");
+    assert.deepEqual(parsed.chunk, { offset: 0, limitBytes: 256000 });
+  });
+
   it("parses openapi resources", () => {
     assert.deepEqual(parseResourceUri("jykstore://openapi"), { kind: "global-openapi" });
     assert.deepEqual(parseResourceUri("jykstore://packs/p1/openapi"), {

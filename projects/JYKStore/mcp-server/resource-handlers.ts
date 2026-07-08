@@ -1,7 +1,14 @@
 import { assertPackAllowed } from "./config.js";
+import { sliceUtf8TextByBytes } from "./chunking.js";
 import { formatToolError } from "./errors.js";
 import type { JYKStoreClient } from "./jykstore-client.js";
-import { parseResourceUri, resourceMimeType, requireKnowledgePackId } from "./schemas.js";
+import {
+  parseResourceUri,
+  resourceMimeType,
+  requireKnowledgePackId,
+  type ExportChunkQuery,
+  type ResourceKind,
+} from "./schemas.js";
 
 export type ResourceReadResult = {
   contents: {
@@ -11,6 +18,67 @@ export type ResourceReadResult = {
   }[];
   isError?: boolean;
 };
+
+async function loadPackExportText(input: {
+  client: JYKStoreClient;
+  kind: Exclude<ResourceKind, "global-openapi">;
+  knowledgePackId: string;
+  useExportSourceLimit: boolean;
+}): Promise<string> {
+  const { client, kind, knowledgePackId, useExportSourceLimit } = input;
+  const getJson = useExportSourceLimit
+    ? client.getExportSourceJson.bind(client)
+    : client.getJson.bind(client);
+  const getText = useExportSourceLimit
+    ? client.getExportSourceText.bind(client)
+    : client.getText.bind(client);
+
+  switch (kind) {
+    case "package":
+      return JSON.stringify(await getJson("/api/v1/exports/package", { knowledgePackId }), null, 2);
+    case "rag-jsonl":
+      return getText("/api/v1/exports/rag-jsonl", { knowledgePackId });
+    case "graph":
+      return JSON.stringify(await getJson("/api/v1/exports/graph", { knowledgePackId }), null, 2);
+    case "openapi":
+      return JSON.stringify(await getJson("/api/v1/exports/openapi", { knowledgePackId }), null, 2);
+    case "mcp-manifest":
+      return JSON.stringify(
+        await getJson("/api/v1/exports/mcp-manifest", { knowledgePackId }),
+        null,
+        2,
+      );
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
+  }
+}
+
+function formatChunkResourceText(input: {
+  knowledgePackId: string;
+  exportType: string;
+  chunk: ExportChunkQuery;
+  sourceText: string;
+  mimeType: string;
+}): string {
+  const slice = sliceUtf8TextByBytes(input.sourceText, input.chunk.offset, input.chunk.limitBytes);
+  return JSON.stringify(
+    {
+      knowledgePackId: input.knowledgePackId,
+      exportType: input.exportType,
+      offset: input.chunk.offset,
+      limitBytes: input.chunk.limitBytes,
+      nextOffset: slice.nextOffset,
+      hasMore: slice.hasMore,
+      byteLength: slice.byteLength,
+      mimeType: input.mimeType,
+      content: slice.content,
+    },
+    null,
+    2,
+  );
+}
 
 export async function handleResourceRead(input: {
   uri: string;
@@ -36,48 +104,30 @@ export async function handleResourceRead(input: {
     const knowledgePackId = requireKnowledgePackId(parsed.knowledgePackId);
     assertPackAllowed(knowledgePackId, input.allowedPackIds);
 
-    let text: string;
-    switch (parsed.kind) {
-      case "package":
-        text = JSON.stringify(
-          await input.client.getJson("/api/v1/exports/package", { knowledgePackId }),
-          null,
-          2,
-        );
-        break;
-      case "rag-jsonl":
-        text = await input.client.getText("/api/v1/exports/rag-jsonl", { knowledgePackId });
-        break;
-      case "graph":
-        text = JSON.stringify(
-          await input.client.getJson("/api/v1/exports/graph", { knowledgePackId }),
-          null,
-          2,
-        );
-        break;
-      case "openapi":
-        text = JSON.stringify(
-          await input.client.getJson("/api/v1/exports/openapi", { knowledgePackId }),
-          null,
-          2,
-        );
-        break;
-      case "mcp-manifest":
-        text = JSON.stringify(
-          await input.client.getJson("/api/v1/exports/mcp-manifest", { knowledgePackId }),
-          null,
-          2,
-        );
-        break;
-      default:
-        text = "";
-    }
+    const chunk = "chunk" in parsed ? parsed.chunk : undefined;
+    const mimeType = resourceMimeType(parsed.kind);
+    const sourceText = await loadPackExportText({
+      client: input.client,
+      kind: parsed.kind,
+      knowledgePackId,
+      useExportSourceLimit: Boolean(chunk),
+    });
+
+    const text = chunk
+      ? formatChunkResourceText({
+          knowledgePackId,
+          exportType: parsed.kind,
+          chunk,
+          sourceText,
+          mimeType,
+        })
+      : sourceText;
 
     return {
       contents: [
         {
           uri: input.uri,
-          mimeType: resourceMimeType(parsed.kind),
+          mimeType: chunk ? "application/json" : mimeType,
           text,
         },
       ],

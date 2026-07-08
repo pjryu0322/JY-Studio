@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  parseExportChunkToolInput,
   parseGraphToolInput,
   parseMetadataFilters,
   parseRetrievalToolInput,
@@ -10,6 +11,7 @@ import { assertPackAllowed } from "../../mcp-server/config.ts";
 import { McpBridgeError } from "../../mcp-server/errors.ts";
 import { handleMcpToolCall } from "../../mcp-server/tool-handlers.ts";
 import { JYKStoreClient } from "../../mcp-server/jykstore-client.ts";
+
 
 describe("mcp tools validation", () => {
   it("retrieval input requires pack and query", () => {
@@ -113,5 +115,83 @@ describe("mcp tools validation", () => {
 
   it("assertPackAllowed helper matches policy", () => {
     assert.doesNotThrow(() => assertPackAllowed("p1", []));
+  });
+
+  it("export chunk input defaults offset and limitBytes", () => {
+    const parsed = parseExportChunkToolInput({ knowledgePackId: "pack-1" });
+    assert.equal(parsed.offset, 0);
+    assert.equal(parsed.limitBytes, 256_000);
+  });
+
+  it("rejects export chunk limitBytes above max and negative offset", () => {
+    assert.throws(
+      () =>
+        parseExportChunkToolInput({
+          knowledgePackId: "pack-1",
+          limitBytes: 1_000_001,
+        }),
+      (error: unknown) =>
+        error instanceof McpBridgeError && error.code === "JYKSTORE_MCP_INVALID_INPUT",
+    );
+    assert.throws(
+      () =>
+        parseExportChunkToolInput({
+          knowledgePackId: "pack-1",
+          offset: -1,
+        }),
+      (error: unknown) =>
+        error instanceof McpBridgeError && error.code === "JYKSTORE_MCP_INVALID_INPUT",
+    );
+  });
+
+  it("blocks chunked export for non-allowed packs before fetch", async () => {
+    const client = new JYKStoreClient({
+      baseUrl: "http://localhost:3004",
+      apiKey: "test-key",
+      fetchImpl: (async () => {
+        throw new Error("should not fetch");
+      }) as typeof fetch,
+    });
+    const result = await handleMcpToolCall({
+      name: "jykstore_export_rag_jsonl_chunk",
+      args: { knowledgePackId: "blocked", offset: 0, limitBytes: 1024 },
+      client,
+      allowedPackIds: ["allowed-only"],
+    });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0]!.text, /JYKSTORE_MCP_PACK_NOT_ALLOWED/);
+  });
+
+  it("returns rag-jsonl chunk with hasMore/nextOffset/content", async () => {
+    const source = `${"a".repeat(2000)}\n${"b".repeat(2000)}\n`;
+    const client = new JYKStoreClient({
+      baseUrl: "http://localhost:3004",
+      apiKey: "test-key",
+      maxExportSourceBytes: 20_000_000,
+      fetchImpl: (async () =>
+        new Response(source, {
+          status: 200,
+          headers: { "Content-Type": "application/x-ndjson" },
+        })) as typeof fetch,
+    });
+    const result = await handleMcpToolCall({
+      name: "jykstore_export_rag_jsonl_chunk",
+      args: { knowledgePackId: "pack-1", offset: 0, limitBytes: 1024 },
+      client,
+      allowedPackIds: [],
+    });
+    assert.equal(result.isError, undefined);
+    const payload = JSON.parse(result.content[0]!.text) as {
+      hasMore: boolean;
+      nextOffset: number;
+      byteLength: number;
+      content: string;
+      exportType: string;
+    };
+    assert.equal(payload.exportType, "rag-jsonl");
+    assert.equal(payload.hasMore, true);
+    assert.equal(payload.nextOffset, 1024);
+    assert.equal(payload.byteLength, 1024);
+    assert.equal(payload.content.length, 1024);
   });
 });

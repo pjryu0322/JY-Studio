@@ -1,4 +1,9 @@
-import { MCP_RETRIEVAL_QUERY_MAX_LENGTH } from "./schemas.js";
+import {
+  DEFAULT_EXPORT_CHUNK_LIMIT_BYTES,
+  MAX_EXPORT_CHUNK_LIMIT_BYTES,
+  MCP_RETRIEVAL_QUERY_MAX_LENGTH,
+  MIN_EXPORT_CHUNK_LIMIT_BYTES,
+} from "./schemas.js";
 
 export const MCP_TOOL_NAMES = [
   "jykstore_retrieval_query",
@@ -8,6 +13,9 @@ export const MCP_TOOL_NAMES = [
   "jykstore_export_graph",
   "jykstore_export_openapi",
   "jykstore_export_mcp_manifest",
+  "jykstore_export_package_chunk",
+  "jykstore_export_rag_jsonl_chunk",
+  "jykstore_export_graph_chunk",
 ] as const;
 
 export type McpToolName = (typeof MCP_TOOL_NAMES)[number];
@@ -30,6 +38,21 @@ const packIdProperty = {
   description: "Published or verified JYKStore knowledgePackId",
   minLength: 1,
   maxLength: 100,
+};
+
+const chunkInputProperties = {
+  knowledgePackId: packIdProperty,
+  offset: {
+    type: "integer",
+    description: "Byte offset (default 0)",
+    minimum: 0,
+  },
+  limitBytes: {
+    type: "integer",
+    description: `Max bytes per chunk (${MIN_EXPORT_CHUNK_LIMIT_BYTES}-${MAX_EXPORT_CHUNK_LIMIT_BYTES}, default ${DEFAULT_EXPORT_CHUNK_LIMIT_BYTES})`,
+    minimum: MIN_EXPORT_CHUNK_LIMIT_BYTES,
+    maximum: MAX_EXPORT_CHUNK_LIMIT_BYTES,
+  },
 };
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -149,6 +172,38 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: { knowledgePackId: packIdProperty },
+      required: ["knowledgePackId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "jykstore_export_package_chunk",
+    description:
+      "Read a byte chunk of a knowledge pack package JSON export via Public Export API.",
+    inputSchema: {
+      type: "object",
+      properties: chunkInputProperties,
+      required: ["knowledgePackId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "jykstore_export_rag_jsonl_chunk",
+    description: "Read a byte chunk of RAG JSONL export via Public Export API.",
+    inputSchema: {
+      type: "object",
+      properties: chunkInputProperties,
+      required: ["knowledgePackId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "jykstore_export_graph_chunk",
+    description:
+      "Read a byte chunk of knowledge graph JSON export via Public Export API.",
+    inputSchema: {
+      type: "object",
+      properties: chunkInputProperties,
       required: ["knowledgePackId"],
       additionalProperties: false,
     },

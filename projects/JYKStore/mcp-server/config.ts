@@ -1,4 +1,5 @@
 import { mcpError } from "./errors.js";
+import { parseAllowedOrigins } from "./cors.js";
 
 export type McpTransport = "stdio" | "http";
 
@@ -8,9 +9,14 @@ export type McpServerConfig = {
   transport: McpTransport;
   port: number;
   allowedPackIds: string[];
+  allowedOrigins: string[];
   timeoutMs: number;
   maxResponseBytes: number;
+  maxExportSourceBytes: number;
 };
+
+const DEFAULT_MAX_RESPONSE_BYTES = 2_000_000;
+const DEFAULT_MAX_EXPORT_SOURCE_BYTES = 20_000_000;
 
 function readEnv(name: string): string | undefined {
   const value = process.env[name];
@@ -34,6 +40,24 @@ export function parseAllowedPackIds(raw: string | undefined): string[] {
 export function maskApiKey(apiKey: string): string {
   if (apiKey.length <= 8) return "***";
   return `${apiKey.slice(0, 4)}…${apiKey.slice(-4)}`;
+}
+
+function parsePositiveIntEnv(
+  raw: string | undefined,
+  field: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const value = Number(raw.trim());
+  if (!Number.isInteger(value) || value < min || value > max) {
+    throw mcpError(
+      "JYKSTORE_MCP_INVALID_INPUT",
+      `${field} must be an integer between ${min} and ${max}.`,
+    );
+  }
+  return value;
 }
 
 export function loadMcpServerConfig(
@@ -85,14 +109,39 @@ export function loadMcpServerConfig(
     );
   }
 
+  const maxResponseBytes = parsePositiveIntEnv(
+    env.JYKSTORE_MCP_MAX_RESPONSE_BYTES,
+    "JYKSTORE_MCP_MAX_RESPONSE_BYTES",
+    DEFAULT_MAX_RESPONSE_BYTES,
+    100_000,
+    10_000_000,
+  );
+
+  const maxExportSourceBytes = parsePositiveIntEnv(
+    env.JYKSTORE_MCP_MAX_EXPORT_SOURCE_BYTES,
+    "JYKSTORE_MCP_MAX_EXPORT_SOURCE_BYTES",
+    DEFAULT_MAX_EXPORT_SOURCE_BYTES,
+    maxResponseBytes,
+    100_000_000,
+  );
+
+  if (maxExportSourceBytes < maxResponseBytes) {
+    throw mcpError(
+      "JYKSTORE_MCP_INVALID_INPUT",
+      "JYKSTORE_MCP_MAX_EXPORT_SOURCE_BYTES must be >= JYKSTORE_MCP_MAX_RESPONSE_BYTES.",
+    );
+  }
+
   return {
     baseUrl: baseUrl.replace(/\/+$/, ""),
     apiKey,
     transport: transportRaw,
     port,
     allowedPackIds: parseAllowedPackIds(env.JYKSTORE_MCP_ALLOWED_PACK_IDS),
+    allowedOrigins: parseAllowedOrigins(env.JYKSTORE_MCP_ALLOWED_ORIGINS),
     timeoutMs: 30_000,
-    maxResponseBytes: 2_000_000,
+    maxResponseBytes,
+    maxExportSourceBytes,
   };
 }
 
@@ -120,4 +169,4 @@ export function assertPackAllowed(
   }
 }
 
-export { readEnv };
+export { readEnv, parseAllowedOrigins };

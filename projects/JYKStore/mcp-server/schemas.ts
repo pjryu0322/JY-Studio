@@ -24,6 +24,21 @@ export type PackIdInput = {
   knowledgePackId: string;
 };
 
+export const DEFAULT_EXPORT_CHUNK_LIMIT_BYTES = 256_000;
+export const MIN_EXPORT_CHUNK_LIMIT_BYTES = 1_024;
+export const MAX_EXPORT_CHUNK_LIMIT_BYTES = 1_000_000;
+
+export type ExportChunkToolInput = {
+  knowledgePackId: string;
+  offset: number;
+  limitBytes: number;
+};
+
+export type ExportChunkQuery = {
+  offset: number;
+  limitBytes: number;
+};
+
 function asObject(value: unknown): Record<string, unknown> | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -189,6 +204,72 @@ export function parsePackIdToolInput(raw: unknown): PackIdInput {
   };
 }
 
+export function parseChunkOffset(value: unknown): number {
+  if (value === undefined || value === null) return 0;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw mcpError(
+      "JYKSTORE_MCP_INVALID_INPUT",
+      "offset must be a non-negative integer.",
+    );
+  }
+  return value;
+}
+
+export function parseChunkLimitBytes(value: unknown): number {
+  if (value === undefined || value === null) return DEFAULT_EXPORT_CHUNK_LIMIT_BYTES;
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw mcpError("JYKSTORE_MCP_INVALID_INPUT", "limitBytes must be an integer.");
+  }
+  if (value < MIN_EXPORT_CHUNK_LIMIT_BYTES || value > MAX_EXPORT_CHUNK_LIMIT_BYTES) {
+    throw mcpError(
+      "JYKSTORE_MCP_INVALID_INPUT",
+      `limitBytes must be between ${MIN_EXPORT_CHUNK_LIMIT_BYTES} and ${MAX_EXPORT_CHUNK_LIMIT_BYTES}.`,
+    );
+  }
+  return value;
+}
+
+export function parseExportChunkToolInput(raw: unknown): ExportChunkToolInput {
+  const body = asObject(raw);
+  if (!body) {
+    throw mcpError("JYKSTORE_MCP_INVALID_INPUT", "Tool arguments must be an object.");
+  }
+  return {
+    knowledgePackId: requireKnowledgePackId(body.knowledgePackId),
+    offset: parseChunkOffset(body.offset),
+    limitBytes: parseChunkLimitBytes(body.limitBytes),
+  };
+}
+
+export function parseExportChunkQuery(
+  searchParams: URLSearchParams,
+): ExportChunkQuery | undefined {
+  const hasOffset = searchParams.has("offset");
+  const hasLimit = searchParams.has("limitBytes");
+  if (!hasOffset && !hasLimit) return undefined;
+
+  const offsetRaw = searchParams.get("offset");
+  const limitRaw = searchParams.get("limitBytes");
+
+  if (offsetRaw !== null && offsetRaw !== "" && !/^\d+$/.test(offsetRaw)) {
+    throw mcpError("JYKSTORE_MCP_INVALID_INPUT", "offset must be a non-negative integer.");
+  }
+  if (limitRaw !== null && limitRaw !== "" && !/^\d+$/.test(limitRaw)) {
+    throw mcpError("JYKSTORE_MCP_INVALID_INPUT", "limitBytes must be an integer.");
+  }
+
+  const offset =
+    offsetRaw === null || offsetRaw === ""
+      ? 0
+      : parseChunkOffset(Number(offsetRaw));
+  const limitBytes =
+    limitRaw === null || limitRaw === ""
+      ? DEFAULT_EXPORT_CHUNK_LIMIT_BYTES
+      : parseChunkLimitBytes(Number(limitRaw));
+
+  return { offset, limitBytes };
+}
+
 export type ResourceKind =
   | "package"
   | "rag-jsonl"
@@ -202,27 +283,64 @@ export type ParsedResourceUri =
   | {
       kind: Exclude<ResourceKind, "global-openapi">;
       knowledgePackId: string;
+      chunk?: ExportChunkQuery;
     };
 
-const PACK_RESOURCE_RE =
-  /^jykstore:\/\/packs\/([^/]+)\/(package|rag-jsonl|graph|openapi|mcp-manifest)$/;
+const PACK_KINDS = new Set([
+  "package",
+  "rag-jsonl",
+  "graph",
+  "openapi",
+  "mcp-manifest",
+]);
 
 export function parseResourceUri(uri: string): ParsedResourceUri {
   const trimmed = uri.trim();
-  if (trimmed === "jykstore://openapi") {
-    return { kind: "global-openapi" };
-  }
-  const match = trimmed.match(PACK_RESOURCE_RE);
-  if (!match) {
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
     throw mcpError(
       "JYKSTORE_MCP_RESOURCE_NOT_FOUND",
       `Unknown resource URI: ${uri}`,
     );
   }
-  return {
-    kind: match[2] as Exclude<ResourceKind, "global-openapi">,
-    knowledgePackId: decodeURIComponent(match[1]),
-  };
+
+  if (parsed.protocol !== "jykstore:") {
+    throw mcpError(
+      "JYKSTORE_MCP_RESOURCE_NOT_FOUND",
+      `Unknown resource URI: ${uri}`,
+    );
+  }
+
+  const host = parsed.hostname;
+  const pathParts = parsed.pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+
+  if (host === "openapi" && pathParts.length === 0) {
+    return { kind: "global-openapi" };
+  }
+
+  // Node URL: jykstore://packs/{id}/rag-jsonl → hostname=packs, pathname=/{id}/rag-jsonl
+  if (host === "packs" && pathParts.length === 2) {
+    const [knowledgePackIdRaw, kindRaw] = pathParts;
+    if (!PACK_KINDS.has(kindRaw)) {
+      throw mcpError(
+        "JYKSTORE_MCP_RESOURCE_NOT_FOUND",
+        `Unknown resource URI: ${uri}`,
+      );
+    }
+    const chunk = parseExportChunkQuery(parsed.searchParams);
+    return {
+      kind: kindRaw as Exclude<ResourceKind, "global-openapi">,
+      knowledgePackId: decodeURIComponent(knowledgePackIdRaw),
+      ...(chunk ? { chunk } : {}),
+    };
+  }
+
+  throw mcpError(
+    "JYKSTORE_MCP_RESOURCE_NOT_FOUND",
+    `Unknown resource URI: ${uri}`,
+  );
 }
 
 export function resourceMimeType(kind: ResourceKind): string {

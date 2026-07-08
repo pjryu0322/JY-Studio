@@ -1,10 +1,14 @@
 import { assertPackAllowed } from "./config.js";
+import { sliceUtf8TextByBytes } from "./chunking.js";
 import { formatToolError, mcpError } from "./errors.js";
 import type { JYKStoreClient } from "./jykstore-client.js";
 import {
+  parseExportChunkToolInput,
   parseGraphToolInput,
   parsePackIdToolInput,
   parseRetrievalToolInput,
+  resourceMimeType,
+  type ExportChunkToolInput,
 } from "./schemas.js";
 import type { McpToolName } from "./tool-definitions.js";
 
@@ -13,6 +17,76 @@ function textResult(payload: unknown) {
   return {
     content: [{ type: "text" as const, text }],
   };
+}
+
+type ChunkExportType = "package" | "rag-jsonl" | "graph";
+
+async function fetchExportSourceText(input: {
+  client: JYKStoreClient;
+  knowledgePackId: string;
+  exportType: ChunkExportType;
+}): Promise<{ text: string; mimeType: string }> {
+  const { client, knowledgePackId, exportType } = input;
+  switch (exportType) {
+    case "package": {
+      const json = await client.getExportSourceJson("/api/v1/exports/package", {
+        knowledgePackId,
+      });
+      return {
+        text: JSON.stringify(json, null, 2),
+        mimeType: resourceMimeType("package"),
+      };
+    }
+    case "rag-jsonl": {
+      const text = await client.getExportSourceText("/api/v1/exports/rag-jsonl", {
+        knowledgePackId,
+      });
+      return { text, mimeType: resourceMimeType("rag-jsonl") };
+    }
+    case "graph": {
+      const json = await client.getExportSourceJson("/api/v1/exports/graph", {
+        knowledgePackId,
+      });
+      return {
+        text: JSON.stringify(json, null, 2),
+        mimeType: resourceMimeType("graph"),
+      };
+    }
+    default: {
+      const _exhaustive: never = exportType;
+      throw mcpError("JYKSTORE_MCP_INTERNAL_ERROR", `Unhandled export type: ${_exhaustive}`);
+    }
+  }
+}
+
+export async function handleChunkedExport(input: {
+  client: JYKStoreClient;
+  allowedPackIds: string[];
+  args: unknown;
+  exportType: ChunkExportType;
+}): Promise<{ content: { type: "text"; text: string }[]; isError?: boolean }> {
+  const parsed: ExportChunkToolInput = parseExportChunkToolInput(input.args);
+  assertPackAllowed(parsed.knowledgePackId, input.allowedPackIds);
+
+  const source = await fetchExportSourceText({
+    client: input.client,
+    knowledgePackId: parsed.knowledgePackId,
+    exportType: input.exportType,
+  });
+
+  const slice = sliceUtf8TextByBytes(source.text, parsed.offset, parsed.limitBytes);
+
+  return textResult({
+    knowledgePackId: parsed.knowledgePackId,
+    exportType: input.exportType,
+    offset: parsed.offset,
+    limitBytes: parsed.limitBytes,
+    nextOffset: slice.nextOffset,
+    hasMore: slice.hasMore,
+    byteLength: slice.byteLength,
+    mimeType: source.mimeType,
+    content: slice.content,
+  });
 }
 
 export async function handleMcpToolCall(input: {
@@ -93,6 +167,27 @@ export async function handleMcpToolCall(input: {
         });
         return textResult(result);
       }
+      case "jykstore_export_package_chunk":
+        return await handleChunkedExport({
+          client: input.client,
+          allowedPackIds: input.allowedPackIds,
+          args: input.args,
+          exportType: "package",
+        });
+      case "jykstore_export_rag_jsonl_chunk":
+        return await handleChunkedExport({
+          client: input.client,
+          allowedPackIds: input.allowedPackIds,
+          args: input.args,
+          exportType: "rag-jsonl",
+        });
+      case "jykstore_export_graph_chunk":
+        return await handleChunkedExport({
+          client: input.client,
+          allowedPackIds: input.allowedPackIds,
+          args: input.args,
+          exportType: "graph",
+        });
       default:
         throw mcpError(
           "JYKSTORE_MCP_TOOL_NOT_FOUND",

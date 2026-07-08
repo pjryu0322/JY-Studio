@@ -5,6 +5,7 @@ export type JYKStoreClientConfig = {
   apiKey: string;
   timeoutMs?: number;
   maxResponseBytes?: number;
+  maxExportSourceBytes?: number;
   allowedPackIds?: string[];
   fetchImpl?: typeof fetch;
 };
@@ -36,13 +37,19 @@ export function buildQueryString(
   return encoded ? `?${encoded}` : "";
 }
 
-export function assertResponseSize(byteLength: number, maxResponseBytes: number): void {
+export function assertResponseSize(
+  byteLength: number,
+  maxResponseBytes: number,
+  options?: { code?: string; hint?: string },
+): void {
   if (byteLength > maxResponseBytes) {
     throw mcpError(
-      "JYKSTORE_MCP_RESPONSE_TOO_LARGE",
-      `Response size ${byteLength} bytes exceeds maxResponseBytes ${maxResponseBytes}.`,
+      options?.code ?? "JYKSTORE_MCP_RESPONSE_TOO_LARGE",
+      `Response size ${byteLength} bytes exceeds limit ${maxResponseBytes}.`,
       {
-        hint: "Reduce topK/limit, use a smaller pack, or request a narrower export.",
+        hint:
+          options?.hint ??
+          "Reduce topK/limit, use a smaller pack, request a narrower export, or use chunked export tools.",
       },
     );
   }
@@ -91,6 +98,7 @@ export class JYKStoreClient {
   readonly apiKey: string;
   readonly timeoutMs: number;
   readonly maxResponseBytes: number;
+  readonly maxExportSourceBytes: number;
   readonly allowedPackIds: string[];
   private readonly fetchImpl: typeof fetch;
 
@@ -99,6 +107,7 @@ export class JYKStoreClient {
     this.apiKey = config.apiKey;
     this.timeoutMs = config.timeoutMs ?? 30_000;
     this.maxResponseBytes = config.maxResponseBytes ?? 2_000_000;
+    this.maxExportSourceBytes = config.maxExportSourceBytes ?? 20_000_000;
     this.allowedPackIds = config.allowedPackIds ?? [];
     this.fetchImpl = config.fetchImpl ?? fetch;
   }
@@ -136,10 +145,50 @@ export class JYKStoreClient {
     });
   }
 
-  private async request(path: string, init: RequestInit): Promise<string> {
+  /** Fetch full export text with the larger export-source byte limit (for chunking). */
+  async getExportSourceText(
+    path: string,
+    query?: Record<string, string | number | boolean | undefined>,
+  ): Promise<string> {
+    return this.request(
+      `${path}${buildQueryString(query)}`,
+      {
+        method: "GET",
+        headers: buildAuthHeaders(
+          this.apiKey,
+          "application/x-ndjson, text/plain, application/json",
+        ),
+      },
+      {
+        maxBytes: this.maxExportSourceBytes,
+        tooLargeCode: "JYKSTORE_MCP_EXPORT_TOO_LARGE",
+        tooLargeHint:
+          "Export exceeds JYKSTORE_MCP_MAX_EXPORT_SOURCE_BYTES. Use a smaller pack or raise the limit carefully.",
+      },
+    );
+  }
+
+  async getExportSourceJson<T>(
+    path: string,
+    query?: Record<string, string | number | boolean | undefined>,
+  ): Promise<T> {
+    const text = await this.getExportSourceText(path, query);
+    return JSON.parse(text) as T;
+  }
+
+  private async request(
+    path: string,
+    init: RequestInit,
+    sizeGuard?: {
+      maxBytes: number;
+      tooLargeCode?: string;
+      tooLargeHint?: string;
+    },
+  ): Promise<string> {
     const url = `${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const maxBytes = sizeGuard?.maxBytes ?? this.maxResponseBytes;
 
     try {
       const response = await this.fetchImpl(url, {
@@ -148,7 +197,10 @@ export class JYKStoreClient {
       });
       const bodyText = await response.text();
       const byteLength = Buffer.byteLength(bodyText, "utf8");
-      assertResponseSize(byteLength, this.maxResponseBytes);
+      assertResponseSize(byteLength, maxBytes, {
+        code: sizeGuard?.tooLargeCode,
+        hint: sizeGuard?.tooLargeHint,
+      });
 
       if (!response.ok) {
         const normalized = normalizeHttpError({ status: response.status, bodyText });
