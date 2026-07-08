@@ -3,8 +3,15 @@ import {
   toAdminReviewDetail,
   toAdminReviewListItem,
   enrichAdminReviewDetailWithValidationReports,
+  applyStructureQualityToAdminDetail,
   type AdminReviewDetailDto,
 } from "@/lib/admin-review-dto";
+import {
+  getLatestKnowledgeQualityReport,
+  getLatestStructureCoverageReport,
+  evaluatePackStructureQuality,
+} from "@/lib/structure-quality/structure-quality-evaluate-service";
+import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
 import {
   validateAllSourceDocumentsForPack,
   validateAndPersistSourceDocument,
@@ -67,7 +74,23 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
   const detail = toAdminReviewDetail(pack);
   const docIds = detail.versions.flatMap((v) => v.sourceDocuments.map((d) => d.id));
   const reports = await loadLatestReportsByDocumentIds(docIds);
-  return enrichAdminReviewDetailWithValidationReports(detail, reports);
+  const withValidation = enrichAdminReviewDetailWithValidationReports(detail, reports);
+  const [structureCoverage, knowledgeQuality] = await Promise.all([
+    getLatestStructureCoverageReport(packId),
+    getLatestKnowledgeQualityReport(packId),
+  ]);
+  const structureQuality: StructureQualitySummaryDto | null =
+    structureCoverage || knowledgeQuality
+      ? {
+          structureTemplateKey:
+            pack.structureTemplateKey ?? structureCoverage?.templateKey ?? "",
+          structureTemplateName:
+            structureCoverage?.templateName ?? pack.structureTemplateKey ?? "—",
+          structureCoverage,
+          knowledgeQuality,
+        }
+      : null;
+  return applyStructureQualityToAdminDetail(withValidation, structureQuality);
 }
 
 export async function validateAdminPackSourceDocuments(input: {
@@ -103,6 +126,32 @@ export async function validateAdminPackSourceDocuments(input: {
   return { detail: detail! };
 }
 
+export async function evaluateAdminPackStructureQuality(input: {
+  packId: string;
+  reviewerClientId?: string;
+}) {
+  const packId = input.packId.trim();
+  const pack = await prisma.knowledgePack.findUnique({ where: { packId } });
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  const result = await evaluatePackStructureQuality({
+    packId,
+    actorClientId: input.reviewerClientId,
+  });
+
+  if ("error" in result) {
+    if (result.error === "NOT_FOUND") {
+      return { error: "NOT_FOUND" as const };
+    }
+    return { error: "INCOMPLETE" as const, message: "버전이 없습니다." };
+  }
+
+  const detail = await getAdminReviewDetail(packId);
+  return { detail: detail!, evaluation: result };
+}
+
 function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null {
   if (!detail.readiness.canApprove) {
     if (detail.pack.status !== "REVIEWING") {
@@ -113,6 +162,9 @@ function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null 
     );
     if (sourceBlock) {
       return sourceBlock;
+    }
+    if (detail.readiness.structureQualityMessage) {
+      return detail.readiness.structureQualityMessage;
     }
     return "승인에 필요한 버전·원천 문서·설명을 확인해 주세요.";
   }

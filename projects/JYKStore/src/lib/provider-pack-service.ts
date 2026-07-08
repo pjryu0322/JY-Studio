@@ -22,11 +22,21 @@ import {
   meetsSourceValidationSubmitGate,
 } from "@/lib/source-validation-readiness";
 import {
+  getLatestKnowledgeQualityReport,
+  getLatestStructureCoverageReport,
+  evaluatePackStructureQuality,
+} from "@/lib/structure-quality/structure-quality-evaluate-service";
+import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
+import {
+  getStructureQualityBlockingMessage,
+  meetsStructureQualityGate,
+} from "@/lib/structure-quality/structure-quality-readiness";
+import { validateSourceDocumentContent } from "@/lib/source-validation/source-validation-runner";
+import {
   loadLatestReportsByDocumentIds,
   persistSourceValidationResult,
   validateAndPersistSourceDocument,
 } from "@/lib/source-validation/source-validation-report-service";
-import { validateSourceDocumentContent } from "@/lib/source-validation/source-validation-runner";
 import {
   toProviderPackDetail,
   toProviderPackListItem,
@@ -279,7 +289,25 @@ async function mapProviderPackDetailWithValidation(
       })),
     };
   }
-  return toProviderPackDetail(pack, overlays);
+  const [structureCoverage, knowledgeQuality] = await Promise.all([
+    getLatestStructureCoverageReport(pack.packId),
+    getLatestKnowledgeQualityReport(pack.packId),
+  ]);
+  const structureQuality: StructureQualitySummaryDto | null =
+    structureCoverage || knowledgeQuality
+      ? {
+          structureTemplateKey: pack.structureTemplateKey ?? structureCoverage?.templateKey ?? "",
+          structureTemplateName:
+            structureCoverage?.templateName ?? pack.structureTemplateKey ?? "—",
+          structureCoverage,
+          knowledgeQuality,
+        }
+      : null;
+
+  return toProviderPackDetail(pack, overlays, {
+    structureTemplateKey: pack.structureTemplateKey,
+    structureQuality,
+  });
 }
 
 export async function updateProviderPackForClient(
@@ -755,6 +783,22 @@ export async function submitProviderPackForReview(clientId: string, packId: stri
     };
   }
 
+  const [structureCoverage, knowledgeQuality] = await Promise.all([
+    getLatestStructureCoverageReport(packId),
+    getLatestKnowledgeQualityReport(packId),
+  ]);
+  const structureGate = {
+    structureCoverageStatus: structureCoverage?.status ?? null,
+    knowledgeQualityStatus: knowledgeQuality?.status ?? null,
+  };
+  if (!meetsStructureQualityGate(structureGate)) {
+    const message = getStructureQualityBlockingMessage(structureGate);
+    return {
+      error: "INCOMPLETE" as const,
+      message: message ?? "구조/품질 점검을 먼저 실행해 주세요.",
+    };
+  }
+
   const onlyEtc = allDocs.every((d) => d.sourceType === "ETC");
   const submitNote = onlyEtc
     ? "모든 원천 문서 유형이 '기타(ETC)'입니다. 자료 유형을 구체적으로 분류하면 검수 품질이 향상됩니다."
@@ -836,4 +880,41 @@ export async function validateProviderSourceDocument(
 
   const detail = await getProviderPackForClient(clientId, packId);
   return { pack: detail!, report: validation.report };
+}
+
+export async function evaluateProviderPackStructureQuality(clientId: string, packId: string) {
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_EDITABLE" as const };
+  }
+
+  const result = await evaluatePackStructureQuality({
+    packId,
+    actorClientId: clientId,
+  });
+
+  if ("error" in result) {
+    if (result.error === "NOT_FOUND") {
+      return { error: "NOT_FOUND" as const };
+    }
+    return { error: "INCOMPLETE" as const, message: "버전이 없습니다." };
+  }
+
+  const detail = await getProviderPackForClient(clientId, packId);
+  return { pack: detail!, evaluation: result };
 }

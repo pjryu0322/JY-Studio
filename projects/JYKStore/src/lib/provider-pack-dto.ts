@@ -1,4 +1,5 @@
 import type { KnowledgePack, KnowledgePackVersion, PackStatus, SourceDocument } from "@prisma/client";
+import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
 
 export type ProviderPackListItemDto = {
   packId: string;
@@ -88,6 +89,8 @@ export type ProviderPackDetailDto = {
   icon: string;
   pricing: string;
   providerName: string;
+  structureTemplateKey: string | null;
+  structureQuality: StructureQualitySummaryDto | null;
   versions: ProviderPackVersionDto[];
   updatedAt: string;
 };
@@ -129,6 +132,10 @@ export function toProviderPackDetail(
     versions: (KnowledgePackVersion & { sourceDocuments: SourceDocument[] })[];
   },
   validationOverlays?: Record<string, ProviderSourceDocumentValidationOverlay>,
+  options?: {
+    structureTemplateKey?: string | null;
+    structureQuality?: StructureQualitySummaryDto | null;
+  },
 ): ProviderPackDetailDto {
   return {
     packId: pack.packId,
@@ -143,6 +150,8 @@ export function toProviderPackDetail(
     icon: pack.icon,
     pricing: pack.pricing,
     providerName: pack.providerName,
+    structureTemplateKey: options?.structureTemplateKey ?? pack.structureTemplateKey ?? null,
+    structureQuality: options?.structureQuality ?? null,
     versions: pack.versions.map((v) => mapVersion(v, validationOverlays)),
     updatedAt: pack.updatedAt.toISOString(),
   };

@@ -1,9 +1,14 @@
 import type { KnowledgePack, KnowledgePackVersion, PackReview, SourceDocument } from "@prisma/client";
 import type { SourceValidationReportDto } from "@/lib/source-validation-dto";
+import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
 import {
   canApproveReviewReadiness,
   countSourceValidationFromStatuses,
 } from "@/lib/source-validation-readiness";
+import {
+  getStructureQualityBlockingMessage,
+  meetsStructureQualityGate,
+} from "@/lib/structure-quality/structure-quality-readiness";
 
 export type AdminReviewListItemDto = {
   packId: string;
@@ -90,7 +95,11 @@ export type AdminReviewDetailDto = {
       notCheckedCount: number;
     };
     sourceTypeCoverage: Record<string, number>;
+    structureCoverageStatus: string | null;
+    knowledgeQualityStatus: string | null;
+    structureQualityMessage: string | null;
   };
+  structureQuality: StructureQualitySummaryDto | null;
 };
 
 const CONTENT_PREVIEW_MAX = 800;
@@ -141,6 +150,9 @@ function computeReadiness(pack: PackWithDetail) {
     pipelineStatus: pack.pipelineStatus,
     sourceValidation,
     sourceTypeCoverage,
+    structureCoverageStatus: null,
+    knowledgeQualityStatus: null,
+    structureQualityMessage: null,
   };
 }
 
@@ -232,6 +244,31 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
         }
       : null,
     readiness,
+    structureQuality: null,
+  };
+}
+
+export function applyStructureQualityToAdminDetail(
+  detail: AdminReviewDetailDto,
+  structureQuality: StructureQualitySummaryDto | null,
+): AdminReviewDetailDto {
+  const snapshot = {
+    structureCoverageStatus: structureQuality?.structureCoverage?.status ?? null,
+    knowledgeQualityStatus: structureQuality?.knowledgeQuality?.status ?? null,
+  };
+  const gateOk = meetsStructureQualityGate(snapshot);
+  const structureQualityMessage = getStructureQualityBlockingMessage(snapshot);
+
+  return {
+    ...detail,
+    structureQuality,
+    readiness: {
+      ...detail.readiness,
+      canApprove: detail.readiness.canApprove && gateOk,
+      structureCoverageStatus: snapshot.structureCoverageStatus,
+      knowledgeQualityStatus: snapshot.knowledgeQualityStatus,
+      structureQualityMessage,
+    },
   };
 }
 

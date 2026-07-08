@@ -104,8 +104,8 @@ export function AdminReviewDecisionPanel({
 
       {detail.readiness.sourceValidation.notCheckedCount > 0 ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
-          검증되지 않은(NOT_CHECKED) 원천 문서가 있어 승인할 수 없습니다. P17에서 legacy 문서
-          재검증 흐름이 추가될 예정입니다.
+          검증되지 않은(NOT_CHECKED) 원천 문서가 있어 승인할 수 없습니다. 원천 문서 재검증을 실행해
+          주세요.
         </div>
       ) : null}
 
@@ -117,8 +117,22 @@ export function AdminReviewDecisionPanel({
         </div>
       ) : null}
 
+      {detail.readiness.structureQualityMessage ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+          {detail.readiness.structureQualityMessage}
+        </div>
+      ) : null}
+
+      {(detail.readiness.structureCoverageStatus === "WARNING" ||
+        detail.readiness.knowledgeQualityStatus === "WARNING") &&
+      detail.readiness.canApprove ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+          구조 커버리지 또는 지식 품질이 WARNING입니다. 승인은 가능하지만 보완을 권장합니다.
+        </div>
+      ) : null}
+
       <p className="text-xs leading-relaxed text-store-muted">
-        구조화·청킹·검색 품질 게이트는 이후 단계(P17~P21)에서 승인 조건으로 추가될 예정입니다.
+        청킹·검색 품질 게이트는 P19·P20에서, 릴리스 gate 강화는 P21에서 추가될 예정입니다.
       </p>
 
       {detail.latestReview?.rejectionReason ? (

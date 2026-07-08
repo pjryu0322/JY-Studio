@@ -91,3 +91,19 @@ export async function validateAdminPackSourcesApi(
   }
   return (await response.json()) as AdminReviewDetailResponse;
 }
+
+export async function evaluateAdminStructureQualityApi(
+  packId: string,
+): Promise<AdminReviewDetailResponse> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/structure-quality/evaluate`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminReviewDetailResponse;
+}

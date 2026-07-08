@@ -8,7 +8,8 @@ import { AdminReviewSourceDocuments } from "@/components/AdminReviewSourceDocume
 import { ExportPanel } from "@/components/ExportPanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
-import { fetchAdminReviewDetail } from "@/lib/admin-review-api";
+import { fetchAdminReviewDetail, evaluateAdminStructureQualityApi } from "@/lib/admin-review-api";
+import { StructureQualityPanel } from "@/components/StructureQualityPanel";
 
 export function AdminReviewDetailPageClient({ packId }: { readonly packId: string }) {
   const [loading, setLoading] = useState(true);
@@ -46,6 +47,15 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
       ) : null}
       <AdminReviewPackSummary detail={detail} />
+      <StructureQualityPanel
+        packId={packId}
+        structureQuality={detail.structureQuality}
+        editable
+        onEvaluate={async () => {
+          const data = await evaluateAdminStructureQualityApi(packId);
+          setDetail(data.detail);
+        }}
+      />
       <AdminReviewSourceDocuments packId={packId} versions={detail.versions} onValidated={setDetail} />
       <AdminChunkManager packId={packId} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

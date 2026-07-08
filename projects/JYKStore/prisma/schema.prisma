@@ -225,6 +225,7 @@ model KnowledgePack {
   isVerified       Boolean      @default(false)
   pipelineStatus    PipelineStatus @default(SOURCE_REGISTERING)
   pipelineUpdatedAt DateTime?
+  structureTemplateKey String?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   publishedAt      DateTime?
@@ -240,6 +241,8 @@ model KnowledgePack {
   pipelineRuns     PipelineRun[]
   pipelineStepLogs PipelineStepLog[]
   sourceValidationReports SourceValidationReport[]
+  structureCoverageReports StructureCoverageReport[]
+  knowledgeQualityReports  KnowledgeQualityReport[]
 
   @@index([status])
   @@index([categoryId])
@@ -288,6 +291,8 @@ model KnowledgePackVersion {
   graphNodes      KnowledgeGraphNode[]
   graphEdges      KnowledgeGraphEdge[]
   sourceValidationReports SourceValidationReport[]
+  structureCoverageReports StructureCoverageReport[]
+  knowledgeQualityReports  KnowledgeQualityReport[]
 
   @@unique([packId, version])
   @@index([packId])
@@ -533,6 +538,136 @@ model SourceValidationIssue {
   createdAt DateTime @default(now())
 
   report SourceValidationReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([severity])
+  @@index([code])
+}
+
+model KnowledgeStructureTemplate {
+  id          String   @id @default(cuid())
+  templateKey String   @unique
+  name        String
+  description String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sections KnowledgeStructureSection[]
+
+  @@index([templateKey])
+  @@index([isActive])
+}
+
+model KnowledgeStructureSection {
+  id          String   @id @default(cuid())
+  templateId  String
+  sectionKey  String
+  title       String
+  description String
+  required    Boolean  @default(true)
+  weight      Int      @default(10)
+  sourceTypes String[]
+  keywords    String[]
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  template KnowledgeStructureTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, sectionKey])
+  @@index([templateId])
+  @@index([required])
+}
+
+model StructureCoverageReport {
+  id                   String   @id @default(cuid())
+  packId               String
+  versionId            String
+  templateKey          String
+  status               String
+  coverageScore        Int      @default(0)
+  requiredSectionCount Int      @default(0)
+  coveredRequiredCount Int      @default(0)
+  missingRequiredCount Int      @default(0)
+  optionalSectionCount Int      @default(0)
+  coveredOptionalCount Int      @default(0)
+  summary              String
+  checkedBy            String   @default("SYSTEM_RULE")
+  checkedAt            DateTime @default(now())
+  createdAt            DateTime @default(now())
+
+  pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  items   StructureCoverageItem[]
+
+  @@index([packId])
+  @@index([versionId])
+  @@index([templateKey])
+  @@index([status])
+  @@index([checkedAt])
+}
+
+model StructureCoverageItem {
+  id             String   @id @default(cuid())
+  reportId       String
+  sectionKey     String
+  title          String
+  required       Boolean
+  covered        Boolean
+  score          Int      @default(0)
+  matchedDocIds  String[]
+  matchedSignals String[]
+  message        String
+  createdAt      DateTime @default(now())
+
+  report StructureCoverageReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([sectionKey])
+  @@index([covered])
+  @@index([required])
+}
+
+model KnowledgeQualityReport {
+  id                 String   @id @default(cuid())
+  packId             String
+  versionId          String
+  status             String
+  totalScore         Int      @default(0)
+  completenessScore  Int      @default(0)
+  consistencyScore   Int      @default(0)
+  sourceQualityScore Int      @default(0)
+  securityScore      Int      @default(0)
+  freshnessScore     Int      @default(0)
+  usabilityScore     Int      @default(0)
+  blockingIssueCount Int      @default(0)
+  warningIssueCount  Int      @default(0)
+  summary            String
+  checkedBy          String   @default("SYSTEM_RULE")
+  checkedAt          DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  issues  KnowledgeQualityIssue[]
+
+  @@index([packId])
+  @@index([versionId])
+  @@index([status])
+  @@index([checkedAt])
+}
+
+model KnowledgeQualityIssue {
+  id        String   @id @default(cuid())
+  reportId  String
+  severity  String
+  code      String
+  message   String
+  field     String?
+  hint      String?
+  createdAt DateTime @default(now())
+
+  report KnowledgeQualityReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
   @@index([reportId])
   @@index([severity])

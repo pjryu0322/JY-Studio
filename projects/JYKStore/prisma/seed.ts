@@ -4,6 +4,7 @@ import {
   PrismaClient,
   ProviderType,
 } from "@prisma/client";
+import { ensureStructureTemplatesSeeded } from "../src/lib/structure-quality/structure-template-service";
 import { mockCategories } from "../src/data/mock-categories";
 import { mockPacks } from "../src/data/mock-packs";
 import type { KnowledgePack, KnowledgePackStatus } from "../src/types/pack";
@@ -218,6 +219,9 @@ async function main() {
     await seedPack(pack);
     console.log(`  ✓ pack ${pack.packId}`);
   }
+
+  await ensureStructureTemplatesSeeded();
+  console.log("  ✓ structure templates");
 
   console.log("Seed complete.");
 }

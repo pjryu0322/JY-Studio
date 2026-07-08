@@ -576,6 +576,17 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - **전체 재검증 pipeline**: pack 단위 1회 `PipelineRun`만 기록(문서별 `recordPipeline: false`), summary에 total/pass/warning/fail 집계.
 - **checksum duplicate 테스트** 및 **재검증 버튼** 모바일 `min-h-[44px]` 보정.
 
+### P18 — Structure Coverage & Knowledge Quality
+
+- **KnowledgeStructureTemplate / Section**: `AUTH_INTEGRATION`, `GENERIC_PRODUCT` 기본 템플릿(seed/ensure).
+- **StructureCoverageReport / Item**, **KnowledgeQualityReport / Issue**: deterministic 평가 결과 저장.
+- **구조 커버리지**: sourceType·키워드 매칭, FAIL/NOT_CHECKED 원천 제외, WARNING signal 표시.
+- **지식 품질**: 완전성·일관성·원천·보안·신선도·활용 점수(규칙 기반, LLM 없음).
+- **Provider/Admin UI**: 구조/품질 점검 패널, 재평가 API.
+- **Gate**: 최신 structure/knowledge report 없거나 FAIL이면 제출·승인 차단, WARNING 허용.
+- **Pipeline**: pack당 1회 `STRUCTURE_QUALITY_EVALUATE`, `STRUCTURE_VALIDATING` + `KNOWLEDGE_CHECKING` step.
+- P19 Chunk Quality, P20 Retrieval Evaluation, P21 Release Gate는 후속 단계.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
@@ -588,5 +599,5 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 
 ## 다음 단계
 
-1. Phase P18: Structure Coverage & Knowledge Quality.
+1. Phase P19: Chunk Quality Evaluation.
 2. Phase P22: MCP Server Bridge(runtime) — 현재는 MCP-ready manifest만 제공합니다.
