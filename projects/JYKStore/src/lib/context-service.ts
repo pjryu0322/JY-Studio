@@ -5,6 +5,10 @@ import type { PackContextResponseDto, RankedContextChunk } from "@/lib/context-d
 import { prisma } from "@/lib/prisma";
 import { tokenizeSearchQuery } from "@/lib/search-utils";
 
+export type ContextServiceDeps = {
+  prismaClient?: typeof prisma;
+};
+
 const publishedStatuses = [PackStatus.PUBLISHED, PackStatus.VERIFIED] as const;
 
 const DEFAULT_INSTRUCTIONS = [
@@ -13,14 +17,18 @@ const DEFAULT_INSTRUCTIONS = [
   "오류코드는 코드와 대응 방법을 함께 설명합니다.",
 ];
 
-export async function getPackContext(input: {
-  packId: string;
-  query?: string;
-  limit?: number;
-  includeMetadata?: boolean;
-  requestId: string;
-}): Promise<PackContextResponseDto | null> {
-  const pack = await prisma.knowledgePack.findFirst({
+export async function getPackContext(
+  input: {
+    packId: string;
+    query?: string;
+    limit?: number;
+    includeMetadata?: boolean;
+    requestId: string;
+  },
+  deps: ContextServiceDeps = {},
+): Promise<PackContextResponseDto | null> {
+  const db = deps.prismaClient ?? prisma;
+  const pack = await db.knowledgePack.findFirst({
     where: {
       packId: input.packId,
       status: { in: [...publishedStatuses] },
@@ -44,7 +52,7 @@ export async function getPackContext(input: {
   const includeMetadata = input.includeMetadata ?? true;
   const tokens = tokenizeSearchQuery(searchQuery);
 
-  const candidates = await prisma.knowledgeChunk.findMany({
+  const candidates = await db.knowledgeChunk.findMany({
     where: {
       versionId: version.id,
       isActive: true,

@@ -81,6 +81,20 @@ node --import tsx --test src/__tests__/github-auto-collect-e2e.test.ts
 
 실제 `api.github.com` 호출 없음 — mock fixture만 사용.
 
+## 자동 route smoke 테스트
+
+- `GET /api/v1/packs/[packId]/context`
+- `POST /api/v1/packs/[packId]/context/query`
+- active `AUTO_KNOWLEDGE_UNIT` 노출
+- inactive `AUTO_KNOWLEDGE_UNIT_DRAFT` 미노출
+- `SourceDocument.content` 미노출
+- response shape 유지
+
+```bash
+cd projects/JYKStore
+node --import tsx --test src/__tests__/context-public-api-route-smoke.test.ts
+```
+
 ## 실패 시 로그
 
 - `scope=provider-route` / `admin-route` / `github-*` safe route error
