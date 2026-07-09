@@ -1,11 +1,65 @@
-import type { GitHubRepositoryDiscoveryInput } from "./github-auto-collect-types";
-import { GitHubDiscoveryError } from "./github-auto-collect-types";
+import type {
+  GitHubCrawlMode,
+  GitHubRepositoryDiscoveryInput,
+  GitHubSourceCodeAnalysisMode,
+} from "./github-auto-collect-types";
+import { DEFAULT_GITHUB_DISCOVERY_OPTIONS, GitHubDiscoveryError } from "./github-auto-collect-types";
 
 export const GITHUB_DISCOVERY_LIMITS = {
   maxFilesToAnalyze: { min: 100, max: 10000, default: 5000 },
   maxCandidateFiles: { min: 10, max: 300, default: 100 },
   maxSelectedPaths: 50,
 } as const;
+
+const ALLOWED_CRAWL_MODES = new Set<GitHubCrawlMode>([
+  "DOCS_ONLY",
+  "DOCS_AND_EXAMPLES",
+  "FULL_REPO_SCAN",
+]);
+
+const ALLOWED_SOURCE_CODE_ANALYSIS_MODES = new Set<GitHubSourceCodeAnalysisMode>([
+  "NONE",
+  "METADATA_ONLY",
+  "ENTRYPOINTS_ONLY",
+  "FULL_SRC",
+  "SELECTED_PATHS",
+]);
+
+const CRAWL_MODE_LABELS = [...ALLOWED_CRAWL_MODES].join(", ");
+const SOURCE_CODE_ANALYSIS_LABELS = [...ALLOWED_SOURCE_CODE_ANALYSIS_MODES].join(", ");
+
+export function normalizeCrawlMode(value: unknown): GitHubCrawlMode {
+  if (value === undefined) {
+    return DEFAULT_GITHUB_DISCOVERY_OPTIONS.crawlMode;
+  }
+  if (typeof value !== "string" || !ALLOWED_CRAWL_MODES.has(value as GitHubCrawlMode)) {
+    throw new GitHubDiscoveryError(
+      "INVALID_DISCOVERY_OPTIONS",
+      `crawlMode가 올바르지 않습니다. 허용값: ${CRAWL_MODE_LABELS}`,
+      400,
+    );
+  }
+  return value as GitHubCrawlMode;
+}
+
+export function normalizeSourceCodeAnalysis(
+  value: unknown,
+): GitHubSourceCodeAnalysisMode {
+  if (value === undefined) {
+    return DEFAULT_GITHUB_DISCOVERY_OPTIONS.sourceCodeAnalysis;
+  }
+  if (
+    typeof value !== "string" ||
+    !ALLOWED_SOURCE_CODE_ANALYSIS_MODES.has(value as GitHubSourceCodeAnalysisMode)
+  ) {
+    throw new GitHubDiscoveryError(
+      "INVALID_DISCOVERY_OPTIONS",
+      `sourceCodeAnalysis가 올바르지 않습니다. 허용값: ${SOURCE_CODE_ANALYSIS_LABELS}`,
+      400,
+    );
+  }
+  return value as GitHubSourceCodeAnalysisMode;
+}
 
 export type NormalizedDiscoveryOptions = {
   crawlMode: NonNullable<GitHubRepositoryDiscoveryInput["crawlMode"]>;
@@ -83,8 +137,8 @@ export function normalizeDiscoveryOptions(
   const selectedPaths = normalizeSelectedPaths(input.selectedPaths, warnings);
 
   return {
-    crawlMode: input.crawlMode ?? "FULL_REPO_SCAN",
-    sourceCodeAnalysis: input.sourceCodeAnalysis ?? "NONE",
+    crawlMode: normalizeCrawlMode(input.crawlMode),
+    sourceCodeAnalysis: normalizeSourceCodeAnalysis(input.sourceCodeAnalysis),
     maxFilesToAnalyze: clampInt(
       input.maxFilesToAnalyze,
       GITHUB_DISCOVERY_LIMITS.maxFilesToAnalyze,

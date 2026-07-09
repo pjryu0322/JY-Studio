@@ -14,6 +14,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   GITHUB_RATE_LIMITED: "GitHub API rate limit에 도달했습니다.",
   GITHUB_API_ERROR: "GitHub API 요청에 실패했습니다.",
   INVALID_SELECTED_PATHS: "selectedPaths가 올바르지 않습니다.",
+  INVALID_DISCOVERY_OPTIONS: "GitHub Repository 분석 옵션이 올바르지 않습니다.",
 };
 
 export async function POST(request: NextRequest) {

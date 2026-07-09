@@ -1,12 +1,9 @@
-import {
-  DEFAULT_GITHUB_DISCOVERY_OPTIONS,
-  GitHubDiscoveryError,
-} from "./github-auto-collect-types";
 import type {
   GitHubRepositoryDiscoveryInput,
   GitHubRepositoryDiscoveryResult,
   GitHubSourceCodeAnalysisMode,
 } from "./github-auto-collect-types";
+import { GitHubDiscoveryError } from "./github-auto-collect-types";
 import type { GitHubApiFetch } from "./github-api-client";
 import { fetchRecursiveTree, fetchRepositoryMetadata } from "./github-api-client";
 import {
@@ -44,21 +41,16 @@ export async function discoverGitHubRepository(
   const fetchImpl = deps.fetchImpl;
   const warnings: string[] = [P26_PREVIEW_WARNING];
 
-  let sourceCodeAnalysis: GitHubSourceCodeAnalysisMode =
-    input.sourceCodeAnalysis ?? DEFAULT_GITHUB_DISCOVERY_OPTIONS.sourceCodeAnalysis;
+  const options = normalizeDiscoveryOptions(input, warnings);
 
-  if (sourceCodeAnalysis === "FULL_SRC") {
+  let appliedSourceCodeAnalysis: GitHubSourceCodeAnalysisMode = options.sourceCodeAnalysis;
+  if (appliedSourceCodeAnalysis === "FULL_SRC") {
     warnings.push(FULL_SRC_WARNING);
-    sourceCodeAnalysis = "METADATA_ONLY";
+    appliedSourceCodeAnalysis = "METADATA_ONLY";
   }
 
-  const options = normalizeDiscoveryOptions(
-    { ...input, sourceCodeAnalysis },
-    warnings,
-  );
-
   if (
-    options.sourceCodeAnalysis === "SELECTED_PATHS" &&
+    appliedSourceCodeAnalysis === "SELECTED_PATHS" &&
     options.selectedPaths.length === 0
   ) {
     warnings.push(
@@ -105,7 +97,7 @@ export async function discoverGitHubRepository(
     buildCandidateAndExcluded({
       files: analyzedFiles,
       crawlMode: options.crawlMode,
-      sourceCodeAnalysis: options.sourceCodeAnalysis,
+      sourceCodeAnalysis: appliedSourceCodeAnalysis,
       maxCandidateFiles: options.maxCandidateFiles,
       selectedPaths: options.selectedPaths,
     });
@@ -119,7 +111,7 @@ export async function discoverGitHubRepository(
     repository: metadata,
     options: {
       crawlMode: options.crawlMode,
-      sourceCodeAnalysis: options.sourceCodeAnalysis,
+      sourceCodeAnalysis: appliedSourceCodeAnalysis,
       maxFilesToAnalyze: options.maxFilesToAnalyze,
       maxCandidateFiles: options.maxCandidateFiles,
       selectedPaths: options.selectedPaths.length ? options.selectedPaths : undefined,

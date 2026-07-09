@@ -141,7 +141,8 @@ export type GitHubDiscoveryErrorCode =
   | "REPOSITORY_NOT_FOUND"
   | "GITHUB_RATE_LIMITED"
   | "GITHUB_API_ERROR"
-  | "INVALID_SELECTED_PATHS";
+  | "INVALID_SELECTED_PATHS"
+  | "INVALID_DISCOVERY_OPTIONS";
 
 export class GitHubDiscoveryError extends Error {
   readonly code: GitHubDiscoveryErrorCode;

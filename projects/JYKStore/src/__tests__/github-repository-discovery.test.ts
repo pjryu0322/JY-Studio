@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { discoverGitHubRepository } from "@/lib/github-auto-collect/github-repository-discovery-service";
+import { GitHubDiscoveryError } from "@/lib/github-auto-collect/github-auto-collect-types";
 
 describe("github repository discovery service", () => {
   it("returns preview from mocked GitHub API", async () => {
@@ -65,5 +66,28 @@ describe("github repository discovery service", () => {
     );
     assert.ok(result.warnings.some((w) => w.includes("preview")));
     assert.equal(JSON.stringify(result).includes("Bearer"), false);
+  });
+
+  it("does not call GitHub API when discovery options are invalid", async () => {
+    let called = false;
+    const fetchImpl = async () => {
+      called = true;
+      return new Response("unexpected", { status: 500 });
+    };
+
+    await assert.rejects(
+      () =>
+        discoverGitHubRepository(
+          {
+            repositoryUrl: "https://github.com/nhn/tui.grid",
+            crawlMode: "INVALID_MODE" as never,
+          },
+          { fetchImpl: fetchImpl as typeof fetch },
+        ),
+      (err: unknown) =>
+        err instanceof GitHubDiscoveryError && err.code === "INVALID_DISCOVERY_OPTIONS",
+    );
+
+    assert.equal(called, false);
   });
 });

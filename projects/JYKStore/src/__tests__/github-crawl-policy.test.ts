@@ -8,6 +8,7 @@ import {
 } from "@/lib/github-auto-collect/github-crawl-policy";
 import { normalizeDiscoveryOptions } from "@/lib/github-auto-collect/github-discovery-options";
 import type { GitHubTreeFileItem } from "@/lib/github-auto-collect/github-auto-collect-types";
+import { GitHubDiscoveryError } from "@/lib/github-auto-collect/github-auto-collect-types";
 
 function blob(path: string, size = 100): GitHubTreeFileItem {
   return { path, type: "blob", size };
@@ -115,6 +116,20 @@ describe("github crawl policy", () => {
 });
 
 describe("github discovery options clamp", () => {
+  it("accepts valid enum values", () => {
+    const warnings: string[] = [];
+    const options = normalizeDiscoveryOptions(
+      {
+        repositoryUrl: "https://github.com/nhn/tui.grid",
+        crawlMode: "DOCS_AND_EXAMPLES",
+        sourceCodeAnalysis: "ENTRYPOINTS_ONLY",
+      },
+      warnings,
+    );
+    assert.equal(options.crawlMode, "DOCS_AND_EXAMPLES");
+    assert.equal(options.sourceCodeAnalysis, "ENTRYPOINTS_ONLY");
+  });
+
   it("clamps maxFilesToAnalyze and maxCandidateFiles with warnings", () => {
     const warnings: string[] = [];
     const options = normalizeDiscoveryOptions(
@@ -143,5 +158,64 @@ describe("github discovery options clamp", () => {
     );
     assert.equal(options.maxFilesToAnalyze, 100);
     assert.equal(options.maxCandidateFiles, 10);
+  });
+
+  it("rejects invalid crawlMode", () => {
+    assert.throws(
+      () =>
+        normalizeDiscoveryOptions(
+          {
+            repositoryUrl: "https://github.com/nhn/tui.grid",
+            crawlMode: "INVALID_MODE" as never,
+          },
+          [],
+        ),
+      (err: unknown) =>
+        err instanceof GitHubDiscoveryError &&
+        err.code === "INVALID_DISCOVERY_OPTIONS" &&
+        err.status === 400,
+    );
+  });
+
+  it("rejects invalid sourceCodeAnalysis", () => {
+    assert.throws(
+      () =>
+        normalizeDiscoveryOptions(
+          {
+            repositoryUrl: "https://github.com/nhn/tui.grid",
+            sourceCodeAnalysis: "BAD_VALUE" as never,
+          },
+          [],
+        ),
+      (err: unknown) =>
+        err instanceof GitHubDiscoveryError &&
+        err.code === "INVALID_DISCOVERY_OPTIONS" &&
+        err.status === 400,
+    );
+  });
+
+  it("rejects non-string option values", () => {
+    assert.throws(
+      () =>
+        normalizeDiscoveryOptions(
+          {
+            repositoryUrl: "https://github.com/nhn/tui.grid",
+            crawlMode: 123 as never,
+          },
+          [],
+        ),
+      (err: unknown) => err instanceof GitHubDiscoveryError && err.code === "INVALID_DISCOVERY_OPTIONS",
+    );
+    assert.throws(
+      () =>
+        normalizeDiscoveryOptions(
+          {
+            repositoryUrl: "https://github.com/nhn/tui.grid",
+            sourceCodeAnalysis: {} as never,
+          },
+          [],
+        ),
+      (err: unknown) => err instanceof GitHubDiscoveryError && err.code === "INVALID_DISCOVERY_OPTIONS",
+    );
   });
 });
