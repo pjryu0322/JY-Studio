@@ -783,6 +783,12 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - `/api/ready`의 `checks.env.errors`에 invalid/missing env 이름만 safe하게 노출합니다.
 - `.env.example`에서 Prisma 기준 `DATABASE_URL`만 명시했습니다.
 
+### P26.1 — GitHub Repository Discovery (preview)
+
+- `POST /api/v1/provider/github/repository-discovery` dry-run API로 공개 GitHub 저장소 트리·분류·후보 preview를 반환합니다.
+- DB/SourceDocument/KnowledgeChunk 저장 및 파일 content fetch는 하지 않습니다.
+- 선택 env: `GITHUB_TOKEN` (rate limit 완화용).
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
