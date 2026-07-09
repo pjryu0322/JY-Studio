@@ -5,6 +5,7 @@ import { ProviderPackChunkSummaryCard } from "@/components/ProviderPackChunkSumm
 import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCard";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderSourceDocumentForm } from "@/components/ProviderSourceDocumentForm";
+import { ProviderGitHubAutoCollectPanel } from "@/components/ProviderGitHubAutoCollectPanel";
 import { SourceValidationBadge } from "@/components/SourceValidationBadge";
 import { SourceValidationReportPanel } from "@/components/SourceValidationReportPanel";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
@@ -283,6 +284,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             ))}
           </ul>
         )}
+        <ProviderGitHubAutoCollectPanel packId={packId} disabled={!editable} onChanged={load} />
         <div className="mt-4">
           <ProviderSourceDocumentForm packId={packId} disabled={!editable} onAdded={load} />
         </div>

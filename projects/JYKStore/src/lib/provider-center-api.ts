@@ -1,5 +1,10 @@
 import type { ProviderPackDetailDto, ProviderPackListItemDto } from "@/lib/provider-pack-dto";
 import type { ProviderProfileDto } from "@/lib/provider-profile-dto";
+import type {
+  GitHubKnowledgeUnitDraftResult,
+  GitHubRepositoryDiscoveryResult,
+  GitHubSourceRegisterResult,
+} from "@/lib/github-auto-collect/github-auto-collect-types";
 
 export type ProviderProfileResponse = {
   clientId: string;
@@ -237,4 +242,85 @@ export async function validateSourceDocumentApi(
     throw new Error(await parseErrorMessage(response));
   }
   return (await response.json()) as ProviderPackDetailResponse & { report?: unknown };
+}
+
+export async function previewGitHubRepositoryDiscoveryApi(input: {
+  repositoryUrl: string;
+  crawlMode?: string;
+  sourceCodeAnalysis?: string;
+  selectedPaths?: string[];
+  maxFilesToAnalyze?: number;
+  maxCandidateFiles?: number;
+}): Promise<GitHubRepositoryDiscoveryResult> {
+  const response = await fetch("/api/v1/provider/github/repository-discovery", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as GitHubRepositoryDiscoveryResult;
+}
+
+export async function registerGitHubSourceDocumentsApi(
+  packId: string,
+  input: {
+    repositoryUrl: string;
+    crawlMode?: string;
+    sourceCodeAnalysis?: string;
+    selectedPaths?: string[];
+    selectedSourcePaths: string[];
+    maxFilesToAnalyze?: number;
+    maxCandidateFiles?: number;
+    maxFilesToFetch?: number;
+    maxFileBytes?: number;
+    maxTotalBytes?: number;
+    productVersion?: string;
+    documentVersion?: string;
+    licenseStatus?: string;
+  },
+): Promise<GitHubSourceRegisterResult> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/auto-collect/github/register`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as GitHubSourceRegisterResult;
+}
+
+export async function generateGitHubKnowledgeUnitDraftsApi(
+  packId: string,
+  input: {
+    sourceDocumentIds?: string[];
+    sourceDocumentPaths?: string[];
+    generationMode?: "MINIMAL" | "STANDARD" | "FULL" | "CUSTOM";
+    targetKnowledgeUnitCount?: number;
+    minKnowledgeUnitCount?: number;
+    maxKnowledgeUnitCount?: number;
+    productProfileType?: string;
+    overwriteExistingDrafts?: boolean;
+  },
+): Promise<GitHubKnowledgeUnitDraftResult> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/auto-collect/github/knowledge-units/draft`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as GitHubKnowledgeUnitDraftResult;
 }
