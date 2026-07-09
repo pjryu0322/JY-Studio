@@ -7,6 +7,8 @@ import type {
   GitHubSourceRegisterResult,
 } from "@/lib/github-auto-collect/github-auto-collect-types";
 import {
+  clampUiNumber,
+  normalizeUiSourceCodeAnalysis,
   selectDefaultGitHubSourceCandidatePaths,
   summarizeExcludedFilesByReason,
 } from "@/lib/github-auto-collect/github-auto-collect-ui-utils";
@@ -29,9 +31,31 @@ const SOURCE_CODE_ANALYSIS = [
   { value: "NONE", label: "소스 분석 없음" },
   { value: "METADATA_ONLY", label: "소스 메타데이터만" },
   { value: "ENTRYPOINTS_ONLY", label: "엔트리포인트만" },
-  { value: "SELECTED_PATHS", label: "선택 경로만" },
 ] as const;
 
+const MAX_CANDIDATE_FILES_UI = 300;
+const MAX_FILES_TO_FETCH_UI = 30;
+
+function WarningList({
+  title,
+  warnings,
+}: {
+  readonly title: string;
+  readonly warnings?: string[];
+}) {
+  if (!warnings || warnings.length === 0) return null;
+
+  return (
+    <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-950">
+      <p className="font-bold">{title}</p>
+      <ul className="mt-1 list-disc space-y-1 break-all pl-4">
+        {warnings.map((warning, index) => (
+          <li key={`${title}-${index}`}>{warning}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 const GENERATION_MODES = [
   { value: "MINIMAL", label: "MINIMAL (소규모)" },
   { value: "STANDARD", label: "STANDARD" },
@@ -114,12 +138,13 @@ export function ProviderGitHubAutoCollectPanel({
     setRegisterResult(null);
     setDraftResult(null);
     try {
+      const safeSourceCodeAnalysis = normalizeUiSourceCodeAnalysis(sourceCodeAnalysis);
       const result = await previewGitHubRepositoryDiscoveryApi({
         repositoryUrl: url,
         crawlMode,
-        sourceCodeAnalysis,
+        sourceCodeAnalysis: safeSourceCodeAnalysis,
         maxFilesToAnalyze: 5000,
-        maxCandidateFiles: maxCandidateFiles,
+        maxCandidateFiles,
       });
       setPreview(result);
       setSelectedPaths(selectDefaultGitHubSourceCandidatePaths(result.sourceCandidates, 10));
@@ -141,14 +166,15 @@ export function ProviderGitHubAutoCollectPanel({
     setRegistering(true);
     setError(null);
     try {
+      const safeSourceCodeAnalysis = normalizeUiSourceCodeAnalysis(sourceCodeAnalysis);
       const result = await registerGitHubSourceDocumentsApi(packId, {
         repositoryUrl: repositoryUrl.trim(),
         crawlMode,
-        sourceCodeAnalysis,
+        sourceCodeAnalysis: safeSourceCodeAnalysis,
         selectedSourcePaths: selectedPaths,
         maxFilesToAnalyze: 5000,
-        maxCandidateFiles: maxCandidateFiles,
-        maxFilesToFetch: maxFilesToFetch,
+        maxCandidateFiles,
+        maxFilesToFetch,
         licenseStatus: preview.repository.license ?? undefined,
         documentVersion: preview.repository.defaultBranch,
       });
@@ -250,10 +276,14 @@ export function ProviderGitHubAutoCollectPanel({
           <input
             type="number"
             min={1}
-            max={500}
+            max={MAX_CANDIDATE_FILES_UI}
             value={maxCandidateFiles}
             disabled={disabled}
-            onChange={(e) => setMaxCandidateFiles(Number(e.target.value) || 100)}
+            onChange={(e) =>
+              setMaxCandidateFiles(
+                clampUiNumber(Number(e.target.value), 1, MAX_CANDIDATE_FILES_UI, 100),
+              )
+            }
             className={`mt-1 ${inputClass}`}
           />
         </label>
@@ -262,10 +292,12 @@ export function ProviderGitHubAutoCollectPanel({
           <input
             type="number"
             min={1}
-            max={30}
+            max={MAX_FILES_TO_FETCH_UI}
             value={maxFilesToFetch}
             disabled={disabled}
-            onChange={(e) => setMaxFilesToFetch(Number(e.target.value) || 10)}
+            onChange={(e) =>
+              setMaxFilesToFetch(clampUiNumber(Number(e.target.value), 1, MAX_FILES_TO_FETCH_UI, 10))
+            }
             className={`mt-1 ${inputClass}`}
           />
         </label>
@@ -298,7 +330,8 @@ export function ProviderGitHubAutoCollectPanel({
       </label>
 
       <p className="mt-2 text-[11px] text-store-muted">
-        src 전체 분석은 아직 UI에서 제공하지 않습니다. 초기 지식팩 생성은 문서/예제 중심을 권장합니다.
+        src 전체 분석과 선택 경로 분석은 아직 UI에서 제공하지 않습니다. 초기 지식팩 생성은
+        README/docs/examples 중심을 권장합니다.
       </p>
 
       <button
@@ -327,6 +360,8 @@ export function ProviderGitHubAutoCollectPanel({
               제외 {preview.summary.excludedFileCount}
             </p>
           </div>
+
+          <WarningList title="Repository 분석 안내" warnings={preview.warnings} />
 
           {preview.productProfile ? (
             <div className="rounded-lg border border-store-border bg-slate-50 p-2 text-xs">
@@ -428,6 +463,7 @@ export function ProviderGitHubAutoCollectPanel({
             등록 {registerResult.summary.registeredCount}개 / 스킵 {registerResult.summary.skippedCount}개 /
             실패 {registerResult.summary.failedCount}개
           </p>
+          <WarningList title="원천 문서 등록 안내" warnings={registerResult.warnings} />
           {registerResult.registeredDocuments.length > 0 ? (
             <ul className="mt-2 space-y-1">
               {registerResult.registeredDocuments.map((d) => (
@@ -478,6 +514,7 @@ export function ProviderGitHubAutoCollectPanel({
             초안 생성 {draftResult.summary.generatedDraftCount}개 · 스킵 문서{" "}
             {draftResult.summary.skippedDocumentCount}개 · 실패 {draftResult.summary.failedCount}개
           </p>
+          <WarningList title="Knowledge Unit 초안 생성 안내" warnings={draftResult.warnings} />
           <p className="mt-2 text-indigo-900">
             생성된 Knowledge Unit 초안은 아직 공개되지 않습니다. 검토/승인 단계에서 활성화됩니다.
           </p>

@@ -49,3 +49,15 @@ export function summarizeExcludedFilesByReason(
     .map(([reason, count]) => ({ reason, count }))
     .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
 }
+
+export function clampUiNumber(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+export type UiSourceCodeAnalysisMode = "NONE" | "METADATA_ONLY" | "ENTRYPOINTS_ONLY";
+
+export function normalizeUiSourceCodeAnalysis(value: string): UiSourceCodeAnalysisMode {
+  if (value === "METADATA_ONLY" || value === "ENTRYPOINTS_ONLY") return value;
+  return "NONE";
+}

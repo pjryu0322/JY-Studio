@@ -836,6 +836,11 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 3. **Knowledge Unit 초안 생성** → summary 확인 (공개/Context API 노출 없음).
 4. 예시 URL: `https://github.com/nhn/tui.grid`, `https://github.com/eGovFramework/egovframe-template-simple-backend`
 
+### P26.7-1 — Provider GitHub 자동수집 UI 보완
+
+- `SELECTED_PATHS` UI 비노출, `normalizeUiSourceCodeAnalysis`로 API 호출 정합성.
+- preview/register/draft `warnings` 표시, `maxCandidateFiles` 상한 300·입력 clamp.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
