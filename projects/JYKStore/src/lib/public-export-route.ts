@@ -27,7 +27,7 @@ export function createPublicExportRoute<T>(input: {
       const { apiKeyId, clientId, packId, quota } = resolved;
       const data = await input.build(packId);
 
-      if (!data) {
+      if (data === null) {
         await recordPublicExportUsage({
           requestId,
           apiKeyId,

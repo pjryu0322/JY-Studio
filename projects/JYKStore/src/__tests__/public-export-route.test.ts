@@ -37,4 +37,16 @@ describe("public export route factory", () => {
       assert.ok(!source.includes("resolvePublicExportRequest"), routePath);
     }
   });
+
+  it("uses null-only not-found guard in factory source", () => {
+    const source = readFileSync(join(projectRoot, "src/lib/public-export-route.ts"), "utf8");
+    assert.ok(source.includes("data === null"));
+    assert.ok(!/if\s*\(\s*!data\s*\)/.test(source));
+  });
+
+  it("treats only null as PACK_NOT_FOUND for string export builds", () => {
+    const buildResults: Array<string | null> = ["", "line\n", null];
+    const notFoundFlags = buildResults.map((data) => data === null);
+    assert.deepEqual(notFoundFlags, [false, false, true]);
+  });
 });

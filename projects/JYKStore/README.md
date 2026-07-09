@@ -761,6 +761,12 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - Admin quota UI를 작은 컴포넌트로 분리했습니다.
 - API response shape, MCP tools/resources, DB schema는 변경하지 않았습니다.
 
+### P24.2.1 — Export Route Factory Null Guard Polish
+
+- full export route factory의 not-found 판정을 `data === null`로 보정했습니다.
+- rag-jsonl export가 빈 문자열을 반환해도 `PACK_NOT_FOUND`로 오판하지 않도록 회귀 테스트를 추가했습니다.
+- API response shape, MCP tools/resources, DB schema는 변경하지 않았습니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
