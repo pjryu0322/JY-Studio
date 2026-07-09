@@ -846,6 +846,11 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - `GET /api/v1/provider/packs/[packId]/knowledge-unit-drafts` 목록 조회 (승인/활성화 없음).
 - `ProviderKnowledgeUnitDraftPanel`에서 초안 내용·출처·evidence 확인.
 
+### P26.9 — Admin Knowledge Unit draft 승인/반려
+
+- `GET /api/v1/admin/knowledge-unit-drafts`, `POST .../[draftId]/decision` (metadata 갱신, `isActive` 유지).
+- `/admin/knowledge-unit-drafts`에서 초안 검토·승인/반려 (`ADMIN_CHUNK_UPDATE` AuditLog).
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
