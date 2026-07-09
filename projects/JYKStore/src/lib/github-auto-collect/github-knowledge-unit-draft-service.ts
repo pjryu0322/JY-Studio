@@ -18,6 +18,10 @@ import {
   normalizeGitHubKnowledgeUnitDraftInput,
   SOURCE_DOCUMENT_MIN_CONTENT_LENGTH,
 } from "./github-knowledge-unit-draft-options";
+import {
+  normalizeGitHubRepositoryPath,
+  pathMatchesRequestedSourcePath,
+} from "./github-path-utils";
 
 export type GenerateGitHubKnowledgeUnitDraftDeps = {
   prismaClient?: typeof prisma;
@@ -65,9 +69,14 @@ function toDraftInput(doc: SourceDocument): SourceDocumentDraftInput {
 
 function matchesSourcePath(doc: SourceDocument, paths: string[]): boolean {
   if (paths.length === 0) return true;
+
   const docPath =
-    extractGitHubPathFromSourceUrl(doc.sourceUrl) ?? doc.fileName?.replace(/\\/g, "/") ?? "";
-  return paths.some((p) => docPath === p || docPath.endsWith(`/${p}`) || docPath.includes(p));
+    extractGitHubPathFromSourceUrl(doc.sourceUrl) ??
+    (doc.fileName ? normalizeGitHubRepositoryPath(doc.fileName) : "");
+
+  if (!docPath) return false;
+
+  return paths.some((p) => pathMatchesRequestedSourcePath(docPath, p));
 }
 
 async function nextSortOrder(db: typeof prisma, versionId: string, start: number): Promise<number> {

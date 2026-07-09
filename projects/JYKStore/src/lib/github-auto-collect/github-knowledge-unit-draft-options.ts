@@ -3,6 +3,10 @@ import {
   type GitHubKnowledgeUnitDraftInput,
   type GitHubKnowledgeUnitGenerationMode,
 } from "./github-auto-collect-types";
+import {
+  isUnsafeGitHubRepositoryPath,
+  normalizeGitHubRepositoryPath,
+} from "./github-path-utils";
 
 export const KNOWLEDGE_UNIT_DRAFT_HARD_CAP = 50;
 export const SOURCE_DOCUMENT_MIN_CONTENT_LENGTH = 50;
@@ -36,6 +40,46 @@ export type NormalizedGitHubKnowledgeUnitDraftInput = {
 
 function clampInt(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+export function normalizeSourceDocumentPaths(
+  raw: string[] | undefined,
+  warnings: string[],
+): string[] {
+  if (!raw?.length) return [];
+
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const entry of raw) {
+    const path = normalizeGitHubRepositoryPath(entry);
+
+    if (!path) {
+      throw new GitHubDiscoveryError(
+        "INVALID_KNOWLEDGE_UNIT_DRAFT_OPTIONS",
+        "sourceDocumentPaths에 빈 경로는 사용할 수 없습니다.",
+        400,
+      );
+    }
+
+    if (isUnsafeGitHubRepositoryPath(path)) {
+      throw new GitHubDiscoveryError(
+        "INVALID_KNOWLEDGE_UNIT_DRAFT_OPTIONS",
+        "sourceDocumentPaths에 허용되지 않는 경로가 포함되어 있습니다.",
+        400,
+      );
+    }
+
+    if (seen.has(path)) {
+      warnings.push(`sourceDocumentPaths 중복 경로를 제거했습니다: ${path}`);
+      continue;
+    }
+
+    seen.add(path);
+    normalized.push(path);
+  }
+
+  return normalized;
 }
 
 export function normalizeGitHubKnowledgeUnitDraftInput(
@@ -84,9 +128,7 @@ export function normalizeGitHubKnowledgeUnitDraftInput(
   const sourceDocumentIds = (input.sourceDocumentIds ?? [])
     .map((id) => id.trim())
     .filter(Boolean);
-  const sourceDocumentPaths = (input.sourceDocumentPaths ?? [])
-    .map((p) => p.trim().replace(/\\/g, "/").replace(/^\/+/, ""))
-    .filter(Boolean);
+  const sourceDocumentPaths = normalizeSourceDocumentPaths(input.sourceDocumentPaths, warnings);
 
   const overwriteExistingDrafts = input.overwriteExistingDrafts === true;
   if (overwriteExistingDrafts) {

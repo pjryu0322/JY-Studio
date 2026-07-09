@@ -819,6 +819,11 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 
 - `POST /api/v1/provider/packs/[packId]/auto-collect/github/knowledge-units/draft`로 SourceDocument 기반 `AUTO_KNOWLEDGE_UNIT_DRAFT` chunk 생성 (`isActive=false`, `pending_review`).
 
+### P26.6-1 — Knowledge Unit draft path matching
+
+- `sourceDocumentPaths`를 `github-path-utils` 기준으로 검증·정규화.
+- exact / suffix segment / directory prefix 매칭만 허용 (`includes` 제거).
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

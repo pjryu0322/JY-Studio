@@ -12,7 +12,12 @@ import {
   KNOWLEDGE_UNIT_DRAFT_HARD_CAP,
   normalizeGitHubKnowledgeUnitDraftInput,
 } from "@/lib/github-auto-collect/github-knowledge-unit-draft-options";
+import {
+  pathMatchesRequestedSourcePath,
+} from "@/lib/github-auto-collect/github-path-utils";
 import { generateGitHubKnowledgeUnitDraftsForPack } from "@/lib/github-auto-collect/github-knowledge-unit-draft-service";
+
+const longBody = "# Section\n\n".padEnd(60, "x");
 
 const editableDraftPack = async () =>
   ({ ok: true as const, packId: "pack-1", status: PackStatus.DRAFT });
@@ -139,9 +144,65 @@ describe("github knowledge unit draft options", () => {
         err.code === "INVALID_KNOWLEDGE_UNIT_DRAFT_OPTIONS",
     );
   });
+
+  it("rejects unsafe sourceDocumentPaths", () => {
+    for (const path of [
+      "../secret.md",
+      "docs/../secret.md",
+      "http://evil.test/file.md",
+      "https://evil.test/file.md",
+      "git://evil.test/file.md",
+      ".",
+      "..",
+    ]) {
+      assert.throws(
+        () => normalizeGitHubKnowledgeUnitDraftInput({ sourceDocumentPaths: [path] }, []),
+        (err: unknown) =>
+          err instanceof GitHubDiscoveryError &&
+          err.code === "INVALID_KNOWLEDGE_UNIT_DRAFT_OPTIONS" &&
+          err.status === 400,
+      );
+    }
+  });
+
+  it("normalizes backslashes in sourceDocumentPaths", () => {
+    const warnings: string[] = [];
+    const normalized = normalizeGitHubKnowledgeUnitDraftInput(
+      { sourceDocumentPaths: ["docs\\getting-started.md"] },
+      warnings,
+    );
+    assert.deepEqual(normalized.sourceDocumentPaths, ["docs/getting-started.md"]);
+  });
+
+  it("dedupes sourceDocumentPaths with warning", () => {
+    const warnings: string[] = [];
+    const normalized = normalizeGitHubKnowledgeUnitDraftInput(
+      { sourceDocumentPaths: ["docs/api.md", "docs/api.md"] },
+      warnings,
+    );
+    assert.deepEqual(normalized.sourceDocumentPaths, ["docs/api.md"]);
+    assert.ok(warnings.some((w) => w.includes("중복")));
+  });
 });
 
 describe("github knowledge unit draft generator", () => {
+  it("matches paths with exact suffix and directory prefix only", () => {
+    assert.equal(
+      pathMatchesRequestedSourcePath("docs/api.md", "docs/api.md"),
+      true,
+    );
+    assert.equal(
+      pathMatchesRequestedSourcePath("packages/grid/docs/api.md", "docs/api.md"),
+      true,
+    );
+    assert.equal(
+      pathMatchesRequestedSourcePath("docs/getting-started.md", "docs"),
+      true,
+    );
+    assert.equal(pathMatchesRequestedSourcePath("docs/api.md", "api"), false);
+    assert.equal(pathMatchesRequestedSourcePath("samples/capitalize.ts", "api"), false);
+  });
+
   it("extracts github blob path from sourceUrl", () => {
     assert.equal(
       extractGitHubPathFromSourceUrl(
@@ -332,5 +393,66 @@ describe("github knowledge unit draft service", () => {
     const draft = { chunkType: AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE, isActive: false };
     assert.equal(draft.isActive, false);
     assert.equal(retrievalActiveFilter.isActive, true);
+  });
+
+  it("filters source documents by path without substring overmatch", async () => {
+    const docs = [
+      makeDoc({
+        id: "doc-1",
+        sourceUrl: "https://github.com/test/repo/blob/main/docs/api.md",
+        fileName: "api.md",
+        content: longBody,
+        sourceType: "API_SPEC",
+      }),
+      makeDoc({
+        id: "doc-2",
+        sourceUrl: "https://github.com/test/repo/blob/main/packages/grid/docs/api.md",
+        fileName: "api.md",
+        content: longBody,
+        sourceType: "API_SPEC",
+      }),
+      makeDoc({
+        id: "doc-3",
+        sourceUrl: "https://github.com/test/repo/blob/main/docs/getting-started.md",
+        fileName: "getting-started.md",
+        content: longBody,
+        sourceType: "INTEGRATION_GUIDE",
+      }),
+      makeDoc({
+        id: "doc-4",
+        sourceUrl: "https://github.com/test/repo/blob/main/samples/capitalize.ts",
+        fileName: "capitalize.ts",
+        content: longBody,
+        sourceType: "SAMPLE_CODE",
+        sourceFormat: "CODE",
+      }),
+    ];
+
+    async function eligibleDocIds(paths: string[]) {
+      const { db, createdChunks } = createMockPrisma({ documents: docs });
+      const result = await generateGitHubKnowledgeUnitDraftsForPack(
+        "client-1",
+        "pack-1",
+        { sourceDocumentPaths: paths, generationMode: "FULL" },
+        { prismaClient: db as never, assertEditablePack: editableDraftPack },
+      );
+      const ids = new Set(createdChunks.map((c) => String(c.sourceDocumentId)));
+      return { result, ids };
+    }
+
+    const exact = await eligibleDocIds(["docs/api.md"]);
+    assert.ok(exact.ids.has("doc-1"));
+    assert.ok(exact.ids.has("doc-2"));
+    assert.equal(exact.ids.has("doc-3"), false);
+    assert.equal(exact.ids.has("doc-4"), false);
+
+    const prefix = await eligibleDocIds(["docs"]);
+    assert.ok(prefix.ids.has("doc-1"));
+    assert.ok(prefix.ids.has("doc-3"));
+    assert.equal(prefix.ids.has("doc-4"), false);
+
+    const substring = await eligibleDocIds(["api"]);
+    assert.equal(substring.result.summary.sourceDocumentCount, 0);
+    assert.equal(substring.ids.size, 0);
   });
 });
