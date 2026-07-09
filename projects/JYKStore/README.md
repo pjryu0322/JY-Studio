@@ -841,6 +841,11 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - `SELECTED_PATHS` UI 비노출, `normalizeUiSourceCodeAnalysis`로 API 호출 정합성.
 - preview/register/draft `warnings` 표시, `maxCandidateFiles` 상한 300·입력 clamp.
 
+### P26.8 — Provider Knowledge Unit draft 검토 UI
+
+- `GET /api/v1/provider/packs/[packId]/knowledge-unit-drafts` 목록 조회 (승인/활성화 없음).
+- `ProviderKnowledgeUnitDraftPanel`에서 초안 내용·출처·evidence 확인.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

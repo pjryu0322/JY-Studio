@@ -6,6 +6,7 @@ import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCar
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderSourceDocumentForm } from "@/components/ProviderSourceDocumentForm";
 import { ProviderGitHubAutoCollectPanel } from "@/components/ProviderGitHubAutoCollectPanel";
+import { ProviderKnowledgeUnitDraftPanel } from "@/components/ProviderKnowledgeUnitDraftPanel";
 import { SourceValidationBadge } from "@/components/SourceValidationBadge";
 import { SourceValidationReportPanel } from "@/components/SourceValidationReportPanel";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
@@ -31,6 +32,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [validatingDocId, setValidatingDocId] = useState<string | null>(null);
+  const [draftRefreshNonce, setDraftRefreshNonce] = useState(0);
 
   const [name, setName] = useState("");
   const [shortDescription, setShortDescription] = useState("");
@@ -49,6 +51,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setShortDescription(data.pack.shortDescription);
       setDescription(data.pack.description);
       setVersionOverview(data.pack.versions[0]?.overview ?? "");
+      setDraftRefreshNonce((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : "지식팩을 불러오지 못했습니다.");
     } finally {
@@ -285,6 +288,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           </ul>
         )}
         <ProviderGitHubAutoCollectPanel packId={packId} disabled={!editable} onChanged={load} />
+        <ProviderKnowledgeUnitDraftPanel packId={packId} refreshNonce={draftRefreshNonce} />
         <div className="mt-4">
           <ProviderSourceDocumentForm packId={packId} disabled={!editable} onAdded={load} />
         </div>

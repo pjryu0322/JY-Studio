@@ -5,6 +5,7 @@ import type {
   GitHubRepositoryDiscoveryResult,
   GitHubSourceRegisterResult,
 } from "@/lib/github-auto-collect/github-auto-collect-types";
+import type { ProviderKnowledgeUnitDraftListResponse } from "@/lib/provider-knowledge-unit-draft-dto";
 
 export type ProviderProfileResponse = {
   clientId: string;
@@ -323,4 +324,31 @@ export async function generateGitHubKnowledgeUnitDraftsApi(
     throw new Error(await parseErrorMessage(response));
   }
   return (await response.json()) as GitHubKnowledgeUnitDraftResult;
+}
+
+export async function fetchProviderKnowledgeUnitDraftsApi(
+  packId: string,
+  input?: {
+    status?: "pending_review" | "superseded" | "all";
+    sourceDocumentId?: string;
+    limit?: number;
+  },
+): Promise<ProviderKnowledgeUnitDraftListResponse> {
+  const params = new URLSearchParams();
+  if (input?.status) params.set("status", input.status);
+  if (input?.sourceDocumentId) params.set("sourceDocumentId", input.sourceDocumentId);
+  if (input?.limit !== undefined) params.set("limit", String(input.limit));
+
+  const query = params.toString();
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/knowledge-unit-drafts${query ? `?${query}` : ""}`,
+    {
+      method: "GET",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as ProviderKnowledgeUnitDraftListResponse;
 }
