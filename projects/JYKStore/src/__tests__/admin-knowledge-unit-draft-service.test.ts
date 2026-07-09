@@ -140,15 +140,13 @@ function makeChunkRow(
   };
 }
 
-function createListMockDb(chunks: ChunkRow[], activeCount = 0) {
+function createListMockDb(chunks: ChunkRow[]) {
   return {
     knowledgeChunk: {
       findMany: async ({ where }: { where: ChunkWhere }) =>
         chunks.filter((chunk) => matchesChunkWhere(chunk, where)),
-      count: async ({ where }: { where: ChunkWhere }) => {
-        if (where.isActive === true) return activeCount;
-        return chunks.filter((chunk) => matchesChunkWhere(chunk, where)).length;
-      },
+      count: async ({ where }: { where: ChunkWhere }) =>
+        chunks.filter((chunk) => matchesChunkWhere(chunk, where)).length,
     },
   };
 }
@@ -228,6 +226,29 @@ describe("admin knowledge unit draft service list", () => {
 
     assert.deepEqual(result.items.map((i) => i.id), ["d2"]);
   });
+
+  it("excludes active drafts from admin list items and counts them separately", async () => {
+    const pack = makePack();
+    const doc = makeSourceDoc("doc-1");
+    const chunks = [
+      makeChunkRow("inactive-draft", { reviewStatus: "pending_review" }, doc, pack, {
+        isActive: false,
+      }),
+      makeChunkRow("active-draft", { reviewStatus: "approved" }, doc, pack, {
+        isActive: true,
+      }),
+    ];
+
+    const result = await listAdminKnowledgeUnitDrafts(
+      "admin-client",
+      { status: "all" },
+      { prismaClient: createListMockDb(chunks) as never },
+    );
+
+    assert.deepEqual(result.items.map((item) => item.id), ["inactive-draft"]);
+    assert.equal(result.summary.activeDraftCount, 1);
+    assert.equal(result.summary.totalCount, 1);
+  });
 });
 
 describe("admin knowledge unit draft service decide", () => {
@@ -275,6 +296,8 @@ describe("admin knowledge unit draft service decide", () => {
     assert.equal(audit.metadata.decision, "approve");
     assert.equal(audit.metadata.previousReviewStatus, "pending_review");
     assert.equal(audit.metadata.content, undefined);
+    assert.equal(audit.metadata.draftContent, undefined);
+    assert.equal(audit.metadata.sourceDocumentContent, undefined);
     assert.equal(result.draft.reviewMemo, "OK");
   });
 
