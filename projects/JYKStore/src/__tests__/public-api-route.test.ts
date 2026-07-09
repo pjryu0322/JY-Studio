@@ -37,11 +37,15 @@ describe("public api route wrapper", () => {
   });
 
   it("context routes use withPublicApiGateway", () => {
-    const getSource = readRoute("src/app/api/v1/packs/[packId]/context/route.ts");
-    const postSource = readRoute("src/app/api/v1/packs/[packId]/context/query/route.ts");
-    assert.ok(getSource.includes("withPublicApiGateway"));
-    assert.ok(postSource.includes("withPublicApiGateway"));
-    assert.ok(!getSource.includes("checkQuota"));
-    assert.ok(!postSource.includes("authenticateApiKey"));
+    const getRoute = readRoute("src/app/api/v1/packs/[packId]/context/route.ts");
+    const postRoute = readRoute("src/app/api/v1/packs/[packId]/context/query/route.ts");
+    const handlers = readRoute("src/lib/context-public-api-routes.ts");
+
+    assert.ok(getRoute.includes("createContextGetHandler"));
+    assert.ok(postRoute.includes("createContextQueryHandler"));
+    assert.ok(handlers.includes("withPublicApiGateway"));
+    assert.ok(handlers.includes('scope: "context"'));
+    assert.ok(!handlers.includes("checkQuota"));
+    assert.ok(!handlers.includes("authenticateApiKey"));
   });
 });
