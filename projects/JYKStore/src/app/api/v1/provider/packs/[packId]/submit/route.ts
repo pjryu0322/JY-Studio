@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
+import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import { submitProviderPackForReview } from "@/lib/provider-pack-service";
 
 type RouteContext = {
@@ -8,11 +9,13 @@ type RouteContext = {
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
   const { packId } = await context.params;
 
   try {
-    const result = await submitProviderPackForReview(clientId, packId?.trim() ?? "");
+    const result = await submitProviderPackForReview(userId, clientId, packId?.trim() ?? "");
 
     if (result.error === "NOT_FOUND") {
       return jsonWithClientIdCookie({ error: "지식팩을 찾을 수 없습니다." }, clientId, { status: 404 });

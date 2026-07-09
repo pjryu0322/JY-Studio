@@ -1,16 +1,19 @@
 import { NextRequest } from "next/server";
+import { isLoggedInResponse, requireLoggedInRequest } from "@/lib/auth-guard";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
 import {
   createProviderPackForClient,
   listProviderPacksForClient,
 } from "@/lib/provider-pack-service";
 
 export async function GET(request: NextRequest) {
-  const clientId = ensureClientId(request);
+  const auth = requireLoggedInRequest(request);
+  if (!isLoggedInResponse(auth)) return auth;
+  const { clientId, userId } = auth;
 
   try {
-    const items = await listProviderPacksForClient(clientId);
+    const items = await listProviderPacksForClient(userId, clientId);
     return jsonWithClientIdCookie({ clientId, items }, clientId);
   } catch (error) {
     logSafeRouteError({ scope: "provider-route", method: "GET", path: "/api/v1/provider/packs", error });
@@ -19,7 +22,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const clientId = ensureClientId(request);
+  const auth = requireLoggedInRequest(request);
+  if (!isLoggedInResponse(auth)) return auth;
+  const { clientId, userId } = auth;
 
   try {
     const body = (await request.json()) as {
@@ -32,7 +37,7 @@ export async function POST(request: NextRequest) {
       version?: string;
     };
 
-    const result = await createProviderPackForClient(clientId, {
+    const result = await createProviderPackForClient(userId, clientId, {
       packId: body.packId ?? "",
       name: body.name ?? "",
       categoryId: body.categoryId ?? "",
@@ -46,7 +51,7 @@ export async function POST(request: NextRequest) {
       return jsonWithClientIdCookie(
         { error: "제공자 프로필을 먼저 등록해 주세요." },
         clientId,
-        { status: 400 },
+        { status: 403 },
       );
     }
     if (result.error === "PACK_ID_EXISTS") {

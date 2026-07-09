@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
+import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import {
   listProviderKnowledgeUnitDrafts,
   parseKnowledgeUnitDraftListQuery,
@@ -16,7 +17,9 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
   const { packId } = await context.params;
   const trimmedPackId = packId?.trim() ?? "";
 
@@ -30,7 +33,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const query = parseKnowledgeUnitDraftListQuery(new URL(request.url).searchParams);
-    const result = await listProviderKnowledgeUnitDrafts(clientId, trimmedPackId, query);
+    const result = await listProviderKnowledgeUnitDrafts(userId, clientId, trimmedPackId, query);
     return jsonWithClientIdCookie(result, clientId);
   } catch (error) {
     if (error instanceof ProviderKnowledgeUnitDraftListError) {

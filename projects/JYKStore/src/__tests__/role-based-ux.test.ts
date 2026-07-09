@@ -43,7 +43,7 @@ describe("role-based provider UX", () => {
     assert.ok(providerPage.includes("PROVIDER_CENTER_TAGLINE"));
     assert.ok(center.includes("ProviderOnboardingStepper"));
     assert.ok(center.includes("새 지식팩 만들기"));
-    assert.ok(packNew.includes("getProviderProfileByClientId"));
-    assert.ok(packNew.includes("제공자 프로필이 필요합니다"));
+    assert.ok(packNew.includes("getUserIdFromCookies"));
+    assert.ok(packNew.includes("ProviderRequiredCard"));
   });
 });

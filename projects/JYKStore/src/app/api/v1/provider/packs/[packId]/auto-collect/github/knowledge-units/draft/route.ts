@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
+import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import { GitHubDiscoveryError } from "@/lib/github-auto-collect/github-auto-collect-types";
 import type { GitHubKnowledgeUnitDraftInput } from "@/lib/github-auto-collect/github-auto-collect-types";
 import { generateGitHubKnowledgeUnitDraftsForPack } from "@/lib/github-auto-collect/github-knowledge-unit-draft-service";
@@ -15,7 +16,9 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
   const { packId } = await context.params;
   const trimmedPackId = packId?.trim() ?? "";
 
@@ -31,8 +34,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
     const body = (await request.json()) as GitHubKnowledgeUnitDraftInput;
-    const result = await generateGitHubKnowledgeUnitDraftsForPack(
-      clientId,
+    const result = await generateGitHubKnowledgeUnitDraftsForPack(userId, clientId,
       trimmedPackId,
       body,
     );

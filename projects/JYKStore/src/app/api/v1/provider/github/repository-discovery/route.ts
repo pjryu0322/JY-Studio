@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
+import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import { GitHubDiscoveryError } from "@/lib/github-auto-collect/github-auto-collect-types";
 import type { GitHubRepositoryDiscoveryInput } from "@/lib/github-auto-collect/github-auto-collect-types";
 import { discoverGitHubRepository } from "@/lib/github-auto-collect/github-repository-discovery-service";
@@ -18,7 +19,9 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export async function POST(request: NextRequest) {
-  const clientId = ensureClientId(request);
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
 
   try {
     const body = (await request.json()) as GitHubRepositoryDiscoveryInput;

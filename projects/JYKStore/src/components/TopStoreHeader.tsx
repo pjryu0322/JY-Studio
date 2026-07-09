@@ -1,6 +1,4 @@
-import Link from "next/link";
-import { ROUTES } from "@/lib/routes";
-
+import { HeaderProfileButton } from "@/components/HeaderProfileButton";
 export function TopStoreHeader() {
   return (
     <div className="mb-3 flex items-center justify-between gap-2">
@@ -15,13 +13,7 @@ export function TopStoreHeader() {
           </div>
         </div>
       </div>
-      <Link
-        href={ROUTES.account}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-store-border bg-white text-lg active:bg-slate-50"
-        aria-label="계정"
-      >
-        👤
-      </Link>
+      <HeaderProfileButton />
     </div>
   );
 }

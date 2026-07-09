@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
 import { createApiKeyForClient, listApiKeysForClient } from "@/lib/api-key-service";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { isLoggedInResponse, requireLoggedInRequest } from "@/lib/auth-guard";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
 import { logSafeRouteError } from "@/lib/safe-logging";
 
 export async function GET(request: NextRequest) {
-  const clientId = ensureClientId(request);
+  const auth = requireLoggedInRequest(request);
+  if (!isLoggedInResponse(auth)) return auth;
+  const { clientId } = auth;
 
   try {
     const items = await listApiKeysForClient(clientId);
@@ -21,7 +24,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const clientId = ensureClientId(request);
+  const auth = requireLoggedInRequest(request);
+  if (!isLoggedInResponse(auth)) return auth;
+  const { clientId } = auth;
 
   try {
     const body = (await request.json()) as {

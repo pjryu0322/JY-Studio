@@ -1,16 +1,19 @@
 import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
+import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import { evaluateProviderPackChunkQuality } from "@/lib/provider-pack-service";
 
 type RouteContext = { params: Promise<{ packId: string }> };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
   const { packId } = await context.params;
 
   try {
-    const result = await evaluateProviderPackChunkQuality(clientId, packId?.trim() ?? "");
+    const result = await evaluateProviderPackChunkQuality(userId, clientId, packId?.trim() ?? "");
 
     if (result.error === "PROFILE_REQUIRED") {
       return jsonWithClientIdCookie(

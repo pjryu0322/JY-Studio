@@ -5,6 +5,7 @@ export const ROUTES = {
   categories: "/categories",
   myPacks: "/my-packs",
   account: "/account",
+  accountProfile: "/account/profile",
   accountPlan: "/account/plan",
   apiKeys: "/api-keys",
   packs: "/packs",

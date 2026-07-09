@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
+import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import { createSourceDocumentForProviderPack } from "@/lib/provider-pack-service";
 import { isSourceFormat, isSourceType } from "@/lib/source-type-dto";
 import type { SourceFormat, SourceType } from "@prisma/client";
@@ -10,7 +11,9 @@ type RouteContext = {
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
   const { packId } = await context.params;
 
   try {
@@ -56,7 +59,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const result = await createSourceDocumentForProviderPack(clientId, packId?.trim() ?? "", {
+    const result = await createSourceDocumentForProviderPack(userId, clientId, packId?.trim() ?? "", {
       title: body.title ?? "",
       sourceType: rawSourceType as SourceType,
       sourceFormat: (rawSourceFormat || undefined) as SourceFormat | undefined,

@@ -88,6 +88,7 @@ async function nextSortOrder(db: typeof prisma, versionId: string, start: number
 }
 
 export async function generateGitHubKnowledgeUnitDraftsForPack(
+  userId: string,
   clientId: string,
   packId: string,
   input: GitHubKnowledgeUnitDraftInput,
@@ -99,12 +100,16 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
   const trimmedPackId = packId.trim();
 
   const assertEditable = deps.assertEditablePack ?? assertProviderPackEditableForClient;
-  const editable = await assertEditable(clientId, trimmedPackId);
+  const editable = await assertEditable(userId, clientId, trimmedPackId);
   if (!editable.ok) {
     throwPreflightError(editable);
   }
 
-  const profile = await db.providerProfile.findUnique({ where: { clientId } });
+  let profile = await db.providerProfile.findFirst({ where: { userId } });
+  if (!profile && clientId) {
+    const legacy = await db.providerProfile.findUnique({ where: { clientId } });
+    if (legacy && !legacy.userId) profile = legacy;
+  }
   if (!profile) {
     throwPreflightError({ ok: false, error: "PROFILE_REQUIRED" });
   }

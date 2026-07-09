@@ -64,7 +64,8 @@ function createMockPrisma(options: {
 
   const db = {
     providerProfile: {
-      findUnique: async () => ({ id: "profile-1", clientId: "client-1" }),
+      findFirst: async () => ({ id: "profile-1", clientId: "client-1", userId: "user-test" }),
+      findUnique: async () => ({ id: "profile-1", clientId: "client-1", userId: "user-test" }),
     },
     knowledgePack: {
       findFirst: async () => ({
@@ -275,8 +276,7 @@ describe("github knowledge unit draft service", () => {
 
     await assert.rejects(
       () =>
-        generateGitHubKnowledgeUnitDraftsForPack(
-          "client-1",
+        generateGitHubKnowledgeUnitDraftsForPack("user-test", "client-1",
           "pack-1",
           {},
           {
@@ -306,8 +306,7 @@ describe("github knowledge unit draft service", () => {
     ];
     const { db, createdChunks } = createMockPrisma({ documents: docs });
 
-    const result = await generateGitHubKnowledgeUnitDraftsForPack(
-      "client-1",
+    const result = await generateGitHubKnowledgeUnitDraftsForPack("user-test", "client-1",
       "pack-1",
       {
         generationMode: "MINIMAL",
@@ -353,8 +352,7 @@ describe("github knowledge unit draft service", () => {
       existingDraftSourceIds: ["doc-readme"],
     });
 
-    const result = await generateGitHubKnowledgeUnitDraftsForPack(
-      "client-1",
+    const result = await generateGitHubKnowledgeUnitDraftsForPack("user-test", "client-1",
       "pack-1",
       {},
       { prismaClient: db as never, assertEditablePack: editableDraftPack },
@@ -372,8 +370,7 @@ describe("github knowledge unit draft service", () => {
   it("does not create drafts when requested sourceDocumentIds are missing", async () => {
     const { db, createdChunks } = createMockPrisma({ documents: [] });
 
-    const result = await generateGitHubKnowledgeUnitDraftsForPack(
-      "client-1",
+    const result = await generateGitHubKnowledgeUnitDraftsForPack("user-test", "client-1",
       "pack-1",
       { sourceDocumentIds: ["missing-doc"] },
       { prismaClient: db as never, assertEditablePack: editableDraftPack },
@@ -430,8 +427,7 @@ describe("github knowledge unit draft service", () => {
 
     async function eligibleDocIds(paths: string[]) {
       const { db, createdChunks } = createMockPrisma({ documents: docs });
-      const result = await generateGitHubKnowledgeUnitDraftsForPack(
-        "client-1",
+      const result = await generateGitHubKnowledgeUnitDraftsForPack("user-test", "client-1",
         "pack-1",
         { sourceDocumentPaths: paths, generationMode: "FULL" },
         { prismaClient: db as never, assertEditablePack: editableDraftPack },

@@ -10,6 +10,15 @@ export const ACCOUNT_SECTION_ROLE_REGISTRATION = "역할 계정 등록";
 export const ACCOUNT_SECTION_ROLE_MENUS = "사용자 메뉴";
 export const ACCOUNT_SECTION_SETTINGS = "설정";
 
+export const PROVIDER_CENTER_LOGIN_TITLE = "지식팩을 등록하려면 로그인이 필요합니다.";
+export const PROVIDER_CENTER_LOGIN_CTA = "로그인하고 지식팩 등록 시작";
+
+export const ACCOUNT_PROFILE_LOGIN_TITLE = "JYKStore 로그인";
+export const ACCOUNT_PROFILE_LOGIN_HINT =
+  "지식팩을 등록하려면 로그인이 필요합니다. 공개 지식팩 탐색은 로그인 없이 사용할 수 있습니다.";
+
+export const PROVIDER_CENTER_PROFILE_LINK_LABEL = "프로필 관리";
+
 export const PROVIDER_CENTER_TAGLINE =
   "제품·솔루션 문서와 공개 GitHub 저장소를 기반으로 지식팩 초안을 생성합니다.";
 

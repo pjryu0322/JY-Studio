@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
+import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import { validateProviderSourceDocument } from "@/lib/provider-pack-service";
 
 type RouteContext = {
@@ -7,11 +8,14 @@ type RouteContext = {
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
   const { packId, sourceDocumentId } = await context.params;
 
   try {
     const result = await validateProviderSourceDocument(
+      userId,
       clientId,
       packId?.trim() ?? "",
       sourceDocumentId?.trim() ?? "",

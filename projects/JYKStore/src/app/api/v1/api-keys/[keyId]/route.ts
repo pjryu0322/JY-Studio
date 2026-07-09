@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { revokeApiKeyForClient } from "@/lib/api-key-service";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { isLoggedInResponse, requireLoggedInRequest } from "@/lib/auth-guard";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
 import { logSafeRouteError } from "@/lib/safe-logging";
 
 type RouteContext = {
@@ -8,7 +9,9 @@ type RouteContext = {
 };
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
+  const auth = requireLoggedInRequest(request);
+  if (!isLoggedInResponse(auth)) return auth;
+  const { clientId } = auth;
 
   try {
     const { keyId } = await context.params;

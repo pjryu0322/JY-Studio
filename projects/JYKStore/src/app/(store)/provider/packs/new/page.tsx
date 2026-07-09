@@ -1,17 +1,33 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { AuthRequiredCard } from "@/components/AuthRequiredCard";
 import { ProviderPackCreateForm } from "@/components/ProviderPackCreateForm";
-import { JYKSTORE_CLIENT_ID_COOKIE } from "@/lib/client-identity";
+import { ProviderRequiredCard } from "@/components/ProviderRequiredCard";
+import { getUserIdFromCookies } from "@/lib/auth-session";
 import { prisma } from "@/lib/prisma";
-import { getProviderProfileByClientId } from "@/lib/provider-profile-service";
+import { getProviderProfileByUserId } from "@/lib/provider-profile-service";
 import { ROUTES } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProviderPackNewPage() {
-  const cookieStore = await cookies();
-  const clientId = cookieStore.get(JYKSTORE_CLIENT_ID_COOKIE)?.value ?? null;
-  const profile = clientId ? await getProviderProfileByClientId(clientId) : null;
+  const userId = await getUserIdFromCookies();
+
+  if (!userId) {
+    return (
+      <div className="space-y-4">
+        <Link
+          href={ROUTES.provider}
+          className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
+        >
+          ← 제공자 센터
+        </Link>
+        <AuthRequiredCard />
+      </div>
+    );
+  }
+
+  const profile = await getProviderProfileByUserId(userId);
 
   const categories = await prisma.packCategory.findMany({
     orderBy: { name: "asc" },
@@ -27,19 +43,7 @@ export default async function ProviderPackNewPage() {
         >
           ← 제공자 센터
         </Link>
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5 shadow-card">
-          <h1 className="text-lg font-bold text-slate-900">제공자 프로필이 필요합니다</h1>
-          <p className="mt-2 text-sm text-slate-700">
-            지식팩 초안을 만들려면 먼저 제공자 프로필을 등록해 주세요. 프로필 등록 후 이 화면에서 바로
-            지식팩을 생성할 수 있습니다.
-          </p>
-          <Link
-            href={`${ROUTES.provider}#provider-profile`}
-            className="mt-4 inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-store-accent text-sm font-bold text-white"
-          >
-            제공자 프로필 등록하러 가기
-          </Link>
-        </div>
+        <ProviderRequiredCard />
       </div>
     );
   }

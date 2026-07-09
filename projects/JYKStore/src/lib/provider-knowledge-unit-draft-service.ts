@@ -29,6 +29,7 @@ function clampLimit(limit: number | undefined): number {
 }
 
 export async function listProviderKnowledgeUnitDrafts(
+  userId: string,
   clientId: string,
   packId: string,
   options?: {
@@ -52,7 +53,11 @@ export async function listProviderKnowledgeUnitDrafts(
   const limit = clampLimit(options?.limit);
   const sourceDocumentId = options?.sourceDocumentId?.trim() || undefined;
 
-  const profile = await db.providerProfile.findUnique({ where: { clientId } });
+  let profile = await db.providerProfile.findFirst({ where: { userId } });
+  if (!profile && clientId) {
+    const legacy = await db.providerProfile.findUnique({ where: { clientId } });
+    if (legacy && !legacy.userId) profile = legacy;
+  }
   if (!profile) {
     throw new ProviderKnowledgeUnitDraftListError(
       "PROVIDER_KNOWLEDGE_UNIT_DRAFTS_FAILED",

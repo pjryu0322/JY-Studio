@@ -1,12 +1,15 @@
 import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
+import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import { generateProviderPackRetrievalEvaluationCases } from "@/lib/provider-pack-service";
 
 type RouteContext = { params: Promise<{ packId: string }> };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
   const { packId } = await context.params;
 
   try {
@@ -21,6 +24,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const result = await generateProviderPackRetrievalEvaluationCases(
+      userId,
       clientId,
       packId?.trim() ?? "",
       replace,

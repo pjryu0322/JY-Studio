@@ -76,6 +76,7 @@ function mapCreateError(message: string | undefined): string {
 }
 
 export async function registerGitHubSourceDocumentsForPack(
+  userId: string,
   clientId: string,
   packId: string,
   input: GitHubSourceRegisterInput,
@@ -89,7 +90,7 @@ export async function registerGitHubSourceDocumentsForPack(
   const token = deps.token ?? process.env.GITHUB_TOKEN;
 
   const assertEditable = deps.assertEditablePack ?? assertProviderPackEditableForClient;
-  const editable = await assertEditable(clientId, trimmedPackId);
+  const editable = await assertEditable(userId, clientId, trimmedPackId);
   if (!editable.ok) {
     throwRegisterPreflightError(editable);
   }
@@ -215,7 +216,7 @@ export async function registerGitHubSourceDocumentsForPack(
       path,
     );
 
-    const result = await createSourceDocument(clientId, effectivePackId, {
+    const result = await createSourceDocument(userId, clientId, effectivePackId, {
       title,
       sourceType,
       sourceFormat,
@@ -271,7 +272,7 @@ export async function registerGitHubSourceDocumentsForPack(
   }
 
   if (!packDetail) {
-    packDetail = (await getProviderPackForClient(clientId, effectivePackId)) ?? undefined;
+    packDetail = (await getProviderPackForClient(userId, clientId, effectivePackId)) ?? undefined;
   }
 
   return {

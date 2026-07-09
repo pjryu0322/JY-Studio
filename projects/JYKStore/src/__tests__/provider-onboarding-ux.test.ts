@@ -64,8 +64,8 @@ describe("provider onboarding UX sources", () => {
 
   it("collapses profile form after registration and keeps single primary CTA", () => {
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
-    assert.ok(center.includes("<details"));
-    assert.ok(center.includes("프로필 수정"));
+    assert.ok(!center.includes("<details"));
+    assert.ok(center.includes("fetchAuthSession"));
     assert.ok(center.includes("새 지식팩 만들기"));
     assert.ok(center.includes("첫 지식팩 만들기"));
     assert.ok(!center.includes("1. 1."));
@@ -73,9 +73,9 @@ describe("provider onboarding UX sources", () => {
 
   it("shows pack create form only when profile exists on server page", () => {
     const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
-    assert.ok(packNew.includes("제공자 프로필이 필요합니다"));
+    assert.ok(packNew.includes("ProviderRequiredCard"));
     assert.ok(packNew.includes("ProviderPackCreateForm"));
-    assert.ok(packNew.includes("getProviderProfileByClientId"));
+    assert.ok(packNew.includes("getUserIdFromCookies"));
   });
 
   it("uses pack create step label and submit label", () => {

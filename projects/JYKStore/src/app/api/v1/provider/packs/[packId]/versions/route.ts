@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
+import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import { createProviderPackVersionForClient } from "@/lib/provider-pack-service";
 
 type RouteContext = {
@@ -8,7 +9,9 @@ type RouteContext = {
 };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
   const { packId } = await context.params;
 
   try {
@@ -23,7 +26,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       versionSummary?: string;
     };
 
-    const result = await createProviderPackVersionForClient(clientId, packId?.trim() ?? "", {
+    const result = await createProviderPackVersionForClient(userId, clientId, packId?.trim() ?? "", {
       version: body.version ?? "",
       overview: body.overview,
       features: body.features,

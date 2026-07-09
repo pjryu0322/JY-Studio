@@ -1,7 +1,8 @@
 import { PackPricing } from "@prisma/client";
 import { logSafeRouteError } from "@/lib/safe-logging";
 import { NextRequest } from "next/server";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
+import { requireProviderApiAuth } from "@/lib/provider-api-auth";
 import {
   getProviderPackForClient,
   updateProviderPackForClient,
@@ -12,11 +13,13 @@ type RouteContext = {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
   const { packId } = await context.params;
 
   try {
-    const pack = await getProviderPackForClient(clientId, packId?.trim() ?? "");
+    const pack = await getProviderPackForClient(userId, clientId, packId?.trim() ?? "");
     if (!pack) {
       return jsonWithClientIdCookie({ error: "지식팩을 찾을 수 없습니다." }, clientId, { status: 404 });
     }
@@ -28,7 +31,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const clientId = ensureClientId(request);
+  const auth = requireProviderApiAuth(request);
+  if (!auth.ok) return auth.response;
+  const { clientId, userId } = auth;
   const { packId } = await context.params;
 
   try {
@@ -49,7 +54,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       versionSummary?: string;
     };
 
-    const result = await updateProviderPackForClient(clientId, packId?.trim() ?? "", body);
+    const result = await updateProviderPackForClient(userId, clientId, packId?.trim() ?? "", body);
 
     if (result.error === "NOT_FOUND") {
       return jsonWithClientIdCookie({ error: "지식팩을 찾을 수 없습니다." }, clientId, { status: 404 });

@@ -86,7 +86,8 @@ function makeChunk(
 function createMockDb(chunks: ChunkRow[]) {
   return {
     providerProfile: {
-      findUnique: async () => ({ id: "profile-1", clientId: "client-1" }),
+      findFirst: async () => ({ id: "profile-1", clientId: "client-1", userId: "user-1" }),
+      findUnique: async () => ({ id: "profile-1", clientId: "client-1", userId: "user-1" }),
     },
     knowledgePack: {
       findFirst: async () => ({
@@ -141,9 +142,9 @@ describe("provider knowledge unit draft service", () => {
   it("throws when provider profile is missing", async () => {
     await assert.rejects(
       () =>
-        listProviderKnowledgeUnitDrafts("client-1", "pack-1", {}, {
+        listProviderKnowledgeUnitDrafts("user-1", "client-1", "pack-1", {}, {
           prismaClient: {
-            providerProfile: { findUnique: async () => null },
+            providerProfile: { findFirst: async () => null, findUnique: async () => null },
           } as never,
         }),
       (err: unknown) =>
@@ -154,9 +155,12 @@ describe("provider knowledge unit draft service", () => {
   it("throws when pack is not found", async () => {
     await assert.rejects(
       () =>
-        listProviderKnowledgeUnitDrafts("client-1", "pack-1", {}, {
+        listProviderKnowledgeUnitDrafts("user-1", "client-1", "pack-1", {}, {
           prismaClient: {
-            providerProfile: { findUnique: async () => ({ id: "p1" }) },
+            providerProfile: {
+              findFirst: async () => ({ id: "p1", userId: "user-1" }),
+              findUnique: async () => ({ id: "p1" }),
+            },
             knowledgePack: { findFirst: async () => null },
           } as never,
         }),
@@ -168,7 +172,8 @@ describe("provider knowledge unit draft service", () => {
   it("throws when pack has no version", async () => {
     const db = {
       providerProfile: {
-        findUnique: async () => ({ id: "profile-1", clientId: "client-1" }),
+        findFirst: async () => ({ id: "profile-1", clientId: "client-1", userId: "user-1" }),
+        findUnique: async () => ({ id: "profile-1", clientId: "client-1", userId: "user-1" }),
       },
       knowledgePack: {
         findFirst: async () => ({
@@ -181,7 +186,7 @@ describe("provider knowledge unit draft service", () => {
 
     await assert.rejects(
       () =>
-        listProviderKnowledgeUnitDrafts("client-1", "pack-1", {}, {
+        listProviderKnowledgeUnitDrafts("user-1", "client-1", "pack-1", {}, {
           prismaClient: db as never,
         }),
       (err: unknown) =>
@@ -198,6 +203,7 @@ describe("provider knowledge unit draft service", () => {
     const db = createMockDb(chunks);
 
     const pending = await listProviderKnowledgeUnitDrafts(
+      "user-1",
       "client-1",
       "pack-1",
       { status: "pending_review" },
@@ -209,6 +215,7 @@ describe("provider knowledge unit draft service", () => {
     assert.equal(pending.summary.supersededCount, 1);
 
     const all = await listProviderKnowledgeUnitDrafts(
+      "user-1",
       "client-1",
       "pack-1",
       { status: "all" },
@@ -227,6 +234,7 @@ describe("provider knowledge unit draft service", () => {
     ];
 
     const result = await listProviderKnowledgeUnitDrafts(
+      "user-1",
       "client-1",
       "pack-1",
       { status: "all" },
@@ -247,6 +255,7 @@ describe("provider knowledge unit draft service", () => {
     ];
 
     const result = await listProviderKnowledgeUnitDrafts(
+      "user-1",
       "client-1",
       "pack-1",
       { status: "all" },
@@ -269,6 +278,7 @@ describe("provider knowledge unit draft service", () => {
     ];
 
     const result = await listProviderKnowledgeUnitDrafts(
+      "user-1",
       "client-1",
       "pack-1",
       { status: "all" },
@@ -287,6 +297,7 @@ describe("provider knowledge unit draft service", () => {
     ];
 
     const result = await listProviderKnowledgeUnitDrafts(
+      "user-1",
       "client-1",
       "pack-1",
       { status: "all", sourceDocumentId: "doc-2" },
@@ -305,6 +316,7 @@ describe("provider knowledge unit draft service", () => {
     );
 
     const result = await listProviderKnowledgeUnitDrafts(
+      "user-1",
       "client-1",
       "pack-1",
       { status: "all", limit: 999 },
@@ -314,6 +326,7 @@ describe("provider knowledge unit draft service", () => {
     assert.equal(result.items.length, 100);
 
     const minResult = await listProviderKnowledgeUnitDrafts(
+      "user-1",
       "client-1",
       "pack-1",
       { status: "all", limit: 0 },

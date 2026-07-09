@@ -90,8 +90,7 @@ describe("github source register service", () => {
       "sha-ex": "export const demo = 1;",
     });
 
-    const result = await registerGitHubSourceDocumentsForPack(
-      "client-1",
+    const result = await registerGitHubSourceDocumentsForPack("user-test", "client-1",
       "pack-1",
       {
         repositoryUrl: "https://github.com/test/repo",
@@ -101,7 +100,7 @@ describe("github source register service", () => {
       {
         fetchImpl: fetchImpl as typeof fetch,
         assertEditablePack: editableDraftPack,
-        createSourceDocument: async (_clientId, _packId, input) => {
+        createSourceDocument: async (_userId, _clientId, _packId, input) => {
           created.push(input);
           return { pack: { packId: "pack-1", versions: [] } as never };
         },
@@ -128,8 +127,7 @@ describe("github source register service", () => {
       return fetchImpl(input);
     };
 
-    const result = await registerGitHubSourceDocumentsForPack(
-      "client-1",
+    const result = await registerGitHubSourceDocumentsForPack("user-test", "client-1",
       "pack-1",
       {
         repositoryUrl: "https://github.com/test/repo",
@@ -152,8 +150,7 @@ describe("github source register service", () => {
   });
 
   it("dedupes duplicate selected paths with warning", async () => {
-    const result = await registerGitHubSourceDocumentsForPack(
-      "client-1",
+    const result = await registerGitHubSourceDocumentsForPack("user-test", "client-1",
       "pack-1",
       {
         repositoryUrl: "https://github.com/test/repo",
@@ -171,8 +168,7 @@ describe("github source register service", () => {
   });
 
   it("accumulates failed files and continues", async () => {
-    const result = await registerGitHubSourceDocumentsForPack(
-      "client-1",
+    const result = await registerGitHubSourceDocumentsForPack("user-test", "client-1",
       "pack-1",
       {
         repositoryUrl: "https://github.com/test/repo",
@@ -185,7 +181,7 @@ describe("github source register service", () => {
           "sha-gs": "# gs",
         }) as typeof fetch,
         assertEditablePack: editableDraftPack,
-        createSourceDocument: async (_c, _p, input) => {
+        createSourceDocument: async (_u, _c, _p, input) => {
           if (input.title === "docs/getting-started") {
             return { error: "VALIDATION" as const, message: "duplicate checksum" };
           }
@@ -242,7 +238,7 @@ describe("github source register service", () => {
 
     await assert.rejects(
       () =>
-        registerGitHubSourceDocumentsForPack("client-1", "pack-1", baseInput, {
+        registerGitHubSourceDocumentsForPack("user-test", "client-1", "pack-1", baseInput, {
           fetchImpl: fetchImpl as typeof fetch,
           assertEditablePack: async () => ({ ok: false, error: "NOT_FOUND" }),
         }),
@@ -255,7 +251,7 @@ describe("github source register service", () => {
 
     await assert.rejects(
       () =>
-        registerGitHubSourceDocumentsForPack("client-1", "pack-1", baseInput, {
+        registerGitHubSourceDocumentsForPack("user-test", "client-1", "pack-1", baseInput, {
           fetchImpl: fetchImpl as typeof fetch,
           assertEditablePack: async () => ({ ok: false, error: "PROFILE_REQUIRED" }),
         }),
@@ -265,7 +261,7 @@ describe("github source register service", () => {
 
     await assert.rejects(
       () =>
-        registerGitHubSourceDocumentsForPack("client-1", "pack-1", baseInput, {
+        registerGitHubSourceDocumentsForPack("user-test", "client-1", "pack-1", baseInput, {
           fetchImpl: fetchImpl as typeof fetch,
           assertEditablePack: async () => ({
             ok: false,
@@ -281,8 +277,7 @@ describe("github source register service", () => {
 
   it("runs preflight and returns zero registrations when paths are not discovery candidates", async () => {
     let createCalls = 0;
-    const result = await registerGitHubSourceDocumentsForPack(
-      "client-1",
+    const result = await registerGitHubSourceDocumentsForPack("user-test", "client-1",
       "pack-1",
       {
         repositoryUrl: "https://github.com/test/repo",

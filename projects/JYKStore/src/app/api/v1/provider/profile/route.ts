@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
+import { isLoggedInResponse, requireLoggedInRequest } from "@/lib/auth-guard";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
 import {
-  getProviderProfileByClientId,
-  upsertProviderProfileForClient,
+  getProviderProfileByUserId,
+  upsertProviderProfileForUser,
 } from "@/lib/provider-profile-service";
 
 const PROFILE_ERRORS: Record<string, string> = {
@@ -14,10 +15,12 @@ const PROFILE_ERRORS: Record<string, string> = {
 };
 
 export async function GET(request: NextRequest) {
-  const clientId = ensureClientId(request);
+  const auth = requireLoggedInRequest(request);
+  if (!isLoggedInResponse(auth)) return auth;
+  const { clientId, userId } = auth;
 
   try {
-    const profile = await getProviderProfileByClientId(clientId);
+    const profile = await getProviderProfileByUserId(userId);
     return jsonWithClientIdCookie({ clientId, profile }, clientId);
   } catch (error) {
     logSafeRouteError({ scope: "provider-route", method: "GET", path: "/api/v1/provider/profile", error });
@@ -26,7 +29,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const clientId = ensureClientId(request);
+  const auth = requireLoggedInRequest(request);
+  if (!isLoggedInResponse(auth)) return auth;
+  const { clientId, userId } = auth;
 
   try {
     const body = (await request.json()) as {
@@ -36,7 +41,7 @@ export async function POST(request: NextRequest) {
       contactEmail?: string;
     };
 
-    const result = await upsertProviderProfileForClient(clientId, {
+    const result = await upsertProviderProfileForUser(userId, clientId, {
       displayName: body.displayName ?? "",
       description: body.description ?? "",
       websiteUrl: body.websiteUrl,

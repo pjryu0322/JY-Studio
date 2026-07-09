@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
+import { isLoggedInResponse, requireLoggedInRequest } from "@/lib/auth-guard";
 import { logSafeRouteError } from "@/lib/safe-logging";
-import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { jsonWithClientIdCookie } from "@/lib/client-identity";
 import { addPackInstallationForClient, listActiveMyPacksForClient } from "@/lib/my-packs-service";
 
 export async function GET(request: NextRequest) {
-  const clientId = ensureClientId(request);
+  const auth = requireLoggedInRequest(request);
+  if (!isLoggedInResponse(auth)) return auth;
+  const { clientId } = auth;
 
   try {
     const items = await listActiveMyPacksForClient(clientId);
@@ -16,7 +19,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const clientId = ensureClientId(request);
+  const auth = requireLoggedInRequest(request);
+  if (!isLoggedInResponse(auth)) return auth;
+  const { clientId } = auth;
 
   try {
     const body = (await request.json()) as { packId?: string };

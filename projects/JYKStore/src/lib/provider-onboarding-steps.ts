@@ -68,7 +68,7 @@ export function buildProviderOnboardingSteps(
       title: "제공자 프로필 등록",
       description: "제공자 정보를 등록합니다.",
       status: profileStatus,
-      href: input.hasProfile ? undefined : `${ROUTES.provider}#provider-profile`,
+      href: input.hasProfile ? undefined : `${ROUTES.accountProfile}#provider-profile`,
     },
     {
       key: "pack",

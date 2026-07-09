@@ -8,6 +8,7 @@ import {
   type SourceType,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { findProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import {
   completePipelineStep,
@@ -166,10 +167,8 @@ async function assertCategoryExists(categoryId: string) {
   return Boolean(category);
 }
 
-export async function listProviderPacksForClient(clientId: string) {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+export async function listProviderPacksForClient(userId: string, clientId: string) {
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return [];
@@ -184,12 +183,11 @@ export async function listProviderPacksForClient(clientId: string) {
 }
 
 export async function createProviderPackForClient(
+  userId: string,
   clientId: string,
   input: CreateProviderPackInput,
 ) {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return { error: "PROFILE_REQUIRED" as const };
@@ -259,12 +257,11 @@ export async function createProviderPackForClient(
 }
 
 export async function getProviderPackForClient(
+  userId: string,
   clientId: string,
   packId: string,
 ): Promise<ProviderPackDetailDto | null> {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return null;
@@ -282,6 +279,7 @@ export async function getProviderPackForClient(
 }
 
 export async function assertProviderPackEditableForClient(
+  userId: string,
   clientId: string,
   packId: string,
 ): Promise<
@@ -293,9 +291,7 @@ export async function assertProviderPackEditableForClient(
     return { ok: false, error: "NOT_FOUND" };
   }
 
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return { ok: false, error: "PROFILE_REQUIRED" };
@@ -357,13 +353,12 @@ async function mapProviderPackDetailWithValidation(
 }
 
 export async function updateProviderPackForClient(
+  userId: string,
   clientId: string,
   packId: string,
   input: UpdateProviderPackInput,
 ) {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return { error: "PROFILE_REQUIRED" as const };
@@ -451,18 +446,17 @@ export async function updateProviderPackForClient(
     entityId: packId,
   });
 
-  const updated = await getProviderPackForClient(clientId, packId);
+  const updated = await getProviderPackForClient(userId, clientId, packId);
   return { pack: updated! };
 }
 
 export async function createProviderPackVersionForClient(
+  userId: string,
   clientId: string,
   packId: string,
   input: CreatePackVersionInput,
 ) {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return { error: "PROFILE_REQUIRED" as const };
@@ -514,18 +508,17 @@ export async function createProviderPackVersionForClient(
     metadata: { version },
   });
 
-  const detail = await getProviderPackForClient(clientId, packId);
+  const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail! };
 }
 
 export async function createSourceDocumentForProviderPack(
+  userId: string,
   clientId: string,
   packId: string,
   input: CreateSourceDocumentInput,
 ) {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return { error: "PROFILE_REQUIRED" as const };
@@ -637,7 +630,7 @@ export async function createSourceDocumentForProviderPack(
 
   await recordSourceRegisteredPipeline(packId, clientId, fullValidation.status, sourceType);
 
-  const detail = await getProviderPackForClient(clientId, packId);
+  const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail! };
 }
 
@@ -767,10 +760,8 @@ async function recordSubmitForReviewPipeline(
   }
 }
 
-export async function submitProviderPackForReview(clientId: string, packId: string) {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+export async function submitProviderPackForReview(userId: string, clientId: string, packId: string) {
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return { error: "PROFILE_REQUIRED" as const };
@@ -892,18 +883,17 @@ export async function submitProviderPackForReview(clientId: string, packId: stri
     metadata: { packId, status: "PENDING" },
   });
 
-  const detail = await getProviderPackForClient(clientId, packId);
+  const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail! };
 }
 
 export async function validateProviderSourceDocument(
+  userId: string,
   clientId: string,
   packId: string,
   sourceDocumentId: string,
 ) {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return { error: "PROFILE_REQUIRED" as const };
@@ -938,14 +928,12 @@ export async function validateProviderSourceDocument(
     return { error: "NOT_FOUND" as const };
   }
 
-  const detail = await getProviderPackForClient(clientId, packId);
+  const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail!, report: validation.report };
 }
 
-export async function evaluateProviderPackStructureQuality(clientId: string, packId: string) {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+export async function evaluateProviderPackStructureQuality(userId: string, clientId: string, packId: string) {
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return { error: "PROFILE_REQUIRED" as const };
@@ -975,14 +963,12 @@ export async function evaluateProviderPackStructureQuality(clientId: string, pac
     return { error: "INCOMPLETE" as const, message: "버전이 없습니다." };
   }
 
-  const detail = await getProviderPackForClient(clientId, packId);
+  const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail!, evaluation: result };
 }
 
-export async function evaluateProviderPackChunkQuality(clientId: string, packId: string) {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+export async function evaluateProviderPackChunkQuality(userId: string, clientId: string, packId: string) {
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return { error: "PROFILE_REQUIRED" as const };
@@ -1018,7 +1004,7 @@ export async function evaluateProviderPackChunkQuality(clientId: string, packId:
     };
   }
 
-  const detail = await getProviderPackForClient(clientId, packId);
+  const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail!, evaluation: result };
 }
 
@@ -1045,13 +1031,12 @@ function mapRetrievalEvaluationServiceError(
 }
 
 export async function generateProviderPackRetrievalEvaluationCases(
+  userId: string,
   clientId: string,
   packId: string,
   replace?: boolean,
 ) {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return { error: "PROFILE_REQUIRED" as const };
@@ -1079,14 +1064,12 @@ export async function generateProviderPackRetrievalEvaluationCases(
     return mapRetrievalEvaluationServiceError(result);
   }
 
-  const detail = await getProviderPackForClient(clientId, packId);
+  const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail!, evaluation: result };
 }
 
-export async function runProviderPackRetrievalEvaluation(clientId: string, packId: string) {
-  const profile = await prisma.providerProfile.findUnique({
-    where: { clientId },
-  });
+export async function runProviderPackRetrievalEvaluation(userId: string, clientId: string, packId: string) {
+  const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
     return { error: "PROFILE_REQUIRED" as const };
@@ -1113,6 +1096,6 @@ export async function runProviderPackRetrievalEvaluation(clientId: string, packI
     return mapRetrievalEvaluationServiceError(result);
   }
 
-  const detail = await getProviderPackForClient(clientId, packId);
+  const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail!, evaluation: result };
 }

@@ -175,7 +175,8 @@ function createP26E2EPrisma(state: ReturnType<typeof createP26E2EState>) {
 
   const db = {
     providerProfile: {
-      findUnique: async () => ({ id: "profile-1", clientId: CLIENT_ID }),
+      findFirst: async () => ({ id: "profile-1", clientId: CLIENT_ID, userId: "user-test" }),
+      findUnique: async () => ({ id: "profile-1", clientId: CLIENT_ID, userId: "user-test" }),
     },
     knowledgePack: {
       findFirst: async () => ({
@@ -356,8 +357,7 @@ describe("P26 GitHub auto collect E2E", () => {
     const fetchImpl = tuiGridFetchFactory(tuiGridBlobs);
     const selectedPaths = ["README.md", "docs/en/getting-started.md", "docs/en/columns.md"];
 
-    const registerResult = await registerGitHubSourceDocumentsForPack(
-      CLIENT_ID,
+    const registerResult = await registerGitHubSourceDocumentsForPack("user-test", CLIENT_ID,
       PACK_ID,
       {
         repositoryUrl: TUI_GRID_URL,
@@ -367,7 +367,7 @@ describe("P26 GitHub auto collect E2E", () => {
       {
         fetchImpl: fetchImpl as typeof fetch,
         assertEditablePack: editableDraftPack,
-        createSourceDocument: async (_clientId, _packId, input) => {
+        createSourceDocument: async (_userId, _clientId, _packId, input) => {
           pushSourceDocument(state, {
             title: input.title,
             sourceType: input.sourceType,
@@ -387,8 +387,7 @@ describe("P26 GitHub auto collect E2E", () => {
 
     const prisma = createP26E2EPrisma(state);
 
-    const draftResult = await generateGitHubKnowledgeUnitDraftsForPack(
-      CLIENT_ID,
+    const draftResult = await generateGitHubKnowledgeUnitDraftsForPack("user-test", CLIENT_ID,
       PACK_ID,
       { generationMode: "MINIMAL" },
       { prismaClient: prisma as never, assertEditablePack: editableDraftPack },
@@ -410,6 +409,7 @@ describe("P26 GitHub auto collect E2E", () => {
     assert.equal(beforeActivate.length, 0);
 
     const providerDrafts = await listProviderKnowledgeUnitDrafts(
+      "user-test",
       CLIENT_ID,
       PACK_ID,
       { status: "pending_review" },
