@@ -856,6 +856,11 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - `POST /api/v1/admin/knowledge-unit-drafts/[draftId]/activate`로 `AUTO_KNOWLEDGE_UNIT` active chunk 생성.
 - 원본 `AUTO_KNOWLEDGE_UNIT_DRAFT`는 `isActive=false` 유지, Context/retrieval은 active chunk만 후보.
 
+### P26 E2E — GitHub 자동수집 전체 흐름 검증
+
+- `src/__tests__/github-auto-collect-e2e.test.ts` (mock fixture, 실제 GitHub API 없음).
+- 수동 체크리스트: `docs/p26-github-auto-collect-e2e-checklist.md` (`nhn/tui.grid`).
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
