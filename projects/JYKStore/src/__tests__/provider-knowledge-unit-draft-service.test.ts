@@ -8,8 +8,28 @@ import {
 } from "@/lib/provider-knowledge-unit-draft-dto";
 import {
   listProviderKnowledgeUnitDrafts,
+  parseKnowledgeUnitDraftListQuery,
   ProviderKnowledgeUnitDraftListError,
 } from "@/lib/provider-knowledge-unit-draft-service";
+
+type ChunkWhere = {
+  versionId?: string;
+  chunkType?: string;
+  isActive?: boolean;
+  sourceDocumentId?: string;
+};
+
+type ChunkRow = KnowledgeChunk & { sourceDocument: SourceDocument | null };
+
+function matchesChunkWhere(chunk: ChunkRow, where: ChunkWhere): boolean {
+  if (where.versionId !== undefined && chunk.versionId !== where.versionId) return false;
+  if (where.chunkType !== undefined && chunk.chunkType !== where.chunkType) return false;
+  if (where.isActive !== undefined && chunk.isActive !== where.isActive) return false;
+  if (where.sourceDocumentId !== undefined && chunk.sourceDocumentId !== where.sourceDocumentId) {
+    return false;
+  }
+  return true;
+}
 
 function makeSourceDoc(id: string): SourceDocument {
   const now = new Date("2026-01-01T00:00:00.000Z");
@@ -41,7 +61,8 @@ function makeChunk(
   id: string,
   metadata: unknown,
   sourceDocument: SourceDocument | null,
-): KnowledgeChunk & { sourceDocument: SourceDocument | null } {
+  overrides: Partial<KnowledgeChunk> = {},
+): ChunkRow {
   const now = new Date("2026-01-02T00:00:00.000Z");
   return {
     id,
@@ -58,10 +79,11 @@ function makeChunk(
     createdAt: now,
     updatedAt: now,
     sourceDocument,
+    ...overrides,
   };
 }
 
-function createMockDb(chunks: Array<KnowledgeChunk & { sourceDocument: SourceDocument | null }>) {
+function createMockDb(chunks: ChunkRow[]) {
   return {
     providerProfile: {
       findUnique: async () => ({ id: "profile-1", clientId: "client-1" }),
@@ -74,9 +96,10 @@ function createMockDb(chunks: Array<KnowledgeChunk & { sourceDocument: SourceDoc
       }),
     },
     knowledgeChunk: {
-      count: async ({ where }: { where: { isActive?: boolean } }) =>
-        chunks.filter((c) => c.isActive === where.isActive).length,
-      findMany: async () => chunks.filter((c) => !c.isActive),
+      count: async ({ where }: { where: ChunkWhere }) =>
+        chunks.filter((chunk) => matchesChunkWhere(chunk, where)).length,
+      findMany: async ({ where }: { where: ChunkWhere }) =>
+        chunks.filter((chunk) => matchesChunkWhere(chunk, where)),
     },
   };
 }
@@ -142,6 +165,30 @@ describe("provider knowledge unit draft service", () => {
     );
   });
 
+  it("throws when pack has no version", async () => {
+    const db = {
+      providerProfile: {
+        findUnique: async () => ({ id: "profile-1", clientId: "client-1" }),
+      },
+      knowledgePack: {
+        findFirst: async () => ({
+          packId: "pack-1",
+          providerProfileId: "profile-1",
+          versions: [],
+        }),
+      },
+    };
+
+    await assert.rejects(
+      () =>
+        listProviderKnowledgeUnitDrafts("client-1", "pack-1", {}, {
+          prismaClient: db as never,
+        }),
+      (err: unknown) =>
+        err instanceof ProviderKnowledgeUnitDraftListError && err.status === 400,
+    );
+  });
+
   it("lists inactive AUTO_KNOWLEDGE_UNIT_DRAFT chunks with status filter", async () => {
     const doc = makeSourceDoc("doc-1");
     const chunks = [
@@ -168,5 +215,138 @@ describe("provider knowledge unit draft service", () => {
       { prismaClient: db as never },
     );
     assert.equal(all.items.length, 2);
+  });
+
+  it("excludes non draft chunk types", async () => {
+    const doc = makeSourceDoc("doc-1");
+    const chunks = [
+      makeChunk("draft-1", { reviewStatus: "pending_review" }, doc),
+      makeChunk("normal-1", { reviewStatus: "pending_review" }, doc, {
+        chunkType: "MANUAL_CHUNK",
+      }),
+    ];
+
+    const result = await listProviderKnowledgeUnitDrafts(
+      "client-1",
+      "pack-1",
+      { status: "all" },
+      { prismaClient: createMockDb(chunks) as never },
+    );
+
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0]?.id, "draft-1");
+  });
+
+  it("excludes active drafts from items and counts them separately", async () => {
+    const doc = makeSourceDoc("doc-1");
+    const chunks = [
+      makeChunk("inactive-draft", { reviewStatus: "pending_review" }, doc),
+      makeChunk("active-draft", { reviewStatus: "pending_review" }, doc, {
+        isActive: true,
+      }),
+    ];
+
+    const result = await listProviderKnowledgeUnitDrafts(
+      "client-1",
+      "pack-1",
+      { status: "all" },
+      { prismaClient: createMockDb(chunks) as never },
+    );
+
+    assert.deepEqual(result.items.map((item) => item.id), ["inactive-draft"]);
+    assert.equal(result.summary.activeDraftCount, 1);
+  });
+
+  it("filters drafts by latest version id", async () => {
+    const doc = makeSourceDoc("doc-1");
+    const chunks = [
+      makeChunk("ver-1-draft", { reviewStatus: "pending_review" }, doc, {
+        versionId: "ver-1",
+      }),
+      makeChunk("old-ver-draft", { reviewStatus: "pending_review" }, doc, {
+        versionId: "ver-old",
+      }),
+    ];
+
+    const result = await listProviderKnowledgeUnitDrafts(
+      "client-1",
+      "pack-1",
+      { status: "all" },
+      { prismaClient: createMockDb(chunks) as never },
+    );
+
+    assert.deepEqual(result.items.map((item) => item.id), ["ver-1-draft"]);
+  });
+
+  it("filters drafts by sourceDocumentId", async () => {
+    const doc1 = makeSourceDoc("doc-1");
+    const doc2 = makeSourceDoc("doc-2");
+    const chunks = [
+      makeChunk("draft-1", { reviewStatus: "pending_review" }, doc1),
+      makeChunk("draft-2", { reviewStatus: "pending_review" }, doc2),
+    ];
+
+    const result = await listProviderKnowledgeUnitDrafts(
+      "client-1",
+      "pack-1",
+      { status: "all", sourceDocumentId: "doc-2" },
+      { prismaClient: createMockDb(chunks) as never },
+    );
+
+    assert.deepEqual(result.items.map((item) => item.id), ["draft-2"]);
+  });
+
+  it("clamps limit through service options", async () => {
+    const doc = makeSourceDoc("doc-1");
+    const chunks = Array.from({ length: 120 }, (_, index) =>
+      makeChunk(`draft-${index}`, { reviewStatus: "pending_review" }, doc, {
+        sortOrder: index,
+      }),
+    );
+
+    const result = await listProviderKnowledgeUnitDrafts(
+      "client-1",
+      "pack-1",
+      { status: "all", limit: 999 },
+      { prismaClient: createMockDb(chunks) as never },
+    );
+
+    assert.equal(result.items.length, 100);
+
+    const minResult = await listProviderKnowledgeUnitDrafts(
+      "client-1",
+      "pack-1",
+      { status: "all", limit: 0 },
+      { prismaClient: createMockDb(chunks) as never },
+    );
+    assert.equal(minResult.items.length, 1);
+  });
+});
+
+describe("parseKnowledgeUnitDraftListQuery", () => {
+  it("parses and clamps query parameters", () => {
+    const query = parseKnowledgeUnitDraftListQuery(
+      new URLSearchParams("status=bad&limit=999&sourceDocumentId= doc-1 "),
+    );
+
+    assert.equal(query.status, "pending_review");
+    assert.equal(query.limit, 100);
+    assert.equal(query.sourceDocumentId, "doc-1");
+  });
+
+  it("accepts valid status values and clamps low limit", () => {
+    assert.equal(
+      parseKnowledgeUnitDraftListQuery(new URLSearchParams("status=superseded")).status,
+      "superseded",
+    );
+    assert.equal(
+      parseKnowledgeUnitDraftListQuery(new URLSearchParams("status=all")).status,
+      "all",
+    );
+    assert.equal(parseKnowledgeUnitDraftListQuery(new URLSearchParams("limit=0")).limit, 1);
+  });
+
+  it("defaults invalid limit to 50", () => {
+    assert.equal(parseKnowledgeUnitDraftListQuery(new URLSearchParams("limit=abc")).limit, 50);
   });
 });
