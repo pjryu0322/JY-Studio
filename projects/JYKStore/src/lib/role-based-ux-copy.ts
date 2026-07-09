@@ -35,6 +35,16 @@ export const PROVIDER_PACK_EMPTY_TITLE = "아직 만든 지식팩이 없습니�
 export const PROVIDER_PACK_EMPTY_BODY =
   "먼저 지식팩 기본정보를 입력해 초안을 생성하세요.";
 
+export const PROVIDER_PACK_CREATE_AUTO_ID_HINT =
+  "이름과 설명을 입력하면 JYKStore가 지식팩 ID와 요약 설명을 자동 생성합니다.";
+
+export const PROVIDER_PACK_CREATED_BANNER_TITLE = "지식팩 초안 생성 완료";
+export const PROVIDER_PACK_CREATED_ID_PREFIX = "JYKStore가 지식팩 ID를 발급했습니다:";
+export const PROVIDER_PACK_CREATED_NEXT_TASK =
+  "다음 할 일: GitHub URL 또는 문서를 등록해 자동수집을 실행하세요.";
+export const PROVIDER_PACK_CREATED_COLLECT_CTA = "GitHub/문서 자동수집으로 이동";
+export const PROVIDER_PACK_ID_LABEL = "지식팩 ID";
+
 export const PROVIDER_REVIEW_READONLY_HINT =
   "검토 요청 후 운영자가 승인·활성화하면 공개 지식팩으로 사용할 수 있습니다.";
 

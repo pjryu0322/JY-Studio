@@ -72,10 +72,10 @@ export async function fetchProviderPacks(): Promise<ProviderPacksListResponse> {
 }
 
 export async function createProviderPackApi(input: {
-  packId: string;
+  packId?: string;
   name: string;
   categoryId: string;
-  shortDescription: string;
+  shortDescription?: string;
   description: string;
   tags?: string[];
   version?: string;

@@ -8,6 +8,8 @@ import {
   type SourceType,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { generateUniquePackId, PACK_ID_PATTERN } from "@/lib/pack-id-generator";
+import { deriveShortDescription } from "@/lib/pack-summary-generator";
 import { findProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import {
@@ -61,9 +63,17 @@ import {
   type ProviderSourceDocumentValidationOverlay,
 } from "@/lib/provider-pack-dto";
 
-const PACK_ID_PATTERN = /^[a-z0-9-]{3,60}$/;
-
 export type CreateProviderPackInput = {
+  packId?: string;
+  name: string;
+  categoryId: string;
+  shortDescription?: string;
+  description: string;
+  tags?: string[];
+  version?: string;
+};
+
+type ResolvedCreateProviderPackInput = {
   packId: string;
   name: string;
   categoryId: string;
@@ -126,7 +136,7 @@ const packDetailInclude = {
   },
 } as const;
 
-function validateCreatePackInput(input: CreateProviderPackInput): string | null {
+function validateCreatePackInput(input: ResolvedCreateProviderPackInput): string | null {
   const packId = input.packId.trim();
   const name = input.name.trim();
   const categoryId = input.categoryId.trim();
@@ -193,26 +203,51 @@ export async function createProviderPackForClient(
     return { error: "PROFILE_REQUIRED" as const };
   }
 
-  const validationMessage = validateCreatePackInput(input);
+  const name = input.name.trim();
+  const categoryId = input.categoryId.trim();
+  const description = input.description.trim();
+
+  const category = await prisma.packCategory.findUnique({
+    where: { categoryId },
+  });
+  if (!category) {
+    return { error: "CATEGORY_NOT_FOUND" as const };
+  }
+
+  const explicitPackId = input.packId?.trim();
+  let packId = explicitPackId || (await generateUniquePackId(name));
+  const shortDescription =
+    input.shortDescription?.trim() ||
+    deriveShortDescription({
+      name,
+      description,
+      fallbackCategoryName: category.name,
+    });
+
+  const validationMessage = validateCreatePackInput({
+    packId,
+    name,
+    categoryId,
+    shortDescription,
+    description,
+    tags: input.tags,
+    version: input.version,
+  });
   if (validationMessage) {
     return { error: "VALIDATION" as const, message: validationMessage };
   }
 
-  const packId = input.packId.trim();
-  const categoryId = input.categoryId.trim();
-
-  if (!(await assertCategoryExists(categoryId))) {
-    return { error: "CATEGORY_NOT_FOUND" as const };
-  }
-
-  const existing = await prisma.knowledgePack.findUnique({ where: { packId } });
+  let existing = await prisma.knowledgePack.findUnique({ where: { packId } });
   if (existing) {
-    return { error: "PACK_ID_EXISTS" as const };
+    if (explicitPackId) {
+      return { error: "PACK_ID_EXISTS" as const };
+    }
+    packId = await generateUniquePackId(name);
+    existing = await prisma.knowledgePack.findUnique({ where: { packId } });
+    if (existing) {
+      return { error: "PACK_ID_EXISTS" as const };
+    }
   }
-
-  const name = input.name.trim();
-  const shortDescription = input.shortDescription.trim();
-  const description = input.description.trim();
   const tags = (input.tags ?? []).map((t) => t.trim()).filter(Boolean);
   const versionLabel = (input.version?.trim() || "0.1.0").trim();
 

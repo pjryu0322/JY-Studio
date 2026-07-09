@@ -4,22 +4,12 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createProviderPackApi } from "@/lib/provider-center-api";
 import { providerPackDetailPath } from "@/lib/routes";
+import { PROVIDER_PACK_CREATE_AUTO_ID_HINT } from "@/lib/role-based-ux-copy";
 
 type CategoryOption = {
   categoryId: string;
   name: string;
 };
-
-function suggestPackIdFromName(name: string): string {
-  const slug = name
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return slug.slice(0, 48);
-}
 
 export function ProviderPackCreateForm({
   categories,
@@ -27,23 +17,13 @@ export function ProviderPackCreateForm({
   readonly categories: CategoryOption[];
 }) {
   const router = useRouter();
-  const [packId, setPackId] = useState("");
-  const [packIdTouched, setPackIdTouched] = useState(false);
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState(categories[0]?.categoryId ?? "");
-  const [shortDescription, setShortDescription] = useState("");
   const [description, setDescription] = useState("");
   const [tagsText, setTagsText] = useState("");
   const [version, setVersion] = useState("0.1.0");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const onNameChange = (value: string) => {
-    setName(value);
-    if (!packIdTouched) {
-      setPackId(suggestPackIdFromName(value));
-    }
-  };
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -56,10 +36,8 @@ export function ProviderPackCreateForm({
 
     try {
       const data = await createProviderPackApi({
-        packId: packId.trim(),
         name,
         categoryId,
-        shortDescription,
         description,
         tags,
         version,
@@ -77,33 +55,20 @@ export function ProviderPackCreateForm({
       <div>
         <p className="text-xs font-bold uppercase tracking-wide text-store-accent">1단계</p>
         <h2 className="text-sm font-bold text-slate-900">기본정보 입력</h2>
-        <p className="mt-1 text-xs text-store-muted">이름과 설명을 입력하면 Pack ID가 자동 제안됩니다.</p>
+        <p className="mt-1 text-xs text-store-muted">{PROVIDER_PACK_CREATE_AUTO_ID_HINT}</p>
       </div>
       {error ? (
         <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
       ) : null}
       <div>
         <label className="text-xs font-semibold text-slate-700" htmlFor="pack-name">
-          이름
+          지식팩 이름
         </label>
         <input
           id="pack-name"
           value={name}
-          onChange={(e) => onNameChange(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           className="mt-2 min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
-          required
-        />
-      </div>
-      <div>
-        <label className="text-xs font-semibold text-slate-700" htmlFor="pack-short">
-          짧은 설명
-        </label>
-        <textarea
-          id="pack-short"
-          value={shortDescription}
-          onChange={(e) => setShortDescription(e.target.value)}
-          rows={2}
-          className="mt-2 w-full rounded-xl border border-store-border px-3 py-2 text-sm"
           required
         />
       </div>
@@ -126,7 +91,7 @@ export function ProviderPackCreateForm({
       </div>
       <div>
         <label className="text-xs font-semibold text-slate-700" htmlFor="pack-desc">
-          설명
+          상세 설명
         </label>
         <textarea
           id="pack-desc"
@@ -134,25 +99,6 @@ export function ProviderPackCreateForm({
           onChange={(e) => setDescription(e.target.value)}
           rows={4}
           className="mt-2 w-full rounded-xl border border-store-border px-3 py-2 text-sm"
-          required
-        />
-      </div>
-      <div>
-        <label className="text-xs font-semibold text-slate-700" htmlFor="pack-id">
-          Pack ID
-        </label>
-        <p className="mt-1 text-[11px] text-store-muted">
-          URL에 쓰이는 고유 식별자입니다. 영문·숫자·하이픈만 사용하세요.
-        </p>
-        <input
-          id="pack-id"
-          value={packId}
-          onChange={(e) => {
-            setPackIdTouched(true);
-            setPackId(e.target.value);
-          }}
-          placeholder="toast-ui-grid-pack"
-          className="mt-2 min-h-[44px] w-full rounded-xl border border-store-border px-3 font-mono text-sm"
           required
         />
       </div>

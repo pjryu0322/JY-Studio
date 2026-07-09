@@ -27,7 +27,14 @@ import { ChunkQualityPanel } from "@/components/ChunkQualityPanel";
 import { RetrievalEvaluationPanel } from "@/components/RetrievalEvaluationPanel";
 import { getSourceFormatLabel, getSourceTypeLabel } from "@/lib/source-type-dto";
 import { resolveProviderPackNextAction } from "@/lib/provider-onboarding-steps";
-import { PROVIDER_REVIEW_READONLY_HINT } from "@/lib/role-based-ux-copy";
+import {
+  PROVIDER_PACK_CREATED_BANNER_TITLE,
+  PROVIDER_PACK_CREATED_COLLECT_CTA,
+  PROVIDER_PACK_CREATED_ID_PREFIX,
+  PROVIDER_PACK_CREATED_NEXT_TASK,
+  PROVIDER_PACK_ID_LABEL,
+  PROVIDER_REVIEW_READONLY_HINT,
+} from "@/lib/role-based-ux-copy";
 
 export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const searchParams = useSearchParams();
@@ -149,23 +156,43 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   return (
     <div className="space-y-4 pb-6">
-      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-900">
-        <p className="font-semibold">{nextAction.title}</p>
-        <p className="mt-1 text-xs text-slate-700">{nextAction.body}</p>
-        {nextAction.href ? (
+      {showCreatedBanner ? (
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-slate-900">
+          <p className="font-semibold">{PROVIDER_PACK_CREATED_BANNER_TITLE}</p>
+          <p className="mt-1 text-xs text-slate-700">
+            {PROVIDER_PACK_CREATED_ID_PREFIX}{" "}
+            <span className="font-mono font-semibold text-slate-900">{pack.packId}</span>
+          </p>
+          <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_CREATED_NEXT_TASK}</p>
           <a
-            href={nextAction.href}
+            href="#github-auto-collect"
             className="mt-2 inline-block text-xs font-bold text-store-accent underline-offset-2 hover:underline"
           >
-            바로 이동
+            {PROVIDER_PACK_CREATED_COLLECT_CTA}
           </a>
-        ) : null}
-      </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-900">
+          <p className="font-semibold">{nextAction.title}</p>
+          <p className="mt-1 text-xs text-slate-700">{nextAction.body}</p>
+          {nextAction.href ? (
+            <a
+              href={nextAction.href}
+              className="mt-2 inline-block text-xs font-bold text-store-accent underline-offset-2 hover:underline"
+            >
+              바로 이동
+            </a>
+          ) : null}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-2xl">{pack.icon}</span>
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-bold text-slate-900">{pack.name}</h1>
-          <p className="font-mono text-xs text-store-muted">{pack.packId}</p>
+          <p className="text-xs text-store-muted">
+            <span className="font-semibold text-slate-700">{PROVIDER_PACK_ID_LABEL}</span>{" "}
+            <span className="font-mono">{pack.packId}</span>
+          </p>
         </div>
         <ProviderPackStatusBadge status={pack.status} />
       </div>

@@ -38,10 +38,10 @@ export async function POST(request: NextRequest) {
     };
 
     const result = await createProviderPackForClient(userId, clientId, {
-      packId: body.packId ?? "",
+      packId: body.packId?.trim() || undefined,
       name: body.name ?? "",
       categoryId: body.categoryId ?? "",
-      shortDescription: body.shortDescription ?? "",
+      shortDescription: body.shortDescription?.trim() || undefined,
       description: body.description ?? "",
       tags: body.tags,
       version: body.version,

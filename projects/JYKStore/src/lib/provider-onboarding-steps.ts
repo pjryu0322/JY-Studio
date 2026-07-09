@@ -109,7 +109,14 @@ export function resolveProviderPackNextAction(input: {
   knowledgeUnitDraftCount: number;
   justCreated: boolean;
 }): { title: string; body: string; href?: string } {
-  if (input.justCreated || (input.status === "DRAFT" && input.sourceDocumentCount === 0)) {
+  if (input.justCreated) {
+    return {
+      title: "지식팩 초안 생성 완료",
+      body: "GitHub URL 또는 문서를 등록해 자동수집을 실행하세요.",
+      href: "#github-auto-collect",
+    };
+  }
+  if (input.status === "DRAFT" && input.sourceDocumentCount === 0) {
     return {
       title: "다음 할 일",
       body: "GitHub URL 또는 문서를 등록해 자동수집을 실행하세요.",

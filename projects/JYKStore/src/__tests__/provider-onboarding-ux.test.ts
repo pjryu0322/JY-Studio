@@ -83,4 +83,20 @@ describe("provider onboarding UX sources", () => {
     assert.ok(form.includes("1단계"));
     assert.ok(form.includes("지식팩 초안 생성"));
   });
+
+  it("does not ask for pack id or short description on create form", () => {
+    const form = readSource("src/components/ProviderPackCreateForm.tsx");
+    assert.ok(!form.includes("짧은 설명"));
+    assert.ok(!form.includes("Pack ID"));
+    assert.ok(!form.includes('htmlFor="pack-id"'));
+    assert.ok(!form.includes('htmlFor="pack-short"'));
+    assert.ok(form.includes("PROVIDER_PACK_CREATE_AUTO_ID_HINT"));
+  });
+
+  it("shows issued pack id after create on detail editor", () => {
+    const editor = readSource("src/components/ProviderPackEditor.tsx");
+    assert.ok(editor.includes("PROVIDER_PACK_CREATED_BANNER_TITLE"));
+    assert.ok(editor.includes("PROVIDER_PACK_ID_LABEL"));
+    assert.ok(editor.includes('searchParams.get("created")'));
+  });
 });
