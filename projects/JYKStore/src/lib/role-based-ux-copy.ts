@@ -6,6 +6,8 @@ export const ACCOUNT_GUEST_DESCRIPTION =
 
 export const ACCOUNT_SECTION_BASIC = "기본 사용";
 export const ACCOUNT_SECTION_ROLES = "내 역할";
+export const ACCOUNT_SECTION_ROLE_REGISTRATION = "역할 계정 등록";
+export const ACCOUNT_SECTION_ROLE_MENUS = "사용자 메뉴";
 export const ACCOUNT_SECTION_SETTINGS = "설정";
 
 export const PROVIDER_CENTER_ONBOARDING_STEPS = [

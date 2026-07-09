@@ -23,18 +23,14 @@ describe("role-based UX copy", () => {
 });
 
 describe("role-based account UX", () => {
-  it("renders basic usage and role sections separately from operator tools in basic menu", () => {
-    const account = readSource("src/components/AccountPageContent.tsx");
+  it("uses account role registration client", () => {
     const page = readSource("src/app/(store)/account/page.tsx");
+    const account = readSource("src/components/AccountPageClient.tsx");
 
-    assert.ok(account.includes("ACCOUNT_SECTION_BASIC"));
-    assert.ok(account.includes("ACCOUNT_SECTION_ROLES"));
-    assert.ok(account.includes("지식팩 제공자"));
+    assert.ok(page.includes("AccountPageClient"));
+    assert.ok(account.includes("ACCOUNT_SECTION_ROLE_REGISTRATION"));
     assert.ok(account.includes("지식팩 운영자"));
     assert.ok(account.includes("운영자 전용"));
-    assert.ok(!account.includes("운영 사용량 확인") || account.includes("운영자"));
-    assert.ok(page.includes("isAdminOpsConfigured"));
-    assert.ok(!page.includes("adminOpsUsage") || page.includes("AccountPageContent"));
   });
 });
 

@@ -73,19 +73,36 @@ export function ProviderCenterPageClient() {
       ) : null}
 
       {profile ? (
-        <Link
-          href={ROUTES.providerPackNew}
-          className="flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-store-accent px-4 text-sm font-bold text-white shadow-card"
-        >
-          새 지식팩 만들기
-        </Link>
-      ) : null}
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4">
+          <p className="text-xs font-bold text-emerald-900">제공자 등록 완료</p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">{profile.displayName}</p>
+          <p className="mt-1 line-clamp-2 text-xs text-store-muted">{profile.description}</p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <Link
+              href={ROUTES.providerPackNew}
+              className="flex min-h-[44px] flex-1 items-center justify-center rounded-xl bg-store-accent text-sm font-bold text-white"
+            >
+              새 지식팩 만들기
+            </Link>
+            <a
+              href="#provider-packs"
+              className="flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-store-border bg-white text-sm font-semibold text-slate-800"
+            >
+              내 지식팩 보기
+            </a>
+          </div>
+        </div>
+      ) : (
+        <p className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-950">
+          제공자 프로필을 등록하면 지식팩 초안을 만들 수 있습니다.
+        </p>
+      )}
 
       <div id="provider-profile">
         <ProviderProfileForm initial={profile} saving={savingProfile} onSave={onSaveProfile} />
       </div>
 
-      <section className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
+      <section id="provider-packs" className="scroll-mt-24 rounded-2xl border border-store-border bg-white p-4 shadow-card">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-bold text-slate-900">내 지식팩</h2>
         </div>
@@ -100,7 +117,7 @@ export function ProviderCenterPageClient() {
           <div className="mt-4 rounded-xl border border-dashed border-store-border bg-slate-50 px-4 py-5 text-center">
             <p className="text-sm font-semibold text-slate-900">아직 등록한 지식팩이 없습니다.</p>
             <p className="mt-1 text-xs text-store-muted">
-              제품 문서나 공개 GitHub 저장소를 기반으로 첫 지식팩을 만들어보세요.
+              새 지식팩을 만들고 GitHub 문서 자동수집으로 초안을 생성하세요.
             </p>
             <Link
               href={ROUTES.providerPackNew}

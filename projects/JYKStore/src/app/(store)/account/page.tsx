@@ -1,8 +1,5 @@
-import { AccountPageContent } from "@/components/AccountPageContent";
-import { isAdminOpsConfigured } from "@/lib/admin-auth";
+import { AccountPageClient } from "@/components/AccountPageClient";
 
 export default function AccountPage() {
-  const showOperatorEntry = isAdminOpsConfigured() || process.env.NODE_ENV !== "production";
-
-  return <AccountPageContent showOperatorEntry={showOperatorEntry} />;
+  return <AccountPageClient />;
 }
