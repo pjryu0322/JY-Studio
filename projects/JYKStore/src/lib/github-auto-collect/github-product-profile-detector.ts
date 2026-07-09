@@ -93,7 +93,9 @@ function collectSignals(
   });
   const hasDockerfile = paths.some((p) => p.toLowerCase() === "dockerfile");
   const hasDockerCompose = pathSet.has("docker-compose.yml");
-  const hasHelm = paths.some((p) => /^helm\//i.test(p) || /\/charts\//i.test(p));
+  const hasHelm = paths.some(
+    (p) => /^helm\//i.test(p) || /^charts\//i.test(p) || /\/charts\//i.test(p),
+  );
   const hasK8s = paths.some((p) => /^k8s\//i.test(p) || /kubernetes/i.test(p));
   const hasTerraform = paths.some((p) => /^terraform\//i.test(p) || p.endsWith(".tf"));
   const hasAnsible = paths.some((p) => /^ansible\//i.test(p));
@@ -161,6 +163,26 @@ function scoreType(
   return { type, score, evidence: [...evidence] };
 }
 
+function addFrontendKeywordEvidence(corpus: string, evidence: string[]) {
+  const rules: Array<[string, string]> = [
+    ["ui", "keyword:frontend"],
+    ["component", "keyword:component"],
+    ["grid", "keyword:grid"],
+    ["calendar", "keyword:calendar"],
+    ["editor", "keyword:editor"],
+    ["tree", "keyword:tree"],
+    ["date-picker", "keyword:date-picker"],
+    ["react", "keyword:react"],
+    ["vue", "keyword:vue"],
+    ["svelte", "keyword:svelte"],
+    ["angular", "keyword:angular"],
+  ];
+  const lower = corpus.toLowerCase();
+  for (const [kw, label] of rules) {
+    if (lower.includes(kw)) addEvidence(evidence, label);
+  }
+}
+
 function scoreCandidates(signals: RepoSignals): Array<{
   type: GitHubProductType;
   score: number;
@@ -226,7 +248,7 @@ function scoreCandidates(signals: RepoSignals): Array<{
       ])
     ) {
       score += 20;
-      addEvidence(evidence, "keyword:grid");
+      addFrontendKeywordEvidence(signals.corpus, evidence);
     }
     if (pathKeyword(signals.corpus, ["packages/", "wrapper"])) {
       score += 10;

@@ -165,6 +165,52 @@ export type GitHubRepositoryDiscoveryResult = {
   productProfile?: GitHubProductProfileDetection;
 };
 
+export type GitHubSourceRegisterInput = {
+  repositoryUrl: string;
+  crawlMode?: GitHubCrawlMode;
+  sourceCodeAnalysis?: GitHubSourceCodeAnalysisMode;
+  selectedPaths?: string[];
+  selectedSourcePaths: string[];
+  maxFilesToAnalyze?: number;
+  maxCandidateFiles?: number;
+  maxFilesToFetch?: number;
+  maxFileBytes?: number;
+  maxTotalBytes?: number;
+  productVersion?: string;
+  documentVersion?: string;
+  licenseStatus?: string;
+};
+
+export type GitHubSourceRegisterResult = {
+  clientId: string;
+  packId: string;
+  repository: GitHubRepositoryMetadata;
+  productProfile?: GitHubProductProfileDetection;
+  summary: {
+    selectedPathCount: number;
+    registeredCount: number;
+    skippedCount: number;
+    failedCount: number;
+    fetchedBytes: number;
+    maxFilesToFetch: number;
+    maxFileBytes: number;
+    maxTotalBytes: number;
+  };
+  registeredDocuments: Array<{
+    path: string;
+    title: string;
+    sourceType: string;
+    sourceFormat: string;
+    sourceUrl: string;
+    checksum: string;
+    validationStatus?: string;
+  }>;
+  skippedFiles: Array<{ path: string; reason: string }>;
+  failedFiles: Array<{ path: string; error: string }>;
+  warnings: string[];
+  pack?: import("@/lib/provider-pack-dto").ProviderPackDetailDto;
+};
+
 export type GitHubDiscoveryErrorCode =
   | "REPOSITORY_URL_REQUIRED"
   | "INVALID_GITHUB_URL"
@@ -174,7 +220,9 @@ export type GitHubDiscoveryErrorCode =
   | "GITHUB_RATE_LIMITED"
   | "GITHUB_API_ERROR"
   | "INVALID_SELECTED_PATHS"
-  | "INVALID_DISCOVERY_OPTIONS";
+  | "INVALID_DISCOVERY_OPTIONS"
+  | "GITHUB_CONTENT_FETCH_FAILED"
+  | "INVALID_SOURCE_REGISTER_OPTIONS";
 
 export class GitHubDiscoveryError extends Error {
   readonly code: GitHubDiscoveryErrorCode;

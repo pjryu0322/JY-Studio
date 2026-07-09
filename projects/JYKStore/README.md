@@ -805,6 +805,11 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - `productProfile`에 primaryType, confidence, candidateTypes, evidence, warnings 반환.
 - `productProfileHint`는 하위 호환으로 유지.
 
+### P26.5 — GitHub SourceDocument 자동 등록
+
+- `POST /api/v1/provider/packs/[packId]/auto-collect/github/register`로 선택 후보 파일 content fetch 후 `createSourceDocumentForProviderPack()` 재사용.
+- fetch 개수/파일·총량 제한, 등록/스킵/실패 결과 분리.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
