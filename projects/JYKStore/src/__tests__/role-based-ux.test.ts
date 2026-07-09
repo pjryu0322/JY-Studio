@@ -35,14 +35,14 @@ describe("role-based account UX", () => {
 });
 
 describe("role-based provider UX", () => {
-  it("shows onboarding and pack create CTA patterns", () => {
+  it("shows onboarding stepper instead of duplicate numbered list", () => {
     const providerPage = readSource("src/app/(store)/provider/page.tsx");
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
     const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
 
-    assert.ok(providerPage.includes("PROVIDER_CENTER_ONBOARDING_STEPS"));
+    assert.ok(providerPage.includes("PROVIDER_CENTER_TAGLINE"));
+    assert.ok(center.includes("ProviderOnboardingStepper"));
     assert.ok(center.includes("새 지식팩 만들기"));
-    assert.ok(center.includes("아직 등록한 지식팩이 없습니다"));
     assert.ok(packNew.includes("getProviderProfileByClientId"));
     assert.ok(packNew.includes("제공자 프로필이 필요합니다"));
   });

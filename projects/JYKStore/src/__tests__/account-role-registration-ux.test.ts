@@ -14,7 +14,7 @@ function readSource(relativePath: string): string {
 describe("account role registration UX", () => {
   it("gates guest from API Key menu until consumer registration", () => {
     const account = readSource("src/components/AccountPageClient.tsx");
-    assert.ok(account.includes("역할 계정 등록"));
+    assert.ok(account.includes("ACCOUNT_SECTION_ROLE_REGISTRATION"));
     assert.ok(account.includes("일반 사용자로 등록"));
     assert.ok(account.includes("API Key 관리"));
     assert.ok(account.includes("saveConsumerProfile"));

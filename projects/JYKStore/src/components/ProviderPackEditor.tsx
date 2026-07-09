@@ -13,6 +13,7 @@ import { SourceValidationReportPanel } from "@/components/SourceValidationReport
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import {
   fetchProviderPack,
+  fetchProviderKnowledgeUnitDraftsApi,
   submitProviderPackApi,
   updateProviderPackApi,
   validateSourceDocumentApi,
@@ -25,6 +26,8 @@ import { StructureQualityPanel } from "@/components/StructureQualityPanel";
 import { ChunkQualityPanel } from "@/components/ChunkQualityPanel";
 import { RetrievalEvaluationPanel } from "@/components/RetrievalEvaluationPanel";
 import { getSourceFormatLabel, getSourceTypeLabel } from "@/lib/source-type-dto";
+import { resolveProviderPackNextAction } from "@/lib/provider-onboarding-steps";
+import { PROVIDER_REVIEW_READONLY_HINT } from "@/lib/role-based-ux-copy";
 
 export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const searchParams = useSearchParams();
@@ -36,6 +39,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [validatingDocId, setValidatingDocId] = useState<string | null>(null);
   const [draftRefreshNonce, setDraftRefreshNonce] = useState(0);
+  const [knowledgeUnitDraftCount, setKnowledgeUnitDraftCount] = useState(0);
 
   const [name, setName] = useState("");
   const [shortDescription, setShortDescription] = useState("");
@@ -55,6 +59,16 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setDescription(data.pack.description);
       setVersionOverview(data.pack.versions[0]?.overview ?? "");
       setDraftRefreshNonce((n) => n + 1);
+      if (data.pack.status === "DRAFT") {
+        try {
+          const drafts = await fetchProviderKnowledgeUnitDraftsApi(packId);
+          setKnowledgeUnitDraftCount(drafts.items.length);
+        } catch {
+          setKnowledgeUnitDraftCount(0);
+        }
+      } else {
+        setKnowledgeUnitDraftCount(0);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "지식팩을 불러오지 못했습니다.");
     } finally {
@@ -126,17 +140,27 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   const latestVersion = pack.versions[0];
   const allDocs = pack.versions.flatMap((v) => v.sourceDocuments);
+  const nextAction = resolveProviderPackNextAction({
+    status: pack.status,
+    sourceDocumentCount: allDocs.length,
+    knowledgeUnitDraftCount,
+    justCreated: showCreatedBanner,
+  });
 
   return (
     <div className="space-y-4 pb-6">
-      {showCreatedBanner ? (
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          <p className="font-semibold">지식팩 초안이 생성되었습니다.</p>
-          <p className="mt-1 text-xs">
-            다음 단계로 GitHub URL 자동수집을 실행하거나 문서를 등록하세요.
-          </p>
-        </div>
-      ) : null}
+      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-900">
+        <p className="font-semibold">{nextAction.title}</p>
+        <p className="mt-1 text-xs text-slate-700">{nextAction.body}</p>
+        {nextAction.href ? (
+          <a
+            href={nextAction.href}
+            className="mt-2 inline-block text-xs font-bold text-store-accent underline-offset-2 hover:underline"
+          >
+            바로 이동
+          </a>
+        ) : null}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-2xl">{pack.icon}</span>
         <div className="min-w-0 flex-1">
@@ -186,7 +210,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
       {pack.status === "REVIEWING" ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          검수 요청이 접수되었습니다. Admin Console에서 승인/반려가 처리됩니다.
+          검수 요청이 접수되었습니다. {PROVIDER_REVIEW_READONLY_HINT}
         </div>
       ) : null}
 

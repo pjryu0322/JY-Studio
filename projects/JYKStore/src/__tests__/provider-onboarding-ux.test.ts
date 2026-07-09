@@ -1,0 +1,86 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import { buildProviderOnboardingSteps } from "../lib/provider-onboarding-steps.ts";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const projectRoot = join(here, "..", "..");
+
+function readSource(relativePath: string): string {
+  return readFileSync(join(projectRoot, relativePath), "utf8");
+}
+
+describe("buildProviderOnboardingSteps", () => {
+  it("marks profile current when missing and pack current after profile", () => {
+    const guest = buildProviderOnboardingSteps({
+      hasProfile: false,
+      packCount: 0,
+      sourceDocumentCount: 0,
+      knowledgeUnitDraftCount: 0,
+      hasReviewingPack: false,
+      hasPublishedOrVerifiedPack: false,
+    });
+    assert.equal(guest.find((s) => s.key === "profile")?.status, "current");
+    assert.equal(guest.find((s) => s.key === "pack")?.status, "pending");
+
+    const registered = buildProviderOnboardingSteps({
+      hasProfile: true,
+      packCount: 0,
+      sourceDocumentCount: 0,
+      knowledgeUnitDraftCount: 0,
+      hasReviewingPack: false,
+      hasPublishedOrVerifiedPack: false,
+    });
+    assert.equal(registered.find((s) => s.key === "profile")?.status, "done");
+    assert.equal(registered.find((s) => s.key === "pack")?.status, "current");
+  });
+
+  it("includes five onboarding steps", () => {
+    const steps = buildProviderOnboardingSteps({
+      hasProfile: true,
+      packCount: 1,
+      sourceDocumentCount: 2,
+      knowledgeUnitDraftCount: 1,
+      hasReviewingPack: false,
+      hasPublishedOrVerifiedPack: false,
+    });
+    assert.equal(steps.length, 5);
+    assert.deepEqual(
+      steps.map((s) => s.key),
+      ["profile", "pack", "source", "draft", "review"],
+    );
+  });
+});
+
+describe("provider onboarding UX sources", () => {
+  it("avoids duplicate numbered list on provider page", () => {
+    const page = readSource("src/app/(store)/provider/page.tsx");
+    assert.ok(!page.includes("list-decimal"));
+    assert.ok(!page.includes("PROVIDER_CENTER_ONBOARDING_STEPS.map"));
+    assert.ok(page.includes("ProviderCenterPageClient"));
+  });
+
+  it("collapses profile form after registration and keeps single primary CTA", () => {
+    const center = readSource("src/components/ProviderCenterPageClient.tsx");
+    assert.ok(center.includes("<details"));
+    assert.ok(center.includes("프로필 수정"));
+    assert.ok(center.includes("새 지식팩 만들기"));
+    assert.ok(center.includes("첫 지식팩 만들기"));
+    assert.ok(!center.includes("1. 1."));
+  });
+
+  it("shows pack create form only when profile exists on server page", () => {
+    const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
+    assert.ok(packNew.includes("제공자 프로필이 필요합니다"));
+    assert.ok(packNew.includes("ProviderPackCreateForm"));
+    assert.ok(packNew.includes("getProviderProfileByClientId"));
+  });
+
+  it("uses pack create step label and submit label", () => {
+    const form = readSource("src/components/ProviderPackCreateForm.tsx");
+    assert.ok(form.includes("1단계"));
+    assert.ok(form.includes("지식팩 초안 생성"));
+  });
+});

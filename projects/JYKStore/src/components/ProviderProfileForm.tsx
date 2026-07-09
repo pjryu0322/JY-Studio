@@ -8,9 +8,11 @@ export function ProviderProfileForm({
   initial,
   saving,
   onSave,
+  embedded = false,
 }: {
   readonly initial: ProviderProfileDto | null;
   readonly saving: boolean;
+  readonly embedded?: boolean;
   readonly onSave: (input: {
     displayName: string;
     description: string;
@@ -43,12 +45,23 @@ export function ProviderProfileForm({
   };
 
   return (
-    <form onSubmit={onSubmit} className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
-      <h2 className="text-sm font-bold text-slate-900">제공자 프로필</h2>
-      <p className="mt-1 text-xs text-store-muted">
-        지식팩을 등록하려면 제공자 프로필이 필요합니다. (현재는 기기별 clientId로 식별합니다.)
-      </p>
-      <label className="mt-4 block text-xs font-semibold text-slate-700" htmlFor="provider-display-name">
+    <form
+      onSubmit={onSubmit}
+      className={
+        embedded
+          ? "space-y-3"
+          : "rounded-2xl border border-store-border bg-white p-4 shadow-card"
+      }
+    >
+      {!embedded ? (
+        <>
+          <h2 className="text-sm font-bold text-slate-900">제공자 프로필</h2>
+          <p className="mt-1 text-xs text-store-muted">
+            지식팩을 등록하려면 제공자 프로필이 필요합니다. (현재는 기기별 clientId로 식별합니다.)
+          </p>
+        </>
+      ) : null}
+      <label className={`block text-xs font-semibold text-slate-700 ${embedded ? "" : "mt-4"}`} htmlFor="provider-display-name">
         표시 이름
       </label>
       <input
