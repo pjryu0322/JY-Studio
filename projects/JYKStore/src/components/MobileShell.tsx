@@ -12,12 +12,12 @@ export function MobileShell({ children }: { readonly children: ReactNode }) {
   const showSearchEntry = isTodayPath(pathname);
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-[430px] bg-store-bg shadow-xl">
-      <header className="sticky top-0 z-40 border-b border-store-border bg-store-bg/95 px-4 pb-3 pt-[max(12px,env(safe-area-inset-top))] backdrop-blur-md">
+    <div className="mx-auto min-h-dvh w-full max-w-[1120px] bg-store-bg px-4 shadow-xl sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-40 border-b border-store-border bg-store-bg/95 pb-3 pt-[max(12px,env(safe-area-inset-top))] backdrop-blur-md">
         <TopStoreHeader />
         {showSearchEntry ? <SearchEntry /> : null}
       </header>
-      <main className="px-4 pb-24 pt-4">{children}</main>
+      <main className="pb-24 pt-4">{children}</main>
       <BottomTabNav />
     </div>
   );

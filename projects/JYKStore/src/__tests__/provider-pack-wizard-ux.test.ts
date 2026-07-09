@@ -14,19 +14,17 @@ function readSource(relativePath: string): string {
 describe("provider pack wizard UX sources", () => {
   it("renders wizard source step before pre-review checks in editor", () => {
     const editor = readSource("src/components/ProviderPackEditor.tsx");
-    const sourceIdx = editor.indexOf("ProviderPackSourceStep");
-    const checksIdx = editor.indexOf("PROVIDER_PACK_PRE_REVIEW_CHECKS_SUMMARY");
+    const sourceIdx = editor.indexOf("ProviderPackSourceTab");
+    const reviewIdx = editor.indexOf("ProviderPackReviewTab");
     assert.ok(sourceIdx >= 0);
-    assert.ok(checksIdx >= 0);
-    assert.ok(sourceIdx < checksIdx);
-    assert.ok(editor.includes("ProviderPackWizardStepper"));
-    assert.ok(editor.includes("PROVIDER_PACK_BASIC_INFO_SUMMARY"));
-    assert.ok(editor.includes("<details"));
+    assert.ok(reviewIdx >= 0);
+    assert.ok(editor.includes("ProviderPackTabs"));
+    assert.ok(editor.includes("ProviderPackBasicInfoTab"));
   });
 
   it("hides technical github options behind advanced settings", () => {
     const panel = readSource("src/components/ProviderGitHubAutoCollectPanel.tsx");
-    assert.ok(panel.includes("PROVIDER_GITHUB_ADVANCED_SETTINGS"));
+    assert.ok(panel.includes("PROVIDER_GITHUB_ADVANCED_SETTINGS_EXPAND"));
     assert.ok(!panel.includes(">crawlMode<"));
     assert.ok(!panel.includes(">sourceCodeAnalysis<"));
     assert.ok(!panel.includes(">maxCandidateFiles<"));

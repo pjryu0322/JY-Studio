@@ -158,9 +158,9 @@ export function ProviderKnowledgeUnitDraftPanel({
               onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
               className={`mt-1 ${inputClass}`}
             >
-              <option value="pending_review">pending_review</option>
-              <option value="superseded">superseded</option>
-              <option value="all">all</option>
+            <option value="pending_review">검토 대기</option>
+            <option value="superseded">대체됨</option>
+            <option value="all">전체</option>
             </select>
           </label>
           <button

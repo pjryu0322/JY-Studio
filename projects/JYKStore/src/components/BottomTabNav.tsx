@@ -9,7 +9,7 @@ export function BottomTabNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-1/2 z-50 w-full max-w-[430px] -translate-x-1/2 border-t border-store-border bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md"
+      className="fixed bottom-0 left-1/2 z-50 w-full max-w-[1120px] -translate-x-1/2 border-t border-store-border bg-white/95 px-4 pb-[env(safe-area-inset-bottom)] backdrop-blur-md sm:px-6 lg:px-8"
       aria-label="주요 메뉴"
     >
       <ul className="flex items-stretch justify-around">

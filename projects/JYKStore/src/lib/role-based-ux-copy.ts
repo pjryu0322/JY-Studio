@@ -51,6 +51,24 @@ export const PROVIDER_PACK_WIZARD_DRAFT_STEP = "Knowledge Unit 초안";
 export const PROVIDER_PACK_WIZARD_REVIEW_STEP = "검수 요청";
 export const PROVIDER_PACK_WIZARD_PUBLISH_STEP = "운영자 승인 후 공개";
 
+export const PROVIDER_PACK_TAB_BASIC = "기본정보";
+export const PROVIDER_PACK_TAB_SOURCE = "자료등록";
+export const PROVIDER_PACK_TAB_DRAFT = "초안";
+export const PROVIDER_PACK_TAB_REVIEW = "검수요청";
+
+export const PROVIDER_PACK_ID_READONLY_HINT =
+  "JYKStore가 발급한 고유 식별자입니다. 수정할 수 없습니다.";
+export const PROVIDER_PACK_AUTO_SUMMARY_LABEL = "자동 생성 요약";
+export const PROVIDER_PACK_ADVANCED_SUMMARY_EDIT = "고급 요약 수정";
+
+export const PROVIDER_PACK_DRAFT_EMPTY_SOURCES =
+  "아직 등록된 원천 문서가 없습니다. 먼저 자료등록 탭에서 GitHub 또는 문서를 등록하세요.";
+export const PROVIDER_PACK_GO_TO_SOURCE_TAB = "자료등록 탭으로 이동";
+export const PROVIDER_PACK_GO_TO_DRAFT_TAB = "Knowledge Unit 초안 생성하러 가기";
+
+export const PROVIDER_PACK_REVIEW_PREREQ_TITLE = "검수 요청 전 필요한 작업";
+export const PROVIDER_GITHUB_ADVANCED_SETTINGS_EXPAND = "고급 설정 펼치기";
+
 export const PROVIDER_PACK_SOURCE_STEP_TITLE = "지식팩을 만들 자료를 가져오세요.";
 export const PROVIDER_PACK_SOURCE_METHOD_GITHUB = "GitHub에서 가져오기";
 export const PROVIDER_PACK_SOURCE_METHOD_GITHUB_BADGE = "추천";

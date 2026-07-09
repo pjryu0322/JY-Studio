@@ -18,11 +18,13 @@ export function ProviderPackSourceStep({
   editable,
   sourceDocumentCount,
   onChanged,
+  onGoToDraftTab,
 }: {
   readonly packId: string;
   readonly editable: boolean;
   readonly sourceDocumentCount: number;
   readonly onChanged: () => Promise<void>;
+  readonly onGoToDraftTab?: () => void;
 }) {
   const [method, setMethod] = useState<SourceMethod>("github");
 
@@ -72,6 +74,7 @@ export function ProviderPackSourceStep({
           disabled={!editable}
           onChanged={onChanged}
           wizardMode
+          onGoToDraftTab={onGoToDraftTab}
         />
       ) : (
         <div className="mt-4 rounded-2xl border border-store-border bg-slate-50 p-4">
