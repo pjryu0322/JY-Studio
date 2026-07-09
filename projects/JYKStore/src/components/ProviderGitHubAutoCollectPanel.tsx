@@ -216,7 +216,7 @@ export function ProviderGitHubAutoCollectPanel({
     !disabled && registerResult != null && registerResult.summary.registeredCount > 0;
 
   return (
-    <div className="mt-4 rounded-2xl border border-store-border bg-slate-50 p-4">
+    <div id="github-auto-collect" className="mt-4 rounded-2xl border border-store-border bg-slate-50 p-4 scroll-mt-24">
       <h3 className="text-sm font-bold text-slate-900">GitHub Repository 자동수집</h3>
       <p className="mt-1 text-xs text-store-muted">
         공개 GitHub 저장소의 README/docs/examples를 탐색해 원천 문서로 등록합니다.

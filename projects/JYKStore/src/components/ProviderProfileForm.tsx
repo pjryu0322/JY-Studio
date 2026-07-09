@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import type { ProviderProfileDto } from "@/lib/provider-profile-dto";
+import { PROVIDER_PROFILE_FOOTER_HINT } from "@/lib/role-based-ux-copy";
 
 export function ProviderProfileForm({
   initial,
@@ -97,6 +98,9 @@ export function ProviderProfileForm({
       >
         {saving ? "저장 중…" : initial ? "프로필 수정" : "프로필 등록"}
       </button>
+      {!initial ? (
+        <p className="mt-2 text-center text-xs text-store-muted">{PROVIDER_PROFILE_FOOTER_HINT}</p>
+      ) : null}
     </form>
   );
 }

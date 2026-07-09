@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { ProviderPackEditor } from "@/components/ProviderPackEditor";
 import { ROUTES } from "@/lib/routes";
 
@@ -17,7 +18,9 @@ export default async function ProviderPackDetailPage({ params }: PageProps) {
       >
         ← 제공자 센터
       </Link>
-      <ProviderPackEditor packId={packId} />
+      <Suspense fallback={<p className="text-sm text-store-muted">불러오는 중…</p>}>
+        <ProviderPackEditor packId={packId} />
+      </Suspense>
     </div>
   );
 }

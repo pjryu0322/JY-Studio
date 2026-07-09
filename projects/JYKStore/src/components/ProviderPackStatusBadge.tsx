@@ -1,10 +1,11 @@
 import type { ProviderPackListItemDto } from "@/lib/provider-pack-dto";
+import { PROVIDER_PACK_STATUS_UX } from "@/lib/role-based-ux-copy";
 
 const LABELS: Record<ProviderPackListItemDto["status"], string> = {
-  DRAFT: "초안",
-  REVIEWING: "검수 요청",
-  PUBLISHED: "공개됨",
-  VERIFIED: "검증됨",
+  DRAFT: PROVIDER_PACK_STATUS_UX.DRAFT ?? "초안 작성 중",
+  REVIEWING: PROVIDER_PACK_STATUS_UX.REVIEWING ?? "검토 요청됨",
+  PUBLISHED: PROVIDER_PACK_STATUS_UX.PUBLISHED ?? "공개됨",
+  VERIFIED: PROVIDER_PACK_STATUS_UX.VERIFIED ?? "검증됨",
   DEPRECATED: "사용 중단",
   SUSPENDED: "중지됨",
 };

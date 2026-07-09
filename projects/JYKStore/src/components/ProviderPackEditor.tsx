@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ProviderPackChunkSummaryCard } from "@/components/ProviderPackChunkSummaryCard";
 import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCard";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
@@ -26,6 +27,8 @@ import { RetrievalEvaluationPanel } from "@/components/RetrievalEvaluationPanel"
 import { getSourceFormatLabel, getSourceTypeLabel } from "@/lib/source-type-dto";
 
 export function ProviderPackEditor({ packId }: { readonly packId: string }) {
+  const searchParams = useSearchParams();
+  const showCreatedBanner = searchParams.get("created") === "1";
   const [pack, setPack] = useState<ProviderPackDetailDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +129,14 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   return (
     <div className="space-y-4 pb-6">
+      {showCreatedBanner ? (
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <p className="font-semibold">지식팩 초안이 생성되었습니다.</p>
+          <p className="mt-1 text-xs">
+            다음 단계로 GitHub URL 자동수집을 실행하거나 문서를 등록하세요.
+          </p>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-2xl">{pack.icon}</span>
         <div className="min-w-0 flex-1">
@@ -295,14 +306,16 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       </section>
 
       {editable ? (
-        <button
-          type="button"
-          onClick={() => void onSubmitReview()}
-          disabled={submitting}
-          className="min-h-[44px] w-full rounded-xl border-2 border-store-accent bg-white text-sm font-bold text-store-accent disabled:opacity-50"
-        >
-          {submitting ? "제출 중…" : "검수 요청 제출"}
-        </button>
+        <div id="pack-review" className="scroll-mt-24">
+          <button
+            type="button"
+            onClick={() => void onSubmitReview()}
+            disabled={submitting}
+            className="min-h-[44px] w-full rounded-xl border-2 border-store-accent bg-white text-sm font-bold text-store-accent disabled:opacity-50"
+          >
+            {submitting ? "제출 중…" : "검수 요청 제출"}
+          </button>
+        </div>
       ) : null}
     </div>
   );

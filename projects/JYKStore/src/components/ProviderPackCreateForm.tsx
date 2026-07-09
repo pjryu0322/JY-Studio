@@ -45,7 +45,7 @@ export function ProviderPackCreateForm({
         tags,
         version,
       });
-      router.push(providerPackDetailPath(data.pack.packId));
+      router.push(`${providerPackDetailPath(data.pack.packId)}?created=1`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "지식팩을 만들지 못했습니다.");
     } finally {
