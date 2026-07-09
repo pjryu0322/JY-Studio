@@ -126,11 +126,18 @@ export type GitHubRepositoryDiscoveryResult = {
     selectedPathFilteredCount?: number;
     sourceCandidateFetchableCount?: number;
     srcCandidateCount?: number;
+    topCandidateScore?: number;
+    averageCandidateScore?: number;
+    nonFetchableCandidateCount?: number;
   };
   classificationSummary: Partial<Record<GitHubFileClass, number>>;
   sourceCandidates: GitHubDiscoverySourceCandidate[];
   excludedFiles: GitHubDiscoveryExcludedFile[];
   warnings: string[];
+  productProfileHint?: {
+    likelyTypes: string[];
+    evidence: string[];
+  };
 };
 
 export type GitHubDiscoveryErrorCode =

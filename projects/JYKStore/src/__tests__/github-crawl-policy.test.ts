@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildCandidateAndExcluded,
+  compareDiscoveryCandidates,
   isSrcEntrypoint,
   scoreGitHubFile,
   suggestSourceType,
@@ -112,6 +113,63 @@ describe("github crawl policy", () => {
     assert.equal(suggestSourceType("EXAMPLE", "examples/basic.ts"), "SAMPLE_CODE");
     assert.equal(suggestSourceType("API_DOC", "openapi.yaml"), "OPENAPI_SCHEMA");
     assert.equal(suggestSourceType("PACKAGE_MANIFEST", "package.json"), "ETC");
+  });
+
+  it("scores documentation types with expected ordering", () => {
+    const rootReadme = scoreGitHubFile("README.md", "README", 1000);
+    const gettingStarted = scoreGitHubFile("docs/getting-started.md", "GETTING_STARTED", 1000);
+    const apiDoc = scoreGitHubFile("docs/api.md", "API_DOC", 1000);
+    const docs = scoreGitHubFile("docs/guide.md", "DOCS", 1000);
+    assert.ok(rootReadme.score > docs.score);
+    assert.ok(gettingStarted.score > docs.score);
+    assert.ok(apiDoc.score > docs.score);
+  });
+
+  it("scores basic example above generic example and penalizes stories", () => {
+    const basic = scoreGitHubFile("examples/basic/index.ts", "EXAMPLE", 1000);
+    const generic = scoreGitHubFile("examples/other/app.ts", "EXAMPLE", 1000);
+    const story = scoreGitHubFile("stories/Grid.stories.tsx", "EXAMPLE", 1000);
+    assert.ok(basic.score > generic.score);
+    assert.ok(story.score < generic.score);
+    assert.ok(story.reasonCodes.includes("STORYBOOK_EXAMPLE"));
+  });
+
+  it("penalizes large and deprecated paths", () => {
+    const large = scoreGitHubFile("docs/guide.md", "DOCS", 600 * 1024);
+    const small = scoreGitHubFile("docs/guide.md", "DOCS", 1000);
+    assert.ok(large.score < small.score);
+    const deprecated = scoreGitHubFile("docs/deprecated/old.md", "DOCS", 1000);
+    assert.ok(deprecated.reasonCodes.includes("DEPRECATED_PENALTY"));
+  });
+
+  it("sorts candidates by score, file class, then path", () => {
+    const { sourceCandidates } = buildCandidateAndExcluded({
+      files: [
+        blob("package.json"),
+        blob("docs/guide.md"),
+        blob("docs/api.md"),
+        blob("docs/getting-started.md"),
+        blob("examples/basic/index.ts"),
+        blob("README.md"),
+      ],
+      crawlMode: "FULL_REPO_SCAN",
+      sourceCodeAnalysis: "NONE",
+      maxCandidateFiles: 100,
+    });
+    const paths = sourceCandidates.map((c) => c.path);
+    const readmeIdx = paths.indexOf("README.md");
+    const gsIdx = paths.indexOf("docs/getting-started.md");
+    const apiIdx = paths.indexOf("docs/api.md");
+    const guideIdx = paths.indexOf("docs/guide.md");
+    const exIdx = paths.indexOf("examples/basic/index.ts");
+    const pkgIdx = paths.indexOf("package.json");
+    assert.ok(readmeIdx < gsIdx);
+    assert.ok(gsIdx < apiIdx);
+    assert.ok(apiIdx < guideIdx);
+    assert.ok(guideIdx < exIdx);
+    assert.ok(exIdx < pkgIdx);
+    const sorted = [...sourceCandidates].sort(compareDiscoveryCandidates);
+    assert.deepEqual(paths, sorted.map((c) => c.path));
   });
 });
 

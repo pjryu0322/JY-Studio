@@ -46,6 +46,29 @@ const BINARY_EXTENSIONS = new Set([
   ".dat",
 ]);
 
+const EXAMPLE_PREFIXES = [
+  "examples",
+  "example",
+  "samples",
+  "sample",
+  "demo",
+  "demos",
+  "playground",
+  "storybook",
+  "stories",
+];
+
+const BUILD_ARTIFACT_PREFIXES = [
+  "node_modules",
+  ".next",
+  ".nuxt",
+  "out",
+  "dist",
+  "build",
+  "target",
+  "coverage",
+];
+
 function normalizePath(path: string): string {
   return path.replace(/\\/g, "/");
 }
@@ -65,14 +88,91 @@ function isUnderPrefix(path: string, prefix: string): boolean {
   return p === pre || p.startsWith(`${pre}/`);
 }
 
+function isUnderAnyPrefix(path: string, prefixes: string[]): boolean {
+  return prefixes.some((pre) => isUnderPrefix(path, pre));
+}
+
 function matchesSegmentKeyword(path: string, keywords: string[]): boolean {
   const lower = normalizePath(path).toLowerCase();
   return keywords.some((kw) => lower.includes(kw));
 }
 
-function isRootReadme(path: string): boolean {
-  const base = basename(path);
-  return /^readme(\.|$)/i.test(base) && pathSegments(path).length === 1;
+function isGettingStartedPath(norm: string): boolean {
+  const lower = norm.toLowerCase();
+  const base = basename(norm).toLowerCase();
+  if (
+    base.includes("getting-started") ||
+    base === "quickstart.md" ||
+    base === "installation.md" ||
+    base === "start.md"
+  ) {
+    return true;
+  }
+  if (/\/getting-started|\/quickstart|\/installation/.test(lower)) {
+    return true;
+  }
+  if (isUnderPrefix(norm, "guide") && (base === "start.md" || base.includes("start"))) {
+    return true;
+  }
+  return matchesSegmentKeyword(norm, ["getting-started", "quickstart", "installation"]);
+}
+
+function isApiDocPath(norm: string): boolean {
+  const lower = norm.toLowerCase();
+  const base = basename(norm).toLowerCase();
+  if (base === "api.md" || base === "reference.md" || base === "swagger.json") {
+    return true;
+  }
+  if (base.includes("openapi")) {
+    return true;
+  }
+  if (matchesSegmentKeyword(lower, ["openapi", "swagger"])) {
+    return true;
+  }
+  if (/\/api(\/|$)/i.test(norm) || /\/reference(\/|$)/i.test(norm)) {
+    return true;
+  }
+  return false;
+}
+
+function isDocTreePath(norm: string): boolean {
+  return (
+    isUnderPrefix(norm, "docs") ||
+    isUnderPrefix(norm, "doc") ||
+    isUnderPrefix(norm, "guide") ||
+    isUnderPrefix(norm, "manual")
+  );
+}
+
+function isGeneratedPath(norm: string): boolean {
+  if (norm.endsWith(".map") || norm.endsWith(".min.js")) return true;
+  if (/\.generated\.[^/]+$/i.test(norm) || /\.gen\.[^/]+$/i.test(norm)) return true;
+  if (/\/generated\//i.test(norm) || /generated/i.test(basename(norm))) return true;
+  return false;
+}
+
+function isConfigFile(norm: string, base: string, lowerBase: string): boolean {
+  if (
+    lowerBase === ".env.example" ||
+    lowerBase === ".env.sample" ||
+    lowerBase === "application.yml" ||
+    lowerBase === "application.yaml" ||
+    lowerBase === "application.properties" ||
+    lowerBase === "application-dev.yml" ||
+    lowerBase === "application-test.yml" ||
+    lowerBase === "docker-compose.yml" ||
+    lowerBase === "dockerfile" ||
+    lowerBase === "tsconfig.json"
+  ) {
+    return true;
+  }
+  return (
+    /^vite\.config\./i.test(base) ||
+    /^next\.config\./i.test(base) ||
+    /^nuxt\.config\./i.test(base) ||
+    /^webpack\.config\./i.test(base) ||
+    /^eslint\.config\./i.test(base)
+  );
 }
 
 export function classifyGitHubFilePath(path: string): GitHubFileClass {
@@ -83,13 +183,41 @@ export function classifyGitHubFilePath(path: string): GitHubFileClass {
   if (PACKAGE_MANIFEST_NAMES.has(lowerBase)) {
     return "PACKAGE_MANIFEST";
   }
-  if (LOCK_FILE_NAMES.has(lowerBase)) {
+  if (LOCK_FILE_NAMES.has(lowerBase) || lowerBase.endsWith(".lock")) {
     return "LOCK_FILE";
   }
 
   const ext = lowerBase.includes(".") ? lowerBase.slice(lowerBase.lastIndexOf(".")) : "";
   if (BINARY_EXTENSIONS.has(ext)) {
     return "BINARY";
+  }
+  if (/^public\/.+\/logo\.png$/i.test(norm) || /\/public\/.+\.(png|jpg|jpeg|gif|webp)$/i.test(norm)) {
+    return "BINARY";
+  }
+
+  if (isUnderAnyPrefix(norm, BUILD_ARTIFACT_PREFIXES)) {
+    return "BUILD_ARTIFACT";
+  }
+
+  if (isGeneratedPath(norm)) {
+    return "GENERATED";
+  }
+
+  if (
+    isUnderPrefix(norm, "test") ||
+    isUnderPrefix(norm, "tests") ||
+    isUnderPrefix(norm, "__tests__") ||
+    isUnderPrefix(norm, "cypress") ||
+    /\/__fixtures__\//i.test(norm) ||
+    /\/fixtures\//i.test(norm) ||
+    /\.spec\.[^/]+$/i.test(norm) ||
+    /\.test\.[^/]+$/i.test(norm)
+  ) {
+    return "TEST";
+  }
+
+  if (isUnderAnyPrefix(norm, EXAMPLE_PREFIXES)) {
+    return "EXAMPLE";
   }
 
   if (/^license(\.|$)/i.test(base) || lowerBase === "notice") {
@@ -99,74 +227,17 @@ export function classifyGitHubFilePath(path: string): GitHubFileClass {
     return "README";
   }
 
-  if (
-    isUnderPrefix(norm, "dist") ||
-    isUnderPrefix(norm, "build") ||
-    isUnderPrefix(norm, "target") ||
-    isUnderPrefix(norm, "coverage")
-  ) {
-    return "BUILD_ARTIFACT";
+  if (isGettingStartedPath(norm)) {
+    return "GETTING_STARTED";
   }
-
-  if (norm.endsWith(".map") || norm.endsWith(".min.js") || /generated/i.test(norm)) {
-    return "GENERATED";
+  if (isApiDocPath(norm)) {
+    return "API_DOC";
   }
-
-  if (
-    isUnderPrefix(norm, "test") ||
-    isUnderPrefix(norm, "tests") ||
-    isUnderPrefix(norm, "__tests__") ||
-    isUnderPrefix(norm, "cypress") ||
-    /\.spec\.[^/]+$/i.test(norm) ||
-    /\.test\.[^/]+$/i.test(norm)
-  ) {
-    return "TEST";
-  }
-
-  if (
-    isUnderPrefix(norm, "examples") ||
-    isUnderPrefix(norm, "samples") ||
-    isUnderPrefix(norm, "demo")
-  ) {
-    return "EXAMPLE";
-  }
-
-  if (
-    isUnderPrefix(norm, "docs") ||
-    isUnderPrefix(norm, "doc") ||
-    isUnderPrefix(norm, "guide") ||
-    isUnderPrefix(norm, "manual")
-  ) {
+  if (isDocTreePath(norm)) {
     return "DOCS";
   }
 
-  if (
-    matchesSegmentKeyword(norm, [
-      "getting-started",
-      "quickstart",
-      "/start/",
-      "installation",
-    ])
-  ) {
-    return "GETTING_STARTED";
-  }
-
-  if (
-    matchesSegmentKeyword(norm, ["openapi", "swagger"]) ||
-    /\/api(\/|$)/i.test(norm) ||
-    /\/reference(\/|$)/i.test(norm)
-  ) {
-    return "API_DOC";
-  }
-
-  if (
-    lowerBase === ".env.example" ||
-    lowerBase === "application.yml" ||
-    lowerBase === "application.yaml" ||
-    lowerBase === "application.properties" ||
-    /^vite\.config\./i.test(base) ||
-    /^next\.config\./i.test(base)
-  ) {
+  if (isConfigFile(norm, base, lowerBase)) {
     return "CONFIG";
   }
 
@@ -177,10 +248,6 @@ export function classifyGitHubFilePath(path: string): GitHubFileClass {
     /^packages\/[^/]+\/src\//i.test(norm)
   ) {
     return "SRC";
-  }
-
-  if (isRootReadme(norm)) {
-    return "README";
   }
 
   return "UNKNOWN";
@@ -194,4 +261,9 @@ export function isDocumentationClass(fileClass: GitHubFileClass): boolean {
     fileClass === "GETTING_STARTED" ||
     fileClass === "API_DOC"
   );
+}
+
+export function isStorybookExamplePath(path: string): boolean {
+  const norm = normalizePath(path);
+  return isUnderPrefix(norm, "stories") || isUnderPrefix(norm, "storybook");
 }

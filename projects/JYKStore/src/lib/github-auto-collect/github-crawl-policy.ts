@@ -8,73 +8,175 @@ import type {
   JykStoreSourceType,
 } from "./github-auto-collect-types";
 import { pathMatchesSelectedPaths } from "./github-discovery-options";
-import { classifyGitHubFilePath, isDocumentationClass } from "./github-file-classifier";
+import {
+  classifyGitHubFilePath,
+  isDocumentationClass,
+  isStorybookExamplePath,
+} from "./github-file-classifier";
 
-export function scoreGitHubFile(path: string, fileClass: GitHubFileClass): {
+const FILE_CLASS_SORT_PRIORITY: GitHubFileClass[] = [
+  "README",
+  "GETTING_STARTED",
+  "API_DOC",
+  "DOCS",
+  "EXAMPLE",
+  "PACKAGE_MANIFEST",
+  "CONFIG",
+  "LICENSE",
+  "SRC",
+  "UNKNOWN",
+];
+
+function fileClassSortRank(fileClass: GitHubFileClass): number {
+  const idx = FILE_CLASS_SORT_PRIORITY.indexOf(fileClass);
+  return idx >= 0 ? idx : 99;
+}
+
+const KB = 1024;
+
+export function scoreGitHubFile(
+  path: string,
+  fileClass: GitHubFileClass,
+  size: number | null = 0,
+): {
   score: number;
   reasonCodes: string[];
 } {
   const norm = path.replace(/\\/g, "/");
   const base = norm.split("/").pop() ?? norm;
+  const lower = norm.toLowerCase();
   const reasonCodes: string[] = [];
-  let score = 0;
+  const fileSize = size ?? 0;
 
   const isRootReadme = /^readme(\.|$)/i.test(base) && !norm.includes("/");
-  if (isRootReadme) {
-    score += 100;
-    reasonCodes.push("ROOT_README", "PRODUCT_OVERVIEW");
-  } else if (fileClass === "README") {
-    score += 90;
-    reasonCodes.push("README");
-  }
-
-  if (fileClass === "GETTING_STARTED") {
-    score += 90;
-    reasonCodes.push("GETTING_STARTED");
-  }
-  if (fileClass === "DOCS") {
-    score += 80;
-    reasonCodes.push("DOCS_GUIDE");
-  }
-  if (fileClass === "API_DOC") {
-    score += 75;
-    reasonCodes.push("API_REFERENCE");
-  }
-  if (fileClass === "EXAMPLE") {
-    score += 70;
-    reasonCodes.push("EXAMPLE");
-  }
-  if (fileClass === "PACKAGE_MANIFEST") {
-    score += 60;
-    reasonCodes.push("PACKAGE_MANIFEST");
-  }
-  if (fileClass === "LICENSE") {
-    score += 50;
-    reasonCodes.push("LICENSE");
-  }
-  if (fileClass === "CONFIG") {
-    score += 40;
-    reasonCodes.push("CONFIG_EXAMPLE");
-  }
-  if (fileClass === "SRC" && isSrcEntrypoint(norm)) {
-    score += 35;
-    reasonCodes.push("SRC_PUBLIC_ENTRYPOINT");
-  }
+  let score: number;
 
   if (
     fileClass === "TEST" ||
     fileClass === "BUILD_ARTIFACT" ||
-    fileClass === "GENERATED"
+    fileClass === "GENERATED" ||
+    fileClass === "BINARY" ||
+    fileClass === "LOCK_FILE"
   ) {
-    score -= 100;
-    reasonCodes.push("LOW_VALUE_ARTIFACT");
+    score = -100;
+    reasonCodes.push(
+      fileClass === "BINARY" || fileClass === "LOCK_FILE"
+        ? "BINARY_OR_LOCK"
+        : "LOW_VALUE_ARTIFACT",
+    );
+    return { score, reasonCodes };
   }
-  if (fileClass === "BINARY" || fileClass === "LOCK_FILE" || norm.endsWith(".min.js")) {
-    score -= 100;
-    reasonCodes.push("BINARY_OR_LOCK");
+
+  if (isRootReadme) {
+    score = 120;
+    reasonCodes.push("ROOT_README", "PRODUCT_OVERVIEW");
+  } else if (fileClass === "README") {
+    score = 100;
+    reasonCodes.push("README");
+  } else if (fileClass === "GETTING_STARTED") {
+    score = 110;
+    reasonCodes.push("GETTING_STARTED");
+  } else if (fileClass === "API_DOC") {
+    score = 95;
+    reasonCodes.push("API_REFERENCE");
+  } else if (fileClass === "DOCS") {
+    score = 80;
+    reasonCodes.push("DOCS_GUIDE");
+  } else if (fileClass === "EXAMPLE") {
+    score = 65;
+    reasonCodes.push("EXAMPLE");
+  } else if (fileClass === "PACKAGE_MANIFEST") {
+    score = 60;
+    reasonCodes.push("PACKAGE_MANIFEST");
+  } else if (fileClass === "CONFIG") {
+    score = 45;
+    reasonCodes.push("CONFIG_EXAMPLE");
+  } else if (fileClass === "LICENSE") {
+    score = 40;
+    reasonCodes.push("LICENSE");
+  } else if (fileClass === "SRC") {
+    score = isSrcEntrypoint(norm) ? 35 : 20;
+    if (isSrcEntrypoint(norm)) {
+      reasonCodes.push("SRC_PUBLIC_ENTRYPOINT");
+    }
+  } else {
+    score = 0;
+  }
+
+  if (!norm.includes("/")) {
+    score += 10;
+  }
+
+  if (/\/docs\/ko\//i.test(norm) || /\/ko\//i.test(norm)) {
+    score += 8;
+    reasonCodes.push("KOREAN_DOC");
+  } else if (/\/docs\/en\//i.test(norm) || /\/en\//i.test(norm)) {
+    score += 5;
+    reasonCodes.push("ENGLISH_DOC");
+  }
+
+  if (matchesSegmentKeyword(norm, ["getting-started", "quickstart", "installation"])) {
+    score += 15;
+  }
+  if (matchesSegmentKeyword(norm, ["api", "reference", "openapi", "swagger"])) {
+    score += 12;
+  }
+  if (
+    /examples\/basic/i.test(norm) ||
+    /samples\/basic/i.test(norm) ||
+    matchesSegmentKeyword(norm, ["basic", "starter", "hello-world"])
+  ) {
+    score += 10;
+    reasonCodes.push("BASIC_EXAMPLE");
+  }
+
+  if (isStorybookExamplePath(norm)) {
+    score -= 20;
+    reasonCodes.push("STORYBOOK_EXAMPLE");
+  }
+
+  if (fileSize > 500 * KB) {
+    score -= 60;
+    reasonCodes.push("LARGE_FILE_PENALTY");
+  } else if (fileSize > 200 * KB) {
+    score -= 30;
+    reasonCodes.push("LARGE_FILE_PENALTY");
+  }
+
+  const depth = norm.split("/").filter(Boolean).length;
+  if (depth >= 6) {
+    score -= 10;
+    reasonCodes.push("DEEP_PATH_PENALTY");
+  }
+
+  if (matchesSegmentKeyword(norm, ["internal", "private", "legacy"])) {
+    score -= 15;
+  }
+  if (lower.includes("deprecated")) {
+    score -= 20;
+    reasonCodes.push("DEPRECATED_PENALTY");
+  }
+
+  if (/\/fixtures\//i.test(norm) || /\/__fixtures__\//i.test(norm)) {
+    score -= 50;
   }
 
   return { score, reasonCodes };
+}
+
+function matchesSegmentKeyword(path: string, keywords: string[]): boolean {
+  const lower = path.toLowerCase();
+  return keywords.some((kw) => lower.includes(kw));
+}
+
+export function compareDiscoveryCandidates(
+  a: Pick<GitHubDiscoverySourceCandidate, "score" | "fileClass" | "path">,
+  b: Pick<GitHubDiscoverySourceCandidate, "score" | "fileClass" | "path">,
+): number {
+  if (b.score !== a.score) return b.score - a.score;
+  const classCmp = fileClassSortRank(a.fileClass) - fileClassSortRank(b.fileClass);
+  if (classCmp !== 0) return classCmp;
+  return a.path.localeCompare(b.path);
 }
 
 export function isSrcEntrypoint(normPath: string): boolean {
@@ -240,7 +342,7 @@ export function buildCandidateAndExcluded(params: {
       continue;
     }
 
-    const { score, reasonCodes } = scoreGitHubFile(file.path, fileClass);
+    const { score, reasonCodes } = scoreGitHubFile(file.path, fileClass, file.size);
 
     if (!allowedByCrawlMode(fileClass, crawlMode)) {
       excluded.push({
@@ -281,6 +383,17 @@ export function buildCandidateAndExcluded(params: {
       continue;
     }
 
+    if (fileClass === "UNKNOWN" && size > 500 * KB) {
+      excluded.push({
+        path: file.path,
+        type: "blob",
+        size,
+        fileClass,
+        excludeReason: "LARGE_LOW_VALUE_FILE",
+      });
+      continue;
+    }
+
     const isSrc = fileClass === "SRC";
     const shouldFetchContent = resolveShouldFetchContent(fileClass, sourceCodeAnalysis);
 
@@ -304,7 +417,7 @@ export function buildCandidateAndExcluded(params: {
     });
   }
 
-  potential.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
+  potential.sort(compareDiscoveryCandidates);
 
   const sourceCandidates = potential.slice(0, maxCandidateFiles);
   for (const overflow of potential.slice(maxCandidateFiles)) {

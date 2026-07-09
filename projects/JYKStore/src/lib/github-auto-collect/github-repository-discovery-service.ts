@@ -11,6 +11,7 @@ import {
   buildClassificationSummary,
 } from "./github-crawl-policy";
 import { normalizeDiscoveryOptions } from "./github-discovery-options";
+import { buildProductProfileHint } from "./github-product-profile-detector";
 import { limitFilesForAnalysis, splitTreeItems } from "./github-tree-crawler";
 import { parseGitHubRepositoryUrl } from "./github-url";
 
@@ -106,6 +107,16 @@ export async function discoverGitHubRepository(
     (c) => c.shouldFetchContent,
   ).length;
   const srcCandidateCount = sourceCandidates.filter((c) => c.fileClass === "SRC").length;
+  const nonFetchableCandidateCount = sourceCandidates.filter((c) => !c.shouldFetchContent).length;
+  const candidateScores = sourceCandidates.map((c) => c.score);
+  const topCandidateScore =
+    candidateScores.length > 0 ? Math.max(...candidateScores) : undefined;
+  const averageCandidateScore =
+    candidateScores.length > 0
+      ? candidateScores.reduce((a, b) => a + b, 0) / candidateScores.length
+      : undefined;
+
+  const productProfileHint = buildProductProfileHint(analyzedFiles, metadata);
 
   return {
     repository: metadata,
@@ -125,10 +136,14 @@ export async function discoverGitHubRepository(
       selectedPathFilteredCount,
       sourceCandidateFetchableCount,
       srcCandidateCount,
+      topCandidateScore,
+      averageCandidateScore,
+      nonFetchableCandidateCount,
     },
     classificationSummary,
     sourceCandidates,
     excludedFiles,
     warnings,
+    productProfileHint,
   };
 }

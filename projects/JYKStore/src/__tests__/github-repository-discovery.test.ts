@@ -66,6 +66,10 @@ describe("github repository discovery service", () => {
     );
     assert.ok(result.warnings.some((w) => w.includes("preview")));
     assert.equal(JSON.stringify(result).includes("Bearer"), false);
+    assert.ok(typeof result.summary.topCandidateScore === "number");
+    assert.ok(typeof result.summary.averageCandidateScore === "number");
+    assert.ok(typeof result.summary.sourceCandidateFetchableCount === "number");
+    assert.ok(result.productProfileHint);
   });
 
   it("does not call GitHub API when discovery options are invalid", async () => {

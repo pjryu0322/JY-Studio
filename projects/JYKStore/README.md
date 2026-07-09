@@ -795,6 +795,11 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - `sourceTypeSuggestion`을 Prisma `SourceType` enum과 호환.
 - `ENTRYPOINTS_ONLY`, `SELECTED_PATHS` sourceCodeAnalysis 정책 보강.
 
+### P26.3 — GitHub 파일 분류·점수화 고도화
+
+- 문서/예제/설정/build 경로 분류 정확도 개선 및 점수·reasonCodes·정렬 보강.
+- `productProfileHint` preview 보조 정보 추가.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
