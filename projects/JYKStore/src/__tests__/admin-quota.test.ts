@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { DEFAULT_QUOTA_POLICY } from "../../src/lib/quota-policy.ts";
-import type { QuotaSummaryDto } from "../../src/lib/quota-service.ts";
+import type { QuotaSummaryDto } from "../../src/lib/quota-summary-service.ts";
 import { ADMIN_OPS_TOKEN_HEADER } from "../../src/lib/admin-auth.ts";
 import { buildAdminOpsHeaders } from "../../src/lib/admin-api-keys-api.ts";
 

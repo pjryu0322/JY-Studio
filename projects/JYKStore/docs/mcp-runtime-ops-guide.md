@@ -235,6 +235,7 @@ These tests cover registration snapshots, HTTP JSON-RPC runtime (mocked Public A
 - Admin quota page `/admin/ops/quota`에서 client별 사용량·429를 확인한다 (Admin Ops Token 필요).
 - UsageLog quota metadata는 Public API gateway 기준으로 기록된다.
 - 운영 점검 시 `quotaWarning`, `quotaMinuteCount`, `quotaDayCount`, `quotaPerMinuteLimit`, `quotaPerDayLimit` 필드를 활용한다.
+- P24.2 refactor는 운영 동작을 바꾸지 않고 Public API gateway 내부 구조만 정리했다.
 
 ## Out of scope (later)
 

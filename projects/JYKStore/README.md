@@ -753,6 +753,14 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - export full/chunk UsageLog에도 quota warning/count metadata가 일관되게 기록되도록 보정했습니다.
 - Public API success response shape와 MCP tools/resources는 변경하지 않았습니다.
 
+### P24.2 — Public API Gateway Complexity Reduction
+
+- Public API route wrapper를 추가해 retrieval/graph/context route의 인증·quota·safe logging 반복을 줄였습니다.
+- full export route factory를 추가해 package/rag-jsonl/graph/openapi/mcp-manifest export route의 중복을 줄였습니다.
+- quota summary aggregation을 quota check 로직과 분리했습니다.
+- Admin quota UI를 작은 컴포넌트로 분리했습니다.
+- API response shape, MCP tools/resources, DB schema는 변경하지 않았습니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

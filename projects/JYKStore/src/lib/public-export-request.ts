@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { recordApiUsage } from "@/lib/api-usage-service";
 import {
   apiErrorResponse,
-  buildQuotaUsageMetadata,
   internalServerErrorResponse,
   packNotFoundResponse,
   recordPublicApiUsage,
@@ -10,6 +9,7 @@ import {
   requireQuota,
   toPublicApiContext,
 } from "@/lib/public-api-handler";
+import { buildQuotaUsageMetadata } from "@/lib/quota-metadata";
 import type { QuotaCheckResult } from "@/lib/quota-service";
 
 type ResolveSuccess = {

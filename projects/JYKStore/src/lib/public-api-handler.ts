@@ -9,6 +9,9 @@ import {
   checkQuota,
   type QuotaCheckResult,
 } from "@/lib/quota-service";
+import { buildQuotaUsageMetadata } from "@/lib/quota-metadata";
+
+export { buildQuotaUsageMetadata } from "@/lib/quota-metadata";
 
 // 외부 AI/Agent/플랫폼이 호출하는 Public API route의 공통 처리 helper.
 
@@ -117,17 +120,6 @@ export function packNotFoundResponse(requestId: string): NextResponse {
 
 export function internalServerErrorResponse(requestId: string): NextResponse {
   return apiErrorResponse(requestId, "INTERNAL_SERVER_ERROR", "서버 오류가 발생했습니다.", 500);
-}
-
-export function buildQuotaUsageMetadata(quota?: QuotaCheckResult): Record<string, unknown> {
-  if (!quota || !quota.ok) return {};
-  return {
-    quotaWarning: quota.warning,
-    quotaMinuteCount: quota.usage.minuteCount,
-    quotaDayCount: quota.usage.dayCount,
-    quotaPerMinuteLimit: quota.usage.perMinuteLimit,
-    quotaPerDayLimit: quota.usage.perDayLimit,
-  };
 }
 
 export async function recordPublicApiUsage(

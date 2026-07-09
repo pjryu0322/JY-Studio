@@ -1,70 +1,17 @@
-import { NextRequest } from "next/server";
-import { createRequestId } from "@/lib/api-usage-service";
 import { buildMcpReadyManifest } from "@/lib/knowledge-export-service";
-import {
-  publicExportNotFound,
-  publicExportServerError,
-  recordPublicExportUsage,
-  resolvePublicExportRequest,
-} from "@/lib/public-export-request";
-import { logSafeRouteError } from "@/lib/safe-logging";
+import { createPublicExportRoute } from "@/lib/public-export-route";
 
-export async function GET(request: NextRequest) {
-  const startedAt = Date.now();
-  const requestId = createRequestId();
-  const endpoint = request.nextUrl.pathname;
-  const method = request.method;
-
-  try {
-    const resolved = await resolvePublicExportRequest(request, requestId, startedAt);
-    if (!resolved.ok) return resolved.response;
-
-    const { apiKeyId, clientId, packId, quota } = resolved;
-    const data = await buildMcpReadyManifest(packId);
-    if (!data) {
-      await recordPublicExportUsage({
-        requestId,
-        apiKeyId,
-        clientId,
-        packId,
-        endpoint,
-        method,
-        statusCode: 404,
-        latencyMs: Date.now() - startedAt,
-        quota,
-        metadata: { reason: "PACK_NOT_FOUND", packId },
-      });
-      return publicExportNotFound(requestId);
-    }
-
-    await recordPublicExportUsage({
-      requestId,
-      apiKeyId,
-      clientId,
-      packId,
-      endpoint,
-      method,
-      statusCode: 200,
-      latencyMs: Date.now() - startedAt,
-      quota,
-      metadata: { exportType: data.manifestType },
-    });
-
-    return new Response(JSON.stringify(data, null, 2), {
+export const GET = createPublicExportRoute({
+  build: buildMcpReadyManifest,
+  metadata: (data) => ({
+    exportType: data.manifestType,
+  }),
+  response: (data, packId) =>
+    new Response(JSON.stringify(data, null, 2), {
       status: 200,
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "Content-Disposition": `attachment; filename="jykstore-${packId}-mcp-manifest.json"`,
       },
-    });
-  } catch (error) {
-    logSafeRouteError({
-      scope: "export",
-      method,
-      path: endpoint,
-      requestId,
-      error,
-    });
-    return publicExportServerError(requestId);
-  }
-}
+    }),
+});
