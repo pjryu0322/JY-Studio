@@ -128,7 +128,8 @@ export async function startHttpServer(
         JSON.stringify({
           ok: true,
           service: "jykstore-mcp-bridge",
-          baseUrl: config.baseUrl,
+          transport: "http",
+          baseUrlConfigured: Boolean(config.baseUrl?.trim()),
           apiKeyConfigured: Boolean(config.apiKey),
           allowedPackIdsConfigured: config.allowedPackIds.length > 0,
         }),

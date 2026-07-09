@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createKnowledgeChunk, listPackChunks } from "@/lib/chunk-pipeline-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
 
 type RouteContext = { params: Promise<{ packId: string }> };
 
@@ -24,6 +25,8 @@ async function parseJsonBody(request: NextRequest) {
 
 export async function GET(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
+  const adminDeny = rejectUnlessAdminOps(request, clientId);
+  if (adminDeny) return adminDeny;
   const { packId } = await context.params;
 
   try {
@@ -40,6 +43,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
+  const adminDeny = rejectUnlessAdminOps(request, clientId);
+  if (adminDeny) return adminDeny;
   const { packId } = await context.params;
 
   try {

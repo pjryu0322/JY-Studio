@@ -73,7 +73,8 @@ describe("mcp http transport", () => {
       assert.equal(body.ok, true);
       assert.equal(body.apiKeyConfigured, true);
       assert.equal(body.allowedPackIdsConfigured, true);
-      assert.equal(body.baseUrl, "http://localhost:3004");
+      assert.equal(body.baseUrlConfigured, true);
+      assert.equal("baseUrl" in body, false);
       const serialized = JSON.stringify(body);
       assert.equal(serialized.includes("test-key-12345678"), false);
     });

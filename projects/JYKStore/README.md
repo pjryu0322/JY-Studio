@@ -271,7 +271,7 @@ JYKStore는 Provider Center에서 제출된 REVIEWING 지식팩을 Admin Console
 제한:
 
 - 현재 Admin Console은 MVP 내부 검증 도구입니다.
-- 실제 운영 환경에서는 관리자 인증과 권한 제어가 필요합니다.
+- `/api/v1/admin/**`는 **Admin Ops Token**(`JYKSTORE_ADMIN_OPS_TOKEN`, header `X-JYKStore-Admin-Token`)으로 보호합니다. OAuth/SSO는 후속 단계입니다.
 
 ## Ingestion & Chunk Pipeline
 
@@ -376,9 +376,9 @@ JYKStore는 내부 운영자가 API 사용량, AuditLog, Health 상태를 확인
 정책:
 
 - 현재 Admin Ops Console은 MVP 내부 운영 도구입니다.
-- 실제 운영 환경에서는 관리자 인증과 권한 제어가 필요합니다.
+- `/api/v1/admin/**` 및 Admin quota UI는 Admin Ops Token 기반 최소 보호를 사용합니다 (production에서 token env 필수).
 - API Key 원문과 Authorization header는 저장하거나 표시하지 않습니다.
-- 현재 rate limit은 전체 무료 정책에 맞춰 soft policy로 표시하며 API 호출을 차단하지 않습니다.
+- Ops summary의 **plan/rate limit** 표시는 UI/계정용 free-plan 참고 정보이며, Public API **실제 차단**은 P24 quota gate(`JYKSTORE_QUOTA_*`, 429 `QUOTA_EXCEEDED`)가 담당합니다.
 
 ## Free Plan & Billing Foundation
 
@@ -401,7 +401,7 @@ JYKStore는 현재 전체 무료 정책을 기본으로 합니다.
 정책:
 
 - 현재 모든 사용자는 Free Plan입니다.
-- API 호출은 사용량 초과로 차단하지 않습니다.
+- Public API는 P24 quota gate로 per-minute/per-day 초과 시 429 `QUOTA_EXCEEDED`를 반환합니다 (계정/ops UI의 soft warning 표시와 별개).
 - 실제 결제, 카드 등록, PG 연동은 제공하지 않습니다.
 - 사용량은 운영 참고용으로만 집계합니다.
 - 현재 P12는 DB billing model이 아니라 Free Plan policy foundation입니다.
@@ -767,6 +767,14 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - rag-jsonl export가 빈 문자열을 반환해도 `PACK_NOT_FOUND`로 오판하지 않도록 회귀 테스트를 추가했습니다.
 - API response shape, MCP tools/resources, DB schema는 변경하지 않았습니다.
 
+### P25 — Production Deployment Hardening & Ops Readiness
+
+- production required env 검증(`DATABASE_URL`, `JYKSTORE_API_KEY_SECRET`, `JYKSTORE_ADMIN_OPS_TOKEN`)과 `/api/health`, `/api/ready`를 추가했습니다.
+- `/api/ready`는 env + DB probe 결과만 safe summary로 반환합니다 (secret 원문 미포함).
+- MCP HTTP `/ready`는 `baseUrlConfigured` 등 configured 플래그만 반환합니다.
+- `/api/v1/admin/**` route에 Admin Ops Token gate를 적용했습니다.
+- `docs/production-deployment-runbook.md`를 추가했습니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
@@ -774,8 +782,7 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - 고급 구조화 품질 검증(P18/P18.1 완료), 청킹 품질 평가(P19/P19.1 완료), 검색 품질 평가(P20/P20.1 완료), release gate hardening(P21/P21.1 완료), 실제 MCP Server runtime(P22~P22.6/P26 완료), Auth & API Key Hardening(P23/P27~P23.1 완료), Multi-tenant Gateway & Quota(P24/P25 완료)
 - Web Streams true streaming, OAuth / remote MCP auth 등은 후속 개선
 - pgvector 기반 vector index
-- 로그인/회원 관리
-- 관리자 인증 및 권한 제어
+- OAuth / SSO 기반 관리자 인증 (현재: Admin Ops Token)
 
 ## 다음 단계
 

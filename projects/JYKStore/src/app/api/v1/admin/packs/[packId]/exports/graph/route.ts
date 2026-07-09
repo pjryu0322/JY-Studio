@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ensureClientId } from "@/lib/client-identity";
+import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
 import { buildGraphExport } from "@/lib/knowledge-export-service";
 
 type RouteContext = { params: Promise<{ packId: string }> };
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
+  const clientId = ensureClientId(request);
+  const adminDeny = rejectUnlessAdminOps(request, clientId);
+  if (adminDeny) return adminDeny;
   const { packId } = await context.params;
   const trimmed = packId?.trim() ?? "";
 

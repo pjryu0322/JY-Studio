@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { generateChunksFromSourceDocument } from "@/lib/chunk-pipeline-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
 
 type RouteContext = {
   params: Promise<{ packId: string; sourceDocumentId: string }>;
@@ -8,6 +9,8 @@ type RouteContext = {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
+  const adminDeny = rejectUnlessAdminOps(request, clientId);
+  if (adminDeny) return adminDeny;
   const { packId, sourceDocumentId } = await context.params;
 
   try {

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ensureClientId, getClientIdFromRequest, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { validateAdminPackSourceDocuments } from "@/lib/admin-review-service";
+import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
 
 type RouteContext = {
   params: Promise<{ packId: string }>;
@@ -16,6 +17,8 @@ async function parseJsonBody(request: NextRequest) {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
+  const adminDeny = rejectUnlessAdminOps(request, clientId);
+  if (adminDeny) return adminDeny;
   const { packId } = await context.params;
 
   try {

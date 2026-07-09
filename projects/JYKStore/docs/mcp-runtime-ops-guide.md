@@ -237,6 +237,11 @@ These tests cover registration snapshots, HTTP JSON-RPC runtime (mocked Public A
 - 운영 점검 시 `quotaWarning`, `quotaMinuteCount`, `quotaDayCount`, `quotaPerMinuteLimit`, `quotaPerDayLimit` 필드를 활용한다.
 - P24.2 refactor는 운영 동작을 바꾸지 않고 Public API gateway 내부 구조만 정리했다.
 
+## MCP HTTP health / ready (P25)
+
+- `GET /health`: process alive (`transport`, no secrets).
+- `GET /ready`: `baseUrlConfigured`, `apiKeyConfigured`, `allowedPackIdsConfigured`만 반환 (base URL·API Key 원문 미노출).
+
 ## Out of scope (later)
 
 - OAuth / remote MCP auth
