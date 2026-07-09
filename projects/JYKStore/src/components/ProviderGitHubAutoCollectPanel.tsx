@@ -17,6 +17,16 @@ import {
   previewGitHubRepositoryDiscoveryApi,
   registerGitHubSourceDocumentsApi,
 } from "@/lib/provider-center-api";
+import {
+  PROVIDER_GITHUB_ADVANCED_SETTINGS,
+  PROVIDER_GITHUB_LABEL_CRAWL_MODE,
+  PROVIDER_GITHUB_LABEL_GENERATION_MODE,
+  PROVIDER_GITHUB_LABEL_MAX_CANDIDATES,
+  PROVIDER_GITHUB_LABEL_MAX_FETCH,
+  PROVIDER_GITHUB_LABEL_OVERWRITE_DRAFTS,
+  PROVIDER_GITHUB_LABEL_SOURCE_ANALYSIS,
+  PROVIDER_GITHUB_PANEL_TITLE,
+} from "@/lib/role-based-ux-copy";
 
 const inputClass =
   "min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm disabled:opacity-60";
@@ -91,10 +101,12 @@ export function ProviderGitHubAutoCollectPanel({
   packId,
   disabled,
   onChanged,
+  wizardMode = false,
 }: {
   readonly packId: string;
   readonly disabled: boolean;
   readonly onChanged: () => Promise<void>;
+  readonly wizardMode?: boolean;
 }) {
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [crawlMode, setCrawlMode] = useState("DOCS_AND_EXAMPLES");
@@ -217,7 +229,9 @@ export function ProviderGitHubAutoCollectPanel({
 
   return (
     <div id="github-auto-collect" className="mt-4 rounded-2xl border border-store-border bg-slate-50 p-4 scroll-mt-24">
-      <h3 className="text-sm font-bold text-slate-900">GitHub Repository 자동수집</h3>
+      <h3 className="text-sm font-bold text-slate-900">
+        {wizardMode ? PROVIDER_GITHUB_PANEL_TITLE : "GitHub Repository 자동수집"}
+      </h3>
       <p className="mt-1 text-xs text-store-muted">
         공개 GitHub 저장소의 README/docs/examples를 탐색해 원천 문서로 등록합니다.
       </p>
@@ -240,108 +254,118 @@ export function ProviderGitHubAutoCollectPanel({
         className={inputClass}
       />
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="block text-xs font-semibold">
-          crawlMode
-          <select
-            value={crawlMode}
-            disabled={disabled}
-            onChange={(e) => setCrawlMode(e.target.value)}
-            className={`mt-1 ${inputClass}`}
-          >
-            {CRAWL_MODES.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-xs font-semibold">
-          sourceCodeAnalysis
-          <select
-            value={sourceCodeAnalysis}
-            disabled={disabled}
-            onChange={(e) => setSourceCodeAnalysis(e.target.value)}
-            className={`mt-1 ${inputClass}`}
-          >
-            {SOURCE_CODE_ANALYSIS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-xs font-semibold">
-          maxCandidateFiles
+      <Collapsible title={PROVIDER_GITHUB_ADVANCED_SETTINGS}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-xs font-semibold">
+            {PROVIDER_GITHUB_LABEL_CRAWL_MODE}
+            <span className="ml-1 font-normal text-store-muted">(crawlMode)</span>
+            <select
+              value={crawlMode}
+              disabled={disabled}
+              onChange={(e) => setCrawlMode(e.target.value)}
+              className={`mt-1 ${inputClass}`}
+            >
+              {CRAWL_MODES.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-xs font-semibold">
+            {PROVIDER_GITHUB_LABEL_SOURCE_ANALYSIS}
+            <span className="ml-1 font-normal text-store-muted">(sourceCodeAnalysis)</span>
+            <select
+              value={sourceCodeAnalysis}
+              disabled={disabled}
+              onChange={(e) => setSourceCodeAnalysis(e.target.value)}
+              className={`mt-1 ${inputClass}`}
+            >
+              {SOURCE_CODE_ANALYSIS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-xs font-semibold">
+            {PROVIDER_GITHUB_LABEL_MAX_CANDIDATES}
+            <span className="ml-1 font-normal text-store-muted">(maxCandidateFiles)</span>
+            <input
+              type="number"
+              min={1}
+              max={MAX_CANDIDATE_FILES_UI}
+              value={maxCandidateFiles}
+              disabled={disabled}
+              onChange={(e) =>
+                setMaxCandidateFiles(
+                  clampUiNumber(Number(e.target.value), 1, MAX_CANDIDATE_FILES_UI, 100),
+                )
+              }
+              className={`mt-1 ${inputClass}`}
+            />
+          </label>
+          <label className="block text-xs font-semibold">
+            {PROVIDER_GITHUB_LABEL_MAX_FETCH}
+            <span className="ml-1 font-normal text-store-muted">(maxFilesToFetch)</span>
+            <input
+              type="number"
+              min={1}
+              max={MAX_FILES_TO_FETCH_UI}
+              value={maxFilesToFetch}
+              disabled={disabled}
+              onChange={(e) =>
+                setMaxFilesToFetch(clampUiNumber(Number(e.target.value), 1, MAX_FILES_TO_FETCH_UI, 10))
+              }
+              className={`mt-1 ${inputClass}`}
+            />
+          </label>
+          <label className="block text-xs font-semibold sm:col-span-2">
+            {PROVIDER_GITHUB_LABEL_GENERATION_MODE}
+            <span className="ml-1 font-normal text-store-muted">(generationMode)</span>
+            <select
+              value={generationMode}
+              disabled={disabled}
+              onChange={(e) => setGenerationMode(e.target.value)}
+              className={`mt-1 ${inputClass}`}
+            >
+              {GENERATION_MODES.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label className="mt-3 flex min-h-[44px] items-center gap-2 text-xs font-semibold">
           <input
-            type="number"
-            min={1}
-            max={MAX_CANDIDATE_FILES_UI}
-            value={maxCandidateFiles}
+            type="checkbox"
+            checked={overwriteExistingDrafts}
             disabled={disabled}
-            onChange={(e) =>
-              setMaxCandidateFiles(
-                clampUiNumber(Number(e.target.value), 1, MAX_CANDIDATE_FILES_UI, 100),
-              )
-            }
-            className={`mt-1 ${inputClass}`}
+            onChange={(e) => setOverwriteExistingDrafts(e.target.checked)}
+            className="h-5 w-5"
           />
+          {PROVIDER_GITHUB_LABEL_OVERWRITE_DRAFTS}
+          <span className="font-normal text-store-muted">(overwriteExistingDrafts)</span>
         </label>
-        <label className="block text-xs font-semibold">
-          maxFilesToFetch
-          <input
-            type="number"
-            min={1}
-            max={MAX_FILES_TO_FETCH_UI}
-            value={maxFilesToFetch}
-            disabled={disabled}
-            onChange={(e) =>
-              setMaxFilesToFetch(clampUiNumber(Number(e.target.value), 1, MAX_FILES_TO_FETCH_UI, 10))
-            }
-            className={`mt-1 ${inputClass}`}
-          />
-        </label>
-        <label className="block text-xs font-semibold sm:col-span-2">
-          Knowledge Unit generationMode
-          <select
-            value={generationMode}
-            disabled={disabled}
-            onChange={(e) => setGenerationMode(e.target.value)}
-            className={`mt-1 ${inputClass}`}
-          >
-            {GENERATION_MODES.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
 
-      <label className="mt-3 flex min-h-[44px] items-center gap-2 text-xs font-semibold">
-        <input
-          type="checkbox"
-          checked={overwriteExistingDrafts}
-          disabled={disabled}
-          onChange={(e) => setOverwriteExistingDrafts(e.target.checked)}
-          className="h-5 w-5"
-        />
-        기존 Knowledge Unit 초안 덮어쓰기 (overwriteExistingDrafts)
-      </label>
+        <p className="mt-2 text-[11px] text-store-muted">
+          src 전체 분석과 선택 경로 분석은 아직 UI에서 제공하지 않습니다. 초기 지식팩 생성은
+          README/docs/examples 중심을 권장합니다.
+        </p>
+      </Collapsible>
 
-      <p className="mt-2 text-[11px] text-store-muted">
-        src 전체 분석과 선택 경로 분석은 아직 UI에서 제공하지 않습니다. 초기 지식팩 생성은
-        README/docs/examples 중심을 권장합니다.
-      </p>
-
-      <button
-        type="button"
-        disabled={disabled || previewing}
-        onClick={() => void onPreview()}
-        className="mt-4 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
-      >
-        {previewing ? "분석 중…" : "Repository 분석"}
-      </button>
+      {!preview ? (
+        <button
+          type="button"
+          disabled={disabled || previewing}
+          onClick={() => void onPreview()}
+          className="mt-4 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
+        >
+          {previewing ? "분석 중…" : "Repository 분석"}
+        </button>
+      ) : null}
 
       {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
 
@@ -404,7 +428,9 @@ export function ProviderGitHubAutoCollectPanel({
           ) : null}
 
           <div>
-            <p className="text-xs font-bold text-slate-900">후보 파일 ({preview.sourceCandidates.length})</p>
+            <p className="text-xs font-bold text-slate-900">
+              추천 문서 {preview.sourceCandidates.length}개를 찾았습니다.
+            </p>
             <ul className="mt-2 space-y-2">
               {preview.sourceCandidates.map((c) => {
                 const checked = selectedPaths.includes(c.path);
@@ -450,9 +476,9 @@ export function ProviderGitHubAutoCollectPanel({
             type="button"
             disabled={disabled || registering || selectedPaths.length === 0}
             onClick={() => void onRegister()}
-            className="min-h-[44px] w-full rounded-xl border-2 border-store-accent bg-white text-sm font-bold text-store-accent disabled:opacity-50"
+            className="min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
           >
-            {registering ? "등록 중…" : "선택 파일 원천 문서로 등록"}
+            {registering ? "등록 중…" : "선택한 문서 등록"}
           </button>
         </div>
       ) : null}
@@ -499,16 +525,18 @@ export function ProviderGitHubAutoCollectPanel({
         </div>
       ) : null}
 
-      <button
-        type="button"
-        disabled={!canGenerateDrafts || generatingDrafts}
-        onClick={() => void onGenerateDrafts()}
-        className="mt-3 min-h-[44px] w-full rounded-xl bg-slate-800 text-sm font-bold text-white disabled:opacity-50"
-      >
-        {generatingDrafts ? "초안 생성 중…" : "Knowledge Unit 초안 생성"}
-      </button>
+      {!wizardMode ? (
+        <button
+          type="button"
+          disabled={!canGenerateDrafts || generatingDrafts}
+          onClick={() => void onGenerateDrafts()}
+          className="mt-3 min-h-[44px] w-full rounded-xl bg-slate-800 text-sm font-bold text-white disabled:opacity-50"
+        >
+          {generatingDrafts ? "초안 생성 중…" : "Knowledge Unit 초안 생성"}
+        </button>
+      ) : null}
 
-      {draftResult ? (
+      {!wizardMode && draftResult ? (
         <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-950">
           <p className="font-bold">
             초안 생성 {draftResult.summary.generatedDraftCount}개 · 스킵 문서{" "}

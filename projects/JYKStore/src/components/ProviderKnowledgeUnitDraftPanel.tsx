@@ -101,9 +101,11 @@ function DraftCard({ draft }: { readonly draft: ProviderKnowledgeUnitDraftDto })
 export function ProviderKnowledgeUnitDraftPanel({
   packId,
   refreshNonce = 0,
+  compact = false,
 }: {
   readonly packId: string;
   readonly refreshNonce?: number;
+  readonly compact?: boolean;
 }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("pending_review");
   const [loading, setLoading] = useState(true);
@@ -134,46 +136,58 @@ export function ProviderKnowledgeUnitDraftPanel({
   }, [loadDrafts, refreshNonce]);
 
   return (
-    <div className="mt-4 rounded-2xl border border-store-border bg-slate-50 p-4">
-      <h3 className="text-sm font-bold text-slate-900">Knowledge Unit 초안</h3>
-      <p className="mt-1 text-xs text-store-muted">
-        생성된 초안은 아직 공개되지 않습니다. 검토/승인 단계에서 활성화됩니다.
-      </p>
-      <p className="mt-1 text-[11px] text-store-muted">
-        승인/반려는 Admin 검토 단계(P26.9)에서 처리됩니다.
-      </p>
+    <div className={compact ? "mt-3" : "mt-4 rounded-2xl border border-store-border bg-slate-50 p-4"}>
+      {!compact ? (
+        <>
+          <h3 className="text-sm font-bold text-slate-900">Knowledge Unit 초안</h3>
+          <p className="mt-1 text-xs text-store-muted">
+            생성된 초안은 아직 공개되지 않습니다. 검토/승인 단계에서 활성화됩니다.
+          </p>
+          <p className="mt-1 text-[11px] text-store-muted">
+            승인/반려는 Admin 검토 단계(P26.9)에서 처리됩니다.
+          </p>
+        </>
+      ) : null}
 
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-        <label className="block flex-1 text-xs font-semibold">
-          상태 필터
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className={`mt-1 ${inputClass}`}
+      {!compact ? (
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <label className="block flex-1 text-xs font-semibold">
+            상태 필터
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className={`mt-1 ${inputClass}`}
+            >
+              <option value="pending_review">pending_review</option>
+              <option value="superseded">superseded</option>
+              <option value="all">all</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => void loadDrafts()}
+            disabled={loading}
+            className="min-h-[44px] rounded-xl border border-store-border bg-white px-4 text-sm font-semibold disabled:opacity-50 sm:self-end"
           >
-            <option value="pending_review">pending_review</option>
-            <option value="superseded">superseded</option>
-            <option value="all">all</option>
-          </select>
-        </label>
-        <button
-          type="button"
-          onClick={() => void loadDrafts()}
-          disabled={loading}
-          className="min-h-[44px] rounded-xl border border-store-border bg-white px-4 text-sm font-semibold disabled:opacity-50 sm:self-end"
-        >
-          {loading ? "불러오는 중…" : "새로고침"}
-        </button>
-      </div>
+            {loading ? "불러오는 중…" : "새로고침"}
+          </button>
+        </div>
+      ) : null}
 
       {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
 
       {data ? (
-        <div className="mt-3 rounded-xl border border-store-border bg-white p-3 text-xs text-slate-800">
-          <p>
-            전체 {data.summary.totalCount}개 · 검토 대기 {data.summary.pendingReviewCount}개 · 대체됨{" "}
-            {data.summary.supersededCount}개 · 활성 draft {data.summary.activeDraftCount}개
-          </p>
+        <div
+          className={`${compact ? "mt-0" : "mt-3"} rounded-xl border border-store-border bg-white p-3 text-xs text-slate-800`}
+        >
+          {!compact ? (
+            <p>
+              전체 {data.summary.totalCount}개 · 검토 대기 {data.summary.pendingReviewCount}개 · 대체됨{" "}
+              {data.summary.supersededCount}개 · 활성 draft {data.summary.activeDraftCount}개
+            </p>
+          ) : (
+            <p className="font-semibold">생성된 초안 {data.summary.totalCount}개</p>
+          )}
           {data.summary.activeDraftCount > 0 ? (
             <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1 text-amber-900">
               비활성 draft가 아닌 항목이 포함되어 있습니다. 활성화 상태를 확인하세요.

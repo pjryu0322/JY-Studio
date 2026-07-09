@@ -3,10 +3,11 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ProviderPackChunkSummaryCard } from "@/components/ProviderPackChunkSummaryCard";
+import { ProviderPackDraftStep } from "@/components/ProviderPackDraftStep";
 import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCard";
+import { ProviderPackSourceStep } from "@/components/ProviderPackSourceStep";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
-import { ProviderSourceDocumentForm } from "@/components/ProviderSourceDocumentForm";
-import { ProviderGitHubAutoCollectPanel } from "@/components/ProviderGitHubAutoCollectPanel";
+import { ProviderPackWizardStepper } from "@/components/ProviderPackWizardStepper";
 import { ProviderKnowledgeUnitDraftPanel } from "@/components/ProviderKnowledgeUnitDraftPanel";
 import { SourceValidationBadge } from "@/components/SourceValidationBadge";
 import { SourceValidationReportPanel } from "@/components/SourceValidationReportPanel";
@@ -27,12 +28,16 @@ import { ChunkQualityPanel } from "@/components/ChunkQualityPanel";
 import { RetrievalEvaluationPanel } from "@/components/RetrievalEvaluationPanel";
 import { getSourceFormatLabel, getSourceTypeLabel } from "@/lib/source-type-dto";
 import { resolveProviderPackNextAction } from "@/lib/provider-onboarding-steps";
+import { resolveProviderPackWizardStep } from "@/lib/provider-pack-wizard";
 import {
+  PROVIDER_PACK_BASIC_INFO_SUMMARY,
   PROVIDER_PACK_CREATED_BANNER_TITLE,
   PROVIDER_PACK_CREATED_COLLECT_CTA,
   PROVIDER_PACK_CREATED_ID_PREFIX,
   PROVIDER_PACK_CREATED_NEXT_TASK,
   PROVIDER_PACK_ID_LABEL,
+  PROVIDER_PACK_PRE_REVIEW_CHECKS_SUMMARY,
+  PROVIDER_PACK_REVIEW_SUBMIT_CTA,
   PROVIDER_REVIEW_READONLY_HINT,
 } from "@/lib/role-based-ux-copy";
 
@@ -147,12 +152,22 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   const latestVersion = pack.versions[0];
   const allDocs = pack.versions.flatMap((v) => v.sourceDocuments);
+  const sourceDocumentCount = allDocs.length;
   const nextAction = resolveProviderPackNextAction({
     status: pack.status,
-    sourceDocumentCount: allDocs.length,
+    sourceDocumentCount,
     knowledgeUnitDraftCount,
     justCreated: showCreatedBanner,
   });
+  const wizardStep = resolveProviderPackWizardStep({
+    status: pack.status,
+    sourceDocumentCount,
+    knowledgeUnitDraftCount,
+    forceSourceStep: showCreatedBanner,
+  });
+  const showPreReviewChecks =
+    pack.status === "DRAFT" && (sourceDocumentCount > 0 || knowledgeUnitDraftCount > 0);
+  const isDraftWizard = pack.status === "DRAFT";
 
   return (
     <div className="space-y-4 pb-6">
@@ -165,7 +180,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           </p>
           <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_CREATED_NEXT_TASK}</p>
           <a
-            href="#github-auto-collect"
+            href="#pack-wizard-main"
             className="mt-2 inline-block text-xs font-bold text-store-accent underline-offset-2 hover:underline"
           >
             {PROVIDER_PACK_CREATED_COLLECT_CTA}
@@ -185,6 +200,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           ) : null}
         </div>
       )}
+
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-2xl">{pack.icon}</span>
         <div className="min-w-0 flex-1">
@@ -197,43 +213,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         <ProviderPackStatusBadge status={pack.status} />
       </div>
 
-      <ProviderPackReadinessCard pack={pack} />
-
-      <StructureQualityPanel
-        packId={packId}
-        structureQuality={pack.structureQuality}
-        editable={editable}
-        onEvaluate={async () => {
-          const data = await evaluateProviderStructureQualityApi(packId);
-          setPack(data.pack);
-        }}
-      />
-
-      <ChunkQualityPanel
-        packId={packId}
-        chunkQuality={pack.chunkQuality}
-        editable={editable}
-        onEvaluate={async () => {
-          const data = await evaluateProviderChunkQualityApi(packId);
-          setPack(data.pack);
-        }}
-      />
-
-      <RetrievalEvaluationPanel
-        packId={packId}
-        retrievalEvaluation={pack.retrievalEvaluation}
-        editable={editable}
-        onGenerate={async (replace) => {
-          const data = await generateProviderRetrievalEvaluationCasesApi(packId, replace);
-          setPack(data.pack);
-        }}
-        onRun={async () => {
-          const data = await runProviderRetrievalEvaluationApi(packId);
-          setPack(data.pack);
-        }}
-      />
-
-      <ProviderPackChunkSummaryCard packId={packId} />
+      {isDraftWizard ? <ProviderPackWizardStepper wizardStep={wizardStep} /> : null}
 
       {pack.status === "REVIEWING" ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
@@ -245,70 +225,65 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
       ) : null}
 
-      <form onSubmit={onSave} className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
-        <h2 className="text-sm font-bold text-slate-900">기본 정보</h2>
-        {!editable ? (
-          <p className="mt-1 text-xs text-store-muted">초안(DRAFT)이 아니면 수정할 수 없습니다.</p>
+      <div id="pack-wizard-main" className="scroll-mt-24 space-y-4">
+        {isDraftWizard && wizardStep === "source" ? (
+          <ProviderPackSourceStep
+            packId={packId}
+            editable={editable}
+            sourceDocumentCount={sourceDocumentCount}
+            onChanged={load}
+          />
         ) : null}
-        <label className="mt-3 block text-xs font-semibold" htmlFor="edit-name">
-          이름
-        </label>
-        <input
-          id="edit-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          disabled={!editable}
-          className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm disabled:bg-slate-50"
-        />
-        <label className="mt-3 block text-xs font-semibold" htmlFor="edit-short">
-          짧은 설명
-        </label>
-        <textarea
-          id="edit-short"
-          value={shortDescription}
-          onChange={(e) => setShortDescription(e.target.value)}
-          disabled={!editable}
-          rows={2}
-          className="mt-1 w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
-        />
-        <label className="mt-3 block text-xs font-semibold" htmlFor="edit-desc">
-          설명
-        </label>
-        <textarea
-          id="edit-desc"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          disabled={!editable}
-          rows={4}
-          className="mt-1 w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
-        />
-        <label className="mt-3 block text-xs font-semibold" htmlFor="edit-overview">
-          버전 개요 ({latestVersion?.version ?? "—"})
-        </label>
-        <textarea
-          id="edit-overview"
-          value={versionOverview}
-          onChange={(e) => setVersionOverview(e.target.value)}
-          disabled={!editable}
-          rows={3}
-          className="mt-1 w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
-        />
-        {editable ? (
-          <button
-            type="submit"
-            disabled={saving}
-            className="mt-4 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
-          >
-            {saving ? "저장 중…" : "변경 저장"}
-          </button>
-        ) : null}
-      </form>
 
-      <section className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
-        <h2 className="text-sm font-bold text-slate-900">원천 문서</h2>
-        {allDocs.length === 0 ? (
-          <p className="mt-2 text-sm text-store-muted">등록된 문서가 없습니다.</p>
-        ) : (
+        {isDraftWizard && wizardStep === "draft-generation" ? (
+          <ProviderPackDraftStep
+            packId={packId}
+            editable={editable}
+            sourceDocumentCount={sourceDocumentCount}
+            draftRefreshNonce={draftRefreshNonce}
+            onChanged={load}
+          />
+        ) : null}
+
+        {isDraftWizard && wizardStep === "review" ? (
+          <section className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
+            <p className="text-xs font-bold uppercase tracking-wide text-store-accent">4단계</p>
+            <h2 className="text-sm font-bold text-slate-900">초안 확인 및 검수 요청</h2>
+            <p className="mt-1 text-xs text-store-muted">
+              Knowledge Unit 초안 {knowledgeUnitDraftCount}개 · 원천 문서 {sourceDocumentCount}개
+            </p>
+            <ProviderKnowledgeUnitDraftPanel packId={packId} refreshNonce={draftRefreshNonce} />
+            <div id="pack-review" className="mt-4 scroll-mt-24">
+              <button
+                type="button"
+                onClick={() => void onSubmitReview()}
+                disabled={submitting}
+                className="min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
+              >
+                {submitting ? "제출 중…" : PROVIDER_PACK_REVIEW_SUBMIT_CTA}
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {!isDraftWizard && sourceDocumentCount > 0 ? (
+          <section className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
+            <h2 className="text-sm font-bold text-slate-900">원천 문서</h2>
+            <ul className="mt-3 space-y-2">
+              {allDocs.map((doc) => (
+                <li key={doc.id} className="rounded-xl border border-store-border px-3 py-2 text-sm">
+                  <p className="font-semibold text-slate-900">{doc.title}</p>
+                  <p className="text-xs text-store-muted">{getSourceTypeLabel(doc.sourceType)}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </div>
+
+      {isDraftWizard && sourceDocumentCount > 0 && wizardStep !== "source" ? (
+        <details className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
+          <summary className="cursor-pointer text-sm font-bold text-slate-900">등록된 원천 문서</summary>
           <ul className="mt-3 space-y-2">
             {allDocs.map((doc) => (
               <li key={doc.id} className="rounded-xl border border-store-border px-3 py-2 text-sm">
@@ -331,42 +306,124 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
                 <p className="text-xs text-store-muted">
                   {getSourceTypeLabel(doc.sourceType)} · {getSourceFormatLabel(doc.sourceFormat)}
                   {doc.sourceUrl ? ` · ${doc.sourceUrl}` : ""}
-                  {doc.validationScore != null ? ` · 점수 ${doc.validationScore}` : ""}
-                  {doc.blockingIssueCount > 0 ? ` · 차단 ${doc.blockingIssueCount}` : ""}
-                  {doc.warningIssueCount > 0 ? ` · 주의 ${doc.warningIssueCount}` : ""}
                 </p>
-                {doc.validationSummary && doc.validationStatus !== "PASS" ? (
-                  <p className="mt-1 text-xs text-amber-700">{doc.validationSummary}</p>
-                ) : null}
                 <SourceValidationReportPanel
                   score={doc.validationScore}
                   blockingIssueCount={doc.blockingIssueCount}
                   warningIssueCount={doc.warningIssueCount}
                   issues={doc.validationIssues}
-                  maxVisibleIssues={10}
+                  maxVisibleIssues={5}
                 />
               </li>
             ))}
           </ul>
-        )}
-        <ProviderGitHubAutoCollectPanel packId={packId} disabled={!editable} onChanged={load} />
-        <ProviderKnowledgeUnitDraftPanel packId={packId} refreshNonce={draftRefreshNonce} />
-        <div className="mt-4">
-          <ProviderSourceDocumentForm packId={packId} disabled={!editable} onAdded={load} />
-        </div>
-      </section>
+        </details>
+      ) : null}
 
-      {editable ? (
-        <div id="pack-review" className="scroll-mt-24">
-          <button
-            type="button"
-            onClick={() => void onSubmitReview()}
-            disabled={submitting}
-            className="min-h-[44px] w-full rounded-xl border-2 border-store-accent bg-white text-sm font-bold text-store-accent disabled:opacity-50"
-          >
-            {submitting ? "제출 중…" : "검수 요청 제출"}
-          </button>
-        </div>
+      <details className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
+        <summary className="cursor-pointer text-sm font-bold text-slate-900">
+          {PROVIDER_PACK_BASIC_INFO_SUMMARY}
+        </summary>
+        <form onSubmit={onSave} className="mt-3 space-y-3">
+          {!editable ? (
+            <p className="text-xs text-store-muted">초안(DRAFT)이 아니면 수정할 수 없습니다.</p>
+          ) : null}
+          <label className="block text-xs font-semibold" htmlFor="edit-name">
+            이름
+          </label>
+          <input
+            id="edit-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={!editable}
+            className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm disabled:bg-slate-50"
+          />
+          <label className="block text-xs font-semibold" htmlFor="edit-short">
+            짧은 설명
+          </label>
+          <textarea
+            id="edit-short"
+            value={shortDescription}
+            onChange={(e) => setShortDescription(e.target.value)}
+            disabled={!editable}
+            rows={2}
+            className="w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
+          />
+          <label className="block text-xs font-semibold" htmlFor="edit-desc">
+            설명
+          </label>
+          <textarea
+            id="edit-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            disabled={!editable}
+            rows={4}
+            className="w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
+          />
+          <label className="block text-xs font-semibold" htmlFor="edit-overview">
+            버전 개요 ({latestVersion?.version ?? "—"})
+          </label>
+          <textarea
+            id="edit-overview"
+            value={versionOverview}
+            onChange={(e) => setVersionOverview(e.target.value)}
+            disabled={!editable}
+            rows={3}
+            className="w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
+          />
+          {editable ? (
+            <button
+              type="submit"
+              disabled={saving}
+              className="min-h-[44px] w-full rounded-xl border border-store-border bg-white text-sm font-bold text-slate-800 disabled:opacity-50"
+            >
+              {saving ? "저장 중…" : "변경 저장"}
+            </button>
+          ) : null}
+        </form>
+      </details>
+
+      {showPreReviewChecks ? (
+        <details className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
+          <summary className="cursor-pointer text-sm font-bold text-slate-900">
+            {PROVIDER_PACK_PRE_REVIEW_CHECKS_SUMMARY}
+          </summary>
+          <div className="mt-4 space-y-4">
+            <ProviderPackReadinessCard pack={pack} />
+            <StructureQualityPanel
+              packId={packId}
+              structureQuality={pack.structureQuality}
+              editable={editable}
+              onEvaluate={async () => {
+                const data = await evaluateProviderStructureQualityApi(packId);
+                setPack(data.pack);
+              }}
+            />
+            <ChunkQualityPanel
+              packId={packId}
+              chunkQuality={pack.chunkQuality}
+              editable={editable}
+              onEvaluate={async () => {
+                const data = await evaluateProviderChunkQualityApi(packId);
+                setPack(data.pack);
+              }}
+            />
+            <RetrievalEvaluationPanel
+              packId={packId}
+              retrievalEvaluation={pack.retrievalEvaluation}
+              editable={editable}
+              onGenerate={async (replace) => {
+                const data = await generateProviderRetrievalEvaluationCasesApi(packId, replace);
+                setPack(data.pack);
+              }}
+              onRun={async () => {
+                const data = await runProviderRetrievalEvaluationApi(packId);
+                setPack(data.pack);
+              }}
+            />
+            <ProviderPackChunkSummaryCard packId={packId} />
+          </div>
+        </details>
       ) : null}
     </div>
   );
