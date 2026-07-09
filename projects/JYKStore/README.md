@@ -800,6 +800,11 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - 문서/예제/설정/build 경로 분류 정확도 개선 및 점수·reasonCodes·정렬 보강.
 - `productProfileHint` preview 보조 정보 추가.
 
+### P26.4 — GitHub 제품 유형 자동 판별 (preview)
+
+- `productProfile`에 primaryType, confidence, candidateTypes, evidence, warnings 반환.
+- `productProfileHint`는 하위 호환으로 유지.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

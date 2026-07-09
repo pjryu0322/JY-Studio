@@ -11,7 +11,7 @@ import {
   buildClassificationSummary,
 } from "./github-crawl-policy";
 import { normalizeDiscoveryOptions } from "./github-discovery-options";
-import { buildProductProfileHint } from "./github-product-profile-detector";
+import { buildProductProfileHint, detectGitHubProductProfile } from "./github-product-profile-detector";
 import { limitFilesForAnalysis, splitTreeItems } from "./github-tree-crawler";
 import { parseGitHubRepositoryUrl } from "./github-url";
 
@@ -117,6 +117,11 @@ export async function discoverGitHubRepository(
       : undefined;
 
   const productProfileHint = buildProductProfileHint(analyzedFiles, metadata);
+  const productProfile = detectGitHubProductProfile({
+    files: analyzedFiles,
+    metadata,
+    classificationSummary,
+  });
 
   return {
     repository: metadata,
@@ -145,5 +150,6 @@ export async function discoverGitHubRepository(
     excludedFiles,
     warnings,
     productProfileHint,
+    productProfile,
   };
 }

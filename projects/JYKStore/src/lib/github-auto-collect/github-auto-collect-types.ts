@@ -109,6 +109,30 @@ export type GitHubDiscoveryExcludedFile = {
   excludeReason: string;
 };
 
+export type GitHubProductType =
+  | "FRONTEND_COMPONENT"
+  | "CHART_COMPONENT"
+  | "BACKEND_FRAMEWORK"
+  | "TEMPLATE_APP"
+  | "SDK_LIBRARY"
+  | "CLI_TOOL"
+  | "INFRA_TOOL"
+  | "DOCUMENTATION_ONLY"
+  | "UNKNOWN";
+
+export type GitHubProductProfileDetection = {
+  primaryType: GitHubProductType;
+  candidateTypes: Array<{
+    type: GitHubProductType;
+    score: number;
+    confidence: number;
+    evidence: string[];
+  }>;
+  confidence: number;
+  evidence: string[];
+  warnings: string[];
+};
+
 export type GitHubRepositoryDiscoveryResult = {
   repository: GitHubRepositoryMetadata;
   options: Required<
@@ -138,6 +162,7 @@ export type GitHubRepositoryDiscoveryResult = {
     likelyTypes: string[];
     evidence: string[];
   };
+  productProfile?: GitHubProductProfileDetection;
 };
 
 export type GitHubDiscoveryErrorCode =
