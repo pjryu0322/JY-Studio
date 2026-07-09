@@ -74,6 +74,22 @@ export type GitHubRepositoryMetadata = {
   language?: string | null;
 };
 
+export type JykStoreSourceType =
+  | "PRODUCT_MANUAL"
+  | "INTEGRATION_GUIDE"
+  | "API_SPEC"
+  | "OPENAPI_SCHEMA"
+  | "ERROR_CODE_TABLE"
+  | "SAMPLE_CODE"
+  | "FAQ"
+  | "RELEASE_NOTE"
+  | "SECURITY_GUIDE"
+  | "TEST_ENV_GUIDE"
+  | "OPERATION_GUIDE"
+  | "CALLBACK_GUIDE"
+  | "TROUBLESHOOTING"
+  | "ETC";
+
 export type GitHubDiscoverySourceCandidate = {
   path: string;
   type: GitHubTreeItemType;
@@ -81,7 +97,7 @@ export type GitHubDiscoverySourceCandidate = {
   fileClass: GitHubFileClass;
   score: number;
   reasonCodes: string[];
-  sourceTypeSuggestion: string;
+  sourceTypeSuggestion: JykStoreSourceType;
   shouldFetchContent: boolean;
 };
 
@@ -107,6 +123,9 @@ export type GitHubRepositoryDiscoveryResult = {
     candidateFileCount: number;
     excludedFileCount: number;
     truncated: boolean;
+    selectedPathFilteredCount?: number;
+    sourceCandidateFetchableCount?: number;
+    srcCandidateCount?: number;
   };
   classificationSummary: Partial<Record<GitHubFileClass, number>>;
   sourceCandidates: GitHubDiscoverySourceCandidate[];
@@ -121,7 +140,8 @@ export type GitHubDiscoveryErrorCode =
   | "PRIVATE_REPOSITORY_NOT_SUPPORTED"
   | "REPOSITORY_NOT_FOUND"
   | "GITHUB_RATE_LIMITED"
-  | "GITHUB_API_ERROR";
+  | "GITHUB_API_ERROR"
+  | "INVALID_SELECTED_PATHS";
 
 export class GitHubDiscoveryError extends Error {
   readonly code: GitHubDiscoveryErrorCode;

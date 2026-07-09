@@ -789,6 +789,12 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - DB/SourceDocument/KnowledgeChunk 저장 및 파일 content fetch는 하지 않습니다.
 - 선택 env: `GITHUB_TOKEN` (rate limit 완화용).
 
+### P26.2 — GitHub 수집 옵션 (preview 정책)
+
+- `selectedPaths` prefix 필터, `maxFilesToAnalyze` / `maxCandidateFiles` clamp + warning.
+- `sourceTypeSuggestion`을 Prisma `SourceType` enum과 호환.
+- `ENTRYPOINTS_ONLY`, `SELECTED_PATHS` sourceCodeAnalysis 정책 보강.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

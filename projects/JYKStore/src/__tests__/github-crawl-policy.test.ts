@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildCandidateAndExcluded,
+  isSrcEntrypoint,
   scoreGitHubFile,
+  suggestSourceType,
 } from "@/lib/github-auto-collect/github-crawl-policy";
+import { normalizeDiscoveryOptions } from "@/lib/github-auto-collect/github-discovery-options";
 import type { GitHubTreeFileItem } from "@/lib/github-auto-collect/github-auto-collect-types";
 
 function blob(path: string, size = 100): GitHubTreeFileItem {
@@ -44,5 +47,101 @@ describe("github crawl policy", () => {
     assert.ok(src);
     assert.equal(src.shouldFetchContent, false);
     assert.ok(src.reasonCodes.includes("METADATA_ONLY"));
+  });
+
+  it("filters files outside selectedPaths", () => {
+    const { sourceCandidates, excludedFiles } = buildCandidateAndExcluded({
+      files: [
+        blob("README.md"),
+        blob("docs/guide.md"),
+        blob("src/index.ts"),
+      ],
+      crawlMode: "FULL_REPO_SCAN",
+      sourceCodeAnalysis: "NONE",
+      maxCandidateFiles: 100,
+      selectedPaths: ["README.md"],
+    });
+    assert.ok(sourceCandidates.some((c) => c.path === "README.md"));
+    assert.ok(
+      excludedFiles.some(
+        (e) => e.path === "docs/guide.md" && e.excludeReason === "SELECTED_PATHS_FILTER",
+      ),
+    );
+    assert.ok(
+      excludedFiles.some(
+        (e) => e.path === "src/index.ts" && e.excludeReason === "SELECTED_PATHS_FILTER",
+      ),
+    );
+  });
+
+  it("includes docs subtree when selectedPaths is docs", () => {
+    const { sourceCandidates } = buildCandidateAndExcluded({
+      files: [blob("docs/ko/getting-started.md"), blob("src/index.ts")],
+      crawlMode: "FULL_REPO_SCAN",
+      sourceCodeAnalysis: "NONE",
+      maxCandidateFiles: 100,
+      selectedPaths: ["docs"],
+    });
+    assert.ok(sourceCandidates.some((c) => c.path === "docs/ko/getting-started.md"));
+  });
+
+  it("ENTRYPOINTS_ONLY keeps src entrypoints only", () => {
+    const { sourceCandidates, excludedFiles } = buildCandidateAndExcluded({
+      files: [blob("src/index.ts"), blob("src/internal/helper.ts")],
+      crawlMode: "FULL_REPO_SCAN",
+      sourceCodeAnalysis: "ENTRYPOINTS_ONLY",
+      maxCandidateFiles: 100,
+    });
+    assert.ok(sourceCandidates.some((c) => c.path === "src/index.ts"));
+    assert.ok(
+      excludedFiles.some(
+        (e) =>
+          e.path === "src/internal/helper.ts" &&
+          e.excludeReason === "SOURCE_CODE_ENTRYPOINTS_ONLY",
+      ),
+    );
+    assert.ok(isSrcEntrypoint("src/index.ts"));
+    assert.equal(isSrcEntrypoint("src/internal/helper.ts"), false);
+  });
+
+  it("maps sourceTypeSuggestion to Prisma SourceType", () => {
+    assert.equal(suggestSourceType("README", "README.md"), "PRODUCT_MANUAL");
+    assert.equal(suggestSourceType("DOCS", "docs/guide.md"), "PRODUCT_MANUAL");
+    assert.equal(suggestSourceType("GETTING_STARTED", "getting-started.md"), "INTEGRATION_GUIDE");
+    assert.equal(suggestSourceType("EXAMPLE", "examples/basic.ts"), "SAMPLE_CODE");
+    assert.equal(suggestSourceType("API_DOC", "openapi.yaml"), "OPENAPI_SCHEMA");
+    assert.equal(suggestSourceType("PACKAGE_MANIFEST", "package.json"), "ETC");
+  });
+});
+
+describe("github discovery options clamp", () => {
+  it("clamps maxFilesToAnalyze and maxCandidateFiles with warnings", () => {
+    const warnings: string[] = [];
+    const options = normalizeDiscoveryOptions(
+      {
+        repositoryUrl: "https://github.com/o/r",
+        maxFilesToAnalyze: 999_999,
+        maxCandidateFiles: -1,
+      },
+      warnings,
+    );
+    assert.equal(options.maxFilesToAnalyze, 10000);
+    assert.equal(options.maxCandidateFiles, 10);
+    assert.ok(warnings.some((w) => w.includes("maxFilesToAnalyze")));
+    assert.ok(warnings.some((w) => w.includes("maxCandidateFiles")));
+  });
+
+  it("clamps low values to minimum", () => {
+    const warnings: string[] = [];
+    const options = normalizeDiscoveryOptions(
+      {
+        repositoryUrl: "https://github.com/o/r",
+        maxFilesToAnalyze: 0,
+        maxCandidateFiles: 0,
+      },
+      warnings,
+    );
+    assert.equal(options.maxFilesToAnalyze, 100);
+    assert.equal(options.maxCandidateFiles, 10);
   });
 });

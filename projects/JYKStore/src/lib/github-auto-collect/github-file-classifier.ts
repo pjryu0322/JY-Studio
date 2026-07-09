@@ -86,16 +86,17 @@ export function classifyGitHubFilePath(path: string): GitHubFileClass {
   if (LOCK_FILE_NAMES.has(lowerBase)) {
     return "LOCK_FILE";
   }
+
+  const ext = lowerBase.includes(".") ? lowerBase.slice(lowerBase.lastIndexOf(".")) : "";
+  if (BINARY_EXTENSIONS.has(ext)) {
+    return "BINARY";
+  }
+
   if (/^license(\.|$)/i.test(base) || lowerBase === "notice") {
     return "LICENSE";
   }
   if (/^readme(\.|$)/i.test(base)) {
     return "README";
-  }
-
-  const ext = lowerBase.includes(".") ? lowerBase.slice(lowerBase.lastIndexOf(".")) : "";
-  if (BINARY_EXTENSIONS.has(ext)) {
-    return "BINARY";
   }
 
   if (

@@ -5,7 +5,9 @@ import type {
   GitHubFileClass,
   GitHubSourceCodeAnalysisMode,
   GitHubTreeFileItem,
+  JykStoreSourceType,
 } from "./github-auto-collect-types";
+import { pathMatchesSelectedPaths } from "./github-discovery-options";
 import { classifyGitHubFilePath, isDocumentationClass } from "./github-file-classifier";
 
 export function scoreGitHubFile(path: string, fileClass: GitHubFileClass): {
@@ -54,7 +56,7 @@ export function scoreGitHubFile(path: string, fileClass: GitHubFileClass): {
     score += 40;
     reasonCodes.push("CONFIG_EXAMPLE");
   }
-  if (fileClass === "SRC" && /\/index\.(ts|js|tsx|jsx)$/i.test(norm)) {
+  if (fileClass === "SRC" && isSrcEntrypoint(norm)) {
     score += 35;
     reasonCodes.push("SRC_PUBLIC_ENTRYPOINT");
   }
@@ -75,16 +77,55 @@ export function scoreGitHubFile(path: string, fileClass: GitHubFileClass): {
   return { score, reasonCodes };
 }
 
-function suggestSourceType(fileClass: GitHubFileClass): string {
-  if (fileClass === "README") return "REPOSITORY_README";
-  if (fileClass === "LICENSE") return "LICENSE_NOTICE";
-  if (fileClass === "DOCS" || fileClass === "GETTING_STARTED") return "PRODUCT_MANUAL";
-  if (fileClass === "API_DOC") return "OPENAPI_SCHEMA";
+export function isSrcEntrypoint(normPath: string): boolean {
+  const norm = normPath.replace(/\\/g, "/");
+  const patterns = [
+    /^src\/index\.(ts|js|tsx|jsx)$/i,
+    /^src\/main\.(ts|js)$/i,
+    /^src\/App\.(tsx|jsx)$/i,
+    /^lib\/index\.(ts|js)$/i,
+    /^app\/page\.(tsx|jsx)$/i,
+    /^app\/layout\.(tsx|jsx)$/i,
+    /^packages\/[^/]+\/src\/index\.(ts|js)$/i,
+  ];
+  return patterns.some((re) => re.test(norm));
+}
+
+export function suggestSourceType(
+  fileClass: GitHubFileClass,
+  path: string,
+): JykStoreSourceType {
+  const lower = path.replace(/\\/g, "/").toLowerCase();
+  if (fileClass === "README") return "PRODUCT_MANUAL";
+  if (fileClass === "LICENSE") return "ETC";
+  if (fileClass === "DOCS") return "PRODUCT_MANUAL";
+  if (fileClass === "GETTING_STARTED") return "INTEGRATION_GUIDE";
+  if (fileClass === "API_DOC") {
+    if (
+      lower.includes("openapi") ||
+      lower.includes("swagger") ||
+      lower.endsWith(".yaml") ||
+      lower.endsWith(".yml") ||
+      lower.endsWith(".json")
+    ) {
+      return "OPENAPI_SCHEMA";
+    }
+    return "API_SPEC";
+  }
   if (fileClass === "EXAMPLE") return "SAMPLE_CODE";
-  if (fileClass === "PACKAGE_MANIFEST") return "PACKAGE_MANIFEST";
-  if (fileClass === "CONFIG") return "CONFIG_REFERENCE";
-  if (fileClass === "SRC") return "SOURCE_CODE_METADATA";
-  return "UNKNOWN";
+  if (fileClass === "PACKAGE_MANIFEST") return "ETC";
+  if (fileClass === "CONFIG") {
+    if (
+      lower.includes("application.properties") ||
+      lower.includes("application-test") ||
+      lower.includes(".env.example")
+    ) {
+      return "TEST_ENV_GUIDE";
+    }
+    return "OPERATION_GUIDE";
+  }
+  if (fileClass === "SRC") return "ETC";
+  return "ETC";
 }
 
 function allowedByCrawlMode(fileClass: GitHubFileClass, crawlMode: GitHubCrawlMode): boolean {
@@ -103,8 +144,10 @@ function allowedByCrawlMode(fileClass: GitHubFileClass, crawlMode: GitHubCrawlMo
 }
 
 function shouldExcludeForAnalysis(
+  path: string,
   fileClass: GitHubFileClass,
   sourceCodeAnalysis: GitHubSourceCodeAnalysisMode,
+  selectedPaths: string[],
 ): string | null {
   if (
     fileClass === "TEST" ||
@@ -115,10 +158,47 @@ function shouldExcludeForAnalysis(
   ) {
     return "LOW_VALUE_OR_BINARY";
   }
-  if (fileClass === "SRC" && sourceCodeAnalysis === "NONE") {
+
+  if (fileClass !== "SRC") {
+    return null;
+  }
+
+  const norm = path.replace(/\\/g, "/");
+
+  if (sourceCodeAnalysis === "NONE") {
     return "SOURCE_CODE_ANALYSIS_DISABLED";
   }
+
+  if (sourceCodeAnalysis === "ENTRYPOINTS_ONLY") {
+    return isSrcEntrypoint(norm) ? null : "SOURCE_CODE_ENTRYPOINTS_ONLY";
+  }
+
+  if (sourceCodeAnalysis === "SELECTED_PATHS") {
+    if (selectedPaths.length === 0) {
+      return "SOURCE_CODE_SELECTED_PATHS_REQUIRED";
+    }
+    if (!pathMatchesSelectedPaths(norm, selectedPaths)) {
+      return "SOURCE_CODE_SELECTED_PATHS_ONLY";
+    }
+  }
+
   return null;
+}
+
+function resolveShouldFetchContent(
+  fileClass: GitHubFileClass,
+  sourceCodeAnalysis: GitHubSourceCodeAnalysisMode,
+): boolean {
+  if (fileClass !== "SRC") return true;
+  if (
+    sourceCodeAnalysis === "NONE" ||
+    sourceCodeAnalysis === "METADATA_ONLY" ||
+    sourceCodeAnalysis === "ENTRYPOINTS_ONLY" ||
+    sourceCodeAnalysis === "SELECTED_PATHS"
+  ) {
+    return false;
+  }
+  return false;
 }
 
 export function buildCandidateAndExcluded(params: {
@@ -126,18 +206,40 @@ export function buildCandidateAndExcluded(params: {
   crawlMode: GitHubCrawlMode;
   sourceCodeAnalysis: GitHubSourceCodeAnalysisMode;
   maxCandidateFiles: number;
+  selectedPaths?: string[];
 }): {
   sourceCandidates: GitHubDiscoverySourceCandidate[];
   excludedFiles: GitHubDiscoveryExcludedFile[];
+  selectedPathFilteredCount: number;
 } {
-  const { files, crawlMode, sourceCodeAnalysis, maxCandidateFiles } = params;
+  const {
+    files,
+    crawlMode,
+    sourceCodeAnalysis,
+    maxCandidateFiles,
+    selectedPaths = [],
+  } = params;
   const excluded: GitHubDiscoveryExcludedFile[] = [];
   const potential: GitHubDiscoverySourceCandidate[] = [];
+  let selectedPathFilteredCount = 0;
 
   for (const file of files) {
     if (file.type !== "blob") continue;
     const size = file.size ?? 0;
     const fileClass = classifyGitHubFilePath(file.path);
+
+    if (selectedPaths.length > 0 && !pathMatchesSelectedPaths(file.path, selectedPaths)) {
+      selectedPathFilteredCount += 1;
+      excluded.push({
+        path: file.path,
+        type: "blob",
+        size,
+        fileClass,
+        excludeReason: "SELECTED_PATHS_FILTER",
+      });
+      continue;
+    }
+
     const { score, reasonCodes } = scoreGitHubFile(file.path, fileClass);
 
     if (!allowedByCrawlMode(fileClass, crawlMode)) {
@@ -151,7 +253,12 @@ export function buildCandidateAndExcluded(params: {
       continue;
     }
 
-    const excludeForAnalysis = shouldExcludeForAnalysis(fileClass, sourceCodeAnalysis);
+    const excludeForAnalysis = shouldExcludeForAnalysis(
+      file.path,
+      fileClass,
+      sourceCodeAnalysis,
+      selectedPaths,
+    );
     if (excludeForAnalysis) {
       excluded.push({
         path: file.path,
@@ -175,9 +282,7 @@ export function buildCandidateAndExcluded(params: {
     }
 
     const isSrc = fileClass === "SRC";
-    const shouldFetchContent = isSrc
-      ? sourceCodeAnalysis !== "NONE" && sourceCodeAnalysis !== "METADATA_ONLY"
-      : true;
+    const shouldFetchContent = resolveShouldFetchContent(fileClass, sourceCodeAnalysis);
 
     potential.push({
       path: file.path,
@@ -186,12 +291,15 @@ export function buildCandidateAndExcluded(params: {
       fileClass,
       score,
       reasonCodes:
-        isSrc && sourceCodeAnalysis === "METADATA_ONLY"
+        isSrc &&
+        (sourceCodeAnalysis === "METADATA_ONLY" ||
+          sourceCodeAnalysis === "ENTRYPOINTS_ONLY" ||
+          sourceCodeAnalysis === "SELECTED_PATHS")
           ? [...reasonCodes, "METADATA_ONLY"]
           : reasonCodes.length
             ? reasonCodes
             : ["CANDIDATE"],
-      sourceTypeSuggestion: suggestSourceType(fileClass),
+      sourceTypeSuggestion: suggestSourceType(fileClass, file.path),
       shouldFetchContent,
     });
   }
@@ -209,7 +317,7 @@ export function buildCandidateAndExcluded(params: {
     });
   }
 
-  return { sourceCandidates, excludedFiles: excluded };
+  return { sourceCandidates, excludedFiles: excluded, selectedPathFilteredCount };
 }
 
 export function buildClassificationSummary(
@@ -223,3 +331,5 @@ export function buildClassificationSummary(
   }
   return summary;
 }
+
+export { normalizeDiscoveryOptions, pathMatchesSelectedPaths } from "./github-discovery-options";

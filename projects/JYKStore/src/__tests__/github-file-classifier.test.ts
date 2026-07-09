@@ -19,6 +19,14 @@ describe("github file classifier", () => {
     assert.equal(classifyGitHubFilePath("yarn.lock"), "LOCK_FILE");
   });
 
+  it("classifies README.pdf and LICENSE.pdf as binary", () => {
+    assert.equal(classifyGitHubFilePath("README.pdf"), "BINARY");
+    assert.equal(classifyGitHubFilePath("LICENSE.pdf"), "BINARY");
+    assert.equal(classifyGitHubFilePath("NOTICE.pdf"), "BINARY");
+    assert.equal(classifyGitHubFilePath("README.md"), "README");
+    assert.equal(classifyGitHubFilePath("LICENSE"), "LICENSE");
+  });
+
   it("classifies examples and config", () => {
     assert.equal(classifyGitHubFilePath("examples/demo/app.js"), "EXAMPLE");
     assert.equal(classifyGitHubFilePath("application.properties"), "CONFIG");

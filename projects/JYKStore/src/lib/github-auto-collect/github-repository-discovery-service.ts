@@ -3,7 +3,6 @@ import {
   GitHubDiscoveryError,
 } from "./github-auto-collect-types";
 import type {
-  GitHubCrawlMode,
   GitHubRepositoryDiscoveryInput,
   GitHubRepositoryDiscoveryResult,
   GitHubSourceCodeAnalysisMode,
@@ -14,11 +13,12 @@ import {
   buildCandidateAndExcluded,
   buildClassificationSummary,
 } from "./github-crawl-policy";
+import { normalizeDiscoveryOptions } from "./github-discovery-options";
 import { limitFilesForAnalysis, splitTreeItems } from "./github-tree-crawler";
 import { parseGitHubRepositoryUrl } from "./github-url";
 
-const P26_1_PREVIEW_WARNING =
-  "P26.1은 preview 전용입니다. SourceDocument와 Knowledge Unit은 생성하지 않습니다.";
+const P26_PREVIEW_WARNING =
+  "P26 preview 전용입니다. SourceDocument와 Knowledge Unit은 생성하지 않습니다.";
 
 const FULL_SRC_WARNING =
   "FULL_SRC 분석은 P26.7에서 구현 예정입니다. 이번 단계에서는 metadata-only로 처리합니다.";
@@ -27,25 +27,6 @@ export type DiscoverRepositoryDeps = {
   fetchImpl?: GitHubApiFetch;
   token?: string;
 };
-
-function normalizeOptions(input: GitHubRepositoryDiscoveryInput): {
-  crawlMode: GitHubCrawlMode;
-  sourceCodeAnalysis: GitHubSourceCodeAnalysisMode;
-  maxFilesToAnalyze: number;
-  maxCandidateFiles: number;
-  selectedPaths?: string[];
-} {
-  return {
-    crawlMode: input.crawlMode ?? DEFAULT_GITHUB_DISCOVERY_OPTIONS.crawlMode,
-    sourceCodeAnalysis:
-      input.sourceCodeAnalysis ?? DEFAULT_GITHUB_DISCOVERY_OPTIONS.sourceCodeAnalysis,
-    maxFilesToAnalyze:
-      input.maxFilesToAnalyze ?? DEFAULT_GITHUB_DISCOVERY_OPTIONS.maxFilesToAnalyze,
-    maxCandidateFiles:
-      input.maxCandidateFiles ?? DEFAULT_GITHUB_DISCOVERY_OPTIONS.maxCandidateFiles,
-    selectedPaths: input.selectedPaths,
-  };
-}
 
 export async function discoverGitHubRepository(
   input: GitHubRepositoryDiscoveryInput,
@@ -61,12 +42,28 @@ export async function discoverGitHubRepository(
 
   const token = deps.token ?? process.env.GITHUB_TOKEN;
   const fetchImpl = deps.fetchImpl;
-  const options = normalizeOptions(input);
-  const warnings: string[] = [P26_1_PREVIEW_WARNING];
+  const warnings: string[] = [P26_PREVIEW_WARNING];
 
-  if (options.sourceCodeAnalysis === "FULL_SRC") {
+  let sourceCodeAnalysis: GitHubSourceCodeAnalysisMode =
+    input.sourceCodeAnalysis ?? DEFAULT_GITHUB_DISCOVERY_OPTIONS.sourceCodeAnalysis;
+
+  if (sourceCodeAnalysis === "FULL_SRC") {
     warnings.push(FULL_SRC_WARNING);
-    options.sourceCodeAnalysis = "METADATA_ONLY";
+    sourceCodeAnalysis = "METADATA_ONLY";
+  }
+
+  const options = normalizeDiscoveryOptions(
+    { ...input, sourceCodeAnalysis },
+    warnings,
+  );
+
+  if (
+    options.sourceCodeAnalysis === "SELECTED_PATHS" &&
+    options.selectedPaths.length === 0
+  ) {
+    warnings.push(
+      "sourceCodeAnalysis=SELECTED_PATHS이지만 selectedPaths가 비어 있습니다. SRC 파일은 제외됩니다.",
+    );
   }
 
   const parsed = parseGitHubRepositoryUrl(input.repositoryUrl);
@@ -104,12 +101,19 @@ export async function discoverGitHubRepository(
   }
 
   const classificationSummary = buildClassificationSummary(analyzedFiles);
-  const { sourceCandidates, excludedFiles } = buildCandidateAndExcluded({
-    files: analyzedFiles,
-    crawlMode: options.crawlMode,
-    sourceCodeAnalysis: options.sourceCodeAnalysis,
-    maxCandidateFiles: options.maxCandidateFiles,
-  });
+  const { sourceCandidates, excludedFiles, selectedPathFilteredCount } =
+    buildCandidateAndExcluded({
+      files: analyzedFiles,
+      crawlMode: options.crawlMode,
+      sourceCodeAnalysis: options.sourceCodeAnalysis,
+      maxCandidateFiles: options.maxCandidateFiles,
+      selectedPaths: options.selectedPaths,
+    });
+
+  const sourceCandidateFetchableCount = sourceCandidates.filter(
+    (c) => c.shouldFetchContent,
+  ).length;
+  const srcCandidateCount = sourceCandidates.filter((c) => c.fileClass === "SRC").length;
 
   return {
     repository: metadata,
@@ -118,7 +122,7 @@ export async function discoverGitHubRepository(
       sourceCodeAnalysis: options.sourceCodeAnalysis,
       maxFilesToAnalyze: options.maxFilesToAnalyze,
       maxCandidateFiles: options.maxCandidateFiles,
-      selectedPaths: options.selectedPaths,
+      selectedPaths: options.selectedPaths.length ? options.selectedPaths : undefined,
     },
     summary: {
       totalFilesDiscovered: allFiles.length,
@@ -126,6 +130,9 @@ export async function discoverGitHubRepository(
       candidateFileCount: sourceCandidates.length,
       excludedFileCount: excludedFiles.length,
       truncated,
+      selectedPathFilteredCount,
+      sourceCandidateFetchableCount,
+      srcCandidateCount,
     },
     classificationSummary,
     sourceCandidates,

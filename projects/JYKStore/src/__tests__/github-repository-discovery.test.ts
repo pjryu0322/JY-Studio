@@ -63,7 +63,7 @@ describe("github repository discovery service", () => {
           e.path === "src/index.ts" && e.excludeReason === "SOURCE_CODE_ANALYSIS_DISABLED",
       ),
     );
-    assert.ok(result.warnings.some((w) => w.includes("P26.1")));
+    assert.ok(result.warnings.some((w) => w.includes("preview")));
     assert.equal(JSON.stringify(result).includes("Bearer"), false);
   });
 });
