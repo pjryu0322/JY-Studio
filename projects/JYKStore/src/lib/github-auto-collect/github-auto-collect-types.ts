@@ -211,6 +211,52 @@ export type GitHubSourceRegisterResult = {
   pack?: import("@/lib/provider-pack-dto").ProviderPackDetailDto;
 };
 
+export type GitHubKnowledgeUnitGenerationMode =
+  | "MINIMAL"
+  | "STANDARD"
+  | "FULL"
+  | "CUSTOM";
+
+export type GitHubKnowledgeUnitDraftInput = {
+  sourceDocumentIds?: string[];
+  sourceDocumentPaths?: string[];
+  generationMode?: GitHubKnowledgeUnitGenerationMode;
+  targetKnowledgeUnitCount?: number;
+  minKnowledgeUnitCount?: number;
+  maxKnowledgeUnitCount?: number;
+  productProfileType?: GitHubProductType;
+  overwriteExistingDrafts?: boolean;
+};
+
+export type GitHubKnowledgeUnitDraftResult = {
+  clientId: string;
+  packId: string;
+  versionId: string;
+  summary: {
+    sourceDocumentCount: number;
+    generatedDraftCount: number;
+    skippedDocumentCount: number;
+    existingDraftSkippedCount: number;
+    failedCount: number;
+    generationMode: string;
+    targetKnowledgeUnitCount: number;
+  };
+  drafts: Array<{
+    id: string;
+    sourceDocumentId: string;
+    title: string;
+    section: string | null;
+    tags: string[];
+    reviewStatus: "pending_review";
+    generatedBy: "github-auto-collector";
+    sourcePath?: string;
+    sourceUrl?: string;
+  }>;
+  skippedDocuments: Array<{ sourceDocumentId: string; reason: string }>;
+  failedDocuments: Array<{ sourceDocumentId: string; error: string }>;
+  warnings: string[];
+};
+
 export type GitHubDiscoveryErrorCode =
   | "REPOSITORY_URL_REQUIRED"
   | "INVALID_GITHUB_URL"
@@ -222,7 +268,9 @@ export type GitHubDiscoveryErrorCode =
   | "INVALID_SELECTED_PATHS"
   | "INVALID_DISCOVERY_OPTIONS"
   | "GITHUB_CONTENT_FETCH_FAILED"
-  | "INVALID_SOURCE_REGISTER_OPTIONS";
+  | "INVALID_SOURCE_REGISTER_OPTIONS"
+  | "INVALID_KNOWLEDGE_UNIT_DRAFT_OPTIONS"
+  | "KNOWLEDGE_UNIT_DRAFT_FAILED";
 
 export class GitHubDiscoveryError extends Error {
   readonly code: GitHubDiscoveryErrorCode;

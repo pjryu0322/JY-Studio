@@ -815,6 +815,10 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - GitHub API 호출 전 `assertProviderPackEditableForClient()`로 pack 소유·DRAFT 선검증.
 - `selectedSourcePaths` unsafe path 검증 강화 및 `github-path-utils` 공통화.
 
+### P26.6 — GitHub Knowledge Unit 초안 생성
+
+- `POST /api/v1/provider/packs/[packId]/auto-collect/github/knowledge-units/draft`로 SourceDocument 기반 `AUTO_KNOWLEDGE_UNIT_DRAFT` chunk 생성 (`isActive=false`, `pending_review`).
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
