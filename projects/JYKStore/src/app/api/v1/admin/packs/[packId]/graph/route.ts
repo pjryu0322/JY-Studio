@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { getKnowledgeGraphSummary } from "@/lib/knowledge-graph-service";
 import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     return jsonWithClientIdCookie({ clientId, ...summary }, clientId);
   } catch (error) {
-    console.error("GET pack graph summary failed", error);
+    logSafeRouteError({ scope: "admin-pack-graph", method: "GET", path: "/api/v1/admin/packs/[packId]/graph", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

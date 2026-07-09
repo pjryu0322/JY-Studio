@@ -92,4 +92,44 @@ describe("runtime readiness", () => {
       } else delete process.env.JYKSTORE_ADMIN_OPS_TOKEN;
     }
   });
+
+  it("reports invalid quota env in production readiness errors", async () => {
+    const prev = {
+      NODE_ENV: process.env.NODE_ENV,
+      DATABASE_URL: process.env.DATABASE_URL,
+      JYKSTORE_API_KEY_SECRET: process.env.JYKSTORE_API_KEY_SECRET,
+      JYKSTORE_ADMIN_OPS_TOKEN: process.env.JYKSTORE_ADMIN_OPS_TOKEN,
+      JYKSTORE_QUOTA_PER_MINUTE: process.env.JYKSTORE_QUOTA_PER_MINUTE,
+    };
+    process.env.NODE_ENV = "production";
+    process.env.DATABASE_URL = "postgresql://localhost/db";
+    process.env.JYKSTORE_API_KEY_SECRET = "secret";
+    process.env.JYKSTORE_ADMIN_OPS_TOKEN = "ops";
+    process.env.JYKSTORE_QUOTA_PER_MINUTE = "0";
+    try {
+      const readiness = await getRuntimeReadiness({
+        $queryRaw: async () => [1],
+      });
+      assert.equal(readiness.ok, false);
+      assert.equal(readiness.checks.env.ok, false);
+      assert.ok(
+        readiness.checks.env.errors.some((e) => e.includes("JYKSTORE_QUOTA_PER_MINUTE")),
+      );
+      const serialized = JSON.stringify(readiness);
+      assert.ok(!serialized.includes("postgresql://user"));
+    } finally {
+      process.env.NODE_ENV = prev.NODE_ENV;
+      if (prev.DATABASE_URL !== undefined) process.env.DATABASE_URL = prev.DATABASE_URL;
+      else delete process.env.DATABASE_URL;
+      if (prev.JYKSTORE_API_KEY_SECRET !== undefined) {
+        process.env.JYKSTORE_API_KEY_SECRET = prev.JYKSTORE_API_KEY_SECRET;
+      } else delete process.env.JYKSTORE_API_KEY_SECRET;
+      if (prev.JYKSTORE_ADMIN_OPS_TOKEN !== undefined) {
+        process.env.JYKSTORE_ADMIN_OPS_TOKEN = prev.JYKSTORE_ADMIN_OPS_TOKEN;
+      } else delete process.env.JYKSTORE_ADMIN_OPS_TOKEN;
+      if (prev.JYKSTORE_QUOTA_PER_MINUTE !== undefined) {
+        process.env.JYKSTORE_QUOTA_PER_MINUTE = prev.JYKSTORE_QUOTA_PER_MINUTE;
+      } else delete process.env.JYKSTORE_QUOTA_PER_MINUTE;
+    }
+  });
 });

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { generateAdminPackRetrievalEvaluationCases } from "@/lib/admin-review-service";
 import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     return jsonWithClientIdCookie({ clientId, detail: result.detail }, clientId);
   } catch (error) {
-    console.error("POST admin retrieval-evaluation cases generate failed", error);
+    logSafeRouteError({ scope: "admin-pack-retrieval-evaluation", method: "POST", path: "/api/v1/admin/packs/[packId]/retrieval-evaluation/cases/generate", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

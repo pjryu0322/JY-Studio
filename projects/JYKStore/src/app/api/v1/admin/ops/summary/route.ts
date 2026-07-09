@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import type { OpsRange } from "@/lib/ops-dto";
 import { getOpsSummary } from "@/lib/ops-service";
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
     const summary = await getOpsSummary(range);
     return jsonWithClientIdCookie({ clientId, summary }, clientId);
   } catch (error) {
-    console.error("GET /api/v1/admin/ops/summary failed", error);
+    logSafeRouteError({ scope: "admin-ops-summary", method: "GET", path: "/api/v1/admin/ops/summary", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

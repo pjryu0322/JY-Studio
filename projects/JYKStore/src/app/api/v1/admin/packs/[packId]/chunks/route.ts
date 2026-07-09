@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { createKnowledgeChunk, listPackChunks } from "@/lib/chunk-pipeline-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     return jsonWithClientIdCookie({ clientId, ...data }, clientId);
   } catch (error) {
-    console.error("GET admin chunks failed", error);
+    logSafeRouteError({ scope: "admin-pack-chunks", method: "GET", path: "/api/v1/admin/packs/[packId]/chunks", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     return jsonWithClientIdCookie({ clientId, chunk: result.chunk, summary: result.summary }, clientId);
   } catch (error) {
-    console.error("POST admin chunks failed", error);
+    logSafeRouteError({ scope: "admin-pack-chunks", method: "POST", path: "/api/v1/admin/packs/[packId]/chunks", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

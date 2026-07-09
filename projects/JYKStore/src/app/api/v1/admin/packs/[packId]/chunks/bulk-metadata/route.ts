@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { bulkUpdateChunkMetadata } from "@/lib/chunk-pipeline-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import type { BulkMetadataMode } from "@/lib/chunk-pipeline-dto";
@@ -75,7 +76,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       clientId,
     );
   } catch (error) {
-    console.error("PATCH admin bulk chunk metadata failed", error);
+    logSafeRouteError({ scope: "admin-pack-chunks", method: "PATCH", path: "/api/v1/admin/packs/[packId]/chunks/bulk-metadata", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

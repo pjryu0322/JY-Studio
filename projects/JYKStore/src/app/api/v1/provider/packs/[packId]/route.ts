@@ -1,4 +1,5 @@
 import { PackPricing } from "@prisma/client";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { NextRequest } from "next/server";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import {
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     return jsonWithClientIdCookie({ clientId, pack }, clientId);
   } catch (error) {
-    console.error("GET /api/v1/provider/packs/[packId] failed", error);
+    logSafeRouteError({ scope: "provider-route", method: "GET", path: "/api/v1/provider/packs/[packId]", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }
@@ -66,7 +67,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     return jsonWithClientIdCookie({ clientId, pack: result.pack }, clientId);
   } catch (error) {
-    console.error("PATCH /api/v1/provider/packs/[packId] failed", error);
+    logSafeRouteError({ scope: "provider-route", method: "PATCH", path: "/api/v1/provider/packs/[packId]", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

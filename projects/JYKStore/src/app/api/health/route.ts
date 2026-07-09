@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   JYKSTORE_SERVICE_NAME,
   JYKSTORE_SERVICE_VERSION,
-} from "@/lib/runtime-readiness";
+} from "@/lib/runtime-metadata";
 
 export async function GET() {
   return NextResponse.json({

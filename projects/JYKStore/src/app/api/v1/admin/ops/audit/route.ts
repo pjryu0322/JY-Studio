@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { listOpsAuditLogs } from "@/lib/ops-service";
 import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     return jsonWithClientIdCookie({ clientId, items }, clientId);
   } catch (error) {
-    console.error("GET /api/v1/admin/ops/audit failed", error);
+    logSafeRouteError({ scope: "admin-ops-audit", method: "GET", path: "/api/v1/admin/ops/audit", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

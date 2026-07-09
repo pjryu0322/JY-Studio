@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { ensureClientId } from "@/lib/client-identity";
 import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
 import { buildGraphExport } from "@/lib/knowledge-export-service";
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       },
     });
   } catch (error) {
-    console.error("GET graph export failed", error);
+    logSafeRouteError({ scope: "admin-pack-export", method: "GET", path: "/api/v1/admin/packs/[packId]/exports/graph", error });
     return NextResponse.json({ error: "서버 오류가 발생했습니다." }, { status: 500 });
   }
 }

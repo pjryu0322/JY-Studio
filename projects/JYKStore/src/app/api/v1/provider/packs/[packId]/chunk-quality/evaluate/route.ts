@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { evaluateProviderPackChunkQuality } from "@/lib/provider-pack-service";
 
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     return jsonWithClientIdCookie({ clientId, pack: result.pack }, clientId);
   } catch (error) {
-    console.error("POST provider chunk-quality evaluate failed", error);
+    logSafeRouteError({ scope: "provider-route", method: "POST", path: "/api/v1/provider/packs/[packId]/chunk-quality/evaluate", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

@@ -62,8 +62,8 @@ npm run mcp:http
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/health` | Process alive (no DB probe) |
-| `GET /api/ready` | Env + DB `SELECT 1` (503 if not ready) |
+| `GET /api/health` | Process alive only (no DB/Prisma probe; imports `runtime-metadata` only) |
+| `GET /api/ready` | Env + DB `SELECT 1` (503 if not ready). `checks.env.errors` lists env names/codes only (no secrets). |
 | MCP `GET /health` | MCP bridge alive |
 | MCP `GET /ready` | MCP config flags only (no base URL or API key body) |
 
@@ -108,8 +108,8 @@ Invalid values fall back at runtime but `/api/ready` reports env issues in produ
 
 ## 13. Logging policy
 
-- Use `logSafeRouteError()` for route catch blocks where implemented.
 - Never pass raw `error` objects to `console.error`.
+- Use `logSafeRouteError()` in route catch blocks (Admin/Provider/API routes).
 - MCP bridge logs request metadata only (no bodies, no Authorization).
 
 ## 14. Troubleshooting
@@ -120,7 +120,7 @@ Invalid values fall back at runtime but `/api/ready` reports env issues in produ
 | missing `DATABASE_URL` | `/api/ready` 503, env missing |
 | missing `JYKSTORE_API_KEY_SECRET` | `/api/ready` 503 in production |
 | missing `JYKSTORE_ADMIN_OPS_TOKEN` | Admin API 403; `/api/ready` 503 in production |
-| invalid quota env | `/api/ready` env errors in production |
+| invalid quota env | `/api/ready` → `checks.env.errors` (e.g. `Invalid env: JYKSTORE_QUOTA_PER_MINUTE`) |
 | invalid API key | Public API 401 |
 | expired/revoked API key | `API_KEY_EXPIRED` / revoked codes |
 | insufficient scope | `INSUFFICIENT_SCOPE` |

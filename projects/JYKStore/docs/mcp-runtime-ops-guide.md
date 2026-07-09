@@ -242,6 +242,11 @@ These tests cover registration snapshots, HTTP JSON-RPC runtime (mocked Public A
 - `GET /health`: process alive (`transport`, no secrets).
 - `GET /ready`: `baseUrlConfigured`, `apiKeyConfigured`, `allowedPackIdsConfigured`만 반환 (base URL·API Key 원문 미노출).
 
+## P25.1 polish
+
+- App `GET /api/health`는 DB/Prisma probe 없이 process alive만 확인합니다.
+- App `GET /api/ready`는 env `errors`/`warnings`에 secret 없이 env 이름만 포함합니다.
+
 ## Out of scope (later)
 
 - OAuth / remote MCP auth

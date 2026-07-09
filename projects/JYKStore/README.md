@@ -775,6 +775,14 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - `/api/v1/admin/**` route에 Admin Ops Token gate를 적용했습니다.
 - `docs/production-deployment-runbook.md`를 추가했습니다.
 
+### P25.1 — Production Safety Logging & Readiness Polish
+
+- Admin route catch logging을 `logSafeRouteError()`로 통일했습니다.
+- `production-safety` static scan이 `src/app/api`·`src/lib`·`mcp-server`의 raw `console.error(..., error)`를 검출합니다.
+- `/api/health`는 `runtime-metadata`만 사용해 Prisma와 분리했습니다.
+- `/api/ready`의 `checks.env.errors`에 invalid/missing env 이름만 safe하게 노출합니다.
+- `.env.example`에서 Prisma 기준 `DATABASE_URL`만 명시했습니다.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

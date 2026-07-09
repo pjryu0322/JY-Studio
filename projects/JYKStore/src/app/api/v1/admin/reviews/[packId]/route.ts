@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { getAdminReviewDetail } from "@/lib/admin-review-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     return jsonWithClientIdCookie({ clientId, detail }, clientId);
   } catch (error) {
-    console.error("GET /api/v1/admin/reviews/[packId] failed", error);
+    logSafeRouteError({ scope: "admin-review", method: "GET", path: "/api/v1/admin/reviews/[packId]", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { updateKnowledgeChunk } from "@/lib/chunk-pipeline-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
@@ -52,7 +53,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     return jsonWithClientIdCookie({ clientId, chunk: result.chunk, summary: result.summary }, clientId);
   } catch (error) {
-    console.error("PATCH admin chunk failed", error);
+    logSafeRouteError({ scope: "admin-pack-chunks", method: "PATCH", path: "/api/v1/admin/packs/[packId]/chunks/[chunkId]", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

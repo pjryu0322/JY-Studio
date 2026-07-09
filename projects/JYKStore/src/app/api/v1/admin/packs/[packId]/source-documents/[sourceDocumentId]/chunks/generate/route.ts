@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { generateChunksFromSourceDocument } from "@/lib/chunk-pipeline-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       clientId,
     );
   } catch (error) {
-    console.error("POST generate chunks failed", error);
+    logSafeRouteError({ scope: "admin-pack-chunks", method: "POST", path: "/api/v1/admin/packs/[packId]/source-documents/[sourceDocumentId]/chunks/generate", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

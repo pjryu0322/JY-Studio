@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import {
   createProviderPackForClient,
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
     const items = await listProviderPacksForClient(clientId);
     return jsonWithClientIdCookie({ clientId, items }, clientId);
   } catch (error) {
-    console.error("GET /api/v1/provider/packs failed", error);
+    logSafeRouteError({ scope: "provider-route", method: "GET", path: "/api/v1/provider/packs", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     return jsonWithClientIdCookie({ clientId, pack: result.pack }, clientId);
   } catch (error) {
-    console.error("POST /api/v1/provider/packs failed", error);
+    logSafeRouteError({ scope: "provider-route", method: "POST", path: "/api/v1/provider/packs", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

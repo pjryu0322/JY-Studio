@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
@@ -45,23 +46,22 @@ function collectRuntimeSources(): string[] {
 }
 
 describe("production safety static scan", () => {
-  it("runtime sources avoid raw console.error(error) pattern in public gateway and mcp-server", () => {
+  it("runtime sources avoid raw console.error(error) pattern", () => {
     const pattern = /console\.error\([^\n]*,\s*error\s*\)/;
-    const targets = [
-      join(projectRoot, "src", "lib", "public-api-route.ts"),
-      join(projectRoot, "src", "lib", "public-api-handler.ts"),
-      join(projectRoot, "src", "lib", "public-export-route.ts"),
-      join(projectRoot, "src", "lib", "public-export-request.ts"),
-      join(projectRoot, "src", "lib", "export-chunk-route-handler.ts"),
-      join(projectRoot, "src", "lib", "runtime-env.ts"),
-      join(projectRoot, "src", "lib", "runtime-readiness.ts"),
-      join(projectRoot, "src", "app", "api", "health", "route.ts"),
-      join(projectRoot, "src", "app", "api", "ready", "route.ts"),
-      ...walkFiles(join(projectRoot, "mcp-server")),
-    ];
     const hits: string[] = [];
-    for (const file of targets) {
-      if (!file.endsWith(".ts")) continue;
+    for (const file of collectRuntimeSources()) {
+      const source = readFileSync(file, "utf8");
+      if (pattern.test(source)) {
+        hits.push(file.replace(projectRoot + path.sep, "").replace(projectRoot + "/", ""));
+      }
+    }
+    assert.deepEqual(hits, [], `raw console.error(error): ${hits.join(", ")}`);
+  });
+
+  it("runtime sources avoid console.error(error) without message", () => {
+    const pattern = /console\.error\(\s*error\s*\)/;
+    const hits: string[] = [];
+    for (const file of collectRuntimeSources()) {
       const source = readFileSync(file, "utf8");
       if (pattern.test(source)) hits.push(file);
     }

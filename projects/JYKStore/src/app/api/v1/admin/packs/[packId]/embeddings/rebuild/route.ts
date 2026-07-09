@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { rebuildPackEmbeddings } from "@/lib/chunk-embedding-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
     return jsonWithClientIdCookie({ clientId, ...result }, clientId);
   } catch (error) {
-    console.error("POST pack embeddings rebuild failed", error);
+    logSafeRouteError({ scope: "admin-pack-embedding", method: "POST", path: "/api/v1/admin/packs/[packId]/embeddings/rebuild", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }

@@ -1,8 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { evaluateRuntimeEnv } from "@/lib/runtime-env";
+import {
+  JYKSTORE_SERVICE_NAME,
+  JYKSTORE_SERVICE_VERSION,
+} from "@/lib/runtime-metadata";
 
-export const JYKSTORE_SERVICE_NAME = "jykstore";
-export const JYKSTORE_SERVICE_VERSION = "0.1.0";
+export { JYKSTORE_SERVICE_NAME, JYKSTORE_SERVICE_VERSION } from "@/lib/runtime-metadata";
 
 export type DatabaseProbe = {
   $queryRaw: (
@@ -26,6 +29,7 @@ export type RuntimeReadiness = {
     env: {
       ok: boolean;
       missingRequired: string[];
+      errors: string[];
       warnings: string[];
     };
     database: DatabaseReadiness;
@@ -87,6 +91,7 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
       env: {
         ok: envOk,
         missingRequired,
+        errors: envCheck.errors,
         warnings: envCheck.warnings,
       },
       database,

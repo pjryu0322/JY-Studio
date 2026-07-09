@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import { ensureClientId, getClientIdFromRequest, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { evaluateAdminPackStructureQuality } from "@/lib/admin-review-service";
 import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     return jsonWithClientIdCookie({ clientId, detail: result.detail }, clientId);
   } catch (error) {
-    console.error("POST admin structure-quality evaluate failed", error);
+    logSafeRouteError({ scope: "admin-pack-structure-quality", method: "POST", path: "/api/v1/admin/packs/[packId]/structure-quality/evaluate", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
   }
 }
