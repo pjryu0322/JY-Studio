@@ -242,6 +242,57 @@ describe("admin knowledge unit draft activation service", () => {
     assert.equal(audit.action, AuditAction.ADMIN_CHUNK_CREATE);
     assert.equal(audit.metadata.content, undefined);
     assert.equal(audit.metadata.draftContent, undefined);
+    assert.equal(audit.metadata.sourceDocumentContent, undefined);
+    assert.equal(audit.metadata.activeChunkContent, undefined);
+  });
+
+  it("rechecks duplicate activation inside transaction", async () => {
+    const draft = makeApprovedDraft();
+    let findManyCalls = 0;
+    let createCalled = false;
+    let updateCalled = false;
+    let auditCalled = false;
+
+    const db = {
+      knowledgeChunk: {
+        findUnique: async () => draft,
+        findMany: async ({ where }: { where: { versionId?: string; isActive?: boolean } }) => {
+          if (where.isActive !== true) return [];
+          findManyCalls += 1;
+          if (findManyCalls === 1) return [];
+          return [{ metadata: { activatedFromDraftId: "draft-1" } }];
+        },
+        aggregate: async () => ({ _max: { sortOrder: 1 } }),
+        create: async () => {
+          createCalled = true;
+          throw new Error("create should not run");
+        },
+        update: async () => {
+          updateCalled = true;
+          throw new Error("update should not run");
+        },
+      },
+      auditLog: {
+        create: async () => {
+          auditCalled = true;
+        },
+      },
+      $transaction: async (fn: (tx: typeof db) => Promise<unknown>) => fn(db),
+    };
+
+    await assert.rejects(
+      () =>
+        activateAdminKnowledgeUnitDraft("admin-1", { draftId: "draft-1" }, {
+          prismaClient: db as never,
+        }),
+      (err: unknown) =>
+        err instanceof AdminKnowledgeUnitDraftActivationError && err.code === "ALREADY_ACTIVATED",
+    );
+
+    assert.equal(createCalled, false);
+    assert.equal(updateCalled, false);
+    assert.equal(auditCalled, false);
+    assert.equal(findManyCalls, 2);
   });
 
   it("blocks duplicate activation", async () => {

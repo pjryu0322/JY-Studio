@@ -75,8 +75,16 @@ function metadataRecord(metadata: KnowledgeChunk["metadata"]): Record<string, un
   return {};
 }
 
-async function findActiveChunkActivatedFromDraft(
-  db: typeof prisma,
+type KnowledgeChunkReader = {
+  knowledgeChunk: {
+    findMany: (args: {
+      where: { versionId: string; isActive: boolean };
+    }) => Promise<Array<{ metadata: KnowledgeChunk["metadata"] }>>;
+  };
+};
+
+export async function findActiveChunkActivatedFromDraft(
+  db: KnowledgeChunkReader,
   versionId: string,
   draftId: string,
 ) {
@@ -166,6 +174,9 @@ export async function activateAdminKnowledgeUnitDraft(
   const packId = chunk.version.pack.packId;
 
   const { activeChunk, updatedDraft } = await db.$transaction(async (tx) => {
+    const duplicateInTxn = await findActiveChunkActivatedFromDraft(tx, chunk.versionId, chunk.id);
+    if (duplicateInTxn) activationError("ALREADY_ACTIVATED");
+
     const created = await tx.knowledgeChunk.create({
       data: {
         versionId: chunk.versionId,
