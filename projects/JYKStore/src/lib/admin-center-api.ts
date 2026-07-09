@@ -2,6 +2,7 @@ import type {
   AdminKnowledgeUnitDraftDecisionResponse,
   AdminKnowledgeUnitDraftListResponse,
 } from "@/lib/admin-knowledge-unit-draft-dto";
+import type { AdminKnowledgeUnitDraftActivationResponse } from "@/lib/admin-knowledge-unit-draft-activation-dto";
 
 async function parseErrorMessage(response: Response): Promise<string> {
   try {
@@ -57,4 +58,23 @@ export async function decideAdminKnowledgeUnitDraftApi(
     throw new Error(await parseErrorMessage(response));
   }
   return (await response.json()) as AdminKnowledgeUnitDraftDecisionResponse;
+}
+
+export async function activateAdminKnowledgeUnitDraftApi(
+  draftId: string,
+  input?: { memo?: string },
+): Promise<AdminKnowledgeUnitDraftActivationResponse> {
+  const response = await fetch(
+    `/api/v1/admin/knowledge-unit-drafts/${encodeURIComponent(draftId)}/activate`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input ?? {}),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminKnowledgeUnitDraftActivationResponse;
 }

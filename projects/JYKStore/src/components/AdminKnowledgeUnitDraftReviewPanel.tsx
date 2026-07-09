@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { AdminKnowledgeUnitDraftDto } from "@/lib/admin-knowledge-unit-draft-dto";
-import { canDecideKnowledgeUnitDraft } from "@/lib/admin-knowledge-unit-draft-ui-utils";
+import { canActivateKnowledgeUnitDraft, canDecideKnowledgeUnitDraft } from "@/lib/admin-knowledge-unit-draft-ui-utils";
 import {
+  activateAdminKnowledgeUnitDraftApi,
   decideAdminKnowledgeUnitDraftApi,
   fetchAdminKnowledgeUnitDraftsApi,
 } from "@/lib/admin-center-api";
@@ -41,10 +42,18 @@ function AdminDraftCard({
   const [showEvidence, setShowEvidence] = useState(false);
   const [memo, setMemo] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
-  const [submitting, setSubmitting] = useState<"approve" | "reject" | null>(null);
+  const [submitting, setSubmitting] = useState<"approve" | "reject" | "activate" | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [activationMessage, setActivationMessage] = useState<string | null>(null);
 
   const canDecide = canDecideKnowledgeUnitDraft({ reviewStatus: draft.reviewStatus, isActive: false });
+  const canActivate = canActivateKnowledgeUnitDraft({
+    reviewStatus: draft.reviewStatus,
+    isActive: false,
+    activationStatus: draft.activationStatus,
+    activatedChunkId: draft.activatedChunkId,
+    approvedForActivation: draft.approvedForActivation,
+  });
   const sourceTypeLabel = draft.sourceType ? getSourceTypeLabel(draft.sourceType) : "—";
   const sourceFormatLabel = draft.sourceFormat ? getSourceFormatLabel(draft.sourceFormat) : "—";
 
@@ -69,6 +78,23 @@ function AdminDraftCard({
           ? message || "승인 처리에 실패했습니다."
           : message || "반려 처리에 실패했습니다.",
       );
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const runActivation = async () => {
+    setFormError(null);
+    setActivationMessage(null);
+    setSubmitting("activate");
+    try {
+      const result = await activateAdminKnowledgeUnitDraftApi(draft.id, {
+        memo: memo.trim() || undefined,
+      });
+      setActivationMessage(`활성화 완료: active chunk ${result.activatedChunk.id}`);
+      onDecided();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "활성화 처리에 실패했습니다.");
     } finally {
       setSubmitting(null);
     }
@@ -188,9 +214,40 @@ function AdminDraftCard({
             </button>
           </div>
         </div>
+      ) : canActivate ? (
+        <div className="mt-3 space-y-2 border-t border-store-border pt-3">
+          <p className="text-[11px] text-store-muted">
+            승인된 초안은 활성화 후 Context API 검색 대상에 포함됩니다. 원본 draft는 비활성 상태로 유지됩니다.
+          </p>
+          <label className="block text-xs font-semibold">
+            활성화 메모 (선택)
+            <textarea
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              className="mt-1 min-h-[88px] w-full rounded-xl border border-store-border px-3 py-2 text-sm"
+              disabled={submitting !== null}
+            />
+          </label>
+          {formError ? <p className="text-sm text-red-700">{formError}</p> : null}
+          {activationMessage ? (
+            <p className="text-sm text-emerald-800">{activationMessage}</p>
+          ) : null}
+          <button
+            type="button"
+            disabled={submitting !== null}
+            onClick={() => void runActivation()}
+            className="min-h-[44px] w-full rounded-xl border border-emerald-600 bg-emerald-50 px-4 text-sm font-semibold text-emerald-900 disabled:opacity-50"
+          >
+            {submitting === "activate" ? "활성화 중…" : "활성화"}
+          </button>
+        </div>
+      ) : draft.reviewStatus === "approved" && draft.activatedChunkId ? (
+        <p className="mt-3 rounded-lg bg-emerald-50 px-2 py-2 text-[11px] text-emerald-900">
+          활성화 완료: active chunk {draft.activatedChunkId}
+        </p>
       ) : draft.reviewStatus === "approved" ? (
         <p className="mt-3 rounded-lg bg-slate-50 px-2 py-2 text-[11px] text-store-muted">
-          승인된 초안은 아직 Context API에 노출되지 않습니다. 활성화는 P26.10에서 처리됩니다.
+          승인된 초안입니다. 활성화 조건을 확인한 뒤 활성화할 수 있습니다.
         </p>
       ) : null}
     </li>
@@ -232,7 +289,7 @@ export function AdminKnowledgeUnitDraftReviewPanel() {
     <div className="space-y-4">
       <div className="rounded-2xl border border-store-border bg-slate-50 p-4">
         <p className="text-xs text-store-muted">
-          Knowledge Unit 초안 단위 승인/반려입니다. Pack 승인과 별도이며, 활성화(Context 노출)는 P26.10입니다.
+          Knowledge Unit 초안 단위 승인/반려 및 활성화입니다. Pack 승인과 별도이며, 활성화 시 별도 active chunk가 생성됩니다.
         </p>
       </div>
 

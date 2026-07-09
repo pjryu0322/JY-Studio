@@ -35,6 +35,11 @@ export type AdminKnowledgeUnitDraftDto = {
   reviewedAt: string | null;
   reviewMemo: string | null;
   rejectionReason: string | null;
+  approvedForActivation: boolean | null;
+  activationStatus: string | null;
+  activatedChunkId: string | null;
+  activatedBy: string | null;
+  activatedAt: string | null;
   generatedBy: string | null;
   generatedAt: string | null;
   sourcePath: string | null;
@@ -76,6 +81,7 @@ export function readAdminDraftReviewFields(metadata: KnowledgeChunk["metadata"])
   reviewedAt: string | null;
   reviewMemo: string | null;
   rejectionReason: string | null;
+  approvedForActivation: boolean | null;
 } {
   if (metadata === null || metadata === undefined || typeof metadata !== "object" || Array.isArray(metadata)) {
     return {
@@ -84,6 +90,7 @@ export function readAdminDraftReviewFields(metadata: KnowledgeChunk["metadata"])
       reviewedAt: null,
       reviewMemo: null,
       rejectionReason: null,
+      approvedForActivation: null,
     };
   }
   const obj = metadata as Record<string, unknown>;
@@ -93,6 +100,33 @@ export function readAdminDraftReviewFields(metadata: KnowledgeChunk["metadata"])
     reviewedAt: readString(obj.reviewedAt),
     reviewMemo: readString(obj.reviewMemo),
     rejectionReason: readString(obj.rejectionReason),
+    approvedForActivation: obj.approvedForActivation === true ? true : null,
+  };
+}
+
+export function readAdminDraftActivationFields(metadata: KnowledgeChunk["metadata"]): {
+  activationStatus: string | null;
+  activatedChunkId: string | null;
+  activatedBy: string | null;
+  activatedAt: string | null;
+  approvedForActivation: boolean | null;
+} {
+  if (metadata === null || metadata === undefined || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return {
+      activationStatus: null,
+      activatedChunkId: null,
+      activatedBy: null,
+      activatedAt: null,
+      approvedForActivation: null,
+    };
+  }
+  const obj = metadata as Record<string, unknown>;
+  return {
+    activationStatus: readString(obj.activationStatus),
+    activatedChunkId: readString(obj.activatedChunkId),
+    activatedBy: readString(obj.activatedBy),
+    activatedAt: readString(obj.activatedAt),
+    approvedForActivation: obj.approvedForActivation === true ? true : null,
   };
 }
 
@@ -104,6 +138,7 @@ export type AdminKnowledgeUnitDraftChunkRow = KnowledgeChunk & {
 export function toAdminKnowledgeUnitDraftDto(chunk: AdminKnowledgeUnitDraftChunkRow): AdminKnowledgeUnitDraftDto {
   const meta = readDraftMetadata(chunk.metadata);
   const review = readAdminDraftReviewFields(chunk.metadata);
+  const activation = readAdminDraftActivationFields(chunk.metadata);
   const pack = chunk.version.pack;
 
   return {
@@ -125,6 +160,11 @@ export function toAdminKnowledgeUnitDraftDto(chunk: AdminKnowledgeUnitDraftChunk
     reviewedAt: review.reviewedAt,
     reviewMemo: review.reviewMemo,
     rejectionReason: review.rejectionReason,
+    approvedForActivation: review.approvedForActivation ?? activation.approvedForActivation,
+    activationStatus: activation.activationStatus,
+    activatedChunkId: activation.activatedChunkId,
+    activatedBy: activation.activatedBy ?? review.reviewedBy,
+    activatedAt: activation.activatedAt ?? review.reviewedAt,
     generatedBy: meta.generatedBy,
     generatedAt: meta.generatedAt,
     sourcePath: meta.sourcePath,

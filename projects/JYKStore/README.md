@@ -851,6 +851,11 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - `GET /api/v1/admin/knowledge-unit-drafts`, `POST .../[draftId]/decision` (metadata 갱신, `isActive` 유지).
 - `/admin/knowledge-unit-drafts`에서 초안 검토·승인/반려 (`ADMIN_CHUNK_UPDATE` AuditLog).
 
+### P26.10 — Approved draft 활성 chunk 전환
+
+- `POST /api/v1/admin/knowledge-unit-drafts/[draftId]/activate`로 `AUTO_KNOWLEDGE_UNIT` active chunk 생성.
+- 원본 `AUTO_KNOWLEDGE_UNIT_DRAFT`는 `isActive=false` 유지, Context/retrieval은 active chunk만 후보.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동
