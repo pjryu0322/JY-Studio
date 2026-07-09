@@ -1,5 +1,9 @@
 import { GitHubDiscoveryError } from "./github-auto-collect-types";
 import type { GitHubSourceRegisterInput } from "./github-auto-collect-types";
+import {
+  isUnsafeGitHubRepositoryPath,
+  normalizeGitHubRepositoryPath,
+} from "./github-path-utils";
 
 export const GITHUB_SOURCE_REGISTER_LIMITS = {
   maxFilesToFetch: { min: 1, max: 30, default: 10 },
@@ -45,11 +49,18 @@ export function normalizeGitHubSourceRegisterInput(
   const seen = new Set<string>();
   const selectedSourcePaths: string[] = [];
   for (const raw of input.selectedSourcePaths) {
-    const trimmed = raw.trim().replace(/^\/+/, "");
+    const trimmed = normalizeGitHubRepositoryPath(raw);
     if (!trimmed) {
       throw new GitHubDiscoveryError(
         "INVALID_SOURCE_REGISTER_OPTIONS",
         "selectedSourcePaths에 빈 경로는 사용할 수 없습니다.",
+        400,
+      );
+    }
+    if (isUnsafeGitHubRepositoryPath(trimmed)) {
+      throw new GitHubDiscoveryError(
+        "INVALID_SOURCE_REGISTER_OPTIONS",
+        "selectedSourcePaths에 허용되지 않는 경로가 포함되어 있습니다.",
         400,
       );
     }

@@ -4,6 +4,10 @@ import { GitHubDiscoveryError } from "@/lib/github-auto-collect/github-auto-coll
 import { normalizeGitHubSourceRegisterInput } from "@/lib/github-auto-collect/github-source-register-options";
 import { registerGitHubSourceDocumentsForPack } from "@/lib/github-auto-collect/github-source-register-service";
 import type { CreateSourceDocumentInput } from "@/lib/provider-pack-service";
+import { PackStatus } from "@prisma/client";
+
+const editableDraftPack = async () =>
+  ({ ok: true as const, packId: "pack-1", status: PackStatus.DRAFT });
 
 function blobTree(paths: Array<{ path: string; sha: string; size: number }>) {
   return {
@@ -96,6 +100,7 @@ describe("github source register service", () => {
       },
       {
         fetchImpl: fetchImpl as typeof fetch,
+        assertEditablePack: editableDraftPack,
         createSourceDocument: async (_clientId, _packId, input) => {
           created.push(input);
           return { pack: { packId: "pack-1", versions: [] } as never };
@@ -134,6 +139,7 @@ describe("github source register service", () => {
       },
       {
         fetchImpl: wrappedFetch as typeof fetch,
+        assertEditablePack: editableDraftPack,
         createSourceDocument: async () => ({ pack: { packId: "pack-1" } as never }),
       },
     );
@@ -156,6 +162,7 @@ describe("github source register service", () => {
       },
       {
         fetchImpl: githubFetchFactory({ "sha-readme": "# Hi" }) as typeof fetch,
+        assertEditablePack: editableDraftPack,
         createSourceDocument: async () => ({ pack: { packId: "pack-1" } as never }),
       },
     );
@@ -177,6 +184,7 @@ describe("github source register service", () => {
           "sha-readme": "# ok",
           "sha-gs": "# gs",
         }) as typeof fetch,
+        assertEditablePack: editableDraftPack,
         createSourceDocument: async (_c, _p, input) => {
           if (input.title === "docs/getting-started") {
             return { error: "VALIDATION" as const, message: "duplicate checksum" };
@@ -189,5 +197,114 @@ describe("github source register service", () => {
     assert.equal(result.summary.registeredCount, 1);
     assert.equal(result.summary.failedCount, 1);
     assert.ok(result.failedFiles.some((f) => f.path === "docs/getting-started.md"));
+  });
+
+  it("rejects unsafe selectedSourcePaths", () => {
+    for (const path of ["../secret", "http://evil.com/x", ".", ".."]) {
+      assert.throws(
+        () =>
+          normalizeGitHubSourceRegisterInput(
+            { repositoryUrl: "https://github.com/test/repo", selectedSourcePaths: [path] },
+            [],
+          ),
+        (err: unknown) =>
+          err instanceof GitHubDiscoveryError &&
+          err.code === "INVALID_SOURCE_REGISTER_OPTIONS" &&
+          /허용되지 않는 경로/.test(err.message),
+      );
+    }
+  });
+
+  it("normalizes backslashes in selectedSourcePaths", () => {
+    const warnings: string[] = [];
+    const normalized = normalizeGitHubSourceRegisterInput(
+      {
+        repositoryUrl: "https://github.com/test/repo",
+        selectedSourcePaths: ["docs\\guide.md"],
+      },
+      warnings,
+    );
+    assert.deepEqual(normalized.selectedSourcePaths, ["docs/guide.md"]);
+  });
+
+  it("does not call GitHub when pack preflight fails", async () => {
+    let fetchCalls = 0;
+    const fetchImpl = async () => {
+      fetchCalls += 1;
+      return new Response("{}", { status: 200 });
+    };
+
+    const baseInput = {
+      repositoryUrl: "https://github.com/test/repo",
+      selectedSourcePaths: ["README.md"],
+      sourceCodeAnalysis: "NONE" as const,
+    };
+
+    await assert.rejects(
+      () =>
+        registerGitHubSourceDocumentsForPack("client-1", "pack-1", baseInput, {
+          fetchImpl: fetchImpl as typeof fetch,
+          assertEditablePack: async () => ({ ok: false, error: "NOT_FOUND" }),
+        }),
+      (err: unknown) =>
+        err instanceof GitHubDiscoveryError &&
+        err.code === "INVALID_SOURCE_REGISTER_OPTIONS" &&
+        err.status === 404,
+    );
+    assert.equal(fetchCalls, 0);
+
+    await assert.rejects(
+      () =>
+        registerGitHubSourceDocumentsForPack("client-1", "pack-1", baseInput, {
+          fetchImpl: fetchImpl as typeof fetch,
+          assertEditablePack: async () => ({ ok: false, error: "PROFILE_REQUIRED" }),
+        }),
+      (err: unknown) =>
+        err instanceof GitHubDiscoveryError && err.status === 400,
+    );
+
+    await assert.rejects(
+      () =>
+        registerGitHubSourceDocumentsForPack("client-1", "pack-1", baseInput, {
+          fetchImpl: fetchImpl as typeof fetch,
+          assertEditablePack: async () => ({
+            ok: false,
+            error: "NOT_EDITABLE",
+            status: PackStatus.PUBLISHED,
+          }),
+        }),
+      (err: unknown) =>
+        err instanceof GitHubDiscoveryError && err.status === 409,
+    );
+    assert.equal(fetchCalls, 0);
+  });
+
+  it("runs preflight and returns zero registrations when paths are not discovery candidates", async () => {
+    let createCalls = 0;
+    const result = await registerGitHubSourceDocumentsForPack(
+      "client-1",
+      "pack-1",
+      {
+        repositoryUrl: "https://github.com/test/repo",
+        selectedSourcePaths: ["not-found.md"],
+        sourceCodeAnalysis: "NONE",
+      },
+      {
+        fetchImpl: githubFetchFactory({}) as typeof fetch,
+        assertEditablePack: editableDraftPack,
+        createSourceDocument: async () => {
+          createCalls += 1;
+          return { pack: { packId: "pack-1" } as never };
+        },
+      },
+    );
+
+    assert.equal(result.summary.registeredCount, 0);
+    assert.equal(createCalls, 0);
+    assert.ok(
+      result.skippedFiles.some(
+        (s) => s.path === "not-found.md" && s.reason === "NOT_A_DISCOVERY_CANDIDATE",
+      ),
+    );
   });
 });

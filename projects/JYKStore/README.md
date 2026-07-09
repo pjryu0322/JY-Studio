@@ -810,6 +810,11 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 - `POST /api/v1/provider/packs/[packId]/auto-collect/github/register`로 선택 후보 파일 content fetch 후 `createSourceDocumentForProviderPack()` 재사용.
 - fetch 개수/파일·총량 제한, 등록/스킵/실패 결과 분리.
 
+### P26.5-1 — GitHub SourceDocument 등록 선검증
+
+- GitHub API 호출 전 `assertProviderPackEditableForClient()`로 pack 소유·DRAFT 선검증.
+- `selectedSourcePaths` unsafe path 검증 강화 및 `github-path-utils` 공통화.
+
 ## 아직 구현하지 않은 기능
 
 - 외부 embedding provider(OpenAI/Claude/Gemini 등) 연동

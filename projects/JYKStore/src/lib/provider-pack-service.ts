@@ -281,6 +281,45 @@ export async function getProviderPackForClient(
   return pack ? await mapProviderPackDetailWithValidation(pack) : null;
 }
 
+export async function assertProviderPackEditableForClient(
+  clientId: string,
+  packId: string,
+): Promise<
+  | { ok: true; packId: string; status: PackStatus }
+  | { ok: false; error: "PROFILE_REQUIRED" | "NOT_FOUND" | "NOT_EDITABLE"; status?: PackStatus }
+> {
+  const trimmedPackId = packId.trim();
+  if (!trimmedPackId) {
+    return { ok: false, error: "NOT_FOUND" };
+  }
+
+  const profile = await prisma.providerProfile.findUnique({
+    where: { clientId },
+  });
+
+  if (!profile) {
+    return { ok: false, error: "PROFILE_REQUIRED" };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: {
+      packId: trimmedPackId,
+      providerProfileId: profile.id,
+    },
+    select: { packId: true, status: true },
+  });
+
+  if (!pack) {
+    return { ok: false, error: "NOT_FOUND" };
+  }
+
+  if (pack.status !== PackStatus.DRAFT) {
+    return { ok: false, error: "NOT_EDITABLE", status: pack.status };
+  }
+
+  return { ok: true, packId: pack.packId, status: pack.status };
+}
+
 async function mapProviderPackDetailWithValidation(
   pack: NonNullable<Awaited<ReturnType<typeof prisma.knowledgePack.findFirst>>> & {
     versions: (import("@prisma/client").KnowledgePackVersion & {

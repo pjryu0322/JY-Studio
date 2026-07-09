@@ -26,12 +26,23 @@ const ERROR_MESSAGES: Record<string, string> = {
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
   const { packId } = await context.params;
+  const trimmedPackId = packId?.trim() ?? "";
 
   try {
+    if (!trimmedPackId) {
+      return jsonWithClientIdCookie(
+        {
+          error: "INVALID_SOURCE_REGISTER_OPTIONS",
+          message: ERROR_MESSAGES.INVALID_SOURCE_REGISTER_OPTIONS,
+        },
+        clientId,
+        { status: 400 },
+      );
+    }
     const body = (await request.json()) as GitHubSourceRegisterInput;
     const result = await registerGitHubSourceDocumentsForPack(
       clientId,
-      packId?.trim() ?? "",
+      trimmedPackId,
       body,
     );
     return jsonWithClientIdCookie(result, clientId);

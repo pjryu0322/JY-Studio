@@ -4,6 +4,10 @@ import type {
   GitHubSourceCodeAnalysisMode,
 } from "./github-auto-collect-types";
 import { DEFAULT_GITHUB_DISCOVERY_OPTIONS, GitHubDiscoveryError } from "./github-auto-collect-types";
+import {
+  isUnsafeGitHubRepositoryPath,
+  normalizeGitHubRepositoryPath,
+} from "./github-path-utils";
 
 export const GITHUB_DISCOVERY_LIMITS = {
   maxFilesToAnalyze: { min: 100, max: 10000, default: 5000 },
@@ -90,10 +94,7 @@ function clampInt(
 }
 
 function isUnsafeSelectedPath(segment: string): boolean {
-  if (!segment || segment === "." || segment === "..") return true;
-  if (segment.includes("..")) return true;
-  if (/^[a-z]+:\/\//i.test(segment)) return true;
-  return false;
+  return isUnsafeGitHubRepositoryPath(segment);
 }
 
 export function normalizeSelectedPaths(
@@ -110,7 +111,7 @@ export function normalizeSelectedPaths(
       );
       break;
     }
-    const trimmed = entry.trim().replace(/^\/+/, "");
+    const trimmed = normalizeGitHubRepositoryPath(entry);
     if (!trimmed) {
       throw new GitHubDiscoveryError(
         "INVALID_SELECTED_PATHS",

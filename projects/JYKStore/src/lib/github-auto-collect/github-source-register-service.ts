@@ -1,5 +1,6 @@
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import {
+  assertProviderPackEditableForClient,
   createSourceDocumentForProviderPack,
   getProviderPackForClient,
 } from "@/lib/provider-pack-service";
@@ -38,7 +39,35 @@ export type RegisterGitHubSourceDeps = {
   fetchImpl?: GitHubApiFetch;
   token?: string;
   createSourceDocument?: typeof createSourceDocumentForProviderPack;
+  assertEditablePack?: typeof assertProviderPackEditableForClient;
 };
+
+function throwRegisterPreflightError(
+  editable: {
+    ok: false;
+    error: "PROFILE_REQUIRED" | "NOT_FOUND" | "NOT_EDITABLE";
+  },
+): never {
+  if (editable.error === "PROFILE_REQUIRED") {
+    throw new GitHubDiscoveryError(
+      "INVALID_SOURCE_REGISTER_OPTIONS",
+      "Provider 프로필이 필요합니다.",
+      400,
+    );
+  }
+  if (editable.error === "NOT_FOUND") {
+    throw new GitHubDiscoveryError(
+      "INVALID_SOURCE_REGISTER_OPTIONS",
+      "지식팩을 찾을 수 없습니다.",
+      404,
+    );
+  }
+  throw new GitHubDiscoveryError(
+    "INVALID_SOURCE_REGISTER_OPTIONS",
+    "초안(DRAFT) 상태에서만 등록할 수 있습니다.",
+    409,
+  );
+}
 
 function mapCreateError(message: string | undefined): string {
   const text = message ?? "VALIDATION_FAILED";
@@ -53,10 +82,18 @@ export async function registerGitHubSourceDocumentsForPack(
   deps: RegisterGitHubSourceDeps = {},
 ): Promise<GitHubSourceRegisterResult> {
   const warnings: string[] = [];
+  const trimmedPackId = packId.trim();
   const normalized = normalizeGitHubSourceRegisterInput(input, warnings);
   const createSourceDocument = deps.createSourceDocument ?? createSourceDocumentForProviderPack;
   const fetchImpl = deps.fetchImpl;
   const token = deps.token ?? process.env.GITHUB_TOKEN;
+
+  const assertEditable = deps.assertEditablePack ?? assertProviderPackEditableForClient;
+  const editable = await assertEditable(clientId, trimmedPackId);
+  if (!editable.ok) {
+    throwRegisterPreflightError(editable);
+  }
+  const effectivePackId = editable.packId;
 
   const discovery = await discoverGitHubRepository(
     {
@@ -72,6 +109,7 @@ export async function registerGitHubSourceDocumentsForPack(
 
   const parsed = parseGitHubRepositoryUrl(normalized.repositoryUrl);
   const branch = parsed.ref ?? discovery.repository.defaultBranch;
+  // TODO(P26.5-2): discovery may already include tree data; reuse it to avoid a second fetchRecursiveTree.
   const { items } = await fetchRecursiveTree(
     parsed.owner,
     parsed.repo,
@@ -177,7 +215,7 @@ export async function registerGitHubSourceDocumentsForPack(
       path,
     );
 
-    const result = await createSourceDocument(clientId, packId, {
+    const result = await createSourceDocument(clientId, effectivePackId, {
       title,
       sourceType,
       sourceFormat,
@@ -233,12 +271,12 @@ export async function registerGitHubSourceDocumentsForPack(
   }
 
   if (!packDetail) {
-    packDetail = (await getProviderPackForClient(clientId, packId)) ?? undefined;
+    packDetail = (await getProviderPackForClient(clientId, effectivePackId)) ?? undefined;
   }
 
   return {
     clientId,
-    packId,
+    packId: effectivePackId,
     repository: discovery.repository,
     productProfile,
     summary: {
