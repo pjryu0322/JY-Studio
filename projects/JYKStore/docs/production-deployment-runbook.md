@@ -12,15 +12,20 @@ Production **required**:
 |----------|---------|
 | `DATABASE_URL` | PostgreSQL connection for Prisma |
 | `JYKSTORE_API_KEY_SECRET` | API Key hashing secret (do not use dev SHA-256-only fallback in production) |
-| `JYKSTORE_ADMIN_OPS_TOKEN` | Protects `/api/v1/admin/**` (header `X-JYKStore-Admin-Token`) |
+
+Optional for admin bootstrap:
+
+| Variable | Purpose |
+|----------|---------|
+| `JYKSTORE_ADMIN_EMAILS` | Comma-separated emails that receive `accountRole=ADMIN` on login |
 
 See `projects/JYKStore/.env.example` for quota and MCP optional variables.
 
 ## 3. Secret handling policy
 
 - Never commit real secrets to git.
-- Do not log `DATABASE_URL`, API keys, Admin Ops Token, or `Authorization: Bearer` values.
-- Admin UI stores Ops Token in React state only (no localStorage/sessionStorage).
+- Do not log `DATABASE_URL`, API keys, or `Authorization: Bearer` values.
+- Admin console requires a logged-in ADMIN account session (cookie); do not store admin secrets in localStorage/sessionStorage.
 - MCP server stores `JYKSTORE_API_KEY` in process env only; health/ready must not return key material.
 
 ## 4. Build commands
@@ -67,11 +72,11 @@ npm run mcp:http
 | MCP `GET /health` | MCP bridge alive |
 | MCP `GET /ready` | MCP config flags only (no base URL or API key body) |
 
-## 8. Admin Ops Token setup
+## 8. Admin account setup
 
-1. Set `JYKSTORE_ADMIN_OPS_TOKEN` to a long random value.
-2. Call admin APIs with header: `X-JYKStore-Admin-Token: <token>`.
-3. Use `/admin/ops/quota` UI — token is entered per session in the browser only.
+1. Set `JYKSTORE_ADMIN_EMAILS` to one or more admin emails (comma-separated).
+2. Open `/admin/login` and sign in with an allowlisted email.
+3. Use `/admin/reviews` and `/admin/ops/*` with the admin session cookie.
 
 ## 9. API Key create / revoke / rotate
 
@@ -103,7 +108,7 @@ Invalid values fall back at runtime but `/api/ready` reports env issues in produ
 ## 12. Reverse proxy notes
 
 - Terminate TLS at the proxy; forward `Host` and `X-Forwarded-*` as needed.
-- Do not expose Admin Ops Token or API keys in access logs.
+- Do not expose API keys in access logs.
 - Rate-limit public export endpoints if needed at the edge.
 
 ## 13. Logging policy
@@ -119,7 +124,7 @@ Invalid values fall back at runtime but `/api/ready` reports env issues in produ
 | DB down | `/api/ready` → `checks.database.ok=false` |
 | missing `DATABASE_URL` | `/api/ready` 503, env missing |
 | missing `JYKSTORE_API_KEY_SECRET` | `/api/ready` 503 in production |
-| missing `JYKSTORE_ADMIN_OPS_TOKEN` | Admin API 403; `/api/ready` 503 in production |
+| missing admin account / not ADMIN | Admin API 401/403; use `/admin/login` with `JYKSTORE_ADMIN_EMAILS` |
 | invalid quota env | `/api/ready` → `checks.env.errors` (e.g. `Invalid env: JYKSTORE_QUOTA_PER_MINUTE`) |
 | invalid API key | Public API 401 |
 | expired/revoked API key | `API_KEY_EXPIRED` / revoked codes |

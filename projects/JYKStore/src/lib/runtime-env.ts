@@ -20,7 +20,6 @@ export type RuntimeEnvCheck = {
 const PRODUCTION_REQUIRED = [
   "DATABASE_URL",
   "JYKSTORE_API_KEY_SECRET",
-  "JYKSTORE_ADMIN_OPS_TOKEN",
 ] as const;
 
 function trimmed(value: string | undefined): string {

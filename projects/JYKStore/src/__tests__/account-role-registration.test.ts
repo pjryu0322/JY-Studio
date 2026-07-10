@@ -6,12 +6,6 @@ import {
   loadConsumerProfile,
   saveConsumerProfile,
 } from "../lib/account-role-storage.ts";
-import {
-  clearAdminSession,
-  isAdminSessionVerified,
-  loadAdminSession,
-  saveAdminSession,
-} from "../lib/admin-ops-session.ts";
 
 function memoryStorage(): {
   getItem: (key: string) => string | null;
@@ -43,15 +37,5 @@ describe("account role storage", () => {
     assert.equal(isConsumerRegistered(storage), true);
     clearConsumerProfile(storage);
     assert.equal(loadConsumerProfile(storage), null);
-  });
-
-  it("stores admin session in session storage shape", () => {
-    const storage = memoryStorage();
-    saveAdminSession(storage, { token: "ops-token" });
-    assert.equal(isAdminSessionVerified(storage), true);
-    const session = loadAdminSession(storage);
-    assert.equal(session?.token, "ops-token");
-    clearAdminSession(storage);
-    assert.equal(isAdminSessionVerified(storage), false);
   });
 });

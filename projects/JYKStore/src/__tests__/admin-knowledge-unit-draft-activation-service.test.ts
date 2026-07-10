@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { after, before, describe, it } from "node:test";
+import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { NextRequest } from "next/server";
 import type { KnowledgeChunk, KnowledgePack, KnowledgePackVersion, SourceDocument } from "@prisma/client";
@@ -389,20 +389,9 @@ describe("admin knowledge unit draft activation service", () => {
 });
 
 describe("admin knowledge unit draft activation route", () => {
-  const previousToken = process.env.JYKSTORE_ADMIN_OPS_TOKEN;
-
-  before(() => {
-    process.env.JYKSTORE_ADMIN_OPS_TOKEN = "p26-10-test-token";
-  });
-
-  after(() => {
-    if (previousToken === undefined) delete process.env.JYKSTORE_ADMIN_OPS_TOKEN;
-    else process.env.JYKSTORE_ADMIN_OPS_TOKEN = previousToken;
-  });
-
-  it("POST activate route uses rejectUnlessAdminOps before service", () => {
+  it("POST activate route uses rejectUnlessAdmin before service", () => {
     const source = readFileSync(activateRoutePath, "utf8");
-    const guardAt = source.indexOf("rejectUnlessAdminOps(request, clientId)");
+    const guardAt = source.indexOf("rejectUnlessAdmin(request, clientId)");
     const activateAt = source.indexOf("activateAdminKnowledgeUnitDraft(");
     assert.ok(guardAt >= 0 && activateAt > guardAt);
   });

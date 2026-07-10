@@ -8,7 +8,7 @@
 
 - JYKStore dev 서버 실행 (`npm run dev`, 포트 3004)
 - Provider 프로필·DRAFT 상태 지식팩
-- (선택) `JYKSTORE_ADMIN_OPS_TOKEN` 설정 시 Admin API guard 통과
+- (선택) `JYKSTORE_ADMIN_EMAILS`에 관리자 이메일을 등록한 뒤 `/admin/login`으로 로그인하여 Admin API를 사용합니다.
 - **GitHub private repo / token UI 사용 금지** (public repo URL만)
 
 ## 단계별 확인

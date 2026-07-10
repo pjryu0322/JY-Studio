@@ -2,13 +2,13 @@ import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
 import { ensureClientId, getClientIdFromRequest, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { evaluateAdminPackStructureQuality } from "@/lib/admin-review-service";
-import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
+import { rejectUnlessAdmin } from "@/lib/admin-route-guard";
 
 type RouteContext = { params: Promise<{ packId: string }> };
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
-  const adminDeny = await rejectUnlessAdminOps(request, clientId);
+  const adminDeny = await rejectUnlessAdmin(request, clientId);
   if (adminDeny) return adminDeny;
   const { packId } = await context.params;
 

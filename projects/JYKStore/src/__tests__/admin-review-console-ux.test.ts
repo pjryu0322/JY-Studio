@@ -21,12 +21,12 @@ describe("admin account review console UX", () => {
     assert.ok(readSource("src/components/AdminLoginForm.tsx").includes("ADMIN_LOGIN_TITLE"));
   });
 
-  it("gates admin console with account role or ops fallback", () => {
+  it("gates admin console with account role", () => {
     const gate = readSource("src/components/AdminAccessGate.tsx");
     assert.ok(gate.includes("ADMIN_ACCESS_REQUIRED_TITLE"));
     assert.ok(gate.includes("ROUTES.adminLogin"));
     assert.ok(gate.includes("isAdminAccountRole"));
-    assert.ok(gate.includes("confirmAdminSession"));
+    assert.ok(!gate.includes("confirmAdminSession"));
   });
 
   it("protects review APIs with requireAdminSession", () => {

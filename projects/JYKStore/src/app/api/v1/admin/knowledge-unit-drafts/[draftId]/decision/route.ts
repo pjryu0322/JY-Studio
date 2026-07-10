@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
-import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
+import { rejectUnlessAdmin } from "@/lib/admin-route-guard";
 import {
   AdminKnowledgeUnitDraftError,
   decideAdminKnowledgeUnitDraft,
@@ -35,7 +35,7 @@ async function parseJsonBody(request: NextRequest) {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
-  const adminDeny = await rejectUnlessAdminOps(request, clientId);
+  const adminDeny = await rejectUnlessAdmin(request, clientId);
   if (adminDeny) return adminDeny;
 
   const { draftId } = await context.params;

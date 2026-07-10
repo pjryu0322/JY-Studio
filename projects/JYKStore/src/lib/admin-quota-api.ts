@@ -1,6 +1,4 @@
 import type { QuotaSummaryDto, QuotaSummaryRange } from "@/lib/quota-service";
-import { ADMIN_OPS_TOKEN_HEADER } from "@/lib/admin-auth";
-import { buildAdminOpsHeaders } from "@/lib/admin-api-keys-api";
 
 export type AdminQuotaSummaryResponse = {
   clientId: string;
@@ -25,7 +23,6 @@ async function parseErrorMessage(response: Response): Promise<string> {
 export async function fetchAdminQuotaSummary(input: {
   range: QuotaSummaryRange;
   clientId?: string;
-  adminToken: string;
 }): Promise<AdminQuotaSummaryResponse> {
   const params = new URLSearchParams();
   params.set("range", input.range);
@@ -33,12 +30,9 @@ export async function fetchAdminQuotaSummary(input: {
   const response = await fetch(`/api/v1/admin/quota/summary?${params.toString()}`, {
     method: "GET",
     credentials: "include",
-    headers: buildAdminOpsHeaders(input.adminToken),
   });
   if (!response.ok) {
     throw new Error(await parseErrorMessage(response));
   }
   return (await response.json()) as AdminQuotaSummaryResponse;
 }
-
-export { ADMIN_OPS_TOKEN_HEADER };

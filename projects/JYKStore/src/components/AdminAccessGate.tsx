@@ -6,10 +6,6 @@ import { useCallback, useEffect, useState } from "react";
 import { isAdminAccountRole } from "@/lib/account-role";
 import { fetchAuthSession } from "@/lib/auth-api";
 import {
-  confirmAdminSession,
-  isAdminSessionVerified,
-} from "@/lib/admin-ops-session";
-import {
   ADMIN_ACCESS_REQUIRED_BODY,
   ADMIN_ACCESS_REQUIRED_TITLE,
 } from "@/lib/role-based-ux-copy";
@@ -36,13 +32,7 @@ export function AdminAccessGate({ children }: { readonly children: React.ReactNo
         return;
       }
     } catch {
-      // fall through to ops token
-    }
-
-    if (isAdminSessionVerified(sessionStorage)) {
-      const ok = await confirmAdminSession(sessionStorage);
-      setState(ok ? "allowed" : "blocked");
-      return;
+      // blocked below
     }
 
     setState("blocked");
@@ -85,5 +75,3 @@ export function AdminAccessGate({ children }: { readonly children: React.ReactNo
 
   return <>{children}</>;
 }
-
-export { AdminRoleVerifier } from "@/components/AdminRoleVerifier";

@@ -37,7 +37,7 @@ export type RuntimeReadiness = {
   configured: {
     databaseUrl: boolean;
     apiKeySecret: boolean;
-    adminOpsToken: boolean;
+    adminEmails: boolean;
   };
 };
 
@@ -78,7 +78,7 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
   const configured = {
     databaseUrl: Boolean(process.env.DATABASE_URL?.trim()),
     apiKeySecret: Boolean(process.env.JYKSTORE_API_KEY_SECRET?.trim()),
-    adminOpsToken: Boolean(process.env.JYKSTORE_ADMIN_OPS_TOKEN?.trim()),
+    adminEmails: Boolean(process.env.JYKSTORE_ADMIN_EMAILS?.trim()),
   };
 
   const ok = envOk && database.ok;

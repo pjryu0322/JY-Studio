@@ -1,22 +1,15 @@
 import { NextRequest } from "next/server";
-import { verifyAdminOpsRequest } from "@/lib/admin-auth";
 import { listApiKeysAdmin } from "@/lib/api-key-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { rejectUnlessAdmin } from "@/lib/admin-route-guard";
 import { logSafeRouteError } from "@/lib/safe-logging";
 
 export async function GET(request: NextRequest) {
   const clientId = ensureClientId(request);
+  const adminDeny = await rejectUnlessAdmin(request, clientId);
+  if (adminDeny) return adminDeny;
 
   try {
-    const adminAuth = verifyAdminOpsRequest(request);
-    if (!adminAuth.ok) {
-      return jsonWithClientIdCookie(
-        { error: { code: adminAuth.code, message: adminAuth.message } },
-        clientId,
-        { status: adminAuth.status },
-      );
-    }
-
     const statusParam = request.nextUrl.searchParams.get("status")?.trim();
     const filterClientId = request.nextUrl.searchParams.get("clientId")?.trim();
     const status =

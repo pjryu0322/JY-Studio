@@ -2,11 +2,11 @@ import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { getOpsHealth } from "@/lib/ops-service";
-import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
+import { rejectUnlessAdmin } from "@/lib/admin-route-guard";
 
 export async function GET(request: NextRequest) {
   const clientId = ensureClientId(request);
-  const adminDeny = await rejectUnlessAdminOps(request, clientId);
+  const adminDeny = await rejectUnlessAdmin(request, clientId);
   if (adminDeny) return adminDeny;
 
   try {

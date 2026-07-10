@@ -54,7 +54,7 @@ MCP server는 답변을 생성하지 않고, JYKStore Public API의 context/grap
 5. 유출·교체 시:
    - 새 key를 발급 → MCP env를 교체 → 기존 key를 revoke
 6. Admin 운영 콘솔 `/admin/ops/api-keys`에서 전체 key 상태·폐기 가능 (raw key 조회 불가).
-7. Admin API는 `JYKSTORE_ADMIN_OPS_TOKEN` 설정을 권장하며, **production에서는 필수**다.
+7. Admin API는 관리자 계정(`JYKSTORE_ADMIN_EMAILS` → accountRole=`ADMIN`) 로그인이 필요하다.
 8. Admin UI에 입력한 token은 브라우저 저장소에 두지 않고, 요청 header `X-JYKStore-Admin-Token`으로만 전달한다.
 
 ## Local stdio run
@@ -232,7 +232,7 @@ These tests cover registration snapshots, HTTP JSON-RPC runtime (mocked Public A
 - 초과 시 Public API는 `429 QUOTA_EXCEEDED` + `retryAfterSeconds`를 반환한다.
 - MCP Server는 quota를 DB에서 직접 계산하지 않고 Public API 429를 그대로 중계한다.
 - `QUOTA_EXCEEDED` 발생 시 `topK`/`limitBytes` 축소 또는 호출 빈도를 낮춘다.
-- Admin quota page `/admin/ops/quota`에서 client별 사용량·429를 확인한다 (Admin Ops Token 필요).
+- Admin quota page `/admin/ops/quota`에서 client별 사용량·429를 확인한다 (관리자 계정 로그인 필요).
 - UsageLog quota metadata는 Public API gateway 기준으로 기록된다.
 - 운영 점검 시 `quotaWarning`, `quotaMinuteCount`, `quotaDayCount`, `quotaPerMinuteLimit`, `quotaPerDayLimit` 필드를 활용한다.
 - P24.2 refactor는 운영 동작을 바꾸지 않고 Public API gateway 내부 구조만 정리했다.

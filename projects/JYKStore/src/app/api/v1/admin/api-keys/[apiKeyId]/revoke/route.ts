@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { verifyAdminOpsRequest } from "@/lib/admin-auth";
 import { revokeApiKeyAdmin } from "@/lib/api-key-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
+import { rejectUnlessAdmin } from "@/lib/admin-route-guard";
 import { logSafeRouteError } from "@/lib/safe-logging";
 
 type RouteContext = {
@@ -10,17 +10,10 @@ type RouteContext = {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
+  const adminDeny = await rejectUnlessAdmin(request, clientId);
+  if (adminDeny) return adminDeny;
 
   try {
-    const adminAuth = verifyAdminOpsRequest(request);
-    if (!adminAuth.ok) {
-      return jsonWithClientIdCookie(
-        { error: { code: adminAuth.code, message: adminAuth.message } },
-        clientId,
-        { status: adminAuth.status },
-      );
-    }
-
     const { apiKeyId } = await context.params;
     const normalized = apiKeyId?.trim();
     if (!normalized) {

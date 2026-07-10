@@ -18,20 +18,25 @@ describe("account role registration UX", () => {
     assert.ok(account.includes("일반 사용자로 등록"));
     assert.ok(account.includes("API Key 관리"));
     assert.ok(account.includes("saveConsumerProfile"));
-    assert.ok(!account.includes("운영 사용량 확인") || account.includes("adminVerified"));
-    assert.ok(account.includes("AdminRoleVerifier"));
   });
 
-  it("wraps admin routes with access gate", () => {
+  it("shows admin account login CTA without Ops Token UI", () => {
+    const account = readSource("src/components/AccountPageClient.tsx");
+    assert.ok(account.includes("관리자 계정 로그인"));
+    assert.ok(account.includes("account-role-admin"));
+    assert.ok(!/Ops Token/i.test(account));
+    assert.ok(!account.includes("부트스트랩"));
+    assert.ok(!account.includes("AdminRoleVerifier"));
+  });
+
+  it("wraps admin routes with account-based access gate", () => {
     const layout = readSource("src/app/(store)/admin/layout.tsx");
     const gate = readSource("src/components/AdminAccessGate.tsx");
     assert.ok(layout.includes("AdminAccessGate"));
     assert.ok(gate.includes("ADMIN_ACCESS_REQUIRED_TITLE"));
     assert.ok(gate.includes("adminLogin"));
-  });
-
-  it("exposes admin ops verify route", () => {
-    const route = readSource("src/app/api/v1/admin/ops/verify/route.ts");
-    assert.ok(route.includes("verifyAdminOpsRequest"));
+    assert.ok(gate.includes("isAdminAccountRole"));
+    assert.ok(!gate.includes("confirmAdminSession"));
+    assert.ok(!gate.includes("admin-ops-session"));
   });
 });

@@ -11,6 +11,7 @@ export function sanitizeLogMessage(message: string): string {
     .replace(/Authorization:\s*Bearer\s+[^\s]+/gi, "Authorization: Bearer ***")
     .replace(/Bearer\s+[^\s]+/gi, "Bearer ***")
     .replace(/JYKSTORE_API_KEY=\S+/gi, "JYKSTORE_API_KEY=***")
+    .replace(/JYKSTORE_ADMIN_EMAILS=\S+/gi, "JYKSTORE_ADMIN_EMAILS=***")
     .replace(/JYKSTORE_ADMIN_OPS_TOKEN=\S+/gi, "JYKSTORE_ADMIN_OPS_TOKEN=***")
     .replace(/\bjyk_(?:live|test)_[A-Za-z0-9]+/gi, "jyk_***")
     .replace(/rawKey=\S+/gi, "rawKey=***")

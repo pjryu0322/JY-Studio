@@ -2,15 +2,14 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { AdminRoleVerifier } from "@/components/AdminAccessGate";
+import { isAdminAccountRole } from "@/lib/account-role";
 import {
   clearConsumerProfile,
-  isConsumerRegistered,
   loadConsumerProfile,
   saveConsumerProfile,
   type ConsumerProfile,
 } from "@/lib/account-role-storage";
-import { isAdminSessionVerified } from "@/lib/admin-ops-session";
+import { fetchAuthSession, logoutStoreAccount } from "@/lib/auth-api";
 import {
   ACCOUNT_GUEST_DESCRIPTION,
   ACCOUNT_GUEST_TITLE,
@@ -55,15 +54,26 @@ export function AccountPageClient() {
   const [consumer, setConsumer] = useState<ConsumerProfile | null>(null);
   const [providerProfile, setProviderProfile] = useState<ProviderProfileDto | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
-  const [adminVerified, setAdminVerified] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [purpose, setPurpose] = useState("");
   const [registering, setRegistering] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
 
   const refreshRoles = useCallback(async () => {
     if (typeof window === "undefined") return;
     setConsumer(loadConsumerProfile(localStorage));
-    setAdminVerified(isAdminSessionVerified(sessionStorage));
+    try {
+      const session = await fetchAuthSession();
+      setIsAdmin(
+        Boolean(
+          session.loggedIn &&
+            isAdminAccountRole(session.accountRole ?? session.user?.accountRole),
+        ),
+      );
+    } catch {
+      setIsAdmin(false);
+    }
     try {
       const res = await fetchProviderProfile();
       setClientId(res.clientId);
@@ -95,17 +105,25 @@ export function AccountPageClient() {
     setPurpose("");
   };
 
+  const onAdminLogout = async () => {
+    setLogoutBusy(true);
+    try {
+      await logoutStoreAccount();
+      await refreshRoles();
+    } finally {
+      setLogoutBusy(false);
+    }
+  };
+
   const providerRegistered = Boolean(providerProfile);
 
   const profileTitle = consumer?.displayName ?? ACCOUNT_GUEST_TITLE;
-  const profileSubtitle = consumer
-    ? consumer.purpose
-    : ACCOUNT_GUEST_DESCRIPTION;
+  const profileSubtitle = consumer ? consumer.purpose : ACCOUNT_GUEST_DESCRIPTION;
 
   const roleLabels: string[] = [];
   if (consumer) roleLabels.push("일반 사용자");
   if (providerRegistered) roleLabels.push("제공자");
-  if (adminVerified) roleLabels.push("운영자");
+  if (isAdmin) roleLabels.push("관리자");
 
   return (
     <div className="space-y-5 pb-8">
@@ -137,10 +155,7 @@ export function AccountPageClient() {
         <div className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-bold text-slate-900">일반 사용자 계정</p>
-            <StatusBadge
-              label={consumer ? "등록됨" : "미등록"}
-              tone={consumer ? "ok" : "muted"}
-            />
+            <StatusBadge label={consumer ? "등록됨" : "미등록"} tone={consumer ? "ok" : "muted"} />
           </div>
           <p className="mt-1 text-xs text-store-muted">지식팩을 검색하고 API로 연결합니다.</p>
           {consumer ? (
@@ -215,17 +230,44 @@ export function AccountPageClient() {
           className="scroll-mt-24 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-bold text-slate-700">지식팩 운영자 계정</p>
+            <p className="text-sm font-bold text-slate-700">지식팩 관리자 계정</p>
             <StatusBadge
-              label={adminVerified ? "권한 확인됨" : "권한 확인 필요"}
-              tone={adminVerified ? "ok" : "warn"}
+              label={isAdmin ? "로그인됨" : "로그인 필요"}
+              tone={isAdmin ? "ok" : "warn"}
             />
           </div>
-          <p className="mt-1 text-xs text-store-muted">지식팩 승인, 공개, 사용량을 관리합니다.</p>
-          <span className="mt-2 inline-flex rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-            운영자 전용
-          </span>
-          <AdminRoleVerifier verified={adminVerified} onVerified={() => void refreshRoles()} />
+          <p className="mt-1 text-xs text-store-muted">
+            {isAdmin
+              ? "관리자 계정으로 로그인되어 있습니다."
+              : "검수 요청된 지식팩을 검토하고 승인/반려합니다."}
+          </p>
+          <div className="mt-3 flex flex-col gap-2">
+            {isAdmin ? (
+              <>
+                <Link
+                  href={ROUTES.adminReviews}
+                  className="flex min-h-[44px] items-center justify-center rounded-xl bg-store-accent text-sm font-bold text-white"
+                >
+                  관리자 콘솔 열기
+                </Link>
+                <button
+                  type="button"
+                  disabled={logoutBusy}
+                  onClick={() => void onAdminLogout()}
+                  className="min-h-[40px] text-xs font-semibold text-store-muted underline-offset-2 hover:underline disabled:opacity-50"
+                >
+                  {logoutBusy ? "로그아웃 중…" : "로그아웃"}
+                </button>
+              </>
+            ) : (
+              <Link
+                href={ROUTES.adminLogin}
+                className="flex min-h-[44px] items-center justify-center rounded-xl bg-store-accent text-sm font-bold text-white"
+              >
+                관리자 계정 로그인
+              </Link>
+            )}
+          </div>
         </div>
       </section>
 
@@ -259,9 +301,9 @@ export function AccountPageClient() {
         </section>
       )}
 
-      {adminVerified ? (
+      {isAdmin ? (
         <section className="space-y-2">
-          <h2 className="px-1 text-xs font-bold uppercase tracking-wide text-store-muted">운영자 도구</h2>
+          <h2 className="px-1 text-xs font-bold uppercase tracking-wide text-store-muted">관리자 도구</h2>
           <ul className="space-y-2 text-sm">
             <li>
               <MenuLink title="관리자 콘솔" description="지식팩 검수 및 승인" href={ROUTES.adminReviews} />

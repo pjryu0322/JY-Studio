@@ -3,7 +3,7 @@ import { logSafeRouteError } from "@/lib/safe-logging";
 import { bulkUpdateChunkMetadata } from "@/lib/chunk-pipeline-service";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import type { BulkMetadataMode } from "@/lib/chunk-pipeline-dto";
-import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
+import { rejectUnlessAdmin } from "@/lib/admin-route-guard";
 
 type RouteContext = { params: Promise<{ packId: string }> };
 
@@ -23,7 +23,7 @@ const VALID_MODES: BulkMetadataMode[] = ["merge", "replace", "clear"];
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
-  const adminDeny = await rejectUnlessAdminOps(request, clientId);
+  const adminDeny = await rejectUnlessAdmin(request, clientId);
   if (adminDeny) return adminDeny;
   const { packId } = await context.params;
 

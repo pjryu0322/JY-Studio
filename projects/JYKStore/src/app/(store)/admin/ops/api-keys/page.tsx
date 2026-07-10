@@ -20,9 +20,8 @@ export default function AdminOpsApiKeysPage() {
         </p>
       </div>
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-950">
-        Admin API Key 관리는 `JYKSTORE_ADMIN_OPS_TOKEN`과 헤더 `X-JYKStore-Admin-Token`으로 보호됩니다.
-        production에서는 서버 env에 토큰 설정이 필수이며, UI에 입력한 토큰은 브라우저 저장소에 저장하지 않습니다.
-        OAuth/SSO는 후속 단계입니다.
+        Admin API Key 관리는 관리자 계정 로그인 세션으로 보호됩니다. 관리자 권한이 있는 계정으로
+        로그인한 뒤 이용하세요.
       </div>
       <AdminApiKeysPanel />
     </div>
