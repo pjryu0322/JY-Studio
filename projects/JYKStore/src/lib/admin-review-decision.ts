@@ -1,7 +1,9 @@
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
+import type { ProviderReviewSubmitSnapshot } from "@/lib/provider-review-submit-snapshot";
 
 export type ReviewDecisionState =
   | "review_refresh_required"
+  | "submit_package_changed"
   | "release_gate_required"
   | "approval_ready"
   | "approval_warning"
@@ -15,7 +17,94 @@ export function hasCurrentReleaseGate(detail: AdminReviewDetailDto): boolean {
   );
 }
 
+function getSubmitSnapshot(
+  detail: AdminReviewDetailDto,
+): ProviderReviewSubmitSnapshot | null {
+  return detail.latestReview?.submitSnapshot ?? null;
+}
+
+export function detectSubmitSnapshotDrift(detail: AdminReviewDetailDto): {
+  changed: boolean;
+  reasons: string[];
+} {
+  const snapshot = getSubmitSnapshot(detail);
+  if (!snapshot) return { changed: false, reasons: [] };
+
+  const reasons: string[] = [];
+  const version = snapshot.submittedVersionId
+    ? detail.versions.find((v) => v.id === snapshot.submittedVersionId)
+    : undefined;
+  const currentSourceCount =
+    version?.sourceDocuments.length ?? detail.readiness.sourceDocumentCount;
+
+  if (currentSourceCount !== snapshot.sourceDocumentCount) {
+    reasons.push(
+      `원천 문서 수 불일치 (제출 ${snapshot.sourceDocumentCount} → 현재 ${currentSourceCount})`,
+    );
+  }
+
+  if (version && snapshot.sourceDocumentIds.length > 0) {
+    const currentIds = new Set(version.sourceDocuments.map((d) => d.id));
+    const missing = snapshot.sourceDocumentIds.some((id) => !currentIds.has(id));
+    const extra = version.sourceDocuments.some(
+      (d) => !snapshot.sourceDocumentIds.includes(d.id),
+    );
+    if (missing || extra) {
+      reasons.push("원천 문서 구성이 제출 시점과 다릅니다.");
+    }
+  }
+
+  const currentChunkCount = detail.chunkQuality?.report?.activeChunkCount;
+  if (
+    currentChunkCount != null &&
+    currentChunkCount !== snapshot.activeChunkCount
+  ) {
+    reasons.push(
+      `active chunk 수 불일치 (제출 ${snapshot.activeChunkCount} → 현재 ${currentChunkCount})`,
+    );
+  }
+
+  if (
+    snapshot.releaseGateRunId &&
+    detail.releaseGate?.latestRun?.id &&
+    snapshot.releaseGateRunId !== detail.releaseGate.latestRun.id
+  ) {
+    reasons.push("릴리스 게이트 실행이 제출 시점과 다릅니다.");
+  }
+
+  if (
+    snapshot.retrievalEvaluationRunId &&
+    detail.retrievalEvaluation?.latestRun?.id &&
+    snapshot.retrievalEvaluationRunId !== detail.retrievalEvaluation.latestRun.id
+  ) {
+    reasons.push("검색 평가 실행이 제출 시점과 다릅니다.");
+  }
+
+  if (reasons.length === 0 && hasStaleQualitySignals(detail)) {
+    reasons.push("제출 이후 원천/점검 데이터가 변경된 것으로 보입니다.");
+  }
+
+  return { changed: reasons.length > 0, reasons };
+}
+
+export function isSubmitSnapshotApprovalEligible(detail: AdminReviewDetailDto): boolean {
+  const snapshot = getSubmitSnapshot(detail);
+  if (!snapshot) return false;
+  if (detail.pack.status !== "REVIEWING") return false;
+  if (snapshot.releaseGateStatus !== "PASS" && snapshot.releaseGateStatus !== "WARNING") {
+    return false;
+  }
+  if (detail.readiness.sourceValidation.failCount > 0) return false;
+  if (detail.readiness.sourceValidation.notCheckedCount > 0) return false;
+  if (detail.readiness.releaseGateStatus === "FAIL") return false;
+  if (detectSubmitSnapshotDrift(detail).changed) return false;
+  return true;
+}
+
 export function canApproveAdminReview(detail: AdminReviewDetailDto): boolean {
+  if (isSubmitSnapshotApprovalEligible(detail)) {
+    return true;
+  }
   return (
     detail.pack.status === "REVIEWING" &&
     detail.readiness.canApprove &&
@@ -26,7 +115,9 @@ export function canApproveAdminReview(detail: AdminReviewDetailDto): boolean {
 
 function hasWarningSignals(detail: AdminReviewDetailDto): boolean {
   const r = detail.readiness;
+  const snapshot = getSubmitSnapshot(detail);
   return (
+    snapshot?.releaseGateStatus === "WARNING" ||
     r.releaseGateStatus === "WARNING" ||
     r.sourceValidation.warningCount > 0 ||
     r.structureCoverageStatus === "WARNING" ||
@@ -103,6 +194,23 @@ export function resolveReviewDecisionState(detail: AdminReviewDetailDto): Review
     return "not_reviewing";
   }
 
+  const snapshot = getSubmitSnapshot(detail);
+  if (snapshot && (snapshot.releaseGateStatus === "PASS" || snapshot.releaseGateStatus === "WARNING")) {
+    if (
+      detail.readiness.sourceValidation.failCount > 0 ||
+      detail.readiness.releaseGateStatus === "FAIL"
+    ) {
+      return "approval_blocked";
+    }
+    if (detectSubmitSnapshotDrift(detail).changed) {
+      return "submit_package_changed";
+    }
+    if (hasWarningSignals(detail)) {
+      return "approval_warning";
+    }
+    return "approval_ready";
+  }
+
   if (hasStaleQualitySignals(detail)) {
     return "review_refresh_required";
   }
@@ -123,6 +231,11 @@ export function resolveReviewDecisionState(detail: AdminReviewDetailDto): Review
 }
 
 export function collectReviewRefreshReasons(detail: AdminReviewDetailDto): string[] {
+  const drift = detectSubmitSnapshotDrift(detail);
+  if (drift.changed) {
+    return drift.reasons;
+  }
+
   const reasons: string[] = [];
   const r = detail.readiness;
 
@@ -204,6 +317,11 @@ export function collectReviewBlockers(detail: AdminReviewDetailDto): string[] {
 export function collectReviewWarnings(detail: AdminReviewDetailDto): string[] {
   const warnings: string[] = [];
   const r = detail.readiness;
+  const snapshot = getSubmitSnapshot(detail);
+
+  if (snapshot?.warnings?.length) {
+    warnings.push(...snapshot.warnings);
+  }
 
   if (r.sourceValidation.warningCount > 0) {
     warnings.push(`원천 문서 ${r.sourceValidation.warningCount}개가 WARNING 상태입니다.`);
@@ -225,15 +343,21 @@ export function collectReviewWarnings(detail: AdminReviewDetailDto): string[] {
   if (r.retrievalEvaluationStatus === "WARNING") {
     warnings.push("검색 품질 평가가 WARNING입니다.");
   }
-  if (r.releaseGateStatus === "WARNING") {
+  if (r.releaseGateStatus === "WARNING" || snapshot?.releaseGateStatus === "WARNING") {
     warnings.push("릴리스 게이트가 WARNING입니다.");
   }
 
-  return warnings;
+  return [...new Set(warnings)];
 }
 
 export function collectReviewActions(detail: AdminReviewDetailDto): string[] {
   const state = resolveReviewDecisionState(detail);
+  if (state === "submit_package_changed") {
+    return [
+      "제출 패키지 기준으로 승인/반려하거나, 제공자에게 재제출을 요청하세요.",
+      "필요하면 고급 작업에서 현재 데이터 기준 전체 재점검을 실행할 수 있습니다.",
+    ];
+  }
   if (state === "review_refresh_required") {
     return ["최신 데이터 기준으로 전체 재점검을 실행하세요."];
   }

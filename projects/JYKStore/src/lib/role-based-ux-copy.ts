@@ -120,12 +120,16 @@ export const ADMIN_REVIEW_STATE_NOT_REVIEWING_BODY =
 export const ADMIN_REVIEW_STATE_REFRESH_REQUIRED_TITLE = "최신 재점검 필요";
 export const ADMIN_REVIEW_STATE_REFRESH_REQUIRED_BODY =
   "원천 문서 또는 점검 데이터가 변경되어 현재 결과만으로는 승인 여부를 판단할 수 없습니다. 최신 데이터 기준으로 전체 재점검을 실행하세요.";
+export const ADMIN_REVIEW_STATE_CHANGED_TITLE = "제출 후 변경 감지";
+export const ADMIN_REVIEW_STATE_CHANGED_BODY =
+  "제출 당시 검수 패키지와 현재 데이터가 다릅니다. 관리자는 기존 제출 패키지 기준으로 판단하거나 제공자에게 재제출을 요청할 수 있습니다.";
 
 export const ADMIN_REVIEW_CTA_RELEASE_GATE = "릴리스 게이트 최종 점검";
 export const ADMIN_REVIEW_CTA_APPROVE = "승인 및 공개";
 export const ADMIN_REVIEW_CTA_REJECT = "반려";
-export const ADMIN_REVIEW_CTA_REFRESH_ALL = "고급: 최신 상태로 재점검";
-export const ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE = "제출 시점 점검 결과";
+export const ADMIN_REVIEW_CTA_REFRESH_ALL = "현재 데이터 기준 전체 재점검";
+export const ADMIN_REVIEW_ADVANCED_ACTIONS_TITLE = "고급 작업";
+export const ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE = "제출된 검수 패키지";
 export const ADMIN_REVIEW_CTA_STRUCTURE = "구조/품질 재점검";
 export const ADMIN_REVIEW_CTA_CHUNK = "청킹 품질 재점검";
 export const ADMIN_REVIEW_CTA_RETRIEVAL_GENERATE = "검색 평가 케이스 재생성";

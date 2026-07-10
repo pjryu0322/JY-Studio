@@ -864,6 +864,7 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
   }
 
   const snapshot = buildProviderReviewSubmitSnapshot({
+    submittedVersionId: preparation.submittedVersionId,
     sourceDocumentIds: preparation.sourceDocumentIds,
     activeChunkIds: preparation.activeChunkIds,
     retrievalEvaluationSetId: preparation.retrievalEvaluationSetId,

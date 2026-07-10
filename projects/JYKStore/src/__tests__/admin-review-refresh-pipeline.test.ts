@@ -41,8 +41,9 @@ describe("admin review refresh pipeline", () => {
 
   it("surfaces full refresh CTA copy for stale review state", () => {
     const decision = readSource("src/components/AdminReviewDecisionSummary.tsx");
-    assert.equal(ADMIN_REVIEW_CTA_REFRESH_ALL, "고급: 최신 상태로 재점검");
+    assert.equal(ADMIN_REVIEW_CTA_REFRESH_ALL, "현재 데이터 기준 전체 재점검");
     assert.ok(decision.includes("ADMIN_REVIEW_CTA_REFRESH_ALL"));
+    assert.ok(decision.includes("ADMIN_REVIEW_ADVANCED_ACTIONS_TITLE"));
     assert.ok(decision.includes('busy === "refresh"'));
     assert.ok(decision.includes("전체 재점검에 실패했습니다"));
   });

@@ -18,6 +18,7 @@ export type ProviderFinalReviewSubmitPreparationResult =
   | {
       ok: true;
       packId: string;
+      submittedVersionId: string;
       releaseGateStatus: "PASS" | "WARNING";
       sourceDocumentCount: number;
       generatedChunkCount: number;
@@ -81,7 +82,19 @@ export async function prepareProviderPackForFinalReviewSubmit(input: {
     };
   }
 
-  const sourceDocumentIds = pack.versions.flatMap((v) => v.sourceDocuments.map((d) => d.id));
+  const submittedVersion = pack.versions[0];
+  if (!submittedVersion) {
+    return {
+      ok: false,
+      packId,
+      blockingStage: "source_validation",
+      message: "버전이 없습니다.",
+      warnings,
+    };
+  }
+
+  const submittedVersionId = submittedVersion.id;
+  const sourceDocumentIds = submittedVersion.sourceDocuments.map((d) => d.id);
   if (sourceDocumentIds.length === 0) {
     return {
       ok: false,
@@ -94,7 +107,7 @@ export async function prepareProviderPackForFinalReviewSubmit(input: {
 
   await validateAllSourceDocumentsForPack(packId, { actorClientId });
   const docs = await prisma.sourceDocument.findMany({
-    where: { version: { packId } },
+    where: { versionId: submittedVersionId },
     select: { id: true, validationStatus: true },
   });
   const validationCounts = countSourceValidationFromStatuses(docs.map((d) => d.validationStatus));
@@ -144,12 +157,29 @@ export async function prepareProviderPackForFinalReviewSubmit(input: {
     replace: true,
     reinforce: true,
   });
-  let generatedChunkCount = 0;
   if ("error" in chunks) {
-    warnings.push(chunks.message);
-  } else {
-    generatedChunkCount = chunks.createdChunkCount;
-    warnings.push(...chunks.warnings);
+    return {
+      ok: false,
+      packId,
+      blockingStage: "chunk_quality",
+      message: chunks.message,
+      warnings,
+    };
+  }
+  const generatedChunkCount = chunks.createdChunkCount;
+  warnings.push(...chunks.warnings);
+
+  const activeChunkCount = await prisma.knowledgeChunk.count({
+    where: { isActive: true, versionId: submittedVersionId },
+  });
+  if (activeChunkCount <= 0) {
+    return {
+      ok: false,
+      packId,
+      blockingStage: "chunk_quality",
+      message: "검수용 Chunk가 생성되지 않아 제출할 수 없습니다.",
+      warnings,
+    };
   }
 
   const chunkQuality = await evaluatePackChunkQuality({ packId, actorClientId });
@@ -254,7 +284,7 @@ export async function prepareProviderPackForFinalReviewSubmit(input: {
   }
 
   const activeChunks = await prisma.knowledgeChunk.findMany({
-    where: { isActive: true, version: { packId } },
+    where: { isActive: true, versionId: submittedVersionId },
     select: { id: true },
     orderBy: { createdAt: "asc" },
   });
@@ -262,6 +292,7 @@ export async function prepareProviderPackForFinalReviewSubmit(input: {
   return {
     ok: true,
     packId,
+    submittedVersionId,
     releaseGateStatus,
     sourceDocumentCount: sourceDocumentIds.length,
     generatedChunkCount,

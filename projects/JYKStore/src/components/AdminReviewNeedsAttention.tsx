@@ -48,6 +48,17 @@ export function AdminReviewNeedsAttention({
         </div>
       ) : null}
 
+      {state === "submit_package_changed" && refreshReasons.length > 0 ? (
+        <div>
+          <p className="text-xs font-bold text-amber-900">제출 후 변경 감지</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-amber-900">
+            {refreshReasons.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {blockers.length > 0 && state === "approval_blocked" ? (
         <div>
           <p className="text-xs font-bold text-red-800">차단</p>

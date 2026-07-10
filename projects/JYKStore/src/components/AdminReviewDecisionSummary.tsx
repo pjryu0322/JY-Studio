@@ -7,6 +7,7 @@ import {
   collectReviewBlockers,
   collectReviewRefreshReasons,
   collectReviewWarnings,
+  detectSubmitSnapshotDrift,
   resolveReviewDecisionState,
   type ReviewDecisionState,
 } from "@/lib/admin-review-decision";
@@ -22,11 +23,14 @@ import {
   ADMIN_REVIEW_CTA_REFRESH_ALL,
   ADMIN_REVIEW_CTA_RELEASE_GATE,
   ADMIN_REVIEW_DECISION_TITLE,
+  ADMIN_REVIEW_ADVANCED_ACTIONS_TITLE,
   ADMIN_REVIEW_REFRESH_REASONS_TITLE,
   ADMIN_REVIEW_REJECT_COLLAPSED_HINT,
   ADMIN_REVIEW_REJECT_OPEN,
   ADMIN_REVIEW_STATE_BLOCKED_BODY,
   ADMIN_REVIEW_STATE_BLOCKED_TITLE,
+  ADMIN_REVIEW_STATE_CHANGED_BODY,
+  ADMIN_REVIEW_STATE_CHANGED_TITLE,
   ADMIN_REVIEW_STATE_GATE_REQUIRED_BODY,
   ADMIN_REVIEW_STATE_GATE_REQUIRED_TITLE,
   ADMIN_REVIEW_STATE_NOT_REVIEWING_BODY,
@@ -39,6 +43,7 @@ import {
   ADMIN_REVIEW_STATE_REFRESH_REQUIRED_TITLE,
   ADMIN_REVIEW_STATE_WARNING_BODY,
   ADMIN_REVIEW_STATE_WARNING_TITLE,
+  ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE,
 } from "@/lib/role-based-ux-copy";
 
 function decisionCopy(state: ReviewDecisionState): { title: string; body: string; tone: string } {
@@ -47,6 +52,12 @@ function decisionCopy(state: ReviewDecisionState): { title: string; body: string
       return {
         title: ADMIN_REVIEW_STATE_REFRESH_REQUIRED_TITLE,
         body: ADMIN_REVIEW_STATE_REFRESH_REQUIRED_BODY,
+        tone: "border-amber-200 bg-amber-50 text-amber-950",
+      };
+    case "submit_package_changed":
+      return {
+        title: ADMIN_REVIEW_STATE_CHANGED_TITLE,
+        body: ADMIN_REVIEW_STATE_CHANGED_BODY,
         tone: "border-amber-200 bg-amber-50 text-amber-950",
       };
     case "release_gate_required":
@@ -113,8 +124,15 @@ export function AdminReviewDecisionSummary({
   const blockers = collectReviewBlockers(detail);
   const warnings = collectReviewWarnings(detail);
   const refreshReasons = collectReviewRefreshReasons(detail);
+  const snapshot = detail.latestReview?.submitSnapshot ?? null;
+  const drift = detectSubmitSnapshotDrift(detail);
+  const submittedVersionLabel = snapshot?.submittedVersionId
+    ? detail.versions.find((v) => v.id === snapshot.submittedVersionId)?.version ??
+      snapshot.submittedVersionId
+    : null;
 
-  const showRejectFormPrimary = isReviewing && state === "approval_blocked";
+  const showRejectFormPrimary =
+    isReviewing && (state === "approval_blocked" || state === "submit_package_changed");
   const showRejectFormSecondary =
     isReviewing &&
     (state === "approval_warning" || state === "approval_ready") &&
@@ -123,6 +141,15 @@ export function AdminReviewDecisionSummary({
     isReviewing &&
     (state === "review_refresh_required" || state === "release_gate_required") &&
     !rejectOpen;
+  const showAdvancedRefresh =
+    isReviewing &&
+    (state === "review_refresh_required" ||
+      state === "submit_package_changed" ||
+      Boolean(snapshot) ||
+      state === "approval_ready" ||
+      state === "approval_warning" ||
+      state === "approval_blocked");
+  const showPrimaryRefresh = state === "review_refresh_required" && !snapshot;
 
   const onRefreshAll = async () => {
     setBusy("refresh");
@@ -232,14 +259,43 @@ export function AdminReviewDecisionSummary({
         <p className="mt-1 text-xs leading-relaxed">{copy.body}</p>
       </div>
 
-      {state === "review_refresh_required" && refreshReasons.length > 0 ? (
+      {snapshot ? (
+        <div className="rounded-xl border border-store-border bg-slate-50 p-3">
+          <p className="text-xs font-bold text-slate-900">{ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE}</p>
+          <ul className="mt-2 space-y-1 text-xs text-slate-700">
+            <li>제출일시: {snapshot.submittedAt.replace("T", " ").slice(0, 16)}</li>
+            {submittedVersionLabel ? <li>제출 버전: {submittedVersionLabel}</li> : null}
+            <li>원천 문서: {snapshot.sourceDocumentCount}개</li>
+            <li>검수용 Chunk: {snapshot.activeChunkCount}개</li>
+            {snapshot.retrievalEvaluationRunId ? (
+              <li>검색 평가 Run: {snapshot.retrievalEvaluationRunId}</li>
+            ) : null}
+            <li>릴리스 게이트: {snapshot.releaseGateStatus}</li>
+            {snapshot.warnings.length > 0 ? (
+              <li>주의 항목: {snapshot.warnings.length}개</li>
+            ) : null}
+          </ul>
+        </div>
+      ) : null}
+
+      {(state === "review_refresh_required" || state === "submit_package_changed") &&
+      refreshReasons.length > 0 ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-          <p className="text-xs font-bold text-amber-950">{ADMIN_REVIEW_REFRESH_REASONS_TITLE}</p>
+          <p className="text-xs font-bold text-amber-950">
+            {state === "submit_package_changed"
+              ? "제출 후 변경 감지"
+              : ADMIN_REVIEW_REFRESH_REASONS_TITLE}
+          </p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-amber-900">
             {refreshReasons.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
+          {state === "submit_package_changed" && drift.changed ? (
+            <p className="mt-2 text-xs text-amber-900">
+              관리자는 기존 제출 패키지 기준으로 판단하거나 제공자에게 재제출을 요청할 수 있습니다.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -271,7 +327,7 @@ export function AdminReviewDecisionSummary({
         </div>
       ) : null}
 
-      {state === "review_refresh_required" ? (
+      {showPrimaryRefresh ? (
         <button
           type="button"
           disabled={busy !== null}
@@ -294,7 +350,10 @@ export function AdminReviewDecisionSummary({
       ) : null}
 
       {isReviewing &&
-      (state === "approval_ready" || state === "approval_warning" || showRejectFormPrimary) ? (
+      (state === "approval_ready" ||
+        state === "approval_warning" ||
+        state === "submit_package_changed" ||
+        showRejectFormPrimary) ? (
         <>
           <label className="block text-xs font-semibold text-slate-700" htmlFor="review-memo">
             검수 메모 (선택)
@@ -309,7 +368,10 @@ export function AdminReviewDecisionSummary({
         </>
       ) : null}
 
-      {canApprove || state === "approval_warning" || state === "approval_ready" ? (
+      {canApprove ||
+      state === "approval_warning" ||
+      state === "approval_ready" ||
+      state === "submit_package_changed" ? (
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
@@ -351,6 +413,22 @@ export function AdminReviewDecisionSummary({
       {rejectOpen &&
       (state === "review_refresh_required" || state === "release_gate_required") ? (
         <div className="space-y-3 border-t border-store-border pt-3">{rejectForm}</div>
+      ) : null}
+
+      {showAdvancedRefresh && !showPrimaryRefresh ? (
+        <details className="rounded-xl border border-dashed border-store-border bg-slate-50 p-3">
+          <summary className="cursor-pointer text-xs font-bold text-slate-700">
+            {ADMIN_REVIEW_ADVANCED_ACTIONS_TITLE}
+          </summary>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void onRefreshAll()}
+            className="mt-3 min-h-[44px] w-full rounded-xl border border-store-border bg-white text-sm font-semibold text-slate-800 disabled:opacity-50"
+          >
+            {busy === "refresh" ? "재점검 중…" : ADMIN_REVIEW_CTA_REFRESH_ALL}
+          </button>
+        </details>
       ) : null}
 
       {message ? <p className="text-sm font-semibold text-emerald-800">{message}</p> : null}

@@ -27,6 +27,7 @@ import {
   getFirstBlockerMessage,
 } from "@/lib/release-gate/release-gate-runner";
 import { releaseGateAllowsApprovalStatus } from "@/lib/release-gate/release-gate-readiness";
+import { canApproveAdminReview } from "@/lib/admin-review-decision";
 import {
   validateAllSourceDocumentsForPack,
   validateAndPersistSourceDocument,
@@ -303,31 +304,31 @@ export async function evaluateAdminPackReleaseGate(input: {
 }
 
 function validateApprovalReadiness(detail: AdminReviewDetailDto): string | null {
-  if (!detail.readiness.canApprove) {
-    if (detail.pack.status !== "REVIEWING") {
-      return "검수 중(REVIEWING) 상태의 지식팩만 승인할 수 있습니다.";
-    }
-    const sourceBlock = getApprovalBlockingSourceValidationMessage(
-      detail.readiness.sourceValidation,
-    );
-    if (sourceBlock) {
-      return sourceBlock;
-    }
-    if (detail.readiness.structureQualityMessage) {
-      return detail.readiness.structureQualityMessage;
-    }
-    if (detail.readiness.chunkQualityMessage) {
-      return detail.readiness.chunkQualityMessage;
-    }
-    if (detail.readiness.retrievalEvaluationMessage) {
-      return detail.readiness.retrievalEvaluationMessage;
-    }
-    if (detail.readiness.releaseGateMessage) {
-      return detail.readiness.releaseGateMessage;
-    }
-    return "승인에 필요한 버전·원천 문서·설명을 확인해 주세요.";
+  if (canApproveAdminReview(detail)) {
+    return null;
   }
-  return null;
+  if (detail.pack.status !== "REVIEWING") {
+    return "검수 중(REVIEWING) 상태의 지식팩만 승인할 수 있습니다.";
+  }
+  const sourceBlock = getApprovalBlockingSourceValidationMessage(
+    detail.readiness.sourceValidation,
+  );
+  if (sourceBlock) {
+    return sourceBlock;
+  }
+  if (detail.readiness.structureQualityMessage) {
+    return detail.readiness.structureQualityMessage;
+  }
+  if (detail.readiness.chunkQualityMessage) {
+    return detail.readiness.chunkQualityMessage;
+  }
+  if (detail.readiness.retrievalEvaluationMessage) {
+    return detail.readiness.retrievalEvaluationMessage;
+  }
+  if (detail.readiness.releaseGateMessage) {
+    return detail.readiness.releaseGateMessage;
+  }
+  return "승인에 필요한 버전·원천 문서·설명을 확인해 주세요.";
 }
 
 async function recordApprovalPipeline(packId: string, reviewerClientId?: string) {

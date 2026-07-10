@@ -1,6 +1,10 @@
 import { AdminReviewStatusBadge } from "@/components/AdminReviewStatusBadge";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
-import { ADMIN_REVIEW_INSPECTION_SUMMARY_TITLE, ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE } from "@/lib/role-based-ux-copy";
+import { detectSubmitSnapshotDrift } from "@/lib/admin-review-decision";
+import {
+  ADMIN_REVIEW_INSPECTION_SUMMARY_TITLE,
+  ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE,
+} from "@/lib/role-based-ux-copy";
 
 function statusLabel(status: string | null | undefined): string {
   if (!status) return "미실행";
@@ -41,6 +45,12 @@ export function AdminReviewInspectionSummary({
     : detail.releaseGate?.freshness.status === "STALE"
       ? "재점검 필요"
       : "미실행";
+  const snapshot = detail.latestReview?.submitSnapshot ?? null;
+  const drift = detectSubmitSnapshotDrift(detail);
+  const submittedVersionLabel = snapshot?.submittedVersionId
+    ? detail.versions.find((v) => v.id === snapshot.submittedVersionId)?.version ??
+      snapshot.submittedVersionId
+    : null;
 
   const structureStatus =
     readiness.structureCoverageStatus ?? readiness.knowledgeQualityStatus ?? "미실행";
@@ -66,14 +76,31 @@ export function AdminReviewInspectionSummary({
         <AdminReviewStatusBadge status={pack.status} />
       </div>
 
+      {snapshot ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <p className="text-xs font-bold text-emerald-950">{ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE}</p>
+          <div className="mt-2 grid gap-1 text-xs text-emerald-950 sm:grid-cols-2">
+            <p>제출일시: {snapshot.submittedAt.replace("T", " ").slice(0, 16)}</p>
+            {submittedVersionLabel ? <p>제출 버전: {submittedVersionLabel}</p> : null}
+            <p>원천 문서: {snapshot.sourceDocumentCount}개</p>
+            <p>검수용 Chunk: {snapshot.activeChunkCount}개</p>
+            {snapshot.retrievalEvaluationRunId ? (
+              <p>검색 평가 Run: {snapshot.retrievalEvaluationRunId}</p>
+            ) : null}
+            <p>릴리스 게이트: {snapshot.releaseGateStatus}</p>
+            {snapshot.warnings.length > 0 ? (
+              <p>주의 항목: {snapshot.warnings.length}개</p>
+            ) : null}
+          </div>
+          {drift.changed ? (
+            <p className="mt-2 text-xs font-semibold text-amber-900">
+              제출 후 변경 감지: {drift.reasons[0]}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="grid gap-2 sm:grid-cols-2">
-        {detail.latestReview?.submitSnapshot ? (
-          <Row
-            label={ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE}
-            value={`릴리스 게이트 ${detail.latestReview.submitSnapshot.releaseGateStatus}`}
-            detail={`원천 ${detail.latestReview.submitSnapshot.sourceDocumentCount}개 · active chunk ${detail.latestReview.submitSnapshot.activeChunkCount}개 · 제출 ${detail.latestReview.submitSnapshot.submittedAt.slice(0, 10)}`}
-          />
-        ) : null}
         <Row
           label="원천 문서"
           value={`${readiness.sourceDocumentCount}개`}

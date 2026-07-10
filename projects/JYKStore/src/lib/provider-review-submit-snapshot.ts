@@ -1,5 +1,6 @@
 export type ProviderReviewSubmitSnapshot = {
   submittedAt: string;
+  submittedVersionId: string;
   sourceDocumentIds: string[];
   activeChunkIds: string[];
   sourceDocumentCount: number;
@@ -13,6 +14,7 @@ export type ProviderReviewSubmitSnapshot = {
 };
 
 export function buildProviderReviewSubmitSnapshot(input: {
+  submittedVersionId: string;
   sourceDocumentIds: string[];
   activeChunkIds: string[];
   retrievalEvaluationSetId?: string;
@@ -24,6 +26,7 @@ export function buildProviderReviewSubmitSnapshot(input: {
 }): ProviderReviewSubmitSnapshot {
   return {
     submittedAt: new Date().toISOString(),
+    submittedVersionId: input.submittedVersionId,
     sourceDocumentIds: input.sourceDocumentIds,
     activeChunkIds: input.activeChunkIds,
     sourceDocumentCount: input.sourceDocumentIds.length,
@@ -48,26 +51,24 @@ export function parseProviderReviewSubmitSnapshot(
   if (raw.releaseGateStatus !== "PASS" && raw.releaseGateStatus !== "WARNING") {
     return null;
   }
+  const sourceDocumentIds = Array.isArray(raw.sourceDocumentIds)
+    ? raw.sourceDocumentIds.filter((id): id is string => typeof id === "string")
+    : [];
+  const activeChunkIds = Array.isArray(raw.activeChunkIds)
+    ? raw.activeChunkIds.filter((id): id is string => typeof id === "string")
+    : [];
   return {
     submittedAt: raw.submittedAt,
-    sourceDocumentIds: Array.isArray(raw.sourceDocumentIds)
-      ? raw.sourceDocumentIds.filter((id): id is string => typeof id === "string")
-      : [],
-    activeChunkIds: Array.isArray(raw.activeChunkIds)
-      ? raw.activeChunkIds.filter((id): id is string => typeof id === "string")
-      : [],
+    submittedVersionId:
+      typeof raw.submittedVersionId === "string" ? raw.submittedVersionId : "",
+    sourceDocumentIds,
+    activeChunkIds,
     sourceDocumentCount:
       typeof raw.sourceDocumentCount === "number"
         ? raw.sourceDocumentCount
-        : Array.isArray(raw.sourceDocumentIds)
-          ? raw.sourceDocumentIds.length
-          : 0,
+        : sourceDocumentIds.length,
     activeChunkCount:
-      typeof raw.activeChunkCount === "number"
-        ? raw.activeChunkCount
-        : Array.isArray(raw.activeChunkIds)
-          ? raw.activeChunkIds.length
-          : 0,
+      typeof raw.activeChunkCount === "number" ? raw.activeChunkCount : activeChunkIds.length,
     retrievalEvaluationSetId:
       typeof raw.retrievalEvaluationSetId === "string" ? raw.retrievalEvaluationSetId : undefined,
     retrievalEvaluationRunId:

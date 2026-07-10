@@ -317,4 +317,22 @@ describe("provider pack inspection readiness", () => {
     assert.equal(readiness.canSubmitReview, true);
     assert.equal(readiness.currentStepId, "completed");
   });
+
+  it("quality ready without release gate → guide to review tab", () => {
+    const readiness = buildProviderInspectionReadiness({
+      pack: basePack({
+        structureQuality: passingStructureQualitySummary(),
+        chunkQuality: passingChunkQualitySummary(),
+        retrievalEvaluation: passingRetrievalEvaluationSummary(),
+        releaseGate: null,
+      }),
+      ...readyInput,
+    });
+
+    assert.equal(readiness.canSubmitReview, true);
+    assert.equal(readiness.nextAction, "GO_TO_SUBMIT_REVIEW");
+    assert.equal(readiness.primaryActionKind, "GO_TO_REVIEW");
+    assert.equal(readiness.primaryActionLabel, "검수요청으로 이동");
+    assert.ok(readiness.plan.requiresFinalGateOnSubmit);
+  });
 });

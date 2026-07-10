@@ -52,6 +52,7 @@ export type InspectionPrimaryActionKind =
   | "RUN_AUTO_PREPARE"
   | "REGENERATE_AND_CHECK"
   | "REPAIR_RETRIEVAL_DATA"
+  | "RUN_RELEASE_GATE"
   | "GO_TO_SOURCE"
   | "GO_TO_DRAFT"
   | "GO_TO_REVIEW"
@@ -217,11 +218,27 @@ function resolveUserFacingState(input: {
     return {
       userState: "review_ready",
       userTitle: "지식팩 자동 점검 완료",
-      userMessage: "검수 요청에 필요한 기본 점검이 완료되었습니다.",
+      userMessage:
+        plan.requiresFinalGateOnSubmit
+          ? "기본 점검이 완료되었습니다. 검수요청 탭에서 최종 점검(릴리스 게이트 포함) 후 제출할 수 있습니다."
+          : "검수 요청에 필요한 기본 점검이 완료되었습니다.",
       primaryActionLabel: PROVIDER_PACK_GO_TO_REVIEW_TAB,
       primaryActionKind: "GO_TO_REVIEW",
       passedTitles,
       fixNeededTitles: [],
+    };
+  }
+
+  if (nextAction === "RUN_RELEASE_GATE") {
+    return {
+      userState: "system_fix_available",
+      userTitle: "릴리스 게이트 사전 점검 필요",
+      userMessage:
+        "공개 전 최종 품질을 통합 점검해야 합니다. 검수요청 시에도 최신 상태로 다시 점검됩니다.",
+      primaryActionLabel: "릴리스 게이트 사전 점검",
+      primaryActionKind: "RUN_RELEASE_GATE",
+      passedTitles,
+      fixNeededTitles: ["릴리스 게이트 사전 점검"],
     };
   }
 

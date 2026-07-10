@@ -346,7 +346,7 @@ describe("provider submit readiness steps", () => {
     assert.equal(plan.completedStepCount, 3);
   });
 
-  it("Case 5: retrieval done without release gate → release gate required", () => {
+  it("Case 5: retrieval done without release gate → final submit available", () => {
     const pack = basePack({
       structureQuality: passingStructureQualitySummary(),
       chunkQuality: passingChunkQualitySummary(),
@@ -354,9 +354,12 @@ describe("provider submit readiness steps", () => {
     });
     const plan = buildProviderSubmitReadinessPlan({ pack, ...readyInput });
 
-    assert.equal(plan.nextAction, "RUN_RELEASE_GATE");
-    assert.equal(plan.canSubmitReview, false);
-    assert.ok(plan.incompleteStepTitles.includes("릴리스 게이트 사전 점검"));
+    assert.equal(plan.nextAction, "SUBMIT_REVIEW");
+    assert.equal(plan.canSubmitReview, true);
+    assert.equal(plan.releaseGateDone, false);
+    assert.equal(plan.requiresFinalGateOnSubmit, true);
+    assert.equal(plan.nextActionLabel, "최종 점검 후 검수 요청");
+    assert.ok(!plan.incompleteStepTitles.includes("릴리스 게이트 사전 점검"));
     assert.equal(plan.completedStepCount, 4);
   });
 

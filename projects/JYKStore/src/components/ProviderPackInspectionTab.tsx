@@ -126,11 +126,31 @@ export function ProviderPackInspectionTab({
     }
     if (readiness.primaryActionKind === "REPAIR_RETRIEVAL_DATA") {
       await runAutoPrepare(true);
+      return;
+    }
+    if (readiness.primaryActionKind === "RUN_RELEASE_GATE") {
+      if (!editable || isReviewing) return;
+      setActionBusy(true);
+      setInspectionError(null);
+      try {
+        const data = await evaluateProviderReleaseGateApi(packId);
+        onPackUpdated(data.pack);
+      } catch (err) {
+        setInspectionError(
+          err instanceof Error ? err.message : "릴리스 게이트 점검에 실패했습니다.",
+        );
+      } finally {
+        setActionBusy(false);
+      }
     }
   }, [
+    editable,
+    isReviewing,
     onGoToDraftTab,
     onGoToReviewTab,
     onGoToSourceTab,
+    onPackUpdated,
+    packId,
     readiness.primaryActionKind,
     runAutoPrepare,
   ]);
@@ -172,7 +192,8 @@ export function ProviderPackInspectionTab({
   const pipelineBusyKinds =
     readiness.primaryActionKind === "RUN_AUTO_PREPARE" ||
     readiness.primaryActionKind === "REGENERATE_AND_CHECK" ||
-    readiness.primaryActionKind === "REPAIR_RETRIEVAL_DATA";
+    readiness.primaryActionKind === "REPAIR_RETRIEVAL_DATA" ||
+    readiness.primaryActionKind === "RUN_RELEASE_GATE";
 
   return (
     <section
