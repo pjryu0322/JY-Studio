@@ -179,12 +179,15 @@ export async function evaluateProviderStructureQualityApi(
 
 export async function evaluateProviderChunkQualityApi(
   packId: string,
+  input?: { regenerate?: boolean },
 ): Promise<ProviderPackDetailResponse> {
   const response = await fetch(
     `/api/v1/provider/packs/${encodeURIComponent(packId)}/chunk-quality/evaluate`,
     {
       method: "POST",
       credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input ?? { regenerate: true }),
     },
   );
   if (!response.ok) {
@@ -310,6 +313,8 @@ export async function generateGitHubKnowledgeUnitDraftsApi(
     maxKnowledgeUnitCount?: number;
     productProfileType?: string;
     overwriteExistingDrafts?: boolean;
+    autoPrepareForReview?: boolean;
+    autoRunRetrievalEvaluation?: boolean;
   },
 ): Promise<GitHubKnowledgeUnitDraftResult> {
   const response = await fetch(
@@ -325,6 +330,25 @@ export async function generateGitHubKnowledgeUnitDraftsApi(
     throw new Error(await parseErrorMessage(response));
   }
   return (await response.json()) as GitHubKnowledgeUnitDraftResult;
+}
+
+export async function runProviderInspectionAutoPrepareApi(
+  packId: string,
+  input?: { runRetrievalEvaluation?: boolean },
+): Promise<ProviderPackDetailResponse & { preparation?: unknown }> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/inspection/auto-prepare`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input ?? { runRetrievalEvaluation: true }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as ProviderPackDetailResponse & { preparation?: unknown };
 }
 
 export async function fetchProviderKnowledgeUnitDraftsApi(

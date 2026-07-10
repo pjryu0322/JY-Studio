@@ -26,6 +26,16 @@ const longBody = "x".repeat(60);
 const editableDraftPack = async () =>
   ({ ok: true as const, packId: "pack-1", status: PackStatus.DRAFT });
 
+const noopReviewPreparation = async () => ({
+  ok: true as const,
+  generatedChunkCount: 0,
+  structureQualityStatus: "SKIPPED" as const,
+  chunkQualityStatus: "SKIPPED" as const,
+  retrievalCaseCount: 0,
+  retrievalEvaluationStatus: "SKIPPED" as const,
+  warnings: [] as string[],
+});
+
 function makeDoc(overrides: Partial<SourceDocument> & { id: string }): SourceDocument {
   const now = new Date();
   return {
@@ -140,6 +150,8 @@ describe("github knowledge unit draft options", () => {
     assert.equal(normalized.targetKnowledgeUnitCount, 8);
     assert.equal(normalized.maxKnowledgeUnitCount, 10);
     assert.equal(normalized.generationScope, "all_documents");
+    assert.equal(normalized.autoPrepareForReview, true);
+    assert.equal(normalized.autoRunRetrievalEvaluation, true);
   });
 
   it("caps maxKnowledgeUnitCount at hard limit for CUSTOM", () => {
@@ -349,7 +361,7 @@ describe("github knowledge unit draft service", () => {
         generationMode: "MINIMAL",
         sourceDocumentIds: docs.map((d) => d.id),
       },
-      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack, runReviewPreparation: noopReviewPreparation },
     );
 
     assert.ok(result.summary.generatedDraftCount > 0);
@@ -397,7 +409,7 @@ describe("github knowledge unit draft service", () => {
     const result = await generateGitHubKnowledgeUnitDraftsForPack("user-test", "client-1",
       "pack-1",
       {},
-      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack, runReviewPreparation: noopReviewPreparation },
     );
 
     assert.equal(result.summary.generatedDraftCount, 0);
@@ -414,7 +426,7 @@ describe("github knowledge unit draft service", () => {
     const result = await generateGitHubKnowledgeUnitDraftsForPack("user-test", "client-1",
       "pack-1",
       { sourceDocumentIds: ["missing-doc"] },
-      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack, runReviewPreparation: noopReviewPreparation },
     );
 
     assert.equal(result.summary.generatedDraftCount, 0);
@@ -472,7 +484,7 @@ describe("github knowledge unit draft service", () => {
       const result = await generateGitHubKnowledgeUnitDraftsForPack("user-test", "client-1",
         "pack-1",
         { sourceDocumentPaths: paths, generationMode: "FULL" },
-        { prismaClient: db as never, assertEditablePack: editableDraftPack },
+        { prismaClient: db as never, assertEditablePack: editableDraftPack, runReviewPreparation: noopReviewPreparation },
       );
       const draftOnly = draftChunksOnly(createdChunks);
       const ids = new Set(draftOnly.map((c) => String(c.sourceDocumentId)));
@@ -512,7 +524,7 @@ describe("github knowledge unit draft service", () => {
       "client-1",
       "pack-1",
       { generationScope: "all_documents", generationMode: "FULL" },
-      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack, runReviewPreparation: noopReviewPreparation },
     );
 
     const draftChunks = draftChunksOnly(createdChunks);
@@ -552,7 +564,7 @@ describe("github knowledge unit draft service", () => {
       "client-1",
       "pack-1",
       { generationScope: "all_documents" },
-      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack, runReviewPreparation: noopReviewPreparation },
     );
 
     const draftChunks = draftChunksOnly(createdChunks);
@@ -584,7 +596,7 @@ describe("github knowledge unit draft service", () => {
       "client-1",
       "pack-1",
       { generationScope: "all_documents" },
-      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack, runReviewPreparation: noopReviewPreparation },
     );
 
     const draftChunks = draftChunksOnly(createdChunks);
@@ -614,7 +626,7 @@ describe("github knowledge unit draft service", () => {
         generationMode: "MINIMAL",
         targetKnowledgeUnitCount: 8,
       },
-      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack, runReviewPreparation: noopReviewPreparation },
     );
 
     const draftChunks = draftChunksOnly(createdChunks);
@@ -640,7 +652,7 @@ describe("github knowledge unit draft service", () => {
       "client-1",
       "pack-1",
       { generationScope: "all_documents" },
-      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack, runReviewPreparation: noopReviewPreparation },
     );
 
     const pkg = result.documentProcessing.find((d) => d.sourceDocumentId === "doc-pkg");
@@ -671,7 +683,7 @@ describe("github knowledge unit draft service", () => {
       "client-1",
       "pack-1",
       {},
-      { prismaClient: patched as never, assertEditablePack: editableDraftPack },
+      { prismaClient: patched as never, assertEditablePack: editableDraftPack, runReviewPreparation: noopReviewPreparation },
     );
 
     assert.equal(draftChunksOnly(createdChunks).length, 0);

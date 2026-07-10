@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { ProviderPackChunkSummaryCard } from "@/components/ProviderPackChunkSummaryCard";
 import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCard";
 import { SubmitRequestAction } from "@/components/provider-submit/SubmitRequestAction";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
@@ -9,7 +8,11 @@ import { buildProviderSubmitReadinessPlan } from "@/lib/provider-submit-readines
 import {
   PROVIDER_PACK_GO_TO_INSPECTION_TAB,
   PROVIDER_PACK_GO_TO_SOURCE_TAB,
+  PROVIDER_PACK_REVIEW_INCOMPLETE_BODY,
+  PROVIDER_PACK_REVIEW_INCOMPLETE_TITLE,
   PROVIDER_PACK_REVIEW_PREREQ_TITLE,
+  PROVIDER_PACK_REVIEW_READY_BODY,
+  PROVIDER_PACK_REVIEW_READY_TITLE,
   PROVIDER_PACK_WIZARD_REVIEW_STEP,
   PROVIDER_REVIEW_READONLY_HINT,
   PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE,
@@ -94,20 +97,8 @@ export function ProviderPackReviewTab({
 
       {inspectionIncomplete ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
-          <p className="font-bold">검수 요청 불가</p>
-          <p className="mt-1 text-xs">
-            아직 완료되지 않은 점검이 있습니다. 점검 탭에서 필수 점검을 먼저 완료해 주세요.
-          </p>
-          {plan.incompleteStepTitles.length > 0 ? (
-            <div className="mt-3 text-xs">
-              <p className="font-semibold">미완료 항목</p>
-              <ul className="mt-1 list-disc space-y-0.5 pl-4">
-                {plan.incompleteStepTitles.map((title) => (
-                  <li key={title}>{title}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+          <p className="font-bold">{PROVIDER_PACK_REVIEW_INCOMPLETE_TITLE}</p>
+          <p className="mt-1 text-xs">{PROVIDER_PACK_REVIEW_INCOMPLETE_BODY}</p>
           <button
             type="button"
             onClick={onGoToInspectionTab}
@@ -120,21 +111,8 @@ export function ProviderPackReviewTab({
 
       {plan.canSubmitReview && !isReviewing && !isPublished ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-950">
-          <p className="font-bold">검수 요청 준비 완료</p>
-          <p className="mt-1 text-xs">
-            모든 필수 점검이 완료되었습니다. 검수 요청을 제출하면 일반 카탈로그와 Context API에는 아직
-            공개되지 않고, 관리자 검토 단계로 이동합니다.
-          </p>
-          <div className="mt-3 text-xs">
-            <p className="font-semibold">완료된 점검</p>
-            <ul className="mt-1 space-y-0.5">
-              {["구조/품질 점검", "청킹 품질 점검", "검색 평가 케이스 생성", "검색 품질 평가"].map(
-                (title) => (
-                  <li key={title}>✓ {title}</li>
-                ),
-              )}
-            </ul>
-          </div>
+          <p className="font-bold">{PROVIDER_PACK_REVIEW_READY_TITLE}</p>
+          <p className="mt-1 text-xs">{PROVIDER_PACK_REVIEW_READY_BODY}</p>
         </div>
       ) : null}
 
@@ -143,8 +121,6 @@ export function ProviderPackReviewTab({
       <p className="rounded-xl border border-store-border bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-700">
         {PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE}
       </p>
-
-      <ProviderPackChunkSummaryCard packId={pack.packId} />
 
       {editable && !isReviewing ? (
         <SubmitRequestAction

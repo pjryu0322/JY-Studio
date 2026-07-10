@@ -8,14 +8,12 @@ import { RetrievalEvaluationPanel } from "@/components/RetrievalEvaluationPanel"
 import { StructureQualityPanel } from "@/components/StructureQualityPanel";
 import { SubmitReadinessChecklist } from "@/components/provider-submit/SubmitReadinessChecklist";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
-import {
-  buildProviderInspectionReadiness,
-  type InspectionNextAction,
-} from "@/lib/provider-pack-inspection-readiness";
+import { buildProviderInspectionReadiness } from "@/lib/provider-pack-inspection-readiness";
 import {
   evaluateProviderChunkQualityApi,
   evaluateProviderStructureQualityApi,
   generateProviderRetrievalEvaluationCasesApi,
+  runProviderInspectionAutoPrepareApi,
   runProviderRetrievalEvaluationApi,
 } from "@/lib/provider-center-api";
 import {
@@ -26,10 +24,8 @@ import {
   type SubmitReadinessNextAction,
 } from "@/lib/provider-submit-readiness-steps";
 import {
-  PROVIDER_PACK_GO_TO_REVIEW_TAB,
-  PROVIDER_PACK_GO_TO_SOURCE_TAB,
+  PROVIDER_PACK_INSPECTION_AUTO_TITLE,
   PROVIDER_PACK_INSPECTION_INTRO,
-  PROVIDER_PACK_REVIEW_PREREQ_TITLE,
   PROVIDER_PACK_WIZARD_INSPECTION_STEP,
   PROVIDER_SUBMIT_ADMIN_REVIEW_NOTICE,
 } from "@/lib/role-based-ux-copy";
@@ -41,6 +37,7 @@ export function ProviderPackInspectionTab({
   sourceDocumentCount,
   knowledgeUnitDraftCount,
   onGoToSourceTab,
+  onGoToDraftTab,
   onGoToReviewTab,
   onPackUpdated,
 }: {
@@ -50,15 +47,13 @@ export function ProviderPackInspectionTab({
   readonly sourceDocumentCount: number;
   readonly knowledgeUnitDraftCount: number;
   readonly onGoToSourceTab: () => void;
+  readonly onGoToDraftTab: () => void;
   readonly onGoToReviewTab: () => void;
   readonly onPackUpdated: (pack: ProviderPackDetailDto) => void;
 }) {
   const [actionBusy, setActionBusy] = useState(false);
 
   const isReviewing = pack.status === "REVIEWING";
-  const isPublished = pack.status === "PUBLISHED" || pack.status === "VERIFIED";
-  const missingSources = sourceDocumentCount === 0;
-  const missingDrafts = knowledgeUnitDraftCount === 0;
 
   const readiness = useMemo(
     () =>
@@ -70,22 +65,55 @@ export function ProviderPackInspectionTab({
     [pack, sourceDocumentCount, knowledgeUnitDraftCount],
   );
 
-  const runAction = useCallback(
-    async (action: InspectionNextAction | SubmitReadinessNextAction) => {
+  const runPrimaryAction = useCallback(async () => {
+    if (readiness.primaryActionKind === "GO_TO_SOURCE") {
+      onGoToSourceTab();
+      return;
+    }
+    if (readiness.primaryActionKind === "GO_TO_DRAFT") {
+      onGoToDraftTab();
+      return;
+    }
+    if (readiness.primaryActionKind === "GO_TO_REVIEW") {
+      onGoToReviewTab();
+      return;
+    }
+    if (
+      readiness.primaryActionKind === "RUN_AUTO_PREPARE" ||
+      readiness.primaryActionKind === "REGENERATE_AND_CHECK"
+    ) {
       if (!editable || isReviewing) return;
-      if (action === "GO_TO_SUBMIT_REVIEW" || action === "SUBMIT_REVIEW") {
-        onGoToReviewTab();
-        return;
+      setActionBusy(true);
+      try {
+        const data = await runProviderInspectionAutoPrepareApi(packId, {
+          runRetrievalEvaluation: true,
+        });
+        onPackUpdated(data.pack);
+      } finally {
+        setActionBusy(false);
       }
-      if (action === "WAIT_ADMIN_REVIEW" || action === "BLOCKED") return;
+    }
+  }, [
+    editable,
+    isReviewing,
+    onGoToDraftTab,
+    onGoToReviewTab,
+    onGoToSourceTab,
+    onPackUpdated,
+    packId,
+    readiness.primaryActionKind,
+  ]);
 
+  const runDetailAction = useCallback(
+    async (action: SubmitReadinessNextAction) => {
+      if (!editable || isReviewing) return;
       setActionBusy(true);
       try {
         if (action === "RUN_STRUCTURE_QUALITY") {
           const data = await evaluateProviderStructureQualityApi(packId);
           onPackUpdated(data.pack);
         } else if (action === "RUN_CHUNK_QUALITY") {
-          const data = await evaluateProviderChunkQualityApi(packId);
+          const data = await evaluateProviderChunkQualityApi(packId, { regenerate: true });
           onPackUpdated(data.pack);
         } else if (action === "GENERATE_RETRIEVAL_CASES") {
           const data = await generateProviderRetrievalEvaluationCasesApi(packId, true);
@@ -98,17 +126,14 @@ export function ProviderPackInspectionTab({
         setActionBusy(false);
       }
     },
-    [editable, isReviewing, onGoToReviewTab, onPackUpdated, packId],
+    [editable, isReviewing, onPackUpdated, packId],
   );
 
   const structureLabel = getStructureQualityEvaluateLabel(pack);
   const chunkLabel = getChunkQualityEvaluateLabel(pack);
   const casesLabel = getRetrievalCasesActionLabel(pack);
   const runEvalLabel = getRetrievalRunActionLabel(pack);
-
   const checklistSteps = readiness.plan.steps.filter((step) => step.key !== "submit_review");
-  const showPrimaryCta =
-    readiness.nextAction !== "BLOCKED" && readiness.nextAction !== "WAIT_ADMIN_REVIEW";
 
   return (
     <section
@@ -118,97 +143,66 @@ export function ProviderPackInspectionTab({
       <h2 className="text-sm font-bold text-slate-900">{PROVIDER_PACK_WIZARD_INSPECTION_STEP}</h2>
       <p className="text-xs text-store-muted">{PROVIDER_PACK_INSPECTION_INTRO}</p>
 
-      {isReviewing ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          검수 요청이 접수되어 점검은 읽기 전용입니다. 관리자 검토 결과를 기다려 주세요.
-        </div>
-      ) : null}
+      <section className="rounded-2xl border border-store-border bg-slate-50 p-4">
+        <h3 className="text-sm font-bold text-slate-900">{PROVIDER_PACK_INSPECTION_AUTO_TITLE}</h3>
+        <p className="mt-2 text-sm font-semibold text-slate-900">{readiness.userTitle}</p>
+        <p className="mt-1 text-xs text-store-muted">{readiness.userMessage}</p>
 
-      {isPublished ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
-          운영자 승인이 완료된 지식팩입니다. 점검 결과는 참고용으로 확인할 수 있습니다.
-        </div>
-      ) : null}
+        {readiness.passedTitles.length > 0 ? (
+          <div className="mt-3 text-xs text-emerald-900">
+            <p className="font-semibold">통과</p>
+            <ul className="mt-1 space-y-0.5">
+              {readiness.passedTitles.map((title) => (
+                <li key={title}>✓ {title}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
-      {(missingSources || missingDrafts) && !isReviewing && !isPublished ? (
-        <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3 text-xs text-amber-950">
-          <p className="font-bold">{PROVIDER_PACK_REVIEW_PREREQ_TITLE}</p>
-          <ol className="mt-2 list-decimal space-y-1 pl-4">
-            {missingSources ? <li>원천 문서 등록 필요</li> : null}
-            {missingDrafts ? <li>Knowledge Unit 후보 생성 필요</li> : null}
-          </ol>
+        {readiness.fixNeededTitles.length > 0 ? (
+          <div className="mt-3 text-xs text-amber-950">
+            <p className="font-semibold">
+              보완 필요 {readiness.fixNeededTitles.length}개
+            </p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              {readiness.fixNeededTitles.map((title) => (
+                <li key={title}>{title}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <p className="mt-3 text-xs text-slate-700">
+          진행률: <strong>{readiness.completedCount}</strong> / {readiness.totalCount} 완료
+        </p>
+
+        {readiness.primaryActionKind !== "NONE" && readiness.primaryActionLabel ? (
           <button
             type="button"
-            onClick={onGoToSourceTab}
-            className="mt-3 min-h-[44px] w-full rounded-xl border border-store-accent bg-white text-sm font-bold text-store-accent"
+            disabled={
+              actionBusy ||
+              ((readiness.primaryActionKind === "RUN_AUTO_PREPARE" ||
+                readiness.primaryActionKind === "REGENERATE_AND_CHECK") &&
+                (!editable || isReviewing))
+            }
+            onClick={() => void runPrimaryAction()}
+            className="mt-3 min-h-[44px] w-full rounded-xl bg-store-accent px-4 text-sm font-bold text-white disabled:opacity-50"
           >
-            {PROVIDER_PACK_GO_TO_SOURCE_TAB}
+            {actionBusy ? "자동 점검 중…" : readiness.primaryActionLabel}
           </button>
-        </div>
-      ) : null}
-
-      {!isPublished ? (
-        <section className="rounded-2xl border border-store-border bg-slate-50 p-4">
-          {readiness.nextAction === "GO_TO_SUBMIT_REVIEW" ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
-              <p className="font-bold">점검 완료: 검수요청 가능</p>
-              <p className="mt-1">
-                모든 필수 점검이 완료되었습니다. 검수요청 탭에서 제출할 수 있습니다.
-              </p>
-            </div>
-          ) : readiness.nextAction === "WAIT_ADMIN_REVIEW" ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-              <p className="font-bold">관리자 검토 대기</p>
-              <p className="mt-1">{readiness.nextActionDescription}</p>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-slate-800">
-              <p className="font-bold">
-                현재 단계: <strong>{readiness.currentStepTitle}</strong>
-              </p>
-              <p className="mt-1 text-store-muted">{readiness.nextActionDescription}</p>
-              {readiness.incompleteStepTitles.length > 0 ? (
-                <p className="mt-2 font-semibold">
-                  미완료 항목 {readiness.incompleteStepTitles.length}개
-                </p>
-              ) : null}
-            </div>
-          )}
-
-          <p className="mt-3 text-xs text-slate-700">
-            진행률: <strong>{readiness.completedCount}</strong> / {readiness.totalCount} 완료
-          </p>
-
-          {showPrimaryCta ? (
-            <button
-              type="button"
-              disabled={actionBusy || (!editable && readiness.nextAction !== "GO_TO_SUBMIT_REVIEW")}
-              onClick={() => void runAction(readiness.nextAction)}
-              className="mt-3 min-h-[44px] w-full rounded-xl bg-store-accent px-4 text-sm font-bold text-white disabled:opacity-50"
-            >
-              {actionBusy
-                ? "실행 중…"
-                : readiness.nextAction === "GO_TO_SUBMIT_REVIEW"
-                  ? PROVIDER_PACK_GO_TO_REVIEW_TAB
-                  : readiness.nextActionLabel}
-            </button>
-          ) : null}
-        </section>
-      ) : null}
-
-      {!isPublished ? (
-        <SubmitReadinessChecklist
-          steps={checklistSteps}
-          busy={actionBusy}
-          onStepAction={(action) => void runAction(action)}
-        />
-      ) : null}
+        ) : null}
+      </section>
 
       <details className="rounded-2xl border border-store-border bg-white">
         <summary className="cursor-pointer px-4 py-3 text-sm font-bold text-slate-900">
           상세 점검 결과 펼치기
         </summary>
         <div className="space-y-4 border-t border-store-border p-4">
+          <SubmitReadinessChecklist
+            steps={checklistSteps}
+            busy={actionBusy}
+            onStepAction={(action) => void runDetailAction(action)}
+          />
           <ProviderPackReadinessCard pack={pack} compactQualityWarnings />
           <StructureQualityPanel
             packId={packId}
@@ -226,7 +220,7 @@ export function ProviderPackInspectionTab({
             editable={editable && !isReviewing}
             evaluateButtonLabel={chunkLabel}
             onEvaluate={async () => {
-              const data = await evaluateProviderChunkQualityApi(packId);
+              const data = await evaluateProviderChunkQualityApi(packId, { regenerate: true });
               onPackUpdated(data.pack);
             }}
           />
@@ -245,22 +239,12 @@ export function ProviderPackInspectionTab({
               onPackUpdated(data.pack);
             }}
           />
+          <p className="rounded-xl border border-store-border bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-700">
+            {PROVIDER_SUBMIT_ADMIN_REVIEW_NOTICE}
+          </p>
+          <ProviderPackChunkSummaryCard packId={packId} />
         </div>
       </details>
-
-      <p className="rounded-xl border border-store-border bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-700">
-        {PROVIDER_SUBMIT_ADMIN_REVIEW_NOTICE}
-      </p>
-
-      <ProviderPackChunkSummaryCard
-        packId={packId}
-        chunkActionLabel={chunkLabel}
-        onChunkAction={
-          editable && !isReviewing && readiness.nextAction === "RUN_CHUNK_QUALITY"
-            ? () => void runAction("RUN_CHUNK_QUALITY")
-            : undefined
-        }
-      />
     </section>
   );
 }

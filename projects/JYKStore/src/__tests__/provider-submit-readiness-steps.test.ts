@@ -275,8 +275,8 @@ describe("provider submit readiness steps", () => {
     assert.equal(plan.nextAction, "RUN_STRUCTURE_QUALITY");
     assert.equal(plan.currentStepTitle, "구조/품질 점검");
     assert.equal(plan.canSubmitReview, false);
-    assert.equal(getStructureQualityEvaluateLabel(pack), "구조/품질 점검 시작");
-    assert.equal(plan.nextActionLabel, "구조/품질 점검 시작");
+    assert.equal(getStructureQualityEvaluateLabel(pack), "구조/품질 자동 점검");
+    assert.equal(plan.nextActionLabel, "구조/품질 자동 점검");
   });
 
   it("Case 2: structure done → chunk quality", () => {

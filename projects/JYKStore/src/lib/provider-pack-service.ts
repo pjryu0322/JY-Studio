@@ -29,6 +29,8 @@ import {
 } from "@/lib/structure-quality/structure-quality-evaluate-service";
 import { loadStructureQualitySummaryForPack } from "@/lib/structure-quality/structure-quality-freshness";
 import { evaluatePackChunkQuality } from "@/lib/chunk-quality/chunk-quality-evaluate-service";
+import { regenerateAutoChunksForPack } from "@/lib/auto-pipeline/provider-auto-chunk-service";
+import { runProviderReviewPreparationPipeline } from "@/lib/auto-pipeline/provider-review-preparation-service";
 import { loadChunkQualitySummaryForPack } from "@/lib/chunk-quality/chunk-quality-freshness";
 import {
   chunkQualityGateSnapshotFromSummary,
@@ -1002,7 +1004,12 @@ export async function evaluateProviderPackStructureQuality(userId: string, clien
   return { pack: detail!, evaluation: result };
 }
 
-export async function evaluateProviderPackChunkQuality(userId: string, clientId: string, packId: string) {
+export async function evaluateProviderPackChunkQuality(
+  userId: string,
+  clientId: string,
+  packId: string,
+  options?: { regenerate?: boolean },
+) {
   const profile = await findProviderProfileForUser(userId, clientId);
 
   if (!profile) {
@@ -1019,6 +1026,21 @@ export async function evaluateProviderPackChunkQuality(userId: string, clientId:
 
   if (pack.status !== PackStatus.DRAFT) {
     return { error: "NOT_EDITABLE" as const };
+  }
+
+  if (options?.regenerate !== false) {
+    const regenerated = await regenerateAutoChunksForPack({
+      packId,
+      actorClientId: clientId,
+      mode: "hybrid",
+      replace: true,
+    });
+    if ("error" in regenerated && regenerated.error !== "NO_DRAFTS") {
+      return {
+        error: "INCOMPLETE" as const,
+        message: regenerated.message,
+      };
+    }
   }
 
   const result = await evaluatePackChunkQuality({
@@ -1133,4 +1155,39 @@ export async function runProviderPackRetrievalEvaluation(userId: string, clientI
 
   const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail!, evaluation: result };
+}
+
+export async function runProviderPackInspectionAutoPrepare(
+  userId: string,
+  clientId: string,
+  packId: string,
+  options?: { runRetrievalEvaluation?: boolean },
+) {
+  const profile = await findProviderProfileForUser(userId, clientId);
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_EDITABLE" as const };
+  }
+
+  const preparation = await runProviderReviewPreparationPipeline({
+    packId,
+    actorClientId: clientId,
+    replaceAutoChunks: true,
+    runRetrievalEvaluation: options?.runRetrievalEvaluation !== false,
+  });
+
+  const detail = await getProviderPackForClient(userId, clientId, packId);
+  return { pack: detail!, preparation };
 }

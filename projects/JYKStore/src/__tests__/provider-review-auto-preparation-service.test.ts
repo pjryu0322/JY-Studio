@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import {
+  AUTO_PIPELINE_GENERATED_BY,
+  AUTO_SOURCE_CHUNK_TYPE,
+  buildRetrievalChunkContent,
+  normalizeAndClamp,
+  regenerateAutoChunksForPack,
+} from "@/lib/auto-pipeline/provider-auto-chunk-service";
+import { AUTO_KNOWLEDGE_UNIT_CHUNK_TYPE } from "@/lib/admin-knowledge-unit-draft-activation-dto";
+import { AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE } from "@/lib/github-auto-collect/github-knowledge-unit-draft-generator";
 import { buildProviderInspectionReadiness } from "@/lib/provider-pack-inspection-readiness";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
@@ -7,6 +16,129 @@ import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-d
 import type { RetrievalEvaluationSummaryDto } from "@/lib/retrieval-evaluation/retrieval-evaluation-dto";
 
 const NOW = "2026-07-08T12:00:00.000Z";
+
+function createAutoChunkMockPrisma() {
+  const created: Array<Record<string, unknown>> = [];
+  const drafts = [
+    {
+      id: "draft-1",
+      versionId: "ver-1",
+      sourceDocumentId: "doc-1",
+      chunkType: AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE,
+      title: "Grid Overview",
+      content: "짧은 초안",
+      section: "Overview",
+      tags: ["grid"],
+      isActive: false,
+      metadata: {
+        reviewStatus: "pending_review",
+        sourcePath: "docs/guide.md",
+        topic: "Overview",
+        evidence: { excerpt: "TOAST UI Grid는 데이터 그리드 컴포넌트입니다." },
+        semanticTopicKey: "overview",
+        canonicalSourcePath: "docs/guide.md",
+      },
+    },
+    {
+      id: "draft-2",
+      versionId: "ver-1",
+      sourceDocumentId: "doc-1",
+      chunkType: AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE,
+      title: "Install",
+      content: "설치 방법 요약",
+      section: "Install",
+      tags: ["install"],
+      isActive: false,
+      metadata: {
+        reviewStatus: "pending_review",
+        sourcePath: "docs/guide.md",
+        topic: "Install",
+        evidence: { excerpt: "npm install 으로 설치합니다." },
+      },
+    },
+  ];
+
+  const db = {
+    knowledgePack: {
+      findFirst: async () => ({
+        packId: "pack-1",
+        versions: [
+          {
+            id: "ver-1",
+            sourceDocuments: [
+              {
+                id: "doc-1",
+                title: "Guide",
+                content: "x".repeat(200),
+                validationStatus: "PASS",
+                fileName: "docs/guide.md",
+                sourceUrl: "https://github.com/nhn/tui.grid/blob/main/docs/guide.md",
+              },
+            ],
+            chunks: drafts,
+          },
+        ],
+      }),
+    },
+    knowledgeChunk: {
+      aggregate: async () => ({ _max: { sortOrder: 2 } }),
+      updateMany: async () => ({ count: 0 }),
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        created.push(data);
+        return { id: `active-${created.length}`, ...data };
+      },
+    },
+    $transaction: async (fn: (tx: typeof db) => Promise<void>) => fn(db),
+  };
+
+  return { db: db as never, created };
+}
+
+describe("provider review auto preparation helpers", () => {
+  it("Case 1: regenerates active AUTO_KNOWLEDGE_UNIT chunks from drafts", async () => {
+    const { db, created } = createAutoChunkMockPrisma();
+    const result = await regenerateAutoChunksForPack(
+      { packId: "pack-1", mode: "hybrid", replace: true },
+      { prismaClient: db },
+    );
+
+    assert.equal("ok" in result && result.ok, true);
+    if (!("ok" in result)) return;
+    assert.ok(result.createdChunkCount >= 1);
+    assert.equal(created.length, result.createdChunkCount);
+    for (const chunk of created) {
+      assert.equal(chunk.isActive, true);
+      assert.ok(
+        chunk.chunkType === AUTO_KNOWLEDGE_UNIT_CHUNK_TYPE ||
+          chunk.chunkType === AUTO_SOURCE_CHUNK_TYPE,
+      );
+      assert.ok(String(chunk.content).length >= 120);
+      assert.ok(chunk.section);
+      assert.ok(Array.isArray(chunk.tags) && (chunk.tags as string[]).length > 0);
+      assert.ok(chunk.sourceDocumentId);
+      const meta = chunk.metadata as Record<string, unknown>;
+      assert.equal(meta.generatedBy, AUTO_PIPELINE_GENERATED_BY);
+    }
+  });
+
+  it("builds retrieval chunk content with minimum length and metadata parts", () => {
+    const content = buildRetrievalChunkContent({
+      title: "Grid",
+      draftContent: "짧은 요약",
+      sourceExcerpt: "원문 일부",
+      sourcePath: "docs/guide.md",
+    });
+    assert.ok(content.length >= 120);
+    assert.ok(content.includes("제목: Grid"));
+    assert.ok(content.includes("원문 근거"));
+    assert.ok(content.includes("출처: docs/guide.md"));
+  });
+
+  it("clamps oversized content", () => {
+    const content = normalizeAndClamp("x".repeat(5000), 120, 4000);
+    assert.ok(content.length <= 4000);
+  });
+});
 
 function passingStructureQualitySummary(): StructureQualitySummaryDto {
   return {
@@ -181,6 +313,19 @@ function passingRetrievalEvaluationSummary(): RetrievalEvaluationSummaryDto {
   };
 }
 
+function failingChunkQualitySummary(): ChunkQualitySummaryDto {
+  const base = passingChunkQualitySummary();
+  return {
+    ...base,
+    report: {
+      ...base.report!,
+      status: "FAIL",
+      activeChunkCount: 0,
+      blockingIssueCount: 1,
+    },
+  };
+}
+
 function basePack(overrides: Partial<ProviderPackDetailDto> = {}): ProviderPackDetailDto {
   return {
     packId: "p",
@@ -240,33 +385,52 @@ const readyInput = {
   knowledgeUnitDraftCount: 2,
 };
 
-describe("provider pack inspection readiness", () => {
-  it("0/4 shows auto prepare as primary user action", () => {
+describe("provider review auto preparation helpers", () => {
+  it("builds retrieval chunk content with minimum length and metadata parts", () => {
+    const content = buildRetrievalChunkContent({
+      title: "Grid",
+      draftContent: "짧은 요약",
+      sourceExcerpt: "원문 일부",
+      sourcePath: "docs/guide.md",
+    });
+    assert.ok(content.length >= 120);
+    assert.ok(content.includes("제목: Grid"));
+    assert.ok(content.includes("원문 근거"));
+    assert.ok(content.includes("출처: docs/guide.md"));
+  });
+
+  it("clamps oversized content", () => {
+    const content = normalizeAndClamp("x".repeat(5000), 120, 4000);
+    assert.ok(content.length <= 4000);
+  });
+});
+
+describe("provider inspection user-facing readiness", () => {
+  it("Case 3/4 style: not started → auto prepare CTA", () => {
     const readiness = buildProviderInspectionReadiness({
       pack: basePack(),
       ...readyInput,
     });
-
-    assert.equal(readiness.nextAction, "RUN_STRUCTURE_QUALITY");
+    assert.equal(readiness.userState, "auto_check_not_started");
     assert.equal(readiness.primaryActionKind, "RUN_AUTO_PREPARE");
     assert.equal(readiness.primaryActionLabel, "자동 점검 시작");
-    assert.equal(readiness.completedCount, 0);
-    assert.equal(readiness.canSubmitReview, false);
+    assert.equal(readiness.nextActionLabel, "자동 점검 시작");
   });
 
-  it("later steps wait until structure is done", () => {
+  it("Case 4: chunk fail with reports → system fix available", () => {
     const readiness = buildProviderInspectionReadiness({
-      pack: basePack(),
+      pack: basePack({
+        structureQuality: passingStructureQualitySummary(),
+        chunkQuality: failingChunkQualitySummary(),
+      }),
       ...readyInput,
     });
-
-    assert.equal(readiness.steps[0]?.checklistStatus, "current");
-    assert.equal(readiness.steps[1]?.checklistStatus, "waiting");
-    assert.equal(readiness.steps[2]?.checklistStatus, "waiting");
-    assert.equal(readiness.steps[3]?.checklistStatus, "waiting");
+    assert.equal(readiness.userState, "system_fix_available");
+    assert.equal(readiness.primaryActionKind, "REGENERATE_AND_CHECK");
+    assert.equal(readiness.primaryActionLabel, "자동 재생성 및 점검");
   });
 
-  it("all checks done → go to submit review", () => {
+  it("Case 5: all checks done → review ready", () => {
     const readiness = buildProviderInspectionReadiness({
       pack: basePack({
         structureQuality: passingStructureQualitySummary(),
@@ -275,11 +439,9 @@ describe("provider pack inspection readiness", () => {
       }),
       ...readyInput,
     });
-
-    assert.equal(readiness.nextAction, "GO_TO_SUBMIT_REVIEW");
     assert.equal(readiness.userState, "review_ready");
+    assert.equal(readiness.primaryActionKind, "GO_TO_REVIEW");
     assert.equal(readiness.primaryActionLabel, "검수요청으로 이동");
     assert.equal(readiness.canSubmitReview, true);
-    assert.equal(readiness.currentStepId, "completed");
   });
 });

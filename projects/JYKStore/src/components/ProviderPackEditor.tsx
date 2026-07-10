@@ -28,7 +28,6 @@ import {
   PROVIDER_PACK_CREATED_COLLECT_CTA,
   PROVIDER_PACK_CREATED_ID_PREFIX,
   PROVIDER_PACK_CREATED_NEXT_TASK,
-  PROVIDER_PACK_GO_TO_INSPECTION_TAB,
   PROVIDER_PACK_GO_TO_INSPECTION_SHORT,
   PROVIDER_PACK_GO_TO_REVIEW_TAB,
   PROVIDER_PACK_ID_LABEL,
@@ -316,6 +315,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             sourceDocumentCount={sourceDocumentCount}
             knowledgeUnitDraftCount={knowledgeUnitDraftCount}
             onGoToSourceTab={() => selectTab("source")}
+            onGoToDraftTab={() => selectTab("draft")}
             onGoToReviewTab={() => selectTab("review")}
             onPackUpdated={setPack}
           />

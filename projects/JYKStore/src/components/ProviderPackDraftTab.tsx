@@ -6,6 +6,8 @@ import { generateGitHubKnowledgeUnitDraftsApi } from "@/lib/provider-center-api"
 import {
   PROVIDER_PACK_DRAFT_EMPTY_SOURCES,
   PROVIDER_PACK_DRAFT_GENERATE_CTA,
+  PROVIDER_PACK_DRAFT_GENERATE_DONE,
+  PROVIDER_PACK_DRAFT_GENERATING,
   PROVIDER_PACK_DRAFT_STEP_INTRO,
   PROVIDER_PACK_GO_TO_SOURCE_TAB,
   PROVIDER_PACK_WIZARD_DRAFT_STEP,
@@ -30,16 +32,21 @@ export function ProviderPackDraftTab({
 }) {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const onGenerate = async () => {
     if (!editable) return;
     setGenerating(true);
     setError(null);
+    setSuccessMessage(null);
     try {
       await generateGitHubKnowledgeUnitDraftsApi(packId, {
         generationMode: "MINIMAL",
         overwriteExistingDrafts: false,
+        autoPrepareForReview: true,
+        autoRunRetrievalEvaluation: true,
       });
+      setSuccessMessage(PROVIDER_PACK_DRAFT_GENERATE_DONE);
       await onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Knowledge Unit 초안 생성에 실패했습니다.");
@@ -71,6 +78,7 @@ export function ProviderPackDraftTab({
       <p className="mt-2 text-xs text-slate-700">원천 문서 {sourceDocumentCount}개</p>
 
       {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
+      {successMessage ? <p className="mt-3 text-sm text-emerald-800">{successMessage}</p> : null}
 
       {knowledgeUnitDraftCount === 0 ? (
         <button
@@ -79,7 +87,7 @@ export function ProviderPackDraftTab({
           onClick={() => void onGenerate()}
           className="mt-4 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
         >
-          {generating ? "초안 생성 중…" : PROVIDER_PACK_DRAFT_GENERATE_CTA}
+          {generating ? PROVIDER_PACK_DRAFT_GENERATING : PROVIDER_PACK_DRAFT_GENERATE_CTA}
         </button>
       ) : (
         <ProviderKnowledgeUnitDraftPanel

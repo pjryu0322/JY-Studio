@@ -264,6 +264,8 @@ export function ProviderKnowledgeUnitDraftPanel({
       await generateGitHubKnowledgeUnitDraftsApi(packId, {
         generationMode: "MINIMAL",
         overwriteExistingDrafts: false,
+        autoPrepareForReview: true,
+        autoRunRetrievalEvaluation: true,
       });
       await onRegenerated?.();
       await loadDrafts();

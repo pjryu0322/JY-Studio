@@ -92,23 +92,17 @@ export function getStructureQualityEvaluateLabel(
 ): string {
   const gate = structureQualityGateSnapshotFromSummary(pack.structureQuality ?? null);
   if (gate.freshnessStatus === "MISSING" || !pack.structureQuality?.structureCoverage) {
-    return "구조/품질 점검 시작";
+    return "구조/품질 자동 점검";
   }
-  if (structureFailed(gate)) {
-    return "다시 실행";
-  }
-  return "구조/품질 재점검";
+  return "구조/품질 자동 재점검";
 }
 
 export function getChunkQualityEvaluateLabel(pack: ProviderPackDetailDto): string {
   const gate = chunkQualityGateSnapshotFromSummary(pack.chunkQuality ?? null);
   if (gate.freshnessStatus === "MISSING" || !pack.chunkQuality?.report) {
-    return "Chunk 생성 및 청킹 품질 점검 시작";
+    return "Chunk 자동 생성 및 품질 점검";
   }
-  if (chunkFailed(gate)) {
-    return "다시 실행";
-  }
-  return "Chunk 생성 및 청킹 품질 재점검";
+  return "Chunk 자동 재생성 및 점검";
 }
 
 export function getRetrievalCasesActionLabel(pack: ProviderPackDetailDto): string {
@@ -116,14 +110,10 @@ export function getRetrievalCasesActionLabel(pack: ProviderPackDetailDto): strin
 }
 
 export function getRetrievalRunActionLabel(pack: ProviderPackDetailDto): string {
-  const gate = retrievalEvaluationGateSnapshotFromSummary(pack.retrievalEvaluation ?? null);
   if (!pack.retrievalEvaluation?.latestRun) {
-    return "검색 품질 평가 실행";
+    return "검색 품질 자동 점검";
   }
-  if (retrievalFailed(gate)) {
-    return "다시 실행";
-  }
-  return "검색 품질 재평가";
+  return "검색 품질 자동 재점검";
 }
 
 export function buildProviderSubmitReadinessPlan(input: {

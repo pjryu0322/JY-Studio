@@ -5,7 +5,12 @@ import {
   type SubmitReadinessNextAction,
   type SubmitReadinessStep,
 } from "@/lib/provider-submit-readiness-steps";
-import { PROVIDER_PACK_GO_TO_REVIEW_TAB } from "@/lib/role-based-ux-copy";
+import {
+  PROVIDER_PACK_GO_TO_DRAFT_SHORT,
+  PROVIDER_PACK_GO_TO_INSPECTION_SHORT,
+  PROVIDER_PACK_GO_TO_REVIEW_TAB,
+  PROVIDER_PACK_GO_TO_SOURCE_TAB,
+} from "@/lib/role-based-ux-copy";
 
 export type InspectionStepId =
   | "structure_quality"
@@ -31,6 +36,24 @@ export type InspectionNextAction =
   | "WAIT_ADMIN_REVIEW"
   | "BLOCKED";
 
+export type ProviderInspectionUserState =
+  | "auto_check_not_started"
+  | "auto_check_running"
+  | "review_ready"
+  | "system_fix_available"
+  | "source_fix_required"
+  | "draft_fix_required"
+  | "admin_review_waiting"
+  | "published";
+
+export type InspectionPrimaryActionKind =
+  | "RUN_AUTO_PREPARE"
+  | "REGENERATE_AND_CHECK"
+  | "GO_TO_SOURCE"
+  | "GO_TO_DRAFT"
+  | "GO_TO_REVIEW"
+  | "NONE";
+
 export type InspectionReadiness = {
   currentStepId: InspectionStepId | "completed";
   currentStepTitle: string;
@@ -41,6 +64,13 @@ export type InspectionReadiness = {
   nextActionLabel: string;
   nextActionDescription: string;
   incompleteStepTitles: string[];
+  userState: ProviderInspectionUserState;
+  userTitle: string;
+  userMessage: string;
+  primaryActionLabel: string;
+  primaryActionKind: InspectionPrimaryActionKind;
+  passedTitles: string[];
+  fixNeededTitles: string[];
   steps: Array<{
     id: InspectionStepId;
     label: string;
@@ -84,6 +114,140 @@ function mapNextAction(action: SubmitReadinessNextAction): InspectionNextAction 
   return action;
 }
 
+function hasAnyQualityReport(pack: ProviderPackDetailDto): boolean {
+  return Boolean(
+    pack.structureQuality?.structureCoverage ||
+      pack.chunkQuality?.report ||
+      pack.retrievalEvaluation?.set ||
+      pack.retrievalEvaluation?.latestRun,
+  );
+}
+
+function resolveUserFacingState(input: {
+  pack: ProviderPackDetailDto;
+  sourceDocumentCount: number;
+  knowledgeUnitDraftCount: number;
+  plan: ProviderSubmitReadinessPlan;
+  nextAction: InspectionNextAction;
+}): Pick<
+  InspectionReadiness,
+  | "userState"
+  | "userTitle"
+  | "userMessage"
+  | "primaryActionLabel"
+  | "primaryActionKind"
+  | "passedTitles"
+  | "fixNeededTitles"
+> {
+  const { pack, sourceDocumentCount, knowledgeUnitDraftCount, plan, nextAction } = input;
+
+  if (pack.status === "PUBLISHED" || pack.status === "VERIFIED") {
+    return {
+      userState: "published",
+      userTitle: "공개 완료",
+      userMessage: "운영자 승인이 완료된 지식팩입니다.",
+      primaryActionLabel: "",
+      primaryActionKind: "NONE",
+      passedTitles: [],
+      fixNeededTitles: [],
+    };
+  }
+
+  if (pack.status === "REVIEWING" || nextAction === "WAIT_ADMIN_REVIEW") {
+    return {
+      userState: "admin_review_waiting",
+      userTitle: "관리자 검토 대기",
+      userMessage: "검수 요청이 접수되었습니다. 관리자 검토 결과를 기다려 주세요.",
+      primaryActionLabel: "",
+      primaryActionKind: "NONE",
+      passedTitles: [],
+      fixNeededTitles: [],
+    };
+  }
+
+  if (sourceDocumentCount === 0) {
+    return {
+      userState: "source_fix_required",
+      userTitle: "지식팩 자동 점검 결과: 자료 보완 필요",
+      userMessage:
+        "원천 문서가 없습니다. 자료등록 탭에서 문서를 등록한 뒤 다시 자동 생성해 주세요.",
+      primaryActionLabel: PROVIDER_PACK_GO_TO_SOURCE_TAB,
+      primaryActionKind: "GO_TO_SOURCE",
+      passedTitles: [],
+      fixNeededTitles: ["원천 문서 등록"],
+    };
+  }
+
+  if (knowledgeUnitDraftCount === 0) {
+    return {
+      userState: "draft_fix_required",
+      userTitle: "지식팩 자동 점검 결과: 초안 보완 필요",
+      userMessage:
+        "Knowledge Unit 후보가 없습니다. 초안 탭에서 후보를 생성하면 기본 점검이 자동으로 준비됩니다.",
+      primaryActionLabel: PROVIDER_PACK_GO_TO_DRAFT_SHORT,
+      primaryActionKind: "GO_TO_DRAFT",
+      passedTitles: ["원천 문서 등록"],
+      fixNeededTitles: ["Knowledge Unit 후보 생성"],
+    };
+  }
+
+  const passedTitles: string[] = [];
+  if (sourceDocumentCount > 0) passedTitles.push("원천 문서 검증");
+  if (knowledgeUnitDraftCount > 0) passedTitles.push("Knowledge Unit 후보 생성");
+
+  const qualitySteps = plan.steps.filter((s) => s.key !== "submit_review");
+  for (const step of qualitySteps) {
+    if (step.status === "completed") {
+      if (step.key === "structure_quality") passedTitles.push("구조/품질 점검");
+      if (step.key === "chunk_quality") {
+        passedTitles.push("Chunk 자동 생성");
+        passedTitles.push("청킹 품질 점검");
+      }
+      if (step.key === "retrieval_cases") passedTitles.push("검색 평가 케이스 생성");
+      if (step.key === "retrieval_evaluation") passedTitles.push("검색 품질 평가");
+    }
+  }
+
+  if (plan.canSubmitReview || nextAction === "GO_TO_SUBMIT_REVIEW") {
+    return {
+      userState: "review_ready",
+      userTitle: "지식팩 자동 점검 완료",
+      userMessage: "검수 요청에 필요한 기본 점검이 완료되었습니다.",
+      primaryActionLabel: PROVIDER_PACK_GO_TO_REVIEW_TAB,
+      primaryActionKind: "GO_TO_REVIEW",
+      passedTitles,
+      fixNeededTitles: [],
+    };
+  }
+
+  const fixNeededTitles = plan.incompleteStepTitles;
+  const started = hasAnyQualityReport(pack);
+
+  if (!started) {
+    return {
+      userState: "auto_check_not_started",
+      userTitle: "지식팩 자동 점검 대기",
+      userMessage:
+        "초안 생성 후 자동 점검이 아직 준비되지 않았습니다. 자동 점검을 시작하면 검수 준비가 진행됩니다.",
+      primaryActionLabel: "자동 점검 시작",
+      primaryActionKind: "RUN_AUTO_PREPARE",
+      passedTitles,
+      fixNeededTitles,
+    };
+  }
+
+  return {
+    userState: "system_fix_available",
+    userTitle: "지식팩 자동 점검 결과: 보완 필요",
+    userMessage:
+      "시스템이 초안 생성 결과를 기준으로 자동 점검을 수행했습니다. 아래 항목은 자료 보완 또는 자동 재생성이 필요합니다.",
+    primaryActionLabel: "자동 재생성 및 점검",
+    primaryActionKind: "REGENERATE_AND_CHECK",
+    passedTitles,
+    fixNeededTitles,
+  };
+}
+
 export function buildProviderInspectionReadiness(input: {
   pack: ProviderPackDetailDto;
   sourceDocumentCount: number;
@@ -113,12 +277,21 @@ export function buildProviderInspectionReadiness(input: {
   else if (nextAction === "GENERATE_RETRIEVAL_CASES") currentStepId = "retrieval_case_generation";
   else if (nextAction === "RUN_RETRIEVAL_EVALUATION") currentStepId = "retrieval_quality";
   else if (nextAction === "BLOCKED" || nextAction === "WAIT_ADMIN_REVIEW") {
-    const current = steps.find((s) => s.checklistStatus === "current" || s.checklistStatus === "failed");
-    currentStepId = current?.id ?? (plan.completedStepCount >= plan.totalStepCount ? "completed" : "structure_quality");
+    const current = steps.find(
+      (s) => s.checklistStatus === "current" || s.checklistStatus === "failed",
+    );
+    currentStepId =
+      current?.id ??
+      (plan.completedStepCount >= plan.totalStepCount ? "completed" : "structure_quality");
   }
 
-  const nextActionLabel =
-    nextAction === "GO_TO_SUBMIT_REVIEW" ? PROVIDER_PACK_GO_TO_REVIEW_TAB : plan.nextActionLabel;
+  const userFacing = resolveUserFacingState({
+    pack: input.pack,
+    sourceDocumentCount: input.sourceDocumentCount,
+    knowledgeUnitDraftCount: input.knowledgeUnitDraftCount,
+    plan,
+    nextAction,
+  });
 
   return {
     currentStepId,
@@ -128,9 +301,12 @@ export function buildProviderInspectionReadiness(input: {
     totalCount: plan.totalStepCount,
     canSubmitReview: plan.canSubmitReview,
     nextAction,
-    nextActionLabel,
-    nextActionDescription: plan.nextActionDescription,
+    nextActionLabel:
+      userFacing.primaryActionLabel ||
+      (nextAction === "GO_TO_SUBMIT_REVIEW" ? PROVIDER_PACK_GO_TO_REVIEW_TAB : plan.nextActionLabel),
+    nextActionDescription: userFacing.userMessage || plan.nextActionDescription,
     incompleteStepTitles: plan.incompleteStepTitles,
+    ...userFacing,
     steps,
     plan,
   };
@@ -139,3 +315,6 @@ export function buildProviderInspectionReadiness(input: {
 export function isInspectionComplete(readiness: InspectionReadiness): boolean {
   return readiness.completedCount >= readiness.totalCount && readiness.canSubmitReview;
 }
+
+/** @deprecated Prefer primaryActionLabel from readiness */
+export const INSPECTION_SHORT_CTA = PROVIDER_PACK_GO_TO_INSPECTION_SHORT;

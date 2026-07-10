@@ -41,10 +41,12 @@ import {
 } from "@/lib/knowledge-unit-draft/ku-draft-generation-report";
 import { readDraftMetadata } from "@/lib/provider-knowledge-unit-draft-dto";
 import type { GitHubKnowledgeUnitDocumentProcessingOutcome } from "./github-auto-collect-types";
+import { runProviderReviewPreparationPipeline } from "@/lib/auto-pipeline/provider-review-preparation-service";
 
 export type GenerateGitHubKnowledgeUnitDraftDeps = {
   prismaClient?: typeof prisma;
   assertEditablePack?: typeof assertProviderPackEditableForClient;
+  runReviewPreparation?: typeof runProviderReviewPreparationPipeline;
 };
 
 function throwPreflightError(
@@ -643,6 +645,29 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
       steps: doc.steps,
     }),
   );
+
+  if (normalized.autoPrepareForReview && (drafts.length > 0 || existingDraftSkippedCount > 0)) {
+    try {
+      const runPreparation =
+        deps.runReviewPreparation ?? runProviderReviewPreparationPipeline;
+      const preparation = await runPreparation({
+        packId: editable.packId,
+        actorClientId: clientId,
+        replaceAutoChunks: true,
+        runRetrievalEvaluation: normalized.autoRunRetrievalEvaluation,
+      });
+      warnings.push(...preparation.warnings);
+      if (preparation.generatedChunkCount > 0) {
+        warnings.push(
+          `검수용 Chunk ${preparation.generatedChunkCount}개를 자동 생성하고 기본 점검을 준비했습니다.`,
+        );
+      }
+    } catch {
+      warnings.push(
+        "Knowledge Unit 후보는 생성되었지만 자동 점검 준비 중 일부 단계가 완료되지 않았습니다. 점검 탭에서 자동 점검을 실행해 주세요.",
+      );
+    }
+  }
 
   return {
     clientId,

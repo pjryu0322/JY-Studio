@@ -44,6 +44,8 @@ export type NormalizedGitHubKnowledgeUnitDraftInput = {
   maxKnowledgeUnitCount: number;
   productProfileType?: GitHubKnowledgeUnitDraftInput["productProfileType"];
   overwriteExistingDrafts: boolean;
+  autoPrepareForReview: boolean;
+  autoRunRetrievalEvaluation: boolean;
 };
 
 function clampInt(value: number, min: number, max: number): number {
@@ -160,6 +162,12 @@ export function normalizeGitHubKnowledgeUnitDraftInput(
     );
   }
 
+  const autoPrepareForReview = input.autoPrepareForReview !== false;
+  const autoRunRetrievalEvaluation =
+    input.autoRunRetrievalEvaluation === undefined
+      ? autoPrepareForReview
+      : input.autoRunRetrievalEvaluation === true;
+
   return {
     sourceDocumentIds,
     sourceDocumentPaths,
@@ -170,5 +178,7 @@ export function normalizeGitHubKnowledgeUnitDraftInput(
     maxKnowledgeUnitCount,
     productProfileType: input.productProfileType,
     overwriteExistingDrafts,
+    autoPrepareForReview,
+    autoRunRetrievalEvaluation,
   };
 }

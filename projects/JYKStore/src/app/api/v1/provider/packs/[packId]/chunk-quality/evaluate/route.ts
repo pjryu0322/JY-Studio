@@ -13,7 +13,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { packId } = await context.params;
 
   try {
-    const result = await evaluateProviderPackChunkQuality(userId, clientId, packId?.trim() ?? "");
+    let regenerate = true;
+    try {
+      const body = (await request.json()) as { regenerate?: unknown };
+      if (typeof body?.regenerate === "boolean") {
+        regenerate = body.regenerate;
+      }
+    } catch {
+      // optional body — default regenerate true
+    }
+
+    const result = await evaluateProviderPackChunkQuality(
+      userId,
+      clientId,
+      packId?.trim() ?? "",
+      { regenerate },
+    );
 
     if (result.error === "PROFILE_REQUIRED") {
       return jsonWithClientIdCookie(

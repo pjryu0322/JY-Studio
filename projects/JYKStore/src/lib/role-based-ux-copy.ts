@@ -79,6 +79,7 @@ export const PROVIDER_PACK_DRAFT_EMPTY_SOURCES =
   "아직 등록된 원천 문서가 없습니다. 먼저 자료등록 탭에서 GitHub 또는 문서를 등록하세요.";
 export const PROVIDER_PACK_GO_TO_SOURCE_TAB = "자료등록 탭으로 이동";
 export const PROVIDER_PACK_GO_TO_DRAFT_TAB = "Knowledge Unit 초안 생성하러 가기";
+export const PROVIDER_PACK_GO_TO_DRAFT_SHORT = "초안으로 이동";
 
 export const PROVIDER_PACK_REVIEW_PREREQ_TITLE = "검수 요청 전 필요한 작업";
 export const PROVIDER_GITHUB_ADVANCED_SETTINGS_EXPAND = "고급 설정 펼치기";
@@ -102,9 +103,20 @@ export const PROVIDER_PACK_PRE_REVIEW_CHECKS_SUMMARY = "검수 전 점검";
 
 export const PROVIDER_PACK_DRAFT_STEP_INTRO =
   "등록된 원천 문서를 기반으로 AI가 참조할 지식 단위를 생성합니다.";
-export const PROVIDER_PACK_DRAFT_GENERATE_CTA = "Knowledge Unit 초안 생성";
+export const PROVIDER_PACK_DRAFT_GENERATE_CTA = "Knowledge Unit 후보 생성";
+export const PROVIDER_PACK_DRAFT_GENERATING =
+  "지식팩 초안과 기본 점검을 준비하는 중…";
+export const PROVIDER_PACK_DRAFT_GENERATE_DONE =
+  "Knowledge Unit 후보와 기본 점검이 준비되었습니다. 점검 탭에서 결과를 확인하세요.";
 export const PROVIDER_PACK_DRAFT_VIEW_LIST = "초안 목록 보기";
 export const PROVIDER_PACK_REVIEW_SUBMIT_CTA = "검수 요청 제출";
+export const PROVIDER_PACK_INSPECTION_AUTO_TITLE = "자동 점검 결과";
+export const PROVIDER_PACK_REVIEW_INCOMPLETE_TITLE = "검수 요청 불가";
+export const PROVIDER_PACK_REVIEW_INCOMPLETE_BODY =
+  "아직 자동 점검이 완료되지 않았습니다. 점검 탭에서 자동 점검 결과를 확인해 주세요.";
+export const PROVIDER_PACK_REVIEW_READY_TITLE = "검수 요청 준비 완료";
+export const PROVIDER_PACK_REVIEW_READY_BODY =
+  "제출 후 관리자 검토 단계로 이동합니다. 검수 전까지 일반 카탈로그와 Context API에는 공개되지 않습니다.";
 
 export const PROVIDER_KU_DRAFT_PANEL_TITLE = "자동 추출 결과";
 export const PROVIDER_KU_CANDIDATE_LABEL = "Knowledge Unit 후보";

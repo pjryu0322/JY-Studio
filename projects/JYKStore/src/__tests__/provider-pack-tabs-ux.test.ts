@@ -36,10 +36,9 @@ describe("provider pack tabs UX sources", () => {
     const inspection = readSource("src/components/ProviderPackInspectionTab.tsx");
     const review = readSource("src/components/ProviderPackReviewTab.tsx");
     const source = readSource("src/components/ProviderPackSourceStep.tsx");
-    assert.ok(inspection.includes("StructureQualityPanel"));
-    assert.ok(inspection.includes("ChunkQualityPanel"));
-    assert.ok(inspection.includes("RetrievalEvaluationPanel"));
+    assert.ok(inspection.includes("runProviderInspectionAutoPrepareApi"));
     assert.ok(inspection.includes("SubmitReadinessChecklist"));
+    assert.ok(inspection.includes("상세 점검 결과 펼치기"));
     assert.ok(!review.includes("StructureQualityPanel"));
     assert.ok(!review.includes("ChunkQualityPanel"));
     assert.ok(!review.includes("RetrievalEvaluationPanel"));

@@ -235,6 +235,10 @@ export type GitHubKnowledgeUnitDraftInput = {
   maxKnowledgeUnitCount?: number;
   productProfileType?: GitHubProductType;
   overwriteExistingDrafts?: boolean;
+  /** Default true: run review preparation pipeline after draft generation. */
+  autoPrepareForReview?: boolean;
+  /** Default true when autoPrepareForReview is enabled. */
+  autoRunRetrievalEvaluation?: boolean;
 };
 
 export type GitHubKnowledgeUnitDocumentProcessingOutcome = {
