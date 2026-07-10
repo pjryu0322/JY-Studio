@@ -207,12 +207,12 @@ export function AdminReviewDecisionPanel({
           disabled={!canApprove || busy !== null}
           className="min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
         >
-          {busy === "approve" ? "승인 중…" : "승인"}
+          {busy === "approve" ? "승인 중…" : "승인 및 공개"}
         </button>
       </form>
 
       <label className="block text-xs font-semibold text-slate-700" htmlFor="rejection-reason">
-        반려 사유 (반려 시 필수)
+        반려 사유를 입력해 주세요.
       </label>
       <textarea
         id="rejection-reason"
@@ -220,6 +220,7 @@ export function AdminReviewDecisionPanel({
         onChange={(e) => setRejectionReason(e.target.value)}
         rows={2}
         disabled={!isReviewing}
+        placeholder={"예:\n- 검색 품질 평가가 기준에 미달합니다.\n- 원천 문서 출처 확인이 필요합니다."}
         className="w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
       />
 
@@ -229,7 +230,7 @@ export function AdminReviewDecisionPanel({
           disabled={!canReject || busy !== null}
           className="min-h-[44px] w-full rounded-xl border-2 border-red-200 bg-white text-sm font-bold text-red-800 disabled:opacity-50"
         >
-          {busy === "reject" ? "반려 중…" : "반려"}
+          {busy === "reject" ? "반려 중…" : "반려하기"}
         </button>
       </form>
 

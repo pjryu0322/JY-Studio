@@ -9,27 +9,37 @@ import {
   RECOMMENDED_RETRIEVAL_EVAL_CASES,
 } from "@/lib/retrieval-evaluation/retrieval-evaluation-types";
 
-const PRIORITY_SOURCE_TYPES = new Set([
-  "API_SPEC",
-  "OPENAPI_SCHEMA",
-  "ERROR_CODE_TABLE",
-  "CALLBACK_GUIDE",
-  "SAMPLE_CODE",
-  "SECURITY_GUIDE",
+const BANNED_QUERY_TOKENS = new Set([
+  "api",
+  "error",
+  "product_manual",
+  "product-manual",
+  "openapi",
+  "openapi_schema",
+  "api_spec",
+  "faq",
+  "readme",
+  "callback_guide",
+  "error_code_table",
+  "sample_code",
+  "security_guide",
 ]);
 
 function normalizeQuery(query: string): string {
   return query.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function hasEvidence(c: GeneratedRetrievalCase): boolean {
-  return (
-    c.expectedChunkIds.length > 0 ||
-    c.expectedSourceDocumentIds.length > 0 ||
-    c.expectedSections.length > 0 ||
-    c.expectedTags.length > 0 ||
-    (c.expectedMetadata !== null && Object.keys(c.expectedMetadata).length > 0)
-  );
+function isBannedQuery(query: string): boolean {
+  const key = normalizeQuery(query);
+  if (!key) return true;
+  if (BANNED_QUERY_TOKENS.has(key)) return true;
+  if (/^[a-z0-9_\-]+$/.test(key) && key.length <= 4) return true;
+  return false;
+}
+
+/** Cases must map to a real active chunk or source document — sections/tags alone are not enough. */
+function hasMappedEvidence(c: GeneratedRetrievalCase): boolean {
+  return c.expectedChunkIds.length > 0 || c.expectedSourceDocumentIds.length > 0;
 }
 
 function pushUnique(
@@ -38,8 +48,8 @@ function pushUnique(
   draft: GeneratedRetrievalCase,
 ) {
   const key = normalizeQuery(draft.query);
-  if (!key || seen.has(key)) return;
-  if (!hasEvidence(draft)) return;
+  if (!key || seen.has(key) || isBannedQuery(draft.query)) return;
+  if (!hasMappedEvidence(draft)) return;
   seen.add(key);
   out.push(draft);
 }
@@ -50,40 +60,59 @@ export function generateRetrievalEvaluationCases(input: {
   chunks: ChunkForCaseGen[];
   maxCases?: number;
 }): GeneratedRetrievalCase[] {
+  const activeChunks = input.chunks.filter((c) => c.isActive && c.sourceDocumentId);
+  const activeSourceIds = new Set(
+    activeChunks.map((c) => c.sourceDocumentId!).filter(Boolean),
+  );
+
+  const maxByChunks = Math.max(activeChunks.length, Math.min(activeChunks.length * 2, 10));
   const max = Math.min(
     input.maxCases ?? RECOMMENDED_RETRIEVAL_EVAL_CASES,
     MAX_AUTO_RETRIEVAL_EVAL_CASES,
+    Math.max(1, maxByChunks),
   );
+
   const out: GeneratedRetrievalCase[] = [];
   const seen = new Set<string>();
 
-  for (const section of input.structureSections) {
-    if (!section.required || !section.covered) continue;
-    const signalQuery =
-      section.matchedSignals
-        .map((s) => (s.includes(":") ? s.split(":").slice(1).join(":") : s))
-        .filter(Boolean)[0] ?? section.title;
+  // 1) Prefer cases derived from actual active chunks
+  for (const chunk of activeChunks) {
+    const titleQuery = chunk.title.trim();
     pushUnique(out, seen, {
-      query: signalQuery || section.title,
+      query: titleQuery,
       mode: "both",
       topK: 5,
-      expectedChunkIds: [],
-      expectedSourceDocumentIds: [...section.matchedDocIds],
-      expectedSections: [section.sectionKey, section.title].filter(Boolean),
-      expectedTags: [],
+      expectedChunkIds: [chunk.id],
+      expectedSourceDocumentIds: chunk.sourceDocumentId ? [chunk.sourceDocumentId] : [],
+      expectedSections: chunk.section ? [chunk.section] : [],
+      expectedTags: chunk.tags.slice(0, 2),
       expectedMetadata: null,
       weight: 2,
     });
     if (out.length >= max) return out;
+
+    if (chunk.section && normalizeQuery(chunk.section) !== normalizeQuery(titleQuery)) {
+      pushUnique(out, seen, {
+        query: `${titleQuery} ${chunk.section}`.trim(),
+        mode: "both",
+        topK: 5,
+        expectedChunkIds: [chunk.id],
+        expectedSourceDocumentIds: chunk.sourceDocumentId ? [chunk.sourceDocumentId] : [],
+        expectedSections: [chunk.section],
+        expectedTags: [],
+        expectedMetadata: null,
+        weight: 1,
+      });
+      if (out.length >= max) return out;
+    }
   }
 
-  const eligibleSources = input.sources
-    .filter((s) => s.validationStatus === "PASS" || s.validationStatus === "WARNING")
-    .sort((a, b) => {
-      const ap = PRIORITY_SOURCE_TYPES.has(a.sourceType) ? 0 : 1;
-      const bp = PRIORITY_SOURCE_TYPES.has(b.sourceType) ? 0 : 1;
-      return ap - bp;
-    });
+  // 2) Sources that currently have active chunks
+  const eligibleSources = input.sources.filter(
+    (s) =>
+      (s.validationStatus === "PASS" || s.validationStatus === "WARNING") &&
+      activeSourceIds.has(s.id),
+  );
 
   for (const source of eligibleSources) {
     pushUnique(out, seen, {
@@ -95,32 +124,33 @@ export function generateRetrievalEvaluationCases(input: {
       expectedSections: [],
       expectedTags: [],
       expectedMetadata: null,
-      weight: PRIORITY_SOURCE_TYPES.has(source.sourceType) ? 2 : 1,
+      weight: 1,
     });
     if (out.length >= max) return out;
   }
 
-  const activeChunks = input.chunks
-    .filter((c) => c.isActive)
-    .sort((a, b) => {
-      const ap = a.sourceType && PRIORITY_SOURCE_TYPES.has(a.sourceType) ? 0 : 1;
-      const bp = b.sourceType && PRIORITY_SOURCE_TYPES.has(b.sourceType) ? 0 : 1;
-      return ap - bp;
-    });
+  // 3) Structure sections only when matched docs are covered by active chunks
+  for (const section of input.structureSections) {
+    if (!section.required || !section.covered) continue;
+    const mappedDocs = section.matchedDocIds.filter((id) => activeSourceIds.has(id));
+    if (mappedDocs.length === 0) continue;
 
-  for (const chunk of activeChunks) {
-    const tags = chunk.tags.slice(0, 2);
-    const queryParts = [chunk.title, ...tags].filter(Boolean);
+    const signalQuery =
+      section.matchedSignals
+        .map((s) => (s.includes(":") ? s.split(":").slice(1).join(":") : s))
+        .map((s) => s.trim())
+        .find((s) => s && !isBannedQuery(s)) ?? section.title;
+
     pushUnique(out, seen, {
-      query: queryParts.join(" "),
+      query: signalQuery || section.title,
       mode: "both",
       topK: 5,
-      expectedChunkIds: [chunk.id],
-      expectedSourceDocumentIds: chunk.sourceDocumentId ? [chunk.sourceDocumentId] : [],
-      expectedSections: chunk.section ? [chunk.section] : [],
-      expectedTags: tags,
+      expectedChunkIds: [],
+      expectedSourceDocumentIds: mappedDocs,
+      expectedSections: [section.sectionKey, section.title].filter(Boolean),
+      expectedTags: [],
       expectedMetadata: null,
-      weight: 1,
+      weight: 2,
     });
     if (out.length >= max) return out;
   }

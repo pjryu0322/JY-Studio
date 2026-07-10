@@ -2,12 +2,14 @@ export type StoreAuthUser = {
   id: string;
   email: string | null;
   name: string | null;
+  accountRole: import("@/lib/account-role").AccountRole;
 };
 
 export type StoreAuthSessionResponse = {
   loggedIn: boolean;
   clientId?: string;
   user?: StoreAuthUser;
+  accountRole?: import("@/lib/account-role").AccountRole;
   providerProfile?: import("@/lib/provider-profile-dto").ProviderProfileDto | null;
 };
 
@@ -34,7 +36,10 @@ export async function loginStoreAccount(input: { email: string; displayName: str
     body: JSON.stringify(input),
   });
   if (!res.ok) throw new Error(await readErrorMessage(res));
-  return (await res.json()) as { user: StoreAuthUser };
+  return (await res.json()) as {
+    user: StoreAuthUser;
+    accountRole: import("@/lib/account-role").AccountRole;
+  };
 }
 
 export async function logoutStoreAccount() {

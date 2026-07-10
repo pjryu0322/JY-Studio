@@ -30,6 +30,15 @@ import {
   PROVIDER_SUBMIT_ADMIN_REVIEW_NOTICE,
 } from "@/lib/role-based-ux-copy";
 
+type PreparationSummary = {
+  generatedChunkCount: number;
+  structureQualityStatus: string;
+  chunkQualityStatus: string;
+  retrievalCaseCount: number;
+  retrievalEvaluationStatus: string;
+  warnings: string[];
+};
+
 export function ProviderPackInspectionTab({
   packId,
   pack,
@@ -52,6 +61,8 @@ export function ProviderPackInspectionTab({
   readonly onPackUpdated: (pack: ProviderPackDetailDto) => void;
 }) {
   const [actionBusy, setActionBusy] = useState(false);
+  const [lastPreparation, setLastPreparation] = useState<PreparationSummary | null>(null);
+  const [inspectionError, setInspectionError] = useState<string | null>(null);
 
   const isReviewing = pack.status === "REVIEWING";
 
@@ -63,6 +74,33 @@ export function ProviderPackInspectionTab({
         knowledgeUnitDraftCount,
       }),
     [pack, sourceDocumentCount, knowledgeUnitDraftCount],
+  );
+
+  const runAutoPrepare = useCallback(
+    async (repairRetrievalData: boolean) => {
+      if (!editable || isReviewing) return;
+      setActionBusy(true);
+      setInspectionError(null);
+      try {
+        const data = await runProviderInspectionAutoPrepareApi(packId, {
+          runRetrievalEvaluation: true,
+          repairRetrievalData,
+        });
+        onPackUpdated(data.pack);
+        if (data.preparation) {
+          setLastPreparation(data.preparation);
+        }
+      } catch (err) {
+        setInspectionError(
+          err instanceof Error
+            ? err.message
+            : "자동 보완을 완료하지 못했습니다. 원천 문서 또는 초안이 부족할 수 있습니다.",
+        );
+      } finally {
+        setActionBusy(false);
+      }
+    },
+    [editable, isReviewing, onPackUpdated, packId],
   );
 
   const runPrimaryAction = useCallback(async () => {
@@ -82,32 +120,25 @@ export function ProviderPackInspectionTab({
       readiness.primaryActionKind === "RUN_AUTO_PREPARE" ||
       readiness.primaryActionKind === "REGENERATE_AND_CHECK"
     ) {
-      if (!editable || isReviewing) return;
-      setActionBusy(true);
-      try {
-        const data = await runProviderInspectionAutoPrepareApi(packId, {
-          runRetrievalEvaluation: true,
-        });
-        onPackUpdated(data.pack);
-      } finally {
-        setActionBusy(false);
-      }
+      await runAutoPrepare(false);
+      return;
+    }
+    if (readiness.primaryActionKind === "REPAIR_RETRIEVAL_DATA") {
+      await runAutoPrepare(true);
     }
   }, [
-    editable,
-    isReviewing,
     onGoToDraftTab,
     onGoToReviewTab,
     onGoToSourceTab,
-    onPackUpdated,
-    packId,
     readiness.primaryActionKind,
+    runAutoPrepare,
   ]);
 
   const runDetailAction = useCallback(
     async (action: SubmitReadinessNextAction) => {
       if (!editable || isReviewing) return;
       setActionBusy(true);
+      setInspectionError(null);
       try {
         if (action === "RUN_STRUCTURE_QUALITY") {
           const data = await evaluateProviderStructureQualityApi(packId);
@@ -134,6 +165,10 @@ export function ProviderPackInspectionTab({
   const casesLabel = getRetrievalCasesActionLabel(pack);
   const runEvalLabel = getRetrievalRunActionLabel(pack);
   const checklistSteps = readiness.plan.steps.filter((step) => step.key !== "submit_review");
+  const pipelineBusyKinds =
+    readiness.primaryActionKind === "RUN_AUTO_PREPARE" ||
+    readiness.primaryActionKind === "REGENERATE_AND_CHECK" ||
+    readiness.primaryActionKind === "REPAIR_RETRIEVAL_DATA";
 
   return (
     <section
@@ -161,14 +196,44 @@ export function ProviderPackInspectionTab({
 
         {readiness.fixNeededTitles.length > 0 ? (
           <div className="mt-3 text-xs text-amber-950">
-            <p className="font-semibold">
-              보완 필요 {readiness.fixNeededTitles.length}개
-            </p>
+            <p className="font-semibold">원인</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-4">
               {readiness.fixNeededTitles.map((title) => (
                 <li key={title}>{title}</li>
               ))}
             </ul>
+          </div>
+        ) : null}
+
+        {lastPreparation ? (
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-950">
+            <p className="font-semibold">자동 보완 결과</p>
+            <ul className="mt-1 space-y-0.5">
+              <li>Chunk {lastPreparation.generatedChunkCount}개 생성</li>
+              <li>검색 평가 케이스 {lastPreparation.retrievalCaseCount}개 생성</li>
+              <li>검색 품질 평가: {lastPreparation.retrievalEvaluationStatus}</li>
+            </ul>
+            {lastPreparation.warnings.length > 0 ? (
+              <ul className="mt-2 list-disc space-y-0.5 pl-4 text-amber-950">
+                {lastPreparation.warnings.slice(0, 4).map((warning, index) => (
+                    <li key={`prep-warning-${index}`}>{warning}</li>
+                  ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+
+        {inspectionError ? (
+          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+            <p className="font-semibold">자동 보완을 완료하지 못했습니다.</p>
+            <p className="mt-1">{inspectionError}</p>
+            <button
+              type="button"
+              onClick={onGoToDraftTab}
+              className="mt-2 min-h-[40px] rounded-xl border border-red-300 bg-white px-3 font-semibold text-red-900"
+            >
+              초안 탭으로 이동
+            </button>
           </div>
         ) : null}
 
@@ -179,16 +244,11 @@ export function ProviderPackInspectionTab({
         {readiness.primaryActionKind !== "NONE" && readiness.primaryActionLabel ? (
           <button
             type="button"
-            disabled={
-              actionBusy ||
-              ((readiness.primaryActionKind === "RUN_AUTO_PREPARE" ||
-                readiness.primaryActionKind === "REGENERATE_AND_CHECK") &&
-                (!editable || isReviewing))
-            }
+            disabled={actionBusy || (pipelineBusyKinds && (!editable || isReviewing))}
             onClick={() => void runPrimaryAction()}
             className="mt-3 min-h-[44px] w-full rounded-xl bg-store-accent px-4 text-sm font-bold text-white disabled:opacity-50"
           >
-            {actionBusy ? "자동 점검 중…" : readiness.primaryActionLabel}
+            {actionBusy ? "자동 보완 중…" : readiness.primaryActionLabel}
           </button>
         ) : null}
       </section>
@@ -230,6 +290,7 @@ export function ProviderPackInspectionTab({
             editable={editable && !isReviewing}
             generateButtonLabel={casesLabel}
             runButtonLabel={runEvalLabel}
+            repairButtonLabel="검색용 데이터 자동 보완"
             onGenerate={async (replace) => {
               const data = await generateProviderRetrievalEvaluationCasesApi(packId, replace);
               onPackUpdated(data.pack);
@@ -237,6 +298,9 @@ export function ProviderPackInspectionTab({
             onRun={async () => {
               const data = await runProviderRetrievalEvaluationApi(packId);
               onPackUpdated(data.pack);
+            }}
+            onRepair={async () => {
+              await runAutoPrepare(true);
             }}
           />
           <p className="rounded-xl border border-store-border bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-700">

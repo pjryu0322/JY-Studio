@@ -5,7 +5,20 @@ import { useCallback, useEffect, useState } from "react";
 import { AdminReviewStatusBadge } from "@/components/AdminReviewStatusBadge";
 import type { AdminReviewListItemDto } from "@/lib/admin-review-dto";
 import { fetchAdminReviewItems } from "@/lib/admin-review-api";
+import {
+  ADMIN_REVIEWS_LIST_TITLE,
+  ADMIN_REVIEWS_OPEN_DETAIL,
+} from "@/lib/role-based-ux-copy";
 import { adminReviewDetailPath } from "@/lib/routes";
+
+function formatRequestedAt(iso: string | undefined): string {
+  if (!iso) return "-";
+  try {
+    return new Date(iso).toLocaleString("ko-KR");
+  } catch {
+    return iso;
+  }
+}
 
 export function AdminReviewListPageClient() {
   const [loading, setLoading] = useState(true);
@@ -31,8 +44,9 @@ export function AdminReviewListPageClient() {
 
   return (
     <div className="space-y-4 pb-6">
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-950">
-        현재 Admin Console은 MVP 검증용 내부 도구입니다. 실제 운영 환경에서는 관리자 인증과 권한 제어가 필요합니다.
+      <div className="px-1">
+        <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEWS_LIST_TITLE}</h2>
+        <p className="mt-1 text-xs text-store-muted">REVIEWING 상태 지식팩만 표시됩니다.</p>
       </div>
 
       {error ? (
@@ -46,26 +60,30 @@ export function AdminReviewListPageClient() {
           검수 대기(REVIEWING) 지식팩이 없습니다.
         </p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-3">
           {items.map((item) => (
             <li key={item.packId}>
-              <Link
-                href={adminReviewDetailPath(item.packId)}
-                className="block rounded-2xl border border-store-border bg-white p-4 shadow-card active:bg-slate-50"
-              >
+              <div className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-semibold text-slate-900">{item.name}</p>
                   <AdminReviewStatusBadge status={item.status} />
                 </div>
-                <p className="mt-1 font-mono text-xs text-store-muted">{item.packId}</p>
-                <p className="mt-2 line-clamp-2 text-sm text-slate-700">{item.shortDescription}</p>
+                <p className="mt-1 text-xs text-slate-700">제공자: {item.providerName}</p>
+                <p className="mt-1 font-mono text-xs text-store-muted">지식팩 ID: {item.packId}</p>
                 <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-store-muted">
-                  <div>제공자: {item.providerName}</div>
-                  <div>카테고리: {item.categoryId}</div>
+                  <div>원천 문서: {item.sourceDocumentCount}개</div>
                   <div>버전: {item.versionCount}</div>
-                  <div>문서: {item.sourceDocumentCount}</div>
+                  <div className="col-span-2">
+                    요청일시: {formatRequestedAt(item.updatedAt)}
+                  </div>
                 </dl>
-              </Link>
+                <Link
+                  href={adminReviewDetailPath(item.packId)}
+                  className="mt-3 flex min-h-[44px] items-center justify-center rounded-xl bg-store-accent text-sm font-bold text-white"
+                >
+                  {ADMIN_REVIEWS_OPEN_DETAIL}
+                </Link>
+              </div>
             </li>
           ))}
         </ul>

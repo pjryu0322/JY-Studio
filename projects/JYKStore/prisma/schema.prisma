@@ -161,17 +161,21 @@ model ProviderProfile {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String?  @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  email       String?  @unique
+  name        String?
+  /// USER | PROVIDER | ADMIN — ADMIN grants admin console access.
+  accountRole String   @default("USER")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   memberships   OrganizationMember[]
   installations PackInstallation[]
   apiKeys       ApiKey[]
   auditLogs     AuditLog[]
   providerProfiles ProviderProfile[]
+
+  @@index([accountRole])
 }
 
 model Organization {
@@ -266,6 +270,7 @@ model PackReview {
   id               String    @id @default(cuid())
   packId           String
   reviewerClientId String?
+  reviewerUserId   String?
   status           String
   decision         String?
   memo             String?
@@ -280,6 +285,7 @@ model PackReview {
   @@index([status])
   @@index([decision])
   @@index([createdAt])
+  @@index([reviewerUserId])
 }
 
 model KnowledgePackVersion {

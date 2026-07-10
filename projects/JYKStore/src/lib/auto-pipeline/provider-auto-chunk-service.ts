@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { AUTO_KNOWLEDGE_UNIT_CHUNK_TYPE } from "@/lib/admin-knowledge-unit-draft-activation-dto";
 import { AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE } from "@/lib/github-auto-collect/github-knowledge-unit-draft-generator";
+import { splitContentToChunks } from "@/lib/chunk-pipeline-service";
 import { prisma } from "@/lib/prisma";
 import { readDraftMetadata } from "@/lib/provider-knowledge-unit-draft-dto";
 
@@ -37,20 +38,11 @@ function metadataRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
-export function normalizeAndClamp(text: string, min: number, max: number): string {
+/** Collapse whitespace and clamp max length. Does not invent padding text. */
+export function normalizeAndClamp(text: string, _min: number, max: number): string {
   let content = text.replace(/\s+/g, " ").trim();
   if (content.length > max) {
     content = `${content.slice(0, max - 1).trimEnd()}…`;
-  }
-  if (content.length >= min) return content;
-
-  const pad = " 검색·검수에 사용할 수 있도록 원문 근거와 요약을 포함한 지식 단위입니다.";
-  while (content.length < min) {
-    content = `${content}${pad}`.trim();
-    if (content.length > max) {
-      content = content.slice(0, max).trimEnd();
-      break;
-    }
   }
   return content;
 }
@@ -58,13 +50,17 @@ export function normalizeAndClamp(text: string, min: number, max: number): strin
 export function buildRetrievalChunkContent(input: {
   title: string;
   draftContent: string;
+  topic?: string | null;
   sourceExcerpt?: string | null;
   sourcePath?: string | null;
+  headings?: string[] | null;
 }): string {
   const parts = [
     `제목: ${input.title}`,
-    input.draftContent.trim(),
-    input.sourceExcerpt?.trim() ? `원문 근거: ${input.sourceExcerpt.trim()}` : null,
+    input.topic?.trim() ? `주제: ${input.topic.trim()}` : null,
+    input.draftContent.trim() || null,
+    input.sourceExcerpt?.trim() ? `원문 발췌: ${input.sourceExcerpt.trim()}` : null,
+    input.headings?.length ? `관련 heading: ${input.headings.slice(0, 4).join(" · ")}` : null,
     input.sourcePath?.trim() ? `출처: ${input.sourcePath.trim()}` : null,
   ].filter(Boolean);
 
@@ -83,16 +79,44 @@ function uniqueTags(tags: string[]): string[] {
   return out;
 }
 
-export async function regenerateAutoChunksForPack(input: {
-  packId: string;
-  actorClientId?: string;
-  mode?: "from_knowledge_unit_drafts" | "from_source_documents" | "hybrid";
-  replace?: boolean;
-}, deps: RegenerateAutoChunksDeps = {}): Promise<RegenerateAutoChunksResult> {
+function extractHeadings(content: string): string[] {
+  return content
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => /^#{1,3}\s+/.test(line) || /^[A-Z][A-Za-z0-9 ._-]{3,80}$/.test(line))
+    .map((line) => line.replace(/^#+\s+/, "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+type ChunkCreate = {
+  versionId: string;
+  sourceDocumentId: string;
+  chunkType: string;
+  title: string;
+  content: string;
+  section: string;
+  tags: string[];
+  metadata: Prisma.InputJsonValue;
+  sortOrder: number;
+  isActive: true;
+};
+
+export async function regenerateAutoChunksForPack(
+  input: {
+    packId: string;
+    actorClientId?: string;
+    mode?: "from_knowledge_unit_drafts" | "from_source_documents" | "hybrid";
+    replace?: boolean;
+    reinforce?: boolean;
+  },
+  deps: RegenerateAutoChunksDeps = {},
+): Promise<RegenerateAutoChunksResult> {
   const db = deps.prismaClient ?? prisma;
   const packId = input.packId.trim();
   const mode = input.mode ?? "hybrid";
   const replace = input.replace !== false;
+  const reinforce = input.reinforce !== false;
   const warnings: string[] = [];
 
   const pack = await db.knowledgePack.findFirst({
@@ -161,19 +185,6 @@ export async function regenerateAutoChunksForPack(input: {
     draftsByDoc.set(docId, list);
   }
 
-  type ChunkCreate = {
-    versionId: string;
-    sourceDocumentId: string;
-    chunkType: string;
-    title: string;
-    content: string;
-    section: string;
-    tags: string[];
-    metadata: Prisma.InputJsonValue;
-    sortOrder: number;
-    isActive: true;
-  };
-
   const toCreate: ChunkCreate[] = [];
   const covered = new Set<string>();
   let sortOrder =
@@ -184,6 +195,8 @@ export async function regenerateAutoChunksForPack(input: {
       })
     )._max.sortOrder ?? 0;
 
+  const minReviewReadyChunks = Math.min(eligibleDocs.length, 6);
+
   if (mode === "from_knowledge_unit_drafts" || mode === "hybrid") {
     for (const [docId, drafts] of draftsByDoc) {
       const doc = eligibleDocs.find((d) => d.id === docId);
@@ -192,14 +205,18 @@ export async function regenerateAutoChunksForPack(input: {
         const meta = readDraftMetadata(draft.metadata);
         const existingMeta = metadataRecord(draft.metadata);
         const title = draft.title.trim() || doc.title;
-        const section =
-          (meta.topic ?? draft.section ?? title).trim() || title;
+        const section = (meta.topic ?? draft.section ?? title).trim() || title;
         const content = buildRetrievalChunkContent({
           title,
+          topic: meta.topic,
           draftContent: draft.content,
           sourceExcerpt: meta.evidence?.excerpt ?? null,
           sourcePath: meta.sourcePath ?? meta.canonicalSourcePath ?? doc.fileName,
+          headings: meta.evidence?.headings ?? null,
         });
+        if (content.length < MIN_CHUNK_CHARS) {
+          warnings.push(`Chunk "${title}" 내용이 ${MIN_CHUNK_CHARS}자 미만입니다. 원문 보강이 필요할 수 있습니다.`);
+        }
         sortOrder += 1;
         toCreate.push({
           versionId: version.id,
@@ -208,11 +225,7 @@ export async function regenerateAutoChunksForPack(input: {
           title,
           content,
           section,
-          tags: uniqueTags([
-            ...draft.tags,
-            "auto-pipeline",
-            "retrieval-ready",
-          ]),
+          tags: uniqueTags([...draft.tags, "auto-pipeline", "retrieval-ready"]),
           metadata: {
             generatedBy: AUTO_PIPELINE_GENERATED_BY,
             source: "knowledge-unit-draft",
@@ -246,11 +259,14 @@ export async function regenerateAutoChunksForPack(input: {
         continue;
       }
       const title = doc.title.trim() || "원천 문서";
+      const headings = extractHeadings(raw);
       const content = buildRetrievalChunkContent({
         title,
+        topic: title,
         draftContent: raw.slice(0, 2800),
-        sourceExcerpt: raw.slice(0, 400),
+        sourceExcerpt: raw.slice(0, 500),
         sourcePath: doc.fileName ?? doc.sourceUrl,
+        headings,
       });
       sortOrder += 1;
       toCreate.push({
@@ -259,7 +275,7 @@ export async function regenerateAutoChunksForPack(input: {
         chunkType: AUTO_SOURCE_CHUNK_TYPE,
         title,
         content,
-        section: title,
+        section: headings[0] ?? title,
         tags: ["auto-pipeline", "retrieval-ready", "source-fallback"],
         metadata: {
           generatedBy: AUTO_PIPELINE_GENERATED_BY,
@@ -275,6 +291,68 @@ export async function regenerateAutoChunksForPack(input: {
         isActive: true,
       });
       covered.add(doc.id);
+    }
+  }
+
+  // Reinforce: split long docs into additional retrieval chunks until min count
+  if (reinforce && toCreate.length < minReviewReadyChunks) {
+    const docsByLength = [...eligibleDocs].sort(
+      (a, b) => (b.content?.length ?? 0) - (a.content?.length ?? 0),
+    );
+    for (const doc of docsByLength) {
+      if (toCreate.length >= minReviewReadyChunks) break;
+      const raw = (doc.content ?? "").trim();
+      if (raw.length < MIN_CHUNK_CHARS) continue;
+      const parts = splitContentToChunks(raw, 1200).filter((p) => p.length >= MIN_CHUNK_CHARS);
+      const headings = extractHeadings(raw);
+      let partIndex = 0;
+      for (const part of parts) {
+        if (toCreate.length >= minReviewReadyChunks) break;
+        // Skip first part if we already have a fallback/draft for this doc covering similar start
+        if (partIndex === 0 && covered.has(doc.id) && parts.length === 1) {
+          partIndex += 1;
+          continue;
+        }
+        partIndex += 1;
+        const title = `${doc.title.trim() || "원천 문서"} #${partIndex}`;
+        const content = buildRetrievalChunkContent({
+          title,
+          topic: headings[partIndex - 1] ?? doc.title,
+          draftContent: part,
+          sourceExcerpt: part.slice(0, 400),
+          sourcePath: doc.fileName ?? doc.sourceUrl,
+          headings,
+        });
+        sortOrder += 1;
+        toCreate.push({
+          versionId: version.id,
+          sourceDocumentId: doc.id,
+          chunkType: AUTO_SOURCE_CHUNK_TYPE,
+          title,
+          content,
+          section: headings[partIndex - 1] ?? doc.title,
+          tags: ["auto-pipeline", "retrieval-ready", "source-split"],
+          metadata: {
+            generatedBy: AUTO_PIPELINE_GENERATED_BY,
+            source: "source-document-split",
+            sourceDocumentId: doc.id,
+            sourcePath: doc.fileName,
+            sourceUrl: doc.sourceUrl,
+            topic: headings[partIndex - 1] ?? doc.title,
+            generatedAt: new Date().toISOString(),
+            actorClientId: input.actorClientId ?? null,
+            splitIndex: partIndex,
+          } as Prisma.InputJsonValue,
+          sortOrder,
+          isActive: true,
+        });
+        covered.add(doc.id);
+      }
+    }
+    if (toCreate.length < minReviewReadyChunks) {
+      warnings.push(
+        `검색용 Chunk가 ${toCreate.length}개만 생성되었습니다(목표 ${minReviewReadyChunks}개). 원천 문서 내용을 보강하면 검색 품질이 개선됩니다.`,
+      );
     }
   }
 

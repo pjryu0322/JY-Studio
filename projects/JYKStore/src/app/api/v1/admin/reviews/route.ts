@@ -6,7 +6,7 @@ import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
 
 export async function GET(request: NextRequest) {
   const clientId = ensureClientId(request);
-  const adminDeny = rejectUnlessAdminOps(request, clientId);
+  const adminDeny = await rejectUnlessAdminOps(request, clientId);
   if (adminDeny) return adminDeny;
 
   try {
@@ -14,6 +14,6 @@ export async function GET(request: NextRequest) {
     return jsonWithClientIdCookie({ clientId, items }, clientId);
   } catch (error) {
     logSafeRouteError({ scope: "admin-review", method: "GET", path: "/api/v1/admin/reviews", error });
-    return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });
+    return jsonWithClientIdCookie({ error: "?? ??? ??????." }, clientId, { status: 500 });
   }
 }

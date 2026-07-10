@@ -6,7 +6,7 @@ import { SubmitRequestAction } from "@/components/provider-submit/SubmitRequestA
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import { buildProviderSubmitReadinessPlan } from "@/lib/provider-submit-readiness-steps";
 import {
-  PROVIDER_PACK_GO_TO_INSPECTION_TAB,
+  PROVIDER_PACK_GO_TO_INSPECTION_REPAIR,
   PROVIDER_PACK_GO_TO_SOURCE_TAB,
   PROVIDER_PACK_REVIEW_INCOMPLETE_BODY,
   PROVIDER_PACK_REVIEW_INCOMPLETE_TITLE,
@@ -14,7 +14,11 @@ import {
   PROVIDER_PACK_REVIEW_READY_BODY,
   PROVIDER_PACK_REVIEW_READY_TITLE,
   PROVIDER_PACK_WIZARD_REVIEW_STEP,
-  PROVIDER_REVIEW_READONLY_HINT,
+  PROVIDER_REVIEW_DEV_ADMIN_HINT,
+  PROVIDER_REVIEW_REJECTED_GO_FIX,
+  PROVIDER_REVIEW_REJECTED_TITLE,
+  PROVIDER_REVIEW_WAITING_BODY,
+  PROVIDER_REVIEW_WAITING_TITLE,
   PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE,
 } from "@/lib/role-based-ux-copy";
 
@@ -68,7 +72,25 @@ export function ProviderPackReviewTab({
 
       {isReviewing ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          검수 요청이 접수되었습니다. {PROVIDER_REVIEW_READONLY_HINT}
+          <p className="font-bold">{PROVIDER_REVIEW_WAITING_TITLE}</p>
+          <p className="mt-1 text-xs">{PROVIDER_REVIEW_WAITING_BODY}</p>
+          {process.env.NODE_ENV !== "production" ? (
+            <p className="mt-2 text-[10px] text-amber-800/80">{PROVIDER_REVIEW_DEV_ADMIN_HINT}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!isReviewing && !isPublished && pack.latestRejectionReason ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-900">
+          <p className="font-bold">{PROVIDER_REVIEW_REJECTED_TITLE}</p>
+          <p className="mt-1 text-xs">사유: {pack.latestRejectionReason}</p>
+          <button
+            type="button"
+            onClick={onGoToInspectionTab}
+            className="mt-3 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white"
+          >
+            {PROVIDER_REVIEW_REJECTED_GO_FIX}
+          </button>
         </div>
       ) : null}
 
@@ -104,7 +126,7 @@ export function ProviderPackReviewTab({
             onClick={onGoToInspectionTab}
             className="mt-3 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white"
           >
-            {PROVIDER_PACK_GO_TO_INSPECTION_TAB}
+            {PROVIDER_PACK_GO_TO_INSPECTION_REPAIR}
           </button>
         </div>
       ) : null}

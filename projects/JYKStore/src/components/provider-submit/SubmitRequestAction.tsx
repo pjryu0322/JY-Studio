@@ -19,9 +19,12 @@ export function SubmitRequestAction({
 }) {
   if (plan.nextAction === "WAIT_ADMIN_REVIEW") {
     return (
-      <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-center text-sm font-semibold text-amber-950">
-        관리자 검토가 진행 중입니다.
-      </p>
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-center text-sm text-amber-950">
+        <p className="font-semibold">관리자 검토가 진행 중입니다.</p>
+        <p className="mt-1 text-xs font-normal">
+          승인 전까지 일반 카탈로그와 Context API에는 노출되지 않습니다.
+        </p>
+      </div>
     );
   }
 

@@ -380,12 +380,18 @@ async function mapProviderPackDetailWithValidation(
   const structureQuality = await loadStructureQualitySummaryForPack(pack.packId);
   const chunkQuality = await loadChunkQualitySummaryForPack(pack.packId);
   const retrievalEvaluation = await loadRetrievalEvaluationSummaryForPack(pack.packId);
+  const latestRejected = await prisma.packReview.findFirst({
+    where: { packId: pack.packId, decision: "REJECT" },
+    orderBy: { decidedAt: "desc" },
+    select: { rejectionReason: true },
+  });
 
   return toProviderPackDetail(pack, overlays, {
     structureTemplateKey: pack.structureTemplateKey,
     structureQuality,
     chunkQuality,
     retrievalEvaluation,
+    latestRejectionReason: latestRejected?.rejectionReason ?? null,
   });
 }
 
@@ -1161,7 +1167,7 @@ export async function runProviderPackInspectionAutoPrepare(
   userId: string,
   clientId: string,
   packId: string,
-  options?: { runRetrievalEvaluation?: boolean },
+  options?: { runRetrievalEvaluation?: boolean; repairRetrievalData?: boolean },
 ) {
   const profile = await findProviderProfileForUser(userId, clientId);
 
@@ -1186,6 +1192,7 @@ export async function runProviderPackInspectionAutoPrepare(
     actorClientId: clientId,
     replaceAutoChunks: true,
     runRetrievalEvaluation: options?.runRetrievalEvaluation !== false,
+    repairRetrievalData: options?.repairRetrievalData === true,
   });
 
   const detail = await getProviderPackForClient(userId, clientId, packId);

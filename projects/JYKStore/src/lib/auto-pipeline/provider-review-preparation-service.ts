@@ -1,5 +1,10 @@
 import { regenerateAutoChunksForPack } from "@/lib/auto-pipeline/provider-auto-chunk-service";
 import { evaluatePackChunkQuality } from "@/lib/chunk-quality/chunk-quality-evaluate-service";
+import { prisma } from "@/lib/prisma";
+import {
+  evaluateRetrievalEvaluationPreflight,
+  type RetrievalEvaluationPreflightResult,
+} from "@/lib/retrieval-evaluation/retrieval-evaluation-preflight";
 import {
   generateRetrievalEvaluationCasesForPack,
   runRetrievalEvaluationForPack,
@@ -15,6 +20,7 @@ export type ProviderReviewPreparationResult = {
   chunkQualityStatus: QualityPipelineStatus;
   retrievalCaseCount: number;
   retrievalEvaluationStatus: QualityPipelineStatus;
+  preflight?: RetrievalEvaluationPreflightResult | null;
   warnings: string[];
 };
 
@@ -23,22 +29,74 @@ function asQualityStatus(status: string | null | undefined): QualityPipelineStat
   return "FAIL";
 }
 
+export async function loadRetrievalEvaluationPreflightForPack(
+  packId: string,
+): Promise<RetrievalEvaluationPreflightResult> {
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId },
+    include: {
+      versions: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: {
+          chunks: {
+            where: { isActive: true },
+            select: { id: true, sourceDocumentId: true },
+          },
+        },
+      },
+    },
+  });
+
+  const activeChunks = pack?.versions[0]?.chunks ?? [];
+  const activeSet = await prisma.retrievalEvaluationSet.findFirst({
+    where: { packId, status: "ACTIVE" },
+    orderBy: { updatedAt: "desc" },
+    include: {
+      cases: {
+        where: { isActive: true },
+        select: {
+          query: true,
+          expectedChunkIds: true,
+          expectedSourceDocumentIds: true,
+        },
+      },
+    },
+  });
+
+  return evaluateRetrievalEvaluationPreflight({
+    activeChunkCount: activeChunks.length,
+    activeChunkIds: activeChunks.map((c) => c.id),
+    activeChunkSourceDocumentIds: activeChunks
+      .map((c) => c.sourceDocumentId)
+      .filter((id): id is string => Boolean(id)),
+    activeCases: (activeSet?.cases ?? []).map((c) => ({
+      query: c.query,
+      expectedChunkIds: c.expectedChunkIds,
+      expectedSourceDocumentIds: c.expectedSourceDocumentIds,
+    })),
+  });
+}
+
 export async function runProviderReviewPreparationPipeline(input: {
   packId: string;
   actorClientId?: string;
   replaceAutoChunks?: boolean;
   runRetrievalEvaluation?: boolean;
+  repairRetrievalData?: boolean;
 }): Promise<ProviderReviewPreparationResult> {
   const warnings: string[] = [];
   const packId = input.packId.trim();
   const replaceAutoChunks = input.replaceAutoChunks !== false;
   const runRetrievalEvaluation = input.runRetrievalEvaluation !== false;
+  const repairRetrievalData = input.repairRetrievalData === true;
 
   let structureQualityStatus: QualityPipelineStatus = "SKIPPED";
   let chunkQualityStatus: QualityPipelineStatus = "SKIPPED";
   let retrievalEvaluationStatus: QualityPipelineStatus = "SKIPPED";
   let generatedChunkCount = 0;
   let retrievalCaseCount = 0;
+  let preflight: RetrievalEvaluationPreflightResult | null = null;
 
   const structure = await evaluatePackStructureQuality({
     packId,
@@ -69,6 +127,7 @@ export async function runProviderReviewPreparationPipeline(input: {
     actorClientId: input.actorClientId,
     mode: "hybrid",
     replace: replaceAutoChunks,
+    reinforce: true,
   });
 
   if ("error" in chunks) {
@@ -87,6 +146,7 @@ export async function runProviderReviewPreparationPipeline(input: {
       chunkQualityStatus: "SKIPPED",
       retrievalCaseCount: 0,
       retrievalEvaluationStatus: "SKIPPED",
+      preflight: null,
       warnings,
     };
   }
@@ -119,8 +179,38 @@ export async function runProviderReviewPreparationPipeline(input: {
       chunkQualityStatus,
       retrievalCaseCount: 0,
       retrievalEvaluationStatus: "SKIPPED",
+      preflight: null,
       warnings,
     };
+  }
+
+  // Preflight before cases: ensure enough active chunks
+  preflight = await loadRetrievalEvaluationPreflightForPack(packId);
+  if (
+    !preflight.ready &&
+    (preflight.status === "no_active_chunks" || preflight.status === "chunk_insufficient") &&
+    (repairRetrievalData || runRetrievalEvaluation)
+  ) {
+    warnings.push(preflight.userMessage);
+    const reinforced = await regenerateAutoChunksForPack({
+      packId,
+      actorClientId: input.actorClientId,
+      mode: "hybrid",
+      replace: true,
+      reinforce: true,
+    });
+    if (!("error" in reinforced)) {
+      generatedChunkCount = Math.max(generatedChunkCount, reinforced.createdChunkCount);
+      warnings.push(...reinforced.warnings);
+      warnings.push(`검색용 Chunk ${reinforced.createdChunkCount}개를 자동 보완했습니다.`);
+      const recheckQuality = await evaluatePackChunkQuality({
+        packId,
+        actorClientId: input.actorClientId,
+      });
+      if (!("error" in recheckQuality)) {
+        chunkQualityStatus = asQualityStatus(recheckQuality.report.status);
+      }
+    }
   }
 
   const cases = await generateRetrievalEvaluationCasesForPack({
@@ -139,26 +229,70 @@ export async function runProviderReviewPreparationPipeline(input: {
     retrievalCaseCount = cases.summary.set?.activeCaseCount ?? 0;
   }
 
+  preflight = await loadRetrievalEvaluationPreflightForPack(packId);
+
+  if (!preflight.ready) {
+    warnings.push(preflight.userMessage);
+    if (
+      preflight.recommendedAction === "regenerate_cases" ||
+      preflight.recommendedAction === "regenerate_chunks_and_cases"
+    ) {
+      if (preflight.recommendedAction === "regenerate_chunks_and_cases") {
+        const again = await regenerateAutoChunksForPack({
+          packId,
+          actorClientId: input.actorClientId,
+          mode: "hybrid",
+          replace: true,
+          reinforce: true,
+        });
+        if (!("error" in again)) {
+          generatedChunkCount = Math.max(generatedChunkCount, again.createdChunkCount);
+        }
+      }
+      const regeneratedCases = await generateRetrievalEvaluationCasesForPack({
+        packId,
+        actorClientId: input.actorClientId,
+        replace: true,
+      });
+      if (!("error" in regeneratedCases)) {
+        retrievalCaseCount = regeneratedCases.summary.set?.activeCaseCount ?? 0;
+        if (preflight.mismatchedCaseTitles.length > 0) {
+          warnings.push(
+            `현재 지식 범위와 맞지 않던 평가 케이스(${preflight.mismatchedCaseTitles.slice(0, 3).join(", ")})를 제외하고 다시 생성했습니다.`,
+          );
+        }
+      }
+      preflight = await loadRetrievalEvaluationPreflightForPack(packId);
+    }
+  }
+
   if (
     runRetrievalEvaluation &&
     retrievalCaseCount > 0 &&
     (chunkQualityStatus === "PASS" || chunkQualityStatus === "WARNING")
   ) {
-    const run = await runRetrievalEvaluationForPack({
-      packId,
-      actorClientId: input.actorClientId,
-    });
-    if ("error" in run) {
-      retrievalEvaluationStatus = "FAIL";
+    if (!preflight.ready) {
+      retrievalEvaluationStatus = "SKIPPED";
       warnings.push(
-        "검색 품질 평가를 자동 실행했지만 완료하지 못했습니다. 점검 탭에서 자동 재점검을 실행해 주세요.",
+        "검색용 데이터 정합성이 부족해 검색 품질 평가를 보류했습니다. 점검 탭에서 검색용 데이터 자동 보완을 실행해 주세요.",
       );
     } else {
-      retrievalEvaluationStatus = asQualityStatus(run.summary.latestRun?.status);
-      if (retrievalEvaluationStatus === "FAIL") {
+      const run = await runRetrievalEvaluationForPack({
+        packId,
+        actorClientId: input.actorClientId,
+      });
+      if ("error" in run) {
+        retrievalEvaluationStatus = "FAIL";
         warnings.push(
-          "검색 품질 평가를 자동 실행했지만 일부 케이스가 기준에 미달했습니다. 자동 재점검 후 다시 확인해 주세요.",
+          "검색 품질 평가를 자동 실행했지만 완료하지 못했습니다. 검색용 데이터 자동 보완을 다시 실행해 주세요.",
         );
+      } else {
+        retrievalEvaluationStatus = asQualityStatus(run.summary.latestRun?.status);
+        if (retrievalEvaluationStatus === "FAIL") {
+          warnings.push(
+            "검색 결과 품질이 기준에 미달했습니다. 검색용 데이터 자동 보완으로 Chunk와 평가 케이스를 다시 맞춘 뒤 재점검할 수 있습니다.",
+          );
+        }
       }
     }
   } else if (retrievalCaseCount === 0) {
@@ -175,6 +309,7 @@ export async function runProviderReviewPreparationPipeline(input: {
     chunkQualityStatus,
     retrievalCaseCount,
     retrievalEvaluationStatus,
-    warnings,
+    preflight,
+    warnings: [...new Set(warnings)],
   };
 }

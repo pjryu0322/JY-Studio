@@ -70,6 +70,23 @@ export const PROVIDER_PACK_NEXT_TASK_SUBMIT =
 export const PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN =
   "관리자 검토 결과를 기다려 주세요.";
 
+export const PROVIDER_REVIEW_WAITING_TITLE = "검수 요청이 접수되었습니다.";
+export const PROVIDER_REVIEW_WAITING_BODY =
+  "관리자가 지식팩 품질과 공개 여부를 검토하고 있습니다. 승인 전까지 일반 카탈로그와 Context API에는 노출되지 않습니다.";
+export const PROVIDER_REVIEW_REJECTED_TITLE = "검수 반려됨";
+export const PROVIDER_REVIEW_REJECTED_GO_FIX = "보완하러 가기";
+export const PROVIDER_REVIEW_DEV_ADMIN_HINT =
+  "개발자 테스트: 관리자 콘솔에서 검수 대기 목록을 확인하세요.";
+
+export const ADMIN_LOGIN_TITLE = "JYKStore 관리자 로그인";
+export const ADMIN_LOGIN_DESCRIPTION =
+  "검수 요청된 지식팩을 확인하고 승인 또는 반려합니다.";
+export const ADMIN_ACCESS_REQUIRED_TITLE = "관리자 권한이 필요합니다.";
+export const ADMIN_ACCESS_REQUIRED_BODY = "관리자 계정으로 로그인해 주세요.";
+export const ADMIN_CONSOLE_TITLE = "관리자 콘솔";
+export const ADMIN_REVIEWS_LIST_TITLE = "검수 대기 지식팩";
+export const ADMIN_REVIEWS_OPEN_DETAIL = "검토하기";
+
 export const PROVIDER_PACK_ID_READONLY_HINT =
   "JYKStore가 발급한 고유 식별자입니다. 수정할 수 없습니다.";
 export const PROVIDER_PACK_AUTO_SUMMARY_LABEL = "자동 생성 요약";
@@ -113,7 +130,8 @@ export const PROVIDER_PACK_REVIEW_SUBMIT_CTA = "검수 요청 제출";
 export const PROVIDER_PACK_INSPECTION_AUTO_TITLE = "자동 점검 결과";
 export const PROVIDER_PACK_REVIEW_INCOMPLETE_TITLE = "검수 요청 불가";
 export const PROVIDER_PACK_REVIEW_INCOMPLETE_BODY =
-  "아직 자동 점검이 완료되지 않았습니다. 점검 탭에서 자동 점검 결과를 확인해 주세요.";
+  "검색 가능한 지식 데이터 보완이 필요합니다. 점검 탭에서 자동 보완 결과를 확인해 주세요.";
+export const PROVIDER_PACK_GO_TO_INSPECTION_REPAIR = "점검 탭에서 자동 보완";
 export const PROVIDER_PACK_REVIEW_READY_TITLE = "검수 요청 준비 완료";
 export const PROVIDER_PACK_REVIEW_READY_BODY =
   "제출 후 관리자 검토 단계로 이동합니다. 검수 전까지 일반 카탈로그와 Context API에는 공개되지 않습니다.";
@@ -148,7 +166,7 @@ export const PROVIDER_KU_CONTENT_VIEW = "내용 보기";
 export const PROVIDER_KU_EVIDENCE_VIEW = "근거 보기";
 
 export const PROVIDER_REVIEW_READONLY_HINT =
-  "검토 요청 후 운영자가 승인·활성화하면 공개 지식팩으로 사용할 수 있습니다.";
+  "관리자가 지식팩 품질과 공개 여부를 검토하고 있습니다. 승인 전까지 일반 카탈로그와 Context API에는 노출되지 않습니다.";
 
 export const PROVIDER_SUBMIT_READINESS_TITLE = "검수 요청 준비";
 export const PROVIDER_SUBMIT_PROVIDER_TASKS_TITLE = "제공자가 해야 할 일";
@@ -156,7 +174,7 @@ export const PROVIDER_SUBMIT_ADMIN_TASKS_TITLE = "검수 제출 후 관리자 �
 export const PROVIDER_SUBMIT_ADMIN_REVIEW_NOTICE =
   "Chunk는 시스템이 자동 생성합니다. 제공자는 자동 생성된 Chunk 품질 점검 결과를 확인하고 검수 요청을 제출합니다. 관리자는 검수 단계에서 최종 공개 여부를 판단합니다.";
 export const PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE =
-  "검수 요청 후 관리자가 지식팩 품질과 공개 여부를 최종 검토합니다.";
+  "검수 요청이 접수되면 관리자가 지식팩 품질과 공개 여부를 검토합니다. 승인 전까지 일반 카탈로그와 Context API에는 노출되지 않습니다.";
 
 /** @deprecated Use ProviderOnboardingStepper instead of numbered list on provider page */
 export const PROVIDER_CENTER_ONBOARDING_STEPS = [

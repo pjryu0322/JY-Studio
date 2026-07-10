@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { logSafeRouteError } from "@/lib/safe-logging";
 import { approvePackReview } from "@/lib/admin-review-service";
 import { ensureClientId, getClientIdFromRequest, jsonWithClientIdCookie } from "@/lib/client-identity";
-import { rejectUnlessAdminOps } from "@/lib/admin-route-guard";
+import { requireAdminSession } from "@/lib/admin-route-guard";
 
 type RouteContext = {
   params: Promise<{ packId: string }>;
@@ -18,8 +18,14 @@ async function parseJsonBody(request: NextRequest) {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
-  const adminDeny = rejectUnlessAdminOps(request, clientId);
-  if (adminDeny) return adminDeny;
+  const adminAuth = await requireAdminSession(request, clientId);
+  if (!adminAuth.ok) {
+    return jsonWithClientIdCookie(
+      { error: { code: adminAuth.code, message: adminAuth.message } },
+      clientId,
+      { status: adminAuth.status },
+    );
+  }
   const { packId } = await context.params;
 
   try {
@@ -33,6 +39,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const result = await approvePackReview({
       packId: packId?.trim() ?? "",
       reviewerClientId: getClientIdFromRequest(request) ?? clientId,
+      reviewerUserId: adminAuth.adminUserId,
       memo: body.memo,
       publishAsVerified: body.publishAsVerified,
     });

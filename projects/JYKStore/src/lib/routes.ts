@@ -12,6 +12,8 @@ export const ROUTES = {
   provider: "/provider",
   providerPackNew: "/provider/packs/new",
   admin: "/admin",
+  adminLogin: "/admin/login",
+  adminReviews: "/admin/reviews",
   adminKnowledgeUnitDrafts: "/admin/knowledge-unit-drafts",
   adminOps: "/admin/ops",
   adminOpsUsage: "/admin/ops/usage",

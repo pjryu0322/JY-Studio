@@ -24,7 +24,7 @@ async function parseJsonBody(request: NextRequest) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
-  const adminDeny = rejectUnlessAdminOps(request, clientId);
+  const adminDeny = await rejectUnlessAdminOps(request, clientId);
   if (adminDeny) return adminDeny;
   const { packId, chunkId } = await context.params;
 

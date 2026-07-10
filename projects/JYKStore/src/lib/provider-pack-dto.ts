@@ -95,6 +95,8 @@ export type ProviderPackDetailDto = {
   structureQuality: StructureQualitySummaryDto | null;
   chunkQuality: ChunkQualitySummaryDto | null;
   retrievalEvaluation: RetrievalEvaluationSummaryDto | null;
+  /** Latest REJECT decision reason when pack was returned for fixes. */
+  latestRejectionReason: string | null;
   versions: ProviderPackVersionDto[];
   updatedAt: string;
 };
@@ -141,6 +143,7 @@ export function toProviderPackDetail(
     structureQuality?: StructureQualitySummaryDto | null;
     chunkQuality?: ChunkQualitySummaryDto | null;
     retrievalEvaluation?: RetrievalEvaluationSummaryDto | null;
+    latestRejectionReason?: string | null;
   },
 ): ProviderPackDetailDto {
   return {
@@ -160,6 +163,7 @@ export function toProviderPackDetail(
     structureQuality: options?.structureQuality ?? null,
     chunkQuality: options?.chunkQuality ?? null,
     retrievalEvaluation: options?.retrievalEvaluation ?? null,
+    latestRejectionReason: options?.latestRejectionReason ?? null,
     versions: pack.versions.map((v) => mapVersion(v, validationOverlays)),
     updatedAt: pack.updatedAt.toISOString(),
   };

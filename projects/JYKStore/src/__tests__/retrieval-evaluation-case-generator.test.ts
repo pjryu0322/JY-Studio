@@ -4,7 +4,7 @@ import { generateRetrievalEvaluationCases } from "@/lib/retrieval-evaluation/ret
 import { MAX_AUTO_RETRIEVAL_EVAL_CASES } from "@/lib/retrieval-evaluation/retrieval-evaluation-types";
 
 describe("retrieval evaluation case generator", () => {
-  it("creates case from required covered structure section", () => {
+  it("creates case from required covered structure section when active chunk covers source", () => {
     const cases = generateRetrievalEvaluationCases({
       structureSections: [
         {
@@ -13,18 +13,40 @@ describe("retrieval evaluation case generator", () => {
           required: true,
           covered: true,
           matchedDocIds: ["doc-1"],
-          matchedSignals: ["keyword:auth"],
+          matchedSignals: ["keyword:auth flow"],
         },
       ],
-      sources: [],
-      chunks: [],
+      sources: [
+        {
+          id: "doc-1",
+          title: "Auth guide",
+          sourceType: "SECURITY_GUIDE",
+          validationStatus: "PASS",
+        },
+      ],
+      chunks: [
+        {
+          id: "chunk-auth",
+          title: "인증 흐름 설명",
+          section: "AUTH_FLOW",
+          tags: ["auth"],
+          sourceDocumentId: "doc-1",
+          isActive: true,
+          sourceType: "SECURITY_GUIDE",
+        },
+      ],
     });
     assert.ok(cases.length >= 1);
-    assert.ok(cases[0]!.expectedSections.includes("AUTH_FLOW"));
-    assert.deepEqual(cases[0]!.expectedSourceDocumentIds, ["doc-1"]);
+    assert.ok(
+      cases.some(
+        (c) =>
+          c.expectedSourceDocumentIds.includes("doc-1") ||
+          c.expectedChunkIds.includes("chunk-auth"),
+      ),
+    );
   });
 
-  it("creates case from source document title", () => {
+  it("creates case from source document title when covered by active chunk", () => {
     const cases = generateRetrievalEvaluationCases({
       structureSections: [],
       sources: [
@@ -35,7 +57,17 @@ describe("retrieval evaluation case generator", () => {
           validationStatus: "PASS",
         },
       ],
-      chunks: [],
+      chunks: [
+        {
+          id: "chunk-1",
+          title: "OpenAPI paths",
+          section: "paths",
+          tags: ["openapi"],
+          sourceDocumentId: "doc-1",
+          isActive: true,
+          sourceType: "OPENAPI_SCHEMA",
+        },
+      ],
     });
     assert.ok(cases.some((c) => c.expectedSourceDocumentIds.includes("doc-1")));
   });
@@ -59,7 +91,7 @@ describe("retrieval evaluation case generator", () => {
     assert.ok(cases.some((c) => c.expectedChunkIds.includes("chunk-1")));
   });
 
-  it("skips cases without evidence", () => {
+  it("skips structure cases without active source coverage", () => {
     const cases = generateRetrievalEvaluationCases({
       structureSections: [
         {
@@ -74,8 +106,37 @@ describe("retrieval evaluation case generator", () => {
       sources: [],
       chunks: [],
     });
-    // title/section keys still provide expectedSections evidence
-    assert.ok(cases.every((c) => c.expectedSections.length > 0 || c.expectedChunkIds.length > 0));
+    assert.equal(cases.length, 0);
+  });
+
+  it("skips banned bare queries like api/error", () => {
+    const cases = generateRetrievalEvaluationCases({
+      structureSections: [
+        {
+          sectionKey: "API",
+          title: "API",
+          required: true,
+          covered: true,
+          matchedDocIds: ["doc-1"],
+          matchedSignals: ["keyword:api"],
+        },
+      ],
+      sources: [
+        { id: "doc-1", title: "Manual", sourceType: "PRODUCT_MANUAL", validationStatus: "PASS" },
+      ],
+      chunks: [
+        {
+          id: "c1",
+          title: "설치하기",
+          section: "Install",
+          tags: [],
+          sourceDocumentId: "doc-1",
+          isActive: true,
+          sourceType: "PRODUCT_MANUAL",
+        },
+      ],
+    });
+    assert.ok(!cases.some((c) => c.query.toLowerCase() === "api"));
   });
 
   it("dedupes normalized queries", () => {
@@ -83,11 +144,29 @@ describe("retrieval evaluation case generator", () => {
       structureSections: [],
       sources: [
         { id: "d1", title: "Same Title", sourceType: "FAQ", validationStatus: "PASS" },
-        { id: "d2", title: "same   title", sourceType: "FAQ", validationStatus: "PASS" },
       ],
-      chunks: [],
+      chunks: [
+        {
+          id: "c1",
+          title: "Same Title",
+          section: "s",
+          tags: [],
+          sourceDocumentId: "d1",
+          isActive: true,
+          sourceType: "FAQ",
+        },
+        {
+          id: "c2",
+          title: "same   title",
+          section: "s2",
+          tags: [],
+          sourceDocumentId: "d1",
+          isActive: true,
+          sourceType: "FAQ",
+        },
+      ],
     });
-    assert.equal(cases.length, 1);
+    assert.equal(cases.filter((c) => normalizeLike(c.query) === "same title").length, 1);
   });
 
   it("respects max case limit", () => {
@@ -98,14 +177,18 @@ describe("retrieval evaluation case generator", () => {
       tags: [`t${i}`],
       sourceDocumentId: `d${i}`,
       isActive: true,
+      sourceType: "FAQ",
     }));
     const cases = generateRetrievalEvaluationCases({
       structureSections: [],
       sources: [],
       chunks,
-      maxCases: 8,
+      maxCases: MAX_AUTO_RETRIEVAL_EVAL_CASES,
     });
-    assert.ok(cases.length <= 8);
     assert.ok(cases.length <= MAX_AUTO_RETRIEVAL_EVAL_CASES);
   });
 });
+
+function normalizeLike(query: string): string {
+  return query.toLowerCase().replace(/\s+/g, " ").trim();
+}

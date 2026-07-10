@@ -445,6 +445,7 @@ async function recordRejectionPipeline(
 export async function approvePackReview(input: {
   packId: string;
   reviewerClientId?: string;
+  reviewerUserId?: string | null;
   memo?: string;
   publishAsVerified?: boolean;
 }) {
@@ -516,6 +517,7 @@ export async function approvePackReview(input: {
           decision: "APPROVE",
           memo,
           reviewerClientId: input.reviewerClientId ?? null,
+          reviewerUserId: input.reviewerUserId ?? null,
           decidedAt: now,
         },
       });
@@ -527,6 +529,7 @@ export async function approvePackReview(input: {
           decision: "APPROVE",
           memo,
           reviewerClientId: input.reviewerClientId ?? null,
+          reviewerUserId: input.reviewerUserId ?? null,
           decidedAt: now,
         },
       });
@@ -537,7 +540,14 @@ export async function approvePackReview(input: {
     action: AuditAction.ADMIN_PACK_APPROVE,
     entityType: "KnowledgePack",
     entityId: packId,
-    metadata: { publishAsVerified, memo },
+    actorUserId: input.reviewerUserId,
+    metadata: {
+      publishAsVerified,
+      memo,
+      adminUserId: input.reviewerUserId ?? null,
+      reviewerClientId: input.reviewerClientId ?? null,
+      action: "APPROVE",
+    },
   });
 
   await recordApprovalPipeline(packId, input.reviewerClientId);
@@ -549,6 +559,7 @@ export async function approvePackReview(input: {
 export async function rejectPackReview(input: {
   packId: string;
   reviewerClientId?: string;
+  reviewerUserId?: string | null;
   memo?: string;
   rejectionReason: string;
 }) {
@@ -594,6 +605,7 @@ export async function rejectPackReview(input: {
           memo,
           rejectionReason,
           reviewerClientId: input.reviewerClientId ?? null,
+          reviewerUserId: input.reviewerUserId ?? null,
           decidedAt: now,
         },
       });
@@ -606,6 +618,7 @@ export async function rejectPackReview(input: {
           memo,
           rejectionReason,
           reviewerClientId: input.reviewerClientId ?? null,
+          reviewerUserId: input.reviewerUserId ?? null,
           decidedAt: now,
         },
       });
@@ -616,7 +629,14 @@ export async function rejectPackReview(input: {
     action: AuditAction.ADMIN_PACK_REJECT,
     entityType: "KnowledgePack",
     entityId: packId,
-    metadata: { rejectionReason, memo },
+    actorUserId: input.reviewerUserId,
+    metadata: {
+      rejectionReason,
+      memo,
+      adminUserId: input.reviewerUserId ?? null,
+      reviewerClientId: input.reviewerClientId ?? null,
+      action: "REJECT",
+    },
   });
 
   await recordRejectionPipeline(packId, rejectionReason, input.reviewerClientId);

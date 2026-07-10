@@ -46,7 +46,7 @@ describe("provider pack tabs UX sources", () => {
     assert.ok(!review.includes("evaluateProviderChunkQualityApi"));
     assert.ok(!review.includes("generateProviderRetrievalEvaluationCasesApi"));
     assert.ok(!review.includes("runProviderRetrievalEvaluationApi"));
-    assert.ok(review.includes("PROVIDER_PACK_GO_TO_INSPECTION_TAB"));
+    assert.ok(review.includes("PROVIDER_PACK_GO_TO_INSPECTION_REPAIR"));
     assert.ok(review.includes("SubmitRequestAction"));
     assert.ok(!source.includes("StructureQualityPanel"));
   });

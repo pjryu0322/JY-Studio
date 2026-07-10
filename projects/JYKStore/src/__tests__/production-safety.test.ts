@@ -97,14 +97,17 @@ describe("production safety static scan", () => {
     }
   });
 
-  it("all admin api routes use Admin Ops verification", () => {
+  it("all admin api routes use Admin Ops or admin session verification", () => {
     const adminDir = join(projectRoot, "src", "app", "api", "v1", "admin");
     const routes = walkFiles(adminDir).filter((f) => f.endsWith("route.ts"));
     const missing: string[] = [];
     for (const file of routes) {
       const source = readFileSync(file, "utf8");
       const hasGuard =
-        source.includes("verifyAdminOpsRequest") || source.includes("rejectUnlessAdminOps");
+        source.includes("verifyAdminOpsRequest") ||
+        source.includes("rejectUnlessAdminOps") ||
+        source.includes("rejectUnlessAdmin") ||
+        source.includes("requireAdminSession");
       if (!hasGuard) missing.push(file);
     }
     assert.deepEqual(missing, []);

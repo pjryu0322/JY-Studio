@@ -264,7 +264,7 @@ export function AccountPageClient() {
           <h2 className="px-1 text-xs font-bold uppercase tracking-wide text-store-muted">운영자 도구</h2>
           <ul className="space-y-2 text-sm">
             <li>
-              <MenuLink title="관리자 콘솔" description="지식팩 검수 및 승인" href={ROUTES.admin} />
+              <MenuLink title="관리자 콘솔" description="지식팩 검수 및 승인" href={ROUTES.adminReviews} />
             </li>
             <li>
               <MenuLink

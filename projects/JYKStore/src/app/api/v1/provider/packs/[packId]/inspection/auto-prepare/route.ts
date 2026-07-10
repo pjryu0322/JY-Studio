@@ -14,10 +14,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     let runRetrievalEvaluation = true;
+    let repairRetrievalData = false;
     try {
-      const body = (await request.json()) as { runRetrievalEvaluation?: unknown };
+      const body = (await request.json()) as {
+        runRetrievalEvaluation?: unknown;
+        repairRetrievalData?: unknown;
+      };
       if (typeof body?.runRetrievalEvaluation === "boolean") {
         runRetrievalEvaluation = body.runRetrievalEvaluation;
+      }
+      if (typeof body?.repairRetrievalData === "boolean") {
+        repairRetrievalData = body.repairRetrievalData;
       }
     } catch {
       // optional body
@@ -27,7 +34,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       userId,
       clientId,
       packId?.trim() ?? "",
-      { runRetrievalEvaluation },
+      { runRetrievalEvaluation, repairRetrievalData },
     );
 
     if (result.error === "PROFILE_REQUIRED") {

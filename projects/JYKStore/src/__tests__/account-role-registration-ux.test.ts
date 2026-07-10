@@ -26,8 +26,8 @@ describe("account role registration UX", () => {
     const layout = readSource("src/app/(store)/admin/layout.tsx");
     const gate = readSource("src/components/AdminAccessGate.tsx");
     assert.ok(layout.includes("AdminAccessGate"));
-    assert.ok(gate.includes("운영자 권한이 필요합니다"));
-    assert.ok(gate.includes("account-role-admin"));
+    assert.ok(gate.includes("ADMIN_ACCESS_REQUIRED_TITLE"));
+    assert.ok(gate.includes("adminLogin"));
   });
 
   it("exposes admin ops verify route", () => {

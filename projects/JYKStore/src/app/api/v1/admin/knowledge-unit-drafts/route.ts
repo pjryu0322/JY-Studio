@@ -14,7 +14,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 export async function GET(request: NextRequest) {
   const clientId = ensureClientId(request);
-  const adminDeny = rejectUnlessAdminOps(request, clientId);
+  const adminDeny = await rejectUnlessAdminOps(request, clientId);
   if (adminDeny) return adminDeny;
 
   try {

@@ -10,7 +10,7 @@ type RouteContext = {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const clientId = ensureClientId(request);
-  const adminDeny = rejectUnlessAdminOps(request, clientId);
+  const adminDeny = await rejectUnlessAdminOps(request, clientId);
   if (adminDeny) return adminDeny;
   const { packId, sourceDocumentId } = await context.params;
 

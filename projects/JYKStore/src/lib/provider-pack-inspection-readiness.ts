@@ -49,6 +49,7 @@ export type ProviderInspectionUserState =
 export type InspectionPrimaryActionKind =
   | "RUN_AUTO_PREPARE"
   | "REGENERATE_AND_CHECK"
+  | "REPAIR_RETRIEVAL_DATA"
   | "GO_TO_SOURCE"
   | "GO_TO_DRAFT"
   | "GO_TO_REVIEW"
@@ -220,8 +221,21 @@ function resolveUserFacingState(input: {
     };
   }
 
-  const fixNeededTitles = plan.incompleteStepTitles;
+  const fixNeededTitles = plan.incompleteStepTitles.map((title) => {
+    if (title === "검색 품질 평가") return "검색용 데이터 보완";
+    if (title === "검색 평가 케이스 생성") return "검색 평가 케이스 재생성";
+    if (title === "청킹 품질 점검") return "Chunk 자동 생성·점검";
+    return title;
+  });
   const started = hasAnyQualityReport(pack);
+  const retrievalFailed =
+    nextAction === "RUN_RETRIEVAL_EVALUATION" ||
+    plan.steps.some((s) => s.key === "retrieval_evaluation" && s.status === "failed");
+  const activeChunkHint =
+    pack.chunkQuality?.report?.activeChunkCount != null
+      ? `활성 Chunk ${pack.chunkQuality.report.activeChunkCount}개`
+      : null;
+  const caseCount = pack.retrievalEvaluation?.set?.activeCaseCount ?? 0;
 
   if (!started) {
     return {
@@ -233,6 +247,24 @@ function resolveUserFacingState(input: {
       primaryActionKind: "RUN_AUTO_PREPARE",
       passedTitles,
       fixNeededTitles,
+    };
+  }
+
+  if (retrievalFailed) {
+    const reasons = [
+      activeChunkHint,
+      caseCount > 0 ? `평가 케이스 ${caseCount}개` : null,
+      "검색 가능한 지식 데이터와 평가 케이스 정합성을 다시 맞춰야 합니다.",
+    ].filter(Boolean) as string[];
+    return {
+      userState: "system_fix_available",
+      userTitle: "검색 품질 점검 결과: 보완 필요",
+      userMessage:
+        "검색 가능한 지식 데이터가 부족하거나 평가 케이스가 현재 지식 범위와 맞지 않습니다. 시스템이 검색용 Chunk와 평가 케이스를 다시 생성한 뒤 재점검할 수 있습니다.",
+      primaryActionLabel: "검색용 데이터 자동 보완",
+      primaryActionKind: "REPAIR_RETRIEVAL_DATA",
+      passedTitles,
+      fixNeededTitles: reasons.length > 0 ? reasons : fixNeededTitles,
     };
   }
 

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { resolveSessionAccountRole } from "@/lib/account-role";
 import { getStoreAuthSessionFromRequest } from "@/lib/auth-session";
 import { findProviderProfileForUser } from "@/lib/provider-profile-service";
 import { toProviderProfileDto } from "@/lib/provider-profile-dto";
@@ -22,15 +23,21 @@ export async function GET(request: NextRequest) {
 
     const profileRow = await findProviderProfileForUser(session.userId, clientId);
     const providerProfile = profileRow ? toProviderProfileDto(profileRow) : null;
+    const accountRole = resolveSessionAccountRole({
+      storedRole: user.accountRole,
+      hasProviderProfile: Boolean(providerProfile),
+    });
 
     return jsonWithClientIdCookie(
       {
         loggedIn: true,
         clientId,
+        accountRole,
         user: {
           id: user.id,
           email: user.email,
           name: user.name,
+          accountRole,
         },
         providerProfile,
       },

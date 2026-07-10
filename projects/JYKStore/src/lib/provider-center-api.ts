@@ -334,21 +334,43 @@ export async function generateGitHubKnowledgeUnitDraftsApi(
 
 export async function runProviderInspectionAutoPrepareApi(
   packId: string,
-  input?: { runRetrievalEvaluation?: boolean },
-): Promise<ProviderPackDetailResponse & { preparation?: unknown }> {
+  input?: { runRetrievalEvaluation?: boolean; repairRetrievalData?: boolean },
+): Promise<
+  ProviderPackDetailResponse & {
+    preparation?: {
+      generatedChunkCount: number;
+      structureQualityStatus: string;
+      chunkQualityStatus: string;
+      retrievalCaseCount: number;
+      retrievalEvaluationStatus: string;
+      warnings: string[];
+    };
+  }
+> {
   const response = await fetch(
     `/api/v1/provider/packs/${encodeURIComponent(packId)}/inspection/auto-prepare`,
     {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input ?? { runRetrievalEvaluation: true }),
+      body: JSON.stringify(
+        input ?? { runRetrievalEvaluation: true, repairRetrievalData: false },
+      ),
     },
   );
   if (!response.ok) {
     throw new Error(await parseErrorMessage(response));
   }
-  return (await response.json()) as ProviderPackDetailResponse & { preparation?: unknown };
+  return (await response.json()) as ProviderPackDetailResponse & {
+    preparation?: {
+      generatedChunkCount: number;
+      structureQualityStatus: string;
+      chunkQualityStatus: string;
+      retrievalCaseCount: number;
+      retrievalEvaluationStatus: string;
+      warnings: string[];
+    };
+  };
 }
 
 export async function fetchProviderKnowledgeUnitDraftsApi(
