@@ -3,21 +3,26 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProviderKnowledgeUnitDraftDto } from "@/lib/provider-knowledge-unit-draft-dto";
 import { fetchProviderKnowledgeUnitDraftsApi } from "@/lib/provider-center-api";
-import { groupKuDraftsByTopic } from "@/lib/knowledge-unit-draft/ku-draft-processing-status";
+import {
+  buildKuProcessingNarrative,
+  groupKuDraftsByTopic,
+} from "@/lib/knowledge-unit-draft/ku-draft-processing-status";
 import { parseUserFacingKuDraftContent } from "@/lib/knowledge-unit-draft/ku-draft-content";
 import {
   PROVIDER_KU_CONTENT_VIEW,
   PROVIDER_KU_DRAFT_PANEL_TITLE,
   PROVIDER_KU_EVIDENCE_VIEW,
+  PROVIDER_KU_EXCLUDED_GUIDANCE,
   PROVIDER_KU_PREVIEW_GENERATION_BADGE,
   PROVIDER_KU_PROCESSING_DETAIL_TOGGLE,
   PROVIDER_KU_PROCESSING_TITLE,
   PROVIDER_KU_REVIEW_GUIDANCE,
   PROVIDER_KU_REVIEW_STATUS_PENDING,
-  PROVIDER_KU_STATUS_DEDUPED,
+  PROVIDER_KU_STATUS_DUPLICATE,
   PROVIDER_KU_STATUS_EXCLUDED,
   PROVIDER_KU_STATUS_FAILED,
   PROVIDER_KU_STATUS_GENERATED,
+  PROVIDER_KU_STATUS_UNSUPPORTED,
 } from "@/lib/role-based-ux-copy";
 
 const inputClass =
@@ -27,10 +32,21 @@ type StatusFilter = "pending_review" | "superseded" | "all";
 
 function documentStatusLabel(status: string): string {
   if (status === "generated") return "Unit 생성 완료";
-  if (status === "deduped") return "기존 Unit과 중복";
+  if (status === "duplicate") return "중복 제외";
   if (status === "excluded") return "생성 제외";
+  if (status === "unsupported") return "지원 제외";
   if (status === "failed") return "처리 실패";
+  if (status === "deduped") return "중복 제외";
   return status;
+}
+
+function documentStatusBadgeClass(status: string): string {
+  if (status === "generated") return "bg-emerald-100 text-emerald-900";
+  if (status === "duplicate" || status === "deduped") return "bg-slate-100 text-slate-700";
+  if (status === "excluded") return "bg-sky-50 text-sky-900";
+  if (status === "unsupported") return "bg-slate-100 text-slate-600";
+  if (status === "failed") return "bg-red-100 text-red-900";
+  return "bg-slate-100 text-slate-700";
 }
 
 function reviewStatusLabel(status: string): string {
@@ -184,12 +200,19 @@ export function ProviderKnowledgeUnitDraftPanel({
     [data],
   );
 
+  const processingNarrative = useMemo(
+    () => (data ? buildKuProcessingNarrative(data.processing) : ""),
+    [data],
+  );
+
   return (
     <div className={compact ? "mt-3" : "mt-4 rounded-2xl border border-store-border bg-slate-50 p-4"}>
       {!compact ? (
         <>
           <h3 className="text-sm font-bold text-slate-900">{PROVIDER_KU_DRAFT_PANEL_TITLE}</h3>
-          <p className="mt-1 text-xs text-store-muted">{PROVIDER_KU_REVIEW_GUIDANCE}</p>
+          <p className="mt-1 text-xs text-store-muted">
+            {PROVIDER_KU_REVIEW_GUIDANCE} {PROVIDER_KU_EXCLUDED_GUIDANCE}
+          </p>
         </>
       ) : null}
 
@@ -202,21 +225,33 @@ export function ProviderKnowledgeUnitDraftPanel({
               {PROVIDER_KU_PREVIEW_GENERATION_BADGE}
             </p>
           ) : null}
-          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-700">{processingNarrative}</p>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
             <p>
-              {PROVIDER_KU_STATUS_GENERATED}{" "}
-              <strong>{data.processing.documentsGenerated}</strong>개
+              {PROVIDER_KU_STATUS_GENERATED} <strong>{data.processing.generated}</strong>개
             </p>
             <p>
-              {PROVIDER_KU_STATUS_DEDUPED} <strong>{data.processing.documentsDeduped}</strong>개
+              {PROVIDER_KU_STATUS_DUPLICATE} <strong>{data.processing.duplicate}</strong>개
             </p>
             <p>
               {PROVIDER_KU_STATUS_EXCLUDED} <strong>{data.processing.excluded}</strong>개
             </p>
             <p>
-              {PROVIDER_KU_STATUS_FAILED} <strong>{data.processing.failed}</strong>개
+              {PROVIDER_KU_STATUS_UNSUPPORTED} <strong>{data.processing.unsupported}</strong>개
             </p>
+            {data.processing.failed > 0 ? (
+              <p className="text-red-700">
+                {PROVIDER_KU_STATUS_FAILED} <strong>{data.processing.failed}</strong>개
+              </p>
+            ) : (
+              <p className="text-slate-600">
+                {PROVIDER_KU_STATUS_FAILED} <strong>0</strong>개
+              </p>
+            )}
           </div>
+          <p className="mt-2 text-[11px] text-store-muted">
+            처리 완료율 <strong>{data.processing.progressPercent}%</strong>
+          </p>
           <button
             type="button"
             onClick={() => setShowProcessingDetail((v) => !v)}
@@ -227,9 +262,12 @@ export function ProviderKnowledgeUnitDraftPanel({
           {showProcessingDetail ? (
             <ul className="mt-2 space-y-2">
               {data.documentProcessing.map((doc) => (
-                <li key={doc.sourceDocumentId} className="rounded-lg border border-store-border px-2 py-2">
+                <li
+                  key={doc.sourceDocumentId}
+                  className={`rounded-lg border border-store-border px-2 py-2 ${documentStatusBadgeClass(doc.status)}`}
+                >
                   <p className="font-semibold break-all">{doc.path}</p>
-                  <p className="text-store-muted">
+                  <p>
                     상태: {documentStatusLabel(doc.status)}
                     {doc.reason ? ` · ${doc.reason}` : ""}
                   </p>

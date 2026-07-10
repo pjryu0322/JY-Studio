@@ -49,7 +49,8 @@ export type ProviderKnowledgeUnitDocumentProcessingDto = {
   sourceDocumentId: string;
   path: string;
   title: string;
-  status: "generated" | "deduped" | "excluded" | "failed";
+  status: "generated" | "duplicate" | "excluded" | "unsupported" | "failed";
+  reasonCode?: string;
   reason?: string;
   generatedUnitTitles: string[];
   duplicateOfChunkId?: string;
@@ -58,9 +59,10 @@ export type ProviderKnowledgeUnitDocumentProcessingDto = {
 
 export type ProviderKnowledgeUnitProcessingSummaryDto = {
   sourceDocumentTotal: number;
-  documentsGenerated: number;
-  documentsDeduped: number;
+  generated: number;
+  duplicate: number;
   excluded: number;
+  unsupported: number;
   failed: number;
   progressPercent: number;
   generationScope?: string;

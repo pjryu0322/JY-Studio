@@ -157,6 +157,8 @@ export async function listProviderKnowledgeUnitDrafts(
       content: doc.content,
       validationStatus: doc.validationStatus,
       validationSummary: doc.validationSummary,
+      sourceFormat: doc.sourceFormat,
+      mimeType: doc.mimeType,
     })),
     draftsByDocumentId,
     {

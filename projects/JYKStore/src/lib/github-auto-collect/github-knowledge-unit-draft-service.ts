@@ -15,10 +15,14 @@ import {
   type DraftCandidate,
   type SourceDocumentDraftInput,
 } from "./github-knowledge-unit-draft-generator";
-import { getKuSourceDocumentExclusionReason } from "@/lib/knowledge-unit-draft/ku-draft-processing-status";
+import {
+  classifySourceDocumentForKuGeneration,
+  labelForKuSkipReasonCode,
+  kuSkipReasonToStatus,
+  type KuDocumentSkipReasonCode,
+} from "@/lib/knowledge-unit-draft/ku-draft-skip-reasons";
 import {
   normalizeGitHubKnowledgeUnitDraftInput,
-  SOURCE_DOCUMENT_MIN_CONTENT_LENGTH,
 } from "./github-knowledge-unit-draft-options";
 import {
   normalizeGitHubRepositoryPath,
@@ -102,22 +106,29 @@ async function nextSortOrder(db: typeof prisma, versionId: string, start: number
   return Math.max(start, (max._max.sortOrder ?? 0) + 1);
 }
 
-const SKIP_REASON_LABELS: Record<string, string> = {
-  CONTENT_REQUIRED: "본문이 비어 있음",
-  SOURCE_URL_REQUIRED: "원천 URL 없음",
-  NON_GITHUB_SOURCE: "GitHub 원천이 아님",
-  SOURCE_VALIDATION_FAILED: "원천 문서 검증 실패",
-  CONTENT_TOO_SHORT: "본문이 너무 짧음",
-  METADATA_FILE: "메타데이터 파일",
-  LOCK_FILE: "의존성 잠금 파일",
-};
-
 function docPath(doc: SourceDocument): string {
   return (
     extractGitHubPathFromSourceUrl(doc.sourceUrl) ??
     doc.fileName?.replace(/\\/g, "/") ??
     doc.title
   );
+}
+
+function outcomeFromSkipCode(
+  doc: SourceDocument,
+  reasonCode: KuDocumentSkipReasonCode,
+): KuGenerationDocumentOutcome {
+  const path = docPath(doc);
+  const status = kuSkipReasonToStatus(reasonCode);
+  const reason = labelForKuSkipReasonCode(reasonCode);
+  return {
+    sourceDocumentId: doc.id,
+    status,
+    reasonCode,
+    reason,
+    generatedUnitTitles: [],
+    steps: [path, "Knowledge Unit 생성 안 함", `사유: ${reason}`],
+  };
 }
 
 function candidateToDedupRecord(candidate: DraftCandidate): KuDraftDedupRecord {
@@ -280,27 +291,7 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
   const eligible: SourceDocument[] = [];
 
   for (const doc of documents) {
-    if (!doc.content?.trim()) {
-      skippedDocuments.push({ sourceDocumentId: doc.id, reason: "CONTENT_REQUIRED" });
-      continue;
-    }
-    if (!doc.sourceUrl?.trim()) {
-      skippedDocuments.push({ sourceDocumentId: doc.id, reason: "SOURCE_URL_REQUIRED" });
-      continue;
-    }
-    if (!doc.sourceUrl.startsWith("https://github.com/")) {
-      skippedDocuments.push({ sourceDocumentId: doc.id, reason: "NON_GITHUB_SOURCE" });
-      continue;
-    }
-    if (doc.validationStatus === "FAIL") {
-      skippedDocuments.push({ sourceDocumentId: doc.id, reason: "SOURCE_VALIDATION_FAILED" });
-      continue;
-    }
-    if (doc.content.trim().length < SOURCE_DOCUMENT_MIN_CONTENT_LENGTH) {
-      skippedDocuments.push({ sourceDocumentId: doc.id, reason: "CONTENT_TOO_SHORT" });
-      continue;
-    }
-    const metadataExclusion = getKuSourceDocumentExclusionReason({
+    const classified = classifySourceDocumentForKuGeneration({
       id: doc.id,
       title: doc.title,
       sourceUrl: doc.sourceUrl,
@@ -308,16 +299,13 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
       content: doc.content,
       validationStatus: doc.validationStatus,
       validationSummary: doc.validationSummary,
+      sourceFormat: doc.sourceFormat,
+      mimeType: doc.mimeType,
     });
-    if (metadataExclusion) {
+    if (classified) {
       skippedDocuments.push({
         sourceDocumentId: doc.id,
-        reason:
-          metadataExclusion === "메타데이터 파일"
-            ? "METADATA_FILE"
-            : metadataExclusion === "의존성 잠금 파일"
-              ? "LOCK_FILE"
-              : "SOURCE_VALIDATION_FAILED",
+        reason: classified.reasonCode,
       });
       continue;
     }
@@ -328,9 +316,9 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
     const versionDocIds = new Set(version.sourceDocuments.map((d) => d.id));
     for (const requestedId of normalized.sourceDocumentIds) {
       if (!versionDocIds.has(requestedId)) {
-        failedDocuments.push({
+        skippedDocuments.push({
           sourceDocumentId: requestedId,
-          error: "SOURCE_DOCUMENT_NOT_FOUND",
+          reason: "NOT_IN_GENERATION_SCOPE",
         });
       }
     }
@@ -366,6 +354,7 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
     scope: normalized.generationScope,
     targetCount: normalized.targetKnowledgeUnitCount,
   });
+  const selectedDocIds = new Set(selectedRaw.map((c) => c.sourceDocumentId));
 
   const isPreviewGeneration = normalized.generationScope === "limited_preview";
   if (isPreviewGeneration) {
@@ -483,8 +472,14 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
     }
   }
 
-  const skippedById = new Map(skippedDocuments.map((s) => [s.sourceDocumentId, s.reason]));
-  const failedById = new Map(failedDocuments.map((f) => [f.sourceDocumentId, f.error]));
+  const skippedById = new Map(
+    skippedDocuments.map((s) => [s.sourceDocumentId, s.reason as KuDocumentSkipReasonCode]),
+  );
+  const failedById = new Map(
+    failedDocuments
+      .filter((f) => f.error === "DRAFT_PERSIST_FAILED")
+      .map((f) => [f.sourceDocumentId, f.error] as const),
+  );
   const eligibleIds = new Set(eligible.map((d) => d.id));
 
   const existingTitlesByDoc = new Map<string, string[]>();
@@ -502,24 +497,18 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
     const existingTitles = existingTitlesByDoc.get(doc.id) ?? [];
 
     if (skippedById.has(doc.id)) {
-      const reason = SKIP_REASON_LABELS[skippedById.get(doc.id)!] ?? skippedById.get(doc.id)!;
-      return {
-        sourceDocumentId: doc.id,
-        status: "excluded",
-        reason,
-        generatedUnitTitles: [],
-        steps: [path, "Knowledge Unit 생성 안 함", `사유: ${reason}`],
-      };
+      return outcomeFromSkipCode(doc, skippedById.get(doc.id)!);
     }
 
     if (failedById.has(doc.id)) {
-      const reason = failedById.get(doc.id)!;
+      const path = docPath(doc);
       return {
         sourceDocumentId: doc.id,
         status: "failed",
-        reason,
+        reasonCode: "DRAFT_PERSIST_FAILED",
+        reason: "Knowledge Unit 저장 중 오류가 발생했습니다.",
         generatedUnitTitles: [],
-        steps: [path, "처리 실패", reason],
+        steps: [path, "처리 실패", "DRAFT_PERSIST_FAILED"],
       };
     }
 
@@ -536,55 +525,47 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
     }
 
     if (!eligibleIds.has(doc.id)) {
-      return {
-        sourceDocumentId: doc.id,
-        status: "excluded",
-        reason: "이번 생성 범위에 포함되지 않음",
-        generatedUnitTitles: existingTitles,
-        steps: [path, "생성 범위 제외"],
-      };
+      return outcomeFromSkipCode(doc, "NOT_IN_GENERATION_SCOPE");
     }
 
     const dupInfo = skippedExistingByDoc.get(doc.id);
     if (dupInfo && (rawCandidatesByDoc.get(doc.id) ?? 0) > 0) {
-      const reason = "기존 Knowledge Unit과 중복 (sourcePath · heading · checksum)";
       return {
         sourceDocumentId: doc.id,
-        status: "deduped",
-        reason,
+        status: "duplicate",
+        reasonCode: "DUPLICATE",
+        reason: labelForKuSkipReasonCode("DUPLICATE"),
         duplicateOfChunkId: dupInfo.duplicateOfChunkId,
         generatedUnitTitles: existingTitles,
-        steps: [path, "Knowledge Unit 생성 안 함", `사유: ${reason}`],
+        steps: [path, "중복 제외", labelForKuSkipReasonCode("DUPLICATE")],
       };
     }
 
     if ((rawCandidatesByDoc.get(doc.id) ?? 0) === 0) {
-      return {
-        sourceDocumentId: doc.id,
-        status: "failed",
-        reason: "Knowledge Unit 후보 생성 실패",
-        generatedUnitTitles: existingTitles,
-        steps: [path, "후보 생성 실패"],
-      };
+      return outcomeFromSkipCode(doc, "NO_KNOWLEDGE_TOPIC");
+    }
+
+    if (
+      isPreviewGeneration &&
+      eligibleIds.has(doc.id) &&
+      !selectedDocIds.has(doc.id) &&
+      createdTitles.length === 0
+    ) {
+      return outcomeFromSkipCode(doc, "NOT_SELECTED_IN_PREVIEW");
     }
 
     if (existingTitles.length > 0) {
       return {
         sourceDocumentId: doc.id,
-        status: "deduped",
+        status: "duplicate",
+        reasonCode: "DUPLICATE",
         reason: "기존 검토 대기 Unit이 있어 새로 생성하지 않음",
         generatedUnitTitles: existingTitles,
         steps: [path, "기존 Unit 유지", existingTitles.join(" · ")],
       };
     }
 
-    return {
-      sourceDocumentId: doc.id,
-      status: "failed",
-      reason: "이번 실행에서 Unit이 생성되지 않음",
-      generatedUnitTitles: [],
-      steps: [path, "처리 실패", "Unit 미생성"],
-    };
+    return outcomeFromSkipCode(doc, "NO_KNOWLEDGE_TOPIC");
   });
 
   await upsertKuGenerationReport(db, version.id, {
@@ -597,6 +578,7 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
     (doc) => ({
       sourceDocumentId: doc.sourceDocumentId,
       status: doc.status,
+      reasonCode: doc.reasonCode,
       reason: doc.reason,
       generatedUnitTitles: doc.generatedUnitTitles,
       duplicateOfChunkId: doc.duplicateOfChunkId,

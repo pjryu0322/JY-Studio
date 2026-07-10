@@ -143,10 +143,10 @@ export function extractMarkdownTopics(
   };
 
   for (const line of lines) {
-    const h2 = /^##\s+(.+?)\s*$/.exec(line.trim());
-    if (h2?.[1]) {
+    const heading = /^#{1,3}\s+(.+?)\s*$/.exec(line.trim());
+    if (heading?.[1]) {
       flush();
-      currentHeading = h2[1].replace(/[#`*]/g, "").trim();
+      currentHeading = heading[1].replace(/[#`*]/g, "").trim();
       if (topics.length >= limit) break;
       continue;
     }

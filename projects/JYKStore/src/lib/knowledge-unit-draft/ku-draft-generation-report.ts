@@ -1,10 +1,12 @@
-import type { KuDocumentProcessingItem, KuDocumentProcessingStatus } from "./ku-draft-processing-status";
+import type { KuDocumentProcessingStatus } from "./ku-draft-processing-status";
+import type { KuDocumentSkipReasonCode } from "./ku-draft-skip-reasons";
 
 export const AUTO_KU_GENERATION_REPORT_CHUNK_TYPE = "AUTO_KU_GENERATION_REPORT";
 
 export type KuGenerationDocumentOutcome = {
   sourceDocumentId: string;
   status: KuDocumentProcessingStatus;
+  reasonCode?: KuDocumentSkipReasonCode | "DRAFT_PERSIST_FAILED" | "SOURCE_DOCUMENT_NOT_FOUND";
   reason?: string;
   generatedUnitTitles: string[];
   duplicateOfChunkId?: string;

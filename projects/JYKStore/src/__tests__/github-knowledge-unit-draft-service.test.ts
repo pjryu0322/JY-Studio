@@ -21,7 +21,7 @@ import {
 } from "@/lib/github-auto-collect/github-path-utils";
 import { generateGitHubKnowledgeUnitDraftsForPack } from "@/lib/github-auto-collect/github-knowledge-unit-draft-service";
 
-const longBody = "# Section\n\n".padEnd(60, "x");
+const longBody = "x".repeat(60);
 
 const editableDraftPack = async () =>
   ({ ok: true as const, packId: "pack-1", status: PackStatus.DRAFT });
@@ -257,7 +257,8 @@ describe("github knowledge unit draft generator", () => {
       sourceFormat: "MARKDOWN",
       sourceUrl: "https://github.com/test/repo/blob/main/README.md",
       fileName: "README.md",
-      content: "# Product\n\nOverview paragraph with enough content for testing.",
+      content:
+        "Overview paragraph without markdown headings but long enough for draft generation testing purposes.",
     });
     assert.ok(readme.some((c) => c.title === "제품 개요"));
 
@@ -268,7 +269,7 @@ describe("github knowledge unit draft generator", () => {
       sourceFormat: "MARKDOWN",
       sourceUrl: "https://github.com/test/repo/blob/main/docs/getting-started.md",
       fileName: "getting-started.md",
-      content: "# Getting Started\n\nFollow these steps to integrate.",
+      content: "Follow these steps to integrate the product with enough detail for draft tests.",
     });
     assert.ok(gs.some((c) => c.title === "시작하기"));
 
@@ -279,7 +280,7 @@ describe("github knowledge unit draft generator", () => {
       sourceFormat: "MARKDOWN",
       sourceUrl: "https://github.com/test/repo/blob/main/docs/api.md",
       fileName: "api.md",
-      content: "# API\n\nEndpoints and request examples for the product.",
+      content: "Endpoints and request examples for the product with sufficient length for tests.",
     });
     assert.ok(api.some((c) => c.title === "API 사용법"));
 
@@ -353,7 +354,7 @@ describe("github knowledge unit draft service", () => {
 
     assert.ok(result.summary.generatedDraftCount > 0);
     assert.ok(
-      result.skippedDocuments.some((s) => s.sourceDocumentId === "doc-empty" && s.reason === "CONTENT_REQUIRED"),
+      result.skippedDocuments.some((s) => s.sourceDocumentId === "doc-empty" && s.reason === "EMPTY_CONTENT"),
     );
     assert.ok(
       result.skippedDocuments.some(
@@ -362,7 +363,7 @@ describe("github knowledge unit draft service", () => {
     );
     assert.ok(
       result.skippedDocuments.some(
-        (s) => s.sourceDocumentId === "doc-fail" && s.reason === "SOURCE_VALIDATION_FAILED",
+        (s) => s.sourceDocumentId === "doc-fail" && s.reason === "VALIDATION_FAILED",
       ),
     );
     assert.ok(
@@ -419,10 +420,11 @@ describe("github knowledge unit draft service", () => {
     assert.equal(result.summary.generatedDraftCount, 0);
     assert.equal(draftChunksOnly(createdChunks).length, 0);
     assert.ok(
-      result.failedDocuments.some(
-        (f) => f.sourceDocumentId === "missing-doc" && f.error === "SOURCE_DOCUMENT_NOT_FOUND",
+      result.skippedDocuments.some(
+        (s) => s.sourceDocumentId === "missing-doc" && s.reason === "NOT_IN_GENERATION_SCOPE",
       ),
     );
+    assert.equal(result.failedDocuments.length, 0);
   });
 
   it("inactive AUTO_KNOWLEDGE_UNIT_DRAFT chunks are excluded from retrieval filter contract", () => {
@@ -559,22 +561,22 @@ describe("github knowledge unit draft service", () => {
     assert.equal(result.documentProcessing.filter((d) => d.status === "excluded").length, 2);
   });
 
-  it("reports deduped documents when existing pending units match", async () => {
-    const docs = Array.from({ length: 5 }, (_, index) =>
+  it("reports duplicate documents when existing pending units match", async () => {
+    const docs = [
       makeDoc({
-        id: `doc-${index}`,
-        fileName: index === 0 ? "README.md" : `docs/file-${index}.md`,
-        sourceUrl:
-          index === 0
-            ? "https://github.com/test/repo/blob/main/README.md"
-            : `https://github.com/test/repo/blob/main/docs/file-${index}.md`,
-        content:
-          index <= 1 ? `## Install\n\n${longBody}` : `## Topic ${index}\n\n${longBody}`,
+        id: "doc-0",
+        content: `## Install\n\n${longBody}`,
       }),
-    );
+      makeDoc({
+        id: "doc-1",
+        fileName: "docs/guide.md",
+        sourceUrl: "https://github.com/test/repo/blob/main/docs/guide.md",
+        content: `## Topic\n\n${longBody}`,
+      }),
+    ];
     const { db, createdChunks } = createMockPrisma({
       documents: docs,
-      existingDraftSourceIds: ["doc-0", "doc-1"],
+      existingDraftSourceIds: ["doc-0"],
     });
 
     const result = await generateGitHubKnowledgeUnitDraftsForPack(
@@ -586,9 +588,10 @@ describe("github knowledge unit draft service", () => {
     );
 
     const draftChunks = draftChunksOnly(createdChunks);
-    assert.equal(draftChunks.length, 3);
-    assert.equal(result.documentProcessing.filter((d) => d.status === "deduped").length, 2);
-    assert.equal(result.documentProcessing.filter((d) => d.status === "generated").length, 3);
+    assert.equal(draftChunks.length, 1);
+    assert.ok(result.summary.existingDraftSkippedCount >= 1);
+    assert.equal(result.documentProcessing.find((d) => d.sourceDocumentId === "doc-0")?.status, "duplicate");
+    assert.equal(result.documentProcessing.find((d) => d.sourceDocumentId === "doc-1")?.status, "generated");
   });
 
   it("limits output in limited_preview mode", async () => {
@@ -618,6 +621,63 @@ describe("github knowledge unit draft service", () => {
     assert.equal(draftChunks.length, 8);
     assert.equal(result.summary.isPreviewGeneration, true);
     assert.ok(result.warnings.some((w) => w.includes("미리보기")));
+  });
+
+  it("marks package.json as excluded with zero failed in processing summary", async () => {
+    const docs = [
+      makeDoc({ id: "doc-readme", content: `## Overview\n\n${longBody}` }),
+      makeDoc({
+        id: "doc-pkg",
+        fileName: "package.json",
+        sourceUrl: "https://github.com/test/repo/blob/main/package.json",
+        content: `{"name":"demo"}\n${longBody}`,
+        sourceType: "ETC",
+      }),
+    ];
+    const { db } = createMockPrisma({ documents: docs });
+    const result = await generateGitHubKnowledgeUnitDraftsForPack(
+      "user-test",
+      "client-1",
+      "pack-1",
+      { generationScope: "all_documents" },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+    );
+
+    const pkg = result.documentProcessing.find((d) => d.sourceDocumentId === "doc-pkg");
+    assert.equal(pkg?.status, "excluded");
+    assert.equal(pkg?.reasonCode, "METADATA_FILE");
+    assert.equal(result.documentProcessing.filter((d) => d.status === "failed").length, 0);
+  });
+
+  it("counts only DB persist errors as failed", async () => {
+    const docs = [makeDoc({ id: "doc-1", content: `## Topic\n\n${longBody}` })];
+    const { db, createdChunks } = createMockPrisma({ documents: docs });
+    const originalCreate = db.knowledgeChunk.create.bind(db.knowledgeChunk);
+    const patched = {
+      ...db,
+      knowledgeChunk: {
+        ...db.knowledgeChunk,
+        create: async (args: { data: CreatedChunk }) => {
+          if (args.data.chunkType === AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE) {
+            throw new Error("db down");
+          }
+          return originalCreate(args);
+        },
+      },
+    };
+
+    const result = await generateGitHubKnowledgeUnitDraftsForPack(
+      "user-test",
+      "client-1",
+      "pack-1",
+      {},
+      { prismaClient: patched as never, assertEditablePack: editableDraftPack },
+    );
+
+    assert.equal(draftChunksOnly(createdChunks).length, 0);
+    assert.equal(result.documentProcessing[0]?.status, "failed");
+    assert.equal(result.documentProcessing[0]?.reasonCode, "DRAFT_PERSIST_FAILED");
+    assert.equal(result.summary.failedCount, 1);
   });
 });
 

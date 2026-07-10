@@ -236,7 +236,8 @@ export type GitHubKnowledgeUnitDraftInput = {
 
 export type GitHubKnowledgeUnitDocumentProcessingOutcome = {
   sourceDocumentId: string;
-  status: "generated" | "deduped" | "excluded" | "failed";
+  status: "generated" | "duplicate" | "excluded" | "unsupported" | "failed";
+  reasonCode?: string;
   reason?: string;
   generatedUnitTitles: string[];
   duplicateOfChunkId?: string;
