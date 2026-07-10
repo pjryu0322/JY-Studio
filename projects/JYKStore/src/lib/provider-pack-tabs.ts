@@ -1,4 +1,10 @@
-export const PROVIDER_PACK_TAB_IDS = ["basic", "source", "draft", "review"] as const;
+export const PROVIDER_PACK_TAB_IDS = [
+  "basic",
+  "source",
+  "draft",
+  "inspection",
+  "review",
+] as const;
 
 export type ProviderPackTabId = (typeof PROVIDER_PACK_TAB_IDS)[number];
 
@@ -11,6 +17,7 @@ export function resolveDefaultProviderPackTab(input: {
   status: string;
   sourceDocumentCount: number;
   knowledgeUnitDraftCount: number;
+  inspectionComplete?: boolean;
 }): ProviderPackTabId {
   if (input.created && input.sourceDocumentCount === 0) {
     return "source";
@@ -27,7 +34,10 @@ export function resolveDefaultProviderPackTab(input: {
   if (input.knowledgeUnitDraftCount === 0) {
     return "draft";
   }
-  return "review";
+  if (input.inspectionComplete) {
+    return "review";
+  }
+  return "inspection";
 }
 
 export function resolveProviderPackTabFromLocation(input: {
@@ -42,6 +52,9 @@ export function resolveProviderPackTabFromLocation(input: {
   const normalizedHash = input.hash.trim().toLowerCase();
   if (normalizedHash === "#github-auto-collect") {
     return "source";
+  }
+  if (normalizedHash === "#pack-inspection") {
+    return "inspection";
   }
   if (normalizedHash === "#pack-review") {
     return "review";

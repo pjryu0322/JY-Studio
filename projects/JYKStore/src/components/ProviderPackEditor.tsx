@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProviderPackBasicInfoTab } from "@/components/ProviderPackBasicInfoTab";
 import { ProviderPackDraftTab } from "@/components/ProviderPackDraftTab";
+import { ProviderPackInspectionTab } from "@/components/ProviderPackInspectionTab";
 import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
 import { ProviderPackSourceTab } from "@/components/ProviderPackSourceTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
@@ -15,7 +16,7 @@ import {
   submitProviderPackApi,
   updateProviderPackApi,
 } from "@/lib/provider-center-api";
-import { resolveProviderPackNextAction } from "@/lib/provider-onboarding-steps";
+import { buildProviderInspectionReadiness } from "@/lib/provider-pack-inspection-readiness";
 import {
   resolveDefaultProviderPackTab,
   resolveProviderPackTabFromLocation,
@@ -27,7 +28,13 @@ import {
   PROVIDER_PACK_CREATED_COLLECT_CTA,
   PROVIDER_PACK_CREATED_ID_PREFIX,
   PROVIDER_PACK_CREATED_NEXT_TASK,
+  PROVIDER_PACK_GO_TO_INSPECTION_TAB,
+  PROVIDER_PACK_GO_TO_INSPECTION_SHORT,
+  PROVIDER_PACK_GO_TO_REVIEW_TAB,
   PROVIDER_PACK_ID_LABEL,
+  PROVIDER_PACK_NEXT_TASK_INSPECTION,
+  PROVIDER_PACK_NEXT_TASK_SUBMIT,
+  PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN,
 } from "@/lib/role-based-ux-copy";
 
 export function ProviderPackEditor({ packId }: { readonly packId: string }) {
@@ -90,7 +97,19 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     void load();
   }, [load]);
 
-  const sourceDocumentCount = pack?.versions.flatMap((v) => v.sourceDocuments).length ?? 0;
+  const sourceDocumentCount =
+    pack?.versions[0]?.sourceDocuments.length ??
+    pack?.versions.flatMap((v) => v.sourceDocuments).length ??
+    0;
+
+  const inspectionReadiness = useMemo(() => {
+    if (!pack) return null;
+    return buildProviderInspectionReadiness({
+      pack,
+      sourceDocumentCount,
+      knowledgeUnitDraftCount,
+    });
+  }, [pack, sourceDocumentCount, knowledgeUnitDraftCount]);
 
   const defaultTab = useMemo(
     () =>
@@ -99,8 +118,15 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         status: pack?.status ?? "DRAFT",
         sourceDocumentCount,
         knowledgeUnitDraftCount,
+        inspectionComplete: inspectionReadiness?.canSubmitReview ?? false,
       }),
-    [showCreatedBanner, pack?.status, sourceDocumentCount, knowledgeUnitDraftCount],
+    [
+      showCreatedBanner,
+      pack?.status,
+      sourceDocumentCount,
+      knowledgeUnitDraftCount,
+      inspectionReadiness?.canSubmitReview,
+    ],
   );
 
   const activeTab = resolveProviderPackTabFromLocation({
@@ -165,12 +191,11 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   }
 
   const latestVersion = pack.versions[0];
-  const nextAction = resolveProviderPackNextAction({
-    status: pack.status,
-    sourceDocumentCount,
-    knowledgeUnitDraftCount,
-    justCreated: showCreatedBanner,
-  });
+  const showNextTask =
+    !showCreatedBanner &&
+    sourceDocumentCount > 0 &&
+    knowledgeUnitDraftCount > 0 &&
+    (pack.status === "DRAFT" || pack.status === "REVIEWING");
 
   return (
     <div className="space-y-4 pb-6">
@@ -190,30 +215,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             {PROVIDER_PACK_CREATED_COLLECT_CTA}
           </button>
         </div>
-      ) : (
-        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-900">
-          <p className="font-semibold">{nextAction.title}</p>
-          <p className="mt-1 text-xs text-slate-700">{nextAction.body}</p>
-          {nextAction.href === "#github-auto-collect" ? (
-            <button
-              type="button"
-              onClick={() => selectTab("source")}
-              className="mt-2 text-xs font-bold text-store-accent underline-offset-2 hover:underline"
-            >
-              바로 이동
-            </button>
-          ) : null}
-          {nextAction.href === "#pack-review" ? (
-            <button
-              type="button"
-              onClick={() => selectTab("review")}
-              className="mt-2 text-xs font-bold text-store-accent underline-offset-2 hover:underline"
-            >
-              바로 이동
-            </button>
-          ) : null}
-        </div>
-      )}
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-2xl">{pack.icon}</span>
@@ -226,6 +228,37 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         </div>
         <ProviderPackStatusBadge status={pack.status} />
       </div>
+
+      {showNextTask && inspectionReadiness ? (
+        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-900">
+          <p className="text-xs font-bold text-blue-900">다음 할 일</p>
+          {pack.status === "REVIEWING" ? (
+            <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN}</p>
+          ) : inspectionReadiness.canSubmitReview ? (
+            <>
+              <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_SUBMIT}</p>
+              <button
+                type="button"
+                onClick={() => selectTab("review")}
+                className="mt-2 min-h-[40px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white"
+              >
+                {PROVIDER_PACK_GO_TO_REVIEW_TAB}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_INSPECTION}</p>
+              <button
+                type="button"
+                onClick={() => selectTab("inspection")}
+                className="mt-2 min-h-[40px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white"
+              >
+                {PROVIDER_PACK_GO_TO_INSPECTION_SHORT}
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
 
       <ProviderPackTabs activeTab={activeTab} onSelectTab={selectTab} />
 
@@ -275,9 +308,21 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           />
         ) : null}
 
+        {activeTab === "inspection" ? (
+          <ProviderPackInspectionTab
+            packId={packId}
+            pack={pack}
+            editable={editable}
+            sourceDocumentCount={sourceDocumentCount}
+            knowledgeUnitDraftCount={knowledgeUnitDraftCount}
+            onGoToSourceTab={() => selectTab("source")}
+            onGoToReviewTab={() => selectTab("review")}
+            onPackUpdated={setPack}
+          />
+        ) : null}
+
         {activeTab === "review" ? (
           <ProviderPackReviewTab
-            packId={packId}
             pack={pack}
             editable={editable}
             submitting={submitting}
@@ -285,7 +330,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             knowledgeUnitDraftCount={knowledgeUnitDraftCount}
             onSubmitReview={() => void onSubmitReview()}
             onGoToSourceTab={() => selectTab("source")}
-            onPackUpdated={setPack}
+            onGoToInspectionTab={() => selectTab("inspection")}
           />
         ) : null}
       </div>

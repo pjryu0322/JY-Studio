@@ -23,8 +23,10 @@ import {
 
 export function ProviderPackReadinessCard({
   pack,
+  compactQualityWarnings = false,
 }: {
   readonly pack: ProviderPackDetailDto;
+  readonly compactQualityWarnings?: boolean;
 }) {
   const docs = pack.versions.flatMap((v) => v.sourceDocuments);
   const versionCount = pack.versions.length;
@@ -150,36 +152,39 @@ export function ProviderPackReadinessCard({
           주의(WARNING) 상태 문서가 있습니다. 제출은 가능하지만 검수 전 권장 항목을 확인해 주세요.
         </p>
       ) : null}
-      {!meetsStructureQualityGate(structureGate) ? (
+      {!compactQualityWarnings && !meetsStructureQualityGate(structureGate) ? (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-800">
           {structureBlockMessage ??
             "구조/품질 점검을 실행하고 FAIL 결과가 없어야 검수 요청을 제출할 수 있습니다."}
         </p>
       ) : null}
-      {meetsStructureQualityGate(structureGate) &&
+      {!compactQualityWarnings &&
+      meetsStructureQualityGate(structureGate) &&
       (structureGate.structureCoverageStatus === "WARNING" ||
         structureGate.knowledgeQualityStatus === "WARNING") ? (
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
           구조 커버리지 또는 지식 품질이 WARNING입니다. 제출은 가능하나 보완을 권장합니다.
         </p>
       ) : null}
-      {!meetsChunkQualityGate(chunkGate) ? (
+      {!compactQualityWarnings && !meetsChunkQualityGate(chunkGate) ? (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-800">
           {chunkBlockMessage ?? "청킹 품질 점검을 실행하고 FAIL 결과가 없어야 검수 요청을 제출할 수 있습니다."}
         </p>
       ) : null}
-      {meetsChunkQualityGate(chunkGate) && chunkGate.reportStatus === "WARNING" ? (
+      {!compactQualityWarnings &&
+      meetsChunkQualityGate(chunkGate) && chunkGate.reportStatus === "WARNING" ? (
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
           청킹 품질이 WARNING입니다. 제출은 가능하나 보완을 권장합니다.
         </p>
       ) : null}
-      {!meetsRetrievalEvaluationGate(retrievalGate) ? (
+      {!compactQualityWarnings && !meetsRetrievalEvaluationGate(retrievalGate) ? (
         <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-800">
           {retrievalBlockMessage ??
             "검색 품질 평가를 실행하고 FAIL 결과가 없어야 검수 요청을 제출할 수 있습니다."}
         </p>
       ) : null}
-      {meetsRetrievalEvaluationGate(retrievalGate) &&
+      {!compactQualityWarnings &&
+      meetsRetrievalEvaluationGate(retrievalGate) &&
       retrievalGate.reportStatus === "WARNING" ? (
         <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
           검색 품질 평가가 WARNING입니다. 제출은 가능하나 보완을 권장합니다.

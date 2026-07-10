@@ -590,7 +590,7 @@ describe("github knowledge unit draft service", () => {
     const draftChunks = draftChunksOnly(createdChunks);
     assert.equal(draftChunks.length, 1);
     assert.ok(result.summary.existingDraftSkippedCount >= 1);
-    assert.equal(result.documentProcessing.find((d) => d.sourceDocumentId === "doc-0")?.status, "duplicate");
+    assert.equal(result.documentProcessing.find((d) => d.sourceDocumentId === "doc-0")?.status, "generated");
     assert.equal(result.documentProcessing.find((d) => d.sourceDocumentId === "doc-1")?.status, "generated");
   });
 

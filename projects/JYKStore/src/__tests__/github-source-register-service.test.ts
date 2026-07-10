@@ -100,6 +100,7 @@ describe("github source register service", () => {
       {
         fetchImpl: fetchImpl as typeof fetch,
         assertEditablePack: editableDraftPack,
+        syncRepositorySources: async () => 0,
         createSourceDocument: async (_userId, _clientId, _packId, input) => {
           created.push(input);
           return { pack: { packId: "pack-1", versions: [] } as never };
@@ -138,6 +139,7 @@ describe("github source register service", () => {
       {
         fetchImpl: wrappedFetch as typeof fetch,
         assertEditablePack: editableDraftPack,
+        syncRepositorySources: async () => 0,
         createSourceDocument: async () => ({ pack: { packId: "pack-1" } as never }),
       },
     );
@@ -160,6 +162,7 @@ describe("github source register service", () => {
       {
         fetchImpl: githubFetchFactory({ "sha-readme": "# Hi" }) as typeof fetch,
         assertEditablePack: editableDraftPack,
+        syncRepositorySources: async () => 0,
         createSourceDocument: async () => ({ pack: { packId: "pack-1" } as never }),
       },
     );
@@ -181,6 +184,7 @@ describe("github source register service", () => {
           "sha-gs": "# gs",
         }) as typeof fetch,
         assertEditablePack: editableDraftPack,
+        syncRepositorySources: async () => 0,
         createSourceDocument: async (_u, _c, _p, input) => {
           if (input.title === "docs/getting-started") {
             return { error: "VALIDATION" as const, message: "duplicate checksum" };
@@ -287,6 +291,7 @@ describe("github source register service", () => {
       {
         fetchImpl: githubFetchFactory({}) as typeof fetch,
         assertEditablePack: editableDraftPack,
+        syncRepositorySources: async () => 0,
         createSourceDocument: async () => {
           createCalls += 1;
           return { pack: { packId: "pack-1" } as never };

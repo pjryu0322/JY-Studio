@@ -14,11 +14,13 @@ export function StructureQualityPanel({
   packId,
   structureQuality,
   editable,
+  evaluateButtonLabel,
   onEvaluate,
 }: {
   readonly packId: string;
   readonly structureQuality: StructureQualitySummaryDto | null;
   readonly editable: boolean;
+  readonly evaluateButtonLabel?: string;
   readonly onEvaluate: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -70,7 +72,7 @@ export function StructureQualityPanel({
             onClick={() => void run()}
             className="min-h-[44px] w-full rounded-xl border border-store-border px-4 text-sm font-semibold disabled:opacity-50 sm:w-auto"
           >
-            {busy ? "점검 중…" : "구조/품질 재평가"}
+            {busy ? "점검 중…" : evaluateButtonLabel ?? "구조/품질 점검 시작"}
           </button>
         ) : null}
       </div>

@@ -197,7 +197,7 @@ describe("ku-draft-processing-status", () => {
     assert.equal(result.summary.progressPercent, 100);
   });
 
-  it("shows generated when pending drafts exist despite excluded report outcome", () => {
+  it("shows generated when pending drafts exist despite duplicate report outcome", () => {
     const doc = githubDoc("packages/toast-ui.grid/docs/ko/getting-started.md", longContent);
     const reportByDocumentId = new Map([
       [
@@ -205,9 +205,9 @@ describe("ku-draft-processing-status", () => {
         {
           sourceDocumentId: doc.id,
           path: doc.id,
-          status: "excluded",
-          reasonCode: "NO_KNOWLEDGE_TOPIC",
-          reason: "추출 가능한 제품 지식 주제를 찾지 못함",
+          status: "duplicate",
+          reasonCode: "DUPLICATE",
+          reason: "동일/유사한 Unit이 이미 있어 새로 만들지 않았습니다.",
           generatedUnitTitles: [],
           steps: [],
         },
@@ -221,8 +221,8 @@ describe("ku-draft-processing-status", () => {
     );
 
     assert.equal(result.documents[0]?.status, "generated");
-    assert.equal(result.documents[0]?.generatedUnitTitles[0], "시작하기");
-    assert.match(kuDocumentStatusUserHint("generated"), /AI 추출 Unit/);
+    assert.equal(result.summary.generated, 1);
+    assert.equal(result.summary.duplicate, 0);
   });
 
   it("builds narrative without failure wording when failed is zero", () => {

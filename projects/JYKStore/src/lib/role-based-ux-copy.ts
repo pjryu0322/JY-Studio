@@ -48,13 +48,27 @@ export const PROVIDER_PACK_ID_LABEL = "지식팩 ID";
 export const PROVIDER_PACK_WIZARD_BASIC_STEP = "기본정보";
 export const PROVIDER_PACK_WIZARD_SOURCE_STEP = "자료 등록";
 export const PROVIDER_PACK_WIZARD_DRAFT_STEP = "Knowledge Unit 초안";
+export const PROVIDER_PACK_WIZARD_INSPECTION_STEP = "지식팩 점검";
 export const PROVIDER_PACK_WIZARD_REVIEW_STEP = "검수 요청";
 export const PROVIDER_PACK_WIZARD_PUBLISH_STEP = "운영자 승인 후 공개";
 
 export const PROVIDER_PACK_TAB_BASIC = "기본정보";
 export const PROVIDER_PACK_TAB_SOURCE = "자료등록";
 export const PROVIDER_PACK_TAB_DRAFT = "초안";
+export const PROVIDER_PACK_TAB_INSPECTION = "점검";
 export const PROVIDER_PACK_TAB_REVIEW = "검수요청";
+
+export const PROVIDER_PACK_GO_TO_INSPECTION_TAB = "점검 탭으로 이동";
+export const PROVIDER_PACK_GO_TO_INSPECTION_SHORT = "점검으로 이동";
+export const PROVIDER_PACK_GO_TO_REVIEW_TAB = "검수요청으로 이동";
+export const PROVIDER_PACK_INSPECTION_INTRO =
+  "검수 요청 전에 필요한 품질 점검을 진행합니다. 모든 필수 점검이 완료되면 검수요청 단계로 이동할 수 있습니다.";
+export const PROVIDER_PACK_NEXT_TASK_INSPECTION =
+  "검수 요청 전 필수 점검을 완료하세요.";
+export const PROVIDER_PACK_NEXT_TASK_SUBMIT =
+  "점검이 완료되었습니다. 검수 요청을 제출하세요.";
+export const PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN =
+  "관리자 검토 결과를 기다려 주세요.";
 
 export const PROVIDER_PACK_ID_READONLY_HINT =
   "JYKStore가 발급한 고유 식별자입니다. 수정할 수 없습니다.";
@@ -92,7 +106,12 @@ export const PROVIDER_PACK_DRAFT_GENERATE_CTA = "Knowledge Unit 초안 생성";
 export const PROVIDER_PACK_DRAFT_VIEW_LIST = "초안 목록 보기";
 export const PROVIDER_PACK_REVIEW_SUBMIT_CTA = "검수 요청 제출";
 
-export const PROVIDER_KU_DRAFT_PANEL_TITLE = "AI 추출 결과";
+export const PROVIDER_KU_DRAFT_PANEL_TITLE = "자동 추출 결과";
+export const PROVIDER_KU_CANDIDATE_LABEL = "Knowledge Unit 후보";
+export const PROVIDER_KU_EVIDENCE_DRAFT_RESULT = "초안 생성 결과";
+export const PROVIDER_KU_LOAD_FAILED = "자동 추출 결과를 불러오지 못했습니다.";
+export const PROVIDER_KU_REGENERATE_FAILED = "자동 추출 재생성에 실패했습니다.";
+export const PROVIDER_KU_EMPTY_LIST = "표시할 자동 추출 결과가 없습니다.";
 export const PROVIDER_KU_PROCESSING_TITLE = "원천 문서 처리 현황";
 export const PROVIDER_KU_PROCESSING_DETAIL_TOGGLE = "상세 보기";
 export const PROVIDER_KU_STATUS_GENERATED = "Unit 생성 완료";
@@ -102,15 +121,14 @@ export const PROVIDER_KU_STATUS_UNSUPPORTED = "지원 제외";
 export const PROVIDER_KU_STATUS_FAILED = "처리 실패";
 export const PROVIDER_KU_PREVIEW_GENERATION_BADGE = "미리보기 생성";
 export const PROVIDER_KU_REVIEW_GUIDANCE =
-  "아래 AI 추출 Unit을 검토하세요. 문제가 없으면 검수 요청 단계로 이동할 수 있습니다. 수정이 필요한 Unit은 내용 보기와 근거 보기를 확인한 뒤 보완하세요.";
+  "아래 Knowledge Unit 후보를 검토하세요. 문제가 없으면 점검 단계로 이동할 수 있습니다. 수정이 필요한 후보는 내용 보기와 근거 보기를 확인한 뒤 보완하세요.";
 export const PROVIDER_KU_EXCLUDED_GUIDANCE =
   "생성 제외·지원 제외 문서는 지식팩 품질을 위해 자동으로 건너뛴 자료입니다.";
-export const PROVIDER_KU_RESET_BUTTON = "AI 추출 Unit 초기화";
+export const PROVIDER_KU_RESET_BUTTON = "Knowledge Unit 후보 초기화";
+export const PROVIDER_KU_REGENERATE_BUTTON = "자동 추출 재생성";
 export const PROVIDER_KU_RESET_CONFIRM =
-  "AI가 생성한 Knowledge Unit 초안을 초기화합니다. 검토 대기/대체됨 상태의 자동 생성 초안과 생성 리포트가 삭제됩니다. 원천 문서는 삭제되지 않습니다. 초기화 후 다시 AI 추출을 실행할 수 있습니다.";
-export const PROVIDER_KU_RESET_SUCCESS = "초기화 완료. AI 추출 Unit을 다시 생성하세요.";
-export const PROVIDER_KU_CARD_INTRO =
-  "이 Unit은 AI가 원천 문서에서 추출한 지식 후보입니다. 내용과 근거를 확인한 뒤 검수 요청 단계로 이동하세요.";
+  "시스템이 생성한 Knowledge Unit 초안을 초기화합니다. 검토 대기/대체됨 상태의 자동 생성 초안과 생성 리포트가 삭제됩니다. 원천 문서는 삭제되지 않습니다. 초기화 후 다시 자동 추출을 실행할 수 있습니다.";
+export const PROVIDER_KU_RESET_SUCCESS = "초기화 완료. Knowledge Unit 후보를 다시 생성하세요.";
 export const PROVIDER_KU_DUPLICATE_CARD_HINT =
   "유사한 Knowledge Unit이 감지되었습니다. 대표 Unit으로 병합되었는지 확인하세요.";
 export const PROVIDER_KU_REVIEW_STATUS_PENDING = "검토 대기";
@@ -119,6 +137,14 @@ export const PROVIDER_KU_EVIDENCE_VIEW = "근거 보기";
 
 export const PROVIDER_REVIEW_READONLY_HINT =
   "검토 요청 후 운영자가 승인·활성화하면 공개 지식팩으로 사용할 수 있습니다.";
+
+export const PROVIDER_SUBMIT_READINESS_TITLE = "검수 요청 준비";
+export const PROVIDER_SUBMIT_PROVIDER_TASKS_TITLE = "제공자가 해야 할 일";
+export const PROVIDER_SUBMIT_ADMIN_TASKS_TITLE = "검수 제출 후 관리자 확인 항목";
+export const PROVIDER_SUBMIT_ADMIN_REVIEW_NOTICE =
+  "Chunk는 시스템이 자동 생성합니다. 제공자는 자동 생성된 Chunk 품질 점검 결과를 확인하고 검수 요청을 제출합니다. 관리자는 검수 단계에서 최종 공개 여부를 판단합니다.";
+export const PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE =
+  "검수 요청 후 관리자가 지식팩 품질과 공개 여부를 최종 검토합니다.";
 
 /** @deprecated Use ProviderOnboardingStepper instead of numbered list on provider page */
 export const PROVIDER_CENTER_ONBOARDING_STEPS = [

@@ -82,7 +82,12 @@ export function ProviderPackDraftTab({
           {generating ? "초안 생성 중…" : PROVIDER_PACK_DRAFT_GENERATE_CTA}
         </button>
       ) : (
-        <ProviderKnowledgeUnitDraftPanel packId={packId} refreshNonce={draftRefreshNonce} />
+        <ProviderKnowledgeUnitDraftPanel
+          packId={packId}
+          refreshNonce={draftRefreshNonce}
+          editable={editable}
+          onRegenerated={onChanged}
+        />
       )}
     </section>
   );

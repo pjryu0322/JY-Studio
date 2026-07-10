@@ -571,13 +571,21 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
 
     const dupInfo = skippedExistingByDoc.get(doc.id);
     if (dupInfo && (rawCandidatesByDoc.get(doc.id) ?? 0) > 0) {
+      if (existingTitles.length > 0) {
+        return {
+          sourceDocumentId: doc.id,
+          status: "generated",
+          generatedUnitTitles: existingTitles,
+          steps: [path, "기존 Unit 유지", existingTitles.join(" · ")],
+        };
+      }
       return {
         sourceDocumentId: doc.id,
         status: "duplicate",
         reasonCode: "DUPLICATE",
         reason: labelForKuSkipReasonCode("DUPLICATE"),
         duplicateOfChunkId: dupInfo.duplicateOfChunkId,
-        generatedUnitTitles: existingTitles,
+        generatedUnitTitles: [],
         steps: [path, "중복 제외", labelForKuSkipReasonCode("DUPLICATE")],
       };
     }
@@ -609,9 +617,7 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
     if (existingTitles.length > 0) {
       return {
         sourceDocumentId: doc.id,
-        status: "duplicate",
-        reasonCode: "DUPLICATE",
-        reason: "기존 검토 대기 Unit이 있어 새로 생성하지 않음",
+        status: "generated",
         generatedUnitTitles: existingTitles,
         steps: [path, "기존 Unit 유지", existingTitles.join(" · ")],
       };

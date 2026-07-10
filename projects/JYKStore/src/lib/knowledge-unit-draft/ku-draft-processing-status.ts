@@ -92,11 +92,21 @@ function resolveDocumentStatus(
 ): KuDocumentProcessingItem {
   const path = docPath(doc);
 
+  if (pendingTitles.length > 0) {
+    return {
+      sourceDocumentId: doc.id,
+      path,
+      title: doc.title,
+      status: "generated",
+      generatedUnitTitles: pendingTitles,
+      steps: buildStepsFromDrafts(path, pendingTitles),
+    };
+  }
+
   if (reportOutcome) {
     const status = normalizeKuDocumentProcessingStatus(reportOutcome.status);
     if (status === "generated" || status === "duplicate" || status === "failed") {
-      const titles =
-        pendingTitles.length > 0 ? pendingTitles : reportOutcome.generatedUnitTitles;
+      const titles = reportOutcome.generatedUnitTitles;
       return {
         sourceDocumentId: doc.id,
         path,
@@ -110,17 +120,6 @@ function resolveDocumentStatus(
           reportOutcome.steps.length > 0 ? reportOutcome.steps : buildStepsFromDrafts(path, titles),
       };
     }
-  }
-
-  if (pendingTitles.length > 0) {
-    return {
-      sourceDocumentId: doc.id,
-      path,
-      title: doc.title,
-      status: "generated",
-      generatedUnitTitles: pendingTitles,
-      steps: buildStepsFromDrafts(path, pendingTitles),
-    };
   }
 
   const classification = classifySourceDocumentForKuGeneration(doc);
@@ -159,7 +158,7 @@ function resolveDocumentStatus(
 export function kuDocumentStatusUserHint(status: KuDocumentProcessingStatus): string {
   switch (status) {
     case "generated":
-      return "이 문서에서 AI 추출 Unit이 생성되었습니다.";
+      return "이 문서에서 Knowledge Unit 후보가 생성되었습니다.";
     case "duplicate":
       return "동일/유사한 Unit이 이미 있어 새로 만들지 않았습니다.";
     case "excluded":
@@ -230,14 +229,18 @@ export function buildKuProcessingNarrative(summary: KuProcessingSummary): string
   const nonGenerated = summary.duplicate + summary.excluded + summary.unsupported;
 
   if (summary.failed > 0) {
-    return `AI가 ${total}개 원천 문서를 분석했습니다. ${summary.generated}개 문서에서 Knowledge Unit을 생성했고, ${nonGenerated}개 문서는 생성·중복·지원 제외 처리했습니다. ${summary.failed}개 문서는 처리 중 오류가 발생했습니다. 상세 보기를 확인하세요.`;
+    return `시스템이 ${total}개 원천 문서를 분석했습니다. ${summary.generated}개 문서에서 Knowledge Unit을 생성했고, ${nonGenerated}개 문서는 생성·중복·지원 제외 처리했습니다. ${summary.failed}개 문서는 처리 중 오류가 발생했습니다. 상세 보기를 확인하세요.`;
+  }
+
+  if (summary.generated === 0 && nonGenerated > 0 && summary.duplicate === nonGenerated) {
+    return `시스템이 ${total}개 원천 문서를 분석했습니다. 이번 실행에서는 새 Unit을 추가하지 않았고, ${summary.duplicate}개 문서는 동일·유사 주제로 중복 제외되었습니다. 실제 처리 실패는 없습니다.`;
   }
 
   if (summary.generated === 0 && nonGenerated > 0) {
-    return `AI가 ${total}개 원천 문서를 분석했습니다. Knowledge Unit으로 만들 문서는 없었고, ${nonGenerated}개 문서는 메타데이터·라이선스·지원 제외 등으로 생성하지 않았습니다. 실제 처리 실패는 없습니다.`;
+    return `시스템이 ${total}개 원천 문서를 분석했습니다. Knowledge Unit으로 만들 문서는 없었고, ${nonGenerated}개 문서는 메타데이터·라이선스·지원 제외 등으로 생성하지 않았습니다. 실제 처리 실패는 없습니다.`;
   }
 
-  return `AI가 ${total}개 원천 문서를 분석했습니다. 이 중 ${summary.generated}개 문서에서 Knowledge Unit을 생성했고, ${nonGenerated}개 문서는 메타데이터·라이선스·지원 제외 등으로 생성하지 않았습니다. 실제 처리 실패는 없습니다.`;
+  return `시스템이 ${total}개 원천 문서를 분석했습니다. 이 중 ${summary.generated}개 문서에서 Knowledge Unit을 생성했고, ${nonGenerated}개 문서는 메타데이터·라이선스·지원 제외 등으로 생성하지 않았습니다. 실제 처리 실패는 없습니다.`;
 }
 
 /** @deprecated use classifySourceDocumentForKuGeneration */

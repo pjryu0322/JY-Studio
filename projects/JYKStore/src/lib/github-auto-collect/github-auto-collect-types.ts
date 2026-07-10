@@ -179,6 +179,8 @@ export type GitHubSourceRegisterInput = {
   productVersion?: string;
   documentVersion?: string;
   licenseStatus?: string;
+  /** When true (default), remove existing SourceDocuments from the same GitHub repo on this pack version before registering the selection. */
+  syncSelectedSources?: boolean;
 };
 
 export type GitHubSourceRegisterResult = {
@@ -195,6 +197,7 @@ export type GitHubSourceRegisterResult = {
     maxFilesToFetch: number;
     maxFileBytes: number;
     maxTotalBytes: number;
+    removedRepositorySourceCount?: number;
   };
   registeredDocuments: Array<{
     path: string;

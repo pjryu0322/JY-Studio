@@ -35,12 +35,16 @@ export function RetrievalEvaluationPanel({
   packId,
   retrievalEvaluation,
   editable,
+  generateButtonLabel,
+  runButtonLabel,
   onGenerate,
   onRun,
 }: {
   readonly packId: string;
   readonly retrievalEvaluation: RetrievalEvaluationSummaryDto | null;
   readonly editable: boolean;
+  readonly generateButtonLabel?: string;
+  readonly runButtonLabel?: string;
   readonly onGenerate: (replace?: boolean) => Promise<void>;
   readonly onRun: () => Promise<void>;
 }) {
@@ -84,7 +88,7 @@ export function RetrievalEvaluationPanel({
               onClick={() => void runAction("generate", () => onGenerate(true))}
               className="min-h-[44px] w-full rounded-xl border border-store-border px-4 text-sm font-semibold disabled:opacity-50 sm:w-auto"
             >
-              {busy === "generate" ? "생성 중…" : "케이스 자동 생성"}
+              {busy === "generate" ? "생성 중…" : generateButtonLabel ?? "검색 평가 케이스 생성"}
             </button>
             <button
               type="button"
@@ -92,7 +96,7 @@ export function RetrievalEvaluationPanel({
               onClick={() => void runAction("run", () => onRun())}
               className="min-h-[44px] w-full rounded-xl border border-store-border px-4 text-sm font-semibold disabled:opacity-50 sm:w-auto"
             >
-              {busy === "run" ? "평가 중…" : "평가 실행"}
+              {busy === "run" ? "평가 중…" : runButtonLabel ?? "검색 품질 평가 실행"}
             </button>
           </div>
         ) : null}

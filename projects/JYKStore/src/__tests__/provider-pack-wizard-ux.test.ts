@@ -12,14 +12,20 @@ function readSource(relativePath: string): string {
 }
 
 describe("provider pack wizard UX sources", () => {
-  it("renders wizard source step before pre-review checks in editor", () => {
+  it("renders wizard source step before inspection and review in editor", () => {
     const editor = readSource("src/components/ProviderPackEditor.tsx");
-    const sourceIdx = editor.indexOf("ProviderPackSourceTab");
-    const reviewIdx = editor.indexOf("ProviderPackReviewTab");
+    const sourceIdx = editor.indexOf('activeTab === "source"');
+    const inspectionIdx = editor.indexOf('activeTab === "inspection"');
+    const reviewIdx = editor.indexOf('activeTab === "review"');
     assert.ok(sourceIdx >= 0);
+    assert.ok(inspectionIdx >= 0);
     assert.ok(reviewIdx >= 0);
+    assert.ok(sourceIdx < inspectionIdx);
+    assert.ok(inspectionIdx < reviewIdx);
     assert.ok(editor.includes("ProviderPackTabs"));
     assert.ok(editor.includes("ProviderPackBasicInfoTab"));
+    assert.ok(editor.includes("ProviderPackInspectionTab"));
+    assert.ok(editor.includes("ProviderPackReviewTab"));
   });
 
   it("hides technical github options behind advanced settings", () => {

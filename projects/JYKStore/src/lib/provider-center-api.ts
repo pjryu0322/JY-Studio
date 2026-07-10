@@ -281,6 +281,7 @@ export async function registerGitHubSourceDocumentsApi(
     productVersion?: string;
     documentVersion?: string;
     licenseStatus?: string;
+    syncSelectedSources?: boolean;
   },
 ): Promise<GitHubSourceRegisterResult> {
   const response = await fetch(

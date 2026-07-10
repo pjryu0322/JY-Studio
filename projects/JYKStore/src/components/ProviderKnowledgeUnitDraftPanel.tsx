@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProviderKnowledgeUnitDraftDto } from "@/lib/provider-knowledge-unit-draft-dto";
-import { fetchProviderKnowledgeUnitDraftsApi, resetProviderKnowledgeUnitDraftsApi } from "@/lib/provider-center-api";
+import { fetchProviderKnowledgeUnitDraftsApi, generateGitHubKnowledgeUnitDraftsApi, resetProviderKnowledgeUnitDraftsApi } from "@/lib/provider-center-api";
 import {
   buildKuProcessingNarrative,
   groupKuDraftsByTopic,
@@ -12,17 +12,20 @@ import { parseUserFacingKuDraftContent } from "@/lib/knowledge-unit-draft/ku-dra
 import {
   PROVIDER_KU_CONTENT_VIEW,
   PROVIDER_KU_DRAFT_PANEL_TITLE,
+  PROVIDER_KU_CANDIDATE_LABEL,
   PROVIDER_KU_DUPLICATE_CARD_HINT,
-  PROVIDER_KU_CARD_INTRO,
+  PROVIDER_KU_EMPTY_LIST,
+  PROVIDER_KU_EVIDENCE_DRAFT_RESULT,
+  PROVIDER_KU_LOAD_FAILED,
+  PROVIDER_KU_REGENERATE_FAILED,
   PROVIDER_KU_RESET_BUTTON,
   PROVIDER_KU_RESET_CONFIRM,
   PROVIDER_KU_RESET_SUCCESS,
+  PROVIDER_KU_REGENERATE_BUTTON,
   PROVIDER_KU_EVIDENCE_VIEW,
-  PROVIDER_KU_EXCLUDED_GUIDANCE,
   PROVIDER_KU_PREVIEW_GENERATION_BADGE,
   PROVIDER_KU_PROCESSING_DETAIL_TOGGLE,
   PROVIDER_KU_PROCESSING_TITLE,
-  PROVIDER_KU_REVIEW_GUIDANCE,
   PROVIDER_KU_REVIEW_STATUS_PENDING,
   PROVIDER_KU_STATUS_DUPLICATE,
   PROVIDER_KU_STATUS_EXCLUDED,
@@ -85,7 +88,6 @@ function DraftCard({ draft }: { readonly draft: ProviderKnowledgeUnitDraftDto })
         </span>
       </div>
       {draft.topic ? <p className="mt-1 text-store-muted">주제: {draft.topic}</p> : null}
-      <p className="mt-1 text-[11px] text-store-muted">{PROVIDER_KU_CARD_INTRO}</p>
       {draft.canonicalSourcePath ? (
         <p className="mt-1 text-[11px] text-slate-600">출처: {draft.canonicalSourcePath}</p>
       ) : null}
@@ -95,7 +97,13 @@ function DraftCard({ draft }: { readonly draft: ProviderKnowledgeUnitDraftDto })
       {draft.duplicateSources && draft.duplicateSources.length > 0 ? (
         <p className="mt-1 rounded-lg bg-slate-100 px-2 py-1 text-[11px] text-slate-700">
           {PROVIDER_KU_DUPLICATE_CARD_HINT} (
-          {draft.duplicateSources.map((s) => s.sourcePath ?? s.title).join(", ")})
+          {(() => {
+            const paths = draft.duplicateSources.map((s) => s.sourcePath ?? s.title);
+            const shown = paths.slice(0, 3);
+            const rest = paths.length - shown.length;
+            return rest > 0 ? `${shown.join(", ")} 외 ${rest}건` : shown.join(", ");
+          })()}
+          )
         </p>
       ) : null}
 
@@ -164,7 +172,7 @@ function DraftCard({ draft }: { readonly draft: ProviderKnowledgeUnitDraftDto })
             </pre>
           </div>
           <div className="rounded-lg bg-indigo-50 p-3 text-[11px] leading-relaxed text-indigo-950">
-            <p className="font-semibold">AI 생성 결과</p>
+            <p className="font-semibold">{PROVIDER_KU_EVIDENCE_DRAFT_RESULT}</p>
             <p className="mt-1">{parsed.description}</p>
             {parsed.keyPoints[0] ? (
               <p className="mt-2 rounded bg-white/70 px-2 py-1">↳ {parsed.keyPoints[0]}</p>
@@ -180,10 +188,14 @@ export function ProviderKnowledgeUnitDraftPanel({
   packId,
   refreshNonce = 0,
   compact = false,
+  editable = true,
+  onRegenerated,
 }: {
   readonly packId: string;
   readonly refreshNonce?: number;
   readonly compact?: boolean;
+  readonly editable?: boolean;
+  readonly onRegenerated?: () => Promise<void>;
 }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("pending_review");
   const [loading, setLoading] = useState(true);
@@ -191,6 +203,7 @@ export function ProviderKnowledgeUnitDraftPanel({
   const [showProcessingDetail, setShowProcessingDetail] = useState(false);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchProviderKnowledgeUnitDraftsApi>> | null>(
     null,
   );
@@ -206,7 +219,7 @@ export function ProviderKnowledgeUnitDraftPanel({
       setData(result);
     } catch (err) {
       setData(null);
-      setError(err instanceof Error ? err.message : "AI 추출 결과를 불러오지 못했습니다.");
+      setError(err instanceof Error ? err.message : PROVIDER_KU_LOAD_FAILED);
     } finally {
       setLoading(false);
     }
@@ -242,15 +255,49 @@ export function ProviderKnowledgeUnitDraftPanel({
     }
   }, [packId, loadDrafts]);
 
+  const handleRegenerate = useCallback(async () => {
+    if (!editable) return;
+    setRegenerating(true);
+    setError(null);
+    setResetMessage(null);
+    try {
+      await generateGitHubKnowledgeUnitDraftsApi(packId, {
+        generationMode: "MINIMAL",
+        overwriteExistingDrafts: false,
+      });
+      await onRegenerated?.();
+      await loadDrafts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : PROVIDER_KU_REGENERATE_FAILED);
+    } finally {
+      setRegenerating(false);
+    }
+  }, [editable, packId, onRegenerated, loadDrafts]);
+
   return (
     <div className={compact ? "mt-3" : "mt-4 rounded-2xl border border-store-border bg-slate-50 p-4"}>
       {!compact ? (
-        <>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-sm font-bold text-slate-900">{PROVIDER_KU_DRAFT_PANEL_TITLE}</h3>
-          <p className="mt-1 text-xs text-store-muted">
-            {PROVIDER_KU_REVIEW_GUIDANCE} {PROVIDER_KU_EXCLUDED_GUIDANCE}
-          </p>
-        </>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleRegenerate()}
+              disabled={!editable || loading || regenerating || resetting}
+              className="min-h-[44px] rounded-xl bg-store-accent px-4 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {regenerating ? "재생성 중…" : PROVIDER_KU_REGENERATE_BUTTON}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleReset()}
+              disabled={loading || resetting || regenerating}
+              className="min-h-[44px] rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-900 disabled:opacity-50"
+            >
+              {resetting ? "초기화 중…" : PROVIDER_KU_RESET_BUTTON}
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {data ? (
@@ -320,8 +367,8 @@ export function ProviderKnowledgeUnitDraftPanel({
       ) : null}
 
       {!compact ? (
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          <label className="block flex-1 text-xs font-semibold">
+        <div className="mt-3">
+          <label className="block text-xs font-semibold">
             상태 필터
             <select
               value={statusFilter}
@@ -333,22 +380,6 @@ export function ProviderKnowledgeUnitDraftPanel({
               <option value="all">전체</option>
             </select>
           </label>
-          <button
-            type="button"
-            onClick={() => void loadDrafts()}
-            disabled={loading}
-            className="min-h-[44px] rounded-xl border border-store-border bg-white px-4 text-sm font-semibold disabled:opacity-50 sm:self-end"
-          >
-            {loading ? "불러오는 중…" : "새로고침"}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleReset()}
-            disabled={loading || resetting}
-            className="min-h-[44px] rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-900 disabled:opacity-50 sm:self-end"
-          >
-            {resetting ? "초기화 중…" : PROVIDER_KU_RESET_BUTTON}
-          </button>
         </div>
       ) : null}
 
@@ -358,13 +389,13 @@ export function ProviderKnowledgeUnitDraftPanel({
 
       {data ? (
         <p className="mt-3 text-xs text-slate-700">
-          AI 추출 Unit {data.summary.totalCount}개 · {PROVIDER_KU_REVIEW_STATUS_PENDING}{" "}
+          {PROVIDER_KU_CANDIDATE_LABEL} {data.summary.totalCount}개 · {PROVIDER_KU_REVIEW_STATUS_PENDING}{" "}
           {data.summary.pendingReviewCount}개
         </p>
       ) : null}
 
       {!loading && data && data.items.length === 0 ? (
-        <p className="mt-3 text-sm text-store-muted">표시할 AI 추출 결과가 없습니다.</p>
+        <p className="mt-3 text-sm text-store-muted">{PROVIDER_KU_EMPTY_LIST}</p>
       ) : null}
 
       {grouped.length > 0 ? (

@@ -182,11 +182,19 @@ export function ProviderGitHubAutoCollectPanel({
     setError(null);
     try {
       const safeSourceCodeAnalysis = normalizeUiSourceCodeAnalysis(sourceCodeAnalysis);
+      const candidatePathSet = new Set(preview.sourceCandidates.map((c) => c.path));
+      const pathsToRegister = selectedPaths.filter((path) => candidatePathSet.has(path));
+      if (pathsToRegister.length === 0) {
+        setError("원천 문서로 등록할 후보 파일을 선택해 주세요.");
+        setRegistering(false);
+        return;
+      }
       const result = await registerGitHubSourceDocumentsApi(packId, {
         repositoryUrl: repositoryUrl.trim(),
         crawlMode,
         sourceCodeAnalysis: safeSourceCodeAnalysis,
-        selectedSourcePaths: selectedPaths,
+        selectedSourcePaths: pathsToRegister,
+        syncSelectedSources: true,
         maxFilesToAnalyze: 5000,
         maxCandidateFiles,
         maxFilesToFetch,
@@ -194,6 +202,7 @@ export function ProviderGitHubAutoCollectPanel({
         documentVersion: preview.repository.defaultBranch,
       });
       setRegisterResult(result);
+      setSelectedPaths(pathsToRegister);
       setDraftResult(null);
       await onChanged();
     } catch (err) {
@@ -498,7 +507,10 @@ export function ProviderGitHubAutoCollectPanel({
       {registerResult ? (
         <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
           <p className="font-bold">
-            원천 문서 {registerResult.summary.registeredCount}개 등록 완료
+            이번 등록 {registerResult.summary.registeredCount}개
+            {registerResult.summary.removedRepositorySourceCount
+              ? ` · 기존 GitHub 등록 ${registerResult.summary.removedRepositorySourceCount}개 교체`
+              : ""}
           </p>
           <WarningList title="원천 문서 등록 안내" warnings={registerResult.warnings} />
           {registerResult.registeredDocuments.length > 0 ? (

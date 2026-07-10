@@ -26,6 +26,7 @@ import {
   sha256Content,
 } from "./github-source-mapping";
 import { parseGitHubRepositoryUrl } from "./github-url";
+import { prisma } from "@/lib/prisma";
 
 const UNSUPPORTED_CLASSES = new Set([
   "TEST",
@@ -40,6 +41,11 @@ export type RegisterGitHubSourceDeps = {
   token?: string;
   createSourceDocument?: typeof createSourceDocumentForProviderPack;
   assertEditablePack?: typeof assertProviderPackEditableForClient;
+  syncRepositorySources?: (
+    packId: string,
+    owner: string,
+    repo: string,
+  ) => Promise<number>;
 };
 
 function throwRegisterPreflightError(
@@ -73,6 +79,26 @@ function mapCreateError(message: string | undefined): string {
   const text = message ?? "VALIDATION_FAILED";
   if (/checksum|중복/i.test(text)) return "DUPLICATE_CHECKSUM";
   return "VALIDATION_FAILED";
+}
+
+async function removeRepositorySourceDocumentsFromVersion(
+  versionId: string,
+  owner: string,
+  repo: string,
+): Promise<number> {
+  const prefix = `https://github.com/${owner}/${repo}/blob/`;
+  const existing = await prisma.sourceDocument.findMany({
+    where: {
+      versionId,
+      sourceUrl: { startsWith: prefix },
+    },
+    select: { id: true },
+  });
+  if (existing.length === 0) return 0;
+  await prisma.sourceDocument.deleteMany({
+    where: { id: { in: existing.map((row) => row.id) } },
+  });
+  return existing.length;
 }
 
 export async function registerGitHubSourceDocumentsForPack(
@@ -110,6 +136,35 @@ export async function registerGitHubSourceDocumentsForPack(
 
   const parsed = parseGitHubRepositoryUrl(normalized.repositoryUrl);
   const branch = parsed.ref ?? discovery.repository.defaultBranch;
+
+  const packVersionRow = await prisma.knowledgePack.findFirst({
+    where: { packId: effectivePackId },
+    include: { versions: { orderBy: { createdAt: "desc" }, take: 1 } },
+  });
+  const versionId = packVersionRow?.versions[0]?.id;
+
+  const syncRepositorySources =
+    deps.syncRepositorySources ??
+    (async (targetPackId, owner, repo) => {
+      if (!versionId) return 0;
+      return removeRepositorySourceDocumentsFromVersion(versionId, owner, repo);
+    });
+
+  let removedRepositorySourceCount = 0;
+  const syncSelectedSources = normalized.syncSelectedSources !== false;
+  if (syncSelectedSources) {
+    removedRepositorySourceCount = await syncRepositorySources(
+      effectivePackId,
+      parsed.owner,
+      parsed.repo,
+    );
+    if (removedRepositorySourceCount > 0) {
+      warnings.push(
+        `동일 Repository에서 이전에 등록된 원천 문서 ${removedRepositorySourceCount}개를 선택 목록과 맞추기 위해 제거했습니다.`,
+      );
+    }
+  }
+
   // TODO(P26.5-2): discovery may already include tree data; reuse it to avoid a second fetchRecursiveTree.
   const { items } = await fetchRecursiveTree(
     parsed.owner,
@@ -289,6 +344,7 @@ export async function registerGitHubSourceDocumentsForPack(
       maxFilesToFetch: normalized.maxFilesToFetch,
       maxFileBytes: normalized.maxFileBytes,
       maxTotalBytes: normalized.maxTotalBytes,
+      removedRepositorySourceCount,
     },
     registeredDocuments,
     skippedFiles,

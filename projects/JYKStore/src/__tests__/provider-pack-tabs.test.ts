@@ -30,13 +30,23 @@ describe("resolveDefaultProviderPackTab", () => {
     );
   });
 
-  it("opens review tab when drafts exist or pack is reviewing", () => {
+  it("opens inspection tab when drafts exist and inspection incomplete", () => {
     assert.equal(
       resolveDefaultProviderPackTab({
         created: false,
         status: "DRAFT",
         sourceDocumentCount: 2,
         knowledgeUnitDraftCount: 3,
+      }),
+      "inspection",
+    );
+    assert.equal(
+      resolveDefaultProviderPackTab({
+        created: false,
+        status: "DRAFT",
+        sourceDocumentCount: 2,
+        knowledgeUnitDraftCount: 3,
+        inspectionComplete: true,
       }),
       "review",
     );
@@ -61,6 +71,14 @@ describe("resolveProviderPackTabFromLocation", () => {
         fallback: "basic",
       }),
       "source",
+    );
+    assert.equal(
+      resolveProviderPackTabFromLocation({
+        tabParam: null,
+        hash: "#pack-inspection",
+        fallback: "basic",
+      }),
+      "inspection",
     );
     assert.equal(
       resolveProviderPackTabFromLocation({

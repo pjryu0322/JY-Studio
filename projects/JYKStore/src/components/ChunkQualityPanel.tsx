@@ -33,11 +33,13 @@ export function ChunkQualityPanel({
   packId,
   chunkQuality,
   editable,
+  evaluateButtonLabel,
   onEvaluate,
 }: {
   readonly packId: string;
   readonly chunkQuality: ChunkQualitySummaryDto | null;
   readonly editable: boolean;
+  readonly evaluateButtonLabel?: string;
   readonly onEvaluate: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -72,7 +74,7 @@ export function ChunkQualityPanel({
             onClick={() => void run()}
             className="min-h-[44px] w-full rounded-xl border border-store-border px-4 text-sm font-semibold disabled:opacity-50 sm:w-auto"
           >
-            {busy ? "점검 중…" : "청킹 품질 재평가"}
+            {busy ? "점검 중…" : evaluateButtonLabel ?? "청킹 품질 점검 시작"}
           </button>
         ) : null}
       </div>
