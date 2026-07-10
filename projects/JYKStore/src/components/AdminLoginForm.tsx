@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { isAdminAccountRole } from "@/lib/account-role";
-import { loginStoreAccount, logoutStoreAccount } from "@/lib/auth-api";
+import { isAdminAccountRole, postAuthLandingPath } from "@/lib/account-role";
+import { loginStoreAccount, logoutStoreAccount, registerStoreAccount } from "@/lib/auth-api";
 import {
   ADMIN_LOGIN_DESCRIPTION,
   ADMIN_LOGIN_TITLE,
@@ -23,13 +23,20 @@ export function AdminLoginForm() {
     setBusy(true);
     setError(null);
     try {
-      const result = await loginStoreAccount({ email, displayName });
+      let result;
+      try {
+        result = await loginStoreAccount({ email, displayName, mode: "login" });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "";
+        if (!message.includes("등록된 계정")) throw err;
+        result = await registerStoreAccount({ email, displayName, intendedRole: "USER" });
+      }
       if (!isAdminAccountRole(result.user.accountRole)) {
         await logoutStoreAccount();
         setError("관리자 권한이 없는 계정입니다. 관리자 이메일로 로그인해 주세요.");
         return;
       }
-      router.replace(ROUTES.adminReviews);
+      router.replace(postAuthLandingPath("ADMIN"));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "로그인에 실패했습니다.");

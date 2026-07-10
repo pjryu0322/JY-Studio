@@ -5,8 +5,11 @@ import {
   isAdminAccountRole,
   isAdminEmailAllowlisted,
   parseAccountRole,
+  parseSelectableAccountRole,
+  postAuthLandingPath,
   resolveSessionAccountRole,
 } from "../lib/account-role.ts";
+import { ROUTES } from "../lib/routes.ts";
 
 function withEnv(overrides: Record<string, string | undefined>, run: () => void) {
   const previous: Record<string, string | undefined> = {};
@@ -53,5 +56,13 @@ describe("account role helpers", () => {
       resolveSessionAccountRole({ storedRole: "USER", hasProviderProfile: false }),
       "USER",
     );
+  });
+
+  it("maps selectable roles and post-auth landing paths", () => {
+    assert.equal(parseSelectableAccountRole("PROVIDER"), "PROVIDER");
+    assert.equal(parseSelectableAccountRole("ADMIN"), "USER");
+    assert.equal(postAuthLandingPath("USER"), ROUTES.home);
+    assert.equal(postAuthLandingPath("PROVIDER"), ROUTES.provider);
+    assert.equal(postAuthLandingPath("ADMIN"), ROUTES.adminReviews);
   });
 });

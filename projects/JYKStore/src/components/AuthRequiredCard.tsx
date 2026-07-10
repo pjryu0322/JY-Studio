@@ -14,7 +14,7 @@ export function AuthRequiredCard({
       <p className="mt-2 text-sm text-slate-700">{body}</p>
       <div className="mt-4 flex flex-col gap-2">
         <Link
-          href={ROUTES.accountProfile}
+          href={ROUTES.login}
           className="flex min-h-[48px] items-center justify-center rounded-2xl bg-store-accent text-sm font-bold text-white"
         >
           로그인하기

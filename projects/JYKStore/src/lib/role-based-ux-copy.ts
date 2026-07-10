@@ -15,7 +15,13 @@ export const PROVIDER_CENTER_LOGIN_CTA = "로그인하고 지식팩 등록 시�
 
 export const ACCOUNT_PROFILE_LOGIN_TITLE = "JYKStore 로그인";
 export const ACCOUNT_PROFILE_LOGIN_HINT =
-  "지식팩을 등록하려면 로그인이 필요합니다. 공개 지식팩 탐색은 로그인 없이 사용할 수 있습니다.";
+  "기존 계정은 로그인, 처음이면 역할을 고른 뒤 계정 생성을 선택하세요.";
+
+export const ACCOUNT_REGISTER_ROLE_LABEL = "계정 역할 (생성 시)";
+export const ACCOUNT_REGISTER_ROLE_USER = "일반 사용자";
+export const ACCOUNT_REGISTER_ROLE_USER_HINT = "지식팩 검색·보관·API 연결";
+export const ACCOUNT_REGISTER_ROLE_PROVIDER = "지식팩 제공자";
+export const ACCOUNT_REGISTER_ROLE_PROVIDER_HINT = "제품 지식을 등록하고 지식팩을 만듭니다";
 
 export const PROVIDER_CENTER_PROFILE_LINK_LABEL = "프로필 관리";
 

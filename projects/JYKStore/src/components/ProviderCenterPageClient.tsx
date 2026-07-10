@@ -138,7 +138,7 @@ export function ProviderCenterPageClient() {
           <p className="text-sm font-bold text-amber-950">{PROVIDER_CENTER_LOGIN_TITLE}</p>
         </div>
         <Link
-          href={ROUTES.accountProfile}
+          href={ROUTES.login}
           className="flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-store-accent text-sm font-bold text-white"
         >
           {PROVIDER_CENTER_LOGIN_CTA}

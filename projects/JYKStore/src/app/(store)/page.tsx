@@ -1,11 +1,18 @@
+import { redirect } from "next/navigation";
 import { EmptyState } from "@/components/EmptyState";
 import { TodayView } from "@/components/TodayView";
+import { getStoreAuthSessionFromCookies } from "@/lib/auth-session";
 import { listTodayFeaturedPacks } from "@/lib/pack-catalog-service";
 import { ROUTES } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
+  const session = await getStoreAuthSessionFromCookies();
+  if (!session) {
+    redirect(ROUTES.login);
+  }
+
   const featured = await listTodayFeaturedPacks();
 
   if (!featured) {

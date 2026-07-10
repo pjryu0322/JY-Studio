@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isAdminAccountRole } from "@/lib/account-role";
 import { fetchAuthSession, logoutStoreAccount } from "@/lib/auth-api";
@@ -12,11 +13,15 @@ function initials(name: string | null | undefined, email: string | null | undefi
 }
 
 export function HeaderProfileButton() {
+  const router = useRouter();
   const [label, setLabel] = useState<string | null>(null);
   const [provider, setProvider] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  const loggedIn = Boolean(label);
 
   const refresh = useCallback(async () => {
     try {
@@ -54,28 +59,18 @@ export function HeaderProfileButton() {
 
   const onLogout = async () => {
     setMenuOpen(false);
-    await logoutStoreAccount();
-    await refresh();
+    setLogoutBusy(true);
+    try {
+      await logoutStoreAccount();
+      await refresh();
+      router.replace(ROUTES.login);
+      router.refresh();
+    } finally {
+      setLogoutBusy(false);
+    }
   };
 
-  if (!isAdmin) {
-    return (
-      <Link
-        href={ROUTES.accountProfile}
-        className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-store-border bg-white text-sm font-bold text-slate-800 active:bg-slate-50"
-        aria-label={label ? "프로필 관리" : "로그인"}
-      >
-        {label ?? "👤"}
-        {provider ? (
-          <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[8px] font-bold text-white">
-            제공자
-          </span>
-        ) : null}
-      </Link>
-    );
-  }
-
-  return (
+  const profileButton = isAdmin ? (
     <div ref={rootRef} className="relative">
       <button
         type="button"
@@ -91,6 +86,13 @@ export function HeaderProfileButton() {
       </button>
       {menuOpen ? (
         <div className="absolute right-0 z-40 mt-2 w-48 overflow-hidden rounded-xl border border-store-border bg-white shadow-card">
+          <Link
+            href={ROUTES.accountProfile}
+            className="block px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+            onClick={() => setMenuOpen(false)}
+          >
+            프로필
+          </Link>
           <Link
             href={ROUTES.admin}
             className="block px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
@@ -112,14 +114,36 @@ export function HeaderProfileButton() {
           >
             스토어 홈
           </Link>
-          <button
-            type="button"
-            onClick={() => void onLogout()}
-            className="block w-full px-4 py-3 text-left text-sm font-semibold text-red-800 hover:bg-red-50"
-          >
-            로그아웃
-          </button>
         </div>
+      ) : null}
+    </div>
+  ) : (
+    <Link
+      href={loggedIn ? ROUTES.accountProfile : ROUTES.login}
+      className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-store-border bg-white text-sm font-bold text-slate-800 active:bg-slate-50"
+      aria-label={loggedIn ? "프로필 관리" : "로그인"}
+    >
+      {label ?? "👤"}
+      {provider ? (
+        <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[8px] font-bold text-white">
+          제공자
+        </span>
+      ) : null}
+    </Link>
+  );
+
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      {profileButton}
+      {loggedIn ? (
+        <button
+          type="button"
+          onClick={() => void onLogout()}
+          disabled={logoutBusy}
+          className="min-h-[44px] shrink-0 rounded-xl border border-store-border bg-white px-3 text-xs font-semibold text-slate-700 active:bg-slate-50 disabled:opacity-50"
+        >
+          {logoutBusy ? "…" : "로그아웃"}
+        </button>
       ) : null}
     </div>
   );

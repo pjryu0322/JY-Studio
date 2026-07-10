@@ -29,8 +29,8 @@ describe("role-based account UX", () => {
 
     assert.ok(page.includes("AccountPageClient"));
     assert.ok(account.includes("ACCOUNT_SECTION_ROLE_REGISTRATION"));
-    assert.ok(account.includes("지식팩 운영자"));
-    assert.ok(account.includes("운영자 전용"));
+    assert.ok(account.includes("지식팩 관리자 계정"));
+    assert.ok(account.includes("관리자 계정 로그인"));
   });
 });
 

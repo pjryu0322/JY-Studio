@@ -1,12 +1,34 @@
+import { ROUTES } from "@/lib/routes";
+
 export type AccountRole = "USER" | "PROVIDER" | "ADMIN";
 
+/** Roles a user may choose at store account creation (ADMIN is allowlist-only). */
+export type SelectableAccountRole = "USER" | "PROVIDER";
+
 export const ACCOUNT_ROLES = ["USER", "PROVIDER", "ADMIN"] as const;
+export const SELECTABLE_ACCOUNT_ROLES = ["USER", "PROVIDER"] as const;
 
 export function parseAccountRole(value: string | null | undefined): AccountRole {
   const normalized = value?.trim().toUpperCase();
   if (normalized === "ADMIN") return "ADMIN";
   if (normalized === "PROVIDER") return "PROVIDER";
   return "USER";
+}
+
+export function parseSelectableAccountRole(value: string | null | undefined): SelectableAccountRole {
+  return value?.trim().toUpperCase() === "PROVIDER" ? "PROVIDER" : "USER";
+}
+
+/** Default landing path after login / account creation by role. */
+export function postAuthLandingPath(role: AccountRole): string {
+  switch (parseAccountRole(role)) {
+    case "ADMIN":
+      return ROUTES.adminReviews;
+    case "PROVIDER":
+      return ROUTES.provider;
+    default:
+      return ROUTES.home;
+  }
 }
 
 export function isAdminAccountRole(role: string | null | undefined): boolean {
