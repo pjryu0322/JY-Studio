@@ -108,27 +108,58 @@ export const ADMIN_REVIEWS_OPEN_DETAIL = "검토하기";
 export const ADMIN_REVIEWS_STATUS_PENDING = "접수 대기";
 export const ADMIN_REVIEWS_STATUS_IN_REVIEW = "검수 중";
 
+export const ADMIN_REVIEW_TAB_ACCEPT = "접수";
+export const ADMIN_REVIEW_TAB_DECISION = "판단";
+export const ADMIN_REVIEW_TAB_PACKAGE = "패키지";
+export const ADMIN_REVIEW_TAB_WARNINGS = "주의";
+export const ADMIN_REVIEW_TAB_SOURCES = "문서";
+export const ADMIN_REVIEW_TAB_ADVANCED = "고급";
+
 export const ADMIN_REVIEW_DECISION_TITLE = "최종 검수 판단";
-export const ADMIN_REVIEW_ACCEPT_TITLE = "검수 접수";
+export const ADMIN_REVIEW_ACCEPT_TITLE = "검수 요청 접수";
+export const ADMIN_REVIEW_ACCEPT_BLOCKED_TITLE = "검수 요청 접수 불가";
 export const ADMIN_REVIEW_ACCEPT_BODY =
-  "제공자 요청을 먼저 접수해야 승인·반려할 수 있습니다. 접수 이후에는 제공자가 요청을 회수할 수 없습니다.";
-export const ADMIN_REVIEW_ACCEPTED_HINT = "검수 접수 완료. 아래 기준으로 승인·반려하세요.";
+  "제공자가 제출한 검수 패키지가 생성되었습니다. 접수 후에는 제공자가 요청을 회수할 수 없습니다.";
+export const ADMIN_REVIEW_ACCEPT_BLOCKED_BODY =
+  "제출 패키지가 없거나 필수 검수 데이터가 부족합니다. 제공자에게 재제출을 요청하세요.";
+export const ADMIN_REVIEW_ACCEPTED_HINT =
+  "제출된 검수 패키지는 접수되었습니다. WARNING 항목을 확인한 뒤 승인 또는 반려하세요.";
 export const ADMIN_REVIEW_CTA_ACCEPT = "검수 접수";
 export const ADMIN_REVIEW_ACCEPT_REQUIRED_HINT =
   "승인·반려하려면 먼저 검수 접수를 완료하세요.";
+export const ADMIN_REVIEW_ACCEPT_NO_WITHDRAW_HINT =
+  "접수 후에는 제공자가 요청을 회수할 수 없습니다.";
+export const ADMIN_REVIEW_WARNING_TAB_HINT =
+  "접수 후 검수 시 확인할 항목입니다.";
+export const ADMIN_REVIEW_ADVANCED_TAB_HINT =
+  "현재 데이터 기준으로 다시 점검할 수 있습니다. 일반적인 검수 접수/승인 흐름에서는 사용할 필요가 없습니다.";
 export const ADMIN_REVIEW_INSPECTION_SUMMARY_TITLE = "검수 요약";
 export const ADMIN_REVIEW_NEEDS_ATTENTION_TITLE = "확인 필요 항목";
 export const ADMIN_REVIEW_DETAIL_SECTIONS_TITLE = "상세 점검 결과";
+export const ADMIN_REVIEW_WARNING_ISSUES_TITLE = "주의 이슈";
+export const ADMIN_REVIEW_BLOCKER_ISSUES_TITLE = "차단 이슈";
+export const ADMIN_REVIEW_SUBMIT_INFO_TITLE = "제출 정보";
+export const ADMIN_REVIEW_SOURCE_DOCS_TITLE = "원천 문서";
+
+export const ADMIN_REVIEW_ACCEPT_PHASE_READY_TITLE = "접수 가능";
+export const ADMIN_REVIEW_ACCEPT_PHASE_READY_BODY =
+  "제출 패키지가 정상적으로 생성되었습니다. 접수 후 승인 여부를 최종 판단하세요.";
+export const ADMIN_REVIEW_ACCEPT_PHASE_WARNING_TITLE = "접수 가능 · 주의 항목 있음";
+export const ADMIN_REVIEW_ACCEPT_PHASE_WARNING_BODY =
+  "제출 패키지는 생성되었고, WARNING 항목이 있습니다. 접수 후 상세 검수를 진행하세요.";
+export const ADMIN_REVIEW_ACCEPT_PHASE_BLOCKED_TITLE = "접수 불가";
+export const ADMIN_REVIEW_ACCEPT_PHASE_BLOCKED_BODY =
+  "제출 패키지에 차단 이슈가 있습니다. 제공자에게 보완 후 재제출을 요청하세요.";
 
 export const ADMIN_REVIEW_STATE_GATE_REQUIRED_TITLE = "릴리스 게이트 필요";
 export const ADMIN_REVIEW_STATE_GATE_REQUIRED_BODY =
   "공개 승인 전 최종 품질 점검이 아직 실행되지 않았습니다. 먼저 릴리스 게이트를 최종 점검하세요.";
 export const ADMIN_REVIEW_STATE_READY_TITLE = "승인 가능";
 export const ADMIN_REVIEW_STATE_READY_BODY =
-  "필수 점검을 통과했습니다. 승인하면 일반 카탈로그와 Context API에 공개됩니다.";
+  "검수 요청이 접수되었습니다. 승인하면 일반 카탈로그와 Context API에 공개됩니다.";
 export const ADMIN_REVIEW_STATE_WARNING_TITLE = "주의 후 승인 가능";
 export const ADMIN_REVIEW_STATE_WARNING_BODY =
-  "승인은 가능하지만 WARNING 항목이 있습니다. 확인 후 승인하거나 반려하세요.";
+  "WARNING 항목을 확인한 뒤 승인하거나 반려하세요.";
 export const ADMIN_REVIEW_STATE_BLOCKED_TITLE = "승인 불가";
 export const ADMIN_REVIEW_STATE_BLOCKED_BODY =
   "최신 점검 결과 기준으로 차단 이슈가 있습니다. 반려 사유를 작성해 제공자에게 보완을 요청하세요.";
@@ -144,10 +175,11 @@ export const ADMIN_REVIEW_STATE_CHANGED_TITLE = "제출 후 변경 감지";
 export const ADMIN_REVIEW_STATE_CHANGED_BODY =
   "제출 당시 검수 패키지와 현재 데이터가 다릅니다. 관리자는 기존 제출 패키지 기준으로 판단하거나 제공자에게 재제출을 요청할 수 있습니다.";
 
-export const ADMIN_REVIEW_CTA_RELEASE_GATE = "릴리스 게이트 최종 점검";
+export const ADMIN_REVIEW_CTA_RELEASE_GATE = "릴리스 게이트 재점검";
 export const ADMIN_REVIEW_CTA_APPROVE = "승인 및 공개";
 export const ADMIN_REVIEW_CTA_REJECT = "반려";
 export const ADMIN_REVIEW_CTA_REFRESH_ALL = "현재 데이터 기준 전체 재점검";
+export const ADMIN_REVIEW_CTA_RETRIEVAL_REEVAL = "검색 품질 재평가";
 export const ADMIN_REVIEW_ADVANCED_ACTIONS_TITLE = "고급 작업";
 export const ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE = "제출된 검수 패키지";
 export const ADMIN_REVIEW_CTA_STRUCTURE = "구조/품질 재점검";
@@ -158,6 +190,8 @@ export const ADMIN_REVIEW_REFRESH_REASONS_TITLE = "재점검 필요 항목";
 export const ADMIN_REVIEW_REJECT_COLLAPSED_HINT =
   "재점검 후에도 문제가 해결되지 않으면 반려할 수 있습니다.";
 export const ADMIN_REVIEW_REJECT_OPEN = "반려 사유 입력 열기";
+export const ADMIN_REVIEW_VIEW_SOURCE = "원문 보기";
+export const ADMIN_REVIEW_VIEW_VALIDATION = "검증 결과 보기";
 
 export const PROVIDER_PACK_ID_READONLY_HINT =
   "JYKStore가 발급한 고유 식별자입니다. 수정할 수 없습니다.";

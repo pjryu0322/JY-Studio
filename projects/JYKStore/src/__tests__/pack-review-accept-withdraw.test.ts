@@ -41,7 +41,7 @@ describe("pack review accept and withdraw gate", () => {
     const withdrawRoute = readSource(
       "src/app/api/v1/provider/packs/[packId]/withdraw-review/route.ts",
     );
-    const decision = readSource("src/components/AdminReviewDecisionSummary.tsx");
+    const decision = readSource("src/components/AdminReviewAcceptTab.tsx");
     const tab = readSource("src/components/ProviderPackReviewTab.tsx");
     const decisionLib = readSource("src/lib/admin-review-decision.ts");
 

@@ -581,32 +581,33 @@ describe("admin review decision state", () => {
 });
 
 describe("admin review decision UX wiring", () => {
-  it("puts decision summary first and collapses detail tools", () => {
+  it("puts accept/decision tab first and moves tools to advanced tab", () => {
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
-    const decision = readSource("src/components/AdminReviewDecisionSummary.tsx");
+    const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
+    const advanced = readSource("src/components/AdminReviewAdvancedActionsTab.tsx");
     const sections = readSource("src/components/AdminReviewDetailSections.tsx");
     const sources = readSource("src/components/AdminReviewSourceDocuments.tsx");
 
-    assert.ok(page.includes("AdminReviewDecisionSummary"));
-    assert.ok(page.includes("AdminReviewInspectionSummary"));
-    assert.ok(page.includes("AdminReviewNeedsAttention"));
-    assert.ok(page.includes("AdminReviewDetailSections"));
+    assert.ok(page.includes("AdminReviewTabs"));
+    assert.ok(page.includes("AdminReviewAcceptTab"));
+    assert.ok(page.includes("AdminReviewAdvancedActionsTab"));
     assert.ok(!page.includes("AdminReviewDecisionPanel"));
-    assert.ok(decision.includes("ADMIN_REVIEW_DECISION_TITLE"));
-    assert.ok(decision.includes("ADMIN_REVIEW_CTA_RELEASE_GATE"));
-    assert.ok(decision.includes("ADMIN_REVIEW_CTA_REFRESH_ALL"));
-    assert.ok(decision.includes("refreshAdminReviewReadinessApi"));
-    assert.ok(decision.includes("ADMIN_REVIEW_CTA_ACCEPT"));
-    assert.ok(decision.includes("acceptAdminReview"));
-    assert.ok(decision.includes("ADMIN_REVIEW_CTA_APPROVE"));
-    assert.ok(decision.includes("ADMIN_REVIEW_CTA_REJECT"));
-    assert.ok(decision.includes("canApproveAdminReview"));
+    assert.ok(!page.includes("AdminReviewInspectionSummary"));
+    assert.ok(accept.includes("ADMIN_REVIEW_DECISION_TITLE"));
+    assert.ok(accept.includes("ADMIN_REVIEW_CTA_ACCEPT"));
+    assert.ok(accept.includes("acceptAdminReview"));
+    assert.ok(accept.includes("ADMIN_REVIEW_CTA_APPROVE"));
+    assert.ok(accept.includes("ADMIN_REVIEW_CTA_REJECT"));
+    assert.ok(accept.includes("canApproveAdminReview"));
+    assert.ok(advanced.includes("ADMIN_REVIEW_CTA_RELEASE_GATE"));
+    assert.ok(advanced.includes("ADMIN_REVIEW_CTA_REFRESH_ALL"));
+    assert.ok(advanced.includes("refreshAdminReviewReadinessApi"));
     assert.ok(sections.includes("구조/품질 상세 보기"));
     assert.ok(sections.includes("고급 도구"));
     assert.ok(sections.includes("<details"));
-    assert.ok(sources.includes("원문 보기"));
+    assert.ok(sources.includes("원문 보기") || sources.includes("ADMIN_REVIEW_VIEW_SOURCE"));
     assert.equal(ADMIN_REVIEW_DECISION_TITLE, "최종 검수 판단");
-    assert.equal(ADMIN_REVIEW_CTA_RELEASE_GATE, "릴리스 게이트 최종 점검");
+    assert.equal(ADMIN_REVIEW_CTA_RELEASE_GATE, "릴리스 게이트 재점검");
     assert.equal(ADMIN_REVIEW_CTA_APPROVE, "승인 및 공개");
     assert.equal(ADMIN_REVIEW_CTA_REJECT, "반려");
   });

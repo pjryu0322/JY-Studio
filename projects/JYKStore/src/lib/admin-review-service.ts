@@ -27,7 +27,10 @@ import {
   getFirstBlockerMessage,
 } from "@/lib/release-gate/release-gate-runner";
 import { releaseGateAllowsApprovalStatus } from "@/lib/release-gate/release-gate-readiness";
-import { canApproveAdminReview } from "@/lib/admin-review-decision";
+import {
+  canApproveAdminReview,
+  canRejectWithoutAccept,
+} from "@/lib/admin-review-decision";
 import {
   validateAllSourceDocumentsForPack,
   validateAndPersistSourceDocument,
@@ -651,7 +654,14 @@ export async function rejectPackReview(input: {
   });
 
   if (!isAdminReviewAccepted(openReview?.status)) {
-    return { error: "NOT_ACCEPTED" as const };
+    if (openReview?.status === PackReviewStatus.PENDING) {
+      const detailForReject = await getAdminReviewDetail(packId);
+      if (!detailForReject || !canRejectWithoutAccept(detailForReject)) {
+        return { error: "NOT_ACCEPTED" as const };
+      }
+    } else {
+      return { error: "NOT_ACCEPTED" as const };
+    }
   }
 
   const memo = input.memo?.trim() || null;

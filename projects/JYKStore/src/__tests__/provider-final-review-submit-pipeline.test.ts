@@ -92,10 +92,10 @@ describe("admin review submitted snapshot", () => {
     assert.ok(snapshot.submittedAt);
 
     const dto = readSource("src/lib/admin-review-dto.ts");
-    const summary = readSource("src/components/AdminReviewInspectionSummary.tsx");
+    const packageTab = readSource("src/components/AdminReviewPackageSnapshotTab.tsx");
     assert.ok(dto.includes("submitSnapshot"));
     assert.ok(dto.includes("parseProviderReviewSubmitSnapshot"));
-    assert.ok(summary.includes("ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE"));
+    assert.ok(packageTab.includes("ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE"));
     assert.equal(ADMIN_REVIEW_CTA_REFRESH_ALL, "현재 데이터 기준 전체 재점검");
   });
 

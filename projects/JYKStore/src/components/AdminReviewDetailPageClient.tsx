@@ -1,24 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AdminReviewDecisionSummary } from "@/components/AdminReviewDecisionSummary";
-import { AdminReviewDetailSections } from "@/components/AdminReviewDetailSections";
-import { AdminReviewInspectionSummary } from "@/components/AdminReviewInspectionSummary";
-import { AdminReviewNeedsAttention } from "@/components/AdminReviewNeedsAttention";
+import { AdminReviewAcceptTab } from "@/components/AdminReviewAcceptTab";
+import { AdminReviewAdvancedActionsTab } from "@/components/AdminReviewAdvancedActionsTab";
+import { AdminReviewPackageSnapshotTab } from "@/components/AdminReviewPackageSnapshotTab";
+import { AdminReviewSourceDocumentsTab } from "@/components/AdminReviewSourceDocumentsTab";
+import { AdminReviewTabs } from "@/components/AdminReviewTabs";
+import { AdminReviewWarningIssuesTab } from "@/components/AdminReviewWarningIssuesTab";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
+import { fetchAdminReviewDetail } from "@/lib/admin-review-api";
 import {
-  evaluateAdminChunkQualityApi,
-  evaluateAdminReleaseGateApi,
-  evaluateAdminStructureQualityApi,
-  fetchAdminReviewDetail,
-  generateAdminRetrievalEvaluationCasesApi,
-  runAdminRetrievalEvaluationApi,
-} from "@/lib/admin-review-api";
+  defaultAdminReviewTab,
+  type AdminReviewTabId,
+} from "@/lib/admin-review-tabs";
 
 export function AdminReviewDetailPageClient({ packId }: { readonly packId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<AdminReviewDetailDto | null>(null);
+  const [activeTab, setActiveTab] = useState<AdminReviewTabId>("accept");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -26,6 +26,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     try {
       const data = await fetchAdminReviewDetail(packId);
       setDetail(data.detail);
+      setActiveTab(defaultAdminReviewTab(data.detail));
     } catch (err) {
       setError(err instanceof Error ? err.message : "검수 상세를 불러오지 못했습니다.");
     } finally {
@@ -53,36 +54,27 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         </div>
       ) : null}
 
-      <AdminReviewDecisionSummary packId={packId} detail={detail} onUpdated={setDetail} />
-      <AdminReviewInspectionSummary detail={detail} />
-      <AdminReviewNeedsAttention detail={detail} />
-      <AdminReviewDetailSections
-        packId={packId}
-        detail={detail}
-        onUpdated={setDetail}
-        actions={{
-          evaluateStructure: async () => {
-            const data = await evaluateAdminStructureQualityApi(packId);
-            setDetail(data.detail);
-          },
-          evaluateChunk: async () => {
-            const data = await evaluateAdminChunkQualityApi(packId);
-            setDetail(data.detail);
-          },
-          generateRetrievalCases: async (replace) => {
-            const data = await generateAdminRetrievalEvaluationCasesApi(packId, replace);
-            setDetail(data.detail);
-          },
-          runRetrievalEvaluation: async () => {
-            const data = await runAdminRetrievalEvaluationApi(packId);
-            setDetail(data.detail);
-          },
-          evaluateReleaseGate: async () => {
-            const data = await evaluateAdminReleaseGateApi(packId);
-            setDetail(data.detail);
-          },
-        }}
-      />
+      <AdminReviewTabs detail={detail} activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {activeTab === "accept" ? (
+        <AdminReviewAcceptTab packId={packId} detail={detail} onUpdated={setDetail} />
+      ) : null}
+      {activeTab === "package" ? <AdminReviewPackageSnapshotTab detail={detail} /> : null}
+      {activeTab === "warnings" ? <AdminReviewWarningIssuesTab detail={detail} /> : null}
+      {activeTab === "sources" ? (
+        <AdminReviewSourceDocumentsTab
+          packId={packId}
+          detail={detail}
+          onUpdated={setDetail}
+        />
+      ) : null}
+      {activeTab === "advanced" ? (
+        <AdminReviewAdvancedActionsTab
+          packId={packId}
+          detail={detail}
+          onUpdated={setDetail}
+        />
+      ) : null}
     </div>
   );
 }

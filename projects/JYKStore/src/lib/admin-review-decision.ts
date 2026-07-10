@@ -1,6 +1,33 @@
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
-import { isAdminReviewAccepted } from "@/lib/pack-review-status";
+import {
+  isAdminReviewAccepted,
+  PackReviewStatus,
+} from "@/lib/pack-review-status";
 import type { ProviderReviewSubmitSnapshot } from "@/lib/provider-review-submit-snapshot";
+import {
+  ADMIN_REVIEW_ACCEPT_PHASE_BLOCKED_BODY,
+  ADMIN_REVIEW_ACCEPT_PHASE_BLOCKED_TITLE,
+  ADMIN_REVIEW_ACCEPT_PHASE_READY_BODY,
+  ADMIN_REVIEW_ACCEPT_PHASE_READY_TITLE,
+  ADMIN_REVIEW_ACCEPT_PHASE_WARNING_BODY,
+  ADMIN_REVIEW_ACCEPT_PHASE_WARNING_TITLE,
+  ADMIN_REVIEW_STATE_BLOCKED_BODY,
+  ADMIN_REVIEW_STATE_BLOCKED_TITLE,
+  ADMIN_REVIEW_STATE_CHANGED_BODY,
+  ADMIN_REVIEW_STATE_CHANGED_TITLE,
+  ADMIN_REVIEW_STATE_GATE_REQUIRED_BODY,
+  ADMIN_REVIEW_STATE_GATE_REQUIRED_TITLE,
+  ADMIN_REVIEW_STATE_NOT_REVIEWING_BODY,
+  ADMIN_REVIEW_STATE_NOT_REVIEWING_TITLE,
+  ADMIN_REVIEW_STATE_PUBLISHED_BODY,
+  ADMIN_REVIEW_STATE_PUBLISHED_TITLE,
+  ADMIN_REVIEW_STATE_READY_BODY,
+  ADMIN_REVIEW_STATE_READY_TITLE,
+  ADMIN_REVIEW_STATE_REFRESH_REQUIRED_BODY,
+  ADMIN_REVIEW_STATE_REFRESH_REQUIRED_TITLE,
+  ADMIN_REVIEW_STATE_WARNING_BODY,
+  ADMIN_REVIEW_STATE_WARNING_TITLE,
+} from "@/lib/role-based-ux-copy";
 
 export type ReviewDecisionState =
   | "review_refresh_required"
@@ -115,6 +142,140 @@ export function canApproveAdminReview(detail: AdminReviewDetailDto): boolean {
     hasCurrentReleaseGate(detail) &&
     detail.readiness.releaseGateStatus !== "FAIL"
   );
+}
+
+export function collectAcceptBlockers(detail: AdminReviewDetailDto): string[] {
+  const blockers: string[] = [];
+  const snapshot = getSubmitSnapshot(detail);
+
+  if (!snapshot) {
+    blockers.push("제출 스냅샷이 없습니다.");
+  } else {
+    if (!snapshot.releaseGateStatus) {
+      blockers.push("릴리스 게이트 결과가 없습니다.");
+    } else if (
+      snapshot.releaseGateStatus !== "PASS" &&
+      snapshot.releaseGateStatus !== "WARNING"
+    ) {
+      blockers.push(`릴리스 게이트가 ${snapshot.releaseGateStatus}입니다.`);
+    }
+    if (snapshot.sourceDocumentCount < 1) {
+      blockers.push("제출 패키지에 원천 문서가 없습니다.");
+    }
+    if (snapshot.activeChunkCount < 1) {
+      blockers.push("제출 패키지에 검수용 Chunk가 없습니다.");
+    }
+  }
+
+  if (detail.readiness.sourceValidation.failCount > 0) {
+    blockers.push(
+      `원천 문서 ${detail.readiness.sourceValidation.failCount}개가 FAIL 상태입니다.`,
+    );
+  }
+  if (detail.readiness.releaseGateStatus === "FAIL") {
+    blockers.push("릴리스 게이트가 FAIL입니다.");
+  }
+
+  return [...new Set(blockers)];
+}
+
+/** PENDING 상태에서 관리자가 접수할 수 있는지. */
+export function canAcceptAdminReview(detail: AdminReviewDetailDto): boolean {
+  if (detail.pack.status !== "REVIEWING") return false;
+  if (detail.latestReview?.status !== PackReviewStatus.PENDING) return false;
+  return collectAcceptBlockers(detail).length === 0;
+}
+
+/**
+ * 제출 패키지 결함 등 시스템 오류 시 접수 없이 반려 가능.
+ * 권장 흐름은 접수 후 반려이며, 예외적으로만 사용한다.
+ */
+export function canRejectWithoutAccept(detail: AdminReviewDetailDto): boolean {
+  if (detail.pack.status !== "REVIEWING") return false;
+  if (detail.latestReview?.status !== PackReviewStatus.PENDING) return false;
+  return !canAcceptAdminReview(detail);
+}
+
+export type ReviewStatusCopy = {
+  title: string;
+  body: string;
+  tone: string;
+};
+
+export function resolvePendingAcceptCopy(detail: AdminReviewDetailDto): ReviewStatusCopy {
+  if (!canAcceptAdminReview(detail)) {
+    return {
+      title: ADMIN_REVIEW_ACCEPT_PHASE_BLOCKED_TITLE,
+      body: ADMIN_REVIEW_ACCEPT_PHASE_BLOCKED_BODY,
+      tone: "border-red-200 bg-red-50 text-red-900",
+    };
+  }
+  if (hasWarningSignals(detail) || collectReviewWarnings(detail).length > 0) {
+    return {
+      title: ADMIN_REVIEW_ACCEPT_PHASE_WARNING_TITLE,
+      body: ADMIN_REVIEW_ACCEPT_PHASE_WARNING_BODY,
+      tone: "border-amber-200 bg-amber-50 text-amber-950",
+    };
+  }
+  return {
+    title: ADMIN_REVIEW_ACCEPT_PHASE_READY_TITLE,
+    body: ADMIN_REVIEW_ACCEPT_PHASE_READY_BODY,
+    tone: "border-emerald-200 bg-emerald-50 text-emerald-950",
+  };
+}
+
+export function resolveDecisionStatusCopy(detail: AdminReviewDetailDto): ReviewStatusCopy {
+  const state = resolveReviewDecisionState(detail);
+  switch (state) {
+    case "review_refresh_required":
+      return {
+        title: ADMIN_REVIEW_STATE_REFRESH_REQUIRED_TITLE,
+        body: ADMIN_REVIEW_STATE_REFRESH_REQUIRED_BODY,
+        tone: "border-amber-200 bg-amber-50 text-amber-950",
+      };
+    case "submit_package_changed":
+      return {
+        title: ADMIN_REVIEW_STATE_CHANGED_TITLE,
+        body: ADMIN_REVIEW_STATE_CHANGED_BODY,
+        tone: "border-amber-200 bg-amber-50 text-amber-950",
+      };
+    case "release_gate_required":
+      return {
+        title: ADMIN_REVIEW_STATE_GATE_REQUIRED_TITLE,
+        body: ADMIN_REVIEW_STATE_GATE_REQUIRED_BODY,
+        tone: "border-amber-200 bg-amber-50 text-amber-950",
+      };
+    case "approval_ready":
+      return {
+        title: ADMIN_REVIEW_STATE_READY_TITLE,
+        body: ADMIN_REVIEW_STATE_READY_BODY,
+        tone: "border-emerald-200 bg-emerald-50 text-emerald-950",
+      };
+    case "approval_warning":
+      return {
+        title: ADMIN_REVIEW_STATE_WARNING_TITLE,
+        body: ADMIN_REVIEW_STATE_WARNING_BODY,
+        tone: "border-amber-200 bg-amber-50 text-amber-950",
+      };
+    case "approval_blocked":
+      return {
+        title: ADMIN_REVIEW_STATE_BLOCKED_TITLE,
+        body: ADMIN_REVIEW_STATE_BLOCKED_BODY,
+        tone: "border-red-200 bg-red-50 text-red-900",
+      };
+    case "already_published":
+      return {
+        title: ADMIN_REVIEW_STATE_PUBLISHED_TITLE,
+        body: ADMIN_REVIEW_STATE_PUBLISHED_BODY,
+        tone: "border-slate-200 bg-slate-50 text-slate-800",
+      };
+    default:
+      return {
+        title: ADMIN_REVIEW_STATE_NOT_REVIEWING_TITLE,
+        body: ADMIN_REVIEW_STATE_NOT_REVIEWING_BODY,
+        tone: "border-slate-200 bg-slate-50 text-slate-800",
+      };
+  }
 }
 
 function hasWarningSignals(detail: AdminReviewDetailDto): boolean {

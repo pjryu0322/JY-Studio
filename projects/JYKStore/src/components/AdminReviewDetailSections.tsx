@@ -2,7 +2,6 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { AdminChunkManager } from "@/components/AdminChunkManager";
-import { AdminReviewSourceDocuments } from "@/components/AdminReviewSourceDocuments";
 import { ChunkQualityPanel } from "@/components/ChunkQualityPanel";
 import { ExportPanel } from "@/components/ExportPanel";
 import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
@@ -146,19 +145,6 @@ export function AdminReviewDetailSections({
           onEvaluate={async () => {
             await actions.evaluateReleaseGate();
           }}
-        />
-      </DetailDisclosure>
-
-      <DetailDisclosure
-        sectionKey="sources"
-        title="원천 문서 상세 보기"
-        openMap={openMap}
-        onToggle={onToggle}
-      >
-        <AdminReviewSourceDocuments
-          packId={packId}
-          versions={detail.versions}
-          onValidated={onUpdated}
         />
       </DetailDisclosure>
 

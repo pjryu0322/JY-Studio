@@ -6,6 +6,10 @@ import { SourceValidationReportPanel } from "@/components/SourceValidationReport
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import { validateAdminPackSourcesApi } from "@/lib/admin-review-api";
 import { getSourceFormatLabel, getSourceTypeLabel } from "@/lib/source-type-dto";
+import {
+  ADMIN_REVIEW_VIEW_SOURCE,
+  ADMIN_REVIEW_VIEW_VALIDATION,
+} from "@/lib/role-based-ux-copy";
 
 function validationStatusLabel(status: string): string {
   if (status === "PASS") return "통과";
@@ -26,7 +30,8 @@ export function AdminReviewSourceDocuments({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [validatingAll, setValidatingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [previewIds, setPreviewIds] = useState<Record<string, boolean>>({});
+  const [validationIds, setValidationIds] = useState<Record<string, boolean>>({});
 
   const runValidate = async (sourceDocumentId?: string) => {
     setError(null);
@@ -73,11 +78,14 @@ export function AdminReviewSourceDocuments({
             ) : (
               <ul className="mt-3 space-y-2">
                 {version.sourceDocuments.map((doc) => {
-                  const expanded = Boolean(expandedIds[doc.id]);
+                  const previewOpen = Boolean(previewIds[doc.id]);
+                  const validationOpen = Boolean(validationIds[doc.id]);
                   return (
                     <li key={doc.id} className="rounded-lg bg-slate-50 p-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="font-semibold text-slate-900">{doc.title}</p>
+                        <p className="min-w-0 flex-1 truncate font-semibold text-slate-900">
+                          {doc.title}
+                        </p>
                         <SourceValidationBadge status={doc.validationStatus} />
                       </div>
                       <dl className="mt-2 grid gap-1 text-xs text-store-muted">
@@ -94,9 +102,25 @@ export function AdminReviewSourceDocuments({
                             {getSourceFormatLabel(doc.sourceFormat)}
                           </span>
                         </div>
-                        {doc.validationScore != null ? (
+                        {(doc.blockingIssueCount > 0 || doc.warningIssueCount > 0) && (
                           <div>
-                            검증 점수: <span className="text-slate-800">{doc.validationScore}</span>
+                            이슈:{" "}
+                            <span className="text-slate-800">
+                              차단 {doc.blockingIssueCount} · 경고 {doc.warningIssueCount}
+                            </span>
+                          </div>
+                        )}
+                        {doc.sourceUrl ? (
+                          <div className="break-all">
+                            원천 URL:{" "}
+                            <a
+                              href={doc.sourceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-store-accent underline-offset-2 hover:underline"
+                            >
+                              {doc.sourceUrl}
+                            </a>
                           </div>
                         ) : null}
                         {doc.productVersion ? (
@@ -116,13 +140,28 @@ export function AdminReviewSourceDocuments({
                           <button
                             type="button"
                             onClick={() =>
-                              setExpandedIds((prev) => ({ ...prev, [doc.id]: !prev[doc.id] }))
+                              setPreviewIds((prev) => ({
+                                ...prev,
+                                [doc.id]: !prev[doc.id],
+                              }))
                             }
                             className="min-h-[40px] rounded-lg border border-store-border bg-white px-3 text-xs font-semibold"
                           >
-                            {expanded ? "원문 접기" : "원문 보기"}
+                            {previewOpen ? "원문 접기" : ADMIN_REVIEW_VIEW_SOURCE}
                           </button>
                         ) : null}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setValidationIds((prev) => ({
+                              ...prev,
+                              [doc.id]: !prev[doc.id],
+                            }))
+                          }
+                          className="min-h-[40px] rounded-lg border border-store-border bg-white px-3 text-xs font-semibold"
+                        >
+                          {validationOpen ? "검증 결과 접기" : ADMIN_REVIEW_VIEW_VALIDATION}
+                        </button>
                         <button
                           type="button"
                           disabled={busyId === doc.id || validatingAll}
@@ -132,20 +171,18 @@ export function AdminReviewSourceDocuments({
                           {busyId === doc.id ? "검증 중…" : "재검증"}
                         </button>
                       </div>
-                      {expanded ? (
-                        <>
-                          <SourceValidationReportPanel
-                            score={doc.validationScore}
-                            blockingIssueCount={doc.blockingIssueCount}
-                            warningIssueCount={doc.warningIssueCount}
-                            issues={doc.validationIssues}
-                          />
-                          {doc.contentPreview ? (
-                            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-store-border bg-white p-2 text-xs text-slate-700">
-                              {doc.contentPreview}
-                            </pre>
-                          ) : null}
-                        </>
+                      {validationOpen ? (
+                        <SourceValidationReportPanel
+                          score={doc.validationScore}
+                          blockingIssueCount={doc.blockingIssueCount}
+                          warningIssueCount={doc.warningIssueCount}
+                          issues={doc.validationIssues}
+                        />
+                      ) : null}
+                      {previewOpen && doc.contentPreview ? (
+                        <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg border border-store-border bg-white p-2 text-xs text-slate-700">
+                          {doc.contentPreview}
+                        </pre>
                       ) : null}
                     </li>
                   );
