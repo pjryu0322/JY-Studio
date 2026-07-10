@@ -9,12 +9,15 @@ import {
   PROVIDER_KU_CONTENT_VIEW,
   PROVIDER_KU_DRAFT_PANEL_TITLE,
   PROVIDER_KU_EVIDENCE_VIEW,
+  PROVIDER_KU_PREVIEW_GENERATION_BADGE,
   PROVIDER_KU_PROCESSING_DETAIL_TOGGLE,
   PROVIDER_KU_PROCESSING_TITLE,
+  PROVIDER_KU_REVIEW_GUIDANCE,
   PROVIDER_KU_REVIEW_STATUS_PENDING,
-  PROVIDER_KU_STATUS_COMPLETED,
+  PROVIDER_KU_STATUS_DEDUPED,
   PROVIDER_KU_STATUS_EXCLUDED,
-  PROVIDER_KU_STATUS_PENDING,
+  PROVIDER_KU_STATUS_FAILED,
+  PROVIDER_KU_STATUS_GENERATED,
 } from "@/lib/role-based-ux-copy";
 
 const inputClass =
@@ -22,7 +25,15 @@ const inputClass =
 
 type StatusFilter = "pending_review" | "superseded" | "all";
 
-function statusLabel(status: string): string {
+function documentStatusLabel(status: string): string {
+  if (status === "generated") return "Unit 생성 완료";
+  if (status === "deduped") return "기존 Unit과 중복";
+  if (status === "excluded") return "생성 제외";
+  if (status === "failed") return "처리 실패";
+  return status;
+}
+
+function reviewStatusLabel(status: string): string {
   if (status === "pending_review") return PROVIDER_KU_REVIEW_STATUS_PENDING;
   if (status === "superseded") return "대체됨";
   return status;
@@ -48,7 +59,7 @@ function DraftCard({ draft }: { readonly draft: ProviderKnowledgeUnitDraftDto })
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="font-bold text-slate-900">{draft.title}</p>
         <span className="rounded-lg bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
-          {statusLabel(draft.reviewStatus)}
+          {reviewStatusLabel(draft.reviewStatus)}
         </span>
       </div>
       {draft.topic ? <p className="mt-1 text-store-muted">주제: {draft.topic}</p> : null}
@@ -178,28 +189,32 @@ export function ProviderKnowledgeUnitDraftPanel({
       {!compact ? (
         <>
           <h3 className="text-sm font-bold text-slate-900">{PROVIDER_KU_DRAFT_PANEL_TITLE}</h3>
-          <p className="mt-1 text-xs text-store-muted">
-            AI가 원천 문서에서 추출한 지식 후보입니다. 검토 후 검수 요청 단계에서 활성화됩니다.
-          </p>
+          <p className="mt-1 text-xs text-store-muted">{PROVIDER_KU_REVIEW_GUIDANCE}</p>
         </>
       ) : null}
 
       {data ? (
         <div className="mt-3 rounded-xl border border-store-border bg-white p-3 text-xs text-slate-800">
           <p className="font-bold">{PROVIDER_KU_PROCESSING_TITLE}</p>
-          <p className="mt-1">총 {data.processing.sourceDocumentTotal}개</p>
+          <p className="mt-1">원천 문서 {data.processing.sourceDocumentTotal}개</p>
+          {data.processing.isPreviewGeneration ? (
+            <p className="mt-1 rounded-lg bg-amber-50 px-2 py-1 text-amber-900">
+              {PROVIDER_KU_PREVIEW_GENERATION_BADGE}
+            </p>
+          ) : null}
           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <p>
-              {PROVIDER_KU_STATUS_COMPLETED} <strong>{data.processing.generatedComplete}</strong>
+              {PROVIDER_KU_STATUS_GENERATED}{" "}
+              <strong>{data.processing.documentsGenerated}</strong>개
             </p>
             <p>
-              {PROVIDER_KU_STATUS_PENDING} <strong>{data.processing.analysisPending}</strong>
+              {PROVIDER_KU_STATUS_DEDUPED} <strong>{data.processing.documentsDeduped}</strong>개
             </p>
             <p>
-              {PROVIDER_KU_STATUS_EXCLUDED} <strong>{data.processing.excluded}</strong>
+              {PROVIDER_KU_STATUS_EXCLUDED} <strong>{data.processing.excluded}</strong>개
             </p>
             <p>
-              전체 진행률 <strong>{data.processing.progressPercent}%</strong>
+              {PROVIDER_KU_STATUS_FAILED} <strong>{data.processing.failed}</strong>개
             </p>
           </div>
           <button
@@ -215,11 +230,8 @@ export function ProviderKnowledgeUnitDraftPanel({
                 <li key={doc.sourceDocumentId} className="rounded-lg border border-store-border px-2 py-2">
                   <p className="font-semibold break-all">{doc.path}</p>
                   <p className="text-store-muted">
-                    {doc.status === "completed"
-                      ? "→ 완료"
-                      : doc.status === "pending"
-                        ? "→ 분석 대기"
-                        : `→ 생성 제외${doc.reason ? ` · 사유: ${doc.reason}` : ""}`}
+                    상태: {documentStatusLabel(doc.status)}
+                    {doc.reason ? ` · ${doc.reason}` : ""}
                   </p>
                   {doc.generatedUnitTitles.length > 0 ? (
                     <p className="mt-1">생성 Unit: {doc.generatedUnitTitles.join(", ")}</p>

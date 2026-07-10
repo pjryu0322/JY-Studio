@@ -106,6 +106,7 @@ function createMockDb(chunks: ChunkRow[]) {
         chunks.filter((chunk) => matchesChunkWhere(chunk, where)).length,
       findMany: async ({ where }: { where: ChunkWhere }) =>
         chunks.filter((chunk) => matchesChunkWhere(chunk, where)),
+      findFirst: async () => null,
     },
   };
 }

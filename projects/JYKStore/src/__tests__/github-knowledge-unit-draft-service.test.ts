@@ -5,9 +5,13 @@ import { PackStatus } from "@prisma/client";
 import { GitHubDiscoveryError } from "@/lib/github-auto-collect/github-auto-collect-types";
 import {
   AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE,
+  applyGenerationSafetyLimit,
   buildDraftCandidatesForSourceDocument,
   extractGitHubPathFromSourceUrl,
 } from "@/lib/github-auto-collect/github-knowledge-unit-draft-generator";
+import {
+  AUTO_KU_GENERATION_REPORT_CHUNK_TYPE,
+} from "@/lib/knowledge-unit-draft/ku-draft-generation-report";
 import {
   KNOWLEDGE_UNIT_DRAFT_HARD_CAP,
   normalizeGitHubKnowledgeUnitDraftInput,
@@ -54,6 +58,10 @@ function makeDoc(overrides: Partial<SourceDocument> & { id: string }): SourceDoc
 
 type CreatedChunk = Record<string, unknown>;
 
+function draftChunksOnly(chunks: CreatedChunk[]): CreatedChunk[] {
+  return chunks.filter((c) => c.chunkType === AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE);
+}
+
 function createMockPrisma(options: {
   documents: SourceDocument[];
   existingDraftSourceIds?: string[];
@@ -61,6 +69,8 @@ function createMockPrisma(options: {
   const createdChunks: CreatedChunk[] = [];
   const documents = options.documents;
   const existingDraftSourceIds = new Set(options.existingDraftSourceIds ?? []);
+
+  const reportChunks: CreatedChunk[] = [];
 
   const db = {
     providerProfile: {
@@ -80,8 +90,11 @@ function createMockPrisma(options: {
       }),
     },
     knowledgeChunk: {
-      findMany: async () =>
-        [...existingDraftSourceIds].map((sourceDocumentId, index) => ({
+      findMany: async (args?: { where?: { chunkType?: string } }) => {
+        if (args?.where?.chunkType === AUTO_KU_GENERATION_REPORT_CHUNK_TYPE) {
+          return reportChunks;
+        }
+        return [...existingDraftSourceIds].map((sourceDocumentId, index) => ({
           id: `existing-${index}`,
           sourceDocumentId,
           title: "Install",
@@ -92,11 +105,26 @@ function createMockPrisma(options: {
             primaryHeading: "Install",
             contentChecksum: "existing-checksum",
           },
-        })),
+        }));
+      },
+      findFirst: async (args?: { where?: { chunkType?: string } }) => {
+        if (args?.where?.chunkType === AUTO_KU_GENERATION_REPORT_CHUNK_TYPE) {
+          return reportChunks[0] ?? null;
+        }
+        return null;
+      },
       aggregate: async () => ({ _max: { sortOrder: 0 } }),
-      update: async () => ({}),
+      update: async ({ data }: { data: CreatedChunk }) => {
+        if (reportChunks[0]) {
+          reportChunks[0] = { ...reportChunks[0], ...data };
+        }
+        return reportChunks[0] ?? {};
+      },
       create: async ({ data }: { data: CreatedChunk }) => {
         createdChunks.push(data);
+        if (data.chunkType === AUTO_KU_GENERATION_REPORT_CHUNK_TYPE) {
+          reportChunks.push({ id: "report-1", ...data });
+        }
         return { id: `chunk-${createdChunks.length}`, ...data };
       },
     },
@@ -111,6 +139,7 @@ describe("github knowledge unit draft options", () => {
     assert.equal(normalized.generationMode, "MINIMAL");
     assert.equal(normalized.targetKnowledgeUnitCount, 8);
     assert.equal(normalized.maxKnowledgeUnitCount, 10);
+    assert.equal(normalized.generationScope, "all_documents");
   });
 
   it("caps maxKnowledgeUnitCount at hard limit for CUSTOM", () => {
@@ -342,7 +371,7 @@ describe("github knowledge unit draft service", () => {
       ),
     );
 
-    for (const chunk of createdChunks) {
+    for (const chunk of draftChunksOnly(createdChunks)) {
       assert.equal(chunk.chunkType, AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE);
       assert.equal(chunk.isActive, false);
       const meta = chunk.metadata as Record<string, unknown>;
@@ -371,7 +400,7 @@ describe("github knowledge unit draft service", () => {
     );
 
     assert.equal(result.summary.generatedDraftCount, 0);
-    assert.equal(createdChunks.length, 0);
+    assert.equal(draftChunksOnly(createdChunks).length, 0);
     assert.ok(
       result.warnings.some((warning) => warning.includes("중복")),
       "expected duplicate merge warning",
@@ -388,7 +417,7 @@ describe("github knowledge unit draft service", () => {
     );
 
     assert.equal(result.summary.generatedDraftCount, 0);
-    assert.equal(createdChunks.length, 0);
+    assert.equal(draftChunksOnly(createdChunks).length, 0);
     assert.ok(
       result.failedDocuments.some(
         (f) => f.sourceDocumentId === "missing-doc" && f.error === "SOURCE_DOCUMENT_NOT_FOUND",
@@ -443,7 +472,8 @@ describe("github knowledge unit draft service", () => {
         { sourceDocumentPaths: paths, generationMode: "FULL" },
         { prismaClient: db as never, assertEditablePack: editableDraftPack },
       );
-      const ids = new Set(createdChunks.map((c) => String(c.sourceDocumentId)));
+      const draftOnly = draftChunksOnly(createdChunks);
+      const ids = new Set(draftOnly.map((c) => String(c.sourceDocumentId)));
       return { result, ids };
     }
 
@@ -461,5 +491,152 @@ describe("github knowledge unit draft service", () => {
     const substring = await eligibleDocIds(["api"]);
     assert.equal(substring.result.summary.sourceDocumentCount, 0);
     assert.equal(substring.ids.size, 0);
+  });
+
+  it("generates units for all eligible documents in all_documents scope", async () => {
+    const docs = Array.from({ length: 20 }, (_, index) =>
+      makeDoc({
+        id: `doc-${index}`,
+        title: `doc-${index}`,
+        fileName: `docs/file-${index}.md`,
+        sourceUrl: `https://github.com/test/repo/blob/main/docs/file-${index}.md`,
+        content: `## Topic ${index}\n\n${longBody}`,
+      }),
+    );
+    const { db, createdChunks } = createMockPrisma({ documents: docs });
+
+    const result = await generateGitHubKnowledgeUnitDraftsForPack(
+      "user-test",
+      "client-1",
+      "pack-1",
+      { generationScope: "all_documents", generationMode: "FULL" },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+    );
+
+    const draftChunks = draftChunksOnly(createdChunks);
+    const docIdsWithDrafts = new Set(draftChunks.map((c) => String(c.sourceDocumentId)));
+    assert.equal(docIdsWithDrafts.size, 20);
+    assert.ok(result.summary.generatedDraftCount >= 20);
+    assert.equal(result.summary.generationScope, "all_documents");
+    assert.equal(
+      result.documentProcessing.filter((d) => d.status === "generated").length,
+      20,
+    );
+  });
+
+  it("marks excluded documents with reasons and no pending status", async () => {
+    const docs = [
+      ...Array.from({ length: 18 }, (_, index) =>
+        makeDoc({
+          id: `doc-${index}`,
+          fileName: `docs/file-${index}.md`,
+          sourceUrl: `https://github.com/test/repo/blob/main/docs/file-${index}.md`,
+          content: `## Topic ${index}\n\n${longBody}`,
+        }),
+      ),
+      makeDoc({
+        id: "doc-package",
+        fileName: "package.json",
+        sourceUrl: "https://github.com/test/repo/blob/main/package.json",
+        content: "{}".padEnd(60, " "),
+        sourceType: "ETC",
+      }),
+      makeDoc({ id: "doc-empty", content: "" }),
+    ];
+    const { db, createdChunks } = createMockPrisma({ documents: docs });
+
+    const result = await generateGitHubKnowledgeUnitDraftsForPack(
+      "user-test",
+      "client-1",
+      "pack-1",
+      { generationScope: "all_documents" },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+    );
+
+    const draftChunks = draftChunksOnly(createdChunks);
+    assert.equal(draftChunks.length, 18);
+    assert.equal(result.documentProcessing.filter((d) => d.status === "generated").length, 18);
+    assert.equal(result.documentProcessing.filter((d) => d.status === "excluded").length, 2);
+  });
+
+  it("reports deduped documents when existing pending units match", async () => {
+    const docs = Array.from({ length: 5 }, (_, index) =>
+      makeDoc({
+        id: `doc-${index}`,
+        fileName: index === 0 ? "README.md" : `docs/file-${index}.md`,
+        sourceUrl:
+          index === 0
+            ? "https://github.com/test/repo/blob/main/README.md"
+            : `https://github.com/test/repo/blob/main/docs/file-${index}.md`,
+        content:
+          index <= 1 ? `## Install\n\n${longBody}` : `## Topic ${index}\n\n${longBody}`,
+      }),
+    );
+    const { db, createdChunks } = createMockPrisma({
+      documents: docs,
+      existingDraftSourceIds: ["doc-0", "doc-1"],
+    });
+
+    const result = await generateGitHubKnowledgeUnitDraftsForPack(
+      "user-test",
+      "client-1",
+      "pack-1",
+      { generationScope: "all_documents" },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+    );
+
+    const draftChunks = draftChunksOnly(createdChunks);
+    assert.equal(draftChunks.length, 3);
+    assert.equal(result.documentProcessing.filter((d) => d.status === "deduped").length, 2);
+    assert.equal(result.documentProcessing.filter((d) => d.status === "generated").length, 3);
+  });
+
+  it("limits output in limited_preview mode", async () => {
+    const docs = Array.from({ length: 20 }, (_, index) =>
+      makeDoc({
+        id: `doc-${index}`,
+        fileName: `docs/file-${index}.md`,
+        sourceUrl: `https://github.com/test/repo/blob/main/docs/file-${index}.md`,
+        content: `## Topic ${index}\n\n${longBody}`,
+      }),
+    );
+    const { db, createdChunks } = createMockPrisma({ documents: docs });
+
+    const result = await generateGitHubKnowledgeUnitDraftsForPack(
+      "user-test",
+      "client-1",
+      "pack-1",
+      {
+        generationScope: "limited_preview",
+        generationMode: "MINIMAL",
+        targetKnowledgeUnitCount: 8,
+      },
+      { prismaClient: db as never, assertEditablePack: editableDraftPack },
+    );
+
+    const draftChunks = draftChunksOnly(createdChunks);
+    assert.equal(draftChunks.length, 8);
+    assert.equal(result.summary.isPreviewGeneration, true);
+    assert.ok(result.warnings.some((w) => w.includes("미리보기")));
+  });
+});
+
+describe("applyGenerationSafetyLimit", () => {
+  it("keeps all candidates for all_documents when under hard cap", () => {
+    const candidates = Array.from({ length: 12 }, (_, i) => ({
+      sourceDocumentId: `doc-${i}`,
+      title: `Title ${i}`,
+      score: i,
+      sourcePath: `docs/${i}.md`,
+      primaryHeading: null,
+      contentChecksum: `${i}`,
+    })) as never[];
+
+    const kept = applyGenerationSafetyLimit(candidates, {
+      maxPerRun: 50,
+      scope: "all_documents",
+      targetCount: 8,
+    });
+    assert.equal(kept.length, 12);
   });
 });

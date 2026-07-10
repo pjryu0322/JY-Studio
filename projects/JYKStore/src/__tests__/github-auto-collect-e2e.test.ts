@@ -218,6 +218,21 @@ function createP26E2EPrisma(state: ReturnType<typeof createP26E2EState>) {
         const row = state.chunkRows.find((c) => c.id === where.id);
         return row ?? null;
       },
+      findFirst: async ({
+        where,
+      }: {
+        where: {
+          versionId?: string;
+          chunkType?: string;
+        };
+      }) => {
+        const row = state.chunkRows.find((c) => {
+          if (where.versionId !== undefined && c.versionId !== where.versionId) return false;
+          if (where.chunkType !== undefined && c.chunkType !== where.chunkType) return false;
+          return true;
+        });
+        return row ?? null;
+      },
       create: async ({ data }: { data: Record<string, unknown> }) => {
         state.chunkCounter += 1;
         const now = new Date("2026-01-02T00:00:00.000Z");

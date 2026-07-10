@@ -1,5 +1,5 @@
 import type { SourceFormat, SourceType } from "@prisma/client";
-import type { GitHubProductType } from "./github-auto-collect-types";
+import type { GitHubProductType, KnowledgeUnitGenerationScope } from "./github-auto-collect-types";
 import { buildUserFacingKuDraftContent } from "@/lib/knowledge-unit-draft/ku-draft-content";
 import { computeKuDraftContentChecksum } from "@/lib/knowledge-unit-draft/ku-draft-dedup";
 
@@ -296,6 +296,37 @@ export function buildDraftCandidatesForSourceDocument(
     });
   }
 
+  if (candidates.length === 0 && content.length >= 20) {
+    const fallbackTitle = pathTitle ?? doc.title.slice(0, 80) ?? "문서 요약";
+    const bodyContent = buildDraftContent({
+      draftTitle: fallbackTitle,
+      sourceTitle: doc.title,
+      sourcePath,
+      topicBody: content,
+      sourceType: doc.sourceType,
+      relatedUnits: [],
+    });
+    candidates.push({
+      sourceDocumentId: doc.id,
+      unitSlug: slugify(fallbackTitle),
+      title: fallbackTitle,
+      section: fallbackTitle,
+      content: ensureChunkContentLength(bodyContent),
+      tags: ["github-auto-collect", "knowledge-unit-draft", doc.sourceType.toLowerCase()],
+      score: scoreCandidate(fallbackTitle, sourcePath, 0),
+      sourcePath,
+      sourceUrl: doc.sourceUrl,
+      sourceType: doc.sourceType,
+      sourceFormat: doc.sourceFormat,
+      evidenceHeadings: headings.slice(0, 5),
+      evidenceKeywords: [],
+      topic: fallbackTitle,
+      primaryHeading: headings[0] ?? null,
+      sourceExcerpt: content.slice(0, 600),
+      contentChecksum: computeKuDraftContentChecksum(bodyContent),
+    });
+  }
+
   return candidates;
 }
 
@@ -307,6 +338,56 @@ export function selectDraftCandidates(
   const sorted = [...candidates].sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
   const limit = Math.min(maxCount, Math.max(targetCount, 1));
   return sorted.slice(0, limit);
+}
+
+function pickWithMinimumOnePerDocument(
+  candidates: DraftCandidate[],
+  maxCount: number,
+): DraftCandidate[] {
+  if (candidates.length <= maxCount) return candidates;
+
+  const byDoc = new Map<string, DraftCandidate[]>();
+  for (const candidate of candidates) {
+    const bucket = byDoc.get(candidate.sourceDocumentId) ?? [];
+    bucket.push(candidate);
+    byDoc.set(candidate.sourceDocumentId, bucket);
+  }
+
+  const picked: DraftCandidate[] = [];
+  const remainder: DraftCandidate[] = [];
+
+  for (const list of byDoc.values()) {
+    const sorted = [...list].sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
+    picked.push(sorted[0]);
+    remainder.push(...sorted.slice(1));
+  }
+
+  remainder.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
+  for (const candidate of remainder) {
+    if (picked.length >= maxCount) break;
+    picked.push(candidate);
+  }
+
+  return picked.slice(0, maxCount);
+}
+
+export function applyGenerationSafetyLimit(
+  candidates: DraftCandidate[],
+  options: {
+    maxPerRun: number;
+    scope: KnowledgeUnitGenerationScope;
+    targetCount: number;
+  },
+): DraftCandidate[] {
+  if (options.scope === "limited_preview") {
+    return selectDraftCandidates(candidates, options.targetCount, options.maxPerRun);
+  }
+
+  const sorted = [...candidates].sort((a, b) => b.score - a.score || a.title.localeCompare(b.title));
+  const uniqueDocumentCount = new Set(sorted.map((c) => c.sourceDocumentId)).size;
+  const effectiveMax = Math.max(options.maxPerRun, uniqueDocumentCount);
+  if (sorted.length <= effectiveMax) return sorted;
+  return pickWithMinimumOnePerDocument(sorted, effectiveMax);
 }
 
 export function buildDraftChunkMetadata(params: {

@@ -217,15 +217,30 @@ export type GitHubKnowledgeUnitGenerationMode =
   | "FULL"
   | "CUSTOM";
 
+export type KnowledgeUnitGenerationScope =
+  | "all_documents"
+  | "selected_documents"
+  | "limited_preview";
+
 export type GitHubKnowledgeUnitDraftInput = {
   sourceDocumentIds?: string[];
   sourceDocumentPaths?: string[];
   generationMode?: GitHubKnowledgeUnitGenerationMode;
+  generationScope?: KnowledgeUnitGenerationScope;
   targetKnowledgeUnitCount?: number;
   minKnowledgeUnitCount?: number;
   maxKnowledgeUnitCount?: number;
   productProfileType?: GitHubProductType;
   overwriteExistingDrafts?: boolean;
+};
+
+export type GitHubKnowledgeUnitDocumentProcessingOutcome = {
+  sourceDocumentId: string;
+  status: "generated" | "deduped" | "excluded" | "failed";
+  reason?: string;
+  generatedUnitTitles: string[];
+  duplicateOfChunkId?: string;
+  steps: string[];
 };
 
 export type GitHubKnowledgeUnitDraftResult = {
@@ -239,7 +254,10 @@ export type GitHubKnowledgeUnitDraftResult = {
     existingDraftSkippedCount: number;
     failedCount: number;
     generationMode: string;
+    generationScope: KnowledgeUnitGenerationScope;
     targetKnowledgeUnitCount: number;
+    maxKnowledgeUnitCount: number;
+    isPreviewGeneration: boolean;
   };
   drafts: Array<{
     id: string;
@@ -254,6 +272,7 @@ export type GitHubKnowledgeUnitDraftResult = {
   }>;
   skippedDocuments: Array<{ sourceDocumentId: string; reason: string }>;
   failedDocuments: Array<{ sourceDocumentId: string; error: string }>;
+  documentProcessing: GitHubKnowledgeUnitDocumentProcessingOutcome[];
   warnings: string[];
 };
 

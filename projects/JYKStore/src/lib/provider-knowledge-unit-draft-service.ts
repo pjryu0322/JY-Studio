@@ -5,6 +5,11 @@ import {
   type ProviderKnowledgeUnitDraftListResponse,
 } from "@/lib/provider-knowledge-unit-draft-dto";
 import { buildKuProcessingSummary } from "@/lib/knowledge-unit-draft/ku-draft-processing-status";
+import {
+  AUTO_KU_GENERATION_REPORT_CHUNK_TYPE,
+  kuGenerationReportToDocumentMap,
+  parseKuGenerationReportContent,
+} from "@/lib/knowledge-unit-draft/ku-draft-generation-report";
 
 export type KnowledgeUnitDraftListStatus = "pending_review" | "superseded" | "all";
 
@@ -128,6 +133,13 @@ export async function listProviderKnowledgeUnitDrafts(
       ? dtos
       : dtos.filter((dto) => dto.reviewStatus === status);
 
+  const reportChunk = await db.knowledgeChunk.findFirst({
+    where: { versionId: version.id, chunkType: AUTO_KU_GENERATION_REPORT_CHUNK_TYPE },
+    select: { content: true },
+  });
+  const generationReport = parseKuGenerationReportContent(reportChunk?.content);
+  const reportByDocumentId = kuGenerationReportToDocumentMap(generationReport);
+
   const draftsByDocumentId = new Map<string, { title: string; reviewStatus: string }[]>();
   for (const dto of dtos) {
     if (!dto.sourceDocumentId) continue;
@@ -147,6 +159,11 @@ export async function listProviderKnowledgeUnitDrafts(
       validationSummary: doc.validationSummary,
     })),
     draftsByDocumentId,
+    {
+      reportByDocumentId,
+      generationScope: generationReport?.generationScope,
+      isPreviewGeneration: generationReport?.isPreviewGeneration,
+    },
   );
 
   return {

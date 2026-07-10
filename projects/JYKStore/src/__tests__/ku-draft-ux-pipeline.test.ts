@@ -81,7 +81,7 @@ describe("ku-draft-processing-status", () => {
     );
 
     assert.equal(result.summary.sourceDocumentTotal, 2);
-    assert.equal(result.summary.generatedComplete, 1);
+    assert.equal(result.summary.documentsGenerated, 1);
     assert.equal(result.summary.excluded, 1);
   });
 });

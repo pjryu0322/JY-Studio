@@ -2,6 +2,7 @@ import {
   GitHubDiscoveryError,
   type GitHubKnowledgeUnitDraftInput,
   type GitHubKnowledgeUnitGenerationMode,
+  type KnowledgeUnitGenerationScope,
 } from "./github-auto-collect-types";
 import {
   isUnsafeGitHubRepositoryPath,
@@ -27,10 +28,17 @@ const MODE_PRESETS: Record<
   FULL: { target: 30, max: 50 },
 };
 
+const GENERATION_SCOPES = new Set<KnowledgeUnitGenerationScope>([
+  "all_documents",
+  "selected_documents",
+  "limited_preview",
+]);
+
 export type NormalizedGitHubKnowledgeUnitDraftInput = {
   sourceDocumentIds: string[];
   sourceDocumentPaths: string[];
   generationMode: GitHubKnowledgeUnitGenerationMode;
+  generationScope: KnowledgeUnitGenerationScope;
   targetKnowledgeUnitCount: number;
   minKnowledgeUnitCount: number;
   maxKnowledgeUnitCount: number;
@@ -130,6 +138,21 @@ export function normalizeGitHubKnowledgeUnitDraftInput(
     .filter(Boolean);
   const sourceDocumentPaths = normalizeSourceDocumentPaths(input.sourceDocumentPaths, warnings);
 
+  let generationScope = input.generationScope;
+  if (!generationScope) {
+    generationScope =
+      sourceDocumentIds.length > 0 || sourceDocumentPaths.length > 0
+        ? "selected_documents"
+        : "all_documents";
+  }
+  if (!GENERATION_SCOPES.has(generationScope)) {
+    throw new GitHubDiscoveryError(
+      "INVALID_KNOWLEDGE_UNIT_DRAFT_OPTIONS",
+      "generationScope가 올바르지 않습니다.",
+      400,
+    );
+  }
+
   const overwriteExistingDrafts = input.overwriteExistingDrafts === true;
   if (overwriteExistingDrafts) {
     warnings.push(
@@ -141,6 +164,7 @@ export function normalizeGitHubKnowledgeUnitDraftInput(
     sourceDocumentIds,
     sourceDocumentPaths,
     generationMode,
+    generationScope,
     targetKnowledgeUnitCount,
     minKnowledgeUnitCount,
     maxKnowledgeUnitCount,

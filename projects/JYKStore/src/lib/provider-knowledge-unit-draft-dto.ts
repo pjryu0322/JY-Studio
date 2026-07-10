@@ -49,18 +49,22 @@ export type ProviderKnowledgeUnitDocumentProcessingDto = {
   sourceDocumentId: string;
   path: string;
   title: string;
-  status: "completed" | "pending" | "excluded";
+  status: "generated" | "deduped" | "excluded" | "failed";
   reason?: string;
   generatedUnitTitles: string[];
+  duplicateOfChunkId?: string;
   steps: string[];
 };
 
 export type ProviderKnowledgeUnitProcessingSummaryDto = {
   sourceDocumentTotal: number;
-  generatedComplete: number;
-  analysisPending: number;
+  documentsGenerated: number;
+  documentsDeduped: number;
   excluded: number;
+  failed: number;
   progressPercent: number;
+  generationScope?: string;
+  isPreviewGeneration?: boolean;
 };
 
 export type ProviderKnowledgeUnitDraftListResponse = {
