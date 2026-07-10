@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { AdminReviewDetailPageClient } from "@/components/AdminReviewDetailPageClient";
-import { ROUTES } from "@/lib/routes";
 
 type PageProps = {
   params: Promise<{ packId: string }>;
@@ -11,9 +9,6 @@ export default async function AdminReviewDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-4">
-      <Link href={ROUTES.adminReviews} className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent">
-        ← 검수 대기 목록
-      </Link>
       <AdminReviewDetailPageClient packId={packId} />
     </div>
   );

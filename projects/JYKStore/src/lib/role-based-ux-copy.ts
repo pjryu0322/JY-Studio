@@ -158,8 +158,7 @@ export const ADMIN_REVIEW_STATE_READY_TITLE = "승인 가능";
 export const ADMIN_REVIEW_STATE_READY_BODY =
   "검수 요청이 접수되었습니다. 승인하면 일반 카탈로그와 Context API에 공개됩니다.";
 export const ADMIN_REVIEW_STATE_WARNING_TITLE = "주의 후 승인 가능";
-export const ADMIN_REVIEW_STATE_WARNING_BODY =
-  "WARNING 항목을 확인한 뒤 승인하거나 반려하세요.";
+export const ADMIN_REVIEW_STATE_WARNING_BODY = "";
 export const ADMIN_REVIEW_STATE_BLOCKED_TITLE = "승인 불가";
 export const ADMIN_REVIEW_STATE_BLOCKED_BODY =
   "최신 점검 결과 기준으로 차단 이슈가 있습니다. 반려 사유를 작성해 제공자에게 보완을 요청하세요.";

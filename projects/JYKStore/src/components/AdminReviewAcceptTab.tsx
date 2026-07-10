@@ -10,7 +10,6 @@ import {
   collectReviewRefreshReasons,
   detectSubmitSnapshotDrift,
   resolveDecisionStatusCopy,
-  resolvePendingAcceptCopy,
   resolveReviewDecisionState,
 } from "@/lib/admin-review-decision";
 import {
@@ -25,15 +24,10 @@ import {
 import {
   ADMIN_REVIEW_ACCEPT_BLOCKED_BODY,
   ADMIN_REVIEW_ACCEPT_BLOCKED_TITLE,
-  ADMIN_REVIEW_ACCEPT_BODY,
-  ADMIN_REVIEW_ACCEPT_NO_WITHDRAW_HINT,
-  ADMIN_REVIEW_ACCEPT_TITLE,
-  ADMIN_REVIEW_ACCEPTED_HINT,
   ADMIN_REVIEW_BLOCKER_ISSUES_TITLE,
   ADMIN_REVIEW_CTA_ACCEPT,
   ADMIN_REVIEW_CTA_APPROVE,
   ADMIN_REVIEW_CTA_REJECT,
-  ADMIN_REVIEW_DECISION_TITLE,
   ADMIN_REVIEW_REFRESH_REASONS_TITLE,
   ADMIN_REVIEW_REJECT_COLLAPSED_HINT,
   ADMIN_REVIEW_REJECT_OPEN,
@@ -62,9 +56,7 @@ export function AdminReviewAcceptTab({
   const canAccept = canAcceptAdminReview(detail);
   const canRejectPending = canRejectWithoutAccept(detail);
   const state = resolveReviewDecisionState(detail);
-  const statusCopy = needsAccept
-    ? resolvePendingAcceptCopy(detail)
-    : resolveDecisionStatusCopy(detail);
+  const statusCopy = resolveDecisionStatusCopy(detail);
   const canApprove = canApproveAdminReview(detail);
   const canReject = (isAccepted || canRejectPending) && rejectionReason.trim().length > 0;
   const acceptBlockers = collectAcceptBlockers(detail);
@@ -98,7 +90,6 @@ export function AdminReviewAcceptTab({
     try {
       const res = await acceptAdminReview(packId);
       onUpdated(res.detail);
-      setMessage("검수 요청을 접수했습니다. 제공자는 더 이상 회수할 수 없습니다.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "검수 접수에 실패했습니다.");
     } finally {
@@ -173,34 +164,21 @@ export function AdminReviewAcceptTab({
 
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
-      <h2 className="text-sm font-bold text-slate-900">
-        {needsAccept
-          ? canAccept
-            ? ADMIN_REVIEW_ACCEPT_TITLE
-            : ADMIN_REVIEW_ACCEPT_BLOCKED_TITLE
-          : ADMIN_REVIEW_DECISION_TITLE}
-      </h2>
+      {needsAccept && !canAccept ? (
+        <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEW_ACCEPT_BLOCKED_TITLE}</h2>
+      ) : null}
 
-      <div className={`rounded-xl border p-3 ${statusCopy.tone}`}>
-        <p className="text-sm font-bold">현재 상태: {statusCopy.title}</p>
-        <p className="mt-1 text-xs leading-relaxed">{statusCopy.body}</p>
-      </div>
-
-      {needsAccept && canAccept ? (
-        <div className="space-y-2 text-xs leading-relaxed text-slate-700">
-          <p>{ADMIN_REVIEW_ACCEPT_BODY}</p>
-          <p className="font-semibold text-slate-800">{ADMIN_REVIEW_ACCEPT_NO_WITHDRAW_HINT}</p>
+      {!needsAccept ? (
+        <div className={`rounded-xl border p-3 ${statusCopy.tone}`}>
+          <p className="text-sm font-bold">현재 상태: {statusCopy.title}</p>
+          {statusCopy.body ? (
+            <p className="mt-1 text-xs leading-relaxed">{statusCopy.body}</p>
+          ) : null}
         </div>
       ) : null}
 
       {needsAccept && !canAccept ? (
         <p className="text-xs leading-relaxed text-slate-700">{ADMIN_REVIEW_ACCEPT_BLOCKED_BODY}</p>
-      ) : null}
-
-      {isAccepted ? (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-950">
-          {ADMIN_REVIEW_ACCEPTED_HINT}
-        </div>
       ) : null}
 
       {needsAccept && snapshot ? (

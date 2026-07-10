@@ -13,7 +13,6 @@ import {
   ADMIN_REVIEW_CTA_APPROVE,
   ADMIN_REVIEW_CTA_REJECT,
   ADMIN_REVIEW_CTA_RELEASE_GATE,
-  ADMIN_REVIEW_DECISION_TITLE,
 } from "../lib/role-based-ux-copy.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -593,7 +592,6 @@ describe("admin review decision UX wiring", () => {
     assert.ok(page.includes("AdminReviewAdvancedActionsTab"));
     assert.ok(!page.includes("AdminReviewDecisionPanel"));
     assert.ok(!page.includes("AdminReviewInspectionSummary"));
-    assert.ok(accept.includes("ADMIN_REVIEW_DECISION_TITLE"));
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_ACCEPT"));
     assert.ok(accept.includes("acceptAdminReview"));
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_APPROVE"));
@@ -606,7 +604,6 @@ describe("admin review decision UX wiring", () => {
     assert.ok(sections.includes("고급 도구"));
     assert.ok(sections.includes("<details"));
     assert.ok(sources.includes("원문 보기") || sources.includes("ADMIN_REVIEW_VIEW_SOURCE"));
-    assert.equal(ADMIN_REVIEW_DECISION_TITLE, "최종 검수 판단");
     assert.equal(ADMIN_REVIEW_CTA_RELEASE_GATE, "릴리스 게이트 재점검");
     assert.equal(ADMIN_REVIEW_CTA_APPROVE, "승인 및 공개");
     assert.equal(ADMIN_REVIEW_CTA_REJECT, "반려");
