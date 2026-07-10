@@ -1,25 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AdminChunkManager } from "@/components/AdminChunkManager";
-import { AdminReviewDecisionPanel } from "@/components/AdminReviewDecisionPanel";
-import { AdminReviewPackSummary } from "@/components/AdminReviewPackSummary";
-import { AdminReviewSourceDocuments } from "@/components/AdminReviewSourceDocuments";
-import { ExportPanel } from "@/components/ExportPanel";
-import { KnowledgeGraphPanel } from "@/components/KnowledgeGraphPanel";
+import { AdminReviewDecisionSummary } from "@/components/AdminReviewDecisionSummary";
+import { AdminReviewDetailSections } from "@/components/AdminReviewDetailSections";
+import { AdminReviewInspectionSummary } from "@/components/AdminReviewInspectionSummary";
+import { AdminReviewNeedsAttention } from "@/components/AdminReviewNeedsAttention";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
-  fetchAdminReviewDetail,
-  evaluateAdminStructureQualityApi,
   evaluateAdminChunkQualityApi,
+  evaluateAdminReleaseGateApi,
+  evaluateAdminStructureQualityApi,
+  fetchAdminReviewDetail,
   generateAdminRetrievalEvaluationCasesApi,
   runAdminRetrievalEvaluationApi,
-  evaluateAdminReleaseGateApi,
 } from "@/lib/admin-review-api";
-import { StructureQualityPanel } from "@/components/StructureQualityPanel";
-import { ChunkQualityPanel } from "@/components/ChunkQualityPanel";
-import { RetrievalEvaluationPanel } from "@/components/RetrievalEvaluationPanel";
-import { ReleaseGatePanel } from "@/components/ReleaseGatePanel";
 
 export function AdminReviewDetailPageClient({ packId }: { readonly packId: string }) {
   const [loading, setLoading] = useState(true);
@@ -54,56 +48,41 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   return (
     <div className="space-y-4 pb-6">
       {error ? (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {error}
+        </div>
       ) : null}
-      <AdminReviewPackSummary detail={detail} />
-      <StructureQualityPanel
+
+      <AdminReviewDecisionSummary packId={packId} detail={detail} onUpdated={setDetail} />
+      <AdminReviewInspectionSummary detail={detail} />
+      <AdminReviewNeedsAttention detail={detail} />
+      <AdminReviewDetailSections
         packId={packId}
-        structureQuality={detail.structureQuality}
-        editable
-        onEvaluate={async () => {
-          const data = await evaluateAdminStructureQualityApi(packId);
-          setDetail(data.detail);
+        detail={detail}
+        onUpdated={setDetail}
+        actions={{
+          evaluateStructure: async () => {
+            const data = await evaluateAdminStructureQualityApi(packId);
+            setDetail(data.detail);
+          },
+          evaluateChunk: async () => {
+            const data = await evaluateAdminChunkQualityApi(packId);
+            setDetail(data.detail);
+          },
+          generateRetrievalCases: async (replace) => {
+            const data = await generateAdminRetrievalEvaluationCasesApi(packId, replace);
+            setDetail(data.detail);
+          },
+          runRetrievalEvaluation: async () => {
+            const data = await runAdminRetrievalEvaluationApi(packId);
+            setDetail(data.detail);
+          },
+          evaluateReleaseGate: async () => {
+            const data = await evaluateAdminReleaseGateApi(packId);
+            setDetail(data.detail);
+          },
         }}
       />
-      <ChunkQualityPanel
-        packId={packId}
-        chunkQuality={detail.chunkQuality}
-        editable
-        onEvaluate={async () => {
-          const data = await evaluateAdminChunkQualityApi(packId);
-          setDetail(data.detail);
-        }}
-      />
-      <RetrievalEvaluationPanel
-        packId={packId}
-        retrievalEvaluation={detail.retrievalEvaluation}
-        editable
-        onGenerate={async (replace) => {
-          const data = await generateAdminRetrievalEvaluationCasesApi(packId, replace);
-          setDetail(data.detail);
-        }}
-        onRun={async () => {
-          const data = await runAdminRetrievalEvaluationApi(packId);
-          setDetail(data.detail);
-        }}
-      />
-      <ReleaseGatePanel
-        packId={packId}
-        releaseGate={detail.releaseGate}
-        editable
-        onEvaluate={async () => {
-          const data = await evaluateAdminReleaseGateApi(packId);
-          setDetail(data.detail);
-        }}
-      />
-      <AdminReviewSourceDocuments packId={packId} versions={detail.versions} onValidated={setDetail} />
-      <AdminChunkManager packId={packId} />
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <KnowledgeGraphPanel packId={packId} />
-        <ExportPanel packId={packId} />
-      </div>
-      <AdminReviewDecisionPanel packId={packId} detail={detail} onUpdated={setDetail} />
     </div>
   );
 }

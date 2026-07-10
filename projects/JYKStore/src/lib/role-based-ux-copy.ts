@@ -22,6 +22,8 @@ export const ACCOUNT_REGISTER_ROLE_USER = "일반 사용자";
 export const ACCOUNT_REGISTER_ROLE_USER_HINT = "지식팩 검색·보관·API 연결";
 export const ACCOUNT_REGISTER_ROLE_PROVIDER = "지식팩 제공자";
 export const ACCOUNT_REGISTER_ROLE_PROVIDER_HINT = "제품 지식을 등록하고 지식팩을 만듭니다";
+export const ACCOUNT_REGISTER_ROLE_ADMIN = "관리자";
+export const ACCOUNT_REGISTER_ROLE_ADMIN_HINT = "지식팩 검수·승인 및 운영 콘솔";
 
 export const PROVIDER_CENTER_PROFILE_LINK_LABEL = "프로필 관리";
 
@@ -92,6 +94,37 @@ export const ADMIN_ACCESS_REQUIRED_BODY = "관리자 계정으로 로그인해 �
 export const ADMIN_CONSOLE_TITLE = "관리자 콘솔";
 export const ADMIN_REVIEWS_LIST_TITLE = "검수 대기 지식팩";
 export const ADMIN_REVIEWS_OPEN_DETAIL = "검토하기";
+
+export const ADMIN_REVIEW_DECISION_TITLE = "최종 검수 판단";
+export const ADMIN_REVIEW_INSPECTION_SUMMARY_TITLE = "검수 요약";
+export const ADMIN_REVIEW_NEEDS_ATTENTION_TITLE = "확인 필요 항목";
+export const ADMIN_REVIEW_DETAIL_SECTIONS_TITLE = "상세 점검 결과";
+
+export const ADMIN_REVIEW_STATE_GATE_REQUIRED_TITLE = "릴리스 게이트 필요";
+export const ADMIN_REVIEW_STATE_GATE_REQUIRED_BODY =
+  "공개 승인 전 최종 품질 점검이 아직 실행되지 않았습니다. 먼저 릴리스 게이트를 최종 점검하세요.";
+export const ADMIN_REVIEW_STATE_READY_TITLE = "승인 가능";
+export const ADMIN_REVIEW_STATE_READY_BODY =
+  "필수 점검을 통과했습니다. 승인하면 일반 카탈로그와 Context API에 공개됩니다.";
+export const ADMIN_REVIEW_STATE_WARNING_TITLE = "주의 후 승인 가능";
+export const ADMIN_REVIEW_STATE_WARNING_BODY =
+  "승인은 가능하지만 WARNING 항목이 있습니다. 확인 후 승인하거나 반려하세요.";
+export const ADMIN_REVIEW_STATE_BLOCKED_TITLE = "승인 불가";
+export const ADMIN_REVIEW_STATE_BLOCKED_BODY =
+  "차단 이슈가 있어 승인할 수 없습니다. 반려 사유를 작성해 제공자에게 돌려보내세요.";
+export const ADMIN_REVIEW_STATE_PUBLISHED_TITLE = "이미 공개됨";
+export const ADMIN_REVIEW_STATE_PUBLISHED_BODY = "이 지식팩은 이미 승인·공개된 상태입니다.";
+export const ADMIN_REVIEW_STATE_NOT_REVIEWING_TITLE = "검수 대기 상태가 아님";
+export const ADMIN_REVIEW_STATE_NOT_REVIEWING_BODY =
+  "현재 상태가 REVIEWING이 아니어서 승인/반려를 진행할 수 없습니다.";
+
+export const ADMIN_REVIEW_CTA_RELEASE_GATE = "릴리스 게이트 최종 점검";
+export const ADMIN_REVIEW_CTA_APPROVE = "승인 및 공개";
+export const ADMIN_REVIEW_CTA_REJECT = "반려";
+export const ADMIN_REVIEW_CTA_STRUCTURE = "구조/품질 재점검";
+export const ADMIN_REVIEW_CTA_CHUNK = "청킹 품질 재점검";
+export const ADMIN_REVIEW_CTA_RETRIEVAL_GENERATE = "검색 평가 케이스 재생성";
+export const ADMIN_REVIEW_CTA_RETRIEVAL_RUN = "검색 품질 재점검";
 
 export const PROVIDER_PACK_ID_READONLY_HINT =
   "JYKStore가 발급한 고유 식별자입니다. 수정할 수 없습니다.";

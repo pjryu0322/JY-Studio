@@ -60,7 +60,8 @@ describe("account role helpers", () => {
 
   it("maps selectable roles and post-auth landing paths", () => {
     assert.equal(parseSelectableAccountRole("PROVIDER"), "PROVIDER");
-    assert.equal(parseSelectableAccountRole("ADMIN"), "USER");
+    assert.equal(parseSelectableAccountRole("ADMIN"), "ADMIN");
+    assert.equal(parseSelectableAccountRole("USER"), "USER");
     assert.equal(postAuthLandingPath("USER"), ROUTES.home);
     assert.equal(postAuthLandingPath("PROVIDER"), ROUTES.provider);
     assert.equal(postAuthLandingPath("ADMIN"), ROUTES.adminReviews);

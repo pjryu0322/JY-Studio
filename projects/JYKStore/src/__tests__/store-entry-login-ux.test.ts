@@ -38,6 +38,8 @@ describe("store entry login UX", () => {
     assert.ok(form.includes("intendedRole"));
     assert.ok(form.includes("ACCOUNT_REGISTER_ROLE_USER"));
     assert.ok(form.includes("ACCOUNT_REGISTER_ROLE_PROVIDER"));
+    assert.ok(form.includes("ACCOUNT_REGISTER_ROLE_ADMIN"));
+    assert.ok(form.includes('value="ADMIN"'));
     assert.ok(form.includes("postAuthLandingPath"));
     assert.ok(login.includes("postAuthLandingPath"));
     assert.ok(login.includes("getStoreUserById"));

@@ -15,7 +15,7 @@ export type StoreLoginInput = {
   email: string;
   displayName: string;
   mode?: StoreAuthMode;
-  /** Only applied on register. ADMIN cannot be requested from the client. */
+  /** Applied on register. */
   intendedRole?: SelectableAccountRole;
 };
 

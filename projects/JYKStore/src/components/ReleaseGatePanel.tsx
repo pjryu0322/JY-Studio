@@ -32,11 +32,13 @@ export function ReleaseGatePanel({
   packId,
   releaseGate,
   editable,
+  evaluateButtonLabel,
   onEvaluate,
 }: {
   readonly packId: string;
   readonly releaseGate: ReleaseGateSummaryDto | null;
   readonly editable: boolean;
+  readonly evaluateButtonLabel?: string;
   readonly onEvaluate: (targetStatus?: "PUBLISHED" | "VERIFIED") => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -71,7 +73,7 @@ export function ReleaseGatePanel({
             onClick={() => void runEvaluate()}
             className="min-h-[44px] w-full rounded-xl border border-store-border bg-white px-4 text-sm font-semibold text-slate-900 disabled:opacity-50 sm:w-auto"
           >
-            {busy ? "점검 중…" : "릴리스 게이트 재점검"}
+            {busy ? "점검 중…" : evaluateButtonLabel ?? "릴리스 게이트 재점검"}
           </button>
         ) : null}
       </div>

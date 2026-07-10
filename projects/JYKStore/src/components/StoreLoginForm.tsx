@@ -8,6 +8,8 @@ import { loginStoreAccount, registerStoreAccount } from "@/lib/auth-api";
 import {
   ACCOUNT_PROFILE_LOGIN_HINT,
   ACCOUNT_PROFILE_LOGIN_TITLE,
+  ACCOUNT_REGISTER_ROLE_ADMIN,
+  ACCOUNT_REGISTER_ROLE_ADMIN_HINT,
   ACCOUNT_REGISTER_ROLE_LABEL,
   ACCOUNT_REGISTER_ROLE_PROVIDER,
   ACCOUNT_REGISTER_ROLE_PROVIDER_HINT,
@@ -145,6 +147,20 @@ export function StoreLoginForm({
                 {ACCOUNT_REGISTER_ROLE_PROVIDER}
               </span>
               <span className="block text-xs text-store-muted">{ACCOUNT_REGISTER_ROLE_PROVIDER_HINT}</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg bg-white px-3 py-2.5 border border-transparent has-[:checked]:border-store-accent">
+            <input
+              type="radio"
+              name="intendedRole"
+              value="ADMIN"
+              checked={intendedRole === "ADMIN"}
+              onChange={() => setIntendedRole("ADMIN")}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-slate-900">{ACCOUNT_REGISTER_ROLE_ADMIN}</span>
+              <span className="block text-xs text-store-muted">{ACCOUNT_REGISTER_ROLE_ADMIN_HINT}</span>
             </span>
           </label>
         </fieldset>
