@@ -8,7 +8,7 @@ export default function MyPacksPage() {
         <div className="px-1">
           <h1 className="text-lg font-bold text-slate-900">내 지식팩</h1>
           <p className="mt-1 text-sm text-store-muted">
-            Pack ID와 예시 코드를 복사해 외부 AI 도구에서 사용할 수 있습니다.
+            제공자로 등록한 지식팩과, 카탈로그에서 보관한 지식팩을 확인합니다.
           </p>
         </div>
         <MyPacksPageClient />

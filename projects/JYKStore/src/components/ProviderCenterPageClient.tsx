@@ -31,8 +31,14 @@ function packDetailActions(pack: ProviderPackListItemDto) {
   const detail = providerPackDetailPath(pack.packId);
   const actions: { label: string; href: string }[] = [{ label: "편집", href: detail }];
   if (pack.status === "DRAFT") {
-    actions.push({ label: "GitHub 자동수집", href: `${detail}#github-auto-collect` });
-    actions.push({ label: "검수 요청", href: `${detail}#pack-review` });
+    actions.push({ label: "GitHub 자동수집", href: `${detail}?tab=source` });
+    actions.push({ label: "검수 요청", href: `${detail}?tab=review` });
+  }
+  if (pack.status === "REVIEWING") {
+    return [
+      { label: "검수 상태 보기", href: `${detail}?tab=review` },
+      { label: "상세 보기", href: detail },
+    ];
   }
   return actions;
 }
@@ -184,11 +190,21 @@ export function ProviderCenterPageClient() {
 
       <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4 shadow-card">
         <p className="text-xs font-bold text-emerald-900">{PROVIDER_CENTER_REGISTERED_TITLE}</p>
-        <p className="mt-1 text-sm text-slate-800">{PROVIDER_CENTER_REGISTERED_BODY}</p>
+        <p className="mt-1 text-sm text-slate-800">
+          {packs.length > 0
+            ? "등록한 지식팩 상태를 확인하고 검수·공개를 이어가세요."
+            : PROVIDER_CENTER_REGISTERED_BODY}
+        </p>
         {profile ? (
           <p className="mt-2 text-sm font-semibold text-slate-900">{profile.displayName}</p>
         ) : null}
-        <p className="mt-2 text-xs font-semibold text-store-accent">{PROVIDER_CENTER_NEXT_TASK}</p>
+        {hasReviewingPack ? (
+          <p className="mt-2 text-xs font-semibold text-amber-800">
+            검수 요청된 지식팩이 있습니다. 아래에서 상태를 확인하세요.
+          </p>
+        ) : (
+          <p className="mt-2 text-xs font-semibold text-store-accent">{PROVIDER_CENTER_NEXT_TASK}</p>
+        )}
         <Link
           href={ROUTES.providerPackNew}
           className="mt-3 flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-store-accent px-4 text-sm font-bold text-white"

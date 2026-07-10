@@ -166,8 +166,7 @@ export async function listTodayFeaturedPacks(): Promise<TodayFeaturedPacks | nul
     return null;
   }
 
-  const todayPick =
-    published.find((pack) => pack.packId === "easy-auth") ?? published[0];
+  const todayPick = published[0]!;
 
   const quickConnect = published.filter((p) => p.isVerified).slice(0, 4);
   const popular = [...published].sort((a, b) => b.usageCount - a.usageCount).slice(0, 4);

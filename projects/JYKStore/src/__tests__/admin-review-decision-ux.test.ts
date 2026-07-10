@@ -67,7 +67,20 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
       ...(overrides.pack ?? {}),
     },
     versions: overrides.versions ?? [],
-    latestReview: overrides.latestReview ?? null,
+    latestReview:
+      overrides.latestReview === undefined
+        ? {
+            id: "rev-accepted",
+            status: "IN_REVIEW",
+            decision: null,
+            memo: null,
+            rejectionReason: null,
+            reviewerUserId: "admin-1",
+            createdAt: new Date().toISOString(),
+            decidedAt: null,
+            submitSnapshot: null,
+          }
+        : overrides.latestReview,
     readiness,
     structureQuality: overrides.structureQuality ?? null,
     chunkQuality: overrides.chunkQuality ?? null,
@@ -246,10 +259,11 @@ describe("admin review decision state", () => {
     const detail = baseDetail({
       latestReview: {
         id: "rev-1",
-        status: "PENDING",
+        status: "IN_REVIEW",
         decision: null,
         memo: null,
         rejectionReason: null,
+        reviewerUserId: "admin-1",
         createdAt: new Date().toISOString(),
         decidedAt: null,
         submitSnapshot: {
@@ -434,14 +448,33 @@ describe("admin review decision state", () => {
     assert.equal(canApproveAdminReview(detail), true);
   });
 
-  it("Case 8: submitSnapshot drift is separated from refresh-required", () => {
+  it("Case 7b: PENDING review cannot approve until accepted", () => {
     const detail = baseDetail({
       latestReview: {
-        id: "rev-1",
+        id: "rev-pending",
         status: "PENDING",
         decision: null,
         memo: null,
         rejectionReason: null,
+        reviewerUserId: null,
+        createdAt: new Date().toISOString(),
+        decidedAt: null,
+        submitSnapshot: null,
+      },
+    });
+    assert.equal(resolveReviewDecisionState(detail), "approval_ready");
+    assert.equal(canApproveAdminReview(detail), false);
+  });
+
+  it("Case 8: submitSnapshot drift is separated from refresh-required", () => {
+    const detail = baseDetail({
+      latestReview: {
+        id: "rev-1",
+        status: "IN_REVIEW",
+        decision: null,
+        memo: null,
+        rejectionReason: null,
+        reviewerUserId: "admin-1",
         createdAt: new Date().toISOString(),
         decidedAt: null,
         submitSnapshot: {
@@ -563,6 +596,8 @@ describe("admin review decision UX wiring", () => {
     assert.ok(decision.includes("ADMIN_REVIEW_CTA_RELEASE_GATE"));
     assert.ok(decision.includes("ADMIN_REVIEW_CTA_REFRESH_ALL"));
     assert.ok(decision.includes("refreshAdminReviewReadinessApi"));
+    assert.ok(decision.includes("ADMIN_REVIEW_CTA_ACCEPT"));
+    assert.ok(decision.includes("acceptAdminReview"));
     assert.ok(decision.includes("ADMIN_REVIEW_CTA_APPROVE"));
     assert.ok(decision.includes("ADMIN_REVIEW_CTA_REJECT"));
     assert.ok(decision.includes("canApproveAdminReview"));

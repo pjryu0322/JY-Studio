@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCard";
 import { SubmitRequestAction } from "@/components/provider-submit/SubmitRequestAction";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
+import { canProviderWithdrawReview, PackReviewStatus } from "@/lib/pack-review-status";
 import { buildProviderSubmitReadinessPlan } from "@/lib/provider-submit-readiness-steps";
 import {
   PROVIDER_PACK_GO_TO_INSPECTION_REPAIR,
@@ -14,11 +15,16 @@ import {
   PROVIDER_PACK_REVIEW_READY_BODY,
   PROVIDER_PACK_REVIEW_READY_TITLE,
   PROVIDER_PACK_WIZARD_REVIEW_STEP,
+  PROVIDER_REVIEW_ACCEPTED_BODY,
+  PROVIDER_REVIEW_ACCEPTED_TITLE,
   PROVIDER_REVIEW_DEV_ADMIN_HINT,
   PROVIDER_REVIEW_REJECTED_GO_FIX,
   PROVIDER_REVIEW_REJECTED_TITLE,
   PROVIDER_REVIEW_WAITING_BODY,
   PROVIDER_REVIEW_WAITING_TITLE,
+  PROVIDER_REVIEW_WITHDRAW_CTA,
+  PROVIDER_REVIEW_WITHDRAW_HINT,
+  PROVIDER_REVIEW_WITHDRAW_LOCKED_HINT,
   PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE,
 } from "@/lib/role-based-ux-copy";
 
@@ -26,18 +32,22 @@ export function ProviderPackReviewTab({
   pack,
   editable,
   submitting,
+  withdrawing,
   sourceDocumentCount,
   knowledgeUnitDraftCount,
   onSubmitReview,
+  onWithdrawReview,
   onGoToSourceTab,
   onGoToInspectionTab,
 }: {
   readonly pack: ProviderPackDetailDto;
   readonly editable: boolean;
   readonly submitting: boolean;
+  readonly withdrawing: boolean;
   readonly sourceDocumentCount: number;
   readonly knowledgeUnitDraftCount: number;
   readonly onSubmitReview: () => void;
+  readonly onWithdrawReview: () => void;
   readonly onGoToSourceTab: () => void;
   readonly onGoToInspectionTab: () => void;
 }) {
@@ -45,6 +55,8 @@ export function ProviderPackReviewTab({
   const isPublished = pack.status === "PUBLISHED" || pack.status === "VERIFIED";
   const missingSources = sourceDocumentCount === 0;
   const missingDrafts = knowledgeUnitDraftCount === 0;
+  const canWithdraw = canProviderWithdrawReview(pack.latestReviewStatus);
+  const isAccepted = pack.latestReviewStatus === PackReviewStatus.IN_REVIEW;
 
   const plan = useMemo(
     () =>
@@ -71,12 +83,37 @@ export function ProviderPackReviewTab({
       <h2 className="text-sm font-bold text-slate-900">{PROVIDER_PACK_WIZARD_REVIEW_STEP}</h2>
 
       {isReviewing ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          <p className="font-bold">{PROVIDER_REVIEW_WAITING_TITLE}</p>
-          <p className="mt-1 text-xs">{PROVIDER_REVIEW_WAITING_BODY}</p>
-          {process.env.NODE_ENV !== "production" ? (
-            <p className="mt-2 text-[10px] text-amber-800/80">{PROVIDER_REVIEW_DEV_ADMIN_HINT}</p>
-          ) : null}
+        <div
+          className={`rounded-xl border px-3 py-3 text-sm ${
+            isAccepted
+              ? "border-blue-200 bg-blue-50 text-blue-950"
+              : "border-amber-200 bg-amber-50 text-amber-950"
+          }`}
+        >
+          <p className="font-bold">
+            {isAccepted ? PROVIDER_REVIEW_ACCEPTED_TITLE : PROVIDER_REVIEW_WAITING_TITLE}
+          </p>
+          <p className="mt-1 text-xs">
+            {isAccepted ? PROVIDER_REVIEW_ACCEPTED_BODY : PROVIDER_REVIEW_WAITING_BODY}
+          </p>
+          {canWithdraw ? (
+            <>
+              <p className="mt-2 text-xs text-amber-900">{PROVIDER_REVIEW_WITHDRAW_HINT}</p>
+              {process.env.NODE_ENV !== "production" ? (
+                <p className="mt-2 text-[10px] text-amber-800/80">{PROVIDER_REVIEW_DEV_ADMIN_HINT}</p>
+              ) : null}
+              <button
+                type="button"
+                disabled={withdrawing}
+                onClick={onWithdrawReview}
+                className="mt-3 min-h-[48px] w-full rounded-xl border-2 border-amber-300 bg-white text-sm font-bold text-amber-950 disabled:opacity-50"
+              >
+                {withdrawing ? "회수 중…" : PROVIDER_REVIEW_WITHDRAW_CTA}
+              </button>
+            </>
+          ) : (
+            <p className="mt-2 text-xs opacity-90">{PROVIDER_REVIEW_WITHDRAW_LOCKED_HINT}</p>
+          )}
         </div>
       ) : null}
 

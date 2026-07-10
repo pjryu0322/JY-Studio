@@ -389,6 +389,14 @@ async function mapProviderPackDetailWithValidation(
     orderBy: { decidedAt: "desc" },
     select: { rejectionReason: true },
   });
+  const latestOpenReview = await prisma.packReview.findFirst({
+    where: {
+      packId: pack.packId,
+      status: { in: ["PENDING", "IN_REVIEW"] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { status: true },
+  });
 
   return toProviderPackDetail(pack, overlays, {
     structureTemplateKey: pack.structureTemplateKey,
@@ -397,6 +405,7 @@ async function mapProviderPackDetailWithValidation(
     retrievalEvaluation,
     releaseGate,
     latestRejectionReason: latestRejected?.rejectionReason ?? null,
+    latestReviewStatus: latestOpenReview?.status ?? null,
   });
 }
 
@@ -912,6 +921,75 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
 
   const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail!, preparation, snapshot };
+}
+
+export async function withdrawProviderPackFromReview(
+  userId: string,
+  clientId: string,
+  packId: string,
+) {
+  const profile = await findProviderProfileForUser(userId, clientId);
+
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.REVIEWING) {
+    return { error: "NOT_REVIEWING" as const };
+  }
+
+  const pending = await prisma.packReview.findFirst({
+    where: { packId, status: "PENDING" },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!pending) {
+    const accepted = await prisma.packReview.findFirst({
+      where: { packId, status: "IN_REVIEW" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (accepted) {
+      return { error: "ALREADY_ACCEPTED" as const };
+    }
+    return { error: "NO_PENDING_REVIEW" as const };
+  }
+
+  const now = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.knowledgePack.update({
+      where: { packId },
+      data: { status: PackStatus.DRAFT },
+    });
+
+    await tx.packReview.update({
+      where: { id: pending.id },
+      data: {
+        status: "WITHDRAWN",
+        decision: "WITHDRAW",
+        memo: "제공자가 검수 요청을 회수했습니다.",
+        decidedAt: now,
+      },
+    });
+  });
+
+  await recordProviderAudit({
+    action: AuditAction.PROVIDER_PACK_UPDATE,
+    entityType: "KnowledgePack",
+    entityId: packId,
+    metadata: { packId, action: "withdraw_review", previousStatus: "REVIEWING" },
+  });
+
+  const detail = await getProviderPackForClient(userId, clientId, packId);
+  return { pack: detail! };
 }
 
 export async function validateProviderSourceDocument(

@@ -15,6 +15,7 @@ import {
   fetchProviderKnowledgeUnitDraftsApi,
   submitProviderPackApi,
   updateProviderPackApi,
+  withdrawProviderPackReviewApi,
 } from "@/lib/provider-center-api";
 import { buildProviderInspectionReadiness } from "@/lib/provider-pack-inspection-readiness";
 import {
@@ -34,6 +35,7 @@ import {
   PROVIDER_PACK_NEXT_TASK_INSPECTION,
   PROVIDER_PACK_NEXT_TASK_SUBMIT,
   PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN,
+  PROVIDER_REVIEW_WITHDRAW_CONFIRM,
 } from "@/lib/role-based-ux-copy";
 
 export function ProviderPackEditor({ packId }: { readonly packId: string }) {
@@ -47,6 +49,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
   const [draftRefreshNonce, setDraftRefreshNonce] = useState(0);
   const [knowledgeUnitDraftCount, setKnowledgeUnitDraftCount] = useState(0);
 
@@ -180,6 +183,22 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setError(err instanceof Error ? err.message : "검수 요청에 실패했습니다.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onWithdrawReview = async () => {
+    const ok = window.confirm(PROVIDER_REVIEW_WITHDRAW_CONFIRM);
+    if (!ok) return;
+    setWithdrawing(true);
+    setError(null);
+    try {
+      const data = await withdrawProviderPackReviewApi(packId);
+      setPack(data.pack);
+      selectTab("review");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "검수 요청 회수에 실패했습니다.");
+    } finally {
+      setWithdrawing(false);
     }
   };
 
@@ -328,9 +347,11 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             pack={pack}
             editable={editable}
             submitting={submitting}
+            withdrawing={withdrawing}
             sourceDocumentCount={sourceDocumentCount}
             knowledgeUnitDraftCount={knowledgeUnitDraftCount}
             onSubmitReview={() => void onSubmitReview()}
+            onWithdrawReview={() => void onWithdrawReview()}
             onGoToSourceTab={() => selectTab("source")}
             onGoToInspectionTab={() => selectTab("inspection")}
           />

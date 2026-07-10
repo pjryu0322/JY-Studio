@@ -78,9 +78,19 @@ export const PROVIDER_PACK_NEXT_TASK_SUBMIT =
 export const PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN =
   "관리자 검토 결과를 기다려 주세요.";
 
-export const PROVIDER_REVIEW_WAITING_TITLE = "검수 요청이 접수되었습니다.";
+export const PROVIDER_REVIEW_WAITING_TITLE = "검수 요청이 제출되었습니다.";
 export const PROVIDER_REVIEW_WAITING_BODY =
-  "관리자가 지식팩 품질과 공개 여부를 검토하고 있습니다. 승인 전까지 일반 카탈로그와 Context API에는 노출되지 않습니다.";
+  "관리자 접수를 기다리는 중입니다. 승인 전까지 일반 카탈로그와 Context API에는 노출되지 않습니다.";
+export const PROVIDER_REVIEW_ACCEPTED_TITLE = "관리자가 검수를 시작했습니다.";
+export const PROVIDER_REVIEW_ACCEPTED_BODY =
+  "검수 진행 중에는 요청을 회수할 수 없습니다. 결과가 나올 때까지 기다려 주세요.";
+export const PROVIDER_REVIEW_WITHDRAW_CTA = "검수 요청 회수";
+export const PROVIDER_REVIEW_WITHDRAW_CONFIRM =
+  "검수 요청을 회수할까요? 초안(DRAFT) 상태로 돌아가며 다시 수정한 뒤 제출할 수 있습니다.";
+export const PROVIDER_REVIEW_WITHDRAW_HINT =
+  "관리자가 접수하기 전까지는 검수 요청을 회수할 수 있습니다. 내용을 보완하려면 회수 후 초안에서 수정하세요.";
+export const PROVIDER_REVIEW_WITHDRAW_LOCKED_HINT =
+  "관리자가 이미 접수한 검수 요청은 회수할 수 없습니다.";
 export const PROVIDER_REVIEW_REJECTED_TITLE = "검수 반려됨";
 export const PROVIDER_REVIEW_REJECTED_GO_FIX = "보완하러 가기";
 export const PROVIDER_REVIEW_DEV_ADMIN_HINT =
@@ -94,8 +104,17 @@ export const ADMIN_ACCESS_REQUIRED_BODY = "관리자 계정으로 로그인해 �
 export const ADMIN_CONSOLE_TITLE = "관리자 콘솔";
 export const ADMIN_REVIEWS_LIST_TITLE = "검수 대기 지식팩";
 export const ADMIN_REVIEWS_OPEN_DETAIL = "검토하기";
+export const ADMIN_REVIEWS_STATUS_PENDING = "접수 대기";
+export const ADMIN_REVIEWS_STATUS_IN_REVIEW = "검수 중";
 
 export const ADMIN_REVIEW_DECISION_TITLE = "최종 검수 판단";
+export const ADMIN_REVIEW_ACCEPT_TITLE = "검수 접수";
+export const ADMIN_REVIEW_ACCEPT_BODY =
+  "제공자 요청을 먼저 접수해야 승인·반려할 수 있습니다. 접수 이후에는 제공자가 요청을 회수할 수 없습니다.";
+export const ADMIN_REVIEW_ACCEPTED_HINT = "검수 접수 완료. 아래 기준으로 승인·반려하세요.";
+export const ADMIN_REVIEW_CTA_ACCEPT = "검수 접수";
+export const ADMIN_REVIEW_ACCEPT_REQUIRED_HINT =
+  "승인·반려하려면 먼저 검수 접수를 완료하세요.";
 export const ADMIN_REVIEW_INSPECTION_SUMMARY_TITLE = "검수 요약";
 export const ADMIN_REVIEW_NEEDS_ATTENTION_TITLE = "확인 필요 항목";
 export const ADMIN_REVIEW_DETAIL_SECTIONS_TITLE = "상세 점검 결과";

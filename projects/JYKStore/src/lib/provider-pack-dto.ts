@@ -99,6 +99,8 @@ export type ProviderPackDetailDto = {
   releaseGate: ReleaseGateSummaryDto | null;
   /** Latest REJECT decision reason when pack was returned for fixes. */
   latestRejectionReason: string | null;
+  /** Latest open PackReview.status — PENDING allows withdraw, IN_REVIEW does not. */
+  latestReviewStatus: string | null;
   versions: ProviderPackVersionDto[];
   updatedAt: string;
 };
@@ -147,6 +149,7 @@ export function toProviderPackDetail(
     retrievalEvaluation?: RetrievalEvaluationSummaryDto | null;
     releaseGate?: ReleaseGateSummaryDto | null;
     latestRejectionReason?: string | null;
+    latestReviewStatus?: string | null;
   },
 ): ProviderPackDetailDto {
   return {
@@ -168,6 +171,7 @@ export function toProviderPackDetail(
     retrievalEvaluation: options?.retrievalEvaluation ?? null,
     releaseGate: options?.releaseGate ?? null,
     latestRejectionReason: options?.latestRejectionReason ?? null,
+    latestReviewStatus: options?.latestReviewStatus ?? null,
     versions: pack.versions.map((v) => mapVersion(v, validationOverlays)),
     updatedAt: pack.updatedAt.toISOString(),
   };

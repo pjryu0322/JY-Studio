@@ -35,6 +35,8 @@ export type AdminReviewListItemDto = {
   providerName: string;
   categoryId: string;
   status: string;
+  /** Latest PackReview.status (PENDING = 접수 대기, IN_REVIEW = 검수 중). */
+  reviewStatus: string | null;
   shortDescription: string;
   submittedAt: string | null;
   updatedAt: string;
@@ -98,6 +100,7 @@ export type AdminReviewDetailDto = {
     decision: string | null;
     memo: string | null;
     rejectionReason: string | null;
+    reviewerUserId: string | null;
     createdAt: string;
     decidedAt: string | null;
     submitSnapshot: import("@/lib/provider-review-submit-snapshot").ProviderReviewSubmitSnapshot | null;
@@ -194,7 +197,7 @@ function computeReadiness(pack: PackWithDetail) {
 export function toAdminReviewListItem(
   pack: KnowledgePack & {
     versions: { sourceDocuments: unknown[] }[];
-    reviews: { createdAt: Date }[];
+    reviews: { createdAt: Date; status: string }[];
   },
 ): AdminReviewListItemDto {
   const versionCount = pack.versions.length;
@@ -211,6 +214,7 @@ export function toAdminReviewListItem(
     providerName: pack.providerName,
     categoryId: pack.categoryId,
     status: pack.status,
+    reviewStatus: latestReview?.status ?? null,
     shortDescription: pack.shortDescription,
     submittedAt,
     updatedAt: pack.updatedAt.toISOString(),
@@ -274,6 +278,7 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
           decision: latest.decision,
           memo: latest.memo,
           rejectionReason: latest.rejectionReason,
+          reviewerUserId: latest.reviewerUserId ?? null,
           createdAt: latest.createdAt.toISOString(),
           decidedAt: latest.decidedAt?.toISOString() ?? null,
           submitSnapshot: parseProviderReviewSubmitSnapshot(

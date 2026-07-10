@@ -161,6 +161,22 @@ export async function submitProviderPackApi(packId: string): Promise<ProviderPac
   return (await response.json()) as ProviderPackDetailResponse;
 }
 
+export async function withdrawProviderPackReviewApi(
+  packId: string,
+): Promise<ProviderPackDetailResponse> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/withdraw-review`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as ProviderPackDetailResponse;
+}
+
 export async function evaluateProviderStructureQualityApi(
   packId: string,
 ): Promise<ProviderPackDetailResponse> {

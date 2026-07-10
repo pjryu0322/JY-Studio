@@ -23,14 +23,18 @@ describe("role-based UX copy", () => {
 });
 
 describe("role-based account UX", () => {
-  it("uses account role registration client", () => {
+  it("makes bottom account tab and account page admin-only for registered account management", () => {
     const page = readSource("src/app/(store)/account/page.tsx");
     const account = readSource("src/components/AccountPageClient.tsx");
+    const nav = readSource("src/components/BottomTabNav.tsx");
+    const panel = readSource("src/components/AdminAccountManagementPanel.tsx");
 
     assert.ok(page.includes("AccountPageClient"));
-    assert.ok(account.includes("ACCOUNT_SECTION_ROLE_REGISTRATION"));
-    assert.ok(account.includes("지식팩 관리자 계정"));
-    assert.ok(account.includes("관리자 계정 로그인"));
+    assert.ok(account.includes("AdminAccountManagementPanel"));
+    assert.ok(account.includes("관리자 전용 메뉴입니다"));
+    assert.ok(account.includes("등록 계정 관리") || panel.includes("등록 계정 관리"));
+    assert.ok(nav.includes('tab.key === "account" ? isAdmin'));
+    assert.ok(nav.includes("isAdminAccountRole"));
   });
 });
 

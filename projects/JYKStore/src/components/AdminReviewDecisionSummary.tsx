@@ -12,12 +12,19 @@ import {
   type ReviewDecisionState,
 } from "@/lib/admin-review-decision";
 import {
+  acceptAdminReview,
   approveAdminReview,
   evaluateAdminReleaseGateApi,
   refreshAdminReviewReadinessApi,
   rejectAdminReview,
 } from "@/lib/admin-review-api";
+import { PackReviewStatus } from "@/lib/pack-review-status";
 import {
+  ADMIN_REVIEW_ACCEPT_BODY,
+  ADMIN_REVIEW_ACCEPT_TITLE,
+  ADMIN_REVIEW_ACCEPTED_HINT,
+  ADMIN_REVIEW_ACCEPT_REQUIRED_HINT,
+  ADMIN_REVIEW_CTA_ACCEPT,
   ADMIN_REVIEW_CTA_APPROVE,
   ADMIN_REVIEW_CTA_REJECT,
   ADMIN_REVIEW_CTA_REFRESH_ALL,
@@ -111,7 +118,7 @@ export function AdminReviewDecisionSummary({
   const [memo, setMemo] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
   const [publishAsVerified, setPublishAsVerified] = useState(false);
-  const [busy, setBusy] = useState<"approve" | "reject" | "gate" | "refresh" | null>(null);
+  const [busy, setBusy] = useState<"accept" | "approve" | "reject" | "gate" | "refresh" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -120,7 +127,10 @@ export function AdminReviewDecisionSummary({
   const copy = decisionCopy(state);
   const canApprove = canApproveAdminReview(detail);
   const isReviewing = detail.pack.status === "REVIEWING";
-  const canReject = isReviewing && rejectionReason.trim().length > 0;
+  const reviewStatus = detail.latestReview?.status ?? null;
+  const needsAccept = isReviewing && reviewStatus === PackReviewStatus.PENDING;
+  const isAccepted = isReviewing && reviewStatus === PackReviewStatus.IN_REVIEW;
+  const canReject = isAccepted && rejectionReason.trim().length > 0;
   const blockers = collectReviewBlockers(detail);
   const warnings = collectReviewWarnings(detail);
   const refreshReasons = collectReviewRefreshReasons(detail);
@@ -132,13 +142,13 @@ export function AdminReviewDecisionSummary({
     : null;
 
   const showRejectFormPrimary =
-    isReviewing && (state === "approval_blocked" || state === "submit_package_changed");
+    isAccepted && (state === "approval_blocked" || state === "submit_package_changed");
   const showRejectFormSecondary =
-    isReviewing &&
+    isAccepted &&
     (state === "approval_warning" || state === "approval_ready") &&
     (rejectOpen || state === "approval_warning");
   const showRejectCollapsed =
-    isReviewing &&
+    isAccepted &&
     (state === "review_refresh_required" || state === "release_gate_required") &&
     !rejectOpen;
   const showAdvancedRefresh =
@@ -150,6 +160,7 @@ export function AdminReviewDecisionSummary({
       state === "approval_warning" ||
       state === "approval_blocked");
   const showPrimaryRefresh = state === "review_refresh_required" && !snapshot;
+  const showDecisionActions = isAccepted;
 
   const onRefreshAll = async () => {
     setBusy("refresh");
@@ -180,6 +191,21 @@ export function AdminReviewDecisionSummary({
       setMessage("릴리스 게이트 최종 점검을 완료했습니다.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "릴리스 게이트 점검에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onAccept = async () => {
+    setBusy("accept");
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await acceptAdminReview(packId);
+      onUpdated(res.detail);
+      setMessage("검수 요청을 접수했습니다. 제공자는 더 이상 회수할 수 없습니다.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "검수 접수에 실패했습니다.");
     } finally {
       setBusy(null);
     }
@@ -258,6 +284,28 @@ export function AdminReviewDecisionSummary({
         <p className="text-sm font-bold">현재 상태: {copy.title}</p>
         <p className="mt-1 text-xs leading-relaxed">{copy.body}</p>
       </div>
+
+      {needsAccept ? (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+          <p className="text-sm font-bold text-sky-950">{ADMIN_REVIEW_ACCEPT_TITLE}</p>
+          <p className="mt-1 text-xs leading-relaxed text-sky-900">{ADMIN_REVIEW_ACCEPT_BODY}</p>
+          <p className="mt-2 text-xs font-semibold text-sky-900">{ADMIN_REVIEW_ACCEPT_REQUIRED_HINT}</p>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void onAccept()}
+            className="mt-3 min-h-[48px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
+          >
+            {busy === "accept" ? "접수 중…" : ADMIN_REVIEW_CTA_ACCEPT}
+          </button>
+        </div>
+      ) : null}
+
+      {isAccepted ? (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-950">
+          {ADMIN_REVIEW_ACCEPTED_HINT}
+        </div>
+      ) : null}
 
       {snapshot ? (
         <div className="rounded-xl border border-store-border bg-slate-50 p-3">
@@ -350,6 +398,7 @@ export function AdminReviewDecisionSummary({
       ) : null}
 
       {isReviewing &&
+      showDecisionActions &&
       (state === "approval_ready" ||
         state === "approval_warning" ||
         state === "submit_package_changed" ||
@@ -368,10 +417,11 @@ export function AdminReviewDecisionSummary({
         </>
       ) : null}
 
-      {canApprove ||
-      state === "approval_warning" ||
-      state === "approval_ready" ||
-      state === "submit_package_changed" ? (
+      {showDecisionActions &&
+      (canApprove ||
+        state === "approval_warning" ||
+        state === "approval_ready" ||
+        state === "submit_package_changed") ? (
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
@@ -383,7 +433,7 @@ export function AdminReviewDecisionSummary({
         </label>
       ) : null}
 
-      {state === "approval_ready" || state === "approval_warning" ? (
+      {showDecisionActions && (state === "approval_ready" || state === "approval_warning") ? (
         <form onSubmit={onApprove}>
           <button
             type="submit"
@@ -395,9 +445,9 @@ export function AdminReviewDecisionSummary({
         </form>
       ) : null}
 
-      {showRejectFormPrimary || showRejectFormSecondary ? rejectForm : null}
+      {showDecisionActions && (showRejectFormPrimary || showRejectFormSecondary) ? rejectForm : null}
 
-      {showRejectCollapsed ? (
+      {showDecisionActions && showRejectCollapsed ? (
         <div className="rounded-xl border border-dashed border-store-border bg-slate-50 p-3">
           <p className="text-xs text-store-muted">{ADMIN_REVIEW_REJECT_COLLAPSED_HINT}</p>
           <button
@@ -410,7 +460,8 @@ export function AdminReviewDecisionSummary({
         </div>
       ) : null}
 
-      {rejectOpen &&
+      {showDecisionActions &&
+      rejectOpen &&
       (state === "review_refresh_required" || state === "release_gate_required") ? (
         <div className="space-y-3 border-t border-store-border pt-3">{rejectForm}</div>
       ) : null}

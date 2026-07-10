@@ -257,6 +257,7 @@ function basePack(overrides: Partial<ProviderPackDetailDto> = {}): ProviderPackD
     retrievalEvaluation: null,
     releaseGate: null,
     latestRejectionReason: null,
+    latestReviewStatus: null,
     versions: [
       {
         id: "v",

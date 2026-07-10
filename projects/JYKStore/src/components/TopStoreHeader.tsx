@@ -13,7 +13,9 @@ export function TopStoreHeader() {
           </div>
         </div>
       </div>
-      <HeaderProfileButton />
+      <div className="shrink-0">
+        <HeaderProfileButton />
+      </div>
     </div>
   );
 }

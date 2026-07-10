@@ -102,7 +102,10 @@ export function bottomTabActive(key: BottomTabKey, pathname: string): boolean {
     case "myPacks":
       return pathname === ROUTES.myPacks || pathname.startsWith(`${ROUTES.myPacks}/`);
     case "account":
-      return pathname === ROUTES.account || pathname === ROUTES.apiKeys || pathname.startsWith("/provider") || pathname.startsWith("/admin") || pathname.startsWith("/docs");
+      return (
+        pathname === ROUTES.account ||
+        pathname.startsWith(`${ROUTES.account}/`)
+      );
     default:
       return false;
   }

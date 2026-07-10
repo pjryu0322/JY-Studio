@@ -43,6 +43,11 @@ import {
 import { prisma } from "@/lib/prisma";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { getApprovalBlockingSourceValidationMessage } from "@/lib/source-validation-readiness";
+import {
+  OPEN_PACK_REVIEW_STATUSES,
+  PackReviewStatus,
+  isAdminReviewAccepted,
+} from "@/lib/pack-review-status";
 
 const listInclude = {
   versions: {
@@ -443,6 +448,69 @@ async function recordRejectionPipeline(
   }
 }
 
+export async function acceptPackReview(input: {
+  packId: string;
+  reviewerClientId?: string;
+  reviewerUserId?: string | null;
+}) {
+  const packId = input.packId.trim();
+
+  const pack = await prisma.knowledgePack.findUnique({
+    where: { packId },
+  });
+
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  if (pack.status !== PackStatus.REVIEWING) {
+    return { error: "NOT_REVIEWING" as const };
+  }
+
+  const pending = await prisma.packReview.findFirst({
+    where: { packId, status: PackReviewStatus.PENDING },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!pending) {
+    const open = await prisma.packReview.findFirst({
+      where: { packId, status: { in: [...OPEN_PACK_REVIEW_STATUSES] } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (open?.status === PackReviewStatus.IN_REVIEW) {
+      return { error: "ALREADY_ACCEPTED" as const };
+    }
+    return { error: "NO_PENDING_REVIEW" as const };
+  }
+
+  await prisma.packReview.update({
+    where: { id: pending.id },
+    data: {
+      status: PackReviewStatus.IN_REVIEW,
+      reviewerClientId: input.reviewerClientId ?? null,
+      reviewerUserId: input.reviewerUserId ?? null,
+    },
+  });
+
+  await recordProviderAudit({
+    action: AuditAction.ADMIN_REVIEW_UPDATE,
+    entityType: "PackReview",
+    entityId: pending.id,
+    actorUserId: input.reviewerUserId,
+    metadata: {
+      packId,
+      action: "ACCEPT",
+      previousStatus: PackReviewStatus.PENDING,
+      status: PackReviewStatus.IN_REVIEW,
+      adminUserId: input.reviewerUserId ?? null,
+      reviewerClientId: input.reviewerClientId ?? null,
+    },
+  });
+
+  const detail = await getAdminReviewDetail(packId);
+  return { detail: detail! };
+}
+
 export async function approvePackReview(input: {
   packId: string;
   reviewerClientId?: string;
@@ -459,6 +527,10 @@ export async function approvePackReview(input: {
 
   if (detailBefore.pack.status !== "REVIEWING") {
     return { error: "NOT_REVIEWING" as const };
+  }
+
+  if (!isAdminReviewAccepted(detailBefore.latestReview?.status)) {
+    return { error: "NOT_ACCEPTED" as const };
   }
 
   const readinessError = validateApprovalReadiness(detailBefore);
@@ -495,6 +567,15 @@ export async function approvePackReview(input: {
   const memo = input.memo?.trim() || null;
   const now = new Date();
 
+  const accepted = await prisma.packReview.findFirst({
+    where: { packId, status: PackReviewStatus.IN_REVIEW },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!accepted) {
+    return { error: "NOT_ACCEPTED" as const };
+  }
+
   await prisma.$transaction(async (tx) => {
     await tx.knowledgePack.update({
       where: { packId },
@@ -505,36 +586,17 @@ export async function approvePackReview(input: {
       },
     });
 
-    const pending = await tx.packReview.findFirst({
-      where: { packId, status: "PENDING" },
-      orderBy: { createdAt: "desc" },
+    await tx.packReview.update({
+      where: { id: accepted.id },
+      data: {
+        status: "APPROVED",
+        decision: "APPROVE",
+        memo,
+        reviewerClientId: input.reviewerClientId ?? null,
+        reviewerUserId: input.reviewerUserId ?? null,
+        decidedAt: now,
+      },
     });
-
-    if (pending) {
-      await tx.packReview.update({
-        where: { id: pending.id },
-        data: {
-          status: "APPROVED",
-          decision: "APPROVE",
-          memo,
-          reviewerClientId: input.reviewerClientId ?? null,
-          reviewerUserId: input.reviewerUserId ?? null,
-          decidedAt: now,
-        },
-      });
-    } else {
-      await tx.packReview.create({
-        data: {
-          packId,
-          status: "APPROVED",
-          decision: "APPROVE",
-          memo,
-          reviewerClientId: input.reviewerClientId ?? null,
-          reviewerUserId: input.reviewerUserId ?? null,
-          decidedAt: now,
-        },
-      });
-    }
   });
 
   await recordProviderAudit({
@@ -583,6 +645,15 @@ export async function rejectPackReview(input: {
     return { error: "NOT_REVIEWING" as const };
   }
 
+  const openReview = await prisma.packReview.findFirst({
+    where: { packId, status: { in: [...OPEN_PACK_REVIEW_STATUSES] } },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!isAdminReviewAccepted(openReview?.status)) {
+    return { error: "NOT_ACCEPTED" as const };
+  }
+
   const memo = input.memo?.trim() || null;
   const now = new Date();
 
@@ -592,38 +663,18 @@ export async function rejectPackReview(input: {
       data: { status: PackStatus.DRAFT },
     });
 
-    const pending = await tx.packReview.findFirst({
-      where: { packId, status: "PENDING" },
-      orderBy: { createdAt: "desc" },
+    await tx.packReview.update({
+      where: { id: openReview!.id },
+      data: {
+        status: "REJECTED",
+        decision: "REJECT",
+        memo,
+        rejectionReason,
+        reviewerClientId: input.reviewerClientId ?? null,
+        reviewerUserId: input.reviewerUserId ?? null,
+        decidedAt: now,
+      },
     });
-
-    if (pending) {
-      await tx.packReview.update({
-        where: { id: pending.id },
-        data: {
-          status: "REJECTED",
-          decision: "REJECT",
-          memo,
-          rejectionReason,
-          reviewerClientId: input.reviewerClientId ?? null,
-          reviewerUserId: input.reviewerUserId ?? null,
-          decidedAt: now,
-        },
-      });
-    } else {
-      await tx.packReview.create({
-        data: {
-          packId,
-          status: "REJECTED",
-          decision: "REJECT",
-          memo,
-          rejectionReason,
-          reviewerClientId: input.reviewerClientId ?? null,
-          reviewerUserId: input.reviewerUserId ?? null,
-          decidedAt: now,
-        },
-      });
-    }
   });
 
   await recordProviderAudit({

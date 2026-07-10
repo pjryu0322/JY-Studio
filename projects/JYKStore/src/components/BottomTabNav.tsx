@@ -2,10 +2,37 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BOTTOM_TABS, bottomTabActive } from "@/lib/routes";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { isAdminAccountRole } from "@/lib/account-role";
+import { fetchAuthSession } from "@/lib/auth-api";
+import { BOTTOM_TABS, bottomTabActive, type BottomTabKey } from "@/lib/routes";
 
 export function BottomTabNav() {
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const session = await fetchAuthSession();
+      setIsAdmin(
+        Boolean(
+          session.loggedIn &&
+            isAdminAccountRole(session.accountRole ?? session.user?.accountRole),
+        ),
+      );
+    } catch {
+      setIsAdmin(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh, pathname]);
+
+  const tabs = useMemo(
+    () => BOTTOM_TABS.filter((tab) => (tab.key === "account" ? isAdmin : true)),
+    [isAdmin],
+  );
 
   return (
     <nav
@@ -13,8 +40,8 @@ export function BottomTabNav() {
       aria-label="주요 메뉴"
     >
       <ul className="flex items-stretch justify-around">
-        {BOTTOM_TABS.map((tab) => {
-          const active = bottomTabActive(tab.key, pathname);
+        {tabs.map((tab) => {
+          const active = bottomTabActive(tab.key as BottomTabKey, pathname);
           return (
             <li key={tab.key} className="flex-1">
               <Link

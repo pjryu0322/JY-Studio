@@ -12,7 +12,7 @@ export default async function TodayPage() {
     return (
       <EmptyState
         title="공개된 지식팩을 준비 중입니다."
-        description="데이터베이스 seed를 실행했는지 확인해 주세요."
+        description="제공자가 검수·승인한 지식팩이 공개되면 여기에 표시됩니다."
         ctaLabel="지식팩 둘러보기"
         ctaHref={ROUTES.packs}
       />

@@ -8,6 +8,8 @@ import { fetchAdminReviewItems } from "@/lib/admin-review-api";
 import {
   ADMIN_REVIEWS_LIST_TITLE,
   ADMIN_REVIEWS_OPEN_DETAIL,
+  ADMIN_REVIEWS_STATUS_IN_REVIEW,
+  ADMIN_REVIEWS_STATUS_PENDING,
 } from "@/lib/role-based-ux-copy";
 import { adminReviewDetailPath } from "@/lib/routes";
 
@@ -66,7 +68,19 @@ export function AdminReviewListPageClient() {
               <div className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-semibold text-slate-900">{item.name}</p>
-                  <AdminReviewStatusBadge status={item.status} />
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <AdminReviewStatusBadge status={item.status} />
+                    {item.reviewStatus === "PENDING" ? (
+                      <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-900">
+                        {ADMIN_REVIEWS_STATUS_PENDING}
+                      </span>
+                    ) : null}
+                    {item.reviewStatus === "IN_REVIEW" ? (
+                      <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-900">
+                        {ADMIN_REVIEWS_STATUS_IN_REVIEW}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 <p className="mt-1 text-xs text-slate-700">제공자: {item.providerName}</p>
                 <p className="mt-1 font-mono text-xs text-store-muted">지식팩 ID: {item.packId}</p>

@@ -6,7 +6,6 @@ import {
 } from "@prisma/client";
 import { ensureStructureTemplatesSeeded } from "../src/lib/structure-quality/structure-template-service";
 import { mockCategories } from "../src/data/mock-categories";
-import { mockPacks } from "../src/data/mock-packs";
 import type { KnowledgePack, KnowledgePackStatus } from "../src/types/pack";
 
 const prisma = new PrismaClient();
@@ -215,10 +214,8 @@ async function main() {
   await seedCategories();
   console.log(`  ✓ ${mockCategories.length} categories`);
 
-  for (const pack of mockPacks) {
-    await seedPack(pack);
-    console.log(`  ✓ pack ${pack.packId}`);
-  }
+  // Demo/mock knowledge packs are intentionally not seeded.
+  // Catalog content comes from real provider submissions.
 
   await ensureStructureTemplatesSeeded();
   console.log("  ✓ structure templates");

@@ -1,4 +1,5 @@
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
+import { isAdminReviewAccepted } from "@/lib/pack-review-status";
 import type { ProviderReviewSubmitSnapshot } from "@/lib/provider-review-submit-snapshot";
 
 export type ReviewDecisionState =
@@ -102,6 +103,9 @@ export function isSubmitSnapshotApprovalEligible(detail: AdminReviewDetailDto): 
 }
 
 export function canApproveAdminReview(detail: AdminReviewDetailDto): boolean {
+  if (!isAdminReviewAccepted(detail.latestReview?.status)) {
+    return false;
+  }
   if (isSubmitSnapshotApprovalEligible(detail)) {
     return true;
   }

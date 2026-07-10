@@ -41,6 +41,17 @@ export async function fetchAdminReviewDetail(packId: string): Promise<AdminRevie
   return (await response.json()) as AdminReviewDetailResponse;
 }
 
+export async function acceptAdminReview(packId: string): Promise<AdminReviewDetailResponse> {
+  const response = await fetch(`/api/v1/admin/reviews/${encodeURIComponent(packId)}/accept`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminReviewDetailResponse;
+}
+
 export async function approveAdminReview(
   packId: string,
   input: { memo?: string; publishAsVerified?: boolean },
