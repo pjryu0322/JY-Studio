@@ -92,6 +92,16 @@ export const PROVIDER_PACK_DRAFT_GENERATE_CTA = "Knowledge Unit 초안 생성";
 export const PROVIDER_PACK_DRAFT_VIEW_LIST = "초안 목록 보기";
 export const PROVIDER_PACK_REVIEW_SUBMIT_CTA = "검수 요청 제출";
 
+export const PROVIDER_KU_DRAFT_PANEL_TITLE = "AI 추출 결과";
+export const PROVIDER_KU_PROCESSING_TITLE = "원천 문서 처리 현황";
+export const PROVIDER_KU_PROCESSING_DETAIL_TOGGLE = "상세 보기";
+export const PROVIDER_KU_STATUS_COMPLETED = "생성 완료";
+export const PROVIDER_KU_STATUS_PENDING = "분석 대기";
+export const PROVIDER_KU_STATUS_EXCLUDED = "생성 제외";
+export const PROVIDER_KU_REVIEW_STATUS_PENDING = "검토 대기";
+export const PROVIDER_KU_CONTENT_VIEW = "내용 보기";
+export const PROVIDER_KU_EVIDENCE_VIEW = "근거 보기";
+
 export const PROVIDER_REVIEW_READONLY_HINT =
   "검토 요청 후 운영자가 승인·활성화하면 공개 지식팩으로 사용할 수 있습니다.";
 

@@ -84,6 +84,11 @@ function makeChunk(
 }
 
 function createMockDb(chunks: ChunkRow[]) {
+  const sourceDocuments = chunks
+    .map((chunk) => chunk.sourceDocument)
+    .filter((doc): doc is SourceDocument => Boolean(doc));
+  const uniqueDocs = [...new Map(sourceDocuments.map((doc) => [doc.id, doc])).values()];
+
   return {
     providerProfile: {
       findFirst: async () => ({ id: "profile-1", clientId: "client-1", userId: "user-1" }),
@@ -93,7 +98,7 @@ function createMockDb(chunks: ChunkRow[]) {
       findFirst: async () => ({
         packId: "pack-1",
         providerProfileId: "profile-1",
-        versions: [{ id: "ver-1" }],
+        versions: [{ id: "ver-1", sourceDocuments: uniqueDocs }],
       }),
     },
     knowledgeChunk: {

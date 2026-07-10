@@ -1,5 +1,7 @@
 import type { SourceFormat, SourceType } from "@prisma/client";
 import type { GitHubProductType } from "./github-auto-collect-types";
+import { buildUserFacingKuDraftContent } from "@/lib/knowledge-unit-draft/ku-draft-content";
+import { computeKuDraftContentChecksum } from "@/lib/knowledge-unit-draft/ku-draft-dedup";
 
 export const AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE = "AUTO_KNOWLEDGE_UNIT_DRAFT";
 
@@ -27,6 +29,10 @@ export type DraftCandidate = {
   sourceFormat: SourceFormat;
   evidenceHeadings: string[];
   evidenceKeywords: string[];
+  topic: string;
+  primaryHeading: string | null;
+  sourceExcerpt: string | null;
+  contentChecksum: string;
 };
 
 export function extractGitHubPathFromSourceUrl(sourceUrl: string | null | undefined): string | null {
@@ -118,37 +124,70 @@ function sampleCodeBullets(content: string, path: string | null): string[] {
   return hints.length > 0 ? hints : ["코드 예제의 목적과 적용 상황을 검토합니다."];
 }
 
+export function extractMarkdownTopics(
+  content: string,
+  limit = 6,
+): { heading: string; body: string }[] {
+  const lines = content.split(/\r?\n/);
+  const topics: { heading: string; body: string }[] = [];
+  let currentHeading: string | null = null;
+  let buffer: string[] = [];
+
+  const flush = () => {
+    if (!currentHeading) return;
+    const body = buffer.join("\n").trim();
+    if (body.length >= 20) {
+      topics.push({ heading: currentHeading, body });
+    }
+    buffer = [];
+  };
+
+  for (const line of lines) {
+    const h2 = /^##\s+(.+?)\s*$/.exec(line.trim());
+    if (h2?.[1]) {
+      flush();
+      currentHeading = h2[1].replace(/[#`*]/g, "").trim();
+      if (topics.length >= limit) break;
+      continue;
+    }
+    if (currentHeading) buffer.push(line);
+  }
+  flush();
+
+  return topics.slice(0, limit);
+}
+
 function buildDraftContent(params: {
   draftTitle: string;
   sourceTitle: string;
   sourcePath: string | null;
-  sourceDocumentId: string;
-  sourceUrl: string | null;
-  bullets: string[];
+  topicBody: string;
   sourceType: SourceType;
+  relatedUnits: string[];
 }): string {
   const pathLabel = params.sourcePath ?? params.sourceTitle;
-  const bulletBlock =
-    params.bullets.length > 0
-      ? params.bullets.map((b) => `- ${b}`).join("\n")
-      : "- 문서에서 추출한 핵심 개념을 검토합니다.";
+  const keyPoints = params.topicBody
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter((line) => line.length > 8)
+    .slice(0, 6);
 
-  return [
-    "## 목적",
-    `이 Knowledge Unit은 \`${pathLabel}\` SourceDocument에서 추출한 「${params.draftTitle}」 초안입니다.`,
-    "",
-    "## 핵심 내용",
-    bulletBlock,
-    "",
-    "## AI 활용 기준",
-    "- 구현 프롬프트에 포함할 수 있는 공식 제품지식 후보",
-    `- sourceType(${params.sourceType})에 맞는 표현·용어를 유지했는지 검토`,
-    "- 라이선스·버전·환경 조건을 확인한 뒤 승인",
-    "",
-    "## 출처",
-    `- SourceDocument: ${params.sourceDocumentId}`,
-    params.sourceUrl ? `- URL: ${params.sourceUrl}` : "- URL: (없음)",
-  ].join("\n");
+  const codeLine = params.topicBody
+    .split(/\r?\n/)
+    .find((line) => /^(```|import |const |npm |yarn )/.test(line.trim()));
+
+  return buildUserFacingKuDraftContent({
+    title: params.draftTitle,
+    description: `${pathLabel} 문서에서 「${params.draftTitle}」 주제를 추출했습니다.`,
+    keyPoints:
+      keyPoints.length > 0
+        ? keyPoints
+        : [`${params.draftTitle} 관련 핵심 개념을 검토합니다.`, `sourceType: ${params.sourceType}`],
+    exampleCode: codeLine?.startsWith("```")
+      ? params.topicBody.match(/```[\s\S]*?```/)?.[0]?.replace(/```/g, "").trim() ?? null
+      : codeLine ?? null,
+    relatedUnits: params.relatedUnits,
+  });
 }
 
 function ensureChunkContentLength(content: string): string {
@@ -172,58 +211,75 @@ export function buildDraftCandidatesForSourceDocument(
   const sourcePath =
     extractGitHubPathFromSourceUrl(doc.sourceUrl) ?? doc.fileName?.replace(/\\/g, "/") ?? null;
   const content = doc.content?.trim() ?? "";
-  const headings = doc.sourceFormat === "MARKDOWN" ? extractMarkdownHeadings(content) : [];
-  const pathTitle = inferTitleFromPath(sourcePath);
-  const titles: string[] = [];
-
-  if (pathTitle) titles.push(pathTitle);
-  for (const heading of headings) {
-    if (!titles.includes(heading)) titles.push(heading);
-  }
-  for (const fallback of defaultTitlesForSourceType(doc.sourceType)) {
-    if (!titles.includes(fallback)) titles.push(fallback);
-  }
-
   const isCode =
     doc.sourceFormat === "CODE" ||
     doc.sourceType === "SAMPLE_CODE" ||
     (sourcePath ? /\.(ts|tsx|js|jsx|java|py|go)$/i.test(sourcePath) : false);
+  const headings = doc.sourceFormat === "MARKDOWN" ? extractMarkdownHeadings(content) : [];
+  const topics =
+    doc.sourceFormat === "MARKDOWN" && !isCode ? extractMarkdownTopics(content) : [];
+
+  const pathTitle = inferTitleFromPath(sourcePath);
+  const topicSeeds: { title: string; body: string; primaryHeading: string | null }[] = [];
+
+  if (topics.length > 0) {
+    for (const topic of topics) {
+      topicSeeds.push({ title: topic.heading, body: topic.body, primaryHeading: topic.heading });
+    }
+  } else {
+    const titles: string[] = [];
+    if (pathTitle) titles.push(pathTitle);
+    for (const heading of headings) {
+      if (!titles.includes(heading)) titles.push(heading);
+    }
+    for (const fallback of defaultTitlesForSourceType(doc.sourceType)) {
+      if (!titles.includes(fallback)) titles.push(fallback);
+    }
+  for (const title of titles) {
+      const body = isCode ? sampleCodeBullets(content, sourcePath).join("\n") : content;
+      topicSeeds.push({
+        title,
+        body,
+        primaryHeading: headings.includes(title) ? title : null,
+      });
+    }
+  }
 
   const candidates: DraftCandidate[] = [];
-  const maxPerDoc = isCode ? 2 : 4;
+  const maxPerDoc = isCode ? 2 : Math.min(6, topicSeeds.length);
 
-  for (let i = 0; i < Math.min(titles.length, maxPerDoc); i += 1) {
-    const title = titles[i]!;
-    const section = headings.includes(title) ? title : pathTitle === title ? sourcePath : title;
-    const bullets = isCode
-      ? sampleCodeBullets(content, sourcePath)
-      : [
-          `${doc.title} 문서의 「${title}」 관련 요약`,
-          content.split(/\r?\n/).find((l) => l.trim().length > 10)?.trim().slice(0, 120) ??
-            "본문 heading/문단을 기준으로 검토 포인트를 정리합니다.",
-        ];
+  for (let i = 0; i < Math.min(topicSeeds.length, maxPerDoc); i += 1) {
+    const seed = topicSeeds[i]!;
+    const title = seed.title.length > 120 ? seed.title.slice(0, 120) : seed.title;
+    const section = seed.primaryHeading ?? pathTitle ?? title;
+    const relatedUnits = topicSeeds
+      .map((t) => t.title)
+      .filter((t) => t !== title)
+      .slice(0, 3);
+
+    const bodyContent = buildDraftContent({
+      draftTitle: title,
+      sourceTitle: doc.title,
+      sourcePath,
+      topicBody: seed.body,
+      sourceType: doc.sourceType,
+      relatedUnits,
+    });
 
     const unitSlug = slugify(`${title}-${i}`);
+    const sourceExcerpt = seed.body.trim().slice(0, 600) || content.slice(0, 600);
+
     candidates.push({
       sourceDocumentId: doc.id,
       unitSlug,
-      title: title.length > 120 ? title.slice(0, 120) : title,
+      title,
       section: typeof section === "string" ? section.slice(0, 200) : null,
-      content: ensureChunkContentLength(
-        buildDraftContent({
-          draftTitle: title,
-          sourceTitle: doc.title,
-          sourcePath,
-          sourceDocumentId: doc.id,
-          sourceUrl: doc.sourceUrl,
-          bullets,
-          sourceType: doc.sourceType,
-        }),
-      ),
+      content: ensureChunkContentLength(bodyContent),
       tags: [
         "github-auto-collect",
         "knowledge-unit-draft",
         doc.sourceType.toLowerCase(),
+        slugify(title),
         ...(productProfileType ? [productProfileType.toLowerCase()] : []),
       ].slice(0, 10),
       score: scoreCandidate(title, sourcePath, i),
@@ -232,7 +288,11 @@ export function buildDraftCandidatesForSourceDocument(
       sourceType: doc.sourceType,
       sourceFormat: doc.sourceFormat,
       evidenceHeadings: headings.slice(0, 5),
-      evidenceKeywords: bullets.slice(0, 5).map((b) => b.slice(0, 80)),
+      evidenceKeywords: relatedUnits.slice(0, 5),
+      topic: title,
+      primaryHeading: seed.primaryHeading,
+      sourceExcerpt,
+      contentChecksum: computeKuDraftContentChecksum(bodyContent),
     });
   }
 
@@ -260,6 +320,11 @@ export function buildDraftChunkMetadata(params: {
   productProfileType?: GitHubProductType;
   evidenceHeadings: string[];
   evidenceKeywords: string[];
+  topic?: string;
+  primaryHeading?: string | null;
+  sourceExcerpt?: string | null;
+  contentChecksum?: string;
+  warnings?: string[];
 }): Record<string, unknown> {
   return {
     unitId: params.unitId,
@@ -273,10 +338,15 @@ export function buildDraftChunkMetadata(params: {
     sourceFormat: params.sourceFormat,
     generationMode: params.generationMode,
     ...(params.productProfileType ? { productProfileType: params.productProfileType } : {}),
+    ...(params.topic ? { topic: params.topic } : {}),
+    ...(params.primaryHeading ? { primaryHeading: params.primaryHeading } : {}),
+    ...(params.contentChecksum ? { contentChecksum: params.contentChecksum } : {}),
+    ...(params.warnings && params.warnings.length > 0 ? { warnings: params.warnings } : {}),
     evidence: {
       path: params.sourcePath,
       headings: params.evidenceHeadings,
       keywords: params.evidenceKeywords,
+      excerpt: params.sourceExcerpt ?? null,
     },
   };
 }

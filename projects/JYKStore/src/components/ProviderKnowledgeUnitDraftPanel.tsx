@@ -1,56 +1,65 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProviderKnowledgeUnitDraftDto } from "@/lib/provider-knowledge-unit-draft-dto";
 import { fetchProviderKnowledgeUnitDraftsApi } from "@/lib/provider-center-api";
-import { getSourceFormatLabel, getSourceTypeLabel } from "@/lib/source-type-dto";
+import { groupKuDraftsByTopic } from "@/lib/knowledge-unit-draft/ku-draft-processing-status";
+import { parseUserFacingKuDraftContent } from "@/lib/knowledge-unit-draft/ku-draft-content";
+import {
+  PROVIDER_KU_CONTENT_VIEW,
+  PROVIDER_KU_DRAFT_PANEL_TITLE,
+  PROVIDER_KU_EVIDENCE_VIEW,
+  PROVIDER_KU_PROCESSING_DETAIL_TOGGLE,
+  PROVIDER_KU_PROCESSING_TITLE,
+  PROVIDER_KU_REVIEW_STATUS_PENDING,
+  PROVIDER_KU_STATUS_COMPLETED,
+  PROVIDER_KU_STATUS_EXCLUDED,
+  PROVIDER_KU_STATUS_PENDING,
+} from "@/lib/role-based-ux-copy";
 
 const inputClass =
   "min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm disabled:opacity-60";
 
 type StatusFilter = "pending_review" | "superseded" | "all";
 
-function ReviewStatusBadge({ status }: { readonly status: string }) {
-  const tone =
-    status === "pending_review"
-      ? "bg-amber-100 text-amber-900"
-      : status === "superseded"
-        ? "bg-slate-200 text-slate-700"
-        : "bg-slate-100 text-slate-700";
-  return (
-    <span className={`rounded-lg px-2 py-0.5 text-[11px] font-semibold ${tone}`}>{status}</span>
-  );
+function statusLabel(status: string): string {
+  if (status === "pending_review") return PROVIDER_KU_REVIEW_STATUS_PENDING;
+  if (status === "superseded") return "대체됨";
+  return status;
+}
+
+function highlightExcerpt(source: string, needle: string | null): string {
+  if (!needle?.trim() || !source) return source;
+  const idx = source.toLowerCase().indexOf(needle.trim().toLowerCase().slice(0, 40));
+  if (idx < 0) return source.slice(0, 800);
+  const start = Math.max(0, idx - 120);
+  return source.slice(start, start + 800);
 }
 
 function DraftCard({ draft }: { readonly draft: ProviderKnowledgeUnitDraftDto }) {
   const [showContent, setShowContent] = useState(false);
   const [showEvidence, setShowEvidence] = useState(false);
-
-  const sourceTypeLabel = draft.sourceType ? getSourceTypeLabel(draft.sourceType) : "—";
-  const sourceFormatLabel = draft.sourceFormat ? getSourceFormatLabel(draft.sourceFormat) : "—";
+  const parsed = useMemo(() => parseUserFacingKuDraftContent(draft.content), [draft.content]);
+  const excerpt = draft.evidence?.excerpt ?? "";
+  const highlightNeedle = draft.evidence?.headings?.[0] ?? draft.title;
 
   return (
     <li className="rounded-xl border border-store-border bg-white px-3 py-3 text-xs">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="font-bold text-slate-900">{draft.title}</p>
-        <ReviewStatusBadge status={draft.reviewStatus} />
+        <span className="rounded-lg bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+          {statusLabel(draft.reviewStatus)}
+        </span>
       </div>
-      {draft.sourcePath ? (
-        <p className="mt-1 break-all text-store-muted">경로: {draft.sourcePath}</p>
+      {draft.topic ? <p className="mt-1 text-store-muted">주제: {draft.topic}</p> : null}
+
+      {draft.warnings.length > 0 ? (
+        <ul className="mt-2 space-y-1 rounded-lg bg-amber-50 px-2 py-2 text-amber-950">
+          {draft.warnings.map((warning) => (
+            <li key={warning}>⚠ {warning}</li>
+          ))}
+        </ul>
       ) : null}
-      {draft.sourceDocument ? (
-        <p className="mt-1 break-all text-store-muted">
-          출처 문서: {draft.sourceDocument.title} · 검증 {draft.sourceDocument.validationStatus}
-        </p>
-      ) : null}
-      <p className="mt-1 text-store-muted">
-        {sourceTypeLabel} · {sourceFormatLabel}
-        {draft.tags.length > 0 ? ` · ${draft.tags.join(", ")}` : ""}
-      </p>
-      <p className="mt-1 text-[11px] text-store-muted">
-        생성 {new Date(draft.createdAt).toLocaleString("ko-KR")}
-        {draft.generatedBy ? ` · ${draft.generatedBy}` : ""}
-      </p>
 
       <div className="mt-2 flex flex-col gap-2 sm:flex-row">
         <button
@@ -58,40 +67,63 @@ function DraftCard({ draft }: { readonly draft: ProviderKnowledgeUnitDraftDto })
           onClick={() => setShowContent((v) => !v)}
           className="min-h-[44px] rounded-lg border border-store-border px-3 text-xs font-semibold"
         >
-          {showContent ? "내용 접기" : "내용 보기"}
+          {showContent ? "내용 접기" : PROVIDER_KU_CONTENT_VIEW}
         </button>
         <button
           type="button"
           onClick={() => setShowEvidence((v) => !v)}
           className="min-h-[44px] rounded-lg border border-store-border px-3 text-xs font-semibold"
         >
-          {showEvidence ? "근거 접기" : "근거 보기"}
+          {showEvidence ? "근거 접기" : PROVIDER_KU_EVIDENCE_VIEW}
         </button>
       </div>
 
       {showContent ? (
-        <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-800">
-          {draft.content}
-        </pre>
+        <div className="mt-2 space-y-2 rounded-lg bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-800">
+          <p className="font-semibold">설명</p>
+          <p>{parsed.description}</p>
+          {parsed.keyPoints.length > 0 ? (
+            <>
+              <p className="font-semibold">핵심 내용</p>
+              <ul className="list-disc pl-4">
+                {parsed.keyPoints.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          {parsed.exampleCode ? (
+            <>
+              <p className="font-semibold">예제 코드</p>
+              <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-slate-900 p-2 text-slate-100">
+                {parsed.exampleCode}
+              </pre>
+            </>
+          ) : null}
+          {parsed.relatedUnits.length > 0 ? (
+            <>
+              <p className="font-semibold">관련 Unit</p>
+              <p>{parsed.relatedUnits.join(" · ")}</p>
+            </>
+          ) : null}
+        </div>
       ) : null}
 
       {showEvidence ? (
-        <div className="mt-2 rounded-lg bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-800">
-          {draft.sourceUrl ? (
-            <p className="break-all">
-              sourceUrl: {draft.sourceUrl}
-            </p>
-          ) : null}
-          {draft.productProfileType ? <p className="mt-1">productProfileType: {draft.productProfileType}</p> : null}
-          {draft.evidence?.headings && draft.evidence.headings.length > 0 ? (
-            <p className="mt-1">headings: {draft.evidence.headings.join(" · ")}</p>
-          ) : null}
-          {draft.evidence?.keywords && draft.evidence.keywords.length > 0 ? (
-            <p className="mt-1 break-all">keywords: {draft.evidence.keywords.join(" · ")}</p>
-          ) : null}
-          {draft.sourceDocument?.validationSummary ? (
-            <p className="mt-1 text-amber-900">{draft.sourceDocument.validationSummary}</p>
-          ) : null}
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <div className="rounded-lg bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-800">
+            <p className="font-semibold">원문 발췌</p>
+            <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap break-words">
+              {highlightExcerpt(excerpt, highlightNeedle)}
+            </pre>
+          </div>
+          <div className="rounded-lg bg-indigo-50 p-3 text-[11px] leading-relaxed text-indigo-950">
+            <p className="font-semibold">AI 생성 결과</p>
+            <p className="mt-1">{parsed.description}</p>
+            {parsed.keyPoints[0] ? (
+              <p className="mt-2 rounded bg-white/70 px-2 py-1">↳ {parsed.keyPoints[0]}</p>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </li>
@@ -110,6 +142,7 @@ export function ProviderKnowledgeUnitDraftPanel({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("pending_review");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showProcessingDetail, setShowProcessingDetail] = useState(false);
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchProviderKnowledgeUnitDraftsApi>> | null>(
     null,
   );
@@ -120,12 +153,12 @@ export function ProviderKnowledgeUnitDraftPanel({
     try {
       const result = await fetchProviderKnowledgeUnitDraftsApi(packId, {
         status: statusFilter,
-        limit: 50,
+        limit: 80,
       });
       setData(result);
     } catch (err) {
       setData(null);
-      setError(err instanceof Error ? err.message : "Knowledge Unit 초안을 불러오지 못했습니다.");
+      setError(err instanceof Error ? err.message : "AI 추출 결과를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -135,18 +168,67 @@ export function ProviderKnowledgeUnitDraftPanel({
     void loadDrafts();
   }, [loadDrafts, refreshNonce]);
 
+  const grouped = useMemo(
+    () => (data ? groupKuDraftsByTopic(data.items) : []),
+    [data],
+  );
+
   return (
     <div className={compact ? "mt-3" : "mt-4 rounded-2xl border border-store-border bg-slate-50 p-4"}>
       {!compact ? (
         <>
-          <h3 className="text-sm font-bold text-slate-900">Knowledge Unit 초안</h3>
+          <h3 className="text-sm font-bold text-slate-900">{PROVIDER_KU_DRAFT_PANEL_TITLE}</h3>
           <p className="mt-1 text-xs text-store-muted">
-            생성된 초안은 아직 공개되지 않습니다. 검토/승인 단계에서 활성화됩니다.
-          </p>
-          <p className="mt-1 text-[11px] text-store-muted">
-            승인/반려는 Admin 검토 단계(P26.9)에서 처리됩니다.
+            AI가 원천 문서에서 추출한 지식 후보입니다. 검토 후 검수 요청 단계에서 활성화됩니다.
           </p>
         </>
+      ) : null}
+
+      {data ? (
+        <div className="mt-3 rounded-xl border border-store-border bg-white p-3 text-xs text-slate-800">
+          <p className="font-bold">{PROVIDER_KU_PROCESSING_TITLE}</p>
+          <p className="mt-1">총 {data.processing.sourceDocumentTotal}개</p>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <p>
+              {PROVIDER_KU_STATUS_COMPLETED} <strong>{data.processing.generatedComplete}</strong>
+            </p>
+            <p>
+              {PROVIDER_KU_STATUS_PENDING} <strong>{data.processing.analysisPending}</strong>
+            </p>
+            <p>
+              {PROVIDER_KU_STATUS_EXCLUDED} <strong>{data.processing.excluded}</strong>
+            </p>
+            <p>
+              전체 진행률 <strong>{data.processing.progressPercent}%</strong>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowProcessingDetail((v) => !v)}
+            className="mt-2 text-xs font-bold text-store-accent underline-offset-2 hover:underline"
+          >
+            {showProcessingDetail ? "상세 접기" : PROVIDER_KU_PROCESSING_DETAIL_TOGGLE}
+          </button>
+          {showProcessingDetail ? (
+            <ul className="mt-2 space-y-2">
+              {data.documentProcessing.map((doc) => (
+                <li key={doc.sourceDocumentId} className="rounded-lg border border-store-border px-2 py-2">
+                  <p className="font-semibold break-all">{doc.path}</p>
+                  <p className="text-store-muted">
+                    {doc.status === "completed"
+                      ? "→ 완료"
+                      : doc.status === "pending"
+                        ? "→ 분석 대기"
+                        : `→ 생성 제외${doc.reason ? ` · 사유: ${doc.reason}` : ""}`}
+                  </p>
+                  {doc.generatedUnitTitles.length > 0 ? (
+                    <p className="mt-1">생성 Unit: {doc.generatedUnitTitles.join(", ")}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       ) : null}
 
       {!compact ? (
@@ -158,9 +240,9 @@ export function ProviderKnowledgeUnitDraftPanel({
               onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
               className={`mt-1 ${inputClass}`}
             >
-            <option value="pending_review">검토 대기</option>
-            <option value="superseded">대체됨</option>
-            <option value="all">전체</option>
+              <option value="pending_review">{PROVIDER_KU_REVIEW_STATUS_PENDING}</option>
+              <option value="superseded">대체됨</option>
+              <option value="all">전체</option>
             </select>
           </label>
           <button
@@ -177,35 +259,29 @@ export function ProviderKnowledgeUnitDraftPanel({
       {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
 
       {data ? (
-        <div
-          className={`${compact ? "mt-0" : "mt-3"} rounded-xl border border-store-border bg-white p-3 text-xs text-slate-800`}
-        >
-          {!compact ? (
-            <p>
-              전체 {data.summary.totalCount}개 · 검토 대기 {data.summary.pendingReviewCount}개 · 대체됨{" "}
-              {data.summary.supersededCount}개 · 활성 draft {data.summary.activeDraftCount}개
-            </p>
-          ) : (
-            <p className="font-semibold">생성된 초안 {data.summary.totalCount}개</p>
-          )}
-          {data.summary.activeDraftCount > 0 ? (
-            <p className="mt-2 rounded-lg bg-amber-50 px-2 py-1 text-amber-900">
-              비활성 draft가 아닌 항목이 포함되어 있습니다. 활성화 상태를 확인하세요.
-            </p>
-          ) : null}
-        </div>
+        <p className="mt-3 text-xs text-slate-700">
+          AI 추출 Unit {data.summary.totalCount}개 · {PROVIDER_KU_REVIEW_STATUS_PENDING}{" "}
+          {data.summary.pendingReviewCount}개
+        </p>
       ) : null}
 
       {!loading && data && data.items.length === 0 ? (
-        <p className="mt-3 text-sm text-store-muted">표시할 Knowledge Unit 초안이 없습니다.</p>
+        <p className="mt-3 text-sm text-store-muted">표시할 AI 추출 결과가 없습니다.</p>
       ) : null}
 
-      {data && data.items.length > 0 ? (
-        <ul className="mt-3 space-y-3">
-          {data.items.map((draft) => (
-            <DraftCard key={draft.id} draft={draft} />
+      {grouped.length > 0 ? (
+        <div className="mt-3 space-y-4">
+          {grouped.map((group) => (
+            <section key={group.topic}>
+              <h4 className="text-xs font-bold uppercase tracking-wide text-store-accent">{group.topic}</h4>
+              <ul className="mt-2 space-y-3">
+                {group.items.map((draft) => (
+                  <DraftCard key={draft.id} draft={draft} />
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       ) : null}
     </div>
   );

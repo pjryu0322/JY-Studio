@@ -4,6 +4,7 @@ import {
   toProviderKnowledgeUnitDraftDto,
   type ProviderKnowledgeUnitDraftListResponse,
 } from "@/lib/provider-knowledge-unit-draft-dto";
+import { buildKuProcessingSummary } from "@/lib/knowledge-unit-draft/ku-draft-processing-status";
 
 export type KnowledgeUnitDraftListStatus = "pending_review" | "superseded" | "all";
 
@@ -69,7 +70,11 @@ export async function listProviderKnowledgeUnitDrafts(
   const pack = await db.knowledgePack.findFirst({
     where: { packId: trimmedPackId, providerProfileId: profile.id },
     include: {
-      versions: { orderBy: { createdAt: "desc" }, take: 1 },
+      versions: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        include: { sourceDocuments: true },
+      },
     },
   });
 
@@ -123,6 +128,27 @@ export async function listProviderKnowledgeUnitDrafts(
       ? dtos
       : dtos.filter((dto) => dto.reviewStatus === status);
 
+  const draftsByDocumentId = new Map<string, { title: string; reviewStatus: string }[]>();
+  for (const dto of dtos) {
+    if (!dto.sourceDocumentId) continue;
+    const bucket = draftsByDocumentId.get(dto.sourceDocumentId) ?? [];
+    bucket.push({ title: dto.title, reviewStatus: dto.reviewStatus });
+    draftsByDocumentId.set(dto.sourceDocumentId, bucket);
+  }
+
+  const processingResult = buildKuProcessingSummary(
+    version.sourceDocuments.map((doc) => ({
+      id: doc.id,
+      title: doc.title,
+      sourceUrl: doc.sourceUrl,
+      fileName: doc.fileName,
+      content: doc.content,
+      validationStatus: doc.validationStatus,
+      validationSummary: doc.validationSummary,
+    })),
+    draftsByDocumentId,
+  );
+
   return {
     clientId,
     packId: pack.packId,
@@ -133,6 +159,8 @@ export async function listProviderKnowledgeUnitDrafts(
       supersededCount,
       activeDraftCount,
     },
+    processing: processingResult.summary,
+    documentProcessing: processingResult.documents,
     items: filtered.slice(0, limit),
   };
 }

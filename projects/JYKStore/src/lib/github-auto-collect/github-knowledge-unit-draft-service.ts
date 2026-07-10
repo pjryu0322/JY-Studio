@@ -22,6 +22,13 @@ import {
   normalizeGitHubRepositoryPath,
   pathMatchesRequestedSourcePath,
 } from "./github-path-utils";
+import {
+  dedupeKuDraftCandidates,
+  isKuDraftDuplicate,
+  type KuDraftDedupRecord,
+} from "@/lib/knowledge-unit-draft/ku-draft-dedup";
+import { buildKuDraftActionableWarnings } from "@/lib/knowledge-unit-draft/ku-draft-content";
+import { readDraftMetadata } from "@/lib/provider-knowledge-unit-draft-dto";
 
 export type GenerateGitHubKnowledgeUnitDraftDeps = {
   prismaClient?: typeof prisma;
@@ -157,14 +164,31 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
       versionId: version.id,
       chunkType: AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE,
     },
-    select: { id: true, sourceDocumentId: true, metadata: true },
+    select: { id: true, sourceDocumentId: true, title: true, content: true, metadata: true },
   });
 
-  const existingDraftDocIds = new Set(
-    existingDrafts
-      .map((c) => c.sourceDocumentId)
-      .filter((id): id is string => Boolean(id)),
-  );
+  const existingDedupRecords: KuDraftDedupRecord[] = existingDrafts
+    .filter((chunk) => {
+      const meta = readDraftMetadata(chunk.metadata);
+      return meta.reviewStatus === "pending_review";
+    })
+    .map((chunk) => {
+      const meta = readDraftMetadata(chunk.metadata);
+      const evidence = meta.evidence;
+      return {
+        sourceDocumentId: chunk.sourceDocumentId ?? "",
+        title: chunk.title,
+        sourcePath: meta.sourcePath,
+        primaryHeading:
+          typeof (chunk.metadata as Record<string, unknown> | null)?.primaryHeading === "string"
+            ? String((chunk.metadata as Record<string, unknown>).primaryHeading)
+            : evidence?.headings?.[0] ?? null,
+        contentChecksum:
+          typeof (chunk.metadata as Record<string, unknown> | null)?.contentChecksum === "string"
+            ? String((chunk.metadata as Record<string, unknown>).contentChecksum)
+            : chunk.content.slice(0, 120),
+      };
+    });
 
   const skippedDocuments: GitHubKnowledgeUnitDraftResult["skippedDocuments"] = [];
   const failedDocuments: GitHubKnowledgeUnitDraftResult["failedDocuments"] = [];
@@ -190,11 +214,6 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
     }
     if (doc.content.trim().length < SOURCE_DOCUMENT_MIN_CONTENT_LENGTH) {
       skippedDocuments.push({ sourceDocumentId: doc.id, reason: "CONTENT_TOO_SHORT" });
-      continue;
-    }
-    if (existingDraftDocIds.has(doc.id) && !normalized.overwriteExistingDrafts) {
-      skippedDocuments.push({ sourceDocumentId: doc.id, reason: "EXISTING_DRAFT" });
-      existingDraftSkippedCount += 1;
       continue;
     }
     eligible.push(doc);
@@ -237,17 +256,48 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
     ),
   );
 
-  const selected = selectDraftCandidates(
+  const selectedRaw = selectDraftCandidates(
     allCandidates,
     normalized.targetKnowledgeUnitCount,
     normalized.maxKnowledgeUnitCount,
   );
+
+  const { kept: batchDeduped, mergedCount: batchMerged } = dedupeKuDraftCandidates(selectedRaw);
+  if (batchMerged > 0) {
+    warnings.push(`동일 주제 중복 ${batchMerged}건을 자동 병합(생성 제외)했습니다.`);
+  }
+
+  const selected = batchDeduped.filter((candidate) => {
+    const record: KuDraftDedupRecord = {
+      sourceDocumentId: candidate.sourceDocumentId,
+      title: candidate.title,
+      sourcePath: candidate.sourcePath,
+      primaryHeading: candidate.primaryHeading,
+      contentChecksum: candidate.contentChecksum,
+    };
+    return !existingDedupRecords.some((existing) => isKuDraftDuplicate(record, existing));
+  });
+
+  const skippedByExisting = batchDeduped.length - selected.length;
+  if (skippedByExisting > 0) {
+    existingDraftSkippedCount += skippedByExisting;
+    warnings.push(`기존 Unit과 중복된 ${skippedByExisting}건은 새로 생성하지 않았습니다.`);
+  }
 
   let sortOrder = await nextSortOrder(db, version.id, 1);
   const drafts: GitHubKnowledgeUnitDraftResult["drafts"] = [];
 
   for (const candidate of selected) {
     const unitId = `ku_${candidate.sourceDocumentId}_${candidate.unitSlug}`;
+    const siblingTitles = selected
+      .filter((c) => c.sourceDocumentId === candidate.sourceDocumentId)
+      .map((c) => c.title);
+    const unitWarnings = buildKuDraftActionableWarnings({
+      title: candidate.title,
+      sourcePath: candidate.sourcePath,
+      siblingTitles,
+    });
+
     const metadata = buildDraftChunkMetadata({
       unitId,
       sourceDocumentId: candidate.sourceDocumentId,
@@ -259,6 +309,11 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
       productProfileType: normalized.productProfileType,
       evidenceHeadings: candidate.evidenceHeadings,
       evidenceKeywords: candidate.evidenceKeywords,
+      topic: candidate.topic,
+      primaryHeading: candidate.primaryHeading,
+      sourceExcerpt: candidate.sourceExcerpt,
+      contentChecksum: candidate.contentChecksum,
+      warnings: unitWarnings,
     });
 
     try {

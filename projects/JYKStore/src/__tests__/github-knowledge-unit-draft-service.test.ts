@@ -84,7 +84,14 @@ function createMockPrisma(options: {
         [...existingDraftSourceIds].map((sourceDocumentId, index) => ({
           id: `existing-${index}`,
           sourceDocumentId,
-          metadata: { reviewStatus: "pending_review" },
+          title: "Install",
+          content: "## 설명\nexisting",
+          metadata: {
+            reviewStatus: "pending_review",
+            sourcePath: "README.md",
+            primaryHeading: "Install",
+            contentChecksum: "existing-checksum",
+          },
         })),
       aggregate: async () => ({ _max: { sortOrder: 0 } }),
       update: async () => ({}),
@@ -345,8 +352,13 @@ describe("github knowledge unit draft service", () => {
     }
   });
 
-  it("skips documents with existing drafts when overwrite is false", async () => {
-    const docs = [makeDoc({ id: "doc-readme" })];
+  it("dedupes new drafts against existing pending drafts instead of skipping whole documents", async () => {
+    const docs = [
+      makeDoc({
+        id: "doc-readme",
+        content: `## Install\n\n${longBody}`,
+      }),
+    ];
     const { db, createdChunks } = createMockPrisma({
       documents: docs,
       existingDraftSourceIds: ["doc-readme"],
@@ -361,9 +373,8 @@ describe("github knowledge unit draft service", () => {
     assert.equal(result.summary.generatedDraftCount, 0);
     assert.equal(createdChunks.length, 0);
     assert.ok(
-      result.skippedDocuments.some(
-        (s) => s.sourceDocumentId === "doc-readme" && s.reason === "EXISTING_DRAFT",
-      ),
+      result.warnings.some((warning) => warning.includes("중복")),
+      "expected duplicate merge warning",
     );
   });
 

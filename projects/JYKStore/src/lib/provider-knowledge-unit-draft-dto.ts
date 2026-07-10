@@ -5,6 +5,7 @@ export type ProviderKnowledgeUnitDraftEvidenceDto = {
   path?: string | null;
   headings?: string[];
   keywords?: string[];
+  excerpt?: string | null;
 };
 
 export type ProviderKnowledgeUnitDraftSourceDocumentDto = {
@@ -38,8 +39,28 @@ export type ProviderKnowledgeUnitDraftDto = {
   productProfileType: string | null;
   evidence: ProviderKnowledgeUnitDraftEvidenceDto | null;
   sourceDocument: ProviderKnowledgeUnitDraftSourceDocumentDto | null;
+  topic: string | null;
+  warnings: string[];
   createdAt: string;
   updatedAt: string;
+};
+
+export type ProviderKnowledgeUnitDocumentProcessingDto = {
+  sourceDocumentId: string;
+  path: string;
+  title: string;
+  status: "completed" | "pending" | "excluded";
+  reason?: string;
+  generatedUnitTitles: string[];
+  steps: string[];
+};
+
+export type ProviderKnowledgeUnitProcessingSummaryDto = {
+  sourceDocumentTotal: number;
+  generatedComplete: number;
+  analysisPending: number;
+  excluded: number;
+  progressPercent: number;
 };
 
 export type ProviderKnowledgeUnitDraftListResponse = {
@@ -52,6 +73,8 @@ export type ProviderKnowledgeUnitDraftListResponse = {
     supersededCount: number;
     activeDraftCount: number;
   };
+  processing: ProviderKnowledgeUnitProcessingSummaryDto;
+  documentProcessing: ProviderKnowledgeUnitDocumentProcessingDto[];
   items: ProviderKnowledgeUnitDraftDto[];
 };
 
@@ -64,6 +87,8 @@ export type DraftMetadataFields = {
   sourceType: string | null;
   sourceFormat: string | null;
   productProfileType: string | null;
+  topic: string | null;
+  warnings: string[];
   evidence: ProviderKnowledgeUnitDraftEvidenceDto | null;
 };
 
@@ -90,6 +115,8 @@ export function readDraftMetadata(metadata: Prisma.JsonValue | null): DraftMetad
     sourceType: null,
     sourceFormat: null,
     productProfileType: null,
+    topic: null,
+    warnings: [],
     evidence: null,
   };
 
@@ -105,8 +132,11 @@ export function readDraftMetadata(metadata: Prisma.JsonValue | null): DraftMetad
       path: readString(ev.path),
       headings: readStringArray(ev.headings),
       keywords: readStringArray(ev.keywords),
+      excerpt: readString(ev.excerpt),
     };
   }
+
+  const warnings = readStringArray(obj.warnings) ?? [];
 
   return {
     reviewStatus: readString(obj.reviewStatus) ?? "unknown",
@@ -117,6 +147,8 @@ export function readDraftMetadata(metadata: Prisma.JsonValue | null): DraftMetad
     sourceType: readString(obj.sourceType),
     sourceFormat: readString(obj.sourceFormat),
     productProfileType: readString(obj.productProfileType),
+    topic: readString(obj.topic),
+    warnings,
     evidence,
   };
 }
@@ -161,6 +193,8 @@ export function toProviderKnowledgeUnitDraftDto(
     productProfileType: meta.productProfileType,
     evidence: meta.evidence,
     sourceDocument: toProviderKnowledgeUnitDraftSourceDocumentDto(chunk.sourceDocument),
+    topic: meta.topic,
+    warnings: meta.warnings,
     createdAt: chunk.createdAt.toISOString(),
     updatedAt: chunk.updatedAt.toISOString(),
   };

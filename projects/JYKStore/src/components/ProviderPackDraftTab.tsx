@@ -82,12 +82,7 @@ export function ProviderPackDraftTab({
           {generating ? "초안 생성 중…" : PROVIDER_PACK_DRAFT_GENERATE_CTA}
         </button>
       ) : (
-        <>
-          <p className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-950">
-            Knowledge Unit 초안 {knowledgeUnitDraftCount}개
-          </p>
-          <ProviderKnowledgeUnitDraftPanel packId={packId} refreshNonce={draftRefreshNonce} />
-        </>
+        <ProviderKnowledgeUnitDraftPanel packId={packId} refreshNonce={draftRefreshNonce} />
       )}
     </section>
   );
