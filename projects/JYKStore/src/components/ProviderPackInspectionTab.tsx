@@ -11,6 +11,7 @@ import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import { buildProviderInspectionReadiness } from "@/lib/provider-pack-inspection-readiness";
 import {
   evaluateProviderChunkQualityApi,
+  evaluateProviderReleaseGateApi,
   evaluateProviderStructureQualityApi,
   generateProviderRetrievalEvaluationCasesApi,
   runProviderInspectionAutoPrepareApi,
@@ -151,6 +152,9 @@ export function ProviderPackInspectionTab({
           onPackUpdated(data.pack);
         } else if (action === "RUN_RETRIEVAL_EVALUATION") {
           const data = await runProviderRetrievalEvaluationApi(packId);
+          onPackUpdated(data.pack);
+        } else if (action === "RUN_RELEASE_GATE") {
+          const data = await evaluateProviderReleaseGateApi(packId);
           onPackUpdated(data.pack);
         }
       } finally {

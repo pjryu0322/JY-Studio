@@ -177,3 +177,22 @@ export async function evaluateAdminReleaseGateApi(
   }
   return (await response.json()) as AdminReviewDetailResponse;
 }
+
+export async function refreshAdminReviewReadinessApi(
+  packId: string,
+): Promise<AdminReviewDetailResponse & { warnings?: string[]; stoppedAt?: string | null }> {
+  const response = await fetch(
+    `/api/v1/admin/packs/${encodeURIComponent(packId)}/review-refresh`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as AdminReviewDetailResponse & {
+    warnings?: string[];
+    stoppedAt?: string | null;
+  };
+}

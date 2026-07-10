@@ -166,7 +166,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   const onSubmitReview = async () => {
     if (!editable) return;
-    const ok = window.confirm("검수 요청을 제출할까요? 제출 후에는 초안 수정이 제한됩니다.");
+    const ok = window.confirm(
+      "최종 점검 후 검수 요청을 제출할까요? 제출 시 시스템이 최신 품질 점검을 다시 실행하며, 통과 후에는 초안 수정이 제한됩니다.",
+    );
     if (!ok) return;
     setSubmitting(true);
     setError(null);

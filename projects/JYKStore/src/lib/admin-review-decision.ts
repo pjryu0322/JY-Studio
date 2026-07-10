@@ -1,6 +1,7 @@
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 
 export type ReviewDecisionState =
+  | "review_refresh_required"
   | "release_gate_required"
   | "approval_ready"
   | "approval_warning"
@@ -35,6 +36,64 @@ function hasWarningSignals(detail: AdminReviewDetailDto): boolean {
   );
 }
 
+/** Freshness / source-change messages that need re-check, not reject. */
+export function isRefreshMessage(message: string | null | undefined): boolean {
+  if (!message) return false;
+  if (
+    message.includes("(FAIL)") &&
+    !message.includes("최신") &&
+    !message.includes("일치하지") &&
+    !message.includes("변경")
+  ) {
+    return false;
+  }
+  return (
+    message.includes("최신") ||
+    message.includes("변경") ||
+    message.includes("재평가") ||
+    (message.includes("재점검") && !message.includes("(FAIL)"))
+  );
+}
+
+function isReleaseGateRefreshMessage(message: string | null | undefined): boolean {
+  if (!message) return false;
+  if (message.includes("(FAIL)")) return false;
+  return message.includes("일치하지") || message.includes("최신 데이터");
+}
+
+export function hasStaleQualitySignals(detail: AdminReviewDetailDto): boolean {
+  const structureFresh = detail.structureQuality?.freshness.status;
+  const chunkFresh = detail.chunkQuality?.freshness.status;
+  const retrievalFresh = detail.retrievalEvaluation?.freshness.status;
+  const releaseFresh = detail.releaseGate?.freshness.status;
+
+  if (
+    structureFresh === "STALE" ||
+    chunkFresh === "STALE" ||
+    retrievalFresh === "STALE" ||
+    releaseFresh === "STALE"
+  ) {
+    return true;
+  }
+
+  // Loaded summaries marked MISSING (absent summaries fall through to message heuristics).
+  if (
+    (detail.structureQuality && structureFresh === "MISSING") ||
+    (detail.chunkQuality && chunkFresh === "MISSING") ||
+    (detail.retrievalEvaluation && retrievalFresh === "MISSING")
+  ) {
+    return true;
+  }
+
+  const r = detail.readiness;
+  return Boolean(
+    isRefreshMessage(r.structureQualityMessage) ||
+      isRefreshMessage(r.chunkQualityMessage) ||
+      isRefreshMessage(r.retrievalEvaluationMessage) ||
+      isReleaseGateRefreshMessage(r.releaseGateMessage),
+  );
+}
+
 export function resolveReviewDecisionState(detail: AdminReviewDetailDto): ReviewDecisionState {
   if (detail.pack.status === "PUBLISHED" || detail.pack.status === "VERIFIED") {
     return "already_published";
@@ -42,6 +101,10 @@ export function resolveReviewDecisionState(detail: AdminReviewDetailDto): Review
 
   if (detail.pack.status !== "REVIEWING") {
     return "not_reviewing";
+  }
+
+  if (hasStaleQualitySignals(detail)) {
+    return "review_refresh_required";
   }
 
   if (!hasCurrentReleaseGate(detail)) {
@@ -59,6 +122,47 @@ export function resolveReviewDecisionState(detail: AdminReviewDetailDto): Review
   return "approval_ready";
 }
 
+export function collectReviewRefreshReasons(detail: AdminReviewDetailDto): string[] {
+  const reasons: string[] = [];
+  const r = detail.readiness;
+
+  if (
+    (detail.structureQuality &&
+      (detail.structureQuality.freshness.status === "STALE" ||
+        detail.structureQuality.freshness.status === "MISSING")) ||
+    isRefreshMessage(r.structureQualityMessage)
+  ) {
+    reasons.push("원천 문서 변경으로 구조/품질 재점검이 필요합니다.");
+  }
+
+  if (
+    (detail.chunkQuality &&
+      (detail.chunkQuality.freshness.status === "STALE" ||
+        detail.chunkQuality.freshness.status === "MISSING")) ||
+    isRefreshMessage(r.chunkQualityMessage)
+  ) {
+    reasons.push("청킹 품질 결과가 최신 상태가 아닙니다.");
+  }
+
+  if (
+    (detail.retrievalEvaluation &&
+      (detail.retrievalEvaluation.freshness.status === "STALE" ||
+        detail.retrievalEvaluation.freshness.status === "MISSING")) ||
+    isRefreshMessage(r.retrievalEvaluationMessage)
+  ) {
+    reasons.push("검색 품질 평가 결과가 최신 상태가 아닙니다.");
+  }
+
+  if (
+    detail.releaseGate?.freshness.status === "STALE" ||
+    isReleaseGateRefreshMessage(r.releaseGateMessage)
+  ) {
+    reasons.push("릴리스 게이트 최종 점검이 최신 상태가 아닙니다.");
+  }
+
+  return [...new Set(reasons)];
+}
+
 export function collectReviewBlockers(detail: AdminReviewDetailDto): string[] {
   const blockers: string[] = [];
   const r = detail.readiness;
@@ -69,10 +173,22 @@ export function collectReviewBlockers(detail: AdminReviewDetailDto): string[] {
   if (r.sourceValidation.notCheckedCount > 0) {
     blockers.push(`원천 문서 ${r.sourceValidation.notCheckedCount}개가 아직 검증되지 않았습니다.`);
   }
-  if (r.structureQualityMessage) blockers.push(r.structureQualityMessage);
-  if (r.chunkQualityMessage) blockers.push(r.chunkQualityMessage);
-  if (r.retrievalEvaluationMessage) blockers.push(r.retrievalEvaluationMessage);
-  if (r.releaseGateMessage) blockers.push(r.releaseGateMessage);
+  if (r.structureQualityMessage && !isRefreshMessage(r.structureQualityMessage)) {
+    blockers.push(r.structureQualityMessage);
+  }
+  if (r.chunkQualityMessage && !isRefreshMessage(r.chunkQualityMessage)) {
+    blockers.push(r.chunkQualityMessage);
+  }
+  if (r.retrievalEvaluationMessage && !isRefreshMessage(r.retrievalEvaluationMessage)) {
+    blockers.push(r.retrievalEvaluationMessage);
+  }
+  if (
+    r.releaseGateMessage &&
+    !isRefreshMessage(r.releaseGateMessage) &&
+    !isReleaseGateRefreshMessage(r.releaseGateMessage)
+  ) {
+    blockers.push(r.releaseGateMessage);
+  }
   if (r.releaseGateStatus === "FAIL") {
     blockers.push("릴리스 게이트가 FAIL입니다.");
   }
@@ -118,6 +234,9 @@ export function collectReviewWarnings(detail: AdminReviewDetailDto): string[] {
 
 export function collectReviewActions(detail: AdminReviewDetailDto): string[] {
   const state = resolveReviewDecisionState(detail);
+  if (state === "review_refresh_required") {
+    return ["최신 데이터 기준으로 전체 재점검을 실행하세요."];
+  }
   if (state === "release_gate_required") {
     return ["공개 승인 전 릴리스 게이트 최종 점검을 실행하세요."];
   }

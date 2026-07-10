@@ -382,6 +382,7 @@ function basePack(overrides: Partial<ProviderPackDetailDto> = {}): ProviderPackD
     structureQuality: null,
     chunkQuality: null,
     retrievalEvaluation: null,
+    releaseGate: null,
     latestRejectionReason: null,
     versions: [
       {

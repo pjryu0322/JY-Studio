@@ -1,6 +1,6 @@
 import { AdminReviewStatusBadge } from "@/components/AdminReviewStatusBadge";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
-import { ADMIN_REVIEW_INSPECTION_SUMMARY_TITLE } from "@/lib/role-based-ux-copy";
+import { ADMIN_REVIEW_INSPECTION_SUMMARY_TITLE, ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE } from "@/lib/role-based-ux-copy";
 
 function statusLabel(status: string | null | undefined): string {
   if (!status) return "미실행";
@@ -67,6 +67,13 @@ export function AdminReviewInspectionSummary({
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
+        {detail.latestReview?.submitSnapshot ? (
+          <Row
+            label={ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE}
+            value={`릴리스 게이트 ${detail.latestReview.submitSnapshot.releaseGateStatus}`}
+            detail={`원천 ${detail.latestReview.submitSnapshot.sourceDocumentCount}개 · active chunk ${detail.latestReview.submitSnapshot.activeChunkCount}개 · 제출 ${detail.latestReview.submitSnapshot.submittedAt.slice(0, 10)}`}
+          />
+        ) : null}
         <Row
           label="원천 문서"
           value={`${readiness.sourceDocumentCount}개`}

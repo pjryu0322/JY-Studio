@@ -111,20 +111,29 @@ export const ADMIN_REVIEW_STATE_WARNING_BODY =
   "승인은 가능하지만 WARNING 항목이 있습니다. 확인 후 승인하거나 반려하세요.";
 export const ADMIN_REVIEW_STATE_BLOCKED_TITLE = "승인 불가";
 export const ADMIN_REVIEW_STATE_BLOCKED_BODY =
-  "차단 이슈가 있어 승인할 수 없습니다. 반려 사유를 작성해 제공자에게 돌려보내세요.";
+  "최신 점검 결과 기준으로 차단 이슈가 있습니다. 반려 사유를 작성해 제공자에게 보완을 요청하세요.";
 export const ADMIN_REVIEW_STATE_PUBLISHED_TITLE = "이미 공개됨";
 export const ADMIN_REVIEW_STATE_PUBLISHED_BODY = "이 지식팩은 이미 승인·공개된 상태입니다.";
 export const ADMIN_REVIEW_STATE_NOT_REVIEWING_TITLE = "검수 대기 상태가 아님";
 export const ADMIN_REVIEW_STATE_NOT_REVIEWING_BODY =
   "현재 상태가 REVIEWING이 아니어서 승인/반려를 진행할 수 없습니다.";
+export const ADMIN_REVIEW_STATE_REFRESH_REQUIRED_TITLE = "최신 재점검 필요";
+export const ADMIN_REVIEW_STATE_REFRESH_REQUIRED_BODY =
+  "원천 문서 또는 점검 데이터가 변경되어 현재 결과만으로는 승인 여부를 판단할 수 없습니다. 최신 데이터 기준으로 전체 재점검을 실행하세요.";
 
 export const ADMIN_REVIEW_CTA_RELEASE_GATE = "릴리스 게이트 최종 점검";
 export const ADMIN_REVIEW_CTA_APPROVE = "승인 및 공개";
 export const ADMIN_REVIEW_CTA_REJECT = "반려";
+export const ADMIN_REVIEW_CTA_REFRESH_ALL = "고급: 최신 상태로 재점검";
+export const ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE = "제출 시점 점검 결과";
 export const ADMIN_REVIEW_CTA_STRUCTURE = "구조/품질 재점검";
 export const ADMIN_REVIEW_CTA_CHUNK = "청킹 품질 재점검";
 export const ADMIN_REVIEW_CTA_RETRIEVAL_GENERATE = "검색 평가 케이스 재생성";
 export const ADMIN_REVIEW_CTA_RETRIEVAL_RUN = "검색 품질 재점검";
+export const ADMIN_REVIEW_REFRESH_REASONS_TITLE = "재점검 필요 항목";
+export const ADMIN_REVIEW_REJECT_COLLAPSED_HINT =
+  "재점검 후에도 문제가 해결되지 않으면 반려할 수 있습니다.";
+export const ADMIN_REVIEW_REJECT_OPEN = "반려 사유 입력 열기";
 
 export const PROVIDER_PACK_ID_READONLY_HINT =
   "JYKStore가 발급한 고유 식별자입니다. 수정할 수 없습니다.";
@@ -165,15 +174,15 @@ export const PROVIDER_PACK_DRAFT_GENERATING =
 export const PROVIDER_PACK_DRAFT_GENERATE_DONE =
   "Knowledge Unit 후보와 기본 점검이 준비되었습니다. 점검 탭에서 결과를 확인하세요.";
 export const PROVIDER_PACK_DRAFT_VIEW_LIST = "초안 목록 보기";
-export const PROVIDER_PACK_REVIEW_SUBMIT_CTA = "검수 요청 제출";
+export const PROVIDER_PACK_REVIEW_SUBMIT_CTA = "최종 점검 후 검수 요청";
 export const PROVIDER_PACK_INSPECTION_AUTO_TITLE = "자동 점검 결과";
 export const PROVIDER_PACK_REVIEW_INCOMPLETE_TITLE = "검수 요청 불가";
 export const PROVIDER_PACK_REVIEW_INCOMPLETE_BODY =
-  "검색 가능한 지식 데이터 보완이 필요합니다. 점검 탭에서 자동 보완 결과를 확인해 주세요.";
+  "최종 점검에서 차단 이슈가 발견되었습니다. 점검 탭에서 자동 보완 후 다시 시도해 주세요.";
 export const PROVIDER_PACK_GO_TO_INSPECTION_REPAIR = "점검 탭에서 자동 보완";
 export const PROVIDER_PACK_REVIEW_READY_TITLE = "검수 요청 준비 완료";
 export const PROVIDER_PACK_REVIEW_READY_BODY =
-  "제출 후 관리자 검토 단계로 이동합니다. 검수 전까지 일반 카탈로그와 Context API에는 공개되지 않습니다.";
+  "검수 요청 전 시스템이 원천 문서, 지식 단위, Chunk, 검색 품질, 릴리스 게이트를 최신 상태로 다시 점검합니다. 최종 점검을 통과하면 관리자 검토 단계로 제출됩니다.";
 
 export const PROVIDER_KU_DRAFT_PANEL_TITLE = "자동 추출 결과";
 export const PROVIDER_KU_CANDIDATE_LABEL = "Knowledge Unit 후보";

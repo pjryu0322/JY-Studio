@@ -275,6 +275,7 @@ model PackReview {
   decision         String?
   memo             String?
   rejectionReason  String?
+  submitSnapshot   Json?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   decidedAt        DateTime?

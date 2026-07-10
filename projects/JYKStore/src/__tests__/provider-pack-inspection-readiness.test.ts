@@ -5,6 +5,7 @@ import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
 import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-dto";
 import type { RetrievalEvaluationSummaryDto } from "@/lib/retrieval-evaluation/retrieval-evaluation-dto";
+import type { ReleaseGateSummaryDto } from "@/lib/release-gate/release-gate-dto";
 
 const NOW = "2026-07-08T12:00:00.000Z";
 
@@ -181,6 +182,35 @@ function passingRetrievalEvaluationSummary(): RetrievalEvaluationSummaryDto {
   };
 }
 
+function passingReleaseGateSummary(): ReleaseGateSummaryDto {
+  return {
+    latestRun: {
+      id: "rg1",
+      packId: "p",
+      versionId: "v",
+      targetStatus: "PUBLISHED",
+      status: "PASS",
+      blockingIssueCount: 0,
+      warningIssueCount: 0,
+      sourceStatus: "PASS",
+      structureStatus: "PASS",
+      chunkStatus: "PASS",
+      retrievalStatus: "PASS",
+      graphStatus: null,
+      summary: "ok",
+      checkedBy: "system",
+      checkedAt: NOW,
+      issues: [],
+    },
+    freshness: {
+      status: "CURRENT",
+      reason: null,
+      checkedAt: NOW,
+      versionId: "v",
+    },
+  };
+}
+
 function basePack(overrides: Partial<ProviderPackDetailDto> = {}): ProviderPackDetailDto {
   return {
     packId: "p",
@@ -199,6 +229,7 @@ function basePack(overrides: Partial<ProviderPackDetailDto> = {}): ProviderPackD
     structureQuality: null,
     chunkQuality: null,
     retrievalEvaluation: null,
+    releaseGate: null,
     latestRejectionReason: null,
     versions: [
       {
@@ -242,7 +273,7 @@ const readyInput = {
 };
 
 describe("provider pack inspection readiness", () => {
-  it("0/4 shows auto prepare as primary user action", () => {
+  it("0/5 shows auto prepare as primary user action", () => {
     const readiness = buildProviderInspectionReadiness({
       pack: basePack(),
       ...readyInput,
@@ -252,6 +283,7 @@ describe("provider pack inspection readiness", () => {
     assert.equal(readiness.primaryActionKind, "RUN_AUTO_PREPARE");
     assert.equal(readiness.primaryActionLabel, "자동 점검 시작");
     assert.equal(readiness.completedCount, 0);
+    assert.equal(readiness.totalCount, 5);
     assert.equal(readiness.canSubmitReview, false);
   });
 
@@ -265,6 +297,7 @@ describe("provider pack inspection readiness", () => {
     assert.equal(readiness.steps[1]?.checklistStatus, "waiting");
     assert.equal(readiness.steps[2]?.checklistStatus, "waiting");
     assert.equal(readiness.steps[3]?.checklistStatus, "waiting");
+    assert.equal(readiness.steps[4]?.checklistStatus, "waiting");
   });
 
   it("all checks done → go to submit review", () => {
@@ -273,6 +306,7 @@ describe("provider pack inspection readiness", () => {
         structureQuality: passingStructureQualitySummary(),
         chunkQuality: passingChunkQualitySummary(),
         retrievalEvaluation: passingRetrievalEvaluationSummary(),
+        releaseGate: passingReleaseGateSummary(),
       }),
       ...readyInput,
     });

@@ -14,6 +14,11 @@ import {
   retrievalEvaluationGateSnapshotFromSummary,
 } from "@/lib/retrieval-evaluation/retrieval-evaluation-readiness";
 import {
+  getReleaseGateSubmitBlockingMessage,
+  meetsReleaseGateSubmitGate,
+  releaseGateSnapshotFromSummary,
+} from "@/lib/release-gate/release-gate-readiness";
+import {
   getStructureQualityBlockingMessage,
   meetsStructureQualityGate,
   structureQualityGateSnapshotFromSummary,
@@ -24,6 +29,7 @@ export type SubmitReadinessNextAction =
   | "RUN_CHUNK_QUALITY"
   | "GENERATE_RETRIEVAL_CASES"
   | "RUN_RETRIEVAL_EVALUATION"
+  | "RUN_RELEASE_GATE"
   | "SUBMIT_REVIEW"
   | "WAIT_ADMIN_REVIEW"
   | "BLOCKED";
@@ -40,6 +46,7 @@ export type SubmitReadinessStepKey =
   | "chunk_quality"
   | "retrieval_cases"
   | "retrieval_evaluation"
+  | "release_gate"
   | "submit_review";
 
 export type SubmitReadinessStep = {
@@ -65,7 +72,7 @@ export type ProviderSubmitReadinessPlan = {
   steps: SubmitReadinessStep[];
 };
 
-const QUALITY_STEP_COUNT = 4;
+const QUALITY_STEP_COUNT = 5;
 
 function hasRetrievalCases(pack: ProviderPackDetailDto): boolean {
   return (pack.retrievalEvaluation?.set?.activeCaseCount ?? 0) > 0;
@@ -87,9 +94,7 @@ function retrievalFailed(
   return gate.reportStatus === "FAIL";
 }
 
-export function getStructureQualityEvaluateLabel(
-  pack: ProviderPackDetailDto,
-): string {
+export function getStructureQualityEvaluateLabel(pack: ProviderPackDetailDto): string {
   const gate = structureQualityGateSnapshotFromSummary(pack.structureQuality ?? null);
   if (gate.freshnessStatus === "MISSING" || !pack.structureQuality?.structureCoverage) {
     return "구조/품질 자동 점검";
@@ -116,6 +121,13 @@ export function getRetrievalRunActionLabel(pack: ProviderPackDetailDto): string 
   return "검색 품질 자동 재점검";
 }
 
+export function getReleaseGateActionLabel(pack: ProviderPackDetailDto): string {
+  if (!pack.releaseGate?.latestRun) {
+    return "릴리스 게이트 사전 점검";
+  }
+  return "릴리스 게이트 재점검";
+}
+
 export function buildProviderSubmitReadinessPlan(input: {
   pack: ProviderPackDetailDto;
   sourceDocumentCount: number;
@@ -127,11 +139,13 @@ export function buildProviderSubmitReadinessPlan(input: {
   const structureGate = structureQualityGateSnapshotFromSummary(pack.structureQuality ?? null);
   const chunkGate = chunkQualityGateSnapshotFromSummary(pack.chunkQuality ?? null);
   const retrievalGate = retrievalEvaluationGateSnapshotFromSummary(pack.retrievalEvaluation ?? null);
+  const releaseGate = releaseGateSnapshotFromSummary(pack.releaseGate ?? null);
 
   const structureDone = meetsStructureQualityGate(structureGate);
   const chunkDone = meetsChunkQualityGate(chunkGate);
   const casesDone = hasRetrievalCases(pack);
   const retrievalDone = meetsRetrievalEvaluationGate(retrievalGate);
+  const releaseGateDone = meetsReleaseGateSubmitGate(releaseGate);
 
   const submitBlockedReasons: string[] = [];
   if (sourceDocumentCount === 0) submitBlockedReasons.push("원천 문서 등록");
@@ -142,6 +156,7 @@ export function buildProviderSubmitReadinessPlan(input: {
   if (!structureDone) submitBlockedReasons.push("구조/품질 점검");
   if (!chunkDone) submitBlockedReasons.push("청킹 품질 점검");
   if (!retrievalDone) submitBlockedReasons.push("검색 품질 평가");
+  if (!releaseGateDone) submitBlockedReasons.push("릴리스 게이트 사전 점검");
 
   let nextAction: SubmitReadinessNextAction = "BLOCKED";
   let nextActionLabel = "대기 중";
@@ -196,39 +211,56 @@ export function buildProviderSubmitReadinessPlan(input: {
       getRetrievalEvaluationBlockingMessage(retrievalGate, pack.retrievalEvaluation) ??
       "Context API 검색 품질을 확인합니다.";
     currentStepTitle = "검색 품질 평가 실행";
+  } else if (!releaseGateDone) {
+    nextAction = "RUN_RELEASE_GATE";
+    nextActionLabel = getReleaseGateActionLabel(pack);
+    nextActionDescription =
+      getReleaseGateSubmitBlockingMessage(pack.releaseGate ?? null) ??
+      "공개 전 최종 품질을 통합 점검합니다.";
+    currentStepTitle = "릴리스 게이트 사전 점검";
   } else {
     nextAction = "SUBMIT_REVIEW";
-    nextActionLabel = "검수 요청 제출";
+    nextActionLabel = "최종 점검 후 검수 요청";
     nextActionDescription =
-      "모든 필수 점검이 완료되었습니다. 제출 후 관리자 검토 단계로 이동합니다.";
+      "검수 요청 전 시스템이 원천 문서, Chunk, 검색 품질, 릴리스 게이트를 최신 상태로 다시 점검합니다.";
     currentStepTitle = "검수 요청 제출";
   }
 
   const completedStepCount =
-    (structureDone ? 1 : 0) + (chunkDone ? 1 : 0) + (casesDone ? 1 : 0) + (retrievalDone ? 1 : 0);
+    (structureDone ? 1 : 0) +
+    (chunkDone ? 1 : 0) +
+    (casesDone ? 1 : 0) +
+    (retrievalDone ? 1 : 0) +
+    (releaseGateDone ? 1 : 0);
 
   const incompleteStepTitles: string[] = [];
   if (!structureDone) incompleteStepTitles.push("구조/품질 점검");
   if (!chunkDone) incompleteStepTitles.push("청킹 품질 점검");
   if (!casesDone) incompleteStepTitles.push("검색 평가 케이스 생성");
   if (!retrievalDone) incompleteStepTitles.push("검색 품질 평가");
+  if (!releaseGateDone) incompleteStepTitles.push("릴리스 게이트 사전 점검");
+
+  const canSubmit =
+    pack.status === "DRAFT" &&
+    structureDone &&
+    chunkDone &&
+    retrievalDone &&
+    releaseGateDone &&
+    meetsSourceValidationSubmitGate(validation) &&
+    sourceDocumentCount > 0 &&
+    knowledgeUnitDraftCount > 0;
 
   const steps = buildSteps({
     pack,
     structureGate,
     chunkGate,
-    retrievalGate,
     structureDone,
     chunkDone,
     casesDone,
     retrievalDone,
+    releaseGateDone,
     nextAction,
-    canSubmit:
-      pack.status === "DRAFT" &&
-      submitBlockedReasons.length === 0 &&
-      structureDone &&
-      chunkDone &&
-      retrievalDone,
+    canSubmit,
   });
 
   return {
@@ -238,14 +270,7 @@ export function buildProviderSubmitReadinessPlan(input: {
     currentStepTitle,
     completedStepCount,
     totalStepCount: QUALITY_STEP_COUNT,
-    canSubmitReview:
-      pack.status === "DRAFT" &&
-      structureDone &&
-      chunkDone &&
-      retrievalDone &&
-      meetsSourceValidationSubmitGate(validation) &&
-      sourceDocumentCount > 0 &&
-      knowledgeUnitDraftCount > 0,
+    canSubmitReview: canSubmit,
     submitBlockedReasons,
     incompleteStepTitles,
     steps,
@@ -256,11 +281,11 @@ function buildSteps(args: {
   pack: ProviderPackDetailDto;
   structureGate: ReturnType<typeof structureQualityGateSnapshotFromSummary>;
   chunkGate: ReturnType<typeof chunkQualityGateSnapshotFromSummary>;
-  retrievalGate: ReturnType<typeof retrievalEvaluationGateSnapshotFromSummary>;
   structureDone: boolean;
   chunkDone: boolean;
   casesDone: boolean;
   retrievalDone: boolean;
+  releaseGateDone: boolean;
   nextAction: SubmitReadinessNextAction;
   canSubmit: boolean;
 }): SubmitReadinessStep[] {
@@ -272,6 +297,7 @@ function buildSteps(args: {
     chunkDone,
     casesDone,
     retrievalDone,
+    releaseGateDone,
     nextAction,
     canSubmit,
   } = args;
@@ -310,6 +336,16 @@ function buildSteps(args: {
         ? retrievalFailed(
             retrievalEvaluationGateSnapshotFromSummary(pack.retrievalEvaluation ?? null),
           )
+          ? "failed"
+          : "current"
+        : "waiting";
+
+  const releaseStatus: SubmitReadinessStepStatus = releaseGateDone
+    ? "completed"
+    : !retrievalDone
+      ? "waiting"
+      : nextAction === "RUN_RELEASE_GATE"
+        ? releaseGateSnapshotFromSummary(pack.releaseGate ?? null).status === "FAIL"
           ? "failed"
           : "current"
         : "waiting";
@@ -367,11 +403,23 @@ function buildSteps(args: {
           : undefined,
     },
     {
+      key: "release_gate",
+      title: "릴리스 게이트 사전 점검",
+      description: "공개 전 Source·구조·청킹·검색 품질을 통합 점검합니다.",
+      status: releaseStatus,
+      actionLabel: releaseStatus === "current" ? getReleaseGateActionLabel(pack) : undefined,
+      actionKind: releaseStatus === "current" ? "RUN_RELEASE_GATE" : undefined,
+      blockingReasons:
+        releaseStatus === "waiting" && !retrievalDone
+          ? ["검색 품질 평가 완료 후 실행할 수 있습니다."]
+          : undefined,
+    },
+    {
       key: "submit_review",
-      title: "검수 요청 제출",
-      description: "모든 필수 점검 완료 후 제출할 수 있습니다.",
+      title: "최종 점검 후 검수 요청",
+      description: "제출 시 시스템이 최신 상태로 최종 점검을 다시 실행합니다.",
       status: submitStatus,
-      actionLabel: submitStatus === "current" ? "검수 요청 제출" : undefined,
+      actionLabel: submitStatus === "current" ? "최종 점검 후 검수 요청" : undefined,
       actionKind: submitStatus === "current" ? "SUBMIT_REVIEW" : undefined,
     },
   ];

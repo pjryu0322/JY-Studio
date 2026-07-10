@@ -105,7 +105,33 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
 }
 
 describe("admin review decision state", () => {
-  it("Case 1: release gate missing requires final check", () => {
+  it("Case 1: stale quality signals require full refresh, not blocked", () => {
+    const detail = baseDetail({
+      readiness: {
+        versionCount: 1,
+        sourceDocumentCount: 9,
+        hasRequiredDescription: true,
+        canApprove: false,
+        pipelineStatus: "READY",
+        sourceValidation: { passCount: 5, warningCount: 4, failCount: 0, notCheckedCount: 0 },
+        sourceTypeCoverage: {},
+        structureCoverageStatus: "PASS",
+        knowledgeQualityStatus: "PASS",
+        structureQualityMessage: "구조/품질 점검이 최신 상태가 아닙니다. 재평가해 주세요.",
+        chunkQualityStatus: "PASS",
+        chunkQualityMessage: "청킹 품질 점검이 최신 상태가 아닙니다. 재평가 후 검색 품질을 실행해 주세요.",
+        retrievalEvaluationStatus: "PASS",
+        retrievalEvaluationMessage: null,
+        releaseGateStatus: "FAIL",
+        releaseGateMessage:
+          "릴리스 게이트(FAIL)로 승인할 수 없습니다. 차단 항목을 해결한 뒤 재점검해 주세요.",
+      },
+    });
+    assert.equal(resolveReviewDecisionState(detail), "review_refresh_required");
+    assert.equal(canApproveAdminReview(detail), false);
+  });
+
+  it("Case 2: release gate missing requires final check", () => {
     const detail = baseDetail({
       releaseGate: {
         latestRun: null,
@@ -134,13 +160,13 @@ describe("admin review decision state", () => {
     assert.equal(canApproveAdminReview(detail), false);
   });
 
-  it("Case 2: approval ready when release gate PASS", () => {
+  it("Case 3: approval ready when release gate PASS", () => {
     const detail = baseDetail();
     assert.equal(resolveReviewDecisionState(detail), "approval_ready");
     assert.equal(canApproveAdminReview(detail), true);
   });
 
-  it("Case 3: approval warning when source warnings exist", () => {
+  it("Case 4: approval warning when source warnings exist", () => {
     const detail = baseDetail({
       readiness: {
         versionCount: 1,
@@ -191,7 +217,7 @@ describe("admin review decision state", () => {
     assert.equal(canApproveAdminReview(detail), true);
   });
 
-  it("Case 4: approval blocked when retrieval FAIL", () => {
+  it("Case 5: approval blocked when retrieval FAIL without stale signals", () => {
     const detail = baseDetail({
       readiness: {
         versionCount: 1,
@@ -216,7 +242,7 @@ describe("admin review decision state", () => {
     assert.equal(canApproveAdminReview(detail), false);
   });
 
-  it("Case 5: detail sections default collapsed except fail hotspots", () => {
+  it("Case 6: detail sections default collapsed except fail hotspots", () => {
     const open = defaultOpenAdminReviewSections(baseDetail());
     assert.equal(open.structure, false);
     assert.equal(open.chunk, false);
@@ -269,6 +295,8 @@ describe("admin review decision UX wiring", () => {
     assert.ok(!page.includes("AdminReviewDecisionPanel"));
     assert.ok(decision.includes("ADMIN_REVIEW_DECISION_TITLE"));
     assert.ok(decision.includes("ADMIN_REVIEW_CTA_RELEASE_GATE"));
+    assert.ok(decision.includes("ADMIN_REVIEW_CTA_REFRESH_ALL"));
+    assert.ok(decision.includes("refreshAdminReviewReadinessApi"));
     assert.ok(decision.includes("ADMIN_REVIEW_CTA_APPROVE"));
     assert.ok(decision.includes("ADMIN_REVIEW_CTA_REJECT"));
     assert.ok(decision.includes("canApproveAdminReview"));

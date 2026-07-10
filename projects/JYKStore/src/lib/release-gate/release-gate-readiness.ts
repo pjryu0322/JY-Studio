@@ -1,15 +1,48 @@
 import type { ReleaseGateFreshnessSnapshot, ReleaseGateSummaryDto } from "@/lib/release-gate/release-gate-dto";
 import type { ReleaseGateStatus } from "@/lib/release-gate/release-gate-types";
 
+export type ReleaseGateSubmitSnapshot = {
+  status: ReleaseGateStatus | null;
+  freshnessStatus: ReleaseGateFreshnessSnapshot["status"];
+};
+
+export function releaseGateSnapshotFromSummary(
+  summary: ReleaseGateSummaryDto | null,
+): ReleaseGateSubmitSnapshot {
+  return {
+    status: summary?.latestRun?.status ?? null,
+    freshnessStatus: summary?.freshness.status ?? "MISSING",
+  };
+}
+
+export function meetsReleaseGateSubmitGate(input: {
+  status?: ReleaseGateStatus | null;
+  freshnessStatus?: ReleaseGateFreshnessSnapshot["status"];
+}): boolean {
+  return (
+    input.freshnessStatus === "CURRENT" &&
+    (input.status === "PASS" || input.status === "WARNING")
+  );
+}
+
 export function meetsReleaseGateForApproval(summary: ReleaseGateSummaryDto | null): boolean {
-  if (!summary?.latestRun) {
-    return false;
+  return meetsReleaseGateSubmitGate(releaseGateSnapshotFromSummary(summary));
+}
+
+export function getReleaseGateSubmitBlockingMessage(
+  summary: ReleaseGateSummaryDto | null,
+): string | null {
+  const snapshot = releaseGateSnapshotFromSummary(summary);
+  if (snapshot.freshnessStatus === "MISSING" || !summary?.latestRun) {
+    return "릴리스 게이트 사전 점검을 먼저 실행해 주세요.";
   }
-  if (summary.freshness.status !== "CURRENT") {
-    return false;
+  if (snapshot.freshnessStatus === "STALE") {
+    return "릴리스 게이트 결과가 최신 상태가 아닙니다. 최종 점검 후 다시 제출해 주세요.";
   }
-  const status = summary.latestRun.status;
-  return status === "PASS" || status === "WARNING";
+  if (snapshot.status === "FAIL") {
+    return "릴리스 게이트(FAIL)로 검수 요청을 제출할 수 없습니다. 차단 항목을 해결한 뒤 다시 점검하세요.";
+  }
+  return null;
 }
 
 export function getReleaseGateApprovalMessage(

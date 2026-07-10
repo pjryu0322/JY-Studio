@@ -2,6 +2,7 @@ import type { KnowledgePack, KnowledgePackVersion, PackStatus, SourceDocument } 
 import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structure-quality-dto";
 import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-dto";
 import type { RetrievalEvaluationSummaryDto } from "@/lib/retrieval-evaluation/retrieval-evaluation-dto";
+import type { ReleaseGateSummaryDto } from "@/lib/release-gate/release-gate-dto";
 
 export type ProviderPackListItemDto = {
   packId: string;
@@ -95,6 +96,7 @@ export type ProviderPackDetailDto = {
   structureQuality: StructureQualitySummaryDto | null;
   chunkQuality: ChunkQualitySummaryDto | null;
   retrievalEvaluation: RetrievalEvaluationSummaryDto | null;
+  releaseGate: ReleaseGateSummaryDto | null;
   /** Latest REJECT decision reason when pack was returned for fixes. */
   latestRejectionReason: string | null;
   versions: ProviderPackVersionDto[];
@@ -143,6 +145,7 @@ export function toProviderPackDetail(
     structureQuality?: StructureQualitySummaryDto | null;
     chunkQuality?: ChunkQualitySummaryDto | null;
     retrievalEvaluation?: RetrievalEvaluationSummaryDto | null;
+    releaseGate?: ReleaseGateSummaryDto | null;
     latestRejectionReason?: string | null;
   },
 ): ProviderPackDetailDto {
@@ -163,6 +166,7 @@ export function toProviderPackDetail(
     structureQuality: options?.structureQuality ?? null,
     chunkQuality: options?.chunkQuality ?? null,
     retrievalEvaluation: options?.retrievalEvaluation ?? null,
+    releaseGate: options?.releaseGate ?? null,
     latestRejectionReason: options?.latestRejectionReason ?? null,
     versions: pack.versions.map((v) => mapVersion(v, validationOverlays)),
     updatedAt: pack.updatedAt.toISOString(),

@@ -8,6 +8,7 @@ import {
   getReleaseGateApprovalMessage,
   meetsReleaseGateForApproval,
 } from "@/lib/release-gate/release-gate-readiness";
+import { parseProviderReviewSubmitSnapshot } from "@/lib/provider-review-submit-snapshot";
 import {
   chunkQualityGateSnapshotFromSummary,
   getChunkQualityBlockingMessage,
@@ -99,6 +100,7 @@ export type AdminReviewDetailDto = {
     rejectionReason: string | null;
     createdAt: string;
     decidedAt: string | null;
+    submitSnapshot: import("@/lib/provider-review-submit-snapshot").ProviderReviewSubmitSnapshot | null;
   } | null;
   readiness: {
     versionCount: number;
@@ -274,6 +276,9 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
           rejectionReason: latest.rejectionReason,
           createdAt: latest.createdAt.toISOString(),
           decidedAt: latest.decidedAt?.toISOString() ?? null,
+          submitSnapshot: parseProviderReviewSubmitSnapshot(
+            (latest as { submitSnapshot?: unknown }).submitSnapshot,
+          ),
         }
       : null,
     readiness,

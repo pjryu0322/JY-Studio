@@ -664,7 +664,7 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
       }
     } catch {
       warnings.push(
-        "Knowledge Unit 후보는 생성되었지만 자동 점검 준비 중 일부 단계가 완료되지 않았습니다. 점검 탭에서 자동 점검을 실행해 주세요.",
+        "Knowledge Unit 후보는 생성되었지만 검수 준비 데이터 생성에 실패했습니다. 검수요청 전 자동 점검을 다시 실행해야 합니다.",
       );
     }
   }

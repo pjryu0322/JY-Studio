@@ -177,6 +177,22 @@ export async function evaluateProviderStructureQualityApi(
   return (await response.json()) as ProviderPackDetailResponse;
 }
 
+export async function evaluateProviderReleaseGateApi(
+  packId: string,
+): Promise<ProviderPackDetailResponse> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/release-gate/evaluate`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as ProviderPackDetailResponse;
+}
+
 export async function evaluateProviderChunkQualityApi(
   packId: string,
   input?: { regenerate?: boolean },

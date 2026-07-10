@@ -9,6 +9,7 @@ import {
   generateRetrievalEvaluationCasesForPack,
   runRetrievalEvaluationForPack,
 } from "@/lib/retrieval-evaluation/retrieval-evaluation-service";
+import { evaluateReleaseGateForPack } from "@/lib/release-gate/release-gate-service";
 import { evaluatePackStructureQuality } from "@/lib/structure-quality/structure-quality-evaluate-service";
 
 export type QualityPipelineStatus = "PASS" | "WARNING" | "FAIL" | "SKIPPED";
@@ -300,6 +301,25 @@ export async function runProviderReviewPreparationPipeline(input: {
     warnings.push("검색 평가 케이스가 없어 검색 품질 평가를 건너뛰었습니다.");
   } else {
     retrievalEvaluationStatus = "SKIPPED";
+  }
+
+  if (
+    structureQualityStatus !== "FAIL" &&
+    chunkQualityStatus !== "FAIL" &&
+    retrievalEvaluationStatus !== "FAIL" &&
+    retrievalEvaluationStatus !== "SKIPPED"
+  ) {
+    const gate = await evaluateReleaseGateForPack({
+      packId,
+      actorClientId: input.actorClientId,
+      targetStatus: "PUBLISHED",
+      persist: true,
+    });
+    if ("error" in gate) {
+      warnings.push("릴리스 게이트 사전 점검을 실행하지 못했습니다.");
+    } else if (gate.result.status === "FAIL") {
+      warnings.push("릴리스 게이트가 FAIL입니다. 차단 항목을 해결한 뒤 다시 점검해 주세요.");
+    }
   }
 
   return {

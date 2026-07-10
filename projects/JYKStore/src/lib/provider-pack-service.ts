@@ -47,6 +47,9 @@ import {
   meetsRetrievalEvaluationGate,
   retrievalEvaluationGateSnapshotFromSummary,
 } from "@/lib/retrieval-evaluation/retrieval-evaluation-readiness";
+import { evaluateReleaseGateForPack, loadReleaseGateSummaryForPack } from "@/lib/release-gate/release-gate-service";
+import { prepareProviderPackForFinalReviewSubmit } from "@/lib/auto-pipeline/provider-final-review-submit-service";
+import { buildProviderReviewSubmitSnapshot } from "@/lib/provider-review-submit-snapshot";
 import {
   getStructureQualityBlockingMessage,
   meetsStructureQualityGate,
@@ -380,6 +383,7 @@ async function mapProviderPackDetailWithValidation(
   const structureQuality = await loadStructureQualitySummaryForPack(pack.packId);
   const chunkQuality = await loadChunkQualitySummaryForPack(pack.packId);
   const retrievalEvaluation = await loadRetrievalEvaluationSummaryForPack(pack.packId);
+  const releaseGate = await loadReleaseGateSummaryForPack(pack.packId);
   const latestRejected = await prisma.packReview.findFirst({
     where: { packId: pack.packId, decision: "REJECT" },
     orderBy: { decidedAt: "desc" },
@@ -391,6 +395,7 @@ async function mapProviderPackDetailWithValidation(
     structureQuality,
     chunkQuality,
     retrievalEvaluation,
+    releaseGate,
     latestRejectionReason: latestRejected?.rejectionReason ?? null,
   });
 }
@@ -837,61 +842,37 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
   }
 
   const allDocs = pack.versions.flatMap((v) => v.sourceDocuments);
-  const hasSourceDocument = allDocs.length > 0;
-  if (!hasSourceDocument) {
+  if (allDocs.length === 0) {
     return {
       error: "INCOMPLETE" as const,
       message: "원천 문서(SourceDocument)를 최소 1개 등록해 주세요.",
     };
   }
 
-  const validationStatuses = allDocs.map((d) => d.validationStatus);
-  const validationCounts = countSourceValidationFromStatuses(validationStatuses);
+  const preparation = await prepareProviderPackForFinalReviewSubmit({
+    packId,
+    actorClientId: clientId,
+    providerProfileId: profile.id,
+  });
 
-  if (!meetsSourceValidationSubmitGate(validationCounts)) {
-    if (validationCounts.failCount > 0) {
-      return {
-        error: "INCOMPLETE" as const,
-        message:
-          "검증에 실패(FAIL)한 원천 문서가 있어 제출할 수 없습니다. 해당 문서를 수정해 주세요.",
-      };
-    }
+  if (!preparation.ok) {
     return {
       error: "INCOMPLETE" as const,
-      message:
-        "검증되지 않은(NOT_CHECKED) 원천 문서가 있어 제출할 수 없습니다. 원천 문서를 다시 등록하거나 검증 상태를 갱신해 주세요.",
+      message: preparation.message,
+      preparation,
     };
   }
 
-  const structureQuality = await loadStructureQualitySummaryForPack(packId);
-  const structureGate = structureQualityGateSnapshotFromSummary(structureQuality);
-  if (!meetsStructureQualityGate(structureGate)) {
-    const message = getStructureQualityBlockingMessage(structureGate, structureQuality);
-    return {
-      error: "INCOMPLETE" as const,
-      message: message ?? "구조/품질 점검을 먼저 실행해 주세요.",
-    };
-  }
-
-  const chunkQuality = await loadChunkQualitySummaryForPack(packId);
-  const chunkGate = chunkQualityGateSnapshotFromSummary(chunkQuality);
-  if (!meetsChunkQualityGate(chunkGate)) {
-    const message = getChunkQualityBlockingMessage(chunkGate, chunkQuality);
-    return {
-      error: "INCOMPLETE" as const,
-      message: message ?? "청킹 품질 점검을 먼저 실행해 주세요.",
-    };
-  }
-
-  const retrievalEvaluation = await loadRetrievalEvaluationSummaryForPack(packId);
-  const retrievalGate = retrievalEvaluationGateSnapshotFromSummary(retrievalEvaluation);
-  if (!meetsRetrievalEvaluationGate(retrievalGate)) {
-    const message = getRetrievalEvaluationBlockingMessage(retrievalGate, retrievalEvaluation);
-    return {
-      error: "INCOMPLETE" as const,
-      message: message ?? "검색 품질 평가를 먼저 실행해 주세요.",
-    };
-  }
+  const snapshot = buildProviderReviewSubmitSnapshot({
+    sourceDocumentIds: preparation.sourceDocumentIds,
+    activeChunkIds: preparation.activeChunkIds,
+    retrievalEvaluationSetId: preparation.retrievalEvaluationSetId,
+    retrievalEvaluationRunId: preparation.retrievalEvaluationRunId,
+    releaseGateRunId: preparation.releaseGateRunId,
+    releaseGateStatus: preparation.releaseGateStatus,
+    retrievalEvaluationStatus: preparation.retrievalEvaluationStatus,
+    warnings: preparation.warnings,
+  });
 
   const onlyEtc = allDocs.every((d) => d.sourceType === "ETC");
   const submitNote = onlyEtc
@@ -907,6 +888,7 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
       data: {
         packId,
         status: "PENDING",
+        submitSnapshot: snapshot,
       },
     }),
   ]);
@@ -917,17 +899,18 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
     action: AuditAction.PROVIDER_PACK_SUBMIT,
     entityType: "KnowledgePack",
     entityId: packId,
+    metadata: { packId, submitSnapshot: snapshot },
   });
 
   await recordProviderAudit({
     action: AuditAction.ADMIN_REVIEW_CREATE,
     entityType: "PackReview",
     entityId: packId,
-    metadata: { packId, status: "PENDING" },
+    metadata: { packId, status: "PENDING", submitSnapshot: snapshot },
   });
 
   const detail = await getProviderPackForClient(userId, clientId, packId);
-  return { pack: detail! };
+  return { pack: detail!, preparation, snapshot };
 }
 
 export async function validateProviderSourceDocument(
@@ -1197,4 +1180,38 @@ export async function runProviderPackInspectionAutoPrepare(
 
   const detail = await getProviderPackForClient(userId, clientId, packId);
   return { pack: detail!, preparation };
+}
+
+export async function evaluateProviderPackReleaseGate(
+  userId: string,
+  clientId: string,
+  packId: string,
+) {
+  const profile = await findProviderProfileForUser(userId, clientId);
+  if (!profile) {
+    return { error: "PROFILE_REQUIRED" as const };
+  }
+
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId, providerProfileId: profile.id },
+  });
+  if (!pack) {
+    return { error: "NOT_FOUND" as const };
+  }
+  if (pack.status !== PackStatus.DRAFT) {
+    return { error: "NOT_EDITABLE" as const };
+  }
+
+  const result = await evaluateReleaseGateForPack({
+    packId,
+    actorClientId: clientId,
+    targetStatus: "PUBLISHED",
+    persist: true,
+  });
+  if ("error" in result) {
+    return { error: "NOT_FOUND" as const };
+  }
+
+  const detail = await getProviderPackForClient(userId, clientId, packId);
+  return { pack: detail!, releaseGate: result.result };
 }

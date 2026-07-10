@@ -16,7 +16,8 @@ export type InspectionStepId =
   | "structure_quality"
   | "chunk_quality"
   | "retrieval_case_generation"
-  | "retrieval_quality";
+  | "retrieval_quality"
+  | "release_gate";
 
 export type InspectionStepStatus =
   | "not_started"
@@ -32,6 +33,7 @@ export type InspectionNextAction =
   | "RUN_CHUNK_QUALITY"
   | "GENERATE_RETRIEVAL_CASES"
   | "RUN_RETRIEVAL_EVALUATION"
+  | "RUN_RELEASE_GATE"
   | "GO_TO_SUBMIT_REVIEW"
   | "WAIT_ADMIN_REVIEW"
   | "BLOCKED";
@@ -93,6 +95,7 @@ const STEP_ID_BY_KEY: Record<
   chunk_quality: "chunk_quality",
   retrieval_cases: "retrieval_case_generation",
   retrieval_evaluation: "retrieval_quality",
+  release_gate: "release_gate",
 };
 
 function mapChecklistStatus(status: SubmitReadinessStep["status"]): InspectionStepStatus {
@@ -206,6 +209,7 @@ function resolveUserFacingState(input: {
       }
       if (step.key === "retrieval_cases") passedTitles.push("검색 평가 케이스 생성");
       if (step.key === "retrieval_evaluation") passedTitles.push("검색 품질 평가");
+      if (step.key === "release_gate") passedTitles.push("릴리스 게이트 사전 점검");
     }
   }
 
@@ -308,6 +312,7 @@ export function buildProviderInspectionReadiness(input: {
   else if (nextAction === "RUN_CHUNK_QUALITY") currentStepId = "chunk_quality";
   else if (nextAction === "GENERATE_RETRIEVAL_CASES") currentStepId = "retrieval_case_generation";
   else if (nextAction === "RUN_RETRIEVAL_EVALUATION") currentStepId = "retrieval_quality";
+  else if (nextAction === "RUN_RELEASE_GATE") currentStepId = "release_gate";
   else if (nextAction === "BLOCKED" || nextAction === "WAIT_ADMIN_REVIEW") {
     const current = steps.find(
       (s) => s.checklistStatus === "current" || s.checklistStatus === "failed",

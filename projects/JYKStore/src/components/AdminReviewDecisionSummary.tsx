@@ -5,16 +5,26 @@ import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import {
   canApproveAdminReview,
   collectReviewBlockers,
+  collectReviewRefreshReasons,
   collectReviewWarnings,
   resolveReviewDecisionState,
   type ReviewDecisionState,
 } from "@/lib/admin-review-decision";
-import { approveAdminReview, evaluateAdminReleaseGateApi, rejectAdminReview } from "@/lib/admin-review-api";
+import {
+  approveAdminReview,
+  evaluateAdminReleaseGateApi,
+  refreshAdminReviewReadinessApi,
+  rejectAdminReview,
+} from "@/lib/admin-review-api";
 import {
   ADMIN_REVIEW_CTA_APPROVE,
   ADMIN_REVIEW_CTA_REJECT,
+  ADMIN_REVIEW_CTA_REFRESH_ALL,
   ADMIN_REVIEW_CTA_RELEASE_GATE,
   ADMIN_REVIEW_DECISION_TITLE,
+  ADMIN_REVIEW_REFRESH_REASONS_TITLE,
+  ADMIN_REVIEW_REJECT_COLLAPSED_HINT,
+  ADMIN_REVIEW_REJECT_OPEN,
   ADMIN_REVIEW_STATE_BLOCKED_BODY,
   ADMIN_REVIEW_STATE_BLOCKED_TITLE,
   ADMIN_REVIEW_STATE_GATE_REQUIRED_BODY,
@@ -25,12 +35,20 @@ import {
   ADMIN_REVIEW_STATE_PUBLISHED_TITLE,
   ADMIN_REVIEW_STATE_READY_BODY,
   ADMIN_REVIEW_STATE_READY_TITLE,
+  ADMIN_REVIEW_STATE_REFRESH_REQUIRED_BODY,
+  ADMIN_REVIEW_STATE_REFRESH_REQUIRED_TITLE,
   ADMIN_REVIEW_STATE_WARNING_BODY,
   ADMIN_REVIEW_STATE_WARNING_TITLE,
 } from "@/lib/role-based-ux-copy";
 
 function decisionCopy(state: ReviewDecisionState): { title: string; body: string; tone: string } {
   switch (state) {
+    case "review_refresh_required":
+      return {
+        title: ADMIN_REVIEW_STATE_REFRESH_REQUIRED_TITLE,
+        body: ADMIN_REVIEW_STATE_REFRESH_REQUIRED_BODY,
+        tone: "border-amber-200 bg-amber-50 text-amber-950",
+      };
     case "release_gate_required":
       return {
         title: ADMIN_REVIEW_STATE_GATE_REQUIRED_TITLE,
@@ -82,9 +100,10 @@ export function AdminReviewDecisionSummary({
   const [memo, setMemo] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
   const [publishAsVerified, setPublishAsVerified] = useState(false);
-  const [busy, setBusy] = useState<"approve" | "reject" | "gate" | null>(null);
+  const [busy, setBusy] = useState<"approve" | "reject" | "gate" | "refresh" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
 
   const state = resolveReviewDecisionState(detail);
   const copy = decisionCopy(state);
@@ -93,6 +112,36 @@ export function AdminReviewDecisionSummary({
   const canReject = isReviewing && rejectionReason.trim().length > 0;
   const blockers = collectReviewBlockers(detail);
   const warnings = collectReviewWarnings(detail);
+  const refreshReasons = collectReviewRefreshReasons(detail);
+
+  const showRejectFormPrimary = isReviewing && state === "approval_blocked";
+  const showRejectFormSecondary =
+    isReviewing &&
+    (state === "approval_warning" || state === "approval_ready") &&
+    (rejectOpen || state === "approval_warning");
+  const showRejectCollapsed =
+    isReviewing &&
+    (state === "review_refresh_required" || state === "release_gate_required") &&
+    !rejectOpen;
+
+  const onRefreshAll = async () => {
+    setBusy("refresh");
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await refreshAdminReviewReadinessApi(packId);
+      onUpdated(res.detail);
+      if (res.warnings && res.warnings.length > 0) {
+        setMessage(`전체 재점검을 완료했습니다. (${res.warnings.join(" ")})`);
+      } else {
+        setMessage("최신 상태로 전체 재점검을 완료했습니다.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "전체 재점검에 실패했습니다.");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const onReleaseGate = async () => {
     setBusy("gate");
@@ -149,6 +198,31 @@ export function AdminReviewDecisionSummary({
     }
   };
 
+  const rejectForm = (
+    <>
+      <label className="block text-xs font-semibold text-slate-700" htmlFor="rejection-reason">
+        반려 사유
+      </label>
+      <textarea
+        id="rejection-reason"
+        value={rejectionReason}
+        onChange={(e) => setRejectionReason(e.target.value)}
+        rows={2}
+        placeholder={"예:\n- 검색 품질 평가가 기준에 미달합니다.\n- 원천 문서 출처 확인이 필요합니다."}
+        className="w-full rounded-xl border border-store-border px-3 py-2 text-sm"
+      />
+      <form onSubmit={onReject}>
+        <button
+          type="submit"
+          disabled={!canReject || busy !== null}
+          className="min-h-[48px] w-full rounded-xl border-2 border-red-200 bg-white text-sm font-bold text-red-800 disabled:opacity-50"
+        >
+          {busy === "reject" ? "반려 중…" : ADMIN_REVIEW_CTA_REJECT}
+        </button>
+      </form>
+    </>
+  );
+
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
       <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEW_DECISION_TITLE}</h2>
@@ -158,7 +232,18 @@ export function AdminReviewDecisionSummary({
         <p className="mt-1 text-xs leading-relaxed">{copy.body}</p>
       </div>
 
-      {blockers.length > 0 ? (
+      {state === "review_refresh_required" && refreshReasons.length > 0 ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-bold text-amber-950">{ADMIN_REVIEW_REFRESH_REASONS_TITLE}</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-amber-900">
+            {refreshReasons.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {blockers.length > 0 && state === "approval_blocked" ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3">
           <p className="text-xs font-bold text-red-900">차단 이슈</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-red-800">
@@ -169,7 +254,7 @@ export function AdminReviewDecisionSummary({
         </div>
       ) : null}
 
-      {warnings.length > 0 && state !== "approval_blocked" ? (
+      {warnings.length > 0 && (state === "approval_warning" || state === "approval_ready") ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
           <p className="text-xs font-bold text-amber-950">주의 이슈</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-amber-900">
@@ -186,6 +271,17 @@ export function AdminReviewDecisionSummary({
         </div>
       ) : null}
 
+      {state === "review_refresh_required" ? (
+        <button
+          type="button"
+          disabled={busy !== null}
+          onClick={() => void onRefreshAll()}
+          className="min-h-[48px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
+        >
+          {busy === "refresh" ? "재점검 중…" : ADMIN_REVIEW_CTA_REFRESH_ALL}
+        </button>
+      ) : null}
+
       {state === "release_gate_required" ? (
         <button
           type="button"
@@ -197,7 +293,8 @@ export function AdminReviewDecisionSummary({
         </button>
       ) : null}
 
-      {isReviewing ? (
+      {isReviewing &&
+      (state === "approval_ready" || state === "approval_warning" || showRejectFormPrimary) ? (
         <>
           <label className="block text-xs font-semibold text-slate-700" htmlFor="review-memo">
             검수 메모 (선택)
@@ -209,53 +306,51 @@ export function AdminReviewDecisionSummary({
             rows={2}
             className="w-full rounded-xl border border-store-border px-3 py-2 text-sm"
           />
-
-          {canApprove || state === "approval_warning" || state === "approval_ready" ? (
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={publishAsVerified}
-                onChange={(e) => setPublishAsVerified(e.target.checked)}
-                className="h-4 w-4"
-              />
-              VERIFIED로 승인 (기본은 PUBLISHED)
-            </label>
-          ) : null}
-
-          {state !== "release_gate_required" && state !== "approval_blocked" ? (
-            <form onSubmit={onApprove}>
-              <button
-                type="submit"
-                disabled={!canApprove || busy !== null}
-                className="min-h-[48px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
-              >
-                {busy === "approve" ? "승인 중…" : ADMIN_REVIEW_CTA_APPROVE}
-              </button>
-            </form>
-          ) : null}
-
-          <label className="block text-xs font-semibold text-slate-700" htmlFor="rejection-reason">
-            반려 사유
-          </label>
-          <textarea
-            id="rejection-reason"
-            value={rejectionReason}
-            onChange={(e) => setRejectionReason(e.target.value)}
-            rows={2}
-            placeholder={"예:\n- 검색 품질 평가가 기준에 미달합니다.\n- 원천 문서 출처 확인이 필요합니다."}
-            className="w-full rounded-xl border border-store-border px-3 py-2 text-sm"
-          />
-
-          <form onSubmit={onReject}>
-            <button
-              type="submit"
-              disabled={!canReject || busy !== null}
-              className="min-h-[48px] w-full rounded-xl border-2 border-red-200 bg-white text-sm font-bold text-red-800 disabled:opacity-50"
-            >
-              {busy === "reject" ? "반려 중…" : ADMIN_REVIEW_CTA_REJECT}
-            </button>
-          </form>
         </>
+      ) : null}
+
+      {canApprove || state === "approval_warning" || state === "approval_ready" ? (
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            checked={publishAsVerified}
+            onChange={(e) => setPublishAsVerified(e.target.checked)}
+            className="h-4 w-4"
+          />
+          VERIFIED로 승인 (기본은 PUBLISHED)
+        </label>
+      ) : null}
+
+      {state === "approval_ready" || state === "approval_warning" ? (
+        <form onSubmit={onApprove}>
+          <button
+            type="submit"
+            disabled={!canApprove || busy !== null}
+            className="min-h-[48px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
+          >
+            {busy === "approve" ? "승인 중…" : ADMIN_REVIEW_CTA_APPROVE}
+          </button>
+        </form>
+      ) : null}
+
+      {showRejectFormPrimary || showRejectFormSecondary ? rejectForm : null}
+
+      {showRejectCollapsed ? (
+        <div className="rounded-xl border border-dashed border-store-border bg-slate-50 p-3">
+          <p className="text-xs text-store-muted">{ADMIN_REVIEW_REJECT_COLLAPSED_HINT}</p>
+          <button
+            type="button"
+            onClick={() => setRejectOpen(true)}
+            className="mt-2 text-xs font-semibold text-store-accent underline-offset-2 hover:underline"
+          >
+            {ADMIN_REVIEW_REJECT_OPEN}
+          </button>
+        </div>
+      ) : null}
+
+      {rejectOpen &&
+      (state === "review_refresh_required" || state === "release_gate_required") ? (
+        <div className="space-y-3 border-t border-store-border pt-3">{rejectForm}</div>
       ) : null}
 
       {message ? <p className="text-sm font-semibold text-emerald-800">{message}</p> : null}
