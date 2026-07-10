@@ -3,25 +3,31 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { isAdminAccountRole } from "@/lib/account-role";
+import { isAdminAccountRole, isProviderAccountRole } from "@/lib/account-role";
 import { fetchAuthSession } from "@/lib/auth-api";
 import { BOTTOM_TABS, bottomTabActive, type BottomTabKey } from "@/lib/routes";
 
 export function BottomTabNav() {
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isProvider, setIsProvider] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
       const session = await fetchAuthSession();
-      setIsAdmin(
-        Boolean(
-          session.loggedIn &&
-            isAdminAccountRole(session.accountRole ?? session.user?.accountRole),
-        ),
+      if (!session.loggedIn) {
+        setIsAdmin(false);
+        setIsProvider(false);
+        return;
+      }
+      const role = session.accountRole ?? session.user?.accountRole;
+      setIsAdmin(isAdminAccountRole(role));
+      setIsProvider(
+        isProviderAccountRole(role) || Boolean(session.providerProfile),
       );
     } catch {
       setIsAdmin(false);
+      setIsProvider(false);
     }
   }, []);
 
@@ -30,8 +36,13 @@ export function BottomTabNav() {
   }, [refresh, pathname]);
 
   const tabs = useMemo(
-    () => BOTTOM_TABS.filter((tab) => (tab.key === "account" ? isAdmin : true)),
-    [isAdmin],
+    () =>
+      BOTTOM_TABS.filter((tab) => {
+        if (tab.key === "account") return isAdmin;
+        if (tab.key === "provider") return isProvider;
+        return true;
+      }),
+    [isAdmin, isProvider],
   );
 
   return (

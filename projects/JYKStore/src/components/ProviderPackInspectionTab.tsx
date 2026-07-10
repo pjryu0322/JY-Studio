@@ -257,7 +257,7 @@ export function ProviderPackInspectionTab({
               onClick={onGoToDraftTab}
               className="mt-2 min-h-[40px] rounded-xl border border-red-300 bg-white px-3 font-semibold text-red-900"
             >
-              초안 탭으로 이동
+              참조지식 생성으로 이동
             </button>
           </div>
         ) : null}

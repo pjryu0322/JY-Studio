@@ -1,11 +1,14 @@
-import Link from "next/link";
+import { cookies } from "next/headers";
 import { Suspense } from "react";
 import { AuthRequiredCard } from "@/components/AuthRequiredCard";
 import { ProviderPackEditor } from "@/components/ProviderPackEditor";
 import { ProviderRequiredCard } from "@/components/ProviderRequiredCard";
 import { getUserIdFromCookies } from "@/lib/auth-session";
-import { getProviderProfileByUserId } from "@/lib/provider-profile-service";
-import { ROUTES } from "@/lib/routes";
+import {
+  createClientId,
+  JYKSTORE_CLIENT_ID_COOKIE,
+} from "@/lib/client-identity";
+import { ensureProviderProfileForAccount } from "@/lib/provider-profile-service";
 
 export const dynamic = "force-dynamic";
 
@@ -18,45 +21,19 @@ export default async function ProviderPackDetailPage({ params }: PageProps) {
   const userId = await getUserIdFromCookies();
 
   if (!userId) {
-    return (
-      <div className="space-y-4">
-        <Link
-          href={ROUTES.provider}
-          className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-        >
-          ← 제공자 센터
-        </Link>
-        <AuthRequiredCard />
-      </div>
-    );
+    return <AuthRequiredCard />;
   }
 
-  const profile = await getProviderProfileByUserId(userId);
-  if (!profile) {
-    return (
-      <div className="space-y-4">
-        <Link
-          href={ROUTES.provider}
-          className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-        >
-          ← 제공자 센터
-        </Link>
-        <ProviderRequiredCard />
-      </div>
-    );
+  const jar = await cookies();
+  const clientId = jar.get(JYKSTORE_CLIENT_ID_COOKIE)?.value ?? createClientId();
+  const ensured = await ensureProviderProfileForAccount({ userId, clientId });
+  if (!ensured.ok) {
+    return <ProviderRequiredCard />;
   }
 
   return (
-    <div className="space-y-4">
-      <Link
-        href={ROUTES.provider}
-        className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-      >
-        ← 제공자 센터
-      </Link>
-      <Suspense fallback={<p className="text-sm text-store-muted">불러오는 중…</p>}>
-        <ProviderPackEditor packId={packId} />
-      </Suspense>
-    </div>
+    <Suspense fallback={<p className="text-sm text-store-muted">불러오는 중…</p>}>
+      <ProviderPackEditor packId={packId} />
+    </Suspense>
   );
 }

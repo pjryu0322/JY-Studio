@@ -82,7 +82,6 @@ export function ProviderProfileForm({
         maxLength={500}
         rows={4}
         className="mt-2 w-full rounded-xl border border-store-border px-3 py-2 text-sm"
-        required
       />
       <label className="mt-3 block text-xs font-semibold text-slate-700" htmlFor="provider-website">
         웹사이트 (선택)
@@ -109,11 +108,9 @@ export function ProviderProfileForm({
         disabled={saving}
         className="mt-4 min-h-[44px] w-full rounded-xl bg-store-accent px-4 text-sm font-bold text-white disabled:opacity-50"
       >
-        {saving ? "저장 중…" : initial ? "프로필 수정" : "프로필 등록"}
+        {saving ? "저장 중…" : "제공자 정보 저장"}
       </button>
-      {!initial ? (
-        <p className="mt-2 text-center text-xs text-store-muted">{PROVIDER_PROFILE_FOOTER_HINT}</p>
-      ) : null}
+      <p className="mt-2 text-center text-xs text-store-muted">{PROVIDER_PROFILE_FOOTER_HINT}</p>
     </form>
   );
 }

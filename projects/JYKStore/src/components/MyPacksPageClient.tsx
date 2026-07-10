@@ -96,19 +96,11 @@ export function MyPacksPageClient() {
     <div className="space-y-6">
       {isProvider ? (
         <section className="space-y-3">
-          <div className="flex items-end justify-between gap-2 px-1">
-            <div>
-              <h2 className="text-sm font-bold text-slate-900">내가 등록한 지식팩</h2>
-              <p className="mt-0.5 text-xs text-store-muted">
-                초안·검수 요청·공개 상태를 확인할 수 있습니다.
-              </p>
-            </div>
-            <Link
-              href={ROUTES.provider}
-              className="shrink-0 text-xs font-semibold text-store-accent underline-offset-2 hover:underline"
-            >
-              제공자 센터
-            </Link>
+          <div className="px-1">
+            <h2 className="text-sm font-bold text-slate-900">내가 등록한 지식팩</h2>
+            <p className="mt-0.5 text-xs text-store-muted">
+              초안·검수 요청·공개 상태를 확인할 수 있습니다.
+            </p>
           </div>
           {hasOwned ? (
             <ul className="space-y-2">

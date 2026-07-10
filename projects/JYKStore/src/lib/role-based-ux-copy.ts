@@ -30,12 +30,13 @@ export const PROVIDER_CENTER_PROFILE_LINK_LABEL = "프로필 관리";
 export const PROVIDER_CENTER_TAGLINE =
   "제품·솔루션 문서와 공개 GitHub 저장소를 기반으로 지식팩 초안을 생성합니다.";
 
-export const PROVIDER_CENTER_BEFORE_PROFILE_TITLE = "먼저 제공자 프로필을 등록하세요.";
+export const PROVIDER_CENTER_BEFORE_PROFILE_TITLE = "제공자 권한이 필요합니다.";
 export const PROVIDER_CENTER_BEFORE_PROFILE_BODY =
-  "프로필 등록 후 지식팩 초안을 만들 수 있습니다.";
+  "지식팩 제공자 계정으로 로그인하면 바로 지식팩을 만들 수 있습니다.";
 
-export const PROVIDER_CENTER_REGISTERED_TITLE = "제공자 등록 완료";
-export const PROVIDER_CENTER_REGISTERED_BODY = "이제 첫 지식팩 초안을 만들 수 있습니다.";
+export const PROVIDER_CENTER_REGISTERED_TITLE = "제공자 계정 확인됨";
+export const PROVIDER_CENTER_REGISTERED_BODY =
+  "현재 계정으로 지식팩을 생성하고 검수요청할 수 있습니다.";
 
 export const PROVIDER_CENTER_NEXT_TASK = "다음 할 일: 새 지식팩 초안 만들기";
 
@@ -55,14 +56,14 @@ export const PROVIDER_PACK_ID_LABEL = "지식팩 ID";
 
 export const PROVIDER_PACK_WIZARD_BASIC_STEP = "기본정보";
 export const PROVIDER_PACK_WIZARD_SOURCE_STEP = "자료 등록";
-export const PROVIDER_PACK_WIZARD_DRAFT_STEP = "Knowledge Unit 초안";
+export const PROVIDER_PACK_WIZARD_DRAFT_STEP = "참조지식 생성";
 export const PROVIDER_PACK_WIZARD_INSPECTION_STEP = "지식팩 점검";
 export const PROVIDER_PACK_WIZARD_REVIEW_STEP = "검수 요청";
 export const PROVIDER_PACK_WIZARD_PUBLISH_STEP = "운영자 승인 후 공개";
 
 export const PROVIDER_PACK_TAB_BASIC = "기본정보";
 export const PROVIDER_PACK_TAB_SOURCE = "자료등록";
-export const PROVIDER_PACK_TAB_DRAFT = "초안";
+export const PROVIDER_PACK_TAB_DRAFT = "참조지식 생성";
 export const PROVIDER_PACK_TAB_INSPECTION = "점검";
 export const PROVIDER_PACK_TAB_REVIEW = "검수요청";
 
@@ -166,8 +167,8 @@ export const PROVIDER_PACK_ADVANCED_SUMMARY_EDIT = "고급 요약 수정";
 export const PROVIDER_PACK_DRAFT_EMPTY_SOURCES =
   "아직 등록된 원천 문서가 없습니다. 먼저 자료등록 탭에서 GitHub 또는 문서를 등록하세요.";
 export const PROVIDER_PACK_GO_TO_SOURCE_TAB = "자료등록 탭으로 이동";
-export const PROVIDER_PACK_GO_TO_DRAFT_TAB = "Knowledge Unit 초안 생성하러 가기";
-export const PROVIDER_PACK_GO_TO_DRAFT_SHORT = "초안으로 이동";
+export const PROVIDER_PACK_GO_TO_DRAFT_TAB = "참조지식 생성하러 가기";
+export const PROVIDER_PACK_GO_TO_DRAFT_SHORT = "참조지식 생성으로 이동";
 
 export const PROVIDER_PACK_REVIEW_PREREQ_TITLE = "검수 요청 전 필요한 작업";
 export const PROVIDER_GITHUB_ADVANCED_SETTINGS_EXPAND = "고급 설정 펼치기";
@@ -249,14 +250,21 @@ export const PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE =
 
 /** @deprecated Use ProviderOnboardingStepper instead of numbered list on provider page */
 export const PROVIDER_CENTER_ONBOARDING_STEPS = [
-  "제공자 프로필 등록",
-  "지식팩 초안 생성",
-  "GitHub URL 또는 문서 기반 자동수집",
-  "검토 요청",
+  "지식팩 기본정보 입력",
+  "GitHub/문서 자동수집",
+  "초안 확인 및 최종 점검",
+  "검수 요청",
   "운영자 승인 후 공개",
 ] as const;
 
-export const PROVIDER_PROFILE_FOOTER_HINT = "프로필 등록 후 새 지식팩을 만들 수 있습니다.";
+export const PROVIDER_PROFILE_FOOTER_HINT =
+  "표시명·소개는 상단 프로필에서 언제든 수정할 수 있습니다.";
+
+export const PROVIDER_PROFILE_MENU_LABEL = "제공자 정보";
+export const PROVIDER_PROFILE_EDIT_TITLE = "제공자 정보 수정";
+export const PROVIDER_PROFILE_SAVE_CTA = "저장";
+export const PROVIDER_PROFILE_SAVE_SUCCESS = "제공자 정보를 저장했습니다.";
+export const PROVIDER_ACCOUNT_MENU_LABEL = "계정 정보";
 
 export const PROVIDER_PACK_STATUS_UX: Record<string, string> = {
   DRAFT: "초안 작성 중",

@@ -1,12 +1,14 @@
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { AuthRequiredCard } from "@/components/AuthRequiredCard";
 import { ProviderPackCreateForm } from "@/components/ProviderPackCreateForm";
 import { ProviderRequiredCard } from "@/components/ProviderRequiredCard";
 import { getUserIdFromCookies } from "@/lib/auth-session";
+import {
+  createClientId,
+  JYKSTORE_CLIENT_ID_COOKIE,
+} from "@/lib/client-identity";
 import { prisma } from "@/lib/prisma";
-import { getProviderProfileByUserId } from "@/lib/provider-profile-service";
-import { ROUTES } from "@/lib/routes";
+import { ensureProviderProfileForAccount } from "@/lib/provider-profile-service";
 
 export const dynamic = "force-dynamic";
 
@@ -14,48 +16,23 @@ export default async function ProviderPackNewPage() {
   const userId = await getUserIdFromCookies();
 
   if (!userId) {
-    return (
-      <div className="space-y-4">
-        <Link
-          href={ROUTES.provider}
-          className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-        >
-          ← 제공자 센터
-        </Link>
-        <AuthRequiredCard />
-      </div>
-    );
+    return <AuthRequiredCard />;
   }
 
-  const profile = await getProviderProfileByUserId(userId);
+  const jar = await cookies();
+  const clientId = jar.get(JYKSTORE_CLIENT_ID_COOKIE)?.value ?? createClientId();
+  const ensured = await ensureProviderProfileForAccount({ userId, clientId });
+  if (!ensured.ok) {
+    return <ProviderRequiredCard />;
+  }
 
   const categories = await prisma.packCategory.findMany({
     orderBy: { name: "asc" },
     select: { categoryId: true, name: true },
   });
 
-  if (!profile) {
-    return (
-      <div className="space-y-4">
-        <Link
-          href={ROUTES.provider}
-          className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-        >
-          ← 제공자 센터
-        </Link>
-        <ProviderRequiredCard />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
-      <Link
-        href={ROUTES.provider}
-        className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
-      >
-        ← 제공자 센터
-      </Link>
       <div className="px-1">
         <h1 className="text-lg font-bold text-slate-900">새 지식팩 초안</h1>
         <p className="mt-1 text-sm text-store-muted">

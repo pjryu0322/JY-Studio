@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ProviderProfileForm } from "@/components/ProviderProfileForm";
 import { StoreLoginForm } from "@/components/StoreLoginForm";
@@ -122,13 +121,6 @@ export function AccountProfilePageClient() {
           onSave={onSaveProviderProfile}
         />
       </section>
-
-      <Link
-        href={ROUTES.provider}
-        className="flex min-h-[44px] items-center justify-center rounded-2xl border border-store-border bg-white text-sm font-semibold text-slate-800"
-      >
-        제공자 센터로 이동
-      </Link>
     </div>
   );
 }

@@ -1,7 +1,10 @@
 import { NextRequest } from "next/server";
-import { resolveSessionAccountRole } from "@/lib/account-role";
+import { resolveSessionAccountRole, parseAccountRole } from "@/lib/account-role";
 import { getStoreAuthSessionFromRequest } from "@/lib/auth-session";
-import { findProviderProfileForUser } from "@/lib/provider-profile-service";
+import {
+  ensureProviderProfileForAccount,
+  findProviderProfileForUser,
+} from "@/lib/provider-profile-service";
 import { toProviderProfileDto } from "@/lib/provider-profile-dto";
 import { ensureClientId, jsonWithClientIdCookie } from "@/lib/client-identity";
 import { getStoreUserById } from "@/lib/store-auth-service";
@@ -21,7 +24,17 @@ export async function GET(request: NextRequest) {
       return jsonWithClientIdCookie({ loggedIn: false, clientId }, clientId);
     }
 
-    const profileRow = await findProviderProfileForUser(session.userId, clientId);
+    const storedRole = parseAccountRole(user.accountRole);
+    let profileRow = await findProviderProfileForUser(session.userId, clientId);
+
+    if (!profileRow && (storedRole === "PROVIDER" || storedRole === "ADMIN")) {
+      const ensured = await ensureProviderProfileForAccount({
+        userId: session.userId,
+        clientId,
+      });
+      profileRow = ensured.ok ? ensured.profile : null;
+    }
+
     const providerProfile = profileRow ? toProviderProfileDto(profileRow) : null;
     const accountRole = resolveSessionAccountRole({
       storedRole: user.accountRole,

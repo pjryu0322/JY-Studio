@@ -4,6 +4,7 @@ import { AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE } from "@/lib/github-auto-collect/
 import { splitContentToChunks } from "@/lib/chunk-pipeline-service";
 import { prisma } from "@/lib/prisma";
 import { readDraftMetadata } from "@/lib/provider-knowledge-unit-draft-dto";
+import { fixLoneSurrogates, sliceUtf16Safe } from "@/lib/text-encoding-safe";
 
 export const AUTO_SOURCE_CHUNK_TYPE = "AUTO_SOURCE_CHUNK";
 export const AUTO_PIPELINE_GENERATED_BY = "auto-pipeline";
@@ -40,11 +41,11 @@ function metadataRecord(value: unknown): Record<string, unknown> {
 
 /** Collapse whitespace and clamp max length. Does not invent padding text. */
 export function normalizeAndClamp(text: string, _min: number, max: number): string {
-  let content = text.replace(/\s+/g, " ").trim();
+  let content = fixLoneSurrogates(text.replace(/\s+/g, " ").trim());
   if (content.length > max) {
-    content = `${content.slice(0, max - 1).trimEnd()}…`;
+    content = `${sliceUtf16Safe(content, max - 1).trimEnd()}…`;
   }
-  return content;
+  return fixLoneSurrogates(content);
 }
 
 export function buildRetrievalChunkContent(input: {
@@ -263,8 +264,8 @@ export async function regenerateAutoChunksForPack(
       const content = buildRetrievalChunkContent({
         title,
         topic: title,
-        draftContent: raw.slice(0, 2800),
-        sourceExcerpt: raw.slice(0, 500),
+        draftContent: sliceUtf16Safe(raw, 2800),
+        sourceExcerpt: sliceUtf16Safe(raw, 500),
         sourcePath: doc.fileName ?? doc.sourceUrl,
         headings,
       });
@@ -319,7 +320,7 @@ export async function regenerateAutoChunksForPack(
           title,
           topic: headings[partIndex - 1] ?? doc.title,
           draftContent: part,
-          sourceExcerpt: part.slice(0, 400),
+          sourceExcerpt: sliceUtf16Safe(part, 400),
           sourcePath: doc.fileName ?? doc.sourceUrl,
           headings,
         });
@@ -378,7 +379,14 @@ export async function regenerateAutoChunksForPack(
     }
 
     for (const row of toCreate) {
-      await tx.knowledgeChunk.create({ data: row });
+      await tx.knowledgeChunk.create({
+        data: {
+          ...row,
+          title: fixLoneSurrogates(row.title),
+          content: fixLoneSurrogates(row.content),
+          section: fixLoneSurrogates(row.section),
+        },
+      });
     }
   });
 

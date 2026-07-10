@@ -38,6 +38,10 @@ export function isAdminAccountRole(role: string | null | undefined): boolean {
   return parseAccountRole(role) === "ADMIN";
 }
 
+export function isProviderAccountRole(role: string | null | undefined): boolean {
+  return parseAccountRole(role) === "PROVIDER";
+}
+
 /** Comma-separated emails in JYKSTORE_ADMIN_EMAILS that receive ADMIN on login. */
 export function getAdminEmailAllowlist(): string[] {
   const raw = process.env.JYKSTORE_ADMIN_EMAILS?.trim() ?? "";

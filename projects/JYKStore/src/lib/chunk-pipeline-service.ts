@@ -10,6 +10,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { validateAndNormalizeChunkMetadata } from "@/lib/retrieval-metadata";
+import { fixLoneSurrogates, sliceUtf16Safe } from "@/lib/text-encoding-safe";
 
 const TITLE_MIN = 2;
 const TITLE_MAX = 120;
@@ -51,8 +52,9 @@ export function splitContentToChunks(content: string, maxChunkChars: number): st
   const pushLongText = (text: string) => {
     let remaining = text;
     while (remaining.length > maxChunkChars) {
-      result.push(remaining.slice(0, maxChunkChars).trim());
-      remaining = remaining.slice(maxChunkChars).trim();
+      const piece = sliceUtf16Safe(remaining, maxChunkChars).trim();
+      if (piece) result.push(fixLoneSurrogates(piece));
+      remaining = remaining.slice(piece.length || maxChunkChars).trim();
     }
     if (remaining) current = remaining;
   };

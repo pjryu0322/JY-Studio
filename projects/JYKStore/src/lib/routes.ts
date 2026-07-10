@@ -72,7 +72,13 @@ export function searchPath(query?: string, chip?: string): string {
   return qs ? `${ROUTES.search}?${qs}` : ROUTES.search;
 }
 
-export type BottomTabKey = "today" | "search" | "categories" | "myPacks" | "account";
+export type BottomTabKey =
+  | "today"
+  | "search"
+  | "categories"
+  | "myPacks"
+  | "provider"
+  | "account";
 
 export const BOTTOM_TABS: readonly {
   key: BottomTabKey;
@@ -84,6 +90,7 @@ export const BOTTOM_TABS: readonly {
   { key: "search", href: ROUTES.search, label: "검색", icon: "⌕" },
   { key: "categories", href: ROUTES.categories, label: "카테고리", icon: "▦" },
   { key: "myPacks", href: ROUTES.myPacks, label: "내 지식팩", icon: "📦" },
+  { key: "provider", href: ROUTES.provider, label: "제공자 센터", icon: "🏷" },
   { key: "account", href: ROUTES.account, label: "계정", icon: "👤" },
 ];
 
@@ -101,6 +108,8 @@ export function bottomTabActive(key: BottomTabKey, pathname: string): boolean {
       return pathname === ROUTES.categories || pathname.startsWith("/categories/");
     case "myPacks":
       return pathname === ROUTES.myPacks || pathname.startsWith(`${ROUTES.myPacks}/`);
+    case "provider":
+      return pathname === ROUTES.provider || pathname.startsWith(`${ROUTES.provider}/`);
     case "account":
       return (
         pathname === ROUTES.account ||

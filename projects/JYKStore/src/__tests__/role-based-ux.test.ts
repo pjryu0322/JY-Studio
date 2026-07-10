@@ -18,7 +18,7 @@ function readSource(relativePath: string): string {
 describe("role-based UX copy", () => {
   it("defines provider onboarding steps", () => {
     assert.equal(PROVIDER_CENTER_ONBOARDING_STEPS.length, 5);
-    assert.ok(PROVIDER_PROFILE_FOOTER_HINT.includes("새 지식팩"));
+    assert.ok(PROVIDER_PROFILE_FOOTER_HINT.includes("상단 프로필"));
   });
 });
 
@@ -33,8 +33,17 @@ describe("role-based account UX", () => {
     assert.ok(account.includes("AdminAccountManagementPanel"));
     assert.ok(account.includes("관리자 전용 메뉴입니다"));
     assert.ok(account.includes("등록 계정 관리") || panel.includes("등록 계정 관리"));
-    assert.ok(nav.includes('tab.key === "account" ? isAdmin'));
+    assert.ok(nav.includes('tab.key === "account" ? isAdmin') || nav.includes('tab.key === "account") return isAdmin'));
     assert.ok(nav.includes("isAdminAccountRole"));
+  });
+
+  it("shows provider center in bottom nav for knowledge providers", () => {
+    const nav = readSource("src/components/BottomTabNav.tsx");
+    const routes = readSource("src/lib/routes.ts");
+    assert.ok(routes.includes('key: "provider"'));
+    assert.ok(routes.includes('label: "제공자 센터"'));
+    assert.ok(nav.includes("isProviderAccountRole"));
+    assert.ok(nav.includes('tab.key === "provider"'));
   });
 });
 

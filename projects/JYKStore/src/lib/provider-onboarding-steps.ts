@@ -1,6 +1,6 @@
 import { ROUTES, providerPackDetailPath } from "@/lib/routes";
 
-export type ProviderOnboardingStepKey = "profile" | "pack" | "source" | "draft" | "review";
+export type ProviderOnboardingStepKey = "pack" | "source" | "draft" | "review" | "publish";
 
 export type ProviderOnboardingStepStatus = "done" | "current" | "pending";
 
@@ -27,15 +27,10 @@ export function buildProviderOnboardingSteps(
 ): ProviderOnboardingStep[] {
   const packHref = input.primaryPackId ? providerPackDetailPath(input.primaryPackId) : ROUTES.providerPackNew;
   const githubHref = input.primaryPackId
-    ? `${providerPackDetailPath(input.primaryPackId)}#github-auto-collect`
+    ? `${providerPackDetailPath(input.primaryPackId)}?tab=source`
     : undefined;
 
-  const profileStatus: ProviderOnboardingStepStatus = input.hasProfile ? "done" : "current";
-
-  let packStatus: ProviderOnboardingStepStatus = "pending";
-  if (input.hasProfile) {
-    packStatus = input.packCount > 0 ? "done" : "current";
-  }
+  const packStatus: ProviderOnboardingStepStatus = input.packCount > 0 ? "done" : "current";
 
   let sourceStatus: ProviderOnboardingStepStatus = "pending";
   if (input.packCount > 0) {
@@ -62,14 +57,14 @@ export function buildProviderOnboardingSteps(
     reviewStatus = "current";
   }
 
+  let publishStatus: ProviderOnboardingStepStatus = "pending";
+  if (input.hasPublishedOrVerifiedPack) {
+    publishStatus = "done";
+  } else if (input.hasReviewingPack) {
+    publishStatus = "pending";
+  }
+
   return [
-    {
-      key: "profile",
-      title: "제공자 프로필 등록",
-      description: "제공자 정보를 등록합니다.",
-      status: profileStatus,
-      href: input.hasProfile ? undefined : `${ROUTES.accountProfile}#provider-profile`,
-    },
     {
       key: "pack",
       title: "지식팩 기본정보 입력",
@@ -86,19 +81,29 @@ export function buildProviderOnboardingSteps(
     },
     {
       key: "draft",
-      title: "초안 확인 및 검토 요청",
-      description: "Knowledge Unit 초안을 확인하고 검수를 요청합니다.",
+      title: "초안 확인 및 최종 점검",
+      description: "참조지식을 확인하고 점검을 완료합니다.",
       status: draftStatus,
       href:
         draftStatus === "current" && input.primaryPackId
-          ? `${providerPackDetailPath(input.primaryPackId)}#pack-review`
+          ? `${providerPackDetailPath(input.primaryPackId)}?tab=inspection`
           : undefined,
     },
     {
       key: "review",
+      title: "검수 요청",
+      description: "준비가 끝나면 검수 요청을 제출합니다.",
+      status: reviewStatus === "done" ? "done" : reviewStatus,
+      href:
+        reviewStatus === "current" && input.primaryPackId
+          ? `${providerPackDetailPath(input.primaryPackId)}?tab=review`
+          : undefined,
+    },
+    {
+      key: "publish",
       title: "운영자 승인 후 공개",
-      description: "검토 요청 후 운영자가 승인·활성화하면 공개됩니다.",
-      status: reviewStatus,
+      description: "운영자가 승인하면 스토어에 공개됩니다.",
+      status: publishStatus,
     },
   ];
 }
@@ -126,14 +131,14 @@ export function resolveProviderPackNextAction(input: {
   if (input.status === "DRAFT" && input.sourceDocumentCount > 0 && input.knowledgeUnitDraftCount === 0) {
     return {
       title: "다음 할 일",
-      body: "자동수집으로 Knowledge Unit 초안을 생성하거나 초안을 확인하세요.",
+      body: "자동수집으로 참조지식을 생성하거나 점검으로 이동하세요.",
       href: "#github-auto-collect",
     };
   }
   if (input.status === "DRAFT" && input.knowledgeUnitDraftCount > 0) {
     return {
       title: "다음 할 일",
-      body: "초안을 확인한 뒤 검수 요청을 제출하세요.",
+      body: "점검을 확인한 뒤 검수 요청을 제출하세요.",
       href: "#pack-review",
     };
   }

@@ -13,8 +13,8 @@ function readSource(relativePath: string): string {
 }
 
 describe("buildProviderOnboardingSteps", () => {
-  it("marks profile current when missing and pack current after profile", () => {
-    const guest = buildProviderOnboardingSteps({
+  it("starts with pack basics and does not require profile registration", () => {
+    const steps = buildProviderOnboardingSteps({
       hasProfile: false,
       packCount: 0,
       sourceDocumentCount: 0,
@@ -22,22 +22,22 @@ describe("buildProviderOnboardingSteps", () => {
       hasReviewingPack: false,
       hasPublishedOrVerifiedPack: false,
     });
-    assert.equal(guest.find((s) => s.key === "profile")?.status, "current");
-    assert.equal(guest.find((s) => s.key === "pack")?.status, "pending");
+    assert.equal(steps.find((s) => s.key === "profile"), undefined);
+    assert.equal(steps.find((s) => s.key === "pack")?.status, "current");
 
-    const registered = buildProviderOnboardingSteps({
+    const withPack = buildProviderOnboardingSteps({
       hasProfile: true,
-      packCount: 0,
+      packCount: 1,
       sourceDocumentCount: 0,
       knowledgeUnitDraftCount: 0,
       hasReviewingPack: false,
       hasPublishedOrVerifiedPack: false,
     });
-    assert.equal(registered.find((s) => s.key === "profile")?.status, "done");
-    assert.equal(registered.find((s) => s.key === "pack")?.status, "current");
+    assert.equal(withPack.find((s) => s.key === "pack")?.status, "done");
+    assert.equal(withPack.find((s) => s.key === "source")?.status, "current");
   });
 
-  it("includes five onboarding steps", () => {
+  it("includes five onboarding steps without profile registration", () => {
     const steps = buildProviderOnboardingSteps({
       hasProfile: true,
       packCount: 1,
@@ -49,7 +49,7 @@ describe("buildProviderOnboardingSteps", () => {
     assert.equal(steps.length, 5);
     assert.deepEqual(
       steps.map((s) => s.key),
-      ["profile", "pack", "source", "draft", "review"],
+      ["pack", "source", "draft", "review", "publish"],
     );
   });
 });
@@ -71,11 +71,12 @@ describe("provider onboarding UX sources", () => {
     assert.ok(!center.includes("1. 1."));
   });
 
-  it("shows pack create form only when profile exists on server page", () => {
+  it("shows pack create form when provider profile is ensured on server page", () => {
     const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
     assert.ok(packNew.includes("ProviderRequiredCard"));
     assert.ok(packNew.includes("ProviderPackCreateForm"));
     assert.ok(packNew.includes("getUserIdFromCookies"));
+    assert.ok(packNew.includes("ensureProviderProfileForAccount"));
   });
 
   it("uses pack create step label and submit label", () => {
