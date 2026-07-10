@@ -8,6 +8,7 @@ import {
   ADMIN_REVIEW_BLOCKER_ISSUES_TITLE,
   ADMIN_REVIEW_WARNING_ISSUES_TITLE,
   ADMIN_REVIEW_WARNING_TAB_HINT,
+  ADMIN_REVIEW_WARNING_TAB_HINT_ACCEPTED,
 } from "@/lib/role-based-ux-copy";
 
 export function AdminReviewWarningIssuesTab({
@@ -23,9 +24,11 @@ export function AdminReviewWarningIssuesTab({
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
       <div>
         <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEW_WARNING_ISSUES_TITLE}</h2>
-        {pending ? (
-          <p className="mt-1 text-xs text-store-muted">{ADMIN_REVIEW_WARNING_TAB_HINT}</p>
-        ) : null}
+        <p className="mt-1 text-xs text-store-muted">
+          {pending
+            ? ADMIN_REVIEW_WARNING_TAB_HINT
+            : ADMIN_REVIEW_WARNING_TAB_HINT_ACCEPTED}
+        </p>
       </div>
 
       {blockers.length > 0 ? (
@@ -41,9 +44,7 @@ export function AdminReviewWarningIssuesTab({
 
       {warnings.length > 0 ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-          <p className="text-xs font-bold text-amber-950">
-            {pending ? "접수 후 확인할 주의 항목" : "주의 이슈"}
-          </p>
+          <p className="text-xs font-bold text-amber-950">주의 이슈</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-amber-900">
             {warnings.map((item) => (
               <li key={item}>{item}</li>

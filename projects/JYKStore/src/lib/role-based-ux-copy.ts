@@ -108,12 +108,15 @@ export const ADMIN_REVIEWS_OPEN_DETAIL = "검토하기";
 export const ADMIN_REVIEWS_STATUS_PENDING = "접수 대기";
 export const ADMIN_REVIEWS_STATUS_IN_REVIEW = "검수 중";
 
-export const ADMIN_REVIEW_TAB_ACCEPT = "접수";
-export const ADMIN_REVIEW_TAB_DECISION = "판단";
 export const ADMIN_REVIEW_TAB_PACKAGE = "패키지";
 export const ADMIN_REVIEW_TAB_WARNINGS = "주의";
 export const ADMIN_REVIEW_TAB_SOURCES = "문서";
 export const ADMIN_REVIEW_TAB_ADVANCED = "고급";
+export const ADMIN_REVIEW_EVIDENCE_SECTION_TITLE = "판단 근거";
+export const ADMIN_REVIEW_RECEIPT_INFO_TITLE = "접수 정보";
+export const ADMIN_REVIEW_CTA_VIEW_PACKAGE = "제출 패키지 보기";
+export const ADMIN_REVIEW_WARNING_TAB_HINT_ACCEPTED =
+  "승인 전 확인할 항목입니다.";
 
 export const ADMIN_REVIEW_DECISION_TITLE = "최종 검수 판단";
 export const ADMIN_REVIEW_ACCEPT_TITLE = "검수 요청 접수";

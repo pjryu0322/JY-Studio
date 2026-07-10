@@ -3,22 +3,27 @@
 import { useCallback, useEffect, useState } from "react";
 import { AdminReviewAcceptTab } from "@/components/AdminReviewAcceptTab";
 import { AdminReviewAdvancedActionsTab } from "@/components/AdminReviewAdvancedActionsTab";
+import { AdminReviewEvidenceTabs } from "@/components/AdminReviewEvidenceTabs";
 import { AdminReviewPackageSnapshotTab } from "@/components/AdminReviewPackageSnapshotTab";
+import { AdminReviewPageHeader } from "@/components/AdminReviewPageHeader";
+import { AdminReviewReceiptInfoCard } from "@/components/AdminReviewReceiptInfoCard";
 import { AdminReviewSourceDocumentsTab } from "@/components/AdminReviewSourceDocumentsTab";
-import { AdminReviewTabs } from "@/components/AdminReviewTabs";
 import { AdminReviewWarningIssuesTab } from "@/components/AdminReviewWarningIssuesTab";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import { fetchAdminReviewDetail } from "@/lib/admin-review-api";
 import {
-  defaultAdminReviewTab,
-  type AdminReviewTabId,
+  defaultAdminReviewEvidenceTab,
+  isReviewAccepted,
+  type AdminReviewEvidenceTabId,
 } from "@/lib/admin-review-tabs";
+import { ADMIN_REVIEW_EVIDENCE_SECTION_TITLE } from "@/lib/role-based-ux-copy";
 
 export function AdminReviewDetailPageClient({ packId }: { readonly packId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<AdminReviewDetailDto | null>(null);
-  const [activeTab, setActiveTab] = useState<AdminReviewTabId>("accept");
+  const [evidenceTab, setEvidenceTab] =
+    useState<AdminReviewEvidenceTabId>("package");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -26,7 +31,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     try {
       const data = await fetchAdminReviewDetail(packId);
       setDetail(data.detail);
-      setActiveTab(defaultAdminReviewTab(data.detail));
+      setEvidenceTab(defaultAdminReviewEvidenceTab(data.detail));
     } catch (err) {
       setError(err instanceof Error ? err.message : "검수 상세를 불러오지 못했습니다.");
     } finally {
@@ -54,27 +59,46 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         </div>
       ) : null}
 
-      <AdminReviewTabs detail={detail} activeTab={activeTab} onTabChange={setActiveTab} />
+      <AdminReviewPageHeader detail={detail} />
 
-      {activeTab === "accept" ? (
-        <AdminReviewAcceptTab packId={packId} detail={detail} onUpdated={setDetail} />
-      ) : null}
-      {activeTab === "package" ? <AdminReviewPackageSnapshotTab detail={detail} /> : null}
-      {activeTab === "warnings" ? <AdminReviewWarningIssuesTab detail={detail} /> : null}
-      {activeTab === "sources" ? (
-        <AdminReviewSourceDocumentsTab
-          packId={packId}
+      <AdminReviewAcceptTab packId={packId} detail={detail} onUpdated={setDetail} />
+
+      {isReviewAccepted(detail) ? (
+        <AdminReviewReceiptInfoCard
           detail={detail}
-          onUpdated={setDetail}
+          onGoToPackageTab={() => setEvidenceTab("package")}
         />
       ) : null}
-      {activeTab === "advanced" ? (
-        <AdminReviewAdvancedActionsTab
-          packId={packId}
-          detail={detail}
-          onUpdated={setDetail}
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-bold text-slate-900">
+          {ADMIN_REVIEW_EVIDENCE_SECTION_TITLE}
+        </h2>
+        <AdminReviewEvidenceTabs
+          activeTab={evidenceTab}
+          onTabChange={setEvidenceTab}
         />
-      ) : null}
+        {evidenceTab === "package" ? (
+          <AdminReviewPackageSnapshotTab detail={detail} />
+        ) : null}
+        {evidenceTab === "warnings" ? (
+          <AdminReviewWarningIssuesTab detail={detail} />
+        ) : null}
+        {evidenceTab === "documents" ? (
+          <AdminReviewSourceDocumentsTab
+            packId={packId}
+            detail={detail}
+            onUpdated={setDetail}
+          />
+        ) : null}
+        {evidenceTab === "advanced" ? (
+          <AdminReviewAdvancedActionsTab
+            packId={packId}
+            detail={detail}
+            onUpdated={setDetail}
+          />
+        ) : null}
+      </section>
     </div>
   );
 }

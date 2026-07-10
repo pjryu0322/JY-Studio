@@ -580,18 +580,19 @@ describe("admin review decision state", () => {
 });
 
 describe("admin review decision UX wiring", () => {
-  it("puts accept/decision tab first and moves tools to advanced tab", () => {
+  it("puts decision card above evidence tabs", () => {
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
     const advanced = readSource("src/components/AdminReviewAdvancedActionsTab.tsx");
     const sections = readSource("src/components/AdminReviewDetailSections.tsx");
     const sources = readSource("src/components/AdminReviewSourceDocuments.tsx");
 
-    assert.ok(page.includes("AdminReviewTabs"));
     assert.ok(page.includes("AdminReviewAcceptTab"));
-    assert.ok(page.includes("AdminReviewAdvancedActionsTab"));
+    assert.ok(page.includes("AdminReviewEvidenceTabs"));
+    assert.ok(page.includes("AdminReviewReceiptInfoCard"));
     assert.ok(!page.includes("AdminReviewDecisionPanel"));
     assert.ok(!page.includes("AdminReviewInspectionSummary"));
+    assert.ok(accept.includes("ADMIN_REVIEW_DECISION_TITLE"));
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_ACCEPT"));
     assert.ok(accept.includes("acceptAdminReview"));
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_APPROVE"));

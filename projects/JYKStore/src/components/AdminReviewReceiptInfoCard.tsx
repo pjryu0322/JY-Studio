@@ -1,0 +1,59 @@
+import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
+import {
+  ADMIN_REVIEW_CTA_VIEW_PACKAGE,
+  ADMIN_REVIEW_RECEIPT_INFO_TITLE,
+  ADMIN_REVIEWS_STATUS_IN_REVIEW,
+} from "@/lib/role-based-ux-copy";
+
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return iso.replace("T", " ").slice(0, 16);
+}
+
+export function AdminReviewReceiptInfoCard({
+  detail,
+  onGoToPackageTab,
+}: {
+  readonly detail: AdminReviewDetailDto;
+  readonly onGoToPackageTab: () => void;
+}) {
+  const review = detail.latestReview;
+  const snapshot = review?.submitSnapshot ?? null;
+  const submittedVersionLabel = snapshot?.submittedVersionId
+    ? detail.versions.find((v) => v.id === snapshot.submittedVersionId)?.version ??
+      snapshot.submittedVersionId
+    : null;
+  const acceptedAt = review?.updatedAt ?? review?.createdAt ?? null;
+  const reviewerLabel = review?.reviewerUserId
+    ? `관리자 (${review.reviewerUserId.slice(0, 8)}…)`
+    : "관리자";
+
+  return (
+    <section className="space-y-3 rounded-2xl border border-store-border bg-white p-4 shadow-card">
+      <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEW_RECEIPT_INFO_TITLE}</h2>
+      <ul className="space-y-1 text-xs text-slate-700 sm:text-sm">
+        <li>접수 상태: {ADMIN_REVIEWS_STATUS_IN_REVIEW}</li>
+        <li>접수일시: {formatDateTime(acceptedAt)}</li>
+        <li>접수자: {reviewerLabel}</li>
+        {snapshot ? (
+          <>
+            <li>제출일시: {formatDateTime(snapshot.submittedAt)}</li>
+            {submittedVersionLabel ? <li>제출 버전: {submittedVersionLabel}</li> : null}
+            <li>제출 당시 릴리스 게이트: {snapshot.releaseGateStatus}</li>
+            <li>제출 당시 원천 문서: {snapshot.sourceDocumentCount}개</li>
+            <li>제출 당시 Chunk: {snapshot.activeChunkCount}개</li>
+          </>
+        ) : (
+          <li>제출 패키지: 없음</li>
+        )}
+      </ul>
+      <button
+        type="button"
+        onClick={onGoToPackageTab}
+        className="min-h-[44px] w-full rounded-xl border border-store-border bg-slate-50 text-sm font-semibold text-store-accent"
+      >
+        {ADMIN_REVIEW_CTA_VIEW_PACKAGE}
+      </button>
+    </section>
+  );
+}

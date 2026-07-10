@@ -24,10 +24,12 @@ import {
 import {
   ADMIN_REVIEW_ACCEPT_BLOCKED_BODY,
   ADMIN_REVIEW_ACCEPT_BLOCKED_TITLE,
+  ADMIN_REVIEW_ACCEPT_TITLE,
   ADMIN_REVIEW_BLOCKER_ISSUES_TITLE,
   ADMIN_REVIEW_CTA_ACCEPT,
   ADMIN_REVIEW_CTA_APPROVE,
   ADMIN_REVIEW_CTA_REJECT,
+  ADMIN_REVIEW_DECISION_TITLE,
   ADMIN_REVIEW_REFRESH_REASONS_TITLE,
   ADMIN_REVIEW_REJECT_COLLAPSED_HINT,
   ADMIN_REVIEW_REJECT_OPEN,
@@ -164,9 +166,13 @@ export function AdminReviewAcceptTab({
 
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
-      {needsAccept && !canAccept ? (
-        <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEW_ACCEPT_BLOCKED_TITLE}</h2>
-      ) : null}
+      {needsAccept ? (
+        <h2 className="text-sm font-bold text-slate-900">
+          {canAccept ? ADMIN_REVIEW_ACCEPT_TITLE : ADMIN_REVIEW_ACCEPT_BLOCKED_TITLE}
+        </h2>
+      ) : (
+        <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEW_DECISION_TITLE}</h2>
+      )}
 
       {!needsAccept ? (
         <div className={`rounded-xl border p-3 ${statusCopy.tone}`}>

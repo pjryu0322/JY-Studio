@@ -10,18 +10,27 @@ import {
   resolvePendingAcceptCopy,
 } from "../lib/admin-review-decision.ts";
 import {
-  adminReviewAcceptTabLabel,
-  defaultAdminReviewTab,
+  ADMIN_REVIEW_EVIDENCE_TAB_IDS,
+  defaultAdminReviewEvidenceTab,
+  isReviewAccepted,
+  isReviewPending,
 } from "../lib/admin-review-tabs.ts";
 import {
   ADMIN_REVIEW_ACCEPT_PHASE_WARNING_TITLE,
+  ADMIN_REVIEW_ACCEPT_TITLE,
   ADMIN_REVIEW_CTA_ACCEPT,
   ADMIN_REVIEW_CTA_APPROVE,
   ADMIN_REVIEW_CTA_REFRESH_ALL,
   ADMIN_REVIEW_CTA_REJECT,
+  ADMIN_REVIEW_CTA_VIEW_PACKAGE,
+  ADMIN_REVIEW_DECISION_TITLE,
+  ADMIN_REVIEW_EVIDENCE_SECTION_TITLE,
+  ADMIN_REVIEW_RECEIPT_INFO_TITLE,
   ADMIN_REVIEW_STATE_WARNING_TITLE,
-  ADMIN_REVIEW_TAB_ACCEPT,
-  ADMIN_REVIEW_TAB_DECISION,
+  ADMIN_REVIEW_TAB_ADVANCED,
+  ADMIN_REVIEW_TAB_PACKAGE,
+  ADMIN_REVIEW_TAB_SOURCES,
+  ADMIN_REVIEW_TAB_WARNINGS,
 } from "../lib/role-based-ux-copy.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +66,8 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
     ...(overrides.readiness ?? {}),
   };
 
+  const now = new Date().toISOString();
+
   return {
     pack: {
       packId: "pack-1",
@@ -70,8 +81,8 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
       shortDescription: "short",
       description: "long",
       tags: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
       ...(overrides.pack ?? {}),
     },
     versions: overrides.versions ?? [],
@@ -84,7 +95,8 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
             memo: null,
             rejectionReason: null,
             reviewerUserId: null,
-            createdAt: new Date().toISOString(),
+            createdAt: now,
+            updatedAt: now,
             decidedAt: null,
             submitSnapshot: {
               submittedAt: "2026-07-10T13:38:00.000Z",
@@ -108,25 +120,37 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
   };
 }
 
-describe("admin review tabs UX", () => {
-  it("Case 1: PENDING defaults to accept tab with accept CTA wiring", () => {
+describe("admin review evidence tabs UX", () => {
+  it("Case 1: evidence tabs exclude decision/accept and default to package", () => {
     const detail = baseDetail();
-    assert.equal(defaultAdminReviewTab(detail), "accept");
-    assert.equal(adminReviewAcceptTabLabel(detail), ADMIN_REVIEW_TAB_ACCEPT);
+    assert.deepEqual([...ADMIN_REVIEW_EVIDENCE_TAB_IDS], [
+      "package",
+      "warnings",
+      "documents",
+      "advanced",
+    ]);
+    assert.equal(defaultAdminReviewEvidenceTab(detail), "package");
+    assert.equal(isReviewPending(detail), true);
     assert.equal(canAcceptAdminReview(detail), true);
     assert.equal(canApproveAdminReview(detail), false);
 
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
+    const evidence = readSource("src/components/AdminReviewEvidenceTabs.tsx");
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
-    assert.ok(page.includes("AdminReviewTabs"));
-    assert.ok(page.includes('activeTab === "accept"'));
     assert.ok(page.includes("AdminReviewAcceptTab"));
-    assert.ok(!page.includes("AdminReviewInspectionSummary"));
-    assert.ok(!page.includes("AdminReviewNeedsAttention"));
+    assert.ok(page.includes("AdminReviewEvidenceTabs"));
+    assert.ok(page.includes("ADMIN_REVIEW_EVIDENCE_SECTION_TITLE"));
+    assert.ok(page.includes("AdminReviewReceiptInfoCard"));
+    assert.ok(!page.includes('activeTab === "accept"'));
+    assert.ok(!ADMIN_REVIEW_EVIDENCE_TAB_IDS.includes("accept" as never));
+    assert.ok(evidence.includes("ADMIN_REVIEW_EVIDENCE_TAB_IDS"));
+    assert.ok(evidence.includes('aria-label="판단 근거"'));
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_ACCEPT"));
-    assert.ok(accept.includes("acceptAdminReview"));
-    assert.ok(accept.includes("showDecisionActions"));
-    assert.ok(accept.includes("isAccepted"));
+    assert.equal(ADMIN_REVIEW_EVIDENCE_SECTION_TITLE, "판단 근거");
+    assert.equal(ADMIN_REVIEW_TAB_PACKAGE, "패키지");
+    assert.equal(ADMIN_REVIEW_TAB_WARNINGS, "주의");
+    assert.equal(ADMIN_REVIEW_TAB_SOURCES, "문서");
+    assert.equal(ADMIN_REVIEW_TAB_ADVANCED, "고급");
     assert.equal(ADMIN_REVIEW_CTA_ACCEPT, "검수 접수");
   });
 
@@ -134,9 +158,7 @@ describe("admin review tabs UX", () => {
     const detail = baseDetail();
     const copy = resolvePendingAcceptCopy(detail);
     assert.equal(copy.title, ADMIN_REVIEW_ACCEPT_PHASE_WARNING_TITLE);
-    assert.equal(copy.title, "접수 가능 · 주의 항목 있음");
     assert.notEqual(copy.title, ADMIN_REVIEW_STATE_WARNING_TITLE);
-    assert.notEqual(copy.title, "주의 후 승인 가능");
   });
 
   it("Case 3: package snapshot Run ID only on package tab", () => {
@@ -148,11 +170,42 @@ describe("admin review tabs UX", () => {
     assert.ok(packageTab.includes("검색 평가 Run"));
   });
 
-  it("Case 5: advanced refresh hidden on default tab", () => {
+  it("Case 4/5: decision card always above evidence; receipt card after accept", () => {
+    const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
+    const acceptIdx = page.indexOf("<AdminReviewAcceptTab");
+    const evidenceIdx = page.indexOf("<AdminReviewEvidenceTabs");
+    const receiptIdx = page.indexOf("<AdminReviewReceiptInfoCard");
+    assert.ok(acceptIdx > 0 && evidenceIdx > acceptIdx);
+    assert.ok(receiptIdx > acceptIdx && receiptIdx < evidenceIdx);
+    assert.ok(page.includes("isReviewAccepted(detail)"));
+
+    const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
+    assert.ok(accept.includes("ADMIN_REVIEW_DECISION_TITLE"));
+    assert.ok(accept.includes("ADMIN_REVIEW_ACCEPT_TITLE"));
+    assert.ok(accept.includes("ADMIN_REVIEW_CTA_APPROVE"));
+    assert.ok(accept.includes("showDecisionActions"));
+    assert.equal(ADMIN_REVIEW_DECISION_TITLE, "최종 검수 판단");
+    assert.equal(ADMIN_REVIEW_ACCEPT_TITLE, "검수 요청 접수");
+
+    const receipt = readSource("src/components/AdminReviewReceiptInfoCard.tsx");
+    assert.ok(receipt.includes("ADMIN_REVIEW_RECEIPT_INFO_TITLE"));
+    assert.ok(receipt.includes("ADMIN_REVIEW_CTA_VIEW_PACKAGE"));
+    assert.ok(receipt.includes("onGoToPackageTab"));
+    assert.equal(ADMIN_REVIEW_RECEIPT_INFO_TITLE, "접수 정보");
+    assert.equal(ADMIN_REVIEW_CTA_VIEW_PACKAGE, "제출 패키지 보기");
+  });
+
+  it("Case 5: view package button wires to package evidence tab", () => {
+    const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
+    assert.ok(page.includes('setEvidenceTab("package")'));
+    assert.ok(page.includes("onGoToPackageTab"));
+  });
+
+  it("Case 6: advanced refresh hidden until advanced tab", () => {
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
     const advanced = readSource("src/components/AdminReviewAdvancedActionsTab.tsx");
-    assert.ok(page.includes('activeTab === "advanced"'));
+    assert.ok(page.includes('evidenceTab === "advanced"'));
     assert.ok(!accept.includes("ADMIN_REVIEW_CTA_REFRESH_ALL"));
     assert.ok(!accept.includes("refreshAdminReviewReadinessApi"));
     assert.ok(advanced.includes("ADMIN_REVIEW_CTA_REFRESH_ALL"));
@@ -160,16 +213,15 @@ describe("admin review tabs UX", () => {
     assert.equal(ADMIN_REVIEW_CTA_REFRESH_ALL, "현재 데이터 기준 전체 재점검");
   });
 
-  it("Case 6: source document body collapsed by default", () => {
+  it("Case 7: source document body collapsed by default", () => {
     const sources = readSource("src/components/AdminReviewSourceDocuments.tsx");
     assert.ok(sources.includes("ADMIN_REVIEW_VIEW_SOURCE"));
     assert.ok(sources.includes("ADMIN_REVIEW_VIEW_VALIDATION"));
-    assert.ok(sources.includes("previewOpen"));
-    assert.ok(sources.includes("contentPreview"));
     assert.ok(sources.includes("previewOpen && doc.contentPreview"));
   });
 
-  it("Case 7: IN_REVIEW defaults to decision tab label and approve actions", () => {
+  it("Case 8: IN_REVIEW shows decision actions and receipt eligibility", () => {
+    const now = new Date().toISOString();
     const detail = baseDetail({
       latestReview: {
         id: "rev-accepted",
@@ -178,7 +230,8 @@ describe("admin review tabs UX", () => {
         memo: null,
         rejectionReason: null,
         reviewerUserId: "admin-1",
-        createdAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
         decidedAt: null,
         submitSnapshot: {
           submittedAt: "2026-07-10T13:38:00.000Z",
@@ -194,8 +247,8 @@ describe("admin review tabs UX", () => {
         },
       },
     });
-    assert.equal(defaultAdminReviewTab(detail), "accept");
-    assert.equal(adminReviewAcceptTabLabel(detail), ADMIN_REVIEW_TAB_DECISION);
+    assert.equal(isReviewAccepted(detail), true);
+    assert.equal(isReviewPending(detail), false);
     assert.equal(canAcceptAdminReview(detail), false);
 
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");

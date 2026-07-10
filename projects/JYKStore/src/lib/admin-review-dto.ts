@@ -102,6 +102,7 @@ export type AdminReviewDetailDto = {
     rejectionReason: string | null;
     reviewerUserId: string | null;
     createdAt: string;
+    updatedAt: string;
     decidedAt: string | null;
     submitSnapshot: import("@/lib/provider-review-submit-snapshot").ProviderReviewSubmitSnapshot | null;
   } | null;
@@ -280,6 +281,7 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
           rejectionReason: latest.rejectionReason,
           reviewerUserId: latest.reviewerUserId ?? null,
           createdAt: latest.createdAt.toISOString(),
+          updatedAt: latest.updatedAt.toISOString(),
           decidedAt: latest.decidedAt?.toISOString() ?? null,
           submitSnapshot: parseProviderReviewSubmitSnapshot(
             (latest as { submitSnapshot?: unknown }).submitSnapshot,
