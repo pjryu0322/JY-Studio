@@ -440,14 +440,14 @@ describe("github knowledge unit draft service", () => {
         id: "doc-1",
         sourceUrl: "https://github.com/test/repo/blob/main/docs/api.md",
         fileName: "api.md",
-        content: longBody,
+        content: `${longBody}-docs-api-main`,
         sourceType: "API_SPEC",
       }),
       makeDoc({
         id: "doc-2",
         sourceUrl: "https://github.com/test/repo/blob/main/packages/grid/docs/api.md",
         fileName: "api.md",
-        content: longBody,
+        content: `${longBody}-packages-grid-api`,
         sourceType: "API_SPEC",
       }),
       makeDoc({
@@ -502,7 +502,7 @@ describe("github knowledge unit draft service", () => {
         title: `doc-${index}`,
         fileName: `docs/file-${index}.md`,
         sourceUrl: `https://github.com/test/repo/blob/main/docs/file-${index}.md`,
-        content: `## Topic ${index}\n\n${longBody}`,
+        content: `## Topic ${index}\n\n${longBody}-doc-${index}`,
       }),
     );
     const { db, createdChunks } = createMockPrisma({ documents: docs });
@@ -533,7 +533,7 @@ describe("github knowledge unit draft service", () => {
           id: `doc-${index}`,
           fileName: `docs/file-${index}.md`,
           sourceUrl: `https://github.com/test/repo/blob/main/docs/file-${index}.md`,
-          content: `## Topic ${index}\n\n${longBody}`,
+          content: `## Topic ${index}\n\n${longBody}-doc-${index}`,
         }),
       ),
       makeDoc({
@@ -565,13 +565,13 @@ describe("github knowledge unit draft service", () => {
     const docs = [
       makeDoc({
         id: "doc-0",
-        content: `## Install\n\n${longBody}`,
+        content: `## Install\n\n${longBody}-install`,
       }),
       makeDoc({
         id: "doc-1",
         fileName: "docs/guide.md",
         sourceUrl: "https://github.com/test/repo/blob/main/docs/guide.md",
-        content: `## Topic\n\n${longBody}`,
+        content: `## Topic\n\n${longBody}-guide`,
       }),
     ];
     const { db, createdChunks } = createMockPrisma({
@@ -600,7 +600,7 @@ describe("github knowledge unit draft service", () => {
         id: `doc-${index}`,
         fileName: `docs/file-${index}.md`,
         sourceUrl: `https://github.com/test/repo/blob/main/docs/file-${index}.md`,
-        content: `## Topic ${index}\n\n${longBody}`,
+        content: `## Topic ${index}\n\n${longBody}-doc-${index}`,
       }),
     );
     const { db, createdChunks } = createMockPrisma({ documents: docs });

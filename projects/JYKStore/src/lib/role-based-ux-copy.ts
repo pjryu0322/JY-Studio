@@ -105,6 +105,14 @@ export const PROVIDER_KU_REVIEW_GUIDANCE =
   "아래 AI 추출 Unit을 검토하세요. 문제가 없으면 검수 요청 단계로 이동할 수 있습니다. 수정이 필요한 Unit은 내용 보기와 근거 보기를 확인한 뒤 보완하세요.";
 export const PROVIDER_KU_EXCLUDED_GUIDANCE =
   "생성 제외·지원 제외 문서는 지식팩 품질을 위해 자동으로 건너뛴 자료입니다.";
+export const PROVIDER_KU_RESET_BUTTON = "AI 추출 Unit 초기화";
+export const PROVIDER_KU_RESET_CONFIRM =
+  "AI가 생성한 Knowledge Unit 초안을 초기화합니다. 검토 대기/대체됨 상태의 자동 생성 초안과 생성 리포트가 삭제됩니다. 원천 문서는 삭제되지 않습니다. 초기화 후 다시 AI 추출을 실행할 수 있습니다.";
+export const PROVIDER_KU_RESET_SUCCESS = "초기화 완료. AI 추출 Unit을 다시 생성하세요.";
+export const PROVIDER_KU_CARD_INTRO =
+  "이 Unit은 AI가 원천 문서에서 추출한 지식 후보입니다. 내용과 근거를 확인한 뒤 검수 요청 단계로 이동하세요.";
+export const PROVIDER_KU_DUPLICATE_CARD_HINT =
+  "유사한 Knowledge Unit이 감지되었습니다. 대표 Unit으로 병합되었는지 확인하세요.";
 export const PROVIDER_KU_REVIEW_STATUS_PENDING = "검토 대기";
 export const PROVIDER_KU_CONTENT_VIEW = "내용 보기";
 export const PROVIDER_KU_EVIDENCE_VIEW = "근거 보기";

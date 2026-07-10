@@ -91,27 +91,25 @@ function resolveDocumentStatus(
   reportOutcome: KuGenerationDocumentOutcome | undefined,
 ): KuDocumentProcessingItem {
   const path = docPath(doc);
-  const classification = classifySourceDocumentForKuGeneration(doc);
-
-  if (classification) {
-    return outcomeFromClassification(doc, classification);
-  }
 
   if (reportOutcome) {
     const status = normalizeKuDocumentProcessingStatus(reportOutcome.status);
-    const titles =
-      pendingTitles.length > 0 ? pendingTitles : reportOutcome.generatedUnitTitles;
-    return {
-      sourceDocumentId: doc.id,
-      path,
-      title: doc.title,
-      status,
-      reasonCode: reportOutcome.reasonCode,
-      reason: reportOutcome.reason,
-      generatedUnitTitles: titles,
-      duplicateOfChunkId: reportOutcome.duplicateOfChunkId,
-      steps: reportOutcome.steps.length > 0 ? reportOutcome.steps : buildStepsFromDrafts(path, titles),
-    };
+    if (status === "generated" || status === "duplicate" || status === "failed") {
+      const titles =
+        pendingTitles.length > 0 ? pendingTitles : reportOutcome.generatedUnitTitles;
+      return {
+        sourceDocumentId: doc.id,
+        path,
+        title: doc.title,
+        status,
+        reasonCode: reportOutcome.reasonCode,
+        reason: reportOutcome.reason,
+        generatedUnitTitles: titles,
+        duplicateOfChunkId: reportOutcome.duplicateOfChunkId,
+        steps:
+          reportOutcome.steps.length > 0 ? reportOutcome.steps : buildStepsFromDrafts(path, titles),
+      };
+    }
   }
 
   if (pendingTitles.length > 0) {
@@ -125,6 +123,27 @@ function resolveDocumentStatus(
     };
   }
 
+  const classification = classifySourceDocumentForKuGeneration(doc);
+  if (classification) {
+    return outcomeFromClassification(doc, classification);
+  }
+
+  if (reportOutcome) {
+    const status = normalizeKuDocumentProcessingStatus(reportOutcome.status);
+    const titles = reportOutcome.generatedUnitTitles;
+    return {
+      sourceDocumentId: doc.id,
+      path,
+      title: doc.title,
+      status,
+      reasonCode: reportOutcome.reasonCode,
+      reason: reportOutcome.reason,
+      generatedUnitTitles: titles,
+      duplicateOfChunkId: reportOutcome.duplicateOfChunkId,
+      steps: reportOutcome.steps.length > 0 ? reportOutcome.steps : buildStepsFromDrafts(path, titles),
+    };
+  }
+
   return {
     sourceDocumentId: doc.id,
     path,
@@ -135,6 +154,23 @@ function resolveDocumentStatus(
     generatedUnitTitles: [],
     steps: [path, "Knowledge Unit 생성 안 함", labelForKuSkipReasonCode("NO_KNOWLEDGE_TOPIC")],
   };
+}
+
+export function kuDocumentStatusUserHint(status: KuDocumentProcessingStatus): string {
+  switch (status) {
+    case "generated":
+      return "이 문서에서 AI 추출 Unit이 생성되었습니다.";
+    case "duplicate":
+      return "동일/유사한 Unit이 이미 있어 새로 만들지 않았습니다.";
+    case "excluded":
+      return "지식팩 품질을 위해 Unit으로 만들지 않았습니다. (라이선스, 변경 이력, 메타데이터 등)";
+    case "unsupported":
+      return "현재 지식화 대상 형식이 아닙니다. (이미지, 바이너리, 비대상 코드 등)";
+    case "failed":
+      return "시스템 오류입니다. 재시도 또는 개발자 확인이 필요합니다.";
+    default:
+      return "";
+  }
 }
 
 export function buildKuProcessingSummary(

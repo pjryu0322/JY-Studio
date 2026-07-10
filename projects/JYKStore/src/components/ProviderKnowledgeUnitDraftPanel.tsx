@@ -2,15 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProviderKnowledgeUnitDraftDto } from "@/lib/provider-knowledge-unit-draft-dto";
-import { fetchProviderKnowledgeUnitDraftsApi } from "@/lib/provider-center-api";
+import { fetchProviderKnowledgeUnitDraftsApi, resetProviderKnowledgeUnitDraftsApi } from "@/lib/provider-center-api";
 import {
   buildKuProcessingNarrative,
   groupKuDraftsByTopic,
+  kuDocumentStatusUserHint,
 } from "@/lib/knowledge-unit-draft/ku-draft-processing-status";
 import { parseUserFacingKuDraftContent } from "@/lib/knowledge-unit-draft/ku-draft-content";
 import {
   PROVIDER_KU_CONTENT_VIEW,
   PROVIDER_KU_DRAFT_PANEL_TITLE,
+  PROVIDER_KU_DUPLICATE_CARD_HINT,
+  PROVIDER_KU_CARD_INTRO,
+  PROVIDER_KU_RESET_BUTTON,
+  PROVIDER_KU_RESET_CONFIRM,
+  PROVIDER_KU_RESET_SUCCESS,
   PROVIDER_KU_EVIDENCE_VIEW,
   PROVIDER_KU_EXCLUDED_GUIDANCE,
   PROVIDER_KU_PREVIEW_GENERATION_BADGE,
@@ -79,6 +85,19 @@ function DraftCard({ draft }: { readonly draft: ProviderKnowledgeUnitDraftDto })
         </span>
       </div>
       {draft.topic ? <p className="mt-1 text-store-muted">주제: {draft.topic}</p> : null}
+      <p className="mt-1 text-[11px] text-store-muted">{PROVIDER_KU_CARD_INTRO}</p>
+      {draft.canonicalSourcePath ? (
+        <p className="mt-1 text-[11px] text-slate-600">출처: {draft.canonicalSourcePath}</p>
+      ) : null}
+      {draft.semanticTopicKey ? (
+        <p className="mt-0.5 text-[10px] text-slate-500">주제 키: {draft.semanticTopicKey}</p>
+      ) : null}
+      {draft.duplicateSources && draft.duplicateSources.length > 0 ? (
+        <p className="mt-1 rounded-lg bg-slate-100 px-2 py-1 text-[11px] text-slate-700">
+          {PROVIDER_KU_DUPLICATE_CARD_HINT} (
+          {draft.duplicateSources.map((s) => s.sourcePath ?? s.title).join(", ")})
+        </p>
+      ) : null}
 
       {draft.warnings.length > 0 ? (
         <ul className="mt-2 space-y-1 rounded-lg bg-amber-50 px-2 py-2 text-amber-950">
@@ -170,6 +189,8 @@ export function ProviderKnowledgeUnitDraftPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showProcessingDetail, setShowProcessingDetail] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchProviderKnowledgeUnitDraftsApi>> | null>(
     null,
   );
@@ -204,6 +225,22 @@ export function ProviderKnowledgeUnitDraftPanel({
     () => (data ? buildKuProcessingNarrative(data.processing) : ""),
     [data],
   );
+
+  const handleReset = useCallback(async () => {
+    if (!window.confirm(PROVIDER_KU_RESET_CONFIRM)) return;
+    setResetting(true);
+    setResetMessage(null);
+    setError(null);
+    try {
+      await resetProviderKnowledgeUnitDraftsApi(packId);
+      setResetMessage(PROVIDER_KU_RESET_SUCCESS);
+      await loadDrafts();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "초기화에 실패했습니다.");
+    } finally {
+      setResetting(false);
+    }
+  }, [packId, loadDrafts]);
 
   return (
     <div className={compact ? "mt-3" : "mt-4 rounded-2xl border border-store-border bg-slate-50 p-4"}>
@@ -271,6 +308,7 @@ export function ProviderKnowledgeUnitDraftPanel({
                     상태: {documentStatusLabel(doc.status)}
                     {doc.reason ? ` · ${doc.reason}` : ""}
                   </p>
+                  <p className="mt-0.5 text-[10px] opacity-90">{kuDocumentStatusUserHint(doc.status)}</p>
                   {doc.generatedUnitTitles.length > 0 ? (
                     <p className="mt-1">생성 Unit: {doc.generatedUnitTitles.join(", ")}</p>
                   ) : null}
@@ -303,8 +341,18 @@ export function ProviderKnowledgeUnitDraftPanel({
           >
             {loading ? "불러오는 중…" : "새로고침"}
           </button>
+          <button
+            type="button"
+            onClick={() => void handleReset()}
+            disabled={loading || resetting}
+            className="min-h-[44px] rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-semibold text-red-900 disabled:opacity-50 sm:self-end"
+          >
+            {resetting ? "초기화 중…" : PROVIDER_KU_RESET_BUTTON}
+          </button>
         </div>
       ) : null}
+
+      {resetMessage ? <p className="mt-2 text-xs font-semibold text-emerald-800">{resetMessage}</p> : null}
 
       {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
 

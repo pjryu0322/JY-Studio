@@ -1,9 +1,24 @@
+import {
+  isBroadSemanticTopicKey,
+  kuSourcePathRepresentativeScore,
+} from "./ku-draft-topic-key";
+
 export type KuDraftDedupRecord = {
   sourceDocumentId: string;
   title: string;
   sourcePath: string | null;
   primaryHeading: string | null;
   contentChecksum: string;
+  semanticTopicKey?: string | null;
+  canonicalSourcePath?: string | null;
+  rawContentChecksum?: string | null;
+};
+
+export type KuDraftDuplicateSourceRef = {
+  sourceDocumentId: string;
+  sourcePath: string | null;
+  title: string;
+  reason: string;
 };
 
 export function computeKuDraftContentChecksum(content: string): string {
@@ -40,9 +55,51 @@ export function isKuDraftDuplicate(
   candidate: KuDraftDedupRecord,
   existing: KuDraftDedupRecord,
 ): boolean {
+  if (
+    candidate.rawContentChecksum &&
+    existing.rawContentChecksum &&
+    candidate.rawContentChecksum === existing.rawContentChecksum
+  ) {
+    return true;
+  }
+
+  const candidateTopic = candidate.semanticTopicKey ?? null;
+  const existingTopic = existing.semanticTopicKey ?? null;
+  const candidateCanonical = candidate.canonicalSourcePath ?? null;
+  const existingCanonical = existing.canonicalSourcePath ?? null;
+
+  if (candidateTopic && existingTopic && candidateTopic === existingTopic) {
+    if (!isBroadSemanticTopicKey(candidateTopic)) {
+      return true;
+    }
+    if (
+      candidateCanonical &&
+      existingCanonical &&
+      candidateCanonical === existingCanonical
+    ) {
+      return true;
+    }
+    if (areKuDraftTitlesSimilar(candidate.title, existing.title)) {
+      return true;
+    }
+  }
+
+  if (
+    candidate.sourcePath &&
+    existing.sourcePath &&
+    candidate.sourcePath === existing.sourcePath &&
+    candidate.primaryHeading &&
+    existing.primaryHeading &&
+    normalizeKuDraftTitleKey(candidate.primaryHeading) ===
+      normalizeKuDraftTitleKey(existing.primaryHeading)
+  ) {
+    return true;
+  }
+
   if (candidate.contentChecksum && candidate.contentChecksum === existing.contentChecksum) {
     return true;
   }
+
   if (candidate.sourceDocumentId !== existing.sourceDocumentId) {
     if (
       candidate.sourcePath &&
@@ -67,21 +124,50 @@ export function isKuDraftDuplicate(
   return areKuDraftTitlesSimilar(candidate.title, existing.title);
 }
 
+function representativeScore(record: KuDraftDedupRecord): number {
+  return kuSourcePathRepresentativeScore(record.sourcePath);
+}
+
 export function dedupeKuDraftCandidates<T extends KuDraftDedupRecord>(candidates: T[]): {
   kept: T[];
   mergedCount: number;
+  mergedSourcesByKeptIndex: Map<number, KuDraftDuplicateSourceRef[]>;
 } {
   const kept: T[] = [];
+  const mergedSourcesByKeptIndex = new Map<number, KuDraftDuplicateSourceRef[]>();
   let mergedCount = 0;
 
   for (const candidate of candidates) {
-    const duplicate = kept.some((item) => isKuDraftDuplicate(candidate, item));
-    if (duplicate) {
-      mergedCount += 1;
+    const duplicateIndex = kept.findIndex((item) => isKuDraftDuplicate(candidate, item));
+    if (duplicateIndex < 0) {
+      kept.push(candidate);
       continue;
     }
-    kept.push(candidate);
+
+    mergedCount += 1;
+    const existing = kept[duplicateIndex]!;
+    const ref: KuDraftDuplicateSourceRef = {
+      sourceDocumentId: candidate.sourceDocumentId,
+      sourcePath: candidate.sourcePath,
+      title: candidate.title,
+      reason: "semanticTopicKey duplicate",
+    };
+    const bucket = mergedSourcesByKeptIndex.get(duplicateIndex) ?? [];
+    bucket.push(ref);
+    mergedSourcesByKeptIndex.set(duplicateIndex, bucket);
+
+    if (representativeScore(candidate) > representativeScore(existing)) {
+      kept[duplicateIndex] = candidate;
+      const prevRefs = mergedSourcesByKeptIndex.get(duplicateIndex) ?? [];
+      prevRefs.push({
+        sourceDocumentId: existing.sourceDocumentId,
+        sourcePath: existing.sourcePath,
+        title: existing.title,
+        reason: "replaced by higher-priority source",
+      });
+      mergedSourcesByKeptIndex.set(duplicateIndex, prevRefs);
+    }
   }
 
-  return { kept, mergedCount };
+  return { kept, mergedCount, mergedSourcesByKeptIndex };
 }

@@ -138,6 +138,9 @@ function candidateToDedupRecord(candidate: DraftCandidate): KuDraftDedupRecord {
     sourcePath: candidate.sourcePath,
     primaryHeading: candidate.primaryHeading,
     contentChecksum: candidate.contentChecksum,
+    semanticTopicKey: candidate.semanticTopicKey,
+    canonicalSourcePath: candidate.canonicalSourcePath,
+    rawContentChecksum: candidate.rawContentChecksum,
   };
 }
 
@@ -267,6 +270,10 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
     .map((chunk) => {
       const meta = readDraftMetadata(chunk.metadata);
       const evidence = meta.evidence;
+      const metaObj =
+        chunk.metadata && typeof chunk.metadata === "object" && !Array.isArray(chunk.metadata)
+          ? (chunk.metadata as Record<string, unknown>)
+          : {};
       return {
         id: chunk.id,
         record: {
@@ -274,13 +281,23 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
           title: chunk.title,
           sourcePath: meta.sourcePath,
           primaryHeading:
-            typeof (chunk.metadata as Record<string, unknown> | null)?.primaryHeading === "string"
-              ? String((chunk.metadata as Record<string, unknown>).primaryHeading)
+            typeof metaObj.primaryHeading === "string"
+              ? String(metaObj.primaryHeading)
               : evidence?.headings?.[0] ?? null,
           contentChecksum:
-            typeof (chunk.metadata as Record<string, unknown> | null)?.contentChecksum === "string"
-              ? String((chunk.metadata as Record<string, unknown>).contentChecksum)
+            typeof metaObj.contentChecksum === "string"
+              ? String(metaObj.contentChecksum)
               : chunk.content.slice(0, 120),
+          semanticTopicKey:
+            typeof metaObj.semanticTopicKey === "string" ? String(metaObj.semanticTopicKey) : null,
+          canonicalSourcePath:
+            typeof metaObj.canonicalSourcePath === "string"
+              ? String(metaObj.canonicalSourcePath)
+              : null,
+          rawContentChecksum:
+            typeof metaObj.rawContentChecksum === "string"
+              ? String(metaObj.rawContentChecksum)
+              : null,
         },
       };
     });
@@ -365,16 +382,31 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
     );
   }
 
-  const { kept: batchDeduped, mergedCount: batchMerged } = dedupeKuDraftCandidates(selectedRaw);
+  const {
+    kept: batchDeduped,
+    mergedCount: batchMerged,
+    mergedSourcesByKeptIndex,
+  } = dedupeKuDraftCandidates(selectedRaw);
   if (batchMerged > 0) {
     warnings.push(`동일 주제 중복 ${batchMerged}건을 자동 병합(생성 제외)했습니다.`);
+  }
+
+  const batchMergedDocIds = new Set<string>();
+  for (const refs of mergedSourcesByKeptIndex.values()) {
+    for (const ref of refs) {
+      batchMergedDocIds.add(ref.sourceDocumentId);
+    }
   }
 
   const selected: DraftCandidate[] = [];
   const skippedExistingByDoc = new Map<string, { count: number; duplicateOfChunkId?: string }>();
 
-  for (const candidate of batchDeduped) {
-    const record = candidateToDedupRecord(candidate);
+  for (let i = 0; i < batchDeduped.length; i += 1) {
+    const candidate = batchDeduped[i]!;
+    const mergedRefs = mergedSourcesByKeptIndex.get(i) ?? [];
+    const candidateWithRefs =
+      mergedRefs.length > 0 ? { ...candidate, duplicateSources: mergedRefs } : candidate;
+    const record = candidateToDedupRecord(candidateWithRefs);
     const duplicateEntry = existingDedupRecords.find((existing) =>
       isKuDraftDuplicate(record, existing.record),
     );
@@ -386,7 +418,7 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
       skippedExistingByDoc.set(candidate.sourceDocumentId, bucket);
       continue;
     }
-    selected.push(candidate);
+    selected.push(candidateWithRefs);
   }
 
   if (existingDraftSkippedCount > 0) {
@@ -415,6 +447,9 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
       sourcePath: candidate.sourcePath,
       siblingTitles,
     });
+    if (candidate.duplicateSources && candidate.duplicateSources.length > 0) {
+      unitWarnings.push("유사 Unit 후보가 있습니다. 대표 Unit으로 병합 권장");
+    }
 
     const metadata = buildDraftChunkMetadata({
       unitId,
@@ -431,6 +466,12 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
       primaryHeading: candidate.primaryHeading,
       sourceExcerpt: candidate.sourceExcerpt,
       contentChecksum: candidate.contentChecksum,
+      rawContentChecksum: candidate.rawContentChecksum,
+      semanticTopicKey: candidate.semanticTopicKey,
+      canonicalSourcePath: candidate.canonicalSourcePath,
+      sourceLanguage: candidate.sourceLanguage,
+      productVariant: candidate.productVariant,
+      duplicateSources: candidate.duplicateSources,
       warnings: unitWarnings,
     });
 
@@ -543,6 +584,17 @@ export async function generateGitHubKnowledgeUnitDraftsForPack(
 
     if ((rawCandidatesByDoc.get(doc.id) ?? 0) === 0) {
       return outcomeFromSkipCode(doc, "NO_KNOWLEDGE_TOPIC");
+    }
+
+    if (batchMergedDocIds.has(doc.id)) {
+      return {
+        sourceDocumentId: doc.id,
+        status: "duplicate",
+        reasonCode: "DUPLICATE",
+        reason: labelForKuSkipReasonCode("DUPLICATE"),
+        generatedUnitTitles: [],
+        steps: [path, "중복 제외", "동일 주제 Unit 자동 병합"],
+      };
     }
 
     if (

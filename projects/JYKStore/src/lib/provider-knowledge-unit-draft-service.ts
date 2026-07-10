@@ -1,8 +1,11 @@
 import { prisma } from "@/lib/prisma";
+import { assertProviderPackEditableForClient } from "@/lib/provider-pack-service";
 import { AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE } from "@/lib/github-auto-collect/github-knowledge-unit-draft-generator";
 import {
+  readDraftMetadata,
   toProviderKnowledgeUnitDraftDto,
   type ProviderKnowledgeUnitDraftListResponse,
+  type ProviderKnowledgeUnitDraftResetResponse,
 } from "@/lib/provider-knowledge-unit-draft-dto";
 import { buildKuProcessingSummary } from "@/lib/knowledge-unit-draft/ku-draft-processing-status";
 import {
@@ -27,6 +30,7 @@ export class ProviderKnowledgeUnitDraftListError extends Error {
 
 export type ListProviderKnowledgeUnitDraftDeps = {
   prismaClient?: typeof prisma;
+  assertProviderPackEditableForClient?: typeof assertProviderPackEditableForClient;
 };
 
 function clampLimit(limit: number | undefined): number {
@@ -197,4 +201,106 @@ export function parseKnowledgeUnitDraftListQuery(searchParams: URLSearchParams):
   const limit = clampLimit(Number(searchParams.get("limit") ?? "50"));
 
   return { status, sourceDocumentId, limit };
+}
+
+export type KnowledgeUnitDraftResetScope =
+  | "pending_review_only"
+  | "pending_and_superseded"
+  | "all_auto_generated";
+
+export async function resetProviderKnowledgeUnitDrafts(
+  userId: string,
+  clientId: string,
+  packId: string,
+  options?: { scope?: KnowledgeUnitDraftResetScope },
+  deps: ListProviderKnowledgeUnitDraftDeps = {},
+): Promise<ProviderKnowledgeUnitDraftResetResponse> {
+  const db = deps.prismaClient ?? prisma;
+  const assertEditable = deps.assertProviderPackEditableForClient ?? assertProviderPackEditableForClient;
+  const scope = options?.scope ?? "pending_and_superseded";
+  const trimmedPackId = packId.trim();
+  if (!trimmedPackId) {
+    throw new ProviderKnowledgeUnitDraftListError(
+      "PROVIDER_KNOWLEDGE_UNIT_DRAFTS_FAILED",
+      "지식팩을 찾을 수 없습니다.",
+      404,
+    );
+  }
+
+  let profile = await db.providerProfile.findFirst({ where: { userId } });
+  if (!profile && clientId) {
+    const legacy = await db.providerProfile.findUnique({ where: { clientId } });
+    if (legacy && !legacy.userId) profile = legacy;
+  }
+  if (!profile) {
+    throw new ProviderKnowledgeUnitDraftListError(
+      "PROVIDER_KNOWLEDGE_UNIT_DRAFTS_FAILED",
+      "Provider 프로필이 필요합니다.",
+      400,
+    );
+  }
+
+  const editable = await assertEditable(userId, clientId, trimmedPackId);
+  if (!editable.ok) {
+    throw new ProviderKnowledgeUnitDraftListError(
+      "PROVIDER_KNOWLEDGE_UNIT_DRAFTS_FAILED",
+      editable.error === "NOT_FOUND" ? "지식팩을 찾을 수 없습니다." : "초안(DRAFT) 상태에서만 초기화할 수 있습니다.",
+      editable.error === "NOT_FOUND" ? 404 : 409,
+    );
+  }
+
+  const pack = await db.knowledgePack.findFirst({
+    where: { packId: editable.packId, providerProfileId: profile.id },
+    include: { versions: { orderBy: { createdAt: "desc" }, take: 1 } },
+  });
+  const version = pack?.versions[0];
+  if (!version) {
+    throw new ProviderKnowledgeUnitDraftListError(
+      "PROVIDER_KNOWLEDGE_UNIT_DRAFTS_FAILED",
+      "지식팩 버전을 찾을 수 없습니다.",
+      400,
+    );
+  }
+
+  const chunks = await db.knowledgeChunk.findMany({
+    where: {
+      versionId: version.id,
+      chunkType: { in: [AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE, AUTO_KU_GENERATION_REPORT_CHUNK_TYPE] },
+    },
+    select: { id: true, chunkType: true, metadata: true },
+  });
+
+  const idsToDelete: string[] = [];
+  let deletedDraftCount = 0;
+  let deletedReportCount = 0;
+
+  for (const chunk of chunks) {
+    if (chunk.chunkType === AUTO_KU_GENERATION_REPORT_CHUNK_TYPE) {
+      idsToDelete.push(chunk.id);
+      deletedReportCount += 1;
+      continue;
+    }
+    const reviewStatus = readDraftMetadata(chunk.metadata).reviewStatus;
+    const shouldDelete =
+      scope === "all_auto_generated" ||
+      (scope === "pending_review_only" && reviewStatus === "pending_review") ||
+      (scope === "pending_and_superseded" &&
+        (reviewStatus === "pending_review" || reviewStatus === "superseded"));
+    if (shouldDelete) {
+      idsToDelete.push(chunk.id);
+      deletedDraftCount += 1;
+    }
+  }
+
+  if (idsToDelete.length > 0) {
+    await db.knowledgeChunk.deleteMany({ where: { id: { in: idsToDelete } } });
+  }
+
+  return {
+    clientId,
+    packId: pack!.packId,
+    versionId: version.id,
+    deletedDraftCount,
+    deletedReportCount,
+  };
 }

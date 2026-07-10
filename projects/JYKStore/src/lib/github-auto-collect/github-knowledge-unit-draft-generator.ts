@@ -2,6 +2,14 @@ import type { SourceFormat, SourceType } from "@prisma/client";
 import type { GitHubProductType, KnowledgeUnitGenerationScope } from "./github-auto-collect-types";
 import { buildUserFacingKuDraftContent } from "@/lib/knowledge-unit-draft/ku-draft-content";
 import { computeKuDraftContentChecksum } from "@/lib/knowledge-unit-draft/ku-draft-dedup";
+import {
+  buildSemanticTopicKey,
+  canonicalizeKuSourcePath,
+  inferKuProductVariant,
+  inferKuSourceLanguage,
+  type KuProductVariant,
+  type KuSourceLanguage,
+} from "@/lib/knowledge-unit-draft/ku-draft-topic-key";
 
 export const AUTO_KNOWLEDGE_UNIT_DRAFT_CHUNK_TYPE = "AUTO_KNOWLEDGE_UNIT_DRAFT";
 
@@ -33,6 +41,17 @@ export type DraftCandidate = {
   primaryHeading: string | null;
   sourceExcerpt: string | null;
   contentChecksum: string;
+  rawContentChecksum: string;
+  semanticTopicKey: string;
+  canonicalSourcePath: string | null;
+  sourceLanguage: KuSourceLanguage;
+  productVariant: KuProductVariant;
+  duplicateSources?: Array<{
+    sourceDocumentId: string;
+    sourcePath: string | null;
+    title: string;
+    reason: string;
+  }>;
 };
 
 export function extractGitHubPathFromSourceUrl(sourceUrl: string | null | undefined): string | null {
@@ -196,6 +215,32 @@ function ensureChunkContentLength(content: string): string {
   return `${trimmed}\n\n(검토용 초안 — 내용을 보완해 주세요.)`.slice(0, 4000);
 }
 
+function attachKuDedupFields(
+  base: Omit<
+    DraftCandidate,
+    | "rawContentChecksum"
+    | "semanticTopicKey"
+    | "canonicalSourcePath"
+    | "sourceLanguage"
+    | "productVariant"
+  >,
+  rawBody: string,
+): DraftCandidate {
+  const sourcePath = base.sourcePath;
+  return {
+    ...base,
+    rawContentChecksum: computeKuDraftContentChecksum(rawBody),
+    semanticTopicKey: buildSemanticTopicKey({
+      title: base.title,
+      primaryHeading: base.primaryHeading,
+      sourcePath,
+    }),
+    canonicalSourcePath: canonicalizeKuSourcePath(sourcePath),
+    sourceLanguage: inferKuSourceLanguage(sourcePath),
+    productVariant: inferKuProductVariant(sourcePath),
+  };
+}
+
 function scoreCandidate(title: string, path: string | null, index: number): number {
   let score = 100 - index;
   const pathTitle = inferTitleFromPath(path);
@@ -269,31 +314,36 @@ export function buildDraftCandidatesForSourceDocument(
     const unitSlug = slugify(`${title}-${i}`);
     const sourceExcerpt = seed.body.trim().slice(0, 600) || content.slice(0, 600);
 
-    candidates.push({
-      sourceDocumentId: doc.id,
-      unitSlug,
-      title,
-      section: typeof section === "string" ? section.slice(0, 200) : null,
-      content: ensureChunkContentLength(bodyContent),
-      tags: [
-        "github-auto-collect",
-        "knowledge-unit-draft",
-        doc.sourceType.toLowerCase(),
-        slugify(title),
-        ...(productProfileType ? [productProfileType.toLowerCase()] : []),
-      ].slice(0, 10),
-      score: scoreCandidate(title, sourcePath, i),
-      sourcePath,
-      sourceUrl: doc.sourceUrl,
-      sourceType: doc.sourceType,
-      sourceFormat: doc.sourceFormat,
-      evidenceHeadings: headings.slice(0, 5),
-      evidenceKeywords: relatedUnits.slice(0, 5),
-      topic: title,
-      primaryHeading: seed.primaryHeading,
-      sourceExcerpt,
-      contentChecksum: computeKuDraftContentChecksum(bodyContent),
-    });
+    candidates.push(
+      attachKuDedupFields(
+        {
+          sourceDocumentId: doc.id,
+          unitSlug,
+          title,
+          section: typeof section === "string" ? section.slice(0, 200) : null,
+          content: ensureChunkContentLength(bodyContent),
+          tags: [
+            "github-auto-collect",
+            "knowledge-unit-draft",
+            doc.sourceType.toLowerCase(),
+            slugify(title),
+            ...(productProfileType ? [productProfileType.toLowerCase()] : []),
+          ].slice(0, 10),
+          score: scoreCandidate(title, sourcePath, i),
+          sourcePath,
+          sourceUrl: doc.sourceUrl,
+          sourceType: doc.sourceType,
+          sourceFormat: doc.sourceFormat,
+          evidenceHeadings: headings.slice(0, 5),
+          evidenceKeywords: relatedUnits.slice(0, 5),
+          topic: title,
+          primaryHeading: seed.primaryHeading,
+          sourceExcerpt,
+          contentChecksum: computeKuDraftContentChecksum(bodyContent),
+        },
+        seed.body,
+      ),
+    );
   }
 
   if (candidates.length === 0 && content.length >= 20) {
@@ -306,25 +356,30 @@ export function buildDraftCandidatesForSourceDocument(
       sourceType: doc.sourceType,
       relatedUnits: [],
     });
-    candidates.push({
-      sourceDocumentId: doc.id,
-      unitSlug: slugify(fallbackTitle),
-      title: fallbackTitle,
-      section: fallbackTitle,
-      content: ensureChunkContentLength(bodyContent),
-      tags: ["github-auto-collect", "knowledge-unit-draft", doc.sourceType.toLowerCase()],
-      score: scoreCandidate(fallbackTitle, sourcePath, 0),
-      sourcePath,
-      sourceUrl: doc.sourceUrl,
-      sourceType: doc.sourceType,
-      sourceFormat: doc.sourceFormat,
-      evidenceHeadings: headings.slice(0, 5),
-      evidenceKeywords: [],
-      topic: fallbackTitle,
-      primaryHeading: headings[0] ?? null,
-      sourceExcerpt: content.slice(0, 600),
-      contentChecksum: computeKuDraftContentChecksum(bodyContent),
-    });
+    candidates.push(
+      attachKuDedupFields(
+        {
+          sourceDocumentId: doc.id,
+          unitSlug: slugify(fallbackTitle),
+          title: fallbackTitle,
+          section: fallbackTitle,
+          content: ensureChunkContentLength(bodyContent),
+          tags: ["github-auto-collect", "knowledge-unit-draft", doc.sourceType.toLowerCase()],
+          score: scoreCandidate(fallbackTitle, sourcePath, 0),
+          sourcePath,
+          sourceUrl: doc.sourceUrl,
+          sourceType: doc.sourceType,
+          sourceFormat: doc.sourceFormat,
+          evidenceHeadings: headings.slice(0, 5),
+          evidenceKeywords: [],
+          topic: fallbackTitle,
+          primaryHeading: headings[0] ?? null,
+          sourceExcerpt: content.slice(0, 600),
+          contentChecksum: computeKuDraftContentChecksum(bodyContent),
+        },
+        content,
+      ),
+    );
   }
 
   return candidates;
@@ -405,6 +460,17 @@ export function buildDraftChunkMetadata(params: {
   primaryHeading?: string | null;
   sourceExcerpt?: string | null;
   contentChecksum?: string;
+  rawContentChecksum?: string;
+  semanticTopicKey?: string;
+  canonicalSourcePath?: string | null;
+  sourceLanguage?: string;
+  productVariant?: string;
+  duplicateSources?: Array<{
+    sourceDocumentId: string;
+    sourcePath: string | null;
+    title: string;
+    reason: string;
+  }>;
   warnings?: string[];
 }): Record<string, unknown> {
   return {
@@ -422,7 +488,14 @@ export function buildDraftChunkMetadata(params: {
     ...(params.topic ? { topic: params.topic } : {}),
     ...(params.primaryHeading ? { primaryHeading: params.primaryHeading } : {}),
     ...(params.contentChecksum ? { contentChecksum: params.contentChecksum } : {}),
-    ...(params.warnings && params.warnings.length > 0 ? { warnings: params.warnings } : {}),
+    ...(params.rawContentChecksum ? { rawContentChecksum: params.rawContentChecksum } : {}),
+    ...(params.semanticTopicKey ? { semanticTopicKey: params.semanticTopicKey } : {}),
+    ...(params.canonicalSourcePath ? { canonicalSourcePath: params.canonicalSourcePath } : {}),
+    ...(params.sourceLanguage ? { sourceLanguage: params.sourceLanguage } : {}),
+    ...(params.productVariant ? { productVariant: params.productVariant } : {}),
+    ...(params.duplicateSources && params.duplicateSources.length > 0
+      ? { duplicateSources: params.duplicateSources }
+      : {}),
     evidence: {
       path: params.sourcePath,
       headings: params.evidenceHeadings,

@@ -10,20 +10,30 @@ import {
   listProviderKnowledgeUnitDrafts,
   parseKnowledgeUnitDraftListQuery,
   ProviderKnowledgeUnitDraftListError,
+  resetProviderKnowledgeUnitDrafts,
 } from "@/lib/provider-knowledge-unit-draft-service";
+import { AUTO_KU_GENERATION_REPORT_CHUNK_TYPE } from "@/lib/knowledge-unit-draft/ku-draft-generation-report";
 
 type ChunkWhere = {
   versionId?: string;
-  chunkType?: string;
+  chunkType?: string | { in: string[] };
   isActive?: boolean;
   sourceDocumentId?: string;
 };
 
 type ChunkRow = KnowledgeChunk & { sourceDocument: SourceDocument | null };
 
+function chunkTypeMatches(chunkType: string, filter: ChunkWhere["chunkType"]): boolean {
+  if (filter === undefined) return true;
+  if (typeof filter === "string") return chunkType === filter;
+  return filter.in.includes(chunkType);
+}
+
 function matchesChunkWhere(chunk: ChunkRow, where: ChunkWhere): boolean {
   if (where.versionId !== undefined && chunk.versionId !== where.versionId) return false;
-  if (where.chunkType !== undefined && chunk.chunkType !== where.chunkType) return false;
+  if (where.chunkType !== undefined && !chunkTypeMatches(chunk.chunkType, where.chunkType)) {
+    return false;
+  }
   if (where.isActive !== undefined && chunk.isActive !== where.isActive) return false;
   if (where.sourceDocumentId !== undefined && chunk.sourceDocumentId !== where.sourceDocumentId) {
     return false;
@@ -83,7 +93,8 @@ function makeChunk(
   };
 }
 
-function createMockDb(chunks: ChunkRow[]) {
+function createMockDb(initialChunks: ChunkRow[]) {
+  const chunks = [...initialChunks];
   const sourceDocuments = chunks
     .map((chunk) => chunk.sourceDocument)
     .filter((doc): doc is SourceDocument => Boolean(doc));
@@ -107,6 +118,14 @@ function createMockDb(chunks: ChunkRow[]) {
       findMany: async ({ where }: { where: ChunkWhere }) =>
         chunks.filter((chunk) => matchesChunkWhere(chunk, where)),
       findFirst: async () => null,
+      deleteMany: async ({ where }: { where: { id: { in: string[] } } }) => {
+        const ids = new Set(where.id.in);
+        const before = chunks.length;
+        for (let i = chunks.length - 1; i >= 0; i -= 1) {
+          if (ids.has(chunks[i]!.id)) chunks.splice(i, 1);
+        }
+        return { count: before - chunks.length };
+      },
     },
   };
 }
@@ -141,6 +160,25 @@ describe("provider knowledge unit draft dto", () => {
     assert.equal(dto.content, "Draft body for review");
     assert.ok(dto.sourceDocument);
     assert.equal((dto.sourceDocument as Record<string, unknown>).content, undefined);
+  });
+
+  it("exposes canonicalSourcePath and sourcePath for collapsed card display", () => {
+    const doc = makeSourceDoc("doc-1");
+    const dto = toProviderKnowledgeUnitDraftDto(
+      makeChunk(
+        "chunk-1",
+        {
+          reviewStatus: "pending_review",
+          sourcePath: "packages/toast-ui.grid/docs/getting-started.md",
+          semanticTopicKey: "getting-started",
+          canonicalSourcePath: "docs/getting-started.md",
+        },
+        doc,
+      ),
+    );
+    assert.equal(dto.sourcePath, "packages/toast-ui.grid/docs/getting-started.md");
+    assert.equal(dto.canonicalSourcePath, "docs/getting-started.md");
+    assert.equal(dto.semanticTopicKey, "getting-started");
   });
 });
 
@@ -339,6 +377,68 @@ describe("provider knowledge unit draft service", () => {
       { prismaClient: createMockDb(chunks) as never },
     );
     assert.equal(minResult.items.length, 1);
+  });
+
+  it("marks document as generated when pending draft exists despite short-content classification", async () => {
+    const doc = makeSourceDoc("doc-ko-gs");
+    doc.fileName = "getting-started.md";
+    doc.sourceUrl =
+      "https://github.com/test/repo/blob/main/packages/toast-ui.grid/docs/ko/getting-started.md";
+    doc.content = "x".repeat(30);
+
+    const chunks = [
+      makeChunk("draft-1", { reviewStatus: "pending_review", sourcePath: doc.sourceUrl }, doc),
+    ];
+    const db = createMockDb(chunks);
+
+    const result = await listProviderKnowledgeUnitDrafts(
+      "user-1",
+      "client-1",
+      "pack-1",
+      { status: "all" },
+      { prismaClient: db as never },
+    );
+
+    const docRow = result.documentProcessing.find((d) => d.sourceDocumentId === "doc-ko-gs");
+    assert.equal(docRow?.status, "generated");
+    assert.notEqual(docRow?.reason, "추출 가능한 제품 지식 주제를 찾지 못함");
+    assert.deepEqual(docRow?.generatedUnitTitles, ["Draft draft-1"]);
+  });
+
+  it("reset deletes pending/superseded drafts and generation report", async () => {
+    const doc = makeSourceDoc("doc-1");
+    const chunks = [
+      makeChunk("draft-pending", { reviewStatus: "pending_review" }, doc),
+      makeChunk("draft-superseded", { reviewStatus: "superseded" }, doc, { id: "draft-superseded" }),
+      makeChunk(
+        "report-1",
+        {},
+        null,
+        { chunkType: AUTO_KU_GENERATION_REPORT_CHUNK_TYPE, sourceDocumentId: null },
+      ),
+      makeChunk("draft-kept", { reviewStatus: "unknown" }, doc, { id: "draft-kept" }),
+    ];
+    const db = createMockDb(chunks);
+
+    const result = await resetProviderKnowledgeUnitDrafts(
+      "user-1",
+      "client-1",
+      "pack-1",
+      { scope: "pending_and_superseded" },
+      {
+        prismaClient: db as never,
+        assertProviderPackEditableForClient: async () => ({
+          ok: true as const,
+          packId: "pack-1",
+          status: "DRAFT",
+        }),
+      },
+    );
+
+    assert.equal(result.deletedDraftCount, 2);
+    assert.equal(result.deletedReportCount, 1);
+    const remaining = await db.knowledgeChunk.findMany({ where: {} });
+    assert.deepEqual(remaining.map((c) => c.id), ["draft-kept"]);
   });
 });
 

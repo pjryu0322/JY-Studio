@@ -41,6 +41,9 @@ export type ProviderKnowledgeUnitDraftDto = {
   sourceDocument: ProviderKnowledgeUnitDraftSourceDocumentDto | null;
   topic: string | null;
   warnings: string[];
+  semanticTopicKey: string | null;
+  canonicalSourcePath: string | null;
+  duplicateSources: ProviderKnowledgeUnitDraftDuplicateSourceDto[];
   createdAt: string;
   updatedAt: string;
 };
@@ -96,6 +99,24 @@ export type DraftMetadataFields = {
   topic: string | null;
   warnings: string[];
   evidence: ProviderKnowledgeUnitDraftEvidenceDto | null;
+  semanticTopicKey: string | null;
+  canonicalSourcePath: string | null;
+  duplicateSources: ProviderKnowledgeUnitDraftDuplicateSourceDto[];
+};
+
+export type ProviderKnowledgeUnitDraftDuplicateSourceDto = {
+  sourceDocumentId: string;
+  sourcePath: string | null;
+  title: string;
+  reason: string;
+};
+
+export type ProviderKnowledgeUnitDraftResetResponse = {
+  clientId: string;
+  packId: string;
+  versionId: string;
+  deletedDraftCount: number;
+  deletedReportCount: number;
 };
 
 function readString(value: unknown): string | null {
@@ -124,6 +145,9 @@ export function readDraftMetadata(metadata: Prisma.JsonValue | null): DraftMetad
     topic: null,
     warnings: [],
     evidence: null,
+    semanticTopicKey: null,
+    canonicalSourcePath: null,
+    duplicateSources: [],
   };
 
   if (metadata === null || metadata === undefined) return defaults;
@@ -144,6 +168,22 @@ export function readDraftMetadata(metadata: Prisma.JsonValue | null): DraftMetad
 
   const warnings = readStringArray(obj.warnings) ?? [];
 
+  const duplicateSources: ProviderKnowledgeUnitDraftDuplicateSourceDto[] = [];
+  if (Array.isArray(obj.duplicateSources)) {
+    for (const entry of obj.duplicateSources) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const row = entry as Record<string, unknown>;
+      const sourceDocumentId = readString(row.sourceDocumentId);
+      if (!sourceDocumentId) continue;
+      duplicateSources.push({
+        sourceDocumentId,
+        sourcePath: readString(row.sourcePath),
+        title: readString(row.title) ?? "",
+        reason: readString(row.reason) ?? "duplicate",
+      });
+    }
+  }
+
   return {
     reviewStatus: readString(obj.reviewStatus) ?? "unknown",
     generatedBy: readString(obj.generatedBy),
@@ -156,6 +196,9 @@ export function readDraftMetadata(metadata: Prisma.JsonValue | null): DraftMetad
     topic: readString(obj.topic),
     warnings,
     evidence,
+    semanticTopicKey: readString(obj.semanticTopicKey),
+    canonicalSourcePath: readString(obj.canonicalSourcePath),
+    duplicateSources,
   };
 }
 
@@ -201,6 +244,9 @@ export function toProviderKnowledgeUnitDraftDto(
     sourceDocument: toProviderKnowledgeUnitDraftSourceDocumentDto(chunk.sourceDocument),
     topic: meta.topic,
     warnings: meta.warnings,
+    semanticTopicKey: meta.semanticTopicKey,
+    canonicalSourcePath: meta.canonicalSourcePath,
+    duplicateSources: meta.duplicateSources,
     createdAt: chunk.createdAt.toISOString(),
     updatedAt: chunk.updatedAt.toISOString(),
   };

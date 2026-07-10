@@ -352,3 +352,24 @@ export async function fetchProviderKnowledgeUnitDraftsApi(
   }
   return (await response.json()) as ProviderKnowledgeUnitDraftListResponse;
 }
+
+export async function resetProviderKnowledgeUnitDraftsApi(
+  packId: string,
+  input?: {
+    scope?: "pending_review_only" | "pending_and_superseded" | "all_auto_generated";
+  },
+): Promise<import("@/lib/provider-knowledge-unit-draft-dto").ProviderKnowledgeUnitDraftResetResponse> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/knowledge-unit-drafts`,
+    {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input ?? {}),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as import("@/lib/provider-knowledge-unit-draft-dto").ProviderKnowledgeUnitDraftResetResponse;
+}

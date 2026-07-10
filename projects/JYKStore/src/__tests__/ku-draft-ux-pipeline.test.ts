@@ -2,13 +2,19 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   areKuDraftTitlesSimilar,
+  computeKuDraftContentChecksum,
   dedupeKuDraftCandidates,
   isKuDraftDuplicate,
 } from "../lib/knowledge-unit-draft/ku-draft-dedup.ts";
 import {
   buildKuProcessingNarrative,
   buildKuProcessingSummary,
+  kuDocumentStatusUserHint,
 } from "../lib/knowledge-unit-draft/ku-draft-processing-status.ts";
+import {
+  buildSemanticTopicKey,
+  canonicalizeKuSourcePath,
+} from "../lib/knowledge-unit-draft/ku-draft-topic-key.ts";
 import { parseUserFacingKuDraftContent } from "../lib/knowledge-unit-draft/ku-draft-content.ts";
 import { classifySourceDocumentForKuGeneration } from "../lib/knowledge-unit-draft/ku-draft-skip-reasons.ts";
 
@@ -69,6 +75,59 @@ describe("ku-draft-dedup", () => {
     ]);
     assert.equal(kept.length, 1);
     assert.equal(mergedCount, 1);
+  });
+
+  it("dedupes TOAST UI Grid getting-started paths to one representative", () => {
+    const paths = [
+      "packages/toast-ui.grid/docs/getting-started.md",
+      "packages/toast-ui.grid/docs/ko/getting-started.md",
+      "packages/toast-ui.vue-grid/docs/getting-started.md",
+    ];
+    const sharedRaw = computeKuDraftContentChecksum("getting started body");
+    const candidates = paths.map((sourcePath, index) => ({
+      sourceDocumentId: `doc-${index}`,
+      title: "시작하기",
+      sourcePath,
+      primaryHeading: "시작하기",
+      contentChecksum: `checksum-${index}`,
+      semanticTopicKey: buildSemanticTopicKey({ title: "시작하기", sourcePath }),
+      canonicalSourcePath: canonicalizeKuSourcePath(sourcePath),
+      rawContentChecksum: sharedRaw,
+    }));
+
+    const { kept, mergedCount } = dedupeKuDraftCandidates(candidates);
+    assert.equal(kept.length, 1);
+    assert.equal(mergedCount, 2);
+    assert.equal(
+      kept[0]?.sourcePath,
+      "packages/toast-ui.grid/docs/getting-started.md",
+    );
+  });
+
+  it("dedupes overview topic across README and docs/overview", () => {
+    const entries = [
+      { sourcePath: "README.md", title: "제품 개요" },
+      { sourcePath: "docs/overview.md", title: "Overview" },
+    ];
+    const sharedRaw = computeKuDraftContentChecksum("product overview text");
+    const candidates = entries.map((entry, index) => ({
+      sourceDocumentId: `doc-${index}`,
+      title: entry.title,
+      sourcePath: entry.sourcePath,
+      primaryHeading: entry.title,
+      contentChecksum: `c-${index}`,
+      semanticTopicKey: buildSemanticTopicKey({
+        title: entry.title,
+        sourcePath: entry.sourcePath,
+      }),
+      canonicalSourcePath: canonicalizeKuSourcePath(entry.sourcePath),
+      rawContentChecksum: sharedRaw,
+    }));
+
+    const { kept, mergedCount } = dedupeKuDraftCandidates(candidates);
+    assert.equal(kept.length, 1);
+    assert.equal(mergedCount, 1);
+    assert.equal(kept[0]?.semanticTopicKey, "overview");
   });
 });
 
@@ -136,6 +195,34 @@ describe("ku-draft-processing-status", () => {
     assert.equal(result.summary.excluded, 22);
     assert.equal(result.summary.failed, 0);
     assert.equal(result.summary.progressPercent, 100);
+  });
+
+  it("shows generated when pending drafts exist despite excluded report outcome", () => {
+    const doc = githubDoc("packages/toast-ui.grid/docs/ko/getting-started.md", longContent);
+    const reportByDocumentId = new Map([
+      [
+        doc.id,
+        {
+          sourceDocumentId: doc.id,
+          path: doc.id,
+          status: "excluded",
+          reasonCode: "NO_KNOWLEDGE_TOPIC",
+          reason: "추출 가능한 제품 지식 주제를 찾지 못함",
+          generatedUnitTitles: [],
+          steps: [],
+        },
+      ],
+    ]);
+
+    const result = buildKuProcessingSummary(
+      [doc],
+      new Map([[doc.id, [{ title: "시작하기", reviewStatus: "pending_review" }]]]),
+      { reportByDocumentId },
+    );
+
+    assert.equal(result.documents[0]?.status, "generated");
+    assert.equal(result.documents[0]?.generatedUnitTitles[0], "시작하기");
+    assert.match(kuDocumentStatusUserHint("generated"), /AI 추출 Unit/);
   });
 
   it("builds narrative without failure wording when failed is zero", () => {
