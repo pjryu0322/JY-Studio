@@ -874,3 +874,8 @@ JYKStore를 검증된 제품지식팩 생산·검증·배포 플랫폼으로 발
 1. OAuth / remote MCP auth
 2. True upstream stream response using Web Streams
 3. Production deployment hardening
+
+## 아키텍처 감사 문서
+
+- P27 Architecture Realignment Audit: `docs/p27-architecture-realignment/`
+  - `01-current-feature-inventory.md` ~ `07-open-risks-and-decisions.md`
