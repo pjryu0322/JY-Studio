@@ -13,6 +13,7 @@ export function attachAuthSessionCookie(response: NextResponse, session: { userI
   return response;
 }
 
+/** Clear using the same path/sameSite/secure/httpOnly attributes as attach. */
 export function clearAuthSessionCookie(response: NextResponse) {
   response.cookies.set(JYKSTORE_AUTH_SESSION_COOKIE, "", {
     httpOnly: true,

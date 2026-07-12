@@ -96,12 +96,10 @@ export function HeaderProfileButton() {
 
   const onLogout = async () => {
     clearError();
-    try {
-      await logoutAndRedirect("login");
+    const result = await logoutAndRedirect("login");
+    if (result.ok) {
       setMenuOpen(false);
       setSession(emptySession);
-    } catch {
-      // error surfaced via hook; stay on screen
     }
   };
 

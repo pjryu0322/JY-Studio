@@ -145,9 +145,8 @@ export function AdminAccessGate({ children }: { readonly children: React.ReactNo
     clearError();
     setAction("switch");
     try {
-      await logoutAndRedirect("admin-login");
-    } catch {
-      // keep session; show error
+      const result = await logoutAndRedirect("admin-login");
+      if (!result.ok) return;
     } finally {
       setAction(null);
     }
@@ -157,9 +156,8 @@ export function AdminAccessGate({ children }: { readonly children: React.ReactNo
     clearError();
     setAction("logout");
     try {
-      await logoutAndRedirect("login");
-    } catch {
-      // keep session; show error
+      const result = await logoutAndRedirect("login");
+      if (!result.ok) return;
     } finally {
       setAction(null);
     }

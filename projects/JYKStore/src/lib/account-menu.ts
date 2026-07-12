@@ -3,6 +3,8 @@ import { ROUTES } from "@/lib/routes";
 
 export type LogoutDestination = "login" | "admin-login" | "home";
 
+export const PROVIDER_PROFILE_PATH = `${ROUTES.accountProfile}#provider-profile`;
+
 export function logoutDestinationPath(destination: LogoutDestination): string {
   switch (destination) {
     case "admin-login":
@@ -43,7 +45,7 @@ export function accountMenuLinksForRole(role: AccountRole): AccountMenuLink[] {
     case "PROVIDER":
       return [
         { href: ROUTES.accountProfile, label: "계정 정보" },
-        { href: ROUTES.accountProfile, label: "제공자 정보" },
+        { href: PROVIDER_PROFILE_PATH, label: "제공자 정보" },
         { href: ROUTES.provider, label: "제공자 센터" },
         { href: ROUTES.home, label: "스토어 홈" },
       ];

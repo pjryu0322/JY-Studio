@@ -3,19 +3,25 @@
 import { useCallback, useEffect, useState } from "react";
 import { ProviderProfileForm } from "@/components/ProviderProfileForm";
 import { StoreLoginForm } from "@/components/StoreLoginForm";
-import { fetchAuthSession, logoutStoreAccount } from "@/lib/auth-api";
+import { useStoreLogout } from "@/hooks/useStoreLogout";
+import { fetchAuthSession } from "@/lib/auth-api";
 import type { ProviderProfileDto } from "@/lib/provider-profile-dto";
 import { upsertProviderProfileApi } from "@/lib/provider-center-api";
 import { ROUTES } from "@/lib/routes";
 
 export function AccountProfilePageClient() {
+  const {
+    logoutAndRedirect,
+    busy: logoutBusy,
+    error: logoutError,
+    clearError,
+  } = useStoreLogout();
   const [loading, setLoading] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
   const [providerProfile, setProviderProfile] = useState<ProviderProfileDto | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [authBusy, setAuthBusy] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -34,8 +40,8 @@ export function AccountProfilePageClient() {
       setUserEmail(session.user.email);
       setUserName(session.user.name);
       setProviderProfile(session.providerProfile ?? null);
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "세션을 불러오지 못했습니다.");
+    } catch {
+      setAuthError("세션을 불러오지 못했습니다.");
       setLoggedIn(false);
     } finally {
       setLoading(false);
@@ -47,13 +53,9 @@ export function AccountProfilePageClient() {
   }, [refresh]);
 
   const onLogout = async () => {
-    setAuthBusy(true);
-    try {
-      await logoutStoreAccount();
-      await refresh();
-    } finally {
-      setAuthBusy(false);
-    }
+    clearError();
+    await logoutAndRedirect("login");
+    // Success navigates to /login. Failure keeps this screen + logoutError.
   };
 
   const onSaveProviderProfile = async (input: {
@@ -68,8 +70,8 @@ export function AccountProfilePageClient() {
       const data = await upsertProviderProfileApi(input);
       setProviderProfile(data.profile);
       await refresh();
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "프로필을 저장하지 못했습니다.");
+    } catch {
+      setAuthError("프로필을 저장하지 못했습니다.");
     } finally {
       setSavingProfile(false);
     }
@@ -87,10 +89,14 @@ export function AccountProfilePageClient() {
     );
   }
 
+  const displayError = authError || logoutError;
+
   return (
     <div className="space-y-5 pb-8">
-      {authError ? (
-        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">{authError}</div>
+      {displayError ? (
+        <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+          {displayError}
+        </div>
       ) : null}
 
       <section className="rounded-2xl border border-store-border bg-white p-5 shadow-card">
@@ -101,10 +107,10 @@ export function AccountProfilePageClient() {
         <button
           type="button"
           onClick={() => void onLogout()}
-          disabled={authBusy}
-          className="mt-4 min-h-[44px] w-full rounded-xl border border-store-border text-sm font-semibold text-slate-800"
+          disabled={logoutBusy}
+          className="mt-4 min-h-[44px] w-full rounded-xl border border-store-border text-sm font-semibold text-slate-800 disabled:opacity-50"
         >
-          로그아웃
+          {logoutBusy ? "로그아웃 중…" : "로그아웃"}
         </button>
       </section>
 

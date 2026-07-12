@@ -60,11 +60,7 @@ export function AccountPageClient() {
   }, [refresh]);
 
   const onLogout = async () => {
-    try {
-      await logoutAndRedirect("login");
-    } catch {
-      // keep screen; error via hook
-    }
+    await logoutAndRedirect("login");
   };
 
   if (loading) {

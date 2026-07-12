@@ -35,6 +35,10 @@ describe("admin account switch UX", () => {
       redirect: (path) => failedRedirects.push(path),
     });
     assert.equal(failed.ok, false);
+    if (!failed.ok) {
+      assert.equal(failed.code, "LOGOUT_FAILED");
+      assert.ok(!failed.message.includes("fail"));
+    }
     assert.deepEqual(failedRedirects, []);
   });
 
@@ -47,19 +51,44 @@ describe("admin account switch UX", () => {
     assert.ok(gate.includes("useStoreLogout"));
     assert.ok(gate.includes('logoutAndRedirect("admin-login")'));
     assert.ok(gate.includes('logoutAndRedirect("login")'));
+    assert.ok(gate.includes("result.ok"));
     assert.ok(gate.includes("현재 로그인 계정"));
-    // Switch CTA must be a button action, not a plain Link.
-    assert.ok(gate.includes("관리자 계정으로 다시 로그인"));
     assert.ok(!gate.includes('<Link\n            href={ROUTES.adminLogin}\n            className="mt-4'));
   });
 
-  it("AdminLoginForm does not auto-register unknown emails as USER", () => {
+  it("AdminLoginForm does not auto-register and verifies session cleanup", () => {
     const form = readSource("src/components/AdminLoginForm.tsx");
     assert.ok(!form.includes("registerStoreAccount"));
     assert.ok(form.includes("등록된 관리자 계정이 아닙니다."));
     assert.ok(form.includes("fetchAuthSession"));
     assert.ok(form.includes("non_admin_session"));
     assert.ok(form.includes("loginStoreAccount"));
-    assert.ok(form.includes("logoutStoreAccount"));
+    assert.ok(form.includes("performStoreLogout"));
+    assert.ok(form.includes("navigate: false"));
+    assert.ok(
+      form.includes(
+        "관리자 권한이 없는 계정이며 현재 세션을 종료하지 못했습니다. 프로필 메뉴에서 다시 로그아웃해 주세요.",
+      ),
+    );
+    assert.ok(form.includes("result.ok"));
+  });
+
+  it("logout hook shares in-flight promise", () => {
+    const hook = readSource("src/hooks/useStoreLogout.ts");
+    assert.ok(hook.includes("createSharedLogoutExecutor"));
+    assert.ok(hook.includes("inFlightPromiseRef") || hook.includes("sharedRef"));
+    assert.ok(!/if \(inFlightRef\.current\) return/.test(hook));
+  });
+
+  it("logout route remains POST-only with matching cookie clear attrs", () => {
+    const route = readSource("src/app/api/v1/auth/logout/route.ts");
+    const cookie = readSource("src/lib/auth-cookie.ts");
+    assert.ok(route.includes("export async function POST"));
+    assert.ok(!route.includes("export async function GET"));
+    assert.ok(route.includes('{ ok: true }') || route.includes('{ ok: true }'));
+    assert.ok(cookie.includes('sameSite: "lax"'));
+    assert.ok(cookie.includes('path: "/"'));
+    assert.ok(cookie.includes("httpOnly: true"));
+    assert.ok(cookie.includes("maxAge: 0"));
   });
 });

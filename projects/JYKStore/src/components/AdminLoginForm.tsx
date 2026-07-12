@@ -12,6 +12,7 @@ import {
 import { accountRoleDisplayLabel } from "@/lib/account-menu";
 import { fetchAuthSession, loginStoreAccount, logoutStoreAccount } from "@/lib/auth-api";
 import { useStoreLogout } from "@/hooks/useStoreLogout";
+import { performStoreLogout } from "@/lib/store-logout";
 import {
   ADMIN_LOGIN_DESCRIPTION,
   ADMIN_LOGIN_TITLE,
@@ -68,11 +69,9 @@ export function AdminLoginForm() {
 
   const onSwitchToAdminLogin = async () => {
     clearError();
-    try {
-      await logoutAndRedirect("admin-login");
+    const result = await logoutAndRedirect("admin-login");
+    if (result.ok) {
       setPageState({ status: "form" });
-    } catch {
-      // stay; error via hook
     }
   };
 
@@ -83,7 +82,18 @@ export function AdminLoginForm() {
     try {
       const result = await loginStoreAccount({ email, displayName, mode: "login" });
       if (!isAdminAccountRole(result.user.accountRole)) {
-        await logoutStoreAccount();
+        const cleared = await performStoreLogout({
+          logout: logoutStoreAccount,
+          redirect: () => undefined,
+          destination: "login",
+          navigate: false,
+        });
+        if (!cleared.ok) {
+          setError(
+            "관리자 권한이 없는 계정이며 현재 세션을 종료하지 못했습니다. 프로필 메뉴에서 다시 로그아웃해 주세요.",
+          );
+          return;
+        }
         setError("관리자 권한이 없는 계정입니다. 관리자 이메일로 로그인해 주세요.");
         return;
       }
@@ -95,7 +105,7 @@ export function AdminLoginForm() {
         setError("등록된 관리자 계정이 아닙니다.");
         return;
       }
-      setError(message);
+      setError("로그인에 실패했습니다. 다시 시도해 주세요.");
     } finally {
       setBusy(false);
     }
