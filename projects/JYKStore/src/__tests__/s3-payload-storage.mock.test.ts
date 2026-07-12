@@ -20,16 +20,44 @@ describe("S3 storage error mapping", () => {
     assert.equal(err.httpStatus, 404);
   });
 
+  it("maps NoSuchBucket + 404 to UNAVAILABLE not NOT_FOUND", () => {
+    assert.equal(classifyS3StorageError({ name: "NoSuchBucket", $metadata: { httpStatusCode: 404 } }, "get"), "bucket-missing");
+    const err = mapS3StorageError(
+      { name: "NoSuchBucket", $metadata: { httpStatusCode: 404 } },
+      "get",
+    );
+    assert.equal(err.code, "PAYLOAD_STORAGE_UNAVAILABLE");
+    assert.equal(err.httpStatus, 503);
+  });
+
   it("maps AccessDenied to PAYLOAD_STORAGE_ACCESS_DENIED", () => {
     const err = mapS3StorageError({ name: "AccessDenied", $metadata: { httpStatusCode: 403 } }, "get");
     assert.equal(err.code, "PAYLOAD_STORAGE_ACCESS_DENIED");
     assert.equal(err.httpStatus, 503);
   });
 
-  it("maps NoSuchBucket and 5xx to UNAVAILABLE", () => {
-    assert.equal(classifyS3StorageError({ name: "NoSuchBucket" }), "bucket-missing");
+  it("maps Timeout and 5xx to UNAVAILABLE", () => {
+    assert.equal(classifyS3StorageError({ name: "TimeoutError" }, "put"), "unavailable");
     const err = mapS3StorageError({ name: "TimeoutError", $metadata: { httpStatusCode: 503 } }, "put");
     assert.equal(err.code, "PAYLOAD_STORAGE_UNAVAILABLE");
+    assert.equal(
+      classifyS3StorageError({ name: "ServiceError", $metadata: { httpStatusCode: 500 } }, "get"),
+      "unavailable",
+    );
+  });
+
+  it("maps generic 404 probe to bucket-missing", () => {
+    assert.equal(
+      classifyS3StorageError({ name: "NotFound", $metadata: { httpStatusCode: 404 } }, "probe"),
+      "bucket-missing",
+    );
+  });
+
+  it("maps generic NotFound head to object-not-found", () => {
+    assert.equal(
+      classifyS3StorageError({ name: "NotFound", $metadata: { httpStatusCode: 404 } }, "head"),
+      "object-not-found",
+    );
   });
 
   it("preserves existing PayloadServiceError from get path", async () => {
@@ -60,7 +88,7 @@ describe("S3 storage error mapping", () => {
     );
   });
 
-  it("head returns exists false only for not-found", async () => {
+  it("head returns exists false for NotFound but throws for NoSuchBucket", async () => {
     const config: PayloadS3StorageConfig = {
       driver: "s3",
       region: "ap-northeast-2",
@@ -74,15 +102,28 @@ describe("S3 storage error mapping", () => {
     const storage = new S3PayloadStorage(config);
     (storage as unknown as { client: unknown }).client = mockClient({
       send: async () => {
-        const error = Object.assign(new Error("missing"), {
+        throw Object.assign(new Error("missing"), {
           name: "NotFound",
           $metadata: { httpStatusCode: 404 },
         });
-        throw error;
       },
     });
     const missing = await storage.head({ objectKey: "missing.zip" });
     assert.equal(missing.exists, false);
+
+    (storage as unknown as { client: unknown }).client = mockClient({
+      send: async () => {
+        throw Object.assign(new Error("no bucket"), {
+          name: "NoSuchBucket",
+          $metadata: { httpStatusCode: 404 },
+        });
+      },
+    });
+    await assert.rejects(
+      () => storage.head({ objectKey: "any.zip" }),
+      (error: unknown) =>
+        error instanceof PayloadServiceError && error.code === "PAYLOAD_STORAGE_UNAVAILABLE",
+    );
 
     (storage as unknown as { client: unknown }).client = mockClient({
       send: async () => {

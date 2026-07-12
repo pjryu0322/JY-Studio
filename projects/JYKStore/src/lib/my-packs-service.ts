@@ -1,17 +1,36 @@
 import { InstallationStatus, PackStatus, type Prisma } from "@prisma/client";
+import {
+  canInstallLatestDistributionPack,
+  canShowInstalledPackInMyPacks,
+  latestKnowledgePackVersionOrderBy,
+  resolveLatestDistributionState,
+} from "@/lib/distribution/latest-distribution-state";
 import { prisma } from "@/lib/prisma";
 import { toKnowledgePackDto, type PrismaKnowledgePackWithVersion } from "@/lib/pack-dto";
 
 const installablePackStatuses: PackStatus[] = [PackStatus.PUBLISHED, PackStatus.VERIFIED];
+
 const myPacksInclude = {
   category: true,
   versions: {
-    orderBy: [{ createdAt: "desc" as const }, { id: "desc" as const }],
+    orderBy: latestKnowledgePackVersionOrderBy,
+    take: 1,
+    include: {
+      distributionMetadata: true,
+    },
   },
 } satisfies Prisma.KnowledgePackInclude;
 
+type MyPacksPackRow = Prisma.KnowledgePackGetPayload<{
+  include: typeof myPacksInclude;
+}>;
+
 function isInstallablePackStatus(status: PackStatus) {
   return installablePackStatuses.includes(status);
+}
+
+function toDto(pack: MyPacksPackRow) {
+  return toKnowledgePackDto(pack as unknown as PrismaKnowledgePackWithVersion);
 }
 
 export async function listActiveMyPacksForClient(clientId: string) {
@@ -30,8 +49,11 @@ export async function listActiveMyPacksForClient(clientId: string) {
 
   return installations
     .map((row) => row.pack)
-    .filter((pack): pack is PrismaKnowledgePackWithVersion => Boolean(pack))
-    .map(toKnowledgePackDto);
+    .filter((pack): pack is MyPacksPackRow => Boolean(pack))
+    .filter((pack) =>
+      canShowInstalledPackInMyPacks(resolveLatestDistributionState(pack.versions[0])),
+    )
+    .map(toDto);
 }
 
 export async function findPublishedPack(packId: string) {
@@ -50,6 +72,12 @@ export async function addPackInstallationForClient(clientId: string, packId: str
 
   if (!isInstallablePackStatus(pack.status)) {
     return { error: "NOT_PUBLISHED" as const, pack };
+  }
+
+  const latestState = resolveLatestDistributionState(pack.versions[0]);
+  if (!canInstallLatestDistributionPack(latestState)) {
+    // Hide existence of PRIVATE distribution packs from install API.
+    return { error: "NOT_INSTALLABLE" as const };
   }
 
   const installation = await prisma.packInstallation.upsert({
@@ -75,7 +103,7 @@ export async function addPackInstallationForClient(clientId: string, packId: str
     },
   });
 
-  return { installation, pack: toKnowledgePackDto(pack) };
+  return { installation, pack: toDto(pack) };
 }
 
 export async function removePackInstallationForClient(clientId: string, packId: string) {

@@ -150,7 +150,7 @@ export class S3PayloadStorage implements PayloadStorage {
         checksumSha256Metadata: result.Metadata?.[META_CHECKSUM] ?? null,
       };
     } catch (error) {
-      if (isS3ObjectNotFoundError(error)) return { exists: false };
+      if (isS3ObjectNotFoundError(error, "head")) return { exists: false };
       if (isPayloadServiceError(error)) throw error;
       throw mapS3StorageError(error, "head");
     }

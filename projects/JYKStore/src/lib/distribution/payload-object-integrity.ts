@@ -13,10 +13,11 @@ export async function readAndVerifyPayloadObject(input: {
 }): Promise<{ bytes: Uint8Array; checksumSha256: string }> {
   const head = await input.storage.head({ objectKey: input.objectKey });
   if (!head.exists) {
+    // Object missing is not integrity drift — map to not-found (never bucket outage).
     throw new PayloadServiceError(
-      "PAYLOAD_OBJECT_INTEGRITY_FAILED",
-      "Payload 객체를 찾을 수 없습니다.",
-      503,
+      "PAYLOAD_NOT_FOUND",
+      "Object Storage에서 Payload를 찾을 수 없습니다.",
+      404,
     );
   }
   if (

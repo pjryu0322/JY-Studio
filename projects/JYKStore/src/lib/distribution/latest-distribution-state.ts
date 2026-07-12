@@ -27,3 +27,13 @@ export function isLatestVersionCatalogVisible(
     ? state.visibility === "PUBLIC"
     : state.visibility === "PUBLIC" || state.visibility === "UNLISTED";
 }
+
+/** My Packs install & list visibility for the latest version. */
+export function canInstallLatestDistributionPack(state: LatestDistributionState): boolean {
+  if (state.kind === "LEGACY") return true;
+  return state.visibility === "PUBLIC" || state.visibility === "UNLISTED";
+}
+
+export function canShowInstalledPackInMyPacks(state: LatestDistributionState): boolean {
+  return canInstallLatestDistributionPack(state);
+}

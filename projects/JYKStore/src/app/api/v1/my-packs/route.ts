@@ -33,8 +33,12 @@ export async function POST(request: NextRequest) {
 
     const result = await addPackInstallationForClient(clientId, packId);
 
-    if (result.error === "NOT_FOUND") {
-      return jsonWithClientIdCookie({ error: "지식팩을 찾을 수 없습니다." }, clientId, { status: 404 });
+    if (result.error === "NOT_FOUND" || result.error === "NOT_INSTALLABLE") {
+      return jsonWithClientIdCookie(
+        { error: "설치 가능한 지식팩을 찾을 수 없습니다." },
+        clientId,
+        { status: 404 },
+      );
     }
 
     if (result.error === "NOT_PUBLISHED") {

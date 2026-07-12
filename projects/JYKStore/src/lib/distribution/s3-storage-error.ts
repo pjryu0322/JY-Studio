@@ -2,6 +2,12 @@ import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 
 export type S3StorageOperation = "put" | "get" | "delete" | "head" | "probe";
 
+export type S3StorageErrorClass =
+  | "object-not-found"
+  | "access-denied"
+  | "bucket-missing"
+  | "unavailable";
+
 type S3ErrorLike = {
   name?: unknown;
   code?: unknown;
@@ -25,36 +31,76 @@ function errorTokens(error: unknown): { names: string[]; status?: number; messag
   };
 }
 
-export function isS3ObjectNotFoundError(error: unknown): boolean {
-  const { names, status } = errorTokens(error);
-  return status === 404 || names.some((name) => name === "nosuchkey" || name === "notfound");
+function hasName(names: string[], ...candidates: string[]): boolean {
+  return candidates.some((candidate) => names.includes(candidate.toLowerCase()));
 }
 
+/**
+ * Classify S3/MinIO errors with operation-aware priority.
+ * Never treat NoSuchBucket as object-not-found solely because of HTTP 404.
+ */
 export function classifyS3StorageError(
   error: unknown,
-): "not-found" | "access-denied" | "bucket-missing" | "unavailable" {
+  operation: S3StorageOperation,
+): S3StorageErrorClass {
   const { names, status, message } = errorTokens(error);
-  if (isS3ObjectNotFoundError(error)) return "not-found";
-  if (names.some((name) => name === "accessdenied" || name === "invalidaccesskeyid" || name === "signaturedoesnotmatch") || status === 403) {
+
+  if (
+    hasName(names, "AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch") ||
+    status === 403
+  ) {
     return "access-denied";
   }
-  if (names.some((name) => name === "nosuchbucket")) return "bucket-missing";
+
+  if (hasName(names, "NoSuchBucket")) {
+    return "bucket-missing";
+  }
+
+  if (hasName(names, "NoSuchKey")) {
+    return "object-not-found";
+  }
+
+  const genericNotFound = hasName(names, "NotFound") || status === 404;
+  if (genericNotFound) {
+    if (operation === "probe") return "bucket-missing";
+    if (operation === "head" || operation === "get") return "object-not-found";
+    // put/delete generic 404 is treated as storage/bucket failure, not a missing payload object.
+    return "bucket-missing";
+  }
+
   if (
     status === 429 ||
     (status !== undefined && status >= 500) ||
-    names.some((name) =>
-      ["slowdown", "timeout", "timeouterror", "networkingerror", "requesttimeout"].includes(name),
+    hasName(
+      names,
+      "SlowDown",
+      "Timeout",
+      "TimeoutError",
+      "NetworkingError",
+      "RequestTimeout",
     ) ||
     /timeout|timed out|network|econn|enotfound|eai_again|socket hang up/.test(message)
   ) {
     return "unavailable";
   }
+
   return "unavailable";
 }
 
-export function mapS3StorageError(error: unknown, operation: S3StorageOperation): PayloadServiceError {
-  const classification = classifyS3StorageError(error);
-  if (classification === "not-found") {
+/** True only for object-level missing (never NoSuchBucket). */
+export function isS3ObjectNotFoundError(
+  error: unknown,
+  operation: S3StorageOperation = "get",
+): boolean {
+  return classifyS3StorageError(error, operation) === "object-not-found";
+}
+
+export function mapS3StorageError(
+  error: unknown,
+  operation: S3StorageOperation,
+): PayloadServiceError {
+  const classification = classifyS3StorageError(error, operation);
+  if (classification === "object-not-found") {
     return new PayloadServiceError(
       "PAYLOAD_NOT_FOUND",
       "Object Storage에서 Payload를 찾을 수 없습니다.",
@@ -68,6 +114,13 @@ export function mapS3StorageError(error: unknown, operation: S3StorageOperation)
       503,
     );
   }
+  if (classification === "bucket-missing") {
+    return new PayloadServiceError(
+      "PAYLOAD_STORAGE_UNAVAILABLE",
+      "Object Storage bucket is unavailable",
+      503,
+    );
+  }
   return new PayloadServiceError(
     "PAYLOAD_STORAGE_UNAVAILABLE",
     "Object Storage를 일시적으로 사용할 수 없습니다.",
@@ -76,12 +129,12 @@ export function mapS3StorageError(error: unknown, operation: S3StorageOperation)
 }
 
 export function describeS3StorageProbeError(error: unknown): string {
-  switch (classifyS3StorageError(error)) {
+  switch (classifyS3StorageError(error, "probe")) {
     case "access-denied":
       return "Object Storage access denied";
     case "bucket-missing":
       return "Object Storage bucket not found";
-    case "not-found":
+    case "object-not-found":
       return "Object Storage bucket not found";
     default:
       return "Object Storage network unavailable";
