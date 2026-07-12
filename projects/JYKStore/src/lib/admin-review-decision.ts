@@ -3,7 +3,10 @@ import {
   isAdminReviewAccepted,
   PackReviewStatus,
 } from "@/lib/pack-review-status";
-import type { ProviderReviewSubmitSnapshot } from "@/lib/provider-review-submit-snapshot";
+import {
+  isDistributionReviewSnapshot,
+  type AnyReviewSubmitSnapshot,
+} from "@/lib/provider-review-submit-snapshot";
 import {
   ADMIN_REVIEW_ACCEPT_PHASE_BLOCKED_BODY,
   ADMIN_REVIEW_ACCEPT_PHASE_BLOCKED_TITLE,
@@ -47,7 +50,7 @@ export function hasCurrentReleaseGate(detail: AdminReviewDetailDto): boolean {
 
 function getSubmitSnapshot(
   detail: AdminReviewDetailDto,
-): ProviderReviewSubmitSnapshot | null {
+): AnyReviewSubmitSnapshot | null {
   return detail.latestReview?.submitSnapshot ?? null;
 }
 
@@ -57,6 +60,25 @@ export function detectSubmitSnapshotDrift(detail: AdminReviewDetailDto): {
 } {
   const snapshot = getSubmitSnapshot(detail);
   if (!snapshot) return { changed: false, reasons: [] };
+
+  if (isDistributionReviewSnapshot(snapshot)) {
+    const reasons: string[] = [];
+    const payload = detail.payload;
+    if (!payload) {
+      reasons.push("제출 시점 Payload가 현재 없습니다.");
+    } else {
+      if (payload.id !== snapshot.payloadId) {
+        reasons.push("Payload가 제출 시점과 다릅니다.");
+      }
+      if (payload.checksumSha256 !== snapshot.checksumSha256) {
+        reasons.push("Payload Checksum이 제출 시점과 다릅니다.");
+      }
+      if (payload.validationStatus !== "VALID") {
+        reasons.push("Payload 검증 상태가 VALID가 아닙니다.");
+      }
+    }
+    return { changed: reasons.length > 0, reasons };
+  }
 
   const reasons: string[] = [];
   const version = snapshot.submittedVersionId
@@ -119,6 +141,14 @@ export function isSubmitSnapshotApprovalEligible(detail: AdminReviewDetailDto): 
   const snapshot = getSubmitSnapshot(detail);
   if (!snapshot) return false;
   if (detail.pack.status !== "REVIEWING") return false;
+
+  if (isDistributionReviewSnapshot(snapshot)) {
+    if (snapshot.validationStatus !== "VALID") return false;
+    if (!detail.payload || detail.payload.validationStatus !== "VALID") return false;
+    if (detectSubmitSnapshotDrift(detail).changed) return false;
+    return true;
+  }
+
   if (snapshot.releaseGateStatus !== "PASS" && snapshot.releaseGateStatus !== "WARNING") {
     return false;
   }
@@ -136,6 +166,9 @@ export function canApproveAdminReview(detail: AdminReviewDetailDto): boolean {
   if (isSubmitSnapshotApprovalEligible(detail)) {
     return true;
   }
+  if (detail.payload && isDistributionReviewSnapshot(getSubmitSnapshot(detail))) {
+    return false;
+  }
   return (
     detail.pack.status === "REVIEWING" &&
     detail.readiness.canApprove &&
@@ -150,21 +183,39 @@ export function collectAcceptBlockers(detail: AdminReviewDetailDto): string[] {
 
   if (!snapshot) {
     blockers.push("제출 스냅샷이 없습니다.");
-  } else {
-    if (!snapshot.releaseGateStatus) {
-      blockers.push("릴리스 게이트 결과가 없습니다.");
-    } else if (
-      snapshot.releaseGateStatus !== "PASS" &&
-      snapshot.releaseGateStatus !== "WARNING"
-    ) {
-      blockers.push(`릴리스 게이트가 ${snapshot.releaseGateStatus}입니다.`);
+    return [...new Set(blockers)];
+  }
+
+  if (isDistributionReviewSnapshot(snapshot)) {
+    if (snapshot.validationStatus !== "VALID") {
+      blockers.push("Payload 검증이 VALID가 아닙니다.");
     }
-    if (snapshot.sourceDocumentCount < 1) {
-      blockers.push("제출 패키지에 원천 문서가 없습니다.");
+    if (!detail.payload) {
+      blockers.push("등록된 Payload가 없습니다.");
+    } else if (detail.payload.validationStatus !== "VALID") {
+      blockers.push("Payload 검증 상태가 VALID가 아닙니다.");
     }
-    if (snapshot.activeChunkCount < 1) {
-      blockers.push("제출 패키지에 검수용 Chunk가 없습니다.");
+    if (!detail.distribution) {
+      blockers.push("유통정보가 없습니다.");
+    } else if (!detail.distribution.licenseName.trim()) {
+      blockers.push("라이선스명이 없습니다.");
     }
+    return [...new Set(blockers)];
+  }
+
+  if (!snapshot.releaseGateStatus) {
+    blockers.push("릴리스 게이트 결과가 없습니다.");
+  } else if (
+    snapshot.releaseGateStatus !== "PASS" &&
+    snapshot.releaseGateStatus !== "WARNING"
+  ) {
+    blockers.push(`릴리스 게이트가 ${snapshot.releaseGateStatus}입니다.`);
+  }
+  if (snapshot.sourceDocumentCount < 1) {
+    blockers.push("제출 패키지에 원천 문서가 없습니다.");
+  }
+  if (snapshot.activeChunkCount < 1) {
+    blockers.push("제출 패키지에 검수용 Chunk가 없습니다.");
   }
 
   if (detail.readiness.sourceValidation.failCount > 0) {
@@ -281,8 +332,12 @@ export function resolveDecisionStatusCopy(detail: AdminReviewDetailDto): ReviewS
 function hasWarningSignals(detail: AdminReviewDetailDto): boolean {
   const r = detail.readiness;
   const snapshot = getSubmitSnapshot(detail);
+  const snapshotReleaseWarning =
+    snapshot &&
+    !isDistributionReviewSnapshot(snapshot) &&
+    snapshot.releaseGateStatus === "WARNING";
   return (
-    snapshot?.releaseGateStatus === "WARNING" ||
+    snapshotReleaseWarning ||
     r.releaseGateStatus === "WARNING" ||
     r.sourceValidation.warningCount > 0 ||
     r.structureCoverageStatus === "WARNING" ||
@@ -360,6 +415,16 @@ export function resolveReviewDecisionState(detail: AdminReviewDetailDto): Review
   }
 
   const snapshot = getSubmitSnapshot(detail);
+  if (isDistributionReviewSnapshot(snapshot)) {
+    if (detectSubmitSnapshotDrift(detail).changed) {
+      return "submit_package_changed";
+    }
+    if (snapshot.validationStatus !== "VALID" || detail.payload?.validationStatus !== "VALID") {
+      return "approval_blocked";
+    }
+    return "approval_ready";
+  }
+
   if (snapshot && (snapshot.releaseGateStatus === "PASS" || snapshot.releaseGateStatus === "WARNING")) {
     if (
       detail.readiness.sourceValidation.failCount > 0 ||
@@ -484,7 +549,11 @@ export function collectReviewWarnings(detail: AdminReviewDetailDto): string[] {
   const r = detail.readiness;
   const snapshot = getSubmitSnapshot(detail);
 
-  if (snapshot?.warnings?.length) {
+  if (
+    snapshot &&
+    !isDistributionReviewSnapshot(snapshot) &&
+    snapshot.warnings?.length
+  ) {
     warnings.push(...snapshot.warnings);
   }
 
@@ -508,7 +577,12 @@ export function collectReviewWarnings(detail: AdminReviewDetailDto): string[] {
   if (r.retrievalEvaluationStatus === "WARNING") {
     warnings.push("검색 품질 평가가 WARNING입니다.");
   }
-  if (r.releaseGateStatus === "WARNING" || snapshot?.releaseGateStatus === "WARNING") {
+  if (
+    r.releaseGateStatus === "WARNING" ||
+    (snapshot &&
+      !isDistributionReviewSnapshot(snapshot) &&
+      snapshot.releaseGateStatus === "WARNING")
+  ) {
     warnings.push("릴리스 게이트가 WARNING입니다.");
   }
 

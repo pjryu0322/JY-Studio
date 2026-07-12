@@ -3,13 +3,21 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProviderPackBasicInfoTab } from "@/components/ProviderPackBasicInfoTab";
-import { ProviderPackMaterialsTab } from "@/components/ProviderPackMaterialsTab";
+import { ProviderDistributionTab } from "@/components/provider-distribution/ProviderDistributionTab";
+import {
+  computeDistributionReadiness,
+} from "@/components/provider-distribution/ProviderDistributionReadiness";
+import { ProviderPayloadTab } from "@/components/provider-distribution/ProviderPayloadTab";
 import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderPackTabs } from "@/components/ProviderPackTabs";
+import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
+import type { KnowledgePayloadPublicDto } from "@/lib/distribution/payload-service";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import {
   fetchProviderPack,
+  fetchProviderPackDistributionApi,
+  fetchProviderPackPayloadApi,
   submitProviderPackApi,
   updateProviderPackApi,
   withdrawProviderPackReviewApi,
@@ -24,10 +32,9 @@ import {
   PROVIDER_PACK_CREATED_BANNER_TITLE,
   PROVIDER_PACK_CREATED_ID_PREFIX,
   PROVIDER_PACK_CREATED_NEXT_TASK,
-  PROVIDER_PACK_GO_TO_MATERIALS_TAB,
+  PROVIDER_PACK_GO_TO_PAYLOAD_TAB,
   PROVIDER_PACK_GO_TO_REVIEW_TAB,
   PROVIDER_PACK_ID_LABEL,
-  PROVIDER_PACK_NEXT_TASK_MATERIALS,
   PROVIDER_PACK_NEXT_TASK_SUBMIT,
   PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN,
   PROVIDER_REVIEW_WITHDRAW_CONFIRM,
@@ -41,6 +48,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [locationHash, setLocationHash] = useState("");
 
   const [pack, setPack] = useState<ProviderPackDetailDto | null>(null);
+  const [payload, setPayload] = useState<KnowledgePayloadPublicDto | null>(null);
+  const [distribution, setDistribution] = useState<PackDistributionMetadataDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -71,6 +80,13 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setShortDescription(data.pack.shortDescription);
       setDescription(data.pack.description);
       setVersionOverview(data.pack.versions[0]?.overview ?? "");
+
+      const [payloadRes, distRes] = await Promise.all([
+        fetchProviderPackPayloadApi(packId).catch(() => ({ payload: null })),
+        fetchProviderPackDistributionApi(packId).catch(() => ({ distribution: null })),
+      ]);
+      setPayload(payloadRes.payload);
+      setDistribution(distRes.distribution);
     } catch (err) {
       setError(err instanceof Error ? err.message : "지식팩을 불러오지 못했습니다.");
     } finally {
@@ -83,6 +99,24 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   }, [load]);
 
   const sourceDocumentCount = pack?.versions[0]?.sourceDocuments.length ?? 0;
+  const distributionMode = Boolean(payload) || sourceDocumentCount === 0;
+
+  const hasBasicInfo = Boolean(
+    pack?.categoryId &&
+      shortDescription.trim() &&
+      description.trim() &&
+      name.trim(),
+  );
+
+  const distributionReadiness = useMemo(
+    () =>
+      computeDistributionReadiness({
+        hasBasicInfo,
+        payload,
+        distribution,
+      }),
+    [hasBasicInfo, payload, distribution],
+  );
 
   const defaultTab = useMemo(
     () =>
@@ -90,8 +124,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         created: showCreatedBanner,
         status: pack?.status ?? "DRAFT",
         sourceDocumentCount,
+        hasPayload: Boolean(payload),
+        hasDistribution: Boolean(distribution),
       }),
-    [showCreatedBanner, pack?.status, sourceDocumentCount],
+    [showCreatedBanner, pack?.status, sourceDocumentCount, payload, distribution],
   );
 
   const activeTab = resolveProviderPackTabFromLocation({
@@ -188,10 +224,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_CREATED_NEXT_TASK}</p>
           <button
             type="button"
-            onClick={() => selectTab("materials")}
+            onClick={() => selectTab("payload")}
             className="mt-2 text-xs font-bold text-store-accent underline-offset-2 hover:underline"
           >
-            {PROVIDER_PACK_GO_TO_MATERIALS_TAB}
+            {PROVIDER_PACK_GO_TO_PAYLOAD_TAB}
           </button>
         </div>
       ) : null}
@@ -213,7 +249,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           <p className="text-xs font-bold text-blue-900">다음 할 일</p>
           {pack.status === "REVIEWING" ? (
             <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN}</p>
-          ) : sourceDocumentCount > 0 ? (
+          ) : distributionReadiness.ready ? (
             <>
               <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_SUBMIT}</p>
               <button
@@ -226,13 +262,15 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             </>
           ) : (
             <>
-              <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_MATERIALS}</p>
+              <p className="mt-1 text-xs text-slate-700">
+                Payload와 유통정보를 등록한 뒤 검수 요청을 준비하세요.
+              </p>
               <button
                 type="button"
-                onClick={() => selectTab("materials")}
+                onClick={() => selectTab(payload ? "distribution" : "payload")}
                 className="mt-2 min-h-[40px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white"
               >
-                {PROVIDER_PACK_GO_TO_MATERIALS_TAB}
+                {payload ? "유통정보로 이동" : PROVIDER_PACK_GO_TO_PAYLOAD_TAB}
               </button>
             </>
           )}
@@ -265,8 +303,24 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           />
         ) : null}
 
-        {activeTab === "materials" ? (
-          <ProviderPackMaterialsTab pack={pack} onGoToReviewTab={() => selectTab("review")} />
+        {activeTab === "payload" ? (
+          <ProviderPayloadTab
+            packId={packId}
+            editable={editable}
+            onGoToDistributionTab={() => selectTab("distribution")}
+            onGoToReviewTab={() => selectTab("review")}
+            onPayloadChanged={setPayload}
+          />
+        ) : null}
+
+        {activeTab === "distribution" ? (
+          <ProviderDistributionTab
+            packId={packId}
+            editable={editable}
+            onGoToPayloadTab={() => selectTab("payload")}
+            onGoToReviewTab={() => selectTab("review")}
+            onDistributionChanged={setDistribution}
+          />
         ) : null}
 
         {activeTab === "review" ? (
@@ -276,9 +330,13 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             submitting={submitting}
             withdrawing={withdrawing}
             sourceDocumentCount={sourceDocumentCount}
+            distributionMode={distributionMode}
+            distributionReadiness={distributionReadiness}
             onSubmitReview={() => void onSubmitReview()}
             onWithdrawReview={() => void onWithdrawReview()}
-            onGoToMaterialsTab={() => selectTab("materials")}
+            onGoToPayloadTab={() => selectTab("payload")}
+            onGoToDistributionTab={() => selectTab("distribution")}
+            onGoToBasicTab={() => selectTab("basic")}
           />
         ) : null}
       </div>

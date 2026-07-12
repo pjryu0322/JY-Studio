@@ -104,7 +104,31 @@ export type AdminReviewDetailDto = {
     createdAt: string;
     updatedAt: string;
     decidedAt: string | null;
-    submitSnapshot: import("@/lib/provider-review-submit-snapshot").ProviderReviewSubmitSnapshot | null;
+    submitSnapshot: import("@/lib/provider-review-submit-snapshot").AnyReviewSubmitSnapshot | null;
+  } | null;
+  payload: {
+    id: string;
+    profile: string;
+    generatorType: string;
+    generatorVersion: string | null;
+    originalFileName: string;
+    fileSize: number;
+    checksumSha256: string;
+    validationStatus: string;
+    validationMessage: string | null;
+    validationReport: unknown;
+    manifest: unknown;
+    uploadedAt: string;
+  } | null;
+  distribution: {
+    sourceTitle: string | null;
+    sourceUrl: string | null;
+    licenseName: string;
+    licenseUrl: string | null;
+    usageTerms: string | null;
+    readmeText: string | null;
+    visibility: string;
+    allowDownload: boolean;
   } | null;
   readiness: {
     versionCount: number;
@@ -289,10 +313,37 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
         }
       : null,
     readiness,
+    payload: null,
+    distribution: null,
     structureQuality: null,
     chunkQuality: null,
     retrievalEvaluation: null,
     releaseGate: null,
+  };
+}
+
+export function applyDistributionFieldsToAdminDetail(
+  detail: AdminReviewDetailDto,
+  input: {
+    payload: AdminReviewDetailDto["payload"];
+    distribution: AdminReviewDetailDto["distribution"];
+  },
+): AdminReviewDetailDto {
+  const isDistribution = Boolean(input.payload);
+  return {
+    ...detail,
+    payload: input.payload,
+    distribution: input.distribution,
+    readiness: {
+      ...detail.readiness,
+      // Distribution packs do not rely on legacy source/chunk gates.
+      canApprove: isDistribution
+        ? detail.pack.status === "REVIEWING" &&
+          Boolean(input.payload) &&
+          input.payload?.validationStatus === "VALID" &&
+          Boolean(input.distribution?.licenseName.trim())
+        : detail.readiness.canApprove,
+    },
   };
 }
 

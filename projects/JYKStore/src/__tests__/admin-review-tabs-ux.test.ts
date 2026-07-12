@@ -113,6 +113,8 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
           }
         : overrides.latestReview,
     readiness,
+    payload: overrides.payload ?? null,
+    distribution: overrides.distribution ?? null,
     structureQuality: overrides.structureQuality ?? null,
     chunkQuality: overrides.chunkQuality ?? null,
     retrievalEvaluation: overrides.retrievalEvaluation ?? null,

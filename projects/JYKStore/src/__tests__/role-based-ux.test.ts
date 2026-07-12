@@ -54,7 +54,7 @@ describe("role-based account UX", () => {
 });
 
 describe("role-based provider UX", () => {
-  it("shows onboarding stepper and payload prep instead of create CTA", () => {
+  it("shows onboarding stepper and payload registration CTA", () => {
     const providerPage = readSource("src/app/(store)/provider/page.tsx");
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
     const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
@@ -63,9 +63,10 @@ describe("role-based provider UX", () => {
     assert.ok(center.includes("ProviderOnboardingStepper"));
     assert.ok(!center.includes("새 지식팩 만들기"));
     assert.ok(center.includes("PROVIDER_PAYLOAD_IMPORT_PREP_TITLE"));
+    assert.ok(center.includes("PROVIDER_PACK_REGISTER_CTA"));
     assert.ok(packNew.includes("getUserIdFromCookies"));
     assert.ok(packNew.includes("ProviderRequiredCard"));
-    assert.ok(!packNew.includes("ProviderPackCreateForm"));
+    assert.ok(packNew.includes("ProviderPackCreateForm"));
     assert.ok(!packNew.includes("ensureProviderProfileForAccount"));
   });
 });

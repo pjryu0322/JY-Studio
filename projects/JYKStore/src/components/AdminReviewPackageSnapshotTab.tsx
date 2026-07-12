@@ -1,5 +1,6 @@
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import { detectSubmitSnapshotDrift } from "@/lib/admin-review-decision";
+import { isDistributionReviewSnapshot } from "@/lib/provider-review-submit-snapshot";
 import { ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE } from "@/lib/role-based-ux-copy";
 
 function truncateId(id: string, max = 28): string {
@@ -24,6 +25,61 @@ export function AdminReviewPackageSnapshotTab({
       <section className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
         <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE}</h2>
         <p className="mt-2 text-xs text-store-muted">제출된 검수 패키지가 없습니다.</p>
+      </section>
+    );
+  }
+
+  if (isDistributionReviewSnapshot(snapshot)) {
+    const report =
+      detail.payload?.validationReport &&
+      typeof detail.payload.validationReport === "object"
+        ? (detail.payload.validationReport as Record<string, unknown>)
+        : null;
+    return (
+      <section className="space-y-3 rounded-2xl border border-store-border bg-white p-4 shadow-card">
+        <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE}</h2>
+        <p className="text-xs font-semibold text-store-accent">Distribution Payload</p>
+        <ul className="space-y-2 text-xs text-slate-700 sm:text-sm">
+          <li>제출일시: {snapshot.submittedAt.replace("T", " ").slice(0, 16)}</li>
+          {submittedVersionLabel ? <li>제출 버전: {submittedVersionLabel}</li> : null}
+          <li>Profile: {snapshot.payloadProfile}</li>
+          <li className="break-all">SHA-256: {snapshot.checksumSha256}</li>
+          <li>검증: {snapshot.validationStatus}</li>
+          {detail.payload ? (
+            <>
+              <li>생성기: {detail.payload.generatorType}</li>
+              <li>원본 파일: {detail.payload.originalFileName}</li>
+              <li>파일 크기: {detail.payload.fileSize.toLocaleString()} bytes</li>
+              {typeof report?.entrypoint === "string" ? (
+                <li>entrypoint: {report.entrypoint}</li>
+              ) : null}
+              {typeof report?.recordCount === "number" ? (
+                <li>recordCount: {report.recordCount}</li>
+              ) : null}
+            </>
+          ) : null}
+          {detail.distribution ? (
+            <>
+              <li>출처: {detail.distribution.sourceTitle ?? detail.distribution.sourceUrl ?? "—"}</li>
+              <li>라이선스: {detail.distribution.licenseName}</li>
+              <li>공개범위: {detail.distribution.visibility}</li>
+              <li>다운로드 허용: {detail.distribution.allowDownload ? "예" : "아니오"}</li>
+            </>
+          ) : null}
+        </ul>
+        {detail.payload ? (
+          <a
+            href={`/api/v1/admin/packs/${encodeURIComponent(detail.pack.packId)}/payload/download`}
+            className="inline-flex min-h-[44px] items-center rounded-xl border border-store-border px-4 text-sm font-semibold text-store-accent"
+          >
+            원본 Payload 다운로드
+          </a>
+        ) : null}
+        {drift.changed ? (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            제출 후 변경 감지: {drift.reasons[0]}
+          </p>
+        ) : null}
       </section>
     );
   }

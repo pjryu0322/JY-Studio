@@ -140,3 +140,118 @@ export async function withdrawProviderPackReviewApi(
   }
   return (await response.json()) as ProviderPackDetailResponse;
 }
+
+export async function fetchProviderPackPayloadApi(packId: string): Promise<{
+  clientId: string;
+  payload: import("@/lib/distribution/payload-service").KnowledgePayloadPublicDto | null;
+}> {
+  const response = await fetch(`/api/v1/provider/packs/${encodeURIComponent(packId)}/payload`, {
+    method: "GET",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    payload: import("@/lib/distribution/payload-service").KnowledgePayloadPublicDto | null;
+  };
+}
+
+export async function uploadProviderPackPayloadApi(
+  packId: string,
+  input: {
+    file: File;
+    profile: string;
+    generatorType: string;
+    generatorVersion?: string;
+  },
+): Promise<{
+  clientId: string;
+  payload: import("@/lib/distribution/payload-service").KnowledgePayloadPublicDto;
+}> {
+  const form = new FormData();
+  form.append("file", input.file);
+  form.append("profile", input.profile);
+  form.append("generatorType", input.generatorType);
+  if (input.generatorVersion) {
+    form.append("generatorVersion", input.generatorVersion);
+  }
+  const response = await fetch(`/api/v1/provider/packs/${encodeURIComponent(packId)}/payload`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    payload: import("@/lib/distribution/payload-service").KnowledgePayloadPublicDto;
+  };
+}
+
+export async function deleteProviderPackPayloadApi(packId: string): Promise<{ deleted: true }> {
+  const response = await fetch(`/api/v1/provider/packs/${encodeURIComponent(packId)}/payload`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as { deleted: true };
+}
+
+export async function fetchProviderPackDistributionApi(packId: string): Promise<{
+  clientId: string;
+  distribution: import("@/lib/distribution/distribution-metadata-service").PackDistributionMetadataDto | null;
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/distribution`,
+    {
+      method: "GET",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    distribution: import("@/lib/distribution/distribution-metadata-service").PackDistributionMetadataDto | null;
+  };
+}
+
+export async function upsertProviderPackDistributionApi(
+  packId: string,
+  input: {
+    sourceTitle?: string;
+    sourceUrl?: string;
+    licenseName: string;
+    licenseUrl?: string;
+    usageTerms?: string;
+    readmeText?: string;
+    visibility?: string;
+    allowDownload?: boolean;
+  },
+): Promise<{
+  clientId: string;
+  distribution: import("@/lib/distribution/distribution-metadata-service").PackDistributionMetadataDto;
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/distribution`,
+    {
+      method: "PUT",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    distribution: import("@/lib/distribution/distribution-metadata-service").PackDistributionMetadataDto;
+  };
+}

@@ -35,21 +35,22 @@ export const PROVIDER_CENTER_REGISTERED_BODY =
   "현재 계정으로 기존 지식팩의 검수·공개 상태를 관리할 수 있습니다.";
 
 export const PROVIDER_CENTER_NEXT_TASK =
-  "외부 Payload 등록 기능은 다음 단계에서 제공됩니다.";
+  "외부 Payload로 지식팩을 등록하고 검수 요청을 제출하세요.";
 
-export const PROVIDER_PAYLOAD_IMPORT_PREP_TITLE = "외부 지식팩 등록 준비 중";
+export const PROVIDER_PAYLOAD_IMPORT_PREP_TITLE = "외부 Payload로 지식팩 등록";
 export const PROVIDER_PAYLOAD_IMPORT_PREP_BODY =
-  "외부 도구에서 생성한 Payload를 등록하는 기능을 준비하고 있습니다. 현재는 기존 지식팩의 조회·검수·공개 상태만 관리할 수 있습니다.";
+  "외부 도구에서 생성한 Payload를 등록해 지식팩을 제출할 수 있습니다.";
 export const PROVIDER_PAYLOAD_IMPORT_PREP_HINT =
-  "신규 지식팩 등록은 다음 단계(P29)에서 제공됩니다.";
+  "기본정보 → Payload 등록 → 유통정보 → 검수요청 순서로 진행하세요.";
 
-export const PROVIDER_PACK_NEW_BLOCKED_TITLE = "외부 Payload 등록 기능 준비 중";
+export const PROVIDER_PACK_NEW_BLOCKED_TITLE = "외부 Payload로 지식팩 등록";
 export const PROVIDER_PACK_NEW_BLOCKED_BODY =
-  "신규 지식팩 등록은 외부 Payload Import 기능이 준비된 뒤 제공됩니다. 지금은 기존 지식팩만 관리할 수 있습니다.";
+  "외부 도구에서 생성한 Payload ZIP을 등록해 지식팩을 제출할 수 있습니다.";
 
-export const PROVIDER_PACK_EMPTY_TITLE = "아직 만든 지식팩이 없습니다.";
+export const PROVIDER_PACK_REGISTER_CTA = "외부 Payload로 지식팩 등록";
+export const PROVIDER_PACK_EMPTY_TITLE = "아직 등록한 지식팩이 없습니다.";
 export const PROVIDER_PACK_EMPTY_BODY =
-  "외부 Payload 등록 기능은 다음 단계에서 제공됩니다. 기존 지식팩이 있다면 아래에서 상태를 확인할 수 있습니다.";
+  "외부 도구에서 생성한 Payload를 등록해 첫 지식팩을 제출할 수 있습니다.";
 
 export const PROVIDER_PACK_CREATE_AUTO_ID_HINT =
   "이름과 설명을 입력하면 JYKStore가 지식팩 ID와 요약 설명을 자동 생성합니다.";
@@ -57,7 +58,7 @@ export const PROVIDER_PACK_CREATE_AUTO_ID_HINT =
 export const PROVIDER_PACK_CREATED_BANNER_TITLE = "지식팩 초안 생성 완료";
 export const PROVIDER_PACK_CREATED_ID_PREFIX = "JYKStore가 지식팩 ID를 발급했습니다:";
 export const PROVIDER_PACK_CREATED_NEXT_TASK =
-  "다음 할 일: 기본정보를 확인한 뒤 기존 자료를 검토하고 검수 요청을 준비하세요.";
+  "다음 할 일: 기본정보를 확인한 뒤 Payload를 등록하고 유통정보를 입력하세요.";
 export const PROVIDER_PACK_ID_LABEL = "지식팩 ID";
 
 export const PROVIDER_PACK_WIZARD_BASIC_STEP = "기본정보";
@@ -72,6 +73,8 @@ export const PROVIDER_PACK_WIZARD_REVIEW_STEP = "검수 요청";
 export const PROVIDER_PACK_WIZARD_PUBLISH_STEP = "운영자 승인 후 공개";
 
 export const PROVIDER_PACK_TAB_BASIC = "기본정보";
+export const PROVIDER_PACK_TAB_PAYLOAD = "Payload 등록";
+export const PROVIDER_PACK_TAB_DISTRIBUTION = "유통정보";
 export const PROVIDER_PACK_TAB_MATERIALS = "기존 자료";
 export const PROVIDER_PACK_TAB_REVIEW = "검수요청";
 
@@ -83,6 +86,8 @@ export const PROVIDER_PACK_MATERIALS_NO_VERSION = "등록된 버전이 없습니
 export const PROVIDER_PACK_MATERIALS_EMPTY =
   "현재 버전에 등록된 자료가 없습니다. 외부 Payload를 등록한 뒤 검수 요청을 진행할 수 있습니다.";
 
+export const PROVIDER_PACK_GO_TO_PAYLOAD_TAB = "Payload 등록으로 이동";
+export const PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB = "유통정보로 이동";
 export const PROVIDER_PACK_GO_TO_MATERIALS_TAB = "기존 자료로 이동";
 export const PROVIDER_PACK_GO_TO_REVIEW_TAB = "검수요청으로 이동";
 /** @deprecated Builder freeze — prefer PROVIDER_PACK_GO_TO_MATERIALS_TAB */

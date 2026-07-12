@@ -49,6 +49,7 @@ import {
 } from "@/lib/retrieval-evaluation/retrieval-evaluation-readiness";
 import { evaluateReleaseGateForPack, loadReleaseGateSummaryForPack } from "@/lib/release-gate/release-gate-service";
 import { prepareProviderPackForFinalReviewSubmit } from "@/lib/auto-pipeline/provider-final-review-submit-service";
+import { commitDistributionPackForReview } from "@/lib/distribution/distribution-submit-service";
 import { buildProviderReviewSubmitSnapshot } from "@/lib/provider-review-submit-snapshot";
 import {
   getStructureQualityBlockingMessage,
@@ -848,6 +849,21 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
 
   if (pack.versions.length === 0) {
     return { error: "INCOMPLETE" as const, message: "버전이 최소 1개 필요합니다." };
+  }
+
+  const latestVersionId = pack.versions[0]?.id;
+  const distributionPayload = latestVersionId
+    ? await prisma.knowledgePayload.findUnique({ where: { versionId: latestVersionId } })
+    : null;
+
+  if (distributionPayload) {
+    const distributionResult = await commitDistributionPackForReview(userId, clientId, packId);
+    if ("error" in distributionResult) {
+      return distributionResult;
+    }
+    await recordSubmitForReviewPipeline(packId, clientId, "Distribution Payload 검수 요청");
+    const detail = await getProviderPackForClient(userId, clientId, packId);
+    return { pack: detail!, snapshot: distributionResult.snapshot, mode: "DISTRIBUTION" as const };
   }
 
   const allDocs = pack.versions.flatMap((v) => v.sourceDocuments);

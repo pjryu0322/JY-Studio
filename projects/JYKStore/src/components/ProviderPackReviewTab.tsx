@@ -1,11 +1,14 @@
 "use client";
 
+import {
+  ProviderDistributionReadiness,
+  type DistributionReadiness,
+} from "@/components/provider-distribution/ProviderDistributionReadiness";
 import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCard";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import { canProviderWithdrawReview, PackReviewStatus } from "@/lib/pack-review-status";
 import {
-  PROVIDER_PACK_GO_TO_MATERIALS_TAB,
-  PROVIDER_PACK_MATERIALS_EMPTY,
+  PROVIDER_PACK_GO_TO_PAYLOAD_TAB,
   PROVIDER_PACK_REVIEW_READY_BODY,
   PROVIDER_PACK_REVIEW_READY_TITLE,
   PROVIDER_PACK_WIZARD_REVIEW_STEP,
@@ -29,25 +32,38 @@ export function ProviderPackReviewTab({
   submitting,
   withdrawing,
   sourceDocumentCount,
+  distributionMode,
+  distributionReadiness,
   onSubmitReview,
   onWithdrawReview,
-  onGoToMaterialsTab,
+  onGoToPayloadTab,
+  onGoToDistributionTab,
+  onGoToBasicTab,
 }: {
   readonly pack: ProviderPackDetailDto;
   readonly editable: boolean;
   readonly submitting: boolean;
   readonly withdrawing: boolean;
   readonly sourceDocumentCount: number;
+  readonly distributionMode: boolean;
+  readonly distributionReadiness: DistributionReadiness | null;
   readonly onSubmitReview: () => void;
   readonly onWithdrawReview: () => void;
-  readonly onGoToMaterialsTab: () => void;
+  readonly onGoToPayloadTab: () => void;
+  readonly onGoToDistributionTab: () => void;
+  readonly onGoToBasicTab: () => void;
 }) {
   const isReviewing = pack.status === "REVIEWING";
   const isPublished = pack.status === "PUBLISHED" || pack.status === "VERIFIED";
-  const missingSources = sourceDocumentCount === 0;
   const canWithdraw = canProviderWithdrawReview(pack.latestReviewStatus);
   const isAccepted = pack.latestReviewStatus === PackReviewStatus.IN_REVIEW;
-  const canAttemptSubmit = editable && !isReviewing && !isPublished && !missingSources;
+
+  const legacyMissingSources = !distributionMode && sourceDocumentCount === 0;
+  const distributionReady = distributionMode
+    ? Boolean(distributionReadiness?.ready)
+    : sourceDocumentCount > 0;
+  const canAttemptSubmit =
+    editable && !isReviewing && !isPublished && distributionReady && !legacyMissingSources;
 
   return (
     <section
@@ -97,7 +113,7 @@ export function ProviderPackReviewTab({
           <p className="mt-1 text-xs">사유: {pack.latestRejectionReason}</p>
           <button
             type="button"
-            onClick={onGoToMaterialsTab}
+            onClick={onGoToPayloadTab}
             className="mt-3 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white"
           >
             {PROVIDER_REVIEW_REJECTED_GO_FIX}
@@ -111,41 +127,51 @@ export function ProviderPackReviewTab({
         </div>
       ) : null}
 
-      {missingSources && !isReviewing && !isPublished ? (
+      {distributionMode && distributionReadiness && !isReviewing && !isPublished ? (
+        <ProviderDistributionReadiness
+          readiness={distributionReadiness}
+          onGoToTab={(tab) => {
+            if (tab === "basic") onGoToBasicTab();
+            else if (tab === "payload") onGoToPayloadTab();
+            else onGoToDistributionTab();
+          }}
+        />
+      ) : null}
+
+      {legacyMissingSources && !isReviewing && !isPublished ? (
         <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3 text-xs text-amber-950">
-          <p>{PROVIDER_PACK_MATERIALS_EMPTY}</p>
+          <p>등록된 Payload 또는 원천 자료가 없습니다. Payload를 등록한 뒤 검수 요청을 진행하세요.</p>
           <button
             type="button"
-            onClick={onGoToMaterialsTab}
+            onClick={onGoToPayloadTab}
             className="mt-3 min-h-[44px] w-full rounded-xl border border-store-accent bg-white text-sm font-bold text-store-accent"
           >
-            {PROVIDER_PACK_GO_TO_MATERIALS_TAB}
+            {PROVIDER_PACK_GO_TO_PAYLOAD_TAB}
           </button>
         </div>
       ) : null}
 
-      {canAttemptSubmit ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-950">
-          <p className="font-bold">{PROVIDER_PACK_REVIEW_READY_TITLE}</p>
-          <p className="mt-1 text-xs">{PROVIDER_PACK_REVIEW_READY_BODY}</p>
-        </div>
-      ) : null}
-
-      {!isPublished ? <ProviderPackReadinessCard pack={pack} compactQualityWarnings /> : null}
-
-      <p className="rounded-xl border border-store-border bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-700">
-        {PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE}
-      </p>
-
-      {canAttemptSubmit ? (
-        <button
-          type="button"
-          disabled={submitting}
-          onClick={onSubmitReview}
-          className="min-h-[48px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
-        >
-          {submitting ? "제출 중…" : PROVIDER_SUBMIT_CTA}
-        </button>
+      {!isReviewing && !isPublished && !legacyMissingSources ? (
+        <>
+          <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
+            <p className="text-sm font-bold text-slate-900">{PROVIDER_PACK_REVIEW_READY_TITLE}</p>
+            <p className="mt-1 text-xs text-store-muted">
+              {distributionMode
+                ? "기본정보·Payload·유통정보가 준비되면 검수 요청을 제출할 수 있습니다."
+                : PROVIDER_PACK_REVIEW_READY_BODY}
+            </p>
+          </div>
+          {!distributionMode ? <ProviderPackReadinessCard pack={pack} /> : null}
+          <button
+            type="button"
+            disabled={!canAttemptSubmit || submitting}
+            onClick={onSubmitReview}
+            className="min-h-[48px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
+          >
+            {submitting ? "제출 중…" : PROVIDER_SUBMIT_CTA}
+          </button>
+          <p className="text-[11px] text-store-muted">{PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE}</p>
+        </>
       ) : null}
     </section>
   );

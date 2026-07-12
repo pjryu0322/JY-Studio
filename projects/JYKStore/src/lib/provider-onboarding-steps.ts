@@ -1,6 +1,6 @@
-import { providerPackDetailPath } from "@/lib/routes";
+import { providerPackDetailPath, ROUTES } from "@/lib/routes";
 
-export type ProviderOnboardingStepKey = "pack" | "materials" | "review" | "publish";
+export type ProviderOnboardingStepKey = "pack" | "payload" | "distribution" | "review" | "publish";
 
 export type ProviderOnboardingStepStatus = "done" | "current" | "pending";
 
@@ -20,21 +20,35 @@ export type BuildProviderOnboardingStepsInput = {
   hasReviewingPack: boolean;
   hasPublishedOrVerifiedPack: boolean;
   primaryPackId?: string;
+  hasPayload?: boolean;
+  hasDistribution?: boolean;
 };
 
 export function buildProviderOnboardingSteps(
   input: BuildProviderOnboardingStepsInput,
 ): ProviderOnboardingStep[] {
-  const materialsHref = input.primaryPackId
-    ? `${providerPackDetailPath(input.primaryPackId)}?tab=materials`
+  const payloadHref = input.primaryPackId
+    ? `${providerPackDetailPath(input.primaryPackId)}?tab=payload`
+    : ROUTES.providerPackNew;
+  const distributionHref = input.primaryPackId
+    ? `${providerPackDetailPath(input.primaryPackId)}?tab=distribution`
     : undefined;
 
   const packStatus: ProviderOnboardingStepStatus = input.packCount > 0 ? "done" : "current";
 
-  let materialsStatus: ProviderOnboardingStepStatus = "pending";
+  let payloadStatus: ProviderOnboardingStepStatus = "pending";
   if (input.packCount > 0) {
-    materialsStatus =
-      input.sourceDocumentCount > 0 ? "done" : packStatus === "done" ? "current" : "pending";
+    payloadStatus =
+      input.hasPayload || input.sourceDocumentCount > 0
+        ? "done"
+        : packStatus === "done"
+          ? "current"
+          : "pending";
+  }
+
+  let distributionStatus: ProviderOnboardingStepStatus = "pending";
+  if (payloadStatus === "done") {
+    distributionStatus = input.hasDistribution ? "done" : "current";
   }
 
   let reviewStatus: ProviderOnboardingStepStatus = "pending";
@@ -42,7 +56,7 @@ export function buildProviderOnboardingSteps(
     reviewStatus = "done";
   } else if (input.hasReviewingPack) {
     reviewStatus = "current";
-  } else if (materialsStatus === "done") {
+  } else if (distributionStatus === "done" || (payloadStatus === "done" && input.sourceDocumentCount > 0)) {
     reviewStatus = "current";
   }
 
@@ -59,14 +73,21 @@ export function buildProviderOnboardingSteps(
       title: "지식팩 기본정보 입력",
       description: "지식팩 초안의 이름과 설명을 입력합니다.",
       status: packStatus,
-      href: undefined,
+      href: packStatus === "current" ? ROUTES.providerPackNew : undefined,
     },
     {
-      key: "materials",
-      title: "기존 자료 확인",
-      description: "등록된 원천 자료를 확인합니다.",
-      status: materialsStatus,
-      href: materialsStatus === "current" ? materialsHref : undefined,
+      key: "payload",
+      title: "Payload 등록",
+      description: "외부 도구에서 생성한 ZIP을 등록합니다.",
+      status: payloadStatus,
+      href: payloadStatus === "current" ? payloadHref : undefined,
+    },
+    {
+      key: "distribution",
+      title: "유통정보",
+      description: "출처·라이선스·이용조건을 입력합니다.",
+      status: distributionStatus,
+      href: distributionStatus === "current" ? distributionHref : undefined,
     },
     {
       key: "review",
@@ -92,19 +113,20 @@ export function resolveProviderPackNextAction(input: {
   sourceDocumentCount: number;
   knowledgeUnitDraftCount?: number;
   justCreated: boolean;
+  hasPayload?: boolean;
 }): { title: string; body: string; href?: string } {
   if (input.justCreated) {
     return {
       title: "지식팩 초안 생성 완료",
-      body: "기본정보를 확인한 뒤 기존 자료와 검수 요청을 준비하세요.",
+      body: "기본정보를 확인한 뒤 Payload를 등록하세요.",
       href: "?tab=basic",
     };
   }
-  if (input.status === "DRAFT" && input.sourceDocumentCount === 0) {
+  if (input.status === "DRAFT" && !input.hasPayload && input.sourceDocumentCount === 0) {
     return {
       title: "다음 할 일",
-      body: "기존 자료를 확인하세요. 신규 내부 생성은 종료되었습니다.",
-      href: "?tab=materials",
+      body: "외부 Payload ZIP을 등록하세요.",
+      href: "?tab=payload",
     };
   }
   if (input.status === "DRAFT") {

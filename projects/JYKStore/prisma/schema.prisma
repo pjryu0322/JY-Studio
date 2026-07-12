@@ -136,6 +136,12 @@ enum AuditAction {
   ADMIN_CHUNK_DEACTIVATE
   ADMIN_CHUNK_GENERATE
   ADMIN_RELEASE_GATE_EVALUATE
+  PAYLOAD_UPLOADED
+  PAYLOAD_DELETED
+  PAYLOAD_VALIDATED
+  DISTRIBUTION_METADATA_UPDATED
+  DISTRIBUTION_SUBMITTED
+  PAYLOAD_DOWNLOADED
 }
 
 model ProviderProfile {
@@ -259,6 +265,8 @@ model KnowledgePack {
   retrievalEvaluationCases   RetrievalEvaluationCase[]
   retrievalEvaluationResults RetrievalEvaluationResult[]
   releaseGateRuns          ReleaseGateRun[]
+  payloads                 KnowledgePayload[]
+  distributionMetadata     PackDistributionMetadata[]
 
   @@index([status])
   @@index([categoryId])
@@ -317,8 +325,78 @@ model KnowledgePackVersion {
   retrievalEvaluationRuns    RetrievalEvaluationRun[]
   retrievalEvaluationCases   RetrievalEvaluationCase[]
   retrievalEvaluationResults RetrievalEvaluationResult[]
+  payload                    KnowledgePayload?
+  distributionMetadata       PackDistributionMetadata?
 
   @@unique([packId, version])
+  @@index([packId])
+}
+
+enum PayloadGeneratorType {
+  DOCLING
+  UNSTRUCTURED
+}
+
+enum PayloadValidationStatus {
+  PENDING
+  VALID
+  INVALID
+}
+
+enum DistributionVisibility {
+  PRIVATE
+  PUBLIC
+  UNLISTED
+}
+
+model KnowledgePayload {
+  id                String                  @id @default(cuid())
+  packId            String
+  versionId         String
+  profile           String
+  generatorType     PayloadGeneratorType
+  generatorVersion  String?
+  originalFileName  String
+  storagePath       String
+  mimeType          String
+  fileSize          BigInt
+  checksumSha256    String
+  validationStatus  PayloadValidationStatus @default(PENDING)
+  validationMessage String?
+  validationReport  Json?
+  manifestJson      Json?
+  isImmutable       Boolean                 @default(true)
+  uploadedAt        DateTime                @default(now())
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Restrict)
+  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId])
+  @@index([packId])
+  @@index([checksumSha256])
+}
+
+model PackDistributionMetadata {
+  id            String                 @id @default(cuid())
+  packId        String
+  versionId     String
+  sourceTitle   String?
+  sourceUrl     String?
+  licenseName   String
+  licenseUrl    String?
+  usageTerms    String?
+  readmeText    String?
+  visibility    DistributionVisibility @default(PRIVATE)
+  allowDownload Boolean                @default(true)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Restrict)
+  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId])
   @@index([packId])
 }
 

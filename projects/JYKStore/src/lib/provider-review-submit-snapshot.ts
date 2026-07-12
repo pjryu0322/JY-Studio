@@ -1,4 +1,9 @@
-export type ProviderReviewSubmitSnapshot = {
+import {
+  parseDistributionReviewSubmitSnapshot,
+  type DistributionReviewSubmitSnapshot,
+} from "@/lib/distribution/distribution-submit-service";
+
+export type LegacyProviderReviewSubmitSnapshot = {
   submittedAt: string;
   submittedVersionId: string;
   sourceDocumentIds: string[];
@@ -11,7 +16,15 @@ export type ProviderReviewSubmitSnapshot = {
   releaseGateStatus: "PASS" | "WARNING";
   retrievalEvaluationStatus?: "PASS" | "WARNING";
   warnings: string[];
+  mode?: "LEGACY";
 };
+
+/** @deprecated Use LegacyProviderReviewSubmitSnapshot — kept for existing imports. */
+export type ProviderReviewSubmitSnapshot = LegacyProviderReviewSubmitSnapshot;
+
+export type AnyReviewSubmitSnapshot =
+  | LegacyProviderReviewSubmitSnapshot
+  | DistributionReviewSubmitSnapshot;
 
 export function buildProviderReviewSubmitSnapshot(input: {
   submittedVersionId: string;
@@ -23,8 +36,9 @@ export function buildProviderReviewSubmitSnapshot(input: {
   releaseGateStatus: "PASS" | "WARNING";
   retrievalEvaluationStatus?: "PASS" | "WARNING";
   warnings: string[];
-}): ProviderReviewSubmitSnapshot {
+}): LegacyProviderReviewSubmitSnapshot {
   return {
+    mode: "LEGACY",
     submittedAt: new Date().toISOString(),
     submittedVersionId: input.submittedVersionId,
     sourceDocumentIds: input.sourceDocumentIds,
@@ -40,11 +54,12 @@ export function buildProviderReviewSubmitSnapshot(input: {
   };
 }
 
-export function parseProviderReviewSubmitSnapshot(
+export function parseLegacyProviderReviewSubmitSnapshot(
   value: unknown,
-): ProviderReviewSubmitSnapshot | null {
+): LegacyProviderReviewSubmitSnapshot | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
+  if (raw.mode === "DISTRIBUTION") return null;
   if (typeof raw.submittedAt !== "string" || typeof raw.releaseGateRunId !== "string") {
     return null;
   }
@@ -58,6 +73,7 @@ export function parseProviderReviewSubmitSnapshot(
     ? raw.activeChunkIds.filter((id): id is string => typeof id === "string")
     : [];
   return {
+    mode: "LEGACY",
     submittedAt: raw.submittedAt,
     submittedVersionId:
       typeof raw.submittedVersionId === "string" ? raw.submittedVersionId : "",
@@ -84,3 +100,20 @@ export function parseProviderReviewSubmitSnapshot(
       : [],
   };
 }
+
+/** Parses legacy or distribution submit snapshots. */
+export function parseProviderReviewSubmitSnapshot(
+  value: unknown,
+): AnyReviewSubmitSnapshot | null {
+  const distribution = parseDistributionReviewSubmitSnapshot(value);
+  if (distribution) return distribution;
+  return parseLegacyProviderReviewSubmitSnapshot(value);
+}
+
+export function isDistributionReviewSnapshot(
+  snapshot: AnyReviewSubmitSnapshot | null | undefined,
+): snapshot is DistributionReviewSubmitSnapshot {
+  return snapshot?.mode === "DISTRIBUTION";
+}
+
+export type { DistributionReviewSubmitSnapshot };

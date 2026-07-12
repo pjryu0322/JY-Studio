@@ -135,8 +135,14 @@ export function MyPacksPageClient() {
             <div className="rounded-2xl border border-dashed border-store-border bg-slate-50 px-4 py-5 text-center">
               <p className="text-sm text-store-muted">아직 등록한 지식팩이 없습니다.</p>
               <p className="mt-2 text-xs text-store-muted">
-                외부 Payload 등록 기능은 다음 단계에서 제공됩니다.
+                외부 도구에서 생성한 Payload를 등록해 지식팩을 제출할 수 있습니다.
               </p>
+              <Link
+                href={ROUTES.providerPackNew}
+                className="mt-3 inline-flex min-h-[44px] items-center rounded-xl bg-store-accent px-4 text-sm font-bold text-white"
+              >
+                외부 Payload로 지식팩 등록
+              </Link>
             </div>
           )}
         </section>

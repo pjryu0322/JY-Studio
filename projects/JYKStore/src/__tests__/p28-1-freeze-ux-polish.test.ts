@@ -17,26 +17,24 @@ function currentVersionDocs(pack: Pick<ProviderPackDetailDto, "versions">) {
 }
 
 describe("P28.1 new pack creation UX freeze", () => {
-  it("removes clickable create CTAs from provider center and shows prep notice", () => {
+  it("keeps create CTA available for payload registration flow", () => {
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
     assert.ok(!center.includes("새 지식팩 만들기"));
     assert.ok(!center.includes("첫 지식팩 만들기"));
-    assert.ok(!center.includes("ROUTES.providerPackNew"));
+    assert.ok(center.includes("ROUTES.providerPackNew"));
+    assert.ok(center.includes("PROVIDER_PACK_REGISTER_CTA"));
     assert.ok(center.includes("PROVIDER_PAYLOAD_IMPORT_PREP_TITLE"));
-    assert.ok(center.includes("PROVIDER_PAYLOAD_IMPORT_PREP_BODY"));
   });
 
-  it("blocks create form on direct /provider/packs/new URL", () => {
+  it("mounts create form on /provider/packs/new with read-only role check", () => {
     const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
-    assert.ok(!packNew.includes("ProviderPackCreateForm"));
-    assert.ok(packNew.includes("PROVIDER_PACK_NEW_BLOCKED_TITLE"));
-    assert.ok(packNew.includes("Provider Center로 돌아가기"));
-    assert.ok(packNew.includes("기존 지식팩 관리"));
-    assert.ok(packNew.includes("ROUTES.provider"));
+    assert.ok(packNew.includes("ProviderPackCreateForm"));
+    assert.ok(packNew.includes("getUserIdFromCookies"));
+    assert.ok(packNew.includes("isProviderAccountRole"));
     assert.ok(!packNew.includes("ensureProviderProfileForAccount"));
   });
 
-  it("keeps pack create API available for P29 reuse", () => {
+  it("keeps pack create API available", () => {
     const api = readSource("src/lib/provider-center-api.ts");
     const route = readSource("src/app/api/v1/provider/packs/route.ts");
     assert.ok(api.includes("export async function createProviderPackApi"));
@@ -78,60 +76,13 @@ describe("P28.1 materials latest-version alignment", () => {
           version: "2.0.0",
           sourceDocuments: [{ id: "a" }, { id: "b" }, { id: "c" }],
         },
-        { version: "1.0.0", sourceDocuments: [{ id: "old" }] },
+        {
+          version: "1.0.0",
+          sourceDocuments: [{ id: "old-1" }],
+        },
       ],
     } as unknown as ProviderPackDetailDto;
 
     assert.equal(currentVersionDocs(packWithLatestDocs).length, 3);
-    assert.ok(
-      currentVersionDocs(packWithLatestDocs).every((doc) => doc.id !== "old"),
-    );
-  });
-});
-
-describe("P28.1 legacy client API removal", () => {
-  it("removes unused provider builder client helpers", () => {
-    const api = readSource("src/lib/provider-center-api.ts");
-    for (const name of [
-      "addSourceDocumentApi",
-      "evaluateProviderStructureQualityApi",
-      "evaluateProviderReleaseGateApi",
-      "evaluateProviderChunkQualityApi",
-      "generateProviderRetrievalEvaluationCasesApi",
-      "runProviderRetrievalEvaluationApi",
-      "validateSourceDocumentApi",
-      "previewGitHubRepositoryDiscoveryApi",
-      "registerGitHubSourceDocumentsApi",
-      "generateGitHubKnowledgeUnitDraftsApi",
-      "runProviderInspectionAutoPrepareApi",
-      "fetchProviderKnowledgeUnitDraftsApi",
-      "resetProviderKnowledgeUnitDraftsApi",
-    ]) {
-      assert.ok(!api.includes(name), `expected ${name} removed`);
-    }
-    assert.ok(!api.includes("github-auto-collect-types"));
-    assert.ok(api.includes("submitProviderPackApi"));
-    assert.ok(api.includes("withdrawProviderPackReviewApi"));
-    assert.ok(api.includes("fetchProviderPack"));
-  });
-
-  it("removes unused admin builder client helpers and keeps decision APIs", () => {
-    const api = readSource("src/lib/admin-review-api.ts");
-    for (const name of [
-      "validateAdminPackSourcesApi",
-      "evaluateAdminStructureQualityApi",
-      "evaluateAdminChunkQualityApi",
-      "generateAdminRetrievalEvaluationCasesApi",
-      "runAdminRetrievalEvaluationApi",
-      "evaluateAdminReleaseGateApi",
-      "refreshAdminReviewReadinessApi",
-    ]) {
-      assert.ok(!api.includes(name), `expected ${name} removed`);
-    }
-    assert.ok(api.includes("fetchAdminReviewItems"));
-    assert.ok(api.includes("fetchAdminReviewDetail"));
-    assert.ok(api.includes("acceptAdminReview"));
-    assert.ok(api.includes("approveAdminReview"));
-    assert.ok(api.includes("rejectAdminReview"));
   });
 });

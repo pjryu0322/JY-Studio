@@ -17,23 +17,38 @@ describe("resolveDefaultProviderPackTab", () => {
     );
   });
 
-  it("opens materials tab when DRAFT has no sources", () => {
+  it("opens payload tab when DRAFT has no payload/sources", () => {
     assert.equal(
       resolveDefaultProviderPackTab({
         created: false,
         status: "DRAFT",
         sourceDocumentCount: 0,
       }),
-      "materials",
+      "payload",
     );
   });
 
-  it("opens review tab when DRAFT has sources or is reviewing", () => {
+  it("opens distribution when payload exists without distribution metadata", () => {
+    assert.equal(
+      resolveDefaultProviderPackTab({
+        created: false,
+        status: "DRAFT",
+        sourceDocumentCount: 0,
+        hasPayload: true,
+        hasDistribution: false,
+      }),
+      "distribution",
+    );
+  });
+
+  it("opens review tab when ready or reviewing", () => {
     assert.equal(
       resolveDefaultProviderPackTab({
         created: false,
         status: "DRAFT",
         sourceDocumentCount: 2,
+        hasPayload: true,
+        hasDistribution: true,
       }),
       "review",
     );
@@ -49,14 +64,14 @@ describe("resolveDefaultProviderPackTab", () => {
 });
 
 describe("resolveProviderPackTabFromLocation", () => {
-  it("maps legacy hash anchors and tabs to freeze-era tabs", () => {
+  it("maps legacy hash anchors and tabs to distribution tabs", () => {
     assert.equal(
       resolveProviderPackTabFromLocation({
         tabParam: null,
         hash: "#github-auto-collect",
         fallback: "basic",
       }),
-      "materials",
+      "payload",
     );
     assert.equal(
       resolveProviderPackTabFromLocation({
@@ -80,7 +95,15 @@ describe("resolveProviderPackTabFromLocation", () => {
         hash: "",
         fallback: "basic",
       }),
-      "materials",
+      "payload",
+    );
+    assert.equal(
+      resolveProviderPackTabFromLocation({
+        tabParam: "materials",
+        hash: "",
+        fallback: "basic",
+      }),
+      "payload",
     );
     assert.equal(
       resolveProviderPackTabFromLocation({
@@ -88,7 +111,7 @@ describe("resolveProviderPackTabFromLocation", () => {
         hash: "",
         fallback: "basic",
       }),
-      "materials",
+      "payload",
     );
     assert.equal(
       resolveProviderPackTabFromLocation({
@@ -103,11 +126,11 @@ describe("resolveProviderPackTabFromLocation", () => {
   it("prefers current tab query over hash", () => {
     assert.equal(
       resolveProviderPackTabFromLocation({
-        tabParam: "materials",
+        tabParam: "payload",
         hash: "#pack-review",
         fallback: "basic",
       }),
-      "materials",
+      "payload",
     );
   });
 });

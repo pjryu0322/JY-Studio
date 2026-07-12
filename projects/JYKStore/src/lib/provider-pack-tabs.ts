@@ -1,11 +1,12 @@
-export const PROVIDER_PACK_TAB_IDS = ["basic", "materials", "review"] as const;
+export const PROVIDER_PACK_TAB_IDS = ["basic", "payload", "distribution", "review"] as const;
 
 export type ProviderPackTabId = (typeof PROVIDER_PACK_TAB_IDS)[number];
 
-/** Legacy Builder tab ids — map to safe post-freeze tabs. */
+/** Legacy Builder / freeze-era tab ids — map to distribution tabs. */
 const LEGACY_PROVIDER_PACK_TAB_REDIRECT: Record<string, ProviderPackTabId> = {
-  source: "materials",
-  draft: "materials",
+  materials: "payload",
+  source: "payload",
+  draft: "payload",
   inspection: "review",
 };
 
@@ -17,6 +18,8 @@ export function resolveDefaultProviderPackTab(input: {
   created: boolean;
   status: string;
   sourceDocumentCount: number;
+  hasPayload?: boolean;
+  hasDistribution?: boolean;
 }): ProviderPackTabId {
   if (input.status === "REVIEWING" || input.status === "PUBLISHED" || input.status === "VERIFIED") {
     return "review";
@@ -27,8 +30,11 @@ export function resolveDefaultProviderPackTab(input: {
   if (input.created) {
     return "basic";
   }
-  if (input.sourceDocumentCount === 0) {
-    return "materials";
+  if (!input.hasPayload && input.sourceDocumentCount === 0) {
+    return "payload";
+  }
+  if (input.hasPayload && !input.hasDistribution) {
+    return "distribution";
   }
   return "review";
 }
@@ -49,9 +55,13 @@ export function resolveProviderPackTabFromLocation(input: {
   if (
     normalizedHash === "#github-auto-collect" ||
     normalizedHash === "#pack-materials" ||
-    normalizedHash === "#pack-sources"
+    normalizedHash === "#pack-sources" ||
+    normalizedHash === "#pack-payload"
   ) {
-    return "materials";
+    return "payload";
+  }
+  if (normalizedHash === "#pack-distribution") {
+    return "distribution";
   }
   if (normalizedHash === "#pack-inspection") {
     return "review";

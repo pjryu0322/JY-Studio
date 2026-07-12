@@ -7,6 +7,7 @@ import {
   applyChunkQualityToAdminDetail,
   applyRetrievalEvaluationToAdminDetail,
   applyReleaseGateToAdminDetail,
+  applyDistributionFieldsToAdminDetail,
   type AdminReviewDetailDto,
 } from "@/lib/admin-review-dto";
 import {
@@ -95,7 +96,51 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
 
   if (!pack) return null;
 
-  const detail = toAdminReviewDetail(pack);
+  const latestVersion = pack.versions[0];
+  const [payloadRow, distributionRow] = latestVersion
+    ? await Promise.all([
+        prisma.knowledgePayload.findUnique({ where: { versionId: latestVersion.id } }),
+        prisma.packDistributionMetadata.findUnique({ where: { versionId: latestVersion.id } }),
+      ])
+    : [null, null];
+
+  const detailBase = toAdminReviewDetail(pack);
+  const detail = applyDistributionFieldsToAdminDetail(detailBase, {
+    payload: payloadRow
+      ? {
+          id: payloadRow.id,
+          profile: payloadRow.profile,
+          generatorType: payloadRow.generatorType,
+          generatorVersion: payloadRow.generatorVersion,
+          originalFileName: payloadRow.originalFileName,
+          fileSize: Number(payloadRow.fileSize),
+          checksumSha256: payloadRow.checksumSha256,
+          validationStatus: payloadRow.validationStatus,
+          validationMessage: payloadRow.validationMessage,
+          validationReport: payloadRow.validationReport,
+          manifest: payloadRow.manifestJson,
+          uploadedAt: payloadRow.uploadedAt.toISOString(),
+        }
+      : null,
+    distribution: distributionRow
+      ? {
+          sourceTitle: distributionRow.sourceTitle,
+          sourceUrl: distributionRow.sourceUrl,
+          licenseName: distributionRow.licenseName,
+          licenseUrl: distributionRow.licenseUrl,
+          usageTerms: distributionRow.usageTerms,
+          readmeText: distributionRow.readmeText,
+          visibility: distributionRow.visibility,
+          allowDownload: distributionRow.allowDownload,
+        }
+      : null,
+  });
+
+  if (payloadRow) {
+    // Distribution packs skip legacy Builder quality overlays that would block approval.
+    return detail;
+  }
+
   const docIds = detail.versions.flatMap((v) => v.sourceDocuments.map((d) => d.id));
   const reports = await loadLatestReportsByDocumentIds(docIds);
   const withValidation = enrichAdminReviewDetailWithValidationReports(detail, reports);
@@ -542,28 +587,31 @@ export async function approvePackReview(input: {
   }
 
   const publishAsVerified = Boolean(input.publishAsVerified);
-  const targetStatus = publishAsVerified ? "VERIFIED" : "PUBLISHED";
+  const isDistributionPack = Boolean(detailBefore.payload);
 
-  const gateResult = await evaluateReleaseGateForPack({
-    packId,
-    actorClientId: input.reviewerClientId,
-    targetStatus,
-    persist: true,
-    requireReviewingStatus: true,
-  });
+  if (!isDistributionPack) {
+    const targetStatus = publishAsVerified ? "VERIFIED" : "PUBLISHED";
+    const gateResult = await evaluateReleaseGateForPack({
+      packId,
+      actorClientId: input.reviewerClientId,
+      targetStatus,
+      persist: true,
+      requireReviewingStatus: true,
+    });
 
-  if ("error" in gateResult) {
-    return { error: "NOT_FOUND" as const };
-  }
+    if ("error" in gateResult) {
+      return { error: "NOT_FOUND" as const };
+    }
 
-  if (!releaseGateAllowsApprovalStatus(gateResult.result.status)) {
-    const blocker = getFirstBlockerMessage(gateResult.result.issues);
-    return {
-      error: "INCOMPLETE" as const,
-      message: blocker
-        ? `${RELEASE_GATE_APPROVAL_BLOCKED_MESSAGE} (${blocker})`
-        : RELEASE_GATE_APPROVAL_BLOCKED_MESSAGE,
-    };
+    if (!releaseGateAllowsApprovalStatus(gateResult.result.status)) {
+      const blocker = getFirstBlockerMessage(gateResult.result.issues);
+      return {
+        error: "INCOMPLETE" as const,
+        message: blocker
+          ? `${RELEASE_GATE_APPROVAL_BLOCKED_MESSAGE} (${blocker})`
+          : RELEASE_GATE_APPROVAL_BLOCKED_MESSAGE,
+      };
+    }
   }
 
   const nextStatus = publishAsVerified ? PackStatus.VERIFIED : PackStatus.PUBLISHED;
@@ -600,6 +648,13 @@ export async function approvePackReview(input: {
         decidedAt: now,
       },
     });
+
+    if (isDistributionPack && detailBefore.versions[0]?.id) {
+      await tx.packDistributionMetadata.updateMany({
+        where: { versionId: detailBefore.versions[0].id },
+        data: { visibility: "PUBLIC" },
+      });
+    }
   });
 
   await recordProviderAudit({

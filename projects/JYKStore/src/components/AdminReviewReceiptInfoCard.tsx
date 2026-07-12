@@ -1,4 +1,5 @@
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
+import { isDistributionReviewSnapshot } from "@/lib/provider-review-submit-snapshot";
 import {
   ADMIN_REVIEW_CTA_VIEW_PACKAGE,
   ADMIN_REVIEW_RECEIPT_INFO_TITLE,
@@ -36,13 +37,23 @@ export function AdminReviewReceiptInfoCard({
         <li>접수일시: {formatDateTime(acceptedAt)}</li>
         <li>접수자: {reviewerLabel}</li>
         {snapshot ? (
-          <>
-            <li>제출일시: {formatDateTime(snapshot.submittedAt)}</li>
-            {submittedVersionLabel ? <li>제출 버전: {submittedVersionLabel}</li> : null}
-            <li>제출 당시 릴리스 게이트: {snapshot.releaseGateStatus}</li>
-            <li>제출 당시 원천 문서: {snapshot.sourceDocumentCount}개</li>
-            <li>제출 당시 Chunk: {snapshot.activeChunkCount}개</li>
-          </>
+          isDistributionReviewSnapshot(snapshot) ? (
+            <>
+              <li>제출일시: {formatDateTime(snapshot.submittedAt)}</li>
+              {submittedVersionLabel ? <li>제출 버전: {submittedVersionLabel}</li> : null}
+              <li>모드: Distribution Payload</li>
+              <li>Profile: {snapshot.payloadProfile}</li>
+              <li>검증: {snapshot.validationStatus}</li>
+            </>
+          ) : (
+            <>
+              <li>제출일시: {formatDateTime(snapshot.submittedAt)}</li>
+              {submittedVersionLabel ? <li>제출 버전: {submittedVersionLabel}</li> : null}
+              <li>제출 당시 릴리스 게이트: {snapshot.releaseGateStatus}</li>
+              <li>제출 당시 원천 문서: {snapshot.sourceDocumentCount}개</li>
+              <li>제출 당시 Chunk: {snapshot.activeChunkCount}개</li>
+            </>
+          )
         ) : (
           <li>제출 패키지: 없음</li>
         )}

@@ -24,6 +24,7 @@ import {
   PROVIDER_CENTER_REGISTERED_TITLE,
   PROVIDER_PACK_EMPTY_BODY,
   PROVIDER_PACK_EMPTY_TITLE,
+  PROVIDER_PACK_REGISTER_CTA,
   PROVIDER_PAYLOAD_IMPORT_PREP_BODY,
   PROVIDER_PAYLOAD_IMPORT_PREP_TITLE,
 } from "@/lib/role-based-ux-copy";
@@ -33,7 +34,7 @@ function packDetailActions(pack: ProviderPackListItemDto) {
   const detail = providerPackDetailPath(pack.packId);
   const actions: { label: string; href: string }[] = [{ label: "편집", href: detail }];
   if (pack.status === "DRAFT") {
-    actions.push({ label: "기존 자료", href: `${detail}?tab=materials` });
+    actions.push({ label: "Payload", href: `${detail}?tab=payload` });
     actions.push({ label: "검수 요청", href: `${detail}?tab=review` });
   }
   if (pack.status === "REVIEWING") {
@@ -201,16 +202,36 @@ export function ProviderCenterPageClient() {
         <p className="mt-1 text-xs leading-relaxed text-store-muted">
           {PROVIDER_PAYLOAD_IMPORT_PREP_BODY}
         </p>
+        <Link
+          href={ROUTES.providerPackNew}
+          className="mt-3 inline-flex min-h-[44px] items-center rounded-xl bg-store-accent px-4 text-sm font-bold text-white"
+        >
+          {PROVIDER_PACK_REGISTER_CTA}
+        </Link>
       </div>
 
       {packs.length > 0 ? <ProviderOnboardingStepper steps={onboardingSteps} /> : null}
 
       <section id="provider-packs" className="scroll-mt-24 rounded-2xl border border-store-border bg-white p-4 shadow-card">
-        <h2 className="text-sm font-bold text-slate-900">내 지식팩</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-bold text-slate-900">내 지식팩</h2>
+          <Link
+            href={ROUTES.providerPackNew}
+            className="text-xs font-bold text-store-accent underline-offset-2 hover:underline"
+          >
+            {PROVIDER_PACK_REGISTER_CTA}
+          </Link>
+        </div>
         {packs.length === 0 ? (
           <div className="mt-4 rounded-xl border border-dashed border-store-border bg-slate-50 px-4 py-5 text-center">
             <p className="text-sm font-semibold text-slate-900">{PROVIDER_PACK_EMPTY_TITLE}</p>
             <p className="mt-1 text-xs text-store-muted">{PROVIDER_PACK_EMPTY_BODY}</p>
+            <Link
+              href={ROUTES.providerPackNew}
+              className="mt-3 inline-flex min-h-[44px] items-center rounded-xl bg-store-accent px-4 text-sm font-bold text-white"
+            >
+              {PROVIDER_PACK_REGISTER_CTA}
+            </Link>
           </div>
         ) : (
           <ul className="mt-3 space-y-2">

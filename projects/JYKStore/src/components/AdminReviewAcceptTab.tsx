@@ -195,7 +195,11 @@ export function AdminReviewAcceptTab({
             <li>제공자: {detail.pack.providerName}</li>
             <li>제출일시: {snapshot.submittedAt.replace("T", " ").slice(0, 16)}</li>
             {submittedVersionLabel ? <li>제출 버전: {submittedVersionLabel}</li> : null}
-            <li>릴리스 게이트: {snapshot.releaseGateStatus}</li>
+            {"mode" in snapshot && snapshot.mode === "DISTRIBUTION" ? (
+              <li>모드: Distribution · Profile {snapshot.payloadProfile}</li>
+            ) : "releaseGateStatus" in snapshot ? (
+              <li>릴리스 게이트: {snapshot.releaseGateStatus}</li>
+            ) : null}
           </ul>
         </div>
       ) : null}

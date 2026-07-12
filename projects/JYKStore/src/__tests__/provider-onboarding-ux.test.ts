@@ -34,10 +34,10 @@ describe("buildProviderOnboardingSteps", () => {
       hasPublishedOrVerifiedPack: false,
     });
     assert.equal(withPack.find((s) => s.key === "pack")?.status, "done");
-    assert.equal(withPack.find((s) => s.key === "materials")?.status, "current");
+    assert.equal(withPack.find((s) => s.key === "payload")?.status, "current");
   });
 
-  it("includes four onboarding steps without profile registration", () => {
+  it("includes distribution onboarding steps without profile registration", () => {
     const steps = buildProviderOnboardingSteps({
       hasProfile: true,
       packCount: 1,
@@ -45,11 +45,13 @@ describe("buildProviderOnboardingSteps", () => {
       knowledgeUnitDraftCount: 1,
       hasReviewingPack: false,
       hasPublishedOrVerifiedPack: false,
+      hasPayload: true,
+      hasDistribution: true,
     });
-    assert.equal(steps.length, 4);
+    assert.equal(steps.length, 5);
     assert.deepEqual(
       steps.map((s) => s.key),
-      ["pack", "materials", "review", "publish"],
+      ["pack", "payload", "distribution", "review", "publish"],
     );
   });
 });
@@ -62,22 +64,22 @@ describe("provider onboarding UX sources", () => {
     assert.ok(page.includes("ProviderCenterPageClient"));
   });
 
-  it("shows payload import prep notice instead of create CTAs", () => {
+  it("shows payload registration CTA instead of legacy create labels", () => {
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
     assert.ok(!center.includes("<details"));
     assert.ok(center.includes("fetchAuthSession"));
     assert.ok(!center.includes("새 지식팩 만들기"));
     assert.ok(!center.includes("첫 지식팩 만들기"));
+    assert.ok(center.includes("PROVIDER_PACK_REGISTER_CTA"));
     assert.ok(center.includes("PROVIDER_PAYLOAD_IMPORT_PREP_TITLE"));
     assert.ok(!center.includes("1. 1."));
   });
 
-  it("shows blocked notice with read-only provider role check on new pack page", () => {
+  it("shows create form with read-only provider role check on new pack page", () => {
     const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
     assert.ok(packNew.includes("ProviderRequiredCard"));
-    assert.ok(!packNew.includes("ProviderPackCreateForm"));
+    assert.ok(packNew.includes("ProviderPackCreateForm"));
     assert.ok(!packNew.includes("ensureProviderProfileForAccount"));
-    assert.ok(packNew.includes("PROVIDER_PACK_NEW_BLOCKED_TITLE"));
     assert.ok(packNew.includes("getUserIdFromCookies"));
     assert.ok(packNew.includes("isProviderAccountRole"));
   });

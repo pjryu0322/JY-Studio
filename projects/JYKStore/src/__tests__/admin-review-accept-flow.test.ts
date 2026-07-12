@@ -50,6 +50,7 @@ function pendingDetail(
             rejectionReason: null,
             reviewerUserId: null,
             createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
             decidedAt: null,
             submitSnapshot: {
               submittedAt: "2026-07-10T13:38:00.000Z",
@@ -89,6 +90,8 @@ function pendingDetail(
       releaseGateMessage: null,
       ...(overrides.readiness ?? {}),
     },
+    payload: overrides.payload ?? null,
+    distribution: overrides.distribution ?? null,
     structureQuality: null,
     chunkQuality: null,
     retrievalEvaluation: null,
