@@ -151,25 +151,25 @@ function validateCreatePackInput(input: ResolvedCreateProviderPackInput): string
   const version = (input.version?.trim() || "0.1.0").trim();
 
   if (!PACK_ID_PATTERN.test(packId)) {
-    return "packId???�문 ?�문?? ?�자, ?�이?�만 3~60?�로 ?�력??주세??";
+    return "packId는 영문 소문자, 숫자, 하이픈만 3~60자로 입력해 주세요.";
   }
   if (!categoryId) {
-    return "카테고리가 ?�요?�니??";
+    return "카테고리가 필요합니다.";
   }
   if (name.length < 2 || name.length > 100) {
-    return "?�름?� 2~100?�로 ?�력??주세??";
+    return "이름은 2~100자로 입력해 주세요.";
   }
   if (shortDescription.length < 10 || shortDescription.length > 160) {
-    return "짧�? ?�명?� 10~160?�로 ?�력??주세??";
+    return "짧은 설명은 10~160자로 입력해 주세요.";
   }
   if (description.length < 20 || description.length > 1000) {
-    return "?�명?� 20~1000?�로 ?�력??주세??";
+    return "설명은 20~1000자로 입력해 주세요.";
   }
   if (tags.length > 10) {
-    return "?�그??최�? 10개까지 ?�록?????�습?�다.";
+    return "태그는 최대 10개까지 등록할 수 있습니다.";
   }
   if (!version) {
-    return "버전???�요?�니??";
+    return "버전이 필요합니다.";
   }
 
   return null;
@@ -266,7 +266,7 @@ export async function createProviderPackForClient(
       providerProfileId: profile.id,
       status: PackStatus.DRAFT,
       pricing: PackPricing.FREE,
-      icon: "?��",
+      icon: "📦",
       shortDescription,
       description,
       tags,
@@ -457,7 +457,7 @@ export async function updateProviderPackForClient(
   if (input.shortDescription !== undefined) data.shortDescription = input.shortDescription.trim();
   if (input.description !== undefined) data.description = input.description.trim();
   if (input.tags !== undefined) data.tags = input.tags.map((t) => t.trim()).filter(Boolean);
-  if (input.icon !== undefined) data.icon = input.icon.trim() || "?��";
+  if (input.icon !== undefined) data.icon = input.icon.trim() || "📦";
   if (input.pricing !== undefined) data.pricing = input.pricing;
 
   await prisma.knowledgePack.update({
@@ -533,7 +533,7 @@ export async function createProviderPackVersionForClient(
 
   const version = input.version.trim();
   if (!version) {
-    return { error: "VALIDATION" as const, message: "버전???�요?�니??" };
+    return { error: "VALIDATION" as const, message: "버전이 필요합니다." };
   }
 
   const duplicate = await prisma.knowledgePackVersion.findUnique({
@@ -601,10 +601,10 @@ export async function createSourceDocumentForProviderPack(
   const sourceFormat = input.sourceFormat ?? "TEXT";
 
   if (!title) {
-    return { error: "VALIDATION" as const, message: "?�목???�요?�니??" };
+    return { error: "VALIDATION" as const, message: "제목이 필요합니다." };
   }
   if (!sourceType) {
-    return { error: "VALIDATION" as const, message: "sourceType???�요?�니??" };
+    return { error: "VALIDATION" as const, message: "sourceType이 필요합니다." };
   }
 
   const version = pack.versions[0];
@@ -712,13 +712,13 @@ async function recordSourceRegisteredPipeline(
         runId: run.runId,
         step: PipelineStatus.SOURCE_REGISTERING,
         status: validationStatus === "WARNING" ? "WARNING" : "PASS",
-        message: `?�천 문서 ?�록 (${sourceType})`,
+        message: `원천 문서 등록 (${sourceType})`,
         details: { validationStatus },
       });
       await finishPipelineRun({
         runId: run.runId,
         status: validationStatus === "WARNING" ? "WARNING" : "PASS",
-        summary: "?�천 문서 ?�록 처리 ?�료",
+        summary: "원천 문서 등록 처리 완료",
       });
     } else {
       logPipelineRecordFailure("recordSourceRegisteredPipeline", {
@@ -772,18 +772,18 @@ async function recordSubmitForReviewPipeline(
         runId: run.runId,
         step: PipelineStatus.READY_FOR_REVIEW,
         status: "PASS",
-        message: note ?? "검??준�??�료",
+        message: note ?? "검토 준비 완료",
       });
       await completePipelineStep({
         runId: run.runId,
         step: PipelineStatus.REVIEWING,
         status: "PASS",
-        message: "관리자 검???�기열???�록",
+        message: "관리자 검토 대기열에 등록",
       });
       await finishPipelineRun({
         runId: run.runId,
         status: "PASS",
-        summary: "검???�청 ?�출 ?�료",
+        summary: "검수 요청 제출 완료",
       });
     } else {
       logPipelineRecordFailure("recordSubmitForReviewPipeline", {
@@ -843,18 +843,18 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
   }
 
   if (!pack.categoryId || !pack.shortDescription.trim() || !pack.description.trim()) {
-    return { error: "INCOMPLETE" as const, message: "카테고리?� ?�명???�인??주세??" };
+    return { error: "INCOMPLETE" as const, message: "카테고리와 설명을 확인해 주세요." };
   }
 
   if (pack.versions.length === 0) {
-    return { error: "INCOMPLETE" as const, message: "버전??최소 1�??�요?�니??" };
+    return { error: "INCOMPLETE" as const, message: "버전이 최소 1개 필요합니다." };
   }
 
   const allDocs = pack.versions.flatMap((v) => v.sourceDocuments);
   if (allDocs.length === 0) {
     return {
       error: "INCOMPLETE" as const,
-      message: "?�천 문서(SourceDocument)�?최소 1�??�록??주세??",
+      message: "원천 문서(SourceDocument)를 최소 1개 등록해 주세요.",
     };
   }
 
@@ -886,7 +886,7 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
 
   const onlyEtc = allDocs.every((d) => d.sourceType === "ETC");
   const submitNote = onlyEtc
-    ? "모든 ?�천 문서 ?�형??'기�?(ETC)'?�니?? ?�료 ?�형??구체?�으�?분류?�면 검???�질???�상?�니??"
+    ? "모든 원천 문서 유형이 '기타(ETC)'입니다. 자료 유형을 구체적으로 분류하면 검수 품질이 향상됩니다."
     : null;
 
   await prisma.$transaction([
@@ -975,7 +975,7 @@ export async function withdrawProviderPackFromReview(
       data: {
         status: "WITHDRAWN",
         decision: "WITHDRAW",
-        memo: "?�공?��? 검???�청???�수?�습?�다.",
+        memo: "제공자가 검수 요청을 회수했습니다.",
         decidedAt: now,
       },
     });
@@ -1065,7 +1065,7 @@ export async function evaluateProviderPackStructureQuality(userId: string, clien
     if (result.error === "NOT_FOUND") {
       return { error: "NOT_FOUND" as const };
     }
-    return { error: "INCOMPLETE" as const, message: "버전???�습?�다." };
+    return { error: "INCOMPLETE" as const, message: "버전이 없습니다." };
   }
 
   const detail = await getProviderPackForClient(userId, clientId, packId);
@@ -1121,7 +1121,7 @@ export async function evaluateProviderPackChunkQuality(
       return { error: "NOT_FOUND" as const };
     }
     if (result.error === "NO_VERSION") {
-      return { error: "INCOMPLETE" as const, message: "버전???�습?�다." };
+      return { error: "INCOMPLETE" as const, message: "버전이 없습니다." };
     }
     return {
       error: "INCOMPLETE" as const,
@@ -1147,7 +1147,7 @@ function mapRetrievalEvaluationServiceError(
     return { error: "NOT_FOUND" as const };
   }
   if (result.error === "NO_VERSION") {
-    return { error: "INCOMPLETE" as const, message: "버전???�습?�다." };
+    return { error: "INCOMPLETE" as const, message: "버전이 없습니다." };
   }
   return {
     error: "INCOMPLETE" as const,

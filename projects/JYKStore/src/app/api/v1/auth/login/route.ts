@@ -39,13 +39,13 @@ export async function POST(request: NextRequest) {
     const result =
       mode === "register" ? await registerStoreUser(input) : await loginStoreUser(input);
 
-    if ("error" in result && result.error) {
+    if ("error" in result) {
       const message = LOGIN_ERRORS[result.error] ?? "요청을 처리할 수 없습니다.";
       const status = result.error === "USER_NOT_FOUND" || result.error === "USER_ALREADY_EXISTS" ? 409 : 400;
       return jsonWithClientIdCookie({ error: result.error, message }, clientId, { status });
     }
 
-    const user = result.user!;
+    const user = result.user;
     const response = jsonWithClientIdCookie(
       {
         user: {

@@ -18,9 +18,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
       reviewerClientId: getClientIdFromRequest(request) ?? clientId,
     });
 
-    if ("error" in result && result.error === "NOT_FOUND") {
-      return jsonWithClientIdCookie({ error: "지식팩을 찾을 수 없습니다." }, clientId, {
-        status: 404,
+    if ("error" in result) {
+      if (result.error === "NOT_FOUND") {
+        return jsonWithClientIdCookie({ error: "지식팩을 찾을 수 없습니다." }, clientId, {
+          status: 404,
+        });
+      }
+      return jsonWithClientIdCookie({ error: "전체 재점검에 실패했습니다." }, clientId, {
+        status: 500,
       });
     }
 

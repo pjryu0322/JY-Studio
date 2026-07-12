@@ -304,8 +304,6 @@ export async function runProviderReviewPreparationPipeline(input: {
   }
 
   if (
-    structureQualityStatus !== "FAIL" &&
-    chunkQualityStatus !== "FAIL" &&
     retrievalEvaluationStatus !== "FAIL" &&
     retrievalEvaluationStatus !== "SKIPPED"
   ) {
