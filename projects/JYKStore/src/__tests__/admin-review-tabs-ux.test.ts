@@ -114,6 +114,7 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
         : overrides.latestReview,
     readiness,
     payload: overrides.payload ?? null,
+    currentManifestFingerprint: overrides.currentManifestFingerprint ?? null,
     distribution: overrides.distribution ?? null,
     structureQuality: overrides.structureQuality ?? null,
     chunkQuality: overrides.chunkQuality ?? null,

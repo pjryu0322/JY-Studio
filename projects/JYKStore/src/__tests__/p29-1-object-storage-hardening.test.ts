@@ -64,7 +64,7 @@ describe("P29.1 payload storage config", () => {
     assert.equal(key, "payloads/pack_abc/ver_1/pay_1.zip");
   });
 
-  it("removes local payload storage fallback", () => {
+  it("removes local payload storage fallback and temp zip writes", () => {
     assert.throws(() => readSource("src/lib/distribution/local-payload-storage.ts"));
     const envExample = readSource(".env.example");
     assert.ok(!envExample.includes("JYKSTORE_PAYLOAD_STORAGE_DIR"));
@@ -72,6 +72,12 @@ describe("P29.1 payload storage config", () => {
     const factory = readSource("src/lib/distribution/payload-storage-factory.ts");
     assert.ok(factory.includes("S3PayloadStorage"));
     assert.ok(!factory.includes("LocalPayloadStorage"));
+    const zipReader = readSource("src/lib/distribution/payload-zip-reader.ts");
+    assert.ok(zipReader.includes("fromBuffer"));
+    assert.ok(!zipReader.includes("tmpdir"));
+    assert.ok(!zipReader.includes("writeTempZip"));
+    assert.ok(!zipReader.includes("node:fs"));
+    assert.ok(!zipReader.includes("node:os"));
   });
 });
 
@@ -126,10 +132,11 @@ describe("P29.1 ZIP hardening", () => {
 describe("P29.1 manifest fingerprint", () => {
   it("is stable across createdAt and key order", () => {
     const base = {
-      pack: { packId: "p1", name: "N", version: "1.0.0" },
+      pack: { packId: "p1", versionId: "ver1", name: "N", version: "1.0.0" },
       provider: { providerId: "prov", displayName: "Prov" },
       generator: { type: "DOCLING" as const, version: "1" },
       payload: {
+        payloadId: "pay1",
         profile: "docling-chunks-v1" as const,
         originalFileName: "a.zip",
         mimeType: "application/zip",
@@ -147,17 +154,18 @@ describe("P29.1 manifest fingerprint", () => {
 
   it("fails integrity when checksum mismatches", () => {
     const manifest = buildDistributionManifest({
-      pack: { packId: "p1", name: "N", version: "1.0.0" },
+      pack: { packId: "p1", versionId: "ver", name: "N", version: "1.0.0" },
       provider: { providerId: "prov", displayName: "Prov" },
       generator: { type: "DOCLING", version: null },
       payload: {
+        payloadId: "pay",
         profile: "docling-chunks-v1",
         originalFileName: "a.zip",
         mimeType: "application/zip",
         fileSize: 10,
         checksumSha256: "c".repeat(64),
       },
-      source: { title: null, url: null, licenseName: "MIT" },
+      source: { title: "T", url: null, licenseName: "MIT" },
       distribution: { visibility: "PUBLIC", allowDownload: true },
     });
     const result = assertManifestIntegrity({
@@ -179,10 +187,11 @@ describe("P29.1 visibility and immutability source guards", () => {
     assert.ok(!service.includes("visibility: 'PUBLIC'"));
   });
 
-  it("catalog list filters to PUBLIC distribution packs", () => {
+  it("catalog list filters latest PUBLIC distribution packs", () => {
     const catalog = readSource("src/lib/pack-catalog-service.ts");
-    assert.ok(catalog.includes('visibility: "PUBLIC"'));
-    assert.ok(catalog.includes('visibility: { in: ["PUBLIC", "UNLISTED"] }'));
+    assert.ok(catalog.includes("isLatestVersionCatalogVisible"));
+    assert.ok(catalog.includes("resolveLatestDistributionState"));
+    assert.ok(!/distributionMetadata:\s*\{\s*some/.test(catalog));
   });
 
   it("blocks delete after submission via dedicated error code", () => {

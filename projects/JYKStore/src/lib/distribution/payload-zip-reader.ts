@@ -1,9 +1,3 @@
-import { createWriteStream, promises as fs } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { randomBytes } from "node:crypto";
-import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
 import yauzl from "yauzl";
 import type { PayloadZipEntry } from "@/lib/distribution/payload-types";
 import { getPayloadLimitConfig, type PayloadLimitConfig } from "@/lib/distribution/payload-limit-config";
@@ -39,26 +33,26 @@ function extensionOf(entryPath: string): string {
 }
 
 function isUnixSymlink(externalFileAttributes: number): boolean {
-  // yauzl: high 16 bits are unix mode when made by unix
   const mode = (externalFileAttributes >>> 16) & 0xffff;
   return (mode & UNIX_S_IFMT) === UNIX_S_IFLNK;
 }
 
-async function writeTempZip(bytes: Uint8Array): Promise<string> {
-  const tempPath = path.join(tmpdir(), `jyk-payload-${randomBytes(8).toString("hex")}.zip`);
-  await pipeline(Readable.from(Buffer.from(bytes)), createWriteStream(tempPath));
-  return tempPath;
-}
-
-function openZip(filePath: string): Promise<yauzl.ZipFile> {
+function openZipFromBuffer(bytes: Uint8Array): Promise<yauzl.ZipFile> {
   return new Promise((resolve, reject) => {
-    yauzl.open(filePath, { lazyEntries: true, validateEntrySizes: true }, (err, zip) => {
-      if (err || !zip) {
-        reject(err ?? new Error("Failed to open ZIP"));
-        return;
-      }
-      resolve(zip);
-    });
+    yauzl.fromBuffer(
+      Buffer.from(bytes),
+      {
+        lazyEntries: true,
+        validateEntrySizes: true,
+      },
+      (error, zip) => {
+        if (error || !zip) {
+          reject(error ?? new Error("Failed to open ZIP"));
+          return;
+        }
+        resolve(zip);
+      },
+    );
   });
 }
 
@@ -78,8 +72,8 @@ function readEntryBuffer(zip: yauzl.ZipFile, entry: yauzl.Entry): Promise<Uint8A
 }
 
 /**
- * Validate ZIP via central directory metadata (yauzl) and optionally read selected entries.
- * Does not rely on JSZip private `_data` fields.
+ * Validate ZIP via central directory metadata (yauzl.fromBuffer) and optionally read selected entries.
+ * Never writes ZIP bytes to the local filesystem.
  */
 export async function validateZipAndReadSelectedEntries(
   bytes: Uint8Array,
@@ -120,10 +114,8 @@ export async function validateZipAndReadSelectedEntries(
     requestedEntrypoints.map((p) => p.replace(/\\/g, "/").replace(/^\/+/, "")),
   );
 
-  let tempPath: string | null = null;
   try {
-    tempPath = await writeTempZip(bytes);
-    const zip = await openZip(tempPath);
+    const zip = await openZipFromBuffer(bytes);
 
     await new Promise<void>((resolve, reject) => {
       const seen = new Set<string>();
@@ -176,9 +168,7 @@ export async function validateZipAndReadSelectedEntries(
                 uncompressedSize >= limits.compressionRatioMinUncompressedBytes &&
                 uncompressedSize / Math.max(compressedSize, 1) > limits.maxCompressionRatio
               ) {
-                errors.push(
-                  `Suspicious compression ratio for ${displayPath}`,
-                );
+                errors.push(`Suspicious compression ratio for ${displayPath}`);
               }
               totalCompressedBytes += compressedSize;
               totalUncompressedBytes += uncompressedSize;
@@ -256,9 +246,5 @@ export async function validateZipAndReadSelectedEntries(
       warnings,
       errors: [`Invalid ZIP: ${message}`],
     };
-  } finally {
-    if (tempPath) {
-      await fs.rm(tempPath, { force: true }).catch(() => undefined);
-    }
   }
 }

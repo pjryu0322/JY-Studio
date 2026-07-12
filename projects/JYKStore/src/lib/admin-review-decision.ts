@@ -64,6 +64,13 @@ export function detectSubmitSnapshotDrift(detail: AdminReviewDetailDto): {
   if (isDistributionReviewSnapshot(snapshot)) {
     const reasons: string[] = [];
     const payload = detail.payload;
+    const distribution = detail.distribution;
+    const submittedVersionId = snapshot.submittedVersionId;
+    const currentVersionId = detail.versions[0]?.id;
+
+    if (submittedVersionId && currentVersionId && submittedVersionId !== currentVersionId) {
+      reasons.push("제출 버전이 현재 검수 버전과 다릅니다.");
+    }
     if (!payload) {
       reasons.push("제출 시점 Payload가 현재 없습니다.");
     } else {
@@ -73,9 +80,42 @@ export function detectSubmitSnapshotDrift(detail: AdminReviewDetailDto): {
       if (payload.checksumSha256 !== snapshot.checksumSha256) {
         reasons.push("Payload Checksum이 제출 시점과 다릅니다.");
       }
-      if (payload.validationStatus !== "VALID") {
+      if (payload.profile !== snapshot.payloadProfile) {
+        reasons.push("Payload Profile이 제출 시점과 다릅니다.");
+      }
+      if (payload.validationStatus !== "VALID" || snapshot.validationStatus !== "VALID") {
         reasons.push("Payload 검증 상태가 VALID가 아닙니다.");
       }
+    }
+    if (
+      snapshot.manifestFingerprint &&
+      detail.currentManifestFingerprint &&
+      snapshot.manifestFingerprint !== detail.currentManifestFingerprint
+    ) {
+      reasons.push("Manifest가 제출 시점과 다릅니다.");
+    }
+    if (snapshot.manifestSchemaVersion && snapshot.manifestSchemaVersion !== "jyk-distribution-0.2") {
+      // Allow approve path to require refresh to 0.2 via fingerprint/stale checks on submit;
+      // if current fingerprint exists and snapshot is old schema, treat as drift.
+      if (detail.currentManifestFingerprint) {
+        reasons.push("Manifest schemaVersion이 제출 시점과 다릅니다.");
+      }
+    }
+    if (distribution) {
+      if (distribution.visibility !== snapshot.visibility) {
+        reasons.push("공개범위가 제출 시점과 다릅니다.");
+      }
+      if (distribution.allowDownload !== snapshot.allowDownload) {
+        reasons.push("다운로드 허용 설정이 제출 시점과 다릅니다.");
+      }
+      if ((distribution.sourceTitle ?? null) !== (snapshot.sourceTitle ?? null)) {
+        reasons.push("출처 정보가 제출 시점과 다릅니다.");
+      }
+      if (distribution.licenseName !== snapshot.licenseName) {
+        reasons.push("라이선스가 제출 시점과 다릅니다.");
+      }
+    } else {
+      reasons.push("유통정보가 없습니다.");
     }
     return { changed: reasons.length > 0, reasons };
   }

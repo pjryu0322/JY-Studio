@@ -202,6 +202,26 @@ export async function deleteProviderPackPayloadApi(packId: string): Promise<{ de
   return (await response.json()) as { deleted: true };
 }
 
+export async function createProviderPackVersionApi(
+  packId: string,
+  input: {
+    version: string;
+    overview?: string;
+    versionSummary?: string;
+  },
+): Promise<{ clientId: string; pack: ProviderPackDetailDto }> {
+  const response = await fetch(`/api/v1/provider/packs/${encodeURIComponent(packId)}/versions`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as { clientId: string; pack: ProviderPackDetailDto };
+}
+
 export async function fetchProviderPackDistributionApi(packId: string): Promise<{
   clientId: string;
   distribution: import("@/lib/distribution/distribution-metadata-service").PackDistributionMetadataDto | null;

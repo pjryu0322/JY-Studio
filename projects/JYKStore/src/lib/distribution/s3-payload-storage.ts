@@ -7,7 +7,15 @@ import {
   S3Client,
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
-import { PayloadServiceError } from "@/lib/distribution/payload-errors";
+import {
+  isPayloadServiceError,
+  PayloadServiceError,
+} from "@/lib/distribution/payload-errors";
+import {
+  describeS3StorageProbeError,
+  isS3ObjectNotFoundError,
+  mapS3StorageError,
+} from "@/lib/distribution/s3-storage-error";
 import {
   buildPayloadObjectKey,
   requirePayloadStorageConfig,
@@ -101,12 +109,8 @@ export class S3PayloadStorage implements PayloadStorage {
         versionId: result.VersionId ?? null,
       };
     } catch (error) {
-      void error;
-      throw new PayloadServiceError(
-        "PAYLOAD_STORAGE_NOT_CONFIGURED",
-        "Object Storage 업로드에 실패했습니다.",
-        503,
-      );
+      if (isPayloadServiceError(error)) throw error;
+      throw mapS3StorageError(error, "put");
     }
   }
 
@@ -125,12 +129,9 @@ export class S3PayloadStorage implements PayloadStorage {
         etag: result.ETag ?? null,
         checksumSha256Metadata: result.Metadata?.[META_CHECKSUM] ?? null,
       };
-    } catch {
-      throw new PayloadServiceError(
-        "PAYLOAD_NOT_FOUND",
-        "Object Storage에서 Payload를 찾을 수 없습니다.",
-        404,
-      );
+    } catch (error) {
+      if (isPayloadServiceError(error)) throw error;
+      throw mapS3StorageError(error, "get");
     }
   }
 
@@ -148,18 +149,25 @@ export class S3PayloadStorage implements PayloadStorage {
         etag: result.ETag ?? null,
         checksumSha256Metadata: result.Metadata?.[META_CHECKSUM] ?? null,
       };
-    } catch {
-      return { exists: false };
+    } catch (error) {
+      if (isS3ObjectNotFoundError(error)) return { exists: false };
+      if (isPayloadServiceError(error)) throw error;
+      throw mapS3StorageError(error, "head");
     }
   }
 
   async delete(input: { objectKey: string }): Promise<void> {
-    await this.client.send(
-      new DeleteObjectCommand({
-        Bucket: this.config.bucket,
-        Key: input.objectKey,
-      }),
-    );
+    try {
+      await this.client.send(
+        new DeleteObjectCommand({
+          Bucket: this.config.bucket,
+          Key: input.objectKey,
+        }),
+      );
+    } catch (error) {
+      if (isPayloadServiceError(error)) throw error;
+      throw mapS3StorageError(error, "delete");
+    }
   }
 
   async headBucket(): Promise<boolean> {
@@ -186,7 +194,7 @@ export async function probePayloadObjectStorage(
       ok: false,
       configured: false,
       bucketOk: false,
-      errors: parsed.errors,
+      errors: ["Object Storage is not configured"],
     };
   }
 
@@ -200,12 +208,12 @@ export async function probePayloadObjectStorage(
       errors: [],
       summary: describePayloadStorageConfig(parsed.config),
     };
-  } catch {
+  } catch (error) {
     return {
       ok: false,
       configured: true,
       bucketOk: false,
-      errors: ["Object Storage bucket probe failed"],
+      errors: [describeS3StorageProbeError(error)],
       summary: describePayloadStorageConfig(parsed.config),
     };
   }

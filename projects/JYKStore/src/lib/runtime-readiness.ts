@@ -45,8 +45,15 @@ export type RuntimeReadiness = {
     apiKeySecret: boolean;
     adminEmails: boolean;
     payloadObjectStorage: boolean;
+    anonymousDownloadSecretConfigured: boolean;
+    trustedProxyConfigured: boolean;
+    publicPayloadDownloadIdentityReady: boolean;
   };
 };
+
+function isTruthy(value: string | undefined): boolean {
+  return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "");
+}
 
 function missingRequiredFromEnv(envCheck: ReturnType<typeof evaluateRuntimeEnv>): string[] {
   if (!envCheck.ok) {
@@ -89,6 +96,11 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
     apiKeySecret: Boolean(process.env.JYKSTORE_API_KEY_SECRET?.trim()),
     adminEmails: Boolean(process.env.JYKSTORE_ADMIN_EMAILS?.trim()),
     payloadObjectStorage: payloadStorage.configured,
+    anonymousDownloadSecretConfigured: Boolean(process.env.JYKSTORE_ANONYMOUS_ID_SECRET?.trim()),
+    trustedProxyConfigured: isTruthy(process.env.JYKSTORE_TRUST_PROXY),
+    publicPayloadDownloadIdentityReady:
+      Boolean(process.env.JYKSTORE_ANONYMOUS_ID_SECRET?.trim()) &&
+      isTruthy(process.env.JYKSTORE_TRUST_PROXY),
   };
 
   const ok = envOk && database.ok && payloadStorage.ok;

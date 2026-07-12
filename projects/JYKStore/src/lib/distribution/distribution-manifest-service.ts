@@ -1,6 +1,13 @@
-import type { Prisma } from "@prisma/client";
-import { buildDistributionManifest, type DistributionManifest } from "@/lib/distribution/payload-manifest";
-import { DISTRIBUTION_MANIFEST_SCHEMA_VERSION } from "@/lib/distribution/payload-types";
+import type { KnowledgePayload, PackDistributionMetadata, Prisma } from "@prisma/client";
+import {
+  buildDistributionManifest,
+  isDistributionVisibility,
+  type DistributionManifest,
+} from "@/lib/distribution/payload-manifest";
+import {
+  DISTRIBUTION_MANIFEST_SCHEMA_VERSION,
+  DISTRIBUTION_MANIFEST_READABLE_SCHEMA_VERSIONS,
+} from "@/lib/distribution/payload-types";
 import { sha256Hex } from "@/lib/distribution/payload-checksum";
 import { prisma } from "@/lib/prisma";
 import { randomBytes } from "node:crypto";
@@ -51,6 +58,7 @@ export async function refreshDistributionManifest(input: {
   const manifest = buildDistributionManifest({
     pack: {
       packId: pack.packId,
+      versionId: version.id,
       name: pack.name,
       version: version.version,
     },
@@ -63,6 +71,7 @@ export async function refreshDistributionManifest(input: {
       version: payload.generatorVersion,
     },
     payload: {
+      payloadId: payload.id,
       profile: payload.profile as "docling-chunks-v1" | "unstructured-elements-v1",
       originalFileName: payload.originalFileName,
       mimeType: payload.mimeType,
@@ -88,18 +97,54 @@ export async function refreshDistributionManifest(input: {
   return manifest;
 }
 
+export type CurrentDistributionManifestState = {
+  manifest: DistributionManifest;
+  fingerprint: string;
+  payload: KnowledgePayload;
+  distribution: PackDistributionMetadata | null;
+};
+
+export async function getCurrentDistributionManifestState(input: {
+  packId: string;
+  versionId: string;
+  payloadId?: string;
+}): Promise<CurrentDistributionManifestState | null> {
+  const manifest = await refreshDistributionManifest({
+    packId: input.packId,
+    versionId: input.versionId,
+    reason: "current_state",
+  });
+  if (!manifest) return null;
+
+  const version = await prisma.knowledgePackVersion.findFirst({
+    where: { id: input.versionId, packId: input.packId },
+    include: { payload: true, distributionMetadata: true },
+  });
+  if (!version?.payload) return null;
+  if (input.payloadId && version.payload.id !== input.payloadId) return null;
+
+  return {
+    manifest,
+    fingerprint: stableManifestFingerprint(manifest),
+    payload: version.payload,
+    distribution: version.distributionMetadata,
+  };
+}
+
 export function assertManifestIntegrity(input: {
   manifest: DistributionManifest;
   payloadId: string;
   packId: string;
   versionId: string;
   checksumSha256: string;
+  fileSize?: number;
+  profile?: string;
 }): { ok: true } | { ok: false; code: "MANIFEST_STALE" | "MANIFEST_INTEGRITY_FAILED"; message: string } {
   if (input.manifest.schemaVersion !== DISTRIBUTION_MANIFEST_SCHEMA_VERSION) {
     return {
       ok: false,
       code: "MANIFEST_INTEGRITY_FAILED",
-      message: "Manifest schemaVersion이 올바르지 않습니다.",
+      message: "Manifest schemaVersion이 올바르지 않습니다. 0.2로 재생성하세요.",
     };
   }
   if (input.manifest.pack.packId !== input.packId) {
@@ -109,11 +154,42 @@ export function assertManifestIntegrity(input: {
       message: "Manifest packId가 일치하지 않습니다.",
     };
   }
+  if (input.manifest.pack.versionId !== input.versionId) {
+    return {
+      ok: false,
+      code: "MANIFEST_STALE",
+      message: "Manifest versionId가 일치하지 않습니다.",
+    };
+  }
+  if (input.manifest.payload.payloadId !== input.payloadId) {
+    return {
+      ok: false,
+      code: "MANIFEST_STALE",
+      message: "Manifest payloadId가 일치하지 않습니다.",
+    };
+  }
   if (input.manifest.payload.checksumSha256 !== input.checksumSha256) {
     return {
       ok: false,
       code: "MANIFEST_STALE",
       message: "Manifest checksum이 Payload와 일치하지 않습니다.",
+    };
+  }
+  if (
+    typeof input.fileSize === "number" &&
+    input.manifest.payload.fileSize !== input.fileSize
+  ) {
+    return {
+      ok: false,
+      code: "MANIFEST_STALE",
+      message: "Manifest fileSize가 Payload와 일치하지 않습니다.",
+    };
+  }
+  if (typeof input.profile === "string" && input.manifest.payload.profile !== input.profile) {
+    return {
+      ok: false,
+      code: "MANIFEST_STALE",
+      message: "Manifest profile이 Payload와 일치하지 않습니다.",
     };
   }
   if (!input.manifest.source.licenseName?.trim()) {
@@ -130,9 +206,28 @@ export function assertManifestIntegrity(input: {
       message: "Manifest에 출처 정보가 없습니다.",
     };
   }
-  void input.payloadId;
-  void input.versionId;
+  if (!isDistributionVisibility(input.manifest.distribution.visibility)) {
+    return {
+      ok: false,
+      code: "MANIFEST_INTEGRITY_FAILED",
+      message: "Manifest visibility가 올바르지 않습니다.",
+    };
+  }
+  if (typeof input.manifest.distribution.allowDownload !== "boolean") {
+    return {
+      ok: false,
+      code: "MANIFEST_INTEGRITY_FAILED",
+      message: "Manifest allowDownload가 올바르지 않습니다.",
+    };
+  }
   return { ok: true };
+}
+
+export function isReadableManifestSchemaVersion(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    (DISTRIBUTION_MANIFEST_READABLE_SCHEMA_VERSIONS as readonly string[]).includes(value)
+  );
 }
 
 export function createPayloadId(): string {

@@ -133,6 +133,8 @@ export async function commitDistributionPackForReview(
     packId,
     versionId: version.id,
     checksumSha256: payload.checksumSha256,
+    fileSize: Number(payload.fileSize),
+    profile: payload.profile,
   });
   if (!integrity.ok) {
     return { error: "INCOMPLETE", message: integrity.message };

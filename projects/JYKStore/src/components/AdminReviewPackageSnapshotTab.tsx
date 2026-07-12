@@ -81,6 +81,11 @@ export function AdminReviewPackageSnapshotTab({
         {drift.changed ? (
           <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
             제출 후 변경 감지: {drift.reasons[0]}
+            {drift.reasons.length > 1 ? (
+              <span className="mt-1 block text-amber-800/90">
+                {drift.reasons.slice(1).join(" · ")}
+              </span>
+            ) : null}
           </p>
         ) : null}
       </section>

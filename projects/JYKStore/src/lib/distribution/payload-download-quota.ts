@@ -21,13 +21,20 @@ function parseLimit(raw: string | undefined, fallback: number): number {
  * Never persist the raw IP — only an HMAC tenant key.
  */
 export function resolveAnonymousDownloadTenantKey(request: NextRequest): string {
-  const secret =
-    process.env.JYKSTORE_ANONYMOUS_ID_SECRET?.trim() ||
-    process.env.JYKSTORE_API_KEY_SECRET?.trim() ||
-    "jykstore-anonymous-fallback";
+  const secret = process.env.JYKSTORE_ANONYMOUS_ID_SECRET?.trim();
+  const trustProxy = truthy(process.env.JYKSTORE_TRUST_PROXY);
+  const production = process.env.NODE_ENV === "production";
+
+  if (!secret || (production && !trustProxy)) {
+    throw new PayloadServiceError(
+      "PAYLOAD_DOWNLOAD_IDENTITY_NOT_CONFIGURED",
+      "익명 다운로드 식별자가 구성되지 않았습니다.",
+      503,
+    );
+  }
 
   let material = "anonymous";
-  if (truthy(process.env.JYKSTORE_TRUST_PROXY)) {
+  if (trustProxy) {
     const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
     const realIp = request.headers.get("x-real-ip")?.trim();
     material = forwarded || realIp || request.headers.get("cf-connecting-ip")?.trim() || "anonymous";

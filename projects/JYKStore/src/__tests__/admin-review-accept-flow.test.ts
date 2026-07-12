@@ -91,6 +91,7 @@ function pendingDetail(
       ...(overrides.readiness ?? {}),
     },
     payload: overrides.payload ?? null,
+    currentManifestFingerprint: overrides.currentManifestFingerprint ?? null,
     distribution: overrides.distribution ?? null,
     structureQuality: null,
     chunkQuality: null,

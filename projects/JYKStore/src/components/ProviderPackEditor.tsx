@@ -307,9 +307,17 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           <ProviderPayloadTab
             packId={packId}
             editable={editable}
+            packStatus={pack.status}
+            latestReviewStatus={pack.latestReviewStatus}
             onGoToDistributionTab={() => selectTab("distribution")}
             onGoToReviewTab={() => selectTab("review")}
             onPayloadChanged={setPayload}
+            onPackUpdated={(next) => {
+              setPack(next);
+              setVersionOverview(next.versions[0]?.overview ?? "");
+              setPayload(null);
+              setDistribution(null);
+            }}
           />
         ) : null}
 

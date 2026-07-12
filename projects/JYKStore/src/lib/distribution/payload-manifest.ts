@@ -1,5 +1,6 @@
 import {
   DISTRIBUTION_MANIFEST_SCHEMA_VERSION,
+  DISTRIBUTION_VISIBILITIES,
   type DistributionVisibility,
   type PayloadGeneratorType,
   type PayloadProfile,
@@ -8,6 +9,7 @@ import {
 export type DistributionManifestInput = {
   pack: {
     packId: string;
+    versionId: string;
     name: string;
     version: string;
   };
@@ -20,6 +22,7 @@ export type DistributionManifestInput = {
     version?: string | null;
   };
   payload: {
+    payloadId: string;
     profile: PayloadProfile;
     originalFileName: string;
     mimeType: string;
@@ -42,6 +45,7 @@ export type DistributionManifest = {
   schemaVersion: typeof DISTRIBUTION_MANIFEST_SCHEMA_VERSION;
   pack: {
     packId: string;
+    versionId: string;
     name: string;
     version: string;
   };
@@ -54,6 +58,7 @@ export type DistributionManifest = {
     version?: string;
   };
   payload: {
+    payloadId: string;
     profile: PayloadProfile;
     originalFileName: string;
     mimeType: string;
@@ -79,7 +84,7 @@ function toIso(value: string | Date | undefined): string {
 }
 
 /**
- * Build a distribution manifest for DB/storage packaging.
+ * Build a distribution manifest for DB/storage packaging (schema 0.2).
  * Never includes internal storagePath, clientId, API keys, or audit details.
  */
 export function buildDistributionManifest(
@@ -102,6 +107,7 @@ export function buildDistributionManifest(
     schemaVersion: DISTRIBUTION_MANIFEST_SCHEMA_VERSION,
     pack: {
       packId: input.pack.packId,
+      versionId: input.pack.versionId,
       name: input.pack.name,
       version: input.pack.version,
     },
@@ -111,6 +117,7 @@ export function buildDistributionManifest(
     },
     generator,
     payload: {
+      payloadId: input.payload.payloadId,
       profile: input.payload.profile,
       originalFileName: input.payload.originalFileName,
       mimeType: input.payload.mimeType,
@@ -124,4 +131,11 @@ export function buildDistributionManifest(
     },
     createdAt: toIso(input.createdAt),
   };
+}
+
+export function isDistributionVisibility(value: unknown): value is DistributionVisibility {
+  return (
+    typeof value === "string" &&
+    (DISTRIBUTION_VISIBILITIES as readonly string[]).includes(value)
+  );
 }

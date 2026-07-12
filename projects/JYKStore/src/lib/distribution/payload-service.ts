@@ -14,6 +14,7 @@ import {
 } from "@/lib/distribution/distribution-manifest-service";
 import { enqueuePayloadCleanupJob } from "@/lib/distribution/payload-cleanup-service";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
+import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
 import { getPayloadLimitConfig } from "@/lib/distribution/payload-limit-config";
 import { readAndVerifyPayloadObject } from "@/lib/distribution/payload-object-integrity";
 import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
@@ -114,7 +115,7 @@ async function requireOwnedDraftPack(input: {
   const pack = await prisma.knowledgePack.findFirst({
     where: { packId: input.packId, providerProfileId: profile.id },
     include: {
-      versions: { orderBy: { createdAt: "desc" }, take: 1 },
+      versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 },
       providerProfile: true,
     },
   });
@@ -327,6 +328,7 @@ export async function uploadProviderPackPayload(input: {
   const manifest = buildDistributionManifest({
     pack: {
       packId: pack.packId,
+      versionId: version.id,
       name: pack.name,
       version: version.version,
     },
@@ -339,6 +341,7 @@ export async function uploadProviderPackPayload(input: {
       version: input.generatorVersion?.trim() || null,
     },
     payload: {
+      payloadId,
       profile: payloadProfile,
       originalFileName,
       mimeType: "application/zip",
@@ -461,7 +464,7 @@ export async function getProviderPackPayload(input: {
 
   const pack = await prisma.knowledgePack.findFirst({
     where: { packId: input.packId, providerProfileId: profile.id },
-    include: { versions: { orderBy: { createdAt: "desc" }, take: 1 } },
+    include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
   });
   if (!pack) {
     throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
@@ -595,7 +598,7 @@ export async function readOwnedPayloadBytes(input: {
 
   const pack = await prisma.knowledgePack.findFirst({
     where: { packId: input.packId, providerProfileId: profile.id },
-    include: { versions: { orderBy: { createdAt: "desc" }, take: 1 } },
+    include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
   });
   if (!pack) {
     throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
@@ -657,7 +660,7 @@ export async function readAdminPayloadBytes(input: {
 }> {
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
-    include: { versions: { orderBy: { createdAt: "desc" }, take: 1 } },
+    include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
   });
   if (!pack) {
     throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
@@ -718,7 +721,7 @@ export async function readPublicCatalogPayloadBytes(input: {
 }> {
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
-    include: { versions: { orderBy: { createdAt: "desc" }, take: 1 } },
+    include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
   });
   if (!pack || (pack.status !== PackStatus.PUBLISHED && pack.status !== PackStatus.VERIFIED)) {
     throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
@@ -781,7 +784,7 @@ export async function readPublicCatalogPayloadBytes(input: {
 export async function findLatestPayloadForPack(packId: string) {
   const version = await prisma.knowledgePackVersion.findFirst({
     where: { packId },
-    orderBy: { createdAt: "desc" },
+    orderBy: latestKnowledgePackVersionOrderBy,
     include: { payload: true, distributionMetadata: true },
   });
   return version;

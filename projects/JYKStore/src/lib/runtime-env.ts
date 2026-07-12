@@ -30,6 +30,10 @@ function isConfigured(value: string | undefined): boolean {
   return trimmed(value).length > 0;
 }
 
+function isTruthy(value: string | undefined): boolean {
+  return ["1", "true", "yes", "on"].includes(trimmed(value).toLowerCase());
+}
+
 function resolveMode(env: NodeJS.ProcessEnv): RuntimeEnvMode {
   return env.NODE_ENV ?? "development";
 }
@@ -75,7 +79,7 @@ export function evaluateRuntimeEnv(env: NodeJS.ProcessEnv = process.env): Runtim
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const required = PRODUCTION_REQUIRED.map((name) => {
+  const required: RuntimeEnvCheck["required"] = PRODUCTION_REQUIRED.map((name) => {
     const configured = isConfigured(env[name]);
     const requiredInProduction = true;
     if (production && !configured) {
@@ -85,6 +89,20 @@ export function evaluateRuntimeEnv(env: NodeJS.ProcessEnv = process.env): Runtim
     }
     return { name, configured, requiredInProduction };
   });
+
+  const anonymousDownloadSecretConfigured = isConfigured(env.JYKSTORE_ANONYMOUS_ID_SECRET);
+  const trustedProxyConfigured = isTruthy(env.JYKSTORE_TRUST_PROXY);
+  for (const [name, configured] of [
+    ["JYKSTORE_ANONYMOUS_ID_SECRET", anonymousDownloadSecretConfigured],
+    ["JYKSTORE_TRUST_PROXY=true", trustedProxyConfigured],
+  ] as const) {
+    if (production && !configured) {
+      errors.push(`Missing required env: ${name}`);
+    } else if (!production && !configured) {
+      warnings.push(`Optional in ${mode}: ${name} is not configured`);
+    }
+    required.push({ name, configured, requiredInProduction: true });
+  }
 
   const optional: RuntimeEnvCheck["optional"] = [];
 

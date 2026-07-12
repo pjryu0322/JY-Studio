@@ -2,7 +2,9 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import type { KnowledgePayloadPublicDto } from "@/lib/distribution/payload-service";
+import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import {
+  createProviderPackVersionApi,
   deleteProviderPackPayloadApi,
   fetchProviderPackPayloadApi,
   uploadProviderPackPayloadApi,
@@ -15,20 +17,32 @@ import {
 export function ProviderPayloadTab({
   packId,
   editable,
+  packStatus,
+  latestReviewStatus,
   onGoToDistributionTab,
   onGoToReviewTab,
   onPayloadChanged,
+  onPackUpdated,
 }: {
   readonly packId: string;
   readonly editable: boolean;
+  readonly packStatus?: string;
+  readonly latestReviewStatus?: string | null;
   readonly onGoToDistributionTab: () => void;
   readonly onGoToReviewTab: () => void;
   readonly onPayloadChanged?: (payload: KnowledgePayloadPublicDto | null) => void;
+  readonly onPackUpdated?: (pack: ProviderPackDetailDto) => void;
 }) {
   const [payload, setPayload] = useState<KnowledgePayloadPublicDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [creatingVersion, setCreatingVersion] = useState(false);
+  const [showVersionForm, setShowVersionForm] = useState(false);
+  const [newVersion, setNewVersion] = useState("");
+  const [versionOverview, setVersionOverview] = useState("");
+  const [versionSummary, setVersionSummary] = useState("");
+  const [versionHint, setVersionHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [generatorType, setGeneratorType] = useState<"DOCLING" | "UNSTRUCTURED">("DOCLING");
@@ -69,6 +83,7 @@ export function ProviderPayloadTab({
       setPayload(data.payload);
       onPayloadChanged?.(data.payload);
       setFile(null);
+      setVersionHint(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "업로드에 실패했습니다.");
     } finally {
@@ -93,10 +108,46 @@ export function ProviderPayloadTab({
     }
   };
 
+  const onCreateVersion = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editable || creatingVersion) return;
+    const version = newVersion.trim();
+    if (!version) {
+      setError("새 버전 번호가 필요합니다.");
+      return;
+    }
+    setCreatingVersion(true);
+    setError(null);
+    try {
+      const result = await createProviderPackVersionApi(packId, {
+        version,
+        overview: versionOverview.trim() || undefined,
+        versionSummary: versionSummary.trim() || undefined,
+      });
+      onPackUpdated?.(result.pack);
+      setPayload(null);
+      onPayloadChanged?.(null);
+      setShowVersionForm(false);
+      setNewVersion("");
+      setVersionOverview("");
+      setVersionSummary("");
+      setVersionHint("새 버전에 Payload를 등록하세요.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "버전 생성에 실패했습니다.");
+    } finally {
+      setCreatingVersion(false);
+    }
+  };
+
   const report =
     payload?.validationReport && typeof payload.validationReport === "object"
       ? (payload.validationReport as Record<string, unknown>)
       : null;
+
+  const showNewVersionCta =
+    editable &&
+    packStatus === "DRAFT" &&
+    (payload?.canDelete === false || latestReviewStatus === "REJECTED");
 
   if (loading) {
     return <p className="text-sm text-store-muted">Payload 불러오는 중…</p>;
@@ -113,6 +164,11 @@ export function ProviderPayloadTab({
 
       {error ? (
         <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
+      ) : null}
+      {versionHint ? (
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          {versionHint}
+        </div>
       ) : null}
 
       {payload ? (
@@ -221,6 +277,60 @@ export function ProviderPayloadTab({
       ) : (
         <p className="text-sm text-store-muted">등록된 Payload가 없습니다.</p>
       )}
+
+      {showNewVersionCta ? (
+        <div className="space-y-3 rounded-xl border border-amber-100 bg-amber-50/70 p-3">
+          {!showVersionForm ? (
+            <button
+              type="button"
+              onClick={() => setShowVersionForm(true)}
+              className="min-h-[40px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950"
+            >
+              보완용 새 버전 생성
+            </button>
+          ) : (
+            <form onSubmit={(e) => void onCreateVersion(e)} className="space-y-2">
+              <p className="text-xs font-semibold text-amber-950">보완용 새 버전 생성</p>
+              <input
+                value={newVersion}
+                onChange={(e) => setNewVersion(e.target.value)}
+                placeholder="새 버전 번호 (필수)"
+                className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
+                required
+              />
+              <input
+                value={versionOverview}
+                onChange={(e) => setVersionOverview(e.target.value)}
+                placeholder="버전 개요 (선택)"
+                className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
+              />
+              <input
+                value={versionSummary}
+                onChange={(e) => setVersionSummary(e.target.value)}
+                placeholder="버전 요약 (선택)"
+                className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="submit"
+                  disabled={creatingVersion}
+                  className="min-h-[40px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white disabled:opacity-60"
+                >
+                  {creatingVersion ? "생성 중…" : "버전 생성"}
+                </button>
+                <button
+                  type="button"
+                  disabled={creatingVersion}
+                  onClick={() => setShowVersionForm(false)}
+                  className="min-h-[40px] rounded-xl border border-store-border px-3 text-xs font-semibold text-slate-700"
+                >
+                  취소
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }

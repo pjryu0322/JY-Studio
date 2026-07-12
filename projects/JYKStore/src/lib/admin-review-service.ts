@@ -31,7 +31,9 @@ import { releaseGateAllowsApprovalStatus } from "@/lib/release-gate/release-gate
 import {
   canApproveAdminReview,
   canRejectWithoutAccept,
+  detectSubmitSnapshotDrift,
 } from "@/lib/admin-review-decision";
+import { isDistributionReviewSnapshot } from "@/lib/provider-review-submit-snapshot";
 import {
   validateAllSourceDocumentsForPack,
   validateAndPersistSourceDocument,
@@ -105,6 +107,19 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
     : [null, null];
 
   const detailBase = toAdminReviewDetail(pack);
+  let currentManifestFingerprint: string | null = null;
+  if (latestVersion && payloadRow) {
+    const { getCurrentDistributionManifestState } = await import(
+      "@/lib/distribution/distribution-manifest-service"
+    );
+    const state = await getCurrentDistributionManifestState({
+      packId,
+      versionId: latestVersion.id,
+      payloadId: payloadRow.id,
+    });
+    currentManifestFingerprint = state?.fingerprint ?? null;
+  }
+
   const detail = applyDistributionFieldsToAdminDetail(detailBase, {
     payload: payloadRow
       ? {
@@ -122,6 +137,7 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
           uploadedAt: payloadRow.uploadedAt.toISOString(),
         }
       : null,
+    currentManifestFingerprint,
     distribution: distributionRow
       ? {
           sourceTitle: distributionRow.sourceTitle,
@@ -588,6 +604,35 @@ export async function approvePackReview(input: {
 
   const publishAsVerified = Boolean(input.publishAsVerified);
   const isDistributionPack = Boolean(detailBefore.payload);
+
+  if (isDistributionPack) {
+    const drift = detectSubmitSnapshotDrift(detailBefore);
+    if (drift.changed) {
+      return {
+        error: "INCOMPLETE" as const,
+        message:
+          drift.reasons[0] ??
+          "제출 이후 Distribution 정보가 변경되었습니다. 다시 검수 요청해 주세요.",
+      };
+    }
+    const snapshot = detailBefore.latestReview?.submitSnapshot;
+    if (snapshot && isDistributionReviewSnapshot(snapshot) && detailBefore.versions[0]) {
+      const { getCurrentDistributionManifestState } = await import(
+        "@/lib/distribution/distribution-manifest-service"
+      );
+      const state = await getCurrentDistributionManifestState({
+        packId,
+        versionId: detailBefore.versions[0].id,
+        payloadId: detailBefore.payload?.id,
+      });
+      if (!state || state.fingerprint !== snapshot.manifestFingerprint) {
+        return {
+          error: "INCOMPLETE" as const,
+          message: "제출 이후 Distribution 정보가 변경되었습니다. 다시 검수 요청해 주세요.",
+        };
+      }
+    }
+  }
 
   if (!isDistributionPack) {
     const targetStatus = publishAsVerified ? "VERIFIED" : "PUBLISHED";

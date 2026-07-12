@@ -1,10 +1,14 @@
-import { InstallationStatus, PackStatus } from "@prisma/client";
+import { InstallationStatus, PackStatus, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toKnowledgePackDto, type PrismaKnowledgePackWithVersion } from "@/lib/pack-dto";
 
-import { packCatalogInclude } from "@/lib/pack-catalog-service";
-
 const installablePackStatuses: PackStatus[] = [PackStatus.PUBLISHED, PackStatus.VERIFIED];
+const myPacksInclude = {
+  category: true,
+  versions: {
+    orderBy: [{ createdAt: "desc" as const }, { id: "desc" as const }],
+  },
+} satisfies Prisma.KnowledgePackInclude;
 
 function isInstallablePackStatus(status: PackStatus) {
   return installablePackStatuses.includes(status);
@@ -18,7 +22,7 @@ export async function listActiveMyPacksForClient(clientId: string) {
     },
     include: {
       pack: {
-        include: packCatalogInclude,
+        include: myPacksInclude,
       },
     },
     orderBy: { updatedAt: "desc" },
@@ -33,7 +37,7 @@ export async function listActiveMyPacksForClient(clientId: string) {
 export async function findPublishedPack(packId: string) {
   return prisma.knowledgePack.findUnique({
     where: { packId },
-    include: packCatalogInclude,
+    include: myPacksInclude,
   });
 }
 

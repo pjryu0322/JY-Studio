@@ -12,7 +12,12 @@ export type PayloadValidationStatus = (typeof PAYLOAD_VALIDATION_STATUSES)[numbe
 export const DISTRIBUTION_VISIBILITIES = ["PRIVATE", "PUBLIC", "UNLISTED"] as const;
 export type DistributionVisibility = (typeof DISTRIBUTION_VISIBILITIES)[number];
 
-export const DISTRIBUTION_MANIFEST_SCHEMA_VERSION = "jyk-distribution-0.1" as const;
+export const DISTRIBUTION_MANIFEST_SCHEMA_VERSION = "jyk-distribution-0.2" as const;
+export const DISTRIBUTION_MANIFEST_SCHEMA_VERSION_V1 = "jyk-distribution-0.1" as const;
+export const DISTRIBUTION_MANIFEST_READABLE_SCHEMA_VERSIONS = [
+  DISTRIBUTION_MANIFEST_SCHEMA_VERSION_V1,
+  DISTRIBUTION_MANIFEST_SCHEMA_VERSION,
+] as const;
 
 /** 50 MB compressed ZIP upload limit. */
 export const PAYLOAD_MAX_ZIP_BYTES = 50 * 1024 * 1024;

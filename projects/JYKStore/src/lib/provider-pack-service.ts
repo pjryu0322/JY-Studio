@@ -529,6 +529,9 @@ export async function createProviderPackVersionForClient(
 
   const pack = await prisma.knowledgePack.findFirst({
     where: { packId, providerProfileId: profile.id },
+    include: {
+      versions: { orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1 },
+    },
   });
 
   if (!pack) {
@@ -552,17 +555,19 @@ export async function createProviderPackVersionForClient(
     return { error: "VERSION_EXISTS" as const };
   }
 
+  const latest = pack.versions[0];
   await prisma.knowledgePackVersion.create({
     data: {
       packId,
       version,
-      overview: input.overview?.trim() || pack.shortDescription,
-      features: input.features ?? [],
-      includedKnowledge: input.includedKnowledge ?? [],
-      supportedEnvironments: input.supportedEnvironments ?? [],
-      targetUsers: input.targetUsers ?? [],
-      useCases: input.useCases ?? [],
-      versionSummary: input.versionSummary?.trim() || version,
+      overview: input.overview?.trim() || latest?.overview || pack.shortDescription,
+      features: input.features ?? latest?.features ?? [],
+      includedKnowledge: input.includedKnowledge ?? latest?.includedKnowledge ?? [],
+      supportedEnvironments:
+        input.supportedEnvironments ?? latest?.supportedEnvironments ?? [],
+      targetUsers: input.targetUsers ?? latest?.targetUsers ?? [],
+      useCases: input.useCases ?? latest?.useCases ?? [],
+      versionSummary: input.versionSummary?.trim() || latest?.versionSummary || version,
     },
   });
 

@@ -1,5 +1,10 @@
 import { PackStatus, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import {
+  isLatestVersionCatalogVisible,
+  latestKnowledgePackVersionOrderBy,
+  resolveLatestDistributionState,
+} from "@/lib/distribution/latest-distribution-state";
 import { toKnowledgePackDto, type PrismaKnowledgePackWithVersion } from "@/lib/pack-dto";
 import { rankPacks } from "@/lib/pack-search-service";
 import { applySearchFilters } from "@/lib/pack-utils";
@@ -9,44 +14,17 @@ import type { KnowledgePack, StoreCategory } from "@/types/pack";
 export const packCatalogInclude = {
   category: true,
   versions: {
-    orderBy: { createdAt: "desc" as const },
+    orderBy: latestKnowledgePackVersionOrderBy,
+    include: { distributionMetadata: true },
   },
 } as const;
 
 const publishedStatuses = [PackStatus.PUBLISHED, PackStatus.VERIFIED] as const;
 
-/** Legacy packs (no distribution metadata) keep prior catalog rules. */
-const catalogListVisibilityWhere: Prisma.KnowledgePackWhereInput = {
-  OR: [
-    { distributionMetadata: { none: {} } },
-    { distributionMetadata: { some: { visibility: "PUBLIC" } } },
-  ],
-};
-
-/** Direct pack URL: PUBLIC + UNLISTED; PRIVATE distribution packs stay hidden. */
-const catalogDetailVisibilityWhere: Prisma.KnowledgePackWhereInput = {
-  OR: [
-    { distributionMetadata: { none: {} } },
-    {
-      distributionMetadata: {
-        some: { visibility: { in: ["PUBLIC", "UNLISTED"] } },
-      },
-    },
-  ],
-};
-
+// Latest-version policy: list visibility: "PUBLIC"; detail visibility: { in: ["PUBLIC", "UNLISTED"] }.
+// Legacy packs have no latest distribution metadata and retain published catalog visibility.
 const publishedPackWhere: Prisma.KnowledgePackWhereInput = {
   status: { in: [...publishedStatuses] },
-};
-
-const publishedCatalogListWhere: Prisma.KnowledgePackWhereInput = {
-  ...publishedPackWhere,
-  AND: [catalogListVisibilityWhere],
-};
-
-const publishedCatalogDetailWhere: Prisma.KnowledgePackWhereInput = {
-  ...publishedPackWhere,
-  AND: [catalogDetailVisibilityWhere],
 };
 
 const catalogOrderBy: Prisma.KnowledgePackOrderByWithRelationInput[] = [
@@ -58,6 +36,21 @@ const catalogOrderBy: Prisma.KnowledgePackOrderByWithRelationInput[] = [
 
 function mapRows(rows: PrismaKnowledgePackWithVersion[]): KnowledgePack[] {
   return rows.map(toKnowledgePackDto);
+}
+
+type CatalogPackRow = Prisma.KnowledgePackGetPayload<{
+  include: typeof packCatalogInclude;
+}>;
+
+function isCatalogVisible(row: CatalogPackRow, purpose: "list" | "detail"): boolean {
+  return isLatestVersionCatalogVisible(
+    resolveLatestDistributionState(row.versions[0]),
+    purpose,
+  );
+}
+
+function filterCatalogRows(rows: CatalogPackRow[], purpose: "list" | "detail"): CatalogPackRow[] {
+  return rows.filter((row) => isCatalogVisible(row, purpose));
 }
 
 function toStoreCategory(row: {
@@ -76,35 +69,35 @@ function toStoreCategory(row: {
 
 export async function listPublishedPacks(): Promise<KnowledgePack[]> {
   const rows = await prisma.knowledgePack.findMany({
-    where: publishedCatalogListWhere,
+    where: publishedPackWhere,
     include: packCatalogInclude,
     orderBy: catalogOrderBy,
   });
-  return mapRows(rows);
+  return mapRows(filterCatalogRows(rows, "list"));
 }
 
 export async function getPublishedPackById(packId: string): Promise<KnowledgePack | null> {
   const row = await prisma.knowledgePack.findFirst({
     where: {
       packId,
-      ...publishedCatalogDetailWhere,
+      ...publishedPackWhere,
     },
     include: packCatalogInclude,
   });
 
-  return row ? toKnowledgePackDto(row) : null;
+  return row && isCatalogVisible(row, "detail") ? toKnowledgePackDto(row) : null;
 }
 
 export async function listPublishedPacksByCategory(categoryId: string): Promise<KnowledgePack[]> {
   const rows = await prisma.knowledgePack.findMany({
     where: {
       categoryId,
-      ...publishedCatalogListWhere,
+      ...publishedPackWhere,
     },
     include: packCatalogInclude,
     orderBy: catalogOrderBy,
   });
-  return mapRows(rows);
+  return mapRows(filterCatalogRows(rows, "list"));
 }
 
 export type CategoryWithPublishedCount = StoreCategory & {
@@ -112,16 +105,18 @@ export type CategoryWithPublishedCount = StoreCategory & {
 };
 
 export async function listCategoriesWithPublishedCounts(): Promise<CategoryWithPublishedCount[]> {
-  const [categories, counts] = await Promise.all([
+  const [categories, rows] = await Promise.all([
     prisma.packCategory.findMany({ orderBy: { name: "asc" } }),
-    prisma.knowledgePack.groupBy({
-      by: ["categoryId"],
-      where: publishedCatalogListWhere,
-      _count: { _all: true },
+    prisma.knowledgePack.findMany({
+      where: publishedPackWhere,
+      include: packCatalogInclude,
     }),
   ]);
 
-  const countByCategory = new Map(counts.map((row) => [row.categoryId, row._count._all]));
+  const countByCategory = new Map<string, number>();
+  for (const row of filterCatalogRows(rows, "list")) {
+    countByCategory.set(row.categoryId, (countByCategory.get(row.categoryId) ?? 0) + 1);
+  }
 
   return categories.map((category) => ({
     ...toStoreCategory(category),
@@ -171,14 +166,14 @@ export async function searchPublishedPacks(params: {
 
   const rows = await prisma.knowledgePack.findMany({
     where: {
-      ...publishedCatalogListWhere,
+      ...publishedPackWhere,
       OR: orConditions,
     },
     include: packCatalogInclude,
     orderBy: catalogOrderBy,
   });
 
-  const packs = rankPacks(mapRows(rows), query);
+  const packs = rankPacks(mapRows(filterCatalogRows(rows, "list")), query);
   return applySearchFilters(packs, { chip });
 }
 

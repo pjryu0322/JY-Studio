@@ -120,6 +120,8 @@ export type AdminReviewDetailDto = {
     manifest: unknown;
     uploadedAt: string;
   } | null;
+  /** Current DB-derived distribution fingerprint for drift checks (schema 0.2). */
+  currentManifestFingerprint: string | null;
   distribution: {
     sourceTitle: string | null;
     sourceUrl: string | null;
@@ -314,6 +316,7 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
       : null,
     readiness,
     payload: null,
+    currentManifestFingerprint: null,
     distribution: null,
     structureQuality: null,
     chunkQuality: null,
@@ -327,12 +330,14 @@ export function applyDistributionFieldsToAdminDetail(
   input: {
     payload: AdminReviewDetailDto["payload"];
     distribution: AdminReviewDetailDto["distribution"];
+    currentManifestFingerprint?: string | null;
   },
 ): AdminReviewDetailDto {
   const isDistribution = Boolean(input.payload);
   return {
     ...detail,
     payload: input.payload,
+    currentManifestFingerprint: input.currentManifestFingerprint ?? null,
     distribution: input.distribution,
     readiness: {
       ...detail.readiness,
