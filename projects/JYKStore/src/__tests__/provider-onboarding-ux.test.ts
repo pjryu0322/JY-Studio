@@ -72,13 +72,14 @@ describe("provider onboarding UX sources", () => {
     assert.ok(!center.includes("1. 1."));
   });
 
-  it("shows blocked notice instead of pack create form on new pack page", () => {
+  it("shows blocked notice with read-only provider role check on new pack page", () => {
     const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
     assert.ok(packNew.includes("ProviderRequiredCard"));
     assert.ok(!packNew.includes("ProviderPackCreateForm"));
+    assert.ok(!packNew.includes("ensureProviderProfileForAccount"));
     assert.ok(packNew.includes("PROVIDER_PACK_NEW_BLOCKED_TITLE"));
     assert.ok(packNew.includes("getUserIdFromCookies"));
-    assert.ok(packNew.includes("ensureProviderProfileForAccount"));
+    assert.ok(packNew.includes("isProviderAccountRole"));
   });
 
   it("keeps pack create form component for P29 reuse", () => {

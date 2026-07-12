@@ -203,7 +203,7 @@ export function ProviderCenterPageClient() {
         </p>
       </div>
 
-      <ProviderOnboardingStepper steps={onboardingSteps} />
+      {packs.length > 0 ? <ProviderOnboardingStepper steps={onboardingSteps} /> : null}
 
       <section id="provider-packs" className="scroll-mt-24 rounded-2xl border border-store-border bg-white p-4 shadow-card">
         <h2 className="text-sm font-bold text-slate-900">내 지식팩</h2>

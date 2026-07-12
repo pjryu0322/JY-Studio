@@ -6,8 +6,8 @@ export const ACCOUNT_SECTION_ROLE_REGISTRATION = "역할 계정 등록";
 export const ACCOUNT_SECTION_ROLE_MENUS = "사용자 메뉴";
 export const ACCOUNT_SECTION_SETTINGS = "설정";
 
-export const PROVIDER_CENTER_LOGIN_TITLE = "지식팩을 등록하려면 로그인이 필요합니다.";
-export const PROVIDER_CENTER_LOGIN_CTA = "로그인하고 지식팩 등록 시작";
+export const PROVIDER_CENTER_LOGIN_TITLE = "제공자 센터를 이용하려면 로그인이 필요합니다.";
+export const PROVIDER_CENTER_LOGIN_CTA = "로그인하고 제공자 센터 열기";
 
 export const ACCOUNT_PROFILE_LOGIN_TITLE = "JYKStore 로그인";
 export const ACCOUNT_PROFILE_LOGIN_HINT =
@@ -28,7 +28,7 @@ export const PROVIDER_CENTER_TAGLINE =
 
 export const PROVIDER_CENTER_BEFORE_PROFILE_TITLE = "제공자 권한이 필요합니다.";
 export const PROVIDER_CENTER_BEFORE_PROFILE_BODY =
-  "지식팩 제공자 계정으로 로그인하면 바로 지식팩을 만들 수 있습니다.";
+  "지식팩 제공자 계정으로 로그인하면 제공자 센터에서 기존 지식팩을 관리할 수 있습니다.";
 
 export const PROVIDER_CENTER_REGISTERED_TITLE = "제공자 계정 확인됨";
 export const PROVIDER_CENTER_REGISTERED_BODY =
@@ -81,7 +81,7 @@ export const PROVIDER_PACK_MATERIALS_HINT =
 export const PROVIDER_PACK_MATERIALS_REVIEW_VERSION_LABEL = "검수 대상 버전";
 export const PROVIDER_PACK_MATERIALS_NO_VERSION = "등록된 버전이 없습니다.";
 export const PROVIDER_PACK_MATERIALS_EMPTY =
-  "현재 버전에 등록된 자료가 없습니다. 외부 Payload 등록 기능은 다음 단계에서 제공됩니다.";
+  "현재 버전에 등록된 자료가 없습니다. 외부 Payload를 등록한 뒤 검수 요청을 진행할 수 있습니다.";
 
 export const PROVIDER_PACK_GO_TO_MATERIALS_TAB = "기존 자료로 이동";
 export const PROVIDER_PACK_GO_TO_REVIEW_TAB = "검수요청으로 이동";

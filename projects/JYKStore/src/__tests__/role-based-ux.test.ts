@@ -66,5 +66,6 @@ describe("role-based provider UX", () => {
     assert.ok(packNew.includes("getUserIdFromCookies"));
     assert.ok(packNew.includes("ProviderRequiredCard"));
     assert.ok(!packNew.includes("ProviderPackCreateForm"));
+    assert.ok(!packNew.includes("ensureProviderProfileForAccount"));
   });
 });

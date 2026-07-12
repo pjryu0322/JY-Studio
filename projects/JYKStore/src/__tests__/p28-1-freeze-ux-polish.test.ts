@@ -33,6 +33,7 @@ describe("P28.1 new pack creation UX freeze", () => {
     assert.ok(packNew.includes("Provider Center로 돌아가기"));
     assert.ok(packNew.includes("기존 지식팩 관리"));
     assert.ok(packNew.includes("ROUTES.provider"));
+    assert.ok(!packNew.includes("ensureProviderProfileForAccount"));
   });
 
   it("keeps pack create API available for P29 reuse", () => {

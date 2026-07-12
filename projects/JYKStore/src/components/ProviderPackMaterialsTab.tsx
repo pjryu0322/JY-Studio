@@ -61,13 +61,15 @@ export function ProviderPackMaterialsTab({
         </ul>
       )}
 
-      <button
-        type="button"
-        onClick={onGoToReviewTab}
-        className="min-h-[44px] rounded-xl bg-store-accent px-4 text-xs font-bold text-white"
-      >
-        {PROVIDER_PACK_GO_TO_REVIEW_TAB}
-      </button>
+      {currentVersion && docs.length > 0 ? (
+        <button
+          type="button"
+          onClick={onGoToReviewTab}
+          className="min-h-[44px] rounded-xl bg-store-accent px-4 text-xs font-bold text-white"
+        >
+          {PROVIDER_PACK_GO_TO_REVIEW_TAB}
+        </button>
+      ) : null}
     </section>
   );
 }

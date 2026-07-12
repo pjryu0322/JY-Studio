@@ -1,19 +1,15 @@
 import Link from "next/link";
 import { AuthRequiredCard } from "@/components/AuthRequiredCard";
 import { ProviderRequiredCard } from "@/components/ProviderRequiredCard";
+import { isAdminAccountRole, isProviderAccountRole } from "@/lib/account-role";
 import { getUserIdFromCookies } from "@/lib/auth-session";
-import {
-  createClientId,
-  JYKSTORE_CLIENT_ID_COOKIE,
-} from "@/lib/client-identity";
-import { ensureProviderProfileForAccount } from "@/lib/provider-profile-service";
+import { prisma } from "@/lib/prisma";
 import {
   PROVIDER_PACK_NEW_BLOCKED_BODY,
   PROVIDER_PACK_NEW_BLOCKED_TITLE,
   PROVIDER_PAYLOAD_IMPORT_PREP_HINT,
 } from "@/lib/role-based-ux-copy";
 import { ROUTES } from "@/lib/routes";
-import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +20,15 @@ export default async function ProviderPackNewPage() {
     return <AuthRequiredCard />;
   }
 
-  const jar = await cookies();
-  const clientId = jar.get(JYKSTORE_CLIENT_ID_COOKIE)?.value ?? createClientId();
-  const ensured = await ensureProviderProfileForAccount({ userId, clientId });
-  if (!ensured.ok) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { accountRole: true },
+  });
+
+  const canProvider =
+    isProviderAccountRole(user?.accountRole) || isAdminAccountRole(user?.accountRole);
+
+  if (!canProvider) {
     return <ProviderRequiredCard />;
   }
 
