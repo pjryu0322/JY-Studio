@@ -648,13 +648,6 @@ export async function approvePackReview(input: {
         decidedAt: now,
       },
     });
-
-    if (isDistributionPack && detailBefore.versions[0]?.id) {
-      await tx.packDistributionMetadata.updateMany({
-        where: { versionId: detailBefore.versions[0].id },
-        data: { visibility: "PUBLIC" },
-      });
-    }
   });
 
   await recordProviderAudit({

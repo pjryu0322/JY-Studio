@@ -88,6 +88,15 @@ describe("runtime readiness", () => {
     }
   });
 
+  it("readiness includes payloadObjectStorage configured flag", async () => {
+    const readiness = await getRuntimeReadiness({
+      $queryRaw: async () => [1],
+    });
+    assert.equal(typeof readiness.configured.payloadObjectStorage, "boolean");
+    assert.ok(readiness.checks.payloadStorage);
+    assert.equal(typeof readiness.checks.payloadStorage.ok, "boolean");
+  });
+
   it("reports invalid quota env in production readiness errors", async () => {
     const prev = {
       NODE_ENV: process.env.NODE_ENV,

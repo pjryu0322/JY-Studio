@@ -7,7 +7,7 @@ import {
   isDistributionReviewSnapshot,
   parseProviderReviewSubmitSnapshot,
 } from "../lib/provider-review-submit-snapshot.ts";
-import { buildDistributionReviewSubmitSnapshot } from "../lib/distribution/distribution-submit-service.ts";
+import { buildDistributionReviewSubmitSnapshot } from "../lib/distribution/distribution-submit-snapshot.ts";
 import { validateDistributionMetadataInput } from "../lib/distribution/distribution-metadata-service.ts";
 import { PayloadServiceError } from "../lib/distribution/payload-errors.ts";
 import { PROVIDER_PACK_TAB_IDS } from "../lib/provider-pack-tabs.ts";

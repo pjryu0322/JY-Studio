@@ -135,7 +135,7 @@ export function ProviderPayloadTab({
             >
               원본 다운로드
             </a>
-            {editable ? (
+            {editable && payload.canDelete ? (
               <button
                 type="button"
                 onClick={() => void onDelete()}
@@ -144,6 +144,11 @@ export function ProviderPayloadTab({
               >
                 {deleting ? "삭제 중…" : "삭제 후 재등록"}
               </button>
+            ) : null}
+            {editable && payload && !payload.canDelete ? (
+              <p className="w-full text-xs text-amber-900">
+                검수 이력 보존을 위해 이 Payload는 삭제할 수 없습니다. 새 버전을 생성해 보완하세요.
+              </p>
             ) : null}
             <button
               type="button"

@@ -1,4 +1,4 @@
-import JSZip from "jszip";
+import { validateZipAndReadSelectedEntries } from "@/lib/distribution/payload-zip-reader";
 import type {
   PayloadProfileValidateInput,
   PayloadProfileValidationResult,
@@ -33,10 +33,10 @@ async function loadTextEntry(
   entryPath: string,
 ): Promise<string | null> {
   if (!zipBytes) return null;
-  const zip = await JSZip.loadAsync(zipBytes);
-  const file = zip.file(entryPath);
-  if (!file || file.dir) return null;
-  return file.async("string");
+  const read = await validateZipAndReadSelectedEntries(zipBytes, [entryPath]);
+  const bytes = read.selectedContents[entryPath];
+  if (!bytes) return null;
+  return new TextDecoder().decode(bytes);
 }
 
 function elementHasContent(element: Record<string, unknown>): boolean {

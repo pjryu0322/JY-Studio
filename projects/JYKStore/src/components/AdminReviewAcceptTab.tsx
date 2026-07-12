@@ -291,7 +291,14 @@ export function AdminReviewAcceptTab({
       ) : null}
 
       {showDecisionActions && (state === "approval_ready" || state === "approval_warning") ? (
-        <form onSubmit={onApprove}>
+        <form onSubmit={onApprove} className="space-y-2">
+          {detail.distribution ? (
+            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              Provider 공개범위 <strong>{detail.distribution.visibility}</strong>
+              {detail.distribution.allowDownload ? " · 다운로드 허용" : " · 다운로드 비허용"} —
+              승인 시 이 값이 유지됩니다.
+            </p>
+          ) : null}
           <button
             type="submit"
             disabled={!canApprove || busy !== null}

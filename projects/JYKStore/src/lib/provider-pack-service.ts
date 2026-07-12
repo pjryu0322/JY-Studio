@@ -50,6 +50,7 @@ import {
 import { evaluateReleaseGateForPack, loadReleaseGateSummaryForPack } from "@/lib/release-gate/release-gate-service";
 import { prepareProviderPackForFinalReviewSubmit } from "@/lib/auto-pipeline/provider-final-review-submit-service";
 import { commitDistributionPackForReview } from "@/lib/distribution/distribution-submit-service";
+import { refreshDistributionManifest } from "@/lib/distribution/distribution-manifest-service";
 import { buildProviderReviewSubmitSnapshot } from "@/lib/provider-review-submit-snapshot";
 import {
   getStructureQualityBlockingMessage,
@@ -496,6 +497,12 @@ export async function updateProviderPackForClient(
         data: versionData,
       });
     }
+
+    await refreshDistributionManifest({
+      packId,
+      versionId: latestVersion.id,
+      reason: "pack_basic_info_updated",
+    });
   }
 
   await recordProviderAudit({

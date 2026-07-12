@@ -3,9 +3,8 @@ import {
   DistributionVisibility as PrismaDistributionVisibility,
   PackStatus,
   type PackDistributionMetadata,
-  type Prisma,
 } from "@prisma/client";
-import { buildDistributionManifest } from "@/lib/distribution/payload-manifest";
+import { refreshDistributionManifest } from "@/lib/distribution/distribution-manifest-service";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import {
   DISTRIBUTION_VISIBILITIES,
@@ -205,7 +204,7 @@ export async function upsertProviderPackDistribution(input: {
   packId: string;
   body: UpsertDistributionMetadataInput;
 }): Promise<{ distribution: PackDistributionMetadataDto }> {
-  const { pack, version, profile } = await requireOwnedDraftPack({
+  const { pack, version } = await requireOwnedDraftPack({
     userId: input.userId,
     clientId: input.clientId,
     packId: input.packId,
@@ -244,41 +243,10 @@ export async function upsertProviderPackDistribution(input: {
   });
 
   if (payload) {
-    const manifest = buildDistributionManifest({
-      pack: {
-        packId: pack.packId,
-        name: pack.name,
-        version: version.version,
-      },
-      provider: {
-        providerId: profile.id,
-        displayName: pack.providerName || profile.displayName,
-      },
-      generator: {
-        type: payload.generatorType as "DOCLING" | "UNSTRUCTURED",
-        version: payload.generatorVersion,
-      },
-      payload: {
-        profile: payload.profile as "docling-chunks-v1" | "unstructured-elements-v1",
-        originalFileName: payload.originalFileName,
-        mimeType: payload.mimeType,
-        fileSize: Number(payload.fileSize),
-        checksumSha256: payload.checksumSha256,
-      },
-      source: {
-        title: row.sourceTitle,
-        url: row.sourceUrl,
-        licenseName: row.licenseName,
-      },
-      distribution: {
-        visibility: row.visibility as DistributionVisibility,
-        allowDownload: row.allowDownload,
-      },
-    });
-
-    await prisma.knowledgePayload.update({
-      where: { id: payload.id },
-      data: { manifestJson: manifest as unknown as Prisma.InputJsonValue },
+    await refreshDistributionManifest({
+      packId: pack.packId,
+      versionId: version.id,
+      reason: "distribution_metadata_updated",
     });
   }
 

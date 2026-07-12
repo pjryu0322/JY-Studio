@@ -4,82 +4,26 @@ import {
   PayloadValidationStatus,
   type Prisma,
 } from "@prisma/client";
-import { DISTRIBUTION_MANIFEST_SCHEMA_VERSION } from "@/lib/distribution/payload-types";
+import {
+  assertManifestIntegrity,
+  refreshDistributionManifest,
+  stableManifestFingerprint,
+} from "@/lib/distribution/distribution-manifest-service";
+import {
+  buildDistributionReviewSubmitSnapshot,
+  type DistributionReviewSubmitSnapshot,
+} from "@/lib/distribution/distribution-submit-snapshot";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
 
-export type DistributionReviewSubmitSnapshot = {
-  mode: "DISTRIBUTION";
-  submittedAt: string;
-  submittedVersionId: string;
-  payloadId: string;
-  payloadProfile: string;
-  checksumSha256: string;
-  validationStatus: "VALID";
-  manifestSchemaVersion: string;
-  sourceTitle: string | null;
-  licenseName: string;
-  visibility: string;
-  allowDownload: boolean;
-};
-
-export function buildDistributionReviewSubmitSnapshot(input: {
-  submittedVersionId: string;
-  payloadId: string;
-  payloadProfile: string;
-  checksumSha256: string;
-  sourceTitle: string | null;
-  licenseName: string;
-  visibility: string;
-  allowDownload: boolean;
-}): DistributionReviewSubmitSnapshot {
-  return {
-    mode: "DISTRIBUTION",
-    submittedAt: new Date().toISOString(),
-    submittedVersionId: input.submittedVersionId,
-    payloadId: input.payloadId,
-    payloadProfile: input.payloadProfile,
-    checksumSha256: input.checksumSha256,
-    validationStatus: "VALID",
-    manifestSchemaVersion: DISTRIBUTION_MANIFEST_SCHEMA_VERSION,
-    sourceTitle: input.sourceTitle,
-    licenseName: input.licenseName,
-    visibility: input.visibility,
-    allowDownload: input.allowDownload,
-  };
-}
-
-export function parseDistributionReviewSubmitSnapshot(
-  value: unknown,
-): DistributionReviewSubmitSnapshot | null {
-  if (!value || typeof value !== "object") return null;
-  const raw = value as Record<string, unknown>;
-  if (raw.mode !== "DISTRIBUTION") return null;
-  if (typeof raw.submittedAt !== "string") return null;
-  if (typeof raw.submittedVersionId !== "string") return null;
-  if (typeof raw.payloadId !== "string") return null;
-  if (typeof raw.payloadProfile !== "string") return null;
-  if (typeof raw.checksumSha256 !== "string") return null;
-  if (raw.validationStatus !== "VALID") return null;
-  if (typeof raw.manifestSchemaVersion !== "string") return null;
-  if (typeof raw.licenseName !== "string") return null;
-
-  return {
-    mode: "DISTRIBUTION",
-    submittedAt: raw.submittedAt,
-    submittedVersionId: raw.submittedVersionId,
-    payloadId: raw.payloadId,
-    payloadProfile: raw.payloadProfile,
-    checksumSha256: raw.checksumSha256,
-    validationStatus: "VALID",
-    manifestSchemaVersion: raw.manifestSchemaVersion,
-    sourceTitle: typeof raw.sourceTitle === "string" ? raw.sourceTitle : null,
-    licenseName: raw.licenseName,
-    visibility: typeof raw.visibility === "string" ? raw.visibility : "PRIVATE",
-    allowDownload: raw.allowDownload !== false,
-  };
-}
+export type {
+  DistributionReviewSubmitSnapshot,
+} from "@/lib/distribution/distribution-submit-snapshot";
+export {
+  buildDistributionReviewSubmitSnapshot,
+  parseDistributionReviewSubmitSnapshot,
+} from "@/lib/distribution/distribution-submit-snapshot";
 
 export type DistributionSubmitCommitResult =
   | { error: "PROFILE_REQUIRED" }
@@ -171,11 +115,35 @@ export async function commitDistributionPackForReview(
     };
   }
 
+  const refreshedManifest = await refreshDistributionManifest({
+    packId,
+    versionId: version.id,
+    reason: "pre_submit",
+  });
+  if (!refreshedManifest) {
+    return {
+      error: "INCOMPLETE",
+      message: "Manifest를 갱신하지 못했습니다.",
+    };
+  }
+
+  const integrity = assertManifestIntegrity({
+    manifest: refreshedManifest,
+    payloadId: payload.id,
+    packId,
+    versionId: version.id,
+    checksumSha256: payload.checksumSha256,
+  });
+  if (!integrity.ok) {
+    return { error: "INCOMPLETE", message: integrity.message };
+  }
+
   const snapshot = buildDistributionReviewSubmitSnapshot({
     submittedVersionId: version.id,
     payloadId: payload.id,
     payloadProfile: payload.profile,
     checksumSha256: payload.checksumSha256,
+    manifestFingerprint: stableManifestFingerprint(refreshedManifest),
     sourceTitle: meta.sourceTitle,
     licenseName: meta.licenseName,
     visibility: meta.visibility,

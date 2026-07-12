@@ -357,6 +357,7 @@ model KnowledgePayload {
   generatorType     PayloadGeneratorType
   generatorVersion  String?
   originalFileName  String
+  /// S3-compatible object key (not a local filesystem path).
   storagePath       String
   mimeType          String
   fileSize          BigInt
@@ -376,6 +377,28 @@ model KnowledgePayload {
   @@unique([versionId])
   @@index([packId])
   @@index([checksumSha256])
+}
+
+enum PayloadCleanupStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+model PayloadStorageCleanupJob {
+  id           String               @id @default(cuid())
+  objectKey    String
+  payloadId    String?
+  reason       String
+  status       PayloadCleanupStatus @default(PENDING)
+  attemptCount Int                  @default(0)
+  lastError    String?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  completedAt  DateTime?
+
+  @@index([status, createdAt])
+  @@index([objectKey])
 }
 
 model PackDistributionMetadata {

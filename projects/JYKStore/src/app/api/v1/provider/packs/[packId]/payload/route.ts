@@ -51,6 +51,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { packId } = await context.params;
 
   try {
+    const { getPayloadLimitConfig } = await import("@/lib/distribution/payload-limit-config");
+    const maxBytes = getPayloadLimitConfig().maxZipBytes;
+    const contentLengthHeader = request.headers.get("content-length");
+    if (contentLengthHeader) {
+      const contentLength = Number.parseInt(contentLengthHeader, 10);
+      if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+        return jsonWithClientIdCookie(
+          {
+            error: `요청 크기가 최대(${maxBytes} bytes)를 초과했습니다.`,
+            code: "PAYLOAD_REQUEST_TOO_LARGE",
+          },
+          clientId,
+          { status: 413 },
+        );
+      }
+    }
+
     const form = await request.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
@@ -58,6 +75,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { error: "ZIP 파일이 필요합니다.", code: "PAYLOAD_FILE_REQUIRED" },
         clientId,
         { status: 400 },
+      );
+    }
+
+    if (typeof file.size === "number" && file.size > maxBytes) {
+      return jsonWithClientIdCookie(
+        {
+          error: `ZIP 파일이 최대 크기(${maxBytes} bytes)를 초과했습니다.`,
+          code: "PAYLOAD_FILE_TOO_LARGE",
+        },
+        clientId,
+        { status: 413 },
       );
     }
 

@@ -24,7 +24,7 @@
 .env
 .env*.local
 
-# immutable payload storage (P29)
+# leftover local payload dirs must not be used (Object Storage only)
 /storage/
 
 # debug

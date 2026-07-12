@@ -33,11 +33,18 @@ export type RuntimeReadiness = {
       warnings: string[];
     };
     database: DatabaseReadiness;
+    payloadStorage: {
+      ok: boolean;
+      configured: boolean;
+      bucketOk: boolean;
+      errors: string[];
+    };
   };
   configured: {
     databaseUrl: boolean;
     apiKeySecret: boolean;
     adminEmails: boolean;
+    payloadObjectStorage: boolean;
   };
 };
 
@@ -71,6 +78,8 @@ export async function checkDatabaseReady(db?: DatabaseProbe): Promise<DatabaseRe
 export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeReadiness> {
   const envCheck = evaluateRuntimeEnv();
   const database = await checkDatabaseReady(db);
+  const { probePayloadObjectStorage } = await import("@/lib/distribution/s3-payload-storage");
+  const payloadStorage = await probePayloadObjectStorage();
 
   const missingRequired = missingRequiredFromEnv(envCheck);
   const envOk = envCheck.ok;
@@ -79,9 +88,10 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
     databaseUrl: Boolean(process.env.DATABASE_URL?.trim()),
     apiKeySecret: Boolean(process.env.JYKSTORE_API_KEY_SECRET?.trim()),
     adminEmails: Boolean(process.env.JYKSTORE_ADMIN_EMAILS?.trim()),
+    payloadObjectStorage: payloadStorage.configured,
   };
 
-  const ok = envOk && database.ok;
+  const ok = envOk && database.ok && payloadStorage.ok;
 
   return {
     ok,
@@ -95,6 +105,12 @@ export async function getRuntimeReadiness(db?: DatabaseProbe): Promise<RuntimeRe
         warnings: envCheck.warnings,
       },
       database,
+      payloadStorage: {
+        ok: payloadStorage.ok,
+        configured: payloadStorage.configured,
+        bucketOk: payloadStorage.bucketOk,
+        errors: payloadStorage.errors,
+      },
     },
     configured,
   };

@@ -20,6 +20,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (result.error === "NOT_FOUND") {
       return jsonWithClientIdCookie({ error: "지식팩을 찾을 수 없습니다." }, clientId, { status: 404 });
     }
+    if (result.error === "PROFILE_REQUIRED") {
+      return jsonWithClientIdCookie(
+        { error: "제공자 프로필이 필요합니다.", code: "PROFILE_REQUIRED" },
+        clientId,
+        { status: 403 },
+      );
+    }
     if (result.error === "NOT_DRAFT") {
       return jsonWithClientIdCookie(
         { error: "초안(DRAFT) 상태에서만 검수 요청할 수 있습니다." },

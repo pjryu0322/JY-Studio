@@ -36,7 +36,10 @@ describe("payload-zip-validator", () => {
     const bytes = await zipBytes({ "../evil.txt": "x" });
     const result = await validateZipBytes(bytes);
     assert.equal(result.ok, false);
-    assert.ok(result.errors.some((e) => /traversal/i.test(e)));
+    assert.ok(
+      result.errors.some((e) => /traversal|relative path|\.\./i.test(e)),
+      result.errors.join("; "),
+    );
   });
 
   it("rejects absolute paths", async () => {
@@ -50,7 +53,10 @@ describe("payload-zip-validator", () => {
     const bytes = await zipBytes({ "C:/windows/system32/evil.txt": "x" });
     const result = await validateZipBytes(bytes);
     assert.equal(result.ok, false);
-    assert.ok(result.errors.some((e) => /drive-letter/i.test(e)));
+    assert.ok(
+      result.errors.some((e) => /drive-letter|absolute path/i.test(e)),
+      result.errors.join("; "),
+    );
   });
 
   it("rejects forbidden executable extensions", async () => {

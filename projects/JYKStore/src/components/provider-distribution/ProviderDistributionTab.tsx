@@ -196,10 +196,13 @@ export function ProviderDistributionTab({
             disabled={!editable}
             className="mt-2 min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm disabled:bg-slate-50"
           >
-            <option value="PRIVATE">PRIVATE</option>
-            <option value="UNLISTED">UNLISTED</option>
-            <option value="PUBLIC">PUBLIC</option>
+            <option value="PRIVATE">PRIVATE — 카탈로그·다운로드 비공개</option>
+            <option value="UNLISTED">UNLISTED — 목록 비노출, 직접 링크로 접근</option>
+            <option value="PUBLIC">PUBLIC — 카탈로그 노출</option>
           </select>
+          <p className="mt-1 text-xs text-store-muted">
+            승인 후에도 Provider가 선택한 공개범위가 유지됩니다.
+          </p>
         </div>
         <label className="flex min-h-[44px] items-center gap-2 text-sm text-slate-800">
           <input

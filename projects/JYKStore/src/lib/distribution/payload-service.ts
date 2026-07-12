@@ -6,14 +6,21 @@ import {
   type KnowledgePayload,
   type Prisma,
 } from "@prisma/client";
-import { LocalPayloadStorage } from "@/lib/distribution/local-payload-storage";
+import { sha256Hex } from "@/lib/distribution/payload-checksum";
 import { buildDistributionManifest } from "@/lib/distribution/payload-manifest";
+import {
+  createPayloadId,
+  refreshDistributionManifest,
+} from "@/lib/distribution/distribution-manifest-service";
+import { enqueuePayloadCleanupJob } from "@/lib/distribution/payload-cleanup-service";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
+import { getPayloadLimitConfig } from "@/lib/distribution/payload-limit-config";
+import { readAndVerifyPayloadObject } from "@/lib/distribution/payload-object-integrity";
+import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
 import type { PayloadStorage } from "@/lib/distribution/payload-storage";
 import {
   PAYLOAD_ALLOWED_EXTENSIONS,
   PAYLOAD_ALLOWED_MIME_TYPES,
-  PAYLOAD_MAX_ZIP_BYTES,
   generatorForProfile,
   isPayloadGeneratorType,
   isPayloadProfile,
@@ -23,6 +30,7 @@ import {
 } from "@/lib/distribution/payload-types";
 import { validatePayloadProfile } from "@/lib/distribution/payload-profile-validator";
 import { validateZipBytes } from "@/lib/distribution/payload-zip-validator";
+import { parseDistributionReviewSubmitSnapshot } from "@/lib/distribution/distribution-submit-snapshot";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
@@ -43,18 +51,16 @@ export type KnowledgePayloadPublicDto = {
   validationReport: unknown;
   manifest: unknown;
   isImmutable: boolean;
+  canDelete: boolean;
   uploadedAt: string;
 };
 
 function resolveMaxZipBytes(): number {
-  const raw = process.env.JYKSTORE_PAYLOAD_MAX_BYTES?.trim();
-  if (!raw) return PAYLOAD_MAX_ZIP_BYTES;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : PAYLOAD_MAX_ZIP_BYTES;
+  return getPayloadLimitConfig().maxZipBytes;
 }
 
 function getDefaultStorage(): PayloadStorage {
-  return new LocalPayloadStorage();
+  return getConfiguredPayloadStorage();
 }
 
 function extensionOfFileName(fileName: string): string {
@@ -72,6 +78,7 @@ function sanitizeOriginalFileName(fileName: string): string {
 
 export function toKnowledgePayloadPublicDto(
   payload: KnowledgePayload,
+  options?: { canDelete?: boolean },
 ): KnowledgePayloadPublicDto {
   return {
     id: payload.id,
@@ -89,6 +96,7 @@ export function toKnowledgePayloadPublicDto(
     validationReport: payload.validationReport,
     manifest: payload.manifestJson,
     isImmutable: payload.isImmutable,
+    canDelete: options?.canDelete ?? false,
     uploadedAt: payload.uploadedAt.toISOString(),
   };
 }
@@ -223,7 +231,7 @@ export async function uploadProviderPackPayload(input: {
     throw new PayloadServiceError(
       "PAYLOAD_FILE_TOO_LARGE",
       `ZIP 파일이 최대 크기(${maxBytes} bytes)를 초과했습니다.`,
-      400,
+      413,
     );
   }
 
@@ -263,7 +271,9 @@ export async function uploadProviderPackPayload(input: {
         ? "PAYLOAD_UNSAFE_PATH"
         : /too many entries/i.test(first)
           ? "PAYLOAD_TOO_MANY_ENTRIES"
-          : "PAYLOAD_INVALID_ZIP";
+          : /Suspicious compression/i.test(first)
+            ? "PAYLOAD_SUSPICIOUS_COMPRESSION_RATIO"
+            : "PAYLOAD_INVALID_ZIP";
     throw new PayloadServiceError(code, first, 400);
   }
 
@@ -286,12 +296,20 @@ export async function uploadProviderPackPayload(input: {
   }
 
   const storage = input.storage ?? getDefaultStorage();
-  const saved = await storage.save({
+  const payloadId = createPayloadId();
+  const checksumSha256 = sha256Hex(input.bytes);
+
+  let savedObjectKey: string | null = null;
+  const saved = await storage.put({
     packId: pack.packId,
     versionId: version.id,
+    payloadId,
     originalFileName,
+    mimeType: "application/zip",
     bytes: input.bytes,
+    checksumSha256,
   });
+  savedObjectKey = saved.objectKey;
 
   const validationReport = {
     profile: payloadProfile,
@@ -345,13 +363,14 @@ export async function uploadProviderPackPayload(input: {
   try {
     created = await prisma.knowledgePayload.create({
       data: {
+        id: payloadId,
         packId: pack.packId,
         versionId: version.id,
         profile: payloadProfile,
         generatorType: generatorType as PrismaPayloadGeneratorType,
         generatorVersion: input.generatorVersion?.trim() || null,
         originalFileName,
-        storagePath: saved.storagePath,
+        storagePath: saved.objectKey,
         mimeType: "application/zip",
         fileSize: BigInt(saved.fileSize),
         checksumSha256: saved.checksumSha256,
@@ -363,7 +382,27 @@ export async function uploadProviderPackPayload(input: {
       },
     });
   } catch (error) {
-    await storage.delete(saved.storagePath).catch(() => undefined);
+    try {
+      await storage.delete({ objectKey: savedObjectKey });
+    } catch {
+      await enqueuePayloadCleanupJob({
+        objectKey: savedObjectKey,
+        payloadId,
+        reason: "db_create_failed_s3_delete_failed",
+      });
+    }
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "P2002"
+    ) {
+      throw new PayloadServiceError(
+        "PAYLOAD_ALREADY_REGISTERED",
+        "이미 Payload가 등록되어 있습니다. 삭제 후 다시 등록하세요.",
+        409,
+      );
+    }
     throw error;
   }
 
@@ -398,7 +437,16 @@ export async function uploadProviderPackPayload(input: {
     },
   });
 
-  return { payload: toKnowledgePayloadPublicDto(created) };
+  await refreshDistributionManifest({
+    packId: pack.packId,
+    versionId: version.id,
+    reason: "payload_uploaded",
+  });
+
+  const refreshed = await prisma.knowledgePayload.findUnique({ where: { id: created.id } });
+  return {
+    payload: toKnowledgePayloadPublicDto(refreshed ?? created, { canDelete: true }),
+  };
 }
 
 export async function getProviderPackPayload(input: {
@@ -427,7 +475,41 @@ export async function getProviderPackPayload(input: {
   const payload = await prisma.knowledgePayload.findUnique({
     where: { versionId: version.id },
   });
-  return { payload: payload ? toKnowledgePayloadPublicDto(payload) : null };
+  if (!payload) {
+    return { payload: null };
+  }
+
+  const canDelete =
+    pack.status === PackStatus.DRAFT &&
+    !(await payloadHasSubmissionHistory({
+      packId: pack.packId,
+      payloadId: payload.id,
+      versionId: version.id,
+    }));
+
+  return { payload: toKnowledgePayloadPublicDto(payload, { canDelete }) };
+}
+
+export async function payloadHasSubmissionHistory(input: {
+  packId: string;
+  payloadId: string;
+  versionId: string;
+}): Promise<boolean> {
+  const reviews = await prisma.packReview.findMany({
+    where: { packId: input.packId },
+    select: { submitSnapshot: true },
+  });
+  for (const review of reviews) {
+    const snapshot = parseDistributionReviewSubmitSnapshot(review.submitSnapshot);
+    if (!snapshot) continue;
+    if (
+      snapshot.payloadId === input.payloadId ||
+      snapshot.submittedVersionId === input.versionId
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export async function deleteProviderPackPayload(input: {
@@ -449,9 +531,32 @@ export async function deleteProviderPackPayload(input: {
     throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "등록된 Payload가 없습니다.", 404);
   }
 
+  if (
+    await payloadHasSubmissionHistory({
+      packId: pack.packId,
+      payloadId: payload.id,
+      versionId: version.id,
+    })
+  ) {
+    throw new PayloadServiceError(
+      "PAYLOAD_IMMUTABLE_AFTER_SUBMISSION",
+      "검수 이력에 포함된 Payload는 삭제할 수 없습니다. 새 버전을 생성해 보완하세요.",
+      409,
+    );
+  }
+
   const storage = input.storage ?? getDefaultStorage();
+  const objectKey = payload.storagePath;
   await prisma.knowledgePayload.delete({ where: { id: payload.id } });
-  await storage.delete(payload.storagePath).catch(() => undefined);
+  try {
+    await storage.delete({ objectKey });
+  } catch {
+    await enqueuePayloadCleanupJob({
+      objectKey,
+      payloadId: payload.id,
+      reason: "payload_db_deleted_s3_delete_failed",
+    });
+  }
 
   await recordProviderAudit({
     action: AuditAction.PAYLOAD_DELETED,
@@ -509,7 +614,12 @@ export async function readOwnedPayloadBytes(input: {
   }
 
   const storage = input.storage ?? getDefaultStorage();
-  const bytes = await storage.read(payload.storagePath);
+  const { bytes } = await readAndVerifyPayloadObject({
+    storage,
+    objectKey: payload.storagePath,
+    expectedChecksumSha256: payload.checksumSha256,
+    expectedFileSize: Number(payload.fileSize),
+  });
 
   await recordProviderAudit({
     action: AuditAction.PAYLOAD_DOWNLOADED,
@@ -566,7 +676,12 @@ export async function readAdminPayloadBytes(input: {
   }
 
   const storage = input.storage ?? getDefaultStorage();
-  const bytes = await storage.read(payload.storagePath);
+  const { bytes } = await readAndVerifyPayloadObject({
+    storage,
+    objectKey: payload.storagePath,
+    expectedChecksumSha256: payload.checksumSha256,
+    expectedFileSize: Number(payload.fileSize),
+  });
 
   await recordProviderAudit({
     action: AuditAction.PAYLOAD_DOWNLOADED,
@@ -599,6 +714,7 @@ export async function readPublicCatalogPayloadBytes(input: {
   originalFileName: string;
   checksumSha256: string;
   payloadId: string;
+  visibility: "PRIVATE" | "PUBLIC" | "UNLISTED";
 }> {
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
@@ -621,12 +737,24 @@ export async function readPublicCatalogPayloadBytes(input: {
   if (!payload || payload.validationStatus !== PayloadValidationStatus.VALID) {
     throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 Payload가 없습니다.", 404);
   }
-  if (!meta || meta.visibility !== "PUBLIC" || !meta.allowDownload) {
+  if (!meta || !meta.allowDownload) {
+    throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
+  }
+  // PRIVATE: never public download. PUBLIC/UNLISTED: allow when allowDownload.
+  if (meta.visibility === "PRIVATE") {
+    throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
+  }
+  if (meta.visibility !== "PUBLIC" && meta.visibility !== "UNLISTED") {
     throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
   }
 
   const storage = input.storage ?? getDefaultStorage();
-  const bytes = await storage.read(payload.storagePath);
+  const { bytes } = await readAndVerifyPayloadObject({
+    storage,
+    objectKey: payload.storagePath,
+    expectedChecksumSha256: payload.checksumSha256,
+    expectedFileSize: Number(payload.fileSize),
+  });
 
   await recordProviderAudit({
     action: AuditAction.PAYLOAD_DOWNLOADED,
@@ -646,6 +774,7 @@ export async function readPublicCatalogPayloadBytes(input: {
     originalFileName: payload.originalFileName,
     checksumSha256: payload.checksumSha256,
     payloadId: payload.id,
+    visibility: meta.visibility,
   };
 }
 

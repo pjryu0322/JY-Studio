@@ -1,7 +1,7 @@
 import {
   parseDistributionReviewSubmitSnapshot,
   type DistributionReviewSubmitSnapshot,
-} from "@/lib/distribution/distribution-submit-service";
+} from "@/lib/distribution/distribution-submit-snapshot";
 
 export type LegacyProviderReviewSubmitSnapshot = {
   submittedAt: string;
