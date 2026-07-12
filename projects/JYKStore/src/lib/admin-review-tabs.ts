@@ -1,7 +1,6 @@
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import { PackReviewStatus } from "@/lib/pack-review-status";
 import {
-  ADMIN_REVIEW_TAB_ADVANCED,
   ADMIN_REVIEW_TAB_PACKAGE,
   ADMIN_REVIEW_TAB_SOURCES,
   ADMIN_REVIEW_TAB_WARNINGS,
@@ -12,7 +11,6 @@ export const ADMIN_REVIEW_EVIDENCE_TAB_IDS = [
   "package",
   "warnings",
   "documents",
-  "advanced",
 ] as const;
 
 export type AdminReviewEvidenceTabId =
@@ -66,8 +64,6 @@ export function adminReviewEvidenceTabLabel(
       return ADMIN_REVIEW_TAB_WARNINGS;
     case "documents":
       return ADMIN_REVIEW_TAB_SOURCES;
-    case "advanced":
-      return ADMIN_REVIEW_TAB_ADVANCED;
   }
 }
 

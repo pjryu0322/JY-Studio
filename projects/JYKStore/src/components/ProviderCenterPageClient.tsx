@@ -10,7 +10,6 @@ import { isProviderAccountRole, isAdminAccountRole } from "@/lib/account-role";
 import { fetchAuthSession } from "@/lib/auth-api";
 import { buildProviderOnboardingSteps } from "@/lib/provider-onboarding-steps";
 import {
-  fetchProviderKnowledgeUnitDraftsApi,
   fetchProviderPack,
   fetchProviderPacks,
   fetchProviderProfile,
@@ -32,7 +31,7 @@ function packDetailActions(pack: ProviderPackListItemDto) {
   const detail = providerPackDetailPath(pack.packId);
   const actions: { label: string; href: string }[] = [{ label: "편집", href: detail }];
   if (pack.status === "DRAFT") {
-    actions.push({ label: "GitHub 자동수집", href: `${detail}?tab=source` });
+    actions.push({ label: "기존 자료", href: `${detail}?tab=materials` });
     actions.push({ label: "검수 요청", href: `${detail}?tab=review` });
   }
   if (pack.status === "REVIEWING") {
@@ -52,7 +51,6 @@ export function ProviderCenterPageClient() {
   const [profile, setProfile] = useState<ProviderProfileDto | null>(null);
   const [packs, setPacks] = useState<ProviderPackListItemDto[]>([]);
   const [sourceDocumentCount, setSourceDocumentCount] = useState(0);
-  const [knowledgeUnitDraftCount, setKnowledgeUnitDraftCount] = useState(0);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -86,23 +84,16 @@ export function ProviderCenterPageClient() {
       setPacks(packsRes.items);
 
       let sources = 0;
-      let drafts = 0;
       const primary = packsRes.items[0];
       if (primary) {
         try {
           const detail = await fetchProviderPack(primary.packId);
           sources = detail.pack.versions.flatMap((v) => v.sourceDocuments).length;
-          if (primary.status === "DRAFT") {
-            const draftRes = await fetchProviderKnowledgeUnitDraftsApi(primary.packId);
-            drafts = draftRes.items.length;
-          }
         } catch {
           sources = 0;
-          drafts = 0;
         }
       }
       setSourceDocumentCount(sources);
-      setKnowledgeUnitDraftCount(drafts);
       setView("ready");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Provider Center를 불러오지 못했습니다.");
@@ -125,7 +116,6 @@ export function ProviderCenterPageClient() {
         hasProfile: Boolean(profile),
         packCount: packs.length,
         sourceDocumentCount,
-        knowledgeUnitDraftCount,
         hasReviewingPack,
         hasPublishedOrVerifiedPack,
         primaryPackId: packs[0]?.packId,
@@ -134,7 +124,6 @@ export function ProviderCenterPageClient() {
       profile,
       packs,
       sourceDocumentCount,
-      knowledgeUnitDraftCount,
       hasReviewingPack,
       hasPublishedOrVerifiedPack,
     ],

@@ -14,25 +14,22 @@ function readSource(relativePath: string): string {
 }
 
 describe("provider final review submit pipeline", () => {
-  it("runs ordered final preparation before REVIEWING", () => {
+  it("validates existing Builder data only before REVIEWING", () => {
     const service = readSource("src/lib/auto-pipeline/provider-final-review-submit-service.ts");
     const submit = readSource("src/lib/provider-pack-service.ts");
 
-    assert.ok(service.includes("validateAllSourceDocumentsForPack"));
-    assert.ok(service.includes("await evaluatePackStructureQuality"));
-    assert.ok(service.includes("await regenerateAutoChunksForPack"));
-    assert.ok(service.includes("await evaluatePackChunkQuality"));
-    assert.ok(service.includes("await generateRetrievalEvaluationCasesForPack"));
-    assert.ok(service.includes("await runRetrievalEvaluationForPack"));
-    assert.ok(service.includes("await evaluateReleaseGateForPack"));
-
-    const structureIdx = service.indexOf("await evaluatePackStructureQuality");
-    const chunkIdx = service.indexOf("await evaluatePackChunkQuality");
-    const casesIdx = service.indexOf("await generateRetrievalEvaluationCasesForPack");
-    const runIdx = service.indexOf("await runRetrievalEvaluationForPack");
-    const gateIdx = service.indexOf("await evaluateReleaseGateForPack");
-    assert.ok(structureIdx > 0 && chunkIdx > structureIdx);
-    assert.ok(casesIdx > chunkIdx && runIdx > casesIdx && gateIdx > runIdx);
+    assert.ok(service.includes("loadStructureQualitySummaryForPack"));
+    assert.ok(service.includes("loadChunkQualitySummaryForPack"));
+    assert.ok(service.includes("loadRetrievalEvaluationSummaryForPack"));
+    assert.ok(service.includes("loadReleaseGateSummaryForPack"));
+    assert.ok(service.includes("evaluateReleaseGateForPack"));
+    assert.ok(!service.includes("validateAllSourceDocumentsForPack"));
+    assert.ok(!service.includes("regenerateAutoChunksForPack"));
+    assert.ok(!service.includes("generateRetrievalEvaluationCasesForPack"));
+    assert.ok(!service.includes("runRetrievalEvaluationForPack"));
+    assert.ok(!service.includes("evaluatePackStructureQuality"));
+    assert.ok(!service.includes("evaluatePackChunkQuality"));
+    assert.ok(service.includes("LEGACY_BUILDER_DISABLED_MESSAGE"));
 
     assert.ok(submit.includes("prepareProviderPackForFinalReviewSubmit"));
     assert.ok(submit.includes("buildProviderReviewSubmitSnapshot"));
@@ -46,14 +43,12 @@ describe("provider final review submit pipeline", () => {
     assert.ok(service.includes('blockingStage: "retrieval_evaluation"'));
   });
 
-  it("blocks immediately when chunk regeneration fails", () => {
+  it("blocks when active chunks are missing without regenerating", () => {
     const service = readSource("src/lib/auto-pipeline/provider-final-review-submit-service.ts");
-    const regenIdx = service.indexOf("await regenerateAutoChunksForPack");
-    const errorBlockIdx = service.indexOf('if ("error" in chunks)');
-    const qualityIdx = service.indexOf("await evaluatePackChunkQuality");
-    assert.ok(regenIdx > 0 && errorBlockIdx > regenIdx && qualityIdx > errorBlockIdx);
     assert.ok(service.includes('blockingStage: "chunk_quality"'));
-    assert.ok(service.includes("검수용 Chunk가 생성되지 않아 제출할 수 없습니다."));
+    assert.ok(service.includes("활성 Chunk가 없어 검수 요청을 제출할 수 없습니다."));
+    assert.ok(service.includes("LEGACY_BUILDER_DISABLED_MESSAGE"));
+    assert.ok(!service.includes("await regenerateAutoChunksForPack"));
   });
 
   it("scopes snapshot to latest submitted version", () => {

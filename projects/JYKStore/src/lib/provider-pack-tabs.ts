@@ -1,12 +1,13 @@
-export const PROVIDER_PACK_TAB_IDS = [
-  "basic",
-  "source",
-  "draft",
-  "inspection",
-  "review",
-] as const;
+export const PROVIDER_PACK_TAB_IDS = ["basic", "materials", "review"] as const;
 
 export type ProviderPackTabId = (typeof PROVIDER_PACK_TAB_IDS)[number];
+
+/** Legacy Builder tab ids — map to safe post-freeze tabs. */
+const LEGACY_PROVIDER_PACK_TAB_REDIRECT: Record<string, ProviderPackTabId> = {
+  source: "materials",
+  draft: "materials",
+  inspection: "review",
+};
 
 export function isProviderPackTabId(value: string): value is ProviderPackTabId {
   return (PROVIDER_PACK_TAB_IDS as readonly string[]).includes(value);
@@ -16,28 +17,20 @@ export function resolveDefaultProviderPackTab(input: {
   created: boolean;
   status: string;
   sourceDocumentCount: number;
-  knowledgeUnitDraftCount: number;
-  inspectionComplete?: boolean;
 }): ProviderPackTabId {
-  if (input.created && input.sourceDocumentCount === 0) {
-    return "source";
-  }
   if (input.status === "REVIEWING" || input.status === "PUBLISHED" || input.status === "VERIFIED") {
     return "review";
   }
   if (input.status !== "DRAFT") {
     return "review";
   }
+  if (input.created) {
+    return "basic";
+  }
   if (input.sourceDocumentCount === 0) {
-    return "source";
+    return "materials";
   }
-  if (input.knowledgeUnitDraftCount === 0) {
-    return "draft";
-  }
-  if (input.inspectionComplete) {
-    return "review";
-  }
-  return "inspection";
+  return "review";
 }
 
 export function resolveProviderPackTabFromLocation(input: {
@@ -48,13 +41,20 @@ export function resolveProviderPackTabFromLocation(input: {
   if (input.tabParam && isProviderPackTabId(input.tabParam)) {
     return input.tabParam;
   }
+  if (input.tabParam && LEGACY_PROVIDER_PACK_TAB_REDIRECT[input.tabParam]) {
+    return LEGACY_PROVIDER_PACK_TAB_REDIRECT[input.tabParam];
+  }
 
   const normalizedHash = input.hash.trim().toLowerCase();
-  if (normalizedHash === "#github-auto-collect") {
-    return "source";
+  if (
+    normalizedHash === "#github-auto-collect" ||
+    normalizedHash === "#pack-materials" ||
+    normalizedHash === "#pack-sources"
+  ) {
+    return "materials";
   }
   if (normalizedHash === "#pack-inspection") {
-    return "inspection";
+    return "review";
   }
   if (normalizedHash === "#pack-review") {
     return "review";

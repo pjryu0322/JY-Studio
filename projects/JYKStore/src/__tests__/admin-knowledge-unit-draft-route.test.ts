@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { NextRequest } from "next/server";
 import { GET as listDraftsGET } from "@/app/api/v1/admin/knowledge-unit-drafts/route";
 import { POST as decideDraftPOST } from "@/app/api/v1/admin/knowledge-unit-drafts/[draftId]/decision/route";
+import { LEGACY_BUILDER_DISABLED_ERROR } from "@/lib/legacy-builder-disabled";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(here, "..", "..");
@@ -30,18 +31,13 @@ describe("admin knowledge unit draft route contract", () => {
     assert.ok(guardAt >= 0 && listAt > guardAt);
   });
 
-  it("POST decision route calls guard before decide service", () => {
+  it("POST decision route freezes Builder with 410 after admin guard", () => {
     const source = readRoute(decisionRoutePath);
-    assert.ok(source.includes("rejectUnlessAdmin(request, clientId)"));
-    const guardAt = source.indexOf("rejectUnlessAdmin(request, clientId)");
-    const decideAt = source.indexOf("decideAdminKnowledgeUnitDraft(");
-    assert.ok(guardAt >= 0 && decideAt > guardAt);
-  });
-
-  it("POST decision route maps AdminKnowledgeUnitDraftError status", () => {
-    const source = readRoute(decisionRoutePath);
-    assert.ok(source.includes("error instanceof AdminKnowledgeUnitDraftError"));
-    assert.ok(source.includes("status: error.status"));
+    assert.ok(source.includes("requireAdminSession"));
+    assert.ok(source.includes("legacyBuilderDisabledBody"));
+    assert.ok(source.includes("status: 410"));
+    assert.ok(!source.includes("decideAdminKnowledgeUnitDraft("));
+    assert.ok(!source.includes("AdminKnowledgeUnitDraftError"));
   });
 });
 
@@ -55,7 +51,7 @@ describe("admin knowledge unit draft route handlers", () => {
     assert.equal(body.error.code, "ADMIN_AUTH_REQUIRED");
   });
 
-  it("POST /admin/knowledge-unit-drafts/[draftId]/decision rejects non-admin before service call", async () => {
+  it("POST /admin/knowledge-unit-drafts/[draftId]/decision rejects non-admin before freeze", async () => {
     const request = new NextRequest(
       "http://localhost/api/v1/admin/knowledge-unit-drafts/draft-1/decision",
       {
@@ -91,5 +87,11 @@ describe("admin knowledge unit draft route handlers", () => {
     assert.equal(response.status, 401);
     const body = (await response.json()) as { error: { code: string } };
     assert.equal(body.error.code, "ADMIN_AUTH_REQUIRED");
+  });
+
+  it("exposes LEGACY_BUILDER_DISABLED error code for freeze responses", () => {
+    assert.equal(LEGACY_BUILDER_DISABLED_ERROR, "LEGACY_BUILDER_DISABLED");
+    const source = readRoute(decisionRoutePath);
+    assert.ok(source.includes("legacyBuilderDisabledBody"));
   });
 });

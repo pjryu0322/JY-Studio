@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AdminReviewAcceptTab } from "@/components/AdminReviewAcceptTab";
-import { AdminReviewAdvancedActionsTab } from "@/components/AdminReviewAdvancedActionsTab";
 import { AdminReviewEvidenceTabs } from "@/components/AdminReviewEvidenceTabs";
 import { AdminReviewPackageSnapshotTab } from "@/components/AdminReviewPackageSnapshotTab";
 import { AdminReviewPageHeader } from "@/components/AdminReviewPageHeader";
@@ -85,18 +84,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
           <AdminReviewWarningIssuesTab detail={detail} />
         ) : null}
         {evidenceTab === "documents" ? (
-          <AdminReviewSourceDocumentsTab
-            packId={packId}
-            detail={detail}
-            onUpdated={setDetail}
-          />
-        ) : null}
-        {evidenceTab === "advanced" ? (
-          <AdminReviewAdvancedActionsTab
-            packId={packId}
-            detail={detail}
-            onUpdated={setDetail}
-          />
+          <AdminReviewSourceDocumentsTab packId={packId} detail={detail} />
         ) : null}
       </section>
     </div>

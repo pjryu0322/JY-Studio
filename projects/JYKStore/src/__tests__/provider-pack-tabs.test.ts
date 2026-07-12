@@ -6,47 +6,34 @@ import {
 } from "../lib/provider-pack-tabs.ts";
 
 describe("resolveDefaultProviderPackTab", () => {
-  it("opens source tab after create when no documents", () => {
+  it("opens basic tab after create when no documents", () => {
     assert.equal(
       resolveDefaultProviderPackTab({
         created: true,
         status: "DRAFT",
         sourceDocumentCount: 0,
-        knowledgeUnitDraftCount: 0,
       }),
-      "source",
+      "basic",
     );
   });
 
-  it("opens draft tab when sources exist without drafts", () => {
+  it("opens materials tab when DRAFT has no sources", () => {
     assert.equal(
       resolveDefaultProviderPackTab({
         created: false,
         status: "DRAFT",
-        sourceDocumentCount: 2,
-        knowledgeUnitDraftCount: 0,
+        sourceDocumentCount: 0,
       }),
-      "draft",
+      "materials",
     );
   });
 
-  it("opens inspection tab when drafts exist and inspection incomplete", () => {
+  it("opens review tab when DRAFT has sources or is reviewing", () => {
     assert.equal(
       resolveDefaultProviderPackTab({
         created: false,
         status: "DRAFT",
         sourceDocumentCount: 2,
-        knowledgeUnitDraftCount: 3,
-      }),
-      "inspection",
-    );
-    assert.equal(
-      resolveDefaultProviderPackTab({
-        created: false,
-        status: "DRAFT",
-        sourceDocumentCount: 2,
-        knowledgeUnitDraftCount: 3,
-        inspectionComplete: true,
       }),
       "review",
     );
@@ -55,7 +42,6 @@ describe("resolveDefaultProviderPackTab", () => {
         created: false,
         status: "REVIEWING",
         sourceDocumentCount: 1,
-        knowledgeUnitDraftCount: 1,
       }),
       "review",
     );
@@ -63,14 +49,14 @@ describe("resolveDefaultProviderPackTab", () => {
 });
 
 describe("resolveProviderPackTabFromLocation", () => {
-  it("maps legacy hash anchors to tabs", () => {
+  it("maps legacy hash anchors and tabs to freeze-era tabs", () => {
     assert.equal(
       resolveProviderPackTabFromLocation({
         tabParam: null,
         hash: "#github-auto-collect",
         fallback: "basic",
       }),
-      "source",
+      "materials",
     );
     assert.equal(
       resolveProviderPackTabFromLocation({
@@ -78,7 +64,7 @@ describe("resolveProviderPackTabFromLocation", () => {
         hash: "#pack-inspection",
         fallback: "basic",
       }),
-      "inspection",
+      "review",
     );
     assert.equal(
       resolveProviderPackTabFromLocation({
@@ -88,16 +74,40 @@ describe("resolveProviderPackTabFromLocation", () => {
       }),
       "review",
     );
-  });
-
-  it("prefers tab query over hash", () => {
+    assert.equal(
+      resolveProviderPackTabFromLocation({
+        tabParam: "source",
+        hash: "",
+        fallback: "basic",
+      }),
+      "materials",
+    );
     assert.equal(
       resolveProviderPackTabFromLocation({
         tabParam: "draft",
+        hash: "",
+        fallback: "basic",
+      }),
+      "materials",
+    );
+    assert.equal(
+      resolveProviderPackTabFromLocation({
+        tabParam: "inspection",
+        hash: "",
+        fallback: "basic",
+      }),
+      "review",
+    );
+  });
+
+  it("prefers current tab query over hash", () => {
+    assert.equal(
+      resolveProviderPackTabFromLocation({
+        tabParam: "materials",
         hash: "#pack-review",
         fallback: "basic",
       }),
-      "draft",
+      "materials",
     );
   });
 });

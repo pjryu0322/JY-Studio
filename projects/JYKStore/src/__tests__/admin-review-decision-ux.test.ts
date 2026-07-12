@@ -580,16 +580,16 @@ describe("admin review decision state", () => {
 });
 
 describe("admin review decision UX wiring", () => {
-  it("puts decision card above evidence tabs", () => {
+  it("puts decision card above evidence tabs without advanced Builder actions", () => {
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
-    const advanced = readSource("src/components/AdminReviewAdvancedActionsTab.tsx");
-    const sections = readSource("src/components/AdminReviewDetailSections.tsx");
     const sources = readSource("src/components/AdminReviewSourceDocuments.tsx");
 
     assert.ok(page.includes("AdminReviewAcceptTab"));
     assert.ok(page.includes("AdminReviewEvidenceTabs"));
     assert.ok(page.includes("AdminReviewReceiptInfoCard"));
+    assert.ok(!page.includes("AdminReviewAdvancedActionsTab"));
+    assert.ok(!page.includes("AdminReviewDetailSections"));
     assert.ok(!page.includes("AdminReviewDecisionPanel"));
     assert.ok(!page.includes("AdminReviewInspectionSummary"));
     assert.ok(accept.includes("ADMIN_REVIEW_DECISION_TITLE"));
@@ -598,12 +598,10 @@ describe("admin review decision UX wiring", () => {
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_APPROVE"));
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_REJECT"));
     assert.ok(accept.includes("canApproveAdminReview"));
-    assert.ok(advanced.includes("ADMIN_REVIEW_CTA_RELEASE_GATE"));
-    assert.ok(advanced.includes("ADMIN_REVIEW_CTA_REFRESH_ALL"));
-    assert.ok(advanced.includes("refreshAdminReviewReadinessApi"));
-    assert.ok(sections.includes("구조/품질 상세 보기"));
-    assert.ok(sections.includes("고급 도구"));
-    assert.ok(sections.includes("<details"));
+    assert.ok(!accept.includes("ADMIN_REVIEW_CTA_RELEASE_GATE"));
+    assert.ok(!accept.includes("refreshAdminReviewReadinessApi"));
+    assert.ok(!sources.includes("전체 재검증"));
+    assert.ok(!sources.includes("재검증"));
     assert.ok(sources.includes("원문 보기") || sources.includes("ADMIN_REVIEW_VIEW_SOURCE"));
     assert.equal(ADMIN_REVIEW_CTA_RELEASE_GATE, "릴리스 게이트 재점검");
     assert.equal(ADMIN_REVIEW_CTA_APPROVE, "승인 및 공개");

@@ -389,11 +389,12 @@ describe("admin knowledge unit draft activation service", () => {
 });
 
 describe("admin knowledge unit draft activation route", () => {
-  it("POST activate route uses rejectUnlessAdmin before service", () => {
+  it("POST activate route freezes Builder with 410 after admin guard", () => {
     const source = readFileSync(activateRoutePath, "utf8");
-    const guardAt = source.indexOf("rejectUnlessAdmin(request, clientId)");
-    const activateAt = source.indexOf("activateAdminKnowledgeUnitDraft(");
-    assert.ok(guardAt >= 0 && activateAt > guardAt);
+    assert.ok(source.includes("requireAdminSession"));
+    assert.ok(source.includes("legacyBuilderDisabledBody"));
+    assert.ok(source.includes("status: 410"));
+    assert.ok(!source.includes("activateAdminKnowledgeUnitDraft("));
   });
 
   it("POST activate rejects non-admin requests", async () => {

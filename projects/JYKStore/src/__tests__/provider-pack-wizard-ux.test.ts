@@ -12,36 +12,37 @@ function readSource(relativePath: string): string {
 }
 
 describe("provider pack wizard UX sources", () => {
-  it("renders wizard source step before inspection and review in editor", () => {
+  it("renders freeze-era tabs basic → materials → review in editor", () => {
     const editor = readSource("src/components/ProviderPackEditor.tsx");
-    const sourceIdx = editor.indexOf('activeTab === "source"');
-    const inspectionIdx = editor.indexOf('activeTab === "inspection"');
+    const basicIdx = editor.indexOf('activeTab === "basic"');
+    const materialsIdx = editor.indexOf('activeTab === "materials"');
     const reviewIdx = editor.indexOf('activeTab === "review"');
-    assert.ok(sourceIdx >= 0);
-    assert.ok(inspectionIdx >= 0);
+    assert.ok(basicIdx >= 0);
+    assert.ok(materialsIdx >= 0);
     assert.ok(reviewIdx >= 0);
-    assert.ok(sourceIdx < inspectionIdx);
-    assert.ok(inspectionIdx < reviewIdx);
+    assert.ok(basicIdx < materialsIdx);
+    assert.ok(materialsIdx < reviewIdx);
     assert.ok(editor.includes("ProviderPackTabs"));
     assert.ok(editor.includes("ProviderPackBasicInfoTab"));
-    assert.ok(editor.includes("ProviderPackInspectionTab"));
+    assert.ok(editor.includes("ProviderPackMaterialsTab"));
     assert.ok(editor.includes("ProviderPackReviewTab"));
+    assert.ok(!editor.includes("ProviderPackInspectionTab"));
+    assert.ok(!editor.includes('activeTab === "source"'));
+    assert.ok(!editor.includes('activeTab === "inspection"'));
   });
 
-  it("hides technical github options behind advanced settings", () => {
-    const panel = readSource("src/components/ProviderGitHubAutoCollectPanel.tsx");
-    assert.ok(panel.includes("PROVIDER_GITHUB_ADVANCED_SETTINGS_EXPAND"));
-    assert.ok(!panel.includes(">crawlMode<"));
-    assert.ok(!panel.includes(">sourceCodeAnalysis<"));
-    assert.ok(!panel.includes(">maxCandidateFiles<"));
-    assert.ok(!panel.includes(">maxFilesToFetch<"));
+  it("does not mount legacy github auto-collect builder UI", () => {
+    const editor = readSource("src/components/ProviderPackEditor.tsx");
+    assert.ok(!editor.includes("ProviderGitHubAutoCollectPanel"));
+    assert.ok(!editor.includes("ProviderPackSourceStep"));
+    assert.ok(!editor.includes("ProviderPackDraftTab"));
   });
 
-  it("separates github and manual source registration", () => {
-    const sourceStep = readSource("src/components/ProviderPackSourceStep.tsx");
-    assert.ok(sourceStep.includes("PROVIDER_PACK_SOURCE_METHOD_GITHUB"));
-    assert.ok(sourceStep.includes("PROVIDER_PACK_SOURCE_METHOD_MANUAL"));
-    assert.ok(sourceStep.includes("wizardMode"));
-    assert.ok(!sourceStep.includes("ProviderSourceDocumentForm") || sourceStep.includes('method === "manual"'));
+  it("materials tab is read-only confirmation of existing sources", () => {
+    const materials = readSource("src/components/ProviderPackMaterialsTab.tsx");
+    assert.ok(materials.includes("PROVIDER_PACK_MATERIALS_TITLE"));
+    assert.ok(materials.includes("PROVIDER_PACK_MATERIALS_HINT"));
+    assert.ok(!materials.includes("ProviderGitHubAutoCollectPanel"));
+    assert.ok(!materials.includes("ProviderSourceDocumentForm"));
   });
 });

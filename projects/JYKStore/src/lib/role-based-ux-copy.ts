@@ -1,9 +1,5 @@
 /** Account / Provider role UX copy (testable without React). */
 
-export const ACCOUNT_GUEST_TITLE = "게스트 모드";
-export const ACCOUNT_GUEST_DESCRIPTION =
-  "현재 기기 기준으로 테스트 중입니다. 로그인 기능은 다음 단계에서 제공됩니다.";
-
 export const ACCOUNT_SECTION_BASIC = "기본 사용";
 export const ACCOUNT_SECTION_ROLES = "내 역할";
 export const ACCOUNT_SECTION_ROLE_REGISTRATION = "역할 계정 등록";
@@ -28,7 +24,7 @@ export const ACCOUNT_REGISTER_ROLE_ADMIN_HINT = "지식팩 검수·승인 및 �
 export const PROVIDER_CENTER_PROFILE_LINK_LABEL = "프로필 관리";
 
 export const PROVIDER_CENTER_TAGLINE =
-  "제품·솔루션 문서와 공개 GitHub 저장소를 기반으로 지식팩 초안을 생성합니다.";
+  "지식팩 기본정보를 관리하고 검수 요청·공개 상태를 확인합니다.";
 
 export const PROVIDER_CENTER_BEFORE_PROFILE_TITLE = "제공자 권한이 필요합니다.";
 export const PROVIDER_CENTER_BEFORE_PROFILE_BODY =
@@ -50,34 +46,58 @@ export const PROVIDER_PACK_CREATE_AUTO_ID_HINT =
 export const PROVIDER_PACK_CREATED_BANNER_TITLE = "지식팩 초안 생성 완료";
 export const PROVIDER_PACK_CREATED_ID_PREFIX = "JYKStore가 지식팩 ID를 발급했습니다:";
 export const PROVIDER_PACK_CREATED_NEXT_TASK =
-  "다음 할 일: GitHub URL 또는 문서를 등록해 자동수집을 실행하세요.";
-export const PROVIDER_PACK_CREATED_COLLECT_CTA = "GitHub/문서 자동수집으로 이동";
+  "다음 할 일: 기본정보를 확인한 뒤 기존 자료를 검토하고 검수 요청을 준비하세요.";
 export const PROVIDER_PACK_ID_LABEL = "지식팩 ID";
 
 export const PROVIDER_PACK_WIZARD_BASIC_STEP = "기본정보";
-export const PROVIDER_PACK_WIZARD_SOURCE_STEP = "자료 등록";
-export const PROVIDER_PACK_WIZARD_DRAFT_STEP = "참조지식 생성";
-export const PROVIDER_PACK_WIZARD_INSPECTION_STEP = "지식팩 점검";
+export const PROVIDER_PACK_WIZARD_MATERIALS_STEP = "기존 자료";
+/** @deprecated Builder freeze */
+export const PROVIDER_PACK_WIZARD_SOURCE_STEP = PROVIDER_PACK_WIZARD_MATERIALS_STEP;
+/** @deprecated Builder freeze */
+export const PROVIDER_PACK_WIZARD_DRAFT_STEP = "기존 자료";
+/** @deprecated Builder freeze */
+export const PROVIDER_PACK_WIZARD_INSPECTION_STEP = "검수 요청";
 export const PROVIDER_PACK_WIZARD_REVIEW_STEP = "검수 요청";
 export const PROVIDER_PACK_WIZARD_PUBLISH_STEP = "운영자 승인 후 공개";
 
 export const PROVIDER_PACK_TAB_BASIC = "기본정보";
-export const PROVIDER_PACK_TAB_SOURCE = "자료등록";
-export const PROVIDER_PACK_TAB_DRAFT = "참조지식 생성";
-export const PROVIDER_PACK_TAB_INSPECTION = "점검";
+export const PROVIDER_PACK_TAB_MATERIALS = "기존 자료";
 export const PROVIDER_PACK_TAB_REVIEW = "검수요청";
 
-export const PROVIDER_PACK_GO_TO_INSPECTION_TAB = "점검 탭으로 이동";
-export const PROVIDER_PACK_GO_TO_INSPECTION_SHORT = "점검으로 이동";
+export const PROVIDER_PACK_MATERIALS_TITLE = "기존 자료";
+export const PROVIDER_PACK_MATERIALS_HINT =
+  "이미 등록된 원천 자료를 확인합니다. 신규 내부 생성·자동수집은 종료되었습니다.";
+export const PROVIDER_PACK_MATERIALS_EMPTY =
+  "등록된 자료가 없습니다. 외부 Payload 등록 기능은 다음 단계에서 제공됩니다.";
+
+export const PROVIDER_PACK_GO_TO_MATERIALS_TAB = "기존 자료로 이동";
 export const PROVIDER_PACK_GO_TO_REVIEW_TAB = "검수요청으로 이동";
-export const PROVIDER_PACK_INSPECTION_INTRO =
-  "검수 요청 전에 필요한 품질 점검을 진행합니다. 모든 필수 점검이 완료되면 검수요청 단계로 이동할 수 있습니다.";
-export const PROVIDER_PACK_NEXT_TASK_INSPECTION =
-  "검수 요청 전 필수 점검을 완료하세요.";
+/** @deprecated Builder freeze — prefer PROVIDER_PACK_GO_TO_MATERIALS_TAB */
+export const PROVIDER_PACK_GO_TO_SOURCE_TAB = PROVIDER_PACK_GO_TO_MATERIALS_TAB;
+/** @deprecated Builder freeze */
+export const PROVIDER_PACK_GO_TO_DRAFT_TAB = "기존 자료로 이동";
+/** @deprecated Builder freeze */
+export const PROVIDER_PACK_GO_TO_DRAFT_SHORT = "기존 자료로 이동";
+/** @deprecated Builder freeze */
+export const PROVIDER_PACK_GO_TO_INSPECTION_TAB = "검수요청으로 이동";
+/** @deprecated Builder freeze */
+export const PROVIDER_PACK_GO_TO_INSPECTION_SHORT = "검수요청으로 이동";
+export const PROVIDER_PACK_NEXT_TASK_MATERIALS =
+  "기존 자료를 확인한 뒤 검수 요청을 준비하세요.";
 export const PROVIDER_PACK_NEXT_TASK_SUBMIT =
-  "점검이 완료되었습니다. 검수 요청을 제출하세요.";
+  "기본정보와 자료를 확인했다면 검수 요청을 제출하세요.";
 export const PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN =
   "관리자 검토 결과를 기다려 주세요.";
+
+export const PROVIDER_PACK_REVIEW_READY_TITLE = "검수 요청 준비";
+export const PROVIDER_PACK_REVIEW_READY_BODY =
+  "기존 자료와 검수 데이터가 있으면 제출할 수 있습니다. 필수 데이터가 없으면 명확한 오류가 표시됩니다.";
+
+export const PROVIDER_SUBMIT_CTA = "검수 요청 제출";
+export const PROVIDER_SUBMIT_CONFIRM =
+  "검수 요청을 제출할까요? 제출 후에는 초안 수정이 제한됩니다.";
+export const PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE =
+  "제출 후 관리자가 접수·승인하면 카탈로그에 공개됩니다.";
 
 export const PROVIDER_REVIEW_WAITING_TITLE = "검수 요청이 제출되었습니다.";
 export const PROVIDER_REVIEW_WAITING_BODY =
@@ -93,7 +113,7 @@ export const PROVIDER_REVIEW_WITHDRAW_HINT =
 export const PROVIDER_REVIEW_WITHDRAW_LOCKED_HINT =
   "관리자가 이미 접수한 검수 요청은 회수할 수 없습니다.";
 export const PROVIDER_REVIEW_REJECTED_TITLE = "검수 반려됨";
-export const PROVIDER_REVIEW_REJECTED_GO_FIX = "보완하러 가기";
+export const PROVIDER_REVIEW_REJECTED_GO_FIX = "자료 확인하러 가기";
 export const PROVIDER_REVIEW_DEV_ADMIN_HINT =
   "개발자 테스트: 관리자 콘솔에서 검수 대기 목록을 확인하세요.";
 
@@ -170,9 +190,9 @@ export const ADMIN_REVIEW_STATE_PUBLISHED_BODY = "이 지식팩은 이미 승인
 export const ADMIN_REVIEW_STATE_NOT_REVIEWING_TITLE = "검수 대기 상태가 아님";
 export const ADMIN_REVIEW_STATE_NOT_REVIEWING_BODY =
   "현재 상태가 REVIEWING이 아니어서 승인/반려를 진행할 수 없습니다.";
-export const ADMIN_REVIEW_STATE_REFRESH_REQUIRED_TITLE = "최신 재점검 필요";
+export const ADMIN_REVIEW_STATE_REFRESH_REQUIRED_TITLE = "제출 데이터 확인 필요";
 export const ADMIN_REVIEW_STATE_REFRESH_REQUIRED_BODY =
-  "원천 문서 또는 점검 데이터가 변경되어 현재 결과만으로는 승인 여부를 판단할 수 없습니다. 최신 데이터 기준으로 전체 재점검을 실행하세요.";
+  "원천 문서 또는 점검 데이터가 변경되어 현재 결과만으로는 승인 여부를 판단하기 어렵습니다. 제출 패키지와 주의 항목을 확인하거나 제공자에게 재제출을 요청하세요.";
 export const ADMIN_REVIEW_STATE_CHANGED_TITLE = "제출 후 변경 감지";
 export const ADMIN_REVIEW_STATE_CHANGED_BODY =
   "제출 당시 검수 패키지와 현재 데이터가 다릅니다. 관리자는 기존 제출 패키지 기준으로 판단하거나 제공자에게 재제출을 요청할 수 있습니다.";
@@ -201,17 +221,12 @@ export const PROVIDER_PACK_AUTO_SUMMARY_LABEL = "자동 생성 요약";
 export const PROVIDER_PACK_ADVANCED_SUMMARY_EDIT = "고급 요약 수정";
 
 export const PROVIDER_PACK_DRAFT_EMPTY_SOURCES =
-  "아직 등록된 원천 문서가 없습니다. 먼저 자료등록 탭에서 GitHub 또는 문서를 등록하세요.";
-export const PROVIDER_PACK_GO_TO_SOURCE_TAB = "자료등록 탭으로 이동";
-export const PROVIDER_PACK_GO_TO_DRAFT_TAB = "참조지식 생성하러 가기";
-export const PROVIDER_PACK_GO_TO_DRAFT_SHORT = "참조지식 생성으로 이동";
-
-export const PROVIDER_PACK_REVIEW_PREREQ_TITLE = "검수 요청 전 필요한 작업";
+  "등록된 원천 자료가 없습니다. 외부 Payload 등록 기능은 다음 단계에서 제공됩니다.";
 export const PROVIDER_GITHUB_ADVANCED_SETTINGS_EXPAND = "고급 설정 펼치기";
 
-export const PROVIDER_PACK_SOURCE_STEP_TITLE = "지식팩을 만들 자료를 가져오세요.";
+export const PROVIDER_PACK_SOURCE_STEP_TITLE = "등록된 자료를 확인하세요.";
 export const PROVIDER_PACK_SOURCE_METHOD_GITHUB = "GitHub에서 가져오기";
-export const PROVIDER_PACK_SOURCE_METHOD_GITHUB_BADGE = "추천";
+export const PROVIDER_PACK_SOURCE_METHOD_GITHUB_BADGE = "종료됨";
 export const PROVIDER_PACK_SOURCE_METHOD_MANUAL = "문서 직접 등록";
 
 export const PROVIDER_GITHUB_PANEL_TITLE = "GitHub에서 가져오기";
@@ -227,22 +242,20 @@ export const PROVIDER_PACK_BASIC_INFO_SUMMARY = "기본정보 수정";
 export const PROVIDER_PACK_PRE_REVIEW_CHECKS_SUMMARY = "검수 전 점검";
 
 export const PROVIDER_PACK_DRAFT_STEP_INTRO =
-  "등록된 원천 문서를 기반으로 AI가 참조할 지식 단위를 생성합니다.";
+  "내부 참조지식 생성 기능은 종료되었습니다.";
 export const PROVIDER_PACK_DRAFT_GENERATE_CTA = "Knowledge Unit 후보 생성";
 export const PROVIDER_PACK_DRAFT_GENERATING =
   "지식팩 초안과 기본 점검을 준비하는 중…";
 export const PROVIDER_PACK_DRAFT_GENERATE_DONE =
-  "Knowledge Unit 후보와 기본 점검이 준비되었습니다. 점검 탭에서 결과를 확인하세요.";
+  "내부 생성 기능은 종료되었습니다.";
 export const PROVIDER_PACK_DRAFT_VIEW_LIST = "초안 목록 보기";
-export const PROVIDER_PACK_REVIEW_SUBMIT_CTA = "최종 점검 후 검수 요청";
-export const PROVIDER_PACK_INSPECTION_AUTO_TITLE = "자동 점검 결과";
+export const PROVIDER_PACK_REVIEW_SUBMIT_CTA = "검수 요청 제출";
+export const PROVIDER_PACK_INSPECTION_AUTO_TITLE = "점검 결과";
+export const PROVIDER_PACK_REVIEW_PREREQ_TITLE = "검수 요청 전 필요한 작업";
 export const PROVIDER_PACK_REVIEW_INCOMPLETE_TITLE = "검수 요청 불가";
 export const PROVIDER_PACK_REVIEW_INCOMPLETE_BODY =
-  "최종 점검에서 차단 이슈가 발견되었습니다. 점검 탭에서 자동 보완 후 다시 시도해 주세요.";
-export const PROVIDER_PACK_GO_TO_INSPECTION_REPAIR = "점검 탭에서 자동 보완";
-export const PROVIDER_PACK_REVIEW_READY_TITLE = "검수 요청 준비 완료";
-export const PROVIDER_PACK_REVIEW_READY_BODY =
-  "검수 요청 전 시스템이 원천 문서, 지식 단위, Chunk, 검색 품질, 릴리스 게이트를 최신 상태로 다시 점검합니다. 최종 점검을 통과하면 관리자 검토 단계로 제출됩니다.";
+  "필수 검수 데이터가 부족합니다. 기존 자료를 확인하거나 관리자에게 문의하세요.";
+export const PROVIDER_PACK_GO_TO_INSPECTION_REPAIR = "기존 자료 확인";
 
 export const PROVIDER_KU_DRAFT_PANEL_TITLE = "자동 추출 결과";
 export const PROVIDER_KU_CANDIDATE_LABEL = "Knowledge Unit 후보";
@@ -280,15 +293,12 @@ export const PROVIDER_SUBMIT_READINESS_TITLE = "검수 요청 준비";
 export const PROVIDER_SUBMIT_PROVIDER_TASKS_TITLE = "제공자가 해야 할 일";
 export const PROVIDER_SUBMIT_ADMIN_TASKS_TITLE = "검수 제출 후 관리자 확인 항목";
 export const PROVIDER_SUBMIT_ADMIN_REVIEW_NOTICE =
-  "Chunk는 시스템이 자동 생성합니다. 제공자는 자동 생성된 Chunk 품질 점검 결과를 확인하고 검수 요청을 제출합니다. 관리자는 검수 단계에서 최종 공개 여부를 판단합니다.";
-export const PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE =
-  "검수 요청이 접수되면 관리자가 지식팩 품질과 공개 여부를 검토합니다. 승인 전까지 일반 카탈로그와 Context API에는 노출되지 않습니다.";
+  "제공자는 기존 자료와 검수 상태를 확인하고 검수 요청을 제출합니다. 관리자는 검수 단계에서 최종 공개 여부를 판단합니다.";
 
 /** @deprecated Use ProviderOnboardingStepper instead of numbered list on provider page */
 export const PROVIDER_CENTER_ONBOARDING_STEPS = [
   "지식팩 기본정보 입력",
-  "GitHub/문서 자동수집",
-  "초안 확인 및 최종 점검",
+  "기존 자료 확인",
   "검수 요청",
   "운영자 승인 후 공개",
 ] as const;

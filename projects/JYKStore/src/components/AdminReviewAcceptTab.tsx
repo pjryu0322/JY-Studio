@@ -228,7 +228,7 @@ export function AdminReviewAcceptTab({
           {state === "submit_package_changed" && drift.changed ? (
             <p className="mt-2 text-xs text-amber-900">
               관리자는 기존 제출 패키지 기준으로 판단하거나 제공자에게 재제출을 요청할 수 있습니다.
-              재점검은 고급 탭에서 실행할 수 있습니다.
+              제출 패키지와 주의 항목을 확인하거나 제공자에게 재제출을 요청하세요.
             </p>
           ) : null}
         </div>

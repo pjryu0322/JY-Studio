@@ -2,18 +2,14 @@
 
 import {
   PROVIDER_PACK_TAB_BASIC,
-  PROVIDER_PACK_TAB_DRAFT,
-  PROVIDER_PACK_TAB_INSPECTION,
+  PROVIDER_PACK_TAB_MATERIALS,
   PROVIDER_PACK_TAB_REVIEW,
-  PROVIDER_PACK_TAB_SOURCE,
 } from "@/lib/role-based-ux-copy";
 import { PROVIDER_PACK_TAB_IDS, type ProviderPackTabId } from "@/lib/provider-pack-tabs";
 
 const TAB_LABELS: Record<ProviderPackTabId, string> = {
   basic: PROVIDER_PACK_TAB_BASIC,
-  source: PROVIDER_PACK_TAB_SOURCE,
-  draft: PROVIDER_PACK_TAB_DRAFT,
-  inspection: PROVIDER_PACK_TAB_INSPECTION,
+  materials: PROVIDER_PACK_TAB_MATERIALS,
   review: PROVIDER_PACK_TAB_REVIEW,
 };
 

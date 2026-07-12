@@ -12,13 +12,17 @@ function readSource(relativePath: string): string {
 }
 
 describe("provider release gate primary action", () => {
-  it("wires RUN_RELEASE_GATE primary action in inspection tab", () => {
-    const readiness = readSource("src/lib/provider-pack-inspection-readiness.ts");
-    const tab = readSource("src/components/ProviderPackInspectionTab.tsx");
+  it("does not mount inspection release-gate Builder CTAs after freeze", () => {
+    const editor = readSource("src/components/ProviderPackEditor.tsx");
+    const review = readSource("src/components/ProviderPackReviewTab.tsx");
+    const releaseGateRoute = readSource(
+      "src/app/api/v1/provider/packs/[packId]/release-gate/evaluate/route.ts",
+    );
 
-    assert.ok(readiness.includes('"RUN_RELEASE_GATE"'));
-    assert.ok(readiness.includes('primaryActionKind: "RUN_RELEASE_GATE"'));
-    assert.ok(tab.includes('primaryActionKind === "RUN_RELEASE_GATE"'));
-    assert.ok(tab.includes("evaluateProviderReleaseGateApi"));
+    assert.ok(!editor.includes("ProviderPackInspectionTab"));
+    assert.ok(!review.includes("evaluateProviderReleaseGateApi"));
+    assert.ok(!review.includes("RUN_RELEASE_GATE"));
+    assert.ok(releaseGateRoute.includes("legacyBuilderDisabledBody"));
+    assert.ok(releaseGateRoute.includes("status: 410"));
   });
 });

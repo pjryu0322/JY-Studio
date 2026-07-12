@@ -144,13 +144,6 @@ export function AccountPageClient() {
             <MenuLink title="관리자 콘솔" description="지식팩 검수 및 승인" href={ROUTES.adminReviews} />
           </li>
           <li>
-            <MenuLink
-              title="Knowledge Unit draft 검수"
-              description="GitHub 자동수집 초안 승인/활성화"
-              href={ROUTES.adminKnowledgeUnitDrafts}
-            />
-          </li>
-          <li>
             <MenuLink title="운영 사용량 확인" description="API UsageLog 조회" href={ROUTES.adminOpsUsage} />
           </li>
           <li>

@@ -34,10 +34,10 @@ describe("buildProviderOnboardingSteps", () => {
       hasPublishedOrVerifiedPack: false,
     });
     assert.equal(withPack.find((s) => s.key === "pack")?.status, "done");
-    assert.equal(withPack.find((s) => s.key === "source")?.status, "current");
+    assert.equal(withPack.find((s) => s.key === "materials")?.status, "current");
   });
 
-  it("includes five onboarding steps without profile registration", () => {
+  it("includes four onboarding steps without profile registration", () => {
     const steps = buildProviderOnboardingSteps({
       hasProfile: true,
       packCount: 1,
@@ -46,10 +46,10 @@ describe("buildProviderOnboardingSteps", () => {
       hasReviewingPack: false,
       hasPublishedOrVerifiedPack: false,
     });
-    assert.equal(steps.length, 5);
+    assert.equal(steps.length, 4);
     assert.deepEqual(
       steps.map((s) => s.key),
-      ["pack", "source", "draft", "review", "publish"],
+      ["pack", "materials", "review", "publish"],
     );
   });
 });

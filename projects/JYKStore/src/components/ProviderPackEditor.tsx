@@ -3,21 +3,17 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProviderPackBasicInfoTab } from "@/components/ProviderPackBasicInfoTab";
-import { ProviderPackDraftTab } from "@/components/ProviderPackDraftTab";
-import { ProviderPackInspectionTab } from "@/components/ProviderPackInspectionTab";
+import { ProviderPackMaterialsTab } from "@/components/ProviderPackMaterialsTab";
 import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
-import { ProviderPackSourceTab } from "@/components/ProviderPackSourceTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderPackTabs } from "@/components/ProviderPackTabs";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import {
   fetchProviderPack,
-  fetchProviderKnowledgeUnitDraftsApi,
   submitProviderPackApi,
   updateProviderPackApi,
   withdrawProviderPackReviewApi,
 } from "@/lib/provider-center-api";
-import { buildProviderInspectionReadiness } from "@/lib/provider-pack-inspection-readiness";
 import {
   resolveDefaultProviderPackTab,
   resolveProviderPackTabFromLocation,
@@ -26,16 +22,16 @@ import {
 import { providerPackDetailPath } from "@/lib/routes";
 import {
   PROVIDER_PACK_CREATED_BANNER_TITLE,
-  PROVIDER_PACK_CREATED_COLLECT_CTA,
   PROVIDER_PACK_CREATED_ID_PREFIX,
   PROVIDER_PACK_CREATED_NEXT_TASK,
-  PROVIDER_PACK_GO_TO_INSPECTION_SHORT,
+  PROVIDER_PACK_GO_TO_MATERIALS_TAB,
   PROVIDER_PACK_GO_TO_REVIEW_TAB,
   PROVIDER_PACK_ID_LABEL,
-  PROVIDER_PACK_NEXT_TASK_INSPECTION,
+  PROVIDER_PACK_NEXT_TASK_MATERIALS,
   PROVIDER_PACK_NEXT_TASK_SUBMIT,
   PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN,
   PROVIDER_REVIEW_WITHDRAW_CONFIRM,
+  PROVIDER_SUBMIT_CONFIRM,
 } from "@/lib/role-based-ux-copy";
 
 export function ProviderPackEditor({ packId }: { readonly packId: string }) {
@@ -50,8 +46,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
-  const [draftRefreshNonce, setDraftRefreshNonce] = useState(0);
-  const [knowledgeUnitDraftCount, setKnowledgeUnitDraftCount] = useState(0);
 
   const [name, setName] = useState("");
   const [shortDescription, setShortDescription] = useState("");
@@ -77,17 +71,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setShortDescription(data.pack.shortDescription);
       setDescription(data.pack.description);
       setVersionOverview(data.pack.versions[0]?.overview ?? "");
-      setDraftRefreshNonce((n) => n + 1);
-      if (data.pack.status === "DRAFT") {
-        try {
-          const drafts = await fetchProviderKnowledgeUnitDraftsApi(packId);
-          setKnowledgeUnitDraftCount(drafts.items.length);
-        } catch {
-          setKnowledgeUnitDraftCount(0);
-        }
-      } else {
-        setKnowledgeUnitDraftCount(0);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "지식팩을 불러오지 못했습니다.");
     } finally {
@@ -104,31 +87,14 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     pack?.versions.flatMap((v) => v.sourceDocuments).length ??
     0;
 
-  const inspectionReadiness = useMemo(() => {
-    if (!pack) return null;
-    return buildProviderInspectionReadiness({
-      pack,
-      sourceDocumentCount,
-      knowledgeUnitDraftCount,
-    });
-  }, [pack, sourceDocumentCount, knowledgeUnitDraftCount]);
-
   const defaultTab = useMemo(
     () =>
       resolveDefaultProviderPackTab({
         created: showCreatedBanner,
         status: pack?.status ?? "DRAFT",
         sourceDocumentCount,
-        knowledgeUnitDraftCount,
-        inspectionComplete: inspectionReadiness?.canSubmitReview ?? false,
       }),
-    [
-      showCreatedBanner,
-      pack?.status,
-      sourceDocumentCount,
-      knowledgeUnitDraftCount,
-      inspectionReadiness?.canSubmitReview,
-    ],
+    [showCreatedBanner, pack?.status, sourceDocumentCount],
   );
 
   const activeTab = resolveProviderPackTabFromLocation({
@@ -169,9 +135,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   const onSubmitReview = async () => {
     if (!editable) return;
-    const ok = window.confirm(
-      "최종 점검 후 검수 요청을 제출할까요? 제출 시 시스템이 최신 품질 점검을 다시 실행하며, 통과 후에는 초안 수정이 제한됩니다.",
-    );
+    const ok = window.confirm(PROVIDER_SUBMIT_CONFIRM);
     if (!ok) return;
     setSubmitting(true);
     setError(null);
@@ -213,8 +177,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const latestVersion = pack.versions[0];
   const showNextTask =
     !showCreatedBanner &&
-    sourceDocumentCount > 0 &&
-    knowledgeUnitDraftCount > 0 &&
     (pack.status === "DRAFT" || pack.status === "REVIEWING");
 
   return (
@@ -229,10 +191,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_CREATED_NEXT_TASK}</p>
           <button
             type="button"
-            onClick={() => selectTab("source")}
+            onClick={() => selectTab("materials")}
             className="mt-2 text-xs font-bold text-store-accent underline-offset-2 hover:underline"
           >
-            {PROVIDER_PACK_CREATED_COLLECT_CTA}
+            {PROVIDER_PACK_GO_TO_MATERIALS_TAB}
           </button>
         </div>
       ) : null}
@@ -249,12 +211,12 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         <ProviderPackStatusBadge status={pack.status} />
       </div>
 
-      {showNextTask && inspectionReadiness ? (
+      {showNextTask ? (
         <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-900">
           <p className="text-xs font-bold text-blue-900">다음 할 일</p>
           {pack.status === "REVIEWING" ? (
             <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN}</p>
-          ) : inspectionReadiness.canSubmitReview ? (
+          ) : sourceDocumentCount > 0 ? (
             <>
               <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_SUBMIT}</p>
               <button
@@ -267,13 +229,13 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             </>
           ) : (
             <>
-              <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_INSPECTION}</p>
+              <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_MATERIALS}</p>
               <button
                 type="button"
-                onClick={() => selectTab("inspection")}
+                onClick={() => selectTab("materials")}
                 className="mt-2 min-h-[40px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white"
               >
-                {PROVIDER_PACK_GO_TO_INSPECTION_SHORT}
+                {PROVIDER_PACK_GO_TO_MATERIALS_TAB}
               </button>
             </>
           )}
@@ -306,40 +268,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           />
         ) : null}
 
-        {activeTab === "source" ? (
-          <ProviderPackSourceTab
-            packId={packId}
-            editable={editable}
-            sourceDocumentCount={sourceDocumentCount}
-            onChanged={load}
-            onGoToDraftTab={() => selectTab("draft")}
-          />
-        ) : null}
-
-        {activeTab === "draft" ? (
-          <ProviderPackDraftTab
-            packId={packId}
-            editable={editable}
-            sourceDocumentCount={sourceDocumentCount}
-            knowledgeUnitDraftCount={knowledgeUnitDraftCount}
-            draftRefreshNonce={draftRefreshNonce}
-            onChanged={load}
-            onGoToSourceTab={() => selectTab("source")}
-          />
-        ) : null}
-
-        {activeTab === "inspection" ? (
-          <ProviderPackInspectionTab
-            packId={packId}
-            pack={pack}
-            editable={editable}
-            sourceDocumentCount={sourceDocumentCount}
-            knowledgeUnitDraftCount={knowledgeUnitDraftCount}
-            onGoToSourceTab={() => selectTab("source")}
-            onGoToDraftTab={() => selectTab("draft")}
-            onGoToReviewTab={() => selectTab("review")}
-            onPackUpdated={setPack}
-          />
+        {activeTab === "materials" ? (
+          <ProviderPackMaterialsTab pack={pack} onGoToReviewTab={() => selectTab("review")} />
         ) : null}
 
         {activeTab === "review" ? (
@@ -349,11 +279,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             submitting={submitting}
             withdrawing={withdrawing}
             sourceDocumentCount={sourceDocumentCount}
-            knowledgeUnitDraftCount={knowledgeUnitDraftCount}
             onSubmitReview={() => void onSubmitReview()}
             onWithdrawReview={() => void onWithdrawReview()}
-            onGoToSourceTab={() => selectTab("source")}
-            onGoToInspectionTab={() => selectTab("inspection")}
+            onGoToMaterialsTab={() => selectTab("materials")}
           />
         ) : null}
       </div>

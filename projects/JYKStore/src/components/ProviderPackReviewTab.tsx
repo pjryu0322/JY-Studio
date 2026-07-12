@@ -1,17 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
 import { ProviderPackReadinessCard } from "@/components/ProviderPackReadinessCard";
-import { SubmitRequestAction } from "@/components/provider-submit/SubmitRequestAction";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import { canProviderWithdrawReview, PackReviewStatus } from "@/lib/pack-review-status";
-import { buildProviderSubmitReadinessPlan } from "@/lib/provider-submit-readiness-steps";
 import {
-  PROVIDER_PACK_GO_TO_INSPECTION_REPAIR,
-  PROVIDER_PACK_GO_TO_SOURCE_TAB,
-  PROVIDER_PACK_REVIEW_INCOMPLETE_BODY,
-  PROVIDER_PACK_REVIEW_INCOMPLETE_TITLE,
-  PROVIDER_PACK_REVIEW_PREREQ_TITLE,
+  PROVIDER_PACK_GO_TO_MATERIALS_TAB,
+  PROVIDER_PACK_MATERIALS_EMPTY,
   PROVIDER_PACK_REVIEW_READY_BODY,
   PROVIDER_PACK_REVIEW_READY_TITLE,
   PROVIDER_PACK_WIZARD_REVIEW_STEP,
@@ -26,6 +20,7 @@ import {
   PROVIDER_REVIEW_WITHDRAW_HINT,
   PROVIDER_REVIEW_WITHDRAW_LOCKED_HINT,
   PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE,
+  PROVIDER_SUBMIT_CTA,
 } from "@/lib/role-based-ux-copy";
 
 export function ProviderPackReviewTab({
@@ -34,46 +29,25 @@ export function ProviderPackReviewTab({
   submitting,
   withdrawing,
   sourceDocumentCount,
-  knowledgeUnitDraftCount,
   onSubmitReview,
   onWithdrawReview,
-  onGoToSourceTab,
-  onGoToInspectionTab,
+  onGoToMaterialsTab,
 }: {
   readonly pack: ProviderPackDetailDto;
   readonly editable: boolean;
   readonly submitting: boolean;
   readonly withdrawing: boolean;
   readonly sourceDocumentCount: number;
-  readonly knowledgeUnitDraftCount: number;
   readonly onSubmitReview: () => void;
   readonly onWithdrawReview: () => void;
-  readonly onGoToSourceTab: () => void;
-  readonly onGoToInspectionTab: () => void;
+  readonly onGoToMaterialsTab: () => void;
 }) {
   const isReviewing = pack.status === "REVIEWING";
   const isPublished = pack.status === "PUBLISHED" || pack.status === "VERIFIED";
   const missingSources = sourceDocumentCount === 0;
-  const missingDrafts = knowledgeUnitDraftCount === 0;
   const canWithdraw = canProviderWithdrawReview(pack.latestReviewStatus);
   const isAccepted = pack.latestReviewStatus === PackReviewStatus.IN_REVIEW;
-
-  const plan = useMemo(
-    () =>
-      buildProviderSubmitReadinessPlan({
-        pack,
-        sourceDocumentCount,
-        knowledgeUnitDraftCount,
-      }),
-    [pack, sourceDocumentCount, knowledgeUnitDraftCount],
-  );
-
-  const inspectionIncomplete =
-    !isReviewing &&
-    !isPublished &&
-    !plan.canSubmitReview &&
-    !missingSources &&
-    !missingDrafts;
+  const canAttemptSubmit = editable && !isReviewing && !isPublished && !missingSources;
 
   return (
     <section
@@ -123,7 +97,7 @@ export function ProviderPackReviewTab({
           <p className="mt-1 text-xs">사유: {pack.latestRejectionReason}</p>
           <button
             type="button"
-            onClick={onGoToInspectionTab}
+            onClick={onGoToMaterialsTab}
             className="mt-3 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white"
           >
             {PROVIDER_REVIEW_REJECTED_GO_FIX}
@@ -137,38 +111,20 @@ export function ProviderPackReviewTab({
         </div>
       ) : null}
 
-      {(missingSources || missingDrafts) && !isReviewing && !isPublished ? (
+      {missingSources && !isReviewing && !isPublished ? (
         <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3 text-xs text-amber-950">
-          <p className="font-bold">{PROVIDER_PACK_REVIEW_PREREQ_TITLE}</p>
-          <ol className="mt-2 list-decimal space-y-1 pl-4">
-            {missingSources ? <li>원천 문서 등록 필요</li> : null}
-            {missingDrafts ? <li>Knowledge Unit 후보 생성 필요</li> : null}
-          </ol>
+          <p>{PROVIDER_PACK_MATERIALS_EMPTY}</p>
           <button
             type="button"
-            onClick={onGoToSourceTab}
+            onClick={onGoToMaterialsTab}
             className="mt-3 min-h-[44px] w-full rounded-xl border border-store-accent bg-white text-sm font-bold text-store-accent"
           >
-            {PROVIDER_PACK_GO_TO_SOURCE_TAB}
+            {PROVIDER_PACK_GO_TO_MATERIALS_TAB}
           </button>
         </div>
       ) : null}
 
-      {inspectionIncomplete ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
-          <p className="font-bold">{PROVIDER_PACK_REVIEW_INCOMPLETE_TITLE}</p>
-          <p className="mt-1 text-xs">{PROVIDER_PACK_REVIEW_INCOMPLETE_BODY}</p>
-          <button
-            type="button"
-            onClick={onGoToInspectionTab}
-            className="mt-3 min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white"
-          >
-            {PROVIDER_PACK_GO_TO_INSPECTION_REPAIR}
-          </button>
-        </div>
-      ) : null}
-
-      {plan.canSubmitReview && !isReviewing && !isPublished ? (
+      {canAttemptSubmit ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-950">
           <p className="font-bold">{PROVIDER_PACK_REVIEW_READY_TITLE}</p>
           <p className="mt-1 text-xs">{PROVIDER_PACK_REVIEW_READY_BODY}</p>
@@ -181,12 +137,15 @@ export function ProviderPackReviewTab({
         {PROVIDER_SUBMIT_ADMIN_FOOTER_NOTICE}
       </p>
 
-      {editable && !isReviewing ? (
-        <SubmitRequestAction
-          plan={plan}
-          submitting={submitting}
-          onSubmitReview={onSubmitReview}
-        />
+      {canAttemptSubmit ? (
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={onSubmitReview}
+          className="min-h-[48px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
+        >
+          {submitting ? "제출 중…" : PROVIDER_SUBMIT_CTA}
+        </button>
       ) : null}
     </section>
   );

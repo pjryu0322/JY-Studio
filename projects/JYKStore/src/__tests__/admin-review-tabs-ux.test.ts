@@ -121,13 +121,12 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
 }
 
 describe("admin review evidence tabs UX", () => {
-  it("Case 1: evidence tabs exclude decision/accept and default to package", () => {
+  it("Case 1: evidence tabs exclude decision/accept/advanced and default to package", () => {
     const detail = baseDetail();
     assert.deepEqual([...ADMIN_REVIEW_EVIDENCE_TAB_IDS], [
       "package",
       "warnings",
       "documents",
-      "advanced",
     ]);
     assert.equal(defaultAdminReviewEvidenceTab(detail), "package");
     assert.equal(isReviewPending(detail), true);
@@ -141,8 +140,11 @@ describe("admin review evidence tabs UX", () => {
     assert.ok(page.includes("AdminReviewEvidenceTabs"));
     assert.ok(page.includes("ADMIN_REVIEW_EVIDENCE_SECTION_TITLE"));
     assert.ok(page.includes("AdminReviewReceiptInfoCard"));
+    assert.ok(!page.includes("AdminReviewAdvancedActionsTab"));
     assert.ok(!page.includes('activeTab === "accept"'));
+    assert.ok(!page.includes('evidenceTab === "advanced"'));
     assert.ok(!ADMIN_REVIEW_EVIDENCE_TAB_IDS.includes("accept" as never));
+    assert.ok(!ADMIN_REVIEW_EVIDENCE_TAB_IDS.includes("advanced" as never));
     assert.ok(evidence.includes("ADMIN_REVIEW_EVIDENCE_TAB_IDS"));
     assert.ok(evidence.includes('aria-label="판단 근거"'));
     assert.ok(accept.includes("ADMIN_REVIEW_CTA_ACCEPT"));
@@ -201,15 +203,13 @@ describe("admin review evidence tabs UX", () => {
     assert.ok(page.includes("onGoToPackageTab"));
   });
 
-  it("Case 6: advanced refresh hidden until advanced tab", () => {
+  it("Case 6: advanced refresh tab is not mounted after Builder freeze", () => {
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
     const accept = readSource("src/components/AdminReviewAcceptTab.tsx");
-    const advanced = readSource("src/components/AdminReviewAdvancedActionsTab.tsx");
-    assert.ok(page.includes('evidenceTab === "advanced"'));
+    assert.ok(!page.includes("AdminReviewAdvancedActionsTab"));
+    assert.ok(!page.includes('evidenceTab === "advanced"'));
     assert.ok(!accept.includes("ADMIN_REVIEW_CTA_REFRESH_ALL"));
     assert.ok(!accept.includes("refreshAdminReviewReadinessApi"));
-    assert.ok(advanced.includes("ADMIN_REVIEW_CTA_REFRESH_ALL"));
-    assert.ok(advanced.includes("refreshAdminReviewReadinessApi"));
     assert.equal(ADMIN_REVIEW_CTA_REFRESH_ALL, "현재 데이터 기준 전체 재점검");
   });
 

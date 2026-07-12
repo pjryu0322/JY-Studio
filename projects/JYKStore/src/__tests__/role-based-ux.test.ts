@@ -17,7 +17,13 @@ function readSource(relativePath: string): string {
 
 describe("role-based UX copy", () => {
   it("defines provider onboarding steps", () => {
-    assert.equal(PROVIDER_CENTER_ONBOARDING_STEPS.length, 5);
+    assert.equal(PROVIDER_CENTER_ONBOARDING_STEPS.length, 4);
+    assert.deepEqual([...PROVIDER_CENTER_ONBOARDING_STEPS], [
+      "지식팩 기본정보 입력",
+      "기존 자료 확인",
+      "검수 요청",
+      "운영자 승인 후 공개",
+    ]);
     assert.ok(PROVIDER_PROFILE_FOOTER_HINT.includes("상단 프로필"));
   });
 });

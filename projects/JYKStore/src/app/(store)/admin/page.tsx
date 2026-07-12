@@ -38,18 +38,6 @@ export default function AdminPage() {
           →
         </span>
       </Link>
-      <Link
-        href={ROUTES.adminKnowledgeUnitDrafts}
-        className="flex min-h-[44px] items-center justify-between gap-3 rounded-2xl border border-store-border bg-white px-4 py-3 active:bg-slate-50"
-      >
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-900">Knowledge Unit draft 검토</p>
-          <p className="text-xs text-store-muted">GitHub 자동수집 초안 승인/반려</p>
-        </div>
-        <span className="shrink-0 text-store-accent" aria-hidden>
-          →
-        </span>
-      </Link>
     </div>
   );
 }
