@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ProviderProfileEditor } from "@/components/ProviderProfileEditor";
-import { isAdminAccountRole, isProviderAccountRole } from "@/lib/account-role";
-import { fetchAuthSession, logoutStoreAccount } from "@/lib/auth-api";
-import { fetchProviderProfile } from "@/lib/provider-center-api";
-import type { ProviderProfileDto } from "@/lib/provider-profile-dto";
 import {
-  PROVIDER_ACCOUNT_MENU_LABEL,
-  PROVIDER_PROFILE_MENU_LABEL,
-} from "@/lib/role-based-ux-copy";
+  isAdminAccountRole,
+  isProviderAccountRole,
+  parseAccountRole,
+  type AccountRole,
+} from "@/lib/account-role";
+import {
+  accountMenuLinksForRole,
+  accountRoleDisplayLabel,
+} from "@/lib/account-menu";
+import { fetchAuthSession } from "@/lib/auth-api";
+import { useStoreLogout } from "@/hooks/useStoreLogout";
 import { ROUTES } from "@/lib/routes";
 
 function initials(name: string | null | undefined, email: string | null | undefined): string {
@@ -19,48 +21,54 @@ function initials(name: string | null | undefined, email: string | null | undefi
   return source.toUpperCase();
 }
 
+type SessionView = {
+  loggedIn: boolean;
+  role: AccountRole;
+  displayName: string | null;
+  email: string | null;
+  badge: "admin" | "provider" | null;
+};
+
+const emptySession: SessionView = {
+  loggedIn: false,
+  role: "USER",
+  displayName: null,
+  email: null,
+  badge: null,
+};
+
 export function HeaderProfileButton() {
-  const router = useRouter();
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [label, setLabel] = useState<string | null>(null);
-  const [provider, setProvider] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const { logoutAndRedirect, busy: logoutBusy, error: logoutError, clearError } =
+    useStoreLogout();
+  const [session, setSession] = useState<SessionView>(emptySession);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [providerProfile, setProviderProfile] = useState<ProviderProfileDto | null>(null);
-  const [logoutBusy, setLogoutBusy] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const session = await fetchAuthSession();
-      if (!session.loggedIn || !session.user) {
-        setLoggedIn(false);
-        setLabel(null);
-        setProvider(false);
-        setIsAdmin(false);
-        setProviderProfile(null);
+      const data = await fetchAuthSession();
+      if (!data.loggedIn || !data.user) {
+        setSession(emptySession);
         return;
       }
-      const role = session.accountRole ?? session.user.accountRole;
-      setLoggedIn(true);
-      setLabel(
-        initials(
-          session.providerProfile?.displayName ?? session.user.name,
-          session.user.email,
-        ),
-      );
-      setIsAdmin(isAdminAccountRole(role));
-      const isProvider =
-        isProviderAccountRole(role) || Boolean(session.providerProfile);
-      setProvider(isProvider);
-      setProviderProfile(session.providerProfile ?? null);
+      const role = parseAccountRole(data.accountRole ?? data.user.accountRole);
+      const displayName =
+        data.providerProfile?.displayName?.trim() ||
+        data.user.name?.trim() ||
+        null;
+      setSession({
+        loggedIn: true,
+        role,
+        displayName,
+        email: data.user.email,
+        badge: isAdminAccountRole(role)
+          ? "admin"
+          : isProviderAccountRole(role) || Boolean(data.providerProfile)
+            ? "provider"
+            : null,
+      });
     } catch {
-      setLoggedIn(false);
-      setLabel(null);
-      setProvider(false);
-      setIsAdmin(false);
-      setProviderProfile(null);
+      setSession(emptySession);
     }
   }, []);
 
@@ -69,140 +77,37 @@ export function HeaderProfileButton() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!menuOpen && !editOpen) return;
+    if (!menuOpen) return;
     const onPointerDown = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) {
         setMenuOpen(false);
-        setEditOpen(false);
       }
     };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
     document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [menuOpen, editOpen]);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
 
   const onLogout = async () => {
-    setMenuOpen(false);
-    setEditOpen(false);
-    setLogoutBusy(true);
+    clearError();
     try {
-      await logoutStoreAccount();
-      await refresh();
-      router.replace(ROUTES.login);
-      router.refresh();
-    } finally {
-      setLogoutBusy(false);
-    }
-  };
-
-  const openProviderEditor = async () => {
-    setMenuOpen(false);
-    setEditOpen(true);
-    try {
-      const res = await fetchProviderProfile();
-      setProviderProfile(res.profile);
+      await logoutAndRedirect("login");
+      setMenuOpen(false);
+      setSession(emptySession);
     } catch {
-      // keep existing profile if fetch fails
+      // error surfaced via hook; stay on screen
     }
   };
 
-  const logoutButton = loggedIn ? (
-    <button
-      type="button"
-      onClick={() => void onLogout()}
-      disabled={logoutBusy}
-      className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl border border-store-border bg-white px-3 text-xs font-semibold text-slate-700 active:bg-slate-50 disabled:opacity-50"
-    >
-      {logoutBusy ? "…" : "로그아웃"}
-    </button>
-  ) : null;
-
-  if (isAdmin && loggedIn) {
+  if (!session.loggedIn) {
     return (
-      <div className="flex shrink-0 items-center gap-2">
-        <div ref={rootRef} className="relative">
-          <button
-            type="button"
-            onClick={() => {
-              setEditOpen(false);
-              setMenuOpen((open) => !open);
-            }}
-            className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-store-border bg-white text-sm font-bold text-slate-800 active:bg-slate-50"
-            aria-label="관리자 메뉴"
-            aria-expanded={menuOpen}
-          >
-            {label ?? "👤"}
-            <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-slate-800 px-1.5 py-0.5 text-[8px] font-bold text-white">
-              관리자
-            </span>
-          </button>
-          {menuOpen ? (
-            <div className="absolute right-0 z-40 mt-2 w-48 overflow-hidden rounded-xl border border-store-border bg-white shadow-card">
-              <Link
-                href={ROUTES.account}
-                className="block px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                onClick={() => setMenuOpen(false)}
-              >
-                등록 계정 관리
-              </Link>
-              <Link
-                href={ROUTES.accountProfile}
-                className="block px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                onClick={() => setMenuOpen(false)}
-              >
-                프로필
-              </Link>
-              <button
-                type="button"
-                className="block w-full px-4 py-3 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                onClick={() => void openProviderEditor()}
-              >
-                {PROVIDER_PROFILE_MENU_LABEL}
-              </button>
-              <Link
-                href={ROUTES.admin}
-                className="block px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                onClick={() => setMenuOpen(false)}
-              >
-                관리자 콘솔
-              </Link>
-              <Link
-                href={ROUTES.adminReviews}
-                className="block px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                onClick={() => setMenuOpen(false)}
-              >
-                검수 대기 목록
-              </Link>
-              <button
-                type="button"
-                onClick={() => void onLogout()}
-                disabled={logoutBusy}
-                className="block w-full px-4 py-3 text-left text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
-              >
-                {logoutBusy ? "로그아웃 중…" : "로그아웃"}
-              </button>
-            </div>
-          ) : null}
-          {editOpen ? (
-            <div className="absolute right-0 z-40 mt-2 w-[min(100vw-2rem,20rem)] overflow-hidden rounded-xl border border-store-border bg-white shadow-card">
-              <ProviderProfileEditor
-                initial={providerProfile}
-                onCancel={() => setEditOpen(false)}
-                onSaved={(profile) => {
-                  setProviderProfile(profile);
-                  setLabel(initials(profile.displayName, null));
-                }}
-              />
-            </div>
-          ) : null}
-        </div>
-        {logoutButton}
-      </div>
-    );
-  }
-
-  if (!loggedIn) {
-    return (
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="relative shrink-0">
         <Link
           href={ROUTES.login}
           className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-store-border bg-white text-sm font-bold text-slate-800 active:bg-slate-50"
@@ -214,69 +119,81 @@ export function HeaderProfileButton() {
     );
   }
 
+  const menuLinks = accountMenuLinksForRole(session.role);
+  const avatar = initials(session.displayName, session.email);
+
   return (
-    <div className="flex shrink-0 items-center gap-2">
-      <div ref={rootRef} className="relative">
-        <button
-          type="button"
-          onClick={() => {
-            setEditOpen(false);
-            setMenuOpen((open) => !open);
-          }}
-          className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-store-border bg-white text-sm font-bold text-slate-800 active:bg-slate-50"
-          aria-label="프로필 메뉴"
-          aria-expanded={menuOpen}
+    <div ref={rootRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => {
+          clearError();
+          setMenuOpen((open) => !open);
+        }}
+        className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-store-border bg-white text-sm font-bold text-slate-800 active:bg-slate-50"
+        aria-label="계정 메뉴 열기"
+        aria-expanded={menuOpen}
+        aria-haspopup="menu"
+      >
+        {avatar}
+        {session.badge === "admin" ? (
+          <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-slate-800 px-1.5 py-0.5 text-[8px] font-bold text-white">
+            관리자
+          </span>
+        ) : null}
+        {session.badge === "provider" ? (
+          <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[8px] font-bold text-white">
+            제공자
+          </span>
+        ) : null}
+      </button>
+
+      {menuOpen ? (
+        <div
+          role="menu"
+          className="absolute right-0 z-[100] mt-2 max-h-[calc(100vh-6rem)] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-store-border bg-white shadow-card"
         >
-          {label ?? "👤"}
-          {provider ? (
-            <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[8px] font-bold text-white">
-              제공자
-            </span>
-          ) : null}
-        </button>
-        {menuOpen ? (
-          <div className="absolute right-0 z-40 mt-2 w-48 overflow-hidden rounded-xl border border-store-border bg-white shadow-card">
-            {provider ? (
-              <button
-                type="button"
-                className="block w-full px-4 py-3 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                onClick={() => void openProviderEditor()}
-              >
-                {PROVIDER_PROFILE_MENU_LABEL}
-              </button>
+          <div className="border-b border-store-border px-4 py-3">
+            <p className="truncate text-sm font-bold text-slate-900">
+              {session.displayName || "사용자"}
+            </p>
+            {session.email ? (
+              <p className="mt-0.5 truncate text-xs text-store-muted">{session.email}</p>
             ) : null}
+            <p className="mt-1 text-[11px] font-semibold text-slate-700">
+              현재 역할: {accountRoleDisplayLabel(session.role)}
+            </p>
+          </div>
+
+          {menuLinks.map((item) => (
             <Link
-              href={ROUTES.accountProfile}
-              className="block px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+              key={`${item.label}:${item.href}`}
+              href={item.href}
+              role="menuitem"
+              className="block min-h-[44px] px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50"
               onClick={() => setMenuOpen(false)}
             >
-              {PROVIDER_ACCOUNT_MENU_LABEL}
+              {item.label}
             </Link>
-            <button
-              type="button"
-              onClick={() => void onLogout()}
-              disabled={logoutBusy}
-              className="block w-full px-4 py-3 text-left text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
-            >
-              {logoutBusy ? "로그아웃 중…" : "로그아웃"}
-            </button>
-          </div>
-        ) : null}
-        {editOpen ? (
-          <div className="absolute right-0 z-40 mt-2 w-[min(100vw-2rem,20rem)] overflow-hidden rounded-xl border border-store-border bg-white shadow-card">
-            <ProviderProfileEditor
-              initial={providerProfile}
-              onCancel={() => setEditOpen(false)}
-              onSaved={(profile) => {
-                setProviderProfile(profile);
-                setLabel(initials(profile.displayName, null));
-                setProvider(true);
-              }}
-            />
-          </div>
-        ) : null}
-      </div>
-      {logoutButton}
+          ))}
+
+          {logoutError ? (
+            <p className="px-4 py-2 text-xs text-red-700" role="alert">
+              {logoutError}
+            </p>
+          ) : null}
+
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => void onLogout()}
+            disabled={logoutBusy}
+            className="block min-h-[44px] w-full px-4 py-3 text-left text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            {logoutBusy ? "로그아웃 중…" : "로그아웃"}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

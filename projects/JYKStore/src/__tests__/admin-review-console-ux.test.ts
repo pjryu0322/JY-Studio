@@ -24,8 +24,9 @@ describe("admin account review console UX", () => {
   it("gates admin console with account role", () => {
     const gate = readSource("src/components/AdminAccessGate.tsx");
     assert.ok(gate.includes("ADMIN_ACCESS_REQUIRED_TITLE"));
-    assert.ok(gate.includes("ROUTES.adminLogin"));
+    assert.ok(gate.includes("ROUTES.adminLogin") || gate.includes("admin-login"));
     assert.ok(gate.includes("isAdminAccountRole"));
+    assert.ok(gate.includes("관리자 계정으로 다시 로그인"));
     assert.ok(!gate.includes("confirmAdminSession"));
   });
 
@@ -51,9 +52,10 @@ describe("admin account review console UX", () => {
 
   it("exposes admin header menu for ADMIN accounts only", () => {
     const header = readSource("src/components/HeaderProfileButton.tsx");
-    assert.ok(header.includes("isAdminAccountRole"));
-    assert.ok(header.includes("검수 대기 목록"));
-    assert.ok(header.includes("관리자 콘솔"));
-    assert.ok(header.includes("logoutStoreAccount"));
+    const menu = readSource("src/lib/account-menu.ts");
+    assert.ok(header.includes("isAdminAccountRole") || header.includes("accountMenuLinksForRole"));
+    assert.ok(menu.includes("검수 대기 목록"));
+    assert.ok(menu.includes("관리자 콘솔"));
+    assert.ok(header.includes("useStoreLogout"));
   });
 });

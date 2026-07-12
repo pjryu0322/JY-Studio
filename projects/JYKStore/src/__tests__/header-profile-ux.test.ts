@@ -13,18 +13,20 @@ function readSource(relativePath: string): string {
 }
 
 describe("header profile UX", () => {
-  it("links header profile button to account profile", () => {
+  it("links header profile menu to account profile and store routes", () => {
     const header = readSource("src/components/HeaderProfileButton.tsx");
     const top = readSource("src/components/TopStoreHeader.tsx");
-    assert.ok(header.includes("ROUTES.accountProfile"));
+    assert.ok(header.includes("accountMenuLinksForRole"));
+    assert.ok(header.includes("ROUTES.login") || header.includes("accountProfile"));
     assert.ok(top.includes("HeaderProfileButton"));
     assert.equal(ROUTES.accountProfile, "/account/profile");
   });
 
-  it("shows logout next to profile when logged in", () => {
+  it("exposes logout inside the account menu only", () => {
     const header = readSource("src/components/HeaderProfileButton.tsx");
-    assert.ok(header.includes("logoutStoreAccount"));
+    assert.ok(header.includes("useStoreLogout"));
     assert.ok(header.includes("로그아웃"));
+    assert.ok(!header.includes("logoutButton"));
     assert.ok(header.includes("loggedIn"));
   });
 

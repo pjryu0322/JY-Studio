@@ -51,11 +51,13 @@ describe("provider profile account link", () => {
     assert.ok(center.includes("fetchProviderProfile"));
   });
 
-  it("exposes header provider profile editor", () => {
+  it("links provider profile editing through account profile route", () => {
     const header = readSource("src/components/HeaderProfileButton.tsx");
+    const menu = readSource("src/lib/account-menu.ts");
     const editor = readSource("src/components/ProviderProfileEditor.tsx");
-    assert.ok(header.includes("ProviderProfileEditor"));
-    assert.ok(header.includes("PROVIDER_PROFILE_MENU_LABEL"));
+    assert.ok(!header.includes("ProviderProfileEditor"));
+    assert.ok(menu.includes("제공자 정보"));
+    assert.ok(menu.includes("ROUTES.accountProfile"));
     assert.ok(editor.includes("PROVIDER_PROFILE_EDIT_TITLE"));
   });
 

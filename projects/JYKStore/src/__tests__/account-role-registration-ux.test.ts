@@ -37,8 +37,9 @@ describe("account role registration UX", () => {
     const gate = readSource("src/components/AdminAccessGate.tsx");
     assert.ok(layout.includes("AdminAccessGate"));
     assert.ok(gate.includes("ADMIN_ACCESS_REQUIRED_TITLE"));
-    assert.ok(gate.includes("adminLogin"));
+    assert.ok(gate.includes("adminLogin") || gate.includes("admin-login"));
     assert.ok(gate.includes("isAdminAccountRole"));
+    assert.ok(gate.includes("useStoreLogout"));
     assert.ok(!gate.includes("confirmAdminSession"));
     assert.ok(!gate.includes("admin-ops-session"));
   });

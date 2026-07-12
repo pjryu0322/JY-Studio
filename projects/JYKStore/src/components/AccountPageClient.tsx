@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AdminAccountManagementPanel } from "@/components/AdminAccountManagementPanel";
+import { useStoreLogout } from "@/hooks/useStoreLogout";
 import { isAdminAccountRole } from "@/lib/account-role";
-import { fetchAuthSession, logoutStoreAccount } from "@/lib/auth-api";
+import { fetchAuthSession } from "@/lib/auth-api";
 import { ROUTES } from "@/lib/routes";
 
 function MenuLink({ title, description, href }: { title: string; description: string; href: string }) {
@@ -25,12 +26,12 @@ function MenuLink({ title, description, href }: { title: string; description: st
 }
 
 export function AccountPageClient() {
+  const { logoutAndRedirect, busy: logoutBusy, error: logoutError } = useStoreLogout();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [adminName, setAdminName] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState<string | null>(null);
-  const [logoutBusy, setLogoutBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -59,12 +60,10 @@ export function AccountPageClient() {
   }, [refresh]);
 
   const onLogout = async () => {
-    setLogoutBusy(true);
     try {
-      await logoutStoreAccount();
-      await refresh();
-    } finally {
-      setLogoutBusy(false);
+      await logoutAndRedirect("login");
+    } catch {
+      // keep screen; error via hook
     }
   };
 
@@ -131,6 +130,11 @@ export function AccountPageClient() {
         >
           {logoutBusy ? "로그아웃 중…" : "로그아웃"}
         </button>
+        {logoutError ? (
+          <p className="mt-2 text-xs text-red-700" role="alert">
+            {logoutError}
+          </p>
+        ) : null}
       </div>
 
       <AdminAccountManagementPanel />
