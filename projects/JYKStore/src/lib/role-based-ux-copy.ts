@@ -32,13 +32,24 @@ export const PROVIDER_CENTER_BEFORE_PROFILE_BODY =
 
 export const PROVIDER_CENTER_REGISTERED_TITLE = "제공자 계정 확인됨";
 export const PROVIDER_CENTER_REGISTERED_BODY =
-  "현재 계정으로 지식팩을 생성하고 검수요청할 수 있습니다.";
+  "현재 계정으로 기존 지식팩의 검수·공개 상태를 관리할 수 있습니다.";
 
-export const PROVIDER_CENTER_NEXT_TASK = "다음 할 일: 새 지식팩 초안 만들기";
+export const PROVIDER_CENTER_NEXT_TASK =
+  "외부 Payload 등록 기능은 다음 단계에서 제공됩니다.";
+
+export const PROVIDER_PAYLOAD_IMPORT_PREP_TITLE = "외부 지식팩 등록 준비 중";
+export const PROVIDER_PAYLOAD_IMPORT_PREP_BODY =
+  "외부 도구에서 생성한 Payload를 등록하는 기능을 준비하고 있습니다. 현재는 기존 지식팩의 조회·검수·공개 상태만 관리할 수 있습니다.";
+export const PROVIDER_PAYLOAD_IMPORT_PREP_HINT =
+  "신규 지식팩 등록은 다음 단계(P29)에서 제공됩니다.";
+
+export const PROVIDER_PACK_NEW_BLOCKED_TITLE = "외부 Payload 등록 기능 준비 중";
+export const PROVIDER_PACK_NEW_BLOCKED_BODY =
+  "신규 지식팩 등록은 외부 Payload Import 기능이 준비된 뒤 제공됩니다. 지금은 기존 지식팩만 관리할 수 있습니다.";
 
 export const PROVIDER_PACK_EMPTY_TITLE = "아직 만든 지식팩이 없습니다.";
 export const PROVIDER_PACK_EMPTY_BODY =
-  "먼저 지식팩 기본정보를 입력해 초안을 생성하세요.";
+  "외부 Payload 등록 기능은 다음 단계에서 제공됩니다. 기존 지식팩이 있다면 아래에서 상태를 확인할 수 있습니다.";
 
 export const PROVIDER_PACK_CREATE_AUTO_ID_HINT =
   "이름과 설명을 입력하면 JYKStore가 지식팩 ID와 요약 설명을 자동 생성합니다.";
@@ -66,9 +77,11 @@ export const PROVIDER_PACK_TAB_REVIEW = "검수요청";
 
 export const PROVIDER_PACK_MATERIALS_TITLE = "기존 자료";
 export const PROVIDER_PACK_MATERIALS_HINT =
-  "이미 등록된 원천 자료를 확인합니다. 신규 내부 생성·자동수집은 종료되었습니다.";
+  "검수 대상인 최신 버전의 원천 자료를 확인합니다. 신규 내부 생성·자동수집은 종료되었습니다.";
+export const PROVIDER_PACK_MATERIALS_REVIEW_VERSION_LABEL = "검수 대상 버전";
+export const PROVIDER_PACK_MATERIALS_NO_VERSION = "등록된 버전이 없습니다.";
 export const PROVIDER_PACK_MATERIALS_EMPTY =
-  "등록된 자료가 없습니다. 외부 Payload 등록 기능은 다음 단계에서 제공됩니다.";
+  "현재 버전에 등록된 자료가 없습니다. 외부 Payload 등록 기능은 다음 단계에서 제공됩니다.";
 
 export const PROVIDER_PACK_GO_TO_MATERIALS_TAB = "기존 자료로 이동";
 export const PROVIDER_PACK_GO_TO_REVIEW_TAB = "검수요청으로 이동";

@@ -134,12 +134,9 @@ export function MyPacksPageClient() {
           ) : (
             <div className="rounded-2xl border border-dashed border-store-border bg-slate-50 px-4 py-5 text-center">
               <p className="text-sm text-store-muted">아직 등록한 지식팩이 없습니다.</p>
-              <Link
-                href={ROUTES.providerPackNew}
-                className="mt-2 inline-block text-sm font-semibold text-store-accent underline-offset-2 hover:underline"
-              >
-                새 지식팩 만들기
-              </Link>
+              <p className="mt-2 text-xs text-store-muted">
+                외부 Payload 등록 기능은 다음 단계에서 제공됩니다.
+              </p>
             </div>
           )}
         </section>

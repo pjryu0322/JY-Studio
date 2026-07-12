@@ -1,4 +1,4 @@
-import { ROUTES, providerPackDetailPath } from "@/lib/routes";
+import { providerPackDetailPath } from "@/lib/routes";
 
 export type ProviderOnboardingStepKey = "pack" | "materials" | "review" | "publish";
 
@@ -59,7 +59,7 @@ export function buildProviderOnboardingSteps(
       title: "지식팩 기본정보 입력",
       description: "지식팩 초안의 이름과 설명을 입력합니다.",
       status: packStatus,
-      href: packStatus === "current" ? ROUTES.providerPackNew : undefined,
+      href: undefined,
     },
     {
       key: "materials",

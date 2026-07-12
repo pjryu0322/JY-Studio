@@ -82,10 +82,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     void load();
   }, [load]);
 
-  const sourceDocumentCount =
-    pack?.versions[0]?.sourceDocuments.length ??
-    pack?.versions.flatMap((v) => v.sourceDocuments).length ??
-    0;
+  const sourceDocumentCount = pack?.versions[0]?.sourceDocuments.length ?? 0;
 
   const defaultTab = useMemo(
     () =>

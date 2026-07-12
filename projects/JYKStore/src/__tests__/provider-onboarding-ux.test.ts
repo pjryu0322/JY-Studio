@@ -62,24 +62,26 @@ describe("provider onboarding UX sources", () => {
     assert.ok(page.includes("ProviderCenterPageClient"));
   });
 
-  it("collapses profile form after registration and keeps single primary CTA", () => {
+  it("shows payload import prep notice instead of create CTAs", () => {
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
     assert.ok(!center.includes("<details"));
     assert.ok(center.includes("fetchAuthSession"));
-    assert.ok(center.includes("새 지식팩 만들기"));
-    assert.ok(center.includes("첫 지식팩 만들기"));
+    assert.ok(!center.includes("새 지식팩 만들기"));
+    assert.ok(!center.includes("첫 지식팩 만들기"));
+    assert.ok(center.includes("PROVIDER_PAYLOAD_IMPORT_PREP_TITLE"));
     assert.ok(!center.includes("1. 1."));
   });
 
-  it("shows pack create form when provider profile is ensured on server page", () => {
+  it("shows blocked notice instead of pack create form on new pack page", () => {
     const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
     assert.ok(packNew.includes("ProviderRequiredCard"));
-    assert.ok(packNew.includes("ProviderPackCreateForm"));
+    assert.ok(!packNew.includes("ProviderPackCreateForm"));
+    assert.ok(packNew.includes("PROVIDER_PACK_NEW_BLOCKED_TITLE"));
     assert.ok(packNew.includes("getUserIdFromCookies"));
     assert.ok(packNew.includes("ensureProviderProfileForAccount"));
   });
 
-  it("uses pack create step label and submit label", () => {
+  it("keeps pack create form component for P29 reuse", () => {
     const form = readSource("src/components/ProviderPackCreateForm.tsx");
     assert.ok(form.includes("1단계"));
     assert.ok(form.includes("지식팩 초안 생성"));

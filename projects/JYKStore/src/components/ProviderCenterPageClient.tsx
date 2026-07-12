@@ -24,6 +24,8 @@ import {
   PROVIDER_CENTER_REGISTERED_TITLE,
   PROVIDER_PACK_EMPTY_BODY,
   PROVIDER_PACK_EMPTY_TITLE,
+  PROVIDER_PAYLOAD_IMPORT_PREP_BODY,
+  PROVIDER_PAYLOAD_IMPORT_PREP_TITLE,
 } from "@/lib/role-based-ux-copy";
 import { providerPackDetailPath, ROUTES } from "@/lib/routes";
 
@@ -88,7 +90,7 @@ export function ProviderCenterPageClient() {
       if (primary) {
         try {
           const detail = await fetchProviderPack(primary.packId);
-          sources = detail.pack.versions.flatMap((v) => v.sourceDocuments).length;
+          sources = detail.pack.versions[0]?.sourceDocuments.length ?? 0;
         } catch {
           sources = 0;
         }
@@ -192,12 +194,13 @@ export function ProviderCenterPageClient() {
         ) : (
           <p className="mt-2 text-xs font-semibold text-store-accent">{PROVIDER_CENTER_NEXT_TASK}</p>
         )}
-        <Link
-          href={ROUTES.providerPackNew}
-          className="mt-3 flex min-h-[48px] w-full items-center justify-center rounded-2xl bg-store-accent px-4 text-sm font-bold text-white"
-        >
-          새 지식팩 만들기
-        </Link>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-card">
+        <p className="text-sm font-bold text-slate-900">{PROVIDER_PAYLOAD_IMPORT_PREP_TITLE}</p>
+        <p className="mt-1 text-xs leading-relaxed text-store-muted">
+          {PROVIDER_PAYLOAD_IMPORT_PREP_BODY}
+        </p>
       </div>
 
       <ProviderOnboardingStepper steps={onboardingSteps} />
@@ -208,12 +211,6 @@ export function ProviderCenterPageClient() {
           <div className="mt-4 rounded-xl border border-dashed border-store-border bg-slate-50 px-4 py-5 text-center">
             <p className="text-sm font-semibold text-slate-900">{PROVIDER_PACK_EMPTY_TITLE}</p>
             <p className="mt-1 text-xs text-store-muted">{PROVIDER_PACK_EMPTY_BODY}</p>
-            <Link
-              href={ROUTES.providerPackNew}
-              className="mt-3 inline-block text-sm font-semibold text-store-accent underline-offset-2 hover:underline"
-            >
-              첫 지식팩 만들기
-            </Link>
           </div>
         ) : (
           <ul className="mt-3 space-y-2">

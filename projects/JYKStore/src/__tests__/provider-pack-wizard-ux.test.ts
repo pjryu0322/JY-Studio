@@ -38,10 +38,13 @@ describe("provider pack wizard UX sources", () => {
     assert.ok(!editor.includes("ProviderPackDraftTab"));
   });
 
-  it("materials tab is read-only confirmation of existing sources", () => {
+  it("materials tab is read-only confirmation of latest-version sources", () => {
     const materials = readSource("src/components/ProviderPackMaterialsTab.tsx");
     assert.ok(materials.includes("PROVIDER_PACK_MATERIALS_TITLE"));
     assert.ok(materials.includes("PROVIDER_PACK_MATERIALS_HINT"));
+    assert.ok(materials.includes("PROVIDER_PACK_MATERIALS_REVIEW_VERSION_LABEL"));
+    assert.ok(materials.includes("pack.versions[0]"));
+    assert.ok(!materials.includes("flatMap"));
     assert.ok(!materials.includes("ProviderGitHubAutoCollectPanel"));
     assert.ok(!materials.includes("ProviderSourceDocumentForm"));
   });
