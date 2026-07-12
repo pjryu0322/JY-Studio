@@ -151,6 +151,13 @@ export function evaluateRuntimeEnv(env: NodeJS.ProcessEnv = process.env): Runtim
     valid: true,
   });
 
+  // Development-only; never required in production (production always ignores this flag).
+  optional.push({
+    name: "JYKSTORE_ENABLE_TEST_ACCOUNT_SWITCHER",
+    configured: isConfigured(env.JYKSTORE_ENABLE_TEST_ACCOUNT_SWITCHER),
+    valid: true,
+  });
+
   return {
     ok: errors.length === 0,
     mode,
