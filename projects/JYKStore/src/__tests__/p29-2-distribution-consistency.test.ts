@@ -19,7 +19,8 @@ function readSource(relativePath: string): string {
 describe("P29.2 distribution consistency", () => {
   it("latest version visibility hides previous PUBLIC when latest is PRIVATE", () => {
     const latest = resolveLatestDistributionState({
-      distributionMetadata: { visibility: "PRIVATE" },
+      payload: { id: "pay_1", validationStatus: "VALID" },
+      distributionMetadata: { visibility: "PRIVATE", allowDownload: true },
     });
     assert.equal(isLatestVersionCatalogVisible(latest, "list"), false);
     assert.equal(isLatestVersionCatalogVisible(latest, "detail"), false);
@@ -27,7 +28,8 @@ describe("P29.2 distribution consistency", () => {
 
   it("UNLISTED is detail-only", () => {
     const latest = resolveLatestDistributionState({
-      distributionMetadata: { visibility: "UNLISTED" },
+      payload: { id: "pay_1", validationStatus: "VALID" },
+      distributionMetadata: { visibility: "UNLISTED", allowDownload: true },
     });
     assert.equal(isLatestVersionCatalogVisible(latest, "list"), false);
     assert.equal(isLatestVersionCatalogVisible(latest, "detail"), true);

@@ -51,6 +51,7 @@ import {
 } from "../lib/provider-pack-service.ts";
 import { ensureProviderProfileForAccount } from "../lib/provider-profile-service.ts";
 import { GET as publicPayloadDownloadGET } from "../app/api/v1/packs/[packId]/payload/download/route.ts";
+import { assertSafeE2ETargets } from "../../test/distribution-e2e-safety.mjs";
 
 const runE2E =
   process.env.JYKSTORE_RUN_DISTRIBUTION_E2E === "1" &&
@@ -60,6 +61,10 @@ const runE2E =
   Boolean(process.env.JYKSTORE_PAYLOAD_S3_ACCESS_KEY_ID?.trim()) &&
   Boolean(process.env.JYKSTORE_PAYLOAD_S3_SECRET_ACCESS_KEY?.trim()) &&
   Boolean(process.env.JYKSTORE_ANONYMOUS_ID_SECRET?.trim());
+
+if (runE2E) {
+  assertSafeE2ETargets(process.env);
+}
 
 const CATEGORY_ID = "e2e-dist-api";
 const runId = `e2e${Date.now().toString(36)}`;
@@ -310,6 +315,7 @@ async function reopenAsDraftAndPublishLatestVersion(input: {
 
 describe("Distribution MinIO E2E", { skip: !runE2E }, () => {
   before(async () => {
+    assertSafeE2ETargets(process.env);
     process.env.JYKSTORE_PAYLOAD_STORAGE_DRIVER = "s3";
     process.env.JYKSTORE_TRUST_PROXY = process.env.JYKSTORE_TRUST_PROXY || "true";
     resetPayloadStorageCache();
@@ -569,6 +575,87 @@ describe("Distribution MinIO E2E", { skip: !runE2E }, () => {
         // HeadBucket throws raw AWS error; classify via probe path above.
         return Boolean(error);
       },
+    );
+  });
+
+  it("My Packs DTO keeps full version history across 3 versions", async () => {
+    const published = await publishDistributionPack({
+      name: `E2E Hist ${runId}`,
+      visibility: "PUBLIC",
+      packId: `e2e_hist_${runId}`,
+      version: "1.0.0",
+    });
+
+    await reopenAsDraftAndPublishLatestVersion({
+      packId: published.packId,
+      version: "2.0.0",
+      visibility: "PUBLIC",
+    });
+    await reopenAsDraftAndPublishLatestVersion({
+      packId: published.packId,
+      version: "3.0.0",
+      visibility: "PUBLIC",
+    });
+
+    const clientId = `${actors.consumerClientId}-hist`;
+    const install = await addPackInstallationForClient(clientId, published.packId);
+    assert.ok(!("error" in install));
+    assert.equal(install.pack.version, "3.0.0");
+    assert.equal(install.pack.versionHistory.length, 3);
+    assert.deepEqual(
+      install.pack.versionHistory.map((entry) => entry.version),
+      ["3.0.0", "2.0.0", "1.0.0"],
+    );
+
+    const listed = await listActiveMyPacksForClient(clientId);
+    const row = listed.find((pack) => pack.packId === published.packId);
+    assert.ok(row);
+    assert.equal(row.versionHistory.length, 3);
+  });
+
+  it("INVALID_DISTRIBUTION: payload/metadata mismatch is fail-closed", async () => {
+    const published = await publishDistributionPack({
+      name: `E2E Invalid ${runId}`,
+      visibility: "PUBLIC",
+      packId: `e2e_inv_${runId}`,
+    });
+
+    const metaOnlyPackId = `e2e_inv_meta_${runId}`;
+
+    // Case A: strip metadata from a published pack (keep payload object).
+    await prisma.packDistributionMetadata.deleteMany({ where: { packId: published.packId } });
+    assert.ok(!(await listPublishedPacks()).some((p) => p.packId === published.packId));
+    assert.equal(await getPublishedPackById(published.packId), null);
+    const blockedInstall = await addPackInstallationForClient(
+      `${actors.consumerClientId}-inv`,
+      published.packId,
+    );
+    assert.equal("error" in blockedInstall && blockedInstall.error, "NOT_INSTALLABLE");
+    await assert.rejects(
+      () => readPublicCatalogPayloadBytes({ packId: published.packId }),
+      (error: unknown) => isPayloadServiceError(error) && error.httpStatus === 404,
+    );
+
+    // Case B: publish another pack then delete payload row (and object) while keeping metadata.
+    const metaOnly = await publishDistributionPack({
+      name: `E2E Invalid Meta ${runId}`,
+      visibility: "PUBLIC",
+      packId: metaOnlyPackId,
+    });
+    const storage = getConfiguredPayloadStorage();
+    await storage.delete({ objectKey: metaOnly.objectKey });
+    await prisma.knowledgePayload.deleteMany({ where: { packId: metaOnly.packId } });
+
+    assert.ok(!(await listPublishedPacks()).some((p) => p.packId === metaOnly.packId));
+    assert.equal(await getPublishedPackById(metaOnly.packId), null);
+    const blockedMeta = await addPackInstallationForClient(
+      `${actors.consumerClientId}-inv-meta`,
+      metaOnly.packId,
+    );
+    assert.equal("error" in blockedMeta && blockedMeta.error, "NOT_INSTALLABLE");
+    await assert.rejects(
+      () => readPublicCatalogPayloadBytes({ packId: metaOnly.packId }),
+      (error: unknown) => isPayloadServiceError(error) && error.httpStatus === 404,
     );
   });
 });

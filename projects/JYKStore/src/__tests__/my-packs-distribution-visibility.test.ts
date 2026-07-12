@@ -15,40 +15,37 @@ function readSource(relativePath: string): string {
   return readFileSync(path.join(root, relativePath), "utf8");
 }
 
+function complete(visibility: "PUBLIC" | "PRIVATE" | "UNLISTED") {
+  return {
+    payload: { id: "pay_1", validationStatus: "VALID" },
+    distributionMetadata: { visibility, allowDownload: true },
+  };
+}
+
 describe("My Packs distribution visibility", () => {
   it("allows Legacy, PUBLIC, UNLISTED installs and blocks PRIVATE", () => {
     assert.equal(canInstallLatestDistributionPack(resolveLatestDistributionState(null)), true);
     assert.equal(
-      canInstallLatestDistributionPack(
-        resolveLatestDistributionState({ distributionMetadata: { visibility: "PUBLIC" } }),
-      ),
+      canInstallLatestDistributionPack(resolveLatestDistributionState(complete("PUBLIC"))),
       true,
     );
     assert.equal(
-      canInstallLatestDistributionPack(
-        resolveLatestDistributionState({ distributionMetadata: { visibility: "UNLISTED" } }),
-      ),
+      canInstallLatestDistributionPack(resolveLatestDistributionState(complete("UNLISTED"))),
       true,
     );
     assert.equal(
-      canInstallLatestDistributionPack(
-        resolveLatestDistributionState({ distributionMetadata: { visibility: "PRIVATE" } }),
-      ),
+      canInstallLatestDistributionPack(resolveLatestDistributionState(complete("PRIVATE"))),
       false,
     );
   });
 
   it("hides installed PRIVATE packs from My Packs list but keeps UNLISTED", () => {
     assert.equal(
-      canShowInstalledPackInMyPacks(
-        resolveLatestDistributionState({ distributionMetadata: { visibility: "PRIVATE" } }),
-      ),
+      canShowInstalledPackInMyPacks(resolveLatestDistributionState(complete("PRIVATE"))),
       false,
     );
     assert.equal(
-      canShowInstalledPackInMyPacks(
-        resolveLatestDistributionState({ distributionMetadata: { visibility: "UNLISTED" } }),
-      ),
+      canShowInstalledPackInMyPacks(resolveLatestDistributionState(complete("UNLISTED"))),
       true,
     );
   });
@@ -58,7 +55,7 @@ describe("My Packs distribution visibility", () => {
     assert.ok(service.includes("canInstallLatestDistributionPack"));
     assert.ok(service.includes("NOT_INSTALLABLE"));
     assert.ok(service.includes("canShowInstalledPackInMyPacks"));
-    assert.ok(service.includes("distributionMetadata: true"));
+    assert.ok(service.includes("distributionVersionAccessInclude"));
     const route = readSource("src/app/api/v1/my-packs/route.ts");
     assert.ok(route.includes("NOT_INSTALLABLE"));
     assert.ok(route.includes("설치 가능한 지식팩을 찾을 수 없습니다."));

@@ -1,6 +1,7 @@
 import { PackStatus, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
+  distributionVersionAccessInclude,
   isLatestVersionCatalogVisible,
   latestKnowledgePackVersionOrderBy,
   resolveLatestDistributionState,
@@ -15,7 +16,7 @@ export const packCatalogInclude = {
   category: true,
   versions: {
     orderBy: latestKnowledgePackVersionOrderBy,
-    include: { distributionMetadata: true },
+    include: distributionVersionAccessInclude,
   },
 } as const;
 

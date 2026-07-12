@@ -2,6 +2,7 @@ import { InstallationStatus, PackStatus, type Prisma } from "@prisma/client";
 import {
   canInstallLatestDistributionPack,
   canShowInstalledPackInMyPacks,
+  distributionVersionAccessInclude,
   latestKnowledgePackVersionOrderBy,
   resolveLatestDistributionState,
 } from "@/lib/distribution/latest-distribution-state";
@@ -14,10 +15,7 @@ const myPacksInclude = {
   category: true,
   versions: {
     orderBy: latestKnowledgePackVersionOrderBy,
-    take: 1,
-    include: {
-      distributionMetadata: true,
-    },
+    include: distributionVersionAccessInclude,
   },
 } satisfies Prisma.KnowledgePackInclude;
 
@@ -76,7 +74,7 @@ export async function addPackInstallationForClient(clientId: string, packId: str
 
   const latestState = resolveLatestDistributionState(pack.versions[0]);
   if (!canInstallLatestDistributionPack(latestState)) {
-    // Hide existence of PRIVATE distribution packs from install API.
+    // Hide PRIVATE / INVALID distribution packs from install API.
     return { error: "NOT_INSTALLABLE" as const };
   }
 

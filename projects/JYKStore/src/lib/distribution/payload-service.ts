@@ -14,7 +14,11 @@ import {
 } from "@/lib/distribution/distribution-manifest-service";
 import { enqueuePayloadCleanupJob } from "@/lib/distribution/payload-cleanup-service";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
-import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
+import {
+  canPubliclyDownloadLatestDistributionPack,
+  latestKnowledgePackVersionOrderBy,
+  resolveLatestDistributionState,
+} from "@/lib/distribution/latest-distribution-state";
 import { getPayloadLimitConfig } from "@/lib/distribution/payload-limit-config";
 import { readAndVerifyPayloadObject } from "@/lib/distribution/payload-object-integrity";
 import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
@@ -721,7 +725,16 @@ export async function readPublicCatalogPayloadBytes(input: {
 }> {
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
-    include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
+    include: {
+      versions: {
+        orderBy: latestKnowledgePackVersionOrderBy,
+        take: 1,
+        include: {
+          payload: true,
+          distributionMetadata: true,
+        },
+      },
+    },
   });
   if (!pack || (pack.status !== PackStatus.PUBLISHED && pack.status !== PackStatus.VERIFIED)) {
     throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
@@ -732,23 +745,18 @@ export async function readPublicCatalogPayloadBytes(input: {
     throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "등록된 Payload가 없습니다.", 404);
   }
 
-  const [payload, meta] = await Promise.all([
-    prisma.knowledgePayload.findUnique({ where: { versionId: version.id } }),
-    prisma.packDistributionMetadata.findUnique({ where: { versionId: version.id } }),
-  ]);
+  const latestState = resolveLatestDistributionState(version);
+  if (
+    latestState.kind !== "DISTRIBUTION" ||
+    !canPubliclyDownloadLatestDistributionPack(latestState)
+  ) {
+    // PRIVATE / INVALID / Legacy-without-download: hide as not found.
+    throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
+  }
 
+  const payload = version.payload;
   if (!payload || payload.validationStatus !== PayloadValidationStatus.VALID) {
     throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 Payload가 없습니다.", 404);
-  }
-  if (!meta || !meta.allowDownload) {
-    throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
-  }
-  // PRIVATE: never public download. PUBLIC/UNLISTED: allow when allowDownload.
-  if (meta.visibility === "PRIVATE") {
-    throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
-  }
-  if (meta.visibility !== "PUBLIC" && meta.visibility !== "UNLISTED") {
-    throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
   }
 
   const storage = input.storage ?? getDefaultStorage();
@@ -777,7 +785,7 @@ export async function readPublicCatalogPayloadBytes(input: {
     originalFileName: payload.originalFileName,
     checksumSha256: payload.checksumSha256,
     payloadId: payload.id,
-    visibility: meta.visibility,
+    visibility: latestState.visibility,
   };
 }
 
