@@ -23,7 +23,8 @@ describe("P28.1 new pack creation UX freeze", () => {
     assert.ok(!center.includes("첫 지식팩 만들기"));
     assert.ok(center.includes("ROUTES.providerPackNew"));
     assert.ok(center.includes("PROVIDER_PACK_REGISTER_CTA"));
-    assert.ok(center.includes("PROVIDER_PAYLOAD_IMPORT_PREP_TITLE"));
+    assert.ok(!center.includes("PROVIDER_PAYLOAD_IMPORT_PREP_TITLE"));
+    assert.ok(!center.includes("PROVIDER_CENTER_REGISTERED_TITLE"));
   });
 
   it("mounts create form on /provider/packs/new with read-only role check", () => {

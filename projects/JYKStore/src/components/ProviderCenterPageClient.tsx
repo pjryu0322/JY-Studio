@@ -19,14 +19,9 @@ import {
   PROVIDER_CENTER_LOGIN_TITLE,
   PROVIDER_CENTER_BEFORE_PROFILE_BODY,
   PROVIDER_CENTER_BEFORE_PROFILE_TITLE,
-  PROVIDER_CENTER_NEXT_TASK,
-  PROVIDER_CENTER_REGISTERED_BODY,
-  PROVIDER_CENTER_REGISTERED_TITLE,
   PROVIDER_PACK_EMPTY_BODY,
   PROVIDER_PACK_EMPTY_TITLE,
   PROVIDER_PACK_REGISTER_CTA,
-  PROVIDER_PAYLOAD_IMPORT_PREP_BODY,
-  PROVIDER_PAYLOAD_IMPORT_PREP_TITLE,
 } from "@/lib/role-based-ux-copy";
 import { providerPackDetailPath, ROUTES } from "@/lib/routes";
 
@@ -177,38 +172,6 @@ export function ProviderCenterPageClient() {
       {error ? (
         <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
       ) : null}
-
-      <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4 shadow-card">
-        <p className="text-xs font-bold text-emerald-900">{PROVIDER_CENTER_REGISTERED_TITLE}</p>
-        <p className="mt-1 text-sm text-slate-800">
-          {packs.length > 0
-            ? "등록한 지식팩 상태를 확인하고 검수·공개를 이어가세요."
-            : PROVIDER_CENTER_REGISTERED_BODY}
-        </p>
-        {profile ? (
-          <p className="mt-2 text-sm font-semibold text-slate-900">{profile.displayName}</p>
-        ) : null}
-        {hasReviewingPack ? (
-          <p className="mt-2 text-xs font-semibold text-amber-800">
-            검수 요청된 지식팩이 있습니다. 아래에서 상태를 확인하세요.
-          </p>
-        ) : (
-          <p className="mt-2 text-xs font-semibold text-store-accent">{PROVIDER_CENTER_NEXT_TASK}</p>
-        )}
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-card">
-        <p className="text-sm font-bold text-slate-900">{PROVIDER_PAYLOAD_IMPORT_PREP_TITLE}</p>
-        <p className="mt-1 text-xs leading-relaxed text-store-muted">
-          {PROVIDER_PAYLOAD_IMPORT_PREP_BODY}
-        </p>
-        <Link
-          href={ROUTES.providerPackNew}
-          className="mt-3 inline-flex min-h-[44px] items-center rounded-xl bg-store-accent px-4 text-sm font-bold text-white"
-        >
-          {PROVIDER_PACK_REGISTER_CTA}
-        </Link>
-      </div>
 
       {packs.length > 0 ? <ProviderOnboardingStepper steps={onboardingSteps} /> : null}
 
