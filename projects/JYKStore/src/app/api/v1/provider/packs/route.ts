@@ -14,7 +14,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const items = await listProviderPacksForClient(userId, clientId);
-    return jsonWithClientIdCookie({ clientId, items }, clientId);
+    return jsonWithClientIdCookie(
+      { clientId, items: items.items, summary: items.summary },
+      clientId,
+    );
   } catch (error) {
     logSafeRouteError({ scope: "provider-route", method: "GET", path: "/api/v1/provider/packs", error });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, { status: 500 });

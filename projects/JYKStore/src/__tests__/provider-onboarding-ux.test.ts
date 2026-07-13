@@ -24,6 +24,7 @@ describe("buildProviderOnboardingSteps", () => {
     });
     assert.equal(steps.find((s) => s.key === "profile"), undefined);
     assert.equal(steps.find((s) => s.key === "pack")?.status, "current");
+    assert.equal(steps.find((s) => s.key === "pack")?.title, "기본정보");
 
     const withPack = buildProviderOnboardingSteps({
       hasProfile: true,
@@ -35,6 +36,7 @@ describe("buildProviderOnboardingSteps", () => {
     });
     assert.equal(withPack.find((s) => s.key === "pack")?.status, "done");
     assert.equal(withPack.find((s) => s.key === "payload")?.status, "current");
+    assert.equal(withPack.find((s) => s.key === "payload")?.title, "자료 등록");
   });
 
   it("includes distribution onboarding steps without profile registration", () => {
@@ -53,6 +55,7 @@ describe("buildProviderOnboardingSteps", () => {
       steps.map((s) => s.key),
       ["pack", "payload", "distribution", "review", "publish"],
     );
+    assert.equal(steps.find((s) => s.key === "publish")?.title, "승인·공개");
   });
 });
 
@@ -64,7 +67,7 @@ describe("provider onboarding UX sources", () => {
     assert.ok(page.includes("ProviderCenterPageClient"));
   });
 
-  it("shows payload registration CTA instead of legacy create labels", () => {
+  it("shows pack registration CTA instead of legacy create labels", () => {
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
     assert.ok(!center.includes("<details"));
     assert.ok(center.includes("fetchAuthSession"));
@@ -74,6 +77,7 @@ describe("provider onboarding UX sources", () => {
     assert.ok(!center.includes("PROVIDER_PAYLOAD_IMPORT_PREP_TITLE"));
     assert.ok(!center.includes("PROVIDER_CENTER_REGISTERED_TITLE"));
     assert.ok(!center.includes("1. 1."));
+    assert.ok(!center.includes("ProviderOnboardingStepper"));
   });
 
   it("shows create form with read-only provider role check on new pack page", () => {

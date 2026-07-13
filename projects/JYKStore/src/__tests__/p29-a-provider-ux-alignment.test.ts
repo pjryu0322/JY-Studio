@@ -18,9 +18,12 @@ describe("P28.2 / P29-A provider UX alignment", () => {
     assert.ok(materials.includes("PROVIDER_PACK_GO_TO_REVIEW_TAB"));
   });
 
-  it("hides onboarding stepper when provider has no packs", () => {
+  it("hides global onboarding stepper and shows status dashboard", () => {
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
-    assert.ok(center.includes("packs.length > 0 ? <ProviderOnboardingStepper"));
+    assert.ok(!center.includes("ProviderOnboardingStepper"));
+    assert.ok(center.includes("ProviderStatusDashboard") || center.includes("현황"));
+    assert.ok(!center.includes("fetchProviderPack("));
+    assert.ok(!center.includes("packs[0]"));
   });
 
   it("new pack page gates by role or existing profile without ensure side effects", () => {

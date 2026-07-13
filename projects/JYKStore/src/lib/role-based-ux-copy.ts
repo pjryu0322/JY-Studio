@@ -35,22 +35,24 @@ export const PROVIDER_CENTER_REGISTERED_BODY =
   "현재 계정으로 기존 지식팩의 검수·공개 상태를 관리할 수 있습니다.";
 
 export const PROVIDER_CENTER_NEXT_TASK =
-  "외부 Payload로 지식팩을 등록하고 검수 요청을 제출하세요.";
+  "지식팩을 등록하고 검수 요청을 제출하세요.";
 
-export const PROVIDER_PAYLOAD_IMPORT_PREP_TITLE = "외부 Payload로 지식팩 등록";
+export const PROVIDER_PAYLOAD_IMPORT_PREP_TITLE = "지식팩 등록";
 export const PROVIDER_PAYLOAD_IMPORT_PREP_BODY =
-  "외부 도구에서 생성한 Payload를 등록해 지식팩을 제출할 수 있습니다.";
+  "외부 생성 도구의 결과물과 원본문서를 등록해 지식팩을 제출할 수 있습니다.";
 export const PROVIDER_PAYLOAD_IMPORT_PREP_HINT =
-  "기본정보 → Payload 등록 → 유통정보 → 검수요청 순서로 진행하세요.";
+  "기본정보 → 자료 등록 → 유통정보 → 검수요청 순서로 진행하세요.";
 
-export const PROVIDER_PACK_NEW_BLOCKED_TITLE = "외부 Payload로 지식팩 등록";
+export const PROVIDER_PACK_NEW_BLOCKED_TITLE = "지식팩 등록";
 export const PROVIDER_PACK_NEW_BLOCKED_BODY =
-  "외부 도구에서 생성한 Payload ZIP을 등록해 지식팩을 제출할 수 있습니다.";
+  "외부 생성 도구의 결과물과 원본문서를 등록해 지식팩을 제출할 수 있습니다.";
 
-export const PROVIDER_PACK_REGISTER_CTA = "외부 Payload로 지식팩 등록";
-export const PROVIDER_PACK_EMPTY_TITLE = "아직 등록한 지식팩이 없습니다.";
+export const PROVIDER_PACK_REGISTER_CTA = "지식팩 등록";
+export const PROVIDER_PACK_REGISTER_HINT =
+  "외부 생성 도구의 결과물과 원본문서를 등록합니다.";
+export const PROVIDER_PACK_EMPTY_TITLE = "등록한 지식팩이 없습니다.";
 export const PROVIDER_PACK_EMPTY_BODY =
-  "외부 도구에서 생성한 Payload를 등록해 첫 지식팩을 제출할 수 있습니다.";
+  "외부 생성 도구에서 만든 자료를 등록해 검수 요청할 수 있습니다.";
 
 export const PROVIDER_PACK_CREATE_AUTO_ID_HINT =
   "이름과 설명을 입력하면 JYKStore가 지식팩 ID와 요약 설명을 자동 생성합니다.";
@@ -58,7 +60,7 @@ export const PROVIDER_PACK_CREATE_AUTO_ID_HINT =
 export const PROVIDER_PACK_CREATED_BANNER_TITLE = "지식팩 초안 생성 완료";
 export const PROVIDER_PACK_CREATED_ID_PREFIX = "JYKStore가 지식팩 ID를 발급했습니다:";
 export const PROVIDER_PACK_CREATED_NEXT_TASK =
-  "다음 할 일: 기본정보를 확인한 뒤 Payload를 등록하고 유통정보를 입력하세요.";
+  "다음 할 일: 기본정보를 확인한 뒤 자료를 등록하고 유통정보를 입력하세요.";
 export const PROVIDER_PACK_ID_LABEL = "지식팩 ID";
 
 export const PROVIDER_PACK_WIZARD_BASIC_STEP = "기본정보";
@@ -70,10 +72,10 @@ export const PROVIDER_PACK_WIZARD_DRAFT_STEP = "기존 자료";
 /** @deprecated Builder freeze */
 export const PROVIDER_PACK_WIZARD_INSPECTION_STEP = "검수 요청";
 export const PROVIDER_PACK_WIZARD_REVIEW_STEP = "검수 요청";
-export const PROVIDER_PACK_WIZARD_PUBLISH_STEP = "운영자 승인 후 공개";
+export const PROVIDER_PACK_WIZARD_PUBLISH_STEP = "승인·공개";
 
 export const PROVIDER_PACK_TAB_BASIC = "기본정보";
-export const PROVIDER_PACK_TAB_PAYLOAD = "Payload 등록";
+export const PROVIDER_PACK_TAB_PAYLOAD = "자료 등록";
 export const PROVIDER_PACK_TAB_DISTRIBUTION = "유통정보";
 export const PROVIDER_PACK_TAB_MATERIALS = "기존 자료";
 export const PROVIDER_PACK_TAB_REVIEW = "검수요청";
@@ -84,9 +86,9 @@ export const PROVIDER_PACK_MATERIALS_HINT =
 export const PROVIDER_PACK_MATERIALS_REVIEW_VERSION_LABEL = "검수 대상 버전";
 export const PROVIDER_PACK_MATERIALS_NO_VERSION = "등록된 버전이 없습니다.";
 export const PROVIDER_PACK_MATERIALS_EMPTY =
-  "현재 버전에 등록된 자료가 없습니다. 외부 Payload를 등록한 뒤 검수 요청을 진행할 수 있습니다.";
+  "현재 버전에 등록된 자료가 없습니다. 자료를 등록한 뒤 검수 요청을 진행할 수 있습니다.";
 
-export const PROVIDER_PACK_GO_TO_PAYLOAD_TAB = "Payload 등록으로 이동";
+export const PROVIDER_PACK_GO_TO_PAYLOAD_TAB = "자료 등록으로 이동";
 export const PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB = "유통정보로 이동";
 export const PROVIDER_PACK_GO_TO_MATERIALS_TAB = "기존 자료로 이동";
 export const PROVIDER_PACK_GO_TO_REVIEW_TAB = "검수요청으로 이동";
@@ -254,7 +256,7 @@ export const PROVIDER_PACK_AUTO_SUMMARY_LABEL = "자동 생성 요약";
 export const PROVIDER_PACK_ADVANCED_SUMMARY_EDIT = "고급 요약 수정";
 
 export const PROVIDER_PACK_DRAFT_EMPTY_SOURCES =
-  "등록된 원천 자료가 없습니다. 외부 Payload 등록 기능은 다음 단계에서 제공됩니다.";
+  "등록된 원천 자료가 없습니다. 자료 등록 탭에서 외부 생성 도구 결과물을 등록하세요.";
 export const PROVIDER_GITHUB_ADVANCED_SETTINGS_EXPAND = "고급 설정 펼치기";
 
 export const PROVIDER_PACK_SOURCE_STEP_TITLE = "등록된 자료를 확인하세요.";
@@ -330,10 +332,11 @@ export const PROVIDER_SUBMIT_ADMIN_REVIEW_NOTICE =
 
 /** @deprecated Use ProviderOnboardingStepper instead of numbered list on provider page */
 export const PROVIDER_CENTER_ONBOARDING_STEPS = [
-  "지식팩 기본정보 입력",
-  "기존 자료 확인",
+  "기본정보",
+  "자료 등록",
+  "유통정보",
   "검수 요청",
-  "운영자 승인 후 공개",
+  "승인·공개",
 ] as const;
 
 export const PROVIDER_PROFILE_FOOTER_HINT =

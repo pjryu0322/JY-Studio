@@ -1,6 +1,17 @@
+import type { PackStatus } from "@prisma/client";
+import {
+  buildProviderPackProgress,
+  type ProviderPackProgressDto,
+  type ProviderPackProgressStep,
+} from "@/lib/provider-pack-progress";
 import { providerPackDetailPath, ROUTES } from "@/lib/routes";
 
-export type ProviderOnboardingStepKey = "pack" | "payload" | "distribution" | "review" | "publish";
+export type ProviderOnboardingStepKey =
+  | "pack"
+  | "payload"
+  | "distribution"
+  | "review"
+  | "publish";
 
 export type ProviderOnboardingStepStatus = "done" | "current" | "pending";
 
@@ -12,6 +23,22 @@ export type ProviderOnboardingStep = {
   href?: string;
 };
 
+const STEP_KEY_MAP: Record<ProviderPackProgressStep["key"], ProviderOnboardingStepKey> = {
+  BASIC_INFO: "pack",
+  MATERIAL: "payload",
+  DISTRIBUTION: "distribution",
+  REVIEW: "review",
+  APPROVAL: "publish",
+};
+
+const STATUS_MAP: Record<ProviderPackProgressStep["status"], ProviderOnboardingStepStatus> = {
+  COMPLETED: "done",
+  CURRENT: "current",
+  WAITING: "pending",
+  BLOCKED: "pending",
+};
+
+/** @deprecated Prefer buildProviderPackProgress for pack-scoped workflow. */
 export type BuildProviderOnboardingStepsInput = {
   hasProfile: boolean;
   packCount: number;
@@ -22,90 +49,138 @@ export type BuildProviderOnboardingStepsInput = {
   primaryPackId?: string;
   hasPayload?: boolean;
   hasDistribution?: boolean;
+  /** When set, builds steps for this pack only (preferred). */
+  packScoped?: {
+    packId: string;
+    packStatus: PackStatus;
+    name: string;
+    categoryId: string;
+    shortDescription: string;
+    description: string;
+    latestRejectionReason?: string | null;
+    workingVersion: {
+      id: string;
+      version: string;
+      sourceDocumentCount: number;
+      materialReady: boolean;
+      distributionReady: boolean;
+    } | null;
+    publishedVersion: { id: string; version: string } | null;
+  };
 };
 
+function toOnboardingSteps(progress: ProviderPackProgressDto): ProviderOnboardingStep[] {
+  return progress.steps.map((step) => ({
+    key: STEP_KEY_MAP[step.key],
+    title: step.label,
+    description: step.description,
+    status: STATUS_MAP[step.status],
+    href: step.href ?? undefined,
+  }));
+}
+
+/**
+ * Pack-detail / legacy helper. Provider Center must not use account-global aggregates.
+ * Prefer packScoped input; legacy aggregate fields remain for older tests only.
+ */
 export function buildProviderOnboardingSteps(
   input: BuildProviderOnboardingStepsInput,
 ): ProviderOnboardingStep[] {
-  const payloadHref = input.primaryPackId
-    ? `${providerPackDetailPath(input.primaryPackId)}?tab=payload`
-    : ROUTES.providerPackNew;
-  const distributionHref = input.primaryPackId
-    ? `${providerPackDetailPath(input.primaryPackId)}?tab=distribution`
-    : undefined;
-
-  const packStatus: ProviderOnboardingStepStatus = input.packCount > 0 ? "done" : "current";
-
-  let payloadStatus: ProviderOnboardingStepStatus = "pending";
-  if (input.packCount > 0) {
-    payloadStatus =
-      input.hasPayload || input.sourceDocumentCount > 0
-        ? "done"
-        : packStatus === "done"
-          ? "current"
-          : "pending";
+  if (input.packScoped) {
+    return toOnboardingSteps(buildProviderPackProgress(input.packScoped));
   }
 
-  let distributionStatus: ProviderOnboardingStepStatus = "pending";
-  if (payloadStatus === "done") {
-    distributionStatus = input.hasDistribution ? "done" : "current";
+  // Legacy aggregate path — kept for unit tests; do not use in Provider Center UI.
+  const packStatus: PackStatus = input.hasPublishedOrVerifiedPack
+    ? "PUBLISHED"
+    : input.hasReviewingPack
+      ? "REVIEWING"
+      : input.packCount > 0
+        ? "DRAFT"
+        : "DRAFT";
+
+  const packId = input.primaryPackId ?? "draft";
+  const progress = buildProviderPackProgress({
+    packId,
+    packStatus: input.packCount === 0 ? "DRAFT" : packStatus,
+    name: input.packCount > 0 ? "pack" : "",
+    categoryId: input.packCount > 0 ? "cat" : "",
+    shortDescription: input.packCount > 0 ? "short" : "",
+    description: input.packCount > 0 ? "desc" : "",
+    workingVersion:
+      input.packCount > 0
+        ? {
+            id: "v1",
+            version: "0.1.0",
+            sourceDocumentCount: input.sourceDocumentCount,
+            materialReady: Boolean(input.hasPayload) || input.sourceDocumentCount > 0,
+            distributionReady: Boolean(input.hasDistribution),
+          }
+        : null,
+    publishedVersion: input.hasPublishedOrVerifiedPack
+      ? { id: "v1", version: "0.1.0" }
+      : null,
+  });
+
+  if (input.packCount === 0) {
+    return [
+      {
+        key: "pack",
+        title: "기본정보",
+        description: "지식팩 이름·카테고리·설명을 입력합니다.",
+        status: "current",
+        href: ROUTES.providerPackNew,
+      },
+      {
+        key: "payload",
+        title: "자료 등록",
+        description: "외부 생성 도구에서 만든 지식팩 자료와 원본문서를 등록합니다.",
+        status: "pending",
+      },
+      {
+        key: "distribution",
+        title: "유통정보",
+        description: "출처·라이선스·공개 범위를 입력합니다.",
+        status: "pending",
+      },
+      {
+        key: "review",
+        title: "검수 요청",
+        description: "준비가 끝나면 검수 요청을 제출합니다.",
+        status: "pending",
+      },
+      {
+        key: "publish",
+        title: "승인·공개",
+        description: "운영자가 승인하면 스토어에 공개됩니다.",
+        status: "pending",
+      },
+    ];
   }
 
-  let reviewStatus: ProviderOnboardingStepStatus = "pending";
-  if (input.hasPublishedOrVerifiedPack) {
-    reviewStatus = "done";
-  } else if (input.hasReviewingPack) {
-    reviewStatus = "current";
-  } else if (distributionStatus === "done" || (payloadStatus === "done" && input.sourceDocumentCount > 0)) {
-    reviewStatus = "current";
-  }
-
-  let publishStatus: ProviderOnboardingStepStatus = "pending";
-  if (input.hasPublishedOrVerifiedPack) {
-    publishStatus = "done";
-  } else if (input.hasReviewingPack) {
-    publishStatus = "pending";
-  }
-
-  return [
-    {
-      key: "pack",
-      title: "지식팩 기본정보 입력",
-      description: "지식팩 초안의 이름과 설명을 입력합니다.",
-      status: packStatus,
-      href: packStatus === "current" ? ROUTES.providerPackNew : undefined,
-    },
-    {
-      key: "payload",
-      title: "Payload 등록",
-      description: "외부 도구에서 생성한 ZIP을 등록합니다.",
-      status: payloadStatus,
-      href: payloadStatus === "current" ? payloadHref : undefined,
-    },
-    {
-      key: "distribution",
-      title: "유통정보",
-      description: "출처·라이선스·이용조건을 입력합니다.",
-      status: distributionStatus,
-      href: distributionStatus === "current" ? distributionHref : undefined,
-    },
-    {
-      key: "review",
-      title: "검수 요청",
-      description: "준비가 끝나면 검수 요청을 제출합니다.",
-      status: reviewStatus === "done" ? "done" : reviewStatus,
-      href:
-        reviewStatus === "current" && input.primaryPackId
-          ? `${providerPackDetailPath(input.primaryPackId)}?tab=review`
-          : undefined,
-    },
-    {
-      key: "publish",
-      title: "운영자 승인 후 공개",
-      description: "운영자가 승인하면 스토어에 공개됩니다.",
-      status: publishStatus,
-    },
-  ];
+  return toOnboardingSteps(progress).map((step) => {
+    if (step.status !== "current") return step;
+    if (step.key === "pack") {
+      return { ...step, href: ROUTES.providerPackNew };
+    }
+    if (input.primaryPackId) {
+      const tab =
+        step.key === "payload"
+          ? "payload"
+          : step.key === "distribution"
+            ? "distribution"
+            : step.key === "review" || step.key === "publish"
+              ? "review"
+              : null;
+      return {
+        ...step,
+        href: tab
+          ? `${providerPackDetailPath(input.primaryPackId)}?tab=${tab}`
+          : providerPackDetailPath(input.primaryPackId),
+      };
+    }
+    return step;
+  });
 }
 
 export function resolveProviderPackNextAction(input: {
@@ -118,14 +193,14 @@ export function resolveProviderPackNextAction(input: {
   if (input.justCreated) {
     return {
       title: "지식팩 초안 생성 완료",
-      body: "기본정보를 확인한 뒤 Payload를 등록하세요.",
+      body: "기본정보를 확인한 뒤 자료를 등록하세요.",
       href: "?tab=basic",
     };
   }
   if (input.status === "DRAFT" && !input.hasPayload && input.sourceDocumentCount === 0) {
     return {
       title: "다음 할 일",
-      body: "외부 Payload ZIP을 등록하세요.",
+      body: "외부 생성 도구 산출물과 원본문서를 등록하세요.",
       href: "?tab=payload",
     };
   }

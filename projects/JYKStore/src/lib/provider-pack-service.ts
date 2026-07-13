@@ -67,8 +67,16 @@ import {
   toProviderPackDetail,
   toProviderPackListItem,
   type ProviderPackDetailDto,
+  type ProviderPackListItemDto,
   type ProviderSourceDocumentValidationOverlay,
 } from "@/lib/provider-pack-dto";
+import {
+  buildProviderPackProgress,
+  buildProviderPacksStatusSummary,
+  isDistributionReadyForProgress,
+  isMaterialReadyForProgress,
+  type ProviderPacksStatusSummary,
+} from "@/lib/provider-pack-progress";
 
 export type CreateProviderPackInput = {
   packId?: string;
@@ -184,19 +192,118 @@ async function assertCategoryExists(categoryId: string) {
   return Boolean(category);
 }
 
-export async function listProviderPacksForClient(userId: string, clientId: string) {
+export async function listProviderPacksForClient(
+  userId: string,
+  clientId: string,
+): Promise<{ items: ProviderPackListItemDto[]; summary: ProviderPacksStatusSummary }> {
   const profile = await findOrEnsureProviderProfileForUser(userId, clientId);
 
   if (!profile) {
-    return [];
+    return {
+      items: [],
+      summary: buildProviderPacksStatusSummary([]),
+    };
   }
 
   const packs = await prisma.knowledgePack.findMany({
     where: { providerProfileId: profile.id },
     orderBy: { updatedAt: "desc" },
+    include: {
+      versions: {
+        orderBy: { createdAt: "desc" },
+        take: 2,
+        include: {
+          sourceDocuments: { select: { id: true } },
+          payload: { select: { validationStatus: true } },
+          distributionMetadata: {
+            select: {
+              sourceTitle: true,
+              sourceUrl: true,
+              licenseName: true,
+            },
+          },
+          doclingImportBundles: {
+            where: { deletedAt: null },
+            orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+            take: 1,
+            select: { status: true },
+          },
+        },
+      },
+      reviews: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { rejectionReason: true, decision: true },
+      },
+    },
   });
 
-  return packs.map(toProviderPackListItem);
+  const items = packs.map((pack) => {
+    const working = pack.versions[0] ?? null;
+    const previous = pack.versions[1] ?? null;
+    const latestRejectionReason = pack.reviews[0]?.rejectionReason?.trim() || null;
+
+    const isPublished =
+      pack.status === PackStatus.PUBLISHED || pack.status === PackStatus.VERIFIED;
+
+    // Newest version is the working version. When published with multiple versions,
+    // the previous one is treated as the last published snapshot.
+    const publishedVersion =
+      isPublished && working
+        ? previous
+          ? { id: previous.id, version: previous.version }
+          : { id: working.id, version: working.version }
+        : null;
+
+    const workingVersion = working
+      ? {
+          id: working.id,
+          version: working.version,
+          sourceDocumentCount: working.sourceDocuments.length,
+          materialReady: isMaterialReadyForProgress({
+            sourceDocumentCount: working.sourceDocuments.length,
+            payloadValidationStatus: working.payload?.validationStatus ?? null,
+            doclingBundleStatus: working.doclingImportBundles[0]?.status ?? null,
+          }),
+          distributionReady: isDistributionReadyForProgress({
+            sourceTitle: working.distributionMetadata?.sourceTitle,
+            sourceUrl: working.distributionMetadata?.sourceUrl,
+            licenseName: working.distributionMetadata?.licenseName,
+          }),
+        }
+      : null;
+
+    const progress = buildProviderPackProgress({
+      packId: pack.packId,
+      packStatus: pack.status,
+      name: pack.name,
+      categoryId: pack.categoryId,
+      shortDescription: pack.shortDescription,
+      description: pack.description,
+      latestRejectionReason,
+      workingVersion,
+      publishedVersion,
+    });
+
+    return toProviderPackListItem(pack, {
+      currentStep: progress.currentStep,
+      currentStepLabel: progress.currentStepLabel,
+      nextActionLabel: progress.nextActionLabel,
+      nextActionHref: progress.nextActionHref,
+      publishedVersion: progress.publishedVersion?.version ?? null,
+      workingVersion: progress.workingVersion?.version ?? null,
+      actions: progress.actions,
+    });
+  });
+
+  const summary = buildProviderPacksStatusSummary(
+    packs.map((pack) => ({
+      status: pack.status,
+      latestRejectionReason: pack.reviews[0]?.rejectionReason?.trim() || null,
+    })),
+  );
+
+  return { items, summary };
 }
 
 export async function createProviderPackForClient(

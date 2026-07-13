@@ -48,9 +48,9 @@ describe("provider profile account link", () => {
       hasReviewingPack: false,
       hasPublishedOrVerifiedPack: false,
     });
-    assert.equal(steps[0]?.title, "지식팩 기본정보 입력");
+    assert.equal(steps[0]?.title, "기본정보");
     assert.ok(!steps.some((s) => s.title.includes("제공자 프로필 등록")));
-    assert.equal(PROVIDER_CENTER_ONBOARDING_STEPS[0], "지식팩 기본정보 입력");
+    assert.equal(PROVIDER_CENTER_ONBOARDING_STEPS[0], "기본정보");
 
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
     assert.ok(!center.includes("제공자 프로필 등록"));

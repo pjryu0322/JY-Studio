@@ -3,6 +3,20 @@ import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structu
 import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-dto";
 import type { RetrievalEvaluationSummaryDto } from "@/lib/retrieval-evaluation/retrieval-evaluation-dto";
 import type { ReleaseGateSummaryDto } from "@/lib/release-gate/release-gate-dto";
+import type {
+  ProviderPackProgressAction,
+  ProviderPackCurrentStep,
+} from "@/lib/provider-pack-progress";
+
+export type ProviderPackListProgressDto = {
+  currentStep: ProviderPackCurrentStep;
+  currentStepLabel: string;
+  nextActionLabel: string;
+  nextActionHref: string | null;
+  publishedVersion: string | null;
+  workingVersion: string | null;
+  actions: ProviderPackProgressAction[];
+};
 
 export type ProviderPackListItemDto = {
   packId: string;
@@ -12,6 +26,8 @@ export type ProviderPackListItemDto = {
   shortDescription: string;
   icon: string;
   updatedAt: string;
+  /** Additive pack-scoped progress for Provider Center cards. */
+  progress?: ProviderPackListProgressDto;
 };
 
 export type ProviderSourceDocumentDto = {
@@ -125,7 +141,10 @@ function mapVersion(
   };
 }
 
-export function toProviderPackListItem(pack: KnowledgePack): ProviderPackListItemDto {
+export function toProviderPackListItem(
+  pack: KnowledgePack,
+  progress?: ProviderPackListProgressDto,
+): ProviderPackListItemDto {
   return {
     packId: pack.packId,
     name: pack.name,
@@ -134,6 +153,7 @@ export function toProviderPackListItem(pack: KnowledgePack): ProviderPackListIte
     shortDescription: pack.shortDescription,
     icon: pack.icon,
     updatedAt: pack.updatedAt.toISOString(),
+    ...(progress ? { progress } : {}),
   };
 }
 

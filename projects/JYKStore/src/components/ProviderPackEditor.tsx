@@ -10,12 +10,18 @@ import {
 import { ProviderPayloadTab } from "@/components/provider-distribution/ProviderPayloadTab";
 import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
+import { ProviderPackProgressStepper } from "@/components/ProviderPackProgressStepper";
 import { ProviderPackTabs } from "@/components/ProviderPackTabs";
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
 import type { KnowledgePayloadPublicDto } from "@/lib/distribution/payload-service";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
-import { isDoclingPayloadPresent } from "@/lib/docling-import/docling-import-ui";
+import { isDoclingPayloadPresent, isDoclingPayloadReady } from "@/lib/docling-import/docling-import-ui";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
+import {
+  buildProviderPackProgress,
+  isDistributionReadyForProgress,
+  isMaterialReadyForProgress,
+} from "@/lib/provider-pack-progress";
 import {
   fetchProviderDoclingImportApi,
   fetchProviderPack,
@@ -123,6 +129,57 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       }),
     [hasBasicInfo, payload, distribution, doclingBundle],
   );
+
+  const packProgress = useMemo(() => {
+    if (!pack) return null;
+    const working = pack.versions[0] ?? null;
+    const materialReady = isMaterialReadyForProgress({
+      sourceDocumentCount,
+      payloadValidationStatus: payload?.validationStatus ?? null,
+      doclingBundleStatus: isDoclingPayloadReady(doclingBundle?.status)
+        ? "REVIEW_READY"
+        : doclingBundle?.status ?? null,
+    });
+    const distributionReady = isDistributionReadyForProgress({
+      sourceTitle: distribution?.sourceTitle,
+      sourceUrl: distribution?.sourceUrl,
+      licenseName: distribution?.licenseName,
+    });
+
+    return buildProviderPackProgress({
+      packId: pack.packId,
+      packStatus: pack.status,
+      name: name || pack.name,
+      categoryId: pack.categoryId,
+      shortDescription: shortDescription || pack.shortDescription,
+      description: description || pack.description,
+      latestRejectionReason: pack.latestRejectionReason,
+      workingVersion: working
+        ? {
+            id: working.id,
+            version: working.version,
+            sourceDocumentCount,
+            materialReady,
+            distributionReady,
+          }
+        : null,
+      publishedVersion:
+        pack.status === "PUBLISHED" || pack.status === "VERIFIED"
+          ? working
+            ? { id: working.id, version: working.version }
+            : null
+          : null,
+    });
+  }, [
+    pack,
+    name,
+    shortDescription,
+    description,
+    sourceDocumentCount,
+    payload,
+    distribution,
+    doclingBundle,
+  ]);
 
   const defaultTab = useMemo(
     () =>
@@ -246,6 +303,30 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         </div>
         <ProviderPackStatusBadge status={pack.status} />
       </div>
+
+      {packProgress ? (
+        <div className="space-y-2">
+          {packProgress.publishedVersion &&
+          packProgress.workingVersion &&
+          packProgress.publishedVersion.id !== packProgress.workingVersion.id ? (
+            <p className="px-1 text-xs text-store-muted">
+              공개 Version{" "}
+              <span className="font-semibold text-slate-800">
+                {packProgress.publishedVersion.version}
+              </span>
+              {" · "}
+              작업 Version{" "}
+              <span className="font-semibold text-slate-800">
+                {packProgress.workingVersion.version}
+              </span>
+              {packProgress.currentStepLabel
+                ? ` — ${packProgress.currentStepLabel}`
+                : null}
+            </p>
+          ) : null}
+          <ProviderPackProgressStepper steps={packProgress.steps} />
+        </div>
+      ) : null}
 
       <ProviderPackTabs activeTab={activeTab} onSelectTab={selectTab} />
 

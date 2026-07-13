@@ -1,4 +1,5 @@
 import type { ProviderPackDetailDto, ProviderPackListItemDto } from "@/lib/provider-pack-dto";
+import type { ProviderPacksStatusSummary } from "@/lib/provider-pack-progress";
 import type { ProviderProfileDto } from "@/lib/provider-profile-dto";
 
 export type ProviderProfileResponse = {
@@ -9,6 +10,7 @@ export type ProviderProfileResponse = {
 export type ProviderPacksListResponse = {
   clientId: string;
   items: ProviderPackListItemDto[];
+  summary?: ProviderPacksStatusSummary;
 };
 
 export type ProviderPackDetailResponse = {

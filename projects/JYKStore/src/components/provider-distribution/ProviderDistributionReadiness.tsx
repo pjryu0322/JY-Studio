@@ -46,8 +46,8 @@ export function computeDistributionReadiness(input: {
 
   const missing: DistributionReadiness["missing"] = [];
   if (!input.hasBasicInfo) missing.push({ label: "기본정보", tab: "basic" });
-  if (!hasPayload) missing.push({ label: "Payload 등록", tab: "payload" });
-  else if (!payloadValid) missing.push({ label: "Payload VALID / REVIEW_READY", tab: "payload" });
+  if (!hasPayload) missing.push({ label: "자료 등록", tab: "payload" });
+  else if (!payloadValid) missing.push({ label: "자료 VALID / REVIEW_READY", tab: "payload" });
   if (!hasSource || !hasLicense) missing.push({ label: "유통정보(출처·라이선스)", tab: "distribution" });
 
   return {

@@ -54,7 +54,8 @@ describe("P28.1 materials latest-version alignment", () => {
     assert.ok(materials.includes("PROVIDER_PACK_MATERIALS_REVIEW_VERSION_LABEL"));
     assert.ok(editor.includes("pack?.versions[0]?.sourceDocuments.length"));
     assert.ok(!editor.includes("flatMap((v) => v.sourceDocuments)"));
-    assert.ok(center.includes("versions[0]?.sourceDocuments.length"));
+    assert.ok(!center.includes("versions[0]?.sourceDocuments.length"));
+    assert.ok(!center.includes("fetchProviderPack("));
   });
 
   it("counts only latest version documents for review readiness", () => {

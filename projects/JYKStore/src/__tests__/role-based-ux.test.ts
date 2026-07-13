@@ -17,12 +17,13 @@ function readSource(relativePath: string): string {
 
 describe("role-based UX copy", () => {
   it("defines provider onboarding steps", () => {
-    assert.equal(PROVIDER_CENTER_ONBOARDING_STEPS.length, 4);
+    assert.equal(PROVIDER_CENTER_ONBOARDING_STEPS.length, 5);
     assert.deepEqual([...PROVIDER_CENTER_ONBOARDING_STEPS], [
-      "지식팩 기본정보 입력",
-      "기존 자료 확인",
+      "기본정보",
+      "자료 등록",
+      "유통정보",
       "검수 요청",
-      "운영자 승인 후 공개",
+      "승인·공개",
     ]);
     assert.ok(PROVIDER_PROFILE_FOOTER_HINT.includes("상단 프로필"));
   });
@@ -54,13 +55,14 @@ describe("role-based account UX", () => {
 });
 
 describe("role-based provider UX", () => {
-  it("shows onboarding stepper and payload registration CTA", () => {
+  it("shows status dashboard and pack registration CTA", () => {
     const providerPage = readSource("src/app/(store)/provider/page.tsx");
     const center = readSource("src/components/ProviderCenterPageClient.tsx");
     const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
 
     assert.ok(providerPage.includes("PROVIDER_CENTER_TAGLINE"));
-    assert.ok(center.includes("ProviderOnboardingStepper"));
+    assert.ok(!center.includes("ProviderOnboardingStepper"));
+    assert.ok(center.includes("현황") || center.includes("ProviderStatusDashboard"));
     assert.ok(!center.includes("새 지식팩 만들기"));
     assert.ok(!center.includes("PROVIDER_PAYLOAD_IMPORT_PREP_TITLE"));
     assert.ok(!center.includes("PROVIDER_CENTER_REGISTERED_TITLE"));
