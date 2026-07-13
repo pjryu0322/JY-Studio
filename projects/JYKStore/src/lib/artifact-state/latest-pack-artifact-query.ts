@@ -17,12 +17,21 @@ export const latestPackArtifactVersionInclude = {
     select: {
       id: true,
       validationStatus: true,
+      originalFileName: true,
+      mimeType: true,
+      fileSize: true,
+      checksumSha256: true,
     },
   },
   distributionMetadata: {
     select: {
       visibility: true,
       allowDownload: true,
+      sourceTitle: true,
+      sourceUrl: true,
+      licenseName: true,
+      licenseUrl: true,
+      usageTerms: true,
     },
   },
   doclingImportBundles: {
@@ -41,6 +50,17 @@ export const latestPackArtifactVersionInclude = {
         take: 1,
         select: { id: true, isActive: true },
       },
+      files: {
+        where: { role: "SOURCE_ORIGINAL" as const },
+        take: 1,
+        select: {
+          role: true,
+          originalFileName: true,
+          mimeType: true,
+          fileSize: true,
+          checksumSha256: true,
+        },
+      },
     },
   },
   _count: {
@@ -51,10 +71,22 @@ export const latestPackArtifactVersionInclude = {
 } satisfies Prisma.KnowledgePackVersionInclude;
 
 export type LatestPackArtifactVersionRow = {
-  payload?: { id: string; validationStatus?: string } | null;
+  payload?: {
+    id: string;
+    validationStatus?: string;
+    originalFileName?: string | null;
+    mimeType?: string | null;
+    fileSize?: bigint | number | null;
+    checksumSha256?: string | null;
+  } | null;
   distributionMetadata?: {
     visibility: import("@prisma/client").DistributionVisibility;
     allowDownload: boolean;
+    sourceTitle?: string | null;
+    sourceUrl?: string | null;
+    licenseName?: string | null;
+    licenseUrl?: string | null;
+    usageTerms?: string | null;
   } | null;
   doclingImportBundles?: Array<{
     id: string;
@@ -64,6 +96,13 @@ export type LatestPackArtifactVersionRow = {
     deletedAt: Date | null;
     adapterType?: string | null;
     normalizedDocuments?: Array<{ id: string; isActive: boolean }> | null;
+    files?: Array<{
+      role: string;
+      originalFileName: string;
+      mimeType: string;
+      fileSize: bigint | number;
+      checksumSha256: string;
+    }> | null;
   }> | null;
   _count?: { chunks?: number };
 };

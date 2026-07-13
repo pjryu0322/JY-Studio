@@ -31,7 +31,9 @@ export function PackCard({ pack }: { readonly pack: KnowledgePack }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <h3 className="truncate text-sm font-bold text-slate-900">{pack.name}</h3>
+            <h3 className="truncate text-sm font-bold text-slate-900">
+              {pack.displayName?.trim() || pack.name}
+            </h3>
             {pack.isVerified ? <VerifiedBadge /> : null}
             <StatusBadge status={pack.status} />
           </div>

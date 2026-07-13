@@ -39,7 +39,7 @@ export function MyPackCard({ pack }: { readonly pack: KnowledgePack }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <h2 className="text-sm font-bold text-slate-900">{pack.name}</h2>
+            <h2 className="text-sm font-bold text-slate-900">{pack.displayName?.trim() || pack.name}</h2>
             {pack.isVerified ? <VerifiedBadge /> : null}
           </div>
           <p className="mt-0.5 text-xs text-store-muted">{pack.provider}</p>

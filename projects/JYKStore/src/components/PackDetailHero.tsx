@@ -2,29 +2,45 @@
 
 import Link from "next/link";
 import type { KnowledgePack } from "@/types/pack";
-import { AddToMyPacksButton } from "@/components/AddToMyPacksButton";
-import { ConnectActionButton } from "@/components/ConnectActionButton";
+import { PackCapabilityBadges } from "@/components/PackCapabilityBadges";
 import { PackMetaGrid } from "@/components/PackMetaGrid";
-import { StatusBadge } from "@/components/StatusBadge";
+import { PackPrimaryActions } from "@/components/PackPrimaryActions";
 import { VerifiedBadge } from "@/components/VerifiedBadge";
-import { useMyPacks } from "@/hooks/useMyPacks";
 import { isPackApiIntegrationReady } from "@/lib/public-pack-capability";
 import { ROUTES } from "@/lib/routes";
 
-function publicPayloadDownloadHref(packId: string) {
-  return `/api/v1/packs/${encodeURIComponent(packId)}/payload/download`;
+function providerTypeLabel(type: KnowledgePack["providerInfo"]["type"]): string {
+  switch (type) {
+    case "JYK_VERIFIED":
+      return "검증 제공자";
+    case "OFFICIAL":
+      return "공식 제공";
+    case "COMMUNITY":
+      return "커뮤니티";
+  }
+}
+
+function heroSummary(pack: KnowledgePack): string {
+  const text = (pack.shortDescription || pack.description || "").trim();
+  if (!text) return "";
+  // Keep hero to roughly 2–3 lines.
+  if (text.length <= 160) return text;
+  return `${text.slice(0, 157).trim()}…`;
 }
 
 export function PackDetailHero({ pack }: { readonly pack: KnowledgePack }) {
-  const { mounted, isMyPack } = useMyPacks();
-  const added = mounted && isMyPack(pack.packId);
+  const displayName = pack.displayName?.trim() || pack.name;
   const capabilities = pack.capabilities;
   const apiReady = capabilities ? isPackApiIntegrationReady(capabilities) : false;
-  const downloadReady = capabilities?.download.status === "READY";
+  const downloadReady = capabilities?.download.status === "READY" || pack.downloadInfo?.available;
+  const summary = heroSummary(pack);
 
   return (
     <div className="space-y-4">
-      <Link href={ROUTES.packs} className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent">
+      <Link
+        href={ROUTES.packs}
+        className="inline-flex min-h-[44px] items-center text-sm font-semibold text-store-accent"
+      >
         ← 지식팩 목록
       </Link>
       <div className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
@@ -37,29 +53,17 @@ export function PackDetailHero({ pack }: { readonly pack: KnowledgePack }) {
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
-              <h1 className="text-lg font-bold text-slate-900">{pack.name}</h1>
+              <h1 className="text-lg font-bold leading-snug text-slate-900 break-words">{displayName}</h1>
               {pack.isVerified ? <VerifiedBadge /> : null}
-              <StatusBadge status={pack.status} />
             </div>
-            <p className="mt-1 text-sm text-store-muted">{pack.provider}</p>
-            <p className="mt-2 text-sm leading-relaxed text-slate-700">{pack.shortDescription}</p>
-            {capabilities ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {downloadReady ? (
-                  <span className="rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-800">
-                    다운로드 가능
-                  </span>
-                ) : null}
-                {apiReady ? (
-                  <span className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-800">
-                    API 연동 가능
-                  </span>
-                ) : downloadReady ? (
-                  <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
-                    API 준비 중
-                  </span>
-                ) : null}
-              </div>
+            <p className="mt-1 text-sm text-store-muted">
+              제공자: {pack.providerInfo.name}
+              <span className="mx-1.5 text-slate-300">·</span>
+              {providerTypeLabel(pack.providerInfo.type)}
+            </p>
+            <PackCapabilityBadges pack={pack} />
+            {summary ? (
+              <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-slate-700">{summary}</p>
             ) : null}
           </div>
         </div>
@@ -68,28 +72,13 @@ export function PackDetailHero({ pack }: { readonly pack: KnowledgePack }) {
         </div>
         <p className="mt-4 text-xs leading-relaxed text-store-muted">
           {apiReady
-            ? "내 지식팩에 추가하면 연동에 필요한 정보를 바로 확인할 수 있습니다."
+            ? "이 지식팩은 API 연동과 원본 다운로드를 지원합니다."
             : downloadReady
-              ? "이 지식팩은 원본 다운로드를 지원합니다. API 연동은 준비 중입니다."
+              ? "다운로드형 지식팩입니다. 원본문서 다운로드가 가능하며 API·MCP 연동은 준비 중입니다."
               : "내 지식팩에 추가해 보관할 수 있습니다."}
         </p>
-        <div className="mt-4 flex flex-col gap-2">
-          <AddToMyPacksButton packId={pack.packId} variant="detail" capabilities={capabilities} />
-          {!added && apiReady ? (
-            <ConnectActionButton
-              packId={pack.packId}
-              capabilities={capabilities}
-              label="연동 가이드 보기"
-            />
-          ) : null}
-          {downloadReady ? (
-            <a
-              href={publicPayloadDownloadHref(pack.packId)}
-              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-store-border bg-white px-4 text-sm font-bold text-slate-800 active:bg-slate-50"
-            >
-              다운로드
-            </a>
-          ) : null}
+        <div className="mt-4">
+          <PackPrimaryActions pack={pack} />
         </div>
       </div>
     </div>

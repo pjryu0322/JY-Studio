@@ -1,7 +1,5 @@
 export function PackFeatureList(p: { readonly items: readonly string[] }) {
-  if (!p.items.length) {
-    return <p className="text-sm text-store-muted">준비 중입니다.</p>;
-  }
+  if (!p.items.length) return null;
   return (
     <ul className="space-y-2">
       {p.items.map((item) => (

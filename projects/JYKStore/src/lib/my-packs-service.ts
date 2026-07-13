@@ -17,6 +17,12 @@ const installablePackStatuses: PackStatus[] = [PackStatus.PUBLISHED, PackStatus.
 
 const myPacksInclude = {
   category: true,
+  providerProfile: {
+    select: {
+      displayName: true,
+      description: true,
+    },
+  },
   versions: {
     orderBy: latestKnowledgePackVersionOrderBy,
     include: distributionVersionAccessInclude,

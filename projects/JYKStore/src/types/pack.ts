@@ -1,4 +1,5 @@
 import type { PublicPackCapabilities } from "@/lib/public-pack-capability";
+import type { PublicPackContentType } from "@/lib/public-pack-content-type";
 
 export type KnowledgePackStatus =
   | "PUBLISHED"
@@ -17,16 +18,43 @@ export type KnowledgePackVersionEntry = {
   summary: string;
 };
 
-export type { PublicPackCapabilities };
+export type { PublicPackCapabilities, PublicPackContentType };
+
 export type KnowledgePackProviderInfo = {
   name: string;
   type: KnowledgePackProviderType;
   description: string;
 };
 
+export type PublicPackSourceInfo = {
+  publisherName: string | null;
+  sourceTitle: string | null;
+  sourceUrl: string | null;
+};
+
+export type PublicPackLicenseInfo = {
+  name: string | null;
+  url: string | null;
+  usageTerms: string | null;
+  allowDownload: boolean | null;
+  commercialUseAllowed: boolean | null;
+  redistributionAllowed: boolean | null;
+  attributionRequired: boolean | null;
+};
+
+export type PublicPackDownloadInfo = {
+  available: boolean;
+  originalFileName: string | null;
+  mimeType: string | null;
+  fileSize: number | null;
+  checksumSha256: string | null;
+};
+
 export type KnowledgePack = {
   packId: string;
   name: string;
+  /** Natural-language public title (additive). Falls back to normalized `name`. */
+  displayName?: string;
   category: string;
   categoryId: string;
   provider: string;
@@ -51,6 +79,11 @@ export type KnowledgePack = {
   providerInfo: KnowledgePackProviderInfo;
   /** Additive public runtime/catalog capabilities. */
   capabilities?: PublicPackCapabilities;
+  /** Inferred content shape for section layout; null when unclear. */
+  contentType?: PublicPackContentType | null;
+  sourceInfo?: PublicPackSourceInfo | null;
+  licenseInfo?: PublicPackLicenseInfo | null;
+  downloadInfo?: PublicPackDownloadInfo | null;
   searchScore?: number;
   matchReasons?: {
     field: string;

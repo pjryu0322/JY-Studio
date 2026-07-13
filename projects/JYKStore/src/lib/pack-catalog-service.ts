@@ -18,6 +18,12 @@ import type { KnowledgePack, StoreCategory } from "@/types/pack";
 
 export const packCatalogInclude = {
   category: true,
+  providerProfile: {
+    select: {
+      displayName: true,
+      description: true,
+    },
+  },
   versions: {
     orderBy: latestKnowledgePackVersionOrderBy,
     include: distributionVersionAccessInclude,
