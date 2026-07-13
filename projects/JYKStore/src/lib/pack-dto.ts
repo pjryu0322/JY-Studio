@@ -145,6 +145,7 @@ export function toKnowledgePackDto(
   );
 
   const contentType = resolvePublicPackContentType({
+    explicitContentType: versionRow?.distributionMetadata?.contentType ?? null,
     categoryName: pack.category.name,
     categoryId: pack.categoryId,
     tags: [...pack.tags],

@@ -28,8 +28,14 @@ export type KnowledgePackProviderInfo = {
 
 export type PublicPackSourceInfo = {
   publisherName: string | null;
+  /** Additive: original publisher homepage / catalog URL. */
+  publisherUrl?: string | null;
   sourceTitle: string | null;
   sourceUrl: string | null;
+  /** Additive: document edition / revision label. */
+  documentVersion?: string | null;
+  publishedAt?: string | null;
+  retrievedAt?: string | null;
 };
 
 export type PublicPackLicenseInfo = {

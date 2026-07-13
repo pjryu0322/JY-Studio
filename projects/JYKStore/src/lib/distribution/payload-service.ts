@@ -14,11 +14,10 @@ import {
 } from "@/lib/distribution/distribution-manifest-service";
 import { enqueuePayloadCleanupJob } from "@/lib/distribution/payload-cleanup-service";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
+import { selectPublicArtifact } from "@/lib/artifact-state/select-public-artifact";
 import {
-  canPubliclyDownloadLatestDistributionPack,
   distributionVersionAccessInclude,
   latestKnowledgePackVersionOrderBy,
-  resolveLatestDistributionState,
 } from "@/lib/distribution/latest-distribution-state";
 import { getPayloadLimitConfig } from "@/lib/distribution/payload-limit-config";
 import {
@@ -757,49 +756,63 @@ export async function readPublicCatalogPayloadBytes(input: {
     throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "등록된 Payload가 없습니다.", 404);
   }
 
-  const latestState = resolveLatestDistributionState(version);
-  if (
-    latestState.kind !== "DISTRIBUTION" ||
-    !canPubliclyDownloadLatestDistributionPack(latestState)
-  ) {
-    // PRIVATE / INVALID / Legacy-without-download: hide as not found.
+  const selected = selectPublicArtifact(version);
+  if (selected.kind !== "SOURCE_ORIGINAL" && selected.kind !== "KNOWLEDGE_PACKAGE") {
+    throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
+  }
+  if (!selected.allowDownload || selected.visibility === "PRIVATE") {
     throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
   }
 
   const storage = input.storage ?? getDefaultStorage();
 
-  // External import packs expose the original source file (not a ZIP KnowledgePayload).
-  if (latestState.artifact === "EXTERNAL_IMPORT") {
-    const bundle = version.doclingImportBundles?.find((row) => row.isActive) ?? null;
-    if (!bundle) {
-      throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 자료가 없습니다.", 404);
-    }
-    const sourceFile = await prisma.knowledgePackFile.findFirst({
-      where: {
-        bundleId: bundle.id,
-        packId: pack.packId,
-        role: "SOURCE_ORIGINAL",
-      },
-    });
-    if (!sourceFile) {
-      throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 원본 자료가 없습니다.", 404);
+  if (selected.kind === "SOURCE_ORIGINAL") {
+    let objectKey = selected.objectKey;
+    let artifactId = selected.artifactId;
+    let originalFileName = selected.originalFileName;
+    let mimeType = selected.mimeType;
+    let expectedChecksum = selected.checksumSha256;
+    let expectedSize = selected.fileSize;
+
+    if (!objectKey || !expectedChecksum) {
+      const sourceFile = await prisma.knowledgePackFile.findFirst({
+        where: {
+          packId: pack.packId,
+          versionId: version.id,
+          role: "SOURCE_ORIGINAL",
+          bundle: { deletedAt: null, isActive: true },
+        },
+      });
+      if (!sourceFile) {
+        throw new PayloadServiceError(
+          "PAYLOAD_NOT_FOUND",
+          "다운로드 가능한 원본 자료가 없습니다.",
+          404,
+        );
+      }
+      objectKey = sourceFile.storageKey;
+      artifactId = sourceFile.id;
+      originalFileName = sourceFile.originalFileName;
+      mimeType = sourceFile.mimeType || "application/octet-stream";
+      expectedChecksum = sourceFile.checksumSha256;
+      expectedSize = Number(sourceFile.fileSize);
     }
 
     const verified = await readAndVerifyStoredObject({
       storage,
-      objectKey: sourceFile.storageKey,
-      expectedChecksumSha256: sourceFile.checksumSha256,
-      expectedFileSize: Number(sourceFile.fileSize),
+      objectKey,
+      expectedChecksumSha256: expectedChecksum,
+      expectedFileSize: expectedSize,
     });
 
     await recordProviderAudit({
       action: AuditAction.PAYLOAD_DOWNLOADED,
       entityType: "KnowledgePackFile",
-      entityId: sourceFile.id,
+      entityId: artifactId,
       metadata: {
         packId: pack.packId,
         versionId: version.id,
-        fileId: sourceFile.id,
+        fileId: artifactId,
         role: "SOURCE_ORIGINAL",
         artifactKind: "SOURCE_ORIGINAL",
         bytes: verified.actualFileSize,
@@ -811,36 +824,51 @@ export async function readPublicCatalogPayloadBytes(input: {
 
     return {
       bytes: verified.bytes,
-      originalFileName: sourceFile.originalFileName,
-      mimeType: sourceFile.mimeType || "application/octet-stream",
+      originalFileName,
+      mimeType: mimeType || "application/octet-stream",
       fileSize: verified.actualFileSize,
       checksumSha256: verified.actualChecksumSha256,
-      payloadId: sourceFile.id,
-      visibility: latestState.visibility,
+      payloadId: artifactId,
+      visibility: selected.visibility,
       artifactKind: "SOURCE_ORIGINAL",
     };
   }
 
-  const payload = version.payload;
-  if (!payload || payload.validationStatus !== PayloadValidationStatus.VALID) {
-    throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 Payload가 없습니다.", 404);
+  let objectKey = selected.objectKey;
+  let artifactId = selected.artifactId;
+  let originalFileName = selected.originalFileName;
+  let mimeType = selected.mimeType;
+  let expectedChecksum = selected.checksumSha256;
+  let expectedSize = selected.fileSize;
+
+  if (!objectKey || !expectedChecksum) {
+    const payload = version.payload;
+    if (!payload || payload.validationStatus !== PayloadValidationStatus.VALID) {
+      throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 Payload가 없습니다.", 404);
+    }
+    objectKey = payload.storagePath;
+    artifactId = payload.id;
+    originalFileName = payload.originalFileName;
+    mimeType = payload.mimeType?.trim() || "application/zip";
+    expectedChecksum = payload.checksumSha256;
+    expectedSize = Number(payload.fileSize);
   }
 
   const verified = await readAndVerifyStoredObject({
     storage,
-    objectKey: payload.storagePath,
-    expectedChecksumSha256: payload.checksumSha256,
-    expectedFileSize: Number(payload.fileSize),
+    objectKey,
+    expectedChecksumSha256: expectedChecksum,
+    expectedFileSize: expectedSize,
   });
 
   await recordProviderAudit({
     action: AuditAction.PAYLOAD_DOWNLOADED,
     entityType: "KnowledgePayload",
-    entityId: payload.id,
+    entityId: artifactId,
     metadata: {
       packId: pack.packId,
       versionId: version.id,
-      payloadId: payload.id,
+      payloadId: artifactId,
       artifactKind: "KNOWLEDGE_PACKAGE",
       bytes: verified.actualFileSize,
       checksumSha256: verified.actualChecksumSha256,
@@ -850,12 +878,12 @@ export async function readPublicCatalogPayloadBytes(input: {
 
   return {
     bytes: verified.bytes,
-    originalFileName: payload.originalFileName,
-    mimeType: payload.mimeType?.trim() || "application/zip",
+    originalFileName,
+    mimeType: mimeType?.trim() || "application/zip",
     fileSize: verified.actualFileSize,
     checksumSha256: verified.actualChecksumSha256,
-    payloadId: payload.id,
-    visibility: latestState.visibility,
+    payloadId: artifactId,
+    visibility: selected.visibility,
     artifactKind: "KNOWLEDGE_PACKAGE",
   };
 }

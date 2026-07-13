@@ -10,7 +10,7 @@ import { packDetailPath } from "@/lib/routes";
 import { useMyPacks } from "@/hooks/useMyPacks";
 
 function publicPayloadDownloadHref(packId: string) {
-  return `/api/v1/packs/${encodeURIComponent(packId)}/payload/download`;
+  return `/api/v1/packs/${encodeURIComponent(packId)}/download`;
 }
 
 export function MyPackCard({ pack }: { readonly pack: KnowledgePack }) {

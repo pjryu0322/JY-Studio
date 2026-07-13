@@ -31,6 +31,27 @@ export function resolveLatestPackArtifactState(
   const hasMeta = hasDistributionMetadata(version);
   const readyExternal = pickReadyExternalImport(version?.externalImports);
   const metadata = version?.distributionMetadata ?? null;
+  const primary = metadata?.primaryArtifactType ?? null;
+
+  // Dual-ready: honor primaryArtifactType; default ZIP-first (matches selectPublicArtifact).
+  if (hasZip && hasMeta && metadata && readyExternal) {
+    if (primary === "SOURCE_ORIGINAL") {
+      return {
+        kind: "EXTERNAL_IMPORT",
+        ready: true,
+        visibility: metadata.visibility,
+        allowDownload: metadata.allowDownload,
+        generatorName: readyExternal.generatorName,
+        normalizedDocumentReady: Boolean(readyExternal.normalizedDocument?.isActive),
+      };
+    }
+    return {
+      kind: "DISTRIBUTION_ZIP",
+      ready: true,
+      visibility: metadata.visibility,
+      allowDownload: metadata.allowDownload,
+    };
+  }
 
   if (hasZip && hasMeta && metadata) {
     return {

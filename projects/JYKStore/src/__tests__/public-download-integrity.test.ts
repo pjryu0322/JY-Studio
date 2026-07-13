@@ -232,11 +232,13 @@ describe("source publisher separation", () => {
           normalizedDocuments: [{ id: "n1", isActive: true }],
           files: [
             {
+              id: "f1",
               role: "SOURCE_ORIGINAL",
               originalFileName: "guide.docx",
               mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
               fileSize: 12,
               checksumSha256: "a".repeat(64),
+              storageKey: "packs/a/guide.docx",
             },
           ],
         },
@@ -252,11 +254,71 @@ describe("source publisher separation", () => {
         mimeType: "application/zip",
         fileSize: 99,
         checksumSha256: "b".repeat(64),
+        storagePath: "packs/a/pack.zip",
       },
       distributionMetadata: { visibility: "PUBLIC", allowDownload: true },
       doclingImportBundles: [],
     });
     assert.equal(zip?.artifactKind, "KNOWLEDGE_PACKAGE");
+  });
+
+  it("uses ZIP when both artifacts ready without primary selection", () => {
+    const both = resolvePublicPackDownloadInfo({
+      payload: {
+        id: "p1",
+        validationStatus: "VALID",
+        originalFileName: "pack.zip",
+        mimeType: "application/zip",
+        fileSize: 99,
+        checksumSha256: "b".repeat(64),
+        storagePath: "packs/a/pack.zip",
+      },
+      distributionMetadata: { visibility: "PUBLIC", allowDownload: true },
+      doclingImportBundles: [
+        {
+          id: "b1",
+          isActive: true,
+          status: "REVIEW_READY",
+          storageStatus: "ACTIVE",
+          deletedAt: null,
+          normalizedDocuments: [{ id: "n1", isActive: true }],
+          files: [
+            {
+              id: "f1",
+              role: "SOURCE_ORIGINAL",
+              originalFileName: "guide.docx",
+              mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              fileSize: 12,
+              checksumSha256: "a".repeat(64),
+              storageKey: "packs/a/guide.docx",
+            },
+          ],
+        },
+      ],
+    });
+    assert.equal(both?.artifactKind, "KNOWLEDGE_PACKAGE");
+  });
+
+  it("reads source publisher from distribution metadata only", () => {
+    const info = resolvePublicPackSourceInfo({
+      distributionMetadata: {
+        visibility: "PUBLIC",
+        allowDownload: true,
+        sourceTitle: "가이드",
+        sourcePublisherName: "한국정보화진흥원",
+        sourcePublisherUrl: "https://example.com/nia",
+        sourceDocumentVersion: "2025",
+        licenseName: "공공누리",
+      },
+    });
+    assert.equal(info?.publisherName, "한국정보화진흥원");
+    assert.equal(info?.publisherUrl, "https://example.com/nia");
+    assert.equal(info?.documentVersion, "2025");
+  });
+
+  it("download route sets nosniff", () => {
+    const route = readSource("app/api/v1/packs/[packId]/payload/download/route.ts");
+    assert.match(route, /X-Content-Type-Options": "nosniff"/);
   });
 });
 

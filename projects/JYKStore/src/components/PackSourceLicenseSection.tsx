@@ -28,7 +28,13 @@ export function PackSourceLicenseSection({ pack }: { readonly pack: KnowledgePac
   const license = pack.licenseInfo;
   const downloadReady = pack.capabilities?.download.status === "READY" || pack.downloadInfo?.available;
 
-  const hasSource = Boolean(source?.publisherName || source?.sourceTitle || source?.sourceUrl);
+  const hasSource = Boolean(
+    source?.publisherName ||
+      source?.publisherUrl ||
+      source?.sourceTitle ||
+      source?.sourceUrl ||
+      source?.documentVersion,
+  );
   const hasLicense = Boolean(license?.name || license?.url || license?.usageTerms);
   if (!hasSource && !hasLicense && !downloadReady) return null;
 
@@ -36,13 +42,20 @@ export function PackSourceLicenseSection({ pack }: { readonly pack: KnowledgePac
     <section className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
       <h2 className="text-sm font-bold text-slate-900">출처 및 이용조건</h2>
       <dl className="mt-3 space-y-3">
-        {source?.publisherName ? <Row label="출처 기관">{source.publisherName}</Row> : null}
+        {source?.publisherName ? <Row label="발행기관">{source.publisherName}</Row> : null}
+        {source?.publisherUrl ? (
+          <Row label="발행기관 URL">
+            <ExternalLink href={source.publisherUrl}>{source.publisherUrl}</ExternalLink>
+          </Row>
+        ) : null}
         {source?.sourceTitle ? <Row label="원천 문서">{source.sourceTitle}</Row> : null}
         {source?.sourceUrl ? (
           <Row label="원문 페이지">
             <ExternalLink href={source.sourceUrl}>{source.sourceUrl}</ExternalLink>
           </Row>
         ) : null}
+        {source?.documentVersion ? <Row label="문서 버전">{source.documentVersion}</Row> : null}
+        {source?.publishedAt ? <Row label="게시일">{source.publishedAt}</Row> : null}
         {license?.name ? <Row label="라이선스">{license.name}</Row> : null}
         {license?.url ? (
           <Row label="라이선스 URL">

@@ -91,7 +91,7 @@ export function ConnectNotReadyPanel({
       <div className="flex flex-col gap-2">
         {downloadReady ? (
           <a
-            href={`/api/v1/packs/${encodeURIComponent(pack.packId)}/payload/download`}
+            href={`/api/v1/packs/${encodeURIComponent(pack.packId)}/download`}
             className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-store-border bg-white px-4 text-sm font-bold text-store-accent"
           >
             다운로드

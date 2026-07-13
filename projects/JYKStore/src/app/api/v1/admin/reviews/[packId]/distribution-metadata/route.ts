@@ -29,12 +29,25 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       body: {
         sourceTitle: typeof body.sourceTitle === "string" ? body.sourceTitle : null,
         sourceUrl: typeof body.sourceUrl === "string" ? body.sourceUrl : null,
+        sourcePublisherName:
+          typeof body.sourcePublisherName === "string" ? body.sourcePublisherName : null,
+        sourcePublisherUrl:
+          typeof body.sourcePublisherUrl === "string" ? body.sourcePublisherUrl : null,
+        sourceDocumentVersion:
+          typeof body.sourceDocumentVersion === "string" ? body.sourceDocumentVersion : null,
+        sourcePublishedAt:
+          typeof body.sourcePublishedAt === "string" ? body.sourcePublishedAt : null,
+        sourceRetrievedAt:
+          typeof body.sourceRetrievedAt === "string" ? body.sourceRetrievedAt : null,
         licenseName: typeof body.licenseName === "string" ? body.licenseName : "",
         licenseUrl: typeof body.licenseUrl === "string" ? body.licenseUrl : null,
         usageTerms: typeof body.usageTerms === "string" ? body.usageTerms : null,
         readmeText: typeof body.readmeText === "string" ? body.readmeText : null,
         visibility: typeof body.visibility === "string" ? body.visibility : "PRIVATE",
         allowDownload: body.allowDownload !== false,
+        primaryArtifactType:
+          typeof body.primaryArtifactType === "string" ? body.primaryArtifactType : null,
+        contentType: typeof body.contentType === "string" ? body.contentType : null,
       },
     });
     return jsonWithClientIdCookie({ clientId, distribution: result.distribution }, clientId);

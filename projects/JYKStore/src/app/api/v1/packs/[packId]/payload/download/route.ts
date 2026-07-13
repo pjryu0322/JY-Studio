@@ -59,6 +59,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         "Content-Disposition": buildContentDisposition(result.originalFileName),
         "X-JYKStore-SHA256": result.checksumSha256,
         "Cache-Control": cacheControlForVisibility(result.visibility),
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {

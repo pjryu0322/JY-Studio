@@ -231,6 +231,7 @@ export async function createProviderPackVersionApi(
 export async function fetchProviderPackDistributionApi(packId: string): Promise<{
   clientId: string;
   distribution: import("@/lib/distribution/distribution-metadata-service").PackDistributionMetadataDto | null;
+  artifactOptions: import("@/lib/distribution/distribution-metadata-service").DistributionArtifactOptionsDto;
 }> {
   const response = await fetch(
     `/api/v1/provider/packs/${encodeURIComponent(packId)}/distribution`,
@@ -245,6 +246,7 @@ export async function fetchProviderPackDistributionApi(packId: string): Promise<
   return (await response.json()) as {
     clientId: string;
     distribution: import("@/lib/distribution/distribution-metadata-service").PackDistributionMetadataDto | null;
+    artifactOptions: import("@/lib/distribution/distribution-metadata-service").DistributionArtifactOptionsDto;
   };
 }
 
@@ -253,16 +255,24 @@ export async function upsertProviderPackDistributionApi(
   input: {
     sourceTitle?: string;
     sourceUrl?: string;
+    sourcePublisherName?: string;
+    sourcePublisherUrl?: string;
+    sourceDocumentVersion?: string;
+    sourcePublishedAt?: string | null;
+    sourceRetrievedAt?: string | null;
     licenseName: string;
     licenseUrl?: string;
     usageTerms?: string;
     readmeText?: string;
     visibility?: string;
     allowDownload?: boolean;
+    primaryArtifactType?: string | null;
+    contentType?: string | null;
   },
 ): Promise<{
   clientId: string;
   distribution: import("@/lib/distribution/distribution-metadata-service").PackDistributionMetadataDto;
+  artifactOptions: import("@/lib/distribution/distribution-metadata-service").DistributionArtifactOptionsDto;
 }> {
   const response = await fetch(
     `/api/v1/provider/packs/${encodeURIComponent(packId)}/distribution`,
@@ -279,6 +289,7 @@ export async function upsertProviderPackDistributionApi(
   return (await response.json()) as {
     clientId: string;
     distribution: import("@/lib/distribution/distribution-metadata-service").PackDistributionMetadataDto;
+    artifactOptions: import("@/lib/distribution/distribution-metadata-service").DistributionArtifactOptionsDto;
   };
 }
 

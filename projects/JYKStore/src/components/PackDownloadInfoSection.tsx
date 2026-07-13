@@ -25,7 +25,7 @@ function shortenChecksum(value: string | null | undefined): string | null {
 }
 
 function publicPayloadDownloadHref(packId: string) {
-  return `/api/v1/packs/${encodeURIComponent(packId)}/payload/download`;
+  return `/api/v1/packs/${encodeURIComponent(packId)}/download`;
 }
 
 export function PackDownloadInfoSection({ pack }: { readonly pack: KnowledgePack }) {
@@ -33,7 +33,7 @@ export function PackDownloadInfoSection({ pack }: { readonly pack: KnowledgePack
   const available = info?.available || pack.capabilities?.download.status === "READY";
   if (!available && !info?.originalFileName) return null;
 
-  const artifactKind = info?.artifactKind ?? (info?.mimeType?.includes("zip") ? "KNOWLEDGE_PACKAGE" : "SOURCE_ORIGINAL");
+  const artifactKind = info?.artifactKind;
   const isPackage = artifactKind === "KNOWLEDGE_PACKAGE";
   const typeLabel = formatMimeLabel(info?.mimeType, info?.originalFileName);
   const sizeLabel = formatBytes(info?.fileSize ?? null);

@@ -1,4 +1,5 @@
 import type { LatestPackArtifactVersionRow } from "@/lib/artifact-state/latest-pack-artifact-query";
+import { selectPublicArtifact } from "@/lib/artifact-state/select-public-artifact";
 import {
   canPubliclyDownloadLatestDistributionPack,
   resolveLatestDistributionState,
@@ -25,37 +26,13 @@ export function formatPublicLicenseDisplayName(name: string | null | undefined):
   return name.trim();
 }
 
-function toNumber(value: bigint | number | null | undefined): number | null {
-  if (value == null) return null;
-  if (typeof value === "bigint") {
-    const asNumber = Number(value);
-    return Number.isFinite(asNumber) ? asNumber : null;
+function toIsoDate(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
   }
-  return Number.isFinite(value) ? value : null;
-}
-
-function pickSourceOriginalFile(
-  version: LatestPackArtifactVersionRow | null | undefined,
-): {
-  originalFileName: string;
-  mimeType: string;
-  fileSize: number | null;
-  checksumSha256: string;
-} | null {
-  const bundles = version?.doclingImportBundles ?? [];
-  for (const bundle of bundles) {
-    if (!bundle.isActive) continue;
-    const file = bundle.files?.find((f) => f.role === "SOURCE_ORIGINAL");
-    if (file) {
-      return {
-        originalFileName: file.originalFileName,
-        mimeType: file.mimeType,
-        fileSize: toNumber(file.fileSize),
-        checksumSha256: file.checksumSha256,
-      };
-    }
-  }
-  return null;
+  const trimmed = value.trim();
+  return trimmed || null;
 }
 
 /**
@@ -66,11 +43,33 @@ export function resolvePublicPackSourceInfo(
   version: LatestPackArtifactVersionRow | null | undefined,
 ): PublicPackSourceInfo | null {
   const meta = version?.distributionMetadata;
-  const publisherName = null;
+  const publisherName = meta?.sourcePublisherName?.trim() || null;
+  const publisherUrl = meta?.sourcePublisherUrl?.trim() || null;
   const sourceTitle = meta?.sourceTitle?.trim() || null;
   const sourceUrl = meta?.sourceUrl?.trim() || null;
-  if (!publisherName && !sourceTitle && !sourceUrl) return null;
-  return { publisherName, sourceTitle, sourceUrl };
+  const documentVersion = meta?.sourceDocumentVersion?.trim() || null;
+  const publishedAt = toIsoDate(meta?.sourcePublishedAt);
+  const retrievedAt = toIsoDate(meta?.sourceRetrievedAt);
+  if (
+    !publisherName &&
+    !publisherUrl &&
+    !sourceTitle &&
+    !sourceUrl &&
+    !documentVersion &&
+    !publishedAt &&
+    !retrievedAt
+  ) {
+    return null;
+  }
+  return {
+    publisherName,
+    publisherUrl,
+    sourceTitle,
+    sourceUrl,
+    documentVersion,
+    publishedAt,
+    retrievedAt,
+  };
 }
 
 export function resolvePublicPackLicenseInfo(
@@ -103,8 +102,7 @@ export function resolvePublicPackDownloadInfo(
 ): PublicPackDownloadInfo | null {
   const state = resolveLatestDistributionState(version);
   const available = canPubliclyDownloadLatestDistributionPack(state);
-  const sourceFile = pickSourceOriginalFile(version);
-  const payload = version?.payload;
+  const selected = selectPublicArtifact(version);
 
   let artifactKind: PublicPackDownloadArtifactKind | undefined;
   let originalFileName: string | null = null;
@@ -112,18 +110,18 @@ export function resolvePublicPackDownloadInfo(
   let fileSize: number | null = null;
   let checksumSha256: string | null = null;
 
-  if (sourceFile) {
+  if (selected.kind === "SOURCE_ORIGINAL") {
     artifactKind = "SOURCE_ORIGINAL";
-    originalFileName = sourceFile.originalFileName;
-    mimeType = sourceFile.mimeType;
-    fileSize = sourceFile.fileSize;
-    checksumSha256 = sourceFile.checksumSha256;
-  } else if (payload?.originalFileName || payload?.id) {
+    originalFileName = selected.originalFileName;
+    mimeType = selected.mimeType;
+    fileSize = selected.fileSize;
+    checksumSha256 = selected.checksumSha256 || null;
+  } else if (selected.kind === "KNOWLEDGE_PACKAGE") {
     artifactKind = "KNOWLEDGE_PACKAGE";
-    originalFileName = payload.originalFileName ?? null;
-    mimeType = payload.mimeType ?? "application/zip";
-    fileSize = toNumber(payload.fileSize);
-    checksumSha256 = payload.checksumSha256 ?? null;
+    originalFileName = selected.originalFileName;
+    mimeType = selected.mimeType;
+    fileSize = selected.fileSize;
+    checksumSha256 = selected.checksumSha256 || null;
   }
 
   if (!available && !originalFileName && !mimeType && fileSize == null && !checksumSha256) {

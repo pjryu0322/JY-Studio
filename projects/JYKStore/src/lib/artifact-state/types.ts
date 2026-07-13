@@ -50,6 +50,7 @@ export type LatestPackVersionArtifactInput = {
   distributionMetadata?: {
     visibility: DistributionVisibility;
     allowDownload: boolean;
+    primaryArtifactType?: "SOURCE_ORIGINAL" | "KNOWLEDGE_PACKAGE" | null;
   } | null;
   /** Generic external import bundle(s); adapters map tool-specific rows into this shape. */
   externalImports?: ExternalImportArtifactInput[] | null;

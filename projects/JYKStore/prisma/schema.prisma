@@ -418,20 +418,43 @@ model PayloadStorageCleanupJob {
   @@index([doclingBundleId, status])
 }
 
+enum PublicArtifactType {
+  SOURCE_ORIGINAL
+  KNOWLEDGE_PACKAGE
+}
+
+enum PackContentType {
+  DOCUMENT
+  PRODUCT
+  API
+  FRAMEWORK
+  DATA
+  MIXED
+}
+
 model PackDistributionMetadata {
-  id            String                 @id @default(cuid())
-  packId        String
-  versionId     String
-  sourceTitle   String?
-  sourceUrl     String?
-  licenseName   String
-  licenseUrl    String?
-  usageTerms    String?
-  readmeText    String?
-  visibility    DistributionVisibility @default(PRIVATE)
-  allowDownload Boolean                @default(true)
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
+  id                    String                 @id @default(cuid())
+  packId                String
+  versionId             String
+  sourceTitle           String?
+  sourceUrl             String?
+  sourcePublisherName   String?
+  sourcePublisherUrl    String?
+  sourceDocumentVersion String?
+  sourcePublishedAt     DateTime?
+  sourceRetrievedAt     DateTime?
+  licenseName           String
+  licenseUrl            String?
+  usageTerms            String?
+  readmeText            String?
+  visibility            DistributionVisibility @default(PRIVATE)
+  allowDownload         Boolean                @default(true)
+  /// Explicit public download artifact when ZIP and External Import both exist.
+  primaryArtifactType   PublicArtifactType?
+  /// Explicit public content shape; overrides inference when set.
+  contentType           PackContentType?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 
   pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Restrict)
   version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)

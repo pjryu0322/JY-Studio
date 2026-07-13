@@ -8,7 +8,7 @@ import { isPackApiIntegrationReady } from "@/lib/public-pack-capability";
 import { myPackConnectPath, ROUTES } from "@/lib/routes";
 
 function publicPayloadDownloadHref(packId: string) {
-  return `/api/v1/packs/${encodeURIComponent(packId)}/payload/download`;
+  return `/api/v1/packs/${encodeURIComponent(packId)}/download`;
 }
 
 const primaryClass =
