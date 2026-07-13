@@ -16,6 +16,7 @@ import { enqueuePayloadCleanupJob } from "@/lib/distribution/payload-cleanup-ser
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import {
   canPubliclyDownloadLatestDistributionPack,
+  distributionVersionAccessInclude,
   latestKnowledgePackVersionOrderBy,
   resolveLatestDistributionState,
 } from "@/lib/distribution/latest-distribution-state";
@@ -736,6 +737,7 @@ export async function readPublicCatalogPayloadBytes(input: {
         include: {
           payload: true,
           distributionMetadata: true,
+          doclingImportBundles: distributionVersionAccessInclude.doclingImportBundles,
         },
       },
     },
@@ -758,12 +760,61 @@ export async function readPublicCatalogPayloadBytes(input: {
     throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
   }
 
+  const storage = input.storage ?? getDefaultStorage();
+
+  // External import packs expose the original source file (not a ZIP KnowledgePayload).
+  if (latestState.artifact === "EXTERNAL_IMPORT") {
+    const bundle = version.doclingImportBundles?.find((row) => row.isActive) ?? null;
+    if (!bundle) {
+      throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 자료가 없습니다.", 404);
+    }
+    const sourceFile = await prisma.knowledgePackFile.findFirst({
+      where: {
+        bundleId: bundle.id,
+        packId: pack.packId,
+        role: "SOURCE_ORIGINAL",
+      },
+    });
+    if (!sourceFile) {
+      throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 원본 자료가 없습니다.", 404);
+    }
+
+    let got;
+    try {
+      got = await storage.get({ objectKey: sourceFile.storageKey });
+    } catch {
+      throw new PayloadServiceError("PAYLOAD_STORAGE_UNAVAILABLE", "저장소에서 파일을 읽지 못했습니다.", 502);
+    }
+
+    await recordProviderAudit({
+      action: AuditAction.PAYLOAD_DOWNLOADED,
+      entityType: "KnowledgePackFile",
+      entityId: sourceFile.id,
+      metadata: {
+        packId: pack.packId,
+        versionId: version.id,
+        fileId: sourceFile.id,
+        role: "SOURCE_ORIGINAL",
+        checksumSha256: sourceFile.checksumSha256,
+        actor: "catalog",
+        artifact: "EXTERNAL_IMPORT",
+      },
+    });
+
+    return {
+      bytes: got.bytes,
+      originalFileName: sourceFile.originalFileName,
+      checksumSha256: sourceFile.checksumSha256,
+      payloadId: sourceFile.id,
+      visibility: latestState.visibility,
+    };
+  }
+
   const payload = version.payload;
   if (!payload || payload.validationStatus !== PayloadValidationStatus.VALID) {
     throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 Payload가 없습니다.", 404);
   }
 
-  const storage = input.storage ?? getDefaultStorage();
   const { bytes } = await readAndVerifyPayloadObject({
     storage,
     objectKey: payload.storagePath,

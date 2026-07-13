@@ -64,6 +64,30 @@ describe("Invalid distribution state", () => {
     assert.equal(canPubliclyDownloadLatestDistributionPack(state), false);
   });
 
+  it("metadata with ready external import is catalog visible without ZIP payload", () => {
+    const state = resolveLatestDistributionState({
+      distributionMetadata: { visibility: "PUBLIC", allowDownload: true },
+      doclingImportBundles: [
+        {
+          id: "bundle_ready",
+          isActive: true,
+          status: "REVIEW_READY",
+          storageStatus: "ACTIVE",
+          deletedAt: null,
+          adapterType: "EXTERNAL",
+          normalizedDocuments: [{ id: "nd_ready", isActive: true }],
+        },
+      ],
+    });
+    assert.equal(state.kind, "DISTRIBUTION");
+    if (state.kind === "DISTRIBUTION") {
+      assert.equal(state.artifact, "EXTERNAL_IMPORT");
+    }
+    assert.equal(isLatestVersionCatalogVisible(state, "list"), true);
+    assert.equal(canInstallLatestDistributionPack(state), true);
+    assert.equal(canPubliclyDownloadLatestDistributionPack(state), true);
+  });
+
   it("PRIVATE distribution blocks catalog install and download", () => {
     const state = resolveLatestDistributionState(distributionVersion("PRIVATE"));
     assert.equal(isLatestVersionCatalogVisible(state, "list"), false);
