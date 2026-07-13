@@ -1,6 +1,7 @@
 import type { KnowledgePackFileRole } from "@prisma/client";
 import { getPayloadLimitConfig } from "@/lib/distribution/payload-limit-config";
 import { DoclingImportError } from "@/lib/docling-import/docling-import-errors";
+import { validateSourceFileContent } from "@/lib/docling-import/source-file-content-validator";
 
 export const DOCLING_SOURCE_EXTENSIONS = [
   ".pdf",
@@ -113,12 +114,74 @@ function assertNoPathTraversal(rawFileName: string): void {
   }
 }
 
-export function assertRoleFileAcceptable(
+function assertJsonContent(bytes: Uint8Array): void {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new DoclingImportError(
+      "DOCLING_FILE_CONTENT_INVALID",
+      "Docling JSON은 UTF-8 텍스트여야 합니다.",
+      400,
+    );
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new DoclingImportError(
+      "DOCLING_FILE_CONTENT_INVALID",
+      "Docling JSON을 파싱할 수 없습니다.",
+      400,
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new DoclingImportError(
+      "DOCLING_FILE_CONTENT_INVALID",
+      "Docling JSON 루트는 객체여야 합니다.",
+      400,
+    );
+  }
+}
+
+function assertMarkdownContent(bytes: Uint8Array): void {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new DoclingImportError(
+      "DOCLING_FILE_CONTENT_INVALID",
+      "Docling Markdown은 UTF-8 텍스트여야 합니다.",
+      400,
+    );
+  }
+  if (!text.trim()) {
+    throw new DoclingImportError(
+      "DOCLING_FILE_CONTENT_INVALID",
+      "Docling Markdown이 비어 있습니다.",
+      400,
+    );
+  }
+  let nul = 0;
+  const sample = Math.min(bytes.byteLength, 4096);
+  for (let i = 0; i < sample; i++) {
+    if (bytes[i] === 0) nul += 1;
+  }
+  if (nul > 0) {
+    throw new DoclingImportError(
+      "DOCLING_FILE_CONTENT_INVALID",
+      "Docling Markdown에 허용되지 않은 제어 문자가 포함되어 있습니다.",
+      400,
+    );
+  }
+}
+
+export async function assertRoleFileAcceptable(
   role: KnowledgePackFileRole,
   fileName: string,
   clientMime: string | null | undefined,
   bytes: Uint8Array,
-): { fileName: string; extension: string; mimeType: string } {
+): Promise<{ fileName: string; extension: string; mimeType: string }> {
   if (!bytes || bytes.byteLength === 0) {
     throw new DoclingImportError(
       "DOCLING_FILE_REQUIRED",
@@ -168,18 +231,12 @@ export function assertRoleFileAcceptable(
         400,
       );
     }
-    const expected = SOURCE_MIME_BY_EXT[extension];
-    if (
-      mimeType &&
-      expected &&
-      mimeType !== expected &&
-      mimeType !== "application/octet-stream"
-    ) {
-      // Allow common aliases; otherwise fall back to extension mime.
-      mimeType = expected;
-    } else {
-      mimeType = mimeType || expected || "application/octet-stream";
-    }
+    const content = await validateSourceFileContent({
+      extension,
+      clientMime,
+      bytes,
+    });
+    mimeType = content.mimeType;
   } else if (role === "DOCLING_JSON") {
     if (!(DOCLING_JSON_EXTENSIONS as readonly string[]).includes(extension)) {
       throw new DoclingImportError(
@@ -195,6 +252,7 @@ export function assertRoleFileAcceptable(
         400,
       );
     }
+    assertJsonContent(bytes);
     mimeType = "application/json";
   } else if (role === "DOCLING_MARKDOWN") {
     if (!(DOCLING_MARKDOWN_EXTENSIONS as readonly string[]).includes(extension)) {
@@ -215,6 +273,7 @@ export function assertRoleFileAcceptable(
         400,
       );
     }
+    assertMarkdownContent(bytes);
     mimeType = mimeType === "text/plain" ? "text/plain" : "text/markdown";
   } else {
     throw new DoclingImportError("DOCLING_INVALID_ROLE", "알 수 없는 파일 역할입니다.", 400);

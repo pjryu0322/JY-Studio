@@ -147,6 +147,8 @@ enum AuditAction {
   DOCLING_IMPORT_NORMALIZED
   DOCLING_IMPORT_DELETED
   DOCLING_IMPORT_RETRIED
+  DOCLING_REVIEW_INTEGRITY_VERIFIED
+  DOCLING_REVIEW_INTEGRITY_FAILED
 }
 
 model ProviderProfile {
@@ -464,6 +466,13 @@ enum DoclingProcessingStatus {
   FAILED
 }
 
+enum DoclingBundleStorageStatus {
+  ACTIVE
+  DELETE_PENDING
+  DELETED
+  DELETE_FAILED
+}
+
 /// Three-file Docling import unit (source + JSON + Markdown). Separate from ZIP KnowledgePayload.
 model DoclingImportBundle {
   id                    String                    @id @default(cuid())
@@ -485,6 +494,14 @@ model DoclingImportBundle {
   validatedAt           DateTime?
   normalizedAt          DateTime?
   reviewReadyAt         DateTime?
+  /// Soft-deactivation timestamp when replaced or deleted (audit retention).
+  deactivatedAt         DateTime?
+  deactivationReason    String?
+  replacedByBundleId    String?
+  deletedAt             DateTime?
+  storageStatus         DoclingBundleStorageStatus @default(ACTIVE)
+  storageDeleteAttempts Int                        @default(0)
+  storageLastError      String?
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
 
@@ -497,6 +514,9 @@ model DoclingImportBundle {
   @@index([packId, versionId])
   @@index([versionId, isActive])
   @@index([status])
+  @@index([storageStatus])
+  /// Partial unique: one active bundle per version — enforced in migration SQL:
+  /// CREATE UNIQUE INDEX "DoclingImportBundle_one_active_per_version" ON "DoclingImportBundle" ("versionId") WHERE "isActive" = true;
 }
 
 /// Immutable per-role file object for a Docling import bundle.
@@ -552,6 +572,8 @@ model NormalizedDocument {
   markdownPayloadFileId  String?
   sourcePayloadChecksum  String?
   fingerprint            String?
+  /// Canonical fingerprint algorithm id (e.g. normalized-document-v2).
+  fingerprintVersion     String?  @default("normalized-document-v2")
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
@@ -561,6 +583,8 @@ model NormalizedDocument {
 
   @@index([bundleId, isActive])
   @@index([packId, versionId])
+  /// Partial unique: one active ND per bundle — enforced in migration SQL:
+  /// CREATE UNIQUE INDEX "NormalizedDocument_one_active_per_bundle" ON "NormalizedDocument" ("bundleId") WHERE "isActive" = true;
 }
 
 model DoclingProcessingLog {

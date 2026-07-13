@@ -22,17 +22,17 @@ describe("docling-import-file-guards", () => {
     assert.equal(detectMimeFromExtension(".md"), "text/markdown");
   });
 
-  it("accepts valid role files", () => {
-    const source = assertRoleFileAcceptable(
+  it("accepts valid role files with content validation", async () => {
+    const source = await assertRoleFileAcceptable(
       KnowledgePackFileRole.SOURCE_ORIGINAL,
       "sample.pdf",
       "application/pdf",
-      new Uint8Array([1, 2, 3]),
+      new TextEncoder().encode("%PDF-1.7\ncontent"),
     );
     assert.equal(source.extension, ".pdf");
     assert.equal(source.mimeType, "application/pdf");
 
-    const json = assertRoleFileAcceptable(
+    const json = await assertRoleFileAcceptable(
       KnowledgePackFileRole.DOCLING_JSON,
       "sample.json",
       null,
@@ -40,7 +40,7 @@ describe("docling-import-file-guards", () => {
     );
     assert.equal(json.mimeType, "application/json");
 
-    const md = assertRoleFileAcceptable(
+    const md = await assertRoleFileAcceptable(
       KnowledgePackFileRole.DOCLING_MARKDOWN,
       "sample.md",
       "text/plain",
@@ -49,8 +49,8 @@ describe("docling-import-file-guards", () => {
     assert.equal(md.mimeType, "text/plain");
   });
 
-  it("rejects empty, blocked, and wrong-role extensions", () => {
-    assert.throws(
+  it("rejects empty, blocked, wrong-role, and signature mismatch", async () => {
+    await assert.rejects(
       () =>
         assertRoleFileAcceptable(
           KnowledgePackFileRole.SOURCE_ORIGINAL,
@@ -60,7 +60,7 @@ describe("docling-import-file-guards", () => {
         ),
       (e) => isDoclingImportError(e) && e.code === "DOCLING_FILE_REQUIRED",
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         assertRoleFileAcceptable(
           KnowledgePackFileRole.SOURCE_ORIGINAL,
@@ -70,7 +70,7 @@ describe("docling-import-file-guards", () => {
         ),
       (e) => isDoclingImportError(e) && e.code === "DOCLING_BLOCKED_EXTENSION",
     );
-    assert.throws(
+    await assert.rejects(
       () =>
         assertRoleFileAcceptable(
           KnowledgePackFileRole.DOCLING_JSON,
@@ -80,5 +80,25 @@ describe("docling-import-file-guards", () => {
         ),
       (e) => isDoclingImportError(e) && e.code === "DOCLING_INVALID_JSON",
     );
+    await assert.rejects(
+      () =>
+        assertRoleFileAcceptable(
+          KnowledgePackFileRole.SOURCE_ORIGINAL,
+          "sample.pdf",
+          "application/pdf",
+          new Uint8Array([0x4d, 0x5a, 0x90, 0x00]),
+        ),
+      (e) => isDoclingImportError(e) && e.code === "DOCLING_FILE_SIGNATURE_MISMATCH",
+    );
+  });
+
+  it("allows application/octet-stream when signature matches", async () => {
+    const source = await assertRoleFileAcceptable(
+      KnowledgePackFileRole.SOURCE_ORIGINAL,
+      "sample.pdf",
+      "application/octet-stream",
+      new TextEncoder().encode("%PDF-1.4\n"),
+    );
+    assert.equal(source.mimeType, "application/pdf");
   });
 });

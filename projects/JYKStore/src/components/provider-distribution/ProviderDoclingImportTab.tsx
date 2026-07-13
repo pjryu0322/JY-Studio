@@ -7,6 +7,7 @@ import {
   DOCLING_FILE_ROLE_LABELS,
   extractOriginMatchSummary,
   formatBytes,
+  formatDoclingStorageStatus,
   truncateSha256,
 } from "@/lib/docling-import/docling-import-ui";
 import {
@@ -190,11 +191,17 @@ export function ProviderDoclingImportTab({
       {bundle && !replacing ? (
         <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-xs text-slate-800">
           <p className="font-semibold text-emerald-950">등록된 Docling Bundle</p>
+          {bundle.immutableAfterSubmission ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950">
+              검수 제출 이력이 있어 교체할 수 없습니다. 새 버전을 생성하세요.
+            </p>
+          ) : null}
           <p>
             상태: <span className="font-bold">{bundle.status}</span>
             {bundle.doclingSchemaVersion
               ? ` · Schema ${bundle.doclingSchemaName ?? "DoclingDocument"} v${bundle.doclingSchemaVersion}`
               : null}
+            {` · ${formatDoclingStorageStatus(bundle.storageStatus)}`}
           </p>
           <p>
             Adapter: {bundle.adapterType} {bundle.adapterVersion} · Origin match:{" "}

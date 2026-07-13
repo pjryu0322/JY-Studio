@@ -18,7 +18,11 @@ export type ProviderPackDetailResponse = {
 
 async function parseErrorMessage(response: Response): Promise<string> {
   try {
-    const data = (await response.json()) as { error?: string; message?: string };
+    const data = (await response.json()) as { error?: string; message?: string; code?: string };
+    if (data.code) {
+      const { mapDoclingImportUserError } = await import("@/lib/docling-import/docling-import-ui");
+      return mapDoclingImportUserError(data.code, data.message ?? data.error);
+    }
     return data.message ?? data.error ?? `요청에 실패했습니다. (${response.status})`;
   } catch {
     return `요청에 실패했습니다. (${response.status})`;
@@ -302,7 +306,6 @@ export async function uploadProviderDoclingImportApi(
     sourceFile: File;
     doclingJsonFile: File;
     doclingMarkdownFile: File;
-    adapterVersion?: string;
   },
 ): Promise<{
   clientId: string;
@@ -312,9 +315,6 @@ export async function uploadProviderDoclingImportApi(
   form.append("sourceFile", input.sourceFile);
   form.append("doclingJsonFile", input.doclingJsonFile);
   form.append("doclingMarkdownFile", input.doclingMarkdownFile);
-  if (input.adapterVersion) {
-    form.append("adapterVersion", input.adapterVersion);
-  }
   const response = await fetch(
     `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import`,
     {

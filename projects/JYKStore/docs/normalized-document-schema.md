@@ -11,7 +11,8 @@
 | `adapterType` / `adapterVersion` | 어댑터 식별 |
 | `sourceSchemaName` / `sourceSchemaVersion` | Docling schema |
 | `title` / `language` | 문서 메타 |
-| `fingerprint` | 구조 지문 |
+| `fingerprint` | 구조 지문 (`normalized-document-v2` canonical JSON SHA-256) |
+| `fingerprintVersion` | Fingerprint 알고리즘 id (`normalized-document-v2`) |
 | `warningCount` | 정규화 경고 수 |
 | `sourceFileId` / `jsonPayloadFileId` / `markdownPayloadFileId` | 원본 파일 참조 |
 | `sourcePayloadChecksum` | 원본 체크섬 요약 |

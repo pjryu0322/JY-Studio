@@ -44,3 +44,39 @@ export function fileByRole(
 ) {
   return bundle.files.find((file) => file.role === role) ?? null;
 }
+
+export function mapDoclingImportUserError(code: string | null | undefined, fallback?: string): string {
+  switch (code) {
+    case "DOCLING_FILE_SIGNATURE_MISMATCH":
+      return "파일 확장자와 실제 파일 형식이 일치하지 않습니다. Docling 원본문서를 다시 확인하세요.";
+    case "DOCLING_MIME_MISMATCH":
+      return "클라이언트 MIME 유형과 실제 파일 형식이 일치하지 않습니다.";
+    case "DOCLING_FILE_CONTENT_INVALID":
+      return "파일 내용이 올바르지 않습니다. Docling 원본문서를 다시 확인하세요.";
+    case "DOCLING_HTML_CONTENT_INVALID":
+      return "HTML 원본문서 형식이 올바르지 않습니다.";
+    case "DOCLING_OFFICE_PACKAGE_INVALID":
+      return "Office 문서 패키지가 올바르지 않습니다.";
+    case "DOCLING_OFFICE_REQUIRED_ENTRY_MISSING":
+      return "Office 문서에 필수 항목이 없습니다.";
+    case "DOCLING_IMMUTABLE_AFTER_SUBMISSION":
+      return "검수 제출 이력이 있어 교체할 수 없습니다. 새 버전을 생성하세요.";
+    default:
+      return fallback?.trim() || "Docling import 처리에 실패했습니다.";
+  }
+}
+
+export function formatDoclingStorageStatus(status: string | null | undefined): string {
+  switch (status) {
+    case "ACTIVE":
+      return "저장소 활성";
+    case "DELETE_PENDING":
+      return "삭제 대기";
+    case "DELETED":
+      return "삭제됨";
+    case "DELETE_FAILED":
+      return "삭제 실패";
+    default:
+      return status ?? "—";
+  }
+}

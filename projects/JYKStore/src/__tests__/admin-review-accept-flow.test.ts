@@ -92,6 +92,7 @@ function pendingDetail(
     },
     payload: overrides.payload ?? null,
     currentManifestFingerprint: overrides.currentManifestFingerprint ?? null,
+    doclingReviewIntegrity: overrides.doclingReviewIntegrity ?? null,
     distribution: overrides.distribution ?? null,
     structureQuality: null,
     chunkQuality: null,

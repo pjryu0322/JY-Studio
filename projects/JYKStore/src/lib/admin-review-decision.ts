@@ -206,6 +206,19 @@ export function detectSubmitSnapshotDrift(detail: AdminReviewDetailDto): {
   return { changed: reasons.length > 0, reasons };
 }
 
+function hasDoclingIntegrityBlock(detail: AdminReviewDetailDto): boolean {
+  return detail.doclingReviewIntegrity?.status === "BLOCKED";
+}
+
+function doclingIntegrityBlockers(detail: AdminReviewDetailDto): string[] {
+  if (!hasDoclingIntegrityBlock(detail)) return [];
+  const messages = detail.doclingReviewIntegrity?.errors.map((e) => e.message) ?? [];
+  if (messages.length === 0) {
+    return ["제출 시점 원본 파일과 현재 저장 파일의 무결성이 일치하지 않습니다."];
+  }
+  return [...new Set(messages)];
+}
+
 export function isSubmitSnapshotApprovalEligible(detail: AdminReviewDetailDto): boolean {
   const snapshot = getSubmitSnapshot(detail);
   if (!snapshot) return false;
@@ -221,6 +234,7 @@ export function isSubmitSnapshotApprovalEligible(detail: AdminReviewDetailDto): 
   if (isDoclingBundleReviewSnapshot(snapshot)) {
     if (!detail.distribution) return false;
     if (detectSubmitSnapshotDrift(detail).changed) return false;
+    if (hasDoclingIntegrityBlock(detail)) return false;
     return true;
   }
 
@@ -298,6 +312,7 @@ export function collectAcceptBlockers(detail: AdminReviewDetailDto): string[] {
     if (drift.changed) {
       blockers.push(...drift.reasons);
     }
+    blockers.push(...doclingIntegrityBlockers(detail));
     return [...new Set(blockers)];
   }
 
@@ -528,7 +543,7 @@ export function resolveReviewDecisionState(detail: AdminReviewDetailDto): Review
     if (detectSubmitSnapshotDrift(detail).changed) {
       return "submit_package_changed";
     }
-    if (!detail.distribution) {
+    if (!detail.distribution || hasDoclingIntegrityBlock(detail)) {
       return "approval_blocked";
     }
     return "approval_ready";

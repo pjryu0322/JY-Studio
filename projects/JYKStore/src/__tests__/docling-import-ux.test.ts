@@ -31,6 +31,7 @@ describe("docling import UX sources", () => {
     assert.ok(source.includes("재시도"));
     assert.ok(source.includes("NormalizedDocumentPreview"));
     assert.ok(source.includes("min-h-[44px]"));
+    assert.ok(source.includes("검수 제출 이력이 있어 교체할 수 없습니다"));
   });
 
   it("keeps ZIP as secondary collapsed legacy section", () => {
@@ -70,6 +71,7 @@ describe("docling import UX sources", () => {
     assert.ok(source.includes("Capabilities"));
     assert.ok(source.includes("patchAdminDistributionMetadataApi"));
     assert.ok(source.includes("처리 로그") || source.includes("processingLogs"));
+    assert.ok(source.includes("검수 무결성") || source.includes("doclingReviewIntegrity"));
 
     assert.ok(ADMIN_REVIEW_EVIDENCE_TAB_IDS.includes("docling"));
     assert.equal(ADMIN_REVIEW_TAB_DOCLING, "Docling");
@@ -97,20 +99,25 @@ describe("docling import UX sources", () => {
     const importDoc = readSource("docs/docling-three-file-import.md");
     assert.ok(importDoc.includes("Docling을 **실행하지 않습니다**") || importDoc.includes("실행하지 않습니다"));
     assert.ok(importDoc.includes("레거시 ZIP"));
+    assert.ok(importDoc.includes("DOCLING_ADAPTER_VERSION") || importDoc.includes("서버 상수"));
+    assert.ok(importDoc.includes("storageStatus") || importDoc.includes("Storage Status"));
 
     const schemaDoc = readSource("docs/normalized-document-schema.md");
     assert.ok(schemaDoc.includes("capabilities"));
     assert.ok(schemaDoc.includes("NOT_BUILT"));
+    assert.ok(schemaDoc.includes("normalized-document-v2"));
 
     const opsDoc = readSource("docs/docling-adapter-operations.md");
     assert.ok(opsDoc.includes("REVIEW_READY"));
     assert.ok(opsDoc.includes("NormalizedDocument"));
+    assert.ok(opsDoc.includes("DOCLING_REVIEW_INTEGRITY") || opsDoc.includes("무결성"));
 
     const readme = readSource("README.md");
     assert.ok(readme.includes("Docling 3파일 Import"));
     assert.ok(readme.includes("Docling을 실행하지 않습니다"));
     assert.ok(readme.includes("NormalizedDocument"));
     assert.ok(readme.includes("레거시 ZIP"));
+    assert.ok(readme.includes("서버 상수") || readme.includes("Adapter Version"));
   });
 
   it("exposes capability badge helper and readiness helpers", () => {

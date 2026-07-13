@@ -140,7 +140,7 @@ export async function commitDistributionPackForReview(
         markdown: mdFile.checksumSha256,
       },
       doclingSchemaVersion: doclingBundle.doclingSchemaVersion,
-      adapterVersion: doclingBundle.adapterVersion,
+      adapterVersion: nd.adapterVersion,
       normalizedDocumentId: nd.id,
       fingerprint: nd.fingerprint,
       warningCount: doclingBundle.warningCount,

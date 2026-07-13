@@ -122,6 +122,12 @@ export type AdminReviewDetailDto = {
   } | null;
   /** Current DB-derived distribution fingerprint for drift checks (schema 0.2). */
   currentManifestFingerprint: string | null;
+  /** Precomputed Docling review integrity (DOCLING_BUNDLE only). */
+  doclingReviewIntegrity: {
+    status: "PASS" | "BLOCKED" | "UNKNOWN";
+    errors: { code: string; message: string }[];
+    warnings: { code: string; message: string }[];
+  } | null;
   distribution: {
     sourceTitle: string | null;
     sourceUrl: string | null;
@@ -317,6 +323,7 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
     readiness,
     payload: null,
     currentManifestFingerprint: null,
+    doclingReviewIntegrity: null,
     distribution: null,
     structureQuality: null,
     chunkQuality: null,

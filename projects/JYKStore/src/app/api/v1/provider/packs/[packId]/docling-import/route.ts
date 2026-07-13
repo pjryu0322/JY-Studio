@@ -85,8 +85,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const adapterVersionRaw = form.get("adapterVersion");
-    const adapterVersion =
-      typeof adapterVersionRaw === "string" ? adapterVersionRaw : null;
+    void adapterVersionRaw; // ignored: server locks adapter version
 
     const result = await uploadDoclingImportBundle({
       userId,
@@ -107,7 +106,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
         mimeType: markdownFile.type || null,
         bytes: new Uint8Array(await markdownFile.arrayBuffer()),
       },
-      adapterVersion,
     });
 
     return jsonWithClientIdCookie({ clientId, bundle: result.bundle }, clientId);

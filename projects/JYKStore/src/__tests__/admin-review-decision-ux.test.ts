@@ -83,6 +83,7 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
     readiness,
     payload: overrides.payload ?? null,
     currentManifestFingerprint: overrides.currentManifestFingerprint ?? null,
+    doclingReviewIntegrity: overrides.doclingReviewIntegrity ?? null,
     distribution: overrides.distribution ?? null,
     structureQuality: overrides.structureQuality ?? null,
     chunkQuality: overrides.chunkQuality ?? null,

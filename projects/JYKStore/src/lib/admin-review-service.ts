@@ -33,7 +33,16 @@ import {
   canRejectWithoutAccept,
   detectSubmitSnapshotDrift,
 } from "@/lib/admin-review-decision";
-import { isDistributionReviewSnapshot } from "@/lib/provider-review-submit-snapshot";
+import {
+  isDistributionReviewSnapshot,
+  isDoclingBundleReviewSnapshot,
+} from "@/lib/provider-review-submit-snapshot";
+import {
+  assertDoclingReviewIntegrityOrThrow,
+  summarizeDoclingReviewIntegrity,
+  validateDoclingReviewIntegrity,
+} from "@/lib/docling-import/docling-review-integrity-service";
+import { isDoclingImportError } from "@/lib/docling-import/docling-import-errors";
 import {
   validateAllSourceDocumentsForPack,
   validateAndPersistSourceDocument,
@@ -151,6 +160,16 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
         }
       : null,
   });
+
+  const snapshot = detail.latestReview?.submitSnapshot ?? null;
+  if (isDoclingBundleReviewSnapshot(snapshot)) {
+    const integrity = await validateDoclingReviewIntegrity({
+      packId,
+      snapshot,
+      verifyObjectStorage: true,
+    });
+    detail.doclingReviewIntegrity = summarizeDoclingReviewIntegrity(integrity);
+  }
 
   if (payloadRow) {
     // Distribution packs skip legacy Builder quality overlays that would block approval.
@@ -547,6 +566,27 @@ export async function acceptPackReview(input: {
     return { error: "NO_PENDING_REVIEW" as const };
   }
 
+  const detailBeforeAccept = await getAdminReviewDetail(packId);
+  if (!detailBeforeAccept) {
+    return { error: "NOT_FOUND" as const };
+  }
+  const acceptSnapshot = detailBeforeAccept.latestReview?.submitSnapshot ?? null;
+  if (isDoclingBundleReviewSnapshot(acceptSnapshot)) {
+    try {
+      await assertDoclingReviewIntegrityOrThrow({
+        packId,
+        snapshot: acceptSnapshot,
+        verifyObjectStorage: true,
+        actorUserId: input.reviewerUserId,
+      });
+    } catch (error) {
+      if (isDoclingImportError(error)) {
+        return { error: "INCOMPLETE" as const, message: error.message };
+      }
+      throw error;
+    }
+  }
+
   await prisma.packReview.update({
     where: { id: pending.id },
     data: {
@@ -595,6 +635,23 @@ export async function approvePackReview(input: {
 
   if (!isAdminReviewAccepted(detailBefore.latestReview?.status)) {
     return { error: "NOT_ACCEPTED" as const };
+  }
+
+  const approveSnapshot = detailBefore.latestReview?.submitSnapshot ?? null;
+  if (isDoclingBundleReviewSnapshot(approveSnapshot)) {
+    try {
+      await assertDoclingReviewIntegrityOrThrow({
+        packId,
+        snapshot: approveSnapshot,
+        verifyObjectStorage: true,
+        actorUserId: input.reviewerUserId,
+      });
+    } catch (error) {
+      if (isDoclingImportError(error)) {
+        return { error: "INCOMPLETE" as const, message: error.message };
+      }
+      throw error;
+    }
   }
 
   const readinessError = validateApprovalReadiness(detailBefore);

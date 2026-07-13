@@ -1,5 +1,6 @@
 import {
   AuditAction,
+  DoclingBundleStorageStatus,
   DoclingImportBundleStatus,
   DoclingProcessingStage,
   DoclingProcessingStatus,
@@ -12,7 +13,10 @@ import {
   type Prisma,
 } from "@prisma/client";
 import { doclingAdapter } from "@/lib/adapters/docling/docling-adapter";
-import { DOCLING_ADAPTER_TYPE } from "@/lib/adapters/docling/docling-types";
+import {
+  DOCLING_ADAPTER_TYPE,
+  DOCLING_ADAPTER_VERSION,
+} from "@/lib/adapters/docling/docling-types";
 import { createPayloadId } from "@/lib/distribution/distribution-manifest-service";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
 import { sha256Hex } from "@/lib/distribution/payload-checksum";
@@ -28,8 +32,12 @@ import {
   type NormalizedDocumentSummaryDto,
   type PackCapabilitiesDto,
 } from "@/lib/docling-import/docling-import-dto";
-import { DoclingImportError } from "@/lib/docling-import/docling-import-errors";
+import { DoclingImportError, isDoclingImportError } from "@/lib/docling-import/docling-import-errors";
 import { assertRoleFileAcceptable } from "@/lib/docling-import/docling-import-file-guards";
+import {
+  computeNormalizedDocumentFingerprint,
+  NORMALIZED_DOCUMENT_FINGERPRINT_VERSION,
+} from "@/lib/docling-import/normalized-document-fingerprint";
 import {
   assertTransition,
   canRetry,
@@ -97,6 +105,7 @@ function toNormalizedSummaryDto(
     title: doc.title,
     language: doc.language,
     fingerprint: doc.fingerprint,
+    fingerprintVersion: doc.fingerprintVersion,
     warningCount: warnings.length,
     sourceFileId: doc.sourceFileId,
     jsonPayloadFileId: doc.jsonPayloadFileId,
@@ -124,12 +133,13 @@ function toProcessingLogDto(log: DoclingProcessingLog): DoclingProcessingLogPubl
 
 export function toDoclingImportBundlePublicDto(
   bundle: BundleWithRelations,
-  options?: { canDelete?: boolean },
+  options?: { canDelete?: boolean; immutableAfterSubmission?: boolean },
 ): DoclingImportBundlePublicDto {
   const activeNd =
     bundle.normalizedDocuments.find((d) => d.isActive) ??
     bundle.normalizedDocuments[0] ??
     null;
+  const immutableAfterSubmission = options?.immutableAfterSubmission ?? false;
   return {
     id: bundle.id,
     packId: bundle.packId,
@@ -149,10 +159,13 @@ export function toDoclingImportBundlePublicDto(
     validatedAt: bundle.validatedAt?.toISOString() ?? null,
     normalizedAt: bundle.normalizedAt?.toISOString() ?? null,
     reviewReadyAt: bundle.reviewReadyAt?.toISOString() ?? null,
+    deactivatedAt: bundle.deactivatedAt?.toISOString() ?? null,
+    storageStatus: bundle.storageStatus,
     createdAt: bundle.createdAt.toISOString(),
     updatedAt: bundle.updatedAt.toISOString(),
-    canDelete: options?.canDelete ?? false,
-    canRetry: canRetry(bundle.status),
+    canDelete: (options?.canDelete ?? false) && !immutableAfterSubmission,
+    canRetry: canRetry(bundle.status) && !immutableAfterSubmission,
+    immutableAfterSubmission,
     files: bundle.files.map(toFileDto),
     processingLogs: (bundle.processingLogs ?? []).map(toProcessingLogDto),
     normalizedDocument: activeNd ? toNormalizedSummaryDto(activeNd) : null,
@@ -255,8 +268,99 @@ async function cleanupUploadedKeys(
   }
 }
 
-function computeFingerprint(parts: string[]): string {
-  return sha256Hex(new TextEncoder().encode(parts.join("|")));
+async function acquireVersionUploadLock(
+  tx: Prisma.TransactionClient,
+  versionId: string,
+): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${versionId}))`;
+  await tx.$executeRaw`SELECT id FROM "KnowledgePackVersion" WHERE id = ${versionId} FOR UPDATE`;
+}
+
+async function finalizePreviousBundleStorage(
+  previous: BundleWithRelations,
+  storage: PayloadStorage,
+): Promise<void> {
+  const keys = previous.files.map((f) => f.storageKey);
+  let failed = false;
+  let lastError: string | null = null;
+  for (const objectKey of keys) {
+    try {
+      await storage.delete({ objectKey });
+    } catch (error) {
+      failed = true;
+      lastError = error instanceof Error ? error.message : "delete failed";
+      await enqueuePayloadCleanupJob({
+        objectKey,
+        reason: "docling_bundle_replaced",
+        lastError,
+      });
+    }
+  }
+
+  if (failed) {
+    await prisma.doclingImportBundle.update({
+      where: { id: previous.id },
+      data: {
+        storageStatus: DoclingBundleStorageStatus.DELETE_FAILED,
+        storageDeleteAttempts: { increment: 1 },
+        storageLastError: (lastError ?? "delete failed").slice(0, 1000),
+      },
+    });
+  } else {
+    await prisma.doclingImportBundle.update({
+      where: { id: previous.id },
+      data: {
+        storageStatus: DoclingBundleStorageStatus.DELETED,
+        deletedAt: new Date(),
+        storageLastError: null,
+      },
+    });
+  }
+}
+
+async function markBundleDeletePendingAndCleanup(
+  bundleId: string,
+  keys: string[],
+  storage: PayloadStorage,
+  reason: string,
+): Promise<void> {
+  await prisma.doclingImportBundle.update({
+    where: { id: bundleId },
+    data: {
+      isActive: false,
+      deactivatedAt: new Date(),
+      deactivationReason: reason,
+      storageStatus: DoclingBundleStorageStatus.DELETE_PENDING,
+    },
+  });
+  let failed = false;
+  let lastError: string | null = null;
+  for (const objectKey of keys) {
+    try {
+      await storage.delete({ objectKey });
+    } catch (error) {
+      failed = true;
+      lastError = error instanceof Error ? error.message : "delete failed";
+      await enqueuePayloadCleanupJob({
+        objectKey,
+        reason,
+        lastError,
+      });
+    }
+  }
+  await prisma.doclingImportBundle.update({
+    where: { id: bundleId },
+    data: failed
+      ? {
+          storageStatus: DoclingBundleStorageStatus.DELETE_FAILED,
+          storageDeleteAttempts: { increment: 1 },
+          storageLastError: (lastError ?? "delete failed").slice(0, 1000),
+        }
+      : {
+          storageStatus: DoclingBundleStorageStatus.DELETED,
+          deletedAt: new Date(),
+        },
+  });
 }
 
 async function softLockBundleStatus(input: {
@@ -287,7 +391,6 @@ export async function uploadDoclingImportBundle(input: {
   source: UploadFileInput;
   json: UploadFileInput;
   markdown: UploadFileInput;
-  adapterVersion?: string | null;
   storage?: PayloadStorage;
 }): Promise<{ bundle: DoclingImportBundlePublicDto }> {
   const { pack, version } = await requireOwnedDraftPack({
@@ -306,25 +409,25 @@ export async function uploadDoclingImportBundle(input: {
     if (hasHistory) {
       throw new DoclingImportError(
         "DOCLING_IMMUTABLE_AFTER_SUBMISSION",
-        "이미 검수 제출된 Docling import는 교체할 수 없습니다.",
+        "이미 검수 제출된 Docling import는 교체할 수 없습니다. 새 버전을 생성하세요.",
         409,
       );
     }
   }
 
-  const sourceMeta = assertRoleFileAcceptable(
+  const sourceMeta = await assertRoleFileAcceptable(
     KnowledgePackFileRole.SOURCE_ORIGINAL,
     input.source.fileName,
     input.source.mimeType,
     input.source.bytes,
   );
-  const jsonMeta = assertRoleFileAcceptable(
+  const jsonMeta = await assertRoleFileAcceptable(
     KnowledgePackFileRole.DOCLING_JSON,
     input.json.fileName,
     input.json.mimeType,
     input.json.bytes,
   );
-  const mdMeta = assertRoleFileAcceptable(
+  const mdMeta = await assertRoleFileAcceptable(
     KnowledgePackFileRole.DOCLING_MARKDOWN,
     input.markdown.fileName,
     input.markdown.mimeType,
@@ -337,7 +440,7 @@ export async function uploadDoclingImportBundle(input: {
   const sourceFileId = createPayloadId();
   const jsonFileId = createPayloadId();
   const markdownFileId = createPayloadId();
-  const adapterVersion = input.adapterVersion?.trim() || doclingAdapter.version;
+  const adapterVersion = DOCLING_ADAPTER_VERSION;
 
   const sourceChecksum = sha256Hex(input.source.bytes);
   const jsonChecksum = sha256Hex(input.json.bytes);
@@ -368,7 +471,14 @@ export async function uploadDoclingImportBundle(input: {
   ] as const;
 
   const uploadedKeys: string[] = [];
-  const stored: { id: string; role: KnowledgePackFileRole; objectKey: string; checksum: string; meta: typeof sourceMeta; size: number }[] = [];
+  const stored: {
+    id: string;
+    role: KnowledgePackFileRole;
+    objectKey: string;
+    checksum: string;
+    meta: typeof sourceMeta;
+    size: number;
+  }[] = [];
 
   try {
     for (const spec of fileSpecs) {
@@ -410,51 +520,46 @@ export async function uploadDoclingImportBundle(input: {
     );
   }
 
+  // Create inactive staging bundle first — never deactivate previous until REVIEW_READY.
   try {
-    await prisma.$transaction(async (tx) => {
-      await tx.doclingImportBundle.updateMany({
-        where: { versionId: version.id, isActive: true },
-        data: { isActive: false },
-      });
-
-      await tx.doclingImportBundle.create({
-        data: {
-          id: bundleId,
-          packId: pack.packId,
-          versionId: version.id,
-          status: DoclingImportBundleStatus.UPLOADED,
-          isActive: true,
-          adapterType: DOCLING_ADAPTER_TYPE,
-          adapterVersion,
-          uploadedByUserId: input.userId,
-          files: {
-            create: stored.map((s) => ({
-              id: s.id,
-              packId: pack.packId,
-              versionId: version.id,
-              role: s.role,
-              storageKey: s.objectKey,
-              originalFileName: s.meta.fileName,
-              mimeType: s.meta.mimeType,
-              fileExtension: s.meta.extension,
-              fileSize: BigInt(s.size),
-              checksumSha256: s.checksum,
-              isImmutable: true,
-              uploadedByUserId: input.userId,
-            })),
-          },
-          processingLogs: {
-            create: {
-              stage: DoclingProcessingStage.UPLOAD,
-              status: DoclingProcessingStatus.SUCCEEDED,
-              attempt: 1,
-              adapterVersion,
-              message: "Three-file Docling import uploaded",
-              completedAt: new Date(),
-            },
+    await prisma.doclingImportBundle.create({
+      data: {
+        id: bundleId,
+        packId: pack.packId,
+        versionId: version.id,
+        status: DoclingImportBundleStatus.UPLOADED,
+        isActive: false,
+        adapterType: DOCLING_ADAPTER_TYPE,
+        adapterVersion,
+        storageStatus: DoclingBundleStorageStatus.ACTIVE,
+        uploadedByUserId: input.userId,
+        files: {
+          create: stored.map((s) => ({
+            id: s.id,
+            packId: pack.packId,
+            versionId: version.id,
+            role: s.role,
+            storageKey: s.objectKey,
+            originalFileName: s.meta.fileName,
+            mimeType: s.meta.mimeType,
+            fileExtension: s.meta.extension,
+            fileSize: BigInt(s.size),
+            checksumSha256: s.checksum,
+            isImmutable: true,
+            uploadedByUserId: input.userId,
+          })),
+        },
+        processingLogs: {
+          create: {
+            stage: DoclingProcessingStage.UPLOAD,
+            status: DoclingProcessingStatus.SUCCEEDED,
+            attempt: 1,
+            adapterVersion,
+            message: "Three-file Docling import uploaded",
+            completedAt: new Date(),
           },
         },
-      });
+      },
     });
   } catch (error) {
     await cleanupUploadedKeys(uploadedKeys, "docling_upload_db_failure", storage);
@@ -477,7 +582,99 @@ export async function uploadDoclingImportBundle(input: {
     },
   });
 
-  await validateAndNormalizeBundle(bundleId, { storage });
+  const processed = await validateAndNormalizeBundle(bundleId, { storage });
+
+  if (processed.status !== DoclingImportBundleStatus.REVIEW_READY) {
+    await markBundleDeletePendingAndCleanup(
+      bundleId,
+      uploadedKeys,
+      storage,
+      "validation_or_normalization_failed",
+    );
+    throw new DoclingImportError(
+      processed.lastErrorCode ?? "DOCLING_VALIDATION_FAILED",
+      processed.lastErrorMessage ??
+        "Docling import 검증·정규화에 실패했습니다. 기존 Active Bundle은 유지됩니다.",
+      400,
+    );
+  }
+
+  const previousActive = await findActiveBundleForVersion(version.id);
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await acquireVersionUploadLock(tx, version.id);
+
+      const lockedPrevious = await tx.doclingImportBundle.findFirst({
+        where: { versionId: version.id, isActive: true },
+      });
+
+      if (lockedPrevious) {
+        const hasHistory = await bundleHasSubmissionHistory(
+          pack.packId,
+          lockedPrevious.id,
+          version.id,
+        );
+        if (hasHistory) {
+          throw new DoclingImportError(
+            "DOCLING_IMMUTABLE_AFTER_SUBMISSION",
+            "이미 검수 제출된 Docling import는 교체할 수 없습니다. 새 버전을 생성하세요.",
+            409,
+          );
+        }
+
+        await tx.doclingImportBundle.update({
+          where: { id: lockedPrevious.id },
+          data: {
+            isActive: false,
+            deactivatedAt: new Date(),
+            deactivationReason: "replaced",
+            replacedByBundleId: bundleId,
+            storageStatus: DoclingBundleStorageStatus.DELETE_PENDING,
+          },
+        });
+        await tx.normalizedDocument.updateMany({
+          where: { bundleId: lockedPrevious.id, isActive: true },
+          data: { isActive: false },
+        });
+      }
+
+      const promoted = await tx.doclingImportBundle.updateMany({
+        where: { id: bundleId, isActive: false, status: DoclingImportBundleStatus.REVIEW_READY },
+        data: {
+          isActive: true,
+          storageStatus: DoclingBundleStorageStatus.ACTIVE,
+        },
+      });
+      if (promoted.count === 0) {
+        throw new DoclingImportError(
+          "DOCLING_ACTIVE_BUNDLE_CONFLICT",
+          "Active Bundle 활성화에 충돌이 발생했습니다.",
+          409,
+        );
+      }
+    });
+  } catch (error) {
+    await markBundleDeletePendingAndCleanup(
+      bundleId,
+      uploadedKeys,
+      storage,
+      "activate_failed",
+    );
+    if (isDoclingImportError(error)) throw error;
+    throw new DoclingImportError(
+      "DOCLING_ACTIVE_BUNDLE_CONFLICT",
+      "Active Bundle 활성화에 충돌이 발생했습니다.",
+      409,
+    );
+  }
+
+  if (previousActive && previousActive.id !== bundleId) {
+    const refreshedPrevious = await loadBundleWithRelations(previousActive.id);
+    if (refreshedPrevious) {
+      await finalizePreviousBundleStorage(refreshedPrevious, storage);
+    }
+  }
 
   const refreshed = await loadBundleWithRelations(bundleId);
   if (!refreshed) {
@@ -488,6 +685,7 @@ export async function uploadDoclingImportBundle(input: {
   return {
     bundle: toDoclingImportBundlePublicDto(refreshed, {
       canDelete: pack.status === PackStatus.DRAFT && !hasHistory,
+      immutableAfterSubmission: hasHistory,
     }),
   };
 }
@@ -521,7 +719,7 @@ export async function validateAndNormalizeBundle(
       stage: DoclingProcessingStage.VALIDATION,
       status: DoclingProcessingStatus.STARTED,
       attempt,
-      adapterVersion: bundle.adapterVersion,
+      adapterVersion: DOCLING_ADAPTER_VERSION,
       message: "Validation started",
     },
   });
@@ -539,7 +737,16 @@ export async function validateAndNormalizeBundle(
   }
 
   const readVerified = async (file: KnowledgePackFile) => {
-    const got = await storage.get({ objectKey: file.storageKey });
+    let got;
+    try {
+      got = await storage.get({ objectKey: file.storageKey });
+    } catch {
+      throw new DoclingImportError(
+        "DOCLING_STORAGE_UNAVAILABLE",
+        "저장소에서 파일을 읽지 못했습니다.",
+        503,
+      );
+    }
     const actual = sha256Hex(got.bytes);
     if (actual !== file.checksumSha256) {
       throw new DoclingImportError(
@@ -559,6 +766,13 @@ export async function validateAndNormalizeBundle(
     mdBytes = await readVerified(mdFile);
   } catch (error) {
     if (isSoftLockConflict(error)) throw error;
+    if (isDoclingImportError(error) && error.code === "DOCLING_OBJECT_INTEGRITY_FAILED") {
+      await markValidationFailed(bundleId, attempt, {
+        code: "DOCLING_OBJECT_INTEGRITY_FAILED",
+        message: "파일 무결성 검증에 실패했습니다.",
+      });
+      throw error;
+    }
     const message = error instanceof Error ? error.message : "storage read failed";
     await markValidationFailed(bundleId, attempt, {
       code: "DOCLING_STORAGE_UNAVAILABLE",
@@ -623,7 +837,7 @@ export async function validateAndNormalizeBundle(
         stage: DoclingProcessingStage.VALIDATION,
         status: DoclingProcessingStatus.FAILED,
         attempt,
-        adapterVersion: bundle.adapterVersion,
+        adapterVersion: DOCLING_ADAPTER_VERSION,
         message: "Validation failed",
         errorCode: errorIssues[0]?.code ?? "DOCLING_VALIDATION_FAILED",
         detailsJson: validationReport as Prisma.InputJsonValue,
@@ -661,7 +875,7 @@ export async function validateAndNormalizeBundle(
       stage: DoclingProcessingStage.VALIDATION,
       status: DoclingProcessingStatus.SUCCEEDED,
       attempt,
-      adapterVersion: bundle.adapterVersion,
+      adapterVersion: DOCLING_ADAPTER_VERSION,
       message: "Validation succeeded",
       detailsJson: validationReport as Prisma.InputJsonValue,
       completedAt: new Date(),
@@ -687,7 +901,7 @@ export async function validateAndNormalizeBundle(
       stage: DoclingProcessingStage.NORMALIZATION,
       status: DoclingProcessingStatus.STARTED,
       attempt,
-      adapterVersion: bundle.adapterVersion,
+      adapterVersion: DOCLING_ADAPTER_VERSION,
       message: "Normalization started",
     },
   });
@@ -710,14 +924,25 @@ export async function validateAndNormalizeBundle(
       },
     });
 
-    const fingerprint = computeFingerprint([
-      sourceFile.checksumSha256,
-      jsonFile.checksumSha256,
-      mdFile.checksumSha256,
-      draft.adapter.version,
-      draft.adapter.sourceSchemaVersion,
-      draft.title ?? "",
-    ]);
+    const fingerprint = computeNormalizedDocumentFingerprint({
+      adapterType: draft.adapter.type,
+      adapterVersion: draft.adapter.version,
+      sourceSchemaName: draft.adapter.sourceSchema,
+      sourceSchemaVersion: draft.adapter.sourceSchemaVersion,
+      title: draft.title,
+      language: draft.language,
+      sections: draft.sections,
+      tables: draft.tables,
+      figures: draft.figures,
+      readingOrder: draft.readingOrder,
+      warnings: draft.warnings,
+      sourceFileId: sourceFile.id,
+      jsonPayloadFileId: jsonFile.id,
+      markdownPayloadFileId: mdFile.id,
+      sourceChecksum: sourceFile.checksumSha256,
+      jsonChecksum: jsonFile.checksumSha256,
+      markdownChecksum: mdFile.checksumSha256,
+    });
 
     const ndId = createPayloadId();
     await prisma.$transaction(async (tx) => {
@@ -754,6 +979,7 @@ export async function validateAndNormalizeBundle(
           markdownPayloadFileId: mdFile.id,
           sourcePayloadChecksum: sourceFile.checksumSha256,
           fingerprint,
+          fingerprintVersion: NORMALIZED_DOCUMENT_FINGERPRINT_VERSION,
         },
       });
 
@@ -794,7 +1020,7 @@ export async function validateAndNormalizeBundle(
         stage: DoclingProcessingStage.NORMALIZATION,
         status: DoclingProcessingStatus.SUCCEEDED,
         attempt,
-        adapterVersion: bundle.adapterVersion,
+        adapterVersion: DOCLING_ADAPTER_VERSION,
         message: "Normalization succeeded",
         detailsJson: { normalizedDocumentId: ndId, fingerprint } as Prisma.InputJsonValue,
         completedAt: new Date(),
@@ -839,7 +1065,7 @@ export async function validateAndNormalizeBundle(
         stage: DoclingProcessingStage.NORMALIZATION,
         status: DoclingProcessingStatus.FAILED,
         attempt,
-        adapterVersion: bundle.adapterVersion,
+        adapterVersion: DOCLING_ADAPTER_VERSION,
         message: "Normalization failed",
         errorCode: "DOCLING_NORMALIZATION_FAILED",
         detailsJson: { message } as Prisma.InputJsonValue,
@@ -949,6 +1175,7 @@ export async function getActiveDoclingImport(input: {
   return {
     bundle: toDoclingImportBundlePublicDto(bundle, {
       canDelete: pack.status === PackStatus.DRAFT && !hasHistory,
+      immutableAfterSubmission: hasHistory,
     }),
   };
 }
@@ -1007,11 +1234,44 @@ export async function deleteActiveDoclingImport(input: {
     });
     await tx.doclingImportBundle.update({
       where: { id: bundle.id },
-      data: { isActive: false },
+      data: {
+        isActive: false,
+        deactivatedAt: new Date(),
+        deactivationReason: "deleted",
+        storageStatus: DoclingBundleStorageStatus.DELETE_PENDING,
+      },
     });
   });
 
-  await cleanupUploadedKeys(keys, "docling_import_deleted", storage);
+  let failed = false;
+  let lastError: string | null = null;
+  for (const objectKey of keys) {
+    try {
+      await storage.delete({ objectKey });
+    } catch (error) {
+      failed = true;
+      lastError = error instanceof Error ? error.message : "delete failed";
+      await enqueuePayloadCleanupJob({
+        objectKey,
+        reason: "docling_import_deleted",
+        lastError,
+      });
+    }
+  }
+
+  await prisma.doclingImportBundle.update({
+    where: { id: bundle.id },
+    data: failed
+      ? {
+          storageStatus: DoclingBundleStorageStatus.DELETE_FAILED,
+          storageDeleteAttempts: { increment: 1 },
+          storageLastError: (lastError ?? "delete failed").slice(0, 1000),
+        }
+      : {
+          storageStatus: DoclingBundleStorageStatus.DELETED,
+          deletedAt: new Date(),
+        },
+  });
 
   await recordProviderAudit({
     action: AuditAction.DOCLING_IMPORT_DELETED,
@@ -1054,13 +1314,13 @@ export async function retryDoclingImport(input: {
   });
   const attempt = (lastLog?.attempt ?? 1) + 1;
 
-  await prisma.doclingProcessingLog.create({
+  const retryLog = await prisma.doclingProcessingLog.create({
     data: {
       bundleId: bundle.id,
       stage: DoclingProcessingStage.RETRY,
       status: DoclingProcessingStatus.STARTED,
       attempt,
-      adapterVersion: bundle.adapterVersion,
+      adapterVersion: DOCLING_ADAPTER_VERSION,
       message: `Retry from ${bundle.status}`,
     },
   });
@@ -1079,11 +1339,42 @@ export async function retryDoclingImport(input: {
     },
   });
 
-  const result = await validateAndNormalizeBundle(bundle.id, {
-    attempt,
-    storage: input.storage,
-  });
-  return { bundle: result };
+  try {
+    const result = await validateAndNormalizeBundle(bundle.id, {
+      attempt,
+      storage: input.storage,
+    });
+    await prisma.doclingProcessingLog.update({
+      where: { id: retryLog.id },
+      data: {
+        status:
+          result.status === DoclingImportBundleStatus.REVIEW_READY
+            ? DoclingProcessingStatus.SUCCEEDED
+            : DoclingProcessingStatus.FAILED,
+        completedAt: new Date(),
+        message:
+          result.status === DoclingImportBundleStatus.REVIEW_READY
+            ? "Retry succeeded"
+            : "Retry completed with failure",
+        errorCode:
+          result.status === DoclingImportBundleStatus.REVIEW_READY
+            ? null
+            : result.lastErrorCode,
+      },
+    });
+    return { bundle: result };
+  } catch (error) {
+    await prisma.doclingProcessingLog.update({
+      where: { id: retryLog.id },
+      data: {
+        status: DoclingProcessingStatus.FAILED,
+        completedAt: new Date(),
+        message: error instanceof Error ? error.message.slice(0, 1000) : "Retry failed",
+        errorCode: isDoclingImportError(error) ? error.code : "DOCLING_RETRY_FAILED",
+      },
+    });
+    throw error;
+  }
 }
 
 export async function downloadDoclingImportFile(input: {
@@ -1122,13 +1413,54 @@ export async function downloadDoclingImportFile(input: {
 
   const file = await prisma.knowledgePackFile.findFirst({
     where: { id: input.fileId, packId: input.packId },
+    include: { bundle: true },
   });
   if (!file) {
     throw new DoclingImportError("NOT_FOUND", "파일을 찾을 수 없습니다.", 404);
   }
 
+  if (file.bundle.deletedAt != null || file.bundle.storageStatus !== DoclingBundleStorageStatus.ACTIVE) {
+    throw new DoclingImportError(
+      "DOCLING_OBJECT_MISSING",
+      "삭제되었거나 비활성인 Docling 파일은 다운로드할 수 없습니다.",
+      410,
+    );
+  }
+
+  if (!input.asAdmin) {
+    if (!file.bundle.isActive) {
+      throw new DoclingImportError(
+        "DOCLING_BUNDLE_NOT_ACTIVE",
+        "활성 Docling import 파일만 다운로드할 수 있습니다.",
+        403,
+      );
+    }
+  } else if (!file.bundle.isActive) {
+    const hasHistory = await bundleHasSubmissionHistory(
+      file.packId,
+      file.bundleId,
+      file.versionId,
+    );
+    if (!hasHistory) {
+      throw new DoclingImportError(
+        "DOCLING_BUNDLE_NOT_ACTIVE",
+        "비활성 Docling import 파일은 검수 제출 이력이 있을 때만 열람할 수 있습니다.",
+        403,
+      );
+    }
+  }
+
   const storage = input.storage ?? getDefaultStorage();
-  const got = await storage.get({ objectKey: file.storageKey });
+  let got;
+  try {
+    got = await storage.get({ objectKey: file.storageKey });
+  } catch {
+    throw new DoclingImportError(
+      "DOCLING_STORAGE_UNAVAILABLE",
+      "저장소에서 파일을 읽지 못했습니다.",
+      503,
+    );
+  }
   const actual = sha256Hex(got.bytes);
   if (actual !== file.checksumSha256) {
     throw new DoclingImportError(

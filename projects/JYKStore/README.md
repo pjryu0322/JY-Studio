@@ -27,8 +27,11 @@ http://localhost:3004
 
 JYKStore는 Docling을 실행하지 않습니다. Provider는 외부 Docling으로 만든 **원본문서 + Docling JSON + Docling Markdown** 3파일을 업로드합니다.
 
-- 원본 3파일은 불변으로 보관합니다.
-- Store는 adapter로 `NormalizedDocument`를 생성·재생성합니다.
+- 원본 3파일은 불변으로 보관합니다. Signature·Office OOXML 내용 검증 후 저장합니다.
+- Adapter Version은 서버 상수만 사용합니다(클라이언트 입력 무시).
+- Store는 adapter로 `NormalizedDocument`를 생성·재생성합니다(`fingerprintVersion=normalized-document-v2`).
+- Version당 Active Bundle 1개. 실패 업로드는 기존 Active를 대체하지 않습니다.
+- Admin 승인 전 Snapshot·Object 무결성을 재검증합니다.
 - Retrieval / MCP 노출은 후속 단계입니다.
 - 레거시 ZIP Payload 업로드는 계속 지원합니다.
 

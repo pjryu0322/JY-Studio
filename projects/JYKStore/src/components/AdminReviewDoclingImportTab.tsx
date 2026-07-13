@@ -174,6 +174,36 @@ export function AdminReviewDoclingImportTab({
         </div>
       ) : null}
 
+      {detail.doclingReviewIntegrity ? (
+        <div
+          className={`rounded-xl border p-3 text-xs ${
+            detail.doclingReviewIntegrity.status === "PASS"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+              : detail.doclingReviewIntegrity.status === "BLOCKED"
+                ? "border-red-200 bg-red-50 text-red-900"
+                : "border-slate-200 bg-slate-50 text-slate-800"
+          }`}
+        >
+          <p className="font-semibold">
+            검수 무결성: {detail.doclingReviewIntegrity.status}
+          </p>
+          <ul className="mt-2 space-y-1">
+            <li>원본 3파일 무결성</li>
+            <li>NormalizedDocument 무결성</li>
+            <li>Snapshot 일치</li>
+            <li>Adapter Version 일치</li>
+            <li>Object Storage 확인</li>
+          </ul>
+          {detail.doclingReviewIntegrity.errors.length > 0 ? (
+            <ul className="mt-2 space-y-1">
+              {detail.doclingReviewIntegrity.errors.map((issue) => (
+                <li key={issue.code}>{issue.message}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+
       {bundle ? (
         <div className="space-y-3 text-xs text-slate-800">
           <p>

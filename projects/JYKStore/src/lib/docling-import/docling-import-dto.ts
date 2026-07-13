@@ -1,4 +1,5 @@
 import type {
+  DoclingBundleStorageStatus,
   DoclingImportBundleStatus,
   DoclingProcessingStage,
   DoclingProcessingStatus,
@@ -45,6 +46,7 @@ export type NormalizedDocumentSummaryDto = {
   title: string | null;
   language: string | null;
   fingerprint: string | null;
+  fingerprintVersion: string | null;
   warningCount: number;
   sourceFileId: string | null;
   jsonPayloadFileId: string | null;
@@ -85,10 +87,13 @@ export type DoclingImportBundlePublicDto = {
   validatedAt: string | null;
   normalizedAt: string | null;
   reviewReadyAt: string | null;
+  deactivatedAt: string | null;
+  storageStatus: DoclingBundleStorageStatus;
   createdAt: string;
   updatedAt: string;
   canDelete: boolean;
   canRetry: boolean;
+  immutableAfterSubmission: boolean;
   files: KnowledgePackFilePublicDto[];
   processingLogs: DoclingProcessingLogPublicDto[];
   normalizedDocument: NormalizedDocumentSummaryDto | null;
