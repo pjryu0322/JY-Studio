@@ -210,13 +210,62 @@ function hasDoclingIntegrityBlock(detail: AdminReviewDetailDto): boolean {
   return detail.doclingReviewIntegrity?.status === "BLOCKED";
 }
 
+/** Map integrity codes to Provider/Admin-facing messages (no internal model names). */
+function formatDoclingIntegrityIssue(issue: { code: string; message: string }): string {
+  switch (issue.code) {
+    case "DOCLING_REVIEW_FILE_NOT_FOUND":
+    case "SOURCE_ORIGINAL_MISSING":
+      if (/원본|SOURCE_ORIGINAL/i.test(issue.message)) {
+        return "원본문서 파일이 없습니다. (SOURCE_ORIGINAL_MISSING)";
+      }
+      if (/JSON|DOCLING_JSON/i.test(issue.message)) {
+        return "Docling JSON 파일이 없습니다. (DOCLING_JSON_MISSING)";
+      }
+      if (/Markdown|DOCLING_MARKDOWN/i.test(issue.message)) {
+        return "Docling Markdown 파일이 없습니다. (DOCLING_MARKDOWN_MISSING)";
+      }
+      return issue.message.includes("필수")
+        ? issue.message
+        : "필수 Docling 파일이 없습니다.";
+    case "DOCLING_REVIEW_NORMALIZED_DOCUMENT_MISSING":
+      return "정규화 문서가 없습니다.";
+    case "DOCLING_REVIEW_NORMALIZED_DOCUMENT_MISMATCH":
+      return "정규화 문서가 제출 스냅샷과 일치하지 않습니다.";
+    case "DOCLING_REVIEW_BUNDLE_NOT_FOUND":
+      return "Docling Bundle이 없습니다.";
+    case "DOCLING_REVIEW_BUNDLE_NOT_ACTIVE":
+      return "Docling Bundle이 비활성 상태입니다.";
+    case "DOCLING_REVIEW_BUNDLE_NOT_READY":
+      return "Docling Bundle 상태가 검수 준비가 아닙니다.";
+    case "DOCLING_REVIEW_FINGERPRINT_MISMATCH":
+    case "DOCLING_REVIEW_FINGERPRINT_RECALCULATION_FAILED":
+    case "DOCLING_REVIEW_FINGERPRINT_VERSION_UNSUPPORTED":
+      return "문서 Fingerprint가 일치하지 않습니다.";
+    case "DOCLING_REVIEW_ADAPTER_VERSION_MISMATCH":
+      return "Adapter Version이 제출 시점과 다릅니다.";
+    case "DOCLING_REVIEW_OBJECT_MISSING":
+    case "DOCLING_REVIEW_OBJECT_SIZE_MISMATCH":
+    case "DOCLING_REVIEW_OBJECT_INTEGRITY_FAILED":
+    case "DOCLING_REVIEW_CHECKSUM_MISMATCH":
+      return "Object Storage 무결성 검증에 실패했습니다.";
+    default:
+      return issue.message || "Docling 무결성 검증에 실패했습니다.";
+  }
+}
+
 function doclingIntegrityBlockers(detail: AdminReviewDetailDto): string[] {
   if (!hasDoclingIntegrityBlock(detail)) return [];
-  const messages = detail.doclingReviewIntegrity?.errors.map((e) => e.message) ?? [];
+  const messages =
+    detail.doclingReviewIntegrity?.errors.map((e) => formatDoclingIntegrityIssue(e)) ?? [];
   if (messages.length === 0) {
     return ["제출 시점 원본 파일과 현재 저장 파일의 무결성이 일치하지 않습니다."];
   }
   return [...new Set(messages)];
+}
+
+function doclingIntegrityWarnings(detail: AdminReviewDetailDto): string[] {
+  const warnings = detail.doclingReviewIntegrity?.warnings ?? [];
+  return [...new Set(warnings.map((w) => formatDoclingIntegrityIssue(w)))];
 }
 
 export function isSubmitSnapshotApprovalEligible(detail: AdminReviewDetailDto): boolean {
@@ -445,6 +494,10 @@ export function resolveDecisionStatusCopy(detail: AdminReviewDetailDto): ReviewS
 function hasWarningSignals(detail: AdminReviewDetailDto): boolean {
   const r = detail.readiness;
   const snapshot = getSubmitSnapshot(detail);
+  // Docling / ZIP warnings are mode-specific; do not use Legacy readiness signals.
+  if (isDoclingBundleReviewSnapshot(snapshot) || isDistributionReviewSnapshot(snapshot)) {
+    return false;
+  }
   const snapshotReleaseWarning =
     snapshot &&
     !isDistributionReviewSnapshot(snapshot) &&
@@ -585,6 +638,12 @@ export function resolveReviewDecisionState(detail: AdminReviewDetailDto): Review
 }
 
 export function collectReviewRefreshReasons(detail: AdminReviewDetailDto): string[] {
+  const snapshot = getSubmitSnapshot(detail);
+  if (isDoclingBundleReviewSnapshot(snapshot) || isDistributionReviewSnapshot(snapshot)) {
+    const drift = detectSubmitSnapshotDrift(detail);
+    return drift.changed ? drift.reasons : [];
+  }
+
   const drift = detectSubmitSnapshotDrift(detail);
   if (drift.changed) {
     return drift.reasons;
@@ -630,7 +689,83 @@ export function collectReviewRefreshReasons(detail: AdminReviewDetailDto): strin
   return [...new Set(reasons)];
 }
 
-export function collectReviewBlockers(detail: AdminReviewDetailDto): string[] {
+function collectDoclingReviewBlockers(detail: AdminReviewDetailDto): string[] {
+  const blockers: string[] = [];
+
+  if (!detail.distribution) {
+    blockers.push("유통정보가 없습니다.");
+  } else {
+    if (!detail.distribution.licenseName?.trim()) {
+      blockers.push("라이선스명이 없습니다.");
+    }
+    if (
+      !detail.distribution.sourceTitle?.trim() &&
+      !detail.distribution.sourceUrl?.trim()
+    ) {
+      blockers.push("출처 제목 또는 출처 URL이 없습니다.");
+    }
+  }
+
+  const snapshot = getSubmitSnapshot(detail);
+  if (!isDoclingBundleReviewSnapshot(snapshot)) {
+    blockers.push("Docling Bundle 제출 스냅샷이 없습니다.");
+    return [...new Set(blockers)];
+  }
+
+  if (!snapshot.doclingBundleId || !snapshot.normalizedDocumentId) {
+    blockers.push("Docling import 제출 정보가 불완전합니다.");
+  }
+
+  const drift = detectSubmitSnapshotDrift(detail);
+  if (drift.changed) {
+    blockers.push(...drift.reasons);
+  }
+
+  blockers.push(...doclingIntegrityBlockers(detail));
+  return [...new Set(blockers)];
+}
+
+function collectDistributionReviewBlockers(detail: AdminReviewDetailDto): string[] {
+  const blockers: string[] = [];
+  const snapshot = getSubmitSnapshot(detail);
+
+  if (!isDistributionReviewSnapshot(snapshot)) {
+    blockers.push("Distribution 제출 스냅샷이 없습니다.");
+    return [...new Set(blockers)];
+  }
+
+  if (snapshot.validationStatus !== "VALID") {
+    blockers.push("Payload 검증이 VALID가 아닙니다.");
+  }
+  if (!detail.payload) {
+    blockers.push("등록된 Payload가 없습니다.");
+  } else if (detail.payload.validationStatus !== "VALID") {
+    blockers.push("Payload 검증 상태가 VALID가 아닙니다.");
+  }
+
+  if (!detail.distribution) {
+    blockers.push("유통정보가 없습니다.");
+  } else {
+    if (!detail.distribution.licenseName?.trim()) {
+      blockers.push("라이선스명이 없습니다.");
+    }
+    if (
+      !detail.distribution.sourceTitle?.trim() &&
+      !detail.distribution.sourceUrl?.trim()
+    ) {
+      blockers.push("출처 제목 또는 출처 URL이 없습니다.");
+    }
+  }
+
+  const drift = detectSubmitSnapshotDrift(detail);
+  if (drift.changed) {
+    blockers.push(...drift.reasons);
+  }
+
+  return [...new Set(blockers)];
+}
+
+function collectLegacyReviewBlockers(detail: AdminReviewDetailDto): string[] {
   const blockers: string[] = [];
   const r = detail.readiness;
 
@@ -668,7 +803,31 @@ export function collectReviewBlockers(detail: AdminReviewDetailDto): string[] {
   return [...new Set(blockers)];
 }
 
-export function collectReviewWarnings(detail: AdminReviewDetailDto): string[] {
+export function collectReviewBlockers(detail: AdminReviewDetailDto): string[] {
+  const snapshot = getSubmitSnapshot(detail);
+  if (isDoclingBundleReviewSnapshot(snapshot)) {
+    return collectDoclingReviewBlockers(detail);
+  }
+  if (isDistributionReviewSnapshot(snapshot)) {
+    return collectDistributionReviewBlockers(detail);
+  }
+  return collectLegacyReviewBlockers(detail);
+}
+
+function collectDoclingReviewWarnings(detail: AdminReviewDetailDto): string[] {
+  return [...new Set(doclingIntegrityWarnings(detail))];
+}
+
+function collectDistributionReviewWarnings(detail: AdminReviewDetailDto): string[] {
+  const warnings: string[] = [];
+  const payloadMessage = detail.payload?.validationMessage?.trim();
+  if (payloadMessage && detail.payload?.validationStatus === "VALID") {
+    warnings.push(payloadMessage);
+  }
+  return [...new Set(warnings)];
+}
+
+function collectLegacyReviewWarnings(detail: AdminReviewDetailDto): string[] {
   const warnings: string[] = [];
   const r = detail.readiness;
   const snapshot = getSubmitSnapshot(detail);
@@ -713,6 +872,29 @@ export function collectReviewWarnings(detail: AdminReviewDetailDto): string[] {
   }
 
   return [...new Set(warnings)];
+}
+
+export function collectReviewWarnings(detail: AdminReviewDetailDto): string[] {
+  const snapshot = getSubmitSnapshot(detail);
+  if (isDoclingBundleReviewSnapshot(snapshot)) {
+    return collectDoclingReviewWarnings(detail);
+  }
+  if (isDistributionReviewSnapshot(snapshot)) {
+    return collectDistributionReviewWarnings(detail);
+  }
+  return collectLegacyReviewWarnings(detail);
+}
+
+/** Test helper: acceptability must never contradict blocker list. */
+export function assertAdminReviewDecisionConsistency(detail: AdminReviewDetailDto): {
+  consistent: boolean;
+  reasons: string[];
+} {
+  const reasons: string[] = [];
+  if (canAcceptAdminReview(detail) && collectReviewBlockers(detail).length > 0) {
+    reasons.push("접수 가능한데 차단 이슈가 있습니다.");
+  }
+  return { consistent: reasons.length === 0, reasons };
 }
 
 export function collectReviewActions(detail: AdminReviewDetailDto): string[] {

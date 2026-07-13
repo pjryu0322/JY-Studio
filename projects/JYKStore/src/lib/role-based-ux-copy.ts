@@ -173,6 +173,11 @@ export const ADMIN_REVIEW_ACCEPT_NO_WITHDRAW_HINT =
   "접수 후에는 제공자가 요청을 회수할 수 없습니다.";
 export const ADMIN_REVIEW_WARNING_TAB_HINT =
   "접수 후 검수 시 확인할 항목입니다.";
+export const ADMIN_REVIEW_WARNING_TAB_HINT_DOCLING =
+  "Docling 원본 3파일, 정규화 결과, 유통정보 및 무결성을 기준으로 검수합니다. Legacy 원천 문서·Chunk·Release Gate 기준은 적용하지 않습니다.";
+export const ADMIN_REVIEW_BLOCKERS_EMPTY = "차단 이슈 없음";
+export const ADMIN_REVIEW_WARNINGS_EMPTY = "주의 이슈 없음";
+export const ADMIN_REVIEW_ISSUES_EMPTY = "표시할 주의·차단 이슈가 없습니다.";
 export const ADMIN_REVIEW_ADVANCED_TAB_HINT =
   "현재 데이터 기준으로 다시 점검할 수 있습니다. 일반적인 검수 접수/승인 흐름에서는 사용할 필요가 없습니다.";
 export const ADMIN_REVIEW_INSPECTION_SUMMARY_TITLE = "검수 요약";

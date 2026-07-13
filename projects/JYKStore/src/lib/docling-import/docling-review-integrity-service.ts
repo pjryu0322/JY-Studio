@@ -197,7 +197,13 @@ export async function validateDoclingReviewIntegrity(input: {
   for (const spec of fileSpecs) {
     const file = await prisma.knowledgePackFile.findUnique({ where: { id: spec.id } });
     if (!file) {
-      errors.push(err("DOCLING_REVIEW_FILE_NOT_FOUND"));
+      const roleHint =
+        spec.role === KnowledgePackFileRole.SOURCE_ORIGINAL
+          ? "원본문서 파일이 없습니다."
+          : spec.role === KnowledgePackFileRole.DOCLING_JSON
+            ? "Docling JSON 파일이 없습니다."
+            : "Docling Markdown 파일이 없습니다.";
+      errors.push(err("DOCLING_REVIEW_FILE_NOT_FOUND", roleHint));
       continue;
     }
     files.push(file);
@@ -275,7 +281,7 @@ export async function validateDoclingReviewIntegrity(input: {
     where: { id: snapshot.normalizedDocumentId },
   });
   if (!nd) {
-    errors.push(err("DOCLING_REVIEW_NORMALIZED_DOCUMENT_MISSING"));
+    errors.push(err("DOCLING_REVIEW_NORMALIZED_DOCUMENT_MISSING", "정규화 문서가 없습니다."));
   } else {
     assertNormalizedMatches(nd, bundle, snapshot, packId, files, errors);
   }
