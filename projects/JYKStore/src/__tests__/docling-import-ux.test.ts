@@ -70,25 +70,27 @@ describe("docling import UX sources", () => {
     assert.ok(readiness.includes("isDoclingPayloadReady"));
   });
 
-  it("ships AdminReviewDoclingImportTab and evidence tab id", () => {
-    const path = "src/components/AdminReviewDoclingImportTab.tsx";
+  it("ships AdminReviewProcessingEvidenceTab and evidence tab id", () => {
+    const path = "src/components/AdminReviewProcessingEvidenceTab.tsx";
     assert.ok(existsSync(join(projectRoot, path)));
     const source = readSource(path);
-    assert.ok(source.includes("NormalizedDocumentPreview"));
-    assert.ok(source.includes("Capabilities"));
+    assert.ok(source.includes("Capability") || source.includes("capabilities"));
     assert.ok(source.includes("patchAdminDistributionMetadataApi"));
     assert.ok(source.includes("처리 로그") || source.includes("processingLogs"));
-    assert.ok(source.includes("검수 무결성") || source.includes("doclingReviewIntegrity"));
-    assert.ok(source.includes("HEAD_ONLY") || source.includes("Object Presence"));
-    assert.ok(source.includes("Full SHA") || source.includes("FULL"));
+    assert.ok(source.includes("무결성") || source.includes("integrity"));
+    assert.ok(source.includes("생성 도구"));
 
-    assert.ok(ADMIN_REVIEW_EVIDENCE_TAB_IDS.includes("docling"));
-    assert.equal(ADMIN_REVIEW_TAB_DOCLING, "Docling");
+    assert.ok(ADMIN_REVIEW_EVIDENCE_TAB_IDS.includes("processing"));
+    assert.ok(!ADMIN_REVIEW_EVIDENCE_TAB_IDS.includes("docling" as never));
+    assert.equal(ADMIN_REVIEW_TAB_DOCLING, "처리·검증");
 
     const page = readSource("src/components/AdminReviewDetailPageClient.tsx");
-    assert.ok(page.includes("AdminReviewDoclingImportTab"));
-    assert.ok(page.includes("includeDocling"));
+    assert.ok(page.includes("AdminReviewProcessingEvidenceTab"));
+    assert.ok(page.includes("includeProcessing"));
     assert.ok(page.includes("fetchAdminDoclingImportApi"));
+
+    const facade = readSource("src/components/AdminReviewDoclingImportTab.tsx");
+    assert.ok(facade.includes("AdminReviewProcessingEvidenceTab"));
 
     const adminApi = readSource("src/lib/admin-review-api.ts");
     assert.ok(adminApi.includes("fetchAdminDoclingImportApi"));

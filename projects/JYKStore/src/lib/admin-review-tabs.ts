@@ -1,19 +1,23 @@
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import { PackReviewStatus } from "@/lib/pack-review-status";
-import { isDoclingBundleReviewSnapshot } from "@/lib/provider-review-submit-snapshot";
 import {
-  ADMIN_REVIEW_TAB_DOCLING,
+  isDistributionReviewSnapshot,
+  isDoclingBundleReviewSnapshot,
+} from "@/lib/provider-review-submit-snapshot";
+import {
   ADMIN_REVIEW_TAB_PACKAGE,
+  ADMIN_REVIEW_TAB_PROCESSING,
   ADMIN_REVIEW_TAB_SOURCES,
   ADMIN_REVIEW_TAB_WARNINGS,
 } from "@/lib/role-based-ux-copy";
+import { collectReviewBlockers, collectReviewWarnings } from "@/lib/admin-review-decision";
 
 /** Evidence tabs only — decision/accept is a fixed top card, not a tab. */
 export const ADMIN_REVIEW_EVIDENCE_TAB_IDS = [
   "package",
   "warnings",
   "documents",
-  "docling",
+  "processing",
 ] as const;
 
 export type AdminReviewEvidenceTabId =
@@ -48,10 +52,26 @@ export function hasDoclingReviewEvidence(detail: AdminReviewDetailDto): boolean 
   return isDoclingBundleReviewSnapshot(detail.latestReview?.submitSnapshot ?? null);
 }
 
+/** True when processing/evidence tab should be shown. */
+export function hasProcessingReviewEvidence(detail: AdminReviewDetailDto): boolean {
+  const snapshot = detail.latestReview?.submitSnapshot ?? null;
+  return (
+    isDoclingBundleReviewSnapshot(snapshot) ||
+    isDistributionReviewSnapshot(snapshot) ||
+    Boolean(detail.payload) ||
+    Boolean(detail.doclingReviewIntegrity)
+  );
+}
+
 export function defaultAdminReviewEvidenceTab(
   detail: AdminReviewDetailDto,
 ): AdminReviewEvidenceTabId {
-  if (hasDoclingReviewEvidence(detail)) return "docling";
+  if (isAcceptedAdminReview(detail)) {
+    if (collectReviewBlockers(detail).length > 0 || collectReviewWarnings(detail).length > 0) {
+      return "warnings";
+    }
+    return "documents";
+  }
   return "package";
 }
 
@@ -72,8 +92,8 @@ export function adminReviewEvidenceTabLabel(
       return ADMIN_REVIEW_TAB_WARNINGS;
     case "documents":
       return ADMIN_REVIEW_TAB_SOURCES;
-    case "docling":
-      return ADMIN_REVIEW_TAB_DOCLING;
+    case "processing":
+      return ADMIN_REVIEW_TAB_PROCESSING;
   }
 }
 

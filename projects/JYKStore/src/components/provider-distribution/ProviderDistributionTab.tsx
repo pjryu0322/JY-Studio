@@ -100,7 +100,7 @@ export function ProviderDistributionTab({
       <form onSubmit={(e) => void onSave(e)} className="space-y-3">
         <div>
           <label className="text-xs font-semibold text-slate-700" htmlFor="dist-source-title">
-            출처 제목
+            출처명
           </label>
           <input
             id="dist-source-title"

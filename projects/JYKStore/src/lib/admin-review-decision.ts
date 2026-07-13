@@ -9,6 +9,12 @@ import {
   type AnyReviewSubmitSnapshot,
 } from "@/lib/provider-review-submit-snapshot";
 import {
+  buildDistributionProcessingEvidence,
+  buildDoclingProcessingEvidence,
+  buildLegacyProcessingEvidence,
+} from "@/lib/review-evidence/review-processing-evidence-adapters";
+import { resolveApprovalPublishGuidance } from "@/lib/review-evidence/review-processing-evidence-service";
+import {
   ADMIN_REVIEW_ACCEPT_PHASE_BLOCKED_BODY,
   ADMIN_REVIEW_ACCEPT_PHASE_BLOCKED_TITLE,
   ADMIN_REVIEW_ACCEPT_PHASE_READY_BODY,
@@ -921,7 +927,22 @@ export function collectReviewActions(detail: AdminReviewDetailDto): string[] {
     ];
   }
   if (state === "approval_ready") {
-    return ["승인하면 일반 카탈로그와 Context API에 공개됩니다."];
+    const snapshot = getSubmitSnapshot(detail);
+    if (isDoclingBundleReviewSnapshot(snapshot)) {
+      const evidence = buildDoclingProcessingEvidence({
+        detail,
+        bundle: null,
+        capabilities: null,
+      });
+      // Prefer download-only guidance when retrieval/MCP are not known READY on detail alone.
+      if (detail.doclingReviewIntegrity?.status === "PASS" || !detail.doclingReviewIntegrity) {
+        return resolveApprovalPublishGuidance(evidence);
+      }
+    }
+    if (isDistributionReviewSnapshot(snapshot) || detail.payload) {
+      return resolveApprovalPublishGuidance(buildDistributionProcessingEvidence(detail));
+    }
+    return resolveApprovalPublishGuidance(buildLegacyProcessingEvidence(detail));
   }
   return [];
 }

@@ -149,13 +149,23 @@ export const ADMIN_REVIEWS_STATUS_IN_REVIEW = "검수 중";
 export const ADMIN_REVIEW_TAB_PACKAGE = "패키지";
 export const ADMIN_REVIEW_TAB_WARNINGS = "주의";
 export const ADMIN_REVIEW_TAB_SOURCES = "문서";
-export const ADMIN_REVIEW_TAB_DOCLING = "Docling";
+export const ADMIN_REVIEW_TAB_PROCESSING = "처리·검증";
+/** @deprecated Use ADMIN_REVIEW_TAB_PROCESSING */
+export const ADMIN_REVIEW_TAB_DOCLING = ADMIN_REVIEW_TAB_PROCESSING;
 export const ADMIN_REVIEW_TAB_ADVANCED = "고급";
 export const ADMIN_REVIEW_EVIDENCE_SECTION_TITLE = "판단 근거";
 export const ADMIN_REVIEW_RECEIPT_INFO_TITLE = "접수 정보";
 export const ADMIN_REVIEW_CTA_VIEW_PACKAGE = "제출 패키지 보기";
 export const ADMIN_REVIEW_WARNING_TAB_HINT_ACCEPTED =
   "승인 전 확인할 항목입니다.";
+
+export const ADMIN_REVIEW_PROCESSING_TAB_HINT =
+  "생성 도구, 변환 규격, 파일 무결성, 정규화 결과 및 서비스 준비 상태를 확인합니다.";
+export const ADMIN_REVIEW_DOCUMENTS_TAB_HINT =
+  "제출된 원본·산출물 파일과 정규화 문서 미리보기를 확인합니다.";
+export const ADMIN_REVIEW_DOCUMENTS_EMPTY = "제출된 문서 파일이 없습니다.";
+export const ADMIN_REVIEW_SOURCE_DOCS_TITLE = "문서";
+export const ADMIN_REVIEW_PROCESSING_TITLE = "처리·검증";
 
 export const ADMIN_REVIEW_DECISION_TITLE = "최종 검수 판단";
 export const ADMIN_REVIEW_ACCEPT_TITLE = "검수 요청 접수";
@@ -186,7 +196,6 @@ export const ADMIN_REVIEW_DETAIL_SECTIONS_TITLE = "상세 점검 결과";
 export const ADMIN_REVIEW_WARNING_ISSUES_TITLE = "주의 이슈";
 export const ADMIN_REVIEW_BLOCKER_ISSUES_TITLE = "차단 이슈";
 export const ADMIN_REVIEW_SUBMIT_INFO_TITLE = "제출 정보";
-export const ADMIN_REVIEW_SOURCE_DOCS_TITLE = "원천 문서";
 
 export const ADMIN_REVIEW_ACCEPT_PHASE_READY_TITLE = "접수 가능";
 export const ADMIN_REVIEW_ACCEPT_PHASE_READY_BODY =
@@ -203,7 +212,7 @@ export const ADMIN_REVIEW_STATE_GATE_REQUIRED_BODY =
   "공개 승인 전 최종 품질 점검이 아직 실행되지 않았습니다. 먼저 릴리스 게이트를 최종 점검하세요.";
 export const ADMIN_REVIEW_STATE_READY_TITLE = "승인 가능";
 export const ADMIN_REVIEW_STATE_READY_BODY =
-  "검수 요청이 접수되었습니다. 승인하면 일반 카탈로그와 Context API에 공개됩니다.";
+  "검수 요청이 접수되었습니다. 승인하면 Capability 기준으로 카탈로그·다운로드·API가 공개됩니다.";
 export const ADMIN_REVIEW_STATE_WARNING_TITLE = "주의 후 승인 가능";
 export const ADMIN_REVIEW_STATE_WARNING_BODY = "";
 export const ADMIN_REVIEW_STATE_BLOCKED_TITLE = "승인 불가";

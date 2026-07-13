@@ -9,15 +9,19 @@ import {
 export function AdminReviewEvidenceTabs({
   activeTab,
   onTabChange,
-  includeDocling = true,
+  includeProcessing = true,
+  /** @deprecated Use includeProcessing */
+  includeDocling,
 }: {
   readonly activeTab: AdminReviewEvidenceTabId;
   readonly onTabChange: (tab: AdminReviewEvidenceTabId) => void;
+  readonly includeProcessing?: boolean;
   readonly includeDocling?: boolean;
 }) {
-  const tabs = includeDocling
+  const showProcessing = includeDocling ?? includeProcessing;
+  const tabs = showProcessing
     ? ADMIN_REVIEW_EVIDENCE_TAB_IDS
-    : ADMIN_REVIEW_EVIDENCE_TAB_IDS.filter((id) => id !== "docling");
+    : ADMIN_REVIEW_EVIDENCE_TAB_IDS.filter((id) => id !== "processing");
 
   return (
     <div
