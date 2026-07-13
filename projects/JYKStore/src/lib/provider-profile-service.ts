@@ -111,10 +111,8 @@ export async function ensureProviderProfileForAccount(input: {
     return { ok: false, error: "USER_NOT_FOUND" };
   }
 
-  if (!canAutoCreateProviderProfile(user.accountRole)) {
-    return { ok: false, error: "NOT_PROVIDER" };
-  }
-
+  // Existing profiles win even when stored accountRole is still USER
+  // (session/Provider Center already treat profile as provider access).
   const existing = await findProviderProfileForUser(input.userId, input.clientId);
   if (existing) {
     const needsClientId = !existing.clientId && input.clientId;
@@ -141,6 +139,10 @@ export async function ensureProviderProfileForAccount(input: {
       }
     }
     return { ok: true, profile: existing };
+  }
+
+  if (!canAutoCreateProviderProfile(user.accountRole)) {
+    return { ok: false, error: "NOT_PROVIDER" };
   }
 
   const byClientId = input.clientId

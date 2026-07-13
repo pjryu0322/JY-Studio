@@ -29,6 +29,10 @@ describe("provider profile account link", () => {
     assert.ok(service.includes("NOT_PROVIDER"));
     assert.ok(service.includes("P2002"));
     assert.ok(service.includes("clientIdForCreate"));
+    // Existing profile must be accepted before the USER role NOT_PROVIDER reject.
+    const existingIdx = service.indexOf("findProviderProfileForUser(input.userId, input.clientId)");
+    const notProviderIdx = service.indexOf('return { ok: false, error: "NOT_PROVIDER" }');
+    assert.ok(existingIdx > 0 && notProviderIdx > existingIdx);
     assert.ok(packs.includes("findOrEnsureProviderProfileForUser"));
     assert.ok(session.includes("ensureProviderProfileForAccount"));
     assert.ok(profileRoute.includes("ensureProviderProfileForAccount"));

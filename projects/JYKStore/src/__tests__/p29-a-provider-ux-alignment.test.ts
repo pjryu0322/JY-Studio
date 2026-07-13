@@ -23,10 +23,11 @@ describe("P28.2 / P29-A provider UX alignment", () => {
     assert.ok(center.includes("packs.length > 0 ? <ProviderOnboardingStepper"));
   });
 
-  it("new pack page does not ensure provider profile on visit", () => {
+  it("new pack page gates by role or existing profile without ensure side effects", () => {
     const packNew = readSource("src/app/(store)/provider/packs/new/page.tsx");
     assert.ok(!packNew.includes("ensureProviderProfileForAccount"));
     assert.ok(packNew.includes("isProviderAccountRole"));
+    assert.ok(packNew.includes("findProviderProfileForUser"));
     assert.ok(packNew.includes("prisma.user.findUnique"));
   });
 

@@ -1,10 +1,16 @@
+import { cookies } from "next/headers";
 import { AuthRequiredCard } from "@/components/AuthRequiredCard";
 import { ProviderPackCreateForm } from "@/components/ProviderPackCreateForm";
 import { ProviderRequiredCard } from "@/components/ProviderRequiredCard";
 import { isAdminAccountRole, isProviderAccountRole } from "@/lib/account-role";
 import { getUserIdFromCookies } from "@/lib/auth-session";
+import {
+  createClientId,
+  JYKSTORE_CLIENT_ID_COOKIE,
+} from "@/lib/client-identity";
 import { listCategoriesWithPublishedCounts } from "@/lib/pack-catalog-service";
 import { prisma } from "@/lib/prisma";
+import { findProviderProfileForUser } from "@/lib/provider-profile-service";
 import { PROVIDER_PAYLOAD_IMPORT_PREP_HINT } from "@/lib/role-based-ux-copy";
 
 export const dynamic = "force-dynamic";
@@ -21,8 +27,15 @@ export default async function ProviderPackNewPage() {
     select: { accountRole: true },
   });
 
+  const jar = await cookies();
+  const clientId = jar.get(JYKSTORE_CLIENT_ID_COOKIE)?.value ?? createClientId();
+  const providerProfile = await findProviderProfileForUser(userId, clientId);
+
+  // Match Provider Center / session: role OR linked provider profile.
   const canProvider =
-    isProviderAccountRole(user?.accountRole) || isAdminAccountRole(user?.accountRole);
+    isProviderAccountRole(user?.accountRole) ||
+    isAdminAccountRole(user?.accountRole) ||
+    Boolean(providerProfile);
 
   if (!canProvider) {
     return <ProviderRequiredCard />;
