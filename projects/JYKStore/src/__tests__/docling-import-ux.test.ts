@@ -27,8 +27,13 @@ describe("docling import UX sources", () => {
     assert.ok(source.includes("Docling JSON"));
     assert.ok(source.includes("Docling Markdown"));
     assert.ok(source.includes("3파일 업로드"));
-    assert.ok(source.includes("교체(재업로드)"));
-    assert.ok(source.includes("재시도"));
+    assert.ok(source.includes("선택됨:"));
+    assert.ok(source.includes("선택한 파일"));
+    assert.ok(source.includes("등록된 Docling Bundle"));
+    assert.ok(source.includes("cachedBundle"));
+    assert.ok(!source.includes("교체(재업로드)"));
+    assert.ok(source.includes("새 파일로 교체"));
+    assert.ok(source.includes("등록 자료 삭제"));
     assert.ok(source.includes("NormalizedDocumentPreview"));
     assert.ok(source.includes("min-h-[44px]"));
     assert.ok(source.includes("실패한 Staging Bundle") || source.includes("stagingBundle"));
@@ -36,12 +41,12 @@ describe("docling import UX sources", () => {
     assert.ok(source.includes("검수 제출 이력이 있어 교체할 수 없습니다"));
   });
 
-  it("keeps ZIP as secondary collapsed legacy section", () => {
+  it("payload tab is Docling-only without legacy ZIP UI", () => {
     const payload = readSource("src/components/provider-distribution/ProviderPayloadTab.tsx");
     assert.ok(payload.includes("ProviderDoclingImportTab"));
-    assert.ok(payload.includes("레거시 ZIP Payload"));
-    assert.ok(payload.includes("ZIP 파일"));
-    assert.ok(payload.includes("legacyOpen"));
+    assert.ok(!payload.includes("레거시 ZIP Payload"));
+    assert.ok(!payload.includes("legacyOpen"));
+    assert.ok(!payload.includes("ZIP 파일"));
   });
 
   it("wires provider API helpers and pack editor readiness", () => {
@@ -147,10 +152,12 @@ describe("docling import UX sources", () => {
     const preview = readSource("src/components/docling/NormalizedDocumentPreview.tsx");
     assert.ok(preview.includes("sanitizeMarkdownForPreview"));
     assert.ok(preview.includes("개요"));
-    assert.ok(preview.includes("Sections"));
+    assert.ok(preview.includes("Headings"));
+    assert.ok(preview.includes("본문") || preview.includes("paragraphs"));
     assert.ok(preview.includes("Tables"));
     assert.ok(preview.includes("Figures"));
     assert.ok(preview.includes("Markdown"));
     assert.ok(preview.includes("처리 로그"));
+    assert.ok(preview.includes("languageSource") || preview.includes("languageConfidence") || preview.includes("미확인"));
   });
 });

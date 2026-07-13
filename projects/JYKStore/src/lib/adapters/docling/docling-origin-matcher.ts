@@ -13,6 +13,9 @@ export type { OriginMatchResult, OriginMatchStatus };
 const COPY_SUFFIX_RE =
   /(?:\s*[\(\[]\s*(?:copy|복사본|\d+)\s*[\)\]]|\s*-\s*copy(?:\s*\(\d+\))?|\s+copy(?:\s*\(\d+\))?)$/gi;
 
+/** Trailing Docling/export batch markers: "가이드01", "_01", "-v2". */
+const TRAILING_BATCH_RE = /(?:[_\-\s]?v?\d{1,3})$/i;
+
 const EXT_MIME: Record<string, string[]> = {
   pdf: ["application/pdf"],
   docx: [
@@ -68,11 +71,43 @@ function stripCopySuffixes(stem: string): string {
   return current;
 }
 
+function stripTrailingBatchMarker(stem: string): string {
+  const current = stem.trim();
+  const stripped = current.replace(TRAILING_BATCH_RE, "").trim();
+  // Keep original when stripping would leave too little signal (e.g. "v2").
+  if (stripped.length >= 8) return stripped;
+  return current;
+}
+
+/**
+ * Compact fingerprint for logical filename equality.
+ * Drops punctuation/parentheses and trailing Docling batch digits.
+ */
+export function filenameMatchFingerprint(filename: string): string {
+  const { stem } = stripExtension(filename.trim());
+  const withoutCopy = stripCopySuffixes(stem);
+  const withoutParens = withoutCopy.replace(/[(){}\[\]]/g, " ");
+  const spaced = withoutParens
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[_\-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const withoutBatch = stripTrailingBatchMarker(spaced.replace(/\s+/g, ""));
+  // Letters + numbers only (keeps Hangul).
+  return withoutBatch.replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
 /** Normalize a filename for logical comparison. */
 export function normalizeFilenameForMatch(filename: string): string {
   const { stem } = stripExtension(filename.trim());
   const withoutCopy = stripCopySuffixes(stem);
-  return withoutCopy.normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
+  return withoutCopy
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[(){}\[\]]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function extractExtension(filename: string): string {
@@ -80,22 +115,31 @@ export function extractExtension(filename: string): string {
 }
 
 function softFilenameStatus(
-  originNorm: string,
-  sourceNorm: string,
+  originFilename: string,
+  sourceFilename: string,
 ): OriginMatchStatus {
+  const originNorm = normalizeFilenameForMatch(originFilename);
+  const sourceNorm = normalizeFilenameForMatch(sourceFilename);
   if (originNorm === sourceNorm) return "MATCH";
+
+  const originFp = filenameMatchFingerprint(originFilename);
+  const sourceFp = filenameMatchFingerprint(sourceFilename);
+  if (originFp && sourceFp && originFp === sourceFp) return "MATCH";
+
   if (!originNorm || !sourceNorm) return "MISMATCH";
   if (originNorm.includes(sourceNorm) || sourceNorm.includes(originNorm)) {
     return "WARNING";
+  }
+  if (originFp && sourceFp) {
+    if (originFp.includes(sourceFp) || sourceFp.includes(originFp)) {
+      return "WARNING";
+    }
   }
   // Shared significant prefix (e.g. "report-final" vs "report")
   const minLen = Math.min(originNorm.length, sourceNorm.length);
   if (minLen >= 4) {
     let shared = 0;
-    while (
-      shared < minLen &&
-      originNorm[shared] === sourceNorm[shared]
-    ) {
+    while (shared < minLen && originNorm[shared] === sourceNorm[shared]) {
       shared += 1;
     }
     if (shared / Math.max(originNorm.length, sourceNorm.length) >= 0.7) {
@@ -166,9 +210,7 @@ export function matchOriginToSource(options: {
 
   let filenameStatus: OriginMatchStatus = "MATCH";
   if (originFilename && sourceFilename) {
-    const a = normalizeFilenameForMatch(originFilename);
-    const b = normalizeFilenameForMatch(sourceFilename);
-    filenameStatus = softFilenameStatus(a, b);
+    filenameStatus = softFilenameStatus(originFilename, sourceFilename);
     if (filenameStatus === "MISMATCH") {
       issues.push(
         issue(

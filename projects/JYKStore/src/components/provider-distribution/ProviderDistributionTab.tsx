@@ -6,22 +6,14 @@ import {
   fetchProviderPackDistributionApi,
   upsertProviderPackDistributionApi,
 } from "@/lib/provider-center-api";
-import {
-  PROVIDER_PACK_GO_TO_PAYLOAD_TAB,
-  PROVIDER_PACK_GO_TO_REVIEW_TAB,
-} from "@/lib/role-based-ux-copy";
 
 export function ProviderDistributionTab({
   packId,
   editable,
-  onGoToPayloadTab,
-  onGoToReviewTab,
   onDistributionChanged,
 }: {
   readonly packId: string;
   readonly editable: boolean;
-  readonly onGoToPayloadTab: () => void;
-  readonly onGoToReviewTab: () => void;
   readonly onDistributionChanged?: (row: PackDistributionMetadataDto | null) => void;
 }) {
   const [loading, setLoading] = useState(true);
@@ -35,7 +27,6 @@ export function ProviderDistributionTab({
   const [readmeText, setReadmeText] = useState("");
   const [visibility, setVisibility] = useState("PRIVATE");
   const [allowDownload, setAllowDownload] = useState(true);
-  const [saved, setSaved] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,7 +44,6 @@ export function ProviderDistributionTab({
         setReadmeText(row.readmeText ?? "");
         setVisibility(row.visibility);
         setAllowDownload(row.allowDownload);
-        setSaved(true);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "유통정보를 불러오지 못했습니다.");
@@ -83,7 +73,6 @@ export function ProviderDistributionTab({
         allowDownload,
       });
       onDistributionChanged?.(data.distribution);
-      setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "저장에 실패했습니다.");
     } finally {
@@ -224,25 +213,6 @@ export function ProviderDistributionTab({
           </button>
         ) : null}
       </form>
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onGoToPayloadTab}
-          className="min-h-[40px] rounded-xl border border-store-border px-3 text-xs font-semibold text-slate-800"
-        >
-          {PROVIDER_PACK_GO_TO_PAYLOAD_TAB}
-        </button>
-        {saved ? (
-          <button
-            type="button"
-            onClick={onGoToReviewTab}
-            className="min-h-[40px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white"
-          >
-            {PROVIDER_PACK_GO_TO_REVIEW_TAB}
-          </button>
-        ) : null}
-      </div>
     </section>
   );
 }

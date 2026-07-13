@@ -483,7 +483,7 @@ model DoclingImportBundle {
   packId                String
   versionId             String
   status                DoclingImportBundleStatus @default(UPLOADED)
-  isActive              Boolean                   @default(true)
+  isActive              Boolean                   @default(false)
   adapterType           String                    @default("DOCLING")
   adapterVersion        String                    @default("1.0.0")
   doclingSchemaName     String?
@@ -581,6 +581,9 @@ model NormalizedDocument {
   fingerprint            String?
   /// Canonical fingerprint algorithm id (e.g. normalized-document-v2).
   fingerprintVersion     String?  @default("normalized-document-v2")
+  languageSource         String?
+  languageConfidence     Float?
+  structureSummaryJson   Json?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 

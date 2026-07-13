@@ -42,6 +42,9 @@ describe("provider pack tabs UX sources", () => {
     assert.ok(editor.includes('activeTab === "payload"'));
     assert.ok(editor.includes('activeTab === "distribution"'));
     assert.ok(editor.includes('activeTab === "review"'));
+    // Tabs stay mounted (hidden) so Docling selection/upload survives switches.
+    assert.ok(editor.includes(': "hidden"'));
+    assert.ok(editor.includes("cachedDoclingBundle"));
   });
 
   it("keeps review tab free of Builder generation panels", () => {

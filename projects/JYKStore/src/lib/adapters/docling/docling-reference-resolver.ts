@@ -6,7 +6,8 @@ import {
 import type { DoclingDocument, DoclingRef } from "./docling-types";
 
 export const MAX_ENTITY_COUNT = 50_000;
-export const MAX_REF_DEPTH = 32;
+/** Structural/ref walk ceiling for large Docling exports (was 32 — too low for long manuals). */
+export const MAX_REF_DEPTH = 256;
 
 const REF_PATH_RE = /^#\/([A-Za-z_][\w]*)(?:\/(\d+))?$/;
 

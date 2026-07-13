@@ -77,7 +77,11 @@ function extensionOfFileName(fileName: string): string {
 
 function sanitizeOriginalFileName(fileName: string): string {
   const base = fileName.split(/[/\\]/).pop()?.trim() || "payload.zip";
-  const cleaned = base.replace(/[^\w.\- ()[\]]+/g, "_").slice(0, 180);
+  // Keep Unicode letters (Hangul etc.). JS \w is ASCII-only.
+  const cleaned = base
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[<>:"|?*\\/]/g, "_")
+    .slice(0, 180);
   return cleaned || "payload.zip";
 }
 

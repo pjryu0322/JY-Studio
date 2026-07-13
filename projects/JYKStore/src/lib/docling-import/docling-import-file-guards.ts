@@ -82,7 +82,12 @@ export function sanitizeOriginalFileName(fileName: string, fallback = "file.bin"
       400,
     );
   }
-  const cleaned = base.replace(/[^\w.\- ()[\]]+/g, "_").slice(0, 180);
+  // Keep Unicode letters (Hangul etc.). Strip only path-hostile / control characters.
+  // Note: JS \w is ASCII-only and would turn Korean into "_".
+  const cleaned = base
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .replace(/[<>:"|?*\\/]/g, "_")
+    .slice(0, 180);
   return cleaned || fallback;
 }
 

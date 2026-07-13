@@ -22,9 +22,11 @@ import {
 } from "../lib/distribution/payload-storage-factory.ts";
 import { probePayloadObjectStorage } from "../lib/distribution/s3-payload-storage.ts";
 import {
+  deleteDoclingImportByBundleId,
   getActiveDoclingImport,
   uploadDoclingImportBundle,
 } from "../lib/docling-import/docling-import-service.ts";
+import { isDoclingImportError } from "../lib/docling-import/docling-import-errors.ts";
 import { resolveReviewPackageMode } from "../lib/review/review-package-mode.ts";
 import { prisma } from "../lib/prisma.ts";
 import {
@@ -33,6 +35,7 @@ import {
 } from "../lib/provider-pack-service.ts";
 import { ensureProviderProfileForAccount } from "../lib/provider-profile-service.ts";
 import { assertSafeE2ETargets } from "../../test/distribution-e2e-safety.mjs";
+import { promoteDoclingStagingBundle } from "../lib/docling-import/docling-import-lifecycle-service.ts";
 
 const runE2E =
   (process.env.JYKSTORE_RUN_DOCLING_E2E === "1" ||
@@ -318,5 +321,219 @@ describe("docling-minio-e2e", { skip: !runE2E }, () => {
         state.stagingBundle?.status === "NORMALIZATION_FAILED",
     );
     assert.ok(state.stagingBundle?.files.length === 3);
+  });
+
+  it("keeps active on replace failure then promotes on success and locks after submit", async () => {
+    const created = await createProviderPackForClient(
+      actors.providerUserId,
+      actors.providerClientId,
+      {
+        name: `Docling Replace ${runId}`,
+        categoryId: CATEGORY_ID,
+        shortDescription: "Docling safe replace e2e",
+        description: "Docling staging-first replace e2e",
+        version: "1.0.0",
+      },
+    );
+    if ("error" in created) {
+      throw new Error(`create pack failed: ${JSON.stringify(created)}`);
+    }
+    const packId = created.pack.packId;
+    actors.packIds.push(packId);
+
+    const first = await uploadDoclingImportBundle({
+      userId: actors.providerUserId,
+      clientId: actors.providerClientId,
+      packId,
+      source: {
+        fileName: "sample.pdf",
+        mimeType: "application/pdf",
+        bytes: pdfBytes(),
+      },
+      json: {
+        fileName: "sample.json",
+        mimeType: "application/json",
+        bytes: jsonBytes(),
+      },
+      markdown: {
+        fileName: "sample.md",
+        mimeType: "text/markdown",
+        bytes: mdBytes(),
+      },
+    });
+    assert.equal(first.bundle.status, "REVIEW_READY");
+    assert.equal(first.bundle.isActive, true);
+    const activeId = first.bundle.id;
+
+    let failedReplace = false;
+    try {
+      await uploadDoclingImportBundle({
+        userId: actors.providerUserId,
+        clientId: actors.providerClientId,
+        packId,
+        source: {
+          fileName: "sample.pdf",
+          mimeType: "application/pdf",
+          bytes: pdfBytes(),
+        },
+        json: {
+          fileName: "bad.json",
+          mimeType: "application/json",
+          bytes: badJsonBytes(),
+        },
+        markdown: {
+          fileName: "sample.md",
+          mimeType: "text/markdown",
+          bytes: mdBytes(),
+        },
+      });
+    } catch {
+      failedReplace = true;
+    }
+    assert.equal(failedReplace, true);
+
+    const afterFail = await getActiveDoclingImport({
+      userId: actors.providerUserId,
+      clientId: actors.providerClientId,
+      packId,
+    });
+    assert.equal(afterFail.bundle?.id, activeId);
+    assert.equal(afterFail.bundle?.isActive, true);
+    assert.ok(afterFail.stagingBundle);
+    assert.equal(afterFail.stagingBundle?.isActive, false);
+    const stagingId = afterFail.stagingBundle!.id;
+
+    await deleteDoclingImportByBundleId({
+      userId: actors.providerUserId,
+      clientId: actors.providerClientId,
+      packId,
+      bundleId: stagingId,
+    });
+
+    const afterDeleteStaging = await getActiveDoclingImport({
+      userId: actors.providerUserId,
+      clientId: actors.providerClientId,
+      packId,
+    });
+    assert.equal(afterDeleteStaging.bundle?.id, activeId);
+    assert.equal(afterDeleteStaging.stagingBundle, null);
+
+    const replacementDoc = {
+      ...MINIMAL_DOCLING,
+      name: "Sample Replace",
+      texts: [
+        {
+          self_ref: "#/texts/0",
+          text: "Replacement content hello world",
+          label: "paragraph",
+        },
+      ],
+    };
+    const second = await uploadDoclingImportBundle({
+      userId: actors.providerUserId,
+      clientId: actors.providerClientId,
+      packId,
+      source: {
+        fileName: "sample.pdf",
+        mimeType: "application/pdf",
+        bytes: pdfBytes(),
+      },
+      json: {
+        fileName: "sample.json",
+        mimeType: "application/json",
+        bytes: jsonBytes(replacementDoc),
+      },
+      markdown: {
+        fileName: "sample.md",
+        mimeType: "text/markdown",
+        bytes: new TextEncoder().encode("# Sample Replace\n\nReplacement content hello world\n"),
+      },
+    });
+    assert.equal(second.bundle.isActive, true);
+    assert.notEqual(second.bundle.id, activeId);
+    assert.equal(second.bundle.status, "REVIEW_READY");
+
+    const previous = await prisma.doclingImportBundle.findUnique({ where: { id: activeId } });
+    assert.ok(previous);
+    assert.equal(previous?.isActive, false);
+
+    await upsertProviderPackDistribution({
+      userId: actors.providerUserId,
+      clientId: actors.providerClientId,
+      packId,
+      body: {
+        sourceTitle: "Docling Replace Source",
+        sourceUrl: "https://example.com/docling-replace",
+        licenseName: "MIT",
+        visibility: "PRIVATE",
+        allowDownload: true,
+      },
+    });
+
+    const submitted = await submitProviderPackForReview(
+      actors.providerUserId,
+      actors.providerClientId,
+      packId,
+    );
+    if ("error" in submitted) {
+      throw new Error(`submit failed: ${JSON.stringify(submitted)}`);
+    }
+    assert.equal(submitted.mode, "DOCLING_BUNDLE");
+
+    const afterSubmit = await getActiveDoclingImport({
+      userId: actors.providerUserId,
+      clientId: actors.providerClientId,
+      packId,
+    });
+    assert.equal(afterSubmit.bundle?.immutableAfterSubmission, true);
+    assert.equal(afterSubmit.bundle?.canDelete, false);
+
+    let blocked = false;
+    try {
+      await uploadDoclingImportBundle({
+        userId: actors.providerUserId,
+        clientId: actors.providerClientId,
+        packId,
+        source: {
+          fileName: "sample.pdf",
+          mimeType: "application/pdf",
+          bytes: pdfBytes(),
+        },
+        json: {
+          fileName: "sample.json",
+          mimeType: "application/json",
+          bytes: jsonBytes(),
+        },
+        markdown: {
+          fileName: "sample.md",
+          mimeType: "text/markdown",
+          bytes: mdBytes(),
+        },
+      });
+    } catch (error) {
+      blocked = true;
+      assert.ok(isDoclingImportError(error) || error instanceof Error);
+    }
+    assert.equal(blocked, true);
+
+    // Concurrent promote vs open review should not flip active after submit.
+    let promoteBlocked = false;
+    try {
+      await promoteDoclingStagingBundle({
+        packId,
+        versionId: second.bundle.versionId,
+        stagingBundleId: second.bundle.id,
+      });
+    } catch {
+      promoteBlocked = true;
+    }
+    // Already active: promote may no-op or conflict; active must remain the submitted bundle.
+    void promoteBlocked;
+    const finalState = await getActiveDoclingImport({
+      userId: actors.providerUserId,
+      clientId: actors.providerClientId,
+      packId,
+    });
+    assert.equal(finalState.bundle?.id, second.bundle.id);
   });
 });

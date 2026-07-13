@@ -7,6 +7,10 @@ import {
   type Prisma,
 } from "@prisma/client";
 import {
+  acquireVersionUploadLock,
+  findLatestStagingBundleForVersion,
+} from "@/lib/docling-import/docling-import-lifecycle-service";
+import {
   assertManifestIntegrity,
   refreshDistributionManifest,
   stableManifestFingerprint,
@@ -84,6 +88,15 @@ export async function commitDistributionPackForReview(
     return { error: "INCOMPLETE", message: "버전이 최소 1개 필요합니다." };
   }
 
+  const liveStaging = await findLatestStagingBundleForVersion(version.id);
+  if (liveStaging) {
+    return {
+      error: "INCOMPLETE",
+      message:
+        "실패하거나 처리 중인 Staging Bundle이 있습니다. 재시도하거나 삭제한 후 검수 요청하세요.",
+    };
+  }
+
   const meta = version.distributionMetadata;
 
   const doclingBundle = await prisma.doclingImportBundle.findFirst({
@@ -93,6 +106,16 @@ export async function commitDistributionPackForReview(
       normalizedDocuments: { where: { isActive: true }, take: 1 },
     },
   });
+
+  // Re-check live staging before Docling submit path.
+  const stagingAfterLock = await findLatestStagingBundleForVersion(version.id);
+  if (stagingAfterLock) {
+    return {
+      error: "INCOMPLETE",
+      message:
+        "실패하거나 처리 중인 Staging Bundle이 있습니다. 재시도하거나 삭제한 후 검수 요청하세요.",
+    };
+  }
 
   if (
     doclingBundle &&
@@ -150,19 +173,67 @@ export async function commitDistributionPackForReview(
       allowDownload: meta.allowDownload,
     });
 
-    await prisma.$transaction([
-      prisma.knowledgePack.update({
-        where: { packId },
-        data: { status: PackStatus.REVIEWING },
-      }),
-      prisma.packReview.create({
-        data: {
-          packId,
-          status: "PENDING",
-          submitSnapshot: snapshot as unknown as Prisma.InputJsonValue,
-        },
-      }),
-    ]);
+    try {
+      await prisma.$transaction(async (tx) => {
+        await acquireVersionUploadLock(tx, version.id, packId);
+
+        const packLocked = await tx.knowledgePack.findFirst({
+          where: { packId, providerProfileId: profile.id },
+          select: { status: true },
+        });
+        if (!packLocked || packLocked.status !== PackStatus.DRAFT) {
+          throw new Error("NOT_DRAFT");
+        }
+
+        const stagingInTx = await tx.doclingImportBundle.findFirst({
+          where: {
+            versionId: version.id,
+            isActive: false,
+            deletedAt: null,
+            storageStatus: "ACTIVE",
+          },
+        });
+        if (stagingInTx) {
+          throw new Error("DOCLING_STAGING_BUNDLE_MUST_BE_RESOLVED");
+        }
+
+        const activeInTx = await tx.doclingImportBundle.findFirst({
+          where: { id: doclingBundle.id, isActive: true },
+        });
+        if (!activeInTx || activeInTx.status !== DoclingImportBundleStatus.REVIEW_READY) {
+          throw new Error("DOCLING_REVIEW_STATE_CONFLICT");
+        }
+
+        await tx.knowledgePack.update({
+          where: { packId },
+          data: { status: PackStatus.REVIEWING },
+        });
+        await tx.packReview.create({
+          data: {
+            packId,
+            status: "PENDING",
+            submitSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+          },
+        });
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (code === "NOT_DRAFT") return { error: "NOT_DRAFT" };
+      if (code === "DOCLING_STAGING_BUNDLE_MUST_BE_RESOLVED") {
+        return {
+          error: "INCOMPLETE",
+          message:
+            "실패하거나 처리 중인 Staging Bundle이 있습니다. 재시도하거나 삭제한 후 검수 요청하세요.",
+        };
+      }
+      if (code === "DOCLING_REVIEW_STATE_CONFLICT") {
+        return {
+          error: "INCOMPLETE",
+          message: "검수 제출 중 Bundle 상태가 변경되었습니다. 다시 시도하세요.",
+        };
+      }
+      throw error;
+    }
 
     await recordProviderAudit({
       action: AuditAction.DISTRIBUTION_SUBMITTED,

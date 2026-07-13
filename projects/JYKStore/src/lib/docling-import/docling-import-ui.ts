@@ -61,6 +61,12 @@ export function mapDoclingImportUserError(code: string | null | undefined, fallb
       return "Office 문서에 필수 항목이 없습니다.";
     case "DOCLING_IMMUTABLE_AFTER_SUBMISSION":
       return "검수 제출 이력이 있어 교체할 수 없습니다. 새 버전을 생성하세요.";
+    case "DOCLING_STAGING_BUNDLE_EXISTS":
+      return "처리되지 않은 Staging Bundle이 있습니다. 재시도하거나 삭제한 후 새 파일을 등록하세요.";
+    case "DOCLING_BUNDLE_STORAGE_NOT_ACTIVE":
+      return "삭제되었거나 저장소가 비활성인 Bundle은 재시도할 수 없습니다.";
+    case "DOCLING_REVIEW_STATE_CONFLICT":
+      return "검수 상태와 Bundle 상태가 충돌합니다. 새로고침 후 다시 시도하세요.";
     default:
       return fallback?.trim() || "Docling import 처리에 실패했습니다.";
   }
@@ -69,7 +75,7 @@ export function mapDoclingImportUserError(code: string | null | undefined, fallb
 export function formatDoclingStorageStatus(status: string | null | undefined): string {
   switch (status) {
     case "ACTIVE":
-      return "저장소 활성";
+      return "원본 저장 완료";
     case "DELETE_PENDING":
       return "삭제 대기";
     case "DELETED":
@@ -79,4 +85,33 @@ export function formatDoclingStorageStatus(status: string | null | undefined): s
     default:
       return status ?? "—";
   }
+}
+
+export function formatDoclingBundleStatus(status: string | null | undefined): string {
+  switch (status) {
+    case "REVIEW_READY":
+      return "검수 준비 완료";
+    case "NORMALIZED":
+      return "문서 구조 변환 완료";
+    case "NORMALIZING":
+      return "문서 구조 변환 중";
+    case "VALID":
+      return "검증 완료";
+    case "VALIDATING":
+      return "검증 중";
+    case "VALIDATION_FAILED":
+      return "검증 실패";
+    case "NORMALIZATION_FAILED":
+      return "변환 실패";
+    case "UPLOADED":
+      return "업로드 완료";
+    default:
+      return status ?? "—";
+  }
+}
+
+export function formatDoclingBundleStatusWithCode(status: string | null | undefined): string {
+  const label = formatDoclingBundleStatus(status);
+  if (!status || label === status) return label;
+  return `${label} (${status})`;
 }

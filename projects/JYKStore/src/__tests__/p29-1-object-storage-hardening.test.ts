@@ -227,10 +227,10 @@ describe("P29.1 visibility and immutability source guards", () => {
     assert.ok(!key.includes("203.0.113.10"));
   });
 
-  it("provider UI hides delete when canDelete is false", () => {
-    const ui = readSource("src/components/provider-distribution/ProviderPayloadTab.tsx");
-    assert.ok(ui.includes("payload.canDelete"));
-    assert.ok(ui.includes("삭제할 수 없습니다"));
+  it("provider Docling UI blocks replace after submission history", () => {
+    const ui = readSource("src/components/provider-distribution/ProviderDoclingImportTab.tsx");
+    assert.ok(ui.includes("immutableAfterSubmission") || ui.includes("canDelete"));
+    assert.ok(ui.includes("검수 제출 이력이 있어 교체할 수 없습니다"));
   });
 
   it("readiness includes payload storage probe", () => {

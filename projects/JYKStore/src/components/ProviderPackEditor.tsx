@@ -36,10 +36,7 @@ import {
   PROVIDER_PACK_CREATED_ID_PREFIX,
   PROVIDER_PACK_CREATED_NEXT_TASK,
   PROVIDER_PACK_GO_TO_PAYLOAD_TAB,
-  PROVIDER_PACK_GO_TO_REVIEW_TAB,
   PROVIDER_PACK_ID_LABEL,
-  PROVIDER_PACK_NEXT_TASK_SUBMIT,
-  PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN,
   PROVIDER_REVIEW_WITHDRAW_CONFIRM,
   PROVIDER_SUBMIT_CONFIRM,
 } from "@/lib/role-based-ux-copy";
@@ -217,9 +214,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   }
 
   const latestVersion = pack.versions[0];
-  const showNextTask =
-    !showCreatedBanner &&
-    (pack.status === "DRAFT" || pack.status === "REVIEWING");
 
   return (
     <div className="space-y-4 pb-6">
@@ -253,39 +247,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         <ProviderPackStatusBadge status={pack.status} />
       </div>
 
-      {showNextTask ? (
-        <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-900">
-          <p className="text-xs font-bold text-blue-900">다음 할 일</p>
-          {pack.status === "REVIEWING" ? (
-            <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN}</p>
-          ) : distributionReadiness.ready ? (
-            <>
-              <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_NEXT_TASK_SUBMIT}</p>
-              <button
-                type="button"
-                onClick={() => selectTab("review")}
-                className="mt-2 min-h-[40px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white"
-              >
-                {PROVIDER_PACK_GO_TO_REVIEW_TAB}
-              </button>
-            </>
-          ) : (
-            <>
-              <p className="mt-1 text-xs text-slate-700">
-                Payload와 유통정보를 등록한 뒤 검수 요청을 준비하세요.
-              </p>
-              <button
-                type="button"
-                onClick={() => selectTab(hasContentPayload ? "distribution" : "payload")}
-                className="mt-2 min-h-[40px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white"
-              >
-                {hasContentPayload ? "유통정보로 이동" : PROVIDER_PACK_GO_TO_PAYLOAD_TAB}
-              </button>
-            </>
-          )}
-        </div>
-      ) : null}
-
       <ProviderPackTabs activeTab={activeTab} onSelectTab={selectTab} />
 
       {error ? (
@@ -293,7 +254,11 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       ) : null}
 
       <div id="pack-wizard-main" className="scroll-mt-24">
-        {activeTab === "basic" ? (
+        {/* Keep tabs mounted (hidden) so Docling file selection / upload result survives tab switches. */}
+        <div
+          className={activeTab === "basic" ? undefined : "hidden"}
+          aria-hidden={activeTab !== "basic"}
+        >
           <ProviderPackBasicInfoTab
             packId={pack.packId}
             packName={pack.name}
@@ -310,16 +275,18 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             onVersionOverviewChange={setVersionOverview}
             onSave={onSave}
           />
-        ) : null}
+        </div>
 
-        {activeTab === "payload" ? (
+        <div
+          className={activeTab === "payload" ? undefined : "hidden"}
+          aria-hidden={activeTab !== "payload"}
+        >
           <ProviderPayloadTab
             packId={packId}
             editable={editable}
             packStatus={pack.status}
             latestReviewStatus={pack.latestReviewStatus}
-            onGoToDistributionTab={() => selectTab("distribution")}
-            onGoToReviewTab={() => selectTab("review")}
+            cachedDoclingBundle={doclingBundle}
             onPayloadChanged={setPayload}
             onDoclingChanged={setDoclingBundle}
             onPackUpdated={(next) => {
@@ -330,19 +297,23 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
               setDistribution(null);
             }}
           />
-        ) : null}
+        </div>
 
-        {activeTab === "distribution" ? (
+        <div
+          className={activeTab === "distribution" ? undefined : "hidden"}
+          aria-hidden={activeTab !== "distribution"}
+        >
           <ProviderDistributionTab
             packId={packId}
             editable={editable}
-            onGoToPayloadTab={() => selectTab("payload")}
-            onGoToReviewTab={() => selectTab("review")}
             onDistributionChanged={setDistribution}
           />
-        ) : null}
+        </div>
 
-        {activeTab === "review" ? (
+        <div
+          className={activeTab === "review" ? undefined : "hidden"}
+          aria-hidden={activeTab !== "review"}
+        >
           <ProviderPackReviewTab
             pack={pack}
             editable={editable}
@@ -357,7 +328,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             onGoToDistributionTab={() => selectTab("distribution")}
             onGoToBasicTab={() => selectTab("basic")}
           />
-        ) : null}
+        </div>
       </div>
     </div>
   );

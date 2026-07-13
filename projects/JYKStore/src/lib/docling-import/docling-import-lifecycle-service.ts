@@ -1,6 +1,7 @@
 import {
   DoclingBundleStorageStatus,
   DoclingImportBundleStatus,
+  PackStatus,
   type DoclingImportBundle,
   type KnowledgePackFile,
   type NormalizedDocument,
@@ -171,8 +172,13 @@ export async function syncDoclingBundleStorageAfterCleanup(
 
   const hasFailed = jobs.some((j) => j.status === "FAILED");
   const hasPending = jobs.some((j) => j.status === "PENDING");
+  // Job count must be >= 1 — empty job list must NOT flip to DELETED.
   const allSucceeded =
-    jobs.length === 0 || jobs.every((j) => j.status === "SUCCEEDED");
+    jobs.length >= 1 && jobs.every((j) => j.status === "SUCCEEDED");
+
+  if (jobs.length === 0) {
+    return;
+  }
 
   if (hasFailed) {
     await prisma.doclingImportBundle.update({
@@ -204,7 +210,11 @@ export async function syncDoclingBundleStorageAfterCleanup(
 export async function acquireVersionUploadLock(
   tx: Prisma.TransactionClient,
   versionId: string,
+  packId?: string,
 ): Promise<void> {
+  if (packId) {
+    await tx.$executeRaw`SELECT id FROM "KnowledgePack" WHERE "packId" = ${packId} FOR UPDATE`;
+  }
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${versionId}))`;
   await tx.$executeRaw`SELECT id FROM "KnowledgePackVersion" WHERE id = ${versionId} FOR UPDATE`;
 }
@@ -221,7 +231,47 @@ export async function promoteDoclingStagingBundle(input: {
   let replacedBundleId: string | null = null;
 
   await prisma.$transaction(async (tx) => {
-    await acquireVersionUploadLock(tx, input.versionId);
+    await acquireVersionUploadLock(tx, input.versionId, input.packId);
+
+    const packRow = await tx.knowledgePack.findFirst({
+      where: { packId: input.packId },
+      select: { status: true },
+    });
+    if (!packRow || packRow.status !== PackStatus.DRAFT) {
+      throw new DoclingImportError(
+        "DOCLING_REVIEW_STATE_CONFLICT",
+        "초안 상태가 아니거나 검수 중이라 Bundle을 교체할 수 없습니다.",
+        409,
+      );
+    }
+
+    const openReview = await tx.packReview.findFirst({
+      where: { packId: input.packId, status: { in: ["PENDING", "IN_REVIEW"] } },
+      select: { id: true },
+    });
+    if (openReview) {
+      throw new DoclingImportError(
+        "DOCLING_REVIEW_STATE_CONFLICT",
+        "열린 검수 요청이 있어 Bundle을 교체할 수 없습니다.",
+        409,
+      );
+    }
+
+    const liveStaging = await tx.doclingImportBundle.findFirst({
+      where: {
+        versionId: input.versionId,
+        isActive: false,
+        deletedAt: null,
+        storageStatus: DoclingBundleStorageStatus.ACTIVE,
+      },
+    });
+    if (liveStaging && liveStaging.id !== input.stagingBundleId) {
+      throw new DoclingImportError(
+        "DOCLING_STAGING_BUNDLE_EXISTS",
+        "처리되지 않은 Staging Bundle이 있습니다. 재시도하거나 삭제한 후 새 파일을 등록하세요.",
+        409,
+      );
+    }
 
     const lockedPrevious = await tx.doclingImportBundle.findFirst({
       where: { versionId: input.versionId, isActive: true },
@@ -232,6 +282,7 @@ export async function promoteDoclingStagingBundle(input: {
         input.packId,
         lockedPrevious.id,
         input.versionId,
+        tx,
       );
       if (hasHistory) {
         throw new DoclingImportError(

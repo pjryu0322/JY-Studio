@@ -16,6 +16,18 @@ describe("docling-import-file-guards", () => {
     assert.equal(extensionOfFileName("report.PDF"), ".pdf");
   });
 
+  it("preserves Hangul and Unicode letters in file names", () => {
+    assert.equal(
+      sanitizeOriginalFileName("2025년_개정판_SW사업_대가산정_가이드01.docx"),
+      "2025년_개정판_SW사업_대가산정_가이드01.docx",
+    );
+    assert.equal(
+      sanitizeOriginalFileName("(2025년_개정판)_SW사업_대가산정_가이드.docx"),
+      "(2025년_개정판)_SW사업_대가산정_가이드.docx",
+    );
+    assert.equal(sanitizeOriginalFileName("evil<name>.pdf"), "evil_name_.pdf");
+  });
+
   it("detects mime from extension", () => {
     assert.equal(detectMimeFromExtension(".pdf"), "application/pdf");
     assert.equal(detectMimeFromExtension(".json"), "application/json");

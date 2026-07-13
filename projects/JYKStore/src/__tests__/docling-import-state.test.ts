@@ -5,6 +5,7 @@ import { isDoclingImportError } from "../lib/docling-import/docling-import-error
 import {
   assertTransition,
   canRetry,
+  canRetryDoclingBundle,
   getAllowedTransitions,
 } from "../lib/docling-import/docling-import-state.ts";
 
@@ -41,5 +42,12 @@ describe("docling-import-state", () => {
     assert.equal(canRetry(DoclingImportBundleStatus.NORMALIZED), true);
     assert.equal(canRetry(DoclingImportBundleStatus.REVIEW_READY), false);
     assert.equal(canRetry(DoclingImportBundleStatus.UPLOADED), false);
+    assert.equal(
+      canRetryDoclingBundle(
+        DoclingImportBundleStatus.VALIDATION_FAILED,
+        "SOURCE_FILENAME_MISMATCH",
+      ),
+      false,
+    );
   });
 });

@@ -33,6 +33,23 @@ describe("docling-origin-matcher", () => {
     assert.equal(result.issues.length, 0);
   });
 
+  it("matches Docling origin with parentheses and trailing 01 vs uploaded source", () => {
+    const result = matchOriginToSource({
+      originFilename: "2025년_개정판_SW사업_대가산정_가이드01.docx",
+      originMimetype:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      sourceFilename: "(2025년_개정판)_SW사업_대가산정_가이드.docx",
+      sourceMimetype:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    assert.equal(result.filenameStatus, "MATCH");
+    assert.equal(result.mimetypeStatus, "MATCH");
+    assert.equal(
+      result.issues.filter((i) => i.severity === "ERROR").length,
+      0,
+    );
+  });
+
   it("flags hard filename mismatch", () => {
     const result = matchOriginToSource({
       originFilename: "alpha.pdf",

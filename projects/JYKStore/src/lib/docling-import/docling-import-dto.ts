@@ -45,6 +45,8 @@ export type NormalizedDocumentSummaryDto = {
   sourceSchemaVersion: string | null;
   title: string | null;
   language: string | null;
+  languageSource: string | null;
+  languageConfidence: number | null;
   fingerprint: string | null;
   fingerprintVersion: string | null;
   warningCount: number;

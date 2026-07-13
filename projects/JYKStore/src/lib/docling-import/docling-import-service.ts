@@ -48,7 +48,7 @@ import {
 } from "@/lib/docling-import/normalized-document-fingerprint";
 import {
   assertTransition,
-  canRetry,
+  canRetryDoclingBundle,
 } from "@/lib/docling-import/docling-import-state";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
@@ -116,6 +116,8 @@ function toNormalizedSummaryDto(
     sourceSchemaVersion: doc.sourceSchemaVersion,
     title: doc.title,
     language: doc.language,
+    languageSource: doc.languageSource,
+    languageConfidence: doc.languageConfidence,
     fingerprint: doc.fingerprint,
     fingerprintVersion: doc.fingerprintVersion,
     warningCount: warnings.length,
@@ -178,7 +180,11 @@ export function toDoclingImportBundlePublicDto(
     createdAt: bundle.createdAt.toISOString(),
     updatedAt: bundle.updatedAt.toISOString(),
     canDelete: (options?.canDelete ?? false) && !immutableAfterSubmission,
-    canRetry: canRetry(bundle.status) && !immutableAfterSubmission,
+    canRetry:
+      canRetryDoclingBundle(bundle.status, bundle.lastErrorCode) &&
+      !immutableAfterSubmission &&
+      bundle.deletedAt == null &&
+      bundle.storageStatus === "ACTIVE",
     immutableAfterSubmission,
     files: bundle.files.map(toFileDto),
     processingLogs: (bundle.processingLogs ?? []).map(toProcessingLogDto),
@@ -296,6 +302,15 @@ export async function uploadDoclingImportBundle(input: {
     }
   }
 
+  const existingStaging = await findLatestStagingBundleForVersion(version.id);
+  if (existingStaging) {
+    throw new DoclingImportError(
+      "DOCLING_STAGING_BUNDLE_EXISTS",
+      "처리되지 않은 Staging Bundle이 있습니다. 재시도하거나 삭제한 후 새 파일을 등록하세요.",
+      409,
+    );
+  }
+
   const sourceMeta = await assertRoleFileAcceptable(
     KnowledgePackFileRole.SOURCE_ORIGINAL,
     input.source.fileName,
@@ -396,7 +411,7 @@ export async function uploadDoclingImportBundle(input: {
     await cleanupUploadedKeys(uploadedKeys, "docling_upload_partial_failure", storage);
     throw new DoclingImportError(
       "DOCLING_STORAGE_UNAVAILABLE",
-      "Object Storage 업로드에 실패했습니다.",
+      "Object Storage(MinIO) 업로드에 실패했습니다. 로컬 MinIO(127.0.0.1:9000)가 실행 중인지 확인하세요.",
       503,
     );
   }
@@ -753,6 +768,50 @@ export async function validateAndNormalizeBundle(
       },
     });
 
+    const { resolveDocumentLanguage } = await import("@/lib/docling-import/document-language");
+    const { buildStructureSummary } = await import("@/lib/docling-import/structure-summary");
+    const { evaluateDocumentTitleMatch } = await import("@/lib/docling-import/title-match");
+    const mdText = new TextDecoder("utf-8").decode(mdBytes);
+    const packRow = await prisma.knowledgePack.findUnique({
+      where: { packId: bundle.packId },
+      select: { name: true },
+    });
+    const languageResolved = resolveDocumentLanguage({
+      textSample: `${draft.title ?? ""}\n${mdText.slice(0, 12_000)}`,
+    });
+    draft.language = languageResolved.language;
+    const structureSummary = buildStructureSummary({
+      sections: draft.sections,
+      tables: draft.tables,
+      figures: draft.figures,
+      readingOrder: draft.readingOrder,
+    });
+    for (const warning of structureSummary.warnings) {
+      draft.warnings.push({
+        code: "DOCUMENT_STRUCTURE_WARNING",
+        severity: "WARNING",
+        message: warning,
+      });
+    }
+    const titleMatch = evaluateDocumentTitleMatch({
+      packName: packRow?.name,
+      documentTitle: draft.title,
+      sourceFileName: sourceFile.originalFileName,
+      originFileName:
+        typeof validation.document?.origin?.filename === "string"
+          ? validation.document.origin.filename
+          : null,
+    });
+    for (const warning of titleMatch.warnings) {
+      draft.warnings.push({
+        code: warning.startsWith("DOCUMENT_TITLE_MISMATCH")
+          ? "DOCUMENT_TITLE_MISMATCH"
+          : "DOCUMENT_TITLE_WARNING",
+        severity: "WARNING",
+        message: warning,
+      });
+    }
+
     const fingerprint = computeNormalizedDocumentFingerprint({
       adapterType: draft.adapter.type,
       adapterVersion: draft.adapter.version,
@@ -792,11 +851,15 @@ export async function validateAndNormalizeBundle(
           sourceSchemaVersion: draft.adapter.sourceSchemaVersion,
           title: draft.title,
           language: draft.language,
+          languageSource: languageResolved.languageSource,
+          languageConfidence: languageResolved.languageConfidence,
+          structureSummaryJson: structureSummary as unknown as Prisma.InputJsonValue,
           structureJson: {
             sections: draft.sections,
             tables: draft.tables,
             figures: draft.figures,
             readingOrder: draft.readingOrder,
+            summary: structureSummary,
           } as Prisma.InputJsonValue,
           sectionsJson: draft.sections as unknown as Prisma.InputJsonValue,
           tablesJson: draft.tables as unknown as Prisma.InputJsonValue,
@@ -1145,9 +1208,9 @@ export async function retryDoclingImport(input: {
   const staging = await findLatestStagingBundleForVersion(version.id);
   const active = await findActiveBundleForVersion(version.id);
   const candidate =
-    staging && canRetry(staging.status)
+    staging && canRetryDoclingBundle(staging.status, staging.lastErrorCode)
       ? staging
-      : active && canRetry(active.status)
+      : active && canRetryDoclingBundle(active.status, active.lastErrorCode)
         ? active
         : null;
 
@@ -1181,10 +1244,27 @@ export async function retryDoclingImportByBundleId(input: {
   if (!bundle || bundle.packId !== pack.packId || bundle.versionId !== version.id) {
     throw new DoclingImportError("NOT_FOUND", "재시도할 Docling import가 없습니다.", 404);
   }
-  if (!canRetry(bundle.status)) {
+  if (bundle.deletedAt != null || bundle.storageStatus !== "ACTIVE") {
+    throw new DoclingImportError(
+      "DOCLING_BUNDLE_STORAGE_NOT_ACTIVE",
+      "삭제되었거나 저장소가 비활성인 Bundle은 재시도할 수 없습니다.",
+      409,
+    );
+  }
+  if (!canRetryDoclingBundle(bundle.status, bundle.lastErrorCode)) {
     throw new DoclingImportError(
       "DOCLING_RETRY_NOT_ALLOWED",
-      "현재 상태에서는 재시도할 수 없습니다.",
+      bundle.lastErrorCode &&
+        [
+          "DOCLING_SCHEMA_INVALID",
+          "SOURCE_FILENAME_MISMATCH",
+          "SOURCE_MIMETYPE_MISMATCH",
+          "DOCLING_FILE_SIGNATURE_MISMATCH",
+          "DOCLING_FILE_CONTENT_INVALID",
+          "DOCLING_JSON_MARKDOWN_MISMATCH",
+        ].includes(bundle.lastErrorCode)
+        ? "같은 파일로는 재시도할 수 없습니다. Staging을 삭제한 후 올바른 파일을 다시 등록하세요."
+        : "현재 상태에서는 재시도할 수 없습니다.",
       409,
     );
   }

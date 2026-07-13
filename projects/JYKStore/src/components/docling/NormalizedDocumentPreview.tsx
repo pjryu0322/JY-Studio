@@ -10,6 +10,7 @@ import type {
 const PREVIEW_TABS = [
   "overview",
   "sections",
+  "paragraphs",
   "tables",
   "figures",
   "markdown",
@@ -20,7 +21,8 @@ type PreviewTabId = (typeof PREVIEW_TABS)[number];
 
 const PREVIEW_TAB_LABELS: Record<PreviewTabId, string> = {
   overview: "개요",
-  sections: "Sections",
+  sections: "Headings",
+  paragraphs: "본문",
   tables: "Tables",
   figures: "Figures",
   markdown: "Markdown",
@@ -62,6 +64,30 @@ export function NormalizedDocumentPreview({
   const tables = asArray(structureObj?.tables);
   const figures = asArray(structureObj?.figures);
   const warnings = asArray(structureObj?.warnings);
+  const summary =
+    structureObj?.summary && typeof structureObj.summary === "object"
+      ? (structureObj.summary as Record<string, unknown>)
+      : null;
+
+  function isHeadingRow(row: Record<string, unknown>): boolean {
+    const label = String(row.label ?? "").toLowerCase();
+    return (
+      label.includes("title") ||
+      label.includes("heading") ||
+      label.includes("section_header") ||
+      label.includes("header")
+    );
+  }
+
+  const headingRows = sections.filter((item) => {
+    const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    return isHeadingRow(row) || Boolean(row.title);
+  });
+  const paragraphRows = sections.filter((item) => {
+    const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    return !isHeadingRow(row) && !Boolean(row.title);
+  });
+
   const sanitizedMarkdown = useMemo(
     () => sanitizeMarkdownForPreview(markdownText ?? ""),
     [markdownText],
@@ -106,7 +132,14 @@ export function NormalizedDocumentPreview({
         {tab === "overview" ? (
           <ul className="space-y-1.5">
             <li>제목: {document.title ?? "—"}</li>
-            <li>언어: {document.language ?? "—"}</li>
+            <li>
+              언어: {document.language ?? "미확인"}
+              {document.languageSource ? ` (${document.languageSource}` : ""}
+              {document.languageConfidence != null
+                ? ` · ${Math.round(document.languageConfidence * 100)}%`
+                : ""}
+              {document.languageSource ? ")" : ""}
+            </li>
             <li>
               Schema: {document.sourceSchemaName ?? "—"}{" "}
               {document.sourceSchemaVersion ? `v${document.sourceSchemaVersion}` : ""}
@@ -114,11 +147,19 @@ export function NormalizedDocumentPreview({
             <li>
               Adapter: {document.adapterType} {document.adapterVersion}
             </li>
-            <li className="break-all">Fingerprint: {document.fingerprint ?? "—"}</li>
+            <li className="break-all">
+              Fingerprint:{" "}
+              {document.fingerprint
+                ? `${document.fingerprint.slice(0, 8)}…${document.fingerprint.slice(-6)}`
+                : "—"}
+            </li>
             <li>경고 수: {document.warningCount}</li>
-            <li>Sections: {sections.length}</li>
-            <li>Tables: {tables.length}</li>
-            <li>Figures: {figures.length}</li>
+            <li>Headings: {Number(summary?.headingCount ?? headingRows.length)}</li>
+            <li>Paragraphs: {Number(summary?.paragraphCount ?? paragraphRows.length)}</li>
+            <li>Lists: {Number(summary?.listCount ?? 0)}</li>
+            <li>Tables: {Number(summary?.tableCount ?? tables.length)}</li>
+            <li>Figures: {Number(summary?.figureCount ?? figures.length)}</li>
+            <li>Reading Order: {Number(summary?.readingOrderCount ?? 0)}</li>
             {warnings.length > 0 ? (
               <li>
                 경고 샘플:{" "}
@@ -132,15 +173,36 @@ export function NormalizedDocumentPreview({
         ) : null}
 
         {tab === "sections" ? (
-          sections.length === 0 ? (
-            <p className="text-store-muted">섹션이 없습니다.</p>
+          headingRows.length === 0 ? (
+            <p className="text-store-muted">Heading이 없습니다.</p>
           ) : (
             <ul className="max-h-72 space-y-2 overflow-y-auto">
-              {sections.slice(0, 40).map((item, index) => {
+              {headingRows.slice(0, 60).map((item, index) => {
                 const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
                 return (
                   <li key={String(row.id ?? index)} className="rounded-lg bg-slate-50 px-2 py-2">
-                    <p className="font-semibold">{String(row.title ?? row.label ?? `섹션 ${index + 1}`)}</p>
+                    <p className="font-semibold">
+                      {String(row.title ?? row.label ?? `Heading ${index + 1}`)}
+                    </p>
+                    <p className="mt-1 text-store-muted">
+                      Level {String(row.level ?? "—")} · {previewText(row.sourceRef)}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          )
+        ) : null}
+
+        {tab === "paragraphs" ? (
+          paragraphRows.length === 0 ? (
+            <p className="text-store-muted">본문 Paragraph가 없습니다.</p>
+          ) : (
+            <ul className="max-h-72 space-y-2 overflow-y-auto">
+              {paragraphRows.slice(0, 40).map((item, index) => {
+                const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+                return (
+                  <li key={String(row.id ?? index)} className="rounded-lg bg-slate-50 px-2 py-2">
                     <p className="mt-1 text-store-muted">{previewText(row.text ?? row.sourceRef)}</p>
                   </li>
                 );
@@ -159,7 +221,9 @@ export function NormalizedDocumentPreview({
                 return (
                   <li key={String(row.id ?? index)} className="rounded-lg bg-slate-50 px-2 py-2">
                     <p className="font-semibold">{String(row.caption ?? row.label ?? `표 ${index + 1}`)}</p>
-                    <p className="mt-1 break-all text-store-muted">{previewText(row.data)}</p>
+                    <p className="mt-1 break-all text-store-muted">
+                      Source: {previewText(row.sourceRef)} · {previewText(row.data, 120)}
+                    </p>
                   </li>
                 );
               })}
