@@ -1,3 +1,5 @@
+import type { PublicPackCapabilities } from "@/lib/public-pack-capability";
+
 export type KnowledgePackStatus =
   | "PUBLISHED"
   | "DRAFT"
@@ -15,6 +17,7 @@ export type KnowledgePackVersionEntry = {
   summary: string;
 };
 
+export type { PublicPackCapabilities };
 export type KnowledgePackProviderInfo = {
   name: string;
   type: KnowledgePackProviderType;
@@ -46,6 +49,8 @@ export type KnowledgePack = {
   useCases: string[];
   versionHistory: KnowledgePackVersionEntry[];
   providerInfo: KnowledgePackProviderInfo;
+  /** Additive public runtime/catalog capabilities. */
+  capabilities?: PublicPackCapabilities;
   searchScore?: number;
   matchReasons?: {
     field: string;

@@ -43,6 +43,11 @@ export const latestPackArtifactVersionInclude = {
       },
     },
   },
+  _count: {
+    select: {
+      chunks: { where: { isActive: true } },
+    },
+  },
 } satisfies Prisma.KnowledgePackVersionInclude;
 
 export type LatestPackArtifactVersionRow = {
@@ -60,6 +65,7 @@ export type LatestPackArtifactVersionRow = {
     adapterType?: string | null;
     normalizedDocuments?: Array<{ id: string; isActive: boolean }> | null;
   }> | null;
+  _count?: { chunks?: number };
 };
 
 export function toLatestPackVersionArtifactInput(

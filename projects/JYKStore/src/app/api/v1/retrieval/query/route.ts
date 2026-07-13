@@ -98,7 +98,22 @@ export async function POST(request: NextRequest) {
         requestId,
       });
 
-      if (!result) {
+      if (!result.ok) {
+        if (result.code === "PACK_RETRIEVAL_NOT_READY") {
+          await recordPublicApiUsage(context, {
+            statusCode: 409,
+            query: safeQuery,
+            metadata: { reason: "PACK_RETRIEVAL_NOT_READY", packId: context.packId },
+          });
+          return apiErrorResponse(
+            requestId,
+            "PACK_RETRIEVAL_NOT_READY",
+            "이 지식팩은 아직 Retrieval API를 지원하지 않습니다.",
+            409,
+            undefined,
+            { hint: "Runtime Index가 준비된 후 다시 시도하세요." },
+          );
+        }
         await recordPublicApiUsage(context, {
           statusCode: 404,
           query: safeQuery,
@@ -111,21 +126,21 @@ export async function POST(request: NextRequest) {
         statusCode: 200,
         query: safeQuery,
         metadata: {
-          chunkCount: result.usage.contextCount,
+          chunkCount: result.data.usage.contextCount,
           query: safeQuery,
           topK,
           includeMetadata,
           filterKeys: Object.keys(filters),
-          retrievalMode: result.usage.retrievalMode,
-          embeddingProvider: result.usage.embeddingProvider,
-          embeddingModel: result.usage.embeddingModel,
-          scannedCandidateCount: result.usage.scannedCandidateCount,
-          filteredCandidateCount: result.usage.filteredCandidateCount,
-          candidateCollectionMode: result.usage.candidateCollectionMode,
+          retrievalMode: result.data.usage.retrievalMode,
+          embeddingProvider: result.data.usage.embeddingProvider,
+          embeddingModel: result.data.usage.embeddingModel,
+          scannedCandidateCount: result.data.usage.scannedCandidateCount,
+          filteredCandidateCount: result.data.usage.filteredCandidateCount,
+          candidateCollectionMode: result.data.usage.candidateCollectionMode,
         },
       });
 
-      return NextResponse.json(result);
+      return NextResponse.json(result.data);
     },
   });
 }

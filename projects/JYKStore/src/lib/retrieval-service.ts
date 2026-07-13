@@ -19,12 +19,18 @@ import { toMetadataRecord } from "@/lib/retrieval/retrieval-types";
 /**
  * Retrieval orchestration facade.
  * 1) 공개 pack + 최신 version 조회
- * 2) query tokenize / filter key 판정
- * 3) candidate 수집(paging, metadata AND filter)
- * 4) keyword/metadata scoring
- * 5) hybrid vector ranking (query가 있을 때만)
- * 6) selection + response DTO mapping
+ * 2) Capability(retrieval READY) 확인
+ * 3) query tokenize / filter key 판정
+ * 4) candidate 수집(paging, metadata AND filter)
+ * 5) keyword/metadata scoring
+ * 6) hybrid vector ranking (query가 있을 때만)
+ * 7) selection + response DTO mapping
  */
+export type RetrieveContextsResult =
+  | { ok: true; data: RetrievalResponseDto }
+  | { ok: false; code: "PACK_NOT_FOUND" }
+  | { ok: false; code: "PACK_RETRIEVAL_NOT_READY" };
+
 export async function retrieveContexts(input: {
   knowledgePackId: string;
   query?: string;
@@ -33,13 +39,23 @@ export async function retrieveContexts(input: {
   includeMetadata: boolean;
   retrievalMode: RetrievalMode;
   requestId: string;
-}): Promise<RetrievalResponseDto | null> {
+}): Promise<RetrieveContextsResult> {
   const packContext = await loadPublicRetrievalPack(input.knowledgePackId);
   if (!packContext) {
-    return null;
+    return { ok: false, code: "PACK_NOT_FOUND" };
   }
 
-  return retrieveContextsForVersion({
+  const activeChunkCount = await prisma.knowledgeChunk.count({
+    where: {
+      versionId: packContext.versionId,
+      isActive: true,
+    },
+  });
+  if (activeChunkCount < 1) {
+    return { ok: false, code: "PACK_RETRIEVAL_NOT_READY" };
+  }
+
+  const data = await retrieveContextsForVersion({
     packId: packContext.packId,
     versionId: packContext.versionId,
     query: input.query,
@@ -49,6 +65,7 @@ export async function retrieveContexts(input: {
     retrievalMode: input.retrievalMode,
     requestId: input.requestId,
   });
+  return { ok: true, data };
 }
 
 async function retrieveContextsForVersion(input: {

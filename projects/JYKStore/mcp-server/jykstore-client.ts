@@ -96,6 +96,10 @@ export function normalizeHttpError(input: {
     (typeof parsed?.code === "string" && parsed.code) ||
     (typeof parsed?.error === "string" && parsed.error) ||
     "JYKSTORE_MCP_HTTP_ERROR";
+  const mcpCode =
+    code === "PACK_RETRIEVAL_NOT_READY" || code === "PACK_CONTEXT_NOT_READY"
+      ? "PACK_MCP_NOT_READY"
+      : code;
   const message =
     (typeof errorObj?.message === "string" && errorObj.message) ||
     (typeof parsed?.message === "string" && parsed.message) ||
@@ -123,7 +127,7 @@ export function normalizeHttpError(input: {
   }
 
   return {
-    code,
+    code: mcpCode,
     message,
     status: input.status,
     requestId,

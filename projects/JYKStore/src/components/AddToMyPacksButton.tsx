@@ -4,17 +4,25 @@ import { useRouter } from "next/navigation";
 import { useCallback, type MouseEvent } from "react";
 import { ConnectActionButton } from "@/components/ConnectActionButton";
 import { useMyPacks } from "@/hooks/useMyPacks";
+import type { PublicPackCapabilities } from "@/lib/public-pack-capability";
+import { isPackApiIntegrationReady } from "@/lib/public-pack-capability";
 import { myPackConnectPath } from "@/lib/routes";
 
 export type AddToMyPacksButtonProps = {
   packId: string;
   variant?: "detail" | "card";
+  capabilities?: PublicPackCapabilities | null;
 };
 
-export function AddToMyPacksButton({ packId, variant = "card" }: AddToMyPacksButtonProps) {
+export function AddToMyPacksButton({
+  packId,
+  variant = "card",
+  capabilities,
+}: AddToMyPacksButtonProps) {
   const router = useRouter();
   const { mounted, isMyPack, addMyPack } = useMyPacks();
   const added = isMyPack(packId);
+  const apiReady = capabilities ? isPackApiIntegrationReady(capabilities) : false;
 
   const onAdd = useCallback(
     (e: MouseEvent) => {
@@ -56,8 +64,19 @@ export function AddToMyPacksButton({ packId, variant = "card" }: AddToMyPacksBut
           >
             추가됨
           </button>
-          <ConnectActionButton packId={packId} />
+          <ConnectActionButton packId={packId} capabilities={capabilities} />
         </div>
+      );
+    }
+    if (!apiReady) {
+      return (
+        <button
+          type="button"
+          disabled
+          className="min-h-[44px] w-full cursor-default rounded-xl bg-slate-100 px-4 text-sm font-bold text-slate-600"
+        >
+          추가됨
+        </button>
       );
     }
     return (

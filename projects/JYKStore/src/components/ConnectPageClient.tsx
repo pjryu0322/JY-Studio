@@ -28,6 +28,7 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
   const inLibrary = mounted && isMyPack(pack.packId);
   const endpoint = getPackContextEndpoint(pack.packId, { limit: 10 });
   const [issuedApiKey, setIssuedApiKey] = useState<string | undefined>(undefined);
+  const mcpReady = pack.capabilities?.mcp.status === "READY";
 
   return (
     <div className="space-y-4 pb-4">
@@ -63,14 +64,18 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
             먼저 내 지식팩에 추가하면 관리 목록에서 다시 확인할 수 있습니다.
           </p>
           <div className="mt-3">
-            <AddToMyPacksButton packId={pack.packId} variant="card" />
+            <AddToMyPacksButton
+              packId={pack.packId}
+              variant="card"
+              capabilities={pack.capabilities}
+            />
           </div>
         </div>
       ) : null}
 
       <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
         <p className="text-sm leading-relaxed text-slate-800">
-          이 화면에서 연동용 API Key를 발급하고, 같은 화면에서 Context API 응답을 바로 확인할 수 있습니다.
+          이 화면에서 API Key를 발급하고, 같은 화면에서 Context API 응답을 바로 확인할 수 있습니다.
         </p>
         <Link
           href={ROUTES.apiKeys}
@@ -140,6 +145,20 @@ export function ConnectPageClient({ pack }: { readonly pack: KnowledgePack }) {
           />
         </div>
       </IntegrationStepCard>
+
+      {mcpReady ? (
+        <IntegrationStepCard step={7} title="MCP 연결">
+          <p className="text-sm leading-relaxed text-store-muted">
+            이 지식팩은 MCP Bridge를 통해 Retrieval 도구로 연결할 수 있습니다. MCP 서버 설정과 API Key는 계정
+            기준으로 사용합니다.
+          </p>
+          <ConnectInfoCard
+            label="MCP Manifest"
+            value={`/api/v1/exports/mcp-manifest?knowledgePackId=${pack.packId}`}
+            hint="Bearer API Key로 조회하는 MCP-ready 계약 문서입니다."
+          />
+        </IntegrationStepCard>
+      ) : null}
     </div>
   );
 }

@@ -8,6 +8,10 @@ import {
 } from "@/lib/distribution/latest-distribution-state";
 import { prisma } from "@/lib/prisma";
 import { toKnowledgePackDto, type PrismaKnowledgePackWithVersion } from "@/lib/pack-dto";
+import {
+  buildPublicPackCapabilityInputFromVersion,
+  resolvePublicPackCapabilities,
+} from "@/lib/public-pack-capability";
 
 const installablePackStatuses: PackStatus[] = [PackStatus.PUBLISHED, PackStatus.VERIFIED];
 
@@ -28,7 +32,14 @@ function isInstallablePackStatus(status: PackStatus) {
 }
 
 function toDto(pack: MyPacksPackRow) {
-  return toKnowledgePackDto(pack as unknown as PrismaKnowledgePackWithVersion);
+  const capabilities = resolvePublicPackCapabilities(
+    buildPublicPackCapabilityInputFromVersion({
+      packStatus: pack.status,
+      version: pack.versions[0],
+      catalogPurpose: "detail",
+    }),
+  );
+  return toKnowledgePackDto(pack as unknown as PrismaKnowledgePackWithVersion, { capabilities });
 }
 
 export async function listActiveMyPacksForClient(clientId: string) {

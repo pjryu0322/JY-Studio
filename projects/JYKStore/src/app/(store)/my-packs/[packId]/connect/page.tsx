@@ -1,6 +1,8 @@
 import { ConnectPageClient } from "@/components/ConnectPageClient";
+import { ConnectNotReadyPanel } from "@/components/ConnectNotReadyPanel";
 import { NotFoundState } from "@/components/NotFoundState";
 import { getPublishedPackById } from "@/lib/pack-catalog-service";
+import { isPackApiIntegrationReady } from "@/lib/public-pack-capability";
 import { ROUTES } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +24,18 @@ export default async function MyPackConnectPage({ params }: PageProps) {
         ctaHref={ROUTES.packs}
       />
     );
+  }
+
+  const capabilities = pack.capabilities;
+  const failed =
+    capabilities?.context.status === "FAILED" || capabilities?.retrieval.status === "FAILED";
+
+  if (failed) {
+    return <ConnectNotReadyPanel pack={pack} failed />;
+  }
+
+  if (!capabilities || !isPackApiIntegrationReady(capabilities)) {
+    return <ConnectNotReadyPanel pack={pack} />;
   }
 
   return <ConnectPageClient pack={pack} />;

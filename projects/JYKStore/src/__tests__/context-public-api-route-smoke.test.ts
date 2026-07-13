@@ -105,6 +105,18 @@ function createSmokePrismaMock() {
       },
     },
     knowledgeChunk: {
+      count: async (args: {
+        where: {
+          versionId: string;
+          isActive?: boolean;
+        };
+      }) => {
+        return allChunks.filter(
+          (chunk) =>
+            chunk.versionId === args.where.versionId &&
+            (args.where.isActive === undefined || chunk.isActive === args.where.isActive),
+        ).length;
+      },
       findMany: async (args: {
         where: {
           versionId: string;

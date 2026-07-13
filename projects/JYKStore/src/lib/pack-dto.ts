@@ -64,7 +64,12 @@ function toVersionHistory(versions: KnowledgePackVersion[]): KnowledgePackVersio
     }));
 }
 
-export function toKnowledgePackDto(pack: PrismaKnowledgePackWithVersion): KnowledgePack {
+export function toKnowledgePackDto(
+  pack: PrismaKnowledgePackWithVersion,
+  options?: {
+    capabilities?: import("@/lib/public-pack-capability").PublicPackCapabilities;
+  },
+): KnowledgePack {
   const latest = pickLatestVersion(pack.versions);
 
   return {
@@ -92,5 +97,6 @@ export function toKnowledgePackDto(pack: PrismaKnowledgePackWithVersion): Knowle
     useCases: latest ? [...latest.useCases] : [],
     versionHistory: toVersionHistory(pack.versions),
     providerInfo: toProviderInfo(pack),
+    ...(options?.capabilities ? { capabilities: options.capabilities } : {}),
   };
 }

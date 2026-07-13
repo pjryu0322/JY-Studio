@@ -1,15 +1,23 @@
 import Link from "next/link";
+import type { PublicPackCapabilities } from "@/lib/public-pack-capability";
+import { isPackApiIntegrationReady } from "@/lib/public-pack-capability";
 import { myPackConnectPath } from "@/lib/routes";
 
 export function ConnectActionButton({
   packId,
+  capabilities,
   label = "연동하기",
   className = "",
 }: {
   readonly packId: string;
+  readonly capabilities?: PublicPackCapabilities | null;
   readonly label?: string;
   readonly className?: string;
 }) {
+  if (!capabilities || !isPackApiIntegrationReady(capabilities)) {
+    return null;
+  }
+
   return (
     <Link
       href={myPackConnectPath(packId)}

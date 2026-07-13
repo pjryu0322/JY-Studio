@@ -2,11 +2,31 @@ import {
   EXPORT_VERSION,
   type McpReadyManifestDto,
 } from "@/lib/knowledge-export-dto";
+import { loadPublishedPackCapabilities } from "@/lib/public-pack-capability-service";
 import { loadPublicKnowledgePack } from "./export-shared";
 
 export async function buildMcpReadyManifest(packId: string): Promise<McpReadyManifestDto | null> {
   const pack = await loadPublicKnowledgePack(packId, { packId: true });
   if (!pack) return null;
+
+  const capabilityLookup = await loadPublishedPackCapabilities(pack.packId);
+  const mcpReady = capabilityLookup?.capabilities.mcp.status === "READY";
+
+  if (!mcpReady) {
+    return {
+      manifestType: "JYKSTORE_MCP_READY_MANIFEST",
+      manifestVersion: EXPORT_VERSION,
+      knowledgePackId: pack.packId,
+      baseUrlPlaceholder: "https://your-jykstore.example.com",
+      note: "This pack is not MCP-ready yet. Context/Retrieval runtime support is required.",
+      supported: false,
+      unsupportedReason:
+        capabilityLookup?.capabilities.mcp.reason ??
+        "MCP 연동에 필요한 Context/Retrieval이 준비되지 않았습니다.",
+      tools: [],
+      resources: [],
+    };
+  }
 
   return {
     manifestType: "JYKSTORE_MCP_READY_MANIFEST",
@@ -14,6 +34,8 @@ export async function buildMcpReadyManifest(packId: string): Promise<McpReadyMan
     knowledgePackId: pack.packId,
     baseUrlPlaceholder: "https://your-jykstore.example.com",
     note: "This is a MCP-ready manifest, not a running MCP server. It does not include API keys or answer generation.",
+    supported: true,
+    unsupportedReason: null,
     tools: [
       {
         name: "jykstore.retrieval.query",

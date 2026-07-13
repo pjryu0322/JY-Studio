@@ -9,6 +9,10 @@ import {
 import { toKnowledgePackDto, type PrismaKnowledgePackWithVersion } from "@/lib/pack-dto";
 import { rankPacks } from "@/lib/pack-search-service";
 import { applySearchFilters } from "@/lib/pack-utils";
+import {
+  buildPublicPackCapabilityInputFromVersion,
+  resolvePublicPackCapabilities,
+} from "@/lib/public-pack-capability";
 import { tokenizeSearchQuery } from "@/lib/search-utils";
 import type { KnowledgePack, StoreCategory } from "@/types/pack";
 
@@ -35,13 +39,24 @@ const catalogOrderBy: Prisma.KnowledgePackOrderByWithRelationInput[] = [
   { updatedAt: "desc" },
 ];
 
-function mapRows(rows: PrismaKnowledgePackWithVersion[]): KnowledgePack[] {
-  return rows.map(toKnowledgePackDto);
-}
-
 type CatalogPackRow = Prisma.KnowledgePackGetPayload<{
   include: typeof packCatalogInclude;
 }>;
+
+function toDto(row: CatalogPackRow, purpose: "list" | "detail"): KnowledgePack {
+  const capabilities = resolvePublicPackCapabilities(
+    buildPublicPackCapabilityInputFromVersion({
+      packStatus: row.status,
+      version: row.versions[0],
+      catalogPurpose: purpose,
+    }),
+  );
+  return toKnowledgePackDto(row as unknown as PrismaKnowledgePackWithVersion, { capabilities });
+}
+
+function mapRows(rows: CatalogPackRow[], purpose: "list" | "detail"): KnowledgePack[] {
+  return rows.map((row) => toDto(row, purpose));
+}
 
 function isCatalogVisible(row: CatalogPackRow, purpose: "list" | "detail"): boolean {
   return isLatestVersionCatalogVisible(
@@ -74,7 +89,7 @@ export async function listPublishedPacks(): Promise<KnowledgePack[]> {
     include: packCatalogInclude,
     orderBy: catalogOrderBy,
   });
-  return mapRows(filterCatalogRows(rows, "list"));
+  return mapRows(filterCatalogRows(rows, "list"), "list");
 }
 
 export async function getPublishedPackById(packId: string): Promise<KnowledgePack | null> {
@@ -86,7 +101,7 @@ export async function getPublishedPackById(packId: string): Promise<KnowledgePac
     include: packCatalogInclude,
   });
 
-  return row && isCatalogVisible(row, "detail") ? toKnowledgePackDto(row) : null;
+  return row && isCatalogVisible(row, "detail") ? toDto(row, "detail") : null;
 }
 
 export async function listPublishedPacksByCategory(categoryId: string): Promise<KnowledgePack[]> {
@@ -98,7 +113,7 @@ export async function listPublishedPacksByCategory(categoryId: string): Promise<
     include: packCatalogInclude,
     orderBy: catalogOrderBy,
   });
-  return mapRows(filterCatalogRows(rows, "list"));
+  return mapRows(filterCatalogRows(rows, "list"), "list");
 }
 
 export type CategoryWithPublishedCount = StoreCategory & {
@@ -174,7 +189,7 @@ export async function searchPublishedPacks(params: {
     orderBy: catalogOrderBy,
   });
 
-  const packs = rankPacks(mapRows(filterCatalogRows(rows, "list")), query);
+  const packs = rankPacks(mapRows(filterCatalogRows(rows, "list"), "list"), query);
   return applySearchFilters(packs, { chip });
 }
 

@@ -17,6 +17,11 @@ const DEFAULT_INSTRUCTIONS = [
   "오류코드는 코드와 대응 방법을 함께 설명합니다.",
 ];
 
+export type GetPackContextResult =
+  | { ok: true; data: PackContextResponseDto }
+  | { ok: false; code: "PACK_NOT_FOUND" }
+  | { ok: false; code: "PACK_CONTEXT_NOT_READY" };
+
 export async function getPackContext(
   input: {
     packId: string;
@@ -24,9 +29,11 @@ export async function getPackContext(
     limit?: number;
     includeMetadata?: boolean;
     requestId: string;
+    /** Reserved until runtime index exists; currently always false. */
+    runtimeIndexReady?: boolean;
   },
   deps: ContextServiceDeps = {},
-): Promise<PackContextResponseDto | null> {
+): Promise<GetPackContextResult> {
   const db = deps.prismaClient ?? prisma;
   const pack = await db.knowledgePack.findFirst({
     where: {
@@ -43,10 +50,22 @@ export async function getPackContext(
   });
 
   if (!pack || pack.versions.length === 0) {
-    return null;
+    return { ok: false, code: "PACK_NOT_FOUND" };
   }
 
   const version = pack.versions[0];
+  const runtimeReady = Boolean(input.runtimeIndexReady);
+  const activeChunkCount = await db.knowledgeChunk.count({
+    where: {
+      versionId: version.id,
+      isActive: true,
+    },
+  });
+
+  if (!runtimeReady && activeChunkCount < 1) {
+    return { ok: false, code: "PACK_CONTEXT_NOT_READY" };
+  }
+
   const searchQuery = input.query?.trim() ?? "";
   const limit = input.limit ?? 20;
   const includeMetadata = input.includeMetadata ?? true;
@@ -92,15 +111,18 @@ export async function getPackContext(
   const summary = version.overview || pack.shortDescription;
   const instructions = version.features.length > 0 ? version.features.slice(0, 5) : DEFAULT_INSTRUCTIONS;
 
-  return buildPackContextResponse({
-    pack,
-    versionLabel: version.version,
-    summary,
-    instructions,
-    chunks: rankedChunks,
-    includeMetadata,
-    requestId: input.requestId,
-  });
+  return {
+    ok: true,
+    data: buildPackContextResponse({
+      pack,
+      versionLabel: version.version,
+      summary,
+      instructions,
+      chunks: rankedChunks,
+      includeMetadata,
+      requestId: input.requestId,
+    }),
+  };
 }
 
 export function parseContextLimit(raw: string | null): number {

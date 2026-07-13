@@ -39,6 +39,9 @@ export type PublicApiErrorCode =
   | "INVALID_GRAPH_QUERY_REQUEST"
   | "INVALID_EXPORT_REQUEST"
   | "PACK_NOT_FOUND"
+  | "PACK_CONTEXT_NOT_READY"
+  | "PACK_RETRIEVAL_NOT_READY"
+  | "PACK_MCP_NOT_READY"
   | "INTERNAL_SERVER_ERROR";
 
 export function mapAuthFailureToPublicCode(
@@ -86,6 +89,7 @@ export function apiErrorResponse(
   details?: string[],
   extra?: {
     reason?: string;
+    hint?: string;
     retryAfterSeconds?: number;
     quota?: Record<string, unknown>;
   },
@@ -93,6 +97,7 @@ export function apiErrorResponse(
   const error: Record<string, unknown> = { code, message };
   if (details) error.details = details;
   if (extra?.reason) error.reason = extra.reason;
+  if (extra?.hint) error.hint = extra.hint;
   if (typeof extra?.retryAfterSeconds === "number") {
     error.retryAfterSeconds = extra.retryAfterSeconds;
   }

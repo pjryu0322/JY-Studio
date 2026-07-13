@@ -34,8 +34,8 @@ export function SelectedPackApiKeyIssuePanel({
   return (
     <div className="space-y-3">
       <p className="text-sm text-store-muted">
-        선택한 지식팩의 Context API 테스트에 사용할 Key를 발급합니다. 이 Key는 현재 브라우저 식별자(clientId) 기준으로
-        발급되며, Context API 연동 테스트에 사용할 수 있습니다. (packId 전용 Key는 아닙니다.)
+        이 Key는 사용자 계정의 API 호출에 사용되며 특정 지식팩 전용 Key가 아닙니다. Key 이름에는 지식팩 이름이 참고용으로
+        포함될 수 있습니다.
       </p>
 
       {error ? (
@@ -70,7 +70,7 @@ export function SelectedPackApiKeyIssuePanel({
           disabled={issuing}
           className="min-h-[44px] w-full rounded-xl bg-store-accent px-4 text-sm font-bold text-white disabled:opacity-50"
         >
-          {issuing ? "발급 중…" : "이 지식팩 연동용 API Key 발급"}
+          {issuing ? "발급 중…" : "API Key 발급"}
         </button>
       )}
     </div>

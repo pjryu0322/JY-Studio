@@ -107,6 +107,9 @@ export type McpReadyManifestDto = {
   knowledgePackId: string;
   baseUrlPlaceholder: string;
   note: string;
+  /** Additive: false when Context/Retrieval are not READY for MCP. */
+  supported?: boolean;
+  unsupportedReason?: string | null;
   tools: McpReadyManifestTool[];
   resources: McpReadyManifestResource[];
 };

@@ -31,6 +31,17 @@ type ContextQueryBody = {
   includeMetadata?: boolean;
 };
 
+function contextNotReadyResponse(requestId: string) {
+  return apiErrorResponse(
+    requestId,
+    "PACK_CONTEXT_NOT_READY",
+    "이 지식팩은 아직 Context API를 지원하지 않습니다.",
+    409,
+    undefined,
+    { hint: "Runtime Index가 준비된 후 다시 시도하세요." },
+  );
+}
+
 export function createContextGetHandler(options?: ContextPublicRouteOptions) {
   const resolveGetPackContext = (input: Parameters<typeof getPackContext>[0]) =>
     getPackContext(input, options?.contextServiceDeps);
@@ -70,7 +81,15 @@ export function createContextGetHandler(options?: ContextPublicRouteOptions) {
           requestId,
         });
 
-        if (!result) {
+        if (!result.ok) {
+          if (result.code === "PACK_CONTEXT_NOT_READY") {
+            await recordUsage(publicContext, {
+              statusCode: 409,
+              query: q,
+              metadata: { reason: "PACK_CONTEXT_NOT_READY", packId },
+            });
+            return contextNotReadyResponse(requestId);
+          }
           await recordUsage(publicContext, {
             statusCode: 404,
             query: q,
@@ -83,14 +102,14 @@ export function createContextGetHandler(options?: ContextPublicRouteOptions) {
           statusCode: 200,
           query: q,
           metadata: {
-            chunkCount: result.usage.chunkCount,
+            chunkCount: result.data.usage.chunkCount,
             query: q,
             limit,
             includeMetadata,
           },
         });
 
-        return NextResponse.json(result);
+        return NextResponse.json(result.data);
       },
     });
   };
@@ -146,7 +165,15 @@ export function createContextQueryHandler(options?: ContextPublicRouteOptions) {
           requestId,
         });
 
-        if (!result) {
+        if (!result.ok) {
+          if (result.code === "PACK_CONTEXT_NOT_READY") {
+            await recordUsage(publicContext, {
+              statusCode: 409,
+              query: safeQuery,
+              metadata: { reason: "PACK_CONTEXT_NOT_READY", packId },
+            });
+            return contextNotReadyResponse(requestId);
+          }
           await recordUsage(publicContext, {
             statusCode: 404,
             query: safeQuery,
@@ -159,17 +186,17 @@ export function createContextQueryHandler(options?: ContextPublicRouteOptions) {
           statusCode: 200,
           query: safeQuery,
           metadata: {
-            chunkCount: result.usage.chunkCount,
+            chunkCount: result.data.usage.chunkCount,
             query: safeQuery,
             limit,
             includeMetadata,
             searchMode: q ? "keyword-ranking" : "default",
             queryTokenCount: tokenizeSearchQuery(q).length,
-            returnedCount: result.usage.chunkCount,
+            returnedCount: result.data.usage.chunkCount,
           },
         });
 
-        return NextResponse.json(result);
+        return NextResponse.json(result.data);
       },
     });
   };

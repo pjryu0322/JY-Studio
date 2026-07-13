@@ -55,7 +55,7 @@ export function PackCard({ pack }: { readonly pack: KnowledgePack }) {
         </div>
       </Link>
       <div className="px-3 pb-3">
-        <AddToMyPacksButton packId={pack.packId} variant="card" />
+        <AddToMyPacksButton packId={pack.packId} variant="card" capabilities={pack.capabilities} />
       </div>
     </article>
   );
