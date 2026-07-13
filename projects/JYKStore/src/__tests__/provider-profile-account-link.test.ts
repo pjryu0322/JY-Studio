@@ -27,6 +27,8 @@ describe("provider profile account link", () => {
     assert.ok(service.includes("ensureProviderProfileForAccount"));
     assert.ok(service.includes("findOrEnsureProviderProfileForUser"));
     assert.ok(service.includes("NOT_PROVIDER"));
+    assert.ok(service.includes("P2002"));
+    assert.ok(service.includes("clientIdForCreate"));
     assert.ok(packs.includes("findOrEnsureProviderProfileForUser"));
     assert.ok(session.includes("ensureProviderProfileForAccount"));
     assert.ok(profileRoute.includes("ensureProviderProfileForAccount"));

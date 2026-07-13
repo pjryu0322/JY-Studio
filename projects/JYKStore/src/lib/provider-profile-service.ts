@@ -1,4 +1,4 @@
-import { AuditAction, type ProviderProfile } from "@prisma/client";
+import { AuditAction, Prisma, type ProviderProfile } from "@prisma/client";
 import { parseAccountRole } from "@/lib/account-role";
 import { prisma } from "@/lib/prisma";
 import { recordProviderAudit } from "@/lib/provider-audit";
@@ -89,6 +89,11 @@ export async function findProviderProfileForUser(userId: string, clientId?: stri
 /**
  * Ensures a ProviderProfile exists for PROVIDER/ADMIN accounts.
  * USER accounts are not auto-created.
+ *
+ * clientId is browser-scoped and may already belong to another user after account
+ * switching. Never steal another user's clientId binding; create without clientId
+ * when the cookie is already claimed. Concurrent session requests may race on
+ * create — recover by re-reading after P2002.
  */
 export async function ensureProviderProfileForAccount(input: {
   userId: string;
@@ -115,17 +120,46 @@ export async function ensureProviderProfileForAccount(input: {
     const needsClientId = !existing.clientId && input.clientId;
     const needsUserId = !existing.userId;
     if (needsClientId || needsUserId) {
-      const updated = await prisma.providerProfile.update({
-        where: { id: existing.id },
-        data: {
-          ...(needsUserId ? { userId: input.userId } : {}),
-          ...(needsClientId ? { clientId: input.clientId } : {}),
-        },
-      });
-      return { ok: true, profile: updated };
+      try {
+        const updated = await prisma.providerProfile.update({
+          where: { id: existing.id },
+          data: {
+            ...(needsUserId ? { userId: input.userId } : {}),
+            ...(needsClientId ? { clientId: input.clientId } : {}),
+          },
+        });
+        return { ok: true, profile: updated };
+      } catch (error) {
+        // clientId unique conflict — keep profile linked by userId only.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        ) {
+          return { ok: true, profile: existing };
+        }
+        throw error;
+      }
     }
     return { ok: true, profile: existing };
   }
+
+  const byClientId = input.clientId
+    ? await prisma.providerProfile.findUnique({ where: { clientId: input.clientId } })
+    : null;
+
+  if (byClientId && (!byClientId.userId || byClientId.userId === input.userId)) {
+    const updated = await prisma.providerProfile.update({
+      where: { id: byClientId.id },
+      data: { userId: input.userId },
+    });
+    return { ok: true, profile: updated };
+  }
+
+  // Cookie already bound to another account — do not steal; create user-scoped row.
+  const clientIdForCreate =
+    byClientId && byClientId.userId && byClientId.userId !== input.userId
+      ? null
+      : input.clientId;
 
   const displayName = resolveProviderDisplayName({
     userName: user.name,
@@ -133,29 +167,66 @@ export async function ensureProviderProfileForAccount(input: {
     clientId: input.clientId,
   });
 
-  const profile = await prisma.providerProfile.create({
-    data: {
-      userId: input.userId,
-      clientId: input.clientId,
-      displayName,
-      description: DEFAULT_DESCRIPTION,
-      contactEmail: user.email?.trim() || null,
-      status: "ACTIVE",
-    },
-  });
+  try {
+    const profile = await prisma.providerProfile.create({
+      data: {
+        userId: input.userId,
+        clientId: clientIdForCreate,
+        displayName,
+        description: DEFAULT_DESCRIPTION,
+        contactEmail: user.email?.trim() || null,
+        status: "ACTIVE",
+      },
+    });
 
-  await recordProviderAudit({
-    action: AuditAction.PROVIDER_PROFILE_UPSERT,
-    entityType: "ProviderProfile",
-    entityId: profile.id,
-    metadata: {
-      userId: input.userId,
-      clientId: input.clientId,
-      action: "auto_ensure",
-    },
-  });
+    await recordProviderAudit({
+      action: AuditAction.PROVIDER_PROFILE_UPSERT,
+      entityType: "ProviderProfile",
+      entityId: profile.id,
+      metadata: {
+        userId: input.userId,
+        clientId: input.clientId,
+        action: "auto_ensure",
+        clientIdBound: Boolean(clientIdForCreate),
+      },
+    });
 
-  return { ok: true, profile };
+    return { ok: true, profile };
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const recovered =
+        (await findProviderProfileForUser(input.userId, input.clientId)) ??
+        (input.clientId
+          ? await prisma.providerProfile.findUnique({ where: { clientId: input.clientId } })
+          : null);
+      if (recovered && (!recovered.userId || recovered.userId === input.userId)) {
+        if (!recovered.userId) {
+          const linked = await prisma.providerProfile.update({
+            where: { id: recovered.id },
+            data: { userId: input.userId },
+          });
+          return { ok: true, profile: linked };
+        }
+        return { ok: true, profile: recovered };
+      }
+      // Last resort: user-only profile without contested clientId.
+      const fallback = await prisma.providerProfile.create({
+        data: {
+          userId: input.userId,
+          clientId: null,
+          displayName,
+          description: DEFAULT_DESCRIPTION,
+          contactEmail: user.email?.trim() || null,
+          status: "ACTIVE",
+        },
+      });
+      return { ok: true, profile: fallback };
+    }
+    throw error;
+  }
 }
 
 export async function findOrEnsureProviderProfileForUser(userId: string, clientId: string) {

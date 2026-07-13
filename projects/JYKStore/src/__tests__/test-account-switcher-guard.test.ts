@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import {
   canUseTestAccountSwitcher,
   isLocalTestAccountRequest,
+  isPrivateOrLoopbackHostname,
   isTestAccountSwitcherConfigured,
 } from "../lib/test-account-switcher.ts";
 
@@ -50,14 +51,26 @@ describe("test-account-switcher guard", () => {
     assert.equal(canUseTestAccountSwitcher(req("http://[::1]:3004/x"), env), true);
   });
 
-  it("rejects LAN and public hostnames", () => {
+  it("allows private LAN hosts in development", () => {
     const env = {
       NODE_ENV: "development",
       JYKSTORE_ENABLE_TEST_ACCOUNT_SWITCHER: "true",
     } as NodeJS.ProcessEnv;
-    assert.equal(isLocalTestAccountRequest(req("http://192.168.1.10:3004/x")), false);
-    assert.equal(canUseTestAccountSwitcher(req("http://192.168.1.10:3004/x"), env), false);
+    assert.equal(isPrivateOrLoopbackHostname("192.168.45.37"), true);
+    assert.equal(isLocalTestAccountRequest(req("http://192.168.45.37:3004/x")), true);
+    assert.equal(canUseTestAccountSwitcher(req("http://192.168.45.37:3004/x"), env), true);
+    assert.equal(isLocalTestAccountRequest(req("http://10.0.0.5:3004/x")), true);
+    assert.equal(isLocalTestAccountRequest(req("http://172.16.3.1:3004/x")), true);
+  });
+
+  it("rejects public hostnames", () => {
+    const env = {
+      NODE_ENV: "development",
+      JYKSTORE_ENABLE_TEST_ACCOUNT_SWITCHER: "true",
+    } as NodeJS.ProcessEnv;
+    assert.equal(isPrivateOrLoopbackHostname("example.com"), false);
     assert.equal(isLocalTestAccountRequest(req("http://example.com/x")), false);
     assert.equal(canUseTestAccountSwitcher(req("http://example.com/x"), env), false);
+    assert.equal(isLocalTestAccountRequest(req("http://8.8.8.8/x")), false);
   });
 });
