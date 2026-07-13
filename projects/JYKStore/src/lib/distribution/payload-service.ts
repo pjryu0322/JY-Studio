@@ -21,7 +21,10 @@ import {
   resolveLatestDistributionState,
 } from "@/lib/distribution/latest-distribution-state";
 import { getPayloadLimitConfig } from "@/lib/distribution/payload-limit-config";
-import { readAndVerifyPayloadObject } from "@/lib/distribution/payload-object-integrity";
+import {
+  readAndVerifyPayloadObject,
+  readAndVerifyStoredObject,
+} from "@/lib/distribution/payload-object-integrity";
 import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
 import type { PayloadStorage } from "@/lib/distribution/payload-storage";
 import {
@@ -724,9 +727,12 @@ export async function readPublicCatalogPayloadBytes(input: {
 }): Promise<{
   bytes: Uint8Array;
   originalFileName: string;
+  mimeType: string;
+  fileSize: number;
   checksumSha256: string;
   payloadId: string;
   visibility: "PRIVATE" | "PUBLIC" | "UNLISTED";
+  artifactKind: "SOURCE_ORIGINAL" | "KNOWLEDGE_PACKAGE";
 }> {
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
@@ -779,12 +785,12 @@ export async function readPublicCatalogPayloadBytes(input: {
       throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 원본 자료가 없습니다.", 404);
     }
 
-    let got;
-    try {
-      got = await storage.get({ objectKey: sourceFile.storageKey });
-    } catch {
-      throw new PayloadServiceError("PAYLOAD_STORAGE_UNAVAILABLE", "저장소에서 파일을 읽지 못했습니다.", 502);
-    }
+    const verified = await readAndVerifyStoredObject({
+      storage,
+      objectKey: sourceFile.storageKey,
+      expectedChecksumSha256: sourceFile.checksumSha256,
+      expectedFileSize: Number(sourceFile.fileSize),
+    });
 
     await recordProviderAudit({
       action: AuditAction.PAYLOAD_DOWNLOADED,
@@ -795,18 +801,23 @@ export async function readPublicCatalogPayloadBytes(input: {
         versionId: version.id,
         fileId: sourceFile.id,
         role: "SOURCE_ORIGINAL",
-        checksumSha256: sourceFile.checksumSha256,
+        artifactKind: "SOURCE_ORIGINAL",
+        bytes: verified.actualFileSize,
+        checksumSha256: verified.actualChecksumSha256,
         actor: "catalog",
         artifact: "EXTERNAL_IMPORT",
       },
     });
 
     return {
-      bytes: got.bytes,
+      bytes: verified.bytes,
       originalFileName: sourceFile.originalFileName,
-      checksumSha256: sourceFile.checksumSha256,
+      mimeType: sourceFile.mimeType || "application/octet-stream",
+      fileSize: verified.actualFileSize,
+      checksumSha256: verified.actualChecksumSha256,
       payloadId: sourceFile.id,
       visibility: latestState.visibility,
+      artifactKind: "SOURCE_ORIGINAL",
     };
   }
 
@@ -815,7 +826,7 @@ export async function readPublicCatalogPayloadBytes(input: {
     throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 Payload가 없습니다.", 404);
   }
 
-  const { bytes } = await readAndVerifyPayloadObject({
+  const verified = await readAndVerifyStoredObject({
     storage,
     objectKey: payload.storagePath,
     expectedChecksumSha256: payload.checksumSha256,
@@ -830,17 +841,22 @@ export async function readPublicCatalogPayloadBytes(input: {
       packId: pack.packId,
       versionId: version.id,
       payloadId: payload.id,
-      checksumSha256: payload.checksumSha256,
+      artifactKind: "KNOWLEDGE_PACKAGE",
+      bytes: verified.actualFileSize,
+      checksumSha256: verified.actualChecksumSha256,
       actor: "catalog",
     },
   });
 
   return {
-    bytes,
+    bytes: verified.bytes,
     originalFileName: payload.originalFileName,
-    checksumSha256: payload.checksumSha256,
+    mimeType: payload.mimeType?.trim() || "application/zip",
+    fileSize: verified.actualFileSize,
+    checksumSha256: verified.actualChecksumSha256,
     payloadId: payload.id,
     visibility: latestState.visibility,
+    artifactKind: "KNOWLEDGE_PACKAGE",
   };
 }
 

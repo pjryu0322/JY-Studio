@@ -33,6 +33,8 @@ export function PackDownloadInfoSection({ pack }: { readonly pack: KnowledgePack
   const available = info?.available || pack.capabilities?.download.status === "READY";
   if (!available && !info?.originalFileName) return null;
 
+  const artifactKind = info?.artifactKind ?? (info?.mimeType?.includes("zip") ? "KNOWLEDGE_PACKAGE" : "SOURCE_ORIGINAL");
+  const isPackage = artifactKind === "KNOWLEDGE_PACKAGE";
   const typeLabel = formatMimeLabel(info?.mimeType, info?.originalFileName);
   const sizeLabel = formatBytes(info?.fileSize ?? null);
   const checksum = shortenChecksum(info?.checksumSha256);
@@ -44,7 +46,7 @@ export function PackDownloadInfoSection({ pack }: { readonly pack: KnowledgePack
         {info?.originalFileName ? (
           <p className="break-all font-semibold text-slate-900">{info.originalFileName}</p>
         ) : (
-          <p className="text-store-muted">원본문서</p>
+          <p className="text-store-muted">{isPackage ? "지식팩 패키지" : "원본문서"}</p>
         )}
         <p className="text-xs text-store-muted">
           {[typeLabel, sizeLabel].filter(Boolean).join(" · ") || "파일 유형 정보 없음"}
@@ -58,7 +60,9 @@ export function PackDownloadInfoSection({ pack }: { readonly pack: KnowledgePack
           {available ? "다운로드 가능" : "다운로드 준비 중"}
         </p>
         <p className="text-xs leading-relaxed text-store-muted">
-          일반 사용자에게는 원본문서만 제공됩니다.
+          {isPackage
+            ? "표준 지식팩 ZIP Package가 제공됩니다."
+            : "일반 사용자에게는 원본문서가 제공됩니다."}
         </p>
       </div>
       {available ? (
@@ -66,7 +70,7 @@ export function PackDownloadInfoSection({ pack }: { readonly pack: KnowledgePack
           href={publicPayloadDownloadHref(pack.packId)}
           className="mt-4 inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-store-accent px-4 text-sm font-bold text-white active:opacity-90"
         >
-          원본문서 다운로드
+          {isPackage ? "지식팩 패키지 다운로드" : "원본문서 다운로드"}
         </a>
       ) : null}
     </section>

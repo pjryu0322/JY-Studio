@@ -19,12 +19,24 @@ function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+function isOverviewRedundant(overview: string, shortDescription: string): boolean {
+  const a = normalizeText(overview);
+  const b = normalizeText(shortDescription);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.startsWith(b) || b.startsWith(a)) return true;
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  if (shorter.length < 12) return false;
+  return longer.includes(shorter) && shorter.length / longer.length >= 0.85;
+}
+
 function shouldShowOverview(pack: KnowledgePack): boolean {
   const overview = pack.overview?.trim() ?? "";
   if (!overview) return false;
   const short = pack.shortDescription?.trim() ?? "";
   if (!short) return true;
-  return normalizeText(overview) !== normalizeText(short);
+  return !isOverviewRedundant(overview, short);
 }
 
 function providerTypeLabel(type: KnowledgePack["providerInfo"]["type"]): string {

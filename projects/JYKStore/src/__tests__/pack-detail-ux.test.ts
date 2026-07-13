@@ -23,11 +23,12 @@ describe("normalizePublicPackDisplayName", () => {
     );
   });
 
-  it("strips extensions and short copy suffixes", () => {
+  it("strips extensions and explicit copy markers without removing product digits", () => {
     assert.equal(
       normalizePublicPackDisplayName("2025년_개정판_SW사업_대가산정_가이드01.docx"),
-      "2025년 개정판 SW사업 대가산정 가이드",
+      "2025년 개정판 SW사업 대가산정 가이드01",
     );
+    assert.equal(normalizePublicPackDisplayName("문서 (1).docx"), "문서");
   });
 
   it("prefers provider-supplied display name", () => {
@@ -55,7 +56,7 @@ describe("resolvePublicPackContentType", () => {
     );
   });
 
-  it("infers PRODUCT when product-shaped fields exist", () => {
+  it("infers PRODUCT when multiple product-shaped fields exist", () => {
     assert.equal(
       resolvePublicPackContentType({
         categoryName: "UI",
@@ -64,6 +65,20 @@ describe("resolvePublicPackContentType", () => {
         useCases: ["대시보드"],
       }),
       "PRODUCT",
+    );
+  });
+
+  it("keeps DOCUMENT when only features exist with document source", () => {
+    assert.equal(
+      resolvePublicPackContentType({
+        hasDocumentSource: true,
+        downloadReady: true,
+        apiReady: false,
+        features: ["1장", "2장"],
+        supportedEnvironments: [],
+        useCases: [],
+      }),
+      "DOCUMENT",
     );
   });
 });

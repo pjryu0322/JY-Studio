@@ -7,6 +7,8 @@ export type PublicPackContentType =
   | "MIXED";
 
 export type PublicPackContentTypeInput = {
+  /** Explicit metadata when available. */
+  explicitContentType?: PublicPackContentType | null;
   categoryName?: string | null;
   categoryId?: string | null;
   tags?: string[];
@@ -25,7 +27,11 @@ function mentionsDocument(text: string): boolean {
 }
 
 function mentionsProduct(text: string): boolean {
-  return /제품|솔루션|프레임워크|sdk|library|component|ui|api/i.test(text);
+  return /제품|솔루션|프레임워크|sdk|library|component|ui\b/i.test(text);
+}
+
+function mentionsApi(text: string): boolean {
+  return /\bapi\b|openapi|endpoint|oauth/i.test(text);
 }
 
 /**
@@ -35,22 +41,36 @@ function mentionsProduct(text: string): boolean {
 export function resolvePublicPackContentType(
   input: PublicPackContentTypeInput,
 ): PublicPackContentType | null {
+  if (input.explicitContentType) return input.explicitContentType;
+
   const category = `${input.categoryName ?? ""} ${input.categoryId ?? ""}`.trim();
   const tags = (input.tags ?? []).join(" ");
   const corpus = `${category} ${tags}`.toLowerCase();
 
-  const hasProductShape =
-    (input.features?.length ?? 0) > 0 ||
-    (input.supportedEnvironments?.length ?? 0) > 0 ||
-    (input.useCases?.length ?? 0) > 0;
+  const hasFeatures = (input.features?.length ?? 0) > 0;
+  const hasEnvironments = (input.supportedEnvironments?.length ?? 0) > 0;
+  const hasUseCases = (input.useCases?.length ?? 0) > 0;
+  const productSignalCount = [hasFeatures, hasEnvironments, hasUseCases].filter(Boolean).length;
+  const productTagged = mentionsProduct(corpus);
+
+  const documentPriority =
+    Boolean(input.hasDocumentSource) &&
+    Boolean(input.downloadReady) &&
+    !input.apiReady &&
+    !hasEnvironments &&
+    !hasUseCases;
+
+  if (documentPriority) {
+    return "DOCUMENT";
+  }
 
   const documentLikely =
     input.hasDocumentSource ||
     mentionsDocument(corpus) ||
-    (Boolean(input.downloadReady) && !hasProductShape);
+    (Boolean(input.downloadReady) && productSignalCount === 0 && !productTagged);
 
-  const productLikely = hasProductShape || mentionsProduct(corpus);
-  const apiLikely = Boolean(input.apiReady) && hasProductShape;
+  const productLikely = productSignalCount >= 2 || productTagged || (hasEnvironments && hasUseCases);
+  const apiLikely = Boolean(input.apiReady) && (mentionsApi(corpus) || productTagged);
 
   if (documentLikely && productLikely) return "MIXED";
   if (documentLikely && !productLikely) return "DOCUMENT";

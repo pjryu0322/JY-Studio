@@ -4,6 +4,7 @@ import {
   resolveLatestDistributionState,
 } from "@/lib/distribution/latest-distribution-state";
 import type {
+  PublicPackDownloadArtifactKind,
   PublicPackDownloadInfo,
   PublicPackLicenseInfo,
   PublicPackSourceInfo,
@@ -57,12 +58,15 @@ function pickSourceOriginalFile(
   return null;
 }
 
+/**
+ * Source publisher must come from source metadata only.
+ * Do not fall back to KnowledgePack provider identity.
+ */
 export function resolvePublicPackSourceInfo(
   version: LatestPackArtifactVersionRow | null | undefined,
-  fallbackPublisherName?: string | null,
 ): PublicPackSourceInfo | null {
   const meta = version?.distributionMetadata;
-  const publisherName = fallbackPublisherName?.trim() || null;
+  const publisherName = null;
   const sourceTitle = meta?.sourceTitle?.trim() || null;
   const sourceUrl = meta?.sourceUrl?.trim() || null;
   if (!publisherName && !sourceTitle && !sourceUrl) return null;
@@ -102,11 +106,25 @@ export function resolvePublicPackDownloadInfo(
   const sourceFile = pickSourceOriginalFile(version);
   const payload = version?.payload;
 
-  const originalFileName =
-    sourceFile?.originalFileName ?? payload?.originalFileName ?? null;
-  const mimeType = sourceFile?.mimeType ?? payload?.mimeType ?? null;
-  const fileSize = sourceFile?.fileSize ?? toNumber(payload?.fileSize) ?? null;
-  const checksumSha256 = sourceFile?.checksumSha256 ?? payload?.checksumSha256 ?? null;
+  let artifactKind: PublicPackDownloadArtifactKind | undefined;
+  let originalFileName: string | null = null;
+  let mimeType: string | null = null;
+  let fileSize: number | null = null;
+  let checksumSha256: string | null = null;
+
+  if (sourceFile) {
+    artifactKind = "SOURCE_ORIGINAL";
+    originalFileName = sourceFile.originalFileName;
+    mimeType = sourceFile.mimeType;
+    fileSize = sourceFile.fileSize;
+    checksumSha256 = sourceFile.checksumSha256;
+  } else if (payload?.originalFileName || payload?.id) {
+    artifactKind = "KNOWLEDGE_PACKAGE";
+    originalFileName = payload.originalFileName ?? null;
+    mimeType = payload.mimeType ?? "application/zip";
+    fileSize = toNumber(payload.fileSize);
+    checksumSha256 = payload.checksumSha256 ?? null;
+  }
 
   if (!available && !originalFileName && !mimeType && fileSize == null && !checksumSha256) {
     return null;
@@ -114,6 +132,7 @@ export function resolvePublicPackDownloadInfo(
 
   return {
     available,
+    artifactKind,
     originalFileName,
     mimeType,
     fileSize,

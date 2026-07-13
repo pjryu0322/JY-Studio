@@ -1,6 +1,8 @@
 /**
  * Normalize pack names that look like filenames into natural-language display names.
  * Provider-supplied display names should be preferred by callers; this is a fallback.
+ *
+ * Safe rules only: do NOT strip product/version digits (OAuth2, GPT-4, Java 17, …).
  */
 export function normalizePublicPackDisplayName(raw: string): string {
   let value = raw.normalize("NFKC").trim();
@@ -9,10 +11,8 @@ export function normalizePublicPackDisplayName(raw: string): string {
   // Strip common file extensions.
   value = value.replace(/\.(docx?|pdf|hwp|hwpx|pptx?|xlsx?|txt|md|zip)$/i, "");
 
-  // Soften copy suffixes: " (1)", "_01", "-02", and glued "가이드01" (not 4-digit years).
-  value = value.replace(/[\s_-]*\(\d{1,2}\)\s*$/u, "");
-  value = value.replace(/[\s_-]+(?!\d{4}$)(\d{1,2})$/u, "");
-  value = value.replace(/(\p{L})\d{1,2}$/u, "$1");
+  // Remove only explicit copy markers like " (1)" / "(2)" at the end.
+  value = value.replace(/\s*\(\d{1,2}\)\s*$/u, "");
 
   // Underscores → spaces.
   value = value.replace(/_+/g, " ");
@@ -25,6 +25,17 @@ export function normalizePublicPackDisplayName(raw: string): string {
   value = value.replace(/\s{2,}/g, " ").trim();
 
   return value || raw.trim();
+}
+
+/**
+ * Optional filename-oriented cleanup for download labels only.
+ * Keeps trailing product digits; only softens obvious copy suffixes like "_01" / " (1)".
+ */
+export function normalizeSourceFileDisplayName(raw: string): string {
+  let value = raw.normalize("NFKC").trim();
+  if (!value) return raw;
+  value = value.replace(/\s*\(\d{1,2}\)\s*(?=\.[^.]+$|$)/u, "");
+  return value.trim() || raw.trim();
 }
 
 export function resolvePublicPackDisplayName(input: {

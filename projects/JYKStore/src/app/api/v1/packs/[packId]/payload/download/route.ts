@@ -42,7 +42,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
       metadata: {
         action: "PAYLOAD_DOWNLOAD",
         payloadId: result.payloadId,
-        bytes: result.bytes.byteLength,
+        bytes: result.fileSize,
+        checksumSha256: result.checksumSha256,
+        artifactKind: result.artifactKind,
+        mimeType: result.mimeType,
         result: "ok",
         actorType: "anonymous",
       },
@@ -51,8 +54,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return new NextResponse(Buffer.from(result.bytes), {
       status: 200,
       headers: {
-        "Content-Type": "application/zip",
-        "Content-Length": String(result.bytes.byteLength),
+        "Content-Type": result.mimeType,
+        "Content-Length": String(result.fileSize),
         "Content-Disposition": buildContentDisposition(result.originalFileName),
         "X-JYKStore-SHA256": result.checksumSha256,
         "Cache-Control": cacheControlForVisibility(result.visibility),

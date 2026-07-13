@@ -42,8 +42,12 @@ export type PublicPackLicenseInfo = {
   attributionRequired: boolean | null;
 };
 
+export type PublicPackDownloadArtifactKind = "SOURCE_ORIGINAL" | "KNOWLEDGE_PACKAGE";
+
 export type PublicPackDownloadInfo = {
   available: boolean;
+  /** Additive: distinguishes original source files from ZIP knowledge packages. */
+  artifactKind?: PublicPackDownloadArtifactKind;
   originalFileName: string | null;
   mimeType: string | null;
   fileSize: number | null;

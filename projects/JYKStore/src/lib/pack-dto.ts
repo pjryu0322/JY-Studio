@@ -125,7 +125,7 @@ export function toKnowledgePackDto(
   const sourceInfo =
     options?.sourceInfo !== undefined
       ? options.sourceInfo
-      : resolvePublicPackSourceInfo(versionRow, providerInfo.name);
+      : resolvePublicPackSourceInfo(versionRow);
   const licenseInfo =
     options?.licenseInfo !== undefined
       ? options.licenseInfo
