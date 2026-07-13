@@ -43,6 +43,7 @@ import {
   validateDoclingReviewIntegrity,
 } from "@/lib/docling-import/docling-review-integrity-service";
 import { isDoclingImportError } from "@/lib/docling-import/docling-import-errors";
+import { resolveReviewPackageMode } from "@/lib/review/review-package-mode";
 import {
   validateAllSourceDocumentsForPack,
   validateAndPersistSourceDocument,
@@ -166,9 +167,11 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
     const integrity = await validateDoclingReviewIntegrity({
       packId,
       snapshot,
-      verifyObjectStorage: true,
+      verifyObjectStorage: "HEAD_ONLY",
     });
     detail.doclingReviewIntegrity = summarizeDoclingReviewIntegrity(integrity);
+    // Docling packs skip legacy Builder release-gate overlays (approve uses integrity + drift).
+    return detail;
   }
 
   if (payloadRow) {
@@ -576,7 +579,7 @@ export async function acceptPackReview(input: {
       await assertDoclingReviewIntegrityOrThrow({
         packId,
         snapshot: acceptSnapshot,
-        verifyObjectStorage: true,
+        verifyObjectStorage: "FULL",
         actorUserId: input.reviewerUserId,
       });
     } catch (error) {
@@ -643,7 +646,7 @@ export async function approvePackReview(input: {
       await assertDoclingReviewIntegrityOrThrow({
         packId,
         snapshot: approveSnapshot,
-        verifyObjectStorage: true,
+        verifyObjectStorage: "FULL",
         actorUserId: input.reviewerUserId,
       });
     } catch (error) {
@@ -660,9 +663,9 @@ export async function approvePackReview(input: {
   }
 
   const publishAsVerified = Boolean(input.publishAsVerified);
-  const isDistributionPack = Boolean(detailBefore.payload);
+  const packageMode = resolveReviewPackageMode(approveSnapshot, detailBefore);
 
-  if (isDistributionPack) {
+  if (packageMode === "DISTRIBUTION_ZIP") {
     const drift = detectSubmitSnapshotDrift(detailBefore);
     if (drift.changed) {
       return {
@@ -689,9 +692,18 @@ export async function approvePackReview(input: {
         };
       }
     }
-  }
-
-  if (!isDistributionPack) {
+  } else if (packageMode === "DOCLING_BUNDLE") {
+    // Integrity already asserted above; drift only — no legacy release gate.
+    const drift = detectSubmitSnapshotDrift(detailBefore);
+    if (drift.changed) {
+      return {
+        error: "INCOMPLETE" as const,
+        message:
+          drift.reasons[0] ??
+          "제출 이후 Docling/유통 정보가 변경되었습니다. 다시 검수 요청해 주세요.",
+      };
+    }
+  } else if (packageMode === "LEGACY_BUILDER") {
     const targetStatus = publishAsVerified ? "VERIFIED" : "PUBLISHED";
     const gateResult = await evaluateReleaseGateForPack({
       packId,

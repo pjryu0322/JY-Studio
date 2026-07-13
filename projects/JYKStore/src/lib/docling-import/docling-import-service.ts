@@ -6,7 +6,6 @@ import {
   DoclingProcessingStatus,
   KnowledgePackFileRole,
   PackStatus,
-  type DoclingImportBundle,
   type DoclingProcessingLog,
   type KnowledgePackFile,
   type NormalizedDocument,
@@ -20,7 +19,6 @@ import {
 import { createPayloadId } from "@/lib/distribution/distribution-manifest-service";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
 import { sha256Hex } from "@/lib/distribution/payload-checksum";
-import { enqueuePayloadCleanupJob } from "@/lib/distribution/payload-cleanup-service";
 import type { PayloadStorage } from "@/lib/distribution/payload-storage";
 import { buildPackFileObjectKey } from "@/lib/distribution/payload-storage-config";
 import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
@@ -35,6 +33,16 @@ import {
 import { DoclingImportError, isDoclingImportError } from "@/lib/docling-import/docling-import-errors";
 import { assertRoleFileAcceptable } from "@/lib/docling-import/docling-import-file-guards";
 import {
+  cleanupUploadedKeys,
+  finalizePreviousBundleStorage,
+  findLatestStagingBundleForVersion,
+  markBundleDeletePendingAndCleanup,
+  preserveFailedStagingBundle,
+  promoteDoclingStagingBundle,
+  type BundleWithRelations as LifecycleBundle,
+} from "@/lib/docling-import/docling-import-lifecycle-service";
+import { bundleHasSubmissionHistory } from "@/lib/docling-import/docling-import-submission";
+import {
   computeNormalizedDocumentFingerprint,
   NORMALIZED_DOCUMENT_FINGERPRINT_VERSION,
 } from "@/lib/docling-import/normalized-document-fingerprint";
@@ -42,12 +50,18 @@ import {
   assertTransition,
   canRetry,
 } from "@/lib/docling-import/docling-import-state";
-import {
-  parseReviewSubmitSnapshot,
-} from "@/lib/distribution/distribution-submit-snapshot";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
+
+export { bundleHasSubmissionHistory } from "@/lib/docling-import/docling-import-submission";
+export {
+  markBundleDeletePendingAndCleanup,
+  syncDoclingBundleStorageAfterCleanup,
+  finalizePreviousBundleStorage,
+  promoteDoclingStagingBundle,
+  preserveFailedStagingBundle,
+} from "@/lib/docling-import/docling-import-lifecycle-service";
 
 type UploadFileInput = {
   fileName: string;
@@ -55,9 +69,7 @@ type UploadFileInput = {
   bytes: Uint8Array;
 };
 
-type BundleWithRelations = DoclingImportBundle & {
-  files: KnowledgePackFile[];
-  normalizedDocuments: NormalizedDocument[];
+type BundleWithRelations = LifecycleBundle & {
   processingLogs: DoclingProcessingLog[];
 };
 
@@ -161,6 +173,8 @@ export function toDoclingImportBundlePublicDto(
     reviewReadyAt: bundle.reviewReadyAt?.toISOString() ?? null,
     deactivatedAt: bundle.deactivatedAt?.toISOString() ?? null,
     storageStatus: bundle.storageStatus,
+    stagingReason: bundle.stagingReason ?? null,
+    expiresAt: bundle.expiresAt?.toISOString() ?? null,
     createdAt: bundle.createdAt.toISOString(),
     updatedAt: bundle.updatedAt.toISOString(),
     canDelete: (options?.canDelete ?? false) && !immutableAfterSubmission,
@@ -210,26 +224,6 @@ async function requireOwnedDraftPack(input: {
   return { pack, version, profile };
 }
 
-export async function bundleHasSubmissionHistory(
-  packId: string,
-  bundleId: string,
-  versionId: string,
-): Promise<boolean> {
-  const reviews = await prisma.packReview.findMany({
-    where: { packId },
-    select: { submitSnapshot: true },
-  });
-  for (const review of reviews) {
-    const snap = parseReviewSubmitSnapshot(review.submitSnapshot);
-    if (!snap) continue;
-    if (snap.mode === "DOCLING_BUNDLE") {
-      if (snap.doclingBundleId === bundleId) return true;
-      if (snap.submittedVersionId === versionId && snap.doclingBundleId) return true;
-    }
-  }
-  return false;
-}
-
 const bundleInclude = {
   files: { orderBy: { role: "asc" as const } },
   normalizedDocuments: { orderBy: { createdAt: "desc" as const } },
@@ -247,119 +241,6 @@ async function findActiveBundleForVersion(versionId: string): Promise<BundleWith
   return prisma.doclingImportBundle.findFirst({
     where: { versionId, isActive: true },
     include: bundleInclude,
-  });
-}
-
-async function cleanupUploadedKeys(
-  keys: string[],
-  reason: string,
-  storage: PayloadStorage,
-): Promise<void> {
-  for (const objectKey of keys) {
-    try {
-      await storage.delete({ objectKey });
-    } catch {
-      await enqueuePayloadCleanupJob({
-        objectKey,
-        reason,
-        lastError: "immediate delete failed",
-      });
-    }
-  }
-}
-
-async function acquireVersionUploadLock(
-  tx: Prisma.TransactionClient,
-  versionId: string,
-): Promise<void> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${versionId}))`;
-  await tx.$executeRaw`SELECT id FROM "KnowledgePackVersion" WHERE id = ${versionId} FOR UPDATE`;
-}
-
-async function finalizePreviousBundleStorage(
-  previous: BundleWithRelations,
-  storage: PayloadStorage,
-): Promise<void> {
-  const keys = previous.files.map((f) => f.storageKey);
-  let failed = false;
-  let lastError: string | null = null;
-  for (const objectKey of keys) {
-    try {
-      await storage.delete({ objectKey });
-    } catch (error) {
-      failed = true;
-      lastError = error instanceof Error ? error.message : "delete failed";
-      await enqueuePayloadCleanupJob({
-        objectKey,
-        reason: "docling_bundle_replaced",
-        lastError,
-      });
-    }
-  }
-
-  if (failed) {
-    await prisma.doclingImportBundle.update({
-      where: { id: previous.id },
-      data: {
-        storageStatus: DoclingBundleStorageStatus.DELETE_FAILED,
-        storageDeleteAttempts: { increment: 1 },
-        storageLastError: (lastError ?? "delete failed").slice(0, 1000),
-      },
-    });
-  } else {
-    await prisma.doclingImportBundle.update({
-      where: { id: previous.id },
-      data: {
-        storageStatus: DoclingBundleStorageStatus.DELETED,
-        deletedAt: new Date(),
-        storageLastError: null,
-      },
-    });
-  }
-}
-
-async function markBundleDeletePendingAndCleanup(
-  bundleId: string,
-  keys: string[],
-  storage: PayloadStorage,
-  reason: string,
-): Promise<void> {
-  await prisma.doclingImportBundle.update({
-    where: { id: bundleId },
-    data: {
-      isActive: false,
-      deactivatedAt: new Date(),
-      deactivationReason: reason,
-      storageStatus: DoclingBundleStorageStatus.DELETE_PENDING,
-    },
-  });
-  let failed = false;
-  let lastError: string | null = null;
-  for (const objectKey of keys) {
-    try {
-      await storage.delete({ objectKey });
-    } catch (error) {
-      failed = true;
-      lastError = error instanceof Error ? error.message : "delete failed";
-      await enqueuePayloadCleanupJob({
-        objectKey,
-        reason,
-        lastError,
-      });
-    }
-  }
-  await prisma.doclingImportBundle.update({
-    where: { id: bundleId },
-    data: failed
-      ? {
-          storageStatus: DoclingBundleStorageStatus.DELETE_FAILED,
-          storageDeleteAttempts: { increment: 1 },
-          storageLastError: (lastError ?? "delete failed").slice(0, 1000),
-        }
-      : {
-          storageStatus: DoclingBundleStorageStatus.DELETED,
-          deletedAt: new Date(),
-        },
   });
 }
 
@@ -585,12 +466,8 @@ export async function uploadDoclingImportBundle(input: {
   const processed = await validateAndNormalizeBundle(bundleId, { storage });
 
   if (processed.status !== DoclingImportBundleStatus.REVIEW_READY) {
-    await markBundleDeletePendingAndCleanup(
-      bundleId,
-      uploadedKeys,
-      storage,
-      "validation_or_normalization_failed",
-    );
+    // Preserve failed staging objects for retry/download — do not cleanup.
+    await preserveFailedStagingBundle(bundleId, "validation_or_normalization_failed");
     throw new DoclingImportError(
       processed.lastErrorCode ?? "DOCLING_VALIDATION_FAILED",
       processed.lastErrorMessage ??
@@ -599,67 +476,26 @@ export async function uploadDoclingImportBundle(input: {
     );
   }
 
-  const previousActive = await findActiveBundleForVersion(version.id);
-
   try {
-    await prisma.$transaction(async (tx) => {
-      await acquireVersionUploadLock(tx, version.id);
-
-      const lockedPrevious = await tx.doclingImportBundle.findFirst({
-        where: { versionId: version.id, isActive: true },
-      });
-
-      if (lockedPrevious) {
-        const hasHistory = await bundleHasSubmissionHistory(
-          pack.packId,
-          lockedPrevious.id,
-          version.id,
-        );
-        if (hasHistory) {
-          throw new DoclingImportError(
-            "DOCLING_IMMUTABLE_AFTER_SUBMISSION",
-            "이미 검수 제출된 Docling import는 교체할 수 없습니다. 새 버전을 생성하세요.",
-            409,
-          );
-        }
-
-        await tx.doclingImportBundle.update({
-          where: { id: lockedPrevious.id },
-          data: {
-            isActive: false,
-            deactivatedAt: new Date(),
-            deactivationReason: "replaced",
-            replacedByBundleId: bundleId,
-            storageStatus: DoclingBundleStorageStatus.DELETE_PENDING,
-          },
-        });
-        await tx.normalizedDocument.updateMany({
-          where: { bundleId: lockedPrevious.id, isActive: true },
-          data: { isActive: false },
-        });
-      }
-
-      const promoted = await tx.doclingImportBundle.updateMany({
-        where: { id: bundleId, isActive: false, status: DoclingImportBundleStatus.REVIEW_READY },
-        data: {
-          isActive: true,
-          storageStatus: DoclingBundleStorageStatus.ACTIVE,
-        },
-      });
-      if (promoted.count === 0) {
-        throw new DoclingImportError(
-          "DOCLING_ACTIVE_BUNDLE_CONFLICT",
-          "Active Bundle 활성화에 충돌이 발생했습니다.",
-          409,
-        );
-      }
+    const { replacedBundleId } = await promoteDoclingStagingBundle({
+      packId: pack.packId,
+      versionId: version.id,
+      stagingBundleId: bundleId,
     });
+
+    if (replacedBundleId) {
+      const refreshedPrevious = await loadBundleWithRelations(replacedBundleId);
+      if (refreshedPrevious) {
+        await finalizePreviousBundleStorage(refreshedPrevious, storage);
+      }
+    }
   } catch (error) {
     await markBundleDeletePendingAndCleanup(
       bundleId,
       uploadedKeys,
       storage,
       "activate_failed",
+      new Map(stored.map((s) => [s.objectKey, s.id])),
     );
     if (isDoclingImportError(error)) throw error;
     throw new DoclingImportError(
@@ -667,13 +503,6 @@ export async function uploadDoclingImportBundle(input: {
       "Active Bundle 활성화에 충돌이 발생했습니다.",
       409,
     );
-  }
-
-  if (previousActive && previousActive.id !== bundleId) {
-    const refreshedPrevious = await loadBundleWithRelations(previousActive.id);
-    if (refreshedPrevious) {
-      await finalizePreviousBundleStorage(refreshedPrevious, storage);
-    }
   }
 
   const refreshed = await loadBundleWithRelations(bundleId);
@@ -1152,7 +981,10 @@ export async function getActiveDoclingImport(input: {
   userId: string;
   clientId: string;
   packId: string;
-}): Promise<{ bundle: DoclingImportBundlePublicDto | null }> {
+}): Promise<{
+  bundle: DoclingImportBundlePublicDto | null;
+  stagingBundle: DoclingImportBundlePublicDto | null;
+}> {
   const profile = await findOrEnsureProviderProfileForUser(input.userId, input.clientId);
   if (!profile) {
     throw new DoclingImportError("PROFILE_REQUIRED", "제공자 프로필이 필요합니다.", 403);
@@ -1166,23 +998,36 @@ export async function getActiveDoclingImport(input: {
     throw new DoclingImportError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
   }
   const version = pack.versions[0];
-  if (!version) return { bundle: null };
+  if (!version) return { bundle: null, stagingBundle: null };
 
-  const bundle = await findActiveBundleForVersion(version.id);
-  if (!bundle) return { bundle: null };
+  const active = await findActiveBundleForVersion(version.id);
+  const stagingRow = await findLatestStagingBundleForVersion(version.id);
+  // Prefer a distinct staging row (not the same as active).
+  const stagingId =
+    stagingRow && (!active || stagingRow.id !== active.id) ? stagingRow.id : null;
+  const staging = stagingId ? await loadBundleWithRelations(stagingId) : null;
 
-  const hasHistory = await bundleHasSubmissionHistory(pack.packId, bundle.id, version.id);
-  return {
-    bundle: toDoclingImportBundlePublicDto(bundle, {
+  const toDto = async (b: BundleWithRelations | null) => {
+    if (!b) return null;
+    const hasHistory = await bundleHasSubmissionHistory(pack.packId, b.id, version.id);
+    return toDoclingImportBundlePublicDto(b, {
       canDelete: pack.status === PackStatus.DRAFT && !hasHistory,
       immutableAfterSubmission: hasHistory,
-    }),
+    });
+  };
+
+  return {
+    bundle: await toDto(active),
+    stagingBundle: await toDto(staging),
   };
 }
 
 export async function getAdminDoclingImport(input: {
   packId: string;
-}): Promise<{ bundle: DoclingImportBundlePublicDto | null }> {
+}): Promise<{
+  bundle: DoclingImportBundlePublicDto | null;
+  stagingBundle: DoclingImportBundlePublicDto | null;
+}> {
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
     include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
@@ -1191,11 +1036,22 @@ export async function getAdminDoclingImport(input: {
     throw new DoclingImportError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
   }
   const version = pack.versions[0];
-  if (!version) return { bundle: null };
+  if (!version) return { bundle: null, stagingBundle: null };
 
-  const bundle = await findActiveBundleForVersion(version.id);
-  if (!bundle) return { bundle: null };
-  return { bundle: toDoclingImportBundlePublicDto(bundle, { canDelete: false }) };
+  const active = await findActiveBundleForVersion(version.id);
+  const stagingRow = await findLatestStagingBundleForVersion(version.id);
+  const stagingId =
+    stagingRow && (!active || stagingRow.id !== active.id) ? stagingRow.id : null;
+  const staging = stagingId ? await loadBundleWithRelations(stagingId) : null;
+
+  return {
+    bundle: active
+      ? toDoclingImportBundlePublicDto(active, { canDelete: false })
+      : null,
+    stagingBundle: staging
+      ? toDoclingImportBundlePublicDto(staging, { canDelete: false })
+      : null,
+  };
 }
 
 export async function deleteActiveDoclingImport(input: {
@@ -1215,6 +1071,33 @@ export async function deleteActiveDoclingImport(input: {
     throw new DoclingImportError("NOT_FOUND", "삭제할 Docling import가 없습니다.", 404);
   }
 
+  return deleteDoclingImportByBundleId({
+    userId: input.userId,
+    clientId: input.clientId,
+    packId: pack.packId,
+    bundleId: bundle.id,
+    storage: input.storage,
+  });
+}
+
+export async function deleteDoclingImportByBundleId(input: {
+  userId: string;
+  clientId: string;
+  packId: string;
+  bundleId: string;
+  storage?: PayloadStorage;
+}): Promise<{ deleted: true }> {
+  const { pack, version } = await requireOwnedDraftPack({
+    userId: input.userId,
+    clientId: input.clientId,
+    packId: input.packId,
+  });
+
+  const bundle = await loadBundleWithRelations(input.bundleId);
+  if (!bundle || bundle.packId !== pack.packId || bundle.versionId !== version.id) {
+    throw new DoclingImportError("NOT_FOUND", "삭제할 Docling import가 없습니다.", 404);
+  }
+
   const hasHistory = await bundleHasSubmissionHistory(pack.packId, bundle.id, version.id);
   if (hasHistory) {
     throw new DoclingImportError(
@@ -1226,52 +1109,15 @@ export async function deleteActiveDoclingImport(input: {
 
   const storage = input.storage ?? getDefaultStorage();
   const keys = bundle.files.map((f) => f.storageKey);
+  const fileIdsByKey = new Map(bundle.files.map((f) => [f.storageKey, f.id]));
 
-  await prisma.$transaction(async (tx) => {
-    await tx.normalizedDocument.updateMany({
-      where: { bundleId: bundle.id },
-      data: { isActive: false },
-    });
-    await tx.doclingImportBundle.update({
-      where: { id: bundle.id },
-      data: {
-        isActive: false,
-        deactivatedAt: new Date(),
-        deactivationReason: "deleted",
-        storageStatus: DoclingBundleStorageStatus.DELETE_PENDING,
-      },
-    });
-  });
-
-  let failed = false;
-  let lastError: string | null = null;
-  for (const objectKey of keys) {
-    try {
-      await storage.delete({ objectKey });
-    } catch (error) {
-      failed = true;
-      lastError = error instanceof Error ? error.message : "delete failed";
-      await enqueuePayloadCleanupJob({
-        objectKey,
-        reason: "docling_import_deleted",
-        lastError,
-      });
-    }
-  }
-
-  await prisma.doclingImportBundle.update({
-    where: { id: bundle.id },
-    data: failed
-      ? {
-          storageStatus: DoclingBundleStorageStatus.DELETE_FAILED,
-          storageDeleteAttempts: { increment: 1 },
-          storageLastError: (lastError ?? "delete failed").slice(0, 1000),
-        }
-      : {
-          storageStatus: DoclingBundleStorageStatus.DELETED,
-          deletedAt: new Date(),
-        },
-  });
+  await markBundleDeletePendingAndCleanup(
+    bundle.id,
+    keys,
+    storage,
+    "deleted",
+    fileIdsByKey,
+  );
 
   await recordProviderAudit({
     action: AuditAction.DOCLING_IMPORT_DELETED,
@@ -1296,8 +1142,43 @@ export async function retryDoclingImport(input: {
     packId: input.packId,
   });
 
-  const bundle = await findActiveBundleForVersion(version.id);
-  if (!bundle) {
+  const staging = await findLatestStagingBundleForVersion(version.id);
+  const active = await findActiveBundleForVersion(version.id);
+  const candidate =
+    staging && canRetry(staging.status)
+      ? staging
+      : active && canRetry(active.status)
+        ? active
+        : null;
+
+  if (!candidate) {
+    throw new DoclingImportError("NOT_FOUND", "재시도할 Docling import가 없습니다.", 404);
+  }
+
+  return retryDoclingImportByBundleId({
+    userId: input.userId,
+    clientId: input.clientId,
+    packId: pack.packId,
+    bundleId: candidate.id,
+    storage: input.storage,
+  });
+}
+
+export async function retryDoclingImportByBundleId(input: {
+  userId: string;
+  clientId: string;
+  packId: string;
+  bundleId: string;
+  storage?: PayloadStorage;
+}): Promise<{ bundle: DoclingImportBundlePublicDto }> {
+  const { pack, version } = await requireOwnedDraftPack({
+    userId: input.userId,
+    clientId: input.clientId,
+    packId: input.packId,
+  });
+
+  const bundle = await loadBundleWithRelations(input.bundleId);
+  if (!bundle || bundle.packId !== pack.packId || bundle.versionId !== version.id) {
     throw new DoclingImportError("NOT_FOUND", "재시도할 Docling import가 없습니다.", 404);
   }
   if (!canRetry(bundle.status)) {
@@ -1344,13 +1225,45 @@ export async function retryDoclingImport(input: {
       attempt,
       storage: input.storage,
     });
+
+    if (result.status === DoclingImportBundleStatus.REVIEW_READY && !bundle.isActive) {
+      const storage = input.storage ?? getDefaultStorage();
+      const uploadedKeys = (await loadBundleWithRelations(bundle.id))?.files.map((f) => f.storageKey) ?? [];
+      try {
+        const { replacedBundleId } = await promoteDoclingStagingBundle({
+          packId: pack.packId,
+          versionId: version.id,
+          stagingBundleId: bundle.id,
+        });
+        if (replacedBundleId) {
+          const refreshedPrevious = await loadBundleWithRelations(replacedBundleId);
+          if (refreshedPrevious) {
+            await finalizePreviousBundleStorage(refreshedPrevious, storage);
+          }
+        }
+      } catch (error) {
+        await markBundleDeletePendingAndCleanup(
+          bundle.id,
+          uploadedKeys,
+          storage,
+          "activate_failed",
+        );
+        throw error;
+      }
+    } else if (result.status !== DoclingImportBundleStatus.REVIEW_READY) {
+      await preserveFailedStagingBundle(bundle.id, "validation_or_normalization_failed");
+    }
+
+    const refreshed = await loadBundleWithRelations(bundle.id);
     await prisma.doclingProcessingLog.update({
       where: { id: retryLog.id },
       data: {
         status:
-          result.status === DoclingImportBundleStatus.REVIEW_READY
+          refreshed?.status === DoclingImportBundleStatus.REVIEW_READY && refreshed.isActive
             ? DoclingProcessingStatus.SUCCEEDED
-            : DoclingProcessingStatus.FAILED,
+            : result.status === DoclingImportBundleStatus.REVIEW_READY
+              ? DoclingProcessingStatus.SUCCEEDED
+              : DoclingProcessingStatus.FAILED,
         completedAt: new Date(),
         message:
           result.status === DoclingImportBundleStatus.REVIEW_READY
@@ -1362,7 +1275,19 @@ export async function retryDoclingImport(input: {
             : result.lastErrorCode,
       },
     });
-    return { bundle: result };
+
+    const finalBundle = refreshed ?? (await loadBundleWithRelations(bundle.id));
+    const hasHistory = await bundleHasSubmissionHistory(
+      pack.packId,
+      finalBundle!.id,
+      version.id,
+    );
+    return {
+      bundle: toDoclingImportBundlePublicDto(finalBundle!, {
+        canDelete: pack.status === PackStatus.DRAFT && !hasHistory,
+        immutableAfterSubmission: hasHistory,
+      }),
+    };
   } catch (error) {
     await prisma.doclingProcessingLog.update({
       where: { id: retryLog.id },
@@ -1427,26 +1352,25 @@ export async function downloadDoclingImportFile(input: {
     );
   }
 
-  if (!input.asAdmin) {
-    if (!file.bundle.isActive) {
-      throw new DoclingImportError(
-        "DOCLING_BUNDLE_NOT_ACTIVE",
-        "활성 Docling import 파일만 다운로드할 수 있습니다.",
-        403,
-      );
-    }
-  } else if (!file.bundle.isActive) {
-    const hasHistory = await bundleHasSubmissionHistory(
-      file.packId,
-      file.bundleId,
-      file.versionId,
-    );
-    if (!hasHistory) {
-      throw new DoclingImportError(
-        "DOCLING_BUNDLE_NOT_ACTIVE",
-        "비활성 Docling import 파일은 검수 제출 이력이 있을 때만 열람할 수 있습니다.",
-        403,
-      );
+  const hasHistory = await bundleHasSubmissionHistory(
+    file.packId,
+    file.bundleId,
+    file.versionId,
+  );
+
+  if (!file.bundle.isActive) {
+    // Provider may download own pack staging when ACTIVE storage, not deleted, no submission history.
+    if (!input.asAdmin) {
+      if (hasHistory) {
+        throw new DoclingImportError(
+          "DOCLING_IMMUTABLE_AFTER_SUBMISSION",
+          "검수 제출 이력이 있는 Docling import 파일은 다운로드할 수 없습니다.",
+          403,
+        );
+      }
+    } else if (!hasHistory) {
+      // Admin: staging without submission history is allowed for inspection of failed imports.
+      // (same ACTIVE + not deleted gates already applied)
     }
   }
 

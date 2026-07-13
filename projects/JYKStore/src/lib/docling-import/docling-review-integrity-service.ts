@@ -9,6 +9,10 @@ import { sha256Hex } from "@/lib/distribution/payload-checksum";
 import type { PayloadStorage } from "@/lib/distribution/payload-storage";
 import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
 import { DoclingImportError } from "@/lib/docling-import/docling-import-errors";
+import {
+  computeNormalizedDocumentFingerprint,
+  NORMALIZED_DOCUMENT_FINGERPRINT_VERSION,
+} from "@/lib/docling-import/normalized-document-fingerprint";
 import { prisma } from "@/lib/prisma";
 import { AuditAction } from "@prisma/client";
 import { recordProviderAudit } from "@/lib/provider-audit";
@@ -24,6 +28,11 @@ export type DoclingReviewIntegrityResult = {
   warnings: ReviewIntegrityIssue[];
 };
 
+/** Object storage verification depth for admin detail vs accept/approve. */
+export type ObjectStorageVerifyMode = "NONE" | "HEAD_ONLY" | "FULL";
+
+export type VerifyObjectStorageOption = boolean | ObjectStorageVerifyMode;
+
 const SAFE_USER_MESSAGE =
   "제출 시점 원본 파일과 현재 저장 파일의 무결성이 일치하지 않습니다.";
 
@@ -35,15 +44,89 @@ function getDefaultStorage(): PayloadStorage {
   return getConfiguredPayloadStorage();
 }
 
+export function resolveObjectStorageVerifyMode(
+  option: VerifyObjectStorageOption | undefined,
+): ObjectStorageVerifyMode {
+  if (option === false || option === "NONE") return "NONE";
+  if (option === "HEAD_ONLY") return "HEAD_ONLY";
+  // true / FULL / undefined → FULL (strict default for accept/approve)
+  return "FULL";
+}
+
+/**
+ * Recompute fingerprint from NormalizedDocument JSON columns + file checksums.
+ * Pure helper for unit tests and integrity assertions.
+ */
+export function recomputeNormalizedDocumentFingerprint(input: {
+  nd: Pick<
+    NormalizedDocument,
+    | "adapterType"
+    | "adapterVersion"
+    | "sourceSchemaName"
+    | "sourceSchemaVersion"
+    | "title"
+    | "language"
+    | "sectionsJson"
+    | "tablesJson"
+    | "figuresJson"
+    | "readingOrderJson"
+    | "warningsJson"
+    | "sourceFileId"
+    | "jsonPayloadFileId"
+    | "markdownPayloadFileId"
+    | "fingerprintVersion"
+  >;
+  sourceChecksum: string;
+  jsonChecksum: string;
+  markdownChecksum: string;
+}): { ok: true; fingerprint: string } | { ok: false; code: string } {
+  const version = input.nd.fingerprintVersion ?? null;
+  if (version !== NORMALIZED_DOCUMENT_FINGERPRINT_VERSION) {
+    return { ok: false, code: "DOCLING_REVIEW_FINGERPRINT_VERSION_UNSUPPORTED" };
+  }
+  if (
+    !input.nd.sourceFileId ||
+    !input.nd.jsonPayloadFileId ||
+    !input.nd.markdownPayloadFileId
+  ) {
+    return { ok: false, code: "DOCLING_REVIEW_FINGERPRINT_RECALCULATION_FAILED" };
+  }
+  try {
+    const fingerprint = computeNormalizedDocumentFingerprint({
+      adapterType: input.nd.adapterType,
+      adapterVersion: input.nd.adapterVersion,
+      sourceSchemaName: input.nd.sourceSchemaName,
+      sourceSchemaVersion: input.nd.sourceSchemaVersion,
+      title: input.nd.title,
+      language: input.nd.language,
+      sections: input.nd.sectionsJson,
+      tables: input.nd.tablesJson,
+      figures: input.nd.figuresJson,
+      readingOrder: input.nd.readingOrderJson,
+      warnings: input.nd.warningsJson,
+      sourceFileId: input.nd.sourceFileId,
+      jsonPayloadFileId: input.nd.jsonPayloadFileId,
+      markdownPayloadFileId: input.nd.markdownPayloadFileId,
+      sourceChecksum: input.sourceChecksum,
+      jsonChecksum: input.jsonChecksum,
+      markdownChecksum: input.markdownChecksum,
+    });
+    return { ok: true, fingerprint };
+  } catch {
+    return { ok: false, code: "DOCLING_REVIEW_FINGERPRINT_RECALCULATION_FAILED" };
+  }
+}
+
 export async function validateDoclingReviewIntegrity(input: {
   packId: string;
   snapshot: DoclingBundleReviewSubmitSnapshot;
-  verifyObjectStorage?: boolean;
+  verifyObjectStorage?: VerifyObjectStorageOption;
   storage?: PayloadStorage;
 }): Promise<DoclingReviewIntegrityResult> {
   const errors: ReviewIntegrityIssue[] = [];
   const warnings: ReviewIntegrityIssue[] = [];
   const { packId, snapshot } = input;
+  const verifyMode = resolveObjectStorageVerifyMode(input.verifyObjectStorage);
 
   if (snapshot.mode !== "DOCLING_BUNDLE") {
     errors.push(err("DOCLING_REVIEW_BUNDLE_NOT_READY", "Docling Bundle 스냅샷이 아닙니다."));
@@ -141,7 +224,7 @@ export async function validateDoclingReviewIntegrity(input: {
     }
   }
 
-  if (input.verifyObjectStorage !== false && files.length === fileSpecs.length) {
+  if (verifyMode !== "NONE" && files.length === fileSpecs.length) {
     const storage = input.storage ?? getDefaultStorage();
     for (const file of files) {
       const snapChecksum =
@@ -154,6 +237,15 @@ export async function validateDoclingReviewIntegrity(input: {
         const head = await storage.head({ objectKey: file.storageKey });
         if (!head.exists) {
           errors.push(err("DOCLING_REVIEW_OBJECT_MISSING"));
+          continue;
+        }
+        if (verifyMode === "HEAD_ONLY") {
+          if (
+            typeof head.contentLength === "number" &&
+            head.contentLength !== Number(file.fileSize)
+          ) {
+            errors.push(err("DOCLING_REVIEW_OBJECT_SIZE_MISMATCH"));
+          }
           continue;
         }
         const got = await storage.get({ objectKey: file.storageKey });
@@ -185,17 +277,18 @@ export async function validateDoclingReviewIntegrity(input: {
   if (!nd) {
     errors.push(err("DOCLING_REVIEW_NORMALIZED_DOCUMENT_MISSING"));
   } else {
-    assertNormalizedMatches(nd, bundle, snapshot, packId, errors);
+    assertNormalizedMatches(nd, bundle, snapshot, packId, files, errors);
   }
 
   return { ok: errors.length === 0, errors, warnings };
 }
 
-function assertNormalizedMatches(
+export function assertNormalizedMatches(
   nd: NormalizedDocument,
   bundle: DoclingImportBundle,
   snapshot: DoclingBundleReviewSubmitSnapshot,
   packId: string,
+  files: KnowledgePackFile[],
   errors: ReviewIntegrityIssue[],
 ): void {
   if (nd.bundleId !== bundle.id || nd.packId !== packId) {
@@ -210,9 +303,6 @@ function assertNormalizedMatches(
   if (nd.adapterVersion !== snapshot.adapterVersion) {
     errors.push(err("DOCLING_REVIEW_ADAPTER_VERSION_MISMATCH"));
   }
-  if ((nd.fingerprint ?? null) !== (snapshot.fingerprint ?? null)) {
-    errors.push(err("DOCLING_REVIEW_FINGERPRINT_MISMATCH"));
-  }
   if (
     nd.sourceFileId !== snapshot.sourceFileId ||
     nd.jsonPayloadFileId !== snapshot.jsonPayloadFileId ||
@@ -223,19 +313,44 @@ function assertNormalizedMatches(
   if ((nd.sourcePayloadChecksum ?? null) !== snapshot.checksums.source) {
     errors.push(err("DOCLING_REVIEW_CHECKSUM_MISMATCH"));
   }
+
+  const byRole = new Map(files.map((f) => [f.role, f]));
+  const sourceFile = byRole.get(KnowledgePackFileRole.SOURCE_ORIGINAL);
+  const jsonFile = byRole.get(KnowledgePackFileRole.DOCLING_JSON);
+  const mdFile = byRole.get(KnowledgePackFileRole.DOCLING_MARKDOWN);
+  const sourceChecksum = sourceFile?.checksumSha256 ?? snapshot.checksums.source;
+  const jsonChecksum = jsonFile?.checksumSha256 ?? snapshot.checksums.json;
+  const markdownChecksum = mdFile?.checksumSha256 ?? snapshot.checksums.markdown;
+
+  const recomputed = recomputeNormalizedDocumentFingerprint({
+    nd,
+    sourceChecksum,
+    jsonChecksum,
+    markdownChecksum,
+  });
+  if (!recomputed.ok) {
+    errors.push(err(recomputed.code));
+    return;
+  }
+  if (
+    recomputed.fingerprint !== (nd.fingerprint ?? null) ||
+    recomputed.fingerprint !== (snapshot.fingerprint ?? null)
+  ) {
+    errors.push(err("DOCLING_REVIEW_FINGERPRINT_MISMATCH"));
+  }
 }
 
 export async function assertDoclingReviewIntegrityOrThrow(input: {
   packId: string;
   snapshot: DoclingBundleReviewSubmitSnapshot;
-  verifyObjectStorage?: boolean;
+  verifyObjectStorage?: VerifyObjectStorageOption;
   storage?: PayloadStorage;
   actorUserId?: string | null;
 }): Promise<DoclingReviewIntegrityResult> {
   const result = await validateDoclingReviewIntegrity({
     packId: input.packId,
     snapshot: input.snapshot,
-    verifyObjectStorage: input.verifyObjectStorage ?? true,
+    verifyObjectStorage: input.verifyObjectStorage ?? "FULL",
     storage: input.storage,
   });
 

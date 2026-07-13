@@ -188,11 +188,11 @@ export function AdminReviewDoclingImportTab({
             검수 무결성: {detail.doclingReviewIntegrity.status}
           </p>
           <ul className="mt-2 space-y-1">
-            <li>원본 3파일 무결성</li>
-            <li>NormalizedDocument 무결성</li>
-            <li>Snapshot 일치</li>
+            <li>DB / Snapshot 일치: PASS 기준</li>
+            <li>Object Presence: detail 조회 시 HEAD_ONLY (존재·크기)</li>
+            <li>Full SHA: 접수·승인 시 FULL 본문 해시 검증</li>
+            <li>NormalizedDocument fingerprint 재계산</li>
             <li>Adapter Version 일치</li>
-            <li>Object Storage 확인</li>
           </ul>
           {detail.doclingReviewIntegrity.errors.length > 0 ? (
             <ul className="mt-2 space-y-1">

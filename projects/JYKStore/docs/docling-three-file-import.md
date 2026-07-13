@@ -24,25 +24,38 @@ Snapshot의 adapterVersion은 활성 `NormalizedDocument.adapterVersion`에서 �
 ## Active Bundle · Storage Status
 
 - Version당 Active Bundle은 1개(partial unique index).
-- 새 Bundle은 검증·정규화 성공(`REVIEW_READY`) 후에만 Active로 승격합니다. 실패 시 기존 Active는 유지됩니다.
-- 교체 시 이전 Bundle은 `deactivatedAt` / `replacedByBundleId` / `storageStatus=DELETE_PENDING` 후 Object 삭제(`DELETED` 또는 `DELETE_FAILED` + Cleanup Job).
+- 새 Bundle은 검증·정규화 성공(`REVIEW_READY`) 후에만 Active로 승격합니다.
+- **검증·정규화 실패 시 Staging을 보존**합니다(`isActive=false`, `storageStatus=ACTIVE`, `stagingReason` 설정). 즉시 Object 삭제하지 않으며 Provider가 재시도·다운로드·삭제할 수 있습니다.
+- 교체 시 이전 Bundle은 `deactivatedAt` / `replacedByBundleId` / `storageStatus=DELETE_PENDING` 후 Object 삭제. Post-TX cleanup은 승격 트랜잭션이 반환한 `replacedBundleId`만 사용합니다.
+- Cleanup Job 완료 후 Bundle `storageStatus`를 `DELETED`/`DELETE_FAILED`로 동기화합니다(`doclingBundleId` 링크).
 - 검수 제출 이력이 있으면 교체·삭제 금지(`DOCLING_IMMUTABLE_AFTER_SUBMISSION`).
 
 ## Provider API
 
-- `GET/POST/DELETE /api/v1/provider/packs/[packId]/docling-import`
-- `POST /api/v1/provider/packs/[packId]/docling-import/retry`
-- `GET /api/v1/provider/packs/[packId]/docling-import/files/[fileId]/download`
+- `GET/POST/DELETE /api/v1/provider/packs/[packId]/docling-import` (`GET`은 `{ bundle, stagingBundle }` 반환)
+- `POST /api/v1/provider/packs/[packId]/docling-import/retry` (pack-level facade: staging 우선)
+- `POST /api/v1/provider/packs/[packId]/docling-import/[bundleId]/retry`
+- `DELETE /api/v1/provider/packs/[packId]/docling-import/[bundleId]`
+- `GET /api/v1/provider/packs/[packId]/docling-import/files/[fileId]/download` (Staging도 `storageStatus=ACTIVE`이면 허용)
 - `GET /api/v1/provider/packs/[packId]/normalized-document`
 
 ## Admin API
 
-- `GET /api/v1/admin/reviews/[packId]/docling-import`
+- `GET /api/v1/admin/reviews/[packId]/docling-import` (`{ bundle, stagingBundle }`)
 - `GET /api/v1/admin/reviews/[packId]/docling-import/files/[fileId]/download`
 - `GET /api/v1/admin/reviews/[packId]/normalized-document`
 - `PATCH /api/v1/admin/reviews/[packId]/distribution-metadata` (Store 메타데이터 보정)
 
-관리자 접수·승인 전 Snapshot·파일·Object Storage·NormalizedDocument 무결성을 재검증합니다.
+## 검수 승인 경로 (P0-A.2)
+
+| Snapshot mode | Release Gate | 무결성 |
+|---|---|---|
+| `DOCLING_BUNDLE` | 실행하지 않음 | detail=`HEAD_ONLY`, accept/approve=`FULL` + fingerprint 재계산 |
+| `DISTRIBUTION` | 실행하지 않음 | ZIP/manifest drift |
+| Legacy Builder | `evaluateReleaseGateForPack` | 기존 품질 게이트 |
+
+관리자 detail은 DB/Snapshot·Object Presence(HEAD)를 확인하고, 접수·승인 시 Full SHA를 검증합니다.
+
 
 ## 불변성
 

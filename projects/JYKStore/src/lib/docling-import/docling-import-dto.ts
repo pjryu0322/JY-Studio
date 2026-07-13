@@ -89,6 +89,8 @@ export type DoclingImportBundlePublicDto = {
   reviewReadyAt: string | null;
   deactivatedAt: string | null;
   storageStatus: DoclingBundleStorageStatus;
+  stagingReason: string | null;
+  expiresAt: string | null;
   createdAt: string;
   updatedAt: string;
   canDelete: boolean;

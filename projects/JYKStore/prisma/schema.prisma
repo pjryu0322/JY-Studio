@@ -399,19 +399,23 @@ enum PayloadCleanupStatus {
 }
 
 model PayloadStorageCleanupJob {
-  id           String               @id @default(cuid())
-  objectKey    String
-  payloadId    String?
-  reason       String
-  status       PayloadCleanupStatus @default(PENDING)
-  attemptCount Int                  @default(0)
-  lastError    String?
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-  completedAt  DateTime?
+  id                  String               @id @default(cuid())
+  objectKey           String
+  payloadId           String?
+  /// Optional link for Docling pack-file cleanup status sync.
+  doclingBundleId     String?
+  knowledgePackFileId String?
+  reason              String
+  status              PayloadCleanupStatus @default(PENDING)
+  attemptCount        Int                  @default(0)
+  lastError           String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  completedAt         DateTime?
 
   @@index([status, createdAt])
   @@index([objectKey])
+  @@index([doclingBundleId, status])
 }
 
 model PackDistributionMetadata {
@@ -502,6 +506,9 @@ model DoclingImportBundle {
   storageStatus         DoclingBundleStorageStatus @default(ACTIVE)
   storageDeleteAttempts Int                        @default(0)
   storageLastError      String?
+  /// Optional staging expiry hint (TTL cleanup is out of scope for P0-A.2).
+  expiresAt             DateTime?
+  stagingReason         String?
   createdAt             DateTime                  @default(now())
   updatedAt             DateTime                  @updatedAt
 

@@ -867,15 +867,35 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
   const distributionPayload = latestVersionId
     ? await prisma.knowledgePayload.findUnique({ where: { versionId: latestVersionId } })
     : null;
+  const doclingReady = latestVersionId
+    ? await prisma.doclingImportBundle.findFirst({
+        where: {
+          versionId: latestVersionId,
+          isActive: true,
+          status: "REVIEW_READY",
+        },
+        select: { id: true },
+      })
+    : null;
 
-  if (distributionPayload) {
+  if (distributionPayload || doclingReady) {
     const distributionResult = await commitDistributionPackForReview(userId, clientId, packId);
     if ("error" in distributionResult) {
       return distributionResult;
     }
-    await recordSubmitForReviewPipeline(packId, clientId, "Distribution Payload 검수 요청");
+    await recordSubmitForReviewPipeline(
+      packId,
+      clientId,
+      doclingReady && !distributionPayload
+        ? "Docling Import 검수 요청"
+        : "Distribution Payload 검수 요청",
+    );
     const detail = await getProviderPackForClient(userId, clientId, packId);
-    return { pack: detail!, snapshot: distributionResult.snapshot, mode: "DISTRIBUTION" as const };
+    const mode =
+      distributionResult.snapshot.mode === "DOCLING_BUNDLE"
+        ? ("DOCLING_BUNDLE" as const)
+        : ("DISTRIBUTION" as const);
+    return { pack: detail!, snapshot: distributionResult.snapshot, mode };
   }
 
   const allDocs = pack.versions.flatMap((v) => v.sourceDocuments);

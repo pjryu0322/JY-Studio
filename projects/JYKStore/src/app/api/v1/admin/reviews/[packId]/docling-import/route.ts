@@ -23,7 +23,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   try {
     const result = await getAdminDoclingImport({ packId: packId?.trim() ?? "" });
-    return jsonWithClientIdCookie({ clientId, bundle: result.bundle }, clientId);
+    return jsonWithClientIdCookie(
+      { clientId, bundle: result.bundle, stagingBundle: result.stagingBundle },
+      clientId,
+    );
   } catch (error) {
     if (isDoclingImportError(error)) {
       return jsonWithClientIdCookie(

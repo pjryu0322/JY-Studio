@@ -283,6 +283,7 @@ export async function upsertProviderPackDistributionApi(
 export async function fetchProviderDoclingImportApi(packId: string): Promise<{
   clientId: string;
   bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
+  stagingBundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
 }> {
   const response = await fetch(
     `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import`,
@@ -297,6 +298,7 @@ export async function fetchProviderDoclingImportApi(packId: string): Promise<{
   return (await response.json()) as {
     clientId: string;
     bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
+    stagingBundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
   };
 }
 
@@ -366,6 +368,46 @@ export async function retryProviderDoclingImportApi(packId: string): Promise<{
     clientId: string;
     bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
   };
+}
+
+export async function retryProviderDoclingImportBundleApi(
+  packId: string,
+  bundleId: string,
+): Promise<{
+  clientId: string;
+  bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import/${encodeURIComponent(bundleId)}/retry`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
+  };
+}
+
+export async function deleteProviderDoclingImportBundleApi(
+  packId: string,
+  bundleId: string,
+): Promise<{ clientId: string; deleted: true }> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import/${encodeURIComponent(bundleId)}`,
+    {
+      method: "DELETE",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as { clientId: string; deleted: true };
 }
 
 export async function fetchProviderNormalizedDocumentApi(packId: string): Promise<{

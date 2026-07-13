@@ -24,20 +24,27 @@
 - `NORMALIZATION_FAILED`
 
 업로드 시 새 Bundle은 비활성으로 스테이징되고, `REVIEW_READY` 성공 후에만 Active로 승격합니다.
-실패 시 기존 Active Bundle은 유지되고 스테이징 Bundle Object는 Cleanup됩니다.
+검증·정규화 실패 시 기존 Active는 유지되고, **실패한 Staging은 보존**합니다(`storageStatus=ACTIVE`, `stagingReason` 설정).
+Provider는 Staging에 대해 재시도·다운로드·삭제가 가능합니다.
 
-`canRetry`가 true이면 Provider가 `/docling-import/retry`로 재처리할 수 있습니다.
+`canRetry`가 true이면 Provider가 `/docling-import/retry`(또는 `/docling-import/[bundleId]/retry`)로 재처리할 수 있습니다.
 RETRY ProcessingLog는 반드시 SUCCEEDED 또는 FAILED로 완료됩니다.
 
 ## Storage Status
 
 `ACTIVE → DELETE_PENDING → DELETED | DELETE_FAILED`
 
-삭제 실패 시 Cleanup Job을 재사용하고 `storageDeleteAttempts` / `storageLastError`를 갱신합니다.
+삭제 실패 시 Cleanup Job(`doclingBundleId`/`knowledgePackFileId` 링크)을 재사용하고,
+Job 완료 후 Bundle `storageStatus`를 동기화합니다.
+
+교체(promote) 후 Object 정리는 트랜잭션이 반환한 `replacedBundleId`만 대상으로 합니다.
 
 ## 승인 전 무결성
 
-Admin 접수·승인 Service는 Snapshot Bundle·3파일·Object Storage·NormalizedDocument Fingerprint·Adapter Version을 재검증합니다.
+Admin detail은 `HEAD_ONLY`(존재·크기), 접수·승인은 `FULL`(본문 SHA)로 Object Storage를 검증합니다.
+NormalizedDocument fingerprint는 `normalized-document-v2`로 재계산하여 Snapshot과 일치해야 합니다.
+`DOCLING_BUNDLE` 승인은 Legacy release gate를 실행하지 않습니다.
+
 실패 시 Audit `DOCLING_REVIEW_INTEGRITY_FAILED`, 성공 시 `DOCLING_REVIEW_INTEGRITY_VERIFIED`.
 
 ## 운영 체크리스트

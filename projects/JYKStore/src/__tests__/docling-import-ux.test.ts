@@ -31,6 +31,8 @@ describe("docling import UX sources", () => {
     assert.ok(source.includes("재시도"));
     assert.ok(source.includes("NormalizedDocumentPreview"));
     assert.ok(source.includes("min-h-[44px]"));
+    assert.ok(source.includes("실패한 Staging Bundle") || source.includes("stagingBundle"));
+    assert.ok(source.includes("Staging 재시도") || source.includes("retryProviderDoclingImportBundleApi"));
     assert.ok(source.includes("검수 제출 이력이 있어 교체할 수 없습니다"));
   });
 
@@ -72,6 +74,8 @@ describe("docling import UX sources", () => {
     assert.ok(source.includes("patchAdminDistributionMetadataApi"));
     assert.ok(source.includes("처리 로그") || source.includes("processingLogs"));
     assert.ok(source.includes("검수 무결성") || source.includes("doclingReviewIntegrity"));
+    assert.ok(source.includes("HEAD_ONLY") || source.includes("Object Presence"));
+    assert.ok(source.includes("Full SHA") || source.includes("FULL"));
 
     assert.ok(ADMIN_REVIEW_EVIDENCE_TAB_IDS.includes("docling"));
     assert.equal(ADMIN_REVIEW_TAB_DOCLING, "Docling");

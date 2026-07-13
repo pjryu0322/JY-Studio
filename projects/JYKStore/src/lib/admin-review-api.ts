@@ -87,6 +87,7 @@ export async function rejectAdminReview(
 export async function fetchAdminDoclingImportApi(packId: string): Promise<{
   clientId: string;
   bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
+  stagingBundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
 }> {
   const response = await fetch(
     `/api/v1/admin/reviews/${encodeURIComponent(packId)}/docling-import`,
@@ -101,6 +102,7 @@ export async function fetchAdminDoclingImportApi(packId: string): Promise<{
   return (await response.json()) as {
     clientId: string;
     bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
+    stagingBundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
   };
 }
 

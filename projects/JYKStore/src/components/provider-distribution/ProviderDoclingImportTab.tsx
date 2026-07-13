@@ -12,10 +12,12 @@ import {
 } from "@/lib/docling-import/docling-import-ui";
 import {
   deleteProviderDoclingImportApi,
+  deleteProviderDoclingImportBundleApi,
   fetchProviderDoclingImportApi,
   fetchProviderNormalizedDocumentApi,
   providerDoclingImportFileDownloadUrl,
   retryProviderDoclingImportApi,
+  retryProviderDoclingImportBundleApi,
   uploadProviderDoclingImportApi,
 } from "@/lib/provider-center-api";
 import {
@@ -37,6 +39,7 @@ export function ProviderDoclingImportTab({
   readonly onDoclingChanged?: (bundle: DoclingImportBundlePublicDto | null) => void;
 }) {
   const [bundle, setBundle] = useState<DoclingImportBundlePublicDto | null>(null);
+  const [stagingBundle, setStagingBundle] = useState<DoclingImportBundlePublicDto | null>(null);
   const [structure, setStructure] = useState<unknown>(null);
   const [markdownText, setMarkdownText] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,6 +82,7 @@ export function ProviderDoclingImportTab({
     try {
       const data = await fetchProviderDoclingImportApi(packId);
       setBundle(data.bundle);
+      setStagingBundle(data.stagingBundle ?? null);
       onDoclingChanged?.(data.bundle);
       if (data.bundle?.normalizedDocument) {
         const nd = await fetchProviderNormalizedDocumentApi(packId).catch(() => null);
@@ -110,6 +114,7 @@ export function ProviderDoclingImportTab({
         doclingMarkdownFile: markdownFile,
       });
       setBundle(data.bundle);
+      setStagingBundle(null);
       onDoclingChanged?.(data.bundle);
       setSourceFile(null);
       setJsonFile(null);
@@ -122,28 +127,44 @@ export function ProviderDoclingImportTab({
       await loadMarkdownPreview(data.bundle);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Docling 3파일 업로드에 실패했습니다.");
+      await load();
     } finally {
       setUploading(false);
     }
   };
 
-  const onRetry = async () => {
-    if (!editable || !bundle?.canRetry || retrying) return;
+  const onRetry = async (target?: DoclingImportBundlePublicDto | null) => {
+    const targetBundle = target ?? stagingBundle ?? bundle;
+    if (!editable || !targetBundle?.canRetry || retrying) return;
     setRetrying(true);
     setError(null);
     try {
-      const data = await retryProviderDoclingImportApi(packId);
-      setBundle(data.bundle);
-      onDoclingChanged?.(data.bundle);
-      if (data.bundle.normalizedDocument) {
-        const nd = await fetchProviderNormalizedDocumentApi(packId).catch(() => null);
-        setStructure(nd?.structure ?? null);
+      const data = targetBundle.isActive
+        ? await retryProviderDoclingImportApi(packId)
+        : await retryProviderDoclingImportBundleApi(packId, targetBundle.id);
+      await load();
+      if (data.bundle.isActive) {
+        setBundle(data.bundle);
+        onDoclingChanged?.(data.bundle);
       }
-      await loadMarkdownPreview(data.bundle);
     } catch (err) {
       setError(err instanceof Error ? err.message : "재처리에 실패했습니다.");
     } finally {
       setRetrying(false);
+    }
+  };
+
+  const onDeleteStaging = async () => {
+    if (!editable || !stagingBundle?.canDelete) return;
+    const ok = window.confirm("실패한 Staging Bundle을 삭제할까요?");
+    if (!ok) return;
+    setError(null);
+    try {
+      await deleteProviderDoclingImportBundleApi(packId, stagingBundle.id);
+      setStagingBundle(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Staging 삭제에 실패했습니다.");
     }
   };
 
@@ -170,7 +191,7 @@ export function ProviderDoclingImportTab({
     return <p className="text-sm text-store-muted">Docling import 불러오는 중…</p>;
   }
 
-  const showUploadForm = editable && (!bundle || replacing);
+  const showUploadForm = editable && ((!bundle && !stagingBundle) || replacing);
 
   return (
     <section className="space-y-4">
@@ -237,7 +258,7 @@ export function ProviderDoclingImportTab({
             {editable && bundle.canRetry ? (
               <button
                 type="button"
-                onClick={() => void onRetry()}
+                onClick={() => void onRetry(bundle)}
                 disabled={retrying}
                 className="min-h-[44px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 disabled:opacity-60"
               >
@@ -276,6 +297,60 @@ export function ProviderDoclingImportTab({
             markdownText={markdownText}
             processingLogs={bundle.processingLogs}
           />
+        </div>
+      ) : null}
+
+      {stagingBundle && !replacing ? (
+        <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-slate-800">
+          <p className="font-semibold text-amber-950">실패한 Staging Bundle</p>
+          <p>
+            상태: <span className="font-bold">{stagingBundle.status}</span>
+            {stagingBundle.stagingReason ? ` · ${stagingBundle.stagingReason}` : ""}
+            {` · ${formatDoclingStorageStatus(stagingBundle.storageStatus)}`}
+          </p>
+          <p>
+            오류 {stagingBundle.errorCount}
+            {stagingBundle.lastErrorMessage ? ` · ${stagingBundle.lastErrorMessage}` : ""}
+          </p>
+          <ul className="space-y-2">
+            {stagingBundle.files.map((file) => (
+              <li
+                key={file.id}
+                className="rounded-lg border border-amber-100 bg-white px-3 py-2"
+              >
+                <p className="font-semibold">
+                  {DOCLING_FILE_ROLE_LABELS[file.role]} · {file.originalFileName}
+                </p>
+                <a
+                  href={providerDoclingImportFileDownloadUrl(packId, file.id)}
+                  className="mt-2 inline-flex min-h-[44px] items-center text-xs font-semibold text-store-accent"
+                >
+                  다운로드
+                </a>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {editable && stagingBundle.canRetry ? (
+              <button
+                type="button"
+                onClick={() => void onRetry(stagingBundle)}
+                disabled={retrying}
+                className="min-h-[44px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 disabled:opacity-60"
+              >
+                {retrying ? "재처리 중…" : "Staging 재시도"}
+              </button>
+            ) : null}
+            {editable && stagingBundle.canDelete ? (
+              <button
+                type="button"
+                onClick={() => void onDeleteStaging()}
+                className="min-h-[44px] rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-700"
+              >
+                Staging 삭제
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -341,7 +416,7 @@ export function ProviderDoclingImportTab({
         </form>
       ) : null}
 
-      {!bundle && !editable ? (
+      {!bundle && !stagingBundle && !editable ? (
         <p className="text-sm text-store-muted">등록된 Docling import가 없습니다.</p>
       ) : null}
     </section>
