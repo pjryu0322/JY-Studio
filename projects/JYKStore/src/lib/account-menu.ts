@@ -1,14 +1,12 @@
 import type { AccountRole } from "@/lib/account-role";
 import { ROUTES } from "@/lib/routes";
 
-export type LogoutDestination = "login" | "admin-login" | "home";
+export type LogoutDestination = "login" | "home";
 
 export const PROVIDER_PROFILE_PATH = `${ROUTES.accountProfile}#provider-profile`;
 
 export function logoutDestinationPath(destination: LogoutDestination): string {
   switch (destination) {
-    case "admin-login":
-      return ROUTES.adminLogin;
     case "home":
       return ROUTES.home;
     default:

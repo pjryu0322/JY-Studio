@@ -21,6 +21,13 @@ describe("test account quick login UX", () => {
     assert.ok(page.includes("postAuthLandingPath"));
   });
 
+  it("admin login page redirects to shared store login", () => {
+    const page = readSource("src/app/(store)/admin/login/page.tsx");
+    assert.ok(page.includes("redirect(ROUTES.login)"));
+    assert.ok(!page.includes("AdminLoginForm"));
+    assert.ok(!page.includes("TestAccountQuickLogin"));
+  });
+
   it("shows development-only copy, role groups, and CTA labels", () => {
     const ui = readSource("src/components/TestAccountQuickLogin.tsx");
     assert.ok(ui.includes("개발·테스트 전용"));

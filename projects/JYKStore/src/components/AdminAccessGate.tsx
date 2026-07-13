@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   isAdminAccountRole,
@@ -31,20 +30,12 @@ type AdminGateState =
   | { status: "error"; message: string };
 
 export function AdminAccessGate({ children }: { readonly children: React.ReactNode }) {
-  const pathname = usePathname();
-  const isLoginPath = pathname === ROUTES.adminLogin;
   const { logoutAndRedirect, busy, error: logoutError, clearError } = useStoreLogout();
-  const [state, setState] = useState<AdminGateState>(
-    isLoginPath ? { status: "allowed" } : { status: "checking" },
-  );
+  const [state, setState] = useState<AdminGateState>({ status: "checking" });
   const [action, setAction] = useState<"switch" | "logout" | null>(null);
 
   const recheck = useCallback(async () => {
     if (typeof window === "undefined") return;
-    if (pathname === ROUTES.adminLogin) {
-      setState({ status: "allowed" });
-      return;
-    }
 
     try {
       const session = await fetchAuthSession();
@@ -71,15 +62,11 @@ export function AdminAccessGate({ children }: { readonly children: React.ReactNo
         message: "관리자 권한을 확인하지 못했습니다. 다시 시도해 주세요.",
       });
     }
-  }, [pathname]);
+  }, []);
 
   useEffect(() => {
     void recheck();
   }, [recheck]);
-
-  if (isLoginPath) {
-    return <>{children}</>;
-  }
 
   if (state.status === "checking") {
     return <p className="text-sm text-store-muted">관리자 권한 확인 중…</p>;
@@ -119,13 +106,13 @@ export function AdminAccessGate({ children }: { readonly children: React.ReactNo
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-card">
           <h1 className="text-lg font-bold text-slate-900">관리자 로그인이 필요합니다.</h1>
           <p className="mt-2 text-sm text-slate-700">
-            관리자 계정으로 로그인해 주세요.
+            관리자 계정으로 로그인해 주세요. 로그인 후 역할에 따라 관리자 콘솔을 이용할 수 있습니다.
           </p>
           <Link
-            href={ROUTES.adminLogin}
+            href={ROUTES.login}
             className="mt-4 inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-store-accent text-sm font-bold text-white"
           >
-            관리자 로그인
+            로그인
           </Link>
           <Link
             href={ROUTES.home}
@@ -145,7 +132,7 @@ export function AdminAccessGate({ children }: { readonly children: React.ReactNo
     clearError();
     setAction("switch");
     try {
-      const result = await logoutAndRedirect("admin-login");
+      const result = await logoutAndRedirect("login");
       if (!result.ok) return;
     } finally {
       setAction(null);

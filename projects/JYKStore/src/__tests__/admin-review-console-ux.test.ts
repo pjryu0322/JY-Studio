@@ -13,18 +13,19 @@ function readSource(relativePath: string): string {
 }
 
 describe("admin account review console UX", () => {
-  it("exposes admin login and reviews routes", () => {
-    assert.equal(ROUTES.adminLogin, "/admin/login");
+  it("exposes shared login and reviews routes", () => {
+    assert.equal(ROUTES.login, "/login");
+    assert.equal(ROUTES.adminLogin, ROUTES.login);
     assert.equal(ROUTES.adminReviews, "/admin/reviews");
-    assert.ok(readSource("src/app/(store)/admin/login/page.tsx").includes("AdminLoginForm"));
+    assert.ok(readSource("src/app/(store)/admin/login/page.tsx").includes("redirect(ROUTES.login)"));
     assert.ok(readSource("src/app/(store)/admin/reviews/page.tsx").includes("AdminReviewListPageClient"));
-    assert.ok(readSource("src/components/AdminLoginForm.tsx").includes("ADMIN_LOGIN_TITLE"));
+    assert.ok(readSource("src/app/(store)/login/page.tsx").includes("StoreLoginForm"));
   });
 
   it("gates admin console with account role", () => {
     const gate = readSource("src/components/AdminAccessGate.tsx");
     assert.ok(gate.includes("ADMIN_ACCESS_REQUIRED_TITLE"));
-    assert.ok(gate.includes("ROUTES.adminLogin") || gate.includes("admin-login"));
+    assert.ok(gate.includes("ROUTES.login"));
     assert.ok(gate.includes("isAdminAccountRole"));
     assert.ok(gate.includes("관리자 계정으로 다시 로그인"));
     assert.ok(!gate.includes("confirmAdminSession"));

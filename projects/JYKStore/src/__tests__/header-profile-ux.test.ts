@@ -30,6 +30,16 @@ describe("header profile UX", () => {
     assert.ok(header.includes("loggedIn"));
   });
 
+  it("uses shared login for guests and portals the account menu", () => {
+    const header = readSource("src/components/HeaderProfileButton.tsx");
+    const menu = readSource("src/lib/account-menu.ts");
+    assert.ok(header.includes("ROUTES.login"));
+    assert.ok(header.includes('logoutAndRedirect("login")'));
+    assert.ok(header.includes("createPortal"));
+    assert.ok(!menu.includes("관리자 로그인"));
+    assert.ok(!header.includes("admin-login"));
+  });
+
   it("account profile page exists", () => {
     const page = readSource("src/app/(store)/account/profile/page.tsx");
     const client = readSource("src/components/AccountProfilePageClient.tsx");

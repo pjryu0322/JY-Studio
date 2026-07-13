@@ -25,7 +25,6 @@ function readSource(relativePath: string): string {
 describe("account session exit UX", () => {
   it("maps logout destinations", () => {
     assert.equal(logoutDestinationPath("login"), ROUTES.login);
-    assert.equal(logoutDestinationPath("admin-login"), ROUTES.adminLogin);
     assert.equal(logoutDestinationPath("home"), ROUTES.home);
   });
 
@@ -48,6 +47,7 @@ describe("account session exit UX", () => {
       accountMenuLinksForRole("ADMIN").map((item) => item.label),
       ["계정 정보", "관리자 콘솔", "검수 대기 목록", "스토어 홈"],
     );
+    assert.ok(!accountMenuLinksForRole("ADMIN").some((item) => item.label === "관리자 로그인"));
     assert.ok(!accountMenuLinksForRole("USER").some((item) => item.href === ROUTES.admin));
     assert.ok(!accountMenuLinksForRole("USER").some((item) => item.href === ROUTES.provider));
     assert.equal(accountRoleDisplayLabel("USER"), "일반 사용자");
@@ -112,7 +112,7 @@ describe("account session exit UX", () => {
     });
 
     const first = shared("login");
-    const second = shared("admin-login");
+    const second = shared("home");
     release();
     const [a, b] = await Promise.all([first, second]);
     assert.equal(logoutCalls, 1);
@@ -138,7 +138,7 @@ describe("account session exit UX", () => {
       });
     });
     const f1 = sharedFail("login");
-    const f2 = sharedFail("admin-login");
+    const f2 = sharedFail("home");
     releaseFail();
     const [fa, fb] = await Promise.all([f1, f2]);
     assert.equal(failCalls, 1);
@@ -153,6 +153,7 @@ describe("account session exit UX", () => {
     assert.ok(header.includes("result.ok"));
     assert.ok(header.includes("setSession(emptySession)"));
     assert.ok(header.includes("계정 메뉴 열기"));
+    assert.ok(header.includes('logoutAndRedirect("login")'));
     assert.ok(!header.includes("logoutButton"));
     assert.ok(!header.includes("ProviderProfileEditor"));
     assert.ok(!/if \(inFlightRef\.current\) return/.test(header));

@@ -15,20 +15,20 @@ function readSource(relativePath: string): string {
 }
 
 describe("admin account switch UX", () => {
-  it("admin switch logout targets admin login", async () => {
-    assert.equal(logoutDestinationPath("admin-login"), ROUTES.adminLogin);
+  it("admin switch logout targets shared login", async () => {
+    assert.equal(logoutDestinationPath("login"), ROUTES.login);
     const redirects: string[] = [];
     const result = await performStoreLogout({
-      destination: "admin-login",
+      destination: "login",
       logout: async () => undefined,
       redirect: (path) => redirects.push(path),
     });
     assert.equal(result.ok, true);
-    assert.deepEqual(redirects, [ROUTES.adminLogin]);
+    assert.deepEqual(redirects, [ROUTES.login]);
 
     const failedRedirects: string[] = [];
     const failed = await performStoreLogout({
-      destination: "admin-login",
+      destination: "login",
       logout: async () => {
         throw new Error("fail");
       },
@@ -49,28 +49,19 @@ describe("admin account switch UX", () => {
     assert.ok(gate.includes("관리자 계정으로 다시 로그인"));
     assert.ok(gate.includes("현재 계정 로그아웃"));
     assert.ok(gate.includes("useStoreLogout"));
-    assert.ok(gate.includes('logoutAndRedirect("admin-login")'));
     assert.ok(gate.includes('logoutAndRedirect("login")'));
+    assert.ok(gate.includes("ROUTES.login"));
     assert.ok(gate.includes("result.ok"));
     assert.ok(gate.includes("현재 로그인 계정"));
-    assert.ok(!gate.includes('<Link\n            href={ROUTES.adminLogin}\n            className="mt-4'));
+    assert.ok(!gate.includes("ROUTES.adminLogin"));
   });
 
-  it("AdminLoginForm does not auto-register and verifies session cleanup", () => {
-    const form = readSource("src/components/AdminLoginForm.tsx");
-    assert.ok(!form.includes("registerStoreAccount"));
-    assert.ok(form.includes("등록된 관리자 계정이 아닙니다."));
-    assert.ok(form.includes("fetchAuthSession"));
-    assert.ok(form.includes("non_admin_session"));
-    assert.ok(form.includes("loginStoreAccount"));
-    assert.ok(form.includes("performStoreLogout"));
-    assert.ok(form.includes("navigate: false"));
-    assert.ok(
-      form.includes(
-        "관리자 권한이 없는 계정이며 현재 세션을 종료하지 못했습니다. 프로필 메뉴에서 다시 로그아웃해 주세요.",
-      ),
-    );
-    assert.ok(form.includes("result.ok"));
+  it("shared StoreLoginForm is the only login entry for admin switch", () => {
+    const loginPage = readSource("src/app/(store)/login/page.tsx");
+    const legacyAdminLogin = readSource("src/app/(store)/admin/login/page.tsx");
+    assert.ok(loginPage.includes("StoreLoginForm"));
+    assert.ok(legacyAdminLogin.includes("redirect(ROUTES.login)"));
+    assert.ok(!legacyAdminLogin.includes("AdminLoginForm"));
   });
 
   it("logout hook shares in-flight promise", () => {
@@ -85,7 +76,7 @@ describe("admin account switch UX", () => {
     const cookie = readSource("src/lib/auth-cookie.ts");
     assert.ok(route.includes("export async function POST"));
     assert.ok(!route.includes("export async function GET"));
-    assert.ok(route.includes('{ ok: true }') || route.includes('{ ok: true }'));
+    assert.ok(route.includes("{ ok: true }") || route.includes("{ ok: true }"));
     assert.ok(cookie.includes('sameSite: "lax"'));
     assert.ok(cookie.includes('path: "/"'));
     assert.ok(cookie.includes("httpOnly: true"));

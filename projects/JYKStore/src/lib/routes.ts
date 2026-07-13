@@ -13,7 +13,8 @@ export const ROUTES = {
   provider: "/provider",
   providerPackNew: "/provider/packs/new",
   admin: "/admin",
-  adminLogin: "/admin/login",
+  /** @deprecated Use `login`. Kept as alias so old links resolve to the shared login page. */
+  adminLogin: "/login",
   adminReviews: "/admin/reviews",
   adminKnowledgeUnitDrafts: "/admin/knowledge-unit-drafts",
   adminOps: "/admin/ops",

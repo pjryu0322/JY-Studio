@@ -1,9 +1,7 @@
-import { AdminLoginForm } from "@/components/AdminLoginForm";
+import { redirect } from "next/navigation";
+import { ROUTES } from "@/lib/routes";
 
-export default function AdminLoginPage() {
-  return (
-    <div className="space-y-4 pb-8">
-      <AdminLoginForm />
-    </div>
-  );
+/** Legacy URL — admin uses the shared store login; role is checked after sign-in. */
+export default function AdminLoginRedirectPage() {
+  redirect(ROUTES.login);
 }

@@ -79,10 +79,10 @@ export function AccountPageClient() {
         <div className="flex flex-col gap-2">
           {!loggedIn ? (
             <Link
-              href={ROUTES.adminLogin}
+              href={ROUTES.login}
               className="flex min-h-[48px] items-center justify-center rounded-2xl bg-store-accent text-sm font-bold text-white"
             >
-              관리자 계정 로그인
+              로그인
             </Link>
           ) : (
             <Link

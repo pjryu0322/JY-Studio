@@ -22,10 +22,10 @@ describe("account role registration UX", () => {
     assert.ok(!account.includes("saveConsumerProfile"));
   });
 
-  it("shows admin account login CTA without Ops Token UI", () => {
+  it("shows login CTA without Ops Token UI", () => {
     const account = readSource("src/components/AccountPageClient.tsx");
-    assert.ok(account.includes("관리자 계정 로그인"));
-    assert.ok(account.includes("ROUTES.adminLogin") || account.includes("adminLogin"));
+    assert.ok(account.includes("로그인"));
+    assert.ok(account.includes("ROUTES.login"));
     assert.ok(!/Ops Token/i.test(account));
     assert.ok(!account.includes("부트스트랩"));
     assert.ok(!account.includes("AdminRoleVerifier"));
@@ -37,7 +37,7 @@ describe("account role registration UX", () => {
     const gate = readSource("src/components/AdminAccessGate.tsx");
     assert.ok(layout.includes("AdminAccessGate"));
     assert.ok(gate.includes("ADMIN_ACCESS_REQUIRED_TITLE"));
-    assert.ok(gate.includes("adminLogin") || gate.includes("admin-login"));
+    assert.ok(gate.includes("ROUTES.login"));
     assert.ok(gate.includes("isAdminAccountRole"));
     assert.ok(gate.includes("useStoreLogout"));
     assert.ok(!gate.includes("confirmAdminSession"));
