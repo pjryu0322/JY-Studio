@@ -149,6 +149,7 @@ export const ADMIN_REVIEWS_STATUS_IN_REVIEW = "검수 중";
 export const ADMIN_REVIEW_TAB_PACKAGE = "패키지";
 export const ADMIN_REVIEW_TAB_WARNINGS = "주의";
 export const ADMIN_REVIEW_TAB_SOURCES = "문서";
+export const ADMIN_REVIEW_TAB_DOCLING = "Docling";
 export const ADMIN_REVIEW_TAB_ADVANCED = "고급";
 export const ADMIN_REVIEW_EVIDENCE_SECTION_TITLE = "판단 근거";
 export const ADMIN_REVIEW_RECEIPT_INFO_TITLE = "접수 정보";

@@ -9,17 +9,23 @@ import {
 export function AdminReviewEvidenceTabs({
   activeTab,
   onTabChange,
+  includeDocling = true,
 }: {
   readonly activeTab: AdminReviewEvidenceTabId;
   readonly onTabChange: (tab: AdminReviewEvidenceTabId) => void;
+  readonly includeDocling?: boolean;
 }) {
+  const tabs = includeDocling
+    ? ADMIN_REVIEW_EVIDENCE_TAB_IDS
+    : ADMIN_REVIEW_EVIDENCE_TAB_IDS.filter((id) => id !== "docling");
+
   return (
     <div
       className="flex gap-1 overflow-x-auto rounded-2xl border border-store-border bg-white p-1 shadow-card"
       role="tablist"
       aria-label="판단 근거"
     >
-      {ADMIN_REVIEW_EVIDENCE_TAB_IDS.map((tabId) => {
+      {tabs.map((tabId) => {
         const active = activeTab === tabId;
         return (
           <button

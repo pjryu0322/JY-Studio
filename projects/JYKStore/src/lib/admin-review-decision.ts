@@ -5,6 +5,7 @@ import {
 } from "@/lib/pack-review-status";
 import {
   isDistributionReviewSnapshot,
+  isDoclingBundleReviewSnapshot,
   type AnyReviewSubmitSnapshot,
 } from "@/lib/provider-review-submit-snapshot";
 import {
@@ -120,6 +121,34 @@ export function detectSubmitSnapshotDrift(detail: AdminReviewDetailDto): {
     return { changed: reasons.length > 0, reasons };
   }
 
+  if (isDoclingBundleReviewSnapshot(snapshot)) {
+    const reasons: string[] = [];
+    const distribution = detail.distribution;
+    const submittedVersionId = snapshot.submittedVersionId;
+    const currentVersionId = detail.versions[0]?.id;
+
+    if (submittedVersionId && currentVersionId && submittedVersionId !== currentVersionId) {
+      reasons.push("제출 버전이 현재 검수 버전과 다릅니다.");
+    }
+    if (distribution) {
+      if (distribution.visibility !== snapshot.visibility) {
+        reasons.push("공개범위가 제출 시점과 다릅니다.");
+      }
+      if (distribution.allowDownload !== snapshot.allowDownload) {
+        reasons.push("다운로드 허용 설정이 제출 시점과 다릅니다.");
+      }
+      if ((distribution.sourceTitle ?? null) !== (snapshot.sourceTitle ?? null)) {
+        reasons.push("출처 정보가 제출 시점과 다릅니다.");
+      }
+      if (distribution.licenseName !== snapshot.licenseName) {
+        reasons.push("라이선스가 제출 시점과 다릅니다.");
+      }
+    } else {
+      reasons.push("유통정보가 없습니다.");
+    }
+    return { changed: reasons.length > 0, reasons };
+  }
+
   const reasons: string[] = [];
   const version = snapshot.submittedVersionId
     ? detail.versions.find((v) => v.id === snapshot.submittedVersionId)
@@ -189,6 +218,12 @@ export function isSubmitSnapshotApprovalEligible(detail: AdminReviewDetailDto): 
     return true;
   }
 
+  if (isDoclingBundleReviewSnapshot(snapshot)) {
+    if (!detail.distribution) return false;
+    if (detectSubmitSnapshotDrift(detail).changed) return false;
+    return true;
+  }
+
   if (snapshot.releaseGateStatus !== "PASS" && snapshot.releaseGateStatus !== "WARNING") {
     return false;
   }
@@ -208,6 +243,9 @@ export function canApproveAdminReview(detail: AdminReviewDetailDto): boolean {
   }
   if (detail.payload && isDistributionReviewSnapshot(getSubmitSnapshot(detail))) {
     return false;
+  }
+  if (isDoclingBundleReviewSnapshot(getSubmitSnapshot(detail))) {
+    return isSubmitSnapshotApprovalEligible(detail);
   }
   return (
     detail.pack.status === "REVIEWING" &&
@@ -239,6 +277,26 @@ export function collectAcceptBlockers(detail: AdminReviewDetailDto): string[] {
       blockers.push("유통정보가 없습니다.");
     } else if (!detail.distribution.licenseName.trim()) {
       blockers.push("라이선스명이 없습니다.");
+    }
+    const drift = detectSubmitSnapshotDrift(detail);
+    if (drift.changed) {
+      blockers.push(...drift.reasons);
+    }
+    return [...new Set(blockers)];
+  }
+
+  if (isDoclingBundleReviewSnapshot(snapshot)) {
+    if (!detail.distribution) {
+      blockers.push("유통정보가 없습니다.");
+    } else if (!detail.distribution.licenseName.trim()) {
+      blockers.push("라이선스명이 없습니다.");
+    }
+    if (!snapshot.doclingBundleId || !snapshot.normalizedDocumentId) {
+      blockers.push("Docling import 제출 정보가 불완전합니다.");
+    }
+    const drift = detectSubmitSnapshotDrift(detail);
+    if (drift.changed) {
+      blockers.push(...drift.reasons);
     }
     return [...new Set(blockers)];
   }
@@ -375,6 +433,7 @@ function hasWarningSignals(detail: AdminReviewDetailDto): boolean {
   const snapshotReleaseWarning =
     snapshot &&
     !isDistributionReviewSnapshot(snapshot) &&
+    !isDoclingBundleReviewSnapshot(snapshot) &&
     snapshot.releaseGateStatus === "WARNING";
   return (
     snapshotReleaseWarning ||
@@ -460,6 +519,16 @@ export function resolveReviewDecisionState(detail: AdminReviewDetailDto): Review
       return "submit_package_changed";
     }
     if (snapshot.validationStatus !== "VALID" || detail.payload?.validationStatus !== "VALID") {
+      return "approval_blocked";
+    }
+    return "approval_ready";
+  }
+
+  if (isDoclingBundleReviewSnapshot(snapshot)) {
+    if (detectSubmitSnapshotDrift(detail).changed) {
+      return "submit_package_changed";
+    }
+    if (!detail.distribution) {
       return "approval_blocked";
     }
     return "approval_ready";
@@ -592,6 +661,7 @@ export function collectReviewWarnings(detail: AdminReviewDetailDto): string[] {
   if (
     snapshot &&
     !isDistributionReviewSnapshot(snapshot) &&
+    !isDoclingBundleReviewSnapshot(snapshot) &&
     snapshot.warnings?.length
   ) {
     warnings.push(...snapshot.warnings);
@@ -621,6 +691,7 @@ export function collectReviewWarnings(detail: AdminReviewDetailDto): string[] {
     r.releaseGateStatus === "WARNING" ||
     (snapshot &&
       !isDistributionReviewSnapshot(snapshot) &&
+      !isDoclingBundleReviewSnapshot(snapshot) &&
       snapshot.releaseGateStatus === "WARNING")
   ) {
     warnings.push("릴리스 게이트가 WARNING입니다.");

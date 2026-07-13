@@ -1,6 +1,9 @@
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import { detectSubmitSnapshotDrift } from "@/lib/admin-review-decision";
-import { isDistributionReviewSnapshot } from "@/lib/provider-review-submit-snapshot";
+import {
+  isDistributionReviewSnapshot,
+  isDoclingBundleReviewSnapshot,
+} from "@/lib/provider-review-submit-snapshot";
 import { ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE } from "@/lib/role-based-ux-copy";
 
 function truncateId(id: string, max = 28): string {
@@ -86,6 +89,36 @@ export function AdminReviewPackageSnapshotTab({
                 {drift.reasons.slice(1).join(" · ")}
               </span>
             ) : null}
+          </p>
+        ) : null}
+      </section>
+    );
+  }
+
+  if (isDoclingBundleReviewSnapshot(snapshot)) {
+    return (
+      <section className="space-y-3 rounded-2xl border border-store-border bg-white p-4 shadow-card">
+        <h2 className="text-sm font-bold text-slate-900">{ADMIN_REVIEW_SUBMIT_SNAPSHOT_TITLE}</h2>
+        <p className="text-xs font-semibold text-store-accent">Docling 3파일 Bundle</p>
+        <ul className="space-y-2 text-xs text-slate-700 sm:text-sm">
+          <li>제출일시: {snapshot.submittedAt.replace("T", " ").slice(0, 16)}</li>
+          {submittedVersionLabel ? <li>제출 버전: {submittedVersionLabel}</li> : null}
+          <li>Bundle ID: {snapshot.doclingBundleId}</li>
+          <li>Schema: {snapshot.doclingSchemaVersion ?? "—"}</li>
+          <li>Adapter: {snapshot.adapterVersion}</li>
+          <li>NormalizedDocument: {snapshot.normalizedDocumentId}</li>
+          <li className="break-all">Fingerprint: {snapshot.fingerprint ?? "—"}</li>
+          <li>경고 수: {snapshot.warningCount}</li>
+          <li>출처: {snapshot.sourceTitle ?? "—"}</li>
+          <li>라이선스: {snapshot.licenseName}</li>
+          <li>공개범위: {snapshot.visibility}</li>
+        </ul>
+        <p className="text-xs text-store-muted">
+          상세 파일·미리보기는 Docling 근거 탭에서 확인하세요.
+        </p>
+        {drift.changed ? (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            제출 후 변경 감지: {drift.reasons[0]}
           </p>
         ) : null}
       </section>

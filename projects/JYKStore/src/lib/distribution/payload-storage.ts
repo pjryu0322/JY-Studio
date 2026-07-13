@@ -12,9 +12,11 @@ export type PayloadStoragePutInput = {
   versionId: string;
   payloadId: string;
   originalFileName: string;
-  mimeType: "application/zip";
+  mimeType: string;
   bytes: Uint8Array;
   checksumSha256: string;
+  /** When set, stores under this key instead of the ZIP payload key. */
+  objectKey?: string;
 };
 
 export type PayloadStorageGetResult = {

@@ -74,12 +74,14 @@ export class S3PayloadStorage implements PayloadStorage {
   }
 
   async put(input: PayloadStoragePutInput): Promise<PayloadObjectDescriptor> {
-    const objectKey = buildPayloadObjectKey({
-      prefix: this.config.prefix,
-      packId: input.packId,
-      versionId: input.versionId,
-      payloadId: input.payloadId,
-    });
+    const objectKey =
+      input.objectKey ??
+      buildPayloadObjectKey({
+        prefix: this.config.prefix,
+        packId: input.packId,
+        versionId: input.versionId,
+        payloadId: input.payloadId,
+      });
 
     try {
       const result = await this.client.send(

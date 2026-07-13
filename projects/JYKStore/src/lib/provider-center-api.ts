@@ -275,3 +275,126 @@ export async function upsertProviderPackDistributionApi(
     distribution: import("@/lib/distribution/distribution-metadata-service").PackDistributionMetadataDto;
   };
 }
+
+export async function fetchProviderDoclingImportApi(packId: string): Promise<{
+  clientId: string;
+  bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import`,
+    {
+      method: "GET",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
+  };
+}
+
+export async function uploadProviderDoclingImportApi(
+  packId: string,
+  input: {
+    sourceFile: File;
+    doclingJsonFile: File;
+    doclingMarkdownFile: File;
+    adapterVersion?: string;
+  },
+): Promise<{
+  clientId: string;
+  bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
+}> {
+  const form = new FormData();
+  form.append("sourceFile", input.sourceFile);
+  form.append("doclingJsonFile", input.doclingJsonFile);
+  form.append("doclingMarkdownFile", input.doclingMarkdownFile);
+  if (input.adapterVersion) {
+    form.append("adapterVersion", input.adapterVersion);
+  }
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import`,
+    {
+      method: "POST",
+      credentials: "include",
+      body: form,
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
+  };
+}
+
+export async function deleteProviderDoclingImportApi(
+  packId: string,
+): Promise<{ clientId: string; deleted: true }> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import`,
+    {
+      method: "DELETE",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as { clientId: string; deleted: true };
+}
+
+export async function retryProviderDoclingImportApi(packId: string): Promise<{
+  clientId: string;
+  bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import/retry`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
+  };
+}
+
+export async function fetchProviderNormalizedDocumentApi(packId: string): Promise<{
+  clientId: string;
+  document: import("@/lib/docling-import/docling-import-dto").NormalizedDocumentSummaryDto | null;
+  structure: unknown;
+  capabilities: import("@/lib/docling-import/docling-import-dto").PackCapabilitiesDto;
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/normalized-document`,
+    {
+      method: "GET",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    document: import("@/lib/docling-import/docling-import-dto").NormalizedDocumentSummaryDto | null;
+    structure: unknown;
+    capabilities: import("@/lib/docling-import/docling-import-dto").PackCapabilitiesDto;
+  };
+}
+
+export function providerDoclingImportFileDownloadUrl(
+  packId: string,
+  fileId: string,
+): string {
+  return `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import/files/${encodeURIComponent(fileId)}/download`;
+}

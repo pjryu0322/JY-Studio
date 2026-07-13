@@ -13,8 +13,11 @@ import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderPackTabs } from "@/components/ProviderPackTabs";
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
 import type { KnowledgePayloadPublicDto } from "@/lib/distribution/payload-service";
+import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
+import { isDoclingPayloadPresent } from "@/lib/docling-import/docling-import-ui";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
 import {
+  fetchProviderDoclingImportApi,
   fetchProviderPack,
   fetchProviderPackDistributionApi,
   fetchProviderPackPayloadApi,
@@ -49,6 +52,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   const [pack, setPack] = useState<ProviderPackDetailDto | null>(null);
   const [payload, setPayload] = useState<KnowledgePayloadPublicDto | null>(null);
+  const [doclingBundle, setDoclingBundle] = useState<DoclingImportBundlePublicDto | null>(null);
   const [distribution, setDistribution] = useState<PackDistributionMetadataDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,12 +85,14 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setDescription(data.pack.description);
       setVersionOverview(data.pack.versions[0]?.overview ?? "");
 
-      const [payloadRes, distRes] = await Promise.all([
+      const [payloadRes, distRes, doclingRes] = await Promise.all([
         fetchProviderPackPayloadApi(packId).catch(() => ({ payload: null })),
         fetchProviderPackDistributionApi(packId).catch(() => ({ distribution: null })),
+        fetchProviderDoclingImportApi(packId).catch(() => ({ bundle: null })),
       ]);
       setPayload(payloadRes.payload);
       setDistribution(distRes.distribution);
+      setDoclingBundle(doclingRes.bundle);
     } catch (err) {
       setError(err instanceof Error ? err.message : "지식팩을 불러오지 못했습니다.");
     } finally {
@@ -99,7 +105,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   }, [load]);
 
   const sourceDocumentCount = pack?.versions[0]?.sourceDocuments.length ?? 0;
-  const distributionMode = Boolean(payload) || sourceDocumentCount === 0;
+  const hasContentPayload =
+    Boolean(payload) || isDoclingPayloadPresent(doclingBundle?.status);
+  const distributionMode = hasContentPayload || sourceDocumentCount === 0;
 
   const hasBasicInfo = Boolean(
     pack?.categoryId &&
@@ -114,8 +122,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         hasBasicInfo,
         payload,
         distribution,
+        doclingBundle,
       }),
-    [hasBasicInfo, payload, distribution],
+    [hasBasicInfo, payload, distribution, doclingBundle],
   );
 
   const defaultTab = useMemo(
@@ -124,10 +133,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         created: showCreatedBanner,
         status: pack?.status ?? "DRAFT",
         sourceDocumentCount,
-        hasPayload: Boolean(payload),
+        hasPayload: Boolean(payload) || isDoclingPayloadPresent(doclingBundle?.status),
         hasDistribution: Boolean(distribution),
       }),
-    [showCreatedBanner, pack?.status, sourceDocumentCount, payload, distribution],
+    [showCreatedBanner, pack?.status, sourceDocumentCount, payload, distribution, doclingBundle],
   );
 
   const activeTab = resolveProviderPackTabFromLocation({
@@ -267,10 +276,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
               </p>
               <button
                 type="button"
-                onClick={() => selectTab(payload ? "distribution" : "payload")}
+                onClick={() => selectTab(hasContentPayload ? "distribution" : "payload")}
                 className="mt-2 min-h-[40px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white"
               >
-                {payload ? "유통정보로 이동" : PROVIDER_PACK_GO_TO_PAYLOAD_TAB}
+                {hasContentPayload ? "유통정보로 이동" : PROVIDER_PACK_GO_TO_PAYLOAD_TAB}
               </button>
             </>
           )}
@@ -312,10 +321,12 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             onGoToDistributionTab={() => selectTab("distribution")}
             onGoToReviewTab={() => selectTab("review")}
             onPayloadChanged={setPayload}
+            onDoclingChanged={setDoclingBundle}
             onPackUpdated={(next) => {
               setPack(next);
               setVersionOverview(next.versions[0]?.overview ?? "");
               setPayload(null);
+              setDoclingBundle(null);
               setDistribution(null);
             }}
           />

@@ -197,6 +197,10 @@ export function AdminReviewAcceptTab({
             {submittedVersionLabel ? <li>제출 버전: {submittedVersionLabel}</li> : null}
             {"mode" in snapshot && snapshot.mode === "DISTRIBUTION" ? (
               <li>모드: Distribution · Profile {snapshot.payloadProfile}</li>
+            ) : "mode" in snapshot && snapshot.mode === "DOCLING_BUNDLE" ? (
+              <li>
+                모드: Docling Bundle · Schema {snapshot.doclingSchemaVersion ?? "—"}
+              </li>
             ) : "releaseGateStatus" in snapshot ? (
               <li>릴리스 게이트: {snapshot.releaseGateStatus}</li>
             ) : null}

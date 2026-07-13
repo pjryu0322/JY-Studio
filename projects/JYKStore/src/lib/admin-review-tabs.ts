@@ -1,6 +1,8 @@
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
 import { PackReviewStatus } from "@/lib/pack-review-status";
+import { isDoclingBundleReviewSnapshot } from "@/lib/provider-review-submit-snapshot";
 import {
+  ADMIN_REVIEW_TAB_DOCLING,
   ADMIN_REVIEW_TAB_PACKAGE,
   ADMIN_REVIEW_TAB_SOURCES,
   ADMIN_REVIEW_TAB_WARNINGS,
@@ -11,6 +13,7 @@ export const ADMIN_REVIEW_EVIDENCE_TAB_IDS = [
   "package",
   "warnings",
   "documents",
+  "docling",
 ] as const;
 
 export type AdminReviewEvidenceTabId =
@@ -41,9 +44,14 @@ export function isReviewAccepted(detail: AdminReviewDetailDto): boolean {
   return isAcceptedAdminReview(detail);
 }
 
+export function hasDoclingReviewEvidence(detail: AdminReviewDetailDto): boolean {
+  return isDoclingBundleReviewSnapshot(detail.latestReview?.submitSnapshot ?? null);
+}
+
 export function defaultAdminReviewEvidenceTab(
-  _detail: AdminReviewDetailDto,
+  detail: AdminReviewDetailDto,
 ): AdminReviewEvidenceTabId {
+  if (hasDoclingReviewEvidence(detail)) return "docling";
   return "package";
 }
 
@@ -64,6 +72,8 @@ export function adminReviewEvidenceTabLabel(
       return ADMIN_REVIEW_TAB_WARNINGS;
     case "documents":
       return ADMIN_REVIEW_TAB_SOURCES;
+    case "docling":
+      return ADMIN_REVIEW_TAB_DOCLING;
   }
 }
 

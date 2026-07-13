@@ -16,6 +16,34 @@ export type DistributionReviewSubmitSnapshot = {
   allowDownload: boolean;
 };
 
+export type DoclingBundleReviewSubmitSnapshot = {
+  mode: "DOCLING_BUNDLE";
+  submittedAt: string;
+  submittedVersionId: string;
+  doclingBundleId: string;
+  sourceFileId: string;
+  jsonPayloadFileId: string;
+  markdownPayloadFileId: string;
+  checksums: {
+    source: string;
+    json: string;
+    markdown: string;
+  };
+  doclingSchemaVersion: string | null;
+  adapterVersion: string;
+  normalizedDocumentId: string;
+  fingerprint: string | null;
+  warningCount: number;
+  sourceTitle: string | null;
+  licenseName: string;
+  visibility: string;
+  allowDownload: boolean;
+};
+
+export type ReviewSubmitSnapshot =
+  | DistributionReviewSubmitSnapshot
+  | DoclingBundleReviewSubmitSnapshot;
+
 export function buildDistributionReviewSubmitSnapshot(input: {
   submittedVersionId: string;
   payloadId: string;
@@ -37,6 +65,44 @@ export function buildDistributionReviewSubmitSnapshot(input: {
     validationStatus: "VALID",
     manifestSchemaVersion: DISTRIBUTION_MANIFEST_SCHEMA_VERSION,
     manifestFingerprint: input.manifestFingerprint,
+    sourceTitle: input.sourceTitle,
+    licenseName: input.licenseName,
+    visibility: input.visibility,
+    allowDownload: input.allowDownload,
+  };
+}
+
+export function buildDoclingBundleReviewSubmitSnapshot(input: {
+  submittedVersionId: string;
+  doclingBundleId: string;
+  sourceFileId: string;
+  jsonPayloadFileId: string;
+  markdownPayloadFileId: string;
+  checksums: { source: string; json: string; markdown: string };
+  doclingSchemaVersion: string | null;
+  adapterVersion: string;
+  normalizedDocumentId: string;
+  fingerprint: string | null;
+  warningCount: number;
+  sourceTitle: string | null;
+  licenseName: string;
+  visibility: string;
+  allowDownload: boolean;
+}): DoclingBundleReviewSubmitSnapshot {
+  return {
+    mode: "DOCLING_BUNDLE",
+    submittedAt: new Date().toISOString(),
+    submittedVersionId: input.submittedVersionId,
+    doclingBundleId: input.doclingBundleId,
+    sourceFileId: input.sourceFileId,
+    jsonPayloadFileId: input.jsonPayloadFileId,
+    markdownPayloadFileId: input.markdownPayloadFileId,
+    checksums: input.checksums,
+    doclingSchemaVersion: input.doclingSchemaVersion,
+    adapterVersion: input.adapterVersion,
+    normalizedDocumentId: input.normalizedDocumentId,
+    fingerprint: input.fingerprint,
+    warningCount: input.warningCount,
     sourceTitle: input.sourceTitle,
     licenseName: input.licenseName,
     visibility: input.visibility,
@@ -75,4 +141,58 @@ export function parseDistributionReviewSubmitSnapshot(
     visibility: typeof raw.visibility === "string" ? raw.visibility : "PRIVATE",
     allowDownload: raw.allowDownload !== false,
   };
+}
+
+export function parseDoclingBundleReviewSubmitSnapshot(
+  value: unknown,
+): DoclingBundleReviewSubmitSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (raw.mode !== "DOCLING_BUNDLE") return null;
+  if (typeof raw.submittedAt !== "string") return null;
+  if (typeof raw.submittedVersionId !== "string") return null;
+  if (typeof raw.doclingBundleId !== "string") return null;
+  if (typeof raw.sourceFileId !== "string") return null;
+  if (typeof raw.jsonPayloadFileId !== "string") return null;
+  if (typeof raw.markdownPayloadFileId !== "string") return null;
+  if (typeof raw.adapterVersion !== "string") return null;
+  if (typeof raw.normalizedDocumentId !== "string") return null;
+  if (typeof raw.licenseName !== "string") return null;
+  if (!raw.checksums || typeof raw.checksums !== "object") return null;
+  const checksums = raw.checksums as Record<string, unknown>;
+  if (typeof checksums.source !== "string") return null;
+  if (typeof checksums.json !== "string") return null;
+  if (typeof checksums.markdown !== "string") return null;
+
+  return {
+    mode: "DOCLING_BUNDLE",
+    submittedAt: raw.submittedAt,
+    submittedVersionId: raw.submittedVersionId,
+    doclingBundleId: raw.doclingBundleId,
+    sourceFileId: raw.sourceFileId,
+    jsonPayloadFileId: raw.jsonPayloadFileId,
+    markdownPayloadFileId: raw.markdownPayloadFileId,
+    checksums: {
+      source: checksums.source,
+      json: checksums.json,
+      markdown: checksums.markdown,
+    },
+    doclingSchemaVersion:
+      typeof raw.doclingSchemaVersion === "string" ? raw.doclingSchemaVersion : null,
+    adapterVersion: raw.adapterVersion,
+    normalizedDocumentId: raw.normalizedDocumentId,
+    fingerprint: typeof raw.fingerprint === "string" ? raw.fingerprint : null,
+    warningCount: typeof raw.warningCount === "number" ? raw.warningCount : 0,
+    sourceTitle: typeof raw.sourceTitle === "string" ? raw.sourceTitle : null,
+    licenseName: raw.licenseName,
+    visibility: typeof raw.visibility === "string" ? raw.visibility : "PRIVATE",
+    allowDownload: raw.allowDownload !== false,
+  };
+}
+
+export function parseReviewSubmitSnapshot(value: unknown): ReviewSubmitSnapshot | null {
+  return (
+    parseDistributionReviewSubmitSnapshot(value) ??
+    parseDoclingBundleReviewSubmitSnapshot(value)
+  );
 }

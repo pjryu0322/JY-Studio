@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminReviewAcceptTab } from "@/components/AdminReviewAcceptTab";
+import { AdminReviewDoclingImportTab } from "@/components/AdminReviewDoclingImportTab";
 import { AdminReviewEvidenceTabs } from "@/components/AdminReviewEvidenceTabs";
 import { AdminReviewPackageSnapshotTab } from "@/components/AdminReviewPackageSnapshotTab";
 import { AdminReviewPageHeader } from "@/components/AdminReviewPageHeader";
@@ -9,9 +10,13 @@ import { AdminReviewReceiptInfoCard } from "@/components/AdminReviewReceiptInfoC
 import { AdminReviewSourceDocumentsTab } from "@/components/AdminReviewSourceDocumentsTab";
 import { AdminReviewWarningIssuesTab } from "@/components/AdminReviewWarningIssuesTab";
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
-import { fetchAdminReviewDetail } from "@/lib/admin-review-api";
+import {
+  fetchAdminDoclingImportApi,
+  fetchAdminReviewDetail,
+} from "@/lib/admin-review-api";
 import {
   defaultAdminReviewEvidenceTab,
+  hasDoclingReviewEvidence,
   isReviewAccepted,
   type AdminReviewEvidenceTabId,
 } from "@/lib/admin-review-tabs";
@@ -21,6 +26,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<AdminReviewDetailDto | null>(null);
+  const [hasDoclingBundle, setHasDoclingBundle] = useState(false);
   const [evidenceTab, setEvidenceTab] =
     useState<AdminReviewEvidenceTabId>("package");
 
@@ -28,8 +34,12 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchAdminReviewDetail(packId);
+      const [data, docling] = await Promise.all([
+        fetchAdminReviewDetail(packId),
+        fetchAdminDoclingImportApi(packId).catch(() => ({ bundle: null })),
+      ]);
       setDetail(data.detail);
+      setHasDoclingBundle(Boolean(docling.bundle));
       setEvidenceTab(defaultAdminReviewEvidenceTab(data.detail));
     } catch (err) {
       setError(err instanceof Error ? err.message : "검수 상세를 불러오지 못했습니다.");
@@ -41,6 +51,11 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const showDoclingTab = useMemo(() => {
+    if (!detail) return false;
+    return hasDoclingReviewEvidence(detail) || hasDoclingBundle;
+  }, [detail, hasDoclingBundle]);
 
   if (loading) {
     return <p className="text-sm text-store-muted">불러오는 중…</p>;
@@ -76,6 +91,7 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         <AdminReviewEvidenceTabs
           activeTab={evidenceTab}
           onTabChange={setEvidenceTab}
+          includeDocling={showDoclingTab}
         />
         {evidenceTab === "package" ? (
           <AdminReviewPackageSnapshotTab detail={detail} />
@@ -85,6 +101,13 @@ export function AdminReviewDetailPageClient({ packId }: { readonly packId: strin
         ) : null}
         {evidenceTab === "documents" ? (
           <AdminReviewSourceDocumentsTab packId={packId} detail={detail} />
+        ) : null}
+        {evidenceTab === "docling" && showDoclingTab ? (
+          <AdminReviewDoclingImportTab
+            packId={packId}
+            detail={detail}
+            onDetailUpdated={setDetail}
+          />
         ) : null}
       </section>
     </div>

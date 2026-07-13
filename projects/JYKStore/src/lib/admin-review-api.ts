@@ -83,3 +83,85 @@ export async function rejectAdminReview(
   }
   return (await response.json()) as AdminReviewDetailResponse;
 }
+
+export async function fetchAdminDoclingImportApi(packId: string): Promise<{
+  clientId: string;
+  bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
+}> {
+  const response = await fetch(
+    `/api/v1/admin/reviews/${encodeURIComponent(packId)}/docling-import`,
+    {
+      method: "GET",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;
+  };
+}
+
+export async function fetchAdminNormalizedDocumentApi(packId: string): Promise<{
+  clientId: string;
+  document: import("@/lib/docling-import/docling-import-dto").NormalizedDocumentSummaryDto | null;
+  structure: unknown;
+  capabilities: import("@/lib/docling-import/docling-import-dto").PackCapabilitiesDto;
+}> {
+  const response = await fetch(
+    `/api/v1/admin/reviews/${encodeURIComponent(packId)}/normalized-document`,
+    {
+      method: "GET",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    document: import("@/lib/docling-import/docling-import-dto").NormalizedDocumentSummaryDto | null;
+    structure: unknown;
+    capabilities: import("@/lib/docling-import/docling-import-dto").PackCapabilitiesDto;
+  };
+}
+
+export async function patchAdminDistributionMetadataApi(
+  packId: string,
+  input: {
+    sourceTitle?: string | null;
+    sourceUrl?: string | null;
+    licenseName: string;
+    licenseUrl?: string | null;
+    usageTerms?: string | null;
+    readmeText?: string | null;
+    visibility?: string;
+    allowDownload?: boolean;
+  },
+): Promise<{
+  clientId: string;
+  distribution: import("@/lib/admin-review-dto").AdminReviewDetailDto["distribution"];
+}> {
+  const response = await fetch(
+    `/api/v1/admin/reviews/${encodeURIComponent(packId)}/distribution-metadata`,
+    {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    distribution: import("@/lib/admin-review-dto").AdminReviewDetailDto["distribution"];
+  };
+}
+
+export function adminDoclingImportFileDownloadUrl(packId: string, fileId: string): string {
+  return `/api/v1/admin/reviews/${encodeURIComponent(packId)}/docling-import/files/${encodeURIComponent(fileId)}/download`;
+}

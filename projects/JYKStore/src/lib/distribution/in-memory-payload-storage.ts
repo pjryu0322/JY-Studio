@@ -19,12 +19,14 @@ export class InMemoryPayloadStorage implements PayloadStorage {
   prefix = "payloads";
 
   async put(input: PayloadStoragePutInput): Promise<PayloadObjectDescriptor> {
-    const objectKey = buildPayloadObjectKey({
-      prefix: this.prefix,
-      packId: input.packId,
-      versionId: input.versionId,
-      payloadId: input.payloadId,
-    });
+    const objectKey =
+      input.objectKey ??
+      buildPayloadObjectKey({
+        prefix: this.prefix,
+        packId: input.packId,
+        versionId: input.versionId,
+        payloadId: input.payloadId,
+      });
     this.objects.set(objectKey, {
       bytes: input.bytes,
       checksumSha256: input.checksumSha256,

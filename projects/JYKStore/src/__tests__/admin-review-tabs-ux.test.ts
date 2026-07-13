@@ -130,6 +130,7 @@ describe("admin review evidence tabs UX", () => {
       "package",
       "warnings",
       "documents",
+      "docling",
     ]);
     assert.equal(defaultAdminReviewEvidenceTab(detail), "package");
     assert.equal(isReviewPending(detail), true);
@@ -143,6 +144,7 @@ describe("admin review evidence tabs UX", () => {
     assert.ok(page.includes("AdminReviewEvidenceTabs"));
     assert.ok(page.includes("ADMIN_REVIEW_EVIDENCE_SECTION_TITLE"));
     assert.ok(page.includes("AdminReviewReceiptInfoCard"));
+    assert.ok(page.includes("AdminReviewDoclingImportTab"));
     assert.ok(!page.includes("AdminReviewAdvancedActionsTab"));
     assert.ok(!page.includes('activeTab === "accept"'));
     assert.ok(!page.includes('evidenceTab === "advanced"'));

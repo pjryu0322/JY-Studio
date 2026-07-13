@@ -117,6 +117,31 @@ export function buildPayloadObjectKey(input: {
   return `${prefix}/${input.packId}/${input.versionId}/${input.payloadId}.zip`;
 }
 
+/** Immutable Docling pack-file object key (not ZIP). */
+export function buildPackFileObjectKey(input: {
+  prefix: string;
+  packId: string;
+  versionId: string;
+  bundleId: string;
+  fileId: string;
+  role: string;
+  extension: string;
+}): string {
+  const safe = /^[a-zA-Z0-9_-]+$/;
+  if (
+    !safe.test(input.packId) ||
+    !safe.test(input.versionId) ||
+    !safe.test(input.bundleId) ||
+    !safe.test(input.fileId)
+  ) {
+    throw new Error("Invalid id for pack-file object key");
+  }
+  const role = input.role.replace(/[^A-Z0-9_]/gi, "").toUpperCase() || "FILE";
+  const ext = input.extension.replace(/^\./, "").replace(/[^a-z0-9]/gi, "").toLowerCase() || "bin";
+  const prefix = sanitizePrefix(input.prefix || "payloads");
+  return `${prefix}/pack-files/${input.packId}/${input.versionId}/${input.bundleId}/${role}/${input.fileId}.${ext}`;
+}
+
 /** Redacted view for readiness / logs — never includes secrets. */
 export function describePayloadStorageConfig(
   config: PayloadS3StorageConfig,

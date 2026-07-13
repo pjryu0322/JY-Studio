@@ -1,5 +1,8 @@
 import type { AdminReviewDetailDto } from "@/lib/admin-review-dto";
-import { isDistributionReviewSnapshot } from "@/lib/provider-review-submit-snapshot";
+import {
+  isDistributionReviewSnapshot,
+  isDoclingBundleReviewSnapshot,
+} from "@/lib/provider-review-submit-snapshot";
 import {
   ADMIN_REVIEW_CTA_VIEW_PACKAGE,
   ADMIN_REVIEW_RECEIPT_INFO_TITLE,
@@ -44,6 +47,15 @@ export function AdminReviewReceiptInfoCard({
               <li>모드: Distribution Payload</li>
               <li>Profile: {snapshot.payloadProfile}</li>
               <li>검증: {snapshot.validationStatus}</li>
+            </>
+          ) : isDoclingBundleReviewSnapshot(snapshot) ? (
+            <>
+              <li>제출일시: {formatDateTime(snapshot.submittedAt)}</li>
+              {submittedVersionLabel ? <li>제출 버전: {submittedVersionLabel}</li> : null}
+              <li>모드: Docling 3파일 Bundle</li>
+              <li>Schema: {snapshot.doclingSchemaVersion ?? "—"}</li>
+              <li>Adapter: {snapshot.adapterVersion}</li>
+              <li>경고 수: {snapshot.warningCount}</li>
             </>
           ) : (
             <>

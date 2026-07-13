@@ -1,6 +1,8 @@
 import {
   parseDistributionReviewSubmitSnapshot,
+  parseDoclingBundleReviewSubmitSnapshot,
   type DistributionReviewSubmitSnapshot,
+  type DoclingBundleReviewSubmitSnapshot,
 } from "@/lib/distribution/distribution-submit-snapshot";
 
 export type LegacyProviderReviewSubmitSnapshot = {
@@ -24,7 +26,8 @@ export type ProviderReviewSubmitSnapshot = LegacyProviderReviewSubmitSnapshot;
 
 export type AnyReviewSubmitSnapshot =
   | LegacyProviderReviewSubmitSnapshot
-  | DistributionReviewSubmitSnapshot;
+  | DistributionReviewSubmitSnapshot
+  | DoclingBundleReviewSubmitSnapshot;
 
 export function buildProviderReviewSubmitSnapshot(input: {
   submittedVersionId: string;
@@ -59,7 +62,7 @@ export function parseLegacyProviderReviewSubmitSnapshot(
 ): LegacyProviderReviewSubmitSnapshot | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
-  if (raw.mode === "DISTRIBUTION") return null;
+  if (raw.mode === "DISTRIBUTION" || raw.mode === "DOCLING_BUNDLE") return null;
   if (typeof raw.submittedAt !== "string" || typeof raw.releaseGateRunId !== "string") {
     return null;
   }
@@ -101,12 +104,14 @@ export function parseLegacyProviderReviewSubmitSnapshot(
   };
 }
 
-/** Parses legacy or distribution submit snapshots. */
+/** Parses legacy, distribution ZIP, or Docling bundle submit snapshots. */
 export function parseProviderReviewSubmitSnapshot(
   value: unknown,
 ): AnyReviewSubmitSnapshot | null {
   const distribution = parseDistributionReviewSubmitSnapshot(value);
   if (distribution) return distribution;
+  const docling = parseDoclingBundleReviewSubmitSnapshot(value);
+  if (docling) return docling;
   return parseLegacyProviderReviewSubmitSnapshot(value);
 }
 
@@ -116,4 +121,10 @@ export function isDistributionReviewSnapshot(
   return snapshot?.mode === "DISTRIBUTION";
 }
 
-export type { DistributionReviewSubmitSnapshot };
+export function isDoclingBundleReviewSnapshot(
+  snapshot: AnyReviewSubmitSnapshot | null | undefined,
+): snapshot is DoclingBundleReviewSubmitSnapshot {
+  return snapshot?.mode === "DOCLING_BUNDLE";
+}
+
+export type { DistributionReviewSubmitSnapshot, DoclingBundleReviewSubmitSnapshot };

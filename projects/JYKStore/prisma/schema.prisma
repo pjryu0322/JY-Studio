@@ -142,6 +142,11 @@ enum AuditAction {
   DISTRIBUTION_METADATA_UPDATED
   DISTRIBUTION_SUBMITTED
   PAYLOAD_DOWNLOADED
+  DOCLING_IMPORT_UPLOADED
+  DOCLING_IMPORT_VALIDATED
+  DOCLING_IMPORT_NORMALIZED
+  DOCLING_IMPORT_DELETED
+  DOCLING_IMPORT_RETRIED
 }
 
 model ProviderProfile {
@@ -267,6 +272,9 @@ model KnowledgePack {
   releaseGateRuns          ReleaseGateRun[]
   payloads                 KnowledgePayload[]
   distributionMetadata     PackDistributionMetadata[]
+  doclingImportBundles     DoclingImportBundle[]
+  knowledgePackFiles        KnowledgePackFile[]
+  normalizedDocuments      NormalizedDocument[]
 
   @@index([status])
   @@index([categoryId])
@@ -327,6 +335,9 @@ model KnowledgePackVersion {
   retrievalEvaluationResults RetrievalEvaluationResult[]
   payload                    KnowledgePayload?
   distributionMetadata       PackDistributionMetadata?
+  doclingImportBundles       DoclingImportBundle[]
+  knowledgePackFiles          KnowledgePackFile[]
+  normalizedDocuments        NormalizedDocument[]
 
   @@unique([packId, version])
   @@index([packId])
@@ -421,6 +432,154 @@ model PackDistributionMetadata {
 
   @@unique([versionId])
   @@index([packId])
+}
+
+enum DoclingImportBundleStatus {
+  UPLOADED
+  VALIDATING
+  VALIDATION_FAILED
+  VALID
+  NORMALIZING
+  NORMALIZED
+  NORMALIZATION_FAILED
+  REVIEW_READY
+}
+
+enum KnowledgePackFileRole {
+  SOURCE_ORIGINAL
+  DOCLING_JSON
+  DOCLING_MARKDOWN
+}
+
+enum DoclingProcessingStage {
+  UPLOAD
+  VALIDATION
+  NORMALIZATION
+  RETRY
+}
+
+enum DoclingProcessingStatus {
+  STARTED
+  SUCCEEDED
+  FAILED
+}
+
+/// Three-file Docling import unit (source + JSON + Markdown). Separate from ZIP KnowledgePayload.
+model DoclingImportBundle {
+  id                    String                    @id @default(cuid())
+  packId                String
+  versionId             String
+  status                DoclingImportBundleStatus @default(UPLOADED)
+  isActive              Boolean                   @default(true)
+  adapterType           String                    @default("DOCLING")
+  adapterVersion        String                    @default("1.0.0")
+  doclingSchemaName     String?
+  doclingSchemaVersion  String?
+  validationReport      Json?
+  normalizationReport   Json?
+  warningCount          Int                       @default(0)
+  errorCount            Int                       @default(0)
+  lastErrorCode         String?
+  lastErrorMessage      String?
+  uploadedByUserId      String?
+  validatedAt           DateTime?
+  normalizedAt          DateTime?
+  reviewReadyAt         DateTime?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  pack                 KnowledgePack          @relation(fields: [packId], references: [packId], onDelete: Restrict)
+  version              KnowledgePackVersion   @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  files                KnowledgePackFile[]
+  normalizedDocuments  NormalizedDocument[]
+  processingLogs       DoclingProcessingLog[]
+
+  @@index([packId, versionId])
+  @@index([versionId, isActive])
+  @@index([status])
+}
+
+/// Immutable per-role file object for a Docling import bundle.
+model KnowledgePackFile {
+  id               String                @id @default(cuid())
+  bundleId         String
+  packId           String
+  versionId        String
+  role             KnowledgePackFileRole
+  storageKey       String
+  originalFileName String
+  mimeType         String
+  fileExtension    String
+  fileSize         BigInt
+  checksumSha256   String
+  isImmutable      Boolean               @default(true)
+  uploadedByUserId String?
+  uploadedAt       DateTime              @default(now())
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  bundle  DoclingImportBundle  @relation(fields: [bundleId], references: [id], onDelete: Restrict)
+  pack    KnowledgePack         @relation(fields: [packId], references: [packId], onDelete: Restrict)
+  version KnowledgePackVersion  @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@unique([bundleId, role])
+  @@index([packId, versionId])
+  @@index([checksumSha256])
+  @@index([storageKey])
+}
+
+/// Regenerable Store-derived document structure from Docling JSON (+ Markdown assist).
+model NormalizedDocument {
+  id                     String   @id @default(cuid())
+  bundleId               String
+  packId                 String
+  versionId              String
+  isActive               Boolean  @default(true)
+  adapterType            String   @default("DOCLING")
+  adapterVersion         String
+  sourceSchemaName       String?
+  sourceSchemaVersion    String?
+  title                  String?
+  language               String?
+  structureJson          Json?
+  sectionsJson           Json?
+  tablesJson             Json?
+  figuresJson            Json?
+  readingOrderJson       Json?
+  warningsJson           Json?
+  sourceFileId           String?
+  jsonPayloadFileId      String?
+  markdownPayloadFileId  String?
+  sourcePayloadChecksum  String?
+  fingerprint            String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  bundle  DoclingImportBundle @relation(fields: [bundleId], references: [id], onDelete: Restrict)
+  pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Restrict)
+  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@index([bundleId, isActive])
+  @@index([packId, versionId])
+}
+
+model DoclingProcessingLog {
+  id             String                  @id @default(cuid())
+  bundleId       String
+  stage          DoclingProcessingStage
+  status         DoclingProcessingStatus
+  attempt        Int                     @default(1)
+  adapterVersion String?
+  message        String?
+  errorCode      String?
+  detailsJson    Json?
+  startedAt      DateTime                @default(now())
+  completedAt    DateTime?
+  createdAt      DateTime                @default(now())
+
+  bundle DoclingImportBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+
+  @@index([bundleId, stage, createdAt])
 }
 
 model SourceDocument {

@@ -2,6 +2,8 @@
 
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
 import type { KnowledgePayloadPublicDto } from "@/lib/distribution/payload-service";
+import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
+import { isDoclingPayloadReady } from "@/lib/docling-import/docling-import-ui";
 import {
   PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB,
   PROVIDER_PACK_GO_TO_PAYLOAD_TAB,
@@ -23,11 +25,20 @@ export function computeDistributionReadiness(input: {
   hasBasicInfo: boolean;
   payload: KnowledgePayloadPublicDto | null;
   distribution: PackDistributionMetadataDto | null;
+  doclingBundle?: DoclingImportBundlePublicDto | null;
 }): DistributionReadiness {
-  const hasPayload = Boolean(input.payload);
-  const payloadValid = input.payload?.validationStatus === "VALID";
-  const hasChecksum = Boolean(input.payload?.checksumSha256);
-  const hasManifest = Boolean(input.payload?.manifest);
+  const zipReady =
+    Boolean(input.payload) &&
+    input.payload?.validationStatus === "VALID" &&
+    Boolean(input.payload?.checksumSha256) &&
+    Boolean(input.payload?.manifest);
+  const doclingReady = isDoclingPayloadReady(input.doclingBundle?.status);
+  const hasPayload = Boolean(input.payload) || Boolean(input.doclingBundle);
+  const payloadValid = zipReady || doclingReady;
+  const hasChecksum =
+    Boolean(input.payload?.checksumSha256) ||
+    Boolean(input.doclingBundle?.files.some((f) => f.checksumSha256));
+  const hasManifest = Boolean(input.payload?.manifest) || doclingReady;
   const hasSource = Boolean(
     input.distribution?.sourceTitle?.trim() || input.distribution?.sourceUrl?.trim(),
   );
@@ -36,7 +47,7 @@ export function computeDistributionReadiness(input: {
   const missing: DistributionReadiness["missing"] = [];
   if (!input.hasBasicInfo) missing.push({ label: "기본정보", tab: "basic" });
   if (!hasPayload) missing.push({ label: "Payload 등록", tab: "payload" });
-  else if (!payloadValid) missing.push({ label: "Payload VALID 검증", tab: "payload" });
+  else if (!payloadValid) missing.push({ label: "Payload VALID / REVIEW_READY", tab: "payload" });
   if (!hasSource || !hasLicense) missing.push({ label: "유통정보(출처·라이선스)", tab: "distribution" });
 
   return {
@@ -73,7 +84,7 @@ export function ProviderDistributionReadiness({
         <li>기본정보: {readiness.hasBasicInfo ? "완료" : "미완료"}</li>
         <li>Payload: {readiness.hasPayload ? "등록됨" : "없음"}</li>
         <li>Checksum: {readiness.hasChecksum ? "있음" : "없음"}</li>
-        <li>Validation: {readiness.payloadValid ? "VALID" : "미충족"}</li>
+        <li>Validation: {readiness.payloadValid ? "VALID / REVIEW_READY" : "미충족"}</li>
         <li>Manifest: {readiness.hasManifest ? "있음" : "없음"}</li>
         <li>출처: {readiness.hasSource ? "있음" : "없음"}</li>
         <li>라이선스: {readiness.hasLicense ? "있음" : "없음"}</li>
@@ -85,7 +96,7 @@ export function ProviderDistributionReadiness({
               key={item.label}
               type="button"
               onClick={() => onGoToTab(item.tab)}
-              className="min-h-[36px] rounded-lg border border-store-border bg-white px-2 text-[11px] font-semibold text-store-accent"
+              className="min-h-[44px] rounded-lg border border-store-border bg-white px-2 text-[11px] font-semibold text-store-accent"
             >
               {item.tab === "payload"
                 ? PROVIDER_PACK_GO_TO_PAYLOAD_TAB

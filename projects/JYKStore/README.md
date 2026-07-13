@@ -23,6 +23,21 @@ http://localhost:3004
 - UX는 모바일 앱스토어형 지식팩 스토어를 기준으로 합니다.
 - 사용자는 지식팩 선택 → 내 지식팩에 추가 → 연동하기 흐름으로 사용할 수 있어야 합니다.
 
+## Docling 3파일 Import
+
+JYKStore는 Docling을 실행하지 않습니다. Provider는 외부 Docling으로 만든 **원본문서 + Docling JSON + Docling Markdown** 3파일을 업로드합니다.
+
+- 원본 3파일은 불변으로 보관합니다.
+- Store는 adapter로 `NormalizedDocument`를 생성·재생성합니다.
+- Retrieval / MCP 노출은 후속 단계입니다.
+- 레거시 ZIP Payload 업로드는 계속 지원합니다.
+
+관련 문서:
+
+- `docs/docling-three-file-import.md`
+- `docs/normalized-document-schema.md`
+- `docs/docling-adapter-operations.md`
+
 ## 현재 구현 범위
 
 - 모바일 앱스토어형 Today 화면

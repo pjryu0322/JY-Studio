@@ -1,5 +1,7 @@
 import {
   AuditAction,
+  DoclingImportBundleStatus,
+  KnowledgePackFileRole,
   PackStatus,
   PayloadValidationStatus,
   type Prisma,
@@ -11,18 +13,25 @@ import {
 } from "@/lib/distribution/distribution-manifest-service";
 import {
   buildDistributionReviewSubmitSnapshot,
-  type DistributionReviewSubmitSnapshot,
+  buildDoclingBundleReviewSubmitSnapshot,
+  type ReviewSubmitSnapshot,
 } from "@/lib/distribution/distribution-submit-snapshot";
+import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
 
 export type {
   DistributionReviewSubmitSnapshot,
+  DoclingBundleReviewSubmitSnapshot,
+  ReviewSubmitSnapshot,
 } from "@/lib/distribution/distribution-submit-snapshot";
 export {
   buildDistributionReviewSubmitSnapshot,
+  buildDoclingBundleReviewSubmitSnapshot,
   parseDistributionReviewSubmitSnapshot,
+  parseDoclingBundleReviewSubmitSnapshot,
+  parseReviewSubmitSnapshot,
 } from "@/lib/distribution/distribution-submit-snapshot";
 
 export type DistributionSubmitCommitResult =
@@ -30,11 +39,11 @@ export type DistributionSubmitCommitResult =
   | { error: "NOT_FOUND" }
   | { error: "NOT_DRAFT" }
   | { error: "INCOMPLETE"; message: string }
-  | { ok: true; snapshot: DistributionReviewSubmitSnapshot };
+  | { ok: true; snapshot: ReviewSubmitSnapshot };
 
 /**
  * Validate and commit a distribution pack into REVIEWING + PackReview PENDING.
- * Caller records pipeline status and returns the provider pack DTO.
+ * Prefer REVIEW_READY Docling three-file import when present; otherwise legacy ZIP payload.
  */
 export async function commitDistributionPackForReview(
   userId: string,
@@ -50,7 +59,7 @@ export async function commitDistributionPackForReview(
     where: { packId, providerProfileId: profile.id },
     include: {
       versions: {
-        orderBy: { createdAt: "desc" },
+        orderBy: latestKnowledgePackVersionOrderBy,
         take: 1,
         include: {
           payload: true,
@@ -73,6 +82,120 @@ export async function commitDistributionPackForReview(
   const version = pack.versions[0];
   if (!version) {
     return { error: "INCOMPLETE", message: "버전이 최소 1개 필요합니다." };
+  }
+
+  const meta = version.distributionMetadata;
+
+  const doclingBundle = await prisma.doclingImportBundle.findFirst({
+    where: { versionId: version.id, isActive: true },
+    include: {
+      files: true,
+      normalizedDocuments: { where: { isActive: true }, take: 1 },
+    },
+  });
+
+  if (
+    doclingBundle &&
+    doclingBundle.status === DoclingImportBundleStatus.REVIEW_READY &&
+    doclingBundle.files.length >= 3 &&
+    doclingBundle.normalizedDocuments[0]
+  ) {
+    if (!meta) {
+      return {
+        error: "INCOMPLETE",
+        message: "유통정보(출처·라이선스)를 입력해 주세요.",
+      };
+    }
+    if (!meta.licenseName.trim()) {
+      return { error: "INCOMPLETE", message: "라이선스명이 필요합니다." };
+    }
+    if (!meta.sourceTitle?.trim() && !meta.sourceUrl?.trim()) {
+      return {
+        error: "INCOMPLETE",
+        message: "출처 제목 또는 출처 URL이 필요합니다.",
+      };
+    }
+
+    const byRole = new Map(doclingBundle.files.map((f) => [f.role, f]));
+    const sourceFile = byRole.get(KnowledgePackFileRole.SOURCE_ORIGINAL);
+    const jsonFile = byRole.get(KnowledgePackFileRole.DOCLING_JSON);
+    const mdFile = byRole.get(KnowledgePackFileRole.DOCLING_MARKDOWN);
+    const nd = doclingBundle.normalizedDocuments[0];
+    if (!sourceFile || !jsonFile || !mdFile || !nd) {
+      return {
+        error: "INCOMPLETE",
+        message: "Docling import 파일 또는 정규화 문서가 완전하지 않습니다.",
+      };
+    }
+
+    const snapshot = buildDoclingBundleReviewSubmitSnapshot({
+      submittedVersionId: version.id,
+      doclingBundleId: doclingBundle.id,
+      sourceFileId: sourceFile.id,
+      jsonPayloadFileId: jsonFile.id,
+      markdownPayloadFileId: mdFile.id,
+      checksums: {
+        source: sourceFile.checksumSha256,
+        json: jsonFile.checksumSha256,
+        markdown: mdFile.checksumSha256,
+      },
+      doclingSchemaVersion: doclingBundle.doclingSchemaVersion,
+      adapterVersion: doclingBundle.adapterVersion,
+      normalizedDocumentId: nd.id,
+      fingerprint: nd.fingerprint,
+      warningCount: doclingBundle.warningCount,
+      sourceTitle: meta.sourceTitle,
+      licenseName: meta.licenseName,
+      visibility: meta.visibility,
+      allowDownload: meta.allowDownload,
+    });
+
+    await prisma.$transaction([
+      prisma.knowledgePack.update({
+        where: { packId },
+        data: { status: PackStatus.REVIEWING },
+      }),
+      prisma.packReview.create({
+        data: {
+          packId,
+          status: "PENDING",
+          submitSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+        },
+      }),
+    ]);
+
+    await recordProviderAudit({
+      action: AuditAction.DISTRIBUTION_SUBMITTED,
+      entityType: "KnowledgePack",
+      entityId: packId,
+      actorUserId: userId,
+      metadata: {
+        packId,
+        versionId: version.id,
+        mode: "DOCLING_BUNDLE",
+        doclingBundleId: doclingBundle.id,
+        normalizedDocumentId: nd.id,
+        submitSnapshot: snapshot,
+      },
+    });
+
+    await recordProviderAudit({
+      action: AuditAction.PROVIDER_PACK_SUBMIT,
+      entityType: "KnowledgePack",
+      entityId: packId,
+      actorUserId: userId,
+      metadata: { packId, mode: "DOCLING_BUNDLE", submitSnapshot: snapshot },
+    });
+
+    await recordProviderAudit({
+      action: AuditAction.ADMIN_REVIEW_CREATE,
+      entityType: "PackReview",
+      entityId: packId,
+      actorUserId: userId,
+      metadata: { packId, status: "PENDING", mode: "DOCLING_BUNDLE", submitSnapshot: snapshot },
+    });
+
+    return { ok: true, snapshot };
   }
 
   const payload = version.payload;
@@ -98,7 +221,6 @@ export async function commitDistributionPackForReview(
     };
   }
 
-  const meta = version.distributionMetadata;
   if (!meta) {
     return {
       error: "INCOMPLETE",

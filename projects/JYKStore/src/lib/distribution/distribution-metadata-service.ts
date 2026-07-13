@@ -266,3 +266,77 @@ export async function upsertProviderPackDistribution(input: {
 
   return { distribution: toPackDistributionMetadataDto(row) };
 }
+
+export async function upsertAdminPackDistribution(input: {
+  packId: string;
+  actorUserId: string;
+  body: UpsertDistributionMetadataInput;
+}): Promise<{ distribution: PackDistributionMetadataDto }> {
+  const pack = await prisma.knowledgePack.findUnique({
+    where: { packId: input.packId },
+    include: { versions: { orderBy: { createdAt: "desc" }, take: 1 } },
+  });
+  if (!pack) {
+    throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
+  }
+  const version = pack.versions[0];
+  if (!version) {
+    throw new PayloadServiceError("INCOMPLETE", "버전이 없습니다.", 400);
+  }
+
+  const validated = validateDistributionMetadataInput(input.body);
+
+  const row = await prisma.packDistributionMetadata.upsert({
+    where: { versionId: version.id },
+    create: {
+      packId: pack.packId,
+      versionId: version.id,
+      sourceTitle: validated.sourceTitle,
+      sourceUrl: validated.sourceUrl,
+      licenseName: validated.licenseName,
+      licenseUrl: validated.licenseUrl,
+      usageTerms: validated.usageTerms,
+      readmeText: validated.readmeText,
+      visibility: validated.visibility as PrismaDistributionVisibility,
+      allowDownload: validated.allowDownload,
+    },
+    update: {
+      sourceTitle: validated.sourceTitle,
+      sourceUrl: validated.sourceUrl,
+      licenseName: validated.licenseName,
+      licenseUrl: validated.licenseUrl,
+      usageTerms: validated.usageTerms,
+      readmeText: validated.readmeText,
+      visibility: validated.visibility as PrismaDistributionVisibility,
+      allowDownload: validated.allowDownload,
+    },
+  });
+
+  const payload = await prisma.knowledgePayload.findUnique({
+    where: { versionId: version.id },
+  });
+  if (payload) {
+    await refreshDistributionManifest({
+      packId: pack.packId,
+      versionId: version.id,
+      reason: "distribution_metadata_updated",
+    });
+  }
+
+  await recordProviderAudit({
+    action: AuditAction.DISTRIBUTION_METADATA_UPDATED,
+    entityType: "PackDistributionMetadata",
+    entityId: row.id,
+    actorUserId: input.actorUserId,
+    metadata: {
+      packId: pack.packId,
+      versionId: version.id,
+      visibility: row.visibility,
+      allowDownload: row.allowDownload,
+      licenseName: row.licenseName,
+      actor: "admin",
+    },
+  });
+
+  return { distribution: toPackDistributionMetadataDto(row) };
+}
