@@ -316,7 +316,9 @@ describe("docling 1.1.1 real-structure compat", () => {
       join(root, "src/lib/docling-import/docling-import-service.ts"),
       "utf8",
     );
-    assert.ok(service.includes("newlyUploadedFigureKeys"));
+    assert.ok(service.includes("newlyCreatedFigureKeys"));
+    assert.ok(service.includes("normalizationCommitted"));
+    assert.ok(service.includes("recordPostCommitNormalizationEffects"));
     assert.ok(service.includes("docling_figure_preview_normalization_failed"));
     assert.ok(service.includes("docling_figure_preview_partial_failure"));
     assert.ok(service.includes("maybeSanitizeMarkdownPreviewBytes"));

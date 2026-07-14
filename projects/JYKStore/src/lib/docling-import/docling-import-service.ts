@@ -57,6 +57,12 @@ import {
   resolveDoclingRetryMode,
 } from "@/lib/docling-import/docling-import-state";
 import { DOCLING_MARKDOWN_VALIDATOR_VERSION, sanitizeMarkdownForPreview } from "@/lib/adapters/docling/docling-markdown-validator";
+import {
+  cleanupNewlyCreatedFigurePreviews,
+  cleanupObsoleteFigurePreviews,
+  persistFigurePreviewObjects,
+  recordPostCommitNormalizationEffects,
+} from "@/lib/docling-import/docling-figure-preview-persist";
 import { evaluateNormalizedDocumentQuality } from "@/lib/docling-import/docling-quality-gate";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
@@ -120,27 +126,49 @@ function collectFigurePreviewKeysFromBundle(bundle: BundleWithRelations): string
   return [...keys];
 }
 
-async function cleanupNewlyUploadedFigureKeys(
-  keys: Set<string>,
-  storage: PayloadStorage,
-  bundleId: string,
-  reason: string,
-): Promise<void> {
-  if (keys.size === 0) return;
+async function enqueueFigurePreviewCleanupJob(input: {
+  objectKey: string;
+  reason: string;
+  lastError: string;
+  doclingBundleId: string;
+}): Promise<unknown> {
   const { enqueuePayloadCleanupJob } = await import(
     "@/lib/distribution/payload-cleanup-service"
   );
-  for (const objectKey of keys) {
-    try {
-      await storage.delete({ objectKey });
-    } catch {
-      await enqueuePayloadCleanupJob({
-        objectKey,
-        reason,
-        lastError: "immediate delete failed",
-        doclingBundleId: bundleId,
-      });
-    }
+  return enqueuePayloadCleanupJob(input);
+}
+
+async function recordDoclingPostCommitWarning(input: {
+  bundleId: string;
+  attempt: number;
+  code:
+    | "DOCLING_POST_COMMIT_LOG_FAILED"
+    | "DOCLING_POST_COMMIT_AUDIT_FAILED"
+    | "DOCLING_POST_COMMIT_CLEANUP_DEFERRED";
+  message: string;
+}): Promise<void> {
+  console.warn(
+    `[docling-normalize-post-commit] ${input.code} bundle=${input.bundleId}: ${input.message}`,
+  );
+  try {
+    await prisma.doclingProcessingLog.create({
+      data: {
+        bundleId: input.bundleId,
+        stage: DoclingProcessingStage.NORMALIZATION,
+        status: DoclingProcessingStatus.SUCCEEDED,
+        attempt: input.attempt,
+        adapterVersion: DOCLING_ADAPTER_VERSION,
+        message: `Post-commit warning: ${input.code}`,
+        errorCode: input.code,
+        detailsJson: {
+          code: input.code,
+          message: input.message.slice(0, 500),
+        } as Prisma.InputJsonValue,
+        completedAt: new Date(),
+      },
+    });
+  } catch {
+    // Warning persistence must never undo a committed NORMALIZED result.
   }
 }
 
@@ -853,7 +881,8 @@ export async function validateAndNormalizeBundle(
     },
   });
 
-  const newlyUploadedFigureKeys = new Set<string>();
+  const newlyCreatedFigureKeys = new Set<string>();
+  let normalizationCommitted = false;
   try {
     // Normalize from the compact in-memory projection — never re-parse the raw JSON object.
     const draft = normalizeDoclingDocument(validation.document!, {
@@ -865,60 +894,29 @@ export async function validateAndNormalizeBundle(
 
     // Persist figure preview objects (Base64 never stored in ND JSON / client DTO).
     const previousFigureKeys = collectFigurePreviewKeysFromBundle(bundle);
+    let retainedFigureKeys = new Set<string>();
     try {
-      const { buildFigurePreviewObjectKey } = await import(
-        "@/lib/adapters/docling/docling-figure-preview"
-      );
-      const prefix = storagePrefix(storage);
-      const bySha = new Map<string, string>();
-      for (const fig of draft.figures) {
-        const bytes = fig._previewBytes;
-        const sha = fig._previewSha256;
-        if (!bytes || !sha) {
-          delete fig._previewBytes;
-          delete fig._previewSha256;
-          continue;
-        }
-        let objectKey = bySha.get(sha);
-        if (!objectKey) {
-          const ext = (fig.mimeType ?? "image/png").includes("jpeg")
-            ? "jpg"
-            : (fig.mimeType ?? "").includes("webp")
-              ? "webp"
-              : "png";
-          objectKey = buildFigurePreviewObjectKey({
-            prefix,
-            packId: bundle.packId,
-            versionId: bundle.versionId,
-            bundleId,
-            sha256: sha,
-            extension: ext,
-          });
-          await storage.put({
-            packId: bundle.packId,
-            versionId: bundle.versionId,
-            payloadId: sha.slice(0, 32),
-            originalFileName: `figure-${sha.slice(0, 8)}.${ext}`,
-            mimeType: fig.mimeType ?? "image/png",
-            bytes,
-            checksumSha256: sha,
-            objectKey,
-          });
-          newlyUploadedFigureKeys.add(objectKey);
-          bySha.set(sha, objectKey);
-        }
-        fig.previewObjectKey = objectKey;
-        delete fig._previewBytes;
-        delete fig._previewSha256;
-      }
+      const persistResult = await persistFigurePreviewObjects({
+        figures: draft.figures,
+        storage,
+        previousFigureKeys,
+        prefix: storagePrefix(storage),
+        packId: bundle.packId,
+        versionId: bundle.versionId,
+        bundleId,
+        newlyCreatedKeys: newlyCreatedFigureKeys,
+      });
+      retainedFigureKeys = persistResult.retainedKeys;
     } catch {
-      await cleanupNewlyUploadedFigureKeys(
-        newlyUploadedFigureKeys,
+      await cleanupNewlyCreatedFigurePreviews({
+        keys: newlyCreatedFigureKeys,
         storage,
         bundleId,
-        "docling_figure_preview_partial_failure",
-      );
-      newlyUploadedFigureKeys.clear();
+        reason: "docling_figure_preview_partial_failure",
+        enqueueCleanupJob: enqueueFigurePreviewCleanupJob,
+      });
+      newlyCreatedFigureKeys.clear();
+      retainedFigureKeys = new Set();
       for (const fig of draft.figures) {
         delete fig._previewBytes;
         delete fig._previewSha256;
@@ -1117,97 +1115,113 @@ export async function validateAndNormalizeBundle(
       },
       { maxWait: 15_000, timeout: 120_000 },
     );
+    normalizationCommitted = true;
 
-    await prisma.doclingProcessingLog.create({
-      data: {
-        bundleId,
-        stage: DoclingProcessingStage.NORMALIZATION,
-        status: DoclingProcessingStatus.SUCCEEDED,
-        attempt,
-        adapterVersion: DOCLING_ADAPTER_VERSION,
-        message: "Normalization succeeded",
-        detailsJson: { normalizedDocumentId: ndId, fingerprint } as Prisma.InputJsonValue,
-        completedAt: new Date(),
-      },
-    });
-
-    const retainedFigureKeys = new Set(
-      draft.figures
-        .map((f) => f.previewObjectKey?.trim())
-        .filter((k): k is string => Boolean(k)),
-    );
-    for (const key of previousFigureKeys) {
-      if (retainedFigureKeys.has(key)) continue;
-      try {
-        await storage.delete({ objectKey: key });
-      } catch {
-        const { enqueuePayloadCleanupJob } = await import(
-          "@/lib/distribution/payload-cleanup-service"
-        );
-        await enqueuePayloadCleanupJob({
-          objectKey: key,
-          reason: "docling_figure_preview_replaced",
-          lastError: "immediate delete failed",
-          doclingBundleId: bundleId,
+    await recordPostCommitNormalizationEffects({
+      writeSuccessLog: async () => {
+        await prisma.doclingProcessingLog.create({
+          data: {
+            bundleId,
+            stage: DoclingProcessingStage.NORMALIZATION,
+            status: DoclingProcessingStatus.SUCCEEDED,
+            attempt,
+            adapterVersion: DOCLING_ADAPTER_VERSION,
+            message: "Normalization succeeded",
+            detailsJson: {
+              normalizedDocumentId: ndId,
+              fingerprint,
+            } as Prisma.InputJsonValue,
+            completedAt: new Date(),
+          },
         });
-      }
-    }
-
-    await recordProviderAudit({
-      action: AuditAction.DOCLING_IMPORT_NORMALIZED,
-      entityType: "DoclingImportBundle",
-      entityId: bundleId,
-      actorUserId: bundle.uploadedByUserId,
-      metadata: {
-        bundleId,
-        packId: bundle.packId,
-        normalizedDocumentId: ndId,
-        fingerprint,
+      },
+      cleanupObsoletePreviews: async () =>
+        cleanupObsoleteFigurePreviews({
+          previousKeys: previousFigureKeys,
+          retainedKeys: retainedFigureKeys,
+          storage,
+          bundleId,
+          enqueueCleanupJob: enqueueFigurePreviewCleanupJob,
+        }),
+      writeAudit: async () => {
+        await recordProviderAudit({
+          action: AuditAction.DOCLING_IMPORT_NORMALIZED,
+          entityType: "DoclingImportBundle",
+          entityId: bundleId,
+          actorUserId: bundle.uploadedByUserId,
+          metadata: {
+            bundleId,
+            packId: bundle.packId,
+            normalizedDocumentId: ndId,
+            fingerprint,
+          },
+        });
+      },
+      onWarning: async ({ code, message }) => {
+        await recordDoclingPostCommitWarning({
+          bundleId,
+          attempt,
+          code,
+          message,
+        });
       },
     });
   } catch (error) {
-    await cleanupNewlyUploadedFigureKeys(
-      newlyUploadedFigureKeys,
-      storage,
-      bundleId,
-      "docling_figure_preview_normalization_failed",
-    );
-    const message = error instanceof Error ? error.message : "Normalization failed";
-    try {
-      await softLockBundleStatus({
+    if (normalizationCommitted) {
+      // Committed ND must stay NORMALIZED; do not delete retained previews.
+      const message =
+        error instanceof Error ? error.message : "post-commit side effect failed";
+      await recordDoclingPostCommitWarning({
         bundleId,
-        from: [DoclingImportBundleStatus.NORMALIZING],
-        to: DoclingImportBundleStatus.NORMALIZATION_FAILED,
-      });
-    } catch {
-      // Already transitioned (or conflict) — still persist the error fields below.
-    }
-    await prisma.doclingImportBundle.update({
-      where: { id: bundleId },
-      data: {
-        lastErrorCode: "DOCLING_NORMALIZATION_FAILED",
-        lastErrorMessage: message.slice(0, 1000),
-        errorCount: { increment: 1 },
-        normalizationReport: {
-          ok: false,
-          message,
-          failedAt: new Date().toISOString(),
-        } as Prisma.InputJsonValue,
-      },
-    });
-    await prisma.doclingProcessingLog.create({
-      data: {
-        bundleId,
-        stage: DoclingProcessingStage.NORMALIZATION,
-        status: DoclingProcessingStatus.FAILED,
         attempt,
-        adapterVersion: DOCLING_ADAPTER_VERSION,
-        message: "Normalization failed",
-        errorCode: "DOCLING_NORMALIZATION_FAILED",
-        detailsJson: { message } as Prisma.InputJsonValue,
-        completedAt: new Date(),
-      },
-    });
+        code: "DOCLING_POST_COMMIT_LOG_FAILED",
+        message,
+      });
+    } else {
+      await cleanupNewlyCreatedFigurePreviews({
+        keys: newlyCreatedFigureKeys,
+        storage,
+        bundleId,
+        reason: "docling_figure_preview_normalization_failed",
+        enqueueCleanupJob: enqueueFigurePreviewCleanupJob,
+      });
+      const message = error instanceof Error ? error.message : "Normalization failed";
+      try {
+        await softLockBundleStatus({
+          bundleId,
+          from: [DoclingImportBundleStatus.NORMALIZING],
+          to: DoclingImportBundleStatus.NORMALIZATION_FAILED,
+        });
+      } catch {
+        // Already transitioned (or conflict) — still persist the error fields below.
+      }
+      await prisma.doclingImportBundle.update({
+        where: { id: bundleId },
+        data: {
+          lastErrorCode: "DOCLING_NORMALIZATION_FAILED",
+          lastErrorMessage: message.slice(0, 1000),
+          errorCount: { increment: 1 },
+          normalizationReport: {
+            ok: false,
+            message,
+            failedAt: new Date().toISOString(),
+          } as Prisma.InputJsonValue,
+        },
+      });
+      await prisma.doclingProcessingLog.create({
+        data: {
+          bundleId,
+          stage: DoclingProcessingStage.NORMALIZATION,
+          status: DoclingProcessingStatus.FAILED,
+          attempt,
+          adapterVersion: DOCLING_ADAPTER_VERSION,
+          message: "Normalization failed",
+          errorCode: "DOCLING_NORMALIZATION_FAILED",
+          detailsJson: { message } as Prisma.InputJsonValue,
+          completedAt: new Date(),
+        },
+      });
+    }
   }
 
   const refreshed = await loadBundleWithRelations(bundleId);
