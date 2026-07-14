@@ -38,6 +38,51 @@ export function extractOriginMatchSummary(validationReport: unknown): string {
   return `파일명 ${filename} · MIME ${mime}`;
 }
 
+export function extractSimilarityDiagnostics(validationReport: unknown): {
+  validatorVersion: string | null;
+  markdownCoverage: number | null;
+  jaccard: number | null;
+  samplePassCount: number | null;
+} | null {
+  if (!validationReport || typeof validationReport !== "object") return null;
+  const report = validationReport as Record<string, unknown>;
+  const metrics =
+    report.metrics && typeof report.metrics === "object"
+      ? (report.metrics as Record<string, unknown>)
+      : null;
+  const validatorVersion =
+    typeof report.validatorVersion === "string"
+      ? report.validatorVersion
+      : null;
+  const markdownCoverage =
+    typeof report.markdownCoverage === "number"
+      ? report.markdownCoverage
+      : typeof metrics?.markdownCoverage === "number"
+        ? metrics.markdownCoverage
+        : null;
+  const jaccard =
+    typeof report.jaccard === "number"
+      ? report.jaccard
+      : typeof metrics?.jaccard === "number"
+        ? metrics.jaccard
+        : null;
+  const samplePassCount =
+    typeof report.samplePassCount === "number"
+      ? report.samplePassCount
+      : typeof metrics?.passedSampleCount === "number"
+        ? metrics.passedSampleCount
+        : null;
+  if (
+    validatorVersion == null &&
+    markdownCoverage == null &&
+    jaccard == null &&
+    samplePassCount == null
+  ) {
+    return null;
+  }
+  return { validatorVersion, markdownCoverage, jaccard, samplePassCount };
+}
+
 export function fileByRole(
   bundle: DoclingImportBundlePublicDto,
   role: KnowledgePackFileRole,
@@ -67,6 +112,16 @@ export function mapDoclingImportUserError(code: string | null | undefined, fallb
       return "삭제되었거나 저장소가 비활성인 Bundle은 재시도할 수 없습니다.";
     case "DOCLING_REVIEW_STATE_CONFLICT":
       return "검수 상태와 Bundle 상태가 충돌합니다. 새로고침 후 다시 시도하세요.";
+    case "DOCLING_JSON_MARKDOWN_MISMATCH":
+      return "JSON과 Markdown이 서로 다른 문서로 보입니다. 동일 Docling 출력 쌍인지 확인하세요.";
+    case "DOCLING_JSON_MARKDOWN_INCONCLUSIVE":
+      return "대용량 문서에서는 유사도만으로 단정할 수 없습니다. 저장된 파일 재검증을 시도해 보세요.";
+    case "DOCLING_JSON_MARKDOWN_LOW_COVERAGE":
+      return "Markdown이 JSON 텍스트를 부분적으로만 포함합니다. 동일 문서인지 확인하거나 재검증하세요.";
+    case "DOCLING_REVALIDATION_NOT_ALLOWED":
+      return "현재 상태에서는 저장된 파일 재검증을 할 수 없습니다.";
+    case "DOCLING_VALIDATOR_VERSION_OUTDATED":
+      return "검증기 버전이 갱신되었습니다. 저장된 파일 재검증을 실행하세요.";
     default:
       return fallback?.trim() || "Docling import 처리에 실패했습니다.";
   }

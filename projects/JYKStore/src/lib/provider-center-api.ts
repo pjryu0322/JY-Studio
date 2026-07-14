@@ -479,6 +479,29 @@ export async function retryProviderDoclingImportBundleApi(
   };
 }
 
+export async function revalidateProviderDoclingImportBundleApi(
+  packId: string,
+  bundleId: string,
+): Promise<{
+  clientId: string;
+  bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import/${encodeURIComponent(bundleId)}/revalidate`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    clientId: string;
+    bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
+  };
+}
+
 export async function deleteProviderDoclingImportBundleApi(
   packId: string,
   bundleId: string,

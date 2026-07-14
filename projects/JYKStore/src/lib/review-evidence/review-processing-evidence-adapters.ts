@@ -6,6 +6,7 @@ import type {
 import {
   DOCLING_FILE_ROLE_LABELS,
   extractOriginMatchSummary,
+  extractSimilarityDiagnostics,
 } from "@/lib/docling-import/docling-import-ui";
 import { isDoclingBundleReviewSnapshot } from "@/lib/provider-review-submit-snapshot";
 import type { ImportProcessingEvidenceDto } from "@/lib/review-evidence/review-processing-evidence-dto";
@@ -98,6 +99,22 @@ export function buildDoclingProcessingEvidence(input: {
       warningCount: bundle?.warningCount ?? 0,
       errorCount: bundle?.errorCount ?? 0,
       originMatchSummary: bundle ? extractOriginMatchSummary(bundle.validationReport) : null,
+      ...((): {
+        validatorVersion: string | null;
+        markdownCoverage: number | null;
+        jaccard: number | null;
+        samplePassCount: number | null;
+      } => {
+        const diag = bundle
+          ? extractSimilarityDiagnostics(bundle.validationReport)
+          : null;
+        return {
+          validatorVersion: diag?.validatorVersion ?? null,
+          markdownCoverage: diag?.markdownCoverage ?? null,
+          jaccard: diag?.jaccard ?? null,
+          samplePassCount: diag?.samplePassCount ?? null,
+        };
+      })(),
       issues: [],
     },
     normalization: {
@@ -204,6 +221,10 @@ export function buildDistributionProcessingEvidence(
       warningCount: 0,
       errorCount: payload && payload.validationStatus !== "VALID" ? 1 : 0,
       originMatchSummary: null,
+      validatorVersion: null,
+      markdownCoverage: null,
+      jaccard: null,
+      samplePassCount: null,
       issues: payload?.validationMessage
         ? [
             {
@@ -258,6 +279,10 @@ export function buildLegacyProcessingEvidence(
       warningCount: detail.readiness.sourceValidation.warningCount,
       errorCount: detail.readiness.sourceValidation.failCount,
       originMatchSummary: null,
+      validatorVersion: null,
+      markdownCoverage: null,
+      jaccard: null,
+      samplePassCount: null,
       issues: [],
     },
     normalization: {
@@ -313,6 +338,10 @@ export function buildExternalImportEvidenceFixture(
       warningCount: 0,
       errorCount: 0,
       originMatchSummary: null,
+      validatorVersion: null,
+      markdownCoverage: null,
+      jaccard: null,
+      samplePassCount: null,
       issues: [],
     },
     normalization: overrides.normalization ?? {

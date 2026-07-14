@@ -208,6 +208,179 @@ export async function streamMarkdownPreviewFromReadable(
   };
 }
 
+export type MarkdownTripleSamples = {
+  start: string;
+  middle: string;
+  end: string;
+};
+
+export type StreamMarkdownTripleSamplesResult = {
+  checksumSha256: string;
+  encodingOk: boolean;
+  samples: MarkdownTripleSamples;
+  bytesRead: number;
+  empty: boolean;
+};
+
+function decodeUtf8Sample(buf: Buffer): { text: string; ok: boolean } {
+  try {
+    return {
+      text: new TextDecoder("utf-8", { fatal: true }).decode(buf),
+      ok: true,
+    };
+  } catch {
+    return {
+      text: new TextDecoder("utf-8", { fatal: false }).decode(buf),
+      ok: false,
+    };
+  }
+}
+
+/**
+ * Single-pass markdown sample: start buffer + mid capture near halfway + tail ring.
+ * Does not buffer the entire object.
+ */
+export async function streamMarkdownTripleSamples(
+  readable: Readable,
+  options: {
+    contentLength?: number;
+    sampleBytes: number;
+    maxBytes: number;
+  },
+): Promise<StreamMarkdownTripleSamplesResult> {
+  const sampleBytes = Math.max(1, options.sampleBytes);
+  const hash = createHash("sha256");
+  const startChunks: Buffer[] = [];
+  let startLen = 0;
+  const tailRing: Buffer[] = [];
+  let tailLen = 0;
+  const middleChunks: Buffer[] = [];
+  let middleLen = 0;
+  let middleCapturing = false;
+  let bytesRead = 0;
+  let sawNonWhitespace = false;
+  let encodingOk = true;
+
+  const knownLen =
+    typeof options.contentLength === "number" &&
+    Number.isFinite(options.contentLength) &&
+    options.contentLength > 0
+      ? options.contentLength
+      : null;
+  const midTarget = knownLen != null ? Math.floor(knownLen / 2) : null;
+
+  for await (const chunk of readable) {
+    const buf = Buffer.isBuffer(chunk)
+      ? chunk
+      : typeof chunk === "string"
+        ? Buffer.from(chunk)
+        : Buffer.from(chunk as Uint8Array);
+    hash.update(buf);
+    bytesRead += buf.byteLength;
+
+    if (bytesRead > options.maxBytes) {
+      try {
+        readable.destroy();
+      } catch {
+        /* ignore */
+      }
+      break;
+    }
+
+    if (!sawNonWhitespace) {
+      for (let i = 0; i < buf.byteLength; i++) {
+        const b = buf[i]!;
+        if (b !== 0x20 && b !== 0x09 && b !== 0x0a && b !== 0x0d) {
+          sawNonWhitespace = true;
+          break;
+        }
+      }
+    }
+
+    if (startLen < sampleBytes) {
+      const need = sampleBytes - startLen;
+      if (buf.byteLength <= need) {
+        startChunks.push(buf);
+        startLen += buf.byteLength;
+      } else {
+        startChunks.push(buf.subarray(0, need));
+        startLen = sampleBytes;
+      }
+    }
+
+    // Begin middle capture when we cross approximately the midpoint
+    if (midTarget != null && !middleCapturing && middleLen === 0) {
+      const before = bytesRead - buf.byteLength;
+      if (bytesRead >= midTarget) {
+        middleCapturing = true;
+        const offsetInBuf = Math.max(0, midTarget - before - Math.floor(sampleBytes / 2));
+        const slice = buf.subarray(Math.min(offsetInBuf, buf.byteLength));
+        const take = Math.min(sampleBytes, slice.byteLength);
+        if (take > 0) {
+          middleChunks.push(slice.subarray(0, take));
+          middleLen = take;
+        }
+        if (middleLen >= sampleBytes) middleCapturing = false;
+      }
+    } else if (middleCapturing && middleLen < sampleBytes) {
+      const need = sampleBytes - middleLen;
+      if (buf.byteLength <= need) {
+        middleChunks.push(buf);
+        middleLen += buf.byteLength;
+      } else {
+        middleChunks.push(buf.subarray(0, need));
+        middleLen = sampleBytes;
+        middleCapturing = false;
+      }
+    }
+
+    // Rolling tail
+    tailRing.push(buf);
+    tailLen += buf.byteLength;
+    while (tailRing.length > 1 && tailLen - (tailRing[0]?.byteLength ?? 0) >= sampleBytes) {
+      const dropped = tailRing.shift();
+      if (dropped) tailLen -= dropped.byteLength;
+    }
+  }
+
+  // If contentLength was unknown / too short for mid capture, approximate middle from start+tail overlap
+  if (middleLen === 0 && bytesRead > 0) {
+    const allHead = Buffer.concat(startChunks, startLen);
+    if (bytesRead <= sampleBytes * 2) {
+      middleChunks.push(allHead);
+      middleLen = allHead.byteLength;
+    } else {
+      // Re-decode from head as fallback when stream was short of mid
+      const half = Math.floor(allHead.byteLength / 2);
+      const midFallback = allHead.subarray(half);
+      middleChunks.push(midFallback);
+      middleLen = midFallback.byteLength;
+    }
+  }
+
+  let tail = Buffer.concat(tailRing, tailLen);
+  if (tail.byteLength > sampleBytes) {
+    tail = tail.subarray(tail.byteLength - sampleBytes);
+  }
+
+  const startDecoded = decodeUtf8Sample(Buffer.concat(startChunks, startLen));
+  const middleDecoded = decodeUtf8Sample(Buffer.concat(middleChunks, middleLen));
+  const endDecoded = decodeUtf8Sample(tail);
+  encodingOk = startDecoded.ok && middleDecoded.ok && endDecoded.ok;
+
+  return {
+    checksumSha256: hash.digest("hex"),
+    encodingOk,
+    samples: {
+      start: startDecoded.text,
+      middle: middleDecoded.text,
+      end: endDecoded.text,
+    },
+    bytesRead,
+    empty: !sawNonWhitespace,
+  };
+}
+
 /**
  * Detect file signature from a head sample (and optional full bytes for small files).
  * For large objects, only the head sample is used — OOXML deep validation is skipped

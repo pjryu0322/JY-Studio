@@ -11,6 +11,7 @@ import {
   validateDoclingMarkdownPreview,
   type MarkdownValidationResult,
 } from "@/lib/adapters/docling/docling-markdown-validator";
+import { resolveSimilaritySampleBytes } from "@/lib/adapters/docling/docling-json-markdown-similarity";
 import type {
   AdapterValidationResult,
   DoclingDocument,
@@ -31,7 +32,7 @@ import {
   detectFileSignatureFromSamples,
   sha256HexAndHeadFromStream,
   SOURCE_SIGNATURE_FULL_BUFFER_MAX_BYTES,
-  streamMarkdownPreviewFromReadable,
+  streamMarkdownTripleSamples,
 } from "@/lib/object-storage/stream-object-helpers";
 
 export type BundleValidationLoadResult = {
@@ -207,25 +208,37 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
   const mdSize = Number(mdFile.fileSize);
   let markdown: MarkdownValidationResult;
   let markdownPreviewText = "";
+  const sourceFileName = sourceFile.originalFileName;
+  const originFileName =
+    typeof document?.origin?.filename === "string"
+      ? document.origin.filename
+      : undefined;
 
   if (
     objectStorage &&
     (!Number.isFinite(mdSize) || mdSize > MARKDOWN_FULL_BUFFER_MAX_BYTES)
   ) {
     const streamed = await openStream(objectStorage, mdFile);
-    const preview = await streamMarkdownPreviewFromReadable(streamed.body, {
+    const triple = await streamMarkdownTripleSamples(streamed.body, {
+      contentLength: Number.isFinite(mdSize) ? mdSize : undefined,
+      sampleBytes: resolveSimilaritySampleBytes(),
       maxBytes: maxMdBytes,
-      previewBytes: MARKDOWN_PREVIEW_MAX_BYTES,
     });
-    assertChecksum(preview.checksumSha256, mdFile.checksumSha256);
-    markdownPreviewText = preview.textPreview;
+    assertChecksum(triple.checksumSha256, mdFile.checksumSha256);
+    markdownPreviewText = triple.samples.start.slice(
+      0,
+      Math.min(triple.samples.start.length, MARKDOWN_PREVIEW_MAX_BYTES),
+    );
     markdown = validateDoclingMarkdownPreview({
-      textPreview: preview.textPreview,
-      encodingOk: preview.encodingOk,
-      empty: preview.empty,
-      byteLength: preview.bytesRead,
+      textPreview: markdownPreviewText || triple.samples.start,
+      encodingOk: triple.encodingOk,
+      empty: triple.empty,
+      byteLength: triple.bytesRead,
       maxBytes: maxMdBytes,
       document,
+      markdownSamples: triple.samples,
+      originFileName,
+      sourceFileName,
     });
   } else {
     let mdBytes: Uint8Array;
@@ -250,6 +263,8 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
       markdown: mdBytes,
       document,
       maxBytes: maxMdBytes,
+      originFileName,
+      sourceFileName,
     });
     markdownPreviewText =
       markdown.text ??

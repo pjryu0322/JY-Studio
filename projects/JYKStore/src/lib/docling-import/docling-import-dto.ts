@@ -97,6 +97,8 @@ export type DoclingImportBundlePublicDto = {
   updatedAt: string;
   canDelete: boolean;
   canRetry: boolean;
+  /** Distinguishes revalidate-in-place vs re-upload vs blocked. */
+  retryMode: "REVALIDATE_STORED_OBJECTS" | "REUPLOAD_REQUIRED" | "NOT_ALLOWED";
   immutableAfterSubmission: boolean;
   files: KnowledgePackFilePublicDto[];
   processingLogs: DoclingProcessingLogPublicDto[];

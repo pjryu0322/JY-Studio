@@ -15,9 +15,11 @@ import {
 import {
   DOCLING_FILE_ROLE_LABELS,
   extractOriginMatchSummary,
+  extractSimilarityDiagnostics,
   formatBytes,
   formatDoclingBundleStatusWithCode,
   formatDoclingStorageStatus,
+  mapDoclingImportUserError,
 } from "@/lib/docling-import/docling-import-ui";
 import {
   deleteProviderDoclingImportApi,
@@ -25,6 +27,7 @@ import {
   fetchProviderDoclingImportApi,
   fetchProviderNormalizedDocumentApi,
   providerDoclingImportFileDownloadUrl,
+  revalidateProviderDoclingImportBundleApi,
   retryProviderDoclingImportApi,
   retryProviderDoclingImportBundleApi,
 } from "@/lib/provider-center-api";
@@ -264,9 +267,12 @@ export function ProviderDoclingImportTab({
     setRetrying(true);
     setError(null);
     try {
-      const data = targetBundle.isActive
-        ? await retryProviderDoclingImportApi(packId)
-        : await retryProviderDoclingImportBundleApi(packId, targetBundle.id);
+      const data =
+        targetBundle.retryMode === "REVALIDATE_STORED_OBJECTS"
+          ? await revalidateProviderDoclingImportBundleApi(packId, targetBundle.id)
+          : targetBundle.isActive
+            ? await retryProviderDoclingImportApi(packId)
+            : await retryProviderDoclingImportBundleApi(packId, targetBundle.id);
       await load({ silent: true });
       if (data.bundle.isActive) {
         setBundle(data.bundle);
@@ -274,6 +280,26 @@ export function ProviderDoclingImportTab({
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "재처리에 실패했습니다.");
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const onRevalidate = async (target: DoclingImportBundlePublicDto) => {
+    if (!editable || target.retryMode !== "REVALIDATE_STORED_OBJECTS" || retrying) {
+      return;
+    }
+    setRetrying(true);
+    setError(null);
+    try {
+      const data = await revalidateProviderDoclingImportBundleApi(packId, target.id);
+      await load({ silent: true });
+      if (data.bundle.isActive) {
+        setBundle(data.bundle);
+        onDoclingChanged?.(data.bundle);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "재검증에 실패했습니다.");
     } finally {
       setRetrying(false);
     }
@@ -436,7 +462,19 @@ export function ProviderDoclingImportTab({
                   새 파일로 교체
                 </button>
               ) : null}
-              {editable && bundle.canRetry ? (
+              {editable && bundle.retryMode === "REVALIDATE_STORED_OBJECTS" ? (
+                <button
+                  type="button"
+                  onClick={() => void onRevalidate(bundle)}
+                  disabled={retrying}
+                  className="min-h-[44px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 disabled:opacity-60"
+                >
+                  {retrying ? "재검증 중…" : "저장된 파일 재검증"}
+                </button>
+              ) : null}
+              {editable &&
+              bundle.canRetry &&
+              bundle.retryMode !== "REVALIDATE_STORED_OBJECTS" ? (
                 <button
                   type="button"
                   onClick={() => void onRetry(bundle)}
@@ -487,12 +525,30 @@ export function ProviderDoclingImportTab({
           </p>
           <p>
             오류 {stagingBundle.errorCount}
-            {stagingBundle.lastErrorMessage ? ` · ${stagingBundle.lastErrorMessage}` : ""}
+            {stagingBundle.lastErrorMessage
+              ? ` · ${mapDoclingImportUserError(stagingBundle.lastErrorCode, stagingBundle.lastErrorMessage)}`
+              : ""}
           </p>
-          {!stagingBundle.canRetry && stagingBundle.lastErrorCode ? (
+          {(() => {
+            const diag = extractSimilarityDiagnostics(stagingBundle.validationReport);
+            if (!diag) return null;
+            return (
+              <p className="rounded-lg border border-amber-100 bg-white px-3 py-2 text-amber-950">
+                유사도 진단
+                {diag.validatorVersion ? ` · validator ${diag.validatorVersion}` : ""}
+                {diag.markdownCoverage != null
+                  ? ` · coverage ${(diag.markdownCoverage * 100).toFixed(1)}%`
+                  : ""}
+                {diag.jaccard != null ? ` · jaccard ${diag.jaccard.toFixed(3)}` : ""}
+                {diag.samplePassCount != null
+                  ? ` · sample pass ${diag.samplePassCount}`
+                  : ""}
+              </p>
+            );
+          })()}
+          {stagingBundle.retryMode === "REUPLOAD_REQUIRED" && stagingBundle.lastErrorCode ? (
             <p className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-amber-950">
-              같은 파일로는 재시도할 수 없습니다. Staging을 삭제한 후 올바른 파일을 다시
-              등록하세요.
+              파일 내용/형식이 맞지 않습니다. Staging을 삭제한 후 올바른 파일을 다시 등록하세요.
             </p>
           ) : null}
           <ul className="space-y-2">
@@ -514,7 +570,19 @@ export function ProviderDoclingImportTab({
             ))}
           </ul>
           <div className="flex flex-wrap gap-2 pt-1">
-            {editable && stagingBundle.canRetry ? (
+            {editable && stagingBundle.retryMode === "REVALIDATE_STORED_OBJECTS" ? (
+              <button
+                type="button"
+                onClick={() => void onRevalidate(stagingBundle)}
+                disabled={retrying}
+                className="min-h-[44px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 disabled:opacity-60"
+              >
+                {retrying ? "재검증 중…" : "저장된 파일 재검증"}
+              </button>
+            ) : null}
+            {editable &&
+            stagingBundle.canRetry &&
+            stagingBundle.retryMode !== "REVALIDATE_STORED_OBJECTS" ? (
               <button
                 type="button"
                 onClick={() => void onRetry(stagingBundle)}

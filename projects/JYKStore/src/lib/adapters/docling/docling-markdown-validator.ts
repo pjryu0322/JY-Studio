@@ -1,11 +1,23 @@
 import { getDoclingUploadPolicy } from "@/lib/docling-import/docling-upload-policy";
 import {
+  DOCLING_MARKDOWN_VALIDATOR_VERSION,
+  buildTextSamples,
+  compareJsonMarkdownSimilarity,
+  extractJsonTextSamples,
+  type JsonMarkdownSimilarityMetrics,
+  type SimilaritySampleDetail,
+  type TextSamples,
+} from "./docling-json-markdown-similarity";
+import {
   DOCLING_ERROR_CODES,
   issue,
   type DoclingIssue,
 } from "./docling-errors";
 import type { DoclingDocument } from "./docling-types";
 import { decodeUtf8 } from "./docling-validator";
+
+export { DOCLING_MARKDOWN_VALIDATOR_VERSION };
+export type { TextSamples, JsonMarkdownSimilarityMetrics };
 
 /**
  * Align with Docling upload policy default (512 MiB). Prefer
@@ -35,46 +47,12 @@ export type MarkdownValidationResult = {
   ok: boolean;
   text?: string;
   issues: DoclingIssue[];
+  /** @deprecated Use metrics.jaccard — kept for backward compatibility. */
   similarity?: number;
+  metrics?: JsonMarkdownSimilarityMetrics;
+  samples?: SimilaritySampleDetail[];
+  validatorVersion?: string;
 };
-
-function stripMarkdownSyntax(md: string): string {
-  return md
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`[^`]*`/g, " ")
-    .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
-    .replace(/\[[^\]]*]\([^)]*\)/g, " ")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^>\s?/gm, "")
-    .replace(/^[\s]*[-*+]\s+/gm, "")
-    .replace(/^[\s]*\d+\.\s+/gm, "")
-    .replace(/[*_~]+/g, "")
-    .replace(/\|/g, " ")
-    .replace(/<[^>]+>/g, " ");
-}
-
-function tokenize(text: string): Set<string> {
-  const normalized = text
-    .normalize("NFC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!normalized) return new Set();
-  const tokens = normalized.split(" ").filter((t) => t.length >= 2);
-  return new Set(tokens);
-}
-
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 && b.size === 0) return 1;
-  if (a.size === 0 || b.size === 0) return 0;
-  let inter = 0;
-  for (const t of a) {
-    if (b.has(t)) inter += 1;
-  }
-  const union = a.size + b.size - inter;
-  return union === 0 ? 0 : inter / union;
-}
 
 export function extractJsonTextCorpus(doc: DoclingDocument): string {
   const parts: string[] = [];
@@ -104,9 +82,16 @@ export function sanitizeMarkdownForPreview(markdown: string): string {
 
 function applyMarkdownContentChecks(options: {
   text: string;
+  markdownSamples?: TextSamples;
   document?: DoclingDocument;
+  originFileName?: string;
+  sourceFileName?: string;
   issues: DoclingIssue[];
-}): { similarity?: number } {
+}): {
+  similarity?: number;
+  metrics?: JsonMarkdownSimilarityMetrics;
+  samples?: SimilaritySampleDetail[];
+} {
   const { text, document, issues } = options;
   const controlMatches = text.match(CONTROL_CHAR_RE) ?? [];
   const controlRatio = controlMatches.length / Math.max(text.length, 1);
@@ -130,44 +115,36 @@ function applyMarkdownContentChecks(options: {
     );
   }
 
-  let similarity: number | undefined;
-  if (document) {
-    const jsonCorpus = extractJsonTextCorpus(document);
-    const jsonTokens = tokenize(jsonCorpus);
-    const mdTokens = tokenize(stripMarkdownSyntax(text));
-    similarity = jaccard(jsonTokens, mdTokens);
-
-    if (jsonTokens.size > 0 && mdTokens.size > 0) {
-      if (similarity < 0.02) {
-        issues.push(
-          issue(
-            DOCLING_ERROR_CODES.DOCLING_JSON_MARKDOWN_MISMATCH,
-            "ERROR",
-            "Markdown content appears unrelated to Docling JSON text entities.",
-            {
-              field: "markdown",
-              hint: "동일 문서에서 생성된 Docling JSON·Markdown 쌍인지 확인하세요.",
-            },
-          ),
-        );
-      } else if (similarity < 0.15) {
-        issues.push(
-          issue(
-            DOCLING_ERROR_CODES.DOCLING_JSON_MARKDOWN_MISMATCH,
-            "WARNING",
-            "Markdown content has low similarity to Docling JSON text entities.",
-            { field: "markdown" },
-          ),
-        );
-      }
-    }
+  if (!document) {
+    return {};
   }
-  return { similarity };
+
+  const markdownSamples =
+    options.markdownSamples ?? buildTextSamples(text);
+  const jsonSamples = extractJsonTextSamples(document);
+  const comparison = compareJsonMarkdownSimilarity({
+    jsonSamples,
+    markdownSamples,
+    document,
+    originFileName:
+      options.originFileName ?? document.origin?.filename,
+    sourceFileName: options.sourceFileName,
+  });
+
+  for (const i of comparison.issues) {
+    issues.push(i);
+  }
+
+  return {
+    similarity: comparison.metrics.jaccard,
+    metrics: comparison.metrics,
+    samples: comparison.samples,
+  };
 }
 
 /**
  * Validate markdown from a streaming preview (non-empty UTF-8, size already checked).
- * Uses truncated preview text for similarity / control-char checks.
+ * Uses truncated preview / triple samples for similarity / control-char checks.
  */
 export function validateDoclingMarkdownPreview(options: {
   textPreview: string;
@@ -176,6 +153,9 @@ export function validateDoclingMarkdownPreview(options: {
   byteLength: number;
   maxBytes?: number;
   document?: DoclingDocument;
+  markdownSamples?: TextSamples;
+  originFileName?: string;
+  sourceFileName?: string;
 }): MarkdownValidationResult {
   const issues: DoclingIssue[] = [];
   const maxBytes = options.maxBytes ?? resolveMaxMarkdownBytes();
@@ -189,7 +169,11 @@ export function validateDoclingMarkdownPreview(options: {
         { field: "markdown" },
       ),
     );
-    return { ok: false, issues };
+    return {
+      ok: false,
+      issues,
+      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+    };
   }
 
   if (options.byteLength > maxBytes) {
@@ -201,7 +185,11 @@ export function validateDoclingMarkdownPreview(options: {
         { field: "markdown" },
       ),
     );
-    return { ok: false, issues };
+    return {
+      ok: false,
+      issues,
+      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+    };
   }
 
   if (!options.encodingOk) {
@@ -213,22 +201,40 @@ export function validateDoclingMarkdownPreview(options: {
         { field: "markdown" },
       ),
     );
-    return { ok: false, issues };
+    return {
+      ok: false,
+      issues,
+      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+    };
   }
 
-  const { similarity } = applyMarkdownContentChecks({
+  const checked = applyMarkdownContentChecks({
     text: options.textPreview,
+    markdownSamples: options.markdownSamples,
     document: options.document,
+    originFileName: options.originFileName,
+    sourceFileName: options.sourceFileName,
     issues,
   });
   const ok = !issues.some((i) => i.severity === "ERROR");
-  return { ok, text: options.textPreview, issues, similarity };
+  return {
+    ok,
+    text: options.textPreview,
+    issues,
+    similarity: checked.similarity,
+    metrics: checked.metrics,
+    samples: checked.samples,
+    validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+  };
 }
 
 export function validateDoclingMarkdown(options: {
   markdown?: string | Uint8Array | null;
   document?: DoclingDocument;
   maxBytes?: number;
+  markdownSamples?: TextSamples;
+  originFileName?: string;
+  sourceFileName?: string;
 }): MarkdownValidationResult {
   const issues: DoclingIssue[] = [];
   const { markdown, document } = options;
@@ -243,7 +249,11 @@ export function validateDoclingMarkdown(options: {
         { field: "markdown" },
       ),
     );
-    return { ok: false, issues };
+    return {
+      ok: false,
+      issues,
+      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+    };
   }
 
   if (markdown instanceof Uint8Array && markdown.byteLength > maxBytes) {
@@ -255,7 +265,11 @@ export function validateDoclingMarkdown(options: {
         { field: "markdown" },
       ),
     );
-    return { ok: false, issues };
+    return {
+      ok: false,
+      issues,
+      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+    };
   }
 
   if (typeof markdown === "string") {
@@ -269,7 +283,11 @@ export function validateDoclingMarkdown(options: {
           { field: "markdown" },
         ),
       );
-      return { ok: false, issues };
+      return {
+        ok: false,
+        issues,
+        validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+      };
     }
   }
 
@@ -283,7 +301,11 @@ export function validateDoclingMarkdown(options: {
         { field: "markdown" },
       ),
     );
-    return { ok: false, issues };
+    return {
+      ok: false,
+      issues,
+      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+    };
   }
 
   const text = decoded.text;
@@ -296,10 +318,29 @@ export function validateDoclingMarkdown(options: {
         { field: "markdown" },
       ),
     );
-    return { ok: false, issues };
+    return {
+      ok: false,
+      issues,
+      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+    };
   }
 
-  const { similarity } = applyMarkdownContentChecks({ text, document, issues });
+  const checked = applyMarkdownContentChecks({
+    text,
+    markdownSamples: options.markdownSamples,
+    document,
+    originFileName: options.originFileName,
+    sourceFileName: options.sourceFileName,
+    issues,
+  });
   const ok = !issues.some((i) => i.severity === "ERROR");
-  return { ok, text, issues, similarity };
+  return {
+    ok,
+    text,
+    issues,
+    similarity: checked.similarity,
+    metrics: checked.metrics,
+    samples: checked.samples,
+    validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+  };
 }

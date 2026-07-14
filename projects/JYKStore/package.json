@@ -25,6 +25,8 @@
     "test:docling-e2e": "node --import tsx --test src/__tests__/docling-minio-e2e.test.ts",
     "test:docling-e2e:full": "node test/run-docling-e2e.mjs",
     "test:docling-large-upload-e2e": "node --import tsx --test src/__tests__/docling-large-upload-e2e.test.ts",
+    "test:docling-similarity-unit": "node --import tsx --test src/__tests__/docling-markdown-validator.test.ts src/__tests__/docling-json-markdown-similarity.test.ts",
+    "test:docling-revalidation-e2e": "node --import tsx --test src/__tests__/docling-revalidation-e2e.test.ts",
     "mcp:stdio": "tsx mcp-server/server.ts --transport stdio",
     "mcp:http": "tsx mcp-server/server.ts --transport http",
     "mcp:test": "node --import tsx --test src/__tests__/mcp-*.test.ts",

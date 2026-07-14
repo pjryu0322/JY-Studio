@@ -56,7 +56,7 @@ describe("P0-A.3 docling safe replace and staging", () => {
         DoclingImportBundleStatus.VALIDATION_FAILED,
         "SOURCE_FILENAME_MISMATCH",
       ),
-      false,
+      true,
     );
     assert.equal(
       canRetryDoclingBundle(

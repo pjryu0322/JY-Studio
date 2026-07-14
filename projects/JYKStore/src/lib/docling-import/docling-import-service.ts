@@ -54,8 +54,9 @@ import {
 } from "@/lib/docling-import/normalized-document-fingerprint";
 import {
   assertTransition,
-  canRetryDoclingBundle,
+  resolveDoclingRetryMode,
 } from "@/lib/docling-import/docling-import-state";
+import { DOCLING_MARKDOWN_VALIDATOR_VERSION } from "@/lib/adapters/docling/docling-markdown-validator";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
@@ -170,6 +171,11 @@ export function toDoclingImportBundlePublicDto(
     bundle.normalizedDocuments[0] ??
     null;
   const immutableAfterSubmission = options?.immutableAfterSubmission ?? false;
+  const retryMode = resolveDoclingRetryMode(bundle.status, bundle.lastErrorCode, {
+    immutable: immutableAfterSubmission,
+    deleted: bundle.deletedAt != null,
+    storageActive: bundle.storageStatus === "ACTIVE",
+  });
   return {
     id: bundle.id,
     packId: bundle.packId,
@@ -196,11 +202,8 @@ export function toDoclingImportBundlePublicDto(
     createdAt: bundle.createdAt.toISOString(),
     updatedAt: bundle.updatedAt.toISOString(),
     canDelete: (options?.canDelete ?? false) && !immutableAfterSubmission,
-    canRetry:
-      canRetryDoclingBundle(bundle.status, bundle.lastErrorCode) &&
-      !immutableAfterSubmission &&
-      bundle.deletedAt == null &&
-      bundle.storageStatus === "ACTIVE",
+    canRetry: retryMode !== "NOT_ALLOWED",
+    retryMode,
     immutableAfterSubmission,
     files: bundle.files.map(toFileDto),
     processingLogs: (bundle.processingLogs ?? []).map(toProcessingLogDto),
@@ -646,11 +649,33 @@ export async function validateAndNormalizeBundle(
 
   const errorIssues = validation.issues.filter((i) => i.severity === "ERROR");
   const warningIssues = validation.issues.filter((i) => i.severity === "WARNING");
+  const previousValidatorVersion =
+    bundle.validationReport &&
+    typeof bundle.validationReport === "object" &&
+    typeof (bundle.validationReport as Record<string, unknown>).validatorVersion ===
+      "string"
+      ? ((bundle.validationReport as Record<string, unknown>).validatorVersion as string)
+      : null;
+  const metrics = loaded.markdown.metrics;
   const validationReport = {
     ok: validation.ok,
     issues: validation.issues,
     originMatch: validation.originMatch ?? null,
     validatedAt: new Date().toISOString(),
+    validatorVersion:
+      loaded.markdown.validatorVersion ?? DOCLING_MARKDOWN_VALIDATOR_VERSION,
+    previousValidatorVersion,
+    metrics: metrics ?? null,
+    samples: loaded.markdown.samples
+      ? loaded.markdown.samples.map((s) => ({
+          label: s.label,
+          passed: s.passed,
+          markdownCoverage: s.markdownCoverage,
+        }))
+      : null,
+    markdownCoverage: metrics?.markdownCoverage ?? null,
+    jaccard: metrics?.jaccard ?? loaded.markdown.similarity ?? null,
+    samplePassCount: metrics?.passedSampleCount ?? null,
   };
 
   if (!validation.ok) {
@@ -1195,10 +1220,17 @@ export async function retryDoclingImport(input: {
 
   const staging = await findLatestStagingBundleForVersion(version.id);
   const active = await findActiveBundleForVersion(version.id);
+  const pickRevalidate = (
+    b: NonNullable<typeof staging>,
+  ): boolean =>
+    resolveDoclingRetryMode(b.status, b.lastErrorCode, {
+      deleted: b.deletedAt != null,
+      storageActive: b.storageStatus === "ACTIVE",
+    }) === "REVALIDATE_STORED_OBJECTS";
   const candidate =
-    staging && canRetryDoclingBundle(staging.status, staging.lastErrorCode)
+    staging && pickRevalidate(staging)
       ? staging
-      : active && canRetryDoclingBundle(active.status, active.lastErrorCode)
+      : active && pickRevalidate(active)
         ? active
         : null;
 
@@ -1239,29 +1271,146 @@ export async function retryDoclingImportByBundleId(input: {
       409,
     );
   }
-  if (!canRetryDoclingBundle(bundle.status, bundle.lastErrorCode)) {
+
+  const hasHistory = await bundleHasSubmissionHistory(
+    pack.packId,
+    bundle.id,
+    version.id,
+  );
+  const retryMode = resolveDoclingRetryMode(bundle.status, bundle.lastErrorCode, {
+    immutable: hasHistory,
+    deleted: bundle.deletedAt != null,
+    storageActive: bundle.storageStatus === "ACTIVE",
+  });
+  if (retryMode === "NOT_ALLOWED") {
     throw new DoclingImportError(
       "DOCLING_RETRY_NOT_ALLOWED",
-      bundle.lastErrorCode &&
-        [
-          "DOCLING_SCHEMA_INVALID",
-          "SOURCE_FILENAME_MISMATCH",
-          "SOURCE_MIMETYPE_MISMATCH",
-          "DOCLING_FILE_SIGNATURE_MISMATCH",
-          "DOCLING_FILE_CONTENT_INVALID",
-          "DOCLING_JSON_MARKDOWN_MISMATCH",
-        ].includes(bundle.lastErrorCode)
-        ? "같은 파일로는 재시도할 수 없습니다. Staging을 삭제한 후 올바른 파일을 다시 등록하세요."
-        : "현재 상태에서는 재시도할 수 없습니다.",
+      "현재 상태에서는 재시도할 수 없습니다.",
       409,
     );
   }
+  if (retryMode === "REUPLOAD_REQUIRED") {
+    throw new DoclingImportError(
+      "DOCLING_RETRY_NOT_ALLOWED",
+      "파일 내용/형식이 맞지 않습니다. Staging을 삭제한 후 올바른 파일을 다시 등록하세요.",
+      409,
+    );
+  }
+
+  return runValidateNormalizeAfterRetry({
+    userId: input.userId,
+    pack,
+    version,
+    bundle,
+    storage: input.storage,
+    auditLabel: "Retry",
+  });
+}
+
+/**
+ * Re-run validation/normalization on already-stored objects (no re-upload).
+ * Allowed for VALIDATION_FAILED / NORMALIZATION_FAILED with REVALIDATE_STORED_OBJECTS.
+ */
+export async function revalidateDoclingImportBundle(input: {
+  userId: string;
+  clientId: string;
+  packId: string;
+  bundleId: string;
+  storage?: PayloadStorage;
+}): Promise<{ bundle: DoclingImportBundlePublicDto }> {
+  const { pack, version } = await requireOwnedDraftPack({
+    userId: input.userId,
+    clientId: input.clientId,
+    packId: input.packId,
+  });
+
+  const bundle = await loadBundleWithRelations(input.bundleId);
+  if (!bundle || bundle.packId !== pack.packId || bundle.versionId !== version.id) {
+    throw new DoclingImportError("NOT_FOUND", "재검증할 Docling import가 없습니다.", 404);
+  }
+  if (bundle.deletedAt != null || bundle.storageStatus !== "ACTIVE") {
+    throw new DoclingImportError(
+      "DOCLING_BUNDLE_STORAGE_NOT_ACTIVE",
+      "삭제되었거나 저장소가 비활성인 Bundle은 재검증할 수 없습니다.",
+      409,
+    );
+  }
+
+  if (
+    bundle.status === DoclingImportBundleStatus.VALIDATING ||
+    bundle.status === DoclingImportBundleStatus.NORMALIZING
+  ) {
+    throw new DoclingImportError(
+      "DOCLING_REVALIDATION_NOT_ALLOWED",
+      "검증/정규화가 이미 진행 중입니다.",
+      409,
+    );
+  }
+
+  if (
+    bundle.status !== DoclingImportBundleStatus.VALIDATION_FAILED &&
+    bundle.status !== DoclingImportBundleStatus.NORMALIZATION_FAILED
+  ) {
+    throw new DoclingImportError(
+      "DOCLING_REVALIDATION_NOT_ALLOWED",
+      "재검증은 검증 실패 또는 정규화 실패 상태에서만 가능합니다.",
+      409,
+    );
+  }
+
+  const hasHistory = await bundleHasSubmissionHistory(
+    pack.packId,
+    bundle.id,
+    version.id,
+  );
+  const retryMode = resolveDoclingRetryMode(bundle.status, bundle.lastErrorCode, {
+    immutable: hasHistory,
+    deleted: false,
+    storageActive: true,
+  });
+  if (retryMode !== "REVALIDATE_STORED_OBJECTS") {
+    throw new DoclingImportError(
+      "DOCLING_REVALIDATION_NOT_ALLOWED",
+      retryMode === "REUPLOAD_REQUIRED"
+        ? "이 오류는 저장된 파일 재검증으로 해결할 수 없습니다. Staging을 삭제한 후 올바른 파일을 다시 등록하세요."
+        : "현재 상태에서는 재검증할 수 없습니다.",
+      409,
+    );
+  }
+
+  return runValidateNormalizeAfterRetry({
+    userId: input.userId,
+    pack,
+    version,
+    bundle,
+    storage: input.storage,
+    auditLabel: "Revalidate",
+  });
+}
+
+async function runValidateNormalizeAfterRetry(input: {
+  userId: string;
+  pack: { packId: string; status: PackStatus };
+  version: { id: string };
+  bundle: BundleWithRelations;
+  storage?: PayloadStorage;
+  auditLabel: "Retry" | "Revalidate";
+}): Promise<{ bundle: DoclingImportBundlePublicDto }> {
+  const { pack, version, bundle } = input;
 
   const lastLog = await prisma.doclingProcessingLog.findFirst({
     where: { bundleId: bundle.id },
     orderBy: { createdAt: "desc" },
   });
   const attempt = (lastLog?.attempt ?? 1) + 1;
+
+  const previousValidatorVersion =
+    bundle.validationReport &&
+    typeof bundle.validationReport === "object" &&
+    typeof (bundle.validationReport as Record<string, unknown>).validatorVersion ===
+      "string"
+      ? ((bundle.validationReport as Record<string, unknown>).validatorVersion as string)
+      : null;
 
   const retryLog = await prisma.doclingProcessingLog.create({
     data: {
@@ -1270,7 +1419,11 @@ export async function retryDoclingImportByBundleId(input: {
       status: DoclingProcessingStatus.STARTED,
       attempt,
       adapterVersion: DOCLING_ADAPTER_VERSION,
-      message: `Retry from ${bundle.status}`,
+      message: `${input.auditLabel} from ${bundle.status}`,
+      detailsJson: {
+        validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+        previousValidatorVersion,
+      } as Prisma.InputJsonValue,
     },
   });
 
@@ -1285,6 +1438,9 @@ export async function retryDoclingImportByBundleId(input: {
       bundleId: bundle.id,
       fromStatus: bundle.status,
       attempt,
+      mode: input.auditLabel.toUpperCase(),
+      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+      previousValidatorVersion,
     },
   });
 
@@ -1294,9 +1450,24 @@ export async function retryDoclingImportByBundleId(input: {
       storage: input.storage,
     });
 
+    const metricsSummary =
+      result.validationReport &&
+      typeof result.validationReport === "object"
+        ? {
+            markdownCoverage: (result.validationReport as Record<string, unknown>)
+              .markdownCoverage,
+            jaccard: (result.validationReport as Record<string, unknown>).jaccard,
+            samplePassCount: (result.validationReport as Record<string, unknown>)
+              .samplePassCount,
+            validatorVersion: (result.validationReport as Record<string, unknown>)
+              .validatorVersion,
+          }
+        : null;
+
     if (result.status === DoclingImportBundleStatus.REVIEW_READY && !bundle.isActive) {
       const storage = input.storage ?? getDefaultStorage();
-      const uploadedKeys = (await loadBundleWithRelations(bundle.id))?.files.map((f) => f.storageKey) ?? [];
+      const uploadedKeys =
+        (await loadBundleWithRelations(bundle.id))?.files.map((f) => f.storageKey) ?? [];
       try {
         const { replacedBundleId } = await promoteDoclingStagingBundle({
           packId: pack.packId,
@@ -1335,12 +1506,18 @@ export async function retryDoclingImportByBundleId(input: {
         completedAt: new Date(),
         message:
           result.status === DoclingImportBundleStatus.REVIEW_READY
-            ? "Retry succeeded"
-            : "Retry completed with failure",
+            ? `${input.auditLabel} succeeded`
+            : `${input.auditLabel} completed with failure`,
         errorCode:
           result.status === DoclingImportBundleStatus.REVIEW_READY
             ? null
             : result.lastErrorCode,
+        detailsJson: {
+          validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+          previousValidatorVersion,
+          metricsSummary,
+          attempt,
+        } as Prisma.InputJsonValue,
       },
     });
 
@@ -1362,7 +1539,7 @@ export async function retryDoclingImportByBundleId(input: {
       data: {
         status: DoclingProcessingStatus.FAILED,
         completedAt: new Date(),
-        message: error instanceof Error ? error.message.slice(0, 1000) : "Retry failed",
+        message: error instanceof Error ? error.message.slice(0, 1000) : `${input.auditLabel} failed`,
         errorCode: isDoclingImportError(error) ? error.code : "DOCLING_RETRY_FAILED",
       },
     });

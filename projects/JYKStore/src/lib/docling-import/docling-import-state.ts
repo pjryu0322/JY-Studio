@@ -30,13 +30,25 @@ export const DOCLING_RETRYABLE_ERROR_CODES = new Set([
   "DOCLING_ACTIVE_BUNDLE_CONFLICT",
 ]);
 
-/** Content/schema failures — retrying the same files will not help. */
+/**
+ * Content issues that can be re-checked against already-stored objects
+ * (e.g. after validator upgrades) without re-uploading.
+ */
+export const DOCLING_REVALIDATE_ERROR_CODES = new Set([
+  "DOCLING_JSON_MARKDOWN_MISMATCH",
+  "DOCLING_JSON_MARKDOWN_INCONCLUSIVE",
+  "DOCLING_JSON_MARKDOWN_LOW_COVERAGE",
+  "DOCLING_VALIDATOR_VERSION_OUTDATED",
+  "DOCLING_VALIDATION_FAILED",
+  ...DOCLING_RETRYABLE_ERROR_CODES,
+]);
+
+/** Content/schema failures — need new files (re-upload), not the same bytes again. */
 export const DOCLING_NON_RETRYABLE_ERROR_CODES = new Set([
   "DOCLING_SCHEMA_INVALID",
   "DOCLING_ORIGIN_MISMATCH",
   "SOURCE_FILENAME_MISMATCH",
   "SOURCE_MIMETYPE_MISMATCH",
-  "DOCLING_JSON_MARKDOWN_MISMATCH",
   "DOCLING_INCOMPLETE_FILES",
   "DOCLING_FILE_SIGNATURE_MISMATCH",
   "DOCLING_FILE_CONTENT_INVALID",
@@ -44,8 +56,15 @@ export const DOCLING_NON_RETRYABLE_ERROR_CODES = new Set([
   "DOCLING_OFFICE_PACKAGE_INVALID",
   "DOCLING_OFFICE_REQUIRED_ENTRY_MISSING",
   "DOCLING_ENTITY_LIMIT_EXCEEDED",
-  "DOCLING_VALIDATION_FAILED",
 ]);
+
+/** Alias: clear integrity / origin mismatches require re-upload. */
+export const DOCLING_REUPLOAD_ERROR_CODES = DOCLING_NON_RETRYABLE_ERROR_CODES;
+
+export type DoclingRetryMode =
+  | "REVALIDATE_STORED_OBJECTS"
+  | "REUPLOAD_REQUIRED"
+  | "NOT_ALLOWED";
 
 export function assertTransition(
   from: DoclingImportBundleStatus,
@@ -65,25 +84,67 @@ export function canRetry(status: DoclingImportBundleStatus): boolean {
   return canRetryDoclingBundle(status, null);
 }
 
-export function canRetryDoclingBundle(
+export function resolveDoclingRetryMode(
   status: DoclingImportBundleStatus,
   lastErrorCode?: string | null,
-): boolean {
-  const statusOk =
+  options?: {
+    immutable?: boolean;
+    deleted?: boolean;
+    storageActive?: boolean;
+  },
+): DoclingRetryMode {
+  if (options?.immutable) return "NOT_ALLOWED";
+  if (options?.deleted) return "NOT_ALLOWED";
+  if (options?.storageActive === false) return "NOT_ALLOWED";
+
+  if (
+    status === DoclingImportBundleStatus.VALIDATING ||
+    status === DoclingImportBundleStatus.NORMALIZING
+  ) {
+    return "NOT_ALLOWED";
+  }
+
+  const failedLike =
     status === DoclingImportBundleStatus.VALIDATION_FAILED ||
     status === DoclingImportBundleStatus.NORMALIZATION_FAILED ||
     status === DoclingImportBundleStatus.NORMALIZED;
-  if (!statusOk) return false;
+  if (!failedLike) return "NOT_ALLOWED";
 
   const code = lastErrorCode?.trim() || "";
-  if (!code) return true;
-  if (DOCLING_NON_RETRYABLE_ERROR_CODES.has(code)) return false;
-  if (DOCLING_RETRYABLE_ERROR_CODES.has(code)) return true;
-  // Unknown codes: allow retry for NORMALIZATION_FAILED / NORMALIZED; block clear validation mismatches.
-  if (status === DoclingImportBundleStatus.VALIDATION_FAILED) {
-    return !code.includes("MISMATCH") && !code.includes("INVALID") && !code.includes("SCHEMA");
+  if (!code) return "REVALIDATE_STORED_OBJECTS";
+
+  if (DOCLING_REUPLOAD_ERROR_CODES.has(code)) return "REUPLOAD_REQUIRED";
+  if (DOCLING_REVALIDATE_ERROR_CODES.has(code)) {
+    return "REVALIDATE_STORED_OBJECTS";
   }
-  return true;
+
+  // Unknown codes on validation failure: treat schema/origin-ish as reupload
+  if (status === DoclingImportBundleStatus.VALIDATION_FAILED) {
+    if (
+      code.includes("SCHEMA") ||
+      (code.includes("MISMATCH") &&
+        !code.includes("JSON_MARKDOWN") &&
+        !code.includes("MARKDOWN"))
+    ) {
+      return "REUPLOAD_REQUIRED";
+    }
+  }
+
+  return "REVALIDATE_STORED_OBJECTS";
+}
+
+export function canRetryDoclingBundle(
+  status: DoclingImportBundleStatus,
+  lastErrorCode?: string | null,
+  options?: {
+    immutable?: boolean;
+    deleted?: boolean;
+    storageActive?: boolean;
+  },
+): boolean {
+  return (
+    resolveDoclingRetryMode(status, lastErrorCode, options) !== "NOT_ALLOWED"
+  );
 }
 
 export function getAllowedTransitions(

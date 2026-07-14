@@ -38,6 +38,10 @@ export type ImportProcessingEvidenceDto = {
     warningCount: number;
     errorCount: number;
     originMatchSummary: string | null;
+    validatorVersion: string | null;
+    markdownCoverage: number | null;
+    jaccard: number | null;
+    samplePassCount: number | null;
     issues: Array<{
       code: string;
       severity: "INFO" | "WARNING" | "ERROR";

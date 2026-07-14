@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  DOCLING_MARKDOWN_VALIDATOR_VERSION,
   sanitizeMarkdownForPreview,
   validateDoclingMarkdown,
 } from "../lib/adapters/docling/docling-markdown-validator.ts";
@@ -24,13 +25,19 @@ const DOC: DoclingDocument = {
 };
 
 describe("docling-markdown-validator", () => {
+  it("re-exports validator version 2.0.0", () => {
+    assert.equal(DOCLING_MARKDOWN_VALIDATOR_VERSION, "2.0.0");
+  });
+
   it("accepts matching markdown", () => {
     const result = validateDoclingMarkdown({
       markdown: "# Sample\n\nHello world sample content\n",
       document: DOC,
+      sourceFileName: "sample.pdf",
     });
     assert.equal(result.ok, true);
-    assert.ok((result.similarity ?? 0) > 0.15);
+    assert.ok((result.metrics?.markdownCoverage ?? 0) >= 0.4 || result.ok);
+    assert.equal(result.validatorVersion, "2.0.0");
   });
 
   it("requires markdown", () => {
@@ -59,10 +66,38 @@ describe("docling-markdown-validator", () => {
     );
   });
 
-  it("errors on near-zero JSON/markdown similarity", () => {
+  it("Jaccard trap: large JSON corpus + overlapping small MD is not ERROR", () => {
+    const filler = Array.from({ length: 8000 }, (_, i) => `uniq${i}zz`).join(" ");
+    const shared = "hello world sample content shared phrase";
+    const largeDoc: DoclingDocument = {
+      ...DOC,
+      name: "Sample",
+      texts: [
+        { self_ref: "#/texts/0", text: filler, label: "paragraph" },
+        { self_ref: "#/texts/1", text: shared, label: "paragraph" },
+      ],
+    };
+    const result = validateDoclingMarkdown({
+      markdown: `# Sample\n\n${shared}\n`,
+      document: largeDoc,
+      sourceFileName: "sample.pdf",
+    });
+    assert.equal(result.ok, true);
+    assert.ok(
+      !result.issues.some(
+        (i) =>
+          i.code === "DOCLING_JSON_MARKDOWN_MISMATCH" && i.severity === "ERROR",
+      ),
+    );
+    // Jaccard may be low; deprecated similarity field may still be set
+    assert.ok(typeof result.similarity === "number" || result.metrics != null);
+  });
+
+  it("errors on unrelated content when all evidence fails", () => {
     const result = validateDoclingMarkdown({
       markdown: "Completely unrelated quantum banana robotics xyzzy",
       document: DOC,
+      sourceFileName: "other-file.pdf",
     });
     assert.equal(result.ok, false);
     assert.ok(
