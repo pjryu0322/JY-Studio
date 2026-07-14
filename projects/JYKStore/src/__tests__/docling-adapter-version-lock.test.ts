@@ -11,26 +11,27 @@ function read(relative: string): string {
 }
 
 describe("docling adapter version lock", () => {
-  it("upload route ignores client adapterVersion", () => {
-    const route = read(
-      "src/app/api/v1/provider/packs/[packId]/docling-import/route.ts",
-    );
-    assert.ok(route.includes("void adapterVersionRaw") || route.includes("ignored"));
-    assert.ok(!route.includes("adapterVersion,"));
-    assert.ok(!route.includes("adapterVersion:"));
+  it("upload session complete uses server adapter constant", () => {
+    const session = read("src/lib/docling-import/docling-upload-session-service.ts");
+    assert.ok(session.includes("DOCLING_ADAPTER_VERSION"));
+    assert.ok(!session.includes("input.adapterVersion"));
   });
 
-  it("uploadDoclingImportBundle uses server constant only", () => {
+  it("normalize path uses server constant only", () => {
     const service = read("src/lib/docling-import/docling-import-service.ts");
     assert.ok(service.includes("DOCLING_ADAPTER_VERSION"));
     assert.ok(!service.includes("adapterVersion?: string"));
     assert.ok(!service.includes("input.adapterVersion"));
-    assert.equal(DOCLING_ADAPTER_VERSION, "1.0.0");
+    assert.equal(DOCLING_ADAPTER_VERSION, "1.1.0");
   });
 
-  it("provider FormData no longer appends adapterVersion", () => {
+  it("provider client does not append adapterVersion on upload", () => {
     const api = read("src/lib/provider-center-api.ts");
-    assert.ok(api.includes("uploadProviderDoclingImportApi"));
+    assert.ok(
+      api.includes("createProviderDoclingUploadSessionApi") ||
+        api.includes("completeProviderDoclingUploadSessionApi") ||
+        api.includes("uploadProviderDoclingImportApi"),
+    );
     assert.ok(!api.includes('form.append("adapterVersion"'));
   });
 

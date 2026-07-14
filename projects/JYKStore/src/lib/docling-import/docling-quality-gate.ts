@@ -122,6 +122,77 @@ export function evaluateNormalizedDocumentQuality(input: {
       message: "문서 제목이 없습니다.",
     });
   }
+
+  const tablesWithSourceCells = input.tables.filter((t) => {
+    const data = t.data as { sourceHadTableCells?: boolean } | null;
+    return Boolean(data?.sourceHadTableCells);
+  });
+  const tablesMapped = tablesWithSourceCells.filter((t) => {
+    const data = t.data as { cellTextCount?: number } | null;
+    return (data?.cellTextCount ?? 0) > 0;
+  });
+  if (tablesWithSourceCells.length > 0 && tablesMapped.length === 0) {
+    blockers.push({
+      code: "TABLE_CELLS_UNMAPPED",
+      severity: "blocker",
+      message: "표 셀 데이터가 있으나 하나도 매핑되지 않았습니다.",
+    });
+  } else {
+    const failedPartial = tablesWithSourceCells.filter((t) => {
+      const data = t.data as { cellTextCount?: number; hasOnlyCoords?: boolean } | null;
+      return data?.hasOnlyCoords || (data?.cellTextCount ?? 0) === 0;
+    });
+    if (failedPartial.length > 0) {
+      warnings.push({
+        code: "TABLE_CELL_PARTIAL_FAIL",
+        severity: "warning",
+        message: "일부 표의 셀 매핑에 실패했습니다.",
+      });
+    }
+  }
+
+  const missingFigurePreview = input.figures.filter((f) => !f.previewObjectKey?.trim());
+  if (input.figures.length > 0 && missingFigurePreview.length === input.figures.length) {
+    warnings.push({
+      code: "FIGURE_PREVIEW_ALL_MISSING",
+      severity: "warning",
+      message: "그림 미리보기를 생성하지 못했습니다.",
+    });
+  } else if (missingFigurePreview.length > 0) {
+    warnings.push({
+      code: "FIGURE_PREVIEW_PARTIAL",
+      severity: "warning",
+      message: "일부 그림 미리보기 생성에 실패했습니다.",
+    });
+  }
+
+  const tocTables = input.tables.filter((t) => {
+    const data = t.data as { classification?: string } | null;
+    return (
+      data?.classification === "TOC_LAYOUT" ||
+      data?.classification === "TABLE_INDEX" ||
+      data?.classification === "FIGURE_INDEX"
+    );
+  });
+  if (tocTables.length > 0) {
+    warnings.push({
+      code: "TOC_TABLE_RECLASSIFIED",
+      severity: "warning",
+      message: "목차·색인용 표가 자동으로 재분류되었습니다.",
+    });
+  }
+
+  const decorativeFigures = input.figures.filter((f) => {
+    const c = f.classification ?? "";
+    return c === "COVER_IMAGE" || c === "LOGO" || c === "DECORATIVE";
+  });
+  if (decorativeFigures.length > 0) {
+    warnings.push({
+      code: "DECORATIVE_FIGURE_EXCLUDED",
+      severity: "warning",
+      message: "표지·로고·장식 이미지는 기본 그림 샘플에서 제외됩니다.",
+    });
+  }
   if (structure.paragraphCount === 0) {
     blockers.push({
       code: "NORMALIZED_BODY_EMPTY",

@@ -609,3 +609,11 @@ export function providerDoclingImportFileDownloadUrl(
   }
   return `${base}?${params.toString()}`;
 }
+
+export function providerDoclingFigurePreviewUrl(
+  packId: string,
+  bundleId: string,
+  figureId: string,
+): string {
+  return `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import/${encodeURIComponent(bundleId)}/figures/${encodeURIComponent(figureId)}/preview`;
+}

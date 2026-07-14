@@ -109,21 +109,23 @@ export async function finalizePreviousBundleStorage(
   previous: BundleWithRelations,
   storage: PayloadStorage,
 ): Promise<void> {
-  const keys = previous.files.map((f) => f.storageKey);
+  const figureKeys = collectFigurePreviewKeysFromNds(previous.normalizedDocuments ?? []);
+  const keys = [...previous.files.map((f) => f.storageKey), ...figureKeys];
   let failed = false;
   let lastError: string | null = null;
-  for (const file of previous.files) {
+  for (const objectKey of keys) {
     try {
-      await storage.delete({ objectKey: file.storageKey });
+      await storage.delete({ objectKey });
     } catch (error) {
       failed = true;
       lastError = error instanceof Error ? error.message : "delete failed";
+      const file = previous.files.find((f) => f.storageKey === objectKey);
       await enqueuePayloadCleanupJob({
-        objectKey: file.storageKey,
+        objectKey,
         reason: "docling_bundle_replaced",
         lastError,
         doclingBundleId: previous.id,
-        knowledgePackFileId: file.id,
+        knowledgePackFileId: file?.id ?? null,
       });
     }
   }
@@ -147,7 +149,26 @@ export async function finalizePreviousBundleStorage(
       },
     });
   }
-  void keys;
+}
+
+function collectFigurePreviewKeysFromNds(
+  docs: Array<{ figuresJson?: unknown }>,
+): string[] {
+  const keys = new Set<string>();
+  for (const nd of docs) {
+    const figures = Array.isArray(nd.figuresJson) ? nd.figuresJson : [];
+    for (const fig of figures) {
+      if (
+        fig &&
+        typeof fig === "object" &&
+        typeof (fig as { previewObjectKey?: unknown }).previewObjectKey === "string"
+      ) {
+        const key = (fig as { previewObjectKey: string }).previewObjectKey.trim();
+        if (key) keys.add(key);
+      }
+    }
+  }
+  return [...keys];
 }
 
 /**

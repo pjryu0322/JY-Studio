@@ -8,11 +8,15 @@ import type {
 } from "@/lib/docling-import/docling-import-dto";
 import type { DoclingQualityGateResult, QualityIssue } from "@/lib/docling-import/docling-quality-gate";
 import {
+  collectAdvancedFigureSamples,
   collectBodySamples,
+  collectContentTableSamples,
   collectFigureSamples,
   collectHeadingSamples,
 } from "@/lib/docling-import/structure-summary";
 import type { NormalizedFigure, NormalizedSection, NormalizedTable } from "@/lib/adapters/docling/docling-types";
+import { figureRefToRouteParam } from "@/lib/adapters/docling/docling-figure-ids";
+import { providerDoclingFigurePreviewUrl } from "@/lib/provider-center-api";
 
 const PRIMARY_TABS = ["summary", "headings", "body", "tables", "figures"] as const;
 type PrimaryTabId = (typeof PRIMARY_TABS)[number];
@@ -53,18 +57,34 @@ function statusWord(ok: boolean, emptyLabel: string): string {
   return ok ? "정상" : emptyLabel;
 }
 
+function tableDims(data: {
+  rowCount?: number;
+  columnCount?: number;
+  rows?: number;
+  cols?: number;
+}): { rows: number; cols: number } {
+  return {
+    rows: data.rowCount ?? data.rows ?? 0,
+    cols: data.columnCount ?? data.cols ?? 0,
+  };
+}
+
 export function NormalizedDocumentPreview({
   document,
   structure,
   markdownText,
   processingLogs,
   qualityGate: qualityGateProp,
+  packId,
+  bundleId,
 }: {
   readonly document: NormalizedDocumentSummaryDto | null;
   readonly structure: unknown;
   readonly markdownText?: string | null;
   readonly processingLogs?: readonly DoclingProcessingLogPublicDto[];
   readonly qualityGate?: DoclingQualityGateResult | null;
+  readonly packId?: string | null;
+  readonly bundleId?: string | null;
 }) {
   const [tab, setTab] = useState<PrimaryTabId>("summary");
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -87,10 +107,16 @@ export function NormalizedDocumentPreview({
 
   const headingSamples = useMemo(() => collectHeadingSamples(sections, 20), [sections]);
   const bodySamples = useMemo(() => collectBodySamples(sections), [sections]);
+  const tableSamples = useMemo(() => collectContentTableSamples(tables, 5), [tables]);
   const figureSamples = useMemo(() => collectFigureSamples(figures, 5), [figures]);
+  const advancedFigures = useMemo(() => collectAdvancedFigureSamples(figures, 8), [figures]);
   const headingCount = Number(summary?.headingCount ?? headingSamples.length);
   const paragraphCount = Number(summary?.paragraphCount ?? bodySamples.length);
   const readingOrderCount = Number(summary?.readingOrderCount ?? 0);
+  const contentTableCount = Number(summary?.contentTableCount ?? tableSamples.length);
+  const tocTableCount = Number(summary?.tocTableCount ?? 0);
+  const contentFigureCount = Number(summary?.contentFigureCount ?? figureSamples.length);
+  const decorativeFigureCount = Number(summary?.decorativeFigureCount ?? advancedFigures.length);
 
   const sanitizedMarkdown = useMemo(
     () => sanitizeMarkdownForPreview(markdownText ?? ""),
@@ -155,13 +181,6 @@ export function NormalizedDocumentPreview({
                 언어 <span className="font-semibold">{formatLanguage(document.language)}</span>
               </li>
               <li>
-                목차 추출{" "}
-                <span className="font-semibold">
-                  {statusWord(headingCount > 0, "확인 필요")}
-                  {headingCount > 0 ? ` (${headingCount}개)` : ""}
-                </span>
-              </li>
-              <li>
                 본문 추출{" "}
                 <span className="font-semibold">
                   {statusWord(paragraphCount > 0, "실패")}
@@ -169,18 +188,31 @@ export function NormalizedDocumentPreview({
                 </span>
               </li>
               <li>
-                표 추출 <span className="font-semibold">{Number(summary?.tableCount ?? tables.length)}개</span>
-              </li>
-              <li>
-                그림 추출{" "}
-                <span className="font-semibold">{Number(summary?.figureCount ?? figures.length)}개</span>
-              </li>
-              <li>
                 읽기 순서{" "}
                 <span className="font-semibold">
                   {statusWord(readingOrderCount > 0, "생성되지 않음")}
                   {readingOrderCount > 0 ? ` (${readingOrderCount})` : ""}
                 </span>
+              </li>
+              <li>
+                실제 표{" "}
+                <span className="font-semibold">{contentTableCount}개</span>
+              </li>
+              <li>
+                목차용 표{" "}
+                <span className="font-semibold">{tocTableCount}개</span>
+              </li>
+              <li>
+                실제 그림{" "}
+                <span className="font-semibold">{contentFigureCount}개</span>
+              </li>
+              <li>
+                표지·장식 이미지{" "}
+                <span className="font-semibold">{decorativeFigureCount}개</span>
+              </li>
+              <li>
+                품질 차단 문제{" "}
+                <span className="font-semibold">{qualityGate?.blockers.length ?? 0}개</span>
               </li>
               <li>
                 품질 경고{" "}
@@ -255,30 +287,42 @@ export function NormalizedDocumentPreview({
         ) : null}
 
         {tab === "tables" ? (
-          tables.length === 0 ? (
-            <p className="text-store-muted">표가 없습니다.</p>
+          tableSamples.length === 0 ? (
+            <p className="text-store-muted">표시할 표 샘플이 없습니다.</p>
           ) : (
             <ul className="max-h-72 space-y-3 overflow-y-auto">
-              {tables.slice(0, 5).map((table, index) => {
+              {tableSamples.map((table, index) => {
                 const data =
                   table.data && typeof table.data === "object"
                     ? (table.data as {
+                        rowCount?: number;
+                        columnCount?: number;
                         rows?: number;
                         cols?: number;
                         previewRows?: string[][];
                         page?: number | null;
+                        pageNumber?: number | null;
                         cellTextCount?: number;
                         hasOnlyCoords?: boolean;
+                        cells?: Array<{
+                          row: number;
+                          column: number;
+                          rowSpan?: number;
+                          columnSpan?: number;
+                          isColumnHeader?: boolean;
+                        }>;
                       })
                     : {};
+                const dims = tableDims(data);
+                const page = data.pageNumber ?? data.page;
                 return (
                   <li key={table.id ?? index} className="rounded-lg bg-slate-50 px-2 py-2">
                     <p className="font-semibold">{table.caption?.trim() || `표 ${index + 1}`}</p>
                     <p className="text-store-muted">
-                      {data.page != null ? `${data.page}페이지 · ` : ""}
-                      {data.rows ?? 0}행 × {data.cols ?? 0}열
+                      {page != null ? `${page}페이지 · ` : ""}
+                      {dims.rows}행 × {dims.cols}열
                     </p>
-                    {data.hasOnlyCoords || (data.cellTextCount ?? 0) === 0 ? (
+                    {data.hasOnlyCoords || (dims.rows > 0 && (data.cellTextCount ?? 0) === 0) ? (
                       <p className="mt-1 text-amber-800">표 내용 해석 실패</p>
                     ) : (
                       <div className="mt-2 overflow-x-auto">
@@ -286,11 +330,26 @@ export function NormalizedDocumentPreview({
                           <tbody>
                             {(data.previewRows ?? []).map((r, ri) => (
                               <tr key={ri}>
-                                {r.map((cell, ci) => (
-                                  <td key={ci} className="border border-slate-200 px-1 py-0.5">
-                                    {cell || "—"}
-                                  </td>
-                                ))}
+                                {r.map((cell, ci) => {
+                                  const meta = (data.cells ?? []).find(
+                                    (c) => c.row === ri && c.column === ci,
+                                  );
+                                  const spanHint =
+                                    meta &&
+                                    ((meta.rowSpan ?? 1) > 1 || (meta.columnSpan ?? 1) > 1)
+                                      ? ` (${meta.rowSpan ?? 1}×${meta.columnSpan ?? 1})`
+                                      : "";
+                                  return (
+                                    <td
+                                      key={ci}
+                                      className={`border border-slate-200 px-1 py-0.5 ${
+                                        meta?.isColumnHeader ? "font-semibold bg-slate-100" : ""
+                                      }`}
+                                    >
+                                      {(cell || "—") + spanHint}
+                                    </td>
+                                  );
+                                })}
                               </tr>
                             ))}
                           </tbody>
@@ -306,19 +365,41 @@ export function NormalizedDocumentPreview({
 
         {tab === "figures" ? (
           figureSamples.length === 0 ? (
-            <p className="text-store-muted">그림이 없습니다.</p>
+            <p className="text-store-muted">표시할 그림 샘플이 없습니다.</p>
           ) : (
             <ul className="max-h-72 space-y-2 overflow-y-auto">
-              {figureSamples.map((fig, index) => (
-                <li key={`${fig.title}-${index}`} className="rounded-lg bg-slate-50 px-2 py-2">
-                  <p className="font-semibold">{fig.title}</p>
-                  <p className="text-store-muted">
-                    {fig.page != null ? `${fig.page}페이지` : "페이지 —"}
-                    {fig.caption ? ` · ${fig.caption.slice(0, 120)}` : ""}
-                  </p>
-                  {fig.altText ? <p className="mt-1">대체 텍스트: {fig.altText}</p> : null}
-                </li>
-              ))}
+              {figureSamples.map((fig, index) => {
+                const previewUrl =
+                  packId && bundleId
+                    ? providerDoclingFigurePreviewUrl(
+                        packId,
+                        bundleId,
+                        figureRefToRouteParam(fig.id),
+                      )
+                    : null;
+                return (
+                  <li key={`${fig.id}-${index}`} className="rounded-lg bg-slate-50 px-2 py-2">
+                    <p className="font-semibold">{fig.title}</p>
+                    <p className="text-store-muted">
+                      {fig.page != null ? `${fig.page}페이지` : "페이지 —"}
+                      {fig.caption ? ` · ${fig.caption.slice(0, 120)}` : ""}
+                    </p>
+                    {fig.altText ? <p className="mt-1">대체 텍스트: {fig.altText}</p> : null}
+                    {previewUrl && fig.previewObjectKey ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={previewUrl}
+                        alt={fig.altText || fig.title}
+                        className="mt-2 max-h-40 max-w-full rounded border border-slate-200 object-contain"
+                      />
+                    ) : (
+                      <p className="mt-1 text-amber-800">
+                        그림 데이터는 확인되었으나 미리보기를 생성하지 못했습니다.
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )
         ) : null}
@@ -343,6 +424,21 @@ export function NormalizedDocumentPreview({
               Fingerprint: {document.fingerprint ?? "—"}
             </li>
           </ul>
+
+          {advancedFigures.length > 0 ? (
+            <div>
+              <p className="font-semibold">표지·로고·장식 이미지</p>
+              <ul className="mt-1 space-y-1">
+                {advancedFigures.map((fig, i) => (
+                  <li key={fig.id ?? i}>
+                    {fig.caption?.trim() || `이미지 ${i + 1}`}
+                    {fig.classification ? ` · ${fig.classification}` : ""}
+                    {fig.page != null ? ` · ${fig.page}페이지` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           <div>
             <p className="font-semibold">Markdown 일부 보기</p>

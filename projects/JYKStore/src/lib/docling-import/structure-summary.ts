@@ -1,6 +1,7 @@
 import type {
   NormalizedFigure,
   NormalizedSection,
+  NormalizedTable,
 } from "@/lib/adapters/docling/docling-types";
 import { isHeadingTextLabel } from "@/lib/adapters/docling/docling-normalizer";
 
@@ -9,7 +10,11 @@ export type StructureSummary = {
   paragraphCount: number;
   listCount: number;
   tableCount: number;
+  contentTableCount: number;
+  tocTableCount: number;
   figureCount: number;
+  contentFigureCount: number;
+  decorativeFigureCount: number;
   captionCount: number;
   readingOrderCount: number;
   /** Backward-compatible total section-like nodes. */
@@ -48,8 +53,8 @@ export function isBodySection(section: NormalizedSection): boolean {
 
 export function buildStructureSummary(input: {
   sections: NormalizedSection[];
-  tables: Array<{ caption?: string | null }>;
-  figures: Array<{ caption?: string | null }>;
+  tables: Array<{ caption?: string | null; data?: unknown }>;
+  figures: Array<{ caption?: string | null; classification?: string | null }>;
   readingOrder: unknown[];
 }): StructureSummary {
   let headingCount = 0;
@@ -77,7 +82,27 @@ export function buildStructureSummary(input: {
   });
 
   const tableCount = input.tables.length;
+  let contentTableCount = 0;
+  let tocTableCount = 0;
+  for (const table of input.tables) {
+    const data =
+      table.data && typeof table.data === "object"
+        ? (table.data as { classification?: string })
+        : null;
+    const c = data?.classification ?? "UNKNOWN";
+    if (c === "CONTENT_TABLE" || c === "UNKNOWN") contentTableCount += 1;
+    else if (c === "TOC_LAYOUT" || c === "TABLE_INDEX" || c === "FIGURE_INDEX") tocTableCount += 1;
+  }
   const figureCount = input.figures.length;
+  let contentFigureCount = 0;
+  let decorativeFigureCount = 0;
+  for (const fig of input.figures) {
+    const c = fig.classification ?? "UNKNOWN";
+    if (c === "CONTENT_FIGURE") contentFigureCount += 1;
+    else if (c === "COVER_IMAGE" || c === "LOGO" || c === "DECORATIVE" || c === "PAGE_RENDER") {
+      decorativeFigureCount += 1;
+    }
+  }
   const captionCount =
     input.tables.filter((t) => Boolean(t.caption?.trim())).length +
     input.figures.filter((f) => Boolean(f.caption?.trim())).length;
@@ -113,7 +138,11 @@ export function buildStructureSummary(input: {
     paragraphCount,
     listCount,
     tableCount,
+    contentTableCount,
+    tocTableCount,
     figureCount,
+    contentFigureCount,
+    decorativeFigureCount,
     captionCount,
     readingOrderCount,
     sectionCount,
@@ -184,21 +213,61 @@ export function collectBodySamples(
   return merged;
 }
 
+export function collectContentTableSamples(
+  tables: NormalizedTable[],
+  max = 5,
+): NormalizedTable[] {
+  const content = tables.filter((table) => {
+    const data =
+      table.data && typeof table.data === "object"
+        ? (table.data as { classification?: string })
+        : null;
+    const c = data?.classification ?? "CONTENT_TABLE";
+    return c === "CONTENT_TABLE" || c === "UNKNOWN";
+  });
+  return content.slice(0, max);
+}
+
 export function collectFigureSamples(
   figures: NormalizedFigure[],
   max = 5,
 ): Array<{
+  id: string;
   title: string;
   caption: string | null;
   altText: string | null;
   page: number | null;
+  previewObjectKey: string | null;
+  classification: string | null;
 }> {
-  return figures.slice(0, max).map((fig, i) => ({
+  const content = figures.filter((fig) => {
+    const c = fig.classification ?? "CONTENT_FIGURE";
+    return c === "CONTENT_FIGURE" || c === "UNKNOWN";
+  });
+  return content.slice(0, max).map((fig, i) => ({
+    id: fig.id,
     title: fig.caption?.trim() || `그림 ${i + 1}`,
     caption: fig.caption ?? null,
-    altText: (fig as { altText?: string | null }).altText ?? null,
-    page: typeof (fig as { page?: number }).page === "number"
-      ? (fig as { page?: number }).page!
-      : null,
+    altText: fig.altText ?? null,
+    page:
+      typeof fig.pageNumber === "number"
+        ? fig.pageNumber
+        : typeof fig.page === "number"
+          ? fig.page
+          : null,
+    previewObjectKey: fig.previewObjectKey ?? null,
+    classification: fig.classification ?? null,
   }));
+}
+
+export function collectAdvancedFigureSamples(
+  figures: NormalizedFigure[],
+  max = 8,
+): NormalizedFigure[] {
+  return figures
+    .filter((fig) => {
+      const c = fig.classification ?? "";
+      return c === "COVER_IMAGE" || c === "LOGO" || c === "DECORATIVE" || c === "PAGE_RENDER";
+    })
+    .slice(0, max);
 }

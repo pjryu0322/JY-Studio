@@ -638,6 +638,8 @@ export function ProviderDoclingImportTab({
               markdownText={markdownText}
               processingLogs={(confirmTarget ?? bundle)?.processingLogs}
               qualityGate={qualityGate}
+              packId={packId}
+              bundleId={(confirmTarget ?? bundle)?.id ?? null}
             />
           ) : null}
 

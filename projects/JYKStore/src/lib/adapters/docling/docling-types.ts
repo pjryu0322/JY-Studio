@@ -134,6 +134,17 @@ export type NormalizedFigure = {
   sourceRef: string | null;
   altText?: string | null;
   page?: number | null;
+  pageNumber?: number | null;
+  width?: number | null;
+  height?: number | null;
+  previewObjectKey?: string | null;
+  mimeType?: string | null;
+  classification?: string;
+  classificationConfidence?: number;
+  classificationReasons?: string[];
+  /** Local in-memory only — never persisted or sent to client. */
+  _previewBytes?: Uint8Array;
+  _previewSha256?: string;
 };
 
 export type NormalizedReadingOrderItem = {
@@ -171,5 +182,5 @@ export interface DocumentAdapter {
 }
 
 export const DOCLING_ADAPTER_TYPE = "DOCLING" as const;
-export const DOCLING_ADAPTER_VERSION = "1.0.0";
+export const DOCLING_ADAPTER_VERSION = "1.1.0";
 export const DOCLING_SCHEMA_NAME = "DoclingDocument";

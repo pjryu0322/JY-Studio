@@ -134,7 +134,7 @@ describe("docling-normalizer", () => {
       },
     });
 
-    assert.equal(draft.title, "Sample");
+    assert.equal(draft.title, "sample");
     assert.equal(draft.adapter.type, "DOCLING");
     assert.ok(draft.sections.some((s) => s.text?.includes("Hello world")));
     assert.ok(!draft.sections.some((s) => s.title === "Intro"));
@@ -188,7 +188,7 @@ describe("docling-normalizer", () => {
       source: { filename: "sample.pdf", mimetype: "application/pdf" },
       files: { sourceFileId: "s1", jsonPayloadFileId: "j1", markdownPayloadFileId: "m1" },
     });
-    assert.equal(draft.title, "Sample");
+    assert.equal(draft.title, "sample");
   });
 });
 

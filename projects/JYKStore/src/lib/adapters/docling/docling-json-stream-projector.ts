@@ -10,7 +10,20 @@ import {
   issue,
   type DoclingIssue,
 } from "./docling-errors";
+import {
+  extractImageUriFromPicture,
+  parseDataUriImage,
+} from "./docling-figure-preview";
 import type { DoclingDocument } from "./docling-types";
+
+export type ExtractedPictureImage = {
+  selfRef: string;
+  mimeType: string;
+  bytes: Uint8Array;
+  sha256: string;
+  width: number | null;
+  height: number | null;
+};
 
 /** Files at or below this size may use the legacy full-buffer validate path. */
 export const DOCLING_JSON_FULL_BUFFER_MAX_BYTES = 16 * 1024 * 1024;
@@ -61,6 +74,7 @@ export type DoclingJsonStreamProjectorResult = {
   document?: DoclingDocument;
   issues: DoclingIssue[];
   stats: DoclingJsonStreamProjectorStats;
+  extractedPictureImages?: ExtractedPictureImage[];
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -89,14 +103,26 @@ function isHeavyFieldKey(key: string | number | null | undefined): boolean {
 }
 
 /**
- * Drop entire subtrees for binary/base64/image/uri payloads so they never enter
- * projected items.
+ * Drop binary/base64 payloads except picture image URIs (extracted then discarded
+ * in projectPictureItem so NormalizedDocument never stores Base64).
  */
 function heavyFieldIgnoreFilter(
   stack: (string | number | null)[],
 ): boolean {
   const leaf = stack[stack.length - 1];
-  return isHeavyFieldKey(leaf);
+  if (!isHeavyFieldKey(leaf)) return false;
+  const underPictures = stack.includes("pictures");
+  if (
+    underPictures &&
+    (leaf === "uri" ||
+      leaf === "image" ||
+      leaf === "data_uri" ||
+      leaf === "base64" ||
+      stack.includes("image"))
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function truncateText(
@@ -168,7 +194,10 @@ function scrubTableData(data: unknown): unknown {
   return out;
 }
 
-function projectPictureItem(item: unknown): Record<string, unknown> | null {
+function projectPictureItem(
+  item: unknown,
+  extracted?: ExtractedPictureImage[],
+): Record<string, unknown> | null {
   if (!isPlainObject(item)) return null;
   const out: Record<string, unknown> = {};
   if (typeof item.self_ref === "string") out.self_ref = item.self_ref;
@@ -176,6 +205,27 @@ function projectPictureItem(item: unknown): Record<string, unknown> | null {
   if (item.parent !== undefined) out.parent = item.parent;
   if (item.caption !== undefined) out.caption = item.caption;
   if (item.prov !== undefined) out.prov = scrubProv(item.prov);
+
+  if (extracted && extracted.length < 40) {
+    const uri = extractImageUriFromPicture(item);
+    if (uri) {
+      const parsed = parseDataUriImage(uri);
+      if (!("error" in parsed)) {
+        const selfRef =
+          typeof item.self_ref === "string"
+            ? item.self_ref
+            : `#/pictures/${extracted.length}`;
+        extracted.push({
+          selfRef,
+          mimeType: parsed.mimeType,
+          bytes: parsed.bytes,
+          sha256: parsed.sha256,
+          width: parsed.width,
+          height: parsed.height,
+        });
+      }
+    }
+  }
   return out;
 }
 
@@ -246,6 +296,7 @@ export function compactDoclingDocument(
     issues?: DoclingIssue[];
     stats?: DoclingJsonStreamProjectorStats;
     limits?: typeof DOCLING_STREAM_PROJECTOR_LIMITS;
+    extractedPictureImages?: ExtractedPictureImage[];
   },
 ): DoclingDocument {
   const issues = options?.issues ?? [];
@@ -347,7 +398,7 @@ export function compactDoclingDocument(
         );
         break;
       }
-      const projected = projectPictureItem(raw.pictures[i]);
+      const projected = projectPictureItem(raw.pictures[i], options?.extractedPictureImages);
       if (projected) {
         kept.push(projected);
         stats.picturesKept += 1;
@@ -477,6 +528,7 @@ export async function projectDoclingJsonStream(
   const issues: DoclingIssue[] = [];
   const stats = emptyStats();
   const limits = options?.limits ?? DOCLING_STREAM_PROJECTOR_LIMITS;
+  const extractedPictureImages: ExtractedPictureImage[] = [];
 
   const source = countBytesRead(Readable.from(input as AsyncIterable<unknown>), stats);
   const tokenStream = chain([
@@ -621,7 +673,7 @@ export async function projectDoclingJsonStream(
           }
           return;
         }
-        const projected = projectPictureItem(raw);
+        const projected = projectPictureItem(raw, extractedPictureImages);
         if (projected) {
           pictures.push(projected);
           stats.picturesKept += 1;
@@ -709,7 +761,7 @@ export async function projectDoclingJsonStream(
   }
 
   const ok = !issues.some((i) => i.severity === "ERROR");
-  return { ok, document, issues, stats };
+  return { ok, document, issues, stats, extractedPictureImages };
 }
 
 /**

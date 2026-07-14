@@ -2,7 +2,12 @@ import type { KnowledgePackFile } from "@prisma/client";
 import {
   projectDoclingJsonStream,
   shouldUseDoclingJsonStreamProjector,
+  type ExtractedPictureImage,
 } from "@/lib/adapters/docling/docling-json-stream-projector";
+import {
+  extractImageUriFromPicture,
+  parseDataUriImage,
+} from "@/lib/adapters/docling/docling-figure-preview";
 import {
   MARKDOWN_FULL_BUFFER_MAX_BYTES,
   MARKDOWN_PREVIEW_MAX_BYTES,
@@ -40,7 +45,33 @@ export type BundleValidationLoadResult = {
   originMatch: AdapterValidationResult["originMatch"];
   markdown: MarkdownValidationResult;
   markdownPreviewText: string;
+  extractedPictureImages: ExtractedPictureImage[];
 };
+
+function extractPicturesFromDocument(doc: DoclingDocument | undefined): ExtractedPictureImage[] {
+  if (!doc || !Array.isArray(doc.pictures)) return [];
+  const out: ExtractedPictureImage[] = [];
+  for (let i = 0; i < doc.pictures.length && out.length < 40; i += 1) {
+    const pic = doc.pictures[i];
+    if (!pic || typeof pic !== "object") continue;
+    const uri = extractImageUriFromPicture(pic as Record<string, unknown>);
+    if (!uri) continue;
+    const parsed = parseDataUriImage(uri);
+    if ("error" in parsed) continue;
+    out.push({
+      selfRef:
+        typeof (pic as { self_ref?: string }).self_ref === "string"
+          ? (pic as { self_ref: string }).self_ref
+          : `#/pictures/${i}`,
+      mimeType: parsed.mimeType,
+      bytes: parsed.bytes,
+      sha256: parsed.sha256,
+      width: parsed.width,
+      height: parsed.height,
+    });
+  }
+  return out;
+}
 
 function asObjectStorage(storage: PayloadStorage): ObjectStorageBackend | null {
   const candidate = storage as PayloadStorage & Partial<ObjectStorageBackend>;
@@ -159,6 +190,7 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
   let document: DoclingDocument | undefined;
   let jsonIssues: AdapterValidationResult["issues"] = [];
   let originMatch: AdapterValidationResult["originMatch"];
+  let extractedPictureImages: ExtractedPictureImage[] = [];
 
   if (useJsonStream && objectStorage) {
     const hashStream = await openStream(objectStorage, jsonFile);
@@ -169,6 +201,7 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
       contentLength: jsonSize,
     });
     jsonIssues = projected.issues;
+    extractedPictureImages = projected.extractedPictureImages ?? [];
     if (projected.document) {
       const schema = validateDoclingParsedDocument(
         projected.document,
@@ -205,6 +238,7 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
     document = jsonOnly.document;
     jsonIssues = jsonOnly.issues;
     originMatch = jsonOnly.originMatch;
+    extractedPictureImages = extractPicturesFromDocument(document);
   }
 
   // --- MARKDOWN (optional auxiliary) ---
@@ -215,6 +249,7 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
       originMatch,
       markdown: absentMarkdownResult(),
       markdownPreviewText: "",
+      extractedPictureImages,
     };
   }
 
@@ -281,6 +316,7 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
     originMatch,
     markdown,
     markdownPreviewText,
+    extractedPictureImages,
   };
 }
 

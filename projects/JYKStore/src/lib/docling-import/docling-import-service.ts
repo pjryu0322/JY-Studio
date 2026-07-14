@@ -102,6 +102,24 @@ function storagePrefix(storage: PayloadStorage): string {
     : "payloads";
 }
 
+function collectFigurePreviewKeysFromBundle(bundle: BundleWithRelations): string[] {
+  const keys = new Set<string>();
+  for (const nd of bundle.normalizedDocuments ?? []) {
+    const figures = Array.isArray(nd.figuresJson) ? nd.figuresJson : [];
+    for (const fig of figures) {
+      if (
+        fig &&
+        typeof fig === "object" &&
+        typeof (fig as { previewObjectKey?: unknown }).previewObjectKey === "string"
+      ) {
+        const key = (fig as { previewObjectKey: string }).previewObjectKey.trim();
+        if (key) keys.add(key);
+      }
+    }
+  }
+  return [...keys];
+}
+
 function toFileDto(file: KnowledgePackFile): KnowledgePackFilePublicDto {
   return {
     id: file.id,
@@ -789,7 +807,69 @@ export async function validateAndNormalizeBundle(
     const draft = normalizeDoclingDocument(validation.document!, {
       files: filesMeta,
       warnings: validation.issues.filter((i) => i.severity === "WARNING"),
+      markdownText: markdownPreviewText ?? validation.markdownText ?? null,
+      extractedPictureImages: loaded.extractedPictureImages,
     });
+
+    // Persist figure preview objects (Base64 never stored in ND JSON / client DTO).
+    const previousFigureKeys = collectFigurePreviewKeysFromBundle(bundle);
+    try {
+      const { buildFigurePreviewObjectKey } = await import(
+        "@/lib/adapters/docling/docling-figure-preview"
+      );
+      const prefix = storagePrefix(storage);
+      const bySha = new Map<string, string>();
+      for (const fig of draft.figures) {
+        const bytes = fig._previewBytes;
+        const sha = fig._previewSha256;
+        if (!bytes || !sha) {
+          delete fig._previewBytes;
+          delete fig._previewSha256;
+          continue;
+        }
+        let objectKey = bySha.get(sha);
+        if (!objectKey) {
+          const ext = (fig.mimeType ?? "image/png").includes("jpeg")
+            ? "jpg"
+            : (fig.mimeType ?? "").includes("webp")
+              ? "webp"
+              : "png";
+          objectKey = buildFigurePreviewObjectKey({
+            prefix,
+            packId: bundle.packId,
+            versionId: bundle.versionId,
+            bundleId,
+            sha256: sha,
+            extension: ext,
+          });
+          await storage.put({
+            packId: bundle.packId,
+            versionId: bundle.versionId,
+            payloadId: sha.slice(0, 32),
+            originalFileName: `figure-${sha.slice(0, 8)}.${ext}`,
+            mimeType: fig.mimeType ?? "image/png",
+            bytes,
+            checksumSha256: sha,
+            objectKey,
+          });
+          bySha.set(sha, objectKey);
+        }
+        fig.previewObjectKey = objectKey;
+        delete fig._previewBytes;
+        delete fig._previewSha256;
+      }
+    } catch {
+      for (const fig of draft.figures) {
+        delete fig._previewBytes;
+        delete fig._previewSha256;
+        draft.warnings.push({
+          code: "DOCLING_SCHEMA_INVALID",
+          severity: "WARNING",
+          field: fig.id,
+          message: "그림 미리보기 저장에 실패했습니다.",
+        });
+      }
+    }
 
     const { buildStructureSummary } = await import("@/lib/docling-import/structure-summary");
     const { evaluateDocumentTitleMatch } = await import("@/lib/docling-import/title-match");
@@ -884,14 +964,24 @@ export async function validateAndNormalizeBundle(
     const structureJson = {
       sections: draft.sections,
       tables: draft.tables,
-      figures: draft.figures,
+      figures: draft.figures.map((fig) => {
+        const rest = { ...fig };
+        delete rest._previewBytes;
+        delete rest._previewSha256;
+        return rest;
+      }),
       readingOrder: draft.readingOrder,
       summary: structureSummary,
       qualityGate,
-    } as Prisma.InputJsonValue;
+    } as unknown as Prisma.InputJsonValue;
     const sectionsJson = draft.sections as unknown as Prisma.InputJsonValue;
     const tablesJson = draft.tables as unknown as Prisma.InputJsonValue;
-    const figuresJson = draft.figures as unknown as Prisma.InputJsonValue;
+    const figuresJson = draft.figures.map((fig) => {
+      const rest = { ...fig };
+      delete rest._previewBytes;
+      delete rest._previewSha256;
+      return rest;
+    }) as unknown as Prisma.InputJsonValue;
     const readingOrderJson = draft.readingOrder as unknown as Prisma.InputJsonValue;
     const warningsJson = draft.warnings as unknown as Prisma.InputJsonValue;
     const normalizationReportJson = {
@@ -979,6 +1069,28 @@ export async function validateAndNormalizeBundle(
         completedAt: new Date(),
       },
     });
+
+    const retainedFigureKeys = new Set(
+      draft.figures
+        .map((f) => f.previewObjectKey?.trim())
+        .filter((k): k is string => Boolean(k)),
+    );
+    for (const key of previousFigureKeys) {
+      if (retainedFigureKeys.has(key)) continue;
+      try {
+        await storage.delete({ objectKey: key });
+      } catch {
+        const { enqueuePayloadCleanupJob } = await import(
+          "@/lib/distribution/payload-cleanup-service"
+        );
+        await enqueuePayloadCleanupJob({
+          objectKey: key,
+          reason: "docling_figure_preview_replaced",
+          lastError: "immediate delete failed",
+          doclingBundleId: bundleId,
+        });
+      }
+    }
 
     await recordProviderAudit({
       action: AuditAction.DOCLING_IMPORT_NORMALIZED,
@@ -1236,7 +1348,10 @@ export async function deleteDoclingImportByBundleId(input: {
   }
 
   const storage = input.storage ?? getDefaultStorage();
-  const keys = bundle.files.map((f) => f.storageKey);
+  const keys = [
+    ...bundle.files.map((f) => f.storageKey),
+    ...collectFigurePreviewKeysFromBundle(bundle),
+  ];
   const fileIdsByKey = new Map(bundle.files.map((f) => [f.storageKey, f.id]));
 
   await markBundleDeletePendingAndCleanup(
@@ -1910,6 +2025,85 @@ export async function downloadDoclingImportFile(input: {
     truncated: false,
     contentLength: got.bytes.byteLength,
   };
+}
+
+export async function streamDoclingFigurePreview(input: {
+  packId: string;
+  bundleId: string;
+  figureId: string;
+  userId: string;
+  clientId: string;
+  storage?: PayloadStorage;
+}): Promise<{
+  stream: NodeJS.ReadableStream;
+  mimeType: string;
+  contentLength: number | null;
+}> {
+  const profile = await findOrEnsureProviderProfileForUser(input.userId, input.clientId);
+  if (!profile) {
+    throw new DoclingImportError("PROFILE_REQUIRED", "제공자 프로필이 필요합니다.", 403);
+  }
+  const pack = await prisma.knowledgePack.findFirst({
+    where: { packId: input.packId, providerProfileId: profile.id },
+  });
+  if (!pack) {
+    throw new DoclingImportError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
+  }
+
+  const bundle = await loadBundleWithRelations(input.bundleId);
+  if (!bundle || bundle.packId !== pack.packId) {
+    throw new DoclingImportError("NOT_FOUND", "Docling Bundle을 찾을 수 없습니다.", 404);
+  }
+  if (bundle.deletedAt != null || bundle.storageStatus !== DoclingBundleStorageStatus.ACTIVE) {
+    throw new DoclingImportError(
+      "DOCLING_OBJECT_MISSING",
+      "삭제되었거나 비활성인 Bundle의 그림은 볼 수 없습니다.",
+      410,
+    );
+  }
+
+  const { routeParamToFigureRef } = await import("@/lib/adapters/docling/docling-figure-ids");
+  const figureRef = routeParamToFigureRef(input.figureId);
+  const nd =
+    bundle.normalizedDocuments.find((d) => d.isActive) ?? bundle.normalizedDocuments[0] ?? null;
+  if (!nd) {
+    throw new DoclingImportError("NORMALIZED_DOCUMENT_MISSING", "정규화 문서가 없습니다.", 404);
+  }
+  const figures =
+    (nd.figuresJson as unknown as import("@/lib/adapters/docling/docling-types").NormalizedFigure[]) ??
+    [];
+  const fig =
+    figures.find((f) => f.id === figureRef || f.sourceRef === figureRef) ??
+    null;
+  if (!fig?.previewObjectKey?.trim()) {
+    throw new DoclingImportError("NOT_FOUND", "그림 미리보기를 찾을 수 없습니다.", 404);
+  }
+
+  const storage = input.storage ?? getDefaultStorage();
+  const objectStorage = asObjectStorage(storage);
+  if (!objectStorage) {
+    throw new DoclingImportError(
+      "DOCLING_STORAGE_UNAVAILABLE",
+      "저장소에서 파일을 읽지 못했습니다.",
+      503,
+    );
+  }
+  try {
+    const streamed = await objectStorage.getObjectStream({
+      objectKey: fig.previewObjectKey,
+    });
+    return {
+      stream: streamed.body,
+      mimeType: fig.mimeType ?? "image/png",
+      contentLength: streamed.contentLength ?? null,
+    };
+  } catch {
+    throw new DoclingImportError(
+      "DOCLING_STORAGE_UNAVAILABLE",
+      "저장소에서 파일을 읽지 못했습니다.",
+      503,
+    );
+  }
 }
 
 export async function getNormalizedDocumentForPack(input: {
