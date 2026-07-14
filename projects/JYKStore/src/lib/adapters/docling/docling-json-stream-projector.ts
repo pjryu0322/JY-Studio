@@ -144,6 +144,10 @@ function projectTextItem(
   if (typeof item.self_ref === "string") out.self_ref = item.self_ref;
   if (typeof item.label === "string") out.label = item.label;
   if (item.parent !== undefined) out.parent = item.parent;
+  if (typeof item.level === "number" && Number.isFinite(item.level)) {
+    out.level = item.level;
+  }
+  if (item.prov !== undefined) out.prov = scrubProv(item.prov);
   if (typeof item.text === "string") {
     const { text, truncated } = truncateText(item.text, limits.maxTextChars);
     out.text = text;
@@ -170,9 +174,35 @@ function projectTableItem(item: unknown): Record<string, unknown> | null {
   if (typeof item.self_ref === "string") out.self_ref = item.self_ref;
   if (typeof item.label === "string") out.label = item.label;
   if (item.parent !== undefined) out.parent = item.parent;
-  if (item.caption !== undefined) out.caption = item.caption;
+  if (item.caption !== undefined) out.caption = scrubCaptionRefs(item.caption);
+  if (item.captions !== undefined) out.captions = scrubCaptionRefs(item.captions);
+  if (item.prov !== undefined) out.prov = scrubProv(item.prov);
   if (item.data !== undefined) {
     out.data = scrubTableData(item.data);
+  }
+  return out;
+}
+
+function scrubCaptionRefs(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.length > 2_000 ? value.slice(0, 2_000) : value;
+  }
+  if (Array.isArray(value)) return value.map((v) => scrubCaptionRefs(v));
+  if (!isPlainObject(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, v] of Object.entries(value)) {
+    if (isHeavyFieldKey(key)) continue;
+    if (key === "$ref" || key === "cref" || key === "ref" || key === "self_ref") {
+      if (typeof v === "string") out[key] = v;
+      continue;
+    }
+    if (key === "text" && typeof v === "string") {
+      out.text = v.length > 2_000 ? v.slice(0, 2_000) : v;
+      continue;
+    }
+    if (isPlainObject(v) || Array.isArray(v)) {
+      out[key] = scrubCaptionRefs(v);
+    }
   }
   return out;
 }
@@ -203,7 +233,8 @@ function projectPictureItem(
   if (typeof item.self_ref === "string") out.self_ref = item.self_ref;
   if (typeof item.label === "string") out.label = item.label;
   if (item.parent !== undefined) out.parent = item.parent;
-  if (item.caption !== undefined) out.caption = item.caption;
+  if (item.caption !== undefined) out.caption = scrubCaptionRefs(item.caption);
+  if (item.captions !== undefined) out.captions = scrubCaptionRefs(item.captions);
   if (item.prov !== undefined) out.prov = scrubProv(item.prov);
 
   if (extracted && extracted.length < 40) {
@@ -229,23 +260,32 @@ function projectPictureItem(
   return out;
 }
 
+const PROV_ALLOWED = new Set(["page_no", "page", "bbox", "charspan"]);
+
 function scrubProv(prov: unknown): unknown {
   if (Array.isArray(prov)) return prov.map((p) => scrubProv(p));
-  if (!isPlainObject(prov)) return prov;
+  if (!isPlainObject(prov)) return undefined;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(prov)) {
+    if (!PROV_ALLOWED.has(key)) continue;
     if (isHeavyFieldKey(key)) continue;
-    if (key === "bbox" || key === "page_no" || key === "charspan") {
-      out[key] = value;
+    if (key === "bbox" && isPlainObject(value)) {
+      const bbox: Record<string, unknown> = {};
+      for (const [bk, bv] of Object.entries(value)) {
+        if (typeof bv === "number" && Number.isFinite(bv)) bbox[bk] = bv;
+      }
+      out.bbox = bbox;
       continue;
     }
-    if (isPlainObject(value) || Array.isArray(value)) {
-      out[key] = scrubProv(value);
-    } else if (typeof value !== "string" || value.length < 10_000) {
+    if (key === "charspan" && Array.isArray(value)) {
+      out.charspan = value.filter((n) => typeof n === "number" && Number.isFinite(n));
+      continue;
+    }
+    if ((key === "page_no" || key === "page") && typeof value === "number" && Number.isFinite(value)) {
       out[key] = value;
     }
   }
-  return out;
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function projectGroupItem(item: unknown): Record<string, unknown> | null {

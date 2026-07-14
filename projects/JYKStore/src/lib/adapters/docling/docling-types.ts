@@ -27,6 +27,7 @@ export type DoclingTableItem = {
   self_ref?: string;
   data?: unknown;
   caption?: unknown;
+  captions?: unknown;
   label?: string;
   parent?: DoclingRef;
   [key: string]: unknown;
@@ -35,6 +36,7 @@ export type DoclingTableItem = {
 export type DoclingPictureItem = {
   self_ref?: string;
   caption?: unknown;
+  captions?: unknown;
   label?: string;
   parent?: DoclingRef;
   [key: string]: unknown;
@@ -182,5 +184,5 @@ export interface DocumentAdapter {
 }
 
 export const DOCLING_ADAPTER_TYPE = "DOCLING" as const;
-export const DOCLING_ADAPTER_VERSION = "1.1.0";
+export const DOCLING_ADAPTER_VERSION = "1.1.1";
 export const DOCLING_SCHEMA_NAME = "DoclingDocument";

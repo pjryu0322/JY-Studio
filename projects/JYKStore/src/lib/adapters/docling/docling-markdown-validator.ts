@@ -63,6 +63,7 @@ export function sanitizeMarkdownForPreview(markdown: string): string {
     .replace(/!\[[^\]]*]\(\s*data:image\/[a-z0-9.+-]+;base64,[^)]+\)/gi, "[이미지 데이터 생략]")
     .replace(/<img\b[^>]*\bsrc\s*=\s*("|'|)data:image\/[^"'\s>]+(\1)[^>]*>/gi, "[이미지 데이터 생략]")
     .replace(/data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+/gi, "[이미지 데이터 생략]")
+    .replace(/\bbase64\s*,\s*[A-Za-z0-9+/=\s]{32,}/gi, "[이미지 데이터 생략]")
     .replace(/[A-Za-z0-9+/]{200,}={0,2}/g, "[바이너리 데이터 생략]")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<\/?script\b[^>]*>/gi, "")

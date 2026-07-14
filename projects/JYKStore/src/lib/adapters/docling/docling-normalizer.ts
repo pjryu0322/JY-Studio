@@ -1,4 +1,5 @@
 import type { DoclingIssue } from "./docling-errors";
+import { resolveCaptionText } from "./docling-caption";
 import {
   classifyFigure,
   extractImageUriFromPicture,
@@ -57,34 +58,13 @@ export function resolveByRef(
   return { kind: collection, item, index };
 }
 
-function captionText(doc: DoclingDocument, caption: unknown): string | null {
-  if (typeof caption === "string" && caption.trim()) return caption.trim();
-  if (Array.isArray(caption)) {
-    const parts: string[] = [];
-    for (const c of caption) {
-      const r = refOf(c);
-      if (r) {
-        const resolved = resolveByRef(doc, r);
-        if (resolved && typeof resolved.item.text === "string") {
-          parts.push(String(resolved.item.text));
-        }
-      } else if (isPlainObject(c) && typeof c.text === "string") {
-        parts.push(c.text);
-      }
-    }
-    return parts.length ? parts.join(" ").trim() || null : null;
-  }
-  if (isPlainObject(caption)) {
-    if (typeof caption.text === "string" && caption.text.trim()) return caption.text.trim();
-    const r = refOf(caption);
-    if (r) {
-      const resolved = resolveByRef(doc, r);
-      if (resolved && typeof resolved.item.text === "string") {
-        return String(resolved.item.text).trim() || null;
-      }
-    }
-  }
-  return null;
+function captionText(
+  doc: DoclingDocument,
+  item: DoclingTableItem | DoclingPictureItem | Record<string, unknown>,
+  warnings?: DoclingIssue[],
+  field?: string,
+): string | null {
+  return resolveCaptionText(doc, item, { warnings, field });
 }
 
 /** Labels that must never be treated as document headings. */
@@ -181,13 +161,15 @@ function buildSections(doc: DoclingDocument): NormalizedSection[] {
     }
     const id =
       typeof item.self_ref === "string" ? item.self_ref : `#/texts/${index}`;
+    const level =
+      typeof item.level === "number" && Number.isFinite(item.level) ? item.level : null;
 
     if (isHeadingTextLabel(label)) {
       headingTexts.add(text);
       sections.push({
         id,
         title: text,
-        level: null,
+        level,
         text: null,
         label,
         sourceRef: id,
@@ -237,13 +219,14 @@ function nearbyHeadingForPage(
 function buildTables(
   doc: DoclingDocument,
   sections: NormalizedSection[],
+  warnings: DoclingIssue[],
 ): NormalizedTable[] {
   if (!Array.isArray(doc.tables)) return [];
   const total = doc.tables.length;
   return doc.tables.map((table: DoclingTableItem, index) => {
     const id =
       typeof table.self_ref === "string" ? table.self_ref : `#/tables/${index}`;
-    const caption = captionText(doc, table.caption);
+    const caption = captionText(doc, table, warnings, id);
     const page = pageOf(table as Record<string, unknown>);
     const data = normalizeDoclingTableData(table.data, {
       pageNumber: page,
@@ -262,7 +245,7 @@ function buildTables(
   });
 }
 
-function buildFigures(doc: DoclingDocument): NormalizedFigure[] {
+function buildFigures(doc: DoclingDocument, warnings: DoclingIssue[]): NormalizedFigure[] {
   if (!Array.isArray(doc.pictures)) return [];
   const hashCounts = new Map<string, number>();
   const figures: NormalizedFigure[] = [];
@@ -272,7 +255,7 @@ function buildFigures(doc: DoclingDocument): NormalizedFigure[] {
     if (!pic) continue;
     const id =
       typeof pic.self_ref === "string" ? pic.self_ref : `#/pictures/${index}`;
-    const caption = captionText(doc, pic.caption);
+    const caption = captionText(doc, pic, warnings, id);
     const page = pageOf(pic);
     const alt =
       typeof pic.alt_text === "string"
@@ -347,6 +330,7 @@ function selfRefNumeric(ref: string): number {
 
 /**
  * Reading order: recurse body.children / group.children, then page+bbox fallback.
+ * Only Normalized section/table/figure refs in contentRefs are emitted.
  */
 function buildReadingOrder(
   doc: DoclingDocument,
@@ -361,16 +345,14 @@ function buildReadingOrder(
       const r = refOf(child);
       if (!r || seen.has(r)) continue;
       const resolved = resolveByRef(doc, r);
-      if (resolved?.kind === "groups") {
+      if (resolved?.kind === "groups" || resolved?.kind === "body") {
         seen.add(r);
-        const groupChildren = resolved.item.children;
-        if (Array.isArray(groupChildren)) visitRefs(groupChildren);
+        const nested = resolved.item.children;
+        if (Array.isArray(nested)) visitRefs(nested);
         continue;
       }
-      if (resolved?.kind === "body") {
+      if (!contentRefs.has(r)) {
         seen.add(r);
-        const bodyChildren = resolved.item.children;
-        if (Array.isArray(bodyChildren)) visitRefs(bodyChildren);
         continue;
       }
       seen.add(r);
@@ -386,7 +368,7 @@ function buildReadingOrder(
 
   if (order.length > 0) return order;
 
-  // Fallback: page number → bbox top → self_ref numeric.
+  // Fallback: page number → bbox top → self_ref numeric (contentRefs only).
   const candidates: Array<{
     ref: string;
     kind: string;
@@ -401,9 +383,7 @@ function buildReadingOrder(
       if (!isPlainObject(raw)) return;
       const ref =
         typeof raw.self_ref === "string" ? raw.self_ref : `#/${kind}/${index}`;
-      if (contentRefs.size > 0 && !contentRefs.has(ref) && kind !== "tables" && kind !== "pictures") {
-        // Prefer refs that map to normalized content when available.
-      }
+      if (contentRefs.size > 0 && !contentRefs.has(ref)) return;
       candidates.push({
         ref,
         kind,
@@ -475,8 +455,8 @@ export function normalizeDoclingDocument(
   }
 
   const sections = buildSections(doc);
-  const tables = buildTables(doc, sections);
-  let figures = buildFigures(doc);
+  const tables = buildTables(doc, sections, warnings);
+  let figures = buildFigures(doc, warnings);
   if (options?.extractedPictureImages?.length) {
     const byRef = new Map(options.extractedPictureImages.map((e) => [e.selfRef, e]));
     figures = figures.map((fig) => {
@@ -495,7 +475,9 @@ export function normalizeDoclingDocument(
   const contentRefs = new Set(sections.map((s) => s.id));
   for (const t of tables) contentRefs.add(t.id);
   for (const f of figures) contentRefs.add(f.id);
-  const readingOrder = buildReadingOrder(doc, contentRefs);
+  const readingOrder = buildReadingOrder(doc, contentRefs)
+    .filter((item) => contentRefs.has(item.ref))
+    .map((item, index) => ({ ...item, index }));
 
   let tablesWithCells = 0;
   let tablesMapped = 0;

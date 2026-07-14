@@ -120,6 +120,57 @@ function collectFigurePreviewKeysFromBundle(bundle: BundleWithRelations): string
   return [...keys];
 }
 
+async function cleanupNewlyUploadedFigureKeys(
+  keys: Set<string>,
+  storage: PayloadStorage,
+  bundleId: string,
+  reason: string,
+): Promise<void> {
+  if (keys.size === 0) return;
+  const { enqueuePayloadCleanupJob } = await import(
+    "@/lib/distribution/payload-cleanup-service"
+  );
+  for (const objectKey of keys) {
+    try {
+      await storage.delete({ objectKey });
+    } catch {
+      await enqueuePayloadCleanupJob({
+        objectKey,
+        reason,
+        lastError: "immediate delete failed",
+        doclingBundleId: bundleId,
+      });
+    }
+  }
+}
+
+function maybeSanitizeMarkdownPreviewBytes(input: {
+  bytes: Uint8Array;
+  role: string;
+  mimeType: string;
+  fileName: string;
+  preview: boolean;
+}): { bytes: Uint8Array; truncated: boolean } {
+  if (!input.preview) return { bytes: input.bytes, truncated: false };
+  const role = String(input.role);
+  const mime = (input.mimeType ?? "").toLowerCase();
+  const name = (input.fileName ?? "").toLowerCase();
+  const isMarkdown =
+    role === "DOCLING_MARKDOWN" ||
+    mime.includes("markdown") ||
+    mime.includes("text/") ||
+    name.endsWith(".md") ||
+    name.endsWith(".markdown");
+  if (!isMarkdown) return { bytes: input.bytes, truncated: false };
+  const raw = Buffer.from(input.bytes).toString("utf8");
+  const sanitized = sanitizeMarkdownForPreview(raw);
+  const out = Buffer.from(sanitized, "utf8");
+  return {
+    bytes: out,
+    truncated: out.byteLength < input.bytes.byteLength || sanitized !== raw,
+  };
+}
+
 function toFileDto(file: KnowledgePackFile): KnowledgePackFilePublicDto {
   return {
     id: file.id,
@@ -695,7 +746,7 @@ export async function validateAndNormalizeBundle(
             : ("ok" as const),
       warnings: markdownWarnings,
       textPreview: markdownPreviewText
-        ? markdownPreviewText.slice(0, 2_000)
+        ? sanitizeMarkdownForPreview(markdownPreviewText).slice(0, 2_000)
         : null,
     },
     // Legacy similarity fields kept null for Admin report compat readers.
@@ -802,6 +853,7 @@ export async function validateAndNormalizeBundle(
     },
   });
 
+  const newlyUploadedFigureKeys = new Set<string>();
   try {
     // Normalize from the compact in-memory projection — never re-parse the raw JSON object.
     const draft = normalizeDoclingDocument(validation.document!, {
@@ -852,6 +904,7 @@ export async function validateAndNormalizeBundle(
             checksumSha256: sha,
             objectKey,
           });
+          newlyUploadedFigureKeys.add(objectKey);
           bySha.set(sha, objectKey);
         }
         fig.previewObjectKey = objectKey;
@@ -859,9 +912,17 @@ export async function validateAndNormalizeBundle(
         delete fig._previewSha256;
       }
     } catch {
+      await cleanupNewlyUploadedFigureKeys(
+        newlyUploadedFigureKeys,
+        storage,
+        bundleId,
+        "docling_figure_preview_partial_failure",
+      );
+      newlyUploadedFigureKeys.clear();
       for (const fig of draft.figures) {
         delete fig._previewBytes;
         delete fig._previewSha256;
+        fig.previewObjectKey = null;
         draft.warnings.push({
           code: "DOCLING_SCHEMA_INVALID",
           severity: "WARNING",
@@ -1105,6 +1166,12 @@ export async function validateAndNormalizeBundle(
       },
     });
   } catch (error) {
+    await cleanupNewlyUploadedFigureKeys(
+      newlyUploadedFigureKeys,
+      storage,
+      bundleId,
+      "docling_figure_preview_normalization_failed",
+    );
     const message = error instanceof Error ? error.message : "Normalization failed";
     try {
       await softLockBundleStatus({
@@ -1970,12 +2037,21 @@ export async function downloadDoclingImportFile(input: {
         }
       }
       const bytes = Buffer.concat(chunks, total);
-      return {
+      const sanitized = maybeSanitizeMarkdownPreviewBytes({
         bytes,
+        role: file.role,
+        mimeType: file.mimeType,
+        fileName: file.originalFileName,
+        preview: true,
+      });
+      return {
+        bytes: sanitized.bytes,
         mimeType: file.mimeType,
         fileName: file.originalFileName,
         checksumSha256: file.checksumSha256,
-        truncated: Number.isFinite(declaredSize) ? declaredSize > bytes.byteLength : true,
+        truncated:
+          sanitized.truncated ||
+          (Number.isFinite(declaredSize) ? declaredSize > bytes.byteLength : true),
         contentLength: Number.isFinite(declaredSize) ? declaredSize : undefined,
       };
     } catch {
@@ -2006,13 +2082,22 @@ export async function downloadDoclingImportFile(input: {
     );
   }
 
-  if (previewMax != null && got.bytes.byteLength > previewMax) {
+  if (previewMax != null) {
+    const sliced =
+      got.bytes.byteLength > previewMax ? got.bytes.subarray(0, previewMax) : got.bytes;
+    const sanitized = maybeSanitizeMarkdownPreviewBytes({
+      bytes: sliced,
+      role: file.role,
+      mimeType: file.mimeType,
+      fileName: file.originalFileName,
+      preview: true,
+    });
     return {
-      bytes: got.bytes.subarray(0, previewMax),
+      bytes: sanitized.bytes,
       mimeType: file.mimeType,
       fileName: file.originalFileName,
       checksumSha256: actual,
-      truncated: true,
+      truncated: sanitized.truncated || got.bytes.byteLength > previewMax,
       contentLength: got.bytes.byteLength,
     };
   }

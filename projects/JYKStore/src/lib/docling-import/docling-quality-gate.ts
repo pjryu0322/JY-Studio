@@ -211,27 +211,22 @@ export function evaluateNormalizedDocumentQuality(input: {
     walkSections(input.sections, (s) => contentIds.add(s.id));
     for (const t of input.tables) contentIds.add(t.id);
     for (const f of input.figures) contentIds.add(f.id);
-    const dangling = input.readingOrder.filter(
+    const orderRefs = input.readingOrder.filter((item) => Boolean(item.ref?.trim()));
+    const dangling = orderRefs.filter(
       (item) => item.ref && !contentIds.has(item.ref) && !item.ref.includes("/groups/"),
     );
-    // Only flag when most refs are dangling (body may include groups we skipped as content).
-    const contentish = input.readingOrder.filter(
-      (item) =>
-        item.kind === "texts" ||
-        item.kind === "tables" ||
-        item.kind === "pictures" ||
-        item.ref?.includes("/texts/") ||
-        item.ref?.includes("/tables/") ||
-        item.ref?.includes("/pictures/"),
-    );
-    const danglingContent = dangling.filter((d) =>
-      contentish.some((c) => c.ref === d.ref),
-    );
-    if (contentish.length > 0 && danglingContent.length === contentish.length) {
+    const ratio = orderRefs.length > 0 ? dangling.length / orderRefs.length : 0;
+    if (ratio > 0.1) {
       blockers.push({
         code: "READING_ORDER_DANGLING",
         severity: "blocker",
-        message: "읽기 순서가 존재하지 않는 블록을 참조합니다.",
+        message: "읽기 순서에 존재하지 않는 블록 참조가 과도합니다.",
+      });
+    } else if (dangling.length > 0) {
+      warnings.push({
+        code: "READING_ORDER_DANGLING_PARTIAL",
+        severity: "warning",
+        message: "읽기 순서의 일부 무효 참조를 제외했습니다.",
       });
     }
   }

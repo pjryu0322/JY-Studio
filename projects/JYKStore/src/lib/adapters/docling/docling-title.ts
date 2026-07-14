@@ -1,36 +1,68 @@
 /**
- * Document title selection for Docling normalize — rejects OCR junk.
+ * Document title selection for Docling normalize — rejects OCR junk and TOC labels.
  */
 
-const TOC_ONLY = /^(목차|표\s*목차|그림\s*목차|table of contents|list of (tables|figures)|toc)$/i;
 const URL_RE = /https?:\/\/|www\./i;
 const YEAR_ONLY = /^(19|20)\d{2}$/;
 const LOGOISH = /^(logo|ci|bi|icon)$/i;
+const ROMAN_ONLY =
+  /^[IVXLCDMⅰⅱⅲⅳⅴⅵⅶⅷⅸⅹⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+$/i;
+
+const TOC_COMPACT = new Set([
+  "목차",
+  "목차목록",
+  "표목차",
+  "그림목차",
+  "차례",
+  "tableofcontents",
+  "listoftables",
+  "listoffigures",
+  "toc",
+]);
+
+/** Strip decorative brackets and normalize whitespace. */
+export function normalizeTitleCandidate(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[<>[\](){}「」『』]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function compactTitle(value: string): string {
+  return normalizeTitleCandidate(value).replace(/\s+/g, "").toLowerCase();
+}
 
 export function isAbnormalTitleCandidate(raw: string | null | undefined): boolean {
   if (!raw) return true;
-  const value = raw.trim().replace(/\s+/g, " ");
-  if (value.length <= 2 || value.length > 150) return true;
-  if (TOC_ONLY.test(value)) return true;
+  const value = normalizeTitleCandidate(raw);
+  if (!value || value.length <= 2 || value.length > 150) return true;
   if (URL_RE.test(value)) return true;
   if (YEAR_ONLY.test(value) || /^\d+$/.test(value)) return true;
   if (LOGOISH.test(value)) return true;
+  if (ROMAN_ONLY.test(value.replace(/\s+/g, ""))) return true;
+  if (/^[A-Za-z]{1,2}$/.test(value)) return true;
+  if (/\.[A-Za-z0-9]{1,8}$/.test(value) && !/\s/.test(value)) return true;
+
+  const compact = compactTitle(value);
+  if (TOC_COMPACT.has(compact)) return true;
+  // spaced TOC forms already compact to 목차 / 표목차 / 그림목차
+  if (/^(표|그림)?목\s*차$/.test(value.replace(/\s+/g, " "))) return true;
 
   const letters = value.replace(/\s/g, "");
   const alnum = letters.replace(/[^0-9A-Za-z가-힣]/g, "");
   if (!alnum) return true;
 
-  // High symbol / digit ratio — OCR fragments like "S CH7M 71015"
-  const digitSymbol = (letters.match(/[0-9A-Z._\-]/g) ?? []).length;
   const hangul = (letters.match(/[가-힣]/g) ?? []).length;
   const spaces = (value.match(/\s/g) ?? []).length;
+  const digitSymbol = (letters.match(/[0-9A-Z._\-]/g) ?? []).length;
   if (hangul === 0 && spaces >= 2 && digitSymbol / Math.max(letters.length, 1) >= 0.7) {
     return true;
   }
   if (hangul === 0 && /^[A-Z0-9](?:\s+[A-Z0-9]{1,6}){1,6}$/.test(value)) {
     return true;
   }
-  // Fragmented all-caps tokens with digits
   if (/^[A-Z0-9]{1,3}(?:\s+[A-Z0-9]{1,6}){1,4}$/.test(value) && /\d/.test(value)) {
     return true;
   }
@@ -54,13 +86,12 @@ export function titleFromMarkdownFirstHeading(markdown: string | null | undefine
   for (const line of lines) {
     const atx = /^(#{1,3})\s+(.+?)\s*$/.exec(line);
     if (atx?.[2]) {
-      const t = atx[2].replace(/#+\s*$/, "").trim();
+      const t = normalizeTitleCandidate(atx[2].replace(/#+\s*$/, ""));
       if (!isAbnormalTitleCandidate(t)) return t;
     }
-    // Setext: title\n====
   }
   for (let i = 0; i < lines.length - 1; i += 1) {
-    const title = lines[i]?.trim() ?? "";
+    const title = normalizeTitleCandidate(lines[i] ?? "");
     const under = lines[i + 1]?.trim() ?? "";
     if (title && /^=+$/.test(under) && !isAbnormalTitleCandidate(title)) return title;
   }
@@ -74,7 +105,7 @@ export function selectNormalizedDocumentTitle(input: {
   markdownText?: string | null;
 }): { title: string | null; source: "heading" | "filename" | "json_name" | "markdown" | null } {
   for (const raw of input.headingCandidates) {
-    const t = raw?.trim();
+    const t = raw ? normalizeTitleCandidate(raw) : "";
     if (t && !isAbnormalTitleCandidate(t)) {
       return { title: t, source: "heading" };
     }
@@ -82,7 +113,7 @@ export function selectNormalizedDocumentTitle(input: {
   const fromFile = titleFromOriginFilename(input.originFilename);
   if (fromFile) return { title: fromFile, source: "filename" };
 
-  const jsonName = input.jsonName?.trim() ?? "";
+  const jsonName = input.jsonName ? normalizeTitleCandidate(input.jsonName) : "";
   if (jsonName && !isAbnormalTitleCandidate(jsonName)) {
     return { title: jsonName, source: "json_name" };
   }
