@@ -116,12 +116,6 @@ export function resolvePublicPackDownloadInfo(
     mimeType = selected.mimeType;
     fileSize = selected.fileSize;
     checksumSha256 = selected.checksumSha256 || null;
-  } else if (selected.kind === "KNOWLEDGE_PACKAGE") {
-    artifactKind = "KNOWLEDGE_PACKAGE";
-    originalFileName = selected.originalFileName;
-    mimeType = selected.mimeType;
-    fileSize = selected.fileSize;
-    checksumSha256 = selected.checksumSha256 || null;
   }
 
   if (!available && !originalFileName && !mimeType && fileSize == null && !checksumSha256) {

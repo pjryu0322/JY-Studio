@@ -2,15 +2,16 @@
 
 import type { FormEvent } from "react";
 import {
-  PROVIDER_PACK_ADVANCED_SUMMARY_EDIT,
-  PROVIDER_PACK_AUTO_SUMMARY_LABEL,
-  PROVIDER_PACK_ID_LABEL,
-  PROVIDER_PACK_ID_READONLY_HINT,
+  PROVIDER_PACK_DESCRIPTION_HINT,
+  PROVIDER_PACK_SAVE_AND_GO_PAYLOAD,
+  PROVIDER_PACK_SAVE_DRAFT,
+  PROVIDER_PACK_SHORT_SUMMARY_DRAFT_HINT,
+  PROVIDER_PACK_SHORT_SUMMARY_HINT,
+  PROVIDER_PACK_SHORT_SUMMARY_LABEL,
+  PROVIDER_PACK_VERSION_CHANGELOG_LABEL_PREFIX,
 } from "@/lib/role-based-ux-copy";
 
 export function ProviderPackBasicInfoTab({
-  packId,
-  packName,
   editable,
   name,
   shortDescription,
@@ -18,14 +19,15 @@ export function ProviderPackBasicInfoTab({
   versionOverview,
   versionLabel,
   saving,
+  saveSuccessMessage,
+  fieldErrors,
   onNameChange,
   onShortDescriptionChange,
   onDescriptionChange,
   onVersionOverviewChange,
-  onSave,
+  onSaveDraft,
+  onSaveAndContinue,
 }: {
-  readonly packId: string;
-  readonly packName: string;
   readonly editable: boolean;
   readonly name: string;
   readonly shortDescription: string;
@@ -33,87 +35,170 @@ export function ProviderPackBasicInfoTab({
   readonly versionOverview: string;
   readonly versionLabel: string;
   readonly saving: boolean;
+  readonly saveSuccessMessage: string | null;
+  readonly fieldErrors: {
+    readonly name?: string;
+    readonly shortDescription?: string;
+    readonly description?: string;
+  };
   readonly onNameChange: (value: string) => void;
   readonly onShortDescriptionChange: (value: string) => void;
   readonly onDescriptionChange: (value: string) => void;
   readonly onVersionOverviewChange: (value: string) => void;
-  readonly onSave: (e: FormEvent<HTMLFormElement>) => void;
+  readonly onSaveDraft: () => void;
+  readonly onSaveAndContinue: () => void;
 }) {
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    onSaveAndContinue();
+  };
+
   return (
     <section className="rounded-2xl border border-store-border bg-white p-4 shadow-card">
-      <h2 className="text-sm font-bold text-slate-900">{packName}</h2>
-      <p className="mt-2 text-xs text-store-muted">
-        <span className="font-semibold text-slate-700">{PROVIDER_PACK_ID_LABEL}</span>{" "}
-        <span className="font-mono text-slate-900">{packId}</span>
-      </p>
-      <p className="mt-1 text-[11px] text-store-muted">{PROVIDER_PACK_ID_READONLY_HINT}</p>
-
-      <form onSubmit={onSave} className="mt-4 space-y-3">
+      <form onSubmit={onSubmit} className="space-y-4">
         {!editable ? (
           <p className="text-xs text-store-muted">초안(DRAFT)이 아니면 수정할 수 없습니다.</p>
         ) : null}
-        <label className="block text-xs font-semibold" htmlFor="edit-name">
-          지식팩 이름
-        </label>
-        <input
-          id="edit-name"
-          value={name}
-          onChange={(e) => onNameChange(e.target.value)}
-          disabled={!editable}
-          className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm disabled:bg-slate-50"
-        />
-        <label className="block text-xs font-semibold" htmlFor="edit-desc">
-          상세 설명
-        </label>
-        <textarea
-          id="edit-desc"
-          value={description}
-          onChange={(e) => onDescriptionChange(e.target.value)}
-          disabled={!editable}
-          rows={4}
-          className="w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
-        />
-        <div>
-          <p className="text-xs font-semibold text-slate-700">{PROVIDER_PACK_AUTO_SUMMARY_LABEL}</p>
-          <p className="mt-2 rounded-xl border border-store-border bg-slate-50 px-3 py-2 text-sm text-slate-800">
-            {shortDescription || "—"}
+
+        {saveSuccessMessage ? (
+          <p
+            className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900"
+            role="status"
+          >
+            {saveSuccessMessage}
           </p>
-        </div>
-        <details className="rounded-xl border border-store-border bg-slate-50 px-3 py-2">
-          <summary className="cursor-pointer text-xs font-semibold text-slate-800">
-            {PROVIDER_PACK_ADVANCED_SUMMARY_EDIT}
-          </summary>
-          <label className="mt-3 block text-xs font-semibold" htmlFor="edit-short">
-            요약 문구
+        ) : null}
+
+        <div>
+          <label className="block text-xs font-semibold" htmlFor="edit-name">
+            지식팩 이름
+            <span className="sr-only"> (필수)</span>
+            <span aria-hidden="true" className="text-red-600">
+              {" "}
+              *
+            </span>
           </label>
+          <input
+            id="edit-name"
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            disabled={!editable || saving}
+            required={editable}
+            aria-required={editable}
+            aria-invalid={Boolean(fieldErrors.name)}
+            aria-describedby={fieldErrors.name ? "edit-name-error" : undefined}
+            className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm disabled:bg-slate-50"
+          />
+          {fieldErrors.name ? (
+            <p id="edit-name-error" className="mt-1 text-xs text-red-700" role="alert">
+              {fieldErrors.name}
+            </p>
+          ) : null}
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold" htmlFor="edit-short">
+            {PROVIDER_PACK_SHORT_SUMMARY_LABEL}
+            <span className="sr-only"> (필수)</span>
+            <span aria-hidden="true" className="text-red-600">
+              {" "}
+              *
+            </span>
+          </label>
+          <p id="edit-short-hint" className="mt-1 text-[11px] text-store-muted">
+            {PROVIDER_PACK_SHORT_SUMMARY_HINT}
+          </p>
           <textarea
             id="edit-short"
             value={shortDescription}
             onChange={(e) => onShortDescriptionChange(e.target.value)}
-            disabled={!editable}
+            disabled={!editable || saving}
+            required={editable}
+            aria-required={editable}
+            aria-invalid={Boolean(fieldErrors.shortDescription)}
+            aria-describedby={
+              fieldErrors.shortDescription
+                ? "edit-short-hint edit-short-draft-hint edit-short-error"
+                : "edit-short-hint edit-short-draft-hint"
+            }
             rows={2}
-            className="mt-1 w-full rounded-xl border border-store-border bg-white px-3 py-2 text-sm disabled:bg-slate-50"
+            className="mt-1 w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
           />
-        </details>
-        <label className="block text-xs font-semibold" htmlFor="edit-overview">
-          버전 개요 ({versionLabel})
-        </label>
-        <textarea
-          id="edit-overview"
-          value={versionOverview}
-          onChange={(e) => onVersionOverviewChange(e.target.value)}
-          disabled={!editable}
-          rows={3}
-          className="w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
-        />
+          <p id="edit-short-draft-hint" className="mt-1 text-[11px] text-store-muted">
+            {PROVIDER_PACK_SHORT_SUMMARY_DRAFT_HINT}
+          </p>
+          {fieldErrors.shortDescription ? (
+            <p id="edit-short-error" className="mt-1 text-xs text-red-700" role="alert">
+              {fieldErrors.shortDescription}
+            </p>
+          ) : null}
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold" htmlFor="edit-desc">
+            상세 설명
+            <span className="sr-only"> (필수)</span>
+            <span aria-hidden="true" className="text-red-600">
+              {" "}
+              *
+            </span>
+          </label>
+          <p id="edit-desc-hint" className="mt-1 text-[11px] text-store-muted">
+            {PROVIDER_PACK_DESCRIPTION_HINT}
+          </p>
+          <textarea
+            id="edit-desc"
+            value={description}
+            onChange={(e) => onDescriptionChange(e.target.value)}
+            disabled={!editable || saving}
+            required={editable}
+            aria-required={editable}
+            aria-invalid={Boolean(fieldErrors.description)}
+            aria-describedby={
+              fieldErrors.description ? "edit-desc-hint edit-desc-error" : "edit-desc-hint"
+            }
+            rows={5}
+            className="mt-1 w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
+          />
+          {fieldErrors.description ? (
+            <p id="edit-desc-error" className="mt-1 text-xs text-red-700" role="alert">
+              {fieldErrors.description}
+            </p>
+          ) : null}
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold" htmlFor="edit-overview">
+            {PROVIDER_PACK_VERSION_CHANGELOG_LABEL_PREFIX} ({versionLabel})
+          </label>
+          <textarea
+            id="edit-overview"
+            value={versionOverview}
+            onChange={(e) => onVersionOverviewChange(e.target.value)}
+            disabled={!editable || saving}
+            rows={3}
+            className="mt-1 w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
+          />
+        </div>
+
         {editable ? (
-          <button
-            type="submit"
-            disabled={saving}
-            className="min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-50"
-          >
-            {saving ? "저장 중…" : "변경 저장"}
-          </button>
+          <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={onSaveDraft}
+              className="min-h-[44px] w-full rounded-xl border border-store-border bg-white px-4 text-sm font-semibold text-slate-800 disabled:opacity-50 sm:w-auto"
+            >
+              {saving ? "저장 중…" : PROVIDER_PACK_SAVE_DRAFT}
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="min-h-[44px] w-full rounded-xl bg-store-accent px-4 text-sm font-bold text-white disabled:opacity-50 sm:w-auto"
+            >
+              {saving ? "저장 중…" : PROVIDER_PACK_SAVE_AND_GO_PAYLOAD}
+            </button>
+          </div>
         ) : null}
       </form>
     </section>

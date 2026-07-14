@@ -48,7 +48,7 @@ export type PublicPackLicenseInfo = {
   attributionRequired: boolean | null;
 };
 
-export type PublicPackDownloadArtifactKind = "SOURCE_ORIGINAL" | "KNOWLEDGE_PACKAGE";
+export type PublicPackDownloadArtifactKind = "SOURCE_ORIGINAL";
 
 export type PublicPackDownloadInfo = {
   available: boolean;

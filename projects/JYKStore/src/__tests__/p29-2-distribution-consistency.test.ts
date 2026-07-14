@@ -16,36 +16,42 @@ function readSource(relativePath: string): string {
   return readFileSync(path.join(root, relativePath), "utf8");
 }
 
+function ready(visibility: "PUBLIC" | "PRIVATE" | "UNLISTED") {
+  return {
+    distributionMetadata: { visibility, allowDownload: true },
+    doclingImportBundles: [
+      {
+        id: "b1",
+        isActive: true,
+        status: "REVIEW_READY",
+        storageStatus: "ACTIVE",
+        deletedAt: null,
+        adapterType: "DOCLING",
+        normalizedDocuments: [{ id: "nd1", isActive: true }],
+      },
+    ],
+  };
+}
+
 describe("P29.2 distribution consistency", () => {
   it("latest version visibility hides previous PUBLIC when latest is PRIVATE", () => {
-    const latest = resolveLatestDistributionState({
-      payload: { id: "pay_1", validationStatus: "VALID" },
-      distributionMetadata: { visibility: "PRIVATE", allowDownload: true },
-    });
+    const latest = resolveLatestDistributionState(ready("PRIVATE"));
     assert.equal(isLatestVersionCatalogVisible(latest, "list"), false);
     assert.equal(isLatestVersionCatalogVisible(latest, "detail"), false);
   });
 
   it("UNLISTED is detail-only", () => {
-    const latest = resolveLatestDistributionState({
-      payload: { id: "pay_1", validationStatus: "VALID" },
-      distributionMetadata: { visibility: "UNLISTED", allowDownload: true },
-    });
+    const latest = resolveLatestDistributionState(ready("UNLISTED"));
     assert.equal(isLatestVersionCatalogVisible(latest, "list"), false);
     assert.equal(isLatestVersionCatalogVisible(latest, "detail"), true);
   });
 
-  it("detects distribution fingerprint and visibility drift", () => {
+  it("detects Docling snapshot visibility drift", () => {
     const detail = {
       pack: { status: "REVIEWING" },
       versions: [{ id: "ver-1" }],
-      payload: {
-        id: "pay-1",
-        profile: "docling-chunks-v1",
-        checksumSha256: "a".repeat(64),
-        validationStatus: "VALID",
-      },
-      currentManifestFingerprint: "fp-current",
+      payload: null,
+      currentManifestFingerprint: null,
       distribution: {
         visibility: "PUBLIC",
         allowDownload: true,
@@ -54,15 +60,23 @@ describe("P29.2 distribution consistency", () => {
       },
       latestReview: {
         submitSnapshot: {
-          mode: "DISTRIBUTION",
+          mode: "DOCLING_BUNDLE",
           submittedAt: "2026-07-12T00:00:00.000Z",
           submittedVersionId: "ver-1",
-          payloadId: "pay-1",
-          payloadProfile: "docling-chunks-v1",
-          checksumSha256: "a".repeat(64),
-          validationStatus: "VALID",
-          manifestSchemaVersion: "jyk-distribution-0.2",
-          manifestFingerprint: "fp-old",
+          doclingBundleId: "bundle-1",
+          sourceFileId: "f-source",
+          jsonPayloadFileId: "f-json",
+          markdownPayloadFileId: "f-md",
+          checksums: {
+            source: "a".repeat(64),
+            json: "b".repeat(64),
+            markdown: "c".repeat(64),
+          },
+          doclingSchemaVersion: "1",
+          adapterVersion: "1",
+          normalizedDocumentId: "nd-1",
+          fingerprint: "fp-1",
+          warningCount: 0,
           sourceTitle: "Docs",
           licenseName: "MIT",
           visibility: "PRIVATE",
@@ -73,7 +87,6 @@ describe("P29.2 distribution consistency", () => {
 
     const drift = detectSubmitSnapshotDrift(detail);
     assert.equal(drift.changed, true);
-    assert.ok(drift.reasons.some((r) => /Manifest/.test(r)));
     assert.ok(drift.reasons.some((r) => /공개범위/.test(r)));
   });
 

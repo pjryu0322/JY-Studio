@@ -13,17 +13,6 @@ export const latestKnowledgePackVersionOrderBy: Prisma.KnowledgePackVersionOrder
  * Concrete import models stay in the query layer; callers map via toLatestPackVersionArtifactInput.
  */
 export const latestPackArtifactVersionInclude = {
-  payload: {
-    select: {
-      id: true,
-      validationStatus: true,
-      originalFileName: true,
-      mimeType: true,
-      fileSize: true,
-      checksumSha256: true,
-      storagePath: true,
-    },
-  },
   distributionMetadata: {
     select: {
       visibility: true,
@@ -38,7 +27,6 @@ export const latestPackArtifactVersionInclude = {
       licenseName: true,
       licenseUrl: true,
       usageTerms: true,
-      primaryArtifactType: true,
       contentType: true,
     },
   },
@@ -82,15 +70,6 @@ export const latestPackArtifactVersionInclude = {
 
 export type LatestPackArtifactVersionRow = {
   id?: string;
-  payload?: {
-    id: string;
-    validationStatus?: string;
-    originalFileName?: string | null;
-    mimeType?: string | null;
-    fileSize?: bigint | number | null;
-    checksumSha256?: string | null;
-    storagePath?: string | null;
-  } | null;
   distributionMetadata?: {
     visibility: import("@prisma/client").DistributionVisibility;
     allowDownload: boolean;
@@ -104,7 +83,6 @@ export type LatestPackArtifactVersionRow = {
     licenseName?: string | null;
     licenseUrl?: string | null;
     usageTerms?: string | null;
-    primaryArtifactType?: "SOURCE_ORIGINAL" | "KNOWLEDGE_PACKAGE" | null;
     contentType?:
       | "DOCUMENT"
       | "PRODUCT"
@@ -145,12 +123,10 @@ export function toLatestPackVersionArtifactInput(
   ).map((bundle) => toExternalImportArtifactInput(bundle));
 
   return {
-    payload: version.payload ?? null,
     distributionMetadata: version.distributionMetadata
       ? {
           visibility: version.distributionMetadata.visibility,
           allowDownload: version.distributionMetadata.allowDownload,
-          primaryArtifactType: version.distributionMetadata.primaryArtifactType ?? null,
         }
       : null,
     externalImports,

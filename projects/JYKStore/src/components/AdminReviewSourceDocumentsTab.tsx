@@ -51,9 +51,12 @@ export function AdminReviewSourceDocumentsTab({
       setStructure(ndRes?.structure ?? null);
       const md = importRes.bundle?.files.find((f) => f.role === "DOCLING_MARKDOWN");
       if (md) {
-        const response = await fetch(adminDoclingImportFileDownloadUrl(packId, md.id), {
+        const response = await fetch(
+          adminDoclingImportFileDownloadUrl(packId, md.id, { preview: true, maxBytes: 100_000 }),
+          {
           credentials: "include",
-        });
+        },
+        );
         setMarkdownText(response.ok ? await response.text() : null);
       } else {
         setMarkdownText(null);

@@ -86,10 +86,20 @@ describe("docling-import-service contracts", () => {
       join(projectRoot, "src/app/api/v1/provider/packs/[packId]/docling-import/route.ts"),
       "utf8",
     );
-    assert.ok(providerRoute.includes("uploadDoclingImportBundle"));
     assert.ok(providerRoute.includes("getActiveDoclingImport"));
     assert.ok(providerRoute.includes("deleteActiveDoclingImport"));
     assert.ok(providerRoute.includes("requireProviderApiAuth"));
+    assert.ok(providerRoute.includes("DOCLING_FORMDATA_UPLOAD_GONE"));
+    assert.ok(providerRoute.includes("410"));
+
+    const uploadSessionsRoute = readFileSync(
+      join(
+        projectRoot,
+        "src/app/api/v1/provider/packs/[packId]/docling-import/upload-sessions/route.ts",
+      ),
+      "utf8",
+    );
+    assert.ok(uploadSessionsRoute.includes("createDoclingUploadSession"));
 
     const retryRoute = readFileSync(
       join(projectRoot, "src/app/api/v1/provider/packs/[packId]/docling-import/retry/route.ts"),
@@ -119,6 +129,6 @@ describe("docling-import-service contracts", () => {
       ),
       "utf8",
     );
-    assert.ok(adminMeta.includes("upsertAdminPackDistribution"));
+    assert.ok(adminMeta.includes("patchAdminPackDistribution"));
   });
 });

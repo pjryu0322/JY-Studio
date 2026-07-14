@@ -252,8 +252,22 @@ export const ADMIN_REVIEW_VIEW_VALIDATION = "검증 결과 보기";
 
 export const PROVIDER_PACK_ID_READONLY_HINT =
   "JYKStore가 발급한 고유 식별자입니다. 수정할 수 없습니다.";
+/** @deprecated Removed from basic-info UI — kept for source/compat checks */
 export const PROVIDER_PACK_AUTO_SUMMARY_LABEL = "자동 생성 요약";
+/** @deprecated Removed from basic-info UI — kept for source/compat checks */
 export const PROVIDER_PACK_ADVANCED_SUMMARY_EDIT = "고급 요약 수정";
+
+export const PROVIDER_PACK_SHORT_SUMMARY_LABEL = "한 줄 요약";
+export const PROVIDER_PACK_SHORT_SUMMARY_HINT =
+  "지식팩의 핵심 용도와 제공 내용을 한두 문장으로 작성해 주세요.";
+export const PROVIDER_PACK_SHORT_SUMMARY_DRAFT_HINT =
+  "등록 자료를 기반으로 작성된 초안일 수 있습니다. 공개 전에 내용을 확인해 주세요.";
+export const PROVIDER_PACK_DESCRIPTION_HINT =
+  "이 지식팩이 어떤 사용자를 위해 어떤 정보를 제공하는지 작성해 주세요.";
+export const PROVIDER_PACK_VERSION_CHANGELOG_LABEL_PREFIX = "버전 변경사항";
+export const PROVIDER_PACK_SAVE_DRAFT = "임시 저장";
+export const PROVIDER_PACK_SAVE_AND_GO_PAYLOAD = "저장 후 자료 등록";
+export const PROVIDER_PACK_SAVE_DRAFT_SUCCESS = "기본정보를 저장했습니다.";
 
 export const PROVIDER_PACK_DRAFT_EMPTY_SOURCES =
   "등록된 원천 자료가 없습니다. 자료 등록 탭에서 외부 생성 도구 결과물을 등록하세요.";

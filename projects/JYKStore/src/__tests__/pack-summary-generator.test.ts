@@ -28,13 +28,13 @@ describe("deriveShortDescription", () => {
     assert.ok(summary.length >= 10 && summary.length <= 160);
   });
 
-  it("truncates long text within 160 characters", () => {
+  it("truncates long text within preferred 120 characters", () => {
     const long = "가".repeat(200);
     const summary = deriveShortDescription({
       name: "Long Pack",
       description: long,
     });
-    assert.ok(summary.length <= 160);
+    assert.ok(summary.length <= 120);
     assert.ok(summary.length >= 10);
   });
 });

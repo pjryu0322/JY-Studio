@@ -35,11 +35,12 @@ export function ProviderDistributionTab({
   const [readmeText, setReadmeText] = useState("");
   const [visibility, setVisibility] = useState("PRIVATE");
   const [allowDownload, setAllowDownload] = useState(true);
-  const [primaryArtifactType, setPrimaryArtifactType] = useState("");
   const [contentType, setContentType] = useState("");
   const [artifactOptions, setArtifactOptions] = useState<DistributionArtifactOptionsDto>({
     zipReady: false,
     externalImportReady: false,
+    selectedPrimaryArtifactType: null,
+    multipleReady: false,
   });
 
   const applyRow = useCallback(
@@ -63,7 +64,6 @@ export function ProviderDistributionTab({
         setReadmeText(row.readmeText ?? "");
         setVisibility(row.visibility);
         setAllowDownload(row.allowDownload);
-        setPrimaryArtifactType(row.primaryArtifactType ?? "");
         setContentType(row.contentType ?? "");
       }
     },
@@ -107,7 +107,6 @@ export function ProviderDistributionTab({
         readmeText,
         visibility,
         allowDownload,
-        primaryArtifactType: primaryArtifactType || null,
         contentType: contentType || null,
       });
       applyRow(data.distribution, data.artifactOptions);
@@ -122,8 +121,6 @@ export function ProviderDistributionTab({
     return <p className="text-sm text-store-muted">유통정보 불러오는 중…</p>;
   }
 
-  const showPrimaryPicker = artifactOptions.zipReady && artifactOptions.externalImportReady;
-
   return (
     <section id="pack-distribution" className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
       <div>
@@ -133,18 +130,14 @@ export function ProviderDistributionTab({
         </p>
         <p className="mt-1 text-xs text-store-muted">
           지식팩 제공자와 원천 문서 발행기관은 다를 수 있습니다.
+          {artifactOptions.externalImportReady
+            ? " 공개 다운로드는 Docling 원본문서를 제공합니다."
+            : ""}
         </p>
       </div>
 
       {error ? (
         <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
-      ) : null}
-
-      {showPrimaryPicker ? (
-        <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          동일 버전에 공개 가능한 Artifact가 2개 있습니다. 공개 다운로드 유형을 선택하세요.
-          {!primaryArtifactType ? " 미선택 시 지식팩 패키지(ZIP)가 우선됩니다." : null}
-        </div>
       ) : null}
 
       <form onSubmit={(e) => void onSave(e)} className="space-y-3">
@@ -289,24 +282,6 @@ export function ProviderDistributionTab({
             className="mt-2 w-full rounded-xl border border-store-border px-3 py-2 text-sm disabled:bg-slate-50"
           />
         </div>
-        {showPrimaryPicker ? (
-          <div>
-            <label className="text-xs font-semibold text-slate-700" htmlFor="dist-primary-artifact">
-              공개 다운로드 유형
-            </label>
-            <select
-              id="dist-primary-artifact"
-              value={primaryArtifactType}
-              onChange={(e) => setPrimaryArtifactType(e.target.value)}
-              disabled={!editable}
-              className="mt-2 min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm disabled:bg-slate-50"
-            >
-              <option value="">자동 (지식팩 패키지 우선)</option>
-              <option value="SOURCE_ORIGINAL">원본문서</option>
-              <option value="KNOWLEDGE_PACKAGE">지식팩 패키지</option>
-            </select>
-          </div>
-        ) : null}
         <div>
           <label className="text-xs font-semibold text-slate-700" htmlFor="dist-content-type">
             콘텐츠 유형

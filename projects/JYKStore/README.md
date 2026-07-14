@@ -28,12 +28,18 @@ http://localhost:3004
 JYKStore는 Docling을 실행하지 않습니다. Provider는 외부 Docling으로 만든 **원본문서 + Docling JSON + Docling Markdown** 3파일을 업로드합니다.
 
 - 원본 3파일은 불변으로 보관합니다. Signature·Office OOXML 내용 검증 후 저장합니다.
+- 대용량 업로드는 브라우저 multipart(presigned PUT) → upload-sessions 경로를 사용합니다(FormData POST는 410).
 - Adapter Version은 서버 상수만 사용합니다(클라이언트 입력 무시).
 - Store는 adapter로 `NormalizedDocument`를 생성·재생성합니다(`fingerprintVersion=normalized-document-v2`).
 - Version당 Active Bundle 1개. 실패 업로드는 기존 Active를 대체하지 않습니다.
 - Admin 승인 전 Snapshot·Object 무결성을 재검증합니다.
-- Retrieval / MCP 노출은 후속 단계입니다.
-- 레거시 ZIP Payload 업로드는 계속 지원합니다.
+- 공개 다운로드는 Docling **원본문서(SOURCE_ORIGINAL)** 스트림만 제공합니다.
+- 레거시 ZIP `KnowledgePayload`는 제거 대상입니다. 마이그레이션 전:
+  `npm run cleanup:legacy-zip-payloads` (dry-run) → `--apply` → `prisma migrate`.
+
+### MinIO CORS (브라우저 multipart)
+
+`AllowedOrigin`에 `JYKSTORE_PUBLIC_APP_ORIGIN`(예: `http://localhost:3004`)을 넣고 `PUT`/`GET`/`HEAD`를 허용하세요. `ExposeHeaders`에 `ETag`가 필요합니다.
 
 관련 문서:
 

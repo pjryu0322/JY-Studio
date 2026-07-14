@@ -85,6 +85,7 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
     currentManifestFingerprint: overrides.currentManifestFingerprint ?? null,
     doclingReviewIntegrity: overrides.doclingReviewIntegrity ?? null,
     distribution: overrides.distribution ?? null,
+    artifactOptions: overrides.artifactOptions ?? null,
     structureQuality: overrides.structureQuality ?? null,
     chunkQuality: overrides.chunkQuality ?? null,
     retrievalEvaluation: overrides.retrievalEvaluation ?? null,

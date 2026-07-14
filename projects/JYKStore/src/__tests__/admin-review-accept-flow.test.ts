@@ -94,6 +94,7 @@ function pendingDetail(
     currentManifestFingerprint: overrides.currentManifestFingerprint ?? null,
     doclingReviewIntegrity: overrides.doclingReviewIntegrity ?? null,
     distribution: overrides.distribution ?? null,
+    artifactOptions: overrides.artifactOptions ?? null,
     structureQuality: null,
     chunkQuality: null,
     retrievalEvaluation: null,

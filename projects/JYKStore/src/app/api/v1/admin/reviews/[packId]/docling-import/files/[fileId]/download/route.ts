@@ -23,10 +23,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const { packId, fileId } = await context.params;
 
   try {
+    const preview =
+      request.nextUrl.searchParams.get("preview") === "1" ||
+      request.nextUrl.searchParams.get("preview") === "true";
+    const maxBytesRaw = request.nextUrl.searchParams.get("maxBytes");
+    const maxBytesParsed = maxBytesRaw ? Number.parseInt(maxBytesRaw, 10) : NaN;
     const result = await downloadDoclingImportFile({
       asAdmin: true,
       packId: packId?.trim() ?? "",
       fileId: fileId?.trim() ?? "",
+      previewMaxBytes: preview
+        ? Number.isFinite(maxBytesParsed) && maxBytesParsed > 0
+          ? maxBytesParsed
+          : 100 * 1024
+        : undefined,
     });
 
     return new NextResponse(Buffer.from(result.bytes), {
@@ -36,6 +46,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
         "Content-Disposition": buildContentDisposition(result.fileName),
         "X-JYKStore-SHA256": result.checksumSha256,
         "Cache-Control": "no-store",
+        ...(result.truncated ? { "X-JYKStore-Preview-Truncated": "1" } : {}),
+        ...(result.contentLength != null
+          ? { "X-JYKStore-Content-Length": String(result.contentLength) }
+          : {}),
       },
     });
   } catch (error) {

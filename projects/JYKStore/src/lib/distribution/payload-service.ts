@@ -1,728 +1,17 @@
-import {
-  AuditAction,
-  PackStatus,
-  PayloadGeneratorType as PrismaPayloadGeneratorType,
-  PayloadValidationStatus,
-  type KnowledgePayload,
-  type Prisma,
-} from "@prisma/client";
-import { sha256Hex } from "@/lib/distribution/payload-checksum";
-import { buildDistributionManifest } from "@/lib/distribution/payload-manifest";
-import {
-  createPayloadId,
-  refreshDistributionManifest,
-} from "@/lib/distribution/distribution-manifest-service";
-import { enqueuePayloadCleanupJob } from "@/lib/distribution/payload-cleanup-service";
-import { PayloadServiceError } from "@/lib/distribution/payload-errors";
+import { AuditAction, PackStatus } from "@prisma/client";
+import { Readable } from "node:stream";
 import { selectPublicArtifact } from "@/lib/artifact-state/select-public-artifact";
 import {
   distributionVersionAccessInclude,
   latestKnowledgePackVersionOrderBy,
 } from "@/lib/distribution/latest-distribution-state";
-import { getPayloadLimitConfig } from "@/lib/distribution/payload-limit-config";
-import {
-  readAndVerifyPayloadObject,
-  readAndVerifyStoredObject,
-} from "@/lib/distribution/payload-object-integrity";
-import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
-import type { PayloadStorage } from "@/lib/distribution/payload-storage";
-import {
-  PAYLOAD_ALLOWED_EXTENSIONS,
-  PAYLOAD_ALLOWED_MIME_TYPES,
-  generatorForProfile,
-  isPayloadGeneratorType,
-  isPayloadProfile,
-  profileForGenerator,
-  type PayloadGeneratorType,
-  type PayloadProfile,
-} from "@/lib/distribution/payload-types";
-import { validatePayloadProfile } from "@/lib/distribution/payload-profile-validator";
-import { validateZipBytes } from "@/lib/distribution/payload-zip-validator";
-import { parseDistributionReviewSubmitSnapshot } from "@/lib/distribution/distribution-submit-snapshot";
-import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
+import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
 
-export type KnowledgePayloadPublicDto = {
-  id: string;
-  packId: string;
-  versionId: string;
-  profile: string;
-  generatorType: PayloadGeneratorType;
-  generatorVersion: string | null;
-  originalFileName: string;
-  mimeType: string;
-  fileSize: number;
-  checksumSha256: string;
-  validationStatus: string;
-  validationMessage: string | null;
-  validationReport: unknown;
-  manifest: unknown;
-  isImmutable: boolean;
-  canDelete: boolean;
-  uploadedAt: string;
-};
-
-function resolveMaxZipBytes(): number {
-  return getPayloadLimitConfig().maxZipBytes;
-}
-
-function getDefaultStorage(): PayloadStorage {
-  return getConfiguredPayloadStorage();
-}
-
-function extensionOfFileName(fileName: string): string {
-  const base = fileName.split(/[/\\]/).pop() ?? fileName;
-  const dot = base.lastIndexOf(".");
-  if (dot <= 0) return "";
-  return base.slice(dot).toLowerCase();
-}
-
-function sanitizeOriginalFileName(fileName: string): string {
-  const base = fileName.split(/[/\\]/).pop()?.trim() || "payload.zip";
-  // Keep Unicode letters (Hangul etc.). JS \w is ASCII-only.
-  const cleaned = base
-    .replace(/[\u0000-\u001f\u007f]/g, "")
-    .replace(/[<>:"|?*\\/]/g, "_")
-    .slice(0, 180);
-  return cleaned || "payload.zip";
-}
-
-export function toKnowledgePayloadPublicDto(
-  payload: KnowledgePayload,
-  options?: { canDelete?: boolean },
-): KnowledgePayloadPublicDto {
-  return {
-    id: payload.id,
-    packId: payload.packId,
-    versionId: payload.versionId,
-    profile: payload.profile,
-    generatorType: payload.generatorType as PayloadGeneratorType,
-    generatorVersion: payload.generatorVersion,
-    originalFileName: payload.originalFileName,
-    mimeType: payload.mimeType,
-    fileSize: Number(payload.fileSize),
-    checksumSha256: payload.checksumSha256,
-    validationStatus: payload.validationStatus,
-    validationMessage: payload.validationMessage,
-    validationReport: payload.validationReport,
-    manifest: payload.manifestJson,
-    isImmutable: payload.isImmutable,
-    canDelete: options?.canDelete ?? false,
-    uploadedAt: payload.uploadedAt.toISOString(),
-  };
-}
-
-async function requireOwnedDraftPack(input: {
-  userId: string;
-  clientId: string;
-  packId: string;
-}) {
-  const profile = await findOrEnsureProviderProfileForUser(input.userId, input.clientId);
-  if (!profile) {
-    throw new PayloadServiceError("PROFILE_REQUIRED", "제공자 프로필이 필요합니다.", 403);
-  }
-
-  const pack = await prisma.knowledgePack.findFirst({
-    where: { packId: input.packId, providerProfileId: profile.id },
-    include: {
-      versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 },
-      providerProfile: true,
-    },
-  });
-
-  if (!pack) {
-    throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
-  }
-
-  if (pack.status !== PackStatus.DRAFT) {
-    throw new PayloadServiceError(
-      "PACK_NOT_EDITABLE",
-      "초안(DRAFT) 상태에서만 Payload를 관리할 수 있습니다.",
-      409,
-    );
-  }
-
-  const version = pack.versions[0];
-  if (!version) {
-    throw new PayloadServiceError("INCOMPLETE", "버전이 없습니다.", 400);
-  }
-
-  return { pack, version, profile };
-}
-
-function resolveProfileAndGenerator(input: {
-  profile?: string | null;
-  generatorType?: string | null;
-}): { profile: PayloadProfile; generatorType: PayloadGeneratorType } {
-  const rawProfile = input.profile?.trim() ?? "";
-  const rawGenerator = input.generatorType?.trim() ?? "";
-
-  if (rawProfile && !isPayloadProfile(rawProfile)) {
-    throw new PayloadServiceError(
-      "PAYLOAD_UNSUPPORTED_PROFILE",
-      "지원하지 않는 Payload Profile입니다.",
-      400,
-    );
-  }
-  if (rawGenerator && !isPayloadGeneratorType(rawGenerator)) {
-    throw new PayloadServiceError(
-      "PAYLOAD_GENERATOR_MISMATCH",
-      "지원하지 않는 생성기 유형입니다.",
-      400,
-    );
-  }
-
-  if (rawProfile && rawGenerator) {
-    const expected = generatorForProfile(rawProfile as PayloadProfile);
-    if (expected !== rawGenerator) {
-      throw new PayloadServiceError(
-        "PAYLOAD_GENERATOR_MISMATCH",
-        "생성기 유형과 Payload Profile이 일치하지 않습니다.",
-        400,
-      );
-    }
-    return {
-      profile: rawProfile as PayloadProfile,
-      generatorType: rawGenerator as PayloadGeneratorType,
-    };
-  }
-
-  if (rawGenerator) {
-    const generatorType = rawGenerator as PayloadGeneratorType;
-    return { profile: profileForGenerator(generatorType), generatorType };
-  }
-
-  if (rawProfile) {
-    const profile = rawProfile as PayloadProfile;
-    return { profile, generatorType: generatorForProfile(profile) };
-  }
-
-  throw new PayloadServiceError(
-    "PAYLOAD_UNSUPPORTED_PROFILE",
-    "profile 또는 generatorType이 필요합니다.",
-    400,
-  );
-}
-
-export async function uploadProviderPackPayload(input: {
-  userId: string;
-  clientId: string;
-  packId: string;
-  fileName: string;
-  mimeType: string | null;
-  bytes: Uint8Array;
-  profile?: string | null;
-  generatorType?: string | null;
-  generatorVersion?: string | null;
-  storage?: PayloadStorage;
-}): Promise<{ payload: KnowledgePayloadPublicDto }> {
-  const { pack, version, profile } = await requireOwnedDraftPack({
-    userId: input.userId,
-    clientId: input.clientId,
-    packId: input.packId,
-  });
-
-  const existing = await prisma.knowledgePayload.findUnique({
-    where: { versionId: version.id },
-  });
-  if (existing) {
-    throw new PayloadServiceError(
-      "PAYLOAD_ALREADY_REGISTERED",
-      "이미 Payload가 등록되어 있습니다. 삭제 후 다시 등록하세요.",
-      409,
-    );
-  }
-
-  if (!input.bytes || input.bytes.byteLength === 0) {
-    throw new PayloadServiceError("PAYLOAD_FILE_REQUIRED", "ZIP 파일이 필요합니다.", 400);
-  }
-
-  const maxBytes = resolveMaxZipBytes();
-  if (input.bytes.byteLength > maxBytes) {
-    throw new PayloadServiceError(
-      "PAYLOAD_FILE_TOO_LARGE",
-      `ZIP 파일이 최대 크기(${maxBytes} bytes)를 초과했습니다.`,
-      413,
-    );
-  }
-
-  const originalFileName = sanitizeOriginalFileName(input.fileName);
-  const ext = extensionOfFileName(originalFileName);
-  if (!(PAYLOAD_ALLOWED_EXTENSIONS as readonly string[]).includes(ext)) {
-    throw new PayloadServiceError(
-      "PAYLOAD_INVALID_ZIP",
-      "ZIP 파일만 업로드할 수 있습니다.",
-      400,
-    );
-  }
-
-  const mimeType = (input.mimeType?.trim() || "application/zip").toLowerCase();
-  if (
-    mimeType &&
-    !(PAYLOAD_ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType) &&
-    mimeType !== "application/octet-stream"
-  ) {
-    throw new PayloadServiceError(
-      "PAYLOAD_INVALID_ZIP",
-      "허용되지 않은 MIME 유형입니다.",
-      400,
-    );
-  }
-
-  const { profile: payloadProfile, generatorType } = resolveProfileAndGenerator({
-    profile: input.profile,
-    generatorType: input.generatorType,
-  });
-
-  const zipValidation = await validateZipBytes(input.bytes, { maxZipBytes: maxBytes });
-  if (!zipValidation.ok) {
-    const first = zipValidation.errors[0] ?? "ZIP 검증에 실패했습니다.";
-    const code =
-      /path|traversal|Absolute|Drive|UNC|NUL/i.test(first)
-        ? "PAYLOAD_UNSAFE_PATH"
-        : /too many entries/i.test(first)
-          ? "PAYLOAD_TOO_MANY_ENTRIES"
-          : /Suspicious compression/i.test(first)
-            ? "PAYLOAD_SUSPICIOUS_COMPRESSION_RATIO"
-            : "PAYLOAD_INVALID_ZIP";
-    throw new PayloadServiceError(code, first, 400);
-  }
-
-  const profileValidation = await validatePayloadProfile(
-    payloadProfile,
-    { zipEntries: zipValidation.entries, zipBytes: input.bytes },
-    { generatorType },
-  );
-
-  if (!profileValidation.ok) {
-    const first = profileValidation.errors[0] ?? "Payload 내용 검증에 실패했습니다.";
-    const code = /entrypoint/i.test(first)
-      ? "PAYLOAD_ENTRYPOINT_MISSING"
-      : /Generator type|does not match/i.test(first)
-        ? "PAYLOAD_GENERATOR_MISMATCH"
-        : /Unsupported payload profile/i.test(first)
-          ? "PAYLOAD_UNSUPPORTED_PROFILE"
-          : "PAYLOAD_INVALID_CONTENT";
-    throw new PayloadServiceError(code, first, 400);
-  }
-
-  const storage = input.storage ?? getDefaultStorage();
-  const payloadId = createPayloadId();
-  const checksumSha256 = sha256Hex(input.bytes);
-
-  let savedObjectKey: string | null = null;
-  const saved = await storage.put({
-    packId: pack.packId,
-    versionId: version.id,
-    payloadId,
-    originalFileName,
-    mimeType: "application/zip",
-    bytes: input.bytes,
-    checksumSha256,
-  });
-  savedObjectKey = saved.objectKey;
-
-  const validationReport = {
-    profile: payloadProfile,
-    entrypoint: profileValidation.entrypoint ?? null,
-    recordCount: profileValidation.recordCount ?? null,
-    warnings: profileValidation.warnings,
-    errors: profileValidation.errors,
-    validatedAt: new Date().toISOString(),
-  };
-
-  const distributionMeta = await prisma.packDistributionMetadata.findUnique({
-    where: { versionId: version.id },
-  });
-
-  const manifest = buildDistributionManifest({
-    pack: {
-      packId: pack.packId,
-      versionId: version.id,
-      name: pack.name,
-      version: version.version,
-    },
-    provider: {
-      providerId: profile.id,
-      displayName: pack.providerName || profile.displayName,
-    },
-    generator: {
-      type: generatorType,
-      version: input.generatorVersion?.trim() || null,
-    },
-    payload: {
-      payloadId,
-      profile: payloadProfile,
-      originalFileName,
-      mimeType: "application/zip",
-      fileSize: saved.fileSize,
-      checksumSha256: saved.checksumSha256,
-    },
-    source: {
-      title: distributionMeta?.sourceTitle ?? null,
-      url: distributionMeta?.sourceUrl ?? null,
-      licenseName: distributionMeta?.licenseName ?? "UNSPECIFIED",
-    },
-    distribution: {
-      visibility: (distributionMeta?.visibility ?? "PRIVATE") as
-        | "PRIVATE"
-        | "PUBLIC"
-        | "UNLISTED",
-      allowDownload: distributionMeta?.allowDownload ?? true,
-    },
-  });
-
-  let created: KnowledgePayload;
-  try {
-    created = await prisma.knowledgePayload.create({
-      data: {
-        id: payloadId,
-        packId: pack.packId,
-        versionId: version.id,
-        profile: payloadProfile,
-        generatorType: generatorType as PrismaPayloadGeneratorType,
-        generatorVersion: input.generatorVersion?.trim() || null,
-        originalFileName,
-        storagePath: saved.objectKey,
-        mimeType: "application/zip",
-        fileSize: BigInt(saved.fileSize),
-        checksumSha256: saved.checksumSha256,
-        validationStatus: PayloadValidationStatus.VALID,
-        validationMessage: null,
-        validationReport: validationReport as Prisma.InputJsonValue,
-        manifestJson: manifest as unknown as Prisma.InputJsonValue,
-        isImmutable: true,
-      },
-    });
-  } catch (error) {
-    try {
-      await storage.delete({ objectKey: savedObjectKey });
-    } catch {
-      await enqueuePayloadCleanupJob({
-        objectKey: savedObjectKey,
-        payloadId,
-        reason: "db_create_failed_s3_delete_failed",
-      });
-    }
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error as { code?: string }).code === "P2002"
-    ) {
-      throw new PayloadServiceError(
-        "PAYLOAD_ALREADY_REGISTERED",
-        "이미 Payload가 등록되어 있습니다. 삭제 후 다시 등록하세요.",
-        409,
-      );
-    }
-    throw error;
-  }
-
-  await recordProviderAudit({
-    action: AuditAction.PAYLOAD_UPLOADED,
-    entityType: "KnowledgePayload",
-    entityId: created.id,
-    actorUserId: input.userId,
-    metadata: {
-      packId: pack.packId,
-      versionId: version.id,
-      payloadId: created.id,
-      checksumSha256: created.checksumSha256,
-      profile: created.profile,
-      generatorType: created.generatorType,
-      result: "VALID",
-    },
-  });
-
-  await recordProviderAudit({
-    action: AuditAction.PAYLOAD_VALIDATED,
-    entityType: "KnowledgePayload",
-    entityId: created.id,
-    actorUserId: input.userId,
-    metadata: {
-      packId: pack.packId,
-      versionId: version.id,
-      payloadId: created.id,
-      validationStatus: "VALID",
-      entrypoint: profileValidation.entrypoint ?? null,
-      recordCount: profileValidation.recordCount ?? null,
-    },
-  });
-
-  await refreshDistributionManifest({
-    packId: pack.packId,
-    versionId: version.id,
-    reason: "payload_uploaded",
-  });
-
-  const refreshed = await prisma.knowledgePayload.findUnique({ where: { id: created.id } });
-  return {
-    payload: toKnowledgePayloadPublicDto(refreshed ?? created, { canDelete: true }),
-  };
-}
-
-export async function getProviderPackPayload(input: {
-  userId: string;
-  clientId: string;
-  packId: string;
-}): Promise<{ payload: KnowledgePayloadPublicDto | null }> {
-  const profile = await findOrEnsureProviderProfileForUser(input.userId, input.clientId);
-  if (!profile) {
-    throw new PayloadServiceError("PROFILE_REQUIRED", "제공자 프로필이 필요합니다.", 403);
-  }
-
-  const pack = await prisma.knowledgePack.findFirst({
-    where: { packId: input.packId, providerProfileId: profile.id },
-    include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
-  });
-  if (!pack) {
-    throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
-  }
-
-  const version = pack.versions[0];
-  if (!version) {
-    return { payload: null };
-  }
-
-  const payload = await prisma.knowledgePayload.findUnique({
-    where: { versionId: version.id },
-  });
-  if (!payload) {
-    return { payload: null };
-  }
-
-  const canDelete =
-    pack.status === PackStatus.DRAFT &&
-    !(await payloadHasSubmissionHistory({
-      packId: pack.packId,
-      payloadId: payload.id,
-      versionId: version.id,
-    }));
-
-  return { payload: toKnowledgePayloadPublicDto(payload, { canDelete }) };
-}
-
-export async function payloadHasSubmissionHistory(input: {
-  packId: string;
-  payloadId: string;
-  versionId: string;
-}): Promise<boolean> {
-  const reviews = await prisma.packReview.findMany({
-    where: { packId: input.packId },
-    select: { submitSnapshot: true },
-  });
-  for (const review of reviews) {
-    const snapshot = parseDistributionReviewSubmitSnapshot(review.submitSnapshot);
-    if (!snapshot) continue;
-    if (
-      snapshot.payloadId === input.payloadId ||
-      snapshot.submittedVersionId === input.versionId
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-export async function deleteProviderPackPayload(input: {
-  userId: string;
-  clientId: string;
-  packId: string;
-  storage?: PayloadStorage;
-}): Promise<{ deleted: true }> {
-  const { pack, version } = await requireOwnedDraftPack({
-    userId: input.userId,
-    clientId: input.clientId,
-    packId: input.packId,
-  });
-
-  const payload = await prisma.knowledgePayload.findUnique({
-    where: { versionId: version.id },
-  });
-  if (!payload) {
-    throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "등록된 Payload가 없습니다.", 404);
-  }
-
-  if (
-    await payloadHasSubmissionHistory({
-      packId: pack.packId,
-      payloadId: payload.id,
-      versionId: version.id,
-    })
-  ) {
-    throw new PayloadServiceError(
-      "PAYLOAD_IMMUTABLE_AFTER_SUBMISSION",
-      "검수 이력에 포함된 Payload는 삭제할 수 없습니다. 새 버전을 생성해 보완하세요.",
-      409,
-    );
-  }
-
-  const storage = input.storage ?? getDefaultStorage();
-  const objectKey = payload.storagePath;
-  await prisma.knowledgePayload.delete({ where: { id: payload.id } });
-  try {
-    await storage.delete({ objectKey });
-  } catch {
-    await enqueuePayloadCleanupJob({
-      objectKey,
-      payloadId: payload.id,
-      reason: "payload_db_deleted_s3_delete_failed",
-    });
-  }
-
-  await recordProviderAudit({
-    action: AuditAction.PAYLOAD_DELETED,
-    entityType: "KnowledgePayload",
-    entityId: payload.id,
-    actorUserId: input.userId,
-    metadata: {
-      packId: pack.packId,
-      versionId: version.id,
-      payloadId: payload.id,
-      checksumSha256: payload.checksumSha256,
-      profile: payload.profile,
-      generatorType: payload.generatorType,
-    },
-  });
-
-  return { deleted: true };
-}
-
-export async function readOwnedPayloadBytes(input: {
-  userId: string;
-  clientId: string;
-  packId: string;
-  storage?: PayloadStorage;
-}): Promise<{
-  bytes: Uint8Array;
-  originalFileName: string;
-  checksumSha256: string;
-  payloadId: string;
-  versionId: string;
-}> {
-  const profile = await findOrEnsureProviderProfileForUser(input.userId, input.clientId);
-  if (!profile) {
-    throw new PayloadServiceError("PROFILE_REQUIRED", "제공자 프로필이 필요합니다.", 403);
-  }
-
-  const pack = await prisma.knowledgePack.findFirst({
-    where: { packId: input.packId, providerProfileId: profile.id },
-    include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
-  });
-  if (!pack) {
-    throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
-  }
-
-  const version = pack.versions[0];
-  if (!version) {
-    throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "등록된 Payload가 없습니다.", 404);
-  }
-
-  const payload = await prisma.knowledgePayload.findUnique({
-    where: { versionId: version.id },
-  });
-  if (!payload) {
-    throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "등록된 Payload가 없습니다.", 404);
-  }
-
-  const storage = input.storage ?? getDefaultStorage();
-  const { bytes } = await readAndVerifyPayloadObject({
-    storage,
-    objectKey: payload.storagePath,
-    expectedChecksumSha256: payload.checksumSha256,
-    expectedFileSize: Number(payload.fileSize),
-  });
-
-  await recordProviderAudit({
-    action: AuditAction.PAYLOAD_DOWNLOADED,
-    entityType: "KnowledgePayload",
-    entityId: payload.id,
-    actorUserId: input.userId,
-    metadata: {
-      packId: pack.packId,
-      versionId: version.id,
-      payloadId: payload.id,
-      checksumSha256: payload.checksumSha256,
-      actor: "provider",
-    },
-  });
-
-  return {
-    bytes,
-    originalFileName: payload.originalFileName,
-    checksumSha256: payload.checksumSha256,
-    payloadId: payload.id,
-    versionId: version.id,
-  };
-}
-
-export async function readAdminPayloadBytes(input: {
-  packId: string;
-  actorUserId?: string | null;
-  storage?: PayloadStorage;
-}): Promise<{
-  bytes: Uint8Array;
-  originalFileName: string;
-  checksumSha256: string;
-  payloadId: string;
-  versionId: string;
-}> {
-  const pack = await prisma.knowledgePack.findUnique({
-    where: { packId: input.packId },
-    include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
-  });
-  if (!pack) {
-    throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
-  }
-
-  const version = pack.versions[0];
-  if (!version) {
-    throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "등록된 Payload가 없습니다.", 404);
-  }
-
-  const payload = await prisma.knowledgePayload.findUnique({
-    where: { versionId: version.id },
-  });
-  if (!payload) {
-    throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "등록된 Payload가 없습니다.", 404);
-  }
-
-  const storage = input.storage ?? getDefaultStorage();
-  const { bytes } = await readAndVerifyPayloadObject({
-    storage,
-    objectKey: payload.storagePath,
-    expectedChecksumSha256: payload.checksumSha256,
-    expectedFileSize: Number(payload.fileSize),
-  });
-
-  await recordProviderAudit({
-    action: AuditAction.PAYLOAD_DOWNLOADED,
-    entityType: "KnowledgePayload",
-    entityId: payload.id,
-    actorUserId: input.actorUserId ?? null,
-    metadata: {
-      packId: pack.packId,
-      versionId: version.id,
-      payloadId: payload.id,
-      checksumSha256: payload.checksumSha256,
-      actor: "admin",
-    },
-  });
-
-  return {
-    bytes,
-    originalFileName: payload.originalFileName,
-    checksumSha256: payload.checksumSha256,
-    payloadId: payload.id,
-    versionId: version.id,
-  };
-}
-
 export async function readPublicCatalogPayloadBytes(input: {
   packId: string;
-  storage?: PayloadStorage;
+  storage?: import("@/lib/object-storage/object-storage").ObjectStorageBackend;
 }): Promise<{
   bytes: Uint8Array;
   originalFileName: string;
@@ -731,8 +20,51 @@ export async function readPublicCatalogPayloadBytes(input: {
   checksumSha256: string;
   payloadId: string;
   visibility: "PRIVATE" | "PUBLIC" | "UNLISTED";
-  artifactKind: "SOURCE_ORIGINAL" | "KNOWLEDGE_PACKAGE";
+  artifactKind: "SOURCE_ORIGINAL";
 }> {
+  const streamed = await openPublicCatalogSourceOriginalStream(input);
+  const raw = streamed.stream;
+  const nodeStream =
+    typeof (raw as ReadableStream).getReader === "function"
+      ? Readable.fromWeb(raw as import("node:stream/web").ReadableStream)
+      : (raw as NodeJS.ReadableStream);
+  const chunks: Buffer[] = [];
+  for await (const chunk of nodeStream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const bytes = new Uint8Array(Buffer.concat(chunks));
+  return {
+    bytes,
+    originalFileName: streamed.originalFileName,
+    mimeType: streamed.mimeType,
+    fileSize: streamed.fileSize,
+    checksumSha256: streamed.checksumSha256,
+    payloadId: streamed.payloadId,
+    visibility: streamed.visibility,
+    artifactKind: "SOURCE_ORIGINAL",
+  };
+}
+
+/**
+ * Public download: Docling SOURCE_ORIGINAL only, streamed (no full buffer).
+ * Integrity checksum was verified at import; response headers carry stored SHA-256.
+ */
+export async function openPublicCatalogSourceOriginalStream(input: {
+  packId: string;
+  storage?: import("@/lib/object-storage/object-storage").ObjectStorageBackend;
+}): Promise<{
+  stream: ReadableStream<Uint8Array> | NodeJS.ReadableStream;
+  originalFileName: string;
+  mimeType: string;
+  fileSize: number;
+  checksumSha256: string;
+  payloadId: string;
+  visibility: "PRIVATE" | "PUBLIC" | "UNLISTED";
+  artifactKind: "SOURCE_ORIGINAL";
+}> {
+  const { getConfiguredObjectStorage } = await import(
+    "@/lib/object-storage/object-storage-factory"
+  );
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
     include: {
@@ -740,7 +72,6 @@ export async function readPublicCatalogPayloadBytes(input: {
         orderBy: latestKnowledgePackVersionOrderBy,
         take: 1,
         include: {
-          payload: true,
           distributionMetadata: true,
           doclingImportBundles: distributionVersionAccessInclude.doclingImportBundles,
         },
@@ -753,85 +84,15 @@ export async function readPublicCatalogPayloadBytes(input: {
 
   const version = pack.versions[0];
   if (!version) {
-    throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "등록된 Payload가 없습니다.", 404);
+    throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "등록된 자료가 없습니다.", 404);
   }
 
   const selected = selectPublicArtifact(version);
-  if (selected.kind !== "SOURCE_ORIGINAL" && selected.kind !== "KNOWLEDGE_PACKAGE") {
+  if (selected.kind !== "SOURCE_ORIGINAL") {
     throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
   }
   if (!selected.allowDownload || selected.visibility === "PRIVATE") {
     throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
-  }
-
-  const storage = input.storage ?? getDefaultStorage();
-
-  if (selected.kind === "SOURCE_ORIGINAL") {
-    let objectKey = selected.objectKey;
-    let artifactId = selected.artifactId;
-    let originalFileName = selected.originalFileName;
-    let mimeType = selected.mimeType;
-    let expectedChecksum = selected.checksumSha256;
-    let expectedSize = selected.fileSize;
-
-    if (!objectKey || !expectedChecksum) {
-      const sourceFile = await prisma.knowledgePackFile.findFirst({
-        where: {
-          packId: pack.packId,
-          versionId: version.id,
-          role: "SOURCE_ORIGINAL",
-          bundle: { deletedAt: null, isActive: true },
-        },
-      });
-      if (!sourceFile) {
-        throw new PayloadServiceError(
-          "PAYLOAD_NOT_FOUND",
-          "다운로드 가능한 원본 자료가 없습니다.",
-          404,
-        );
-      }
-      objectKey = sourceFile.storageKey;
-      artifactId = sourceFile.id;
-      originalFileName = sourceFile.originalFileName;
-      mimeType = sourceFile.mimeType || "application/octet-stream";
-      expectedChecksum = sourceFile.checksumSha256;
-      expectedSize = Number(sourceFile.fileSize);
-    }
-
-    const verified = await readAndVerifyStoredObject({
-      storage,
-      objectKey,
-      expectedChecksumSha256: expectedChecksum,
-      expectedFileSize: expectedSize,
-    });
-
-    await recordProviderAudit({
-      action: AuditAction.PAYLOAD_DOWNLOADED,
-      entityType: "KnowledgePackFile",
-      entityId: artifactId,
-      metadata: {
-        packId: pack.packId,
-        versionId: version.id,
-        fileId: artifactId,
-        role: "SOURCE_ORIGINAL",
-        artifactKind: "SOURCE_ORIGINAL",
-        bytes: verified.actualFileSize,
-        checksumSha256: verified.actualChecksumSha256,
-        actor: "catalog",
-        artifact: "EXTERNAL_IMPORT",
-      },
-    });
-
-    return {
-      bytes: verified.bytes,
-      originalFileName,
-      mimeType: mimeType || "application/octet-stream",
-      fileSize: verified.actualFileSize,
-      checksumSha256: verified.actualChecksumSha256,
-      payloadId: artifactId,
-      visibility: selected.visibility,
-      artifactKind: "SOURCE_ORIGINAL",
-    };
   }
 
   let objectKey = selected.objectKey;
@@ -842,49 +103,71 @@ export async function readPublicCatalogPayloadBytes(input: {
   let expectedSize = selected.fileSize;
 
   if (!objectKey || !expectedChecksum) {
-    const payload = version.payload;
-    if (!payload || payload.validationStatus !== PayloadValidationStatus.VALID) {
-      throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "다운로드 가능한 Payload가 없습니다.", 404);
+    const sourceFile = await prisma.knowledgePackFile.findFirst({
+      where: {
+        packId: pack.packId,
+        versionId: version.id,
+        role: "SOURCE_ORIGINAL",
+        bundle: { deletedAt: null, isActive: true },
+      },
+    });
+    if (!sourceFile) {
+      throw new PayloadServiceError(
+        "PAYLOAD_NOT_FOUND",
+        "다운로드 가능한 원본 자료가 없습니다.",
+        404,
+      );
     }
-    objectKey = payload.storagePath;
-    artifactId = payload.id;
-    originalFileName = payload.originalFileName;
-    mimeType = payload.mimeType?.trim() || "application/zip";
-    expectedChecksum = payload.checksumSha256;
-    expectedSize = Number(payload.fileSize);
+    objectKey = sourceFile.storageKey;
+    artifactId = sourceFile.id;
+    originalFileName = sourceFile.originalFileName;
+    mimeType = sourceFile.mimeType || "application/octet-stream";
+    expectedChecksum = sourceFile.checksumSha256;
+    expectedSize = Number(sourceFile.fileSize);
   }
 
-  const verified = await readAndVerifyStoredObject({
-    storage,
-    objectKey,
-    expectedChecksumSha256: expectedChecksum,
-    expectedFileSize: expectedSize,
-  });
+  const storage = input.storage ?? getConfiguredObjectStorage();
+  const head = await storage.headObject({ objectKey }).catch(() => null);
+  if (!head) {
+    throw new PayloadServiceError("PAYLOAD_NOT_FOUND", "원본 객체를 찾을 수 없습니다.", 404);
+  }
+  if (expectedSize > 0 && head.contentLength !== expectedSize) {
+    throw new PayloadServiceError(
+      "PAYLOAD_OBJECT_SIZE_MISMATCH",
+      "원본 파일 크기가 메타데이터와 일치하지 않습니다.",
+      409,
+    );
+  }
+
+  const streamed = await storage.getObjectStream({ objectKey });
 
   await recordProviderAudit({
     action: AuditAction.PAYLOAD_DOWNLOADED,
-    entityType: "KnowledgePayload",
+    entityType: "KnowledgePackFile",
     entityId: artifactId,
     metadata: {
       packId: pack.packId,
       versionId: version.id,
-      payloadId: artifactId,
-      artifactKind: "KNOWLEDGE_PACKAGE",
-      bytes: verified.actualFileSize,
-      checksumSha256: verified.actualChecksumSha256,
+      fileId: artifactId,
+      role: "SOURCE_ORIGINAL",
+      artifactKind: "SOURCE_ORIGINAL",
+      bytes: expectedSize,
+      checksumSha256: expectedChecksum,
       actor: "catalog",
+      artifact: "EXTERNAL_IMPORT",
+      streamed: true,
     },
   });
 
   return {
-    bytes: verified.bytes,
+    stream: streamed.body,
     originalFileName,
-    mimeType: mimeType?.trim() || "application/zip",
-    fileSize: verified.actualFileSize,
-    checksumSha256: verified.actualChecksumSha256,
+    mimeType: mimeType || "application/octet-stream",
+    fileSize: expectedSize,
+    checksumSha256: expectedChecksum,
     payloadId: artifactId,
     visibility: selected.visibility,
-    artifactKind: "KNOWLEDGE_PACKAGE",
+    artifactKind: "SOURCE_ORIGINAL",
   };
 }
 
@@ -892,7 +175,7 @@ export async function findLatestPayloadForPack(packId: string) {
   const version = await prisma.knowledgePackVersion.findFirst({
     where: { packId },
     orderBy: latestKnowledgePackVersionOrderBy,
-    include: { payload: true, distributionMetadata: true },
+    include: { distributionMetadata: true },
   });
   return version;
 }

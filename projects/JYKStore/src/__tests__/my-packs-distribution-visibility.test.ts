@@ -17,8 +17,18 @@ function readSource(relativePath: string): string {
 
 function complete(visibility: "PUBLIC" | "PRIVATE" | "UNLISTED") {
   return {
-    payload: { id: "pay_1", validationStatus: "VALID" },
     distributionMetadata: { visibility, allowDownload: true },
+    doclingImportBundles: [
+      {
+        id: "b1",
+        isActive: true,
+        status: "REVIEW_READY",
+        storageStatus: "ACTIVE",
+        deletedAt: null,
+        adapterType: "DOCLING",
+        normalizedDocuments: [{ id: "nd1", isActive: true }],
+      },
+    ],
   };
 }
 

@@ -4,6 +4,15 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { NormalizedDocumentPreview } from "@/components/docling/NormalizedDocumentPreview";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
 import {
+  cancelDoclingMultipartUpload,
+  clearStoredUploadSessionId,
+  formatEtaSeconds,
+  formatUploadSpeed,
+  readStoredUploadSessionId,
+  uploadDoclingMultipart,
+  type MultipartUploadProgress,
+} from "@/lib/docling-import/docling-multipart-client";
+import {
   DOCLING_FILE_ROLE_LABELS,
   extractOriginMatchSummary,
   formatBytes,
@@ -18,7 +27,6 @@ import {
   providerDoclingImportFileDownloadUrl,
   retryProviderDoclingImportApi,
   retryProviderDoclingImportBundleApi,
-  uploadProviderDoclingImportApi,
 } from "@/lib/provider-center-api";
 
 function SelectedFileHint({ file }: { readonly file: File | null }) {
@@ -30,6 +38,44 @@ function SelectedFileHint({ file }: { readonly file: File | null }) {
       선택됨: {file.name}
       <span className="font-normal text-store-muted"> · {formatBytes(file.size)}</span>
     </p>
+  );
+}
+
+function UploadProgressPanel({ progress }: { readonly progress: MultipartUploadProgress }) {
+  return (
+    <div className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-xs text-slate-800">
+      <p className="font-semibold text-blue-950">
+        단계: {progress.stageLabel}
+        {progress.overallPercent > 0 ? ` · 전체 ${progress.overallPercent}%` : ""}
+      </p>
+      {progress.message ? <p className="text-store-muted">{progress.message}</p> : null}
+      <p className="text-store-muted">
+        속도 {formatUploadSpeed(progress.overallSpeedBps)} · 예상 남은 시간{" "}
+        {formatEtaSeconds(progress.overallEtaSeconds)}
+      </p>
+      <ul className="space-y-2">
+        {progress.files.map((file) => (
+          <li key={file.role} className="rounded-lg border border-blue-100 bg-white px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold">
+                {DOCLING_FILE_ROLE_LABELS[file.role]} · {file.fileName}
+              </p>
+              <p className="text-store-muted">{file.percent}%</p>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-store-accent transition-[width]"
+                style={{ width: `${file.percent}%` }}
+              />
+            </div>
+            <p className="mt-1 text-store-muted">
+              {formatBytes(file.bytesUploaded)} / {formatBytes(file.bytesTotal)} ·{" "}
+              {formatUploadSpeed(file.speedBps)} · ETA {formatEtaSeconds(file.etaSeconds)}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -51,6 +97,7 @@ export function ProviderDoclingImportTab({
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<MultipartUploadProgress | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +105,8 @@ export function ProviderDoclingImportTab({
   const [jsonFile, setJsonFile] = useState<File | null>(null);
   const [markdownFile, setMarkdownFile] = useState<File | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [resumeHint, setResumeHint] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const onDoclingChangedRef = useRef(onDoclingChanged);
   onDoclingChangedRef.current = onDoclingChanged;
 
@@ -72,9 +121,12 @@ export function ProviderDoclingImportTab({
         return;
       }
       try {
-        const response = await fetch(providerDoclingImportFileDownloadUrl(packId, md.id), {
+        const response = await fetch(
+          providerDoclingImportFileDownloadUrl(packId, md.id, { preview: true, maxBytes: 100_000 }),
+          {
           credentials: "include",
-        });
+        },
+        );
         if (!response.ok) {
           setMarkdownText(null);
           return;
@@ -89,8 +141,6 @@ export function ProviderDoclingImportTab({
 
   const load = useCallback(
     async (options?: { silent?: boolean }) => {
-      // Avoid unmounting the upload form on refresh — native file inputs lose the
-      // selected filename display even when React File state is still held.
       if (!options?.silent) setLoading(true);
       setError(null);
       try {
@@ -119,6 +169,17 @@ export function ProviderDoclingImportTab({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const sessionId = readStoredUploadSessionId(packId);
+    if (sessionId) {
+      setResumeHint(
+        "이전에 중단된 업로드 세션이 있습니다. 같은 3파일을 다시 선택하면 이어서 업로드합니다.",
+      );
+    } else {
+      setResumeHint(null);
+    }
+  }, [packId]);
+
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const onUpload = async (e: FormEvent) => {
@@ -128,46 +189,73 @@ export function ProviderDoclingImportTab({
     setError(null);
     setSuccessMessage(null);
     const wasReplacing = replacing;
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const data = await uploadProviderDoclingImportApi(packId, {
-        sourceFile,
-        doclingJsonFile: jsonFile,
-        doclingMarkdownFile: markdownFile,
+      const result = await uploadDoclingMultipart({
+        packId,
+        files: {
+          sourceFile,
+          doclingJsonFile: jsonFile,
+          doclingMarkdownFile: markdownFile,
+        },
+        signal: controller.signal,
+        onProgress: setUploadProgress,
       });
-      setBundle(data.bundle);
+      setBundle(result.bundle);
       setStagingBundle(null);
-      onDoclingChanged?.(data.bundle);
+      onDoclingChanged?.(result.bundle);
       setSourceFile(null);
       setJsonFile(null);
       setMarkdownFile(null);
       setFileInputKey((key) => key + 1);
       setReplacing(false);
+      setResumeHint(null);
       setSuccessMessage(
         wasReplacing ? "새 Bundle로 교체되었습니다." : "Docling Bundle이 등록되었습니다.",
       );
-      if (data.bundle.normalizedDocument) {
+      if (result.bundle.normalizedDocument) {
         const nd = await fetchProviderNormalizedDocumentApi(packId).catch(() => null);
         setStructure(nd?.structure ?? null);
       }
-      await loadMarkdownPreview(data.bundle);
+      await loadMarkdownPreview(result.bundle);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Docling 3파일 업로드에 실패했습니다.";
-      const replaceHint = wasReplacing
-        ? " 새 파일 검증에 실패했습니다. 현재 Bundle은 계속 유지됩니다. 실패한 Staging을 재시도하거나 삭제하세요."
-        : "";
-      const storageHint = /Object Storage|스토리지|storage|MinIO|연결/i.test(message)
-        ? " 파일이 서버에 저장되지 않았습니다. 새로고침하면 선택 목록도 사라집니다."
-        : replaceHint ||
-          " 서버 저장에 실패했습니다. 새로고침하면 선택 목록이 사라집니다.";
-      setError(`${message}${storageHint}`);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("업로드가 취소되었습니다.");
+      } else {
+        const message =
+          err instanceof Error ? err.message : "Docling 3파일 업로드에 실패했습니다.";
+        const replaceHint = wasReplacing
+          ? " 새 파일 검증에 실패했습니다. 현재 Bundle은 계속 유지됩니다. 실패한 Staging을 재시도하거나 삭제하세요."
+          : "";
+        const storageHint = /Object Storage|스토리지|storage|MinIO|연결|ETag|CORS/i.test(message)
+          ? " 파일이 서버에 완전히 저장되지 않았을 수 있습니다. 세션이 남아 있으면 같은 파일로 이어서 업로드하세요."
+          : replaceHint ||
+            " 업로드에 실패했습니다. 새로고침하면 선택 목록이 사라질 수 있습니다.";
+        setError(`${message}${storageHint}`);
+      }
       await load({ silent: true });
-      // Preserve replace mode so Active stays labeled and form returns after Staging delete.
       if (wasReplacing) setReplacing(true);
       else setReplacing(false);
     } finally {
+      abortRef.current = null;
       setUploading(false);
+      setUploadProgress(null);
     }
+  };
+
+  const onCancelUpload = async () => {
+    abortRef.current?.abort();
+    const sessionId = uploadProgress?.sessionId ?? readStoredUploadSessionId(packId);
+    try {
+      await cancelDoclingMultipartUpload(packId, sessionId);
+    } catch {
+      clearStoredUploadSessionId(packId);
+    }
+    setResumeHint(null);
+    setUploading(false);
+    setUploadProgress(null);
+    setError("업로드가 취소되었습니다.");
   };
 
   const onRetry = async (target?: DoclingImportBundlePublicDto | null) => {
@@ -205,7 +293,6 @@ export function ProviderDoclingImportTab({
     }
   };
 
-  /** Staging-first replace: keep Active Bundle until new upload promotes. */
   const onStartReplace = () => {
     if (!editable || !bundle?.canDelete || stagingBundle) return;
     setError(null);
@@ -213,7 +300,6 @@ export function ProviderDoclingImportTab({
     setReplacing(true);
   };
 
-  /** Destructive delete of the registered Active Bundle (separate from replace). */
   const onDeleteRegistered = async () => {
     if (!editable || !bundle?.canDelete) return;
     const ok = window.confirm(
@@ -247,7 +333,8 @@ export function ProviderDoclingImportTab({
         <h2 className="text-sm font-bold text-slate-900">Docling 3파일 Import</h2>
         <p className="mt-1 text-xs text-store-muted">
           외부 Docling에서 만든 원본문서·JSON·Markdown을 등록합니다. JYKStore는 Docling을 실행하지
-          않으며, 원본은 불변으로 보관하고 NormalizedDocument만 재생성합니다.
+          않으며, 원본은 불변으로 보관하고 NormalizedDocument만 재생성합니다. 대용량 파일은 브라우저
+          multipart로 직접 Object Storage에 업로드됩니다.
         </p>
       </div>
 
@@ -259,6 +346,11 @@ export function ProviderDoclingImportTab({
       {successMessage ? (
         <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           {successMessage}
+        </div>
+      ) : null}
+      {resumeHint && showUploadForm && !uploading ? (
+        <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-950">
+          {resumeHint}
         </div>
       ) : null}
 
@@ -445,6 +537,8 @@ export function ProviderDoclingImportTab({
         </div>
       ) : null}
 
+      {uploading && uploadProgress ? <UploadProgressPanel progress={uploadProgress} /> : null}
+
       {showUploadForm ? (
         <form onSubmit={(e) => void onUpload(e)} className="space-y-3">
           {selectedCount > 0 ? (
@@ -468,6 +562,7 @@ export function ProviderDoclingImportTab({
               className="mt-2 block min-h-[44px] w-full text-sm"
               onChange={(e) => setSourceFile(e.target.files?.[0] ?? null)}
               required={!sourceFile}
+              disabled={uploading}
             />
             <SelectedFileHint file={sourceFile} />
           </div>
@@ -483,6 +578,7 @@ export function ProviderDoclingImportTab({
               className="mt-2 block min-h-[44px] w-full text-sm"
               onChange={(e) => setJsonFile(e.target.files?.[0] ?? null)}
               required={!jsonFile}
+              disabled={uploading}
             />
             <SelectedFileHint file={jsonFile} />
           </div>
@@ -498,21 +594,30 @@ export function ProviderDoclingImportTab({
               className="mt-2 block min-h-[44px] w-full text-sm"
               onChange={(e) => setMarkdownFile(e.target.files?.[0] ?? null)}
               required={!markdownFile}
+              disabled={uploading}
             />
             <SelectedFileHint file={markdownFile} />
           </div>
-          <button
-            type="submit"
-            disabled={!canUpload}
-            className="min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-60"
-          >
-            {uploading
-              ? "업로드·검증 중…"
-              : selectedCount === 3
+          {!uploading ? (
+            <button
+              type="submit"
+              disabled={!canUpload}
+              className="min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-60"
+            >
+              {selectedCount === 3
                 ? "3파일 업로드"
                 : `3파일 업로드 (${selectedCount}/3)`}
-          </button>
-          {replacing ? (
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void onCancelUpload()}
+              className="min-h-[44px] w-full rounded-xl border border-red-200 bg-white text-sm font-semibold text-red-700"
+            >
+              업로드 취소
+            </button>
+          )}
+          {replacing && !uploading ? (
             <button
               type="button"
               onClick={() => {

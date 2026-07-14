@@ -127,15 +127,11 @@ describe("public download source integrity contracts", () => {
     assert.equal(route.includes('"Content-Type": "application/zip"'), false);
   });
 
-  it("external import download verifies stored object bytes", () => {
+  it("external import download streams Docling SOURCE_ORIGINAL", () => {
     const service = readSource("lib/distribution/payload-service.ts");
-    assert.match(service, /readAndVerifyStoredObject/);
+    assert.match(service, /openPublicCatalogSourceOriginalStream/);
     assert.match(service, /artifactKind: "SOURCE_ORIGINAL"/);
-    assert.match(service, /artifactKind: "KNOWLEDGE_PACKAGE"/);
-    assert.equal(
-      service.includes("got = await storage.get({ objectKey: sourceFile.storageKey })"),
-      false,
-    );
+    assert.equal(service.includes('artifactKind: "KNOWLEDGE_PACKAGE"'), false);
   });
 });
 
@@ -218,9 +214,8 @@ describe("source publisher separation", () => {
     assert.equal(info?.sourceTitle, "SW사업 대가산정 가이드");
   });
 
-  it("marks SOURCE_ORIGINAL vs KNOWLEDGE_PACKAGE download artifacts", () => {
+  it("marks SOURCE_ORIGINAL download artifacts only", () => {
     const source = resolvePublicPackDownloadInfo({
-      payload: null,
       distributionMetadata: { visibility: "PUBLIC", allowDownload: true },
       doclingImportBundles: [
         {
@@ -246,33 +241,15 @@ describe("source publisher separation", () => {
     });
     assert.equal(source?.artifactKind, "SOURCE_ORIGINAL");
 
-    const zip = resolvePublicPackDownloadInfo({
-      payload: {
-        id: "p1",
-        validationStatus: "VALID",
-        originalFileName: "pack.zip",
-        mimeType: "application/zip",
-        fileSize: 99,
-        checksumSha256: "b".repeat(64),
-        storagePath: "packs/a/pack.zip",
-      },
+    const zipGone = resolvePublicPackDownloadInfo({
       distributionMetadata: { visibility: "PUBLIC", allowDownload: true },
       doclingImportBundles: [],
     });
-    assert.equal(zip?.artifactKind, "KNOWLEDGE_PACKAGE");
+    assert.equal(zipGone, null);
   });
 
-  it("uses ZIP when both artifacts ready without primary selection", () => {
+  it("prefers Docling SOURCE_ORIGINAL when present", () => {
     const both = resolvePublicPackDownloadInfo({
-      payload: {
-        id: "p1",
-        validationStatus: "VALID",
-        originalFileName: "pack.zip",
-        mimeType: "application/zip",
-        fileSize: 99,
-        checksumSha256: "b".repeat(64),
-        storagePath: "packs/a/pack.zip",
-      },
       distributionMetadata: { visibility: "PUBLIC", allowDownload: true },
       doclingImportBundles: [
         {
@@ -296,7 +273,7 @@ describe("source publisher separation", () => {
         },
       ],
     });
-    assert.equal(both?.artifactKind, "KNOWLEDGE_PACKAGE");
+    assert.equal(both?.artifactKind, "SOURCE_ORIGINAL");
   });
 
   it("reads source publisher from distribution metadata only", () => {

@@ -104,9 +104,10 @@ describe("provider onboarding UX sources", () => {
     assert.ok(form.includes("PROVIDER_PACK_CREATE_AUTO_ID_HINT"));
   });
 
-  it("shows issued pack id after create on detail editor", () => {
+  it("keeps pack id label on detail editor without created banner", () => {
     const editor = readSource("src/components/ProviderPackEditor.tsx");
-    assert.ok(editor.includes("PROVIDER_PACK_CREATED_BANNER_TITLE"));
+    assert.ok(!editor.includes("PROVIDER_PACK_CREATED_BANNER_TITLE"));
+    assert.ok(!editor.includes("PROVIDER_PACK_CREATED_NEXT_TASK"));
     assert.ok(editor.includes("PROVIDER_PACK_ID_LABEL"));
     assert.ok(editor.includes('searchParams.get("created")'));
   });

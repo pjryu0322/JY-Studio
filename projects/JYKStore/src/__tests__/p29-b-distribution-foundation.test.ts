@@ -4,10 +4,10 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
-  isDistributionReviewSnapshot,
+  isDoclingBundleReviewSnapshot,
   parseProviderReviewSubmitSnapshot,
 } from "../lib/provider-review-submit-snapshot.ts";
-import { buildDistributionReviewSubmitSnapshot } from "../lib/distribution/distribution-submit-snapshot.ts";
+import { buildDoclingBundleReviewSubmitSnapshot } from "../lib/distribution/distribution-submit-snapshot.ts";
 import { validateDistributionMetadataInput } from "../lib/distribution/distribution-metadata-service.ts";
 import { PayloadServiceError } from "../lib/distribution/payload-errors.ts";
 import { PROVIDER_PACK_TAB_IDS } from "../lib/provider-pack-tabs.ts";
@@ -42,18 +42,32 @@ describe("P29 distribution foundation", () => {
     assert.ok(!packNew.includes("ensureProviderProfileForAccount"));
   });
 
-  it("submit branches on KnowledgePayload presence", () => {
+  it("submit uses Docling commit path without KnowledgePayload", () => {
     const service = readSource("src/lib/provider-pack-service.ts");
     assert.ok(service.includes("commitDistributionPackForReview"));
-    assert.ok(service.includes("knowledgePayload.findUnique"));
+    assert.ok(!service.includes("knowledgePayload"));
+    const submit = readSource("src/lib/distribution/distribution-submit-service.ts");
+    assert.ok(submit.includes("DOCLING_BUNDLE"));
+    assert.ok(!submit.includes("version.payload"));
   });
 
-  it("parses distribution submit snapshot without legacy release gate fields", () => {
-    const snapshot = buildDistributionReviewSubmitSnapshot({
+  it("parses Docling submit snapshot without legacy release gate fields", () => {
+    const snapshot = buildDoclingBundleReviewSubmitSnapshot({
       submittedVersionId: "ver-1",
-      payloadId: "pay-1",
-      payloadProfile: "docling-chunks-v1",
-      checksumSha256: "a".repeat(64),
+      doclingBundleId: "bundle-1",
+      sourceFileId: "f-source",
+      jsonPayloadFileId: "f-json",
+      markdownPayloadFileId: "f-md",
+      checksums: {
+        source: "a".repeat(64),
+        json: "b".repeat(64),
+        markdown: "c".repeat(64),
+      },
+      doclingSchemaVersion: "1",
+      adapterVersion: "1",
+      normalizedDocumentId: "nd-1",
+      fingerprint: "fp-1",
+      warningCount: 0,
       sourceTitle: "Docs",
       licenseName: "MIT",
       visibility: "PRIVATE",
@@ -61,8 +75,8 @@ describe("P29 distribution foundation", () => {
     });
     const parsed = parseProviderReviewSubmitSnapshot(snapshot);
     assert.ok(parsed);
-    assert.ok(isDistributionReviewSnapshot(parsed));
-    assert.equal(parsed.payloadId, "pay-1");
+    assert.ok(isDoclingBundleReviewSnapshot(parsed));
+    assert.equal(parsed.doclingBundleId, "bundle-1");
   });
 
   it("rejects distribution metadata without license or source", () => {
@@ -83,20 +97,10 @@ describe("P29 distribution foundation", () => {
     );
   });
 
-  it("exposes provider/admin/catalog payload download routes", () => {
-    assert.ok(
-      readSource("src/app/api/v1/provider/packs/[packId]/payload/download/route.ts").includes(
-        "X-JYKStore-SHA256",
-      ),
-    );
-    assert.ok(
-      readSource("src/app/api/v1/admin/packs/[packId]/payload/download/route.ts").includes(
-        "requireAdminSession",
-      ),
-    );
+  it("exposes catalog Docling source download route", () => {
     assert.ok(
       readSource("src/app/api/v1/packs/[packId]/payload/download/route.ts").includes(
-        "readPublicCatalogPayloadBytes",
+        "openPublicCatalogSourceOriginalStream",
       ),
     );
   });

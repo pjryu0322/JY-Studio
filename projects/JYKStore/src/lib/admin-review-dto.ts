@@ -120,7 +120,7 @@ export type AdminReviewDetailDto = {
     manifest: unknown;
     uploadedAt: string;
   } | null;
-  /** Current DB-derived distribution fingerprint for drift checks (schema 0.2). */
+  /** Always null — ZIP KnowledgePayload removed. */
   currentManifestFingerprint: string | null;
   /** Precomputed Docling review integrity (DOCLING_BUNDLE only). */
   doclingReviewIntegrity: {
@@ -131,12 +131,33 @@ export type AdminReviewDetailDto = {
   distribution: {
     sourceTitle: string | null;
     sourceUrl: string | null;
+    sourcePublisherName: string | null;
+    sourcePublisherUrl: string | null;
+    sourceDocumentVersion: string | null;
+    sourcePublishedAt: string | null;
+    sourceRetrievedAt: string | null;
     licenseName: string;
     licenseUrl: string | null;
     usageTerms: string | null;
     readmeText: string | null;
     visibility: string;
     allowDownload: boolean;
+    /** @deprecated Always null — ZIP primary selection removed. */
+    primaryArtifactType: null;
+    contentType:
+      | "DOCUMENT"
+      | "PRODUCT"
+      | "API"
+      | "FRAMEWORK"
+      | "DATA"
+      | "MIXED"
+      | null;
+  } | null;
+  artifactOptions: {
+    zipReady: boolean;
+    externalImportReady: boolean;
+    selectedPrimaryArtifactType: "SOURCE_ORIGINAL" | null;
+    multipleReady: boolean;
   } | null;
   readiness: {
     versionCount: number;
@@ -325,6 +346,7 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
     currentManifestFingerprint: null,
     doclingReviewIntegrity: null,
     distribution: null,
+    artifactOptions: null,
     structureQuality: null,
     chunkQuality: null,
     retrievalEvaluation: null,
@@ -335,24 +357,25 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
 export function applyDistributionFieldsToAdminDetail(
   detail: AdminReviewDetailDto,
   input: {
-    payload: AdminReviewDetailDto["payload"];
+    payload?: AdminReviewDetailDto["payload"];
     distribution: AdminReviewDetailDto["distribution"];
+    artifactOptions?: AdminReviewDetailDto["artifactOptions"];
     currentManifestFingerprint?: string | null;
   },
 ): AdminReviewDetailDto {
-  const isDistribution = Boolean(input.payload);
+  const isDoclingDistribution =
+    Boolean(input.distribution) && Boolean(input.artifactOptions?.externalImportReady);
   return {
     ...detail,
-    payload: input.payload,
+    payload: input.payload ?? null,
     currentManifestFingerprint: input.currentManifestFingerprint ?? null,
     distribution: input.distribution,
+    artifactOptions: input.artifactOptions ?? detail.artifactOptions ?? null,
     readiness: {
       ...detail.readiness,
-      // Distribution packs do not rely on legacy source/chunk gates.
-      canApprove: isDistribution
+      // Docling distribution packs do not rely on legacy source/chunk gates.
+      canApprove: isDoclingDistribution
         ? detail.pack.status === "REVIEWING" &&
-          Boolean(input.payload) &&
-          input.payload?.validationStatus === "VALID" &&
           Boolean(input.distribution?.licenseName.trim())
         : detail.readiness.canApprove,
     },

@@ -150,9 +150,9 @@ describe("provider center pack progress UX sources", () => {
     assert.ok(center.includes("currentStepLabel") || center.includes("progress"));
   });
 
-  it("mounts pack-scoped stepper on pack detail editor", () => {
+  it("does not mount pack-scoped stepper on pack detail editor", () => {
     const editor = readSource("src/components/ProviderPackEditor.tsx");
-    assert.ok(editor.includes("ProviderPackProgressStepper"));
+    assert.ok(!editor.includes("ProviderPackProgressStepper"));
     assert.ok(editor.includes("buildProviderPackProgress"));
   });
 

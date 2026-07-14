@@ -34,7 +34,6 @@ import {
   detectSubmitSnapshotDrift,
 } from "@/lib/admin-review-decision";
 import {
-  isDistributionReviewSnapshot,
   isDoclingBundleReviewSnapshot,
 } from "@/lib/provider-review-submit-snapshot";
 import {
@@ -109,57 +108,28 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
   if (!pack) return null;
 
   const latestVersion = pack.versions[0];
-  const [payloadRow, distributionRow] = latestVersion
-    ? await Promise.all([
-        prisma.knowledgePayload.findUnique({ where: { versionId: latestVersion.id } }),
-        prisma.packDistributionMetadata.findUnique({ where: { versionId: latestVersion.id } }),
-      ])
-    : [null, null];
+  const distributionRow = latestVersion
+    ? await prisma.packDistributionMetadata.findUnique({ where: { versionId: latestVersion.id } })
+    : null;
 
-  const detailBase = toAdminReviewDetail(pack);
-  let currentManifestFingerprint: string | null = null;
-  if (latestVersion && payloadRow) {
-    const { getCurrentDistributionManifestState } = await import(
-      "@/lib/distribution/distribution-manifest-service"
-    );
-    const state = await getCurrentDistributionManifestState({
-      packId,
-      versionId: latestVersion.id,
-      payloadId: payloadRow.id,
-    });
-    currentManifestFingerprint = state?.fingerprint ?? null;
+  const { resolveArtifactOptions, toAdminDistributionDto } = await import(
+    "@/lib/distribution/distribution-metadata-service"
+  );
+
+  let artifactOptions: import("@/lib/admin-review-dto").AdminReviewDetailDto["artifactOptions"] =
+    null;
+  if (latestVersion) {
+    const options = await resolveArtifactOptions(latestVersion.id);
+    artifactOptions = options;
   }
 
+  const detailBase = toAdminReviewDetail(pack);
+
   const detail = applyDistributionFieldsToAdminDetail(detailBase, {
-    payload: payloadRow
-      ? {
-          id: payloadRow.id,
-          profile: payloadRow.profile,
-          generatorType: payloadRow.generatorType,
-          generatorVersion: payloadRow.generatorVersion,
-          originalFileName: payloadRow.originalFileName,
-          fileSize: Number(payloadRow.fileSize),
-          checksumSha256: payloadRow.checksumSha256,
-          validationStatus: payloadRow.validationStatus,
-          validationMessage: payloadRow.validationMessage,
-          validationReport: payloadRow.validationReport,
-          manifest: payloadRow.manifestJson,
-          uploadedAt: payloadRow.uploadedAt.toISOString(),
-        }
-      : null,
-    currentManifestFingerprint,
-    distribution: distributionRow
-      ? {
-          sourceTitle: distributionRow.sourceTitle,
-          sourceUrl: distributionRow.sourceUrl,
-          licenseName: distributionRow.licenseName,
-          licenseUrl: distributionRow.licenseUrl,
-          usageTerms: distributionRow.usageTerms,
-          readmeText: distributionRow.readmeText,
-          visibility: distributionRow.visibility,
-          allowDownload: distributionRow.allowDownload,
-        }
-      : null,
+    payload: null,
+    currentManifestFingerprint: null,
+    distribution: distributionRow ? toAdminDistributionDto(distributionRow) : null,
+    artifactOptions,
   });
 
   const snapshot = detail.latestReview?.submitSnapshot ?? null;
@@ -174,7 +144,7 @@ export async function getAdminReviewDetail(packId: string): Promise<AdminReviewD
     return detail;
   }
 
-  if (payloadRow) {
+  if (detail.distribution) {
     // Distribution packs skip legacy Builder quality overlays that would block approval.
     return detail;
   }
@@ -657,6 +627,21 @@ export async function approvePackReview(input: {
     }
   }
 
+  if (detailBefore.distribution && detailBefore.versions[0]) {
+    try {
+      const { assertPrimaryArtifactReadyForVersion } = await import(
+        "@/lib/distribution/distribution-metadata-service"
+      );
+      await assertPrimaryArtifactReadyForVersion(detailBefore.versions[0].id);
+    } catch (error) {
+      const { isPayloadServiceError } = await import("@/lib/distribution/payload-errors");
+      if (isPayloadServiceError(error) && error.code === "PACK_PRIMARY_ARTIFACT_NOT_READY") {
+        return { error: "INCOMPLETE" as const, message: error.message };
+      }
+      throw error;
+    }
+  }
+
   const readinessError = validateApprovalReadiness(detailBefore);
   if (readinessError) {
     return { error: "INCOMPLETE" as const, message: readinessError };
@@ -666,32 +651,11 @@ export async function approvePackReview(input: {
   const packageMode = resolveReviewPackageMode(approveSnapshot, detailBefore);
 
   if (packageMode === "DISTRIBUTION_ZIP") {
-    const drift = detectSubmitSnapshotDrift(detailBefore);
-    if (drift.changed) {
-      return {
-        error: "INCOMPLETE" as const,
-        message:
-          drift.reasons[0] ??
-          "제출 이후 Distribution 정보가 변경되었습니다. 다시 검수 요청해 주세요.",
-      };
-    }
-    const snapshot = detailBefore.latestReview?.submitSnapshot;
-    if (snapshot && isDistributionReviewSnapshot(snapshot) && detailBefore.versions[0]) {
-      const { getCurrentDistributionManifestState } = await import(
-        "@/lib/distribution/distribution-manifest-service"
-      );
-      const state = await getCurrentDistributionManifestState({
-        packId,
-        versionId: detailBefore.versions[0].id,
-        payloadId: detailBefore.payload?.id,
-      });
-      if (!state || state.fingerprint !== snapshot.manifestFingerprint) {
-        return {
-          error: "INCOMPLETE" as const,
-          message: "제출 이후 Distribution 정보가 변경되었습니다. 다시 검수 요청해 주세요.",
-        };
-      }
-    }
+    return {
+      error: "INCOMPLETE" as const,
+      message:
+        "ZIP Knowledge Package 검수는 더 이상 지원되지 않습니다. Docling import로 다시 제출해 주세요.",
+    };
   } else if (packageMode === "DOCLING_BUNDLE") {
     // Integrity already asserted above; drift only — no legacy release gate.
     const drift = detectSubmitSnapshotDrift(detailBefore);

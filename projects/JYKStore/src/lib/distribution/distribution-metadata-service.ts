@@ -3,10 +3,9 @@ import {
   DistributionVisibility as PrismaDistributionVisibility,
   PackContentType as PrismaPackContentType,
   PackStatus,
-  PublicArtifactType as PrismaPublicArtifactType,
   type PackDistributionMetadata,
+  type Prisma,
 } from "@prisma/client";
-import { refreshDistributionManifest } from "@/lib/distribution/distribution-manifest-service";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import {
   DISTRIBUTION_VISIBILITIES,
@@ -21,7 +20,6 @@ const MAX_TEXT = 8_000;
 const MAX_TITLE = 300;
 const MAX_URL = 2_000;
 
-const PUBLIC_ARTIFACT_TYPES = ["SOURCE_ORIGINAL", "KNOWLEDGE_PACKAGE"] as const;
 const PACK_CONTENT_TYPES = [
   "DOCUMENT",
   "PRODUCT",
@@ -48,7 +46,8 @@ export type PackDistributionMetadataDto = {
   readmeText: string | null;
   visibility: DistributionVisibility;
   allowDownload: boolean;
-  primaryArtifactType: "SOURCE_ORIGINAL" | "KNOWLEDGE_PACKAGE" | null;
+  /** @deprecated Always null — ZIP primary selection removed. */
+  primaryArtifactType: null;
   contentType: PublicPackContentType | null;
   updatedAt: string;
 };
@@ -56,8 +55,11 @@ export type PackDistributionMetadataDto = {
 export type DistributionArtifactOptionsDto = {
   zipReady: boolean;
   externalImportReady: boolean;
+  selectedPrimaryArtifactType: "SOURCE_ORIGINAL" | null;
+  multipleReady: boolean;
 };
 
+/** Provider PUT: full replace semantics. */
 export type UpsertDistributionMetadataInput = {
   sourceTitle?: string | null;
   sourceUrl?: string | null;
@@ -72,6 +74,27 @@ export type UpsertDistributionMetadataInput = {
   readmeText?: string | null;
   visibility?: string;
   allowDownload?: boolean;
+  primaryArtifactType?: string | null;
+  contentType?: string | null;
+};
+
+/**
+ * Admin PATCH: undefined = leave unchanged; null = clear; value = set.
+ */
+export type PatchDistributionMetadataInput = {
+  sourceTitle?: string | null;
+  sourceUrl?: string | null;
+  sourcePublisherName?: string | null;
+  sourcePublisherUrl?: string | null;
+  sourceDocumentVersion?: string | null;
+  sourcePublishedAt?: string | null;
+  sourceRetrievedAt?: string | null;
+  licenseName?: string | null;
+  licenseUrl?: string | null;
+  usageTerms?: string | null;
+  readmeText?: string | null;
+  visibility?: string | null;
+  allowDownload?: boolean | null;
   primaryArtifactType?: string | null;
   contentType?: string | null;
 };
@@ -96,9 +119,46 @@ export function toPackDistributionMetadataDto(
     readmeText: row.readmeText,
     visibility: row.visibility as DistributionVisibility,
     allowDownload: row.allowDownload,
-    primaryArtifactType: row.primaryArtifactType,
-    contentType: row.contentType,
+    primaryArtifactType: null,
+    contentType: row.contentType as PublicPackContentType | null,
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function toAdminDistributionDto(row: PackDistributionMetadata): {
+  sourceTitle: string | null;
+  sourceUrl: string | null;
+  sourcePublisherName: string | null;
+  sourcePublisherUrl: string | null;
+  sourceDocumentVersion: string | null;
+  sourcePublishedAt: string | null;
+  sourceRetrievedAt: string | null;
+  licenseName: string;
+  licenseUrl: string | null;
+  usageTerms: string | null;
+  readmeText: string | null;
+  visibility: string;
+  allowDownload: boolean;
+  primaryArtifactType: null;
+  contentType: PublicPackContentType | null;
+} {
+  const dto = toPackDistributionMetadataDto(row);
+  return {
+    sourceTitle: dto.sourceTitle,
+    sourceUrl: dto.sourceUrl,
+    sourcePublisherName: dto.sourcePublisherName,
+    sourcePublisherUrl: dto.sourcePublisherUrl,
+    sourceDocumentVersion: dto.sourceDocumentVersion,
+    sourcePublishedAt: dto.sourcePublishedAt,
+    sourceRetrievedAt: dto.sourceRetrievedAt,
+    licenseName: dto.licenseName,
+    licenseUrl: dto.licenseUrl,
+    usageTerms: dto.usageTerms,
+    readmeText: dto.readmeText,
+    visibility: dto.visibility,
+    allowDownload: dto.allowDownload,
+    primaryArtifactType: null,
+    contentType: dto.contentType,
   };
 }
 
@@ -135,6 +195,38 @@ function parseOptionalDate(label: string, value: string | null | undefined): Dat
   return date;
 }
 
+function parsePrimaryArtifactType(
+  value: string | null | undefined,
+): null {
+  void value;
+  return null;
+}
+
+function parseContentType(value: string | null | undefined): PrismaPackContentType | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const upper = raw.toUpperCase();
+  if (!(PACK_CONTENT_TYPES as readonly string[]).includes(upper)) {
+    throw new PayloadServiceError("INCOMPLETE", "콘텐츠 유형이 올바르지 않습니다.", 400);
+  }
+  return upper as PrismaPackContentType;
+}
+
+export function validatePrimaryArtifactSelection(
+  primaryArtifactType: "SOURCE_ORIGINAL" | null,
+  options: Pick<DistributionArtifactOptionsDto, "zipReady" | "externalImportReady">,
+): void {
+  void primaryArtifactType;
+  void options;
+  // ZIP primary selection removed — no-op for API compat.
+}
+
+export function isZipPayloadReady(payload: unknown): boolean {
+  void payload;
+  return false;
+}
+
 export function validateDistributionMetadataInput(
   input: UpsertDistributionMetadataInput,
 ): {
@@ -151,7 +243,7 @@ export function validateDistributionMetadataInput(
   readmeText: string | null;
   visibility: DistributionVisibility;
   allowDownload: boolean;
-  primaryArtifactType: PrismaPublicArtifactType | null;
+  primaryArtifactType: null;
   contentType: PrismaPackContentType | null;
 } {
   const licenseName = input.licenseName?.trim() ?? "";
@@ -182,23 +274,8 @@ export function validateDistributionMetadataInput(
     throw new PayloadServiceError("INCOMPLETE", "공개범위 값이 올바르지 않습니다.", 400);
   }
 
-  let primaryArtifactType: PrismaPublicArtifactType | null = null;
-  if (input.primaryArtifactType != null && String(input.primaryArtifactType).trim()) {
-    const raw = String(input.primaryArtifactType).trim().toUpperCase();
-    if (!(PUBLIC_ARTIFACT_TYPES as readonly string[]).includes(raw)) {
-      throw new PayloadServiceError("INCOMPLETE", "공개 다운로드 유형이 올바르지 않습니다.", 400);
-    }
-    primaryArtifactType = raw as PrismaPublicArtifactType;
-  }
-
-  let contentType: PrismaPackContentType | null = null;
-  if (input.contentType != null && String(input.contentType).trim()) {
-    const raw = String(input.contentType).trim().toUpperCase();
-    if (!(PACK_CONTENT_TYPES as readonly string[]).includes(raw)) {
-      throw new PayloadServiceError("INCOMPLETE", "콘텐츠 유형이 올바르지 않습니다.", 400);
-    }
-    contentType = raw as PrismaPackContentType;
-  }
+  // Ignore legacy primaryArtifactType input (ZIP removed).
+  void parsePrimaryArtifactType(input.primaryArtifactType);
 
   return {
     sourceTitle,
@@ -214,8 +291,8 @@ export function validateDistributionMetadataInput(
     readmeText: trimOrNull(input.readmeText, MAX_TEXT),
     visibility: visibilityRaw as DistributionVisibility,
     allowDownload: input.allowDownload !== false,
-    primaryArtifactType,
-    contentType,
+    primaryArtifactType: null,
+    contentType: parseContentType(input.contentType),
   };
 }
 
@@ -254,28 +331,36 @@ async function requireOwnedDraftPack(input: {
   return { pack, version, profile };
 }
 
-async function resolveArtifactOptions(versionId: string): Promise<DistributionArtifactOptionsDto> {
-  const [payload, readyBundle] = await Promise.all([
-    prisma.knowledgePayload.findUnique({
-      where: { versionId },
-      select: { id: true },
-    }),
-    prisma.doclingImportBundle.findFirst({
-      where: {
-        versionId,
-        deletedAt: null,
-        isActive: true,
-        status: "REVIEW_READY",
-        storageStatus: "ACTIVE",
-        normalizedDocuments: { some: { isActive: true } },
-        files: { some: { role: "SOURCE_ORIGINAL" } },
+export async function resolveArtifactOptions(
+  versionId: string,
+  primaryArtifactType?: "SOURCE_ORIGINAL" | null,
+): Promise<DistributionArtifactOptionsDto> {
+  void primaryArtifactType;
+  const readyBundle = await prisma.doclingImportBundle.findFirst({
+    where: {
+      versionId,
+      deletedAt: null,
+      isActive: true,
+      status: "REVIEW_READY",
+      storageStatus: "ACTIVE",
+      normalizedDocuments: { some: { isActive: true } },
+      files: {
+        some: {
+          role: "SOURCE_ORIGINAL",
+          storageKey: { not: "" },
+          checksumSha256: { not: "" },
+          fileSize: { gt: 0 },
+        },
       },
-      select: { id: true },
-    }),
-  ]);
+    },
+    select: { id: true },
+  });
+  const externalImportReady = Boolean(readyBundle);
   return {
-    zipReady: Boolean(payload),
-    externalImportReady: Boolean(readyBundle),
+    zipReady: false,
+    externalImportReady,
+    selectedPrimaryArtifactType: externalImportReady ? "SOURCE_ORIGINAL" : null,
+    multipleReady: false,
   };
 }
 
@@ -304,7 +389,12 @@ export async function getProviderPackDistribution(input: {
   if (!version) {
     return {
       distribution: null,
-      artifactOptions: { zipReady: false, externalImportReady: false },
+      artifactOptions: {
+        zipReady: false,
+        externalImportReady: false,
+        selectedPrimaryArtifactType: null,
+        multipleReady: false,
+      },
     };
   }
 
@@ -333,7 +423,6 @@ function metadataWriteFields(validated: ReturnType<typeof validateDistributionMe
     readmeText: validated.readmeText,
     visibility: validated.visibility as PrismaDistributionVisibility,
     allowDownload: validated.allowDownload,
-    primaryArtifactType: validated.primaryArtifactType,
     contentType: validated.contentType,
   };
 }
@@ -354,6 +443,8 @@ export async function upsertProviderPackDistribution(input: {
   });
 
   const validated = validateDistributionMetadataInput(input.body);
+  const artifactOptions = await resolveArtifactOptions(version.id);
+
   const fields = metadataWriteFields(validated);
 
   const row = await prisma.packDistributionMetadata.upsert({
@@ -365,18 +456,6 @@ export async function upsertProviderPackDistribution(input: {
     },
     update: fields,
   });
-
-  const payload = await prisma.knowledgePayload.findUnique({
-    where: { versionId: version.id },
-  });
-
-  if (payload) {
-    await refreshDistributionManifest({
-      packId: pack.packId,
-      versionId: version.id,
-      reason: "distribution_metadata_updated",
-    });
-  }
 
   await recordProviderAudit({
     action: AuditAction.DISTRIBUTION_METADATA_UPDATED,
@@ -389,22 +468,123 @@ export async function upsertProviderPackDistribution(input: {
       visibility: row.visibility,
       allowDownload: row.allowDownload,
       licenseName: row.licenseName,
-      primaryArtifactType: row.primaryArtifactType,
       contentType: row.contentType,
     },
   });
 
   return {
     distribution: toPackDistributionMetadataDto(row),
-    artifactOptions: await resolveArtifactOptions(version.id),
+    artifactOptions,
   };
 }
 
-export async function upsertAdminPackDistribution(input: {
+export function buildDistributionPatchUpdateData(
+  patch: PatchDistributionMetadataInput,
+  existing: PackDistributionMetadata,
+): Prisma.PackDistributionMetadataUpdateInput {
+  return buildPatchUpdateData(patch, existing);
+}
+
+function buildPatchUpdateData(
+  patch: PatchDistributionMetadataInput,
+  existing: PackDistributionMetadata,
+): Prisma.PackDistributionMetadataUpdateInput {
+  const updateData: Prisma.PackDistributionMetadataUpdateInput = {};
+
+  if (patch.sourceTitle !== undefined) {
+    updateData.sourceTitle = trimOrNull(patch.sourceTitle, MAX_TITLE);
+  }
+  if (patch.sourceUrl !== undefined) {
+    const sourceUrl = trimOrNull(patch.sourceUrl, MAX_URL);
+    assertOptionalUrl("출처", sourceUrl);
+    updateData.sourceUrl = sourceUrl;
+  }
+  if (patch.sourcePublisherName !== undefined) {
+    updateData.sourcePublisherName = trimOrNull(patch.sourcePublisherName, MAX_TITLE);
+  }
+  if (patch.sourcePublisherUrl !== undefined) {
+    const sourcePublisherUrl = trimOrNull(patch.sourcePublisherUrl, MAX_URL);
+    assertOptionalUrl("발행기관", sourcePublisherUrl);
+    updateData.sourcePublisherUrl = sourcePublisherUrl;
+  }
+  if (patch.sourceDocumentVersion !== undefined) {
+    updateData.sourceDocumentVersion = trimOrNull(patch.sourceDocumentVersion, MAX_TITLE);
+  }
+  if (patch.sourcePublishedAt !== undefined) {
+    updateData.sourcePublishedAt = parseOptionalDate("게시일", patch.sourcePublishedAt);
+  }
+  if (patch.sourceRetrievedAt !== undefined) {
+    updateData.sourceRetrievedAt = parseOptionalDate("수집일", patch.sourceRetrievedAt);
+  }
+  if (patch.licenseName !== undefined) {
+    const licenseName = patch.licenseName?.trim() ?? "";
+    if (!licenseName) {
+      throw new PayloadServiceError("LICENSE_REQUIRED", "라이선스명이 필요합니다.", 400);
+    }
+    updateData.licenseName = licenseName.slice(0, MAX_TITLE);
+  }
+  if (patch.licenseUrl !== undefined) {
+    const licenseUrl = trimOrNull(patch.licenseUrl, MAX_URL);
+    assertOptionalUrl("라이선스", licenseUrl);
+    updateData.licenseUrl = licenseUrl;
+  }
+  if (patch.usageTerms !== undefined) {
+    updateData.usageTerms = trimOrNull(patch.usageTerms, MAX_TEXT);
+  }
+  if (patch.readmeText !== undefined) {
+    updateData.readmeText = trimOrNull(patch.readmeText, MAX_TEXT);
+  }
+  if (patch.visibility !== undefined) {
+    if (patch.visibility == null || !String(patch.visibility).trim()) {
+      throw new PayloadServiceError("INCOMPLETE", "공개범위 값이 올바르지 않습니다.", 400);
+    }
+    const visibilityRaw = String(patch.visibility).trim().toUpperCase();
+    if (!(DISTRIBUTION_VISIBILITIES as readonly string[]).includes(visibilityRaw)) {
+      throw new PayloadServiceError("INCOMPLETE", "공개범위 값이 올바르지 않습니다.", 400);
+    }
+    updateData.visibility = visibilityRaw as PrismaDistributionVisibility;
+  }
+  if (patch.allowDownload !== undefined) {
+    if (patch.allowDownload == null) {
+      throw new PayloadServiceError("INCOMPLETE", "다운로드 허용 값이 올바르지 않습니다.", 400);
+    }
+    updateData.allowDownload = Boolean(patch.allowDownload);
+  }
+  // primaryArtifactType ignored (ZIP removed)
+  if (patch.contentType !== undefined) {
+    updateData.contentType = parseContentType(patch.contentType);
+  }
+
+  // After applying source fields, ensure source title/url remain valid as a set.
+  const nextTitle =
+    patch.sourceTitle !== undefined
+      ? trimOrNull(patch.sourceTitle, MAX_TITLE)
+      : existing.sourceTitle;
+  const nextUrl =
+    patch.sourceUrl !== undefined ? trimOrNull(patch.sourceUrl, MAX_URL) : existing.sourceUrl;
+  if (!nextTitle?.trim() && !nextUrl?.trim()) {
+    throw new PayloadServiceError(
+      "SOURCE_REQUIRED",
+      "출처 제목 또는 출처 URL 중 하나 이상이 필요합니다.",
+      400,
+    );
+  }
+
+  return updateData;
+}
+
+/**
+ * Admin PATCH: only fields present in `body` are updated.
+ * Undefined = preserve; null = clear (except licenseName).
+ */
+export async function patchAdminPackDistribution(input: {
   packId: string;
   actorUserId: string;
-  body: UpsertDistributionMetadataInput;
-}): Promise<{ distribution: PackDistributionMetadataDto }> {
+  body: PatchDistributionMetadataInput;
+}): Promise<{
+  distribution: PackDistributionMetadataDto;
+  artifactOptions: DistributionArtifactOptionsDto;
+}> {
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
     include: { versions: { orderBy: { createdAt: "desc" }, take: 1 } },
@@ -417,29 +597,32 @@ export async function upsertAdminPackDistribution(input: {
     throw new PayloadServiceError("INCOMPLETE", "버전이 없습니다.", 400);
   }
 
-  const validated = validateDistributionMetadataInput(input.body);
-  const fields = metadataWriteFields(validated);
-
-  const row = await prisma.packDistributionMetadata.upsert({
-    where: { versionId: version.id },
-    create: {
-      packId: pack.packId,
-      versionId: version.id,
-      ...fields,
-    },
-    update: fields,
-  });
-
-  const payload = await prisma.knowledgePayload.findUnique({
+  const existing = await prisma.packDistributionMetadata.findUnique({
     where: { versionId: version.id },
   });
-  if (payload) {
-    await refreshDistributionManifest({
-      packId: pack.packId,
-      versionId: version.id,
-      reason: "distribution_metadata_updated_admin",
-    });
+  if (!existing) {
+    throw new PayloadServiceError(
+      "INCOMPLETE",
+      "유통정보가 없습니다. Provider가 먼저 유통정보를 등록해야 합니다.",
+      400,
+    );
   }
+
+  const updateData = buildPatchUpdateData(input.body, existing);
+  if (Object.keys(updateData).length === 0) {
+    const artifactOptions = await resolveArtifactOptions(version.id);
+    return {
+      distribution: toPackDistributionMetadataDto(existing),
+      artifactOptions,
+    };
+  }
+
+  const artifactOptions = await resolveArtifactOptions(version.id);
+
+  const row = await prisma.packDistributionMetadata.update({
+    where: { versionId: version.id },
+    data: updateData,
+  });
 
   await recordProviderAudit({
     action: AuditAction.DISTRIBUTION_METADATA_UPDATED,
@@ -452,11 +635,47 @@ export async function upsertAdminPackDistribution(input: {
       visibility: row.visibility,
       allowDownload: row.allowDownload,
       licenseName: row.licenseName,
-      primaryArtifactType: row.primaryArtifactType,
       contentType: row.contentType,
       actor: "admin",
+      patch: true,
     },
   });
 
-  return { distribution: toPackDistributionMetadataDto(row) };
+  return {
+    distribution: toPackDistributionMetadataDto(row),
+    artifactOptions,
+  };
+}
+
+/** @deprecated Prefer patchAdminPackDistribution for true partial updates. */
+export async function upsertAdminPackDistribution(input: {
+  packId: string;
+  actorUserId: string;
+  body: UpsertDistributionMetadataInput;
+}): Promise<{ distribution: PackDistributionMetadataDto }> {
+  const result = await patchAdminPackDistribution({
+    packId: input.packId,
+    actorUserId: input.actorUserId,
+    body: input.body,
+  });
+  return { distribution: result.distribution };
+}
+
+/**
+ * Re-validate primary artifact readiness for the latest version (approval gate).
+ */
+export async function assertPrimaryArtifactReadyForVersion(
+  versionId: string,
+  primaryArtifactType?: "SOURCE_ORIGINAL" | null,
+): Promise<DistributionArtifactOptionsDto> {
+  void primaryArtifactType;
+  const options = await resolveArtifactOptions(versionId);
+  if (!options.externalImportReady) {
+    throw new PayloadServiceError(
+      "PACK_PRIMARY_ARTIFACT_NOT_READY",
+      "공개 다운로드 Artifact(원본문서)가 준비되지 않았습니다.",
+      409,
+    );
+  }
+  return options;
 }

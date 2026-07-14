@@ -15,7 +15,7 @@ import {
 
 export const latestKnowledgePackVersionOrderBy = artifactVersionOrderBy;
 
-/** Shared include for catalog / My Packs visibility resolution (ZIP + external import). */
+/** Shared include for catalog / My Packs visibility resolution. */
 export const distributionVersionAccessInclude = latestPackArtifactVersionInclude;
 
 /**
@@ -28,14 +28,12 @@ export type LatestDistributionState =
       kind: "DISTRIBUTION";
       visibility: DistributionVisibility;
       allowDownload: boolean;
-      /** Present when the ready artifact is an external import (not ZIP). */
-      artifact?: "ZIP" | "EXTERNAL_IMPORT";
+      artifact?: "EXTERNAL_IMPORT";
       generatorName?: string | null;
     }
   | {
       kind: "INVALID_DISTRIBUTION";
       reason:
-        | "PAYLOAD_WITHOUT_METADATA"
         | "METADATA_WITHOUT_PAYLOAD"
         | "METADATA_WITHOUT_ARTIFACT"
         | "ARTIFACT_NOT_READY"
@@ -44,7 +42,6 @@ export type LatestDistributionState =
     };
 
 export type LatestDistributionVersionInput = LatestPackArtifactVersionRow | {
-  payload?: { id: string; validationStatus?: string } | null;
   distributionMetadata?: {
     visibility: DistributionVisibility;
     allowDownload: boolean;
@@ -57,13 +54,6 @@ function toCompatibilityState(state: LatestPackArtifactState): LatestDistributio
   switch (state.kind) {
     case "LEGACY":
       return { kind: "LEGACY" };
-    case "DISTRIBUTION_ZIP":
-      return {
-        kind: "DISTRIBUTION",
-        visibility: state.visibility,
-        allowDownload: state.allowDownload,
-        artifact: "ZIP",
-      };
     case "EXTERNAL_IMPORT":
       return {
         kind: "DISTRIBUTION",
@@ -78,13 +68,11 @@ function toCompatibilityState(state: LatestPackArtifactState): LatestDistributio
         reason:
           state.reason === "METADATA_WITHOUT_ARTIFACT"
             ? "METADATA_WITHOUT_PAYLOAD"
-            : state.reason === "PAYLOAD_WITHOUT_METADATA"
-              ? "PAYLOAD_WITHOUT_METADATA"
-              : state.reason === "ARTIFACT_NOT_READY" ||
-                  state.reason === "NORMALIZED_DOCUMENT_MISSING" ||
-                  state.reason === "STORAGE_NOT_ACTIVE"
-                ? state.reason
-                : "METADATA_WITHOUT_PAYLOAD",
+            : state.reason === "ARTIFACT_NOT_READY" ||
+                state.reason === "NORMALIZED_DOCUMENT_MISSING" ||
+                state.reason === "STORAGE_NOT_ACTIVE"
+              ? state.reason
+              : "METADATA_WITHOUT_PAYLOAD",
       };
     default:
       return { kind: "INVALID_DISTRIBUTION", reason: "METADATA_WITHOUT_PAYLOAD" };
@@ -97,7 +85,6 @@ export function resolveLatestDistributionState(
   const artifactInput =
     version && "externalImports" in version && version.externalImports
       ? {
-          payload: version.payload ?? null,
           distributionMetadata: version.distributionMetadata ?? null,
           externalImports: version.externalImports,
         }
@@ -120,32 +107,22 @@ function fromCompatibilityState(state: LatestDistributionState): LatestPackArtif
       kind: "INVALID",
       ready: false,
       reason:
-        state.reason === "METADATA_WITHOUT_PAYLOAD"
+        state.reason === "METADATA_WITHOUT_PAYLOAD" || state.reason === "METADATA_WITHOUT_ARTIFACT"
           ? "METADATA_WITHOUT_ARTIFACT"
-          : state.reason === "PAYLOAD_WITHOUT_METADATA"
-            ? "PAYLOAD_WITHOUT_METADATA"
-            : state.reason === "ARTIFACT_NOT_READY" ||
-                state.reason === "NORMALIZED_DOCUMENT_MISSING" ||
-                state.reason === "STORAGE_NOT_ACTIVE"
-              ? state.reason
-              : "METADATA_WITHOUT_ARTIFACT",
-    };
-  }
-  if (state.artifact === "EXTERNAL_IMPORT") {
-    return {
-      kind: "EXTERNAL_IMPORT",
-      ready: true,
-      visibility: state.visibility,
-      allowDownload: state.allowDownload,
-      generatorName: state.generatorName ?? null,
-      normalizedDocumentReady: true,
+          : state.reason === "ARTIFACT_NOT_READY" ||
+              state.reason === "NORMALIZED_DOCUMENT_MISSING" ||
+              state.reason === "STORAGE_NOT_ACTIVE"
+            ? state.reason
+            : "METADATA_WITHOUT_ARTIFACT",
     };
   }
   return {
-    kind: "DISTRIBUTION_ZIP",
+    kind: "EXTERNAL_IMPORT",
     ready: true,
     visibility: state.visibility,
     allowDownload: state.allowDownload,
+    generatorName: state.generatorName ?? null,
+    normalizedDocumentReady: true,
   };
 }
 
@@ -158,7 +135,7 @@ export function canShowInstalledPackInMyPacks(state: LatestDistributionState): b
   return canInstallLatestDistributionPack(state);
 }
 
-/** Public catalog download for the latest version (ZIP or external import source). */
+/** Public catalog download for the latest version (Docling source original). */
 export function canPubliclyDownloadLatestDistributionPack(
   state: LatestDistributionState,
 ): boolean {

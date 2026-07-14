@@ -34,15 +34,8 @@ function readyExternalImport(overrides?: Partial<{
 }
 
 describe("latest pack artifact state", () => {
-  it("keeps legacy and zip distribution behavior", () => {
+  it("keeps legacy behavior without distribution metadata", () => {
     assert.equal(resolveLatestPackArtifactState({}).kind, "LEGACY");
-    const zip = resolveLatestPackArtifactState({
-      payload: { id: "pay_1", validationStatus: "VALID" },
-      distributionMetadata: { visibility: "PUBLIC", allowDownload: true },
-    });
-    assert.equal(zip.kind, "DISTRIBUTION_ZIP");
-    assert.equal(isLatestVersionCatalogVisible(zip, "list"), true);
-    assert.equal(canPubliclyDownloadLatestPack(zip), true);
   });
 
   it("shows ready external import + PUBLIC metadata in catalog", () => {
@@ -103,7 +96,6 @@ describe("latest pack artifact state", () => {
       distributionMetadata: { visibility: "PUBLIC", allowDownload: true },
       externalImports: [readyExternalImport()],
     });
-    // Catalog visibility is independent of retrieval/MCP capability flags.
     assert.equal(isLatestVersionCatalogVisible(state, "list"), true);
   });
 
@@ -139,25 +131,5 @@ describe("latest pack artifact state", () => {
       kind: "INVALID_DISTRIBUTION",
       reason: "METADATA_WITHOUT_PAYLOAD",
     });
-  });
-
-  it("honors primaryArtifactType when ZIP and external import both ready", () => {
-    const zipDefault = resolveLatestPackArtifactState({
-      payload: { id: "pay_1", validationStatus: "VALID" },
-      distributionMetadata: { visibility: "PUBLIC", allowDownload: true },
-      externalImports: [readyExternalImport()],
-    });
-    assert.equal(zipDefault.kind, "DISTRIBUTION_ZIP");
-
-    const sourcePrimary = resolveLatestPackArtifactState({
-      payload: { id: "pay_1", validationStatus: "VALID" },
-      distributionMetadata: {
-        visibility: "PUBLIC",
-        allowDownload: true,
-        primaryArtifactType: "SOURCE_ORIGINAL",
-      },
-      externalImports: [readyExternalImport()],
-    });
-    assert.equal(sourcePrimary.kind, "EXTERNAL_IMPORT");
   });
 });

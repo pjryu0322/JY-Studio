@@ -42,7 +42,7 @@ describe("docling-import-postgres-integration", { skip: !hasDb }, () => {
       },
     });
     void bundleSample;
-    const jobSample = await prisma.payloadStorageCleanupJob.findFirst({
+    const jobSample = await prisma.objectStorageCleanupJob.findFirst({
       select: {
         id: true,
         doclingBundleId: true,

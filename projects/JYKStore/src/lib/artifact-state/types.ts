@@ -19,12 +19,6 @@ export type LatestPackArtifactState =
       ready: true;
     }
   | {
-      kind: "DISTRIBUTION_ZIP";
-      ready: true;
-      visibility: DistributionVisibility;
-      allowDownload: boolean;
-    }
-  | {
       kind: "EXTERNAL_IMPORT";
       ready: true;
       visibility: DistributionVisibility;
@@ -38,19 +32,17 @@ export type LatestPackArtifactState =
       reason:
         | "NO_ARTIFACT"
         | "METADATA_WITHOUT_ARTIFACT"
-        | "PAYLOAD_WITHOUT_METADATA"
         | "ARTIFACT_NOT_READY"
         | "NORMALIZED_DOCUMENT_MISSING"
         | "STORAGE_NOT_ACTIVE"
-        | "VERSION_NOT_PUBLIC";
+        | "VERSION_NOT_PUBLIC"
+        | "PACK_PRIMARY_ARTIFACT_NOT_READY";
     };
 
 export type LatestPackVersionArtifactInput = {
-  payload?: { id: string; validationStatus?: string } | null;
   distributionMetadata?: {
     visibility: DistributionVisibility;
     allowDownload: boolean;
-    primaryArtifactType?: "SOURCE_ORIGINAL" | "KNOWLEDGE_PACKAGE" | null;
   } | null;
   /** Generic external import bundle(s); adapters map tool-specific rows into this shape. */
   externalImports?: ExternalImportArtifactInput[] | null;

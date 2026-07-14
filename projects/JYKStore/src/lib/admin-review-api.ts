@@ -135,16 +135,23 @@ export async function patchAdminDistributionMetadataApi(
   input: {
     sourceTitle?: string | null;
     sourceUrl?: string | null;
-    licenseName: string;
+    sourcePublisherName?: string | null;
+    sourcePublisherUrl?: string | null;
+    sourceDocumentVersion?: string | null;
+    sourcePublishedAt?: string | null;
+    sourceRetrievedAt?: string | null;
+    licenseName?: string | null;
     licenseUrl?: string | null;
     usageTerms?: string | null;
     readmeText?: string | null;
-    visibility?: string;
-    allowDownload?: boolean;
+    visibility?: string | null;
+    allowDownload?: boolean | null;
+    contentType?: string | null;
   },
 ): Promise<{
   clientId: string;
   distribution: import("@/lib/admin-review-dto").AdminReviewDetailDto["distribution"];
+  artifactOptions: import("@/lib/admin-review-dto").AdminReviewDetailDto["artifactOptions"];
 }> {
   const response = await fetch(
     `/api/v1/admin/reviews/${encodeURIComponent(packId)}/distribution-metadata`,
@@ -161,9 +168,20 @@ export async function patchAdminDistributionMetadataApi(
   return (await response.json()) as {
     clientId: string;
     distribution: import("@/lib/admin-review-dto").AdminReviewDetailDto["distribution"];
+    artifactOptions: import("@/lib/admin-review-dto").AdminReviewDetailDto["artifactOptions"];
   };
 }
 
-export function adminDoclingImportFileDownloadUrl(packId: string, fileId: string): string {
-  return `/api/v1/admin/reviews/${encodeURIComponent(packId)}/docling-import/files/${encodeURIComponent(fileId)}/download`;
+export function adminDoclingImportFileDownloadUrl(
+  packId: string,
+  fileId: string,
+  options?: { preview?: boolean; maxBytes?: number },
+): string {
+  const base = `/api/v1/admin/reviews/${encodeURIComponent(packId)}/docling-import/files/${encodeURIComponent(fileId)}/download`;
+  if (!options?.preview) return base;
+  const params = new URLSearchParams({ preview: "1" });
+  if (options.maxBytes != null && options.maxBytes > 0) {
+    params.set("maxBytes", String(options.maxBytes));
+  }
+  return `${base}?${params.toString()}`;
 }

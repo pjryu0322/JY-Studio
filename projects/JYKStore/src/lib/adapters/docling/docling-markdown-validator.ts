@@ -1,3 +1,4 @@
+import { getDoclingUploadPolicy } from "@/lib/docling-import/docling-upload-policy";
 import {
   DOCLING_ERROR_CODES,
   issue,
@@ -6,8 +7,27 @@ import {
 import type { DoclingDocument } from "./docling-types";
 import { decodeUtf8 } from "./docling-validator";
 
-/** Soft size cap for markdown payloads (20 MiB). */
-export const MAX_MARKDOWN_BYTES = 20 * 1024 * 1024;
+/**
+ * Align with Docling upload policy default (512 MiB). Prefer
+ * `resolveMaxMarkdownBytes()` so env overrides are honored at runtime.
+ */
+export const MAX_MARKDOWN_BYTES = 536_870_912;
+
+/** Preview / similarity sample size — do not hold entire huge markdown in memory. */
+export const MARKDOWN_PREVIEW_MAX_BYTES = 100 * 1024;
+
+/** Below this size, validate may decode the full markdown into a string. */
+export const MARKDOWN_FULL_BUFFER_MAX_BYTES = 2 * 1024 * 1024;
+
+export function resolveMaxMarkdownBytes(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  try {
+    return getDoclingUploadPolicy(env).maxMarkdownBytes;
+  } catch {
+    return MAX_MARKDOWN_BYTES;
+  }
+}
 
 const CONTROL_CHAR_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 
@@ -82,78 +102,12 @@ export function sanitizeMarkdownForPreview(markdown: string): string {
     .replace(/data\s*:\s*text\/html/gi, "blocked:text/html");
 }
 
-export function validateDoclingMarkdown(options: {
-  markdown?: string | Uint8Array | null;
+function applyMarkdownContentChecks(options: {
+  text: string;
   document?: DoclingDocument;
-}): MarkdownValidationResult {
-  const issues: DoclingIssue[] = [];
-  const { markdown, document } = options;
-
-  if (markdown === undefined || markdown === null) {
-    issues.push(
-      issue(
-        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_REQUIRED,
-        "ERROR",
-        "Docling Markdown is required.",
-        { field: "markdown" },
-      ),
-    );
-    return { ok: false, issues };
-  }
-
-  if (markdown instanceof Uint8Array && markdown.byteLength > MAX_MARKDOWN_BYTES) {
-    issues.push(
-      issue(
-        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
-        "ERROR",
-        `Markdown exceeds size limit of ${MAX_MARKDOWN_BYTES} bytes.`,
-        { field: "markdown" },
-      ),
-    );
-    return { ok: false, issues };
-  }
-
-  if (typeof markdown === "string") {
-    const byteLength = new TextEncoder().encode(markdown).byteLength;
-    if (byteLength > MAX_MARKDOWN_BYTES) {
-      issues.push(
-        issue(
-          DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
-          "ERROR",
-          `Markdown exceeds size limit of ${MAX_MARKDOWN_BYTES} bytes.`,
-          { field: "markdown" },
-        ),
-      );
-      return { ok: false, issues };
-    }
-  }
-
-  const decoded = decodeUtf8(markdown);
-  if (!decoded.ok) {
-    issues.push(
-      issue(
-        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
-        "ERROR",
-        "Markdown is not valid UTF-8.",
-        { field: "markdown" },
-      ),
-    );
-    return { ok: false, issues };
-  }
-
-  const text = decoded.text;
-  if (text.trim().length === 0) {
-    issues.push(
-      issue(
-        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_EMPTY,
-        "ERROR",
-        "Markdown is empty.",
-        { field: "markdown" },
-      ),
-    );
-    return { ok: false, issues };
-  }
-
+  issues: DoclingIssue[];
+}): { similarity?: number } {
+  const { text, document, issues } = options;
   const controlMatches = text.match(CONTROL_CHAR_RE) ?? [];
   const controlRatio = controlMatches.length / Math.max(text.length, 1);
   if (controlMatches.length > 50 || controlRatio > 0.02) {
@@ -165,7 +119,6 @@ export function validateDoclingMarkdown(options: {
         { field: "markdown" },
       ),
     );
-    return { ok: false, issues };
   } else if (controlMatches.length > 0) {
     issues.push(
       issue(
@@ -209,7 +162,144 @@ export function validateDoclingMarkdown(options: {
       }
     }
   }
+  return { similarity };
+}
 
+/**
+ * Validate markdown from a streaming preview (non-empty UTF-8, size already checked).
+ * Uses truncated preview text for similarity / control-char checks.
+ */
+export function validateDoclingMarkdownPreview(options: {
+  textPreview: string;
+  encodingOk: boolean;
+  empty: boolean;
+  byteLength: number;
+  maxBytes?: number;
+  document?: DoclingDocument;
+}): MarkdownValidationResult {
+  const issues: DoclingIssue[] = [];
+  const maxBytes = options.maxBytes ?? resolveMaxMarkdownBytes();
+
+  if (options.byteLength <= 0 || options.empty) {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_EMPTY,
+        "ERROR",
+        "Markdown is empty.",
+        { field: "markdown" },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  if (options.byteLength > maxBytes) {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
+        "ERROR",
+        `Markdown exceeds size limit of ${maxBytes} bytes.`,
+        { field: "markdown" },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  if (!options.encodingOk) {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
+        "ERROR",
+        "Markdown is not valid UTF-8.",
+        { field: "markdown" },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  const { similarity } = applyMarkdownContentChecks({
+    text: options.textPreview,
+    document: options.document,
+    issues,
+  });
+  const ok = !issues.some((i) => i.severity === "ERROR");
+  return { ok, text: options.textPreview, issues, similarity };
+}
+
+export function validateDoclingMarkdown(options: {
+  markdown?: string | Uint8Array | null;
+  document?: DoclingDocument;
+  maxBytes?: number;
+}): MarkdownValidationResult {
+  const issues: DoclingIssue[] = [];
+  const { markdown, document } = options;
+  const maxBytes = options.maxBytes ?? resolveMaxMarkdownBytes();
+
+  if (markdown === undefined || markdown === null) {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_REQUIRED,
+        "ERROR",
+        "Docling Markdown is required.",
+        { field: "markdown" },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  if (markdown instanceof Uint8Array && markdown.byteLength > maxBytes) {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
+        "ERROR",
+        `Markdown exceeds size limit of ${maxBytes} bytes.`,
+        { field: "markdown" },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  if (typeof markdown === "string") {
+    const byteLength = new TextEncoder().encode(markdown).byteLength;
+    if (byteLength > maxBytes) {
+      issues.push(
+        issue(
+          DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
+          "ERROR",
+          `Markdown exceeds size limit of ${maxBytes} bytes.`,
+          { field: "markdown" },
+        ),
+      );
+      return { ok: false, issues };
+    }
+  }
+
+  const decoded = decodeUtf8(markdown);
+  if (!decoded.ok) {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
+        "ERROR",
+        "Markdown is not valid UTF-8.",
+        { field: "markdown" },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  const text = decoded.text;
+  if (text.trim().length === 0) {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_EMPTY,
+        "ERROR",
+        "Markdown is empty.",
+        { field: "markdown" },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  const { similarity } = applyMarkdownContentChecks({ text, document, issues });
   const ok = !issues.some((i) => i.severity === "ERROR");
   return { ok, text, issues, similarity };
 }

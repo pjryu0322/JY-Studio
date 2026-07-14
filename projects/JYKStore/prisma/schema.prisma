@@ -272,7 +272,6 @@ model KnowledgePack {
   retrievalEvaluationCases   RetrievalEvaluationCase[]
   retrievalEvaluationResults RetrievalEvaluationResult[]
   releaseGateRuns          ReleaseGateRun[]
-  payloads                 KnowledgePayload[]
   distributionMetadata     PackDistributionMetadata[]
   doclingImportBundles     DoclingImportBundle[]
   knowledgePackFiles        KnowledgePackFile[]
@@ -335,7 +334,6 @@ model KnowledgePackVersion {
   retrievalEvaluationRuns    RetrievalEvaluationRun[]
   retrievalEvaluationCases   RetrievalEvaluationCase[]
   retrievalEvaluationResults RetrievalEvaluationResult[]
-  payload                    KnowledgePayload?
   distributionMetadata       PackDistributionMetadata?
   doclingImportBundles       DoclingImportBundle[]
   knowledgePackFiles          KnowledgePackFile[]
@@ -345,82 +343,36 @@ model KnowledgePackVersion {
   @@index([packId])
 }
 
-enum PayloadGeneratorType {
-  DOCLING
-  UNSTRUCTURED
-}
-
-enum PayloadValidationStatus {
-  PENDING
-  VALID
-  INVALID
-}
-
 enum DistributionVisibility {
   PRIVATE
   PUBLIC
   UNLISTED
 }
 
-model KnowledgePayload {
-  id                String                  @id @default(cuid())
-  packId            String
-  versionId         String
-  profile           String
-  generatorType     PayloadGeneratorType
-  generatorVersion  String?
-  originalFileName  String
-  /// S3-compatible object key (not a local filesystem path).
-  storagePath       String
-  mimeType          String
-  fileSize          BigInt
-  checksumSha256    String
-  validationStatus  PayloadValidationStatus @default(PENDING)
-  validationMessage String?
-  validationReport  Json?
-  manifestJson      Json?
-  isImmutable       Boolean                 @default(true)
-  uploadedAt        DateTime                @default(now())
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
-
-  pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Restrict)
-  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
-
-  @@unique([versionId])
-  @@index([packId])
-  @@index([checksumSha256])
-}
-
-enum PayloadCleanupStatus {
+enum ObjectStorageCleanupStatus {
   PENDING
   SUCCEEDED
   FAILED
 }
 
-model PayloadStorageCleanupJob {
-  id                  String               @id @default(cuid())
+model ObjectStorageCleanupJob {
+  id                  String                     @id @default(cuid())
   objectKey           String
-  payloadId           String?
+  artifactId          String?
   /// Optional link for Docling pack-file cleanup status sync.
   doclingBundleId     String?
   knowledgePackFileId String?
   reason              String
-  status              PayloadCleanupStatus @default(PENDING)
-  attemptCount        Int                  @default(0)
+  status              ObjectStorageCleanupStatus @default(PENDING)
+  attemptCount        Int                        @default(0)
   lastError           String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
   completedAt         DateTime?
 
   @@index([status, createdAt])
   @@index([objectKey])
   @@index([doclingBundleId, status])
-}
-
-enum PublicArtifactType {
-  SOURCE_ORIGINAL
-  KNOWLEDGE_PACKAGE
 }
 
 enum PackContentType {
@@ -449,8 +401,6 @@ model PackDistributionMetadata {
   readmeText            String?
   visibility            DistributionVisibility @default(PRIVATE)
   allowDownload         Boolean                @default(true)
-  /// Explicit public download artifact when ZIP and External Import both exist.
-  primaryArtifactType   PublicArtifactType?
   /// Explicit public content shape; overrides inference when set.
   contentType           PackContentType?
   createdAt             DateTime               @default(now())
@@ -637,6 +587,106 @@ model DoclingProcessingLog {
   bundle DoclingImportBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
 
   @@index([bundleId, stage, createdAt])
+}
+
+/// Multipart upload session for Docling three-file import (async processing).
+enum DoclingUploadSessionStatus {
+  CREATED
+  UPLOADING
+  COMPLETING
+  COMPLETED
+  ABORTED
+  EXPIRED
+  FAILED
+}
+
+enum DoclingUploadFileStatus {
+  PENDING
+  UPLOADING
+  COMPLETED
+  ABORTED
+  FAILED
+}
+
+enum DoclingProcessingJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model DoclingUploadSession {
+  id               String                     @id @default(cuid())
+  packId           String
+  versionId        String
+  status           DoclingUploadSessionStatus @default(CREATED)
+  uploadedByUserId String?
+  expiresAt        DateTime
+  completedAt      DateTime?
+  abortedAt        DateTime?
+  /// Staging bundle created on successful complete (before worker promotion).
+  bundleId         String?
+  processingJobId  String?
+  lastErrorCode    String?
+  lastErrorMessage String?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  files DoclingUploadFile[]
+
+  @@index([packId, versionId])
+  @@index([status, expiresAt])
+  @@index([bundleId])
+}
+
+model DoclingUploadFile {
+  id                  String                  @id @default(cuid())
+  sessionId           String
+  role                KnowledgePackFileRole
+  status              DoclingUploadFileStatus @default(PENDING)
+  originalFileName    String
+  mimeType            String
+  fileExtension       String
+  declaredFileSize    BigInt
+  objectKey           String
+  multipartUploadId   String?
+  partSizeBytes       Int
+  partCount           Int
+  checksumSha256      String?
+  etag                String?
+  knowledgePackFileId String?
+  lastErrorCode       String?
+  lastErrorMessage    String?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  session DoclingUploadSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, role])
+  @@index([objectKey])
+  @@index([multipartUploadId])
+}
+
+model DoclingProcessingJob {
+  id               String                     @id @default(cuid())
+  bundleId         String
+  packId           String
+  versionId        String
+  sessionId        String?
+  status           DoclingProcessingJobStatus @default(PENDING)
+  attemptCount     Int                        @default(0)
+  lockedAt         DateTime?
+  lockOwner        String?
+  lastErrorCode    String?
+  lastErrorMessage String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  @@index([status, createdAt])
+  @@index([bundleId])
+  @@index([packId, versionId])
 }
 
 model SourceDocument {

@@ -1,7 +1,6 @@
 "use client";
 
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
-import type { KnowledgePayloadPublicDto } from "@/lib/distribution/payload-service";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
 import { isDoclingPayloadReady } from "@/lib/docling-import/docling-import-ui";
 import {
@@ -14,31 +13,35 @@ export type DistributionReadiness = {
   hasPayload: boolean;
   payloadValid: boolean;
   hasChecksum: boolean;
-  hasManifest: boolean;
+  hasNormalizedDocument: boolean;
   hasSource: boolean;
   hasLicense: boolean;
   ready: boolean;
   missing: { label: string; tab: "basic" | "payload" | "distribution" }[];
 };
 
+function hasAllThreeFilesWithChecksums(
+  bundle: DoclingImportBundlePublicDto | null | undefined,
+): boolean {
+  if (!bundle) return false;
+  const roles = ["SOURCE_ORIGINAL", "DOCLING_JSON", "DOCLING_MARKDOWN"] as const;
+  return roles.every((role) => {
+    const file = bundle.files.find((f) => f.role === role);
+    return Boolean(file?.checksumSha256?.trim());
+  });
+}
+
 export function computeDistributionReadiness(input: {
   hasBasicInfo: boolean;
-  payload: KnowledgePayloadPublicDto | null;
   distribution: PackDistributionMetadataDto | null;
   doclingBundle?: DoclingImportBundlePublicDto | null;
 }): DistributionReadiness {
-  const zipReady =
-    Boolean(input.payload) &&
-    input.payload?.validationStatus === "VALID" &&
-    Boolean(input.payload?.checksumSha256) &&
-    Boolean(input.payload?.manifest);
   const doclingReady = isDoclingPayloadReady(input.doclingBundle?.status);
-  const hasPayload = Boolean(input.payload) || Boolean(input.doclingBundle);
-  const payloadValid = zipReady || doclingReady;
-  const hasChecksum =
-    Boolean(input.payload?.checksumSha256) ||
-    Boolean(input.doclingBundle?.files.some((f) => f.checksumSha256));
-  const hasManifest = Boolean(input.payload?.manifest) || doclingReady;
+  const hasThreeFiles = hasAllThreeFilesWithChecksums(input.doclingBundle);
+  const hasNormalizedDocument = Boolean(input.doclingBundle?.normalizedDocument);
+  const hasPayload = Boolean(input.doclingBundle);
+  const payloadValid = doclingReady && hasThreeFiles && hasNormalizedDocument;
+  const hasChecksum = hasThreeFiles;
   const hasSource = Boolean(
     input.distribution?.sourceTitle?.trim() || input.distribution?.sourceUrl?.trim(),
   );
@@ -46,8 +49,10 @@ export function computeDistributionReadiness(input: {
 
   const missing: DistributionReadiness["missing"] = [];
   if (!input.hasBasicInfo) missing.push({ label: "기본정보", tab: "basic" });
-  if (!hasPayload) missing.push({ label: "자료 등록", tab: "payload" });
-  else if (!payloadValid) missing.push({ label: "자료 VALID / REVIEW_READY", tab: "payload" });
+  if (!hasPayload) missing.push({ label: "등록 자료", tab: "payload" });
+  else if (!doclingReady) missing.push({ label: "Docling REVIEW_READY", tab: "payload" });
+  else if (!hasThreeFiles) missing.push({ label: "파일 무결성(3파일 checksum)", tab: "payload" });
+  else if (!hasNormalizedDocument) missing.push({ label: "문서 정규화", tab: "payload" });
   if (!hasSource || !hasLicense) missing.push({ label: "유통정보(출처·라이선스)", tab: "distribution" });
 
   return {
@@ -55,7 +60,7 @@ export function computeDistributionReadiness(input: {
     hasPayload,
     payloadValid,
     hasChecksum,
-    hasManifest,
+    hasNormalizedDocument,
     hasSource,
     hasLicense,
     ready:
@@ -63,7 +68,7 @@ export function computeDistributionReadiness(input: {
       hasPayload &&
       payloadValid &&
       hasChecksum &&
-      hasManifest &&
+      hasNormalizedDocument &&
       hasSource &&
       hasLicense,
     missing,
@@ -82,10 +87,10 @@ export function ProviderDistributionReadiness({
       <p className="font-semibold text-slate-900">검수 요청 조건</p>
       <ul className="mt-2 space-y-1">
         <li>기본정보: {readiness.hasBasicInfo ? "완료" : "미완료"}</li>
-        <li>Payload: {readiness.hasPayload ? "등록됨" : "없음"}</li>
-        <li>Checksum: {readiness.hasChecksum ? "있음" : "없음"}</li>
-        <li>Validation: {readiness.payloadValid ? "VALID / REVIEW_READY" : "미충족"}</li>
-        <li>Manifest: {readiness.hasManifest ? "있음" : "없음"}</li>
+        <li>등록 자료: {readiness.hasPayload ? "등록됨" : "없음"}</li>
+        <li>파일 무결성: {readiness.hasChecksum ? "있음" : "없음"}</li>
+        <li>검증: {readiness.payloadValid ? "REVIEW_READY" : "미충족"}</li>
+        <li>문서 정규화: {readiness.hasNormalizedDocument ? "있음" : "없음"}</li>
         <li>출처: {readiness.hasSource ? "있음" : "없음"}</li>
         <li>라이선스: {readiness.hasLicense ? "있음" : "없음"}</li>
       </ul>

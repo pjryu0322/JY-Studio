@@ -1,4 +1,3 @@
-import { hasDistributionMetadata, hasDistributionZipPayload } from "@/lib/artifact-state/adapters/distribution-zip-artifact-adapter";
 import {
   isExternalImportArtifactReady,
   pickReadyExternalImport,
@@ -21,46 +20,20 @@ export {
   toLatestPackVersionArtifactInput,
 } from "@/lib/artifact-state/latest-pack-artifact-query";
 
+function hasDistributionMetadata(version: LatestPackVersionArtifactInput): boolean {
+  return Boolean(version?.distributionMetadata);
+}
+
 /**
  * Resolve the latest version's public artifact state without tool-specific branching.
+ * Docling EXTERNAL_IMPORT only (ZIP Knowledge Package removed).
  */
 export function resolveLatestPackArtifactState(
   version: LatestPackVersionArtifactInput,
 ): LatestPackArtifactState {
-  const hasZip = hasDistributionZipPayload(version);
   const hasMeta = hasDistributionMetadata(version);
   const readyExternal = pickReadyExternalImport(version?.externalImports);
   const metadata = version?.distributionMetadata ?? null;
-  const primary = metadata?.primaryArtifactType ?? null;
-
-  // Dual-ready: honor primaryArtifactType; default ZIP-first (matches selectPublicArtifact).
-  if (hasZip && hasMeta && metadata && readyExternal) {
-    if (primary === "SOURCE_ORIGINAL") {
-      return {
-        kind: "EXTERNAL_IMPORT",
-        ready: true,
-        visibility: metadata.visibility,
-        allowDownload: metadata.allowDownload,
-        generatorName: readyExternal.generatorName,
-        normalizedDocumentReady: Boolean(readyExternal.normalizedDocument?.isActive),
-      };
-    }
-    return {
-      kind: "DISTRIBUTION_ZIP",
-      ready: true,
-      visibility: metadata.visibility,
-      allowDownload: metadata.allowDownload,
-    };
-  }
-
-  if (hasZip && hasMeta && metadata) {
-    return {
-      kind: "DISTRIBUTION_ZIP",
-      ready: true,
-      visibility: metadata.visibility,
-      allowDownload: metadata.allowDownload,
-    };
-  }
 
   if (readyExternal && hasMeta && metadata) {
     return {
@@ -73,11 +46,7 @@ export function resolveLatestPackArtifactState(
     };
   }
 
-  if (hasZip && !hasMeta) {
-    return { kind: "INVALID", ready: false, reason: "PAYLOAD_WITHOUT_METADATA" };
-  }
-
-  if (hasMeta && !hasZip && !readyExternal) {
+  if (hasMeta && !readyExternal) {
     const candidates = version?.externalImports ?? [];
     if (candidates.some((item) => item.isActive && item.status !== "REVIEW_READY")) {
       return { kind: "INVALID", ready: false, reason: "ARTIFACT_NOT_READY" };
@@ -131,7 +100,7 @@ export function canInstallLatestPackArtifact(state: LatestPackArtifactState): bo
 }
 
 export function canPubliclyDownloadLatestPack(state: LatestPackArtifactState): boolean {
-  if (state.kind === "DISTRIBUTION_ZIP" || state.kind === "EXTERNAL_IMPORT") {
+  if (state.kind === "EXTERNAL_IMPORT") {
     if (!state.allowDownload) return false;
     return state.visibility === "PUBLIC" || state.visibility === "UNLISTED";
   }
@@ -141,10 +110,7 @@ export function canPubliclyDownloadLatestPack(state: LatestPackArtifactState): b
 /** Ops/diagnostic code when a published pack is hidden from catalog. */
 export function catalogHideReasonCode(state: LatestPackArtifactState): string | null {
   if (state.kind !== "INVALID") {
-    if (
-      (state.kind === "DISTRIBUTION_ZIP" || state.kind === "EXTERNAL_IMPORT") &&
-      state.visibility === "PRIVATE"
-    ) {
+    if (state.kind === "EXTERNAL_IMPORT" && state.visibility === "PRIVATE") {
       return "PACK_CATALOG_VISIBILITY_PRIVATE";
     }
     return null;
@@ -156,8 +122,8 @@ export function catalogHideReasonCode(state: LatestPackArtifactState): string | 
     case "NORMALIZED_DOCUMENT_MISSING":
     case "STORAGE_NOT_ACTIVE":
       return "PACK_CATALOG_EXTERNAL_IMPORT_NOT_READY";
-    case "PAYLOAD_WITHOUT_METADATA":
-      return "PACK_CATALOG_ARTIFACT_NOT_READY";
+    case "PACK_PRIMARY_ARTIFACT_NOT_READY":
+      return "PACK_PRIMARY_ARTIFACT_NOT_READY";
     default:
       return "PACK_CATALOG_ARTIFACT_NOT_READY";
   }

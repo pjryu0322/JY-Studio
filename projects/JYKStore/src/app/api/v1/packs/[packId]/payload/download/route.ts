@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Readable } from "node:stream";
 import { logSafeRouteError } from "@/lib/safe-logging";
 import { createRequestId, recordApiUsage } from "@/lib/api-usage-service";
 import { buildContentDisposition } from "@/lib/distribution/content-disposition";
 import { enforcePublicPayloadDownloadQuota } from "@/lib/distribution/payload-download-quota";
 import { isPayloadServiceError } from "@/lib/distribution/payload-errors";
-import { readPublicCatalogPayloadBytes } from "@/lib/distribution/payload-service";
+import { openPublicCatalogSourceOriginalStream } from "@/lib/distribution/payload-service";
 
 type RouteContext = {
   params: Promise<{ packId: string }>;
@@ -13,6 +14,13 @@ type RouteContext = {
 function cacheControlForVisibility(visibility: string): string {
   if (visibility === "PUBLIC") return "private, max-age=60";
   return "private, no-store";
+}
+
+function toWebReadable(stream: ReadableStream<Uint8Array> | NodeJS.ReadableStream) {
+  if (typeof (stream as ReadableStream).getReader === "function") {
+    return stream as ReadableStream<Uint8Array>;
+  }
+  return Readable.toWeb(stream as Readable) as ReadableStream<Uint8Array>;
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
@@ -25,7 +33,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const quota = await enforcePublicPayloadDownloadQuota(request);
     tenantKey = quota.tenantKey;
 
-    const result = await readPublicCatalogPayloadBytes({
+    const result = await openPublicCatalogSourceOriginalStream({
       packId: packId?.trim() ?? "",
     });
 
@@ -48,10 +56,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
         mimeType: result.mimeType,
         result: "ok",
         actorType: "anonymous",
+        streamed: true,
       },
     });
 
-    return new NextResponse(Buffer.from(result.bytes), {
+    return new NextResponse(toWebReadable(result.stream), {
       status: 200,
       headers: {
         "Content-Type": result.mimeType,

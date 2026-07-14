@@ -19,6 +19,83 @@ import {
   ADMIN_REVIEW_PROCESSING_TITLE,
 } from "@/lib/role-based-ux-copy";
 
+type DistForm = {
+  sourceTitle: string;
+  sourceUrl: string;
+  sourcePublisherName: string;
+  sourcePublisherUrl: string;
+  sourceDocumentVersion: string;
+  sourcePublishedAt: string;
+  sourceRetrievedAt: string;
+  licenseName: string;
+  licenseUrl: string;
+  usageTerms: string;
+  readmeText: string;
+  visibility: string;
+  allowDownload: boolean;
+  contentType: string;
+};
+
+function formFromDistribution(
+  distribution: NonNullable<AdminReviewDetailDto["distribution"]> | null | undefined,
+): DistForm {
+  return {
+    sourceTitle: distribution?.sourceTitle ?? "",
+    sourceUrl: distribution?.sourceUrl ?? "",
+    sourcePublisherName: distribution?.sourcePublisherName ?? "",
+    sourcePublisherUrl: distribution?.sourcePublisherUrl ?? "",
+    sourceDocumentVersion: distribution?.sourceDocumentVersion ?? "",
+    sourcePublishedAt: distribution?.sourcePublishedAt?.slice(0, 10) ?? "",
+    sourceRetrievedAt: distribution?.sourceRetrievedAt?.slice(0, 10) ?? "",
+    licenseName: distribution?.licenseName ?? "",
+    licenseUrl: distribution?.licenseUrl ?? "",
+    usageTerms: distribution?.usageTerms ?? "",
+    readmeText: distribution?.readmeText ?? "",
+    visibility: distribution?.visibility ?? "PRIVATE",
+    allowDownload: distribution?.allowDownload ?? true,
+    contentType: distribution?.contentType ?? "",
+  };
+}
+
+function buildChangedPatch(initial: DistForm, current: DistForm): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  const nullableStringKeys = [
+    "sourceTitle",
+    "sourceUrl",
+    "sourcePublisherName",
+    "sourcePublisherUrl",
+    "sourceDocumentVersion",
+    "sourcePublishedAt",
+    "sourceRetrievedAt",
+    "licenseUrl",
+    "usageTerms",
+    "readmeText",
+  ] as const;
+  const enumKeys = ["contentType"] as const;
+
+  for (const key of nullableStringKeys) {
+    if (initial[key] !== current[key]) {
+      const value = current[key].trim();
+      patch[key] = value ? value : null;
+    }
+  }
+  for (const key of enumKeys) {
+    if (initial[key] !== current[key]) {
+      patch[key] = current[key] ? current[key] : null;
+    }
+  }
+  if (initial.licenseName !== current.licenseName) {
+    patch.licenseName = current.licenseName;
+  }
+  if (initial.visibility !== current.visibility) {
+    patch.visibility = current.visibility;
+  }
+  if (initial.allowDownload !== current.allowDownload) {
+    patch.allowDownload = current.allowDownload;
+  }
+  return patch;
+}
+
 function CopyableId({ label, value }: { readonly label: string; readonly value: string }) {
   const short =
     value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
@@ -55,10 +132,16 @@ export function AdminReviewProcessingEvidenceTab({
   const [metaMessage, setMetaMessage] = useState<string | null>(null);
   const [showFullChecksums, setShowFullChecksums] = useState(false);
 
-  const [licenseName, setLicenseName] = useState(detail.distribution?.licenseName ?? "");
-  const [sourceTitle, setSourceTitle] = useState(detail.distribution?.sourceTitle ?? "");
-  const [sourceUrl, setSourceUrl] = useState(detail.distribution?.sourceUrl ?? "");
-  const [visibility, setVisibility] = useState(detail.distribution?.visibility ?? "PRIVATE");
+  const [initialForm, setInitialForm] = useState<DistForm>(() =>
+    formFromDistribution(detail.distribution),
+  );
+  const [form, setForm] = useState<DistForm>(() => formFromDistribution(detail.distribution));
+
+  useEffect(() => {
+    const next = formFromDistribution(detail.distribution);
+    setInitialForm(next);
+    setForm(next);
+  }, [detail.distribution]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,37 +174,32 @@ export function AdminReviewProcessingEvidenceTab({
     [detail, bundle, capabilities],
   );
 
+  const artifactOptions = detail.artifactOptions;
+
   const onSaveMetadata = async (e: FormEvent) => {
     e.preventDefault();
-    if (savingMeta || !licenseName.trim()) return;
+    if (savingMeta || !form.licenseName.trim()) return;
     setSavingMeta(true);
     setMetaMessage(null);
     setError(null);
     try {
-      const result = await patchAdminDistributionMetadataApi(packId, {
-        licenseName: licenseName.trim(),
-        sourceTitle: sourceTitle.trim() || null,
-        sourceUrl: sourceUrl.trim() || null,
-        visibility,
-        allowDownload: detail.distribution?.allowDownload ?? true,
-        licenseUrl: detail.distribution?.licenseUrl ?? null,
-        usageTerms: detail.distribution?.usageTerms ?? null,
-        readmeText: detail.distribution?.readmeText ?? null,
-      });
+      const patch = buildChangedPatch(initialForm, form);
+      if (Object.keys(patch).length === 0) {
+        setMetaMessage("변경된 항목이 없습니다.");
+        return;
+      }
+      const result = await patchAdminDistributionMetadataApi(packId, patch);
       setMetaMessage("유통 메타데이터를 저장했습니다.");
+      if (result.distribution) {
+        const nextForm = formFromDistribution(result.distribution);
+        setInitialForm(nextForm);
+        setForm(nextForm);
+      }
       if (onDetailUpdated && result.distribution) {
         onDetailUpdated({
           ...detail,
-          distribution: {
-            sourceTitle: result.distribution.sourceTitle,
-            sourceUrl: result.distribution.sourceUrl,
-            licenseName: result.distribution.licenseName,
-            licenseUrl: result.distribution.licenseUrl,
-            usageTerms: result.distribution.usageTerms,
-            readmeText: result.distribution.readmeText,
-            visibility: result.distribution.visibility,
-            allowDownload: result.distribution.allowDownload,
-          },
+          distribution: result.distribution,
+          artifactOptions: result.artifactOptions ?? detail.artifactOptions,
         });
       }
     } catch (err) {
@@ -164,7 +242,7 @@ export function AdminReviewProcessingEvidenceTab({
       </div>
 
       <div className="rounded-xl border border-store-border bg-slate-50 p-3 text-xs text-slate-800">
-        <p className="font-semibold text-slate-900">파일 검증</p>
+        <p className="font-semibold text-slate-900">파일 검증·무결성</p>
         <ul className="mt-2 space-y-1">
           <li>파일 개수: {evidence.files.length}</li>
           <li>
@@ -199,7 +277,7 @@ export function AdminReviewProcessingEvidenceTab({
                   {file.downloadable && evidence.packageMode === "EXTERNAL_IMPORT" ? (
                     <a
                       href={adminDoclingImportFileDownloadUrl(packId, file.id)}
-                      className="inline-flex min-h-[32px] items-center text-[11px] font-semibold text-store-accent"
+                      className="inline-flex min-h-[32px] items-center rounded-lg border border-store-border px-2 text-[11px] font-semibold"
                     >
                       다운로드
                     </a>
@@ -209,45 +287,14 @@ export function AdminReviewProcessingEvidenceTab({
             ))}
           </ul>
         ) : null}
-        <button
-          type="button"
-          className="mt-2 min-h-[32px] text-[11px] font-semibold text-store-accent"
-          onClick={() => setShowFullChecksums((v) => !v)}
-        >
-          {showFullChecksums ? "Checksum 축약 보기" : "Checksum 전체 보기"}
-        </button>
-      </div>
-
-      <div className="rounded-xl border border-store-border bg-slate-50 p-3 text-xs text-slate-800">
-        <p className="font-semibold text-slate-900">정규화</p>
-        <ul className="mt-2 space-y-1">
-          <li>상태: {evidence.normalization.status}</li>
-          <li>언어: {evidence.normalization.language ?? "미확인"}</li>
-          <li>
-            Fingerprint:{" "}
-            {evidence.normalization.fingerprint
-              ? truncateSha256(evidence.normalization.fingerprint)
-              : "—"}
-          </li>
-        </ul>
-      </div>
-
-      <div
-        className={`rounded-xl border p-3 text-xs ${
-          evidence.integrity.status === "PASS"
-            ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-            : evidence.integrity.status === "BLOCKED"
-              ? "border-red-200 bg-red-50 text-red-900"
-              : "border-slate-200 bg-slate-50 text-slate-800"
-        }`}
-      >
-        <p className="font-semibold">무결성: {evidence.integrity.status}</p>
-        {evidence.integrity.messages.length > 0 ? (
-          <ul className="mt-2 list-disc space-y-1 pl-4">
-            {evidence.integrity.messages.map((msg) => (
-              <li key={msg}>{msg}</li>
-            ))}
-          </ul>
+        {evidence.files.length > 0 ? (
+          <button
+            type="button"
+            className="mt-2 text-[11px] font-semibold text-store-accent"
+            onClick={() => setShowFullChecksums((v) => !v)}
+          >
+            {showFullChecksums ? "체크섬 짧게 보기" : "전체 체크섬 보기"}
+          </button>
         ) : null}
       </div>
 
@@ -262,6 +309,19 @@ export function AdminReviewProcessingEvidenceTab({
           <li>MCP: {evidence.capabilities.mcp.status}</li>
         </ul>
       </div>
+
+      {artifactOptions ? (
+        <div className="rounded-xl border border-store-border bg-slate-50 p-3 text-xs text-slate-800">
+          <p className="font-semibold text-slate-900">공개 Artifact 준비 상태</p>
+          <ul className="mt-2 space-y-1">
+            <li>
+              원본문서(Docling):{" "}
+              {artifactOptions.externalImportReady ? "Ready" : "Not ready"}
+            </li>
+            <li>공개 다운로드: 원본문서만 제공</li>
+          </ul>
+        </div>
+      ) : null}
 
       {evidence.processingLogs.length > 0 ? (
         <div className="rounded-xl border border-store-border bg-slate-50 p-3 text-xs text-slate-800">
@@ -301,36 +361,109 @@ export function AdminReviewProcessingEvidenceTab({
         className="space-y-3 rounded-xl border border-amber-100 bg-amber-50/50 p-3"
       >
         <p className="text-xs font-semibold text-amber-950">Store 유통 메타데이터 보정</p>
+        <p className="text-[11px] text-amber-900">
+          변경된 필드만 저장합니다. 누락된 값은 기존 Provider 입력을 보존합니다.
+        </p>
         <label className="block text-xs font-semibold text-slate-700">
-          출처명
+          원천 문서 제목
           <input
-            value={sourceTitle}
-            onChange={(e) => setSourceTitle(e.target.value)}
+            value={form.sourceTitle}
+            onChange={(e) => setForm((f) => ({ ...f, sourceTitle: e.target.value }))}
             className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border bg-white px-3 text-sm font-normal"
           />
         </label>
         <label className="block text-xs font-semibold text-slate-700">
-          출처 URL
+          원문 게시 URL
           <input
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
+            value={form.sourceUrl}
+            onChange={(e) => setForm((f) => ({ ...f, sourceUrl: e.target.value }))}
             className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border bg-white px-3 text-sm font-normal"
           />
         </label>
+        <label className="block text-xs font-semibold text-slate-700">
+          발행기관명
+          <input
+            value={form.sourcePublisherName}
+            onChange={(e) => setForm((f) => ({ ...f, sourcePublisherName: e.target.value }))}
+            className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border bg-white px-3 text-sm font-normal"
+          />
+        </label>
+        <label className="block text-xs font-semibold text-slate-700">
+          발행기관 URL
+          <input
+            value={form.sourcePublisherUrl}
+            onChange={(e) => setForm((f) => ({ ...f, sourcePublisherUrl: e.target.value }))}
+            className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border bg-white px-3 text-sm font-normal"
+          />
+        </label>
+        <label className="block text-xs font-semibold text-slate-700">
+          문서 버전
+          <input
+            value={form.sourceDocumentVersion}
+            onChange={(e) => setForm((f) => ({ ...f, sourceDocumentVersion: e.target.value }))}
+            className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border bg-white px-3 text-sm font-normal"
+          />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-xs font-semibold text-slate-700">
+            게시일
+            <input
+              type="date"
+              value={form.sourcePublishedAt}
+              onChange={(e) => setForm((f) => ({ ...f, sourcePublishedAt: e.target.value }))}
+              className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border bg-white px-3 text-sm font-normal"
+            />
+          </label>
+          <label className="block text-xs font-semibold text-slate-700">
+            수집일
+            <input
+              type="date"
+              value={form.sourceRetrievedAt}
+              onChange={(e) => setForm((f) => ({ ...f, sourceRetrievedAt: e.target.value }))}
+              className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border bg-white px-3 text-sm font-normal"
+            />
+          </label>
+        </div>
         <label className="block text-xs font-semibold text-slate-700">
           라이선스명
           <input
-            value={licenseName}
-            onChange={(e) => setLicenseName(e.target.value)}
+            value={form.licenseName}
+            onChange={(e) => setForm((f) => ({ ...f, licenseName: e.target.value }))}
             required
             className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border bg-white px-3 text-sm font-normal"
           />
         </label>
         <label className="block text-xs font-semibold text-slate-700">
+          라이선스 URL
+          <input
+            value={form.licenseUrl}
+            onChange={(e) => setForm((f) => ({ ...f, licenseUrl: e.target.value }))}
+            className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border bg-white px-3 text-sm font-normal"
+          />
+        </label>
+        <label className="block text-xs font-semibold text-slate-700">
+          이용조건
+          <textarea
+            value={form.usageTerms}
+            onChange={(e) => setForm((f) => ({ ...f, usageTerms: e.target.value }))}
+            rows={3}
+            className="mt-1 w-full rounded-xl border border-store-border bg-white px-3 py-2 text-sm font-normal"
+          />
+        </label>
+        <label className="block text-xs font-semibold text-slate-700">
+          README / 사용방법
+          <textarea
+            value={form.readmeText}
+            onChange={(e) => setForm((f) => ({ ...f, readmeText: e.target.value }))}
+            rows={3}
+            className="mt-1 w-full rounded-xl border border-store-border bg-white px-3 py-2 text-sm font-normal"
+          />
+        </label>
+        <label className="block text-xs font-semibold text-slate-700">
           공개 범위
           <select
-            value={visibility}
-            onChange={(e) => setVisibility(e.target.value)}
+            value={form.visibility}
+            onChange={(e) => setForm((f) => ({ ...f, visibility: e.target.value }))}
             className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border bg-white px-3 text-sm font-normal"
           >
             <option value="PRIVATE">PRIVATE — 비공개</option>
@@ -338,9 +471,33 @@ export function AdminReviewProcessingEvidenceTab({
             <option value="UNLISTED">UNLISTED — 직접 링크</option>
           </select>
         </label>
+        <label className="flex min-h-[44px] items-center gap-2 text-sm text-slate-800">
+          <input
+            type="checkbox"
+            checked={form.allowDownload}
+            onChange={(e) => setForm((f) => ({ ...f, allowDownload: e.target.checked }))}
+          />
+          다운로드 허용
+        </label>
+        <label className="block text-xs font-semibold text-slate-700">
+          콘텐츠 유형
+          <select
+            value={form.contentType}
+            onChange={(e) => setForm((f) => ({ ...f, contentType: e.target.value }))}
+            className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border bg-white px-3 text-sm font-normal"
+          >
+            <option value="">자동 추론</option>
+            <option value="DOCUMENT">문서형</option>
+            <option value="PRODUCT">제품형</option>
+            <option value="API">API형</option>
+            <option value="FRAMEWORK">프레임워크형</option>
+            <option value="DATA">데이터형</option>
+            <option value="MIXED">혼합형</option>
+          </select>
+        </label>
         <button
           type="submit"
-          disabled={savingMeta || !licenseName.trim()}
+          disabled={savingMeta || !form.licenseName.trim()}
           className="min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-60"
         >
           {savingMeta ? "저장 중…" : "메타데이터 저장"}

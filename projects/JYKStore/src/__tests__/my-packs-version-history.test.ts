@@ -37,11 +37,21 @@ function versionRow(input: {
     updatedAt: input.createdAt,
     ...(input.visibility
       ? {
-          payload: { id: `pay_${input.id}`, validationStatus: "VALID" },
           distributionMetadata: {
             visibility: input.visibility,
             allowDownload: true,
           },
+          doclingImportBundles: [
+            {
+              id: `bundle_${input.id}`,
+              isActive: true,
+              status: "REVIEW_READY",
+              storageStatus: "ACTIVE",
+              deletedAt: null,
+              adapterType: "DOCLING",
+              normalizedDocuments: [{ id: `nd_${input.id}`, isActive: true }],
+            },
+          ],
         }
       : {}),
   };

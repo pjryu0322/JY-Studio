@@ -3,12 +3,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import JSZip from "jszip";
-import { buildDistributionManifest } from "../lib/distribution/payload-manifest.ts";
-import {
-  assertManifestIntegrity,
-  stableManifestFingerprint,
-} from "../lib/distribution/distribution-manifest-service.ts";
 import { InMemoryPayloadStorage } from "../lib/distribution/in-memory-payload-storage.ts";
 import { getPayloadLimitConfig } from "../lib/distribution/payload-limit-config.ts";
 import {
@@ -16,7 +10,6 @@ import {
   describePayloadStorageConfig,
   parsePayloadStorageConfig,
 } from "../lib/distribution/payload-storage-config.ts";
-import { validateZipBytes } from "../lib/distribution/payload-zip-validator.ts";
 import { resolveAnonymousDownloadTenantKey } from "../lib/distribution/payload-download-quota.ts";
 import { NextRequest } from "next/server";
 
@@ -106,7 +99,7 @@ describe("P29.1 in-memory payload storage", () => {
   });
 });
 
-describe("P29.1 ZIP hardening", () => {
+describe("P29.1 ZIP limit config", () => {
   it("applies env limit config fallbacks under hard caps", () => {
     const cfg = getPayloadLimitConfig({
       JYKSTORE_PAYLOAD_MAX_BYTES: "999999999999",
@@ -114,73 +107,9 @@ describe("P29.1 ZIP hardening", () => {
     assert.ok(cfg.maxZipBytes < 999999999999);
     assert.ok(cfg.maxZipBytes > 0);
   });
-
-  it("rejects extreme compression ratio when configured tightly", async () => {
-    const zip = new JSZip();
-    // Must exceed compressionRatioMinUncompressedBytes (1 MiB default)
-    zip.file("payload/chunks.jsonl", `${"a".repeat(1_200_000)}\n`);
-    const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
-    const result = await validateZipBytes(bytes, {
-      maxCompressionRatio: 2,
-      maxUnpackedBytes: 10_000_000,
-    });
-    assert.equal(result.ok, false);
-    assert.ok(result.errors.some((e) => /compression|ratio|Suspicious/i.test(e)));
-  });
 });
 
-describe("P29.1 manifest fingerprint", () => {
-  it("is stable across createdAt and key order", () => {
-    const base = {
-      pack: { packId: "p1", versionId: "ver1", name: "N", version: "1.0.0" },
-      provider: { providerId: "prov", displayName: "Prov" },
-      generator: { type: "DOCLING" as const, version: "1" },
-      payload: {
-        payloadId: "pay1",
-        profile: "docling-chunks-v1" as const,
-        originalFileName: "a.zip",
-        mimeType: "application/zip",
-        fileSize: 10,
-        checksumSha256: "b".repeat(64),
-      },
-      source: { title: "T", url: null, licenseName: "MIT" },
-      distribution: { visibility: "PRIVATE" as const, allowDownload: true },
-    };
-    const m1 = buildDistributionManifest(base);
-    const m2 = buildDistributionManifest(base);
-    m2.createdAt = "2099-01-01T00:00:00.000Z";
-    assert.equal(stableManifestFingerprint(m1), stableManifestFingerprint(m2));
-  });
-
-  it("fails integrity when checksum mismatches", () => {
-    const manifest = buildDistributionManifest({
-      pack: { packId: "p1", versionId: "ver", name: "N", version: "1.0.0" },
-      provider: { providerId: "prov", displayName: "Prov" },
-      generator: { type: "DOCLING", version: null },
-      payload: {
-        payloadId: "pay",
-        profile: "docling-chunks-v1",
-        originalFileName: "a.zip",
-        mimeType: "application/zip",
-        fileSize: 10,
-        checksumSha256: "c".repeat(64),
-      },
-      source: { title: "T", url: null, licenseName: "MIT" },
-      distribution: { visibility: "PUBLIC", allowDownload: true },
-    });
-    const result = assertManifestIntegrity({
-      manifest,
-      payloadId: "pay",
-      packId: "p1",
-      versionId: "ver",
-      checksumSha256: "d".repeat(64),
-    });
-    assert.equal(result.ok, false);
-    if (!result.ok) assert.equal(result.code, "MANIFEST_STALE");
-  });
-});
-
-describe("P29.1 visibility and immutability source guards", () => {
+describe("P29.1 visibility and download guards", () => {
   it("does not force PUBLIC on admin approve", () => {
     const service = readSource("src/lib/admin-review-service.ts");
     assert.ok(!service.includes('visibility: "PUBLIC"'));
@@ -194,24 +123,12 @@ describe("P29.1 visibility and immutability source guards", () => {
     assert.ok(!/distributionMetadata:\s*\{\s*some/.test(catalog));
   });
 
-  it("blocks delete after submission via dedicated error code", () => {
-    const service = readSource("src/lib/distribution/payload-service.ts");
-    assert.ok(service.includes("PAYLOAD_IMMUTABLE_AFTER_SUBMISSION"));
-    assert.ok(service.includes("payloadHasSubmissionHistory"));
-  });
-
-  it("upload route prechecks Content-Length and file.size", () => {
-    const route = readSource("src/app/api/v1/provider/packs/[packId]/payload/route.ts");
-    assert.ok(route.includes("content-length"));
-    assert.ok(route.includes("file.size"));
-    assert.ok(route.includes("413"));
-  });
-
   it("public download records usage and enforces quota", () => {
     const route = readSource("src/app/api/v1/packs/[packId]/payload/download/route.ts");
     assert.ok(route.includes("enforcePublicPayloadDownloadQuota"));
     assert.ok(route.includes("recordApiUsage"));
     assert.ok(route.includes("PAYLOAD_DOWNLOAD"));
+    assert.ok(route.includes("openPublicCatalogSourceOriginalStream"));
   });
 
   it("hashes anonymous tenant without storing raw IP", () => {

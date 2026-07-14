@@ -11,17 +11,23 @@ import {
   type NormalizedDocument,
   type Prisma,
 } from "@prisma/client";
-import { doclingAdapter } from "@/lib/adapters/docling/docling-adapter";
 import {
   DOCLING_ADAPTER_TYPE,
   DOCLING_ADAPTER_VERSION,
+  type AdapterValidationResult,
 } from "@/lib/adapters/docling/docling-types";
+import { normalizeDoclingDocument } from "@/lib/adapters/docling/docling-normalizer";
 import { createPayloadId } from "@/lib/distribution/distribution-manifest-service";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
 import { sha256Hex } from "@/lib/distribution/payload-checksum";
 import type { PayloadStorage } from "@/lib/distribution/payload-storage";
 import { buildPackFileObjectKey } from "@/lib/distribution/payload-storage-config";
 import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
+import {
+  DOCLING_MARKDOWN_PREVIEW_MAX_BYTES,
+  loadAndValidateDoclingBundlePayloads,
+} from "@/lib/docling-import/docling-bundle-stream-loader";
+import type { ObjectStorageBackend } from "@/lib/object-storage/object-storage";
 import {
   buildPackCapabilitiesDto,
   type DoclingImportBundlePublicDto,
@@ -76,6 +82,16 @@ type BundleWithRelations = LifecycleBundle & {
 function getDefaultStorage(): PayloadStorage {
   return getConfiguredPayloadStorage();
 }
+
+function asObjectStorage(storage: PayloadStorage): ObjectStorageBackend | null {
+  const candidate = storage as PayloadStorage & Partial<ObjectStorageBackend>;
+  if (typeof candidate.getObjectStream === "function") {
+    return candidate as ObjectStorageBackend;
+  }
+  return null;
+}
+
+export { DOCLING_MARKDOWN_PREVIEW_MAX_BYTES };
 
 function storagePrefix(storage: PayloadStorage): string {
   const withPrefix = storage as PayloadStorage & { prefix?: string };
@@ -580,34 +596,22 @@ export async function validateAndNormalizeBundle(
     );
   }
 
-  const readVerified = async (file: KnowledgePackFile) => {
-    let got;
-    try {
-      got = await storage.get({ objectKey: file.storageKey });
-    } catch {
-      throw new DoclingImportError(
-        "DOCLING_STORAGE_UNAVAILABLE",
-        "저장소에서 파일을 읽지 못했습니다.",
-        503,
-      );
-    }
-    const actual = sha256Hex(got.bytes);
-    if (actual !== file.checksumSha256) {
-      throw new DoclingImportError(
-        "DOCLING_OBJECT_INTEGRITY_FAILED",
-        "파일 무결성 검증에 실패했습니다.",
-        503,
-      );
-    }
-    return got.bytes;
+  const filesMeta = {
+    packId: bundle.packId,
+    packVersionId: bundle.versionId,
+    sourceFileId: sourceFile.id,
+    jsonPayloadFileId: jsonFile.id,
+    markdownPayloadFileId: mdFile.id,
   };
 
-  let jsonBytes: Uint8Array;
-  let mdBytes: Uint8Array;
+  let loaded;
   try {
-    await readVerified(sourceFile);
-    jsonBytes = await readVerified(jsonFile);
-    mdBytes = await readVerified(mdFile);
+    loaded = await loadAndValidateDoclingBundlePayloads({
+      storage,
+      sourceFile,
+      jsonFile,
+      mdFile,
+    });
   } catch (error) {
     if (isSoftLockConflict(error)) throw error;
     if (isDoclingImportError(error) && error.code === "DOCLING_OBJECT_INTEGRITY_FAILED") {
@@ -628,22 +632,17 @@ export async function validateAndNormalizeBundle(
       : new DoclingImportError("DOCLING_STORAGE_UNAVAILABLE", "저장소에서 파일을 읽지 못했습니다.", 503);
   }
 
-  const validation = await doclingAdapter.validate({
-    json: jsonBytes,
-    markdown: mdBytes,
-    source: {
-      filename: sourceFile.originalFileName,
-      mimetype: sourceFile.mimeType,
-      fileId: sourceFile.id,
-    },
-    files: {
-      packId: bundle.packId,
-      packVersionId: bundle.versionId,
-      sourceFileId: sourceFile.id,
-      jsonPayloadFileId: jsonFile.id,
-      markdownPayloadFileId: mdFile.id,
-    },
-  });
+  const validation: AdapterValidationResult = {
+    ok:
+      Boolean(loaded.document) &&
+      loaded.markdown.ok &&
+      ![...loaded.jsonIssues, ...loaded.markdown.issues].some((i) => i.severity === "ERROR"),
+    issues: [...loaded.jsonIssues, ...loaded.markdown.issues],
+    document: loaded.document,
+    markdownText: loaded.markdown.text ?? loaded.markdownPreviewText,
+    originMatch: loaded.originMatch,
+  };
+  const markdownPreviewText = validation.markdownText ?? loaded.markdownPreviewText;
 
   const errorIssues = validation.issues.filter((i) => i.severity === "ERROR");
   const warningIssues = validation.issues.filter((i) => i.severity === "WARNING");
@@ -751,27 +750,16 @@ export async function validateAndNormalizeBundle(
   });
 
   try {
-    const draft = await doclingAdapter.normalize({
-      json: jsonBytes,
-      markdown: mdBytes,
-      source: {
-        filename: sourceFile.originalFileName,
-        mimetype: sourceFile.mimeType,
-        fileId: sourceFile.id,
-      },
-      files: {
-        packId: bundle.packId,
-        packVersionId: bundle.versionId,
-        sourceFileId: sourceFile.id,
-        jsonPayloadFileId: jsonFile.id,
-        markdownPayloadFileId: mdFile.id,
-      },
+    // Normalize from the compact in-memory projection — never re-parse the raw JSON object.
+    const draft = normalizeDoclingDocument(validation.document!, {
+      files: filesMeta,
+      warnings: validation.issues.filter((i) => i.severity === "WARNING"),
     });
 
     const { resolveDocumentLanguage } = await import("@/lib/docling-import/document-language");
     const { buildStructureSummary } = await import("@/lib/docling-import/structure-summary");
     const { evaluateDocumentTitleMatch } = await import("@/lib/docling-import/title-match");
-    const mdText = new TextDecoder("utf-8").decode(mdBytes);
+    const mdText = validation.markdownText ?? markdownPreviewText;
     const packRow = await prisma.knowledgePack.findUnique({
       where: { packId: bundle.packId },
       select: { name: true },
@@ -1389,11 +1377,15 @@ export async function downloadDoclingImportFile(input: {
   clientId?: string;
   asAdmin?: boolean;
   storage?: PayloadStorage;
+  /** When set, return at most this many bytes (markdown preview path). */
+  previewMaxBytes?: number;
 }): Promise<{
   bytes: Uint8Array;
   mimeType: string;
   fileName: string;
   checksumSha256: string;
+  truncated?: boolean;
+  contentLength?: number;
 }> {
   if (!input.asAdmin) {
     if (!input.userId || !input.clientId) {
@@ -1455,6 +1447,51 @@ export async function downloadDoclingImportFile(input: {
   }
 
   const storage = input.storage ?? getDefaultStorage();
+  const previewMax =
+    input.previewMaxBytes != null && input.previewMaxBytes > 0
+      ? Math.min(input.previewMaxBytes, DOCLING_MARKDOWN_PREVIEW_MAX_BYTES)
+      : null;
+  const objectStorage = asObjectStorage(storage);
+  const declaredSize = Number(file.fileSize);
+
+  // Preview path: stream only the first N bytes (no full-object buffer).
+  if (previewMax != null && objectStorage) {
+    try {
+      const streamed = await objectStorage.getObjectStream({ objectKey: file.storageKey });
+      const chunks: Buffer[] = [];
+      let total = 0;
+      for await (const chunk of streamed.body) {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
+        if (total < previewMax) {
+          const need = previewMax - total;
+          chunks.push(buf.byteLength <= need ? buf : buf.subarray(0, need));
+          total += Math.min(buf.byteLength, need);
+        }
+        // Continue draining so the upstream connection closes cleanly... but for large
+        // objects prefer destroy once we have enough bytes.
+        if (total >= previewMax) {
+          streamed.body.destroy?.();
+          break;
+        }
+      }
+      const bytes = Buffer.concat(chunks, total);
+      return {
+        bytes,
+        mimeType: file.mimeType,
+        fileName: file.originalFileName,
+        checksumSha256: file.checksumSha256,
+        truncated: Number.isFinite(declaredSize) ? declaredSize > bytes.byteLength : true,
+        contentLength: Number.isFinite(declaredSize) ? declaredSize : undefined,
+      };
+    } catch {
+      throw new DoclingImportError(
+        "DOCLING_STORAGE_UNAVAILABLE",
+        "저장소에서 파일을 읽지 못했습니다.",
+        503,
+      );
+    }
+  }
+
   let got;
   try {
     got = await storage.get({ objectKey: file.storageKey });
@@ -1474,11 +1511,24 @@ export async function downloadDoclingImportFile(input: {
     );
   }
 
+  if (previewMax != null && got.bytes.byteLength > previewMax) {
+    return {
+      bytes: got.bytes.subarray(0, previewMax),
+      mimeType: file.mimeType,
+      fileName: file.originalFileName,
+      checksumSha256: actual,
+      truncated: true,
+      contentLength: got.bytes.byteLength,
+    };
+  }
+
   return {
     bytes: got.bytes,
     mimeType: file.mimeType,
     fileName: file.originalFileName,
     checksumSha256: actual,
+    truncated: false,
+    contentLength: got.bytes.byteLength,
   };
 }
 

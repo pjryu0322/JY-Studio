@@ -85,10 +85,32 @@ function baseDetail(overrides: Partial<AdminReviewDetailDto> = {}): AdminReviewD
     currentManifestFingerprint: overrides.currentManifestFingerprint ?? null,
     doclingReviewIntegrity: overrides.doclingReviewIntegrity ?? null,
     distribution: overrides.distribution ?? null,
+    artifactOptions: overrides.artifactOptions ?? null,
     structureQuality: overrides.structureQuality ?? null,
     chunkQuality: overrides.chunkQuality ?? null,
     retrievalEvaluation: overrides.retrievalEvaluation ?? null,
     releaseGate: overrides.releaseGate ?? null,
+  };
+}
+
+function dist(overrides: Partial<NonNullable<AdminReviewDetailDto["distribution"]>> = {}) {
+  return {
+    sourceTitle: "Source",
+    sourceUrl: null,
+    sourcePublisherName: null,
+    sourcePublisherUrl: null,
+    sourceDocumentVersion: null,
+    sourcePublishedAt: null,
+    sourceRetrievedAt: null,
+    licenseName: "MIT",
+    licenseUrl: null,
+    usageTerms: null,
+    readmeText: null,
+    visibility: "PRIVATE",
+    allowDownload: true,
+    primaryArtifactType: null,
+    contentType: null,
+    ...overrides,
   };
 }
 
@@ -136,16 +158,7 @@ describe("admin review blockers by package mode", () => {
   it("Docling Bundle ignores Legacy sourceDocumentCount blockers", () => {
     const detail = baseDetail({
       readiness: readiness({ sourceDocumentCount: 0 }),
-      distribution: {
-        sourceTitle: "Source",
-        sourceUrl: null,
-        licenseName: "MIT",
-        licenseUrl: null,
-        usageTerms: null,
-        readmeText: null,
-        visibility: "PRIVATE",
-        allowDownload: true,
-      },
+      distribution: dist(),
       doclingReviewIntegrity: { status: "PASS", errors: [], warnings: [] },
       latestReview: {
         id: "rev-1",
@@ -173,16 +186,7 @@ describe("admin review blockers by package mode", () => {
 
   it("Docling Bundle blocks missing original via integrity message", () => {
     const detail = baseDetail({
-      distribution: {
-        sourceTitle: "Source",
-        sourceUrl: null,
-        licenseName: "MIT",
-        licenseUrl: null,
-        usageTerms: null,
-        readmeText: null,
-        visibility: "PRIVATE",
-        allowDownload: true,
-      },
+      distribution: dist(),
       doclingReviewIntegrity: {
         status: "BLOCKED",
         errors: [
@@ -215,16 +219,7 @@ describe("admin review blockers by package mode", () => {
 
   it("Docling Bundle blocks missing NormalizedDocument", () => {
     const detail = baseDetail({
-      distribution: {
-        sourceTitle: "Source",
-        sourceUrl: null,
-        licenseName: "MIT",
-        licenseUrl: null,
-        usageTerms: null,
-        readmeText: null,
-        visibility: "PRIVATE",
-        allowDownload: true,
-      },
+      distribution: dist(),
       doclingReviewIntegrity: {
         status: "BLOCKED",
         errors: [
@@ -253,34 +248,12 @@ describe("admin review blockers by package mode", () => {
     assert.ok(collectReviewBlockers(detail).includes("정규화 문서가 없습니다."));
   });
 
-  it("Distribution ZIP ignores Legacy sourceDocumentCount blockers", () => {
+  it("legacy DISTRIBUTION ZIP snapshots are permanently blocked", () => {
     const detail = baseDetail({
       readiness: readiness({ sourceDocumentCount: 0 }),
-      payload: {
-        id: "payload-1",
-        profile: "GENERIC",
-        generatorType: "ZIP",
-        generatorVersion: null,
-        originalFileName: "a.zip",
-        fileSize: 10,
-        checksumSha256: "abc",
-        validationStatus: "VALID",
-        validationMessage: null,
-        validationReport: null,
-        manifest: {},
-        uploadedAt: new Date().toISOString(),
-      },
-      distribution: {
-        sourceTitle: "Source",
-        sourceUrl: null,
-        licenseName: "MIT",
-        licenseUrl: null,
-        usageTerms: null,
-        readmeText: null,
-        visibility: "PRIVATE",
-        allowDownload: true,
-      },
-      currentManifestFingerprint: "mf-1",
+      payload: null,
+      distribution: dist(),
+      currentManifestFingerprint: null,
       latestReview: {
         id: "rev-1",
         status: "PENDING",
@@ -297,9 +270,8 @@ describe("admin review blockers by package mode", () => {
     });
 
     const blockers = collectReviewBlockers(detail);
-    assert.equal(blockers.includes("원천 문서가 없습니다."), false);
-    assert.deepEqual(blockers, []);
-    assert.equal(canAcceptAdminReview(detail), true);
+    assert.ok(blockers.some((b) => /ZIP Knowledge Package/.test(b)));
+    assert.equal(canAcceptAdminReview(detail), false);
   });
 
   it("Legacy Builder still blocks missing source documents", () => {
@@ -350,16 +322,7 @@ describe("admin review blockers by package mode", () => {
 
   it("Docling warnings exclude Legacy source WARNING copy", () => {
     const detail = baseDetail({
-      distribution: {
-        sourceTitle: "Source",
-        sourceUrl: null,
-        licenseName: "MIT",
-        licenseUrl: null,
-        usageTerms: null,
-        readmeText: null,
-        visibility: "PRIVATE",
-        allowDownload: true,
-      },
+      distribution: dist(),
       doclingReviewIntegrity: { status: "PASS", errors: [], warnings: [] },
       latestReview: {
         id: "rev-1",

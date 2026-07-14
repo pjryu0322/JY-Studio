@@ -337,20 +337,9 @@ export function collectAcceptBlockers(detail: AdminReviewDetailDto): string[] {
     if (snapshot.validationStatus !== "VALID") {
       blockers.push("Payload 검증이 VALID가 아닙니다.");
     }
-    if (!detail.payload) {
-      blockers.push("등록된 Payload가 없습니다.");
-    } else if (detail.payload.validationStatus !== "VALID") {
-      blockers.push("Payload 검증 상태가 VALID가 아닙니다.");
-    }
-    if (!detail.distribution) {
-      blockers.push("유통정보가 없습니다.");
-    } else if (!detail.distribution.licenseName.trim()) {
-      blockers.push("라이선스명이 없습니다.");
-    }
-    const drift = detectSubmitSnapshotDrift(detail);
-    if (drift.changed) {
-      blockers.push(...drift.reasons);
-    }
+    blockers.push(
+      "ZIP Knowledge Package 검수는 더 이상 지원되지 않습니다. Docling import로 다시 제출해 주세요.",
+    );
     return [...new Set(blockers)];
   }
 
@@ -360,6 +349,7 @@ export function collectAcceptBlockers(detail: AdminReviewDetailDto): string[] {
     } else if (!detail.distribution.licenseName.trim()) {
       blockers.push("라이선스명이 없습니다.");
     }
+    blockers.push(...collectPrimaryArtifactBlockers(detail));
     if (!snapshot.doclingBundleId || !snapshot.normalizedDocumentId) {
       blockers.push("Docling import 제출 정보가 불완전합니다.");
     }
@@ -695,6 +685,16 @@ export function collectReviewRefreshReasons(detail: AdminReviewDetailDto): strin
   return [...new Set(reasons)];
 }
 
+function collectPrimaryArtifactBlockers(detail: AdminReviewDetailDto): string[] {
+  const blockers: string[] = [];
+  if (!detail.artifactOptions) return blockers;
+  // Docling-only: require SOURCE_ORIGINAL ready when distribution metadata exists.
+  if (detail.distribution && !detail.artifactOptions.externalImportReady) {
+    blockers.push("공개 다운로드 Artifact(원본문서)가 준비되지 않았습니다.");
+  }
+  return blockers;
+}
+
 function collectDoclingReviewBlockers(detail: AdminReviewDetailDto): string[] {
   const blockers: string[] = [];
 
@@ -711,6 +711,8 @@ function collectDoclingReviewBlockers(detail: AdminReviewDetailDto): string[] {
       blockers.push("출처 제목 또는 출처 URL이 없습니다.");
     }
   }
+
+  blockers.push(...collectPrimaryArtifactBlockers(detail));
 
   const snapshot = getSubmitSnapshot(detail);
   if (!isDoclingBundleReviewSnapshot(snapshot)) {
@@ -732,43 +734,10 @@ function collectDoclingReviewBlockers(detail: AdminReviewDetailDto): string[] {
 }
 
 function collectDistributionReviewBlockers(detail: AdminReviewDetailDto): string[] {
-  const blockers: string[] = [];
-  const snapshot = getSubmitSnapshot(detail);
-
-  if (!isDistributionReviewSnapshot(snapshot)) {
-    blockers.push("Distribution 제출 스냅샷이 없습니다.");
-    return [...new Set(blockers)];
-  }
-
-  if (snapshot.validationStatus !== "VALID") {
-    blockers.push("Payload 검증이 VALID가 아닙니다.");
-  }
-  if (!detail.payload) {
-    blockers.push("등록된 Payload가 없습니다.");
-  } else if (detail.payload.validationStatus !== "VALID") {
-    blockers.push("Payload 검증 상태가 VALID가 아닙니다.");
-  }
-
-  if (!detail.distribution) {
-    blockers.push("유통정보가 없습니다.");
-  } else {
-    if (!detail.distribution.licenseName?.trim()) {
-      blockers.push("라이선스명이 없습니다.");
-    }
-    if (
-      !detail.distribution.sourceTitle?.trim() &&
-      !detail.distribution.sourceUrl?.trim()
-    ) {
-      blockers.push("출처 제목 또는 출처 URL이 없습니다.");
-    }
-  }
-
-  const drift = detectSubmitSnapshotDrift(detail);
-  if (drift.changed) {
-    blockers.push(...drift.reasons);
-  }
-
-  return [...new Set(blockers)];
+  void detail;
+  return [
+    "ZIP Knowledge Package 검수는 더 이상 지원되지 않습니다. Docling import로 다시 제출해 주세요.",
+  ];
 }
 
 function collectLegacyReviewBlockers(detail: AdminReviewDetailDto): string[] {

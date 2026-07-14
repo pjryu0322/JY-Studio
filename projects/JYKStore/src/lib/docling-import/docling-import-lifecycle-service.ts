@@ -165,7 +165,7 @@ export async function syncDoclingBundleStorageAfterCleanup(
     return;
   }
 
-  const jobs = await prisma.payloadStorageCleanupJob.findMany({
+  const jobs = await prisma.objectStorageCleanupJob.findMany({
     where: { doclingBundleId: bundleId },
     select: { status: true },
   });

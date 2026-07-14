@@ -9,7 +9,10 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateUniquePackId, PACK_ID_PATTERN } from "@/lib/pack-id-generator";
-import { deriveShortDescription } from "@/lib/pack-summary-generator";
+import {
+  deriveShortDescription,
+  PROVIDER_PACK_INITIAL_VERSION_CHANGELOG,
+} from "@/lib/pack-summary-generator";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import {
@@ -50,7 +53,6 @@ import {
 import { evaluateReleaseGateForPack, loadReleaseGateSummaryForPack } from "@/lib/release-gate/release-gate-service";
 import { prepareProviderPackForFinalReviewSubmit } from "@/lib/auto-pipeline/provider-final-review-submit-service";
 import { commitDistributionPackForReview } from "@/lib/distribution/distribution-submit-service";
-import { refreshDistributionManifest } from "@/lib/distribution/distribution-manifest-service";
 import { buildProviderReviewSubmitSnapshot } from "@/lib/provider-review-submit-snapshot";
 import {
   getStructureQualityBlockingMessage,
@@ -214,7 +216,6 @@ export async function listProviderPacksForClient(
         take: 2,
         include: {
           sourceDocuments: { select: { id: true } },
-          payload: { select: { validationStatus: true } },
           distributionMetadata: {
             select: {
               sourceTitle: true,
@@ -262,7 +263,7 @@ export async function listProviderPacksForClient(
           sourceDocumentCount: working.sourceDocuments.length,
           materialReady: isMaterialReadyForProgress({
             sourceDocumentCount: working.sourceDocuments.length,
-            payloadValidationStatus: working.payload?.validationStatus ?? null,
+            payloadValidationStatus: null,
             doclingBundleStatus: working.doclingImportBundles[0]?.status ?? null,
           }),
           distributionReady: isDistributionReadyForProgress({
@@ -382,7 +383,7 @@ export async function createProviderPackForClient(
       versions: {
         create: {
           version: versionLabel,
-          overview: shortDescription,
+          overview: PROVIDER_PACK_INITIAL_VERSION_CHANGELOG,
           features: [],
           includedKnowledge: [],
           supportedEnvironments: [],
@@ -605,11 +606,6 @@ export async function updateProviderPackForClient(
       });
     }
 
-    await refreshDistributionManifest({
-      packId,
-      versionId: latestVersion.id,
-      reason: "pack_basic_info_updated",
-    });
   }
 
   await recordProviderAudit({
@@ -971,9 +967,6 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
   }
 
   const latestVersionId = pack.versions[0]?.id;
-  const distributionPayload = latestVersionId
-    ? await prisma.knowledgePayload.findUnique({ where: { versionId: latestVersionId } })
-    : null;
   const doclingReady = latestVersionId
     ? await prisma.doclingImportBundle.findFirst({
         where: {
@@ -985,7 +978,7 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
       })
     : null;
 
-  if (distributionPayload || doclingReady) {
+  if (doclingReady) {
     const distributionResult = await commitDistributionPackForReview(userId, clientId, packId);
     if ("error" in distributionResult) {
       return distributionResult;
@@ -993,9 +986,7 @@ export async function submitProviderPackForReview(userId: string, clientId: stri
     await recordSubmitForReviewPipeline(
       packId,
       clientId,
-      doclingReady && !distributionPayload
-        ? "Docling Import 검수 요청"
-        : "Distribution Payload 검수 요청",
+      "Docling Import 검수 요청",
     );
     const detail = await getProviderPackForClient(userId, clientId, packId);
     const mode =

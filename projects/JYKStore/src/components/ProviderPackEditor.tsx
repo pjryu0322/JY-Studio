@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProviderPackBasicInfoTab } from "@/components/ProviderPackBasicInfoTab";
 import { ProviderDistributionTab } from "@/components/provider-distribution/ProviderDistributionTab";
@@ -10,13 +10,15 @@ import {
 import { ProviderPayloadTab } from "@/components/provider-distribution/ProviderPayloadTab";
 import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
-import { ProviderPackProgressStepper } from "@/components/ProviderPackProgressStepper";
 import { ProviderPackTabs } from "@/components/ProviderPackTabs";
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
-import type { KnowledgePayloadPublicDto } from "@/lib/distribution/payload-service";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
 import { isDoclingPayloadPresent, isDoclingPayloadReady } from "@/lib/docling-import/docling-import-ui";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
+import {
+  resolveProviderEditableShortDescription,
+  resolveProviderEditableVersionChangelog,
+} from "@/lib/pack-summary-generator";
 import {
   buildProviderPackProgress,
   isDistributionReadyForProgress,
@@ -26,7 +28,6 @@ import {
   fetchProviderDoclingImportApi,
   fetchProviderPack,
   fetchProviderPackDistributionApi,
-  fetchProviderPackPayloadApi,
   submitProviderPackApi,
   updateProviderPackApi,
   withdrawProviderPackReviewApi,
@@ -38,11 +39,8 @@ import {
 } from "@/lib/provider-pack-tabs";
 import { providerPackDetailPath } from "@/lib/routes";
 import {
-  PROVIDER_PACK_CREATED_BANNER_TITLE,
-  PROVIDER_PACK_CREATED_ID_PREFIX,
-  PROVIDER_PACK_CREATED_NEXT_TASK,
-  PROVIDER_PACK_GO_TO_PAYLOAD_TAB,
   PROVIDER_PACK_ID_LABEL,
+  PROVIDER_PACK_SAVE_DRAFT_SUCCESS,
   PROVIDER_REVIEW_WITHDRAW_CONFIRM,
   PROVIDER_SUBMIT_CONFIRM,
 } from "@/lib/role-based-ux-copy";
@@ -54,7 +52,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [locationHash, setLocationHash] = useState("");
 
   const [pack, setPack] = useState<ProviderPackDetailDto | null>(null);
-  const [payload, setPayload] = useState<KnowledgePayloadPublicDto | null>(null);
   const [doclingBundle, setDoclingBundle] = useState<DoclingImportBundlePublicDto | null>(null);
   const [distribution, setDistribution] = useState<PackDistributionMetadataDto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,6 +59,12 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [basicFieldErrors, setBasicFieldErrors] = useState<{
+    name?: string;
+    shortDescription?: string;
+    description?: string;
+  }>({});
 
   const [name, setName] = useState("");
   const [shortDescription, setShortDescription] = useState("");
@@ -82,18 +85,28 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     setError(null);
     try {
       const data = await fetchProviderPack(packId);
+      const latestOverview = data.pack.versions[0]?.overview ?? "";
+      const resolvedShort = resolveProviderEditableShortDescription({
+        shortDescription: data.pack.shortDescription,
+        overview: latestOverview,
+      });
       setPack(data.pack);
       setName(data.pack.name);
-      setShortDescription(data.pack.shortDescription);
+      setShortDescription(resolvedShort);
       setDescription(data.pack.description);
-      setVersionOverview(data.pack.versions[0]?.overview ?? "");
+      setVersionOverview(
+        resolveProviderEditableVersionChangelog({
+          overview: latestOverview,
+          shortDescription: resolvedShort,
+        }),
+      );
+      setSaveSuccessMessage(null);
+      setBasicFieldErrors({});
 
-      const [payloadRes, distRes, doclingRes] = await Promise.all([
-        fetchProviderPackPayloadApi(packId).catch(() => ({ payload: null })),
+      const [distRes, doclingRes] = await Promise.all([
         fetchProviderPackDistributionApi(packId).catch(() => ({ distribution: null })),
         fetchProviderDoclingImportApi(packId).catch(() => ({ bundle: null })),
       ]);
-      setPayload(payloadRes.payload);
       setDistribution(distRes.distribution);
       setDoclingBundle(doclingRes.bundle);
     } catch (err) {
@@ -108,8 +121,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   }, [load]);
 
   const sourceDocumentCount = pack?.versions[0]?.sourceDocuments.length ?? 0;
-  const hasContentPayload =
-    Boolean(payload) || isDoclingPayloadPresent(doclingBundle?.status);
+  const hasContentPayload = isDoclingPayloadPresent(doclingBundle?.status);
   const distributionMode = hasContentPayload || sourceDocumentCount === 0;
 
   const hasBasicInfo = Boolean(
@@ -123,11 +135,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     () =>
       computeDistributionReadiness({
         hasBasicInfo,
-        payload,
         distribution,
         doclingBundle,
       }),
-    [hasBasicInfo, payload, distribution, doclingBundle],
+    [hasBasicInfo, distribution, doclingBundle],
   );
 
   const packProgress = useMemo(() => {
@@ -135,7 +146,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     const working = pack.versions[0] ?? null;
     const materialReady = isMaterialReadyForProgress({
       sourceDocumentCount,
-      payloadValidationStatus: payload?.validationStatus ?? null,
+      payloadValidationStatus: null,
       doclingBundleStatus: isDoclingPayloadReady(doclingBundle?.status)
         ? "REVIEW_READY"
         : doclingBundle?.status ?? null,
@@ -176,7 +187,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     shortDescription,
     description,
     sourceDocumentCount,
-    payload,
     distribution,
     doclingBundle,
   ]);
@@ -187,10 +197,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         created: showCreatedBanner,
         status: pack?.status ?? "DRAFT",
         sourceDocumentCount,
-        hasPayload: Boolean(payload) || isDoclingPayloadPresent(doclingBundle?.status),
+        hasPayload: isDoclingPayloadPresent(doclingBundle?.status),
         hasDistribution: Boolean(distribution),
       }),
-    [showCreatedBanner, pack?.status, sourceDocumentCount, payload, distribution, doclingBundle],
+    [showCreatedBanner, pack?.status, sourceDocumentCount, distribution, doclingBundle],
   );
 
   const activeTab = resolveProviderPackTabFromLocation({
@@ -209,25 +219,78 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     [packId, router, searchParams],
   );
 
-  const onSave = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!editable) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const data = await updateProviderPackApi(packId, {
-        name,
-        shortDescription,
-        description,
-        versionOverview,
-      });
-      setPack(data.pack);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "저장하지 못했습니다.");
-    } finally {
-      setSaving(false);
+  const validateBasicInfo = useCallback(() => {
+    const errors: {
+      name?: string;
+      shortDescription?: string;
+      description?: string;
+    } = {};
+    const trimmedName = name.trim();
+    const trimmedShort = shortDescription.trim();
+    const trimmedDescription = description.trim();
+
+    if (trimmedName.length < 2 || trimmedName.length > 100) {
+      errors.name = "이름은 2~100자로 입력해 주세요.";
     }
-  };
+    if (trimmedShort.length < 10 || trimmedShort.length > 160) {
+      errors.shortDescription = "한 줄 요약은 10~160자로 입력해 주세요.";
+    }
+    if (trimmedDescription.length < 20 || trimmedDescription.length > 1000) {
+      errors.description = "상세 설명은 20~1000자로 입력해 주세요.";
+    }
+
+    setBasicFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  }, [name, shortDescription, description]);
+
+  const onSaveBasicInfo = useCallback(
+    async (options?: { nextTab?: ProviderPackTabId }) => {
+      if (!editable || saving) return;
+      if (!validateBasicInfo()) return;
+
+      setSaving(true);
+      setError(null);
+      setSaveSuccessMessage(null);
+      try {
+        const data = await updateProviderPackApi(packId, {
+          name,
+          shortDescription,
+          description,
+          versionOverview,
+        });
+        setPack(data.pack);
+        setName(data.pack.name);
+        setShortDescription(data.pack.shortDescription);
+        setDescription(data.pack.description);
+        setVersionOverview(
+          resolveProviderEditableVersionChangelog({
+            overview: data.pack.versions[0]?.overview ?? "",
+            shortDescription: data.pack.shortDescription,
+          }),
+        );
+        if (options?.nextTab) {
+          selectTab(options.nextTab);
+        } else {
+          setSaveSuccessMessage(PROVIDER_PACK_SAVE_DRAFT_SUCCESS);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "저장하지 못했습니다.");
+      } finally {
+        setSaving(false);
+      }
+    },
+    [
+      editable,
+      saving,
+      validateBasicInfo,
+      packId,
+      name,
+      shortDescription,
+      description,
+      versionOverview,
+      selectTab,
+    ],
+  );
 
   const onSubmitReview = async () => {
     if (!editable) return;
@@ -274,29 +337,13 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   return (
     <div className="space-y-4 pb-6">
-      {showCreatedBanner ? (
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-slate-900">
-          <p className="font-semibold">{PROVIDER_PACK_CREATED_BANNER_TITLE}</p>
-          <p className="mt-1 text-xs text-slate-700">
-            {PROVIDER_PACK_CREATED_ID_PREFIX}{" "}
-            <span className="font-mono font-semibold text-slate-900">{pack.packId}</span>
-          </p>
-          <p className="mt-1 text-xs text-slate-700">{PROVIDER_PACK_CREATED_NEXT_TASK}</p>
-          <button
-            type="button"
-            onClick={() => selectTab("payload")}
-            className="mt-2 text-xs font-bold text-store-accent underline-offset-2 hover:underline"
-          >
-            {PROVIDER_PACK_GO_TO_PAYLOAD_TAB}
-          </button>
-        </div>
-      ) : null}
-
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-2xl">{pack.icon}</span>
+        <span className="text-2xl shrink-0">{pack.icon}</span>
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-bold text-slate-900">{pack.name}</h1>
-          <p className="text-xs text-store-muted">
+          <h1 className="break-words text-lg font-bold text-slate-900 sm:truncate">
+            {name.trim() || pack.name}
+          </h1>
+          <p className="break-all text-xs text-store-muted sm:truncate sm:break-normal">
             <span className="font-semibold text-slate-700">{PROVIDER_PACK_ID_LABEL}</span>{" "}
             <span className="font-mono">{pack.packId}</span>
           </p>
@@ -324,7 +371,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
                 : null}
             </p>
           ) : null}
-          <ProviderPackProgressStepper steps={packProgress.steps} />
         </div>
       ) : null}
 
@@ -341,8 +387,6 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           aria-hidden={activeTab !== "basic"}
         >
           <ProviderPackBasicInfoTab
-            packId={pack.packId}
-            packName={pack.name}
             editable={editable}
             name={name}
             shortDescription={shortDescription}
@@ -350,11 +394,29 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             versionOverview={versionOverview}
             versionLabel={latestVersion?.version ?? "—"}
             saving={saving}
-            onNameChange={setName}
-            onShortDescriptionChange={setShortDescription}
-            onDescriptionChange={setDescription}
-            onVersionOverviewChange={setVersionOverview}
-            onSave={onSave}
+            saveSuccessMessage={saveSuccessMessage}
+            fieldErrors={basicFieldErrors}
+            onNameChange={(value) => {
+              setName(value);
+              setSaveSuccessMessage(null);
+              setBasicFieldErrors((prev) => ({ ...prev, name: undefined }));
+            }}
+            onShortDescriptionChange={(value) => {
+              setShortDescription(value);
+              setSaveSuccessMessage(null);
+              setBasicFieldErrors((prev) => ({ ...prev, shortDescription: undefined }));
+            }}
+            onDescriptionChange={(value) => {
+              setDescription(value);
+              setSaveSuccessMessage(null);
+              setBasicFieldErrors((prev) => ({ ...prev, description: undefined }));
+            }}
+            onVersionOverviewChange={(value) => {
+              setVersionOverview(value);
+              setSaveSuccessMessage(null);
+            }}
+            onSaveDraft={() => void onSaveBasicInfo()}
+            onSaveAndContinue={() => void onSaveBasicInfo({ nextTab: "payload" })}
           />
         </div>
 
@@ -368,12 +430,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             packStatus={pack.status}
             latestReviewStatus={pack.latestReviewStatus}
             cachedDoclingBundle={doclingBundle}
-            onPayloadChanged={setPayload}
             onDoclingChanged={setDoclingBundle}
             onPackUpdated={(next) => {
               setPack(next);
               setVersionOverview(next.versions[0]?.overview ?? "");
-              setPayload(null);
               setDoclingBundle(null);
               setDistribution(null);
             }}

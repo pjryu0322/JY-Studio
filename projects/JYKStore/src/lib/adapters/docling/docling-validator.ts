@@ -47,77 +47,16 @@ function validateEntityArrays(
   }
 }
 
-export function validateDoclingJson(
-  input: AdapterInput,
+/**
+ * Schema / origin / reference checks for an already-parsed DoclingDocument
+ * (e.g. from the streaming JSON projector).
+ */
+export function validateDoclingParsedDocument(
+  doc: DoclingDocument,
+  input?: Pick<AdapterInput, "source">,
+  extraIssues?: DoclingIssue[],
 ): AdapterValidationResult {
-  const issues: DoclingIssue[] = [];
-
-  if (input.json === undefined || input.json === null) {
-    issues.push(
-      issue(
-        DOCLING_ERROR_CODES.DOCLING_JSON_REQUIRED,
-        "ERROR",
-        "Docling JSON is required.",
-        { field: "json", hint: "Docling JSON Export 결과를 등록하세요." },
-      ),
-    );
-    return { ok: false, issues };
-  }
-
-  const decoded = decodeUtf8(input.json);
-  if (!decoded.ok) {
-    issues.push(
-      issue(
-        DOCLING_ERROR_CODES.DOCLING_JSON_PARSE_FAILED,
-        "ERROR",
-        decoded.message,
-        { field: "json" },
-      ),
-    );
-    return { ok: false, issues };
-  }
-
-  const raw = decoded.text;
-  if (raw.trim().length === 0) {
-    issues.push(
-      issue(
-        DOCLING_ERROR_CODES.DOCLING_JSON_EMPTY,
-        "ERROR",
-        "Docling JSON is empty.",
-        { field: "json" },
-      ),
-    );
-    return { ok: false, issues };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    issues.push(
-      issue(
-        DOCLING_ERROR_CODES.DOCLING_JSON_PARSE_FAILED,
-        "ERROR",
-        "Docling JSON could not be parsed.",
-        { field: "json", hint: "유효한 JSON 파일인지 확인하세요." },
-      ),
-    );
-    return { ok: false, issues };
-  }
-
-  if (!isPlainObject(parsed)) {
-    issues.push(
-      issue(
-        DOCLING_ERROR_CODES.DOCLING_SCHEMA_INVALID,
-        "ERROR",
-        "Docling JSON root must be an object.",
-        { field: "json" },
-      ),
-    );
-    return { ok: false, issues };
-  }
-
-  const doc = parsed as DoclingDocument;
+  const issues: DoclingIssue[] = [...(extraIssues ?? [])];
 
   if (doc.schema_name !== DOCLING_SCHEMA_NAME) {
     issues.push(
@@ -208,7 +147,7 @@ export function validateDoclingJson(
   validateEntityArrays(doc, issues);
 
   let originMatch: AdapterValidationResult["originMatch"];
-  if (isPlainObject(doc.origin) && input.source) {
+  if (isPlainObject(doc.origin) && input?.source) {
     originMatch = matchOriginToSource({
       originFilename:
         typeof doc.origin.filename === "string"
@@ -240,9 +179,83 @@ export function validateDoclingJson(
   return {
     ok,
     issues,
-    document: hasHardSchemaFailure && doc.schema_name !== DOCLING_SCHEMA_NAME
-      ? undefined
-      : doc,
+    document:
+      hasHardSchemaFailure && doc.schema_name !== DOCLING_SCHEMA_NAME
+        ? undefined
+        : doc,
     originMatch,
   };
+}
+
+export function validateDoclingJson(
+  input: AdapterInput,
+): AdapterValidationResult {
+  const issues: DoclingIssue[] = [];
+
+  if (input.json === undefined || input.json === null) {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_JSON_REQUIRED,
+        "ERROR",
+        "Docling JSON is required.",
+        { field: "json", hint: "Docling JSON Export 결과를 등록하세요." },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  const decoded = decodeUtf8(input.json);
+  if (!decoded.ok) {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_JSON_PARSE_FAILED,
+        "ERROR",
+        decoded.message,
+        { field: "json" },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  const raw = decoded.text;
+  if (raw.trim().length === 0) {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_JSON_EMPTY,
+        "ERROR",
+        "Docling JSON is empty.",
+        { field: "json" },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_JSON_PARSE_FAILED,
+        "ERROR",
+        "Docling JSON could not be parsed.",
+        { field: "json", hint: "유효한 JSON 파일인지 확인하세요." },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  if (!isPlainObject(parsed)) {
+    issues.push(
+      issue(
+        DOCLING_ERROR_CODES.DOCLING_SCHEMA_INVALID,
+        "ERROR",
+        "Docling JSON root must be an object.",
+        { field: "json" },
+      ),
+    );
+    return { ok: false, issues };
+  }
+
+  return validateDoclingParsedDocument(parsed as DoclingDocument, input);
 }

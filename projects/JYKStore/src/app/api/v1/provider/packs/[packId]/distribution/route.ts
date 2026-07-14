@@ -81,8 +81,6 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         readmeText: typeof body.readmeText === "string" ? body.readmeText : null,
         visibility: typeof body.visibility === "string" ? body.visibility : "PRIVATE",
         allowDownload: body.allowDownload !== false,
-        primaryArtifactType:
-          typeof body.primaryArtifactType === "string" ? body.primaryArtifactType : null,
         contentType: typeof body.contentType === "string" ? body.contentType : null,
       },
     });

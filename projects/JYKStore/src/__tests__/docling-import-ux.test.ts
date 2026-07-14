@@ -19,7 +19,7 @@ function readSource(relativePath: string): string {
 }
 
 describe("docling import UX sources", () => {
-  it("ships ProviderDoclingImportTab with 3 file pickers and preview tabs", () => {
+  it("ships ProviderDoclingImportTab with 3 file pickers and multipart upload", () => {
     const path = "src/components/provider-distribution/ProviderDoclingImportTab.tsx";
     assert.ok(existsSync(join(projectRoot, path)));
     const source = readSource(path);
@@ -39,11 +39,37 @@ describe("docling import UX sources", () => {
     assert.ok(source.includes("실패한 Staging Bundle") || source.includes("stagingBundle"));
     assert.ok(source.includes("Staging 재시도") || source.includes("retryProviderDoclingImportBundleApi"));
     assert.ok(source.includes("검수 제출 이력이 있어 교체할 수 없습니다"));
+    assert.ok(source.includes("uploadDoclingMultipart"));
+    assert.ok(!source.includes("uploadProviderDoclingImportApi"));
+    assert.ok(!source.includes("FormData"));
+  });
+
+  it("ships multipart client and upload-session API helpers; FormData upload gone", () => {
+    const client = readSource("src/lib/docling-import/docling-multipart-client.ts");
+    assert.ok(client.includes("uploadDoclingMultipart"));
+    assert.ok(client.includes("preValidateDoclingUploadFiles"));
+    assert.ok(client.includes("XMLHttpRequest"));
+    assert.ok(client.includes("sessionStorage"));
+    assert.ok(client.includes("파일 확인") || client.includes("validating"));
+
+    const api = readSource("src/lib/provider-center-api.ts");
+    assert.ok(api.includes("fetchProviderDoclingUploadPolicyApi"));
+    assert.ok(api.includes("createProviderDoclingUploadSessionApi"));
+    assert.ok(api.includes("presignProviderDoclingUploadPartsApi"));
+    assert.ok(api.includes("completeProviderDoclingUploadSessionApi"));
+    assert.ok(!api.includes("uploadProviderDoclingImportApi"));
+    assert.ok(!api.includes("form.append(\"sourceFile\""));
+
+    const route = readSource(
+      "src/app/api/v1/provider/packs/[packId]/docling-import/route.ts",
+    );
+    assert.ok(route.includes("410") || route.includes("DOCLING_FORMDATA_UPLOAD_GONE"));
   });
 
   it("payload tab is Docling-only without legacy ZIP UI", () => {
     const payload = readSource("src/components/provider-distribution/ProviderPayloadTab.tsx");
     assert.ok(payload.includes("ProviderDoclingImportTab"));
+    assert.ok(payload.includes("등록 자료") || payload.includes("ProviderMaterialRegistrationTab"));
     assert.ok(!payload.includes("레거시 ZIP Payload"));
     assert.ok(!payload.includes("legacyOpen"));
     assert.ok(!payload.includes("ZIP 파일"));
@@ -52,7 +78,6 @@ describe("docling import UX sources", () => {
   it("wires provider API helpers and pack editor readiness", () => {
     const api = readSource("src/lib/provider-center-api.ts");
     assert.ok(api.includes("fetchProviderDoclingImportApi"));
-    assert.ok(api.includes("uploadProviderDoclingImportApi"));
     assert.ok(api.includes("deleteProviderDoclingImportApi"));
     assert.ok(api.includes("retryProviderDoclingImportApi"));
     assert.ok(api.includes("fetchProviderNormalizedDocumentApi"));
@@ -62,12 +87,17 @@ describe("docling import UX sources", () => {
     assert.ok(editor.includes("fetchProviderDoclingImportApi"));
     assert.ok(editor.includes("onDoclingChanged"));
     assert.ok(editor.includes("isDoclingPayloadPresent"));
+    assert.ok(!editor.includes("fetchProviderPackPayloadApi"));
 
     const readiness = readSource(
       "src/components/provider-distribution/ProviderDistributionReadiness.tsx",
     );
     assert.ok(readiness.includes("doclingBundle"));
     assert.ok(readiness.includes("isDoclingPayloadReady"));
+    assert.ok(readiness.includes("등록 자료"));
+    assert.ok(readiness.includes("파일 무결성"));
+    assert.ok(readiness.includes("문서 정규화"));
+    assert.ok(!readiness.includes("KnowledgePayloadPublicDto"));
   });
 
   it("ships AdminReviewProcessingEvidenceTab and evidence tab id", () => {
@@ -109,7 +139,6 @@ describe("docling import UX sources", () => {
 
     const importDoc = readSource("docs/docling-three-file-import.md");
     assert.ok(importDoc.includes("Docling을 **실행하지 않습니다**") || importDoc.includes("실행하지 않습니다"));
-    assert.ok(importDoc.includes("레거시 ZIP"));
     assert.ok(importDoc.includes("DOCLING_ADAPTER_VERSION") || importDoc.includes("서버 상수"));
     assert.ok(importDoc.includes("storageStatus") || importDoc.includes("Storage Status"));
 

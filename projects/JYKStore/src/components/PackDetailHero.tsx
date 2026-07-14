@@ -72,13 +72,9 @@ export function PackDetailHero({ pack }: { readonly pack: KnowledgePack }) {
         </div>
         <p className="mt-4 text-xs leading-relaxed text-store-muted">
           {apiReady
-            ? pack.downloadInfo?.artifactKind === "KNOWLEDGE_PACKAGE"
-              ? "이 지식팩은 API 연동과 지식팩 패키지 다운로드를 지원합니다."
-              : "이 지식팩은 API 연동과 원본문서 다운로드를 지원합니다."
+            ? "이 지식팩은 API 연동과 원본문서 다운로드를 지원합니다."
             : downloadReady
-              ? pack.downloadInfo?.artifactKind === "KNOWLEDGE_PACKAGE"
-                ? "다운로드형 지식팩입니다. 표준 지식팩 ZIP Package 다운로드가 가능하며 API·MCP 연동은 준비 중입니다."
-                : "다운로드형 지식팩입니다. 원본문서 다운로드가 가능하며 API·MCP 연동은 준비 중입니다."
+              ? "다운로드형 지식팩입니다. 원본문서 다운로드가 가능하며 API·MCP 연동은 준비 중입니다."
               : "내 지식팩에 추가해 보관할 수 있습니다."}
         </p>
         <div className="mt-4">
