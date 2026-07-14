@@ -14,7 +14,7 @@ import {
 } from "../lib/docling-import/docling-upload-fingerprint.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { findResumeFingerprintMismatches } from "../lib/docling-import/docling-multipart-client.ts";
+import { findResumeFingerprintMismatches, isDoclingUploadPollTerminalSuccess } from "../lib/docling-import/docling-multipart-client.ts";
 
 const root = join(import.meta.dirname, "../..");
 
@@ -274,5 +274,26 @@ describe("docling upload fingerprints", () => {
     assert.ok(client.includes("computeUploadFingerprints"));
     assert.ok(client.includes("findResumeFingerprintMismatches"));
     assert.ok(client.includes("DOCLING_RESUME_FINGERPRINT_MISMATCH_MESSAGE"));
+  });
+
+  it("treats inactive NORMALIZED staging as upload poll success", () => {
+    assert.equal(
+      isDoclingUploadPollTerminalSuccess({ status: "NORMALIZED", isActive: false }),
+      true,
+    );
+    assert.equal(
+      isDoclingUploadPollTerminalSuccess({ status: "REVIEW_READY", isActive: true }),
+      true,
+    );
+    assert.equal(
+      isDoclingUploadPollTerminalSuccess({ status: "NORMALIZING", isActive: false }),
+      false,
+    );
+    const client = readFileSync(
+      join(root, "src/lib/docling-import/docling-multipart-client.ts"),
+      "utf8",
+    );
+    assert.ok(!client.includes("candidate.isActive)"));
+    assert.ok(client.includes("isDoclingUploadPollTerminalSuccess"));
   });
 });

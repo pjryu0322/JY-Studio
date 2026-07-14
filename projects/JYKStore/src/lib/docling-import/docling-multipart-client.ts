@@ -583,20 +583,22 @@ async function pollBundleUntilSettled(
       bundleId,
     });
 
-    if (terminalOk.has(candidate.status) && candidate.isActive) {
+    if (isDoclingUploadPollTerminalSuccess(candidate)) {
       return candidate;
-    }
-    if (terminalOk.has(candidate.status) && !candidate.isActive) {
-      // Staging may promote asynchronously — keep polling briefly.
-      await sleep(delay);
-      delay = Math.min(delay + 500, 5000);
-      continue;
     }
 
     await sleep(delay);
     delay = Math.min(delay + 500, 5000);
   }
   throw new Error("처리 상태 확인 시간이 초과되었습니다. 새로고침 후 상태를 확인하세요.");
+}
+
+/** Staging NORMALIZED (inactive) is success after provider-confirm gating. */
+export function isDoclingUploadPollTerminalSuccess(candidate: {
+  status: string;
+  isActive?: boolean;
+}): boolean {
+  return candidate.status === "NORMALIZED" || candidate.status === "REVIEW_READY";
 }
 
 /**
