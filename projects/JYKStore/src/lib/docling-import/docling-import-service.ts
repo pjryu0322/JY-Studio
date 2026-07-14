@@ -590,11 +590,11 @@ export async function validateAndNormalizeBundle(
   const byRole = new Map(bundle.files.map((f) => [f.role, f]));
   const sourceFile = byRole.get(KnowledgePackFileRole.SOURCE_ORIGINAL);
   const jsonFile = byRole.get(KnowledgePackFileRole.DOCLING_JSON);
-  const mdFile = byRole.get(KnowledgePackFileRole.DOCLING_MARKDOWN);
-  if (!sourceFile || !jsonFile || !mdFile) {
+  const mdFile = byRole.get(KnowledgePackFileRole.DOCLING_MARKDOWN) ?? null;
+  if (!sourceFile || !jsonFile) {
     throw new DoclingImportError(
       "DOCLING_INCOMPLETE_FILES",
-      "Docling import에 필요한 3개 파일이 없습니다.",
+      "Docling import에 필요한 원본문서와 Docling JSON이 없습니다.",
       400,
     );
   }
@@ -604,7 +604,7 @@ export async function validateAndNormalizeBundle(
     packVersionId: bundle.versionId,
     sourceFileId: sourceFile.id,
     jsonPayloadFileId: jsonFile.id,
-    markdownPayloadFileId: mdFile.id,
+    markdownPayloadFileId: mdFile?.id,
   };
 
   let loaded;
@@ -635,12 +635,17 @@ export async function validateAndNormalizeBundle(
       : new DoclingImportError("DOCLING_STORAGE_UNAVAILABLE", "저장소에서 파일을 읽지 못했습니다.", 503);
   }
 
+  // Soft markdown warnings never contribute to ERROR / fail the bundle.
+  const markdownWarnings = loaded.markdown.warnings ?? loaded.markdown.issues.filter(
+    (i) => i.severity === "WARNING",
+  );
+  const markdownHardErrors = loaded.markdown.issues.filter((i) => i.severity === "ERROR");
   const validation: AdapterValidationResult = {
     ok:
       Boolean(loaded.document) &&
-      loaded.markdown.ok &&
-      ![...loaded.jsonIssues, ...loaded.markdown.issues].some((i) => i.severity === "ERROR"),
-    issues: [...loaded.jsonIssues, ...loaded.markdown.issues],
+      !loaded.jsonIssues.some((i) => i.severity === "ERROR") &&
+      markdownHardErrors.length === 0,
+    issues: [...loaded.jsonIssues, ...markdownWarnings, ...markdownHardErrors],
     document: loaded.document,
     markdownText: loaded.markdown.text ?? loaded.markdownPreviewText,
     originMatch: loaded.originMatch,
@@ -656,7 +661,6 @@ export async function validateAndNormalizeBundle(
       "string"
       ? ((bundle.validationReport as Record<string, unknown>).validatorVersion as string)
       : null;
-  const metrics = loaded.markdown.metrics;
   const validationReport = {
     ok: validation.ok,
     issues: validation.issues,
@@ -665,17 +669,32 @@ export async function validateAndNormalizeBundle(
     validatorVersion:
       loaded.markdown.validatorVersion ?? DOCLING_MARKDOWN_VALIDATOR_VERSION,
     previousValidatorVersion,
-    metrics: metrics ?? null,
-    samples: loaded.markdown.samples
-      ? loaded.markdown.samples.map((s) => ({
-          label: s.label,
-          passed: s.passed,
-          markdownCoverage: s.markdownCoverage,
-        }))
-      : null,
-    markdownCoverage: metrics?.markdownCoverage ?? null,
-    jaccard: metrics?.jaccard ?? loaded.markdown.similarity ?? null,
-    samplePassCount: metrics?.passedSampleCount ?? null,
+    source: { integrity: "ok" as const },
+    json: {
+      status: loaded.jsonIssues.some((i) => i.severity === "ERROR") ? "error" : "ok",
+      issueCount: loaded.jsonIssues.length,
+    },
+    markdown: {
+      available: loaded.markdown.available,
+      previewAvailable: loaded.markdown.previewAvailable,
+      status: !loaded.markdown.available
+        ? ("not_provided" as const)
+        : markdownHardErrors.length > 0
+          ? ("error" as const)
+          : markdownWarnings.length > 0
+            ? ("warning" as const)
+            : ("ok" as const),
+      warnings: markdownWarnings,
+      textPreview: markdownPreviewText
+        ? markdownPreviewText.slice(0, 2_000)
+        : null,
+    },
+    // Legacy similarity fields kept null for Admin report compat readers.
+    metrics: null,
+    samples: null,
+    markdownCoverage: null,
+    jaccard: null,
+    samplePassCount: null,
   };
 
   if (!validation.ok) {
@@ -784,7 +803,7 @@ export async function validateAndNormalizeBundle(
     const { resolveDocumentLanguage } = await import("@/lib/docling-import/document-language");
     const { buildStructureSummary } = await import("@/lib/docling-import/structure-summary");
     const { evaluateDocumentTitleMatch } = await import("@/lib/docling-import/title-match");
-    const mdText = validation.markdownText ?? markdownPreviewText;
+    const mdText = validation.markdownText ?? markdownPreviewText ?? "";
     const packRow = await prisma.knowledgePack.findUnique({
       where: { packId: bundle.packId },
       select: { name: true },
@@ -839,10 +858,10 @@ export async function validateAndNormalizeBundle(
       warnings: draft.warnings,
       sourceFileId: sourceFile.id,
       jsonPayloadFileId: jsonFile.id,
-      markdownPayloadFileId: mdFile.id,
+      markdownPayloadFileId: mdFile?.id ?? null,
       sourceChecksum: sourceFile.checksumSha256,
       jsonChecksum: jsonFile.checksumSha256,
-      markdownChecksum: mdFile.checksumSha256,
+      markdownChecksum: mdFile?.checksumSha256 ?? null,
     });
 
     const ndId = createPayloadId();
@@ -881,7 +900,7 @@ export async function validateAndNormalizeBundle(
           warningsJson: draft.warnings as unknown as Prisma.InputJsonValue,
           sourceFileId: sourceFile.id,
           jsonPayloadFileId: jsonFile.id,
-          markdownPayloadFileId: mdFile.id,
+          markdownPayloadFileId: mdFile?.id ?? null,
           sourcePayloadChecksum: sourceFile.checksumSha256,
           fingerprint,
           fingerprintVersion: NORMALIZED_DOCUMENT_FINGERPRINT_VERSION,

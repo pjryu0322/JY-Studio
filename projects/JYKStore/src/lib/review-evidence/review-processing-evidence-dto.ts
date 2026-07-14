@@ -38,6 +38,9 @@ export type ImportProcessingEvidenceDto = {
     warningCount: number;
     errorCount: number;
     originMatchSummary: string | null;
+    /** Soft markdown auxiliary status for Admin evidence. */
+    markdownStatusLabel: string | null;
+    /** @deprecated Legacy similarity fields retained for old report readers. */
     validatorVersion: string | null;
     markdownCoverage: number | null;
     jaccard: number | null;

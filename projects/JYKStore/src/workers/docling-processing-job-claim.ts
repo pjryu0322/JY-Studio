@@ -79,8 +79,6 @@ export function isDoclingTransientProcessingError(
     "DOCLING_OFFICE_REQUIRED_ENTRY_MISSING",
     "DOCLING_ENTITY_LIMIT_EXCEEDED",
     "DOCLING_VALIDATION_FAILED",
-    "DOCLING_JSON_MARKDOWN_MISMATCH",
-    "DOCLING_JSON_MARKDOWN_LOW_COVERAGE",
   ]);
   return !permanent.has(code);
 }

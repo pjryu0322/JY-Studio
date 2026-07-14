@@ -235,7 +235,6 @@ function normalizeFileInputs(files: UploadSessionFileInput[]): UploadSessionFile
   const required: KnowledgePackFileRole[] = [
     KnowledgePackFileRole.SOURCE_ORIGINAL,
     KnowledgePackFileRole.DOCLING_JSON,
-    KnowledgePackFileRole.DOCLING_MARKDOWN,
   ];
   for (const role of required) {
     if (!byRole.has(role)) {
@@ -246,7 +245,12 @@ function normalizeFileInputs(files: UploadSessionFileInput[]): UploadSessionFile
       );
     }
   }
-  return required.map((role) => byRole.get(role)!);
+  const optionalMarkdown = byRole.get(KnowledgePackFileRole.DOCLING_MARKDOWN);
+  const ordered: UploadSessionFileInput[] = required.map((role) => byRole.get(role)!);
+  if (optionalMarkdown) {
+    ordered.push(optionalMarkdown);
+  }
+  return ordered;
 }
 
 export async function createDoclingUploadSession(input: {

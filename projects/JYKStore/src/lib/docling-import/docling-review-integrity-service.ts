@@ -78,17 +78,13 @@ export function recomputeNormalizedDocumentFingerprint(input: {
   >;
   sourceChecksum: string;
   jsonChecksum: string;
-  markdownChecksum: string;
+  markdownChecksum: string | null;
 }): { ok: true; fingerprint: string } | { ok: false; code: string } {
   const version = input.nd.fingerprintVersion ?? null;
   if (version !== NORMALIZED_DOCUMENT_FINGERPRINT_VERSION) {
     return { ok: false, code: "DOCLING_REVIEW_FINGERPRINT_VERSION_UNSUPPORTED" };
   }
-  if (
-    !input.nd.sourceFileId ||
-    !input.nd.jsonPayloadFileId ||
-    !input.nd.markdownPayloadFileId
-  ) {
+  if (!input.nd.sourceFileId || !input.nd.jsonPayloadFileId) {
     return { ok: false, code: "DOCLING_REVIEW_FINGERPRINT_RECALCULATION_FAILED" };
   }
   try {
@@ -106,7 +102,7 @@ export function recomputeNormalizedDocumentFingerprint(input: {
       warnings: input.nd.warningsJson,
       sourceFileId: input.nd.sourceFileId,
       jsonPayloadFileId: input.nd.jsonPayloadFileId,
-      markdownPayloadFileId: input.nd.markdownPayloadFileId,
+      markdownPayloadFileId: input.nd.markdownPayloadFileId ?? null,
       sourceChecksum: input.sourceChecksum,
       jsonChecksum: input.jsonChecksum,
       markdownChecksum: input.markdownChecksum,
@@ -137,13 +133,11 @@ export async function validateDoclingReviewIntegrity(input: {
     !snapshot.doclingBundleId ||
     !snapshot.sourceFileId ||
     !snapshot.jsonPayloadFileId ||
-    !snapshot.markdownPayloadFileId ||
     !snapshot.normalizedDocumentId ||
     !snapshot.submittedVersionId ||
     !snapshot.adapterVersion ||
     !snapshot.checksums?.source ||
-    !snapshot.checksums?.json ||
-    !snapshot.checksums?.markdown
+    !snapshot.checksums?.json
   ) {
     errors.push(err("DOCLING_REVIEW_FILE_NOT_FOUND", "제출 스냅샷에 필수 Docling 정보가 없습니다."));
     return { ok: false, errors, warnings };
@@ -186,12 +180,14 @@ export async function validateDoclingReviewIntegrity(input: {
       role: KnowledgePackFileRole.DOCLING_JSON,
       checksum: snapshot.checksums.json,
     },
-    {
+  ];
+  if (snapshot.markdownPayloadFileId && snapshot.checksums.markdown) {
+    fileSpecs.push({
       id: snapshot.markdownPayloadFileId,
       role: KnowledgePackFileRole.DOCLING_MARKDOWN,
       checksum: snapshot.checksums.markdown,
-    },
-  ];
+    });
+  }
 
   const files: KnowledgePackFile[] = [];
   for (const spec of fileSpecs) {
@@ -238,7 +234,7 @@ export async function validateDoclingReviewIntegrity(input: {
           ? snapshot.checksums.source
           : file.role === KnowledgePackFileRole.DOCLING_JSON
             ? snapshot.checksums.json
-            : snapshot.checksums.markdown;
+            : snapshot.checksums.markdown!;
       try {
         const head = await storage.head({ objectKey: file.storageKey });
         if (!head.exists) {
@@ -326,7 +322,8 @@ export function assertNormalizedMatches(
   const mdFile = byRole.get(KnowledgePackFileRole.DOCLING_MARKDOWN);
   const sourceChecksum = sourceFile?.checksumSha256 ?? snapshot.checksums.source;
   const jsonChecksum = jsonFile?.checksumSha256 ?? snapshot.checksums.json;
-  const markdownChecksum = mdFile?.checksumSha256 ?? snapshot.checksums.markdown;
+  const markdownChecksum =
+    mdFile?.checksumSha256 ?? snapshot.checksums.markdown ?? null;
 
   const recomputed = recomputeNormalizedDocumentFingerprint({
     nd,

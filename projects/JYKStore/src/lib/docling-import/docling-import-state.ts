@@ -31,14 +31,12 @@ export const DOCLING_RETRYABLE_ERROR_CODES = new Set([
 ]);
 
 /**
- * Content issues that can be re-checked against already-stored objects
- * (e.g. after validator upgrades) without re-uploading.
+ * Transient / infra issues that can be re-checked against already-stored objects
+ * without re-uploading. Markdown preview/soft issues are NOT revalidate reasons.
+ * Legacy MISMATCH / INCONCLUSIVE / LOW_COVERAGE / VALIDATOR_VERSION_OUTDATED
+ * codes are no longer UI revalidate triggers.
  */
 export const DOCLING_REVALIDATE_ERROR_CODES = new Set([
-  "DOCLING_JSON_MARKDOWN_MISMATCH",
-  "DOCLING_JSON_MARKDOWN_INCONCLUSIVE",
-  "DOCLING_JSON_MARKDOWN_LOW_COVERAGE",
-  "DOCLING_VALIDATOR_VERSION_OUTDATED",
   "DOCLING_VALIDATION_FAILED",
   ...DOCLING_RETRYABLE_ERROR_CODES,
 ]);
@@ -56,6 +54,9 @@ export const DOCLING_NON_RETRYABLE_ERROR_CODES = new Set([
   "DOCLING_OFFICE_PACKAGE_INVALID",
   "DOCLING_OFFICE_REQUIRED_ENTRY_MISSING",
   "DOCLING_ENTITY_LIMIT_EXCEEDED",
+  "DOCLING_JSON_REQUIRED",
+  "DOCLING_JSON_EMPTY",
+  "DOCLING_JSON_PARSE_FAILED",
 ]);
 
 /** Alias: clear integrity / origin mismatches require re-upload. */
@@ -118,13 +119,18 @@ export function resolveDoclingRetryMode(
     return "REVALIDATE_STORED_OBJECTS";
   }
 
-  // Unknown codes on validation failure: treat schema/origin-ish as reupload
+  // Unknown codes on validation failure: treat schema/origin/checksum as reupload
   if (status === DoclingImportBundleStatus.VALIDATION_FAILED) {
     if (
       code.includes("SCHEMA") ||
-      (code.includes("MISMATCH") &&
-        !code.includes("JSON_MARKDOWN") &&
-        !code.includes("MARKDOWN"))
+      code.includes("ORIGIN") ||
+      code.includes("CHECKSUM") ||
+      code.includes("SIGNATURE") ||
+      code.includes("MIME") ||
+      (code.includes("MISMATCH") && !code.includes("JSON_MARKDOWN")) ||
+      code === "DOCLING_JSON_REQUIRED" ||
+      code === "DOCLING_JSON_PARSE_FAILED" ||
+      code === "DOCLING_INCOMPLETE_FILES"
     ) {
       return "REUPLOAD_REQUIRED";
     }

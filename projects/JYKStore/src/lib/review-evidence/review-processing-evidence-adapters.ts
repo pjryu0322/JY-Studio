@@ -5,6 +5,7 @@ import type {
 } from "@/lib/docling-import/docling-import-dto";
 import {
   DOCLING_FILE_ROLE_LABELS,
+  extractMarkdownPreviewStatus,
   extractOriginMatchSummary,
   extractSimilarityDiagnostics,
 } from "@/lib/docling-import/docling-import-ui";
@@ -100,15 +101,32 @@ export function buildDoclingProcessingEvidence(input: {
       errorCount: bundle?.errorCount ?? 0,
       originMatchSummary: bundle ? extractOriginMatchSummary(bundle.validationReport) : null,
       ...((): {
+        markdownStatusLabel: string | null;
         validatorVersion: string | null;
         markdownCoverage: number | null;
         jaccard: number | null;
         samplePassCount: number | null;
       } => {
+        const mdStatus = bundle
+          ? extractMarkdownPreviewStatus(bundle.validationReport)
+          : null;
+        const hasMdFile = Boolean(
+          bundle?.files.some((f) => f.role === "DOCLING_MARKDOWN"),
+        );
+        const markdownStatusLabel = mdStatus
+          ? mdStatus.detail
+            ? `${mdStatus.label} (${mdStatus.detail})`
+            : mdStatus.label
+          : hasMdFile
+            ? "제공됨"
+            : bundle
+              ? "제공되지 않음"
+              : null;
         const diag = bundle
           ? extractSimilarityDiagnostics(bundle.validationReport)
           : null;
         return {
+          markdownStatusLabel,
           validatorVersion: diag?.validatorVersion ?? null,
           markdownCoverage: diag?.markdownCoverage ?? null,
           jaccard: diag?.jaccard ?? null,
@@ -221,6 +239,7 @@ export function buildDistributionProcessingEvidence(
       warningCount: 0,
       errorCount: payload && payload.validationStatus !== "VALID" ? 1 : 0,
       originMatchSummary: null,
+      markdownStatusLabel: null,
       validatorVersion: null,
       markdownCoverage: null,
       jaccard: null,
@@ -279,6 +298,7 @@ export function buildLegacyProcessingEvidence(
       warningCount: detail.readiness.sourceValidation.warningCount,
       errorCount: detail.readiness.sourceValidation.failCount,
       originMatchSummary: null,
+      markdownStatusLabel: null,
       validatorVersion: null,
       markdownCoverage: null,
       jaccard: null,
@@ -338,6 +358,7 @@ export function buildExternalImportEvidenceFixture(
       warningCount: 0,
       errorCount: 0,
       originMatchSummary: null,
+      markdownStatusLabel: null,
       validatorVersion: null,
       markdownCoverage: null,
       jaccard: null,

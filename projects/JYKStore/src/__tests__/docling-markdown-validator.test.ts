@@ -4,107 +4,90 @@ import {
   DOCLING_MARKDOWN_VALIDATOR_VERSION,
   sanitizeMarkdownForPreview,
   validateDoclingMarkdown,
+  validateDoclingMarkdownPreview,
 } from "../lib/adapters/docling/docling-markdown-validator.ts";
-import type { DoclingDocument } from "../lib/adapters/docling/docling-types.ts";
 
-const DOC: DoclingDocument = {
-  schema_name: "DoclingDocument",
-  version: "1.10.0",
-  name: "Sample",
-  origin: { filename: "sample.pdf", mimetype: "application/pdf" },
-  body: { children: [], self_ref: "#/body" },
-  texts: [
-    {
-      self_ref: "#/texts/0",
-      text: "Hello world sample content",
-      label: "paragraph",
-    },
-  ],
-  tables: [],
-  pictures: [],
-};
-
-describe("docling-markdown-validator", () => {
-  it("re-exports validator version 2.0.0", () => {
-    assert.equal(DOCLING_MARKDOWN_VALIDATOR_VERSION, "2.0.0");
+describe("docling-markdown-validator (soft auxiliary)", () => {
+  it("exports validator version 3.0.0", () => {
+    assert.equal(DOCLING_MARKDOWN_VALIDATOR_VERSION, "3.0.0");
   });
 
-  it("accepts matching markdown", () => {
-    const result = validateDoclingMarkdown({
-      markdown: "# Sample\n\nHello world sample content\n",
-      document: DOC,
-      sourceFileName: "sample.pdf",
-    });
-    assert.equal(result.ok, true);
-    assert.ok((result.metrics?.markdownCoverage ?? 0) >= 0.4 || result.ok);
-    assert.equal(result.validatorVersion, "2.0.0");
-  });
-
-  it("requires markdown", () => {
+  it("treats missing markdown as available=false without ERROR", () => {
     const result = validateDoclingMarkdown({ markdown: null });
-    assert.equal(result.ok, false);
-    assert.ok(
-      result.issues.some((i) => i.code === "DOCLING_MARKDOWN_REQUIRED"),
-    );
+    assert.equal(result.ok, true);
+    assert.equal(result.available, false);
+    assert.equal(result.previewAvailable, false);
+    assert.equal(result.warnings.length, 0);
+    assert.ok(!result.issues.some((i) => i.severity === "ERROR"));
   });
 
-  it("rejects empty markdown", () => {
+  it("warns on empty markdown without blocking", () => {
     const result = validateDoclingMarkdown({ markdown: "  \n\t  " });
-    assert.equal(result.ok, false);
-    assert.ok(result.issues.some((i) => i.code === "DOCLING_MARKDOWN_EMPTY"));
+    assert.equal(result.ok, true);
+    assert.equal(result.available, true);
+    assert.equal(result.previewAvailable, false);
+    assert.ok(result.warnings.some((i) => i.code === "DOCLING_MARKDOWN_EMPTY"));
+    assert.ok(result.warnings.every((i) => i.severity === "WARNING"));
   });
 
-  it("rejects invalid UTF-8 bytes", () => {
+  it("warns on invalid UTF-8 without blocking", () => {
     const result = validateDoclingMarkdown({
       markdown: new Uint8Array([0xff, 0xfe, 0xfd]),
     });
-    assert.equal(result.ok, false);
+    assert.equal(result.ok, true);
     assert.ok(
-      result.issues.some(
+      result.warnings.some(
         (i) => i.code === "DOCLING_MARKDOWN_INVALID_ENCODING",
       ),
     );
   });
 
-  it("Jaccard trap: large JSON corpus + overlapping small MD is not ERROR", () => {
-    const filler = Array.from({ length: 8000 }, (_, i) => `uniq${i}zz`).join(" ");
-    const shared = "hello world sample content shared phrase";
-    const largeDoc: DoclingDocument = {
-      ...DOC,
-      name: "Sample",
-      texts: [
-        { self_ref: "#/texts/0", text: filler, label: "paragraph" },
-        { self_ref: "#/texts/1", text: shared, label: "paragraph" },
-      ],
-    };
+  it("accepts content without semantic JSON comparison", () => {
     const result = validateDoclingMarkdown({
-      markdown: `# Sample\n\n${shared}\n`,
-      document: largeDoc,
-      sourceFileName: "sample.pdf",
+      markdown: "# Sample\n\nHello world sample content\n",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.available, true);
+    assert.equal(result.previewAvailable, true);
+    assert.equal(result.validatorVersion, "3.0.0");
+    assert.equal(result.metrics, null);
+  });
+
+  it("does not ERROR on unrelated content (no Jaccard gate)", () => {
+    const result = validateDoclingMarkdown({
+      markdown: "Completely unrelated quantum banana robotics xyzzy",
     });
     assert.equal(result.ok, true);
     assert.ok(
       !result.issues.some(
         (i) =>
-          i.code === "DOCLING_JSON_MARKDOWN_MISMATCH" && i.severity === "ERROR",
+          i.code === "DOCLING_JSON_MARKDOWN_MISMATCH" ||
+          i.code === "DOCLING_JSON_MARKDOWN_LOW_COVERAGE" ||
+          i.code === "DOCLING_JSON_MARKDOWN_INCONCLUSIVE",
       ),
     );
-    // Jaccard may be low; deprecated similarity field may still be set
-    assert.ok(typeof result.similarity === "number" || result.metrics != null);
   });
 
-  it("errors on unrelated content when all evidence fails", () => {
-    const result = validateDoclingMarkdown({
-      markdown: "Completely unrelated quantum banana robotics xyzzy",
-      document: DOC,
-      sourceFileName: "other-file.pdf",
+  it("soft preview path warns on empty / bad encoding", () => {
+    const empty = validateDoclingMarkdownPreview({
+      textPreview: "",
+      encodingOk: true,
+      empty: true,
+      byteLength: 0,
     });
-    assert.equal(result.ok, false);
+    assert.equal(empty.ok, true);
+    assert.ok(empty.warnings.some((i) => i.code === "DOCLING_MARKDOWN_EMPTY"));
+
+    const badUtf8 = validateDoclingMarkdownPreview({
+      textPreview: "",
+      encodingOk: false,
+      empty: false,
+      byteLength: 3,
+    });
+    assert.equal(badUtf8.ok, true);
     assert.ok(
-      result.issues.some(
-        (i) =>
-          i.code === "DOCLING_JSON_MARKDOWN_MISMATCH" &&
-          i.severity === "ERROR",
+      badUtf8.warnings.some(
+        (i) => i.code === "DOCLING_MARKDOWN_INVALID_ENCODING",
       ),
     );
   });

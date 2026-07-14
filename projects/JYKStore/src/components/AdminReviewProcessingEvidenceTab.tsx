@@ -252,25 +252,8 @@ export function AdminReviewProcessingEvidenceTab({
           {evidence.validation.originMatchSummary ? (
             <li>Origin 일치: {evidence.validation.originMatchSummary}</li>
           ) : null}
-          {evidence.validation.validatorVersion ||
-          evidence.validation.markdownCoverage != null ||
-          evidence.validation.jaccard != null ||
-          evidence.validation.samplePassCount != null ? (
-            <li>
-              Markdown 유사도
-              {evidence.validation.validatorVersion
-                ? ` · validator ${evidence.validation.validatorVersion}`
-                : ""}
-              {evidence.validation.markdownCoverage != null
-                ? ` · coverage ${(evidence.validation.markdownCoverage * 100).toFixed(1)}%`
-                : ""}
-              {evidence.validation.jaccard != null
-                ? ` · jaccard ${evidence.validation.jaccard.toFixed(3)}`
-                : ""}
-              {evidence.validation.samplePassCount != null
-                ? ` · sample pass ${evidence.validation.samplePassCount}`
-                : ""}
-            </li>
+          {evidence.validation.markdownStatusLabel ? (
+            <li>Markdown: {evidence.validation.markdownStatusLabel}</li>
           ) : null}
         </ul>
         {evidence.files.length > 0 ? (

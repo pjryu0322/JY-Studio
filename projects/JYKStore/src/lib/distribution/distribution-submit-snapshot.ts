@@ -23,11 +23,11 @@ export type DoclingBundleReviewSubmitSnapshot = {
   doclingBundleId: string;
   sourceFileId: string;
   jsonPayloadFileId: string;
-  markdownPayloadFileId: string;
+  markdownPayloadFileId: string | null;
   checksums: {
     source: string;
     json: string;
-    markdown: string;
+    markdown: string | null;
   };
   doclingSchemaVersion: string | null;
   adapterVersion: string;
@@ -77,8 +77,8 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
   doclingBundleId: string;
   sourceFileId: string;
   jsonPayloadFileId: string;
-  markdownPayloadFileId: string;
-  checksums: { source: string; json: string; markdown: string };
+  markdownPayloadFileId: string | null;
+  checksums: { source: string; json: string; markdown: string | null };
   doclingSchemaVersion: string | null;
   adapterVersion: string;
   normalizedDocumentId: string;
@@ -154,7 +154,12 @@ export function parseDoclingBundleReviewSubmitSnapshot(
   if (typeof raw.doclingBundleId !== "string") return null;
   if (typeof raw.sourceFileId !== "string") return null;
   if (typeof raw.jsonPayloadFileId !== "string") return null;
-  if (typeof raw.markdownPayloadFileId !== "string") return null;
+  if (
+    raw.markdownPayloadFileId != null &&
+    typeof raw.markdownPayloadFileId !== "string"
+  ) {
+    return null;
+  }
   if (typeof raw.adapterVersion !== "string") return null;
   if (typeof raw.normalizedDocumentId !== "string") return null;
   if (typeof raw.licenseName !== "string") return null;
@@ -162,7 +167,12 @@ export function parseDoclingBundleReviewSubmitSnapshot(
   const checksums = raw.checksums as Record<string, unknown>;
   if (typeof checksums.source !== "string") return null;
   if (typeof checksums.json !== "string") return null;
-  if (typeof checksums.markdown !== "string") return null;
+  if (
+    checksums.markdown != null &&
+    typeof checksums.markdown !== "string"
+  ) {
+    return null;
+  }
 
   return {
     mode: "DOCLING_BUNDLE",
@@ -171,11 +181,14 @@ export function parseDoclingBundleReviewSubmitSnapshot(
     doclingBundleId: raw.doclingBundleId,
     sourceFileId: raw.sourceFileId,
     jsonPayloadFileId: raw.jsonPayloadFileId,
-    markdownPayloadFileId: raw.markdownPayloadFileId,
+    markdownPayloadFileId:
+      typeof raw.markdownPayloadFileId === "string"
+        ? raw.markdownPayloadFileId
+        : null,
     checksums: {
       source: checksums.source,
       json: checksums.json,
-      markdown: checksums.markdown,
+      markdown: typeof checksums.markdown === "string" ? checksums.markdown : null,
     },
     doclingSchemaVersion:
       typeof raw.doclingSchemaVersion === "string" ? raw.doclingSchemaVersion : null,

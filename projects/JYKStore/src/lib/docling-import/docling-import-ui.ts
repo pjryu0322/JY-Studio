@@ -44,6 +44,8 @@ export function extractSimilarityDiagnostics(validationReport: unknown): {
   jaccard: number | null;
   samplePassCount: number | null;
 } | null {
+  // Kept for reading legacy validation reports only; new UI should use
+  // extractMarkdownPreviewStatus instead of coverage/jaccard gate messaging.
   if (!validationReport || typeof validationReport !== "object") return null;
   const report = validationReport as Record<string, unknown>;
   const metrics =
@@ -83,6 +85,54 @@ export function extractSimilarityDiagnostics(validationReport: unknown): {
   return { validatorVersion, markdownCoverage, jaccard, samplePassCount };
 }
 
+export function extractMarkdownPreviewStatus(validationReport: unknown): {
+  label: string;
+  detail: string | null;
+  available: boolean;
+  previewAvailable: boolean;
+} | null {
+  if (!validationReport || typeof validationReport !== "object") return null;
+  const report = validationReport as Record<string, unknown>;
+  const md =
+    report.markdown && typeof report.markdown === "object"
+      ? (report.markdown as Record<string, unknown>)
+      : null;
+  if (!md) return null;
+  const available = md.available === true;
+  const previewAvailable = md.previewAvailable === true;
+  const status = typeof md.status === "string" ? md.status : null;
+  if (!available) {
+    return {
+      label: "제공되지 않음",
+      detail: "선택 자료(미리보기) 없음 — 등록 차단 사유 아님",
+      available: false,
+      previewAvailable: false,
+    };
+  }
+  if (status === "warning") {
+    return {
+      label: "제공됨 · 미리보기 주의",
+      detail: "빈 내용 또는 인코딩 경고가 있습니다 (등록은 가능)",
+      available: true,
+      previewAvailable,
+    };
+  }
+  if (previewAvailable || status === "ok") {
+    return {
+      label: "제공됨 · 미리보기 준비",
+      detail: null,
+      available: true,
+      previewAvailable: true,
+    };
+  }
+  return {
+    label: "제공됨",
+    detail: null,
+    available: true,
+    previewAvailable,
+  };
+}
+
 export function fileByRole(
   bundle: DoclingImportBundlePublicDto,
   role: KnowledgePackFileRole,
@@ -113,15 +163,18 @@ export function mapDoclingImportUserError(code: string | null | undefined, fallb
     case "DOCLING_REVIEW_STATE_CONFLICT":
       return "검수 상태와 Bundle 상태가 충돌합니다. 새로고침 후 다시 시도하세요.";
     case "DOCLING_JSON_MARKDOWN_MISMATCH":
-      return "JSON과 Markdown이 서로 다른 문서로 보입니다. 동일 Docling 출력 쌍인지 확인하세요.";
     case "DOCLING_JSON_MARKDOWN_INCONCLUSIVE":
-      return "대용량 문서에서는 유사도만으로 단정할 수 없습니다. 저장된 파일 재검증을 시도해 보세요.";
     case "DOCLING_JSON_MARKDOWN_LOW_COVERAGE":
-      return "Markdown이 JSON 텍스트를 부분적으로만 포함합니다. 동일 문서인지 확인하거나 재검증하세요.";
+      return "과거 유사도 게이트 결과입니다. 새 정책에서는 Markdown이 선택 자료이며 등록을 막지 않습니다. 원본·JSON만 확인하세요.";
     case "DOCLING_REVALIDATION_NOT_ALLOWED":
       return "현재 상태에서는 저장된 파일 재검증을 할 수 없습니다.";
     case "DOCLING_VALIDATOR_VERSION_OUTDATED":
-      return "검증기 버전이 갱신되었습니다. 저장된 파일 재검증을 실행하세요.";
+      return "과거 검증기 버전 메시지입니다. Markdown 유사도는 더 이상 재검증 사유가 아닙니다.";
+    case "DOCLING_MARKDOWN_EMPTY":
+    case "DOCLING_MARKDOWN_INVALID_ENCODING":
+      return "Markdown 미리보기 경고입니다. 등록을 막지 않습니다.";
+    case "DOCLING_MARKDOWN_REQUIRED":
+      return "Markdown은 선택 자료입니다. 원본문서와 JSON만 있으면 등록할 수 있습니다.";
     default:
       return fallback?.trim() || "Docling import 처리에 실패했습니다.";
   }

@@ -20,11 +20,11 @@ export type DistributionReadiness = {
   missing: { label: string; tab: "basic" | "payload" | "distribution" }[];
 };
 
-function hasAllThreeFilesWithChecksums(
+function hasRequiredFilesWithChecksums(
   bundle: DoclingImportBundlePublicDto | null | undefined,
 ): boolean {
   if (!bundle) return false;
-  const roles = ["SOURCE_ORIGINAL", "DOCLING_JSON", "DOCLING_MARKDOWN"] as const;
+  const roles = ["SOURCE_ORIGINAL", "DOCLING_JSON"] as const;
   return roles.every((role) => {
     const file = bundle.files.find((f) => f.role === role);
     return Boolean(file?.checksumSha256?.trim());
@@ -37,11 +37,11 @@ export function computeDistributionReadiness(input: {
   doclingBundle?: DoclingImportBundlePublicDto | null;
 }): DistributionReadiness {
   const doclingReady = isDoclingPayloadReady(input.doclingBundle?.status);
-  const hasThreeFiles = hasAllThreeFilesWithChecksums(input.doclingBundle);
+  const hasRequiredFiles = hasRequiredFilesWithChecksums(input.doclingBundle);
   const hasNormalizedDocument = Boolean(input.doclingBundle?.normalizedDocument);
   const hasPayload = Boolean(input.doclingBundle);
-  const payloadValid = doclingReady && hasThreeFiles && hasNormalizedDocument;
-  const hasChecksum = hasThreeFiles;
+  const payloadValid = doclingReady && hasRequiredFiles && hasNormalizedDocument;
+  const hasChecksum = hasRequiredFiles;
   const hasSource = Boolean(
     input.distribution?.sourceTitle?.trim() || input.distribution?.sourceUrl?.trim(),
   );
@@ -51,7 +51,7 @@ export function computeDistributionReadiness(input: {
   if (!input.hasBasicInfo) missing.push({ label: "기본정보", tab: "basic" });
   if (!hasPayload) missing.push({ label: "등록 자료", tab: "payload" });
   else if (!doclingReady) missing.push({ label: "Docling REVIEW_READY", tab: "payload" });
-  else if (!hasThreeFiles) missing.push({ label: "파일 무결성(3파일 checksum)", tab: "payload" });
+  else if (!hasRequiredFiles) missing.push({ label: "파일 무결성(원본·JSON checksum)", tab: "payload" });
   else if (!hasNormalizedDocument) missing.push({ label: "문서 정규화", tab: "payload" });
   if (!hasSource || !hasLicense) missing.push({ label: "유통정보(출처·라이선스)", tab: "distribution" });
 

@@ -133,9 +133,9 @@ export async function commitDistributionPackForReview(
     const byRole = new Map(doclingBundle.files.map((f) => [f.role, f]));
     const sourceFile = byRole.get(KnowledgePackFileRole.SOURCE_ORIGINAL);
     const jsonFile = byRole.get(KnowledgePackFileRole.DOCLING_JSON);
-    const mdFile = byRole.get(KnowledgePackFileRole.DOCLING_MARKDOWN);
+    const mdFile = byRole.get(KnowledgePackFileRole.DOCLING_MARKDOWN) ?? null;
     const nd = doclingBundle.normalizedDocuments[0];
-    if (!sourceFile || !jsonFile || !mdFile || !nd) {
+    if (!sourceFile || !jsonFile || !nd) {
       return {
         error: "INCOMPLETE",
         message: "Docling import 파일 또는 정규화 문서가 완전하지 않습니다.",
@@ -147,11 +147,11 @@ export async function commitDistributionPackForReview(
       doclingBundleId: doclingBundle.id,
       sourceFileId: sourceFile.id,
       jsonPayloadFileId: jsonFile.id,
-      markdownPayloadFileId: mdFile.id,
+      markdownPayloadFileId: mdFile?.id ?? null,
       checksums: {
         source: sourceFile.checksumSha256,
         json: jsonFile.checksumSha256,
-        markdown: mdFile.checksumSha256,
+        markdown: mdFile?.checksumSha256 ?? null,
       },
       doclingSchemaVersion: doclingBundle.doclingSchemaVersion,
       adapterVersion: nd.adapterVersion,

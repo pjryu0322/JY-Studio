@@ -19,15 +19,20 @@ function readSource(relativePath: string): string {
 }
 
 describe("docling import UX sources", () => {
-  it("ships ProviderDoclingImportTab with 3 file pickers and multipart upload", () => {
+  it("ships ProviderDoclingImportTab with optional Markdown and multipart upload", () => {
     const path = "src/components/provider-distribution/ProviderDoclingImportTab.tsx";
     assert.ok(existsSync(join(projectRoot, path)));
     const source = readSource(path);
     assert.ok(source.includes("원본문서"));
     assert.ok(source.includes("Docling JSON"));
     assert.ok(source.includes("Docling Markdown"));
-    assert.ok(source.includes("3파일 업로드"));
-    assert.ok(source.includes("선택됨:"));
+    assert.ok(source.includes("선택 안 함") || source.includes("선택)"));
+    assert.ok(
+      source.includes("원본문서와 구조화 JSON을 등록합니다") ||
+        source.includes("Markdown은 미리보기"),
+    );
+    assert.ok(!source.includes("3파일 업로드"));
+    assert.ok(source.includes("선택됨:") || source.includes("선택 안 함"));
     assert.ok(source.includes("선택한 파일"));
     assert.ok(source.includes("등록된 Docling Bundle"));
     assert.ok(source.includes("cachedBundle"));
@@ -42,6 +47,7 @@ describe("docling import UX sources", () => {
     assert.ok(source.includes("uploadDoclingMultipart"));
     assert.ok(!source.includes("uploadProviderDoclingImportApi"));
     assert.ok(!source.includes("FormData"));
+    assert.ok(!source.includes("extractSimilarityDiagnostics"));
   });
 
   it("ships multipart client and upload-session API helpers; FormData upload gone", () => {

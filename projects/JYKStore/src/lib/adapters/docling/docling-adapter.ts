@@ -18,7 +18,6 @@ export class DoclingAdapter implements DocumentAdapter {
     const jsonResult = validateDoclingJson(input);
     const mdResult = validateDoclingMarkdown({
       markdown: input.markdown,
-      document: jsonResult.document,
     });
 
     const issues = [...jsonResult.issues, ...mdResult.issues];

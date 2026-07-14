@@ -45,42 +45,46 @@ describe("docling-import-state", () => {
     assert.equal(canRetry(DoclingImportBundleStatus.UPLOADED), false);
   });
 
-  it("resolveDoclingRetryMode: markdown mismatch → REVALIDATE", () => {
+  it("resolveDoclingRetryMode: legacy markdown similarity codes are not UI revalidate reasons", () => {
+    // Soft policy: historical MISMATCH codes fall through to generic revalidate
+    // only via DOCLING_VALIDATION_FAILED / retryable sets — similarity codes
+    // themselves are no longer listed as primary revalidate reasons for UI.
     assert.equal(
       resolveDoclingRetryMode(
         DoclingImportBundleStatus.VALIDATION_FAILED,
-        "DOCLING_JSON_MARKDOWN_MISMATCH",
+        "DOCLING_VALIDATION_FAILED",
       ),
       "REVALIDATE_STORED_OBJECTS",
     );
-    assert.equal(
+    // Empty/encoding markdown warnings must not force 재검증 UI.
+    assert.notEqual(
       resolveDoclingRetryMode(
         DoclingImportBundleStatus.VALIDATION_FAILED,
-        "DOCLING_JSON_MARKDOWN_INCONCLUSIVE",
+        "DOCLING_MARKDOWN_EMPTY",
       ),
-      "REVALIDATE_STORED_OBJECTS",
-    );
-    assert.equal(
-      resolveDoclingRetryMode(
-        DoclingImportBundleStatus.VALIDATION_FAILED,
-        "DOCLING_JSON_MARKDOWN_LOW_COVERAGE",
-      ),
-      "REVALIDATE_STORED_OBJECTS",
-    );
-    assert.equal(
-      canRetryDoclingBundle(
-        DoclingImportBundleStatus.VALIDATION_FAILED,
-        "DOCLING_JSON_MARKDOWN_MISMATCH",
-      ),
-      true,
+      "REUPLOAD_REQUIRED",
     );
   });
 
-  it("resolveDoclingRetryMode: origin/signature → REUPLOAD", () => {
+  it("resolveDoclingRetryMode: origin/signature/schema → REUPLOAD", () => {
     assert.equal(
       resolveDoclingRetryMode(
         DoclingImportBundleStatus.VALIDATION_FAILED,
         "SOURCE_FILENAME_MISMATCH",
+      ),
+      "REUPLOAD_REQUIRED",
+    );
+    assert.equal(
+      resolveDoclingRetryMode(
+        DoclingImportBundleStatus.VALIDATION_FAILED,
+        "DOCLING_SCHEMA_INVALID",
+      ),
+      "REUPLOAD_REQUIRED",
+    );
+    assert.equal(
+      resolveDoclingRetryMode(
+        DoclingImportBundleStatus.VALIDATION_FAILED,
+        "DOCLING_INCOMPLETE_FILES",
       ),
       "REUPLOAD_REQUIRED",
     );
@@ -97,7 +101,7 @@ describe("docling-import-state", () => {
     assert.equal(
       resolveDoclingRetryMode(
         DoclingImportBundleStatus.VALIDATION_FAILED,
-        "DOCLING_JSON_MARKDOWN_MISMATCH",
+        "DOCLING_VALIDATION_FAILED",
         { immutable: true },
       ),
       "NOT_ALLOWED",

@@ -50,31 +50,36 @@ describe("docling revalidation (unit + gated e2e)", () => {
     assert.ok(!ui.includes("같은 파일로는 재시도할 수 없습니다"));
   });
 
-  it("retryMode maps mismatch to revalidate and persistence fields exist", () => {
+  it("retryMode maps integrity failures to reupload; soft MD is not a mismatch gate", () => {
     assert.equal(
       resolveDoclingRetryMode(
         DoclingImportBundleStatus.VALIDATION_FAILED,
-        "DOCLING_JSON_MARKDOWN_MISMATCH",
+        "DOCLING_SCHEMA_INVALID",
+      ),
+      "REUPLOAD_REQUIRED",
+    );
+    assert.equal(
+      resolveDoclingRetryMode(
+        DoclingImportBundleStatus.VALIDATION_FAILED,
+        "DOCLING_VALIDATION_FAILED",
       ),
       "REVALIDATE_STORED_OBJECTS",
     );
-    assert.equal(DOCLING_MARKDOWN_VALIDATOR_VERSION, "2.0.0");
+    assert.equal(DOCLING_MARKDOWN_VALIDATOR_VERSION, "3.0.0");
 
     const service = readFileSync(
       join(projectRoot, "src/lib/docling-import/docling-import-service.ts"),
       "utf8",
     );
     assert.ok(service.includes("validatorVersion"));
-    assert.ok(service.includes("markdownCoverage"));
-    assert.ok(service.includes("samplePassCount"));
+    assert.ok(service.includes("previewAvailable") || service.includes("not_provided"));
+    assert.ok(service.includes("markdownPayloadFileId: mdFile?.id ?? null"));
   });
 
   it(
     "live revalidate against storage (skipped unless DOCLING_REVALIDATION_E2E=1)",
     { skip: !runLive },
     async () => {
-      // Full MinIO path is optional; when gated on, at least import the service
-      // entrypoint so wiring regressions surface.
       const mod = await import("../lib/docling-import/docling-import-service.ts");
       assert.equal(typeof mod.revalidateDoclingImportBundle, "function");
       assert.equal(typeof mod.validateAndNormalizeBundle, "function");

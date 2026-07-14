@@ -56,7 +56,7 @@ export const DOCLING_UPLOAD_STAGE_LABELS: Record<DoclingUploadStage, string> = {
   idle: "대기",
   validating: "파일 확인",
   preparing: "업로드 준비",
-  uploading: "원본·JSON·Markdown 업로드",
+  uploading: "원본·JSON 업로드",
   completing: "서버 무결성 확인",
   integrity: "서버 무결성 확인",
   validating_server: "검증",
@@ -98,7 +98,7 @@ export type MultipartUploadResult = {
 export type MultipartUploadFiles = {
   sourceFile: File;
   doclingJsonFile: File;
-  doclingMarkdownFile: File;
+  doclingMarkdownFile?: File | null;
 };
 
 const SESSION_STORAGE_KEY_PREFIX = "jykstore:docling-upload-session:";
@@ -170,16 +170,18 @@ export function clearStoredUploadSessionId(packId: string): void {
 async function computeUploadFingerprints(
   files: MultipartUploadFiles,
 ): Promise<DoclingRoleFingerprintMap> {
-  const [source, json, markdown] = await Promise.all([
+  const [source, json] = await Promise.all([
     computeFileFingerprint(files.sourceFile),
     computeFileFingerprint(files.doclingJsonFile),
-    computeFileFingerprint(files.doclingMarkdownFile),
   ]);
-  return {
+  const result: DoclingRoleFingerprintMap = {
     SOURCE_ORIGINAL: source,
     DOCLING_JSON: json,
-    DOCLING_MARKDOWN: markdown,
   };
+  if (files.doclingMarkdownFile) {
+    result.DOCLING_MARKDOWN = await computeFileFingerprint(files.doclingMarkdownFile);
+  }
+  return result;
 }
 
 /**
@@ -191,28 +193,34 @@ export function findResumeFingerprintMismatches(input: {
   sessionFiles?: UploadSessionFilePublicDto[];
   storedFingerprints?: DoclingRoleFingerprintMap;
 }): DoclingUploadRole[] {
-  const roles: DoclingUploadRole[] = ["SOURCE_ORIGINAL", "DOCLING_JSON", "DOCLING_MARKDOWN"];
   const mismatched: DoclingUploadRole[] = [];
   const serverByRole = new Map(
     (input.sessionFiles ?? []).map((f) => [f.role as DoclingUploadRole, f]),
   );
+  const roles = new Set<DoclingUploadRole>([
+    "SOURCE_ORIGINAL",
+    "DOCLING_JSON",
+    ...([...serverByRole.keys()] as DoclingUploadRole[]),
+    ...(Object.keys(input.selected) as DoclingUploadRole[]),
+  ]);
   for (const role of roles) {
     const selected = input.selected[role];
-    if (!selected) {
+    const server = serverByRole.get(role);
+    // Optional markdown: absent on both sides is OK.
+    if (!selected && !server) continue;
+    if (!selected || !server) {
       mismatched.push(role);
       continue;
     }
-    const server = serverByRole.get(role);
-    const expected = server
-      ? {
-          originalFileName: server.originalFileName,
-          declaredFileSize: server.declaredFileSize,
-          lastModifiedMs: server.lastModifiedMs,
-          headSha256: server.headSha256,
-          tailSha256: server.tailSha256,
-        }
-      : input.storedFingerprints?.[role];
-    if (!fingerprintsMatch(selected, expected)) {
+    const expected = {
+      originalFileName: server.originalFileName,
+      declaredFileSize: server.declaredFileSize,
+      lastModifiedMs: server.lastModifiedMs,
+      headSha256: server.headSha256,
+      tailSha256: server.tailSha256,
+    };
+    const stored = input.storedFingerprints?.[role];
+    if (!fingerprintsMatch(selected, expected) && !fingerprintsMatch(selected, stored)) {
       mismatched.push(role);
     }
   }
@@ -224,9 +232,17 @@ function buildCreateSessionFiles(
   fingerprints: DoclingRoleFingerprintMap,
 ) {
   const fp = (role: DoclingUploadRole): DoclingFileFingerprint | undefined => fingerprints[role];
-  return [
+  const entries: Array<{
+    role: DoclingUploadRole;
+    fileName: string;
+    mimeType: string | null;
+    declaredFileSize: number;
+    lastModifiedMs: number;
+    headSha256: string | null;
+    tailSha256: string | null;
+  }> = [
     {
-      role: "SOURCE_ORIGINAL" as const,
+      role: "SOURCE_ORIGINAL",
       fileName: files.sourceFile.name,
       mimeType: files.sourceFile.type || null,
       declaredFileSize: files.sourceFile.size,
@@ -235,7 +251,7 @@ function buildCreateSessionFiles(
       tailSha256: fp("SOURCE_ORIGINAL")?.tailSha256 ?? null,
     },
     {
-      role: "DOCLING_JSON" as const,
+      role: "DOCLING_JSON",
       fileName: files.doclingJsonFile.name,
       mimeType: files.doclingJsonFile.type || "application/json",
       declaredFileSize: files.doclingJsonFile.size,
@@ -243,16 +259,19 @@ function buildCreateSessionFiles(
       headSha256: fp("DOCLING_JSON")?.headSha256 ?? null,
       tailSha256: fp("DOCLING_JSON")?.tailSha256 ?? null,
     },
-    {
-      role: "DOCLING_MARKDOWN" as const,
+  ];
+  if (files.doclingMarkdownFile) {
+    entries.push({
+      role: "DOCLING_MARKDOWN",
       fileName: files.doclingMarkdownFile.name,
       mimeType: files.doclingMarkdownFile.type || "text/markdown",
       declaredFileSize: files.doclingMarkdownFile.size,
       lastModifiedMs: files.doclingMarkdownFile.lastModified,
       headSha256: fp("DOCLING_MARKDOWN")?.headSha256 ?? null,
       tailSha256: fp("DOCLING_MARKDOWN")?.tailSha256 ?? null,
-    },
-  ];
+    });
+  }
+  return entries;
 }
 
 function maxBytesForRole(
@@ -295,8 +314,10 @@ export function preValidateDoclingUploadFiles(
   const entries: Array<{ role: DoclingUploadRole; file: File }> = [
     { role: "SOURCE_ORIGINAL", file: files.sourceFile },
     { role: "DOCLING_JSON", file: files.doclingJsonFile },
-    { role: "DOCLING_MARKDOWN", file: files.doclingMarkdownFile },
   ];
+  if (files.doclingMarkdownFile) {
+    entries.push({ role: "DOCLING_MARKDOWN", file: files.doclingMarkdownFile });
+  }
   let total = 0;
   for (const { role, file } of entries) {
     if (!file || file.size <= 0) {
@@ -451,7 +472,9 @@ function emptyProgress(files: MultipartUploadFiles): MultipartUploadProgress {
       etaSeconds: null,
       status: "pending",
     },
-    {
+  ];
+  if (files.doclingMarkdownFile) {
+    entries.push({
       role: "DOCLING_MARKDOWN",
       fileName: files.doclingMarkdownFile.name,
       bytesTotal: files.doclingMarkdownFile.size,
@@ -460,8 +483,8 @@ function emptyProgress(files: MultipartUploadFiles): MultipartUploadProgress {
       speedBps: 0,
       etaSeconds: null,
       status: "pending",
-    },
-  ];
+    });
+  }
   return {
     stage: "idle",
     stageLabel: DOCLING_UPLOAD_STAGE_LABELS.idle,
@@ -565,7 +588,8 @@ async function pollBundleUntilSettled(
 }
 
 /**
- * Upload three Docling files via multipart sessions. Supports refresh resume via sessionStorage.
+ * Upload Docling source+JSON (Markdown optional) via multipart sessions.
+ * Supports refresh resume via sessionStorage.
  */
 export async function uploadDoclingMultipart(input: {
   packId: string;
@@ -652,17 +676,23 @@ export async function uploadDoclingMultipart(input: {
     progress = { ...progress, sessionId: session.id, bundleId: session.bundleId };
     emit(progress);
 
-    const fileByRole: Record<DoclingUploadRole, File> = {
+    const fileByRole: Partial<Record<DoclingUploadRole, File>> = {
       SOURCE_ORIGINAL: files.sourceFile,
       DOCLING_JSON: files.doclingJsonFile,
-      DOCLING_MARKDOWN: files.doclingMarkdownFile,
     };
+    if (files.doclingMarkdownFile) {
+      fileByRole.DOCLING_MARKDOWN = files.doclingMarkdownFile;
+    }
 
     const bindings: RoleFileBinding[] = session.files.map((sf) => {
       const role = sf.role as DoclingUploadRole;
+      const file = fileByRole[role];
+      if (!file) {
+        throw new Error(`${role} 파일이 세션과 일치하지 않습니다.`);
+      }
       return {
         role,
-        file: fileByRole[role],
+        file,
         sessionFile: sf,
         completed: mapUploadedParts(sf.uploadedParts),
       };
@@ -700,12 +730,12 @@ export async function uploadDoclingMultipart(input: {
         if (key.startsWith(`${role}:`)) inFlight += loaded;
       }
       const bytesUploaded = Math.min(
-        fileByRole[role].size,
+        fileByRole[role]!.size,
         baseUploaded + inFlight,
       );
       const elapsed = Math.max(0.001, (Date.now() - startedAt) / 1000);
       const speed = bytesUploaded / elapsed;
-      const remaining = Math.max(0, fileByRole[role].size - bytesUploaded);
+      const remaining = Math.max(0, fileByRole[role]!.size - bytesUploaded);
       progress = {
         ...progress,
         files: progress.files.map((f) =>

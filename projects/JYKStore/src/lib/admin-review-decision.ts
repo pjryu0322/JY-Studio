@@ -228,7 +228,7 @@ function formatDoclingIntegrityIssue(issue: { code: string; message: string }): 
         return "Docling JSON 파일이 없습니다. (DOCLING_JSON_MISSING)";
       }
       if (/Markdown|DOCLING_MARKDOWN/i.test(issue.message)) {
-        return "Docling Markdown 파일이 없습니다. (DOCLING_MARKDOWN_MISSING)";
+        return "Docling Markdown은 선택 자료입니다. 원본·JSON 무결성을 확인하세요.";
       }
       return issue.message.includes("필수")
         ? issue.message

@@ -16,10 +16,10 @@ export type NormalizedDocumentFingerprintInput = {
   warnings: unknown;
   sourceFileId: string;
   jsonPayloadFileId: string;
-  markdownPayloadFileId: string;
+  markdownPayloadFileId: string | null;
   sourceChecksum: string;
   jsonChecksum: string;
-  markdownChecksum: string;
+  markdownChecksum: string | null;
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -75,11 +75,11 @@ export function buildNormalizedDocumentFingerprintPayload(
     warnings: input.warnings ?? [],
     sourceFileId: input.sourceFileId,
     jsonPayloadFileId: input.jsonPayloadFileId,
-    markdownPayloadFileId: input.markdownPayloadFileId,
+    markdownPayloadFileId: input.markdownPayloadFileId ?? null,
     checksums: {
       source: input.sourceChecksum,
       json: input.jsonChecksum,
-      markdown: input.markdownChecksum,
+      markdown: input.markdownChecksum ?? null,
     },
   };
 }

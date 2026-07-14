@@ -1,3 +1,8 @@
+/**
+ * @deprecated Semantic JSON↔Markdown similarity is no longer a registration hard gate.
+ * Module kept for legacy report tooling / extractJsonTextSamples used by stream projector.
+ * New validations must not call `compareJsonMarkdownSimilarity`.
+ */
 import { filenameMatchFingerprint } from "./docling-origin-matcher";
 import {
   DOCLING_ERROR_CODES,
@@ -5,8 +10,9 @@ import {
   type DoclingIssue,
 } from "./docling-errors";
 import type { DoclingDocument } from "./docling-types";
+import { DOCLING_MARKDOWN_VALIDATOR_VERSION } from "./docling-markdown-validator";
 
-export const DOCLING_MARKDOWN_VALIDATOR_VERSION = "2.0.0";
+export { DOCLING_MARKDOWN_VALIDATOR_VERSION };
 
 export type JsonMarkdownSimilarityMetrics = {
   jsonTokenCount: number;

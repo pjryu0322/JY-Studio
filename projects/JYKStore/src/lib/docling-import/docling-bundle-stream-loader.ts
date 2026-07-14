@@ -11,7 +11,6 @@ import {
   validateDoclingMarkdownPreview,
   type MarkdownValidationResult,
 } from "@/lib/adapters/docling/docling-markdown-validator";
-import { resolveSimilaritySampleBytes } from "@/lib/adapters/docling/docling-json-markdown-similarity";
 import type {
   AdapterValidationResult,
   DoclingDocument,
@@ -89,8 +88,12 @@ async function readAllFromStream(
   return Buffer.concat(chunks);
 }
 
+function absentMarkdownResult(): MarkdownValidationResult {
+  return validateDoclingMarkdown({ markdown: null });
+}
+
 /**
- * Load + verify source/json/markdown for validateAndNormalizeBundle without
+ * Load + verify source/json/(optional markdown) for validateAndNormalizeBundle without
  * buffering large objects into memory when ObjectStorage streaming is available.
  *
  * Raw JSON objects in storage are never rewritten — only a compact in-memory
@@ -100,7 +103,7 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
   storage: PayloadStorage;
   sourceFile: KnowledgePackFile;
   jsonFile: KnowledgePackFile;
-  mdFile: KnowledgePackFile;
+  mdFile?: KnowledgePackFile | null;
 }): Promise<BundleValidationLoadResult> {
   const { storage, sourceFile, jsonFile, mdFile } = input;
   const objectStorage = asObjectStorage(storage);
@@ -204,15 +207,20 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
     originMatch = jsonOnly.originMatch;
   }
 
-  // --- MARKDOWN ---
+  // --- MARKDOWN (optional auxiliary) ---
+  if (!mdFile) {
+    return {
+      document,
+      jsonIssues,
+      originMatch,
+      markdown: absentMarkdownResult(),
+      markdownPreviewText: "",
+    };
+  }
+
   const mdSize = Number(mdFile.fileSize);
   let markdown: MarkdownValidationResult;
   let markdownPreviewText = "";
-  const sourceFileName = sourceFile.originalFileName;
-  const originFileName =
-    typeof document?.origin?.filename === "string"
-      ? document.origin.filename
-      : undefined;
 
   if (
     objectStorage &&
@@ -221,7 +229,7 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
     const streamed = await openStream(objectStorage, mdFile);
     const triple = await streamMarkdownTripleSamples(streamed.body, {
       contentLength: Number.isFinite(mdSize) ? mdSize : undefined,
-      sampleBytes: resolveSimilaritySampleBytes(),
+      sampleBytes: MARKDOWN_PREVIEW_MAX_BYTES,
       maxBytes: maxMdBytes,
     });
     assertChecksum(triple.checksumSha256, mdFile.checksumSha256);
@@ -235,10 +243,6 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
       empty: triple.empty,
       byteLength: triple.bytesRead,
       maxBytes: maxMdBytes,
-      document,
-      markdownSamples: triple.samples,
-      originFileName,
-      sourceFileName,
     });
   } else {
     let mdBytes: Uint8Array;
@@ -261,12 +265,10 @@ export async function loadAndValidateDoclingBundlePayloads(input: {
     }
     markdown = validateDoclingMarkdown({
       markdown: mdBytes,
-      document,
       maxBytes: maxMdBytes,
-      originFileName,
-      sourceFileName,
     });
     markdownPreviewText =
+      markdown.textPreview ??
       markdown.text ??
       new TextDecoder("utf-8").decode(
         mdBytes.subarray(0, Math.min(mdBytes.byteLength, MARKDOWN_PREVIEW_MAX_BYTES)),

@@ -14,8 +14,8 @@ import {
 } from "@/lib/docling-import/docling-multipart-client";
 import {
   DOCLING_FILE_ROLE_LABELS,
+  extractMarkdownPreviewStatus,
   extractOriginMatchSummary,
-  extractSimilarityDiagnostics,
   formatBytes,
   formatDoclingBundleStatusWithCode,
   formatDoclingStorageStatus,
@@ -113,8 +113,10 @@ export function ProviderDoclingImportTab({
   const onDoclingChangedRef = useRef(onDoclingChanged);
   onDoclingChangedRef.current = onDoclingChanged;
 
-  const canUpload = Boolean(sourceFile && jsonFile && markdownFile) && editable && !uploading;
-  const selectedCount = [sourceFile, jsonFile, markdownFile].filter(Boolean).length;
+  const canUpload = Boolean(sourceFile && jsonFile) && editable && !uploading;
+  const requiredSelectedCount = [sourceFile, jsonFile].filter(Boolean).length;
+  const selectedCount = requiredSelectedCount + (markdownFile ? 1 : 0);
+  const totalRoles = markdownFile ? 3 : 2;
 
   const loadMarkdownPreview = useCallback(
     async (nextBundle: DoclingImportBundlePublicDto | null) => {
@@ -176,7 +178,7 @@ export function ProviderDoclingImportTab({
     const sessionId = readStoredUploadSessionId(packId);
     if (sessionId) {
       setResumeHint(
-        "이전에 중단된 업로드 세션이 있습니다. 같은 3파일을 다시 선택하면 이어서 업로드합니다.",
+        "이전에 중단된 업로드 세션이 있습니다. 같은 파일을 다시 선택하면 이어서 업로드합니다.",
       );
     } else {
       setResumeHint(null);
@@ -187,7 +189,7 @@ export function ProviderDoclingImportTab({
 
   const onUpload = async (e: FormEvent) => {
     e.preventDefault();
-    if (!canUpload || !sourceFile || !jsonFile || !markdownFile) return;
+    if (!canUpload || !sourceFile || !jsonFile) return;
     setUploading(true);
     setError(null);
     setSuccessMessage(null);
@@ -227,7 +229,7 @@ export function ProviderDoclingImportTab({
         setError("업로드가 취소되었습니다.");
       } else {
         const message =
-          err instanceof Error ? err.message : "Docling 3파일 업로드에 실패했습니다.";
+          err instanceof Error ? err.message : "Docling 업로드에 실패했습니다.";
         const replaceHint = wasReplacing
           ? " 새 파일 검증에 실패했습니다. 현재 Bundle은 계속 유지됩니다. 실패한 Staging을 재시도하거나 삭제하세요."
           : "";
@@ -356,11 +358,12 @@ export function ProviderDoclingImportTab({
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-sm font-bold text-slate-900">Docling 3파일 Import</h2>
+        <h2 className="text-sm font-bold text-slate-900">Docling Import</h2>
         <p className="mt-1 text-xs text-store-muted">
-          외부 Docling에서 만든 원본문서·JSON·Markdown을 등록합니다. JYKStore는 Docling을 실행하지
-          않으며, 원본은 불변으로 보관하고 NormalizedDocument만 재생성합니다. 대용량 파일은 브라우저
-          multipart로 직접 Object Storage에 업로드됩니다.
+          원본문서와 구조화 JSON을 등록합니다. Markdown은 미리보기와 검토 편의를 위한 선택
+          자료입니다. JYKStore는 Docling을 실행하지 않으며, 원본은 불변으로 보관하고
+          NormalizedDocument만 재생성합니다. 대용량 파일은 브라우저 multipart로 직접 Object
+          Storage에 업로드됩니다.
         </p>
       </div>
 
@@ -383,8 +386,8 @@ export function ProviderDoclingImportTab({
       {showUploadForm && selectedCount > 0 && !uploading ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
           아래 파일은 아직 이 브라우저에만 선택되어 있습니다.{" "}
-          <span className="font-semibold">「3파일 업로드」가 성공</span>해야 새로고침 후에도
-          남습니다. 성공 시 「등록된 Docling Bundle」 목록으로 바뀝니다.
+          <span className="font-semibold">「업로드」가 성공</span>해야 새로고침 후에도 남습니다.
+          성공 시 「등록된 Docling Bundle」 목록으로 바뀝니다.
         </div>
       ) : null}
 
@@ -530,25 +533,19 @@ export function ProviderDoclingImportTab({
               : ""}
           </p>
           {(() => {
-            const diag = extractSimilarityDiagnostics(stagingBundle.validationReport);
-            if (!diag) return null;
+            const mdStatus = extractMarkdownPreviewStatus(stagingBundle.validationReport);
+            if (!mdStatus) return null;
             return (
               <p className="rounded-lg border border-amber-100 bg-white px-3 py-2 text-amber-950">
-                유사도 진단
-                {diag.validatorVersion ? ` · validator ${diag.validatorVersion}` : ""}
-                {diag.markdownCoverage != null
-                  ? ` · coverage ${(diag.markdownCoverage * 100).toFixed(1)}%`
-                  : ""}
-                {diag.jaccard != null ? ` · jaccard ${diag.jaccard.toFixed(3)}` : ""}
-                {diag.samplePassCount != null
-                  ? ` · sample pass ${diag.samplePassCount}`
-                  : ""}
+                Markdown: {mdStatus.label}
+                {mdStatus.detail ? ` · ${mdStatus.detail}` : ""}
               </p>
             );
           })()}
           {stagingBundle.retryMode === "REUPLOAD_REQUIRED" && stagingBundle.lastErrorCode ? (
             <p className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-amber-950">
-              파일 내용/형식이 맞지 않습니다. Staging을 삭제한 후 올바른 파일을 다시 등록하세요.
+              원본문서 또는 JSON의 무결성/형식 문제입니다. Staging을 삭제한 후 올바른 파일을 다시
+              등록하세요. Markdown만 문제인 경우는 등록을 막지 않습니다.
             </p>
           ) : null}
           <ul className="space-y-2">
@@ -611,11 +608,14 @@ export function ProviderDoclingImportTab({
         <form onSubmit={(e) => void onUpload(e)} className="space-y-3">
           {selectedCount > 0 ? (
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800">
-              <p className="font-semibold">선택한 파일 {selectedCount}/3</p>
+              <p className="font-semibold">
+                선택한 파일 {requiredSelectedCount}/2 필수
+                {markdownFile ? " · Markdown 포함" : " · Markdown 선택 안 함"}
+              </p>
               <ul className="mt-1 space-y-0.5 text-store-muted">
                 <li>원본문서: {sourceFile?.name ?? "—"}</li>
                 <li>Docling JSON: {jsonFile?.name ?? "—"}</li>
-                <li>Docling Markdown: {markdownFile?.name ?? "—"}</li>
+                <li>Docling Markdown: {markdownFile?.name ?? "선택 안 함"}</li>
               </ul>
             </div>
           ) : null}
@@ -652,7 +652,7 @@ export function ProviderDoclingImportTab({
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-700" htmlFor="docling-md">
-              Docling Markdown
+              Docling Markdown (선택)
             </label>
             <input
               key={`docling-md-${fileInputKey}`}
@@ -661,10 +661,22 @@ export function ProviderDoclingImportTab({
               accept=".md,.markdown,text/markdown,text/plain"
               className="mt-2 block min-h-[44px] w-full text-sm"
               onChange={(e) => setMarkdownFile(e.target.files?.[0] ?? null)}
-              required={!markdownFile}
               disabled={uploading}
             />
-            <SelectedFileHint file={markdownFile} />
+            {markdownFile ? (
+              <SelectedFileHint file={markdownFile} />
+            ) : (
+              <p className="mt-1 text-xs text-store-muted">선택 안 함 — 미리보기용 선택 자료</p>
+            )}
+            {markdownFile && !uploading ? (
+              <button
+                type="button"
+                className="mt-1 text-xs font-semibold text-store-accent"
+                onClick={() => setMarkdownFile(null)}
+              >
+                Markdown 선택 해제
+              </button>
+            ) : null}
           </div>
           {!uploading ? (
             <button
@@ -672,9 +684,11 @@ export function ProviderDoclingImportTab({
               disabled={!canUpload}
               className="min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-60"
             >
-              {selectedCount === 3
-                ? "3파일 업로드"
-                : `3파일 업로드 (${selectedCount}/3)`}
+              {canUpload
+                ? totalRoles === 3
+                  ? "업로드 (원본·JSON·Markdown)"
+                  : "업로드 (원본·JSON)"
+                : `업로드 (${requiredSelectedCount}/2 필수)`}
             </button>
           ) : (
             <button

@@ -1,23 +1,16 @@
 import { getDoclingUploadPolicy } from "@/lib/docling-import/docling-upload-policy";
 import {
-  DOCLING_MARKDOWN_VALIDATOR_VERSION,
-  buildTextSamples,
-  compareJsonMarkdownSimilarity,
-  extractJsonTextSamples,
-  type JsonMarkdownSimilarityMetrics,
-  type SimilaritySampleDetail,
-  type TextSamples,
-} from "./docling-json-markdown-similarity";
-import {
   DOCLING_ERROR_CODES,
   issue,
   type DoclingIssue,
 } from "./docling-errors";
-import type { DoclingDocument } from "./docling-types";
 import { decodeUtf8 } from "./docling-validator";
 
-export { DOCLING_MARKDOWN_VALIDATOR_VERSION };
-export type { TextSamples, JsonMarkdownSimilarityMetrics };
+/**
+ * Soft markdown preview validator version.
+ * Semantic JSON↔Markdown similarity is no longer a registration gate.
+ */
+export const DOCLING_MARKDOWN_VALIDATOR_VERSION = "3.0.0";
 
 /**
  * Align with Docling upload policy default (512 MiB). Prefer
@@ -25,7 +18,7 @@ export type { TextSamples, JsonMarkdownSimilarityMetrics };
  */
 export const MAX_MARKDOWN_BYTES = 536_870_912;
 
-/** Preview / similarity sample size — do not hold entire huge markdown in memory. */
+/** Preview sample size — do not hold entire huge markdown in memory. */
 export const MARKDOWN_PREVIEW_MAX_BYTES = 100 * 1024;
 
 /** Below this size, validate may decode the full markdown into a string. */
@@ -43,34 +36,28 @@ export function resolveMaxMarkdownBytes(
 
 const CONTROL_CHAR_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 
+/**
+ * Soft / auxiliary markdown validation result.
+ * Empty, UTF-8, and encoding issues are WARNINGs only — never hard ERROR gates.
+ * `ok` is true whenever there is no ERROR (soft issues leave ok=true).
+ */
 export type MarkdownValidationResult = {
   ok: boolean;
-  text?: string;
+  available: boolean;
+  previewAvailable: boolean;
+  warnings: DoclingIssue[];
   issues: DoclingIssue[];
-  /** @deprecated Use metrics.jaccard — kept for backward compatibility. */
-  similarity?: number;
-  metrics?: JsonMarkdownSimilarityMetrics;
-  samples?: SimilaritySampleDetail[];
+  textPreview?: string;
+  text?: string;
   validatorVersion?: string;
+  /** @deprecated Similarity diagnostics removed from gate; kept nullable for Admin report compat. */
+  similarity?: number;
+  /** @deprecated */
+  metrics?: null;
+  /** @deprecated */
+  samples?: null;
 };
 
-export function extractJsonTextCorpus(doc: DoclingDocument): string {
-  const parts: string[] = [];
-  if (typeof doc.name === "string") parts.push(doc.name);
-  if (Array.isArray(doc.texts)) {
-    for (const item of doc.texts) {
-      if (item && typeof item.text === "string" && item.text.trim()) {
-        parts.push(item.text);
-      }
-    }
-  }
-  return parts.join("\n");
-}
-
-/**
- * Strip script tags and inline event handlers for safe markdown preview.
- * Does not execute HTML.
- */
 export function sanitizeMarkdownForPreview(markdown: string): string {
   return markdown
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
@@ -80,32 +67,42 @@ export function sanitizeMarkdownForPreview(markdown: string): string {
     .replace(/data\s*:\s*text\/html/gi, "blocked:text/html");
 }
 
-function applyMarkdownContentChecks(options: {
-  text: string;
-  markdownSamples?: TextSamples;
-  document?: DoclingDocument;
-  originFileName?: string;
-  sourceFileName?: string;
-  issues: DoclingIssue[];
-}): {
-  similarity?: number;
-  metrics?: JsonMarkdownSimilarityMetrics;
-  samples?: SimilaritySampleDetail[];
-} {
-  const { text, document, issues } = options;
+function softResult(partial: {
+  available: boolean;
+  previewAvailable: boolean;
+  warnings: DoclingIssue[];
+  textPreview?: string;
+  text?: string;
+}): MarkdownValidationResult {
+  const warnings = partial.warnings;
+  return {
+    ok: true,
+    available: partial.available,
+    previewAvailable: partial.previewAvailable,
+    warnings,
+    issues: warnings,
+    textPreview: partial.textPreview,
+    text: partial.text,
+    validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+    metrics: null,
+    samples: null,
+  };
+}
+
+function applySoftContentChecks(text: string, warnings: DoclingIssue[]): void {
   const controlMatches = text.match(CONTROL_CHAR_RE) ?? [];
   const controlRatio = controlMatches.length / Math.max(text.length, 1);
   if (controlMatches.length > 50 || controlRatio > 0.02) {
-    issues.push(
+    warnings.push(
       issue(
         DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
-        "ERROR",
+        "WARNING",
         "Markdown contains excessive control characters.",
         { field: "markdown" },
       ),
     );
   } else if (controlMatches.length > 0) {
-    issues.push(
+    warnings.push(
       issue(
         DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
         "WARNING",
@@ -114,37 +111,11 @@ function applyMarkdownContentChecks(options: {
       ),
     );
   }
-
-  if (!document) {
-    return {};
-  }
-
-  const markdownSamples =
-    options.markdownSamples ?? buildTextSamples(text);
-  const jsonSamples = extractJsonTextSamples(document);
-  const comparison = compareJsonMarkdownSimilarity({
-    jsonSamples,
-    markdownSamples,
-    document,
-    originFileName:
-      options.originFileName ?? document.origin?.filename,
-    sourceFileName: options.sourceFileName,
-  });
-
-  for (const i of comparison.issues) {
-    issues.push(i);
-  }
-
-  return {
-    similarity: comparison.metrics.jaccard,
-    metrics: comparison.metrics,
-    samples: comparison.samples,
-  };
 }
 
 /**
- * Validate markdown from a streaming preview (non-empty UTF-8, size already checked).
- * Uses truncated preview / triple samples for similarity / control-char checks.
+ * Soft validation for a streaming markdown preview.
+ * Presence/size/UTF-8/empty only — never emits semantic mismatch ERRORs.
  */
 export function validateDoclingMarkdownPreview(options: {
   textPreview: string;
@@ -152,195 +123,181 @@ export function validateDoclingMarkdownPreview(options: {
   empty: boolean;
   byteLength: number;
   maxBytes?: number;
-  document?: DoclingDocument;
-  markdownSamples?: TextSamples;
-  originFileName?: string;
-  sourceFileName?: string;
 }): MarkdownValidationResult {
-  const issues: DoclingIssue[] = [];
+  const warnings: DoclingIssue[] = [];
   const maxBytes = options.maxBytes ?? resolveMaxMarkdownBytes();
 
   if (options.byteLength <= 0 || options.empty) {
-    issues.push(
+    warnings.push(
       issue(
         DOCLING_ERROR_CODES.DOCLING_MARKDOWN_EMPTY,
-        "ERROR",
+        "WARNING",
         "Markdown is empty.",
         { field: "markdown" },
       ),
     );
-    return {
-      ok: false,
-      issues,
-      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
-    };
+    return softResult({
+      available: true,
+      previewAvailable: false,
+      warnings,
+    });
   }
 
   if (options.byteLength > maxBytes) {
-    issues.push(
+    // Oversize is a resource/policy issue, not soft preview content.
+    const issues = [
       issue(
         DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
         "ERROR",
         `Markdown exceeds size limit of ${maxBytes} bytes.`,
         { field: "markdown" },
       ),
-    );
+    ];
     return {
       ok: false,
+      available: true,
+      previewAvailable: false,
+      warnings: [],
       issues,
       validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+      metrics: null,
+      samples: null,
     };
   }
 
   if (!options.encodingOk) {
-    issues.push(
+    warnings.push(
       issue(
         DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
-        "ERROR",
+        "WARNING",
         "Markdown is not valid UTF-8.",
         { field: "markdown" },
       ),
     );
-    return {
-      ok: false,
-      issues,
-      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
-    };
+    return softResult({
+      available: true,
+      previewAvailable: false,
+      warnings,
+    });
   }
 
-  const checked = applyMarkdownContentChecks({
-    text: options.textPreview,
-    markdownSamples: options.markdownSamples,
-    document: options.document,
-    originFileName: options.originFileName,
-    sourceFileName: options.sourceFileName,
-    issues,
+  applySoftContentChecks(options.textPreview, warnings);
+  const preview = options.textPreview.slice(0, MARKDOWN_PREVIEW_MAX_BYTES);
+  return softResult({
+    available: true,
+    previewAvailable: preview.trim().length > 0,
+    warnings,
+    textPreview: preview,
+    text: preview,
   });
-  const ok = !issues.some((i) => i.severity === "ERROR");
-  return {
-    ok,
-    text: options.textPreview,
-    issues,
-    similarity: checked.similarity,
-    metrics: checked.metrics,
-    samples: checked.samples,
-    validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
-  };
 }
 
+/**
+ * Soft markdown checks. Absence is not an error (optional auxiliary content).
+ * Does not compare JSON↔Markdown semantically.
+ */
 export function validateDoclingMarkdown(options: {
   markdown?: string | Uint8Array | null;
-  document?: DoclingDocument;
   maxBytes?: number;
-  markdownSamples?: TextSamples;
-  originFileName?: string;
-  sourceFileName?: string;
 }): MarkdownValidationResult {
-  const issues: DoclingIssue[] = [];
-  const { markdown, document } = options;
+  const warnings: DoclingIssue[] = [];
+  const { markdown } = options;
   const maxBytes = options.maxBytes ?? resolveMaxMarkdownBytes();
 
   if (markdown === undefined || markdown === null) {
-    issues.push(
-      issue(
-        DOCLING_ERROR_CODES.DOCLING_MARKDOWN_REQUIRED,
-        "ERROR",
-        "Docling Markdown is required.",
-        { field: "markdown" },
-      ),
-    );
-    return {
-      ok: false,
-      issues,
-      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
-    };
+    return softResult({
+      available: false,
+      previewAvailable: false,
+      warnings: [],
+    });
   }
 
   if (markdown instanceof Uint8Array && markdown.byteLength > maxBytes) {
-    issues.push(
+    const issues = [
       issue(
         DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
         "ERROR",
         `Markdown exceeds size limit of ${maxBytes} bytes.`,
         { field: "markdown" },
       ),
-    );
+    ];
     return {
       ok: false,
+      available: true,
+      previewAvailable: false,
+      warnings: [],
       issues,
       validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+      metrics: null,
+      samples: null,
     };
   }
 
   if (typeof markdown === "string") {
     const byteLength = new TextEncoder().encode(markdown).byteLength;
     if (byteLength > maxBytes) {
-      issues.push(
+      const issues = [
         issue(
           DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
           "ERROR",
           `Markdown exceeds size limit of ${maxBytes} bytes.`,
           { field: "markdown" },
         ),
-      );
+      ];
       return {
         ok: false,
+        available: true,
+        previewAvailable: false,
+        warnings: [],
         issues,
         validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
+        metrics: null,
+        samples: null,
       };
     }
   }
 
   const decoded = decodeUtf8(markdown);
   if (!decoded.ok) {
-    issues.push(
+    warnings.push(
       issue(
         DOCLING_ERROR_CODES.DOCLING_MARKDOWN_INVALID_ENCODING,
-        "ERROR",
+        "WARNING",
         "Markdown is not valid UTF-8.",
         { field: "markdown" },
       ),
     );
-    return {
-      ok: false,
-      issues,
-      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
-    };
+    return softResult({
+      available: true,
+      previewAvailable: false,
+      warnings,
+    });
   }
 
   const text = decoded.text;
   if (text.trim().length === 0) {
-    issues.push(
+    warnings.push(
       issue(
         DOCLING_ERROR_CODES.DOCLING_MARKDOWN_EMPTY,
-        "ERROR",
+        "WARNING",
         "Markdown is empty.",
         { field: "markdown" },
       ),
     );
-    return {
-      ok: false,
-      issues,
-      validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
-    };
+    return softResult({
+      available: true,
+      previewAvailable: false,
+      warnings,
+    });
   }
 
-  const checked = applyMarkdownContentChecks({
+  applySoftContentChecks(text, warnings);
+  const preview = text.slice(0, MARKDOWN_PREVIEW_MAX_BYTES);
+  return softResult({
+    available: true,
+    previewAvailable: true,
+    warnings,
+    textPreview: preview,
     text,
-    markdownSamples: options.markdownSamples,
-    document,
-    originFileName: options.originFileName,
-    sourceFileName: options.sourceFileName,
-    issues,
   });
-  const ok = !issues.some((i) => i.severity === "ERROR");
-  return {
-    ok,
-    text,
-    issues,
-    similarity: checked.similarity,
-    metrics: checked.metrics,
-    samples: checked.samples,
-    validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
-  };
 }
