@@ -13,9 +13,15 @@ import {
   validateAndNormalizeBundle,
 } from "@/lib/docling-import/docling-import-service";
 import { isDoclingImportError } from "@/lib/docling-import/docling-import-errors";
+import { cleanupExpiredDoclingUploadSessions } from "@/lib/docling-import/docling-upload-session-service";
 import { getConfiguredObjectStorage } from "@/lib/object-storage/object-storage-factory";
 import { prisma } from "@/lib/prisma";
 import { logSafeRouteError } from "@/lib/safe-logging";
+import {
+  computeDoclingLockExpiresAt,
+  computeDoclingRetryDelayMs,
+  isDoclingTransientProcessingError,
+} from "@/workers/docling-processing-job-claim";
 
 type ClaimedJobRow = {
   id: string;
@@ -25,6 +31,7 @@ type ClaimedJobRow = {
   sessionId: string | null;
   status: DoclingProcessingJobStatus;
   attemptCount: number;
+  maxAttempts: number;
 };
 
 const POLL_INTERVAL_MS = Number.parseInt(
@@ -34,24 +41,38 @@ const POLL_INTERVAL_MS = Number.parseInt(
 const WORKER_ID = process.env.JYKSTORE_DOCLING_WORKER_ID?.trim() || `docling-worker-${randomUUID()}`;
 
 /**
- * Claim one PENDING job with FOR UPDATE SKIP LOCKED.
+ * Claim one eligible job with FOR UPDATE SKIP LOCKED.
+ * Eligible: PENDING | (RETRY_WAIT AND nextRunAt<=now) | (RUNNING AND lockExpiresAt < now)
  */
 export async function claimNextDoclingProcessingJob(
   lockOwner: string = WORKER_ID,
 ): Promise<ClaimedJobRow | null> {
+  const lockExpiresAt = computeDoclingLockExpiresAt();
   const rows = await prisma.$queryRaw<ClaimedJobRow[]>`
     UPDATE "DoclingProcessingJob" AS job
     SET
       "status" = 'RUNNING'::"DoclingProcessingJobStatus",
       "lockedAt" = NOW(),
+      "lockExpiresAt" = ${lockExpiresAt},
       "lockOwner" = ${lockOwner},
       "attemptCount" = job."attemptCount" + 1,
+      "nextRunAt" = NULL,
       "startedAt" = COALESCE(job."startedAt", NOW()),
       "updatedAt" = NOW()
     WHERE job.id = (
       SELECT j.id
       FROM "DoclingProcessingJob" AS j
-      WHERE j."status" = 'PENDING'::"DoclingProcessingJobStatus"
+      WHERE
+        j."status" = 'PENDING'::"DoclingProcessingJobStatus"
+        OR (
+          j."status" = 'RETRY_WAIT'::"DoclingProcessingJobStatus"
+          AND (j."nextRunAt" IS NULL OR j."nextRunAt" <= NOW())
+        )
+        OR (
+          j."status" = 'RUNNING'::"DoclingProcessingJobStatus"
+          AND j."lockExpiresAt" IS NOT NULL
+          AND j."lockExpiresAt" < NOW()
+        )
       ORDER BY j."createdAt" ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -63,15 +84,65 @@ export async function claimNextDoclingProcessingJob(
       job."versionId",
       job."sessionId",
       job.status,
-      job."attemptCount"
+      job."attemptCount",
+      job."maxAttempts"
   `;
   return rows[0] ?? null;
 }
 
+async function markJobRetryOrFailed(input: {
+  jobId: string;
+  bundleId: string;
+  attemptCount: number;
+  maxAttempts: number;
+  errorCode: string;
+  errorMessage: string;
+}): Promise<"RETRY_WAIT" | "FAILED"> {
+  const delayMs = isDoclingTransientProcessingError(input.errorCode)
+    ? computeDoclingRetryDelayMs(input.attemptCount, input.maxAttempts)
+    : null;
+
+  if (delayMs == null) {
+    await prisma.doclingProcessingJob.update({
+      where: { id: input.jobId },
+      data: {
+        status: DoclingProcessingJobStatus.FAILED,
+        lastErrorCode: input.errorCode,
+        lastErrorMessage: input.errorMessage.slice(0, 1000),
+        completedAt: new Date(),
+        lockedAt: null,
+        lockExpiresAt: null,
+        lockOwner: null,
+        nextRunAt: null,
+      },
+    });
+    return "FAILED";
+  }
+
+  await prisma.doclingProcessingJob.update({
+    where: { id: input.jobId },
+    data: {
+      status: DoclingProcessingJobStatus.RETRY_WAIT,
+      nextRunAt: new Date(Date.now() + delayMs),
+      lastErrorCode: input.errorCode,
+      lastErrorMessage: input.errorMessage.slice(0, 1000),
+      lockedAt: null,
+      lockExpiresAt: null,
+      lockOwner: null,
+      completedAt: null,
+    },
+  });
+  return "RETRY_WAIT";
+}
+
 export async function processDoclingProcessingJob(
-  job: Pick<DoclingProcessingJob, "id" | "bundleId" | "packId" | "versionId" | "attemptCount">,
+  job: Pick<
+    DoclingProcessingJob,
+    "id" | "bundleId" | "packId" | "versionId" | "attemptCount" | "maxAttempts"
+  >,
 ): Promise<{ ok: boolean; status: string }> {
   const storage = getConfiguredObjectStorage();
+  const maxAttempts = job.maxAttempts > 0 ? job.maxAttempts : 3;
 
   try {
     const processed = await validateAndNormalizeBundle(job.bundleId, {
@@ -84,20 +155,17 @@ export async function processDoclingProcessingJob(
         job.bundleId,
         "validation_or_normalization_failed",
       );
-      await prisma.doclingProcessingJob.update({
-        where: { id: job.id },
-        data: {
-          status: DoclingProcessingJobStatus.FAILED,
-          lastErrorCode: processed.lastErrorCode ?? "DOCLING_VALIDATION_FAILED",
-          lastErrorMessage:
-            processed.lastErrorMessage?.slice(0, 1000) ??
-            "Docling import validation/normalization failed",
-          completedAt: new Date(),
-          lockedAt: null,
-          lockOwner: null,
-        },
+      const status = await markJobRetryOrFailed({
+        jobId: job.id,
+        bundleId: job.bundleId,
+        attemptCount: job.attemptCount,
+        maxAttempts,
+        errorCode: processed.lastErrorCode ?? "DOCLING_VALIDATION_FAILED",
+        errorMessage:
+          processed.lastErrorMessage?.slice(0, 1000) ??
+          "Docling import validation/normalization failed",
       });
-      return { ok: false, status: "FAILED" };
+      return { ok: false, status };
     }
 
     const { replacedBundleId } = await promoteDoclingStagingBundle({
@@ -127,7 +195,9 @@ export async function processDoclingProcessingJob(
         lastErrorCode: null,
         lastErrorMessage: null,
         lockedAt: null,
+        lockExpiresAt: null,
         lockOwner: null,
+        nextRunAt: null,
       },
     });
     return { ok: true, status: "SUCCEEDED" };
@@ -145,18 +215,15 @@ export async function processDoclingProcessingJob(
     } catch {
       // best-effort
     }
-    await prisma.doclingProcessingJob.update({
-      where: { id: job.id },
-      data: {
-        status: DoclingProcessingJobStatus.FAILED,
-        lastErrorCode: code,
-        lastErrorMessage: message.slice(0, 1000),
-        completedAt: new Date(),
-        lockedAt: null,
-        lockOwner: null,
-      },
+    const status = await markJobRetryOrFailed({
+      jobId: job.id,
+      bundleId: job.bundleId,
+      attemptCount: job.attemptCount,
+      maxAttempts,
+      errorCode: code,
+      errorMessage: message,
     });
-    return { ok: false, status: "FAILED" };
+    return { ok: false, status };
   }
 }
 
@@ -167,9 +234,22 @@ export async function runDoclingProcessingWorkerLoop(options?: {
 }): Promise<void> {
   const pollIntervalMs = options?.pollIntervalMs ?? POLL_INTERVAL_MS;
   const lockOwner = options?.lockOwner ?? WORKER_ID;
+  let expireTick = 0;
 
-  // Keep looping until process exit / once mode.
   while (true) {
+    // Lightweight: occasionally abort expired CREATED/UPLOADING multiparts.
+    expireTick += 1;
+    if (expireTick % 15 === 1) {
+      try {
+        await cleanupExpiredDoclingUploadSessions({
+          storage: getConfiguredObjectStorage(),
+          limit: 20,
+        });
+      } catch {
+        // best-effort
+      }
+    }
+
     const job = await claimNextDoclingProcessingJob(lockOwner);
     if (job) {
       await processDoclingProcessingJob(job);

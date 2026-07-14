@@ -48,6 +48,9 @@ export type UploadSessionFileInput = {
   fileName: string;
   mimeType?: string | null;
   declaredFileSize: number;
+  lastModifiedMs?: number | null;
+  headSha256?: string | null;
+  tailSha256?: string | null;
 };
 
 export type UploadSessionPublicDto = {
@@ -85,6 +88,9 @@ export type UploadSessionFilePublicDto = {
   partSizeBytes: number;
   partCount: number;
   checksumSha256: string | null;
+  lastModifiedMs: number | null;
+  headSha256: string | null;
+  tailSha256: string | null;
   /** Never include multipartUploadId or presigned URLs in logs. */
   hasMultipartUpload: boolean;
   /** Completed parts from Object Storage (for resume). Omitted when not listed. */
@@ -126,6 +132,9 @@ function toFileDto(file: DoclingUploadFile): UploadSessionFilePublicDto {
     partSizeBytes: file.partSizeBytes,
     partCount: file.partCount,
     checksumSha256: file.checksumSha256,
+    lastModifiedMs: file.lastModifiedMs != null ? Number(file.lastModifiedMs) : null,
+    headSha256: file.headSha256 ?? null,
+    tailSha256: file.tailSha256 ?? null,
     hasMultipartUpload: Boolean(file.multipartUploadId),
   };
 }
@@ -364,6 +373,12 @@ export async function createDoclingUploadSession(input: {
         multipartUploadId: uploadId,
         partSizeBytes: policy.multipartPartBytes,
         partCount: file.partCount,
+        lastModifiedMs:
+          file.lastModifiedMs != null && Number.isFinite(file.lastModifiedMs)
+            ? BigInt(Math.trunc(file.lastModifiedMs))
+            : null,
+        headSha256: file.headSha256?.trim() || null,
+        tailSha256: file.tailSha256?.trim() || null,
       });
     }
   } catch (error) {
@@ -385,20 +400,41 @@ export async function createDoclingUploadSession(input: {
     );
   }
 
-  const session = await prisma.doclingUploadSession.create({
-    data: {
-      id: sessionId,
-      packId: pack.packId,
-      versionId: version.id,
-      status: DoclingUploadSessionStatus.CREATED,
-      uploadedByUserId: input.userId,
-      expiresAt,
-      // Reserve staging bundle id so object keys remain stable through complete.
-      bundleId,
-      files: { create: fileCreates },
-    },
-    include: { files: true },
-  });
+  let session: SessionWithFiles;
+  try {
+    session = await prisma.doclingUploadSession.create({
+      data: {
+        id: sessionId,
+        packId: pack.packId,
+        versionId: version.id,
+        status: DoclingUploadSessionStatus.CREATED,
+        uploadedByUserId: input.userId,
+        expiresAt,
+        // Reserve staging bundle id so object keys remain stable through complete.
+        bundleId,
+        files: { create: fileCreates },
+      },
+      include: { files: true },
+    });
+  } catch (error) {
+    // Compensation: multipart creates succeeded but DB failed → abort all multiparts.
+    for (const mp of createdMultipart) {
+      try {
+        await storage.abortMultipartUpload({
+          objectKey: mp.objectKey,
+          uploadId: mp.uploadId,
+        });
+      } catch {
+        // best-effort
+      }
+    }
+    if (isDoclingImportError(error)) throw error;
+    throw new DoclingImportError(
+      "DOCLING_UPLOAD_SESSION_CREATE_FAILED",
+      "업로드 세션 생성에 실패했습니다.",
+      500,
+    );
+  }
 
   return { session: toUploadSessionPublicDto(session) };
 }
@@ -539,6 +575,45 @@ export async function createDoclingUploadPartPresigns(input: {
   return { sessionId: session.id, presigns };
 }
 
+/**
+ * Atomic claim decision after updateMany for complete.
+ * Exported for unit tests (parallel complete simulation).
+ */
+export function interpretCompleteSessionClaim(input: {
+  claimCount: number;
+  reloadedStatus: DoclingUploadSessionStatus | null;
+  bundleId: string | null;
+  processingJobId: string | null;
+}):
+  | { action: "proceed" }
+  | { action: "idempotent"; bundleId: string; processingJobId: string }
+  | { action: "conflict"; code: string; message: string } {
+  if (input.claimCount === 1) return { action: "proceed" };
+  if (
+    input.reloadedStatus === DoclingUploadSessionStatus.COMPLETED &&
+    input.bundleId &&
+    input.processingJobId
+  ) {
+    return {
+      action: "idempotent",
+      bundleId: input.bundleId,
+      processingJobId: input.processingJobId,
+    };
+  }
+  if (input.reloadedStatus === DoclingUploadSessionStatus.COMPLETING) {
+    return {
+      action: "conflict",
+      code: "DOCLING_UPLOAD_ALREADY_COMPLETING",
+      message: "업로드 완료 처리가 이미 진행 중입니다.",
+    };
+  }
+  return {
+    action: "conflict",
+    code: "DOCLING_UPLOAD_SESSION_CLOSED",
+    message: "업로드 세션을 완료할 수 없는 상태입니다.",
+  };
+}
+
 export async function completeDoclingUploadSession(input: {
   userId: string;
   clientId: string;
@@ -567,10 +642,42 @@ export async function completeDoclingUploadSession(input: {
   if (!session || session.packId !== pack.packId) {
     throw new DoclingImportError("NOT_FOUND", "업로드 세션을 찾을 수 없습니다.", 404);
   }
-  assertSessionEditable(session);
+
+  // Idempotent 202 semantics: already completed with bundle+job.
+  if (
+    session.status === DoclingUploadSessionStatus.COMPLETED &&
+    session.bundleId &&
+    session.processingJobId
+  ) {
+    return {
+      session: toUploadSessionPublicDto(session),
+      bundleId: session.bundleId,
+      processingJobId: session.processingJobId,
+      accepted: true,
+    };
+  }
+
+  if (session.expiresAt.getTime() < Date.now()) {
+    throw new DoclingImportError(
+      "DOCLING_UPLOAD_SESSION_EXPIRED",
+      "업로드 세션이 만료되었습니다.",
+      410,
+    );
+  }
+  if (
+    session.status === DoclingUploadSessionStatus.ABORTED ||
+    session.status === DoclingUploadSessionStatus.EXPIRED ||
+    session.status === DoclingUploadSessionStatus.FAILED
+  ) {
+    throw new DoclingImportError(
+      "DOCLING_UPLOAD_SESSION_CLOSED",
+      "이미 종료된 업로드 세션입니다.",
+      409,
+    );
+  }
 
   const stagingExists = await findLatestStagingBundleForVersion(version.id);
-  if (stagingExists) {
+  if (stagingExists && session.status !== DoclingUploadSessionStatus.COMPLETING) {
     throw new DoclingImportError(
       "DOCLING_STAGING_BUNDLE_EXISTS",
       "처리되지 않은 Staging Bundle이 있습니다.",
@@ -578,12 +685,44 @@ export async function completeDoclingUploadSession(input: {
     );
   }
 
-  await prisma.doclingUploadSession.update({
-    where: { id: session.id },
+  const claimed = await prisma.doclingUploadSession.updateMany({
+    where: {
+      id: session.id,
+      status: {
+        in: [DoclingUploadSessionStatus.CREATED, DoclingUploadSessionStatus.UPLOADING],
+      },
+    },
     data: { status: DoclingUploadSessionStatus.COMPLETING },
   });
 
+  if (claimed.count !== 1) {
+    const reloaded = await loadSession(session.id);
+    const decision = interpretCompleteSessionClaim({
+      claimCount: claimed.count,
+      reloadedStatus: reloaded?.status ?? null,
+      bundleId: reloaded?.bundleId ?? null,
+      processingJobId: reloaded?.processingJobId ?? null,
+    });
+    if (decision.action === "idempotent") {
+      return {
+        session: toUploadSessionPublicDto(reloaded!),
+        bundleId: decision.bundleId,
+        processingJobId: decision.processingJobId,
+        accepted: true,
+      };
+    }
+    if (decision.action === "conflict") {
+      throw new DoclingImportError(decision.code, decision.message, 409);
+    }
+    throw new DoclingImportError(
+      "DOCLING_UPLOAD_SESSION_CLOSED",
+      "업로드 세션을 완료할 수 없는 상태입니다.",
+      409,
+    );
+  }
+
   const bundleId = session.bundleId ?? createPayloadId();
+  const completedObjectKeys: string[] = [];
   const completedFiles: Array<{
     file: DoclingUploadFile;
     checksumSha256: string;
@@ -623,6 +762,7 @@ export async function completeDoclingUploadSession(input: {
         uploadId: file.multipartUploadId,
         parts,
       });
+      completedObjectKeys.push(file.objectKey);
 
       const head = await storage.headObject({ objectKey: file.objectKey });
       if (!head.exists || head.contentLength == null) {
@@ -682,69 +822,94 @@ export async function completeDoclingUploadSession(input: {
 
   const jobId = createPayloadId();
 
-  await prisma.$transaction(async (tx) => {
-    await tx.doclingImportBundle.create({
-      data: {
-        id: bundleId,
-        packId: pack.packId,
-        versionId: version.id,
-        status: DoclingImportBundleStatus.UPLOADED,
-        isActive: false,
-        adapterType: DOCLING_ADAPTER_TYPE,
-        adapterVersion: DOCLING_ADAPTER_VERSION,
-        storageStatus: DoclingBundleStorageStatus.ACTIVE,
-        stagingReason: "multipart_upload_staging",
-        uploadedByUserId: input.userId,
-        files: {
-          create: completedFiles.map((c) => ({
-            id: c.knowledgePackFileId,
-            packId: pack.packId,
-            versionId: version.id,
-            role: c.file.role,
-            storageKey: c.file.objectKey,
-            originalFileName: c.file.originalFileName,
-            mimeType: c.file.mimeType,
-            fileExtension: c.file.fileExtension,
-            fileSize: c.file.declaredFileSize,
-            checksumSha256: c.checksumSha256,
-            isImmutable: true,
-            uploadedByUserId: input.userId,
-          })),
-        },
-        processingLogs: {
-          create: {
-            stage: DoclingProcessingStage.UPLOAD,
-            status: DoclingProcessingStatus.SUCCEEDED,
-            attempt: 1,
-            adapterVersion: DOCLING_ADAPTER_VERSION,
-            message: "Multipart Docling upload completed; processing queued",
-            completedAt: new Date(),
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.doclingImportBundle.create({
+        data: {
+          id: bundleId,
+          packId: pack.packId,
+          versionId: version.id,
+          status: DoclingImportBundleStatus.UPLOADED,
+          isActive: false,
+          adapterType: DOCLING_ADAPTER_TYPE,
+          adapterVersion: DOCLING_ADAPTER_VERSION,
+          storageStatus: DoclingBundleStorageStatus.ACTIVE,
+          stagingReason: "multipart_upload_staging",
+          uploadedByUserId: input.userId,
+          files: {
+            create: completedFiles.map((c) => ({
+              id: c.knowledgePackFileId,
+              packId: pack.packId,
+              versionId: version.id,
+              role: c.file.role,
+              storageKey: c.file.objectKey,
+              originalFileName: c.file.originalFileName,
+              mimeType: c.file.mimeType,
+              fileExtension: c.file.fileExtension,
+              fileSize: c.file.declaredFileSize,
+              checksumSha256: c.checksumSha256,
+              isImmutable: true,
+              uploadedByUserId: input.userId,
+            })),
+          },
+          processingLogs: {
+            create: {
+              stage: DoclingProcessingStage.UPLOAD,
+              status: DoclingProcessingStatus.SUCCEEDED,
+              attempt: 1,
+              adapterVersion: DOCLING_ADAPTER_VERSION,
+              message: "Multipart Docling upload completed; processing queued",
+              completedAt: new Date(),
+            },
           },
         },
-      },
-    });
+      });
 
-    await tx.doclingProcessingJob.create({
-      data: {
-        id: jobId,
-        bundleId,
-        packId: pack.packId,
-        versionId: version.id,
-        sessionId: session.id,
-        status: DoclingProcessingJobStatus.PENDING,
-      },
-    });
+      await tx.doclingProcessingJob.create({
+        data: {
+          id: jobId,
+          bundleId,
+          packId: pack.packId,
+          versionId: version.id,
+          sessionId: session.id,
+          status: DoclingProcessingJobStatus.PENDING,
+        },
+      });
 
-    await tx.doclingUploadSession.update({
+      await tx.doclingUploadSession.update({
+        where: { id: session.id },
+        data: {
+          status: DoclingUploadSessionStatus.COMPLETED,
+          completedAt: new Date(),
+          bundleId,
+          processingJobId: jobId,
+        },
+      });
+    });
+  } catch (error) {
+    // MinIO completes succeeded but DB tx failed → enqueue object cleanup / delete.
+    for (const objectKey of completedObjectKeys) {
+      try {
+        await storage.deleteObject({ objectKey });
+      } catch {
+        // best-effort cleanup
+      }
+    }
+    await prisma.doclingUploadSession.update({
       where: { id: session.id },
       data: {
-        status: DoclingUploadSessionStatus.COMPLETED,
-        completedAt: new Date(),
-        bundleId,
-        processingJobId: jobId,
+        status: DoclingUploadSessionStatus.FAILED,
+        lastErrorCode: "DOCLING_COMPLETE_DB_FAILED",
+        lastErrorMessage:
+          error instanceof Error ? error.message.slice(0, 500) : "complete db failed",
       },
     });
-  });
+    throw new DoclingImportError(
+      "DOCLING_COMPLETE_FAILED",
+      "업로드 완료 DB 반영에 실패했습니다. 스토리지 객체를 정리했습니다.",
+      502,
+    );
+  }
 
   const refreshed = await loadSession(session.id);
   if (!refreshed) {
@@ -819,4 +984,70 @@ export async function abortDoclingUploadSession(input: {
   });
 
   return { session: toUploadSessionPublicDto(updated) };
+}
+
+/**
+ * Abort multipart uploads for expired CREATED/UPLOADING sessions and mark EXPIRED.
+ * Intended for worker loop / ops hooks (lightweight batch).
+ */
+export async function cleanupExpiredDoclingUploadSessions(input?: {
+  storage?: ObjectStorageBackend;
+  now?: Date;
+  limit?: number;
+}): Promise<{ expiredCount: number }> {
+  const storage = input?.storage ?? getConfiguredObjectStorage();
+  const now = input?.now ?? new Date();
+  const limit = input?.limit ?? 50;
+
+  const expired = await prisma.doclingUploadSession.findMany({
+    where: {
+      status: {
+        in: [DoclingUploadSessionStatus.CREATED, DoclingUploadSessionStatus.UPLOADING],
+      },
+      expiresAt: { lt: now },
+    },
+    include: { files: true },
+    take: limit,
+    orderBy: { expiresAt: "asc" },
+  });
+
+  let expiredCount = 0;
+  for (const session of expired) {
+    for (const file of session.files) {
+      if (file.multipartUploadId) {
+        try {
+          await storage.abortMultipartUpload({
+            objectKey: file.objectKey,
+            uploadId: file.multipartUploadId,
+          });
+        } catch {
+          // best-effort
+        }
+      }
+      try {
+        await storage.deleteObject({ objectKey: file.objectKey });
+      } catch {
+        // may not exist
+      }
+      await prisma.doclingUploadFile.update({
+        where: { id: file.id },
+        data: {
+          status: DoclingUploadFileStatus.ABORTED,
+          multipartUploadId: null,
+        },
+      });
+    }
+    await prisma.doclingUploadSession.update({
+      where: { id: session.id },
+      data: {
+        status: DoclingUploadSessionStatus.EXPIRED,
+        abortedAt: now,
+        lastErrorCode: "DOCLING_UPLOAD_SESSION_EXPIRED",
+        lastErrorMessage: "Upload session expired; multipart aborted",
+      },
+    });
+    expiredCount += 1;
+  }
+
+  return { expiredCount };
 }

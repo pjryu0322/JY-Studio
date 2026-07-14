@@ -28,6 +28,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         fileName?: string;
         mimeType?: string | null;
         declaredFileSize?: number;
+        lastModifiedMs?: number | null;
+        headSha256?: string | null;
+        tailSha256?: string | null;
       }>;
     };
 
@@ -66,6 +69,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         fileName: raw.fileName,
         mimeType: raw.mimeType ?? null,
         declaredFileSize: raw.declaredFileSize,
+        lastModifiedMs:
+          typeof raw.lastModifiedMs === "number" && Number.isFinite(raw.lastModifiedMs)
+            ? raw.lastModifiedMs
+            : null,
+        headSha256: typeof raw.headSha256 === "string" ? raw.headSha256 : null,
+        tailSha256: typeof raw.tailSha256 === "string" ? raw.tailSha256 : null,
       });
     }
 

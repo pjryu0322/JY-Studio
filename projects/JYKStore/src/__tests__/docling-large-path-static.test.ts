@@ -29,11 +29,18 @@ describe("validateAndNormalizeBundle large-file path (static)", () => {
     assert.ok(loader.includes("projectDoclingJsonStream"));
     assert.ok(loader.includes("shouldUseDoclingJsonStreamProjector"));
     assert.ok(loader.includes("SOURCE_SIGNATURE_FULL_BUFFER_MAX_BYTES"));
-    assert.ok(loader.includes("streamMarkdownPreviewFromReadable"));
+    assert.ok(
+      loader.includes("streamMarkdownTripleSamples") ||
+        loader.includes("streamMarkdownPreviewFromReadable"),
+      "loader must stream markdown samples/preview",
+    );
     assert.ok(projector.includes("stream-json"));
     assert.ok(projector.includes("DOCLING_JSON_FULL_BUFFER_MAX_BYTES"));
+    assert.ok(projector.includes("streamArray") || projector.includes("pick("));
     // Raw storage objects must not be rewritten after projection.
     assert.ok(!loader.includes("putSmallObject"));
     assert.ok(!loader.includes("put({"));
+    // Stream projector must not assemble whole root into `assembled`.
+    assert.ok(!/let assembled:\s*unknown/.test(projector));
   });
 });

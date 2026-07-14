@@ -1,7 +1,9 @@
-import { Readable } from "node:stream";
+import { PassThrough, Readable, type Readable as ReadableType } from "node:stream";
 import { chain } from "stream-chain";
 import { parser } from "stream-json";
 import { ignore } from "stream-json/filters/ignore.js";
+import { pick } from "stream-json/filters/pick.js";
+import { streamArray } from "stream-json/streamers/stream-array.js";
 import { streamValues } from "stream-json/streamers/stream-values.js";
 import {
   DOCLING_ERROR_CODES,
@@ -16,6 +18,8 @@ export const DOCLING_JSON_FULL_BUFFER_MAX_BYTES = 16 * 1024 * 1024;
 export const DOCLING_STREAM_PROJECTOR_LIMITS = {
   maxTexts: 50_000,
   maxTextChars: 8_000,
+  /** Cumulative text characters across all kept texts (truncated per-item first). */
+  maxTotalTextChars: 16_000_000,
   maxTables: 5_000,
   maxPictures: 10_000,
   maxGroups: 20_000,
@@ -34,6 +38,9 @@ const HEAVY_FIELD_KEYS = new Set([
   "img",
 ]);
 
+const META_KEYS = ["schema_name", "version", "name", "origin", "body"] as const;
+const ARRAY_KEYS = ["texts", "tables", "pictures", "groups"] as const;
+
 export type DoclingJsonStreamProjectorStats = {
   bytesRead: number;
   textsKept: number;
@@ -46,6 +53,7 @@ export type DoclingJsonStreamProjectorStats = {
   groupsKept: number;
   groupsDropped: number;
   heavyFieldsStripped: boolean;
+  totalTextChars: number;
 };
 
 export type DoclingJsonStreamProjectorResult = {
@@ -72,6 +80,7 @@ function emptyStats(): DoclingJsonStreamProjectorStats {
     groupsKept: 0,
     groupsDropped: 0,
     heavyFieldsStripped: false,
+    totalTextChars: 0,
   };
 }
 
@@ -81,16 +90,13 @@ function isHeavyFieldKey(key: string | number | null | undefined): boolean {
 
 /**
  * Drop entire subtrees for binary/base64/image/uri payloads so they never enter
- * the assembled document.
+ * projected items.
  */
 function heavyFieldIgnoreFilter(
   stack: (string | number | null)[],
 ): boolean {
   const leaf = stack[stack.length - 1];
-  if (isHeavyFieldKey(leaf)) return true;
-  // Nested under an `image` object (e.g. pictures.0.image.mimetype / dpi): keep structure
-  // stripped by ignoring the whole `image` key above.
-  return false;
+  return isHeavyFieldKey(leaf);
 }
 
 function truncateText(
@@ -129,7 +135,6 @@ function projectTextItem(
       }
     }
   }
-  // Explicitly drop uri/image/base64/binary even if ignore filter missed them.
   return out;
 }
 
@@ -140,7 +145,6 @@ function projectTableItem(item: unknown): Record<string, unknown> | null {
   if (typeof item.label === "string") out.label = item.label;
   if (item.parent !== undefined) out.parent = item.parent;
   if (item.caption !== undefined) out.caption = item.caption;
-  // Keep cell text metadata only — strip embedded images from table data.
   if (item.data !== undefined) {
     out.data = scrubTableData(item.data);
   }
@@ -172,7 +176,6 @@ function projectPictureItem(item: unknown): Record<string, unknown> | null {
   if (item.parent !== undefined) out.parent = item.parent;
   if (item.caption !== undefined) out.caption = item.caption;
   if (item.prov !== undefined) out.prov = scrubProv(item.prov);
-  // Never keep base64 / image / uri payloads.
   return out;
 }
 
@@ -235,7 +238,7 @@ function projectBody(body: unknown): Record<string, unknown> | undefined {
 
 /**
  * Compact a fully-assembled Docling-shaped object for normalizeDoclingDocument.
- * Intended for documents that already had heavy fields stripped by the ignore filter.
+ * Used by small in-memory callers / tests — stream path does not assemble a root.
  */
 export function compactDoclingDocument(
   raw: unknown,
@@ -267,13 +270,16 @@ export function compactDoclingDocument(
   if (Array.isArray(raw.texts)) {
     const kept: Record<string, unknown>[] = [];
     for (let i = 0; i < raw.texts.length; i++) {
-      if (kept.length >= limits.maxTexts) {
-        stats.textsDropped = raw.texts.length - i;
+      if (
+        kept.length >= limits.maxTexts ||
+        stats.totalTextChars >= limits.maxTotalTextChars
+      ) {
+        stats.textsDropped += raw.texts.length - i;
         issues.push(
           issue(
             DOCLING_ERROR_CODES.DOCLING_ENTITY_LIMIT_EXCEEDED,
             "WARNING",
-            `texts capped at ${limits.maxTexts} items during stream projection.`,
+            `texts capped during compact projection.`,
             { field: "texts" },
           ),
         );
@@ -281,8 +287,22 @@ export function compactDoclingDocument(
       }
       const projected = projectTextItem(raw.texts[i], stats, issues, limits);
       if (projected) {
+        const textLen = typeof projected.text === "string" ? projected.text.length : 0;
+        if (stats.totalTextChars + textLen > limits.maxTotalTextChars) {
+          stats.textsDropped += raw.texts.length - i;
+          issues.push(
+            issue(
+              DOCLING_ERROR_CODES.DOCLING_ENTITY_LIMIT_EXCEEDED,
+              "WARNING",
+              `texts total character budget (${limits.maxTotalTextChars}) exceeded.`,
+              { field: "texts" },
+            ),
+          );
+          break;
+        }
         kept.push(projected);
         stats.textsKept += 1;
+        stats.totalTextChars += textLen;
       }
     }
     doc.texts = kept;
@@ -371,8 +391,81 @@ function countBytesRead(readable: Readable, stats: DoclingJsonStreamProjectorSta
 }
 
 /**
- * Stream-parse Docling JSON without JSON.parse of the full string.
- * Heavy binary/base64 fields are stripped at the token level before assembly.
+ * Fan-out an object-mode token stream to N consumers with basic backpressure.
+ * Each tap receives every token (pick/streamArray then selects by path).
+ */
+export function fanOutObjectStream(
+  source: ReadableType,
+  count: number,
+): PassThrough[] {
+  const taps = Array.from(
+    { length: count },
+    () => new PassThrough({ objectMode: true, highWaterMark: 64 }),
+  );
+  let paused = false;
+  const resumeIfNeeded = () => {
+    if (!paused) return;
+    if (taps.every((t) => !t.writableNeedDrain)) {
+      paused = false;
+      source.resume();
+    }
+  };
+  for (const t of taps) {
+    t.on("drain", resumeIfNeeded);
+  }
+  source.on("data", (chunk: unknown) => {
+    let ok = true;
+    for (const t of taps) {
+      if (!t.write(chunk)) ok = false;
+    }
+    if (!ok && !paused) {
+      paused = true;
+      source.pause();
+    }
+  });
+  source.on("end", () => {
+    for (const t of taps) t.end();
+  });
+  source.on("error", (err: Error) => {
+    for (const t of taps) t.destroy(err);
+  });
+  return taps;
+}
+
+async function readPickedScalar(
+  tokenTap: ReadableType,
+  field: string,
+): Promise<unknown> {
+  const pipeline = chain([
+    tokenTap,
+    pick({ filter: field, packKeys: true, streamKeys: false }),
+    streamValues(),
+  ]);
+  for await (const item of pipeline as AsyncIterable<{ key: number; value: unknown }>) {
+    return item.value;
+  }
+  return undefined;
+}
+
+async function readPickedArrayItems(
+  tokenTap: ReadableType,
+  field: string,
+  onItem: (value: unknown, index: number) => void,
+): Promise<void> {
+  const pipeline = chain([
+    tokenTap,
+    pick({ filter: field, packKeys: true, streamKeys: false }),
+    streamArray(),
+  ]);
+  for await (const item of pipeline as AsyncIterable<{ key: number; value: unknown }>) {
+    onItem(item.value, item.key);
+  }
+}
+
+/**
+ * Path-based incremental projection of Docling JSON.
+ * Never assigns a fully assembled root object — streams meta scalars and array
+ * items via pick + streamArray / streamValues per path.
  */
 export async function projectDoclingJsonStream(
   input: NodeJS.ReadableStream | Readable,
@@ -386,36 +479,197 @@ export async function projectDoclingJsonStream(
   const limits = options?.limits ?? DOCLING_STREAM_PROJECTOR_LIMITS;
 
   const source = countBytesRead(Readable.from(input as AsyncIterable<unknown>), stats);
+  const tokenStream = chain([
+    source,
+    parser({ packKeys: true, packValues: true, streamValues: false }),
+    ignore({
+      filter: heavyFieldIgnoreFilter,
+      packKeys: true,
+      streamKeys: false,
+    }),
+  ]) as Readable;
 
-  let assembled: unknown;
+  const tapCount = META_KEYS.length + ARRAY_KEYS.length;
+  const taps = fanOutObjectStream(tokenStream, tapCount);
+  stats.heavyFieldsStripped = true;
+
+  const document: DoclingDocument = {};
   let parseError: Error | null = null;
+  let sawRootObject = false;
 
   try {
-    const pipeline = chain([
-      source,
-      parser({ packKeys: true, packValues: true, streamValues: false }),
-      // packKeys must be true so stackDiffer emits keyValue tokens Assembler understands.
-      ignore({
-        filter: heavyFieldIgnoreFilter,
-        packKeys: true,
-        streamKeys: false,
-      }),
-      streamValues({
-        reviver(key: string, value: unknown) {
-          if (isHeavyFieldKey(key)) {
-            stats.heavyFieldsStripped = true;
-            return undefined;
+    const metaPromises = META_KEYS.map(async (key, index) => {
+      const value = await readPickedScalar(taps[index]!, key);
+      if (value === undefined) return;
+      sawRootObject = true;
+      if (key === "schema_name" && typeof value === "string") {
+        document.schema_name = value;
+      } else if (key === "version" && typeof value === "string") {
+        document.version = value;
+      } else if (key === "name" && typeof value === "string") {
+        document.name = value;
+      } else if (key === "origin") {
+        const origin = projectOrigin(value);
+        if (origin) document.origin = origin;
+      } else if (key === "body") {
+        const body = projectBody(value);
+        if (body) document.body = body;
+      }
+    });
+
+    let textsWarned = false;
+    let textsCharWarned = false;
+    const texts: Record<string, unknown>[] = [];
+    const tables: Record<string, unknown>[] = [];
+    const pictures: Record<string, unknown>[] = [];
+    const groups: Record<string, unknown>[] = [];
+
+    const textsPromise = readPickedArrayItems(
+      taps[META_KEYS.length]!,
+      "texts",
+      (raw) => {
+        sawRootObject = true;
+        if (
+          texts.length >= limits.maxTexts ||
+          stats.totalTextChars >= limits.maxTotalTextChars
+        ) {
+          stats.textsDropped += 1;
+          if (!textsWarned) {
+            textsWarned = true;
+            issues.push(
+              issue(
+                DOCLING_ERROR_CODES.DOCLING_ENTITY_LIMIT_EXCEEDED,
+                "WARNING",
+                `texts capped at ${limits.maxTexts} items or character budget during stream projection.`,
+                { field: "texts" },
+              ),
+            );
           }
-          return value;
-        },
-      }),
+          return;
+        }
+        const projected = projectTextItem(raw, stats, issues, limits);
+        if (!projected) return;
+        const textLen = typeof projected.text === "string" ? projected.text.length : 0;
+        if (stats.totalTextChars + textLen > limits.maxTotalTextChars) {
+          stats.textsDropped += 1;
+          if (!textsCharWarned) {
+            textsCharWarned = true;
+            issues.push(
+              issue(
+                DOCLING_ERROR_CODES.DOCLING_ENTITY_LIMIT_EXCEEDED,
+                "WARNING",
+                `texts total character budget (${limits.maxTotalTextChars}) exceeded during stream projection.`,
+                { field: "texts" },
+              ),
+            );
+          }
+          return;
+        }
+        texts.push(projected);
+        stats.textsKept += 1;
+        stats.totalTextChars += textLen;
+      },
+    );
+
+    let tablesWarned = false;
+    const tablesPromise = readPickedArrayItems(
+      taps[META_KEYS.length + 1]!,
+      "tables",
+      (raw) => {
+        sawRootObject = true;
+        if (tables.length >= limits.maxTables) {
+          stats.tablesDropped += 1;
+          if (!tablesWarned) {
+            tablesWarned = true;
+            issues.push(
+              issue(
+                DOCLING_ERROR_CODES.DOCLING_ENTITY_LIMIT_EXCEEDED,
+                "WARNING",
+                `tables capped at ${limits.maxTables} items during stream projection.`,
+                { field: "tables" },
+              ),
+            );
+          }
+          return;
+        }
+        const projected = projectTableItem(raw);
+        if (projected) {
+          tables.push(projected);
+          stats.tablesKept += 1;
+        }
+      },
+    );
+
+    let picturesWarned = false;
+    const picturesPromise = readPickedArrayItems(
+      taps[META_KEYS.length + 2]!,
+      "pictures",
+      (raw) => {
+        sawRootObject = true;
+        if (pictures.length >= limits.maxPictures) {
+          stats.picturesDropped += 1;
+          if (!picturesWarned) {
+            picturesWarned = true;
+            issues.push(
+              issue(
+                DOCLING_ERROR_CODES.DOCLING_ENTITY_LIMIT_EXCEEDED,
+                "WARNING",
+                `pictures capped at ${limits.maxPictures} items during stream projection.`,
+                { field: "pictures" },
+              ),
+            );
+          }
+          return;
+        }
+        const projected = projectPictureItem(raw);
+        if (projected) {
+          pictures.push(projected);
+          stats.picturesKept += 1;
+        }
+      },
+    );
+
+    let groupsWarned = false;
+    const groupsPromise = readPickedArrayItems(
+      taps[META_KEYS.length + 3]!,
+      "groups",
+      (raw) => {
+        sawRootObject = true;
+        if (groups.length >= limits.maxGroups) {
+          stats.groupsDropped += 1;
+          if (!groupsWarned) {
+            groupsWarned = true;
+            issues.push(
+              issue(
+                DOCLING_ERROR_CODES.DOCLING_ENTITY_LIMIT_EXCEEDED,
+                "WARNING",
+                `groups capped at ${limits.maxGroups} items during stream projection.`,
+                { field: "groups" },
+              ),
+            );
+          }
+          return;
+        }
+        const projected = projectGroupItem(raw);
+        if (projected) {
+          groups.push(projected);
+          stats.groupsKept += 1;
+        }
+      },
+    );
+
+    await Promise.all([
+      ...metaPromises,
+      textsPromise,
+      tablesPromise,
+      picturesPromise,
+      groupsPromise,
     ]);
 
-    for await (const item of pipeline as AsyncIterable<{ key: number; value: unknown }>) {
-      assembled = item.value;
-      stats.heavyFieldsStripped = true;
-      break;
-    }
+    if (texts.length > 0) document.texts = texts;
+    if (tables.length > 0) document.tables = tables;
+    if (pictures.length > 0) document.pictures = pictures;
+    if (groups.length > 0) document.groups = groups;
   } catch (error) {
     parseError = error instanceof Error ? error : new Error(String(error));
   }
@@ -435,16 +689,14 @@ export async function projectDoclingJsonStream(
           : "Docling JSON could not be parsed.",
         {
           field: "json",
-          hint: utf8
-            ? undefined
-            : "유효한 JSON 파일인지 확인하세요.",
+          hint: utf8 ? undefined : "유효한 JSON 파일인지 확인하세요.",
         },
       ),
     );
     return { ok: false, issues, stats };
   }
 
-  if (assembled === undefined) {
+  if (!sawRootObject && Object.keys(document).length === 0) {
     issues.push(
       issue(
         DOCLING_ERROR_CODES.DOCLING_JSON_EMPTY,
@@ -455,24 +707,6 @@ export async function projectDoclingJsonStream(
     );
     return { ok: false, issues, stats };
   }
-
-  if (!isPlainObject(assembled)) {
-    issues.push(
-      issue(
-        DOCLING_ERROR_CODES.DOCLING_SCHEMA_INVALID,
-        "ERROR",
-        "Docling JSON root must be an object.",
-        { field: "json" },
-      ),
-    );
-    return { ok: false, issues, stats };
-  }
-
-  stats.heavyFieldsStripped = true;
-  const document = compactDoclingDocument(assembled, { issues, stats, limits });
-
-  // Help GC of the pre-compact assembly (may still be large for text-heavy docs).
-  assembled = undefined;
 
   const ok = !issues.some((i) => i.severity === "ERROR");
   return { ok, document, issues, stats };
@@ -485,7 +719,6 @@ export function shouldUseDoclingJsonStreamProjector(
   contentLength: number | null | undefined,
 ): boolean {
   if (contentLength == null || !Number.isFinite(contentLength)) {
-    // Unknown size: prefer stream path to avoid accidental OOM.
     return true;
   }
   return contentLength > DOCLING_JSON_FULL_BUFFER_MAX_BYTES;

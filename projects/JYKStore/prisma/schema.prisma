@@ -611,6 +611,7 @@ enum DoclingUploadFileStatus {
 enum DoclingProcessingJobStatus {
   PENDING
   RUNNING
+  RETRY_WAIT
   SUCCEEDED
   FAILED
 }
@@ -655,6 +656,12 @@ model DoclingUploadFile {
   checksumSha256      String?
   etag                String?
   knowledgePackFileId String?
+  /// Client-reported File.lastModified (ms since epoch) for resume fingerprint.
+  lastModifiedMs      BigInt?
+  /// SHA-256 hex of first 1MiB (or full file when smaller).
+  headSha256          String?
+  /// SHA-256 hex of last 1MiB (or full file when smaller).
+  tailSha256          String?
   lastErrorCode       String?
   lastErrorMessage    String?
   createdAt           DateTime                @default(now())
@@ -675,8 +682,11 @@ model DoclingProcessingJob {
   sessionId        String?
   status           DoclingProcessingJobStatus @default(PENDING)
   attemptCount     Int                        @default(0)
+  maxAttempts      Int                        @default(3)
   lockedAt         DateTime?
+  lockExpiresAt    DateTime?
   lockOwner        String?
+  nextRunAt        DateTime?
   lastErrorCode    String?
   lastErrorMessage String?
   startedAt        DateTime?
@@ -684,8 +694,10 @@ model DoclingProcessingJob {
   createdAt        DateTime                   @default(now())
   updatedAt        DateTime                   @updatedAt
 
+  @@unique([bundleId])
   @@index([status, createdAt])
-  @@index([bundleId])
+  @@index([status, nextRunAt])
+  @@index([status, lockExpiresAt])
   @@index([packId, versionId])
 }
 

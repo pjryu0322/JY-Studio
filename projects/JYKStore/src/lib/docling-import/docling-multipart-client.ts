@@ -19,6 +19,14 @@ import type { DoclingUploadPolicy } from "@/lib/docling-import/docling-upload-po
 import { formatByteSize } from "@/lib/docling-import/docling-upload-policy";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
 import {
+  computeFileFingerprint,
+  DOCLING_RESUME_FINGERPRINT_MISMATCH_MESSAGE,
+  fingerprintsMatch,
+  type DoclingFileFingerprint,
+  type DoclingRoleFingerprintMap,
+  type StoredDoclingUploadSession,
+} from "@/lib/docling-import/docling-upload-fingerprint";
+import {
   abortProviderDoclingUploadSessionApi,
   completeProviderDoclingUploadSessionApi,
   createProviderDoclingUploadSessionApi,
@@ -110,19 +118,41 @@ export function doclingUploadSessionStorageKey(packId: string): string {
 }
 
 export function readStoredUploadSessionId(packId: string): string | null {
+  const stored = readStoredUploadSession(packId);
+  return stored?.sessionId ?? null;
+}
+
+export function readStoredUploadSession(packId: string): StoredDoclingUploadSession | null {
   if (typeof sessionStorage === "undefined") return null;
   try {
     const raw = sessionStorage.getItem(doclingUploadSessionStorageKey(packId));
-    return raw?.trim() || null;
+    if (!raw?.trim()) return null;
+    // Legacy: plain session id string
+    if (!raw.trimStart().startsWith("{")) {
+      return { sessionId: raw.trim(), fingerprints: {} };
+    }
+    const parsed = JSON.parse(raw) as StoredDoclingUploadSession;
+    if (!parsed?.sessionId || typeof parsed.sessionId !== "string") return null;
+    return {
+      sessionId: parsed.sessionId,
+      fingerprints: parsed.fingerprints ?? {},
+    };
   } catch {
     return null;
   }
 }
 
 export function persistUploadSessionId(packId: string, sessionId: string): void {
+  persistUploadSession(packId, { sessionId, fingerprints: {} });
+}
+
+export function persistUploadSession(
+  packId: string,
+  stored: StoredDoclingUploadSession,
+): void {
   if (typeof sessionStorage === "undefined") return;
   try {
-    sessionStorage.setItem(doclingUploadSessionStorageKey(packId), sessionId);
+    sessionStorage.setItem(doclingUploadSessionStorageKey(packId), JSON.stringify(stored));
   } catch {
     // ignore quota / private mode
   }
@@ -135,6 +165,94 @@ export function clearStoredUploadSessionId(packId: string): void {
   } catch {
     // ignore
   }
+}
+
+async function computeUploadFingerprints(
+  files: MultipartUploadFiles,
+): Promise<DoclingRoleFingerprintMap> {
+  const [source, json, markdown] = await Promise.all([
+    computeFileFingerprint(files.sourceFile),
+    computeFileFingerprint(files.doclingJsonFile),
+    computeFileFingerprint(files.doclingMarkdownFile),
+  ]);
+  return {
+    SOURCE_ORIGINAL: source,
+    DOCLING_JSON: json,
+    DOCLING_MARKDOWN: markdown,
+  };
+}
+
+/**
+ * Compare selected file fingerprints against server session files (preferred) or local storage.
+ * Returns mismatch roles; empty array means OK to resume.
+ */
+export function findResumeFingerprintMismatches(input: {
+  selected: DoclingRoleFingerprintMap;
+  sessionFiles?: UploadSessionFilePublicDto[];
+  storedFingerprints?: DoclingRoleFingerprintMap;
+}): DoclingUploadRole[] {
+  const roles: DoclingUploadRole[] = ["SOURCE_ORIGINAL", "DOCLING_JSON", "DOCLING_MARKDOWN"];
+  const mismatched: DoclingUploadRole[] = [];
+  const serverByRole = new Map(
+    (input.sessionFiles ?? []).map((f) => [f.role as DoclingUploadRole, f]),
+  );
+  for (const role of roles) {
+    const selected = input.selected[role];
+    if (!selected) {
+      mismatched.push(role);
+      continue;
+    }
+    const server = serverByRole.get(role);
+    const expected = server
+      ? {
+          originalFileName: server.originalFileName,
+          declaredFileSize: server.declaredFileSize,
+          lastModifiedMs: server.lastModifiedMs,
+          headSha256: server.headSha256,
+          tailSha256: server.tailSha256,
+        }
+      : input.storedFingerprints?.[role];
+    if (!fingerprintsMatch(selected, expected)) {
+      mismatched.push(role);
+    }
+  }
+  return mismatched;
+}
+
+function buildCreateSessionFiles(
+  files: MultipartUploadFiles,
+  fingerprints: DoclingRoleFingerprintMap,
+) {
+  const fp = (role: DoclingUploadRole): DoclingFileFingerprint | undefined => fingerprints[role];
+  return [
+    {
+      role: "SOURCE_ORIGINAL" as const,
+      fileName: files.sourceFile.name,
+      mimeType: files.sourceFile.type || null,
+      declaredFileSize: files.sourceFile.size,
+      lastModifiedMs: files.sourceFile.lastModified,
+      headSha256: fp("SOURCE_ORIGINAL")?.headSha256 ?? null,
+      tailSha256: fp("SOURCE_ORIGINAL")?.tailSha256 ?? null,
+    },
+    {
+      role: "DOCLING_JSON" as const,
+      fileName: files.doclingJsonFile.name,
+      mimeType: files.doclingJsonFile.type || "application/json",
+      declaredFileSize: files.doclingJsonFile.size,
+      lastModifiedMs: files.doclingJsonFile.lastModified,
+      headSha256: fp("DOCLING_JSON")?.headSha256 ?? null,
+      tailSha256: fp("DOCLING_JSON")?.tailSha256 ?? null,
+    },
+    {
+      role: "DOCLING_MARKDOWN" as const,
+      fileName: files.doclingMarkdownFile.name,
+      mimeType: files.doclingMarkdownFile.type || "text/markdown",
+      declaredFileSize: files.doclingMarkdownFile.size,
+      lastModifiedMs: files.doclingMarkdownFile.lastModified,
+      headSha256: fp("DOCLING_MARKDOWN")?.headSha256 ?? null,
+      tailSha256: fp("DOCLING_MARKDOWN")?.tailSha256 ?? null,
+    },
+  ];
 }
 
 function maxBytesForRole(
@@ -477,8 +595,19 @@ export async function uploadDoclingMultipart(input: {
     preValidateDoclingUploadFiles(files, policy);
 
     setStage("preparing");
+    const fingerprints = await computeUploadFingerprints(files);
     let session: UploadSessionPublicDto;
-    const resumeId = input.resumeSessionId ?? readStoredUploadSessionId(packId);
+    const stored = input.resumeSessionId
+      ? { sessionId: input.resumeSessionId, fingerprints: {} as DoclingRoleFingerprintMap }
+      : readStoredUploadSession(packId);
+    const resumeId = stored?.sessionId ?? null;
+
+    const createFreshSession = async () => {
+      const created = await createProviderDoclingUploadSessionApi(packId, {
+        files: buildCreateSessionFiles(files, fingerprints),
+      });
+      return created.session;
+    };
 
     if (resumeId) {
       try {
@@ -487,86 +616,39 @@ export async function uploadDoclingMultipart(input: {
           resumed.session.status === "CREATED" ||
           resumed.session.status === "UPLOADING"
         ) {
-          session = resumed.session;
+          const mismatches = findResumeFingerprintMismatches({
+            selected: fingerprints,
+            sessionFiles: resumed.session.files,
+            storedFingerprints: stored?.fingerprints,
+          });
+          if (mismatches.length > 0) {
+            try {
+              await abortProviderDoclingUploadSessionApi(packId, resumeId);
+            } catch {
+              // best-effort
+            }
+            clearStoredUploadSessionId(packId);
+            setStage("preparing", DOCLING_RESUME_FINGERPRINT_MISMATCH_MESSAGE);
+            session = await createFreshSession();
+          } else {
+            session = resumed.session;
+          }
         } else {
           clearStoredUploadSessionId(packId);
-          const created = await createProviderDoclingUploadSessionApi(packId, {
-            files: [
-              {
-                role: "SOURCE_ORIGINAL",
-                fileName: files.sourceFile.name,
-                mimeType: files.sourceFile.type || null,
-                declaredFileSize: files.sourceFile.size,
-              },
-              {
-                role: "DOCLING_JSON",
-                fileName: files.doclingJsonFile.name,
-                mimeType: files.doclingJsonFile.type || "application/json",
-                declaredFileSize: files.doclingJsonFile.size,
-              },
-              {
-                role: "DOCLING_MARKDOWN",
-                fileName: files.doclingMarkdownFile.name,
-                mimeType: files.doclingMarkdownFile.type || "text/markdown",
-                declaredFileSize: files.doclingMarkdownFile.size,
-              },
-            ],
-          });
-          session = created.session;
+          session = await createFreshSession();
         }
       } catch {
         clearStoredUploadSessionId(packId);
-        const created = await createProviderDoclingUploadSessionApi(packId, {
-          files: [
-            {
-              role: "SOURCE_ORIGINAL",
-              fileName: files.sourceFile.name,
-              mimeType: files.sourceFile.type || null,
-              declaredFileSize: files.sourceFile.size,
-            },
-            {
-              role: "DOCLING_JSON",
-              fileName: files.doclingJsonFile.name,
-              mimeType: files.doclingJsonFile.type || "application/json",
-              declaredFileSize: files.doclingJsonFile.size,
-            },
-            {
-              role: "DOCLING_MARKDOWN",
-              fileName: files.doclingMarkdownFile.name,
-              mimeType: files.doclingMarkdownFile.type || "text/markdown",
-              declaredFileSize: files.doclingMarkdownFile.size,
-            },
-          ],
-        });
-        session = created.session;
+        session = await createFreshSession();
       }
     } else {
-      const created = await createProviderDoclingUploadSessionApi(packId, {
-        files: [
-          {
-            role: "SOURCE_ORIGINAL",
-            fileName: files.sourceFile.name,
-            mimeType: files.sourceFile.type || null,
-            declaredFileSize: files.sourceFile.size,
-          },
-          {
-            role: "DOCLING_JSON",
-            fileName: files.doclingJsonFile.name,
-            mimeType: files.doclingJsonFile.type || "application/json",
-            declaredFileSize: files.doclingJsonFile.size,
-          },
-          {
-            role: "DOCLING_MARKDOWN",
-            fileName: files.doclingMarkdownFile.name,
-            mimeType: files.doclingMarkdownFile.type || "text/markdown",
-            declaredFileSize: files.doclingMarkdownFile.size,
-          },
-        ],
-      });
-      session = created.session;
+      session = await createFreshSession();
     }
 
-    persistUploadSessionId(packId, session.id);
+    persistUploadSession(packId, {
+      sessionId: session.id,
+      fingerprints,
+    });
     progress = { ...progress, sessionId: session.id, bundleId: session.bundleId };
     emit(progress);
 

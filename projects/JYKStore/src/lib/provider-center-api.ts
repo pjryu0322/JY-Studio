@@ -292,6 +292,9 @@ export async function createProviderDoclingUploadSessionApi(
       fileName: string;
       mimeType?: string | null;
       declaredFileSize: number;
+      lastModifiedMs?: number | null;
+      headSha256?: string | null;
+      tailSha256?: string | null;
     }>;
   },
 ): Promise<{
