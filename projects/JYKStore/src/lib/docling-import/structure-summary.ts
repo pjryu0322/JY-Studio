@@ -3,7 +3,7 @@ import type {
   NormalizedSection,
   NormalizedTable,
 } from "@/lib/adapters/docling/docling-types";
-import { isHeadingTextLabel } from "@/lib/adapters/docling/docling-normalizer";
+import { isHeadingTextLabel } from "@/lib/adapters/docling/docling-label-utils";
 
 export type StructureSummary = {
   headingCount: number;

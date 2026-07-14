@@ -5,6 +5,7 @@ import {
   extractImageUriFromPicture,
   parseDataUriImage,
 } from "./docling-figure-preview";
+import { isBodyTextLabel, isHeadingTextLabel } from "./docling-label-utils";
 import { normalizeDoclingTableData } from "./docling-table-normalize";
 import { selectNormalizedDocumentTitle } from "./docling-title";
 import {
@@ -22,6 +23,8 @@ import {
   type NormalizedSection,
   type NormalizedTable,
 } from "./docling-types";
+
+export { isBodyTextLabel, isHeadingTextLabel } from "./docling-label-utils";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -65,54 +68,6 @@ function captionText(
   field?: string,
 ): string | null {
   return resolveCaptionText(doc, item, { warnings, field });
-}
-
-/** Labels that must never be treated as document headings. */
-const NON_HEADING_LABELS = new Set([
-  "group",
-  "list",
-  "picture",
-  "table",
-  "paragraph",
-  "text",
-  "list_item",
-  "code",
-  "caption",
-  "footnote",
-  "formula",
-  "checkbox",
-  "page_header",
-  "page_footer",
-]);
-
-const HEADING_LABEL_RE = /^(section_header|title|heading)$|heading|section_header/;
-
-const BODY_LABEL_RE =
-  /^(paragraph|text|list_item|code|caption|footnote|formula)$|paragraph|list_item|footnote|formula/;
-
-export function isHeadingTextLabel(label: string | null | undefined): boolean {
-  const l = (label ?? "").toLowerCase().trim();
-  if (!l || NON_HEADING_LABELS.has(l)) return false;
-  if (l.includes("list") || l.includes("group") || l.includes("picture") || l.includes("table")) {
-    return false;
-  }
-  return HEADING_LABEL_RE.test(l) || l.includes("title");
-}
-
-const BODY_EXCLUDE_LABELS = new Set([
-  "page_header",
-  "page_footer",
-  "furniture",
-  "page_number",
-]);
-
-export function isBodyTextLabel(label: string | null | undefined): boolean {
-  const l = (label ?? "").toLowerCase().trim();
-  if (!l) return true;
-  if (isHeadingTextLabel(l)) return false;
-  if (BODY_EXCLUDE_LABELS.has(l)) return false;
-  if (l.includes("picture") || l.includes("table") || l === "group") return false;
-  return BODY_LABEL_RE.test(l) || l.includes("list");
 }
 
 function textItemTitle(item: DoclingTextItem): string | null {
