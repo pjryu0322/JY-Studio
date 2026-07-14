@@ -133,12 +133,13 @@ export function NormalizedDocumentPreview({
           <ul className="space-y-1.5">
             <li>제목: {document.title ?? "—"}</li>
             <li>
-              언어: {document.language ?? "미확인"}
-              {document.languageSource ? ` (${document.languageSource}` : ""}
-              {document.languageConfidence != null
-                ? ` · ${Math.round(document.languageConfidence * 100)}%`
-                : ""}
-              {document.languageSource ? ")" : ""}
+              언어:{" "}
+              {document.language === "ko"
+                ? "한국어"
+                : document.language === "en"
+                  ? "영어"
+                  : document.language ?? "미선택"}
+              {document.languageSource === "PROVIDER" ? " · 제공자" : ""}
             </li>
             <li>
               Schema: {document.sourceSchemaName ?? "—"}{" "}

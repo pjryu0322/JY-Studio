@@ -195,6 +195,7 @@ describe("docling import UX sources", () => {
     assert.ok(preview.includes("Figures"));
     assert.ok(preview.includes("Markdown"));
     assert.ok(preview.includes("처리 로그"));
-    assert.ok(preview.includes("languageSource") || preview.includes("languageConfidence") || preview.includes("미확인"));
+    assert.ok(preview.includes("제공자") || preview.includes("미선택"));
+    assert.ok(!preview.includes("languageConfidence"));
   });
 });

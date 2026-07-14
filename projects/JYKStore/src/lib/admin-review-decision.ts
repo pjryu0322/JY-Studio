@@ -152,6 +152,13 @@ export function detectSubmitSnapshotDrift(detail: AdminReviewDetailDto): {
     } else {
       reasons.push("유통정보가 없습니다.");
     }
+    // Legacy snapshots omit language — do not block REVIEWING/PUBLISHED on null.
+    if (snapshot.language != null) {
+      const currentLanguage = detail.versions[0]?.language ?? null;
+      if (snapshot.language !== currentLanguage) {
+        reasons.push("문서 언어가 제출 시점과 다릅니다.");
+      }
+    }
     return { changed: reasons.length > 0, reasons };
   }
 

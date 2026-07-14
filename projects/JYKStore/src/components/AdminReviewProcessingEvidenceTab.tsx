@@ -304,6 +304,22 @@ export function AdminReviewProcessingEvidenceTab({
       <div className="rounded-xl border border-store-border bg-slate-50 p-3 text-xs text-slate-800">
         <p className="font-semibold text-slate-900">서비스 Capability</p>
         <ul className="mt-2 space-y-1">
+          <li>
+            문서 언어:{" "}
+            {evidence.normalization.language === "ko"
+              ? "한국어"
+              : evidence.normalization.language === "en"
+                ? "영어"
+                : evidence.normalization.language ?? "미선택"}
+          </li>
+          <li>
+            입력 주체:{" "}
+            {evidence.normalization.languageSource === "PROVIDER"
+              ? "제공자"
+              : evidence.normalization.language
+                ? evidence.normalization.languageSource ?? "미확인"
+                : "—"}
+          </li>
           <li>다운로드: {evidence.capabilities.download.status}</li>
           <li>NormalizedDocument: {evidence.capabilities.normalizedDocument.status}</li>
           <li>Retrieval: {evidence.capabilities.retrieval.status}</li>

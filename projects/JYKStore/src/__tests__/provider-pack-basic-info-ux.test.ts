@@ -57,6 +57,16 @@ describe("provider pack basic info UX sources", () => {
     assert.ok(editor.includes("resolveProviderEditableShortDescription"));
     assert.ok(editor.includes("resolveProviderEditableVersionChangelog"));
   });
+  it("uses edit-language select with null default and readiness asterisk", () => {
+    const basic = readSource("src/components/ProviderPackBasicInfoTab.tsx");
+    assert.ok(basic.includes('id="edit-language"'));
+    assert.ok(basic.includes('value="">선택하세요</option>') || basic.includes('value="">'));
+    assert.ok(basic.includes("packLanguageDisplayLabel"));
+    assert.ok(basic.includes("검수 요청"));
+    const editor = readSource("src/components/ProviderPackEditor.tsx");
+    assert.ok(editor.includes("language"));
+    assert.ok(editor.includes("onLanguageChange"));
+  });
 });
 
 describe("provider pack basic info summary resolution", () => {

@@ -296,7 +296,7 @@ export async function uploadDoclingImportBundle(input: {
   packId: string;
   source: UploadFileInput;
   json: UploadFileInput;
-  markdown: UploadFileInput;
+  markdown?: UploadFileInput | null;
   storage?: PayloadStorage;
 }): Promise<{ bundle: DoclingImportBundlePublicDto }> {
   const { pack, version } = await requireOwnedDraftPack({
@@ -342,26 +342,35 @@ export async function uploadDoclingImportBundle(input: {
     input.json.mimeType,
     input.json.bytes,
   );
-  const mdMeta = await assertRoleFileAcceptable(
-    KnowledgePackFileRole.DOCLING_MARKDOWN,
-    input.markdown.fileName,
-    input.markdown.mimeType,
-    input.markdown.bytes,
-  );
+  const hasMarkdown = Boolean(input.markdown?.bytes && input.markdown.bytes.byteLength > 0);
+  const mdMeta = hasMarkdown
+    ? await assertRoleFileAcceptable(
+        KnowledgePackFileRole.DOCLING_MARKDOWN,
+        input.markdown!.fileName,
+        input.markdown!.mimeType,
+        input.markdown!.bytes,
+      )
+    : null;
 
   const storage = input.storage ?? getDefaultStorage();
   const prefix = storagePrefix(storage);
   const bundleId = createPayloadId();
   const sourceFileId = createPayloadId();
   const jsonFileId = createPayloadId();
-  const markdownFileId = createPayloadId();
+  const markdownFileId = hasMarkdown ? createPayloadId() : null;
   const adapterVersion = DOCLING_ADAPTER_VERSION;
 
   const sourceChecksum = sha256Hex(input.source.bytes);
   const jsonChecksum = sha256Hex(input.json.bytes);
-  const mdChecksum = sha256Hex(input.markdown.bytes);
+  const mdChecksum = hasMarkdown ? sha256Hex(input.markdown!.bytes) : null;
 
-  const fileSpecs = [
+  const fileSpecs: {
+    id: string;
+    role: KnowledgePackFileRole;
+    meta: typeof sourceMeta;
+    bytes: Uint8Array;
+    checksum: string;
+  }[] = [
     {
       id: sourceFileId,
       role: KnowledgePackFileRole.SOURCE_ORIGINAL,
@@ -376,14 +385,16 @@ export async function uploadDoclingImportBundle(input: {
       bytes: input.json.bytes,
       checksum: jsonChecksum,
     },
-    {
+  ];
+  if (hasMarkdown && mdMeta && markdownFileId && mdChecksum && input.markdown) {
+    fileSpecs.push({
       id: markdownFileId,
       role: KnowledgePackFileRole.DOCLING_MARKDOWN,
       meta: mdMeta,
       bytes: input.markdown.bytes,
       checksum: mdChecksum,
-    },
-  ] as const;
+    });
+  }
 
   const uploadedKeys: string[] = [];
   const stored: {
@@ -470,7 +481,9 @@ export async function uploadDoclingImportBundle(input: {
             status: DoclingProcessingStatus.SUCCEEDED,
             attempt: 1,
             adapterVersion,
-            message: "Three-file Docling import uploaded",
+            message: hasMarkdown
+              ? "Three-file Docling import uploaded"
+              : "Two-file Docling import uploaded (Markdown optional)",
             completedAt: new Date(),
           },
         },
@@ -800,18 +813,21 @@ export async function validateAndNormalizeBundle(
       warnings: validation.issues.filter((i) => i.severity === "WARNING"),
     });
 
-    const { resolveDocumentLanguage } = await import("@/lib/docling-import/document-language");
     const { buildStructureSummary } = await import("@/lib/docling-import/structure-summary");
     const { evaluateDocumentTitleMatch } = await import("@/lib/docling-import/title-match");
-    const mdText = validation.markdownText ?? markdownPreviewText ?? "";
+    const { toPackLanguageCode } = await import("@/lib/pack-language");
     const packRow = await prisma.knowledgePack.findUnique({
       where: { packId: bundle.packId },
       select: { name: true },
     });
-    const languageResolved = resolveDocumentLanguage({
-      textSample: `${draft.title ?? ""}\n${mdText.slice(0, 12_000)}`,
+    const versionRow = await prisma.knowledgePackVersion.findUnique({
+      where: { id: bundle.versionId },
+      select: { language: true },
     });
-    draft.language = languageResolved.language;
+    const providerLanguage = toPackLanguageCode(versionRow?.language);
+    draft.language = providerLanguage;
+    const languageSource = providerLanguage ? "PROVIDER" : null;
+    const languageConfidence = null;
     const structureSummary = buildStructureSummary({
       sections: draft.sections,
       tables: draft.tables,
@@ -883,8 +899,8 @@ export async function validateAndNormalizeBundle(
           sourceSchemaVersion: draft.adapter.sourceSchemaVersion,
           title: draft.title,
           language: draft.language,
-          languageSource: languageResolved.languageSource,
-          languageConfidence: languageResolved.languageConfidence,
+          languageSource,
+          languageConfidence,
           structureSummaryJson: structureSummary as unknown as Prisma.InputJsonValue,
           structureJson: {
             sections: draft.sections,

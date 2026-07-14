@@ -3,6 +3,8 @@ import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structu
 import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-dto";
 import type { RetrievalEvaluationSummaryDto } from "@/lib/retrieval-evaluation/retrieval-evaluation-dto";
 import type { ReleaseGateSummaryDto } from "@/lib/release-gate/release-gate-dto";
+import type { PackLanguageCode } from "@/lib/pack-language";
+import { toPackLanguageCode } from "@/lib/pack-language";
 import type {
   ProviderPackProgressAction,
   ProviderPackCurrentStep,
@@ -92,6 +94,8 @@ export type ProviderPackVersionDto = {
   targetUsers: string[];
   useCases: string[];
   versionSummary: string;
+  /** Provider-selected document language; null until chosen. */
+  language: PackLanguageCode | null;
   sourceDocuments: ProviderSourceDocumentDto[];
 };
 
@@ -135,6 +139,7 @@ function mapVersion(
     targetUsers: version.targetUsers,
     useCases: version.useCases,
     versionSummary: version.versionSummary,
+    language: toPackLanguageCode(version.language),
     sourceDocuments: version.sourceDocuments.map((doc) =>
       mapSourceDocument(doc, overlays?.[doc.id]),
     ),

@@ -10,6 +10,11 @@ import {
 import { prisma } from "@/lib/prisma";
 import { generateUniquePackId, PACK_ID_PATTERN } from "@/lib/pack-id-generator";
 import {
+  parsePackLanguage,
+  toPackLanguageCode,
+  toPrismaPackLanguage,
+} from "@/lib/pack-language";
+import {
   deriveShortDescription,
   PROVIDER_PACK_INITIAL_VERSION_CHANGELOG,
 } from "@/lib/pack-summary-generator";
@@ -108,6 +113,8 @@ export type UpdateProviderPackInput = {
   tags?: string[];
   icon?: string;
   pricing?: PackPricing;
+  /** Provider-managed pack language. Null clears. Omit to leave unchanged. */
+  language?: "ko" | "en" | null;
   versionOverview?: string;
   versionFeatures?: string[];
   versionIncludedKnowledge?: string[];
@@ -281,6 +288,7 @@ export async function listProviderPacksForClient(
       categoryId: pack.categoryId,
       shortDescription: pack.shortDescription,
       description: pack.description,
+      language: toPackLanguageCode(working?.language),
       latestRejectionReason,
       workingVersion,
       publishedVersion,
@@ -546,6 +554,15 @@ export async function updateProviderPackForClient(
     return { error: "NOT_EDITABLE" as const };
   }
 
+  let parsedLanguage: "ko" | "en" | null | undefined = undefined;
+  if (Object.prototype.hasOwnProperty.call(input, "language")) {
+    const parsed = parsePackLanguage(input.language);
+    if (!parsed.ok) {
+      return { error: "PACK_LANGUAGE_INVALID" as const };
+    }
+    parsedLanguage = parsed.value;
+  }
+
   if (input.categoryId) {
     if (!(await assertCategoryExists(input.categoryId.trim()))) {
       return { error: "CATEGORY_NOT_FOUND" as const };
@@ -585,6 +602,7 @@ export async function updateProviderPackForClient(
       targetUsers?: string[];
       useCases?: string[];
       versionSummary?: string;
+      language?: "KO" | "EN" | null;
     } = {};
 
     if (input.versionOverview !== undefined) versionData.overview = input.versionOverview.trim();
@@ -598,6 +616,9 @@ export async function updateProviderPackForClient(
     if (input.versionTargetUsers !== undefined) versionData.targetUsers = input.versionTargetUsers;
     if (input.versionUseCases !== undefined) versionData.useCases = input.versionUseCases;
     if (input.versionSummary !== undefined) versionData.versionSummary = input.versionSummary.trim();
+    if (parsedLanguage !== undefined) {
+      versionData.language = toPrismaPackLanguage(parsedLanguage);
+    }
 
     if (Object.keys(versionData).length > 0) {
       await prisma.knowledgePackVersion.update({
@@ -671,6 +692,7 @@ export async function createProviderPackVersionForClient(
       targetUsers: input.targetUsers ?? latest?.targetUsers ?? [],
       useCases: input.useCases ?? latest?.useCases ?? [],
       versionSummary: input.versionSummary?.trim() || latest?.versionSummary || version,
+      language: latest?.language ?? null,
     },
   });
 

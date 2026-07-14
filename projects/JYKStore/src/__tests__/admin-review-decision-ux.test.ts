@@ -294,6 +294,7 @@ describe("admin review decision state", () => {
           targetUsers: [],
           useCases: [],
           versionSummary: "",
+          language: null,
           sourceDocuments: [
             {
               id: "d1",
@@ -504,6 +505,7 @@ describe("admin review decision state", () => {
           targetUsers: [],
           useCases: [],
           versionSummary: "",
+          language: null,
           sourceDocuments: [
             {
               id: "d1",

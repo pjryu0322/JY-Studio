@@ -1,6 +1,8 @@
 "use client";
 
 import type { FormEvent } from "react";
+import type { PackLanguageCode } from "@/lib/pack-language";
+import { packLanguageDisplayLabel } from "@/lib/pack-language";
 import {
   PROVIDER_PACK_DESCRIPTION_HINT,
   PROVIDER_PACK_SAVE_AND_GO_PAYLOAD,
@@ -17,6 +19,7 @@ export function ProviderPackBasicInfoTab({
   shortDescription,
   description,
   versionOverview,
+  language,
   versionLabel,
   saving,
   saveSuccessMessage,
@@ -25,6 +28,7 @@ export function ProviderPackBasicInfoTab({
   onShortDescriptionChange,
   onDescriptionChange,
   onVersionOverviewChange,
+  onLanguageChange,
   onSaveDraft,
   onSaveAndContinue,
 }: {
@@ -33,6 +37,7 @@ export function ProviderPackBasicInfoTab({
   readonly shortDescription: string;
   readonly description: string;
   readonly versionOverview: string;
+  readonly language: PackLanguageCode | null;
   readonly versionLabel: string;
   readonly saving: boolean;
   readonly saveSuccessMessage: string | null;
@@ -45,6 +50,7 @@ export function ProviderPackBasicInfoTab({
   readonly onShortDescriptionChange: (value: string) => void;
   readonly onDescriptionChange: (value: string) => void;
   readonly onVersionOverviewChange: (value: string) => void;
+  readonly onLanguageChange: (value: PackLanguageCode | null) => void;
   readonly onSaveDraft: () => void;
   readonly onSaveAndContinue: () => void;
 }) {
@@ -94,6 +100,35 @@ export function ProviderPackBasicInfoTab({
               {fieldErrors.name}
             </p>
           ) : null}
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold" htmlFor="edit-language">
+            문서 언어
+            <span className="sr-only"> (검수 요청 시 필수)</span>
+            <span aria-hidden="true" className="text-red-600">
+              {" "}
+              *
+            </span>
+          </label>
+          <p id="edit-language-hint" className="mt-1 text-[11px] text-store-muted">
+            원본문서와 구조화 JSON의 주 언어를 선택하세요. 현재 한국어와 영어만 지원합니다.
+          </p>
+          <select
+            id="edit-language"
+            value={language ?? ""}
+            onChange={(e) => {
+              const next = e.target.value;
+              onLanguageChange(next === "ko" || next === "en" ? next : null);
+            }}
+            disabled={!editable || saving}
+            aria-describedby="edit-language-hint"
+            className="mt-1 min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm disabled:bg-slate-50"
+          >
+            <option value="">선택하세요</option>
+            <option value="ko">{packLanguageDisplayLabel("ko")}</option>
+            <option value="en">{packLanguageDisplayLabel("en")}</option>
+          </select>
         </div>
 
         <div>

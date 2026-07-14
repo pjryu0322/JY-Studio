@@ -1,4 +1,6 @@
 import { DISTRIBUTION_MANIFEST_SCHEMA_VERSION } from "@/lib/distribution/payload-types";
+import type { PackLanguageCode } from "@/lib/pack-language";
+import { isPackLanguageCode } from "@/lib/pack-language";
 
 export type DistributionReviewSubmitSnapshot = {
   mode: "DISTRIBUTION";
@@ -38,6 +40,8 @@ export type DoclingBundleReviewSubmitSnapshot = {
   licenseName: string;
   visibility: string;
   allowDownload: boolean;
+  /** Provider-selected pack language at submit time. Legacy snapshots may omit. */
+  language: PackLanguageCode | null;
 };
 
 export type ReviewSubmitSnapshot =
@@ -88,6 +92,7 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
   licenseName: string;
   visibility: string;
   allowDownload: boolean;
+  language: PackLanguageCode;
 }): DoclingBundleReviewSubmitSnapshot {
   return {
     mode: "DOCLING_BUNDLE",
@@ -107,6 +112,7 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
     licenseName: input.licenseName,
     visibility: input.visibility,
     allowDownload: input.allowDownload,
+    language: input.language,
   };
 }
 
@@ -174,6 +180,11 @@ export function parseDoclingBundleReviewSubmitSnapshot(
     return null;
   }
 
+  // Legacy snapshots may omit language; invalid values coerce to null (still parse).
+  const language: PackLanguageCode | null = isPackLanguageCode(raw.language)
+    ? raw.language
+    : null;
+
   return {
     mode: "DOCLING_BUNDLE",
     submittedAt: raw.submittedAt,
@@ -200,6 +211,7 @@ export function parseDoclingBundleReviewSubmitSnapshot(
     licenseName: raw.licenseName,
     visibility: typeof raw.visibility === "string" ? raw.visibility : "PRIVATE",
     allowDownload: raw.allowDownload !== false,
+    language,
   };
 }
 

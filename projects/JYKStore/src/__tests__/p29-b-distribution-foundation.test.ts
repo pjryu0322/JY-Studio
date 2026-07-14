@@ -72,11 +72,13 @@ describe("P29 distribution foundation", () => {
       licenseName: "MIT",
       visibility: "PRIVATE",
       allowDownload: true,
+      language: "ko",
     });
     const parsed = parseProviderReviewSubmitSnapshot(snapshot);
     assert.ok(parsed);
     assert.ok(isDoclingBundleReviewSnapshot(parsed));
     assert.equal(parsed.doclingBundleId, "bundle-1");
+    assert.equal(parsed.language, "ko");
   });
 
   it("rejects distribution metadata without license or source", () => {

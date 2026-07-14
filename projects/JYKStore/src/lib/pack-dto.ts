@@ -17,6 +17,7 @@ import {
   resolvePublicPackSourceInfo,
 } from "@/lib/public-pack-detail-info";
 import { resolvePublicPackDisplayName } from "@/lib/public-pack-display-name";
+import { toPackLanguageCode } from "@/lib/pack-language";
 import type {
   KnowledgePack,
   KnowledgePackProviderInfo,
@@ -192,6 +193,7 @@ export function toKnowledgePackDto(
     sourceInfo,
     licenseInfo,
     downloadInfo,
+    language: toPackLanguageCode(latest?.language),
     ...(capabilities ? { capabilities } : {}),
   };
 }

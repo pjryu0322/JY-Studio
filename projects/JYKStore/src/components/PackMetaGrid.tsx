@@ -1,4 +1,5 @@
 import type { KnowledgePack, KnowledgePackPricing } from "@/types/pack";
+import { packLanguageDisplayLabel } from "@/lib/pack-language";
 
 function pricingLabel(pricing: KnowledgePackPricing): string {
   switch (pricing) {
@@ -17,6 +18,10 @@ export function PackMetaGrid({ pack }: { readonly pack: KnowledgePack }) {
     { label: "업데이트", value: pack.updatedAt },
     { label: "가격", value: pricingLabel(pack.pricing) },
   ];
+
+  if (pack.language === "ko" || pack.language === "en") {
+    items.push({ label: "언어", value: packLanguageDisplayLabel(pack.language) });
+  }
 
   if (pack.rating > 0) {
     items.unshift({ label: "평점", value: `★ ${pack.rating.toFixed(1)}` });

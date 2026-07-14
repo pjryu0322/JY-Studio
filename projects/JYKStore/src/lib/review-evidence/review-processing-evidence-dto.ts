@@ -59,6 +59,8 @@ export type ImportProcessingEvidenceDto = {
     fingerprint: string | null;
     fingerprintVersion: string | null;
     language: string | null;
+    /** PROVIDER when set by pack language; never auto-detection confidence. */
+    languageSource: string | null;
     title: string | null;
     summary: {
       headingCount?: number;

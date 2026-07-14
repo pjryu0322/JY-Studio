@@ -94,6 +94,8 @@ export type KnowledgePack = {
   sourceInfo?: PublicPackSourceInfo | null;
   licenseInfo?: PublicPackLicenseInfo | null;
   downloadInfo?: PublicPackDownloadInfo | null;
+  /** Provider-selected document language (`ko`/`en`); null when unset. */
+  language?: import("@/lib/pack-language").PackLanguageCode | null;
   searchScore?: number;
   matchReasons?: {
     field: string;

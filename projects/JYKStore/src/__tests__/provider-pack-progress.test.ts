@@ -25,6 +25,7 @@ describe("provider pack progress", () => {
       categoryId: "guide",
       shortDescription: "short",
       description: "desc",
+      language: "ko",
       workingVersion: {
         id: "v1",
         version: "0.1.0",
@@ -41,6 +42,7 @@ describe("provider pack progress", () => {
       categoryId: "ui",
       shortDescription: "short",
       description: "desc",
+      language: "en",
       workingVersion: {
         id: "v2",
         version: "1.0.0",
@@ -73,6 +75,7 @@ describe("provider pack progress", () => {
       categoryId: "cat",
       shortDescription: "short",
       description: "desc",
+      language: "ko",
       workingVersion: {
         id: "v2",
         version: "0.2.0",
@@ -97,6 +100,7 @@ describe("provider pack progress", () => {
       categoryId: "cat",
       shortDescription: "short",
       description: "desc",
+      language: "ko",
       workingVersion: {
         id: "v1",
         version: "0.1.0",
@@ -124,6 +128,7 @@ describe("provider pack progress", () => {
         categoryId: "cat",
         shortDescription: "short",
         description: "desc",
+        language: "ko",
         workingVersion: {
           id: "v1",
           version: "0.1.0",

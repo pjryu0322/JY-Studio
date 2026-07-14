@@ -4,6 +4,7 @@ import type { StructureQualitySummaryDto } from "@/lib/structure-quality/structu
 import type { ChunkQualitySummaryDto } from "@/lib/chunk-quality/chunk-quality-dto";
 import type { RetrievalEvaluationSummaryDto } from "@/lib/retrieval-evaluation/retrieval-evaluation-dto";
 import type { ReleaseGateSummaryDto } from "@/lib/release-gate/release-gate-dto";
+import { toPackLanguageCode } from "@/lib/pack-language";
 import {
   getReleaseGateApprovalMessage,
   meetsReleaseGateForApproval,
@@ -70,6 +71,8 @@ export type AdminReviewDetailDto = {
     targetUsers: string[];
     useCases: string[];
     versionSummary: string;
+    /** Provider-selected document language. */
+    language: import("@/lib/pack-language").PackLanguageCode | null;
     sourceDocuments: {
       id: string;
       title: string;
@@ -307,6 +310,7 @@ export function toAdminReviewDetail(pack: PackWithDetail): AdminReviewDetailDto 
       targetUsers: version.targetUsers,
       useCases: version.useCases,
       versionSummary: version.versionSummary,
+      language: toPackLanguageCode(version.language),
       sourceDocuments: version.sourceDocuments.map((doc) => ({
         id: doc.id,
         title: doc.title,

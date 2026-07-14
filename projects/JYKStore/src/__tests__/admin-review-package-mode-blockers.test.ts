@@ -114,6 +114,22 @@ function dist(overrides: Partial<NonNullable<AdminReviewDetailDto["distribution"
   };
 }
 
+function doclingVersion() {
+  return {
+    id: "ver-1",
+    version: "1.0.0",
+    overview: "",
+    features: [] as string[],
+    includedKnowledge: [] as string[],
+    supportedEnvironments: [] as string[],
+    targetUsers: [] as string[],
+    useCases: [] as string[],
+    versionSummary: "",
+    language: "ko" as const,
+    sourceDocuments: [] as AdminReviewDetailDto["versions"][number]["sourceDocuments"],
+  };
+}
+
 function doclingSnapshot() {
   return {
     mode: "DOCLING_BUNDLE" as const,
@@ -133,6 +149,7 @@ function doclingSnapshot() {
     licenseName: "MIT",
     visibility: "PRIVATE",
     allowDownload: true,
+    language: "ko" as const,
   };
 }
 
@@ -172,7 +189,7 @@ describe("admin review blockers by package mode", () => {
         decidedAt: null,
         submitSnapshot: doclingSnapshot(),
       },
-      versions: [{ id: "ver-1", version: "1.0.0", sourceDocuments: [] } as never],
+      versions: [doclingVersion()],
     });
 
     const blockers = collectReviewBlockers(detail);
@@ -209,7 +226,7 @@ describe("admin review blockers by package mode", () => {
         decidedAt: null,
         submitSnapshot: doclingSnapshot(),
       },
-      versions: [{ id: "ver-1", version: "1.0.0", sourceDocuments: [] } as never],
+      versions: [doclingVersion()],
     });
 
     const blockers = collectReviewBlockers(detail);
@@ -242,7 +259,7 @@ describe("admin review blockers by package mode", () => {
         decidedAt: null,
         submitSnapshot: doclingSnapshot(),
       },
-      versions: [{ id: "ver-1", version: "1.0.0", sourceDocuments: [] } as never],
+      versions: [doclingVersion()],
     });
 
     assert.ok(collectReviewBlockers(detail).includes("정규화 문서가 없습니다."));
@@ -336,7 +353,7 @@ describe("admin review blockers by package mode", () => {
         decidedAt: null,
         submitSnapshot: doclingSnapshot(),
       },
-      versions: [{ id: "ver-1", version: "1.0.0", sourceDocuments: [] } as never],
+      versions: [doclingVersion()],
     });
 
     const warnings = collectReviewWarnings(detail);

@@ -107,6 +107,7 @@ export function buildProviderOnboardingSteps(
     categoryId: input.packCount > 0 ? "cat" : "",
     shortDescription: input.packCount > 0 ? "short" : "",
     description: input.packCount > 0 ? "desc" : "",
+    language: input.packCount > 0 ? "ko" : null,
     workingVersion:
       input.packCount > 0
         ? {

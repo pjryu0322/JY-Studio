@@ -15,6 +15,7 @@ import type { PackDistributionMetadataDto } from "@/lib/distribution/distributio
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
 import { isDoclingPayloadPresent, isDoclingPayloadReady } from "@/lib/docling-import/docling-import-ui";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
+import type { PackLanguageCode } from "@/lib/pack-language";
 import {
   resolveProviderEditableShortDescription,
   resolveProviderEditableVersionChangelog,
@@ -70,6 +71,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [shortDescription, setShortDescription] = useState("");
   const [description, setDescription] = useState("");
   const [versionOverview, setVersionOverview] = useState("");
+  const [language, setLanguage] = useState<PackLanguageCode | null>(null);
 
   const editable = pack?.status === "DRAFT";
 
@@ -94,6 +96,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setName(data.pack.name);
       setShortDescription(resolvedShort);
       setDescription(data.pack.description);
+      setLanguage(data.pack.versions[0]?.language ?? null);
       setVersionOverview(
         resolveProviderEditableVersionChangelog({
           overview: latestOverview,
@@ -125,20 +128,19 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const distributionMode = hasContentPayload || sourceDocumentCount === 0;
 
   const hasBasicInfo = Boolean(
-    pack?.categoryId &&
-      shortDescription.trim() &&
-      description.trim() &&
-      name.trim(),
+    pack?.categoryId && shortDescription.trim() && description.trim() && name.trim(),
   );
+  const hasLanguage = language === "ko" || language === "en";
 
   const distributionReadiness = useMemo(
     () =>
       computeDistributionReadiness({
         hasBasicInfo,
+        hasLanguage,
         distribution,
         doclingBundle,
       }),
-    [hasBasicInfo, distribution, doclingBundle],
+    [hasBasicInfo, hasLanguage, distribution, doclingBundle],
   );
 
   const packProgress = useMemo(() => {
@@ -164,6 +166,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       categoryId: pack.categoryId,
       shortDescription: shortDescription || pack.shortDescription,
       description: description || pack.description,
+      language: language ?? pack.versions[0]?.language ?? null,
       latestRejectionReason: pack.latestRejectionReason,
       workingVersion: working
         ? {
@@ -186,6 +189,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     name,
     shortDescription,
     description,
+    language,
     sourceDocumentCount,
     distribution,
     doclingBundle,
@@ -257,11 +261,13 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           shortDescription,
           description,
           versionOverview,
+          language,
         });
         setPack(data.pack);
         setName(data.pack.name);
         setShortDescription(data.pack.shortDescription);
         setDescription(data.pack.description);
+        setLanguage(data.pack.versions[0]?.language ?? null);
         setVersionOverview(
           resolveProviderEditableVersionChangelog({
             overview: data.pack.versions[0]?.overview ?? "",
@@ -288,6 +294,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       shortDescription,
       description,
       versionOverview,
+      language,
       selectTab,
     ],
   );
@@ -392,6 +399,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             shortDescription={shortDescription}
             description={description}
             versionOverview={versionOverview}
+            language={language}
             versionLabel={latestVersion?.version ?? "—"}
             saving={saving}
             saveSuccessMessage={saveSuccessMessage}
@@ -413,6 +421,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             }}
             onVersionOverviewChange={(value) => {
               setVersionOverview(value);
+              setSaveSuccessMessage(null);
+            }}
+            onLanguageChange={(value) => {
+              setLanguage(value);
               setSaveSuccessMessage(null);
             }}
             onSaveDraft={() => void onSaveBasicInfo()}

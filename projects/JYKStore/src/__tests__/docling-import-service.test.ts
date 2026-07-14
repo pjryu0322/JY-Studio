@@ -71,6 +71,7 @@ describe("docling-import-service contracts", () => {
       licenseName: "MIT",
       visibility: "PRIVATE",
       allowDownload: true,
+      language: "ko",
     });
     const parsed = parseReviewSubmitSnapshot(snap);
     assert.ok(parsed);
@@ -78,6 +79,7 @@ describe("docling-import-service contracts", () => {
     if (parsed?.mode === "DOCLING_BUNDLE") {
       assert.equal(parsed.doclingBundleId, "bundle1");
       assert.equal(parsed.checksums.json, "b");
+      assert.equal(parsed.language, "ko");
     }
   });
 
@@ -114,6 +116,10 @@ describe("docling-import-service contracts", () => {
     assert.ok(submit.includes("DOCLING_BUNDLE"));
     assert.ok(submit.includes("buildDoclingBundleReviewSubmitSnapshot"));
     assert.ok(submit.includes("REVIEW_READY"));
+    assert.ok(submit.includes("SOURCE_ORIGINAL"));
+    assert.ok(submit.includes("DOCLING_JSON"));
+    assert.ok(!submit.includes("files.length >= 3"));
+    assert.ok(submit.includes("문서 언어"));
 
     const adminRoute = readFileSync(
       join(projectRoot, "src/app/api/v1/admin/reviews/[packId]/docling-import/route.ts"),

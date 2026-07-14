@@ -52,6 +52,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       versionTargetUsers?: string[];
       versionUseCases?: string[];
       versionSummary?: string;
+      language?: "ko" | "en" | null;
     };
 
     const result = await updateProviderPackForClient(userId, clientId, packId?.trim() ?? "", body);
@@ -68,6 +69,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     if (result.error === "CATEGORY_NOT_FOUND") {
       return jsonWithClientIdCookie({ error: "카테고리를 찾을 수 없습니다." }, clientId, { status: 400 });
+    }
+    if (result.error === "PACK_LANGUAGE_INVALID") {
+      return jsonWithClientIdCookie(
+        { error: "문서 언어는 ko 또는 en만 선택할 수 있습니다.", code: "PACK_LANGUAGE_INVALID" },
+        clientId,
+        { status: 400 },
+      );
     }
 
     return jsonWithClientIdCookie({ clientId, pack: result.pack }, clientId);

@@ -5,7 +5,6 @@ import {
   canRetry,
   canRetryDoclingBundle,
 } from "../lib/docling-import/docling-import-state.ts";
-import { detectLanguageFromText } from "../lib/docling-import/document-language.ts";
 import { buildStructureSummary } from "../lib/docling-import/structure-summary.ts";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -67,12 +66,11 @@ describe("P0-A.3 docling safe replace and staging", () => {
     );
   });
 
-  it("detects Korean language from text", () => {
-    const result = detectLanguageFromText(
-      "소프트웨어 사업 대가산정 가이드는 공공기관의 사업 예산을 산정하는 기준입니다. ".repeat(5),
-    );
-    assert.equal(result.language, "ko");
-    assert.equal(result.languageSource, "RULE_BASED");
+  it("no longer ships automatic document-language detection", () => {
+    const submit = readSource("src/lib/distribution/distribution-submit-service.ts");
+    assert.ok(submit.includes("toPackLanguageCode") || submit.includes("문서 언어"));
+    assert.ok(!submit.includes("files.length >= 3"));
+    assert.ok(!readSource("src/lib/docling-import/docling-import-service.ts").includes("resolveDocumentLanguage"));
   });
 
   it("builds structure summary with heading/paragraph split", () => {

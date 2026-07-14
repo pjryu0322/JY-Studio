@@ -10,6 +10,7 @@ import {
 
 export type DistributionReadiness = {
   hasBasicInfo: boolean;
+  hasLanguage: boolean;
   hasPayload: boolean;
   payloadValid: boolean;
   hasChecksum: boolean;
@@ -33,6 +34,7 @@ function hasRequiredFilesWithChecksums(
 
 export function computeDistributionReadiness(input: {
   hasBasicInfo: boolean;
+  hasLanguage: boolean;
   distribution: PackDistributionMetadataDto | null;
   doclingBundle?: DoclingImportBundlePublicDto | null;
 }): DistributionReadiness {
@@ -49,6 +51,7 @@ export function computeDistributionReadiness(input: {
 
   const missing: DistributionReadiness["missing"] = [];
   if (!input.hasBasicInfo) missing.push({ label: "기본정보", tab: "basic" });
+  if (!input.hasLanguage) missing.push({ label: "문서 언어를 선택해 주세요.", tab: "basic" });
   if (!hasPayload) missing.push({ label: "등록 자료", tab: "payload" });
   else if (!doclingReady) missing.push({ label: "Docling REVIEW_READY", tab: "payload" });
   else if (!hasRequiredFiles) missing.push({ label: "파일 무결성(원본·JSON checksum)", tab: "payload" });
@@ -57,6 +60,7 @@ export function computeDistributionReadiness(input: {
 
   return {
     hasBasicInfo: input.hasBasicInfo,
+    hasLanguage: input.hasLanguage,
     hasPayload,
     payloadValid,
     hasChecksum,
@@ -65,6 +69,7 @@ export function computeDistributionReadiness(input: {
     hasLicense,
     ready:
       input.hasBasicInfo &&
+      input.hasLanguage &&
       hasPayload &&
       payloadValid &&
       hasChecksum &&
@@ -87,6 +92,7 @@ export function ProviderDistributionReadiness({
       <p className="font-semibold text-slate-900">검수 요청 조건</p>
       <ul className="mt-2 space-y-1">
         <li>기본정보: {readiness.hasBasicInfo ? "완료" : "미완료"}</li>
+        <li>문서 언어: {readiness.hasLanguage ? "완료" : "미선택"}</li>
         <li>등록 자료: {readiness.hasPayload ? "등록됨" : "없음"}</li>
         <li>파일 무결성: {readiness.hasChecksum ? "있음" : "없음"}</li>
         <li>검증: {readiness.payloadValid ? "REVIEW_READY" : "미충족"}</li>

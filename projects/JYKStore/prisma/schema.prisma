@@ -306,6 +306,12 @@ model PackReview {
   @@index([reviewerUserId])
 }
 
+/// Provider-selected pack document language (ko/en only). Null until chosen.
+enum PackLanguage {
+  KO
+  EN
+}
+
 model KnowledgePackVersion {
   id                    String   @id @default(cuid())
   packId                String
@@ -317,6 +323,8 @@ model KnowledgePackVersion {
   targetUsers           String[]
   useCases              String[]
   versionSummary        String
+  /// Provider-managed document language; required before review submit.
+  language              PackLanguage?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

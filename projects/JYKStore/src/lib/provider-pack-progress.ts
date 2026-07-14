@@ -63,6 +63,8 @@ export type BuildProviderPackProgressInput = {
   categoryId: string;
   shortDescription: string;
   description: string;
+  /** Provider-selected document language; required for basic-info readiness. */
+  language?: string | null;
   latestRejectionReason?: string | null;
   workingVersion: {
     id: string;
@@ -83,7 +85,7 @@ const STEP_META: Record<
 > = {
   BASIC_INFO: {
     label: "기본정보",
-    description: "지식팩 이름·카테고리·설명을 입력합니다.",
+    description: "지식팩 이름·카테고리·설명·문서 언어를 입력합니다.",
     tab: "basic",
   },
   MATERIAL: {
@@ -118,7 +120,8 @@ function basicInfoReady(input: BuildProviderPackProgressInput): boolean {
     input.name.trim() &&
       input.categoryId.trim() &&
       input.shortDescription.trim() &&
-      input.description.trim(),
+      input.description.trim() &&
+      (input.language === "ko" || input.language === "en"),
   );
 }
 
