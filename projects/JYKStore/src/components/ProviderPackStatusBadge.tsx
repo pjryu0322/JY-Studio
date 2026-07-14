@@ -2,7 +2,7 @@ import type { ProviderPackListItemDto } from "@/lib/provider-pack-dto";
 import { PROVIDER_PACK_STATUS_UX } from "@/lib/role-based-ux-copy";
 
 const LABELS: Record<ProviderPackListItemDto["status"], string> = {
-  DRAFT: PROVIDER_PACK_STATUS_UX.DRAFT ?? "초안 작성 중",
+  DRAFT: PROVIDER_PACK_STATUS_UX.DRAFT ?? "초안",
   REVIEWING: PROVIDER_PACK_STATUS_UX.REVIEWING ?? "검토 요청됨",
   PUBLISHED: PROVIDER_PACK_STATUS_UX.PUBLISHED ?? "공개됨",
   VERIFIED: PROVIDER_PACK_STATUS_UX.VERIFIED ?? "검증됨",
@@ -24,6 +24,9 @@ export function ProviderPackStatusBadge({
 }: {
   readonly status: ProviderPackListItemDto["status"];
 }) {
+  // Draft is the default editing context — avoid a redundant "초안 작성 중" chip.
+  if (status === "DRAFT") return null;
+
   return (
     <span
       className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${STYLES[status]}`}

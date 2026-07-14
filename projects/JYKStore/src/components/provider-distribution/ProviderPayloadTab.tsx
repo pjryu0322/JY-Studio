@@ -15,6 +15,7 @@ export function ProviderMaterialRegistrationTab({
   cachedDoclingBundle,
   onDoclingChanged,
   onPackUpdated,
+  onGoToDistribution,
 }: {
   readonly packId: string;
   readonly editable: boolean;
@@ -23,6 +24,7 @@ export function ProviderMaterialRegistrationTab({
   readonly cachedDoclingBundle?: DoclingImportBundlePublicDto | null;
   readonly onDoclingChanged?: (bundle: DoclingImportBundlePublicDto | null) => void;
   readonly onPackUpdated?: (pack: ProviderPackDetailDto) => void;
+  readonly onGoToDistribution?: () => void;
 }) {
   const [creatingVersion, setCreatingVersion] = useState(false);
   const [showVersionForm, setShowVersionForm] = useState(false);
@@ -71,18 +73,12 @@ export function ProviderMaterialRegistrationTab({
   return (
     <div id="pack-payload" className="space-y-4">
       <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
-        <div>
-          <h2 className="text-sm font-bold text-slate-900">등록 자료</h2>
-          <p className="mt-1 text-xs text-store-muted">
-            원본문서·Docling JSON·Docling Markdown을 등록합니다. 파일 무결성 확인과 문서 정규화가
-            완료되면 검수 요청 조건을 충족합니다.
-          </p>
-        </div>
         <ProviderDoclingImportTab
           packId={packId}
           editable={editable}
           cachedBundle={cachedDoclingBundle}
           onDoclingChanged={onDoclingChanged}
+          onGoToDistribution={onGoToDistribution}
         />
       </section>
 

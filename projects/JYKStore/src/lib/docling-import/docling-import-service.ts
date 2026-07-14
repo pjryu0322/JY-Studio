@@ -56,7 +56,8 @@ import {
   assertTransition,
   resolveDoclingRetryMode,
 } from "@/lib/docling-import/docling-import-state";
-import { DOCLING_MARKDOWN_VALIDATOR_VERSION } from "@/lib/adapters/docling/docling-markdown-validator";
+import { DOCLING_MARKDOWN_VALIDATOR_VERSION, sanitizeMarkdownForPreview } from "@/lib/adapters/docling/docling-markdown-validator";
+import { evaluateNormalizedDocumentQuality } from "@/lib/docling-import/docling-quality-gate";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
@@ -512,7 +513,7 @@ export async function uploadDoclingImportBundle(input: {
 
   const processed = await validateAndNormalizeBundle(bundleId, { storage });
 
-  if (processed.status !== DoclingImportBundleStatus.REVIEW_READY) {
+  if (processed.status !== DoclingImportBundleStatus.NORMALIZED) {
     // Preserve failed staging objects for retry/download — do not cleanup.
     await preserveFailedStagingBundle(bundleId, "validation_or_normalization_failed");
     throw new DoclingImportError(
@@ -523,35 +524,7 @@ export async function uploadDoclingImportBundle(input: {
     );
   }
 
-  try {
-    const { replacedBundleId } = await promoteDoclingStagingBundle({
-      packId: pack.packId,
-      versionId: version.id,
-      stagingBundleId: bundleId,
-    });
-
-    if (replacedBundleId) {
-      const refreshedPrevious = await loadBundleWithRelations(replacedBundleId);
-      if (refreshedPrevious) {
-        await finalizePreviousBundleStorage(refreshedPrevious, storage);
-      }
-    }
-  } catch (error) {
-    await markBundleDeletePendingAndCleanup(
-      bundleId,
-      uploadedKeys,
-      storage,
-      "activate_failed",
-      new Map(stored.map((s) => [s.objectKey, s.id])),
-    );
-    if (isDoclingImportError(error)) throw error;
-    throw new DoclingImportError(
-      "DOCLING_ACTIVE_BUNDLE_CONFLICT",
-      "Active Bundle 활성화에 충돌이 발생했습니다.",
-      409,
-    );
-  }
-
+  // Stay staging + NORMALIZED until provider confirms (REVIEW_READY + promote).
   const refreshed = await loadBundleWithRelations(bundleId);
   if (!refreshed) {
     throw new DoclingImportError("NOT_FOUND", "업로드된 Docling import를 찾을 수 없습니다.", 404);
@@ -587,6 +560,11 @@ export async function validateAndNormalizeBundle(
       DoclingImportBundleStatus.NORMALIZED,
     ],
     to: DoclingImportBundleStatus.VALIDATING,
+  });
+  // Clear stale errors so clients do not show a previous failure while retrying.
+  await prisma.doclingImportBundle.update({
+    where: { id: bundleId },
+    data: { lastErrorCode: null, lastErrorMessage: null },
   });
 
   await prisma.doclingProcessingLog.create({
@@ -880,79 +858,114 @@ export async function validateAndNormalizeBundle(
       markdownChecksum: mdFile?.checksumSha256 ?? null,
     });
 
-    const ndId = createPayloadId();
-    await prisma.$transaction(async (tx) => {
-      await tx.normalizedDocument.updateMany({
-        where: { bundleId, isActive: true },
-        data: { isActive: false },
-      });
-      await tx.normalizedDocument.create({
-        data: {
-          id: ndId,
-          bundleId,
-          packId: bundle.packId,
-          versionId: bundle.versionId,
-          isActive: true,
-          adapterType: draft.adapter.type,
-          adapterVersion: draft.adapter.version,
-          sourceSchemaName: draft.adapter.sourceSchema,
-          sourceSchemaVersion: draft.adapter.sourceSchemaVersion,
-          title: draft.title,
-          language: draft.language,
-          languageSource,
-          languageConfidence,
-          structureSummaryJson: structureSummary as unknown as Prisma.InputJsonValue,
-          structureJson: {
-            sections: draft.sections,
-            tables: draft.tables,
-            figures: draft.figures,
-            readingOrder: draft.readingOrder,
-            summary: structureSummary,
-          } as Prisma.InputJsonValue,
-          sectionsJson: draft.sections as unknown as Prisma.InputJsonValue,
-          tablesJson: draft.tables as unknown as Prisma.InputJsonValue,
-          figuresJson: draft.figures as unknown as Prisma.InputJsonValue,
-          readingOrderJson: draft.readingOrder as unknown as Prisma.InputJsonValue,
-          warningsJson: draft.warnings as unknown as Prisma.InputJsonValue,
-          sourceFileId: sourceFile.id,
-          jsonPayloadFileId: jsonFile.id,
-          markdownPayloadFileId: mdFile?.id ?? null,
-          sourcePayloadChecksum: sourceFile.checksumSha256,
-          fingerprint,
-          fingerprintVersion: NORMALIZED_DOCUMENT_FINGERPRINT_VERSION,
-        },
-      });
-
-      await softLockViaTx(tx, {
-        bundleId,
-        from: [DoclingImportBundleStatus.NORMALIZING],
-        to: DoclingImportBundleStatus.NORMALIZED,
-      });
-      await softLockViaTx(tx, {
-        bundleId,
-        from: [DoclingImportBundleStatus.NORMALIZED],
-        to: DoclingImportBundleStatus.REVIEW_READY,
-      });
-
-      await tx.doclingImportBundle.update({
-        where: { id: bundleId },
-        data: {
-          normalizationReport: {
-            ok: true,
-            normalizedDocumentId: ndId,
-            fingerprint,
-            warningCount: draft.warnings.length,
-            normalizedAt: new Date().toISOString(),
-          } as Prisma.InputJsonValue,
-          warningCount: draft.warnings.length,
-          errorCount: 0,
-          lastErrorCode: null,
-          lastErrorMessage: null,
-          normalizedAt: new Date(),
-          reviewReadyAt: new Date(),
-        },
-      });
+    const sanitizedMarkdownPreview = sanitizeMarkdownForPreview(
+      markdownPreviewText ?? validation.markdownText ?? "",
+    );
+    const qualityGate = evaluateNormalizedDocumentQuality({
+      title: draft.title,
+      language: draft.language,
+      sections: draft.sections,
+      tables: draft.tables,
+      figures: draft.figures,
+      readingOrder: draft.readingOrder,
+      files: [sourceFile, jsonFile, ...(mdFile ? [mdFile] : [])].map((f) => ({
+        role: f.role,
+        checksumSha256: f.checksumSha256,
+      })),
+      markdownPreview: sanitizedMarkdownPreview,
+      originMismatch: validation.originMatch?.filenameStatus === "MISMATCH",
+      hasNormalizedDocument: true,
     });
+
+    const ndId = createPayloadId();
+    // Serialize large JSON columns outside the interactive transaction so the
+    // default 5s timeout isn't spent on CPU before the first write.
+    const structureSummaryJson = structureSummary as unknown as Prisma.InputJsonValue;
+    const structureJson = {
+      sections: draft.sections,
+      tables: draft.tables,
+      figures: draft.figures,
+      readingOrder: draft.readingOrder,
+      summary: structureSummary,
+      qualityGate,
+    } as Prisma.InputJsonValue;
+    const sectionsJson = draft.sections as unknown as Prisma.InputJsonValue;
+    const tablesJson = draft.tables as unknown as Prisma.InputJsonValue;
+    const figuresJson = draft.figures as unknown as Prisma.InputJsonValue;
+    const readingOrderJson = draft.readingOrder as unknown as Prisma.InputJsonValue;
+    const warningsJson = draft.warnings as unknown as Prisma.InputJsonValue;
+    const normalizationReportJson = {
+      ok: true,
+      normalizedDocumentId: ndId,
+      fingerprint,
+      warningCount: draft.warnings.length,
+      qualityGate,
+      providerConfirmRequired: true,
+      normalizedAt: new Date().toISOString(),
+    } as Prisma.InputJsonValue;
+    const normalizedAt = new Date();
+
+    // Large Docling docs (hundreds of tables/figures) routinely exceed Prisma's
+    // default 5s interactive transaction timeout on create.
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.normalizedDocument.updateMany({
+          where: { bundleId, isActive: true },
+          data: { isActive: false },
+        });
+        await tx.normalizedDocument.create({
+          data: {
+            id: ndId,
+            bundleId,
+            packId: bundle.packId,
+            versionId: bundle.versionId,
+            isActive: true,
+            adapterType: draft.adapter.type,
+            adapterVersion: draft.adapter.version,
+            sourceSchemaName: draft.adapter.sourceSchema,
+            sourceSchemaVersion: draft.adapter.sourceSchemaVersion,
+            title: draft.title,
+            language: draft.language,
+            languageSource,
+            languageConfidence,
+            structureSummaryJson,
+            structureJson,
+            sectionsJson,
+            tablesJson,
+            figuresJson,
+            readingOrderJson,
+            warningsJson,
+            sourceFileId: sourceFile.id,
+            jsonPayloadFileId: jsonFile.id,
+            markdownPayloadFileId: mdFile?.id ?? null,
+            sourcePayloadChecksum: sourceFile.checksumSha256,
+            fingerprint,
+            fingerprintVersion: NORMALIZED_DOCUMENT_FINGERPRINT_VERSION,
+          },
+        });
+
+        await softLockViaTx(tx, {
+          bundleId,
+          from: [DoclingImportBundleStatus.NORMALIZING],
+          to: DoclingImportBundleStatus.NORMALIZED,
+        });
+
+        await tx.doclingImportBundle.update({
+          where: { id: bundleId },
+          data: {
+            normalizationReport: normalizationReportJson,
+            warningCount: draft.warnings.length,
+            errorCount: 0,
+            lastErrorCode: null,
+            lastErrorMessage: null,
+            normalizedAt,
+            // Provider must confirm before REVIEW_READY / Active promotion.
+            reviewReadyAt: null,
+          },
+        });
+      },
+      { maxWait: 15_000, timeout: 120_000 },
+    );
 
     await prisma.doclingProcessingLog.create({
       data: {
@@ -981,11 +994,15 @@ export async function validateAndNormalizeBundle(
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Normalization failed";
-    await softLockBundleStatus({
-      bundleId,
-      from: [DoclingImportBundleStatus.NORMALIZING],
-      to: DoclingImportBundleStatus.NORMALIZATION_FAILED,
-    });
+    try {
+      await softLockBundleStatus({
+        bundleId,
+        from: [DoclingImportBundleStatus.NORMALIZING],
+        to: DoclingImportBundleStatus.NORMALIZATION_FAILED,
+      });
+    } catch {
+      // Already transitioned (or conflict) — still persist the error fields below.
+    }
     await prisma.doclingImportBundle.update({
       where: { id: bundleId },
       data: {
@@ -1499,32 +1516,9 @@ async function runValidateNormalizeAfterRetry(input: {
           }
         : null;
 
-    if (result.status === DoclingImportBundleStatus.REVIEW_READY && !bundle.isActive) {
-      const storage = input.storage ?? getDefaultStorage();
-      const uploadedKeys =
-        (await loadBundleWithRelations(bundle.id))?.files.map((f) => f.storageKey) ?? [];
-      try {
-        const { replacedBundleId } = await promoteDoclingStagingBundle({
-          packId: pack.packId,
-          versionId: version.id,
-          stagingBundleId: bundle.id,
-        });
-        if (replacedBundleId) {
-          const refreshedPrevious = await loadBundleWithRelations(replacedBundleId);
-          if (refreshedPrevious) {
-            await finalizePreviousBundleStorage(refreshedPrevious, storage);
-          }
-        }
-      } catch (error) {
-        await markBundleDeletePendingAndCleanup(
-          bundle.id,
-          uploadedKeys,
-          storage,
-          "activate_failed",
-        );
-        throw error;
-      }
-    } else if (result.status !== DoclingImportBundleStatus.REVIEW_READY) {
+    if (result.status === DoclingImportBundleStatus.NORMALIZED && !bundle.isActive) {
+      // Provider confirm required before REVIEW_READY / Active — keep staging.
+    } else if (result.status !== DoclingImportBundleStatus.NORMALIZED) {
       await preserveFailedStagingBundle(bundle.id, "validation_or_normalization_failed");
     }
 
@@ -1533,25 +1527,22 @@ async function runValidateNormalizeAfterRetry(input: {
       where: { id: retryLog.id },
       data: {
         status:
-          refreshed?.status === DoclingImportBundleStatus.REVIEW_READY && refreshed.isActive
+          result.status === DoclingImportBundleStatus.NORMALIZED
             ? DoclingProcessingStatus.SUCCEEDED
-            : result.status === DoclingImportBundleStatus.REVIEW_READY
-              ? DoclingProcessingStatus.SUCCEEDED
-              : DoclingProcessingStatus.FAILED,
+            : DoclingProcessingStatus.FAILED,
         completedAt: new Date(),
         message:
-          result.status === DoclingImportBundleStatus.REVIEW_READY
-            ? `${input.auditLabel} succeeded`
+          result.status === DoclingImportBundleStatus.NORMALIZED
+            ? `${input.auditLabel} succeeded (provider confirm required)`
             : `${input.auditLabel} completed with failure`,
         errorCode:
-          result.status === DoclingImportBundleStatus.REVIEW_READY
-            ? null
-            : result.lastErrorCode,
+          result.status === DoclingImportBundleStatus.NORMALIZED ? null : result.lastErrorCode,
         detailsJson: {
           validatorVersion: DOCLING_MARKDOWN_VALIDATOR_VERSION,
           previousValidatorVersion,
           metricsSummary,
           attempt,
+          status: result.status,
         } as Prisma.InputJsonValue,
       },
     });
@@ -1580,6 +1571,183 @@ async function runValidateNormalizeAfterRetry(input: {
     });
     throw error;
   }
+}
+
+/**
+ * Provider confirms NORMALIZED staging → quality gate → REVIEW_READY → Active promote.
+ */
+export async function confirmProviderDoclingImport(input: {
+  userId: string;
+  clientId: string;
+  packId: string;
+  bundleId: string;
+  storage?: PayloadStorage;
+}): Promise<{ bundle: DoclingImportBundlePublicDto }> {
+  const storage = input.storage ?? getDefaultStorage();
+  const { pack, version } = await requireOwnedDraftPack({
+    userId: input.userId,
+    clientId: input.clientId,
+    packId: input.packId,
+  });
+
+  const bundle = await loadBundleWithRelations(input.bundleId);
+  if (!bundle || bundle.packId !== pack.packId || bundle.versionId !== version.id) {
+    throw new DoclingImportError("NOT_FOUND", "Docling Bundle을 찾을 수 없습니다.", 404);
+  }
+
+  const staging = await findLatestStagingBundleForVersion(version.id);
+  if (!staging || staging.id !== bundle.id) {
+    throw new DoclingImportError(
+      "DOCLING_CONFIRM_NOT_STAGING",
+      "최신 등록(Staging) Bundle만 확인 완료할 수 있습니다.",
+      409,
+    );
+  }
+
+  if (
+    bundle.status !== DoclingImportBundleStatus.NORMALIZED &&
+    !(bundle.status === DoclingImportBundleStatus.REVIEW_READY && !bundle.isActive)
+  ) {
+    throw new DoclingImportError(
+      "DOCLING_CONFIRM_INVALID_STATUS",
+      "정규화 완료(NORMALIZED) 상태에서만 확인 완료할 수 있습니다.",
+      409,
+    );
+  }
+
+  const hasHistory = await bundleHasSubmissionHistory(pack.packId, bundle.id, version.id);
+  if (hasHistory) {
+    throw new DoclingImportError(
+      "DOCLING_IMMUTABLE_AFTER_SUBMISSION",
+      "이미 검수 제출된 Bundle은 변경할 수 없습니다.",
+      409,
+    );
+  }
+
+  const nd =
+    bundle.normalizedDocuments.find((d) => d.isActive) ?? bundle.normalizedDocuments[0] ?? null;
+  if (!nd) {
+    throw new DoclingImportError(
+      "NORMALIZED_DOCUMENT_MISSING",
+      "정규화 문서가 없습니다.",
+      409,
+    );
+  }
+
+  const sections = (nd.sectionsJson as unknown as import("@/lib/adapters/docling/docling-types").NormalizedSection[]) ?? [];
+  const tables = (nd.tablesJson as unknown as import("@/lib/adapters/docling/docling-types").NormalizedTable[]) ?? [];
+  const figures = (nd.figuresJson as unknown as import("@/lib/adapters/docling/docling-types").NormalizedFigure[]) ?? [];
+  const readingOrder =
+    (nd.readingOrderJson as unknown as import("@/lib/adapters/docling/docling-types").NormalizedReadingOrderItem[]) ??
+    [];
+
+  const qualityGate = evaluateNormalizedDocumentQuality({
+    title: nd.title,
+    language: nd.language,
+    sections,
+    tables,
+    figures,
+    readingOrder,
+    files: bundle.files.map((f) => ({
+      role: f.role,
+      checksumSha256: f.checksumSha256,
+    })),
+    markdownPreview: sanitizeMarkdownForPreview(
+      typeof (bundle.validationReport as { markdown?: { textPreview?: string } } | null)
+        ?.markdown?.textPreview === "string"
+        ? (bundle.validationReport as { markdown: { textPreview: string } }).markdown
+            .textPreview
+        : "",
+    ),
+    originMismatch: false,
+    hasNormalizedDocument: true,
+    normalizationErrorCount: bundle.errorCount,
+  });
+
+  if (!qualityGate.ok) {
+    const err = new DoclingImportError(
+      "DOCLING_PROVIDER_CONFIRM_BLOCKED",
+      "정규화 결과를 확인 완료할 수 없습니다.",
+      409,
+    );
+    (err as DoclingImportError & { blockers?: unknown }).blockers = qualityGate.blockers;
+    throw err;
+  }
+
+  if (bundle.status === DoclingImportBundleStatus.NORMALIZED) {
+    await softLockBundleStatus({
+      bundleId: bundle.id,
+      from: [DoclingImportBundleStatus.NORMALIZED],
+      to: DoclingImportBundleStatus.REVIEW_READY,
+    });
+  }
+  const reviewReadyAt = new Date();
+  await prisma.doclingImportBundle.update({
+    where: { id: bundle.id },
+    data: {
+      reviewReadyAt,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      normalizationReport: {
+        ...(typeof bundle.normalizationReport === "object" && bundle.normalizationReport
+          ? (bundle.normalizationReport as Record<string, unknown>)
+          : {}),
+        qualityGate,
+        providerConfirmedAt: reviewReadyAt.toISOString(),
+      } as Prisma.InputJsonValue,
+    },
+  });
+
+  try {
+    const { replacedBundleId } = await promoteDoclingStagingBundle({
+      packId: pack.packId,
+      versionId: version.id,
+      stagingBundleId: bundle.id,
+    });
+    if (replacedBundleId) {
+      const previous = await loadBundleWithRelations(replacedBundleId);
+      if (previous) await finalizePreviousBundleStorage(previous, storage);
+    }
+  } catch (error) {
+    await prisma.doclingImportBundle.updateMany({
+      where: {
+        id: bundle.id,
+        status: DoclingImportBundleStatus.REVIEW_READY,
+        isActive: false,
+      },
+      data: {
+        status: DoclingImportBundleStatus.NORMALIZED,
+        reviewReadyAt: null,
+      },
+    });
+    if (isDoclingImportError(error)) throw error;
+    throw new DoclingImportError(
+      "DOCLING_ACTIVE_BUNDLE_CONFLICT",
+      "Active Bundle 활성화에 충돌이 발생했습니다.",
+      409,
+    );
+  }
+
+  await recordProviderAudit({
+    action: AuditAction.DOCLING_IMPORT_NORMALIZED,
+    entityType: "DoclingImportBundle",
+    entityId: bundle.id,
+    actorUserId: input.userId,
+    metadata: {
+      packId: pack.packId,
+      bundleId: bundle.id,
+      providerConfirmed: true,
+      reviewReadyAt: reviewReadyAt.toISOString(),
+    },
+  });
+
+  const refreshed = await loadBundleWithRelations(bundle.id);
+  return {
+    bundle: toDoclingImportBundlePublicDto(refreshed!, {
+      canDelete: pack.status === PackStatus.DRAFT && !hasHistory,
+      immutableAfterSubmission: hasHistory,
+    }),
+  };
 }
 
 export async function downloadDoclingImportFile(input: {
@@ -1785,14 +1953,41 @@ export async function getNormalizedDocumentForPack(input: {
   const version = packVersions[0];
   if (!version) return { document: null, capabilities: emptyCapabilities };
 
-  const bundle = await findActiveBundleForVersion(version.id);
+  const active = await findActiveBundleForVersion(version.id);
+  const staging = await findLatestStagingBundleForVersion(version.id);
+  const preferStaging =
+    staging &&
+    staging.status === DoclingImportBundleStatus.NORMALIZED &&
+    (!active || staging.id !== active.id);
+  const bundle = preferStaging
+    ? await loadBundleWithRelations(staging.id)
+    : active
+      ? await loadBundleWithRelations(active.id)
+      : null;
   if (!bundle) return { document: null, capabilities: emptyCapabilities };
 
   const activeNd =
-    bundle.normalizedDocuments.find((d) => d.isActive) ?? null;
+    bundle.normalizedDocuments.find((d) => d.isActive) ??
+    bundle.normalizedDocuments[0] ??
+    null;
   if (!activeNd) {
     return { document: null, capabilities: emptyCapabilities };
   }
+
+  const structureSummary =
+    activeNd.structureSummaryJson && typeof activeNd.structureSummaryJson === "object"
+      ? activeNd.structureSummaryJson
+      : null;
+  const qualityGate =
+    activeNd.structureJson &&
+    typeof activeNd.structureJson === "object" &&
+    (activeNd.structureJson as { qualityGate?: unknown }).qualityGate
+      ? (activeNd.structureJson as { qualityGate: unknown }).qualityGate
+      : typeof bundle.normalizationReport === "object" &&
+          bundle.normalizationReport &&
+          (bundle.normalizationReport as { qualityGate?: unknown }).qualityGate
+        ? (bundle.normalizationReport as { qualityGate: unknown }).qualityGate
+        : null;
 
   return {
     document: toNormalizedSummaryDto(activeNd),
@@ -1802,6 +1997,8 @@ export async function getNormalizedDocumentForPack(input: {
       figures: activeNd.figuresJson,
       readingOrder: activeNd.readingOrderJson,
       warnings: activeNd.warningsJson,
+      summary: structureSummary,
+      qualityGate,
     },
     capabilities: buildPackCapabilitiesDto({ hasNormalizedDocument: true }),
   };

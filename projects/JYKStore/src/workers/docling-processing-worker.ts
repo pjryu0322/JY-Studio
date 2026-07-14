@@ -4,11 +4,7 @@ import {
   type DoclingProcessingJob,
 } from "@prisma/client";
 import { randomUUID } from "node:crypto";
-import {
-  finalizePreviousBundleStorage,
-  preserveFailedStagingBundle,
-  promoteDoclingStagingBundle,
-} from "@/lib/docling-import/docling-import-lifecycle-service";
+import { preserveFailedStagingBundle } from "@/lib/docling-import/docling-import-lifecycle-service";
 import {
   validateAndNormalizeBundle,
 } from "@/lib/docling-import/docling-import-service";
@@ -150,7 +146,7 @@ export async function processDoclingProcessingJob(
       attempt: job.attemptCount > 0 ? job.attemptCount : 1,
     });
 
-    if (processed.status !== DoclingImportBundleStatus.REVIEW_READY) {
+    if (processed.status !== DoclingImportBundleStatus.NORMALIZED) {
       await preserveFailedStagingBundle(
         job.bundleId,
         "validation_or_normalization_failed",
@@ -168,25 +164,7 @@ export async function processDoclingProcessingJob(
       return { ok: false, status };
     }
 
-    const { replacedBundleId } = await promoteDoclingStagingBundle({
-      packId: job.packId,
-      versionId: job.versionId,
-      stagingBundleId: job.bundleId,
-    });
-
-    if (replacedBundleId) {
-      const previous = await prisma.doclingImportBundle.findUnique({
-        where: { id: replacedBundleId },
-        include: {
-          files: true,
-          normalizedDocuments: true,
-        },
-      });
-      if (previous) {
-        await finalizePreviousBundleStorage(previous, storage);
-      }
-    }
-
+    // Provider confirm promotes to REVIEW_READY + Active — worker stops at NORMALIZED.
     await prisma.doclingProcessingJob.update({
       where: { id: job.id },
       data: {

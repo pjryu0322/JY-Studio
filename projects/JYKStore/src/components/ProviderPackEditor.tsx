@@ -443,6 +443,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             latestReviewStatus={pack.latestReviewStatus}
             cachedDoclingBundle={doclingBundle}
             onDoclingChanged={setDoclingBundle}
+            onGoToDistribution={() => selectTab("distribution")}
             onPackUpdated={(next) => {
               setPack(next);
               setVersionOverview(next.versions[0]?.overview ?? "");

@@ -20,6 +20,7 @@ import { formatByteSize } from "@/lib/docling-import/docling-upload-policy";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
 import {
   computeFileFingerprint,
+  DOCLING_FINGERPRINT_TAIL_SKIP_BYTES,
   DOCLING_RESUME_FINGERPRINT_MISMATCH_MESSAGE,
   fingerprintsMatch,
   type DoclingFileFingerprint,
@@ -36,6 +37,7 @@ import {
   presignProviderDoclingUploadPartsApi,
   type DoclingUploadPolicyDto,
 } from "@/lib/provider-center-api";
+import { logDoclingUploadClientEvent } from "@/lib/docling-import/docling-upload-client-log";
 
 export type DoclingUploadRole = "SOURCE_ORIGINAL" | "DOCLING_JSON" | "DOCLING_MARKDOWN";
 
@@ -104,6 +106,8 @@ export type MultipartUploadFiles = {
 const SESSION_STORAGE_KEY_PREFIX = "jykstore:docling-upload-session:";
 const MAX_RETRIES = 3;
 const DEFAULT_CONCURRENCY = 3;
+/** Placeholder when browser cannot read ETag due to missing CORS ExposeHeaders. */
+const SERVER_LIST_ETAG_PLACEHOLDER = "__server_list__";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -170,10 +174,9 @@ export function clearStoredUploadSessionId(packId: string): void {
 async function computeUploadFingerprints(
   files: MultipartUploadFiles,
 ): Promise<DoclingRoleFingerprintMap> {
-  const [source, json] = await Promise.all([
-    computeFileFingerprint(files.sourceFile),
-    computeFileFingerprint(files.doclingJsonFile),
-  ]);
+  // Sequential: keep peak memory low and avoid parallel EOF scans on huge files.
+  const source = await computeFileFingerprint(files.sourceFile);
+  const json = await computeFileFingerprint(files.doclingJsonFile);
   const result: DoclingRoleFingerprintMap = {
     SOURCE_ORIGINAL: source,
     DOCLING_JSON: json,
@@ -374,18 +377,16 @@ function putPresignedPart(
           xhr.getResponseHeader("ETag")?.replaceAll('"', "").trim() ||
           xhr.getResponseHeader("etag")?.replaceAll('"', "").trim() ||
           "";
-        if (!etag) {
-          reject(new Error("업로드 응답에 ETag가 없습니다. MinIO CORS ExposeHeaders를 확인하세요."));
-          return;
-        }
-        resolve(etag);
+        // MinIO community builds often omit CORS ExposeHeaders, so browsers cannot
+        // read ETag. CompleteMultipart then uses server-side ListParts instead.
+        resolve(etag || SERVER_LIST_ETAG_PLACEHOLDER);
         return;
       }
       reject(new Error(`파트 업로드 실패 (HTTP ${xhr.status})`));
     };
     xhr.onerror = () => {
       if (signal) signal.removeEventListener("abort", onAbort);
-      reject(new Error("파트 업로드 네트워크 오류"));
+      reject(new Error("파트 업로드 네트워크 오류 (MinIO CORS·연결을 확인하세요)"));
     };
     xhr.onabort = () => {
       if (signal) signal.removeEventListener("abort", onAbort);
@@ -563,11 +564,22 @@ async function pollBundleUntilSettled(
       throw new Error(candidate.lastErrorMessage ?? `처리 실패 (${candidate.status})`);
     }
 
+    // Do not surface stale lastErrorMessage while processing is still in-flight —
+    // file upload may already be 100% but server work is separate.
+    const processingHint =
+      stage === "validating_server"
+        ? "파일 전송은 완료되었습니다. 서버에서 검증 중입니다…"
+        : stage === "normalizing"
+          ? "파일 전송은 완료되었습니다. 서버에서 정규화 중입니다…"
+          : stage === "integrity"
+            ? "파일 전송은 완료되었습니다. 처리 상태를 확인 중입니다…"
+            : null;
+
     onProgress({
       ...base,
       stage,
       stageLabel: DOCLING_UPLOAD_STAGE_LABELS[stage],
-      message: candidate.lastErrorMessage,
+      message: processingHint,
       bundleId,
     });
 
@@ -614,12 +626,42 @@ export async function uploadDoclingMultipart(input: {
   };
 
   try {
+    await logDoclingUploadClientEvent(packId, "upload_start", {
+      sourceBytes: files.sourceFile.size,
+      jsonBytes: files.doclingJsonFile.size,
+      markdownBytes: files.doclingMarkdownFile?.size ?? 0,
+      sourceName: files.sourceFile.name,
+      jsonName: files.doclingJsonFile.name,
+      markdownName: files.doclingMarkdownFile?.name ?? null,
+      webCryptoSubtle: typeof globalThis.crypto?.subtle?.digest === "function",
+      isSecureContext:
+        typeof globalThis.isSecureContext === "boolean" ? globalThis.isSecureContext : null,
+    });
+
     setStage("validating");
     const { policy } = await fetchProviderDoclingUploadPolicyApi(packId);
     preValidateDoclingUploadFiles(files, policy);
+    await logDoclingUploadClientEvent(packId, "policy_ok", {
+      maxJsonBytes: policy.maxJsonBytes,
+      multipartPartBytes: policy.multipartPartBytes,
+    });
 
-    setStage("preparing");
+    const totalBytes =
+      files.sourceFile.size +
+      files.doclingJsonFile.size +
+      (files.doclingMarkdownFile?.size ?? 0);
+    const largePrep =
+      totalBytes > DOCLING_FINGERPRINT_TAIL_SKIP_BYTES
+        ? "대용량 파일 확인 중… (브라우저에서 파일 끝 탐색을 건너뜁니다)"
+        : null;
+    setStage("preparing", largePrep);
+    // Yield so React can paint "업로드 준비" before hashing.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await logDoclingUploadClientEvent(packId, "fingerprint_start", { totalBytes });
     const fingerprints = await computeUploadFingerprints(files);
+    await logDoclingUploadClientEvent(packId, "fingerprint_done", {
+      roles: Object.keys(fingerprints),
+    });
     let session: UploadSessionPublicDto;
     const stored = input.resumeSessionId
       ? { sessionId: input.resumeSessionId, fingerprints: {} as DoclingRoleFingerprintMap }
@@ -673,6 +715,11 @@ export async function uploadDoclingMultipart(input: {
       sessionId: session.id,
       fingerprints,
     });
+    await logDoclingUploadClientEvent(packId, "session_ready", {
+      sessionId: session.id,
+      bundleId: session.bundleId,
+      fileCount: session.files.length,
+    });
     progress = { ...progress, sessionId: session.id, bundleId: session.bundleId };
     emit(progress);
 
@@ -720,6 +767,10 @@ export async function uploadDoclingMultipart(input: {
     }
     progress = recomputeOverall(progress, startedAt);
     setStage("uploading");
+    await logDoclingUploadClientEvent(packId, "parts_upload_start", {
+      sessionId: session.id,
+      roles: bindings.map((b) => b.role),
+    });
 
     const concurrency = policy.multipartConcurrency || DEFAULT_CONCURRENCY;
     const partProgressLoaded = new Map<string, number>();
@@ -814,15 +865,28 @@ export async function uploadDoclingMultipart(input: {
 
     setStage("completing");
     const partsByRole: Record<string, Array<{ partNumber: number; etag: string }>> = {};
+    let needsServerPartList = false;
     for (const binding of bindings) {
-      partsByRole[binding.role] = [...binding.completed.entries()]
+      const parts = [...binding.completed.entries()]
         .sort((a, b) => a[0] - b[0])
         .map(([partNumber, { etag }]) => ({ partNumber, etag }));
+      if (parts.some((p) => !p.etag || p.etag === SERVER_LIST_ETAG_PLACEHOLDER)) {
+        needsServerPartList = true;
+      }
+      partsByRole[binding.role] = parts;
     }
 
-    const completedRes = await completeProviderDoclingUploadSessionApi(packId, session.id, {
-      partsByRole,
+    await logDoclingUploadClientEvent(packId, "complete_start", {
+      sessionId: session.id,
+      needsServerPartList,
     });
+
+    // Prefer server ListParts when ETag was not readable (common with MinIO CORS limits).
+    const completedRes = await completeProviderDoclingUploadSessionApi(
+      packId,
+      session.id,
+      needsServerPartList ? undefined : { partsByRole },
+    );
     const bundleId = completedRes.bundleId;
     progress = { ...progress, bundleId };
     setStage("integrity");
@@ -830,13 +894,21 @@ export async function uploadDoclingMultipart(input: {
     const bundle = await pollBundleUntilSettled(packId, bundleId, emit, progress, signal);
     clearStoredUploadSessionId(packId);
     setStage("done");
+    await logDoclingUploadClientEvent(packId, "upload_done", {
+      sessionId: session.id,
+      bundleId,
+      status: bundle.status,
+    });
     return { sessionId: session.id, bundleId, bundle };
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
       setStage("cancelled", "업로드가 취소되었습니다.");
+      await logDoclingUploadClientEvent(packId, "upload_cancelled", {}, "warn");
       throw err;
     }
-    setStage("error", err instanceof Error ? err.message : "업로드에 실패했습니다.");
+    const message = err instanceof Error ? err.message : "업로드에 실패했습니다.";
+    setStage("error", message);
+    await logDoclingUploadClientEvent(packId, "upload_error", { message }, "error");
     throw err;
   }
 }

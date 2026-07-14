@@ -3,15 +3,20 @@ import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import { S3ObjectStorage } from "@/lib/object-storage/s3-object-storage";
 import type { ObjectStorageBackend } from "@/lib/object-storage/object-storage";
 
-let cached: ObjectStorageBackend | null = null;
-
 /**
  * Production/default storage: S3 only. No local filesystem fallback.
+ * Cache key bumps when client construction options that affect upload
+ * (e.g. checksum defaults) change so hot reload recreates the client.
  */
+const STORAGE_CACHE_GENERATION = 2;
+let cached: { generation: number; storage: ObjectStorageBackend } | null = null;
+
 export function getConfiguredObjectStorage(
   env: NodeJS.ProcessEnv = process.env,
 ): ObjectStorageBackend {
-  if (cached) return cached;
+  if (cached && cached.generation === STORAGE_CACHE_GENERATION) {
+    return cached.storage;
+  }
   const parsed = parseObjectStorageConfig(env);
   if (!parsed.ok) {
     throw new PayloadServiceError(
@@ -20,8 +25,11 @@ export function getConfiguredObjectStorage(
       503,
     );
   }
-  cached = new S3ObjectStorage(parsed.config);
-  return cached;
+  cached = {
+    generation: STORAGE_CACHE_GENERATION,
+    storage: new S3ObjectStorage(parsed.config),
+  };
+  return cached.storage;
 }
 
 /** @deprecated Prefer getConfiguredObjectStorage. */
@@ -36,7 +44,9 @@ export function resetObjectStorageCache(): void {
 export const resetPayloadStorageCache = resetObjectStorageCache;
 
 export function setObjectStorageForTests(storage: ObjectStorageBackend | null): void {
-  cached = storage;
+  cached = storage
+    ? { generation: STORAGE_CACHE_GENERATION, storage }
+    : null;
 }
 
 /** @deprecated Prefer setObjectStorageForTests. */

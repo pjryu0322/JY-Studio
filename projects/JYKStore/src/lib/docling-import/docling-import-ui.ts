@@ -200,7 +200,7 @@ export function formatDoclingBundleStatus(status: string | null | undefined): st
     case "REVIEW_READY":
       return "검수 준비 완료";
     case "NORMALIZED":
-      return "문서 구조 변환 완료";
+      return "제공자 확인 필요";
     case "NORMALIZING":
       return "문서 구조 변환 중";
     case "VALID":
@@ -210,7 +210,7 @@ export function formatDoclingBundleStatus(status: string | null | undefined): st
     case "VALIDATION_FAILED":
       return "검증 실패";
     case "NORMALIZATION_FAILED":
-      return "변환 실패";
+      return "정규화 실패";
     case "UPLOADED":
       return "업로드 완료";
     default:

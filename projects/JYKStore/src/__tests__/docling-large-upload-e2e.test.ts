@@ -238,7 +238,7 @@ describe("docling-large-upload-e2e", { skip: !runE2E }, () => {
     await prisma.$disconnect().catch(() => undefined);
   });
 
-  it("multipart large fixtures → validateAndNormalizeBundle → REVIEW_READY", async () => {
+  it("multipart large fixtures → validateAndNormalizeBundle → NORMALIZED", async () => {
     const t0 = Date.now();
     const rssSamples: number[] = [rssMb()];
     const policy = getDoclingUploadPolicy();
@@ -415,7 +415,7 @@ describe("docling-large-upload-e2e", { skip: !runE2E }, () => {
     );
     rssSamples.push(rssMb());
 
-    assert.equal(result.status, DoclingImportBundleStatus.REVIEW_READY);
+    assert.equal(result.status, DoclingImportBundleStatus.NORMALIZED);
     console.log(
       `[large-e2e] done total=${Date.now() - t0}ms md=${mdSize} json=${jsonSize} partSize=${partSize} rss=${rssSamples.map((n) => n.toFixed(0)).join(",")}`,
     );

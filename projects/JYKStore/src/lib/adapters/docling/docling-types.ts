@@ -115,6 +115,8 @@ export type NormalizedSection = {
   label: string | null;
   sourceRef: string | null;
   children: NormalizedSection[];
+  /** Optional page hint from Docling provenance. */
+  page?: number | null;
 };
 
 export type NormalizedTable = {
@@ -130,6 +132,8 @@ export type NormalizedFigure = {
   caption: string | null;
   label: string | null;
   sourceRef: string | null;
+  altText?: string | null;
+  page?: number | null;
 };
 
 export type NormalizedReadingOrderItem = {

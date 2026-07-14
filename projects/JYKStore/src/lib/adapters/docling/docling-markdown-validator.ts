@@ -59,12 +59,41 @@ export type MarkdownValidationResult = {
 };
 
 export function sanitizeMarkdownForPreview(markdown: string): string {
-  return markdown
+  const withoutBinary = markdown
+    .replace(/!\[[^\]]*]\(\s*data:image\/[a-z0-9.+-]+;base64,[^)]+\)/gi, "[이미지 데이터 생략]")
+    .replace(/<img\b[^>]*\bsrc\s*=\s*("|'|)data:image\/[^"'\s>]+(\1)[^>]*>/gi, "[이미지 데이터 생략]")
+    .replace(/data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+/gi, "[이미지 데이터 생략]")
+    .replace(/[A-Za-z0-9+/]{200,}={0,2}/g, "[바이너리 데이터 생략]")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<\/?script\b[^>]*>/gi, "")
     .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
     .replace(/javascript\s*:/gi, "blocked:")
     .replace(/data\s*:\s*text\/html/gi, "blocked:text/html");
+
+  const maxBytes = MARKDOWN_PREVIEW_MAX_BYTES;
+  const maxLines = 500;
+  const lines = withoutBinary.split(/\r?\n/);
+  let truncated = false;
+  let kept = lines;
+  if (lines.length > maxLines) {
+    kept = lines.slice(0, maxLines);
+    truncated = true;
+  }
+  let text = kept.join("\n");
+  const byteLength = (value: string) =>
+    typeof TextEncoder !== "undefined"
+      ? new TextEncoder().encode(value).length
+      : value.length;
+  if (byteLength(text) > maxBytes) {
+    while (byteLength(text) > maxBytes && text.length > 0) {
+      text = text.slice(0, Math.floor(text.length * 0.9));
+    }
+    truncated = true;
+  }
+  if (truncated) {
+    text = `${text.trimEnd()}\n\n일부 내용만 표시합니다.`;
+  }
+  return text;
 }
 
 function softResult(partial: {

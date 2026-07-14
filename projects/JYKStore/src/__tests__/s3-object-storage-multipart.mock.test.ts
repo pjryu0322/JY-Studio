@@ -111,4 +111,16 @@ describe("S3ObjectStorage multipart mocks", () => {
     assert.equal(listed.parts.length, 2);
     assert.equal(listed.parts[1]!.partNumber, 2);
   });
+
+  it("disables flexible checksum defaults for browser-safe presigns", async () => {
+    const src = await import("node:fs").then((fs) =>
+      fs.readFileSync(
+        new URL("../lib/object-storage/s3-object-storage.ts", import.meta.url),
+        "utf8",
+      ),
+    );
+    assert.ok(src.includes('requestChecksumCalculation: "WHEN_REQUIRED"'));
+    assert.ok(src.includes('responseChecksumValidation: "WHEN_REQUIRED"'));
+    assert.ok(src.includes("x-amz-checksum-crc32"));
+  });
 });

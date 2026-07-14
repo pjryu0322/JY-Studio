@@ -39,7 +39,12 @@ JYKStore는 Docling을 실행하지 않습니다. Provider는 외부 Docling으�
 
 ### MinIO CORS (브라우저 multipart)
 
-`AllowedOrigin`에 `JYKSTORE_PUBLIC_APP_ORIGIN`(예: `http://localhost:3004`)을 넣고 `PUT`/`GET`/`HEAD`를 허용하세요. `ExposeHeaders`에 `ETag`가 필요합니다.
+`AllowedOrigin`에 `JYKStore` 앱 Origin(예: `http://localhost:3004`, `http://127.0.0.1:3004`)을 넣고 `PUT`/`GET`/`HEAD`를 허용하세요. `ExposeHeaders`에 `ETag`가 있으면 브라우저가 파트 ETag를 읽을 수 있습니다.
+
+MinIO Community `RELEASE.2025-09+` 일부 빌드는 `PutBucketCors`가 `NotImplemented`일 수 있습니다. 이 경우:
+
+1. 서버 S3 클라이언트는 `requestChecksumCalculation=WHEN_REQUIRED`로 CRC32 프리사인 오염을 막습니다.
+2. 브라우저가 ETag를 못 읽으면 complete 단계에서 서버 `ListParts`로 완료합니다.
 
 관련 문서:
 

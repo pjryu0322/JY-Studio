@@ -1,27 +1,31 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NormalizedDocumentPreview } from "@/components/docling/NormalizedDocumentPreview";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
 import {
   cancelDoclingMultipartUpload,
   clearStoredUploadSessionId,
+  DOCLING_UPLOAD_STAGE_LABELS,
   formatEtaSeconds,
   formatUploadSpeed,
   readStoredUploadSessionId,
   uploadDoclingMultipart,
   type MultipartUploadProgress,
 } from "@/lib/docling-import/docling-multipart-client";
+import { logDoclingUploadClientEvent } from "@/lib/docling-import/docling-upload-client-log";
 import {
   DOCLING_FILE_ROLE_LABELS,
   extractMarkdownPreviewStatus,
   extractOriginMatchSummary,
   formatBytes,
+  formatDoclingBundleStatus,
   formatDoclingBundleStatusWithCode,
   formatDoclingStorageStatus,
   mapDoclingImportUserError,
 } from "@/lib/docling-import/docling-import-ui";
 import {
+  confirmProviderDoclingImportApi,
   deleteProviderDoclingImportApi,
   deleteProviderDoclingImportBundleApi,
   fetchProviderDoclingImportApi,
@@ -31,6 +35,7 @@ import {
   retryProviderDoclingImportApi,
   retryProviderDoclingImportBundleApi,
 } from "@/lib/provider-center-api";
+import type { DoclingQualityGateResult } from "@/lib/docling-import/docling-quality-gate";
 
 function SelectedFileHint({ file }: { readonly file: File | null }) {
   if (!file) {
@@ -45,17 +50,49 @@ function SelectedFileHint({ file }: { readonly file: File | null }) {
 }
 
 function UploadProgressPanel({ progress }: { readonly progress: MultipartUploadProgress }) {
+  const isFailure = progress.stage === "error" || progress.stage === "cancelled";
+  const isServerProcessing =
+    progress.stage === "validating_server" ||
+    progress.stage === "normalizing" ||
+    progress.stage === "integrity" ||
+    progress.stage === "completing";
+  const showOverallPercent =
+    !isFailure && !isServerProcessing && progress.overallPercent > 0;
+
   return (
-    <div className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-xs text-slate-800">
-      <p className="font-semibold text-blue-950">
+    <div
+      className={`sticky top-2 z-10 space-y-3 rounded-xl border p-3 text-xs shadow-sm ${
+        isFailure
+          ? "border-red-200 bg-red-50 text-slate-800"
+          : "border-blue-100 bg-blue-50 text-slate-800"
+      }`}
+    >
+      <p className={`font-semibold ${isFailure ? "text-red-950" : "text-blue-950"}`}>
         단계: {progress.stageLabel}
-        {progress.overallPercent > 0 ? ` · 전체 ${progress.overallPercent}%` : ""}
+        {showOverallPercent ? ` · 전체 ${progress.overallPercent}%` : ""}
+        {isServerProcessing ? " · 서버 처리 중" : ""}
       </p>
-      {progress.message ? <p className="text-store-muted">{progress.message}</p> : null}
-      <p className="text-store-muted">
-        속도 {formatUploadSpeed(progress.overallSpeedBps)} · 예상 남은 시간{" "}
-        {formatEtaSeconds(progress.overallEtaSeconds)}
-      </p>
+      {progress.message ? (
+        <p className={isFailure ? "font-medium text-red-800" : "text-store-muted"}>
+          {progress.message}
+        </p>
+      ) : null}
+      {progress.stage === "preparing" || progress.stage === "validating" ? (
+        <p className="text-blue-900">
+          대용량 JSON(수백 MB)은 확인·준비에 수 초가 걸릴 수 있습니다. 이 화면을 닫지 마세요.
+        </p>
+      ) : null}
+      {isFailure ? (
+        <p className="font-semibold text-red-800">
+          실패 단계에서 멈췄습니다. 위 메시지와 터미널 로그를 확인하세요.
+        </p>
+      ) : null}
+      {!isFailure ? (
+        <p className="text-store-muted">
+          속도 {formatUploadSpeed(progress.overallSpeedBps)} · 예상 남은 시간{" "}
+          {formatEtaSeconds(progress.overallEtaSeconds)}
+        </p>
+      ) : null}
       <ul className="space-y-2">
         {progress.files.map((file) => (
           <li key={file.role} className="rounded-lg border border-blue-100 bg-white px-3 py-2">
@@ -67,13 +104,17 @@ function UploadProgressPanel({ progress }: { readonly progress: MultipartUploadP
             </div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full rounded-full bg-store-accent transition-[width]"
+                className={`h-full rounded-full transition-[width] ${
+                  isFailure ? "bg-red-400" : "bg-store-accent"
+                }`}
                 style={{ width: `${file.percent}%` }}
               />
             </div>
             <p className="mt-1 text-store-muted">
-              {formatBytes(file.bytesUploaded)} / {formatBytes(file.bytesTotal)} ·{" "}
-              {formatUploadSpeed(file.speedBps)} · ETA {formatEtaSeconds(file.etaSeconds)}
+              {formatBytes(file.bytesUploaded)} / {formatBytes(file.bytesTotal)}
+              {!isFailure
+                ? ` · ${formatUploadSpeed(file.speedBps)} · ETA ${formatEtaSeconds(file.etaSeconds)}`
+                : null}
             </p>
           </li>
         ))}
@@ -87,11 +128,13 @@ export function ProviderDoclingImportTab({
   editable,
   cachedBundle = null,
   onDoclingChanged,
+  onGoToDistribution,
 }: {
   readonly packId: string;
   readonly editable: boolean;
   readonly cachedBundle?: DoclingImportBundlePublicDto | null;
   readonly onDoclingChanged?: (bundle: DoclingImportBundlePublicDto | null) => void;
+  readonly onGoToDistribution?: () => void;
 }) {
   const [bundle, setBundle] = useState<DoclingImportBundlePublicDto | null>(cachedBundle);
   const [stagingBundle, setStagingBundle] = useState<DoclingImportBundlePublicDto | null>(null);
@@ -108,12 +151,23 @@ export function ProviderDoclingImportTab({
   const [jsonFile, setJsonFile] = useState<File | null>(null);
   const [markdownFile, setMarkdownFile] = useState<File | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [confirmAck, setConfirmAck] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [resumeHint, setResumeHint] = useState<string | null>(null);
+  const errorRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const onDoclingChangedRef = useRef(onDoclingChanged);
   onDoclingChangedRef.current = onDoclingChanged;
 
   const canUpload = Boolean(sourceFile && jsonFile) && editable && !uploading;
+  /** Cancel only while bytes are still being transferred — not during server processing. */
+  const canCancelUpload =
+    uploading &&
+    (!uploadProgress ||
+      uploadProgress.stage === "idle" ||
+      uploadProgress.stage === "validating" ||
+      uploadProgress.stage === "preparing" ||
+      uploadProgress.stage === "uploading");
   const requiredSelectedCount = [sourceFile, jsonFile].filter(Boolean).length;
   const selectedCount = requiredSelectedCount + (markdownFile ? 1 : 0);
   const totalRoles = markdownFile ? 3 : 2;
@@ -153,13 +207,17 @@ export function ProviderDoclingImportTab({
         setBundle(data.bundle);
         setStagingBundle(data.stagingBundle ?? null);
         onDoclingChangedRef.current?.(data.bundle);
-        if (data.bundle?.normalizedDocument) {
+        const previewBundle =
+          data.stagingBundle?.status === "NORMALIZED"
+            ? data.stagingBundle
+            : data.bundle;
+        if (previewBundle?.normalizedDocument) {
           const nd = await fetchProviderNormalizedDocumentApi(packId).catch(() => null);
           setStructure(nd?.structure ?? null);
         } else {
           setStructure(null);
         }
-        await loadMarkdownPreview(data.bundle);
+        await loadMarkdownPreview(previewBundle);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Docling import를 불러오지 못했습니다.");
       } finally {
@@ -187,12 +245,66 @@ export function ProviderDoclingImportTab({
 
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const onUpload = async (e: FormEvent) => {
-    e.preventDefault();
+  const onUpload = async () => {
     if (!canUpload || !sourceFile || !jsonFile) return;
     setUploading(true);
     setError(null);
     setSuccessMessage(null);
+    void logDoclingUploadClientEvent(packId, "ui_upload_click", {
+      sourceBytes: sourceFile.size,
+      jsonBytes: jsonFile.size,
+      markdownBytes: markdownFile?.size ?? 0,
+    });
+    // Paint progress shell immediately (before async fingerprint of large JSON).
+    setUploadProgress({
+      stage: "validating",
+      stageLabel: DOCLING_UPLOAD_STAGE_LABELS.validating,
+      message:
+        jsonFile.size > 32 * 1024 * 1024
+          ? "대용량 JSON 확인을 시작합니다. 화면을 유지해 주세요."
+          : null,
+      files: [
+        {
+          role: "SOURCE_ORIGINAL",
+          fileName: sourceFile.name,
+          bytesTotal: sourceFile.size,
+          bytesUploaded: 0,
+          percent: 0,
+          speedBps: 0,
+          etaSeconds: null,
+          status: "pending",
+        },
+        {
+          role: "DOCLING_JSON",
+          fileName: jsonFile.name,
+          bytesTotal: jsonFile.size,
+          bytesUploaded: 0,
+          percent: 0,
+          speedBps: 0,
+          etaSeconds: null,
+          status: "pending",
+        },
+        ...(markdownFile
+          ? [
+              {
+                role: "DOCLING_MARKDOWN" as const,
+                fileName: markdownFile.name,
+                bytesTotal: markdownFile.size,
+                bytesUploaded: 0,
+                percent: 0,
+                speedBps: 0,
+                etaSeconds: null as number | null,
+                status: "pending" as const,
+              },
+            ]
+          : []),
+      ],
+      overallPercent: 0,
+      overallSpeedBps: 0,
+      overallEtaSeconds: null,
+      sessionId: null,
+      bundleId: null,
+    });
     const wasReplacing = replacing;
     const controller = new AbortController();
     abortRef.current = controller;
@@ -216,14 +328,21 @@ export function ProviderDoclingImportTab({
       setFileInputKey((key) => key + 1);
       setReplacing(false);
       setResumeHint(null);
+      setConfirmAck(false);
       setSuccessMessage(
-        wasReplacing ? "새 Bundle로 교체되었습니다." : "Docling Bundle이 등록되었습니다.",
+        result.bundle.status === "NORMALIZED"
+          ? "자료 등록이 완료되었습니다. 정규화 결과를 확인한 뒤 확인 완료해 주세요."
+          : wasReplacing
+            ? "새 Bundle로 교체되었습니다."
+            : "Docling Bundle이 등록되었습니다.",
       );
       if (result.bundle.normalizedDocument) {
         const nd = await fetchProviderNormalizedDocumentApi(packId).catch(() => null);
         setStructure(nd?.structure ?? null);
       }
       await loadMarkdownPreview(result.bundle);
+      await load({ silent: true });
+      setUploadProgress(null);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         setError("업로드가 취소되었습니다.");
@@ -236,16 +355,19 @@ export function ProviderDoclingImportTab({
         const storageHint = /Object Storage|스토리지|storage|MinIO|연결|ETag|CORS/i.test(message)
           ? " 파일이 서버에 완전히 저장되지 않았을 수 있습니다. 세션이 남아 있으면 같은 파일로 이어서 업로드하세요."
           : replaceHint ||
-            " 업로드에 실패했습니다. 새로고침하면 선택 목록이 사라질 수 있습니다.";
+            " 업로드에 실패했습니다. 선택한 파일은 유지됩니다. 터미널의 [docling-upload] 로그를 확인하세요.";
         setError(`${message}${storageHint}`);
       }
+      // Keep selected files + last progress so the user can read the failure stage.
+      requestAnimationFrame(() => {
+        errorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
       await load({ silent: true });
       if (wasReplacing) setReplacing(true);
       else setReplacing(false);
     } finally {
       abortRef.current = null;
       setUploading(false);
-      setUploadProgress(null);
     }
   };
 
@@ -355,20 +477,54 @@ export function ProviderDoclingImportTab({
   const showUploadForm =
     editable && ((!bundle && !stagingBundle) || replacing) && !stagingBundle;
 
+  const confirmTarget: DoclingImportBundlePublicDto | null =
+    stagingBundle?.status === "NORMALIZED"
+      ? stagingBundle
+      : bundle?.status === "NORMALIZED"
+        ? bundle
+        : null;
+
+  const qualityGateFromStructure =
+    structure && typeof structure === "object"
+      ? ((structure as { qualityGate?: DoclingQualityGateResult }).qualityGate ?? null)
+      : null;
+  const qualityFromReport =
+    confirmTarget?.normalizationReport &&
+    typeof confirmTarget.normalizationReport === "object"
+      ? ((confirmTarget.normalizationReport as { qualityGate?: DoclingQualityGateResult })
+          .qualityGate ?? null)
+      : null;
+  const qualityGate = qualityFromReport ?? qualityGateFromStructure;
+  const hasBlockers = Boolean(qualityGate && qualityGate.blockers.length > 0);
+
+  const onConfirmNormalized = async () => {
+    if (!editable || !confirmTarget || hasBlockers || !confirmAck) return;
+    setConfirming(true);
+    setError(null);
+    try {
+      const result = await confirmProviderDoclingImportApi(packId, confirmTarget.id);
+      setSuccessMessage("확인이 완료되었습니다. 유통정보를 입력해 주세요.");
+      setConfirmAck(false);
+      onDoclingChanged?.(result.bundle);
+      await load({ silent: true });
+      onGoToDistribution?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "확인 완료에 실패했습니다.");
+    } finally {
+      setConfirming(false);
+    }
+  };
+
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-sm font-bold text-slate-900">Docling Import</h2>
-        <p className="mt-1 text-xs text-store-muted">
-          원본문서와 구조화 JSON을 등록합니다. Markdown은 미리보기와 검토 편의를 위한 선택
-          자료입니다. JYKStore는 Docling을 실행하지 않으며, 원본은 불변으로 보관하고
-          NormalizedDocument만 재생성합니다. 대용량 파일은 브라우저 multipart로 직접 Object
-          Storage에 업로드됩니다.
-        </p>
-      </div>
+      {uploadProgress ? <UploadProgressPanel progress={uploadProgress} /> : null}
 
       {error ? (
-        <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <div
+          ref={errorRef}
+          className="sticky top-2 z-20 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800"
+          role="alert"
+        >
           {error}
         </div>
       ) : null}
@@ -391,37 +547,56 @@ export function ProviderDoclingImportTab({
         </div>
       ) : null}
 
-      {bundle ? (
+      {bundle || confirmTarget ? (
         <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-xs text-slate-800">
           <p className="font-semibold text-emerald-950">
-            {replacing ? "현재 사용 중인 Bundle" : "등록된 Docling Bundle"}
+            {confirmTarget && confirmTarget.status === "NORMALIZED"
+              ? "자료 등록 완료"
+              : replacing
+                ? "현재 사용 중인 Bundle"
+                : "등록된 Docling Bundle"}
           </p>
           {replacing ? (
             <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-blue-950">
               새 파일 검증이 완료되기 전까지 현재 Bundle은 유지됩니다.
             </p>
           ) : null}
-          {bundle.immutableAfterSubmission ? (
+          {(confirmTarget ?? bundle)?.immutableAfterSubmission ? (
             <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950">
               검수 제출 이력이 있어 교체할 수 없습니다. 새 버전을 생성하세요.
             </p>
           ) : null}
-          <p>
-            상태:{" "}
-            <span className="font-bold">{formatDoclingBundleStatusWithCode(bundle.status)}</span>
-            {bundle.doclingSchemaVersion
-              ? ` · Schema ${bundle.doclingSchemaName ?? "DoclingDocument"} v${bundle.doclingSchemaVersion}`
-              : null}
-            {` · ${formatDoclingStorageStatus(bundle.storageStatus)}`}
-          </p>
-          <p>
-            Adapter: {bundle.adapterType} {bundle.adapterVersion} · Origin match:{" "}
-            {extractOriginMatchSummary(bundle.validationReport)}
-          </p>
-          <p>
-            검증/정규화: 경고 {bundle.warningCount} · 오류 {bundle.errorCount}
-            {bundle.lastErrorMessage ? ` · ${bundle.lastErrorMessage}` : ""}
-          </p>
+
+          <ul className="space-y-1 rounded-lg border border-emerald-100 bg-white/80 px-3 py-2">
+            <li>
+              등록 파일{" "}
+              <span className="font-semibold">{(confirmTarget ?? bundle)?.files.length ?? 0}개</span>
+            </li>
+            <li>
+              파일 무결성 <span className="font-semibold">정상</span>
+            </li>
+            <li>
+              문서 일치 여부{" "}
+              <span className="font-semibold">
+                {extractOriginMatchSummary((confirmTarget ?? bundle)?.validationReport)}
+              </span>
+            </li>
+            <li>
+              정규화 상태{" "}
+              <span className="font-semibold">
+                {formatDoclingBundleStatus((confirmTarget ?? bundle)?.status)}
+              </span>
+            </li>
+            {qualityGate ? (
+              <li>
+                확인 필요 항목{" "}
+                <span className="font-semibold">
+                  {qualityGate.blockers.length + qualityGate.warnings.length}개
+                </span>
+              </li>
+            ) : null}
+          </ul>
+
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-xs">
               <thead>
@@ -433,12 +608,14 @@ export function ProviderDoclingImportTab({
                 </tr>
               </thead>
               <tbody>
-                {bundle.files.map((file) => (
+                {(confirmTarget ?? bundle)?.files.map((file) => (
                   <tr key={file.id} className="border-b border-emerald-50 align-top">
                     <td className="py-2 pr-3 font-semibold">
                       {DOCLING_FILE_ROLE_LABELS[file.role]}
                     </td>
-                    <td className="max-w-[14rem] break-all py-2 pr-3">{file.originalFileName}</td>
+                    <td className="max-w-[14rem] truncate py-2 pr-3" title={file.originalFileName}>
+                      {file.originalFileName}
+                    </td>
                     <td className="py-2 pr-3 whitespace-nowrap">{formatBytes(file.fileSize)}</td>
                     <td className="py-2">
                       <a
@@ -453,63 +630,116 @@ export function ProviderDoclingImportTab({
               </tbody>
             </table>
           </div>
-          {!replacing ? (
-            <div className="flex flex-wrap gap-2 pt-1">
-              {editable && bundle.canDelete ? (
-                <button
-                  type="button"
-                  onClick={onStartReplace}
-                  disabled={Boolean(stagingBundle)}
-                  className="min-h-[44px] rounded-xl border border-store-border bg-white px-3 text-xs font-semibold text-slate-800 disabled:opacity-60"
-                >
-                  새 파일로 교체
-                </button>
-              ) : null}
-              {editable && bundle.retryMode === "REVALIDATE_STORED_OBJECTS" ? (
-                <button
-                  type="button"
-                  onClick={() => void onRevalidate(bundle)}
-                  disabled={retrying}
-                  className="min-h-[44px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 disabled:opacity-60"
-                >
-                  {retrying ? "재검증 중…" : "저장된 파일 재검증"}
-                </button>
-              ) : null}
-              {editable &&
-              bundle.canRetry &&
-              bundle.retryMode !== "REVALIDATE_STORED_OBJECTS" ? (
-                <button
-                  type="button"
-                  onClick={() => void onRetry(bundle)}
-                  disabled={retrying}
-                  className="min-h-[44px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 disabled:opacity-60"
-                >
-                  {retrying ? "재처리 중…" : "재시도"}
-                </button>
-              ) : null}
-              {editable && bundle.canDelete ? (
-                <button
-                  type="button"
-                  onClick={() => void onDeleteRegistered()}
-                  className="min-h-[44px] rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-700"
-                >
-                  등록 자료 삭제
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+
           {!replacing ? (
             <NormalizedDocumentPreview
-              document={bundle.normalizedDocument}
+              document={(confirmTarget ?? bundle)?.normalizedDocument ?? null}
               structure={structure}
               markdownText={markdownText}
-              processingLogs={bundle.processingLogs}
+              processingLogs={(confirmTarget ?? bundle)?.processingLogs}
+              qualityGate={qualityGate}
             />
+          ) : null}
+
+          {!replacing && editable ? (
+            <div className="space-y-3 border-t border-emerald-100 pt-3">
+              {confirmTarget?.status === "NORMALIZED" ? (
+                <>
+                  {hasBlockers ? (
+                    <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-900">
+                      본문 또는 읽기 순서가 생성되지 않아 확인 완료할 수 없습니다. 자료를 다시
+                      처리하거나 새 파일로 교체해 주세요.
+                    </p>
+                  ) : (
+                    <label className="flex min-h-[44px] items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={confirmAck}
+                        onChange={(e) => setConfirmAck(e.target.checked)}
+                      />
+                      <span>등록 파일과 정규화 결과의 대표 샘플을 확인했습니다.</span>
+                    </label>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {(confirmTarget ?? bundle)?.canDelete ? (
+                      <button
+                        type="button"
+                        onClick={onStartReplace}
+                        className="min-h-[44px] rounded-xl border border-store-border bg-white px-3 text-xs font-semibold text-slate-800"
+                      >
+                        새 파일로 교체
+                      </button>
+                    ) : null}
+                    {(confirmTarget ?? bundle)?.canRetry ? (
+                      <button
+                        type="button"
+                        onClick={() => void onRetry(confirmTarget ?? bundle!)}
+                        disabled={retrying}
+                        className="min-h-[44px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 disabled:opacity-60"
+                      >
+                        {retrying ? "재처리 중…" : "다시 처리"}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={hasBlockers || !confirmAck || confirming}
+                      onClick={() => void onConfirmNormalized()}
+                      className="min-h-[44px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white disabled:opacity-60"
+                    >
+                      {confirming ? "확인 중…" : "확인 완료하고 유통정보 입력"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {bundle?.canDelete ? (
+                    <button
+                      type="button"
+                      onClick={onStartReplace}
+                      disabled={Boolean(stagingBundle)}
+                      className="min-h-[44px] rounded-xl border border-store-border bg-white px-3 text-xs font-semibold text-slate-800 disabled:opacity-60"
+                    >
+                      새 파일로 교체
+                    </button>
+                  ) : null}
+                  {bundle?.retryMode === "REVALIDATE_STORED_OBJECTS" ? (
+                    <button
+                      type="button"
+                      onClick={() => void onRevalidate(bundle)}
+                      disabled={retrying}
+                      className="min-h-[44px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 disabled:opacity-60"
+                    >
+                      {retrying ? "재검증 중…" : "저장된 파일 재검증"}
+                    </button>
+                  ) : null}
+                  {bundle?.canRetry && bundle.retryMode !== "REVALIDATE_STORED_OBJECTS" ? (
+                    <button
+                      type="button"
+                      onClick={() => void onRetry(bundle)}
+                      disabled={retrying}
+                      className="min-h-[44px] rounded-xl border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-950 disabled:opacity-60"
+                    >
+                      {retrying ? "재처리 중…" : "다시 처리"}
+                    </button>
+                  ) : null}
+                  {bundle?.canDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => void onDeleteRegistered()}
+                      className="min-h-[44px] rounded-xl border border-red-200 bg-white px-3 text-xs font-semibold text-red-700"
+                    >
+                      등록 자료 삭제
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </div>
           ) : null}
         </div>
       ) : null}
 
-      {stagingBundle ? (
+      {stagingBundle && stagingBundle.status !== "NORMALIZED" ? (
         <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-slate-800">
           <p className="font-semibold text-amber-950">실패한 Staging Bundle</p>
           {bundle ? (
@@ -602,10 +832,8 @@ export function ProviderDoclingImportTab({
         </div>
       ) : null}
 
-      {uploading && uploadProgress ? <UploadProgressPanel progress={uploadProgress} /> : null}
-
       {showUploadForm ? (
-        <form onSubmit={(e) => void onUpload(e)} className="space-y-3">
+        <div className="space-y-3">
           {selectedCount > 0 ? (
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800">
               <p className="font-semibold">
@@ -629,7 +857,6 @@ export function ProviderDoclingImportTab({
               type="file"
               className="mt-2 block min-h-[44px] w-full text-sm"
               onChange={(e) => setSourceFile(e.target.files?.[0] ?? null)}
-              required={!sourceFile}
               disabled={uploading}
             />
             <SelectedFileHint file={sourceFile} />
@@ -645,7 +872,6 @@ export function ProviderDoclingImportTab({
               accept=".json,application/json"
               className="mt-2 block min-h-[44px] w-full text-sm"
               onChange={(e) => setJsonFile(e.target.files?.[0] ?? null)}
-              required={!jsonFile}
               disabled={uploading}
             />
             <SelectedFileHint file={jsonFile} />
@@ -680,8 +906,9 @@ export function ProviderDoclingImportTab({
           </div>
           {!uploading ? (
             <button
-              type="submit"
+              type="button"
               disabled={!canUpload}
+              onClick={() => void onUpload()}
               className="min-h-[44px] w-full rounded-xl bg-store-accent text-sm font-bold text-white disabled:opacity-60"
             >
               {canUpload
@@ -690,13 +917,21 @@ export function ProviderDoclingImportTab({
                   : "업로드 (원본·JSON)"
                 : `업로드 (${requiredSelectedCount}/2 필수)`}
             </button>
-          ) : (
+          ) : canCancelUpload ? (
             <button
               type="button"
               onClick={() => void onCancelUpload()}
               className="min-h-[44px] w-full rounded-xl border border-red-200 bg-white text-sm font-semibold text-red-700"
             >
               업로드 취소
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="min-h-[44px] w-full rounded-xl border border-store-border bg-slate-50 text-sm font-semibold text-store-muted disabled:opacity-100"
+            >
+              서버 처리 중… (취소 불가)
             </button>
           )}
           {replacing && !uploading ? (
@@ -711,7 +946,7 @@ export function ProviderDoclingImportTab({
               취소
             </button>
           ) : null}
-        </form>
+        </div>
       ) : null}
 
       {!bundle && !stagingBundle && !editable ? (

@@ -21,6 +21,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const { clientId, userId } = auth;
   const { packId } = await context.params;
 
+  console.info(`[docling-upload] pack=${packId} event=session_create_request`);
   try {
     const body = (await request.json()) as {
       files?: Array<{

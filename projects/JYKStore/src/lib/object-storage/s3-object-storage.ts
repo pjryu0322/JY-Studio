@@ -59,6 +59,11 @@ function createS3Client(config: ObjectS3StorageConfig): S3Client {
       secretAccessKey: config.secretAccessKey,
     },
     forcePathStyle: config.forcePathStyle,
+    // AWS SDK v3 defaults enable flexible CRC32 checksums on UploadPart, which
+    // pollute browser presigned URLs (x-amz-checksum-*) and break MinIO PUT/CORS.
+    // Keep checksums only when the API requires them.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
   };
   if (config.endpoint) {
     clientConfig.endpoint = config.endpoint;
@@ -292,11 +297,28 @@ export class S3ObjectStorage implements ObjectStorageBackend {
         Key: input.objectKey,
         UploadId: input.uploadId,
         PartNumber: input.partNumber,
+        // Explicitly omit Checksum* fields so getSignedUrl does not hoist CRC32 query params.
       });
       const expiresAt = new Date(Date.now() + input.expiresInSeconds * 1000);
       const url = await getSignedUrl(this.client, command, {
         expiresIn: input.expiresInSeconds,
+        // Never require browser to send SDK flexible-checksum headers.
+        unhoistableHeaders: new Set([
+          "x-amz-checksum-crc32",
+          "x-amz-checksum-crc32c",
+          "x-amz-checksum-sha1",
+          "x-amz-checksum-sha256",
+          "x-amz-sdk-checksum-algorithm",
+          "x-amz-checksum-algorithm",
+        ]),
       });
+      if (/[?&]x-amz-checksum-/i.test(url) || /[?&]x-amz-sdk-checksum-algorithm=/i.test(url)) {
+        throw new PayloadServiceError(
+          "PAYLOAD_STORAGE_UNAVAILABLE",
+          "Presigned UploadPart URL에 체크섬 쿼리가 포함되어 브라우저 업로드가 실패합니다.",
+          503,
+        );
+      }
       // Never log `url` — it is a capability bearer token.
       return { url, expiresAt };
     } catch (error) {

@@ -1,4 +1,8 @@
-import type { NormalizedSection } from "@/lib/adapters/docling/docling-types";
+import type {
+  NormalizedFigure,
+  NormalizedSection,
+} from "@/lib/adapters/docling/docling-types";
+import { isHeadingTextLabel } from "@/lib/adapters/docling/docling-normalizer";
 
 export type StructureSummary = {
   headingCount: number;
@@ -25,26 +29,21 @@ function walkSections(
   }
 }
 
-function isHeadingLabel(label: string | null | undefined, title: string | null | undefined): boolean {
-  const l = (label ?? "").toLowerCase();
-  if (
-    l.includes("title") ||
-    l.includes("heading") ||
-    l.includes("section_header") ||
-    l.includes("header")
-  ) {
-    return true;
-  }
-  // Untitled plain text blocks are paragraphs.
-  if (title && title.trim().length > 0 && title.trim().length <= 120 && !l.includes("list")) {
-    return Boolean(l) || title.trim().length < 80;
-  }
-  return false;
-}
-
 function isListLabel(label: string | null | undefined): boolean {
   const l = (label ?? "").toLowerCase();
   return l.includes("list") || l.includes("bullet") || l.includes("ordered");
+}
+
+/** True headings only — never group/list shells with a short title. */
+export function isHeadingSection(section: NormalizedSection): boolean {
+  if (isListLabel(section.label)) return false;
+  return isHeadingTextLabel(section.label);
+}
+
+export function isBodySection(section: NormalizedSection): boolean {
+  if (isHeadingSection(section)) return false;
+  if (isListLabel(section.label)) return true;
+  return Boolean(section.text?.trim());
 }
 
 export function buildStructureSummary(input: {
@@ -63,13 +62,18 @@ export function buildStructureSummary(input: {
     sectionCount += 1;
     if (isListLabel(section.label)) {
       listCount += 1;
+      // List items with text still count as readable body for emptiness checks downstream;
+      // structure summary keeps listCount separate and also increments paragraphCount when text exists.
+      if (section.text?.trim()) paragraphCount += 1;
       return;
     }
-    if (isHeadingLabel(section.label, section.title)) {
+    if (isHeadingSection(section)) {
       headingCount += 1;
       return;
     }
-    paragraphCount += 1;
+    if (section.text?.trim()) {
+      paragraphCount += 1;
+    }
   });
 
   const tableCount = input.tables.length;
@@ -81,6 +85,9 @@ export function buildStructureSummary(input: {
 
   if (headingCount === 0) {
     warnings.push("Heading이 없습니다. 문서 구조 품질을 확인하세요.");
+  }
+  if (paragraphCount === 0) {
+    warnings.push("본문 문단이 추출되지 않았습니다.");
   }
   if (paragraphCount > 0 && headingCount > 0 && paragraphCount / Math.max(headingCount, 1) > 40) {
     warnings.push("Paragraph가 Section으로 과다 분류되었을 수 있습니다.");
@@ -112,4 +119,86 @@ export function buildStructureSummary(input: {
     sectionCount,
     warnings,
   };
+}
+
+export function collectHeadingSamples(
+  sections: NormalizedSection[],
+  max = 20,
+): Array<{ title: string; label: string | null; page: number | null }> {
+  const out: Array<{ title: string; label: string | null; page: number | null }> = [];
+  walkSections(sections, (section) => {
+    if (out.length >= max) return;
+    if (!isHeadingSection(section)) return;
+    const title = section.title?.trim() || section.text?.trim();
+    if (!title) return;
+    out.push({
+      title,
+      label: section.label,
+      page: typeof (section as { page?: number }).page === "number"
+        ? (section as { page?: number }).page!
+        : null,
+    });
+  });
+  return out;
+}
+
+export function collectBodySamples(
+  sections: NormalizedSection[],
+): Array<{ text: string; label: string | null; page: number | null; position: string }> {
+  const bodies: Array<{ text: string; label: string | null; page: number | null }> = [];
+  walkSections(sections, (section) => {
+    if (!isBodySection(section)) return;
+    const text = section.text?.trim();
+    if (!text) return;
+    bodies.push({
+      text,
+      label: section.label,
+      page: typeof (section as { page?: number }).page === "number"
+        ? (section as { page?: number }).page!
+        : null,
+    });
+  });
+  if (bodies.length === 0) return [];
+  const pickIndexes = (count: number, startRatio: number, endRatio: number) => {
+    const start = Math.floor(bodies.length * startRatio);
+    const end = Math.min(bodies.length, Math.ceil(bodies.length * endRatio));
+    const slice = bodies.slice(start, Math.max(start + 1, end));
+    return slice.slice(0, count);
+  };
+  const front = pickIndexes(3, 0, 0.15).map((b) => ({ ...b, position: "앞부분" }));
+  const mid = pickIndexes(3, 0.4, 0.6).map((b) => ({ ...b, position: "중간" }));
+  const back = pickIndexes(3, 0.85, 1).map((b) => ({ ...b, position: "마지막" }));
+  const seen = new Set<string>();
+  const merged: Array<{
+    text: string;
+    label: string | null;
+    page: number | null;
+    position: string;
+  }> = [];
+  for (const row of [...front, ...mid, ...back]) {
+    const key = row.text.slice(0, 80);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(row);
+  }
+  return merged;
+}
+
+export function collectFigureSamples(
+  figures: NormalizedFigure[],
+  max = 5,
+): Array<{
+  title: string;
+  caption: string | null;
+  altText: string | null;
+  page: number | null;
+}> {
+  return figures.slice(0, max).map((fig, i) => ({
+    title: fig.caption?.trim() || `그림 ${i + 1}`,
+    caption: fig.caption ?? null,
+    altText: (fig as { altText?: string | null }).altText ?? null,
+    page: typeof (fig as { page?: number }).page === "number"
+      ? (fig as { page?: number }).page!
+      : null,
+  }));
 }

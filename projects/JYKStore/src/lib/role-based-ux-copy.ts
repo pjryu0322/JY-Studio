@@ -363,7 +363,7 @@ export const PROVIDER_PROFILE_SAVE_SUCCESS = "제공자 정보를 저장했습�
 export const PROVIDER_ACCOUNT_MENU_LABEL = "계정 정보";
 
 export const PROVIDER_PACK_STATUS_UX: Record<string, string> = {
-  DRAFT: "초안 작성 중",
+  DRAFT: "초안",
   REVIEWING: "검토 요청됨",
   PUBLISHED: "공개됨",
   VERIFIED: "검증됨",

@@ -6,44 +6,51 @@ import type {
   DoclingProcessingLogPublicDto,
   NormalizedDocumentSummaryDto,
 } from "@/lib/docling-import/docling-import-dto";
+import type { DoclingQualityGateResult, QualityIssue } from "@/lib/docling-import/docling-quality-gate";
+import {
+  collectBodySamples,
+  collectFigureSamples,
+  collectHeadingSamples,
+} from "@/lib/docling-import/structure-summary";
+import type { NormalizedFigure, NormalizedSection, NormalizedTable } from "@/lib/adapters/docling/docling-types";
 
-const PREVIEW_TABS = [
-  "overview",
-  "sections",
-  "paragraphs",
-  "tables",
-  "figures",
-  "markdown",
-  "logs",
-] as const;
+const PRIMARY_TABS = ["summary", "headings", "body", "tables", "figures"] as const;
+type PrimaryTabId = (typeof PRIMARY_TABS)[number];
 
-type PreviewTabId = (typeof PREVIEW_TABS)[number];
-
-const PREVIEW_TAB_LABELS: Record<PreviewTabId, string> = {
-  overview: "개요",
-  sections: "Headings",
-  paragraphs: "본문",
-  tables: "Tables",
-  figures: "Figures",
-  markdown: "Markdown",
-  logs: "처리 로그",
+const PRIMARY_TAB_LABELS: Record<PrimaryTabId, string> = {
+  summary: "확인 요약",
+  headings: "목차 샘플",
+  body: "본문 샘플",
+  tables: "표 샘플",
+  figures: "그림 샘플",
 };
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-function previewText(value: unknown, max = 240): string {
-  if (value == null) return "—";
-  if (typeof value === "string") {
-    return value.length > max ? `${value.slice(0, max)}…` : value;
-  }
-  try {
-    const text = JSON.stringify(value);
-    return text.length > max ? `${text.slice(0, max)}…` : text;
-  } catch {
-    return String(value);
-  }
+function severityLabel(severity: QualityIssue["severity"]): string {
+  if (severity === "blocker") return "차단 문제";
+  if (severity === "warning") return "확인 권장";
+  return "참고";
+}
+
+function humanLogLabel(stage: string, status: string): string {
+  if (stage === "UPLOAD" && status === "SUCCEEDED") return "파일 등록 완료";
+  if (stage === "VALIDATION" && status === "SUCCEEDED") return "검증 완료";
+  if (stage === "NORMALIZATION" && status === "SUCCEEDED") return "정규화 완료";
+  if (stage === "NORMALIZATION" && status === "STARTED") return "정규화 중";
+  return "제공자 확인 대기";
+}
+
+function formatLanguage(language: string | null | undefined): string {
+  if (language === "ko" || language === "KO") return "한국어";
+  if (language === "en" || language === "EN") return "영어";
+  return language?.trim() ? language : "미선택";
+}
+
+function statusWord(ok: boolean, emptyLabel: string): string {
+  return ok ? "정상" : emptyLabel;
 }
 
 export function NormalizedDocumentPreview({
@@ -51,63 +58,72 @@ export function NormalizedDocumentPreview({
   structure,
   markdownText,
   processingLogs,
+  qualityGate: qualityGateProp,
 }: {
   readonly document: NormalizedDocumentSummaryDto | null;
   readonly structure: unknown;
   readonly markdownText?: string | null;
   readonly processingLogs?: readonly DoclingProcessingLogPublicDto[];
+  readonly qualityGate?: DoclingQualityGateResult | null;
 }) {
-  const [tab, setTab] = useState<PreviewTabId>("overview");
+  const [tab, setTab] = useState<PrimaryTabId>("summary");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   const structureObj =
     structure && typeof structure === "object" ? (structure as Record<string, unknown>) : null;
-  const sections = asArray(structureObj?.sections);
-  const tables = asArray(structureObj?.tables);
-  const figures = asArray(structureObj?.figures);
-  const warnings = asArray(structureObj?.warnings);
+  const sections = asArray(structureObj?.sections) as NormalizedSection[];
+  const tables = asArray(structureObj?.tables) as NormalizedTable[];
+  const figures = asArray(structureObj?.figures) as NormalizedFigure[];
   const summary =
     structureObj?.summary && typeof structureObj.summary === "object"
       ? (structureObj.summary as Record<string, unknown>)
       : null;
 
-  function isHeadingRow(row: Record<string, unknown>): boolean {
-    const label = String(row.label ?? "").toLowerCase();
-    return (
-      label.includes("title") ||
-      label.includes("heading") ||
-      label.includes("section_header") ||
-      label.includes("header")
-    );
-  }
+  const qualityGate: DoclingQualityGateResult | null =
+    qualityGateProp ??
+    (structureObj?.qualityGate && typeof structureObj.qualityGate === "object"
+      ? (structureObj.qualityGate as DoclingQualityGateResult)
+      : null);
 
-  const headingRows = sections.filter((item) => {
-    const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-    return isHeadingRow(row) || Boolean(row.title);
-  });
-  const paragraphRows = sections.filter((item) => {
-    const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-    return !isHeadingRow(row) && !Boolean(row.title);
-  });
+  const headingSamples = useMemo(() => collectHeadingSamples(sections, 20), [sections]);
+  const bodySamples = useMemo(() => collectBodySamples(sections), [sections]);
+  const figureSamples = useMemo(() => collectFigureSamples(figures, 5), [figures]);
+  const headingCount = Number(summary?.headingCount ?? headingSamples.length);
+  const paragraphCount = Number(summary?.paragraphCount ?? bodySamples.length);
+  const readingOrderCount = Number(summary?.readingOrderCount ?? 0);
 
   const sanitizedMarkdown = useMemo(
     () => sanitizeMarkdownForPreview(markdownText ?? ""),
     [markdownText],
   );
 
+  const issues: QualityIssue[] = useMemo(() => {
+    if (!qualityGate) return [];
+    return [...qualityGate.blockers, ...qualityGate.warnings, ...qualityGate.info];
+  }, [qualityGate]);
+
   if (!document) {
     return (
-      <p className="text-sm text-store-muted">정규화 문서(NormalizedDocument)가 아직 없습니다.</p>
+      <p className="text-sm text-store-muted">정규화 결과가 아직 없습니다.</p>
     );
   }
 
   return (
     <section className="space-y-3 rounded-xl border border-store-border bg-slate-50/80 p-3">
-      <p className="text-xs font-semibold text-slate-900">NormalizedDocument 미리보기</p>
+      <div>
+        <p className="text-xs font-semibold text-slate-900">정규화 결과 확인</p>
+        <p className="mt-1 text-xs text-store-muted">
+          문서의 목차, 본문, 표, 그림이 올바르게 추출됐는지 대표 샘플을 확인해 주세요. 문제가 있으면
+          자료를 교체하거나 다시 처리할 수 있습니다.
+        </p>
+      </div>
+
       <div
         className="flex gap-1 overflow-x-auto rounded-xl border border-store-border bg-white p-1"
         role="tablist"
-        aria-label="정규화 문서 미리보기"
+        aria-label="정규화 결과 확인"
       >
-        {PREVIEW_TABS.map((id) => {
+        {PRIMARY_TABS.map((id) => {
           const active = tab === id;
           return (
             <button
@@ -122,109 +138,165 @@ export function NormalizedDocumentPreview({
                   : "bg-transparent text-slate-700 hover:bg-slate-50"
               }`}
             >
-              {PREVIEW_TAB_LABELS[id]}
+              {PRIMARY_TAB_LABELS[id]}
             </button>
           );
         })}
       </div>
 
       <div className="rounded-xl border border-store-border bg-white p-3 text-xs text-slate-800">
-        {tab === "overview" ? (
-          <ul className="space-y-1.5">
-            <li>제목: {document.title ?? "—"}</li>
-            <li>
-              언어:{" "}
-              {document.language === "ko"
-                ? "한국어"
-                : document.language === "en"
-                  ? "영어"
-                  : document.language ?? "미선택"}
-              {document.languageSource === "PROVIDER" ? " · 제공자" : ""}
-            </li>
-            <li>
-              Schema: {document.sourceSchemaName ?? "—"}{" "}
-              {document.sourceSchemaVersion ? `v${document.sourceSchemaVersion}` : ""}
-            </li>
-            <li>
-              Adapter: {document.adapterType} {document.adapterVersion}
-            </li>
-            <li className="break-all">
-              Fingerprint:{" "}
-              {document.fingerprint
-                ? `${document.fingerprint.slice(0, 8)}…${document.fingerprint.slice(-6)}`
-                : "—"}
-            </li>
-            <li>경고 수: {document.warningCount}</li>
-            <li>Headings: {Number(summary?.headingCount ?? headingRows.length)}</li>
-            <li>Paragraphs: {Number(summary?.paragraphCount ?? paragraphRows.length)}</li>
-            <li>Lists: {Number(summary?.listCount ?? 0)}</li>
-            <li>Tables: {Number(summary?.tableCount ?? tables.length)}</li>
-            <li>Figures: {Number(summary?.figureCount ?? figures.length)}</li>
-            <li>Reading Order: {Number(summary?.readingOrderCount ?? 0)}</li>
-            {warnings.length > 0 ? (
+        {tab === "summary" ? (
+          <div className="space-y-3">
+            <ul className="space-y-1.5">
               <li>
-                경고 샘플:{" "}
-                {warnings
-                  .slice(0, 3)
-                  .map((w) => previewText(w, 80))
-                  .join(" · ")}
+                문서 제목 <span className="font-semibold">{document.title ?? "—"}</span>
               </li>
-            ) : null}
-          </ul>
+              <li>
+                언어 <span className="font-semibold">{formatLanguage(document.language)}</span>
+              </li>
+              <li>
+                목차 추출{" "}
+                <span className="font-semibold">
+                  {statusWord(headingCount > 0, "확인 필요")}
+                  {headingCount > 0 ? ` (${headingCount}개)` : ""}
+                </span>
+              </li>
+              <li>
+                본문 추출{" "}
+                <span className="font-semibold">
+                  {statusWord(paragraphCount > 0, "실패")}
+                  {paragraphCount > 0 ? ` (${paragraphCount}개)` : ""}
+                </span>
+              </li>
+              <li>
+                표 추출 <span className="font-semibold">{Number(summary?.tableCount ?? tables.length)}개</span>
+              </li>
+              <li>
+                그림 추출{" "}
+                <span className="font-semibold">{Number(summary?.figureCount ?? figures.length)}개</span>
+              </li>
+              <li>
+                읽기 순서{" "}
+                <span className="font-semibold">
+                  {statusWord(readingOrderCount > 0, "생성되지 않음")}
+                  {readingOrderCount > 0 ? ` (${readingOrderCount})` : ""}
+                </span>
+              </li>
+              <li>
+                품질 경고{" "}
+                <span className="font-semibold">{qualityGate?.warnings.length ?? document.warningCount}개</span>
+              </li>
+            </ul>
+
+            {issues.length > 0 ? (
+              <div>
+                <h3 className="text-xs font-bold text-slate-900">확인이 필요한 항목</h3>
+                <ul className="mt-2 space-y-2">
+                  {issues.map((issue) => (
+                    <li
+                      key={issue.code}
+                      className={`rounded-lg px-3 py-2 ${
+                        issue.severity === "blocker"
+                          ? "border border-red-200 bg-red-50 text-red-950"
+                          : "border border-amber-200 bg-amber-50 text-amber-950"
+                      }`}
+                    >
+                      <p className="font-semibold">
+                        ⚠ {severityLabel(issue.severity)} · {issue.message}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-950">
+                ✓ 차단 문제 없이 대표 샘플을 확인할 수 있습니다.
+              </p>
+            )}
+          </div>
         ) : null}
 
-        {tab === "sections" ? (
-          headingRows.length === 0 ? (
-            <p className="text-store-muted">Heading이 없습니다.</p>
+        {tab === "headings" ? (
+          headingSamples.length === 0 ? (
+            <p className="text-store-muted">표시할 목차 샘플이 없습니다.</p>
           ) : (
-            <ul className="max-h-72 space-y-2 overflow-y-auto">
-              {headingRows.slice(0, 60).map((item, index) => {
-                const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-                return (
-                  <li key={String(row.id ?? index)} className="rounded-lg bg-slate-50 px-2 py-2">
-                    <p className="font-semibold">
-                      {String(row.title ?? row.label ?? `Heading ${index + 1}`)}
-                    </p>
-                    <p className="mt-1 text-store-muted">
-                      Level {String(row.level ?? "—")} · {previewText(row.sourceRef)}
+            <div className="space-y-2">
+              <p className="text-store-muted">전체 {headingCount}개 중 대표 {headingSamples.length}개</p>
+              <ol className="max-h-72 list-decimal space-y-2 overflow-y-auto pl-5">
+                {headingSamples.map((row, index) => (
+                  <li key={`${row.title}-${index}`}>
+                    <p className="font-semibold">{row.title}</p>
+                    <p className="text-store-muted">
+                      {row.page != null ? `${row.page}페이지` : "페이지 —"}
                     </p>
                   </li>
-                );
-              })}
-            </ul>
+                ))}
+              </ol>
+            </div>
           )
         ) : null}
 
-        {tab === "paragraphs" ? (
-          paragraphRows.length === 0 ? (
-            <p className="text-store-muted">본문 Paragraph가 없습니다.</p>
+        {tab === "body" ? (
+          bodySamples.length === 0 ? (
+            <p className="text-store-muted">본문 텍스트가 추출되지 않았습니다.</p>
           ) : (
             <ul className="max-h-72 space-y-2 overflow-y-auto">
-              {paragraphRows.slice(0, 40).map((item, index) => {
-                const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-                return (
-                  <li key={String(row.id ?? index)} className="rounded-lg bg-slate-50 px-2 py-2">
-                    <p className="mt-1 text-store-muted">{previewText(row.text ?? row.sourceRef)}</p>
-                  </li>
-                );
-              })}
+              {bodySamples.map((row, index) => (
+                <li key={`${row.position}-${index}`} className="rounded-lg bg-slate-50 px-2 py-2">
+                  <p className="text-store-muted">
+                    {row.position}
+                    {row.page != null ? ` · ${row.page}페이지` : ""}
+                  </p>
+                  <p className="mt-1 leading-relaxed">{row.text.slice(0, 400)}{row.text.length > 400 ? "…" : ""}</p>
+                </li>
+              ))}
             </ul>
           )
         ) : null}
 
         {tab === "tables" ? (
           tables.length === 0 ? (
-            <p className="text-store-muted">테이블이 없습니다.</p>
+            <p className="text-store-muted">표가 없습니다.</p>
           ) : (
-            <ul className="max-h-72 space-y-2 overflow-y-auto">
-              {tables.slice(0, 20).map((item, index) => {
-                const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+            <ul className="max-h-72 space-y-3 overflow-y-auto">
+              {tables.slice(0, 5).map((table, index) => {
+                const data =
+                  table.data && typeof table.data === "object"
+                    ? (table.data as {
+                        rows?: number;
+                        cols?: number;
+                        previewRows?: string[][];
+                        page?: number | null;
+                        cellTextCount?: number;
+                        hasOnlyCoords?: boolean;
+                      })
+                    : {};
                 return (
-                  <li key={String(row.id ?? index)} className="rounded-lg bg-slate-50 px-2 py-2">
-                    <p className="font-semibold">{String(row.caption ?? row.label ?? `표 ${index + 1}`)}</p>
-                    <p className="mt-1 break-all text-store-muted">
-                      Source: {previewText(row.sourceRef)} · {previewText(row.data, 120)}
+                  <li key={table.id ?? index} className="rounded-lg bg-slate-50 px-2 py-2">
+                    <p className="font-semibold">{table.caption?.trim() || `표 ${index + 1}`}</p>
+                    <p className="text-store-muted">
+                      {data.page != null ? `${data.page}페이지 · ` : ""}
+                      {data.rows ?? 0}행 × {data.cols ?? 0}열
                     </p>
+                    {data.hasOnlyCoords || (data.cellTextCount ?? 0) === 0 ? (
+                      <p className="mt-1 text-amber-800">표 내용 해석 실패</p>
+                    ) : (
+                      <div className="mt-2 overflow-x-auto">
+                        <table className="min-w-full border-collapse text-[11px]">
+                          <tbody>
+                            {(data.previewRows ?? []).map((r, ri) => (
+                              <tr key={ri}>
+                                {r.map((cell, ci) => (
+                                  <td key={ci} className="border border-slate-200 px-1 py-0.5">
+                                    {cell || "—"}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </li>
                 );
               })}
@@ -233,56 +305,88 @@ export function NormalizedDocumentPreview({
         ) : null}
 
         {tab === "figures" ? (
-          figures.length === 0 ? (
-            <p className="text-store-muted">Figures가 없습니다.</p>
+          figureSamples.length === 0 ? (
+            <p className="text-store-muted">그림이 없습니다.</p>
           ) : (
             <ul className="max-h-72 space-y-2 overflow-y-auto">
-              {figures.slice(0, 20).map((item, index) => {
-                const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
-                return (
-                  <li key={String(row.id ?? index)} className="rounded-lg bg-slate-50 px-2 py-2">
-                    <p className="font-semibold">
-                      {String(row.caption ?? row.label ?? `그림 ${index + 1}`)}
-                    </p>
-                    <p className="mt-1 text-store-muted">{previewText(row.sourceRef)}</p>
-                  </li>
-                );
-              })}
-            </ul>
-          )
-        ) : null}
-
-        {tab === "markdown" ? (
-          sanitizedMarkdown.trim() ? (
-            <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
-              {sanitizedMarkdown}
-            </pre>
-          ) : (
-            <p className="text-store-muted">Markdown 미리보기를 불러오지 못했습니다.</p>
-          )
-        ) : null}
-
-        {tab === "logs" ? (
-          !processingLogs || processingLogs.length === 0 ? (
-            <p className="text-store-muted">처리 로그가 없습니다.</p>
-          ) : (
-            <ul className="max-h-72 space-y-2 overflow-y-auto">
-              {processingLogs.map((log) => (
-                <li key={log.id} className="rounded-lg bg-slate-50 px-2 py-2">
-                  <p className="font-semibold">
-                    {log.stage} · {log.status}
-                    {log.attempt > 1 ? ` (#${log.attempt})` : ""}
+              {figureSamples.map((fig, index) => (
+                <li key={`${fig.title}-${index}`} className="rounded-lg bg-slate-50 px-2 py-2">
+                  <p className="font-semibold">{fig.title}</p>
+                  <p className="text-store-muted">
+                    {fig.page != null ? `${fig.page}페이지` : "페이지 —"}
+                    {fig.caption ? ` · ${fig.caption.slice(0, 120)}` : ""}
                   </p>
-                  <p className="mt-1 text-store-muted">
-                    {log.message ?? log.errorCode ?? "—"} ·{" "}
-                    {log.startedAt.replace("T", " ").slice(0, 19)}
-                  </p>
+                  {fig.altText ? <p className="mt-1">대체 텍스트: {fig.altText}</p> : null}
                 </li>
               ))}
             </ul>
           )
         ) : null}
       </div>
+
+      <details
+        className="rounded-xl border border-store-border bg-white p-3 text-xs"
+        open={advancedOpen}
+        onToggle={(e) => setAdvancedOpen((e.target as HTMLDetailsElement).open)}
+      >
+        <summary className="cursor-pointer font-semibold text-slate-800">고급 정보</summary>
+        <div className="mt-3 space-y-3 text-slate-700">
+          <ul className="space-y-1">
+            <li>
+              Schema: {document.sourceSchemaName ?? "—"}{" "}
+              {document.sourceSchemaVersion ? `v${document.sourceSchemaVersion}` : ""}
+            </li>
+            <li>
+              Adapter: {document.adapterType} {document.adapterVersion}
+            </li>
+            <li className="break-all">
+              Fingerprint: {document.fingerprint ?? "—"}
+            </li>
+          </ul>
+
+          <div>
+            <p className="font-semibold">Markdown 일부 보기</p>
+            {sanitizedMarkdown.trim() ? (
+              <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px]">
+                {sanitizedMarkdown}
+              </pre>
+            ) : (
+              <p className="mt-1 text-store-muted">미리볼 Markdown이 없습니다.</p>
+            )}
+          </div>
+
+          <div>
+            <p className="font-semibold">처리 로그</p>
+            {!processingLogs || processingLogs.length === 0 ? (
+              <p className="mt-1 text-store-muted">처리 로그가 없습니다.</p>
+            ) : (
+              <ul className="mt-1 max-h-48 space-y-1 overflow-y-auto">
+                {processingLogs.map((log) => (
+                  <li key={log.id}>
+                    {humanLogLabel(log.stage, log.status)}
+                    <span className="text-store-muted">
+                      {" "}
+                      · {log.stage}/{log.status}
+                      {log.message ? ` · ${log.message}` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <p className="font-semibold">내부 warning code</p>
+            <ul className="mt-1 space-y-1">
+              {(structureObj?.warnings ? asArray(structureObj.warnings) : []).slice(0, 8).map((w, i) => (
+                <li key={i} className="break-all font-mono text-[10px] text-store-muted">
+                  {typeof w === "string" ? w : JSON.stringify(w)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </details>
     </section>
   );
 }

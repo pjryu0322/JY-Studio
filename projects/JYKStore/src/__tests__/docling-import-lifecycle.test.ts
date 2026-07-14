@@ -34,8 +34,12 @@ describe("docling-import-lifecycle", () => {
   it("upload stages inactive first and promotes only after REVIEW_READY", () => {
     const service = read("src/lib/docling-import/docling-import-service.ts");
     const lifecycle = read("src/lib/docling-import/docling-import-lifecycle-service.ts");
+    const worker = read("src/workers/docling-processing-worker.ts");
     assert.ok(service.includes("isActive: false"));
+    assert.ok(service.includes("confirmProviderDoclingImport"));
     assert.ok(service.includes("REVIEW_READY"));
+    assert.ok(worker.includes("DoclingImportBundleStatus.NORMALIZED"));
+    assert.ok(!worker.includes("promoteDoclingStagingBundle"));
     assert.ok(lifecycle.includes('deactivationReason: "replaced"') || lifecycle.includes("deactivationReason: 'replaced'"));
     assert.ok(service.includes("markBundleDeletePendingAndCleanup") || lifecycle.includes("markBundleDeletePendingAndCleanup"));
     assert.ok(lifecycle.includes("acquireVersionUploadLock"));
@@ -80,7 +84,12 @@ describe("docling-import-lifecycle", () => {
     const service = read("src/lib/docling-import/docling-import-service.ts");
     assert.ok(service.includes("DoclingProcessingStage.RETRY"));
     assert.ok(service.includes("DoclingProcessingStatus.SUCCEEDED"));
-    assert.ok(service.includes("Retry succeeded") || service.includes("Retry completed"));
+    assert.ok(
+      service.includes("succeeded (provider confirm required)") ||
+        service.includes("Retry succeeded") ||
+        service.includes("Retry completed") ||
+        service.includes("completed with failure"),
+    );
     assert.ok(service.includes("DoclingProcessingStatus.FAILED"));
   });
 

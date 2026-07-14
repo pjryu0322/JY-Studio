@@ -27,10 +27,7 @@ describe("docling import UX sources", () => {
     assert.ok(source.includes("Docling JSON"));
     assert.ok(source.includes("Docling Markdown"));
     assert.ok(source.includes("선택 안 함") || source.includes("선택)"));
-    assert.ok(
-      source.includes("원본문서와 구조화 JSON을 등록합니다") ||
-        source.includes("Markdown은 미리보기"),
-    );
+    assert.ok(!source.includes("원본문서와 구조화 JSON을 등록합니다"));
     assert.ok(!source.includes("3파일 업로드"));
     assert.ok(source.includes("선택됨:") || source.includes("선택 안 함"));
     assert.ok(source.includes("선택한 파일"));
@@ -76,6 +73,7 @@ describe("docling import UX sources", () => {
     const payload = readSource("src/components/provider-distribution/ProviderPayloadTab.tsx");
     assert.ok(payload.includes("ProviderDoclingImportTab"));
     assert.ok(payload.includes("등록 자료") || payload.includes("ProviderMaterialRegistrationTab"));
+    assert.ok(!payload.includes("Docling Markdown을 등록합니다"));
     assert.ok(!payload.includes("레거시 ZIP Payload"));
     assert.ok(!payload.includes("legacyOpen"));
     assert.ok(!payload.includes("ZIP 파일"));
@@ -188,14 +186,16 @@ describe("docling import UX sources", () => {
   it("sanitizes markdown preview via shared helper", () => {
     const preview = readSource("src/components/docling/NormalizedDocumentPreview.tsx");
     assert.ok(preview.includes("sanitizeMarkdownForPreview"));
-    assert.ok(preview.includes("개요"));
-    assert.ok(preview.includes("Headings"));
-    assert.ok(preview.includes("본문") || preview.includes("paragraphs"));
-    assert.ok(preview.includes("Tables"));
-    assert.ok(preview.includes("Figures"));
+    assert.ok(preview.includes("확인 요약"));
+    assert.ok(preview.includes("목차 샘플"));
+    assert.ok(preview.includes("본문 샘플"));
+    assert.ok(preview.includes("표 샘플"));
+    assert.ok(preview.includes("그림 샘플"));
+    assert.ok(preview.includes("고급 정보"));
     assert.ok(preview.includes("Markdown"));
     assert.ok(preview.includes("처리 로그"));
     assert.ok(preview.includes("제공자") || preview.includes("미선택"));
     assert.ok(!preview.includes("languageConfidence"));
+    assert.ok(!preview.includes("Fingerprint:") || preview.includes("고급 정보"));
   });
 });

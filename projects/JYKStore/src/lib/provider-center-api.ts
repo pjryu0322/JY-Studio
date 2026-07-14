@@ -439,6 +439,56 @@ export async function deleteProviderDoclingImportApi(
   return (await response.json()) as { clientId: string; deleted: true };
 }
 
+export async function confirmProviderDoclingImportApi(
+  packId: string,
+  bundleId: string,
+): Promise<{
+  clientId: string;
+  bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/docling-import/${encodeURIComponent(bundleId)}/confirm`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+  if (!response.ok) {
+    type ConfirmErrorBody = {
+      error?: string;
+      message?: string;
+      code?: string;
+      blockers?: Array<{ message?: string }>;
+    };
+    let raw: ConfirmErrorBody | null = null;
+    try {
+      raw = (await response.json()) as ConfirmErrorBody;
+    } catch {
+      raw = null;
+    }
+    if (raw?.blockers && raw.blockers.length > 0) {
+      const blockers = raw.blockers
+        .map((b: { message?: string }) => b.message)
+        .filter(Boolean)
+        .join(" ");
+      throw new Error(
+        blockers
+          ? `${raw.error ?? raw.message ?? "확인 완료할 수 없습니다."} ${blockers}`
+          : raw.error ?? raw.message ?? "확인 완료할 수 없습니다.",
+      );
+    }
+    if (raw?.code) {
+      const { mapDoclingImportUserError } = await import("@/lib/docling-import/docling-import-ui");
+      throw new Error(mapDoclingImportUserError(raw.code, raw.message ?? raw.error));
+    }
+    throw new Error(raw?.message ?? raw?.error ?? `요청에 실패했습니다. (${response.status})`);
+  }
+  return (await response.json()) as {
+    clientId: string;
+    bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
+  };
+}
+
 export async function retryProviderDoclingImportApi(packId: string): Promise<{
   clientId: string;
   bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;
