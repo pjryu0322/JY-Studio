@@ -95,6 +95,12 @@ export type FigureClassification =
   | "PAGE_RENDER"
   | "UNKNOWN";
 
+export type FigureClassificationResult = {
+  classification: FigureClassification;
+  confidence: number;
+  reasons: string[];
+};
+
 export function classifyFigure(input: {
   pageNumber: number | null;
   caption: string | null;
@@ -103,43 +109,106 @@ export function classifyFigure(input: {
   sha256: string | null;
   duplicateCount: number;
   pictureIndex: number;
-}): {
-  classification: FigureClassification;
-  confidence: number;
-  reasons: string[];
-} {
+}): FigureClassificationResult {
   const reasons: string[] = [];
   const caption = (input.caption ?? "").trim();
-  const w = input.width ?? 0;
-  const h = input.height ?? 0;
-  const area = w * h;
-  const ratio = w > 0 && h > 0 ? w / h : 0;
+  const w = typeof input.width === "number" && Number.isFinite(input.width) ? input.width : 0;
+  const h =
+    typeof input.height === "number" && Number.isFinite(input.height) ? input.height : 0;
+  const hasValidSize = w > 0 && h > 0;
+  const area = hasValidSize ? w * h : 0;
+  const ratio = hasValidSize ? w / h : null;
 
+  // 1. Repeated SHA (logo watermark across pages)
   if (input.duplicateCount >= 2) {
     reasons.push("repeated_hash");
     return { classification: "LOGO", confidence: 0.7, reasons };
   }
+
+  // 2. Explicit caption → content figure
   if (caption) {
     reasons.push("has_caption");
     return { classification: "CONTENT_FIGURE", confidence: 0.75, reasons };
   }
-  if ((input.pageNumber ?? 99) <= 1 && !caption && area > 400_000) {
+
+  // 3. Cover candidate (page 1, large, uncaptioned)
+  if ((input.pageNumber ?? 99) <= 1 && !caption && hasValidSize && area > 400_000) {
     reasons.push("early_page_large_uncaptioned");
     return { classification: "COVER_IMAGE", confidence: 0.65, reasons };
   }
-  if (w > 0 && h > 0 && (w <= 96 || h <= 96 || area < 8_000)) {
+
+  // 4–5. Tiny / extreme aspect — only when dimensions are known
+  if (hasValidSize && (w <= 96 || h <= 96 || area < 8_000)) {
     reasons.push("tiny_image");
     return { classification: "LOGO", confidence: 0.6, reasons };
   }
-  if (ratio > 4 || ratio < 0.2) {
+  if (hasValidSize && ratio != null && (ratio > 4 || ratio < 0.2)) {
     reasons.push("extreme_aspect");
     return { classification: "DECORATIVE", confidence: 0.55, reasons };
   }
-  if ((input.pageNumber ?? 0) >= 2 && area >= 20_000) {
+
+  // 6. Mid-document medium/large diagram without caption
+  if (
+    input.pageNumber != null &&
+    input.pageNumber >= 2 &&
+    hasValidSize &&
+    area >= 20_000
+  ) {
     reasons.push("mid_doc_medium_size");
     return { classification: "CONTENT_FIGURE", confidence: 0.55, reasons };
   }
+
+  // 7–8. Insufficient signals — never treat unknown size as DECORATIVE
+  if (!hasValidSize) {
+    return {
+      classification: "UNKNOWN",
+      confidence: 0.35,
+      reasons: ["insufficient_metadata"],
+    };
+  }
   return { classification: "UNKNOWN", confidence: 0.35, reasons: ["low_signal"] };
+}
+
+/** Recompute duplicate SHA counts and classify every figure with final metadata. */
+export function classifyFigures<
+  T extends {
+    caption?: string | null;
+    page?: number | null;
+    pageNumber?: number | null;
+    width?: number | null;
+    height?: number | null;
+    _previewSha256?: string | null;
+    classification?: string;
+    classificationConfidence?: number;
+    classificationReasons?: string[];
+  },
+>(figures: T[]): T[] {
+  const hashCounts = new Map<string, number>();
+  for (const fig of figures) {
+    const sha = fig._previewSha256?.trim();
+    if (!sha) continue;
+    hashCounts.set(sha, (hashCounts.get(sha) ?? 0) + 1);
+  }
+
+  return figures.map((fig, pictureIndex) => {
+    const sha = fig._previewSha256?.trim() || null;
+    const dup = sha ? (hashCounts.get(sha) ?? 1) : 1;
+    const classified = classifyFigure({
+      pageNumber: fig.pageNumber ?? fig.page ?? null,
+      caption: fig.caption ?? null,
+      width: fig.width ?? null,
+      height: fig.height ?? null,
+      sha256: sha,
+      duplicateCount: dup,
+      pictureIndex,
+    });
+    return {
+      ...fig,
+      classification: classified.classification,
+      classificationConfidence: classified.confidence,
+      classificationReasons: classified.reasons,
+    };
+  });
 }
 
 export function buildFigurePreviewObjectKey(input: {

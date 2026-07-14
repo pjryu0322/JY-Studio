@@ -1,7 +1,7 @@
 import type { DoclingIssue } from "./docling-errors";
 import { resolveCaptionText } from "./docling-caption";
 import {
-  classifyFigure,
+  classifyFigures,
   extractImageUriFromPicture,
   parseDataUriImage,
 } from "./docling-figure-preview";
@@ -200,9 +200,8 @@ function buildTables(
   });
 }
 
-function buildFigures(doc: DoclingDocument, warnings: DoclingIssue[]): NormalizedFigure[] {
+function buildFigureDrafts(doc: DoclingDocument, warnings: DoclingIssue[]): NormalizedFigure[] {
   if (!Array.isArray(doc.pictures)) return [];
-  const hashCounts = new Map<string, number>();
   const figures: NormalizedFigure[] = [];
 
   for (let index = 0; index < doc.pictures.length; index += 1) {
@@ -234,7 +233,6 @@ function buildFigures(doc: DoclingDocument, warnings: DoclingIssue[]): Normalize
         mimeType = parsed.mimeType;
         width = parsed.width;
         height = parsed.height;
-        hashCounts.set(parsed.sha256, (hashCounts.get(parsed.sha256) ?? 0) + 1);
       }
     }
 
@@ -252,28 +250,41 @@ function buildFigures(doc: DoclingDocument, warnings: DoclingIssue[]): Normalize
       previewObjectKey: null,
       _previewBytes: previewBytes,
       _previewSha256: previewSha,
+      // Provisional — final classification runs after metadata attachment.
       classification: "UNKNOWN",
       classificationConfidence: 0.3,
-      classificationReasons: [],
+      classificationReasons: ["pending_metadata"],
     });
   }
 
-  return figures.map((fig, pictureIndex) => {
-    const dup = fig._previewSha256 ? (hashCounts.get(fig._previewSha256) ?? 1) : 1;
-    const classified = classifyFigure({
-      pageNumber: fig.pageNumber ?? fig.page ?? null,
-      caption: fig.caption,
-      width: fig.width ?? null,
-      height: fig.height ?? null,
-      sha256: fig._previewSha256 ?? null,
-      duplicateCount: dup,
-      pictureIndex,
-    });
+  return figures;
+}
+
+function attachExtractedPictureImages(
+  figures: NormalizedFigure[],
+  extracted:
+    | Array<{
+        selfRef: string;
+        mimeType: string;
+        bytes: Uint8Array;
+        sha256: string;
+        width: number | null;
+        height: number | null;
+      }>
+    | undefined,
+): NormalizedFigure[] {
+  if (!extracted?.length) return figures;
+  const byRef = new Map(extracted.map((e) => [e.selfRef, e]));
+  return figures.map((fig) => {
+    const hit = byRef.get(fig.id) ?? byRef.get(fig.sourceRef ?? "");
+    if (!hit) return fig;
     return {
       ...fig,
-      classification: classified.classification,
-      classificationConfidence: classified.confidence,
-      classificationReasons: classified.reasons,
+      mimeType: hit.mimeType,
+      width: hit.width ?? fig.width ?? null,
+      height: hit.height ?? fig.height ?? null,
+      _previewBytes: hit.bytes,
+      _previewSha256: hit.sha256,
     };
   });
 }
@@ -411,22 +422,10 @@ export function normalizeDoclingDocument(
 
   const sections = buildSections(doc);
   const tables = buildTables(doc, sections, warnings);
-  let figures = buildFigures(doc, warnings);
-  if (options?.extractedPictureImages?.length) {
-    const byRef = new Map(options.extractedPictureImages.map((e) => [e.selfRef, e]));
-    figures = figures.map((fig) => {
-      const hit = byRef.get(fig.id) ?? byRef.get(fig.sourceRef ?? "");
-      if (!hit) return fig;
-      return {
-        ...fig,
-        mimeType: hit.mimeType,
-        width: hit.width,
-        height: hit.height,
-        _previewBytes: hit.bytes,
-        _previewSha256: hit.sha256,
-      };
-    });
-  }
+  // Draft → attach streaming/extracted image metadata → classify with final size/SHA.
+  let figures = buildFigureDrafts(doc, warnings);
+  figures = attachExtractedPictureImages(figures, options?.extractedPictureImages);
+  figures = classifyFigures(figures);
   const contentRefs = new Set(sections.map((s) => s.id));
   for (const t of tables) contentRefs.add(t.id);
   for (const f of figures) contentRefs.add(f.id);

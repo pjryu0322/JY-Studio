@@ -14,7 +14,11 @@ export type StructureSummary = {
   tocTableCount: number;
   figureCount: number;
   contentFigureCount: number;
+  /** Figures classified as UNKNOWN — provider should review. */
+  unknownFigureCount: number;
   decorativeFigureCount: number;
+  figurePreviewSuccessCount: number;
+  figurePreviewFailCount: number;
   captionCount: number;
   readingOrderCount: number;
   /** Backward-compatible total section-like nodes. */
@@ -95,13 +99,22 @@ export function buildStructureSummary(input: {
   }
   const figureCount = input.figures.length;
   let contentFigureCount = 0;
+  let unknownFigureCount = 0;
   let decorativeFigureCount = 0;
+  let figurePreviewSuccessCount = 0;
+  let figurePreviewFailCount = 0;
   for (const fig of input.figures) {
     const c = fig.classification ?? "UNKNOWN";
     if (c === "CONTENT_FIGURE") contentFigureCount += 1;
+    else if (c === "UNKNOWN") unknownFigureCount += 1;
     else if (c === "COVER_IMAGE" || c === "LOGO" || c === "DECORATIVE" || c === "PAGE_RENDER") {
       decorativeFigureCount += 1;
     }
+    if (fig.previewObjectKey?.trim()) figurePreviewSuccessCount += 1;
+    else figurePreviewFailCount += 1;
+  }
+  if (figureCount === 0) {
+    figurePreviewFailCount = 0;
   }
   const captionCount =
     input.tables.filter((t) => Boolean(t.caption?.trim())).length +
@@ -142,7 +155,10 @@ export function buildStructureSummary(input: {
     tocTableCount,
     figureCount,
     contentFigureCount,
+    unknownFigureCount,
     decorativeFigureCount,
+    figurePreviewSuccessCount,
+    figurePreviewFailCount,
     captionCount,
     readingOrderCount,
     sectionCount,
@@ -228,10 +244,7 @@ export function collectContentTableSamples(
   return content.slice(0, max);
 }
 
-export function collectFigureSamples(
-  figures: NormalizedFigure[],
-  max = 5,
-): Array<{
+export type FigureSampleCard = {
   id: string;
   title: string;
   caption: string | null;
@@ -239,25 +252,93 @@ export function collectFigureSamples(
   page: number | null;
   previewObjectKey: string | null;
   classification: string | null;
-}> {
+  /** True when this card is a review candidate, not a confirmed content figure. */
+  isFallbackCandidate?: boolean;
+};
+
+function figurePage(fig: NormalizedFigure): number | null {
+  if (typeof fig.pageNumber === "number") return fig.pageNumber;
+  if (typeof fig.page === "number") return fig.page;
+  return null;
+}
+
+function figureArea(fig: NormalizedFigure): number {
+  const w = typeof fig.width === "number" ? fig.width : 0;
+  const h = typeof fig.height === "number" ? fig.height : 0;
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+function toFigureSampleCard(
+  fig: NormalizedFigure,
+  index: number,
+  isFallbackCandidate: boolean,
+): FigureSampleCard {
+  return {
+    id: fig.id,
+    title: fig.caption?.trim() || `그림 ${index + 1}`,
+    caption: fig.caption ?? null,
+    altText: fig.altText ?? null,
+    page: figurePage(fig),
+    previewObjectKey: fig.previewObjectKey ?? null,
+    classification: fig.classification ?? null,
+    isFallbackCandidate,
+  };
+}
+
+/**
+ * Primary figure samples for Provider review.
+ * Prefers CONTENT_FIGURE / UNKNOWN. When every figure was classified decorative,
+ * falls back to mid-document DECORATIVE candidates (does not mutate classification).
+ */
+export function collectFigureSamples(
+  figures: NormalizedFigure[],
+  max = 5,
+): FigureSampleCard[] {
   const content = figures.filter((fig) => {
     const c = fig.classification ?? "CONTENT_FIGURE";
     return c === "CONTENT_FIGURE" || c === "UNKNOWN";
   });
-  return content.slice(0, max).map((fig, i) => ({
-    id: fig.id,
-    title: fig.caption?.trim() || `그림 ${i + 1}`,
-    caption: fig.caption ?? null,
-    altText: fig.altText ?? null,
-    page:
-      typeof fig.pageNumber === "number"
-        ? fig.pageNumber
-        : typeof fig.page === "number"
-          ? fig.page
-          : null,
-    previewObjectKey: fig.previewObjectKey ?? null,
-    classification: fig.classification ?? null,
-  }));
+  if (content.length > 0) {
+    return content
+      .slice(0, max)
+      .map((fig, i) => toFigureSampleCard(fig, i, false));
+  }
+
+  if (figures.length === 0) return [];
+
+  // Fallback: all figures are COVER/LOGO/DECORATIVE/PAGE_RENDER — surface mid-doc candidates.
+  const fallbackMax = Math.min(3, max);
+  const candidates = figures
+    .filter((fig) => {
+      const c = fig.classification ?? "";
+      if (c === "LOGO" || c === "COVER_IMAGE" || c === "PAGE_RENDER") return false;
+      const page = figurePage(fig);
+      if (page != null && page <= 1) return false;
+      return c === "DECORATIVE" || c === "";
+    })
+    .sort((a, b) => {
+      const pageA = figurePage(a) ?? 10_000;
+      const pageB = figurePage(b) ?? 10_000;
+      const midA = pageA >= 2 ? 0 : 1;
+      const midB = pageB >= 2 ? 0 : 1;
+      if (midA !== midB) return midA - midB;
+      const previewA = a.previewObjectKey?.trim() ? 0 : 1;
+      const previewB = b.previewObjectKey?.trim() ? 0 : 1;
+      if (previewA !== previewB) return previewA - previewB;
+      const areaDiff = figureArea(b) - figureArea(a);
+      if (areaDiff !== 0) return areaDiff;
+      const capA = a.caption?.trim() ? 0 : 1;
+      const capB = b.caption?.trim() ? 0 : 1;
+      if (capA !== capB) return capA - capB;
+      return pageA - pageB;
+    });
+
+  // Prefer items with preview; if none have preview, still show mid-doc candidates.
+  const withPreview = candidates.filter((f) => f.previewObjectKey?.trim());
+  const pool = withPreview.length > 0 ? withPreview : candidates;
+  return pool
+    .slice(0, fallbackMax)
+    .map((fig, i) => toFigureSampleCard(fig, i, true));
 }
 
 export function collectAdvancedFigureSamples(

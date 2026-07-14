@@ -26,8 +26,8 @@ const PNG_B64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 describe("docling 1.1.1 real-structure compat", () => {
-  it("bumps adapter to 1.1.1", () => {
-    assert.equal(DOCLING_ADAPTER_VERSION, "1.1.1");
+  it("bumps adapter to 1.1.2", () => {
+    assert.equal(DOCLING_ADAPTER_VERSION, "1.1.2");
   });
 
   it("resolves captions.$ref to 제·개정이력", () => {

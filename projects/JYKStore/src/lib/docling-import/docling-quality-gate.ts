@@ -193,6 +193,22 @@ export function evaluateNormalizedDocumentQuality(input: {
       message: "표지·로고·장식 이미지는 기본 그림 샘플에서 제외됩니다.",
     });
   }
+
+  const contentOrUnknown = input.figures.filter((f) => {
+    const c = f.classification ?? "";
+    return c === "CONTENT_FIGURE" || c === "UNKNOWN";
+  });
+  if (
+    input.figures.length > 0 &&
+    contentOrUnknown.length === 0
+  ) {
+    warnings.push({
+      code: "FIGURE_CLASSIFICATION_ALL_DECORATIVE",
+      severity: "warning",
+      message:
+        "모든 그림이 표지·로고·장식으로 분류되었습니다. 실제 그림이 포함되어 있는지 확인해 주세요.",
+    });
+  }
   if (structure.paragraphCount === 0) {
     blockers.push({
       code: "NORMALIZED_BODY_EMPTY",

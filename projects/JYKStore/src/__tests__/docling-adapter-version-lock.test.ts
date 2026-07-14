@@ -22,7 +22,7 @@ describe("docling adapter version lock", () => {
     assert.ok(service.includes("DOCLING_ADAPTER_VERSION"));
     assert.ok(!service.includes("adapterVersion?: string"));
     assert.ok(!service.includes("input.adapterVersion"));
-    assert.equal(DOCLING_ADAPTER_VERSION, "1.1.1");
+    assert.equal(DOCLING_ADAPTER_VERSION, "1.1.2");
   });
 
   it("provider client does not append adapterVersion on upload", () => {

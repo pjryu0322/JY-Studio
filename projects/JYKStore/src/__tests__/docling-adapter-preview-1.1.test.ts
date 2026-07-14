@@ -78,8 +78,8 @@ function historyTableCells() {
 }
 
 describe("docling adapter preview 1.1", () => {
-  it("locks adapter version to 1.1.1", () => {
-    assert.equal(DOCLING_ADAPTER_VERSION, "1.1.1");
+  it("locks adapter version to 1.1.2", () => {
+    assert.equal(DOCLING_ADAPTER_VERSION, "1.1.2");
   });
 
   it("rejects OCR junk title S CH7M 71015", () => {

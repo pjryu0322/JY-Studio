@@ -191,6 +191,9 @@ describe("docling import UX sources", () => {
     assert.ok(preview.includes("본문 샘플"));
     assert.ok(preview.includes("표 샘플"));
     assert.ok(preview.includes("그림 샘플"));
+    assert.ok(preview.includes("전체 그림"));
+    assert.ok(preview.includes("확인 필요 그림"));
+    assert.ok(preview.includes("isFallbackCandidate") || preview.includes("제공자 확인이 필요한 후보"));
     assert.ok(preview.includes("고급 정보"));
     assert.ok(preview.includes("Markdown"));
     assert.ok(preview.includes("처리 로그"));

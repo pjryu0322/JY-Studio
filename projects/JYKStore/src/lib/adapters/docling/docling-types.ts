@@ -184,5 +184,5 @@ export interface DocumentAdapter {
 }
 
 export const DOCLING_ADAPTER_TYPE = "DOCLING" as const;
-export const DOCLING_ADAPTER_VERSION = "1.1.1";
+export const DOCLING_ADAPTER_VERSION = "1.1.2";
 export const DOCLING_SCHEMA_NAME = "DoclingDocument";

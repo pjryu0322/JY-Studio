@@ -115,8 +115,22 @@ export function NormalizedDocumentPreview({
   const readingOrderCount = Number(summary?.readingOrderCount ?? 0);
   const contentTableCount = Number(summary?.contentTableCount ?? tableSamples.length);
   const tocTableCount = Number(summary?.tocTableCount ?? 0);
-  const contentFigureCount = Number(summary?.contentFigureCount ?? figureSamples.length);
-  const decorativeFigureCount = Number(summary?.decorativeFigureCount ?? advancedFigures.length);
+  const contentFigureCount = Number(
+    summary?.contentFigureCount ??
+      figureSamples.filter((f) => !f.isFallbackCandidate).length,
+  );
+  const unknownFigureCount = Number(
+    summary?.unknownFigureCount ??
+      figures.filter((f) => (f.classification ?? "") === "UNKNOWN").length,
+  );
+  const decorativeFigureCount = Number(
+    summary?.decorativeFigureCount ?? advancedFigures.length,
+  );
+  const figurePreviewSuccessCount = Number(
+    summary?.figurePreviewSuccessCount ??
+      figures.filter((f) => Boolean(f.previewObjectKey?.trim())).length,
+  );
+  const figureSampleFallback = figureSamples.some((f) => f.isFallbackCandidate);
 
   const sanitizedMarkdown = useMemo(
     () => sanitizeMarkdownForPreview(markdownText ?? ""),
@@ -203,12 +217,24 @@ export function NormalizedDocumentPreview({
                 <span className="font-semibold">{tocTableCount}개</span>
               </li>
               <li>
+                전체 그림{" "}
+                <span className="font-semibold">{figures.length}개</span>
+              </li>
+              <li>
                 실제 그림{" "}
                 <span className="font-semibold">{contentFigureCount}개</span>
               </li>
               <li>
+                확인 필요 그림{" "}
+                <span className="font-semibold">{unknownFigureCount}개</span>
+              </li>
+              <li>
                 표지·장식 이미지{" "}
                 <span className="font-semibold">{decorativeFigureCount}개</span>
+              </li>
+              <li>
+                미리보기 생성 성공{" "}
+                <span className="font-semibold">{figurePreviewSuccessCount}개</span>
               </li>
               <li>
                 품질 차단 문제{" "}
@@ -367,40 +393,50 @@ export function NormalizedDocumentPreview({
           figureSamples.length === 0 ? (
             <p className="text-store-muted">표시할 그림 샘플이 없습니다.</p>
           ) : (
-            <ul className="max-h-72 space-y-2 overflow-y-auto">
-              {figureSamples.map((fig, index) => {
-                const previewUrl =
-                  packId && bundleId
-                    ? providerDoclingFigurePreviewUrl(
-                        packId,
-                        bundleId,
-                        figureRefToRouteParam(fig.id),
-                      )
-                    : null;
-                return (
-                  <li key={`${fig.id}-${index}`} className="rounded-lg bg-slate-50 px-2 py-2">
-                    <p className="font-semibold">{fig.title}</p>
-                    <p className="text-store-muted">
-                      {fig.page != null ? `${fig.page}페이지` : "페이지 —"}
-                      {fig.caption ? ` · ${fig.caption.slice(0, 120)}` : ""}
-                    </p>
-                    {fig.altText ? <p className="mt-1">대체 텍스트: {fig.altText}</p> : null}
-                    {previewUrl && fig.previewObjectKey ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={previewUrl}
-                        alt={fig.altText || fig.title}
-                        className="mt-2 max-h-40 max-w-full rounded border border-slate-200 object-contain"
-                      />
-                    ) : (
-                      <p className="mt-1 text-amber-800">
-                        그림 데이터는 확인되었으나 미리보기를 생성하지 못했습니다.
+            <div className="space-y-2">
+              {figureSampleFallback ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-amber-900">
+                  자동 분류 결과 실제 그림 후보를 찾지 못했습니다. 아래 이미지는 제공자
+                  확인이 필요한 후보입니다.
+                </p>
+              ) : null}
+              <ul className="max-h-72 space-y-2 overflow-y-auto">
+                {figureSamples.map((fig, index) => {
+                  const previewUrl =
+                    packId && bundleId
+                      ? providerDoclingFigurePreviewUrl(
+                          packId,
+                          bundleId,
+                          figureRefToRouteParam(fig.id),
+                        )
+                      : null;
+                  return (
+                    <li key={`${fig.id}-${index}`} className="rounded-lg bg-slate-50 px-2 py-2">
+                      <p className="font-semibold">{fig.title}</p>
+                      <p className="text-store-muted">
+                        {fig.page != null ? `${fig.page}페이지` : "페이지 —"}
+                        {fig.classification ? ` · ${fig.classification}` : ""}
+                        {fig.isFallbackCandidate ? " · 확인 필요" : ""}
+                        {fig.caption ? ` · ${fig.caption.slice(0, 120)}` : ""}
                       </p>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+                      {fig.altText ? <p className="mt-1">대체 텍스트: {fig.altText}</p> : null}
+                      {previewUrl && fig.previewObjectKey ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={previewUrl}
+                          alt={fig.altText || fig.title}
+                          className="mt-2 max-h-40 max-w-full rounded border border-slate-200 object-contain"
+                        />
+                      ) : (
+                        <p className="mt-1 text-amber-800">
+                          그림 데이터는 확인되었으나 미리보기를 생성하지 못했습니다.
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )
         ) : null}
       </div>
