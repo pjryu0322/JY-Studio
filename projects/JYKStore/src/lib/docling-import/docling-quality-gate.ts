@@ -55,6 +55,8 @@ export function markdownPreviewContainsBinary(markdown: string | null | undefine
   return DATA_URI_RE.test(markdown) || LONG_BASE64_RE.test(markdown);
 }
 
+export type DoclingQualityValidationScope = "FULL_IMPORT" | "STRUCTURE_ONLY";
+
 export function evaluateNormalizedDocumentQuality(input: {
   title: string | null | undefined;
   language: string | null | undefined;
@@ -70,10 +72,16 @@ export function evaluateNormalizedDocumentQuality(input: {
   originMismatch?: boolean;
   hasNormalizedDocument: boolean;
   normalizationErrorCount?: number;
+  /**
+   * FULL_IMPORT (default): file presence/checksum + structure (자료 등록).
+   * STRUCTURE_ONLY: NormalizedDocument structure only (지식 데이터 생성).
+   */
+  validationScope?: DoclingQualityValidationScope;
 }): DoclingQualityGateResult {
   const blockers: QualityIssue[] = [];
   const warnings: QualityIssue[] = [];
   const info: QualityIssue[] = [];
+  const scope: DoclingQualityValidationScope = input.validationScope ?? "FULL_IMPORT";
 
   const structure = buildStructureSummary({
     sections: input.sections,
@@ -82,22 +90,24 @@ export function evaluateNormalizedDocumentQuality(input: {
     readingOrder: input.readingOrder,
   });
 
-  const roles = new Set(input.files.map((f) => f.role));
-  if (!roles.has("SOURCE_ORIGINAL") || !roles.has("DOCLING_JSON")) {
-    blockers.push({
-      code: "REQUIRED_FILES_MISSING",
-      severity: "blocker",
-      message: "원본문서와 Docling JSON이 모두 필요합니다.",
-    });
-  }
-  for (const file of input.files) {
-    if (!file.checksumSha256?.trim()) {
+  if (scope === "FULL_IMPORT") {
+    const roles = new Set(input.files.map((f) => f.role));
+    if (!roles.has("SOURCE_ORIGINAL") || !roles.has("DOCLING_JSON")) {
       blockers.push({
-        code: "FILE_CHECKSUM_MISSING",
+        code: "REQUIRED_FILES_MISSING",
         severity: "blocker",
-        message: "파일 무결성(체크섬)이 없습니다.",
+        message: "원본문서와 Docling JSON이 모두 필요합니다.",
       });
-      break;
+    }
+    for (const file of input.files) {
+      if (!file.checksumSha256?.trim()) {
+        blockers.push({
+          code: "FILE_CHECKSUM_MISSING",
+          severity: "blocker",
+          message: "파일 무결성(체크섬)이 없습니다.",
+        });
+        break;
+      }
     }
   }
 
@@ -247,7 +257,7 @@ export function evaluateNormalizedDocumentQuality(input: {
     }
   }
 
-  if (markdownPreviewContainsBinary(input.markdownPreview)) {
+  if (scope === "FULL_IMPORT" && markdownPreviewContainsBinary(input.markdownPreview)) {
     blockers.push({
       code: "MARKDOWN_BASE64_PRESENT",
       severity: "blocker",
@@ -382,6 +392,19 @@ export function evaluateNormalizedDocumentQuality(input: {
       language: input.language?.trim() || null,
     },
   };
+}
+
+/** Knowledge pipeline structure stage: skip file/checksum/import-only gates. */
+export function evaluateNormalizedDocumentStructureQuality(
+  input: Omit<Parameters<typeof evaluateNormalizedDocumentQuality>[0], "validationScope" | "files"> & {
+    files?: Parameters<typeof evaluateNormalizedDocumentQuality>[0]["files"];
+  },
+): DoclingQualityGateResult {
+  return evaluateNormalizedDocumentQuality({
+    ...input,
+    files: input.files ?? [],
+    validationScope: "STRUCTURE_ONLY",
+  });
 }
 
 /** Count body sections (for sample / gate helpers). */

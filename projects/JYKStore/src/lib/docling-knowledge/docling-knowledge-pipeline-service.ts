@@ -36,7 +36,7 @@ import {
   DOCLING_RETRIEVAL_CHUNK_TYPE,
   type DoclingKnowledgeStageId,
 } from "@/lib/docling-knowledge/docling-knowledge-stages";
-import { evaluateNormalizedDocumentQuality } from "@/lib/docling-import/docling-quality-gate";
+import { evaluateNormalizedDocumentStructureQuality } from "@/lib/docling-import/docling-quality-gate";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
 import {
   completePipelineStep,
@@ -46,10 +46,76 @@ import {
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
+import { logSafeRouteError } from "@/lib/safe-logging";
 import {
   assertKnowledgeRunLock,
   touchKnowledgeRunHeartbeat,
 } from "@/workers/knowledge-pipeline-job-claim";
+
+const BINDING_FAILURE_CODES = new Set([
+  "DOCLING_BUNDLE_NOT_READY",
+  "DOCLING_BUNDLE_MISMATCH",
+  "NORMALIZED_DOCUMENT_MISMATCH",
+  "FINGERPRINT_MISMATCH",
+]);
+
+const BINDING_FAILURE_USER_MESSAGE =
+  "등록 자료 상태가 변경되어 지식 데이터를 다시 생성할 수 없습니다. 자료 등록 상태를 새로고침한 뒤 다시 시도해 주세요.";
+
+const PRIOR_FAIL_WAIT_BY_STAGE: Partial<Record<DoclingKnowledgeStageId, string>> = {
+  KNOWLEDGE_UNIT: "문서 구조 확인을 통과해야 지식 단위 생성이 진행됩니다.",
+  RETRIEVAL_CHUNK: "지식 단위 생성이 완료되어야 검색 데이터 생성이 진행됩니다.",
+  SEARCH_INDEX: "검색 데이터 생성이 완료되어야 검색 인덱스 생성이 진행됩니다.",
+  RETRIEVAL_EVALUATION: "검색 인덱스 생성이 완료되어야 검색 결과 검증이 진행됩니다.",
+};
+
+/** Import-only gate codes that must never fail the knowledge STRUCTURE stage. */
+const IMPORT_ONLY_QUALITY_CODES = new Set([
+  "REQUIRED_FILES_MISSING",
+  "FILE_CHECKSUM_MISSING",
+  "MARKDOWN_BASE64_PRESENT",
+]);
+
+export function resolveDoclingKnowledgeStageNextAction(input: {
+  stageId: DoclingKnowledgeStageId;
+  status: string;
+  providerConfirmed: boolean;
+  running: boolean;
+  priorFailed: boolean;
+  failureCode?: string | null;
+}): string | null {
+  const { stageId, status, providerConfirmed, running, priorFailed, failureCode } = input;
+  if (status === "FAIL") {
+    if (stageId === "STRUCTURE" && failureCode && BINDING_FAILURE_CODES.has(failureCode)) {
+      return "자료 등록 상태를 새로고침한 뒤 다시 시도해 주세요.";
+    }
+    if (stageId === "STRUCTURE") {
+      return "표시된 구조 문제를 확인한 뒤 파일을 교체하거나 다시 처리해 주세요.";
+    }
+    if (stageId === "RETRIEVAL_EVALUATION") {
+      return "미통과 질문을 확인한 뒤 검색 데이터를 다시 생성하거나 재검증해 주세요.";
+    }
+    return "실패 원인을 확인한 뒤 해당 단계부터 다시 실행해 주세요.";
+  }
+  if (status === "STALE") {
+    return "원본 또는 정규화 결과가 변경되었습니다. 지식 데이터를 다시 생성해 주세요.";
+  }
+  if (status === "SKIPPED") {
+    return "지식 데이터를 다시 생성해 주세요.";
+  }
+  if (status === "PENDING") {
+    if (priorFailed) {
+      return PRIOR_FAIL_WAIT_BY_STAGE[stageId] ?? "선행 단계 실패로 대기 중입니다.";
+    }
+    if (running) {
+      return "선행 단계가 완료되면 자동으로 진행됩니다.";
+    }
+    if (providerConfirmed) {
+      return "지식 데이터 생성을 시작해 주세요.";
+    }
+  }
+  return null;
+}
 
 export type DoclingKnowledgeStageView = {
   id: DoclingKnowledgeStageId;
@@ -309,22 +375,31 @@ export async function getDoclingKnowledgePipelineStatus(input: {
     !running &&
     (latest?.status === "WARNING" || evalStep?.status === "WARNING");
 
-  const stages: DoclingKnowledgeStageView[] = DOCLING_KNOWLEDGE_STAGES.map((s) => {
+  const stages: DoclingKnowledgeStageView[] = DOCLING_KNOWLEDGE_STAGES.map((s, index) => {
     const step = latest?.steps.find((x) => x.step === s.pipelineStep);
     const status = stale ? "STALE" : (step?.status ?? "PENDING");
-    let nextAction: string | null = null;
-    if (status === "FAIL") {
-      nextAction =
-        s.id === "STRUCTURE"
-          ? "표시된 구조 문제를 확인한 뒤 파일을 교체하거나 다시 처리해 주세요."
-          : s.id === "RETRIEVAL_EVALUATION"
-            ? "미통과 질문을 확인한 뒤 검색 데이터를 다시 생성하거나 재검증해 주세요."
-            : "실패 원인을 확인한 뒤 해당 단계부터 다시 실행해 주세요.";
-    } else if (status === "STALE") {
-      nextAction = "원본 또는 정규화 결과가 변경되었습니다. 지식 데이터를 다시 생성해 주세요.";
-    } else if (status === "PENDING" && providerConfirmed && !running) {
-      nextAction = "지식 데이터 생성을 시작해 주세요.";
-    }
+    const priorFailed =
+      !stale &&
+      DOCLING_KNOWLEDGE_STAGES.slice(0, index).some((prior) => {
+        const priorStep = latest?.steps.find((x) => x.step === prior.pipelineStep);
+        return priorStep?.status === "FAIL";
+      });
+    const details = asRecord(step?.details);
+    const failureCode =
+      (typeof details?.code === "string" ? details.code : null) ??
+      (Array.isArray(details?.blockers) &&
+      details.blockers[0] &&
+      typeof (details.blockers[0] as { code?: unknown }).code === "string"
+        ? String((details.blockers[0] as { code: string }).code)
+        : null);
+    const nextAction = resolveDoclingKnowledgeStageNextAction({
+      stageId: s.id,
+      status,
+      providerConfirmed,
+      running,
+      priorFailed,
+      failureCode,
+    });
     return {
       id: s.id,
       label: s.label,
@@ -334,7 +409,7 @@ export async function getDoclingKnowledgePipelineStatus(input: {
       message: step?.message ?? null,
       startedAt: step?.startedAt?.toISOString() ?? null,
       finishedAt: step?.finishedAt?.toISOString() ?? null,
-      details: asRecord(step?.details),
+      details,
       nextAction,
     };
   });
@@ -634,30 +709,60 @@ export async function executeDoclingKnowledgePipeline(input: {
     return;
   }
 
-  const nd = await prisma.normalizedDocument.findFirst({
-    where: {
-      id: binding.normalizedDocumentId,
-      isActive: true,
-      fingerprint: binding.fingerprint,
-    },
-  });
-  if (!nd) {
+  const failBinding = async (code: string) => {
     await markStep(
       input.packId,
       input.runId,
       "STRUCTURE_VALIDATING",
       "FAIL",
-      "활성 NormalizedDocument가 없거나 fingerprint가 일치하지 않습니다.",
-      { code: "NORMALIZED_DOCUMENT_MISMATCH" },
+      BINDING_FAILURE_USER_MESSAGE,
+      { code },
       lockOwner,
     );
-    await failRun(
-      input.packId,
-      input.runId,
-      "NormalizedDocument missing or fingerprint mismatch",
-      binding,
-      "FINGERPRINT_MISMATCH",
-    );
+    await failRun(input.packId, input.runId, BINDING_FAILURE_USER_MESSAGE, binding, code);
+  };
+
+  const boundBundle = await prisma.doclingImportBundle.findFirst({
+    where: { id: binding.bundleId },
+    include: { files: { select: { role: true } } },
+  });
+  if (
+    !boundBundle ||
+    boundBundle.versionId !== versionId ||
+    boundBundle.packId !== input.packId
+  ) {
+    await failBinding("DOCLING_BUNDLE_MISMATCH");
+    return;
+  }
+  if (
+    !boundBundle.isActive ||
+    boundBundle.status !== DoclingImportBundleStatus.REVIEW_READY
+  ) {
+    await failBinding("DOCLING_BUNDLE_NOT_READY");
+    return;
+  }
+
+  const nd = await prisma.normalizedDocument.findFirst({
+    where: {
+      id: binding.normalizedDocumentId,
+      isActive: true,
+    },
+  });
+  if (!nd) {
+    await failBinding("NORMALIZED_DOCUMENT_MISMATCH");
+    return;
+  }
+  if (
+    nd.versionId !== versionId ||
+    nd.bundleId !== boundBundle.id ||
+    nd.packId !== input.packId ||
+    nd.id !== binding.normalizedDocumentId
+  ) {
+    await failBinding("NORMALIZED_DOCUMENT_MISMATCH");
+    return;
+  }
+  if (!nd.fingerprint || nd.fingerprint !== binding.fingerprint) {
+    await failBinding("FINGERPRINT_MISMATCH");
     return;
   }
 
@@ -681,21 +786,40 @@ export async function executeDoclingKnowledgePipeline(input: {
   const readingOrder = Array.isArray(nd.readingOrderJson)
     ? (nd.readingOrderJson as unknown as Array<{ index: number; ref: string; kind: string | null }>)
     : [];
-  const quality = evaluateNormalizedDocumentQuality({
+  let quality = evaluateNormalizedDocumentStructureQuality({
     title: nd.title,
     language: nd.language,
     sections,
     tables,
     figures,
     readingOrder,
-    files: [],
     hasNormalizedDocument: true,
     markdownPreview: null,
   });
+  const leakedImportBlockers = quality.blockers.filter((b) => IMPORT_ONLY_QUALITY_CODES.has(b.code));
+  if (leakedImportBlockers.length > 0) {
+    logSafeRouteError({
+      scope: "docling-knowledge-structure",
+      method: "PIPELINE",
+      path: "STRUCTURE_VALIDATING",
+      error: {
+        code: "STRUCTURE_IMPORT_GATE_LEAK",
+        message: `import-only quality codes leaked into STRUCTURE_ONLY: ${leakedImportBlockers
+          .map((b) => b.code)
+          .join(",")}; packId=${input.packId}; versionId=${versionId}; bundleId=${boundBundle.id}; normalizedDocumentId=${nd.id}; fingerprint=${nd.fingerprint ?? ""}; validationScope=STRUCTURE_ONLY; bundleStatus=${boundBundle.status}; registeredFileRoles=${boundBundle.files.map((f) => f.role).join(",")}`,
+      },
+    });
+    const blockers = quality.blockers.filter((b) => !IMPORT_ONLY_QUALITY_CODES.has(b.code));
+    quality = {
+      ...quality,
+      blockers,
+      ok: blockers.length === 0,
+    };
+  }
   const summaryJson = asRecord(nd.structureSummaryJson);
   const structureDetails = {
-    headingCount: Number(summaryJson?.headingCount ?? 0),
-    paragraphCount: Number(summaryJson?.paragraphCount ?? 0),
+    headingCount: Number(summaryJson?.headingCount ?? quality.summary.headingCount ?? 0),
+    paragraphCount: Number(summaryJson?.paragraphCount ?? quality.summary.paragraphCount ?? 0),
     tableCount: Number(summaryJson?.tableCount ?? tables.length),
     figureCount: Number(summaryJson?.figureCount ?? figures.length),
     blockerCount: quality.blockers.length,
