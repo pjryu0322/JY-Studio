@@ -528,6 +528,34 @@ export async function startProviderKnowledgePipelineApi(
   };
 }
 
+export async function downloadProviderKnowledgePipelineStageApi(
+  packId: string,
+  stageId: string,
+): Promise<void> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/knowledge-pipeline/export?stage=${encodeURIComponent(stageId)}`,
+    { credentials: "include" },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  const asciiMatch = disposition.match(/filename="([^"]+)"/i);
+  const fileName = utf8Match?.[1]
+    ? decodeURIComponent(utf8Match[1])
+    : asciiMatch?.[1] || `${packId}_${stageId}.json`;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function retryProviderDoclingImportApi(packId: string): Promise<{
   clientId: string;
   bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;

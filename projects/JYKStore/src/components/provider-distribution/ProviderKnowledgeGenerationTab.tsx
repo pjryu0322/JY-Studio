@@ -2,10 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  downloadProviderKnowledgePipelineStageApi,
   fetchProviderKnowledgePipelineApi,
   startProviderKnowledgePipelineApi,
   type DoclingKnowledgePipelineStatusDto,
 } from "@/lib/provider-center-api";
+
+function canDownloadStage(status: string): boolean {
+  return status === "PASS" || status === "WARNING";
+}
 
 function statusLabel(status: string, details?: Record<string, unknown> | null): string {
   if (status === "PASS") {
@@ -148,6 +153,7 @@ export function ProviderKnowledgeGenerationTab({
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [downloadingStage, setDownloadingStage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -185,6 +191,18 @@ export function ProviderKnowledgeGenerationTab({
       setError(err instanceof Error ? err.message : "지식 데이터 생성을 시작하지 못했습니다.");
     } finally {
       setStarting(false);
+    }
+  }
+
+  async function handleDownload(stageId: string) {
+    setDownloadingStage(stageId);
+    setError(null);
+    try {
+      await downloadProviderKnowledgePipelineStageApi(packId, stageId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "다운로드에 실패했습니다.");
+    } finally {
+      setDownloadingStage(null);
     }
   }
 
@@ -253,13 +271,25 @@ export function ProviderKnowledgeGenerationTab({
             {stage.nextAction ? (
               <p className="mt-1 text-xs text-amber-800">다음 행동: {stage.nextAction}</p>
             ) : null}
-            <button
-              type="button"
-              className="mt-2 text-xs font-semibold text-store-accent"
-              onClick={() => setExpanded(expanded === stage.id ? null : stage.id)}
-            >
-              {expanded === stage.id ? "상세 접기" : "상세 보기"}
-            </button>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                className="text-xs font-semibold text-store-accent"
+                onClick={() => setExpanded(expanded === stage.id ? null : stage.id)}
+              >
+                {expanded === stage.id ? "상세 접기" : "상세 보기"}
+              </button>
+              {canDownloadStage(stage.status) ? (
+                <button
+                  type="button"
+                  className="text-xs font-semibold text-slate-700 underline-offset-2 hover:underline disabled:opacity-60"
+                  disabled={downloadingStage === stage.id}
+                  onClick={() => void handleDownload(stage.id)}
+                >
+                  {downloadingStage === stage.id ? "다운로드 중…" : "데이터 다운로드"}
+                </button>
+              ) : null}
+            </div>
             {expanded === stage.id ? (
               <div className="mt-2 space-y-1 rounded-lg bg-white p-2 text-xs text-slate-700">
                 {friendlyDetails(stage.id, stage.details).length > 0 ? (
