@@ -12,7 +12,7 @@ function readSource(relativePath: string): string {
 }
 
 describe("provider pack tabs UX sources", () => {
-  it("defines five provider pack tabs: basic, payload, knowledge, distribution, review", () => {
+  it("defines six provider pack tabs including service validation", () => {
     const tabs = readSource("src/components/ProviderPackTabs.tsx");
     const editor = readSource("src/components/ProviderPackEditor.tsx");
     const tabIds = readSource("src/lib/provider-pack-tabs.ts");
@@ -20,6 +20,7 @@ describe("provider pack tabs UX sources", () => {
     assert.ok(tabs.includes("PROVIDER_PACK_TAB_PAYLOAD"));
     assert.ok(tabs.includes("PROVIDER_PACK_TAB_KNOWLEDGE"));
     assert.ok(tabs.includes("PROVIDER_PACK_TAB_DISTRIBUTION"));
+    assert.ok(tabs.includes("PROVIDER_PACK_TAB_SERVICE_VALIDATION"));
     assert.ok(tabs.includes("PROVIDER_PACK_TAB_REVIEW"));
     assert.ok(!tabs.includes("PROVIDER_PACK_TAB_SOURCE"));
     assert.ok(!tabs.includes("PROVIDER_PACK_TAB_DRAFT"));
@@ -29,15 +30,18 @@ describe("provider pack tabs UX sources", () => {
     assert.ok(tabIds.includes('"payload"'));
     assert.ok(tabIds.includes('"knowledge"'));
     assert.ok(tabIds.includes('"distribution"'));
+    assert.ok(tabIds.includes('"serviceValidation"'));
     assert.ok(tabIds.includes('"review"'));
     assert.ok(tabIds.indexOf('"basic"') < tabIds.indexOf('"payload"'));
     assert.ok(tabIds.indexOf('"payload"') < tabIds.indexOf('"knowledge"'));
     assert.ok(tabIds.indexOf('"knowledge"') < tabIds.indexOf('"distribution"'));
-    assert.ok(tabIds.indexOf('"distribution"') < tabIds.indexOf('"review"'));
+    assert.ok(tabIds.indexOf('"distribution"') < tabIds.indexOf('"serviceValidation"'));
+    assert.ok(tabIds.indexOf('"serviceValidation"') < tabIds.indexOf('"review"'));
     assert.ok(editor.includes("ProviderPackTabs"));
     assert.ok(editor.includes("ProviderPayloadTab"));
     assert.ok(editor.includes("ProviderKnowledgeGenerationTab"));
     assert.ok(editor.includes("ProviderDistributionTab"));
+    assert.ok(editor.includes("ProviderServiceValidationTab"));
     assert.ok(editor.includes("ProviderPackReviewTab"));
     assert.ok(!editor.includes("ProviderPackInspectionTab"));
     assert.ok(!editor.includes("ProviderPackSourceStep"));
@@ -45,6 +49,7 @@ describe("provider pack tabs UX sources", () => {
     assert.ok(editor.includes('activeTab === "basic"'));
     assert.ok(editor.includes('activeTab === "payload"'));
     assert.ok(editor.includes('activeTab === "distribution"'));
+    assert.ok(editor.includes('activeTab === "serviceValidation"'));
     assert.ok(editor.includes('activeTab === "review"'));
     // Tabs stay mounted (hidden) so Docling selection/upload survives switches.
     assert.ok(editor.includes(': "hidden"'));

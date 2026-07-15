@@ -23,6 +23,9 @@ export type LatestPackArtifactState =
       ready: true;
       visibility: DistributionVisibility;
       allowDownload: boolean;
+      allowApi: boolean;
+      allowMcp: boolean;
+      serviceEndsAt: Date | string | null;
       generatorName: string | null;
       normalizedDocumentReady: boolean;
     }
@@ -43,6 +46,9 @@ export type LatestPackVersionArtifactInput = {
   distributionMetadata?: {
     visibility: DistributionVisibility;
     allowDownload: boolean;
+    allowApi?: boolean;
+    allowMcp?: boolean;
+    serviceEndsAt?: Date | string | null;
   } | null;
   /** Generic external import bundle(s); adapters map tool-specific rows into this shape. */
   externalImports?: ExternalImportArtifactInput[] | null;

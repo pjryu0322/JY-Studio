@@ -69,9 +69,27 @@ export function resolvePublicPackCapabilities(
 
   const downloadReady = canPubliclyDownloadLatestDistributionPack(input.distributionState);
 
-  const contextReady = hasRuntimeOrLegacy;
-  const retrievalReady = hasRuntimeOrLegacy;
-  const mcpReady = mcpBridgeEnabled && (contextReady || retrievalReady);
+  let serviceEnded = false;
+  if (input.distributionState.kind === "DISTRIBUTION" && input.distributionState.serviceEndsAt) {
+    const rawEnd = input.distributionState.serviceEndsAt;
+    const end = typeof rawEnd === "string" ? new Date(rawEnd) : rawEnd;
+    serviceEnded = !Number.isNaN(end.getTime()) && end.getTime() <= Date.now();
+  }
+
+  const allowApi =
+    input.distributionState.kind !== "DISTRIBUTION" ||
+    input.distributionState.allowApi !== false;
+  const allowMcp =
+    input.distributionState.kind !== "DISTRIBUTION" ||
+    input.distributionState.allowMcp !== false;
+
+  const contextReady = hasRuntimeOrLegacy && allowApi && !serviceEnded;
+  const retrievalReady = hasRuntimeOrLegacy && allowApi && !serviceEnded;
+  const mcpReady =
+    mcpBridgeEnabled &&
+    allowMcp &&
+    !serviceEnded &&
+    (hasRuntimeOrLegacy);
 
   const exportReady =
     downloadReady || exportFormats.length > 0
@@ -84,29 +102,43 @@ export function resolvePublicPackCapabilities(
       : capability("DISABLED", "카탈로그에 공개되지 않은 지식팩입니다."),
     download: downloadReady
       ? capability("READY")
-      : capability("NOT_BUILT", "공개 다운로드가 준비되지 않았습니다."),
+      : serviceEnded
+        ? capability("DISABLED", "서비스 종료일이 지나 다운로드할 수 없습니다.")
+        : capability("NOT_BUILT", "공개 다운로드가 준비되지 않았습니다."),
     normalizedDocument: input.normalizedDocumentReady
       ? capability("READY")
       : capability("NOT_BUILT", "정규화 문서가 준비되지 않았습니다."),
     context: contextReady
       ? capability("READY")
-      : capability(
-          "NOT_BUILT",
-          "Context API용 Runtime Index 또는 KnowledgeChunk가 준비되지 않았습니다.",
-        ),
+      : !allowApi
+        ? capability("DISABLED", "이 지식팩은 Retrieval API 제공이 허용되지 않았습니다.")
+        : serviceEnded
+          ? capability("DISABLED", "서비스 종료일이 지나 사용할 수 없습니다.")
+          : capability(
+              "NOT_BUILT",
+              "Context API용 Runtime Index 또는 KnowledgeChunk가 준비되지 않았습니다.",
+            ),
     retrieval: retrievalReady
       ? capability("READY")
-      : capability(
-          "NOT_BUILT",
-          "Retrieval API용 Runtime Index 또는 KnowledgeChunk가 준비되지 않았습니다.",
-        ),
+      : !allowApi
+        ? capability("DISABLED", "이 지식팩은 Retrieval API 제공이 허용되지 않았습니다.")
+        : serviceEnded
+          ? capability("DISABLED", "서비스 종료일이 지나 사용할 수 없습니다.")
+          : capability(
+              "NOT_BUILT",
+              "Retrieval API용 Runtime Index 또는 KnowledgeChunk가 준비되지 않았습니다.",
+            ),
     export:
       exportReady === "READY"
         ? capability("READY")
         : capability("NOT_BUILT", "내보낼 수 있는 형식이 없습니다."),
     mcp: mcpReady
       ? capability("READY")
-      : capability("NOT_BUILT", "MCP 연동에 필요한 Context/Retrieval이 준비되지 않았습니다."),
+      : !allowMcp
+        ? capability("DISABLED", "이 지식팩은 MCP 제공이 허용되지 않았습니다.")
+        : serviceEnded
+          ? capability("DISABLED", "서비스 종료일이 지나 사용할 수 없습니다.")
+          : capability("NOT_BUILT", "MCP 연동에 필요한 Context/Retrieval이 준비되지 않았습니다."),
   };
 }
 

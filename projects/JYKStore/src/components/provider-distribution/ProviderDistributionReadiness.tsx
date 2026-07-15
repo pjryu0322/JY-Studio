@@ -51,7 +51,17 @@ export function computeDistributionReadiness(input: {
   const hasSource = Boolean(
     input.distribution?.sourceTitle?.trim() || input.distribution?.sourceUrl?.trim(),
   );
+  const hasRights = Boolean(
+    input.distribution?.rightsBasis && input.distribution?.rightsConfirmedAt,
+  );
+  const hasChannel = Boolean(
+    input.distribution?.allowApi ||
+      input.distribution?.allowMcp ||
+      input.distribution?.allowDownload,
+  );
   const hasLicense = Boolean(input.distribution?.licenseName?.trim());
+  const distributionComplete =
+    (hasSource && hasRights && hasChannel) || (hasSource && hasLicense);
 
   const missing: DistributionReadiness["missing"] = [];
   if (!input.hasBasicInfo) missing.push({ label: "기본정보", tab: "basic" });
@@ -63,7 +73,9 @@ export function computeDistributionReadiness(input: {
   if (!hasKnowledgePipeline) {
     missing.push({ label: "지식 데이터 생성(검색 검증 통과)", tab: "knowledge" });
   }
-  if (!hasSource || !hasLicense) missing.push({ label: "유통정보(출처·라이선스)", tab: "distribution" });
+  if (!distributionComplete) {
+    missing.push({ label: "유통정보(제공 방식·유통 권한)", tab: "distribution" });
+  }
 
   return {
     hasBasicInfo: input.hasBasicInfo,
@@ -74,7 +86,7 @@ export function computeDistributionReadiness(input: {
     hasNormalizedDocument,
     hasKnowledgePipeline,
     hasSource,
-    hasLicense,
+    hasLicense: hasRights || hasLicense,
     ready:
       input.hasBasicInfo &&
       input.hasLanguage &&
@@ -83,8 +95,7 @@ export function computeDistributionReadiness(input: {
       hasChecksum &&
       hasNormalizedDocument &&
       hasKnowledgePipeline &&
-      hasSource &&
-      hasLicense,
+      distributionComplete,
     missing,
   };
 }

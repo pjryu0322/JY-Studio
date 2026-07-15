@@ -228,6 +228,11 @@ export async function listProviderPacksForClient(
               sourceTitle: true,
               sourceUrl: true,
               licenseName: true,
+              rightsBasis: true,
+              rightsConfirmedAt: true,
+              allowApi: true,
+              allowMcp: true,
+              allowDownload: true,
             },
           },
           doclingImportBundles: {
@@ -277,6 +282,11 @@ export async function listProviderPacksForClient(
             sourceTitle: working.distributionMetadata?.sourceTitle,
             sourceUrl: working.distributionMetadata?.sourceUrl,
             licenseName: working.distributionMetadata?.licenseName,
+            rightsBasis: working.distributionMetadata?.rightsBasis,
+            rightsConfirmedAt: working.distributionMetadata?.rightsConfirmedAt,
+            allowApi: working.distributionMetadata?.allowApi,
+            allowMcp: working.distributionMetadata?.allowMcp,
+            allowDownload: working.distributionMetadata?.allowDownload,
           }),
         }
       : null;

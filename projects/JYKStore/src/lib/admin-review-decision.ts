@@ -143,6 +143,30 @@ export function detectSubmitSnapshotDrift(detail: AdminReviewDetailDto): {
       if (distribution.allowDownload !== snapshot.allowDownload) {
         reasons.push("다운로드 허용 설정이 제출 시점과 다릅니다.");
       }
+      if (
+        snapshot.allowApi != null &&
+        distribution.allowApi !== snapshot.allowApi
+      ) {
+        reasons.push("Retrieval API 제공 설정이 제출 시점과 다릅니다.");
+      }
+      if (
+        snapshot.allowMcp != null &&
+        distribution.allowMcp !== snapshot.allowMcp
+      ) {
+        reasons.push("MCP 제공 설정이 제출 시점과 다릅니다.");
+      }
+      if (
+        snapshot.serviceEndsAt !== undefined &&
+        (distribution.serviceEndsAt ?? null) !== (snapshot.serviceEndsAt ?? null)
+      ) {
+        reasons.push("서비스 종료일이 제출 시점과 다릅니다.");
+      }
+      if (
+        snapshot.rightsBasis != null &&
+        (distribution.rightsBasis ?? null) !== (snapshot.rightsBasis ?? null)
+      ) {
+        reasons.push("유통 권한 근거가 제출 시점과 다릅니다.");
+      }
       if ((distribution.sourceTitle ?? null) !== (snapshot.sourceTitle ?? null)) {
         reasons.push("출처 정보가 제출 시점과 다릅니다.");
       }

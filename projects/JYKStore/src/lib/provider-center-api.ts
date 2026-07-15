@@ -198,14 +198,17 @@ export async function upsertProviderPackDistributionApi(
     sourcePublisherUrl?: string;
     sourceDocumentVersion?: string;
     sourcePublishedAt?: string | null;
-    sourceRetrievedAt?: string | null;
-    licenseName: string;
+    licenseName?: string;
     licenseUrl?: string;
     usageTerms?: string;
-    readmeText?: string;
     visibility?: string;
     allowDownload?: boolean;
-    contentType?: string | null;
+    allowApi?: boolean;
+    allowMcp?: boolean;
+    rightsBasis?: string;
+    rightsBasisDetail?: string | null;
+    rightsConfirmed?: boolean;
+    serviceEndsAt?: string | null;
   },
 ): Promise<{
   clientId: string;
@@ -228,6 +231,45 @@ export async function upsertProviderPackDistributionApi(
     clientId: string;
     distribution: import("@/lib/distribution/distribution-metadata-service").PackDistributionMetadataDto;
     artifactOptions: import("@/lib/distribution/distribution-metadata-service").DistributionArtifactOptionsDto;
+  };
+}
+
+export type ServiceValidationStatusDto =
+  import("@/lib/distribution/service-validation-service").ServiceValidationStatusDto;
+
+export async function fetchProviderServiceValidationApi(
+  packId: string,
+): Promise<ServiceValidationStatusDto> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/service-validation`,
+    { credentials: "include" },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as ServiceValidationStatusDto;
+}
+
+export async function runProviderServiceValidationApi(
+  packId: string,
+  body: { channel: "API" | "MCP" | "DOWNLOAD"; query?: string },
+): Promise<{
+  channel: import("@/lib/distribution/service-validation-service").ServiceValidationChannelDto;
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/service-validation`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    channel: import("@/lib/distribution/service-validation-service").ServiceValidationChannelDto;
   };
 }
 

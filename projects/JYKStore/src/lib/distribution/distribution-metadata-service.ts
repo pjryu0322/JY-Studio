@@ -1,5 +1,6 @@
 import {
   AuditAction,
+  DistributionRightsBasis as PrismaDistributionRightsBasis,
   DistributionVisibility as PrismaDistributionVisibility,
   PackContentType as PrismaPackContentType,
   PackStatus,
@@ -11,6 +12,12 @@ import {
   DISTRIBUTION_VISIBILITIES,
   type DistributionVisibility,
 } from "@/lib/distribution/payload-types";
+import {
+  isDistributionRightsBasis,
+  licenseNameForRightsBasis,
+  selectedServiceChannels,
+  type DistributionRightsBasisCode,
+} from "@/lib/distribution/service-channel-policy";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
@@ -46,6 +53,13 @@ export type PackDistributionMetadataDto = {
   readmeText: string | null;
   visibility: DistributionVisibility;
   allowDownload: boolean;
+  allowApi: boolean;
+  allowMcp: boolean;
+  rightsBasis: DistributionRightsBasisCode | null;
+  rightsBasisDetail: string | null;
+  rightsConfirmed: boolean;
+  rightsConfirmedAt: string | null;
+  serviceEndsAt: string | null;
   /** @deprecated Always null — ZIP primary selection removed. */
   primaryArtifactType: null;
   contentType: PublicPackContentType | null;
@@ -67,14 +81,23 @@ export type UpsertDistributionMetadataInput = {
   sourcePublisherUrl?: string | null;
   sourceDocumentVersion?: string | null;
   sourcePublishedAt?: string | null;
+  /** Ignored on provider upsert — system auto-fills. */
   sourceRetrievedAt?: string | null;
-  licenseName: string;
+  licenseName?: string | null;
   licenseUrl?: string | null;
   usageTerms?: string | null;
+  /** Ignored on provider upsert — existing value preserved. */
   readmeText?: string | null;
   visibility?: string;
   allowDownload?: boolean;
+  allowApi?: boolean;
+  allowMcp?: boolean;
+  rightsBasis?: string | null;
+  rightsBasisDetail?: string | null;
+  rightsConfirmed?: boolean;
+  serviceEndsAt?: string | null;
   primaryArtifactType?: string | null;
+  /** Ignored on provider upsert — existing value preserved. */
   contentType?: string | null;
 };
 
@@ -95,6 +118,12 @@ export type PatchDistributionMetadataInput = {
   readmeText?: string | null;
   visibility?: string | null;
   allowDownload?: boolean | null;
+  allowApi?: boolean | null;
+  allowMcp?: boolean | null;
+  rightsBasis?: string | null;
+  rightsBasisDetail?: string | null;
+  rightsConfirmed?: boolean | null;
+  serviceEndsAt?: string | null;
   primaryArtifactType?: string | null;
   contentType?: string | null;
 };
@@ -119,6 +148,13 @@ export function toPackDistributionMetadataDto(
     readmeText: row.readmeText,
     visibility: row.visibility as DistributionVisibility,
     allowDownload: row.allowDownload,
+    allowApi: row.allowApi,
+    allowMcp: row.allowMcp,
+    rightsBasis: (row.rightsBasis as DistributionRightsBasisCode | null) ?? null,
+    rightsBasisDetail: row.rightsBasisDetail,
+    rightsConfirmed: Boolean(row.rightsConfirmedAt),
+    rightsConfirmedAt: row.rightsConfirmedAt?.toISOString() ?? null,
+    serviceEndsAt: row.serviceEndsAt?.toISOString() ?? null,
     primaryArtifactType: null,
     contentType: row.contentType as PublicPackContentType | null,
     updatedAt: row.updatedAt.toISOString(),
@@ -139,6 +175,13 @@ export function toAdminDistributionDto(row: PackDistributionMetadata): {
   readmeText: string | null;
   visibility: string;
   allowDownload: boolean;
+  allowApi: boolean;
+  allowMcp: boolean;
+  rightsBasis: DistributionRightsBasisCode | null;
+  rightsBasisDetail: string | null;
+  rightsConfirmed: boolean;
+  rightsConfirmedAt: string | null;
+  serviceEndsAt: string | null;
   primaryArtifactType: null;
   contentType: PublicPackContentType | null;
 } {
@@ -157,6 +200,13 @@ export function toAdminDistributionDto(row: PackDistributionMetadata): {
     readmeText: dto.readmeText,
     visibility: dto.visibility,
     allowDownload: dto.allowDownload,
+    allowApi: dto.allowApi,
+    allowMcp: dto.allowMcp,
+    rightsBasis: dto.rightsBasis,
+    rightsBasisDetail: dto.rightsBasisDetail,
+    rightsConfirmed: dto.rightsConfirmed,
+    rightsConfirmedAt: dto.rightsConfirmedAt,
+    serviceEndsAt: dto.serviceEndsAt,
     primaryArtifactType: null,
     contentType: dto.contentType,
   };
@@ -240,17 +290,18 @@ export function validateDistributionMetadataInput(
   licenseName: string;
   licenseUrl: string | null;
   usageTerms: string | null;
-  readmeText: string | null;
+  readmeText: string | null | undefined;
   visibility: DistributionVisibility;
   allowDownload: boolean;
+  allowApi: boolean;
+  allowMcp: boolean;
+  rightsBasis: DistributionRightsBasisCode;
+  rightsBasisDetail: string | null;
+  rightsConfirmed: boolean;
+  serviceEndsAt: Date | null;
   primaryArtifactType: null;
-  contentType: PrismaPackContentType | null;
+  contentType: PrismaPackContentType | null | undefined;
 } {
-  const licenseName = input.licenseName?.trim() ?? "";
-  if (!licenseName) {
-    throw new PayloadServiceError("LICENSE_REQUIRED", "라이선스명이 필요합니다.", 400);
-  }
-
   const sourceTitle = trimOrNull(input.sourceTitle, MAX_TITLE);
   const sourceUrl = trimOrNull(input.sourceUrl, MAX_URL);
   if (!sourceTitle && !sourceUrl) {
@@ -261,7 +312,58 @@ export function validateDistributionMetadataInput(
     );
   }
 
+  const allowApi = Boolean(input.allowApi);
+  const allowMcp = Boolean(input.allowMcp);
+  const allowDownload = Boolean(input.allowDownload);
+  if (selectedServiceChannels({ allowApi, allowMcp, allowDownload }).length === 0) {
+    throw new PayloadServiceError(
+      "SERVICE_CHANNEL_REQUIRED",
+      "제공 방식을 한 개 이상 선택해 주세요.",
+      400,
+    );
+  }
+
+  const rightsBasisRaw = (input.rightsBasis ?? "").trim().toUpperCase();
+  if (!isDistributionRightsBasis(rightsBasisRaw)) {
+    throw new PayloadServiceError(
+      "DISTRIBUTION_RIGHTS_REQUIRED",
+      "유통 권한 근거를 선택해 주세요.",
+      400,
+    );
+  }
+  const rightsBasis = rightsBasisRaw;
+  const rightsBasisDetail = trimOrNull(input.rightsBasisDetail, MAX_TEXT);
   const licenseUrl = trimOrNull(input.licenseUrl, MAX_URL);
+
+  let licenseName = "";
+  if (rightsBasis === "PUBLIC_LICENSE") {
+    licenseName = (input.licenseName ?? "").trim();
+    if (!licenseName) {
+      throw new PayloadServiceError(
+        "LICENSE_REQUIRED",
+        "공개 라이선스 선택 시 라이선스명이 필요합니다.",
+        400,
+      );
+    }
+  } else {
+    if (!rightsBasisDetail) {
+      throw new PayloadServiceError(
+        "DISTRIBUTION_RIGHTS_REQUIRED",
+        "권한 근거 설명을 입력해 주세요.",
+        400,
+      );
+    }
+    licenseName = licenseNameForRightsBasis(rightsBasis, input.licenseName);
+  }
+
+  if (!input.rightsConfirmed) {
+    throw new PayloadServiceError(
+      "DISTRIBUTION_RIGHTS_CONFIRMATION_REQUIRED",
+      "유통 권한 확인에 동의해 주세요.",
+      400,
+    );
+  }
+
   const sourcePublisherName = trimOrNull(input.sourcePublisherName, MAX_TITLE);
   const sourcePublisherUrl = trimOrNull(input.sourcePublisherUrl, MAX_URL);
   const sourceDocumentVersion = trimOrNull(input.sourceDocumentVersion, MAX_TITLE);
@@ -274,8 +376,11 @@ export function validateDistributionMetadataInput(
     throw new PayloadServiceError("INCOMPLETE", "공개범위 값이 올바르지 않습니다.", 400);
   }
 
-  // Ignore legacy primaryArtifactType input (ZIP removed).
   void parsePrimaryArtifactType(input.primaryArtifactType);
+
+  // Provider UI no longer sends these; preserve undefined for upsert merge.
+  const ignoreContentType = input.contentType === undefined;
+  const ignoreReadme = input.readmeText === undefined;
 
   return {
     sourceTitle,
@@ -283,17 +388,47 @@ export function validateDistributionMetadataInput(
     sourcePublisherName,
     sourcePublisherUrl,
     sourceDocumentVersion,
-    sourcePublishedAt: parseOptionalDate("게시일", input.sourcePublishedAt),
-    sourceRetrievedAt: parseOptionalDate("수집일", input.sourceRetrievedAt),
+    sourcePublishedAt: parseOptionalDate("원문 게시일", input.sourcePublishedAt),
+    sourceRetrievedAt: null,
     licenseName: licenseName.slice(0, MAX_TITLE),
     licenseUrl,
     usageTerms: trimOrNull(input.usageTerms, MAX_TEXT),
-    readmeText: trimOrNull(input.readmeText, MAX_TEXT),
+    readmeText: ignoreReadme ? undefined : trimOrNull(input.readmeText, MAX_TEXT),
     visibility: visibilityRaw as DistributionVisibility,
-    allowDownload: input.allowDownload !== false,
+    allowDownload,
+    allowApi,
+    allowMcp,
+    rightsBasis,
+    rightsBasisDetail,
+    rightsConfirmed: true,
+    serviceEndsAt: parseOptionalDate("서비스 종료일", input.serviceEndsAt),
     primaryArtifactType: null,
-    contentType: parseContentType(input.contentType),
+    contentType: ignoreContentType ? undefined : parseContentType(input.contentType),
   };
+}
+
+export async function resolveAutoSourceRetrievedAt(versionId: string): Promise<Date> {
+  const bundle = await prisma.doclingImportBundle.findFirst({
+    where: {
+      versionId,
+      deletedAt: null,
+      isActive: true,
+      status: "REVIEW_READY",
+    },
+    orderBy: { createdAt: "asc" },
+    select: { createdAt: true },
+  });
+  if (bundle?.createdAt) return bundle.createdAt;
+
+  const sourceFile = await prisma.knowledgePackFile.findFirst({
+    where: { versionId, role: "SOURCE_ORIGINAL" },
+    orderBy: { uploadedAt: "asc" },
+    select: { uploadedAt: true, createdAt: true },
+  });
+  if (sourceFile?.uploadedAt) return sourceFile.uploadedAt;
+  if (sourceFile?.createdAt) return sourceFile.createdAt;
+
+  return new Date();
 }
 
 async function requireOwnedDraftPack(input: {
@@ -408,22 +543,69 @@ export async function getProviderPackDistribution(input: {
   };
 }
 
-function metadataWriteFields(validated: ReturnType<typeof validateDistributionMetadataInput>) {
-  return {
+function metadataWriteFields(
+  validated: ReturnType<typeof validateDistributionMetadataInput>,
+  options?: {
+    sourceRetrievedAt: Date;
+    rightsConfirmedAt: Date;
+    rightsConfirmedByUserId: string;
+    existing?: PackDistributionMetadata | null;
+  },
+) {
+  const fields: Record<string, unknown> = {
     sourceTitle: validated.sourceTitle,
     sourceUrl: validated.sourceUrl,
     sourcePublisherName: validated.sourcePublisherName,
     sourcePublisherUrl: validated.sourcePublisherUrl,
     sourceDocumentVersion: validated.sourceDocumentVersion,
     sourcePublishedAt: validated.sourcePublishedAt,
-    sourceRetrievedAt: validated.sourceRetrievedAt,
+    sourceRetrievedAt: options?.sourceRetrievedAt ?? validated.sourceRetrievedAt,
     licenseName: validated.licenseName,
     licenseUrl: validated.licenseUrl,
     usageTerms: validated.usageTerms,
-    readmeText: validated.readmeText,
     visibility: validated.visibility as PrismaDistributionVisibility,
     allowDownload: validated.allowDownload,
-    contentType: validated.contentType,
+    allowApi: validated.allowApi,
+    allowMcp: validated.allowMcp,
+    rightsBasis: validated.rightsBasis as PrismaDistributionRightsBasis,
+    rightsBasisDetail: validated.rightsBasisDetail,
+    rightsConfirmedAt: options?.rightsConfirmedAt ?? null,
+    rightsConfirmedByUserId: options?.rightsConfirmedByUserId ?? null,
+    serviceEndsAt: validated.serviceEndsAt,
+  };
+  // Preserve legacy fields when provider omits them.
+  if (validated.readmeText !== undefined) {
+    fields.readmeText = validated.readmeText;
+  } else if (options?.existing) {
+    fields.readmeText = options.existing.readmeText;
+  }
+  if (validated.contentType !== undefined) {
+    fields.contentType = validated.contentType;
+  } else if (options?.existing) {
+    fields.contentType = options.existing.contentType;
+  }
+  return fields as {
+    sourceTitle: string | null;
+    sourceUrl: string | null;
+    sourcePublisherName: string | null;
+    sourcePublisherUrl: string | null;
+    sourceDocumentVersion: string | null;
+    sourcePublishedAt: Date | null;
+    sourceRetrievedAt: Date | null;
+    licenseName: string;
+    licenseUrl: string | null;
+    usageTerms: string | null;
+    readmeText: string | null;
+    visibility: PrismaDistributionVisibility;
+    allowDownload: boolean;
+    allowApi: boolean;
+    allowMcp: boolean;
+    rightsBasis: PrismaDistributionRightsBasis;
+    rightsBasisDetail: string | null;
+    rightsConfirmedAt: Date | null;
+    rightsConfirmedByUserId: string | null;
+    serviceEndsAt: Date | null;
+    contentType: PrismaPackContentType | null;
   };
 }
 
@@ -456,8 +638,18 @@ export async function upsertProviderPackDistribution(input: {
 
   const validated = validateDistributionMetadataInput(input.body);
   const artifactOptions = await resolveArtifactOptions(version.id);
-
-  const fields = metadataWriteFields(validated);
+  const existing = await prisma.packDistributionMetadata.findUnique({
+    where: { versionId: version.id },
+  });
+  const sourceRetrievedAt =
+    existing?.sourceRetrievedAt ?? (await resolveAutoSourceRetrievedAt(version.id));
+  const now = new Date();
+  const fields = metadataWriteFields(validated, {
+    sourceRetrievedAt,
+    rightsConfirmedAt: now,
+    rightsConfirmedByUserId: input.userId,
+    existing,
+  });
 
   const row = await prisma.packDistributionMetadata.upsert({
     where: { versionId: version.id },
@@ -469,6 +661,25 @@ export async function upsertProviderPackDistribution(input: {
     update: fields,
   });
 
+  // Channel / policy changes invalidate prior service validations.
+  const channelsChanged =
+    !existing ||
+    existing.allowApi !== row.allowApi ||
+    existing.allowMcp !== row.allowMcp ||
+    existing.allowDownload !== row.allowDownload ||
+    (existing.serviceEndsAt?.toISOString() ?? null) !==
+      (row.serviceEndsAt?.toISOString() ?? null) ||
+    existing.visibility !== row.visibility;
+  if (channelsChanged) {
+    await prisma.serviceValidationRun.updateMany({
+      where: {
+        versionId: version.id,
+        status: { in: ["PASS", "FAIL", "PENDING", "RUNNING"] },
+      },
+      data: { status: "STALE" },
+    });
+  }
+
   await recordProviderAudit({
     action: AuditAction.DISTRIBUTION_METADATA_UPDATED,
     entityType: "PackDistributionMetadata",
@@ -479,8 +690,10 @@ export async function upsertProviderPackDistribution(input: {
       versionId: version.id,
       visibility: row.visibility,
       allowDownload: row.allowDownload,
+      allowApi: row.allowApi,
+      allowMcp: row.allowMcp,
+      rightsBasis: row.rightsBasis,
       licenseName: row.licenseName,
-      contentType: row.contentType,
     },
   });
 
@@ -562,6 +775,41 @@ function buildPatchUpdateData(
     }
     updateData.allowDownload = Boolean(patch.allowDownload);
   }
+  if (patch.allowApi !== undefined) {
+    if (patch.allowApi == null) {
+      throw new PayloadServiceError("INCOMPLETE", "API 제공 값이 올바르지 않습니다.", 400);
+    }
+    updateData.allowApi = Boolean(patch.allowApi);
+  }
+  if (patch.allowMcp !== undefined) {
+    if (patch.allowMcp == null) {
+      throw new PayloadServiceError("INCOMPLETE", "MCP 제공 값이 올바르지 않습니다.", 400);
+    }
+    updateData.allowMcp = Boolean(patch.allowMcp);
+  }
+  if (patch.rightsBasis !== undefined) {
+    if (patch.rightsBasis == null || !String(patch.rightsBasis).trim()) {
+      updateData.rightsBasis = null;
+    } else if (!isDistributionRightsBasis(String(patch.rightsBasis).trim())) {
+      throw new PayloadServiceError("INCOMPLETE", "유통 권한 근거 값이 올바르지 않습니다.", 400);
+    } else {
+      updateData.rightsBasis = String(patch.rightsBasis).trim() as DistributionRightsBasisCode;
+    }
+  }
+  if (patch.rightsBasisDetail !== undefined) {
+    updateData.rightsBasisDetail = trimOrNull(patch.rightsBasisDetail, MAX_TEXT);
+  }
+  if (patch.rightsConfirmed !== undefined) {
+    if (patch.rightsConfirmed) {
+      updateData.rightsConfirmedAt = new Date();
+    } else if (patch.rightsConfirmed === false || patch.rightsConfirmed === null) {
+      updateData.rightsConfirmedAt = null;
+      updateData.rightsConfirmedByUserId = null;
+    }
+  }
+  if (patch.serviceEndsAt !== undefined) {
+    updateData.serviceEndsAt = parseOptionalDate("서비스 종료일", patch.serviceEndsAt);
+  }
   // primaryArtifactType ignored (ZIP removed)
   if (patch.contentType !== undefined) {
     updateData.contentType = parseContentType(patch.contentType);
@@ -636,6 +884,21 @@ export async function patchAdminPackDistribution(input: {
     data: updateData,
   });
 
+  const channelOrPolicyChanged =
+    (updateData.allowApi !== undefined && existing.allowApi !== row.allowApi) ||
+    (updateData.allowMcp !== undefined && existing.allowMcp !== row.allowMcp) ||
+    (updateData.allowDownload !== undefined && existing.allowDownload !== row.allowDownload) ||
+    (updateData.visibility !== undefined && existing.visibility !== row.visibility) ||
+    (updateData.serviceEndsAt !== undefined &&
+      (existing.serviceEndsAt?.toISOString() ?? null) !==
+        (row.serviceEndsAt?.toISOString() ?? null));
+  if (channelOrPolicyChanged) {
+    await prisma.serviceValidationRun.updateMany({
+      where: { versionId: version.id, status: { in: ["PASS", "FAIL"] } },
+      data: { status: "STALE" },
+    });
+  }
+
   await recordProviderAudit({
     action: AuditAction.DISTRIBUTION_METADATA_UPDATED,
     entityType: "PackDistributionMetadata",
@@ -646,6 +909,8 @@ export async function patchAdminPackDistribution(input: {
       versionId: version.id,
       visibility: row.visibility,
       allowDownload: row.allowDownload,
+      allowApi: row.allowApi,
+      allowMcp: row.allowMcp,
       licenseName: row.licenseName,
       contentType: row.contentType,
       actor: "admin",

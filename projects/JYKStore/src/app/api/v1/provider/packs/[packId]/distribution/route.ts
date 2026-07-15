@@ -73,15 +73,18 @@ export async function PUT(request: NextRequest, context: RouteContext) {
           typeof body.sourceDocumentVersion === "string" ? body.sourceDocumentVersion : null,
         sourcePublishedAt:
           typeof body.sourcePublishedAt === "string" ? body.sourcePublishedAt : null,
-        sourceRetrievedAt:
-          typeof body.sourceRetrievedAt === "string" ? body.sourceRetrievedAt : null,
         licenseName: typeof body.licenseName === "string" ? body.licenseName : "",
         licenseUrl: typeof body.licenseUrl === "string" ? body.licenseUrl : null,
         usageTerms: typeof body.usageTerms === "string" ? body.usageTerms : null,
-        readmeText: typeof body.readmeText === "string" ? body.readmeText : null,
         visibility: typeof body.visibility === "string" ? body.visibility : "PRIVATE",
-        allowDownload: body.allowDownload !== false,
-        contentType: typeof body.contentType === "string" ? body.contentType : null,
+        allowDownload: Boolean(body.allowDownload),
+        allowApi: body.allowApi !== false,
+        allowMcp: body.allowMcp !== false,
+        rightsBasis: typeof body.rightsBasis === "string" ? body.rightsBasis : null,
+        rightsBasisDetail:
+          typeof body.rightsBasisDetail === "string" ? body.rightsBasisDetail : null,
+        rightsConfirmed: body.rightsConfirmed === true,
+        serviceEndsAt: typeof body.serviceEndsAt === "string" ? body.serviceEndsAt : null,
       },
     });
     return jsonWithClientIdCookie(

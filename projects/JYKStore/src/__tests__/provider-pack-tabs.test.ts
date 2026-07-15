@@ -73,6 +73,22 @@ describe("resolveDefaultProviderPackTab", () => {
     );
   });
 
+  it("opens serviceValidation when distribution ready but validation incomplete", () => {
+    assert.equal(
+      resolveDefaultProviderPackTab({
+        created: false,
+        status: "DRAFT",
+        sourceDocumentCount: 2,
+        hasPayload: true,
+        providerConfirmed: true,
+        knowledgePassed: true,
+        hasDistribution: true,
+        serviceValidationPassed: false,
+      }),
+      "serviceValidation",
+    );
+  });
+
   it("opens review tab when ready or reviewing", () => {
     assert.equal(
       resolveDefaultProviderPackTab({
@@ -83,6 +99,7 @@ describe("resolveDefaultProviderPackTab", () => {
         providerConfirmed: true,
         knowledgePassed: true,
         hasDistribution: true,
+        serviceValidationPassed: true,
       }),
       "review",
     );

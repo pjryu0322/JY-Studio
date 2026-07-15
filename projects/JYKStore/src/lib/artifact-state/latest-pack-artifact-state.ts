@@ -41,6 +41,9 @@ export function resolveLatestPackArtifactState(
       ready: true,
       visibility: metadata.visibility,
       allowDownload: metadata.allowDownload,
+      allowApi: metadata.allowApi ?? true,
+      allowMcp: metadata.allowMcp ?? true,
+      serviceEndsAt: metadata.serviceEndsAt ?? null,
       generatorName: readyExternal.generatorName,
       normalizedDocumentReady: Boolean(readyExternal.normalizedDocument?.isActive),
     };
@@ -102,6 +105,13 @@ export function canInstallLatestPackArtifact(state: LatestPackArtifactState): bo
 export function canPubliclyDownloadLatestPack(state: LatestPackArtifactState): boolean {
   if (state.kind === "EXTERNAL_IMPORT") {
     if (!state.allowDownload) return false;
+    if (state.serviceEndsAt) {
+      const end =
+        typeof state.serviceEndsAt === "string"
+          ? new Date(state.serviceEndsAt)
+          : state.serviceEndsAt;
+      if (!Number.isNaN(end.getTime()) && end.getTime() <= Date.now()) return false;
+    }
     return state.visibility === "PUBLIC" || state.visibility === "UNLISTED";
   }
   return false;

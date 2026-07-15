@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ProviderPackBasicInfoTab } from "@/components/ProviderPackBasicInfoTab";
 import { ProviderDistributionTab } from "@/components/provider-distribution/ProviderDistributionTab";
+import { ProviderServiceValidationTab } from "@/components/provider-distribution/ProviderServiceValidationTab";
 import {
   computeDistributionReadiness,
 } from "@/components/provider-distribution/ProviderDistributionReadiness";
@@ -13,6 +14,7 @@ import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderPackTabs } from "@/components/ProviderPackTabs";
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
+import { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-validation-service";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
 import { isDoclingPayloadPresent, isDoclingPayloadReady } from "@/lib/docling-import/docling-import-ui";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";
@@ -31,10 +33,12 @@ import {
   fetchProviderKnowledgePipelineApi,
   fetchProviderPack,
   fetchProviderPackDistributionApi,
+  fetchProviderServiceValidationApi,
   submitProviderPackApi,
   updateProviderPackApi,
   withdrawProviderPackReviewApi,
   type DoclingKnowledgePipelineStatusDto,
+  type ServiceValidationStatusDto,
 } from "@/lib/provider-center-api";
 import {
   resolveDefaultProviderPackTab,
@@ -61,6 +65,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [distribution, setDistribution] = useState<PackDistributionMetadataDto | null>(null);
   const [knowledgeStatus, setKnowledgeStatus] =
     useState<DoclingKnowledgePipelineStatusDto | null>(null);
+  const [serviceValidation, setServiceValidation] =
+    useState<ServiceValidationStatusDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -112,14 +118,16 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setSaveSuccessMessage(null);
       setBasicFieldErrors({});
 
-      const [distRes, doclingRes, knowledgeRes] = await Promise.all([
+      const [distRes, doclingRes, knowledgeRes, serviceRes] = await Promise.all([
         fetchProviderPackDistributionApi(packId).catch(() => ({ distribution: null })),
         fetchProviderDoclingImportApi(packId).catch(() => ({ bundle: null })),
         fetchProviderKnowledgePipelineApi(packId).catch(() => null),
+        fetchProviderServiceValidationApi(packId).catch(() => null),
       ]);
       setDistribution(distRes.distribution);
       setDoclingBundle(doclingRes.bundle);
       if (knowledgeRes) setKnowledgeStatus(knowledgeRes);
+      if (serviceRes) setServiceValidation(serviceRes);
     } catch (err) {
       setError(err instanceof Error ? err.message : "지식팩을 불러오지 못했습니다.");
     } finally {
@@ -166,6 +174,11 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       sourceTitle: distribution?.sourceTitle,
       sourceUrl: distribution?.sourceUrl,
       licenseName: distribution?.licenseName,
+      rightsBasis: distribution?.rightsBasis,
+      rightsConfirmedAt: distribution?.rightsConfirmedAt,
+      allowApi: distribution?.allowApi,
+      allowMcp: distribution?.allowMcp,
+      allowDownload: distribution?.allowDownload,
     });
 
     return buildProviderPackProgress({
@@ -206,6 +219,19 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
 
   const providerConfirmed = isDoclingPayloadReady(doclingBundle?.status);
   const knowledgePassed = Boolean(knowledgeStatus?.passed);
+  const distributionReady = Boolean(
+    distribution &&
+      isDistributionReadyForServiceValidation({
+        sourceTitle: distribution.sourceTitle,
+        sourceUrl: distribution.sourceUrl,
+        rightsBasis: distribution.rightsBasis,
+        rightsConfirmedAt: distribution.rightsConfirmedAt,
+        allowApi: distribution.allowApi,
+        allowMcp: distribution.allowMcp,
+        allowDownload: distribution.allowDownload,
+      }),
+  );
+  const serviceValidationPassed = Boolean(serviceValidation?.allSelectedPassed);
 
   const defaultTab = useMemo(
     () =>
@@ -214,18 +240,20 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         status: pack?.status ?? "DRAFT",
         sourceDocumentCount,
         hasPayload: isDoclingPayloadPresent(doclingBundle?.status),
-        hasDistribution: Boolean(distribution),
+        hasDistribution: distributionReady,
         providerConfirmed,
         knowledgePassed,
+        serviceValidationPassed,
       }),
     [
       showCreatedBanner,
       pack?.status,
       sourceDocumentCount,
-      distribution,
+      distributionReady,
       doclingBundle,
       providerConfirmed,
       knowledgePassed,
+      serviceValidationPassed,
     ],
   );
 
@@ -240,12 +268,10 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       resolveProviderPackTabLocks({
         providerConfirmed,
         knowledgePassed,
-        distributionReady: Boolean(
-          distribution?.licenseName?.trim() &&
-            (distribution?.sourceTitle?.trim() || distribution?.sourceUrl?.trim()),
-        ),
+        distributionReady,
+        serviceValidationPassed,
       }),
-    [providerConfirmed, knowledgePassed, distribution],
+    [providerConfirmed, knowledgePassed, distributionReady, serviceValidationPassed],
   );
 
   const selectTab = useCallback(
@@ -514,6 +540,25 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
               packId={packId}
               editable={editable}
               onDistributionChanged={setDistribution}
+              onGoToServiceValidation={() => selectTab("serviceValidation")}
+            />
+          )}
+        </div>
+
+        <div
+          className={activeTab === "serviceValidation" ? undefined : "hidden"}
+          aria-hidden={activeTab !== "serviceValidation"}
+        >
+          {tabLocks.serviceValidation.locked ? (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              {tabLocks.serviceValidation.reason}
+            </p>
+          ) : (
+            <ProviderServiceValidationTab
+              packId={packId}
+              editable={editable}
+              onGoToReview={() => selectTab("review")}
+              onStatusChange={setServiceValidation}
             />
           )}
         </div>

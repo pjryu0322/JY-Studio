@@ -40,6 +40,22 @@ export type DoclingBundleReviewSubmitSnapshot = {
   licenseName: string;
   visibility: string;
   allowDownload: boolean;
+  allowApi?: boolean;
+  allowMcp?: boolean;
+  serviceEndsAt?: string | null;
+  rightsBasis?: string | null;
+  rightsBasisDetail?: string | null;
+  rightsConfirmedAt?: string | null;
+  sourceUrl?: string | null;
+  sourcePublisherName?: string | null;
+  sourceDocumentVersion?: string | null;
+  sourcePublishedAt?: string | null;
+  sourceRetrievedAt?: string | null;
+  serviceValidation?: {
+    API?: { status: string; runId: string | null; testedAt: string | null };
+    MCP?: { status: string; runId: string | null; testedAt: string | null };
+    DOWNLOAD?: { status: string; runId: string | null; testedAt: string | null };
+  } | null;
   /** Provider-selected pack language at submit time. Legacy snapshots may omit. */
   language: PackLanguageCode | null;
   /** Knowledge pipeline binding — required for new submits; optional for legacy. */
@@ -97,6 +113,18 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
   licenseName: string;
   visibility: string;
   allowDownload: boolean;
+  allowApi?: boolean;
+  allowMcp?: boolean;
+  serviceEndsAt?: string | null;
+  rightsBasis?: string | null;
+  rightsBasisDetail?: string | null;
+  rightsConfirmedAt?: string | null;
+  sourceUrl?: string | null;
+  sourcePublisherName?: string | null;
+  sourceDocumentVersion?: string | null;
+  sourcePublishedAt?: string | null;
+  sourceRetrievedAt?: string | null;
+  serviceValidation?: DoclingBundleReviewSubmitSnapshot["serviceValidation"];
   language: PackLanguageCode;
   pipelineRunId?: string | null;
   indexGenerationId?: string | null;
@@ -121,6 +149,18 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
     licenseName: input.licenseName,
     visibility: input.visibility,
     allowDownload: input.allowDownload,
+    allowApi: input.allowApi ?? true,
+    allowMcp: input.allowMcp ?? true,
+    serviceEndsAt: input.serviceEndsAt ?? null,
+    rightsBasis: input.rightsBasis ?? null,
+    rightsBasisDetail: input.rightsBasisDetail ?? null,
+    rightsConfirmedAt: input.rightsConfirmedAt ?? null,
+    sourceUrl: input.sourceUrl ?? null,
+    sourcePublisherName: input.sourcePublisherName ?? null,
+    sourceDocumentVersion: input.sourceDocumentVersion ?? null,
+    sourcePublishedAt: input.sourcePublishedAt ?? null,
+    sourceRetrievedAt: input.sourceRetrievedAt ?? null,
+    serviceValidation: input.serviceValidation ?? null,
     language: input.language,
     pipelineRunId: input.pipelineRunId ?? null,
     indexGenerationId: input.indexGenerationId ?? null,
@@ -225,6 +265,27 @@ export function parseDoclingBundleReviewSubmitSnapshot(
     licenseName: raw.licenseName,
     visibility: typeof raw.visibility === "string" ? raw.visibility : "PRIVATE",
     allowDownload: raw.allowDownload !== false,
+    allowApi: raw.allowApi !== false,
+    allowMcp: raw.allowMcp !== false,
+    serviceEndsAt: typeof raw.serviceEndsAt === "string" ? raw.serviceEndsAt : null,
+    rightsBasis: typeof raw.rightsBasis === "string" ? raw.rightsBasis : null,
+    rightsBasisDetail:
+      typeof raw.rightsBasisDetail === "string" ? raw.rightsBasisDetail : null,
+    rightsConfirmedAt:
+      typeof raw.rightsConfirmedAt === "string" ? raw.rightsConfirmedAt : null,
+    sourceUrl: typeof raw.sourceUrl === "string" ? raw.sourceUrl : null,
+    sourcePublisherName:
+      typeof raw.sourcePublisherName === "string" ? raw.sourcePublisherName : null,
+    sourceDocumentVersion:
+      typeof raw.sourceDocumentVersion === "string" ? raw.sourceDocumentVersion : null,
+    sourcePublishedAt:
+      typeof raw.sourcePublishedAt === "string" ? raw.sourcePublishedAt : null,
+    sourceRetrievedAt:
+      typeof raw.sourceRetrievedAt === "string" ? raw.sourceRetrievedAt : null,
+    serviceValidation:
+      raw.serviceValidation && typeof raw.serviceValidation === "object"
+        ? (raw.serviceValidation as DoclingBundleReviewSubmitSnapshot["serviceValidation"])
+        : null,
     language,
     pipelineRunId: typeof raw.pipelineRunId === "string" ? raw.pipelineRunId : null,
     indexGenerationId:

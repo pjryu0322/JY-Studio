@@ -3,6 +3,7 @@ export const PROVIDER_PACK_TAB_IDS = [
   "payload",
   "knowledge",
   "distribution",
+  "serviceValidation",
   "review",
 ] as const;
 
@@ -28,6 +29,7 @@ export function resolveDefaultProviderPackTab(input: {
   hasDistribution?: boolean;
   knowledgePassed?: boolean;
   providerConfirmed?: boolean;
+  serviceValidationPassed?: boolean;
 }): ProviderPackTabId {
   if (input.status === "REVIEWING" || input.status === "PUBLISHED" || input.status === "VERIFIED") {
     return "review";
@@ -49,6 +51,9 @@ export function resolveDefaultProviderPackTab(input: {
   }
   if (input.knowledgePassed && !input.hasDistribution) {
     return "distribution";
+  }
+  if (input.hasDistribution && !input.serviceValidationPassed) {
+    return "serviceValidation";
   }
   return "review";
 }
@@ -80,6 +85,9 @@ export function resolveProviderPackTabFromLocation(input: {
   if (normalizedHash === "#pack-distribution") {
     return "distribution";
   }
+  if (normalizedHash === "#pack-service-validation") {
+    return "serviceValidation";
+  }
   if (normalizedHash === "#pack-inspection" || normalizedHash === "#pack-review") {
     return "review";
   }
@@ -100,6 +108,7 @@ export function resolveProviderPackTabLocks(input: {
   providerConfirmed: boolean;
   knowledgePassed: boolean;
   distributionReady: boolean;
+  serviceValidationPassed: boolean;
 }): Record<ProviderPackTabId, ProviderPackTabLock> {
   return {
     basic: { locked: false, reason: null },
@@ -116,14 +125,26 @@ export function resolveProviderPackTabLocks(input: {
         ? null
         : "지식 데이터 생성이 완료되면 유통정보를 입력할 수 있습니다.",
     },
+    serviceValidation: {
+      locked: !input.distributionReady,
+      reason: input.distributionReady
+        ? null
+        : "유통정보를 저장해야 서비스 검증을 진행할 수 있습니다.",
+    },
     review: {
-      locked: !(input.knowledgePassed && input.distributionReady),
+      locked: !(
+        input.knowledgePassed &&
+        input.distributionReady &&
+        input.serviceValidationPassed
+      ),
       reason:
-        input.knowledgePassed && input.distributionReady
+        input.knowledgePassed && input.distributionReady && input.serviceValidationPassed
           ? null
           : !input.knowledgePassed
             ? "지식 데이터 생성이 완료되어야 검수요청을 진행할 수 있습니다."
-            : "유통정보 필수 항목을 입력하면 검수요청을 진행할 수 있습니다.",
+            : !input.distributionReady
+              ? "유통정보 필수 항목을 입력하면 서비스 검증을 진행할 수 있습니다."
+              : "선택한 제공 방식의 서비스 검증을 완료해야 검수요청을 진행할 수 있습니다.",
     },
   };
 }

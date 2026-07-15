@@ -112,6 +112,38 @@ export function AdminReviewPackageSnapshotTab({
           <li>출처: {snapshot.sourceTitle ?? "—"}</li>
           <li>라이선스: {snapshot.licenseName}</li>
           <li>공개범위: {snapshot.visibility}</li>
+          <li>
+            제공 방식:{" "}
+            {[
+              snapshot.allowApi !== false ? "API" : null,
+              snapshot.allowMcp !== false ? "MCP" : null,
+              snapshot.allowDownload ? "다운로드" : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || "—"}
+          </li>
+          {snapshot.serviceEndsAt ? (
+            <li>서비스 종료일: {snapshot.serviceEndsAt.slice(0, 10)}</li>
+          ) : null}
+          {snapshot.rightsBasis ? <li>유통 권한 근거: {snapshot.rightsBasis}</li> : null}
+          {snapshot.serviceValidation ? (
+            <li>
+              서비스 검증:{" "}
+              {[
+                snapshot.serviceValidation.API
+                  ? `API=${snapshot.serviceValidation.API.status}`
+                  : null,
+                snapshot.serviceValidation.MCP
+                  ? `MCP=${snapshot.serviceValidation.MCP.status}`
+                  : null,
+                snapshot.serviceValidation.DOWNLOAD
+                  ? `다운로드=${snapshot.serviceValidation.DOWNLOAD.status}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "—"}
+            </li>
+          ) : null}
         </ul>
         <p className="text-xs text-store-muted">
           상세 파일·미리보기는 Docling 근거 탭에서 확인하세요.

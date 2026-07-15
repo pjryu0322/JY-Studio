@@ -15,6 +15,7 @@ import {
 import { scoreRetrievalCandidates } from "@/lib/retrieval/retrieval-score-service";
 import type { RetrievalEvaluationCandidate } from "@/lib/retrieval-evaluation/retrieval-evaluation-types";
 import { toMetadataRecord } from "@/lib/retrieval/retrieval-types";
+import { assertServiceChannelEnabled } from "@/lib/distribution/service-channel-policy";
 
 /**
  * Retrieval orchestration facade.
@@ -29,7 +30,9 @@ import { toMetadataRecord } from "@/lib/retrieval/retrieval-types";
 export type RetrieveContextsResult =
   | { ok: true; data: RetrievalResponseDto }
   | { ok: false; code: "PACK_NOT_FOUND" }
-  | { ok: false; code: "PACK_RETRIEVAL_NOT_READY" };
+  | { ok: false; code: "PACK_RETRIEVAL_NOT_READY" }
+  | { ok: false; code: "SERVICE_CHANNEL_DISABLED"; message: string }
+  | { ok: false; code: "SERVICE_ENDED"; message: string };
 
 export async function retrieveContexts(input: {
   knowledgePackId: string;
@@ -39,10 +42,27 @@ export async function retrieveContexts(input: {
   includeMetadata: boolean;
   retrievalMode: RetrievalMode;
   requestId: string;
+  /** Public API defaults to API; MCP bridge passes MCP. */
+  serviceChannel?: "API" | "MCP";
 }): Promise<RetrieveContextsResult> {
   const packContext = await loadPublicRetrievalPack(input.knowledgePackId);
   if (!packContext) {
     return { ok: false, code: "PACK_NOT_FOUND" };
+  }
+
+  const channel = input.serviceChannel ?? "API";
+  const channelCheck = assertServiceChannelEnabled(channel, {
+    allowApi: packContext.allowApi,
+    allowMcp: packContext.allowMcp,
+    allowDownload: packContext.allowDownload,
+    serviceEndsAt: packContext.serviceEndsAt,
+  });
+  if (!channelCheck.ok) {
+    return {
+      ok: false,
+      code: channelCheck.code as "SERVICE_CHANNEL_DISABLED" | "SERVICE_ENDED",
+      message: channelCheck.message,
+    };
   }
 
   const activeChunkCount = await prisma.knowledgeChunk.count({

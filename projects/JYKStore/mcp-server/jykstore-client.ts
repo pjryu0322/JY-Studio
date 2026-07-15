@@ -27,13 +27,20 @@ export type AuthHeaders = {
   Authorization: string;
   "Content-Type": string;
   Accept: string;
+  "X-JYK-Service-Channel"?: string;
 };
 
-export function buildAuthHeaders(apiKey: string, accept = "application/json"): AuthHeaders {
+export function buildAuthHeaders(
+  apiKey: string,
+  accept = "application/json",
+  extra?: Record<string, string>,
+): AuthHeaders & Record<string, string> {
   return {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
     Accept: accept,
+    "X-JYK-Service-Channel": "MCP",
+    ...extra,
   };
 }
 
@@ -99,7 +106,9 @@ export function normalizeHttpError(input: {
   const mcpCode =
     code === "PACK_RETRIEVAL_NOT_READY" || code === "PACK_CONTEXT_NOT_READY"
       ? "PACK_MCP_NOT_READY"
-      : code;
+      : code === "SERVICE_CHANNEL_DISABLED" || code === "SERVICE_ENDED"
+        ? code
+        : code;
   const message =
     (typeof errorObj?.message === "string" && errorObj.message) ||
     (typeof parsed?.message === "string" && parsed.message) ||

@@ -6,6 +6,7 @@ import {
   PROVIDER_PACK_TAB_KNOWLEDGE,
   PROVIDER_PACK_TAB_PAYLOAD,
   PROVIDER_PACK_TAB_REVIEW,
+  PROVIDER_PACK_TAB_SERVICE_VALIDATION,
 } from "@/lib/role-based-ux-copy";
 import {
   PROVIDER_PACK_TAB_IDS,
@@ -18,6 +19,7 @@ const TAB_LABELS: Record<ProviderPackTabId, string> = {
   payload: PROVIDER_PACK_TAB_PAYLOAD,
   knowledge: PROVIDER_PACK_TAB_KNOWLEDGE,
   distribution: PROVIDER_PACK_TAB_DISTRIBUTION,
+  serviceValidation: PROVIDER_PACK_TAB_SERVICE_VALIDATION,
   review: PROVIDER_PACK_TAB_REVIEW,
 };
 

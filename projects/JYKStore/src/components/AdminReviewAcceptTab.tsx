@@ -299,8 +299,13 @@ export function AdminReviewAcceptTab({
           {detail.distribution ? (
             <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
               Provider 공개범위 <strong>{detail.distribution.visibility}</strong>
-              {detail.distribution.allowDownload ? " · 다운로드 허용" : " · 다운로드 비허용"} —
-              승인 시 이 값이 유지됩니다.
+              {detail.distribution.allowApi ? " · API" : ""}
+              {detail.distribution.allowMcp ? " · MCP" : ""}
+              {detail.distribution.allowDownload ? " · 다운로드" : " · 다운로드 비허용"}
+              {detail.distribution.serviceEndsAt
+                ? ` · 종료 ${detail.distribution.serviceEndsAt.slice(0, 10)}`
+                : ""}{" "}
+              — 승인 시 이 값이 유지됩니다.
             </p>
           ) : null}
           <button

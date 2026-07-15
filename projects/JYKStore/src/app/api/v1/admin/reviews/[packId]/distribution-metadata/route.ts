@@ -78,6 +78,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (visibility !== undefined) patch.visibility = visibility;
     const allowDownload = optionalBooleanOrNull(body, "allowDownload");
     if (allowDownload !== undefined) patch.allowDownload = allowDownload;
+    const allowApi = optionalBooleanOrNull(body, "allowApi");
+    if (allowApi !== undefined) patch.allowApi = allowApi;
+    const allowMcp = optionalBooleanOrNull(body, "allowMcp");
+    if (allowMcp !== undefined) patch.allowMcp = allowMcp;
+    const rightsBasis = optionalStringOrNull(body, "rightsBasis");
+    if (rightsBasis !== undefined) patch.rightsBasis = rightsBasis;
+    const rightsBasisDetail = optionalStringOrNull(body, "rightsBasisDetail");
+    if (rightsBasisDetail !== undefined) patch.rightsBasisDetail = rightsBasisDetail;
+    const rightsConfirmed = optionalBooleanOrNull(body, "rightsConfirmed");
+    if (rightsConfirmed !== undefined) patch.rightsConfirmed = rightsConfirmed;
+    const serviceEndsAt = optionalStringOrNull(body, "serviceEndsAt");
+    if (serviceEndsAt !== undefined) patch.serviceEndsAt = serviceEndsAt;
     const contentType = optionalStringOrNull(body, "contentType");
     if (contentType !== undefined) patch.contentType = contentType;
 

@@ -38,6 +38,10 @@ export type ScoredCandidate = {
 export type RetrievalPackContext = {
   packId: string;
   versionId: string;
+  allowApi: boolean;
+  allowMcp: boolean;
+  allowDownload: boolean;
+  serviceEndsAt: Date | null;
 };
 
 export function toMetadataRecord(value: unknown): Record<string, unknown> | null {

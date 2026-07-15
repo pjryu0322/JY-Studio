@@ -17,6 +17,9 @@ export const latestPackArtifactVersionInclude = {
     select: {
       visibility: true,
       allowDownload: true,
+      allowApi: true,
+      allowMcp: true,
+      serviceEndsAt: true,
       sourceTitle: true,
       sourceUrl: true,
       sourcePublisherName: true,
@@ -73,6 +76,9 @@ export type LatestPackArtifactVersionRow = {
   distributionMetadata?: {
     visibility: import("@prisma/client").DistributionVisibility;
     allowDownload: boolean;
+    allowApi?: boolean;
+    allowMcp?: boolean;
+    serviceEndsAt?: Date | string | null;
     sourceTitle?: string | null;
     sourceUrl?: string | null;
     sourcePublisherName?: string | null;
@@ -127,6 +133,9 @@ export function toLatestPackVersionArtifactInput(
       ? {
           visibility: version.distributionMetadata.visibility,
           allowDownload: version.distributionMetadata.allowDownload,
+          allowApi: version.distributionMetadata.allowApi,
+          allowMcp: version.distributionMetadata.allowMcp,
+          serviceEndsAt: version.distributionMetadata.serviceEndsAt,
         }
       : null,
     externalImports,

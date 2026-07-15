@@ -88,6 +88,10 @@ export async function POST(request: NextRequest) {
       const retrievalMode: RetrievalMode =
         (body.retrievalMode as RetrievalMode | undefined) ?? (query ? "hybrid" : "keyword");
 
+      const serviceChannelHeader = context.request.headers.get("x-jyk-service-channel");
+      const serviceChannel =
+        serviceChannelHeader?.trim().toUpperCase() === "MCP" ? ("MCP" as const) : ("API" as const);
+
       const result = await retrieveContexts({
         knowledgePackId,
         query,
@@ -96,9 +100,18 @@ export async function POST(request: NextRequest) {
         includeMetadata,
         retrievalMode,
         requestId,
+        serviceChannel,
       });
 
       if (!result.ok) {
+        if (result.code === "SERVICE_CHANNEL_DISABLED" || result.code === "SERVICE_ENDED") {
+          await recordPublicApiUsage(context, {
+            statusCode: 403,
+            query: safeQuery,
+            metadata: { reason: result.code, packId: context.packId, serviceChannel },
+          });
+          return apiErrorResponse(requestId, result.code, result.message, 403);
+        }
         if (result.code === "PACK_RETRIEVAL_NOT_READY") {
           await recordPublicApiUsage(context, {
             statusCode: 409,

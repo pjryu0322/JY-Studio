@@ -28,6 +28,9 @@ export type LatestDistributionState =
       kind: "DISTRIBUTION";
       visibility: DistributionVisibility;
       allowDownload: boolean;
+      allowApi?: boolean;
+      allowMcp?: boolean;
+      serviceEndsAt?: Date | string | null;
       artifact?: "EXTERNAL_IMPORT";
       generatorName?: string | null;
     }
@@ -45,6 +48,9 @@ export type LatestDistributionVersionInput = LatestPackArtifactVersionRow | {
   distributionMetadata?: {
     visibility: DistributionVisibility;
     allowDownload: boolean;
+    allowApi?: boolean;
+    allowMcp?: boolean;
+    serviceEndsAt?: Date | string | null;
   } | null;
   doclingImportBundles?: LatestPackArtifactVersionRow["doclingImportBundles"];
   externalImports?: import("@/lib/artifact-state/types").ExternalImportArtifactInput[] | null;
@@ -59,6 +65,9 @@ function toCompatibilityState(state: LatestPackArtifactState): LatestDistributio
         kind: "DISTRIBUTION",
         visibility: state.visibility,
         allowDownload: state.allowDownload,
+        allowApi: state.allowApi,
+        allowMcp: state.allowMcp,
+        serviceEndsAt: state.serviceEndsAt,
         artifact: "EXTERNAL_IMPORT",
         generatorName: state.generatorName,
       };

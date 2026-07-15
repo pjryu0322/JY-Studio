@@ -54,6 +54,20 @@ export async function getPackContext(
   }
 
   const version = pack.versions[0];
+  const { loadServiceChannelFlagsForPack } = await import(
+    "@/lib/distribution/load-service-channel-flags"
+  );
+  const { assertServiceChannelEnabled } = await import(
+    "@/lib/distribution/service-channel-policy"
+  );
+  const flags = await loadServiceChannelFlagsForPack(input.packId);
+  if (flags) {
+    const channelCheck = assertServiceChannelEnabled("API", flags);
+    if (!channelCheck.ok) {
+      return { ok: false, code: "PACK_CONTEXT_NOT_READY" };
+    }
+  }
+
   const runtimeReady = Boolean(input.runtimeIndexReady);
   const activeChunkCount = await db.knowledgeChunk.count({
     where: {

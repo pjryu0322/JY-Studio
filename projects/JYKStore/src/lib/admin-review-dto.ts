@@ -145,6 +145,13 @@ export type AdminReviewDetailDto = {
     readmeText: string | null;
     visibility: string;
     allowDownload: boolean;
+    allowApi: boolean;
+    allowMcp: boolean;
+    rightsBasis: string | null;
+    rightsBasisDetail: string | null;
+    rightsConfirmed: boolean;
+    rightsConfirmedAt: string | null;
+    serviceEndsAt: string | null;
     /** @deprecated Always null — ZIP primary selection removed. */
     primaryArtifactType: null;
     contentType:

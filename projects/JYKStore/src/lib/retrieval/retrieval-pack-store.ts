@@ -20,6 +20,7 @@ export async function loadPublicRetrievalPack(
       versions: {
         orderBy: { createdAt: "desc" },
         take: 1,
+        include: { distributionMetadata: true },
       },
     },
   });
@@ -28,5 +29,14 @@ export async function loadPublicRetrievalPack(
     return null;
   }
 
-  return { packId: pack.packId, versionId: pack.versions[0]!.id };
+  const version = pack.versions[0]!;
+  const meta = version.distributionMetadata;
+  return {
+    packId: pack.packId,
+    versionId: version.id,
+    allowApi: meta?.allowApi ?? true,
+    allowMcp: meta?.allowMcp ?? true,
+    allowDownload: meta?.allowDownload ?? false,
+    serviceEndsAt: meta?.serviceEndsAt ?? null,
+  };
 }

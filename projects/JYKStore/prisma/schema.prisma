@@ -273,6 +273,7 @@ model KnowledgePack {
   retrievalEvaluationResults RetrievalEvaluationResult[]
   releaseGateRuns          ReleaseGateRun[]
   distributionMetadata     PackDistributionMetadata[]
+  serviceValidationRuns    ServiceValidationRun[]
   doclingImportBundles     DoclingImportBundle[]
   knowledgePackFiles        KnowledgePackFile[]
   normalizedDocuments      NormalizedDocument[]
@@ -343,6 +344,7 @@ model KnowledgePackVersion {
   retrievalEvaluationCases   RetrievalEvaluationCase[]
   retrievalEvaluationResults RetrievalEvaluationResult[]
   distributionMetadata       PackDistributionMetadata?
+  serviceValidationRuns      ServiceValidationRun[]
   doclingImportBundles       DoclingImportBundle[]
   knowledgePackFiles          KnowledgePackFile[]
   normalizedDocuments        NormalizedDocument[]
@@ -392,8 +394,30 @@ enum PackContentType {
   MIXED
 }
 
+enum DistributionRightsBasis {
+  PUBLIC_LICENSE
+  RIGHTS_HOLDER
+  AUTHORIZED_BY_RIGHTS_HOLDER
+  OTHER
+}
+
+enum ServiceValidationChannel {
+  API
+  MCP
+  DOWNLOAD
+}
+
+enum ServiceValidationStatus {
+  NOT_SELECTED
+  PENDING
+  RUNNING
+  PASS
+  FAIL
+  STALE
+}
+
 model PackDistributionMetadata {
-  id                    String                 @id @default(cuid())
+  id                    String                   @id @default(cuid())
   packId                String
   versionId             String
   sourceTitle           String?
@@ -407,18 +431,57 @@ model PackDistributionMetadata {
   licenseUrl            String?
   usageTerms            String?
   readmeText            String?
-  visibility            DistributionVisibility @default(PRIVATE)
-  allowDownload         Boolean                @default(true)
+  visibility            DistributionVisibility   @default(PRIVATE)
+  allowDownload         Boolean                  @default(true)
+  allowApi              Boolean                  @default(true)
+  allowMcp              Boolean                  @default(true)
+  rightsBasis           DistributionRightsBasis?
+  rightsBasisDetail     String?
+  rightsConfirmedAt     DateTime?
+  rightsConfirmedByUserId String?
+  serviceEndsAt         DateTime?
   /// Explicit public content shape; overrides inference when set.
   contentType           PackContentType?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
 
   pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Restrict)
   version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
 
   @@unique([versionId])
   @@index([packId])
+}
+
+model ServiceValidationRun {
+  id                    String                   @id @default(cuid())
+  packId                String
+  versionId             String
+  channel               ServiceValidationChannel
+  status                ServiceValidationStatus  @default(PENDING)
+  pipelineRunId         String?
+  indexGenerationId     String?
+  normalizedDocumentId  String?
+  fingerprint           String?
+  testedAt              DateTime?
+  testedByUserId        String?
+  query                 String?
+  resultCount           Int?
+  topChunkId            String?
+  sourceDocumentId      String?
+  page                  Int?
+  latencyMs             Int?
+  failureCode           String?
+  failureMessage        String?
+  details               Json?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, channel])
+  @@index([packId, channel, status])
+  @@index([versionId, status])
 }
 
 enum DoclingImportBundleStatus {

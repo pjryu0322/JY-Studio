@@ -1243,6 +1243,10 @@ export async function executeDoclingKnowledgePipeline(input: {
       lockExpiresAt: null,
     }),
   });
+  const { markServiceValidationsStaleForVersion } = await import(
+    "@/lib/distribution/mark-service-validations-stale"
+  );
+  await markServiceValidationsStaleForVersion(versionId);
   await updatePackPipelineStatus({
     packId: input.packId,
     pipelineStatus: "READY_FOR_REVIEW",

@@ -95,12 +95,12 @@ const STEP_META: Record<
   },
   DISTRIBUTION: {
     label: "유통정보",
-    description: "출처·라이선스·공개 범위를 입력합니다.",
+    description: "제공 방식·유통 권한·공개 범위를 입력합니다.",
     tab: "distribution",
   },
   REVIEW: {
     label: "검수 요청",
-    description: "준비가 끝나면 검수 요청을 제출합니다.",
+    description: "서비스 검증 후 검수 요청을 제출합니다.",
     tab: "review",
   },
   APPROVAL: {
@@ -418,9 +418,19 @@ export function isMaterialReadyForProgress(input: {
 export function isDistributionReadyForProgress(input: {
   sourceTitle?: string | null;
   sourceUrl?: string | null;
+  rightsBasis?: string | null;
+  rightsConfirmedAt?: Date | string | null;
+  allowApi?: boolean;
+  allowMcp?: boolean;
+  allowDownload?: boolean;
+  /** @deprecated Prefer rightsBasis + channels. */
   licenseName?: string | null;
 }): boolean {
   const hasSource = Boolean(input.sourceTitle?.trim() || input.sourceUrl?.trim());
+  const hasRights = Boolean(input.rightsBasis && input.rightsConfirmedAt);
+  const hasChannel = Boolean(input.allowApi || input.allowMcp || input.allowDownload);
+  if (hasSource && hasRights && hasChannel) return true;
+  // Legacy fallback for packs without rightsBasis yet
   const hasLicense = Boolean(input.licenseName?.trim());
   return hasSource && hasLicense;
 }

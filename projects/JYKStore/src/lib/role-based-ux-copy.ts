@@ -78,6 +78,7 @@ export const PROVIDER_PACK_TAB_BASIC = "기본정보";
 export const PROVIDER_PACK_TAB_PAYLOAD = "자료 등록";
 export const PROVIDER_PACK_TAB_KNOWLEDGE = "지식 데이터 생성";
 export const PROVIDER_PACK_TAB_DISTRIBUTION = "유통정보";
+export const PROVIDER_PACK_TAB_SERVICE_VALIDATION = "서비스 검증";
 export const PROVIDER_PACK_TAB_MATERIALS = "기존 자료";
 export const PROVIDER_PACK_TAB_REVIEW = "검수요청";
 
@@ -92,6 +93,7 @@ export const PROVIDER_PACK_MATERIALS_EMPTY =
 export const PROVIDER_PACK_GO_TO_PAYLOAD_TAB = "자료 등록으로 이동";
 export const PROVIDER_PACK_GO_TO_KNOWLEDGE_TAB = "지식 데이터 생성으로 이동";
 export const PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB = "유통정보로 이동";
+export const PROVIDER_PACK_GO_TO_SERVICE_VALIDATION_TAB = "서비스 검증으로 이동";
 export const PROVIDER_PACK_GO_TO_MATERIALS_TAB = "기존 자료로 이동";
 export const PROVIDER_PACK_GO_TO_REVIEW_TAB = "검수요청으로 이동";
 /** @deprecated Builder freeze — prefer PROVIDER_PACK_GO_TO_MATERIALS_TAB */
@@ -113,7 +115,7 @@ export const PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN =
 
 export const PROVIDER_PACK_REVIEW_READY_TITLE = "검수 요청 준비";
 export const PROVIDER_PACK_REVIEW_READY_BODY =
-  "기본정보·자료 등록·지식 데이터 생성·유통정보가 모두 완료되면 검수요청을 제출할 수 있습니다.";
+  "기본정보·자료 등록·지식 데이터 생성·유통정보·서비스 검증이 모두 완료되면 검수요청을 제출할 수 있습니다.";
 
 export const PROVIDER_SUBMIT_CTA = "검수 요청 제출";
 export const PROVIDER_SUBMIT_CONFIRM =

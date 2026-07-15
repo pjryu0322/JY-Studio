@@ -91,8 +91,26 @@ export async function openPublicCatalogSourceOriginalStream(input: {
   if (selected.kind !== "SOURCE_ORIGINAL") {
     throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
   }
-  if (!selected.allowDownload || selected.visibility === "PRIVATE") {
+  if (selected.visibility === "PRIVATE") {
     throw new PayloadServiceError("NOT_FOUND", "다운로드가 허용되지 않은 지식팩입니다.", 404);
+  }
+
+  const { assertServiceChannelEnabled } = await import(
+    "@/lib/distribution/service-channel-policy"
+  );
+  const meta = version.distributionMetadata;
+  const channelCheck = assertServiceChannelEnabled("DOWNLOAD", {
+    allowApi: meta?.allowApi ?? true,
+    allowMcp: meta?.allowMcp ?? true,
+    allowDownload: selected.allowDownload,
+    serviceEndsAt: meta?.serviceEndsAt ?? null,
+  });
+  if (!channelCheck.ok) {
+    throw new PayloadServiceError(
+      channelCheck.code === "SERVICE_ENDED" ? "SERVICE_ENDED" : "SERVICE_CHANNEL_DISABLED",
+      channelCheck.message,
+      403,
+    );
   }
 
   let objectKey = selected.objectKey;

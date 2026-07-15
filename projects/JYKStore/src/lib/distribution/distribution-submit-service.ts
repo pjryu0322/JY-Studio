@@ -130,16 +130,27 @@ export async function commitDistributionPackForReview(
     "@/lib/docling-knowledge/docling-knowledge-pipeline-service"
   );
   const knowledgePassed = await isDoclingKnowledgePipelinePassed(packId);
+  const { isDistributionReadyForServiceValidation } = await import(
+    "@/lib/distribution/service-validation-service"
+  );
   const distributionReady = Boolean(
-    meta?.licenseName?.trim() &&
-      (meta?.sourceTitle?.trim() || meta?.sourceUrl?.trim()),
+    meta &&
+      isDistributionReadyForServiceValidation({
+        sourceTitle: meta.sourceTitle,
+        sourceUrl: meta.sourceUrl,
+        rightsBasis: meta.rightsBasis,
+        rightsConfirmedAt: meta.rightsConfirmedAt,
+        allowApi: meta.allowApi,
+        allowMcp: meta.allowMcp,
+        allowDownload: meta.allowDownload,
+      }),
   );
   if (!knowledgePassed || !distributionReady) {
     return {
       error: "INCOMPLETE",
       message: !knowledgePassed
         ? "지식 데이터 생성(검색 결과 검증)이 완료되어야 검수 요청할 수 있습니다."
-        : "유통정보(출처·라이선스)를 입력해 주세요.",
+        : "유통정보(출처·제공 방식·유통 권한)를 입력해 주세요.",
       missingRequirements: missingRequirementsForReview({
         materialReady: true,
         knowledgePassed,
@@ -165,17 +176,23 @@ export async function commitDistributionPackForReview(
   if (!meta) {
     return {
       error: "INCOMPLETE",
-      message: "유통정보(출처·라이선스)를 입력해 주세요.",
+      message: "유통정보(출처·제공 방식·유통 권한)를 입력해 주세요.",
     };
-  }
-  if (!meta.licenseName.trim()) {
-    return { error: "INCOMPLETE", message: "라이선스명이 필요합니다." };
   }
   if (!meta.sourceTitle?.trim() && !meta.sourceUrl?.trim()) {
     return {
       error: "INCOMPLETE",
       message: "출처 제목 또는 출처 URL이 필요합니다.",
     };
+  }
+  if (!meta.rightsBasis || !meta.rightsConfirmedAt) {
+    return {
+      error: "INCOMPLETE",
+      message: "유통 권한 근거와 확인이 필요합니다.",
+    };
+  }
+  if (!meta.licenseName.trim()) {
+    return { error: "INCOMPLETE", message: "라이선스명이 필요합니다." };
   }
 
   const { DOCLING_KNOWLEDGE_PIPELINE_TRIGGER } = await import(
@@ -211,6 +228,52 @@ export async function commitDistributionPackForReview(
     };
   }
 
+  const { assertSelectedServiceValidationsPassed } = await import(
+    "@/lib/distribution/service-validation-service"
+  );
+  try {
+    await assertSelectedServiceValidationsPassed({
+      versionId: version.id,
+      distribution: meta,
+      bindingFingerprint: nd.fingerprint,
+      bindingIndexGenerationId: passBinding.indexGenerationId,
+    });
+  } catch (error) {
+    const { isPayloadServiceError } = await import("@/lib/distribution/payload-errors");
+    if (isPayloadServiceError(error)) {
+      return {
+        error: "INCOMPLETE",
+        message: error.message,
+        missingRequirements: [error.code],
+      };
+    }
+    throw error;
+  }
+
+  const serviceRuns = await prisma.serviceValidationRun.findMany({
+    where: {
+      versionId: version.id,
+      channel: {
+        in: [
+          ...(meta.allowApi ? (["API"] as const) : []),
+          ...(meta.allowMcp ? (["MCP"] as const) : []),
+          ...(meta.allowDownload ? (["DOWNLOAD"] as const) : []),
+        ],
+      },
+    },
+  });
+  const serviceValidation: Record<
+    string,
+    { status: string; runId: string | null; testedAt: string | null }
+  > = {};
+  for (const run of serviceRuns) {
+    serviceValidation[run.channel] = {
+      status: run.status,
+      runId: run.id,
+      testedAt: run.testedAt?.toISOString() ?? null,
+    };
+  }
+
   const snapshot = buildDoclingBundleReviewSubmitSnapshot({
     submittedVersionId: version.id,
     doclingBundleId: doclingBundle.id,
@@ -231,6 +294,18 @@ export async function commitDistributionPackForReview(
     licenseName: meta.licenseName,
     visibility: meta.visibility,
     allowDownload: meta.allowDownload,
+    allowApi: meta.allowApi,
+    allowMcp: meta.allowMcp,
+    serviceEndsAt: meta.serviceEndsAt?.toISOString() ?? null,
+    rightsBasis: meta.rightsBasis,
+    rightsBasisDetail: meta.rightsBasisDetail,
+    rightsConfirmedAt: meta.rightsConfirmedAt?.toISOString() ?? null,
+    sourceUrl: meta.sourceUrl,
+    sourcePublisherName: meta.sourcePublisherName,
+    sourceDocumentVersion: meta.sourceDocumentVersion,
+    sourcePublishedAt: meta.sourcePublishedAt?.toISOString() ?? null,
+    sourceRetrievedAt: meta.sourceRetrievedAt?.toISOString() ?? null,
+    serviceValidation,
     language: packLanguage,
     pipelineRunId: passRun.id,
     indexGenerationId: passBinding.indexGenerationId,
