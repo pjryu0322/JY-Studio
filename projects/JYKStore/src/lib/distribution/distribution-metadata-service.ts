@@ -671,13 +671,10 @@ export async function upsertProviderPackDistribution(input: {
       (row.serviceEndsAt?.toISOString() ?? null) ||
     existing.visibility !== row.visibility;
   if (channelsChanged) {
-    await prisma.serviceValidationRun.updateMany({
-      where: {
-        versionId: version.id,
-        status: { in: ["PASS", "FAIL", "PENDING", "RUNNING"] },
-      },
-      data: { status: "STALE" },
-    });
+    const { markServiceValidationsStaleForVersion } = await import(
+      "@/lib/distribution/mark-service-validations-stale"
+    );
+    await markServiceValidationsStaleForVersion(version.id);
   }
 
   await recordProviderAudit({
@@ -893,10 +890,10 @@ export async function patchAdminPackDistribution(input: {
       (existing.serviceEndsAt?.toISOString() ?? null) !==
         (row.serviceEndsAt?.toISOString() ?? null));
   if (channelOrPolicyChanged) {
-    await prisma.serviceValidationRun.updateMany({
-      where: { versionId: version.id, status: { in: ["PASS", "FAIL"] } },
-      data: { status: "STALE" },
-    });
+    const { markServiceValidationsStaleForVersion } = await import(
+      "@/lib/distribution/mark-service-validations-stale"
+    );
+    await markServiceValidationsStaleForVersion(version.id);
   }
 
   await recordProviderAudit({

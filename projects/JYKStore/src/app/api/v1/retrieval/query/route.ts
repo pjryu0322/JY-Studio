@@ -8,7 +8,7 @@ import {
   type RetrievalRequestBody,
 } from "@/lib/retrieval-dto";
 import { normalizeTopK, validateAndNormalizeFilters } from "@/lib/retrieval-filter";
-import { retrieveContexts } from "@/lib/retrieval-service";
+import { executeRetrievalApiRequest } from "@/lib/retrieval/retrieval-api-adapter";
 import {
   apiErrorResponse,
   parseJsonBodySafe,
@@ -26,12 +26,30 @@ function validationError(requestId: string, details: string[]) {
   );
 }
 
+/**
+ * Public Retrieval API — channel is always API.
+ * Client-supplied X-JYK-Service-Channel is rejected (spoofing prevention).
+ */
 export async function POST(request: NextRequest) {
   return withPublicApiGateway({
     request,
     scope: "retrieval",
     handler: async (context) => {
       const { requestId } = context;
+
+      const spoofHeader = context.request.headers.get("x-jyk-service-channel");
+      if (spoofHeader != null && spoofHeader.trim() !== "") {
+        await recordPublicApiUsage(context, {
+          statusCode: 400,
+          metadata: { reason: "SERVICE_CHANNEL_SPOOFING_NOT_ALLOWED" },
+        });
+        return apiErrorResponse(
+          requestId,
+          "SERVICE_CHANNEL_SPOOFING_NOT_ALLOWED",
+          "Public Retrieval API에서는 서비스 채널을 지정할 수 없습니다.",
+          400,
+        );
+      }
 
       const parsed = await parseJsonBodySafe<RetrievalRequestBody>(context.request);
       if (!parsed.ok) {
@@ -88,11 +106,7 @@ export async function POST(request: NextRequest) {
       const retrievalMode: RetrievalMode =
         (body.retrievalMode as RetrievalMode | undefined) ?? (query ? "hybrid" : "keyword");
 
-      const serviceChannelHeader = context.request.headers.get("x-jyk-service-channel");
-      const serviceChannel =
-        serviceChannelHeader?.trim().toUpperCase() === "MCP" ? ("MCP" as const) : ("API" as const);
-
-      const result = await retrieveContexts({
+      const result = await executeRetrievalApiRequest({
         knowledgePackId,
         query,
         filters,
@@ -100,7 +114,8 @@ export async function POST(request: NextRequest) {
         includeMetadata,
         retrievalMode,
         requestId,
-        serviceChannel,
+        serviceChannel: "API",
+        executionMode: "PUBLIC",
       });
 
       if (!result.ok) {
@@ -108,7 +123,7 @@ export async function POST(request: NextRequest) {
           await recordPublicApiUsage(context, {
             statusCode: 403,
             query: safeQuery,
-            metadata: { reason: result.code, packId: context.packId, serviceChannel },
+            metadata: { reason: result.code, packId: context.packId, serviceChannel: "API" },
           });
           return apiErrorResponse(requestId, result.code, result.message, 403);
         }
@@ -150,6 +165,7 @@ export async function POST(request: NextRequest) {
           scannedCandidateCount: result.data.usage.scannedCandidateCount,
           filteredCandidateCount: result.data.usage.filteredCandidateCount,
           candidateCollectionMode: result.data.usage.candidateCollectionMode,
+          serviceChannel: "API",
         },
       });
 

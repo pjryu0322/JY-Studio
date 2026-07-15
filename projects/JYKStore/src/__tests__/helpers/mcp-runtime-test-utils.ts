@@ -34,7 +34,10 @@ export function createMockPublicApiFetch(): typeof fetch {
     const url = String(input);
     const method = (init?.method ?? "GET").toUpperCase();
 
-    if (method === "POST" && url.includes("/api/v1/retrieval/query")) {
+    if (
+      method === "POST" &&
+      (url.includes("/api/v1/mcp/retrieval/query") || url.includes("/api/v1/retrieval/query"))
+    ) {
       return new Response(
         JSON.stringify({
           contexts: [

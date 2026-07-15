@@ -552,8 +552,21 @@ export async function acceptPackReview(input: {
         verifyObjectStorage: "FULL",
         actorUserId: input.reviewerUserId,
       });
+      const versionId = acceptSnapshot.submittedVersionId;
+      const { assertCurrentServiceValidationEvidence } = await import(
+        "@/lib/distribution/service-validation-service"
+      );
+      await assertCurrentServiceValidationEvidence({
+        packId,
+        versionId,
+        snapshot: acceptSnapshot,
+      });
     } catch (error) {
       if (isDoclingImportError(error)) {
+        return { error: "INCOMPLETE" as const, message: error.message };
+      }
+      const { isPayloadServiceError } = await import("@/lib/distribution/payload-errors");
+      if (isPayloadServiceError(error)) {
         return { error: "INCOMPLETE" as const, message: error.message };
       }
       throw error;
@@ -619,8 +632,20 @@ export async function approvePackReview(input: {
         verifyObjectStorage: "FULL",
         actorUserId: input.reviewerUserId,
       });
+      const { assertCurrentServiceValidationEvidence } = await import(
+        "@/lib/distribution/service-validation-service"
+      );
+      await assertCurrentServiceValidationEvidence({
+        packId,
+        versionId: approveSnapshot.submittedVersionId,
+        snapshot: approveSnapshot,
+      });
     } catch (error) {
       if (isDoclingImportError(error)) {
+        return { error: "INCOMPLETE" as const, message: error.message };
+      }
+      const { isPayloadServiceError } = await import("@/lib/distribution/payload-errors");
+      if (isPayloadServiceError(error)) {
         return { error: "INCOMPLETE" as const, message: error.message };
       }
       throw error;

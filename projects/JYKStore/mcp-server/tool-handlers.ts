@@ -70,7 +70,7 @@ export async function handleMcpToolCall(input: {
         if (parsed.metadataFilters) {
           body.filters = parsed.metadataFilters;
         }
-        const result = await input.client.postJson("/api/v1/retrieval/query", body);
+        const result = await input.client.postJson("/api/v1/mcp/retrieval/query", body);
         return textResult(result);
       }
       case "jykstore_graph_query": {

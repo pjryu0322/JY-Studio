@@ -131,13 +131,13 @@ export function AdminReviewPackageSnapshotTab({
               서비스 검증:{" "}
               {[
                 snapshot.serviceValidation.API
-                  ? `API=${snapshot.serviceValidation.API.status}`
+                  ? `API=${snapshot.serviceValidation.API.status} (${snapshot.serviceValidation.API.runId ?? "—"})`
                   : null,
                 snapshot.serviceValidation.MCP
-                  ? `MCP=${snapshot.serviceValidation.MCP.status}`
+                  ? `MCP=${snapshot.serviceValidation.MCP.status} (${snapshot.serviceValidation.MCP.runId ?? "—"})`
                   : null,
                 snapshot.serviceValidation.DOWNLOAD
-                  ? `다운로드=${snapshot.serviceValidation.DOWNLOAD.status}`
+                  ? `다운로드=${snapshot.serviceValidation.DOWNLOAD.status} (${snapshot.serviceValidation.DOWNLOAD.runId ?? "—"})`
                   : null,
               ]
                 .filter(Boolean)

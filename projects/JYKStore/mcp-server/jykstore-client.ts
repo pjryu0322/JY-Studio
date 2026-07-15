@@ -27,20 +27,13 @@ export type AuthHeaders = {
   Authorization: string;
   "Content-Type": string;
   Accept: string;
-  "X-JYK-Service-Channel"?: string;
 };
 
-export function buildAuthHeaders(
-  apiKey: string,
-  accept = "application/json",
-  extra?: Record<string, string>,
-): AuthHeaders & Record<string, string> {
+export function buildAuthHeaders(apiKey: string, accept = "application/json"): AuthHeaders {
   return {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
     Accept: accept,
-    "X-JYK-Service-Channel": "MCP",
-    ...extra,
   };
 }
 

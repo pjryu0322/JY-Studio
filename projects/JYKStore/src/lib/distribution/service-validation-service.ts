@@ -1,25 +1,36 @@
 import {
+  PackStatus,
   ServiceValidationChannel,
   ServiceValidationStatus,
   type PackDistributionMetadata,
+  type ServiceValidationRun,
 } from "@prisma/client";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import {
+  isServiceEnded,
   selectedServiceChannels,
   type ServiceChannel,
 } from "@/lib/distribution/service-channel-policy";
+import { validateDownloadObjectIntegrity } from "@/lib/distribution/download-object-validation";
 import { DOCLING_KNOWLEDGE_PIPELINE_TRIGGER } from "@/lib/docling-knowledge/docling-knowledge-stages";
 import { DOCLING_RETRIEVAL_CHUNK_TYPE } from "@/lib/docling-knowledge/docling-knowledge-stages";
 import { parseKnowledgeRunBinding } from "@/lib/docling-knowledge/docling-knowledge-run-binding";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
+import { executeMcpValidation } from "@/lib/mcp/mcp-validation-runtime";
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { prisma } from "@/lib/prisma";
-import { runRetrievalForEvaluation } from "@/lib/retrieval-service";
+import {
+  evaluateRetrievalValidationHits,
+  executeRetrievalApiRequest,
+} from "@/lib/retrieval/retrieval-api-adapter";
+import type { DoclingBundleReviewSubmitSnapshot } from "@/lib/distribution/distribution-submit-snapshot";
 
 export type ServiceValidationChannelDto = {
   channel: ServiceChannel;
   selected: boolean;
   status: ServiceValidationStatus | "NOT_SELECTED";
+  currentValidity: "CURRENT" | "STALE" | null;
+  runId: string | null;
   testedAt: string | null;
   query: string | null;
   resultCount: number | null;
@@ -32,12 +43,15 @@ export type ServiceValidationChannelDto = {
   pipelineRunId: string | null;
   indexGenerationId: string | null;
   fingerprint: string | null;
+  adapterPath: string | null;
   details: Record<string, unknown> | null;
 };
 
 export type ServiceValidationStatusDto = {
   packId: string;
   versionId: string;
+  packStatus: string;
+  canRunValidation: boolean;
   channels: ServiceValidationChannelDto[];
   allSelectedPassed: boolean;
   suggestedQuery: string | null;
@@ -50,7 +64,40 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
-async function requireOwnedDraft(input: {
+function adapterPathForChannel(channel: ServiceChannel): string {
+  if (channel === "API") return "Retrieval API Adapter";
+  if (channel === "MCP") return "MCP Tool Handler (jykstore_retrieval_query)";
+  return "Object Storage Stream + SHA-256";
+}
+
+export function resolveRunCurrentValidity(input: {
+  run: Pick<
+    ServiceValidationRun,
+    "status" | "fingerprint" | "indexGenerationId" | "invalidatedAt"
+  >;
+  bindingFingerprint?: string | null;
+  bindingIndexGenerationId?: string | null;
+}): "CURRENT" | "STALE" {
+  if (input.run.invalidatedAt) return "STALE";
+  if (input.run.status !== "PASS") return "CURRENT";
+  if (
+    input.bindingFingerprint &&
+    input.run.fingerprint &&
+    input.run.fingerprint !== input.bindingFingerprint
+  ) {
+    return "STALE";
+  }
+  if (
+    input.bindingIndexGenerationId &&
+    input.run.indexGenerationId &&
+    input.run.indexGenerationId !== input.bindingIndexGenerationId
+  ) {
+    return "STALE";
+  }
+  return "CURRENT";
+}
+
+async function loadOwnedPack(input: {
   userId: string;
   clientId: string;
   packId: string;
@@ -71,6 +118,30 @@ async function requireOwnedDraft(input: {
   return { pack, version, profile };
 }
 
+export async function loadOwnedPackForServiceValidationRead(input: {
+  userId: string;
+  clientId: string;
+  packId: string;
+}) {
+  return loadOwnedPack(input);
+}
+
+export async function requireOwnedDraftPackForServiceValidationRun(input: {
+  userId: string;
+  clientId: string;
+  packId: string;
+}) {
+  const owned = await loadOwnedPack(input);
+  if (owned.pack.status !== PackStatus.DRAFT) {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_NOT_EDITABLE",
+      "검수요청 전 초안 상태에서만 서비스 검증을 실행할 수 있습니다.",
+      403,
+    );
+  }
+  return owned;
+}
+
 async function loadBindingContext(packId: string, versionId: string) {
   const dist = await prisma.packDistributionMetadata.findUnique({ where: { versionId } });
   const latest = await prisma.pipelineRun.findFirst({
@@ -81,12 +152,25 @@ async function loadBindingContext(packId: string, versionId: string) {
   return { dist, latest, binding };
 }
 
+export async function findLatestServiceValidationRun(input: {
+  versionId: string;
+  channel: ServiceChannel;
+}): Promise<ServiceValidationRun | null> {
+  return prisma.serviceValidationRun.findFirst({
+    where: {
+      versionId: input.versionId,
+      channel: input.channel as ServiceValidationChannel,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
 export async function getServiceValidationStatus(input: {
   userId: string;
   clientId: string;
   packId: string;
 }): Promise<ServiceValidationStatusDto> {
-  const { pack, version } = await requireOwnedDraft(input);
+  const { pack, version } = await loadOwnedPackForServiceValidationRead(input);
   const { dist, binding } = await loadBindingContext(pack.packId, version.id);
   if (!dist) {
     throw new PayloadServiceError(
@@ -104,75 +188,70 @@ export async function getServiceValidationStatus(input: {
     }),
   );
 
-  const runs = await prisma.serviceValidationRun.findMany({
-    where: { versionId: version.id },
-  });
-  const byChannel = new Map(runs.map((r) => [r.channel, r]));
-
-  // Mark STALE when fingerprint / generation drifted vs PASS binding.
-  for (const run of runs) {
-    if (run.status !== "PASS") continue;
-    if (
-      binding &&
-      (run.fingerprint !== binding.fingerprint ||
-        run.indexGenerationId !== binding.indexGenerationId)
-    ) {
-      await prisma.serviceValidationRun.update({
-        where: { id: run.id },
-        data: { status: "STALE" },
-      });
-      run.status = "STALE";
-    }
-  }
-
-  const channels: ServiceValidationChannelDto[] = (["API", "MCP", "DOWNLOAD"] as const).map(
-    (channel) => {
-      const selectedChannel = selected.has(channel);
-      const run = byChannel.get(channel);
-      if (!selectedChannel) {
-        return {
-          channel,
-          selected: false,
-          status: "NOT_SELECTED",
-          testedAt: null,
-          query: null,
-          resultCount: null,
-          failureCode: null,
-          failureMessage: null,
-          latencyMs: null,
-          topChunkId: null,
-          sourceDocumentId: null,
-          page: null,
-          pipelineRunId: null,
-          indexGenerationId: null,
-          fingerprint: null,
-          details: null,
-        };
-      }
-      return {
+  const channels: ServiceValidationChannelDto[] = [];
+  for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
+    const selectedChannel = selected.has(channel);
+    if (!selectedChannel) {
+      channels.push({
         channel,
-        selected: true,
-        status: run?.status ?? "PENDING",
-        testedAt: run?.testedAt?.toISOString() ?? null,
-        query: run?.query ?? null,
-        resultCount: run?.resultCount ?? null,
-        failureCode: run?.failureCode ?? null,
-        failureMessage: run?.failureMessage ?? null,
-        latencyMs: run?.latencyMs ?? null,
-        topChunkId: run?.topChunkId ?? null,
-        sourceDocumentId: run?.sourceDocumentId ?? null,
-        page: run?.page ?? null,
-        pipelineRunId: run?.pipelineRunId ?? null,
-        indexGenerationId: run?.indexGenerationId ?? null,
-        fingerprint: run?.fingerprint ?? null,
-        details: asRecord(run?.details),
-      };
-    },
-  );
+        selected: false,
+        status: "NOT_SELECTED",
+        currentValidity: null,
+        runId: null,
+        testedAt: null,
+        query: null,
+        resultCount: null,
+        failureCode: null,
+        failureMessage: null,
+        latencyMs: null,
+        topChunkId: null,
+        sourceDocumentId: null,
+        page: null,
+        pipelineRunId: null,
+        indexGenerationId: null,
+        fingerprint: null,
+        adapterPath: null,
+        details: null,
+      });
+      continue;
+    }
+    const run = await findLatestServiceValidationRun({ versionId: version.id, channel });
+    const validity = run
+      ? resolveRunCurrentValidity({
+          run,
+          bindingFingerprint: binding?.fingerprint,
+          bindingIndexGenerationId: binding?.indexGenerationId,
+        })
+      : null;
+    const effectiveStatus =
+      run?.status === "PASS" && validity === "STALE" ? ("STALE" as const) : (run?.status ?? "PENDING");
+    channels.push({
+      channel,
+      selected: true,
+      status: effectiveStatus,
+      currentValidity: validity,
+      runId: run?.id ?? null,
+      testedAt: run?.testedAt?.toISOString() ?? null,
+      query: run?.query ?? null,
+      resultCount: run?.resultCount ?? null,
+      failureCode: run?.failureCode ?? null,
+      failureMessage: run?.failureMessage ?? null,
+      latencyMs: run?.latencyMs ?? null,
+      topChunkId: run?.topChunkId ?? null,
+      sourceDocumentId: run?.sourceDocumentId ?? null,
+      page: run?.page ?? null,
+      pipelineRunId: run?.pipelineRunId ?? null,
+      indexGenerationId: run?.indexGenerationId ?? null,
+      fingerprint: run?.fingerprint ?? null,
+      adapterPath: adapterPathForChannel(channel),
+      details: asRecord(run?.details),
+    });
+  }
 
   const selectedChannels = channels.filter((c) => c.selected);
   const allSelectedPassed =
-    selectedChannels.length > 0 && selectedChannels.every((c) => c.status === "PASS");
+    selectedChannels.length > 0 &&
+    selectedChannels.every((c) => c.status === "PASS" && c.currentValidity === "CURRENT");
 
   const sampleChunk = binding?.indexGenerationId
     ? await prisma.knowledgeChunk.findFirst({
@@ -189,6 +268,8 @@ export async function getServiceValidationStatus(input: {
   return {
     packId: pack.packId,
     versionId: version.id,
+    packStatus: pack.status,
+    canRunValidation: pack.status === PackStatus.DRAFT,
     channels,
     allSelectedPassed,
     suggestedQuery: sampleChunk?.title?.trim() || "주요 기능을 알려주세요",
@@ -202,7 +283,7 @@ export async function runServiceChannelValidation(input: {
   channel: ServiceChannel;
   query?: string | null;
 }): Promise<ServiceValidationChannelDto> {
-  const { pack, version } = await requireOwnedDraft(input);
+  const { pack, version } = await requireOwnedDraftPackForServiceValidationRun(input);
   const { dist, latest, binding } = await loadBindingContext(pack.packId, version.id);
   if (!dist) {
     throw new PayloadServiceError("INCOMPLETE", "유통정보를 먼저 저장해 주세요.", 400);
@@ -232,86 +313,93 @@ export async function runServiceChannelValidation(input: {
   let sourceDocumentId: string | null = null;
   let page: number | null = null;
   let query = input.query?.trim() || null;
-  let details: Record<string, unknown> = {};
+  let latencyMs = 0;
+  let details: Record<string, unknown> = {
+    adapter: input.channel === "API" ? "RETRIEVAL_API" : input.channel === "MCP" ? "MCP_HANDLER" : "OBJECT_STORAGE",
+    adapterPath: adapterPathForChannel(input.channel),
+  };
 
-  if (input.channel === "API" || input.channel === "MCP") {
+  if (input.channel === "API") {
     query = query || "주요 기능을 알려주세요";
-    try {
-      const chunks = await prisma.knowledgeChunk.findMany({
-        where: {
-          versionId: version.id,
-          chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
-          metadata: { path: ["indexGenerationId"], equals: binding.indexGenerationId },
-        },
-        take: 50,
-        orderBy: { sortOrder: "asc" },
+    const result = await executeRetrievalApiRequest({
+      knowledgePackId: pack.packId,
+      query,
+      topK: 5,
+      retrievalMode: "hybrid",
+      includeMetadata: true,
+      requestId: `provider-api-validation-${Date.now()}`,
+      serviceChannel: "API",
+      executionMode: "PROVIDER_VALIDATION",
+      versionId: version.id,
+      indexGenerationId: binding.indexGenerationId,
+    });
+    latencyMs = result.ok ? result.latencyMs : Date.now() - started;
+    if (!result.ok) {
+      failureCode = result.code;
+      failureMessage = result.message;
+    } else {
+      const hits = evaluateRetrievalValidationHits({
+        data: result.data,
+        expectedVersionId: version.id,
+        expectedIndexGenerationId: binding.indexGenerationId,
       });
-      if (chunks.length === 0) {
-        failureCode =
-          input.channel === "MCP" ? "MCP_VALIDATION_FAILED" : "API_VALIDATION_FAILED";
-        failureMessage = "현재 Draft 검색 데이터가 없습니다.";
+      resultCount = result.data.contexts.length;
+      const top = result.data.contexts[0];
+      topChunkId = top?.chunkId ?? null;
+      sourceDocumentId = top?.sourceDocumentId ?? null;
+      const meta = asRecord(top?.metadata);
+      page =
+        typeof meta?.page === "number"
+          ? meta.page
+          : typeof meta?.pageStart === "number"
+            ? meta.pageStart
+            : null;
+      details = {
+        ...details,
+        hitCount: resultCount,
+        responseDtoReady: true,
+      };
+      if (!hits.ok) {
+        failureCode = hits.code;
+        failureMessage = hits.message;
       } else {
-        const hits = await runRetrievalForEvaluation({
-          knowledgePackId: pack.packId,
-          versionId: version.id,
-          query,
-          topK: 5,
-          retrievalMode: "hybrid",
-          indexGenerationId: binding.indexGenerationId,
-        });
-        resultCount = hits.length;
-        const top = hits[0];
-        topChunkId = top?.chunkId ?? null;
-        sourceDocumentId = top?.sourceDocumentId ?? null;
-        const meta = asRecord(top?.metadata);
-        page =
-          typeof meta?.page === "number"
-            ? meta.page
-            : typeof meta?.pageStart === "number"
-              ? meta.pageStart
-              : null;
-
-        const foreign = hits.some((h) => {
-          const m = asRecord(h.metadata);
-          return typeof m?.versionId === "string" && m.versionId !== version.id;
-        });
-        const missingProv = hits.some((h) => !h.sourceDocumentId);
-        const missingPage = hits.some((h) => {
-          const m = asRecord(h.metadata);
-          return m?.page == null && m?.pageStart == null;
-        });
-
-        details = {
-          hitCount: hits.length,
-          foreignVersion: foreign,
-          missingProvenance: missingProv,
-          missingPage,
-          channelPath: input.channel === "MCP" ? "mcp-internal-invoke" : "retrieval-api",
-        };
-
-        if (hits.length === 0) {
-          failureCode =
-            input.channel === "MCP" ? "MCP_VALIDATION_FAILED" : "API_VALIDATION_FAILED";
-          failureMessage = "검색 결과가 없습니다.";
-        } else if (foreign) {
-          failureCode =
-            input.channel === "MCP" ? "MCP_VALIDATION_FAILED" : "API_VALIDATION_FAILED";
-          failureMessage = "다른 Version 결과가 포함되었습니다.";
-        } else if (missingProv || missingPage) {
-          failureCode =
-            input.channel === "MCP" ? "MCP_VALIDATION_FAILED" : "API_VALIDATION_FAILED";
-          failureMessage = "출처 또는 페이지 정보가 부족합니다.";
-        } else {
-          status = "PASS";
-        }
+        status = "PASS";
       }
-    } catch (error) {
-      failureCode =
-        input.channel === "MCP" ? "MCP_VALIDATION_FAILED" : "API_VALIDATION_FAILED";
-      failureMessage = error instanceof Error ? error.message : "검증 실행에 실패했습니다.";
+    }
+  } else if (input.channel === "MCP") {
+    query = query || "주요 기능을 알려주세요";
+    const result = await executeMcpValidation({
+      packId: pack.packId,
+      versionId: version.id,
+      query,
+      indexGenerationId: binding.indexGenerationId,
+    });
+    latencyMs = result.ok ? result.latencyMs : Date.now() - started;
+    if (!result.ok) {
+      failureCode = result.code;
+      failureMessage = result.message;
+    } else {
+      status = "PASS";
+      resultCount = result.data.contexts.length;
+      const top = result.data.contexts[0];
+      topChunkId = top?.chunkId ?? null;
+      sourceDocumentId = top?.sourceDocumentId ?? null;
+      const meta = asRecord(top?.metadata);
+      page =
+        typeof meta?.page === "number"
+          ? meta.page
+          : typeof meta?.pageStart === "number"
+            ? meta.pageStart
+            : null;
+      details = {
+        ...details,
+        toolName: result.toolName,
+        mcpProtocolVersion: result.mcpProtocolVersion,
+        responseBytes: result.responseBytes,
+        hitCount: resultCount,
+      };
     }
   } else {
-    // DOWNLOAD
     const file = await prisma.knowledgePackFile.findFirst({
       where: {
         versionId: version.id,
@@ -325,59 +413,46 @@ export async function runServiceChannelValidation(input: {
       },
       include: { bundle: { select: { storageStatus: true, status: true, isActive: true } } },
     });
-    if (!file) {
-      failureCode = "DOWNLOAD_VALIDATION_FAILED";
+    if (!file?.storageKey) {
+      failureCode = "DOWNLOAD_OBJECT_NOT_FOUND";
       failureMessage = "원본문서(SOURCE_ORIGINAL)를 찾을 수 없습니다.";
-    } else if (!file.checksumSha256?.trim() || file.fileSize <= 0) {
-      failureCode = "DOWNLOAD_VALIDATION_FAILED";
-      failureMessage = "원본문서 무결성 정보가 없습니다.";
-    } else if (file.bundle.storageStatus !== "ACTIVE") {
-      failureCode = "DOWNLOAD_VALIDATION_FAILED";
-      failureMessage = "원본문서 저장소 상태가 활성이 아닙니다.";
+      latencyMs = Date.now() - started;
     } else {
-      status = "PASS";
-      details = {
+      const verified = await validateDownloadObjectIntegrity({
         fileId: file.id,
-        fileName: file.originalFileName,
+        objectKey: file.storageKey,
+        originalFileName: file.originalFileName,
         mimeType: file.mimeType,
-        fileSize: file.fileSize,
-        checksumSha256: file.checksumSha256,
-        storageStatus: file.bundle.storageStatus,
-      };
-      resultCount = 1;
+        expectedFileSize: file.fileSize,
+        expectedChecksumSha256: file.checksumSha256,
+      });
+      latencyMs = verified.latencyMs;
+      if (!verified.ok) {
+        failureCode = verified.code;
+        failureMessage = verified.message;
+      } else {
+        status = "PASS";
+        resultCount = 1;
+        details = {
+          ...details,
+          fileId: verified.fileId,
+          fileName: verified.fileName,
+          mimeType: verified.mimeType,
+          fileSize: verified.fileSize,
+          checksumSha256: verified.checksumSha256,
+          // Never expose full objectKey to provider clients
+          storageVerified: true,
+        };
+      }
     }
   }
 
-  const latencyMs = Date.now() - started;
-  const row = await prisma.serviceValidationRun.upsert({
-    where: {
-      versionId_channel: {
-        versionId: version.id,
-        channel: input.channel as ServiceValidationChannel,
-      },
-    },
-    create: {
+  // Append-only: always create a new run row.
+  const row = await prisma.serviceValidationRun.create({
+    data: {
       packId: pack.packId,
       versionId: version.id,
       channel: input.channel as ServiceValidationChannel,
-      status,
-      pipelineRunId: latest.id,
-      indexGenerationId: binding.indexGenerationId,
-      normalizedDocumentId: binding.normalizedDocumentId,
-      fingerprint: binding.fingerprint,
-      testedAt: new Date(),
-      testedByUserId: input.userId,
-      query,
-      resultCount,
-      topChunkId,
-      sourceDocumentId,
-      page,
-      latencyMs,
-      failureCode,
-      failureMessage,
-      details,
-    },
-    update: {
       status,
       pipelineRunId: latest.id,
       indexGenerationId: binding.indexGenerationId,
@@ -401,6 +476,8 @@ export async function runServiceChannelValidation(input: {
     channel: input.channel,
     selected: true,
     status: row.status,
+    currentValidity: "CURRENT",
+    runId: row.id,
     testedAt: row.testedAt?.toISOString() ?? null,
     query: row.query,
     resultCount: row.resultCount,
@@ -413,6 +490,7 @@ export async function runServiceChannelValidation(input: {
     pipelineRunId: row.pipelineRunId,
     indexGenerationId: row.indexGenerationId,
     fingerprint: row.fingerprint,
+    adapterPath: adapterPathForChannel(input.channel),
     details: asRecord(row.details),
   };
 }
@@ -422,7 +500,7 @@ export async function assertSelectedServiceValidationsPassed(input: {
   distribution: Pick<PackDistributionMetadata, "allowApi" | "allowMcp" | "allowDownload">;
   bindingFingerprint?: string | null;
   bindingIndexGenerationId?: string | null;
-}): Promise<void> {
+}): Promise<Record<string, { status: string; runId: string; testedAt: string | null }>> {
   const selected = selectedServiceChannels(input.distribution);
   if (selected.length === 0) {
     throw new PayloadServiceError(
@@ -431,40 +509,115 @@ export async function assertSelectedServiceValidationsPassed(input: {
       400,
     );
   }
-  const runs = await prisma.serviceValidationRun.findMany({
-    where: { versionId: input.versionId, channel: { in: selected } },
-  });
-  const byChannel = new Map(runs.map((r) => [r.channel, r]));
+  const snapshot: Record<string, { status: string; runId: string; testedAt: string | null }> = {};
   for (const channel of selected) {
-    const run = byChannel.get(channel);
-    if (!run || run.status !== "PASS") {
+    const run = await findLatestServiceValidationRun({ versionId: input.versionId, channel });
+    const validity = run
+      ? resolveRunCurrentValidity({
+          run,
+          bindingFingerprint: input.bindingFingerprint,
+          bindingIndexGenerationId: input.bindingIndexGenerationId,
+        })
+      : "STALE";
+    if (!run || run.status !== "PASS" || validity !== "CURRENT") {
       throw new PayloadServiceError(
-        run?.status === "STALE" ? "SERVICE_VALIDATION_STALE" : "SERVICE_VALIDATION_REQUIRED",
-        run?.status === "STALE"
+        validity === "STALE" || run?.status === "STALE"
+          ? "SERVICE_VALIDATION_STALE"
+          : "SERVICE_VALIDATION_REQUIRED",
+        validity === "STALE"
           ? "지식 데이터 또는 유통정보가 변경되어 서비스 검증을 다시 진행해야 합니다."
           : `선택한 ${channel} 제공 방식의 검증이 필요합니다.`,
         400,
       );
     }
-    if (
-      input.bindingFingerprint &&
-      run.fingerprint &&
-      run.fingerprint !== input.bindingFingerprint
-    ) {
+    snapshot[channel] = {
+      status: run.status,
+      runId: run.id,
+      testedAt: run.testedAt?.toISOString() ?? null,
+    };
+  }
+  return snapshot;
+}
+
+export async function assertCurrentServiceValidationEvidence(input: {
+  packId: string;
+  versionId: string;
+  snapshot: DoclingBundleReviewSubmitSnapshot;
+}): Promise<void> {
+  const dist = await prisma.packDistributionMetadata.findUnique({
+    where: { versionId: input.versionId },
+  });
+  if (!dist) {
+    throw new PayloadServiceError("INCOMPLETE", "유통정보가 없습니다.", 400);
+  }
+  if (isServiceEnded(dist.serviceEndsAt)) {
+    throw new PayloadServiceError(
+      "SERVICE_ENDED",
+      "서비스 종료일이 지나 서비스를 제공할 수 없습니다.",
+      400,
+    );
+  }
+
+  const selectedNow = selectedServiceChannels(dist);
+  const snapAllowApi = input.snapshot.allowApi !== false;
+  const snapAllowMcp = input.snapshot.allowMcp !== false;
+  const snapAllowDownload = input.snapshot.allowDownload !== false;
+  if (
+    snapAllowApi !== dist.allowApi ||
+    snapAllowMcp !== dist.allowMcp ||
+    snapAllowDownload !== dist.allowDownload
+  ) {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
+      400,
+    );
+  }
+
+  const { binding, latest } = await loadBindingContext(input.packId, input.versionId);
+  if (!binding || !latest) {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
+      400,
+    );
+  }
+
+  const snapValidation = input.snapshot.serviceValidation ?? {};
+  for (const channel of selectedNow) {
+    const snap = snapValidation[channel];
+    if (!snap?.runId) {
       throw new PayloadServiceError(
-        "SERVICE_VALIDATION_STALE",
-        "지식 데이터가 변경되어 서비스 검증을 다시 진행해야 합니다.",
+        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+        "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
         400,
       );
     }
+    const run = await prisma.serviceValidationRun.findUnique({ where: { id: snap.runId } });
     if (
-      input.bindingIndexGenerationId &&
-      run.indexGenerationId &&
-      run.indexGenerationId !== input.bindingIndexGenerationId
+      !run ||
+      run.packId !== input.packId ||
+      run.versionId !== input.versionId ||
+      run.channel !== channel ||
+      run.status !== "PASS" ||
+      run.pipelineRunId !== latest.id ||
+      run.indexGenerationId !== binding.indexGenerationId ||
+      run.fingerprint !== binding.fingerprint ||
+      run.normalizedDocumentId !== binding.normalizedDocumentId ||
+      (snap.testedAt &&
+        run.testedAt &&
+        run.testedAt.toISOString() !== snap.testedAt)
     ) {
       throw new PayloadServiceError(
-        "SERVICE_VALIDATION_STALE",
-        "검색 인덱스가 변경되어 서비스 검증을 다시 진행해야 합니다.",
+        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+        "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
+        400,
+      );
+    }
+    if (run.invalidatedAt) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+        "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
         400,
       );
     }

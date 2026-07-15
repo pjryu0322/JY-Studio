@@ -1,13 +1,17 @@
 import { prisma } from "@/lib/prisma";
 
-/** Mark active PASS/FAIL service validations as STALE for a version (e.g. after pipeline rerun). */
+/**
+ * Invalidate current service validations for a version without mutating historical PASS status.
+ * Sets invalidatedAt on non-invalidated PASS/FAIL runs (append-only semantics).
+ */
 export async function markServiceValidationsStaleForVersion(versionId: string): Promise<number> {
   const result = await prisma.serviceValidationRun.updateMany({
     where: {
       versionId,
       status: { in: ["PASS", "FAIL"] },
+      invalidatedAt: null,
     },
-    data: { status: "STALE" },
+    data: { invalidatedAt: new Date() },
   });
   return result.count;
 }

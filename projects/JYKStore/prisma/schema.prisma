@@ -473,13 +473,17 @@ model ServiceValidationRun {
   failureCode           String?
   failureMessage        String?
   details               Json?
+  /// When set, historical PASS is no longer current (append-only invalidation).
+  invalidatedAt         DateTime?
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
 
   pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Cascade)
   version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
-  @@unique([versionId, channel])
+  @@index([versionId, channel, createdAt])
+  @@index([versionId, channel, status])
+  @@index([packId, createdAt])
   @@index([packId, channel, status])
   @@index([versionId, status])
 }

@@ -37,15 +37,15 @@ function statusClass(status: string): string {
 const CHANNEL_COPY: Record<string, { title: string; hint: string }> = {
   API: {
     title: "Retrieval API 검증",
-    hint: "테스트 질문으로 Draft 검색 인덱스를 조회합니다.",
+    hint: "실행 경로: Retrieval API Adapter",
   },
   MCP: {
     title: "MCP 검증",
-    hint: "MCP와 동일한 내부 검색 경로로 결과를 확인합니다.",
+    hint: "실행 경로: MCP Tool Handler / jykstore_retrieval_query",
   },
   DOWNLOAD: {
     title: "원본문서 다운로드 검증",
-    hint: "원본문서 존재·무결성·저장소 상태를 확인합니다.",
+    hint: "실행 경로: Object Storage Stream + SHA-256",
   },
 };
 
@@ -85,8 +85,10 @@ export function ProviderServiceValidationTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
   }, [packId]);
 
+  const canRun = Boolean(editable && status?.canRunValidation);
+
   async function handleRun(channel: "API" | "MCP" | "DOWNLOAD") {
-    if (!editable) return;
+    if (!canRun) return;
     setRunningChannel(channel);
     setError(null);
     try {
@@ -118,13 +120,19 @@ export function ProviderServiceValidationTab({
         </p>
       </div>
 
+      {!status?.canRunValidation ? (
+        <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          검수요청 시점의 검증 결과입니다. 변경하려면 검수요청을 회수해 주세요.
+        </p>
+      ) : null}
+
       {error ? (
         <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
           {error}
         </p>
       ) : null}
 
-      {selected.some((c) => c.channel === "API" || c.channel === "MCP") ? (
+      {selected.some((c) => c.channel === "API" || c.channel === "MCP") && canRun ? (
         <div>
           <label className="text-xs font-semibold text-slate-700" htmlFor="svc-query">
             테스트 질문
@@ -134,8 +142,7 @@ export function ProviderServiceValidationTab({
               id="svc-query"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              disabled={!editable}
-              className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm disabled:bg-slate-50"
+              className="min-h-[44px] w-full rounded-xl border border-store-border px-3 text-sm"
             />
           </div>
         </div>
@@ -157,19 +164,34 @@ export function ProviderServiceValidationTab({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="font-semibold text-slate-900">{copy.title}</p>
-                    <p className="text-xs text-store-muted">{copy.hint}</p>
+                    <p className="text-xs text-store-muted">
+                      {channel.adapterPath ?? copy.hint}
+                    </p>
                   </div>
                   <span className={`text-xs font-bold ${statusClass(channel.status)}`}>
                     {statusLabel(channel.status)}
+                    {channel.currentValidity === "STALE" ? " · 무효" : null}
                   </span>
                 </div>
+                {channel.runId ? (
+                  <p className="mt-1 font-mono text-[11px] text-slate-500">Run: {channel.runId}</p>
+                ) : null}
                 {channel.failureMessage ? (
                   <p className="mt-2 text-xs text-rose-700">{channel.failureMessage}</p>
                 ) : null}
-                {channel.status === "PASS" ? (
+                {channel.status === "PASS" || channel.status === "STALE" ? (
                   <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs text-slate-700">
                     {channel.resultCount != null ? <li>결과 수: {channel.resultCount}</li> : null}
                     {channel.latencyMs != null ? <li>응답시간: {channel.latencyMs}ms</li> : null}
+                    {channel.pipelineRunId ? (
+                      <li className="break-all">Pipeline: {channel.pipelineRunId}</li>
+                    ) : null}
+                    {channel.indexGenerationId ? (
+                      <li className="break-all">Generation: {channel.indexGenerationId}</li>
+                    ) : null}
+                    {channel.fingerprint ? (
+                      <li className="break-all">Fingerprint: {channel.fingerprint}</li>
+                    ) : null}
                     {channel.sourceDocumentId ? (
                       <li>출처: {channel.sourceDocumentId}</li>
                     ) : null}
@@ -177,9 +199,12 @@ export function ProviderServiceValidationTab({
                     {channel.details && "fileName" in channel.details ? (
                       <li>파일: {String(channel.details.fileName)}</li>
                     ) : null}
+                    {channel.details && "toolName" in channel.details ? (
+                      <li>Tool: {String(channel.details.toolName)}</li>
+                    ) : null}
                   </ul>
                 ) : null}
-                {editable ? (
+                {canRun ? (
                   <button
                     type="button"
                     disabled={runningChannel === channel.channel}

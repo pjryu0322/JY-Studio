@@ -7,7 +7,6 @@ import type {
 import { tokenizeSearchQuery } from "@/lib/search-utils";
 import { applyHybridVectorRanking } from "@/lib/retrieval/hybrid-ranking-service";
 import { collectRetrievalCandidates } from "@/lib/retrieval/retrieval-candidate-store";
-import { loadPublicRetrievalPack } from "@/lib/retrieval/retrieval-pack-store";
 import {
   mapRetrievalResponse,
   selectRetrievalCandidates,
@@ -15,7 +14,6 @@ import {
 import { scoreRetrievalCandidates } from "@/lib/retrieval/retrieval-score-service";
 import type { RetrievalEvaluationCandidate } from "@/lib/retrieval-evaluation/retrieval-evaluation-types";
 import { toMetadataRecord } from "@/lib/retrieval/retrieval-types";
-import { assertServiceChannelEnabled } from "@/lib/distribution/service-channel-policy";
 
 /**
  * Retrieval orchestration facade.
@@ -42,54 +40,39 @@ export async function retrieveContexts(input: {
   includeMetadata: boolean;
   retrievalMode: RetrievalMode;
   requestId: string;
-  /** Public API defaults to API; MCP bridge passes MCP. */
+  /** @deprecated Fixed by route — callers must not pass client-controlled values. */
   serviceChannel?: "API" | "MCP";
 }): Promise<RetrieveContextsResult> {
-  const packContext = await loadPublicRetrievalPack(input.knowledgePackId);
-  if (!packContext) {
-    return { ok: false, code: "PACK_NOT_FOUND" };
-  }
-
-  const channel = input.serviceChannel ?? "API";
-  const channelCheck = assertServiceChannelEnabled(channel, {
-    allowApi: packContext.allowApi,
-    allowMcp: packContext.allowMcp,
-    allowDownload: packContext.allowDownload,
-    serviceEndsAt: packContext.serviceEndsAt,
-  });
-  if (!channelCheck.ok) {
-    return {
-      ok: false,
-      code: channelCheck.code as "SERVICE_CHANNEL_DISABLED" | "SERVICE_ENDED",
-      message: channelCheck.message,
-    };
-  }
-
-  const activeChunkCount = await prisma.knowledgeChunk.count({
-    where: {
-      versionId: packContext.versionId,
-      isActive: true,
-    },
-  });
-  if (activeChunkCount < 1) {
-    return { ok: false, code: "PACK_RETRIEVAL_NOT_READY" };
-  }
-
-  const data = await retrieveContextsForVersion({
-    packId: packContext.packId,
-    versionId: packContext.versionId,
+  const { executeRetrievalApiRequest } = await import("@/lib/retrieval/retrieval-api-adapter");
+  const result = await executeRetrievalApiRequest({
+    knowledgePackId: input.knowledgePackId,
     query: input.query,
     filters: input.filters,
     topK: input.topK,
     includeMetadata: input.includeMetadata,
     retrievalMode: input.retrievalMode,
     requestId: input.requestId,
-    excludeDraftScope: true,
+    serviceChannel: input.serviceChannel ?? "API",
+    executionMode: "PUBLIC",
   });
-  return { ok: true, data };
+  if (!result.ok) {
+    if (result.code === "PACK_NOT_FOUND") return { ok: false, code: "PACK_NOT_FOUND" };
+    if (result.code === "PACK_RETRIEVAL_NOT_READY") {
+      return { ok: false, code: "PACK_RETRIEVAL_NOT_READY" };
+    }
+    if (result.code === "SERVICE_CHANNEL_DISABLED" || result.code === "SERVICE_ENDED") {
+      return {
+        ok: false,
+        code: result.code as "SERVICE_CHANNEL_DISABLED" | "SERVICE_ENDED",
+        message: result.message,
+      };
+    }
+    return { ok: false, code: "PACK_NOT_FOUND" };
+  }
+  return { ok: true, data: result.data };
 }
 
-async function retrieveContextsForVersion(input: {
+export async function retrieveContextsForVersion(input: {
   packId: string;
   versionId: string;
   query?: string;

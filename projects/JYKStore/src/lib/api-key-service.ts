@@ -3,10 +3,18 @@ import { createPlainApiKey, getApiKeyPrefix, hashApiKey } from "@/lib/api-key-cr
 import { toApiKeyDto, type ApiKeyDto } from "@/lib/api-key-dto";
 import { prisma } from "@/lib/prisma";
 
-export const DEFAULT_API_KEY_SCOPES = ["packs:read", "context:read", "usage:write"] as const;
+export const DEFAULT_API_KEY_SCOPES = [
+  "packs:read",
+  "context:read",
+  "usage:write",
+  "mcp:invoke",
+] as const;
 
-/** Primary Public API / MCP scope (A안: context:read covers retrieval/graph/exports). */
+/** Primary Public API scope (A안: context:read covers retrieval/graph/exports). */
 export const PUBLIC_API_REQUIRED_SCOPE = "context:read" as const;
+
+/** MCP bridge / MCP-trusted routes require this scope (not spoofable via headers). */
+export const PUBLIC_API_MCP_SCOPE = "mcp:invoke" as const;
 
 const MAX_API_KEY_NAME_LENGTH = 80;
 

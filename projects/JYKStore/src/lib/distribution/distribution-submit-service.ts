@@ -228,11 +228,15 @@ export async function commitDistributionPackForReview(
     };
   }
 
-  const { assertSelectedServiceValidationsPassed } = await import(
-    "@/lib/distribution/service-validation-service"
-  );
+  let serviceValidation: Record<
+    string,
+    { status: string; runId: string; testedAt: string | null }
+  >;
   try {
-    await assertSelectedServiceValidationsPassed({
+    const { assertSelectedServiceValidationsPassed } = await import(
+      "@/lib/distribution/service-validation-service"
+    );
+    serviceValidation = await assertSelectedServiceValidationsPassed({
       versionId: version.id,
       distribution: meta,
       bindingFingerprint: nd.fingerprint,
@@ -248,30 +252,6 @@ export async function commitDistributionPackForReview(
       };
     }
     throw error;
-  }
-
-  const serviceRuns = await prisma.serviceValidationRun.findMany({
-    where: {
-      versionId: version.id,
-      channel: {
-        in: [
-          ...(meta.allowApi ? (["API"] as const) : []),
-          ...(meta.allowMcp ? (["MCP"] as const) : []),
-          ...(meta.allowDownload ? (["DOWNLOAD"] as const) : []),
-        ],
-      },
-    },
-  });
-  const serviceValidation: Record<
-    string,
-    { status: string; runId: string | null; testedAt: string | null }
-  > = {};
-  for (const run of serviceRuns) {
-    serviceValidation[run.channel] = {
-      status: run.status,
-      runId: run.id,
-      testedAt: run.testedAt?.toISOString() ?? null,
-    };
   }
 
   const snapshot = buildDoclingBundleReviewSubmitSnapshot({
