@@ -12,6 +12,21 @@ import {
   type CandidateCollectResult,
 } from "./retrieval-types";
 
+function passesIndexScope(
+  chunk: CandidateChunk,
+  input: Pick<CandidateCollectInput, "indexGenerationId" | "excludeDraftScope">,
+): boolean {
+  const meta = toMetadataRecord(chunk.metadata);
+  if (input.indexGenerationId) {
+    return meta?.indexGenerationId === input.indexGenerationId;
+  }
+  if (input.excludeDraftScope) {
+    // Explicit draft generations must not appear in public retrieval.
+    if (meta?.indexScope === "DRAFT") return false;
+  }
+  return true;
+}
+
 async function loadCandidatePage(
   versionId: string,
   cursor: string | undefined,
@@ -33,7 +48,8 @@ export async function collectRetrievalCandidates(
   // filters도 query도 없으면 기본 목록 조회 성격이므로 첫 page만 반환한다. (전체 scan 안 함)
   if (!hasFilters && !hasQuery) {
     const page = await loadCandidatePage(versionId, undefined);
-    return { collected: page, scanned: page.length, collectionMode: "default-page" };
+    const collected = page.filter((c) => passesIndexScope(c, input));
+    return { collected, scanned: page.length, collectionMode: "default-page" };
   }
 
   const collected: CandidateChunk[] = [];
@@ -51,6 +67,7 @@ export async function collectRetrievalCandidates(
     cursor = page[page.length - 1]!.id;
 
     for (const chunk of page) {
+      if (!passesIndexScope(chunk, input)) continue;
       if (hasFilters && !matchesAllMetadataFilters(toMetadataRecord(chunk.metadata), filters)) {
         continue;
       }

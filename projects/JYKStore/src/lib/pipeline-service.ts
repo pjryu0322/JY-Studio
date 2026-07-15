@@ -114,6 +114,9 @@ export async function createPipelineRun(input: {
   triggerType: string;
   triggeredByClientId?: string;
   steps?: PipelineStatus[];
+  /** Default RUNNING for legacy callers; knowledge jobs may enqueue as PENDING. */
+  status?: PipelineStepStatus;
+  summary?: string | null;
 }): Promise<{ runId: string } | { error: "NOT_FOUND" }> {
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
@@ -129,7 +132,8 @@ export async function createPipelineRun(input: {
       packId: input.packId,
       triggerType: input.triggerType,
       triggeredByClientId: input.triggeredByClientId ?? null,
-      status: "RUNNING",
+      status: input.status ?? "RUNNING",
+      summary: input.summary ?? null,
       steps: input.steps?.length
         ? {
             create: input.steps.map((step) => ({
@@ -163,6 +167,15 @@ export async function completePipelineStep(input: {
       ? undefined
       : (input.details as Prisma.InputJsonValue);
 
+  const isTerminal =
+    input.status === "PASS" ||
+    input.status === "WARNING" ||
+    input.status === "FAIL" ||
+    input.status === "SKIPPED";
+  const startedAt =
+    input.status === "PENDING" ? null : existing?.startedAt ?? now;
+  const finishedAt = isTerminal ? now : null;
+
   if (!existing) {
     const run = await prisma.pipelineRun.findUnique({
       where: { id: input.runId },
@@ -181,8 +194,8 @@ export async function completePipelineStep(input: {
         status: input.status,
         message: input.message ?? null,
         details,
-        startedAt: now,
-        finishedAt: now,
+        startedAt,
+        finishedAt,
       },
     });
 
@@ -195,8 +208,8 @@ export async function completePipelineStep(input: {
       status: input.status,
       message: input.message ?? existing.message,
       details,
-      startedAt: existing.startedAt ?? now,
-      finishedAt: now,
+      startedAt: existing.startedAt ?? startedAt,
+      finishedAt,
     },
   });
 

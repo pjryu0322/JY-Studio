@@ -5,6 +5,7 @@ import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-
 import { isDoclingPayloadReady } from "@/lib/docling-import/docling-import-ui";
 import {
   PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB,
+  PROVIDER_PACK_GO_TO_KNOWLEDGE_TAB,
   PROVIDER_PACK_GO_TO_PAYLOAD_TAB,
 } from "@/lib/role-based-ux-copy";
 
@@ -120,9 +121,11 @@ export function ProviderDistributionReadiness({
             >
               {item.tab === "payload"
                 ? PROVIDER_PACK_GO_TO_PAYLOAD_TAB
-                : item.tab === "distribution"
-                  ? PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB
-                  : "기본정보로 이동"}
+                : item.tab === "knowledge"
+                  ? PROVIDER_PACK_GO_TO_KNOWLEDGE_TAB
+                  : item.tab === "distribution"
+                    ? PROVIDER_PACK_GO_TO_DISTRIBUTION_TAB
+                    : "기본정보로 이동"}
             </button>
           ))}
         </div>

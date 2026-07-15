@@ -113,7 +113,7 @@ export const PROVIDER_PACK_NEXT_TASK_WAITING_ADMIN =
 
 export const PROVIDER_PACK_REVIEW_READY_TITLE = "검수 요청 준비";
 export const PROVIDER_PACK_REVIEW_READY_BODY =
-  "기존 자료와 검수 데이터가 있으면 제출할 수 있습니다. 필수 데이터가 없으면 명확한 오류가 표시됩니다.";
+  "기본정보·자료 등록·지식 데이터 생성·유통정보가 모두 완료되면 검수요청을 제출할 수 있습니다.";
 
 export const PROVIDER_SUBMIT_CTA = "검수 요청 제출";
 export const PROVIDER_SUBMIT_CONFIRM =

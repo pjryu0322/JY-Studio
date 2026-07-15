@@ -9,6 +9,13 @@ export type CandidateCollectInput = {
   filters: RetrievalFilters;
   hasFilters: boolean;
   hasQuery: boolean;
+  /** When set, only chunks for this index generation are candidates (draft eval). */
+  indexGenerationId?: string | null;
+  /**
+   * Public retrieval: exclude explicit DRAFT scope.
+   * Evaluation: allow DRAFT. Legacy chunks without indexScope remain eligible.
+   */
+  excludeDraftScope?: boolean;
 };
 
 export type CandidateCollectResult = {

@@ -64,6 +64,7 @@ export async function retrieveContexts(input: {
     includeMetadata: input.includeMetadata,
     retrievalMode: input.retrievalMode,
     requestId: input.requestId,
+    excludeDraftScope: true,
   });
   return { ok: true, data };
 }
@@ -77,6 +78,8 @@ async function retrieveContextsForVersion(input: {
   includeMetadata: boolean;
   retrievalMode: RetrievalMode;
   requestId: string;
+  indexGenerationId?: string | null;
+  excludeDraftScope?: boolean;
 }): Promise<RetrievalResponseDto> {
   const searchQuery = input.query?.trim() ?? "";
   const tokens = tokenizeSearchQuery(searchQuery);
@@ -89,6 +92,8 @@ async function retrieveContextsForVersion(input: {
     filters: input.filters,
     hasFilters,
     hasQuery,
+    indexGenerationId: input.indexGenerationId,
+    excludeDraftScope: input.excludeDraftScope,
   });
 
   const scored = scoreRetrievalCandidates({
@@ -139,6 +144,7 @@ export async function runRetrievalForEvaluation(input: {
   query: string;
   retrievalMode: RetrievalMode;
   topK: number;
+  indexGenerationId?: string | null;
 }): Promise<RetrievalEvaluationCandidate[]> {
   const response = await retrieveContextsForVersion({
     packId: input.knowledgePackId,
@@ -149,6 +155,8 @@ export async function runRetrievalForEvaluation(input: {
     includeMetadata: true,
     retrievalMode: input.retrievalMode,
     requestId: `eval-${Date.now()}`,
+    indexGenerationId: input.indexGenerationId,
+    excludeDraftScope: false,
   });
 
   const chunkIds = response.contexts.map((c) => c.chunkId);

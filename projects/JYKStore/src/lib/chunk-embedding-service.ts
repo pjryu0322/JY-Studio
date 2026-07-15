@@ -126,6 +126,11 @@ export async function getPackEmbeddingSummary(
 export async function rebuildPackEmbeddings(input: {
   packId: string;
   force?: boolean;
+  versionId?: string;
+  chunkType?: string;
+  indexGenerationId?: string;
+  pipelineRunId?: string;
+  fingerprint?: string;
 }): Promise<EmbeddingRebuildResultDto | null> {
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
@@ -133,7 +138,7 @@ export async function rebuildPackEmbeddings(input: {
   });
   if (!pack) return null;
 
-  const versionId = await getLatestVersionId(input.packId);
+  const versionId = input.versionId ?? (await getLatestVersionId(input.packId));
   const result: EmbeddingRebuildResultDto = {
     packId: input.packId,
     processedCount: 0,
@@ -145,10 +150,35 @@ export async function rebuildPackEmbeddings(input: {
   if (!versionId) return result;
 
   const activeChunks = await prisma.knowledgeChunk.findMany({
-    where: { versionId, isActive: true },
+    where: {
+      versionId,
+      isActive: true,
+      ...(input.chunkType ? { chunkType: input.chunkType } : {}),
+    },
   });
 
-  for (const chunk of activeChunks) {
+  const filtered = activeChunks.filter((chunk) => {
+    const meta =
+      chunk.metadata && typeof chunk.metadata === "object" && !Array.isArray(chunk.metadata)
+        ? (chunk.metadata as Record<string, unknown>)
+        : null;
+    if (input.indexGenerationId && meta?.indexGenerationId !== input.indexGenerationId) {
+      return false;
+    }
+    if (input.pipelineRunId && meta?.pipelineRunId !== input.pipelineRunId) {
+      return false;
+    }
+    if (
+      input.fingerprint &&
+      meta?.fingerprint !== input.fingerprint &&
+      meta?.normalizedDocumentFingerprint !== input.fingerprint
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  for (const chunk of filtered) {
     result.processedCount += 1;
     const contentHash = computeChunkContentHash(chunk as KnowledgeChunk);
 

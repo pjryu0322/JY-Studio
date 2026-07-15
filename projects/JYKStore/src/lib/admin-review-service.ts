@@ -744,6 +744,22 @@ export async function approvePackReview(input: {
 
   await recordApprovalPipeline(packId, input.reviewerClientId);
 
+  if (packageMode === "DOCLING_BUNDLE") {
+    const latestVersion = await prisma.knowledgePackVersion.findFirst({
+      where: { packId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    if (latestVersion) {
+      const { promoteDraftIndexToProduction } = await import(
+        "@/lib/docling-knowledge/docling-nd-knowledge-builder"
+      );
+      await promoteDraftIndexToProduction({ versionId: latestVersion.id }).catch(
+        () => 0,
+      );
+    }
+  }
+
   const detail = await getAdminReviewDetail(packId);
   return { detail: detail! };
 }

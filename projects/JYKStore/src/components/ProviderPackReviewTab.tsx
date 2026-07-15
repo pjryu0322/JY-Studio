@@ -143,7 +143,7 @@ export function ProviderPackReviewTab({
 
       {legacyMissingSources && !isReviewing && !isPublished ? (
         <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3 text-xs text-amber-950">
-          <p>등록된 Payload 또는 원천 자료가 없습니다. Payload를 등록한 뒤 검수 요청을 진행하세요.</p>
+          <p>등록된 자료가 없습니다. 자료 등록을 완료한 뒤 검수 요청을 진행하세요.</p>
           <button
             type="button"
             onClick={onGoToPayloadTab}
@@ -158,11 +158,7 @@ export function ProviderPackReviewTab({
         <>
           <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
             <p className="text-sm font-bold text-slate-900">{PROVIDER_PACK_REVIEW_READY_TITLE}</p>
-            <p className="mt-1 text-xs text-store-muted">
-              {distributionMode
-                ? "기본정보·Payload·유통정보가 준비되면 검수 요청을 제출할 수 있습니다."
-                : PROVIDER_PACK_REVIEW_READY_BODY}
-            </p>
+            <p className="mt-1 text-xs text-store-muted">{PROVIDER_PACK_REVIEW_READY_BODY}</p>
           </div>
           {!distributionMode ? <ProviderPackReadinessCard pack={pack} /> : null}
           <button

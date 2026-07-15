@@ -18,6 +18,7 @@ import {
   computeDoclingRetryDelayMs,
   isDoclingTransientProcessingError,
 } from "@/workers/docling-processing-job-claim";
+import { runKnowledgePipelineWorkerOnce } from "@/workers/knowledge-pipeline-worker";
 
 type ClaimedJobRow = {
   id: string;
@@ -231,10 +232,17 @@ export async function runDoclingProcessingWorkerLoop(options?: {
     const job = await claimNextDoclingProcessingJob(lockOwner);
     if (job) {
       await processDoclingProcessingJob(job);
-    } else if (options?.once) {
-      return;
     } else {
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      // When idle on Docling jobs, drain one knowledge-generation pipeline job.
+      const knowledgeDidWork = await runKnowledgePipelineWorkerOnce(lockOwner).catch(
+        () => false,
+      );
+      if (!knowledgeDidWork && options?.once) {
+        return;
+      }
+      if (!knowledgeDidWork) {
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
     }
     if (options?.once) return;
   }

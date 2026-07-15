@@ -27,7 +27,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     return jsonWithClientIdCookie({ clientId, ...result }, clientId);
   } catch (error) {
-    logSafeRouteError("provider/knowledge-pipeline GET", error, { packId, clientId });
+    logSafeRouteError({
+      scope: "provider/knowledge-pipeline",
+      method: "GET",
+      path: "/api/v1/provider/packs/[packId]/knowledge-pipeline",
+      error,
+    });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, {
       status: 500,
     });
@@ -63,14 +68,24 @@ export async function POST(request: NextRequest, context: RouteContext) {
             ? 403
             : 400;
       return jsonWithClientIdCookie(
-        { error: result.error, message: result.message },
+        {
+          error: result.error,
+          message: result.message,
+          code: "code" in result ? result.code : result.error,
+        },
         clientId,
         { status },
       );
     }
-    return jsonWithClientIdCookie({ clientId, ...result }, clientId);
+    // 202: durable job accepted; worker claims PENDING PipelineRun.
+    return jsonWithClientIdCookie({ clientId, ...result }, clientId, { status: 202 });
   } catch (error) {
-    logSafeRouteError("provider/knowledge-pipeline POST", error, { packId, clientId });
+    logSafeRouteError({
+      scope: "provider/knowledge-pipeline",
+      method: "POST",
+      path: "/api/v1/provider/packs/[packId]/knowledge-pipeline",
+      error,
+    });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, {
       status: 500,
     });
