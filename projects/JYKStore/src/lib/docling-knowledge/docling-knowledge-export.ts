@@ -145,7 +145,7 @@ export async function exportDoclingKnowledgePipelineStage(input: {
   const exportedAt = new Date().toISOString();
   const baseMeta = {
     packId: input.packId,
-    packTitle: pack.title,
+    packTitle: pack.name,
     versionId: version.id,
     versionLabel: version.version,
     stageId: input.stageId,
