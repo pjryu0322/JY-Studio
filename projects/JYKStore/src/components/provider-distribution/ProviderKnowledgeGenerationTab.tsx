@@ -7,10 +7,20 @@ import {
   type DoclingKnowledgePipelineStatusDto,
 } from "@/lib/provider-center-api";
 
-function statusLabel(status: string): string {
+function statusLabel(status: string, details?: Record<string, unknown> | null): string {
+  if (status === "PASS") {
+    const advisoryCount =
+      typeof details?.warningCount === "number"
+        ? details.warningCount
+        : Array.isArray(details?.warnings)
+          ? details.warnings.length
+          : 0;
+    if (details?.advisory === true && advisoryCount > 0) {
+      return `완료 · 확인사항 ${advisoryCount}건`;
+    }
+    return "완료";
+  }
   switch (status) {
-    case "PASS":
-      return "완료";
     case "WARNING":
       return "보완 권장";
     case "RUNNING":
@@ -55,15 +65,41 @@ function friendlyDetails(stageId: string, details: Record<string, unknown> | nul
     push("본문 블록 수", details.paragraphCount);
     push("표 수", details.tableCount);
     push("그림 수", details.figureCount);
-    push("경고 수", details.warningCount);
+    push("확인사항 수", details.warningCount);
     push("치명적 오류 수", details.blockerCount);
+    const warnings = details.warnings as Array<{ message?: string; code?: string }> | undefined;
+    if (Array.isArray(warnings) && warnings.length > 0) {
+      for (const w of warnings.slice(0, 8)) {
+        if (w.message) lines.push(`확인사항: ${w.message}`);
+      }
+    }
   } else if (stageId === "KNOWLEDGE_UNIT") {
     push("Unit 수", details.unitCount);
-    push("제외 수", details.excludedCount);
+    push("병합된 짧은 Section 수", details.shortSectionMergedCount);
+    push("단독 유지된 짧은 Unit 수", details.shortValidUnitCount);
     const coverage = details.coverage as Record<string, unknown> | undefined;
     if (coverage) {
-      push("본문 coverage", coverage.bodyCoverage);
+      push("지식화 대상 본문 문자 수", coverage.eligibleBodyChars);
+      push("Unit 반영 문자 수", coverage.unitBodyChars);
+      push("유효 본문 coverage", coverage.eligibleBodyCoverage ?? coverage.bodyCoverage);
+      push("원문 기준 coverage", coverage.rawBodyCoverage);
+      push("정상 제외 문자 수", coverage.normalExcludedBodyChars);
+      push("검토 필요 누락 문자 수", coverage.criticalExcludedBodyChars);
       push("표 coverage", coverage.tableCoverage);
+      push("그림 coverage", coverage.figureCoverage);
+      push("출처 추적 누락 수", coverage.provenanceMissing);
+      const reasons = coverage.exclusionReasons as
+        | Record<string, { count?: number; charCount?: number; sampleTexts?: string[] }>
+        | undefined;
+      if (reasons) {
+        for (const [code, detail] of Object.entries(reasons)) {
+          if (!detail || typeof detail !== "object") continue;
+          lines.push(
+            `제외/${code}: ${detail.count ?? 0}건, ${detail.charCount ?? 0}자` +
+              (detail.sampleTexts?.[0] ? ` (예: ${detail.sampleTexts[0]})` : ""),
+          );
+        }
+      }
     }
   } else if (stageId === "RETRIEVAL_CHUNK") {
     push("Chunk 수", details.chunkCount);
@@ -201,8 +237,15 @@ export function ProviderKnowledgeGenerationTab({
                 <p className="text-xs text-store-muted">{stage.description}</p>
               </div>
               <span className={`text-xs font-bold ${statusClass(stage.status)}`}>
-                {statusLabel(stage.status)}
+                {statusLabel(stage.status, stage.details)}
               </span>
+              {stage.status === "PASS" &&
+              stage.details?.advisory === true &&
+              Number(stage.details.warningCount ?? 0) > 0 ? (
+                <span className="rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                  확인사항 {String(stage.details.warningCount)}건
+                </span>
+              ) : null}
             </div>
             {stage.message ? (
               <p className="mt-1 text-xs text-slate-700">{stage.message}</p>

@@ -243,7 +243,16 @@ export async function isDoclingKnowledgePipelinePassed(packId: string): Promise<
 
   const readyStep = latestPass.steps.find((s) => s.step === "READY_FOR_REVIEW");
   const evalStep = latestPass.steps.find((s) => s.step === "SEARCH_EVALUATING");
+  const structureStep = latestPass.steps.find((s) => s.step === "STRUCTURE_VALIDATING");
+  const knowledgeStep = latestPass.steps.find((s) => s.step === "KNOWLEDGE_CHECKING");
+  const chunkStep = latestPass.steps.find((s) => s.step === "CHUNKING");
+  const indexStep = latestPass.steps.find((s) => s.step === "INDEXING");
   if (readyStep?.status !== "PASS") return false;
+  if (structureStep?.status === "FAIL") return false;
+  // Knowledge Unit must be PASS — WARNING must not open distribution.
+  if (knowledgeStep?.status !== "PASS") return false;
+  if (chunkStep?.status !== "PASS") return false;
+  if (indexStep?.status !== "PASS") return false;
   if (evalStep?.status !== "PASS") {
     if (
       !(
@@ -844,11 +853,14 @@ export async function executeDoclingKnowledgePipeline(input: {
     input.packId,
     input.runId,
     "STRUCTURE_VALIDATING",
-    quality.warnings.length > 0 ? "WARNING" : "PASS",
+    "PASS",
     quality.warnings.length > 0
-      ? "구조 확인을 통과했지만 확인이 필요한 경고가 있습니다."
+      ? `문서 구조 확인을 통과했습니다. 확인사항 ${quality.warnings.length}건이 있습니다.`
       : "문서 구조 확인을 통과했습니다.",
-    structureDetails,
+    {
+      ...structureDetails,
+      advisory: quality.warnings.length > 0,
+    },
     lockOwner,
   );
 
@@ -904,18 +916,36 @@ export async function executeDoclingKnowledgePipeline(input: {
     return;
   }
 
-  if (built.unitCount === 0) {
+  if (built.unitCount === 0 || built.stepStatus === "FAIL") {
     await markStep(
       input.packId,
       input.runId,
       "KNOWLEDGE_CHECKING",
       "FAIL",
-      "지식 단위를 생성하지 못했습니다. 정규화 결과의 본문·표·그림 샘플을 확인한 뒤 다시 처리해 주세요.",
-      { ...built },
+      built.unitCount === 0
+        ? "지식 단위를 생성하지 못했습니다. 정규화 결과의 본문·표·그림 샘플을 확인한 뒤 다시 처리해 주세요."
+        : "지식 단위 Coverage 또는 출처 품질 기준을 충족하지 못했습니다. 제외 사유와 유효 본문 coverage를 확인한 뒤 다시 생성해 주세요.",
+      {
+        unitCount: built.unitCount,
+        byType: built.byType,
+        excludedCount: built.excludedCount,
+        shortSectionMergedCount: built.shortSectionMergedCount,
+        shortValidUnitCount: built.shortValidUnitCount,
+        warnings: built.warnings,
+        coverage: built.coverage,
+        sampleUnits: built.sampleUnits,
+        stepStatus: built.stepStatus,
+      },
       lockOwner,
     );
     await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-    await failRun(input.packId, input.runId, "Knowledge unit generation failed", binding);
+    await failRun(
+      input.packId,
+      input.runId,
+      "Knowledge unit generation failed",
+      binding,
+      "KNOWLEDGE_COVERAGE_FAILED",
+    );
     return;
   }
 
@@ -923,18 +953,46 @@ export async function executeDoclingKnowledgePipeline(input: {
     input.packId,
     input.runId,
     "KNOWLEDGE_CHECKING",
-    built.warnings.length > 0 || built.coverage.bodyCoverage < 0.99 ? "WARNING" : "PASS",
-    `지식 단위 ${built.unitCount}개를 생성했습니다.`,
+    built.stepStatus === "WARNING" ? "WARNING" : "PASS",
+    built.stepStatus === "WARNING"
+      ? `지식 단위 ${built.unitCount}개를 생성했지만 유효 본문 coverage가 보완 권장 구간입니다.`
+      : `지식 단위 ${built.unitCount}개를 생성했습니다.`,
     {
       unitCount: built.unitCount,
       byType: built.byType,
       excludedCount: built.excludedCount,
+      shortSectionMergedCount: built.shortSectionMergedCount,
+      shortValidUnitCount: built.shortValidUnitCount,
       warnings: built.warnings,
       coverage: built.coverage,
       sampleUnits: built.sampleUnits,
+      stepStatus: built.stepStatus,
     },
     lockOwner,
   );
+
+  if (built.stepStatus === "WARNING") {
+    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
+    await finishPipelineRun({
+      runId: input.runId,
+      status: "WARNING",
+      summary: serializeKnowledgeRunBinding({
+        ...binding,
+        failureCode: "KNOWLEDGE_COVERAGE_WARNING",
+        failureMessage: "Knowledge unit coverage below PASS threshold",
+        userMessage:
+          "지식 단위 품질이 보완 권장 구간입니다. 다시 생성하거나 원문을 확인한 뒤 재검증해 주세요.",
+        lockOwner: null,
+        lockExpiresAt: null,
+      }),
+    });
+    await updatePackPipelineStatus({
+      packId: input.packId,
+      pipelineStatus: "FAILED",
+      message: "지식 단위 Coverage 보완이 필요합니다.",
+    });
+    return;
+  }
 
   if (!(await heartbeat("검색 데이터 생성 중")) || !(await assertOwned())) {
     await cancelledExit("취소되어 중단되었습니다.");

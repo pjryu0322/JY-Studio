@@ -222,9 +222,12 @@ describe("docling knowledge pipeline structure stage wiring", () => {
     assert.ok(service.includes("IMPORT_ONLY_QUALITY_CODES"));
     assert.ok(service.includes("resolveDoclingKnowledgeStageNextAction"));
     assert.ok(service.includes("선행 단계 실패로 대기 중입니다.") || service.includes("문서 구조 확인을 통과해야"));
+    assert.ok(service.includes('advisory: quality.warnings.length > 0'));
+    assert.ok(service.includes("KNOWLEDGE_COVERAGE_WARNING") || service.includes("built.stepStatus"));
+    assert.ok(service.includes('knowledgeStep?.status !== "PASS"'));
   });
 
-  it("knowledge tab keeps ops JSON collapsed by default", () => {
+  it("knowledge tab keeps ops JSON collapsed by default and shows advisory badge copy", () => {
     const root = join(import.meta.dirname, "../..");
     const ui = readFileSync(
       join(root, "src/components/provider-distribution/ProviderKnowledgeGenerationTab.tsx"),
@@ -233,5 +236,7 @@ describe("docling knowledge pipeline structure stage wiring", () => {
     assert.ok(ui.includes('expanded === stage.id ? "상세 접기" : "상세 보기"'));
     assert.ok(ui.includes("운영 상세(JSON)"));
     assert.ok(ui.includes("showRaw"));
+    assert.ok(ui.includes("완료 · 확인사항"));
+    assert.ok(ui.includes("eligibleBodyCoverage"));
   });
 });

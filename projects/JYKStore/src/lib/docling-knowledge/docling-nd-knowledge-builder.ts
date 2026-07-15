@@ -5,6 +5,12 @@ import {
   DOCLING_KNOWLEDGE_UNIT_CHUNK_TYPE,
   DOCLING_RETRIEVAL_CHUNK_TYPE,
 } from "@/lib/docling-knowledge/docling-knowledge-stages";
+import {
+  bumpExclusionReason,
+  evaluateKnowledgeUnitStepStatus,
+  planDoclingBodyKnowledgeUnits,
+  type ExclusionReasonMap,
+} from "@/lib/docling-knowledge/docling-knowledge-unit-plan";
 import { prisma } from "@/lib/prisma";
 import { fixLoneSurrogates, sliceUtf16Safe } from "@/lib/text-encoding-safe";
 
@@ -12,6 +18,12 @@ const MAX_UNIT_CHARS = 6000;
 const MAX_CHUNK_CHARS = 1800;
 const MIN_CHUNK_CHARS = 40;
 const TABLE_ROWS_PER_CHUNK = 20;
+
+export {
+  DOCLING_KU_PASS_THRESHOLDS,
+  evaluateKnowledgeUnitStepStatus,
+  planDoclingBodyKnowledgeUnits,
+} from "@/lib/docling-knowledge/docling-knowledge-unit-plan";
 
 type NdSection = {
   id?: string;
@@ -50,6 +62,9 @@ export type DoclingKnowledgeBuildResult = {
   chunkCount: number;
   excludedCount: number;
   mergedCount: number;
+  shortSectionMergedCount: number;
+  shortValidUnitCount: number;
+  stepStatus: "PASS" | "WARNING" | "FAIL";
   warnings: string[];
   byType: Record<string, number>;
   indexGenerationId: string;
@@ -58,11 +73,19 @@ export type DoclingKnowledgeBuildResult = {
     unitChars: number;
     chunkChars: number;
     excludedChars: number;
+    rawBodyChars: number;
+    eligibleBodyChars: number;
+    unitBodyChars: number;
+    normalExcludedBodyChars: number;
+    criticalExcludedBodyChars: number;
+    rawBodyCoverage: number;
+    eligibleBodyCoverage: number;
+    /** Alias of eligibleBodyCoverage for backward-compatible UI. */
     bodyCoverage: number;
     tableCoverage: number;
     figureCoverage: number;
     provenanceMissing: number;
-    exclusionReasons: Record<string, number>;
+    exclusionReasons: ExclusionReasonMap;
   };
   sampleUnits: Array<{ title: string; unitType: string; preview: string }>;
   sampleChunks: Array<{ title: string; preview: string; length: number }>;
@@ -84,21 +107,6 @@ function clampTitle(text: string, max: number): string {
   const t = fixLoneSurrogates(text.replace(/\s+/g, " ").trim());
   if (t.length <= max) return t;
   return `${sliceUtf16Safe(t, max - 1).trimEnd()}…`;
-}
-
-function walkSections(
-  sections: NdSection[],
-  visit: (section: NdSection, path: string[]) => void,
-  path: string[] = [],
-): void {
-  for (const section of sections) {
-    const title = section.title?.trim() || section.text?.trim()?.slice(0, 40) || "섹션";
-    const nextPath = [...path, title];
-    visit(section, nextPath);
-    if (Array.isArray(section.children) && section.children.length > 0) {
-      walkSections(section.children, visit, nextPath);
-    }
-  }
 }
 
 export type TextSlice = {
@@ -287,8 +295,8 @@ function formatTableChunk(caption: string, headers: string[], rows: string[][]):
   return [`표 캡션: ${caption}`, `컬럼: ${headerLine}`, body].filter(Boolean).join("\n\n");
 }
 
-function bump(map: Record<string, number>, key: string, n = 1) {
-  map[key] = (map[key] ?? 0) + n;
+function bump(map: ExclusionReasonMap, key: string, text = "", charCount?: number) {
+  bumpExclusionReason(map, key, text, charCount ?? text.length);
 }
 
 /**
@@ -309,12 +317,11 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
 }): Promise<DoclingKnowledgeBuildResult> {
   const warnings: string[] = [];
   const byType: Record<string, number> = {};
-  const exclusionReasons: Record<string, number> = {};
+  const exclusionReasons: ExclusionReasonMap = {};
   let excludedCount = 0;
   let mergedCount = 0;
   let provenanceMissing = 0;
 
-  let sourceBodyChars = 0;
   let sourceTableChars = 0;
   let sourceFigureChars = 0;
   let unitBodyChars = 0;
@@ -338,47 +345,56 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
 
   const unitDrafts: UnitDraft[] = [];
 
-  walkSections(asSections(input.sectionsJson), (section, path) => {
-    const text = (section.text ?? "").trim();
-    const title = (section.title ?? "").trim() || path[path.length - 1] || "본문";
-    sourceBodyChars += text.length;
-    if (!text || text.length < MIN_CHUNK_CHARS) {
-      excludedCount += 1;
-      excludedChars += text.length;
-      bump(exclusionReasons, "short_or_empty_section");
-      return;
+  const bodyPlan = planDoclingBodyKnowledgeUnits(asSections(input.sectionsJson));
+  for (const [reason, detail] of Object.entries(bodyPlan.metrics.exclusionReasons)) {
+    const cur = exclusionReasons[reason] ?? { count: 0, charCount: 0, sampleTexts: [] };
+    cur.count += detail.count;
+    cur.charCount += detail.charCount;
+    for (const sample of detail.sampleTexts) {
+      if (cur.sampleTexts.length >= 3) break;
+      cur.sampleTexts.push(sample);
     }
-    const label = (section.label ?? "").toLowerCase();
-    const unitType =
-      label.includes("list")
-        ? "사용 절차"
-        : label.includes("header")
-          ? "개념 설명"
-          : "기능 설명";
+    exclusionReasons[reason] = cur;
+  }
+  for (const [reason, detail] of Object.entries(bodyPlan.metrics.exclusionReasons)) {
+    if (
+      reason.startsWith("short_") &&
+      (reason.endsWith("_merged") || reason === "short_valid_unit")
+    ) {
+      continue;
+    }
+    excludedCount += detail.count;
+    excludedChars += detail.charCount;
+  }
 
-    const parts = splitSectionIntoUnitTexts(text, MAX_UNIT_CHARS);
+  for (const planned of bodyPlan.units) {
+    const parts = splitSectionIntoUnitTexts(planned.text, MAX_UNIT_CHARS);
     parts.forEach((part, partIndex) => {
-      byType[unitType] = (byType[unitType] ?? 0) + 1;
+      byType[planned.unitType] = (byType[planned.unitType] ?? 0) + 1;
       unitBodyChars += part.text.length;
-      const pathLabel = path.join(" > ");
+      const pathLabel = planned.pathLabel;
       unitDrafts.push({
         title: clampTitle(
-          parts.length > 1 ? `${title} (${partIndex + 1})` : title,
+          parts.length > 1 ? `${planned.title} (${partIndex + 1})` : planned.title,
           120,
         ),
         content: [`경로: ${pathLabel}`, part.text].join("\n\n"),
         section: clampTitle(pathLabel, 200),
-        tags: ["docling", unitType],
+        tags: ["docling", planned.unitType],
         sortOrder: unitDrafts.length,
-        unitType,
+        unitType: planned.unitType,
         metadata: {
           generatedBy: "docling-knowledge-pipeline",
-          unitType,
-          path,
-          page: section.page ?? null,
-          pageStart: section.page ?? null,
-          pageEnd: section.page ?? null,
-          sourceSectionId: section.id ?? null,
+          unitType: planned.unitType,
+          path: planned.path,
+          page: planned.pageStart,
+          pageStart: planned.pageStart,
+          pageEnd: planned.pageEnd,
+          sourceSectionId: planned.sourceSectionIds[0] ?? null,
+          sourceSectionIds: planned.sourceSectionIds,
+          sourceTextRanges: planned.sourceTextRanges,
+          mergeReason: planned.mergeReason,
+          shortValidUnit: planned.shortValidUnit,
           sourcePath: pathLabel,
           fingerprint,
           normalizedDocumentId: input.normalizedDocumentId,
@@ -394,7 +410,7 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
         },
       });
     });
-  });
+  }
 
   for (const table of asTables(input.tablesJson)) {
     const caption = table.caption?.trim() || "표";
@@ -402,7 +418,7 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
     sourceTableChars += extracted.sourceChars;
     if (extracted.rows.length === 0 && extracted.headers.every((h) => !h.trim())) {
       excludedCount += 1;
-      bump(exclusionReasons, "empty_table");
+      bump(exclusionReasons, "empty_table", caption);
       continue;
     }
     byType["표 기반 정보"] = (byType["표 기반 정보"] ?? 0) + 1;
@@ -451,12 +467,12 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
     if (c === "LOGO" || c === "COVER_IMAGE" || c === "DECORATIVE" || c === "PAGE_RENDER") {
       excludedCount += 1;
       excludedChars += caption.length;
-      bump(exclusionReasons, `excluded_figure_${c || "UNKNOWN"}`);
+      bump(exclusionReasons, `decorative_figure`, caption || c, caption.length);
       continue;
     }
     if (!caption) {
       excludedCount += 1;
-      bump(exclusionReasons, "figure_without_caption");
+      bump(exclusionReasons, "figure_without_caption", fig.id ?? "figure");
       continue;
     }
     byType["그림 기반 설명"] = (byType["그림 기반 설명"] ?? 0) + 1;
@@ -596,7 +612,7 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
         const content = formatTableChunk(unit.title, headerCells, group);
         if (content.trim().length < MIN_CHUNK_CHARS && group.flat().join("").length === 0) {
           excludedCount += 1;
-          bump(exclusionReasons, "short_table_chunk");
+          bump(exclusionReasons, "short_table_chunk", content);
           return;
         }
         chunkChars += content.length;
@@ -639,7 +655,7 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
       if (part.trim().length < MIN_CHUNK_CHARS) {
         excludedCount += 1;
         excludedChars += part.length;
-        bump(exclusionReasons, "short_chunk");
+        bump(exclusionReasons, "short_chunk", part);
         cursor += part.length;
         return;
       }
@@ -681,20 +697,47 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
     await prisma.knowledgeChunk.createMany({ data: chunkCreates });
   }
 
+  const sourceBodyChars = bodyPlan.metrics.rawBodyChars;
   const sourceChars = sourceBodyChars + sourceTableChars + sourceFigureChars;
   const unitChars = unitBodyChars + unitTableChars + unitFigureChars;
-  const bodyCoverage =
-    sourceBodyChars > 0 ? Math.min(1, unitBodyChars / sourceBodyChars) : 1;
+  // Prefer planned unit body metrics when split did not change char mass materially.
+  const plannedUnitBodyChars = bodyPlan.metrics.unitBodyChars;
+  const effectiveUnitBodyChars =
+    Math.abs(plannedUnitBodyChars - unitBodyChars) <= 2 ? plannedUnitBodyChars : unitBodyChars;
+  const eligibleBodyChars = bodyPlan.metrics.eligibleBodyChars;
+  const rawBodyCoverage =
+    sourceBodyChars > 0 ? Math.min(1, effectiveUnitBodyChars / sourceBodyChars) : 1;
+  const eligibleBodyCoverage =
+    eligibleBodyChars > 0 ? Math.min(1, effectiveUnitBodyChars / eligibleBodyChars) : 1;
   const tableCoverage =
     sourceTableChars > 0 ? Math.min(1, unitTableChars / sourceTableChars) : 1;
   const figureCoverage =
-    sourceFigureChars > 0 ? Math.min(1, unitFigureChars / Math.max(1, sourceFigureChars)) : 1;
+    sourceFigureChars > 0
+      ? Math.min(1, unitFigureChars / Math.max(1, sourceFigureChars))
+      : 1;
+
+  const criticalExcludedBodyChars = bodyPlan.metrics.criticalExcludedBodyChars;
+  if (!sourceDocumentId && generationUnits.length > 0) {
+    provenanceMissing = Math.max(provenanceMissing, generationUnits.length);
+    bump(exclusionReasons, "provenance_missing", "sourceDocumentId missing", 0);
+  }
+
+  const stepStatus = evaluateKnowledgeUnitStepStatus({
+    unitCount: generationUnits.length,
+    eligibleBodyCoverage,
+    tableCoverage,
+    provenanceMissing,
+    criticalExcludedChars: criticalExcludedBodyChars,
+  });
 
   return {
     unitCount: generationUnits.length,
     chunkCount: chunkCreates.length,
     excludedCount,
     mergedCount,
+    shortSectionMergedCount: bodyPlan.metrics.shortSectionMergedCount,
+    shortValidUnitCount: bodyPlan.metrics.shortValidUnitCount,
+    stepStatus,
     warnings,
     byType,
     indexGenerationId,
@@ -703,7 +746,14 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
       unitChars,
       chunkChars,
       excludedChars,
-      bodyCoverage,
+      rawBodyChars: sourceBodyChars,
+      eligibleBodyChars,
+      unitBodyChars: effectiveUnitBodyChars,
+      normalExcludedBodyChars: bodyPlan.metrics.normalExcludedBodyChars,
+      criticalExcludedBodyChars,
+      rawBodyCoverage,
+      eligibleBodyCoverage,
+      bodyCoverage: eligibleBodyCoverage,
       tableCoverage,
       figureCoverage,
       provenanceMissing,
