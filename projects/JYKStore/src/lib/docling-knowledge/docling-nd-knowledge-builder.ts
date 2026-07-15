@@ -101,47 +101,89 @@ function walkSections(
   }
 }
 
+export type TextSlice = {
+  text: string;
+  startOffset: number;
+  endOffset: number;
+};
+
 /** Split long section text on structural boundaries before size clamp. */
-export function splitSectionIntoUnitTexts(text: string, maxUnitChars = MAX_UNIT_CHARS): string[] {
+export function splitSectionIntoUnitTexts(
+  text: string,
+  maxUnitChars = MAX_UNIT_CHARS,
+): TextSlice[] {
   const normalized = fixLoneSurrogates(text.replace(/\r\n/g, "\n").trim());
   if (!normalized) return [];
-  if (normalized.length <= maxUnitChars) return [normalized];
+  if (normalized.length <= maxUnitChars) {
+    return [{ text: normalized, startOffset: 0, endOffset: normalized.length }];
+  }
 
   const blocks = normalized
     .split(/\n{2,}|(?=^#{1,6}\s)|(?=^[-*•]\s)|(?=^\d+[.)]\s)|(?=^(주의|경고|참고|Note|Warning|Caution)[:：])/gim)
     .map((b) => (typeof b === "string" ? b.trim() : ""))
     .filter(Boolean);
 
-  const units: string[] = [];
+  const units: TextSlice[] = [];
   let current = "";
+  let currentStart = 0;
+  let searchFrom = 0;
+
   const flush = () => {
     const t = current.trim();
-    if (t) units.push(t);
+    if (t) {
+      const start = Math.max(0, normalized.indexOf(t, currentStart));
+      const end = start + t.length;
+      units.push({ text: t, startOffset: start, endOffset: end });
+      searchFrom = end;
+    }
     current = "";
   };
 
   for (const block of blocks) {
+    const blockStart = normalized.indexOf(block, searchFrom);
     if (block.length > maxUnitChars) {
       flush();
       let remaining = block;
+      let localOffset = blockStart >= 0 ? blockStart : searchFrom;
       while (remaining.length > maxUnitChars) {
         const piece = sliceUtf16Safe(remaining, maxUnitChars).trim();
-        if (piece) units.push(piece);
+        if (piece) {
+          units.push({
+            text: piece,
+            startOffset: localOffset,
+            endOffset: localOffset + piece.length,
+          });
+          localOffset += piece.length;
+        }
         remaining = remaining.slice(piece.length || maxUnitChars).trim();
       }
-      if (remaining) current = remaining;
+      if (remaining) {
+        current = remaining;
+        currentStart = localOffset;
+      }
+      searchFrom = localOffset + remaining.length;
       continue;
     }
     const candidate = current ? `${current}\n\n${block}` : block;
     if (candidate.length > maxUnitChars) {
       flush();
       current = block;
+      currentStart = blockStart >= 0 ? blockStart : searchFrom;
     } else {
+      if (!current) currentStart = blockStart >= 0 ? blockStart : searchFrom;
       current = candidate;
     }
   }
   flush();
-  return units.length > 0 ? units : [sliceUtf16Safe(normalized, maxUnitChars)];
+  return units.length > 0
+    ? units
+    : [
+        {
+          text: sliceUtf16Safe(normalized, maxUnitChars),
+          startOffset: 0,
+          endOffset: Math.min(maxUnitChars, normalized.length),
+        },
+      ];
 }
 
 function buildGridFromCells(
@@ -317,14 +359,14 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
     const parts = splitSectionIntoUnitTexts(text, MAX_UNIT_CHARS);
     parts.forEach((part, partIndex) => {
       byType[unitType] = (byType[unitType] ?? 0) + 1;
-      unitBodyChars += part.length;
+      unitBodyChars += part.text.length;
       const pathLabel = path.join(" > ");
       unitDrafts.push({
         title: clampTitle(
           parts.length > 1 ? `${title} (${partIndex + 1})` : title,
           120,
         ),
-        content: [`경로: ${pathLabel}`, part].join("\n\n"),
+        content: [`경로: ${pathLabel}`, part.text].join("\n\n"),
         section: clampTitle(pathLabel, 200),
         tags: ["docling", unitType],
         sortOrder: unitDrafts.length,
@@ -346,8 +388,9 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
           indexScope: "DRAFT",
           indexStatus: "BUILDING",
           sourceDocumentId,
-          sourceTextStart: 0,
-          sourceTextEnd: part.length,
+          versionId: input.versionId,
+          sourceTextStart: part.startOffset,
+          sourceTextEnd: part.endOffset,
         },
       });
     });
@@ -589,15 +632,22 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
 
     const parts = splitContentToChunks(unit.content, MAX_CHUNK_CHARS);
     if (parts.length > 1) mergedCount += parts.length - 1;
+    const unitStart =
+      typeof unitMeta.sourceTextStart === "number" ? unitMeta.sourceTextStart : 0;
+    let cursor = 0;
     parts.forEach((part, index) => {
       if (part.trim().length < MIN_CHUNK_CHARS) {
         excludedCount += 1;
         excludedChars += part.length;
         bump(exclusionReasons, "short_chunk");
+        cursor += part.length;
         return;
       }
       chunkChars += part.length;
       if (!unit.sourceDocumentId && !sourceDocumentId) provenanceMissing += 1;
+      const startOffset = unitStart + cursor;
+      const endOffset = startOffset + part.length;
+      cursor += part.length;
       chunkCreates.push({
         versionId: input.versionId,
         sourceDocumentId: unit.sourceDocumentId ?? sourceDocumentId,
@@ -620,8 +670,8 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
           indexStatus: "BUILDING",
           indexGenerationId,
           pipelineRunId: input.pipelineRunId,
-          sourceTextStart: 0,
-          sourceTextEnd: part.length,
+          sourceTextStart: startOffset,
+          sourceTextEnd: endOffset,
         } as Prisma.InputJsonValue,
       });
     });
@@ -672,84 +722,82 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
   };
 }
 
-/** Activate a successful draft generation; retire prior DRAFT generations only. */
+/** Activate a successful draft generation; retire prior DRAFT generations only (atomic). */
 export async function activateDraftIndexGeneration(input: {
   versionId: string;
   indexGenerationId: string;
 }): Promise<{ activatedChunkCount: number; retiredDraftCount: number }> {
-  const priorDrafts = await prisma.knowledgeChunk.findMany({
-    where: {
-      versionId: input.versionId,
-      chunkType: {
-        in: [DOCLING_KNOWLEDGE_UNIT_CHUNK_TYPE, DOCLING_RETRIEVAL_CHUNK_TYPE],
+  return prisma.$transaction(async (tx) => {
+    const priorDrafts = await tx.knowledgeChunk.findMany({
+      where: {
+        versionId: input.versionId,
+        chunkType: {
+          in: [DOCLING_KNOWLEDGE_UNIT_CHUNK_TYPE, DOCLING_RETRIEVAL_CHUNK_TYPE],
+        },
+        isActive: true,
       },
-      isActive: true,
-    },
-    select: { id: true, metadata: true },
-  });
-
-  const toRetire = priorDrafts.filter((c) => {
-    const meta = c.metadata as Record<string, unknown> | null;
-    const scope = meta?.indexScope;
-    const gen = meta?.indexGenerationId;
-    if (scope === "PRODUCTION") return false;
-    if (gen === input.indexGenerationId) return false;
-    // Retire previous explicit drafts (or legacy docling active drafts).
-    return scope === "DRAFT" || meta?.draftIndex === true || meta?.generatedBy === "docling-knowledge-pipeline";
-  });
-
-  if (toRetire.length > 0) {
-    await prisma.$transaction(
-      toRetire.map((c) => {
-        const meta = { ...((c.metadata as Record<string, unknown> | null) ?? {}) };
-        meta.indexStatus = "RETIRED";
-        return prisma.knowledgeChunk.update({
-          where: { id: c.id },
-          data: {
-            isActive: false,
-            metadata: meta as Prisma.InputJsonValue,
-          },
-        });
-      }),
-    );
-  }
-
-  const building = await prisma.knowledgeChunk.findMany({
-    where: {
-      versionId: input.versionId,
-      chunkType: {
-        in: [DOCLING_KNOWLEDGE_UNIT_CHUNK_TYPE, DOCLING_RETRIEVAL_CHUNK_TYPE],
-      },
-      isActive: false,
-    },
-    select: { id: true, chunkType: true, metadata: true },
-  });
-
-  const toActivate = building.filter((c) => {
-    const meta = c.metadata as Record<string, unknown> | null;
-    return meta?.indexGenerationId === input.indexGenerationId;
-  });
-
-  for (const c of toActivate) {
-    const meta = { ...((c.metadata as Record<string, unknown> | null) ?? {}) };
-    meta.indexStatus = "DRAFT";
-    meta.indexScope = "DRAFT";
-    meta.draftIndex = true;
-    await prisma.knowledgeChunk.update({
-      where: { id: c.id },
-      data: {
-        // Units stay inactive catalog; retrieval chunks become active for draft search.
-        isActive: c.chunkType === DOCLING_RETRIEVAL_CHUNK_TYPE,
-        metadata: meta as Prisma.InputJsonValue,
-      },
+      select: { id: true, metadata: true, chunkType: true },
     });
-  }
 
-  return {
-    activatedChunkCount: toActivate.filter((c) => c.chunkType === DOCLING_RETRIEVAL_CHUNK_TYPE)
-      .length,
-    retiredDraftCount: toRetire.length,
-  };
+    const toRetire = priorDrafts.filter((c) => {
+      const meta = c.metadata as Record<string, unknown> | null;
+      if (meta?.indexScope === "PRODUCTION") return false;
+      if (meta?.indexGenerationId === input.indexGenerationId) return false;
+      return (
+        meta?.indexScope === "DRAFT" ||
+        meta?.draftIndex === true ||
+        meta?.generatedBy === "docling-knowledge-pipeline"
+      );
+    });
+
+    for (const c of toRetire) {
+      const meta = { ...((c.metadata as Record<string, unknown> | null) ?? {}) };
+      meta.indexStatus = "RETIRED";
+      await tx.knowledgeChunk.update({
+        where: { id: c.id },
+        data: {
+          isActive: false,
+          metadata: meta as Prisma.InputJsonValue,
+        },
+      });
+    }
+
+    const building = await tx.knowledgeChunk.findMany({
+      where: {
+        versionId: input.versionId,
+        chunkType: {
+          in: [DOCLING_KNOWLEDGE_UNIT_CHUNK_TYPE, DOCLING_RETRIEVAL_CHUNK_TYPE],
+        },
+        metadata: {
+          path: ["indexGenerationId"],
+          equals: input.indexGenerationId,
+        },
+      },
+      select: { id: true, chunkType: true, metadata: true },
+    });
+
+    let activatedChunkCount = 0;
+    for (const c of building) {
+      const meta = { ...((c.metadata as Record<string, unknown> | null) ?? {}) };
+      meta.indexStatus = "DRAFT";
+      meta.indexScope = "DRAFT";
+      meta.draftIndex = true;
+      const isRetrieval = c.chunkType === DOCLING_RETRIEVAL_CHUNK_TYPE;
+      await tx.knowledgeChunk.update({
+        where: { id: c.id },
+        data: {
+          isActive: isRetrieval,
+          metadata: meta as Prisma.InputJsonValue,
+        },
+      });
+      if (isRetrieval) activatedChunkCount += 1;
+    }
+
+    return {
+      activatedChunkCount,
+      retiredDraftCount: toRetire.length,
+    };
+  });
 }
 
 /** Mark a failed building generation without touching other generations. */
@@ -782,31 +830,93 @@ export async function failDraftIndexGeneration(input: {
   }
 }
 
-/** Promote active DRAFT generation chunks to PRODUCTION (admin approve). */
+/** Promote a specific DRAFT generation to PRODUCTION (admin approve). */
 export async function promoteDraftIndexToProduction(input: {
   versionId: string;
+  pipelineRunId: string;
+  indexGenerationId: string;
+  fingerprint: string;
+  tx?: Prisma.TransactionClient;
 }): Promise<number> {
-  const chunks = await prisma.knowledgeChunk.findMany({
+  const db = input.tx ?? prisma;
+
+  const candidates = await db.knowledgeChunk.findMany({
     where: {
       versionId: input.versionId,
-      chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+      chunkType: {
+        in: [DOCLING_KNOWLEDGE_UNIT_CHUNK_TYPE, DOCLING_RETRIEVAL_CHUNK_TYPE],
+      },
+      metadata: {
+        path: ["indexGenerationId"],
+        equals: input.indexGenerationId,
+      },
+    },
+    select: { id: true, chunkType: true, metadata: true, isActive: true },
+  });
+
+  const matching = candidates.filter((c) => {
+    const meta = c.metadata as Record<string, unknown> | null;
+    if (meta?.pipelineRunId !== input.pipelineRunId) return false;
+    if (
+      meta?.fingerprint !== input.fingerprint &&
+      meta?.normalizedDocumentFingerprint !== input.fingerprint
+    ) {
+      return false;
+    }
+    if (meta?.indexScope === "PRODUCTION" && meta?.indexStatus === "APPROVED") return false;
+    return meta?.indexScope === "DRAFT" || meta?.indexStatus === "DRAFT" || meta?.draftIndex === true;
+  });
+
+  if (matching.length === 0) {
+    throw new Error("DRAFT_GENERATION_NOT_FOUND");
+  }
+
+  const production = await db.knowledgeChunk.findMany({
+    where: {
+      versionId: input.versionId,
+      chunkType: {
+        in: [DOCLING_KNOWLEDGE_UNIT_CHUNK_TYPE, DOCLING_RETRIEVAL_CHUNK_TYPE],
+      },
       isActive: true,
     },
     select: { id: true, metadata: true },
   });
+
+  for (const c of production) {
+    const meta = c.metadata as Record<string, unknown> | null;
+    if (meta?.indexGenerationId === input.indexGenerationId) continue;
+    if (meta?.indexScope !== "PRODUCTION" && meta?.generatedBy !== "docling-knowledge-pipeline") {
+      // leave non-docling chunks alone
+      if (meta?.indexScope == null && meta?.draftIndex !== true) continue;
+    }
+    if (meta?.indexScope === "PRODUCTION" || meta?.draftIndex === true || meta?.indexScope === "DRAFT") {
+      const next = { ...(meta ?? {}) };
+      next.indexStatus = "RETIRED";
+      await db.knowledgeChunk.update({
+        where: { id: c.id },
+        data: {
+          isActive: false,
+          metadata: next as Prisma.InputJsonValue,
+        },
+      });
+    }
+  }
+
   let n = 0;
-  for (const c of chunks) {
+  for (const c of matching) {
     const meta = { ...((c.metadata as Record<string, unknown> | null) ?? {}) };
-    if (meta.indexScope === "PRODUCTION") continue;
-    if (meta.generatedBy !== "docling-knowledge-pipeline" && meta.draftIndex !== true) continue;
     meta.indexScope = "PRODUCTION";
     meta.indexStatus = "APPROVED";
     meta.draftIndex = false;
-    await prisma.knowledgeChunk.update({
+    const isRetrieval = c.chunkType === DOCLING_RETRIEVAL_CHUNK_TYPE;
+    await db.knowledgeChunk.update({
       where: { id: c.id },
-      data: { metadata: meta as Prisma.InputJsonValue },
+      data: {
+        isActive: isRetrieval,
+        metadata: meta as Prisma.InputJsonValue,
+      },
     });
-    n += 1;
+    if (isRetrieval) n += 1;
   }
   return n;
 }

@@ -16,9 +16,15 @@ export async function processClaimedKnowledgePipelineRun(input: {
   runId: string;
   packId: string;
   binding: Parameters<typeof executeDoclingKnowledgePipeline>[0]["binding"];
+  lockOwner: string;
 }): Promise<void> {
   try {
-    await executeDoclingKnowledgePipeline(input);
+    await executeDoclingKnowledgePipeline({
+      runId: input.runId,
+      packId: input.packId,
+      binding: input.binding,
+      lockOwner: input.lockOwner,
+    });
   } catch (error) {
     logSafeRouteError({
       scope: "knowledge-pipeline-worker",
@@ -36,12 +42,11 @@ export async function processClaimedKnowledgePipelineRun(input: {
 export async function runKnowledgePipelineWorkerOnce(
   lockOwner?: string,
 ): Promise<boolean> {
+  const owner = lockOwner ?? knowledgePipelineLockOwner();
   await recoverStaleKnowledgePipelineRuns(5).catch(() => 0);
-  const claimed = await claimNextKnowledgePipelineRun(
-    lockOwner ?? knowledgePipelineLockOwner(),
-  );
+  const claimed = await claimNextKnowledgePipelineRun(owner);
   if (!claimed) return false;
-  await processClaimedKnowledgePipelineRun(claimed);
+  await processClaimedKnowledgePipelineRun({ ...claimed, lockOwner: owner });
   return true;
 }
 

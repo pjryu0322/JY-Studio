@@ -178,6 +178,39 @@ export async function commitDistributionPackForReview(
     };
   }
 
+  const { DOCLING_KNOWLEDGE_PIPELINE_TRIGGER } = await import(
+    "@/lib/docling-knowledge/docling-knowledge-stages"
+  );
+  const { parseKnowledgeRunBinding } = await import(
+    "@/lib/docling-knowledge/docling-knowledge-run-binding"
+  );
+  const passRun = await prisma.pipelineRun.findFirst({
+    where: {
+      packId,
+      triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
+      status: "PASS",
+    },
+    orderBy: { startedAt: "desc" },
+    include: { steps: true },
+  });
+  const passBinding = parseKnowledgeRunBinding(passRun?.summary ?? null);
+  const evalStep = passRun?.steps.find((s) => s.step === "SEARCH_EVALUATING");
+  if (
+    !passRun ||
+    !passBinding ||
+    passBinding.normalizedDocumentId !== nd.id ||
+    passBinding.fingerprint !== nd.fingerprint ||
+    passBinding.versionId !== version.id ||
+    evalStep?.status !== "PASS"
+  ) {
+    return {
+      error: "INCOMPLETE",
+      message:
+        "지식 데이터 생성(검색 결과 검증)이 현재 정규화 결과와 일치하지 않습니다. 다시 생성해 주세요.",
+      missingRequirements: ["RETRIEVAL_EVALUATION_PASSED"],
+    };
+  }
+
   const snapshot = buildDoclingBundleReviewSubmitSnapshot({
     submittedVersionId: version.id,
     doclingBundleId: doclingBundle.id,
@@ -199,6 +232,10 @@ export async function commitDistributionPackForReview(
     visibility: meta.visibility,
     allowDownload: meta.allowDownload,
     language: packLanguage,
+    pipelineRunId: passRun.id,
+    indexGenerationId: passBinding.indexGenerationId,
+    retrievalEvaluationStatus: "PASS",
+    normalizedDocumentFingerprint: nd.fingerprint,
   });
 
   try {

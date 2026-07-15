@@ -42,6 +42,11 @@ export type DoclingBundleReviewSubmitSnapshot = {
   allowDownload: boolean;
   /** Provider-selected pack language at submit time. Legacy snapshots may omit. */
   language: PackLanguageCode | null;
+  /** Knowledge pipeline binding — required for new submits; optional for legacy. */
+  pipelineRunId?: string | null;
+  indexGenerationId?: string | null;
+  retrievalEvaluationStatus?: string | null;
+  normalizedDocumentFingerprint?: string | null;
 };
 
 export type ReviewSubmitSnapshot =
@@ -93,6 +98,10 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
   visibility: string;
   allowDownload: boolean;
   language: PackLanguageCode;
+  pipelineRunId?: string | null;
+  indexGenerationId?: string | null;
+  retrievalEvaluationStatus?: string | null;
+  normalizedDocumentFingerprint?: string | null;
 }): DoclingBundleReviewSubmitSnapshot {
   return {
     mode: "DOCLING_BUNDLE",
@@ -113,6 +122,11 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
     visibility: input.visibility,
     allowDownload: input.allowDownload,
     language: input.language,
+    pipelineRunId: input.pipelineRunId ?? null,
+    indexGenerationId: input.indexGenerationId ?? null,
+    retrievalEvaluationStatus: input.retrievalEvaluationStatus ?? null,
+    normalizedDocumentFingerprint:
+      input.normalizedDocumentFingerprint ?? input.fingerprint ?? null,
   };
 }
 
@@ -212,6 +226,19 @@ export function parseDoclingBundleReviewSubmitSnapshot(
     visibility: typeof raw.visibility === "string" ? raw.visibility : "PRIVATE",
     allowDownload: raw.allowDownload !== false,
     language,
+    pipelineRunId: typeof raw.pipelineRunId === "string" ? raw.pipelineRunId : null,
+    indexGenerationId:
+      typeof raw.indexGenerationId === "string" ? raw.indexGenerationId : null,
+    retrievalEvaluationStatus:
+      typeof raw.retrievalEvaluationStatus === "string"
+        ? raw.retrievalEvaluationStatus
+        : null,
+    normalizedDocumentFingerprint:
+      typeof raw.normalizedDocumentFingerprint === "string"
+        ? raw.normalizedDocumentFingerprint
+        : typeof raw.fingerprint === "string"
+          ? raw.fingerprint
+          : null,
   };
 }
 

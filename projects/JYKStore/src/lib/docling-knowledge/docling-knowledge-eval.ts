@@ -7,7 +7,10 @@ import { runRetrievalForEvaluation } from "@/lib/retrieval-service";
 export const DOCLING_RETRIEVAL_PASS_THRESHOLDS = {
   recallAt5: 0.8,
   hitAt3: 0.75,
+  mrr: 0.6,
+  expectedUnitHitRate: 0.8,
   sourceDocumentMatchRate: 1,
+  pageMatchRate: 0.9,
   provenanceCompletenessRate: 1,
   crossVersionContamination: 0,
   crossDocumentContamination: 0,
@@ -23,6 +26,8 @@ export type DoclingEvalCase = {
   expectedChunkIds: string[];
   expectedKnowledgeUnitId: string | null;
   expectedSourceDocumentId: string | null;
+  expectedNormalizedDocumentId: string | null;
+  expectedVersionId: string | null;
   expectedPageStart: number | null;
   expectedPageEnd: number | null;
   expectedKeywords: string[];
@@ -30,6 +35,7 @@ export type DoclingEvalCase = {
 
 export type DoclingRetrievalEvalResult = {
   status: "PASS" | "WARNING" | "FAIL";
+  failureCode?: string;
   smoke: {
     ok: boolean;
     embeddingPresent: boolean;
@@ -75,6 +81,13 @@ function questionTypeFromTags(tags: string[]): string {
   return "개념";
 }
 
+export function minDoclingEvalCaseCount(chunkCount: number): number {
+  if (chunkCount <= 0) return 5;
+  if (chunkCount < 12) return Math.max(5, Math.min(chunkCount * 2, chunkCount + 4));
+  if (chunkCount < 40) return 10;
+  return 20;
+}
+
 /** Rule-based eval questions from draft generation chunks (no LLM). */
 export function buildDoclingRetrievalEvalCases(
   chunks: Array<{
@@ -86,9 +99,11 @@ export function buildDoclingRetrievalEvalCases(
     sourceDocumentId: string | null;
     metadata: unknown;
   }>,
+  options?: { versionId?: string | null },
 ): DoclingEvalCase[] {
   const cases: DoclingEvalCase[] = [];
   const seen = new Set<string>();
+  const versionId = options?.versionId ?? null;
 
   const push = (draft: DoclingEvalCase) => {
     const key = draft.query.toLowerCase().replace(/\s+/g, " ").trim();
@@ -97,14 +112,16 @@ export function buildDoclingRetrievalEvalCases(
     cases.push(draft);
   };
 
-  const target =
-    chunks.length < 12 ? 10 : chunks.length < 40 ? 20 : Math.min(40, chunks.length);
+  const minCount = minDoclingEvalCaseCount(chunks.length);
+  const target = Math.max(minCount, chunks.length < 12 ? minCount : minCount);
 
   for (const chunk of chunks) {
-    if (cases.length >= target) break;
+    if (cases.length >= Math.max(target, 40)) break;
     const meta = asRecord(chunk.metadata) ?? {};
     const unitId =
       typeof meta.knowledgeUnitId === "string" ? meta.knowledgeUnitId : null;
+    const ndId =
+      typeof meta.normalizedDocumentId === "string" ? meta.normalizedDocumentId : null;
     const pageStart =
       typeof meta.pageStart === "number"
         ? meta.pageStart
@@ -119,7 +136,6 @@ export function buildDoclingRetrievalEvalCases(
       .filter((t) => t.length >= 2)
       .slice(0, 4);
 
-    // Prefer content-derived query, not exact title echo-only smoke.
     const firstSentence =
       chunk.content
         .replace(/^경로:.*$/m, "")
@@ -137,13 +153,15 @@ export function buildDoclingRetrievalEvalCases(
         expectedChunkIds: [chunk.id],
         expectedKnowledgeUnitId: unitId,
         expectedSourceDocumentId: chunk.sourceDocumentId,
+        expectedNormalizedDocumentId: ndId,
+        expectedVersionId: versionId,
         expectedPageStart: pageStart,
         expectedPageEnd: pageEnd,
         expectedKeywords: keywords,
       });
     }
 
-    if (chunk.section && cases.length < target) {
+    if (chunk.section && cases.length < Math.max(target, 40)) {
       const sectionQuery = `${chunk.title} ${chunk.section}`.trim().slice(0, 100);
       push({
         query: sectionQuery,
@@ -151,6 +169,8 @@ export function buildDoclingRetrievalEvalCases(
         expectedChunkIds: [chunk.id],
         expectedKnowledgeUnitId: unitId,
         expectedSourceDocumentId: chunk.sourceDocumentId,
+        expectedNormalizedDocumentId: ndId,
+        expectedVersionId: versionId,
         expectedPageStart: pageStart,
         expectedPageEnd: pageEnd,
         expectedKeywords: keywords,
@@ -158,7 +178,6 @@ export function buildDoclingRetrievalEvalCases(
     }
   }
 
-  // Ensure table/figure coverage when present
   const tables = chunks.filter((c) => c.tags.some((t) => t.includes("표")));
   const figures = chunks.filter((c) => c.tags.some((t) => t.includes("그림")));
   for (const group of [tables, figures]) {
@@ -172,25 +191,32 @@ export function buildDoclingRetrievalEvalCases(
       expectedKnowledgeUnitId:
         typeof meta.knowledgeUnitId === "string" ? meta.knowledgeUnitId : null,
       expectedSourceDocumentId: c.sourceDocumentId,
+      expectedNormalizedDocumentId:
+        typeof meta.normalizedDocumentId === "string" ? meta.normalizedDocumentId : null,
+      expectedVersionId: versionId,
       expectedPageStart: typeof meta.page === "number" ? meta.page : null,
       expectedPageEnd: typeof meta.page === "number" ? meta.page : null,
       expectedKeywords: c.title.split(/\s+/).slice(0, 3),
     });
   }
 
-  return cases.slice(0, Math.max(target, cases.length));
+  return cases;
 }
 
 export async function runDoclingRetrievalEvaluation(input: {
   packId: string;
   versionId: string;
   indexGenerationId: string;
+  onBatchHeartbeat?: () => void | Promise<void>;
 }): Promise<DoclingRetrievalEvalResult> {
   const chunks = await prisma.knowledgeChunk.findMany({
     where: {
       versionId: input.versionId,
-      isActive: true,
       chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+      metadata: {
+        path: ["indexGenerationId"],
+        equals: input.indexGenerationId,
+      },
     },
     orderBy: { sortOrder: "asc" },
     select: {
@@ -204,25 +230,18 @@ export async function runDoclingRetrievalEvaluation(input: {
     },
   });
 
-  const draftChunks = chunks.filter((c) => {
-    const meta = asRecord(c.metadata);
-    return meta?.indexGenerationId === input.indexGenerationId;
-  });
-
-  const evalChunks = draftChunks.length > 0 ? draftChunks : chunks;
-
   const embeddingCount = await prisma.knowledgeChunkEmbedding.count({
-    where: { chunkId: { in: evalChunks.map((c) => c.id) } },
+    where: { chunkId: { in: chunks.map((c) => c.id) } },
   });
 
   let smokeErrors = 0;
   let smokeReturned = false;
-  if (evalChunks[0]) {
+  if (chunks[0]) {
     try {
       const smoke = await runRetrievalForEvaluation({
         knowledgePackId: input.packId,
         versionId: input.versionId,
-        query: evalChunks[0].title || "test",
+        query: chunks[0].title || "test",
         retrievalMode: "hybrid",
         topK: 3,
         indexGenerationId: input.indexGenerationId,
@@ -233,7 +252,43 @@ export async function runDoclingRetrievalEvaluation(input: {
     }
   }
 
-  const cases = buildDoclingRetrievalEvalCases(evalChunks);
+  const cases = buildDoclingRetrievalEvalCases(chunks, { versionId: input.versionId });
+  const minCases = minDoclingEvalCaseCount(chunks.length);
+  if (cases.length < minCases) {
+    return {
+      status: "FAIL",
+      failureCode: "INSUFFICIENT_EVALUATION_CASES",
+      smoke: {
+        ok: smokeErrors === 0 && smokeReturned && embeddingCount > 0,
+        embeddingPresent: embeddingCount > 0,
+        resultReturned: smokeReturned,
+        errors: smokeErrors,
+      },
+      questionCount: cases.length,
+      passedCount: 0,
+      failedCount: cases.length,
+      recallAt5: 0,
+      hitAt3: 0,
+      mrr: 0,
+      expectedChunkHitRate: 0,
+      expectedUnitHitRate: 0,
+      sourceDocumentMatchRate: 0,
+      pageMatchRate: 0,
+      provenanceCompletenessRate: 0,
+      searchErrorCount: smokeErrors,
+      crossVersionContamination: 0,
+      crossDocumentContamination: 0,
+      failures: [
+        {
+          query: "",
+          expectedChunkIds: [],
+          topChunkIds: [],
+          reason: `insufficient_cases:${cases.length}<${minCases}`,
+        },
+      ],
+    };
+  }
+
   const failures: DoclingRetrievalEvalResult["failures"] = [];
   let recallHits = 0;
   let hit3 = 0;
@@ -250,7 +305,12 @@ export async function runDoclingRetrievalEvaluation(input: {
   let pageChecked = 0;
   let unitChecked = 0;
 
-  for (const c of cases) {
+  for (let i = 0; i < cases.length; i += 1) {
+    const c = cases[i]!;
+    if (i > 0 && i % 5 === 0) {
+      await input.onBatchHeartbeat?.();
+    }
+
     let ranked: Awaited<ReturnType<typeof runRetrievalForEvaluation>> = [];
     try {
       ranked = await runRetrievalForEvaluation({
@@ -289,9 +349,9 @@ export async function runDoclingRetrievalEvaluation(input: {
     if (hitAt3Case) hit3 += 1;
 
     let rr = 0;
-    for (let i = 0; i < ids.length; i += 1) {
-      if (c.expectedChunkIds.includes(ids[i]!)) {
-        rr = 1 / (i + 1);
+    for (let rank = 0; rank < ids.length; rank += 1) {
+      if (c.expectedChunkIds.includes(ids[rank]!)) {
+        rr = 1 / (rank + 1);
         break;
       }
     }
@@ -312,19 +372,23 @@ export async function runDoclingRetrievalEvaluation(input: {
         (r) => r.sourceDocumentId === c.expectedSourceDocumentId,
       );
       if (match) sourceMatches += 1;
-      for (const r of ranked) {
-        if (r.sourceDocumentId && r.sourceDocumentId !== c.expectedSourceDocumentId) {
-          // same version/doc pack is fine; track only foreign pack refs if present
-          const meta = asRecord(r.metadata);
-          if (
-            meta?.normalizedDocumentId &&
-            meta.normalizedDocumentId !==
-              asRecord(evalChunks.find((x) => x.id === r.chunkId)?.metadata)
-                ?.normalizedDocumentId
-          ) {
-            crossDocument += 1;
-          }
-        }
+    }
+
+    for (const r of ranked) {
+      const metaR = asRecord(r.metadata);
+      if (
+        c.expectedVersionId &&
+        typeof metaR?.versionId === "string" &&
+        metaR.versionId !== c.expectedVersionId
+      ) {
+        crossVersion += 1;
+      }
+      if (
+        c.expectedNormalizedDocumentId &&
+        typeof metaR?.normalizedDocumentId === "string" &&
+        metaR.normalizedDocumentId !== c.expectedNormalizedDocumentId
+      ) {
+        crossDocument += 1;
       }
     }
 
@@ -343,7 +407,7 @@ export async function runDoclingRetrievalEvaluation(input: {
       if (pageHit) pageMatches += 1;
     }
 
-    const expected = evalChunks.find((x) => x.id === c.expectedChunkIds[0]);
+    const expected = chunks.find((x) => x.id === c.expectedChunkIds[0]);
     const meta = asRecord(expected?.metadata);
     const hasProv =
       Boolean(expected?.sourceDocumentId) &&
@@ -352,16 +416,6 @@ export async function runDoclingRetrievalEvaluation(input: {
       Boolean(meta?.pipelineRunId) &&
       Boolean(meta?.indexGenerationId);
     if (hasProv) provenanceOk += 1;
-
-    for (const r of ranked) {
-      const metaR = asRecord(r.metadata);
-      if (
-        typeof metaR?.versionId === "string" &&
-        metaR.versionId !== input.versionId
-      ) {
-        crossVersion += 1;
-      }
-    }
   }
 
   const n = cases.length;
@@ -382,7 +436,6 @@ export async function runDoclingRetrievalEvaluation(input: {
     errors: smokeErrors,
   };
 
-  let status: "PASS" | "WARNING" | "FAIL" = "PASS";
   const t = DOCLING_RETRIEVAL_PASS_THRESHOLDS;
   const hardFail =
     n === 0 ||
@@ -396,15 +449,15 @@ export async function runDoclingRetrievalEvaluation(input: {
   const softFail =
     recallAt5 < t.recallAt5 ||
     hitAt3Rate < t.hitAt3 ||
+    mrr < t.mrr ||
+    expectedUnitHitRate < t.expectedUnitHitRate ||
     sourceDocumentMatchRate < t.sourceDocumentMatchRate ||
+    pageMatchRate < t.pageMatchRate ||
     provenanceCompletenessRate < t.provenanceCompletenessRate;
 
+  let status: "PASS" | "WARNING" | "FAIL" = "PASS";
   if (hardFail) status = "FAIL";
   else if (softFail) status = "WARNING";
-  else status = "PASS";
-
-  // Never promote to PASS solely because failures array is empty when metrics miss thresholds.
-  if (status === "PASS" && softFail) status = "WARNING";
 
   return {
     status,

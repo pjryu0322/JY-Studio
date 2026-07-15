@@ -227,6 +227,14 @@ export async function runDoclingProcessingWorkerLoop(options?: {
       } catch {
         // best-effort
       }
+      try {
+        const { writeWorkerHeartbeat } = await import(
+          "@/lib/docling-knowledge/docling-worker-heartbeat"
+        );
+        writeWorkerHeartbeat({ lockOwner, knowledgePipelineEnabled: true });
+      } catch {
+        // best-effort
+      }
     }
 
     const job = await claimNextDoclingProcessingJob(lockOwner);
@@ -249,7 +257,13 @@ export async function runDoclingProcessingWorkerLoop(options?: {
 }
 
 async function main() {
-  console.info(`[docling-worker] starting owner=${WORKER_ID}`);
+  console.info(`[worker] Docling worker started`);
+  console.info(`[worker] Knowledge pipeline worker enabled`);
+  console.info(`[docling-worker] owner=${WORKER_ID}`);
+  const { writeWorkerHeartbeat } = await import(
+    "@/lib/docling-knowledge/docling-worker-heartbeat"
+  );
+  writeWorkerHeartbeat({ lockOwner: WORKER_ID, knowledgePipelineEnabled: true });
   await runDoclingProcessingWorkerLoop();
 }
 

@@ -31,6 +31,11 @@ export const KNOWLEDGE_PIPELINE_LOCK_MS = Number.parseInt(
   10,
 );
 
+export const KNOWLEDGE_PIPELINE_MAX_ATTEMPTS = Number.parseInt(
+  process.env.JYKSTORE_KNOWLEDGE_PIPELINE_MAX_ATTEMPTS ?? "3",
+  10,
+);
+
 export function createKnowledgeRunBinding(input: {
   versionId: string;
   normalizedDocumentId: string;

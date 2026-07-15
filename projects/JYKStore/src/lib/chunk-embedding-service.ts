@@ -131,6 +131,9 @@ export async function rebuildPackEmbeddings(input: {
   indexGenerationId?: string;
   pipelineRunId?: string;
   fingerprint?: string;
+  /** When true with indexGenerationId, include inactive BUILDING chunks. */
+  includeInactiveForGeneration?: boolean;
+  onChunkProcessed?: (processedCount: number) => void | Promise<void>;
 }): Promise<EmbeddingRebuildResultDto | null> {
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
@@ -152,8 +155,18 @@ export async function rebuildPackEmbeddings(input: {
   const activeChunks = await prisma.knowledgeChunk.findMany({
     where: {
       versionId,
-      isActive: true,
+      ...(input.includeInactiveForGeneration && input.indexGenerationId
+        ? {}
+        : { isActive: true }),
       ...(input.chunkType ? { chunkType: input.chunkType } : {}),
+      ...(input.includeInactiveForGeneration && input.indexGenerationId
+        ? {
+            metadata: {
+              path: ["indexGenerationId"],
+              equals: input.indexGenerationId,
+            },
+          }
+        : {}),
     },
   });
 
@@ -189,6 +202,7 @@ export async function rebuildPackEmbeddings(input: {
 
     if (existing && existing.contentHash === contentHash && !input.force) {
       result.skippedCount += 1;
+      await input.onChunkProcessed?.(result.processedCount);
       continue;
     }
 
@@ -215,6 +229,7 @@ export async function rebuildPackEmbeddings(input: {
       });
       result.createdCount += 1;
     }
+    await input.onChunkProcessed?.(result.processedCount);
   }
 
   return result;

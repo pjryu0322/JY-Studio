@@ -705,28 +705,141 @@ export async function approvePackReview(input: {
     return { error: "NOT_ACCEPTED" as const };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.knowledgePack.update({
-      where: { packId },
-      data: {
-        status: nextStatus,
-        publishedAt: now,
-        isVerified: publishAsVerified,
-      },
-    });
+  const knowledgeMismatchMessage =
+    "제출 이후 지식 데이터 또는 검색 인덱스가 변경되었습니다. 제공자에게 다시 검수요청하도록 안내해 주세요.";
 
-    await tx.packReview.update({
-      where: { id: accepted.id },
-      data: {
-        status: "APPROVED",
-        decision: "APPROVE",
-        memo,
-        reviewerClientId: input.reviewerClientId ?? null,
-        reviewerUserId: input.reviewerUserId ?? null,
-        decidedAt: now,
-      },
+  if (packageMode === "DOCLING_BUNDLE" && isDoclingBundleReviewSnapshot(approveSnapshot)) {
+    const latestVersion = await prisma.knowledgePackVersion.findFirst({
+      where: { packId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
     });
-  });
+    const activeNd = latestVersion
+      ? await prisma.normalizedDocument.findFirst({
+          where: { versionId: latestVersion.id, isActive: true },
+          select: { id: true, fingerprint: true },
+        })
+      : null;
+
+    if (
+      !latestVersion ||
+      !activeNd ||
+      approveSnapshot.submittedVersionId !== latestVersion.id ||
+      approveSnapshot.normalizedDocumentId !== activeNd.id ||
+      (approveSnapshot.normalizedDocumentFingerprint ?? approveSnapshot.fingerprint) !==
+        activeNd.fingerprint ||
+      !approveSnapshot.pipelineRunId ||
+      !approveSnapshot.indexGenerationId
+    ) {
+      return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
+    }
+
+    const passRun = await prisma.pipelineRun.findUnique({
+      where: { id: approveSnapshot.pipelineRunId },
+      include: { steps: true },
+    });
+    const { parseKnowledgeRunBinding } = await import(
+      "@/lib/docling-knowledge/docling-knowledge-run-binding"
+    );
+    const binding = parseKnowledgeRunBinding(passRun?.summary ?? null);
+    const evalStep = passRun?.steps.find((s) => s.step === "SEARCH_EVALUATING");
+    const readyStep = passRun?.steps.find((s) => s.step === "READY_FOR_REVIEW");
+    if (
+      !passRun ||
+      passRun.status !== "PASS" ||
+      !binding ||
+      binding.indexGenerationId !== approveSnapshot.indexGenerationId ||
+      binding.versionId !== latestVersion.id ||
+      binding.normalizedDocumentId !== activeNd.id ||
+      binding.fingerprint !== activeNd.fingerprint ||
+      evalStep?.status !== "PASS" ||
+      readyStep?.status !== "PASS"
+    ) {
+      return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
+    }
+
+    const draftChunk = await prisma.knowledgeChunk.findFirst({
+      where: {
+        versionId: latestVersion.id,
+        metadata: {
+          path: ["indexGenerationId"],
+          equals: approveSnapshot.indexGenerationId,
+        },
+      },
+      select: { metadata: true },
+    });
+    const draftMeta = draftChunk?.metadata as Record<string, unknown> | null;
+    if (
+      !draftMeta ||
+      (draftMeta.indexScope !== "DRAFT" && draftMeta.indexStatus !== "DRAFT")
+    ) {
+      return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const { promoteDraftIndexToProduction } = await import(
+          "@/lib/docling-knowledge/docling-nd-knowledge-builder"
+        );
+        await promoteDraftIndexToProduction({
+          versionId: latestVersion.id,
+          pipelineRunId: approveSnapshot.pipelineRunId!,
+          indexGenerationId: approveSnapshot.indexGenerationId!,
+          fingerprint: activeNd.fingerprint!,
+          tx,
+        });
+
+        await tx.knowledgePack.update({
+          where: { packId },
+          data: {
+            status: nextStatus,
+            publishedAt: now,
+            isVerified: publishAsVerified,
+          },
+        });
+
+        await tx.packReview.update({
+          where: { id: accepted.id },
+          data: {
+            status: "APPROVED",
+            decision: "APPROVE",
+            memo,
+            reviewerClientId: input.reviewerClientId ?? null,
+            reviewerUserId: input.reviewerUserId ?? null,
+            decidedAt: now,
+          },
+        });
+      });
+    } catch {
+      return {
+        error: "INCOMPLETE" as const,
+        message: knowledgeMismatchMessage,
+      };
+    }
+  } else {
+    await prisma.$transaction(async (tx) => {
+      await tx.knowledgePack.update({
+        where: { packId },
+        data: {
+          status: nextStatus,
+          publishedAt: now,
+          isVerified: publishAsVerified,
+        },
+      });
+
+      await tx.packReview.update({
+        where: { id: accepted.id },
+        data: {
+          status: "APPROVED",
+          decision: "APPROVE",
+          memo,
+          reviewerClientId: input.reviewerClientId ?? null,
+          reviewerUserId: input.reviewerUserId ?? null,
+          decidedAt: now,
+        },
+      });
+    });
+  }
 
   await recordProviderAudit({
     action: AuditAction.ADMIN_PACK_APPROVE,
@@ -739,26 +852,18 @@ export async function approvePackReview(input: {
       adminUserId: input.reviewerUserId ?? null,
       reviewerClientId: input.reviewerClientId ?? null,
       action: "APPROVE",
+      pipelineRunId:
+        isDoclingBundleReviewSnapshot(approveSnapshot)
+          ? approveSnapshot.pipelineRunId ?? null
+          : null,
+      indexGenerationId:
+        isDoclingBundleReviewSnapshot(approveSnapshot)
+          ? approveSnapshot.indexGenerationId ?? null
+          : null,
     },
   });
 
   await recordApprovalPipeline(packId, input.reviewerClientId);
-
-  if (packageMode === "DOCLING_BUNDLE") {
-    const latestVersion = await prisma.knowledgePackVersion.findFirst({
-      where: { packId },
-      orderBy: { createdAt: "desc" },
-      select: { id: true },
-    });
-    if (latestVersion) {
-      const { promoteDraftIndexToProduction } = await import(
-        "@/lib/docling-knowledge/docling-nd-knowledge-builder"
-      );
-      await promoteDraftIndexToProduction({ versionId: latestVersion.id }).catch(
-        () => 0,
-      );
-    }
-  }
 
   const detail = await getAdminReviewDetail(packId);
   return { detail: detail! };

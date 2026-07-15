@@ -46,7 +46,10 @@ import {
 import { findOrEnsureProviderProfileForUser } from "@/lib/provider-profile-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { prisma } from "@/lib/prisma";
-import { touchKnowledgeRunHeartbeat } from "@/workers/knowledge-pipeline-job-claim";
+import {
+  assertKnowledgeRunLock,
+  touchKnowledgeRunHeartbeat,
+} from "@/workers/knowledge-pipeline-job-claim";
 
 export type DoclingKnowledgeStageView = {
   id: DoclingKnowledgeStageId;
@@ -302,9 +305,9 @@ export async function getDoclingKnowledgePipelineStatus(input: {
   const evalStep = latest?.steps.find((s) => s.step === "SEARCH_EVALUATING");
   const warningOnly =
     !passed &&
-    latest?.status === "PASS" &&
-    evalStep?.status === "WARNING" &&
-    !stale;
+    !stale &&
+    !running &&
+    (latest?.status === "WARNING" || evalStep?.status === "WARNING");
 
   const stages: DoclingKnowledgeStageView[] = DOCLING_KNOWLEDGE_STAGES.map((s) => {
     const step = latest?.steps.find((x) => x.step === s.pipelineStep);
@@ -398,16 +401,21 @@ async function markStep(
   status: PipelineStepStatus,
   message?: string,
   details?: Record<string, unknown>,
+  lockOwner?: string,
 ) {
-  const active = await assertRunStillActive(runId);
-  if (!active && status === "RUNNING") return { cancelled: true as const };
-  if (!active && (status === "PASS" || status === "WARNING" || status === "FAIL")) {
-    // Allow terminal write only if run still RUNNING was checked — if cancelled mid-flight, skip overwrite.
-    const run = await prisma.pipelineRun.findUnique({
-      where: { id: runId },
-      select: { status: true },
-    });
-    if (run?.status !== "RUNNING") return { cancelled: true as const };
+  if (lockOwner) {
+    const owned = await assertKnowledgeRunLock({ runId, lockOwner });
+    if (!owned) return { cancelled: true as const };
+  } else {
+    const active = await assertRunStillActive(runId);
+    if (!active && status === "RUNNING") return { cancelled: true as const };
+    if (!active && (status === "PASS" || status === "WARNING" || status === "FAIL")) {
+      const run = await prisma.pipelineRun.findUnique({
+        where: { id: runId },
+        select: { status: true },
+      });
+      if (run?.status !== "RUNNING") return { cancelled: true as const };
+    }
   }
 
   await completePipelineStep({ runId, step, status, message, details });
@@ -581,10 +589,12 @@ export async function executeDoclingKnowledgePipeline(input: {
   runId: string;
   packId: string;
   binding: KnowledgeRunBinding;
+  lockOwner: string;
 }): Promise<void> {
   let binding = input.binding;
   const versionId = binding.versionId;
   const indexGenerationId = binding.indexGenerationId;
+  const lockOwner = input.lockOwner;
 
   const cancelledExit = async (message: string) => {
     await finishPipelineRun({
@@ -602,14 +612,21 @@ export async function executeDoclingKnowledgePipeline(input: {
   };
 
   const heartbeat = async (userMessage: string) => {
-    binding = await touchKnowledgeRunHeartbeat({
+    const next = await touchKnowledgeRunHeartbeat({
       runId: input.runId,
-      binding,
+      lockOwner,
       userMessage,
     });
-    if (binding.cancelRequestedAt) return false;
-    const still = await assertRunStillActive(input.runId);
-    return Boolean(still);
+    if (!next) return false;
+    binding = next;
+    return true;
+  };
+
+  const assertOwned = async () => {
+    const owned = await assertKnowledgeRunLock({ runId: input.runId, lockOwner });
+    if (!owned) return false;
+    binding = owned;
+    return true;
   };
 
   if (!(await heartbeat("문서 구조 확인 준비"))) {
@@ -632,6 +649,7 @@ export async function executeDoclingKnowledgePipeline(input: {
       "FAIL",
       "활성 NormalizedDocument가 없거나 fingerprint가 일치하지 않습니다.",
       { code: "NORMALIZED_DOCUMENT_MISMATCH" },
+      lockOwner,
     );
     await failRun(
       input.packId,
@@ -643,12 +661,19 @@ export async function executeDoclingKnowledgePipeline(input: {
     return;
   }
 
+  if (!(await assertOwned())) {
+    await cancelledExit("취소되어 중단되었습니다.");
+    return;
+  }
+
   await markStep(
     input.packId,
     input.runId,
     "STRUCTURE_VALIDATING",
     "RUNNING",
     "문서 구조를 확인하는 중…",
+    undefined,
+    lockOwner,
   );
   const sections = (Array.isArray(nd.sectionsJson) ? nd.sectionsJson : []) as unknown as NormalizedSection[];
   const tables = (Array.isArray(nd.tablesJson) ? nd.tablesJson : []) as unknown as NormalizedTable[];
@@ -686,6 +711,7 @@ export async function executeDoclingKnowledgePipeline(input: {
       "FAIL",
       "문서 구조에 치명적 문제가 있어 지식 단위를 생성할 수 없습니다. 표시된 위치를 확인한 후 파일을 교체하거나 다시 처리해 주세요.",
       structureDetails,
+      lockOwner,
     );
     await failRun(input.packId, input.runId, "Structure validation failed", binding);
     return;
@@ -699,9 +725,10 @@ export async function executeDoclingKnowledgePipeline(input: {
       ? "구조 확인을 통과했지만 확인이 필요한 경고가 있습니다."
       : "문서 구조 확인을 통과했습니다.",
     structureDetails,
+    lockOwner,
   );
 
-  if (!(await heartbeat("지식 단위 생성 중"))) {
+  if (!(await heartbeat("지식 단위 생성 중")) || !(await assertOwned())) {
     await cancelledExit("취소되어 중단되었습니다.");
     return;
   }
@@ -712,6 +739,8 @@ export async function executeDoclingKnowledgePipeline(input: {
     "KNOWLEDGE_CHECKING",
     "RUNNING",
     "지식 단위를 생성하는 중…",
+    undefined,
+    lockOwner,
   );
 
   const sourceDocumentId = await ensureDoclingOriginSourceDocument({
@@ -744,6 +773,7 @@ export async function executeDoclingKnowledgePipeline(input: {
       "FAIL",
       "지식 단위 생성에 실패했습니다.",
       { code: "KNOWLEDGE_GENERATION_FAILED" },
+      lockOwner,
     );
     await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
     await failRun(input.packId, input.runId, message.slice(0, 500), binding, "KNOWLEDGE_GENERATION_FAILED");
@@ -758,6 +788,7 @@ export async function executeDoclingKnowledgePipeline(input: {
       "FAIL",
       "지식 단위를 생성하지 못했습니다. 정규화 결과의 본문·표·그림 샘플을 확인한 뒤 다시 처리해 주세요.",
       { ...built },
+      lockOwner,
     );
     await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
     await failRun(input.packId, input.runId, "Knowledge unit generation failed", binding);
@@ -778,9 +809,10 @@ export async function executeDoclingKnowledgePipeline(input: {
       coverage: built.coverage,
       sampleUnits: built.sampleUnits,
     },
+    lockOwner,
   );
 
-  if (!(await heartbeat("검색 데이터 생성 중"))) {
+  if (!(await heartbeat("검색 데이터 생성 중")) || !(await assertOwned())) {
     await cancelledExit("취소되어 중단되었습니다.");
     await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
     return;
@@ -792,6 +824,8 @@ export async function executeDoclingKnowledgePipeline(input: {
     "CHUNKING",
     "RUNNING",
     "검색 데이터를 생성하는 중…",
+    undefined,
+    lockOwner,
   );
   if (built.chunkCount === 0) {
     await markStep(
@@ -801,29 +835,22 @@ export async function executeDoclingKnowledgePipeline(input: {
       "FAIL",
       "검색용 Chunk를 생성하지 못했습니다. 지식 단위 내용을 확인한 뒤 다시 생성해 주세요.",
       { chunkCount: 0, code: "CHUNK_GENERATION_FAILED" },
+      lockOwner,
     );
     await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
     await failRun(input.packId, input.runId, "Chunk generation failed", binding, "CHUNK_GENERATION_FAILED");
     return;
   }
 
-  // Activate draft generation only after units+chunks validated (before embedding).
-  const activated = await activateDraftIndexGeneration({
-    versionId,
-    indexGenerationId,
-  });
-
-  const activeChunks = await prisma.knowledgeChunk.findMany({
+  const buildingChunks = await prisma.knowledgeChunk.findMany({
     where: {
       versionId,
-      isActive: true,
       chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+      metadata: { path: ["indexGenerationId"], equals: indexGenerationId },
     },
     select: { content: true, metadata: true },
   });
-  const lengths = activeChunks
-    .filter((c) => asRecord(c.metadata)?.indexGenerationId === indexGenerationId)
-    .map((c) => c.content.length);
+  const lengths = buildingChunks.map((c) => c.content.length);
   const avg =
     lengths.length > 0
       ? Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length)
@@ -842,14 +869,16 @@ export async function executeDoclingKnowledgePipeline(input: {
       shortCount: lengths.filter((n) => n < 80).length,
       longCount: lengths.filter((n) => n > 3500).length,
       mergedCount: built.mergedCount,
-      activatedChunkCount: activated.activatedChunkCount,
       sampleChunks: built.sampleChunks,
       coverage: built.coverage,
+      indexStatus: "BUILDING",
     },
+    lockOwner,
   );
 
-  if (!(await heartbeat("검색 인덱스 생성 중"))) {
+  if (!(await heartbeat("검색 인덱스 생성 중")) || !(await assertOwned())) {
     await cancelledExit("취소되어 중단되었습니다.");
+    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
     return;
   }
 
@@ -859,6 +888,8 @@ export async function executeDoclingKnowledgePipeline(input: {
     "INDEXING",
     "RUNNING",
     "검색 인덱스를 생성하는 중…",
+    undefined,
+    lockOwner,
   );
   const embeddings = await rebuildPackEmbeddings({
     packId: input.packId,
@@ -868,6 +899,10 @@ export async function executeDoclingKnowledgePipeline(input: {
     indexGenerationId,
     pipelineRunId: input.runId,
     fingerprint: nd.fingerprint ?? undefined,
+    includeInactiveForGeneration: true,
+    onChunkProcessed: async () => {
+      await heartbeat("검색 인덱스 생성 중…");
+    },
   });
   if (!embeddings) {
     await markStep(
@@ -877,8 +912,15 @@ export async function executeDoclingKnowledgePipeline(input: {
       "FAIL",
       "검색 인덱스(Embedding) 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.",
       { code: "INDEX_BUILD_FAILED" },
+      lockOwner,
     );
+    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
     await failRun(input.packId, input.runId, "Index build failed", binding, "INDEX_BUILD_FAILED");
+    return;
+  }
+  if (!(await assertOwned())) {
+    await cancelledExit("취소되어 중단되었습니다.");
+    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
     return;
   }
   await markStep(
@@ -891,13 +933,16 @@ export async function executeDoclingKnowledgePipeline(input: {
       draft: true,
       indexGenerationId,
       indexScope: "DRAFT",
+      indexStatus: "BUILDING",
       embeddingProvider: "local",
       ...embeddings,
     },
+    lockOwner,
   );
 
-  if (!(await heartbeat("검색 결과 검증 중"))) {
+  if (!(await heartbeat("검색 결과 검증 중")) || !(await assertOwned())) {
     await cancelledExit("취소되어 중단되었습니다.");
+    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
     return;
   }
 
@@ -907,12 +952,22 @@ export async function executeDoclingKnowledgePipeline(input: {
     "SEARCH_EVALUATING",
     "RUNNING",
     "검색 결과를 검증하는 중…",
+    undefined,
+    lockOwner,
   );
   const evaluation = await runDoclingRetrievalEvaluation({
     packId: input.packId,
     versionId,
     indexGenerationId,
+    onBatchHeartbeat: async () => {
+      await heartbeat("검색 결과 검증 중…");
+    },
   });
+  if (!(await assertOwned())) {
+    await cancelledExit("취소되어 중단되었습니다.");
+    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
+    return;
+  }
   if (evaluation.status === "FAIL") {
     await markStep(
       input.packId,
@@ -921,13 +976,15 @@ export async function executeDoclingKnowledgePipeline(input: {
       "FAIL",
       "검색 결과가 기준을 충족하지 못했습니다. 미통과 질문을 확인한 후 검색 데이터를 다시 생성해 주세요.",
       evaluation as unknown as Record<string, unknown>,
+      lockOwner,
     );
+    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
     await failRun(
       input.packId,
       input.runId,
       "Retrieval evaluation below threshold",
       binding,
-      "RETRIEVAL_EVALUATION_FAILED",
+      evaluation.failureCode ?? "RETRIEVAL_EVALUATION_FAILED",
     );
     return;
   }
@@ -939,8 +996,9 @@ export async function executeDoclingKnowledgePipeline(input: {
       "WARNING",
       "검색 검증에 보완이 필요합니다. 유통정보로 진행하려면 재검증 후 PASS가 필요합니다.",
       evaluation as unknown as Record<string, unknown>,
+      lockOwner,
     );
-    // WARNING does not open distribution (policy constant).
+    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
     await finishPipelineRun({
       runId: input.runId,
       status: "WARNING",
@@ -959,13 +1017,23 @@ export async function executeDoclingKnowledgePipeline(input: {
     return;
   }
 
+  // PASS only: atomically activate new draft and retire previous drafts.
+  const activated = await activateDraftIndexGeneration({
+    versionId,
+    indexGenerationId,
+  });
+
   await markStep(
     input.packId,
     input.runId,
     "SEARCH_EVALUATING",
     "PASS",
     "검색 결과 검증을 통과했습니다.",
-    evaluation as unknown as Record<string, unknown>,
+    { ...evaluation, activatedChunkCount: activated.activatedChunkCount } as unknown as Record<
+      string,
+      unknown
+    >,
+    lockOwner,
   );
 
   await markStep(
@@ -981,6 +1049,7 @@ export async function executeDoclingKnowledgePipeline(input: {
       bundleId: binding.bundleId,
       indexGenerationId,
     },
+    lockOwner,
   );
   await finishPipelineRun({
     runId: input.runId,
@@ -1017,6 +1086,7 @@ export async function executeDoclingKnowledgePipelineByIds(input: {
   packId: string;
   versionId: string;
   normalizedDocumentId: string;
+  lockOwner?: string;
 }): Promise<void> {
   const run = await prisma.pipelineRun.findUnique({ where: { id: input.runId } });
   const binding =
@@ -1028,9 +1098,20 @@ export async function executeDoclingKnowledgePipelineByIds(input: {
       bundleId: "unknown",
       indexGenerationId: randomUUID().replace(/-/g, "").slice(0, 24),
     });
+  const lockOwner = input.lockOwner ?? binding.lockOwner ?? "test-owner";
+  binding.lockOwner = lockOwner;
+  binding.lockExpiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  await prisma.pipelineRun.update({
+    where: { id: input.runId },
+    data: {
+      status: "RUNNING",
+      summary: serializeKnowledgeRunBinding(binding),
+    },
+  });
   await executeDoclingKnowledgePipeline({
     runId: input.runId,
     packId: input.packId,
     binding,
+    lockOwner,
   });
 }

@@ -26,9 +26,12 @@ describe("docling knowledge pipeline hardening", () => {
     assert.ok(long.length > 6000);
     const parts = splitSectionIntoUnitTexts(long, 6000);
     assert.ok(parts.length > 1);
-    const joinedLen = parts.reduce((a, b) => a + b.length, 0);
+    const joinedLen = parts.reduce((a, b) => a + b.text.length, 0);
     // Allow small whitespace normalization loss, but not wholesale truncate.
     assert.ok(joinedLen >= long.length * 0.95);
+    assert.ok(parts.every((p) => typeof p.startOffset === "number"));
+    assert.ok(parts[0]!.startOffset === 0 || parts[0]!.startOffset >= 0);
+    assert.ok(parts.some((p) => p.startOffset > 0));
   });
 
   it("extracts full table rows from cells, not only previewRows", () => {
