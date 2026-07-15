@@ -14,7 +14,7 @@ import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderPackTabs } from "@/components/ProviderPackTabs";
 import type { PackDistributionMetadataDto } from "@/lib/distribution/distribution-metadata-service";
-import { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-validation-service";
+import { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-channel-policy";
 import type { DoclingImportBundlePublicDto } from "@/lib/docling-import/docling-import-dto";
 import { isDoclingPayloadPresent, isDoclingPayloadReady } from "@/lib/docling-import/docling-import-ui";
 import type { ProviderPackDetailDto } from "@/lib/provider-pack-dto";

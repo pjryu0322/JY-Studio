@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   assertServiceChannelEnabled,
+  isDistributionReadyForServiceValidation,
   isServiceEnded,
   selectedServiceChannels,
 } from "../lib/distribution/service-channel-policy.ts";
@@ -9,7 +10,6 @@ import {
   resolveDefaultProviderPackTab,
   resolveProviderPackTabLocks,
 } from "../lib/provider-pack-tabs.ts";
-import { isDistributionReadyForServiceValidation } from "../lib/distribution/service-validation-service.ts";
 
 describe("service-channel-policy", () => {
   it("requires at least one selected channel", () => {

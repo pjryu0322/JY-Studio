@@ -624,22 +624,4 @@ export async function assertCurrentServiceValidationEvidence(input: {
   }
 }
 
-export function isDistributionReadyForServiceValidation(dist: {
-  sourceTitle?: string | null;
-  sourceUrl?: string | null;
-  rightsBasis?: string | null;
-  rightsConfirmedAt?: Date | string | null;
-  allowApi?: boolean;
-  allowMcp?: boolean;
-  allowDownload?: boolean;
-}): boolean {
-  const hasSource = Boolean(dist.sourceTitle?.trim() || dist.sourceUrl?.trim());
-  const hasRights = Boolean(dist.rightsBasis && dist.rightsConfirmedAt);
-  const hasChannel =
-    selectedServiceChannels({
-      allowApi: Boolean(dist.allowApi),
-      allowMcp: Boolean(dist.allowMcp),
-      allowDownload: Boolean(dist.allowDownload),
-    }).length > 0;
-  return hasSource && hasRights && hasChannel;
-}
+export { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-channel-policy";

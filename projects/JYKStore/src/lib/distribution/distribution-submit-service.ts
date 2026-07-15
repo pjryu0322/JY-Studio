@@ -131,7 +131,7 @@ export async function commitDistributionPackForReview(
   );
   const knowledgePassed = await isDoclingKnowledgePipelinePassed(packId);
   const { isDistributionReadyForServiceValidation } = await import(
-    "@/lib/distribution/service-validation-service"
+    "@/lib/distribution/service-channel-policy"
   );
   const distributionReady = Boolean(
     meta &&
