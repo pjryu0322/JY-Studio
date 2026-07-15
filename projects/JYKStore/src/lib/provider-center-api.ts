@@ -489,6 +489,45 @@ export async function confirmProviderDoclingImportApi(
   };
 }
 
+export type DoclingKnowledgePipelineStatusDto =
+  import("@/lib/docling-knowledge/docling-knowledge-pipeline-service").DoclingKnowledgePipelineStatusDto;
+
+export async function fetchProviderKnowledgePipelineApi(
+  packId: string,
+): Promise<DoclingKnowledgePipelineStatusDto> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/knowledge-pipeline`,
+    { credentials: "include" },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as DoclingKnowledgePipelineStatusDto;
+}
+
+export async function startProviderKnowledgePipelineApi(
+  packId: string,
+  options?: { forceRestart?: boolean },
+): Promise<{ ok: true; runId: string; alreadyRunning?: boolean }> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/knowledge-pipeline`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ forceRestart: Boolean(options?.forceRestart) }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    ok: true;
+    runId: string;
+    alreadyRunning?: boolean;
+  };
+}
+
 export async function retryProviderDoclingImportApi(packId: string): Promise<{
   clientId: string;
   bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto;

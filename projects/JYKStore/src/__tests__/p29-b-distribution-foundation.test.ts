@@ -19,15 +19,17 @@ function readSource(relativePath: string): string {
 }
 
 describe("P29 distribution foundation", () => {
-  it("provider editor uses 4 tabs basic → payload → distribution → review", () => {
+  it("provider editor uses 5 tabs basic → payload → knowledge → distribution → review", () => {
     assert.deepEqual([...PROVIDER_PACK_TAB_IDS], [
       "basic",
       "payload",
+      "knowledge",
       "distribution",
       "review",
     ]);
     const editor = readSource("src/components/ProviderPackEditor.tsx");
     assert.ok(editor.includes('activeTab === "payload"'));
+    assert.ok(editor.includes('activeTab === "knowledge"'));
     assert.ok(editor.includes('activeTab === "distribution"'));
     assert.ok(editor.includes('activeTab === "review"'));
     assert.ok(!editor.includes('activeTab === "materials"'));

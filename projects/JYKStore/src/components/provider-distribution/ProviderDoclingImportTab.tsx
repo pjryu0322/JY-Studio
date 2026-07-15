@@ -34,6 +34,7 @@ import {
   revalidateProviderDoclingImportBundleApi,
   retryProviderDoclingImportApi,
   retryProviderDoclingImportBundleApi,
+  startProviderKnowledgePipelineApi,
 } from "@/lib/provider-center-api";
 import type { DoclingQualityGateResult } from "@/lib/docling-import/docling-quality-gate";
 
@@ -128,13 +129,13 @@ export function ProviderDoclingImportTab({
   editable,
   cachedBundle = null,
   onDoclingChanged,
-  onGoToDistribution,
+  onGoToKnowledge,
 }: {
   readonly packId: string;
   readonly editable: boolean;
   readonly cachedBundle?: DoclingImportBundlePublicDto | null;
   readonly onDoclingChanged?: (bundle: DoclingImportBundlePublicDto | null) => void;
-  readonly onGoToDistribution?: () => void;
+  readonly onGoToKnowledge?: () => void;
 }) {
   const [bundle, setBundle] = useState<DoclingImportBundlePublicDto | null>(cachedBundle);
   const [stagingBundle, setStagingBundle] = useState<DoclingImportBundlePublicDto | null>(null);
@@ -503,11 +504,16 @@ export function ProviderDoclingImportTab({
     setError(null);
     try {
       const result = await confirmProviderDoclingImportApi(packId, confirmTarget.id);
-      setSuccessMessage("확인이 완료되었습니다. 유통정보를 입력해 주세요.");
+      try {
+        await startProviderKnowledgePipelineApi(packId, { forceRestart: false });
+      } catch {
+        // Pipeline start is best-effort; user can retry on knowledge tab.
+      }
+      setSuccessMessage("확인이 완료되었습니다. 지식 데이터 생성을 진행해 주세요.");
       setConfirmAck(false);
       onDoclingChanged?.(result.bundle);
       await load({ silent: true });
-      onGoToDistribution?.();
+      onGoToKnowledge?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "확인 완료에 실패했습니다.");
     } finally {
@@ -689,7 +695,7 @@ export function ProviderDoclingImportTab({
                       onClick={() => void onConfirmNormalized()}
                       className="min-h-[44px] rounded-xl bg-store-accent px-3 text-xs font-bold text-white disabled:opacity-60"
                     >
-                      {confirming ? "확인 중…" : "확인 완료하고 유통정보 입력"}
+                      {confirming ? "확인 중…" : "확인 완료하고 지식 데이터 생성"}
                     </button>
                   </div>
                 </>

@@ -38,6 +38,7 @@ export function ProviderPackReviewTab({
   onWithdrawReview,
   onGoToPayloadTab,
   onGoToDistributionTab,
+  onGoToKnowledgeTab,
   onGoToBasicTab,
 }: {
   readonly pack: ProviderPackDetailDto;
@@ -51,6 +52,7 @@ export function ProviderPackReviewTab({
   readonly onWithdrawReview: () => void;
   readonly onGoToPayloadTab: () => void;
   readonly onGoToDistributionTab: () => void;
+  readonly onGoToKnowledgeTab?: () => void;
   readonly onGoToBasicTab: () => void;
 }) {
   const isReviewing = pack.status === "REVIEWING";
@@ -133,6 +135,7 @@ export function ProviderPackReviewTab({
           onGoToTab={(tab) => {
             if (tab === "basic") onGoToBasicTab();
             else if (tab === "payload") onGoToPayloadTab();
+            else if (tab === "knowledge") onGoToKnowledgeTab?.();
             else onGoToDistributionTab();
           }}
         />

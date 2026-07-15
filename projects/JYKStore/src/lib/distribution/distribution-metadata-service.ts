@@ -442,6 +442,18 @@ export async function upsertProviderPackDistribution(input: {
     packId: input.packId,
   });
 
+  const { isDoclingKnowledgePipelinePassed } = await import(
+    "@/lib/docling-knowledge/docling-knowledge-pipeline-service"
+  );
+  const knowledgePassed = await isDoclingKnowledgePipelinePassed(pack.packId);
+  if (!knowledgePassed) {
+    throw new PayloadServiceError(
+      "INCOMPLETE",
+      "지식 데이터 생성이 완료되어야 유통정보를 저장할 수 있습니다.",
+      400,
+    );
+  }
+
   const validated = validateDistributionMetadataInput(input.body);
   const artifactOptions = await resolveArtifactOptions(version.id);
 

@@ -15,7 +15,7 @@ export function ProviderMaterialRegistrationTab({
   cachedDoclingBundle,
   onDoclingChanged,
   onPackUpdated,
-  onGoToDistribution,
+  onGoToKnowledge,
 }: {
   readonly packId: string;
   readonly editable: boolean;
@@ -24,7 +24,7 @@ export function ProviderMaterialRegistrationTab({
   readonly cachedDoclingBundle?: DoclingImportBundlePublicDto | null;
   readonly onDoclingChanged?: (bundle: DoclingImportBundlePublicDto | null) => void;
   readonly onPackUpdated?: (pack: ProviderPackDetailDto) => void;
-  readonly onGoToDistribution?: () => void;
+  readonly onGoToKnowledge?: () => void;
 }) {
   const [creatingVersion, setCreatingVersion] = useState(false);
   const [showVersionForm, setShowVersionForm] = useState(false);
@@ -78,7 +78,7 @@ export function ProviderMaterialRegistrationTab({
           editable={editable}
           cachedBundle={cachedDoclingBundle}
           onDoclingChanged={onDoclingChanged}
-          onGoToDistribution={onGoToDistribution}
+          onGoToKnowledge={onGoToKnowledge}
         />
       </section>
 

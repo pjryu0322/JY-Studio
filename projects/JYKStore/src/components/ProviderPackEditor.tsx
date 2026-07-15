@@ -8,6 +8,7 @@ import {
   computeDistributionReadiness,
 } from "@/components/provider-distribution/ProviderDistributionReadiness";
 import { ProviderPayloadTab } from "@/components/provider-distribution/ProviderPayloadTab";
+import { ProviderKnowledgeGenerationTab } from "@/components/provider-distribution/ProviderKnowledgeGenerationTab";
 import { ProviderPackReviewTab } from "@/components/ProviderPackReviewTab";
 import { ProviderPackStatusBadge } from "@/components/ProviderPackStatusBadge";
 import { ProviderPackTabs } from "@/components/ProviderPackTabs";
@@ -27,15 +28,18 @@ import {
 } from "@/lib/provider-pack-progress";
 import {
   fetchProviderDoclingImportApi,
+  fetchProviderKnowledgePipelineApi,
   fetchProviderPack,
   fetchProviderPackDistributionApi,
   submitProviderPackApi,
   updateProviderPackApi,
   withdrawProviderPackReviewApi,
+  type DoclingKnowledgePipelineStatusDto,
 } from "@/lib/provider-center-api";
 import {
   resolveDefaultProviderPackTab,
   resolveProviderPackTabFromLocation,
+  resolveProviderPackTabLocks,
   type ProviderPackTabId,
 } from "@/lib/provider-pack-tabs";
 import { providerPackDetailPath } from "@/lib/routes";
@@ -55,6 +59,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
   const [pack, setPack] = useState<ProviderPackDetailDto | null>(null);
   const [doclingBundle, setDoclingBundle] = useState<DoclingImportBundlePublicDto | null>(null);
   const [distribution, setDistribution] = useState<PackDistributionMetadataDto | null>(null);
+  const [knowledgeStatus, setKnowledgeStatus] =
+    useState<DoclingKnowledgePipelineStatusDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -106,12 +112,14 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       setSaveSuccessMessage(null);
       setBasicFieldErrors({});
 
-      const [distRes, doclingRes] = await Promise.all([
+      const [distRes, doclingRes, knowledgeRes] = await Promise.all([
         fetchProviderPackDistributionApi(packId).catch(() => ({ distribution: null })),
         fetchProviderDoclingImportApi(packId).catch(() => ({ bundle: null })),
+        fetchProviderKnowledgePipelineApi(packId).catch(() => null),
       ]);
       setDistribution(distRes.distribution);
       setDoclingBundle(doclingRes.bundle);
+      if (knowledgeRes) setKnowledgeStatus(knowledgeRes);
     } catch (err) {
       setError(err instanceof Error ? err.message : "지식팩을 불러오지 못했습니다.");
     } finally {
@@ -139,8 +147,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         hasLanguage,
         distribution,
         doclingBundle,
+        knowledgePassed: Boolean(knowledgeStatus?.passed),
       }),
-    [hasBasicInfo, hasLanguage, distribution, doclingBundle],
+    [hasBasicInfo, hasLanguage, distribution, doclingBundle, knowledgeStatus?.passed],
   );
 
   const packProgress = useMemo(() => {
@@ -195,6 +204,9 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     doclingBundle,
   ]);
 
+  const providerConfirmed = isDoclingPayloadReady(doclingBundle?.status);
+  const knowledgePassed = Boolean(knowledgeStatus?.passed);
+
   const defaultTab = useMemo(
     () =>
       resolveDefaultProviderPackTab({
@@ -203,8 +215,18 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         sourceDocumentCount,
         hasPayload: isDoclingPayloadPresent(doclingBundle?.status),
         hasDistribution: Boolean(distribution),
+        providerConfirmed,
+        knowledgePassed,
       }),
-    [showCreatedBanner, pack?.status, sourceDocumentCount, distribution, doclingBundle],
+    [
+      showCreatedBanner,
+      pack?.status,
+      sourceDocumentCount,
+      distribution,
+      doclingBundle,
+      providerConfirmed,
+      knowledgePassed,
+    ],
   );
 
   const activeTab = resolveProviderPackTabFromLocation({
@@ -213,14 +235,28 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     fallback: defaultTab,
   });
 
+  const tabLocks = useMemo(
+    () =>
+      resolveProviderPackTabLocks({
+        providerConfirmed,
+        knowledgePassed,
+        distributionReady: Boolean(
+          distribution?.licenseName?.trim() &&
+            (distribution?.sourceTitle?.trim() || distribution?.sourceUrl?.trim()),
+        ),
+      }),
+    [providerConfirmed, knowledgePassed, distribution],
+  );
+
   const selectTab = useCallback(
     (tab: ProviderPackTabId) => {
+      if (tabLocks[tab]?.locked) return;
       const params = new URLSearchParams(searchParams.toString());
       params.set("tab", tab);
       params.delete("created");
       router.replace(`${providerPackDetailPath(packId)}?${params.toString()}`, { scroll: false });
     },
-    [packId, router, searchParams],
+    [packId, router, searchParams, tabLocks],
   );
 
   const validateBasicInfo = useCallback(() => {
@@ -381,7 +417,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         </div>
       ) : null}
 
-      <ProviderPackTabs activeTab={activeTab} onSelectTab={selectTab} />
+      <ProviderPackTabs activeTab={activeTab} onSelectTab={selectTab} locks={tabLocks} />
 
       {error ? (
         <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
@@ -443,7 +479,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             latestReviewStatus={pack.latestReviewStatus}
             cachedDoclingBundle={doclingBundle}
             onDoclingChanged={setDoclingBundle}
-            onGoToDistribution={() => selectTab("distribution")}
+            onGoToKnowledge={() => selectTab("knowledge")}
             onPackUpdated={(next) => {
               setPack(next);
               setVersionOverview(next.versions[0]?.overview ?? "");
@@ -454,14 +490,32 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         </div>
 
         <div
+          className={activeTab === "knowledge" ? undefined : "hidden"}
+          aria-hidden={activeTab !== "knowledge"}
+        >
+          <ProviderKnowledgeGenerationTab
+            packId={packId}
+            editable={editable}
+            onGoToDistribution={() => selectTab("distribution")}
+            onStatusChange={setKnowledgeStatus}
+          />
+        </div>
+
+        <div
           className={activeTab === "distribution" ? undefined : "hidden"}
           aria-hidden={activeTab !== "distribution"}
         >
-          <ProviderDistributionTab
-            packId={packId}
-            editable={editable}
-            onDistributionChanged={setDistribution}
-          />
+          {tabLocks.distribution.locked ? (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              {tabLocks.distribution.reason}
+            </p>
+          ) : (
+            <ProviderDistributionTab
+              packId={packId}
+              editable={editable}
+              onDistributionChanged={setDistribution}
+            />
+          )}
         </div>
 
         <div
@@ -480,6 +534,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             onWithdrawReview={() => void onWithdrawReview()}
             onGoToPayloadTab={() => selectTab("payload")}
             onGoToDistributionTab={() => selectTab("distribution")}
+            onGoToKnowledgeTab={() => selectTab("knowledge")}
             onGoToBasicTab={() => selectTab("basic")}
           />
         </div>

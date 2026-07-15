@@ -15,10 +15,11 @@ export type DistributionReadiness = {
   payloadValid: boolean;
   hasChecksum: boolean;
   hasNormalizedDocument: boolean;
+  hasKnowledgePipeline: boolean;
   hasSource: boolean;
   hasLicense: boolean;
   ready: boolean;
-  missing: { label: string; tab: "basic" | "payload" | "distribution" }[];
+  missing: { label: string; tab: "basic" | "payload" | "knowledge" | "distribution" }[];
 };
 
 function hasRequiredFilesWithChecksums(
@@ -37,6 +38,7 @@ export function computeDistributionReadiness(input: {
   hasLanguage: boolean;
   distribution: PackDistributionMetadataDto | null;
   doclingBundle?: DoclingImportBundlePublicDto | null;
+  knowledgePassed?: boolean;
 }): DistributionReadiness {
   const doclingReady = isDoclingPayloadReady(input.doclingBundle?.status);
   const hasRequiredFiles = hasRequiredFilesWithChecksums(input.doclingBundle);
@@ -44,6 +46,7 @@ export function computeDistributionReadiness(input: {
   const hasPayload = Boolean(input.doclingBundle);
   const payloadValid = doclingReady && hasRequiredFiles && hasNormalizedDocument;
   const hasChecksum = hasRequiredFiles;
+  const hasKnowledgePipeline = Boolean(input.knowledgePassed);
   const hasSource = Boolean(
     input.distribution?.sourceTitle?.trim() || input.distribution?.sourceUrl?.trim(),
   );
@@ -56,6 +59,9 @@ export function computeDistributionReadiness(input: {
   else if (!doclingReady) missing.push({ label: "Docling REVIEW_READY", tab: "payload" });
   else if (!hasRequiredFiles) missing.push({ label: "파일 무결성(원본·JSON checksum)", tab: "payload" });
   else if (!hasNormalizedDocument) missing.push({ label: "문서 정규화", tab: "payload" });
+  if (!hasKnowledgePipeline) {
+    missing.push({ label: "지식 데이터 생성(검색 검증 통과)", tab: "knowledge" });
+  }
   if (!hasSource || !hasLicense) missing.push({ label: "유통정보(출처·라이선스)", tab: "distribution" });
 
   return {
@@ -65,6 +71,7 @@ export function computeDistributionReadiness(input: {
     payloadValid,
     hasChecksum,
     hasNormalizedDocument,
+    hasKnowledgePipeline,
     hasSource,
     hasLicense,
     ready:
@@ -74,6 +81,7 @@ export function computeDistributionReadiness(input: {
       payloadValid &&
       hasChecksum &&
       hasNormalizedDocument &&
+      hasKnowledgePipeline &&
       hasSource &&
       hasLicense,
     missing,
@@ -85,7 +93,7 @@ export function ProviderDistributionReadiness({
   onGoToTab,
 }: {
   readonly readiness: DistributionReadiness;
-  readonly onGoToTab: (tab: "basic" | "payload" | "distribution") => void;
+  readonly onGoToTab: (tab: "basic" | "payload" | "knowledge" | "distribution") => void;
 }) {
   return (
     <div className="rounded-xl border border-store-border bg-slate-50 p-3 text-xs text-slate-800">
@@ -97,6 +105,7 @@ export function ProviderDistributionReadiness({
         <li>파일 무결성: {readiness.hasChecksum ? "있음" : "없음"}</li>
         <li>검증: {readiness.payloadValid ? "REVIEW_READY" : "미충족"}</li>
         <li>문서 정규화: {readiness.hasNormalizedDocument ? "있음" : "없음"}</li>
+        <li>지식 데이터 생성: {readiness.hasKnowledgePipeline ? "통과" : "미통과"}</li>
         <li>출처: {readiness.hasSource ? "있음" : "없음"}</li>
         <li>라이선스: {readiness.hasLicense ? "있음" : "없음"}</li>
       </ul>

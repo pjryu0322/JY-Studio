@@ -36,7 +36,7 @@ export type DistributionSubmitCommitResult =
   | { error: "PROFILE_REQUIRED" }
   | { error: "NOT_FOUND" }
   | { error: "NOT_DRAFT" }
-  | { error: "INCOMPLETE"; message: string }
+  | { error: "INCOMPLETE"; message: string; missingRequirements?: string[] }
   | { ok: true; snapshot: ReviewSubmitSnapshot };
 
 /**
@@ -122,6 +122,29 @@ export async function commitDistributionPackForReview(
       error: "INCOMPLETE",
       message:
         "원본문서와 구조화 JSON이 정상 처리되어 REVIEW_READY 상태여야 검수 요청할 수 있습니다.",
+      missingRequirements: ["DOCLING_REVIEW_READY"],
+    };
+  }
+
+  const { isDoclingKnowledgePipelinePassed, missingRequirementsForReview } = await import(
+    "@/lib/docling-knowledge/docling-knowledge-pipeline-service"
+  );
+  const knowledgePassed = await isDoclingKnowledgePipelinePassed(packId);
+  const distributionReady = Boolean(
+    meta?.licenseName?.trim() &&
+      (meta?.sourceTitle?.trim() || meta?.sourceUrl?.trim()),
+  );
+  if (!knowledgePassed || !distributionReady) {
+    return {
+      error: "INCOMPLETE",
+      message: !knowledgePassed
+        ? "지식 데이터 생성(검색 결과 검증)이 완료되어야 검수 요청할 수 있습니다."
+        : "유통정보(출처·라이선스)를 입력해 주세요.",
+      missingRequirements: missingRequirementsForReview({
+        materialReady: true,
+        knowledgePassed,
+        distributionReady,
+      }),
     };
   }
 

@@ -28,13 +28,45 @@ describe("resolveDefaultProviderPackTab", () => {
     );
   });
 
-  it("opens distribution when payload exists without distribution metadata", () => {
+  it("opens payload when payload exists but provider has not confirmed", () => {
     assert.equal(
       resolveDefaultProviderPackTab({
         created: false,
         status: "DRAFT",
         sourceDocumentCount: 0,
         hasPayload: true,
+        providerConfirmed: false,
+        knowledgePassed: false,
+        hasDistribution: false,
+      }),
+      "payload",
+    );
+  });
+
+  it("opens knowledge after confirm before pipeline pass", () => {
+    assert.equal(
+      resolveDefaultProviderPackTab({
+        created: false,
+        status: "DRAFT",
+        sourceDocumentCount: 0,
+        hasPayload: true,
+        providerConfirmed: true,
+        knowledgePassed: false,
+        hasDistribution: false,
+      }),
+      "knowledge",
+    );
+  });
+
+  it("opens distribution when knowledge passed without distribution metadata", () => {
+    assert.equal(
+      resolveDefaultProviderPackTab({
+        created: false,
+        status: "DRAFT",
+        sourceDocumentCount: 0,
+        hasPayload: true,
+        providerConfirmed: true,
+        knowledgePassed: true,
         hasDistribution: false,
       }),
       "distribution",
@@ -48,6 +80,8 @@ describe("resolveDefaultProviderPackTab", () => {
         status: "DRAFT",
         sourceDocumentCount: 2,
         hasPayload: true,
+        providerConfirmed: true,
+        knowledgePassed: true,
         hasDistribution: true,
       }),
       "review",

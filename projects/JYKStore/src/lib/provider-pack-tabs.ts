@@ -1,4 +1,10 @@
-export const PROVIDER_PACK_TAB_IDS = ["basic", "payload", "distribution", "review"] as const;
+export const PROVIDER_PACK_TAB_IDS = [
+  "basic",
+  "payload",
+  "knowledge",
+  "distribution",
+  "review",
+] as const;
 
 export type ProviderPackTabId = (typeof PROVIDER_PACK_TAB_IDS)[number];
 
@@ -20,6 +26,8 @@ export function resolveDefaultProviderPackTab(input: {
   sourceDocumentCount: number;
   hasPayload?: boolean;
   hasDistribution?: boolean;
+  knowledgePassed?: boolean;
+  providerConfirmed?: boolean;
 }): ProviderPackTabId {
   if (input.status === "REVIEWING" || input.status === "PUBLISHED" || input.status === "VERIFIED") {
     return "review";
@@ -33,7 +41,13 @@ export function resolveDefaultProviderPackTab(input: {
   if (!input.hasPayload && input.sourceDocumentCount === 0) {
     return "payload";
   }
-  if (input.hasPayload && !input.hasDistribution) {
+  if (input.hasPayload && !input.providerConfirmed) {
+    return "payload";
+  }
+  if (input.providerConfirmed && !input.knowledgePassed) {
+    return "knowledge";
+  }
+  if (input.knowledgePassed && !input.hasDistribution) {
     return "distribution";
   }
   return "review";
@@ -60,13 +74,13 @@ export function resolveProviderPackTabFromLocation(input: {
   ) {
     return "payload";
   }
+  if (normalizedHash === "#pack-knowledge") {
+    return "knowledge";
+  }
   if (normalizedHash === "#pack-distribution") {
     return "distribution";
   }
-  if (normalizedHash === "#pack-inspection") {
-    return "review";
-  }
-  if (normalizedHash === "#pack-review") {
+  if (normalizedHash === "#pack-inspection" || normalizedHash === "#pack-review") {
     return "review";
   }
 
@@ -75,4 +89,41 @@ export function resolveProviderPackTabFromLocation(input: {
 
 export function providerPackTabQuery(tab: ProviderPackTabId): string {
   return `tab=${tab}`;
+}
+
+export type ProviderPackTabLock = {
+  locked: boolean;
+  reason: string | null;
+};
+
+export function resolveProviderPackTabLocks(input: {
+  providerConfirmed: boolean;
+  knowledgePassed: boolean;
+  distributionReady: boolean;
+}): Record<ProviderPackTabId, ProviderPackTabLock> {
+  return {
+    basic: { locked: false, reason: null },
+    payload: { locked: false, reason: null },
+    knowledge: {
+      locked: !input.providerConfirmed,
+      reason: input.providerConfirmed
+        ? null
+        : "자료 등록에서 대표 샘플 확인을 완료해야 지식 데이터 생성을 시작할 수 있습니다.",
+    },
+    distribution: {
+      locked: !input.knowledgePassed,
+      reason: input.knowledgePassed
+        ? null
+        : "지식 데이터 생성이 완료되면 유통정보를 입력할 수 있습니다.",
+    },
+    review: {
+      locked: !(input.knowledgePassed && input.distributionReady),
+      reason:
+        input.knowledgePassed && input.distributionReady
+          ? null
+          : !input.knowledgePassed
+            ? "지식 데이터 생성이 완료되어야 검수요청을 진행할 수 있습니다."
+            : "유통정보 필수 항목을 입력하면 검수요청을 진행할 수 있습니다.",
+    },
+  };
 }
