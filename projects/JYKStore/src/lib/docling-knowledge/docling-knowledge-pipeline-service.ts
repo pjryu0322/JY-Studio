@@ -68,9 +68,9 @@ const BINDING_FAILURE_USER_MESSAGE =
 
 const PRIOR_FAIL_WAIT_BY_STAGE: Partial<Record<DoclingKnowledgeStageId, string>> = {
   KNOWLEDGE_UNIT: "문서 구조 확인을 통과해야 지식 단위 생성이 진행됩니다.",
-  RETRIEVAL_CHUNK: "지식 단위 생성이 완료되어야 검색 데이터 생성이 진행됩니다.",
-  SEARCH_INDEX: "검색 데이터 생성이 완료되어야 검색 인덱스 생성이 진행됩니다.",
-  RETRIEVAL_EVALUATION: "검색 인덱스 생성이 완료되어야 검색 결과 검증이 진행됩니다.",
+  RETRIEVAL_CHUNK: "지식 단위 생성이 완료되어야 Retrieval Chunk 생성이 진행됩니다.",
+  SEARCH_INDEX: "Retrieval Chunk 생성이 완료되어야 Draft 검색 인덱스 준비가 진행됩니다.",
+  RETRIEVAL_EVALUATION: "Draft 검색 인덱스 준비가 완료되어야 검색 결과 검증이 진행됩니다.",
 };
 
 /** Import-only gate codes that must never fail the knowledge STRUCTURE stage. */

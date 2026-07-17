@@ -601,7 +601,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
           <ProviderKnowledgeGenerationTab
             packId={packId}
             editable={editable}
-            onGoToDistribution={() => selectTab("serviceValidation")}
+            onGoToSearchValidation={() => selectTab("serviceValidation")}
             onStatusChange={setKnowledgeStatus}
           />
         </div>
@@ -621,7 +621,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             <ProviderServiceValidationTab
               packId={packId}
               editable={editable}
-              onGoToReview={() => selectTab("distributionReview")}
+              knowledgeStatus={knowledgeStatus}
+              onGoToDistributionReview={() => selectTab("distributionReview")}
               onStatusChange={setServiceValidation}
             />
           )}

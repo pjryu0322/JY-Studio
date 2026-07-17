@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   downloadProviderKnowledgePipelineStageApi,
   fetchProviderKnowledgePipelineApi,
   startProviderKnowledgePipelineApi,
   type DoclingKnowledgePipelineStatusDto,
 } from "@/lib/provider-center-api";
+import {
+  filterStagesByIds,
+  STRUCTURE_STAGE_IDS,
+} from "@/lib/docling-knowledge/docling-knowledge-stage-pass";
 
 function canDownloadStage(status: string): boolean {
   return status === "PASS" || status === "WARNING";
@@ -139,11 +143,15 @@ function friendlyDetails(stageId: string, details: Record<string, unknown> | nul
 export function ProviderKnowledgeGenerationTab({
   packId,
   editable,
+  onGoToSearchValidation,
   onGoToDistribution,
   onStatusChange,
 }: {
   readonly packId: string;
   readonly editable: boolean;
+  /** Preferred: navigate to search-validation tab after structure passes. */
+  readonly onGoToSearchValidation?: () => void;
+  /** @deprecated Prefer onGoToSearchValidation */
   readonly onGoToDistribution?: () => void;
   readonly onStatusChange?: (status: DoclingKnowledgePipelineStatusDto) => void;
 }) {
@@ -206,13 +214,19 @@ export function ProviderKnowledgeGenerationTab({
     }
   }
 
-  if (loading) {
-    return <p className="text-sm text-store-muted">데이터 구조화 상태를 불러오는 중…</p>;
-  }
-
   const primary = status?.primaryCta ?? "none";
   const running =
     status?.runStatus === "RUNNING" || status?.runStatus === "PENDING";
+  const structureStages = useMemo(
+    () => filterStagesByIds(status?.stages ?? [], STRUCTURE_STAGE_IDS),
+    [status?.stages],
+  );
+  const goToSearchValidation = onGoToSearchValidation ?? onGoToDistribution;
+  const structureComplete = Boolean(status?.structurePassed);
+
+  if (loading) {
+    return <p className="text-sm text-store-muted">데이터 구조화 상태를 불러오는 중…</p>;
+  }
 
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
@@ -221,6 +235,10 @@ export function ProviderKnowledgeGenerationTab({
         <p className="mt-1 text-sm text-store-muted">
           등록한 문서를 NormalizedDocument·Knowledge Unit·Retrieval Chunk로 구조화합니다. 원문·페이지·출처
           연결을 확인한 뒤 다음 단계에서 검색 경로를 검증합니다.
+        </p>
+        <p className="mt-2 text-xs text-store-muted">
+          Draft 검색 인덱스는 이 파이프라인에서 함께 준비되며, 상태는 다음 단계(검색데이터 생성·검증)에서
+          확인합니다. 운영용 Search Generation 도입 후 별도 생성·승격됩니다.
         </p>
       </div>
 
@@ -244,7 +262,7 @@ export function ProviderKnowledgeGenerationTab({
       ) : null}
 
       <ol className="space-y-2">
-        {(status?.stages ?? []).map((stage) => (
+        {structureStages.map((stage) => (
           <li
             key={stage.id}
             className="rounded-xl border border-store-border bg-slate-50 px-3 py-2 text-sm"
@@ -352,10 +370,10 @@ export function ProviderKnowledgeGenerationTab({
                 : "다시 생성"}
           </button>
         ) : null}
-        {primary === "distribution" && status?.passed ? (
+        {structureComplete ? (
           <button
             type="button"
-            onClick={() => onGoToDistribution?.()}
+            onClick={() => goToSearchValidation?.()}
             className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white"
           >
             검색데이터 생성·검증으로 이동
@@ -363,9 +381,10 @@ export function ProviderKnowledgeGenerationTab({
         ) : null}
       </div>
 
-      {status?.passed ? (
+      {structureComplete ? (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          데이터 구조화가 완료되었습니다. 다음 단계에서 검색 경로를 검증하세요.
+          데이터 구조화가 완료되었습니다. 다음 단계에서 Draft 검색 인덱스·검색 평가와 API·MCP·DOWNLOAD를
+          확인하세요.
         </p>
       ) : null}
     </section>

@@ -9,6 +9,7 @@ import {
   providerSourcePreviewPageUrl,
   rejectProviderServiceValidationApi,
   runProviderServiceValidationApi,
+  type DoclingKnowledgePipelineStatusDto,
   type ServiceValidationStatusDto,
 } from "@/lib/provider-center-api";
 import type { ServiceValidationChannelDto } from "@/lib/distribution/service-validation-service";
@@ -17,6 +18,10 @@ import {
   DOWNLOAD_REJECTION_REASONS,
   RETRIEVAL_REJECTION_REASONS,
 } from "@/lib/distribution/service-validation-confirmation-constants";
+import {
+  filterStagesByIds,
+  SEARCH_FOUNDATION_STAGE_IDS,
+} from "@/lib/docling-knowledge/docling-knowledge-stage-pass";
 
 function systemLabel(status: string): string {
   switch (status) {
@@ -75,7 +80,7 @@ const CHANNEL_COPY: Record<string, { title: string; hint: string }> = {
   },
   DOWNLOAD: {
     title: "원본문서 다운로드 검증",
-    hint: "등록한 원본문서 다운로드와 무결성을 확인합니다. (운영용 RAG Export는 이후 단계에서 별도 준비됩니다.)",
+    hint: "현재: 등록한 원본문서 다운로드와 무결성 확인. 향후: Portable RAG Export 생성·검증(미구현).",
   },
 };
 
@@ -455,11 +460,18 @@ function DownloadConfirmPanel({
 export function ProviderServiceValidationTab({
   packId,
   editable,
+  knowledgeStatus,
+  onGoToDistributionReview,
   onGoToReview,
   onStatusChange,
 }: {
   readonly packId: string;
   readonly editable: boolean;
+  /** Pipeline stages used to show SEARCH_INDEX / RETRIEVAL_EVALUATION in this tab. */
+  readonly knowledgeStatus?: DoclingKnowledgePipelineStatusDto | null;
+  /** Preferred callback name. */
+  readonly onGoToDistributionReview?: () => void;
+  /** @deprecated Prefer onGoToDistributionReview */
   readonly onGoToReview?: () => void;
   readonly onStatusChange?: (status: ServiceValidationStatusDto) => void;
 }) {
@@ -555,25 +567,92 @@ export function ProviderServiceValidationTab({
     }
   }
 
+  const selected = status?.channels.filter((c) => c.selected) ?? [];
+  const foundationStages = useMemo(
+    () => filterStagesByIds(knowledgeStatus?.stages ?? [], SEARCH_FOUNDATION_STAGE_IDS),
+    [knowledgeStatus?.stages],
+  );
+  const goToDistributionReview = onGoToDistributionReview ?? onGoToReview;
+  const preparationPassed = Boolean(
+    status?.allPreparationChannelsPassed ?? status?.allSelectedPassed,
+  );
+  const fingerprintShort = knowledgeStatus?.fingerprint
+    ? `${knowledgeStatus.fingerprint.slice(0, 8)}…`
+    : null;
+
   if (loading) {
     return <p className="text-sm text-store-muted">검색데이터 검증 상태를 불러오는 중…</p>;
   }
-
-  const selected = status?.channels.filter((c) => c.selected) ?? [];
 
   return (
     <section className="space-y-4 rounded-2xl border border-store-border bg-white p-4 shadow-card">
       <div>
         <h2 className="text-base font-bold text-slate-900">검색데이터 생성·검증</h2>
         <p className="mt-1 text-sm text-store-muted">
-          API·MCP·원본문서 다운로드 경로를 먼저 준비·검증합니다. 실제 공개 채널은 다음 단계
-          유통정보에서 선택합니다.
+          Draft 검색 인덱스·검색 평가와 API·MCP·원본문서 다운로드 경로를 준비·검증합니다. 실제 공개
+          채널은 다음 단계 유통정보에서 선택합니다.
         </p>
         <p className="mt-1 text-xs text-store-muted">
-          현재 검색은 개발용 Draft 인덱스 기준이며, 운영용 Embedding·RAG Export는 이후 단계에서
-          확장됩니다.
+          개발·검증용 Draft 검색 인덱스(local-hash) 기준입니다. 운영용 Embedding·pgvector는 미적용이며,
+          DOWNLOAD PASS는 RAG Export PASS가 아닙니다.
+        </p>
+        <p className="mt-1 text-xs text-store-muted">
+          현재 Draft 검색 인덱스는 데이터 구조화 파이프라인에서 함께 준비됩니다. 운영용 Search
+          Generation 도입 후 이 단계에서 별도로 생성·승격됩니다.
         </p>
       </div>
+
+      <div className="rounded-xl border border-store-border bg-slate-50 px-3 py-3 text-xs text-slate-700">
+        <p className="font-semibold text-slate-900">현재 검색데이터 Binding</p>
+        <ul className="mt-1 space-y-0.5">
+          <li>
+            상태:{" "}
+            {knowledgeStatus?.pipelineCurrent
+              ? "현재"
+              : knowledgeStatus?.stale
+                ? "STALE · 다시 생성 필요"
+                : "확인 중"}
+          </li>
+          <li>
+            구조화: {knowledgeStatus?.structurePassed ? "완료" : "미완료"} · 검색 기반:{" "}
+            {knowledgeStatus?.searchFoundationPassed ? "완료" : "미완료"}
+          </li>
+          {fingerprintShort ? <li>Fingerprint: {fingerprintShort}</li> : null}
+          {knowledgeStatus?.runId ? (
+            <li>PipelineRun: {knowledgeStatus.runId.slice(0, 8)}…</li>
+          ) : null}
+        </ul>
+      </div>
+
+      {foundationStages.length > 0 ? (
+        <div className="space-y-2">
+          <h3 className="text-sm font-bold text-slate-900">Draft 검색 인덱스 · 검색 평가</h3>
+          <ol className="space-y-2">
+            {foundationStages.map((stage) => (
+              <li
+                key={stage.id}
+                className="rounded-xl border border-store-border bg-white px-3 py-2 text-sm"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-slate-900">{stage.label}</p>
+                    <p className="text-xs text-store-muted">{stage.description}</p>
+                  </div>
+                  <span className="text-xs font-bold text-slate-700">{stage.status}</span>
+                </div>
+                {stage.message ? (
+                  <p className="mt-1 text-xs text-slate-700">{stage.message}</p>
+                ) : null}
+                {stage.id === "SEARCH_INDEX" ? (
+                  <p className="mt-1 text-[11px] text-store-muted">
+                    Embedding provider: local-hash (개발·검증용) · 운영용 Vector Index 아님
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
 
       {!status?.canRunValidation ? (
         <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
@@ -830,15 +909,15 @@ export function ProviderServiceValidationTab({
         </p>
       ) : null}
 
-      {status?.allSelectedPassed ? (
+      {preparationPassed ? (
         <div className="space-y-2">
           <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-            검색 경로 준비 검증과 제공자 품질 확인이 완료되었습니다. 유통정보에서 공개 채널을
-            선택한 뒤 검수요청을 진행하세요.
+            API·MCP·원본문서 다운로드 준비 검증과 제공자 품질 확인이 완료되었습니다. 유통정보에서 공개
+            채널을 선택한 뒤 검수요청을 진행하세요. (DOWNLOAD PASS ≠ RAG Export PASS)
           </p>
           <button
             type="button"
-            onClick={() => onGoToReview?.()}
+            onClick={() => goToDistributionReview?.()}
             className="min-h-[44px] rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white"
           >
             유통정보·검수요청으로 이동

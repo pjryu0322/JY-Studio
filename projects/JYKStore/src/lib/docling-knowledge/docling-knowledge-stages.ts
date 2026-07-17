@@ -17,20 +17,20 @@ export const DOCLING_KNOWLEDGE_STAGES = [
   {
     id: "RETRIEVAL_CHUNK",
     pipelineStep: "CHUNKING" as PipelineStatus,
-    label: "검색 데이터 생성",
-    description: "지식 단위에서 검색용 Chunk를 생성합니다.",
+    label: "Retrieval Chunk 생성",
+    description: "지식 단위에서 검색용 Retrieval Chunk를 생성합니다.",
   },
   {
     id: "SEARCH_INDEX",
     pipelineStep: "INDEXING" as PipelineStatus,
-    label: "검색 인덱스 생성",
-    description: "검수 전 Draft 검색 Index(Embedding)를 구축합니다.",
+    label: "Draft 검색 인덱스",
+    description: "개발·검증용 Draft 검색 인덱스를 준비합니다. 운영용 Embedding은 아직 적용되지 않습니다.",
   },
   {
     id: "RETRIEVAL_EVALUATION",
     pipelineStep: "SEARCH_EVALUATING" as PipelineStatus,
     label: "검색 결과 검증",
-    description: "평가 질문으로 검색 결과 품질을 검증합니다.",
+    description: "개발용 규칙 기반 평가로 Draft 인덱스 품질을 확인합니다.",
   },
 ] as const;
 
