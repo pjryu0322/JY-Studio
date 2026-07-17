@@ -416,6 +416,12 @@ enum ServiceValidationStatus {
   STALE
 }
 
+enum ServiceValidationProviderConfirmationStatus {
+  NOT_REVIEWED
+  CONFIRMED
+  REJECTED
+}
+
 model PackDistributionMetadata {
   id                    String                   @id @default(cuid())
   packId                String
@@ -478,14 +484,64 @@ model ServiceValidationRun {
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
 
-  pack    KnowledgePack        @relation(fields: [packId], references: [packId], onDelete: Cascade)
-  version KnowledgePackVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  pack           KnowledgePack                          @relation(fields: [packId], references: [packId], onDelete: Cascade)
+  version        KnowledgePackVersion                   @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  resultItems    ServiceValidationResultItem[]
+  confirmation   ServiceValidationProviderConfirmation?
 
   @@index([versionId, channel, createdAt])
   @@index([versionId, channel, status])
   @@index([packId, createdAt])
   @@index([packId, channel, status])
   @@index([versionId, status])
+}
+
+model ServiceValidationResultItem {
+  id                  String   @id @default(cuid())
+  runId               String
+  rank                Int
+  chunkId             String
+  title               String
+  snippet             String
+  score               Float
+  sourceDocumentId    String
+  sourceDocumentTitle String?
+  pageStart           Int?
+  pageEnd             Int?
+  sourceLocator       String?
+  createdAt           DateTime @default(now())
+
+  run ServiceValidationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, rank])
+  @@index([runId])
+  @@index([chunkId])
+  @@index([sourceDocumentId])
+}
+
+model ServiceValidationProviderConfirmation {
+  id                       String                                       @id @default(cuid())
+  runId                    String                                       @unique
+  status                   ServiceValidationProviderConfirmationStatus  @default(NOT_REVIEWED)
+  relevanceConfirmed       Boolean                                      @default(false)
+  contentConfirmed         Boolean                                      @default(false)
+  sourceConfirmed          Boolean                                      @default(false)
+  isolationConfirmed       Boolean                                      @default(false)
+  fileNameConfirmed        Boolean                                      @default(false)
+  downloadOkConfirmed      Boolean                                      @default(false)
+  fileMatchConfirmed       Boolean                                      @default(false)
+  rejectionReason          String?
+  comment                  String?
+  confirmedByUserId        String
+  confirmedAt              DateTime                                     @default(now())
+  /// Links API+MCP shared retrieval quality confirmation (same group = one provider review).
+  sharedConfirmationGroupId String?
+  createdAt                DateTime                                     @default(now())
+
+  run ServiceValidationRun @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  @@index([sharedConfirmationGroupId])
+  @@index([confirmedByUserId])
 }
 
 enum DoclingImportBundleStatus {

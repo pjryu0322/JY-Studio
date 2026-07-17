@@ -44,6 +44,7 @@ describe("docling knowledge pipeline follow-up hardening", () => {
     };
     assert.ok(pkg.scripts.dev.includes("--success first"));
     assert.ok(pkg.scripts.dev.includes("-k") || pkg.scripts.dev.includes("--kill-others"));
+    assert.ok(pkg.scripts.dev.includes("dev:minio"));
     assert.ok(pkg.scripts["dev:web"].includes("3004"));
   });
 

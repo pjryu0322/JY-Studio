@@ -1,0 +1,198 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import {
+  resolveConfirmationStatusDto,
+  resolveRunCurrentValidity,
+} from "../lib/distribution/service-validation-service.ts";
+import {
+  sanitizeValidationSnippet,
+  toProviderResultItemDtos,
+  PROVIDER_VALIDATION_SNIPPET_MAX,
+} from "../lib/distribution/service-validation-result-snapshot.ts";
+import { toProviderRelevance } from "../lib/distribution/service-validation-relevance.ts";
+import { evaluateRetrievalValidationHits } from "../lib/retrieval/retrieval-api-adapter.ts";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
+
+describe("provider service quality + admin ops log", () => {
+  it("hides operational ids from provider UI and DTO mapping surface", () => {
+    const tab = readFileSync(
+      join(root, "src/components/provider-distribution/ProviderServiceValidationTab.tsx"),
+      "utf8",
+    );
+    assert.equal(tab.includes("Pipeline:"), false);
+    assert.equal(tab.includes("Generation:"), false);
+    assert.equal(tab.includes("Fingerprint:"), false);
+    assert.equal(tab.includes("Run:"), false);
+    assert.equal(tab.includes("jykstore_retrieval_query"), false);
+    assert.ok(tab.includes("제공자 품질 확인"));
+    assert.ok(tab.includes("원문 위치 확인"));
+
+    const service = readFileSync(
+      join(root, "src/lib/distribution/service-validation-service.ts"),
+      "utf8",
+    );
+    assert.ok(service.includes("providerConfirmationStatus"));
+    assert.ok(service.includes("ServiceValidationChannelDto"));
+    assert.ok(service.includes("getAdminServiceValidationForPack"));
+    assert.ok(service.includes("SERVICE_CONFIRMATION_REQUIRED"));
+  });
+
+  it("limits snippets and maps provider result DTOs without internal ids", () => {
+    const long = "가".repeat(500);
+    const snippet = sanitizeValidationSnippet(long);
+    assert.ok(snippet.length <= PROVIDER_VALIDATION_SNIPPET_MAX);
+    const dtos = toProviderResultItemDtos([
+      {
+        rank: 1,
+        title: "제목",
+        snippet,
+        score: 9,
+        sourceDocumentTitle: "가이드",
+        pageStart: 21,
+        pageEnd: 21,
+      },
+    ]);
+    assert.equal(dtos[0]?.sourceDocumentTitle, "가이드");
+    assert.equal(dtos[0]?.pageLabel, "21페이지");
+    assert.equal("sourceDocumentId" in (dtos[0] as object), false);
+    assert.equal("chunkId" in (dtos[0] as object), false);
+  });
+
+  it("normalizes relevance without raw score * 100", () => {
+    const bySim = toProviderRelevance(0.2, {
+      keywordScore: 1,
+      metadataScore: 0,
+      vectorScore: 0.9,
+      vectorSimilarity: 0.92,
+    });
+    assert.equal(bySim.label, "높음");
+    assert.equal(bySim.percent, 92);
+
+    const byScore = toProviderRelevance(9, null);
+    assert.equal(byScore.label, "높음");
+    assert.equal(byScore.percent, null);
+  });
+
+  it("derives confirmation STALE from run validity", () => {
+    assert.equal(
+      resolveConfirmationStatusDto({
+        confirmationStatus: "CONFIRMED",
+        runValidity: "STALE",
+      }),
+      "STALE",
+    );
+    assert.equal(
+      resolveConfirmationStatusDto({
+        confirmationStatus: "CONFIRMED",
+        runValidity: "CURRENT",
+      }),
+      "CONFIRMED",
+    );
+    assert.equal(
+      resolveConfirmationStatusDto({
+        confirmationStatus: null,
+        runValidity: "CURRENT",
+      }),
+      "NOT_REVIEWED",
+    );
+  });
+
+  it("keeps append-only run invalidation semantics", () => {
+    assert.equal(
+      resolveRunCurrentValidity({
+        run: {
+          status: "PASS",
+          fingerprint: "a",
+          indexGenerationId: "g1",
+          invalidatedAt: new Date(),
+        },
+        bindingFingerprint: "a",
+        bindingIndexGenerationId: "g1",
+      }),
+      "STALE",
+    );
+  });
+
+  it("accepts retrieval hits with references provenance", () => {
+    const ok = evaluateRetrievalValidationHits({
+      data: {
+        contexts: [
+          {
+            chunkId: "c1",
+            knowledgePackId: "p",
+            title: "t",
+            content: "x",
+            score: 1,
+            matchReasons: [],
+            metadata: { versionId: "v1", page: 3, sourceDocumentId: "d1" },
+            references: [{ type: "SOURCE_DOCUMENT", title: "doc", sourceDocumentId: "d1" }],
+          },
+        ],
+        usage: {
+          requestId: "r",
+          contextCount: 1,
+          topK: 5,
+          usedFilters: {},
+          retrievalMode: "hybrid",
+          scannedCandidateCount: 1,
+          filteredCandidateCount: 1,
+          candidateCollectionMode: "query-scan",
+        },
+      },
+      expectedVersionId: "v1",
+    });
+    assert.equal(ok.ok, true);
+  });
+
+  it("wires confirm/reject/source-preview and admin ops routes", () => {
+    const confirm = readFileSync(
+      join(
+        root,
+        "src/app/api/v1/provider/packs/[packId]/service-validation/[runId]/confirm/route.ts",
+      ),
+      "utf8",
+    );
+    const reject = readFileSync(
+      join(
+        root,
+        "src/app/api/v1/provider/packs/[packId]/service-validation/[runId]/reject/route.ts",
+      ),
+      "utf8",
+    );
+    const preview = readFileSync(
+      join(
+        root,
+        "src/app/api/v1/provider/packs/[packId]/service-validation/[runId]/results/[rank]/source-preview/route.ts",
+      ),
+      "utf8",
+    );
+    const admin = readFileSync(
+      join(root, "src/app/api/v1/admin/reviews/[packId]/service-validation/route.ts"),
+      "utf8",
+    );
+    assert.ok(confirm.includes("confirmServiceValidationRun"));
+    assert.ok(reject.includes("rejectServiceValidationRun"));
+    assert.ok(preview.includes("objectKey") === false || preview.includes("Never returns"));
+    assert.equal(preview.includes("storageKey"), false);
+    assert.ok(admin.includes("rejectUnlessAdmin"));
+    assert.ok(admin.includes("getAdminServiceValidationForPack"));
+  });
+
+  it("extends submit snapshot with confirmation ids", () => {
+    const snap = readFileSync(
+      join(root, "src/lib/distribution/distribution-submit-snapshot.ts"),
+      "utf8",
+    );
+    assert.ok(snap.includes("providerConfirmationId"));
+    assert.ok(snap.includes("providerConfirmationStatus"));
+    const service = readFileSync(
+      join(root, "src/lib/distribution/service-validation-service.ts"),
+      "utf8",
+    );
+    assert.ok(service.includes("providerConfirmationId: confirmation!.id"));
+  });
+});

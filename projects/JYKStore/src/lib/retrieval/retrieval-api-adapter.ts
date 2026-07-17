@@ -132,6 +132,21 @@ export async function executeRetrievalApiRequest(input: {
   return { ok: true, data, latencyMs: Date.now() - started };
 }
 
+/** Resolve provenance from RetrievalContextDto (references / metadata — not a top-level field). */
+export function resolveRetrievalContextSourceDocumentId(
+  ctx: RetrievalResponseDto["contexts"][number],
+): string | null {
+  const fromRef = ctx.references?.[0]?.sourceDocumentId;
+  if (typeof fromRef === "string" && fromRef.trim()) return fromRef.trim();
+  const meta =
+    ctx.metadata && typeof ctx.metadata === "object" && !Array.isArray(ctx.metadata)
+      ? (ctx.metadata as Record<string, unknown>)
+      : null;
+  const fromMeta = meta?.sourceDocumentId;
+  if (typeof fromMeta === "string" && fromMeta.trim()) return fromMeta.trim();
+  return null;
+}
+
 export function evaluateRetrievalValidationHits(input: {
   data: RetrievalResponseDto;
   expectedVersionId: string;
@@ -164,7 +179,7 @@ export function evaluateRetrievalValidationHits(input: {
         message: "다른 검색 인덱스 Generation 결과가 포함되었습니다.",
       };
     }
-    if (!ctx.sourceDocumentId) {
+    if (!resolveRetrievalContextSourceDocumentId(ctx)) {
       return {
         ok: false,
         code: "API_VALIDATION_FAILED",

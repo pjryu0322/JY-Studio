@@ -52,9 +52,30 @@ export type DoclingBundleReviewSubmitSnapshot = {
   sourcePublishedAt?: string | null;
   sourceRetrievedAt?: string | null;
   serviceValidation?: {
-    API?: { status: string; runId: string | null; testedAt: string | null };
-    MCP?: { status: string; runId: string | null; testedAt: string | null };
-    DOWNLOAD?: { status: string; runId: string | null; testedAt: string | null };
+    API?: {
+      status: string;
+      runId: string | null;
+      testedAt: string | null;
+      providerConfirmationStatus?: string | null;
+      providerConfirmationId?: string | null;
+      confirmedAt?: string | null;
+    };
+    MCP?: {
+      status: string;
+      runId: string | null;
+      testedAt: string | null;
+      providerConfirmationStatus?: string | null;
+      providerConfirmationId?: string | null;
+      confirmedAt?: string | null;
+    };
+    DOWNLOAD?: {
+      status: string;
+      runId: string | null;
+      testedAt: string | null;
+      providerConfirmationStatus?: string | null;
+      providerConfirmationId?: string | null;
+      confirmedAt?: string | null;
+    };
   } | null;
   /** Provider-selected pack language at submit time. Legacy snapshots may omit. */
   language: PackLanguageCode | null;

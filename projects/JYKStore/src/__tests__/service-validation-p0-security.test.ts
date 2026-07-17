@@ -102,15 +102,17 @@ describe("P0 validation validity and hits", () => {
   });
 
   it("rejects foreign version or missing provenance in retrieval hits", () => {
-    const bad = evaluateRetrievalValidationHits({
+    const foreign = evaluateRetrievalValidationHits({
       data: {
         contexts: [
           {
             chunkId: "c1",
+            knowledgePackId: "p1",
+            title: "t",
             content: "x",
             score: 1,
-            sourceDocumentId: null as unknown as string,
-            metadata: { versionId: "other", page: 1 },
+            matchReasons: [],
+            metadata: { versionId: "other", page: 1, sourceDocumentId: "doc-1" },
           },
         ],
         usage: {
@@ -121,12 +123,72 @@ describe("P0 validation validity and hits", () => {
           retrievalMode: "hybrid",
           scannedCandidateCount: 1,
           filteredCandidateCount: 1,
-          candidateCollectionMode: "ALL",
+          candidateCollectionMode: "query-scan",
         },
       },
       expectedVersionId: "ver-1",
     });
-    assert.equal(bad.ok, false);
+    assert.equal(foreign.ok, false);
+
+    const missingSource = evaluateRetrievalValidationHits({
+      data: {
+        contexts: [
+          {
+            chunkId: "c1",
+            knowledgePackId: "p1",
+            title: "t",
+            content: "x",
+            score: 1,
+            matchReasons: [],
+            metadata: { versionId: "ver-1", page: 1 },
+          },
+        ],
+        usage: {
+          requestId: "r1",
+          contextCount: 1,
+          topK: 5,
+          usedFilters: {},
+          retrievalMode: "hybrid",
+          scannedCandidateCount: 1,
+          filteredCandidateCount: 1,
+          candidateCollectionMode: "query-scan",
+        },
+      },
+      expectedVersionId: "ver-1",
+    });
+    assert.equal(missingSource.ok, false);
+    if (!missingSource.ok) {
+      assert.match(missingSource.message, /출처/);
+    }
+
+    const ok = evaluateRetrievalValidationHits({
+      data: {
+        contexts: [
+          {
+            chunkId: "c1",
+            knowledgePackId: "p1",
+            title: "t",
+            content: "x",
+            score: 1,
+            matchReasons: [],
+            metadata: { versionId: "ver-1", page: 1 },
+            references: [{ type: "SOURCE_DOCUMENT", title: "doc", sourceDocumentId: "doc-1" }],
+          },
+        ],
+        usage: {
+          requestId: "r1",
+          contextCount: 1,
+          topK: 5,
+          usedFilters: {},
+          retrievalMode: "hybrid",
+          scannedCandidateCount: 1,
+          filteredCandidateCount: 1,
+          candidateCollectionMode: "query-scan",
+        },
+      },
+      expectedVersionId: "ver-1",
+    });
+    assert.equal(ok.ok, true);
   });
 });
 

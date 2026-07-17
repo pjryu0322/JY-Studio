@@ -17,9 +17,13 @@ const dev = pkg.scripts.dev ?? "";
 assert.ok(dev.includes("concurrently"), "dev must use concurrently");
 assert.ok(/\s-k(\s|"|$)/.test(` ${dev} `) || dev.includes("--kill-others"), "dev must kill others (-k)");
 assert.ok(dev.includes("--success first"), "dev must exit when first child exits");
-assert.ok(dev.includes("dev:web") && dev.includes("dev:worker"), "dev must run web+worker");
+assert.ok(
+  dev.includes("dev:minio") && dev.includes("dev:web") && dev.includes("dev:worker"),
+  "dev must run minio+web+worker",
+);
+assert.ok((pkg.scripts["dev:minio"] ?? "").includes("dev-minio"), "dev:minio starts local MinIO");
 assert.ok((pkg.scripts["dev:web"] ?? "").includes("3004"), "web stays on 3004");
 assert.ok((pkg.scripts["dev:worker"] ?? "").includes("docling-processing-worker"));
 
 console.log("smoke:dev-processes OK");
-console.log("Manual check: npm run dev → Ctrl+C ends both web and worker (no orphan).");
+console.log("Manual check: npm run dev → Ctrl+C ends minio, web, and worker (no orphan).");

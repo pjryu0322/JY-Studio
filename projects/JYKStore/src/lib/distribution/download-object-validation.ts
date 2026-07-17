@@ -43,11 +43,15 @@ export async function validateDownloadObjectIntegrity(input: {
   let head;
   try {
     head = await storage.headObject({ objectKey: input.objectKey });
-  } catch {
+  } catch (error) {
+    const message =
+      error && typeof error === "object" && "code" in error && error.code === "PAYLOAD_STORAGE_UNAVAILABLE"
+        ? "Object Storage에 연결할 수 없습니다. MinIO/S3가 실행 중인지 확인해 주세요."
+        : "원본문서 Object Storage HEAD에 실패했습니다.";
     return {
       ok: false,
       code: "DOWNLOAD_OBJECT_STREAM_FAILED",
-      message: "원본문서 Object Storage HEAD에 실패했습니다.",
+      message,
       latencyMs: Date.now() - started,
     };
   }

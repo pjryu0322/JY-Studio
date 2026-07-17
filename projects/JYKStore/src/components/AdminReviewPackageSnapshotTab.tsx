@@ -128,16 +128,16 @@ export function AdminReviewPackageSnapshotTab({
           {snapshot.rightsBasis ? <li>유통 권한 근거: {snapshot.rightsBasis}</li> : null}
           {snapshot.serviceValidation ? (
             <li>
-              서비스 검증:{" "}
+              서비스 검증·품질 확인:{" "}
               {[
                 snapshot.serviceValidation.API
-                  ? `API=${snapshot.serviceValidation.API.status} (${snapshot.serviceValidation.API.runId ?? "—"})`
+                  ? `API 시스템=${snapshot.serviceValidation.API.status}/확인=${snapshot.serviceValidation.API.providerConfirmationStatus ?? "—"}`
                   : null,
                 snapshot.serviceValidation.MCP
-                  ? `MCP=${snapshot.serviceValidation.MCP.status} (${snapshot.serviceValidation.MCP.runId ?? "—"})`
+                  ? `MCP 시스템=${snapshot.serviceValidation.MCP.status}/확인=${snapshot.serviceValidation.MCP.providerConfirmationStatus ?? "—"}`
                   : null,
                 snapshot.serviceValidation.DOWNLOAD
-                  ? `다운로드=${snapshot.serviceValidation.DOWNLOAD.status} (${snapshot.serviceValidation.DOWNLOAD.runId ?? "—"})`
+                  ? `다운로드 시스템=${snapshot.serviceValidation.DOWNLOAD.status}/확인=${snapshot.serviceValidation.DOWNLOAD.providerConfirmationStatus ?? "—"}`
                   : null,
               ]
                 .filter(Boolean)
@@ -145,6 +145,42 @@ export function AdminReviewPackageSnapshotTab({
             </li>
           ) : null}
         </ul>
+        {snapshot.serviceValidation ? (
+          <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-800">
+              운영 로그 보기
+            </summary>
+            <ul className="mt-2 list-disc space-y-1 pl-4 font-mono text-[11px] text-slate-700">
+              {snapshot.serviceValidation.API?.runId ? (
+                <li>
+                  API Run={snapshot.serviceValidation.API.runId}
+                  {snapshot.serviceValidation.API.providerConfirmationId
+                    ? ` · Confirmation=${snapshot.serviceValidation.API.providerConfirmationId}`
+                    : ""}
+                </li>
+              ) : null}
+              {snapshot.serviceValidation.MCP?.runId ? (
+                <li>
+                  MCP Run={snapshot.serviceValidation.MCP.runId}
+                  {snapshot.serviceValidation.MCP.providerConfirmationId
+                    ? ` · Confirmation=${snapshot.serviceValidation.MCP.providerConfirmationId}`
+                    : ""}
+                </li>
+              ) : null}
+              {snapshot.serviceValidation.DOWNLOAD?.runId ? (
+                <li>
+                  DOWNLOAD Run={snapshot.serviceValidation.DOWNLOAD.runId}
+                  {snapshot.serviceValidation.DOWNLOAD.providerConfirmationId
+                    ? ` · Confirmation=${snapshot.serviceValidation.DOWNLOAD.providerConfirmationId}`
+                    : ""}
+                </li>
+              ) : null}
+            </ul>
+            <p className="mt-2 text-[11px] text-store-muted">
+              운영 로그는 조회 전용입니다. 수정·삭제할 수 없습니다.
+            </p>
+          </details>
+        ) : null}
         <p className="text-xs text-store-muted">
           상세 파일·미리보기는 Docling 근거 탭에서 확인하세요.
         </p>

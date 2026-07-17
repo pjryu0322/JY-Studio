@@ -273,6 +273,82 @@ export async function runProviderServiceValidationApi(
   };
 }
 
+export async function confirmProviderServiceValidationApi(
+  packId: string,
+  runId: string,
+  body: Record<string, boolean>,
+): Promise<{ confirmationId: string; confirmedRunIds: string[] }> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/service-validation/${encodeURIComponent(runId)}/confirm`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    confirmationId: string;
+    confirmedRunIds: string[];
+  };
+}
+
+export async function rejectProviderServiceValidationApi(
+  packId: string,
+  runId: string,
+  body: { rejectionReason: string; comment?: string },
+): Promise<{ confirmationId: string }> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/service-validation/${encodeURIComponent(runId)}/reject`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as { confirmationId: string };
+}
+
+export async function fetchProviderServiceValidationSourcePreviewApi(
+  packId: string,
+  runId: string,
+  rank: number,
+): Promise<{
+  title: string;
+  snippet: string;
+  sourceDocumentTitle: string;
+  pageLabel: string | null;
+  pageStart: number | null;
+  fileName: string | null;
+  previewFileId: string | null;
+  previewMode: string;
+}> {
+  const response = await fetch(
+    `/api/v1/provider/packs/${encodeURIComponent(packId)}/service-validation/${encodeURIComponent(runId)}/results/${rank}/source-preview`,
+    { credentials: "include" },
+  );
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+  return (await response.json()) as {
+    title: string;
+    snippet: string;
+    sourceDocumentTitle: string;
+    pageLabel: string | null;
+    pageStart: number | null;
+    fileName: string | null;
+    previewFileId: string | null;
+    previewMode: string;
+  };
+}
+
 export async function fetchProviderDoclingImportApi(packId: string): Promise<{
   clientId: string;
   bundle: import("@/lib/docling-import/docling-import-dto").DoclingImportBundlePublicDto | null;

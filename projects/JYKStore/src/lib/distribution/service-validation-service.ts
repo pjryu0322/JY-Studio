@@ -12,8 +12,10 @@ import {
   type ServiceChannel,
 } from "@/lib/distribution/service-channel-policy";
 import { validateDownloadObjectIntegrity } from "@/lib/distribution/download-object-validation";
-import { DOCLING_KNOWLEDGE_PIPELINE_TRIGGER } from "@/lib/docling-knowledge/docling-knowledge-stages";
-import { DOCLING_RETRIEVAL_CHUNK_TYPE } from "@/lib/docling-knowledge/docling-knowledge-stages";
+import {
+  DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
+  DOCLING_RETRIEVAL_CHUNK_TYPE,
+} from "@/lib/docling-knowledge/docling-knowledge-stages";
 import { parseKnowledgeRunBinding } from "@/lib/docling-knowledge/docling-knowledge-run-binding";
 import { latestKnowledgePackVersionOrderBy } from "@/lib/distribution/latest-distribution-state";
 import { executeMcpValidation } from "@/lib/mcp/mcp-validation-runtime";
@@ -22,29 +24,56 @@ import { prisma } from "@/lib/prisma";
 import {
   evaluateRetrievalValidationHits,
   executeRetrievalApiRequest,
+  resolveRetrievalContextSourceDocumentId,
 } from "@/lib/retrieval/retrieval-api-adapter";
 import type { DoclingBundleReviewSubmitSnapshot } from "@/lib/distribution/distribution-submit-snapshot";
+import type { RetrievalContextDto } from "@/lib/retrieval-dto";
+import {
+  loadSourceDocumentTitles,
+  mapContextsToInternalResultItems,
+  persistServiceValidationResultItems,
+  toProviderResultItemDtos,
+  type ProviderValidationResultItemDto,
+} from "@/lib/distribution/service-validation-result-snapshot";
 
+export type ProviderConfirmationStatusDto =
+  | "NOT_REVIEWED"
+  | "CONFIRMED"
+  | "REJECTED"
+  | "STALE";
+
+/** Provider-facing channel DTO — no pipeline/generation/fingerprint/sourceDocumentId. */
 export type ServiceValidationChannelDto = {
   channel: ServiceChannel;
   selected: boolean;
-  status: ServiceValidationStatus | "NOT_SELECTED";
+  systemStatus: ServiceValidationStatus | "NOT_SELECTED";
+  providerConfirmationStatus: ProviderConfirmationStatusDto | null;
   currentValidity: "CURRENT" | "STALE" | null;
+  /** Opaque id for confirm/reject/preview routes — do not render in provider UI. */
   runId: string | null;
   testedAt: string | null;
   query: string | null;
   resultCount: number | null;
-  failureCode: string | null;
   failureMessage: string | null;
   latencyMs: number | null;
-  topChunkId: string | null;
-  sourceDocumentId: string | null;
-  page: number | null;
-  pipelineRunId: string | null;
-  indexGenerationId: string | null;
-  fingerprint: string | null;
-  adapterPath: string | null;
-  details: Record<string, unknown> | null;
+  results: ProviderValidationResultItemDto[];
+  canRun: boolean;
+  canConfirm: boolean;
+  /** DOWNLOAD-friendly summary (no checksum/objectKey). */
+  downloadSummary: {
+    fileName: string;
+    fileSizeLabel: string;
+    mimeLabel: string;
+    integrityOk: boolean;
+  } | null;
+  confirmation: {
+    status: ProviderConfirmationStatusDto;
+    confirmedAt: string | null;
+    confirmedByName: string | null;
+    rejectionReason: string | null;
+    comment: string | null;
+    sharedWithChannels: ServiceChannel[];
+  } | null;
 };
 
 export type ServiceValidationStatusDto = {
@@ -53,9 +82,14 @@ export type ServiceValidationStatusDto = {
   packStatus: string;
   canRunValidation: boolean;
   channels: ServiceValidationChannelDto[];
+  /** System PASS + Provider CONFIRMED + CURRENT for all selected channels. */
   allSelectedPassed: boolean;
   suggestedQuery: string | null;
+  suggestedQueries: string[];
 };
+
+/** @deprecated Prefer ServiceValidationChannelDto — kept for gradual test migration. */
+export type ServiceValidationChannelDtoLegacy = ServiceValidationChannelDto;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -68,6 +102,21 @@ function adapterPathForChannel(channel: ServiceChannel): string {
   if (channel === "API") return "Retrieval API Adapter";
   if (channel === "MCP") return "MCP Tool Handler (jykstore_retrieval_query)";
   return "Object Storage Stream + SHA-256";
+}
+
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function mimeLabel(mime: string | null | undefined): string {
+  const m = (mime ?? "").toLowerCase();
+  if (m.includes("pdf")) return "PDF";
+  if (m.includes("markdown") || m.endsWith("/md")) return "Markdown";
+  if (m.includes("json")) return "JSON";
+  return mime?.trim() || "파일";
 }
 
 export function resolveRunCurrentValidity(input: {
@@ -95,6 +144,17 @@ export function resolveRunCurrentValidity(input: {
     return "STALE";
   }
   return "CURRENT";
+}
+
+export function resolveConfirmationStatusDto(input: {
+  confirmationStatus: string | null | undefined;
+  runValidity: "CURRENT" | "STALE" | null;
+}): ProviderConfirmationStatusDto {
+  if (!input.confirmationStatus) return "NOT_REVIEWED";
+  if (input.runValidity === "STALE") return "STALE";
+  if (input.confirmationStatus === "CONFIRMED") return "CONFIRMED";
+  if (input.confirmationStatus === "REJECTED") return "REJECTED";
+  return "NOT_REVIEWED";
 }
 
 async function loadOwnedPack(input: {
@@ -165,6 +225,145 @@ export async function findLatestServiceValidationRun(input: {
   });
 }
 
+async function loadSuggestedQueries(input: {
+  versionId: string;
+  indexGenerationId?: string | null;
+}): Promise<string[]> {
+  const chunks = await prisma.knowledgeChunk.findMany({
+    where: {
+      versionId: input.versionId,
+      chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+      isActive: true,
+      ...(input.indexGenerationId
+        ? { metadata: { path: ["indexGenerationId"], equals: input.indexGenerationId } }
+        : {}),
+    },
+    orderBy: { sortOrder: "asc" },
+    take: 12,
+    select: { title: true },
+  });
+  const titles = chunks
+    .map((c) => c.title?.trim())
+    .filter((t): t is string => Boolean(t && t.length >= 2));
+  return [...new Set(titles)].slice(0, 5);
+}
+
+async function mapRunToProviderChannelDto(input: {
+  channel: ServiceChannel;
+  run: ServiceValidationRun | null;
+  bindingFingerprint?: string | null;
+  bindingIndexGenerationId?: string | null;
+  canRunValidation: boolean;
+  userNames: Map<string, string>;
+}): Promise<ServiceValidationChannelDto> {
+  const { channel, run, canRunValidation } = input;
+  if (!run) {
+    return {
+      channel,
+      selected: true,
+      systemStatus: "PENDING",
+      providerConfirmationStatus: "NOT_REVIEWED",
+      currentValidity: null,
+      runId: null,
+      testedAt: null,
+      query: null,
+      resultCount: null,
+      failureMessage: null,
+      latencyMs: null,
+      results: [],
+      canRun: canRunValidation,
+      canConfirm: false,
+      downloadSummary: null,
+      confirmation: null,
+    };
+  }
+
+  const validity = resolveRunCurrentValidity({
+    run,
+    bindingFingerprint: input.bindingFingerprint,
+    bindingIndexGenerationId: input.bindingIndexGenerationId,
+  });
+  const systemStatus =
+    run.status === "PASS" && validity === "STALE" ? ("STALE" as const) : run.status;
+
+  const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
+    where: { runId: run.id },
+  });
+  const providerConfirmationStatus = resolveConfirmationStatusDto({
+    confirmationStatus: confirmation?.status,
+    runValidity: validity,
+  });
+
+  const resultRows = await prisma.serviceValidationResultItem.findMany({
+    where: { runId: run.id },
+    orderBy: { rank: "asc" },
+  });
+  const results = toProviderResultItemDtos(resultRows);
+
+  const details = asRecord(run.details);
+  let downloadSummary: ServiceValidationChannelDto["downloadSummary"] = null;
+  if (channel === "DOWNLOAD" && details) {
+    const fileName = typeof details.fileName === "string" ? details.fileName : null;
+    const fileSize = typeof details.fileSize === "number" ? details.fileSize : null;
+    const mimeType = typeof details.mimeType === "string" ? details.mimeType : null;
+    if (fileName) {
+      downloadSummary = {
+        fileName,
+        fileSizeLabel: formatBytes(fileSize ?? 0),
+        mimeLabel: mimeLabel(mimeType),
+        integrityOk: details.storageVerified === true && systemStatus === "PASS",
+      };
+    }
+  }
+
+  const sharedWithChannels: ServiceChannel[] = [];
+  if (confirmation?.sharedConfirmationGroupId) {
+    const peers = await prisma.serviceValidationProviderConfirmation.findMany({
+      where: { sharedConfirmationGroupId: confirmation.sharedConfirmationGroupId },
+      include: { run: { select: { channel: true, id: true } } },
+    });
+    for (const p of peers) {
+      if (p.run.id !== run.id) {
+        sharedWithChannels.push(p.run.channel as ServiceChannel);
+      }
+    }
+  }
+
+  const canConfirm =
+    canRunValidation &&
+    systemStatus === "PASS" &&
+    validity === "CURRENT" &&
+    providerConfirmationStatus === "NOT_REVIEWED";
+
+  return {
+    channel,
+    selected: true,
+    systemStatus,
+    providerConfirmationStatus,
+    currentValidity: validity,
+    runId: run.id,
+    testedAt: run.testedAt?.toISOString() ?? null,
+    query: run.query,
+    resultCount: run.resultCount,
+    failureMessage: run.failureMessage,
+    latencyMs: run.latencyMs,
+    results,
+    canRun: canRunValidation,
+    canConfirm,
+    downloadSummary,
+    confirmation: confirmation
+      ? {
+          status: providerConfirmationStatus,
+          confirmedAt: confirmation.confirmedAt.toISOString(),
+          confirmedByName: input.userNames.get(confirmation.confirmedByUserId) ?? "제공자",
+          rejectionReason: confirmation.rejectionReason,
+          comment: confirmation.comment,
+          sharedWithChannels,
+        }
+      : null,
+  };
+}
+
 export async function getServiceValidationStatus(input: {
   userId: string;
   clientId: string;
@@ -188,92 +387,126 @@ export async function getServiceValidationStatus(input: {
     }),
   );
 
+  const canRunValidation = pack.status === PackStatus.DRAFT;
   const channels: ServiceValidationChannelDto[] = [];
+  const confirmerIds = new Set<string>();
+
+  // Prefetch runs + confirmation user ids
+  const runsByChannel = new Map<ServiceChannel, ServiceValidationRun | null>();
   for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
-    const selectedChannel = selected.has(channel);
-    if (!selectedChannel) {
+    if (!selected.has(channel)) {
+      runsByChannel.set(channel, null);
+      continue;
+    }
+    const run = await findLatestServiceValidationRun({ versionId: version.id, channel });
+    runsByChannel.set(channel, run);
+    if (run) {
+      const conf = await prisma.serviceValidationProviderConfirmation.findUnique({
+        where: { runId: run.id },
+        select: { confirmedByUserId: true },
+      });
+      if (conf) confirmerIds.add(conf.confirmedByUserId);
+    }
+  }
+
+  const users =
+    confirmerIds.size > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: [...confirmerIds] } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+  const userNames = new Map(
+    users.map((u) => [u.id, u.name?.trim() || u.email?.trim() || "제공자"]),
+  );
+
+  for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
+    if (!selected.has(channel)) {
       channels.push({
         channel,
         selected: false,
-        status: "NOT_SELECTED",
+        systemStatus: "NOT_SELECTED",
+        providerConfirmationStatus: null,
         currentValidity: null,
         runId: null,
         testedAt: null,
         query: null,
         resultCount: null,
-        failureCode: null,
         failureMessage: null,
         latencyMs: null,
-        topChunkId: null,
-        sourceDocumentId: null,
-        page: null,
-        pipelineRunId: null,
-        indexGenerationId: null,
-        fingerprint: null,
-        adapterPath: null,
-        details: null,
+        results: [],
+        canRun: false,
+        canConfirm: false,
+        downloadSummary: null,
+        confirmation: null,
       });
       continue;
     }
-    const run = await findLatestServiceValidationRun({ versionId: version.id, channel });
-    const validity = run
-      ? resolveRunCurrentValidity({
-          run,
-          bindingFingerprint: binding?.fingerprint,
-          bindingIndexGenerationId: binding?.indexGenerationId,
-        })
-      : null;
-    const effectiveStatus =
-      run?.status === "PASS" && validity === "STALE" ? ("STALE" as const) : (run?.status ?? "PENDING");
-    channels.push({
-      channel,
-      selected: true,
-      status: effectiveStatus,
-      currentValidity: validity,
-      runId: run?.id ?? null,
-      testedAt: run?.testedAt?.toISOString() ?? null,
-      query: run?.query ?? null,
-      resultCount: run?.resultCount ?? null,
-      failureCode: run?.failureCode ?? null,
-      failureMessage: run?.failureMessage ?? null,
-      latencyMs: run?.latencyMs ?? null,
-      topChunkId: run?.topChunkId ?? null,
-      sourceDocumentId: run?.sourceDocumentId ?? null,
-      page: run?.page ?? null,
-      pipelineRunId: run?.pipelineRunId ?? null,
-      indexGenerationId: run?.indexGenerationId ?? null,
-      fingerprint: run?.fingerprint ?? null,
-      adapterPath: adapterPathForChannel(channel),
-      details: asRecord(run?.details),
-    });
+    channels.push(
+      await mapRunToProviderChannelDto({
+        channel,
+        run: runsByChannel.get(channel) ?? null,
+        bindingFingerprint: binding?.fingerprint,
+        bindingIndexGenerationId: binding?.indexGenerationId,
+        canRunValidation,
+        userNames,
+      }),
+    );
   }
 
   const selectedChannels = channels.filter((c) => c.selected);
   const allSelectedPassed =
     selectedChannels.length > 0 &&
-    selectedChannels.every((c) => c.status === "PASS" && c.currentValidity === "CURRENT");
+    selectedChannels.every(
+      (c) =>
+        c.systemStatus === "PASS" &&
+        c.currentValidity === "CURRENT" &&
+        c.providerConfirmationStatus === "CONFIRMED",
+    );
 
-  const sampleChunk = binding?.indexGenerationId
-    ? await prisma.knowledgeChunk.findFirst({
-        where: {
-          versionId: version.id,
-          chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
-          metadata: { path: ["indexGenerationId"], equals: binding.indexGenerationId },
-        },
-        orderBy: { sortOrder: "asc" },
-        select: { title: true },
-      })
-    : null;
+  const suggestedQueries = await loadSuggestedQueries({
+    versionId: version.id,
+    indexGenerationId: binding?.indexGenerationId,
+  });
 
   return {
     packId: pack.packId,
     versionId: version.id,
     packStatus: pack.status,
-    canRunValidation: pack.status === PackStatus.DRAFT,
+    canRunValidation,
     channels,
     allSelectedPassed,
-    suggestedQuery: sampleChunk?.title?.trim() || "주요 기능을 알려주세요",
+    suggestedQuery: suggestedQueries[0] ?? "주요 기능을 알려주세요",
+    suggestedQueries,
   };
+}
+
+async function captureRetrievalSnapshot(input: {
+  runId: string;
+  contexts: RetrievalContextDto[];
+  expectedVersionId: string;
+}): Promise<void> {
+  const sourceIds = input.contexts
+    .map((c) => resolveRetrievalContextSourceDocumentId(c))
+    .filter((id): id is string => Boolean(id));
+  const titles = await loadSourceDocumentTitles(sourceIds);
+  const items = mapContextsToInternalResultItems(input.contexts, titles).filter((item) => {
+    // Defense: never persist foreign pack/version mix via metadata versionId
+    return true;
+  });
+  // Soft check: chunk belongs to expected version
+  if (items.length > 0) {
+    const chunkIds = items.map((i) => i.chunkId);
+    const chunks = await prisma.knowledgeChunk.findMany({
+      where: { id: { in: chunkIds } },
+      select: { id: true, versionId: true },
+    });
+    const allowed = new Set(
+      chunks.filter((c) => c.versionId === input.expectedVersionId).map((c) => c.id),
+    );
+    const safe = items.filter((i) => allowed.has(i.chunkId));
+    await persistServiceValidationResultItems({ runId: input.runId, items: safe });
+  }
 }
 
 export async function runServiceChannelValidation(input: {
@@ -318,6 +551,7 @@ export async function runServiceChannelValidation(input: {
     adapter: input.channel === "API" ? "RETRIEVAL_API" : input.channel === "MCP" ? "MCP_HANDLER" : "OBJECT_STORAGE",
     adapterPath: adapterPathForChannel(input.channel),
   };
+  let retrievalContexts: RetrievalContextDto[] = [];
 
   if (input.channel === "API") {
     query = query || "주요 기능을 알려주세요";
@@ -344,9 +578,10 @@ export async function runServiceChannelValidation(input: {
         expectedIndexGenerationId: binding.indexGenerationId,
       });
       resultCount = result.data.contexts.length;
+      retrievalContexts = result.data.contexts;
       const top = result.data.contexts[0];
       topChunkId = top?.chunkId ?? null;
-      sourceDocumentId = top?.sourceDocumentId ?? null;
+      sourceDocumentId = top ? resolveRetrievalContextSourceDocumentId(top) : null;
       const meta = asRecord(top?.metadata);
       page =
         typeof meta?.page === "number"
@@ -358,6 +593,7 @@ export async function runServiceChannelValidation(input: {
         ...details,
         hitCount: resultCount,
         responseDtoReady: true,
+        requestId: `provider-api-validation`,
       };
       if (!hits.ok) {
         failureCode = hits.code;
@@ -381,9 +617,10 @@ export async function runServiceChannelValidation(input: {
     } else {
       status = "PASS";
       resultCount = result.data.contexts.length;
+      retrievalContexts = result.data.contexts;
       const top = result.data.contexts[0];
       topChunkId = top?.chunkId ?? null;
-      sourceDocumentId = top?.sourceDocumentId ?? null;
+      sourceDocumentId = top ? resolveRetrievalContextSourceDocumentId(top) : null;
       const meta = asRecord(top?.metadata);
       page =
         typeof meta?.page === "number"
@@ -440,14 +677,12 @@ export async function runServiceChannelValidation(input: {
           mimeType: verified.mimeType,
           fileSize: verified.fileSize,
           checksumSha256: verified.checksumSha256,
-          // Never expose full objectKey to provider clients
           storageVerified: true,
         };
       }
     }
   }
 
-  // Append-only: always create a new run row.
   const row = await prisma.serviceValidationRun.create({
     data: {
       packId: pack.packId,
@@ -472,35 +707,39 @@ export async function runServiceChannelValidation(input: {
     },
   });
 
-  return {
+  if (status === "PASS" && retrievalContexts.length > 0) {
+    await captureRetrievalSnapshot({
+      runId: row.id,
+      contexts: retrievalContexts,
+      expectedVersionId: version.id,
+    });
+  }
+
+  return mapRunToProviderChannelDto({
     channel: input.channel,
-    selected: true,
-    status: row.status,
-    currentValidity: "CURRENT",
-    runId: row.id,
-    testedAt: row.testedAt?.toISOString() ?? null,
-    query: row.query,
-    resultCount: row.resultCount,
-    failureCode: row.failureCode,
-    failureMessage: row.failureMessage,
-    latencyMs: row.latencyMs,
-    topChunkId: row.topChunkId,
-    sourceDocumentId: row.sourceDocumentId,
-    page: row.page,
-    pipelineRunId: row.pipelineRunId,
-    indexGenerationId: row.indexGenerationId,
-    fingerprint: row.fingerprint,
-    adapterPath: adapterPathForChannel(input.channel),
-    details: asRecord(row.details),
-  };
+    run: row,
+    bindingFingerprint: binding.fingerprint,
+    bindingIndexGenerationId: binding.indexGenerationId,
+    canRunValidation: true,
+    userNames: new Map(),
+  });
 }
+
+export type ServiceValidationSubmitSnapshotEntry = {
+  status: string;
+  runId: string;
+  testedAt: string | null;
+  providerConfirmationStatus: string;
+  providerConfirmationId: string | null;
+  confirmedAt: string | null;
+};
 
 export async function assertSelectedServiceValidationsPassed(input: {
   versionId: string;
   distribution: Pick<PackDistributionMetadata, "allowApi" | "allowMcp" | "allowDownload">;
   bindingFingerprint?: string | null;
   bindingIndexGenerationId?: string | null;
-}): Promise<Record<string, { status: string; runId: string; testedAt: string | null }>> {
+}): Promise<Record<string, ServiceValidationSubmitSnapshotEntry>> {
   const selected = selectedServiceChannels(input.distribution);
   if (selected.length === 0) {
     throw new PayloadServiceError(
@@ -509,7 +748,7 @@ export async function assertSelectedServiceValidationsPassed(input: {
       400,
     );
   }
-  const snapshot: Record<string, { status: string; runId: string; testedAt: string | null }> = {};
+  const snapshot: Record<string, ServiceValidationSubmitSnapshotEntry> = {};
   for (const channel of selected) {
     const run = await findLatestServiceValidationRun({ versionId: input.versionId, channel });
     const validity = run
@@ -530,10 +769,35 @@ export async function assertSelectedServiceValidationsPassed(input: {
         400,
       );
     }
+    const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
+      where: { runId: run.id },
+    });
+    const confStatus = resolveConfirmationStatusDto({
+      confirmationStatus: confirmation?.status,
+      runValidity: validity,
+    });
+    if (confStatus !== "CONFIRMED") {
+      throw new PayloadServiceError(
+        confStatus === "STALE"
+          ? "SERVICE_VALIDATION_STALE"
+          : confStatus === "REJECTED"
+            ? "SERVICE_CONFIRMATION_REJECTED"
+            : "SERVICE_CONFIRMATION_REQUIRED",
+        confStatus === "REJECTED"
+          ? `선택한 ${channel} 제공 방식의 검색 품질이 반려되었습니다. 다시 검증해 주세요.`
+          : confStatus === "STALE"
+            ? "지식 데이터 또는 유통정보가 변경되어 서비스 품질 확인을 다시 진행해야 합니다."
+            : `선택한 ${channel} 제공 방식의 제공자 품질 확인이 필요합니다.`,
+        400,
+      );
+    }
     snapshot[channel] = {
       status: run.status,
       runId: run.id,
       testedAt: run.testedAt?.toISOString() ?? null,
+      providerConfirmationStatus: confStatus,
+      providerConfirmationId: confirmation!.id,
+      confirmedAt: confirmation!.confirmedAt.toISOString(),
     };
   }
   return snapshot;
@@ -604,9 +868,7 @@ export async function assertCurrentServiceValidationEvidence(input: {
       run.indexGenerationId !== binding.indexGenerationId ||
       run.fingerprint !== binding.fingerprint ||
       run.normalizedDocumentId !== binding.normalizedDocumentId ||
-      (snap.testedAt &&
-        run.testedAt &&
-        run.testedAt.toISOString() !== snap.testedAt)
+      (snap.testedAt && run.testedAt && run.testedAt.toISOString() !== snap.testedAt)
     ) {
       throw new PayloadServiceError(
         "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
@@ -621,7 +883,157 @@ export async function assertCurrentServiceValidationEvidence(input: {
         400,
       );
     }
+    const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
+      where: { runId: run.id },
+    });
+    if (!confirmation || confirmation.status !== "CONFIRMED") {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+        "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
+        400,
+      );
+    }
+    if (
+      "providerConfirmationId" in snap &&
+      snap.providerConfirmationId &&
+      snap.providerConfirmationId !== confirmation.id
+    ) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+        "서비스 검증 증적이 현재 지식 데이터와 일치하지 않습니다. 제공자가 검수요청을 회수한 뒤 다시 검증해야 합니다.",
+        400,
+      );
+    }
   }
 }
 
+/** Admin-only ops log DTO (includes internal identifiers). */
+export type AdminServiceValidationRunDto = {
+  runId: string;
+  packId: string;
+  versionId: string;
+  channel: string;
+  systemStatus: string;
+  providerConfirmationStatus: string | null;
+  providerConfirmationId: string | null;
+  adapterPath: string;
+  pipelineRunId: string | null;
+  indexGenerationId: string | null;
+  normalizedDocumentId: string | null;
+  fingerprint: string | null;
+  toolName: string | null;
+  mcpProtocolVersion: string | null;
+  requestId: string | null;
+  resultCount: number | null;
+  latencyMs: number | null;
+  topChunkId: string | null;
+  sourceDocumentId: string | null;
+  page: number | null;
+  query: string | null;
+  failureCode: string | null;
+  failureMessage: string | null;
+  testedByUserId: string | null;
+  testedAt: string | null;
+  confirmedByUserId: string | null;
+  confirmedAt: string | null;
+  details: Record<string, unknown> | null;
+  results: Array<{
+    rank: number;
+    chunkId: string;
+    title: string;
+    snippet: string;
+    score: number;
+    sourceDocumentId: string;
+    sourceDocumentTitle: string | null;
+    pageStart: number | null;
+    pageEnd: number | null;
+  }>;
+};
+
+export async function getAdminServiceValidationForPack(input: {
+  packId: string;
+  versionId: string;
+}): Promise<AdminServiceValidationRunDto[]> {
+  const { binding } = await loadBindingContext(input.packId, input.versionId);
+  const out: AdminServiceValidationRunDto[] = [];
+  for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
+    const run = await findLatestServiceValidationRun({
+      versionId: input.versionId,
+      channel,
+    });
+    if (!run) continue;
+    const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
+      where: { runId: run.id },
+    });
+    const validity = resolveRunCurrentValidity({
+      run,
+      bindingFingerprint: binding?.fingerprint,
+      bindingIndexGenerationId: binding?.indexGenerationId,
+    });
+    const details = asRecord(run.details);
+    const results = await prisma.serviceValidationResultItem.findMany({
+      where: { runId: run.id },
+      orderBy: { rank: "asc" },
+    });
+    out.push({
+      runId: run.id,
+      packId: run.packId,
+      versionId: run.versionId,
+      channel: run.channel,
+      systemStatus:
+        run.status === "PASS" && validity === "STALE" ? "STALE" : run.status,
+      providerConfirmationStatus: resolveConfirmationStatusDto({
+        confirmationStatus: confirmation?.status,
+        runValidity: validity,
+      }),
+      providerConfirmationId: confirmation?.id ?? null,
+      adapterPath: adapterPathForChannel(channel),
+      pipelineRunId: run.pipelineRunId,
+      indexGenerationId: run.indexGenerationId,
+      normalizedDocumentId: run.normalizedDocumentId,
+      fingerprint: run.fingerprint,
+      toolName: typeof details?.toolName === "string" ? details.toolName : null,
+      mcpProtocolVersion:
+        typeof details?.mcpProtocolVersion === "string" ? details.mcpProtocolVersion : null,
+      requestId: typeof details?.requestId === "string" ? details.requestId : null,
+      resultCount: run.resultCount,
+      latencyMs: run.latencyMs,
+      topChunkId: run.topChunkId,
+      sourceDocumentId: run.sourceDocumentId,
+      page: run.page,
+      query: run.query,
+      failureCode: run.failureCode,
+      failureMessage: run.failureMessage,
+      testedByUserId: run.testedByUserId,
+      testedAt: run.testedAt?.toISOString() ?? null,
+      confirmedByUserId: confirmation?.confirmedByUserId ?? null,
+      confirmedAt: confirmation?.confirmedAt.toISOString() ?? null,
+      details,
+      results: results.map((r) => ({
+        rank: r.rank,
+        chunkId: r.chunkId,
+        title: r.title,
+        snippet: r.snippet,
+        score: r.score,
+        sourceDocumentId: r.sourceDocumentId,
+        sourceDocumentTitle: r.sourceDocumentTitle,
+        pageStart: r.pageStart,
+        pageEnd: r.pageEnd,
+      })),
+    });
+  }
+  return out;
+}
+
+export async function getAdminServiceValidationRun(runId: string): Promise<AdminServiceValidationRunDto | null> {
+  const run = await prisma.serviceValidationRun.findUnique({ where: { id: runId } });
+  if (!run) return null;
+  const list = await getAdminServiceValidationForPack({
+    packId: run.packId,
+    versionId: run.versionId,
+  });
+  return list.find((r) => r.runId === runId) ?? null;
+}
+
 export { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-channel-policy";
+export { adapterPathForChannel };

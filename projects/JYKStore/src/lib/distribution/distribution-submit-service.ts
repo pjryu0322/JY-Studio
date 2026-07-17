@@ -230,7 +230,14 @@ export async function commitDistributionPackForReview(
 
   let serviceValidation: Record<
     string,
-    { status: string; runId: string; testedAt: string | null }
+    {
+      status: string;
+      runId: string;
+      testedAt: string | null;
+      providerConfirmationStatus: string;
+      providerConfirmationId: string | null;
+      confirmedAt: string | null;
+    }
   >;
   try {
     const { assertSelectedServiceValidationsPassed } = await import(
