@@ -298,11 +298,30 @@ export async function commitDistributionPackForReview(
     throw error;
   }
 
-  // §35 Bind the search generation into the snapshot when the entity exists.
+  // P4.1: READY SearchIndexGeneration is required for Snapshot V3 submit.
   const searchGenerationRow = await prisma.searchIndexGeneration.findUnique({
     where: { id: passBinding.indexGenerationId },
-    select: { id: true },
   });
+  if (
+    !searchGenerationRow ||
+    searchGenerationRow.status !== "READY" ||
+    searchGenerationRow.scope !== "DRAFT" ||
+    searchGenerationRow.versionId !== version.id ||
+    searchGenerationRow.pipelineRunId !== passRun.id ||
+    searchGenerationRow.normalizedDocumentId !== nd.id ||
+    searchGenerationRow.fingerprint !== nd.fingerprint ||
+    searchGenerationRow.chunkGenerationId !== passBinding.indexGenerationId ||
+    searchGenerationRow.chunkCount <= 0 ||
+    searchGenerationRow.embeddedCount !== searchGenerationRow.chunkCount ||
+    searchGenerationRow.failedCount !== 0
+  ) {
+    return {
+      error: "INCOMPLETE",
+      message:
+        "READY 상태의 검색 인덱스 세대가 없어 검수요청할 수 없습니다. 검색 데이터를 다시 생성·검증해 주세요.",
+      missingRequirements: ["SEARCH_GENERATION_REQUIRED"],
+    };
+  }
 
   const snapshot = buildDoclingBundleReviewSubmitSnapshot({
     submittedVersionId: version.id,
@@ -370,7 +389,13 @@ export async function commitDistributionPackForReview(
     language: packLanguage,
     pipelineRunId: passRun.id,
     indexGenerationId: passBinding.indexGenerationId,
-    searchIndexGenerationId: searchGenerationRow?.id ?? null,
+    searchIndexGenerationId: searchGenerationRow.id,
+    searchGenerationFingerprint: searchGenerationRow.generationFingerprint,
+    chunkGenerationId: searchGenerationRow.chunkGenerationId,
+    embeddingProvider: searchGenerationRow.embeddingProvider,
+    embeddingModel: searchGenerationRow.embeddingModel,
+    embeddingDimension: searchGenerationRow.embeddingDimension,
+    distanceMetric: searchGenerationRow.distanceMetric,
     retrievalEvaluationStatus: "PASS",
     normalizedDocumentFingerprint: nd.fingerprint,
   });

@@ -948,6 +948,48 @@ export async function executeDoclingKnowledgePipeline(input: {
     fingerprint: nd.fingerprint,
   });
 
+  if (!nd.fingerprint) {
+    await markStep(
+      input.packId,
+      input.runId,
+      "KNOWLEDGE_CHECKING",
+      "FAIL",
+      "정규화 문서 fingerprint가 없어 검색 세대를 만들 수 없습니다.",
+      { code: "SEARCH_GENERATION_REQUIRED" },
+      lockOwner,
+    );
+    await failRun(input.packId, input.runId, "Missing ND fingerprint", binding, "SEARCH_GENERATION_REQUIRED");
+    return;
+  }
+
+  try {
+    const { createSearchGenerationForPipeline } = await import(
+      "@/lib/search-generation/search-generation-pipeline-sync"
+    );
+    await createSearchGenerationForPipeline({
+      id: indexGenerationId,
+      packId: input.packId,
+      versionId,
+      pipelineRunId: input.runId,
+      normalizedDocumentId: nd.id,
+      fingerprint: nd.fingerprint,
+      chunkGenerationId: indexGenerationId,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "search generation create failed";
+    await markStep(
+      input.packId,
+      input.runId,
+      "KNOWLEDGE_CHECKING",
+      "FAIL",
+      "검색 인덱스 세대 생성에 실패했습니다.",
+      { code: "SEARCH_GENERATION_REQUIRED" },
+      lockOwner,
+    );
+    await failRun(input.packId, input.runId, message.slice(0, 500), binding, "SEARCH_GENERATION_REQUIRED");
+    return;
+  }
+
   let built;
   try {
     built = await buildKnowledgeFromNormalizedDocument({
@@ -1135,54 +1177,83 @@ export async function executeDoclingKnowledgePipeline(input: {
     undefined,
     lockOwner,
   );
-  const embeddings = await rebuildPackEmbeddings({
-    packId: input.packId,
-    versionId,
-    force: true,
-    chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
-    indexGenerationId,
-    pipelineRunId: input.runId,
-    fingerprint: nd.fingerprint ?? undefined,
-    includeInactiveForGeneration: true,
-    onChunkProcessed: async () => {
-      await heartbeat("검색 인덱스 생성 중…");
-    },
-  });
-  if (!embeddings) {
+  try {
+    const { markSearchGenerationEmbedding, markSearchGenerationIndexing } = await import(
+      "@/lib/search-generation/search-generation-service"
+    );
+    await markSearchGenerationEmbedding(indexGenerationId);
+    const embeddings = await rebuildPackEmbeddings({
+      packId: input.packId,
+      versionId,
+      force: true,
+      chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+      indexGenerationId,
+      searchIndexGenerationId: indexGenerationId,
+      pipelineRunId: input.runId,
+      fingerprint: nd.fingerprint ?? undefined,
+      normalizedDocumentId: nd.id,
+      chunkGenerationId: indexGenerationId,
+      includeInactiveForGeneration: true,
+      onChunkProcessed: async () => {
+        await heartbeat("검색 인덱스 생성 중…");
+      },
+    });
+    if (!embeddings) {
+      await markStep(
+        input.packId,
+        input.runId,
+        "INDEXING",
+        "FAIL",
+        "검색 인덱스(Embedding) 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+        { code: "INDEX_BUILD_FAILED" },
+        lockOwner,
+      );
+      await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
+      await failRun(input.packId, input.runId, "Index build failed", binding, "INDEX_BUILD_FAILED");
+      return;
+    }
+    await markSearchGenerationIndexing(indexGenerationId, {
+      embeddedCount: embeddings.createdCount + embeddings.updatedCount + embeddings.skippedCount,
+      chunkCount: embeddings.processedCount,
+      failedCount: 0,
+    });
+    if (!(await assertOwned())) {
+      await cancelledExit("취소되어 중단되었습니다.");
+      await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
+      return;
+    }
+    await markStep(
+      input.packId,
+      input.runId,
+      "INDEXING",
+      "PASS",
+      `Draft 검색 Index를 생성했습니다. (처리 ${embeddings.processedCount}건)`,
+      {
+        draft: true,
+        indexGenerationId,
+        searchIndexGenerationId: indexGenerationId,
+        indexScope: "DRAFT",
+        indexStatus: "BUILDING",
+        embeddingProvider: "local-hash",
+        ...embeddings,
+      },
+      lockOwner,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "index build failed";
     await markStep(
       input.packId,
       input.runId,
       "INDEXING",
       "FAIL",
       "검색 인덱스(Embedding) 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.",
-      { code: "INDEX_BUILD_FAILED" },
+      { code: "INDEX_BUILD_FAILED", message: message.slice(0, 300) },
       lockOwner,
     );
     await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-    await failRun(input.packId, input.runId, "Index build failed", binding, "INDEX_BUILD_FAILED");
+    await failRun(input.packId, input.runId, message.slice(0, 500), binding, "INDEX_BUILD_FAILED");
     return;
   }
-  if (!(await assertOwned())) {
-    await cancelledExit("취소되어 중단되었습니다.");
-    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
-    return;
-  }
-  await markStep(
-    input.packId,
-    input.runId,
-    "INDEXING",
-    "PASS",
-    `Draft 검색 Index를 생성했습니다. (처리 ${embeddings.processedCount}건)`,
-    {
-      draft: true,
-      indexGenerationId,
-      indexScope: "DRAFT",
-      indexStatus: "BUILDING",
-      embeddingProvider: "local",
-      ...embeddings,
-    },
-    lockOwner,
-  );
 
   if (!(await heartbeat("검색 결과 검증 중")) || !(await assertOwned())) {
     await cancelledExit("취소되어 중단되었습니다.");
@@ -1262,10 +1333,27 @@ export async function executeDoclingKnowledgePipeline(input: {
   }
 
   // PASS only: atomically activate new draft and retire previous drafts.
-  const activated = await activateDraftIndexGeneration({
-    versionId,
-    indexGenerationId,
-  });
+  let activated: { activatedChunkCount: number; retiredDraftCount: number };
+  try {
+    activated = await activateDraftIndexGeneration({
+      versionId,
+      indexGenerationId,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "draft activation failed";
+    await markStep(
+      input.packId,
+      input.runId,
+      "SEARCH_EVALUATING",
+      "FAIL",
+      "검색 세대 READY 전환에 실패했습니다. 다시 생성해 주세요.",
+      { code: "SEARCH_GENERATION_NOT_READY", message: message.slice(0, 300) },
+      lockOwner,
+    );
+    await failDraftIndexGeneration({ versionId, indexGenerationId }).catch(() => undefined);
+    await failRun(input.packId, input.runId, message.slice(0, 500), binding, "SEARCH_GENERATION_NOT_READY");
+    return;
+  }
 
   await markStep(
     input.packId,

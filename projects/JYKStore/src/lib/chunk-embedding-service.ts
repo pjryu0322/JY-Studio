@@ -8,7 +8,9 @@ import {
   type PackEmbeddingSummaryDto,
 } from "@/lib/embedding-dto";
 import { embedText } from "@/lib/embedding-service";
+import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import { prisma } from "@/lib/prisma";
+import { loadSearchGeneration } from "@/lib/search-generation/search-generation-service";
 
 const PROVIDER = DEFAULT_EMBEDDING_PROVIDER;
 const MODEL = DEFAULT_EMBEDDING_MODEL;
@@ -129,8 +131,12 @@ export async function rebuildPackEmbeddings(input: {
   versionId?: string;
   chunkType?: string;
   indexGenerationId?: string;
+  /** P4: required when embedding for a search generation pipeline. */
+  searchIndexGenerationId?: string;
   pipelineRunId?: string;
   fingerprint?: string;
+  normalizedDocumentId?: string;
+  chunkGenerationId?: string;
   /** When true with indexGenerationId, include inactive BUILDING chunks. */
   includeInactiveForGeneration?: boolean;
   onChunkProcessed?: (processedCount: number) => void | Promise<void>;
@@ -152,6 +158,73 @@ export async function rebuildPackEmbeddings(input: {
 
   if (!versionId) return result;
 
+  const searchIndexGenerationId =
+    input.searchIndexGenerationId ?? input.indexGenerationId ?? null;
+
+  if (searchIndexGenerationId) {
+    const generation = await loadSearchGeneration(searchIndexGenerationId);
+    if (!generation) {
+      throw new PayloadServiceError(
+        "SEARCH_GENERATION_NOT_FOUND",
+        "Embedding 전에 검색 세대가 필요합니다.",
+        404,
+      );
+    }
+    if (generation.scope !== "DRAFT") {
+      throw new PayloadServiceError(
+        "SEARCH_GENERATION_NOT_CURRENT",
+        "DRAFT 검색 세대만 Embedding할 수 있습니다.",
+        409,
+      );
+    }
+    if (generation.status !== "PENDING" && generation.status !== "EMBEDDING") {
+      throw new PayloadServiceError(
+        "SEARCH_GENERATION_NOT_READY",
+        "PENDING 또는 EMBEDDING 상태의 검색 세대만 Embedding할 수 있습니다.",
+        409,
+      );
+    }
+    if (input.versionId && generation.versionId !== input.versionId) {
+      throw new PayloadServiceError(
+        "SEARCH_GENERATION_MISMATCH",
+        "검색 세대 version이 일치하지 않습니다.",
+        409,
+      );
+    }
+    if (input.pipelineRunId && generation.pipelineRunId !== input.pipelineRunId) {
+      throw new PayloadServiceError(
+        "SEARCH_GENERATION_MISMATCH",
+        "검색 세대 pipelineRun이 일치하지 않습니다.",
+        409,
+      );
+    }
+    if (
+      input.normalizedDocumentId &&
+      generation.normalizedDocumentId !== input.normalizedDocumentId
+    ) {
+      throw new PayloadServiceError(
+        "SEARCH_GENERATION_MISMATCH",
+        "검색 세대 NormalizedDocument가 일치하지 않습니다.",
+        409,
+      );
+    }
+    if (input.fingerprint && generation.fingerprint !== input.fingerprint) {
+      throw new PayloadServiceError(
+        "SEARCH_GENERATION_MISMATCH",
+        "검색 세대 fingerprint가 일치하지 않습니다.",
+        409,
+      );
+    }
+    const expectedChunkGen = input.chunkGenerationId ?? input.indexGenerationId;
+    if (expectedChunkGen && generation.chunkGenerationId !== expectedChunkGen) {
+      throw new PayloadServiceError(
+        "SEARCH_GENERATION_MISMATCH",
+        "검색 세대 chunkGenerationId가 일치하지 않습니다.",
+        409,
+      );
+    }
+  }
+
   const activeChunks = await prisma.knowledgeChunk.findMany({
     where: {
       versionId,
@@ -161,10 +234,15 @@ export async function rebuildPackEmbeddings(input: {
       ...(input.chunkType ? { chunkType: input.chunkType } : {}),
       ...(input.includeInactiveForGeneration && input.indexGenerationId
         ? {
-            metadata: {
-              path: ["indexGenerationId"],
-              equals: input.indexGenerationId,
-            },
+            OR: [
+              { chunkGenerationId: input.indexGenerationId },
+              {
+                metadata: {
+                  path: ["indexGenerationId"],
+                  equals: input.indexGenerationId,
+                },
+              },
+            ],
           }
         : {}),
     },
@@ -175,7 +253,11 @@ export async function rebuildPackEmbeddings(input: {
       chunk.metadata && typeof chunk.metadata === "object" && !Array.isArray(chunk.metadata)
         ? (chunk.metadata as Record<string, unknown>)
         : null;
-    if (input.indexGenerationId && meta?.indexGenerationId !== input.indexGenerationId) {
+    if (
+      input.indexGenerationId &&
+      chunk.chunkGenerationId !== input.indexGenerationId &&
+      meta?.indexGenerationId !== input.indexGenerationId
+    ) {
       return false;
     }
     if (input.pipelineRunId && meta?.pipelineRunId !== input.pipelineRunId) {
@@ -197,10 +279,28 @@ export async function rebuildPackEmbeddings(input: {
 
     const existing = await prisma.knowledgeChunkEmbedding.findUnique({
       where: { chunkId_provider_model: { chunkId: chunk.id, provider: PROVIDER, model: MODEL } },
-      select: { id: true, contentHash: true },
+      select: { id: true, contentHash: true, searchIndexGenerationId: true },
     });
 
+    if (
+      existing?.searchIndexGenerationId &&
+      searchIndexGenerationId &&
+      existing.searchIndexGenerationId !== searchIndexGenerationId
+    ) {
+      throw new PayloadServiceError(
+        "SEARCH_GENERATION_MISMATCH",
+        "다른 검색 세대에 연결된 Embedding을 덮어쓸 수 없습니다.",
+        409,
+      );
+    }
+
     if (existing && existing.contentHash === contentHash && !input.force) {
+      if (searchIndexGenerationId && !existing.searchIndexGenerationId) {
+        await prisma.knowledgeChunkEmbedding.update({
+          where: { id: existing.id },
+          data: { searchIndexGenerationId },
+        });
+      }
       result.skippedCount += 1;
       await input.onChunkProcessed?.(result.processedCount);
       continue;
@@ -212,7 +312,12 @@ export async function rebuildPackEmbeddings(input: {
     if (existing) {
       await prisma.knowledgeChunkEmbedding.update({
         where: { id: existing.id },
-        data: { dimension: embedding.dimension, vector, contentHash },
+        data: {
+          dimension: embedding.dimension,
+          vector,
+          contentHash,
+          ...(searchIndexGenerationId ? { searchIndexGenerationId } : {}),
+        },
       });
       result.updatedCount += 1;
     } else {
@@ -225,6 +330,7 @@ export async function rebuildPackEmbeddings(input: {
           dimension: embedding.dimension,
           vector,
           contentHash,
+          ...(searchIndexGenerationId ? { searchIndexGenerationId } : {}),
         },
       });
       result.createdCount += 1;

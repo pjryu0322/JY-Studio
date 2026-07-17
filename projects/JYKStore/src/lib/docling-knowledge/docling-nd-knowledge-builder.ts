@@ -12,6 +12,7 @@ import {
   type ExclusionReasonMap,
 } from "@/lib/docling-knowledge/docling-knowledge-unit-plan";
 import { prisma } from "@/lib/prisma";
+import { buildChunkGenerationDualWrite } from "@/lib/search-generation/search-generation-binding";
 import { fixLoneSurrogates, sliceUtf16Safe } from "@/lib/text-encoding-safe";
 
 const MAX_UNIT_CHARS = 6000;
@@ -541,6 +542,7 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
     await prisma.knowledgeChunk.createMany({
       data: unitDrafts.map((u) => {
         if (!sourceDocumentId) provenanceMissing += 1;
+        const dual = buildChunkGenerationDualWrite(indexGenerationId, u.metadata);
         return {
           versionId: input.versionId,
           sourceDocumentId,
@@ -551,7 +553,8 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
           tags: u.tags,
           sortOrder: u.sortOrder,
           isActive: false,
-          metadata: u.metadata as Prisma.InputJsonValue,
+          chunkGenerationId: dual.chunkGenerationId,
+          metadata: dual.metadata as Prisma.InputJsonValue,
         };
       }),
     });
@@ -617,31 +620,34 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
         }
         chunkChars += content.length;
         if (!unit.sourceDocumentId && !sourceDocumentId) provenanceMissing += 1;
-        chunkCreates.push({
-          versionId: input.versionId,
-          sourceDocumentId: unit.sourceDocumentId ?? sourceDocumentId,
-          chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
-          title:
-            groups.length > 1
-              ? clampTitle(`${unit.title} (${index + 1})`, 120)
-              : unit.title,
-          content,
-          section: unit.section,
-          tags: unit.tags,
-          sortOrder: chunkCreates.length,
-          isActive: false,
-          metadata: {
+        {
+          const dual = buildChunkGenerationDualWrite(indexGenerationId, {
             ...unitMeta,
             generatedBy: "docling-knowledge-pipeline",
             knowledgeUnitId: unit.id,
             draftIndex: true,
             indexScope: "DRAFT",
             indexStatus: "BUILDING",
-            indexGenerationId,
             pipelineRunId: input.pipelineRunId,
             tableRowOffset: index * TABLE_ROWS_PER_CHUNK,
-          } as Prisma.InputJsonValue,
-        });
+          });
+          chunkCreates.push({
+            versionId: input.versionId,
+            sourceDocumentId: unit.sourceDocumentId ?? sourceDocumentId,
+            chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+            title:
+              groups.length > 1
+                ? clampTitle(`${unit.title} (${index + 1})`, 120)
+                : unit.title,
+            content,
+            section: unit.section,
+            tags: unit.tags,
+            sortOrder: chunkCreates.length,
+            isActive: false,
+            chunkGenerationId: dual.chunkGenerationId,
+            metadata: dual.metadata as Prisma.InputJsonValue,
+          });
+        }
       });
       continue;
     }
@@ -664,32 +670,35 @@ export async function buildKnowledgeFromNormalizedDocument(input: {
       const startOffset = unitStart + cursor;
       const endOffset = startOffset + part.length;
       cursor += part.length;
-      chunkCreates.push({
-        versionId: input.versionId,
-        sourceDocumentId: unit.sourceDocumentId ?? sourceDocumentId,
-        chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
-        title:
-          parts.length > 1
-            ? clampTitle(`${unit.title} (${index + 1})`, 120)
-            : unit.title,
-        content: part,
-        section: unit.section,
-        tags: unit.tags,
-        sortOrder: chunkCreates.length,
-        isActive: false,
-        metadata: {
+      {
+        const dual = buildChunkGenerationDualWrite(indexGenerationId, {
           ...unitMeta,
           generatedBy: "docling-knowledge-pipeline",
           knowledgeUnitId: unit.id,
           draftIndex: true,
           indexScope: "DRAFT",
           indexStatus: "BUILDING",
-          indexGenerationId,
           pipelineRunId: input.pipelineRunId,
           sourceTextStart: startOffset,
           sourceTextEnd: endOffset,
-        } as Prisma.InputJsonValue,
-      });
+        });
+        chunkCreates.push({
+          versionId: input.versionId,
+          sourceDocumentId: unit.sourceDocumentId ?? sourceDocumentId,
+          chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+          title:
+            parts.length > 1
+              ? clampTitle(`${unit.title} (${index + 1})`, 120)
+              : unit.title,
+          content: part,
+          section: unit.section,
+          tags: unit.tags,
+          sortOrder: chunkCreates.length,
+          isActive: false,
+          chunkGenerationId: dual.chunkGenerationId,
+          metadata: dual.metadata as Prisma.InputJsonValue,
+        });
+      }
     });
   }
 
@@ -849,7 +858,7 @@ export async function activateDraftIndexGeneration(input: {
     };
   });
 
-  // P4: mirror activation into the SearchIndexGeneration entity (best-effort).
+  // P4.1: mirror activation into SearchIndexGeneration (authoritative; failures propagate).
   const { syncSearchGenerationReady } = await import(
     "@/lib/search-generation/search-generation-pipeline-sync"
   );
@@ -890,7 +899,7 @@ export async function failDraftIndexGeneration(input: {
     });
   }
 
-  // P4: mirror failure into the SearchIndexGeneration entity (best-effort).
+  // P4.1: mirror failure into SearchIndexGeneration (authoritative when row exists).
   const { syncSearchGenerationFailed } = await import(
     "@/lib/search-generation/search-generation-pipeline-sync"
   );

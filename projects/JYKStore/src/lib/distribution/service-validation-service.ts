@@ -967,12 +967,36 @@ export async function runServiceChannelValidation(input: {
         );
       }
     }
-    // §34 Dual-write the search generation FK when the entity exists (nullable FK
-    // stays null for legacy packs until backfill/pipeline creates the generation).
+    // P4.1: SearchIndexGeneration READY is required for new Docling validation runs.
     const generationRow = await tx.searchIndexGeneration.findUnique({
       where: { id: binding.indexGenerationId },
-      select: { id: true },
     });
+    if (!generationRow) {
+      throw new PayloadServiceError(
+        "SEARCH_GENERATION_REQUIRED",
+        "검색 인덱스 세대가 없어 서비스 검증을 실행할 수 없습니다. 검색 데이터를 다시 생성해 주세요.",
+        409,
+      );
+    }
+    if (
+      generationRow.status !== "READY" ||
+      generationRow.scope !== "DRAFT" ||
+      generationRow.versionId !== version.id ||
+      generationRow.pipelineRunId !== latest.id ||
+      generationRow.normalizedDocumentId !== binding.normalizedDocumentId ||
+      generationRow.fingerprint !== binding.fingerprint ||
+      generationRow.chunkGenerationId !== binding.indexGenerationId
+    ) {
+      throw new PayloadServiceError(
+        "SEARCH_GENERATION_NOT_CURRENT",
+        "검색 인덱스 세대가 현재 자료와 일치하지 않거나 READY가 아닙니다. 다시 생성·검증해 주세요.",
+        409,
+      );
+    }
+    const generationDualWrite = {
+      searchIndexGenerationId: generationRow.id,
+      indexGenerationId: generationRow.id,
+    };
     const created = await tx.serviceValidationRun.create({
       data: {
         packId: pack.packId,
@@ -980,8 +1004,7 @@ export async function runServiceChannelValidation(input: {
         channel: input.channel as ServiceValidationChannel,
         status,
         pipelineRunId: latest.id,
-        indexGenerationId: binding.indexGenerationId,
-        searchIndexGenerationId: generationRow?.id ?? null,
+        ...generationDualWrite,
         normalizedDocumentId: binding.normalizedDocumentId,
         fingerprint: binding.fingerprint,
         resultFingerprint,

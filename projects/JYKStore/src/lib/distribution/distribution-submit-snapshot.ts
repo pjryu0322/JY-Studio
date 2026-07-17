@@ -135,16 +135,24 @@ export type DoclingBundleReviewSubmitSnapshot = {
   indexGenerationId?: string | null;
   /** P4: explicit search-index generation binding (Version 2+). */
   searchIndexGenerationId?: string | null;
+  /** P4.1 Snapshot V3: generation fingerprint and embedding descriptor. */
+  searchGenerationFingerprint?: string | null;
+  chunkGenerationId?: string | null;
+  embeddingProvider?: string | null;
+  embeddingModel?: string | null;
+  embeddingDimension?: number | null;
+  distanceMetric?: string | null;
   retrievalEvaluationStatus?: string | null;
   normalizedDocumentFingerprint?: string | null;
   /**
    * Snapshot schema version. Absent/1 = legacy (serviceValidation only).
    * 2 = three-channel preparationValidation + distributionChannels required.
+   * 3 = V2 + READY SearchIndexGeneration binding fields required.
    */
   snapshotSchemaVersion?: number;
 };
 
-export const REVIEW_SUBMIT_SNAPSHOT_VERSION = 2 as const;
+export const REVIEW_SUBMIT_SNAPSHOT_VERSION = 3 as const;
 
 export type ReviewSubmitSnapshot =
   | DistributionReviewSubmitSnapshot
@@ -212,6 +220,12 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
   pipelineRunId?: string | null;
   indexGenerationId?: string | null;
   searchIndexGenerationId?: string | null;
+  searchGenerationFingerprint?: string | null;
+  chunkGenerationId?: string | null;
+  embeddingProvider?: string | null;
+  embeddingModel?: string | null;
+  embeddingDimension?: number | null;
+  distanceMetric?: string | null;
   retrievalEvaluationStatus?: string | null;
   normalizedDocumentFingerprint?: string | null;
   snapshotSchemaVersion?: number;
@@ -253,6 +267,12 @@ export function buildDoclingBundleReviewSubmitSnapshot(input: {
     pipelineRunId: input.pipelineRunId ?? null,
     indexGenerationId: input.indexGenerationId ?? null,
     searchIndexGenerationId: input.searchIndexGenerationId ?? null,
+    searchGenerationFingerprint: input.searchGenerationFingerprint ?? null,
+    chunkGenerationId: input.chunkGenerationId ?? null,
+    embeddingProvider: input.embeddingProvider ?? null,
+    embeddingModel: input.embeddingModel ?? null,
+    embeddingDimension: input.embeddingDimension ?? null,
+    distanceMetric: input.distanceMetric ?? null,
     retrievalEvaluationStatus: input.retrievalEvaluationStatus ?? null,
     normalizedDocumentFingerprint:
       input.normalizedDocumentFingerprint ?? input.fingerprint ?? null,
@@ -389,6 +409,18 @@ export function parseDoclingBundleReviewSubmitSnapshot(
       typeof raw.indexGenerationId === "string" ? raw.indexGenerationId : null,
     searchIndexGenerationId:
       typeof raw.searchIndexGenerationId === "string" ? raw.searchIndexGenerationId : null,
+    searchGenerationFingerprint:
+      typeof raw.searchGenerationFingerprint === "string"
+        ? raw.searchGenerationFingerprint
+        : null,
+    chunkGenerationId:
+      typeof raw.chunkGenerationId === "string" ? raw.chunkGenerationId : null,
+    embeddingProvider:
+      typeof raw.embeddingProvider === "string" ? raw.embeddingProvider : null,
+    embeddingModel: typeof raw.embeddingModel === "string" ? raw.embeddingModel : null,
+    embeddingDimension:
+      typeof raw.embeddingDimension === "number" ? raw.embeddingDimension : null,
+    distanceMetric: typeof raw.distanceMetric === "string" ? raw.distanceMetric : null,
     retrievalEvaluationStatus:
       typeof raw.retrievalEvaluationStatus === "string"
         ? raw.retrievalEvaluationStatus
@@ -435,6 +467,45 @@ export function isReviewSubmitSnapshotV2(
     if (typeof genId !== "string" || genId.length === 0) return false;
   }
   return Boolean(snapshot.distributionChannels);
+}
+
+/**
+ * Version 3: V2 requirements plus READY SearchIndexGeneration binding fields.
+ * Version 1·2 remain readable via parse; only V3 is accepted for new submits.
+ */
+export function isReviewSubmitSnapshotV3(
+  snapshot: DoclingBundleReviewSubmitSnapshot,
+): boolean {
+  if ((snapshot.snapshotSchemaVersion ?? 1) < 3) return false;
+  if (!isReviewSubmitSnapshotV2(snapshot)) return false;
+  if (
+    typeof snapshot.searchIndexGenerationId !== "string" ||
+    snapshot.searchIndexGenerationId.length === 0
+  ) {
+    return false;
+  }
+  if (
+    typeof snapshot.searchGenerationFingerprint !== "string" ||
+    snapshot.searchGenerationFingerprint.length === 0
+  ) {
+    return false;
+  }
+  if (typeof snapshot.chunkGenerationId !== "string" || snapshot.chunkGenerationId.length === 0) {
+    return false;
+  }
+  if (typeof snapshot.embeddingProvider !== "string" || snapshot.embeddingProvider.length === 0) {
+    return false;
+  }
+  if (typeof snapshot.embeddingModel !== "string" || snapshot.embeddingModel.length === 0) {
+    return false;
+  }
+  if (typeof snapshot.embeddingDimension !== "number" || snapshot.embeddingDimension <= 0) {
+    return false;
+  }
+  if (typeof snapshot.distanceMetric !== "string" || snapshot.distanceMetric.length === 0) {
+    return false;
+  }
+  return true;
 }
 
 export function parseReviewSubmitSnapshot(value: unknown): ReviewSubmitSnapshot | null {

@@ -1,216 +1,223 @@
-import { type Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
+import { type Prisma, type SearchIndexGeneration } from "@prisma/client";
+import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import {
-  DOCLING_KNOWLEDGE_UNIT_CHUNK_TYPE,
   DOCLING_RETRIEVAL_CHUNK_TYPE,
 } from "@/lib/docling-knowledge/docling-knowledge-stages";
+import { prisma } from "@/lib/prisma";
 import { computeSearchGenerationFingerprint } from "@/lib/search-generation/search-generation-fingerprint";
+import {
+  createDraftSearchGeneration,
+  loadSearchGeneration,
+  markSearchGenerationFailed,
+  markSearchGenerationReady,
+  markSearchGenerationStale,
+  promoteSearchGeneration,
+} from "@/lib/search-generation/search-generation-service";
 import { defaultLocalEmbeddingDescriptor } from "@/lib/search-generation/search-generation-types";
 
 type SyncClient = Prisma.TransactionClient | typeof prisma;
 
-function metaRecord(value: unknown): Record<string, unknown> | null {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return null;
-}
-
-function metaString(meta: Record<string, unknown> | null, key: string): string | null {
-  if (!meta) return null;
-  const v = meta[key];
-  return typeof v === "string" && v.length > 0 ? v : null;
-}
-
 /**
- * Derive the binding + embedding descriptor for a generation from its chunks.
- * Returns null when metadata is insufficient (legacy pre-P4 chunks).
+ * Create authoritative DRAFT/PENDING SearchIndexGeneration for a Docling pipeline run.
+ * Stales prior active drafts for the version. Failures propagate to the pipeline.
  */
-async function resolveGenerationContext(
-  client: SyncClient,
-  versionId: string,
-  indexGenerationId: string,
-) {
-  const version = await client.knowledgePackVersion.findUnique({
-    where: { id: versionId },
-    select: { packId: true },
+export async function createSearchGenerationForPipeline(input: {
+  id: string;
+  packId: string;
+  versionId: string;
+  pipelineRunId: string;
+  normalizedDocumentId: string;
+  fingerprint: string;
+  chunkGenerationId: string;
+  descriptor?: ReturnType<typeof defaultLocalEmbeddingDescriptor>;
+}): Promise<SearchIndexGeneration> {
+  const descriptor = input.descriptor ?? defaultLocalEmbeddingDescriptor();
+  const provisionalFingerprint = computeSearchGenerationFingerprint({
+    packId: input.packId,
+    versionId: input.versionId,
+    pipelineRunId: input.pipelineRunId,
+    normalizedDocumentId: input.normalizedDocumentId,
+    chunkGenerationId: input.chunkGenerationId,
+    normalizedDocumentFingerprint: input.fingerprint,
+    ...descriptor,
+    chunks: [],
   });
-  if (!version) return null;
 
+  await markSearchGenerationStale(input.versionId, prisma, { exceptId: input.id });
+
+  return createDraftSearchGeneration({
+    id: input.id,
+    packId: input.packId,
+    versionId: input.versionId,
+    pipelineRunId: input.pipelineRunId,
+    normalizedDocumentId: input.normalizedDocumentId,
+    chunkGenerationId: input.chunkGenerationId,
+    fingerprint: input.fingerprint,
+    ...descriptor,
+    generationFingerprint: provisionalFingerprint,
+  });
+}
+
+async function resolveReadyFingerprint(
+  client: SyncClient,
+  generation: SearchIndexGeneration,
+): Promise<{ generationFingerprint: string; chunkCount: number; embeddedCount: number }> {
   const chunks = await client.knowledgeChunk.findMany({
     where: {
-      versionId,
-      chunkType: {
-        in: [DOCLING_KNOWLEDGE_UNIT_CHUNK_TYPE, DOCLING_RETRIEVAL_CHUNK_TYPE],
-      },
-      metadata: { path: ["indexGenerationId"], equals: indexGenerationId },
+      versionId: generation.versionId,
+      chunkType: DOCLING_RETRIEVAL_CHUNK_TYPE,
+      OR: [
+        { chunkGenerationId: generation.chunkGenerationId },
+        {
+          AND: [
+            { chunkGenerationId: null },
+            { metadata: { path: ["indexGenerationId"], equals: generation.chunkGenerationId } },
+          ],
+        },
+      ],
     },
-    select: { id: true, chunkType: true, metadata: true },
+    select: { id: true },
   });
-  if (chunks.length === 0) return null;
-
-  const sample = metaRecord(chunks[0]!.metadata);
-  const pipelineRunId = metaString(sample, "pipelineRunId");
-  const normalizedDocumentId = metaString(sample, "normalizedDocumentId");
-  const fingerprint =
-    metaString(sample, "normalizedDocumentFingerprint") ?? metaString(sample, "fingerprint");
-  if (!pipelineRunId || !normalizedDocumentId || !fingerprint) return null;
-
-  const retrievalChunkIds = chunks
-    .filter((c) => c.chunkType === DOCLING_RETRIEVAL_CHUNK_TYPE)
-    .map((c) => c.id);
   const embeddings = await client.knowledgeChunkEmbedding.findMany({
-    where: { chunkId: { in: retrievalChunkIds.length ? retrievalChunkIds : chunks.map((c) => c.id) } },
-    select: { chunkId: true, provider: true, model: true, dimension: true, contentHash: true },
+    where: { searchIndexGenerationId: generation.id },
+    select: { chunkId: true, contentHash: true, provider: true, model: true, dimension: true },
   });
   const contentHashByChunk = new Map(embeddings.map((e) => [e.chunkId, e.contentHash]));
-  const descriptor = embeddings[0]
-    ? {
-        embeddingProvider: embeddings[0].provider,
-        embeddingModel: embeddings[0].model,
-        embeddingDimension: embeddings[0].dimension,
-        distanceMetric: defaultLocalEmbeddingDescriptor().distanceMetric,
-      }
-    : defaultLocalEmbeddingDescriptor();
-
-  const fingerprintChunkIds = retrievalChunkIds.length ? retrievalChunkIds : chunks.map((c) => c.id);
   const generationFingerprint = computeSearchGenerationFingerprint({
-    packId: version.packId,
-    versionId,
-    pipelineRunId,
-    normalizedDocumentId,
-    chunkGenerationId: indexGenerationId,
-    normalizedDocumentFingerprint: fingerprint,
-    ...descriptor,
-    chunks: fingerprintChunkIds.map((id) => ({
-      chunkId: id,
-      contentHash: contentHashByChunk.get(id) ?? "",
+    packId: generation.packId,
+    versionId: generation.versionId,
+    pipelineRunId: generation.pipelineRunId,
+    normalizedDocumentId: generation.normalizedDocumentId,
+    chunkGenerationId: generation.chunkGenerationId,
+    normalizedDocumentFingerprint: generation.fingerprint,
+    embeddingProvider: generation.embeddingProvider,
+    embeddingModel: generation.embeddingModel,
+    embeddingDimension: generation.embeddingDimension,
+    distanceMetric: generation.distanceMetric,
+    chunks: chunks.map((c) => ({
+      chunkId: c.id,
+      contentHash: contentHashByChunk.get(c.id) ?? "",
     })),
   });
-
   return {
-    packId: version.packId,
-    pipelineRunId,
-    normalizedDocumentId,
-    fingerprint,
-    descriptor,
     generationFingerprint,
-    chunkCount: retrievalChunkIds.length,
+    chunkCount: chunks.length,
     embeddedCount: embeddings.length,
   };
 }
 
 /**
- * §31/§33 — On draft-index activation (SEARCH_EVALUATING PASS): upsert the
- * generation to READY/DRAFT and mark other active drafts for the version STALE.
- * Best-effort: never throws (tracking only).
+ * On draft-index activation (SEARCH_EVALUATING PASS): transition generation to READY/DRAFT
+ * and mark other active drafts STALE. Failures propagate — never swallowed.
  */
 export async function syncSearchGenerationReady(input: {
   versionId: string;
   indexGenerationId: string;
-}): Promise<void> {
-  try {
-    const ctx = await resolveGenerationContext(prisma, input.versionId, input.indexGenerationId);
-    if (!ctx) return;
-
-    await prisma.searchIndexGeneration.upsert({
-      where: { id: input.indexGenerationId },
-      create: {
-        id: input.indexGenerationId,
-        packId: ctx.packId,
-        versionId: input.versionId,
-        pipelineRunId: ctx.pipelineRunId,
-        normalizedDocumentId: ctx.normalizedDocumentId,
-        chunkGenerationId: input.indexGenerationId,
-        fingerprint: ctx.fingerprint,
-        ...ctx.descriptor,
-        chunkCount: ctx.chunkCount,
-        embeddedCount: ctx.embeddedCount,
-        generationFingerprint: ctx.generationFingerprint,
-        status: "READY",
-        scope: "DRAFT",
-        completedAt: new Date(),
-      },
-      update: {
-        status: "READY",
-        scope: "DRAFT",
-        chunkCount: ctx.chunkCount,
-        embeddedCount: ctx.embeddedCount,
-        generationFingerprint: ctx.generationFingerprint,
-        completedAt: new Date(),
-        staleAt: null,
-      },
-    });
-
-    await prisma.searchIndexGeneration.updateMany({
-      where: {
-        versionId: input.versionId,
-        scope: "DRAFT",
-        status: { notIn: ["FAILED", "STALE", "RETIRED"] },
-        id: { not: input.indexGenerationId },
-      },
-      data: { status: "STALE", staleAt: new Date() },
-    });
-  } catch {
-    // Tracking only — never break the pipeline.
+}): Promise<SearchIndexGeneration> {
+  const generation = await loadSearchGeneration(input.indexGenerationId);
+  if (!generation) {
+    throw new PayloadServiceError(
+      "SEARCH_GENERATION_NOT_FOUND",
+      "검색 인덱스 생성 세대가 없어 READY로 전환할 수 없습니다.",
+      404,
+    );
   }
+  if (generation.versionId !== input.versionId) {
+    throw new PayloadServiceError(
+      "SEARCH_GENERATION_MISMATCH",
+      "검색 세대 version 바인딩이 일치하지 않습니다.",
+      409,
+    );
+  }
+  if (generation.status === "READY" && generation.scope === "DRAFT") {
+    await markSearchGenerationStale(input.versionId, prisma, {
+      exceptId: input.indexGenerationId,
+    });
+    return generation;
+  }
+
+  const resolved = await resolveReadyFingerprint(prisma, generation);
+  await prisma.searchIndexGeneration.update({
+    where: { id: generation.id },
+    data: {
+      chunkCount: resolved.chunkCount,
+      embeddedCount: resolved.embeddedCount,
+      generationFingerprint: resolved.generationFingerprint,
+    },
+  });
+
+  const ready = await markSearchGenerationReady(input.indexGenerationId, {
+    chunkCount: resolved.chunkCount,
+    embeddedCount: resolved.embeddedCount,
+    generationFingerprint: resolved.generationFingerprint,
+  });
+
+  await markSearchGenerationStale(input.versionId, prisma, {
+    exceptId: input.indexGenerationId,
+  });
+  return ready;
 }
 
-/** §32 — Mark the generation FAILED when the draft build fails. Best-effort. */
+/** Mark the generation FAILED when the draft build fails. Propagates errors. */
 export async function syncSearchGenerationFailed(input: {
   versionId: string;
   indexGenerationId: string;
   failureCode?: string;
   failureMessage?: string | null;
 }): Promise<void> {
-  try {
-    const existing = await prisma.searchIndexGeneration.findUnique({
-      where: { id: input.indexGenerationId },
-      select: { id: true },
-    });
-    if (!existing) return;
-    await prisma.searchIndexGeneration.update({
-      where: { id: input.indexGenerationId },
-      data: {
-        status: "FAILED",
-        failureCode: input.failureCode ?? "PIPELINE_FAILED",
-        failureMessage: input.failureMessage ?? null,
-      },
-    });
-  } catch {
-    // Tracking only.
+  const existing = await loadSearchGeneration(input.indexGenerationId);
+  if (!existing) {
+    // Generation was never created (failed before PENDING) — nothing to mark.
+    return;
   }
+  if (existing.versionId !== input.versionId) {
+    throw new PayloadServiceError(
+      "SEARCH_GENERATION_MISMATCH",
+      "검색 세대 version 바인딩이 일치하지 않습니다.",
+      409,
+    );
+  }
+  if (existing.status === "FAILED" || existing.status === "STALE" || existing.status === "RETIRED") {
+    return;
+  }
+  if (existing.status === "READY" || existing.status === "PROMOTED") {
+    // Activation already succeeded; do not demote.
+    return;
+  }
+  await markSearchGenerationFailed(input.indexGenerationId, {
+    failureCode: input.failureCode ?? "PIPELINE_FAILED",
+    failureMessage: input.failureMessage ?? null,
+  });
 }
 
 /**
- * §36 — Promote the validated generation to PRODUCTION within the admin approval
- * transaction. The validated generation must equal the promoted generation.
- * No-op when the generation row does not exist (legacy packs pre-backfill).
+ * Promote the validated generation to PRODUCTION within the admin approval transaction.
+ * Missing generation is a hard failure (no silent no-op).
  */
 export async function syncSearchGenerationPromotion(input: {
   versionId: string;
   indexGenerationId: string;
   tx: Prisma.TransactionClient;
-}): Promise<void> {
+}): Promise<SearchIndexGeneration> {
   const generation = await input.tx.searchIndexGeneration.findUnique({
     where: { id: input.indexGenerationId },
-    select: { id: true, versionId: true, status: true, scope: true },
   });
-  if (!generation) return;
-  if (generation.versionId !== input.versionId) return;
-  if (generation.scope === "PRODUCTION" && generation.status === "PROMOTED") return;
-
-  await input.tx.searchIndexGeneration.updateMany({
-    where: {
-      versionId: input.versionId,
-      scope: "PRODUCTION",
-      status: "PROMOTED",
-      id: { not: input.indexGenerationId },
-    },
-    data: { status: "RETIRED", retiredAt: new Date() },
-  });
-  await input.tx.searchIndexGeneration.update({
-    where: { id: input.indexGenerationId },
-    data: { scope: "PRODUCTION", status: "PROMOTED", promotedAt: new Date() },
-  });
+  if (!generation) {
+    throw new PayloadServiceError(
+      "SEARCH_GENERATION_NOT_FOUND",
+      "승인할 검색 인덱스 생성 세대가 없습니다.",
+      404,
+    );
+  }
+  if (generation.versionId !== input.versionId) {
+    throw new PayloadServiceError(
+      "SEARCH_GENERATION_MISMATCH",
+      "검색 세대 version 바인딩이 일치하지 않습니다.",
+      409,
+    );
+  }
+  if (generation.scope === "PRODUCTION" && generation.status === "PROMOTED") {
+    return generation;
+  }
+  return promoteSearchGeneration(input.indexGenerationId, input.tx);
 }

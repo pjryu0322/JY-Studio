@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   buildDoclingBundleReviewSubmitSnapshot,
   isReviewSubmitSnapshotV2,
+  isReviewSubmitSnapshotV3,
   parseDoclingBundleReviewSubmitSnapshot,
   REVIEW_SUBMIT_SNAPSHOT_VERSION,
   type DoclingBundleReviewSubmitSnapshot,
@@ -25,7 +26,7 @@ function preparationEntry(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildV2Snapshot(): DoclingBundleReviewSubmitSnapshot {
+function buildV3Snapshot(): DoclingBundleReviewSubmitSnapshot {
   return buildDoclingBundleReviewSubmitSnapshot({
     submittedVersionId: "version-1",
     doclingBundleId: "bundle-1",
@@ -53,78 +54,67 @@ function buildV2Snapshot(): DoclingBundleReviewSubmitSnapshot {
     language: "ko",
     pipelineRunId: "pipe-1",
     indexGenerationId: "gen-1",
+    searchIndexGenerationId: "gen-1",
+    searchGenerationFingerprint: "sgf-1",
+    chunkGenerationId: "gen-1",
+    embeddingProvider: "local-hash",
+    embeddingModel: "local-hash-v1",
+    embeddingDimension: 256,
+    distanceMetric: "cosine",
     retrievalEvaluationStatus: "PASS",
   });
 }
 
-describe("review submit snapshot version 2 (§11)", () => {
-  it("builder stamps the current snapshot schema version", () => {
-    const snap = buildV2Snapshot();
+describe("review submit snapshot version 3 (P4.1)", () => {
+  it("builder stamps snapshot schema version 3", () => {
+    const snap = buildV3Snapshot();
     assert.equal(snap.snapshotSchemaVersion, REVIEW_SUBMIT_SNAPSHOT_VERSION);
-    assert.equal(REVIEW_SUBMIT_SNAPSHOT_VERSION, 2);
+    assert.equal(REVIEW_SUBMIT_SNAPSHOT_VERSION, 3);
   });
 
-  it("recognizes a complete v2 snapshot", () => {
-    assert.equal(isReviewSubmitSnapshotV2(buildV2Snapshot()), true);
+  it("recognizes a complete v3 snapshot", () => {
+    assert.equal(isReviewSubmitSnapshotV3(buildV3Snapshot()), true);
+    assert.equal(isReviewSubmitSnapshotV2(buildV3Snapshot()), true);
   });
 
-  it("round-trips preparationValidation and distributionChannels through the parser", () => {
-    const snap = buildV2Snapshot();
+  it("rejects v3 when search generation fields are missing", () => {
+    const snap = buildV3Snapshot();
+    snap.searchIndexGenerationId = null;
+    assert.equal(isReviewSubmitSnapshotV3(snap), false);
+  });
+
+  it("round-trips V3 generation fields through the parser", () => {
+    const snap = buildV3Snapshot();
     const parsed = parseDoclingBundleReviewSubmitSnapshot(
       JSON.parse(JSON.stringify(snap)),
     );
     assert.ok(parsed);
+    assert.equal(parsed.snapshotSchemaVersion, 3);
+    assert.equal(parsed.searchIndexGenerationId, "gen-1");
+    assert.equal(parsed.searchGenerationFingerprint, "sgf-1");
+    assert.equal(parsed.chunkGenerationId, "gen-1");
+    assert.equal(parsed.embeddingProvider, "local-hash");
+    assert.equal(parsed.embeddingDimension, 256);
+  });
+
+  it("still parses legacy v2 snapshots for read compatibility", () => {
+    const legacy = {
+      ...buildV3Snapshot(),
+      snapshotSchemaVersion: 2,
+      searchIndexGenerationId: null,
+      searchGenerationFingerprint: null,
+      chunkGenerationId: null,
+      embeddingProvider: null,
+      embeddingModel: null,
+      embeddingDimension: null,
+      distanceMetric: null,
+    };
+    const parsed = parseDoclingBundleReviewSubmitSnapshot(
+      JSON.parse(JSON.stringify(legacy)),
+    );
+    assert.ok(parsed);
     assert.equal(parsed.snapshotSchemaVersion, 2);
-    assert.ok(parsed.preparationValidation?.API);
-    assert.ok(parsed.preparationValidation?.MCP);
-    assert.ok(parsed.preparationValidation?.DOWNLOAD);
-    assert.deepEqual(parsed.distributionChannels, {
-      allowApi: true,
-      allowMcp: true,
-      allowDownload: false,
-    });
+    assert.equal(isReviewSubmitSnapshotV3(parsed), false);
     assert.equal(isReviewSubmitSnapshotV2(parsed), true);
-  });
-
-  it("rejects a legacy snapshot (serviceValidation only, no version)", () => {
-    const legacy: DoclingBundleReviewSubmitSnapshot = {
-      ...buildV2Snapshot(),
-      snapshotSchemaVersion: undefined,
-      preparationValidation: null,
-      distributionChannels: null,
-      serviceValidation: {
-        API: { status: "PASS", runId: "run-api", testedAt: null },
-        MCP: { status: "PASS", runId: "run-mcp", testedAt: null },
-        DOWNLOAD: { status: "PASS", runId: "run-dl", testedAt: null },
-      },
-    };
-    assert.equal(isReviewSubmitSnapshotV2(legacy), false);
-  });
-
-  it("rejects a v2 snapshot missing a channel", () => {
-    const snap = buildV2Snapshot();
-    snap.preparationValidation = {
-      API: snap.preparationValidation!.API,
-      MCP: snap.preparationValidation!.MCP,
-    };
-    assert.equal(isReviewSubmitSnapshotV2(snap), false);
-  });
-
-  it("rejects a v2 snapshot with an unconfirmed channel", () => {
-    const snap = buildV2Snapshot();
-    snap.preparationValidation!.DOWNLOAD!.providerConfirmationStatus = "NOT_REVIEWED";
-    assert.equal(isReviewSubmitSnapshotV2(snap), false);
-  });
-
-  it("rejects a v2 snapshot with a stale channel validity", () => {
-    const snap = buildV2Snapshot();
-    snap.preparationValidation!.API!.currentValidity = "STALE";
-    assert.equal(isReviewSubmitSnapshotV2(snap), false);
-  });
-
-  it("rejects a v2 snapshot without distributionChannels", () => {
-    const snap = buildV2Snapshot();
-    snap.distributionChannels = null;
-    assert.equal(isReviewSubmitSnapshotV2(snap), false);
   });
 });

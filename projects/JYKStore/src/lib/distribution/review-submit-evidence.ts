@@ -149,6 +149,36 @@ export async function assertReviewSubmitEvidenceInTx(
     throw new ReviewSubmitEvidenceError("PIPELINE_DRIFT", EVIDENCE_DRIFT_MESSAGE);
   }
 
+  // P4.1: re-validate SearchIndexGeneration inside the transaction.
+  const generationId =
+    snapshot.searchIndexGenerationId ?? snapshot.indexGenerationId ?? binding.indexGenerationId;
+  if (!generationId) {
+    throw new ReviewSubmitEvidenceError("SEARCH_GENERATION_REQUIRED", EVIDENCE_DRIFT_MESSAGE);
+  }
+  const generation = await client.searchIndexGeneration.findUnique({
+    where: { id: generationId },
+  });
+  if (
+    !generation ||
+    generation.id !== generationId ||
+    generation.id !== binding.indexGenerationId ||
+    generation.packId !== packId ||
+    generation.versionId !== versionId ||
+    generation.pipelineRunId !== passRun.id ||
+    generation.normalizedDocumentId !== nd.id ||
+    generation.fingerprint !== nd.fingerprint ||
+    generation.chunkGenerationId !== binding.indexGenerationId ||
+    (snapshot.searchGenerationFingerprint != null &&
+      generation.generationFingerprint !== snapshot.searchGenerationFingerprint) ||
+    generation.status !== "READY" ||
+    generation.scope !== "DRAFT" ||
+    generation.chunkCount <= 0 ||
+    generation.embeddedCount !== generation.chunkCount ||
+    generation.failedCount !== 0
+  ) {
+    throw new ReviewSubmitEvidenceError("SEARCH_GENERATION_NOT_CURRENT", EVIDENCE_DRIFT_MESSAGE);
+  }
+
   // §10 preparation-channel evidence — compare each snapshot entry against the current run.
   const prep = snapshot.preparationValidation ?? null;
   if (!prep) {
@@ -173,7 +203,8 @@ export async function assertReviewSubmitEvidenceInTx(
       run.pipelineRunId !== passRun.id ||
       run.normalizedDocumentId !== nd.id ||
       run.fingerprint !== nd.fingerprint ||
-      run.indexGenerationId !== binding.indexGenerationId
+      run.indexGenerationId !== binding.indexGenerationId ||
+      run.searchIndexGenerationId !== generation.id
     ) {
       throw new ReviewSubmitEvidenceError("VALIDATION_DRIFT", EVIDENCE_DRIFT_MESSAGE);
     }

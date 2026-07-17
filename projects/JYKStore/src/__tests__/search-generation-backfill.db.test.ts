@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { PackStatus } from "@prisma/client";
+import { computeChunkContentHash } from "../lib/chunk-embedding-service.ts";
 import { backfillSearchGenerations } from "../lib/search-generation/search-generation-backfill.ts";
 import {
   createKnowledgeRunBinding,
@@ -144,7 +145,12 @@ async function seed(suffix: string, indexStatus: string, indexScope: string) {
       model: "local-hash-v1",
       dimension: 256,
       vector: [0.1, 0.2],
-      contentHash: `ch-${suffix}`,
+      contentHash: computeChunkContentHash({
+        title: "T",
+        content: "C",
+        section: null,
+        tags: [],
+      }),
     },
   });
   const run = await prisma.serviceValidationRun.create({

@@ -1014,6 +1014,9 @@ model SearchIndexGeneration {
   @@index([scope])
   @@index([generationFingerprint])
   @@index([versionId, scope, status])
+  /// Partial unique (Migration B SQL):
+  /// one active DRAFT (PENDING|EMBEDDING|INDEXING|READY) per versionId
+  /// one PRODUCTION PROMOTED per versionId
 }
 
 model KnowledgeGraphNode {

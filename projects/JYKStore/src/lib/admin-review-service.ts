@@ -754,7 +754,9 @@ export async function approvePackReview(input: {
       (approveSnapshot.normalizedDocumentFingerprint ?? approveSnapshot.fingerprint) !==
         activeNd.fingerprint ||
       !approveSnapshot.pipelineRunId ||
-      !approveSnapshot.indexGenerationId
+      !approveSnapshot.indexGenerationId ||
+      !approveSnapshot.searchIndexGenerationId ||
+      (approveSnapshot.snapshotSchemaVersion ?? 1) < 3
     ) {
       return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
     }
@@ -781,6 +783,46 @@ export async function approvePackReview(input: {
       readyStep?.status !== "PASS"
     ) {
       return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
+    }
+
+    const generation = await prisma.searchIndexGeneration.findUnique({
+      where: { id: approveSnapshot.searchIndexGenerationId },
+    });
+    if (
+      !generation ||
+      generation.id !== approveSnapshot.indexGenerationId ||
+      generation.status !== "READY" ||
+      generation.scope !== "DRAFT" ||
+      generation.versionId !== latestVersion.id ||
+      generation.pipelineRunId !== approveSnapshot.pipelineRunId ||
+      generation.normalizedDocumentId !== activeNd.id ||
+      generation.fingerprint !== activeNd.fingerprint ||
+      (approveSnapshot.searchGenerationFingerprint != null &&
+        generation.generationFingerprint !== approveSnapshot.searchGenerationFingerprint)
+    ) {
+      return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
+    }
+
+    for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
+      const run = await prisma.serviceValidationRun.findFirst({
+        where: { versionId: latestVersion.id, channel },
+        orderBy: { createdAt: "desc" },
+        select: {
+          status: true,
+          invalidatedAt: true,
+          searchIndexGenerationId: true,
+          indexGenerationId: true,
+        },
+      });
+      if (
+        !run ||
+        run.status !== "PASS" ||
+        run.invalidatedAt != null ||
+        run.searchIndexGenerationId !== generation.id ||
+        run.indexGenerationId !== generation.id
+      ) {
+        return { error: "INCOMPLETE" as const, message: knowledgeMismatchMessage };
+      }
     }
 
     const draftChunk = await prisma.knowledgeChunk.findFirst({
