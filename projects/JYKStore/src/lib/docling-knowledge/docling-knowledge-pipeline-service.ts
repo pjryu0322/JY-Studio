@@ -1234,7 +1234,7 @@ export async function executeDoclingKnowledgePipeline(input: {
         searchIndexGenerationId: indexGenerationId,
         indexScope: "DRAFT",
         indexStatus: "BUILDING",
-        embeddingProvider: "local-hash",
+        embeddingProvider: "local-e5",
         ...embeddings,
       },
       lockOwner,

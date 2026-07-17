@@ -10,7 +10,17 @@ export type {
   SearchIndexGenerationStatus,
 };
 
-/** Default local (non-external) embedding descriptor used by JYKStore today. */
+import { readEmbeddingProviderConfig } from "@/lib/embedding/embedding-provider-config";
+import { EmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
+import {
+  DEFAULT_E5_EMBEDDING_DIMENSION,
+  DEFAULT_E5_MODEL_ID,
+  E5_DISTANCE_METRIC,
+  LOCAL_E5_EMBEDDING_PROVIDER,
+} from "@/lib/embedding/e5-embedding-constants";
+import { assertSearchGenerationEmbeddingProvider } from "@/lib/embedding/embedding-provider-registry";
+
+/** Legacy dev/foundation descriptor (local-hash). Backfill-only / unit tests. */
 export const LOCAL_EMBEDDING_PROVIDER = "local-hash" as const;
 export const LOCAL_EMBEDDING_MODEL = "local-hash-v1" as const;
 export const LOCAL_EMBEDDING_DIMENSION = 256 as const;
@@ -41,6 +51,45 @@ export function defaultLocalEmbeddingDescriptor(): SearchGenerationEmbeddingDesc
     embeddingModel: LOCAL_EMBEDDING_MODEL,
     embeddingDimension: LOCAL_EMBEDDING_DIMENSION,
     distanceMetric: LOCAL_DISTANCE_METRIC,
+  };
+}
+
+/** Descriptor for new Docling search generations (local E5 worker). */
+export function defaultE5SearchGenerationDescriptor(): SearchGenerationEmbeddingDescriptor {
+  return {
+    embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
+    embeddingModel: DEFAULT_E5_MODEL_ID,
+    embeddingDimension: DEFAULT_E5_EMBEDDING_DIMENSION,
+    distanceMetric: E5_DISTANCE_METRIC,
+  };
+}
+
+/**
+ * Resolves the embedding descriptor stored on a new SearchIndexGeneration.
+ * Blocks local-hash and OpenAI; requires local-e5 configuration.
+ */
+export function resolveSearchGenerationEmbeddingDescriptor(
+  env: NodeJS.ProcessEnv = process.env,
+): SearchGenerationEmbeddingDescriptor {
+  const config = readEmbeddingProviderConfig(env);
+  assertSearchGenerationEmbeddingProvider(config);
+  if (config.provider !== LOCAL_E5_EMBEDDING_PROVIDER) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_CONFIG_INVALID",
+      `검색 Generation에는 ${LOCAL_E5_EMBEDDING_PROVIDER} provider만 사용할 수 있습니다.`,
+    );
+  }
+  if (!config.workerUrl) {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_PROVIDER_NOT_CONFIGURED",
+      "local-e5: JYKSTORE_EMBEDDING_WORKER_URL이 설정되지 않았습니다.",
+    );
+  }
+  return {
+    embeddingProvider: LOCAL_E5_EMBEDDING_PROVIDER,
+    embeddingModel: config.model,
+    embeddingDimension: config.dimension,
+    distanceMetric: E5_DISTANCE_METRIC,
   };
 }
 

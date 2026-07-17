@@ -10,6 +10,11 @@ import {
 import type { EmbeddingDescriptor, EmbeddingProviderAdapter } from "@/lib/embedding/embedding-provider-adapter";
 import { readEmbeddingProviderConfig } from "@/lib/embedding/embedding-provider-config";
 import { isEmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
+import { LOCAL_E5_EMBEDDING_PROVIDER } from "@/lib/embedding/e5-embedding-constants";
+import {
+  buildPassageEmbeddingText,
+  validateRetrievalChunkPassageForE5,
+} from "@/lib/embedding/e5-embedding-text";
 import {
   assertEmbeddingProviderProductionReady,
   resolveEmbeddingProviderAdapter,
@@ -56,12 +61,19 @@ export function computeChunkContentHash(chunk: {
   return crypto.createHash("sha256").update(payload).digest("hex");
 }
 
-function buildEmbeddingText(chunk: {
-  title: string;
-  content: string;
-  section: string | null;
-  tags: string[];
-}): string {
+function buildEmbeddingText(
+  chunk: {
+    id: string;
+    title: string;
+    content: string;
+    section: string | null;
+    tags: string[];
+  },
+  provider: string,
+): string {
+  if (provider === LOCAL_E5_EMBEDDING_PROVIDER) {
+    return buildPassageEmbeddingText(chunk);
+  }
   return [chunk.title, chunk.section ?? "", chunk.tags.join(" "), chunk.content]
     .filter(Boolean)
     .join("\n");
@@ -336,12 +348,32 @@ export async function rebuildPackEmbeddings(input: {
     plan.push({ chunk, contentHash, existing, action: unchanged ? "skip-unchanged" : "embed" });
   }
 
+  if (descriptor.provider === LOCAL_E5_EMBEDDING_PROVIDER) {
+    const health = await adapter.healthCheck();
+    if (!health.ok) {
+      throw new PayloadServiceError(
+        "INCOMPLETE",
+        health.message ?? "local-e5 Embedding Worker가 준비되지 않았습니다.",
+        502,
+      );
+    }
+    for (const chunk of filtered) {
+      validateRetrievalChunkPassageForE5({
+        id: chunk.id,
+        title: chunk.title,
+        content: chunk.content,
+        section: chunk.section,
+        tags: chunk.tags,
+      });
+    }
+  }
+
   const toEmbed = plan.filter((item) => item.action === "embed");
   let batchResult: { vectors: number[][] } = { vectors: [] };
   if (toEmbed.length > 0) {
     try {
       batchResult = await adapter.embedBatch({
-        texts: toEmbed.map((item) => buildEmbeddingText(item.chunk)),
+        texts: toEmbed.map((item) => buildEmbeddingText(item.chunk, descriptor.provider)),
       });
     } catch (error) {
       if (isEmbeddingProviderError(error)) {

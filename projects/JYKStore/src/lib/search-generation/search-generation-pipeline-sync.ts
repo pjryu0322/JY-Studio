@@ -13,7 +13,7 @@ import {
   markSearchGenerationStale,
   promoteSearchGeneration,
 } from "@/lib/search-generation/search-generation-service";
-import { defaultLocalEmbeddingDescriptor } from "@/lib/search-generation/search-generation-types";
+import { resolveSearchGenerationEmbeddingDescriptor } from "@/lib/search-generation/search-generation-types";
 
 type SyncClient = Prisma.TransactionClient | typeof prisma;
 
@@ -29,9 +29,9 @@ export async function createSearchGenerationForPipeline(input: {
   normalizedDocumentId: string;
   fingerprint: string;
   chunkGenerationId: string;
-  descriptor?: ReturnType<typeof defaultLocalEmbeddingDescriptor>;
+  descriptor?: ReturnType<typeof resolveSearchGenerationEmbeddingDescriptor>;
 }): Promise<SearchIndexGeneration> {
-  const descriptor = input.descriptor ?? defaultLocalEmbeddingDescriptor();
+  const descriptor = input.descriptor ?? resolveSearchGenerationEmbeddingDescriptor();
   const provisionalFingerprint = computeSearchGenerationFingerprint({
     packId: input.packId,
     versionId: input.versionId,

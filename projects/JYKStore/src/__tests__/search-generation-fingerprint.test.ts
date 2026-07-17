@@ -59,7 +59,7 @@ describe("computeSearchGenerationFingerprint (§37)", () => {
 
   it("changes when the embedding provider changes", () => {
     const a = computeSearchGenerationFingerprint(baseInput());
-    const changed = { ...baseInput(), embeddingProvider: "openai" };
+    const changed = { ...baseInput(), embeddingProvider: "local-e5" };
     assert.notEqual(computeSearchGenerationFingerprint(changed), a);
   });
 

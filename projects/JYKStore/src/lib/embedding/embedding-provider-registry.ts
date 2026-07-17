@@ -1,5 +1,4 @@
-// P5: resolves the configured EmbeddingProviderAdapter and enforces the
-// production-safety rule that local-hash must never silently serve production traffic.
+// P5: resolves the configured EmbeddingProviderAdapter and enforces production rules.
 
 import type { EmbeddingDescriptor, EmbeddingProviderAdapter } from "@/lib/embedding/embedding-provider-adapter";
 import {
@@ -7,11 +6,15 @@ import {
   type EmbeddingProviderConfig,
 } from "@/lib/embedding/embedding-provider-config";
 import { EmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
+import { LOCAL_E5_EMBEDDING_PROVIDER } from "@/lib/embedding/e5-embedding-constants";
+import {
+  createLocalE5EmbeddingAdapter,
+  LOCAL_E5_PRODUCTION_WARNING,
+} from "@/lib/embedding/local-e5-embedding-adapter";
 import {
   createLocalHashEmbeddingAdapter,
   LOCAL_HASH_PRODUCTION_WARNING,
 } from "@/lib/embedding/local-hash-embedding-adapter";
-import { createOpenAiEmbeddingAdapter } from "@/lib/embedding/openai-embedding-adapter";
 
 export type EmbeddingProviderReadiness = {
   ok: boolean;
@@ -23,62 +26,80 @@ function isProductionMode(env: NodeJS.ProcessEnv): boolean {
   return env.NODE_ENV === "production";
 }
 
-/**
- * Production readiness gate for the local-hash provider: local-hash is a
- * deterministic, non-semantic development provider and must never be used to
- * serve production search. In production this throws; outside production it
- * returns an explicit WARNING so operators can see it in readiness output.
- */
 export function assertEmbeddingProviderProductionReady(
   config: { provider: string },
   env: NodeJS.ProcessEnv = process.env,
 ): EmbeddingProviderReadiness {
-  if (config.provider !== "local-hash") {
-    return { ok: true, provider: config.provider };
+  if (config.provider === "local-hash") {
+    if (isProductionMode(env)) {
+      throw new EmbeddingProviderError(
+        "EMBEDDING_PROVIDER_UNSAFE_IN_PRODUCTION",
+        "운영 환경에서 local-hash embedding provider를 사용할 수 없습니다. " +
+          "JYKSTORE_EMBEDDING_PROVIDER=local-e5 와 Embedding Worker를 설정하세요.",
+      );
+    }
+    return { ok: true, provider: config.provider, warning: LOCAL_HASH_PRODUCTION_WARNING };
   }
-  if (isProductionMode(env)) {
-    throw new EmbeddingProviderError(
-      "EMBEDDING_PROVIDER_UNSAFE_IN_PRODUCTION",
-      "운영 환경에서 local-hash embedding provider를 사용할 수 없습니다. " +
-        "JYKSTORE_EMBEDDING_PROVIDER=openai 와 OPENAI_API_KEY를 설정하세요.",
-    );
+  if (config.provider === LOCAL_E5_EMBEDDING_PROVIDER) {
+    const full = readEmbeddingProviderConfig(env);
+    if (!full.workerUrl) {
+      throw new EmbeddingProviderError(
+        "EMBEDDING_PROVIDER_NOT_CONFIGURED",
+        "local-e5: JYKSTORE_EMBEDDING_WORKER_URL이 설정되지 않았습니다.",
+      );
+    }
+    return { ok: true, provider: config.provider, warning: LOCAL_E5_PRODUCTION_WARNING };
   }
-  return { ok: true, provider: config.provider, warning: LOCAL_HASH_PRODUCTION_WARNING };
+  return { ok: true, provider: config.provider };
 }
 
-/** Builds an adapter for a specific descriptor (used to match a persisted generation's provider/model/dimension). */
+/** Search-index generations must not use local-hash (any environment). */
+export function assertSearchGenerationEmbeddingProvider(config: { provider: string }): void {
+  if (config.provider === "local-hash") {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_PROVIDER_UNSAFE_IN_PRODUCTION",
+      "검색 Generation에는 local-hash를 사용할 수 없습니다. JYKSTORE_EMBEDDING_PROVIDER=local-e5 를 설정하세요.",
+    );
+  }
+}
+
 export function resolveEmbeddingProviderAdapterForDescriptor(
   descriptor: EmbeddingDescriptor,
   env: NodeJS.ProcessEnv = process.env,
 ): EmbeddingProviderAdapter {
-  if (descriptor.provider === "openai") {
-    const apiKey = env.OPENAI_API_KEY?.trim();
-    if (!apiKey) {
+  if (descriptor.provider === LOCAL_E5_EMBEDDING_PROVIDER) {
+    const config = readEmbeddingProviderConfig(env);
+    if (!config.workerUrl) {
       throw new EmbeddingProviderError(
         "EMBEDDING_PROVIDER_NOT_CONFIGURED",
-        "openai: OPENAI_API_KEY가 설정되지 않았습니다.",
+        "local-e5: JYKSTORE_EMBEDDING_WORKER_URL이 설정되지 않았습니다.",
       );
     }
-    return createOpenAiEmbeddingAdapter({ apiKey, model: descriptor.model, dimension: descriptor.dimension });
+    return createLocalE5EmbeddingAdapter({
+      workerBaseUrl: config.workerUrl,
+      model: descriptor.model,
+      dimension: descriptor.dimension,
+      modelRevision: config.modelRevision ?? null,
+    });
   }
   return createLocalHashEmbeddingAdapter(descriptor.dimension, descriptor.model);
 }
 
-/** Resolves the adapter from the current environment configuration (JYKSTORE_EMBEDDING_PROVIDER etc). */
 export function resolveEmbeddingProviderAdapter(
   config: EmbeddingProviderConfig = readEmbeddingProviderConfig(),
 ): EmbeddingProviderAdapter {
-  if (config.provider === "openai") {
-    if (!config.openaiApiKey) {
+  if (config.provider === LOCAL_E5_EMBEDDING_PROVIDER) {
+    if (!config.workerUrl) {
       throw new EmbeddingProviderError(
         "EMBEDDING_PROVIDER_NOT_CONFIGURED",
-        "openai: OPENAI_API_KEY가 설정되지 않았습니다.",
+        "local-e5: JYKSTORE_EMBEDDING_WORKER_URL이 설정되지 않았습니다.",
       );
     }
-    return createOpenAiEmbeddingAdapter({
-      apiKey: config.openaiApiKey,
+    return createLocalE5EmbeddingAdapter({
+      workerBaseUrl: config.workerUrl,
       model: config.model,
       dimension: config.dimension,
+      modelRevision: config.modelRevision ?? null,
     });
   }
   return createLocalHashEmbeddingAdapter(config.dimension, config.model);

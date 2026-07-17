@@ -1,5 +1,5 @@
 // P5: async embedding provider adapter interface.
-// Every concrete adapter (local-hash, openai, ...) implements this so callers can
+// Every concrete adapter (local-hash, local-e5, ...) implements this so callers can
 // swap providers without touching chunk-embedding-service / hybrid-ranking-service.
 
 import { EmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";

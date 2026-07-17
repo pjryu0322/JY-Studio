@@ -1,23 +1,27 @@
 // P5: reads embedding provider configuration from environment variables only.
-// Never commit real values for OPENAI_API_KEY — see .env.example.
 
 import {
   DEFAULT_EMBEDDING_DIMENSION,
   DEFAULT_EMBEDDING_MODEL,
   DEFAULT_EMBEDDING_PROVIDER,
 } from "@/lib/embedding-dto";
+import {
+  DEFAULT_E5_EMBEDDING_DIMENSION,
+  DEFAULT_E5_MODEL_ID,
+  LOCAL_E5_EMBEDDING_PROVIDER,
+} from "@/lib/embedding/e5-embedding-constants";
 import { EmbeddingProviderError } from "@/lib/embedding/embedding-provider-errors";
-import { DEFAULT_OPENAI_EMBEDDING_MODEL } from "@/lib/embedding/openai-embedding-adapter";
 
-export const SUPPORTED_EMBEDDING_PROVIDER_IDS = ["local-hash", "openai"] as const;
+export const SUPPORTED_EMBEDDING_PROVIDER_IDS = ["local-hash", "local-e5"] as const;
 export type EmbeddingProviderConfigId = (typeof SUPPORTED_EMBEDDING_PROVIDER_IDS)[number];
 
 export type EmbeddingProviderConfig = {
   provider: EmbeddingProviderConfigId;
   model: string;
   dimension: number;
-  /** Present only when provider === "openai" and OPENAI_API_KEY is configured. */
-  openaiApiKey?: string;
+  workerUrl?: string;
+  modelRevision?: string;
+  batchSize?: number;
 };
 
 function isSupportedProvider(value: string): value is EmbeddingProviderConfigId {
@@ -25,14 +29,20 @@ function isSupportedProvider(value: string): value is EmbeddingProviderConfigId 
 }
 
 /**
- * Reads JYKSTORE_EMBEDDING_PROVIDER / JYKSTORE_EMBEDDING_MODEL /
- * JYKSTORE_EMBEDDING_DIMENSION / OPENAI_API_KEY. Falls back to the local-hash
- * defaults (matching P14 foundation behavior) when unset.
+ * Reads JYKSTORE_EMBEDDING_* env. Unset provider defaults to local-hash (unit tests / dev).
+ * Operational search generations require local-e5 — see resolveSearchGenerationEmbeddingDescriptor.
  */
 export function readEmbeddingProviderConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): EmbeddingProviderConfig {
   const rawProvider = env.JYKSTORE_EMBEDDING_PROVIDER?.trim().toLowerCase();
+  if (rawProvider === "openai") {
+    throw new EmbeddingProviderError(
+      "EMBEDDING_CONFIG_INVALID",
+      "OpenAI embedding provider는 더 이상 지원되지 않습니다. JYKSTORE_EMBEDDING_PROVIDER=local-e5 를 사용하세요.",
+    );
+  }
+
   const provider: EmbeddingProviderConfigId =
     rawProvider && isSupportedProvider(rawProvider) ? rawProvider : DEFAULT_EMBEDDING_PROVIDER;
 
@@ -47,12 +57,17 @@ export function readEmbeddingProviderConfig(
   const model =
     rawModel && rawModel.length > 0
       ? rawModel
-      : provider === "openai"
-        ? DEFAULT_OPENAI_EMBEDDING_MODEL
+      : provider === LOCAL_E5_EMBEDDING_PROVIDER
+        ? DEFAULT_E5_MODEL_ID
         : DEFAULT_EMBEDDING_MODEL;
 
   const rawDimension = env.JYKSTORE_EMBEDDING_DIMENSION?.trim();
-  const dimension = rawDimension ? Number(rawDimension) : DEFAULT_EMBEDDING_DIMENSION;
+  const dimension = rawDimension
+    ? Number(rawDimension)
+    : provider === LOCAL_E5_EMBEDDING_PROVIDER
+      ? DEFAULT_E5_EMBEDDING_DIMENSION
+      : DEFAULT_EMBEDDING_DIMENSION;
+
   if (!Number.isFinite(dimension) || !Number.isInteger(dimension) || dimension <= 0) {
     throw new EmbeddingProviderError(
       "EMBEDDING_CONFIG_INVALID",
@@ -60,11 +75,17 @@ export function readEmbeddingProviderConfig(
     );
   }
 
-  const openaiApiKey = env.OPENAI_API_KEY?.trim();
+  const workerUrl = env.JYKSTORE_EMBEDDING_WORKER_URL?.trim();
+  const modelRevision = env.JYKSTORE_EMBEDDING_MODEL_REVISION?.trim();
+  const batchSizeRaw = env.JYKSTORE_EMBEDDING_BATCH_SIZE?.trim();
+  const batchSize = batchSizeRaw ? Number(batchSizeRaw) : undefined;
+
   return {
     provider,
     model,
     dimension,
-    ...(openaiApiKey ? { openaiApiKey } : {}),
+    ...(workerUrl ? { workerUrl } : {}),
+    ...(modelRevision ? { modelRevision } : {}),
+    ...(batchSize && Number.isFinite(batchSize) ? { batchSize } : {}),
   };
 }
