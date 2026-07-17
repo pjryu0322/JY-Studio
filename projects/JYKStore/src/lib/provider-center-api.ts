@@ -358,11 +358,13 @@ export function providerServiceValidationDownloadTestUrl(
 
 export function providerSourcePreviewPageUrl(input: {
   packId: string;
-  fileId: string;
+  runId: string;
+  rank: number;
   page?: number | null;
 }): string {
   const q = new URLSearchParams();
-  q.set("fileId", input.fileId);
+  q.set("runId", input.runId);
+  q.set("rank", String(Math.max(1, Math.floor(input.rank))));
   if (input.page != null && Number.isFinite(input.page)) {
     q.set("page", String(Math.max(1, Math.floor(input.page))));
   }

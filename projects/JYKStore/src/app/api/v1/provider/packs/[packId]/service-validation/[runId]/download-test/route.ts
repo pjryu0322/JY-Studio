@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { Readable } from "node:stream";
+import type { AuditAction } from "@prisma/client";
 import { jsonWithClientIdCookie } from "@/lib/client-identity";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import {
+  commitSuccessfulDownloadTestEvidence,
   prepareProviderDownloadTest,
-  recordSuccessfulDownloadTestEvidence,
 } from "@/lib/distribution/service-validation-confirmation-service";
 import { recordProviderAudit } from "@/lib/provider-audit";
 import { requireProviderApiAuth } from "@/lib/provider-api-auth";
@@ -19,8 +20,31 @@ function toWebReadable(stream: ReadableStream<Uint8Array> | NodeJS.ReadableStrea
   return Readable.toWeb(stream as Readable) as ReadableStream<Uint8Array>;
 }
 
+function recordDownloadTestAuditBestEffort(input: {
+  action: AuditAction;
+  runId: string;
+  userId: string;
+  metadata: Record<string, unknown>;
+}) {
+  void recordProviderAudit({
+    action: input.action,
+    entityType: "ServiceValidationRun",
+    entityId: input.runId || "unknown",
+    actorUserId: input.userId,
+    metadata: input.metadata,
+  }).catch((error) => {
+    logSafeRouteError({
+      scope: "provider/service-validation/download-test/audit",
+      method: "INTERNAL",
+      path: "/api/v1/provider/packs/[packId]/service-validation/[runId]/download-test",
+      error,
+    });
+  });
+}
+
 /**
- * Provider download-test: open object stream first, then record immutable evidence, then stream body.
+ * Provider download-test: open object stream first, then commit immutable evidence, then stream body.
+ * AuditLog is best-effort and never turns a successful download into HTTP 500.
  */
 export async function GET(request: NextRequest, context: RouteContext) {
   const auth = requireProviderApiAuth(request);
@@ -51,19 +75,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
       headers.set("Content-Length", String(prepared.contentLength));
     }
 
-    const evidence = await recordSuccessfulDownloadTestEvidence({
+    const evidence = await commitSuccessfulDownloadTestEvidence({
       userId,
+      packId: prepared.packId,
+      versionId: prepared.versionId,
       runId: prepared.runId,
       fileId: prepared.fileId,
     });
 
-    await recordProviderAudit({
+    recordDownloadTestAuditBestEffort({
       action: evidence.created
         ? "SERVICE_VALIDATION_DOWNLOAD_TEST_SUCCEEDED"
         : "SERVICE_VALIDATION_DOWNLOAD_TEST_RETRIED",
-      entityType: "ServiceValidationRun",
-      entityId: prepared.runId,
-      actorUserId: userId,
+      runId: prepared.runId,
+      userId,
       metadata: {
         packId: prepared.packId,
         versionId: prepared.versionId,
@@ -82,11 +107,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
   } catch (error) {
     preparedStream?.destroy?.();
     if (error instanceof PayloadServiceError) {
-      await recordProviderAudit({
+      recordDownloadTestAuditBestEffort({
         action: "SERVICE_VALIDATION_DOWNLOAD_TEST_FAILED",
-        entityType: "ServiceValidationRun",
-        entityId: runIdTrim || "unknown",
-        actorUserId: userId,
+        runId: runIdTrim,
+        userId,
         metadata: {
           packId: packIdTrim,
           runId: runIdTrim,
@@ -95,7 +119,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
           failureCode: error.code,
           timestamp: new Date().toISOString(),
         },
-      }).catch(() => undefined);
+      });
       return jsonWithClientIdCookie(
         { error: error.code, message: error.message },
         clientId,
@@ -108,11 +132,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
       path: "/api/v1/provider/packs/[packId]/service-validation/[runId]/download-test",
       error,
     });
-    await recordProviderAudit({
+    recordDownloadTestAuditBestEffort({
       action: "SERVICE_VALIDATION_DOWNLOAD_TEST_FAILED",
-      entityType: "ServiceValidationRun",
-      entityId: runIdTrim || "unknown",
-      actorUserId: userId,
+      runId: runIdTrim,
+      userId,
       metadata: {
         packId: packIdTrim,
         runId: runIdTrim,
@@ -121,7 +144,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         failureCode: "INTERNAL",
         timestamp: new Date().toISOString(),
       },
-    }).catch(() => undefined);
+    });
     return jsonWithClientIdCookie({ error: "서버 오류가 발생했습니다." }, clientId, {
       status: 500,
     });

@@ -4,6 +4,8 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 type AdminRun = {
   runId: string;
+  versionId: string;
+  versionLabel: string | null;
   channel: string;
   historicalStatus: string;
   systemStatus: string;
@@ -63,6 +65,10 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
   const [providerConfirmationStatus, setProviderConfirmationStatus] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [versionKey, setVersionKey] = useState("ALL");
+  const [versions, setVersions] = useState<Array<{ id: string; label: string; isLatest: boolean }>>(
+    [],
+  );
   const [dateError, setDateError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,8 +85,11 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
     }
     if (dateFrom) p.set("dateFrom", dateFrom);
     if (dateTo) p.set("dateTo", dateTo);
+    if (versionKey === "ALL") p.set("versionScope", "ALL");
+    else if (versionKey === "LATEST") p.set("versionScope", "LATEST");
+    else if (versionKey) p.set("versionId", versionKey);
     return p.toString();
-  }, [page, channel, systemStatus, providerConfirmationStatus, dateFrom, dateTo]);
+  }, [page, channel, systemStatus, providerConfirmationStatus, dateFrom, dateTo, versionKey]);
 
   const resetFilters = () => {
     setChannel("");
@@ -88,6 +97,7 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
     setProviderConfirmationStatus("");
     setDateFrom("");
     setDateTo("");
+    setVersionKey("ALL");
     setDateError(null);
     setPage(1);
   };
@@ -112,10 +122,12 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
       const data = (await res.json()) as {
         latestByChannel: AdminRun[];
         history: AdminRun[];
+        versions?: Array<{ id: string; label: string; isLatest: boolean }>;
         pagination: { totalPages: number; totalCount: number };
       };
       setLatestByChannel(data.latestByChannel ?? []);
       setHistory(data.history ?? []);
+      setVersions(data.versions ?? []);
       setTotalPages(data.pagination?.totalPages ?? 1);
       setTotalCount(data.pagination?.totalCount ?? 0);
       setError(null);
@@ -153,6 +165,7 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
         {latestByChannel.map((run) => (
           <div key={run.runId} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
             <p className="font-bold text-slate-900">{run.channel}</p>
+            <p>버전: {run.versionLabel ?? run.versionId ?? "—"}</p>
             <p>시스템 검증: {run.systemStatus}</p>
             <p>제공자 확인: {run.providerConfirmationStatus ?? "—"}</p>
             <p>실행일: {run.testedAt ? new Date(run.testedAt).toLocaleString("ko-KR") : "—"}</p>
@@ -164,6 +177,23 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <select
+          className="min-h-[40px] rounded-lg border border-store-border px-2 text-sm"
+          value={versionKey}
+          onChange={(e) => {
+            setPage(1);
+            setVersionKey(e.target.value);
+          }}
+        >
+          <option value="ALL">전체 버전</option>
+          <option value="LATEST">최신 버전</option>
+          {versions.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.label}
+              {v.isLatest ? " (최신)" : ""}
+            </option>
+          ))}
+        </select>
         <select
           className="min-h-[40px] rounded-lg border border-store-border px-2 text-sm"
           value={channel}
@@ -244,6 +274,7 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
           <thead>
             <tr className="border-b border-slate-200 text-slate-600">
               <th className="px-2 py-2">실행일</th>
+              <th className="px-2 py-2">버전</th>
               <th className="px-2 py-2">채널</th>
               <th className="px-2 py-2">시스템</th>
               <th className="px-2 py-2">확인</th>
@@ -260,6 +291,7 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
                   <td className="px-2 py-2 whitespace-nowrap">
                     {new Date(run.createdAt).toLocaleString("ko-KR")}
                   </td>
+                  <td className="px-2 py-2">{run.versionLabel ?? "—"}</td>
                   <td className="px-2 py-2">{run.channel}</td>
                   <td className="px-2 py-2">{run.systemStatus}</td>
                   <td className="px-2 py-2">{run.providerConfirmationStatus ?? "—"}</td>
@@ -284,11 +316,14 @@ export function AdminServiceValidationOpsPanel({ packId }: { readonly packId: st
                 </tr>
                 {expandedRunId === run.runId ? (
                   <tr>
-                    <td colSpan={8} className="bg-slate-50 px-3 py-3">
+                    <td colSpan={9} className="bg-slate-50 px-3 py-3">
                       <details open className="text-[11px] text-slate-700">
                         <summary className="cursor-pointer font-semibold">운영 로그</summary>
                         <ul className="mt-2 list-disc space-y-1 pl-4 font-mono">
                           <li>Run ID: {run.runId}</li>
+                          <li>
+                            Version: {run.versionLabel ?? "—"} ({run.versionId})
+                          </li>
                           <li>Confirmation ID: {run.providerConfirmationId ?? "—"}</li>
                           <li>PipelineRun ID: {run.pipelineRunId ?? "—"}</li>
                           <li>IndexGeneration ID: {run.indexGenerationId ?? "—"}</li>

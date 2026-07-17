@@ -221,9 +221,11 @@ describe("service validation share + incomplete evidence", () => {
       "utf8",
     );
     assert.ok(confirmation.includes("prepareProviderDownloadTest"));
-    assert.ok(confirmation.includes("recordSuccessfulDownloadTestEvidence"));
-    assert.equal(confirmation.includes("upsert"), false);
+    assert.ok(confirmation.includes("commitSuccessfulDownloadTestEvidence"));
+    assert.ok(confirmation.includes("$transaction"));
+    assert.equal(confirmation.includes(".upsert("), false);
     assert.ok(confirmation.includes("SERVICE_VALIDATION_NOT_EDITABLE"));
+    assert.ok(confirmation.includes("P2002"));
     const route = readFileSync(
       join(
         root,
@@ -231,9 +233,12 @@ describe("service validation share + incomplete evidence", () => {
       ),
       "utf8",
     );
-    const prepareIdx = route.indexOf("prepareProviderDownloadTest");
-    const recordIdx = route.indexOf("recordSuccessfulDownloadTestEvidence");
-    assert.ok(prepareIdx >= 0 && recordIdx > prepareIdx);
+    const tryBody = route.slice(route.indexOf("try {"));
+    const prepareIdx = tryBody.indexOf("prepareProviderDownloadTest");
+    const commitIdx = tryBody.indexOf("commitSuccessfulDownloadTestEvidence");
+    assert.ok(prepareIdx >= 0 && commitIdx > prepareIdx);
+    assert.ok(route.includes("recordDownloadTestAuditBestEffort"));
+    assert.ok(route.includes("download-test/audit"));
   });
 
   it("paginates admin STALE filters before count (source contract)", () => {
@@ -245,5 +250,32 @@ describe("service validation share + incomplete evidence", () => {
     assert.ok(service.includes("parseAdminHistoryDateBound"));
     assert.ok(service.includes("RESULT_FINGERPRINT_MISSING"));
     assert.ok(service.includes("assertSharedConfirmationEvidence"));
+    assert.ok(service.includes('versionScope === "ALL"') || service.includes('versionScope: "ALL"'));
+    assert.ok(service.includes("confFilter === \"CONFIRMED\"") || service.includes('confFilter === "CONFIRMED"'));
+  });
+
+  it("binds source preview to run/result rather than bare fileId", () => {
+    const sourceFile = readFileSync(
+      join(
+        root,
+        "src/app/api/v1/provider/packs/[packId]/service-validation/[runId]/results/[rank]/source-file/route.ts",
+      ),
+      "utf8",
+    );
+    assert.ok(sourceFile.includes("resolveSourceOriginalForValidationResult"));
+    assert.ok(sourceFile.includes("streamInlinePdfResponse"));
+    const previewPage = readFileSync(
+      join(root, "src/app/provider/packs/[packId]/source-preview/ProviderSourcePreviewClient.tsx"),
+      "utf8",
+    );
+    assert.ok(previewPage.includes("runId"));
+    assert.ok(previewPage.includes("rank"));
+    assert.equal(previewPage.includes("fileId"), false);
+    const legacy = readFileSync(
+      join(root, "src/app/api/v1/provider/packs/[packId]/source-preview/[fileId]/route.ts"),
+      "utf8",
+    );
+    assert.ok(legacy.includes("runId"));
+    assert.ok(legacy.includes("versionId: run.versionId"));
   });
 });

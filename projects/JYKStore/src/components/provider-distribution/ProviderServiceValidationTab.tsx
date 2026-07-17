@@ -529,10 +529,11 @@ export function ProviderServiceValidationTab({
         channel.runId,
         rank,
       );
-      if (preview.previewFileId) {
+      if (preview.previewFileId || preview.pageStart != null || preview.sourceDocumentTitle) {
         const url = providerSourcePreviewPageUrl({
           packId,
-          fileId: preview.previewFileId,
+          runId: channel.runId,
+          rank,
           page: preview.pageStart,
         });
         window.open(url, "_blank", "noopener,noreferrer");

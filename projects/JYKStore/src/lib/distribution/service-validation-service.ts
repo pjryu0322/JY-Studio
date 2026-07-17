@@ -1214,6 +1214,7 @@ export type AdminServiceValidationRunDto = {
   runId: string;
   packId: string;
   versionId: string;
+  versionLabel: string | null;
   channel: string;
   /** Stored historical status (PASS/FAIL/...) — never rewritten. */
   historicalStatus: string;
@@ -1270,6 +1271,9 @@ export type AdminServiceValidationRunDto = {
 export type AdminServiceValidationListResult = {
   latestByChannel: AdminServiceValidationRunDto[];
   history: AdminServiceValidationRunDto[];
+  versions: Array<{ id: string; label: string; isLatest: boolean }>;
+  versionScope: "ALL" | "LATEST" | "VERSION";
+  selectedVersionId: string | null;
   pagination: {
     page: number;
     pageSize: number;
@@ -1285,6 +1289,7 @@ async function mapAdminRunDto(
     indexGenerationId?: string | null;
   } | null,
   userNames: Map<string, string>,
+  versionLabelById?: Map<string, string>,
 ): Promise<AdminServiceValidationRunDto> {
   const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
     where: { runId: run.id },
@@ -1338,6 +1343,7 @@ async function mapAdminRunDto(
     runId: run.id,
     packId: run.packId,
     versionId: run.versionId,
+    versionLabel: versionLabelById?.get(run.versionId) ?? null,
     channel: run.channel,
     historicalStatus: run.status,
     systemStatus: run.status === "PASS" && validity === "STALE" ? "STALE" : run.status,
@@ -1427,7 +1433,8 @@ function parseAdminHistoryDateBound(raw: string, endOfDay: boolean): Date {
 
 export async function listAdminServiceValidationHistory(input: {
   packId: string;
-  versionId?: string;
+  versionId?: string | null;
+  versionScope?: "ALL" | "LATEST" | null;
   page?: number;
   pageSize?: number;
   channel?: ServiceChannel | null;
@@ -1439,16 +1446,49 @@ export async function listAdminServiceValidationHistory(input: {
 }): Promise<AdminServiceValidationListResult> {
   const pack = await prisma.knowledgePack.findUnique({
     where: { packId: input.packId },
-    include: { versions: { orderBy: latestKnowledgePackVersionOrderBy, take: 1 } },
+    include: { versions: { orderBy: latestKnowledgePackVersionOrderBy } },
   });
   if (!pack) {
     throw new PayloadServiceError("NOT_FOUND", "지식팩을 찾을 수 없습니다.", 404);
   }
-  const versionId = input.versionId ?? pack.versions[0]?.id;
-  if (!versionId) {
+  if (pack.versions.length < 1) {
     throw new PayloadServiceError("INCOMPLETE", "버전이 없습니다.", 400);
   }
-  const { binding } = await loadBindingContext(input.packId, versionId);
+
+  const latestVersion = pack.versions[0]!;
+  const versionLabelById = new Map(pack.versions.map((v) => [v.id, v.version]));
+  const versionsDto = pack.versions.map((v) => ({
+    id: v.id,
+    label: v.version,
+    isLatest: v.id === latestVersion.id,
+  }));
+
+  const explicitVersionId = input.versionId?.trim() || null;
+  const scopeRaw = (input.versionScope ?? "").toUpperCase();
+  let versionScope: "ALL" | "LATEST" | "VERSION" = "ALL";
+  let filterVersionId: string | null = null;
+
+  if (explicitVersionId) {
+    const owned = pack.versions.find((v) => v.id === explicitVersionId);
+    if (!owned) {
+      throw new PayloadServiceError(
+        "NOT_FOUND",
+        "선택한 버전이 이 지식팩에 속하지 않습니다.",
+        404,
+      );
+    }
+    versionScope = "VERSION";
+    filterVersionId = owned.id;
+  } else if (scopeRaw === "LATEST") {
+    versionScope = "LATEST";
+    filterVersionId = latestVersion.id;
+  } else {
+    versionScope = "ALL";
+    filterVersionId = null;
+  }
+
+  const bindingVersionId = filterVersionId ?? latestVersion.id;
+  const { binding } = await loadBindingContext(input.packId, bindingVersionId);
   const page = Math.max(1, input.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, input.pageSize ?? 20));
 
@@ -1458,12 +1498,10 @@ export async function listAdminServiceValidationHistory(input: {
     channel?: ServiceValidationChannel;
     status?: ServiceValidationStatus;
     createdAt?: { gte?: Date; lte?: Date };
-    confirmation?:
-      | { is: null }
-      | { is: { status: "CONFIRMED" | "REJECTED" | "NOT_REVIEWED" } };
   };
 
-  const baseWhere: AdminWhere = { packId: input.packId, versionId };
+  const baseWhere: AdminWhere = { packId: input.packId };
+  if (filterVersionId) baseWhere.versionId = filterVersionId;
   if (input.channel) baseWhere.channel = input.channel as ServiceValidationChannel;
   if (input.dateFrom || input.dateTo) {
     baseWhere.createdAt = {};
@@ -1472,29 +1510,41 @@ export async function listAdminServiceValidationHistory(input: {
   }
 
   const confFilter = input.providerConfirmationStatus?.trim().toUpperCase() || null;
-  if (confFilter === "NOT_REVIEWED") {
-    baseWhere.confirmation = { is: null };
-  } else if (confFilter === "CONFIRMED" || confFilter === "REJECTED") {
-    baseWhere.confirmation = { is: { status: confFilter } };
-  }
-
   const systemFilter = input.systemStatus?.trim().toUpperCase() || null;
   const needsComputedFilter =
     systemFilter === "STALE" ||
     systemFilter === "PASS" ||
-    confFilter === "STALE";
+    confFilter === "STALE" ||
+    confFilter === "CONFIRMED" ||
+    confFilter === "REJECTED" ||
+    confFilter === "NOT_REVIEWED";
 
-  const latestByChannel: AdminServiceValidationRunDto[] = [];
-  for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
-    const latest = await findLatestServiceValidationRun({ versionId, channel });
-    if (!latest) continue;
-    latestByChannel.push(await mapAdminRunDto(latest, binding, new Map()));
+  async function latestRunsInScope(): Promise<ServiceValidationRun[]> {
+    const out: ServiceValidationRun[] = [];
+    for (const channel of ["API", "MCP", "DOWNLOAD"] as const) {
+      const latest = filterVersionId
+        ? await findLatestServiceValidationRun({ versionId: filterVersionId, channel })
+        : await prisma.serviceValidationRun.findFirst({
+            where: { packId: input.packId, channel: channel as ServiceValidationChannel },
+            orderBy: { createdAt: "desc" },
+          });
+      if (latest) out.push(latest);
+    }
+    return out;
   }
+
+  const latestRuns = await latestRunsInScope();
+  const latestByChannel = await Promise.all(
+    latestRuns.map((r) => mapAdminRunDto(r, binding, new Map(), versionLabelById)),
+  );
 
   if (input.latestOnly) {
     return {
       latestByChannel,
       history: latestByChannel,
+      versions: versionsDto,
+      versionScope,
+      selectedVersionId: filterVersionId,
       pagination: {
         page: 1,
         pageSize: latestByChannel.length,
@@ -1586,12 +1636,7 @@ export async function listAdminServiceValidationHistory(input: {
         return false;
       }
       if (systemFilter === "FAIL" && run.status !== "FAIL") return false;
-      if (confFilter === "STALE" && providerConfirmationStatus !== "STALE") return false;
-      if (confFilter === "CONFIRMED" && providerConfirmationStatus !== "CONFIRMED") return false;
-      if (confFilter === "REJECTED" && providerConfirmationStatus !== "REJECTED") return false;
-      if (confFilter === "NOT_REVIEWED" && providerConfirmationStatus !== "NOT_REVIEWED") {
-        return false;
-      }
+      if (confFilter && providerConfirmationStatus !== confFilter) return false;
       return true;
     });
 
@@ -1636,22 +1681,18 @@ export async function listAdminServiceValidationHistory(input: {
     users.map((u) => [u.id, u.name?.trim() || u.email?.trim() || "사용자"]),
   );
 
-  const history = await Promise.all(runs.map((run) => mapAdminRunDto(run, binding, userNames)));
+  const history = await Promise.all(
+    runs.map((run) => mapAdminRunDto(run, binding, userNames, versionLabelById)),
+  );
 
   return {
     latestByChannel: await Promise.all(
-      (
-        await Promise.all(
-          (["API", "MCP", "DOWNLOAD"] as const).map(async (channel) => {
-            const latest = await findLatestServiceValidationRun({ versionId, channel });
-            return latest;
-          }),
-        )
-      )
-        .filter((r): r is ServiceValidationRun => Boolean(r))
-        .map((r) => mapAdminRunDto(r, binding, userNames)),
+      latestRuns.map((r) => mapAdminRunDto(r, binding, userNames, versionLabelById)),
     ),
     history,
+    versions: versionsDto,
+    versionScope,
+    selectedVersionId: filterVersionId,
     pagination: {
       page,
       pageSize,
@@ -1667,6 +1708,10 @@ export async function getAdminServiceValidationRun(
   const run = await prisma.serviceValidationRun.findUnique({ where: { id: runId } });
   if (!run) return null;
   const { binding } = await loadBindingContext(run.packId, run.versionId);
+  const versionRow = await prisma.knowledgePackVersion.findUnique({
+    where: { id: run.versionId },
+    select: { version: true },
+  });
   const userIds = [run.testedByUserId].filter(Boolean) as string[];
   const confirmation = await prisma.serviceValidationProviderConfirmation.findUnique({
     where: { runId: run.id },
@@ -1682,7 +1727,12 @@ export async function getAdminServiceValidationRun(
   const userNames = new Map(
     users.map((u) => [u.id, u.name?.trim() || u.email?.trim() || "사용자"]),
   );
-  return mapAdminRunDto(run, binding, userNames);
+  return mapAdminRunDto(
+    run,
+    binding,
+    userNames,
+    new Map([[run.versionId, versionRow?.version ?? ""]]),
+  );
 }
 
 export { isDistributionReadyForServiceValidation } from "@/lib/distribution/service-channel-policy";

@@ -188,15 +188,16 @@ describe("provider service quality + admin ops log", () => {
       "utf8",
     );
     assert.ok(downloadTest.includes("prepareProviderDownloadTest"));
-    assert.ok(downloadTest.includes("recordSuccessfulDownloadTestEvidence"));
+    assert.ok(downloadTest.includes("commitSuccessfulDownloadTestEvidence"));
     assert.equal(downloadTest.includes("Buffer.from"), false);
     const inlinePreview = readFileSync(
-      join(root, "src/app/api/v1/provider/packs/[packId]/source-preview/[fileId]/route.ts"),
+      join(
+        root,
+        "src/app/api/v1/provider/packs/[packId]/service-validation/[runId]/results/[rank]/source-file/route.ts",
+      ),
       "utf8",
     );
-    assert.ok(inlinePreview.includes('Content-Disposition'));
-    assert.ok(inlinePreview.includes("inline"));
-    assert.ok(inlinePreview.includes("Accept-Ranges"));
+    assert.ok(inlinePreview.includes("streamInlinePdfResponse"));
     const adminUi = readFileSync(
       join(root, "src/components/AdminServiceValidationOpsPanel.tsx"),
       "utf8",
@@ -204,6 +205,7 @@ describe("provider service quality + admin ops log", () => {
     assert.ok(adminUi.includes("providerConfirmationStatus"));
     assert.ok(adminUi.includes("dateFrom"));
     assert.ok(adminUi.includes("필터 초기화"));
+    assert.ok(adminUi.includes("전체 버전"));
   });
 
   it("extends submit snapshot with confirmation ids", () => {

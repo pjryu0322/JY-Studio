@@ -39,6 +39,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       providerConfirmationStatus: url.searchParams.get("providerConfirmationStatus"),
       dateFrom: url.searchParams.get("dateFrom"),
       dateTo: url.searchParams.get("dateTo"),
+      versionId: url.searchParams.get("versionId"),
+      versionScope: (() => {
+        const raw = (url.searchParams.get("versionScope") ?? "").toUpperCase();
+        return raw === "LATEST" || raw === "ALL" ? raw : null;
+      })(),
     });
     await recordProviderAudit({
       action: "ADMIN_SERVICE_VALIDATION_HISTORY_VIEWED",
@@ -53,6 +58,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
         providerConfirmationStatus: url.searchParams.get("providerConfirmationStatus"),
         dateFrom: url.searchParams.get("dateFrom"),
         dateTo: url.searchParams.get("dateTo"),
+        versionId: url.searchParams.get("versionId"),
+        versionScope: url.searchParams.get("versionScope"),
         timestamp: new Date().toISOString(),
       },
     }).catch(() => undefined);
