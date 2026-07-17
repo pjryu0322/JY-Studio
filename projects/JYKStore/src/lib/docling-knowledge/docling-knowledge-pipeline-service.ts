@@ -13,7 +13,6 @@ import {
 import { randomUUID } from "node:crypto";
 import { rebuildPackEmbeddings } from "@/lib/chunk-embedding-service";
 import {
-  DOCLING_RETRIEVAL_WARNING_OPENS_DISTRIBUTION,
   runDoclingRetrievalEvaluation,
 } from "@/lib/docling-knowledge/docling-knowledge-eval";
 import {
@@ -29,6 +28,11 @@ import {
   ensureDoclingOriginSourceDocument,
   failDraftIndexGeneration,
 } from "@/lib/docling-knowledge/docling-nd-knowledge-builder";
+import {
+  isFullKnowledgePipelineStagesPassed,
+  isSearchFoundationStagesPassed,
+  isStructureStagesPassed,
+} from "@/lib/docling-knowledge/docling-knowledge-stage-pass";
 import {
   DOCLING_KNOWLEDGE_PIPELINE_STEPS,
   DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
@@ -139,7 +143,18 @@ export type DoclingKnowledgePipelineStatusDto = {
   runStatus: string | null;
   fingerprint: string | null;
   stale: boolean;
+  /**
+   * Full knowledge pipeline pass (structure + search foundation + READY_FOR_REVIEW).
+   * Prefer structurePassed / searchFoundationPassed for registration locks.
+   * @deprecated for UI lock calculation — kept for Public/compat consumers.
+   */
   passed: boolean;
+  /** STRUCTURE + KNOWLEDGE_UNIT + RETRIEVAL_CHUNK on current binding. */
+  structurePassed: boolean;
+  /** SEARCH_INDEX + RETRIEVAL_EVALUATION on current binding. */
+  searchFoundationPassed: boolean;
+  /** Pack·Version·Bundle·NormalizedDocument·Fingerprint binding matches active materials. */
+  pipelineCurrent: boolean;
   stages: DoclingKnowledgeStageView[];
   canStart: boolean;
   canRetry: boolean;
@@ -209,65 +224,40 @@ function bindingMatchesActive(input: {
   );
 }
 
-/**
- * Server gate: fingerprint/version/ND-bound PASS only.
- * Pack pipelineStatus alone is never sufficient.
- */
-export async function isDoclingKnowledgePipelinePassed(packId: string): Promise<boolean> {
-  const pack = await prisma.knowledgePack.findUnique({
-    where: { packId },
-    select: { packId: true },
-  });
-  if (!pack) return false;
-
+async function loadLatestKnowledgePipelineContext(packId: string): Promise<{
+  versionId: string;
+  bundleId: string;
+  ndId: string;
+  fingerprint: string;
+  runStatus: string | null;
+  steps: Array<{ step: string; status: string; details: Record<string, unknown> | null }>;
+  pipelineCurrent: boolean;
+} | null> {
   const version = await prisma.knowledgePackVersion.findFirst({
     where: { packId },
     orderBy: latestKnowledgePackVersionOrderBy,
     select: { id: true },
   });
-  if (!version) return false;
+  if (!version) return null;
 
   const { bundle, nd } = await loadActiveDoclingContext(packId, version.id);
-  if (!bundle || !nd?.fingerprint) return false;
+  if (!bundle || !nd?.fingerprint) return null;
 
-  const latestPass = await prisma.pipelineRun.findFirst({
+  const latest = await prisma.pipelineRun.findFirst({
     where: {
       packId,
       triggerType: DOCLING_KNOWLEDGE_PIPELINE_TRIGGER,
-      status: "PASS",
     },
     orderBy: { startedAt: "desc" },
     include: { steps: true },
   });
-  if (!latestPass) return false;
+  if (!latest) return null;
 
-  const readyStep = latestPass.steps.find((s) => s.step === "READY_FOR_REVIEW");
-  const evalStep = latestPass.steps.find((s) => s.step === "SEARCH_EVALUATING");
-  const structureStep = latestPass.steps.find((s) => s.step === "STRUCTURE_VALIDATING");
-  const knowledgeStep = latestPass.steps.find((s) => s.step === "KNOWLEDGE_CHECKING");
-  const chunkStep = latestPass.steps.find((s) => s.step === "CHUNKING");
-  const indexStep = latestPass.steps.find((s) => s.step === "INDEXING");
-  if (readyStep?.status !== "PASS") return false;
-  if (structureStep?.status === "FAIL") return false;
-  // Knowledge Unit must be PASS — WARNING must not open distribution.
-  if (knowledgeStep?.status !== "PASS") return false;
-  if (chunkStep?.status !== "PASS") return false;
-  if (indexStep?.status !== "PASS") return false;
-  if (evalStep?.status !== "PASS") {
-    if (
-      !(
-        DOCLING_RETRIEVAL_WARNING_OPENS_DISTRIBUTION &&
-        evalStep?.status === "WARNING"
-      )
-    ) {
-      return false;
-    }
-  }
-
+  const readyStep = latest.steps.find((s) => s.step === "READY_FOR_REVIEW");
   const binding =
-    parseKnowledgeRunBinding(latestPass.summary) ??
+    parseKnowledgeRunBinding(latest.summary) ??
     (() => {
-      const details = asRecord(readyStep.details);
+      const details = asRecord(readyStep?.details);
       if (!details) return null;
       return {
         v: 1 as const,
@@ -289,12 +279,60 @@ export async function isDoclingKnowledgePipelinePassed(packId: string): Promise<
       };
     })();
 
-  return bindingMatchesActive({
+  const pipelineCurrent = bindingMatchesActive({
     binding,
     versionId: version.id,
     ndId: nd.id,
     fingerprint: nd.fingerprint,
     bundleId: bundle.id,
+  });
+
+  return {
+    versionId: version.id,
+    bundleId: bundle.id,
+    ndId: nd.id,
+    fingerprint: nd.fingerprint,
+    runStatus: latest.status,
+    steps: latest.steps.map((s) => ({
+      step: s.step,
+      status: s.status,
+      details: asRecord(s.details),
+    })),
+    pipelineCurrent,
+  };
+}
+
+/** STRUCTURE + KU + Chunk on current Pack·Version·Bundle·ND binding. */
+export async function isDoclingStructurePassed(packId: string): Promise<boolean> {
+  const ctx = await loadLatestKnowledgePipelineContext(packId);
+  if (!ctx) return false;
+  return isStructureStagesPassed({
+    steps: ctx.steps,
+    pipelineCurrent: ctx.pipelineCurrent,
+  });
+}
+
+/** SEARCH_INDEX + RETRIEVAL_EVALUATION on current binding (implies structure). */
+export async function isDoclingSearchFoundationPassed(packId: string): Promise<boolean> {
+  const ctx = await loadLatestKnowledgePipelineContext(packId);
+  if (!ctx) return false;
+  return isSearchFoundationStagesPassed({
+    steps: ctx.steps,
+    pipelineCurrent: ctx.pipelineCurrent,
+  });
+}
+
+/**
+ * Server gate: fingerprint/version/ND-bound PASS only.
+ * Pack pipelineStatus alone is never sufficient.
+ * Equals search-foundation + READY_FOR_REVIEW on a PASS run (historical `passed`).
+ */
+export async function isDoclingKnowledgePipelinePassed(packId: string): Promise<boolean> {
+  const ctx = await loadLatestKnowledgePipelineContext(packId);
+  if (!ctx || ctx.runStatus !== "PASS") return false;
+  return isFullKnowledgePipelineStagesPassed({
+    steps: ctx.steps,
+    pipelineCurrent: ctx.pipelineCurrent,
   });
 }
 
@@ -325,6 +363,9 @@ export async function getDoclingKnowledgePipelineStatus(input: {
       fingerprint: null,
       stale: false,
       passed: false,
+      structurePassed: false,
+      searchFoundationPassed: false,
+      pipelineCurrent: false,
       stages: DOCLING_KNOWLEDGE_STAGES.map((s) => ({
         id: s.id,
         label: s.label,
@@ -372,6 +413,21 @@ export async function getDoclingKnowledgePipelineStatus(input: {
   );
 
   const passed = await isDoclingKnowledgePipelinePassed(input.packId);
+  const pipelineCurrent = Boolean(providerConfirmed && nd && bundle && !stale);
+  const stepLikes =
+    latest?.steps.map((s) => ({
+      step: s.step,
+      status: s.status,
+      details: asRecord(s.details),
+    })) ?? [];
+  const structurePassed = isStructureStagesPassed({
+    steps: stepLikes,
+    pipelineCurrent,
+  });
+  const searchFoundationPassed = isSearchFoundationStagesPassed({
+    steps: stepLikes,
+    pipelineCurrent,
+  });
   const running = latest?.status === "RUNNING" || latest?.status === "PENDING";
   const failed =
     latest?.status === "FAIL" ||
@@ -426,9 +482,12 @@ export async function getDoclingKnowledgePipelineStatus(input: {
   let lockReason: string | null = null;
   if (!providerConfirmed) {
     lockReason =
-      "자료 등록에서 대표 샘플 확인을 완료해야 지식 데이터 생성을 시작할 수 있습니다.";
-  } else if (!passed) {
-    lockReason = "지식 데이터 생성이 완료되면 유통정보를 입력할 수 있습니다.";
+      "자료 등록에서 대표 샘플 확인을 완료해야 지식 데이터를 시작할 수 있습니다.";
+  } else if (!structurePassed) {
+    lockReason =
+      "데이터 구조화(구조·Knowledge Unit·Chunk)가 완료되어야 검색 검증을 진행할 수 있습니다.";
+  } else if (!searchFoundationPassed) {
+    lockReason = "검색 인덱스·검색 평가가 완료되어야 유통정보를 입력할 수 있습니다.";
   }
 
   let primaryCta: DoclingKnowledgePipelineStatusDto["primaryCta"] = "none";
@@ -448,6 +507,9 @@ export async function getDoclingKnowledgePipelineStatus(input: {
     fingerprint: ndFingerprint,
     stale,
     passed,
+    structurePassed,
+    searchFoundationPassed,
+    pipelineCurrent,
     stages,
     canStart:
       providerConfirmed &&
@@ -1258,10 +1320,21 @@ export function missingRequirementsForReview(input: {
   materialReady: boolean;
   knowledgePassed: boolean;
   distributionReady: boolean;
+  structurePassed?: boolean;
+  searchFoundationPassed?: boolean;
+  allPreparationChannelsPassed?: boolean;
 }): string[] {
   const missing: string[] = [];
   if (!input.materialReady) missing.push("DOCLING_REVIEW_READY");
+  const structurePassed = input.structurePassed ?? input.knowledgePassed;
+  const searchFoundationPassed = input.searchFoundationPassed ?? input.knowledgePassed;
+  if (!structurePassed) missing.push("DATA_STRUCTURE_PASSED");
+  if (!searchFoundationPassed) missing.push("SEARCH_FOUNDATION_PASSED");
+  // Compat: keep historical code when full knowledge gate fails
   if (!input.knowledgePassed) missing.push("RETRIEVAL_EVALUATION_PASSED");
+  if (input.allPreparationChannelsPassed === false) {
+    missing.push("PREPARATION_CHANNELS_PASSED");
+  }
   if (!input.distributionReady) missing.push("DISTRIBUTION_INFO_COMPLETED");
   return missing;
 }

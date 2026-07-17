@@ -50,7 +50,10 @@ describe("provider knowledge generation flow", () => {
     });
     assert.equal(locked.knowledge.locked, false);
     assert.equal(locked.serviceValidation.locked, true);
-    assert.ok(locked.serviceValidation.reason?.includes("데이터 구조화"));
+    assert.ok(
+      locked.serviceValidation.reason?.includes("Retrieval Chunk") ||
+        locked.serviceValidation.reason?.includes("데이터 구조화"),
+    );
     assert.equal(locked.distributionReview.locked, true);
 
     const structureOk = resolveProviderPackTabLocks({
@@ -85,7 +88,12 @@ describe("provider knowledge generation flow", () => {
         knowledgePassed: false,
         distributionReady: false,
       }),
-      ["RETRIEVAL_EVALUATION_PASSED", "DISTRIBUTION_INFO_COMPLETED"],
+      [
+        "DATA_STRUCTURE_PASSED",
+        "SEARCH_FOUNDATION_PASSED",
+        "RETRIEVAL_EVALUATION_PASSED",
+        "DISTRIBUTION_INFO_COMPLETED",
+      ],
     );
   });
 

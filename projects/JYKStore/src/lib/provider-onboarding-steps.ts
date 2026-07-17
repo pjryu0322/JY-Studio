@@ -25,10 +25,10 @@ export type ProviderOnboardingStep = {
 
 const STEP_KEY_MAP: Record<ProviderPackProgressStep["key"], ProviderOnboardingStepKey> = {
   BASIC_INFO: "pack",
-  MATERIAL: "payload",
-  DISTRIBUTION: "distribution",
-  REVIEW: "review",
-  APPROVAL: "publish",
+  SOURCE_MATERIALS: "payload",
+  DATA_STRUCTURE: "distribution",
+  SEARCH_DATA_VALIDATION: "review",
+  DISTRIBUTION_REVIEW: "publish",
 };
 
 const STATUS_MAP: Record<ProviderPackProgressStep["status"], ProviderOnboardingStepStatus> = {
@@ -36,6 +36,8 @@ const STATUS_MAP: Record<ProviderPackProgressStep["status"], ProviderOnboardingS
   CURRENT: "current",
   WAITING: "pending",
   BLOCKED: "pending",
+  STALE: "current",
+  LOCKED: "pending",
 };
 
 /** @deprecated Prefer buildProviderPackProgress for pack-scoped workflow. */

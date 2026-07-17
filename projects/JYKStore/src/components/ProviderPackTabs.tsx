@@ -35,14 +35,21 @@ const TAB_LABELS: Record<ProviderPackTabId, { label: string; shortLabel: string 
   },
 };
 
+export type ProviderPackTabStepStatus = {
+  status: string;
+  statusLabel: string;
+};
+
 export function ProviderPackTabs({
   activeTab,
   onSelectTab,
   locks,
+  stepStatuses,
 }: {
   readonly activeTab: ProviderPackTabId;
   readonly onSelectTab: (tab: ProviderPackTabId) => void;
   readonly locks?: Partial<Record<ProviderPackTabId, ProviderPackTabLock>>;
+  readonly stepStatuses?: Partial<Record<ProviderPackTabId, ProviderPackTabStepStatus>>;
 }) {
   return (
     <div className="space-y-2">
@@ -56,6 +63,10 @@ export function ProviderPackTabs({
           const lock = locks?.[tabId];
           const locked = Boolean(lock?.locked);
           const labels = TAB_LABELS[tabId];
+          const stepStatus = stepStatuses?.[tabId];
+          const statusText = locked
+            ? "잠김"
+            : stepStatus?.statusLabel ?? null;
           return (
             <button
               key={tabId}
@@ -65,12 +76,15 @@ export function ProviderPackTabs({
               aria-controls={`provider-pack-panel-${tabId}`}
               aria-selected={active}
               aria-disabled={locked}
-              title={lock?.reason ?? labels.label}
+              title={
+                lock?.reason ??
+                (statusText ? `${labels.label} · ${statusText}` : labels.label)
+              }
               onClick={() => {
                 if (locked) return;
                 onSelectTab(tabId);
               }}
-              className={`min-h-[44px] min-w-[4.5rem] flex-1 whitespace-nowrap rounded-xl px-2 text-[11px] font-bold sm:min-w-0 sm:px-3 sm:text-sm ${
+              className={`min-h-[44px] min-w-[4.5rem] flex-1 whitespace-nowrap rounded-xl px-1.5 py-1 text-[11px] font-bold sm:min-w-0 sm:px-3 sm:text-sm ${
                 active
                   ? "bg-store-accent text-white"
                   : locked
@@ -80,11 +94,12 @@ export function ProviderPackTabs({
             >
               <span className="sm:hidden">
                 {index + 1}. {labels.shortLabel}
+                {statusText ? ` · ${statusText}` : ""}
               </span>
               <span className="hidden sm:inline">
                 {index + 1}. {labels.label}
+                {statusText ? ` · ${statusText}` : ""}
               </span>
-              {locked ? " · 잠김" : ""}
             </button>
           );
         })}

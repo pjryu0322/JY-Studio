@@ -82,6 +82,7 @@ import {
   buildProviderPacksStatusSummary,
   isDistributionReadyForProgress,
   isMaterialReadyForProgress,
+  isPipelineReadyForProgress,
   type ProviderPacksStatusSummary,
 } from "@/lib/provider-pack-progress";
 
@@ -268,6 +269,7 @@ export async function listProviderPacksForClient(
           : { id: working.id, version: working.version }
         : null;
 
+    const pipelineReady = isPipelineReadyForProgress(pack.pipelineStatus);
     const workingVersion = working
       ? {
           id: working.id,
@@ -278,6 +280,10 @@ export async function listProviderPacksForClient(
             payloadValidationStatus: null,
             doclingBundleStatus: working.doclingImportBundles[0]?.status ?? null,
           }),
+          // List uses coarse pipelineStatus; detail page uses stage-level gates.
+          structureReady: pipelineReady,
+          searchFoundationReady: pipelineReady,
+          searchValidationReady: false,
           distributionReady: isDistributionReadyForProgress({
             sourceTitle: working.distributionMetadata?.sourceTitle,
             sourceUrl: working.distributionMetadata?.sourceUrl,
@@ -288,6 +294,7 @@ export async function listProviderPacksForClient(
             allowMcp: working.distributionMetadata?.allowMcp,
             allowDownload: working.distributionMetadata?.allowDownload,
           }),
+          pipelineCurrent: true,
         }
       : null;
 

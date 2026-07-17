@@ -55,7 +55,7 @@ describe("provider pack progress", () => {
 
     assert.equal(published.currentStep, "PUBLISHED");
     assert.ok(published.actions.some((a) => a.label === "새 버전 만들기"));
-    assert.equal(reviewing.currentStep, "APPROVAL");
+    assert.equal(reviewing.currentStep, "REVIEWING");
     assert.ok(reviewing.actions.some((a) => a.label === "검수 상태 보기"));
 
     const summary = buildProviderPacksStatusSummary([
@@ -88,7 +88,7 @@ describe("provider pack progress", () => {
 
     assert.equal(progress.publishedVersion?.version, "0.1.0");
     assert.equal(progress.workingVersion?.version, "0.2.0");
-    assert.equal(progress.currentStep, "MATERIAL");
+    assert.equal(progress.currentStep, "SOURCE_MATERIALS");
     assert.equal(progress.currentStepLabel, "자료 등록");
   });
 

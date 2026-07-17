@@ -7,6 +7,8 @@ const STATUS_LABEL: Record<ProviderPackProgressStep["status"], string> = {
   CURRENT: "다음",
   WAITING: "대기",
   BLOCKED: "불가",
+  STALE: "다시 생성 필요",
+  LOCKED: "잠김",
 };
 
 const STATUS_STYLE: Record<ProviderPackProgressStep["status"], string> = {
@@ -14,6 +16,8 @@ const STATUS_STYLE: Record<ProviderPackProgressStep["status"], string> = {
   CURRENT: "bg-store-accent/15 text-store-accent",
   WAITING: "bg-slate-100 text-slate-600",
   BLOCKED: "bg-slate-100 text-slate-500",
+  STALE: "bg-amber-100 text-amber-900",
+  LOCKED: "bg-slate-100 text-slate-500",
 };
 
 const LEGACY_STATUS_MAP: Record<

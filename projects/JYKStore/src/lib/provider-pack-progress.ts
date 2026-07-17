@@ -1,24 +1,32 @@
 import type { PackStatus } from "@prisma/client";
+import {
+  resolveProviderRegistrationReadiness,
+  type ProviderRegistrationStepId,
+  type ProviderRegistrationStepStatus,
+} from "@/lib/provider-registration-readiness";
 import { providerPackDetailPath, ROUTES } from "@/lib/routes";
 
-export type ProviderPackProgressStepKey =
-  | "BASIC_INFO"
-  | "MATERIAL"
-  | "DISTRIBUTION"
-  | "REVIEW"
-  | "APPROVAL";
+/** Registration progress steps — aligned with provider pack tabs. */
+export type ProviderPackProgressStepKey = ProviderRegistrationStepId;
 
 export type ProviderPackProgressStepStatus =
   | "COMPLETED"
   | "CURRENT"
   | "WAITING"
-  | "BLOCKED";
+  | "BLOCKED"
+  | "STALE"
+  | "LOCKED";
 
+/**
+ * currentStep may be a registration step or a lifecycle overlay
+ * (not shown as a sixth authoring step).
+ */
 export type ProviderPackCurrentStep =
   | ProviderPackProgressStepKey
   | "PUBLISHED"
   | "CHANGES_REQUESTED"
-  | "SUSPENDED";
+  | "SUSPENDED"
+  | "REVIEWING";
 
 export type ProviderPackProgressStep = {
   key: ProviderPackProgressStepKey;
@@ -36,6 +44,8 @@ export type ProviderPackProgressAction = {
 export type ProviderPackProgressDto = {
   packId: string;
   packStatus: PackStatus;
+  /** Lifecycle status for display — separate from registration steps. */
+  lifecycleStatus: PackStatus;
   publishedVersion: { id: string; version: string } | null;
   workingVersion: { id: string; version: string; status: string } | null;
   currentStep: ProviderPackCurrentStep;
@@ -71,7 +81,14 @@ export type BuildProviderPackProgressInput = {
     version: string;
     sourceDocumentCount: number;
     materialReady: boolean;
+    /** STRUCTURE + KU + Chunk on current binding (optional for coarse list). */
+    structureReady?: boolean;
+    /** SEARCH_INDEX + RETRIEVAL_EVALUATION (optional for coarse list). */
+    searchFoundationReady?: boolean;
+    /** API+MCP+DOWNLOAD preparation channels confirmed. */
+    searchValidationReady?: boolean;
     distributionReady: boolean;
+    pipelineCurrent?: boolean;
   } | null;
   publishedVersion: {
     id: string;
@@ -79,39 +96,13 @@ export type BuildProviderPackProgressInput = {
   } | null;
 };
 
-const STEP_META: Record<
-  ProviderPackProgressStepKey,
-  {
-    label: string;
-    description: string;
-    tab: "basic" | "payload" | "knowledge" | "serviceValidation" | "distributionReview" | null;
-  }
-> = {
-  BASIC_INFO: {
-    label: "기본정보",
-    description: "지식팩 이름·카테고리·설명·문서 언어를 입력합니다.",
-    tab: "basic",
-  },
-  MATERIAL: {
-    label: "자료 등록",
-    description: "외부 생성 도구에서 만든 지식팩 자료와 원본문서를 등록합니다.",
-    tab: "payload",
-  },
-  DISTRIBUTION: {
-    label: "유통정보·검수요청",
-    description: "제공 방식·유통 권한·공개 범위를 입력하고 검수요청을 제출합니다.",
-    tab: "distributionReview",
-  },
-  REVIEW: {
-    label: "유통정보·검수요청",
-    description: "검색 검증 후 유통정보를 확정하고 검수 요청을 제출합니다.",
-    tab: "distributionReview",
-  },
-  APPROVAL: {
-    label: "승인·공개",
-    description: "운영자가 승인하면 스토어에 공개됩니다.",
-    tab: "distributionReview",
-  },
+const STEP_DESCRIPTIONS: Record<ProviderPackProgressStepKey, string> = {
+  BASIC_INFO: "지식팩 이름·카테고리·설명·문서 언어를 입력합니다.",
+  SOURCE_MATERIALS: "원본문서와 Docling 산출물을 등록하고 확인합니다.",
+  DATA_STRUCTURE: "문서 구조·Knowledge Unit·Retrieval Chunk를 생성합니다.",
+  SEARCH_DATA_VALIDATION:
+    "Draft 검색 인덱스·검색 평가와 API·MCP·DOWNLOAD를 검증합니다.",
+  DISTRIBUTION_REVIEW: "공개 채널·유통 권한을 입력하고 검수요청을 제출합니다.",
 };
 
 function detailHref(packId: string, tab?: string | null): string {
@@ -129,14 +120,6 @@ function basicInfoReady(input: BuildProviderPackProgressInput): boolean {
   );
 }
 
-function materialReady(input: BuildProviderPackProgressInput): boolean {
-  return Boolean(input.workingVersion?.materialReady);
-}
-
-function distributionReady(input: BuildProviderPackProgressInput): boolean {
-  return Boolean(input.workingVersion?.distributionReady);
-}
-
 function isPublishedStatus(status: PackStatus): boolean {
   return status === "PUBLISHED" || status === "VERIFIED";
 }
@@ -150,6 +133,18 @@ function hasActiveWorkingDraft(input: BuildProviderPackProgressInput): boolean {
   if (!isPublishedStatus(input.packStatus)) return true;
   if (!input.publishedVersion) return true;
   return input.workingVersion.id !== input.publishedVersion.id;
+}
+
+function mapRegistrationStatus(
+  status: ProviderRegistrationStepStatus,
+  isCurrent: boolean,
+): ProviderPackProgressStepStatus {
+  if (status === "COMPLETED") return "COMPLETED";
+  if (status === "STALE") return "STALE";
+  if (status === "LOCKED" || status === "BLOCKED") return "LOCKED";
+  if (status === "IN_PROGRESS" || isCurrent) return "CURRENT";
+  if (status === "WARNING") return "CURRENT";
+  return "WAITING";
 }
 
 export function buildProviderPacksStatusSummary(
@@ -199,28 +194,52 @@ export function buildProviderPackProgress(
 ): ProviderPackProgressDto {
   const packId = input.packId;
   const basicReady = basicInfoReady(input);
-  const materialIsReady = materialReady(input);
-  const distributionIsReady = distributionReady(input);
+  const materialIsReady = Boolean(input.workingVersion?.materialReady);
+  const structureReady = Boolean(input.workingVersion?.structureReady);
+  const searchFoundationReady = Boolean(
+    input.workingVersion?.searchFoundationReady ?? structureReady,
+  );
+  const searchValidationReady = Boolean(input.workingVersion?.searchValidationReady);
+  const distributionIsReady = Boolean(input.workingVersion?.distributionReady);
+  const pipelineCurrent = input.workingVersion?.pipelineCurrent !== false;
   const workingDraft = hasActiveWorkingDraft(input);
   const rejected = Boolean(
     input.packStatus === "DRAFT" && input.latestRejectionReason?.trim(),
   );
 
-  let currentStep: ProviderPackCurrentStep = "BASIC_INFO";
-  let currentStepLabel = "기본정보";
-  let nextActionLabel = "기본정보를 입력하세요.";
-  let nextActionHref: string | null = detailHref(packId, "basic");
-  let actions: ProviderPackProgressAction[] = [
-    { label: "편집", href: detailHref(packId, "basic") },
-  ];
+  const readiness = resolveProviderRegistrationReadiness({
+    packId,
+    packStatus: input.packStatus,
+    basicInfoReady: basicReady,
+    sourceMaterialsReady: materialIsReady,
+    structurePassed: structureReady,
+    searchFoundationPassed: searchFoundationReady,
+    allPreparationChannelsPassed: searchValidationReady,
+    distributionMetadataReady: distributionIsReady,
+    pipelineCurrent,
+    structureStale: materialIsReady && !pipelineCurrent,
+    searchValidationStale: structureReady && !pipelineCurrent,
+    latestRejectionReason: input.latestRejectionReason,
+  });
 
-  const stepStatuses: Record<ProviderPackProgressStepKey, ProviderPackProgressStepStatus> = {
-    BASIC_INFO: "WAITING",
-    MATERIAL: "WAITING",
-    DISTRIBUTION: "WAITING",
-    REVIEW: "WAITING",
-    APPROVAL: "WAITING",
-  };
+  const steps: ProviderPackProgressStep[] = readiness.steps.map((step) => ({
+    key: step.id,
+    label: step.label,
+    description: STEP_DESCRIPTIONS[step.id],
+    status: mapRegistrationStatus(step.status, step.id === readiness.currentStepId),
+    href: step.href,
+  }));
+
+  let currentStep: ProviderPackCurrentStep =
+    readiness.currentStepId ?? "BASIC_INFO";
+  let currentStepLabel =
+    readiness.steps.find((s) => s.id === readiness.currentStepId)?.label ?? "기본정보";
+  let nextActionLabel = "다음 단계를 진행하세요.";
+  let nextActionHref: string | null =
+    readiness.steps.find((s) => s.id === readiness.currentStepId)?.href ?? null;
+  let actions: ProviderPackProgressAction[] = nextActionHref
+    ? [{ label: "이어서 작성", href: nextActionHref }]
+    : [{ label: "상세 보기", href: detailHref(packId) }];
 
   if (isSuspendedStatus(input.packStatus)) {
     currentStep = "SUSPENDED";
@@ -228,9 +247,7 @@ export function buildProviderPackProgress(
     nextActionLabel = "상태를 확인하세요.";
     nextActionHref = detailHref(packId);
     actions = [{ label: "상태 확인", href: detailHref(packId) }];
-    for (const key of Object.keys(stepStatuses) as ProviderPackProgressStepKey[]) {
-      stepStatuses[key] = "BLOCKED";
-    }
+    for (const step of steps) step.status = "BLOCKED";
   } else if (rejected) {
     currentStep = "CHANGES_REQUESTED";
     currentStepLabel = "보완";
@@ -240,27 +257,16 @@ export function buildProviderPackProgress(
       { label: "보완 내용 보기", href: detailHref(packId, "distributionReview") },
       { label: "자료 등록", href: detailHref(packId, "payload") },
     ];
-    stepStatuses.BASIC_INFO = basicReady ? "COMPLETED" : "CURRENT";
-    stepStatuses.MATERIAL = basicReady ? (materialIsReady ? "COMPLETED" : "CURRENT") : "WAITING";
-    stepStatuses.DISTRIBUTION =
-      basicReady && materialIsReady
-        ? distributionIsReady
-          ? "COMPLETED"
-          : "CURRENT"
-        : "WAITING";
-    stepStatuses.REVIEW = "CURRENT";
-    stepStatuses.APPROVAL = "WAITING";
   } else if (input.packStatus === "REVIEWING") {
-    currentStep = "APPROVAL";
+    currentStep = "REVIEWING";
     currentStepLabel = "운영자 검수";
     nextActionLabel = "검수 결과를 기다리세요.";
     nextActionHref = detailHref(packId, "distributionReview");
     actions = [{ label: "검수 상태 보기", href: detailHref(packId, "distributionReview") }];
-    stepStatuses.BASIC_INFO = "COMPLETED";
-    stepStatuses.MATERIAL = "COMPLETED";
-    stepStatuses.DISTRIBUTION = "COMPLETED";
-    stepStatuses.REVIEW = "COMPLETED";
-    stepStatuses.APPROVAL = "CURRENT";
+    for (const step of steps) {
+      if (step.key !== "DISTRIBUTION_REVIEW") step.status = "COMPLETED";
+      else step.status = "COMPLETED";
+    }
   } else if (isPublishedStatus(input.packStatus) && !workingDraft) {
     currentStep = "PUBLISHED";
     currentStepLabel = "공개됨";
@@ -270,126 +276,49 @@ export function buildProviderPackProgress(
       { label: "상세 보기", href: detailHref(packId) },
       { label: "새 버전 만들기", href: ROUTES.providerPackNew },
     ];
-    for (const key of Object.keys(stepStatuses) as ProviderPackProgressStepKey[]) {
-      stepStatuses[key] = "COMPLETED";
-    }
-  } else if (isPublishedStatus(input.packStatus) && workingDraft) {
-    stepStatuses.BASIC_INFO = basicReady ? "COMPLETED" : "CURRENT";
-    stepStatuses.MATERIAL = basicReady
-      ? materialIsReady
-        ? "COMPLETED"
-        : "CURRENT"
-      : "WAITING";
-    stepStatuses.DISTRIBUTION =
-      basicReady && materialIsReady
-        ? distributionIsReady
-          ? "COMPLETED"
-          : "CURRENT"
-        : "WAITING";
-    stepStatuses.REVIEW =
-      basicReady && materialIsReady && distributionIsReady ? "CURRENT" : "WAITING";
-    stepStatuses.APPROVAL = "WAITING";
-
-    if (!basicReady) {
-      currentStep = "BASIC_INFO";
-      currentStepLabel = "기본정보";
-      nextActionLabel = "작업 버전 기본정보를 입력하세요.";
-      nextActionHref = detailHref(packId, "basic");
-      actions = [{ label: "편집", href: detailHref(packId, "basic") }];
-    } else if (!materialIsReady) {
-      currentStep = "MATERIAL";
-      currentStepLabel = "자료 등록";
-      nextActionLabel = "작업 버전에 자료를 등록하세요.";
-      nextActionHref = detailHref(packId, "payload");
-      actions = [{ label: "자료 등록", href: detailHref(packId, "payload") }];
-    } else if (!distributionIsReady) {
-      currentStep = "DISTRIBUTION";
-      currentStepLabel = "유통정보";
-      nextActionLabel = "작업 버전 유통정보를 입력하세요.";
-      nextActionHref = detailHref(packId, "distributionReview");
-      actions = [{ label: "유통정보 입력", href: detailHref(packId, "distributionReview") }];
-    } else {
-      currentStep = "REVIEW";
-      currentStepLabel = "검수 요청";
-      nextActionLabel = "작업 버전 검수 요청을 제출하세요.";
-      nextActionHref = detailHref(packId, "distributionReview");
-      actions = [{ label: "검수 요청", href: detailHref(packId, "distributionReview") }];
-    }
-  } else if (!basicReady) {
-    currentStep = "BASIC_INFO";
-    currentStepLabel = "기본정보";
-    nextActionLabel = "지식팩 기본정보를 입력하세요.";
-    nextActionHref = detailHref(packId, "basic");
-    actions = [
-      { label: "편집", href: detailHref(packId, "basic") },
-      { label: "자료 등록", href: detailHref(packId, "payload") },
-    ];
-    stepStatuses.BASIC_INFO = "CURRENT";
-  } else if (!materialIsReady) {
-    currentStep = "MATERIAL";
-    currentStepLabel = "자료 등록";
-    nextActionLabel = "원본문서와 생성 도구 산출물을 등록하세요.";
-    nextActionHref = detailHref(packId, "payload");
-    actions = [
-      { label: "편집", href: detailHref(packId, "basic") },
-      { label: "자료 등록", href: detailHref(packId, "payload") },
-    ];
-    stepStatuses.BASIC_INFO = "COMPLETED";
-    stepStatuses.MATERIAL = "CURRENT";
-  } else if (!distributionIsReady) {
-    currentStep = "DISTRIBUTION";
-    currentStepLabel = "유통정보";
-    nextActionLabel = "출처·라이선스·공개 범위를 입력하세요.";
-    nextActionHref = detailHref(packId, "distributionReview");
-    actions = [{ label: "유통정보 입력", href: detailHref(packId, "distributionReview") }];
-    stepStatuses.BASIC_INFO = "COMPLETED";
-    stepStatuses.MATERIAL = "COMPLETED";
-    stepStatuses.DISTRIBUTION = "CURRENT";
-  } else if (input.packStatus === "DRAFT") {
-    currentStep = "REVIEW";
-    currentStepLabel = "검수 요청";
-    nextActionLabel = "검수 요청을 제출하세요.";
-    nextActionHref = detailHref(packId, "distributionReview");
-    actions = [{ label: "검수 요청", href: detailHref(packId, "distributionReview") }];
-    stepStatuses.BASIC_INFO = "COMPLETED";
-    stepStatuses.MATERIAL = "COMPLETED";
-    stepStatuses.DISTRIBUTION = "COMPLETED";
-    stepStatuses.REVIEW = "CURRENT";
+    for (const step of steps) step.status = "COMPLETED";
   } else {
-    currentStep = "APPROVAL";
-    currentStepLabel = "승인·공개";
-    nextActionLabel = "검수 상태를 확인하세요.";
-    nextActionHref = detailHref(packId, "distributionReview");
-    actions = [{ label: "검수 상태 보기", href: detailHref(packId, "distributionReview") }];
-    stepStatuses.BASIC_INFO = "COMPLETED";
-    stepStatuses.MATERIAL = "COMPLETED";
-    stepStatuses.DISTRIBUTION = "COMPLETED";
-    stepStatuses.REVIEW = "COMPLETED";
-    stepStatuses.APPROVAL = "CURRENT";
+    // Authoring path — derive next action from readiness current step.
+    const current = readiness.steps.find((s) => s.id === readiness.currentStepId);
+    if (current) {
+      currentStep = current.id;
+      currentStepLabel = current.label;
+      nextActionHref = current.href ?? detailHref(packId, current.tab);
+      if (current.id === "BASIC_INFO") {
+        nextActionLabel = "지식팩 기본정보를 입력하세요.";
+        actions = [
+          { label: "편집", href: detailHref(packId, "basic") },
+          { label: "자료 등록", href: detailHref(packId, "payload") },
+        ];
+      } else if (current.id === "SOURCE_MATERIALS") {
+        nextActionLabel = "원본문서와 생성 도구 산출물을 등록하세요.";
+        actions = [{ label: "자료 등록", href: detailHref(packId, "payload") }];
+      } else if (current.id === "DATA_STRUCTURE") {
+        nextActionLabel = "데이터 구조화를 실행·확인하세요.";
+        actions = [{ label: "데이터 구조화", href: detailHref(packId, "knowledge") }];
+      } else if (current.id === "SEARCH_DATA_VALIDATION") {
+        nextActionLabel = "검색데이터 생성·검증을 완료하세요.";
+        actions = [
+          { label: "검색 검증", href: detailHref(packId, "serviceValidation") },
+        ];
+      } else {
+        nextActionLabel = distributionIsReady
+          ? "검수 요청을 제출하세요."
+          : "출처·라이선스·공개 범위를 입력하세요.";
+        actions = [
+          {
+            label: distributionIsReady ? "검수 요청" : "유통정보 입력",
+            href: detailHref(packId, "distributionReview"),
+          },
+        ];
+      }
+    }
   }
-
-  const steps: ProviderPackProgressStep[] = (
-    Object.keys(STEP_META) as ProviderPackProgressStepKey[]
-  ).map((key) => {
-    const meta = STEP_META[key];
-    const status = stepStatuses[key];
-    return {
-      key,
-      label: meta.label,
-      description: meta.description,
-      status,
-      href:
-        status === "CURRENT" && meta.tab
-          ? detailHref(packId, meta.tab)
-          : status === "CURRENT"
-            ? detailHref(packId)
-            : null,
-    };
-  });
 
   return {
     packId,
     packStatus: input.packStatus,
+    lifecycleStatus: input.packStatus,
     publishedVersion: input.publishedVersion,
     workingVersion: input.workingVersion
       ? {
@@ -407,15 +336,20 @@ export function buildProviderPackProgress(
   };
 }
 
-/** True when ZIP payload is VALID or Docling bundle is REVIEW_READY (or legacy sources exist). */
+/**
+ * Docling REVIEW_READY or validated ZIP payload.
+ * Legacy source-only packs must set legacySourceOnly explicitly.
+ */
 export function isMaterialReadyForProgress(input: {
   sourceDocumentCount: number;
   payloadValidationStatus?: string | null;
   doclingBundleStatus?: string | null;
+  /** Explicit legacy ZIP/source-only path without Docling REVIEW_READY. */
+  legacySourceOnly?: boolean;
 }): boolean {
   if (input.payloadValidationStatus === "VALID") return true;
   if (input.doclingBundleStatus === "REVIEW_READY") return true;
-  if (input.sourceDocumentCount > 0) return true;
+  if (input.legacySourceOnly && input.sourceDocumentCount > 0) return true;
   return false;
 }
 
@@ -437,4 +371,9 @@ export function isDistributionReadyForProgress(input: {
   // Legacy fallback for packs without rightsBasis yet
   const hasLicense = Boolean(input.licenseName?.trim());
   return hasSource && hasLicense;
+}
+
+/** Coarse list heuristic: pack pipeline finished search-foundation stages. */
+export function isPipelineReadyForProgress(pipelineStatus: string | null | undefined): boolean {
+  return pipelineStatus === "READY_FOR_REVIEW";
 }

@@ -155,17 +155,45 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         hasLanguage,
         distribution,
         doclingBundle,
-        knowledgePassed: Boolean(knowledgeStatus?.passed),
-        serviceValidationPassed: Boolean(serviceValidation?.allSelectedPassed),
+        knowledgePassed: Boolean(
+          knowledgeStatus?.searchFoundationPassed ?? knowledgeStatus?.passed,
+        ),
+        serviceValidationPassed: Boolean(
+          serviceValidation?.allPreparationChannelsPassed ??
+            serviceValidation?.allSelectedPassed,
+        ),
       }),
     [
       hasBasicInfo,
       hasLanguage,
       distribution,
       doclingBundle,
+      knowledgeStatus?.searchFoundationPassed,
       knowledgeStatus?.passed,
+      serviceValidation?.allPreparationChannelsPassed,
       serviceValidation?.allSelectedPassed,
     ],
+  );
+
+  const structurePassed = Boolean(knowledgeStatus?.structurePassed);
+  const searchFoundationPassed = Boolean(knowledgeStatus?.searchFoundationPassed);
+  const pipelineCurrent = knowledgeStatus ? knowledgeStatus.pipelineCurrent : true;
+  const providerConfirmed = isDoclingPayloadReady(doclingBundle?.status);
+  const distributionReady = Boolean(
+    distribution &&
+      isDistributionReadyForServiceValidation({
+        sourceTitle: distribution.sourceTitle,
+        sourceUrl: distribution.sourceUrl,
+        rightsBasis: distribution.rightsBasis,
+        rightsConfirmedAt: distribution.rightsConfirmedAt,
+        allowApi: distribution.allowApi,
+        allowMcp: distribution.allowMcp,
+        allowDownload: distribution.allowDownload,
+      }),
+  );
+  const serviceValidationPassed = Boolean(
+    serviceValidation?.allPreparationChannelsPassed ??
+      serviceValidation?.allSelectedPassed,
   );
 
   const packProgress = useMemo(() => {
@@ -178,7 +206,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         ? "REVIEW_READY"
         : doclingBundle?.status ?? null,
     });
-    const distributionReady = isDistributionReadyForProgress({
+    const distributionReadyForProgress = isDistributionReadyForProgress({
       sourceTitle: distribution?.sourceTitle,
       sourceUrl: distribution?.sourceUrl,
       licenseName: distribution?.licenseName,
@@ -204,7 +232,11 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
             version: working.version,
             sourceDocumentCount,
             materialReady,
-            distributionReady,
+            structureReady: structurePassed,
+            searchFoundationReady: searchFoundationPassed,
+            searchValidationReady: serviceValidationPassed,
+            distributionReady: distributionReadyForProgress,
+            pipelineCurrent,
           }
         : null,
       publishedVersion:
@@ -223,23 +255,11 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     sourceDocumentCount,
     distribution,
     doclingBundle,
+    structurePassed,
+    searchFoundationPassed,
+    serviceValidationPassed,
+    pipelineCurrent,
   ]);
-
-  const providerConfirmed = isDoclingPayloadReady(doclingBundle?.status);
-  const knowledgePassed = Boolean(knowledgeStatus?.passed);
-  const distributionReady = Boolean(
-    distribution &&
-      isDistributionReadyForServiceValidation({
-        sourceTitle: distribution.sourceTitle,
-        sourceUrl: distribution.sourceUrl,
-        rightsBasis: distribution.rightsBasis,
-        rightsConfirmedAt: distribution.rightsConfirmedAt,
-        allowApi: distribution.allowApi,
-        allowMcp: distribution.allowMcp,
-        allowDownload: distribution.allowDownload,
-      }),
-  );
-  const serviceValidationPassed = Boolean(serviceValidation?.allSelectedPassed);
 
   const defaultTab = useMemo(
     () =>
@@ -250,7 +270,8 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         hasPayload: isDoclingPayloadPresent(doclingBundle?.status),
         hasDistribution: distributionReady,
         providerConfirmed,
-        knowledgePassed,
+        structurePassed,
+        knowledgePassed: structurePassed,
         serviceValidationPassed,
       }),
     [
@@ -260,7 +281,7 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
       distributionReady,
       doclingBundle,
       providerConfirmed,
-      knowledgePassed,
+      structurePassed,
       serviceValidationPassed,
     ],
   );
@@ -275,12 +296,48 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
     () =>
       resolveProviderPackTabLocks({
         providerConfirmed,
-        knowledgePassed,
+        structurePassed,
+        knowledgePassed: structurePassed,
         distributionReady,
         serviceValidationPassed,
       }),
-    [providerConfirmed, knowledgePassed, distributionReady, serviceValidationPassed],
+    [providerConfirmed, structurePassed, distributionReady, serviceValidationPassed],
   );
+
+  const tabStepStatuses = useMemo(() => {
+    const byTab: Partial<
+      Record<
+        ProviderPackTabId,
+        { status: string; statusLabel: string }
+      >
+    > = {};
+    for (const step of packProgress?.steps ?? []) {
+      const tab =
+        step.key === "BASIC_INFO"
+          ? "basic"
+          : step.key === "SOURCE_MATERIALS"
+            ? "payload"
+            : step.key === "DATA_STRUCTURE"
+              ? "knowledge"
+              : step.key === "SEARCH_DATA_VALIDATION"
+                ? "serviceValidation"
+                : "distributionReview";
+      const statusLabel =
+        step.status === "COMPLETED"
+          ? "완료"
+          : step.status === "CURRENT"
+            ? "진행 중"
+            : step.status === "STALE"
+              ? "다시 생성 필요"
+              : step.status === "LOCKED"
+                ? "잠김"
+                : step.status === "BLOCKED"
+                  ? "차단"
+                  : "미완료";
+      byTab[tab] = { status: step.status, statusLabel };
+    }
+    return byTab;
+  }, [packProgress]);
 
   const selectTab = useCallback(
     (tab: ProviderPackTabId) => {
@@ -451,7 +508,12 @@ export function ProviderPackEditor({ packId }: { readonly packId: string }) {
         </div>
       ) : null}
 
-      <ProviderPackTabs activeTab={activeTab} onSelectTab={selectTab} locks={tabLocks} />
+      <ProviderPackTabs
+        activeTab={activeTab}
+        onSelectTab={selectTab}
+        locks={tabLocks}
+        stepStatuses={tabStepStatuses}
+      />
 
       {error ? (
         <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>

@@ -36,10 +36,14 @@ export function resolveDefaultProviderPackTab(input: {
   sourceDocumentCount: number;
   hasPayload?: boolean;
   hasDistribution?: boolean;
+  /** Prefer structurePassed — unlocks search-validation tab. */
+  structurePassed?: boolean;
+  /** @deprecated Prefer structurePassed */
   knowledgePassed?: boolean;
   providerConfirmed?: boolean;
   serviceValidationPassed?: boolean;
 }): ProviderPackTabId {
+  const structurePassed = Boolean(input.structurePassed ?? input.knowledgePassed);
   if (input.status === "REVIEWING" || input.status === "PUBLISHED" || input.status === "VERIFIED") {
     return "distributionReview";
   }
@@ -55,10 +59,10 @@ export function resolveDefaultProviderPackTab(input: {
   if (input.hasPayload && !input.providerConfirmed) {
     return "payload";
   }
-  if (input.providerConfirmed && !input.knowledgePassed) {
+  if (input.providerConfirmed && !structurePassed) {
     return "knowledge";
   }
-  if (input.knowledgePassed && !input.serviceValidationPassed) {
+  if (structurePassed && !input.serviceValidationPassed) {
     return "serviceValidation";
   }
   return "distributionReview";
@@ -117,10 +121,14 @@ export type ProviderPackTabLock = {
 
 export function resolveProviderPackTabLocks(input: {
   providerConfirmed: boolean;
-  knowledgePassed: boolean;
-  distributionReady: boolean;
+  /** STRUCTURE + KU + Chunk complete on current binding. */
+  structurePassed?: boolean;
+  /** @deprecated Prefer structurePassed */
+  knowledgePassed?: boolean;
+  distributionReady?: boolean;
   serviceValidationPassed: boolean;
 }): Record<ProviderPackTabId, ProviderPackTabLock> {
+  const structurePassed = Boolean(input.structurePassed ?? input.knowledgePassed);
   return {
     basic: { locked: false, reason: null },
     payload: { locked: false, reason: null },
@@ -131,10 +139,10 @@ export function resolveProviderPackTabLocks(input: {
         : "자료 등록을 먼저 완료해 주세요.",
     },
     serviceValidation: {
-      locked: !input.knowledgePassed,
-      reason: input.knowledgePassed
+      locked: !structurePassed,
+      reason: structurePassed
         ? null
-        : "데이터 구조화가 완료되지 않았습니다.",
+        : "Retrieval Chunk 생성이 완료되지 않았습니다.",
     },
     distributionReview: {
       locked: !input.serviceValidationPassed,

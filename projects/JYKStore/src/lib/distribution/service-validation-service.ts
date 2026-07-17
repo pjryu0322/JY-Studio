@@ -96,7 +96,14 @@ export type ServiceValidationStatusDto = {
   packStatus: string;
   canRunValidation: boolean;
   channels: ServiceValidationChannelDto[];
-  /** System PASS + Provider CONFIRMED + CURRENT for all selected channels. */
+  /**
+   * System PASS + Provider CONFIRMED + CURRENT for all preparation channels
+   * (API + MCP + DOWNLOAD), before final distribution selection.
+   */
+  allPreparationChannelsPassed: boolean;
+  /**
+   * @deprecated Alias of allPreparationChannelsPassed — kept for Public/compat consumers.
+   */
   allSelectedPassed: boolean;
   suggestedQuery: string | null;
   suggestedQueries: string[];
@@ -545,7 +552,7 @@ export async function getServiceValidationStatus(input: {
   }
 
   const selectedChannels = channels.filter((c) => selected.has(c.channel));
-  const allSelectedPassed =
+  const allPreparationChannelsPassed =
     selectedChannels.length === SEARCH_VALIDATION_PREPARATION_CHANNELS.length &&
     selectedChannels.every(
       (c) =>
@@ -565,7 +572,8 @@ export async function getServiceValidationStatus(input: {
     packStatus: pack.status,
     canRunValidation,
     channels,
-    allSelectedPassed,
+    allPreparationChannelsPassed,
+    allSelectedPassed: allPreparationChannelsPassed,
     suggestedQuery: suggestedQueries[0] ?? "주요 기능을 알려주세요",
     suggestedQueries,
   };
