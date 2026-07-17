@@ -5,7 +5,11 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { PackStatus } from "@prisma/client";
 import { PayloadServiceError } from "../lib/distribution/payload-errors.ts";
-import { commitSuccessfulDownloadTestEvidence } from "../lib/distribution/service-validation-confirmation-service.ts";
+import {
+  commitSuccessfulDownloadTestEvidence,
+  confirmServiceValidationRun,
+} from "../lib/distribution/service-validation-confirmation-service.ts";
+import { resolveSourceOriginalForValidationResult } from "../lib/distribution/service-validation-source-preview.ts";
 import { evidenceIntegrityForRun } from "../lib/distribution/service-validation-binding.ts";
 import {
   createKnowledgeRunBinding,
@@ -103,10 +107,22 @@ async function seedDownloadRun(suffix: string) {
   });
   const bundle = await prisma.doclingImportBundle.create({
     data: {
+      id: binding.bundleId,
       packId,
       versionId: version.id,
       status: "REVIEW_READY",
       storageStatus: "ACTIVE",
+      isActive: true,
+    },
+  });
+  await prisma.normalizedDocument.create({
+    data: {
+      id: binding.normalizedDocumentId,
+      bundleId: bundle.id,
+      packId,
+      versionId: version.id,
+      adapterVersion: "test",
+      fingerprint: binding.fingerprint,
       isActive: true,
     },
   });
@@ -148,11 +164,15 @@ async function cleanupSeed(input: {
   profileId: string;
   categoryId?: string;
 }) {
+  await prisma.serviceValidationProviderConfirmation
+    .deleteMany({ where: { run: { packId: input.packId } } })
+    .catch(() => undefined);
   await prisma.serviceValidationDownloadTest
     .deleteMany({ where: { run: { packId: input.packId } } })
     .catch(() => undefined);
   await prisma.serviceValidationRun.deleteMany({ where: { packId: input.packId } }).catch(() => undefined);
   await prisma.knowledgePackFile.deleteMany({ where: { packId: input.packId } }).catch(() => undefined);
+  await prisma.normalizedDocument.deleteMany({ where: { packId: input.packId } }).catch(() => undefined);
   await prisma.doclingImportBundle.deleteMany({ where: { packId: input.packId } }).catch(() => undefined);
   await prisma.pipelineRun.deleteMany({ where: { packId: input.packId } }).catch(() => undefined);
   await prisma.knowledgePackVersion.deleteMany({ where: { packId: input.packId } }).catch(() => undefined);
@@ -165,7 +185,9 @@ describe("service validation evidence integrity (unit)", () => {
   it("marks pipeline field drift as INVALID without treating old versions as invalid solely by age", () => {
     const binding = {
       pipelineRunId: "pipe-1",
+      packId: "p1",
       versionId: "v1",
+      bundleId: "b1",
       indexGenerationId: "g1",
       normalizedDocumentId: "nd1",
       fingerprint: "fp1",
@@ -263,6 +285,133 @@ describe("service validation final follow-up postgres", { skip: !hasDb }, () => 
         where: { runId: seeded.run.id },
       });
       assert.equal(count, 0);
+    } finally {
+      await cleanupSeed({
+        packId: seeded.packId,
+        userId: seeded.user.id,
+        profileId: seeded.profile.id,
+      });
+    }
+  });
+
+  it("keeps provider confirmation idempotent under concurrent requests", async () => {
+    const suffix = `${Date.now()}-confirmation`;
+    const seeded = await seedDownloadRun(suffix);
+    try {
+      await commitSuccessfulDownloadTestEvidence({
+        userId: seeded.user.id,
+        packId: seeded.packId,
+        versionId: seeded.version.id,
+        runId: seeded.run.id,
+        fileId: seeded.file.id,
+      });
+      const request = () =>
+        confirmServiceValidationRun({
+          userId: seeded.user.id,
+          clientId: `test-${suffix}`,
+          packId: seeded.packId,
+          runId: seeded.run.id,
+          download: {
+            fileNameConfirmed: true,
+            downloadOkConfirmed: true,
+            fileMatchConfirmed: true,
+          },
+        });
+      const results = await Promise.all([request(), request()]);
+      assert.equal(results[0]!.confirmationId, results[1]!.confirmationId);
+      assert.equal(
+        await prisma.serviceValidationProviderConfirmation.count({
+          where: { runId: seeded.run.id },
+        }),
+        1,
+      );
+    } finally {
+      await cleanupSeed({
+        packId: seeded.packId,
+        userId: seeded.user.id,
+        profileId: seeded.profile.id,
+      });
+    }
+  });
+
+  it("rejects evidence when the bound bundle is no longer active", async () => {
+    const suffix = `${Date.now()}-bundle`;
+    const seeded = await seedDownloadRun(suffix);
+    await prisma.doclingImportBundle.update({
+      where: { id: `b-${suffix}` },
+      data: { isActive: false },
+    });
+    try {
+      await assert.rejects(
+        () =>
+          commitSuccessfulDownloadTestEvidence({
+            userId: seeded.user.id,
+            packId: seeded.packId,
+            versionId: seeded.version.id,
+            runId: seeded.run.id,
+            fileId: seeded.file.id,
+          }),
+        (err: unknown) =>
+          err instanceof PayloadServiceError && err.code === "SERVICE_VALIDATION_STALE",
+      );
+      assert.equal(
+        await prisma.serviceValidationDownloadTest.count({
+          where: { runId: seeded.run.id },
+        }),
+        0,
+      );
+    } finally {
+      await cleanupSeed({
+        packId: seeded.packId,
+        userId: seeded.user.id,
+        profileId: seeded.profile.id,
+      });
+    }
+  });
+
+  it("does not fall back to a same-name source file when the explicit link is missing", async () => {
+    const suffix = `${Date.now()}-source`;
+    const seeded = await seedDownloadRun(suffix);
+    try {
+      const source = await prisma.sourceDocument.create({
+        data: {
+          versionId: seeded.version.id,
+          title: "Source",
+          fileName: seeded.file.originalFileName,
+        },
+      });
+      await prisma.serviceValidationResultItem.create({
+        data: {
+          runId: seeded.run.id,
+          rank: 1,
+          chunkId: `chunk-${suffix}`,
+          title: "Result",
+          snippet: "Snippet",
+          score: 1,
+          sourceDocumentId: source.id,
+          sourceFileId: null,
+        },
+      });
+      await assert.rejects(
+        () =>
+          resolveSourceOriginalForValidationResult({
+            packId: seeded.packId,
+            runId: seeded.run.id,
+            rank: 1,
+          }),
+        (err: unknown) =>
+          err instanceof PayloadServiceError &&
+          err.code === "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      );
+      await assert.rejects(
+        () =>
+          resolveSourceOriginalForValidationResult({
+            packId: `foreign-${seeded.packId}`,
+            runId: seeded.run.id,
+            rank: 1,
+          }),
+        (err: unknown) => err instanceof PayloadServiceError && err.code === "NOT_FOUND",
+      );
     } finally {
       await cleanupSeed({
         packId: seeded.packId,

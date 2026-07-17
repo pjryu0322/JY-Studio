@@ -2,6 +2,7 @@ import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
 import { PayloadServiceError } from "@/lib/distribution/payload-errors";
 import { getConfiguredPayloadStorage } from "@/lib/distribution/payload-storage-factory";
+import { resolvePipelineRunBindingTx } from "@/lib/distribution/service-validation-binding";
 import type { ObjectStorage } from "@/lib/object-storage/object-storage";
 import { prisma } from "@/lib/prisma";
 
@@ -72,6 +73,22 @@ export async function resolveSourceOriginalForValidationResult(input: {
   if (!run || run.packId !== input.packId) {
     throw new PayloadServiceError("NOT_FOUND", "검증 실행을 찾을 수 없습니다.", 404);
   }
+  const binding = await resolvePipelineRunBindingTx(prisma, run.pipelineRunId);
+  if (
+    !binding ||
+    binding.packId !== run.packId ||
+    binding.versionId !== run.versionId ||
+    binding.pipelineRunId !== run.pipelineRunId ||
+    binding.indexGenerationId !== run.indexGenerationId ||
+    binding.normalizedDocumentId !== run.normalizedDocumentId ||
+    binding.fingerprint !== run.fingerprint
+  ) {
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      "원문 파일 연결을 확인할 수 없습니다. 관리자에게 문의 바랍니다.",
+      404,
+    );
+  }
   const item = await prisma.serviceValidationResultItem.findFirst({
     where: { runId: run.id, rank: input.rank },
   });
@@ -79,37 +96,13 @@ export async function resolveSourceOriginalForValidationResult(input: {
     throw new PayloadServiceError("NOT_FOUND", "검색 결과 항목을 찾을 수 없습니다.", 404);
   }
 
-  let fileId: string | null = item.sourceFileId?.trim() || null;
-
+  const fileId = item.sourceFileId?.trim() || null;
   if (!fileId) {
-    const sourceDoc = await prisma.sourceDocument.findFirst({
-      where: { id: item.sourceDocumentId, versionId: run.versionId },
-      select: { id: true, fileName: true },
-    });
-    if (!sourceDoc?.fileName?.trim()) {
-      throw new PayloadServiceError(
-        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-        "검색 결과와 연결된 원본문서를 찾을 수 없습니다.",
-        404,
-      );
-    }
-    const matches = await prisma.knowledgePackFile.findMany({
-      where: {
-        packId: input.packId,
-        versionId: run.versionId,
-        originalFileName: sourceDoc.fileName,
-        ...activeOriginalWhere,
-      },
-      select: { id: true },
-    });
-    if (matches.length !== 1) {
-      throw new PayloadServiceError(
-        "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-        "검색 결과와 연결된 원본문서를 찾을 수 없습니다.",
-        404,
-      );
-    }
-    fileId = matches[0]!.id;
+    throw new PayloadServiceError(
+      "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+      "원문 파일 연결을 확인할 수 없습니다. 관리자에게 문의 바랍니다.",
+      404,
+    );
   }
 
   const file = await prisma.knowledgePackFile.findFirst({
@@ -117,13 +110,14 @@ export async function resolveSourceOriginalForValidationResult(input: {
       id: fileId,
       packId: input.packId,
       versionId: run.versionId,
+      bundleId: binding.bundleId,
       ...activeOriginalWhere,
     },
   });
   if (!file?.storageKey) {
     throw new PayloadServiceError(
       "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
-      "검색 결과와 연결된 원본문서를 찾을 수 없습니다.",
+      "원문 파일 연결을 확인할 수 없습니다. 관리자에게 문의 바랍니다.",
       404,
     );
   }

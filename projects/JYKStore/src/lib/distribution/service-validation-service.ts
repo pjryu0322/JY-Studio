@@ -605,6 +605,7 @@ export async function getServiceValidationStatus(input: {
 async function buildSafeRetrievalItems(input: {
   contexts: RetrievalContextDto[];
   expectedVersionId: string;
+  normalizedDocumentId: string;
 }): Promise<InternalValidationResultItem[]> {
   const sourceIds = input.contexts
     .map((c) => resolveRetrievalContextSourceDocumentId(c))
@@ -628,36 +629,48 @@ async function buildSafeRetrievalItems(input: {
       id: { in: [...new Set(filtered.map((i) => i.sourceDocumentId))] },
       versionId: input.expectedVersionId,
     },
-    select: { id: true, fileName: true },
+    select: { id: true },
   });
-  const files = await prisma.knowledgePackFile.findMany({
+  const normalizedDocument = await prisma.normalizedDocument.findFirst({
     where: {
+      id: input.normalizedDocumentId,
       versionId: input.expectedVersionId,
-      role: "SOURCE_ORIGINAL",
-      bundle: { isActive: true, deletedAt: null, storageStatus: "ACTIVE" },
+      isActive: true,
+      sourceFileId: { not: null },
+      bundle: {
+        versionId: input.expectedVersionId,
+        isActive: true,
+        deletedAt: null,
+        storageStatus: "ACTIVE",
+        status: "REVIEW_READY",
+      },
     },
-    select: { id: true, originalFileName: true },
+    select: { sourceFileId: true, bundleId: true },
   });
-  const filesByName = new Map<string, string[]>();
-  for (const f of files) {
-    const list = filesByName.get(f.originalFileName) ?? [];
-    list.push(f.id);
-    filesByName.set(f.originalFileName, list);
-  }
-  const fileIdByDoc = new Map<string, string | null>();
-  for (const doc of docs) {
-    const name = doc.fileName?.trim();
-    if (!name) {
-      fileIdByDoc.set(doc.id, null);
-      continue;
-    }
-    const matched = filesByName.get(name) ?? [];
-    fileIdByDoc.set(doc.id, matched.length === 1 ? matched[0]! : null);
-  }
+  const sourceFile = normalizedDocument?.sourceFileId
+    ? await prisma.knowledgePackFile.findFirst({
+        where: {
+          id: normalizedDocument.sourceFileId,
+          bundleId: normalizedDocument.bundleId,
+          versionId: input.expectedVersionId,
+          role: "SOURCE_ORIGINAL",
+          bundle: {
+            isActive: true,
+            deletedAt: null,
+            storageStatus: "ACTIVE",
+            status: "REVIEW_READY",
+          },
+        },
+        select: { id: true },
+      })
+    : null;
+  const validSourceDocumentIds = new Set(docs.map((doc) => doc.id));
+  const expectedSourceDocumentIds = new Set(filtered.map((item) => item.sourceDocumentId));
+  if (!sourceFile || validSourceDocumentIds.size !== expectedSourceDocumentIds.size) return [];
 
   return filtered.map((item) => ({
     ...item,
-    sourceFileId: fileIdByDoc.get(item.sourceDocumentId) ?? null,
+    sourceFileId: validSourceDocumentIds.has(item.sourceDocumentId) ? sourceFile.id : null,
   }));
 }
 
@@ -668,7 +681,7 @@ export async function runServiceChannelValidation(input: {
   channel: ServiceChannel;
   query?: string | null;
 }): Promise<ServiceValidationChannelDto> {
-  const { pack, version } = await requireOwnedDraftPackForServiceValidationRun(input);
+  const { pack, version, profile } = await requireOwnedDraftPackForServiceValidationRun(input);
   const { dist, latest, binding } = await loadBindingContext(pack.packId, version.id);
   if (!dist) {
     throw new PayloadServiceError("INCOMPLETE", "유통정보를 먼저 저장해 주세요.", 400);
@@ -805,6 +818,7 @@ export async function runServiceChannelValidation(input: {
       safeItems = await buildSafeRetrievalItems({
         contexts: retrievalContexts,
         expectedVersionId: version.id,
+        normalizedDocumentId: binding.normalizedDocumentId,
       });
       if (safeItems.length < 1) {
         failureCode = "SERVICE_VALIDATION_RESULT_SNAPSHOT_EMPTY";
@@ -866,6 +880,124 @@ export async function runServiceChannelValidation(input: {
   }
 
   const row = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT "id"
+      FROM "KnowledgePack"
+      WHERE "packId" = ${pack.packId}
+      FOR UPDATE
+    `;
+    const packInTx = await tx.knowledgePack.findFirst({
+      where: {
+        packId: pack.packId,
+        providerProfileId: profile.id,
+        status: PackStatus.DRAFT,
+      },
+      select: { packId: true },
+    });
+    const versionInTx = await tx.knowledgePackVersion.findFirst({
+      where: { packId: pack.packId },
+      orderBy: latestKnowledgePackVersionOrderBy,
+      select: { id: true },
+    });
+    if (!packInTx || versionInTx?.id !== version.id) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_NOT_EDITABLE",
+        "지식팩 상태 또는 현재 버전이 변경되었습니다. 다시 시도해 주세요.",
+        409,
+      );
+    }
+    const bindingInTx = await resolveCurrentValidationBindingTx(tx, {
+      packId: pack.packId,
+      versionId: version.id,
+      expectedPipelineRunId: latest.id,
+    });
+    if (
+      bindingInTx.indexGenerationId !== binding.indexGenerationId ||
+      bindingInTx.normalizedDocumentId !== binding.normalizedDocumentId ||
+      bindingInTx.fingerprint !== binding.fingerprint
+    ) {
+      throw new PayloadServiceError(
+        "SERVICE_VALIDATION_STALE",
+        "지식 데이터가 변경되어 서비스 검증을 다시 실행해야 합니다.",
+        409,
+      );
+    }
+    const distributionInTx = await tx.packDistributionMetadata.findUnique({
+      where: { versionId: version.id },
+    });
+    if (
+      !distributionInTx ||
+      !selectedServiceChannels(distributionInTx).includes(input.channel)
+    ) {
+      throw new PayloadServiceError(
+        "SERVICE_CHANNEL_DISABLED",
+        "유통정보에서 선택하지 않은 제공 방식입니다.",
+        409,
+      );
+    }
+    if (status === "PASS" && (input.channel === "API" || input.channel === "MCP")) {
+      const sourceDocumentIds = [...new Set(safeItems.map((item) => item.sourceDocumentId))];
+      const sourceFileIds = [...new Set(safeItems.map((item) => item.sourceFileId).filter(Boolean))];
+      const [sourceDocumentCount, sourceFileCount] = await Promise.all([
+        tx.sourceDocument.count({
+          where: { id: { in: sourceDocumentIds }, versionId: version.id },
+        }),
+        tx.knowledgePackFile.count({
+          where: {
+            id: { in: sourceFileIds as string[] },
+            versionId: version.id,
+            role: "SOURCE_ORIGINAL",
+            bundle: {
+              id: bindingInTx.bundleId,
+              isActive: true,
+              deletedAt: null,
+              storageStatus: "ACTIVE",
+              status: "REVIEW_READY",
+            },
+          },
+        }),
+      ]);
+      if (
+        sourceDocumentCount !== sourceDocumentIds.length ||
+        sourceFileIds.length < 1 ||
+        sourceFileCount !== sourceFileIds.length
+      ) {
+        throw new PayloadServiceError(
+          "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+          "검색 결과와 원문 파일 연결이 변경되었습니다. 다시 검증해 주세요.",
+          409,
+        );
+      }
+    }
+    if (status === "PASS" && input.channel === "DOWNLOAD") {
+      const fileId =
+        details && typeof details.fileId === "string" ? details.fileId : null;
+      const fileInTx = fileId
+        ? await tx.knowledgePackFile.findFirst({
+            where: {
+              id: fileId,
+              packId: pack.packId,
+              versionId: version.id,
+              role: "SOURCE_ORIGINAL",
+              bundle: {
+                id: bindingInTx.bundleId,
+                isActive: true,
+                deletedAt: null,
+                storageStatus: "ACTIVE",
+                status: "REVIEW_READY",
+              },
+            },
+            select: { id: true },
+          })
+        : null;
+      if (!fileInTx) {
+        throw new PayloadServiceError(
+          "SERVICE_VALIDATION_EVIDENCE_MISMATCH",
+          "다운로드 검증 원문 파일 연결이 변경되었습니다. 다시 검증해 주세요.",
+          409,
+        );
+      }
+    }
     const created = await tx.serviceValidationRun.create({
       data: {
         packId: pack.packId,

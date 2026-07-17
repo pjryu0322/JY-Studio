@@ -8,7 +8,9 @@ import { DOCLING_KNOWLEDGE_PIPELINE_TRIGGER } from "@/lib/docling-knowledge/docl
 
 export type CurrentValidationBinding = {
   pipelineRunId: string;
+  packId: string;
   versionId: string;
+  bundleId: string;
   indexGenerationId: string;
   normalizedDocumentId: string;
   fingerprint: string;
@@ -26,11 +28,14 @@ function staleError(): PayloadServiceError {
 
 function toCurrentBinding(
   pipelineRunId: string,
+  packId: string,
   binding: KnowledgeRunBinding,
 ): CurrentValidationBinding {
   return {
     pipelineRunId,
+    packId,
     versionId: binding.versionId,
+    bundleId: binding.bundleId,
     indexGenerationId: binding.indexGenerationId,
     normalizedDocumentId: binding.normalizedDocumentId,
     fingerprint: binding.fingerprint,
@@ -56,7 +61,6 @@ export async function resolveCurrentValidationBindingTx(
       status: "PASS",
     },
     orderBy: { startedAt: "desc" },
-    take: 40,
     select: { id: true, packId: true, summary: true },
   });
 
@@ -65,11 +69,33 @@ export async function resolveCurrentValidationBindingTx(
     if (run.packId !== input.packId) continue;
     const binding = parseKnowledgeRunBinding(run.summary);
     if (!binding || binding.versionId !== input.versionId) continue;
-    matched = toCurrentBinding(run.id, binding);
+    matched = toCurrentBinding(run.id, run.packId, binding);
     break;
   }
 
   if (!matched) throw staleError();
+
+  const normalizedDocument = await tx.normalizedDocument.findFirst({
+    where: {
+      id: matched.normalizedDocumentId,
+      packId: input.packId,
+      versionId: input.versionId,
+      bundleId: matched.bundleId,
+      fingerprint: matched.fingerprint,
+      isActive: true,
+      bundle: {
+        id: matched.bundleId,
+        packId: input.packId,
+        versionId: input.versionId,
+        isActive: true,
+        deletedAt: null,
+        storageStatus: "ACTIVE",
+        status: "REVIEW_READY",
+      },
+    },
+    select: { id: true },
+  });
+  if (!normalizedDocument) throw staleError();
 
   if (
     input.expectedPipelineRunId &&
@@ -95,7 +121,7 @@ export async function resolvePipelineRunBindingTx(
   if (!run) return null;
   const binding = parseKnowledgeRunBinding(run.summary);
   if (!binding) return null;
-  return toCurrentBinding(run.id, binding);
+  return toCurrentBinding(run.id, run.packId, binding);
 }
 
 export function runMatchesBinding(
@@ -108,25 +134,12 @@ export function runMatchesBinding(
   binding: CurrentValidationBinding | null | undefined,
 ): boolean {
   if (!binding) return false;
-  if (run.pipelineRunId && run.pipelineRunId !== binding.pipelineRunId) return false;
-  if (
-    run.indexGenerationId &&
-    binding.indexGenerationId &&
-    run.indexGenerationId !== binding.indexGenerationId
-  ) {
-    return false;
-  }
-  if (run.fingerprint && binding.fingerprint && run.fingerprint !== binding.fingerprint) {
-    return false;
-  }
-  if (
-    run.normalizedDocumentId &&
-    binding.normalizedDocumentId &&
-    run.normalizedDocumentId !== binding.normalizedDocumentId
-  ) {
-    return false;
-  }
-  return true;
+  return (
+    run.pipelineRunId === binding.pipelineRunId &&
+    run.indexGenerationId === binding.indexGenerationId &&
+    run.fingerprint === binding.fingerprint &&
+    run.normalizedDocumentId === binding.normalizedDocumentId
+  );
 }
 
 export function evidenceIntegrityForRun(
